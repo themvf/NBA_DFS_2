@@ -38,6 +38,8 @@ import {
 } from "lucide-react";
 import type { PickemLedgerRow, PickemPoolRow, PickemSlate, PickemSlateGame } from "@/db/queries";
 import PickemTabs from "./pickem-tabs";
+import { EvidencePanel, EvidenceLedger } from "./evidence-panel";
+import { EMPTY_EVIDENCE, marketReview, type PickemEvidence, type PickemScenario } from "@/lib/nfl/pickem-evidence";
 import {
   ledgerVerdict,
   summarizeLedger,
@@ -70,6 +72,7 @@ import {
 } from "@/lib/nfl/pickem-policy";
 import {
   archetype,
+  buildStandings,
   narrativeRead,
   tagSeason,
   type ArchetypeCode,
@@ -87,6 +90,7 @@ import {
 } from "@/lib/nfl/pickem-strategy";
 
 type Props = {
+  evidence: PickemEvidence;
   slate: PickemSlate;
   pools: PickemPoolRow[];
   ledger: PickemLedgerRow[];
@@ -108,6 +112,7 @@ const STORAGE_KEY = "nfl-pickem-v1";
 const SELECTABLE_SEASONS = [2026, 2025, 2024, 2023, 2022, 2021, 2020];
 
 type Stored = {
+  scenarios?: Record<number, PickemScenario>;
   week: number;
   format: PoolFormat;
   poolEntries: number;
@@ -140,7 +145,9 @@ function gapNote(c: ArchetypeCode): string {
   return `Market gap over 2020-25: ${a.measuredGapPp >= 0 ? "+" : ""}${a.measuredGapPp}pp on n=${a.measuredN}.`;
 }
 
-export default function PickemClient({ slate, pools, ledger, initialWeek, loadedAt }: Props) {
+export default function PickemClient({ slate, pools, ledger, evidence, initialWeek, loadedAt }: Props) {
+  const [scenarios, setScenarios] = useState<Record<number, PickemScenario>>({});
+  const [reviewAt, setReviewAt] = useState(loadedAt);
   const [week, setWeek] = useState(initialWeek);
   const [format, setFormat] = useState<PoolFormat>("confidence");
   const [poolEntries, setPoolEntries] = useState(50);
@@ -177,6 +184,10 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
   };
 
   // ---- local persistence -------------------------------------------------
+  useEffect(() => {
+    const timer = window.setInterval(() => setReviewAt(new Date().toISOString()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
   // Restore is deferred off the render pass and re-run on cross-tab writes,
   // matching the survivor page. Two tabs open on the same pool should not
   // silently disagree about the entry.
@@ -197,6 +208,10 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
             setChalkFraction(Math.min(Math.max(parsed.chalkFraction, 0), 1));
           }
           if (parsed.overrides && typeof parsed.overrides === "object") setOverrides(parsed.overrides);
+          if (parsed.scenarios && typeof parsed.scenarios === "object") {
+            setScenarios(Object.fromEntries(Object.entries(parsed.scenarios).filter(([, s]) =>
+              s && Number.isFinite(s.pHome) && s.pHome > 0 && s.pHome < 1 && typeof s.reason === "string")));
+          }
         }
       } catch {
         // A blocked, empty, or corrupt store is a normal state, not an error.
@@ -221,18 +236,22 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
     try {
       window.localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ week, format, poolEntries, objective, favoriteBias, chalkFraction, overrides }),
+        JSON.stringify({ week, format, poolEntries, objective, favoriteBias, chalkFraction, overrides, scenarios }),
       );
     } catch {
       /* ignore */
     }
-  }, [hydrated, week, format, poolEntries, objective, favoriteBias, chalkFraction, overrides]);
+  }, [hydrated, week, format, poolEntries, objective, favoriteBias, chalkFraction, overrides, scenarios]);
 
   // ---- the slate ---------------------------------------------------------
   const weekGames: PickemSlateGame[] = useMemo(
     () => slate.games.filter((g) => g.week === week),
     [slate.games, week],
   );
+  const marketReviewCount = weekGames.filter(g => {
+    const r = marketReview(evidence.games[g.gameId] ?? EMPTY_EVIDENCE, g.pHome, g.kickoff, reviewAt);
+    return !r.closed && (r.stale || r.probabilityConflict || r.favoriteChanged || r.newsAfterQuote > 0);
+  }).length;
 
   // Check each remaining game: a fresh timestamp elsewhere in the season
   // must not conceal an old probability on this card.
@@ -240,7 +259,7 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
     const parseStamp = (value: string) => Date.parse(
       value.replace(" ", "T").replace(/([+-]\d{2})$/, "$1:00"),
     );
-    const now = Date.parse(loadedAt);
+    const now = Date.parse(reviewAt);
     if (g.completed || (g.kickoff && parseStamp(g.kickoff) <= now)) return false;
     const computed = g.computedAt ? parseStamp(g.computedAt) : NaN;
     return !Number.isFinite(computed) || now - computed > 30 * 60 * 60 * 1000;
@@ -319,6 +338,10 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
   // testable (`npm run test:archetypes`) -- a prior completed season is the
   // only thing that exercises the result- and record-based tags at all.
   const archetypesByGame = useMemo(() => tagSeason(slate.games), [slate.games]);
+  const standings = useMemo(() => buildStandings(slate.games.map((g) => ({
+    week: g.week, home: g.homeAbbrev, away: g.awayAbbrev,
+    homeScore: g.homeScore, awayScore: g.awayScore,
+  })), week), [slate.games, week]);
 
   const provenanceMix = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -499,6 +522,7 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
         recommendedConfidence: activeEntry.confidence[i],
         fieldHomeShare: field.share,
         fieldSource: field.source,
+        scenario: scenarios[g.gameId] ?? null,
       };
     });
     run(() =>
@@ -712,6 +736,12 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
           {staleProbabilityCount} remaining game{staleProbabilityCount === 1 ? " has" : "s have"}{" "}
           missing or over-30-hour-old win probabilities. Refresh the data before using this card;
           reloading the page alone does not update probabilities.
+        </div>
+      )}
+      {(marketReviewCount > 0 || evidence.warnings.length > 0) && (
+        <div role="status" className="space-y-1 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+          {marketReviewCount > 0 && <p><strong>{marketReviewCount} matchup{marketReviewCount === 1 ? " needs" : "s need"} a market review.</strong> Open “Review before locking” for old quotes, favorite changes, or news newer than the quote. Reloading this page reads stored feeds; it does not fetch new sportsbook prices.</p>}
+          {evidence.warnings.map(w => <p key={w}>{w}</p>)}
         </div>
       )}
 
@@ -967,7 +997,7 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
                   <th className="px-3 py-2 font-medium">Source</th>
                   <th className="px-3 py-2 text-right font-medium">Field on my side</th>
                   <th className="px-3 py-2 text-right font-medium">Leverage</th>
-                  <th className="px-3 py-2 font-medium">Room reads</th>
+                  <th className="px-3 py-2 font-medium">Matchup context</th>
                   <th className="px-3 py-2 font-medium">Result</th>
                 </tr>
               </thead>
@@ -978,7 +1008,7 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
                   const correct =
                     r.game.homeWon == null ? null : r.game.homeWon === r.pickHome;
                   return (
-                    <tr key={r.game.gameId} className={`border-t ${changed ? "bg-amber-500/5" : ""}`}>
+                    <tr key={r.game.gameId} className={`border-t align-top ${changed ? "bg-amber-500/5" : ""}`}>
                       {format === "confidence" && (
                         <td className="px-3 py-2 font-mono tabular-nums font-semibold">
                           {r.confidence}
@@ -1119,6 +1149,92 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
                             <span className="text-[10px] text-muted-foreground">no story</span>
                           )}
                         </div>
+                        <details className="mt-2 min-w-64 max-w-xl text-xs">
+                          <summary className="cursor-pointer font-medium text-primary">
+                            Matchup breakdown · {r.favTags.length + r.dogTags.length} signals
+                          </summary>
+                          <div className="mt-2 space-y-3 rounded border bg-muted/20 p-3">
+                            <p>
+                              <strong>{r.pick} {pct(r.p)} · {r.against} {pct(1 - r.p)}</strong>
+                              <br />
+                              {format === "confidence" ? r.confidence : 1} point{format === "confidence" && r.confidence !== 1 ? "s" : ""} at stake.
+                              {" "}Switching to {r.against} {r.p >= 0.5 ? "costs" : "gains"}{" "}
+                              {(Math.abs(2 * r.p - 1) * (format === "confidence" ? r.confidence : 1)).toFixed(3)} expected points.
+                            </p>
+                            <p className="text-muted-foreground">
+                              {pct(r.fieldOnMyPick)} of the field on {r.pick}{" "}
+                              ({r.fieldSource === "modeled" ? "modeled, not observed" : "entered pick share"}).
+                              {" "}Win probability minus pick share: {(r.leverage * 100).toFixed(1)} percentage points.
+                            </p>
+                            {[
+                              { team: r.favAbbrev, tags: r.favTags, role: "Favourite" },
+                              { team: r.dogAbbrev, tags: r.dogTags, role: "Underdog" },
+                            ].map(({ team, tags, role }) => {
+                              const record = standings.get(team);
+                              const home = team === r.game.homeAbbrev;
+                              const rest = home ? r.src.homeRest : r.src.awayRest;
+                              const oppRest = home ? r.src.awayRest : r.src.homeRest;
+                              const previous = slate.games.filter((g) => g.week < week &&
+                                (g.homeAbbrev === team || g.awayAbbrev === team))
+                                .sort((a, b) => b.week - a.week)[0];
+                              const previousHome = previous?.homeAbbrev === team;
+                              const scored = previousHome ? previous?.homeScore : previous?.awayScore;
+                              const allowed = previousHome ? previous?.awayScore : previous?.homeScore;
+                              return (
+                                <div key={team} className="space-y-1 border-t pt-2">
+                                  <p className="font-semibold">
+                                    {team} · {role} · {home ? "Listed home" : "Listed away"} · {record
+                                      ? `${record.wins}-${record.losses}${record.ties ? `-${record.ties}` : ""} entering week`
+                                      : "Prior record unavailable"}
+                                  </p>
+                                  <p className="text-muted-foreground">
+                                    {previous ? <>Previous game: Wk {previous.week}{" "}
+                                      {previousHome ? "vs" : "at"} {previousHome ? previous.awayAbbrev : previous.homeAbbrev}
+                                      {scored != null && allowed != null
+                                        ? ` · ${scored > allowed ? "W" : scored < allowed ? "L" : "T"} ${scored}–${allowed} (${scored - allowed > 0 ? "+" : ""}${scored - allowed})`
+                                        : " · result unavailable"}.
+                                    </> : "Previous game unavailable."}
+                                    {" "}Rest: {rest == null ? "unknown" : `${rest} days`}; opponent: {oppRest == null ? "unknown" : `${oppRest} days`}.
+                                  </p>
+                                  {tags.length === 0 ? <p className="text-muted-foreground">No tracked narrative signals.</p> : (
+                                    <ul className="space-y-2 pl-4 list-disc">
+                                      {tags.map((code) => {
+                                        const a = archetype(code);
+                                        return <li key={code}>
+                                          <strong>{a.label}</strong>
+                                          <span className="text-muted-foreground"> · {a.visibility} visibility · assumed pressure {a.lean === "neutral" ? "neutral" : `${a.lean} ${team}`}</span>
+                                          <p>{a.story}</p>
+                                          <p className="text-muted-foreground">{gapNote(code)}</p>
+                                        </li>;
+                                      })}
+                                    </ul>
+                                  )}
+                                </div>
+                              );
+                            })}
+                            <p className="border-t pt-2 text-muted-foreground">
+                              Narrative read: {r.read.verdict === "contrarian"
+                                ? `assumed story pressure toward ${r.dogAbbrev}; backing ${r.favAbbrev} goes against that story.`
+                                : r.read.verdict === "crowded"
+                                  ? `assumed story pressure toward ${r.favAbbrev}.`
+                                  : "no strong net story pressure; individual signals may be weak or offsetting."}
+                              {" "}These tags do not adjust win probabilities or modeled pick shares.
+                              Historical market gaps are descriptive, overlap across tags, and should not be added together as an edge.
+                            </p>
+                          </div>
+                        </details>
+                        <EvidencePanel game={r.src} evidence={evidence.games[r.game.gameId] ?? EMPTY_EVIDENCE}
+                          now={reviewAt} pickHome={r.pickHome} confidence={format === "confidence" ? r.confidence : 1}
+                          baselineConfidence={format === "confidence" ? r.baselineConfidence : 1}
+                          objective={objective} manual={overrides[r.game.gameId]?.pickHome !== undefined}
+                          scenario={scenarios[r.game.gameId] ?? null}
+                          peers={rows.map(x => ({ gameId: x.game.gameId, p: x.p }))}
+                          onScenario={value => setScenarios(prev => {
+                            const next = { ...prev };
+                            if (value) next[r.game.gameId] = value;
+                            else delete next[r.game.gameId];
+                            return next;
+                          })} />
                       </td>
                       <td className="px-3 py-2">
                         {correct == null ? (
@@ -1565,6 +1681,7 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
         )}
       </section>
 
+      <EvidenceLedger ledger={liveLedger} poolId={poolId} />
       {/* ---- the strategy, written out ----------------------------------- */}
       <section className="rounded-lg border bg-card p-4">
         <h2 className="mb-3 text-sm font-semibold">The strategy, and what it rests on</h2>
@@ -1624,8 +1741,11 @@ export default function PickemClient({ slate, pools, ledger, initialWeek, loaded
               (currently {pct(chalkFraction, 0)}), and how much opponents&apos; rankings
               scatter ({FIELD_SKILL_SIGMA}) — is a stated prior, not a measurement. There is no
               pick&apos;em pick-share feed in this repo, and the survivor popularity feed is a
-              different distribution that it would be wrong to substitute. No pick&apos;em entry here
-              has ever been settled, so none of section two has been graded. Set the bias to 1.00
+              different distribution that it would be wrong to substitute.{" "}
+              {ledgerSummary.gamesGraded === 0
+                ? "No live pick’em entry has graded games yet. "
+                : `${ledgerSummary.gamesGraded} frozen game observations have been graded; see the ledger for sample sizes. `}
+              Set the bias to 1.00
               below to see the conservative case, where the field mirrors the market and contrarian
               value nearly vanishes.
             </p>

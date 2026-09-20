@@ -13909,6 +13909,7 @@ export type PickemPoolRow = {
 };
 
 export type PickemLedgerGame = {
+  evidence?: import("@/lib/nfl/pickem-evidence").FrozenEvidence | null;
   gameId: number;
   homeAbbrev: string;
   awayAbbrev: string;
@@ -14028,6 +14029,7 @@ export async function getPickemLedger(season = 2026): Promise<PickemLedgerRow[]>
         recommendedConfidence: Number(r.recommended_confidence),
         fieldHomeShare: r.field_home_share != null ? Number(r.field_home_share) : null,
         fieldSource: String(r.field_source) as "observed" | "modeled",
+        evidence: (r.evidence_json ?? null) as import("@/lib/nfl/pickem-evidence").FrozenEvidence | null,
         homeWon: r.home_won == null ? null : Boolean(r.home_won),
       });
     }

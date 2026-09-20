@@ -1164,6 +1164,18 @@ END $$;`,
   `CREATE INDEX IF NOT EXISTS idx_pickem_recs_pool ON pickem_recommendations(pool_id, week, frozen_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_pickem_recs_live ON pickem_recommendations(season, status) WHERE superseded_by IS NULL`,
   `CREATE INDEX IF NOT EXISTS idx_pickem_rec_games ON pickem_recommendation_games(recommendation_id)`,
+  `ALTER TABLE pickem_recommendation_games ADD COLUMN IF NOT EXISTS evidence_json JSONB`,
+  `CREATE TABLE IF NOT EXISTS pickem_news (
+    id BIGSERIAL PRIMARY KEY,
+    game_id INTEGER NOT NULL REFERENCES nfl_season_games(id),
+    team TEXT NOT NULL, category TEXT NOT NULL, headline TEXT NOT NULL,
+    detail TEXT NOT NULL, status TEXT NOT NULL, source TEXT NOT NULL,
+    url TEXT NOT NULL, published_at TIMESTAMPTZ,
+    observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CHECK (status IN ('confirmed', 'uncertain', 'reported'))
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_pickem_news_game ON pickem_news(game_id, published_at DESC)`,
+  `ALTER TABLE pickem_news ALTER COLUMN published_at DROP NOT NULL`,
 ];
 
 export async function ensurePickemTables(): Promise<void> {
