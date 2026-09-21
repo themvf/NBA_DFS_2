@@ -33,6 +33,17 @@ import {
   type CompiledArchetype,
   type ArchetypeSlateContext,
 } from '@/lib/nfl-dfs/archetypes';
+import {
+  validateSalaryPolicy,
+  reportSalaryBands,
+  findExactDuplicates,
+  maxPairwiseOverlap as computeMaxOverlap,
+  estimateDuplication,
+  NFL_SALARY_CAP,
+  type SalaryConstructionPolicy,
+  type SalaryBandReport,
+  type LineupDuplication,
+} from '@/lib/nfl-dfs/salary-duplication';
 
 // Phase 0/1: bumped from v5 to record that role-aware eligibility now gates the
 // pool. Legacy runs keep their own recorded version and are not reinterpreted.
@@ -112,6 +123,10 @@ export type NflOptimizerSettings = {
   /** Phase 4: favorite/underdog teams for game-script archetypes. */
   favoriteTeam?: string | null;
   underdogTeam?: string | null;
+  /** Phase 5: salary-used and salary-left construction controls. Overrides the flat minSalary. */
+  salaryPolicy?: SalaryConstructionPolicy;
+  /** Phase 5: maximum shared players allowed between any two lineups (0..rosterSize). */
+  maxPairwiseOverlap?: number;
   maxExposure: number;
   minUnique: number;
   stackPassCatchers: 0 | 1 | 2;
@@ -194,6 +209,12 @@ export type NflOptimizerResult = {
   eligibility?: NflEligibilityDecision[];
   /** Phase 3: realized vs requested slot-specific exposures (present when exposure policies apply). */
   exposureReport?: NflExposureReport[];
+  /** Phase 5: realized salary-left band distribution against the plan. */
+  salaryBandReport?: SalaryBandReport[];
+  /** Phase 5: per-lineup duplication estimate, honestly labeled by basis. */
+  duplication?: LineupDuplication[];
+  /** Phase 5: maximum shared players between any two lineups in the portfolio. */
+  maxPairwiseOverlap?: number;
 };
 
 type ResolvedPlayer = NflOptimizerPlayer & {
@@ -331,11 +352,15 @@ function buildOne(
   // Phase 4: faded players are removed from the pool entirely for this lineup.
   const faded = new Set(compiled?.fadePlayerIds ?? []);
   const available = pool.filter((player) => !faded.has(player.dkPlayerId) && ((exposureCounts.get(player.dkPlayerId) ?? 0) < maxCount(player) || forcedIds.has(player.dkPlayerId)));
+  // Phase 5: salary-used window. A salary policy sets an explicit min/max used;
+  // salary-left is the cap minus salary used, so these bound salary left too.
+  const salaryMin = settings.salaryPolicy ? Math.max(settings.salaryPolicy.minSalaryUsed, NFL_SALARY_CAP - settings.salaryPolicy.maxSalaryLeft) : settings.minSalary;
+  const salaryMax = settings.salaryPolicy ? Math.min(settings.salaryPolicy.maxSalaryUsed, NFL_SALARY_CAP - settings.salaryPolicy.minSalaryLeft) : NFL_SALARY_CAP;
   // Slot capacity: whether a player may still take a Captain or a Flex slot in
   // THIS lineup given his per-slot maxima already spent (P3-AC1/AC2).
   const captainFull = (player: ResolvedPlayer) => (captainCounts.get(player.dkPlayerId) ?? 0) >= (countsById.get(player.dkPlayerId)?.captainMax ?? settings.nLineups);
   const flexFull = (player: ResolvedPlayer) => (flexCounts.get(player.dkPlayerId) ?? 0) >= (countsById.get(player.dkPlayerId)?.flexMax ?? settings.nLineups);
-  const constraints: SolverModel["constraints"] = { salary: { max: 50000, min: settings.minSalary } };
+  const constraints: SolverModel["constraints"] = { salary: { max: salaryMax, min: salaryMin } };
   if (settings.format === "classic") {
     constraints.roster = { equal: 9 };
     constraints.qb = { equal: 1 };
@@ -380,7 +405,11 @@ function buildOne(
     if (available.some((p) => group.playerIds.includes(p.dkPlayerId))) constraints[key] = { min: group.minFromGroup };
   }
   for (const playerId of forcedIds) constraints[`force_${playerId}`] = { equal: 1 };
-  previous.forEach((lineup, index) => { constraints[`prior_${index}`] = { max: rosterSize - settings.minUnique }; });
+  // Phase 5: the shared-player cap between any two lineups is the stricter of the
+  // min-unique rule and an explicit maxPairwiseOverlap. Exact duplicates are
+  // impossible because at least one player must differ (overlap < rosterSize).
+  const overlapCap = Math.min(rosterSize - settings.minUnique, settings.maxPairwiseOverlap ?? rosterSize, rosterSize - 1);
+  previous.forEach((lineup, index) => { constraints[`prior_${index}`] = { max: overlapCap }; });
 
   if (settings.format === "classic" && settings.mode === "gpp" && settings.stackPassCatchers > 0) {
     for (const quarterback of available.filter((player) => player.position === "QB")) {
@@ -642,6 +671,8 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   const exposurePolicies = settings.exposurePolicies?.length ? settings.exposurePolicies : null;
   const countsById = new Map<number, ExposureCounts>(pool.map((p) => [p.dkPlayerId, deriveExposureCounts(effectivePolicy(p), settings.nLineups)]));
 
+  if (settings.salaryPolicy) validateSalaryPolicy(settings.salaryPolicy);
+
   // P3-AC4: reject impossible plans BEFORE generation, naming the conflicts.
   if (exposurePolicies) {
     for (const p of exposurePolicies) validateExposurePolicy(p);
@@ -729,5 +760,24 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
       overallMin: c.overallMin, overallMax: c.overallMax, captainMin: c.captainMin, captainMax: c.captainMax, flexMin: c.flexMin, flexMax: c.flexMax, binding };
   });
 
-  return { lineups, warnings, sourceCoverage: coverage, eligibility, exposureReport };
+  // Phase 5: salary-band distribution, exact-duplicate/overlap check, and
+  // capability-gated duplication estimate.
+  const salaryBandReport = settings.salaryPolicy
+    ? reportSalaryBands(settings.salaryPolicy, lineups.map((l) => NFL_SALARY_CAP - l.totalSalary))
+    : undefined;
+  if (salaryBandReport) {
+    for (const b of salaryBandReport) {
+      if (!b.withinPlan) warnings.push(`Salary-left band $${b.band.min.toLocaleString()}–$${b.band.max.toLocaleString()}: ${b.count} lineup(s) (plan ${b.minCount}–${b.maxCount}).`);
+    }
+  }
+  const exactDuplicates = findExactDuplicates(lineups);
+  if (exactDuplicates.length) warnings.push(`${exactDuplicates.length} exact-duplicate lineup pair(s) detected — this should not happen; report the run.`);
+  const overlap = computeMaxOverlap(lineups);
+  const ownershipValidated = (settings.ownershipCapability ?? "unavailable") === "validated";
+  const ownershipByPlayer = new Map(pool.filter((p) => finite(p.linestarOwnPct) != null).map((p) => [p.dkPlayerId, (p.linestarOwnPct as number) / 100]));
+  const duplication = ownershipByPlayer.size
+    ? estimateDuplication(lineups.map((l) => ({ lineupNumber: l.lineupNumber, playerIds: l.playerIds, totalSalary: l.totalSalary })), { ownershipValidated, ownershipByPlayer })
+    : undefined;
+
+  return { lineups, warnings, sourceCoverage: coverage, eligibility, exposureReport, salaryBandReport, duplication, maxPairwiseOverlap: overlap };
 }
