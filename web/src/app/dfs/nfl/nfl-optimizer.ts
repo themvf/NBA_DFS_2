@@ -3,8 +3,21 @@ import {selectedWorkload,validateWorkloadPositions,WORKLOAD_POSITIONS,type Workl
 import type { WorkloadProjection } from "@/lib/nfl-dfs/workload-projection";
 import type { CalibratedProjection } from "@/lib/nfl-dfs/calibrated-projection";
 import type { SituationSettings, ProjectionAudit, SituationEvidence } from '@/lib/nfl-dfs/projection-audit';
+import { hasObservedOpportunity, MIN_OBSERVED_GAMES } from '@/lib/nfl-dfs/opportunity-redistribution';
+import {
+  DEFAULT_NFL_PUNT_POLICY,
+  evaluatePuntEligibility,
+  captainAdmissible,
+  validateNflPuntPolicy,
+  type NflPuntPolicy,
+  type PuntOverride,
+  type NflPlayerRoleEvidence,
+  type EvidenceState,
+} from '@/lib/nfl-dfs/punt-policy';
 
-export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v5-audited-situations";
+// Phase 0/1: bumped from v5 to record that role-aware eligibility now gates the
+// pool. Legacy runs keep their own recorded version and are not reinterpreted.
+export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v6-punt-policy";
 
 export type NflProjectionSource = "our" | "workload" | "calibrated" | "dk_avg" | "fantasypros" | "linestar" | "custom";
 export type NflOptimizerMode = "cash" | "gpp";
@@ -23,6 +36,16 @@ export type NflOptimizerPlayer = {
   captainSalary: number | null;
   isOut: boolean;
   projectionStatus: string;
+  /** The player's OWN games behind his projection. 0 means the number is his position's average, not his. */
+  historyGames?: number | null;
+  /** Depth-chart role label when known; null is unknown, not "no role". */
+  depthRole?: string | null;
+  /** 0..1 role confidence when known; null is unknown, not zero. */
+  roleConfidence?: number | null;
+  /** Projected opportunities (touches/targets/etc); null is unknown, not zero. */
+  projectedOpportunities?: number | null;
+  /** Availability evidence freshness, used to fail cheap players closed on stale data. */
+  availabilityState?: EvidenceState;
   ourProj: number | null;
   floorFpts: number | null;
   ceilingFpts: number | null;
@@ -51,6 +74,14 @@ export type NflOptimizerSettings = {
   situations?: SituationSettings;
   nLineups: number;
   minSalary: number;
+  /** Per-player salary floor. Drops minimum-priced roster filler. Absent/0 = no floor. Superseded by puntPolicy when present. */
+  minPlayerSalary?: number;
+  /** Drop players with no observed games of their own, whose projection is a position average. */
+  requireObservedHistory?: boolean;
+  /** Phase 1: role-aware no-punt policy. Absent = no policy (legacy behavior). */
+  puntPolicy?: NflPuntPolicy;
+  /** Phase 1: recorded cheap-player admissions. Salary alone is never a valid reason. */
+  puntOverrides?: PuntOverride[];
   maxExposure: number;
   minUnique: number;
   stackPassCatchers: 0 | 1 | 2;
@@ -61,6 +92,10 @@ export type NflOptimizerSettings = {
   minExposureByPlayer: Record<string, number>;
   maxExposureByPlayer: Record<string, number>;
 };
+
+/** Re-exported so callers can build policy-aware settings from one import site. */
+export { DEFAULT_NFL_PUNT_POLICY };
+export type { NflPuntPolicy, PuntOverride };
 
 export type NflLineupSlot = {
   slot: string;
@@ -83,15 +118,34 @@ export type NflGeneratedLineup = {
   stackSummary: { quarterback: string | null; passCatchers: string[]; bringBack: string | null };
 };
 
+/** Per-player eligibility decision surfaced to the UI so the pool can say WHY. */
+export type NflEligibilityDecision = {
+  dkPlayerId: number;
+  name: string;
+  salary: number;
+  eligible: boolean;
+  salaryRelief: boolean;
+  captainEligible: boolean;
+  overridden: boolean;
+  reason: string | null;
+  reasonCode: string | null;
+};
+
 export type NflOptimizerResult = {
   lineups: NflGeneratedLineup[];
   warnings: string[];
   sourceCoverage: { requested: number; direct: number; fallback: number; excluded: number };
+  /** Phase 1: eligibility decisions for every input player (present when a punt policy is applied). */
+  eligibility?: NflEligibilityDecision[];
 };
 
 type ResolvedPlayer = NflOptimizerPlayer & {
   projection: number;
   resolvedSource: NflProjectionSource | "dk_avg_fallback" | "our_fallback";
+  /** Phase 1: whether this player counts against the per-lineup salary-relief cap. */
+  salaryRelief: boolean;
+  /** Phase 1: whether this player may be used at Captain (Flex-only for overridden cheap players by default). */
+  captainEligible: boolean;
 };
 
 type SolverModel = {
@@ -108,6 +162,25 @@ const SHOWDOWN_SLOTS = ["CPT", "FLEX1", "FLEX2", "FLEX3", "FLEX4", "FLEX5"] as c
 
 function finite(value: number | null | undefined): number | null {
   return value != null && Number.isFinite(value) ? value : null;
+}
+
+/** Build role evidence for the punt policy from a slate player, keeping unknowns as null. */
+function roleEvidenceFor(player: NflOptimizerPlayer): NflPlayerRoleEvidence {
+  const observed = player.historyGames ?? null;
+  return {
+    playerId: player.dkPlayerId,
+    verifiedActive: player.isOut ? false : null,
+    availabilityState: player.availabilityState ?? "unknown",
+    depthRole: player.depthRole ?? null,
+    // If role confidence is not supplied but the player has observed games of
+    // his own, treat observed history as weak role evidence rather than unknown.
+    roleConfidence: player.roleConfidence ?? (observed != null && observed >= MIN_OBSERVED_GAMES ? 0.5 : observed === 0 ? 0 : null),
+    projectedOpportunities: player.projectedOpportunities ?? null,
+    opportunityUnit: null,
+    observedGameCount: observed,
+    sourceIds: [],
+    evidenceAsOf: null,
+  };
 }
 
 function projectionFor(player: NflOptimizerPlayer, settings: NflOptimizerSettings): { value: number; source: ResolvedPlayer["resolvedSource"] } | null {
@@ -167,6 +240,9 @@ function validateSettings(settings: NflOptimizerSettings): void {
   if (!Number.isInteger(settings.nLineups) || settings.nLineups < 1 || settings.nLineups > 150) throw new Error("Lineup count must be between 1 and 150.");
   if (settings.minSalary < 0 || settings.minSalary > 50000) throw new Error("Minimum salary must be between $0 and $50,000.");
   if (settings.maxExposure <= 0 || settings.maxExposure > 1) throw new Error("Maximum exposure must be greater than 0 and at most 100%.");
+  const floor = settings.minPlayerSalary ?? 0;
+  if (!Number.isFinite(floor) || floor < 0 || floor > 50000) throw new Error("Minimum player salary must be between $0 and $50,000.");
+  if (settings.puntPolicy) validateNflPuntPolicy(settings.puntPolicy);
   const rosterSize = settings.format === "classic" ? 9 : 6;
   if (settings.minUnique < 1 || settings.minUnique > rosterSize) throw new Error(`Minimum unique players must be 1-${rosterSize}.`);
 }
@@ -210,6 +286,12 @@ function buildOne(
   if (settings.format === "showdown") {
     for (const team of new Set(available.map((player) => player.team))) constraints[`team_${safe(team)}`] = { max: 5 };
   }
+  // Phase 1 (P1-AC4): the salary-relief cap is a lineup CONSTRAINT, not a
+  // post-generation filter. At most this many cheap salary-relief players may
+  // appear in any single lineup.
+  if (settings.puntPolicy && available.some((player) => player.salaryRelief)) {
+    constraints.salary_relief = { max: settings.puntPolicy.maxSalaryReliefPlayersPerLineup };
+  }
   for (const playerId of forcedIds) constraints[`force_${playerId}`] = { equal: 1 };
   previous.forEach((lineup, index) => { constraints[`prior_${index}`] = { max: rosterSize - settings.minUnique }; });
 
@@ -227,6 +309,9 @@ function buildOne(
     const purchaseTypes = settings.format === "classic" ? ["CLASSIC"] : ["CPT", "FLEX"];
     for (const purchaseType of purchaseTypes) {
       if (purchaseType === "CPT" && (player.captainDkPlayerId == null || player.captainSalary == null)) continue;
+      // Phase 1 (P1-AC1/§8.3): a cheap player admitted only by override is
+      // Flex-only unless a Captain override is recorded. Skip his CPT variable.
+      if (purchaseType === "CPT" && !player.captainEligible) continue;
       const key = `${purchaseType === "CLASSIC" ? "x" : purchaseType === "CPT" ? "c" : "f"}_${player.dkPlayerId}`;
       const slot = purchaseType === "CPT" ? "CPT" : purchaseType === "FLEX" ? "FLEX" : "CLASSIC";
       const multiplier = slot === "CPT" ? 1.5 : 1;
@@ -236,6 +321,8 @@ function buildOne(
         salary,
         [`player_${player.dkPlayerId}`]: 1,
       };
+      // Count this pick against the per-lineup salary-relief cap.
+      if (settings.puntPolicy && player.salaryRelief) variable.salary_relief = 1;
       if (settings.format === "classic") {
         variable.roster = 1;
         variable[player.position.toLowerCase()] = 1;
@@ -317,22 +404,89 @@ function buildOne(
 export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflOptimizerSettings): NflOptimizerResult {
   validateSettings(settings);
   const excluded = new Set(settings.excludedPlayerIds);
+  const locked = new Set(settings.lockedPlayerIds);
+  const policy = settings.puntPolicy;
+  const overrides = settings.puntOverrides ?? [];
+  // Legacy fallbacks (branch reconciliation): a bare minPlayerSalary floor and
+  // observed-history gate still work when no full policy is supplied. Locked and
+  // explicit-exposure players are the user's own instruction and outrank both.
+  const salaryFloor = settings.minPlayerSalary ?? 0;
+  const floorExempt = new Set([...settings.lockedPlayerIds,
+    ...Object.entries(settings.minExposureByPlayer).filter(([, target]) => target > 0).map(([id]) => Number(id))]);
+
   const coverage = { requested: players.length, direct: 0, fallback: 0, excluded: 0 };
   const pool: ResolvedPlayer[] = [];
+  const eligibility: NflEligibilityDecision[] = [];
+  const warnings: string[] = [];
+  let belowSalaryFloor = 0;
+  let withoutHistory = 0;
+  let puntBlocked = 0;
+
   for (const player of players) {
-    if (player.isOut || excluded.has(player.dkPlayerId)) { coverage.excluded++; continue; }
+    const named = { dkPlayerId: player.dkPlayerId, name: player.name, salary: player.salary };
+    // Manual exclusion and inactivity are handled first so they always win.
+    if (player.isOut) {
+      eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden: false, reason: "Inactive (OUT/IR).", reasonCode: "INACTIVE" });
+      coverage.excluded++; continue;
+    }
+    if (excluded.has(player.dkPlayerId)) {
+      eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden: false, reason: "Manually excluded for this run.", reasonCode: "MANUAL_EXCLUSION" });
+      coverage.excluded++; continue;
+    }
+
+    let salaryRelief = false;
+    let captainEligible = true;
+    let overridden = false;
+
+    if (policy) {
+      // Role-aware no-punt policy (spec §8) is the single eligibility authority
+      // when present. It fully supersedes the bare salary floor.
+      const decision = evaluatePuntEligibility(player, roleEvidenceFor(player), policy, overrides);
+      if (!decision.eligible) {
+        eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden: false, reason: decision.detail, reasonCode: decision.reason });
+        // A locked player who is ineligible must produce a readable error, not a
+        // silent drop that yields a confusing zero-lineup failure (P1-AC5).
+        if (locked.has(player.dkPlayerId)) {
+          throw new Error(`${player.name} is locked but ineligible under the ${policy.mode} punt policy: ${decision.detail} Allow this player for the run, raise the policy thresholds, or remove the lock.`);
+        }
+        puntBlocked++; coverage.excluded++; continue;
+      }
+      salaryRelief = decision.salaryRelief;
+      overridden = decision.overridden;
+      // A cheap player admitted only by override is Flex-only unless a CPT
+      // override is recorded (spec §8.3).
+      captainEligible = !overridden || captainAdmissible(player.dkPlayerId, overrides);
+    } else {
+      // Legacy path: bare salary floor + observed-history gate.
+      if (salaryFloor > 0 && player.salary < salaryFloor && !floorExempt.has(player.dkPlayerId)) {
+        eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden: false, reason: `Below the $${salaryFloor.toLocaleString()} per-player salary floor.`, reasonCode: "ABSOLUTE_SALARY_BLOCK" });
+        belowSalaryFloor++; coverage.excluded++; continue;
+      }
+      if (settings.requireObservedHistory && !hasObservedOpportunity(player) && !floorExempt.has(player.dkPlayerId)) {
+        eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden: false, reason: `Fewer than ${MIN_OBSERVED_GAMES} observed games; projection is a position average.`, reasonCode: "ROLE_UNKNOWN" });
+        withoutHistory++; coverage.excluded++; continue;
+      }
+    }
+
     const resolved = projectionFor(player, settings);
-    if (!resolved) { coverage.excluded++; continue; }
+    if (!resolved) {
+      eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden, reason: "No usable projection in the selected source.", reasonCode: "NO_PROJECTED_OPPORTUNITY" });
+      coverage.excluded++; continue;
+    }
     if (resolved.source === "dk_avg_fallback" || resolved.source === "our_fallback") coverage.fallback++; else coverage.direct++;
-    pool.push({ ...player, projectionAudit:resolveProjectionAudit(player,settings), projection: resolved.value, resolvedSource: resolved.source });
+    eligibility.push({ ...named, eligible: true, salaryRelief, captainEligible, overridden, reason: null, reasonCode: null });
+    pool.push({ ...player, projectionAudit:resolveProjectionAudit(player,settings), projection: resolved.value, resolvedSource: resolved.source, salaryRelief, captainEligible });
   }
+
   for (const [rawId, target] of Object.entries(settings.minExposureByPlayer)) {
     if (target > 0 && !pool.some((player) => player.dkPlayerId === Number(rawId))) {
       const named = players.find((player) => player.dkPlayerId === Number(rawId));
       throw new Error(`${named?.name ?? `Player ${rawId}`} has a target exposure but is unavailable in the selected projection source.`);
     }
   }
-  const warnings: string[] = [];
+  if (puntBlocked) warnings.push(`${puntBlocked} player(s) blocked by the ${policy!.mode} punt policy. See the cheap-player review for the reason on each; allow a player for the run to keep him.`);
+  if (withoutHistory) warnings.push(`${withoutHistory} player(s) with fewer than ${MIN_OBSERVED_GAMES} games of their own were removed: their projection is their position's average, not theirs. Lock a player to keep him regardless.`);
+  if (belowSalaryFloor) warnings.push(`${belowSalaryFloor} player(s) priced under the $${salaryFloor.toLocaleString()} per-player salary floor were removed. Lock a player to keep him regardless.`);
   const missingTails = pool.filter(p => (p.resolvedSource === 'our' || p.resolvedSource === 'our_fallback')
     && (finite(p.floorFpts) === null || finite(p.ceilingFpts) === null)).length;
   if (missingTails) warnings.push(`${missingTails} historical-source players have no usable scenario distribution. Search uses 0.74×/1.28× point-estimate heuristics for missing lower/upper tails; these are not simulated percentiles. Missing boom rates receive no boom bonus.`);
@@ -352,7 +506,6 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   warnings.push("Lineup floor/ceiling sums are player-level search heuristics, not lineup P10/P90. Use Scenario Lab for joint distributions.");
   const exposureCounts = new Map<number, number>();
   const lineups: NflGeneratedLineup[] = [];
-  const locked = new Set(settings.lockedPlayerIds);
   for (let lineupNumber = 1; lineupNumber <= settings.nLineups; lineupNumber++) {
     const remaining = settings.nLineups - lineupNumber + 1;
     const forced = new Set(locked);
@@ -375,5 +528,5 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     const actual = exposureCounts.get(player.dkPlayerId) ?? 0;
     if (actual < target) warnings.push(`${player.name} minimum exposure missed (${actual}/${target}); constraints were infeasible.`);
   }
-  return { lineups, warnings, sourceCoverage: coverage };
+  return { lineups, warnings, sourceCoverage: coverage, eligibility };
 }
