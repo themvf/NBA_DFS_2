@@ -14,6 +14,7 @@ import {
   type NflPlayerRoleEvidence,
   type EvidenceState,
 } from '@/lib/nfl-dfs/punt-policy';
+import type { OwnershipCapability } from '@/lib/nfl-dfs/ownership-capability';
 
 // Phase 0/1: bumped from v5 to record that role-aware eligibility now gates the
 // pool. Legacy runs keep their own recorded version and are not reinterpreted.
@@ -82,6 +83,8 @@ export type NflOptimizerSettings = {
   puntPolicy?: NflPuntPolicy;
   /** Phase 1: recorded cheap-player admissions. Salary alone is never a valid reason. */
   puntOverrides?: PuntOverride[];
+  /** Phase 2: resolved ownership capability. When not "validated", leverage is disabled. */
+  ownershipCapability?: OwnershipCapability;
   maxExposure: number;
   minUnique: number;
   stackPassCatchers: 0 | 1 | 2;
@@ -228,7 +231,12 @@ function objective(player: ResolvedPlayer, settings: NflOptimizerSettings, lineu
   const base = settings.mode === "cash"
     ? (player.resolvedSource === "workload" ? selectedWorkload(player,settings.workloadPositions)!.p10 : player.resolvedSource === "calibrated" ? player.calibrated!.p10 : historical ? finite(player.floorFpts) : null) ?? player.projection * 0.74
     : (player.resolvedSource === "workload" ? selectedWorkload(player,settings.workloadPositions)!.p90 : player.resolvedSource === "calibrated" ? player.calibrated!.p90 : historical ? finite(player.ceilingFpts) : null) ?? player.projection * 1.28;
-  const ownershipPenalty = settings.mode === "gpp" ? (finite(player.linestarOwnPct) ?? 0) * 0.025 : 0;
+  // Phase 2: leverage (ownership penalty) only applies when ownership is
+  // validated. Missing ownership is null and contributes no penalty — it is
+  // never rewarded as low ownership. When capability is not validated the
+  // penalty is disabled entirely so the run is honestly projection-only.
+  const leverageEnabled = settings.mode === "gpp" && (settings.ownershipCapability ?? "unavailable") === "validated";
+  const ownershipPenalty = leverageEnabled ? (finite(player.linestarOwnPct) ?? 0) * 0.025 : 0;
   const workload=player.resolvedSource === "workload"?selectedWorkload(player,settings.workloadPositions):null;
   const boomBonus = settings.mode === "gpp" ? (workload && "boom" in workload ? workload.boom : player.resolvedSource === "calibrated" ? player.calibrated!.boom : historical ? finite(player.boomRate) ?? 0 : 0) * 2 : 0;
   return base + boomBonus - ownershipPenalty + jitter(20260902, lineupNumber, player.dkPlayerId) * settings.randomness * player.projection;
