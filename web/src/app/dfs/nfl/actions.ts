@@ -44,6 +44,7 @@ import {
   resolveProjectionAudit,
   type NflGeneratedLineup,
   type NflEligibilityDecision,
+  type NflExposureReport,
   type NflOptimizerPlayer,
   type NflOptimizerSettings,
 } from "./nfl-optimizer";
@@ -630,7 +631,7 @@ export async function applyNflComparison(
 export async function runNflOptimizer(
   uploadId: string,
   settings: NflOptimizerSettings,
-): Promise<{ runId: string; slate: NflWorkspaceSlate; result: { lineups: NflGeneratedLineup[]; warnings: string[]; sourceCoverage: { requested: number; direct: number; fallback: number; excluded: number }; eligibility?: NflEligibilityDecision[] }; ownership?: OwnershipAssessment }> {
+): Promise<{ runId: string; slate: NflWorkspaceSlate; result: { lineups: NflGeneratedLineup[]; warnings: string[]; sourceCoverage: { requested: number; direct: number; fallback: number; excluded: number }; eligibility?: NflEligibilityDecision[]; exposureReport?: NflExposureReport[] }; ownership?: OwnershipAssessment }> {
   await ensureNflDfsTables();
   const slate = await workspaceSlate(uploadId);
   if(settings.format!==slate.format)throw new Error("Optimizer format must match the saved salary slate.");

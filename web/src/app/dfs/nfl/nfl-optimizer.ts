@@ -15,6 +15,13 @@ import {
   type EvidenceState,
 } from '@/lib/nfl-dfs/punt-policy';
 import type { OwnershipCapability } from '@/lib/nfl-dfs/ownership-capability';
+import {
+  deriveExposureCounts,
+  detectExposureInfeasibility,
+  validateExposurePolicy,
+  type PlayerExposurePolicy,
+  type ExposureCounts,
+} from '@/lib/nfl-dfs/exposure-plan';
 
 // Phase 0/1: bumped from v5 to record that role-aware eligibility now gates the
 // pool. Legacy runs keep their own recorded version and are not reinterpreted.
@@ -85,6 +92,8 @@ export type NflOptimizerSettings = {
   puntOverrides?: PuntOverride[];
   /** Phase 2: resolved ownership capability. When not "validated", leverage is disabled. */
   ownershipCapability?: OwnershipCapability;
+  /** Phase 3: per-player Overall/Captain/Flex exposure ranges. Overrides the flat maxExposure per player. */
+  exposurePolicies?: PlayerExposurePolicy[];
   maxExposure: number;
   minUnique: number;
   stackPassCatchers: 0 | 1 | 2;
@@ -99,6 +108,23 @@ export type NflOptimizerSettings = {
 /** Re-exported so callers can build policy-aware settings from one import site. */
 export { DEFAULT_NFL_PUNT_POLICY };
 export type { NflPuntPolicy, PuntOverride };
+export type { PlayerExposurePolicy };
+
+/** Phase 3: realized vs requested exposure for a player, surfaced to the UI. */
+export type NflExposureReport = {
+  dkPlayerId: number;
+  name: string;
+  overall: number;
+  captain: number;
+  flex: number;
+  overallMin: number;
+  overallMax: number;
+  captainMin: number;
+  captainMax: number;
+  flexMin: number;
+  flexMax: number;
+  binding: string | null;
+};
 
 export type NflLineupSlot = {
   slot: string;
@@ -140,6 +166,8 @@ export type NflOptimizerResult = {
   sourceCoverage: { requested: number; direct: number; fallback: number; excluded: number };
   /** Phase 1: eligibility decisions for every input player (present when a punt policy is applied). */
   eligibility?: NflEligibilityDecision[];
+  /** Phase 3: realized vs requested slot-specific exposures (present when exposure policies apply). */
+  exposureReport?: NflExposureReport[];
 };
 
 type ResolvedPlayer = NflOptimizerPlayer & {
@@ -262,18 +290,22 @@ function buildOne(
   previous: NflGeneratedLineup[],
   exposureCounts: Map<number, number>,
   forcedIds: Set<number>,
+  countsById: Map<number, ExposureCounts>,
+  captainCounts: Map<number, number>,
+  flexCounts: Map<number, number>,
 ): NflGeneratedLineup | null {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const solver = require("javascript-lp-solver") as { Solve: (model: SolverModel) => SolverResult };
   const slots = settings.format === "classic" ? [...CLASSIC_SLOTS] : [...SHOWDOWN_SLOTS];
   const rosterSize = slots.length;
-  const maxCount = (player: ResolvedPlayer) => {
-    const override = settings.maxExposureByPlayer[String(player.dkPlayerId)];
-    return override == null
-      ? Math.max(1, Math.floor(settings.maxExposure * settings.nLineups + 1e-9))
-      : Math.max(0, Math.floor(override * settings.nLineups + 1e-9));
-  };
-  const available = pool.filter((player) => (exposureCounts.get(player.dkPlayerId) ?? 0) < maxCount(player));
+  // A player drops out of the pool once his OVERALL maximum is reached (locked
+  // players are always eligible so a lock cannot deadlock generation).
+  const maxCount = (player: ResolvedPlayer) => Math.max(forcedIds.has(player.dkPlayerId) ? 1 : 0, countsById.get(player.dkPlayerId)?.overallMax ?? settings.nLineups);
+  const available = pool.filter((player) => (exposureCounts.get(player.dkPlayerId) ?? 0) < maxCount(player) || forcedIds.has(player.dkPlayerId));
+  // Slot capacity: whether a player may still take a Captain or a Flex slot in
+  // THIS lineup given his per-slot maxima already spent (P3-AC1/AC2).
+  const captainFull = (player: ResolvedPlayer) => (captainCounts.get(player.dkPlayerId) ?? 0) >= (countsById.get(player.dkPlayerId)?.captainMax ?? settings.nLineups);
+  const flexFull = (player: ResolvedPlayer) => (flexCounts.get(player.dkPlayerId) ?? 0) >= (countsById.get(player.dkPlayerId)?.flexMax ?? settings.nLineups);
   const constraints: SolverModel["constraints"] = { salary: { max: 50000, min: settings.minSalary } };
   if (settings.format === "classic") {
     constraints.roster = { equal: 9 };
@@ -320,6 +352,10 @@ function buildOne(
       // Phase 1 (P1-AC1/§8.3): a cheap player admitted only by override is
       // Flex-only unless a Captain override is recorded. Skip his CPT variable.
       if (purchaseType === "CPT" && !player.captainEligible) continue;
+      // Phase 3: skip a slot variable once that slot's per-player maximum is
+      // spent, so Captain and Flex maxima are enforced independently.
+      if (purchaseType === "CPT" && captainFull(player)) continue;
+      if (purchaseType === "FLEX" && flexFull(player)) continue;
       const key = `${purchaseType === "CLASSIC" ? "x" : purchaseType === "CPT" ? "c" : "f"}_${player.dkPlayerId}`;
       const slot = purchaseType === "CPT" ? "CPT" : purchaseType === "FLEX" ? "FLEX" : "CLASSIC";
       const multiplier = slot === "CPT" ? 1.5 : 1;
@@ -512,29 +548,88 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     warnings.push(`Workload coverage — ${counts}. Other players retain disclosed fallback. RB/WR/TE candidate ranges worsened historical interval scores. Situation effects, when enabled, are listed in each player audit; WR has no invented boom bonus.`);
   }
   warnings.push("Lineup floor/ceiling sums are player-level search heuristics, not lineup P10/P90. Use Scenario Lab for joint distributions.");
+
+  // Phase 3: resolve the effective exposure policy per pooled player. An
+  // explicit per-player policy wins; otherwise fall back to the flat global
+  // maxExposure and any legacy min/maxExposureByPlayer target.
+  const policyById = new Map((settings.exposurePolicies ?? []).map((p) => [p.playerId, p]));
+  const effectivePolicy = (player: ResolvedPlayer): PlayerExposurePolicy => {
+    const explicit = policyById.get(player.dkPlayerId);
+    if (explicit) return explicit;
+    const legacyMax = settings.maxExposureByPlayer[String(player.dkPlayerId)] ?? settings.maxExposure;
+    const legacyMin = settings.minExposureByPlayer[String(player.dkPlayerId)] ?? null;
+    return {
+      playerId: player.dkPlayerId,
+      overall: { minPct: legacyMin, maxPct: legacyMax },
+      captain: { minPct: null, maxPct: null },
+      flex: { minPct: null, maxPct: null },
+      exactTargetMode: false,
+    };
+  };
+  const exposurePolicies = settings.exposurePolicies?.length ? settings.exposurePolicies : null;
+  const countsById = new Map<number, ExposureCounts>(pool.map((p) => [p.dkPlayerId, deriveExposureCounts(effectivePolicy(p), settings.nLineups)]));
+
+  // P3-AC4: reject impossible plans BEFORE generation, naming the conflicts.
+  if (exposurePolicies) {
+    for (const p of exposurePolicies) validateExposurePolicy(p);
+    const captainEligibleIds = new Set(pool.filter((p) => p.captainEligible).map((p) => p.dkPlayerId));
+    const problems = detectExposureInfeasibility(
+      pool.map((p) => effectivePolicy(p)),
+      settings.nLineups,
+      settings.format === "showdown" ? captainEligibleIds : new Set(),
+    );
+    if (problems.length) {
+      throw new Error(`Exposure plan is infeasible before generation:\n${problems.map((x) => `• ${x.detail}`).join("\n")}`);
+    }
+  }
+
   const exposureCounts = new Map<number, number>();
+  const captainCounts = new Map<number, number>();
+  const flexCounts = new Map<number, number>();
   const lineups: NflGeneratedLineup[] = [];
   for (let lineupNumber = 1; lineupNumber <= settings.nLineups; lineupNumber++) {
     const remaining = settings.nLineups - lineupNumber + 1;
     const forced = new Set(locked);
     for (const player of pool) {
-      const minPct = settings.minExposureByPlayer[String(player.dkPlayerId)] ?? 0;
-      const target = Math.ceil(minPct * settings.nLineups - 1e-9);
+      // Force a player in when his remaining overall-minimum need equals the
+      // remaining lineups. Uses the derived overall minimum (policy or legacy).
+      const target = countsById.get(player.dkPlayerId)!.overallMin;
       const current = exposureCounts.get(player.dkPlayerId) ?? 0;
       if (target - current >= remaining) forced.add(player.dkPlayerId);
     }
-    const lineup = buildOne(pool, settings, lineupNumber, lineups, exposureCounts, forced);
+    const lineup = buildOne(pool, settings, lineupNumber, lineups, exposureCounts, forced, countsById, captainCounts, flexCounts);
     if (!lineup) {
       warnings.push(`Stopped after ${lineups.length} lineup(s): remaining exposure, uniqueness, salary, or stacking constraints are infeasible.`);
       break;
     }
     lineups.push(lineup);
+    // Track overall and slot-specific appearances. Captain and Flex are counted
+    // independently; overall is their union (each player appears once per lineup).
     lineup.playerIds.forEach((id) => exposureCounts.set(id, (exposureCounts.get(id) ?? 0) + 1));
+    for (const slot of lineup.slots) {
+      const id = slot.player.dkPlayerId;
+      if (slot.slot === "CPT") captainCounts.set(id, (captainCounts.get(id) ?? 0) + 1);
+      else flexCounts.set(id, (flexCounts.get(id) ?? 0) + 1);
+    }
   }
-  for (const player of pool) {
-    const target = Math.ceil((settings.minExposureByPlayer[String(player.dkPlayerId)] ?? 0) * settings.nLineups - 1e-9);
-    const actual = exposureCounts.get(player.dkPlayerId) ?? 0;
-    if (actual < target) warnings.push(`${player.name} minimum exposure missed (${actual}/${target}); constraints were infeasible.`);
-  }
-  return { lineups, warnings, sourceCoverage: coverage, eligibility };
+
+  // Report realized vs requested per slot and flag missed minimums (P3-AC2/AC5).
+  const exposureReport: NflExposureReport[] = pool.map((player) => {
+    const c = countsById.get(player.dkPlayerId)!;
+    const overall = exposureCounts.get(player.dkPlayerId) ?? 0;
+    const captain = captainCounts.get(player.dkPlayerId) ?? 0;
+    const flex = flexCounts.get(player.dkPlayerId) ?? 0;
+    let binding: string | null = null;
+    if (overall < c.overallMin) binding = `overall min missed (${overall}/${c.overallMin})`;
+    else if (settings.format === "showdown" && captain < c.captainMin) binding = `captain min missed (${captain}/${c.captainMin})`;
+    else if (settings.format === "showdown" && flex < c.flexMin) binding = `flex min missed (${flex}/${c.flexMin})`;
+    else if (overall >= c.overallMax) binding = `overall max reached (${overall}/${c.overallMax})`;
+    if (binding && (overall < c.overallMin || (settings.format === "showdown" && (captain < c.captainMin || flex < c.flexMin)))) {
+      warnings.push(`${player.name}: ${binding}; constraints were infeasible for the remaining lineups.`);
+    }
+    return { dkPlayerId: player.dkPlayerId, name: player.name, overall, captain, flex,
+      overallMin: c.overallMin, overallMax: c.overallMax, captainMin: c.captainMin, captainMax: c.captainMax, flexMin: c.flexMin, flexMax: c.flexMax, binding };
+  });
+
+  return { lineups, warnings, sourceCoverage: coverage, eligibility, exposureReport };
 }
