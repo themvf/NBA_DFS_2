@@ -6908,3 +6908,34 @@ tracked for a slate cycle first. Do not re-fit the 0.5 weight or re-slice
 attempts/targets to rescue them — that needs a separately registered study.
 `--tonight --teams A,B` prints research budgets for one slate and writes
 nothing.
+
+---
+
+## NFL DFS — Red-Zone Trips vs Touchdown History (2026-09-21)
+
+`model/nfl_dfs_redzone_trips.py`. Pre-registered before scoring: does a
+team's red-zone trip rate (from `nfl_pbp_archetypes.drive_inside_twenty`)
+forecast its touchdown drives better than its own touchdown history? Same
+machinery as the workload backtest: production shrinkage, walk-forward from
+2024 w1 to 2026 w2, paired MAE, weeks-clustered bootstrap, n=1,150 team-games.
+
+| variant | MAE | paired delta vs baseline | verdict |
+|---|---:|---|---|
+| baseline: shrunk EWMA of own TD drives | 1.0903 | | |
+| V1 own trips × league conversion | 1.0874 | −0.003 [−0.018, +0.013] | DEAD |
+| V2 V1 + 0.5×(opp allowed trips − league) | 1.0801 | −0.010 [−0.027, +0.007] | DEAD |
+
+**Read:** the structural premise held (trips are ~29% of drives, convert at a
+stable 55–58%, and carry ~93% of touchdowns) and it still bought nothing:
+a team's red-zone trips are no more persistent than its touchdowns, so
+decomposing TDs into trips × conversion is a relabelling, not information.
+The textbook "touchdown regression" claim does not survive at team level
+with a 17-game window. Point estimates are 0.3% and 0.9%, both inside noise.
+Second consecutive result saying pbp-derived TEAM tendencies do not beat
+the box-score history the pipeline already uses (see the opponent workload
+study above, where only opponent allowed CARRIES survived).
+
+**Not tested here, and the next honest place to look:** PLAYER red-zone
+touch share (who gets the ball inside the 20), which needs the participants
+join and a name-to-gsis crosswalk. Team trips being useless does not settle
+that; the two are different claims. Register it separately before running it.
