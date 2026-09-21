@@ -24,6 +24,7 @@ import {
 } from '@/lib/nfl-dfs/exposure-plan';
 import {
   allocateArchetypeQuotas,
+  balancedArchetypePlan,
   compileArchetype,
   ARCHETYPE_LABELS,
   isFadeArchetype,
@@ -132,6 +133,15 @@ export type NflOptimizerSettings = {
   useHeuristicOwnershipLeverage?: boolean;
   /** Phase 3: per-player Overall/Captain/Flex exposure ranges. Overrides the flat maxExposure per player. */
   exposurePolicies?: PlayerExposurePolicy[];
+  /**
+   * Phase 4 simplification: how the archetype plan is chosen.
+   * - "balanced": auto-allocate the balanced mix and auto-select fade targets
+   *   (archetypes with missing prerequisites fold into Standard ceiling).
+   * - "custom": use archetypeQuotas/archetypeConfigs exactly as supplied.
+   * - "standard" or absent: Standard ceiling only (legacy behavior) unless
+   *   explicit archetypeQuotas are supplied, which always win.
+   */
+  archetypeMode?: "balanced" | "custom" | "standard";
   /** Phase 4: per-archetype portfolio quotas. Absent = single Standard-ceiling quota. */
   archetypeQuotas?: ArchetypeQuota[];
   /** Phase 4: per-archetype config (fades, beneficiaries, skews, captain ceilings). */
@@ -745,21 +755,31 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     }
   }
 
-  // Phase 4: build the per-archetype generation plan. Allocate the requested
-  // lineup count across enabled quotas, then compile each archetype once.
-  const archetypeQuotas = settings.archetypeQuotas?.filter((q) => q.enabled);
+  // Phase 4: build the per-archetype generation plan. Explicit quotas always
+  // win; "balanced" mode auto-allocates the mix and auto-selects fade targets.
   const archetypeContext: ArchetypeSlateContext = {
-    players: pool.map((p) => ({ dkPlayerId: p.dkPlayerId, position: p.position, team: p.team, opponent: p.opponent, ownership: finite(p.linestarOwnPct) != null ? (p.linestarOwnPct as number) / 100 : null, captainEligible: p.captainEligible })),
+    players: pool.map((p) => ({ dkPlayerId: p.dkPlayerId, position: p.position, team: p.team, opponent: p.opponent, ownership: finite(p.linestarOwnPct) != null ? (p.linestarOwnPct as number) / 100 : null, projection: p.projection, captainEligible: p.captainEligible })),
     favoriteTeam: settings.favoriteTeam ?? null,
     underdogTeam: settings.underdogTeam ?? null,
     ownershipValidated: (settings.ownershipCapability ?? "unavailable") === "validated",
   };
+  let archetypeQuotas = settings.archetypeQuotas?.filter((q) => q.enabled);
+  let archetypeConfigs = settings.archetypeConfigs ?? {};
+  // Balanced auto-planning is Showdown-only: the game-script team constraints
+  // only exist there, and labeling an unconstrained Classic lineup with a
+  // script it does not enforce would be a mislabel. Classic stays Standard.
+  if (!archetypeQuotas?.length && settings.archetypeMode === "balanced" && settings.format === "showdown") {
+    const balanced = balancedArchetypePlan(archetypeContext, settings.nLineups);
+    archetypeQuotas = balanced.quotas;
+    archetypeConfigs = { ...balanced.configs, ...archetypeConfigs };
+    for (const note of balanced.notes) warnings.push(`Balanced plan: ${note}`);
+  }
   let plan: Array<{ archetypeId: ArchetypeId; compiled: CompiledArchetype | null }> = [];
   if (archetypeQuotas?.length) {
-    const allocation = allocateArchetypeQuotas(settings.archetypeQuotas!, settings.nLineups);
+    const allocation = allocateArchetypeQuotas(archetypeQuotas, settings.nLineups);
     if (!allocation.ok) throw new Error(`Archetype plan is infeasible: ${allocation.reason}`);
     for (const slot of allocation.allocation) {
-      const compiled = compileArchetype(slot.archetypeId, archetypeContext, settings.archetypeConfigs?.[slot.archetypeId] ?? {});
+      const compiled = compileArchetype(slot.archetypeId, archetypeContext, archetypeConfigs[slot.archetypeId] ?? {});
       // A fade with no satisfiable beneficiary is rejected up front (§11.2).
       if (isFadeArchetype(slot.archetypeId) && !compiled.beneficiaries.length) {
         throw new Error(`${ARCHETYPE_LABELS[slot.archetypeId]} declared no beneficiary path. A fade must specify at least one alternate scoring route.`);

@@ -84,6 +84,14 @@ export type NflWorkspaceSlate = {
   format: "classic" | "showdown";
   games: string[];
   teams: string[];
+  /**
+   * Showdown only: the Vegas favorite/underdog resolved from this game's
+   * moneyline in nfl_season_games (market consensus first, quoted line as
+   * fallback). Null when unknown — game-script archetypes then fold into
+   * Standard ceiling rather than guessing.
+   */
+  favoriteTeam?: string | null;
+  underdogTeam?: string | null;
   warnings: string[];
   players: NflWorkspacePlayer[];
   fileName: string;
@@ -230,6 +238,27 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
       ) g JOIN nfl_teams t ON t.team_id=g.team_id GROUP BY t.abbreviation`);
     for (const r of played.rows) completedByTeam.set(String(r.team), Number(r.played));
   }
+  // Showdown game-script context: resolve the Vegas favorite from this game's
+  // own moneyline (market consensus first, quoted fallback). Unknown stays
+  // null — the balanced plan folds game-script archetypes into Standard
+  // ceiling rather than inventing a favorite.
+  let favoriteTeam: string | null = null;
+  let underdogTeam: string | null = null;
+  const slateTeams = (upload.teams as string[]) ?? [];
+  if (upload.format === "showdown" && seasonKnown && slateTeams.length === 2) {
+    const game = await db.execute(sql`SELECT h.abbreviation AS home, a.abbreviation AS away,
+        COALESCE(g.market_home_ml, g.quoted_home_ml) AS home_ml, COALESCE(g.market_away_ml, g.quoted_away_ml) AS away_ml
+      FROM nfl_season_games g JOIN nfl_teams h ON h.team_id=g.home_team_id JOIN nfl_teams a ON a.team_id=g.away_team_id
+      WHERE g.season=${run!.season} AND g.game_type='REG' AND NOT g.completed
+        AND h.abbreviation IN (${slateTeams[0]}, ${slateTeams[1]}) AND a.abbreviation IN (${slateTeams[0]}, ${slateTeams[1]})
+      ORDER BY g.kickoff ASC LIMIT 1`);
+    const g = game.rows[0] as { home: string; away: string; home_ml: number | null; away_ml: number | null } | undefined;
+    // A more negative (or less positive) American moneyline is the favorite.
+    if (g && g.home_ml != null && g.away_ml != null && Number(g.home_ml) !== Number(g.away_ml)) {
+      favoriteTeam = Number(g.home_ml) < Number(g.away_ml) ? g.home : g.away;
+      underdogTeam = favoriteTeam === g.home ? g.away : g.home;
+    }
+  }
   const rows = await db.select().from(nflDfsSlatePlayers).where(eq(nflDfsSlatePlayers.uploadId, uploadId));
   // A slate written before the batched write could stop part-way and still
   // leave a header row claiming the full pool. Say so rather than serving a
@@ -341,6 +370,7 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
     modelVersion: run?.modelVersion ?? null,
     modelAsOf: run?.asOfAt?.toISOString() ?? null,
     refreshAvailable, refreshMessage,
+    favoriteTeam, underdogTeam,
     format: upload.format as "classic" | "showdown",
     games: upload.games as string[],
     teams: upload.teams as string[],
@@ -707,7 +737,13 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
   );
   const resolvedSettings: NflOptimizerSettings = { ...settings,
     ownershipCapability: ownershipAssessment.capability,
-    ownershipLeverageEnabled: ownershipAssessment.features.leverage };
+    ownershipLeverageEnabled: ownershipAssessment.features.leverage,
+    // Game-script context: an explicit user choice wins (with ITS underdog,
+    // never a mixed pairing); otherwise the SERVER supplies the Vegas favorite
+    // resolved from this game's own moneyline, so balanced-mode archetypes
+    // need no manual team input.
+    favoriteTeam: settings.favoriteTeam ?? slate.favoriteTeam ?? null,
+    underdogTeam: settings.favoriteTeam ? settings.underdogTeam ?? null : slate.underdogTeam ?? null };
   const result = optimizeNflLineups(eligible, resolvedSettings);
   if(eligible.length!==slate.players.length)result.warnings.push(`${slate.players.length-eligible.length} players excluded: workload optimization requires an unstarted, matching salary game.`);
   if (result.lineups.some(l => l.slots.some(s => s.projectionSource === "calibrated" && Date.parse(s.player.calibrated!.kickoff) <= Date.now()))) throw new Error("A calibrated player's game started during optimization. Refresh the slate before regenerating.");

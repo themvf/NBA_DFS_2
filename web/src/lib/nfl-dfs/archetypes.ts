@@ -66,6 +66,8 @@ export interface ArchetypeSlateContext {
     opponent: string | null;
     /** Flex ownership decimal when validated; null otherwise. */
     ownership: number | null;
+    /** Resolved projection, used as the chalk PROXY when ownership is absent. */
+    projection?: number | null;
     captainEligible: boolean;
   }>;
   /** Team abbreviations, favorite first when known. */
@@ -185,6 +187,91 @@ export function compileArchetype(id: ArchetypeId, ctx: ArchetypeSlateContext, co
     case "low_scoring_k_dst":
       return { ...base, minKickerDst: 1, summary: "Reduced-touchdown environment; requires kicker/defense presence." };
   }
+}
+
+/**
+ * Auto-select fade targets: the most CHALK-like skill players. Ranked by
+ * ownership when any is supplied (validated or heuristic — this is a
+ * selection heuristic, not an ownership claim), else by projection as the
+ * chalk proxy (the field gravitates to the obvious studs). K/DST are never
+ * fade targets — nobody chalk-fades a kicker — and ties break by player id
+ * so the pick is deterministic.
+ */
+export function autoFadeCandidates(ctx: ArchetypeSlateContext, count: number): number[] {
+  const anyOwnership = ctx.players.some((p) => p.ownership != null);
+  return ctx.players
+    .filter((p) => p.position !== "K" && p.position !== "DST")
+    .sort((a, b) =>
+      (anyOwnership ? (b.ownership ?? -1) - (a.ownership ?? -1) : 0)
+      || (b.projection ?? 0) - (a.projection ?? 0)
+      || a.dkPlayerId - b.dkPlayerId)
+    .slice(0, count)
+    .map((p) => p.dkPlayerId);
+}
+
+/** Balanced-mix weights, in deterministic priority order. */
+const BALANCED_WEIGHTS: Array<{ id: ArchetypeId; weight: number }> = [
+  { id: "standard_ceiling", weight: 0.40 },
+  { id: "single_chalk_fade", weight: 0.15 },
+  { id: "favorite_onslaught", weight: 0.15 },
+  { id: "double_fade", weight: 0.10 },
+  { id: "underdog_comeback", weight: 0.10 },
+  { id: "low_scoring_k_dst", weight: 0.10 },
+];
+
+export interface BalancedArchetypePlan {
+  quotas: ArchetypeQuota[];
+  configs: Partial<Record<ArchetypeId, ArchetypeConfig>>;
+  /** Plain-language disclosures about what was auto-chosen and what was skipped. */
+  notes: string[];
+}
+
+/**
+ * Build the default "balanced mix" plan: allocate n lineups across the
+ * archetypes whose prerequisites the slate actually satisfies, auto-selecting
+ * fade targets. An archetype whose prerequisite is missing is SKIPPED with a
+ * note and its share folds into Standard ceiling — the plan never throws for
+ * a missing input the user was not asked for.
+ *
+ * Deliberately excluded: contrarian_captain (without validated ownership it
+ * compiles to a no-op, and mixing a no-op into a default plan would label
+ * ordinary lineups with a strategy they do not express).
+ */
+export function balancedArchetypePlan(ctx: ArchetypeSlateContext, n: number): BalancedArchetypePlan {
+  const notes: string[] = [];
+  const fades = autoFadeCandidates(ctx, 2);
+  const hasGameScript = Boolean(ctx.favoriteTeam && ctx.underdogTeam);
+  const hasKdst = ctx.players.some((p) => p.position === "K" || p.position === "DST");
+  if (!hasGameScript) notes.push("Vegas favorite unknown — favorite-onslaught and underdog-comeback lineups were folded into Standard ceiling.");
+  if (!hasKdst) notes.push("No kicker or defense in the pool — low-scoring K/DST lineups were folded into Standard ceiling.");
+  if (fades.length) {
+    const basis = ctx.players.some((p) => p.ownership != null) ? "projected ownership" : "projection (chalk proxy — no ownership feed)";
+    notes.push(`Fade targets auto-selected by ${basis}.`);
+  }
+
+  const eligible = BALANCED_WEIGHTS.filter(({ id }) => {
+    if (id === "single_chalk_fade") return fades.length >= 1;
+    if (id === "double_fade") return fades.length >= 2;
+    if (id === "favorite_onslaught" || id === "underdog_comeback") return hasGameScript;
+    if (id === "low_scoring_k_dst") return hasKdst;
+    return true;
+  });
+  // Largest-remainder allocation over the eligible weights so counts sum to n
+  // exactly and small requests degrade gracefully toward Standard ceiling.
+  const totalWeight = eligible.reduce((s, e) => s + e.weight, 0);
+  const raw = eligible.map((e) => ({ id: e.id, exact: (e.weight / totalWeight) * n }));
+  const counts = raw.map((r) => ({ id: r.id, count: Math.floor(r.exact), frac: r.exact - Math.floor(r.exact) }));
+  let remainder = n - counts.reduce((s, c) => s + c.count, 0);
+  for (const c of [...counts].sort((a, b) => b.frac - a.frac || (a.id === "standard_ceiling" ? -1 : b.id === "standard_ceiling" ? 1 : 0))) {
+    if (remainder <= 0) break;
+    c.count += 1; remainder -= 1;
+  }
+  const quotas: ArchetypeQuota[] = counts.filter((c) => c.count > 0)
+    .map((c) => ({ archetypeId: c.id, minLineups: c.count, maxLineups: c.count, enabled: true }));
+  const configs: Partial<Record<ArchetypeId, ArchetypeConfig>> = {};
+  if (fades.length >= 1) configs.single_chalk_fade = { fadePlayerIds: fades.slice(0, 1) };
+  if (fades.length >= 2) configs.double_fade = { fadePlayerIds: fades.slice(0, 2) };
+  return { quotas, configs, notes };
 }
 
 /**
