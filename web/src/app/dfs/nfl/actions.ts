@@ -722,13 +722,15 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
     runId,
     lineupNumber: lineup.lineupNumber,
     slots: lineup.slots.map((entry) => ({ slot: entry.slot, dkPlayerId: entry.player.dkPlayerId, captainDkPlayerId: entry.player.captainDkPlayerId, name: entry.player.name, team: entry.player.team, salary: entry.salary, projection: entry.projection, source: entry.projectionSource, multiplier:entry.multiplier, projectionAudit:entry.player.projectionAudit })),
+    // Phase 4: archetype label + fades + satisfied beneficiaries persist so the
+    // lineup's strategy survives save, reload, export and evaluation (P4-AC4).
+    stackSummary: { ...lineup.stackSummary, archetype: lineup.archetype ?? null },
     playerIds: lineup.playerIds,
     totalSalary: lineup.totalSalary,
     projectedFpts: lineup.projectedFpts,
     floorFpts: lineup.floorFpts,
     ceilingFpts: lineup.ceilingFpts,
     projectedOwnership: lineup.projectedOwnership,
-    stackSummary: lineup.stackSummary,
   })));
   } catch { throw new Error("Unable to save optimizer results. Refresh the slate and retry; an incomplete run may remain saved."); }
   return { runId, slate, result, ownership: ownershipAssessment };

@@ -22,6 +22,17 @@ import {
   type PlayerExposurePolicy,
   type ExposureCounts,
 } from '@/lib/nfl-dfs/exposure-plan';
+import {
+  allocateArchetypeQuotas,
+  compileArchetype,
+  ARCHETYPE_LABELS,
+  isFadeArchetype,
+  type ArchetypeId,
+  type ArchetypeQuota,
+  type ArchetypeConfig,
+  type CompiledArchetype,
+  type ArchetypeSlateContext,
+} from '@/lib/nfl-dfs/archetypes';
 
 // Phase 0/1: bumped from v5 to record that role-aware eligibility now gates the
 // pool. Legacy runs keep their own recorded version and are not reinterpreted.
@@ -94,6 +105,13 @@ export type NflOptimizerSettings = {
   ownershipCapability?: OwnershipCapability;
   /** Phase 3: per-player Overall/Captain/Flex exposure ranges. Overrides the flat maxExposure per player. */
   exposurePolicies?: PlayerExposurePolicy[];
+  /** Phase 4: per-archetype portfolio quotas. Absent = single Standard-ceiling quota. */
+  archetypeQuotas?: ArchetypeQuota[];
+  /** Phase 4: per-archetype config (fades, beneficiaries, skews, captain ceilings). */
+  archetypeConfigs?: Partial<Record<ArchetypeId, ArchetypeConfig>>;
+  /** Phase 4: favorite/underdog teams for game-script archetypes. */
+  favoriteTeam?: string | null;
+  underdogTeam?: string | null;
   maxExposure: number;
   minUnique: number;
   stackPassCatchers: 0 | 1 | 2;
@@ -145,6 +163,14 @@ export type NflGeneratedLineup = {
   ceilingFpts: number;
   projectedOwnership: number | null;
   stackSummary: { quarterback: string | null; passCatchers: string[]; bringBack: string | null };
+  /** Phase 4: exactly one primary archetype label, its faded players, and beneficiary rules satisfied. */
+  archetype?: {
+    id: ArchetypeId;
+    label: string;
+    fadedPlayerIds: number[];
+    fadedPlayerNames: string[];
+    beneficiariesSatisfied: string[];
+  };
 };
 
 /** Per-player eligibility decision surfaced to the UI so the pool can say WHY. */
@@ -293,6 +319,7 @@ function buildOne(
   countsById: Map<number, ExposureCounts>,
   captainCounts: Map<number, number>,
   flexCounts: Map<number, number>,
+  compiled: CompiledArchetype | null = null,
 ): NflGeneratedLineup | null {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const solver = require("javascript-lp-solver") as { Solve: (model: SolverModel) => SolverResult };
@@ -301,7 +328,9 @@ function buildOne(
   // A player drops out of the pool once his OVERALL maximum is reached (locked
   // players are always eligible so a lock cannot deadlock generation).
   const maxCount = (player: ResolvedPlayer) => Math.max(forcedIds.has(player.dkPlayerId) ? 1 : 0, countsById.get(player.dkPlayerId)?.overallMax ?? settings.nLineups);
-  const available = pool.filter((player) => (exposureCounts.get(player.dkPlayerId) ?? 0) < maxCount(player) || forcedIds.has(player.dkPlayerId));
+  // Phase 4: faded players are removed from the pool entirely for this lineup.
+  const faded = new Set(compiled?.fadePlayerIds ?? []);
+  const available = pool.filter((player) => !faded.has(player.dkPlayerId) && ((exposureCounts.get(player.dkPlayerId) ?? 0) < maxCount(player) || forcedIds.has(player.dkPlayerId)));
   // Slot capacity: whether a player may still take a Captain or a Flex slot in
   // THIS lineup given his per-slot maxima already spent (P3-AC1/AC2).
   const captainFull = (player: ResolvedPlayer) => (captainCounts.get(player.dkPlayerId) ?? 0) >= (countsById.get(player.dkPlayerId)?.captainMax ?? settings.nLineups);
@@ -332,6 +361,24 @@ function buildOne(
   if (settings.puntPolicy && available.some((player) => player.salaryRelief)) {
     constraints.salary_relief = { max: settings.puntPolicy.maxSalaryReliefPlayersPerLineup };
   }
+  // Phase 4: archetype constraints. Team-count skew (favorite onslaught), K/DST
+  // presence (low-scoring), and beneficiary minimums (fades' alternate paths).
+  if (compiled?.teamCountRange && settings.format === "showdown" && compiled.eligibleCaptainIds === null) {
+    // Constrain the count on the archetype's primary team when known.
+    const primaryTeam = settings.favoriteTeam ?? undefined;
+    if (primaryTeam && available.some((p) => p.team === primaryTeam)) {
+      constraints[`arch_team_${safe(primaryTeam)}`] = { min: compiled.teamCountRange.min, max: compiled.teamCountRange.max };
+    }
+  }
+  if (compiled?.minKickerDst) {
+    if (available.some((p) => p.position === "K" || p.position === "DST")) {
+      constraints.arch_kdst = { min: compiled.minKickerDst };
+    }
+  }
+  const beneficiaryConstraints = (compiled?.beneficiaries ?? []).map((group, index) => ({ key: `arch_benef_${index}`, group }));
+  for (const { key, group } of beneficiaryConstraints) {
+    if (available.some((p) => group.playerIds.includes(p.dkPlayerId))) constraints[key] = { min: group.minFromGroup };
+  }
   for (const playerId of forcedIds) constraints[`force_${playerId}`] = { equal: 1 };
   previous.forEach((lineup, index) => { constraints[`prior_${index}`] = { max: rosterSize - settings.minUnique }; });
 
@@ -356,6 +403,10 @@ function buildOne(
       // spent, so Captain and Flex maxima are enforced independently.
       if (purchaseType === "CPT" && captainFull(player)) continue;
       if (purchaseType === "FLEX" && flexFull(player)) continue;
+      // Phase 4: archetype captain restrictions (contrarian / underdog captain
+      // sets, forbidden chalk captains).
+      if (purchaseType === "CPT" && compiled?.eligibleCaptainIds && !compiled.eligibleCaptainIds.includes(player.dkPlayerId)) continue;
+      if (purchaseType === "CPT" && compiled?.forbiddenCaptainIds.includes(player.dkPlayerId)) continue;
       const key = `${purchaseType === "CLASSIC" ? "x" : purchaseType === "CPT" ? "c" : "f"}_${player.dkPlayerId}`;
       const slot = purchaseType === "CPT" ? "CPT" : purchaseType === "FLEX" ? "FLEX" : "CLASSIC";
       const multiplier = slot === "CPT" ? 1.5 : 1;
@@ -376,6 +427,15 @@ function buildOne(
       }
       if (settings.format === "showdown") variable[`team_${safe(player.team)}`] = 1;
       if (player.gameKey) variable[`game_${safe(player.gameKey)}`] = 1;
+      // Phase 4: archetype constraint coefficients.
+      if (compiled) {
+        const primaryTeam = settings.favoriteTeam ?? undefined;
+        if (constraints[`arch_team_${safe(primaryTeam ?? "")}`] && player.team === primaryTeam) variable[`arch_team_${safe(primaryTeam!)}`] = 1;
+        if (constraints.arch_kdst && (player.position === "K" || player.position === "DST")) variable.arch_kdst = 1;
+        for (const { key, group } of beneficiaryConstraints) {
+          if (constraints[key] && group.playerIds.includes(player.dkPlayerId)) variable[key] = 1;
+        }
+      }
       if (forcedIds.has(player.dkPlayerId)) variable[`force_${player.dkPlayerId}`] = 1;
       previous.forEach((lineup, index) => { if (lineup.playerIds.includes(player.dkPlayerId)) variable[`prior_${index}`] = 1; });
       if (settings.format === "classic" && settings.mode === "gpp" && settings.stackPassCatchers > 0) {
@@ -442,6 +502,19 @@ function buildOne(
       ? chosen.reduce((sum, entry) => sum + (entry.player.linestarOwnPct ?? 0), 0)
       : null,
     stackSummary: { quarterback: qb?.name ?? null, passCatchers, bringBack },
+    // §11.4: every selected lineup carries exactly one primary archetype label.
+    // With no compiled archetype it is Standard ceiling — never a fade.
+    archetype: compiled ? {
+      id: compiled.archetypeId,
+      label: ARCHETYPE_LABELS[compiled.archetypeId],
+      fadedPlayerIds: compiled.fadePlayerIds,
+      fadedPlayerNames: compiled.fadePlayerIds.map((id) => pool.find((p) => p.dkPlayerId === id)?.name ?? `#${id}`),
+      // A beneficiary rule is "satisfied" when the lineup actually contains the
+      // required players (P4-AC2). This is checked, not assumed.
+      beneficiariesSatisfied: compiled.beneficiaries
+        .filter((group) => chosen.filter((entry) => group.playerIds.includes(entry.player.dkPlayerId)).length >= group.minFromGroup)
+        .map((group) => group.label),
+    } : { id: "standard_ceiling", label: ARCHETYPE_LABELS.standard_ceiling, fadedPlayerIds: [], fadedPlayerNames: [], beneficiariesSatisfied: [] },
   };
 }
 
@@ -583,12 +656,37 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     }
   }
 
+  // Phase 4: build the per-archetype generation plan. Allocate the requested
+  // lineup count across enabled quotas, then compile each archetype once.
+  const archetypeQuotas = settings.archetypeQuotas?.filter((q) => q.enabled);
+  const archetypeContext: ArchetypeSlateContext = {
+    players: pool.map((p) => ({ dkPlayerId: p.dkPlayerId, position: p.position, team: p.team, opponent: p.opponent, ownership: finite(p.linestarOwnPct) != null ? (p.linestarOwnPct as number) / 100 : null, captainEligible: p.captainEligible })),
+    favoriteTeam: settings.favoriteTeam ?? null,
+    underdogTeam: settings.underdogTeam ?? null,
+    ownershipValidated: (settings.ownershipCapability ?? "unavailable") === "validated",
+  };
+  let plan: Array<{ archetypeId: ArchetypeId; compiled: CompiledArchetype | null }> = [];
+  if (archetypeQuotas?.length) {
+    const allocation = allocateArchetypeQuotas(settings.archetypeQuotas!, settings.nLineups);
+    if (!allocation.ok) throw new Error(`Archetype plan is infeasible: ${allocation.reason}`);
+    for (const slot of allocation.allocation) {
+      const compiled = compileArchetype(slot.archetypeId, archetypeContext, settings.archetypeConfigs?.[slot.archetypeId] ?? {});
+      // A fade with no satisfiable beneficiary is rejected up front (§11.2).
+      if (isFadeArchetype(slot.archetypeId) && !compiled.beneficiaries.length) {
+        throw new Error(`${ARCHETYPE_LABELS[slot.archetypeId]} declared no beneficiary path. A fade must specify at least one alternate scoring route.`);
+      }
+      for (let k = 0; k < slot.count; k++) plan.push({ archetypeId: slot.archetypeId, compiled });
+    }
+  } else {
+    plan = Array.from({ length: settings.nLineups }, () => ({ archetypeId: "standard_ceiling" as ArchetypeId, compiled: null }));
+  }
+
   const exposureCounts = new Map<number, number>();
   const captainCounts = new Map<number, number>();
   const flexCounts = new Map<number, number>();
   const lineups: NflGeneratedLineup[] = [];
-  for (let lineupNumber = 1; lineupNumber <= settings.nLineups; lineupNumber++) {
-    const remaining = settings.nLineups - lineupNumber + 1;
+  for (let lineupNumber = 1; lineupNumber <= plan.length; lineupNumber++) {
+    const remaining = plan.length - lineupNumber + 1;
     const forced = new Set(locked);
     for (const player of pool) {
       // Force a player in when his remaining overall-minimum need equals the
@@ -597,9 +695,9 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
       const current = exposureCounts.get(player.dkPlayerId) ?? 0;
       if (target - current >= remaining) forced.add(player.dkPlayerId);
     }
-    const lineup = buildOne(pool, settings, lineupNumber, lineups, exposureCounts, forced, countsById, captainCounts, flexCounts);
+    const lineup = buildOne(pool, settings, lineupNumber, lineups, exposureCounts, forced, countsById, captainCounts, flexCounts, plan[lineupNumber - 1].compiled);
     if (!lineup) {
-      warnings.push(`Stopped after ${lineups.length} lineup(s): remaining exposure, uniqueness, salary, or stacking constraints are infeasible.`);
+      warnings.push(`Stopped after ${lineups.length} lineup(s): the ${ARCHETYPE_LABELS[plan[lineupNumber - 1].archetypeId]} quota or remaining exposure/uniqueness/salary constraints are infeasible.`);
       break;
     }
     lineups.push(lineup);

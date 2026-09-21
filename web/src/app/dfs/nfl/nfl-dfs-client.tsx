@@ -15,6 +15,7 @@ import type { NflGeneratedLineup, NflOptimizerSettings, NflProjectionSource } fr
 import { DEFAULT_NFL_PUNT_POLICY } from "@/lib/nfl-dfs/punt-policy";
 import { PUNT_PRESETS, resolvePuntPreset, describePuntPolicy, type PuntPresetKey } from "@/lib/nfl-dfs/punt-presets";
 import { objectiveLabel } from "@/lib/nfl-dfs/ownership-capability";
+import { ARCHETYPE_LABELS, type ArchetypeId, type ArchetypeQuota } from "@/lib/nfl-dfs/archetypes";
 import { parseNflComparisonCsv } from "@/lib/nfl-dfs/comparison-csv";
 import { exportNflDkEntries } from "@/lib/nfl-dfs/entry-export";
 import {DEFAULT_WORKLOAD_POSITIONS} from "@/lib/nfl-dfs/workload-selection";
@@ -72,9 +73,10 @@ export default function NflDfsClient() {
   const [eligibility, setEligibility] = useState<import("./nfl-optimizer").NflEligibilityDecision[]>([]);
   const [ownership, setOwnership] = useState<import("@/lib/nfl-dfs/ownership-capability").OwnershipAssessment | null>(null);
   const [exposureReport, setExposureReport] = useState<import("./nfl-optimizer").NflExposureReport[]>([]);
+  const [archetypeQuotas, setArchetypeQuotas] = useState<ArchetypeQuota[]>([]);
   const [settings, setSettings] = useState({ mode: "gpp" as "cash" | "gpp", projectionSource: "our" as NflProjectionSource, allowDkFallback: true, workloadPositions:{...DEFAULT_WORKLOAD_POSITIONS}, situations:DEFAULT_SITUATIONS, nLineups: 20, minSalary: 45000, maxExposure: .6, minUnique: 2, stackPassCatchers: 1 as 0 | 1 | 2, bringBack: true, randomness: .08, puntPolicy: {...DEFAULT_NFL_PUNT_POLICY} as import("@/lib/nfl-dfs/punt-policy").NflPuntPolicy, puntOverrides: [] as import("@/lib/nfl-dfs/punt-policy").PuntOverride[] });
 
-  const currentSettings = generationSettings(settings, slate?.format ?? 'classic', locked, excluded, targetExposure);
+  const currentSettings = { ...generationSettings(settings, slate?.format ?? 'classic', locked, excluded, targetExposure), archetypeQuotas: archetypeQuotas.length ? archetypeQuotas : undefined };
   const settingsChanged = Boolean(completedSettings && !sameGenerationSettings(completedSettings, currentSettings));
 
   const matching = useMemo(() => (slate?.players ?? []).filter((p) => matchesPoolPosition(p.position, position) && (!query.trim() || `${p.name} ${p.team} ${p.opponent ?? ""}`.toLowerCase().includes(query.trim().toLowerCase()))), [slate, position, query]);
@@ -241,6 +243,15 @@ export default function NflDfsClient() {
             <ul className="mt-2 list-disc space-y-1 pl-4 text-[11px] text-slate-600">{describePuntPolicy(settings.puntPolicy).map((line) => <li key={line}>{line}</li>)}</ul>
             {eligibility.some((e) => !e.eligible && e.reasonCode !== "INACTIVE" && e.reasonCode !== "MANUAL_EXCLUSION") ? <details className="mt-2"><summary className="cursor-pointer text-[11px] font-bold text-amber-800">{eligibility.filter((e) => !e.eligible && e.reasonCode !== "INACTIVE" && e.reasonCode !== "MANUAL_EXCLUSION").length} cheap player(s) blocked — review</summary><div className="mt-1 max-h-40 space-y-1 overflow-auto">{eligibility.filter((e) => !e.eligible && e.reasonCode !== "INACTIVE" && e.reasonCode !== "MANUAL_EXCLUSION").map((e) => <div key={e.dkPlayerId} className="flex items-start justify-between gap-2 rounded border bg-white p-1.5 text-[11px]"><span><b>{e.name}</b> <span className="text-slate-400">{dollars(e.salary)}</span><span className="block text-slate-500">{e.reason}</span></span><button type="button" className="shrink-0 rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800" onClick={() => allowCheapPlayer(e.dkPlayerId, e.name)}>Allow for run</button></div>)}</div></details> : null}
           </div>
+          {slate.format === "showdown" ? <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px]">
+            <h3 className="text-sm font-bold text-slate-800">Portfolio plan (archetypes)</h3>
+            <p className="mt-0.5 text-slate-500">Assign lineup quotas by strategy. Leave all off for Standard ceiling only. Names describe strategy, not expected profit.</p>
+            <div className="mt-2 space-y-1">{(Object.keys(ARCHETYPE_LABELS) as ArchetypeId[]).map((id) => {
+              const q = archetypeQuotas.find((x) => x.archetypeId === id);
+              return <div key={id} className="flex items-center gap-2"><label className="flex flex-1 items-center gap-1.5"><input type="checkbox" checked={Boolean(q?.enabled)} onChange={(e) => setArchetypeQuotas((cur) => { const others = cur.filter((x) => x.archetypeId !== id); return e.target.checked ? [...others, { archetypeId: id, minLineups: 1, maxLineups: settings.nLineups, enabled: true }] : others; })} />{ARCHETYPE_LABELS[id]}</label>{q?.enabled ? <><input aria-label={`${ARCHETYPE_LABELS[id]} min`} type="number" min={0} max={settings.nLineups} value={q.minLineups} onChange={(e) => setArchetypeQuotas((cur) => cur.map((x) => x.archetypeId === id ? { ...x, minLineups: Number(e.target.value) } : x))} className="h-7 w-12 rounded border px-1 text-right" /><span>–</span><input aria-label={`${ARCHETYPE_LABELS[id]} max`} type="number" min={0} max={settings.nLineups} value={q.maxLineups} onChange={(e) => setArchetypeQuotas((cur) => cur.map((x) => x.archetypeId === id ? { ...x, maxLineups: Number(e.target.value) } : x))} className="h-7 w-12 rounded border px-1 text-right" /></> : null}</div>;
+            })}</div>
+            {archetypeQuotas.some((q) => q.enabled && (q.archetypeId === "single_chalk_fade" || q.archetypeId === "double_fade")) ? <p className="mt-1 text-amber-800">Fade archetypes need faded players + a beneficiary path; configure fades in the player pool (lock beneficiaries, exclude nothing — fades are applied per-lineup).</p> : null}
+          </div> : null}
           {ownership ? <div className={`rounded-lg border p-3 text-[11px] ${ownership.capability === "validated" ? "border-emerald-200 bg-emerald-50" : ownership.capability === "heuristic_uncalibrated" ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50"}`}>
             <div className="flex items-center justify-between"><h3 className="text-sm font-bold text-slate-800">Ownership</h3><span className="rounded-full border bg-white px-2 py-0.5 font-bold uppercase">{ownership.capability.replace(/_/g, " ")}</span></div>
             <p className="mt-1 font-semibold text-slate-700">Objective: {objectiveLabel(ownership.capability)}</p>
