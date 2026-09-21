@@ -4,9 +4,14 @@ name: Refresh NFL PBP Archetypes
 # Without this the tab deploys correctly and shows an empty state, because the
 # table is created by schema init but never written to.
 #
-# The weekly slot is a DEFAULT, not a measured choice: Tuesday 09:00 UTC is
-# after Monday night's game has finished and been published by nflverse, so a
-# run then picks up the whole preceding week. Change it freely.
+# Two scheduled slots, both self-healing (--relabel-stale), chosen against
+# nflverse's publish cadence (the pbp release is rebuilt each morning during
+# the season):
+#   Monday 12:00 UTC  = 08:00 ET in daylight time -- picks up Thursday +
+#                       Sunday games the morning after the Sunday slate.
+#   Tuesday 09:00 UTC = after Monday night's game has been published.
+# Cron is UTC, so the Monday slot drifts to 07:00 ET once clocks fall back;
+# nflverse has already published by then, so that is harmless.
 
 on:
   # A labeller change relabels the table on merge. Without this, a version
@@ -25,14 +30,15 @@ on:
   workflow_dispatch:
     inputs:
       season:
-        description: "Season to label (e.g. 2026)"
-        required: true
-        default: "2026"
+        description: "Season to rebuild (e.g. 2026). Blank = self-healing --relabel-stale, same as the scheduled runs."
+        required: false
+        default: ""
       game:
-        description: "Optional game_id substring (e.g. NE_SEA). Blank = whole season."
+        description: "Optional game_id substring (e.g. NE_SEA), season mode only. Blank = whole season."
         required: false
         default: ""
   schedule:
+    - cron: "0 12 * * 1"
     - cron: "0 9 * * 2"
 
 concurrency:
@@ -59,19 +65,21 @@ jobs:
           # The labellers read nflverse's parquet release directly.
           pip install "pandas>=2" "pyarrow>=15"
 
-      # On a push this relabels only what disagrees with the current versions,
-      # so an unrelated edit to these files is a cheap no-op rather than a
-      # full-season rebuild.
-      - name: Relabel stale games
-        if: github.event_name == 'push'
+      # Relabel only what disagrees with the release: a stale labeller version
+      # or a game played since the last run. Pushes, both scheduled slots, and
+      # a manual dispatch with no season all take this path, so an unrelated
+      # edit or a quiet week is a cheap no-op rather than a full rebuild.
+      - name: Relabel stale and newly-played games
+        if: github.event_name != 'workflow_dispatch' || inputs.season == ''
         run: python -m ingest.nfl_pbp_archetypes --relabel-stale
 
-      - name: Label plays and drives
-        if: github.event_name != 'push'
+      # A deliberate rebuild of a whole season or one game: only a manual
+      # dispatch that named a season.
+      - name: Rebuild a season or game
+        if: github.event_name == 'workflow_dispatch' && inputs.season != ''
         run: |
           if [ -n "${{ inputs.game }}" ]; then
-            python -m ingest.nfl_pbp_archetypes \
-              --season "${{ inputs.season || 2026 }}" --game "${{ inputs.game }}"
+            python -m ingest.nfl_pbp_archetypes --season "${{ inputs.season }}" --game "${{ inputs.game }}"
           else
-            python -m ingest.nfl_pbp_archetypes --season "${{ inputs.season || 2026 }}"
+            python -m ingest.nfl_pbp_archetypes --season "${{ inputs.season }}"
           fi
