@@ -36,6 +36,7 @@ import { canonicalAuditJson } from '@/lib/nfl-dfs/audit-json';
 import { readWorkloadProjection, workloadPoolEligible, type WorkloadReport } from "@/lib/nfl-dfs/workload-projection";
 import { getCalibratedSnapshots } from "@/db/nfl-dfs-calibrated";
 import { readCalibratedProjection, readPositionWorkloadProjection, type CalibrationSnapshot } from "@/lib/nfl-dfs/calibrated-projection";
+import { nflBuildInfo } from "@/lib/nfl-dfs/build-info";
 import {
   NFL_OPTIMIZER_VERSION,
   optimizeNflLineups,
@@ -685,13 +686,16 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
     projectionAudit:resolveProjectionAudit(prepared.find(p=>p.dkPlayerId===player.dkPlayerId)!,settings),
     baselineSource:{runId:slate.projectionRunId,modelVersion:slate.modelVersion,asOf:slate.modelAsOf},
   }));
-  const inputDigest = sha256(canonicalAuditJson({ settings, inputSnapshot, optimizerVersion: NFL_OPTIMIZER_VERSION }));
+  const buildInfo = nflBuildInfo();
+  // Build identity is part of what makes a run reproducible, so it is inside the
+  // digest: two runs with different code cannot share an input digest.
+  const inputDigest = sha256(canonicalAuditJson({ settings, inputSnapshot, optimizerVersion: NFL_OPTIMIZER_VERSION, buildInfo }));
   const status = result.lineups.length === settings.nLineups ? "complete" : result.lineups.length ? "partial" : "failed";
   try {
   await db.insert(nflDfsOptimizerRuns).values({
     runId, uploadId, projectionRunId: slate.projectionRunId,
     optimizerVersion: NFL_OPTIMIZER_VERSION, mode: settings.mode,
-    projectionSource: settings.projectionSource, settings, inputSnapshot, inputDigest,
+    projectionSource: settings.projectionSource, settings, inputSnapshot, inputDigest, buildInfo,
     requestedLineups: settings.nLineups, generatedLineups: result.lineups.length,
     status, failureReason: status === "complete" ? null : result.warnings.join(" "),
   });
