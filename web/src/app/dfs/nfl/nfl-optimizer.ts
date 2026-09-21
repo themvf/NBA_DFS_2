@@ -114,6 +114,15 @@ export type NflOptimizerSettings = {
   puntOverrides?: PuntOverride[];
   /** Phase 2: resolved ownership capability. When not "validated", leverage is disabled. */
   ownershipCapability?: OwnershipCapability;
+  /**
+   * Phase 2: whether the ownership penalty may be applied, resolved by the
+   * SERVER from the assessment's features (validated feeds, or a declared
+   * heuristic the user explicitly opted into — always labeled uncalibrated).
+   * Absent = legacy rule: leverage only when capability is "validated".
+   */
+  ownershipLeverageEnabled?: boolean;
+  /** User opt-in for uncalibrated heuristic ownership leverage (client → server; the server resolves the final bit). */
+  useHeuristicOwnershipLeverage?: boolean;
   /** Phase 3: per-player Overall/Captain/Flex exposure ranges. Overrides the flat maxExposure per player. */
   exposurePolicies?: PlayerExposurePolicy[];
   /** Phase 4: per-archetype portfolio quotas. Absent = single Standard-ceiling quota. */
@@ -306,11 +315,13 @@ function objective(player: ResolvedPlayer, settings: NflOptimizerSettings, lineu
   const base = settings.mode === "cash"
     ? (player.resolvedSource === "workload" ? selectedWorkload(player,settings.workloadPositions)!.p10 : player.resolvedSource === "calibrated" ? player.calibrated!.p10 : historical ? finite(player.floorFpts) : null) ?? player.projection * 0.74
     : (player.resolvedSource === "workload" ? selectedWorkload(player,settings.workloadPositions)!.p90 : player.resolvedSource === "calibrated" ? player.calibrated!.p90 : historical ? finite(player.ceilingFpts) : null) ?? player.projection * 1.28;
-  // Phase 2: leverage (ownership penalty) only applies when ownership is
-  // validated. Missing ownership is null and contributes no penalty — it is
-  // never rewarded as low ownership. When capability is not validated the
-  // penalty is disabled entirely so the run is honestly projection-only.
-  const leverageEnabled = settings.mode === "gpp" && (settings.ownershipCapability ?? "unavailable") === "validated";
+  // Phase 2: leverage (ownership penalty) applies when the server resolved it
+  // as permitted — a validated feed, or a declared-heuristic feed the user
+  // explicitly opted into (labeled "uncalibrated" everywhere). Missing
+  // ownership is null and contributes no penalty — it is never rewarded as low
+  // ownership. Without a resolved bit, only "validated" enables it.
+  const leverageEnabled = settings.mode === "gpp"
+    && (settings.ownershipLeverageEnabled ?? ((settings.ownershipCapability ?? "unavailable") === "validated"));
   const ownershipPenalty = leverageEnabled ? (finite(player.linestarOwnPct) ?? 0) * 0.025 : 0;
   const workload=player.resolvedSource === "workload"?selectedWorkload(player,settings.workloadPositions):null;
   const boomBonus = settings.mode === "gpp" ? (workload && "boom" in workload ? workload.boom : player.resolvedSource === "calibrated" ? player.calibrated!.boom : historical ? finite(player.boomRate) ?? 0 : 0) * 2 : 0;
@@ -388,11 +399,16 @@ function buildOne(
   }
   // Phase 4: archetype constraints. Team-count skew (favorite onslaught), K/DST
   // presence (low-scoring), and beneficiary minimums (fades' alternate paths).
-  if (compiled?.teamCountRange && settings.format === "showdown" && compiled.eligibleCaptainIds === null) {
-    // Constrain the count on the archetype's primary team when known.
-    const primaryTeam = settings.favoriteTeam ?? undefined;
-    if (primaryTeam && available.some((p) => p.team === primaryTeam)) {
-      constraints[`arch_team_${safe(primaryTeam)}`] = { min: compiled.teamCountRange.min, max: compiled.teamCountRange.max };
+  // The range applies to the team the ARCHETYPE compiled it for (favorite for
+  // onslaught, underdog for comeback) — never implicitly to settings.favoriteTeam.
+  const archetypeTeam = compiled?.teamCountRange?.team ?? null;
+  if (compiled?.teamCountRange && settings.format === "showdown") {
+    if (available.some((p) => p.team === archetypeTeam)) {
+      constraints[`arch_team_${safe(archetypeTeam!)}`] = { min: compiled.teamCountRange.min, max: compiled.teamCountRange.max };
+    } else if (compiled.teamCountRange.min > 0) {
+      // The archetype's required team has no available players: the lineup
+      // cannot honor its label. Refuse rather than mislabel a generic lineup.
+      return null;
     }
   }
   if (compiled?.minKickerDst) {
@@ -458,8 +474,7 @@ function buildOne(
       if (player.gameKey) variable[`game_${safe(player.gameKey)}`] = 1;
       // Phase 4: archetype constraint coefficients.
       if (compiled) {
-        const primaryTeam = settings.favoriteTeam ?? undefined;
-        if (constraints[`arch_team_${safe(primaryTeam ?? "")}`] && player.team === primaryTeam) variable[`arch_team_${safe(primaryTeam!)}`] = 1;
+        if (archetypeTeam && constraints[`arch_team_${safe(archetypeTeam)}`] && player.team === archetypeTeam) variable[`arch_team_${safe(archetypeTeam)}`] = 1;
         if (constraints.arch_kdst && (player.position === "K" || player.position === "DST")) variable.arch_kdst = 1;
         for (const { key, group } of beneficiaryConstraints) {
           if (constraints[key] && group.playerIds.includes(player.dkPlayerId)) variable[key] = 1;
@@ -669,7 +684,17 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     };
   };
   const exposurePolicies = settings.exposurePolicies?.length ? settings.exposurePolicies : null;
-  const countsById = new Map<number, ExposureCounts>(pool.map((p) => [p.dkPlayerId, deriveExposureCounts(effectivePolicy(p), settings.nLineups)]));
+  const countsById = new Map<number, ExposureCounts>(pool.map((p) => {
+    const counts = deriveExposureCounts(effectivePolicy(p), settings.nLineups);
+    // The GLOBAL flat max-exposure default always permits at least one
+    // appearance (floor(maxExposure × n) can round to 0 for small n — with 1
+    // lineup at 60% max, every player would vanish and generation returns
+    // nothing). An explicit per-player policy or per-player max override of 0
+    // is the user's own instruction and is honored exactly.
+    const hasExplicit = policyById.has(p.dkPlayerId) || settings.maxExposureByPlayer[String(p.dkPlayerId)] != null;
+    if (!hasExplicit) counts.overallMax = Math.max(1, counts.overallMax);
+    return [p.dkPlayerId, counts];
+  }));
 
   if (settings.salaryPolicy) validateSalaryPolicy(settings.salaryPolicy);
 

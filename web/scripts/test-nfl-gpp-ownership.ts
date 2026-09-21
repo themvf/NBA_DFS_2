@@ -64,6 +64,25 @@ function main() {
   assert.notEqual(partial.capability, "validated");
   assert.equal(partial.features.leverage, false);
 
+  // --- a combined feed (no captain data) can never validate for Showdown ---
+  const combined: NflOwnershipInput[] = validatedFeed(12).map((r) => ({ ...r, flexPct: 0.42, captainPct: null }));
+  const combinedStrict = assessOwnership(pool, combined);
+  assert.notEqual(combinedStrict.capability, "validated");
+  assert.ok(combinedStrict.errors.some((e) => /no Captain-slot ownership/i.test(e)), "missing captain data is named, not misreported as a 0% captain sum");
+  assert.ok(!combinedStrict.errors.some((e) => /Captain ownership totals 0%/.test(e)), "no impossible captain-sum error for a feed with no captain data");
+  // The same combined feed DECLARED heuristic carries no slot-sum errors at all:
+  // the invariants test a structure the feed never claimed to have.
+  const combinedHeuristic = assessOwnership(pool, combined, { heuristic: true, optIntoHeuristic: true });
+  assert.equal(combinedHeuristic.capability, "heuristic_uncalibrated");
+  assert.equal(combinedHeuristic.errors.length, 0, "declared-heuristic combined feed has no structural errors");
+  assert.equal(combinedHeuristic.features.leverage, true, "explicit opt-in enables labeled heuristic leverage");
+  assert.equal(combinedHeuristic.features.duplicationModel, false);
+
+  // --- classic format expects ~900% across 9 roster slots, no captain check ---
+  const classicFeed: NflOwnershipInput[] = Array.from({ length: 12 }, (_, i) => ({ playerId: i + 1, flexPct: 9 / 12, captainPct: null, source: "slot-feed", asOf: null }));
+  const classic = assessOwnership(pool, classicFeed, { format: "classic" });
+  assert.equal(classic.capability, "validated", `classic slot feed validates: ${classic.errors.join("; ")}`);
+
   console.log("NFL GPP Phase 2 (ownership capability): P2-AC1..AC5 and validation units passed.");
 }
 

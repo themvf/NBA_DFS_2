@@ -93,6 +93,12 @@ function main() {
   const unreachable = detectExposureInfeasibility([policy(1, { overall: range(1, null), captain: range(null, 0), flex: range(null, 0) })], 20, new Set([1]));
   assert.ok(unreachable.some((x) => x.reason === "PLAYER_OVERALL_UNREACHABLE"));
 
+  // Regression (found in review): every captain-eligible player capped to a
+  // ZERO captain maximum is the most extreme capacity infeasibility and must
+  // be named up front, not fall through to a generic mid-generation stop.
+  const zeroCaps = detectExposureInfeasibility([policy(1, { captain: range(null, 0) }), policy(2, { captain: range(null, 0) })], 20, new Set([1, 2]));
+  assert.ok(zeroCaps.some((x) => x.reason === "CAPTAIN_MAX_CAPACITY"), "all-zero captain maxima are detected pre-solve");
+
   // --- P3-AC5: report preserves both requested and realized slot-specific exposures ---
   const r = maxRun.exposureReport!.find((x) => x.dkPlayerId === 3)!;
   assert.equal(typeof r.overallMax, "number");

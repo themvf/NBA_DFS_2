@@ -69,9 +69,10 @@ export interface EligibleOwnershipPlayer {
 export function assessOwnership(
   eligible: EligibleOwnershipPlayer[],
   ownership: NflOwnershipInput[],
-  options: { thresholds?: OwnershipValidationThresholds; optIntoHeuristic?: boolean; heuristic?: boolean } = {},
+  options: { thresholds?: OwnershipValidationThresholds; optIntoHeuristic?: boolean; heuristic?: boolean; format?: "classic" | "showdown" } = {},
 ): OwnershipAssessment {
   const thresholds = options.thresholds ?? DEFAULT_OWNERSHIP_THRESHOLDS;
+  const format = options.format ?? "showdown";
   const byId = new Map(ownership.map((o) => [o.playerId, o]));
   const source = ownership.find((o) => o.source)?.source ?? null;
   const asOf = ownership.find((o) => o.asOf)?.asOf ?? null;
@@ -115,14 +116,13 @@ export function assessOwnership(
   const captainTotal = ownership.reduce((s, o) => s + (o.captainPct ?? 0), 0);
   const flexTotal = ownership.reduce((s, o) => s + (o.flexPct ?? 0), 0);
 
-  const captainOk = Math.abs(captainTotal - 1) <= thresholds.captainTotalTolerance;
-  const flexOk = Math.abs(flexTotal - 5) <= thresholds.flexTotalTolerance;
-  if (!captainOk) errors.push(`Captain ownership totals ${(captainTotal * 100).toFixed(0)}%, outside the expected ~100% (a valid Showdown captain field sums near one lineup's worth).`);
-  if (!flexOk) errors.push(`Flex ownership totals ${(flexTotal * 100).toFixed(0)}%, outside the expected ~500% (five flex slots).`);
   if (coverage < thresholds.minCoverage) warnings.push(`Only ${(coverage * 100).toFixed(0)}% of eligible players have ownership (need ${(thresholds.minCoverage * 100).toFixed(0)}%).`);
   if (massCoverage < thresholds.minMassCoverage) warnings.push(`Only ${(massCoverage * 100).toFixed(0)}% of projection mass is covered (need ${(thresholds.minMassCoverage * 100).toFixed(0)}%).`);
 
-  // If the caller declares the feed heuristic, it can never be validated.
+  // If the caller declares the feed heuristic (e.g. a single combined
+  // percentage that is not slot-level ownership at all), it can never be
+  // validated — and slot-sum invariants do not apply to it, because they test
+  // a structure the feed never claimed to have.
   if (options.heuristic) {
     const enabled = Boolean(options.optIntoHeuristic);
     return {
@@ -131,6 +131,22 @@ export function assessOwnership(
       features: { leverage: enabled, ownershipFade: enabled, duplicationModel: false },
     };
   }
+
+  // Slot-sum invariants for a feed claiming real slot-level ownership. Captain
+  // invariants only exist in Showdown; the flex slot count depends on format.
+  const hasCaptainData = ownership.some((o) => o.captainPct !== null);
+  let captainOk = true;
+  if (format === "showdown") {
+    if (!hasCaptainData) { captainOk = false; errors.push("Feed supplies no Captain-slot ownership. A Showdown feed must carry Captain separately, or be declared a heuristic."); }
+    else {
+      captainOk = Math.abs(captainTotal - 1) <= thresholds.captainTotalTolerance;
+      if (!captainOk) errors.push(`Captain ownership totals ${(captainTotal * 100).toFixed(0)}%, outside the expected ~100% (a valid Showdown captain field sums near one lineup's worth).`);
+    }
+  }
+  const flexSlots = format === "classic" ? 9 : 5;
+  // Tolerance was calibrated for 5 Showdown flex slots; scale it to the format.
+  const flexOk = Math.abs(flexTotal - flexSlots) <= thresholds.flexTotalTolerance * (flexSlots / 5);
+  if (!flexOk) errors.push(`Flex ownership totals ${(flexTotal * 100).toFixed(0)}%, outside the expected ~${flexSlots * 100}% (${flexSlots} roster slots).`);
 
   const validated = errors.length === 0
     && coverage >= thresholds.minCoverage

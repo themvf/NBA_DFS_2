@@ -109,8 +109,10 @@ export function detectExposureInfeasibility(
   if (captainMinTotal > n) {
     problems.push({ reason: "CAPTAIN_MIN_AGGREGATE", detail: `Captain minimums sum to ${captainMinTotal} across players, but only ${n} captain slots exist (one per lineup).` });
   }
-  // If every captain-eligible player has a max, they must jointly cover n captains.
-  if (anyCaptainCapPolicy && captainMaxTotal < n && policies.length && captainMaxTotal > 0) {
+  // If every captain-eligible player has a max, they must jointly cover n
+  // captains. captainMaxTotal === 0 (every eligible captain capped to zero) is
+  // the most extreme form of this infeasibility, not an exemption from it.
+  if (anyCaptainCapPolicy && captainMaxTotal < n && policies.length) {
     // Only a problem when the capped players are the ONLY captain-eligible pool.
     const cappedCaptainEligible = policies.filter((p) => (p.captain.maxPct !== null || p.exactTargetMode) && captainEligibleIds.has(p.playerId));
     if (cappedCaptainEligible.length === captainEligibleIds.size && captainEligibleIds.size > 0) {

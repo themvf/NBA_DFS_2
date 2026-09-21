@@ -663,13 +663,19 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
   const eligible= settings.projectionSource==='workload' ? prepared.filter(p=>workloadPoolEligible(p,now)) : prepared;
   // Phase 2: the SERVER authoritatively resolves ownership capability from the
   // actual feed — the client can never claim "validated". Missing ownership
-  // stays null. LineStar supplies a single value treated as flex ownership;
-  // captain ownership is unknown unless a separate feed provides it.
+  // stays null. LineStar supplies a single combined percentage, not slot-level
+  // ownership, so the feed is DECLARED heuristic: capability caps at
+  // heuristic_uncalibrated, and leverage runs only through the user's explicit
+  // opt-in (labeled "Uncalibrated estimate" everywhere). Validated-only
+  // features (duplication model, contrarian-captain thresholds) stay off.
   const ownershipAssessment = assessOwnership(
     eligible.filter(p=>!p.isOut).map(p=>({playerId:p.dkPlayerId, medianProjection: p.medianFpts ?? p.ourProj ?? null})),
     eligible.filter(p=>p.linestarOwnPct!=null).map(p=>({playerId:p.dkPlayerId, flexPct:(p.linestarOwnPct as number)/100, captainPct:null, source:'linestar', asOf:slate.modelAsOf})),
+    { heuristic: true, optIntoHeuristic: settings.useHeuristicOwnershipLeverage ?? true, format: slate.format },
   );
-  const resolvedSettings: NflOptimizerSettings = { ...settings, ownershipCapability: ownershipAssessment.capability };
+  const resolvedSettings: NflOptimizerSettings = { ...settings,
+    ownershipCapability: ownershipAssessment.capability,
+    ownershipLeverageEnabled: ownershipAssessment.features.leverage };
   const result = optimizeNflLineups(eligible, resolvedSettings);
   if(eligible.length!==slate.players.length)result.warnings.push(`${slate.players.length-eligible.length} players excluded: workload optimization requires an unstarted, matching salary game.`);
   if (result.lineups.some(l => l.slots.some(s => s.projectionSource === "calibrated" && Date.parse(s.player.calibrated!.kickoff) <= Date.now()))) throw new Error("A calibrated player's game started during optimization. Refresh the slate before regenerating.");

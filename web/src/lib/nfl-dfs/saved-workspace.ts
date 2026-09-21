@@ -32,6 +32,11 @@ export function restoreSavedLineups(snapshot: unknown, rows: SavedLineupRow[]): 
         linestarProj: p.linestar ?? null, linestarOwnPct: p.ownership ?? null, customProj: p.custom ?? null };
       return { slot: entry.slot, player, salary: entry.salary, multiplier: entry.multiplier ?? (entry.slot === 'CPT' ? 1.5 : 1), projection: entry.projection, projectionSource: entry.source };
     });
-    return { ...row, slots, playerIds: row.playerIds as number[], floorFpts: row.floorFpts, ceilingFpts: row.ceilingFpts, stackSummary: row.stackSummary as NflGeneratedLineup['stackSummary'] };
+    // Phase 4 (P4-AC4): the archetype label is persisted inside stackSummary;
+    // rehydrate it onto the lineup so fades/beneficiaries survive reload and
+    // the pre-export QA fade check still sees them.
+    const summary = row.stackSummary as (NflGeneratedLineup['stackSummary'] & { archetype?: NflGeneratedLineup['archetype'] | null }) | null;
+    return { ...row, slots, playerIds: row.playerIds as number[], floorFpts: row.floorFpts, ceilingFpts: row.ceilingFpts,
+      stackSummary: summary as NflGeneratedLineup['stackSummary'], archetype: summary?.archetype ?? undefined };
   });
 }

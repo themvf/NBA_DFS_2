@@ -47,8 +47,8 @@ export interface CompiledArchetype {
   eligibleCaptainIds: number[] | null;
   /** Captain must NOT be one of these (e.g. contrarian: not the chalk captain). */
   forbiddenCaptainIds: number[];
-  /** Team-count range across the 6 Showdown slots. */
-  teamCountRange: { min: number; max: number } | null;
+  /** Team-count range across the 6 Showdown slots, bound to the team it constrains. */
+  teamCountRange: { team: string; min: number; max: number } | null;
   /** Alternate scoring paths a fade provides; at least one must be satisfiable. */
   beneficiaries: BeneficiaryGroup[];
   /** Optional required minimum K/DST count (low-scoring script). */
@@ -168,7 +168,7 @@ export function compileArchetype(id: ArchetypeId, ctx: ArchetypeSlateContext, co
     case "favorite_onslaught": {
       if (!ctx.favoriteTeam) throw new Error("Favorite onslaught requires a known favorite team.");
       const favShare = config.favoriteSkew === "5-1" ? 5 : 4;
-      return { ...base, teamCountRange: { min: favShare, max: 6 },
+      return { ...base, teamCountRange: { team: ctx.favoriteTeam, min: favShare, max: 6 },
         summary: `${config.favoriteSkew ?? "4-2"} favorite skew (${ctx.favoriteTeam} wins decisively).` };
     }
 
@@ -176,8 +176,10 @@ export function compileArchetype(id: ArchetypeId, ctx: ArchetypeSlateContext, co
       if (!ctx.underdogTeam) throw new Error("Underdog comeback requires a known underdog team.");
       // Prefer an underdog captain and require opponent bring-back presence.
       const underdogCaptains = ctx.players.filter((p) => p.captainEligible && p.team === ctx.underdogTeam).map((p) => p.dkPlayerId);
+      // The count range is bound to the UNDERDOG team: at least two underdog
+      // players regardless of whether an underdog captain is available.
       return { ...base, eligibleCaptainIds: underdogCaptains.length ? underdogCaptains : null,
-        teamCountRange: { min: 2, max: 6 }, summary: `Underdog (${ctx.underdogTeam}) passing-volume response with bring-back.` };
+        teamCountRange: { team: ctx.underdogTeam, min: 2, max: 6 }, summary: `Underdog (${ctx.underdogTeam}) passing-volume response with bring-back.` };
     }
 
     case "low_scoring_k_dst":

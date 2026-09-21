@@ -79,7 +79,11 @@ export const DEFAULT_NFL_PUNT_POLICY: NflPuntPolicy = {
   absoluteMinSalary: 1000,               // $200–$800 hard-blocked; $1,000 is the first admissible tier.
   roleEvidenceRequiredBelowSalary: 3000,
   minimumRoleConfidence: 0.4,
-  minimumProjectedOpportunities: 1,
+  // No live feed supplies projected opportunities yet, and the check fails
+  // closed on null — so a non-null default would block EVERY cheap player on
+  // every slate regardless of his real role. Ship it disabled; set a value
+  // only once an opportunity feed actually populates the evidence.
+  minimumProjectedOpportunities: null,
   maxSalaryReliefPlayersPerLineup: 1,
   allowlistedPlayerIds: [],
   denylistedPlayerIds: [],
@@ -160,7 +164,12 @@ export function evaluatePuntEligibility(
   }
 
   if (evidence.availabilityState === "stale") return blocked("EVIDENCE_STALE");
-  if (evidence.roleConfidence === null || evidence.depthRole === null) return blocked("ROLE_UNKNOWN");
+  // Role confidence is the gate; depthRole is an informational label. Requiring
+  // a non-null label here would block every cheap player on slates whose feed
+  // carries confidence (e.g. derived from the player's own observed games) but
+  // no depth-chart string — confidence without a label is still evidence, a
+  // label without confidence is not.
+  if (evidence.roleConfidence === null) return blocked("ROLE_UNKNOWN");
   if (evidence.roleConfidence < policy.minimumRoleConfidence) {
     return blocked("ROLE_UNRESOLVED", `confidence ${(evidence.roleConfidence * 100).toFixed(0)}% < ${(policy.minimumRoleConfidence * 100).toFixed(0)}%.`);
   }

@@ -110,6 +110,16 @@ function main() {
     const b = compileArchetype(id, ctx(), config);
     assert.deepEqual(a, b, `${id} compiles deterministically`);
   }
+  // Regression (found in review): the team-count range is bound to the team the
+  // archetype is ABOUT — underdog for comeback, favorite for onslaught — never
+  // implicitly to settings.favoriteTeam.
+  assert.equal(compileArchetype("underdog_comeback", ctx(), {}).teamCountRange?.team, "BBB", "comeback range binds to the underdog");
+  assert.equal(compileArchetype("favorite_onslaught", ctx(), {}).teamCountRange?.team, "AAA", "onslaught range binds to the favorite");
+  const comeback = optimizeNflLineups(pool(), settings({ nLineups: 2, archetypeQuotas: [quota("underdog_comeback", 2, 2)] }));
+  for (const l of comeback.lineups) {
+    assert.ok(l.playerIds.filter((id) => pool().find((p) => p.dkPlayerId === id)!.team === "BBB").length >= 2, "comeback lineup carries at least two underdog players");
+  }
+
   // Low-scoring requires K/DST presence.
   const kdst = optimizeNflLineups(pool(), settings({ nLineups: 2, archetypeQuotas: [quota("low_scoring_k_dst", 2, 2)] }));
   for (const l of kdst.lineups) {

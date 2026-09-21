@@ -95,10 +95,33 @@ function main() {
     player({ dkPlayerId: 301, salary: 2400, position: "RB", team: "BBB", roleConfidence: 0.7, projectedOpportunities: 5, ourProj: 6 }),
   ];
   const capped = optimizeNflLineups(reliefPool, showdownSettings({ nLineups: 4 }));
+  // The cap test must not pass vacuously: both relief players are ELIGIBLE.
+  for (const id of [300, 301]) {
+    const d = capped.eligibility!.find((e) => e.dkPlayerId === id)!;
+    assert.equal(d.eligible, true, `relief player ${id} is eligible`);
+    assert.equal(d.salaryRelief, true, `relief player ${id} counts as salary relief`);
+  }
   for (const lineup of capped.lineups) {
     const relief = lineup.playerIds.filter((id) => id === 300 || id === 301).length;
     assert.ok(relief <= DEFAULT_NFL_PUNT_POLICY.maxSalaryReliefPlayersPerLineup, "no lineup exceeds the salary-relief cap");
   }
+
+  // --- Regression (found in review): a cheap veteran in PRODUCTION shape ---
+  // The live slate supplies historyGames but never depthRole / roleConfidence /
+  // projectedOpportunities. Observed history must serve as weak role evidence:
+  // a $2,800 player with 6 games of his own is eligible salary relief, while a
+  // no-history body at the same price still fails closed.
+  const productionShape = optimizeNflLineups(
+    [...corePool(),
+      player({ dkPlayerId: 600, salary: 2800, position: "WR", team: "BBB", historyGames: 6, ourProj: 7 }),
+      player({ dkPlayerId: 601, salary: 2800, position: "WR", team: "BBB", historyGames: 0, ourProj: 7 })],
+    showdownSettings());
+  const veteran = productionShape.eligibility!.find((e) => e.dkPlayerId === 600)!;
+  assert.equal(veteran.eligible, true, "cheap veteran with observed games is eligible without a feed");
+  assert.equal(veteran.salaryRelief, true);
+  const noHistory = productionShape.eligibility!.find((e) => e.dkPlayerId === 601)!;
+  assert.equal(noHistory.eligible, false, "cheap no-history body still fails closed");
+  assert.equal(noHistory.reasonCode, "ROLE_UNRESOLVED");
 
   // --- P1-AC3/§8.3: an allowlisted cheap player is admitted, Flex-only by default ---
   const overrides: PuntOverride[] = [{ playerId: 400, reason: "Active as returner/RB3 with a verified package", user: "tester", at: "2026-09-20T12:00:00Z", slot: "FLEX" }];
