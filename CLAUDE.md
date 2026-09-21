@@ -6876,3 +6876,35 @@ effects. Every transfer is reported with its inputs (`inherited[]`,
 `unresolved[]`, `donorsWithoutOpportunity[]`) specifically so it can be graded
 after the week. Grade it before treating any of these constants as settled, and
 bump the version rather than tuning in place.
+
+---
+
+## NFL DFS Workload — Opponent Term Study (2026-09-21)
+
+`model/nfl_dfs_workload_opponent.py`. Pre-registered before scoring: does
+adding the OPPONENT to the team attempts/carries/targets budget in
+`model/nfl_dfs_workload.py` (own history only, shrunk to league) lower
+walk-forward error? Two fixed variants, paired MAE vs the production
+candidate on the same 1,136 team-games per field (2024 w1 → 2026 w2),
+bootstrap CI resampling weeks (n=38). Survive only if the CI lies below zero.
+
+| field | candidate MAE | V1 allowed-volume, +0.5×(opp allowed − league) | V2 archetype pace, ×(plays faced / league)^0.5 |
+|---|---:|---|---|
+| attempts | 6.151 | −0.054 [−0.111, +0.003] DEAD | −0.024 [−0.055, +0.007] DEAD |
+| carries | 5.887 | **−0.107 [−0.164, −0.050] SURVIVES** | +0.006 [−0.017, +0.028] DEAD |
+| targets | 5.861 | −0.051 [−0.113, +0.009] DEAD | −0.020 [−0.053, +0.012] DEAD |
+
+**Read:** the opponent's allowed RUSH volume is a real, persistent tendency
+(teams run more on defences that get run on, and game script follows); pass
+volume allowed is not, at least not at the 0.5 weight. The archetype-derived
+pace variant, the reason the question was asked, adds nothing on any field.
+Effect size where it survives is ~0.1 carries/game of MAE, roughly a 2%
+improvement: real, small. Both constants were stated priors, not fitted.
+
+**Not promoted.** The surviving carries term is a measurement, not a
+production change; shipping it means a new workload version with the carries
+adjustment only (never attempts/targets on the strength of this), shadow
+tracked for a slate cycle first. Do not re-fit the 0.5 weight or re-slice
+attempts/targets to rescue them — that needs a separately registered study.
+`--tonight --teams A,B` prints research budgets for one slate and writes
+nothing.
