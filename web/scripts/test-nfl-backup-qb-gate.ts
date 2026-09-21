@@ -90,3 +90,38 @@ assert.equal(optimizeNflLineups([...pool.slice(0, 6), p(92, 5000, 15, 1, "AAA")]
   .lineups.some((l) => l.playerIds.includes(92)), false);
 
 console.log("Zero-history gate: removal, control, lock and one-game cases passed.");
+
+// --- 3. Unlisted depth beside an identified QB1 -------------------------------------
+// Jake Haener, NYG, 2026 week 2: Sleeper had no depth number for him, so he resolved
+// to "QB role unresolved" and was NOT blocked, at a position-prior 13.3 points, while
+// Jaxson Dart was listed QB1 in the same capture. A team with a QB1 makes an unlisted
+// QB a backup; a team without one is left alone.
+import { applyTeamQbContext, identifyTeamQb1s } from "../src/lib/nfl-dfs/availability";
+const nyg = (depth: number | null) => resolveAvailability({ team: "NYG", position: "QB", fetchedAt: new Date(now - 3600e3).toISOString(),
+  sleeper: { team: "NYG", position: "QB", depth_chart_order: depth, status: "Active" } }, "NYG", "QB", now);
+const dart = nyg(1), haener = nyg(null), winston = nyg(2);
+assert.equal(haener.blockedReason, null, "precondition: alone, an unlisted QB is not blocked");
+const qb1s = identifyTeamQb1s([
+  { team: "NYG", position: "QB", name: "Jaxson Dart", availability: dart },
+  { team: "NYG", position: "QB", name: "Jake Haener", availability: haener },
+  { team: "NYG", position: "QB", name: "Jameis Winston", availability: winston },
+  { team: "NYG", position: "WR", name: "Malik Nabers", availability: resolveAvailability(undefined, "NYG", "WR", now) },
+]);
+assert.equal(qb1s.get("NYG")?.name, "Jaxson Dart");
+const gatedHaener = applyTeamQbContext(haener, "QB", qb1s.get("NYG"));
+assert.match(gatedHaener.blockedReason ?? "", /unresolved while Jaxson Dart is listed QB1/);
+// The starter, the listed backup and a non-QB are untouched.
+assert.equal(applyTeamQbContext(dart, "QB", qb1s.get("NYG")).blockedReason, null);
+assert.match(applyTeamQbContext(winston, "QB", qb1s.get("NYG")).blockedReason ?? "", /Listed QB2/);
+assert.equal(applyTeamQbContext(resolveAvailability(undefined, "NYG", "WR", now), "WR", qb1s.get("NYG")).blockedReason, null);
+// No identified QB1 on the team: nothing is inferred, nobody is blocked.
+assert.equal(applyTeamQbContext(haener, "QB", undefined).blockedReason, null);
+// Two listed QB1s is conflicting evidence and blocks nobody.
+assert.equal(identifyTeamQb1s([
+  { team: "CLE", position: "QB", name: "A", availability: nyg(1) }, { team: "CLE", position: "QB", name: "B", availability: nyg(1) },
+]).has("CLE"), false);
+// A stale QB1 listing still blocks the unlisted teammate: blocks apply, clearances do not.
+const staleDart = resolveAvailability({ team: "NYG", position: "QB", fetchedAt: new Date(now - 6 * 864e5).toISOString(),
+  sleeper: { team: "NYG", position: "QB", depth_chart_order: 1, status: "Active" } }, "NYG", "QB", now);
+assert.ok(applyTeamQbContext(haener, "QB", identifyTeamQb1s([{ team: "NYG", position: "QB", name: "Jaxson Dart", availability: staleDart }]).get("NYG")).blockedReason);
+console.log("Unlisted-depth QB beside an identified QB1: blocked; starter, listed backup, non-QB and QB1-less teams untouched.");
