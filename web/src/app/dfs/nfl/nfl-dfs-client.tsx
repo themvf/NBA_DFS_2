@@ -12,6 +12,11 @@ import { AlertTriangle, BarChart3, CheckCircle2, Download, FileUp, HelpCircle, L
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { refreshNflSlateProjections, listSavedNflSlates, loadSavedNflWorkspace, loadSavedNflLineups, readNflOptimizerAudit, applyNflComparison, loadNflSalaryCsv, runNflOptimizer, type NflComparisonSource, type NflWorkspaceSlate } from "./actions";
 import type { NflGeneratedLineup, NflOptimizerSettings, NflProjectionSource } from "./nfl-optimizer";
+import { DEFAULT_NFL_PUNT_POLICY } from "@/lib/nfl-dfs/punt-policy";
+import { PUNT_PRESETS, resolvePuntPreset, describePuntPolicy, type PuntPresetKey } from "@/lib/nfl-dfs/punt-presets";
+import { objectiveLabel } from "@/lib/nfl-dfs/ownership-capability";
+import { ARCHETYPE_LABELS, type ArchetypeId, type ArchetypeQuota } from "@/lib/nfl-dfs/archetypes";
+import { runNflPreExportQa, NFL_QA_RULESET_VERSION, type QaReport, type QaOverride } from "@/lib/nfl-dfs/pre-export-qa";
 import { parseNflComparisonCsv } from "@/lib/nfl-dfs/comparison-csv";
 import { exportNflDkEntries } from "@/lib/nfl-dfs/entry-export";
 import {DEFAULT_WORKLOAD_POSITIONS} from "@/lib/nfl-dfs/workload-selection";
@@ -66,9 +71,31 @@ export default function NflDfsClient() {
   const [columnView, setColumnView] = useState("essential");
   const [showBuilder, setShowBuilder] = useState(false);
   const [explainPlayer, setExplainPlayer] = useState<NflWorkspacePlayer | null>(null);
-  const [settings, setSettings] = useState({ mode: "gpp" as "cash" | "gpp", projectionSource: "our" as NflProjectionSource, allowDkFallback: true, workloadPositions:{...DEFAULT_WORKLOAD_POSITIONS}, situations:DEFAULT_SITUATIONS, nLineups: 20, minSalary: 49000, minPlayerSalary: 1000, requireObservedHistory: true, maxExposure: .6, minUnique: 2, stackPassCatchers: 1 as 0 | 1 | 2, bringBack: true, randomness: .08 });
+  const [eligibility, setEligibility] = useState<import("./nfl-optimizer").NflEligibilityDecision[]>([]);
+  const [ownership, setOwnership] = useState<import("@/lib/nfl-dfs/ownership-capability").OwnershipAssessment | null>(null);
+  const [exposureReport, setExposureReport] = useState<import("./nfl-optimizer").NflExposureReport[]>([]);
+  const [archetypeQuotas, setArchetypeQuotas] = useState<ArchetypeQuota[]>([]);
+  const [salaryBands, setSalaryBands] = useState<import("@/lib/nfl-dfs/salary-duplication").SalaryBandReport[]>([]);
+  const [duplication, setDuplication] = useState<import("@/lib/nfl-dfs/salary-duplication").LineupDuplication[]>([]);
+  const [qaOverrides, setQaOverrides] = useState<QaOverride[]>([]);
+  // Phase 4 archetype configuration: the favorite team (underdog is the other
+  // Showdown team) and the players a fade archetype fades.
+  const [archetypeFavorite, setArchetypeFavorite] = useState<string>("");
+  const [archetypeFades, setArchetypeFades] = useState<number[]>([]);
+  // Merge note: main's #216/#217 defaults (minPlayerSalary + observed-history
+  // gate) are kept alongside the punt policy — the policy owns cheap-player
+  // roles, while requireObservedHistory still removes any-priced players whose
+  // projection is a position average, not theirs.
+  const [settings, setSettings] = useState({ mode: "gpp" as "cash" | "gpp", projectionSource: "our" as NflProjectionSource, allowDkFallback: true, workloadPositions:{...DEFAULT_WORKLOAD_POSITIONS}, situations:DEFAULT_SITUATIONS, nLineups: 20, minSalary: 45000, minPlayerSalary: 1000, requireObservedHistory: true, maxExposure: .6, minUnique: 2, stackPassCatchers: 1 as 0 | 1 | 2, bringBack: true, randomness: .08, useHeuristicOwnershipLeverage: true, puntPolicy: {...DEFAULT_NFL_PUNT_POLICY} as import("@/lib/nfl-dfs/punt-policy").NflPuntPolicy, puntOverrides: [] as import("@/lib/nfl-dfs/punt-policy").PuntOverride[] });
 
-  const currentSettings = generationSettings(settings, slate?.format ?? 'classic', locked, excluded, targetExposure);
+  const slateTeams = useMemo(() => [...new Set((slate?.players ?? []).map((p) => p.team))].sort(), [slate]);
+  const archetypeUnderdog = archetypeFavorite ? slateTeams.find((t) => t !== archetypeFavorite) ?? null : null;
+  const fadeConfig = archetypeFades.length ? { fadePlayerIds: archetypeFades } : undefined;
+  const currentSettings = { ...generationSettings(settings, slate?.format ?? 'classic', locked, excluded, targetExposure),
+    archetypeQuotas: archetypeQuotas.length ? archetypeQuotas : undefined,
+    favoriteTeam: archetypeFavorite || undefined,
+    underdogTeam: archetypeUnderdog ?? undefined,
+    archetypeConfigs: fadeConfig ? { single_chalk_fade: { fadePlayerIds: archetypeFades.slice(0, 1) }, double_fade: { fadePlayerIds: archetypeFades.slice(0, 2) } } : undefined };
   const settingsChanged = Boolean(completedSettings && !sameGenerationSettings(completedSettings, currentSettings));
 
   const matching = useMemo(() => (slate?.players ?? []).filter((p) => matchesPoolPosition(p.position, position) && (!query.trim() || `${p.name} ${p.team} ${p.opponent ?? ""}`.toLowerCase().includes(query.trim().toLowerCase()))), [slate, position, query]);
@@ -91,8 +118,31 @@ export default function NflDfsClient() {
     return [...map.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
   }, [lineups]);
 
+  // Phase 6: single pre-export QA decision. Recomputed whenever the run, its
+  // reports, or the overrides change — a new run resets overrides (P6-AC3).
+  const qaReport: QaReport | null = useMemo(() => {
+    if (!lineups.length) return null;
+    return runNflPreExportQa({
+      format: (completedSettings?.format ?? slate?.format ?? "showdown") as "classic" | "showdown",
+      requestedLineups: completedSettings?.nLineups ?? lineups.length,
+      lineups: lineups.map((l) => ({ lineupNumber: l.lineupNumber, playerIds: l.playerIds, totalSalary: l.totalSalary, slots: l.slots.map((s) => ({ slot: s.slot, playerId: s.player.dkPlayerId })), archetype: l.archetype ?? null })),
+      eligibility: eligibility.map((e) => ({ dkPlayerId: e.dkPlayerId, name: e.name, eligible: e.eligible, reasonCode: e.reasonCode, overridden: e.overridden })),
+      exposureReport,
+      salaryBandReport: salaryBands,
+      duplication,
+      ownership: ownership ? { capability: ownership.capability, errors: ownership.errors, features: { leverage: ownership.features.leverage } } : undefined,
+      newerRunAvailable: Boolean(slate?.refreshAvailable),
+    }, qaOverrides);
+  }, [lineups, eligibility, exposureReport, salaryBands, duplication, ownership, completedSettings, slate, qaOverrides]);
+
   async function refreshLibrary() {
     const saved = await listSavedNflSlates(); setSavedSlates(saved); return saved;
+  }
+  // A run's QA inputs belong to THAT run. Loading a different run (or a fresh
+  // slate) must never leave a previous generate's eligibility/exposure/QA
+  // overrides behind, or the export gate would judge run B against run A.
+  function clearRunReports() {
+    setEligibility([]); setOwnership(null); setExposureReport([]); setSalaryBands([]); setDuplication([]); setQaOverrides([]);
   }
   function openSaved(uploadId: string, restoreLineups = true) {
     // The chooser's placeholder option carries an empty value. Posting that to
@@ -104,7 +154,7 @@ export default function NflDfsClient() {
       try {
         const next = await loadSavedNflWorkspace(uploadId);
         setSlate(next.slate); setLibraryId(uploadId); setSavedRuns(next.runs);
-        setLineups([]); setRunId(null); setCompletedSettings(null); setShowVisuals(false);
+        setLineups([]); setRunId(null); setCompletedSettings(null); setShowVisuals(false); clearRunReports();
         setLocked([]); setExcluded([]); setTargetExposure({}); setEntryFile(null); setQuery(''); setPosition('ALL'); setPlayerPage(1);
         try { localStorage.setItem('nfl-saved-slate', uploadId); } catch { /* Selection memory is optional. */ }
         setMessage('Saved player pool loaded. Availability refreshed.');
@@ -135,13 +185,14 @@ export default function NflDfsClient() {
     startTransition(async () => {
       try {
         const saved = await loadSavedNflLineups(slate.uploadId, id);
+        clearRunReports();
         setLineups(saved.lineups); setRunId(saved.runId); setCompletedSettings(saved.settings); setShowVisuals(false);
         setMessage('Saved lineups restored with their original scores. Review current availability before exporting.'); setError(null);
       } catch (reason) { setError(reason instanceof Error ? reason.message : 'Saved lineups could not be loaded.'); }
     });
   }
   function loadSalary(file: File | null) {
-    if (!file) return; setError(null); setMessage(null); setLineups([]); setShowVisuals(false); setTargetExposure({}); setLocked([]); setExcluded([]); setRunId(null);
+    if (!file) return; setError(null); setMessage(null); setLineups([]); setShowVisuals(false); setTargetExposure({}); setLocked([]); setExcluded([]); setRunId(null); clearRunReports();
     const form = new FormData(); form.set("file", file);
     startTransition(async () => { try { const result = await loadNflSalaryCsv(form); setSlate(result); setLibraryId(result.uploadId); setCompletedSettings(null); setEntryFile(null); setSavedRuns((await loadSavedNflWorkspace(result.uploadId)).runs); await refreshLibrary(); try { localStorage.setItem("nfl-saved-slate", result.uploadId); } catch {} setMessage(`${file.name} saved with ${result.players.length} players and linked to the latest projection run.`); } catch (reason) { setError(reason instanceof Error ? reason.message : "Salary upload failed."); } });
   }
@@ -168,9 +219,30 @@ export default function NflDfsClient() {
     if (!slate) return; setError(null); setMessage(null);
     const payload = currentSettings;
     setShowVisuals(false);
-    startTransition(async () => { try { const response = await runNflOptimizer(slate.uploadId, payload); setLineups(response.result.lineups); setSlate(response.slate); setCompletedSettings(payload); setRunId(response.runId); setSavedRuns((await loadSavedNflWorkspace(slate.uploadId)).runs); setMessage(`Saved optimizer run ${response.runId.slice(0, 8)} with ${response.result.lineups.length}/${settings.nLineups} lineups. ${response.result.warnings.join(" ")}`); } catch (reason) { setError(reason instanceof Error ? reason.message : "Optimizer failed."); } });
+    startTransition(async () => { try { const response = await runNflOptimizer(slate.uploadId, payload); setLineups(response.result.lineups); setEligibility(response.result.eligibility ?? []); setOwnership(response.ownership ?? null); setExposureReport(response.result.exposureReport ?? []); setSalaryBands(response.result.salaryBandReport ?? []); setDuplication(response.result.duplication ?? []); setQaOverrides([]); setSlate(response.slate); setCompletedSettings(payload); setRunId(response.runId); setSavedRuns((await loadSavedNflWorkspace(slate.uploadId)).runs); setMessage(`Saved optimizer run ${response.runId.slice(0, 8)} with ${response.result.lineups.length}/${settings.nLineups} lineups. ${response.result.warnings.join(" ")}`); } catch (reason) { setError(reason instanceof Error ? reason.message : "Optimizer failed."); } });
   }
-  async function exportEntries() { if (!entryFile || !lineups.length) return; try { downloadText(`nfl-lineups-${runId?.slice(0, 8) ?? "export"}.csv`, exportNflDkEntries(await entryFile.text(), lineups)); } catch (reason) { setError(reason instanceof Error ? reason.message : "Entry export failed."); } }
+  function allowCheapPlayer(dkPlayerId: number, name: string) {
+    // Salary is never a valid reason — the spec requires a role reason (§8.1).
+    const reason = window.prompt(`Allow ${name} for this run. Record why (role/opportunity evidence — salary alone is not valid):`)?.trim();
+    if (!reason) return;
+    setSettings((s) => ({
+      ...s,
+      puntPolicy: { ...s.puntPolicy, allowlistedPlayerIds: [...new Set([...s.puntPolicy.allowlistedPlayerIds, dkPlayerId])] },
+      puntOverrides: [...s.puntOverrides.filter((o) => o.playerId !== dkPlayerId), { playerId: dkPlayerId, reason, user: "local", at: new Date().toISOString(), slot: "FLEX" as const }],
+    }));
+    setMessage(`${name} allowed for this run (Flex-only). Regenerate to apply.`);
+  }
+  function overrideQaCheck(checkId: string) {
+    const reason = window.prompt(`Override QA check "${checkId}". Record why:`)?.trim();
+    if (!reason) return;
+    setQaOverrides((cur) => [...cur.filter((o) => o.checkId !== checkId), { checkId, reason, user: "local", at: new Date().toISOString(), rulesetVersion: NFL_QA_RULESET_VERSION, runId: runId ?? "unsaved" }]);
+  }
+  async function exportEntries() {
+    if (!entryFile || !lineups.length) return;
+    // Phase 6 (P6-AC1): export is blocked while any un-overridden blocker remains.
+    if (qaReport && qaReport.decision === "blocked") { setError(`Export blocked: ${qaReport.openBlockers.join(", ")}. Resolve or override each blocker first.`); return; }
+    try { downloadText(`nfl-lineups-${runId?.slice(0, 8) ?? "export"}.csv`, exportNflDkEntries(await entryFile.text(), lineups)); } catch (reason) { setError(reason instanceof Error ? reason.message : "Entry export failed."); }
+  }
 
   return <div className="nfl-dfs-workspace mx-auto max-w-[1600px] space-y-4">
     <header className="nfl-workspace-heading"><div><p className="text-xs font-semibold uppercase tracking-widest text-emerald-700">DraftKings · NFL</p><h1 className="mt-1 text-2xl font-bold tracking-tight">Lineup workspace</h1><p className="mt-1 text-sm text-slate-500">Research your pool. Build your portfolio. Review and export.</p></div><span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-900">Experimental model · research use</span></header>
@@ -218,9 +290,43 @@ export default function NflDfsClient() {
 
         <section className="rounded-xl border bg-white p-4 shadow-sm"><h2 className="font-bold">Build lineups</h2><div className="mt-4 space-y-3"><Field label="Objective"><select value={settings.mode} onChange={(e) => setSettings({ ...settings, mode: e.target.value as "cash" | "gpp" })} className="control"><option value="gpp">GPP ceiling</option><option value="cash">Cash floor</option></select></Field><Field label="Projection source"><select value={settings.projectionSource} onChange={(e) => setSettings({ ...settings, projectionSource: e.target.value as NflProjectionSource })} className="control">{Object.entries(SOURCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
           <div className="grid grid-cols-2 gap-2"><Field label="Lineups"><input type="number" min={1} max={150} value={settings.nLineups} onChange={(e) => setSettings({ ...settings, nLineups: Number(e.target.value) })} className="control" /></Field><Field label="Min lineup salary"><input type="number" step={100} value={settings.minSalary} onChange={(e) => setSettings({ ...settings, minSalary: Number(e.target.value) })} className="control" /></Field><Field label="Max exposure %"><input type="number" min={1} max={100} value={Math.round(settings.maxExposure * 100)} onChange={(e) => setSettings({ ...settings, maxExposure: Number(e.target.value) / 100 })} className="control" /></Field><Field label="Min unique"><input type="number" min={1} max={9} value={settings.minUnique} onChange={(e) => setSettings({ ...settings, minUnique: Number(e.target.value) })} className="control" /></Field></div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="flex items-center justify-between"><h3 className="text-sm font-bold text-slate-800">Cheap-player policy</h3></div>
+            <Field label="Preset"><select className="control" value={settings.puntPolicy.mode} onChange={(e) => setSettings({ ...settings, puntPolicy: resolvePuntPreset(e.target.value as PuntPresetKey, settings.puntPolicy) })}>{PUNT_PRESETS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}</select></Field>
+            <ul className="mt-2 list-disc space-y-1 pl-4 text-[11px] text-slate-600">{describePuntPolicy(settings.puntPolicy).map((line) => <li key={line}>{line}</li>)}</ul>
+            {eligibility.some((e) => !e.eligible && e.reasonCode !== "INACTIVE" && e.reasonCode !== "MANUAL_EXCLUSION") ? <details className="mt-2"><summary className="cursor-pointer text-[11px] font-bold text-amber-800">{eligibility.filter((e) => !e.eligible && e.reasonCode !== "INACTIVE" && e.reasonCode !== "MANUAL_EXCLUSION").length} cheap player(s) blocked — review</summary><div className="mt-1 max-h-40 space-y-1 overflow-auto">{eligibility.filter((e) => !e.eligible && e.reasonCode !== "INACTIVE" && e.reasonCode !== "MANUAL_EXCLUSION").map((e) => <div key={e.dkPlayerId} className="flex items-start justify-between gap-2 rounded border bg-white p-1.5 text-[11px]"><span><b>{e.name}</b> <span className="text-slate-400">{dollars(e.salary)}</span><span className="block text-slate-500">{e.reason}</span></span><button type="button" className="shrink-0 rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800" onClick={() => allowCheapPlayer(e.dkPlayerId, e.name)}>Allow for run</button></div>)}</div></details> : null}
+          </div>
+          {slate.format === "showdown" ? <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px]">
+            <h3 className="text-sm font-bold text-slate-800">Portfolio plan (archetypes)</h3>
+            <p className="mt-0.5 text-slate-500">Assign lineup quotas by strategy. Leave all off for Standard ceiling only. Names describe strategy, not expected profit.</p>
+            <div className="mt-2 space-y-1">{(Object.keys(ARCHETYPE_LABELS) as ArchetypeId[]).map((id) => {
+              const q = archetypeQuotas.find((x) => x.archetypeId === id);
+              return <div key={id} className="flex items-center gap-2"><label className="flex flex-1 items-center gap-1.5"><input type="checkbox" checked={Boolean(q?.enabled)} onChange={(e) => setArchetypeQuotas((cur) => { const others = cur.filter((x) => x.archetypeId !== id); return e.target.checked ? [...others, { archetypeId: id, minLineups: 1, maxLineups: settings.nLineups, enabled: true }] : others; })} />{ARCHETYPE_LABELS[id]}</label>{q?.enabled ? <><input aria-label={`${ARCHETYPE_LABELS[id]} min`} type="number" min={0} max={settings.nLineups} value={q.minLineups} onChange={(e) => setArchetypeQuotas((cur) => cur.map((x) => x.archetypeId === id ? { ...x, minLineups: Number(e.target.value) } : x))} className="h-7 w-12 rounded border px-1 text-right" /><span>–</span><input aria-label={`${ARCHETYPE_LABELS[id]} max`} type="number" min={0} max={settings.nLineups} value={q.maxLineups} onChange={(e) => setArchetypeQuotas((cur) => cur.map((x) => x.archetypeId === id ? { ...x, maxLineups: Number(e.target.value) } : x))} className="h-7 w-12 rounded border px-1 text-right" /></> : null}</div>;
+            })}</div>
+            {archetypeQuotas.some((q) => q.enabled && (q.archetypeId === "favorite_onslaught" || q.archetypeId === "underdog_comeback")) ? <div className="mt-2">
+              <Field label="Favorite team (required by game-script archetypes)"><select className="control" value={archetypeFavorite} onChange={(e) => setArchetypeFavorite(e.target.value)}><option value="">Choose…</option>{slateTeams.map((t) => <option key={t} value={t}>{t}</option>)}</select></Field>
+              {archetypeFavorite ? <p className="mt-0.5 text-slate-500">Underdog: {archetypeUnderdog ?? "—"}</p> : <p className="mt-0.5 text-amber-800">Pick the Vegas favorite; generation fails without it.</p>}
+            </div> : null}
+            {archetypeQuotas.some((q) => q.enabled && (q.archetypeId === "single_chalk_fade" || q.archetypeId === "double_fade")) ? <div className="mt-2 space-y-1">
+              <p className="font-bold text-slate-700">Faded players (fades are applied per-lineup; teammates form the default beneficiary path)</p>
+              {[0, 1].slice(0, archetypeQuotas.some((q) => q.enabled && q.archetypeId === "double_fade") ? 2 : 1).map((i) => <select key={i} aria-label={`Fade ${i + 1}`} className="control" value={archetypeFades[i] ?? ""} onChange={(e) => setArchetypeFades((cur) => { const next = [...cur]; if (e.target.value) next[i] = Number(e.target.value); else next.splice(i, 1); return [...new Set(next)]; })}>
+                <option value="">Fade {i + 1}: choose…</option>
+                {[...(slate?.players ?? [])].sort((a, b) => (b.ourProj ?? 0) - (a.ourProj ?? 0)).slice(0, 30).map((p) => <option key={p.dkPlayerId} value={p.dkPlayerId}>{p.name} ({p.team} · {dollars(p.salary)})</option>)}
+              </select>)}
+              {!archetypeFades.length ? <p className="text-amber-800">A fade archetype fails generation until a faded player is chosen.</p> : null}
+            </div> : null}
+          </div> : null}
+          {ownership ? <div className={`rounded-lg border p-3 text-[11px] ${ownership.capability === "validated" ? "border-emerald-200 bg-emerald-50" : ownership.capability === "heuristic_uncalibrated" ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50"}`}>
+            <div className="flex items-center justify-between"><h3 className="text-sm font-bold text-slate-800">Ownership</h3><span className="rounded-full border bg-white px-2 py-0.5 font-bold uppercase">{ownership.capability.replace(/_/g, " ")}</span></div>
+            <p className="mt-1 font-semibold text-slate-700">Objective: {objectiveLabel(ownership.capability)}</p>
+            <div className="mt-1 grid grid-cols-2 gap-x-3 text-slate-600"><span>Source: {ownership.source ?? "none"}</span><span>Coverage: {(ownership.coverage * 100).toFixed(0)}%</span><span>CPT total: {(ownership.captainTotal * 100).toFixed(0)}%</span><span>FLEX total: {(ownership.flexTotal * 100).toFixed(0)}%</span></div>
+            <p className="mt-1 text-slate-600">Leverage {ownership.features.leverage ? "on" : "off"} · Ownership fade {ownership.features.ownershipFade ? "on" : "off"} · Duplication model {ownership.features.duplicationModel ? "on" : "off"}</p>
+            {ownership.errors.length ? <ul className="mt-1 list-disc pl-4 text-red-700">{ownership.errors.map((e) => <li key={e}>{e}</li>)}</ul> : null}
+            {ownership.warnings.length ? <ul className="mt-1 list-disc pl-4 text-amber-800">{ownership.warnings.map((w) => <li key={w}>{w}</li>)}</ul> : null}
+          </div> : null}
           <details className="rounded-lg border p-3"><summary className="cursor-pointer text-sm font-semibold">Advanced settings</summary><div className="mt-3 space-y-3">          {settings.mode === "gpp" && slate.format === "classic" ? <><Field label="QB pass catchers"><select value={settings.stackPassCatchers} onChange={(e) => setSettings({ ...settings, stackPassCatchers: Number(e.target.value) as 0 | 1 | 2 })} className="control"><option value={0}>No requirement</option><option value={1}>At least 1</option><option value={2}>At least 2</option></select></Field><label className="check"><input type="checkbox" checked={settings.bringBack} onChange={(e) => setSettings({ ...settings, bringBack: e.target.checked })} />Require opposing bring-back</label></> : null}
-          <Field label="Min player salary"><input type="number" min={0} step={100} value={settings.minPlayerSalary} onChange={(e) => setSettings({ ...settings, minPlayerSalary: Number(e.target.value) })} className="control" /><p className="mt-1 text-[11px] text-slate-500">Drops minimum-priced roster filler from the pool before solving. On Showdown this keeps $200 third-stringers out of lineups; set 0 to allow them. Locked players are kept regardless.</p></Field><Field label={`Randomness (${Math.round(settings.randomness * 100)}%)`}><input type="range" min={0} max={.25} step={.01} value={settings.randomness} onChange={(e) => setSettings({ ...settings, randomness: Number(e.target.value) })} className="w-full" /></Field><label className="check"><input type="checkbox" checked={settings.requireObservedHistory} onChange={(e) => setSettings({ ...settings, requireObservedHistory: e.target.checked })} />Require observed games (drops players projected purely from position averages)</label><label className="check"><input type="checkbox" checked={settings.allowDkFallback} onChange={(e) => setSettings({ ...settings, allowDkFallback: e.target.checked })} />Visible DK Avg fallback if selected source is missing</label></div></details><button disabled={pending} onClick={generate} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 text-sm font-bold text-white disabled:opacity-40"><Play className="h-4 w-4" />{pending ? "Working…" : "Generate & save"}</button><button type="button" onClick={() => setWorkspaceView(workspaceView === "lineups" ? "players" : "lineups")} className="min-h-10 w-full rounded-lg border text-sm font-semibold">{workspaceView === "lineups" ? "Back to player pool" : `Review ${lineups.length} lineups →`}</button></div></section>
-        <div hidden={workspaceView !== "lineups"} className="space-y-4">        {lineups.length ? <>{completedSettings && settingsChanged && <Notice>Settings changed. Displayed lineups still use {SOURCE_LABELS[completedSettings.projectionSource]} / {completedSettings.mode}. Generate again to apply changes to settings, locks, exclusions, or exposure.</Notice>}<Exposure rows={exposures} total={lineups.length} /><section className="rounded-xl border bg-white p-4 shadow-sm"><h2 className="font-bold">DraftKings export</h2><p className="mt-1 text-xs text-slate-500">Your DK entries template supplies the entry IDs; generated rosters fill its slot columns.</p><input ref={entryRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => setEntryFile(e.target.files?.[0] ?? null)} /><button onClick={() => entryRef.current?.click()} className="mt-3 min-h-10 w-full rounded-lg border text-sm font-bold">{entryFile?.name ?? "Select entry template"}</button><button disabled={!entryFile} onClick={() => void exportEntries()} className="mt-2 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 text-sm font-bold text-white disabled:opacity-40"><Download className="h-4 w-4" />Export lineups</button></section></> : null}
+          <Field label={`Randomness (${Math.round(settings.randomness * 100)}%)`}><input type="range" min={0} max={.25} step={.01} value={settings.randomness} onChange={(e) => setSettings({ ...settings, randomness: Number(e.target.value) })} className="w-full" /></Field><label className="check"><input type="checkbox" checked={settings.requireObservedHistory} onChange={(e) => setSettings({ ...settings, requireObservedHistory: e.target.checked })} />Require observed games (drops players projected purely from position averages)</label><label className="check"><input type="checkbox" checked={settings.allowDkFallback} onChange={(e) => setSettings({ ...settings, allowDkFallback: e.target.checked })} />Visible DK Avg fallback if selected source is missing</label>{settings.mode === "gpp" ? <label className="check"><input type="checkbox" checked={settings.useHeuristicOwnershipLeverage} onChange={(e) => setSettings({ ...settings, useHeuristicOwnershipLeverage: e.target.checked })} />Ownership leverage from LineStar (uncalibrated estimate — the server labels it; off = projection-only GPP)</label> : null}</div></details><button disabled={pending} onClick={generate} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 text-sm font-bold text-white disabled:opacity-40"><Play className="h-4 w-4" />{pending ? "Working…" : "Generate & save"}</button><button type="button" onClick={() => setWorkspaceView(workspaceView === "lineups" ? "players" : "lineups")} className="min-h-10 w-full rounded-lg border text-sm font-semibold">{workspaceView === "lineups" ? "Back to player pool" : `Review ${lineups.length} lineups →`}</button></div></section>
+        <div hidden={workspaceView !== "lineups"} className="space-y-4">        {lineups.length ? <>{completedSettings && settingsChanged && <Notice>Settings changed. Displayed lineups still use {SOURCE_LABELS[completedSettings.projectionSource]} / {completedSettings.mode}. Generate again to apply changes to settings, locks, exclusions, or exposure.</Notice>}<Exposure rows={exposures} total={lineups.length} report={exposureReport} format={completedSettings?.format ?? slate.format} />{salaryBands.length ? <section className="rounded-xl border bg-white p-4 shadow-sm"><h2 className="font-bold">Salary-left distribution</h2><div className="mt-2 space-y-1 text-[11px]">{salaryBands.map((b) => <div key={`${b.band.min}-${b.band.max}`} className={`flex justify-between ${b.withinPlan ? "" : "text-red-700"}`}><span>${b.band.min.toLocaleString()}–${b.band.max.toLocaleString()}</span><span>{b.count} lineup(s) · plan {b.minCount}–{b.maxCount}{b.withinPlan ? "" : " ⚠"}</span></div>)}</div>{duplication.length ? <p className="mt-2 text-[11px] text-slate-500">Duplication: {duplication[0].basis === "model" ? "field-model expected counts" : duplication[0].basis === "heuristic" ? "uncalibrated concentration estimate (not a duplicate count)" : "unavailable"}.</p> : null}</section> : null}<section className="rounded-xl border bg-white p-4 shadow-sm"><h2 className="font-bold">DraftKings export</h2><p className="mt-1 text-xs text-slate-500">Your DK entries template supplies the entry IDs; generated rosters fill its slot columns.</p><input ref={entryRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => setEntryFile(e.target.files?.[0] ?? null)} /><button onClick={() => entryRef.current?.click()} className="mt-3 min-h-10 w-full rounded-lg border text-sm font-bold">{entryFile?.name ?? "Select entry template"}</button>{qaReport ? <div className={`mt-3 rounded-lg border p-2 text-[11px] ${qaReport.decision === "blocked" ? "border-red-300 bg-red-50" : qaReport.decision === "ready_with_warnings" ? "border-amber-300 bg-amber-50" : "border-emerald-300 bg-emerald-50"}`}><div className="flex items-center justify-between font-bold"><span>Pre-export QA: {qaReport.decision === "blocked" ? "Blocked" : qaReport.decision === "ready_with_warnings" ? "Ready with warnings" : "Ready"}</span><span className="text-slate-500">{qaReport.counts.blocker}B · {qaReport.counts.warning}W · {qaReport.counts.info}i</span></div><div className="mt-1 max-h-40 space-y-1 overflow-auto">{qaReport.checks.filter((c) => !c.passed).map((c) => <div key={c.id} className={`flex items-start justify-between gap-2 rounded border bg-white p-1 ${c.severity === "blocker" && qaReport.openBlockers.includes(c.id) ? "border-red-200" : "border-slate-200"}`}><span><b>{c.title}</b><span className="block text-slate-500">{c.detail}</span></span>{c.overridable && qaReport.openBlockers.includes(c.id) ? <button type="button" className="shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-bold" onClick={() => overrideQaCheck(c.id)}>Override</button> : null}</div>)}</div></div> : null}<button disabled={!entryFile || (qaReport?.decision === "blocked")} onClick={() => void exportEntries()} className="mt-2 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 text-sm font-bold text-white disabled:opacity-40"><Download className="h-4 w-4" />{qaReport?.decision === "blocked" ? "Export blocked" : "Export lineups"}</button></section></> : null}
 </div>
       </aside></section>
     </> : <section className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-14 text-center"><FileUp className="mx-auto h-8 w-8 text-slate-400" /><h2 className="mt-3 font-bold">No NFL slate loaded</h2><p className="mt-1 text-sm text-slate-600">Upload a DraftKings NFL Classic or Showdown salary CSV to begin.</p></section>}
@@ -233,4 +339,12 @@ function Status({ icon, title, text, good = false }: { icon: React.ReactNode; ti
 function Metric({ label, value, small = false }: { label: string; value: string; small?: boolean }) { return <div className="rounded-xl border bg-white p-4 shadow-sm"><div className="text-[10px] font-bold uppercase text-slate-500">{label}</div><div className={`mt-1 font-black ${small ? "text-sm" : "text-2xl"}`}>{value}</div></div>; }
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block text-xs font-bold text-slate-700"><span className="mb-1 block">{label}</span>{children}</label>; }
 function Notice({ children, good = false }: { children: React.ReactNode; good?: boolean }) { return <div role={good ? undefined : "alert"} className={`mt-4 flex items-start gap-2 rounded-lg border p-3 text-sm ${good ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-red-200 bg-red-50 text-red-900"}`}>{good ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertTriangle className="h-4 w-4 shrink-0" />}{children}</div>; }
-function Exposure({ rows, total }: { rows: { name: string; team: string; n: number }[]; total: number }) { return <section className="rounded-xl border bg-white p-4 shadow-sm"><h2 className="font-bold">Exposure</h2><div className="mt-3 max-h-64 space-y-2 overflow-auto">{rows.slice(0, 30).map((row) => <div key={`${row.name}-${row.team}`}><div className="flex justify-between text-xs"><span>{row.name} <span className="text-slate-400">{row.team}</span></span><b>{Math.round(row.n / total * 100)}%</b></div><div className="mt-1 h-1.5 rounded bg-slate-100"><div className="h-full rounded bg-blue-600" style={{ width: `${row.n / total * 100}%` }} /></div></div>)}</div></section>; }
+function Exposure({ rows, total, report, format }: { rows: { name: string; team: string; n: number }[]; total: number; report?: import("./nfl-optimizer").NflExposureReport[]; format?: "classic" | "showdown" }) {
+  // Phase 3: when a slot-aware report exists, show realized vs requested for
+  // Overall / CPT / Flex and flag any binding constraint (P3-AC2/AC5).
+  const byId = new Map((report ?? []).map((r) => [r.name, r]));
+  if (report && report.length) {
+    return <section className="rounded-xl border bg-white p-4 shadow-sm"><h2 className="font-bold">Exposure <span className="text-xs font-normal text-slate-400">realized / requested over {total}</span></h2><div className="mt-3 max-h-72 space-y-2 overflow-auto">{[...report].sort((a, b) => b.overall - a.overall).slice(0, 40).map((r) => <div key={r.dkPlayerId} className={`rounded border p-1.5 text-[11px] ${r.binding && /missed/.test(r.binding) ? "border-red-200 bg-red-50" : ""}`}><div className="flex justify-between font-semibold"><span>{r.name}</span><span>{r.overall}/{r.overallMax === total ? "∞" : r.overallMax}{r.overallMin ? ` (min ${r.overallMin})` : ""}</span></div>{format === "showdown" ? <div className="mt-0.5 flex gap-3 text-slate-500"><span>CPT {r.captain}{r.captainMax < total ? `/${r.captainMax}` : ""}</span><span>FLEX {r.flex}{r.flexMax < total ? `/${r.flexMax}` : ""}</span></div> : null}{r.binding ? <div className={`mt-0.5 ${/missed/.test(r.binding) ? "text-red-700" : "text-slate-400"}`}>{r.binding}</div> : null}</div>)}</div></section>;
+  }
+  void byId;
+  return <section className="rounded-xl border bg-white p-4 shadow-sm"><h2 className="font-bold">Exposure</h2><div className="mt-3 max-h-64 space-y-2 overflow-auto">{rows.slice(0, 30).map((row) => <div key={`${row.name}-${row.team}`}><div className="flex justify-between text-xs"><span>{row.name} <span className="text-slate-400">{row.team}</span></span><b>{Math.round(row.n / total * 100)}%</b></div><div className="mt-1 h-1.5 rounded bg-slate-100"><div className="h-full rounded bg-blue-600" style={{ width: `${row.n / total * 100}%` }} /></div></div>)}</div></section>; }

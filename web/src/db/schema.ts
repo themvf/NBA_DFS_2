@@ -913,6 +913,9 @@ export const nflDfsOptimizerRuns = pgTable(
     generatedLineups: integer("generated_lineups").notNull(),
     status: text("status").notNull(),
     failureReason: text("failure_reason"),
+    // Phase 0: exact build identity (commit SHA, build time, schema/optimizer/
+    // scorer versions) captured at generation. Nullable for pre-Phase-0 runs.
+    buildInfo: jsonb("build_info"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("idx_nfl_dfs_optimizer_runs_upload").on(t.uploadId, t.createdAt)],

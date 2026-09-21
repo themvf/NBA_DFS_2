@@ -1219,6 +1219,12 @@ END $$;`,
   `CREATE INDEX IF NOT EXISTS idx_nfl_dfs_slate_players_upload ON nfl_dfs_slate_players(upload_id,position)`,
   `CREATE INDEX IF NOT EXISTS idx_nfl_dfs_optimizer_runs_upload ON nfl_dfs_optimizer_runs(upload_id,created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_nfl_dfs_lineups_run ON nfl_dfs_lineups(run_id,lineup_number)`,
+  // Phase 0 (spec P0-AC1): every run records the exact build identity — commit
+  // SHA, build time, settings-schema, optimizer, and scorer versions — so a
+  // saved portfolio can always be traced back to the code that produced it.
+  // Nullable + idempotent so it applies cleanly to existing deployments; legacy
+  // rows keep NULL rather than claiming a build they were not produced under.
+  `ALTER TABLE nfl_dfs_optimizer_runs ADD COLUMN IF NOT EXISTS build_info JSONB`,
 ];
 
 export async function ensureNflDfsTables(): Promise<void> {

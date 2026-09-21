@@ -36,11 +36,13 @@ import { canonicalAuditJson } from '@/lib/nfl-dfs/audit-json';
 import { readWorkloadProjection, workloadPoolEligible, type WorkloadReport } from "@/lib/nfl-dfs/workload-projection";
 import { getCalibratedSnapshots } from "@/db/nfl-dfs-calibrated";
 import { readCalibratedProjection, readPositionWorkloadProjection, type CalibrationSnapshot } from "@/lib/nfl-dfs/calibrated-projection";
+import { nflBuildInfo } from "@/lib/nfl-dfs/build-info";
+import { assessOwnership, type OwnershipAssessment } from "@/lib/nfl-dfs/ownership-capability";
 import {
   NFL_OPTIMIZER_VERSION,
   optimizeNflLineups,
   resolveProjectionAudit,
-  type NflGeneratedLineup,
+  type NflOptimizerResult,
   type NflOptimizerPlayer,
   type NflOptimizerSettings,
 } from "./nfl-optimizer";
@@ -642,7 +644,7 @@ export async function applyNflComparison(
 export async function runNflOptimizer(
   uploadId: string,
   settings: NflOptimizerSettings,
-): Promise<{ runId: string; slate: NflWorkspaceSlate; result: { lineups: NflGeneratedLineup[]; warnings: string[]; sourceCoverage: { requested: number; direct: number; fallback: number; excluded: number } } }> {
+): Promise<{ runId: string; slate: NflWorkspaceSlate; result: NflOptimizerResult; ownership?: OwnershipAssessment }> {
   await ensureNflDfsTables();
   const slate = await workspaceSlate(uploadId);
   if(settings.format!==slate.format)throw new Error("Optimizer format must match the saved salary slate.");
@@ -674,7 +676,22 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
   validateSituations(settings.situations,slate.teams);
   const prepared= settings.projectionSource==='workload'?prepareProjectionAudits(slate.players,slate.situationTeams??[],settings.workloadPositions,settings.situations,now):slate.players;
   const eligible= settings.projectionSource==='workload' ? prepared.filter(p=>workloadPoolEligible(p,now)) : prepared;
-  const result = optimizeNflLineups(eligible, settings);
+  // Phase 2: the SERVER authoritatively resolves ownership capability from the
+  // actual feed — the client can never claim "validated". Missing ownership
+  // stays null. LineStar supplies a single combined percentage, not slot-level
+  // ownership, so the feed is DECLARED heuristic: capability caps at
+  // heuristic_uncalibrated, and leverage runs only through the user's explicit
+  // opt-in (labeled "Uncalibrated estimate" everywhere). Validated-only
+  // features (duplication model, contrarian-captain thresholds) stay off.
+  const ownershipAssessment = assessOwnership(
+    eligible.filter(p=>!p.isOut).map(p=>({playerId:p.dkPlayerId, medianProjection: p.medianFpts ?? p.ourProj ?? null})),
+    eligible.filter(p=>p.linestarOwnPct!=null).map(p=>({playerId:p.dkPlayerId, flexPct:(p.linestarOwnPct as number)/100, captainPct:null, source:'linestar', asOf:slate.modelAsOf})),
+    { heuristic: true, optIntoHeuristic: settings.useHeuristicOwnershipLeverage ?? true, format: slate.format },
+  );
+  const resolvedSettings: NflOptimizerSettings = { ...settings,
+    ownershipCapability: ownershipAssessment.capability,
+    ownershipLeverageEnabled: ownershipAssessment.features.leverage };
+  const result = optimizeNflLineups(eligible, resolvedSettings);
   if(eligible.length!==slate.players.length)result.warnings.push(`${slate.players.length-eligible.length} players excluded: workload optimization requires an unstarted, matching salary game.`);
   if (result.lineups.some(l => l.slots.some(s => s.projectionSource === "calibrated" && Date.parse(s.player.calibrated!.kickoff) <= Date.now()))) throw new Error("A calibrated player's game started during optimization. Refresh the slate before regenerating.");
   if (result.lineups.some(l => l.slots.some(s => s.projectionSource === "workload" && (Date.parse(selectedWorkload(s.player,settings.workloadPositions)!.kickoff) <= Date.now() || Date.now()-Date.parse(selectedWorkload(s.player,settings.workloadPositions)!.capturedAt)>72*3600000)))) throw new Error("A workload forecast expired during optimization. Refresh forecasts before regenerating.");
@@ -700,13 +717,23 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
     projectionAudit:resolveProjectionAudit(prepared.find(p=>p.dkPlayerId===player.dkPlayerId)!,settings),
     baselineSource:{runId:slate.projectionRunId,modelVersion:slate.modelVersion,asOf:slate.modelAsOf},
   }));
-  const inputDigest = sha256(canonicalAuditJson({ settings, inputSnapshot, optimizerVersion: NFL_OPTIMIZER_VERSION }));
+  const buildInfo = nflBuildInfo();
+  // Phase 2 (P2-AC3): persist the resolved capability and an ownership
+  // disclosure so a projection-only export can never later claim leverage.
+  const persistedSettings = { ...resolvedSettings, ownershipDisclosure: {
+    capability: ownershipAssessment.capability, source: ownershipAssessment.source, asOf: ownershipAssessment.asOf,
+    coverage: ownershipAssessment.coverage, captainTotal: ownershipAssessment.captainTotal, flexTotal: ownershipAssessment.flexTotal,
+    errors: ownershipAssessment.errors,
+  } };
+  // Build identity is part of what makes a run reproducible, so it is inside the
+  // digest: two runs with different code cannot share an input digest.
+  const inputDigest = sha256(canonicalAuditJson({ settings: persistedSettings, inputSnapshot, optimizerVersion: NFL_OPTIMIZER_VERSION, buildInfo }));
   const status = result.lineups.length === settings.nLineups ? "complete" : result.lineups.length ? "partial" : "failed";
   try {
   await db.insert(nflDfsOptimizerRuns).values({
     runId, uploadId, projectionRunId: slate.projectionRunId,
     optimizerVersion: NFL_OPTIMIZER_VERSION, mode: settings.mode,
-    projectionSource: settings.projectionSource, settings, inputSnapshot, inputDigest,
+    projectionSource: settings.projectionSource, settings: persistedSettings, inputSnapshot, inputDigest, buildInfo,
     requestedLineups: settings.nLineups, generatedLineups: result.lineups.length,
     status, failureReason: status === "complete" ? null : result.warnings.join(" "),
   });
@@ -714,16 +741,18 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
     runId,
     lineupNumber: lineup.lineupNumber,
     slots: lineup.slots.map((entry) => ({ slot: entry.slot, dkPlayerId: entry.player.dkPlayerId, captainDkPlayerId: entry.player.captainDkPlayerId, name: entry.player.name, team: entry.player.team, salary: entry.salary, projection: entry.projection, source: entry.projectionSource, multiplier:entry.multiplier, projectionAudit:entry.player.projectionAudit })),
+    // Phase 4: archetype label + fades + satisfied beneficiaries persist so the
+    // lineup's strategy survives save, reload, export and evaluation (P4-AC4).
+    stackSummary: { ...lineup.stackSummary, archetype: lineup.archetype ?? null },
     playerIds: lineup.playerIds,
     totalSalary: lineup.totalSalary,
     projectedFpts: lineup.projectedFpts,
     floorFpts: lineup.floorFpts,
     ceilingFpts: lineup.ceilingFpts,
     projectedOwnership: lineup.projectedOwnership,
-    stackSummary: lineup.stackSummary,
   })));
   } catch { throw new Error("Unable to save optimizer results. Refresh the slate and retry; an incomplete run may remain saved."); }
-  return { runId, slate, result };
+  return { runId, slate, result, ownership: ownershipAssessment };
 }
 
 export async function readNflOptimizerAudit(runId:string) {

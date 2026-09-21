@@ -83,7 +83,16 @@
     "test:nfl-backup-qb-gate": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-backup-qb-gate.ts",
     "test:nfl-showdown-floor": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-showdown-salary-floor.ts",
     "test:nfl-cash-optimizer": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-cash-optimizer.ts",
-    "test:nfl-specials": "node --import tsx ./scripts/test-nfl-specials.ts"
+    "test:nfl-specials": "node --import tsx ./scripts/test-nfl-specials.ts",
+    "test:nfl-gpp-baseline": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-baseline.ts",
+    "test:nfl-gpp-punt": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-punt.ts",
+    "test:nfl-gpp-ownership": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-ownership.ts",
+    "test:nfl-gpp-exposure": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-exposure.ts",
+    "test:nfl-gpp-archetypes": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-archetypes.ts",
+    "test:nfl-gpp-salary": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-salary.ts",
+    "test:nfl-gpp-qa": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-qa.ts",
+    "test:nfl-gpp-selection": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-selection.ts",
+    "test:nfl-gpp-backtest": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-backtest.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",
