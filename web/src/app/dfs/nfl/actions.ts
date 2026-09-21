@@ -216,6 +216,20 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
   const run = upload.projectionRunId
     ? (await db.select().from(nflDfsProjectionRuns).where(eq(nflDfsProjectionRuns.runId, upload.projectionRunId)).limit(1))[0] ?? null
     : null;
+  // Season-aware observed-history input: completed games per team this season,
+  // so the optimizer can cap the >=2-game requirement for early-season rookies
+  // who have played every game that exists for them (observedHistoryRequirement).
+  // An unknown season yields null per player, which keeps the flat requirement.
+  const seasonKnown = run?.season != null;
+  const completedByTeam = new Map<string, number>();
+  if (seasonKnown) {
+    const played = await db.execute(sql`SELECT t.abbreviation AS team, COUNT(*)::int AS played FROM (
+        SELECT home_team_id AS team_id FROM nfl_season_games WHERE season=${run!.season} AND game_type='REG' AND completed
+        UNION ALL
+        SELECT away_team_id FROM nfl_season_games WHERE season=${run!.season} AND game_type='REG' AND completed
+      ) g JOIN nfl_teams t ON t.team_id=g.team_id GROUP BY t.abbreviation`);
+    for (const r of played.rows) completedByTeam.set(String(r.team), Number(r.played));
+  }
   const rows = await db.select().from(nflDfsSlatePlayers).where(eq(nflDfsSlatePlayers.uploadId, uploadId));
   // A slate written before the batched write could stop part-way and still
   // leave a header row claiming the full pool. Say so rather than serving a
@@ -378,6 +392,9 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
           ? numeric(notesByPlayer.get(row.ffPlayerId ?? -1)?.points_before) : null),
       modelConfidence: numeric(row.modelConfidence),
       historyGames: row.historyGames,
+      // Week-1 teams legitimately read 0 (requirement floors at 1 game); null
+      // only when the season itself is unresolved.
+      teamSeasonGames: seasonKnown ? completedByTeam.get(row.team) ?? 0 : null,
       fantasyprosProj: numeric(row.fantasyprosProj),
       linestarProj: numeric(row.linestarProj),
       linestarOwnPct: numeric(row.linestarOwnPct),

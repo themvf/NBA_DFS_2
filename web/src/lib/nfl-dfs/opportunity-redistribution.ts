@@ -72,6 +72,28 @@ export function hasObservedOpportunity(row: { historyGames?: number | null }): b
   return (row.historyGames ?? 0) >= MIN_OBSERVED_GAMES;
 }
 
+/**
+ * Season-aware observed-history requirement for POOL ELIGIBILITY (the
+ * redistribution donor gate above deliberately keeps the flat minimum).
+ *
+ * A flat >=2-game rule over-blocks early season: in week 2 EVERY rookie
+ * starter has exactly one career game, so "one real game" and "zero games"
+ * were treated identically (found live: Dominic Zvada, NYG's rookie K1 with
+ * his week-1 results on file, was excluded as ROLE_UNKNOWN). The requirement
+ * is therefore capped at the number of games the player's TEAM has completed
+ * this season: a player who has appeared in every game that exists for him
+ * has all the history reality allows.
+ *
+ * It never drops below 1 — a projection backed by zero games of the player's
+ * own is a position average whatever the calendar says — and when the team's
+ * completed-game count is unknown it falls back to the flat minimum
+ * (conservative: unknown context must not loosen a fail-closed gate).
+ */
+export function observedHistoryRequirement(teamSeasonGames: number | null | undefined): number {
+  if (teamSeasonGames == null || !Number.isFinite(teamSeasonGames)) return MIN_OBSERVED_GAMES;
+  return Math.max(1, Math.min(MIN_OBSERVED_GAMES, teamSeasonGames));
+}
+
 export type PoolName = "pass" | "rush" | "target";
 
 type PoolSpec = {
