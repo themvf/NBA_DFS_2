@@ -6939,3 +6939,31 @@ study above, where only opponent allowed CARRIES survived).
 touch share (who gets the ball inside the 20), which needs the participants
 join and a name-to-gsis crosswalk. Team trips being useless does not settle
 that; the two are different claims. Register it separately before running it.
+
+## NFL DFS — Player Red-Zone Touch Share (2026-09-21)
+
+`model/nfl_dfs_redzone_share.py`. Pre-registered before scoring, one variant:
+player TD/game = team TD budget × the player's shrunk red-zone touch share
+(rusher/receiver credits on scrimmage plays at `yardline_100 <= 20`, joined
+through `nfl_pbp_play_participants.player_id`, which IS the GSIS id — no
+crosswalk). RB/WR/TE, 2024 w1 → 2026 w2, n=8,088 player-games.
+
+| | MAE | bias |
+|---|---:|---:|
+| baseline: own shrunk TD history | 0.371 | −0.001 |
+| V1: team budget × red-zone share | 0.479 | **+0.166** |
+
+Paired delta **+0.107 [+0.098, +0.116] — DEAD**, and worse in all three
+positions.
+
+**Why, and this is a registration error, not a mechanism verdict.** The
+share prior shrank every player toward the POSITION-average share (~0.15),
+so a fourth receiver with two red-zone touches all season carries a 0.13
+share, and one team's shrunk shares sum to ~2.4 — the roster is handed the
+team's touchdowns two and a half times over. The +0.166 bias is exactly that.
+Production `allocate()` avoids this by normalising shares to the team budget,
+which the registration did not do. A corrected variant (shares normalised
+to sum to one per team, or shrunk toward zero rather than a position mean)
+is a NEW study with its own registration: the failure here says nothing
+about whether red-zone usage predicts touchdowns, only that this construction
+of it cannot. Do not quietly patch the prior in this file and re-run.
