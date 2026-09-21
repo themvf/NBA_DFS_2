@@ -18,7 +18,7 @@ import { matchNflIdentity, resolveNflRosterIdentity, assertUniqueNflSalaryIdenti
 import { getNflIdentityRoster } from "@/db/nfl-identity";
 import { parseNflDkSalaryCsv, type NflDkSlate } from "@/lib/nfl-dfs/dk-salary-csv";
 import { getNflRosterEvidence, getNflInjuryCoverage, type InjuryCoverage } from "@/db/nfl-dfs-availability";
-import { resolveGameAvailability, ROSTER_FRESH_MS, type Availability } from "@/lib/nfl-dfs/availability";
+import { resolveGameAvailability, applyTeamQbContext, identifyTeamQb1s, ROSTER_FRESH_MS, type Availability } from "@/lib/nfl-dfs/availability";
 import { previewAbsence } from "@/lib/nfl-dfs/absence-preview";
 import type { PlayerContext } from "@/lib/nfl-dfs/player-context";
 import { benchmarkPool, type Competitor, type ImportEvidence, type BenchmarkSnapshot, benchmarkTeam } from '@/lib/nfl-dfs/competitor-benchmark';
@@ -289,7 +289,11 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
   const identityMap=new Map(identities.rows.map(r=>[Number(r.id),String(r.gsis_id)]));
   const now = Date.now();
   const situations=run?.week?await loadSituationContext(run.season,run.week,roster,now):null;
-  const availability = (row: typeof rows[number]) => resolveGameAvailability(roster.get(row.ffPlayerId ?? -1), row.team, row.position, now, run?.week ?? null, roster.get(row.ffPlayerId ?? -1)?.kickoff ?? null);
+  const baseAvailability = (row: typeof rows[number]) => resolveGameAvailability(roster.get(row.ffPlayerId ?? -1), row.team, row.position, now, run?.week ?? null, roster.get(row.ffPlayerId ?? -1)?.kickoff ?? null);
+  // A QB with no depth number is not blocked on his own evidence, but once his
+  // team has an identified QB1 he is a backup by construction (see availability.ts).
+  const teamQb1s = identifyTeamQb1s(rows.map((row) => ({ team: row.team, position: row.position, name: row.name, availability: baseAvailability(row) })));
+  const availability = (row: typeof rows[number]) => applyTeamQbContext(baseAvailability(row), row.position, teamQb1s.get(row.team) ?? teamQb1s.get(({ LA: 'LAR', WAS: 'WSH', AZ: 'ARI', JAC: 'JAX' } as Record<string, string>)[row.team] ?? row.team));
 
   // The depth chart is what blocks backup quarterbacks, and its feed has now
   // twice gone silently stale for days because an unrelated step in the same

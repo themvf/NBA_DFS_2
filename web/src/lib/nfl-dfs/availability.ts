@@ -73,3 +73,41 @@ export function resolveGameAvailability(evidence: RosterEvidence | undefined, te
     evidence: relevant, warnings, evaluatedAt: new Date(now).toISOString(), officialConfirmed: Boolean(official), kickoff,
     freshFantasyPros: usable.some(row => row.source === 'fantasypros') };
 }
+
+/**
+ * Team-level QB rule. `resolveAvailability` only ever sees one player, so a
+ * quarterback Sleeper carries with NO depth number resolves to "QB role
+ * unresolved" and is not blocked -- while his teammate is listed QB1 in the
+ * same capture. That is how a zero-game rookie (Jake Haener, NYG, 2026 week 2)
+ * sat in a Showdown pool at a position-prior 13.3 points beside a resolved
+ * starter. Once a team has an identified QB1, an unresolved QB on that team is
+ * evidence of a backup, not of nothing; block him. This only ever ADDS a block,
+ * never clears one, and a stale QB1 listing still counts (blocks apply,
+ * clearances do not). A team with no identified QB1 is left exactly as it was:
+ * we never infer a starter.
+ */
+export type TeamQb1 = { name: string; capturedAt: string | null };
+
+export function applyTeamQbContext(availability: Availability, position: string, teamQb1: TeamQb1 | null | undefined): Availability {
+  if (position !== "QB" || !teamQb1 || availability.blockedReason || availability.role !== "QB role unresolved") return availability;
+  return {
+    ...availability,
+    role: "Backup · QB depth unlisted",
+    blockedReason: `QB role unresolved while ${teamQb1.name} is listed QB1; starter workload not supported`,
+    source: availability.source === "No matching current roster" ? "Team depth chart (QB1 identified for this team)" : availability.source,
+  };
+}
+
+/** The identified QB1 per team, from already-resolved availabilities. Any capture age counts. */
+export function identifyTeamQb1s(players: ReadonlyArray<{ team: string; position: string; name: string; availability: Availability }>): Map<string, TeamQb1> {
+  const out = new Map<string, TeamQb1>();
+  for (const p of players) {
+    if (p.position !== "QB" || p.availability.role !== "Expected starter · QB1" || p.availability.blockedReason) continue;
+    const key = teamKey(p.team);
+    // Two listed QB1s on one team is conflicting evidence; block nobody on it.
+    if (out.has(key)) { out.set(key, { name: "", capturedAt: null }); continue; }
+    out.set(key, { name: p.name, capturedAt: p.availability.capturedAt });
+  }
+  for (const [key, value] of out) if (!value.name) out.delete(key);
+  return out;
+}
