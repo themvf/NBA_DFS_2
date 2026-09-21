@@ -491,3 +491,18 @@ def test_consensus_carries_the_vendor_publish_time_not_our_retrieval_time() -> N
 
     source = inspect.getsource(persist_fantasypros_consensus)
     assert 'as_int(payload.get("last_updated_ts"))' in source
+
+
+def test_players_contract_does_not_ask_for_ecr() -> None:
+    """`ecr=included` empties the universe endpoint in-season.
+
+    Isolated against the live API one parameter at a time: every request
+    carrying `ecr` returned 0 rows regardless of week, scoring, position,
+    season or year; every request without it returned 8,546. Rankings come
+    from consensus-rankings, and no caller reads ECR from this endpoint.
+    """
+    from ingest.ff_fantasypros import fantasypros_endpoint_contracts
+
+    players = next(c for c in fantasypros_endpoint_contracts(2026) if c.dataset == "players")
+    assert "ecr" not in players.params
+    assert players.params.get("external_ids"), "identity linking needs the external ids"

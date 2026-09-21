@@ -62,14 +62,27 @@ def fantasypros_endpoint_contracts(season: int) -> list[FantasyProsEndpointContr
         FantasyProsEndpointContract(
             dataset="players",
             path="nfl/players",
-            # `week` is not optional in-season. Every sibling contract sends
-            # week 0 (the full-season view); this one did not, so once the
-            # season started FantasyPros defaulted it to the LIVE week and
-            # answered 200 with the right shape and zero rows. It echoed
-            # `"week": "2", "count": 0` on 2026-09-20 while week-0 contracts
-            # returned 336-985 rows. Last success was 2026-09-14, i.e. before
-            # week 2 -- the endpoint did not break, the default moved.
-            params={"ecr": "included", "show": "pos_rank", "week": 0,
+            # `ecr=included` empties this endpoint in-season. It asks the
+            # universe to join ranking data, and once drafts stop there is none
+            # to join, so the vendor answers 200 with the right shape and
+            # `count: 0` rather than returning the universe without ECR.
+            # Isolated one parameter at a time against the live API
+            # (ff_fantasypros_players_probe): every case carrying `ecr` gave 0
+            # rows regardless of week, scoring, position, season or year, and
+            # every case without it gave 8,546. Week was NOT the cause -- an
+            # earlier fix pinned week 0 and the payload stayed empty.
+            #
+            # No caller reads ECR from here: link_fantasypros_players uses only
+            # id, name, position and team. Rankings come from
+            # consensus-rankings, which is where they belong.
+            #
+            # Scope changes as a result: 553 ECR-ranked players before, 8,546
+            # directory rows now. Safe because the linker never inserts a
+            # vendor-only player, never overwrites an existing link
+            # (`WHERE fantasypros_player_id IS NULL`), and skips rather than
+            # guesses when a name/position matches more than one local row --
+            # but the ambiguity count is worth watching after a scope change.
+            params={"show": "pos_rank", "week": 0,
                     "external_ids": "yahoo:espn:cbs:nfl:mfl:draftkings"},
             row_key="players",
             minimum_rows=100,
@@ -1263,7 +1276,8 @@ def assign_our_ranks(db: DatabaseManager | RefreshDatabase, ranking_set_id: int,
 
 
 def _run_ingestion(season: int, db: RefreshDatabase, client: FantasyProsClient) -> dict[str, Any]:
-    players_params = {"ecr": "included", "show": "pos_rank", "external_ids": "yahoo:espn:cbs:nfl:mfl:draftkings"}
+    # Same `ecr=included` emptiness as the contract above; see that comment.
+    players_params = {"show": "pos_rank", "week": 0, "external_ids": "yahoo:espn:cbs:nfl:mfl:draftkings"}
     players_payload = client.get("nfl/players", players_params)
     snapshot(db, dataset="players", season=season, payload=players_payload, params=players_params)
     fp_map = upsert_players(db, season, players_payload)
