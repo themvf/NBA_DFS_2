@@ -78,8 +78,10 @@ export default function NflDfsClient() {
   const [salaryBands, setSalaryBands] = useState<import("@/lib/nfl-dfs/salary-duplication").SalaryBandReport[]>([]);
   const [duplication, setDuplication] = useState<import("@/lib/nfl-dfs/salary-duplication").LineupDuplication[]>([]);
   const [qaOverrides, setQaOverrides] = useState<QaOverride[]>([]);
-  // Phase 4 archetype configuration: the favorite team (underdog is the other
-  // Showdown team) and the players a fade archetype fades.
+  // Phase 4 archetype configuration. "balanced" (default) lets the generator
+  // allocate the archetype mix, pick fade targets, and read the Vegas favorite
+  // from the game's moneyline; "custom" exposes the manual controls below.
+  const [archetypePlanMode, setArchetypePlanMode] = useState<"balanced" | "standard" | "custom">("balanced");
   const [archetypeFavorite, setArchetypeFavorite] = useState<string>("");
   const [archetypeFades, setArchetypeFades] = useState<number[]>([]);
   // Merge note: main's #216/#217 defaults (minPlayerSalary + observed-history
@@ -91,11 +93,15 @@ export default function NflDfsClient() {
   const slateTeams = useMemo(() => [...new Set((slate?.players ?? []).map((p) => p.team))].sort(), [slate]);
   const archetypeUnderdog = archetypeFavorite ? slateTeams.find((t) => t !== archetypeFavorite) ?? null : null;
   const fadeConfig = archetypeFades.length ? { fadePlayerIds: archetypeFades } : undefined;
+  // Balanced mode sends only the mode: quotas, fade targets and the favorite
+  // are resolved by the generator/server. Custom mode sends the manual plan.
+  const custom = archetypePlanMode === "custom";
   const currentSettings = { ...generationSettings(settings, slate?.format ?? 'classic', locked, excluded, targetExposure),
-    archetypeQuotas: archetypeQuotas.length ? archetypeQuotas : undefined,
-    favoriteTeam: archetypeFavorite || undefined,
-    underdogTeam: archetypeUnderdog ?? undefined,
-    archetypeConfigs: fadeConfig ? { single_chalk_fade: { fadePlayerIds: archetypeFades.slice(0, 1) }, double_fade: { fadePlayerIds: archetypeFades.slice(0, 2) } } : undefined };
+    archetypeMode: archetypePlanMode,
+    archetypeQuotas: custom && archetypeQuotas.length ? archetypeQuotas : undefined,
+    favoriteTeam: custom && archetypeFavorite ? archetypeFavorite : undefined,
+    underdogTeam: custom && archetypeFavorite ? archetypeUnderdog ?? undefined : undefined,
+    archetypeConfigs: custom && fadeConfig ? { single_chalk_fade: { fadePlayerIds: archetypeFades.slice(0, 1) }, double_fade: { fadePlayerIds: archetypeFades.slice(0, 2) } } : undefined };
   const settingsChanged = Boolean(completedSettings && !sameGenerationSettings(completedSettings, currentSettings));
 
   const matching = useMemo(() => (slate?.players ?? []).filter((p) => matchesPoolPosition(p.position, position) && (!query.trim() || `${p.name} ${p.team} ${p.opponent ?? ""}`.toLowerCase().includes(query.trim().toLowerCase()))), [slate, position, query]);
@@ -298,7 +304,14 @@ export default function NflDfsClient() {
           </div>
           {slate.format === "showdown" ? <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px]">
             <h3 className="text-sm font-bold text-slate-800">Portfolio plan (archetypes)</h3>
-            <p className="mt-0.5 text-slate-500">Assign lineup quotas by strategy. Leave all off for Standard ceiling only. Names describe strategy, not expected profit.</p>
+            <Field label="Plan"><select className="control" value={archetypePlanMode} onChange={(e) => setArchetypePlanMode(e.target.value as "balanced" | "standard" | "custom")}>
+              <option value="balanced">Balanced mix (recommended)</option>
+              <option value="standard">Standard ceiling only</option>
+              <option value="custom">Custom…</option>
+            </select></Field>
+            {archetypePlanMode === "balanced" ? <p className="mt-1 text-slate-500">Automatically spreads lineups across ceiling, fade, game-script and K/DST strategies. Fade targets are the chalkiest players (by projected ownership, or projection when no ownership feed exists); the Vegas favorite comes from this game&apos;s moneyline. Anything the slate can&apos;t support folds into Standard ceiling — each run&apos;s notes say exactly what was chosen. Names describe strategy, not expected profit.</p> : null}
+            {archetypePlanMode === "standard" ? <p className="mt-1 text-slate-500">Strongest evaluated lineups only — no forced fades or game scripts.</p> : null}
+            {archetypePlanMode === "custom" ? <><p className="mt-0.5 text-slate-500">Assign lineup quotas by strategy. Leave all off for Standard ceiling only. Names describe strategy, not expected profit.</p>
             <div className="mt-2 space-y-1">{(Object.keys(ARCHETYPE_LABELS) as ArchetypeId[]).map((id) => {
               const q = archetypeQuotas.find((x) => x.archetypeId === id);
               return <div key={id} className="flex items-center gap-2"><label className="flex flex-1 items-center gap-1.5"><input type="checkbox" checked={Boolean(q?.enabled)} onChange={(e) => setArchetypeQuotas((cur) => { const others = cur.filter((x) => x.archetypeId !== id); return e.target.checked ? [...others, { archetypeId: id, minLineups: 1, maxLineups: settings.nLineups, enabled: true }] : others; })} />{ARCHETYPE_LABELS[id]}</label>{q?.enabled ? <><input aria-label={`${ARCHETYPE_LABELS[id]} min`} type="number" min={0} max={settings.nLineups} value={q.minLineups} onChange={(e) => setArchetypeQuotas((cur) => cur.map((x) => x.archetypeId === id ? { ...x, minLineups: Number(e.target.value) } : x))} className="h-7 w-12 rounded border px-1 text-right" /><span>–</span><input aria-label={`${ARCHETYPE_LABELS[id]} max`} type="number" min={0} max={settings.nLineups} value={q.maxLineups} onChange={(e) => setArchetypeQuotas((cur) => cur.map((x) => x.archetypeId === id ? { ...x, maxLineups: Number(e.target.value) } : x))} className="h-7 w-12 rounded border px-1 text-right" /></> : null}</div>;
@@ -314,7 +327,7 @@ export default function NflDfsClient() {
                 {[...(slate?.players ?? [])].sort((a, b) => (b.ourProj ?? 0) - (a.ourProj ?? 0)).slice(0, 30).map((p) => <option key={p.dkPlayerId} value={p.dkPlayerId}>{p.name} ({p.team} · {dollars(p.salary)})</option>)}
               </select>)}
               {!archetypeFades.length ? <p className="text-amber-800">A fade archetype fails generation until a faded player is chosen.</p> : null}
-            </div> : null}
+            </div> : null}</> : null}
           </div> : null}
           {ownership ? <div className={`rounded-lg border p-3 text-[11px] ${ownership.capability === "validated" ? "border-emerald-200 bg-emerald-50" : ownership.capability === "heuristic_uncalibrated" ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50"}`}>
             <div className="flex items-center justify-between"><h3 className="text-sm font-bold text-slate-800">Ownership</h3><span className="rounded-full border bg-white px-2 py-0.5 font-bold uppercase">{ownership.capability.replace(/_/g, " ")}</span></div>

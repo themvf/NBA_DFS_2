@@ -90,6 +90,7 @@
     "test:nfl-gpp-ownership": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-ownership.ts",
     "test:nfl-gpp-exposure": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-exposure.ts",
     "test:nfl-gpp-archetypes": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-archetypes.ts",
+    "test:nfl-balanced-plan": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-balanced-plan.ts",
     "test:nfl-gpp-salary": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-salary.ts",
     "test:nfl-gpp-qa": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-qa.ts",
     "test:nfl-gpp-selection": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-selection.ts",
