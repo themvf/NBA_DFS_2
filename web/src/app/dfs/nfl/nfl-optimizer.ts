@@ -3,7 +3,7 @@ import {selectedWorkload,validateWorkloadPositions,WORKLOAD_POSITIONS,type Workl
 import type { WorkloadProjection } from "@/lib/nfl-dfs/workload-projection";
 import type { CalibratedProjection } from "@/lib/nfl-dfs/calibrated-projection";
 import type { SituationSettings, ProjectionAudit, SituationEvidence } from '@/lib/nfl-dfs/projection-audit';
-import { hasObservedOpportunity, MIN_OBSERVED_GAMES } from '@/lib/nfl-dfs/opportunity-redistribution';
+import { MIN_OBSERVED_GAMES, observedHistoryRequirement } from '@/lib/nfl-dfs/opportunity-redistribution';
 import {
   DEFAULT_NFL_PUNT_POLICY,
   evaluatePuntEligibility,
@@ -68,6 +68,13 @@ export type NflOptimizerPlayer = {
   projectionStatus: string;
   /** The player's OWN games behind his projection. 0 means the number is his position's average, not his. */
   historyGames?: number | null;
+  /**
+   * Completed games the player's TEAM has this season. Caps the observed-
+   * history requirement so a rookie who has played every available week is
+   * not blocked in week 2 (min 1 game always required). Null = unknown, and
+   * the flat MIN_OBSERVED_GAMES requirement applies.
+   */
+  teamSeasonGames?: number | null;
   /** Depth-chart role label when known; null is unknown, not "no role". */
   depthRole?: string | null;
   /** 0..1 role confidence when known; null is unknown, not zero. */
@@ -251,6 +258,21 @@ function finite(value: number | null | undefined): number | null {
   return value != null && Number.isFinite(value) ? value : null;
 }
 
+/**
+ * Season-aware observed-history gate: a player fails when he has fewer games
+ * of his own than the requirement — MIN_OBSERVED_GAMES, capped at the games
+ * his team has completed this season (never below 1). A week-2 rookie starter
+ * with his one available game passes; a zero-game backup never does.
+ */
+function missingObservedHistory(player: NflOptimizerPlayer): boolean {
+  return (player.historyGames ?? 0) < observedHistoryRequirement(player.teamSeasonGames);
+}
+
+function observedHistoryReason(player: NflOptimizerPlayer): string {
+  const required = observedHistoryRequirement(player.teamSeasonGames);
+  return `Fewer than ${required} observed game${required === 1 ? "" : "s"} of his own (team has completed ${player.teamSeasonGames ?? "an unknown number of"} game(s) this season); projection is a position average.`;
+}
+
 /** Build role evidence for the punt policy from a slate player, keeping unknowns as null. */
 function roleEvidenceFor(player: NflOptimizerPlayer): NflPlayerRoleEvidence {
   const observed = player.historyGames ?? null;
@@ -261,7 +283,9 @@ function roleEvidenceFor(player: NflOptimizerPlayer): NflPlayerRoleEvidence {
     depthRole: player.depthRole ?? null,
     // If role confidence is not supplied but the player has observed games of
     // his own, treat observed history as weak role evidence rather than unknown.
-    roleConfidence: player.roleConfidence ?? (observed != null && observed >= MIN_OBSERVED_GAMES ? 0.5 : observed === 0 ? 0 : null),
+    // Season-aware: a rookie starter who has played every game his team has
+    // played carries the same weak evidence a 2-game veteran does.
+    roleConfidence: player.roleConfidence ?? (observed != null && observed >= observedHistoryRequirement(player.teamSeasonGames) && observed > 0 ? 0.5 : observed === 0 ? 0 : null),
     projectedOpportunities: player.projectedOpportunities ?? null,
     opportunityUnit: null,
     observedGameCount: observed,
@@ -622,8 +646,8 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
       // players whose projection is a position average, not theirs (the backup
       // QB handed the average NFL start). Locks, exposure targets and recorded
       // overrides are the user's own instruction and outrank it.
-      if (settings.requireObservedHistory && !hasObservedOpportunity(player) && !floorExempt.has(player.dkPlayerId) && !overridden) {
-        eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden: false, reason: `Fewer than ${MIN_OBSERVED_GAMES} observed games; projection is a position average.`, reasonCode: "ROLE_UNKNOWN" });
+      if (settings.requireObservedHistory && missingObservedHistory(player) && !floorExempt.has(player.dkPlayerId) && !overridden) {
+        eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden: false, reason: observedHistoryReason(player), reasonCode: "ROLE_UNKNOWN" });
         withoutHistory++; coverage.excluded++; continue;
       }
     } else {
@@ -632,8 +656,8 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
         eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden: false, reason: `Below the $${salaryFloor.toLocaleString()} per-player salary floor.`, reasonCode: "ABSOLUTE_SALARY_BLOCK" });
         belowSalaryFloor++; coverage.excluded++; continue;
       }
-      if (settings.requireObservedHistory && !hasObservedOpportunity(player) && !floorExempt.has(player.dkPlayerId)) {
-        eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden: false, reason: `Fewer than ${MIN_OBSERVED_GAMES} observed games; projection is a position average.`, reasonCode: "ROLE_UNKNOWN" });
+      if (settings.requireObservedHistory && missingObservedHistory(player) && !floorExempt.has(player.dkPlayerId)) {
+        eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden: false, reason: observedHistoryReason(player), reasonCode: "ROLE_UNKNOWN" });
         withoutHistory++; coverage.excluded++; continue;
       }
     }
@@ -655,7 +679,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     }
   }
   if (puntBlocked) warnings.push(`${puntBlocked} player(s) blocked by the ${policy!.mode} punt policy. See the cheap-player review for the reason on each; allow a player for the run to keep him.`);
-  if (withoutHistory) warnings.push(`${withoutHistory} player(s) with fewer than ${MIN_OBSERVED_GAMES} games of their own were removed: their projection is their position's average, not theirs. Lock a player to keep him regardless.`);
+  if (withoutHistory) warnings.push(`${withoutHistory} player(s) with too few games of their own were removed (${MIN_OBSERVED_GAMES} required, capped at the games their team has completed this season): their projection is their position's average, not theirs. Lock a player to keep him regardless.`);
   if (belowSalaryFloor) warnings.push(`${belowSalaryFloor} player(s) priced under the $${salaryFloor.toLocaleString()} per-player salary floor were removed. Lock a player to keep him regardless.`);
   const missingTails = pool.filter(p => (p.resolvedSource === 'our' || p.resolvedSource === 'our_fallback')
     && (finite(p.floorFpts) === null || finite(p.ceilingFpts) === null)).length;

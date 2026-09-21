@@ -73,7 +73,7 @@ assert.ok(gated.lineups.length > 0, "the gated pool must still solve");
 for (const l of gated.lineups) for (const id of l.playerIds) {
   assert.ok(id !== 90 && id !== 91, `zero-game player ${id} survived the history gate`);
 }
-assert.ok(gated.warnings.some((w) => /2 player\(s\) with fewer than 2 games/.test(w)), "removal must be reported");
+assert.ok(gated.warnings.some((w) => /2 player\(s\) with too few games of their own were removed/.test(w)), "removal must be reported");
 
 // Control: with the gate off they ARE used, so the gate is what changes the outcome.
 const ungated = optimizeNflLineups(pool, { ...base, requireObservedHistory: false });
@@ -83,8 +83,9 @@ assert.ok(ungated.lineups.some((l) => l.playerIds.some((id) => id === 90 || id =
 const locked = optimizeNflLineups(pool, { ...base, lockedPlayerIds: [90] });
 assert.ok(locked.lineups.every((l) => l.playerIds.includes(90)));
 
-// A one-game player is still gated; the documented cliff is the zero-game group, but
-// MIN_OBSERVED_GAMES is shared with opportunity redistribution and stays that one value.
+// A one-game player with UNKNOWN team season context is still gated: without
+// knowing how many games his team has completed, the flat MIN_OBSERVED_GAMES
+// applies (the season-aware cap is tested in test-nfl-rookie-history-gate.ts).
 assert.equal(optimizeNflLineups([...pool.slice(0, 6), p(92, 5000, 15, 1, "AAA")], base)
   .lineups.some((l) => l.playerIds.includes(92)), false);
 
