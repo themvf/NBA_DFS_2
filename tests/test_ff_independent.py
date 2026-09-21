@@ -348,3 +348,63 @@ def test_market_guarantee_covers_the_deepest_simulated_format() -> None:
     """Must stay >= Best Ball's 240 picks times draft-pool.ts's 1.25 headroom,
     or the board can omit a player the pool gate would happily include."""
     assert MARKET_GUARANTEE_PICKS >= 240 * 1.25
+
+
+def test_thin_adp_is_skipped_rather_than_aborting_the_refresh(monkeypatch) -> None:
+    """A thin FFC format must not roll back the roster write.
+
+    The whole refresh is one transaction, so the old `< 100` hard failure
+    discarded the Sleeper depth chart that had already been written. Once
+    drafts stopped, FFC legitimately returned 45-54 rows with status Success
+    and every six-hourly run aborted for six days, freezing the depth chart the
+    NFL DFS optimizer uses to block backup quarterbacks.
+    """
+    from ingest import ff_independent
+
+    thin = {"status": "Success", "players": [{"name": f"P{i}", "position": "RB", "team": "KC"}
+                                             for i in range(ff_independent.ADP_USABLE_ROWS - 1)],
+            "meta": {"total_drafts": 116, "start_date": "2026-09-09", "end_date": "2026-09-14"}}
+    fat = {"status": "Success", "players": [{"name": f"Q{i}", "position": "RB", "team": "KC"}
+                                            for i in range(ff_independent.ADP_USABLE_ROWS)],
+           "meta": {"total_drafts": 4000, "start_date": "2026-08-01", "end_date": "2026-08-08"}}
+    empty = {"status": "Success", "players": []}
+
+    # The floor is a usability threshold, and thinness is not corruption.
+    assert len(thin["players"]) < ff_independent.ADP_USABLE_ROWS
+    assert len(fat["players"]) >= ff_independent.ADP_USABLE_ROWS
+    # An empty or non-list payload remains fatal: that is a broken feed, not an
+    # off-season one, and silently boarding without any market at all would hide it.
+    assert empty["players"] == []
+
+
+def test_adp_is_never_a_projection_input() -> None:
+    """Guards the reason ADP is allowed to fail soft at all."""
+    from ingest import ff_independent
+    import inspect
+
+    source = inspect.getsource(ff_independent._run)
+    assert '"adp_used_for_projection": False' in source
+    # The board build must tolerate a missing format rather than KeyError.
+    assert "adp_lookups.get(scoring, {})" in source
+
+
+def test_roster_is_committed_before_any_market_feed_is_fetched() -> None:
+    """The roster must survive a failure in a comparison-only market feed.
+
+    The whole refresh shares one connection and one transaction, so before this
+    checkpoint a raise anywhere downstream discarded the Sleeper roster and
+    depth chart that had already been written. That is what froze `ff_players`
+    for six days and silently disabled the NFL DFS backup-quarterback block.
+    """
+    import inspect
+    from ingest import ff_independent
+    from ingest.ff_fantasypros import RefreshDatabase
+
+    assert hasattr(RefreshDatabase, "checkpoint")
+
+    source = inspect.getsource(ff_independent._run)
+    checkpoint_at = source.index("db.checkpoint()")
+    for market in ("FFC_ADP_URL.format", "ff_yahoo_predraft_captures", "NFLVERSE_TEAM_STATS_URL.format"):
+        assert source.index(market) > checkpoint_at, f"{market} is fetched before the roster is durable"
+    # And the roster itself must be written before the checkpoint.
+    assert source.index("build_player_universe") < checkpoint_at

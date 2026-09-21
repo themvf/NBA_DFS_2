@@ -83,6 +83,9 @@ NFLVERSE_TEAM_STATS_URL = (
 )
 FFC_ADP_URL = "https://fantasyfootballcalculator.com/api/v1/adp/{format}?teams=12&year={season}"
 FFC_FORMATS = {"STD": "standard", "HALF": "half-ppr", "PPR": "ppr"}
+# Below this, an FFC format carries too few drafted players to be a useful market
+# comparison. It is a usability floor, never a correctness gate -- see _run.
+ADP_USABLE_ROWS = 100
 
 # Yahoo standard Team Defense/Special Teams scoring, verified 2026-08-07
 # against Yahoo's own live express-settings default page (not a secondary
@@ -1541,6 +1544,12 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
         players=universe,
     )
 
+    # Make the roster and depth chart durable before anything else runs. They
+    # are the game-week critical path -- `ff_players` is what the NFL DFS
+    # optimizer reads to block backup quarterbacks -- while everything below is
+    # the weekly draft board. Nothing downstream may cost us this write again.
+    db.checkpoint()
+
     history_frames: dict[int, pd.DataFrame] = {}
     source_digests = [sleeper_digest, roster_digest, schedule_digest]
     for history_season in range(season - 3, season):
@@ -1617,14 +1626,50 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
     for player_id, rows in dst_histories.items():
         histories.setdefault(player_id, []).extend(rows)
 
+    # Fails soft on purpose, for the same reason as playoff SOS below: ADP is
+    # comparison context only -- it powers the rank delta and buy/fade chips and
+    # never touches a projection, VOR or our rank -- so it must not be able to
+    # take down a board refresh, and above all must not roll back the roster.
+    #
+    # The whole refresh is ONE transaction (RefreshDatabase commits at the end),
+    # so raising here does not merely skip the remaining steps: it DISCARDS the
+    # Sleeper roster and depth chart already written. That is exactly what
+    # happened from 2026-09-14 -- the `< 100` floor was a draft-season
+    # assumption, and once drafts stopped FFC legitimately returned 54 HALF and
+    # 45 PPR rows (status Success, ~120 drafts/week). Every six-hourly run
+    # aborted and rolled back, the depth chart froze six days stale, and the
+    # NFL DFS optimizer's backup-QB block silently stopped firing.
+    #
+    # A broken response is still fatal. A THIN one is recorded and skipped.
     adp_lookups: dict[str, dict[tuple[str, str], dict[str, Any]]] = {}
     adp_snapshot_ids: dict[str, int] = {}
+    adp_skipped: dict[str, str] = {}
+    adp_windows: dict[str, dict[str, Any]] = {}
     for scoring, source_format in FFC_FORMATS.items():
         url = FFC_ADP_URL.format(format=source_format, season=season)
         payload, digest = _fetch_json(url)
         player_rows = payload.get("players", [])
-        if not isinstance(player_rows, list) or len(player_rows) < 100:
-            raise RuntimeError(f"Fantasy Football Calculator {scoring} ADP returned suspiciously few rows")
+        if not isinstance(player_rows, list) or not player_rows:
+            raise RuntimeError(f"Fantasy Football Calculator {scoring} ADP returned no usable player list")
+        meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
+        adp_windows[scoring] = {
+            "rows": len(player_rows), "total_drafts": meta.get("total_drafts"),
+            "start_date": meta.get("start_date"), "end_date": meta.get("end_date"),
+        }
+        if len(player_rows) < ADP_USABLE_ROWS:
+            # Off-season thinness, not a fault. Recorded, surfaced in the run
+            # result, and skipped -- the board keeps its own rank and loses only
+            # this format's market comparison.
+            adp_skipped[scoring] = (
+                f"{len(player_rows)} rows (< {ADP_USABLE_ROWS}); "
+                f"{meta.get('total_drafts', '?')} drafts to {meta.get('end_date', '?')}"
+            )
+            warnings.warn(
+                f"FFC {scoring} ADP too thin to compare against, continuing without it: "
+                f"{adp_skipped[scoring]}", stacklevel=2,
+            )
+            source_digests.append(digest)
+            continue
         lookup = build_adp_lookup(payload)
         universe_keys = {
             ((str(player.get("team") or ""), "DST") if player["position"] == "DST"
@@ -1635,7 +1680,8 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
         snapshot_id = _snapshot(
             db, source="fantasy-football-calculator", dataset="adp", season=season,
             digest=digest, row_count=len(player_rows), scoring=scoring, ranking_type="ADP",
-            params={"url": url, "teams": 12, "format": source_format, "projection_input": False},
+            params={"url": url, "teams": 12, "format": source_format, "projection_input": False,
+                    **adp_windows[scoring]},
             model_eligible=False, eligibility_reason="market context is excluded from football-performance features",
         )
         db.execute(
@@ -1703,7 +1749,7 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
     ranking_sets = [
         create_ranking_set(
             db, season=season, scoring=scoring, source_snapshot_id=board_snapshot_id,
-            universe=universe, histories=histories, adp_lookup=adp_lookups[scoring],
+            universe=universe, histories=histories, adp_lookup=adp_lookups.get(scoring, {}),
             playoff_sos=playoff_sos, yahoo_adp=yahoo_adp,
         )
         for scoring in SCORING_TYPES
@@ -1717,6 +1763,8 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
         "players_per_board": BOARD_SIZE,
         "bye_weeks": len(bye_weeks),
         "adp_coverage": {scoring: len(lookup) for scoring, lookup in adp_lookups.items()},
+        "adp_windows": adp_windows,
+        "adp_skipped": adp_skipped,
         "yahoo_adp_prices": len(yahoo_adp),
         "adp_used_for_projection": False,
         "injury_ingestion": injury_ingestion,

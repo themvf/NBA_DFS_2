@@ -18,7 +18,7 @@ import { matchNflIdentity, resolveNflRosterIdentity, assertUniqueNflSalaryIdenti
 import { getNflIdentityRoster } from "@/db/nfl-identity";
 import { parseNflDkSalaryCsv, type NflDkSlate } from "@/lib/nfl-dfs/dk-salary-csv";
 import { getNflRosterEvidence, getNflInjuryCoverage, type InjuryCoverage } from "@/db/nfl-dfs-availability";
-import { resolveGameAvailability, type Availability } from "@/lib/nfl-dfs/availability";
+import { resolveGameAvailability, ROSTER_FRESH_MS, type Availability } from "@/lib/nfl-dfs/availability";
 import { previewAbsence } from "@/lib/nfl-dfs/absence-preview";
 import type { PlayerContext } from "@/lib/nfl-dfs/player-context";
 import { benchmarkPool, type Competitor, type ImportEvidence, type BenchmarkSnapshot, benchmarkTeam } from '@/lib/nfl-dfs/competitor-benchmark';
@@ -248,6 +248,21 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
   const situations=run?.week?await loadSituationContext(run.season,run.week,roster,now):null;
   const availability = (row: typeof rows[number]) => resolveGameAvailability(roster.get(row.ffPlayerId ?? -1), row.team, row.position, now, run?.week ?? null, roster.get(row.ffPlayerId ?? -1)?.kickoff ?? null);
 
+  // The depth chart is what blocks backup quarterbacks, and its feed has now
+  // twice gone silently stale for days because an unrelated step in the same
+  // single-transaction refresh aborted and rolled the roster write back. Stale
+  // evidence still blocks, but it can no longer clear anyone, so the pool
+  // quietly narrows instead of visibly breaking. Say so on the slate.
+  const rosterCapturedAt = [...roster.values()]
+    .map((entry) => Date.parse(entry.fetchedAt))
+    .filter((value) => Number.isFinite(value) && value <= now)
+    .sort((a, b) => b - a)[0] ?? null;
+  const rosterStaleWarning = rosterCapturedAt === null
+    ? (roster.size ? "Roster evidence carries no usable capture time; depth-chart blocks cannot be trusted." : null)
+    : now - rosterCapturedAt > ROSTER_FRESH_MS
+      ? `Roster and depth-chart evidence is ${Math.floor((now - rosterCapturedAt) / 864e5)} days old (captured ${new Date(rosterCapturedAt).toISOString().slice(0, 10)}). Listed backups are still blocked, but nobody can be cleared and injury status is unverified. Re-run the Fantasy Football refresh workflow.`
+      : null;
+
   // A ruled-out player's work does not vanish -- it goes to his teammates.
   // The OUT flag is known here and only here (DK's Status column), while the
   // stat line needed to move opportunity lives on the immutable projection
@@ -315,7 +330,7 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
     format: upload.format as "classic" | "showdown",
     games: upload.games as string[],
     teams: upload.teams as string[],
-    warnings: [...upload.warnings as string[], ...(incompleteWarning ? [incompleteWarning] : []), ...(staleWarning ? [staleWarning] : []), ...(refreshMessage ? [refreshMessage] : []), ...(calibrationWarning ? [calibrationWarning] : [])],
+    warnings: [...upload.warnings as string[], ...(incompleteWarning ? [incompleteWarning] : []), ...(staleWarning ? [staleWarning] : []), ...(rosterStaleWarning ? [rosterStaleWarning] : []), ...(refreshMessage ? [refreshMessage] : []), ...(calibrationWarning ? [calibrationWarning] : [])],
     fileName: upload.fileName,
     players: rows.map((row) => ({
       id: row.id,

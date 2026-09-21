@@ -617,6 +617,15 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
       // A cheap player admitted only by override is Flex-only unless a CPT
       // override is recorded (spec §8.3).
       captainEligible = !overridden || captainAdmissible(player.dkPlayerId, overrides);
+      // Main's observed-history gate (#217) still applies alongside the policy:
+      // the policy scrutinizes CHEAP roles, while this removes any-priced
+      // players whose projection is a position average, not theirs (the backup
+      // QB handed the average NFL start). Locks, exposure targets and recorded
+      // overrides are the user's own instruction and outrank it.
+      if (settings.requireObservedHistory && !hasObservedOpportunity(player) && !floorExempt.has(player.dkPlayerId) && !overridden) {
+        eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden: false, reason: `Fewer than ${MIN_OBSERVED_GAMES} observed games; projection is a position average.`, reasonCode: "ROLE_UNKNOWN" });
+        withoutHistory++; coverage.excluded++; continue;
+      }
     } else {
       // Legacy path: bare salary floor + observed-history gate.
       if (salaryFloor > 0 && player.salary < salaryFloor && !floorExempt.has(player.dkPlayerId)) {

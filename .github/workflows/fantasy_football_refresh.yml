@@ -2,9 +2,13 @@ name: Refresh Fantasy Football Draft Data
 
 on:
   schedule:
-    # Every six hours during the North American draft season. The ingestion
-    # script is snapshot-idempotent, and browser traffic never calls the API.
-    - cron: "17 1,7,13,19 * 7-9 *"
+    # Every six hours, year round. The month restriction (7-9) was written when
+    # this only fed the summer draft board; `ff_players` is now also the roster
+    # and depth-chart evidence the NFL DFS optimizer reads to block backup
+    # quarterbacks, which it needs every game week through February. The
+    # ingestion script is snapshot-idempotent, and browser traffic never calls
+    # the API.
+    - cron: "17 1,7,13,19 * * *"
   workflow_dispatch:
     inputs:
       season:
