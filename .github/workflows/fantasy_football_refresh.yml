@@ -27,6 +27,7 @@ on:
           - fantasypros-history-audit
           - fantasypros-snapshot
           - fantasypros-rookie-check
+          - fantasypros-players-probe
 
 concurrency:
   group: fantasy-football-refresh
@@ -46,7 +47,7 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Audit upgraded FantasyPros endpoint contracts
         id: fantasypros-audit
-        if: ${{ inputs.mode != 'fantasypros-history-audit' && inputs.mode != 'fantasypros-rookie-check' }}
+        if: ${{ inputs.mode != 'fantasypros-history-audit' && inputs.mode != 'fantasypros-rookie-check' && inputs.mode != 'fantasypros-players-probe' }}
         continue-on-error: true
         env:
           FANTASYPROS_API_KEY: ${{ secrets.FANTASYPROS_API_KEY }}
@@ -85,6 +86,16 @@ jobs:
       - name: Build independent rankings from Sleeper and nflverse
         if: ${{ inputs.mode == '' || inputs.mode == 'full' }}
         run: python -m ingest.ff_independent --season "${{ inputs.season || '2026' }}"
+      - name: "Read-only probe: FantasyPros nfl/players parameter isolation"
+        if: ${{ inputs.mode == 'fantasypros-players-probe' }}
+        continue-on-error: true
+        env:
+          FANTASYPROS_API_KEY: ${{ secrets.FANTASYPROS_API_KEY }}
+        run: >-
+          python -m ingest.ff_fantasypros_players_probe
+          --season "${{ inputs.season || '2026' }}"
+          --output fantasypros-audit.json
+
       - name: "Read-only check: FantasyPros historical rookie projection accuracy"
         id: fantasypros-rookie-check
         if: ${{ inputs.mode == 'fantasypros-rookie-check' }}
