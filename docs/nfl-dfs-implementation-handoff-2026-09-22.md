@@ -361,7 +361,27 @@ python -m ingest.nfl_dfs_projections            # after any version flip
 cd web && npm run lint && npm run build         # copy web/.env.local into a fresh worktree first
 ```
 
-## 6. Do not
+## 6. Status (2026-09-22, end of day)
+
+| Package | State | PR | Live evidence |
+|---|---|---|---|
+| WP0 record correction | Done | #229 | `CLAUDE.md` + `docs/nfl-line-movement-study.md` Result section |
+| WP1a slate-scoped report card | Done | #232 | weeks 1–2 persisted; week-2 v3 slate reproduces QB +14.2 / RB +5.4 / WR +4.9 / TE +4.5 |
+| WP1b v4 prior study | Registered + grader built | #233 | narrowed to 0-game players after the 1–5 game shrink regressed on discovery weeks; verdict after week 10 |
+| WP2 CLV instrument | Done, regraded live | #230 | 243 rows on `nfl-lines-v2`, 0 outcomes changed, 85/85 recomputations match |
+| WP3 fade-study guard | Done | #230 | `report()` and `/nfl` withhold regular-season `total_walking` (accrued 26/25) |
+| WP4 schema lock + stale market columns | Done, verified | #231 | dispatched survivor run succeeded; `market_captured_at` advanced same day |
+| WP5 promotion gate | Done | #234 | gate persisted in every shadow evaluation; `no_verdict`, window empty |
+| WP6/WP7 environment + interval studies | Registered, variants frozen | #236 | 676 week-3 shadow rows carry `context_variants` |
+| WP8 share study v2 | Not started (optional) | — | expect a null; only if still wanted |
+| WP9 cadence / detector health | Done (partial, see PR) | #237 | NFL structure detectors are dead with 361 eligible pairs, not starved; `nfl_matchups.week` 272/272 |
+| WP10 hygiene | Done | #235 | 2 duplicate identities deactivated; studies stamp provenance |
+
+Grading dates that now exist: v4 prior study after 2026 week 10; shadow
+promotion gate after week 12; environment/interval studies after eight
+forward weeks from week 3 (≈ week 10); fade study at n ≥ 100 / 40 games.
+
+## 7. Do not
 
 - Edit `nfl-dfs-historical-v3` in place, or tune any constant in WP1/WP6/WP7
   against the forward weeks it will be graded on.
