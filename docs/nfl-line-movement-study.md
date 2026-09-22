@@ -148,3 +148,52 @@ Capture is **resumable and idempotent**: `nfl_line_snapshots` is keyed on
 `(snapshot_at, event_id)` and the capturer skips any label/date already stored.
 Credits are real money and a re-run must never re-buy a snapshot it already
 holds.
+
+---
+
+## Result (2026-09-08)
+
+Run in commit 7f15a63 without changing a snapshot time, metric or kill
+criterion. 300 snapshots captured, 6,000 credits (80,799 remaining).
+Transcribed from the commit message on 2026-09-22 after a review found the
+result recorded nowhere else.
+
+**Primary (2023–25, treatment n=62, control n=333).** Spreads from the road
+team's view, so negative = the market turned against the visitor.
+
+| | treatment | control | difference | verdict |
+|---|---:|---:|---|---|
+| H1 drift open→close | +0.24 | +0.11 | +0.13 [−0.21, +0.46] | **dies** — CI includes zero; the sign is toward the west-coast visitor, the opposite of the hypothesis |
+| H2 timing windows | article cycle +0.07, weekend casual +0.05, late/sharp +0.02 | | | **dies** — nothing anywhere |
+| H3 opener vs closer | −0.19 [−0.49, +0.11] | −0.16 [−0.31, −0.01] | −0.03 [−0.37, +0.31] | **dies** — no treatment/control difference |
+
+H3 is the interesting death. The opener did beat the closer by about 0.16
+points, but in the **control** arm, and the treatment arm shows the same
+magnitude. So "the score lands near where the line opened" has something
+to it, and it is not about west-coast teams: it applies to every Sunday-1pm
+road team equally. The registered claim was specificity, and specificity is
+exactly what fails.
+
+That control result is an **incidental finding, not a confirmed one**: its
+CI barely excludes zero, it was not the registered hypothesis, 0.16 points
+is far inside the vig, and "openers beat closers" contradicts the standard
+closing-line result, which makes it more suspicious rather than less. It is
+recorded as a candidate for its own pre-registered study on free 2026
+captures, and nothing more.
+
+**A real bug caught before reporting.** The first analysis keyed on
+`event_id` and read treatment n=89 against a schedule count of 73 made
+before any data was bought. The provider re-keys some events — 1,309
+event_ids over 1,093 distinct matchups, including a flexed Week 18 game
+filed under two ids at two kickoff times — so single games entered twice,
+inflating n and breaking independence. Keying on the matchup and merging
+traces is both the fix and the better reconstruction; n then lands at
+exactly 73, matching the pre-registered count, which is what says the fix
+is right rather than merely smaller.
+
+Capture gained retry-with-backoff after a provider 502 aborted the first run
+at snapshot 99: a rejected call costs no credits so retrying is free, while
+restarting a 300-call job is not. 4xx still stops immediately.
+
+**Status: closed.** Do not re-run or re-slice; a follow-up on the H3 control
+observation needs its own registration.

@@ -6901,6 +6901,18 @@ pace variant, the reason the question was asked, adds nothing on any field.
 Effect size where it survives is ~0.1 carries/game of MAE, roughly a 2%
 improvement: real, small. Both constants were stated priors, not fitted.
 
+**Corrections from the 2026-09-21 review** (see
+`docs/nfl-dfs-redzone-review-handoff-2026-09-21.md` §2.3): the registration
+said two tests; the script runs **six** kill tests (attempts and targets
+correlate 0.888, so ~4 effective). Bonferroni-6 on carries is
+[−0.184, −0.032] and the survivor holds; by season it decays (2024 −0.158,
+2025 −0.074, 2026 +0.047 at n=62). In DK terms, 0.107 carries of MAE is
+**≈ 0.07 team points**; the adjustment averages 0.89 carries (3.3% of
+budget), so a bell-cow RB typically moves ≤ 0.35 points against a forward
+RB MAE of 5–7.5. The "production candidate" baseline is the workload-config
+budget, a research construct; production has no team budget for these
+fields.
+
 **Not promoted.** The surviving carries term is a measurement, not a
 production change; shipping it means a new workload version with the carries
 adjustment only (never attempts/targets on the strength of this), shadow
@@ -6921,14 +6933,20 @@ machinery as the workload backtest: production shrinkage, walk-forward from
 
 | variant | MAE | paired delta vs baseline | verdict |
 |---|---:|---|---|
-| baseline: shrunk EWMA of own TD drives | 1.0903 | | |
+| baseline: shrunk EWMA of own TD drives (workload-config research construct — production has NO team TD budget) | 1.0903 | | |
 | V1 own trips × league conversion | 1.0874 | −0.003 [−0.018, +0.013] | DEAD |
 | V2 V1 + 0.5×(opp allowed trips − league) | 1.0801 | −0.010 [−0.027, +0.007] | DEAD |
 
 **Read:** the structural premise held (trips are ~29% of drives, convert at a
 stable 55–58%, and carry ~93% of touchdowns) and it still bought nothing:
 a team's red-zone trips are no more persistent than its touchdowns, so
-decomposing TDs into trips × conversion is a relabelling, not information.
+decomposing TDs into trips × conversion adds no information (review caveat:
+corr(v1, baseline) is 0.79 and mean |v1−baseline| 0.25 TD drives, so it is a
+different number that scores the same, not a literal relabelling). The
+baseline itself is weak — corr with actual 0.27, and a constant league mean
+scores MAE 1.155 vs its 1.090 — so this null holds a fortiori against
+production, which derives TDs from per-player resampled lines times a
+team-implied-total factor and never computes a team TD EWMA.
 The textbook "touchdown regression" claim does not survive at team level
 with a 17-game window. Point estimates are 0.3% and 0.9%, both inside noise.
 Second consecutive result saying pbp-derived TEAM tendencies do not beat
@@ -6956,14 +6974,53 @@ crosswalk). RB/WR/TE, 2024 w1 → 2026 w2, n=8,088 player-games.
 Paired delta **+0.107 [+0.098, +0.116] — DEAD**, and worse in all three
 positions.
 
-**Why, and this is a registration error, not a mechanism verdict.** The
-share prior shrank every player toward the POSITION-average share (~0.15),
-so a fourth receiver with two red-zone touches all season carries a 0.13
-share, and one team's shrunk shares sum to ~2.4 — the roster is handed the
-team's touchdowns two and a half times over. The +0.166 bias is exactly that.
-Production `allocate()` avoids this by normalising shares to the team budget,
-which the registration did not do. A corrected variant (shares normalised
-to sum to one per team, or shrunk toward zero rather than a position mean)
-is a NEW study with its own registration: the failure here says nothing
-about whether red-zone usage predicts touchdowns, only that this construction
-of it cannot. Do not quietly patch the prior in this file and re-run.
+**Why — corrected 2026-09-22 after the review in
+`docs/nfl-dfs-redzone-review-handoff-2026-09-21.md` §2.1. This is a
+registration error, not a mechanism verdict, and the first version of this
+note named the wrong dominant cause.** Three defects, in order of size:
+
+1. **Zero-touch omission (dominant).** `Prior.__init__` appends a share only
+   for player-games that appear in the red-zone map, so every player's
+   series is conditional on having touched the ball inside the 20. Raw
+   touch-only EWMA shares already sum to **1.38 per team-week before any
+   prior is applied** (p90 1.79). RB touch-games are 57% of active games,
+   WR 35%, TE 36%; `MIN_SHARE_GAMES=2` then selects on outlier games (450
+   rows with exactly two touch-games projected 0.413 TD/game vs actual 0.270).
+2. **Survivor-only team budget.** `team_td` sums touchdowns over rows joined
+   through `ff_players`, which holds only the 2026 roster, recovering 73% of
+   2023 team TDs, 86% of 2024, 97% of 2025 (complete figures exist in DST
+   `raw_team_stats`: 1,224 / 1,320 / 1,321). This partially cancelled defect
+   1, so the true bias is LARGER than the recorded +0.166.
+3. **Position-mean prior (secondary, ~+0.07).** The prior shrank toward a
+   position-average share computed over the same touch-only games (RB 0.313,
+   WR 0.174, TE 0.164), so it was inflated too. This was the cause the
+   original note blamed; on its own it would not have produced the result.
+
+Also unstated at registration: "touch" counts targets, not receptions (39.5%
+of 2025 red-zone receiver credits were incompletions or interceptions, so
+WR/TE shares are inflated relative to RB); history is keyed by player only,
+not team (a traded player's old share multiplies the new team's budget);
+and 32% of passing / 16% of rushing TDs (2024–25) are snapped outside the
+20, a structural ceiling any red-zone share cannot address. A corrected
+variant — shares for EVERY active player-game with 0 when absent, a complete
+team budget, team-filtered history, shrink toward zero, normalised within
+team-week — is a NEW study with its own registration (drafted in the review
+handoff §5 item 9; expect a null given the team-level trips result). The
+failure here says nothing about whether red-zone usage predicts touchdowns,
+only that this construction of it cannot. Do not quietly patch the prior in
+this file and re-run.
+
+---
+
+## NFL West-Coast 1pm Line Study — Result (2026-09-08, recorded 2026-09-22)
+
+Pre-registered in `docs/nfl-line-movement-study.md`; run in commit 7f15a63
+(300 historical snapshots, 6,000 credits). **All three hypotheses die**: H1
+open→close drift for west-coast 1pm road teams +0.13 vs control, CI
+[−0.21, +0.46]; H2 no timing-window effect; H3 opener-vs-closer treatment
+−0.03 vs control, CI [−0.37, +0.31]. Incidental, NOT a finding: the control
+arm's opener beat its closer by 0.16 points (CI barely excluding zero) for
+every Sunday-1pm road team, which is a candidate for its own registration
+on free 2026 captures. The result section in the study doc was appended
+2026-09-22; the review had found it existed only in the commit message.
+Do not re-run this study.
