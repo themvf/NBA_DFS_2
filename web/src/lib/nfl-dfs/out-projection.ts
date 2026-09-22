@@ -68,6 +68,37 @@ export function zeroOutProjection<T extends ZeroableProjection>(row: T, isOut: b
   };
 }
 
+/** The projection fields the immutable run row exposes to a slate write. */
+export type RunProjectionFields = {
+  projectionStatus: string;
+  modelProjFpts: number | null;
+  floorFpts: number | null;
+  medianFpts: number | null;
+  ceilingFpts: number | null;
+  boomRate: number | null;
+};
+
+/**
+ * What a slate row STORES for its projection. The same rule as
+ * `zeroOutProjection`, applied at write time instead of read time: a
+ * DK-flagged OUT player is stored at zero with status `out`, so the stored
+ * row, the report cards and every export agree with what the page shows.
+ * A missing projection stays `unmatched` with nulls -- absence is not zero.
+ */
+export function storedSlateProjection(projection: RunProjectionFields | null | undefined, isOut: boolean) {
+  if (isOut) {
+    return { projectionStatus: OUT_PROJECTION_STATUS, ourProj: 0, floorFpts: 0, medianFpts: 0, ceilingFpts: 0, boomRate: 0 };
+  }
+  return {
+    projectionStatus: projection?.projectionStatus ?? "unmatched",
+    ourProj: projection?.modelProjFpts ?? null,
+    floorFpts: projection?.floorFpts ?? null,
+    medianFpts: projection?.medianFpts ?? null,
+    ceilingFpts: projection?.ceilingFpts ?? null,
+    boomRate: projection?.boomRate ?? null,
+  };
+}
+
 /**
  * The availability note as the Python module writes it onto a projection row.
  * `rule` is `"zeroed"` on the absent player and `"inherits"` on whoever picks

@@ -24,7 +24,7 @@ import type { PlayerContext } from "@/lib/nfl-dfs/player-context";
 import { benchmarkPool, type Competitor, type ImportEvidence, type BenchmarkSnapshot, benchmarkTeam } from '@/lib/nfl-dfs/competitor-benchmark';
 import { saveNflBenchmark, readNflBenchmarks } from '@/db/nfl-dfs-benchmark';
 import { redistributeInjuryTargets } from '@/lib/nfl-dfs/injury-redistribution';
-import { availabilityNote, type ModelAvailabilityNote } from '@/lib/nfl-dfs/out-projection';
+import { availabilityNote, storedSlateProjection, type ModelAvailabilityNote } from '@/lib/nfl-dfs/out-projection';
 import { redistributeOutOpportunity, inheritanceNote, paidByDonor, type RedistributionRow, type InheritedFrom } from '@/lib/nfl-dfs/opportunity-redistribution';
 import { resolveOpportunityProjection, type ProjectionScenario } from '@/lib/nfl-dfs/resolved-projection';
 import { staleRunWarning } from '@/lib/nfl-dfs/stale-run';
@@ -534,12 +534,12 @@ async function persistSalarySlate(slate: NflDkSlate, digest: string, fileName: s
         roster:identityRoster.candidates.filter(p=>Boolean(permanent?.gsisId&&p.gsisId===permanent.gsisId)
           || [p.name,...p.aliases].some(name=>normalizeName(name)===normalized)),
         salaryEntry:{name:player.name,team:player.teamAbbrev,position:player.position,dkRosterEntryId:player.dkPlayerId}},
-      projectionStatus: projection?.projectionStatus ?? "unmatched",
-      ourProj: projection?.modelProjFpts ?? null,
-      floorFpts: projection?.floorFpts ?? null,
-      medianFpts: projection?.medianFpts ?? null,
-      ceilingFpts: projection?.ceilingFpts ?? null,
-      boomRate: projection?.boomRate ?? null,
+      // A DK-flagged OUT player is stored at ZERO, not at his model number.
+      // Until 2026-09-22 only the web read layer zeroed him, so the stored
+      // row (and every report card reading it) carried a projection for a
+      // player who was never going to play. The projection run row keeps the
+      // original number; identityEvidence.projectionRowId points at it.
+      ...storedSlateProjection(projection, player.isOut),
       modelConfidence: projection?.confidence ?? null,
       historyGames: projection?.historyGames ?? null,
       ...(() => {
