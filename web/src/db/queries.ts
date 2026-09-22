@@ -11150,6 +11150,16 @@ export async function getMarketCaptureHealth(
   };
 }
 
+/** The pre-registered NFL total_walking fade study (model/nfl_walking_fade_study.py,
+ * `nfl-walking-fade-v1`, floors n >= 100 and 40 distinct games) is BLIND until
+ * it publishes its verdict. Flip this to false only when that script reports a
+ * verdict, never on an alert count: the study's n is smaller than the raw
+ * alert count (it needs a post-trigger capture), so a count-based unseal could
+ * open the ledger early. */
+export const NFL_FADE_STUDY_SEALED = true;
+export const NFL_FADE_STUDY_SEASON_START = "2026-09-09";
+export const NFL_FADE_STUDY_FLOORS = { n: 100, games: 40 } as const;
+
 export async function getLineAlertBacktest(sport: string): Promise<LineAlertBacktestRow[]> {
   // The audit: does each alert type beat the close (CLV) and win at the
   // flagged rate? If an alert type shows no positive CLV over a real sample,
@@ -11179,7 +11189,17 @@ export async function getLineAlertBacktest(sport: string): Promise<LineAlertBack
              AS "nFrozenPrice",
            COUNT(DISTINCT COALESCE(details_json->>'exec_book', 'draftkings'))
              FILTER (WHERE details_json ? 'dk_decimal') AS "nExecBooks"
-    FROM line_alerts WHERE sport = ${sport} AND origin = 'prospective'
+    FROM line_alerts a WHERE sport = ${sport} AND origin = 'prospective'
+      -- WP3 (2026-09-22): the pre-registered NFL total_walking FADE study is
+      -- blind until n >= 100 and 40 games. Its population's aggregate record
+      -- is the exact negative of the sealed fade-side CLV, so the rows are
+      -- withheld from this public surface while NFL_FADE_STUDY_SEALED is true.
+      -- Mirrors model/line_alerts.py::_FADE_STUDY_EXCLUSION; keep in sync.
+      ${NFL_FADE_STUDY_SEALED ? sql`AND NOT (
+        a.sport = 'nfl' AND a.alert_type = 'total_walking'
+        AND EXISTS (SELECT 1 FROM nfl_matchups m
+                    WHERE m.id = a.matchup_id AND m.season_type = 'regular'
+                      AND m.commence_time >= ${NFL_FADE_STUDY_SEASON_START}))` : sql``}
     GROUP BY alert_type ORDER BY alert_type
   `);
   return rows.rows.map((r) => {
