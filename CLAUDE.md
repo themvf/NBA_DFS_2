@@ -7024,3 +7024,25 @@ every Sunday-1pm road team, which is a candidate for its own registration
 on free 2026 captures. The result section in the study doc was appended
 2026-09-22; the review had found it existed only in the commit message.
 Do not re-run this study.
+
+---
+
+## NFL DFS — Two forward accuracy streams, never pooled (2026-09-22)
+
+| stream | module / table | population | missing stat row means |
+|---|---|---|---|
+| weekly roster (`nfl-dfs-weekly-report-v1`) | `model/nfl_dfs_reportcard.py` → `nfl_dfs_weekly_report_cards` | canonical roster + preserved forecast identities | **unknown** (not evidence of zero) |
+| slate-scoped (`nfl-dfs-slate-report-v1`) | `model/nfl_dfs_slate_reportcard.py` → `nfl_dfs_slate_report_cards` | players DraftKings listed on a completed upload | **0** (what DK paid), but only once ≥1 exact result exists for that game |
+
+The roster stream is right for its purpose and leaves the population the
+model is most wrong about unscored (689 of 1,078 week-1 forecasts). The
+slate stream exists to score exactly that population: cohorts `hist_0`
+(position-prior rows), `hist_1_5`, `hist_6_plus`, `out`, per position, with
+a weeks-clustered bootstrap (`pooled_summary`) and an optional alternative
+forecast stream graded on the identical population — the grader for the
+zero-history prior study (`nfl-dfs-historical-v4`). Weeks 1–2 (pooled,
+n=552 hist_0 rows): actual − projected −6.27 [−6.59, −6.05]; by position
+QB −14.0, RB −5.9, WR −5.2, TE −4.7. Rows the slate marked OUT still carry
+their stored projection (zeroing happens only in the web read layer), so
+they are their own cohort and excluded from accuracy cells.
+`python -m ingest.nfl_dfs_slate_reportcard --pooled`.

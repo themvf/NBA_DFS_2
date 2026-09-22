@@ -3287,6 +3287,19 @@ TABLES = [
         payload JSONB NOT NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )""",
+    # Slate-scoped stream (DraftKings convention: listed + game final + no stat
+    # line = 0). Separate table and version from the weekly roster report so
+    # the two populations can never be pooled by accident.
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_slate_report_cards (
+        report_digest TEXT PRIMARY KEY,
+        upload_id TEXT NOT NULL,
+        season INTEGER NOT NULL,
+        week INTEGER NOT NULL CHECK(week BETWEEN 1 AND 18),
+        format TEXT NOT NULL,
+        version TEXT NOT NULL,
+        payload JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )""",
     """CREATE TABLE IF NOT EXISTS nfl_dfs_research_runs (
         run_id TEXT PRIMARY KEY,
         report JSONB NOT NULL,
