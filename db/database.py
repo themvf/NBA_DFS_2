@@ -93,6 +93,33 @@ class DatabaseManager:
             for params in params_list:
                 cur.execute(sql, params)
 
+    def require_tables(self, names) -> None:
+        """Fail loudly if any named table is absent.
+
+        The counterpart of `initialize_schema=False`: a scheduled job that
+        skips the per-invocation DDL (because `_ensure_schema` contends with
+        other writers and has been killing jobs on `LockNotAvailable`) must
+        still refuse to run against a database that was never migrated,
+        rather than failing later with an opaque "relation does not exist".
+        A missing table is an operator problem (run any schema-initializing
+        entrypoint once), not something a read-mostly job should DDL its way
+        out of.
+        """
+        wanted = sorted(set(names))
+        rows = self.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name = ANY(%s)",
+            (wanted,),
+        )
+        present = {r["table_name"] for r in rows}
+        missing = [n for n in wanted if n not in present]
+        if missing:
+            raise RuntimeError(
+                "database schema is not initialized for this job; missing tables: "
+                + ", ".join(missing)
+                + ". Run a schema-initializing entrypoint once, then retry."
+            )
+
     def _ensure_schema(self) -> None:
         """Create all tables, run migrations, then create indexes.
 
