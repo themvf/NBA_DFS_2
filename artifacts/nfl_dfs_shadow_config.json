@@ -4,5 +4,23 @@
   "mode": "shadow_only",
   "production_promotion": false,
   "fresh_evaluation_season": 2026,
-  "report": "artifacts/nfl_dfs_research_7920413d4c8c44ef/4b726852851f17b4/report.json"
+  "report": "artifacts/nfl_dfs_research_7920413d4c8c44ef/4b726852851f17b4/report.json",
+  "forward_gate": {
+    "registered_at": "2026-09-22",
+    "season": 2026,
+    "window_weeks": [3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+    "inspected_weeks": [1, 2],
+    "min_player_weeks_per_position": 150,
+    "min_weeks": 5,
+    "bootstrap_iters": 2000,
+    "seed": 20260922,
+    "coverage_tolerance": 0.0,
+    "brier_tolerance": 0.0,
+    "rules": [
+      "weeks-clustered paired MAE (candidate - baseline) 95% CI upper bound < 0",
+      "p10-p90 interval coverage not worse than baseline",
+      "boom Brier not worse than baseline"
+    ],
+    "graded_once": "no verdict until every window week is scorable; weeks 1-2 were inspected and are excluded; the gate reports, it never flips production_promotion"
+  }
 }

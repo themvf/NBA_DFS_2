@@ -21,6 +21,7 @@ from db.schema import TABLES
 from ingest.nfl_dfs_projections import _history, _players, _slate_environment, infer_target_week
 from model.nfl_dfs_historical import HistoricalWeek, MODEL_CONFIG, ProjectionContext, artifact_digest, project_player, BOOM_THRESHOLDS
 from model.nfl_dfs_research import SEED, POSITIONS, predict, metrics, clustered_mae_delta
+from model.nfl_dfs_shadow_gate import evaluate_forward_gate
 
 
 class Reader:
@@ -175,7 +176,7 @@ def settle(connection) -> int:
     return count
 
 
-def evaluation(connection, study_id: str) -> dict:
+def evaluation(connection, study_id: str, gate: dict | None = None) -> dict:
     # One (last accepted) pregame forecast per player-week, one latest outcome;
     # daily freezes never inflate the effective sample size.
     reader = Reader(connection)
@@ -204,6 +205,10 @@ def evaluation(connection, study_id: str) -> dict:
     counts = reader.execute("""SELECT COUNT(DISTINCT (player_id,season,week))::int n
       FROM nfl_dfs_shadow_predictions WHERE study_run_id=%s""", (study_id,))[0]
     return {"study_run_id": study_id, "cohorts": cohorts, "production_promotion": False,
+            # WP5: the frozen forward gate (model/nfl_dfs_shadow_gate.py). It
+            # reports per-position verdicts once the window is complete and
+            # never flips production_promotion on its own.
+            "forward_gate": evaluate_forward_gate(rows, gate),
             "weekly": weekly_metrics(rows),
             "frozen_player_weeks": counts["n"], "scored_player_weeks": len(rows),
             "unscored_player_weeks": counts["n"]-len(rows),
@@ -257,7 +262,7 @@ def main() -> None:
                 result.update(freeze(connection, report, season, week, now))
             else:
                 result["freeze_status"] = "no_upcoming_regular_season_games"
-        result["evaluation"] = evaluation(connection, report["run_id"])
+        result["evaluation"] = evaluation(connection, report["run_id"], config.get("forward_gate"))
         with connection.cursor() as cursor:
             cursor.execute("""INSERT INTO nfl_dfs_shadow_evaluations(evaluation_digest,study_run_id,payload)
               VALUES (%s,%s,%s) ON CONFLICT DO NOTHING""",
