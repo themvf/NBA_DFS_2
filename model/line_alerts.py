@@ -246,9 +246,26 @@ def check_detector_health(db: DatabaseManager) -> list[dict]:
             (sport, _HEALTH_OPPORTUNITY_DAYS),
         )
         opportunity_days = int(opp["days"]) if opp else 0
+        # WP9: elapsed-bound detectors need two captures <= 30 minutes apart
+        # to be able to fire at all. Count those pairs so a detector starved
+        # by cadence reads no_opportunity, and one with hundreds of eligible
+        # pairs and zero alerts reads dead -- the two are different bugs.
+        eligible_pairs = None
+        if alert_type in _ELAPSED_BOUND_TYPES:
+            pairs = db.execute_one(
+                """
+                SELECT COUNT(*)::int AS n FROM (
+                    SELECT captured_at - LAG(captured_at) OVER (PARTITION BY matchup_id ORDER BY captured_at) AS gap
+                    FROM game_odds_history
+                    WHERE sport=%s AND captured_at >= NOW() - (%s || ' days')::interval
+                ) g WHERE gap <= (%s || ' minutes')::interval
+                """,
+                (sport, _HEALTH_OPPORTUNITY_DAYS, _ELAPSED_BOUND_MINUTES),
+            )
+            eligible_pairs = int(pairs["n"]) if pairs else 0
         if days_deployed < _HEALTH_MIN_DAYS:
             status = "too_new"
-        elif opportunity_days == 0:
+        elif opportunity_days == 0 or eligible_pairs == 0:
             status = "no_opportunity"
         elif alerts_ever == 0:
             status = "dead"
@@ -262,9 +279,17 @@ def check_detector_health(db: DatabaseManager) -> list[dict]:
             "alerts_ever": alerts_ever,
             "last_alert_at": last_alert_at.isoformat() if last_alert_at else None,
             "opportunity_days": opportunity_days,
+            "eligible_pairs": eligible_pairs,
             "status": status,
         })
     return results
+
+
+# Detectors whose trigger requires a predecessor capture within this many
+# minutes (see the elapsed checks in _moneyline_structure_signals /
+# _cfb_market_signals). Their opportunity is capture PAIRS, not game days.
+_ELAPSED_BOUND_TYPES = frozenset({"reversal", "reference_led", "price_pressure"})
+_ELAPSED_BOUND_MINUTES = 30
 
 # Grading sources per sport: (home score col, away score col). Soccer uses the
 # 90-minute regulation score — a knockout tie decided in extra time is a DRAW
@@ -1296,6 +1321,18 @@ def scan(db: DatabaseManager, sport: str) -> int:
                 priced = freeze_execution_price(
                     books, market=signal["details"]["market"], side=signal["side"])
                 details = {**signal["details"], **priced}
+                # WP9: how far apart were the two captures this "steam" compares?
+                # The shared detector bounds steam at 30 minutes; NFL's
+                # consecutive-capture definition never did (median trigger
+                # interval ~6h). Stamp the interval and name the definition so
+                # the audit can slice on it instead of pretending both are one.
+                if signal["alert_type"].endswith("_steam") and prev:
+                    details["interval_minutes"] = round(
+                        (r["captured_at"] - prev["captured_at"]).total_seconds() / 60, 1)
+                    details["steam_definition"] = "unbounded_consecutive_capture"
+                elif signal["alert_type"].endswith("_walking") and first:
+                    details["open_to_trigger_minutes"] = round(
+                        (r["captured_at"] - first["captured_at"]).total_seconds() / 60, 1)
                 # Freeze the home-referenced ENTRY LINE too, exactly as the CFB
                 # path does. Without it settlement fell back to the mean
                 # consensus trigger line -- a number no book posts -- and
@@ -2864,9 +2901,11 @@ def report(db: DatabaseManager, *, include_legacy: bool = False) -> None:
     print("=== Detector health — has each detector EVER fired since it shipped? ===")
     if dead:
         for h in dead:
+            pairs = (f", {h['eligible_pairs']} capture pairs <=30min it could have fired on"
+                     if h.get("eligible_pairs") is not None else "")
             print(f"  DEAD  {h['sport']:<8}{h['alert_type']:<22} deployed={h['deployed_at']} "
                   f"({h['days_deployed']}d ago) — 0 alerts, {h['opportunity_days']}d of eligible "
-                  f"games in the last {_HEALTH_OPPORTUNITY_DAYS}d. Check the field/market this detector "
+                  f"games in the last {_HEALTH_OPPORTUNITY_DAYS}d{pairs}. Check the field/market this detector "
                   f"reads actually exists in the captured books.")
     else:
         print("  none dead — every detector past its judging window has fired at least once")

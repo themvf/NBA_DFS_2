@@ -11240,11 +11240,16 @@ export type DetectorHealthRow = {
   alertsEver: number;
   lastAlertAt: string | null;
   opportunityDays: number;
+  /** Capture pairs <= 30 min apart in the window, for detectors whose trigger
+   *  needs one; null for every other detector. Mirrors _ELAPSED_BOUND_TYPES. */
+  eligiblePairs: number | null;
   status: "too_new" | "no_opportunity" | "dead" | "active";
 };
 
 const DETECTOR_HEALTH_MIN_DAYS = 14;
 const DETECTOR_HEALTH_OPPORTUNITY_DAYS = 14;
+const ELAPSED_BOUND_TYPES = new Set(["reversal", "reference_led", "price_pressure"]);
+const ELAPSED_BOUND_MINUTES = 30;
 
 const DETECTOR_REGISTRY: { sport: string; alertType: string; deployedAt: string }[] = [
   { sport: "mlb", alertType: "pinnacle_divergence", deployedAt: "2026-07-02" },
@@ -11310,7 +11315,8 @@ async function computeHealthForSport(
 ): Promise<DetectorHealthRow[]> {
   if (entries.length === 0) return [];
   const alertTypes = entries.map((e) => e.alertType);
-  const [counts, opp] = await Promise.all([
+  const needsPairs = entries.some((e) => ELAPSED_BOUND_TYPES.has(e.alertType));
+  const [counts, opp, pairs] = await Promise.all([
     db.execute(sql`
       SELECT alert_type AS "alertType", COUNT(*)::int AS n, MAX(created_at)::text AS "lastAt"
       FROM line_alerts
@@ -11323,7 +11329,20 @@ async function computeHealthForSport(
       FROM game_odds_history
       WHERE sport = ${sport} AND captured_at >= NOW() - (${DETECTOR_HEALTH_OPPORTUNITY_DAYS} || ' days')::interval
     `),
+    // WP9: elapsed-bound detectors need two captures <= 30 min apart to fire
+    // at all. A detector starved by cadence is no_opportunity; one with
+    // hundreds of eligible pairs and zero alerts is dead. Different bugs.
+    needsPairs
+      ? db.execute(sql`
+          SELECT COUNT(*)::int AS n FROM (
+            SELECT captured_at - LAG(captured_at) OVER (PARTITION BY matchup_id ORDER BY captured_at) AS gap
+            FROM game_odds_history
+            WHERE sport = ${sport} AND captured_at >= NOW() - (${DETECTOR_HEALTH_OPPORTUNITY_DAYS} || ' days')::interval
+          ) g WHERE gap <= (${ELAPSED_BOUND_MINUTES} || ' minutes')::interval
+        `)
+      : Promise.resolve(null),
   ]);
+  const eligiblePairs = pairs ? Number((pairs.rows[0] as Record<string, unknown> | undefined)?.n ?? 0) : null;
   const countByType = new Map<string, { n: number; lastAt: string | null }>();
   for (const r of counts.rows) {
     const rec = r as Record<string, unknown>;
@@ -11340,9 +11359,10 @@ async function computeHealthForSport(
     const found = countByType.get(entry.alertType);
     const alertsEver = found?.n ?? 0;
     const lastAlertAt = found?.lastAt ?? null;
+    const rowPairs = ELAPSED_BOUND_TYPES.has(entry.alertType) ? eligiblePairs : null;
     let status: DetectorHealthRow["status"];
     if (daysDeployed < DETECTOR_HEALTH_MIN_DAYS) status = "too_new";
-    else if (opportunityDays === 0) status = "no_opportunity";
+    else if (opportunityDays === 0 || rowPairs === 0) status = "no_opportunity";
     else if (alertsEver === 0) status = "dead";
     else status = "active";
     return {
@@ -11353,6 +11373,7 @@ async function computeHealthForSport(
       alertsEver,
       lastAlertAt,
       opportunityDays,
+      eligiblePairs: rowPairs,
       status,
     };
   });

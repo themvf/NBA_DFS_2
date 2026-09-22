@@ -61,7 +61,8 @@ export default function DetectorHealthPanel({ health }: { health: DetectorHealth
           {dead.map((h) => (
             <div key={`${h.sport}-${h.alertType}`} className="text-xs text-red-800">
               <span className="font-semibold">DEAD</span> — {typeLabel(h.alertType)}: deployed {h.deployedAt}{" "}
-              ({h.daysDeployed}d ago), 0 alerts ever, {h.opportunityDays}d of games captured in the last 14d.
+              ({h.daysDeployed}d ago), 0 alerts ever, {h.opportunityDays}d of games captured in the last 14d
+              {h.eligiblePairs != null ? ` and ${h.eligiblePairs} capture pairs ≤30 min apart it could have fired on` : ""}.
             </div>
           ))}
         </div>
@@ -73,6 +74,7 @@ export default function DetectorHealthPanel({ health }: { health: DetectorHealth
             <th className="py-1 text-left">Detector</th>
             <th className="py-1 text-right">Deployed</th>
             <th className="py-1 text-right">Alerts ever</th>
+            <th className="py-1 text-right" title="Capture pairs ≤30 min apart in the last 14d — the only captures an elapsed-bound detector (reversal, reference-led, price pressure) can fire on">Eligible pairs</th>
             <th className="py-1 text-right">Last alert</th>
             <th className="py-1 text-right">Status</th>
           </tr>
@@ -83,6 +85,7 @@ export default function DetectorHealthPanel({ health }: { health: DetectorHealth
               <td className="py-1 font-medium">{typeLabel(h.alertType)}</td>
               <td className="py-1 text-right text-gray-500">{h.deployedAt}</td>
               <td className="py-1 text-right tabular-nums">{h.alertsEver}</td>
+              <td className="py-1 text-right tabular-nums text-gray-500">{h.eligiblePairs ?? "n/a"}</td>
               <td className="py-1 text-right text-gray-500">{h.lastAlertAt?.slice(0, 10) ?? "—"}</td>
               <td className="py-1 text-right">
                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_STYLE[h.status]}`}>
