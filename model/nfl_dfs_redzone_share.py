@@ -59,6 +59,7 @@ from collections import defaultdict
 import numpy as np
 
 from config import load_config
+from model.nfl_dfs_study_provenance import provenance
 from ingest.nfl_dfs_weekly import PipelineDatabase
 from model.nfl_dfs_workload import CONFIG, weighted_mean
 
@@ -200,7 +201,9 @@ def main():
     a = p.parse_args()
     db = PipelineDatabase(load_config().database_url)
     rz, players = load(db)
-    out = {"version": VERSION, "metrics": metrics(backtest(rz, players))}
+    out = {"version": VERSION, "metrics": metrics(backtest(rz, players)),
+           "status": "DEAD -- construction mis-specified (zero-touch omission + survivor team budget); see CLAUDE.md",
+           "provenance": provenance(players)}
     if a.tonight:
         out["tonight"] = tonight(db, rz, players, a.season, a.week, a.tonight.split(","))
         out["tonight_status"] = "RESEARCH ONLY -- player TD per game, not written, not a projection change"
