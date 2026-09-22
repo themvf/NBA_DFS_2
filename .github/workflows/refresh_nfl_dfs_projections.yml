@@ -110,6 +110,13 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           python -c "import os,sys; sys.argv=['reportcard']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season')] if os.environ.get(key)]; from ingest.nfl_dfs_reportcard import main; main()"
+      # Slate-scoped stream: the players DK actually listed, graded under DK's
+      # own no-stat-line = 0 rule. Separate version/table from the roster
+      # report above; it is the grader for the zero-history prior study (WP1).
+      - name: Save slate-scoped report cards (DraftKings convention)
+        if: ${{ !cancelled() }}
+        run: |
+          python -c "import os,sys; sys.argv=['slate-reportcard']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season')] if os.environ.get(key)]; from ingest.nfl_dfs_slate_reportcard import main; main()"
       # Phone-readable weekly review. Read-only and fail-soft: a digest that
       # cannot render must not redden a run whose actual work succeeded.
       - name: Publish the weekly review to the run summary
