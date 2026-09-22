@@ -91,6 +91,13 @@ _DK_BOOK = "draftkings"
 _NFL_STEAM_LINE_MOVE = 0.5
 _NFL_WALK_LINE_MOVE = 1.0
 _CFB_SIGNAL_VERSION = "cfb-lines-v1"
+# NFL line-alert GRADING version. v1 graded every spread/total alert at the
+# mean-consensus trigger line (a number no book posts) because the NFL insert
+# path never froze `entry_home_line`; 58 settled rows carried non-half-point
+# entry lines and 0 pushes were possible. v2 grades at the frozen executable
+# line and records the basis so a legacy row without one is visibly weaker.
+# Bumped 2026-09-22 (WP2 of docs/nfl-dfs-implementation-handoff-2026-09-22.md).
+_NFL_GRADING_VERSION = "nfl-lines-v2"
 _CFB_MIN_BOOKS = 4
 _CFB_SPREAD_STEAM = 1.0
 _CFB_TOTAL_STEAM = 1.5
@@ -301,6 +308,23 @@ def _nfl_line_clv(market: str, side: str, trigger_line: float, close_line: float
     if market == "total":
         return close_line - trigger_line if side == "over" else trigger_line - close_line
     raise ValueError(f"unsupported NFL line market: {market}")
+
+
+def _entry_home_line(market: str, side: str, exec_line: float | None) -> float | None:
+    """Home-referenced entry line from the frozen executable line.
+
+    `freeze_execution_price` returns the line as the BET's side sees it (an
+    away spread of +3.0 is the away team's number). Outcomes and CLV are
+    computed home-referenced, so an away spread is negated; totals are
+    side-neutral. Returns None when nothing was priceable so the caller records
+    the absence instead of falling back to a consensus mean silently.
+    """
+    if exec_line is None:
+        return None
+    line = float(exec_line)
+    if market == "spread":
+        return line if side == "home" else -line
+    return line
 
 
 def _book_fair_side(book: dict, side: str) -> float | None:
@@ -1271,6 +1295,15 @@ def scan(db: DatabaseManager, sport: str) -> int:
                 # settled NFL alerts were in before 2026-08-15.
                 priced = freeze_execution_price(
                     books, market=signal["details"]["market"], side=signal["side"])
+                details = {**signal["details"], **priced}
+                # Freeze the home-referenced ENTRY LINE too, exactly as the CFB
+                # path does. Without it settlement fell back to the mean
+                # consensus trigger line -- a number no book posts -- and
+                # every NFL line CLV before 2026-09-22 was graded against it.
+                entry_home_line = _entry_home_line(
+                    details["market"], signal["side"], priced.get("exec_line"))
+                if entry_home_line is not None:
+                    details["entry_home_line"] = entry_home_line
                 new_alerts.extend(_insert(
                     db,
                     sport=sport,
@@ -1281,7 +1314,7 @@ def scan(db: DatabaseManager, sport: str) -> int:
                     alert_prob=(1 / priced["exec_decimal"]
                                 if priced.get("exec_decimal") else None),
                     sharp_prob=None,
-                    details={**signal["details"], **priced},
+                    details=details,
                 ))
         if sport in ("cfb", "nfl"):
             for signal in _cfb_market_signals(structure_history or [], sport=sport):
@@ -1292,13 +1325,10 @@ def scan(db: DatabaseManager, sport: str) -> int:
                 priced = freeze_execution_price(
                     books, market=details["market"], side=signal["side"],
                 )
-                if details["market"] == "spread" and priced.get("exec_line") is not None:
-                    details["entry_home_line"] = (
-                        float(priced["exec_line"])
-                        if signal["side"] == "home" else -float(priced["exec_line"])
-                    )
-                elif priced.get("exec_line") is not None:
-                    details["entry_home_line"] = float(priced["exec_line"])
+                entry_home_line = _entry_home_line(
+                    details["market"], signal["side"], priced.get("exec_line"))
+                if entry_home_line is not None:
+                    details["entry_home_line"] = entry_home_line
                 details = {
                     **details,
                     **priced,
@@ -2403,9 +2433,26 @@ def _append_grade_history_cur(cur, alert_id: int, g: dict, outcome=None) -> None
 
 
 def _append_grade_history(db, alert_id: int, g: dict, outcome=None) -> None:
-    """Backward-compatible transactional grade append."""
-    with db.connect() as conn:
-        _append_grade_history_cur(conn.cursor(), alert_id, g, outcome)
+    """Backward-compatible transactional grade append.
+
+    Retries on deadlock/lock-timeout the same way `_verified_close` does: a
+    scheduled job's `_ensure_schema` DDL can take an AccessExclusiveLock on
+    `alert_grades` mid-regrade (observed live 2026-09-22). The append is
+    idempotent, so a retry never duplicates a grade.
+    """
+    import psycopg2
+
+    retryable = (psycopg2.errors.DeadlockDetected, psycopg2.errors.LockNotAvailable)
+    attempts = 4
+    for attempt in range(attempts):
+        try:
+            with db.connect() as conn:
+                _append_grade_history_cur(conn.cursor(), alert_id, g, outcome)
+            return
+        except retryable:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(2 ** attempt)
 
 
 def _dk_execution_clv(db, a) -> tuple[float | None, float | None]:
@@ -2585,22 +2632,49 @@ def _settle_nfl_line_alerts(db: DatabaseManager) -> int:
     return _settle_football_line_alerts(db, "nfl")
 
 
-def _settle_football_line_alerts(db: DatabaseManager, sport: str) -> int:
+def _football_grading_version(sport: str) -> str:
+    return _NFL_GRADING_VERSION if sport == "nfl" else _CFB_SIGNAL_VERSION
+
+
+def _settle_football_line_alerts(db: DatabaseManager, sport: str, *, regrade: bool = False) -> int:
+    """Grade completed football line alerts; with `regrade`, re-grade settled rows
+    whose stored grading_version is stale under the current rule.
+
+    Regrading is append-only: outcomes are recomputed from the same score and
+    written alongside a new `alert_grades` row, and every prior grade stays
+    with `is_current = FALSE`. A regrade never fabricates a close -- a settled
+    row with no verified close is re-stamped with `line_clv = None`.
+    """
     matchup_table = "nfl_matchups" if sport == "nfl" else "cfb_matchups"
+    grading_version = _football_grading_version(sport)
+    if regrade:
+        # Self-healing: a row whose UPDATE committed but whose grade-history
+        # append was interrupted (deadlock) has the new version on line_alerts
+        # and no matching current alert_grades row. Pick it up too.
+        eligibility = """a.settled_at IS NOT NULL AND (
+            a.grading_version IS DISTINCT FROM %s
+            OR NOT EXISTS (SELECT 1 FROM alert_grades g
+                           WHERE g.alert_id = a.id AND g.is_current AND g.grading_version = %s)
+        )"""
+        params = (sport, grading_version, grading_version)
+    else:
+        eligibility = "(a.settled_at IS NULL OR a.close_history_id IS NULL)"
+        params = (sport,)
     alerts = db.execute(
         f"""
         SELECT a.*, m.home_score, m.away_score
         FROM line_alerts a
         JOIN {matchup_table} m ON m.id = a.matchup_id
-        WHERE a.sport = %s AND (a.settled_at IS NULL OR a.close_history_id IS NULL)
+        WHERE a.sport = %s AND {eligibility}
           AND a.alert_type IN ('spread_steam', 'spread_walking', 'total_steam', 'total_walking',
                                'key_cross', 'price_pressure', 'reversal', 'reference_led')
           AND m.home_score IS NOT NULL AND m.away_score IS NOT NULL
           AND m.completed = TRUE
         """,
-        (sport,),
+        params,
     )
     graded = 0
+    legacy_basis = 0
     for alert in alerts:
         details = alert["details_json"] or {}
         market = details.get("market")
@@ -2618,7 +2692,7 @@ def _settle_football_line_alerts(db: DatabaseManager, sport: str) -> int:
         close_snapshot = _cfb_market_snapshot(close_books, market)
         # Results and CLV are independent observations. Never fabricate a close
         # to settle a final game; permit a later verified close to enrich it.
-        if not close_snapshot and alert.get("settled_at") is not None:
+        if not close_snapshot and alert.get("settled_at") is not None and not regrade:
             continue
         exec_book = details.get("exec_book")
         exec_quote = close_books.get(exec_book) if exec_book else None
@@ -2641,7 +2715,26 @@ def _settle_football_line_alerts(db: DatabaseManager, sport: str) -> int:
             close_home_line = float(close_snapshot["line"])
             close_user_line = (-close_home_line if market == "spread" and side == "away"
                                else close_home_line)
-        entry_home_line = float(details.get("entry_home_line", trigger_line))
+        # Entry line basis, most trustworthy first:
+        #   frozen        -- entry_home_line was written at trigger (CFB always;
+        #                    NFL from 2026-09-22)
+        #   exec_derived  -- legacy NFL row: no entry_home_line, but exec_line
+        #                    was frozen, so the same rule recovers it exactly
+        #   consensus_mean -- nothing was priceable at trigger; the mean
+        #                    consensus line is the only entry we have. The
+        #                    OUTCOME is still graded at it (it always was), but
+        #                    line CLV is withheld: a CLV against a line no book
+        #                    posted is the exact defect v2 exists to remove.
+        if details.get("entry_home_line") is not None:
+            entry_home_line = float(details["entry_home_line"])
+            entry_basis = "frozen"
+        else:
+            derived = _entry_home_line(market, side, details.get("exec_line"))
+            if derived is not None:
+                entry_home_line, entry_basis = derived, "exec_derived"
+            else:
+                entry_home_line, entry_basis = trigger_line, "consensus_mean"
+                legacy_basis += 1
         outcome = _nfl_line_outcome(
             market,
             side,
@@ -2650,7 +2743,8 @@ def _settle_football_line_alerts(db: DatabaseManager, sport: str) -> int:
             int(alert["away_score"]),
         )
         line_clv = (_nfl_line_clv(market, side, entry_home_line, close_home_line)
-                    if close_home_line is not None else None)
+                    if close_home_line is not None and entry_basis != "consensus_mean"
+                    else None)
         entry_decimal = details.get("exec_decimal") or details.get("dk_decimal")
         pnl_units = None
         if entry_decimal is not None:
@@ -2674,7 +2768,13 @@ def _settle_football_line_alerts(db: DatabaseManager, sport: str) -> int:
             "entry_home_line": entry_home_line,
             "close_line": close_user_line,
             "close_home_line": close_home_line,
+            "entry_line_basis": entry_basis,
             "line_clv": round(line_clv, 3) if line_clv is not None else None,
+            "line_clv_basis": (
+                "unavailable_no_close" if close_home_line is None
+                else "withheld_consensus_entry" if entry_basis == "consensus_mean"
+                else "exec_line_vs_verified_close"
+            ),
             "price_clv_pct": price_clv,
             "close_history_id": int(close["history_id"]) if close_snapshot else None,
             "close_source": "verified_clv_closes" if close_snapshot else "unavailable",
@@ -2687,7 +2787,7 @@ def _settle_football_line_alerts(db: DatabaseManager, sport: str) -> int:
             "away_score": int(alert["away_score"]),
         }
         grade = {
-            "grading_version": "nfl-lines-v1" if sport == "nfl" else _CFB_SIGNAL_VERSION,
+            "grading_version": grading_version,
             "comparison_status": "SAME_PROPOSITION" if close_snapshot else "NO_CLOSE",
             "convergence": None,
             "dk_clv_pct": price_clv,
@@ -2706,7 +2806,51 @@ def _settle_football_line_alerts(db: DatabaseManager, sport: str) -> int:
         )
         _append_grade_history(db, alert["id"], grade, outcome=outcome)
         graded += 1
+    if regrade:
+        print(f"Line alerts ({sport}): {graded} regraded under {grading_version}; "
+              f"{legacy_basis} kept a consensus-mean entry (line CLV withheld)")
     return graded
+
+
+def _fade_study_sealed(db: DatabaseManager) -> tuple[bool, int, int]:
+    """Is the pre-registered NFL total_walking fade study still blind?
+
+    Returns (sealed, n, games). The study's own floors and population rule are
+    read from `model.nfl_walking_fade_study` so this cannot drift from the
+    registration. Alert/game counts are an UPPER bound on the study's n (the
+    study additionally requires a post-trigger capture), so if even the raw
+    counts sit below floor the study is certainly sealed; only when they clear
+    it is the exact accrual computed.
+    """
+    from model import nfl_walking_fade_study as fade
+
+    row = db.execute(
+        """
+        SELECT COUNT(*) AS n, COUNT(DISTINCT a.matchup_id) AS games
+        FROM line_alerts a
+        JOIN nfl_matchups m ON m.id = a.matchup_id
+        WHERE a.sport = 'nfl' AND a.alert_type = %s
+          AND m.season_type = 'regular' AND m.commence_time >= %s
+        """,
+        (fade.ALERT_TYPE, fade.SEASON_START),
+    )
+    n = int(row[0]["n"]) if row else 0
+    games = int(row[0]["games"]) if row else 0
+    if n < fade.FLOOR_N or games < fade.FLOOR_GAMES:
+        return True, n, games
+    obs = fade.load_observations(db)
+    n, games = len(obs), len({o["game"] for o in obs})
+    return (n < fade.FLOOR_N or games < fade.FLOOR_GAMES), n, games
+
+
+# SQL predicate that removes the sealed study's population from any public
+# aggregate. Mirrored in web/src/db/queries.ts::getLineAlertBacktest; keep the
+# two in sync by hand (same maintenance note as DETECTOR_REGISTRY).
+_FADE_STUDY_EXCLUSION = """NOT (a.sport = 'nfl' AND a.alert_type = 'total_walking' AND EXISTS (
+        SELECT 1 FROM nfl_matchups m
+        WHERE m.id = a.matchup_id AND m.season_type = 'regular'
+          AND m.commence_time >= '2026-09-09'
+    ))"""
 
 
 def report(db: DatabaseManager, *, include_legacy: bool = False) -> None:
@@ -2739,12 +2883,22 @@ def report(db: DatabaseManager, *, include_legacy: bool = False) -> None:
         )
     ))"""
     cohort_label = "including non-primary/legacy" if include_legacy else "verified_clv_v1 for MLB/Tennis/NFL/CFB"
+    # WP3: the pre-registered total_walking fade study is BLIND until its
+    # floors are met. Its population's aggregate record is the exact negative
+    # of the sealed fade-side CLV, so it is withheld from every public
+    # surface, not only from the study script.
+    sealed, fade_n, fade_games = _fade_study_sealed(db)
+    sealed_predicate = f"AND {_FADE_STUDY_EXCLUSION}" if sealed else ""
     rows = db.execute(
         f"""
         SELECT sport, alert_type, COUNT(*) n,
                COUNT(*) FILTER (WHERE clv_pp IS NOT NULL) n_clv,
                ROUND(AVG(clv_pp)::numeric, 2) avg_clv_pp,
                ROUND(AVG((clv_pp > 0)::int)::numeric, 2) beat_close,
+               COUNT(*) FILTER (WHERE (grading_json->>'line_clv') IS NOT NULL) n_lineclv,
+               ROUND(AVG((grading_json->>'line_clv')::numeric)::numeric, 3) avg_line_clv,
+               ROUND(AVG(((grading_json->>'line_clv')::numeric > 0)::int)
+                     FILTER (WHERE (grading_json->>'line_clv') IS NOT NULL)::numeric, 2) beat_close_line,
                COUNT(*) FILTER (WHERE outcome IN ('won','lost')) n_out,
                ROUND(AVG((outcome = 'won')::int)
                      FILTER (WHERE outcome IN ('won','lost'))::numeric, 3) win_rate,
@@ -2757,7 +2911,7 @@ def report(db: DatabaseManager, *, include_legacy: bool = False) -> None:
                COUNT(*) FILTER (WHERE dk_clv_pct IS NOT NULL) n_dkclv,
                ROUND(AVG(dk_clv_pct)::numeric, 2) avg_dk_clv
         FROM line_alerts a
-        WHERE {cohort_predicate}
+        WHERE {cohort_predicate} {sealed_predicate}
         GROUP BY sport, alert_type ORDER BY sport, alert_type
         """
     )
@@ -2765,12 +2919,20 @@ def report(db: DatabaseManager, *, include_legacy: bool = False) -> None:
         "\n=== Line-alert backtest — CLV (beat the close?) + outcomes "
         f"(win at the flagged rate?) [{cohort_label}] ==="
     )
+    if sealed:
+        print(f"  nfl/total_walking regular-season rows WITHHELD: sealed under "
+              f"nfl-walking-fade-v1 until n>=100 and 40 games (accrued {fade_n}/{fade_games}).")
     if not rows:
         print("  (no alerts recorded yet)")
     for r in rows:
         line = (f"  {r['sport']:<8}{r['alert_type']:<22} n={r['n']:>4}  "
                 f"CLV: n={r['n_clv']} avg={r['avg_clv_pp'] or 0:+}pp beat-close={r['beat_close'] or 0}  "
                 f"outcomes: n={r['n_out']} win={r['win_rate']} implied={r['implied_rate']}")
+        if r["n_lineclv"]:
+            # Line CLV in POINTS at the frozen executable line vs the verified
+            # close -- the figure spread/total detectors are actually judged on.
+            line += (f"  lineCLV: n={r['n_lineclv']} avg={float(r['avg_line_clv']):+.3f}pts "
+                     f"beat-close={r['beat_close_line']}")
         if (r["alert_type"] in ("dk_value", "dk_prop_value", "prop_line_gap")
                 and r["dk_units"] is not None and r["n_out"]):
             line += f"  ROI@DK: {r['dk_units']:+}u/{r['n_out']} ({float(r['dk_units'])/r['n_out']*100:+.1f}%)"
@@ -2938,7 +3100,11 @@ def _run_cli(db, args):
             settle_tennis_totals(db)
     if args.dk_board:
         dk_board(db)
-    if args.report or (not args.sport and not args.dk_board):
+    if getattr(args, "regrade_football_lines", False):
+        for sport in ("nfl", "cfb"):
+            _settle_football_line_alerts(db, sport, regrade=True)
+    if args.report or (not args.sport and not args.dk_board
+                       and not getattr(args, "regrade_football_lines", False)):
         report(db, include_legacy=args.include_legacy)
 
 
@@ -2956,6 +3122,9 @@ if __name__ == "__main__":
     )
     parser.add_argument("--dk-board", action="store_true",
                         help="Live DraftKings-vs-Pinnacle EV board, all sports")
+    parser.add_argument("--regrade-football-lines", action="store_true",
+                        help="Append-only regrade of settled NFL/CFB line alerts whose "
+                             "grading_version is stale (outcomes recomputed, history kept)")
     args = parser.parse_args()
 
     config = load_config()
