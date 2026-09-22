@@ -239,16 +239,22 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
     for (const r of played.rows) completedByTeam.set(String(r.team), Number(r.played));
   }
   // Showdown game-script context: resolve the Vegas favorite from this game's
-  // own moneyline (market consensus first, quoted fallback). Unknown stays
-  // null — the balanced plan folds game-script archetypes into Standard
-  // ceiling rather than inventing a favorite.
+  // own moneyline. Source order is by FRESHNESS: nfl_matchups (refreshed
+  // daily by refresh_nfl_vegas), then nfl_season_games.market_* (the twice-
+  // weekly survivor refresh -- which sat frozen at 2026-09-08 for two weeks
+  // when that job kept dying on the schema lock, so it cannot be first), then
+  // nflverse's quoted line. Unknown stays null — the balanced plan folds
+  // game-script archetypes into Standard ceiling rather than inventing a
+  // favorite.
   let favoriteTeam: string | null = null;
   let underdogTeam: string | null = null;
   const slateTeams = (upload.teams as string[]) ?? [];
   if (upload.format === "showdown" && seasonKnown && slateTeams.length === 2) {
     const game = await db.execute(sql`SELECT h.abbreviation AS home, a.abbreviation AS away,
-        COALESCE(g.market_home_ml, g.quoted_home_ml) AS home_ml, COALESCE(g.market_away_ml, g.quoted_away_ml) AS away_ml
+        COALESCE(m.home_ml, g.market_home_ml, g.quoted_home_ml) AS home_ml,
+        COALESCE(m.away_ml, g.market_away_ml, g.quoted_away_ml) AS away_ml
       FROM nfl_season_games g JOIN nfl_teams h ON h.team_id=g.home_team_id JOIN nfl_teams a ON a.team_id=g.away_team_id
+      LEFT JOIN nfl_matchups m ON m.id = g.matchup_id AND m.home_ml IS NOT NULL AND m.away_ml IS NOT NULL
       WHERE g.season=${run!.season} AND g.game_type='REG' AND NOT g.completed
         AND h.abbreviation IN (${slateTeams[0]}, ${slateTeams[1]}) AND a.abbreviation IN (${slateTeams[0]}, ${slateTeams[1]})
       ORDER BY g.kickoff ASC LIMIT 1`);

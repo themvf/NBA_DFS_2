@@ -34,6 +34,22 @@ from db.database import DatabaseManager
 
 logger = logging.getLogger(__name__)
 
+# Every table a survivor refresh reads or writes. Checked up front because the
+# job no longer runs schema DDL (see main()).
+SURVIVOR_TABLES = (
+    "nfl_season_games",
+    "nfl_teams",
+    "nfl_matchups",
+    "nfl_team_ratings",
+    "nfl_game_win_probs",
+    "nfl_spread_horizon_calibration",
+    "survivor_pools",
+    "survivor_entries",
+    "survivor_entry_picks",
+    "survivor_recommendations",
+    "survivor_pick_popularity",
+)
+
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -46,7 +62,15 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    db = DatabaseManager(load_config().database_url)
+    # No per-invocation DDL here. `_ensure_schema` runs every table/migration/
+    # index statement under an advisory lock on EVERY process start, and this
+    # job died on `LockNotAvailable` inside that constructor on 4 of its 5
+    # scheduled runs (2026-09-03 .. 09-17) -- before a single survivor step
+    # ran -- leaving nfl_season_games.market_* frozen at 2026-09-08. Every
+    # table this job writes already exists; it verifies that and refuses to
+    # run against an unmigrated database instead of migrating it itself.
+    db = DatabaseManager(load_config().database_url, initialize_schema=False)
+    db.require_tables(SURVIVOR_TABLES)
     failures: list[str] = []
 
     # 1. Schedule -- hard dependency.
