@@ -142,7 +142,29 @@ def fetch_events(db: DatabaseManager, api_key: str, game_date: str | None = None
             )
             upserted += int(bool(matchup_id))
     print(f"NFL events: {upserted} matchups upserted" + (f" for {game_date}" if game_date else ""))
+    weeks = backfill_matchup_weeks(db)
+    if weeks:
+        print(f"NFL events: {weeks} matchups assigned a week from the nflverse schedule")
     return upserted
+
+
+def backfill_matchup_weeks(db: DatabaseManager) -> int:
+    """Stamp nfl_matchups.week from the nflverse season grid.
+
+    The Odds API event feed carries no week, so every one of the 272 linked
+    2026 matchups had week NULL and capture completeness could not be
+    bucketed by week (WP9). The link is nfl_season_games.matchup_id, which
+    the survivor/season loader maintains; only NULL weeks are touched.
+    """
+    rows = db.execute(
+        """
+        UPDATE nfl_matchups m SET week = g.week
+        FROM nfl_season_games g
+        WHERE g.matchup_id = m.id AND m.week IS NULL AND g.week IS NOT NULL
+        RETURNING m.id
+        """
+    )
+    return len(rows)
 
 
 def _vig_free_home_probability(home_ml: int | None, away_ml: int | None) -> float | None:
