@@ -68,6 +68,12 @@ jobs:
           name: nfl-availability-audit
           path: artifacts/nfl-availability-audit.json
           retention-days: 90
+      # A FantasyPros-only roster row with a gsis twin is a duplicate identity;
+      # build_week now refuses to run on one. Deactivate (never delete) first.
+      - name: Deactivate duplicate roster identities
+        if: ${{ !cancelled() }}
+        run: |
+          python -c "import os,sys; sys.argv=['dedupe']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season')] if os.environ.get(key)]; from ingest.ff_dedupe_identities import main; main()"
       - name: Build immutable projection snapshot
         if: ${{ !cancelled() }}
         run: |

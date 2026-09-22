@@ -68,6 +68,7 @@ from collections import defaultdict
 import numpy as np
 
 from config import load_config
+from model.nfl_dfs_study_provenance import provenance
 from ingest.nfl_dfs_weekly import PipelineDatabase
 from model.nfl_dfs_workload import CONFIG, weighted_mean
 
@@ -183,7 +184,9 @@ def main():
     db = PipelineDatabase(load_config().database_url)
     rows = team_games(db)
     res = backtest(rows)
-    out = {"version": VERSION, "v2_weight": V2_WEIGHT, "metrics": metrics(res)}
+    out = {"version": VERSION, "v2_weight": V2_WEIGHT, "metrics": metrics(res),
+           "baseline": "shrunk EWMA of own TD drives -- workload-config research construct; production has no team TD budget",
+           "provenance": provenance(rows)}
     if a.tonight:
         prior = Prior(rows, (a.season, a.week))
         out["tonight"] = {pair: prior.forecast(*pair.split(":")) for pair in a.tonight.split(",")}

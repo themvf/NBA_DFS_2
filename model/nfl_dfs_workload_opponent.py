@@ -62,6 +62,7 @@ import numpy as np
 from config import load_config
 from ingest.nfl_dfs_weekly import PipelineDatabase
 from ingest.nfl_dfs_workload import raw_history, inputs
+from model.nfl_dfs_study_provenance import provenance
 from model.nfl_dfs_workload import CONFIG, TEAM_FIELDS, allocate, team_forecast, value, weighted_mean
 
 VERSION = "nfl-dfs-workload-opponent-study-v1"
@@ -209,7 +210,20 @@ def tonight(db, team_rows, players, plays, season, week, teams):
             for field in TEAM_FIELDS:
                 v = variants(prior, team, opponent, field)
                 detail[field] = v
-                budgets[field] = {"mean": v["v1"]} if v and "v1" in v else None
+                if not v:
+                    budgets[field] = None
+                    continue
+                # Only the CARRIES opponent term survived its kill test; attempts
+                # and targets stay on the production candidate. Applying v1 to
+                # the dead fields here (as the first version did) would print a
+                # budget the study itself rejected.
+                use_v1 = field == "carries" and "v1" in v
+                budgets[field] = {"mean": v["v1"] if use_v1 else v["candidate"],
+                                  "basis": "v1_allowed_carries" if use_v1 else "candidate"}
+            # Same coherence cap production applies in model.nfl_dfs_workload.build().
+            if budgets["attempts"] and budgets["targets"] and budgets["targets"]["mean"] > budgets["attempts"]["mean"]:
+                budgets["targets"]["mean"] = budgets["attempts"]["mean"]
+                budgets["targets"]["constraint"] = "targets_capped_at_attempts"
             current = [p for p in roster if p["team"] == team]
             alloc = allocate(team, current, player_past, prior.rows, budgets)
             report.append({"game_id": game["game_id"], "team": team, "opponent": opponent, "budgets": detail,
@@ -230,7 +244,8 @@ def main():
     players, team_rows = raw_history(db)
     plays = plays_faced(db)
     rows = backtest(team_rows, plays)
-    out = {"version": VERSION, "v1_weight": V1_WEIGHT, "v2_exponent": V2_EXPONENT, "rows": len(rows), "metrics": metrics(rows)}
+    out = {"version": VERSION, "v1_weight": V1_WEIGHT, "v2_exponent": V2_EXPONENT, "rows": len(rows), "metrics": metrics(rows),
+           "kill_tests_in_family": 6, "provenance": provenance(team_rows)}
     if args.tonight:
         out["tonight"] = tonight(db, team_rows, players, plays, args.season, args.week, [t for t in args.teams.split(",") if t])
         out["tonight_status"] = "RESEARCH ONLY -- not written, not a projection change"

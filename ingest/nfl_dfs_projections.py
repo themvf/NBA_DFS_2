@@ -191,6 +191,32 @@ def qualified_depth(player: dict[str, Any], as_of_at: datetime) -> int | None:
     return depth
 
 
+def assert_unique_identities(players: list[dict[str, Any]]) -> None:
+    """Two active roster rows for one (name, team, position) is a defect.
+
+    A name-matched slate row can land on either id, and every downstream join
+    (results, shadow ledger, report cards) is by id. The review found exactly
+    one such pair (Puka Nacua, FantasyPros-only id 34 vs nflverse id 560).
+    `ingest.ff_dedupe_identities` deactivates the FantasyPros-only twin; this
+    guard makes sure the build never silently runs on a roster where it did
+    not.
+    """
+    seen: dict[tuple[str, str, str], int] = {}
+    duplicates = []
+    for p in players:
+        key = (str(p.get("normalized_name")), str(p.get("team_abbrev")), str(p.get("position")))
+        if key in seen:
+            duplicates.append((key, seen[key], int(p["id"])))
+        else:
+            seen[key] = int(p["id"])
+    if duplicates:
+        listed = "; ".join(f"{k[0]}/{k[1]}/{k[2]} ids {a},{b}" for k, a, b in duplicates)
+        raise ValueError(
+            f"duplicate active roster identities ({len(duplicates)}): {listed}. "
+            "Run `python -m ingest.ff_dedupe_identities` and retry."
+        )
+
+
 def build_week(
     db: DatabaseManager,
     *,
@@ -204,6 +230,7 @@ def build_week(
     history = _history(db, season, week)
     environment = _slate_environment(db, season, week)
     players = _players(db, season, sorted(environment))
+    assert_unique_identities(players)
     projections: list[dict[str, Any]] = []
     for player in players:
         env = environment[player["team_abbrev"]]
