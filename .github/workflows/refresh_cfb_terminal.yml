@@ -79,3 +79,9 @@ jobs:
         run: python -m ingest.cfb_schedule --health
       - name: Detect and settle CFB market signals
         run: python -m model.line_alerts --sport cfb
+      - name: Print the signal backtest
+        run: python -m model.line_alerts --report
+      # Six-hourly only: the margin distribution moves once a week at most.
+      - name: Audit the key numbers the cross detector fires on
+        if: env.CFB_REFRESH_SCHEDULE == 'true'
+        run: python -m model.cfb_key_numbers
