@@ -2534,6 +2534,35 @@ TABLES = [
         CHECK(format IN ('classic','showdown')),
         CHECK(player_count > 0)
     )""",
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_field_contests (
+        contest_id TEXT PRIMARY KEY,
+        contest_name TEXT,
+        format TEXT NOT NULL,
+        season INTEGER,
+        week INTEGER,
+        slate_upload_id UUID REFERENCES nfl_dfs_slate_uploads(upload_id) ON DELETE SET NULL,
+        entry_count INTEGER NOT NULL,
+        winning_score DOUBLE PRECISION,
+        median_score DOUBLE PRECISION,
+        min_score DOUBLE PRECISION,
+        file_name TEXT,
+        file_digest TEXT NOT NULL,
+        imported_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CHECK(format IN ('classic','showdown')),
+        CHECK(entry_count > 0)
+    )""",
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_field_ownership (
+        id BIGSERIAL PRIMARY KEY,
+        contest_id TEXT NOT NULL REFERENCES nfl_dfs_field_contests(contest_id) ON DELETE CASCADE,
+        player_name TEXT NOT NULL,
+        normalized_name TEXT NOT NULL,
+        drafted_pct DOUBLE PRECISION NOT NULL,
+        drafted_by_slot JSONB NOT NULL DEFAULT '{}'::jsonb,
+        fpts DOUBLE PRECISION,
+        UNIQUE(contest_id, normalized_name)
+    )""",
+    """CREATE INDEX IF NOT EXISTS idx_nfl_dfs_field_ownership_name
+        ON nfl_dfs_field_ownership (normalized_name)""",
     """CREATE TABLE IF NOT EXISTS nfl_dfs_slate_players (
         id BIGSERIAL PRIMARY KEY,
         upload_id UUID NOT NULL REFERENCES nfl_dfs_slate_uploads(upload_id) ON DELETE CASCADE,
