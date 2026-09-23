@@ -33,6 +33,7 @@ import { selectedWorkload,validateWorkloadPositions } from "@/lib/nfl-dfs/worklo
 import { prepareProjectionAudits, validateSituations, type SituationTeam } from '@/lib/nfl-dfs/projection-audit';
 import { loadSituationContext } from '@/lib/nfl-dfs/situation-context';
 import { canonicalAuditJson } from '@/lib/nfl-dfs/audit-json';
+import { auditSlate, normalizeName as normalizeFieldName, type FieldAudit } from '@/lib/nfl-dfs/field-audit';
 import { readWorkloadProjection, workloadPoolEligible, type WorkloadReport } from "@/lib/nfl-dfs/workload-projection";
 import { getCalibratedSnapshots } from "@/db/nfl-dfs-calibrated";
 import { readCalibratedProjection, readPositionWorkloadProjection, type CalibrationSnapshot } from "@/lib/nfl-dfs/calibrated-projection";
@@ -979,4 +980,116 @@ export async function explainNflPlayerProjection(
     availabilityNote: availabilityNote(availability, { isOut: slateRow.isOut, dkStatus: slateRow.dkStatus },
       slateRow.isOut ? (donors ?? { paidTo: [], units: [] }) : null),
   };
+}
+
+/**
+ * Import a DraftKings contest standings export and audit this slate against it.
+ *
+ * The 64 MB file is parsed in the BROWSER (`parseContestExport`); only the
+ * ~850-row ownership summary reaches the server, the same shape as the
+ * comparison-CSV import. Ownership is persisted because each contest is one
+ * more labelled slate and the question it answers -- are the players the field
+ * ignores our blind spots or our edges? -- needs many weeks. The audit itself
+ * is recomputed on read, so a threshold change never rewrites history.
+ *
+ * Getting the file is the one step that cannot be automated: DraftKings gates
+ * the export behind the account that entered the contest.
+ */
+export async function importNflContestResults(
+  uploadId: string,
+  contestId: string,
+  parsed: { players: Array<{ name: string; normalizedName: string; draftedPct: number; draftedBySlot: Record<string, number>; fpts: number }>;
+            entryCount: number; winningScore: number | null; medianScore: number | null; minScore: number | null;
+            format: "classic" | "showdown" },
+  fileName: string,
+): Promise<{ audit: FieldAudit; contest: { contestId: string; entryCount: number; winningScore: number | null; medianScore: number | null; format: string }; overlap: number }> {
+  await ensureNflDfsTables();
+  const id = contestId.trim();
+  if (!id) throw new Error("A contest id is required.");
+  if (!parsed.players.length) throw new Error("That file carried no player ownership rows.");
+
+  const slate = await db.select().from(nflDfsSlatePlayers).where(eq(nflDfsSlatePlayers.uploadId, uploadId));
+  if (!slate.length) throw new Error("That slate has no players.");
+
+  // Guard against attaching a contest to the wrong board: two slates on one
+  // day share a date but almost no players, and mis-attributed ownership would
+  // poison the audit silently rather than failing.
+  const slateNames = new Set(slate.map((p) => normalizeFieldName(p.name)));
+  const overlap = parsed.players.filter((p) => slateNames.has(p.normalizedName)).length / parsed.players.length;
+  if (overlap < 0.8) {
+    throw new Error(`Only ${Math.round(overlap * 100)}% of that contest's players are on this slate. Select the slate the contest was played on.`);
+  }
+
+  const upload = await db.select().from(nflDfsSlateUploads).where(eq(nflDfsSlateUploads.uploadId, uploadId)).limit(1);
+  const run = upload[0]?.projectionRunId
+    ? await db.select().from(nflDfsProjectionRuns).where(eq(nflDfsProjectionRuns.runId, upload[0].projectionRunId)).limit(1)
+    : [];
+
+  await db.execute(sql`
+    INSERT INTO nfl_dfs_field_contests (contest_id, contest_name, format, season, week, slate_upload_id,
+      entry_count, winning_score, median_score, min_score, file_name, file_digest)
+    VALUES (${id}, ${fileName}, ${parsed.format}, ${run[0]?.season ?? null}, ${run[0]?.week ?? null}, ${uploadId},
+      ${parsed.entryCount}, ${parsed.winningScore}, ${parsed.medianScore}, ${parsed.minScore}, ${fileName}, ${id})
+    ON CONFLICT (contest_id) DO UPDATE SET slate_upload_id = EXCLUDED.slate_upload_id,
+      season = EXCLUDED.season, week = EXCLUDED.week, entry_count = EXCLUDED.entry_count,
+      winning_score = EXCLUDED.winning_score, median_score = EXCLUDED.median_score, min_score = EXCLUDED.min_score`);
+
+  // Chunked: neon-http commits each awaited statement separately, so a single
+  // oversized insert is the thing to avoid, not a lost transaction.
+  for (const group of chunkRows(parsed.players, 200)) {
+    await db.execute(sql`
+      INSERT INTO nfl_dfs_field_ownership (contest_id, player_name, normalized_name, drafted_pct, drafted_by_slot, fpts)
+      VALUES ${sql.join(group.map((p) => sql`(${id}, ${p.name}, ${p.normalizedName}, ${p.draftedPct}, ${JSON.stringify(p.draftedBySlot)}::jsonb, ${p.fpts})`), sql`, `)}
+      ON CONFLICT (contest_id, normalized_name) DO UPDATE SET
+        drafted_pct = EXCLUDED.drafted_pct, drafted_by_slot = EXCLUDED.drafted_by_slot, fpts = EXCLUDED.fpts`);
+  }
+
+  return {
+    audit: auditForSlate(slate, parsed.players),
+    contest: { contestId: id, entryCount: parsed.entryCount, winningScore: parsed.winningScore,
+               medianScore: parsed.medianScore, format: parsed.format },
+    overlap: Number(overlap.toFixed(3)),
+  };
+}
+
+/** The most recent contest imported for this slate, if any. */
+export async function readNflFieldAudit(uploadId: string): Promise<
+  { audit: FieldAudit; contest: { contestId: string; entryCount: number; winningScore: number | null; medianScore: number | null; format: string } } | null
+> {
+  await ensureNflDfsTables();
+  const contests = await db.execute(sql`
+    SELECT contest_id, entry_count, winning_score, median_score, format
+    FROM nfl_dfs_field_contests WHERE slate_upload_id = ${uploadId}
+    ORDER BY imported_at DESC LIMIT 1`);
+  const contest = (contests.rows ?? contests)[0] as Record<string, unknown> | undefined;
+  if (!contest) return null;
+  const owned = await db.execute(sql`
+    SELECT player_name, normalized_name, drafted_pct, fpts
+    FROM nfl_dfs_field_ownership WHERE contest_id = ${contest.contest_id as string}`);
+  const slate = await db.select().from(nflDfsSlatePlayers).where(eq(nflDfsSlatePlayers.uploadId, uploadId));
+  const players = ((owned.rows ?? owned) as Array<Record<string, unknown>>).map((r) => ({
+    name: String(r.player_name), normalizedName: String(r.normalized_name),
+    draftedPct: Number(r.drafted_pct), draftedBySlot: {},
+    fpts: r.fpts === null ? 0 : Number(r.fpts),
+  }));
+  return {
+    audit: auditForSlate(slate, players),
+    contest: {
+      contestId: String(contest.contest_id), entryCount: Number(contest.entry_count),
+      winningScore: contest.winning_score === null ? null : Number(contest.winning_score),
+      medianScore: contest.median_score === null ? null : Number(contest.median_score),
+      format: String(contest.format),
+    },
+  };
+}
+
+function auditForSlate(
+  slate: Array<{ dkPlayerId: number; name: string; position: string; salary: number; ourProj: number | null; isOut: boolean }>,
+  players: Array<{ normalizedName: string; draftedPct: number; fpts: number }>,
+): FieldAudit {
+  return auditSlate(
+    slate.map((p) => ({ dkPlayerId: Number(p.dkPlayerId), name: p.name, position: p.position,
+                        salary: p.salary, ourProj: p.ourProj === null ? null : Number(p.ourProj), isOut: p.isOut })),
+    new Map(players.map((p) => [p.normalizedName, { draftedPct: p.draftedPct, fpts: p.fpts }])),
+  );
 }

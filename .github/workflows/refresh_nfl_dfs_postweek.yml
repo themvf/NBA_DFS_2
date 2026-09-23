@@ -1,0 +1,98 @@
+name: Refresh NFL DFS Post-Week Review
+
+# Everything that can be produced about last week's slates WITHOUT anyone
+# typing a command.
+#
+# What runs here:
+#   1. realized DraftKings points for the week (`nfl_dfs_player_week_results`),
+#      which is where the play-by-play DST components land;
+#   2. the slate-scoped report cards, which grade our projections against what
+#      DraftKings actually paid;
+#   3. the field-ownership audit over whatever contests have been imported.
+#
+# What does NOT run here, and cannot:
+#   getting the DraftKings contest standings export. DraftKings gates it behind
+#   the account that entered the contest, so no token in this repo can fetch
+#   it. That one file is dropped into the NFL workspace ("What the field knew"
+#   panel), which parses it in the browser and persists the ownership. This
+#   job then keeps the audit current from that point on, and re-running it is
+#   free -- the audit is recomputed from stored ownership, never cached.
+#
+# Slots, against nflverse's publish cadence (the weekly stats release is
+# rebuilt each morning during the season):
+#   Tuesday 10:00 UTC = after Monday night's game has been published.
+#   Wednesday 10:00 UTC = a second pass, so a late nflverse correction is
+#                         picked up without waiting a week. The results ledger
+#                         is append-only and keyed by input digest, so an
+#                         unchanged week inserts nothing.
+
+on:
+  workflow_dispatch:
+    inputs:
+      season:
+        description: "Season to refresh (e.g. 2026). Blank = the current target season."
+        required: false
+        default: ""
+  schedule:
+    - cron: "0 10 * * 2"
+    - cron: "0 10 * * 3"
+
+concurrency:
+  group: nfl-dfs-postweek
+  cancel-in-progress: false
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SEASON: ${{ inputs.season }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Realized DK points. DST components come from play-by-play when it is
+      # present and fall back to the team-week aggregate when it is not, so a
+      # week whose pbp has not published yet still scores.
+      - name: Materialize realized DraftKings points
+        run: |
+          if [ -n "$SEASON" ]; then
+            python -m ingest.nfl_dfs_results --season "$SEASON"
+          else
+            # Same rule the report cards use: before April, last year's season.
+            python -m ingest.nfl_dfs_results --season "$(python -c 'from datetime import datetime,timezone; from ingest.nfl_dfs_weekly import target_season; print(target_season(None, datetime.now(timezone.utc)))')"
+          fi
+
+      # How far our projections were from what DraftKings paid, per completed
+      # slate upload. Scored on the players DK listed, so the zero a listed
+      # absentee was paid counts.
+      - name: Slate report cards
+        run: python -m ingest.nfl_dfs_slate_reportcard --pooled
+
+      # What the field knew that we did not, over every contest already
+      # imported. Prints nothing useful until a contest export has been
+      # uploaded, and says so rather than failing.
+      - name: Field-ownership audit
+        run: python -m ingest.nfl_dfs_field_audit --report
+
+      # The run log is the record. Kept so a week can be read back without
+      # re-running anything, and so a change in the numbers has a dated
+      # before/after rather than only a current value.
+      - name: Save the review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nfl-dfs-postweek-review
+          path: |
+            artifacts/**
+          if-no-files-found: ignore
+          retention-days: 90

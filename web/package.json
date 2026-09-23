@@ -97,7 +97,8 @@
     "test:nfl-gpp-backtest": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-backtest.ts",
     "test:nfl-out-fallback-gate": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-out-fallback-gate.ts",
     "test:nfl-captain-availability": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-captain-availability.ts",
-    "test:nfl-availability-coverage": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-availability-coverage.ts"
+    "test:nfl-availability-coverage": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-availability-coverage.ts",
+    "test:nfl-field-audit": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-field-audit.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",
