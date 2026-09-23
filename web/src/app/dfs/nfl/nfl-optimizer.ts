@@ -4,6 +4,7 @@ import type { WorkloadProjection } from "@/lib/nfl-dfs/workload-projection";
 import type { CalibratedProjection } from "@/lib/nfl-dfs/calibrated-projection";
 import type { SituationSettings, ProjectionAudit, SituationEvidence } from '@/lib/nfl-dfs/projection-audit';
 import { MIN_OBSERVED_GAMES, observedHistoryRequirement } from '@/lib/nfl-dfs/opportunity-redistribution';
+import { OUT_PROJECTION_STATUS } from '@/lib/nfl-dfs/out-projection';
 import {
   DEFAULT_NFL_PUNT_POLICY,
   evaluatePuntEligibility,
@@ -84,6 +85,12 @@ export type NflOptimizerPlayer = {
   projectedOpportunities?: number | null;
   /** Availability evidence freshness, used to fail cheap players closed on stale data. */
   availabilityState?: EvidenceState;
+  /**
+   * Resolved availability status ("ACTIVE", "QUESTIONABLE", ...). Null/absent
+   * is unknown, not healthy. Gates the Captain slot only; see
+   * `captainBlockedByAvailability`.
+   */
+  availabilityStatus?: string | null;
   ourProj: number | null;
   floorFpts: number | null;
   ceilingFpts: number | null;
@@ -304,7 +311,66 @@ function roleEvidenceFor(player: NflOptimizerPlayer): NflPlayerRoleEvidence {
   };
 }
 
+/**
+ * A zero written by the availability policy is a DECISION, not a missing value.
+ *
+ * `zeroOutProjection`/`storedSlateProjection` set `projectionStatus = "out"`
+ * with `ourProj = 0` for a player ruled out. Every fallback below fires on
+ * "no usable number", and `0 > 0` is false, so without this guard the
+ * deliberate zero reads as absence and the player is restored at somebody
+ * else's number -- the loudest one available, his DK season average.
+ *
+ * Measured on the 2026 week-2 classic slate: 11 players carried a policy zero
+ * and a non-zero DK average. All 11 scored exactly 0. The fallback's entire
+ * effect was to overwrite correct zeros; the largest, Zay Flowers at 29.0,
+ * became the highest projection on the board and reached 3 of 20 lineups.
+ *
+ * Note this is NOT the same as `isOut`. DK's own flag covers OUT/IR only, so
+ * a player DK lists Doubtful whom OUR feed ruled out has `isOut === false` and
+ * survives the inactive check; his status is the only thing that says so.
+ */
+function ruledOut(player: NflOptimizerPlayer): boolean {
+  return player.isOut || player.projectionStatus === OUT_PROJECTION_STATUS;
+}
+
+/**
+ * Showdown Captain pays 1.5x points for 1.5x salary, so the slot is
+ * value-neutral and a linear objective is indifferent about WHERE a player
+ * goes: given a chosen six, the solver puts the multiplier on whichever of
+ * them scores highest, which in GPP mode is the highest `ceilingFpts`. The
+ * captain is therefore never chosen on its own merits -- it is the model's
+ * top ceiling estimate, amplified, with no diversification and no cap
+ * (`captainMax` falls back to `nLineups`).
+ *
+ * That makes the slot uniquely unforgiving of an availability doubt. A
+ * QUESTIONABLE player in FLEX costs his own points; the same player at Captain
+ * costs 1.5x and takes the lineup with him.
+ *
+ * Measured on the 2026 week-2 Monday showdown (contest 195786073): Puka Nacua
+ * carried a fresh QUESTIONABLE tag, our highest ceiling on the slate (42.7),
+ * and 0.64% field ownership -- the market had resolved him and we had not. He
+ * took 14 of 40 captain slots and scored 0.0.
+ *
+ * So availability doubt makes a player Flex-only. This is deliberately NOT a
+ * uniform captain exposure cap: caps were measured on the same slate and made
+ * it worse, because they push the multiplier onto genuinely weaker players.
+ * This gates on evidence instead of quota.
+ *
+ * Unknown is not doubt. A player with no availability evidence is unchanged --
+ * absence of a tag is not a tag, and treating it as one would make the gate
+ * fire on every slate where the feed is simply empty.
+ */
+const CAPTAIN_DOUBTFUL_STATES: ReadonlySet<string> = new Set(["QUESTIONABLE", "DOUBTFUL"]);
+
+export function captainBlockedByAvailability(player: NflOptimizerPlayer): boolean {
+  const status = (player.availabilityStatus ?? "").trim().toUpperCase();
+  return CAPTAIN_DOUBTFUL_STATES.has(status);
+}
+
 function projectionFor(player: NflOptimizerPlayer, settings: NflOptimizerSettings): { value: number; source: ResolvedPlayer["resolvedSource"] } | null {
+  // Fail closed before any source is consulted: no projection exists for a
+  // player we have decided is not playing, in any source.
+  if (ruledOut(player)) return null;
   if (settings.projectionSource === "workload") {
     const candidate=selectedWorkload(player,settings.workloadPositions);
     if (candidate && finite(candidate.mean) !== null && candidate.mean > 0) return { value: candidate.mean, source: "workload" };
@@ -329,9 +395,9 @@ function projectionFor(player: NflOptimizerPlayer, settings: NflOptimizerSetting
 
 export function resolveProjectionAudit(player:NflOptimizerPlayer,settings:NflOptimizerSettings):ProjectionAudit {
   const resolved=projectionFor(player,settings);
-  if(resolved?.source==='workload'&&player.projectionAudit)return {...player.projectionAudit,excluded:player.isOut||settings.excludedPlayerIds.includes(player.dkPlayerId)};
+  if(resolved?.source==='workload'&&player.projectionAudit)return {...player.projectionAudit,excluded:ruledOut(player)||settings.excludedPlayerIds.includes(player.dkPlayerId)};
   const baseline=finite(player.ourProj),final=resolved?.value??null,delta=baseline!=null&&final!=null?final-baseline:0;
-  return {version:'nfl-projection-audit-v1',baseline,final,source:resolved?.source??'unavailable',excluded:player.isOut||settings.excludedPlayerIds.includes(player.dkPlayerId)||!resolved,modelSnapshot:resolved?.source==='calibrated'?player.calibrated:null,evidence:player.projectionAudit?.evidence??null,assumption:null,rangeMethod:resolved?.source==='calibrated'?'Pinned calibrated player ranges.':resolved?.source==='our'||resolved?.source==='our_fallback'?'Historical player ranges.':'Source supplies a mean only; optimizer uses 0.74 × mean / 1.28 × mean range heuristics.',steps:[{label:'Selected projection source',status:delta?'applied':'not_applied',points:delta,reason:resolved?`${resolved.source}: ${baseline===null?'historical baseline unavailable; no comparative delta claimed':final===baseline?'historical estimate retained':'source replacement, not an inferred injury or matchup effect'}.`:'No usable projection; excluded.'},...(player.projectionAudit?.steps.filter(s=>s.label==='Situation adjustments')??[])]};
+  return {version:'nfl-projection-audit-v1',baseline,final,source:resolved?.source??'unavailable',excluded:ruledOut(player)||settings.excludedPlayerIds.includes(player.dkPlayerId)||!resolved,modelSnapshot:resolved?.source==='calibrated'?player.calibrated:null,evidence:player.projectionAudit?.evidence??null,assumption:null,rangeMethod:resolved?.source==='calibrated'?'Pinned calibrated player ranges.':resolved?.source==='our'||resolved?.source==='our_fallback'?'Historical player ranges.':'Source supplies a mean only; optimizer uses 0.74 × mean / 1.28 × mean range heuristics.',steps:[{label:'Selected projection source',status:delta?'applied':'not_applied',points:delta,reason:resolved?`${resolved.source}: ${baseline===null?'historical baseline unavailable; no comparative delta claimed':final===baseline?'historical estimate retained':'source replacement, not an inferred injury or matchup effect'}.`:'No usable projection; excluded.'},...(player.projectionAudit?.steps.filter(s=>s.label==='Situation adjustments')??[])]};
 }
 
 function safe(value: string): string {
@@ -620,8 +686,15 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   for (const player of players) {
     const named = { dkPlayerId: player.dkPlayerId, name: player.name, salary: player.salary };
     // Manual exclusion and inactivity are handled first so they always win.
-    if (player.isOut) {
-      eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden: false, reason: "Inactive (OUT/IR).", reasonCode: "INACTIVE" });
+    if (ruledOut(player)) {
+      // Two sources, one gate. DK's Status column covers OUT/IR; our own
+      // availability feed can rule out a player DK lists Doubtful/Questionable,
+      // and says so by stamping the projection `out`. Honouring only the first
+      // let the DK-average fallback restore the second (see `ruledOut`).
+      const reason = player.isOut
+        ? "Inactive (OUT/IR)."
+        : "Ruled out by our availability feed; projection zeroed. DraftKings did not flag him OUT/IR, so only the projection status records it.";
+      eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden: false, reason, reasonCode: "INACTIVE" });
       coverage.excluded++; continue;
     }
     if (excluded.has(player.dkPlayerId)) {
@@ -630,7 +703,9 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     }
 
     let salaryRelief = false;
-    let captainEligible = true;
+    // Applies on both the policy path and the legacy path: the Captain rule is
+    // about the 1.5x multiplier, not about how cheap players are screened.
+    let captainEligible = !captainBlockedByAvailability(player);
     let overridden = false;
 
     if (policy) {
@@ -650,7 +725,8 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
       overridden = decision.overridden;
       // A cheap player admitted only by override is Flex-only unless a CPT
       // override is recorded (spec §8.3).
-      captainEligible = !overridden || captainAdmissible(player.dkPlayerId, overrides);
+      captainEligible = (!overridden || captainAdmissible(player.dkPlayerId, overrides))
+        && !captainBlockedByAvailability(player);
       // Main's observed-history gate (#217) still applies alongside the policy:
       // the policy scrutinizes CHEAP roles, while this removes any-priced
       // players whose projection is a position average, not theirs (the backup

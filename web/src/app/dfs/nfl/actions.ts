@@ -404,6 +404,11 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
       dkStatus: row.dkStatus,
       isOut: row.isOut || Boolean(availability(row).blockedReason),
       availability: availability(row),
+      // Flat copy for the optimizer, which gates the Showdown Captain slot on
+      // it. A QUESTIONABLE player is NOT blocked from the pool -- he usually
+      // plays -- but he may not take the 1.5x multiplier. See
+      // `captainBlockedByAvailability`.
+      availabilityStatus: availability(row).status,
       workloadEligible:workloadPoolEligible({...row,availability:availability(row)},now),
       identityMethod: row.identityMethod,
       identityEvidence: row.identityEvidence,

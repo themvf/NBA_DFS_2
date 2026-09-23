@@ -41,7 +41,6 @@
     "test:nfl-player-pool-filter": "node --import tsx ./scripts/test-nfl-player-pool-filter.ts",
     "test:nfl-salary-value": "node --import tsx ./scripts/test-nfl-salary-value.ts",
     "test:nfl-player-pool-sort": "node --import tsx ./scripts/test-nfl-player-pool-sort.ts",
-    "test:nfl-out-projection": "node --import tsx ./scripts/test-nfl-out-projection.ts",
     "test:nfl-opportunity-redistribution": "node --import tsx ./scripts/test-nfl-opportunity-redistribution.ts",
     "test:nfl-stale-run": "node --import tsx ./scripts/test-nfl-stale-run.ts",
     "test:nfl-slate-persist": "node --import tsx ./scripts/test-nfl-slate-persist.ts",
@@ -95,7 +94,9 @@
     "test:nfl-gpp-salary": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-salary.ts",
     "test:nfl-gpp-qa": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-qa.ts",
     "test:nfl-gpp-selection": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-selection.ts",
-    "test:nfl-gpp-backtest": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-backtest.ts"
+    "test:nfl-gpp-backtest": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-backtest.ts",
+    "test:nfl-out-fallback-gate": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-out-fallback-gate.ts",
+    "test:nfl-captain-availability": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-captain-availability.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",
