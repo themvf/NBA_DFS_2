@@ -6,6 +6,7 @@ import { nflIdentityLabel } from "@/lib/nfl-dfs/identity";
 import ProjectionAuditPanel from './projection-audit-panel';
 import {DEFAULT_SITUATIONS} from '@/lib/nfl-dfs/projection-audit';
 import AvailabilityPanel from './availability-panel';
+import FieldAuditPanel from './field-audit-panel';
 import { availabilityCoverage } from '@/lib/nfl-dfs/availability-coverage';
 import AbsencePreview from './absence-preview';
 import CompetitorPanel from './competitor-panel';
@@ -288,6 +289,7 @@ export default function NflDfsClient() {
       <nav aria-label="NFL workspace" className="nfl-workspace-tabs">{["players", "lineups", "research"].map(view => <button key={view} type="button" aria-current={workspaceView === view ? "page" : undefined} onClick={() => setWorkspaceView(view)}>{view === "players" ? "Players" : view === "lineups" ? `Lineups (${lineups.length})` : "Research & audit"}</button>)}</nav>
       <div hidden={workspaceView !== "research"} className="space-y-4">    <details className="rounded-xl border bg-white p-4"><summary className="cursor-pointer font-semibold">Advanced projection tools</summary><div className="mt-4 space-y-4"><ProjectionAuditPanel slate={slate} settings={{...settings,format:slate?.format??"classic",lockedPlayerIds:locked,excludedPlayerIds:excluded,minExposureByPlayer:{},maxExposureByPlayer:{}}} onChange={situations=>setSettings(s=>({...s,situations}))}/><WorkloadProjections key={slate?.uploadId??'no-slate'} slate={slate} active={settings.projectionSource === 'workload'} onChoose={()=>setSettings({...settings,projectionSource:'workload'})} onPositionsChange={workloadPositions=>setSettings({...settings,workloadPositions})} settings={{...settings,format:slate?.format??'classic',lockedPlayerIds:locked,excludedPlayerIds:excluded,minExposureByPlayer:Object.fromEntries(Object.entries(targetExposure).map(([id,pct])=>[id,Math.round(pct/100*Math.min(5,settings.nLineups))/Math.min(5,settings.nLineups)])),maxExposureByPlayer:Object.fromEntries(Object.entries(targetExposure).map(([id,pct])=>[id,Math.round(pct/100*Math.min(5,settings.nLineups))/Math.min(5,settings.nLineups)]))}} />
     <CalibratedProjections slate={slate} active={settings.projectionSource === "calibrated"} onChoose={() => setSettings({ ...settings, projectionSource: "calibrated" })} /></div></details>
+      <FieldAuditPanel uploadId={slate.uploadId} />
       <AvailabilityPanel slate={slate} />
       <details className="rounded-xl border bg-white p-4"><summary className="cursor-pointer font-semibold">Compare sources and explore player absences</summary><div className="mt-4 space-y-4"><CompetitorPanel key={`${slate.uploadId}-benchmark`} slate={slate} />
       <AbsencePreview key={`${slate.uploadId}-${slate.players[0]?.availability?.evaluatedAt}`} slate={slate} /></div></details>
