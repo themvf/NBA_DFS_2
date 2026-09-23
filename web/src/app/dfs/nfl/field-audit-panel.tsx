@@ -39,10 +39,18 @@ export default function FieldAuditPanel({ uploadId }: { uploadId: string }) {
     setError(null); setMessage(null);
     startTransition(async () => {
       try {
+        // Hash the RAW BYTES, not the decoded text. `file.text()` strips the
+        // UTF-8 BOM DraftKings writes, so re-encoding it produces a different
+        // digest from the one `ingest/nfl_dfs_field_audit.py` computes over
+        // the same file -- measured, not assumed. Hashing the buffer makes the
+        // two paths agree, which is the only reason the column is useful.
+        const bytes = await file.arrayBuffer();
+        const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)))
+          .map((b) => b.toString(16).padStart(2, "0")).join("");
         const parsed = parseContestExport(await file.text());
         // DraftKings names the file contest-standings-<id>.csv.
         const contestId = (file.name.match(/contest-standings-(\d+)/)?.[1] ?? file.name.replace(/\.csv$/i, "")).trim();
-        const result = await importNflContestResults(uploadId, contestId, parsed, file.name);
+        const result = await importNflContestResults(uploadId, contestId, parsed, file.name, digest);
         setAudit(result.audit); setContest(result.contest);
         setMessage(`Imported ${result.contest.entryCount.toLocaleString()} entries · ${parsed.players.length} players with ownership · ${Math.round(result.overlap * 100)}% matched this slate.`);
       } catch (reason) {
