@@ -1002,6 +1002,7 @@ export async function importNflContestResults(
             entryCount: number; winningScore: number | null; medianScore: number | null; minScore: number | null;
             format: "classic" | "showdown" },
   fileName: string,
+  fileDigest: string,
 ): Promise<{ audit: FieldAudit; contest: { contestId: string; entryCount: number; winningScore: number | null; medianScore: number | null; format: string }; overlap: number }> {
   await ensureNflDfsTables();
   const id = contestId.trim();
@@ -1029,10 +1030,12 @@ export async function importNflContestResults(
     INSERT INTO nfl_dfs_field_contests (contest_id, contest_name, format, season, week, slate_upload_id,
       entry_count, winning_score, median_score, min_score, file_name, file_digest)
     VALUES (${id}, ${fileName}, ${parsed.format}, ${run[0]?.season ?? null}, ${run[0]?.week ?? null}, ${uploadId},
-      ${parsed.entryCount}, ${parsed.winningScore}, ${parsed.medianScore}, ${parsed.minScore}, ${fileName}, ${id})
+      ${parsed.entryCount}, ${parsed.winningScore}, ${parsed.medianScore}, ${parsed.minScore}, ${fileName}, ${fileDigest})
     ON CONFLICT (contest_id) DO UPDATE SET slate_upload_id = EXCLUDED.slate_upload_id,
       season = EXCLUDED.season, week = EXCLUDED.week, entry_count = EXCLUDED.entry_count,
-      winning_score = EXCLUDED.winning_score, median_score = EXCLUDED.median_score, min_score = EXCLUDED.min_score`);
+      winning_score = EXCLUDED.winning_score, median_score = EXCLUDED.median_score,
+      min_score = EXCLUDED.min_score, file_name = EXCLUDED.file_name, file_digest = EXCLUDED.file_digest,
+      imported_at = NOW()`);
 
   // Chunked: neon-http commits each awaited statement separately, so a single
   // oversized insert is the thing to avoid, not a lost transaction.
