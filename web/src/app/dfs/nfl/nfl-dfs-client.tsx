@@ -6,6 +6,7 @@ import { nflIdentityLabel } from "@/lib/nfl-dfs/identity";
 import ProjectionAuditPanel from './projection-audit-panel';
 import {DEFAULT_SITUATIONS} from '@/lib/nfl-dfs/projection-audit';
 import AvailabilityPanel from './availability-panel';
+import { availabilityCoverage } from '@/lib/nfl-dfs/availability-coverage';
 import AbsencePreview from './absence-preview';
 import CompetitorPanel from './competitor-panel';
 import { AlertTriangle, BarChart3, CheckCircle2, Download, FileUp, HelpCircle, Lock, Play, Search, ShieldCheck, Unlock, XCircle } from "lucide-react";
@@ -108,6 +109,10 @@ export default function NflDfsClient() {
   // Counted over the unfiltered pool, so the dropdown describes slate composition
   // rather than moving with every keystroke in the search box.
   const positionCounts = useMemo(() => poolPositionCounts(slate?.players ?? []), [slate]);
+  // Availability coverage sits next to the Generate button, not behind a tab:
+  // a slate where nothing is known about who is playing built 20 lineups
+  // unchallenged on 2026 week 2. See `availability-coverage.ts`.
+  const coverage = useMemo(() => availabilityCoverage(slate?.players ?? []), [slate]);
   // Per-position reference distributions are built once per slate, not per row:
   // the pool re-renders on every keystroke in the search box.
   const valueIndex = useMemo(() => buildValueIndex(slate?.players ?? []), [slate]);
@@ -138,8 +143,9 @@ export default function NflDfsClient() {
       duplication,
       ownership: ownership ? { capability: ownership.capability, errors: ownership.errors, features: { leverage: ownership.features.leverage } } : undefined,
       newerRunAvailable: Boolean(slate?.refreshAvailable),
+      availabilityCoverage: coverage,
     }, qaOverrides);
-  }, [lineups, eligibility, exposureReport, salaryBands, duplication, ownership, completedSettings, slate, qaOverrides]);
+  }, [lineups, eligibility, exposureReport, salaryBands, duplication, ownership, completedSettings, slate, coverage, qaOverrides]);
 
   async function refreshLibrary() {
     const saved = await listSavedNflSlates(); setSavedSlates(saved); return saved;
@@ -271,8 +277,13 @@ export default function NflDfsClient() {
     {slate ? <>
       {/* The slate has always carried warnings; nothing rendered them, so a
           stale-model notice had nowhere to go. */}
+      {coverage.state !== "adequate" ? <section role="alert" className={`rounded-xl border p-4 ${coverage.state === "blind" ? "border-red-300 bg-red-50 text-red-900" : "border-amber-300 bg-amber-50 text-amber-900"}`}>
+        <h2 className="font-bold">{coverage.state === "blind" ? "We do not know who is playing" : "Availability evidence is thin"}</h2>
+        <p className="mt-1 text-sm">{coverage.headline}</p>
+        <button type="button" onClick={() => setWorkspaceView("research")} className="mt-2 rounded-lg border border-current px-3 py-1.5 text-sm font-semibold">Open roles and evidence</button>
+      </section> : null}
       {slate.warnings.length ? <div className="space-y-2">{slate.warnings.map((warning) => <Notice key={warning}>{warning}</Notice>)}</div> : null}
-      <section className="nfl-slate-status grid grid-cols-2 gap-3 md:grid-cols-6"><Metric label="Format" value={slate.format.toUpperCase()} /><Metric label="Players" value={String(slate.players.length)} /><Metric label="Games" value={String(slate.games.length)} /><Metric label="Our model" value={`${slate.players.filter((p) => p.ourProj != null).length}/${slate.players.length}`} /><Metric label="Model" value={slate.modelVersion ?? "None"} small /><Metric label="As of" value={slate.modelAsOf ? new Date(slate.modelAsOf).toLocaleString() : "No run"} small /></section>
+      <section className="nfl-slate-status grid grid-cols-2 gap-3 md:grid-cols-6"><Metric label="Format" value={slate.format.toUpperCase()} /><Metric label="Players" value={String(slate.players.length)} /><Metric label="Games" value={String(slate.games.length)} /><Metric label="Our model" value={`${slate.players.filter((p) => p.ourProj != null).length}/${slate.players.length}`} /><Metric label="Availability" value={coverage.metric} /><Metric label="Model" value={slate.modelVersion ?? "None"} small /><Metric label="As of" value={slate.modelAsOf ? new Date(slate.modelAsOf).toLocaleString() : "No run"} small /></section>
       <a href={`/dfs/nfl/pool-review?upload=${slate.uploadId}`} className="inline-block text-sm font-semibold text-blue-700 underline">Open full pool audit and results</a>
       <nav aria-label="NFL workspace" className="nfl-workspace-tabs">{["players", "lineups", "research"].map(view => <button key={view} type="button" aria-current={workspaceView === view ? "page" : undefined} onClick={() => setWorkspaceView(view)}>{view === "players" ? "Players" : view === "lineups" ? `Lineups (${lineups.length})` : "Research & audit"}</button>)}</nav>
       <div hidden={workspaceView !== "research"} className="space-y-4">    <details className="rounded-xl border bg-white p-4"><summary className="cursor-pointer font-semibold">Advanced projection tools</summary><div className="mt-4 space-y-4"><ProjectionAuditPanel slate={slate} settings={{...settings,format:slate?.format??"classic",lockedPlayerIds:locked,excludedPlayerIds:excluded,minExposureByPlayer:{},maxExposureByPlayer:{}}} onChange={situations=>setSettings(s=>({...s,situations}))}/><WorkloadProjections key={slate?.uploadId??'no-slate'} slate={slate} active={settings.projectionSource === 'workload'} onChoose={()=>setSettings({...settings,projectionSource:'workload'})} onPositionsChange={workloadPositions=>setSettings({...settings,workloadPositions})} settings={{...settings,format:slate?.format??'classic',lockedPlayerIds:locked,excludedPlayerIds:excluded,minExposureByPlayer:Object.fromEntries(Object.entries(targetExposure).map(([id,pct])=>[id,Math.round(pct/100*Math.min(5,settings.nLineups))/Math.min(5,settings.nLineups)])),maxExposureByPlayer:Object.fromEntries(Object.entries(targetExposure).map(([id,pct])=>[id,Math.round(pct/100*Math.min(5,settings.nLineups))/Math.min(5,settings.nLineups)]))}} />

@@ -74,6 +74,12 @@ export interface QaInput {
   /** Selection/evaluation scenario digests (Phase 7); a collision is a blocker. */
   selectionDigest?: string | null;
   evaluationDigest?: string | null;
+  /**
+   * Availability coverage for the slate these lineups were built on. Absent
+   * means the caller did not supply it, which is not the same as blind and is
+   * therefore not checked.
+   */
+  availabilityCoverage?: { state: "blind" | "thin" | "adequate"; resolved: number; considered: number; fresh: number };
 }
 
 const STALE_BLOCK_HOURS = 48;
@@ -85,6 +91,25 @@ export function runNflPreExportQa(input: QaInput, overrides: QaOverride[] = []):
   const add = (c: Omit<QaCheck, "overridable"> & { overridable?: boolean }) => checks.push({ overridable: false, ...c });
 
   const rosterSize = input.format === "showdown" ? 6 : 9;
+
+  // --- Did we know who was playing? ---
+  // Overridable: exporting a slate we are blind on is a legitimate choice as
+  // long as it is a choice. On 2026 week 2 it was not one -- the information
+  // was in a different tab and nothing asked.
+  const coverage = input.availabilityCoverage;
+  if (coverage && coverage.state !== "adequate") {
+    add({
+      id: "availability_coverage",
+      title: "Availability was known for this slate",
+      severity: coverage.state === "blind" ? "blocker" : "warning",
+      passed: false,
+      overridable: true,
+      detail: coverage.state === "blind"
+        ? `Only ${coverage.resolved} of ${coverage.considered} players had any availability status (${coverage.fresh} fresh). These lineups may contain inactive players.`
+        : `${coverage.resolved} of ${coverage.considered} players had an availability status, ${coverage.fresh} of them fresh.`,
+      affected: [],
+    });
+  }
 
   // --- Illegal roster or salary (blocker, never overridable) ---
   const illegal = input.lineups.filter((l) => l.playerIds.length !== rosterSize || new Set(l.playerIds).size !== rosterSize || l.totalSalary > 50000);
