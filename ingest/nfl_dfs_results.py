@@ -4,9 +4,12 @@ The immutable nflverse component-stat payload in ``ff_player_week_stats`` is
 the source of truth.  A source correction produces a new input digest and a
 new result row; this command never updates or deletes prior results.
 
-DST scoring is rebuilt from retained team-week components, including blocked
-kicks, and adjusts final points allowed to remove scores produced by the
-opponent's defense.  The component ledger is retained for custom redraft rules.
+DST scoring is rebuilt from PLAY-BY-PLAY components when they are available
+(`model/nfl_dst_components`), falling back to the retained team-week aggregate
+when they are not; both records are kept in the evidence with any per-component
+disagreement named.  Points allowed is adjusted to remove scores produced by
+the opponent's defense.  The component ledger is retained for custom redraft
+rules.
 
 Usage:
     python -m ingest.nfl_dfs_results --season 2023 2024 2025
@@ -26,9 +29,18 @@ from psycopg2.extras import Json, execute_values
 from config import load_config
 from db.database import DatabaseManager
 from model.nfl_dfs_historical import draftkings_points
+from model.nfl_team_aliases import normalize_team
+from model.nfl_dst_components import (
+    VERSION as DST_COMPONENT_VERSION,
+    compare_components,
+    derive_dst_components,
+)
 
 
-SCORING_VERSION = "nfl-dk-realized-v2"
+# v3: DST components are sourced from play-by-play when available rather than
+# the team-week aggregate, which drops events. Semantics changed, so v2 rows
+# keep their version and are never reinterpreted under this one.
+SCORING_VERSION = "nfl-dk-realized-v3"
 EXACT_POSITIONS = {"QB", "RB", "WR", "TE", "K", "DST"}
 SCORING_FIELDS = {
     "QB": (
@@ -114,14 +126,30 @@ def _score_dst(source_row: Mapping[str, Any], context: Mapping[str, Any] | None)
         + 2 * _number(opponent_raw, "def_2pt_made")
     )
     points_allowed = max(0, round(float(context["opponent_final_points"]) - opponent_defensive_points))
-    components = {
+
+    # The team-week aggregate drops events (a returned strip-sack reaching it
+    # as `def_tds: 0`, a third sack recorded as two). Play-by-play carries
+    # them and agreed with DraftKings on 26/26 team-defenses where the
+    # aggregate managed 24/26 -- see `model/nfl_dst_components`. Prefer it
+    # when the caller supplies it; fall back to the aggregate when it is
+    # absent, so a week without play data still scores rather than vanishing.
+    aggregate = {
         "sacks": _number(raw, "def_sacks"),
         "interceptions": _number(raw, "def_interceptions"),
         "fumble_recoveries": _number(raw, "fumble_recovery_opp"),
         "safeties": _number(raw, "def_safeties"),
         "defensive_tds": _number(raw, "def_tds"),
-        "special_teams_return_tds": _number(raw, "special_teams_tds"),
         "blocked_kicks": sum(_number(raw, key) for key in ("def_fg_blocks", "def_pat_blocks", "def_punt_blocks")),
+    }
+    derived = context.get("pbp_components")
+    component_source = "play_by_play" if derived else "team_aggregate"
+    chosen = dict(derived) if derived else dict(aggregate)
+
+    components = {
+        **{name: float(chosen.get(name) or 0.0) for name in aggregate},
+        # Not derivable from `defteam` on a kick, and not a defensive event:
+        # these two always come from the aggregate and the caller.
+        "special_teams_return_tds": _number(raw, "special_teams_tds"),
         "two_point_returns": _number(raw, "def_2pt_made"),
         "opponent_final_points": int(context["opponent_final_points"]),
         "opponent_defensive_points_excluded": opponent_defensive_points,
@@ -148,6 +176,14 @@ def _score_dst(source_row: Mapping[str, Any], context: Mapping[str, Any] | None)
             "scorer": "ingest.nfl_dfs_results._score_dst",
             "scoring_components": components,
             "redraft_reusable_components": True,
+            "component_source": component_source,
+            "component_version": DST_COMPONENT_VERSION,
+            # Both independent records are kept whenever both exist, with the
+            # per-component disagreements called out. A disagreement is a
+            # data-quality signal to audit, not evidence either source is
+            # right: only one week of DraftKings ground truth exists so far.
+            "team_aggregate_components": aggregate if derived else None,
+            "component_disagreements": compare_components(derived, aggregate) or None,
         },
     )
 
@@ -225,9 +261,36 @@ def source_rows(db: DatabaseManager, seasons: Sequence[int]) -> list[dict[str, A
     )
 
 
+def pbp_components(db: DatabaseManager, seasons: Sequence[int]) -> dict[tuple[int, int, str], dict[str, float]]:
+    """DST components from play-by-play, keyed (season, week, canonical team).
+
+    One query for the whole run rather than one per team-game. A season with
+    no play-by-play simply contributes no keys, and every DST in it falls back
+    to the team-week aggregate -- absence degrades, it does not fail.
+    """
+    plays = db.execute(
+        """
+        SELECT season, week, defteam, turnover_type, had_sack, st_outcome, description
+        FROM nfl_pbp_archetypes
+        WHERE season = ANY(%s) AND season_type = 'REG' AND defteam IS NOT NULL
+        """,
+        (list(seasons),),
+    )
+    by_week: dict[tuple[int, int], list[dict[str, Any]]] = {}
+    for play in plays:
+        by_week.setdefault((int(play["season"]), int(play["week"])), []).append(play)
+    out: dict[tuple[int, int, str], dict[str, float]] = {}
+    for (season, week), week_plays in by_week.items():
+        for team, components in derive_dst_components(week_plays).items():
+            out[(season, week, team)] = components
+    return out
+
+
 def materialize(db: DatabaseManager, seasons: Sequence[int], *, dry_run: bool = False) -> dict[str, int]:
     rows = source_rows(db, seasons)
-    counts = {"source_rows": len(rows), "exact": 0, "excluded": 0, "game_linked": 0, "inserted": 0}
+    derived_components = pbp_components(db, seasons)
+    counts = {"source_rows": len(rows), "exact": 0, "excluded": 0, "game_linked": 0, "inserted": 0,
+              "dst_from_play_by_play": 0, "dst_from_team_aggregate": 0, "dst_component_disagreements": 0}
     inserts: list[tuple[object, ...]] = []
     for row in rows:
         # Historical source position wins over the player's current canonical
@@ -237,11 +300,21 @@ def materialize(db: DatabaseManager, seasons: Sequence[int], *, dry_run: bool = 
             "opponent_final_points": row["opponent_final_points"],
             "opponent_raw_team_stats": (row["opponent_raw_source"] or {}).get("raw_team_stats"),
         }
+        if position == "DST":
+            derived = derived_components.get(
+                (int(row["season"]), int(row["week"]), normalize_team(row["team"]) or "")
+            )
+            if derived:
+                dst_context["pbp_components"] = derived
         scored = score_source_row(
             position,
             row["source_row"],
             dst_context=dst_context,
         )
+        if position == "DST" and scored.status == "exact":
+            counts["dst_from_play_by_play" if scored.evidence.get("component_source") == "play_by_play"
+                   else "dst_from_team_aggregate"] += 1
+            counts["dst_component_disagreements"] += int(bool(scored.evidence.get("component_disagreements")))
         counts[scored.status] += 1
         counts["game_linked"] += int(row["game_id"] is not None)
         digest = input_digest(position=position, source=row["source"], source_row=row["source_row"],

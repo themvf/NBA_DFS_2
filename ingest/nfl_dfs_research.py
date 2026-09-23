@@ -66,9 +66,14 @@ def load_inputs(root: Path, connection) -> tuple[list[HistoricalWeek], dict, lis
             }
     sources.append({"path": str(path.relative_to(root)), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
     with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+        # Latest scoring of each team-week, whatever version produced it. The
+        # version was pinned to `nfl-dk-realized-v2`, which silently froze this
+        # research corpus on the old DST scorer the moment v3 shipped -- the
+        # ledger is append-only, so a pin here reads corrections as absent
+        # rather than failing. DISTINCT ON already takes the newest row.
         cursor.execute("""SELECT DISTINCT ON (r.player_week_stat_id) r.*
           FROM nfl_dfs_player_week_results r
-          WHERE r.position='DST' AND r.scoring_status='exact' AND r.scoring_version='nfl-dk-realized-v2'
+          WHERE r.position='DST' AND r.scoring_status='exact'
           ORDER BY r.player_week_stat_id,r.computed_at DESC,r.id DESC""")
         dst = [dict(r) for r in cursor.fetchall()]
     for r in dst:

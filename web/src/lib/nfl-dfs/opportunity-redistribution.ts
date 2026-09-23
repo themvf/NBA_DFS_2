@@ -13,6 +13,35 @@
  * Yardage bonuses cannot be re-scored from a mean stat line. No new draws are
  * generated, so adjusted distribution metrics are withheld, not scaled.
  * Immutable model rows and saved lineup audits are never rewritten.
+ *
+ * ## The graded result that v3 exists because of (2026 week 2)
+ *
+ * The pre-v3 layer ran on the 2026 week-2 classic slate, which locked an hour
+ * before v3 shipped. It is therefore the one version with a live, scored
+ * cohort, and it was graded against DraftKings' own contest numbers:
+ *
+ *   boosted 228 of 670 slate players and created 280.4 projected points
+ *   paired per-player MAE 4.37 -> 5.00, a difference of +0.63
+ *   team-clustered bootstrap 95% CI [+0.29, +1.02] -- excludes zero, WORSE
+ *   worse at every position: QB 9.56 -> 13.55, RB 3.97 -> 4.76,
+ *                            WR 4.82 -> 5.27, TE 3.66 -> 4.11
+ *
+ * The QB row is the largest and is the one v3 still permits, so it is not
+ * vindication of the surviving path -- n there was 5. Two of the boosted
+ * quarterbacks did not take a snap, and one of them (0.00% field ownership,
+ * boosted 12.8 -> 24.8) reached 30% of our own lineups.
+ *
+ * A caveat that cuts the other way, recorded so this is not read as settled:
+ * replaying the same slate shows the boost changed the projected TOTAL without
+ * changing which players were selected -- same roster, different slots. So the
+ * measured harm is to projection accuracy, which is real, and not yet
+ * demonstrably to lineup selection.
+ *
+ * What this does NOT license: restoring the non-QB transfer because the
+ * numbers look better on some later slate. It was withheld for a stated
+ * structural reason -- no released team/game budget -- and that reason is
+ * unchanged by any single week's error. Reviving it needs a budget, not a
+ * result.
  */
 
 import { scoreNflOffenseLinear } from "./scoring";

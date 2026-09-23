@@ -72,7 +72,7 @@ def test_input_digest_is_order_invariant_and_versioned() -> None:
 
     assert first == second
     assert len(first) == 64
-    assert SCORING_VERSION == "nfl-dk-realized-v2"
+    assert SCORING_VERSION == "nfl-dk-realized-v3"
 
 
 def test_dst_digest_includes_opponent_and_final_score_corrections():
