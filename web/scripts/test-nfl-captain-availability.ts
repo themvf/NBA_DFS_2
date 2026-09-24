@@ -141,6 +141,10 @@ function main() {
   const dq = decide(doubtful);
   assert.equal(dq.d.eligible, false, "Doubtful is not rostered by default");
   assert.match(dq.d.reason ?? "", /Doubtful/);
+  // Its own reason code, not INACTIVE. The workspace hides INACTIVE rows, so
+  // reusing that code made the exclusion -- and the lock that overrides it --
+  // invisible to the person who has to decide whether to take the risk.
+  assert.equal(dq.d.reasonCode, "DOUBTFUL");
   assert.ok(dq.run.lineups.every((l) => l.slots.every((s) => s.player.dkPlayerId !== 90)));
 
   // ...but a lock is the user's own instruction, and this is a default about

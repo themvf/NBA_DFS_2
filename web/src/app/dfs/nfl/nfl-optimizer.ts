@@ -745,7 +745,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     // A lock is the user's own instruction and outranks a default about risk.
     if (listedDoubtful(player) && !locked.has(player.dkPlayerId)) {
       eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden: false,
-        reason: "DraftKings lists this player Doubtful. Lock him to use him anyway.", reasonCode: "INACTIVE" });
+        reason: "DraftKings lists this player Doubtful. Lock him to use him anyway.", reasonCode: "DOUBTFUL" });
       coverage.excluded++; continue;
     }
 
