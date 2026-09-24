@@ -459,6 +459,7 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
       id: row.id,
       dkPlayerId: row.dkPlayerId,
       captainDkPlayerId: row.captainDkPlayerId,
+      rosterPositions: row.rosterPositions as string[],
       ffPlayerId: row.ffPlayerId,
       situationEvidence:situations?.rates.get(`${benchmarkTeam(row.team)}:${identityMap.get(row.ffPlayerId??-1)}:${row.position}`)??{team:null,rates:null,ratesDigest:null,ratesAsOf:null,reason:situations?.failure??'No model-linked situation evidence.'},
       name: row.name,
@@ -837,7 +838,7 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
   const inputSnapshot = slate.players.map((player) => ({
     dkPlayerId: player.dkPlayerId, ffPlayerId: player.ffPlayerId, identityMethod: player.identityMethod, identityEvidence:player.identityEvidence, gameInfo: player.gameInfo, name: player.name, team: player.team, position: player.position,
     id:player.id,captainDkPlayerId:player.captainDkPlayerId,opponent:player.opponent,gameKey:player.gameKey,boomRate:player.boomRate,projectionStatus:player.projectionStatus,
-    salary: player.salary, captainSalary: player.captainSalary, status: player.dkStatus,
+    salary: player.salary, captainSalary: player.captainSalary, rosterPositions: player.rosterPositions, status: player.dkStatus,
     ourProj: player.ourProj, floor: player.floorFpts, ceiling: player.ceilingFpts,
     projectionScenario: player.projectionScenario, redistributionVersion: slate.redistribution?.version,
     statMeans: player.statMeans,

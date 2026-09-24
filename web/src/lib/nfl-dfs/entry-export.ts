@@ -1,5 +1,6 @@
 import { parseCsvLine, stringifyCsvLine } from "@/app/dfs/csv";
 import type { NflGeneratedLineup } from "@/app/dfs/nfl/nfl-optimizer";
+import { assertShowdownLineup } from "./showdown-legality";
 
 function normalized(value: string): string {
   return value.replace(/^\uFEFF/, "").trim().toUpperCase();
@@ -23,8 +24,9 @@ export function exportNflDkEntries(content: string, lineups: NflGeneratedLineup[
     const lineup = lineups[index];
     if (lineup) {
       if (lineup.slots.length !== expectedSlots) throw new Error("Lineup format does not match the DraftKings entry file.");
+      if (expectedSlots === 6) assertShowdownLineup(lineup);
       lineup.slots.forEach((entry, slotIndex) => {
-        const id = entry.slot === "CPT" ? entry.player.captainDkPlayerId ?? entry.player.dkPlayerId : entry.player.dkPlayerId;
+        const id = entry.slot === "CPT" ? entry.player.captainDkPlayerId : entry.player.dkPlayerId;
         row[firstSlot + slotIndex] = `${entry.player.name} (${id})`;
       });
     }

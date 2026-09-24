@@ -1,4 +1,5 @@
 import "server-only";
+import { assertShowdownLineup, showdownSalary, showdownFlexEligible } from '@/lib/nfl-dfs/showdown-legality';
 import {selectedWorkload,validateWorkloadPositions,WORKLOAD_POSITIONS,type WorkloadPositions} from "@/lib/nfl-dfs/workload-selection";
 import type { WorkloadProjection } from "@/lib/nfl-dfs/workload-projection";
 import type { CalibratedProjection } from "@/lib/nfl-dfs/calibrated-projection";
@@ -49,9 +50,8 @@ import {
   type LineupDuplication,
 } from '@/lib/nfl-dfs/salary-duplication';
 
-// Phase 0/1: bumped from v5 to record that role-aware eligibility now gates the
-// pool. Legacy runs keep their own recorded version and are not reinterpreted.
-export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v6-punt-policy";
+// Record the strict Showdown purchase and completed-roster validation.
+export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v7-showdown-legality";
 
 export type NflProjectionSource = "our" | "workload" | "calibrated" | "dk_avg" | "fantasypros" | "linestar" | "custom";
 export type NflOptimizerMode = "cash" | "gpp";
@@ -68,6 +68,7 @@ export type NflOptimizerPlayer = {
   gameKey: string | null;
   salary: number;
   captainSalary: number | null;
+  rosterPositions?: string[];
   isOut: boolean;
   projectionStatus: string;
   /** The player's OWN games behind his projection. 0 means the number is his position's average, not his. */
@@ -584,6 +585,7 @@ function buildOne(
     const purchaseTypes = settings.format === "classic" ? ["CLASSIC"] : ["CPT", "FLEX"];
     for (const purchaseType of purchaseTypes) {
       if (purchaseType === "CPT" && (player.captainDkPlayerId == null || player.captainSalary == null)) continue;
+      if (purchaseType === "FLEX" && !showdownFlexEligible(player)) continue;
       // Phase 1 (P1-AC1/§8.3): a cheap player admitted only by override is
       // Flex-only unless a Captain override is recorded. Skip his CPT variable.
       if (purchaseType === "CPT" && !player.captainEligible) continue;
@@ -598,7 +600,7 @@ function buildOne(
       const key = `${purchaseType === "CLASSIC" ? "x" : purchaseType === "CPT" ? "c" : "f"}_${player.dkPlayerId}`;
       const slot = purchaseType === "CPT" ? "CPT" : purchaseType === "FLEX" ? "FLEX" : "CLASSIC";
       const multiplier = slot === "CPT" ? 1.5 : 1;
-      const salary = slot === "CPT" ? player.captainSalary! : player.salary;
+      const salary = settings.format === "showdown" ? showdownSalary(player, slot === "CPT") : player.salary;
       const variable: Record<string, number> = {
         score: objective(player, settings, lineupNumber) * multiplier,
         salary,
@@ -659,7 +661,7 @@ function buildOne(
     for (const purchase of purchases) {
       const slot = purchase.slot === "CPT" ? "CPT" : `FLEX${++flexIndex}`;
       const multiplier = purchase.slot === "CPT" ? 1.5 : 1;
-      chosen.push({ slot, player: purchase.player, salary: purchase.slot === "CPT" ? purchase.player.captainSalary! : purchase.player.salary, multiplier, projection: purchase.player.projection * multiplier, projectionSource: purchase.player.resolvedSource });
+      chosen.push({ slot, player: purchase.player, salary: showdownSalary(purchase.player, purchase.slot === "CPT"), multiplier, projection: purchase.player.projection * multiplier, projectionSource: purchase.player.resolvedSource });
     }
   } else {
     const byPosition = (position: NflOptimizerPlayer["position"]) => purchases.filter((entry) => entry.player.position === position).map((entry) => entry.player);
@@ -674,6 +676,7 @@ function buildOne(
   const slotOrder = new Map<string, number>(slots.map((slot, index) => [slot, index]));
   chosen.sort((a, b) => (slotOrder.get(a.slot) ?? 99) - (slotOrder.get(b.slot) ?? 99));
   if (chosen.length !== rosterSize) return null;
+  if (settings.format === "showdown") assertShowdownLineup({ slots: chosen, playerIds: chosen.map(s => s.player.dkPlayerId), totalSalary: chosen.reduce((sum, s) => sum + s.salary, 0) });
   const qb = chosen.find((entry) => entry.player.position === "QB")?.player ?? null;
   const passCatchers = qb ? chosen.filter((entry) => ["WR", "TE"].includes(entry.player.position) && entry.player.team === qb.team).map((entry) => entry.player.name) : [];
   const bringBack = qb ? chosen.find((entry) => ["RB", "WR", "TE"].includes(entry.player.position) && entry.player.team === qb.opponent)?.player.name ?? null : null;
