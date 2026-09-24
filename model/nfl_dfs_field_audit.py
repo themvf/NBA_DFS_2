@@ -53,12 +53,18 @@ better.
 
 ## What the first two contests said (weeks 1-2, recorded so it is not re-derived)
 
-**Most blind spots are absence, but not all of them -- and the first reading of
-this was wrong.** Across both contests, 10 of 13 never took the field and 3
-played and were over-projected. An earlier version of this note called six
+**Most blind spots are absence, but not all -- and the first reading of this
+was wrong.** Across both contests 10 of 13 never took the field and 3 played
+and were over-projected. An earlier version of this note called six
 `historical` blind spots availability failures; two of them (Wan'Dale
 Robinson, 1 catch for 9 yards; the Falcons defense) had played the whole game.
-The verdict split above exists because of that mistake.
+The DID_NOT_PLAY / PLAYED_AND_FAILED split exists because of that mistake.
+
+**By projection SOURCE the classic slate split evenly**, which is a separate
+cut from the one above: six `position_prior` rows -- a position average
+published as a player's projection, now withheld at the slate layer -- and six
+`historical` players with 17 to 34 games of their own. Withholding the prior
+addresses one of those groups and nothing about the other.
 
 Of the absences, the ones that matter differ by WHEN the news landed: Brock
 Bowers was ruled out early in the week, which our feed should have had, while
