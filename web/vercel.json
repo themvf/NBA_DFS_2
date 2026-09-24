@@ -12,6 +12,10 @@
     {
       "path": "/api/cron/event-closing-lines",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/nfl-dk-pool",
+      "schedule": "7,37 * * * *"
     }
   ]
 }

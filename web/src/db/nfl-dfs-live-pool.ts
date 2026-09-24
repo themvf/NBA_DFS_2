@@ -5,7 +5,7 @@ import { db } from "@/db";
 import type { LivePool } from "@/lib/nfl-dfs/live-dk-status";
 
 /**
- * The most recent DraftKings pool observation that could be this slate.
+ * What DraftKings most recently said about a pool that could be this slate.
  *
  * Selection is by team set and format, which is an exact key: a 13-game Sunday
  * main slate and a 15-game Sunday-Monday slate cover different teams, and a
@@ -15,10 +15,17 @@ import type { LivePool } from "@/lib/nfl-dfs/live-dk-status";
  * salaries, because only the Captain Mode pool prices players the way the
  * salary file does. Both filters have to hold; neither is sufficient alone.
  *
- * `nfl_dfs_dk_pool_polls` carries the heartbeat separately. A snapshot is
- * written only when the pool CHANGES, so the newest snapshot answers "when did
- * DraftKings last change its mind", not "when did we last look" -- and a status
- * feed that conflates those two is worse than no status feed.
+ * The answer is read through the LATEST SUCCESSFUL POLL, not the newest
+ * snapshot. Snapshots are deduplicated by content, so:
+ *   - a poll that finds nothing changed writes no snapshot, and the newest
+ *     snapshot's time says when DraftKings last CHANGED, not when we last
+ *     LOOKED. Judging freshness on it meant a slate uploaded after the last
+ *     change could never be overlaid, however many polls followed (found on
+ *     the 2026-09-24 Thursday slate);
+ *   - a status that flips A -> B -> A points the latest poll back at the old A
+ *     snapshot, while "newest snapshot" would still say B.
+ * Every poll records the snapshot it saw, changed or not, so the latest one is
+ * both the content and its as-of time.
  */
 export async function getLiveDkPool(
   format: string,
@@ -28,15 +35,19 @@ export async function getLiveDkPool(
   const key = [...teams].sort();
 
   const found = await db.execute(sql`
-    SELECT snapshot_id, draft_group_id, format, teams, captured_at
-      FROM nfl_dfs_dk_pool_snapshots
-     WHERE format = ${format}
+    SELECT s.snapshot_id, s.draft_group_id, s.format, s.teams,
+           s.captured_at AS changed_at, p.polled_at AS observed_at
+      FROM nfl_dfs_dk_pool_polls p
+      JOIN nfl_dfs_dk_pool_snapshots s ON s.snapshot_id = p.snapshot_id
+     WHERE p.ok
+       AND s.format = ${format}
        AND (SELECT COALESCE(jsonb_agg(value ORDER BY value), '[]'::jsonb)
-              FROM jsonb_array_elements_text(teams)) = ${JSON.stringify(key)}::jsonb
-     ORDER BY captured_at DESC
+              FROM jsonb_array_elements_text(s.teams)) = ${JSON.stringify(key)}::jsonb
+     ORDER BY p.polled_at DESC
      LIMIT 1`);
   const row = found.rows[0] as
-    | { snapshot_id: string; draft_group_id: string | number; format: string; teams: unknown; captured_at: string | Date }
+    | { snapshot_id: string; draft_group_id: string | number; format: string; teams: unknown;
+        changed_at: string | Date; observed_at: string | Date }
     | undefined;
   if (!row) return { pool: null, lastPolledAt: null, lastPollOk: null };
 
@@ -46,6 +57,8 @@ export async function getLiveDkPool(
       FROM nfl_dfs_dk_pool_player_status
      WHERE snapshot_id = ${row.snapshot_id}::uuid`);
 
+  // The very latest look, successful or not: a failing poller must show up as
+  // a stale "last checked" rather than quietly keep an old answer looking live.
   const poll = await db.execute(sql`
     SELECT polled_at, ok FROM nfl_dfs_dk_pool_polls
      WHERE draft_group_id = ${draftGroupId}
@@ -57,7 +70,8 @@ export async function getLiveDkPool(
       draftGroupId,
       format: row.format,
       teams: (Array.isArray(row.teams) ? row.teams : JSON.parse(String(row.teams))) as string[],
-      capturedAt: new Date(row.captured_at),
+      capturedAt: new Date(row.observed_at),
+      changedAt: new Date(row.changed_at),
       players: players.rows.map((p) => ({
         normalizedName: String(p.normalized_name),
         name: String(p.name),

@@ -2682,7 +2682,7 @@ TABLES = [
         -- 'out' is copied verbatim from nfl_dfs_player_projections, whose own CHECK
         -- allows it. Omitting 'out' here made the first ruled-out player in a
         -- salary file unwritable -- see web/src/lib/nfl-dfs/slate-persist.ts.
-        CHECK(projection_status IN ('historical','position_prior','unavailable','unmatched','out'))
+        CHECK(projection_status IN ('historical','position_prior','unavailable','unmatched','out','unsupported'))
     )""",
     """CREATE TABLE IF NOT EXISTS nfl_dfs_optimizer_runs (
         run_id UUID PRIMARY KEY,

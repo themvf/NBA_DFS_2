@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import {
-  PROJECTION_RUN_STATUSES, SLATE_PLAYER_STATUSES, SLATE_WRITE_CHUNK,
+  PROJECTION_RUN_STATUSES, SLATE_PLAYER_STATUSES, SLATE_WRITE_CHUNK, WRITE_LAYER_STATUSES,
   assertSlateFullyPersisted, assertSlateStatusVocabulary, chunkRows,
   incompleteSlateWarning, isSlateComplete,
 } from "../src/lib/nfl-dfs/slate-persist";
-import { OUT_PROJECTION_STATUS } from "../src/lib/nfl-dfs/out-projection";
+import { OUT_PROJECTION_STATUS, UNSUPPORTED_PROJECTION_STATUS } from "../src/lib/nfl-dfs/out-projection";
 
 // ── Chunking a real Classic pool ───────────────────────────────────────
 {
@@ -113,6 +113,13 @@ import { OUT_PROJECTION_STATUS } from "../src/lib/nfl-dfs/out-projection";
   assert.ok((SLATE_PLAYER_STATUSES as readonly string[]).includes("unmatched"));
   assert.ok(!(PROJECTION_RUN_STATUSES as readonly string[]).includes("unmatched"),
     "unmatched is the salary-side fallback, not something a projection run produces");
+
+  // The write layer's own status. `storedSlateProjection` rewrites a
+  // position-average row to "unsupported"; it was never added here, and the
+  // Thursday ATL@GB slate (13 such rows) failed to upload on 2026-09-24.
+  assert.ok((SLATE_PLAYER_STATUSES as readonly string[]).includes(UNSUPPORTED_PROJECTION_STATUS),
+    "the slate table must accept every status the write layer assigns itself");
+  assert.ok((WRITE_LAYER_STATUSES as readonly string[]).includes(UNSUPPORTED_PROJECTION_STATUS));
 
   // The guard has to actually fire, or it is decoration.
   assert.throws(() => {

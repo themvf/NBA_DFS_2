@@ -1255,7 +1255,7 @@ export async function ensureNflDfsTables(): Promise<void> {
       await db.execute(sql.raw(`DO $$ BEGIN
         IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'nfl_dfs_slate_players'::regclass
           AND conname = 'nfl_dfs_slate_players_projection_status_check'
-          AND pg_get_constraintdef(oid) LIKE '%out%') THEN
+          ${SLATE_PLAYER_STATUSES.map((status) => `AND pg_get_constraintdef(oid) LIKE '%''${status}''%'`).join("\n          ")}) THEN
         ALTER TABLE nfl_dfs_slate_players
         DROP CONSTRAINT IF EXISTS nfl_dfs_slate_players_projection_status_check,
         ADD CONSTRAINT nfl_dfs_slate_players_projection_status_check
