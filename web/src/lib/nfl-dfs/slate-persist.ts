@@ -136,12 +136,23 @@ export const PROJECTION_RUN_STATUSES = ["historical", "position_prior", "unavail
  * `assertSlateStatusVocabulary` pins the relationship so the next value added
  * upstream fails a test here instead of a write in production.
  */
-export const SLATE_PLAYER_STATUSES = [...PROJECTION_RUN_STATUSES, "unmatched"] as const;
+/**
+ * Statuses the WRITE layer assigns itself, on top of what a run emits.
+ * `storedSlateProjection` rewrites a position-average row to "unsupported"
+ * (out-projection.ts). It was added on 2026-09-23 without being added here, and
+ * the first slate containing such a row -- the Thursday ATL@GB showdown, 13 of
+ * 53 players -- failed to upload with a CHECK violation that production
+ * reported only as "An error occurred in the Server Components render".
+ * Same failure class as `out` above, one layer further down.
+ */
+export const WRITE_LAYER_STATUSES = ["unsupported"] as const;
+
+export const SLATE_PLAYER_STATUSES = [...PROJECTION_RUN_STATUSES, "unmatched", ...WRITE_LAYER_STATUSES] as const;
 
 /** Throws if the slate table could not store something a projection run emits. */
 export function assertSlateStatusVocabulary(): void {
   const slate = new Set<string>(SLATE_PLAYER_STATUSES);
-  const missing = PROJECTION_RUN_STATUSES.filter((status) => !slate.has(status));
+  const missing = [...PROJECTION_RUN_STATUSES, ...WRITE_LAYER_STATUSES].filter((status) => !slate.has(status));
   if (missing.length) {
     throw new Error(
       `nfl_dfs_slate_players cannot store projection status(es) ${missing.join(", ")}, `

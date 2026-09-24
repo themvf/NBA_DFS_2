@@ -46,7 +46,14 @@ export interface LivePool {
   draftGroupId: number;
   format: string;
   teams: string[];
+  /**
+   * When DraftKings was last seen saying THIS content -- the latest successful
+   * poll that re-confirmed it, not merely when it last changed. Freshness is
+   * judged on this.
+   */
   capturedAt: Date;
+  /** When the content last changed. Informational. */
+  changedAt?: Date;
   players: LivePoolPlayer[];
 }
 

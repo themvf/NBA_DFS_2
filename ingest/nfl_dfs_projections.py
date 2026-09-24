@@ -28,8 +28,10 @@ from model.nfl_dfs_historical import (
     HistoricalWeek,
     ProjectionContext,
     artifact_digest,
+    opponent_factors,
     project_player,
 )
+from model.nfl_team_aliases import normalize_team
 
 
 RUN_NAMESPACE = uuid.UUID("8abcf42c-6a0d-49cc-9f34-1ad6f17b0d77")
@@ -263,6 +265,9 @@ def build_week(
     model_config = {**MODEL_CONFIG, **(config or {})}
     history = _history(db, season, week)
     environment = _slate_environment(db, season, week)
+    # Built once per week from the same pre-cutoff history the projections use.
+    # Empty when opponent_mode is "off", which leaves every factor at 1.0.
+    defenses = opponent_factors(history, season, str(model_config.get("opponent_mode", "off")))
     players = _players(db, season, sorted(environment))
     assert_unique_identities(players)
     projections: list[dict[str, Any]] = []
@@ -276,7 +281,10 @@ def build_week(
             historical_rows=history,
             cutoff_season=season,
             cutoff_week=week,
-            context=ProjectionContext(team_implied_total=env["team_implied_total"]),
+            context=ProjectionContext(
+                team_implied_total=env["team_implied_total"],
+                opponent_factor=defenses.get((player["position"], normalize_team(env["opponent"]))),
+            ),
             seed=seed,
             config=model_config,
         )
