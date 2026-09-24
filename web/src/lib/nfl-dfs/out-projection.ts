@@ -43,6 +43,56 @@
 /** Matches `projection_status` written by the Python `zero_out()`. */
 export const OUT_PROJECTION_STATUS = "out";
 
+/**
+ * The model's own word for "this number is his position's average, not his":
+ * `model/nfl_dfs_historical.py` stamps `position_prior` when a player has
+ * fewer than `minimum_historical_games` of his own, and for him it sets
+ * `player_strength = 0.0` so EVERY draw in the simulation comes from peers.
+ * Those peers are rows where somebody recorded stats -- i.e. starters. So a
+ * third-string quarterback is handed the average NFL start.
+ */
+export const POSITION_PRIOR_STATUS = "position_prior";
+
+/** What a slate stores once it refuses to publish that number. */
+export const UNSUPPORTED_PROJECTION_STATUS = "unsupported";
+
+/**
+ * A position average is not a projection of this player, so we do not publish
+ * one for him.
+ *
+ * Measured on the 2026 week-1 and week-2 slates, one observation per player
+ * per week, listed-and-not-ruled-out only (n = 435 position-prior rows):
+ *
+ *   projected  7.15      actual  0.70      92% scored 3 points or fewer
+ *   quarterbacks: projected 13.97, actual 0.04, 52 of 52 scored 3 or fewer
+ *
+ * against `historical` rows on the same slates, which project 7.00 and score
+ * 5.28. The number is not merely noisy; it is wrong nine times in ten, and
+ * for quarterbacks it was wrong every single time.
+ *
+ * This is a DISPLAY and ELIGIBILITY decision, not a new prior. The immutable
+ * `nfl_dfs_player_projections` row keeps the model's number untouched, and
+ * `model/nfl_dfs_historical.py` is not edited -- the registered v4 study
+ * (docs/nfl-dfs-v4-zero-history-prior-study.md) owns whether a BETTER number
+ * is possible, is frozen to weeks 4-10, and must not be pre-empted. What is
+ * fixed here is narrower and is the thing that study explicitly carves out:
+ * "This study cannot distinguish a promoted backup from a healthy scratch;
+ * that is the QB1/depth gate's job, not the prior's."
+ *
+ * The seam for that study: this gates on the STATUS, not on the game count.
+ * If a future prior produces a number that is genuinely about the player, it
+ * stamps its own status and this rule stops applying to it without being
+ * touched.
+ *
+ * Deliberately NOT extended to `hist_1_5` players. A player with one or two
+ * games of his own carries real evidence (report-card bias -3.18 against
+ * hist_0's -6.27), and silencing him would remove a genuine week-1 rookie
+ * starter along with the scratches.
+ */
+export function isUnsupportedProjection(projectionStatus: string): boolean {
+  return projectionStatus === POSITION_PRIOR_STATUS;
+}
+
 export type ZeroableProjection = {
   projectionStatus: string;
   ourProj: number | null;
@@ -57,6 +107,12 @@ export type ZeroableProjection = {
  * so callers can apply it unconditionally.
  */
 export function zeroOutProjection<T extends ZeroableProjection>(row: T, isOut: boolean): T {
+  // Ruled out wins over unsupported: he is not playing, which is a stronger
+  // statement than "we cannot say what he would do".
+  if (!isOut && isUnsupportedProjection(row.projectionStatus)) {
+    return { ...row, projectionStatus: UNSUPPORTED_PROJECTION_STATUS,
+             ourProj: null, floorFpts: null, ceilingFpts: null, boomRate: null };
+  }
   if (!isOut) return row;
   return {
     ...row,
@@ -88,6 +144,13 @@ export type RunProjectionFields = {
 export function storedSlateProjection(projection: RunProjectionFields | null | undefined, isOut: boolean) {
   if (isOut) {
     return { projectionStatus: OUT_PROJECTION_STATUS, ourProj: 0, floorFpts: 0, medianFpts: 0, ceilingFpts: 0, boomRate: 0 };
+  }
+  // A position average is not this player's projection; absence is the honest
+  // encoding, and it is what every downstream consumer already treats as "no
+  // usable number". The model's own value survives on the immutable run row.
+  if (projection && isUnsupportedProjection(projection.projectionStatus)) {
+    return { projectionStatus: UNSUPPORTED_PROJECTION_STATUS, ourProj: null,
+             floorFpts: null, medianFpts: null, ceilingFpts: null, boomRate: null };
   }
   return {
     projectionStatus: projection?.projectionStatus ?? "unmatched",
