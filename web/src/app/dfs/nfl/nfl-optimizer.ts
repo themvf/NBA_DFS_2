@@ -91,6 +91,13 @@ export type NflOptimizerPlayer = {
    * `captainBlockedByAvailability`.
    */
   availabilityStatus?: string | null;
+  /**
+   * DraftKings' own Status column, verbatim ("Q", "D", "OUT", "IR", ...).
+   * `dk-salary-csv.ts` maps only OUT/IR-family codes to `isOut` and leaves the
+   * risk codes here on purpose, because which risk is acceptable is a
+   * contest-type judgement that belongs to the optimizer. See `listedDoubtful`.
+   */
+  dkStatus?: string | null;
   ourProj: number | null;
   floorFpts: number | null;
   ceilingFpts: number | null;
@@ -361,6 +368,40 @@ function ruledOut(player: NflOptimizerPlayer): boolean {
  * fire on every slate where the feed is simply empty.
  */
 const CAPTAIN_DOUBTFUL_STATES: ReadonlySet<string> = new Set(["QUESTIONABLE", "DOUBTFUL"]);
+
+/**
+ * DraftKings lists him Doubtful.
+ *
+ * `dk-salary-csv.ts` deliberately keeps `D` out of its OUT set and says the
+ * call belongs here: "which of them is acceptable is a contest-type judgement
+ * (a GPP lineup may want a cheap doubtful player others fade)". This is that
+ * call, and it comes out as: not by default.
+ *
+ * Measured on the 2026 slates, one observation per player per week:
+ *
+ *   status   n     took the field   mean scored
+ *   D        4          0%             0.00
+ *   Q       98         39%             4.10     (unflagged players: 52%, 3.79)
+ *
+ * Four is a small number and the direction is not carried by it alone. The
+ * NFL's own injury report defines Doubtful as roughly a 25% chance to play and
+ * in practice it is lower; a 317,000-entry field owned the largest of these
+ * four (Brock Bowers, projected 13.1) at 0.01%, meaning essentially everyone
+ * else read D as out. The cost is asymmetric too: excluding a doubtful player
+ * who does play loses one option out of several hundred, while rostering one
+ * who does not is a zero in the lineup.
+ *
+ * Questionable is explicitly NOT included. It is genuinely ambiguous -- 39%
+ * play, and those who do score slightly BETTER than unflagged players -- so
+ * excluding it would throw away real players (Chris Olave 22.6, Zay Flowers
+ * 29.0 in this sample). Q remains rostered, and only loses the Captain slot.
+ *
+ * An explicit lock overrides this: it is a default about risk, not a statement
+ * of fact, which is the distinction `isOut` carries and this does not.
+ */
+export function listedDoubtful(player: NflOptimizerPlayer): boolean {
+  return (player.dkStatus ?? "").trim().toUpperCase() === "D";
+}
 
 export function captainBlockedByAvailability(player: NflOptimizerPlayer): boolean {
   const status = (player.availabilityStatus ?? "").trim().toUpperCase();
@@ -699,6 +740,12 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     }
     if (excluded.has(player.dkPlayerId)) {
       eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden: false, reason: "Manually excluded for this run.", reasonCode: "MANUAL_EXCLUSION" });
+      coverage.excluded++; continue;
+    }
+    // A lock is the user's own instruction and outranks a default about risk.
+    if (listedDoubtful(player) && !locked.has(player.dkPlayerId)) {
+      eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden: false,
+        reason: "DraftKings lists this player Doubtful. Lock him to use him anyway.", reasonCode: "INACTIVE" });
       coverage.excluded++; continue;
     }
 
