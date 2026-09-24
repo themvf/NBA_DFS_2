@@ -21,7 +21,7 @@
  */
 import assert from "node:assert/strict";
 import {
-  optimizeNflLineups, captainBlockedByAvailability,
+  optimizeNflLineups, captainBlockedByAvailability, listedDoubtful,
   type NflOptimizerPlayer, type NflOptimizerSettings,
 } from "../src/app/dfs/nfl/nfl-optimizer";
 
@@ -33,7 +33,7 @@ function player(over: Partial<NflOptimizerPlayer> & { dkPlayerId: number; salary
     captainSalary: Math.round(over.salary * 1.5),
     isOut: over.isOut ?? false, projectionStatus: over.projectionStatus ?? "historical",
     historyGames: over.historyGames ?? 8, teamSeasonGames: over.teamSeasonGames ?? 8,
-    availabilityStatus: over.availabilityStatus,
+    availabilityStatus: over.availabilityStatus, dkStatus: over.dkStatus,
     ourProj: over.ourProj === undefined ? 10 : over.ourProj,
     floorFpts: over.floorFpts ?? 6,
     ceilingFpts: over.ceilingFpts ?? 16,
@@ -120,6 +120,43 @@ function main() {
   );
   assert.equal(out.eligibility!.find((d) => d.dkPlayerId === 99)!.eligible, false);
 
+  // --- DraftKings' own Doubtful tag ----------------------------------------
+  // The Brock Bowers shape: DK said "D", we only acted on OUT/IR, he never
+  // took the field. Measured 0 of 4 on the 2026 slates; a 317,000-entry field
+  // owned him at 0.01%.
+  assert.equal(listedDoubtful(player({ dkPlayerId: 1, salary: 5000, dkStatus: "D" })), true);
+  assert.equal(listedDoubtful(player({ dkPlayerId: 1, salary: 5000, dkStatus: "d" })), true, "casing");
+  assert.equal(listedDoubtful(player({ dkPlayerId: 1, salary: 5000, dkStatus: "Q" })), false,
+    "Questionable is ambiguous, not absence: 39% play and score as well as unflagged players");
+  assert.equal(listedDoubtful(player({ dkPlayerId: 1, salary: 5000, dkStatus: null })), false);
+  assert.equal(listedDoubtful(player({ dkPlayerId: 1, salary: 5000 })), false);
+
+  const doubtful = player({ dkPlayerId: 90, salary: 6600, position: "TE", team: "AAA",
+                            name: "Doubtful TE", ourProj: 13.1, ceilingFpts: 24, dkStatus: "D" });
+  const decide = (extra: NflOptimizerPlayer, over: Partial<NflOptimizerSettings> = {}) => {
+    const run = optimizeNflLineups([...pool(), extra], settings(over));
+    return { run, d: run.eligibility!.find((e) => e.dkPlayerId === extra.dkPlayerId)! };
+  };
+
+  const dq = decide(doubtful);
+  assert.equal(dq.d.eligible, false, "Doubtful is not rostered by default");
+  assert.match(dq.d.reason ?? "", /Doubtful/);
+  assert.ok(dq.run.lineups.every((l) => l.slots.every((s) => s.player.dkPlayerId !== 90)));
+
+  // ...but a lock is the user's own instruction, and this is a default about
+  // risk rather than a statement of fact. That is the line `isOut` does not
+  // cross: an inactive player stays refused even when locked.
+  assert.equal(decide(doubtful, { lockedPlayerIds: [90] }).d.eligible, true,
+    "a lock overrides the Doubtful default");
+  assert.equal(decide({ ...doubtful, isOut: true }, { lockedPlayerIds: [90] }).d.eligible, false,
+    "a lock never overrides OUT/IR");
+
+  // Questionable players stay in the pool; they only lose the Captain slot.
+  const q = decide({ ...doubtful, dkStatus: "Q", availabilityStatus: "QUESTIONABLE" });
+  assert.equal(q.d.eligible, true);
+  assert.equal(q.d.captainEligible, false);
+
+  console.log("DraftKings Doubtful: excluded by default, a lock overrides it, Questionable is untouched.");
   console.log("Captain availability gate:");
   console.log("  - QUESTIONABLE/DOUBTFUL cannot take the 1.5x slot, but stay rosterable at FLEX");
   console.log("  - unknown is not doubt; an empty feed changes nothing");
