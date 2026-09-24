@@ -20,9 +20,16 @@ from typing import Any, Iterable, Mapping, Sequence
 import numpy as np
 
 
-MODEL_VERSION = "nfl-dfs-historical-v3"
+# v5, not v4: "nfl-dfs-historical-v4" already names the zero-history prior
+# research module (model/nfl_dfs_zero_history_prior.py), which is mid-study.
+# v5 changes exactly one constant -- player_half_life_games 6.0 -> 3.0 -- on
+# the result of the pre-registered walk-forward screen in
+# model/nfl_dfs_half_life_screen.py (artifacts/nfl_dfs_half_life_screen.json):
+# tuned on 2023-24, graded once on 2025, paired MAE delta -0.042,
+# player-clustered 95% CI [-0.070, -0.016]. A small gain (~0.9% of MAE), real.
+MODEL_VERSION = "nfl-dfs-historical-v5"
 MODEL_CONFIG = {
-    "player_half_life_games": 6.0,
+    "player_half_life_games": 3.0,   # was 6.0 through v3; see MODEL_VERSION note
     "prior_equivalent_games": 4.0,
     "max_player_games": 34,
     "max_prior_games": 400,

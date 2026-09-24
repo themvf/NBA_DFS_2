@@ -30,6 +30,21 @@ Ship rule:            candidate != 6.0 AND the 2025 paired delta
 Not tested:           per-position half-lives. Descriptive only -- production
                       uses one constant, and four more tests would be fishing.
 
+RESULT (2026-09-24, first and only run under this rule)
+-------------------------------------------------------
+Tuning MAE fell monotonically as the half-life shortened, bottoming at 3 games
+(4.7027 vs incumbent 4.7591). Held out on 2025, n=5,498 player-weeks:
+3.0 scored 4.6511 against the incumbent's 4.6932 -- paired delta -0.0422,
+95% CI [-0.0697, -0.0160] over 576 players; week-clustered sensitivity
+[-0.0634, -0.0207]. Both exclude zero. SHIPPED as nfl-dfs-historical-v5.
+
+Read it at its real size: ~0.9% of MAE. Within-week rank correlation also
+improved (0.668 -> 0.677 in tuning), which is the number a lineup consumes.
+The gain is smallest in weeks 2-4 (4.848 -> 4.833 on 2025), because early in a
+season almost all of a veteran's weight still sits in last year's games under
+ANY half-life -- so this does not by itself fix the week-3 case that prompted
+it. The model got faster at following form; it did not become a form model.
+
 WHAT IS HELD CONSTANT, SO THIS MEASURES ONE THING
 -------------------------------------------------
 * Expected projection, not a Monte Carlo draw. The model mixes own and peer
