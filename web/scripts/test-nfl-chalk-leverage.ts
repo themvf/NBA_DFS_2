@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { captainExposurePolicies, generationSettings } from "../src/lib/nfl-dfs/generation-settings";
 import { chalkLeveragePlan, LEVERAGE_ROTATION, type ArchetypeSlateContext } from "../src/lib/nfl-dfs/archetypes";
 import { optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings } from "../src/app/dfs/nfl/nfl-optimizer";
+import { recommendCaptainRanges, type CaptainCandidate } from "../src/lib/nfl-dfs/captain-recommendation";
 
 // ── CPT control ─────────────────────────────────────────────────────────────
 {
@@ -94,3 +95,31 @@ console.log("Chalk captain model + CPT control:");
 console.log("  - a captain range keeps the overall cap instead of lifting it");
 console.log("  - captains limited to the chalk set plus any user captain minimum");
 console.log("  - one leverage player per lineup, and its position rotates");
+
+// ── Suggested captain ranges ────────────────────────────────────────────────
+{
+  const c = (id: number, name: string, position: string, ourProj: number | null, extra: Partial<CaptainCandidate> = {}): CaptainCandidate =>
+    ({ dkPlayerId: id, name, position, ourProj, isOut: false, captainDkPlayerId: 100 + id, ...extra });
+  // The real Thursday ATL@GB numbers (v5).
+  const slate = [
+    c(1, "Bijan Robinson", "RB", 20.8), c(2, "Christian Watson", "WR", 17.4), c(3, "Jordan Love", "QB", 16.5),
+    c(4, "Tucker Kraft", "TE", 12.2), c(5, "Falcons", "DST", 25),
+    c(6, "Josh Jacobs", "RB", 30, { isOut: true }), c(7, "Doubtful Star", "WR", 29, { dkStatus: "D" }),
+    c(8, "Questionable Star", "WR", 28, { availabilityStatus: "QUESTIONABLE" }), c(9, "No Captain Row", "WR", 27, { captainDkPlayerId: null }),
+  ];
+  const rec = recommendCaptainRanges(slate);
+  assert.deepEqual(rec.rows.map((r) => r.name), ["Bijan Robinson", "Christian Watson", "Jordan Love"],
+    "OUT, Doubtful, Questionable, captain-less and K/DST are never suggested as captains");
+  assert.deepEqual(rec.rows.map((r) => [r.min, r.max]), [[35, 50], [20, 40], [20, 35]]);
+  assert.equal(rec.basis, "projection");
+  assert.ok(rec.rows.reduce((a, r) => a + r.min, 0) <= 100, "minimums are satisfiable");
+  assert.ok(rec.rows.reduce((a, r) => a + r.max, 0) >= 100, "the listed captains can fill every lineup");
+  assert.deepEqual(rec.targets["1"], { min: 35, max: 50 }, "targets are keyed exactly like the CPT inputs");
+
+  // A lopsided slate still yields a feasible plan.
+  const lopsided = recommendCaptainRanges([c(1, "A", "QB", 40), c(2, "B", "WR", 5), c(3, "C", "RB", 4)]);
+  assert.ok(lopsided.rows.reduce((a, r) => a + r.min, 0) <= 100);
+  assert.ok(lopsided.rows.reduce((a, r) => a + r.max, 0) >= 100);
+  assert.deepEqual(recommendCaptainRanges([]).rows, [], "nothing to suggest is an empty suggestion, not an error");
+  console.log("  - suggested CPT ranges: chalk set, share by projection^2, +/-8, always feasible");
+}
