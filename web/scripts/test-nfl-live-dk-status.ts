@@ -15,7 +15,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  buildLiveStatusOverlay, isLiveOutStatus, EMPTY_LIVE_OVERLAY,
+  buildLiveStatusOverlay, isLiveOutStatus, statusClass, EMPTY_LIVE_OVERLAY,
   SALARY_AGREEMENT_FLOOR, MIN_MATCHED_FOR_SALARY_CHECK,
   type LivePool, type SlateRowForLive,
 } from "../src/lib/nfl-dfs/live-dk-status";
@@ -98,6 +98,27 @@ function main() {
     [slateRow("Blocked Guy", 5000, null)], "classic", ["GB", "LV"],
     livePool([{ name: "Blocked Guy", salary: 5000, status: null, isDisabled: true }]), UPLOADED);
   assert.equal(blocked.statuses.get(norm("Blocked Guy")), "OUT");
+
+  // Spelling is not a change. The salary file writes "OUT" and the live feed
+  // writes "O" for the same player; on the real Thursday ATL@GB slate that
+  // difference alone announced three changes where nothing had happened.
+  const spelling = buildLiveStatusOverlay(
+    [slateRow("Josh Jacobs", 8400, "OUT"), slateRow("Jayden Reed", 6200, "OUT")],
+    "classic", ["GB", "LV"],
+    livePool([{ name: "Josh Jacobs", salary: 8400, status: "O" },
+              { name: "Jayden Reed", salary: 6200, status: "O" }]), UPLOADED);
+  assert.equal(spelling.applied, true);
+  assert.deepEqual(spelling.changes, [], "OUT and O are the same fact");
+  assert.equal(spelling.statuses.get(norm("Josh Jacobs")), "O", "...but the current tag is still reported");
+  assert.equal(statusClass("OUT"), statusClass("O"));
+  assert.equal(statusClass("IR"), "out");
+  assert.equal(statusClass("D"), "doubtful");
+  assert.equal(statusClass("Q"), "questionable");
+  assert.equal(statusClass(null), "none");
+  // A real change still reports.
+  assert.equal(buildLiveStatusOverlay(
+    [slateRow("Josh Jacobs", 8400, "Q")], "classic", ["GB", "LV"],
+    livePool([{ name: "Josh Jacobs", salary: 8400, status: "O" }]), UPLOADED).changes.length, 1);
 
   // An unchanged pool is applied and reports nothing, which is the common case
   // and must not look like a failure.

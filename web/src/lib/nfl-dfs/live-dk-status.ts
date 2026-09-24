@@ -150,7 +150,13 @@ export function buildLiveStatusOverlay(
     statuses.set(key, tag);
     const before = (slate.index.get(key)!.dkStatus ?? "").trim().toUpperCase() || null;
     const after = (tag ?? "").trim().toUpperCase() || null;
-    if (before !== after) changes.push({ name: livePlayer.name, team: livePlayer.team, from: before, to: after });
+    // Compare what a lineup would DO about the tag, not how it is spelled.
+    // The salary file writes "OUT" and the live feed writes "O" for the same
+    // player, so a raw string comparison announced three changes on the
+    // Thursday ATL@GB slate where nothing had actually changed -- measured, not
+    // hypothetical. A banner that cries wolf on spelling is worse than none.
+    if (statusClass(before) !== statusClass(after))
+      changes.push({ name: livePlayer.name, team: livePlayer.team, from: before, to: after });
   }
 
   return {
@@ -169,6 +175,25 @@ export function buildLiveStatusOverlay(
 
 /** DraftKings tags that mean "not playing" — the same set the salary parser uses. */
 export const LIVE_OUT_STATUSES = new Set(["O", "OUT", "IR", "PUP", "SUSP", "NA"]);
+
+/**
+ * What a lineup would DO about a tag.
+ *
+ * DraftKings spells the same fact differently in different places -- "OUT" in
+ * the salary file, "O" in the live pool -- and IR, PUP and SUSP are all "he is
+ * not playing" too. Grouping them is what lets the change list mean "something
+ * happened" rather than "a string differs".
+ */
+export type StatusClass = "out" | "doubtful" | "questionable" | "none";
+
+export function statusClass(status: string | null | undefined): StatusClass {
+  const tag = (status ?? "").trim().toUpperCase();
+  if (!tag) return "none";
+  if (LIVE_OUT_STATUSES.has(tag)) return "out";
+  if (tag === "D" || tag === "DOUBTFUL") return "doubtful";
+  if (tag === "Q" || tag === "GTD" || tag === "QUESTIONABLE") return "questionable";
+  return "none";
+}
 
 export const isLiveOutStatus = (status: string | null | undefined): boolean =>
   LIVE_OUT_STATUSES.has((status ?? "").trim().toUpperCase());
