@@ -42,7 +42,28 @@ export const ROSTERABLE_PROJECTION_SHARE = 0.5;
 /** At or below this, he did not produce. DK pays a listed absentee 0. */
 export const NO_PRODUCTION_FPTS = 3.0;
 
-export type FieldVerdict = "MARKET_KNEW" | "REAL_EDGE" | "UNINFORMATIVE";
+/**
+ * "Produced nothing" is split in two, because DraftKings pays a listed
+ * absentee the same 0 it pays a man who played and did nothing -- right for a
+ * lineup, useless for diagnosis. Lumping them produced a wrong conclusion on
+ * the first run: six blind spots were called availability failures when two
+ * (Wan'Dale Robinson, 1 catch for 9 yards; the Falcons defense) had played the
+ * whole game and were simply over-projected.
+ *
+ * DID_NOT_PLAY      the field knew he was out and we did not -- upstream of
+ *                   any model.
+ * PLAYED_AND_FAILED he took the field; the field was right and our projection
+ *                   was wrong.
+ *
+ * Still cannot say WHEN the news landed: Brock Bowers was out early in the
+ * week (a coverage gap) and Puka Nacua was a late scratch (a speed problem),
+ * and those want different fixes. That needs an injury timeline this project
+ * does not capture.
+ */
+export type FieldVerdict = "DID_NOT_PLAY" | "PLAYED_AND_FAILED" | "REAL_EDGE" | "UNINFORMATIVE";
+
+/** The two that mean "the field was right and we were not". */
+export const BLIND_SPOT_VERDICTS: readonly FieldVerdict[] = ["DID_NOT_PLAY", "PLAYED_AND_FAILED"];
 
 export interface FieldPlayer {
   name: string;
@@ -167,7 +188,7 @@ export interface AuditSlatePlayer {
 export interface AuditRow {
   name: string; position: string; salary: number;
   ourProj: number; ourRank: number | null;
-  fieldPct: number; actual: number | null; verdict: FieldVerdict;
+  fieldPct: number; actual: number | null; played: boolean | null; verdict: FieldVerdict;
 }
 
 export interface FieldAudit {
@@ -176,13 +197,14 @@ export interface FieldAudit {
   flagged: AuditRow[];
   summary: {
     considered: number; flagged: number; marketKnew: number; realEdge: number;
+    didNotPlay: number; playedAndFailed: number;
     projectedPointsOnMarketKnew: number; unmatchedToFieldTable: number;
   };
 }
 
 export function auditSlate(
   slatePlayers: readonly AuditSlatePlayer[],
-  field: ReadonlyMap<string, { draftedPct: number; fpts: number | null }>,
+  field: ReadonlyMap<string, { draftedPct: number; fpts: number | null; played?: boolean | null }>,
   options: { ignoredPct?: number; noProduction?: number; projectionShare?: number } = {},
 ): FieldAudit {
   const ignoredPct = options.ignoredPct ?? IGNORED_BY_FIELD_PCT;
@@ -208,23 +230,27 @@ export function auditSlate(
   for (const p of slatePlayers) {
     if (p.isOut || p.ourProj === null) continue;
     let observed = field.get(normalizeName(p.name));
-    if (!observed) { observed = { draftedPct: 0, fpts: null }; unmatched += 1; }
+    if (!observed) { observed = { draftedPct: 0, fpts: null, played: null }; unmatched += 1; }
+    const played = observed.played ?? null;
     const rank = ranks.get(p.dkPlayerId) ?? null;
     const cut = POSITION_DEPTH[p.position] ?? 0;
     const floor = share * (leaders.get(p.position) ?? 0);
     const rosterable = rank !== null && rank <= cut && p.ourProj >= floor;
     const verdict: FieldVerdict =
       !rosterable || observed.draftedPct >= ignoredPct || observed.fpts === null ? "UNINFORMATIVE"
-      : observed.fpts <= noProduction ? "MARKET_KNEW" : "REAL_EDGE";
+      : observed.fpts > noProduction ? "REAL_EDGE"
+      : played === false ? "DID_NOT_PLAY"
+      // Played, or we do not know. Never claim an absence we cannot show.
+      : "PLAYED_AND_FAILED";
     rows.push({
       name: p.name, position: p.position, salary: p.salary,
       ourProj: Number(p.ourProj.toFixed(2)), ourRank: rank,
-      fieldPct: observed.draftedPct, actual: observed.fpts, verdict,
+      fieldPct: observed.draftedPct, actual: observed.fpts, played, verdict,
     });
   }
 
   const flagged = rows.filter((r) => r.verdict !== "UNINFORMATIVE").sort((a, b) => b.ourProj - a.ourProj);
-  const marketKnew = flagged.filter((r) => r.verdict === "MARKET_KNEW");
+  const marketKnew = flagged.filter((r) => BLIND_SPOT_VERDICTS.includes(r.verdict));
   return {
     version: FIELD_AUDIT_VERSION,
     rows,
@@ -233,6 +259,8 @@ export function auditSlate(
       considered: rows.length,
       flagged: flagged.length,
       marketKnew: marketKnew.length,
+      didNotPlay: flagged.filter((r) => r.verdict === "DID_NOT_PLAY").length,
+      playedAndFailed: flagged.filter((r) => r.verdict === "PLAYED_AND_FAILED").length,
       realEdge: flagged.length - marketKnew.length,
       projectedPointsOnMarketKnew: Number(marketKnew.reduce((a, r) => a + r.ourProj, 0).toFixed(1)),
       unmatchedToFieldTable: unmatched,

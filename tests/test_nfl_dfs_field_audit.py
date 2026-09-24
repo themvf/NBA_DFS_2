@@ -111,15 +111,31 @@ def field(n=40, **overrides):
     return base
 
 
-def test_ignored_by_the_field_and_produced_nothing_is_a_blind_spot():
-    """The Brock Bowers shape: we projected him, 0.01% owned, scored 0."""
-    pool = receivers()
-    observed = field(WRac={"drafted_pct": 0.01, "fpts": 0.0})
-    result = audit_slate(pool, observed)
+def test_a_player_who_never_took_the_field_is_an_availability_failure():
+    """The Brock Bowers shape: we projected him, 0.01% owned, never played."""
+    result = audit_slate(receivers(), field(WRac={"drafted_pct": 0.01, "fpts": 0.0, "played": False}))
     row = next(r for r in result["flagged"] if r["name"] == "WRac")
-    assert row["verdict"] == "MARKET_KNEW"
-    assert result["summary"]["market_knew"] == 1
+    assert row["verdict"] == "DID_NOT_PLAY"
+    assert result["summary"]["did_not_play"] == 1
+    assert result["summary"]["played_and_failed"] == 0
+    assert result["summary"]["market_knew"] == 1, "both verdicts still count as a blind spot"
     assert result["summary"]["projected_points_on_market_knew"] == row["our_proj"]
+
+
+def test_a_player_who_played_and_produced_nothing_is_a_modelling_failure():
+    """The Wan'Dale Robinson shape: 1 catch for 9 yards. Lumping him with the
+    absentees is what produced a wrong conclusion on the first real run."""
+    result = audit_slate(receivers(), field(WRac={"drafted_pct": 0.01, "fpts": 1.9, "played": True}))
+    assert next(r for r in result["flagged"] if r["name"] == "WRac")["verdict"] == "PLAYED_AND_FAILED"
+    assert result["summary"]["played_and_failed"] == 1
+    assert result["summary"]["did_not_play"] == 0
+
+
+def test_unknown_participation_never_claims_an_absence():
+    """No participation data is not evidence he was absent."""
+    result = audit_slate(receivers(), field(WRac={"drafted_pct": 0.01, "fpts": 0.0}))
+    assert next(r for r in result["flagged"] if r["name"] == "WRac")["verdict"] == "PLAYED_AND_FAILED"
+    assert result["summary"]["did_not_play"] == 0
 
 
 def test_ignored_by_the_field_and_produced_is_a_real_edge():
