@@ -43,7 +43,7 @@ export default function LiveStatusBanner({ live }: { live?: NflLiveDkStatus }) {
   return <div className={`rounded-lg border p-3 text-sm ${tone}`}>
     <strong className="font-bold">
       {live.changes.length === 0
-        ? "DraftKings status is unchanged since your salary file."
+        ? "DraftKings status is unchanged since your salary file"
         : `${live.changes.length} status change${live.changes.length === 1 ? "" : "s"} since your salary file`}
       {outs.length ? ` — ${outs.length} now ruled out.` : "."}
     </strong>{" "}

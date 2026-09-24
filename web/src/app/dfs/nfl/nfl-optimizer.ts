@@ -26,6 +26,8 @@ import {
 import {
   allocateArchetypeQuotas,
   balancedArchetypePlan,
+  chalkLeveragePlan,
+  chalkCaptainPolicy,
   compileArchetype,
   ARCHETYPE_LABELS,
   isFadeArchetype,
@@ -155,7 +157,7 @@ export type NflOptimizerSettings = {
    * - "standard" or absent: Standard ceiling only (legacy behavior) unless
    *   explicit archetypeQuotas are supplied, which always win.
    */
-  archetypeMode?: "balanced" | "custom" | "standard";
+  archetypeMode?: "balanced" | "custom" | "standard" | "chalk_leverage";
   /** Phase 4: per-archetype portfolio quotas. Absent = single Standard-ceiling quota. */
   archetypeQuotas?: ArchetypeQuota[];
   /** Phase 4: per-archetype config (fades, beneficiaries, skews, captain ceilings). */
@@ -835,8 +837,31 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   // Phase 3: resolve the effective exposure policy per pooled player. An
   // explicit per-player policy wins; otherwise fall back to the flat global
   // maxExposure and any legacy min/maxExposureByPlayer target.
+  // Phase 4: build the per-archetype generation plan. Explicit quotas always
+  // win; "balanced" mode auto-allocates the mix and auto-selects fade targets.
+  const archetypeContext: ArchetypeSlateContext = {
+    players: pool.map((p) => ({ dkPlayerId: p.dkPlayerId, position: p.position, team: p.team, opponent: p.opponent, ownership: finite(p.linestarOwnPct) != null ? (p.linestarOwnPct as number) / 100 : null, projection: p.projection, captainEligible: p.captainEligible })),
+    favoriteTeam: settings.favoriteTeam ?? null,
+    underdogTeam: settings.underdogTeam ?? null,
+    ownershipValidated: (settings.ownershipCapability ?? "unavailable") === "validated",
+  };
+  // Chalk-captain model (Showdown only), resolved BEFORE exposure policies:
+  // its captains need a different reading of the flat cap. See below.
+  const chalkPlan = settings.archetypeMode === "chalk_leverage" && settings.format === "showdown"
+    && !settings.archetypeQuotas?.some((q) => q.enabled)
+    ? chalkLeveragePlan(archetypeContext, settings.nLineups, {
+        extraCaptainIds: (settings.exposurePolicies ?? [])
+          .filter((policy) => (policy.captain.minPct ?? 0) > 0).map((policy) => policy.playerId),
+      })
+    : null;
+  const chalkCaptainSet = new Set(chalkPlan?.chalkCaptainIds ?? []);
+
   const policyById = new Map((settings.exposurePolicies ?? []).map((p) => [p.playerId, p]));
   const effectivePolicy = (player: ResolvedPlayer): PlayerExposurePolicy => {
+    const resolved = baseEffectivePolicy(player);
+    return chalkCaptainSet.has(player.dkPlayerId) ? chalkCaptainPolicy(resolved) : resolved;
+  };
+  const baseEffectivePolicy = (player: ResolvedPlayer): PlayerExposurePolicy => {
     const explicit = policyById.get(player.dkPlayerId);
     if (explicit) return explicit;
     const legacyMax = settings.maxExposureByPlayer[String(player.dkPlayerId)] ?? settings.maxExposure;
@@ -878,14 +903,6 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     }
   }
 
-  // Phase 4: build the per-archetype generation plan. Explicit quotas always
-  // win; "balanced" mode auto-allocates the mix and auto-selects fade targets.
-  const archetypeContext: ArchetypeSlateContext = {
-    players: pool.map((p) => ({ dkPlayerId: p.dkPlayerId, position: p.position, team: p.team, opponent: p.opponent, ownership: finite(p.linestarOwnPct) != null ? (p.linestarOwnPct as number) / 100 : null, projection: p.projection, captainEligible: p.captainEligible })),
-    favoriteTeam: settings.favoriteTeam ?? null,
-    underdogTeam: settings.underdogTeam ?? null,
-    ownershipValidated: (settings.ownershipCapability ?? "unavailable") === "validated",
-  };
   let archetypeQuotas = settings.archetypeQuotas?.filter((q) => q.enabled);
   let archetypeConfigs = settings.archetypeConfigs ?? {};
   // Balanced auto-planning is Showdown-only: the game-script team constraints
@@ -898,7 +915,17 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     for (const note of balanced.notes) warnings.push(`Balanced plan: ${note}`);
   }
   let plan: Array<{ archetypeId: ArchetypeId; compiled: CompiledArchetype | null }> = [];
-  if (archetypeQuotas?.length) {
+  // Chalk-captain, rotating-leverage model (Showdown only). Every lineup gets
+  // its own compiled instance, because the leverage POSITION rotates.
+  if (chalkPlan) {
+    const chalk = chalkPlan;
+    const nameOf = (id: number) => pool.find((p) => p.dkPlayerId === id)?.name ?? `#${id}`;
+    warnings.push(`Chalk captain model: captains limited to ${chalk.chalkCaptainIds.map(nameOf).join(", ")} `
+      + `(chalk ranked by ${chalk.basis === "projection" ? "projection -- no ownership feed" : "projected ownership"}). `
+      + `Leverage rotates through ${chalk.rotation.join(" → ")}, outside the core of ${chalk.coreIds.map(nameOf).join(", ")}. `
+      + `A chalk captain's max exposure caps his FLEX use; his captaincy is set by the captain plan.`);
+    plan = chalk.lineups.map((lineup) => ({ archetypeId: "chalk_captain_leverage" as ArchetypeId, compiled: lineup.compiled }));
+  } else if (archetypeQuotas?.length) {
     const allocation = allocateArchetypeQuotas(archetypeQuotas, settings.nLineups);
     if (!allocation.ok) throw new Error(`Archetype plan is infeasible: ${allocation.reason}`);
     for (const slot of allocation.allocation) {
