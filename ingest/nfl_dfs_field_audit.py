@@ -139,9 +139,45 @@ def slate_rows(db: PipelineDatabase, upload_id: str) -> list[dict]:
            FROM nfl_dfs_slate_players WHERE upload_id = %s""", (upload_id,))]
 
 
-def field_rows(db: PipelineDatabase, contest_id: str) -> dict[str, dict]:
-    return {r["normalized_name"]: {"drafted_pct": float(r["drafted_pct"]),
-                                   "fpts": None if r["fpts"] is None else float(r["fpts"])}
+def scored_names(db: PipelineDatabase, season: int | None, week: int | None) -> set[str] | None:
+    """Normalized names with a scored line that week -- i.e. who took the field.
+
+    From `nfl_dfs_player_week_results`, NOT the player stat feed: the feed has
+    no row for a defense, so every DST would read as "did not play". Returns
+    None when the week is unknown, and the audit then declines to split rather
+    than guessing.
+    """
+    if season is None or week is None:
+        return None
+    rows = db.execute(
+        """SELECT f.canonical_name AS name FROM nfl_dfs_player_week_results r
+           JOIN ff_players f ON f.id = r.player_id
+           WHERE r.season = %s AND r.week = %s AND r.scoring_status = 'exact'
+           UNION
+           SELECT t.name FROM nfl_dfs_player_week_results r
+           JOIN nfl_teams t ON t.abbreviation = r.team
+           WHERE r.season = %s AND r.week = %s AND r.position = 'DST'
+             AND r.scoring_status = 'exact'""",
+        (season, week, season, week))
+    names: set[str] = set()
+    for row in rows:
+        full = str(row["name"] or "")
+        names.add(normalize_name(full))
+        # DraftKings lists a defense by nickname ("Falcons"); `nfl_teams.name`
+        # is the full name ("Atlanta Falcons"). Without the nickname every DST
+        # fails to match and reads as DID_NOT_PLAY -- which is what it did.
+        last = full.split()[-1] if full.split() else ""
+        if last:
+            names.add(normalize_name(last))
+    return names
+
+
+def field_rows(db: PipelineDatabase, contest_id: str,
+               played: set[str] | None = None) -> dict[str, dict]:
+    return {r["normalized_name"]: {
+                "drafted_pct": float(r["drafted_pct"]),
+                "fpts": None if r["fpts"] is None else float(r["fpts"]),
+                "played": None if played is None else (r["normalized_name"] in played)}
             for r in db.execute(
                 "SELECT normalized_name, drafted_pct, fpts FROM nfl_dfs_field_ownership WHERE contest_id = %s",
                 (contest_id,))}
@@ -163,8 +199,9 @@ def print_audit(contest: dict, audit: dict) -> None:
             f"contest {contest['contest_id']}  {contest['entry_count']:,} entries  "
             f"win {contest['winning_score']:.2f}  median {contest['median_score']:.2f}")
     print("\n" + head)
-    print("  considered %d  flagged %d  ->  market knew %d, real edge %d"
-          % (s["considered"], s["flagged"], s["market_knew"], s["real_edge"]))
+    print("  considered %d  flagged %d  ->  did not play %d, played and failed %d, real edge %d"
+          % (s["considered"], s["flagged"], s.get("did_not_play", 0),
+             s.get("played_and_failed", 0), s["real_edge"]))
     if not audit["flagged"]:
         print("  nothing flagged: no player we ranked highly was ignored by the field.")
         return
@@ -214,17 +251,20 @@ def main() -> None:
     if args.report or args.contest:
         audits, rows = [], contests(db, args.season, args.week)
         for contest in rows:
-            audit = audit_slate(slate_rows(db, contest["slate_upload_id"]),
-                                field_rows(db, contest["contest_id"]))
+            audit = audit_slate(
+                slate_rows(db, contest["slate_upload_id"]),
+                field_rows(db, contest["contest_id"],
+                           scored_names(db, contest["season"], contest["week"])))
             audits.append(audit)
             print_audit(contest, audit)
         if audits:
             pooled = pooled_summary(audits)
             print(f"\n=== across {pooled['slates']} slate(s), {VERSION} ===")
-            print(f"  flagged {pooled['flagged']}  ->  market knew {pooled['market_knew']}, "
-                  f"real edge {pooled['real_edge']}")
+            print(f"  flagged {pooled['flagged']}  ->  did not play {pooled['did_not_play']}, "
+                  f"played and failed {pooled['played_and_failed']}, real edge {pooled['real_edge']}")
             if pooled["market_knew_share"] is not None:
-                print(f"  share that were our blind spots: {pooled['market_knew_share']:.0%}")
+                print(f"  share that were our blind spots: {pooled['market_knew_share']:.0%}"
+                      f"  ({pooled['did_not_play']} availability, {pooled['played_and_failed']} projection)")
             print(f"  projected points spent on them: {pooled['projected_points_lost']}")
             if pooled["descriptive_only"]:
                 print("  DESCRIPTIVE ONLY: under 30 flagged players, this split cannot be "

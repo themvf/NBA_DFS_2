@@ -63,18 +63,34 @@ function main() {
     position: "WR", salary: 8000 - 100 * i, ourProj: 20 - 0.4 * i, isOut: false,
   });
   const pool = Array.from({ length: 40 }, (_, i) => wr(i));
-  const field = (over: Record<string, { draftedPct: number; fpts: number | null }> = {}) => {
-    const m = new Map<string, { draftedPct: number; fpts: number | null }>();
+  const field = (over: Record<string, { draftedPct: number; fpts: number | null; played?: boolean | null }> = {}) => {
+    const m = new Map<string, { draftedPct: number; fpts: number | null; played?: boolean | null }>();
     for (const p of pool) m.set(normalizeName(p.name), { draftedPct: 12, fpts: 11 });
     for (const [k, v] of Object.entries(over)) m.set(normalizeName(k), v);
     return m;
   };
   const target = pool[2].name;
 
-  const blind = auditSlate(pool, field({ [target]: { draftedPct: 0.01, fpts: 0 } }));
-  assert.equal(blind.summary.marketKnew, 1);
-  assert.equal(blind.flagged[0].verdict, "MARKET_KNEW");
-  assert.equal(blind.summary.projectedPointsOnMarketKnew, blind.flagged[0].ourProj);
+  // Never took the field: an availability failure, upstream of any model.
+  const absent = auditSlate(pool, field({ [target]: { draftedPct: 0.01, fpts: 0, played: false } }));
+  assert.equal(absent.flagged[0].verdict, "DID_NOT_PLAY");
+  assert.equal(absent.summary.didNotPlay, 1);
+  assert.equal(absent.summary.playedAndFailed, 0);
+  assert.equal(absent.summary.marketKnew, 1, "both verdicts still count as a blind spot");
+  assert.equal(absent.summary.projectedPointsOnMarketKnew, absent.flagged[0].ourProj);
+
+  // Played and produced nothing: our projection was wrong, which is a
+  // different problem. Lumping the two produced a wrong conclusion on the
+  // first real run (Wan'Dale Robinson, 1 catch for 9 yards).
+  const failed = auditSlate(pool, field({ [target]: { draftedPct: 0.01, fpts: 1.9, played: true } }));
+  assert.equal(failed.flagged[0].verdict, "PLAYED_AND_FAILED");
+  assert.equal(failed.summary.playedAndFailed, 1);
+  assert.equal(failed.summary.didNotPlay, 0);
+
+  // Unknown participation never claims an absence we cannot show.
+  const unknown = auditSlate(pool, field({ [target]: { draftedPct: 0.01, fpts: 0 } }));
+  assert.equal(unknown.flagged[0].verdict, "PLAYED_AND_FAILED");
+  assert.equal(unknown.summary.didNotPlay, 0);
 
   assert.equal(auditSlate(pool, field({ [target]: { draftedPct: 0.5, fpts: 20 } })).summary.realEdge, 1);
   assert.equal(auditSlate(pool, field({ [target]: { draftedPct: IGNORED_BY_FIELD_PCT, fpts: 0 } })).summary.flagged, 0,
@@ -119,6 +135,9 @@ function main() {
   }
   assert.ok(python.includes(`VERSION = "${FIELD_AUDIT_VERSION}"`), "version string differs across languages");
   assert.ok(python.includes(`total < ${DESCRIPTIVE_ONLY_BELOW}`), "descriptive-only floor differs across languages");
+  for (const verdict of ["DID_NOT_PLAY", "PLAYED_AND_FAILED", "REAL_EDGE", "UNINFORMATIVE"]) {
+    assert.ok(python.includes(`"${verdict}"`), `verdict ${verdict} missing from the Python module`);
+  }
 
   console.log("Field audit (browser):");
   console.log("  - the two side-by-side tables split by row width, quoted lineups intact");

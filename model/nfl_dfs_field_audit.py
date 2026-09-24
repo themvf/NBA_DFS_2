@@ -53,12 +53,17 @@ better.
 
 ## What the first two contests said (weeks 1-2, recorded so it is not re-derived)
 
-**The blind spots split in half by cause, not by position.** Of 12, six were
-`position_prior` rows -- a position average published as a player's projection,
-now withheld at the slate layer -- and six were `historical` players with 17 to
-34 games of their own, projected 13.8 on average and scoring 0.5. The second
-group is not a modelling failure at all; it is not knowing he was inactive.
-Fixing the prior addresses half the list and no more.
+**Most blind spots are absence, but not all of them -- and the first reading of
+this was wrong.** Across both contests, 10 of 13 never took the field and 3
+played and were over-projected. An earlier version of this note called six
+`historical` blind spots availability failures; two of them (Wan'Dale
+Robinson, 1 catch for 9 yards; the Falcons defense) had played the whole game.
+The verdict split above exists because of that mistake.
+
+Of the absences, the ones that matter differ by WHEN the news landed: Brock
+Bowers was ruled out early in the week, which our feed should have had, while
+Puka Nacua was a late scratch. The audit cannot tell those apart and does not
+try.
 
 **Our projection beats the crowd, and beats price.** On 471 players carrying
 both a projection and an outcome: corr(our projection, actual) +0.559,
@@ -127,7 +132,10 @@ ROSTERABLE_PROJECTION_SHARE = 0.5
 #: not care which.
 NO_PRODUCTION_FPTS = 3.0
 
-VERDICTS = ("MARKET_KNEW", "REAL_EDGE", "UNINFORMATIVE")
+VERDICTS = ("DID_NOT_PLAY", "PLAYED_AND_FAILED", "REAL_EDGE", "UNINFORMATIVE")
+
+#: The two that mean "the field was right and we were not", for counting.
+BLIND_SPOT_VERDICTS = ("DID_NOT_PLAY", "PLAYED_AND_FAILED")
 
 
 def normalize_name(name: str) -> str:
@@ -280,21 +288,25 @@ def audit_slate(
         drafted = float(observed["drafted_pct"])
         fpts = observed.get("fpts")
 
+        played = observed.get("played")
         if not rosterable or drafted >= ignored_pct or fpts is None:
             verdict = "UNINFORMATIVE"
-        elif fpts <= no_production:
-            verdict = "MARKET_KNEW"
-        else:
+        elif fpts > no_production:
             verdict = "REAL_EDGE"
+        elif played is False:
+            verdict = "DID_NOT_PLAY"
+        else:
+            # Played, or we do not know. Never claim an absence we cannot show.
+            verdict = "PLAYED_AND_FAILED"
 
         rows.append({
             "name": p["name"], "position": p["position"], "salary": int(p["salary"]),
             "our_proj": round(float(p["our_proj"]), 2), "our_rank": rank,
-            "field_pct": drafted, "actual": fpts, "verdict": verdict,
+            "field_pct": drafted, "actual": fpts, "played": played, "verdict": verdict,
         })
 
     flagged = [r for r in rows if r["verdict"] != "UNINFORMATIVE"]
-    market_knew = [r for r in flagged if r["verdict"] == "MARKET_KNEW"]
+    market_knew = [r for r in flagged if r["verdict"] in BLIND_SPOT_VERDICTS]
     real_edge = [r for r in flagged if r["verdict"] == "REAL_EDGE"]
     return {
         "version": VERSION,
@@ -306,6 +318,8 @@ def audit_slate(
             "considered": len(rows),
             "flagged": len(flagged),
             "market_knew": len(market_knew),
+            "did_not_play": sum(1 for r in flagged if r["verdict"] == "DID_NOT_PLAY"),
+            "played_and_failed": sum(1 for r in flagged if r["verdict"] == "PLAYED_AND_FAILED"),
             "real_edge": len(real_edge),
             # Points we assigned to players the field had written off and who
             # then produced nothing. The cost of being behind, in our own units.
@@ -328,6 +342,8 @@ def pooled_summary(audits: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     return {
         "slates": len(audits),
         "market_knew": knew,
+        "did_not_play": sum(a["summary"].get("did_not_play", 0) for a in audits),
+        "played_and_failed": sum(a["summary"].get("played_and_failed", 0) for a in audits),
         "real_edge": edge,
         "flagged": total,
         "market_knew_share": round(knew / total, 3) if total else None,

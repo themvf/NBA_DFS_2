@@ -1048,7 +1048,8 @@ export async function importNflContestResults(
   }
 
   return {
-    audit: auditForSlate(slate, parsed.players),
+    audit: auditForSlate(slate, parsed.players,
+                         await scoredNames(run[0]?.season ?? null, run[0]?.week ?? null)),
     contest: { contestId: id, entryCount: parsed.entryCount, winningScore: parsed.winningScore,
                medianScore: parsed.medianScore, format: parsed.format },
     overlap: Number(overlap.toFixed(3)),
@@ -1061,7 +1062,7 @@ export async function readNflFieldAudit(uploadId: string): Promise<
 > {
   await ensureNflDfsTables();
   const contests = await db.execute(sql`
-    SELECT contest_id, entry_count, winning_score, median_score, format
+    SELECT contest_id, entry_count, winning_score, median_score, format, season, week
     FROM nfl_dfs_field_contests WHERE slate_upload_id = ${uploadId}
     ORDER BY imported_at DESC LIMIT 1`);
   const contest = (contests.rows ?? contests)[0] as Record<string, unknown> | undefined;
@@ -1076,7 +1077,9 @@ export async function readNflFieldAudit(uploadId: string): Promise<
     fpts: r.fpts === null ? 0 : Number(r.fpts),
   }));
   return {
-    audit: auditForSlate(slate, players),
+    audit: auditForSlate(slate, players, await scoredNames(
+      contest.season === null || contest.season === undefined ? null : Number(contest.season),
+      contest.week === null || contest.week === undefined ? null : Number(contest.week))),
     contest: {
       contestId: String(contest.contest_id), entryCount: Number(contest.entry_count),
       winningScore: contest.winning_score === null ? null : Number(contest.winning_score),
@@ -1086,13 +1089,51 @@ export async function readNflFieldAudit(uploadId: string): Promise<
   };
 }
 
+/**
+ * Normalized names with a scored line that week -- who actually took the field.
+ *
+ * From `nfl_dfs_player_week_results`, NOT the player stat feed: a defense has
+ * no row in the feed, so "no stat row" would read as "did not play" for every
+ * DST. DraftKings also lists a defense by nickname ("Falcons") where
+ * `nfl_teams.name` is the full name, so both spellings are emitted -- without
+ * that, every defense was mis-classified.
+ *
+ * Returns null when the week is unknown, and the audit declines to split
+ * rather than guessing.
+ */
+async function scoredNames(season: number | null, week: number | null): Promise<Set<string> | null> {
+  if (season === null || week === null) return null;
+  const result = await db.execute(sql`
+    SELECT f.canonical_name AS name FROM nfl_dfs_player_week_results r
+    JOIN ff_players f ON f.id = r.player_id
+    WHERE r.season = ${season} AND r.week = ${week} AND r.scoring_status = 'exact'
+    UNION
+    SELECT t.name FROM nfl_dfs_player_week_results r
+    JOIN nfl_teams t ON t.abbreviation = r.team
+    WHERE r.season = ${season} AND r.week = ${week} AND r.position = 'DST'
+      AND r.scoring_status = 'exact'`);
+  const names = new Set<string>();
+  for (const row of ((result.rows ?? result) as Array<Record<string, unknown>>)) {
+    const full = String(row.name ?? "").trim();
+    if (!full) continue;
+    names.add(normalizeFieldName(full));
+    const last = full.split(/\s+/).pop() ?? "";
+    if (last) names.add(normalizeFieldName(last));
+  }
+  return names;
+}
+
 function auditForSlate(
   slate: Array<{ dkPlayerId: number; name: string; position: string; salary: number; ourProj: number | null; isOut: boolean }>,
   players: Array<{ normalizedName: string; draftedPct: number; fpts: number }>,
+  played: Set<string> | null,
 ): FieldAudit {
   return auditSlate(
     slate.map((p) => ({ dkPlayerId: Number(p.dkPlayerId), name: p.name, position: p.position,
                         salary: p.salary, ourProj: p.ourProj === null ? null : Number(p.ourProj), isOut: p.isOut })),
-    new Map(players.map((p) => [p.normalizedName, { draftedPct: p.draftedPct, fpts: p.fpts }])),
+    new Map(players.map((p) => [p.normalizedName, {
+      draftedPct: p.draftedPct, fpts: p.fpts,
+      played: played === null ? null : played.has(p.normalizedName),
+    }])),
   );
 }

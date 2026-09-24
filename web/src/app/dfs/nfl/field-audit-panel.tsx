@@ -84,8 +84,8 @@ export default function FieldAuditPanel({ uploadId }: { uploadId: string }) {
       <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         {[["Contest", contest ? `${contest.entryCount.toLocaleString()} entries` : "—"],
           ["Winning score", contest?.winningScore?.toFixed(2) ?? "—"],
-          ["Our blind spots", String(s.marketKnew)],
-          ["Real edges", String(s.realEdge)]].map(([label, value]) =>
+          ["Did not play", String(s.didNotPlay)],
+          ["Played, we were wrong", String(s.playedAndFailed)]].map(([label, value]) =>
           <div key={label} className="rounded bg-slate-50 p-3"><strong className="text-xl">{value}</strong><p className="text-xs">{label}</p></div>)}
       </div>
 
@@ -103,14 +103,20 @@ export default function FieldAuditPanel({ uploadId }: { uploadId: string }) {
                 <td className="p-2">{r.ourProj.toFixed(1)}</td>
                 <td className="p-2">{r.fieldPct.toFixed(2)}%</td>
                 <td className="p-2">{r.actual === null ? "—" : r.actual.toFixed(1)}</td>
-                <td className="p-2"><span className={`rounded px-2 py-0.5 text-xs font-bold ${r.verdict === "MARKET_KNEW" ? "bg-red-100 text-red-800" : "bg-emerald-100 text-emerald-800"}`}>
-                  {r.verdict === "MARKET_KNEW" ? "market knew" : "real edge"}</span></td>
+                <td className="p-2"><span className={`rounded px-2 py-0.5 text-xs font-bold ${
+                  r.verdict === "DID_NOT_PLAY" ? "bg-red-100 text-red-800"
+                  : r.verdict === "PLAYED_AND_FAILED" ? "bg-amber-100 text-amber-900"
+                  : "bg-emerald-100 text-emerald-800"}`}>
+                  {r.verdict === "DID_NOT_PLAY" ? "did not play"
+                   : r.verdict === "PLAYED_AND_FAILED" ? "played, we were wrong" : "real edge"}</span></td>
               </tr>)}</tbody>
             </table>
           </div>}
 
       <p className="mt-3 text-xs text-slate-500">
-        {s.projectedPointsOnMarketKnew} projected points went to players the field had already written off.
+        {s.projectedPointsOnMarketKnew} projected points went to players the field had already written off
+        — {s.didNotPlay} of whom never took the field (an availability failure, upstream of any model) and
+        {" "}{s.playedAndFailed} who played and were simply over-projected.
         {" "}Considered {s.considered} players on this slate.
         {s.flagged < DESCRIPTIVE_ONLY_BELOW
           ? ` Fewer than ${DESCRIPTIVE_ONLY_BELOW} flagged — read this as description, not a rate. Keep importing each week.`
