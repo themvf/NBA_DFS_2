@@ -37,6 +37,11 @@ MODEL_CONFIG = {
     "environment_yardage_exponent": 0.35,
     "environment_td_exponent": 1.0,
     "opponent_exponent": 0.35,
+    # Which history the opponent (defense) term is built from: "off", "all"
+    # (every prior season) or "recent" (current + previous season). Decided by
+    # the pre-registered screen in model/nfl_dfs_opponent_screen.py; production
+    # ran with no opponent term at all until 2026-09-24.
+    "opponent_mode": "off",
     "min_environment_factor": 0.80,
     "max_environment_factor": 1.20,
     "minimum_historical_games": 2,
@@ -180,6 +185,50 @@ def _recency_weights(rows: Sequence[HistoricalWeek], half_life: float) -> np.nda
 
 def _weighted_mean(values: Sequence[float], weights: np.ndarray) -> float:
     return float(np.dot(np.asarray(values, dtype=float), weights))
+
+
+OPPONENT_MODES = ("off", "all", "recent")
+OPPONENT_SHRINK_GAMES = 16.0
+
+
+def opponent_factors(
+    rows: Iterable[HistoricalWeek],
+    season: int,
+    mode: str,
+) -> dict[tuple[str, str], float]:
+    """(position, defense) -> points allowed relative to the league, shrunk.
+
+    The same formula the 2025 backtest used (`model/nfl_dfs_backtest.py`):
+    sixteen league-average games of shrinkage so one early outlier is not
+    called a defense signal, clipped to 0.80-1.20. `rows` must already be
+    restricted to games before the cutoff -- this never looks at a date.
+    "recent" keeps the current and previous season only, because a defense's
+    fantasy points allowed carry over weakly from one year to the next.
+    """
+    if mode not in OPPONENT_MODES:
+        raise ValueError(f"unknown opponent_mode {mode!r}; expected one of {OPPONENT_MODES}")
+    if mode == "off":
+        return {}
+    allowed: dict[tuple[str, str], list[float]] = {}
+    league: dict[str, list[float]] = {}
+    for row in rows:
+        if row.position not in SKILL_POSITIONS:
+            continue
+        if mode == "recent" and row.season < season - 1:
+            continue
+        points = row.dk_points
+        league.setdefault(row.position, []).append(points)
+        if row.opponent:
+            allowed.setdefault((row.position, row.opponent), []).append(points)
+    means = {position: float(np.mean(values)) for position, values in league.items()}
+    out: dict[tuple[str, str], float] = {}
+    for (position, defense), values in allowed.items():
+        mean = means.get(position, 0.0)
+        if mean <= 0:
+            continue
+        shrunk = (sum(values) + OPPONENT_SHRINK_GAMES * mean) / (len(values) + OPPONENT_SHRINK_GAMES)
+        out[(position, defense)] = float(np.clip(shrunk / mean, 0.80, 1.20))
+    return out
 
 
 def _environment_factors(context: ProjectionContext, config: Mapping[str, float]) -> tuple[float, float, float]:

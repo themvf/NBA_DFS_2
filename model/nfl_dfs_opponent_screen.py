@@ -39,6 +39,19 @@ Ship rule:        candidate != OFF AND the 2025 paired delta (candidate - OFF)
 Not tested:       the exponent (0.35), the shrinkage (16), the clip -- one
                   question at a time.
 
+RESULT (2026-09-24, first and only run under this rule)
+-------------------------------------------------------
+Tuning MAE: OFF 4.7027, ALL 4.7003, RECENT 4.6973 -> candidate RECENT.
+Held out 2025 (n=5,498): OFF 4.6733, RECENT 4.6714; paired delta -0.0019,
+95% CI [-0.0084, +0.0044] over 576 players (week clusters [-0.0103, +0.0064]).
+The CI includes zero: DO NOT ENABLE. Production now passes the factor through
+`opponent_factors`, gated by MODEL_CONFIG["opponent_mode"] = "off".
+
+Why it is empty, most likely: the factors span roughly 0.84-1.17, which after
+the 0.35 exponent moves yardage by about +/-5%, and the Vegas team total the
+model already applies has priced most of what a defense does. A defense term
+on top of the market is the same information twice.
+
 WHAT IS HELD CONSTANT
 ---------------------
 Expected projection, computed exactly, as in the half-life screen: the mean of
