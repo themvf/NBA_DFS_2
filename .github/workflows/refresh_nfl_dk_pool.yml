@@ -1,0 +1,72 @@
+name: Refresh NFL DraftKings Pool Status
+
+# What DraftKings says about availability RIGHT NOW, appended as an
+# observation. The salary file a slate was uploaded from is a photograph; this
+# is the feed that makes it possible to build lineups on Wednesday and finalise
+# them Thursday evening without drafting a player who was ruled out in between.
+#
+# Cost: zero. Both endpoints are public and unauthenticated, and no paid data
+# API is touched. A poll that finds nothing changed writes no snapshot, only a
+# heartbeat row, so running often is cheap in storage as well as in money.
+#
+# Cadence is weighted by game proximity, not uniform, because that is where the
+# information is:
+#
+#   Thu 16:00-01:00 UTC  every 30 min   (noon-8pm ET: the Thursday-night window)
+#   Sun 12:00-01:00 UTC  every 30 min   (8am-8pm ET: inactives land 90 min out)
+#   Mon 16:00-01:00 UTC  every 30 min   (Monday night)
+#   Sat + Fri            every 6 h      (news lands, nothing is imminent)
+#   Tue/Wed              twice a day    (a new week's pools appear)
+#
+# HONEST LIMITATION, not a plan: GitHub's scheduler treats sub-hourly `cron`
+# entries as best-effort and is documented in this repo (see the MLB odds-
+# capture note in CLAUDE.md) to fire them every 60-95 minutes under load. So
+# the effective cadence near kickoff is likely hourly, not half-hourly. That is
+# good enough for "was he ruled out this morning" and NOT good enough for a
+# scratch announced 20 minutes before kickoff. The fix, if that matters, is the
+# Vercel Cron -> workflow_dispatch bridge already used for MLB odds; it is
+# deliberately not built here because it needs CRON_SECRET and
+# GITHUB_DISPATCH_TOKEN configured first.
+#
+# The workspace shows when we last looked, so a slow poll is visible rather
+# than silently assumed fresh.
+
+on:
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: "Poll draft groups starting within this many hours."
+        required: false
+        default: "120"
+  schedule:
+    - cron: "0,30 16-23,0-1 * * 4"   # Thursday
+    - cron: "0,30 12-23,0-1 * * 0"   # Sunday
+    - cron: "0,30 16-23,0-1 * * 1"   # Monday
+    - cron: "15 0,6,12,18 * * 5,6"   # Friday, Saturday
+    - cron: "15 12,22 * * 2,3"       # Tuesday, Wednesday
+
+concurrency:
+  group: nfl-dk-pool
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      HOURS: ${{ inputs.hours }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Capture DraftKings pool status
+        run: python -m ingest.nfl_dfs_dk_pool --hours "${HOURS:-120}"
+      - name: Report
+        if: always()
+        run: python -m ingest.nfl_dfs_dk_pool --report

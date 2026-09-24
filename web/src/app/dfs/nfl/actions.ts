@@ -28,6 +28,8 @@ import { availabilityNote, storedSlateProjection, type ModelAvailabilityNote } f
 import { redistributeOutOpportunity, inheritanceNote, paidByDonor, type RedistributionRow, type InheritedFrom } from '@/lib/nfl-dfs/opportunity-redistribution';
 import { resolveOpportunityProjection, type ProjectionScenario } from '@/lib/nfl-dfs/resolved-projection';
 import { staleRunWarning } from '@/lib/nfl-dfs/stale-run';
+import { buildLiveStatusOverlay, EMPTY_LIVE_OVERLAY, isLiveOutStatus, type LiveStatusOverlay } from '@/lib/nfl-dfs/live-dk-status';
+import { getLiveDkPool } from '@/db/nfl-dfs-live-pool';
 import { chunkRows, assertSlateFullyPersisted, incompleteSlateWarning, isSlateComplete } from '@/lib/nfl-dfs/slate-persist';
 import { selectedWorkload,validateWorkloadPositions } from "@/lib/nfl-dfs/workload-selection";
 import { prepareProjectionAudits, validateSituations, type SituationTeam } from '@/lib/nfl-dfs/projection-audit';
@@ -73,9 +75,28 @@ export type NflWorkspacePlayer = NflOptimizerPlayer & {
   medianFpts?: number | null;
 };
 
+/**
+ * What DraftKings' own live pool says about this slate right now, compared
+ * against the salary file that was uploaded. Serialisable: the overlay's Map
+ * does not cross the server boundary, only the summary a person can act on.
+ */
+export type NflLiveDkStatus = {
+  applied: boolean;
+  reason: string;
+  draftGroupId: number | null;
+  /** When DraftKings' pool last CHANGED. */
+  capturedAt: string | null;
+  /** When we last LOOKED, changed or not. The two are different questions. */
+  lastPolledAt: string | null;
+  matched: number;
+  ambiguousNames: string[];
+  changes: { name: string; team: string | null; from: string | null; to: string | null }[];
+};
+
 export type NflWorkspaceSlate = {
   situationTeams?: SituationTeam[];
   injuryCoverage?: InjuryCoverage | null;
+  liveDkStatus?: NflLiveDkStatus;
   uploadId: string;
   projectionRunId: string | null;
   modelVersion: string | null;
@@ -266,7 +287,44 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
       underdogTeam = favoriteTeam === g.home ? g.away : g.home;
     }
   }
-  const rows = await db.select().from(nflDfsSlatePlayers).where(eq(nflDfsSlatePlayers.uploadId, uploadId));
+  const storedRows = await db.select().from(nflDfsSlatePlayers).where(eq(nflDfsSlatePlayers.uploadId, uploadId));
+
+  // DraftKings' own live pool, laid over the saved slate.
+  //
+  // A salary file records what DraftKings listed the moment it was downloaded.
+  // Upload Thursday's slate on Wednesday, finalise lineups Thursday evening,
+  // and that column is a day stale -- which is most of the window in which a
+  // player gets ruled out. `ingest/nfl_dfs_dk_pool.py` appends observations of
+  // DraftKings' own player pool; this prefers whichever is newer. `storedRows`
+  // is never written back: that row is the record of what the workspace showed
+  // when a lineup was built.
+  let liveStatus: LiveStatusOverlay = EMPTY_LIVE_OVERLAY;
+  let liveLastPolledAt: string | null = null;
+  try {
+    const live = await getLiveDkPool(upload.format, (upload.teams as string[]) ?? []);
+    liveLastPolledAt = live.lastPolledAt ? live.lastPolledAt.toISOString() : null;
+    liveStatus = buildLiveStatusOverlay(
+      storedRows.map((row) => ({ normalizedName: row.normalizedName, salary: row.salary, dkStatus: row.dkStatus })),
+      upload.format,
+      (upload.teams as string[]) ?? [],
+      live.pool,
+      upload.createdAt,
+    );
+  } catch (error) {
+    // A status feed that cannot be read must not take the slate down with it.
+    liveStatus = { ...EMPTY_LIVE_OVERLAY, reason: error instanceof Error ? error.message : "Live DraftKings status is unavailable." };
+  }
+  const rows = liveStatus.applied
+    ? storedRows.map((row) => {
+        if (!liveStatus.statuses.has(row.normalizedName)) return row;
+        const status = liveStatus.statuses.get(row.normalizedName) ?? null;
+        // Newer evidence can rule a player OUT. It deliberately cannot clear
+        // one the stored slate already ruled out: `isOut` is also set by our
+        // own availability feed and by a manual ruling, and DraftKings dropping
+        // a tag is not grounds to overturn either of those.
+        return { ...row, dkStatus: status, isOut: row.isOut || isLiveOutStatus(status) };
+      })
+    : storedRows;
   // A slate written before the batched write could stop part-way and still
   // leave a header row claiming the full pool. Say so rather than serving a
   // short pool as though it were the slate.
@@ -376,6 +434,16 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
     },
     situationTeams:situations?.teams??[],
     injuryCoverage,
+    liveDkStatus: {
+      applied: liveStatus.applied,
+      reason: liveStatus.reason,
+      draftGroupId: liveStatus.draftGroupId,
+      capturedAt: liveStatus.capturedAt,
+      lastPolledAt: liveLastPolledAt,
+      matched: liveStatus.matched,
+      ambiguousNames: liveStatus.ambiguousNames,
+      changes: liveStatus.changes,
+    },
     uploadId,
     projectionRunId: upload.projectionRunId,
     modelVersion: run?.modelVersion ?? null,
