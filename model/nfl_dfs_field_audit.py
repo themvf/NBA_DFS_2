@@ -51,6 +51,48 @@ detector's thresholds on the results it is meant to detect is how a finding
 gets manufactured. Change them for a stated reason, not to make a week look
 better.
 
+## What the first two contests said (weeks 1-2, recorded so it is not re-derived)
+
+**The blind spots split in half by cause, not by position.** Of 12, six were
+`position_prior` rows -- a position average published as a player's projection,
+now withheld at the slate layer -- and six were `historical` players with 17 to
+34 games of their own, projected 13.8 on average and scoring 0.5. The second
+group is not a modelling failure at all; it is not knowing he was inactive.
+Fixing the prior addresses half the list and no more.
+
+**Our projection beats the crowd, and beats price.** On 471 players carrying
+both a projection and an outcome: corr(our projection, actual) +0.559,
+corr(field ownership, actual) +0.411, corr(salary, actual) +0.536, and ours is
+higher at every position (QB +0.53 vs +0.23, RB +0.66 vs +0.52, WR +0.56 vs
++0.51, TE +0.48 vs +0.46, DST +0.17 vs +0.05). Ownership is not trying to
+predict points, so this is not a fair fight in the crowd's favour -- but
+"follow the field" is measurably worse than the model, which is worth knowing
+before anyone proposes it.
+
+**The mirror direction is nearly empty.** Players the field owned at 10%+ that
+we ranked outside our own depth cut: four on the 13-game classic, none on the
+showdown. One of the four (Mark Andrews, TE16) is an artifact of ranking a flat
+position -- we projected him 8.6 and he scored 10.9. So we are not
+systematically missing what the field sees.
+
+**A candidate mechanism, checked and rejected.** Matthew Golden looked like a
+second-year breakout whose 2025 rookie zeros were dragging his projection down
+(ours 5.5, DraftKings' season average 15.5, scored 9.8). Tested as a general
+signal it is nothing: corr(gap between our number and DraftKings', our error)
+= -0.011 over n=224. On the largest disagreements we were right and their
+average was inflated. One player, not a pattern; do not build a feature on it.
+
+## Known limitation, deliberately not fixed
+
+`ROSTERABLE_PROJECTION_SHARE` can exclude a player we ourselves rank seventh at
+his position when that position is shallow -- Blake Corum, RB7 of 10 on the
+showdown, 28.8% owned, scored 10.2, projected under half the RB leader. A
+pool-proportional depth cut was tested as a replacement and surfaces more
+flags. It is NOT adopted, because choosing between two defensible rules on the
+basis of which players this week's data makes interesting is precisely the
+manufacturing the thresholds section above forbids. Revisit under a change that
+is argued structurally, or with enough weeks to judge one rule against another.
+
 Pure: no database access, no I/O.
 """
 
