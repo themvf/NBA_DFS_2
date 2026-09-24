@@ -90,6 +90,38 @@ def _history(db: DatabaseManager, season: int, week: int | None) -> list[Histori
     ) for row in rows]
 
 
+def implied_from_lines(
+    total: float | None,
+    book_home_spread: float | None,
+    nflverse_home_spread: float | None,
+) -> tuple[float, float] | None:
+    """Split a game total into (home, away) implied points.
+
+    The two spread columns use OPPOSITE sign conventions, and mixing them
+    silently swaps the favourite and the underdog:
+
+      * `nfl_matchups.home_spread` is book style -- NEGATIVE when the home team
+        is favoured (Detroit -7.0 over New Orleans, 2026 week 1).
+      * `nfl_season_games.quoted_spread_line` is nflverse style -- POSITIVE when
+        the home team is favoured (the same game is +7.0). See the note in
+        `model/nfl_specials_board.py`.
+
+    This used to be `COALESCE(m.home_spread, g.quoted_spread_line)` fed through
+    one book-style formula. Weeks 1-3 of 2026 never reached the fallback, but on
+    2026-09-24 fifteen of sixteen week-4 games would have -- every favourite
+    projected as the underdog, a swing of ~25% in the touchdown factor.
+    """
+    if total is None:
+        return None
+    if book_home_spread is not None:
+        home = (float(total) - float(book_home_spread)) / 2.0
+    elif nflverse_home_spread is not None:
+        home = (float(total) + float(nflverse_home_spread)) / 2.0
+    else:
+        return None
+    return home, float(total) - home
+
+
 def _slate_environment(db: DatabaseManager, season: int, week: int | None) -> dict[str, dict[str, Any]]:
     if week is None:
         raise ValueError("--week is required: nfl_season_games is the authoritative slate schedule")
@@ -97,7 +129,8 @@ def _slate_environment(db: DatabaseManager, season: int, week: int | None) -> di
         """SELECT home.abbreviation home_team, away.abbreviation away_team,
                   m.home_implied, m.away_implied,
                   COALESCE(m.vegas_total,g.quoted_total_line) vegas_total,
-                  COALESCE(m.home_spread,g.quoted_spread_line) home_spread,
+                  m.home_spread book_home_spread,
+                  g.quoted_spread_line nflverse_home_spread,
                   m.event_id, COALESCE(m.commence_time,g.kickoff) commence_time
            FROM nfl_season_games g
            JOIN nfl_teams home ON home.team_id=g.home_team_id
@@ -110,9 +143,10 @@ def _slate_environment(db: DatabaseManager, season: int, week: int | None) -> di
     for row in rows:
         home_implied = row["home_implied"]
         away_implied = row["away_implied"]
-        if (home_implied is None or away_implied is None) and row["vegas_total"] is not None and row["home_spread"] is not None:
-            home_implied = (float(row["vegas_total"]) - float(row["home_spread"])) / 2.0
-            away_implied = float(row["vegas_total"]) - home_implied
+        if home_implied is None or away_implied is None:
+            derived = implied_from_lines(row["vegas_total"], row["book_home_spread"], row["nflverse_home_spread"])
+            if derived is not None:
+                home_implied, away_implied = derived
         common = {"event_id": row["event_id"], "commence_time": row["commence_time"]}
         result[row["home_team"]] = {**common, "opponent": row["away_team"], "team_implied_total": home_implied}
         result[row["away_team"]] = {**common, "opponent": row["home_team"], "team_implied_total": away_implied}
