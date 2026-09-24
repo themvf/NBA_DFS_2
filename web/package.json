@@ -100,7 +100,8 @@
     "test:nfl-availability-coverage": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-availability-coverage.ts",
     "test:nfl-field-audit": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-field-audit.ts",
     "test:nfl-live-dk-status": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-live-dk-status.ts",
-    "test:nfl-dk-pool-cadence": "node --import tsx ./scripts/test-nfl-dk-pool-cadence.ts"
+    "test:nfl-dk-pool-cadence": "node --import tsx ./scripts/test-nfl-dk-pool-cadence.ts",
+    "test:nfl-chalk-leverage": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-chalk-leverage.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",

@@ -13,6 +13,8 @@
  * spec the optimizer consumes. It does not itself run the solver.
  */
 
+import type { PlayerExposurePolicy } from "./exposure-plan";
+
 export type ArchetypeId =
   | "standard_ceiling"
   | "single_chalk_fade"
@@ -20,7 +22,8 @@ export type ArchetypeId =
   | "contrarian_captain"
   | "favorite_onslaught"
   | "underdog_comeback"
-  | "low_scoring_k_dst";
+  | "low_scoring_k_dst"
+  | "chalk_captain_leverage";
 
 export interface ArchetypeQuota {
   archetypeId: ArchetypeId;
@@ -86,6 +89,11 @@ export interface ArchetypeConfig {
   favoriteSkew?: "4-2" | "5-1";
   /** Explicit beneficiary groups supplied by the user for a fade. */
   beneficiaries?: BeneficiaryGroup[];
+  /** Chalk-captain model: the captains this lineup may use. */
+  chalkCaptainIds?: number[];
+  /** Chalk-captain model: this lineup's leverage group and its label. */
+  leveragePlayerIds?: number[];
+  leveragePosition?: string;
 }
 
 export const ARCHETYPE_LABELS: Record<ArchetypeId, string> = {
@@ -96,6 +104,7 @@ export const ARCHETYPE_LABELS: Record<ArchetypeId, string> = {
   favorite_onslaught: "Favorite onslaught",
   underdog_comeback: "Underdog comeback",
   low_scoring_k_dst: "Low-scoring K/DST",
+  chalk_captain_leverage: "Chalk captain, rotating leverage",
 };
 
 /** Whether an archetype is a fade (and therefore requires a beneficiary path). */
@@ -186,7 +195,124 @@ export function compileArchetype(id: ArchetypeId, ctx: ArchetypeSlateContext, co
 
     case "low_scoring_k_dst":
       return { ...base, minKickerDst: 1, summary: "Reduced-touchdown environment; requires kicker/defense presence." };
+
+    case "chalk_captain_leverage": {
+      const captains = config.chalkCaptainIds ?? [];
+      const leverage = config.leveragePlayerIds ?? [];
+      if (!captains.length) throw new Error("Chalk captain model requires at least one chalk captain.");
+      if (!leverage.length) throw new Error("Chalk captain model requires a leverage group for this lineup.");
+      // The leverage requirement reuses the beneficiary mechanism: at least one
+      // player from the group, in any slot. It is NOT a fade, so it carries no
+      // faded players.
+      return { ...base, eligibleCaptainIds: captains,
+        beneficiaries: [{ label: `Leverage at ${config.leveragePosition ?? "flex"}`, minFromGroup: 1, playerIds: leverage }],
+        summary: `Chalk captain; leverage taken at ${config.leveragePosition ?? "flex"}.` };
+    }
   }
+}
+
+/**
+ * The chalk-captain, rotating-leverage lineup model.
+ *
+ * WHY: the week-2 field audit found the winning entries were CHALKIER than
+ * ours -- 106% cumulative ownership for the winner and 119% across the top
+ * 1,000, against our 96%. Contrarian captains were not where the edge came
+ * from. This model takes the captain from the obvious plays, where the field
+ * is, and takes its differentiation in the FLEX slots instead, rotating WHICH
+ * position supplies that differentiation from lineup to lineup so the
+ * portfolio is not one leverage bet repeated.
+ *
+ * Definitions, all deterministic and disclosed in the run notes:
+ *   chalk rank   skill players (not K/DST) by projected ownership when any is
+ *                supplied, else by projection -- the field gravitates to the
+ *                obvious studs. Same proxy the fade archetypes already use.
+ *   captains     the top `captainCount` captain-eligible names in that rank,
+ *                plus anyone the user gave a captain MINIMUM (the user's
+ *                explicit captain intent always stays reachable).
+ *   core         the top `coreCount` names in that rank -- the plays everyone
+ *                has. Leverage is anything outside it with a real projection.
+ *   rotation     lineup i takes its leverage at position rotation[i % k],
+ *                cycling through the positions that have a leverage option.
+ *
+ * Names describe strategy, not expected profit, and none of it is validated:
+ * it is a portfolio shape, graded afterward by the field audit.
+ */
+export const CHALK_CAPTAIN_COUNT = 3;
+export const CHALK_CORE_COUNT = 6;
+export const LEVERAGE_ROTATION = ["WR", "TE", "RB", "K/DST", "QB"] as const;
+
+/**
+ * How a chalk captain's exposure is read in the chalk-captain model.
+ *
+ * The flat max exposure (60% by default) counts FLEX appearances too, and the
+ * optimizer likes all three chalk captains in most lineups as filler. Measured
+ * on the Thursday ATL@GB slate: they spent their 60% as FLEX, and at 50
+ * lineups the run stopped at 49 because no chalk captain had capacity left.
+ * So in this model the cap limits how often a chalk captain is FLEX, and his
+ * CAPTAINCY is set by the captain plan (the CPT control, or the objective).
+ *
+ * An overall TARGET the user set explicitly (min == max) is left untouched --
+ * that is their instruction, not a default.
+ */
+export function chalkCaptainPolicy(policy: PlayerExposurePolicy): PlayerExposurePolicy {
+  if (policy.overall.minPct != null) return policy;
+  return {
+    ...policy,
+    overall: { minPct: null, maxPct: 1 },
+    flex: { minPct: policy.flex.minPct, maxPct: policy.flex.maxPct ?? policy.overall.maxPct },
+  };
+}
+
+export interface ChalkLeveragePlan {
+  lineups: Array<{ compiled: CompiledArchetype; leveragePosition: string }>;
+  chalkCaptainIds: number[];
+  coreIds: number[];
+  rotation: string[];
+  basis: "projected ownership" | "projection";
+}
+
+export function chalkLeveragePlan(
+  ctx: ArchetypeSlateContext,
+  n: number,
+  opts: { captainCount?: number; coreCount?: number; extraCaptainIds?: number[] } = {},
+): ChalkLeveragePlan {
+  const anyOwnership = ctx.players.some((p) => p.ownership != null);
+  const rank = ctx.players
+    .filter((p) => p.position !== "K" && p.position !== "DST" && (p.projection ?? 0) > 0)
+    .sort((a, b) =>
+      (anyOwnership ? (b.ownership ?? -1) - (a.ownership ?? -1) : 0)
+      || (b.projection ?? 0) - (a.projection ?? 0)
+      || a.dkPlayerId - b.dkPlayerId);
+  const captainCount = opts.captainCount ?? CHALK_CAPTAIN_COUNT;
+  const coreCount = opts.coreCount ?? CHALK_CORE_COUNT;
+  const chalkCaptainIds = [...new Set([
+    ...rank.filter((p) => p.captainEligible).slice(0, captainCount).map((p) => p.dkPlayerId),
+    ...(opts.extraCaptainIds ?? []).filter((id) => ctx.players.some((p) => p.dkPlayerId === id && p.captainEligible)),
+  ])];
+  const coreIds = rank.slice(0, coreCount).map((p) => p.dkPlayerId);
+  const core = new Set([...coreIds, ...chalkCaptainIds]);
+
+  const groupOf = (position: string) => (position === "K" || position === "DST" ? "K/DST" : position);
+  const leverageByGroup = new Map<string, number[]>();
+  for (const p of ctx.players) {
+    if (core.has(p.dkPlayerId) || !((p.projection ?? 0) > 0)) continue;
+    const group = groupOf(p.position);
+    leverageByGroup.set(group, [...(leverageByGroup.get(group) ?? []), p.dkPlayerId]);
+  }
+  const rotation = LEVERAGE_ROTATION.filter((g) => (leverageByGroup.get(g)?.length ?? 0) > 0);
+  if (!chalkCaptainIds.length) throw new Error("Chalk captain model: no captain-eligible player has a projection.");
+  if (!rotation.length) throw new Error("Chalk captain model: no leverage option exists outside the chalk core.");
+
+  const lineups = Array.from({ length: n }, (_, i) => {
+    const leveragePosition = rotation[i % rotation.length];
+    return {
+      leveragePosition,
+      compiled: compileArchetype("chalk_captain_leverage", ctx, {
+        chalkCaptainIds, leveragePlayerIds: leverageByGroup.get(leveragePosition)!, leveragePosition,
+      }),
+    };
+  });
+  return { lineups, chalkCaptainIds, coreIds, rotation: [...rotation], basis: anyOwnership ? "projected ownership" : "projection" };
 }
 
 /**
