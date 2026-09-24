@@ -7,6 +7,7 @@ import ProjectionAuditPanel from './projection-audit-panel';
 import {DEFAULT_SITUATIONS} from '@/lib/nfl-dfs/projection-audit';
 import AvailabilityPanel from './availability-panel';
 import FieldAuditPanel from './field-audit-panel';
+import LiveStatusBanner from './live-status-banner';
 import { availabilityCoverage } from '@/lib/nfl-dfs/availability-coverage';
 import AbsencePreview from './absence-preview';
 import CompetitorPanel from './competitor-panel';
@@ -284,6 +285,7 @@ export default function NflDfsClient() {
         <button type="button" onClick={() => setWorkspaceView("research")} className="mt-2 rounded-lg border border-current px-3 py-1.5 text-sm font-semibold">Open roles and evidence</button>
       </section> : null}
       {slate.warnings.length ? <div className="space-y-2">{slate.warnings.map((warning) => <Notice key={warning}>{warning}</Notice>)}</div> : null}
+      <LiveStatusBanner live={slate.liveDkStatus} />
       <section className="nfl-slate-status grid grid-cols-2 gap-3 md:grid-cols-6"><Metric label="Format" value={slate.format.toUpperCase()} /><Metric label="Players" value={String(slate.players.length)} /><Metric label="Games" value={String(slate.games.length)} /><Metric label="Our model" value={`${slate.players.filter((p) => p.ourProj != null).length}/${slate.players.length}`} /><Metric label="Availability" value={coverage.metric} /><Metric label="Model" value={slate.modelVersion ?? "None"} small /><Metric label="As of" value={slate.modelAsOf ? new Date(slate.modelAsOf).toLocaleString() : "No run"} small /></section>
       <a href={`/dfs/nfl/pool-review?upload=${slate.uploadId}`} className="inline-block text-sm font-semibold text-blue-700 underline">Open full pool audit and results</a>
       <nav aria-label="NFL workspace" className="nfl-workspace-tabs">{["players", "lineups", "research"].map(view => <button key={view} type="button" aria-current={workspaceView === view ? "page" : undefined} onClick={() => setWorkspaceView(view)}>{view === "players" ? "Players" : view === "lineups" ? `Lineups (${lineups.length})` : "Research & audit"}</button>)}</nav>

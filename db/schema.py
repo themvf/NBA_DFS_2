@@ -2563,6 +2563,81 @@ TABLES = [
     )""",
     """CREATE INDEX IF NOT EXISTS idx_nfl_dfs_field_ownership_name
         ON nfl_dfs_field_ownership (normalized_name)""",
+
+    # ── DraftKings' own live player pool ─────────────────────────────────────
+    #
+    # The salary CSV is a photograph: it says what DraftKings listed at the
+    # moment it was downloaded. A slate uploaded Tuesday and drafted Sunday
+    # morning is five days stale, which is exactly the window in which a player
+    # is ruled out. `www.draftkings.com/lineup/getavailableplayers` answers the
+    # same question live, with no authentication.
+    #
+    # These rows NEVER touch `nfl_dfs_slate_players`. That row is the record of
+    # what the workspace showed when a lineup was built, and rewriting it would
+    # silently restate the input to lineups already exported. The read layer
+    # joins the two and prefers whichever observation is newer.
+    #
+    # Snapshots are deduplicated by payload digest, so a poll that finds nothing
+    # changed writes no snapshot. Freshness therefore CANNOT be read off the
+    # latest snapshot -- that answers "when did it last change", not "when did
+    # we last look", and the difference is the whole point of a status feed.
+    # `nfl_dfs_dk_pool_polls` records every look, changed or not.
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_dk_pool_snapshots (
+        snapshot_id UUID PRIMARY KEY,
+        draft_group_id BIGINT NOT NULL,
+        contest_type_id INTEGER,
+        format TEXT NOT NULL,
+        start_date TIMESTAMPTZ,
+        game_count INTEGER,
+        teams JSONB NOT NULL DEFAULT '[]'::jsonb,
+        player_count INTEGER NOT NULL,
+        payload_digest TEXT NOT NULL,
+        source_url TEXT NOT NULL,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(draft_group_id, payload_digest),
+        CHECK(format IN ('classic','showdown')),
+        CHECK(player_count > 0)
+    )""",
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_dk_pool_player_status (
+        id BIGSERIAL PRIMARY KEY,
+        snapshot_id UUID NOT NULL REFERENCES nfl_dfs_dk_pool_snapshots(snapshot_id) ON DELETE CASCADE,
+        -- DraftKings' PLAYER id, which is a different namespace from the
+        -- draftable id the salary CSV carries as `dk_player_id`. The endpoint
+        -- that bridges them (api.draftkings.com/.../draftables) returns 403,
+        -- so the join to a slate is by name and team, and fails closed.
+        dk_pid BIGINT NOT NULL,
+        pdkid BIGINT,
+        tsid BIGINT,
+        name TEXT NOT NULL,
+        normalized_name TEXT NOT NULL,
+        position TEXT,
+        team TEXT,
+        opponent TEXT,
+        salary INTEGER,
+        status TEXT,
+        is_disabled BOOLEAN NOT NULL DEFAULT FALSE,
+        swappable BOOLEAN,
+        news SMALLINT,
+        UNIQUE(snapshot_id, dk_pid)
+    )""",
+    """CREATE INDEX IF NOT EXISTS idx_nfl_dfs_dk_pool_status_name
+        ON nfl_dfs_dk_pool_player_status (normalized_name, team)""",
+    """CREATE INDEX IF NOT EXISTS idx_nfl_dfs_dk_pool_snapshots_group
+        ON nfl_dfs_dk_pool_snapshots (draft_group_id, captured_at DESC)""",
+    # Every look, including the ones that found nothing new. A poll that fails
+    # is recorded too: "we could not reach DraftKings" and "DraftKings says
+    # nothing changed" must never look the same.
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_dk_pool_polls (
+        id BIGSERIAL PRIMARY KEY,
+        draft_group_id BIGINT NOT NULL,
+        polled_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        ok BOOLEAN NOT NULL,
+        changed BOOLEAN NOT NULL DEFAULT FALSE,
+        snapshot_id UUID REFERENCES nfl_dfs_dk_pool_snapshots(snapshot_id) ON DELETE SET NULL,
+        detail TEXT
+    )""",
+    """CREATE INDEX IF NOT EXISTS idx_nfl_dfs_dk_pool_polls_group
+        ON nfl_dfs_dk_pool_polls (draft_group_id, polled_at DESC)""",
     """CREATE TABLE IF NOT EXISTS nfl_dfs_slate_players (
         id BIGSERIAL PRIMARY KEY,
         upload_id UUID NOT NULL REFERENCES nfl_dfs_slate_uploads(upload_id) ON DELETE CASCADE,
@@ -4707,6 +4782,24 @@ MIGRATIONS = [
     "ALTER TABLE nfl_specials_bets DROP CONSTRAINT IF EXISTS nfl_specials_bets_slate_scope_check",
     """ALTER TABLE nfl_specials_bets ADD CONSTRAINT nfl_specials_bets_slate_scope_check
        CHECK (slate_scope IN ('sunday_all', 'sunday_1pm', 'sunday_late', 'sunday_main'))""",
+
+    # ── DraftKings live pool: an observation is not editable ──────
+    # What DraftKings said at 11:04 on Sunday is a fact about 11:04. A later
+    # change appends a new snapshot.
+    """CREATE OR REPLACE FUNCTION reject_nfl_dfs_dk_pool_mutation()
+    RETURNS trigger AS $$
+    BEGIN
+        RAISE EXCEPTION 'DraftKings pool observations are append-only';
+    END;
+    $$ LANGUAGE plpgsql""",
+    "DROP TRIGGER IF EXISTS nfl_dfs_dk_pool_snapshots_immutable ON nfl_dfs_dk_pool_snapshots",
+    """CREATE TRIGGER nfl_dfs_dk_pool_snapshots_immutable
+    BEFORE UPDATE OR DELETE ON nfl_dfs_dk_pool_snapshots
+    FOR EACH ROW EXECUTE FUNCTION reject_nfl_dfs_dk_pool_mutation()""",
+    "DROP TRIGGER IF EXISTS nfl_dfs_dk_pool_player_status_immutable ON nfl_dfs_dk_pool_player_status",
+    """CREATE TRIGGER nfl_dfs_dk_pool_player_status_immutable
+    BEFORE UPDATE OR DELETE ON nfl_dfs_dk_pool_player_status
+    FOR EACH ROW EXECUTE FUNCTION reject_nfl_dfs_dk_pool_mutation()""",
 
     # ── NFL slate specials: freeze what has to stay frozen ────────
     # A board run and its rows are evidence of what we projected at a point in
