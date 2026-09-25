@@ -1,6 +1,6 @@
 "use client";
 
-import { generationSettings, sameGenerationSettings } from "@/lib/nfl-dfs/generation-settings";
+import { formFromSettings, sameGenerationSettings, settingsFromForm, type NflBuildForm } from "@/lib/nfl-dfs/generation-settings";
 import { nflIdentityLabel } from "@/lib/nfl-dfs/identity";
 
 import ProjectionAuditPanel from './projection-audit-panel';
@@ -109,17 +109,21 @@ export default function NflDfsClient() {
 
   const slateTeams = useMemo(() => [...new Set((slate?.players ?? []).map((p) => p.team))].sort(), [slate]);
   const archetypeUnderdog = archetypeFavorite ? slateTeams.find((t) => t !== archetypeFavorite) ?? null : null;
-  const fadeConfig = archetypeFades.length ? { fadePlayerIds: archetypeFades } : undefined;
   // Balanced mode sends only the mode: quotas, fade targets and the favorite
   // are resolved by the generator/server. Custom mode sends the manual plan.
-  const custom = archetypePlanMode === "custom";
-  const currentSettings = { ...generationSettings(settings, slate?.format ?? 'classic', locked, excluded, targetExposure, captainTargets),
-    archetypeMode: archetypePlanMode,
-    archetypeQuotas: custom && archetypeQuotas.length ? archetypeQuotas : undefined,
-    favoriteTeam: custom && archetypeFavorite ? archetypeFavorite : undefined,
-    underdogTeam: custom && archetypeFavorite ? archetypeUnderdog ?? undefined : undefined,
-    archetypeConfigs: custom && fadeConfig ? { single_chalk_fade: { fadePlayerIds: archetypeFades.slice(0, 1) }, double_fade: { fadePlayerIds: archetypeFades.slice(0, 2) } } : undefined };
-  const settingsChanged = Boolean(completedSettings && !sameGenerationSettings(completedSettings, currentSettings));
+  const slateFormat = slate?.format ?? 'classic';
+  const currentSettings = settingsFromForm({ settings, locked, excluded, targets: targetExposure, captainTargets,
+    planMode: archetypePlanMode, quotas: archetypeQuotas, favorite: archetypeFavorite, fades: archetypeFades }, slateFormat, slateTeams);
+  // A saved run is compared through the form it loads into, so fields the
+  // server adds on save (ownership disclosure, a resolved favorite) do not
+  // count as a change.
+  const settingsChanged = Boolean(completedSettings && !sameGenerationSettings(
+    settingsFromForm(formFromSettings(completedSettings, settings), slateFormat, slateTeams), currentSettings));
+  function applyForm(form: NflBuildForm<typeof settings>) {
+    setSettings(form.settings); setLocked(form.locked); setExcluded(form.excluded);
+    setTargetExposure(form.targets); setCaptainTargets(form.captainTargets); setCaptainSuggestion(null);
+    setArchetypePlanMode(form.planMode); setArchetypeQuotas(form.quotas); setArchetypeFavorite(form.favorite); setArchetypeFades(form.fades);
+  }
 
   const matching = useMemo(() => (slate?.players ?? []).filter((p) => matchesPoolPosition(p.position, position) && (!query.trim() || `${p.name} ${p.team} ${p.opponent ?? ""}`.toLowerCase().includes(query.trim().toLowerCase()))), [slate, position, query]);
   // Counted over the unfiltered pool, so the dropdown describes slate composition
@@ -196,7 +200,8 @@ export default function NflDfsClient() {
           try {
             const saved = await loadSavedNflLineups(uploadId, next.runs[0].runId);
             setLineups(saved.lineups); setRunId(saved.runId); setCompletedSettings(saved.settings);
-            setMessage(`Restored ${saved.lineups.length} saved lineups. Scores reflect their original run; review current availability before exporting.`);
+            applyForm(formFromSettings(saved.settings, settings));
+            setMessage(`Restored ${saved.lineups.length} saved lineups and the settings that built them. Scores reflect their original run; review current availability before exporting.`);
           } catch (reason) { setError(reason instanceof Error ? reason.message : 'Saved lineups could not be restored.'); }
         }
       } catch (reason) { setError(reason instanceof Error ? reason.message : 'Saved slate could not be loaded.'); }
@@ -221,7 +226,8 @@ export default function NflDfsClient() {
         const saved = await loadSavedNflLineups(slate.uploadId, id);
         clearRunReports();
         setLineups(saved.lineups); setRunId(saved.runId); setCompletedSettings(saved.settings); setShowVisuals(false);
-        setMessage('Saved lineups restored with their original scores. Review current availability before exporting.'); setError(null);
+        applyForm(formFromSettings(saved.settings, settings));
+        setMessage('Saved lineups restored with their original scores, and the build form now holds the settings that built them. Review current availability before exporting.'); setError(null);
       } catch (reason) { setError(reason instanceof Error ? reason.message : 'Saved lineups could not be loaded.'); }
     });
   }
@@ -367,7 +373,7 @@ export default function NflDfsClient() {
         <section hidden={stage === "review"} className="rounded-xl border bg-white p-4 shadow-sm"><h2 className="font-bold">Build lineups</h2>
           <p className="mt-1 text-xs text-slate-600">{buildSummary}</p>
           <p className="text-xs text-slate-500">{playerRulesSummary}</p>
-          {lineups.length && settingsChanged ? <p className="mt-1 text-xs text-amber-800">The loaded lineup set was built with different settings. Generate uses the settings below.</p> : null}
+          {lineups.length && settingsChanged ? <p className="mt-1 text-xs text-amber-800">Settings changed since these lineups were built.</p> : null}
           <button disabled={pending} onClick={generate} className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 text-sm font-bold text-white disabled:opacity-40"><Play className="h-4 w-4" />{pending ? "Working…" : "Generate & save"}</button>
           <div className="mt-4 space-y-3"><Field label="Objective"><select value={settings.mode} onChange={(e) => setSettings({ ...settings, mode: e.target.value as "cash" | "gpp" })} className="control"><option value="gpp">GPP ceiling</option><option value="cash">Cash floor</option></select></Field><Field label="Projection source"><select value={settings.projectionSource} onChange={(e) => setSettings({ ...settings, projectionSource: e.target.value as NflProjectionSource })} className="control">{Object.entries(SOURCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
           <Field label="Lineups"><input type="number" min={1} max={150} value={settings.nLineups} onChange={(e) => setSettings({ ...settings, nLineups: Number(e.target.value) })} className="control" /></Field>
