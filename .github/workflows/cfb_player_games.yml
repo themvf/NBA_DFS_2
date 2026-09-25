@@ -1,27 +1,24 @@
 name: CFB Player Game Stats
 
-# Manual. Pulls CFBD player box scores a week at a time into
-# cfb_player_game_boxes (raw) and cfb_player_game_stats (DK points).
-# Only request weeks whose games are all final: a live box score would store a
-# partial game as history.
+# Pulls CFBD player box scores a week at a time into cfb_player_game_boxes
+# (raw) and cfb_player_game_stats (DraftKings points), which feed the CFB DFS
+# page's projections. Only weeks whose every game is final are fetched
+# (--complete-only), so a live box score never lands as history. Re-fetching a
+# finished week is an idempotent upsert: a few CFBD calls a day.
 on:
+  schedule:
+    - cron: "15 11 * * *"
   workflow_dispatch:
     inputs:
       seasons:
-        description: "Seasons, space separated"
+        description: "Seasons, space separated (blank = current season)"
         required: false
-        default: "2025 2026"
+        default: ""
         type: string
-      weeks:
-        description: "Week range, e.g. 1-16"
-        required: false
-        default: "1-16"
-        type: string
-      last_complete_week_current:
-        description: "For 2026, the last week whose games are all final"
-        required: false
-        default: "3"
-        type: string
+
+concurrency:
+  group: cfb-player-games
+  cancel-in-progress: false
 
 jobs:
   ingest:
@@ -38,10 +35,14 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Ingest player box scores
         run: |
-          for season in ${{ inputs.seasons || '2025 2026' }}; do
-            if [ "$season" = "2026" ]; then
-              python -m ingest.cfb_player_games --season 2026 --weeks "1-${{ inputs.last_complete_week_current || '3' }}"
+          # A college season spans New Year: January and February belong to last year's season.
+          year=$(date -u +%Y); month=$(date -u +%m)
+          current=$year; if [ "$month" -le 2 ]; then current=$((year - 1)); fi
+          seasons="${{ inputs.seasons }}"; [ -z "$seasons" ] && seasons="$current"
+          for season in $seasons; do
+            if [ "$season" = "$current" ]; then
+              python -m ingest.cfb_player_games --season "$season" --weeks 1-16 --complete-only
             else
-              python -m ingest.cfb_player_games --season "$season" --weeks "${{ inputs.weeks || '1-16' }}" --postseason
+              python -m ingest.cfb_player_games --season "$season" --weeks 1-16 --postseason
             fi
           done
