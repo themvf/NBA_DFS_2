@@ -133,6 +133,22 @@ def evaluate_rows(rows: list[dict], config: dict, *, purpose: str) -> dict:
     }
 
 
+def _read_registered_config(study: dict) -> dict:
+    """Resolve a frozen artifact across runner OSes and verify its contents."""
+    digest = study["configuration_digest"]
+    portable = PROJECT_DIR / "artifacts" / f"cfb_moneyline_study_{digest}.json"
+    stored = Path(study["uri"]) if study.get("uri") else None
+    path = stored if stored is not None and stored.is_file() else portable
+    if not path.is_file():
+        raise ValueError(f"registered study artifact unavailable for digest {digest}")
+    config = json.loads(path.read_text(encoding="utf-8"))
+    computed = sha256(_canonical({key: value for key, value in config.items()
+                                  if key != "configuration_digest"})).hexdigest()
+    if config.get("configuration_digest") != digest or computed != digest:
+        raise ValueError("registered study configuration digest mismatch")
+    return config
+
+
 def _load_registration(cursor, study_version: int | None) -> tuple[dict, dict, list[dict]]:
     version_clause = "AND s.study_version=%s" if study_version is not None else ""
     params = (study_version,) if study_version is not None else ()
@@ -140,9 +156,7 @@ def _load_registration(cursor, study_version: int | None) -> tuple[dict, dict, l
       ON a.artifact_id=s.configuration_artifact_id WHERE 1=1 {version_clause}
       ORDER BY s.study_version DESC LIMIT 1""", params)
     study = dict(cursor.fetchone())
-    config = json.loads(Path(study["uri"]).read_text(encoding="utf-8"))
-    if config["configuration_digest"] != study["configuration_digest"]:
-        raise ValueError("registered study configuration digest mismatch")
+    config = _read_registered_config(study)
     cursor.execute("""SELECT * FROM cfb_engine_study_windows WHERE study_id=%s AND study_version=%s ORDER BY start_at""",
                    (study["study_id"], study["study_version"]))
     return study, config, [dict(row) for row in cursor.fetchall()]
