@@ -24,9 +24,16 @@ export default function CaptainSuggestionPanel({ suggestion, current, nLineups, 
       <div>
         <p className="font-bold text-violet-900">Suggested captain ranges</p>
         <p className="mt-0.5 text-violet-800">
-          Top {suggestion.rows.length} captain-eligible players by {suggestion.basis}; share proportional to projection²,
-          ±8 points, rounded to 5. Skips OUT, Questionable and Doubtful players. A starting point — not validated.
+          {suggestion.basis === "simulation"
+            ? <>Share = how often each player was the game&apos;s top scorer across {suggestion.simulation?.draws.toLocaleString() ?? "5,000"} simulated games,
+              using our projection and the model's P10, median and P90, with teammates moving together. Range = share ±8, rounded to 5; players under 2% get none.
+              Skips OUT, Questionable and Doubtful players. Salary is ignored, and nothing here is validated yet.</>
+            : <>Top {suggestion.rows.length} captain-eligible players by {suggestion.basis}; share proportional to projection²,
+              ±8 points, rounded to 5. Skips OUT, Questionable and Doubtful players. A starting point — not validated.</>}
         </p>
+        {suggestion.simulation?.missingTails.length ? <p className="mt-1 text-amber-800">
+          Left out, no P10/P90: {suggestion.simulation.missingTails.join(", ")}.
+        </p> : null}
       </div>
       <div className="flex gap-2">
         <button type="button" onClick={onApply}
@@ -37,7 +44,7 @@ export default function CaptainSuggestionPanel({ suggestion, current, nLineups, 
     </div>
     <table className="mt-2 w-full max-w-lg text-left">
       <thead className="text-[10px] uppercase text-violet-700">
-        <tr><th className="py-1">Player</th><th>Share</th><th>Suggested CPT</th><th>Lineups of {nLineups}</th><th>Current</th></tr>
+        <tr><th className="py-1">Player</th><th>{suggestion.basis === "simulation" ? "Top scorer" : "Share"}</th><th>Suggested CPT</th><th>Lineups of {nLineups}</th><th>Current</th></tr>
       </thead>
       <tbody>{suggestion.rows.map((r) => <tr key={r.dkPlayerId} className="border-t border-violet-200">
         <td className="py-1 font-semibold">{r.name}</td>

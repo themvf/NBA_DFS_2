@@ -7067,3 +7067,26 @@ every row; recorded as Amendment 1 before any outcome was seen.
 
 QB slope 1.279 [1.021, 1.550] is one of eight descriptive cells and licenses
 nothing on its own; register it separately if it persists.
+
+---
+
+## NFL DFS — Simulated captain ranges (`nfl-captain-sim-v1`, 2026-09-25)
+
+"Suggest CPT ranges" now comes from `web/src/lib/nfl-dfs/captain-simulation.ts`,
+not the projection-squared rule (`captain-recommendation.ts`, kept for the chalk
+plan's tests). Share = how often a player is the game's top scorer across 5,000
+seeded simulated games; range = share ±8, rounded to 5; under 2% gets none.
+
+- **Marginals honor the model's own shape.** The historical model resamples
+  real past games, so its distributions are lumpy and capped (Kraft: mean 12.2,
+  P10 3.6, median 9.7, P90 37.4). A two-piece normal through P10/P90 inflated his
+  mean by 1.9 points. Each player instead gets a quantile curve through P10,
+  median and P90, with the median-to-P90 bend solved so the mean equals the
+  projection; a player missing any quantile is listed, never given invented
+  spread, and an unreachable mean is flagged (`meanNotMatched`).
+- **Stated priors, not fitted:** same-team correlation 0.40, cross-team 0.15,
+  DST loads -0.55 on the opponent's team factor. "Best captain" = top scorer;
+  salary is ignored.
+- **Unvalidated.** One top scorer per slate means calibration needs many
+  Showdowns; Results history (`/dfs/nfl/results`) is where it gets graded. On
+  ATL@GB it would have capped Kraft at 5-20% (he was captain in 12 of 20).

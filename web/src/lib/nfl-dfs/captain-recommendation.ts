@@ -51,9 +51,11 @@ export interface CaptainRecommendationRow {
 
 export interface CaptainRecommendation {
   version: string;
-  basis: "projected ownership" | "projection";
+  basis: "projected ownership" | "projection" | "simulation";
   rows: CaptainRecommendationRow[];
   targets: Record<string, CaptainTarget>;
+  /** Present when the ranges came from simulation (captain-simulation.ts). */
+  simulation?: { draws: number; seed: number; missingTails: string[] };
 }
 
 const DOUBT = new Set(["Q", "D", "QUESTIONABLE", "DOUBTFUL", "GTD"]);
