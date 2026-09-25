@@ -1,6 +1,8 @@
 from datetime import date
 
-from research.cfb_study_evaluation import clustered_interval, evaluate_rows
+import pytest
+
+from research.cfb_study_evaluation import _read_registered_config, clustered_interval, evaluate_rows
 
 
 CONFIG = {
@@ -41,3 +43,11 @@ def test_bad_health_invalidates_and_negative_primary_fails():
 def test_pilot_can_never_pass_qualification():
     result = evaluate_rows([row(index, 2.0, .2) for index in range(3)], CONFIG, purpose="pilot")
     assert result["result"] == "inconclusive"
+
+
+def test_registered_study_uses_verified_portable_artifact_when_uri_is_on_another_os():
+    study = {"configuration_digest": "364db068d16ef1e272489e0523bb0cc8643f938c29caafdf270aa9e087b8152c",
+             "uri": r"C:\Docs\_AI Python Projects\NBADFS_v2\artifacts\cfb_moneyline_study.json"}
+    assert _read_registered_config(study)["study_version"] == 4
+    with pytest.raises(ValueError, match="artifact unavailable"):
+        _read_registered_config({**study, "configuration_digest": "0" * 64})
