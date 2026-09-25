@@ -81,10 +81,14 @@ export function optimizeCfbLineups(pool: readonly CfbPoolPlayer[], settings: Cfb
     const available = players.filter((p) => (counts.get(p.dkId) ?? 0) < cap(p));
     const constraints: SolverModel["constraints"] = {
       roster: { equal: CFB_ROSTER_SIZE }, salary: { max: CFB_SALARY_CAP, min: settings.minSalary },
-      qb: { min: 1, max: 2 }, rb: { min: 2 }, wr: { min: 3 },
+      qb: settings.requireTwoQbs ? { equal: 2 } : { min: 1, max: 2 }, rb: { min: 2 }, wr: { min: 3 },
     };
     for (const g of games) constraints[`game_${g}`] = { max: CFB_ROSTER_SIZE - 1 };
     for (const id of locked) constraints[`lock_${id}`] = { equal: 1 };
+    for (const q of available.filter((p) => p.position === "QB")) {
+      if (settings.stackQb) constraints[`stack_${q.dkId}`] = { min: 0 };
+      if (settings.bringBack) constraints[`bring_${q.dkId}`] = { min: 0 };
+    }
     lineups.forEach((_, i) => { constraints[`prior_${i}`] = { max: CFB_ROSTER_SIZE - settings.minUnique }; });
     const variables: SolverModel["variables"] = {};
     const binaries: SolverModel["binaries"] = {};
@@ -93,6 +97,20 @@ export function optimizeCfbLineups(pool: readonly CfbPoolPlayer[], settings: Cfb
       const v: Record<string, number> = { score: p.proj * noise, roster: 1, salary: p.salary,
         [p.position.toLowerCase()]: 1, [`game_${p.game}`]: 1 };
       if (locked.has(p.dkId)) v[`lock_${p.dkId}`] = 1;
+      // Stack / bring-back: for each QB q, (teammates or opponents picked) - x_q >= 0,
+      // so choosing q forces at least one partner and leaving q out forces nothing.
+      if (settings.stackQb || settings.bringBack) {
+        for (const q of available) {
+          if (q.position !== "QB") continue;
+          if (p.dkId === q.dkId) {
+            if (settings.stackQb) v[`stack_${q.dkId}`] = -1;
+            if (settings.bringBack) v[`bring_${q.dkId}`] = -1;
+          } else if (p.position !== "QB") {
+            if (settings.stackQb && p.team === q.team) v[`stack_${q.dkId}`] = 1;
+            if (settings.bringBack && p.game === q.game && p.team !== q.team) v[`bring_${q.dkId}`] = 1;
+          }
+        }
+      }
       lineups.forEach((lineup, i) => { if (lineup.slots.some((s) => s.player.dkId === p.dkId)) v[`prior_${i}`] = 1; });
       variables[`x_${p.dkId}`] = v;
       binaries[`x_${p.dkId}`] = 1;
@@ -113,6 +131,19 @@ export function optimizeCfbLineups(pool: readonly CfbPoolPlayer[], settings: Cfb
       salary: chosen.reduce((a, p) => a + p.salary, 0), projection: Math.round(chosen.reduce((a, p) => a + p.proj, 0) * 100) / 100 });
   }
   return { lineups, stoppedEarly, version: CFB_OPTIMIZER_VERSION };
+}
+
+/** Which optional build rules a lineup breaks; empty when it honours them all. */
+export function cfbBuildRuleProblems(players: CfbPoolPlayer[], settings: Pick<CfbOptimizerSettings, "requireTwoQbs" | "stackQb" | "bringBack">): string[] {
+  const problems: string[] = [];
+  const qbs = players.filter((p) => p.position === "QB");
+  if (settings.requireTwoQbs && qbs.length !== 2) problems.push(`${qbs.length} QBs`);
+  for (const q of qbs) {
+    const partners = players.filter((p) => p.position !== "QB");
+    if (settings.stackQb && !partners.some((p) => p.team === q.team)) problems.push(`${q.name} has no teammate`);
+    if (settings.bringBack && !partners.some((p) => p.game === q.game && p.team !== q.team)) problems.push(`${q.name} has no bring-back`);
+  }
+  return problems;
 }
 
 /** DraftKings upload rows: one per lineup, IDs in slot order. */

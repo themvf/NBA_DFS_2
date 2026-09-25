@@ -26,7 +26,8 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
   const [pending, startTransition] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const [settings, setSettings] = useState({ nLineups: DEFAULT_CFB_SETTINGS.nLineups, maxExposurePct: 70, minUnique: 2, randomnessPct: 18, minSalary: 45000 });
+  const [settings, setSettings] = useState({ nLineups: DEFAULT_CFB_SETTINGS.nLineups, maxExposurePct: 70, minUnique: 2, randomnessPct: 18, minSalary: 45000,
+    requireTwoQbs: false, stackQb: false, bringBack: false });
   const [locked, setLocked] = useState<number[]>([]);
   const [excluded, setExcluded] = useState<number[]>([]);
   const [maxById, setMaxById] = useState<Record<string, number>>({});
@@ -95,6 +96,7 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
         const result = await generateCfbLineups(uploadId, {
           nLineups: settings.nLineups, maxExposure: settings.maxExposurePct / 100, minUnique: settings.minUnique,
           randomness: settings.randomnessPct / 100, minSalary: settings.minSalary, lockedIds: locked, excludedIds: excluded, maxExposureById: maxById,
+          requireTwoQbs: settings.requireTwoQbs, stackQb: settings.stackQb, bringBack: settings.bringBack,
         });
         setLineups(result.lineups); setRunId(result.runId);
         setWorkspace(await loadCfbWorkspace(uploadId));
@@ -231,7 +233,9 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
         <aside className="space-y-4">
           <section className="rounded-xl border bg-white p-4 shadow-sm">
             <h2 className="font-bold">Build lineups</h2>
-            <p className="mt-1 text-xs text-slate-600">{settings.nLineups} lineups · max {settings.maxExposurePct}% · {locked.length} locked · {excluded.length} out</p>
+            <p className="mt-1 text-xs text-slate-600">{settings.nLineups} lineups · max {settings.maxExposurePct}% · {locked.length} locked · {excluded.length} out{[
+              settings.requireTwoQbs ? "2 QBs" : null, settings.stackQb ? "QB stacks" : null, settings.bringBack ? "bring-backs" : null,
+            ].filter(Boolean).map((t) => ` · ${t}`).join("")}</p>
             <button disabled={pending} onClick={generate} className="mt-3 min-h-11 w-full rounded-lg bg-emerald-700 text-sm font-bold text-white disabled:opacity-40">{pending ? "Working…" : "Generate & save"}</button>
             <div className="mt-4 grid grid-cols-2 gap-2 text-xs font-semibold text-slate-600">
               <label>Lineups<input type="number" min={1} max={150} value={settings.nLineups} onChange={(e) => setSettings({ ...settings, nLineups: Number(e.target.value) })} className="mt-1 h-9 w-full rounded border px-2" /></label>
@@ -240,6 +244,15 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
               <label>Randomness %<input type="number" min={0} max={50} value={settings.randomnessPct} onChange={(e) => setSettings({ ...settings, randomnessPct: Number(e.target.value) })} className="mt-1 h-9 w-full rounded border px-2" /></label>
               <label className="col-span-2">Min salary used<input type="number" step={500} value={settings.minSalary} onChange={(e) => setSettings({ ...settings, minSalary: Number(e.target.value) })} className="mt-1 h-9 w-full rounded border px-2" /></label>
             </div>
+            <fieldset className="mt-4 space-y-2 rounded-lg border bg-slate-50 p-3 text-xs">
+              <legend className="px-1 font-bold text-slate-700">Tournament rules</legend>
+              <label className="flex items-start gap-2"><input type="checkbox" className="mt-0.5" checked={settings.requireTwoQbs} onChange={(e) => setSettings({ ...settings, requireTwoQbs: e.target.checked })} />
+                <span><b>Require 2 QBs</b><span className="block text-slate-500">The SUPER FLEX always goes to a second QB.</span></span></label>
+              <label className="flex items-start gap-2"><input type="checkbox" className="mt-0.5" checked={settings.stackQb} onChange={(e) => setSettings({ ...settings, stackQb: e.target.checked })} />
+                <span><b>Stack each QB</b><span className="block text-slate-500">Every QB comes with at least one of his own WRs or RBs.</span></span></label>
+              <label className="flex items-start gap-2"><input type="checkbox" className="mt-0.5" checked={settings.bringBack} onChange={(e) => setSettings({ ...settings, bringBack: e.target.checked })} />
+                <span><b>Bring-back</b><span className="block text-slate-500">Every QB also comes with a WR or RB from the team he is playing.</span></span></label>
+            </fieldset>
           </section>
           {workspace.runs.length ? <section className="rounded-xl border bg-white p-4 shadow-sm">
             <h2 className="font-bold">Saved lineup sets</h2>
