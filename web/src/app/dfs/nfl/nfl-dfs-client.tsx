@@ -214,6 +214,9 @@ export default function NflDfsClient() {
       setSavedSlates(saved); setLibraryLoading(false);
       let remembered: string | null = null;
       try { remembered = localStorage.getItem('nfl-saved-slate'); } catch { /* Use latest. */ }
+      const linked = new URLSearchParams(window.location.search).get('upload');
+      // A linked upload can be an older copy the de-duplicated list hides.
+      if (linked && /^[0-9a-f-]{36}$/.test(linked)) { openSaved(linked); return; }
       const selected = saved.find(s => s.uploadId === remembered) ?? saved[0];
       if (selected) openSaved(selected.uploadId);
     }).catch(() => { if (!canceled) { setLibraryLoading(false); setError('Saved slates could not be listed. Retry or upload a salary file.'); } });
@@ -332,6 +335,7 @@ export default function NflDfsClient() {
         <input ref={salaryRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => loadSalary(e.target.files?.[0] ?? null)} />
         <button disabled={pending} onClick={() => salaryRef.current?.click()} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-bold text-white disabled:opacity-50"><FileUp className="h-4 w-4" />Upload salaries</button>
         <a href={`/dfs/nfl/research${slate ? `?upload=${slate.uploadId}` : ""}`} className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 text-sm font-semibold">Research tools</a>
+        <a href="/dfs/nfl/results" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 text-sm font-semibold">Results history</a>
       </div>
     </header>
     {message ? <Notice good>{message}</Notice> : null}{error ? <Notice>{error}</Notice> : null}
