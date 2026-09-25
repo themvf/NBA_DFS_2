@@ -30,6 +30,8 @@
  * than the people who beat us. Nothing here belongs in a lineup objective.
  */
 
+import { buildScoreCurve, type ScoreCurve } from "./slate-results";
+
 export const FIELD_AUDIT_VERSION = "nfl-dfs-field-audit-v1";
 
 /** Below this share of entries, the field ignored him. Nacua landed at 0.64%. */
@@ -76,6 +78,8 @@ export interface FieldPlayer {
 export interface ParsedContest {
   players: FieldPlayer[];
   entryCount: number;
+  /** Rank -> score, compact. Lets the Results step rank a saved lineup. */
+  scoreCurve: ScoreCurve;
   winningScore: number | null;
   medianScore: number | null;
   minScore: number | null;
@@ -169,6 +173,7 @@ export function parseContestExport(content: string): ParsedContest {
   return {
     players,
     entryCount,
+    scoreCurve: buildScoreCurve(scores),
     winningScore: scores[0] ?? null,
     medianScore: scores[Math.floor(scores.length / 2)] ?? null,
     minScore: scores[scores.length - 1] ?? null,

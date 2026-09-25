@@ -2563,6 +2563,15 @@ TABLES = [
     )""",
     """CREATE INDEX IF NOT EXISTS idx_nfl_dfs_field_ownership_name
         ON nfl_dfs_field_ownership (normalized_name)""",
+    # Rank -> score curve of the whole contest, for ranking saved lineups
+    # (web/src/lib/nfl-dfs/slate-results.ts). Guarded so it takes no lock when
+    # the column already exists.
+    """DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'nfl_dfs_field_contests' AND column_name = 'score_curve') THEN
+            ALTER TABLE nfl_dfs_field_contests ADD COLUMN score_curve JSONB;
+        END IF;
+    END $$""",
 
     # ── DraftKings' own live player pool ─────────────────────────────────────
     #
