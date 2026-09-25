@@ -1085,6 +1085,10 @@ def _notify(alerts: list[dict]) -> None:
 
 def scan(db: DatabaseManager, sport: str) -> int:
     """Detect breaches on UPCOMING games' latest captures. Returns new alerts."""
+    cfb_funnel = None
+    if sport == "cfb" and getattr(db, "database_url", None):
+        from model.cfb_moneyline_funnel import MoneylineFunnelCollector
+        cfb_funnel = MoneylineFunnelCollector(db.database_url)
     matchup_tbl = _MATCHUP_TBL[sport]
     tennis_fields = ("m.tour, m.tournament, te.surface" if sport == "tennis"
                      else "NULL::text AS tour, NULL::text AS tournament, NULL::text AS surface")
@@ -1110,6 +1114,9 @@ def scan(db: DatabaseManager, sport: str) -> int:
     )
     new_alerts: list[dict] = []
     for r in rows:
+        if cfb_funnel is not None:
+            cfb_funnel.begin_event(r)
+            r["cfb_funnel"] = cfb_funnel
         r["movement_candidates"] = []
         if sport in ("mlb", "tennis", "cfb", "nfl"):
             r["books"] = selected_books(r["books"])
@@ -1141,6 +1148,10 @@ def scan(db: DatabaseManager, sport: str) -> int:
                                 sport, books, market="moneyline", side=side),
                         }),
                     ))
+        if cfb_funnel is not None:
+            for side in ("home", "away"):
+                if not pin or _book_fair_side(pin, side) is None or _retail_fair_side(books, side) is None:
+                    cfb_funnel.reject(r, "pinnacle_divergence", side, "missing_required_fields")
         # ── Pinnacle vs Polymarket disagreement ──
         for signal in _pinnacle_polymarket_signals(books):
             new_alerts.extend(_insert(
@@ -1180,6 +1191,12 @@ def scan(db: DatabaseManager, sport: str) -> int:
                                if sport == "tennis" else {}),
                         },
                     ))
+        if cfb_funnel is not None:
+            for side in ("home", "away"):
+                if not pin or not dk or _dk_value_ev(pin, dk, side) is None or _dk_side_odds(dk, side) is None:
+                    cfb_funnel.reject(r, "dk_value", side, "missing_required_fields")
+                elif american_to_decimal(_dk_side_odds(dk, side)) >= _DK_VALUE_MAX_DECIMAL:
+                    cfb_funnel.reject(r, "dk_value", side, "invalid_quote")
         # ── Steam (needs the previous capture) ──
         prev = db.execute_one(
             """
@@ -1219,6 +1236,16 @@ def scan(db: DatabaseManager, sport: str) -> int:
                                  **_freeze_game_price(sport, books, market="moneyline",
                                                       side=side)},
                     ))
+        if cfb_funnel is not None:
+            for side in ("home", "away"):
+                if not prev or not prev.get("books"):
+                    cfb_funnel.reject(r, "steam", side, "missing_endpoint")
+                else:
+                    common = set(prev["books"]) & set(books)
+                    comparable = sum(_book_fair_side(prev["books"][book], side) is not None
+                                     and _book_fair_side(books[book], side) is not None for book in common)
+                    if comparable < _STEAM_MIN_BOOKS:
+                        cfb_funnel.reject(r, "steam", side, "insufficient_book_intersection")
         # ── Walking (slow consensus drift >= _WALK_MIN_PP toward a side since
         #    OPEN — the first capture of this fixture, not the previous one). ──
         first = db.execute_one(
@@ -1271,6 +1298,14 @@ def scan(db: DatabaseManager, sport: str) -> int:
                         alert_prob=p_now, sharp_prob=pin_p,
                         details=walking_details,
                     ))
+        if cfb_funnel is not None:
+            for side in ("home", "away"):
+                if not first or not first.get("books"):
+                    cfb_funnel.reject(r, "walking", side, "missing_endpoint")
+                else:
+                    start, end, _ = _comparable_retail_probabilities(first["books"], books, side)
+                    if start is None or end is None:
+                        cfb_funnel.reject(r, "walking", side, "insufficient_book_intersection")
         structure_history = None
         if sport in ("tennis", "cfb", "nfl"):
             structure_history = db.execute(
@@ -1310,6 +1345,9 @@ def scan(db: DatabaseManager, sport: str) -> int:
                     alert_type=signal["alert_type"], side=side,
                     alert_prob=retail, sharp_prob=pin_prob, details=details,
                 ))
+            if cfb_funnel is not None and len(structure_history) < 2:
+                for side in ("home", "away"):
+                    cfb_funnel.reject(r, "late_move", side, "missing_endpoint")
 
         if sport == "nfl":
             previous_books = prev["books"] if prev and prev.get("books") else None
@@ -1384,6 +1422,8 @@ def scan(db: DatabaseManager, sport: str) -> int:
         if sport in ("nfl", "cfb", "tennis"):
             from model.signal_observations import record_observations
             record_observations(db, sport, r)
+    if cfb_funnel is not None:
+        print(f"CFB moneyline detector funnel: {cfb_funnel.persist()}")
     if new_alerts:
         print(f"Line alerts ({sport}): {len(new_alerts)} new — "
               + ", ".join(f"{a['alert_type']}:{a['matchup']}/{a['side']}" for a in new_alerts))
@@ -1504,6 +1544,8 @@ def _insert(db, *, sport, r, label, alert_type, side, alert_prob, sharp_prob, de
          details.get("previous_history_id"), details.get("opening_history_id"),
          f"{alert_type}:{side}"),
     )
+    if sport == "cfb" and r.get("cfb_funnel") is not None:
+        r["cfb_funnel"].match(r, alert_type, side, inserted=bool(rows))
     if not rows:
         return []
     return [{"sport": sport, "matchup": label, "alert_type": alert_type,
