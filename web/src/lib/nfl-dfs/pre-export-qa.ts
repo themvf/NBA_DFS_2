@@ -10,7 +10,9 @@
  * Pure and deterministic: given the same run inputs it returns the same report.
  */
 
-export const NFL_QA_RULESET_VERSION = "nfl-gpp-qa-v1";
+import { assertShowdownLineup, type ShowdownPlayer } from './showdown-legality';
+
+export const NFL_QA_RULESET_VERSION = "nfl-gpp-qa-v2-showdown-legality";
 
 export type QaSeverity = "blocker" | "warning" | "info";
 export type QaDecision = "ready" | "ready_with_warnings" | "blocked";
@@ -54,7 +56,7 @@ export interface QaInput {
     lineupNumber: number;
     playerIds: number[];
     totalSalary: number;
-    slots: Array<{ slot: string; playerId: number }>;
+    slots: Array<{ slot: string; playerId: number; salary?: number; player?: ShowdownPlayer }>;
     archetype?: { id: string; label: string; fadedPlayerIds: number[]; beneficiariesSatisfied: string[] } | null;
   }>;
   eligibility?: Array<{ dkPlayerId: number; name: string; eligible: boolean; reasonCode: string | null; overridden: boolean }>;
@@ -112,9 +114,22 @@ export function runNflPreExportQa(input: QaInput, overrides: QaOverride[] = []):
   }
 
   // --- Illegal roster or salary (blocker, never overridable) ---
-  const illegal = input.lineups.filter((l) => l.playerIds.length !== rosterSize || new Set(l.playerIds).size !== rosterSize || l.totalSalary > 50000);
+  const illegal = input.lineups.filter((l) => {
+    if (l.playerIds.length !== rosterSize || new Set(l.playerIds).size !== rosterSize || !Number.isFinite(l.totalSalary) || l.totalSalary <= 0 || l.totalSalary > 50000) return true;
+    if (l.slots.length !== rosterSize || new Set(l.slots.map(s => s.playerId)).size !== rosterSize || l.slots.some(s => !l.playerIds.includes(s.playerId))) return true;
+    if (input.format === 'showdown' && (l.slots[0].slot !== 'CPT' || l.slots.slice(1).some(s => !/^FLEX[1-5]?$/.test(s.slot)))) return true;
+    if (input.format === 'showdown' && l.slots.some(s => s.player !== undefined)) {
+      try {
+        assertShowdownLineup({ ...l, slots: l.slots.map(s => {
+          if (!s.player || s.salary === undefined) throw new Error('Missing slot salary data.');
+          return { slot: s.slot, salary: s.salary, player: s.player };
+        }) });
+      } catch { return true; }
+    }
+    return false;
+  });
   add({ id: "legal_roster", title: "Legal roster and salary", severity: "blocker", passed: illegal.length === 0,
-    detail: illegal.length ? `${illegal.length} lineup(s) have an illegal roster size, duplicate player, or salary over the cap.` : "All lineups are legal.",
+    detail: illegal.length ? `${illegal.length} lineup(s) have invalid roster slots, player eligibility, game composition, or salary. Regenerate before exporting.` : "All lineups are legal.",
     affected: illegal.map((l) => l.lineupNumber) });
 
   // --- Ineligible / inactive players in lineups (blocker) ---

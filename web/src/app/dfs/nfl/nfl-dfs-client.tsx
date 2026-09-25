@@ -143,7 +143,7 @@ export default function NflDfsClient() {
     return runNflPreExportQa({
       format: (completedSettings?.format ?? slate?.format ?? "showdown") as "classic" | "showdown",
       requestedLineups: completedSettings?.nLineups ?? lineups.length,
-      lineups: lineups.map((l) => ({ lineupNumber: l.lineupNumber, playerIds: l.playerIds, totalSalary: l.totalSalary, slots: l.slots.map((s) => ({ slot: s.slot, playerId: s.player.dkPlayerId })), archetype: l.archetype ?? null })),
+      lineups: lineups.map((l) => ({ lineupNumber: l.lineupNumber, playerIds: l.playerIds, totalSalary: l.totalSalary, slots: l.slots.map((s) => ({ slot: s.slot, playerId: s.player.dkPlayerId, salary: s.salary, player: s.player })), archetype: l.archetype ?? null })),
       eligibility: eligibility.map((e) => ({ dkPlayerId: e.dkPlayerId, name: e.name, eligible: e.eligible, reasonCode: e.reasonCode, overridden: e.overridden })),
       exposureReport,
       salaryBandReport: salaryBands,

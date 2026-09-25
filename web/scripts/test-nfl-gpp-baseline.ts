@@ -104,7 +104,7 @@ function main() {
   const build = nflBuildInfo();
   assert.ok(build.commitSha.length > 0, "commit SHA must be present");
   assert.equal(build.settingsSchemaVersion, "nfl_gpp_portfolio_v1");
-  assert.equal(build.optimizerVersion, "nfl-dfs-ilp-v6-punt-policy");
+  assert.equal(build.optimizerVersion, "nfl-dfs-ilp-v7-showdown-legality");
   assert.equal(build.scorerVersion, "nfl-dk-scenario-v1");
   assert.ok(["unknown"].includes(build.buildTime) || Number.isFinite(Date.parse(build.buildTime)),
     "build time is either a real ISO timestamp or the honest 'unknown' sentinel");
