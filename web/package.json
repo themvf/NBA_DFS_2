@@ -103,7 +103,8 @@
     "test:nfl-live-dk-status": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-live-dk-status.ts",
     "test:nfl-dk-pool-cadence": "node --import tsx ./scripts/test-nfl-dk-pool-cadence.ts",
     "test:nfl-chalk-leverage": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-chalk-leverage.ts",
-    "test:nfl-workspace-stage": "node --import tsx ./scripts/test-nfl-workspace-stage.ts"
+    "test:nfl-workspace-stage": "node --import tsx ./scripts/test-nfl-workspace-stage.ts",
+    "test:nfl-build-form": "node --import tsx ./scripts/test-nfl-build-form.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",
