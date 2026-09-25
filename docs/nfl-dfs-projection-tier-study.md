@@ -103,3 +103,43 @@ The intent is unchanged (a projection's history must not include the slate's
 own games). The implementation now keeps a run when
 `(history_cutoff_season, history_cutoff_week) <= (season, week)` and drops it
 only when the cutoff is after the slate week. Nothing else changes.
+
+## Result (2026-09-25): NOT CONFIRMED
+
+`python -m model.nfl_dfs_projection_tier_study`. 98 report cards, 1,293
+eligible player-games across weeks 1-3 of 2026.
+
+**Primary** (`hist_6_plus`, n=782 player-games, 27 games): calibration slope
+**0.923, 95% [0.792, 1.068]**. The interval contains 1.0, and the point
+estimate is below it. The model does not compress established players.
+
+Descriptive only (no verdicts):
+
+| Projection tier | n | actual − projected | 95% |
+|---|---:|---:|---|
+| 18+ | 46 | −0.2 | [−3.9, +3.8] |
+| 12–18 | 116 | −3.4 | [−5.2, −1.6] |
+| 6–12 | 240 | −1.9 | [−2.6, −1.0] |
+| under 6 | 380 | −0.9 | [−1.2, −0.6] |
+
+The top tier is not under-projected. The middle tiers are projected too
+**high**, which is the opposite of the motivating hypothesis.
+
+| Position | n | slope | 95% |
+|---|---:|---:|---|
+| QB | 110 | 1.279 | [1.021, 1.550] |
+| RB | 170 | 1.037 | [0.839, 1.241] |
+| WR | 281 | 0.930 | [0.725, 1.155] |
+| TE | 161 | 0.846 | [0.575, 1.099] |
+| DST | 54 | 0.420 | [−0.503, 1.248] |
+
+All non-out cohorts together: slope 0.776 [0.661, 0.900], below 1, the
+signature of the short-history priors projecting backups too high (already the
+subject of the zero-history prior study).
+
+**Reading.** The Thursday observation that motivated this (stars under, lineups
+beating projection by ~25) was one high-scoring game, not a model-wide
+compression. The QB slope is the one cell whose interval excludes 1.0; it is one
+of eight descriptive cells, found rather than predicted, and does not license a
+change. It is a candidate for its own registration if it persists as more weeks
+are graded. Per the registration, no model change follows from this study.

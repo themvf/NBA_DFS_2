@@ -7046,3 +7046,24 @@ QB −14.0, RB −5.9, WR −5.2, TE −4.7. Rows the slate marked OUT still car
 their stored projection (zeroing happens only in the web read layer), so
 they are their own cohort and excluded from accuracy cells.
 `python -m ingest.nfl_dfs_slate_reportcard --pooled`.
+
+---
+
+## NFL DFS — Projection Compression Study: NOT CONFIRMED (2026-09-25)
+
+Pre-registered in `docs/nfl-dfs-projection-tier-study.md`, run by
+`model/nfl_dfs_projection_tier_study.py` over the slate report cards (weeks 1-3,
+1,293 eligible player-games, leakage-guarded on the projection run's history
+cutoff, one row per player-game). Primary: calibration slope of actual on
+projected for `hist_6_plus`, **0.923 [0.792, 1.068]** (n=782, 27 games,
+game-clustered bootstrap). The model does not compress established players; the
+12-18 and 6-12 tiers are, descriptively, projected too HIGH. The Thursday
+ATL@GB "stars under-projected" pattern that prompted it was one game.
+
+`history_cutoff_week` on `nfl_dfs_projection_runs` is **exclusive**:
+`_history` reads weeks strictly before it, so a run with cutoff week N is valid
+for a week-N slate. The study's first run treated it as inclusive and dropped
+every row; recorded as Amendment 1 before any outcome was seen.
+
+QB slope 1.279 [1.021, 1.550] is one of eight descriptive cells and licenses
+nothing on its own; register it separately if it persists.
