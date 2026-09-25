@@ -148,8 +148,10 @@ export interface SetSummary {
   averageProjected: number | null;
   /** Lineups that scored above the contest median. */
   aboveMedian: number;
-  /** Lineups that beat at least 80% of the field. */
+  /** Lineups that beat at least 80% of the field, out of `ranked`. */
   topFifth: number;
+  /** Lineups with a known rank; 0 when the contest was imported without a score curve. */
+  ranked: number;
   captains: CaptainSummary[];
 }
 
@@ -178,6 +180,7 @@ export function summarizeSet(lineups: readonly RankedLineup[], medianScore: numb
     averageProjected: mean(lineups.map((l) => l.projected)),
     aboveMedian: scored.reduce((n, l) => n + above(l.actual), 0),
     topFifth: scored.filter((l) => l.beatShare != null && l.beatShare >= 0.8).length,
+    ranked: scored.filter((l) => l.beatShare != null).length,
     captains: [...byCaptain].map(([captain, scores]) => ({
       captain, lineups: scores.length, average: mean(scores) ?? 0, best: round2(Math.max(...scores)),
       aboveMedian: scores.reduce((n, s) => n + above(s), 0),

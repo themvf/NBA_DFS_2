@@ -73,7 +73,10 @@ export default function ResultsStep({ uploadId, runId, lineupCount, locked, pool
       </section>
 
       {results.sets?.length ? <section className="rounded-xl border bg-white p-4 shadow-sm">
-        <h2 className="font-bold">Compare lineup sets</h2>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="font-bold">Compare lineup sets</h2>
+          <a href="/dfs/nfl/results" className="text-sm font-semibold text-blue-700 underline">Results across all slates</a>
+        </div>
         <p className="mt-1 text-xs text-slate-500">
           Every set you built for this slate, scored against the same contest. Median {fmt(results.contest.medianScore)};
           top 20% means beating at least 80% of the {results.contest.entryCount.toLocaleString()} entries.
@@ -96,7 +99,7 @@ export default function ResultsStep({ uploadId, runId, lineupCount, locked, pool
               <td className="p-2 text-right">{fmt(set.averageActual)}</td>
               <td className="p-2 text-right text-slate-500">{fmt(set.averageProjected)}</td>
               <td className="p-2 text-right">{set.scored ? `${set.aboveMedian}/${set.scored}` : "—"}</td>
-              <td className="p-2 text-right">{set.scored ? `${set.topFifth}/${set.scored}` : "—"}</td>
+              <td className="p-2 text-right">{set.ranked ? `${set.topFifth}/${set.ranked}` : "—"}</td>
             </tr>)}</tbody>
           </table>
         </div>

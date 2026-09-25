@@ -36,6 +36,7 @@ import { prepareProjectionAudits, validateSituations, type SituationTeam } from 
 import { loadSituationContext } from '@/lib/nfl-dfs/situation-context';
 import { canonicalAuditJson } from '@/lib/nfl-dfs/audit-json';
 import { auditSlate, normalizeName as normalizeFieldName, type FieldAudit } from '@/lib/nfl-dfs/field-audit';
+import type { HistorySlate } from '@/lib/nfl-dfs/results-history';
 import { estimateRank, projectionError, scoreLineups, summarizeSet, type PositionError, type ScoreCurve, type ScoredLineup, type SetSummary } from '@/lib/nfl-dfs/slate-results';
 import { parseDkGameInfoKickoff } from '@/lib/nfl-dfs/workspace-stage';
 import { readWorkloadProjection, workloadPoolEligible, type WorkloadReport } from "@/lib/nfl-dfs/workload-projection";
@@ -1165,8 +1166,12 @@ const MAX_COMPARED_SETS = 12;
  * slate. Null when no contest has been imported yet -- the Results step then
  * asks for the standings file instead of showing empty numbers.
  */
-export async function readNflSlateResults(uploadId: string, runId: string | null): Promise<NflSlateResults | null> {
-  await ensureNflDfsTables();
+/**
+ * The latest contest imported for a slate, and every saved lineup set for that
+ * slate scored against it. Shared by the Results step and Results history so
+ * the two can never score the same set differently.
+ */
+async function scoreSlateContest(uploadId: string, extraRunId: string | null) {
   const contests = await db.execute(sql`
     SELECT contest_id, entry_count, winning_score, median_score, imported_at, score_curve
     FROM nfl_dfs_field_contests WHERE slate_upload_id = ${uploadId}
@@ -1174,20 +1179,21 @@ export async function readNflSlateResults(uploadId: string, runId: string | null
   const contest = (contests.rows ?? contests)[0] as Record<string, unknown> | undefined;
   if (!contest) return null;
   const owned = await db.execute(sql`
-    SELECT normalized_name, fpts FROM nfl_dfs_field_ownership
-    WHERE contest_id = ${contest.contest_id as string} AND fpts IS NOT NULL`);
-  const fptsByName = new Map(((owned.rows ?? owned) as Array<Record<string, unknown>>)
+    SELECT normalized_name, fpts, drafted_by_slot FROM nfl_dfs_field_ownership
+    WHERE contest_id = ${contest.contest_id as string}`);
+  const ownedRows = (owned.rows ?? owned) as Array<Record<string, unknown>>;
+  const fptsByName = new Map(ownedRows.filter((r) => r.fpts != null)
     .map((r) => [String(r.normalized_name), Number(r.fpts)] as const));
+  // The field's CPT ownership, for grouping captains by how chalky they were.
+  const captainPctByName = new Map(ownedRows.flatMap((r) => {
+    const slots = (typeof r.drafted_by_slot === "string" ? JSON.parse(r.drafted_by_slot) : r.drafted_by_slot) as Record<string, number> | null;
+    return slots?.CPT == null ? [] : [[String(r.normalized_name), Number(slots.CPT)] as const];
+  }));
   const entryCount = Number(contest.entry_count);
   const curve = (Array.isArray(contest.score_curve) ? contest.score_curve
     : contest.score_curve ? JSON.parse(String(contest.score_curve)) : []) as ScoreCurve;
-
-  const slatePlayers = await db.select().from(nflDfsSlatePlayers).where(eq(nflDfsSlatePlayers.uploadId, uploadId));
-  const positionError = projectionError(slatePlayers.map((p) => ({
-    name: p.name, position: p.position, ourProj: numeric(p.ourProj), isOut: p.isOut,
-  })), fptsByName, normalizeFieldName);
-
   const medianScore = contest.median_score == null ? null : Number(contest.median_score);
+
   const scoreRun = async (id: string) => {
     const saved = await loadSavedNflLineups(uploadId, id);
     const ranked = scoreLineups(saved.lineups.map((l) => ({
@@ -1195,17 +1201,18 @@ export async function readNflSlateResults(uploadId: string, runId: string | null
       slots: l.slots.map((s) => ({ slot: s.slot, name: s.player.name, multiplier: s.multiplier, projection: s.projection })),
     })), fptsByName, normalizeFieldName).map((l) => {
       const placed = l.actual == null ? null : estimateRank(l.actual, curve, entryCount);
-      return { ...l, rank: placed?.rank ?? null, beatShare: placed?.beatShare ?? null, exactRank: placed?.exact ?? false };
+      return { ...l, rank: placed?.rank ?? null, beatShare: placed?.beatShare ?? null, exactRank: placed?.exact ?? false,
+        captainFieldPct: l.captain ? captainPctByName.get(normalizeFieldName(l.captain)) ?? null : null };
     });
-    return { ranked, planMode: (saved.settings as { archetypeMode?: string }).archetypeMode ?? null };
+    const fingerprint = sha256(saved.lineups
+      .map((l) => l.slots.map((s) => `${s.slot}:${s.player.dkPlayerId}`).sort().join(","))
+      .sort().join("|"));
+    return { ranked, fingerprint, planMode: (saved.settings as { archetypeMode?: string }).archetypeMode ?? null };
   };
 
   const runs = (await slateRuns(uploadId)).slice(0, MAX_COMPARED_SETS);
-  const ids = [...new Set([...runs.map((run) => run.runId), ...(runId ? [runId] : [])])];
+  const ids = [...new Set([...runs.map((run) => run.runId), ...(extraRunId ? [extraRunId] : [])])];
   const scoredRuns = new Map(await Promise.all(ids.map(async (id) => [id, await scoreRun(id)] as const)));
-
-  const lineups = runId ? scoredRuns.get(runId)!.ranked : [];
-  const current = summarizeSet(lineups, medianScore);
   return {
     contest: {
       contestId: String(contest.contest_id), entryCount,
@@ -1213,6 +1220,25 @@ export async function readNflSlateResults(uploadId: string, runId: string | null
       medianScore,
       importedAt: new Date(String(contest.imported_at)).toISOString(),
     },
+    curve, fptsByName, runs, scoredRuns,
+  };
+}
+
+export async function readNflSlateResults(uploadId: string, runId: string | null): Promise<NflSlateResults | null> {
+  await ensureNflDfsTables();
+  const scored = await scoreSlateContest(uploadId, runId);
+  if (!scored) return null;
+  const { contest, curve, fptsByName, runs, scoredRuns } = scored;
+
+  const slatePlayers = await db.select().from(nflDfsSlatePlayers).where(eq(nflDfsSlatePlayers.uploadId, uploadId));
+  const positionError = projectionError(slatePlayers.map((p) => ({
+    name: p.name, position: p.position, ourProj: numeric(p.ourProj), isOut: p.isOut,
+  })), fptsByName, normalizeFieldName);
+
+  const lineups = runId ? scoredRuns.get(runId)!.ranked : [];
+  const current = summarizeSet(lineups, contest.medianScore);
+  return {
+    contest,
     runId,
     lineups,
     best: current.best,
@@ -1221,9 +1247,51 @@ export async function readNflSlateResults(uploadId: string, runId: string | null
     positionError,
     rankAvailable: curve.length > 0,
     sets: runs.map((run) => ({ runId: run.runId, createdAt: run.createdAt, mode: run.mode, source: run.source,
-      planMode: scoredRuns.get(run.runId)!.planMode, ...summarizeSet(scoredRuns.get(run.runId)!.ranked, medianScore) })),
+      planMode: scoredRuns.get(run.runId)!.planMode, ...summarizeSet(scoredRuns.get(run.runId)!.ranked, contest.medianScore) })),
     captains: current.captains,
   };
+}
+
+/**
+ * Every slate with an imported contest, each saved lineup set scored against
+ * it, newest slate first. The input to the Results history page.
+ */
+export async function readNflResultsHistory(): Promise<HistorySlate[]> {
+  await ensureNflDfsTables();
+  const contestSlates = await db.execute(sql`
+    SELECT DISTINCT ON (c.slate_upload_id) c.slate_upload_id, c.format, c.imported_at, u.games,
+      (SELECT min(game_info) FROM nfl_dfs_slate_players p WHERE p.upload_id = c.slate_upload_id) AS game_info,
+      (SELECT array_agg(DISTINCT game_info) FROM nfl_dfs_slate_players p WHERE p.upload_id = c.slate_upload_id) AS game_infos
+    FROM nfl_dfs_field_contests c
+    JOIN nfl_dfs_slate_uploads u ON u.upload_id = c.slate_upload_id
+    WHERE c.slate_upload_id IS NOT NULL
+    ORDER BY c.slate_upload_id, c.imported_at DESC`);
+  const rows = (contestSlates.rows ?? contestSlates) as Array<Record<string, unknown>>;
+  const slates = await Promise.all(rows.map(async (row): Promise<HistorySlate | null> => {
+    const uploadId = String(row.slate_upload_id);
+    const scored = await scoreSlateContest(uploadId, null);
+    if (!scored) return null;
+    const format = row.format === "showdown" ? "showdown" : "classic";
+    const games = (Array.isArray(row.games) ? row.games : typeof row.games === "string" ? JSON.parse(row.games) : []) as string[];
+    return {
+      uploadId, format,
+      label: savedSlateLabel(format, row.game_info == null ? null : String(row.game_info), games),
+      startsAt: (() => {
+        const kicks = ((row.game_infos ?? []) as Array<string | null>).map((info) => Date.parse(info ? parseDkGameInfoKickoff(info) ?? "" : ""))
+          .filter(Number.isFinite);
+        return kicks.length ? new Date(Math.min(...kicks)).toISOString() : null;
+      })(),
+      contestId: scored.contest.contestId, entryCount: scored.contest.entryCount,
+      medianScore: scored.contest.medianScore, winningScore: scored.contest.winningScore,
+      sets: scored.runs.map((run) => {
+        const result = scored.scoredRuns.get(run.runId)!;
+        return { uploadId, runId: run.runId, createdAt: run.createdAt, planKey: result.planMode ?? "standard",
+          source: run.source, mode: run.mode, fingerprint: result.fingerprint, lineups: result.ranked };
+      }),
+    };
+  }));
+  return slates.filter((slate): slate is HistorySlate => slate != null)
+    .sort((a, b) => (b.startsAt ?? "").localeCompare(a.startsAt ?? ""));
 }
 
 /** The most recent contest imported for this slate, if any. */
