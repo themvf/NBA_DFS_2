@@ -35,8 +35,11 @@ def eligible_rows(reports: list[dict], runs: dict[str, dict]) -> list[dict]:
         if not run or run.get("history_cutoff_season") is None or run.get("history_cutoff_week") is None:
             continue
         slate = (int(report["season"]), int(report["week"]))
-        if (int(run["history_cutoff_season"]), int(run["history_cutoff_week"])) >= slate:
-            continue  # the run's history can include this slate's games
+        # The cutoff is exclusive: _history reads weeks strictly before it
+        # (ingest/nfl_dfs_projections.py), so a cutoff after the slate's week
+        # is the only way the run could have seen the slate's games.
+        if (int(run["history_cutoff_season"]), int(run["history_cutoff_week"])) > slate:
+            continue
         for row in report.get("rows") or []:
             if row.get("cohort") == "out" or row.get("projected") is None or row.get("actual") is None:
                 continue

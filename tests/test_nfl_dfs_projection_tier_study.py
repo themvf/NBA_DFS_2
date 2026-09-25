@@ -12,7 +12,7 @@ def _row(pid, game, projected, actual, cohort="hist_6_plus", position="WR"):
 def test_leakage_guard_and_latest_eligible_run():
     runs = {"early": {"history_cutoff_season": 2026, "history_cutoff_week": 2, "as_of_at": "2026-09-20T10:00:00"},
             "later": {"history_cutoff_season": 2026, "history_cutoff_week": 2, "as_of_at": "2026-09-24T10:00:00"},
-            "leaky": {"history_cutoff_season": 2026, "history_cutoff_week": 3, "as_of_at": "2026-09-28T10:00:00"}}
+            "leaky": {"history_cutoff_season": 2026, "history_cutoff_week": 4, "as_of_at": "2026-09-28T10:00:00"}}
     reports = [
         {"season": 2026, "week": 3, "projection_run_id": "early", "rows": [_row("a", "ATL@GB", 10, 12)]},
         {"season": 2026, "week": 3, "projection_run_id": "later", "rows": [_row("a", "ATL@GB", 11, 12)]},
@@ -23,8 +23,15 @@ def test_leakage_guard_and_latest_eligible_run():
     assert rows[0]["projected"] == 11, "the latest eligible run wins"
 
 
+def test_cutoff_is_exclusive():
+    """A run with cutoff week 3 used weeks 1-2 only, so it is valid for week 3."""
+    runs = {"r": {"history_cutoff_season": 2026, "history_cutoff_week": 3, "as_of_at": "x"}}
+    reports = [{"season": 2026, "week": 3, "projection_run_id": "r", "rows": [_row("a", "g", 10, 12)]}]
+    assert len(study.eligible_rows(reports, runs)) == 1
+
+
 def test_out_and_nonpositive_rows_excluded():
-    runs = {"r": {"history_cutoff_season": 2026, "history_cutoff_week": 1, "as_of_at": "x"}}
+    runs = {"r": {"history_cutoff_season": 2026, "history_cutoff_week": 2, "as_of_at": "x"}}
     reports = [{"season": 2026, "week": 2, "projection_run_id": "r", "rows": [
         _row("a", "g", 10, 0, cohort="out"), _row("b", "g", 0, 3), _row("c", "g", None, 3), _row("d", "g", 8, 9)]}]
     assert [r["ff_player_id"] for r in study.eligible_rows(reports, runs)] == ["d"]

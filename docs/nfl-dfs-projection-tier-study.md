@@ -88,3 +88,18 @@ players the shrinkage mechanism is about.
 - Noise in the projections pulls β toward and below 1 (attenuation), so a
   CONFIRMED verdict is conservative in that respect, and NOT CONFIRMED does not
   rule compression out.
+
+## Amendment 1 (2026-09-25, before any outcome was seen)
+
+The leakage guard above says a run is used only if its history cutoff is
+"strictly before" the slate week. That assumed the cutoff names the last week
+included. It does not: `_history` in `ingest/nfl_dfs_projections.py` reads
+weeks strictly **before** `history_cutoff_week`, and a week-1 run built on
+2026-09-03 records cutoff week 1. The first run of the study returned zero
+eligible rows for exactly this reason, and no tier, slope or bias had been
+computed.
+
+The intent is unchanged (a projection's history must not include the slate's
+own games). The implementation now keeps a run when
+`(history_cutoff_season, history_cutoff_week) <= (season, week)` and drops it
+only when the cutoff is after the slate week. Nothing else changes.
