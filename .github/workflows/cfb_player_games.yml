@@ -1,0 +1,47 @@
+name: CFB Player Game Stats
+
+# Manual. Pulls CFBD player box scores a week at a time into
+# cfb_player_game_boxes (raw) and cfb_player_game_stats (DK points).
+# Only request weeks whose games are all final: a live box score would store a
+# partial game as history.
+on:
+  workflow_dispatch:
+    inputs:
+      seasons:
+        description: "Seasons, space separated"
+        required: false
+        default: "2025 2026"
+        type: string
+      weeks:
+        description: "Week range, e.g. 1-16"
+        required: false
+        default: "1-16"
+        type: string
+      last_complete_week_current:
+        description: "For 2026, the last week whose games are all final"
+        required: false
+        default: "3"
+        type: string
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    env:
+      CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Ingest player box scores
+        run: |
+          for season in ${{ inputs.seasons || '2025 2026' }}; do
+            if [ "$season" = "2026" ]; then
+              python -m ingest.cfb_player_games --season 2026 --weeks "1-${{ inputs.last_complete_week_current || '3' }}"
+            else
+              python -m ingest.cfb_player_games --season "$season" --weeks "${{ inputs.weeks || '1-16' }}" --postseason
+            fi
+          done
