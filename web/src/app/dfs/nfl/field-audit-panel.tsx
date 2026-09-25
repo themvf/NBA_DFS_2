@@ -17,7 +17,7 @@ type Contest = { contestId: string; entryCount: number; winningScore: number | n
  * The file is ~64 MB, so it is parsed here in the browser and only the
  * ~850-row ownership summary is sent to the server.
  */
-export default function FieldAuditPanel({ uploadId }: { uploadId: string }) {
+export default function FieldAuditPanel({ uploadId, onImported }: { uploadId: string; onImported?: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [audit, setAudit] = useState<FieldAudit | null>(null);
   const [contest, setContest] = useState<Contest | null>(null);
@@ -52,6 +52,7 @@ export default function FieldAuditPanel({ uploadId }: { uploadId: string }) {
         const contestId = (file.name.match(/contest-standings-(\d+)/)?.[1] ?? file.name.replace(/\.csv$/i, "")).trim();
         const result = await importNflContestResults(uploadId, contestId, parsed, file.name, digest);
         setAudit(result.audit); setContest(result.contest);
+        onImported?.();
         setMessage(`Imported ${result.contest.entryCount.toLocaleString()} entries · ${parsed.players.length} players with ownership · ${Math.round(result.overlap * 100)}% matched this slate.`);
       } catch (reason) {
         setError(reason instanceof Error ? reason.message : "That contest file could not be read.");

@@ -36,6 +36,8 @@ import { prepareProjectionAudits, validateSituations, type SituationTeam } from 
 import { loadSituationContext } from '@/lib/nfl-dfs/situation-context';
 import { canonicalAuditJson } from '@/lib/nfl-dfs/audit-json';
 import { auditSlate, normalizeName as normalizeFieldName, type FieldAudit } from '@/lib/nfl-dfs/field-audit';
+import { estimateRank, projectionError, scoreLineups, type PositionError, type ScoreCurve, type ScoredLineup } from '@/lib/nfl-dfs/slate-results';
+import { parseDkGameInfoKickoff } from '@/lib/nfl-dfs/workspace-stage';
 import { readWorkloadProjection, workloadPoolEligible, type WorkloadReport } from "@/lib/nfl-dfs/workload-projection";
 import { getCalibratedSnapshots } from "@/db/nfl-dfs-calibrated";
 import { readCalibratedProjection, readPositionWorkloadProjection, type CalibrationSnapshot } from "@/lib/nfl-dfs/calibrated-projection";
@@ -103,6 +105,8 @@ export type NflWorkspaceSlate = {
   modelAsOf: string | null;
   refreshAvailable?: boolean;
   refreshMessage?: string | null;
+  /** ISO time of the slate's first kickoff; drives which workspace step opens. */
+  firstKickoff?: string | null;
   format: "classic" | "showdown";
   games: string[];
   teams: string[];
@@ -434,6 +438,11 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
     },
     situationTeams:situations?.teams??[],
     injuryCoverage,
+    firstKickoff: (() => {
+      const times = rows.map((row) => Date.parse(availability(row).kickoff ?? parseDkGameInfoKickoff(row.gameInfo) ?? ""))
+        .filter(Number.isFinite);
+      return times.length ? new Date(Math.min(...times)).toISOString() : null;
+    })(),
     liveDkStatus: {
       applied: liveStatus.applied,
       reason: liveStatus.reason,
@@ -1069,7 +1078,7 @@ export async function importNflContestResults(
   contestId: string,
   parsed: { players: Array<{ name: string; normalizedName: string; draftedPct: number; draftedBySlot: Record<string, number>; fpts: number }>;
             entryCount: number; winningScore: number | null; medianScore: number | null; minScore: number | null;
-            format: "classic" | "showdown" },
+            format: "classic" | "showdown"; scoreCurve?: Array<[number, number]> },
   fileName: string,
   fileDigest: string,
 ): Promise<{ audit: FieldAudit; contest: { contestId: string; entryCount: number; winningScore: number | null; medianScore: number | null; format: string }; overlap: number }> {
@@ -1097,13 +1106,15 @@ export async function importNflContestResults(
 
   await db.execute(sql`
     INSERT INTO nfl_dfs_field_contests (contest_id, contest_name, format, season, week, slate_upload_id,
-      entry_count, winning_score, median_score, min_score, file_name, file_digest)
+      entry_count, winning_score, median_score, min_score, file_name, file_digest, score_curve)
     VALUES (${id}, ${fileName}, ${parsed.format}, ${run[0]?.season ?? null}, ${run[0]?.week ?? null}, ${uploadId},
-      ${parsed.entryCount}, ${parsed.winningScore}, ${parsed.medianScore}, ${parsed.minScore}, ${fileName}, ${fileDigest})
+      ${parsed.entryCount}, ${parsed.winningScore}, ${parsed.medianScore}, ${parsed.minScore}, ${fileName}, ${fileDigest},
+      ${parsed.scoreCurve?.length ? JSON.stringify(parsed.scoreCurve) : null}::jsonb)
     ON CONFLICT (contest_id) DO UPDATE SET slate_upload_id = EXCLUDED.slate_upload_id,
       season = EXCLUDED.season, week = EXCLUDED.week, entry_count = EXCLUDED.entry_count,
       winning_score = EXCLUDED.winning_score, median_score = EXCLUDED.median_score,
       min_score = EXCLUDED.min_score, file_name = EXCLUDED.file_name, file_digest = EXCLUDED.file_digest,
+      score_curve = COALESCE(EXCLUDED.score_curve, nfl_dfs_field_contests.score_curve),
       imported_at = NOW()`);
 
   // Chunked: neon-http commits each awaited statement separately, so a single
@@ -1122,6 +1133,75 @@ export async function importNflContestResults(
     contest: { contestId: id, entryCount: parsed.entryCount, winningScore: parsed.winningScore,
                medianScore: parsed.medianScore, format: parsed.format },
     overlap: Number(overlap.toFixed(3)),
+  };
+}
+
+export type NflSlateResults = {
+  contest: { contestId: string; entryCount: number; winningScore: number | null; medianScore: number | null; importedAt: string };
+  runId: string | null;
+  lineups: Array<ScoredLineup & { rank: number | null; beatShare: number | null; exactRank: boolean }>;
+  best: { lineupNumber: number; actual: number; rank: number | null; exactRank: boolean } | null;
+  averageActual: number | null;
+  averageProjected: number | null;
+  positionError: PositionError[];
+  rankAvailable: boolean;
+};
+
+/**
+ * How the saved lineup set did, from the most recent contest imported for this
+ * slate. Null when no contest has been imported yet -- the Results step then
+ * asks for the standings file instead of showing empty numbers.
+ */
+export async function readNflSlateResults(uploadId: string, runId: string | null): Promise<NflSlateResults | null> {
+  await ensureNflDfsTables();
+  const contests = await db.execute(sql`
+    SELECT contest_id, entry_count, winning_score, median_score, imported_at, score_curve
+    FROM nfl_dfs_field_contests WHERE slate_upload_id = ${uploadId}
+    ORDER BY imported_at DESC LIMIT 1`);
+  const contest = (contests.rows ?? contests)[0] as Record<string, unknown> | undefined;
+  if (!contest) return null;
+  const owned = await db.execute(sql`
+    SELECT normalized_name, fpts FROM nfl_dfs_field_ownership
+    WHERE contest_id = ${contest.contest_id as string} AND fpts IS NOT NULL`);
+  const fptsByName = new Map(((owned.rows ?? owned) as Array<Record<string, unknown>>)
+    .map((r) => [String(r.normalized_name), Number(r.fpts)] as const));
+  const entryCount = Number(contest.entry_count);
+  const curve = (Array.isArray(contest.score_curve) ? contest.score_curve
+    : contest.score_curve ? JSON.parse(String(contest.score_curve)) : []) as ScoreCurve;
+
+  const slatePlayers = await db.select().from(nflDfsSlatePlayers).where(eq(nflDfsSlatePlayers.uploadId, uploadId));
+  const positionError = projectionError(slatePlayers.map((p) => ({
+    name: p.name, position: p.position, ourProj: numeric(p.ourProj), isOut: p.isOut,
+  })), fptsByName, normalizeFieldName);
+
+  let lineups: NflSlateResults["lineups"] = [];
+  if (runId) {
+    const saved = await loadSavedNflLineups(uploadId, runId);
+    lineups = scoreLineups(saved.lineups.map((l) => ({
+      lineupNumber: l.lineupNumber,
+      slots: l.slots.map((s) => ({ slot: s.slot, name: s.player.name, multiplier: s.multiplier, projection: s.projection })),
+    })), fptsByName, normalizeFieldName).map((l) => {
+      const placed = l.actual == null ? null : estimateRank(l.actual, curve, entryCount);
+      return { ...l, rank: placed?.rank ?? null, beatShare: placed?.beatShare ?? null, exactRank: placed?.exact ?? false };
+    });
+  }
+  const scored = lineups.filter((l) => l.actual != null);
+  const top = [...scored].sort((a, b) => (b.actual ?? 0) - (a.actual ?? 0))[0];
+  const mean = (xs: number[]) => xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 100) / 100 : null;
+  return {
+    contest: {
+      contestId: String(contest.contest_id), entryCount,
+      winningScore: contest.winning_score == null ? null : Number(contest.winning_score),
+      medianScore: contest.median_score == null ? null : Number(contest.median_score),
+      importedAt: new Date(String(contest.imported_at)).toISOString(),
+    },
+    runId,
+    lineups,
+    best: top ? { lineupNumber: top.lineupNumber, actual: top.actual!, rank: top.rank, exactRank: top.exactRank } : null,
+    averageActual: mean(scored.map((l) => l.actual!)),
+    averageProjected: mean(lineups.map((l) => l.projected)),
+    positionError,
+    rankAvailable: curve.length > 0,
   };
 }
 
