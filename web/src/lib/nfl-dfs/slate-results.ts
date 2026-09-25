@@ -135,3 +135,52 @@ export function projectionError(
   if (all.length) out.push(summarize("All", all));
   return out;
 }
+
+export interface RankedLineup extends ScoredLineup { rank: number | null; beatShare: number | null; exactRank: boolean }
+
+export interface CaptainSummary { captain: string; lineups: number; average: number; best: number; aboveMedian: number }
+
+export interface SetSummary {
+  lineups: number;
+  scored: number;
+  best: { lineupNumber: number; actual: number; rank: number | null; exactRank: boolean } | null;
+  averageActual: number | null;
+  averageProjected: number | null;
+  /** Lineups that scored above the contest median. */
+  aboveMedian: number;
+  /** Lineups that beat at least 80% of the field. */
+  topFifth: number;
+  captains: CaptainSummary[];
+}
+
+const round2 = (value: number) => Math.round(value * 100) / 100;
+const mean = (values: number[]) => (values.length ? round2(values.reduce((a, b) => a + b, 0) / values.length) : null);
+
+/**
+ * One lineup set's results, for comparing sets built for the same slate.
+ * Lineups with an unknown score are counted in `lineups` but not in any
+ * rate, so a missing player never reads as a zero.
+ */
+export function summarizeSet(lineups: readonly RankedLineup[], medianScore: number | null): SetSummary {
+  const scored = lineups.filter((l): l is RankedLineup & { actual: number } => l.actual != null);
+  const top = [...scored].sort((a, b) => b.actual - a.actual)[0];
+  const byCaptain = new Map<string, number[]>();
+  for (const l of scored) {
+    const key = l.captain ?? "No captain";
+    byCaptain.set(key, [...(byCaptain.get(key) ?? []), l.actual]);
+  }
+  const above = (score: number) => (medianScore != null && score > medianScore ? 1 : 0);
+  return {
+    lineups: lineups.length,
+    scored: scored.length,
+    best: top ? { lineupNumber: top.lineupNumber, actual: top.actual, rank: top.rank, exactRank: top.exactRank } : null,
+    averageActual: mean(scored.map((l) => l.actual)),
+    averageProjected: mean(lineups.map((l) => l.projected)),
+    aboveMedian: scored.reduce((n, l) => n + above(l.actual), 0),
+    topFifth: scored.filter((l) => l.beatShare != null && l.beatShare >= 0.8).length,
+    captains: [...byCaptain].map(([captain, scores]) => ({
+      captain, lineups: scores.length, average: mean(scores) ?? 0, best: round2(Math.max(...scores)),
+      aboveMedian: scores.reduce((n, s) => n + above(s), 0),
+    })).sort((a, b) => b.lineups - a.lineups || b.average - a.average),
+  };
+}

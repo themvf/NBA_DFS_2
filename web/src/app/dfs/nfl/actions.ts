@@ -36,7 +36,7 @@ import { prepareProjectionAudits, validateSituations, type SituationTeam } from 
 import { loadSituationContext } from '@/lib/nfl-dfs/situation-context';
 import { canonicalAuditJson } from '@/lib/nfl-dfs/audit-json';
 import { auditSlate, normalizeName as normalizeFieldName, type FieldAudit } from '@/lib/nfl-dfs/field-audit';
-import { estimateRank, projectionError, scoreLineups, type PositionError, type ScoreCurve, type ScoredLineup } from '@/lib/nfl-dfs/slate-results';
+import { estimateRank, projectionError, scoreLineups, summarizeSet, type PositionError, type ScoreCurve, type ScoredLineup, type SetSummary } from '@/lib/nfl-dfs/slate-results';
 import { parseDkGameInfoKickoff } from '@/lib/nfl-dfs/workspace-stage';
 import { readWorkloadProjection, workloadPoolEligible, type WorkloadReport } from "@/lib/nfl-dfs/workload-projection";
 import { getCalibratedSnapshots } from "@/db/nfl-dfs-calibrated";
@@ -731,13 +731,19 @@ export async function listSavedNflSlates() {
 export async function loadSavedNflWorkspace(uploadId: string) {
   if (!/^[0-9a-f-]{36}$/.test(uploadId)) throw new Error(`Invalid saved slate: ${JSON.stringify(uploadId)}`);
   const slate = await workspaceSlate(uploadId);
+  return { slate, runs: await slateRuns(uploadId) };
+}
+
+/** Saved lineup sets for a slate (including re-uploads of the same slate), newest first. */
+async function slateRuns(uploadId: string) {
   const uploads = await db.select().from(nflDfsSlateUploads).where(eq(nflDfsSlateUploads.uploadId, uploadId)).limit(1);
+  if (!uploads[0]) return [];
   const runs = await db.select({ runId: nflDfsOptimizerRuns.runId, createdAt: nflDfsOptimizerRuns.createdAt,
     count: nflDfsOptimizerRuns.generatedLineups, mode: nflDfsOptimizerRuns.mode, source: nflDfsOptimizerRuns.projectionSource,
   }).from(nflDfsOptimizerRuns).innerJoin(nflDfsSlateUploads, eq(nflDfsOptimizerRuns.uploadId, nflDfsSlateUploads.uploadId))
     .where(and(or(eq(nflDfsSlateUploads.slateSignature, uploads[0].slateSignature), eq(nflDfsSlateUploads.fileDigest, uploads[0].fileDigest)), sql`${nflDfsOptimizerRuns.status} in ('complete','partial')`,
       sql`${nflDfsOptimizerRuns.generatedLineups} > 0`)).orderBy(desc(nflDfsOptimizerRuns.createdAt)).limit(100);
-  return { slate, runs: runs.map(run => ({ ...run, createdAt: run.createdAt.toISOString() })) };
+  return runs.map(run => ({ ...run, createdAt: run.createdAt.toISOString() }));
 }
 
 export async function loadSavedNflLineups(uploadId: string, runId: string) {
@@ -1145,7 +1151,14 @@ export type NflSlateResults = {
   averageProjected: number | null;
   positionError: PositionError[];
   rankAvailable: boolean;
+  /** Every saved set for this slate, scored the same way, newest first. */
+  sets: Array<{ runId: string; createdAt: string; mode: string; source: string; planMode: string | null } & SetSummary>;
+  /** Captains in the loaded set. */
+  captains: SetSummary["captains"];
 };
+
+/** Most sets compared at once; each one is a full audit read. */
+const MAX_COMPARED_SETS = 12;
 
 /**
  * How the saved lineup set did, from the most recent contest imported for this
@@ -1174,34 +1187,42 @@ export async function readNflSlateResults(uploadId: string, runId: string | null
     name: p.name, position: p.position, ourProj: numeric(p.ourProj), isOut: p.isOut,
   })), fptsByName, normalizeFieldName);
 
-  let lineups: NflSlateResults["lineups"] = [];
-  if (runId) {
-    const saved = await loadSavedNflLineups(uploadId, runId);
-    lineups = scoreLineups(saved.lineups.map((l) => ({
+  const medianScore = contest.median_score == null ? null : Number(contest.median_score);
+  const scoreRun = async (id: string) => {
+    const saved = await loadSavedNflLineups(uploadId, id);
+    const ranked = scoreLineups(saved.lineups.map((l) => ({
       lineupNumber: l.lineupNumber,
       slots: l.slots.map((s) => ({ slot: s.slot, name: s.player.name, multiplier: s.multiplier, projection: s.projection })),
     })), fptsByName, normalizeFieldName).map((l) => {
       const placed = l.actual == null ? null : estimateRank(l.actual, curve, entryCount);
       return { ...l, rank: placed?.rank ?? null, beatShare: placed?.beatShare ?? null, exactRank: placed?.exact ?? false };
     });
-  }
-  const scored = lineups.filter((l) => l.actual != null);
-  const top = [...scored].sort((a, b) => (b.actual ?? 0) - (a.actual ?? 0))[0];
-  const mean = (xs: number[]) => xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 100) / 100 : null;
+    return { ranked, planMode: (saved.settings as { archetypeMode?: string }).archetypeMode ?? null };
+  };
+
+  const runs = (await slateRuns(uploadId)).slice(0, MAX_COMPARED_SETS);
+  const ids = [...new Set([...runs.map((run) => run.runId), ...(runId ? [runId] : [])])];
+  const scoredRuns = new Map(await Promise.all(ids.map(async (id) => [id, await scoreRun(id)] as const)));
+
+  const lineups = runId ? scoredRuns.get(runId)!.ranked : [];
+  const current = summarizeSet(lineups, medianScore);
   return {
     contest: {
       contestId: String(contest.contest_id), entryCount,
       winningScore: contest.winning_score == null ? null : Number(contest.winning_score),
-      medianScore: contest.median_score == null ? null : Number(contest.median_score),
+      medianScore,
       importedAt: new Date(String(contest.imported_at)).toISOString(),
     },
     runId,
     lineups,
-    best: top ? { lineupNumber: top.lineupNumber, actual: top.actual!, rank: top.rank, exactRank: top.exactRank } : null,
-    averageActual: mean(scored.map((l) => l.actual!)),
-    averageProjected: mean(lineups.map((l) => l.projected)),
+    best: current.best,
+    averageActual: current.averageActual,
+    averageProjected: current.averageProjected,
     positionError,
     rankAvailable: curve.length > 0,
+    sets: runs.map((run) => ({ runId: run.runId, createdAt: run.createdAt, mode: run.mode, source: run.source,
+      planMode: scoredRuns.get(run.runId)!.planMode, ...summarizeSet(scoredRuns.get(run.runId)!.ranked, medianScore) })),
+    captains: current.captains,
   };
 }
 
