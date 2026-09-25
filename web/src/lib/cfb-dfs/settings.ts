@@ -32,11 +32,18 @@ export interface CfbOptimizerSettings {
   /** Per-player maximum exposure in percent, overriding the global cap. */
   maxExposureById: Record<string, number>;
   seed: number;
+  /** Exactly two QBs in every lineup (the SUPER FLEX goes to a QB). */
+  requireTwoQbs: boolean;
+  /** Every QB comes with at least one teammate WR or RB. */
+  stackQb: boolean;
+  /** Every QB also comes with at least one WR or RB from the team he faces. */
+  bringBack: boolean;
 }
 
 export const DEFAULT_CFB_SETTINGS: CfbOptimizerSettings = {
   nLineups: 20, maxExposure: 0.7, minUnique: 2, randomness: 0.18, minSalary: 45_000,
   lockedIds: [], excludedIds: [], maxExposureById: {}, seed: 20260925,
+  requireTwoQbs: false, stackQb: false, bringBack: false,
 };
 
 export interface CfbLineupSlot { slot: (typeof CFB_SLOTS)[number]; player: CfbPoolPlayer }

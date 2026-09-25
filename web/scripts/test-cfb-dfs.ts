@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { parseCfbKickoff, parseCfbSalaryCsv } from "../src/lib/cfb-dfs/salary-csv";
-import { cfbLineupProblems, cfbUploadCsv, DEFAULT_CFB_SETTINGS, optimizeCfbLineups, type CfbPoolPlayer } from "../src/lib/cfb-dfs/optimizer";
+import { cfbBuildRuleProblems, cfbLineupProblems, cfbUploadCsv, DEFAULT_CFB_SETTINGS, optimizeCfbLineups, type CfbPoolPlayer } from "../src/lib/cfb-dfs/optimizer";
 
 const csv = readFileSync(new URL("./fixtures/cfb-dk-salaries-2026-09-25.csv", import.meta.url), "utf8");
 const slate = parseCfbSalaryCsv(csv);
@@ -55,5 +55,24 @@ assert.ok(controlled.lineups.filter((l) => l.slots.some((s) => s.player.dkId ===
 assert.deepEqual(optimizeCfbLineups(pool, { ...DEFAULT_CFB_SETTINGS, nLineups: 5 }).lineups.map((l) => l.projection),
   optimizeCfbLineups(pool, { ...DEFAULT_CFB_SETTINGS, nLineups: 5 }).lineups.map((l) => l.projection));
 assert.equal(cfbUploadCsv(result.lineups).split("\n")[0], "QB,RB,RB,WR,WR,WR,FLEX,S-FLEX");
+
+// Tournament rules: 2 QBs, a teammate for every QB, a bring-back for every QB.
+const rules = { requireTwoQbs: true, stackQb: true, bringBack: true };
+const stacked = optimizeCfbLineups(pool, { ...DEFAULT_CFB_SETTINGS, nLineups: 20, ...rules });
+assert.equal(stacked.lineups.length, 20, stacked.stoppedEarly ?? "");
+for (const lineup of stacked.lineups) {
+  const players = lineup.slots.map((s) => s.player);
+  assert.deepEqual(cfbLineupProblems(players), [], `legal ${lineup.lineupNumber}`);
+  assert.deepEqual(cfbBuildRuleProblems(players, rules), [], `rules ${lineup.lineupNumber}`);
+  assert.equal(lineup.slots.find((s) => s.slot === "S-FLEX")!.player.position, "QB", "second QB fills SUPER FLEX");
+}
+// Each rule alone, and the rules off (the default) still allow a one-QB lineup.
+for (const only of [{ requireTwoQbs: true }, { stackQb: true }, { bringBack: true }]) {
+  const r = optimizeCfbLineups(pool, { ...DEFAULT_CFB_SETTINGS, nLineups: 8, ...only });
+  const flags = { requireTwoQbs: false, stackQb: false, bringBack: false, ...only };
+  for (const l of r.lineups) assert.deepEqual(cfbBuildRuleProblems(l.slots.map((s) => s.player), flags), [], JSON.stringify(only));
+}
+assert.deepEqual(cfbBuildRuleProblems([pool.find((p) => p.name === "Josh Hoover")!, ...pool.filter((p) => p.team === "CAL" && p.position !== "QB").slice(0, 7)], { requireTwoQbs: false, stackQb: true, bringBack: false }),
+  ["Josh Hoover has no teammate"], "the checker catches an unstacked QB");
 
 console.log("CFB DFS: salary reader, lineup rules, locks/excludes/caps and export all hold on the real 2026-09-25 slate.");
