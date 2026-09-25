@@ -14,7 +14,7 @@ body:has(.nfl-dfs-workspace) > main { max-width: 1600px; }
 .nfl-dfs-workspace table { font-variant-numeric: tabular-nums; }
 .nfl-player-pool .nfl-pool-table { min-width: 960px; }
 .nfl-player-pool[data-columns="research"] .nfl-pool-table { min-width: 1260px; }
-.nfl-player-pool[data-columns="essential"] .nfl-pool-table tr > :is(:nth-child(2), :nth-child(9), :nth-child(11), :nth-child(12), :nth-child(13)),
+.nfl-player-pool[data-columns="essential"] .nfl-pool-table tr > :is(:nth-child(9), :nth-child(11), :nth-child(12), :nth-child(13)),
 .nfl-player-pool[data-columns="essential"] [data-research-detail] { display: none; }
 .nfl-player-pool .nfl-pool-table :is(td, th) { padding: 10px 8px; }
 .nfl-player-pool .nfl-pool-table th { font-size: 11px; letter-spacing: .025em; }
