@@ -1,0 +1,34 @@
+name: CFB Data Probe
+
+# Manual only. A read-only diagnostic of what CFBD and FantasyPros return for
+# college football (player box scores, season stats, rosters, usage, and
+# whether FantasyPros serves college projections). Prints structure and counts,
+# never payloads or keys. Uses a handful of CFBD calls; no Odds API credits.
+on:
+  workflow_dispatch:
+    inputs:
+      team:
+        description: "CFBD team name to probe"
+        required: false
+        default: "Indiana"
+        type: string
+      week:
+        description: "Week to request from FantasyPros"
+        required: false
+        default: "5"
+        type: string
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+      FANTASYPROS_API_KEY: ${{ secrets.FANTASYPROS_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install requests
+      - name: Probe CFBD and FantasyPros
+        run: python scripts/cfb_data_probe.py --team "${{ inputs.team || 'Indiana' }}" --season 2026 --week "${{ inputs.week || '5' }}"
