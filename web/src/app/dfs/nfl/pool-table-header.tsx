@@ -12,7 +12,7 @@ import type { PoolSort, PoolSortKey } from "@/lib/nfl-dfs/player-pool-sort";
  */
 const COLUMNS: readonly { label: string; key?: PoolSortKey; align: "left" | "right" | "center"; pad?: boolean; hint?: string }[] = [
   { label: "Control", align: "left", pad: true },
-  { label: "Target %", align: "center", pad: true },
+  { label: "Exposure %", align: "center", pad: true },
   { label: "Player", key: "name", align: "left", pad: true },
   { label: "Pos", key: "position", align: "left" },
   { label: "Team", key: "team", align: "left" },
