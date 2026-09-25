@@ -34,7 +34,7 @@ export interface ParsedCfbSlate {
 
 const REQUIRED = ["Position", "Name", "ID", "Roster Position", "Salary", "Game Info", "TeamAbbrev", "AvgPointsPerGame"];
 
-function splitCsvLine(line: string): string[] {
+export function splitCsvLine(line: string): string[] {
   const out: string[] = [];
   let cur = "", quoted = false;
   for (let i = 0; i < line.length; i += 1) {
@@ -49,6 +49,11 @@ function splitCsvLine(line: string): string[] {
   }
   out.push(cur);
   return out;
+}
+
+/** One CSV line, quoting any cell that needs it. */
+export function joinCsvLine(cells: readonly string[]): string {
+  return cells.map((cell) => (/[",\r\n]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell)).join(",");
 }
 
 /** Eastern-time Game Info ("NW@IU 09/25/2026 08:00PM ET") to an ISO instant. */
