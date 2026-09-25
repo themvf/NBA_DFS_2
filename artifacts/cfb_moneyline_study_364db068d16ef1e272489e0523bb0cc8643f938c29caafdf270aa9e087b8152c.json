@@ -1,0 +1,121 @@
+{
+  "activation_gate": "Requires both untouched confirmations, health floors, scoped qualification, and a separate consumer activation record.",
+  "candidate_definitions": [
+    {
+      "alert_type": "dk_value",
+      "signal_version": "cfb-lines-v1"
+    },
+    {
+      "alert_type": "steam",
+      "signal_version": "cfb-lines-v1"
+    },
+    {
+      "alert_type": "walking",
+      "signal_version": "cfb-lines-v1"
+    },
+    {
+      "alert_type": "pinnacle_divergence",
+      "signal_version": "cfb-lines-v1"
+    },
+    {
+      "alert_type": "late_move",
+      "signal_version": "market-structure-v1"
+    }
+  ],
+  "candidate_versions": [
+    "dk_value",
+    "late_move",
+    "pinnacle_divergence",
+    "steam",
+    "walking"
+  ],
+  "clustering_method": "game-date clustered percentile interval; game-clustered sensitivity",
+  "comparison_plan": "No matched comparison in v1; omission is preregistered before enrollment.",
+  "configuration_digest": "364db068d16ef1e272489e0523bb0cc8643f938c29caafdf270aa9e087b8152c",
+  "consumer_permission": "decision-denied",
+  "frozen_at": "2026-09-24T14:30:55.936779+00:00",
+  "health_floors": {
+    "economic_conflict_rate_max": 0.0,
+    "eligible_quote_freshness_rate": 0.95,
+    "mapped_event_rate": 0.99,
+    "settlement_completeness_rate": 0.99
+  },
+  "minimum_effect": 0.5,
+  "minimum_independent_game_dates": 20,
+  "multiple_testing_family": "five frozen moneyline families; Holm correction for family selection",
+  "multiplicity_application": "The combined frozen cohort is primary. Family diagnostics use Holm-adjusted one-sided cluster-bootstrap probabilities and cannot independently qualify a consumer.",
+  "overall_qualification_rule": "confirmation_1 and confirmation_2 must each pass independently; pilot is excluded",
+  "paper_decision_policy": "at most one observation per event/selection/family; earliest qualifying trigger; no real stake",
+  "population": "prospective CFB pregame full-game moneyline observations; all matchup classes retained",
+  "precision_plan": "95% interval half-width <= 1.0 percentage point for primary metric",
+  "primary_metric": "decimal_price_ratio_pct",
+  "primary_unit": "percent",
+  "research_state": "prospective-paper",
+  "review_schedule": {
+    "revisions": "append only when pinned resolution heads or invalidations change",
+    "settlement_grace_hours": 72
+  },
+  "secondary_metrics": [
+    "pnl_units_per_roi_stake_unit",
+    "probability_clv_pp",
+    "beat_close_rate"
+  ],
+  "segments": {
+    "entry_probability": [
+      "60%+",
+      "50-60%",
+      "35-50%",
+      "20-35%",
+      "<20%"
+    ],
+    "horizon_minutes": [
+      "0-15",
+      "15-60",
+      "60-360",
+      "360+",
+      "unknown"
+    ],
+    "matchup_class": [
+      "fbs_fbs",
+      "fbs_fcs",
+      "other_unknown"
+    ],
+    "season_regime": [
+      "weeks_0_4",
+      "weeks_5_9",
+      "weeks_10_plus"
+    ]
+  },
+  "study_id": "cfb-moneyline-observation-study-v1",
+  "study_version": 4,
+  "supersedes_study_version": 3,
+  "window_decision_rule": {
+    "fail": "primary mean <= 0 or the 95% upper bound <= 0 after settlement completion",
+    "inconclusive": "all other valid completed-window results",
+    "invalid": "temporal leakage, economic conflicts, or a failed mandatory health floor",
+    "pass": "all health floors pass; at least 20 independent game dates; primary mean >= 0.5%; game-date clustered 95% lower bound > 0; interval half-width <= 1.0%; and the 1% adverse-price sensitivity remains positive"
+  },
+  "windows": [
+    {
+      "eligible_for_confirmation": false,
+      "end_at": "2026-10-14T00:00:00+00:00",
+      "purpose": "pilot",
+      "start_at": "2026-09-25T00:00:00+00:00",
+      "window_key": "pilot"
+    },
+    {
+      "eligible_for_confirmation": true,
+      "end_at": "2026-11-25T00:00:00+00:00",
+      "purpose": "confirmation_1",
+      "start_at": "2026-10-14T00:00:00+00:00",
+      "window_key": "confirmation_1"
+    },
+    {
+      "eligible_for_confirmation": true,
+      "end_at": "2027-12-01T00:00:00+00:00",
+      "purpose": "confirmation_2",
+      "start_at": "2027-08-20T00:00:00+00:00",
+      "window_key": "confirmation_2"
+    }
+  ]
+}

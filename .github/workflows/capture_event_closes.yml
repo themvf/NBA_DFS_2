@@ -14,7 +14,7 @@ concurrency:
 jobs:
   capture:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 12
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
@@ -27,16 +27,24 @@ jobs:
           python-version: "3.11"
           cache: "pip"
       - run: pip install -r requirements.txt
+      - name: Apply additive CFB context schema
+        run: python -m ingest.cfb_context_migrate --apply
       - name: Ensure append-only movement observation storage
         run: python -m model.signal_observations
       - name: Capture due checkpoints and freeze verified closes
         run: python -m ingest.event_closing_lines --existing-schema
+      - name: Normalize stored CFB captures for the frozen pilot
+        run: python -m ingest.cfb_context_bootstrap --origin-mode auto --apply
+      - name: Publish CFB market context from stored captures
+        run: python -m ingest.cfb_context_publish --endpoint-after 2026-09-25T00:00:00Z --apply
       # Scan the stored Tennis captures immediately; this makes no paid odds
       # request and avoids waiting for the separate 15-minute settlement job.
       - name: Detect and grade Tennis market signals
         run: python -m model.line_alerts --sport tennis --existing-schema
       - name: Detect and grade prospective CFB market signals
         run: python -m model.line_alerts --sport cfb --existing-schema
+      - name: Reconcile canonical CFB economics
+        run: python -m ingest.cfb_economics_migrate
       - name: Audit CFB capture and grading integrity
         run: python -m ingest.cfb_capture_audit
       - name: Detect and grade NFL market signals
