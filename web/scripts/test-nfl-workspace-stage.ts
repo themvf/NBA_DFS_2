@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import {
   isLocked, parseDkGameInfoKickoff, prioritizeStatus, recommendedStage, type StatusItem,
 } from "../src/lib/nfl-dfs/workspace-stage";
-import { buildScoreCurve, estimateRank, projectionError, scoreLineups } from "../src/lib/nfl-dfs/slate-results";
+import { buildScoreCurve, estimateRank, projectionError, scoreLineups, summarizeSet } from "../src/lib/nfl-dfs/slate-results";
 
 const KICKOFF = "2026-09-25T00:15:00.000Z"; // ATL@GB, 8:15pm ET Thursday
 const before = Date.parse("2026-09-24T18:00:00Z");
@@ -88,6 +88,20 @@ assert.deepEqual(errors.find((e) => e.position === "WR"), { position: "WR", n: 1
   "negative bias = projected too high");
 assert.equal(errors[errors.length - 1].position, "All");
 assert.equal(errors[errors.length - 1].n, 3);
+
+// ── Set comparison ──────────────────────────────────────────────────────────
+const ranked = (lineupNumber: number, captain: string, actual: number | null, beatShare: number | null) =>
+  ({ lineupNumber, captain, actual, projected: 80, missing: actual == null ? ["X"] : [], rank: null, beatShare, exactRank: false });
+const set = summarizeSet([
+  ranked(1, "Bijan Robinson", 122.4, 0.76), ranked(2, "Tucker Kraft", 94.2, 0.18),
+  ranked(3, "Tucker Kraft", 112.8, 0.55), ranked(4, "Drake London", null, null),
+], 109.94);
+assert.equal(set.lineups, 4); assert.equal(set.scored, 3, "an unknown score is counted, not scored");
+assert.equal(set.aboveMedian, 2); assert.equal(set.topFifth, 0, "76% is not the top fifth");
+assert.equal(set.best?.lineupNumber, 1);
+assert.deepEqual(set.captains.map((c) => [c.captain, c.lineups, c.average, c.aboveMedian]),
+  [["Tucker Kraft", 2, 103.5, 1], ["Bijan Robinson", 1, 122.4, 1]], "most-used captain first; unknown scores excluded");
+assert.equal(summarizeSet([], null).averageActual, null);
 
 console.log("Workspace stage and results:");
 console.log("  - opens on the step the slate is in; Results after kickoff");

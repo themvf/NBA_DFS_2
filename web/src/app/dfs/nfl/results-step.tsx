@@ -4,6 +4,13 @@ import { useEffect, useState } from "react";
 import FieldAuditPanel from "./field-audit-panel";
 import { readNflSlateResults, type NflSlateResults } from "./actions";
 
+const PLAN_LABELS: Record<string, string> = {
+  balanced: "Balanced mix", chalk_leverage: "Chalk captain, rotating leverage", standard: "Standard ceiling", custom: "Custom plan",
+};
+const SOURCE_LABELS: Record<string, string> = {
+  our: "Our model", workload: "Workload", calibrated: "Calibrated", dk_avg: "DK average", fantasypros: "FantasyPros", linestar: "LineStar", custom: "Custom",
+};
+
 /**
  * Step 4 of the workspace: what happened.
  *
@@ -64,6 +71,51 @@ export default function ResultsStep({ uploadId, runId, lineupCount, locked, pool
         <Card label="Lineups scored" value={`${results.lineups.filter((l) => l.actual != null).length}/${lineupCount || results.lineups.length}`}
           note={`contest ${results.contest.contestId}`} />
       </section>
+
+      {results.sets?.length ? <section className="rounded-xl border bg-white p-4 shadow-sm">
+        <h2 className="font-bold">Compare lineup sets</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          Every set you built for this slate, scored against the same contest. Median {fmt(results.contest.medianScore)};
+          top 20% means beating at least 80% of the {results.contest.entryCount.toLocaleString()} entries.
+          {(results.sets?.length ?? 0) > 1 ? " Sets built from the same player pool overlap, and one slate is one game — this describes Thursday, it does not rank the plans." : ""}
+        </p>
+        <div className="mt-3 overflow-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="text-xs uppercase text-slate-500"><tr>
+              <th className="p-2">Built</th><th className="p-2">Plan</th><th className="p-2">Source</th><th className="p-2 text-right">Lineups</th>
+              <th className="p-2 text-right">Best</th><th className="p-2 text-right">Best rank</th><th className="p-2 text-right">Average</th>
+              <th className="p-2 text-right">Projected</th><th className="p-2 text-right">Beat median</th><th className="p-2 text-right">Top 20%</th>
+            </tr></thead>
+            <tbody>{results.sets.map((set) => <tr key={set.runId} className={`border-t ${set.runId === results.runId ? "bg-emerald-50 font-semibold" : ""}`}>
+              <td className="p-2 whitespace-nowrap">{new Date(set.createdAt).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}{set.runId === results.runId ? <span className="ml-1 text-[10px] font-bold uppercase text-emerald-700">loaded</span> : null}</td>
+              <td className="p-2">{PLAN_LABELS[set.planMode ?? ""] ?? "Standard ceiling"} <span className="text-slate-400">{set.mode.toUpperCase()}</span></td>
+              <td className="p-2 text-slate-600">{SOURCE_LABELS[set.source] ?? set.source}</td>
+              <td className="p-2 text-right">{set.scored === set.lineups ? set.lineups : `${set.scored}/${set.lineups}`}</td>
+              <td className="p-2 text-right">{set.best ? fmt(set.best.actual) : "—"}</td>
+              <td className="p-2 text-right">{set.best ? rankText(set.best.rank, set.best.exactRank) : "—"}</td>
+              <td className="p-2 text-right">{fmt(set.averageActual)}</td>
+              <td className="p-2 text-right text-slate-500">{fmt(set.averageProjected)}</td>
+              <td className="p-2 text-right">{set.scored ? `${set.aboveMedian}/${set.scored}` : "—"}</td>
+              <td className="p-2 text-right">{set.scored ? `${set.topFifth}/${set.scored}` : "—"}</td>
+            </tr>)}</tbody>
+          </table>
+        </div>
+      </section> : null}
+
+      {results.captains?.length ? <section className="rounded-xl border bg-white p-4 shadow-sm">
+        <h2 className="font-bold">Captains in the loaded set</h2>
+        <table className="mt-3 w-full max-w-2xl text-left text-sm">
+          <thead className="text-xs uppercase text-slate-500"><tr>
+            <th className="p-2">Captain</th><th className="p-2 text-right">Lineups</th><th className="p-2 text-right">Average</th>
+            <th className="p-2 text-right">Best</th><th className="p-2 text-right">Beat median</th>
+          </tr></thead>
+          <tbody>{results.captains.map((c) => <tr key={c.captain} className="border-t">
+            <td className="p-2">{c.captain}</td><td className="p-2 text-right">{c.lineups}</td>
+            <td className="p-2 text-right font-semibold">{fmt(c.average)}</td><td className="p-2 text-right">{fmt(c.best)}</td>
+            <td className="p-2 text-right">{c.aboveMedian}/{c.lineups}</td>
+          </tr>)}</tbody>
+        </table>
+      </section> : null}
 
       {results.lineups.length ? <section className="rounded-xl border bg-white p-4 shadow-sm">
         <h2 className="font-bold">Your lineups</h2>
