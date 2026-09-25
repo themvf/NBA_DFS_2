@@ -6,6 +6,7 @@ import {
   type CfbSlateSummary, type CfbWorkspace,
 } from "./actions";
 import { DEFAULT_CFB_SETTINGS, type CfbLineup } from "@/lib/cfb-dfs/settings";
+import { exportCfbDkEntries } from "@/lib/cfb-dfs/entry-export";
 
 const STORAGE_KEY = "cfb-dfs-slate";
 const dollars = (n: number) => `$${n.toLocaleString()}`;
@@ -25,6 +26,8 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
+  const entryRef = useRef<HTMLInputElement>(null);
+  const [entryFile, setEntryFile] = useState<File | null>(null);
 
   const [settings, setSettings] = useState({ nLineups: DEFAULT_CFB_SETTINGS.nLineups, maxExposurePct: 70, minUnique: 2, randomnessPct: 18, minSalary: 45000,
     requireTwoQbs: false, stackQb: false, bringBack: false });
@@ -110,11 +113,27 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
     startTransition(async () => {
       try {
         const text = await exportCfbRun(uploadId, runId);
-        const url = URL.createObjectURL(new Blob([text], { type: "text/csv" }));
-        const a = document.createElement("a"); a.href = url; a.download = `cfb-dk-lineups-${runId.slice(0, 8)}.csv`; a.click();
-        URL.revokeObjectURL(url);
+        saveText(`cfb-dk-lineups-${runId.slice(0, 8)}.csv`, text);
       } catch (reason) { fail(reason); }
     });
+  }
+
+  function saveText(name: string, text: string) {
+    const url = URL.createObjectURL(new Blob([text], { type: "text/csv" }));
+    const a = document.createElement("a"); a.href = url; a.download = name; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  /** Fill DraftKings' Edit Entries file with these lineups, entry by entry. */
+  async function exportEntries() {
+    if (!entryFile || !lineups.length) return;
+    setError(null);
+    try {
+      const result = exportCfbDkEntries(await entryFile.text(), lineups);
+      saveText(`cfb-dk-entries-${runId?.slice(0, 8) ?? "export"}.csv`, result.csv);
+      setMessage(`Filled ${result.filled} of ${result.entries} entries. Upload the file on DraftKings' Edit Entries page.`
+        + (result.filled < result.entries ? ` ${result.entries - result.filled} entries were left as they were.` : ""));
+    } catch (reason) { fail(reason); }
   }
 
   function openRun(id: string) {
@@ -266,9 +285,17 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
       {lineups.length ? <section className="rounded-xl border bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-bold">Lineups ({lineups.length})</h2>
-          <button disabled={pending || !runId} onClick={download} className="min-h-10 rounded-lg bg-blue-600 px-4 text-sm font-bold text-white disabled:opacity-40">Download DraftKings CSV</button>
         </div>
-        <p className="mt-1 text-xs text-slate-500">The CSV lists player IDs in DraftKings&apos; slot order (QB, RB, RB, WR, WR, WR, FLEX, S-FLEX). If DraftKings asks for its own template, download it from the contest and paste these rows in.</p>
+        <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
+          <h3 className="text-sm font-bold text-blue-950">DraftKings export</h3>
+          <p className="mt-1 text-xs text-blue-900">Enter the contest on DraftKings, then download its Edit Entries file. Your entry template supplies the entry IDs; these lineups fill its roster columns in order, one lineup per entry.</p>
+          <input ref={entryRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => setEntryFile(e.target.files?.[0] ?? null)} />
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button onClick={() => entryRef.current?.click()} className="min-h-10 rounded-lg border border-blue-300 bg-white px-4 text-sm font-semibold">{entryFile?.name ?? "Select entry template"}</button>
+            <button disabled={!entryFile || !lineups.length} onClick={() => void exportEntries()} className="min-h-10 rounded-lg bg-blue-600 px-4 text-sm font-bold text-white disabled:opacity-40">Export lineups</button>
+            <button disabled={pending || !runId} onClick={download} className="min-h-10 rounded-lg border bg-white px-4 text-sm text-slate-700 disabled:opacity-40" title="Player IDs only, in slot order; for DraftKings' upload of new lineups">Plain ID CSV</button>
+          </div>
+        </div>
         <div className="mt-3 grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
           <div className="max-h-[520px] overflow-auto">
             <table className="w-full text-left text-xs">

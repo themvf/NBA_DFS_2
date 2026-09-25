@@ -15,11 +15,11 @@
 import { cfbRandom } from "./random";
 import type { CfbPosition } from "./salary-csv";
 import {
-  CFB_OPTIMIZER_VERSION, CFB_ROSTER_SIZE, CFB_SALARY_CAP, CFB_SLOTS,
+  CFB_OPTIMIZER_VERSION, CFB_ROSTER_SIZE, CFB_SALARY_CAP, CFB_SLOTS, cfbLineupProblems,
   type CfbLineup, type CfbLineupSlot, type CfbOptimizerResult, type CfbOptimizerSettings, type CfbPoolPlayer,
 } from "./settings";
 
-export { CFB_OPTIMIZER_VERSION, CFB_ROSTER_SIZE, CFB_SALARY_CAP, CFB_SLOTS, DEFAULT_CFB_SETTINGS } from "./settings";
+export { CFB_OPTIMIZER_VERSION, CFB_ROSTER_SIZE, CFB_SALARY_CAP, CFB_SLOTS, DEFAULT_CFB_SETTINGS, cfbLineupProblems } from "./settings";
 export type { CfbLineup, CfbLineupSlot, CfbOptimizerResult, CfbOptimizerSettings, CfbPoolPlayer } from "./settings";
 
 type SolverModel = { optimize: string; opType: "max"; constraints: Record<string, { min?: number; max?: number; equal?: number }>;
@@ -43,21 +43,6 @@ export function assignCfbSlots(players: CfbPoolPlayer[]): CfbLineupSlot[] {
   const order: Array<[CfbLineupSlot["slot"], CfbPoolPlayer]> = [["QB", qbs[0]], ["RB", rbs[0]], ["RB", rbs[1]],
     ["WR", wrs[0]], ["WR", wrs[1]], ["WR", wrs[2]], ["FLEX", flex], ["S-FLEX", superFlex]];
   return order.map(([slot, player]) => ({ slot, player }));
-}
-
-/** Every rule a DK CFB Classic lineup must satisfy; empty when legal. */
-export function cfbLineupProblems(players: CfbPoolPlayer[]): string[] {
-  const problems: string[] = [];
-  if (players.length !== CFB_ROSTER_SIZE) problems.push(`${players.length} players, not 8`);
-  if (new Set(players.map((p) => p.dkId)).size !== players.length) problems.push("a player appears twice");
-  const salary = players.reduce((a, p) => a + p.salary, 0);
-  if (salary > CFB_SALARY_CAP) problems.push(`salary ${salary} over the cap`);
-  const count = (pos: CfbPosition) => players.filter((p) => p.position === pos).length;
-  if (count("QB") < 1 || count("QB") > 2) problems.push(`${count("QB")} QBs`);
-  if (count("RB") < 2) problems.push(`${count("RB")} RBs`);
-  if (count("WR") < 3) problems.push(`${count("WR")} WRs`);
-  if (new Set(players.map((p) => p.game)).size < 2) problems.push("only one game");
-  return problems;
 }
 
 export function optimizeCfbLineups(pool: readonly CfbPoolPlayer[], settings: CfbOptimizerSettings): CfbOptimizerResult {

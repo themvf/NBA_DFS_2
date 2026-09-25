@@ -50,3 +50,17 @@ export interface CfbLineupSlot { slot: (typeof CFB_SLOTS)[number]; player: CfbPo
 export interface CfbLineup { lineupNumber: number; slots: CfbLineupSlot[]; salary: number; projection: number }
 export interface CfbOptimizerResult { lineups: CfbLineup[]; stoppedEarly: string | null; version: string }
 
+/** Every rule a DK CFB Classic lineup must satisfy; empty when legal. */
+export function cfbLineupProblems(players: CfbPoolPlayer[]): string[] {
+  const problems: string[] = [];
+  if (players.length !== CFB_ROSTER_SIZE) problems.push(`${players.length} players, not 8`);
+  if (new Set(players.map((p) => p.dkId)).size !== players.length) problems.push("a player appears twice");
+  const salary = players.reduce((a, p) => a + p.salary, 0);
+  if (salary > CFB_SALARY_CAP) problems.push(`salary ${salary} over the cap`);
+  const count = (pos: CfbPosition) => players.filter((p) => p.position === pos).length;
+  if (count("QB") < 1 || count("QB") > 2) problems.push(`${count("QB")} QBs`);
+  if (count("RB") < 2) problems.push(`${count("RB")} RBs`);
+  if (count("WR") < 3) problems.push(`${count("WR")} WRs`);
+  if (new Set(players.map((p) => p.game)).size < 2) problems.push("only one game");
+  return problems;
+}
