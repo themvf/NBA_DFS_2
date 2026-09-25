@@ -40,6 +40,7 @@ const PAGE_LINKS: Array<{
   { href: "/nfl/specials", label: "Slate Specials", sports: ["nfl"] },
   { href: "/nfl/pbp", label: "PBP Archetypes", sports: ["nfl"] },
   { href: "/cfb", label: "Line Terminal", sports: ["cfb"] },
+  { href: "/cfb/dfs", label: "CFB DFS", sports: ["cfb"] },
   { href: "/fantasy-football/nfl", label: "NFL Teams", sports: ["nfl"] },
   { href: "/fantasy-football", label: "Fantasy Football", sports: ["nfl"] },
   { href: "/fantasy-football/projections", label: "Projection Scatter", sports: ["nfl"] },

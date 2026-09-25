@@ -7090,3 +7090,30 @@ seeded simulated games; range = share ±8, rounded to 5; under 2% gets none.
 - **Unvalidated.** One top scorer per slate means calibration needs many
   Showdowns; Results history (`/dfs/nfl/results`) is where it gets graded. On
   ATL@GB it would have capped Kraft at 5-20% (he was captain in 12 of 20).
+
+---
+
+## CFB DFS — separate page, separate code (`/cfb/dfs`, 2026-09-25)
+
+DraftKings College Football Classic lives apart from NFL DFS by design: route
+`web/src/app/cfb/dfs/`, library `web/src/lib/cfb-dfs/`, tables `cfb_dfs_*`
+(`web/src/db/cfb-dfs-schema.ts`). No NFL module is imported; do not merge them.
+
+- **Rules:** QB, RB, RB, WR, WR, WR, FLEX (RB/WR), SUPER FLEX (QB/RB/WR),
+  $50,000, at least 2 games. Solved as 8 players, 1-2 QB, >=2 RB, >=3 WR, and
+  "no game supplies all 8". The reader refuses NFL files (no S-FLEX / TE/K/DST).
+- **Data:** `ingest/cfb_player_games.py` pulls CFBD `/games/players` a whole
+  week at a time (transfers keep old-school games) into `cfb_player_game_boxes`
+  (raw) and `cfb_player_game_stats` (DK points; 2-pt conversions are not in
+  CFBD and are omitted). Daily `cfb_player_games.yml` fetches only weeks whose
+  every game is final, so live box scores never become history.
+- **Projections (`cfb-dfs-baseline-v1`, UNVALIDATED, stated priors):** 2026
+  per-appearance points, a 2025 game weighted 0.1, a missed 2026 game counted
+  half, scaled by (implied / 2026 PPG)^0.5 clamped [0.6, 1.4]. The Python
+  reference `model/cfb_dfs_baseline.py` and the web port agree on all 235
+  players of the 2026-09-25 slate.
+- **Team codes** are resolved from evidence (the school whose 2026 box scores
+  match most of that code's players); `cfb_teams` has no abbreviations.
+  Nicknames (Rod/Roderick) match on surname only when DK's own average agrees
+  within 1 point; that check stopped a backup inheriting a starter's history.
+- FantasyPros' API returns no college projections (probe 2026-09-25).

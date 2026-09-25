@@ -163,6 +163,19 @@ def store(db: DatabaseManager, games: list[dict], season: int, week: int, season
     return len(rows)
 
 
+def complete_weeks(db: DatabaseManager, season: int) -> list[int]:
+    """Regular-season weeks whose every scheduled game is final (from cfb_matchups).
+
+    A week with any game not yet final is skipped whole: its box scores would
+    store live, partial games as history.
+    """
+    with db.connect() as conn:
+        cur = conn.cursor()
+        cur.execute("""SELECT week FROM cfb_matchups WHERE season = %s AND season_type = 'regular'
+                       GROUP BY week HAVING bool_and(completed) ORDER BY week""", (season,))
+        return [int(r["week"]) for r in cur.fetchall()]
+
+
 def _weeks(spec: str) -> list[int]:
     lo, _, hi = spec.partition("-")
     return list(range(int(lo), int(hi or lo) + 1))
@@ -175,6 +188,7 @@ def main() -> None:
     parser.add_argument("--weeks", default="1-16")
     parser.add_argument("--postseason", action="store_true")
     parser.add_argument("--reparse", action="store_true", help="re-derive stats from stored raw payloads")
+    parser.add_argument("--complete-only", action="store_true", help="fetch only weeks whose games are all final")
     args = parser.parse_args()
     db = DatabaseManager(load_config().database_url, initialize_schema=False)
     if args.reparse:
@@ -192,7 +206,14 @@ def main() -> None:
     if not api_key:
         raise SystemExit("CFBD_API_KEY is required")
     for season in args.season or [2026]:
-        plan = [(w, "regular") for w in _weeks(args.weeks)] + ([(1, "postseason")] if args.postseason else [])
+        weeks = _weeks(args.weeks)
+        if args.complete_only:
+            done = set(complete_weeks(db, season))
+            skipped = [w for w in weeks if w not in done]
+            weeks = [w for w in weeks if w in done]
+            if skipped:
+                logger.info("%s: skipping weeks not yet final: %s", season, skipped)
+        plan = [(w, "regular") for w in weeks] + ([(1, "postseason")] if args.postseason else [])
         for week, season_type in plan:
             games = fetch_week(api_key, season, week, season_type)
             if not games:
