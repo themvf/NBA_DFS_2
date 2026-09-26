@@ -44,7 +44,12 @@ def test_missing_selection_price_remains_missing() -> None:
     assert grade["price_clv_pct"] is None
 
 
-def test_settlement_persists_verified_price_and_regrades_existing_result(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    ("market", "alert_type"), [("moneyline", "steam"), (None, "dk_value")],
+)
+def test_settlement_persists_verified_price_and_regrades_existing_result(
+    monkeypatch, market, alert_type,
+) -> None:
     class Cursor:
         def __init__(self):
             self.writes = []
@@ -73,10 +78,14 @@ def test_settlement_persists_verified_price_and_regrades_existing_result(monkeyp
 
         def execute(self, sql, params=None):
             assert "close_history_id IS NULL" in sql
+            assert "COALESCE(details_json->>'market', 'moneyline')" in sql
+            details = _alert()["details_json"].copy()
+            if market is None:
+                details.pop("market")
             return [{
                 "id": 93465, "matchup_id": 10, "side": "away", "sport": "cfb",
-                "alert_type": "steam", "alert_prob": 0.5,
-                "details_json": _alert()["details_json"],
+                "alert_type": alert_type, "alert_prob": 0.5,
+                "details_json": details,
             }]
 
         def execute_one(self, sql, params=None):

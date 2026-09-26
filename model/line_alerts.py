@@ -2621,7 +2621,7 @@ def settle(db: DatabaseManager, sport: str) -> int:
     open_alerts = db.execute(
         "SELECT * FROM line_alerts WHERE sport = %s AND origin = 'prospective' "
         "AND (settled_at IS NULL OR (%s = 'cfb' AND created_at >= '2026-09-25' "
-        "AND close_history_id IS NULL AND details_json->>'market' = 'moneyline' "
+        "AND close_history_id IS NULL AND COALESCE(details_json->>'market', 'moneyline') = 'moneyline' "
         "AND details_json ? 'exec_decimal')) "
         "AND (alert_type IN ('pinnacle_divergence', 'pinnacle_favorite_forward', 'pinnacle_polymarket_delta', 'steam', 'dk_value', 'walking', "
         "'book_disagreement', 'market_convergence', 'late_move') "
@@ -2717,7 +2717,7 @@ def settle(db: DatabaseManager, sport: str) -> int:
         g = _grade_alert_prices(db, a)
         close_history_id = None
         pnl_units = None
-        if sport == "cfb" and (a["details_json"] or {}).get("market") == "moneyline":
+        if sport == "cfb" and (a["details_json"] or {}).get("market") in (None, "moneyline"):
             price_grade = _cfb_moneyline_close_grade(a, close)
             g["grading_json"] = {**(g["grading_json"] or {}), **price_grade}
             close_history_id = price_grade["close_history_id"]
