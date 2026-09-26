@@ -18,7 +18,7 @@ import { matchNflIdentity, resolveNflRosterIdentity, assertUniqueNflSalaryIdenti
 import { getNflIdentityRoster } from "@/db/nfl-identity";
 import { parseNflDkSalaryCsv, type NflDkSlate } from "@/lib/nfl-dfs/dk-salary-csv";
 import { getNflRosterEvidence, getNflInjuryCoverage, type InjuryCoverage } from "@/db/nfl-dfs-availability";
-import { resolveGameAvailability, applyTeamQbContext, identifyTeamQb1s, ROSTER_FRESH_MS, type Availability } from "@/lib/nfl-dfs/availability";
+import { presentPinnedGameAvailability, resolveGameAvailability, applyTeamQbContext, identifyTeamQb1s, ROSTER_FRESH_MS, type Availability, type PinnedGameAvailabilityDecision } from "@/lib/nfl-dfs/availability";
 import { previewAbsence } from "@/lib/nfl-dfs/absence-preview";
 import type { PlayerContext } from "@/lib/nfl-dfs/player-context";
 import { benchmarkPool, type Competitor, type ImportEvidence, type BenchmarkSnapshot, benchmarkTeam } from '@/lib/nfl-dfs/competitor-benchmark';
@@ -39,6 +39,7 @@ import { auditSlate, normalizeName as normalizeFieldName, type FieldAudit } from
 import type { HistorySlate } from '@/lib/nfl-dfs/results-history';
 import { estimateRank, projectionError, scoreLineups, summarizeSet, type PositionError, type ScoreCurve, type ScoredLineup, type SetSummary } from '@/lib/nfl-dfs/slate-results';
 import { parseDkGameInfoKickoff } from '@/lib/nfl-dfs/workspace-stage';
+import {buildDraftKingsEligibilityManifest,type PlatformEligibilityDecision} from '@/lib/nfl-dfs/platform-eligibility';
 import { readWorkloadProjection, workloadPoolEligible, type WorkloadReport } from "@/lib/nfl-dfs/workload-projection";
 import { getCalibratedSnapshots } from "@/db/nfl-dfs-calibrated";
 import { readCalibratedProjection, readPositionWorkloadProjection, type CalibrationSnapshot } from "@/lib/nfl-dfs/calibrated-projection";
@@ -76,6 +77,9 @@ export type NflWorkspacePlayer = NflOptimizerPlayer & {
   projectionScenario?: ProjectionScenario;
   statMeans?: Record<string, number>;
   medianFpts?: number | null;
+  platformEligibility?: PlatformEligibilityDecision;
+  availabilityEvidence?: {gameDecisionId:string|null;platformManifestDigest:string|null;
+    platformDecisionState:'ELIGIBLE'|'INELIGIBLE'|null;decisionAt:string|null};
 };
 
 /**
@@ -104,6 +108,10 @@ export type NflWorkspaceSlate = {
   projectionRunId: string | null;
   modelVersion: string | null;
   modelAsOf: string | null;
+  platformEligibilityManifestDigest?: string | null;
+  availabilityResolution?: {policy:string;pinnedPlayers:number;legacyPlayers:number;decisionAt:string|null};
+  availabilityHealth?: {state_counts?:Record<string,number>;qualifying_observations?:number;display_only_observations?:number;
+    conflicts?:number;unknown?:number;rollback_policy?:string}|null;
   refreshAvailable?: boolean;
   refreshMessage?: string | null;
   /** ISO time of the slate's first kickoff; drives which workspace step opens. */
@@ -171,7 +179,6 @@ export async function freezeNflBenchmark(uploadId:string,source:Competitor) {
     return {ok:true as const,digest,paired:pool.rows.length};
   } catch(error) {return {ok:false as const,error:error instanceof Error?error.message:'Benchmark could not be saved.'};}
 }
-
 export async function previewNflTargetRedistribution(uploadId:string,team:string) {
   const slate=await workspaceSlate(uploadId);
   if(!slate.teams.includes(team)||!slate.projectionRunId)return {ok:false as const,error:'Choose a team in a model-linked salary slate.'};
@@ -357,14 +364,10 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
   const {default:workloadReport}=await import('@/data/nfl-volume-share-report.json');
   const identities=run ? await db.execute(sql`SELECT id, gsis_id FROM ff_players WHERE season=${run.season} AND gsis_id IS NOT NULL`) : {rows:[]};
   const identityMap=new Map(identities.rows.map(r=>[Number(r.id),String(r.gsis_id)]));
-  const now = Date.now();
+  // A saved projection run is a decision-time artifact. Page-read time must
+  // not allow a later injury observation to rewrite its player pool.
+  const now = run?.asOfAt?.getTime() ?? Date.now();
   const situations=run?.week?await loadSituationContext(run.season,run.week,roster,now):null;
-  const baseAvailability = (row: typeof rows[number]) => resolveGameAvailability(roster.get(row.ffPlayerId ?? -1), row.team, row.position, now, run?.week ?? null, roster.get(row.ffPlayerId ?? -1)?.kickoff ?? null);
-  // A QB with no depth number is not blocked on his own evidence, but once his
-  // team has an identified QB1 he is a backup by construction (see availability.ts).
-  const teamQb1s = identifyTeamQb1s(rows.map((row) => ({ team: row.team, position: row.position, name: row.name, availability: baseAvailability(row) })));
-  const availability = (row: typeof rows[number]) => applyTeamQbContext(baseAvailability(row), row.position, teamQb1s.get(row.team) ?? teamQb1s.get(({ LA: 'LAR', WAS: 'WSH', AZ: 'ARI', JAC: 'JAX' } as Record<string, string>)[row.team] ?? row.team));
-
   // The depth chart is what blocks backup quarterbacks, and its feed has now
   // twice gone silently stale for days because an unrelated step in the same
   // single-transaction refresh aborted and rolled the roster write back. Stale
@@ -384,7 +387,9 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
   // The OUT flag is known here and only here (DK's Status column), while the
   // stat line needed to move opportunity lives on the immutable projection
   // row, so the two are joined at read time. Neither table is rewritten.
-  const outFlag = (row: typeof rows[number]) => row.isOut || row.projectionStatus === "out" || Boolean(availability(row).blockedReason);
+  const platformOut = (row: typeof rows[number]) =>
+    (row.platformEligibility as PlatformEligibilityDecision | null)?.state === 'INELIGIBLE' || row.isOut;
+  const outFlag = (row: typeof rows[number]) => platformOut(row) || row.projectionStatus === "out" || Boolean(availability(row).blockedReason);
   const projectionStats = upload.projectionRunId
     ? await db.select({
         playerId: nflDfsPlayerProjections.playerId,
@@ -395,6 +400,27 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
   const statsByPlayer = new Map(projectionStats.map(r => [Number(r.playerId), (r.statMeans ?? {}) as Record<string, number>]));
   const notesByPlayer = new Map(projectionStats.map(r => [Number(r.playerId),
     (r.sourceEvidence as { availability?: ModelAvailabilityNote & { slate_transfer_allowed?: boolean; points_before?: number } })?.availability]));
+  const decisionsByPlayer = new Map(projectionStats.map(r => [Number(r.playerId),
+    (r.sourceEvidence as {availability_decision?:PinnedGameAvailabilityDecision})?.availability_decision]));
+  const pinnedDecisionCount=[...decisionsByPlayer.values()].filter(Boolean).length;
+  const runAvailability=(run?.availabilityManifest??{}) as {health?:NflWorkspaceSlate['availabilityHealth'];policy?:string};
+  const baseAvailability = (row: typeof rows[number]) => {
+    const evidence=roster.get(row.ffPlayerId ?? -1);
+    const legacy=resolveGameAvailability(evidence,row.team,row.position,now,run?.week??null,evidence?.kickoff??null);
+    const pinned=decisionsByPlayer.get(row.ffPlayerId??-1);
+    return pinned?presentPinnedGameAvailability(pinned,legacy.role):legacy;
+  };
+  const teamQb1s = identifyTeamQb1s(rows.map((row) => ({
+    team: row.team,
+    position: row.position,
+    name: row.name,
+    availability: baseAvailability(row),
+  })));
+  const availability = (row: typeof rows[number]) => applyTeamQbContext(
+    baseAvailability(row),
+    row.position,
+    teamQb1s.get(row.team) ?? teamQb1s.get(({ LA: 'LAR', WAS: 'WSH', AZ: 'ARI', JAC: 'JAX' } as Record<string, string>)[row.team] ?? row.team),
+  );
   const redistribution = redistributeOutOpportunity(
     rows.flatMap((row): RedistributionRow[] => {
       const stats = statsByPlayer.get(row.ffPlayerId ?? -1);
@@ -406,7 +432,7 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
         team: row.team,
         historyGames: row.historyGames,
         depthOrder: availability(row).fresh ? Number((roster.get(row.ffPlayerId ?? -1)?.sleeper as { depth_chart_order?: number })?.depth_chart_order) || null : null,
-        canDonate: (row.isOut || row.projectionStatus === 'out' || ['OUT','IR','PUP','NFI','SUSPENDED','INACTIVE'].includes(availability(row).status))
+        canDonate: (platformOut(row) || row.projectionStatus === 'out' || ['OUT','IR','PUP','NFI','SUSPENDED','INACTIVE'].includes(availability(row).status))
           && notesByPlayer.get(row.ffPlayerId ?? -1)?.slate_transfer_allowed !== false,
         isOut: outFlag(row),
         projectionStatus: row.projectionStatus,
@@ -458,12 +484,17 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
     projectionRunId: upload.projectionRunId,
     modelVersion: run?.modelVersion ?? null,
     modelAsOf: run?.asOfAt?.toISOString() ?? null,
+    platformEligibilityManifestDigest: upload.eligibilityManifestDigest,
+    availabilityResolution:{policy:'player-game-availability-v1',pinnedPlayers:pinnedDecisionCount,
+      legacyPlayers:projectionStats.length-pinnedDecisionCount,decisionAt:run?.asOfAt?.toISOString()??null},
+    availabilityHealth:runAvailability.health??null,
     refreshAvailable, refreshMessage,
     favoriteTeam, underdogTeam,
     format: upload.format as "classic" | "showdown",
     games: upload.games as string[],
     teams: upload.teams as string[],
-    warnings: [...upload.warnings as string[], ...(incompleteWarning ? [incompleteWarning] : []), ...(staleWarning ? [staleWarning] : []), ...(rosterStaleWarning ? [rosterStaleWarning] : []), ...(refreshMessage ? [refreshMessage] : []), ...(calibrationWarning ? [calibrationWarning] : [])],
+    warnings: [...upload.warnings as string[], ...(incompleteWarning ? [incompleteWarning] : []), ...(staleWarning ? [staleWarning] : []), ...(rosterStaleWarning ? [rosterStaleWarning] : []), ...(refreshMessage ? [refreshMessage] : []), ...(calibrationWarning ? [calibrationWarning] : []),
+      ...(projectionStats.length&&pinnedDecisionCount<projectionStats.length?[`${projectionStats.length-pinnedDecisionCount} legacy projection rows lack a pinned availability decision; current evidence is display-only for those rows.`]:[])],
     fileName: upload.fileName,
     players: rows.map((row) => ({
       id: row.id,
@@ -482,13 +513,18 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
       captainSalary: row.captainSalary,
       avgFptsDk: numeric(row.avgFptsDk),
       dkStatus: row.dkStatus,
-      isOut: row.isOut || Boolean(availability(row).blockedReason),
+      platformEligibility: row.platformEligibility as NflWorkspacePlayer['platformEligibility'],
+      isOut: platformOut(row) || Boolean(availability(row).blockedReason),
       availability: availability(row),
       // Flat copy for the optimizer, which gates the Showdown Captain slot on
       // it. A QUESTIONABLE player is NOT blocked from the pool -- he usually
       // plays -- but he may not take the 1.5x multiplier. See
       // `captainBlockedByAvailability`.
       availabilityStatus: availability(row).status,
+      availabilityEvidence:{gameDecisionId:availability(row).decisionId??null,
+        platformManifestDigest:upload.eligibilityManifestDigest,
+        platformDecisionState:(row.platformEligibility as PlatformEligibilityDecision|null)?.state??null,
+        decisionAt:availability(row).evaluatedAt??null},
       workloadEligible:workloadPoolEligible({...row,availability:availability(row)},now),
       identityMethod: row.identityMethod,
       identityEvidence: row.identityEvidence,
@@ -564,7 +600,7 @@ async function persistSalarySlate(slate: NflDkSlate, digest: string, fileName: s
   assertUniqueNflSalaryIdentities(identityDecisions.map(({decision},i)=>({name:slate.players[i].name,
     gsisId:decision.match?.gsisId,localPlayerId:decision.match?.playerId})));
   const signature = sha256(`${slate.format}|${[...new Set(slate.players.map(p => p.gameInfo))].sort().join("|")}`);
-  const existing = await db.select({ uploadId: nflDfsSlateUploads.uploadId })
+  const existing = await db.select({ uploadId: nflDfsSlateUploads.uploadId, createdAt:nflDfsSlateUploads.createdAt })
     .from(nflDfsSlateUploads)
     .where(run ? and(eq(nflDfsSlateUploads.fileDigest, digest), eq(nflDfsSlateUploads.projectionRunId, run.runId)) : eq(nflDfsSlateUploads.fileDigest, digest))
     .orderBy(desc(nflDfsSlateUploads.createdAt)).limit(1);
@@ -574,10 +610,15 @@ async function persistSalarySlate(slate: NflDkSlate, digest: string, fileName: s
     if (isSlateComplete(slate.players.length,stored?.n ?? 0)) return workspaceSlate(existing[0].uploadId);
   }
   const uploadId = existing[0]?.uploadId ?? randomUUID();
+  const eligibilityDecisionAt=(existing[0]?.createdAt??new Date()).toISOString();
+  const platformManifest=buildDraftKingsEligibilityManifest({slateId:uploadId,decisionAt:eligibilityDecisionAt,fileDigest:digest,
+    players:slate.players.map(player=>({dkPlayerId:player.dkPlayerId,status:player.status,isOut:player.isOut}))});
+  const eligibilityManifestDigest=platformManifest.digest;
+  const platformDecisionById=new Map(platformManifest.decisions.map(decision=>[decision.sourceRecordId,decision]));
   // Built, NOT awaited: the header row goes into the same transaction as the
   // players below. Committing it on its own is what let a failed player write
   // leave a slate that still looked whole -- see `slate-persist.ts`.
-  const headerWrite = existing[0] ? null : db.insert(nflDfsSlateUploads).values({
+  const headerWrite = existing[0] ? db.update(nflDfsSlateUploads).set({eligibilityManifestDigest}).where(eq(nflDfsSlateUploads.uploadId,uploadId)) : db.insert(nflDfsSlateUploads).values({
       uploadId,
       slateSignature: signature,
       fileName,
@@ -588,6 +629,7 @@ async function persistSalarySlate(slate: NflDkSlate, digest: string, fileName: s
       warnings: slate.warnings,
       playerCount: slate.players.length,
       projectionRunId: run?.runId ?? null,
+      eligibilityManifestDigest,
     });
   const playerRows = slate.players.map((player, playerIndex) => {
     const normalized = normalizeName(player.name);
@@ -613,6 +655,7 @@ async function persistSalarySlate(slate: NflDkSlate, digest: string, fileName: s
       dkStatus: player.status,
       isOut: player.isOut,
       identityMethod,
+      platformEligibility:platformDecisionById.get(player.dkPlayerId)!,
       identityEvidence: {version:'nfl-identity-registry-v1', method:identityMethod, gsisId:permanent?.gsisId ?? null,
         projectionRunId:run?.runId ?? null, projectionRowId:projection?.id ?? null,
         registryAvailable:identityRoster.available,
@@ -665,6 +708,7 @@ async function persistSalarySlate(slate: NflDkSlate, digest: string, fileName: s
         isOut: excluded(nflDfsSlatePlayers.isOut),
         identityMethod: excluded(nflDfsSlatePlayers.identityMethod),
         identityEvidence: excluded(nflDfsSlatePlayers.identityEvidence),
+        platformEligibility: excluded(nflDfsSlatePlayers.platformEligibility),
         projectionStatus: excluded(nflDfsSlatePlayers.projectionStatus),
         ourProj: excluded(nflDfsSlatePlayers.ourProj),
         floorFpts: excluded(nflDfsSlatePlayers.floorFpts),
@@ -677,7 +721,7 @@ async function persistSalarySlate(slate: NflDkSlate, digest: string, fileName: s
       },
     }),
   );
-  const writes = [...(headerWrite ? [headerWrite] : []), ...playerWrites];
+  const writes = [headerWrite, ...playerWrites];
   if (writes.length) await db.batch(writes as [(typeof writes)[number], ...(typeof writes)[number][]]);
 
   // Trust, then verify. The transaction is a claim made by the driver; the row
@@ -861,6 +905,10 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
     dkAvg: player.avgFptsDk, fantasypros: player.fantasyprosProj,
     linestar: player.linestarProj, ownership: player.linestarOwnPct, custom: player.customProj,
     availability: player.availability, isOut: player.isOut,
+    availabilityDecisionId:player.availability?.decisionId??null,
+    availabilityEvidence:player.availabilityEvidence??null,
+    platformEligibility:player.platformEligibility??null,
+    platformEligibilityManifestDigest:slate.platformEligibilityManifestDigest??null,
     injuryCoverageSnapshotId: slate.injuryCoverage?.snapshotId ?? null,
     calibrated: player.calibrated ?? null, calibrationReason: player.calibrationReason,
     workloadEligible:player.workloadEligible,
@@ -952,6 +1000,9 @@ export type NflProjectionExplanation = {
   draws: number | null;                 // Monte Carlo sample count
   statMeans: Record<string, number>;    // projected mean stat line
   availabilityNote: string | null;      // why zeroed, if out
+  availabilityDecisionId: string | null;
+  platformEligibilityManifestDigest: string | null;
+  availabilityEvidence: NflWorkspacePlayer['availabilityEvidence'] | null;
 } | { ok: false; error: string };
 
 /** Decompose WHY a slate player carries his projection: pull the full immutable
@@ -1006,7 +1057,7 @@ export async function explainNflPlayerProjection(
   // surfaces disagreeing about one player costs more.
   const slate = await workspaceSlate(uploadId);
   const here = slate.players.find(p => p.dkPlayerId === slateRow.dkPlayerId);
-  const outHere = here?.projectionStatus === 'out' || slateRow.isOut || availability?.rule === 'zeroed';
+  const outHere = here?.projectionStatus === 'out' || here?.isOut || availability?.rule === 'zeroed';
   const estimated = here?.projectionScenario === 'availability_estimate';
   const inherited = here?.inherited ?? null;
   const donors = paidByDonor({
@@ -1064,6 +1115,9 @@ export async function explainNflPlayerProjection(
     statMeans: here?.statMeans ?? statMeans,
     availabilityNote: availabilityNote(availability, { isOut: slateRow.isOut, dkStatus: slateRow.dkStatus },
       slateRow.isOut ? (donors ?? { paidTo: [], units: [] }) : null),
+    availabilityDecisionId:here?.availability?.decisionId??null,
+    platformEligibilityManifestDigest:slate.platformEligibilityManifestDigest??null,
+    availabilityEvidence:here?.availabilityEvidence??null,
   };
 }
 

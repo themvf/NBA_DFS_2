@@ -1,0 +1,71 @@
+name: Refresh NFL availability context
+
+on:
+  schedule:
+    # The job itself captures hourly within six hours of a kickoff and every
+    # two hours otherwise. Keeping the decision in code makes DST irrelevant.
+    - cron: "17 * * 9-12 *"
+  workflow_dispatch:
+    inputs:
+      season:
+        description: NFL season
+        required: false
+        type: string
+      week:
+        description: Optional regular-season week
+        required: false
+        type: string
+      force:
+        description: Ignore the cadence gate
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nfl-availability-context-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      FANTASYPROS_API_KEY: ${{ secrets.FANTASYPROS_API_KEY }}
+      NFL_SEASON: ${{ inputs.season }}
+      NFL_WEEK: ${{ inputs.week }}
+      FORCE_CAPTURE: ${{ inputs.force }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Capture authoritative Sleeper injury and depth state
+        run: |
+          python -c "import os,sys; sys.argv=['availability-ops','--mode','capture']; [(sys.argv.extend([flag,os.environ[key]])) for key,flag in [('NFL_SEASON','--season'),('NFL_WEEK','--week')] if os.environ.get(key)]; sys.argv.extend(['--force']) if os.environ.get('FORCE_CAPTURE') == 'true' else None; from ingest.nfl_availability_operations import main; sys.exit(main())"
+      - name: Capture independent FantasyPros corroboration
+        continue-on-error: true
+        run: |
+          python -c "import os,sys; sys.argv=['fantasypros-availability']; [(sys.argv.extend([flag,os.environ[key]])) for key,flag in [('NFL_SEASON','--season'),('NFL_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_availability import main; main()"
+      - name: Publish immutable projection and shared availability contexts
+        run: |
+          python -c "import os,sys; sys.argv=['projections']; [(sys.argv.extend([flag,os.environ[key]])) for key,flag in [('NFL_SEASON','--season'),('NFL_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_projections import main; main()"
+      - name: Evaluate freshness and freeze eligible pre-lock waves
+        run: |
+          mkdir -p artifacts
+          python -c "import os,sys; sys.argv=['availability-ops','--mode','monitor']; [(sys.argv.extend([flag,os.environ[key]])) for key,flag in [('NFL_SEASON','--season'),('NFL_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_availability_operations import main; sys.exit(main())" | tee artifacts/nfl-availability-operations.json
+          python -c "import os,sys; sys.argv=['availability-ops','--mode','freeze']; [(sys.argv.extend([flag,os.environ[key]])) for key,flag in [('NFL_SEASON','--season'),('NFL_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_availability_operations import main; sys.exit(main())" | tee -a artifacts/nfl-availability-operations.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nfl-availability-operations
+          path: |
+            artifacts/nfl-availability-operations.json
+            artifacts/nfl-availability-audit.json
+          if-no-files-found: warn
+          retention-days: 90
