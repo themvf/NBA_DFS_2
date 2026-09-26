@@ -56,7 +56,10 @@ export function optimizeCfbLineups(pool: readonly CfbPoolPlayer[], settings: Cfb
   const cap = (p: CfbPoolPlayer) => {
     const pct = settings.maxExposureById[String(p.dkId)];
     const share = pct != null ? pct / 100 : settings.maxExposure;
-    return locked.has(p.dkId) ? settings.nLineups : Math.max(0, Math.floor(share * settings.nLineups + 1e-9));
+    // Any cap above 0% allows at least one lineup: 70% of 1 lineup is not 0 lineups.
+    // An explicit 0% still means never.
+    if (locked.has(p.dkId)) return settings.nLineups;
+    return share <= 0 ? 0 : Math.max(1, Math.floor(share * settings.nLineups + 1e-9));
   };
   const counts = new Map<number, number>();
   const lineups: CfbLineup[] = [];

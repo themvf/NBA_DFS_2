@@ -56,6 +56,12 @@ assert.deepEqual(optimizeCfbLineups(pool, { ...DEFAULT_CFB_SETTINGS, nLineups: 5
   optimizeCfbLineups(pool, { ...DEFAULT_CFB_SETTINGS, nLineups: 5 }).lineups.map((l) => l.projection));
 assert.equal(cfbUploadCsv(result.lineups).split("\n")[0], "QB,RB,RB,WR,WR,WR,FLEX,S-FLEX");
 
+// A single lineup under a 70% cap still builds (the cap rounds up to 1, not down to 0),
+// and an explicit 0% cap still keeps a player out.
+assert.equal(optimizeCfbLineups(pool, { ...DEFAULT_CFB_SETTINGS, nLineups: 1 }).lineups.length, 1);
+const zeroed = optimizeCfbLineups(pool, { ...DEFAULT_CFB_SETTINGS, nLineups: 3, maxExposureById: { [String(hoover.dkId)]: 0 } });
+assert.ok(zeroed.lineups.every((l) => !l.slots.some((s) => s.player.dkId === hoover.dkId)), "0% means never");
+
 // Tournament rules: 2 QBs, a teammate for every QB, a bring-back for every QB.
 const rules = { requireTwoQbs: true, stackQb: true, bringBack: true };
 const stacked = optimizeCfbLineups(pool, { ...DEFAULT_CFB_SETTINGS, nLineups: 20, ...rules });

@@ -7116,4 +7116,19 @@ DraftKings College Football Classic lives apart from NFL DFS by design: route
   match most of that code's players); `cfb_teams` has no abbreviations.
   Nicknames (Rod/Roderick) match on surname only when DK's own average agrees
   within 1 point; that check stopped a backup inheriting a starter's history.
-- FantasyPros' API returns no college projections (probe 2026-09-25).
+- **FantasyPros has no college data in our access** (probe 2026-09-26): every
+  `cfb/*` path either 404s/403s or silently returns NFL data (`sport: NFL`;
+  `cfb/injuries` lists Puka Nacua). Never read a 200 from a FantasyPros path as
+  proof of coverage; check the `sport` field. CFBD has no depth charts,
+  lineups or injuries either (88-path spec checked).
+- **Live DraftKings status** (`lib/cfb-dfs/live-status.ts`): the public lobby
+  (`getcontests?sport=CFB`, Classic = contest type 94) and pool
+  (`getavailableplayers`) supply statuses; the draft group is found by pool
+  overlap (>= 80% of slate players by name + team). Statuses only change for
+  players whose game has not kicked off, OUT/O etc. are canonicalized, a Q
+  player is capped at 25% by default, and export blocks O/D/IR players.
+  DraftKings left Woodson Q through a game he did not play: a tag is what DK
+  knows, not who starts.
+- **Projections are as of kickoff**: history before the slate's week, team PPG
+  from games before its first kickoff (re-projecting a played slate once moved
+  77 players by counting its own scores).

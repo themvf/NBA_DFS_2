@@ -6,6 +6,10 @@ import { db } from "@/db";
 import { ensureCfbDfsTables } from "@/db/cfb-dfs-schema";
 import { parseCfbSalaryCsv, type CfbPosition, type CfbSlatePlayer } from "@/lib/cfb-dfs/salary-csv";
 import {
+  CFB_LOBBY_URL, cfbPoolUrl, DK_HEADERS, effectiveStatus, matchStatuses, MIN_POOL_OVERLAP, openForStatus, parseLobby, parsePool,
+  poolOverlap, STATUS_MAX_AGE_MINUTES, UNAVAILABLE,
+} from "@/lib/cfb-dfs/live-status";
+import {
   CFB_PROJECTION_VERSION, normalizeName, projectCfbPlayers, resolveCfbTeams, teamSeasonKey, type HistoryRow, type TeamResolution,
 } from "@/lib/cfb-dfs/projection";
 import {
@@ -26,6 +30,8 @@ export interface CfbSlateSummary {
   playerCount: number; createdAt: string; games: Array<{ game: string; kickoff: string | null }>;
 }
 export interface CfbPlayerRow extends CfbSlatePlayer {
+  /** Status in the uploaded salary file; `status` is the effective one (live DraftKings when known). */
+  csvStatus: string; liveStatus: string | null;
   proj: number | null; rate: number | null; env: number | null;
   games2026: number | null; games2025: number | null; matchMethod: string | null;
 }
@@ -33,7 +39,8 @@ export interface CfbRunSummary { runId: string; createdAt: string; lineupCount: 
 export interface CfbWorkspace {
   slate: CfbSlateSummary & { projectionVersion: string | null; projectedAt: string | null; teamMap: Record<string, TeamResolution & { implied: number | null }>;
     /** True once the first game has kicked off: results are the next thing to do. */
-    started: boolean };
+    started: boolean;
+    statusCheckedAt: string | null; draftGroupId: number | null; statusNote: string | null };
   players: CfbPlayerRow[];
   runs: CfbRunSummary[];
 }
@@ -95,7 +102,9 @@ async function slatePlayers(uploadId: string): Promise<CfbPlayerRow[]> {
   return rowsOf(result).map((r) => ({
     dkId: Number(r.dk_id), name: String(r.name), position: String(r.position) as CfbPosition,
     rosterPositions: [], salary: Number(r.salary), team: String(r.team), opponent: String(r.opponent), game: String(r.game),
-    kickoff: r.kickoff ? new Date(String(r.kickoff)).toISOString() : null, dkAvg: Number(r.dk_avg), status: String(r.status ?? ""),
+    kickoff: r.kickoff ? new Date(String(r.kickoff)).toISOString() : null, dkAvg: Number(r.dk_avg),
+    status: effectiveStatus(String(r.status ?? ""), r.live_status == null ? null : String(r.live_status)),
+    csvStatus: String(r.status ?? ""), liveStatus: r.live_status == null ? null : String(r.live_status),
     proj: num(r.proj), rate: num(r.rate), env: num(r.env), games2026: num(r.games_2026), games2025: num(r.games_2025),
     matchMethod: r.match_method == null ? null : String(r.match_method),
   }));
@@ -112,18 +121,28 @@ export async function projectCfbSlate(uploadId: string, known?: CfbSlatePlayer[]
   const kicks = players.map((p) => p.kickoff).filter((k): k is string => k != null).sort();
   const season = seasonOf(kicks[0] ?? null);
 
+  // As of kickoff: re-projecting a slate after it is played must reproduce the
+  // numbers it had, not absorb its own results. History stops before the slate's
+  // week; team scoring averages stop before its first kickoff. (On 2026-09-26 a
+  // re-projection of the Friday slate moved 77 players by counting Friday's scores.)
+  const firstKickoff = kicks[0] ?? new Date().toISOString();
+  const weekRow = rowsOf(await db.execute(sql`SELECT min(week) AS week FROM cfb_matchups WHERE season = ${season}
+    AND commence_time BETWEEN ${firstKickoff}::timestamptz - INTERVAL '12 hours' AND ${kicks.at(-1) ?? firstKickoff}::timestamptz + INTERVAL '12 hours'`))[0];
+  const slateWeek = weekRow?.week == null ? null : Number(weekRow.week);
   const history: HistoryRow[] = rowsOf(await db.execute(sql`SELECT cfbd_player_id, player_name, team, season, dk_points
-    FROM cfb_player_game_stats WHERE season IN (${season}, ${season - 1})`)).map((r) => ({
+    FROM cfb_player_game_stats WHERE season = ${season - 1}
+      OR (season = ${season} AND (${slateWeek}::int IS NULL OR week < ${slateWeek}::int))`)).map((r) => ({
       cfbdPlayerId: String(r.cfbd_player_id), playerName: String(r.player_name), team: String(r.team),
       season: Number(r.season), dkPoints: Number(r.dk_points) }));
   if (!history.some((r) => r.season === season)) throw new Error(`No ${season} box scores are loaded yet; run the CFB Player Game Stats workflow.`);
   const teamGames = new Map(rowsOf(await db.execute(sql`SELECT team, season, count(DISTINCT cfbd_game_id) AS games
-    FROM cfb_player_game_stats WHERE season IN (${season}, ${season - 1}) GROUP BY team, season`))
+    FROM cfb_player_game_stats WHERE season = ${season - 1}
+      OR (season = ${season} AND (${slateWeek}::int IS NULL OR week < ${slateWeek}::int)) GROUP BY team, season`))
     .map((r) => [teamSeasonKey(String(r.team), Number(r.season)), Number(r.games)] as const));
   const teamPpg = new Map(rowsOf(await db.execute(sql`SELECT t.name AS team,
       avg(CASE WHEN m.home_team_id = t.team_id THEN m.home_score ELSE m.away_score END) AS ppg
     FROM cfb_matchups m JOIN cfb_teams t ON t.team_id IN (m.home_team_id, m.away_team_id)
-    WHERE m.season = ${season} AND m.completed GROUP BY t.name`))
+    WHERE m.season = ${season} AND m.completed AND m.commence_time < ${firstKickoff}::timestamptz GROUP BY t.name`))
     .filter((r) => r.ppg != null).map((r) => [String(r.team), Number(r.ppg)] as const));
 
   const resolved = resolveCfbTeams(players, history, season);
@@ -177,7 +196,10 @@ export async function loadCfbWorkspace(uploadId: string): Promise<CfbWorkspace> 
       createdAt: new Date(String(slate.created_at)).toISOString(), label: slateLabel(games, firstKickoff),
       projectionVersion: slate.projection_version == null ? null : String(slate.projection_version),
       projectedAt: slate.projected_at ? new Date(String(slate.projected_at)).toISOString() : null,
-      teamMap: (slate.team_map ?? {}) as TeamMap, started: firstKickoff != null && Date.parse(firstKickoff) <= Date.now() },
+      teamMap: (slate.team_map ?? {}) as TeamMap, started: firstKickoff != null && Date.parse(firstKickoff) <= Date.now(),
+      statusCheckedAt: slate.status_checked_at ? new Date(String(slate.status_checked_at)).toISOString() : null,
+      draftGroupId: slate.dk_draft_group_id == null ? null : Number(slate.dk_draft_group_id),
+      statusNote: slate.status_note == null ? null : String(slate.status_note) },
     players: await slatePlayers(uploadId),
     runs,
   };
@@ -194,10 +216,14 @@ export async function generateCfbLineups(uploadId: string, input: Partial<CfbOpt
   const settings: CfbOptimizerSettings = { ...DEFAULT_CFB_SETTINGS, ...input };
   if (!Number.isInteger(settings.nLineups) || settings.nLineups < 1 || settings.nLineups > 150) throw new Error("Lineups must be 1-150.");
   if (settings.minUnique < 1 || settings.minUnique > 7) throw new Error("Minimum unique must be 1-7.");
+  await ensureFreshCfbStatuses(uploadId);
   const players = await slatePlayers(uploadId);
   const pool: CfbPoolPlayer[] = players.map((p) => ({ dkId: p.dkId, name: p.name, position: p.position, team: p.team,
     game: p.game, salary: p.salary, proj: p.proj ?? 0 }));
-  const result = optimizeCfbLineups(pool, settings);
+  // A Questionable player is capped unless the user gave him his own cap.
+  const maxExposureById = { ...settings.maxExposureById };
+  for (const p of players) if (p.status === "Q" && maxExposureById[String(p.dkId)] == null) maxExposureById[String(p.dkId)] = settings.questionableCapPct;
+  const result = optimizeCfbLineups(pool, { ...settings, maxExposureById });
   if (!result.lineups.length) throw new Error(result.stoppedEarly ?? "No legal lineup could be built.");
   const runId = randomUUID();
   const values = result.lineups.map((l) => sql`(${runId}, ${l.lineupNumber},
@@ -317,4 +343,97 @@ export async function readCfbResults(uploadId: string, runId: string | null): Pr
     fieldChalk: field.map((r) => ({ name: String(r.name), field: Number(r.drafted_pct), fpts: Number(r.fpts), ours: oursPct(String(r.player_key)) }))
       .sort((a, b) => b.field - a.field).slice(0, 15),
   };
+}
+
+export interface CfbStatusRefresh {
+  draftGroupId: number | null; checkedAt: string; changes: Array<{ name: string; team: string; from: string; to: string }>;
+  unmatched: number; note: string | null;
+}
+
+async function getJson(url: string): Promise<unknown> {
+  const response = await fetch(url, { headers: DK_HEADERS, cache: "no-store" });
+  if (!response.ok) throw new Error(`DraftKings ${response.status} for ${url}`);
+  return response.json();
+}
+
+/**
+ * Pull DraftKings' live statuses for this slate. The draft group is found once
+ * (the lobby group whose pool holds >= 80% of the slate's players by name and
+ * team) and remembered. Players whose status turns OUT/D/IR are re-projected to 0.
+ */
+export async function refreshCfbStatuses(uploadId: string): Promise<CfbStatusRefresh> {
+  await ensureCfbDfsTables();
+  const slate = rowsOf(await db.execute(sql`SELECT dk_draft_group_id FROM cfb_dfs_slates WHERE upload_id = ${uploadId}`))[0];
+  if (!slate) throw new Error("That slate does not exist.");
+  const players = await slatePlayers(uploadId);
+  const checkedAt = new Date().toISOString();
+  try {
+    let draftGroupId = slate.dk_draft_group_id == null ? null : Number(slate.dk_draft_group_id);
+    let pool = draftGroupId ? parsePool(await getJson(cfbPoolUrl(draftGroupId))) : [];
+    if (!draftGroupId || !pool.length) {
+      const groups = parseLobby(await getJson(CFB_LOBBY_URL));
+      let best: { id: number; overlap: number; pool: ReturnType<typeof parsePool> } | null = null;
+      for (const g of groups) {
+        const candidate = parsePool(await getJson(cfbPoolUrl(g.draftGroupId)));
+        const overlap = poolOverlap(players, candidate);
+        if (!best || overlap > best.overlap) best = { id: g.draftGroupId, overlap, pool: candidate };
+      }
+      if (!best || best.overlap < MIN_POOL_OVERLAP) {
+        const note = groups.length
+          ? `No open DraftKings CFB Classic draft group matches this slate (best match ${Math.round((best?.overlap ?? 0) * 100)}%).`
+          : "DraftKings lists no open CFB Classic draft groups (the slate may have locked).";
+        await db.execute(sql`UPDATE cfb_dfs_slates SET status_checked_at = ${checkedAt}, status_note = ${note} WHERE upload_id = ${uploadId}`);
+        return { draftGroupId: null, checkedAt, changes: [], unmatched: players.length, note };
+      }
+      draftGroupId = best.id; pool = best.pool;
+    }
+    // Match against the whole slate (so a unique name stays unique), but only
+    // write statuses for players whose game has not started.
+    const now = Date.now();
+    const open = new Set(players.filter((p) => openForStatus(p.kickoff, now)).map((p) => p.dkId));
+    const { matches: allMatches, unmatched } = matchStatuses(players, pool);
+    const matches = allMatches.filter((m) => open.has(m.dkId));
+    const byId = new Map(players.map((p) => [p.dkId, p]));
+    const changes = matches.filter((m) => byId.get(m.dkId)!.status !== m.status)
+      .map((m) => ({ name: byId.get(m.dkId)!.name, team: byId.get(m.dkId)!.team, from: byId.get(m.dkId)!.status || "active", to: m.status || "active" }));
+    if (matches.length) {
+      const values = matches.map((m) => sql`(${m.dkId}::bigint, ${m.status}::text)`);
+      await db.execute(sql`UPDATE cfb_dfs_slate_players s SET live_status = v.status
+        FROM (VALUES ${sql.join(values, sql`, `)}) AS v (dk_id, status) WHERE s.upload_id = ${uploadId} AND s.dk_id = v.dk_id`);
+    }
+    const frozen = players.length - open.size;
+    const note = [unmatched ? `${unmatched} players could not be matched to DraftKings by name and team; their file status stands.` : null,
+      frozen ? `${frozen} players' games have started, so their status is frozen.` : null].filter(Boolean).join(" ") || null;
+    await db.execute(sql`UPDATE cfb_dfs_slates SET dk_draft_group_id = ${draftGroupId}, status_checked_at = ${checkedAt},
+      status_note = ${note} WHERE upload_id = ${uploadId}`);
+    // A status that newly makes a player unavailable must reach the projections.
+    if (changes.length) await projectCfbSlate(uploadId);
+    return { draftGroupId, checkedAt, changes, unmatched, note };
+  } catch (reason) {
+    const note = `DraftKings status check failed: ${reason instanceof Error ? reason.message : String(reason)}`;
+    await db.execute(sql`UPDATE cfb_dfs_slates SET status_note = ${note} WHERE upload_id = ${uploadId}`);
+    return { draftGroupId: null, checkedAt, changes: [], unmatched: players.length, note };
+  }
+}
+
+/** Refresh statuses if the last check is older than STATUS_MAX_AGE_MINUTES. Never throws. */
+async function ensureFreshCfbStatuses(uploadId: string): Promise<void> {
+  const row = rowsOf(await db.execute(sql`SELECT status_checked_at FROM cfb_dfs_slates WHERE upload_id = ${uploadId}`))[0];
+  const last = row?.status_checked_at ? Date.parse(String(row.status_checked_at)) : 0;
+  if (Date.now() - last > STATUS_MAX_AGE_MINUTES * 60_000) await refreshCfbStatuses(uploadId);
+}
+
+/**
+ * Before export: refresh statuses if stale, then list any lineup player
+ * DraftKings now tags OUT, Doubtful or IR. An empty list means export is clear.
+ */
+export async function checkCfbExport(uploadId: string, runId: string): Promise<{ blocked: Array<{ lineupNumber: number; name: string; status: string }>; checkedAt: string | null }> {
+  await ensureCfbDfsTables();
+  await ensureFreshCfbStatuses(uploadId);
+  const statusById = new Map((await slatePlayers(uploadId)).map((p) => [p.dkId, p.status]));
+  const lineups = await loadCfbRun(uploadId, runId);
+  const blocked = lineups.flatMap((l) => l.slots.filter((s) => UNAVAILABLE.has(statusById.get(s.player.dkId) ?? ""))
+    .map((s) => ({ lineupNumber: l.lineupNumber, name: s.player.name, status: statusById.get(s.player.dkId)! })));
+  const row = rowsOf(await db.execute(sql`SELECT status_checked_at FROM cfb_dfs_slates WHERE upload_id = ${uploadId}`))[0];
+  return { blocked, checkedAt: row?.status_checked_at ? new Date(String(row.status_checked_at)).toISOString() : null };
 }
