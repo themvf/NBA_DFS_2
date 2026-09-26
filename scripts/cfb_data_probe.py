@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import time
 
 import requests
 
@@ -52,7 +53,17 @@ def main():
     parser.add_argument("--team", default="Indiana")
     parser.add_argument("--season", type=int, default=2026)
     parser.add_argument("--week", type=int, default=5)
+    parser.add_argument("--fantasypros-lineups", action="store_true",
+                        help="only probe FantasyPros college paths that could carry injuries, news or depth charts")
     args = parser.parse_args()
+    if args.fantasypros_lineups:
+        # One request every 4 seconds: FantasyPros rate-limited a burst on 2026-09-25.
+        for path, params in [("cfb/injuries", {}), ("cfb/news", {"limit": 5}), ("cfb/depth-charts", {}),
+                             ("cfb/players", {"status": "injured"}), (f"cfb/{args.season}/rankings", {"week": args.week}),
+                             (f"cfb/{args.season}/consensus-rankings", {"week": args.week}), ("nfl/injuries", {})]:
+            fantasypros(path, params)
+            time.sleep(4)
+        return
     print("CFBD key present:", bool(os.environ.get("CFBD_API_KEY")),
           "| FantasyPros key present:", bool(os.environ.get("FANTASYPROS_API_KEY")))
 
