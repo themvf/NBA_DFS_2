@@ -16,6 +16,10 @@
     {
       "path": "/api/cron/nfl-dk-pool",
       "schedule": "7,37 * * * *"
+    },
+    {
+      "path": "/api/cron/nfl-projections",
+      "schedule": "5,35 13-21 * * *"
     }
   ]
 }

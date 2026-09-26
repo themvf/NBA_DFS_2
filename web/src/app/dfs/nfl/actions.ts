@@ -318,12 +318,19 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
   try {
     const live = await getLiveDkPool(upload.format, (upload.teams as string[]) ?? []);
     liveLastPolledAt = live.lastPolledAt ? live.lastPolledAt.toISOString() : null;
+    // The status column is as old as the salary FILE, not this upload row. A
+    // projection refresh clones the same file onto a new upload; comparing the
+    // live pool to the clone's creation time refused every poll taken before
+    // the refresh, so a refreshed slate showed no live status (2026-09-26).
+    const [firstSeen] = await db.select({ at: sql<Date>`min(${nflDfsSlateUploads.createdAt})` })
+      .from(nflDfsSlateUploads).where(eq(nflDfsSlateUploads.fileDigest, upload.fileDigest));
+    const fileUploadedAt = firstSeen?.at ? new Date(firstSeen.at) : upload.createdAt;
     liveStatus = buildLiveStatusOverlay(
       storedRows.map((row) => ({ normalizedName: row.normalizedName, salary: row.salary, dkStatus: row.dkStatus })),
       upload.format,
       (upload.teams as string[]) ?? [],
       live.pool,
-      upload.createdAt,
+      fileUploadedAt,
     );
   } catch (error) {
     // A status feed that cannot be read must not take the slate down with it.
