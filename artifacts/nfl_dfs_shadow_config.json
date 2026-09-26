@@ -1,15 +1,29 @@
 {
-  "study_run_id": "4b726852851f17b4b8b01158386061e8a95afdd37e4f9abf79a6c338665daec1",
-  "output_digest": "82f07383bbd7369cb688e8dae930ea3ff7de1408140b6ef0506ad81eccd927ad",
+  "study_run_id": "7ff4d4049b8c10be84ee9ba83d5e9704e4fab1522b396e1e18b6c2d26a511c9f",
+  "output_digest": "2d038206a4b88c5ad992735578be5f8f65f4a3498567eaa90231d3bc559532b5",
   "mode": "shadow_only",
   "production_promotion": false,
   "fresh_evaluation_season": 2026,
-  "report": "artifacts/nfl_dfs_research_7920413d4c8c44ef/4b726852851f17b4/report.json",
+  "report": "artifacts/nfl_dfs_research_5bbe39e00278a319/7ff4d4049b8c10be/report.json",
   "forward_gate": {
     "registered_at": "2026-09-22",
     "season": 2026,
-    "window_weeks": [3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
-    "inspected_weeks": [1, 2],
+    "window_weeks": [
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13
+    ],
+    "inspected_weeks": [
+      1,
+      2
+    ],
     "min_player_weeks_per_position": 150,
     "min_weeks": 5,
     "bootstrap_iters": 2000,
@@ -21,6 +35,21 @@
       "p10-p90 interval coverage not worse than baseline",
       "boom Brier not worse than baseline"
     ],
-    "graded_once": "no verdict until every window week is scorable; weeks 1-2 were inspected and are excluded; the gate reports, it never flips production_promotion"
+    "graded_once": "no verdict until every window week is scorable; weeks 1-2 were inspected and are excluded; the gate reports, it never flips production_promotion",
+    "amendments": [
+      {
+        "date": "2026-09-26",
+        "change": "window_weeks 3-12 -> 4-13",
+        "reason": "The shadow job failed every run from 2026-09-17 on the study-pin guard (baseline edited by historical-v5), so no pregame forecasts exist for week 3 and it can never become scorable. Dropping it and extending by one week keeps the registered 10-week length.",
+        "outcomes_seen": "none: no shadow forecast was frozen for any window week before this amendment",
+        "repin": {
+          "from_study": "4b726852851f17b4b8b01158386061e8a95afdd37e4f9abf79a6c338665daec1",
+          "from_digest": "82f07383bbd7369cb688e8dae930ea3ff7de1408140b6ef0506ad81eccd927ad",
+          "to_study": "7ff4d4049b8c10be84ee9ba83d5e9704e4fab1522b396e1e18b6c2d26a511c9f",
+          "to_digest": "2d038206a4b88c5ad992735578be5f8f65f4a3498567eaa90231d3bc559532b5",
+          "note": "Recomputed against historical-v5. Only DST:opportunity remains eligible_for_shadow_only; QB/RB/WR/TE fell below the >=1% retrospective MAE gain once v5 improved the baseline."
+        }
+      }
+    ]
   }
 }

@@ -70,5 +70,9 @@ def test_gate_never_promotes_and_config_records_the_inspected_weeks():
     config = json.loads(Path("artifacts/nfl_dfs_shadow_config.json").read_text())
     assert config["production_promotion"] is False
     gate = config["forward_gate"]
-    assert gate["inspected_weeks"] == [1, 2] and gate["window_weeks"] == list(range(3, 13))
+    # Amended 2026-09-26 from 3-12: week 3 was lost to a pipeline outage before
+    # any forecast was frozen. Any further change must add another amendment.
+    assert gate["inspected_weeks"] == [1, 2] and gate["window_weeks"] == list(range(4, 14))
+    assert [a["change"] for a in gate["amendments"]] == ["window_weeks 3-12 -> 4-13"]
+    assert not set(gate["inspected_weeks"]) & set(gate["window_weeks"])
     assert gate["min_player_weeks_per_position"] == 150 and gate["min_weeks"] == 5
