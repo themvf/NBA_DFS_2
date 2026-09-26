@@ -53,6 +53,8 @@ import {
   type NflOptimizerPlayer,
   type NflOptimizerSettings,
 } from "./nfl-optimizer";
+import { searchTeamNews, type TeamNews } from "@/lib/x-news";
+import { NFL_TEAM_NICKNAMES } from "@/lib/nfl-dfs/x-news-teams";
 
 export type NflWorkspacePlayer = NflOptimizerPlayer & {
   ffPlayerId: number | null;
@@ -1428,4 +1430,23 @@ function auditForSlate(
       played: played === null ? null : played.has(p.normalizedName),
     }])),
   );
+}
+
+/**
+ * Starter and injury posts from X for every team on the slate: its QBs plus any
+ * player DraftKings tags Questionable or Doubtful. Read-only: nothing here
+ * changes a status, availability or projection. Needs TWITTERAPI_IO_KEY.
+ */
+export async function searchNflStarterNews(uploadId: string): Promise<{ teams: TeamNews[]; searchedAt: string; postsRead: number }> {
+  const key = process.env.TWITTERAPI_IO_KEY;
+  if (!key) throw new Error("TWITTERAPI_IO_KEY is not set on this deployment.");
+  if (!/^[0-9a-f-]{36}$/.test(uploadId)) throw new Error("Invalid slate.");
+  const slate = await workspaceSlate(uploadId);
+  const watched = (p: NflWorkspacePlayer) => p.position === "QB"
+    || ["Q", "D", "GTD", "QUESTIONABLE", "DOUBTFUL"].includes((p.dkStatus ?? "").trim().toUpperCase());
+  const requests = [...new Set(slate.players.map((p) => p.team))].sort().map((code) => ({
+    code, school: NFL_TEAM_NICKNAMES[code] ?? code,
+    players: [...new Set(slate.players.filter((p) => p.team === code && p.position !== "DST" && watched(p)).map((p) => p.name))],
+  }));
+  return searchTeamNews(key, requests);
 }

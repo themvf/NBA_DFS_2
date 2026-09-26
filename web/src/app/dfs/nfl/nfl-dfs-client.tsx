@@ -11,6 +11,7 @@ import WorkspaceStepper from './workspace-stepper';
 import StatusLine from './status-line';
 import { isLocked, prioritizeStatus, recommendedStage, type StatusItem, type WorkspaceStage } from '@/lib/nfl-dfs/workspace-stage';
 import LiveStatusBanner from './live-status-banner';
+import XNewsPanel from '@/components/x-news-panel';
 import CaptainRangeInput from './captain-range-input';
 import type { CaptainRecommendation } from '@/lib/nfl-dfs/captain-recommendation';
 import { recommendFromSimulation, simulateCaptainOdds } from '@/lib/nfl-dfs/captain-simulation';
@@ -19,7 +20,7 @@ import type { CaptainTarget } from '@/lib/nfl-dfs/generation-settings';
 import { availabilityCoverage } from '@/lib/nfl-dfs/availability-coverage';
 import { AlertTriangle, BarChart3, CheckCircle2, Download, FileUp, HelpCircle, Lock, Play, Search, ShieldCheck, Unlock, XCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { refreshNflSlateProjections, listSavedNflSlates, loadSavedNflWorkspace, loadSavedNflLineups, readNflOptimizerAudit, applyNflComparison, loadNflSalaryCsv, runNflOptimizer, type NflComparisonSource, type NflWorkspaceSlate } from "./actions";
+import { refreshNflSlateProjections, listSavedNflSlates, loadSavedNflWorkspace, loadSavedNflLineups, readNflOptimizerAudit, applyNflComparison, loadNflSalaryCsv, runNflOptimizer, searchNflStarterNews, type NflComparisonSource, type NflWorkspaceSlate } from "./actions";
 import type { NflGeneratedLineup, NflOptimizerSettings, NflProjectionSource } from "./nfl-optimizer";
 import { DEFAULT_NFL_PUNT_POLICY } from "@/lib/nfl-dfs/punt-policy";
 import { PUNT_PRESETS, resolvePuntPreset, describePuntPolicy, type PuntPresetKey } from "@/lib/nfl-dfs/punt-presets";
@@ -346,6 +347,10 @@ export default function NflDfsClient() {
 
       {stage === "slate" ? <div className="space-y-4">
         <LiveStatusBanner live={slate.liveDkStatus} />
+        <XNewsPanel search={() => searchNflStarterNews(slate.uploadId)} intro={<>
+          Each team&apos;s QBs and any player DraftKings tags Q or D. Posts are flagged by phrases like &quot;will start&quot;, &quot;ruled out&quot;, &quot;doubtful&quot;; nothing here changes a status, availability or projection.
+          Weigh the newest posts from high-reach reporters, then lock or exclude players yourself.
+        </>} />
         <section className="nfl-slate-status grid grid-cols-2 gap-3 md:grid-cols-6"><Metric label="Format" value={slate.format.toUpperCase()} /><Metric label="Players" value={String(slate.players.length)} /><Metric label="Games" value={String(slate.games.length)} /><Metric label="Our model" value={`${slate.players.filter((p) => p.ourProj != null).length}/${slate.players.length}`} /><Metric label="Availability" value={coverage.metric} /><Metric label="Model" value={slate.modelVersion ?? "None"} small /><Metric label="As of" value={slate.modelAsOf ? new Date(slate.modelAsOf).toLocaleString() : "No run"} small /></section>
       <details className="rounded-xl border border-blue-200 bg-blue-50 p-4"><summary className="cursor-pointer text-sm font-semibold text-blue-950">Pinned availability evidence</summary><div className="mt-3 grid gap-3 text-sm md:grid-cols-4"><Metric label="Pinned decisions" value={`${slate.availabilityResolution?.pinnedPlayers??0}`} /><Metric label="Legacy fallbacks" value={`${slate.availabilityResolution?.legacyPlayers??0}`} /><Metric label="Conflicts" value={`${slate.availabilityHealth?.conflicts??0}`} /><Metric label="Unknown" value={`${slate.availabilityHealth?.unknown??0}`} /></div><p className="mt-3 break-all text-xs text-blue-900">Policy {slate.availabilityResolution?.policy??'unavailable'} · decision time {slate.availabilityResolution?.decisionAt?new Date(slate.availabilityResolution.decisionAt).toLocaleString():'unavailable'} · platform manifest {slate.platformEligibilityManifestDigest??'unavailable'}</p><p className="mt-1 text-xs text-blue-800">{slate.availabilityHealth?.rollback_policy??'Rollback policy unavailable.'}</p></details>
         {slate.warnings.length ? <div className="space-y-2">{slate.warnings.map((warning) => <Notice key={warning}>{warning}</Notice>)}</div> : null}

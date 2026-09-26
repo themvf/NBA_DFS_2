@@ -20,7 +20,7 @@ import {
   cfbProjectionError, parseCfbContestStandings, scoreCfbLineups, summarizeCfbSet,
   type CfbSetResult, type PositionMiss, type ScoreCurve, type ScoredCfbLineup,
 } from "@/lib/cfb-dfs/results";
-import { mergePosts, parseXPosts, teamQueries, X_SEARCH_URL, type TeamNews, type XPost } from "@/lib/cfb-dfs/x-news";
+import { searchTeamNews, type TeamNews } from "@/lib/x-news";
 
 type Row = Record<string, unknown>;
 const rowsOf = (result: unknown) => ((result as { rows?: Row[] }).rows ?? (result as Row[])) as Row[];
@@ -448,29 +448,10 @@ export async function searchCfbStarterNews(uploadId: string): Promise<{ teams: T
   const key = process.env.TWITTERAPI_IO_KEY;
   if (!key) throw new Error("TWITTERAPI_IO_KEY is not set on this deployment.");
   const workspace = await loadCfbWorkspace(uploadId);
-  const until = new Date();
-  const teams: TeamNews[] = [...new Set(workspace.players.map((p) => p.team))].sort().map((code) => {
-    const names = workspace.players.filter((p) => p.team === code
-      && (p.position === "QB" || ["Q", "D", "O", "OUT"].includes(p.status))).map((p) => p.name);
-    const school = workspace.slate.teamMap[code]?.team ?? code;
-    return { code, school, players: names, queries: teamQueries(school, names, until), posts: [], error: null };
-  });
-  let postsRead = 0;
-  const jobs = teams.flatMap((t) => t.queries.map((q) => ({ t, q })));
-  const results = new Map<TeamNews, XPost[][]>();
-  // Four at a time: fast enough before a lock, gentle on the API.
-  for (let i = 0; i < jobs.length; i += 4) {
-    await Promise.all(jobs.slice(i, i + 4).map(async ({ t, q }) => {
-      try {
-        const url = `${X_SEARCH_URL}?${new URLSearchParams({ query: q, queryType: "Latest" })}`;
-        const response = await fetch(url, { headers: { "X-API-Key": key }, cache: "no-store" });
-        if (!response.ok) throw new Error(`X search ${response.status}`);
-        const posts = parseXPosts(await response.json(), t.players, t.school);
-        postsRead += posts.length;
-        results.set(t, [...(results.get(t) ?? []), posts]);
-      } catch (reason) { t.error = reason instanceof Error ? reason.message : String(reason); }
-    }));
-  }
-  for (const t of teams) t.posts = mergePosts(results.get(t) ?? []);
-  return { teams, searchedAt: until.toISOString(), postsRead };
+  const requests = [...new Set(workspace.players.map((p) => p.team))].sort().map((code) => ({
+    code, school: workspace.slate.teamMap[code]?.team ?? code,
+    players: workspace.players.filter((p) => p.team === code
+      && (p.position === "QB" || ["Q", "D", "O", "OUT"].includes(p.status))).map((p) => p.name),
+  }));
+  return searchTeamNews(key, requests);
 }

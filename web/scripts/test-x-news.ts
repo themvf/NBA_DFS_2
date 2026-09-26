@@ -1,6 +1,6 @@
-/** CFB X news: phrase flags on the real Navy posts, query shape, merge order. */
+/** X news (CFB and NFL): phrase flags on the real Navy posts, query shape, merge order. */
 import assert from "node:assert/strict";
-import { flagPost, mergePosts, parseXPosts, surnameOf, teamQueries } from "../src/lib/cfb-dfs/x-news";
+import { flagPost, mergePosts, parseXPosts, surnameOf, teamQueries } from "../src/lib/x-news";
 
 assert.deepEqual(flagPost("Update: Navy back-up QB Jackson Gutierrez is expected to make his 1st career start tonight at UAB"), ["starter"]);
 assert.deepEqual(flagPost("QB Braxton Woodson (ankle) is downgraded to doubtful Friday."), ["doubtful/GTD", "injury"]);

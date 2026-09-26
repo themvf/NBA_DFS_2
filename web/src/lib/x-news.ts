@@ -1,5 +1,6 @@
 /**
- * Starter and injury news from X (twitterapi.io), for the CFB DFS page.
+ * Starter and injury news from X (twitterapi.io), shared by the CFB and NFL
+ * DFS pages. Sport-neutral: each page supplies its own teams and players.
  *
  * Why: DraftKings left Braxton Woodson tagged Q through a game he did not
  * play. X had "Gutierrez expected to make his 1st career start" from two
@@ -104,4 +105,33 @@ export function mergePosts(lists: readonly XPost[][], limit = 12): XPost[] {
   }
   out.sort((a, b) => (b.flags.length > 0 ? 1 : 0) - (a.flags.length > 0 ? 1 : 0) || b.at.localeCompare(a.at));
   return out.slice(0, limit).sort((a, b) => b.at.localeCompare(a.at));
+}
+
+/** One team to search: `school` is how posts name the team ("Navy", "Chiefs"); `players` are named in quotes. */
+export interface TeamNewsRequest { code: string; school: string; players: string[] }
+
+/**
+ * Run every team's searches, four at a time, and merge each team's posts.
+ * A failed search is recorded on its team; the others still return.
+ */
+export async function searchTeamNews(key: string, requests: readonly TeamNewsRequest[], until = new Date()):
+  Promise<{ teams: TeamNews[]; searchedAt: string; postsRead: number }> {
+  const teams: TeamNews[] = requests.map((r) => ({ ...r, queries: teamQueries(r.school, r.players, until), posts: [], error: null }));
+  let postsRead = 0;
+  const jobs = teams.flatMap((t) => t.queries.map((q) => ({ t, q })));
+  const results = new Map<TeamNews, XPost[][]>();
+  for (let i = 0; i < jobs.length; i += 4) {
+    await Promise.all(jobs.slice(i, i + 4).map(async ({ t, q }) => {
+      try {
+        const url = `${X_SEARCH_URL}?${new URLSearchParams({ query: q, queryType: "Latest" })}`;
+        const response = await fetch(url, { headers: { "X-API-Key": key }, cache: "no-store" });
+        if (!response.ok) throw new Error(`X search ${response.status}`);
+        const posts = parseXPosts(await response.json(), t.players, t.school);
+        postsRead += posts.length;
+        results.set(t, [...(results.get(t) ?? []), posts]);
+      } catch (reason) { t.error = reason instanceof Error ? reason.message : String(reason); }
+    }));
+  }
+  for (const t of teams) t.posts = mergePosts(results.get(t) ?? []);
+  return { teams, searchedAt: until.toISOString(), postsRead };
 }

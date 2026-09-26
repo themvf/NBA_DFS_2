@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { searchCfbStarterNews } from "./actions";
-import type { TeamNews } from "@/lib/cfb-dfs/x-news";
+import { useState, useTransition, type ReactNode } from "react";
+import type { TeamNews } from "@/lib/x-news";
 
 const FLAG_STYLE: Record<string, string> = {
   starter: "bg-violet-100 text-violet-900", out: "bg-red-100 text-red-800",
@@ -14,19 +13,24 @@ const ago = (iso: string) => {
 };
 const reach = (n: number | null) => (n == null ? "?" : n >= 1000 ? `${Math.round(n / 1000)}K` : String(n));
 
-/** Starter and injury posts from X, per team. Evidence to read before lock, not a status. */
-export default function CfbNewsPanel({ uploadId }: { uploadId: string }) {
+type SearchResult = { teams: TeamNews[]; searchedAt: string; postsRead: number };
+
+/**
+ * Starter and injury posts from X, per team. Evidence to read before lock, not
+ * a status. Shared by the CFB and NFL DFS pages; each passes its own search.
+ */
+export default function XNewsPanel({ search, intro, className }: { search: () => Promise<SearchResult>; intro: ReactNode; className?: string }) {
   const [teams, setTeams] = useState<TeamNews[] | null>(null);
   const [meta, setMeta] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [flaggedOnly, setFlaggedOnly] = useState(true);
   const [pending, start] = useTransition();
 
-  function search() {
+  function run() {
     setError(null);
     start(async () => {
       try {
-        const r = await searchCfbStarterNews(uploadId);
+        const r = await search();
         setTeams(r.teams);
         setMeta(`Searched ${new Date(r.searchedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ${r.postsRead} posts read (≈$${(r.postsRead * 0.00015).toFixed(3)}) · last 72 hours`);
       } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
@@ -34,19 +38,16 @@ export default function CfbNewsPanel({ uploadId }: { uploadId: string }) {
   }
 
   const shown = (teams ?? []).map((t) => ({ ...t, posts: flaggedOnly ? t.posts.filter((p) => p.flags.length) : t.posts }));
-  return <section className="rounded-xl border bg-white p-4 shadow-sm">
+  return <section className={className ?? "rounded-xl border bg-white p-4 shadow-sm"}>
     <div className="flex flex-wrap items-center gap-2 text-xs">
       <span className="text-sm font-bold text-slate-700">Starter news from X</span>
-      <button disabled={pending} onClick={search} className="rounded border bg-white px-2 py-1 font-semibold disabled:opacity-50">
+      <button disabled={pending} onClick={run} className="rounded border bg-white px-2 py-1 font-semibold disabled:opacity-50">
         {pending ? "Searching…" : teams ? "Search again" : "Search X"}</button>
       {teams ? <label className="flex items-center gap-1"><input type="checkbox" checked={flaggedOnly} onChange={(e) => setFlaggedOnly(e.target.checked)} />
         flagged posts only</label> : null}
       {meta ? <span className="text-slate-500">{meta}</span> : null}
     </div>
-    <p className="mt-1 text-xs text-slate-500">
-      Each team&apos;s QBs and any player DraftKings tags Q/D/O. Posts are flagged by phrases like &quot;will start&quot;, &quot;doubtful&quot;, &quot;ruled out&quot;; nothing here changes a status or a projection.
-      Read the newest posts from high-reach reporters, and lock or exclude players yourself. On 2026-09-25 X had Gutierrez starting 90 minutes before lock while DraftKings still showed Woodson Q.
-    </p>
+    <p className="mt-1 text-xs text-slate-500">{intro}</p>
     {error ? <p role="alert" className="mt-2 text-sm text-red-800">{error}</p> : null}
     {teams ? <div className="mt-3 grid gap-3 lg:grid-cols-2">
       {shown.map((t) => <div key={t.code} className="rounded-lg border p-2">
