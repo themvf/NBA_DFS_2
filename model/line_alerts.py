@@ -2574,6 +2574,41 @@ def _verified_close(db: DatabaseManager, sport: str, matchup_id: int, *, include
     return None
 
 
+def _cfb_moneyline_close_grade(a: dict, close: dict) -> dict:
+    """Compare the frozen execution quote with that book's verified close."""
+    details = a["details_json"] or {}
+    book = details.get("exec_book")
+    side = a["side"]
+    result = {
+        "exec_book": book,
+        "entry_decimal": details.get("exec_decimal"),
+        "close_decimal": None,
+        "price_clv_pct": None,
+        "close_history_id": int(close["history_id"]),
+        "close_source": "verified_clv_closes",
+        "price_comparison_status": "CLOSE_UNAVAILABLE",
+    }
+    quote = (close.get("books") or {}).get(book) if book else None
+    if not isinstance(quote, dict):
+        return result
+    if side not in ("home", "away"):
+        return result
+    odds = quote.get(f"ml_{side}")
+    if odds is None:
+        return result
+    try:
+        entry = float(details["exec_decimal"])
+        close_decimal = american_to_decimal(int(odds))
+        if entry <= 1 or close_decimal <= 1:
+            return result
+    except (KeyError, TypeError, ValueError, ZeroDivisionError):
+        return result
+    result["close_decimal"] = close_decimal
+    result["price_clv_pct"] = round((entry / close_decimal - 1) * 100, 3)
+    result["price_comparison_status"] = "SAME_BOOK_SELECTION"
+    return result
+
+
 def settle(db: DatabaseManager, sport: str) -> int:
     """Grade alerts whose games have started: CLV always, outcome when scored."""
     matchup_tbl = _MATCHUP_TBL[sport]
@@ -2583,12 +2618,15 @@ def settle(db: DatabaseManager, sport: str) -> int:
     # 'lost' regardless of the actual stat. They have their own settlers
     # (settle_props / settle_props_soccer / settle_tennis_totals).
     open_alerts = db.execute(
-        "SELECT * FROM line_alerts WHERE sport = %s AND origin = 'prospective' AND settled_at IS NULL "
+        "SELECT * FROM line_alerts WHERE sport = %s AND origin = 'prospective' "
+        "AND (settled_at IS NULL OR (%s = 'cfb' AND created_at >= '2026-09-25' "
+        "AND close_history_id IS NULL AND details_json->>'market' = 'moneyline' "
+        "AND details_json ? 'exec_decimal')) "
         "AND (alert_type IN ('pinnacle_divergence', 'pinnacle_favorite_forward', 'pinnacle_polymarket_delta', 'steam', 'dk_value', 'walking', "
         "'book_disagreement', 'market_convergence', 'late_move') "
         "OR (%s = 'tennis' AND alert_type IN ('favorite_flip', 'reversal', 'reference_led', 'price_pressure'))) "
         "AND commence_time IS NOT NULL AND commence_time <= NOW()",
-        (sport, sport),
+        (sport, sport, sport),
     )
     graded = 0
     for a in open_alerts:
@@ -2603,7 +2641,7 @@ def settle(db: DatabaseManager, sport: str) -> int:
             sport in ("mlb", "tennis", "cfb", "nfl")
             and a["alert_type"] != "pinnacle_polymarket_delta"
         ):
-            close = _verified_close(db, sport, a["matchup_id"])
+            close = _verified_close(db, sport, a["matchup_id"], include_id=(sport == "cfb"))
         else:
             close = None
         # Historical alerts and the short interval before the close worker
@@ -2676,6 +2714,17 @@ def settle(db: DatabaseManager, sport: str) -> int:
         if clv_pp is None and outcome is None:
             continue
         g = _grade_alert_prices(db, a)
+        close_history_id = None
+        pnl_units = None
+        if sport == "cfb" and (a["details_json"] or {}).get("market") == "moneyline":
+            price_grade = _cfb_moneyline_close_grade(a, close)
+            g["grading_json"] = {**(g["grading_json"] or {}), **price_grade}
+            close_history_id = price_grade["close_history_id"]
+            entry_decimal = price_grade["entry_decimal"]
+            if outcome is not None and entry_decimal is not None:
+                pnl_units = (float(entry_decimal) - 1 if outcome == "won"
+                             else -1.0 if outcome == "lost" else 0.0)
+                g["grading_json"]["pnl_units"] = round(pnl_units, 4)
         if sport == "mlb" and m:
             g["grading_json"] = {**(g["grading_json"] or {}), "settlement_reason": mlb_reason}
         if sport == "tennis" and m:
@@ -2690,12 +2739,14 @@ def settle(db: DatabaseManager, sport: str) -> int:
                 "UPDATE line_alerts SET close_prob = %s, clv_pp = %s, outcome = %s, "
                 "dk_close_decimal = %s, dk_clv_pct = %s, pin_close_prob = %s, "
                 "convergence = %s, dk_survival_min = %s, grading_json = %s, comparison_status = %s, grading_version = %s, "
-                "settled_at = CASE WHEN %s::text IS NOT NULL THEN NOW() ELSE settled_at END "
+                "close_history_id = COALESCE(%s, close_history_id), "
+                "pnl_units = COALESCE(%s, pnl_units), "
+                "settled_at = CASE WHEN %s::text IS NOT NULL THEN COALESCE(settled_at, NOW()) ELSE settled_at END "
                 "WHERE id = %s",
                 (close_prob, clv_pp, outcome, g["dk_close_decimal"], g["dk_clv_pct"],
                  g["pin_close_prob"], g["convergence"], g["dk_survival_min"],
                  json.dumps(g["grading_json"]), g["comparison_status"],
-                 g["grading_version"], outcome, a["id"]),
+                 g["grading_version"], close_history_id, pnl_units, outcome, a["id"]),
             )
             _append_grade_history_cur(cur, a["id"], g, outcome=outcome)
         graded += 1
@@ -2703,6 +2754,9 @@ def settle(db: DatabaseManager, sport: str) -> int:
         graded += _settle_football_line_alerts(db, sport)
     if graded:
         print(f"Line alerts ({sport}): {graded} graded")
+    if sport == "cfb" and getattr(db, "database_url", None):
+        from ingest.cfb_economics_migrate import migrate as migrate_cfb_economics
+        migrate_cfb_economics(db.database_url)
     return graded
 
 
