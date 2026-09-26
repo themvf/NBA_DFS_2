@@ -45,6 +45,10 @@ def fantasypros(path, params):
         return None
     data = r.json()
     print("  shape:", shape(data))
+    # Which sport did the answer actually come from? A sample of names settles it.
+    rows = next((data[k] for k in ("injuries", "items", "players") if isinstance(data.get(k), list) and data[k]), [])
+    sample = [{k: row.get(k) for k in ("sport", "player_name", "name", "title", "team_id", "team", "school", "position_id", "injury_status") if row.get(k)} for row in rows[:3]]
+    print("  sport:", data.get("sport"), "| sample:", sample)
     return data
 
 
