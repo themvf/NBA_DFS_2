@@ -20,6 +20,8 @@ import {
   cfbProjectionError, parseCfbContestStandings, scoreCfbLineups, summarizeCfbSet,
   type CfbSetResult, type PositionMiss, type ScoreCurve, type ScoredCfbLineup,
 } from "@/lib/cfb-dfs/results";
+import { searchTeamNews, type XNewsResult } from "@/lib/x-news";
+import { CFB_TRUSTED_ACCOUNTS, isXHandle } from "@/lib/x-news-accounts";
 
 type Row = Record<string, unknown>;
 const rowsOf = (result: unknown) => ((result as { rows?: Row[] }).rows ?? (result as Row[])) as Row[];
@@ -436,4 +438,21 @@ export async function checkCfbExport(uploadId: string, runId: string): Promise<{
     .map((s) => ({ lineupNumber: l.lineupNumber, name: s.player.name, status: statusById.get(s.player.dkId)! })));
   const row = rowsOf(await db.execute(sql`SELECT status_checked_at FROM cfb_dfs_slates WHERE upload_id = ${uploadId}`))[0];
   return { blocked, checkedAt: row?.status_checked_at ? new Date(String(row.status_checked_at)).toISOString() : null };
+}
+
+/**
+ * Starter and injury posts from X for every team on the slate: its QBs plus any
+ * player DraftKings tags Q, D or O. Read-only: nothing here changes a status or
+ * a projection. Needs TWITTERAPI_IO_KEY (twitterapi.io, about $0.15 per 1,000 posts).
+ */
+export async function searchCfbStarterNews(uploadId: string, extraAccounts: string[] = []): Promise<XNewsResult> {
+  const key = process.env.TWITTERAPI_IO_KEY;
+  if (!key) throw new Error("TWITTERAPI_IO_KEY is not set on this deployment.");
+  const workspace = await loadCfbWorkspace(uploadId);
+  const requests = [...new Set(workspace.players.map((p) => p.team))].sort().map((code) => ({
+    code, school: workspace.slate.teamMap[code]?.team ?? code,
+    players: workspace.players.filter((p) => p.team === code
+      && (p.position === "QB" || ["Q", "D", "O", "OUT"].includes(p.status))).map((p) => p.name),
+  }));
+  return searchTeamNews(key, requests, { trusted: [...CFB_TRUSTED_ACCOUNTS, ...extraAccounts.filter(isXHandle).slice(0, 20)] });
 }

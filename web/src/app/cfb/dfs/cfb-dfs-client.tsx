@@ -3,12 +3,13 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   checkCfbExport, exportCfbRun, generateCfbLineups, listCfbSlates, loadCfbRun, loadCfbWorkspace, refreshCfbProjections,
-  refreshCfbStatuses, uploadCfbSlate,
+  refreshCfbStatuses, searchCfbStarterNews, uploadCfbSlate,
   type CfbSlateSummary, type CfbWorkspace,
 } from "./actions";
 import { DEFAULT_CFB_SETTINGS, type CfbLineup } from "@/lib/cfb-dfs/settings";
 import { exportCfbDkEntries } from "@/lib/cfb-dfs/entry-export";
 import CfbResultsPanel from "./cfb-results-panel";
+import XNewsPanel from "@/components/x-news-panel";
 
 const STORAGE_KEY = "cfb-dfs-slate";
 const dollars = (n: number) => `$${n.toLocaleString()}`;
@@ -242,6 +243,11 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
           {workspace.slate.statusNote ? <span className="basis-full text-amber-800">{workspace.slate.statusNote}</span> : null}
         </div>
       </section>
+
+      {!workspace.slate.started ? <XNewsPanel storageKey="cfb-x-trusted" search={(extra) => searchCfbStarterNews(workspace.slate.uploadId, extra)} intro={<>
+        Each team&apos;s QBs and any player DraftKings tags Q/D/O. Posts are flagged by phrases like &quot;will start&quot;, &quot;doubtful&quot;, &quot;ruled out&quot;; nothing here changes a status or a projection.
+        Read the newest posts from high-reach reporters, and lock or exclude players yourself. On 2026-09-25 X had Gutierrez starting 90 minutes before lock while DraftKings still showed Woodson Q.
+      </>} /> : null}
 
       {workspace.slate.started ? <CfbResultsPanel uploadId={workspace.slate.uploadId} runId={runId} runsVersion={workspace.runs.length} /> : null}
 
