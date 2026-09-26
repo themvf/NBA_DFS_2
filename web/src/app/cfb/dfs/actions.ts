@@ -20,6 +20,7 @@ import {
   cfbProjectionError, parseCfbContestStandings, scoreCfbLineups, summarizeCfbSet,
   type CfbSetResult, type PositionMiss, type ScoreCurve, type ScoredCfbLineup,
 } from "@/lib/cfb-dfs/results";
+import { mergePosts, parseXPosts, teamQueries, X_SEARCH_URL, type TeamNews, type XPost } from "@/lib/cfb-dfs/x-news";
 
 type Row = Record<string, unknown>;
 const rowsOf = (result: unknown) => ((result as { rows?: Row[] }).rows ?? (result as Row[])) as Row[];
@@ -436,4 +437,40 @@ export async function checkCfbExport(uploadId: string, runId: string): Promise<{
     .map((s) => ({ lineupNumber: l.lineupNumber, name: s.player.name, status: statusById.get(s.player.dkId)! })));
   const row = rowsOf(await db.execute(sql`SELECT status_checked_at FROM cfb_dfs_slates WHERE upload_id = ${uploadId}`))[0];
   return { blocked, checkedAt: row?.status_checked_at ? new Date(String(row.status_checked_at)).toISOString() : null };
+}
+
+/**
+ * Starter and injury posts from X for every team on the slate: its QBs plus any
+ * player DraftKings tags Q, D or O. Read-only: nothing here changes a status or
+ * a projection. Needs TWITTERAPI_IO_KEY (twitterapi.io, about $0.15 per 1,000 posts).
+ */
+export async function searchCfbStarterNews(uploadId: string): Promise<{ teams: TeamNews[]; searchedAt: string; postsRead: number }> {
+  const key = process.env.TWITTERAPI_IO_KEY;
+  if (!key) throw new Error("TWITTERAPI_IO_KEY is not set on this deployment.");
+  const workspace = await loadCfbWorkspace(uploadId);
+  const until = new Date();
+  const teams: TeamNews[] = [...new Set(workspace.players.map((p) => p.team))].sort().map((code) => {
+    const names = workspace.players.filter((p) => p.team === code
+      && (p.position === "QB" || ["Q", "D", "O", "OUT"].includes(p.status))).map((p) => p.name);
+    const school = workspace.slate.teamMap[code]?.team ?? code;
+    return { code, school, players: names, queries: teamQueries(school, names, until), posts: [], error: null };
+  });
+  let postsRead = 0;
+  const jobs = teams.flatMap((t) => t.queries.map((q) => ({ t, q })));
+  const results = new Map<TeamNews, XPost[][]>();
+  // Four at a time: fast enough before a lock, gentle on the API.
+  for (let i = 0; i < jobs.length; i += 4) {
+    await Promise.all(jobs.slice(i, i + 4).map(async ({ t, q }) => {
+      try {
+        const url = `${X_SEARCH_URL}?${new URLSearchParams({ query: q, queryType: "Latest" })}`;
+        const response = await fetch(url, { headers: { "X-API-Key": key }, cache: "no-store" });
+        if (!response.ok) throw new Error(`X search ${response.status}`);
+        const posts = parseXPosts(await response.json(), t.players, t.school);
+        postsRead += posts.length;
+        results.set(t, [...(results.get(t) ?? []), posts]);
+      } catch (reason) { t.error = reason instanceof Error ? reason.message : String(reason); }
+    }));
+  }
+  for (const t of teams) t.posts = mergePosts(results.get(t) ?? []);
+  return { teams, searchedAt: until.toISOString(), postsRead };
 }

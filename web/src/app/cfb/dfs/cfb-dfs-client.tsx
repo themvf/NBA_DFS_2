@@ -9,6 +9,7 @@ import {
 import { DEFAULT_CFB_SETTINGS, type CfbLineup } from "@/lib/cfb-dfs/settings";
 import { exportCfbDkEntries } from "@/lib/cfb-dfs/entry-export";
 import CfbResultsPanel from "./cfb-results-panel";
+import CfbNewsPanel from "./cfb-news-panel";
 
 const STORAGE_KEY = "cfb-dfs-slate";
 const dollars = (n: number) => `$${n.toLocaleString()}`;
@@ -242,6 +243,8 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
           {workspace.slate.statusNote ? <span className="basis-full text-amber-800">{workspace.slate.statusNote}</span> : null}
         </div>
       </section>
+
+      {!workspace.slate.started ? <CfbNewsPanel uploadId={workspace.slate.uploadId} /> : null}
 
       {workspace.slate.started ? <CfbResultsPanel uploadId={workspace.slate.uploadId} runId={runId} runsVersion={workspace.runs.length} /> : null}
 

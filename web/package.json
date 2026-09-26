@@ -114,7 +114,8 @@
     "test:cfb-dfs": "node --import tsx ./scripts/test-cfb-dfs.ts",
     "test:cfb-entry-export": "node --import tsx ./scripts/test-cfb-entry-export.ts",
     "test:cfb-results": "node --import tsx ./scripts/test-cfb-results.ts",
-    "test:cfb-live-status": "node --import tsx ./scripts/test-cfb-live-status.ts"
+    "test:cfb-live-status": "node --import tsx ./scripts/test-cfb-live-status.ts",
+    "test:cfb-x-news": "tsx scripts/test-cfb-x-news.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",
