@@ -12,6 +12,11 @@ on:
         required: false
         default: "Indiana"
         type: string
+      fantasypros_lineups:
+        description: "Only probe FantasyPros college injury/news/depth-chart paths"
+        required: false
+        default: false
+        type: boolean
       week:
         description: "Week to request from FantasyPros"
         required: false
@@ -31,4 +36,4 @@ jobs:
           python-version: "3.11"
       - run: pip install requests
       - name: Probe CFBD and FantasyPros
-        run: python scripts/cfb_data_probe.py --team "${{ inputs.team || 'Indiana' }}" --season 2026 --week "${{ inputs.week || '5' }}"
+        run: python scripts/cfb_data_probe.py --team "${{ inputs.team || 'Indiana' }}" --season 2026 --week "${{ inputs.week || '5' }}" ${{ inputs.fantasypros_lineups && '--fantasypros-lineups' || '' }}
