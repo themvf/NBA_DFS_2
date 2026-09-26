@@ -7,6 +7,7 @@ import {
 } from "./actions";
 import { DEFAULT_CFB_SETTINGS, type CfbLineup } from "@/lib/cfb-dfs/settings";
 import { exportCfbDkEntries } from "@/lib/cfb-dfs/entry-export";
+import CfbResultsPanel from "./cfb-results-panel";
 
 const STORAGE_KEY = "cfb-dfs-slate";
 const dollars = (n: number) => `$${n.toLocaleString()}`;
@@ -203,6 +204,8 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
         </p>
       </section>
 
+      {workspace.slate.started ? <CfbResultsPanel uploadId={workspace.slate.uploadId} runId={runId} runsVersion={workspace.runs.length} /> : null}
+
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="rounded-xl border bg-white shadow-sm">
           <div className="flex flex-wrap items-end gap-3 border-b p-4">
@@ -319,6 +322,7 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
           </div>
         </div>
       </section> : null}
+      {!workspace.slate.started ? <CfbResultsPanel uploadId={workspace.slate.uploadId} runId={runId} runsVersion={workspace.runs.length} /> : null}
     </>}
   </div>;
 }

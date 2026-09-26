@@ -6,12 +6,16 @@ import { db } from "@/db";
 import { ensureCfbDfsTables } from "@/db/cfb-dfs-schema";
 import { parseCfbSalaryCsv, type CfbPosition, type CfbSlatePlayer } from "@/lib/cfb-dfs/salary-csv";
 import {
-  CFB_PROJECTION_VERSION, projectCfbPlayers, resolveCfbTeams, teamSeasonKey, type HistoryRow, type TeamResolution,
+  CFB_PROJECTION_VERSION, normalizeName, projectCfbPlayers, resolveCfbTeams, teamSeasonKey, type HistoryRow, type TeamResolution,
 } from "@/lib/cfb-dfs/projection";
 import {
   cfbUploadCsv, CFB_OPTIMIZER_VERSION, DEFAULT_CFB_SETTINGS, optimizeCfbLineups,
   type CfbLineup, type CfbOptimizerSettings, type CfbPoolPlayer,
 } from "@/lib/cfb-dfs/optimizer";
+import {
+  cfbProjectionError, parseCfbContestStandings, scoreCfbLineups, summarizeCfbSet,
+  type CfbSetResult, type PositionMiss, type ScoreCurve, type ScoredCfbLineup,
+} from "@/lib/cfb-dfs/results";
 
 type Row = Record<string, unknown>;
 const rowsOf = (result: unknown) => ((result as { rows?: Row[] }).rows ?? (result as Row[])) as Row[];
@@ -27,7 +31,9 @@ export interface CfbPlayerRow extends CfbSlatePlayer {
 }
 export interface CfbRunSummary { runId: string; createdAt: string; lineupCount: number; stoppedEarly: string | null; settings: CfbOptimizerSettings }
 export interface CfbWorkspace {
-  slate: CfbSlateSummary & { projectionVersion: string | null; projectedAt: string | null; teamMap: Record<string, TeamResolution & { implied: number | null }> };
+  slate: CfbSlateSummary & { projectionVersion: string | null; projectedAt: string | null; teamMap: Record<string, TeamResolution & { implied: number | null }>;
+    /** True once the first game has kicked off: results are the next thing to do. */
+    started: boolean };
   players: CfbPlayerRow[];
   runs: CfbRunSummary[];
 }
@@ -171,7 +177,7 @@ export async function loadCfbWorkspace(uploadId: string): Promise<CfbWorkspace> 
       createdAt: new Date(String(slate.created_at)).toISOString(), label: slateLabel(games, firstKickoff),
       projectionVersion: slate.projection_version == null ? null : String(slate.projection_version),
       projectedAt: slate.projected_at ? new Date(String(slate.projected_at)).toISOString() : null,
-      teamMap: (slate.team_map ?? {}) as TeamMap },
+      teamMap: (slate.team_map ?? {}) as TeamMap, started: firstKickoff != null && Date.parse(firstKickoff) <= Date.now() },
     players: await slatePlayers(uploadId),
     runs,
   };
@@ -223,4 +229,92 @@ export async function loadCfbRun(uploadId: string, runId: string): Promise<CfbLi
 
 export async function exportCfbRun(uploadId: string, runId: string): Promise<string> {
   return cfbUploadCsv(await loadCfbRun(uploadId, runId));
+}
+
+export interface CfbResults {
+  contest: { contestId: string; entryCount: number; winningScore: number | null; medianScore: number | null; importedAt: string; fileName: string };
+  sets: Array<{ runId: string; createdAt: string; rules: string } & CfbSetResult>;
+  runId: string | null;
+  lineups: ScoredCfbLineup[];
+  positionError: PositionMiss[];
+  /** For the selected set: our exposure against the field's, with what each player scored. */
+  exposureVsField: Array<{ name: string; position: string; ours: number; field: number | null; fpts: number | null }>;
+  /** Most-drafted players in the field, and whether we had them. */
+  fieldChalk: Array<{ name: string; field: number; fpts: number; ours: number }>;
+}
+
+/** Import a DraftKings contest standings CSV for this slate. Re-importing the same contest replaces it. */
+export async function importCfbContest(uploadId: string, formData: FormData): Promise<{ contestId: string; entries: number }> {
+  await ensureCfbDfsTables();
+  const file = formData.get("file");
+  if (!(file instanceof File)) throw new Error("Choose the contest-standings CSV (unzip DraftKings' download first).");
+  if (/\.zip$/i.test(file.name)) throw new Error("That is the .zip DraftKings downloads. Unzip it and upload the .csv inside.");
+  const text = await file.text();
+  const parsed = parseCfbContestStandings(text);
+  const digest = createHash("sha256").update(text).digest("hex");
+  const contestId = file.name.match(/contest-standings-(\d+)/i)?.[1] ?? `file-${digest.slice(0, 12)}`;
+  const values = parsed.players.map((p) => sql`(${contestId}, ${p.key}, ${p.name}, ${p.draftedPct}, ${JSON.stringify(p.draftedBySlot)}::jsonb, ${p.fpts})`);
+  await db.execute(sql`INSERT INTO cfb_dfs_contest_players (contest_id, player_key, name, drafted_pct, drafted_by_slot, fpts)
+    VALUES ${sql.join(values, sql`, `)} ON CONFLICT (contest_id, player_key) DO UPDATE SET
+      name = EXCLUDED.name, drafted_pct = EXCLUDED.drafted_pct, drafted_by_slot = EXCLUDED.drafted_by_slot, fpts = EXCLUDED.fpts`);
+  // Contest row last: results exist only once every player row does.
+  await db.execute(sql`INSERT INTO cfb_dfs_contests (contest_id, upload_id, file_name, file_digest, entry_count, winning_score, median_score, score_curve)
+    VALUES (${contestId}, ${uploadId}, ${file.name}, ${digest}, ${parsed.entryCount}, ${parsed.winningScore}, ${parsed.medianScore},
+      ${JSON.stringify(parsed.scoreCurve)}::jsonb)
+    ON CONFLICT (contest_id) DO UPDATE SET upload_id = EXCLUDED.upload_id, file_name = EXCLUDED.file_name, file_digest = EXCLUDED.file_digest,
+      entry_count = EXCLUDED.entry_count, winning_score = EXCLUDED.winning_score, median_score = EXCLUDED.median_score,
+      score_curve = EXCLUDED.score_curve, imported_at = NOW()`);
+  return { contestId, entries: parsed.entryCount };
+}
+
+/** Grade every saved lineup set and the projections against the latest contest imported for this slate. */
+export async function readCfbResults(uploadId: string, runId: string | null): Promise<CfbResults | null> {
+  await ensureCfbDfsTables();
+  const contest = rowsOf(await db.execute(sql`SELECT * FROM cfb_dfs_contests WHERE upload_id = ${uploadId}
+    ORDER BY imported_at DESC LIMIT 1`))[0];
+  if (!contest) return null;
+  const contestId = String(contest.contest_id);
+  const field = rowsOf(await db.execute(sql`SELECT player_key, name, drafted_pct, fpts FROM cfb_dfs_contest_players WHERE contest_id = ${contestId}`));
+  const fptsByKey = new Map(field.map((r) => [String(r.player_key), Number(r.fpts)] as const));
+  const draftedByKey = new Map(field.map((r) => [String(r.player_key), Number(r.drafted_pct)] as const));
+  const curve = (contest.score_curve ?? []) as ScoreCurve;
+  const entryCount = Number(contest.entry_count);
+  const medianScore = contest.median_score == null ? null : Number(contest.median_score);
+
+  const players = await slatePlayers(uploadId);
+  const runs = rowsOf(await db.execute(sql`SELECT run_id, created_at, settings FROM cfb_dfs_lineup_runs
+    WHERE upload_id = ${uploadId} ORDER BY created_at DESC LIMIT 12`));
+  const scoredByRun = new Map(await Promise.all(runs.map(async (r) => {
+    const lineups = await loadCfbRun(uploadId, String(r.run_id));
+    return [String(r.run_id), { lineups, scored: scoreCfbLineups(lineups, fptsByKey, curve, entryCount) }] as const;
+  })));
+  const selected = runId && scoredByRun.has(runId) ? runId : runs[0] ? String(runs[0].run_id) : null;
+  const chosen = selected ? scoredByRun.get(selected)! : null;
+
+
+  const exposure = new Map<string, { name: string; position: string; n: number }>();
+  for (const l of chosen?.lineups ?? []) for (const s of l.slots) {
+    const k = normalizeName(s.player.name);
+    exposure.set(k, { name: s.player.name, position: s.player.position, n: (exposure.get(k)?.n ?? 0) + 1 });
+  }
+  const total = chosen?.lineups.length ?? 0;
+  const oursPct = (k: string) => (total ? Math.round(((exposure.get(k)?.n ?? 0) / total) * 1000) / 10 : 0);
+
+  return {
+    contest: { contestId, entryCount, winningScore: contest.winning_score == null ? null : Number(contest.winning_score), medianScore,
+      importedAt: new Date(String(contest.imported_at)).toISOString(), fileName: String(contest.file_name) },
+    sets: runs.map((r) => {
+      const st = r.settings as { requireTwoQbs?: boolean; stackQb?: boolean; bringBack?: boolean; maxExposure?: number };
+      const rules = [st.requireTwoQbs ? "2 QBs" : null, st.stackQb ? "stacks" : null, st.bringBack ? "bring-backs" : null].filter(Boolean).join(", ") || "no rules";
+      return { runId: String(r.run_id), createdAt: new Date(String(r.created_at)).toISOString(),
+        rules: `${rules} · max ${Math.round((st.maxExposure ?? 0.7) * 100)}%`, ...summarizeCfbSet(scoredByRun.get(String(r.run_id))!.scored, medianScore) };
+    }),
+    runId: selected,
+    lineups: chosen?.scored ?? [],
+    positionError: cfbProjectionError(players.map((p) => ({ name: p.name, position: p.position, proj: p.proj })), fptsByKey),
+    exposureVsField: [...exposure].map(([k, e]) => ({ name: e.name, position: e.position, ours: oursPct(k),
+      field: draftedByKey.get(k) ?? null, fpts: fptsByKey.get(k) ?? null })).sort((a, b) => b.ours - a.ours),
+    fieldChalk: field.map((r) => ({ name: String(r.name), field: Number(r.drafted_pct), fpts: Number(r.fpts), ours: oursPct(String(r.player_key)) }))
+      .sort((a, b) => b.field - a.field).slice(0, 15),
+  };
 }

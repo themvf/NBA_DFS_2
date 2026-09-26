@@ -32,6 +32,16 @@ const CFB_DFS_DDLS = [
     projection_version TEXT NOT NULL, optimizer_version TEXT NOT NULL,
     lineup_count INTEGER NOT NULL, stopped_early TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
   `CREATE INDEX IF NOT EXISTS idx_cfb_dfs_lineup_runs_upload ON cfb_dfs_lineup_runs (upload_id, created_at DESC)`,
+  // Contest results (DraftKings standings). Players first, the contest row last.
+  `CREATE TABLE IF NOT EXISTS cfb_dfs_contest_players (
+    contest_id TEXT NOT NULL, player_key TEXT NOT NULL, name TEXT NOT NULL,
+    drafted_pct DOUBLE PRECISION NOT NULL, drafted_by_slot JSONB NOT NULL, fpts DOUBLE PRECISION NOT NULL,
+    PRIMARY KEY (contest_id, player_key))`,
+  `CREATE TABLE IF NOT EXISTS cfb_dfs_contests (
+    contest_id TEXT PRIMARY KEY, upload_id UUID NOT NULL, file_name TEXT NOT NULL, file_digest TEXT NOT NULL,
+    entry_count INTEGER NOT NULL, winning_score DOUBLE PRECISION, median_score DOUBLE PRECISION,
+    score_curve JSONB NOT NULL, imported_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+  `CREATE INDEX IF NOT EXISTS idx_cfb_dfs_contests_upload ON cfb_dfs_contests (upload_id, imported_at DESC)`,
 ];
 
 let ready: Promise<void> | null = null;
