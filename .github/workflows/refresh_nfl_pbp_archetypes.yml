@@ -25,10 +25,22 @@ on:
       - "model/nfl_play_archetypes.py"
       - "model/nfl_drive_archetypes.py"
       - "model/nfl_participation.py"
+      - "model/nfl_play_facts.py"
+      - "model/nfl_context_engine.py"
+      - "model/nfl_context_measures.py"
       - "ingest/nfl_pbp_archetypes.py"
+      - "ingest/nfl_context_publish.py"
 
   workflow_dispatch:
     inputs:
+      mode:
+        description: "stale = pick up whatever the release now carries (self-healing); season = rebuild a whole season/game"
+        required: false
+        default: "stale"
+        type: choice
+        options:
+          - stale
+          - season
       season:
         description: "Season to rebuild (e.g. 2026). Blank = self-healing --relabel-stale, same as the scheduled runs."
         required: false
@@ -83,3 +95,27 @@ jobs:
           else
             python -m ingest.nfl_pbp_archetypes --season "${{ inputs.season }}"
           fi
+
+      # The context engine owns a separate append-only fact ledger. Publishing
+      # it here keeps the canonical facts current without coupling their
+      # revision lifecycle to the replace-in-place archetype presentation table.
+      - name: Publish revisioned play facts
+        shell: bash
+        run: |
+          SEASON="${{ inputs.season }}"
+          if [ -z "$SEASON" ]; then
+            SEASON=$(python -c "from datetime import datetime,timezone; n=datetime.now(timezone.utc); print(n.year-1 if n.month<=3 else n.year)")
+          fi
+          SOURCE="/tmp/play_by_play_${SEASON}.parquet"
+          curl --fail --location --retry 3 \
+            "https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_${SEASON}.parquet" \
+            --output "$SOURCE"
+          python -m ingest.nfl_context_publish "$SOURCE" --season-type REG --apply
+
+          HISTORY_SEASON=$((SEASON - 1))
+          HISTORY_SOURCE="/tmp/play_by_play_${HISTORY_SEASON}.parquet"
+          curl --fail --location --retry 3 \
+            "https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_${HISTORY_SEASON}.parquet" \
+            --output "$HISTORY_SOURCE"
+          python -m ingest.nfl_context_game_snapshots "$HISTORY_SOURCE" \
+            --season "$SEASON" --apply

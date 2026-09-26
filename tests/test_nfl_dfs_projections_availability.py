@@ -26,12 +26,15 @@ class StubDB:
         self.captured_at = captured_at
     def execute(self, sql, params=None):
         if "ff_player_injury_observations" in sql:
-            return [{"player_id": 1, "normalized_status": "OUT", "fetched_at": self.captured_at}]
+            return [{"observation_id": 10, "player_id": 1, "source": "sleeper",
+                     "status": "OUT", "source_snapshot_id": 20,
+                     "model_eligible": True, "snapshot_status": "success",
+                     "available_at": self.captured_at, "game_scope_valid": True}]
         if "ff_source_snapshots" in sql and "DISTINCT ON (season,dataset)" in sql:
             return []
         return []
 
-def run(captured_at):
+def run(captured_at, config=None):
     monkey = {
         "_history": lambda db, season, wk: HISTORY,
         "_slate_environment": lambda db, season, wk: {
@@ -48,7 +51,7 @@ def run(captured_at):
         setattr(proj, name, fn)
     try:
         return proj.build_week(StubDB(captured_at), season=2026, week=3,
-                               as_of_at=TUESDAY, seed=7)
+                               as_of_at=TUESDAY, seed=7, config=config)
     finally:
         for name, fn in originals.items():
             setattr(proj, name, fn)
@@ -86,11 +89,42 @@ def test_a_status_published_after_kickoff_is_ignored():
     assert by_name(projections)["Starter"]["model_proj_fpts"] > 0
     assert manifest["availability"]["zeroed"] == []
 
+def test_a_wednesday_capture_cannot_affect_a_tuesday_decision():
+    """Decision time, not merely kickoff, is the feature cutoff."""
+    projections, manifest = run(TUESDAY + timedelta(days=1))
+    assert by_name(projections)["Starter"]["model_proj_fpts"] > 0
+    decision = manifest["availability_decisions"]["1"]
+    assert decision["state"] == "UNKNOWN"
+    assert decision["display_only_observation_ids"] == [10]
+
+def test_ineligible_fantasypros_cannot_zero_or_create_a_decision_conflict():
+    rows = [
+        {"observation_id": 1, "source": "sleeper", "status": "HEALTHY",
+         "available_at": TUESDAY, "model_eligible": True, "snapshot_status": "success"},
+        {"observation_id": 2, "source": "fantasypros", "status": "OUT",
+         "available_at": TUESDAY, "model_eligible": False, "snapshot_status": "success"},
+    ]
+    decision = proj.resolve_game_availability(rows, as_of_at=TUESDAY, kickoff=KICKOFF)
+    assert decision.state == "EXPECTED_ACTIVE"
+    assert decision.projection_status is None
+    assert decision.display_only_observation_ids == (2,)
+
 def test_the_manifest_records_what_was_done():
     _, manifest = run(TUESDAY)
     report = manifest["availability"]
     assert report["version"] and report["transfers"][0]["opportunity_key"] == "attempts"
     assert "multiplier" in report["transfers"][0]
+    assert manifest["availability_health"]["state_counts"] == {"OUT_CONFIRMED": 1, "UNKNOWN": 1}
+    assert "direct ineligible FantasyPros reads remain disabled" in manifest["availability_health"]["rollback_policy"]
+
+def test_safety_rollback_preserves_out_zero_but_disables_transfer():
+    projections, manifest = run(TUESDAY, {"availability_qb_transfer_enabled": False})
+    players = by_name(projections)
+    assert players["Starter"]["model_proj_fpts"] == 0
+    untouched, _ = run(AFTER, {"availability_qb_transfer_enabled": False})
+    assert players["Backup"]["model_proj_fpts"] == by_name(untouched)["Backup"]["model_proj_fpts"]
+    assert manifest["availability"]["policy_mode"] == "safety_rollback_v1"
+    assert manifest["availability"]["transfers"] == []
 
 
 # ── picking the right capture when kickoffs differ within a week ────────

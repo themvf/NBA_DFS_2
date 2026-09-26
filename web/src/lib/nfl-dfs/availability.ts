@@ -1,6 +1,9 @@
 export type InjuryEvidence = { identityBridge?: {sourceLocalId:number;targetLocalId:number;method:string}; id: string; source: string; status: string; practice: string | null; observedAt: string; updatedAt: string | null; team: string; week: number | null; hash: string; reportType?: string; kickoff?: string; url?: string; unverifiedUpdate?: string };
 export type RosterEvidence = { team: string; position: string; fetchedAt: string; sleeper: unknown; injuries?: InjuryEvidence[]; injuryReadFailed?: boolean; kickoff?: string | null };
-export type Availability = { role: string; status: string; source: string; capturedAt: string | null; blockedReason: string | null; fresh: boolean; evidence?: InjuryEvidence[]; warnings?: string[]; evaluatedAt?: string; officialConfirmed?: boolean; kickoff?: string | null; freshFantasyPros?: boolean };
+export type Availability = { role: string; status: string; source: string; capturedAt: string | null; blockedReason: string | null; fresh: boolean; evidence?: InjuryEvidence[]; warnings?: string[]; evaluatedAt?: string; officialConfirmed?: boolean; kickoff?: string | null; freshFantasyPros?: boolean; decisionId?: string; pinned?: boolean };
+export type PinnedGameAvailabilityDecision = { version:string; state:string; projection_status:string|null; source:string|null;
+  observation_id:number|null; source_snapshot_id:number|null; available_at:string|null; as_of_at:string; kickoff:string|null;
+  reason:string; qualifying_observation_ids:number[]; display_only_observation_ids:number[] };
 const unavailable = new Set(["OUT", "IR", "PUP", "NFI", "SUSPENDED", "INACTIVE"]);
 const normalize = (value: unknown) => String(value ?? "UNKNOWN").trim().toUpperCase();
 const aliases: Record<string, string> = { LA: "LAR", WAS: "WSH", AZ: "ARI", JAC: "JAX" };
@@ -8,6 +11,17 @@ const teamKey = (value: unknown) => { const key = normalize(value); return alias
 
 export const ROSTER_FRESH_MS = 72 * 3600000;
 
+/** Present a decision saved on the projection row; never re-run source precedence in Vercel. */
+export function presentPinnedGameAvailability(decision:PinnedGameAvailabilityDecision, role:string):Availability {
+  const out=decision.state==='OUT_CONFIRMED';
+  const warnings=[decision.reason];
+  if(decision.display_only_observation_ids.length) warnings.push(`${decision.display_only_observation_ids.length} display-only observation(s) did not affect this decision.`);
+  return {role,status:decision.projection_status??decision.state,source:decision.source??'Pinned availability resolver',
+    capturedAt:decision.available_at,blockedReason:out?`Unavailable: ${decision.projection_status??'OUT'}`:null,
+    fresh:['OUT_CONFIRMED','EXPECTED_ACTIVE','QUESTIONABLE','DOUBTFUL'].includes(decision.state),warnings,
+    evaluatedAt:decision.as_of_at,kickoff:decision.kickoff,officialConfirmed:decision.source==='nfl_official',pinned:true,
+    decisionId:[decision.version,decision.source_snapshot_id??'none',decision.observation_id??'none',decision.as_of_at].join(':')};
+}
 /**
  * Current roster evidence only; never infer a replacement starter or clear a DK exclusion.
  *

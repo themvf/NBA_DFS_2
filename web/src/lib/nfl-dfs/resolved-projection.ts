@@ -10,6 +10,9 @@ export function resolveOpportunityProjection(
   upstream: { rule?: string | null; applied?: boolean | null } | null | undefined,
   isOut: boolean,
 ) {
+  if (adjustment && upstream?.rule === 'inherits' && upstream.applied === true) {
+    throw new Error('Availability adjustment already applied upstream; refusing a second opportunity transfer.');
+  }
   const estimated = Boolean(adjustment) || (upstream?.rule === 'inherits' && upstream.applied === true);
   const current = adjustment ? { ...base, ourProj: adjustment.ourProj,
     floorFpts: adjustment.floorFpts, ceilingFpts: adjustment.ceilingFpts,
