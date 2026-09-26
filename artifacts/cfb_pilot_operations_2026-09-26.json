@@ -1,0 +1,4019 @@
+{
+  "status": "incomplete",
+  "reporting_interval_utc": {
+    "start_inclusive": "2026-09-25T00:00:00+00:00",
+    "end_exclusive": "2026-09-26T20:09:41.763673+00:00"
+  },
+  "evidence_cutoff_utc": "2026-09-26T20:09:41.763673+00:00",
+  "pilot_window_end_utc": "2026-10-14T00:00:00+00:00",
+  "monitor_active": true,
+  "environment": "GitHub Actions workflows plus configured PostgreSQL database",
+  "study": {
+    "version": 4,
+    "configuration_digest": "364db068d16ef1e272489e0523bb0cc8643f938c29caafdf270aa9e087b8152c",
+    "primary_metric": "decimal_price_ratio_pct",
+    "primary_unit": "percent"
+  },
+  "detector_versions": {
+    "required_frozen": [
+      [
+        "dk_value",
+        "cfb-lines-v1"
+      ],
+      [
+        "late_move",
+        "market-structure-v1"
+      ],
+      [
+        "pinnacle_divergence",
+        "cfb-lines-v1"
+      ],
+      [
+        "steam",
+        "cfb-lines-v1"
+      ],
+      [
+        "walking",
+        "cfb-lines-v1"
+      ]
+    ],
+    "observed_workflow": [
+      [
+        "cfb_market_movement_context",
+        "1"
+      ],
+      [
+        "dk_value",
+        "cfb-lines-v1"
+      ],
+      [
+        "late_move",
+        "market-structure-v1"
+      ],
+      [
+        "pinnacle_divergence",
+        "cfb-lines-v1"
+      ],
+      [
+        "steam",
+        "cfb-lines-v1"
+      ],
+      [
+        "walking",
+        "cfb-lines-v1"
+      ]
+    ],
+    "missing_frozen": [],
+    "successful_workflow_runs": 283,
+    "runs_missing_frozen_funnels": 134,
+    "missing_run_samples": [
+      {
+        "run_id": 36075506771,
+        "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36075506771",
+        "missing": [
+          [
+            "dk_value",
+            "cfb-lines-v1"
+          ],
+          [
+            "late_move",
+            "market-structure-v1"
+          ],
+          [
+            "pinnacle_divergence",
+            "cfb-lines-v1"
+          ],
+          [
+            "steam",
+            "cfb-lines-v1"
+          ],
+          [
+            "walking",
+            "cfb-lines-v1"
+          ]
+        ]
+      },
+      {
+        "run_id": 36076317936,
+        "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36076317936",
+        "missing": [
+          [
+            "dk_value",
+            "cfb-lines-v1"
+          ],
+          [
+            "late_move",
+            "market-structure-v1"
+          ],
+          [
+            "pinnacle_divergence",
+            "cfb-lines-v1"
+          ],
+          [
+            "steam",
+            "cfb-lines-v1"
+          ],
+          [
+            "walking",
+            "cfb-lines-v1"
+          ]
+        ]
+      },
+      {
+        "run_id": 36076471554,
+        "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36076471554",
+        "missing": [
+          [
+            "dk_value",
+            "cfb-lines-v1"
+          ],
+          [
+            "late_move",
+            "market-structure-v1"
+          ],
+          [
+            "pinnacle_divergence",
+            "cfb-lines-v1"
+          ],
+          [
+            "steam",
+            "cfb-lines-v1"
+          ],
+          [
+            "walking",
+            "cfb-lines-v1"
+          ]
+        ]
+      },
+      {
+        "run_id": 36076788114,
+        "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36076788114",
+        "missing": [
+          [
+            "dk_value",
+            "cfb-lines-v1"
+          ],
+          [
+            "late_move",
+            "market-structure-v1"
+          ],
+          [
+            "pinnacle_divergence",
+            "cfb-lines-v1"
+          ],
+          [
+            "steam",
+            "cfb-lines-v1"
+          ],
+          [
+            "walking",
+            "cfb-lines-v1"
+          ]
+        ]
+      },
+      {
+        "run_id": 36077018320,
+        "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36077018320",
+        "missing": [
+          [
+            "dk_value",
+            "cfb-lines-v1"
+          ],
+          [
+            "late_move",
+            "market-structure-v1"
+          ],
+          [
+            "pinnacle_divergence",
+            "cfb-lines-v1"
+          ],
+          [
+            "steam",
+            "cfb-lines-v1"
+          ],
+          [
+            "walking",
+            "cfb-lines-v1"
+          ]
+        ]
+      },
+      {
+        "run_id": 36077097484,
+        "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36077097484",
+        "missing": [
+          [
+            "dk_value",
+            "cfb-lines-v1"
+          ],
+          [
+            "late_move",
+            "market-structure-v1"
+          ],
+          [
+            "pinnacle_divergence",
+            "cfb-lines-v1"
+          ],
+          [
+            "steam",
+            "cfb-lines-v1"
+          ],
+          [
+            "walking",
+            "cfb-lines-v1"
+          ]
+        ]
+      },
+      {
+        "run_id": 36077327740,
+        "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36077327740",
+        "missing": [
+          [
+            "dk_value",
+            "cfb-lines-v1"
+          ],
+          [
+            "late_move",
+            "market-structure-v1"
+          ],
+          [
+            "pinnacle_divergence",
+            "cfb-lines-v1"
+          ],
+          [
+            "steam",
+            "cfb-lines-v1"
+          ],
+          [
+            "walking",
+            "cfb-lines-v1"
+          ]
+        ]
+      },
+      {
+        "run_id": 36077628449,
+        "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36077628449",
+        "missing": [
+          [
+            "dk_value",
+            "cfb-lines-v1"
+          ],
+          [
+            "late_move",
+            "market-structure-v1"
+          ],
+          [
+            "pinnacle_divergence",
+            "cfb-lines-v1"
+          ],
+          [
+            "steam",
+            "cfb-lines-v1"
+          ],
+          [
+            "walking",
+            "cfb-lines-v1"
+          ]
+        ]
+      },
+      {
+        "run_id": 36077883569,
+        "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36077883569",
+        "missing": [
+          [
+            "dk_value",
+            "cfb-lines-v1"
+          ],
+          [
+            "late_move",
+            "market-structure-v1"
+          ],
+          [
+            "pinnacle_divergence",
+            "cfb-lines-v1"
+          ],
+          [
+            "steam",
+            "cfb-lines-v1"
+          ],
+          [
+            "walking",
+            "cfb-lines-v1"
+          ]
+        ]
+      },
+      {
+        "run_id": 36078630430,
+        "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36078630430",
+        "missing": [
+          [
+            "dk_value",
+            "cfb-lines-v1"
+          ],
+          [
+            "late_move",
+            "market-structure-v1"
+          ],
+          [
+            "pinnacle_divergence",
+            "cfb-lines-v1"
+          ],
+          [
+            "steam",
+            "cfb-lines-v1"
+          ],
+          [
+            "walking",
+            "cfb-lines-v1"
+          ]
+        ]
+      }
+    ]
+  },
+  "workflows": {
+    "capture_event_closes.yml": {
+      "expected_scheduled_slots": 530,
+      "observed_runs": 286,
+      "scheduled_runs": 11,
+      "dispatch_runs": 275,
+      "failed_or_incomplete": [
+        {
+          "conclusion": "cancelled",
+          "createdAt": "2026-09-25T20:23:38Z",
+          "databaseId": 36185496921,
+          "event": "workflow_dispatch",
+          "headSha": "52373b82ef90f04678b6360de762bd5aa22c2e35",
+          "status": "completed",
+          "updatedAt": "2026-09-25T20:36:42Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36185496921"
+        },
+        {
+          "conclusion": "failure",
+          "createdAt": "2026-09-26T02:07:38Z",
+          "databaseId": 36210692167,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T02:08:18Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36210692167"
+        },
+        {
+          "conclusion": "",
+          "createdAt": "2026-09-26T20:08:38Z",
+          "databaseId": 36268481869,
+          "event": "workflow_dispatch",
+          "headSha": "4d7ad6ddaa7b044574d2286fd47f90985406912e",
+          "status": "in_progress",
+          "updatedAt": "2026-09-26T20:08:42Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36268481869"
+        }
+      ],
+      "first_success": {
+        "conclusion": "success",
+        "createdAt": "2026-09-25T00:00:38Z",
+        "databaseId": 36075506771,
+        "event": "workflow_dispatch",
+        "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+        "status": "completed",
+        "updatedAt": "2026-09-25T00:02:24Z",
+        "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36075506771"
+      },
+      "first_success_by_deployed_commit": {
+        "82df43868ffbee2f009aa6e568b3921e7d32c1dd": {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T00:00:38Z",
+          "databaseId": 36075506771,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T00:02:24Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36075506771"
+        },
+        "6e9ced285801b5b12af1cea3e1e02bbf057efdbf": {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T14:00:38Z",
+          "databaseId": 36144634668,
+          "event": "workflow_dispatch",
+          "headSha": "6e9ced285801b5b12af1cea3e1e02bbf057efdbf",
+          "status": "completed",
+          "updatedAt": "2026-09-25T14:03:41Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36144634668"
+        },
+        "0ddabaaad21555d63439edae6dd325676a12d59e": {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T14:10:39Z",
+          "databaseId": 36145729898,
+          "event": "workflow_dispatch",
+          "headSha": "0ddabaaad21555d63439edae6dd325676a12d59e",
+          "status": "completed",
+          "updatedAt": "2026-09-25T14:14:39Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36145729898"
+        },
+        "12ab708c766357666328519e84c5f5135ad1f4eb": {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T14:45:39Z",
+          "databaseId": 36149638435,
+          "event": "workflow_dispatch",
+          "headSha": "12ab708c766357666328519e84c5f5135ad1f4eb",
+          "status": "completed",
+          "updatedAt": "2026-09-25T14:49:00Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36149638435"
+        },
+        "c3154aefcdb95f99edcbc017d08d3698acba7ede": {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T16:50:38Z",
+          "databaseId": 36163332732,
+          "event": "workflow_dispatch",
+          "headSha": "c3154aefcdb95f99edcbc017d08d3698acba7ede",
+          "status": "completed",
+          "updatedAt": "2026-09-25T16:51:33Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36163332732"
+        },
+        "0056c9895e4eb38fa0c0c9bf48bf47816d892d56": {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T18:45:39Z",
+          "databaseId": 36175462420,
+          "event": "workflow_dispatch",
+          "headSha": "0056c9895e4eb38fa0c0c9bf48bf47816d892d56",
+          "status": "completed",
+          "updatedAt": "2026-09-25T18:49:41Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36175462420"
+        },
+        "ee52e1f17f41d07dca2f983f4fdf9a6cc98a6c40": {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T19:00:38Z",
+          "databaseId": 36177019317,
+          "event": "workflow_dispatch",
+          "headSha": "ee52e1f17f41d07dca2f983f4fdf9a6cc98a6c40",
+          "status": "completed",
+          "updatedAt": "2026-09-25T19:04:19Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36177019317"
+        },
+        "c8a5b507ab61113c94110d1a6b1fda9a9dde319a": {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T19:46:39Z",
+          "databaseId": 36181733533,
+          "event": "workflow_dispatch",
+          "headSha": "c8a5b507ab61113c94110d1a6b1fda9a9dde319a",
+          "status": "completed",
+          "updatedAt": "2026-09-25T19:50:35Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36181733533"
+        },
+        "cc53334dcf1477fac616deda09e3f9f535fcf273": {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T19:53:39Z",
+          "databaseId": 36182433514,
+          "event": "workflow_dispatch",
+          "headSha": "cc53334dcf1477fac616deda09e3f9f535fcf273",
+          "status": "completed",
+          "updatedAt": "2026-09-25T19:56:42Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36182433514"
+        },
+        "52373b82ef90f04678b6360de762bd5aa22c2e35": {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T19:57:38Z",
+          "databaseId": 36182826749,
+          "event": "workflow_dispatch",
+          "headSha": "52373b82ef90f04678b6360de762bd5aa22c2e35",
+          "status": "completed",
+          "updatedAt": "2026-09-25T20:00:56Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36182826749"
+        },
+        "44a55669a03e678fe73c3d5efff071660e19af0b": {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T20:33:04Z",
+          "databaseId": 36186445346,
+          "event": "schedule",
+          "headSha": "44a55669a03e678fe73c3d5efff071660e19af0b",
+          "status": "completed",
+          "updatedAt": "2026-09-25T20:38:58Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36186445346"
+        },
+        "02f6b2639a419c79a075f426f2ac0b33ffda90cf": {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T22:00:38Z",
+          "databaseId": 36194549402,
+          "event": "workflow_dispatch",
+          "headSha": "02f6b2639a419c79a075f426f2ac0b33ffda90cf",
+          "status": "completed",
+          "updatedAt": "2026-09-25T22:02:58Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36194549402"
+        },
+        "550f2364f2fb5dc5aa036d7c0fd94bc69aa21a27": {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T22:10:38Z",
+          "databaseId": 36195402707,
+          "event": "workflow_dispatch",
+          "headSha": "550f2364f2fb5dc5aa036d7c0fd94bc69aa21a27",
+          "status": "completed",
+          "updatedAt": "2026-09-25T22:13:55Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36195402707"
+        },
+        "dc0110d379e4018cfc053fbdaefbfc0172210e66": {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T22:25:39Z",
+          "databaseId": 36196645503,
+          "event": "workflow_dispatch",
+          "headSha": "dc0110d379e4018cfc053fbdaefbfc0172210e66",
+          "status": "completed",
+          "updatedAt": "2026-09-25T22:30:16Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36196645503"
+        },
+        "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e": {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T22:30:38Z",
+          "databaseId": 36197051842,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-25T22:36:42Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36197051842"
+        },
+        "2f731006618dae7d67802736931b9453e5e2d5d5": {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T19:40:38Z",
+          "databaseId": 36266876227,
+          "event": "workflow_dispatch",
+          "headSha": "2f731006618dae7d67802736931b9453e5e2d5d5",
+          "status": "completed",
+          "updatedAt": "2026-09-26T19:43:50Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36266876227"
+        },
+        "db069d52f3fec7d99961ece19a0a6c65310b521c": {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T19:47:42Z",
+          "databaseId": 36267277193,
+          "event": "workflow_dispatch",
+          "headSha": "db069d52f3fec7d99961ece19a0a6c65310b521c",
+          "status": "completed",
+          "updatedAt": "2026-09-26T19:53:55Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36267277193"
+        },
+        "cdd793a56b81e6bf383fded98c78d0c206ecbcb6": {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T19:59:39Z",
+          "databaseId": 36267946276,
+          "event": "workflow_dispatch",
+          "headSha": "cdd793a56b81e6bf383fded98c78d0c206ecbcb6",
+          "status": "completed",
+          "updatedAt": "2026-09-26T20:01:59Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36267946276"
+        },
+        "4d7ad6ddaa7b044574d2286fd47f90985406912e": {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T20:02:39Z",
+          "databaseId": 36268130516,
+          "event": "workflow_dispatch",
+          "headSha": "4d7ad6ddaa7b044574d2286fd47f90985406912e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T20:07:38Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36268130516"
+        }
+      },
+      "latest_run": {
+        "conclusion": "",
+        "createdAt": "2026-09-26T20:08:38Z",
+        "databaseId": 36268481869,
+        "event": "workflow_dispatch",
+        "headSha": "4d7ad6ddaa7b044574d2286fd47f90985406912e",
+        "status": "in_progress",
+        "updatedAt": "2026-09-26T20:08:42Z",
+        "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36268481869"
+      },
+      "history_limit_reached": false,
+      "runs": [
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T00:00:38Z",
+          "databaseId": 36075506771,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T00:02:24Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36075506771"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T00:10:38Z",
+          "databaseId": 36076317936,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T00:12:20Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36076317936"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T00:12:38Z",
+          "databaseId": 36076471554,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T00:15:40Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36076471554"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T00:16:39Z",
+          "databaseId": 36076788114,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T00:18:43Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36076788114"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T00:19:38Z",
+          "databaseId": 36077018320,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T00:20:32Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36077018320"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T00:20:38Z",
+          "databaseId": 36077097484,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T00:22:38Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36077097484"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T00:23:38Z",
+          "databaseId": 36077327740,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T00:27:23Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36077327740"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T00:27:38Z",
+          "databaseId": 36077628449,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T00:30:42Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36077628449"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T00:30:52Z",
+          "databaseId": 36077883569,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T00:34:48Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36077883569"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T00:40:38Z",
+          "databaseId": 36078630430,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T00:44:00Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36078630430"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T00:44:42Z",
+          "databaseId": 36078938293,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T00:47:07Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36078938293"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T00:47:38Z",
+          "databaseId": 36079167474,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T00:49:19Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36079167474"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T00:49:38Z",
+          "databaseId": 36079311223,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T00:52:23Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36079311223"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T00:52:39Z",
+          "databaseId": 36079530926,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T00:54:48Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36079530926"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T00:55:38Z",
+          "databaseId": 36079747412,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T00:59:33Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36079747412"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T00:59:38Z",
+          "databaseId": 36080034003,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T01:02:08Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36080034003"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T01:02:38Z",
+          "databaseId": 36080267029,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T01:04:44Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36080267029"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T01:05:38Z",
+          "databaseId": 36080496383,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T01:08:46Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36080496383"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T01:25:39Z",
+          "databaseId": 36081959326,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T01:26:54Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36081959326"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T01:27:38Z",
+          "databaseId": 36082104470,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T01:28:44Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36082104470"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T01:28:51Z",
+          "databaseId": 36082191166,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T01:31:15Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36082191166"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T01:31:38Z",
+          "databaseId": 36082402695,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T01:33:40Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36082402695"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T01:34:38Z",
+          "databaseId": 36082621894,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T01:35:30Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36082621894"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T01:38:32Z",
+          "databaseId": 36082905807,
+          "event": "schedule",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T01:40:44Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36082905807"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T01:41:38Z",
+          "databaseId": 36083123602,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T01:42:31Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36083123602"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T01:55:39Z",
+          "databaseId": 36084108354,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T01:59:30Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36084108354"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T01:59:38Z",
+          "databaseId": 36084378113,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T02:03:30Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36084378113"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T02:03:38Z",
+          "databaseId": 36084676899,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T02:05:15Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36084676899"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T02:10:38Z",
+          "databaseId": 36085169358,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T02:13:42Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36085169358"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T02:30:38Z",
+          "databaseId": 36086550423,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T02:33:45Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36086550423"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T03:00:38Z",
+          "databaseId": 36088593312,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T03:01:44Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36088593312"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T03:30:38Z",
+          "databaseId": 36090644459,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T03:33:47Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36090644459"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T04:30:38Z",
+          "databaseId": 36094733785,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T04:32:38Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36094733785"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T04:45:38Z",
+          "databaseId": 36095742003,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T04:46:44Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36095742003"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T04:58:38Z",
+          "databaseId": 36096621035,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T05:00:16Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36096621035"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T05:00:38Z",
+          "databaseId": 36096759155,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T05:01:33Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36096759155"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T06:00:38Z",
+          "databaseId": 36100960189,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T06:03:46Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36100960189"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T06:15:38Z",
+          "databaseId": 36102068024,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T06:18:40Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36102068024"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T06:28:38Z",
+          "databaseId": 36103029636,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T06:29:35Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36103029636"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T06:36:45Z",
+          "databaseId": 36103644355,
+          "event": "schedule",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T06:39:57Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36103644355"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T06:48:38Z",
+          "databaseId": 36104564858,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T06:52:37Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36104564858"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T06:52:39Z",
+          "databaseId": 36104870939,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T06:53:32Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36104870939"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T08:00:38Z",
+          "databaseId": 36110595423,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T08:04:45Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36110595423"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T09:00:38Z",
+          "databaseId": 36116033924,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T09:03:35Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36116033924"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T10:00:38Z",
+          "databaseId": 36121610753,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T10:02:26Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36121610753"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T10:15:38Z",
+          "databaseId": 36123004308,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T10:18:09Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36123004308"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T10:28:38Z",
+          "databaseId": 36124180729,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T10:30:22Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36124180729"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T10:30:38Z",
+          "databaseId": 36124367200,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T10:35:11Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36124367200"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T10:35:38Z",
+          "databaseId": 36124820506,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T10:37:13Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36124820506"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T10:37:38Z",
+          "databaseId": 36124996877,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T10:39:38Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36124996877"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T10:40:38Z",
+          "databaseId": 36125264586,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T10:43:45Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36125264586"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T10:44:38Z",
+          "databaseId": 36125620758,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T10:46:04Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36125620758"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T10:46:38Z",
+          "databaseId": 36125801608,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T10:48:12Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36125801608"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T10:48:38Z",
+          "databaseId": 36125977120,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T10:49:34Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36125977120"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T10:49:38Z",
+          "databaseId": 36126064293,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T10:52:42Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36126064293"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T10:53:38Z",
+          "databaseId": 36126427967,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T10:54:44Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36126427967"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T10:55:38Z",
+          "databaseId": 36126607266,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T10:57:36Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36126607266"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T10:57:38Z",
+          "databaseId": 36126780353,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T10:58:33Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36126780353"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T10:58:38Z",
+          "databaseId": 36126867218,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T10:59:30Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36126867218"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T10:59:38Z",
+          "databaseId": 36126955814,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T11:03:30Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36126955814"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T11:05:38Z",
+          "databaseId": 36127514815,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T11:06:31Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36127514815"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T11:45:38Z",
+          "databaseId": 36131154164,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T11:46:40Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36131154164"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T11:47:39Z",
+          "databaseId": 36131336588,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T11:48:45Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36131336588"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T11:50:51Z",
+          "databaseId": 36131626708,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T11:53:52Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36131626708"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T11:54:38Z",
+          "databaseId": 36131971319,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T11:57:57Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36131971319"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T11:58:38Z",
+          "databaseId": 36132324194,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T12:02:04Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36132324194"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T12:02:38Z",
+          "databaseId": 36132696011,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T12:05:02Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36132696011"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T12:13:19Z",
+          "databaseId": 36133688590,
+          "event": "schedule",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T12:14:05Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36133688590"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T13:00:39Z",
+          "databaseId": 36138286086,
+          "event": "workflow_dispatch",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T13:03:08Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36138286086"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T14:00:38Z",
+          "databaseId": 36144634668,
+          "event": "workflow_dispatch",
+          "headSha": "6e9ced285801b5b12af1cea3e1e02bbf057efdbf",
+          "status": "completed",
+          "updatedAt": "2026-09-25T14:03:41Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36144634668"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T14:05:39Z",
+          "databaseId": 36145188217,
+          "event": "workflow_dispatch",
+          "headSha": "6e9ced285801b5b12af1cea3e1e02bbf057efdbf",
+          "status": "completed",
+          "updatedAt": "2026-09-25T14:08:44Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36145188217"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T14:10:39Z",
+          "databaseId": 36145729898,
+          "event": "workflow_dispatch",
+          "headSha": "0ddabaaad21555d63439edae6dd325676a12d59e",
+          "status": "completed",
+          "updatedAt": "2026-09-25T14:14:39Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36145729898"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T14:15:39Z",
+          "databaseId": 36146285336,
+          "event": "workflow_dispatch",
+          "headSha": "0ddabaaad21555d63439edae6dd325676a12d59e",
+          "status": "completed",
+          "updatedAt": "2026-09-25T14:16:50Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36146285336"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T14:30:38Z",
+          "databaseId": 36147953972,
+          "event": "workflow_dispatch",
+          "headSha": "0ddabaaad21555d63439edae6dd325676a12d59e",
+          "status": "completed",
+          "updatedAt": "2026-09-25T14:34:20Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36147953972"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T14:45:39Z",
+          "databaseId": 36149638435,
+          "event": "workflow_dispatch",
+          "headSha": "12ab708c766357666328519e84c5f5135ad1f4eb",
+          "status": "completed",
+          "updatedAt": "2026-09-25T14:49:00Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36149638435"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T15:00:39Z",
+          "databaseId": 36151303575,
+          "event": "workflow_dispatch",
+          "headSha": "12ab708c766357666328519e84c5f5135ad1f4eb",
+          "status": "completed",
+          "updatedAt": "2026-09-25T15:05:11Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36151303575"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T15:15:38Z",
+          "databaseId": 36152962811,
+          "event": "workflow_dispatch",
+          "headSha": "12ab708c766357666328519e84c5f5135ad1f4eb",
+          "status": "completed",
+          "updatedAt": "2026-09-25T15:18:07Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36152962811"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T15:30:39Z",
+          "databaseId": 36154651783,
+          "event": "workflow_dispatch",
+          "headSha": "12ab708c766357666328519e84c5f5135ad1f4eb",
+          "status": "completed",
+          "updatedAt": "2026-09-25T15:31:43Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36154651783"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T15:35:38Z",
+          "databaseId": 36155220270,
+          "event": "workflow_dispatch",
+          "headSha": "12ab708c766357666328519e84c5f5135ad1f4eb",
+          "status": "completed",
+          "updatedAt": "2026-09-25T15:38:32Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36155220270"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T15:45:39Z",
+          "databaseId": 36156341346,
+          "event": "workflow_dispatch",
+          "headSha": "12ab708c766357666328519e84c5f5135ad1f4eb",
+          "status": "completed",
+          "updatedAt": "2026-09-25T15:49:03Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36156341346"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T16:00:38Z",
+          "databaseId": 36157971105,
+          "event": "workflow_dispatch",
+          "headSha": "12ab708c766357666328519e84c5f5135ad1f4eb",
+          "status": "completed",
+          "updatedAt": "2026-09-25T16:01:39Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36157971105"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T16:15:39Z",
+          "databaseId": 36159613362,
+          "event": "workflow_dispatch",
+          "headSha": "12ab708c766357666328519e84c5f5135ad1f4eb",
+          "status": "completed",
+          "updatedAt": "2026-09-25T16:16:35Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36159613362"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T16:30:39Z",
+          "databaseId": 36161217097,
+          "event": "workflow_dispatch",
+          "headSha": "12ab708c766357666328519e84c5f5135ad1f4eb",
+          "status": "completed",
+          "updatedAt": "2026-09-25T16:31:44Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36161217097"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T16:40:39Z",
+          "databaseId": 36162270223,
+          "event": "workflow_dispatch",
+          "headSha": "12ab708c766357666328519e84c5f5135ad1f4eb",
+          "status": "completed",
+          "updatedAt": "2026-09-25T16:45:03Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36162270223"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T16:45:39Z",
+          "databaseId": 36162799322,
+          "event": "workflow_dispatch",
+          "headSha": "12ab708c766357666328519e84c5f5135ad1f4eb",
+          "status": "completed",
+          "updatedAt": "2026-09-25T16:49:47Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36162799322"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T16:50:38Z",
+          "databaseId": 36163332732,
+          "event": "workflow_dispatch",
+          "headSha": "c3154aefcdb95f99edcbc017d08d3698acba7ede",
+          "status": "completed",
+          "updatedAt": "2026-09-25T16:51:33Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36163332732"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T17:00:39Z",
+          "databaseId": 36164396544,
+          "event": "workflow_dispatch",
+          "headSha": "c3154aefcdb95f99edcbc017d08d3698acba7ede",
+          "status": "completed",
+          "updatedAt": "2026-09-25T17:01:44Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36164396544"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T17:03:38Z",
+          "databaseId": 36164721285,
+          "event": "workflow_dispatch",
+          "headSha": "c3154aefcdb95f99edcbc017d08d3698acba7ede",
+          "status": "completed",
+          "updatedAt": "2026-09-25T17:04:34Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36164721285"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T17:05:39Z",
+          "databaseId": 36164932654,
+          "event": "workflow_dispatch",
+          "headSha": "c3154aefcdb95f99edcbc017d08d3698acba7ede",
+          "status": "completed",
+          "updatedAt": "2026-09-25T17:09:31Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36164932654"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T17:10:38Z",
+          "databaseId": 36165459486,
+          "event": "workflow_dispatch",
+          "headSha": "c3154aefcdb95f99edcbc017d08d3698acba7ede",
+          "status": "completed",
+          "updatedAt": "2026-09-25T17:13:55Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36165459486"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T17:15:38Z",
+          "databaseId": 36165994029,
+          "event": "workflow_dispatch",
+          "headSha": "c3154aefcdb95f99edcbc017d08d3698acba7ede",
+          "status": "completed",
+          "updatedAt": "2026-09-25T17:18:56Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36165994029"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T17:17:10Z",
+          "databaseId": 36166154660,
+          "event": "schedule",
+          "headSha": "c3154aefcdb95f99edcbc017d08d3698acba7ede",
+          "status": "completed",
+          "updatedAt": "2026-09-25T17:20:42Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36166154660"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T17:30:38Z",
+          "databaseId": 36167571438,
+          "event": "workflow_dispatch",
+          "headSha": "c3154aefcdb95f99edcbc017d08d3698acba7ede",
+          "status": "completed",
+          "updatedAt": "2026-09-25T17:33:57Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36167571438"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T17:40:38Z",
+          "databaseId": 36168610856,
+          "event": "workflow_dispatch",
+          "headSha": "c3154aefcdb95f99edcbc017d08d3698acba7ede",
+          "status": "completed",
+          "updatedAt": "2026-09-25T17:43:45Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36168610856"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T17:45:38Z",
+          "databaseId": 36169132810,
+          "event": "workflow_dispatch",
+          "headSha": "c3154aefcdb95f99edcbc017d08d3698acba7ede",
+          "status": "completed",
+          "updatedAt": "2026-09-25T17:49:30Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36169132810"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T18:00:38Z",
+          "databaseId": 36170694642,
+          "event": "workflow_dispatch",
+          "headSha": "c3154aefcdb95f99edcbc017d08d3698acba7ede",
+          "status": "completed",
+          "updatedAt": "2026-09-25T18:02:48Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36170694642"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T18:10:38Z",
+          "databaseId": 36171748471,
+          "event": "workflow_dispatch",
+          "headSha": "c3154aefcdb95f99edcbc017d08d3698acba7ede",
+          "status": "completed",
+          "updatedAt": "2026-09-25T18:14:36Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36171748471"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T18:15:38Z",
+          "databaseId": 36172281485,
+          "event": "workflow_dispatch",
+          "headSha": "c3154aefcdb95f99edcbc017d08d3698acba7ede",
+          "status": "completed",
+          "updatedAt": "2026-09-25T18:18:51Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36172281485"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T18:30:38Z",
+          "databaseId": 36173885245,
+          "event": "workflow_dispatch",
+          "headSha": "c3154aefcdb95f99edcbc017d08d3698acba7ede",
+          "status": "completed",
+          "updatedAt": "2026-09-25T18:32:51Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36173885245"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T18:35:38Z",
+          "databaseId": 36174411077,
+          "event": "workflow_dispatch",
+          "headSha": "c3154aefcdb95f99edcbc017d08d3698acba7ede",
+          "status": "completed",
+          "updatedAt": "2026-09-25T18:37:19Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36174411077"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T18:40:39Z",
+          "databaseId": 36174937627,
+          "event": "workflow_dispatch",
+          "headSha": "c3154aefcdb95f99edcbc017d08d3698acba7ede",
+          "status": "completed",
+          "updatedAt": "2026-09-25T18:41:51Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36174937627"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T18:45:39Z",
+          "databaseId": 36175462420,
+          "event": "workflow_dispatch",
+          "headSha": "0056c9895e4eb38fa0c0c9bf48bf47816d892d56",
+          "status": "completed",
+          "updatedAt": "2026-09-25T18:49:41Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36175462420"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T18:54:39Z",
+          "databaseId": 36176401170,
+          "event": "workflow_dispatch",
+          "headSha": "0056c9895e4eb38fa0c0c9bf48bf47816d892d56",
+          "status": "completed",
+          "updatedAt": "2026-09-25T18:58:29Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36176401170"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T19:00:38Z",
+          "databaseId": 36177019317,
+          "event": "workflow_dispatch",
+          "headSha": "ee52e1f17f41d07dca2f983f4fdf9a6cc98a6c40",
+          "status": "completed",
+          "updatedAt": "2026-09-25T19:04:19Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36177019317"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T19:15:38Z",
+          "databaseId": 36178581174,
+          "event": "workflow_dispatch",
+          "headSha": "ee52e1f17f41d07dca2f983f4fdf9a6cc98a6c40",
+          "status": "completed",
+          "updatedAt": "2026-09-25T19:16:31Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36178581174"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T19:29:39Z",
+          "databaseId": 36180013009,
+          "event": "workflow_dispatch",
+          "headSha": "ee52e1f17f41d07dca2f983f4fdf9a6cc98a6c40",
+          "status": "completed",
+          "updatedAt": "2026-09-25T19:31:07Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36180013009"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T19:40:38Z",
+          "databaseId": 36181130668,
+          "event": "workflow_dispatch",
+          "headSha": "ee52e1f17f41d07dca2f983f4fdf9a6cc98a6c40",
+          "status": "completed",
+          "updatedAt": "2026-09-25T19:42:40Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36181130668"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T19:43:38Z",
+          "databaseId": 36181431622,
+          "event": "workflow_dispatch",
+          "headSha": "ee52e1f17f41d07dca2f983f4fdf9a6cc98a6c40",
+          "status": "completed",
+          "updatedAt": "2026-09-25T19:46:33Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36181431622"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T19:46:39Z",
+          "databaseId": 36181733533,
+          "event": "workflow_dispatch",
+          "headSha": "c8a5b507ab61113c94110d1a6b1fda9a9dde319a",
+          "status": "completed",
+          "updatedAt": "2026-09-25T19:50:35Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36181733533"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T19:50:39Z",
+          "databaseId": 36182132415,
+          "event": "workflow_dispatch",
+          "headSha": "c8a5b507ab61113c94110d1a6b1fda9a9dde319a",
+          "status": "completed",
+          "updatedAt": "2026-09-25T19:52:49Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36182132415"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T19:53:39Z",
+          "databaseId": 36182433514,
+          "event": "workflow_dispatch",
+          "headSha": "cc53334dcf1477fac616deda09e3f9f535fcf273",
+          "status": "completed",
+          "updatedAt": "2026-09-25T19:56:42Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36182433514"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T19:57:38Z",
+          "databaseId": 36182826749,
+          "event": "workflow_dispatch",
+          "headSha": "52373b82ef90f04678b6360de762bd5aa22c2e35",
+          "status": "completed",
+          "updatedAt": "2026-09-25T20:00:56Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36182826749"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T20:01:38Z",
+          "databaseId": 36183235532,
+          "event": "workflow_dispatch",
+          "headSha": "52373b82ef90f04678b6360de762bd5aa22c2e35",
+          "status": "completed",
+          "updatedAt": "2026-09-25T20:05:27Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36183235532"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T20:05:39Z",
+          "databaseId": 36183655742,
+          "event": "workflow_dispatch",
+          "headSha": "52373b82ef90f04678b6360de762bd5aa22c2e35",
+          "status": "completed",
+          "updatedAt": "2026-09-25T20:09:38Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36183655742"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T20:10:38Z",
+          "databaseId": 36184167597,
+          "event": "workflow_dispatch",
+          "headSha": "52373b82ef90f04678b6360de762bd5aa22c2e35",
+          "status": "completed",
+          "updatedAt": "2026-09-25T20:11:45Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36184167597"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T20:12:38Z",
+          "databaseId": 36184371616,
+          "event": "workflow_dispatch",
+          "headSha": "52373b82ef90f04678b6360de762bd5aa22c2e35",
+          "status": "completed",
+          "updatedAt": "2026-09-25T20:14:51Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36184371616"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T20:15:38Z",
+          "databaseId": 36184685952,
+          "event": "workflow_dispatch",
+          "headSha": "52373b82ef90f04678b6360de762bd5aa22c2e35",
+          "status": "completed",
+          "updatedAt": "2026-09-25T20:17:52Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36184685952"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T20:18:38Z",
+          "databaseId": 36184990828,
+          "event": "workflow_dispatch",
+          "headSha": "52373b82ef90f04678b6360de762bd5aa22c2e35",
+          "status": "completed",
+          "updatedAt": "2026-09-25T20:20:17Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36184990828"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T20:20:38Z",
+          "databaseId": 36185195936,
+          "event": "workflow_dispatch",
+          "headSha": "52373b82ef90f04678b6360de762bd5aa22c2e35",
+          "status": "completed",
+          "updatedAt": "2026-09-25T20:23:17Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36185195936"
+        },
+        {
+          "conclusion": "cancelled",
+          "createdAt": "2026-09-25T20:23:38Z",
+          "databaseId": 36185496921,
+          "event": "workflow_dispatch",
+          "headSha": "52373b82ef90f04678b6360de762bd5aa22c2e35",
+          "status": "completed",
+          "updatedAt": "2026-09-25T20:36:42Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36185496921"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T20:33:04Z",
+          "databaseId": 36186445346,
+          "event": "schedule",
+          "headSha": "44a55669a03e678fe73c3d5efff071660e19af0b",
+          "status": "completed",
+          "updatedAt": "2026-09-25T20:38:58Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36186445346"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T20:39:38Z",
+          "databaseId": 36187083861,
+          "event": "workflow_dispatch",
+          "headSha": "44a55669a03e678fe73c3d5efff071660e19af0b",
+          "status": "completed",
+          "updatedAt": "2026-09-25T20:40:51Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36187083861"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T20:45:39Z",
+          "databaseId": 36187681940,
+          "event": "workflow_dispatch",
+          "headSha": "44a55669a03e678fe73c3d5efff071660e19af0b",
+          "status": "completed",
+          "updatedAt": "2026-09-25T20:49:27Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36187681940"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T21:00:38Z",
+          "databaseId": 36189115339,
+          "event": "workflow_dispatch",
+          "headSha": "44a55669a03e678fe73c3d5efff071660e19af0b",
+          "status": "completed",
+          "updatedAt": "2026-09-25T21:03:54Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36189115339"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T21:10:42Z",
+          "databaseId": 36190087820,
+          "event": "workflow_dispatch",
+          "headSha": "44a55669a03e678fe73c3d5efff071660e19af0b",
+          "status": "completed",
+          "updatedAt": "2026-09-25T21:12:21Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36190087820"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T21:12:38Z",
+          "databaseId": 36190264390,
+          "event": "workflow_dispatch",
+          "headSha": "44a55669a03e678fe73c3d5efff071660e19af0b",
+          "status": "completed",
+          "updatedAt": "2026-09-25T21:13:29Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36190264390"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T21:16:39Z",
+          "databaseId": 36190648025,
+          "event": "workflow_dispatch",
+          "headSha": "44a55669a03e678fe73c3d5efff071660e19af0b",
+          "status": "completed",
+          "updatedAt": "2026-09-25T21:20:48Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36190648025"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T21:21:38Z",
+          "databaseId": 36191113015,
+          "event": "workflow_dispatch",
+          "headSha": "44a55669a03e678fe73c3d5efff071660e19af0b",
+          "status": "completed",
+          "updatedAt": "2026-09-25T21:24:55Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36191113015"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T21:30:38Z",
+          "databaseId": 36191938063,
+          "event": "workflow_dispatch",
+          "headSha": "44a55669a03e678fe73c3d5efff071660e19af0b",
+          "status": "completed",
+          "updatedAt": "2026-09-25T21:35:21Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36191938063"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T21:35:46Z",
+          "databaseId": 36192399628,
+          "event": "workflow_dispatch",
+          "headSha": "44a55669a03e678fe73c3d5efff071660e19af0b",
+          "status": "completed",
+          "updatedAt": "2026-09-25T21:38:37Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36192399628"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T21:39:39Z",
+          "databaseId": 36192740138,
+          "event": "workflow_dispatch",
+          "headSha": "44a55669a03e678fe73c3d5efff071660e19af0b",
+          "status": "completed",
+          "updatedAt": "2026-09-25T21:40:35Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36192740138"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T21:45:38Z",
+          "databaseId": 36193269906,
+          "event": "workflow_dispatch",
+          "headSha": "44a55669a03e678fe73c3d5efff071660e19af0b",
+          "status": "completed",
+          "updatedAt": "2026-09-25T21:48:51Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36193269906"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T22:00:38Z",
+          "databaseId": 36194549402,
+          "event": "workflow_dispatch",
+          "headSha": "02f6b2639a419c79a075f426f2ac0b33ffda90cf",
+          "status": "completed",
+          "updatedAt": "2026-09-25T22:02:58Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36194549402"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T22:10:38Z",
+          "databaseId": 36195402707,
+          "event": "workflow_dispatch",
+          "headSha": "550f2364f2fb5dc5aa036d7c0fd94bc69aa21a27",
+          "status": "completed",
+          "updatedAt": "2026-09-25T22:13:55Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36195402707"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T22:15:38Z",
+          "databaseId": 36195820564,
+          "event": "workflow_dispatch",
+          "headSha": "550f2364f2fb5dc5aa036d7c0fd94bc69aa21a27",
+          "status": "completed",
+          "updatedAt": "2026-09-25T22:16:43Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36195820564"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T22:25:39Z",
+          "databaseId": 36196645503,
+          "event": "workflow_dispatch",
+          "headSha": "dc0110d379e4018cfc053fbdaefbfc0172210e66",
+          "status": "completed",
+          "updatedAt": "2026-09-25T22:30:16Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36196645503"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T22:30:38Z",
+          "databaseId": 36197051842,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-25T22:36:42Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36197051842"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T22:40:38Z",
+          "databaseId": 36197842416,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-25T22:43:37Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36197842416"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T22:43:38Z",
+          "databaseId": 36198069983,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-25T22:45:58Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36198069983"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T22:46:39Z",
+          "databaseId": 36198294517,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-25T22:47:38Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36198294517"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T22:48:38Z",
+          "databaseId": 36198436056,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-25T22:54:30Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36198436056"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T22:54:38Z",
+          "databaseId": 36198857009,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-25T23:00:30Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36198857009"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T23:00:38Z",
+          "databaseId": 36199263787,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-25T23:03:42Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36199263787"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T23:04:38Z",
+          "databaseId": 36199544294,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-25T23:10:27Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36199544294"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T23:10:42Z",
+          "databaseId": 36199960130,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-25T23:12:05Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36199960130"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T23:15:38Z",
+          "databaseId": 36200301010,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-25T23:20:19Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36200301010"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T23:25:38Z",
+          "databaseId": 36200970083,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-25T23:30:22Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36200970083"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T23:30:05Z",
+          "databaseId": 36201254866,
+          "event": "schedule",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-25T23:36:13Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36201254866"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T23:40:39Z",
+          "databaseId": 36201934305,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-25T23:45:50Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36201934305"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T23:46:38Z",
+          "databaseId": 36202310362,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-25T23:49:47Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36202310362"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T23:55:38Z",
+          "databaseId": 36202881775,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-25T23:59:45Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36202881775"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T00:00:39Z",
+          "databaseId": 36203195443,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T00:06:21Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36203195443"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T00:08:38Z",
+          "databaseId": 36203716879,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T00:13:17Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36203716879"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T00:13:38Z",
+          "databaseId": 36204039158,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T00:14:41Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36204039158"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T00:15:38Z",
+          "databaseId": 36204170627,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T00:19:03Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36204170627"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T00:19:38Z",
+          "databaseId": 36204428024,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T00:20:35Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36204428024"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T00:20:38Z",
+          "databaseId": 36204495116,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T00:26:30Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36204495116"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T00:26:39Z",
+          "databaseId": 36204868653,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T00:27:40Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36204868653"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T00:28:38Z",
+          "databaseId": 36204986760,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T00:33:23Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36204986760"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T00:33:38Z",
+          "databaseId": 36205301967,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T00:38:24Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36205301967"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T00:40:38Z",
+          "databaseId": 36205720427,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T00:43:41Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36205720427"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T00:44:39Z",
+          "databaseId": 36205957576,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T00:47:05Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36205957576"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T00:47:38Z",
+          "databaseId": 36206140044,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T00:53:34Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36206140044"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T00:53:38Z",
+          "databaseId": 36206501548,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T00:57:54Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36206501548"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T00:58:47Z",
+          "databaseId": 36206806060,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T01:04:22Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36206806060"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T01:04:38Z",
+          "databaseId": 36207168137,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T01:07:40Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36207168137"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T01:15:38Z",
+          "databaseId": 36207819343,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T01:21:35Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36207819343"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T01:25:38Z",
+          "databaseId": 36208378820,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T01:28:00Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36208378820"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T01:28:38Z",
+          "databaseId": 36208546798,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T01:30:01Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36208546798"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T01:30:38Z",
+          "databaseId": 36208666924,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T01:31:57Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36208666924"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T01:32:38Z",
+          "databaseId": 36208782875,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T01:38:36Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36208782875"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T01:40:39Z",
+          "databaseId": 36209226423,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T01:43:46Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36209226423"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T01:45:38Z",
+          "databaseId": 36209500839,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T01:50:24Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36209500839"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T01:54:04Z",
+          "databaseId": 36209951663,
+          "event": "schedule",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T01:56:55Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36209951663"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T01:57:39Z",
+          "databaseId": 36210141256,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T02:00:30Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36210141256"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T02:00:38Z",
+          "databaseId": 36210308942,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T02:04:37Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36210308942"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T02:04:39Z",
+          "databaseId": 36210534637,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T02:06:46Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36210534637"
+        },
+        {
+          "conclusion": "failure",
+          "createdAt": "2026-09-26T02:07:38Z",
+          "databaseId": 36210692167,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T02:08:18Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36210692167"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T02:10:38Z",
+          "databaseId": 36210851824,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T02:11:56Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36210851824"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T02:13:38Z",
+          "databaseId": 36211008643,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T02:14:52Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36211008643"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T02:15:38Z",
+          "databaseId": 36211117441,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T02:20:22Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36211117441"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T02:25:39Z",
+          "databaseId": 36211650292,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T02:26:30Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36211650292"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T02:28:38Z",
+          "databaseId": 36211808839,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T02:29:53Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36211808839"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T02:30:38Z",
+          "databaseId": 36211920187,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T02:31:41Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36211920187"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T02:45:38Z",
+          "databaseId": 36212694226,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T02:48:27Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36212694226"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T02:48:38Z",
+          "databaseId": 36212847374,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T02:54:30Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36212847374"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T02:54:38Z",
+          "databaseId": 36213152935,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T03:00:15Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36213152935"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T03:00:38Z",
+          "databaseId": 36213463685,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T03:05:55Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36213463685"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T04:00:38Z",
+          "databaseId": 36216534724,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T04:05:17Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36216534724"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T04:45:41Z",
+          "databaseId": 36218786055,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T04:47:06Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36218786055"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T05:00:38Z",
+          "databaseId": 36219515446,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T05:02:01Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36219515446"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T05:30:38Z",
+          "databaseId": 36221007970,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T05:31:40Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36221007970"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T05:45:39Z",
+          "databaseId": 36221753448,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T05:47:46Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36221753448"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T06:00:39Z",
+          "databaseId": 36222458248,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T06:01:41Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36222458248"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T06:30:39Z",
+          "databaseId": 36223967565,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T06:35:09Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36223967565"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T06:45:39Z",
+          "databaseId": 36224721616,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T06:47:53Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36224721616"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T07:00:39Z",
+          "databaseId": 36225464194,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T07:01:43Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36225464194"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T07:05:55Z",
+          "databaseId": 36225738787,
+          "event": "schedule",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T07:06:54Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36225738787"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T07:30:39Z",
+          "databaseId": 36226996245,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T07:31:41Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36226996245"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T07:45:38Z",
+          "databaseId": 36227759314,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T07:46:38Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36227759314"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T08:00:39Z",
+          "databaseId": 36228494658,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T08:01:37Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36228494658"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T08:15:38Z",
+          "databaseId": 36229245830,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T08:18:22Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36229245830"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T08:30:38Z",
+          "databaseId": 36229991612,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T08:31:34Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36229991612"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T08:45:39Z",
+          "databaseId": 36230746304,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T08:51:14Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36230746304"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T09:00:38Z",
+          "databaseId": 36231475225,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T09:03:57Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36231475225"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T09:15:38Z",
+          "databaseId": 36232231510,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T09:18:32Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36232231510"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T09:30:39Z",
+          "databaseId": 36232996871,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T09:36:05Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36232996871"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T09:45:38Z",
+          "databaseId": 36233748222,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T09:50:17Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36233748222"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T09:58:38Z",
+          "databaseId": 36234373257,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T10:04:21Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36234373257"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T10:04:38Z",
+          "databaseId": 36234683807,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T10:05:45Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36234683807"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T10:15:38Z",
+          "databaseId": 36235249748,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T10:20:42Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36235249748"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T10:30:38Z",
+          "databaseId": 36236006802,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T10:31:46Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36236006802"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T10:35:38Z",
+          "databaseId": 36236257587,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T10:38:17Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36236257587"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T10:45:39Z",
+          "databaseId": 36236753995,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T10:46:53Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36236753995"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T11:00:39Z",
+          "databaseId": 36237492311,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T11:05:32Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36237492311"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T11:10:38Z",
+          "databaseId": 36238005637,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T11:15:26Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36238005637"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T11:15:38Z",
+          "databaseId": 36238263419,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T11:21:52Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36238263419"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T11:30:39Z",
+          "databaseId": 36239043254,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T11:32:00Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36239043254"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T11:45:38Z",
+          "databaseId": 36239822855,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T11:51:34Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36239822855"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T12:00:38Z",
+          "databaseId": 36240578947,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T12:01:42Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36240578947"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T12:12:27Z",
+          "databaseId": 36241193648,
+          "event": "schedule",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T12:17:31Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36241193648"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T12:17:39Z",
+          "databaseId": 36241460084,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T12:22:29Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36241460084"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T12:30:39Z",
+          "databaseId": 36242145690,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T12:35:38Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36242145690"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T12:45:38Z",
+          "databaseId": 36242937855,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T12:46:38Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36242937855"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T13:00:39Z",
+          "databaseId": 36243732720,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T13:05:43Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36243732720"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T13:07:38Z",
+          "databaseId": 36244122052,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T13:08:41Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36244122052"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T13:15:39Z",
+          "databaseId": 36244568389,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T13:20:07Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36244568389"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T13:30:39Z",
+          "databaseId": 36245407757,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T13:37:14Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36245407757"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T13:45:38Z",
+          "databaseId": 36246229899,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T13:51:41Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36246229899"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T14:00:38Z",
+          "databaseId": 36247045626,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T14:05:24Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36247045626"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T14:05:38Z",
+          "databaseId": 36247330671,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T14:06:42Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36247330671"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T14:10:39Z",
+          "databaseId": 36247612575,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T14:11:57Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36247612575"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T14:15:38Z",
+          "databaseId": 36247900276,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T14:22:12Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36247900276"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T14:30:39Z",
+          "databaseId": 36248750444,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T14:34:00Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36248750444"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T14:45:38Z",
+          "databaseId": 36249597887,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T14:50:27Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36249597887"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T15:00:38Z",
+          "databaseId": 36250436209,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T15:02:04Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36250436209"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T15:05:39Z",
+          "databaseId": 36250731209,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T15:07:32Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36250731209"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T15:15:38Z",
+          "databaseId": 36251312036,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T15:16:41Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36251312036"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T15:30:38Z",
+          "databaseId": 36252186791,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T15:34:03Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36252186791"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T15:40:38Z",
+          "databaseId": 36252766545,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T15:44:30Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36252766545"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T15:45:39Z",
+          "databaseId": 36253056416,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T15:50:09Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36253056416"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T15:55:38Z",
+          "databaseId": 36253628141,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T15:59:19Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36253628141"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T15:59:42Z",
+          "databaseId": 36253851569,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T16:06:38Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36253851569"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T16:15:39Z",
+          "databaseId": 36254817310,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T16:23:50Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36254817310"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T16:24:38Z",
+          "databaseId": 36255350899,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T16:25:55Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36255350899"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T16:27:26Z",
+          "databaseId": 36255516259,
+          "event": "schedule",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T16:29:35Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36255516259"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T16:30:38Z",
+          "databaseId": 36255711309,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T16:34:09Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36255711309"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T16:34:38Z",
+          "databaseId": 36255949493,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T16:39:22Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36255949493"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T16:40:38Z",
+          "databaseId": 36256304811,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T16:45:20Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36256304811"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T16:45:38Z",
+          "databaseId": 36256609553,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T16:46:41Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36256609553"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T16:55:38Z",
+          "databaseId": 36257200189,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T17:01:16Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36257200189"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T17:01:38Z",
+          "databaseId": 36257550087,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T17:08:28Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36257550087"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T17:10:38Z",
+          "databaseId": 36258087585,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T17:16:48Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36258087585"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T17:17:38Z",
+          "databaseId": 36258510655,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T17:21:43Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36258510655"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T17:25:38Z",
+          "databaseId": 36258982824,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T17:27:03Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36258982824"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T17:28:38Z",
+          "databaseId": 36259157150,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T17:29:58Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36259157150"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T17:30:39Z",
+          "databaseId": 36259278529,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T17:33:12Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36259278529"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T17:37:38Z",
+          "databaseId": 36259695561,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T17:42:39Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36259695561"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T17:45:42Z",
+          "databaseId": 36260167937,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T17:48:55Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36260167937"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T17:55:38Z",
+          "databaseId": 36260746495,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T17:58:22Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36260746495"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T17:58:38Z",
+          "databaseId": 36260909509,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T18:01:43Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36260909509"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T18:02:38Z",
+          "databaseId": 36261148251,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T18:07:38Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36261148251"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T18:15:38Z",
+          "databaseId": 36261905729,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T18:16:39Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36261905729"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T18:30:38Z",
+          "databaseId": 36262796033,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T18:32:04Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36262796033"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T18:35:38Z",
+          "databaseId": 36263094275,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T18:38:57Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36263094275"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T18:40:38Z",
+          "databaseId": 36263383640,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T18:43:58Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36263383640"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T18:44:38Z",
+          "databaseId": 36263619180,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T18:47:08Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36263619180"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T18:47:38Z",
+          "databaseId": 36263796504,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T18:48:41Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36263796504"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T18:49:38Z",
+          "databaseId": 36263910086,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T18:55:14Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36263910086"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T18:55:39Z",
+          "databaseId": 36264260222,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T18:57:00Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36264260222"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T18:57:39Z",
+          "databaseId": 36264371057,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T19:00:07Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36264371057"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T19:00:38Z",
+          "databaseId": 36264539244,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T19:07:38Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36264539244"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T19:08:38Z",
+          "databaseId": 36265011946,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T19:13:00Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36265011946"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T19:15:38Z",
+          "databaseId": 36265428088,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T19:18:59Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36265428088"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T19:19:23Z",
+          "databaseId": 36265648261,
+          "event": "schedule",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T19:20:43Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36265648261"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T19:25:38Z",
+          "databaseId": 36266012998,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T19:27:05Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36266012998"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T19:28:38Z",
+          "databaseId": 36266184441,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T19:29:43Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36266184441"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T19:30:39Z",
+          "databaseId": 36266297955,
+          "event": "workflow_dispatch",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T19:36:23Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36266297955"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T19:40:38Z",
+          "databaseId": 36266876227,
+          "event": "workflow_dispatch",
+          "headSha": "2f731006618dae7d67802736931b9453e5e2d5d5",
+          "status": "completed",
+          "updatedAt": "2026-09-26T19:43:50Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36266876227"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T19:44:38Z",
+          "databaseId": 36267098408,
+          "event": "workflow_dispatch",
+          "headSha": "2f731006618dae7d67802736931b9453e5e2d5d5",
+          "status": "completed",
+          "updatedAt": "2026-09-26T19:47:38Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36267098408"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T19:47:42Z",
+          "databaseId": 36267277193,
+          "event": "workflow_dispatch",
+          "headSha": "db069d52f3fec7d99961ece19a0a6c65310b521c",
+          "status": "completed",
+          "updatedAt": "2026-09-26T19:53:55Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36267277193"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T19:54:39Z",
+          "databaseId": 36267671414,
+          "event": "workflow_dispatch",
+          "headSha": "db069d52f3fec7d99961ece19a0a6c65310b521c",
+          "status": "completed",
+          "updatedAt": "2026-09-26T19:57:27Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36267671414"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T19:57:38Z",
+          "databaseId": 36267841339,
+          "event": "workflow_dispatch",
+          "headSha": "db069d52f3fec7d99961ece19a0a6c65310b521c",
+          "status": "completed",
+          "updatedAt": "2026-09-26T19:59:10Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36267841339"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T19:59:39Z",
+          "databaseId": 36267946276,
+          "event": "workflow_dispatch",
+          "headSha": "cdd793a56b81e6bf383fded98c78d0c206ecbcb6",
+          "status": "completed",
+          "updatedAt": "2026-09-26T20:01:59Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36267946276"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T20:02:39Z",
+          "databaseId": 36268130516,
+          "event": "workflow_dispatch",
+          "headSha": "4d7ad6ddaa7b044574d2286fd47f90985406912e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T20:07:38Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36268130516"
+        },
+        {
+          "conclusion": "",
+          "createdAt": "2026-09-26T20:08:38Z",
+          "databaseId": 36268481869,
+          "event": "workflow_dispatch",
+          "headSha": "4d7ad6ddaa7b044574d2286fd47f90985406912e",
+          "status": "in_progress",
+          "updatedAt": "2026-09-26T20:08:42Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36268481869"
+        }
+      ]
+    },
+    "refresh_cfb_terminal.yml": {
+      "expected_scheduled_slots": 177,
+      "observed_runs": 29,
+      "scheduled_runs": 28,
+      "dispatch_runs": 1,
+      "failed_or_incomplete": [
+        {
+          "conclusion": "failure",
+          "createdAt": "2026-09-26T13:00:30Z",
+          "databaseId": 36243722430,
+          "event": "schedule",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T13:02:37Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36243722430"
+        }
+      ],
+      "first_success": {
+        "conclusion": "success",
+        "createdAt": "2026-09-25T00:43:55Z",
+        "databaseId": 36078876551,
+        "event": "schedule",
+        "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+        "status": "completed",
+        "updatedAt": "2026-09-25T00:46:09Z",
+        "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36078876551"
+      },
+      "first_success_by_deployed_commit": {
+        "82df43868ffbee2f009aa6e568b3921e7d32c1dd": {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T00:43:55Z",
+          "databaseId": 36078876551,
+          "event": "schedule",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T00:46:09Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36078876551"
+        },
+        "182e19eb8c8e5fa1774472ea689852a991c8d6fb": {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T13:40:00Z",
+          "databaseId": 36142399875,
+          "event": "schedule",
+          "headSha": "182e19eb8c8e5fa1774472ea689852a991c8d6fb",
+          "status": "completed",
+          "updatedAt": "2026-09-25T13:43:21Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36142399875"
+        },
+        "12ab708c766357666328519e84c5f5135ad1f4eb": {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T15:29:02Z",
+          "databaseId": 36154464944,
+          "event": "schedule",
+          "headSha": "12ab708c766357666328519e84c5f5135ad1f4eb",
+          "status": "completed",
+          "updatedAt": "2026-09-25T15:29:47Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36154464944"
+        },
+        "c3154aefcdb95f99edcbc017d08d3698acba7ede": {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T17:01:48Z",
+          "databaseId": 36164523631,
+          "event": "schedule",
+          "headSha": "c3154aefcdb95f99edcbc017d08d3698acba7ede",
+          "status": "completed",
+          "updatedAt": "2026-09-25T17:03:07Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36164523631"
+        },
+        "ee52e1f17f41d07dca2f983f4fdf9a6cc98a6c40": {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T19:28:11Z",
+          "databaseId": 36179864861,
+          "event": "schedule",
+          "headSha": "ee52e1f17f41d07dca2f983f4fdf9a6cc98a6c40",
+          "status": "completed",
+          "updatedAt": "2026-09-25T19:31:11Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36179864861"
+        },
+        "44a55669a03e678fe73c3d5efff071660e19af0b": {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T21:26:04Z",
+          "databaseId": 36191524583,
+          "event": "schedule",
+          "headSha": "44a55669a03e678fe73c3d5efff071660e19af0b",
+          "status": "completed",
+          "updatedAt": "2026-09-25T21:36:47Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36191524583"
+        },
+        "550f2364f2fb5dc5aa036d7c0fd94bc69aa21a27": {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T22:14:15Z",
+          "databaseId": 36195700822,
+          "event": "schedule",
+          "headSha": "550f2364f2fb5dc5aa036d7c0fd94bc69aa21a27",
+          "status": "completed",
+          "updatedAt": "2026-09-25T22:20:17Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36195700822"
+        },
+        "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e": {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T22:43:27Z",
+          "databaseId": 36198055699,
+          "event": "schedule",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-25T22:45:53Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36198055699"
+        },
+        "db069d52f3fec7d99961ece19a0a6c65310b521c": {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T19:46:39Z",
+          "databaseId": 36267215959,
+          "event": "workflow_dispatch",
+          "headSha": "db069d52f3fec7d99961ece19a0a6c65310b521c",
+          "status": "completed",
+          "updatedAt": "2026-09-26T19:56:42Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36267215959"
+        }
+      },
+      "latest_run": {
+        "conclusion": "success",
+        "createdAt": "2026-09-26T19:48:47Z",
+        "databaseId": 36267338473,
+        "event": "schedule",
+        "headSha": "db069d52f3fec7d99961ece19a0a6c65310b521c",
+        "status": "completed",
+        "updatedAt": "2026-09-26T20:00:16Z",
+        "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36267338473"
+      },
+      "history_limit_reached": false,
+      "runs": [
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T00:43:55Z",
+          "databaseId": 36078876551,
+          "event": "schedule",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T00:46:09Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36078876551"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T01:25:06Z",
+          "databaseId": 36081917363,
+          "event": "schedule",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T01:30:32Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36081917363"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T04:38:59Z",
+          "databaseId": 36095290915,
+          "event": "schedule",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T04:47:58Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36095290915"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T05:27:05Z",
+          "databaseId": 36098611903,
+          "event": "schedule",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T05:34:36Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36098611903"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T07:41:03Z",
+          "databaseId": 36108893426,
+          "event": "schedule",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T07:47:37Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36108893426"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T10:29:19Z",
+          "databaseId": 36124242437,
+          "event": "schedule",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T10:34:19Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36124242437"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T11:39:28Z",
+          "databaseId": 36130581990,
+          "event": "schedule",
+          "headSha": "82df43868ffbee2f009aa6e568b3921e7d32c1dd",
+          "status": "completed",
+          "updatedAt": "2026-09-25T11:52:09Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36130581990"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T13:40:00Z",
+          "databaseId": 36142399875,
+          "event": "schedule",
+          "headSha": "182e19eb8c8e5fa1774472ea689852a991c8d6fb",
+          "status": "completed",
+          "updatedAt": "2026-09-25T13:43:21Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36142399875"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T15:29:02Z",
+          "databaseId": 36154464944,
+          "event": "schedule",
+          "headSha": "12ab708c766357666328519e84c5f5135ad1f4eb",
+          "status": "completed",
+          "updatedAt": "2026-09-25T15:29:47Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36154464944"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T17:01:48Z",
+          "databaseId": 36164523631,
+          "event": "schedule",
+          "headSha": "c3154aefcdb95f99edcbc017d08d3698acba7ede",
+          "status": "completed",
+          "updatedAt": "2026-09-25T17:03:07Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36164523631"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T18:30:55Z",
+          "databaseId": 36173917289,
+          "event": "schedule",
+          "headSha": "c3154aefcdb95f99edcbc017d08d3698acba7ede",
+          "status": "completed",
+          "updatedAt": "2026-09-25T18:37:48Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36173917289"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T19:28:11Z",
+          "databaseId": 36179864861,
+          "event": "schedule",
+          "headSha": "ee52e1f17f41d07dca2f983f4fdf9a6cc98a6c40",
+          "status": "completed",
+          "updatedAt": "2026-09-25T19:31:11Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36179864861"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T21:26:04Z",
+          "databaseId": 36191524583,
+          "event": "schedule",
+          "headSha": "44a55669a03e678fe73c3d5efff071660e19af0b",
+          "status": "completed",
+          "updatedAt": "2026-09-25T21:36:47Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36191524583"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T22:14:15Z",
+          "databaseId": 36195700822,
+          "event": "schedule",
+          "headSha": "550f2364f2fb5dc5aa036d7c0fd94bc69aa21a27",
+          "status": "completed",
+          "updatedAt": "2026-09-25T22:20:17Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36195700822"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-25T22:43:27Z",
+          "databaseId": 36198055699,
+          "event": "schedule",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-25T22:45:53Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36198055699"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T00:55:20Z",
+          "databaseId": 36206602353,
+          "event": "schedule",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T01:01:42Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36206602353"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T01:28:39Z",
+          "databaseId": 36208547354,
+          "event": "schedule",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T01:29:52Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36208547354"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T04:42:14Z",
+          "databaseId": 36218615907,
+          "event": "schedule",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T04:48:20Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36218615907"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T06:11:04Z",
+          "databaseId": 36222986905,
+          "event": "schedule",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T06:13:39Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36222986905"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T07:34:30Z",
+          "databaseId": 36227192383,
+          "event": "schedule",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T07:40:52Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36227192383"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T11:13:15Z",
+          "databaseId": 36238141201,
+          "event": "schedule",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T11:18:03Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36238141201"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T11:31:06Z",
+          "databaseId": 36239071278,
+          "event": "schedule",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T11:32:03Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36239071278"
+        },
+        {
+          "conclusion": "failure",
+          "createdAt": "2026-09-26T13:00:30Z",
+          "databaseId": 36243722430,
+          "event": "schedule",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T13:02:37Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36243722430"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T15:05:01Z",
+          "databaseId": 36250691973,
+          "event": "schedule",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T15:08:14Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36250691973"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T16:14:46Z",
+          "databaseId": 36254761480,
+          "event": "schedule",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T16:28:02Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36254761480"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T17:05:42Z",
+          "databaseId": 36257793492,
+          "event": "schedule",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T17:06:46Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36257793492"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T18:37:41Z",
+          "databaseId": 36263213052,
+          "event": "schedule",
+          "headSha": "bce21c48a3ed71ca50f74daf80b8d6afbc10a03e",
+          "status": "completed",
+          "updatedAt": "2026-09-26T18:38:48Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36263213052"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T19:46:39Z",
+          "databaseId": 36267215959,
+          "event": "workflow_dispatch",
+          "headSha": "db069d52f3fec7d99961ece19a0a6c65310b521c",
+          "status": "completed",
+          "updatedAt": "2026-09-26T19:56:42Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36267215959"
+        },
+        {
+          "conclusion": "success",
+          "createdAt": "2026-09-26T19:48:47Z",
+          "databaseId": 36267338473,
+          "event": "schedule",
+          "headSha": "db069d52f3fec7d99961ece19a0a6c65310b521c",
+          "status": "completed",
+          "updatedAt": "2026-09-26T20:00:16Z",
+          "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36267338473"
+        }
+      ]
+    }
+  },
+  "latest_deployed_capture_path": {
+    "run": {
+      "conclusion": "success",
+      "createdAt": "2026-09-26T20:02:39Z",
+      "databaseId": 36268130516,
+      "event": "workflow_dispatch",
+      "headSha": "4d7ad6ddaa7b044574d2286fd47f90985406912e",
+      "status": "completed",
+      "updatedAt": "2026-09-26T20:07:38Z",
+      "url": "https://github.com/themvf/NBA_DFS_2/actions/runs/36268130516"
+    },
+    "required_step_conclusions": {
+      "Normalize stored CFB captures for the frozen pilot": "success",
+      "Publish CFB market context from stored captures": "success",
+      "Detect and grade prospective CFB market signals": "success",
+      "Reconcile canonical CFB economics": "success"
+    }
+  },
+  "stages": {
+    "stored_provider_history": {
+      "count": 1794,
+      "sample_id": "59086"
+    },
+    "provider_captures": {
+      "count": 1794,
+      "sample_id": "0008b18b-57fc-5414-95e9-00c6dfc505e8"
+    },
+    "normalized_quotes": {
+      "count": 48674,
+      "sample_id": "0002eec3-5178-5c13-a2a5-cccfbd592070"
+    },
+    "detector_runs": {
+      "count": 965,
+      "sample_id": "00508b93-a5c9-4937-af0e-db27fc243f59"
+    },
+    "detector_funnels": {
+      "count": 51719,
+      "sample_id": "00508b93-a5c9-4937-af0e-db27fc243f59"
+    },
+    "persisted_signals": {
+      "count": 43,
+      "sample_id": "92774"
+    },
+    "economic_heads": {
+      "count": 43,
+      "sample_id": "0533f612-2dac-5e27-bf55-02812497e440"
+    }
+  },
+  "settlement_evidence": {
+    "frozen_candidate_signals": 36,
+    "settled_signals": 12,
+    "settled_independent_game_dates": 2,
+    "settled_with_primary_metric": 12,
+    "settled_missing_primary_metric": 0,
+    "settled_with_verified_close_id": 12,
+    "settled_with_unverified_rule": 12,
+    "settled_conflicts": 0,
+    "registered_moneyline_rule_versions": 0,
+    "prospective_moneyline_quotes": 15016,
+    "quotes_with_rule_version": 0
+  },
+  "context_snapshots": 1755,
+  "frozen_study_window_status": [
+    {
+      "window_key": "pilot",
+      "purpose": "pilot",
+      "start_at": "2026-09-25 00:00:00+00:00",
+      "end_at": "2026-10-14 00:00:00+00:00",
+      "review_at": "2026-10-17 00:00:00+00:00",
+      "state": "collecting",
+      "observations": 36,
+      "settled": 12
+    },
+    {
+      "window_key": "confirmation_1",
+      "purpose": "confirmation_1",
+      "start_at": "2026-10-14 00:00:00+00:00",
+      "end_at": "2026-11-25 00:00:00+00:00",
+      "review_at": "2026-11-28 00:00:00+00:00",
+      "state": "scheduled",
+      "observations": 0,
+      "settled": 0
+    },
+    {
+      "window_key": "confirmation_2",
+      "purpose": "confirmation_2",
+      "start_at": "2027-08-20 00:00:00+00:00",
+      "end_at": "2027-12-01 00:00:00+00:00",
+      "review_at": "2027-12-04 00:00:00+00:00",
+      "state": "scheduled",
+      "observations": 0,
+      "settled": 0
+    }
+  ],
+  "real_data_trace": {
+    "signal_id": 92774,
+    "trigger_history_id": 59386,
+    "capture_id": "fc8ba3f5-e618-5636-8035-a94388c59415",
+    "capture_observed_at": "2026-09-25 15:46:28+00:00",
+    "normalized_quote_count": 30,
+    "snapshot_id": "61bfd708-f897-5a3f-be38-bd255dd431d8",
+    "source_manifest_id": "b8e0fef8-05b4-5cfa-97c9-3496c5d640f6",
+    "definition_version": 1,
+    "snapshot_as_of_at": "2026-09-25 15:46:28+00:00",
+    "economic_resolution_id": "7d1459ec-4ea9-566c-9a89-189fd1df0a5f",
+    "economic_state": "settled"
+  },
+  "run_gap_checks": {
+    "capture_event_closes.yml": {
+      "status": "pass",
+      "last_success_utc": "2026-09-26T20:07:38+00:00",
+      "age_minutes": 2.1,
+      "threshold_minutes": 20
+    },
+    "refresh_cfb_terminal.yml": {
+      "status": "pass",
+      "last_success_utc": "2026-09-26T20:00:16+00:00",
+      "age_minutes": 9.4,
+      "threshold_minutes": 120
+    }
+  },
+  "funnel_monitoring": {
+    "window_start_utc": "2026-09-25T20:09:41.763673+00:00",
+    "zero_eligible_opportunities": "pass",
+    "temporal_rejection_spike": "pass",
+    "stale_book_spike": "pass",
+    "persistence_or_publication_failure": "not_evaluable",
+    "candidate_count": 100338,
+    "eligible_count": 84251,
+    "recent_pregame_captures": 1662,
+    "temporal_rejections": 0,
+    "stale_quote_rejections": 12,
+    "failed_persistence": 0,
+    "failed_publication_receipts": 0,
+    "missing_frozen_detector_funnels": "pass"
+  },
+  "policy_reader_decisions": 0,
+  "publication_receipts": 0,
+  "findings": [
+    "One or more successful CFB workflows lack a frozen detector/version funnel for that exact run.",
+    "No detector publication receipts are persisted.",
+    "No shared policy-reader decisions are persisted in the pilot interval.",
+    "Moneyline quote settlement-rule versions are not verified for the active pilot."
+  ],
+  "limitations": [
+    "Expected scheduled slots follow the committed cron cadence; GitHub triggers can be delayed or skipped, so observed run counts do not identify exact missing slots. Dispatch runs are listed separately.",
+    "Stage counts have different grains and are not expected to match.",
+    "A database aggregate cannot substitute for a linked real-data trace or per-detector zero-match funnel."
+  ]
+}
