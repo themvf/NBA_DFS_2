@@ -109,7 +109,8 @@
     "test:nfl-captain-simulation": "node --import tsx ./scripts/test-nfl-captain-simulation.ts",
     "test:cfb-dfs": "node --import tsx ./scripts/test-cfb-dfs.ts",
     "test:cfb-entry-export": "node --import tsx ./scripts/test-cfb-entry-export.ts",
-    "test:cfb-results": "node --import tsx ./scripts/test-cfb-results.ts"
+    "test:cfb-results": "node --import tsx ./scripts/test-cfb-results.ts",
+    "test:cfb-live-status": "node --import tsx ./scripts/test-cfb-live-status.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",

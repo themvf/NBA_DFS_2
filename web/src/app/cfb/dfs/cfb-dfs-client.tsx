@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
-  exportCfbRun, generateCfbLineups, listCfbSlates, loadCfbRun, loadCfbWorkspace, refreshCfbProjections, uploadCfbSlate,
+  checkCfbExport, exportCfbRun, generateCfbLineups, listCfbSlates, loadCfbRun, loadCfbWorkspace, refreshCfbProjections,
+  refreshCfbStatuses, uploadCfbSlate,
   type CfbSlateSummary, type CfbWorkspace,
 } from "./actions";
 import { DEFAULT_CFB_SETTINGS, type CfbLineup } from "@/lib/cfb-dfs/settings";
@@ -31,7 +32,7 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
   const [entryFile, setEntryFile] = useState<File | null>(null);
 
   const [settings, setSettings] = useState({ nLineups: DEFAULT_CFB_SETTINGS.nLineups, maxExposurePct: 70, minUnique: 2, randomnessPct: 18, minSalary: 45000,
-    requireTwoQbs: false, stackQb: false, bringBack: false });
+    requireTwoQbs: false, stackQb: false, bringBack: false, questionableCapPct: 25 });
   const [locked, setLocked] = useState<number[]>([]);
   const [excluded, setExcluded] = useState<number[]>([]);
   const [maxById, setMaxById] = useState<Record<string, number>>({});
@@ -92,6 +93,32 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
     });
   }
 
+  function refreshStatus() {
+    if (!uploadId) return;
+    setError(null); setMessage(null);
+    startTransition(async () => {
+      try {
+        const result = await refreshCfbStatuses(uploadId);
+        setWorkspace(await loadCfbWorkspace(uploadId));
+        if (result.note && !result.draftGroupId) setError(result.note);
+        else setMessage(result.changes.length
+          ? `DraftKings status changed for ${result.changes.length}: ${result.changes.map((c) => `${c.name} ${c.from} → ${c.to}`).join(", ")}. Projections updated.`
+          : "DraftKings status checked: no changes since the last check.");
+      } catch (reason) { fail(reason); }
+    });
+  }
+
+  /** Stop an export that would enter a player DraftKings now tags Out, Doubtful or IR. */
+  async function exportAllowed(): Promise<boolean> {
+    if (!uploadId || !runId) return false;
+    const check = await checkCfbExport(uploadId, runId);
+    if (!check.blocked.length) return true;
+    const byPlayer = new Map<string, number[]>();
+    for (const b of check.blocked) byPlayer.set(`${b.name} (${b.status})`, [...(byPlayer.get(`${b.name} (${b.status})`) ?? []), b.lineupNumber]);
+    setError(`Export blocked: ${[...byPlayer].map(([who, ls]) => `${who} in lineup${ls.length > 1 ? "s" : ""} ${ls.join(", ")}`).join("; ")}. Mark them Out and generate again.`);
+    return false;
+  }
+
   function generate() {
     if (!uploadId) return;
     setError(null); setMessage(null);
@@ -101,6 +128,7 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
           nLineups: settings.nLineups, maxExposure: settings.maxExposurePct / 100, minUnique: settings.minUnique,
           randomness: settings.randomnessPct / 100, minSalary: settings.minSalary, lockedIds: locked, excludedIds: excluded, maxExposureById: maxById,
           requireTwoQbs: settings.requireTwoQbs, stackQb: settings.stackQb, bringBack: settings.bringBack,
+          questionableCapPct: settings.questionableCapPct,
         });
         setLineups(result.lineups); setRunId(result.runId);
         setWorkspace(await loadCfbWorkspace(uploadId));
@@ -113,6 +141,7 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
     if (!uploadId || !runId) return;
     startTransition(async () => {
       try {
+        if (!(await exportAllowed())) return;
         const text = await exportCfbRun(uploadId, runId);
         saveText(`cfb-dk-lineups-${runId.slice(0, 8)}.csv`, text);
       } catch (reason) { fail(reason); }
@@ -130,6 +159,7 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
     if (!entryFile || !lineups.length) return;
     setError(null);
     try {
+      if (!(await exportAllowed())) return;
       const result = exportCfbDkEntries(await entryFile.text(), lineups);
       saveText(`cfb-dk-entries-${runId?.slice(0, 8) ?? "export"}.csv`, result.csv);
       setMessage(`Filled ${result.filled} of ${result.entries} entries. Upload the file on DraftKings' Edit Entries page.`
@@ -202,6 +232,15 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
           Built from 2026 box scores (2025 counts about as much as one 2026 game) and scaled toward each team&apos;s implied total. The weights are judgment, not fitted to results.
           {unresolved.length ? ` ${unresolved.length} team${unresolved.length === 1 ? "" : "s"} could not be matched.` : ""}
         </p>
+        <div className="mt-2 flex flex-wrap items-center gap-2 border-t pt-2 text-xs">
+          <span className="font-bold text-slate-600">DraftKings status</span>
+          <span className="text-slate-600">{workspace.slate.statusCheckedAt
+            ? `checked ${new Date(workspace.slate.statusCheckedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}${workspace.slate.draftGroupId ? ` · draft group ${workspace.slate.draftGroupId}` : ""}`
+            : "not checked yet"}</span>
+          <button disabled={pending} onClick={refreshStatus} className="rounded border bg-white px-2 py-1 font-semibold disabled:opacity-50">Refresh status</button>
+          <span className="text-slate-500">Rechecked automatically before every build and export if older than 10 minutes. A tag shows what DraftKings knows, not who starts: Woodson stayed Q through a game he did not play.</span>
+          {workspace.slate.statusNote ? <span className="basis-full text-amber-800">{workspace.slate.statusNote}</span> : null}
+        </div>
       </section>
 
       {workspace.slate.started ? <CfbResultsPanel uploadId={workspace.slate.uploadId} runId={runId} runsVersion={workspace.runs.length} /> : null}
@@ -238,6 +277,7 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
                     className="h-8 w-14 rounded border px-1 text-right text-xs" /></td>
                   <td className="p-2"><span className="font-semibold">{p.name}</span>
                     {p.status ? <span className={`ml-1 rounded px-1 text-[10px] font-bold ${STATUS_STYLE[p.status] ?? "bg-slate-100"}`}>{p.status}</span> : null}
+                    {p.liveStatus != null && p.liveStatus !== p.csvStatus ? <span className="ml-1 text-[10px] text-slate-500" title="Live DraftKings status differs from the uploaded file">was {p.csvStatus || "active"}</span> : null}
                     <div className="text-[11px] text-slate-500">{p.team} vs {p.opponent}</div></td>
                   <td className="p-2">{p.position}</td>
                   <td className="p-2 text-right">{dollars(p.salary)}</td>
@@ -264,6 +304,7 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
               <label>Max exposure %<input type="number" min={1} max={100} value={settings.maxExposurePct} onChange={(e) => setSettings({ ...settings, maxExposurePct: Number(e.target.value) })} className="mt-1 h-9 w-full rounded border px-2" /></label>
               <label>Min unique<input type="number" min={1} max={7} value={settings.minUnique} onChange={(e) => setSettings({ ...settings, minUnique: Number(e.target.value) })} className="mt-1 h-9 w-full rounded border px-2" /></label>
               <label>Randomness %<input type="number" min={0} max={50} value={settings.randomnessPct} onChange={(e) => setSettings({ ...settings, randomnessPct: Number(e.target.value) })} className="mt-1 h-9 w-full rounded border px-2" /></label>
+              <label>Questionable cap %<input type="number" min={0} max={100} value={settings.questionableCapPct} onChange={(e) => setSettings({ ...settings, questionableCapPct: Number(e.target.value) })} className="mt-1 h-9 w-full rounded border px-2" title="Most lineups a Q-tagged player may appear in, unless you set his own Max %" /></label>
               <label className="col-span-2">Min salary used<input type="number" step={500} value={settings.minSalary} onChange={(e) => setSettings({ ...settings, minSalary: Number(e.target.value) })} className="mt-1 h-9 w-full rounded border px-2" /></label>
             </div>
             <fieldset className="mt-4 space-y-2 rounded-lg border bg-slate-50 p-3 text-xs">
