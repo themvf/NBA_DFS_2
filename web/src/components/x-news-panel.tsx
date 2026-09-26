@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition, type ReactNode } from "react";
-import type { TeamNews } from "@/lib/x-news";
+import type { TeamNews, XNewsResult } from "@/lib/x-news";
+import { isXHandle } from "@/lib/x-news-accounts";
 
 const FLAG_STYLE: Record<string, string> = {
   starter: "bg-violet-100 text-violet-900", out: "bg-red-100 text-red-800",
@@ -13,13 +14,20 @@ const ago = (iso: string) => {
 };
 const reach = (n: number | null) => (n == null ? "?" : n >= 1000 ? `${Math.round(n / 1000)}K` : String(n));
 
-type SearchResult = { teams: TeamNews[]; searchedAt: string; postsRead: number };
 
 /**
  * Starter and injury posts from X, per team. Evidence to read before lock, not
  * a status. Shared by the CFB and NFL DFS pages; each passes its own search.
  */
-export default function XNewsPanel({ search, intro, className }: { search: () => Promise<SearchResult>; intro: ReactNode; className?: string }) {
+export default function XNewsPanel({ search, intro, storageKey, className }: {
+  search: (extraAccounts: string[]) => Promise<XNewsResult>; intro: ReactNode;
+  /** localStorage key for this page's extra trusted accounts. */
+  storageKey: string; className?: string;
+}) {
+  // Both pages mount this only after the slate loads in the browser, so reading storage here cannot mismatch the server render.
+  const [extra, setExtra] = useState(() => { try { return localStorage.getItem(storageKey) ?? ""; } catch { return ""; } });
+  const [trusted, setTrusted] = useState<string[]>([]);
+  const extraHandles = extra.split(/[\s,]+/).map((h) => h.replace(/^@/, "")).filter(isXHandle);
   const [teams, setTeams] = useState<TeamNews[] | null>(null);
   const [meta, setMeta] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +38,10 @@ export default function XNewsPanel({ search, intro, className }: { search: () =>
     setError(null);
     start(async () => {
       try {
-        const r = await search();
+        try { localStorage.setItem(storageKey, extraHandles.join(" ")); } catch { /* optional */ }
+        const r = await search(extraHandles);
+        setTrusted(r.trustedAccounts);
+        if (r.trustedError) setError(`Trusted-account search failed: ${r.trustedError}`);
         setTeams(r.teams);
         setMeta(`Searched ${new Date(r.searchedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ${r.postsRead} posts read (≈$${(r.postsRead * 0.00015).toFixed(3)}) · last 72 hours`);
       } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
@@ -48,6 +59,12 @@ export default function XNewsPanel({ search, intro, className }: { search: () =>
       {meta ? <span className="text-slate-500">{meta}</span> : null}
     </div>
     <p className="mt-1 text-xs text-slate-500">{intro}</p>
+    <label className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-600">
+      <span className="font-semibold">Your trusted accounts</span>
+      <input value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="@beatwriter @another" className="min-w-[16rem] flex-1 rounded border px-2 py-1" />
+      <span className="text-slate-500">added to the built-in list on the next search; saved on this device</span>
+    </label>
+    {trusted.length ? <p className="mt-1 text-xs text-slate-500">Trusted: {trusted.map((h) => `@${h}`).join(" ")}</p> : null}
     {error ? <p role="alert" className="mt-2 text-sm text-red-800">{error}</p> : null}
     {teams ? <div className="mt-3 grid gap-3 lg:grid-cols-2">
       {shown.map((t) => <div key={t.code} className="rounded-lg border p-2">
@@ -62,6 +79,7 @@ export default function XNewsPanel({ search, intro, className }: { search: () =>
             <a href={p.url ?? `https://x.com/${p.user}`} target="_blank" rel="noreferrer" className={`font-semibold ${(p.followers ?? 0) >= 50_000 ? "text-slate-900" : "text-slate-600"}`}>
               @{p.user}</a>
             <span className="text-slate-500"> ({reach(p.followers)})</span>
+            {p.trusted ? <span className="ml-1 rounded bg-emerald-100 px-1 font-semibold text-emerald-900">trusted</span> : null}
             {p.mentions.length ? <span className="ml-1 font-semibold text-slate-700">{p.mentions.join(", ")}</span> : null}
             {p.flags.map((f) => <span key={f} className={`ml-1 rounded px-1 ${FLAG_STYLE[f] ?? "bg-slate-100"}`}>{f}</span>)}
             <div className="text-slate-700">{p.text}</div>

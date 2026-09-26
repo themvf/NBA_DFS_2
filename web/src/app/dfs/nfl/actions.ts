@@ -53,7 +53,8 @@ import {
   type NflOptimizerPlayer,
   type NflOptimizerSettings,
 } from "./nfl-optimizer";
-import { searchTeamNews, type TeamNews } from "@/lib/x-news";
+import { searchTeamNews, type XNewsResult } from "@/lib/x-news";
+import { NFL_TRUSTED_ACCOUNTS, isXHandle } from "@/lib/x-news-accounts";
 import { NFL_TEAM_NICKNAMES } from "@/lib/nfl-dfs/x-news-teams";
 
 export type NflWorkspacePlayer = NflOptimizerPlayer & {
@@ -1437,7 +1438,7 @@ function auditForSlate(
  * player DraftKings tags Questionable or Doubtful. Read-only: nothing here
  * changes a status, availability or projection. Needs TWITTERAPI_IO_KEY.
  */
-export async function searchNflStarterNews(uploadId: string): Promise<{ teams: TeamNews[]; searchedAt: string; postsRead: number }> {
+export async function searchNflStarterNews(uploadId: string, extraAccounts: string[] = []): Promise<XNewsResult> {
   const key = process.env.TWITTERAPI_IO_KEY;
   if (!key) throw new Error("TWITTERAPI_IO_KEY is not set on this deployment.");
   if (!/^[0-9a-f-]{36}$/.test(uploadId)) throw new Error("Invalid slate.");
@@ -1448,5 +1449,5 @@ export async function searchNflStarterNews(uploadId: string): Promise<{ teams: T
     code, school: NFL_TEAM_NICKNAMES[code] ?? code,
     players: [...new Set(slate.players.filter((p) => p.team === code && p.position !== "DST" && watched(p)).map((p) => p.name))],
   }));
-  return searchTeamNews(key, requests);
+  return searchTeamNews(key, requests, { trusted: [...NFL_TRUSTED_ACCOUNTS, ...extraAccounts.filter(isXHandle).slice(0, 20)] });
 }

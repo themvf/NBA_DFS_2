@@ -20,6 +20,8 @@ export interface XPost {
   flags: string[];
   /** This team's slate players the post names (by surname). */
   mentions: string[];
+  /** Posted by an account on the page's trusted list. */
+  trusted: boolean;
 }
 export interface TeamNews {
   code: string; school: string; players: string[]; queries: string[];
@@ -90,11 +92,12 @@ export function parseXPosts(payload: unknown, players: readonly string[] = [], s
       user: String(author.userName ?? ""), followers: typeof author.followers === "number" ? author.followers : null,
       text, url: t.url ? String(t.url) : null, flags: flagPost(text, terms),
       mentions: players.filter((name) => wordRe(surnameOf(name)).test(text)),
+      trusted: false,
     };
   }).filter((p) => p.id && p.at);
 }
 
-/** Newest first, one copy of each post, flagged posts before unflagged ones of the same hour. */
+/** One copy of each post. Flagged trusted, then flagged, then trusted posts win the `limit` places; shown newest first. */
 export function mergePosts(lists: readonly XPost[][], limit = 12): XPost[] {
   const seen = new Set<string>();
   const out: XPost[] = [];
@@ -103,9 +106,43 @@ export function mergePosts(lists: readonly XPost[][], limit = 12): XPost[] {
     if (seen.has(key)) continue;
     seen.add(key); out.push(p);
   }
-  out.sort((a, b) => (b.flags.length > 0 ? 1 : 0) - (a.flags.length > 0 ? 1 : 0) || b.at.localeCompare(a.at));
+  const rank = (p: XPost) => (p.flags.length ? 2 : 0) + (p.trusted ? 1 : 0);
+  out.sort((a, b) => rank(b) - rank(a) || b.at.localeCompare(a.at));
   return out.slice(0, limit).sort((a, b) => b.at.localeCompare(a.at));
 }
+
+/**
+ * Searches of the trusted accounts, restricted to posts naming a slate team:
+ * (from:a OR from:b ...) (Team1 OR Team2 ...). Teams are split into groups so a
+ * 14-team slate stays within X's query length.
+ */
+export function trustedQueries(handles: readonly string[], teamNames: readonly string[], until: Date, groupSize = 8): string[] {
+  if (!handles.length || !teamNames.length) return [];
+  const since = new Date(until.getTime() - X_NEWS_LOOKBACK_HOURS * 3_600_000);
+  const from = `(${handles.map((h) => `from:${h}`).join(" OR ")})`;
+  const window = `since:${twitterTime(since)} until:${twitterTime(until)} -is:retweet`;
+  const names = [...new Set(teamNames)];
+  const out: string[] = [];
+  for (let i = 0; i < names.length; i += groupSize)
+    out.push(`${from} (${names.slice(i, i + groupSize).map((n) => `"${n}"`).join(" OR ")}) ${window}`);
+  return out;
+}
+
+const FOOTBALL = /\b(qb|quarterback|rb|running back|wr|receiver|te|tight end|football|cfb|nfl|starter|start(?:s|ed|ing)?|injury report|depth chart|touchdown|snaps?)\b/i;
+
+/**
+ * The teams a trusted post is about: it names one of the team's searched
+ * players in full, or names the team in a sentence about football. Team names
+ * alone are not enough (injury feeds also cover the Diamondbacks and Reds), and
+ * neither are surnames (Johnson, Brown and Taylor are on every roster).
+ */
+export function teamsForPost(text: string, requests: readonly TeamNewsRequest[]): TeamNewsRequest[] {
+  const sentences = text.split(/(?<=[.!?])\s+|\n+/);
+  return requests.filter((r) => r.players.some((name) => wordRe(name).test(text))
+    || sentences.some((s) => wordRe(r.school).test(s) && FOOTBALL.test(s)));
+}
+
+export interface XNewsResult { teams: TeamNews[]; searchedAt: string; postsRead: number; trustedAccounts: string[]; trustedError: string | null }
 
 /** One team to search: `school` is how posts name the team ("Navy", "Chiefs"); `players` are named in quotes. */
 export interface TeamNewsRequest { code: string; school: string; players: string[] }
@@ -114,8 +151,13 @@ export interface TeamNewsRequest { code: string; school: string; players: string
  * Run every team's searches, four at a time, and merge each team's posts.
  * A failed search is recorded on its team; the others still return.
  */
-export async function searchTeamNews(key: string, requests: readonly TeamNewsRequest[], until = new Date()):
-  Promise<{ teams: TeamNews[]; searchedAt: string; postsRead: number }> {
+export async function searchTeamNews(key: string, requests: readonly TeamNewsRequest[],
+  options: { trusted?: readonly string[]; until?: Date } = {}):
+  Promise<XNewsResult> {
+  const until = options.until ?? new Date();
+  const trustedAccounts = [...new Set(options.trusted ?? [])];
+  const trustedSet = new Set(trustedAccounts.map((h) => h.toLowerCase()));
+  const mark = (posts: XPost[]) => posts.map((p) => ({ ...p, trusted: trustedSet.has(p.user.toLowerCase()) }));
   const teams: TeamNews[] = requests.map((r) => ({ ...r, queries: teamQueries(r.school, r.players, until), posts: [], error: null }));
   let postsRead = 0;
   const jobs = teams.flatMap((t) => t.queries.map((q) => ({ t, q })));
@@ -126,12 +168,33 @@ export async function searchTeamNews(key: string, requests: readonly TeamNewsReq
         const url = `${X_SEARCH_URL}?${new URLSearchParams({ query: q, queryType: "Latest" })}`;
         const response = await fetch(url, { headers: { "X-API-Key": key }, cache: "no-store" });
         if (!response.ok) throw new Error(`X search ${response.status}`);
-        const posts = parseXPosts(await response.json(), t.players, t.school);
+        const posts = mark(parseXPosts(await response.json(), t.players, t.school));
         postsRead += posts.length;
         results.set(t, [...(results.get(t) ?? []), posts]);
       } catch (reason) { t.error = reason instanceof Error ? reason.message : String(reason); }
     }));
   }
+  // Trusted accounts: searched directly (two pages per query), each post routed to
+  // every team it names and re-parsed so flags and mentions are that team's.
+  let trustedError: string | null = null;
+  for (const q of trustedQueries(trustedAccounts, requests.map((r) => r.school), until)) {
+    try {
+      let cursor = "";
+      for (let page = 0; page < 2; page += 1) {
+        const url = `${X_SEARCH_URL}?${new URLSearchParams({ query: q, queryType: "Latest", cursor })}`;
+        const response = await fetch(url, { headers: { "X-API-Key": key }, cache: "no-store" });
+        if (!response.ok) throw new Error(`X search ${response.status}`);
+        const payload = (await response.json()) as { tweets?: unknown[]; has_next_page?: boolean; next_cursor?: string };
+        postsRead += payload.tweets?.length ?? 0;
+        for (const t of teams) {
+          const posts = mark(parseXPosts(payload, t.players, t.school)).filter((p) => teamsForPost(p.text, [t]).length);
+          if (posts.length) results.set(t, [...(results.get(t) ?? []), posts]);
+        }
+        if (!payload.has_next_page || !payload.next_cursor) break;
+        cursor = payload.next_cursor;
+      }
+    } catch (reason) { trustedError = reason instanceof Error ? reason.message : String(reason); }
+  }
   for (const t of teams) t.posts = mergePosts(results.get(t) ?? []);
-  return { teams, searchedAt: until.toISOString(), postsRead };
+  return { teams, searchedAt: until.toISOString(), postsRead, trustedAccounts, trustedError };
 }

@@ -20,7 +20,8 @@ import {
   cfbProjectionError, parseCfbContestStandings, scoreCfbLineups, summarizeCfbSet,
   type CfbSetResult, type PositionMiss, type ScoreCurve, type ScoredCfbLineup,
 } from "@/lib/cfb-dfs/results";
-import { searchTeamNews, type TeamNews } from "@/lib/x-news";
+import { searchTeamNews, type XNewsResult } from "@/lib/x-news";
+import { CFB_TRUSTED_ACCOUNTS, isXHandle } from "@/lib/x-news-accounts";
 
 type Row = Record<string, unknown>;
 const rowsOf = (result: unknown) => ((result as { rows?: Row[] }).rows ?? (result as Row[])) as Row[];
@@ -444,7 +445,7 @@ export async function checkCfbExport(uploadId: string, runId: string): Promise<{
  * player DraftKings tags Q, D or O. Read-only: nothing here changes a status or
  * a projection. Needs TWITTERAPI_IO_KEY (twitterapi.io, about $0.15 per 1,000 posts).
  */
-export async function searchCfbStarterNews(uploadId: string): Promise<{ teams: TeamNews[]; searchedAt: string; postsRead: number }> {
+export async function searchCfbStarterNews(uploadId: string, extraAccounts: string[] = []): Promise<XNewsResult> {
   const key = process.env.TWITTERAPI_IO_KEY;
   if (!key) throw new Error("TWITTERAPI_IO_KEY is not set on this deployment.");
   const workspace = await loadCfbWorkspace(uploadId);
@@ -453,5 +454,5 @@ export async function searchCfbStarterNews(uploadId: string): Promise<{ teams: T
     players: workspace.players.filter((p) => p.team === code
       && (p.position === "QB" || ["Q", "D", "O", "OUT"].includes(p.status))).map((p) => p.name),
   }));
-  return searchTeamNews(key, requests);
+  return searchTeamNews(key, requests, { trusted: [...CFB_TRUSTED_ACCOUNTS, ...extraAccounts.filter(isXHandle).slice(0, 20)] });
 }

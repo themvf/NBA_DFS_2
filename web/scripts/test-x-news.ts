@@ -1,6 +1,6 @@
 /** X news (CFB and NFL): phrase flags on the real Navy posts, query shape, merge order. */
 import assert from "node:assert/strict";
-import { flagPost, mergePosts, parseXPosts, surnameOf, teamQueries } from "../src/lib/x-news";
+import { flagPost, mergePosts, parseXPosts, surnameOf, teamQueries, teamsForPost, trustedQueries } from "../src/lib/x-news";
 
 assert.deepEqual(flagPost("Update: Navy back-up QB Jackson Gutierrez is expected to make his 1st career start tonight at UAB"), ["starter"]);
 assert.deepEqual(flagPost("QB Braxton Woodson (ankle) is downgraded to doubtful Friday."), ["doubtful/GTD", "injury"]);
@@ -34,4 +34,18 @@ const scoped = parseXPosts({ tweets: [{ id: "9", createdAt: "Fri Sep 25 21:29:53
   ["Braxton Woodson", "Jackson Gutierrez"], "Navy");
 assert.deepEqual(scoped[0].mentions, ["Braxton Woodson", "Jackson Gutierrez"]);
 assert.deepEqual(scoped[0].flags, ["starter", "out"]);
-console.log("CFB X news: flags, queries and merge ok.");
+// Trusted accounts: grouped queries, routing to named teams, ranking ahead of others.
+const tq = trustedQueries(["PeteThamel", "Brett_McMurphy"], ["Navy", "UAB", "LSU", "USC", "Oregon", "Alabama", "Missouri", "Kansas State", "Cincinnati"], new Date("2026-09-25T23:00:00Z"));
+assert.equal(tq.length, 2, "9 teams in groups of 8");
+assert.ok(tq[0].startsWith('(from:PeteThamel OR from:Brett_McMurphy) ("Navy" OR "UAB"'));
+const reqs = [{ code: "NAVY", school: "Navy", players: ["Jackson Gutierrez"] }, { code: "UAB", school: "UAB", players: ["Ryder Burton"] }];
+assert.deepEqual(teamsForPost("Sources: Navy is expected to start Gutierrez at UAB tonight.", reqs).map((r) => r.code), ["NAVY", "UAB"]);
+assert.deepEqual(teamsForPost("Jackson Gutierrez gets the nod.", reqs).map((r) => r.code), ["NAVY"], "a full player name routes the post");
+assert.deepEqual(teamsForPost("Gutierrez gets the nod.", reqs), [], "a surname alone does not");
+assert.deepEqual(teamsForPost("Arizona - C Gabriel Moreno (hamstring) is probable today versus San Diego.",
+  [{ code: "ARIZ", school: "Arizona", players: ["Noah Fifita"] }]), [], "a baseball injury note is not the football team");
+const fan = { ...posts[1], id: "fan", at: "2026-09-25T22:50:00.000Z", flags: ["starter"], trusted: false };
+const insider = { ...posts[0], trusted: true };
+assert.deepEqual(mergePosts([[fan, { ...insider, flags: ["starter"] }]], 1).map((p) => p.id), ["1"], "a flagged trusted post beats a flagged fan post");
+assert.deepEqual(mergePosts([[fan, { ...insider, flags: [] }]], 1).map((p) => p.id), ["fan"], "flagged news beats an unflagged trusted post");
+console.log("X news: flags, queries, trusted routing and merge ok.");

@@ -347,7 +347,7 @@ export default function NflDfsClient() {
 
       {stage === "slate" ? <div className="space-y-4">
         <LiveStatusBanner live={slate.liveDkStatus} />
-        <XNewsPanel search={() => searchNflStarterNews(slate.uploadId)} intro={<>
+        <XNewsPanel storageKey="nfl-x-trusted" search={(extra) => searchNflStarterNews(slate.uploadId, extra)} intro={<>
           Each team&apos;s QBs and any player DraftKings tags Q or D. Posts are flagged by phrases like &quot;will start&quot;, &quot;ruled out&quot;, &quot;doubtful&quot;; nothing here changes a status, availability or projection.
           Weigh the newest posts from high-reach reporters, then lock or exclude players yourself.
         </>} />

@@ -244,7 +244,7 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
         </div>
       </section>
 
-      {!workspace.slate.started ? <XNewsPanel search={() => searchCfbStarterNews(workspace.slate.uploadId)} intro={<>
+      {!workspace.slate.started ? <XNewsPanel storageKey="cfb-x-trusted" search={(extra) => searchCfbStarterNews(workspace.slate.uploadId, extra)} intro={<>
         Each team&apos;s QBs and any player DraftKings tags Q/D/O. Posts are flagged by phrases like &quot;will start&quot;, &quot;doubtful&quot;, &quot;ruled out&quot;; nothing here changes a status or a projection.
         Read the newest posts from high-reach reporters, and lock or exclude players yourself. On 2026-09-25 X had Gutierrez starting 90 minutes before lock while DraftKings still showed Woodson Q.
       </>} /> : null}
