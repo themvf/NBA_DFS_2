@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 import subprocess
+import time
 
 from config import PROJECT_DIR, load_config
 from research.cfb_study_evaluation import status as study_status
@@ -54,6 +55,30 @@ def _count(cursor, sql: str, start: datetime, cutoff: datetime) -> dict:
     return {"count": row[0], "sample_id": str(row[1]) if row[1] is not None else None}
 
 
+def _moneyline_settlement(rows: list[dict], candidate_definitions: list[dict]) -> dict:
+    frozen = {(item["alert_type"], item["signal_version"]) for item in candidate_definitions}
+    eligible = [
+        row for row in rows
+        if (row["alert_type"], row["signal_version"]) in frozen
+        and (row["details_json"] or {}).get("market") in (None, "moneyline")
+    ]
+    settled = [row for row in eligible if row["settled_at"] is not None]
+    metric_rows = [row for row in settled if (row["metrics"] or {}).get("decimal_price_ratio_pct") is not None]
+    return {
+        "frozen_candidate_signals": len(eligible),
+        "settled_signals": len(settled),
+        "settled_independent_game_dates": len({row["game_date"] for row in settled}),
+        "settled_with_primary_metric": len(metric_rows),
+        "settled_missing_primary_metric": len(settled) - len(metric_rows),
+        "settled_with_verified_close_id": sum(row["close_history_id"] is not None for row in settled),
+        "settled_with_unverified_rule": sum(
+            (row["grading_json"] or {}).get("settlement_rule_status") == "UNVERIFIED_LEGACY_QUOTES"
+            for row in settled
+        ),
+        "settled_conflicts": sum(row["result_state"] == "conflict" for row in settled),
+    }
+
+
 def _expected_slots(workflow: str, start: datetime, cutoff: datetime) -> int:
     slot = start.replace(second=0, microsecond=0)
     if slot < start:
@@ -70,7 +95,7 @@ def _expected_slots(workflow: str, start: datetime, cutoff: datetime) -> int:
     return count
 
 
-def build(database_url: str, start: datetime = PILOT_START) -> dict:
+def _build_once(database_url: str, start: datetime = PILOT_START) -> dict:
     import psycopg2
 
     with psycopg2.connect(database_url) as connection:
@@ -106,6 +131,27 @@ def build(database_url: str, start: datetime = PILOT_START) -> dict:
                     WHERE a.sport='cfb' AND a.origin='prospective' AND a.created_at >= %s AND a.created_at < %s
                     AND NOT EXISTS(SELECT 1 FROM cfb_economic_resolutions n WHERE n.supersedes_resolution_id=r.resolution_id)""", start, cutoff),
             }
+            cursor.execute("""SELECT a.id,a.alert_type,a.signal_version,a.game_date,a.settled_at,
+                a.details_json,a.grading_json,a.close_history_id,r.result_state,r.metrics
+                FROM line_alerts a LEFT JOIN cfb_economic_resolutions r ON r.alert_id=a.id
+                  AND NOT EXISTS(SELECT 1 FROM cfb_economic_resolutions n
+                                  WHERE n.supersedes_resolution_id=r.resolution_id)
+                WHERE a.sport='cfb' AND a.origin='prospective'
+                  AND a.created_at >= %s AND a.created_at < %s""", (start, cutoff))
+            columns = [column[0] for column in cursor.description]
+            settlement_evidence = _moneyline_settlement(
+                [dict(zip(columns, row)) for row in cursor.fetchall()],
+                study[4].get("candidate_definitions", []),
+            )
+            cursor.execute("SELECT count(*) FROM cfb_engine_settlement_rules WHERE market='moneyline'")
+            settlement_evidence["registered_moneyline_rule_versions"] = cursor.fetchone()[0]
+            cursor.execute("""SELECT count(*),count(*) FILTER (WHERE q.settlement_rule_id IS NOT NULL)
+                FROM cfb_engine_quote_observations q JOIN cfb_engine_captures c USING(capture_id)
+                WHERE q.market='moneyline' AND c.origin='prospective'
+                  AND c.observed_at >= %s AND c.observed_at < %s""", (start, cutoff))
+            quote_total, quote_with_rule = cursor.fetchone()
+            settlement_evidence["prospective_moneyline_quotes"] = quote_total
+            settlement_evidence["quotes_with_rule_version"] = quote_with_rule
             cursor.execute("""SELECT count(*) FROM cfb_detector_publication_receipts""")
             receipts = cursor.fetchone()[0]
             cursor.execute("""SELECT count(*) FROM cfb_engine_captures
@@ -203,6 +249,12 @@ def build(database_url: str, start: datetime = PILOT_START) -> dict:
         findings.append("No detector publication receipts are persisted.")
     if policy_reads == 0:
         findings.append("No shared policy-reader decisions are persisted in the pilot interval.")
+    if settlement_evidence["settled_missing_primary_metric"]:
+        findings.append("Settled frozen moneyline candidates are missing the primary price-ratio metric.")
+    if settlement_evidence["settled_with_unverified_rule"] or (
+        settlement_evidence["prospective_moneyline_quotes"] > settlement_evidence["quotes_with_rule_version"]
+    ):
+        findings.append("Moneyline quote settlement-rule versions are not verified for the active pilot.")
     if stages["persisted_signals"]["count"] == 0:
         findings.append("No prospective CFB signal was persisted; downstream study observations must remain empty.")
     if stages["persisted_signals"]["count"] and not stages["economic_heads"]["count"]:
@@ -267,6 +319,7 @@ def build(database_url: str, start: datetime = PILOT_START) -> dict:
         "workflows": run_history,
         "latest_deployed_capture_path": {"run": latest_capture_success, "required_step_conclusions": step_status},
         "stages": stages,
+        "settlement_evidence": settlement_evidence,
         "context_snapshots": context_snapshots,
         "frozen_study_window_status": frozen_status["windows"],
         "real_data_trace": real_data_trace,
@@ -279,6 +332,21 @@ def build(database_url: str, start: datetime = PILOT_START) -> dict:
                         "Stage counts have different grains and are not expected to match.",
                         "A database aggregate cannot substitute for a linked real-data trace or per-detector zero-match funnel."],
     }
+
+
+def build(database_url: str, start: datetime = PILOT_START) -> dict:
+    """Retry transient schema-lock deadlocks with fresh read transactions."""
+    import psycopg2
+
+    retryable = (psycopg2.errors.DeadlockDetected, psycopg2.errors.LockNotAvailable)
+    for attempt in range(3):
+        try:
+            return _build_once(database_url, start)
+        except retryable:
+            if attempt == 2:
+                raise
+            time.sleep(2 ** attempt)
+    raise AssertionError("unreachable")
 
 
 def main() -> None:
