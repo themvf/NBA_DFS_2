@@ -25,7 +25,8 @@ def test_uses_selected_book_and_selection_at_verified_close() -> None:
     assert grade["close_history_id"] == 59937
     assert grade["close_decimal"] == 1 + 100 / 138
     assert grade["price_clv_pct"] == 6.301
-    assert grade["price_comparison_status"] == "SAME_BOOK_SELECTION"
+    assert grade["price_comparison_status"] == "SAME_BOOK_SELECTION_RULE_UNVERIFIED"
+    assert grade["settlement_rule_status"] == "UNVERIFIED_LEGACY_QUOTES"
 
 
 def test_missing_execution_book_remains_missing() -> None:

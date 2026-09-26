@@ -2587,6 +2587,7 @@ def _cfb_moneyline_close_grade(a: dict, close: dict) -> dict:
         "close_history_id": int(close["history_id"]),
         "close_source": "verified_clv_closes",
         "price_comparison_status": "CLOSE_UNAVAILABLE",
+        "settlement_rule_status": "UNVERIFIED_LEGACY_QUOTES",
     }
     quote = (close.get("books") or {}).get(book) if book else None
     if not isinstance(quote, dict):
@@ -2605,7 +2606,7 @@ def _cfb_moneyline_close_grade(a: dict, close: dict) -> dict:
         return result
     result["close_decimal"] = close_decimal
     result["price_clv_pct"] = round((entry / close_decimal - 1) * 100, 3)
-    result["price_comparison_status"] = "SAME_BOOK_SELECTION"
+    result["price_comparison_status"] = "SAME_BOOK_SELECTION_RULE_UNVERIFIED"
     return result
 
 
