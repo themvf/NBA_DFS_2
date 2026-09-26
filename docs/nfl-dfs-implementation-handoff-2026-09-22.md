@@ -166,3 +166,31 @@ Backtested. A package with any check FAIL or BLOCKED is not complete.
   cycle.
 - Add any public-stat model against closing lines.
 - Unseal the fade study on an alert count; the study's own n is smaller.
+
+## Shadow re-pin and forward-gate amendment (2026-09-26)
+
+The shadow job failed every run from 2026-09-17: historical-v5 (#252) and
+the Thursday-upload fix (#254) edited `model/nfl_dfs_historical.py`, so the
+study-pin guard ("Baseline implementation drifted") stopped it before it
+froze anything. Nothing was recorded for weeks 3 or 4 before this fix.
+
+- **Re-pinned** to study `7ff4d4049b8c10be84ee9ba83d5e9704e4fab1522b396e1e18b6c2d26a511c9f`
+  (output digest `2d038206a4b88c5ad992735578be5f8f65f4a3498567eaa90231d3bc559532b5`),
+  recomputed against historical-v5 with 200 draws and persisted.
+- **Only `DST:opportunity` is still eligible_for_shadow_only.** v5 improved
+  the baseline and the other candidates' edge shrank below the gate
+  (2025 retrospective MAE gain, old -> new):
+  QB 1.42% -> 0.58% (CI now crosses 0), RB 1.47% -> 0.34% (CI crosses 0),
+  WR 2.13% -> 0.73% (under the 1% bar). TE's 2025 gain held (1.15% -> 1.13%)
+  but it now fails "validation MAE improves" (2024 delta +0.0004).
+  DST grew, 2.75% -> 3.51%. Baseline forecasts are still frozen for every
+  position; only the candidate is DST-only.
+- **Forward window amended 3-12 -> 4-13** (recorded in the config's
+  `forward_gate.amendments`, enforced by `tests/test_nfl_dfs_shadow_gate.py`).
+  Week 3 has no frozen forecasts and could never become scorable, which would
+  have left the gate at `no_verdict` for the whole season. No shadow outcome
+  existed for any window week when the amendment was made.
+
+Next time `model/nfl_dfs_historical.py` changes, re-pin in the same PR:
+`python -m ingest.nfl_dfs_research --source-root <main checkout> --draws 200 --persist`,
+then point `artifacts/nfl_dfs_shadow_config.json` at the new run.
