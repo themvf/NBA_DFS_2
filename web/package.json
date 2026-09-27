@@ -119,7 +119,8 @@
     "test:nfl-projection-cadence": "node --import tsx ./scripts/test-nfl-projection-cadence.ts",
     "test:cron-dispatch": "node --import tsx ./scripts/test-cron-dispatch.ts",
     "test:nfl-ownership-prior": "node --import tsx ./scripts/test-nfl-ownership-prior.ts",
-    "calibrate:nfl-ownership": "tsx --conditions=react-server scripts/nfl-ownership-calibration.ts"
+    "calibrate:nfl-ownership": "tsx --conditions=react-server scripts/nfl-ownership-calibration.ts",
+    "test:nfl-gpp-leverage": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-leverage.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",
