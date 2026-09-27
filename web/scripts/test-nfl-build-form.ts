@@ -3,6 +3,7 @@
  */
 import assert from "node:assert/strict";
 import { formFromSettings, sameGenerationSettings, settingsFromForm, type NflBuildForm } from "../src/lib/nfl-dfs/generation-settings";
+import { DEFAULT_DFS_DEFENSIVE_SETTINGS } from "../src/lib/nfl-dfs/defensive-display";
 
 const defaults = { mode: "gpp" as "cash" | "gpp", projectionSource: "our" as const, allowDkFallback: false, nLineups: 20,
   minSalary: 45000, maxExposure: 0.6, minUnique: 2, stackPassCatchers: 1 as 0 | 1 | 2, bringBack: true, randomness: 0.08 };
@@ -51,5 +52,14 @@ const old = { ...sent } as Record<string, unknown>; delete old.randomness; delet
 const oldLoaded = formFromSettings(old as unknown as typeof sent, defaults);
 assert.equal(oldLoaded.settings.randomness, defaults.randomness);
 assert.equal(oldLoaded.planMode, "standard", "a run with no plan was a plain ceiling build");
+
+// A newly enabled defensive default must not rewrite the meaning of an old
+// saved run when the user opens it later.
+assert.deepEqual(DEFAULT_DFS_DEFENSIVE_SETTINGS, { mode: 'experimental', profile: 'pfr-efficiency' });
+const defensiveDefaults = { ...defaults, defensiveAdjustments: DEFAULT_DFS_DEFENSIVE_SETTINGS };
+const legacyDefensiveRun = formFromSettings(sent, defensiveDefaults);
+assert.deepEqual(legacyDefensiveRun.settings.defensiveAdjustments, { mode: 'off', profile: 'pfr-efficiency' });
+const selectedDefensiveRun = formFromSettings({ ...sent, defensiveAdjustments: defensiveDefaults.defensiveAdjustments }, defensiveDefaults);
+assert.deepEqual(selectedDefensiveRun.settings.defensiveAdjustments, defensiveDefaults.defensiveAdjustments);
 
 console.log("Build form: saved runs load back into the form and rebuild the same run.");

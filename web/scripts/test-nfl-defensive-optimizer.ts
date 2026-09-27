@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings } from '../src/app/dfs/nfl/nfl-optimizer';
 import { resolveDefensiveForecast, type DefensiveCapture, type DefensivePlayerInput } from '../src/lib/nfl-dfs/defensive-projection';
+import { selectedDefensiveForecast } from '../src/lib/nfl-dfs/defensive-display';
 import { assertShowdownLineup } from '../src/lib/nfl-dfs/showdown-legality';
 import { exportNflDkEntries } from '../src/lib/nfl-dfs/entry-export';
 
@@ -34,6 +35,9 @@ const adjusted=pool.map(p=>({...p,defensiveForecast:resolveDefensiveForecast(inp
 assert.equal(adjusted[4].defensiveForecast.status,'applied');
 assert.equal(adjusted[4].defensiveForecast.selected.mean,12);
 assert.equal(adjusted[4].defensiveForecast.selected.p90,40);
+assert.equal(selectedDefensiveForecast(adjusted[4].defensiveForecast,defensive)?.p90,40);
+assert.equal(selectedDefensiveForecast(adjusted[4].defensiveForecast,{...defensive,mode:'off'}),null);
+assert.equal(selectedDefensiveForecast(adjusted[4].defensiveForecast,{...defensive,profile:'allowed-rushing-volume'}),null);
 const on=optimizeNflLineups(adjusted,{...baseSettings,defensiveAdjustments:defensive}).lineups[0];
 assert.ok(on);
 assert.notDeepEqual(on.playerIds,off.playerIds,'adjusted upper tail must affect the selected roster');
