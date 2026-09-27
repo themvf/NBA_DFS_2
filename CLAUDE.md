@@ -7166,3 +7166,27 @@ slates, holdout by slate) are registered in `docs/nfl-ownership-model.md`.
 `npm run calibrate:nfl-ownership` grades against imported contests; import
 the largest GPP entered each week, that is the training set. Do not tune the
 prior's constants against the slates it is graded on.
+
+### GPP objective: multiplicative leverage and the ceiling cap (2026-09-27)
+
+The first build with the ownership prior live produced the SAME three lineups
+with leverage on and off. Two mechanisms, both in `objective()` in
+`web/src/app/dfs/nfl/nfl-optimizer.ts`:
+
+- The ownership term was a flat 0.025 points per ownership point against a
+  P90-sum objective: 1.34 points on Smith-Njigba's 47.3 ceiling, under 3%, so
+  it never flipped a choice. It is now `(ceiling + boom) × (1 − own)^k`,
+  `leverageExponent` default 0.5 (a stated prior; 0 disables), GPP mode only,
+  still gated on the same leverage bit. 53.5% owned is ×0.68; unknown
+  ownership is ×1, the same neutrality the old penalty had.
+- The P90 objective rewarded cheap variance over points: Ray Davis, 5.5
+  projected with a 30.9 P90 (5.6× his projection), filled RB slots. Starters
+  run 1.7–2.1×. The search now credits `min(P90, projection ×
+  maxCeilingMultiple)`, default 2.5, another stated prior. Cash mode
+  (floor-based) is untouched by both.
+
+`scripts/test-nfl-gpp-leverage.ts` proves a 60%-owned player loses to a
+5%-owned rival at a similar ceiling with leverage on and wins with it off, and
+that a 6× lottery ceiling loses to a real 12-point projection under the cap.
+Neither constant has been fitted; grade them on imported contests before
+treating either as more than a judgement.

@@ -158,6 +158,21 @@ export type NflOptimizerSettings = {
    * Absent = legacy rule: leverage only when capability is "validated".
    */
   ownershipLeverageEnabled?: boolean;
+  /**
+   * GPP leverage exponent k in `(ceiling + boom) × (1 − own)^k`. 0.5 is a
+   * stated prior; 0 disables the factor. GPP mode only, and only when
+   * leverage is enabled. Replaced a flat 0.025 points per ownership point on
+   * 2026-09-27: against a P90 objective that penalty was ~3% of a chalk
+   * player's ceiling and never flipped a single choice.
+   */
+  leverageExponent?: number;
+  /**
+   * Cap on the ceiling the GPP search may credit a player: `min(P90,
+   * projection × this)`. Starters run 1.7–2.1× their projection; a 5.5-point
+   * back with a 30.9 P90 (5.6×) carries a ceiling from a role he no longer
+   * has, and the search was filling RB slots with him. 2.5 is a stated prior.
+   */
+  maxCeilingMultiple?: number;
   /** User opt-in for uncalibrated heuristic ownership leverage (client → server; the server resolves the final bit). */
   useHeuristicOwnershipLeverage?: boolean;
   /** Phase 3: per-player Overall/Captain/Flex exposure ranges. Overrides the flat maxExposure per player. */
@@ -466,11 +481,43 @@ function jitter(seed: number, lineup: number, playerId: number): number {
   return (value / 4294967295) * 2 - 1;
 }
 
+/**
+ * The projected ownership the optimizer consumes: `ownPct` (LineStar or our
+ * prior, set by the workspace), falling back to a bare `linestarOwnPct` for
+ * callers that predate `ownPct`. Reading `ownPct` alone (2026-09-26) silently
+ * blinded the contrarian-captain archetype for any such caller.
+ */
+export function ownershipPct(player: Pick<NflOptimizerPlayer, "ownPct" | "linestarOwnPct">): number | null {
+  return finite(player.ownPct ?? null) ?? finite(player.linestarOwnPct);
+}
+
+export const DEFAULT_LEVERAGE_EXPONENT = 0.5;
+export const DEFAULT_MAX_CEILING_MULTIPLE = 2.5;
+/** Ownership above this is clamped so the factor never reaches zero. */
+const LEVERAGE_OWNERSHIP_CLAMP = 0.95;
+
+/**
+ * `(1 − own)^k`. Unknown ownership is 1: it is neither penalised nor
+ * rewarded, which is the same neutrality the flat penalty had (null → 0).
+ */
+export function leverageFactor(ownPct: number | null | undefined, exponent: number): number {
+  const own = finite(ownPct ?? null);
+  if (own == null || exponent <= 0) return 1;
+  return Math.pow(1 - Math.min(LEVERAGE_OWNERSHIP_CLAMP, Math.max(0, own) / 100), exponent);
+}
+
+/** The ceiling the search may credit: never more than `maxMultiple` × the projection. */
+export function cappedCeiling(ceiling: number, projection: number, maxMultiple: number): number {
+  if (!(projection > 0) || !(maxMultiple > 0)) return ceiling;
+  return Math.min(ceiling, projection * maxMultiple);
+}
+
 function objective(player: ResolvedPlayer, settings: NflOptimizerSettings, lineupNumber: number): number {
   const historical = player.resolvedSource === "our" || player.resolvedSource === "our_fallback";
-  const base = settings.mode === "cash"
+  const rawBase = settings.mode === "cash"
     ? (player.resolvedSource === "workload" ? selectedWorkload(player,settings.workloadPositions)!.p10 : player.resolvedSource === "calibrated" ? player.calibrated!.p10 : historical ? finite(player.floorFpts) : null) ?? player.projection * 0.74
     : (player.resolvedSource === "workload" ? selectedWorkload(player,settings.workloadPositions)!.p90 : player.resolvedSource === "calibrated" ? player.calibrated!.p90 : historical ? finite(player.ceilingFpts) : null) ?? player.projection * 1.28;
+  const base = settings.mode === "gpp" ? cappedCeiling(rawBase, player.projection, settings.maxCeilingMultiple ?? DEFAULT_MAX_CEILING_MULTIPLE) : rawBase;
   // Phase 2: leverage (ownership penalty) applies when the server resolved it
   // as permitted — a validated feed, or a declared-heuristic feed the user
   // explicitly opted into (labeled "uncalibrated" everywhere). Missing
@@ -478,10 +525,14 @@ function objective(player: ResolvedPlayer, settings: NflOptimizerSettings, lineu
   // ownership. Without a resolved bit, only "validated" enables it.
   const leverageEnabled = settings.mode === "gpp"
     && (settings.ownershipLeverageEnabled ?? ((settings.ownershipCapability ?? "unavailable") === "validated"));
-  const ownershipPenalty = leverageEnabled ? (finite(player.ownPct) ?? 0) * 0.025 : 0;
+  // Ownership scales the whole ceiling term: (1 − own)^k. A flat points
+  // penalty could not move a P90 objective; a factor can (53.5% owned at
+  // k = 0.5 is ×0.68). Cash mode never fades chalk.
+  const leverage = leverageEnabled && settings.mode === "gpp"
+    ? leverageFactor(ownershipPct(player), settings.leverageExponent ?? DEFAULT_LEVERAGE_EXPONENT) : 1;
   const workload=player.resolvedSource === "workload"?selectedWorkload(player,settings.workloadPositions):null;
   const boomBonus = settings.mode === "gpp" ? (workload && "boom" in workload ? workload.boom : player.resolvedSource === "calibrated" ? player.calibrated!.boom : historical ? finite(player.boomRate) ?? 0 : 0) * 2 : 0;
-  return base + boomBonus - ownershipPenalty + jitter(20260902, lineupNumber, player.dkPlayerId) * settings.randomness * player.projection;
+  return (base + boomBonus) * leverage + jitter(20260902, lineupNumber, player.dkPlayerId) * settings.randomness * player.projection;
 }
 
 function validateSettings(settings: NflOptimizerSettings): void {
@@ -700,8 +751,8 @@ function buildOne(
     projectedFpts: chosen.reduce((sum, entry) => sum + entry.projection, 0),
     floorFpts: chosen.reduce((sum, entry) => sum + (entry.projectionSource === "workload" ? selectedWorkload(entry.player,settings.workloadPositions)!.p10 : entry.projectionSource === "calibrated" ? entry.player.calibrated!.p10 : entry.projectionSource === "our" || entry.projectionSource === "our_fallback" ? entry.player.floorFpts ?? entry.projection / entry.multiplier * .74 : entry.projection / entry.multiplier * .74) * entry.multiplier, 0),
     ceilingFpts: chosen.reduce((sum, entry) => sum + (entry.projectionSource === "workload" ? selectedWorkload(entry.player,settings.workloadPositions)!.p90 : entry.projectionSource === "calibrated" ? entry.player.calibrated!.p90 : entry.projectionSource === "our" || entry.projectionSource === "our_fallback" ? entry.player.ceilingFpts ?? entry.projection / entry.multiplier * 1.28 : entry.projection / entry.multiplier * 1.28) * entry.multiplier, 0),
-    projectedOwnership: chosen.some((entry) => entry.player.ownPct != null)
-      ? chosen.reduce((sum, entry) => sum + (entry.player.ownPct ?? 0), 0)
+    projectedOwnership: chosen.some((entry) => ownershipPct(entry.player) != null)
+      ? chosen.reduce((sum, entry) => sum + (ownershipPct(entry.player) ?? 0), 0)
       : null,
     stackSummary: { quarterback: qb?.name ?? null, passCatchers, bringBack },
     // §11.4: every selected lineup carries exactly one primary archetype label.
@@ -855,7 +906,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   // Phase 4: build the per-archetype generation plan. Explicit quotas always
   // win; "balanced" mode auto-allocates the mix and auto-selects fade targets.
   const archetypeContext: ArchetypeSlateContext = {
-    players: pool.map((p) => ({ dkPlayerId: p.dkPlayerId, position: p.position, team: p.team, opponent: p.opponent, ownership: finite(p.ownPct) != null ? (p.ownPct as number) / 100 : null, projection: p.projection, captainEligible: p.captainEligible })),
+    players: pool.map((p) => ({ dkPlayerId: p.dkPlayerId, position: p.position, team: p.team, opponent: p.opponent, ownership: ownershipPct(p) != null ? (ownershipPct(p) as number) / 100 : null, projection: p.projection, captainEligible: p.captainEligible })),
     favoriteTeam: settings.favoriteTeam ?? null,
     underdogTeam: settings.underdogTeam ?? null,
     ownershipValidated: (settings.ownershipCapability ?? "unavailable") === "validated",
@@ -1017,7 +1068,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   if (exactDuplicates.length) warnings.push(`${exactDuplicates.length} exact-duplicate lineup pair(s) detected — this should not happen; report the run.`);
   const overlap = computeMaxOverlap(lineups);
   const ownershipValidated = (settings.ownershipCapability ?? "unavailable") === "validated";
-  const ownershipByPlayer = new Map(pool.filter((p) => finite(p.ownPct) != null).map((p) => [p.dkPlayerId, (p.ownPct as number) / 100]));
+  const ownershipByPlayer = new Map(pool.filter((p) => ownershipPct(p) != null).map((p) => [p.dkPlayerId, (ownershipPct(p) as number) / 100]));
   const duplication = ownershipByPlayer.size
     ? estimateDuplication(lineups.map((l) => ({ lineupNumber: l.lineupNumber, playerIds: l.playerIds, totalSalary: l.totalSalary })), { ownershipValidated, ownershipByPlayer })
     : undefined;
