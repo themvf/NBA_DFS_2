@@ -7142,3 +7142,27 @@ DraftKings College Football Classic lives apart from NFL DFS by design: route
 - **Projections are as of kickoff**: history before the slate's week, team PPG
   from games before its first kickoff (re-projecting a played slate once moved
   77 players by counting its own scores).
+
+---
+
+## NFL DFS — Field-ownership prior (`nfl-ownership-prior-v1`, 2026-09-27)
+
+Every leverage feature in the NFL optimizer (ownership penalty, chalk-fade
+archetypes, duplication estimate) is gated on ownership being present; with
+none, capability resolves `unavailable` and the optimizer maximises raw
+projection. `web/src/lib/nfl-dfs/ownership-prior.ts` supplies a **stated
+prior** (points and value anchored on DK's printed average, concentrated
+within position budgets QB 100 / RB 255 / WR 340 / TE 105 / DST 100, capped
+60%; showdown flex 500 + captain 100). `workspaceSlate` attaches it as
+`ownPct`/`ownSource` after availability zeroing; LineStar takes precedence
+when its feed is present. The optimizer, duplication estimate and Own column
+read `ownPct`, never `linestarOwnPct` directly.
+
+It declares itself heuristic, so `assessOwnership` caps it at
+`heuristic_uncalibrated` and leverage runs only through the opt-in. The
+fitted replacement (port of `mlb_ownership_v1`) and its frozen promotion gate
+(Spearman >= 0.70, MAE <= 2.0 pts, |bias| <= 0.5, >= 4 held-out Classic
+slates, holdout by slate) are registered in `docs/nfl-ownership-model.md`.
+`npm run calibrate:nfl-ownership` grades against imported contests; import
+the largest GPP entered each week, that is the training set. Do not tune the
+prior's constants against the slates it is graded on.

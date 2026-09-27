@@ -109,6 +109,18 @@ export type NflOptimizerPlayer = {
   fantasyprosProj: number | null;
   linestarProj: number | null;
   linestarOwnPct: number | null;
+  /** Our stated-prior ownership (nfl-ownership-prior-v1), percent. Null when it could not be computed. */
+  ourOwnPct?: number | null;
+  /** Showdown only: the prior's Captain and Flex slot ownership, percent. */
+  captainOwnPct?: number | null;
+  flexOwnPct?: number | null;
+  /**
+   * The projected ownership the optimizer reads, percent: LineStar when the
+   * feed is present, otherwise our prior. `ownSource` names which. Null means
+   * unknown, and unknown is never scored as low.
+   */
+  ownPct?: number | null;
+  ownSource?: string | null;
   customProj: number | null;
   workload?: WorkloadProjection | null;
   workloadReason?: string;
@@ -466,7 +478,7 @@ function objective(player: ResolvedPlayer, settings: NflOptimizerSettings, lineu
   // ownership. Without a resolved bit, only "validated" enables it.
   const leverageEnabled = settings.mode === "gpp"
     && (settings.ownershipLeverageEnabled ?? ((settings.ownershipCapability ?? "unavailable") === "validated"));
-  const ownershipPenalty = leverageEnabled ? (finite(player.linestarOwnPct) ?? 0) * 0.025 : 0;
+  const ownershipPenalty = leverageEnabled ? (finite(player.ownPct) ?? 0) * 0.025 : 0;
   const workload=player.resolvedSource === "workload"?selectedWorkload(player,settings.workloadPositions):null;
   const boomBonus = settings.mode === "gpp" ? (workload && "boom" in workload ? workload.boom : player.resolvedSource === "calibrated" ? player.calibrated!.boom : historical ? finite(player.boomRate) ?? 0 : 0) * 2 : 0;
   return base + boomBonus - ownershipPenalty + jitter(20260902, lineupNumber, player.dkPlayerId) * settings.randomness * player.projection;
@@ -688,8 +700,8 @@ function buildOne(
     projectedFpts: chosen.reduce((sum, entry) => sum + entry.projection, 0),
     floorFpts: chosen.reduce((sum, entry) => sum + (entry.projectionSource === "workload" ? selectedWorkload(entry.player,settings.workloadPositions)!.p10 : entry.projectionSource === "calibrated" ? entry.player.calibrated!.p10 : entry.projectionSource === "our" || entry.projectionSource === "our_fallback" ? entry.player.floorFpts ?? entry.projection / entry.multiplier * .74 : entry.projection / entry.multiplier * .74) * entry.multiplier, 0),
     ceilingFpts: chosen.reduce((sum, entry) => sum + (entry.projectionSource === "workload" ? selectedWorkload(entry.player,settings.workloadPositions)!.p90 : entry.projectionSource === "calibrated" ? entry.player.calibrated!.p90 : entry.projectionSource === "our" || entry.projectionSource === "our_fallback" ? entry.player.ceilingFpts ?? entry.projection / entry.multiplier * 1.28 : entry.projection / entry.multiplier * 1.28) * entry.multiplier, 0),
-    projectedOwnership: chosen.some((entry) => entry.player.linestarOwnPct != null)
-      ? chosen.reduce((sum, entry) => sum + (entry.player.linestarOwnPct ?? 0), 0)
+    projectedOwnership: chosen.some((entry) => entry.player.ownPct != null)
+      ? chosen.reduce((sum, entry) => sum + (entry.player.ownPct ?? 0), 0)
       : null,
     stackSummary: { quarterback: qb?.name ?? null, passCatchers, bringBack },
     // §11.4: every selected lineup carries exactly one primary archetype label.
@@ -843,7 +855,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   // Phase 4: build the per-archetype generation plan. Explicit quotas always
   // win; "balanced" mode auto-allocates the mix and auto-selects fade targets.
   const archetypeContext: ArchetypeSlateContext = {
-    players: pool.map((p) => ({ dkPlayerId: p.dkPlayerId, position: p.position, team: p.team, opponent: p.opponent, ownership: finite(p.linestarOwnPct) != null ? (p.linestarOwnPct as number) / 100 : null, projection: p.projection, captainEligible: p.captainEligible })),
+    players: pool.map((p) => ({ dkPlayerId: p.dkPlayerId, position: p.position, team: p.team, opponent: p.opponent, ownership: finite(p.ownPct) != null ? (p.ownPct as number) / 100 : null, projection: p.projection, captainEligible: p.captainEligible })),
     favoriteTeam: settings.favoriteTeam ?? null,
     underdogTeam: settings.underdogTeam ?? null,
     ownershipValidated: (settings.ownershipCapability ?? "unavailable") === "validated",
@@ -1005,7 +1017,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   if (exactDuplicates.length) warnings.push(`${exactDuplicates.length} exact-duplicate lineup pair(s) detected — this should not happen; report the run.`);
   const overlap = computeMaxOverlap(lineups);
   const ownershipValidated = (settings.ownershipCapability ?? "unavailable") === "validated";
-  const ownershipByPlayer = new Map(pool.filter((p) => finite(p.linestarOwnPct) != null).map((p) => [p.dkPlayerId, (p.linestarOwnPct as number) / 100]));
+  const ownershipByPlayer = new Map(pool.filter((p) => finite(p.ownPct) != null).map((p) => [p.dkPlayerId, (p.ownPct as number) / 100]));
   const duplication = ownershipByPlayer.size
     ? estimateDuplication(lineups.map((l) => ({ lineupNumber: l.lineupNumber, playerIds: l.playerIds, totalSalary: l.totalSalary })), { ownershipValidated, ownershipByPlayer })
     : undefined;

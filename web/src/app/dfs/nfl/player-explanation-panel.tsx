@@ -669,9 +669,10 @@ function Breakdown({ e, player, peers, valueIndex }: {
           <div className="mt-2 flex gap-3 border-t border-slate-100 pt-2">
             <Key color={ACCENT}>Our model</Key><Key color={MUTED}>Other sources</Key>
           </div>
-          {player.linestarOwnPct != null && (
+          {player.ownPct != null && (
             <p className="mt-2 text-[11px] text-slate-600">
-              LineStar projected ownership <b className="text-slate-900">{player.linestarOwnPct.toFixed(1)}%</b>.
+              Projected ownership <b className="text-slate-900">{player.ownPct.toFixed(1)}%</b>
+              {player.ownSource === "linestar" ? " (LineStar)." : " (our stated prior, nfl-ownership-prior-v1, uncalibrated: points and value anchored on the DK average, concentrated within position)."}
             </p>
           )}
         </Card>
