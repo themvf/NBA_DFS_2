@@ -373,8 +373,19 @@ function Breakdown({ e, player, peers, valueIndex }: {
       {e.adjustmentUnresolved && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{e.adjustmentUnresolved}</p>}
       {e.projectionScenario === 'availability_estimate' && !e.inheritedNote && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">The pipeline applied an availability estimate. No new simulation was run; median, outcome range and boom rate are withheld.</p>}
 
+      {player.defensiveForecast && <Card icon={<Activity className="h-4 w-4" style={{color:ACCENT}}/>}
+        title={player.defensiveForecast.status==='applied'?`Applied to this optimizer run · ${player.defensiveForecast.mode} defense`:`${player.defensiveForecast.mode} defense · baseline retained`}
+        hint={`${player.defensiveForecast.profile} · ${player.defensiveForecast.reason}`}>
+        <div className="grid grid-cols-3 gap-2">
+          <Tile label="Selected mean" value={fmt(player.defensiveForecast.status==='applied'?player.defensiveForecast.selected.mean:player.ourProj)} sub="DK points"/>
+          <Tile label="Selected lower tail" value={fmt(player.defensiveForecast.status==='applied'?player.defensiveForecast.selected.p10:player.floorFpts)} sub="cash search"/>
+          <Tile label="Selected upper tail" value={fmt(player.defensiveForecast.status==='applied'?player.defensiveForecast.selected.p90:player.ceilingFpts)} sub="GPP search"/>
+        </div>
+        <p className="mt-2 text-xs">Big-game probability {pct(player.defensiveForecast.status==='applied'?player.defensiveForecast.selected.boom:player.boomRate)}. Bundle {player.defensiveForecast.digest}.</p>
+      </Card>}
+
       {e.matchupComparison && <Card icon={<Activity className="h-4 w-4" style={{color:ACCENT}}/>}
-        title="Opponent matchup · under evaluation" hint="A separate frozen research comparison. Your selected production projection stays unchanged.">
+        title="Opponent matchup · under evaluation" hint="Separate research comparison; the saved-run bundle above identifies what optimization consumed.">
         <div className="grid grid-cols-3 gap-2">
           <Tile label="Comparison baseline" value={fmt(e.matchupComparison.baseline)} sub="DK points"/>
           <Tile label="Matchup candidate" value={fmt(e.matchupComparison.candidate)} sub="under evaluation"/>

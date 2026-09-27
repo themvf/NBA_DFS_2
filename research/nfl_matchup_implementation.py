@@ -107,6 +107,11 @@ def compare_slate(db, *, season, week, upload_id, fitted, as_of, baseline_run_id
         """SELECT u.* FROM nfl_dfs_slate_uploads u JOIN nfl_dfs_projection_runs r ON r.run_id=u.projection_run_id
         WHERE u.format='classic' AND r.season=%s AND r.week=%s ORDER BY u.created_at DESC LIMIT 1""",(season,week))
     if not upload: raise ValueError("No saved salary slate")
+    # A saved salary upload is bound to one production run. Capturing against
+    # the newest week-level run instead creates plausible-looking rows that no
+    # optimizer can safely consume with that upload's frozen player values.
+    if baseline_run_id is None:
+        baseline_run_id = upload["projection_run_id"]
     run=db.execute_one("""SELECT * FROM nfl_dfs_projection_runs WHERE season=%s AND week=%s
         AND as_of_at<=%s AND created_at<=%s AND model_version='nfl-dfs-historical-v5'
         AND (%s::uuid IS NULL OR run_id=%s::uuid) ORDER BY as_of_at DESC LIMIT 1""",(season,week,as_of,as_of,baseline_run_id,baseline_run_id))

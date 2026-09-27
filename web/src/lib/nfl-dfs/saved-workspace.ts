@@ -28,6 +28,7 @@ export function restoreSavedLineups(snapshot: unknown, rows: SavedLineupRow[]): 
         captainSalary: p.captainSalary ?? null, isOut: p.isOut ?? false,
         projectionStatus: p.projectionStatus ?? 'unavailable', ourProj: p.ourProj ?? null,
         floorFpts: p.floor ?? null, ceilingFpts: p.ceiling ?? null, boomRate: p.boomRate ?? null,
+        defensiveForecast:p.defensiveForecast??null,
         avgFptsDk: p.dkAvg ?? null, fantasyprosProj: p.fantasypros ?? null,
         linestarProj: p.linestar ?? null, linestarOwnPct: p.ownership ?? null, customProj: p.custom ?? null };
       return { slot: entry.slot, player, salary: entry.salary, multiplier: entry.multiplier ?? (entry.slot === 'CPT' ? 1.5 : 1), projection: entry.projection, projectionSource: entry.source };

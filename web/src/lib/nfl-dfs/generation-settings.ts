@@ -53,7 +53,7 @@ export function generationSettings(
 }
 
 export function sameGenerationSettings(a: NflOptimizerSettings, b: NflOptimizerSettings): boolean {
-  const normalize = (s: NflOptimizerSettings) => ({ ...s,
+  const normalize = (s: NflOptimizerSettings) => ({ ...s, runEvidence:undefined,ownershipDisclosure:undefined,ownershipCapability:undefined,
     lockedPlayerIds: [...s.lockedPlayerIds].sort((a,b) => a-b),
     excludedPlayerIds: [...s.excludedPlayerIds].sort((a,b) => a-b),
   });
