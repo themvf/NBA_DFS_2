@@ -1,0 +1,19 @@
+{
+  "study_id": "nfl-matchup-dfs_mean-contact-v1",
+  "registration_manifest_hash": "9a31a975293b5ab9041a37a2245e3ab857fa10cdd9ba301ba555989730b7c56a",
+  "registered_at": "2026-09-27T15:41:34.524290+00:00",
+  "previous_scoring_version": "nfl-dk-realized-v2",
+  "scoring_version": "nfl-dk-realized-v3",
+  "previous_amendment_hash": null,
+  "hash_algorithm": "sha256_lf_normalized",
+  "implementation_hashes": {
+    "ingest/nfl_dfs_results.py": "f85b13bb33a1533658f883ce9c264f6c3f45d4b82b2992772eeffcf3ffe3dcb2",
+    "model/nfl_dfs_historical.py": "e68c45b32151a8fb77f94eb295d181ec5ad5881ee6b3384fb04e4a95b28b5b55",
+    "model/nfl_dst_components.py": "52adf221bef481df191c0df2b235401771d6985e8c32074fd82c8ee7925d88da",
+    "model/nfl_team_aliases.py": "47035370d763ec3064650c4d0bb9c02c4885b692998b4c7e667bde6c5e53e7bf"
+  },
+  "reason": "Merged main already uses the v3 realized scorer with play-by-play DST components. The QB/RB candidate parameters, inputs, model artifacts, and protected production baseline are unchanged. Declare the exact v3 result version and implementation before new prospective captures; prior v2 forecasts are retained and excluded from this amended cohort.",
+  "outcomes_consulted": false,
+  "prior_freezes": "excluded from amended cohort, never relabeled",
+  "candidate_refitted": false
+}

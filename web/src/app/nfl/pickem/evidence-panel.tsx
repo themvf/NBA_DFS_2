@@ -6,6 +6,7 @@ import type { PickemSlateGame, PickemLedgerRow } from "@/db/queries";
 import { evidenceGrades, marketReview, safeSourceUrl, scenarioDecision, timestamp,
   type GameEvidence, type PickemNews, type PickemScenario } from "@/lib/nfl/pickem-evidence";
 import { savePickemNews } from "./actions";
+import { PfrEvidencePanel } from "./pfr-evidence";
 
 const pct = (p: number) => `${(100 * p).toFixed(1)}%`;
 function time(s: string | null) {
@@ -33,6 +34,7 @@ export function EvidencePanel({ game, evidence, now, pickHome, confidence, basel
     <details className="mt-2 min-w-72 max-w-xl text-xs">
       <summary className={`cursor-pointer font-medium ${warning ? "text-amber-700 dark:text-amber-400" : "text-primary"}`}>
         {warning ? "Review before locking" : "Evidence & decision"} · {evidence.news.length} reports
+        {evidence.pfr?.some(t => t.games.some(g => g.players.length)) ? " · advanced stats" : ""}
       </summary>
       <div className="mt-2 space-y-4 rounded border bg-muted/20 p-3">
         <section className="space-y-1" aria-label="Market freshness">
@@ -94,12 +96,25 @@ export function EvidencePanel({ game, evidence, now, pickHome, confidence, basel
           })}
           <p className="text-muted-foreground">Source: stored nflverse play and drive data. Positive offensive EPA is favorable; positive EPA allowed is unfavorable. One game does not establish a trend. Kickoff-return touchdowns and garbage-time splits are not available here; add a sourced report when relevant.</p>
         </section>
+        <PfrEvidencePanel evidence={evidence.pfr} />
+        <section className="space-y-2 border-t pt-2" aria-label="Matchup forecast comparison">
+          <h3 className="font-semibold">Matchup forecast · {evidence.matchup?.status === "qualified" ? "Qualified" : "Under evaluation"}</h3>
+          {!evidence.matchup ? <p>No eligible fitted matchup forecast has been published for this game. Pressure, contact, and availability remain evidence; the approved market/model forecast is retained.</p> : <>
+            <p>Frozen comparison at {time(evidence.matchup.input.decisionCutoff)}.</p>
+            {evidence.matchup.baseline && <p>Baseline: {game.homeAbbrev} {pct(evidence.matchup.baseline.home)} · {game.awayAbbrev} {pct(evidence.matchup.baseline.away)} · tie {pct(evidence.matchup.baseline.tie)}.</p>}
+            {evidence.matchup.candidate && <p>Matchup candidate: {game.homeAbbrev} {pct(evidence.matchup.candidate.home)} · {game.awayAbbrev} {pct(evidence.matchup.candidate.away)} · tie {pct(evidence.matchup.candidate.tie)}.
+              {" "}Home change: {signed(100 * (evidence.matchup.candidate.home - evidence.matchup.baseline!.home))} percentage points.</p>}
+            {evidence.matchup.reasons.map((reason, i) => <p key={i} className="text-muted-foreground">{reason}</p>)}
+            {evidence.matchup.contributions.length > 0 && <details><summary>What contributes to the candidate</summary>
+              {evidence.matchup.contributions.map(c => <p key={c.definitionId}>{c.definitionId}: {c.value.toFixed(3)}; fitted log-odds contribution {c.deltaLogit.toFixed(4)}.</p>)}</details>}
+          </>}
+        </section>
         <section className="space-y-2 border-t pt-2" aria-label="Pick decision">
           <h3 className="font-semibold">Why this pick</h3>
           <p>{manual ? "Your manual selection" : objective === "win" ? "Pool simulation selection" : "Maximum expected-points selection"}: {pick} at {pct(p)}, using the displayed forecast.
             {" "}Current weight {confidence}; baseline weight {baselineConfidence}.
             {" "}{objective === "win" ? "Confidence and side reflect the pool simulation before manual changes." : "Baseline confidence sorts games by win probability; stronger favorites receive more points."}</p>
-          <p>Switching to {opponent} {p >= 0.5 ? "costs" : "gains"} {Math.abs(confidence * (2 * p - 1)).toFixed(3)} expected points at this weight.</p>
+          <p>Switching to {opponent} {p >= 0.5 ? "costs" : "gains"} {Math.abs(confidence * (1 - (game.pTie ?? 0)) * (2 * p - 1)).toFixed(3)} expected points at this weight, with a game tie worth the same for either selection.</p>
           <p>What changes the side: {opponent} exceeding 50% makes it the expected-points choice. News matters when a refreshed price or an explicit assumption changes that assessment.</p>
           {review.probabilityConflict && <p className="font-semibold text-amber-700 dark:text-amber-400">The latest captured market already disagrees with the forecast’s favored side. Review the market check above before using these expected-point calculations.</p>}
           <label className="flex items-center gap-2"><input type="checkbox" checked={scenario != null}

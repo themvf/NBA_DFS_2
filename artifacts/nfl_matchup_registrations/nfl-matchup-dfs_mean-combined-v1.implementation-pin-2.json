@@ -1,0 +1,23 @@
+{
+  "study_id": "nfl-matchup-dfs_mean-combined-v1",
+  "registration_manifest_hash": "2e4a486c10075e00cc9da08b2a586a1ad1d05971b89052e660052969b9b43545",
+  "previous_pin_hash": "6a6490255745830c4bee85c14a1047e58915c5d757680f2f930b6ee4e01a32d0",
+  "pinned_at": "2026-09-27T14:45:49.075027+00:00",
+  "hash_algorithm": "sha256_lf_normalized",
+  "hashes": {
+    "model/nfl_matchup_features.py": "8311ec6d89c7f69ab118257c7eac7e6ce4a4f85f3d9fce9b661a0e257a06f1e0",
+    "model/nfl_matchup_projection.py": "93ab2c8f314f1746ea60673582ebe267aa1d2a6f805125ed2c1a46cd57bd37d2",
+    "model/nfl_dfs_historical.py": "e68c45b32151a8fb77f94eb295d181ec5ad5881ee6b3384fb04e4a95b28b5b55",
+    "ingest/nfl_matchup_context.py": "7f1e8d2219cfdd3b5a2989d937d9da85595ff8d904b476dacab67da999515c89",
+    "research/nfl_matchup_implementation.py": "3362d2b49323cc1fc2ed1d8c70fa30a2f117a765d99f01a72d1f2a13669fbae2",
+    "db/nfl_pfr_schema.py": "da5f40c0fa9e8b044de2799b6c7af11651b73b6942d4341f866abafebfbd31e1"
+  },
+  "reason": "Forward-only correctness fixes: require frozen participant/carry completeness and true observation availability, preserve exact saved production fallback, verify all reproduced distribution/stat fields, and include source/identity/slate selection code. No coefficients or numerical gate constants changed.",
+  "outcomes_consulted": false,
+  "qualification_scope": {
+    "consumer": "nfl_dfs_projection",
+    "usage": "predictive_shadow_only",
+    "platform": "DraftKings",
+    "capture": "saved_current_week_Classic_salary_pool"
+  }
+}

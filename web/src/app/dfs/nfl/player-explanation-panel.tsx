@@ -373,6 +373,30 @@ function Breakdown({ e, player, peers, valueIndex }: {
       {e.adjustmentUnresolved && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{e.adjustmentUnresolved}</p>}
       {e.projectionScenario === 'availability_estimate' && !e.inheritedNote && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">The pipeline applied an availability estimate. No new simulation was run; median, outcome range and boom rate are withheld.</p>}
 
+      {e.matchupComparison && <Card icon={<Activity className="h-4 w-4" style={{color:ACCENT}}/>}
+        title="Opponent matchup · under evaluation" hint="A separate frozen research comparison. Your selected production projection stays unchanged.">
+        <div className="grid grid-cols-3 gap-2">
+          <Tile label="Comparison baseline" value={fmt(e.matchupComparison.baseline)} sub="DK points"/>
+          <Tile label="Matchup candidate" value={fmt(e.matchupComparison.candidate)} sub="under evaluation"/>
+          <Tile label="Candidate change" value={signed(e.matchupComparison.delta)} sub="DK points"/>
+        </div>
+        {e.matchupComparison.efficiencyBefore != null && <p className="mt-2 text-xs text-slate-600">
+          {e.matchupComparison.component === 'passing_yards' ? 'Passing' : 'Rushing'} efficiency: {fmt(e.matchupComparison.efficiencyBefore)} → {fmt(e.matchupComparison.efficiencyAfter)} yards per opportunity.
+          {' '}{fmt(e.matchupComparison.opportunity)} expected {e.matchupComparison.opportunityLabel}; opportunity and touchdown assumptions stay the same.
+        </p>}
+        {(e.matchupComparison.evidence?.length ?? 0) > 0 && <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+          {e.matchupComparison.evidence.map(item => <div key={item.label}>
+            <dt className="text-slate-500">{item.label}</dt><dd className="font-medium text-slate-800">{item.value.toFixed(2)} {item.unit}</dd>
+          </div>)}
+        </dl>}
+        <p className="mt-2 text-xs text-slate-600">P90: {fmt(e.matchupComparison.baselineP90)} → {fmt(e.matchupComparison.candidateP90)}.
+          {e.matchupComparison.candidateMedian != null && <> Candidate median {fmt(e.matchupComparison.candidateMedian)}, P10 {fmt(e.matchupComparison.candidateP10)}.</>}
+          {e.matchupComparison.candidateBoom != null && <> Big-game probability {(100 * e.matchupComparison.candidateBoom).toFixed(1)}%.</>}
+        </p>
+        <p className="mt-2 text-xs text-slate-600">{e.matchupComparison.reason}.</p>
+        <p className="mt-1 text-[10px] text-slate-500">{e.matchupComparison.sourceCount} frozen game sources · captured {new Date(e.matchupComparison.frozenAt).toLocaleString()}. Baseline run {e.matchupComparison.baselineRunId}.</p>
+      </Card>}
+
       {/* Waterfall */}
       <Card
         icon={<TrendingUp className="h-4 w-4" style={{ color: ACCENT }} />}

@@ -67,6 +67,21 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           python -c "import os,sys; sys.argv=['dedupe']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season')] if os.environ.get(key)]; from ingest.ff_dedupe_identities import main; main()"
+      - name: Refresh published PFR matchup evidence
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: |
+          python -c "import os,sys; from datetime import datetime,timezone; now=datetime.now(timezone.utc); season=int(os.environ.get('NFL_RESEARCH_SEASON') or (now.year-1 if now.month<=3 else now.year)); sys.argv=['pfr','--season',str(season),'--write-db']; from ingest.nfl_pfr_nflverse import main; sys.exit(main())"
+      - name: Retain PFR publication coverage
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: nfl-pfr-publication-coverage
+          path: |
+            data/pfr/nflverse-output/run-report.json
+            data/pfr/nflverse-output/identity-report.json
+            data/pfr/nflverse-output/identity/
+          retention-days: 90
       - name: Build immutable projection snapshot
         if: ${{ !cancelled() }}
         run: |
@@ -77,7 +92,7 @@ jobs:
     needs: refresh
     if: ${{ !cancelled() && needs.refresh.result == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       NFL_RESEARCH_SEASON: ${{ inputs.season }}
@@ -89,6 +104,19 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # The repository's current lockfile is incomplete; follow the existing
+      # NFL optimizer workflow rather than silently failing npm ci.
+      - name: Install scenario and optimizer dependencies
+        id: scenario_dependencies
+        working-directory: web
+        run: npm install --no-audit --no-fund
+      - name: Record the earliest accepted comparison capture
+        run: python -c "import os; from datetime import datetime,timezone; open(os.environ['GITHUB_ENV'],'a').write('NFL_MATCHUP_CAPTURE_NOT_BEFORE='+datetime.now(timezone.utc).isoformat()+'\n')"
       - name: Freeze research-only workload forecasts
         id: workload
         if: ${{ !cancelled() }}
@@ -102,9 +130,46 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           python -c "import os,sys; sys.argv=['shadow']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_shadow import main; main()"
+      - name: Freeze registered matchup forecasts for the saved upcoming slate
+        id: matchup
+        if: ${{ !cancelled() }}
+        run: |
+          python -c "import os,sys; sys.argv=['matchup','--persist']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from research.nfl_matchup_implementation import main; main()"
+      - name: Freeze coherent research scenarios and publish the compact comparison
+        if: ${{ !cancelled() && steps.matchup.outcome == 'success' && steps.scenario_dependencies.outcome == 'success' }}
+        run: |
+          python -c "import os,sys; sys.argv=['scenario-refresh','--persist','--not-before',os.environ['NFL_MATCHUP_CAPTURE_NOT_BEFORE']]; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from research.nfl_matchup_scenario_refresh import main; sys.exit(main())"
+      - name: Freeze registered pickem matchup forecasts
+        if: ${{ !cancelled() }}
+        run: |
+          python -c "import os,sys; sys.argv=['matchup-study','freeze-pickem']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from research.nfl_matchup_study import main; sys.exit(main())"
+      - name: Grade registered matchup forecasts on completed weeks
+        if: ${{ !cancelled() }}
+        run: |
+          python -c "import os,sys; sys.argv=['matchup-study','prospective','--capture-results','--output','artifacts/nfl-matchup-forward-report.json']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season')] if os.environ.get(key)]; from research.nfl_matchup_study import main; sys.exit(main())"
       - name: Audit stored model input coverage
         if: ${{ !cancelled() }}
         run: python -m ingest.nfl_dfs_feature_audit
+      - name: Grade frozen context variants and verify freeze coverage
+        if: ${{ !cancelled() }}
+        run: |
+          python -c "import os,sys; sys.argv=['matchup-study','context']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season')] if os.environ.get(key)]; from research.nfl_matchup_study import main; sys.exit(main())"
+      - name: Retain context grading and health evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: nfl-context-variant-study
+          path: artifacts/nfl_dfs_context_variant_study.json
+          retention-days: 90
+      - name: Retain matchup forecast and evaluation evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: nfl-matchup-forward-evidence
+          path: |
+            artifacts/nfl-matchup-implementation/
+            artifacts/nfl-matchup-forward-report.json
+          retention-days: 90
       - name: Save weekly production and shadow report cards
         if: ${{ !cancelled() }}
         run: |

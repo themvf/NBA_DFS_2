@@ -39,6 +39,8 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Sequence
+import json
+from pathlib import Path
 
 from psycopg2.extras import Json
 
@@ -85,6 +87,9 @@ DATASET_REGISTRY: tuple[Dataset, ...] = (
     Dataset("nfl_projections", "NFL DFS projections", "nfl_dfs_projection_runs", "as_of_at",
             36, "refresh_nfl_dfs_projections.yml", _NFL,
             "Feeds the DFS Lab and the six player topics on the specials board."),
+    Dataset("nfl_shadow", "NFL shadow research forecasts", "nfl_dfs_shadow_predictions", "captured_at",
+            240, "refresh_nfl_dfs_projections.yml", _NFL,
+            "Weekly pregame evidence; separate from production projection freshness."),
     Dataset("nfl_schedule_odds", "NFL schedule + market lines", "nfl_season_games", "source_captured_at",
             36, "refresh_nfl_vegas.yml", _NFL,
             "Feeds survivor, pick'em and the specials board's team/game topics."),
@@ -120,9 +125,12 @@ class Health:
     status: str
     last_row_at: datetime | None
     age_hours: float | None
+    detail_override: str | None = None
 
     @property
     def detail(self) -> str:
+        if self.detail_override is not None:
+            return self.detail_override
         if self.status == DORMANT:
             return f"out of season; not expected to run in month {datetime.now(timezone.utc).month}"
         if self.status == EMPTY:
@@ -174,7 +182,32 @@ def check_all(db: DatabaseManager, now: datetime | None = None) -> list[Health]:
             print(f"  ! {dataset.key}: {exc}", file=sys.stderr)
             continue
         results.append(classify(dataset, last, now))
+    results.extend(check_nfl_context_freezes(db, now))
     return results
+
+
+def check_nfl_context_freezes(db, now):
+    """A recently written shadow table can still be missing its context bundle."""
+    dataset = Dataset("nfl_context_variant_freeze", "NFL context variant freeze", "nfl_dfs_shadow_predictions",
+                      "captured_at", 168, "refresh_nfl_dfs_projections.yml", _NFL,
+                      "Current study pin; zero context rows by Saturday 21:35 UTC fails.")
+    if not in_season(dataset, now):
+        return [Health(dataset, DORMANT, None, None)]
+    try:
+        from research.nfl_matchup_study import ledger_inputs
+        from model.nfl_dfs_context_variant_study import freeze_health
+        config = json.loads(Path("artifacts/nfl_dfs_shadow_config.json").read_text())
+        season = now.year-1 if now.month <= 3 else now.year
+        games, rows, _ = ledger_inputs(db, season, now, config["study_run_id"])
+        upcoming = [g for g in games if g["kickoff"] > now]
+        if not upcoming:
+            return [Health(dataset, DORMANT, None, None, "no upcoming regular-season week")]
+        week = min(upcoming, key=lambda g: g["kickoff"])["week"]
+        check = freeze_health([g for g in games if g["week"] == week], rows, config["study_run_id"], now)[0]
+        status = EMPTY if check["status"] == "failure" else STALE if check["status"] == "warning" else FRESH if check["status"] == "healthy" else DORMANT
+        return [Health(dataset, status, None, None, f"week {week}: {check['status']}; {check['eligible_player_weeks']} eligible player-weeks; deadline {check['deadline']}; missing started games {check['missing_started_game_ids']}")]
+    except Exception as exc:
+        return [Health(dataset, EMPTY, None, None, f"context freeze check failed: {type(exc).__name__}")]
 
 
 def record(db: DatabaseManager, results: Sequence[Health], now: datetime | None = None) -> int:

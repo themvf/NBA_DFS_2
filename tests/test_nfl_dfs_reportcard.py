@@ -65,3 +65,13 @@ def test_no_forecast_is_in_denominator_not_graded_as_zero():
 def test_future_correction_cannot_change_an_earlier_evaluation():
     r = report(results=[result(), result(id=2, actual_dk_fpts=99,computed_at=KICK+timedelta(days=4))])
     assert r["rows"][0]["actual"] == 12
+
+
+def test_context_variants_share_exact_shadow_capture_and_missing_stays_missing():
+    old = forecast(variant="shadow_baseline", forecast_id="old", run_id="pin")
+    context = {**old, "variant": "context:opp_carries", "mean": 12}
+    r = report([old, context])
+    assert r["summary"]["context:opp_carries"]["scored"] == 1
+    newer = {**old, "forecast_id": "new", "captured_at": KICK-timedelta(minutes=1)}
+    r = report([old, context, newer])
+    assert r["summary"]["context:opp_carries"]["forecasted"] == 0

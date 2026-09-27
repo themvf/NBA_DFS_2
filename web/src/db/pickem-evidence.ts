@@ -1,4 +1,7 @@
 import "server-only";
+import { getPickemPfr } from "./pickem-pfr";
+import { getPickemMatchup } from "./pickem-matchup";
+import { pfrTeam } from "@/lib/nfl/pickem-pfr";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { ensurePickemTables } from "@/db/ensure-schema";
@@ -13,6 +16,15 @@ const iso = (v: unknown) => v == null ? null : new Date(String(v)).toISOString()
 export async function getPickemEvidence(season: number): Promise<PickemEvidence> {
   await ensurePickemTables();
   const loadedAt = new Date().toISOString();
+  const matchupPromise = getPickemMatchup(season, loadedAt).then(data => ({data, failed: false})).catch(error => {
+    console.error("Pick'em matchup forecasts unavailable", error);
+    return {data: {} as Awaited<ReturnType<typeof getPickemMatchup>>, failed: true};
+  });
+  // Failure is isolated from prices/news; deployments without the supplemental table remain usable.
+  const pfrPromise = getPickemPfr(season, loadedAt).then(data => ({ data, failed: false })).catch(error => {
+    console.error("Pick'em PFR evidence unavailable", error);
+    return { data: {} as Awaited<ReturnType<typeof getPickemPfr>>, failed: true };
+  });
   const schedule = await db.execute(sql`
     SELECT g.id, g.week, g.kickoff, g.matchup_id, g.market_home_ml, g.market_away_ml,
       g.market_spread_line, g.market_captured_at,
@@ -131,7 +143,7 @@ export async function getPickemEvidence(season: number): Promise<PickemEvidence>
       source: String(r.source), url: r.source_url ? safeSourceUrl(String(r.source_url)) : null,
       publishedAt: iso(r.provider_updated_at), observedAt: iso(r.observed_at)! });
   }
-  const performance: Performance[] = rows[3].map(r => ({ gameId: Number(r.game_id), team: String(r.team),
+  const performance: Performance[] = rows[3].map(r => ({ gameId: Number(r.game_id), team: pfrTeam(String(r.team)),
     week: Number(r.week), plays: Number(r.plays), epaPerPlay: num(r.epa), successRate: num(r.success),
     rushYards: num(r.rush_yards), turnovers: Number(r.turnovers), fieldGoalsMade: Number(r.field_goals),
     defensiveReturnTdsAllowed: Number(r.defensive_return_tds_allowed), kickReturnTdsAllowed: Number(r.kick_return_tds_allowed) }));
@@ -151,5 +163,11 @@ export async function getPickemEvidence(season: number): Promise<PickemEvidence>
     games[id].news.sort((a, b) => priority(b) - priority(a) ||
       timestamp(b.publishedAt ?? b.observedAt) - timestamp(a.publishedAt ?? a.observedAt));
   }
+  const pfr = await pfrPromise;
+  if (pfr.failed) warnings.push("PFR advanced stats unavailable; matchup charting coverage is incomplete.");
+  for (const [id, game] of Object.entries(games)) game.pfr = pfr.data[Number(id)] ?? [];
+  const matchup = await matchupPromise;
+  if (matchup.failed) warnings.push("Matchup forecast comparison unavailable; market baseline retained.");
+  for (const [id, game] of Object.entries(games)) game.matchup = matchup.data[Number(id)] ?? null;
   return { loadedAt, games, warnings };
 }

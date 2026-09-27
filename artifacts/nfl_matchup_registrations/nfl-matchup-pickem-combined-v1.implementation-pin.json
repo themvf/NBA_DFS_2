@@ -1,0 +1,10 @@
+{
+  "study_id": "nfl-matchup-pickem-combined-v1",
+  "registration_manifest_hash": "2daa45bd9c19e0431adb4b5dbedd9de616222b6cd65868e316c6c43ac8fcf65d",
+  "pinned_at": "2026-09-27T14:27:52.602603+00:00",
+  "hashes": {
+    "model/nfl_matchup_features.py": "9f8d88b72aaa172c837a0c91be11cfc33072abd64f0fe383a4a0f495d9af4542",
+    "model/nfl_matchup_projection.py": "bec01a840e0cd3f1e501ed42a2f06607f3ba6a7b1015e891a5db6e88b4b8f08c",
+    "research/nfl_pickem_matchup.py": "2299b26f9e0b080b101129e2fb7cac4f0f6ca2c36c48f6a8a1d3e073ba4f8fdd"
+  }
+}

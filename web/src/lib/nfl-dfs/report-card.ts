@@ -1,4 +1,5 @@
-export type ReportVariant = "production" | "shadow_baseline" | "opportunity" | "efficiency_research";
+export type ReportVariant = "production" | "shadow_baseline" | "opportunity" | "efficiency_research"
+  | "context:env_baseline" | "context:env_trailing" | "context:opp_carries" | "context:interval_rq" | "context:prior8";
 export type Forecast = {
   mean: number | null; median?: number | null; p10: number | null; p90: number | null;
   boom_probability: number | null; history_games: number; captured_at: string;
@@ -21,6 +22,11 @@ export type WeeklyReport = {
   checkpoint: string; population: string; missing_policy: string; rows: ReportRow[];
 };
 export const VARIANT_LABELS: Record<ReportVariant, string> = {
+  "context:env_baseline": "Context · environment baseline",
+  "context:env_trailing": "Context · trailing environment",
+  "context:opp_carries": "Context · opponent rush volume",
+  "context:interval_rq": "Context · interval calibration",
+  "context:prior8": "Context · eight-game prior",
   production: "Production model", shadow_baseline: "Market-free baseline", opportunity: "Opportunity candidate",
   efficiency_research: "Workload + efficiency research",
 };

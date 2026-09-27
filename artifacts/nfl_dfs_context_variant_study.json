@@ -1,0 +1,410 @@
+{
+  "version": "nfl-dfs-context-variant-study-v1",
+  "study_run_id": "7ff4d4049b8c10be84ee9ba83d5e9704e4fab1522b396e1e18b6c2d26a511c9f",
+  "evaluated_at": "2026-09-27T14:13:53.520165+00:00",
+  "selected_player_weeks": 640,
+  "coverage": {
+    "env_baseline": 640,
+    "env_trailing": 640,
+    "opp_carries": 610,
+    "interval_rq": 640,
+    "prior8": 640
+  },
+  "rejected": {
+    "other_study_pin": 17684
+  },
+  "bootstrap": {
+    "draws": 2000,
+    "seed": 20260922,
+    "unit": "season/week",
+    "confidence": 0.95
+  },
+  "studies": {
+    "env_trailing": {
+      "n": 0,
+      "paired_available_n": 0,
+      "scorable_weeks": [],
+      "evaluation_weeks": [],
+      "cohorts": {
+        "QB": {
+          "n": 0,
+          "weeks": 0,
+          "delta": null,
+          "ci": null
+        },
+        "RB": {
+          "n": 0,
+          "weeks": 0,
+          "delta": null,
+          "ci": null
+        },
+        "WR": {
+          "n": 0,
+          "weeks": 0,
+          "delta": null,
+          "ci": null
+        },
+        "TE": {
+          "n": 0,
+          "weeks": 0,
+          "delta": null,
+          "ci": null
+        },
+        "DST": {
+          "n": 0,
+          "weeks": 0,
+          "delta": null,
+          "ci": null
+        }
+      },
+      "verdict": "NO_VERDICT",
+      "reason": "no verdict: 0 of 8 forward weeks scorable"
+    },
+    "opp_carries": {
+      "n": 0,
+      "paired_available_n": 0,
+      "scorable_weeks": [],
+      "evaluation_weeks": [],
+      "cohorts": {
+        "QB": {
+          "n": 0,
+          "weeks": 0,
+          "delta": null,
+          "ci": null
+        },
+        "RB": {
+          "n": 0,
+          "weeks": 0,
+          "delta": null,
+          "ci": null
+        },
+        "WR": {
+          "n": 0,
+          "weeks": 0,
+          "delta": null,
+          "ci": null
+        },
+        "TE": {
+          "n": 0,
+          "weeks": 0,
+          "delta": null,
+          "ci": null
+        },
+        "DST": {
+          "n": 0,
+          "weeks": 0,
+          "delta": null,
+          "ci": null
+        }
+      },
+      "verdict": "NO_VERDICT",
+      "reason": "no verdict: 0 of 8 forward weeks scorable"
+    },
+    "interval_rq": {
+      "n": 0,
+      "paired_available_n": 0,
+      "scorable_weeks": [],
+      "evaluation_weeks": [],
+      "cohorts": {
+        "QB": {
+          "n": 0,
+          "weeks": 0,
+          "delta": null,
+          "ci": null
+        },
+        "RB": {
+          "n": 0,
+          "weeks": 0,
+          "delta": null,
+          "ci": null
+        },
+        "WR": {
+          "n": 0,
+          "weeks": 0,
+          "delta": null,
+          "ci": null
+        },
+        "TE": {
+          "n": 0,
+          "weeks": 0,
+          "delta": null,
+          "ci": null
+        },
+        "DST": {
+          "n": 0,
+          "weeks": 0,
+          "delta": null,
+          "ci": null
+        }
+      },
+      "verdict": "NO_VERDICT",
+      "reason": "no verdict: 0 of 8 forward weeks scorable"
+    },
+    "prior8": {
+      "n": 0,
+      "paired_available_n": 0,
+      "scorable_weeks": [],
+      "evaluation_weeks": [],
+      "cohorts": {
+        "QB": {
+          "n": 0,
+          "weeks": 0,
+          "delta": null,
+          "ci": null
+        },
+        "RB": {
+          "n": 0,
+          "weeks": 0,
+          "delta": null,
+          "ci": null
+        },
+        "WR": {
+          "n": 0,
+          "weeks": 0,
+          "delta": null,
+          "ci": null
+        },
+        "TE": {
+          "n": 0,
+          "weeks": 0,
+          "delta": null,
+          "ci": null
+        },
+        "DST": {
+          "n": 0,
+          "weeks": 0,
+          "delta": null,
+          "ci": null
+        }
+      },
+      "verdict": "NO_VERDICT",
+      "reason": "no verdict: 0 of 8 forward weeks scorable"
+    }
+  },
+  "production_promotion": false,
+  "pin_output_digest": "2d038206a4b88c5ad992735578be5f8f65f4a3498567eaa90231d3bc559532b5",
+  "all_study_pins_present": [
+    "4b726852851f17b4b8b01158386061e8a95afdd37e4f9abf79a6c338665daec1",
+    "7ff4d4049b8c10be84ee9ba83d5e9704e4fab1522b396e1e18b6c2d26a511c9f",
+    "8bab909112d93a5d0f0c1bcfa2674262d7116aebe04d58402cfd7d5e717d033e"
+  ],
+  "dataset_digest": "39595438a294d7b8edd98175e60f113b83ccf60a4c4145a3bc54b7c6e8a83bac",
+  "freeze_health": [
+    {
+      "key": "nfl_context_variant_freeze",
+      "season": 2026,
+      "week": 1,
+      "deadline": "2026-09-12T21:35:00+00:00",
+      "study_run_id": "7ff4d4049b8c10be84ee9ba83d5e9704e4fab1522b396e1e18b6c2d26a511c9f",
+      "eligible_player_weeks": 0,
+      "missing_started_game_ids": [
+        1,
+        2,
+        4,
+        5,
+        6,
+        3,
+        7,
+        10,
+        9,
+        8,
+        13,
+        12,
+        11,
+        14,
+        15,
+        16
+      ],
+      "status": "failure"
+    },
+    {
+      "key": "nfl_context_variant_freeze",
+      "season": 2026,
+      "week": 2,
+      "deadline": "2026-09-19T21:35:00+00:00",
+      "study_run_id": "7ff4d4049b8c10be84ee9ba83d5e9704e4fab1522b396e1e18b6c2d26a511c9f",
+      "eligible_player_weeks": 0,
+      "missing_started_game_ids": [
+        17,
+        22,
+        18,
+        25,
+        24,
+        23,
+        21,
+        20,
+        19,
+        27,
+        26,
+        30,
+        29,
+        28,
+        31,
+        32
+      ],
+      "status": "failure"
+    },
+    {
+      "key": "nfl_context_variant_freeze",
+      "season": 2026,
+      "week": 3,
+      "deadline": "2026-09-26T21:35:00+00:00",
+      "study_run_id": "7ff4d4049b8c10be84ee9ba83d5e9704e4fab1522b396e1e18b6c2d26a511c9f",
+      "eligible_player_weeks": 640,
+      "missing_started_game_ids": [
+        33
+      ],
+      "status": "warning"
+    },
+    {
+      "key": "nfl_context_variant_freeze",
+      "season": 2026,
+      "week": 4,
+      "deadline": "2026-10-03T21:35:00+00:00",
+      "study_run_id": "7ff4d4049b8c10be84ee9ba83d5e9704e4fab1522b396e1e18b6c2d26a511c9f",
+      "eligible_player_weeks": 0,
+      "missing_started_game_ids": [],
+      "status": "pending"
+    },
+    {
+      "key": "nfl_context_variant_freeze",
+      "season": 2026,
+      "week": 5,
+      "deadline": "2026-10-10T21:35:00+00:00",
+      "study_run_id": "7ff4d4049b8c10be84ee9ba83d5e9704e4fab1522b396e1e18b6c2d26a511c9f",
+      "eligible_player_weeks": 0,
+      "missing_started_game_ids": [],
+      "status": "pending"
+    },
+    {
+      "key": "nfl_context_variant_freeze",
+      "season": 2026,
+      "week": 6,
+      "deadline": "2026-10-17T21:35:00+00:00",
+      "study_run_id": "7ff4d4049b8c10be84ee9ba83d5e9704e4fab1522b396e1e18b6c2d26a511c9f",
+      "eligible_player_weeks": 0,
+      "missing_started_game_ids": [],
+      "status": "pending"
+    },
+    {
+      "key": "nfl_context_variant_freeze",
+      "season": 2026,
+      "week": 7,
+      "deadline": "2026-10-24T21:35:00+00:00",
+      "study_run_id": "7ff4d4049b8c10be84ee9ba83d5e9704e4fab1522b396e1e18b6c2d26a511c9f",
+      "eligible_player_weeks": 0,
+      "missing_started_game_ids": [],
+      "status": "pending"
+    },
+    {
+      "key": "nfl_context_variant_freeze",
+      "season": 2026,
+      "week": 8,
+      "deadline": "2026-10-31T21:35:00+00:00",
+      "study_run_id": "7ff4d4049b8c10be84ee9ba83d5e9704e4fab1522b396e1e18b6c2d26a511c9f",
+      "eligible_player_weeks": 0,
+      "missing_started_game_ids": [],
+      "status": "pending"
+    },
+    {
+      "key": "nfl_context_variant_freeze",
+      "season": 2026,
+      "week": 9,
+      "deadline": "2026-11-07T21:35:00+00:00",
+      "study_run_id": "7ff4d4049b8c10be84ee9ba83d5e9704e4fab1522b396e1e18b6c2d26a511c9f",
+      "eligible_player_weeks": 0,
+      "missing_started_game_ids": [],
+      "status": "pending"
+    },
+    {
+      "key": "nfl_context_variant_freeze",
+      "season": 2026,
+      "week": 10,
+      "deadline": "2026-11-14T21:35:00+00:00",
+      "study_run_id": "7ff4d4049b8c10be84ee9ba83d5e9704e4fab1522b396e1e18b6c2d26a511c9f",
+      "eligible_player_weeks": 0,
+      "missing_started_game_ids": [],
+      "status": "pending"
+    },
+    {
+      "key": "nfl_context_variant_freeze",
+      "season": 2026,
+      "week": 11,
+      "deadline": "2026-11-21T21:35:00+00:00",
+      "study_run_id": "7ff4d4049b8c10be84ee9ba83d5e9704e4fab1522b396e1e18b6c2d26a511c9f",
+      "eligible_player_weeks": 0,
+      "missing_started_game_ids": [],
+      "status": "pending"
+    },
+    {
+      "key": "nfl_context_variant_freeze",
+      "season": 2026,
+      "week": 12,
+      "deadline": "2026-11-28T21:35:00+00:00",
+      "study_run_id": "7ff4d4049b8c10be84ee9ba83d5e9704e4fab1522b396e1e18b6c2d26a511c9f",
+      "eligible_player_weeks": 0,
+      "missing_started_game_ids": [],
+      "status": "pending"
+    },
+    {
+      "key": "nfl_context_variant_freeze",
+      "season": 2026,
+      "week": 13,
+      "deadline": "2026-12-05T21:35:00+00:00",
+      "study_run_id": "7ff4d4049b8c10be84ee9ba83d5e9704e4fab1522b396e1e18b6c2d26a511c9f",
+      "eligible_player_weeks": 0,
+      "missing_started_game_ids": [],
+      "status": "pending"
+    },
+    {
+      "key": "nfl_context_variant_freeze",
+      "season": 2026,
+      "week": 14,
+      "deadline": "2026-12-12T21:35:00+00:00",
+      "study_run_id": "7ff4d4049b8c10be84ee9ba83d5e9704e4fab1522b396e1e18b6c2d26a511c9f",
+      "eligible_player_weeks": 0,
+      "missing_started_game_ids": [],
+      "status": "pending"
+    },
+    {
+      "key": "nfl_context_variant_freeze",
+      "season": 2026,
+      "week": 15,
+      "deadline": "2026-12-19T21:35:00+00:00",
+      "study_run_id": "7ff4d4049b8c10be84ee9ba83d5e9704e4fab1522b396e1e18b6c2d26a511c9f",
+      "eligible_player_weeks": 0,
+      "missing_started_game_ids": [],
+      "status": "pending"
+    },
+    {
+      "key": "nfl_context_variant_freeze",
+      "season": 2026,
+      "week": 16,
+      "deadline": "2026-12-26T21:35:00+00:00",
+      "study_run_id": "7ff4d4049b8c10be84ee9ba83d5e9704e4fab1522b396e1e18b6c2d26a511c9f",
+      "eligible_player_weeks": 0,
+      "missing_started_game_ids": [],
+      "status": "pending"
+    },
+    {
+      "key": "nfl_context_variant_freeze",
+      "season": 2026,
+      "week": 17,
+      "deadline": "2027-01-02T21:35:00+00:00",
+      "study_run_id": "7ff4d4049b8c10be84ee9ba83d5e9704e4fab1522b396e1e18b6c2d26a511c9f",
+      "eligible_player_weeks": 0,
+      "missing_started_game_ids": [],
+      "status": "pending"
+    },
+    {
+      "key": "nfl_context_variant_freeze",
+      "season": 2026,
+      "week": 18,
+      "deadline": "2027-01-09T21:35:00+00:00",
+      "study_run_id": "7ff4d4049b8c10be84ee9ba83d5e9704e4fab1522b396e1e18b6c2d26a511c9f",
+      "eligible_player_weeks": 0,
+      "missing_started_game_ids": [],
+      "status": "pending"
+    }
+  ]
+}

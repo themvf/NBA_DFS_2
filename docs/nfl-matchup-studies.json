@@ -1,0 +1,582 @@
+{
+  "schema_version": "nfl-matchup-study-registry-v1",
+  "activation": "none",
+  "note": "Three DFS families and the combined pickem model are prospectively registered after retrospective development. Standalone pressure and contact pickem declarations remain drafts. Six-member multiplicity correction is retained. Immutable registration files are in artifacts/nfl_matchup_registrations; this registry is a discovery index, not an activation policy.",
+  "studies": [
+    {
+      "status": "registered",
+      "registered_at": "2026-09-27T14:19:53.382080+00:00",
+      "holdout_start_at": "2026-09-27T14:19:53.382080+00:00",
+      "holdout_end_at": "2026-12-01T00:00:00+00:00",
+      "development_note": "All 2023-2025 data are retrospective development; no held-out historical performance or tuning split is claimed. Fixed priors/settings are declared before prospective evaluation.",
+      "feature_versions": {
+        "shared": "nfl-matchup-features-v1"
+      },
+      "source_versions": {
+        "pfr": "nflverse_pfr_fields_percentage_points",
+        "pbp": "retained-source-revision-manifest"
+      },
+      "candidate_config_hash": "49b6d36be15e5c854ed75d2213554fbcd80fa547c81e12458c9e0aab872f839f",
+      "baseline_config_hash": "0a4b14b66998e7aeaa89f7dc6aaefab8a016759c277db53bc11109a65a14bb5a",
+      "family_size": 6,
+      "seed": 20260927,
+      "bootstrap_draws": 10000,
+      "fallback": "exact_frozen_approved_baseline",
+      "rollback": {
+        "weeks": 8,
+        "rule": "primary_delta_lower_ci_above_zero_or_guardrail_harm"
+      },
+      "calibration_bins": [
+        0.0,
+        0.1,
+        0.2,
+        0.3,
+        0.4,
+        0.5,
+        0.6,
+        0.7,
+        0.8,
+        0.9,
+        1.0
+      ],
+      "study_id": "nfl-matchup-dfs_mean-pressure-v1",
+      "kind": "dfs_mean",
+      "consumer": "nfl_dfs_projection",
+      "hypothesis": "pressure matchup evidence improves the registered same-input forecast beyond its frozen baseline.",
+      "cohort": {
+        "positions": [
+          "QB"
+        ]
+      },
+      "affected_positions": [
+        "QB"
+      ],
+      "components": [
+        "pressure"
+      ],
+      "scoring_version": "nfl-dk-realized-v3",
+      "gates": {
+        "min_weeks": 8,
+        "min_rows": 200,
+        "min_games": 50,
+        "primary_metric": "mean_absolute_error",
+        "primary_materiality": 0.05,
+        "mean_harm": 0.1,
+        "position_mean_harm": 0.1,
+        "p90_harm": 0.05,
+        "boom_thresholds": {
+          "QB": 30,
+          "RB": 25
+        },
+        "boom_brier_harm": 0.01,
+        "coverage_harm": 0.02,
+        "width_harm": 2.0,
+        "interval_alphas": [
+          0.2
+        ]
+      },
+      "development_start_at": "2023-01-01T00:00:00+00:00",
+      "development_end_at": "2026-03-01T00:00:00+00:00",
+      "tuning_mode": "fixed_prior_no_tuning",
+      "model_artifacts": {
+        "pressure": "49b6d36be15e5c854ed75d2213554fbcd80fa547c81e12458c9e0aab872f839f"
+      },
+      "model_version": "nfl-dfs-historical-v5",
+      "parameter_contract": {
+        "ridge": 20.0,
+        "intercept": false,
+        "max_relative_efficiency_adjustment": 0.1,
+        "minimum_development_rows": 100,
+        "affected_stats": {
+          "pressure": [
+            "passing_yards"
+          ],
+          "contact": [
+            "rushing_yards"
+          ]
+        },
+        "pressure_min_games_each_side": 2,
+        "contact_min_rb_carries_each_side": 20,
+        "lookback_games": 4
+      },
+      "registration_file": "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-pressure-v1.json",
+      "implementation_pin_file": "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-pressure-v1.implementation-pin-2.json",
+      "amendment_files": [
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-pressure-v1.baseline-amendment-1.json"
+      ],
+      "implementation_pin_files": [
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-pressure-v1.implementation-pin.json",
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-pressure-v1.implementation-pin-2.json"
+      ],
+      "outcome_amendment_files": [
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-pressure-v1.outcome-amendment-1.json"
+      ]
+    },
+    {
+      "status": "registered",
+      "registered_at": "2026-09-27T14:19:53.382080+00:00",
+      "holdout_start_at": "2026-09-27T14:19:53.382080+00:00",
+      "holdout_end_at": "2026-12-01T00:00:00+00:00",
+      "development_note": "All 2023-2025 data are retrospective development; no held-out historical performance or tuning split is claimed. Fixed priors/settings are declared before prospective evaluation.",
+      "feature_versions": {
+        "shared": "nfl-matchup-features-v1"
+      },
+      "source_versions": {
+        "pfr": "nflverse_pfr_fields_percentage_points",
+        "pbp": "retained-source-revision-manifest"
+      },
+      "candidate_config_hash": "39b53ecff13299f0265794d2459f5ab2ecb7e25caf4a293b9602ab3f0be2d3dc",
+      "baseline_config_hash": "0a4b14b66998e7aeaa89f7dc6aaefab8a016759c277db53bc11109a65a14bb5a",
+      "family_size": 6,
+      "seed": 20260927,
+      "bootstrap_draws": 10000,
+      "fallback": "exact_frozen_approved_baseline",
+      "rollback": {
+        "weeks": 8,
+        "rule": "primary_delta_lower_ci_above_zero_or_guardrail_harm"
+      },
+      "calibration_bins": [
+        0.0,
+        0.1,
+        0.2,
+        0.3,
+        0.4,
+        0.5,
+        0.6,
+        0.7,
+        0.8,
+        0.9,
+        1.0
+      ],
+      "study_id": "nfl-matchup-dfs_mean-contact-v1",
+      "kind": "dfs_mean",
+      "consumer": "nfl_dfs_projection",
+      "hypothesis": "contact matchup evidence improves the registered same-input forecast beyond its frozen baseline.",
+      "cohort": {
+        "positions": [
+          "RB"
+        ]
+      },
+      "affected_positions": [
+        "RB"
+      ],
+      "components": [
+        "contact"
+      ],
+      "scoring_version": "nfl-dk-realized-v3",
+      "gates": {
+        "min_weeks": 8,
+        "min_rows": 200,
+        "min_games": 50,
+        "primary_metric": "mean_absolute_error",
+        "primary_materiality": 0.05,
+        "mean_harm": 0.1,
+        "position_mean_harm": 0.1,
+        "p90_harm": 0.05,
+        "boom_thresholds": {
+          "QB": 30,
+          "RB": 25
+        },
+        "boom_brier_harm": 0.01,
+        "coverage_harm": 0.02,
+        "width_harm": 2.0,
+        "interval_alphas": [
+          0.2
+        ]
+      },
+      "development_start_at": "2023-01-01T00:00:00+00:00",
+      "development_end_at": "2026-03-01T00:00:00+00:00",
+      "tuning_mode": "fixed_prior_no_tuning",
+      "model_artifacts": {
+        "contact": "39b53ecff13299f0265794d2459f5ab2ecb7e25caf4a293b9602ab3f0be2d3dc"
+      },
+      "model_version": "nfl-dfs-historical-v5",
+      "parameter_contract": {
+        "ridge": 20.0,
+        "intercept": false,
+        "max_relative_efficiency_adjustment": 0.1,
+        "minimum_development_rows": 100,
+        "affected_stats": {
+          "pressure": [
+            "passing_yards"
+          ],
+          "contact": [
+            "rushing_yards"
+          ]
+        },
+        "pressure_min_games_each_side": 2,
+        "contact_min_rb_carries_each_side": 20,
+        "lookback_games": 4
+      },
+      "registration_file": "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-contact-v1.json",
+      "implementation_pin_file": "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-contact-v1.implementation-pin-2.json",
+      "amendment_files": [
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-contact-v1.baseline-amendment-1.json"
+      ],
+      "implementation_pin_files": [
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-contact-v1.implementation-pin.json",
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-contact-v1.implementation-pin-2.json"
+      ],
+      "outcome_amendment_files": [
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-contact-v1.outcome-amendment-1.json"
+      ]
+    },
+    {
+      "status": "registered",
+      "registered_at": "2026-09-27T14:19:53.382080+00:00",
+      "holdout_start_at": "2026-09-27T14:19:53.382080+00:00",
+      "holdout_end_at": "2026-12-01T00:00:00+00:00",
+      "development_note": "All 2023-2025 data are retrospective development; no held-out historical performance or tuning split is claimed. Fixed priors/settings are declared before prospective evaluation.",
+      "feature_versions": {
+        "shared": "nfl-matchup-features-v1"
+      },
+      "source_versions": {
+        "pfr": "nflverse_pfr_fields_percentage_points",
+        "pbp": "retained-source-revision-manifest"
+      },
+      "candidate_config_hash": "328c5854d91b8cc43f17eac9bae722413e333c4624ae7167978b85065675db9c",
+      "baseline_config_hash": "0a4b14b66998e7aeaa89f7dc6aaefab8a016759c277db53bc11109a65a14bb5a",
+      "family_size": 6,
+      "seed": 20260927,
+      "bootstrap_draws": 10000,
+      "fallback": "exact_frozen_approved_baseline",
+      "rollback": {
+        "weeks": 8,
+        "rule": "primary_delta_lower_ci_above_zero_or_guardrail_harm"
+      },
+      "calibration_bins": [
+        0.0,
+        0.1,
+        0.2,
+        0.3,
+        0.4,
+        0.5,
+        0.6,
+        0.7,
+        0.8,
+        0.9,
+        1.0
+      ],
+      "study_id": "nfl-matchup-dfs_mean-combined-v1",
+      "kind": "dfs_mean",
+      "consumer": "nfl_dfs_projection",
+      "hypothesis": "combined matchup evidence improves the registered same-input forecast beyond its frozen baseline.",
+      "cohort": {
+        "positions": [
+          "QB",
+          "RB"
+        ]
+      },
+      "affected_positions": [
+        "QB",
+        "RB"
+      ],
+      "components": [
+        "pressure",
+        "contact"
+      ],
+      "scoring_version": "nfl-dk-realized-v3",
+      "gates": {
+        "min_weeks": 8,
+        "min_rows": 200,
+        "min_games": 50,
+        "primary_metric": "mean_absolute_error",
+        "primary_materiality": 0.05,
+        "mean_harm": 0.1,
+        "position_mean_harm": 0.1,
+        "p90_harm": 0.05,
+        "boom_thresholds": {
+          "QB": 30,
+          "RB": 25
+        },
+        "boom_brier_harm": 0.01,
+        "coverage_harm": 0.02,
+        "width_harm": 2.0,
+        "interval_alphas": [
+          0.2
+        ]
+      },
+      "development_start_at": "2023-01-01T00:00:00+00:00",
+      "development_end_at": "2026-03-01T00:00:00+00:00",
+      "tuning_mode": "fixed_prior_no_tuning",
+      "model_artifacts": {
+        "pressure": "49b6d36be15e5c854ed75d2213554fbcd80fa547c81e12458c9e0aab872f839f",
+        "contact": "39b53ecff13299f0265794d2459f5ab2ecb7e25caf4a293b9602ab3f0be2d3dc"
+      },
+      "model_version": "nfl-dfs-historical-v5",
+      "parameter_contract": {
+        "ridge": 20.0,
+        "intercept": false,
+        "max_relative_efficiency_adjustment": 0.1,
+        "minimum_development_rows": 100,
+        "affected_stats": {
+          "pressure": [
+            "passing_yards"
+          ],
+          "contact": [
+            "rushing_yards"
+          ]
+        },
+        "pressure_min_games_each_side": 2,
+        "contact_min_rb_carries_each_side": 20,
+        "lookback_games": 4
+      },
+      "registration_file": "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-combined-v1.json",
+      "implementation_pin_file": "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-combined-v1.implementation-pin-2.json",
+      "amendment_files": [
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-combined-v1.baseline-amendment-1.json"
+      ],
+      "implementation_pin_files": [
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-combined-v1.implementation-pin.json",
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-combined-v1.implementation-pin-2.json"
+      ],
+      "outcome_amendment_files": [
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-combined-v1.outcome-amendment-1.json"
+      ]
+    },
+    {
+      "status": "draft",
+      "registered_at": null,
+      "holdout_start_at": "2026-10-01T00:00:00+00:00",
+      "holdout_end_at": "2026-12-01T00:00:00+00:00",
+      "development_note": "All 2023-2025 data are retrospective development; no held-out historical performance or tuning split is claimed. Fixed priors/settings are declared before prospective evaluation.",
+      "feature_versions": {
+        "shared": "nfl-matchup-features-v1"
+      },
+      "source_versions": {
+        "pfr": "nflverse_pfr_fields_percentage_points",
+        "pbp": "retained-source-revision-manifest"
+      },
+      "candidate_config_hash": null,
+      "baseline_config_hash": null,
+      "family_size": 6,
+      "seed": 20260927,
+      "bootstrap_draws": 10000,
+      "fallback": "exact_frozen_approved_baseline",
+      "rollback": {
+        "weeks": 8,
+        "rule": "primary_delta_lower_ci_above_zero_or_guardrail_harm"
+      },
+      "calibration_bins": [
+        0.0,
+        0.1,
+        0.2,
+        0.3,
+        0.4,
+        0.5,
+        0.6,
+        0.7,
+        0.8,
+        0.9,
+        1.0
+      ],
+      "study_id": "nfl-matchup-pickem-pressure-v1",
+      "kind": "pickem",
+      "consumer": "nfl_pickem_probability",
+      "hypothesis": "pressure matchup evidence improves the registered same-input forecast beyond its frozen baseline.",
+      "cohort": {
+        "league": "NFL",
+        "game_type": "REG"
+      },
+      "affected_positions": [],
+      "components": [
+        "pressure"
+      ],
+      "scoring_version": "nfl-game-outcome-three-class-v1",
+      "gates": {
+        "min_weeks": 8,
+        "min_rows": 100,
+        "min_games": 100,
+        "primary_metric": "three_class_log_loss",
+        "primary_materiality": 0.001,
+        "brier_harm": 0.002,
+        "calibration_harm": 0.01,
+        "tie_model_version": "frozen-baseline-tie-component"
+      },
+      "development_start_at": "2023-01-01T00:00:00+00:00",
+      "development_end_at": "2026-03-01T00:00:00+00:00",
+      "tuning_mode": "fixed_prior_no_tuning"
+    },
+    {
+      "status": "draft",
+      "registered_at": null,
+      "holdout_start_at": "2026-10-01T00:00:00+00:00",
+      "holdout_end_at": "2026-12-01T00:00:00+00:00",
+      "development_note": "All 2023-2025 data are retrospective development; no held-out historical performance or tuning split is claimed. Fixed priors/settings are declared before prospective evaluation.",
+      "feature_versions": {
+        "shared": "nfl-matchup-features-v1"
+      },
+      "source_versions": {
+        "pfr": "nflverse_pfr_fields_percentage_points",
+        "pbp": "retained-source-revision-manifest"
+      },
+      "candidate_config_hash": null,
+      "baseline_config_hash": null,
+      "family_size": 6,
+      "seed": 20260927,
+      "bootstrap_draws": 10000,
+      "fallback": "exact_frozen_approved_baseline",
+      "rollback": {
+        "weeks": 8,
+        "rule": "primary_delta_lower_ci_above_zero_or_guardrail_harm"
+      },
+      "calibration_bins": [
+        0.0,
+        0.1,
+        0.2,
+        0.3,
+        0.4,
+        0.5,
+        0.6,
+        0.7,
+        0.8,
+        0.9,
+        1.0
+      ],
+      "study_id": "nfl-matchup-pickem-contact-v1",
+      "kind": "pickem",
+      "consumer": "nfl_pickem_probability",
+      "hypothesis": "contact matchup evidence improves the registered same-input forecast beyond its frozen baseline.",
+      "cohort": {
+        "league": "NFL",
+        "game_type": "REG"
+      },
+      "affected_positions": [],
+      "components": [
+        "contact"
+      ],
+      "scoring_version": "nfl-game-outcome-three-class-v1",
+      "gates": {
+        "min_weeks": 8,
+        "min_rows": 100,
+        "min_games": 100,
+        "primary_metric": "three_class_log_loss",
+        "primary_materiality": 0.001,
+        "brier_harm": 0.002,
+        "calibration_harm": 0.01,
+        "tie_model_version": "frozen-baseline-tie-component"
+      },
+      "development_start_at": "2023-01-01T00:00:00+00:00",
+      "development_end_at": "2026-03-01T00:00:00+00:00",
+      "tuning_mode": "fixed_prior_no_tuning"
+    },
+    {
+      "status": "registered",
+      "registered_at": "2026-09-27T14:27:52.602603+00:00",
+      "holdout_start_at": "2026-09-27T14:27:52.602603+00:00",
+      "holdout_end_at": "2026-12-01T00:00:00+00:00",
+      "development_note": "All 2023-2025 data are retrospective development; no held-out historical performance or tuning split is claimed. Fixed priors/settings are declared before prospective evaluation.",
+      "feature_versions": {
+        "shared": "nfl-matchup-features-v1"
+      },
+      "source_versions": {
+        "pfr": "nflverse_pfr_fields_percentage_points",
+        "game_outcomes": "nfl_season_games.completed/home_score/away_score",
+        "market": "frozen_latest_valid_two_sided_novig"
+      },
+      "candidate_config_hash": "bf3f0745504e1083c1d010bd02d91cb472de208dd4994a1e0023b54d3da41339",
+      "baseline_config_hash": "6909ff312194872b6532ebe05abbb9e97fce3d972b3c798cce31735529434b21",
+      "family_size": 6,
+      "seed": 20260927,
+      "bootstrap_draws": 10000,
+      "fallback": "exact_frozen_approved_baseline",
+      "rollback": {
+        "weeks": 8,
+        "rule": "primary_delta_lower_ci_above_zero_or_guardrail_harm"
+      },
+      "calibration_bins": [
+        0.0,
+        0.1,
+        0.2,
+        0.3,
+        0.4,
+        0.5,
+        0.6,
+        0.7,
+        0.8,
+        0.9,
+        1.0
+      ],
+      "study_id": "nfl-matchup-pickem-combined-v1",
+      "kind": "pickem",
+      "consumer": "nfl_pickem_probability",
+      "hypothesis": "combined matchup evidence improves the registered same-input forecast beyond its frozen baseline.",
+      "cohort": {
+        "league": "NFL",
+        "game_type": "REG"
+      },
+      "affected_positions": [],
+      "components": [
+        "pressure",
+        "contact"
+      ],
+      "scoring_version": "nfl-game-outcome-three-class-v1",
+      "gates": {
+        "min_weeks": 8,
+        "min_rows": 100,
+        "min_games": 100,
+        "primary_metric": "three_class_log_loss",
+        "primary_materiality": 0.001,
+        "brier_harm": 0.002,
+        "calibration_harm": 0.01,
+        "tie_model_version": "training-empirical-ties-v1"
+      },
+      "development_start_at": "2023-01-01T00:00:00+00:00",
+      "development_end_at": "2026-03-01T00:00:00+00:00",
+      "tuning_mode": "fixed_prior_no_tuning",
+      "baseline_config": {
+        "version": "pickem-market-baseline-v1",
+        "market": "latest_valid_two_sided_novig",
+        "tie_model": {
+          "version": "training-empirical-ties-v1",
+          "ties": 1,
+          "games": 816
+        },
+        "tie_probability": 0.0012254901960784314,
+        "probability_clip": 1e-06,
+        "clip_normalization": true,
+        "freshness_seconds": {
+          "inside_24h": 7200,
+          "otherwise": 86400
+        },
+        "quote_eligibility": "captured_at<=decision_cutoff<kickoff; two-sided abs moneylines>=100; no paid refresh",
+        "sources": [
+          "game_odds_history",
+          "nfl_season_games.market"
+        ],
+        "tied_timestamp_order": "captured_at DESC, quote_source ASC, quote_id DESC"
+      },
+      "model_artifacts": {
+        "combined": "bf3f0745504e1083c1d010bd02d91cb472de208dd4994a1e0023b54d3da41339"
+      },
+      "parameter_contract": {
+        "ridge": 20.0,
+        "intercept": false,
+        "feature_scales": [
+          10.0,
+          10.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "feature_keys": [
+          "own_pressure",
+          "opp_pressure",
+          "own_ybc",
+          "opp_ybc",
+          "own_yac",
+          "opp_yac"
+        ],
+        "lookback_games": 4,
+        "tie": "shared frozen empirical2023-2025 training component"
+      },
+      "registration_file": "artifacts/nfl_matchup_registrations/nfl-matchup-pickem-combined-v1.json",
+      "implementation_pin_file": "artifacts/nfl_matchup_registrations/nfl-matchup-pickem-combined-v1.implementation-pin-2.json",
+      "implementation_pin_files": [
+        "artifacts/nfl_matchup_registrations/nfl-matchup-pickem-combined-v1.implementation-pin.json",
+        "artifacts/nfl_matchup_registrations/nfl-matchup-pickem-combined-v1.implementation-pin-2.json"
+      ]
+    }
+  ]
+}

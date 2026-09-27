@@ -1,6 +1,6 @@
 import { selectedSportsbooks } from "@/lib/sportsbook-policy";
 import { getPickemEvidence } from "./pickem-evidence";
-import { usablePickemQuote, type PickemEvidence } from "@/lib/nfl/pickem-evidence";
+import { usablePickemQuote, timestamp, type PickemEvidence } from "@/lib/nfl/pickem-evidence";
 import { db } from ".";
 import { ensureSurvivorTables, ensureDkPlayerPropColumns, ensureProjectionExperimentTables, ensureAnalyticsColumns, ensureOwnershipExperimentTables, ensureMlbBlowupTrackingTables, ensureMlbHomerunTrackingTables, ensureOddsHistoryTables, ensureMlbGamePredictionTables } from "./ensure-schema";
 import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, mlbTeams, mlbTeamStats, mlbMatchups } from "./schema";
@@ -13904,7 +13904,17 @@ export async function getNflPickemSlate(season = 2026, evidence?: PickemEvidence
 
     // Renormalise away the tie mass -- see the pHome doc comment.
     const denom = 1 - (pTie ?? 0);
-    const pHome = denom > 1e-9 ? Math.min(Math.max(pWin / denom, 1e-4), 1 - 1e-4) : pWin;
+    let pHome = denom > 1e-9 ? Math.min(Math.max(pWin / denom, 1e-4), 1 - 1e-4) : pWin;
+    const matchup = evidence.games[Number(record.gameId)]?.matchup;
+    if (matchup?.status === "qualified" && matchup.candidate && quote && !record.completed &&
+        timestamp(evidence.loadedAt) < timestamp(record.kickoff == null ? null : String(record.kickoff)) &&
+        matchup.input.baseline.marketCapturedAt === quote.capturedAt &&
+        matchup.input.baseline.tie === pTie && Math.abs(matchup.input.baseline.homeConditional - pHome) < 1e-10 &&
+        timestamp(evidence.loadedAt) - timestamp(quote.capturedAt) <=
+          (timestamp(String(record.kickoff)) - timestamp(evidence.loadedAt) <= 86400000 ? 7200000 : 86400000)) {
+      pHome = matchup.candidate.homeConditional;
+      record.provenance = "qualified_matchup_residual";
+    }
 
     modelVersion ??= record.modelVersion != null ? String(record.modelVersion) : null;
     const stamp = record.computedAt != null ? String(record.computedAt) : null;
@@ -13956,6 +13966,7 @@ export async function getNflPickemSlate(season = 2026, evidence?: PickemEvidence
 }
 
 export type PickemPoolRow = {
+  config?: import("@/lib/nfl/pickem-contest").PoolConfig | null;
   id: number;
   name: string;
   season: number;
@@ -13965,6 +13976,7 @@ export type PickemPoolRow = {
 };
 
 export type PickemLedgerGame = {
+  isTie?: boolean | null;
   evidence?: import("@/lib/nfl/pickem-evidence").FrozenEvidence | null;
   gameId: number;
   homeAbbrev: string;
@@ -14019,7 +14031,7 @@ export type PickemLedgerRow = {
 export async function getPickemPools(season = 2026): Promise<PickemPoolRow[]> {
   try {
     const rows = await db.execute(sql`
-      SELECT id, name, season, format, pool_entries AS "poolEntries", notes
+      SELECT id, name, season, format, pool_entries AS "poolEntries", notes, config_json
       FROM pickem_pools WHERE season = ${season} ORDER BY created_at
     `);
     return rows.rows.map((raw) => {
@@ -14031,6 +14043,7 @@ export async function getPickemPools(season = 2026): Promise<PickemPoolRow[]> {
         format: String(r.format) as "confidence" | "straight",
         poolEntries: Number(r.poolEntries),
         notes: r.notes != null ? String(r.notes) : null,
+        config: (r.config_json ?? null) as import("@/lib/nfl/pickem-contest").PoolConfig | null,
       };
     });
   } catch {
@@ -14087,6 +14100,7 @@ export async function getPickemLedger(season = 2026): Promise<PickemLedgerRow[]>
         fieldSource: String(r.field_source) as "observed" | "modeled",
         evidence: (r.evidence_json ?? null) as import("@/lib/nfl/pickem-evidence").FrozenEvidence | null,
         homeWon: r.home_won == null ? null : Boolean(r.home_won),
+        isTie: r.result_tie == null ? null : Boolean(r.result_tie),
       });
     }
 

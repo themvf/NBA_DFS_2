@@ -1,0 +1,13 @@
+{
+  "study_id": "nfl-matchup-dfs_mean-pressure-v1",
+  "registration_manifest_hash": "9777c86de191d097bf1a8184f8cad3cd7f6a2fe21a07e5cec5ccd90468618d0b",
+  "registered_at": "2026-09-27T14:27:52.602603+00:00",
+  "previous_baseline_config_hash": "7b4f1cc538f694e24716cdfeb5483b69b09e09b774d3618239158f5f6ef1b600",
+  "baseline_config_hash": "0a4b14b66998e7aeaa89f7dc6aaefab8a016759c277db53bc11109a65a14bb5a",
+  "change": {
+    "availability_qb_transfer_enabled": true
+  },
+  "reason": "Current production snapshots explicitly record the already-default true availability_qb_transfer_enabled flag; preserve distinct configuration identities and require a new prospective capture. Candidate constants, fitted artifacts, and implementation pins unchanged.",
+  "outcomes_consulted": false,
+  "prior_freezes": "excluded from this amended cohort, never relabeled"
+}

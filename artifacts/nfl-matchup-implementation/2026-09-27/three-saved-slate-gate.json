@@ -1,0 +1,66 @@
+{
+  "version": "nfl-matchup-three-slate-gate-v1",
+  "inputDigest": "079cc13eb66284b8022e55b596c26eefd09dfee25987a394495aea626c9c2cb6",
+  "passed": true,
+  "status": "mechanical_regression_only",
+  "noProspectivePerformanceClaim": true,
+  "results": [
+    {
+      "uploadId": "f067c8b9-f920-4b26-b77c-36f43a2c9df0",
+      "savedRunId": "79839671-4397-4e78-9026-227d1f6d5b05",
+      "frozenBeforeLock": true,
+      "format": "classic",
+      "players": 670,
+      "generated": 20,
+      "requested": 20,
+      "legal": 20,
+      "productionUnchanged": true,
+      "missingResearchFallback": "unavailable",
+      "fingerprint": "e36775cee579eb7cc41f79a3719a2fb0cb160f092fdc3ed849ed874831626ca8",
+      "warnings": [
+        "118 player(s) blocked by the no_punts punt policy. See the cheap-player review for the reason on each; allow a player for the run to keep him.",
+        "2 players used DK Avg fallback.",
+        "Lineup floor/ceiling sums are player-level search heuristics, not lineup P10/P90. Use Scenario Lab for joint distributions."
+      ],
+      "limitation": "Archived snapshots predate own-history/depth evidence fields; unsupported cheap-player roles fail closed. Mechanical gate, not a performance holdout."
+    },
+    {
+      "uploadId": "746487fd-2ebe-444a-b74c-214e6d8854e3",
+      "savedRunId": "8e90dbc4-9242-480b-a9a9-8c6d72278e00",
+      "frozenBeforeLock": true,
+      "format": "showdown",
+      "players": 53,
+      "generated": 20,
+      "requested": 20,
+      "legal": 20,
+      "productionUnchanged": true,
+      "missingResearchFallback": "unavailable",
+      "fingerprint": "40244305e956a9530ee030b63ea1fb8e6b41eb82afc4731702295a1aa3644559",
+      "warnings": [
+        "28 player(s) blocked by the no_punts punt policy. See the cheap-player review for the reason on each; allow a player for the run to keep him.",
+        "Lineup floor/ceiling sums are player-level search heuristics, not lineup P10/P90. Use Scenario Lab for joint distributions."
+      ],
+      "limitation": "Archived snapshots predate own-history/depth evidence fields; unsupported cheap-player roles fail closed. Mechanical gate, not a performance holdout."
+    },
+    {
+      "uploadId": "81996971-0d2c-4d65-b5fc-a2109d18e755",
+      "savedRunId": "ef8ad5a4-d96e-44ba-8240-44aa3c181bc2",
+      "frozenBeforeLock": true,
+      "format": "showdown",
+      "players": 53,
+      "generated": 20,
+      "requested": 20,
+      "legal": 20,
+      "productionUnchanged": true,
+      "missingResearchFallback": "unavailable",
+      "fingerprint": "584f5061c4aee086348e2263bef09e926f2c4f6958bfd9d753fd1a9b21720e80",
+      "warnings": [
+        "22 player(s) blocked by the no_punts punt policy. See the cheap-player review for the reason on each; allow a player for the run to keep him.",
+        "Lineup floor/ceiling sums are player-level search heuristics, not lineup P10/P90. Use Scenario Lab for joint distributions.",
+        "Bijan Robinson: captain min missed (0/7); constraints were infeasible for the remaining lineups.",
+        "Christian Watson: captain min missed (3/4); constraints were infeasible for the remaining lineups."
+      ],
+      "limitation": "Archived snapshots predate own-history/depth evidence fields; unsupported cheap-player roles fail closed. Mechanical gate, not a performance holdout."
+    }
+  ]
+}

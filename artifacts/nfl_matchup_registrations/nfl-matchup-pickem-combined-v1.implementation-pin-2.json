@@ -1,0 +1,22 @@
+{
+  "study_id": "nfl-matchup-pickem-combined-v1",
+  "registration_manifest_hash": "2daa45bd9c19e0431adb4b5dbedd9de616222b6cd65868e316c6c43ac8fcf65d",
+  "previous_pin_hash": "b5f74e53fd9159345d0ccf9a9daaff35321e06783937dfab7c7274c00ee6087e",
+  "pinned_at": "2026-09-27T14:45:49.075027+00:00",
+  "hash_algorithm": "sha256_lf_normalized",
+  "hashes": {
+    "model/nfl_matchup_features.py": "8311ec6d89c7f69ab118257c7eac7e6ce4a4f85f3d9fce9b661a0e257a06f1e0",
+    "model/nfl_matchup_projection.py": "93ab2c8f314f1746ea60673582ebe267aa1d2a6f805125ed2c1a46cd57bd37d2",
+    "research/nfl_pickem_matchup.py": "0c5fccb26e28a603a97df6f9459da67a88e7134ef6b922c9f8f2ae11f16ddb3b",
+    "ingest/nfl_matchup_context.py": "7f1e8d2219cfdd3b5a2989d937d9da85595ff8d904b476dacab67da999515c89",
+    "db/nfl_pfr_schema.py": "da5f40c0fa9e8b044de2799b6c7af11651b73b6942d4341f866abafebfbd31e1"
+  },
+  "reason": "Forward-only correctness fixes: require frozen participant/carry completeness and true observation availability, preserve exact saved production fallback, verify all reproduced distribution/stat fields, and include source/identity/slate selection code. No coefficients or numerical gate constants changed.",
+  "outcomes_consulted": false,
+  "qualification_scope": {
+    "consumer": "nfl_pickem_probability",
+    "usage": "predictive_shadow_only",
+    "platform": "straight_pickem",
+    "capture": "eligible_upcoming_regular_season_games"
+  }
+}

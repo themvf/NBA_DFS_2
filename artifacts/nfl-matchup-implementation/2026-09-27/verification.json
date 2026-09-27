@@ -1,0 +1,61 @@
+{
+  "date": "2026-09-27",
+  "scope": "local implementation and live database reads; no production deployment or model promotion",
+  "python": {
+    "focused_implementation_suite": {
+      "passed": 122,
+      "failed": 0
+    },
+    "report_publication_refresh_archive_suite": {
+      "passed": 9,
+      "failed": 0
+    },
+    "final_coherent_showdown_refresh_and_forecast_suite": {
+      "passed": 50,
+      "failed": 0
+    },
+    "note": "Suites are reported separately rather than summed; later coherent-model checks are retained in their own artifacts."
+  },
+  "typescript": {
+    "typecheck": "passed",
+    "matchup_contest": "passed: ties, accounting, independent streams, legality, field capability and missing-field fallback",
+    "pickem_contest": "passed: crowd boundaries, chalk, ties, payouts, missing rules, independent evaluation and season scenarios",
+    "player_explanation": "passed: component ledger and exact saved-zero fallback"
+  },
+  "live_pipeline_smoke": {
+    "command": "python -m ingest.nfl_dfs_projections --season 2026 --week 3 --no-persist",
+    "exit_code": 0,
+    "players": 1087,
+    "matchup_players": 1021,
+    "games": 15,
+    "numerical_challengers": 221,
+    "active_projection_changes": 0,
+    "scope_note": "Full remaining weekly player universe; different from the 13-game saved salary slate comparison."
+  },
+  "browser": {
+    "breece_hall_why": "saved 14.23 baseline, 15.27 candidate and frozen source audit displayed",
+    "jaxson_dart_why": "unavailable baseline and candidate both exactly zero",
+    "pickem_evidence": "Tampa Bay-Minnesota source coverage and explicit missing-feature fallback displayed",
+    "hosted_report_reader": "database report loads by exact salary upload; no worker-local artifact dependency"
+  },
+  "cadence": {
+    "local": "active Monday, Tuesday and Friday at 07:00 America/New_York",
+    "scenario_refresh": "updated to verify fresh pregame capture, generate independent streams, compare entry modes, publish compact report and retain raw evidence",
+    "forward_grading": "capture immutable outcome revisions and grade accepted frozen forecasts",
+    "remote_workflow": "implemented locally; not deployed by this task"
+  },
+  "production_changed": false,
+  "main_integration": {
+    "base_commit": "a7eecd4f94d7d171952ac97655c5419a376cf783",
+    "python_focused_tests": 121,
+    "python_scenario_tests": 53,
+    "python_final_registration_tests": 36,
+    "test_counts_overlap": true,
+    "web_targeted_suites": 10,
+    "typescript": "passed",
+    "production_build": "passed: next build --webpack; installed dependencies reused locally via junction",
+    "generated_files_committed": false,
+    "outcome_scoring_version": "nfl-dk-realized-v3",
+    "production_model_promoted": false
+  }
+}

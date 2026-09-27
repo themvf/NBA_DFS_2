@@ -39,6 +39,8 @@ import {
 } from "lucide-react";
 import type { PickemLedgerRow, PickemPoolRow, PickemSlate, PickemSlateGame } from "@/db/queries";
 import PickemTabs from "./pickem-tabs";
+import { ContestPolicyPanel } from "./contest-policy-panel";
+import type { ContestComparison } from "@/lib/nfl/pickem-contest";
 import { EvidencePanel, EvidenceLedger } from "./evidence-panel";
 import { OddsFreshnessBanner } from "./odds-freshness-banner";
 import { EMPTY_EVIDENCE, marketReview, type PickemEvidence, type PickemScenario } from "@/lib/nfl/pickem-evidence";
@@ -121,7 +123,8 @@ type Stored = {
   objective: Objective;
   favoriteBias: number;
   chalkFraction: number;
-  overrides: Record<number, { pickHome?: boolean; confidence?: number; fieldHomePct?: number | null }>;
+  overrides: Record<number, { pickHome?: boolean; confidence?: number; fieldHomePct?: number | null;
+    observedOwnHomePick?: boolean; shareCapturedAt?: string }>;
 };
 
 const PROVENANCE_LABEL: Record<string, string> = {
@@ -152,7 +155,8 @@ export default function PickemClient({ slate, pools, ledger, evidence, initialWe
   const [scenarios, setScenarios] = useState<Record<number, PickemScenario>>({});
   const [reviewAt, setReviewAt] = useState(loadedAt);
   const [week, setWeek] = useState(initialWeek);
-  const [format, setFormat] = useState<PoolFormat>("confidence");
+  const [format, setFormat] = useState<PoolFormat>("straight");
+  const [contestReport, setContestReport] = useState<ContestComparison | null>(null);
   const [poolEntries, setPoolEntries] = useState(50);
   const [objective, setObjective] = useState<Objective>(defaultObjective());
   const [favoriteBias, setFavoriteBias] = useState(FIELD_FAVORITE_BIAS);
@@ -179,6 +183,7 @@ export default function PickemClient({ slate, pools, ledger, evidence, initialWe
   // record the pool it was advising, not whatever the controls last said.
   const selectPool = (id: number | null) => {
     setPoolId(id);
+    setContestReport(null);
     const pool = pools.find((p) => p.id === id);
     if (pool) {
       setFormat(pool.format);
@@ -316,11 +321,15 @@ export default function PickemClient({ slate, pools, ledger, evidence, initialWe
         homeAbbrev: g.homeAbbrev,
         awayAbbrev: g.awayAbbrev,
         pHome: g.pHome,
+        pTie: g.pTie,
         provenance: g.provenance,
         kickoff: g.kickoff,
         completed: g.completed,
         homeWon: g.homeWon,
         fieldHomePct: overrides[g.gameId]?.fieldHomePct ?? null,
+        fieldObservation: { population: "unknown" as const, entryCount: null,
+          observedOwnHomePick: overrides[g.gameId]?.observedOwnHomePick ?? null,
+          capturedAt: overrides[g.gameId]?.shareCapturedAt ?? null, source: "manual_pool_share" },
       })),
     [weekGames, overrides],
   );
@@ -346,10 +355,16 @@ export default function PickemClient({ slate, pools, ledger, evidence, initialWe
     });
   }, [games, format, fieldModel, poolEntries]);
 
+  const evaluationWorld = useMemo(() => games.length ? simulateWorld(games, format, fieldModel, {
+    sims: DEFAULT_SIMS, poolEntries, sampleOpponents: SAMPLE_OPPONENTS, seed: 20260908,
+  }) : null, [games, format, fieldModel, poolEntries]);
+
   const plan = useMemo(() => {
     if (!games.length || !world) return null;
-    return optimizeEntry(games, format, world, { maxDeviations: MAX_DEVIATIONS });
-  }, [games, format, world]);
+    const selected = optimizeEntry(games, format, world, { maxDeviations: MAX_DEVIATIONS });
+    return evaluationWorld ? { ...selected, baselineEval: evaluateEntry(games, selected.baseline, evaluationWorld),
+      recommendedEval: evaluateEntry(games, selected.recommended, evaluationWorld) } : selected;
+  }, [games, format, world, evaluationWorld]);
 
   const activeEntry: Entry | null = useMemo(() => {
     if (!baseline) return null;
@@ -364,8 +379,8 @@ export default function PickemClient({ slate, pools, ledger, evidence, initialWe
   }, [baseline, plan, objective, games, overrides]);
 
   const activeEval = useMemo(
-    () => (activeEntry && world ? evaluateEntry(games, activeEntry, world) : null),
-    [activeEntry, world, games],
+    () => (activeEntry && evaluationWorld ? evaluateEntry(games, activeEntry, evaluationWorld) : null),
+    [activeEntry, evaluationWorld, games],
   );
 
   const cheap = useMemo(
@@ -455,7 +470,9 @@ export default function PickemClient({ slate, pools, ledger, evidence, initialWe
       ...prev,
       [gameId]: {
         ...prev[gameId],
-        fieldHomePct: value.trim() === "" || !Number.isFinite(num) ? null : Math.min(Math.max(num / 100, 0.01), 0.99),
+        fieldHomePct: value.trim() === "" || !Number.isFinite(num) ? null : Math.min(Math.max(num / 100, 0), 1),
+        observedOwnHomePick: activeEntry?.pickHome[games.findIndex(g => g.gameId === gameId)],
+        shareCapturedAt: new Date().toISOString(),
       },
     }));
   };
@@ -528,6 +545,7 @@ export default function PickemClient({ slate, pools, ledger, evidence, initialWe
         provenance: g.provenance,
         homeWon: g.homeWon,
         baselinePickHome: g.baselinePickHome,
+        isTie: g.isTie, pTie: g.evidence?.pTie, tiePoints: g.evidence?.tiePoints,
         baselineConfidence: g.baselineConfidence,
         recommendedPickHome: g.recommendedPickHome,
         recommendedConfidence: g.recommendedConfidence,
@@ -543,6 +561,8 @@ export default function PickemClient({ slate, pools, ledger, evidence, initialWe
   const weekHasStarted = weekGames.some(
     (g) => g.kickoff != null && new Date(g.kickoff) <= new Date(),
   );
+  const perGameFreeze = format === "straight" && contestReport?.config.lockRule === "per_game" &&
+    (contestReport.eligibility.weekly || contestReport.eligibility.season);
 
   const freezeCard = () => {
     if (!plan || !activeEntry || !baseline || games.length === 0) return;
@@ -565,9 +585,10 @@ export default function PickemClient({ slate, pools, ledger, evidence, initialWe
         recommendedConfidence: activeEntry.confidence[i],
         fieldHomeShare: field.share,
         fieldSource: field.source,
+        fieldObservation: g.fieldObservation,
         scenario: scenarios[g.gameId] ?? null,
       };
-    });
+    }).filter(g => !perGameFreeze || (g.kickoff != null && Date.parse(g.kickoff) > Date.now()));
     run(() =>
       freezePickemRecommendation({
         poolId,
@@ -575,8 +596,8 @@ export default function PickemClient({ slate, pools, ledger, evidence, initialWe
         week,
         format,
         objective,
-        poolEntries,
-        sims: DEFAULT_SIMS,
+        poolEntries: contestReport?.config.entries ?? poolEntries,
+        sims: contestReport?.sims ?? DEFAULT_SIMS,
         modelVersion: MODEL_VERSION,
         baselineExpectedPoints: plan.baselineEval.expectedPoints,
         recommendedExpectedPoints: activeEval?.expectedPoints ?? plan.recommendedEval.expectedPoints,
@@ -586,6 +607,8 @@ export default function PickemClient({ slate, pools, ledger, evidence, initialWe
           favoriteBias,
           skillSigma: FIELD_SKILL_SIGMA,
           chalkFraction,
+          selectionSeed: 20260907, evaluationSeed: 20260908,
+          contestComparison: contestReport,
           observedGames: games.length - modeledFieldCount,
           modeledGames: modeledFieldCount,
         },
@@ -611,13 +634,19 @@ export default function PickemClient({ slate, pools, ledger, evidence, initialWe
           )}
         </div>
         <p className="max-w-4xl text-sm text-muted-foreground">
-          The entry that scores the most points and the entry most likely to{" "}
-          <strong className="text-foreground">win the pool</strong> are different entries. This page
-          computes the first one exactly, prices every step away from it exactly, and then simulates
-          whether that price is worth paying against a field of your pool&apos;s size.
+          Start with the card that maximizes expected correct picks. With your pool rules and standings,
+          compare the price of a different card against its simulated weekly and season prize value.
+          Missing pool information keeps those prize estimates unavailable.
         </p>
       </header>
       <PickemTabs active="board" />
+      {format === "straight" && <ContestPolicyPanel key={`${poolId}-${week}`} games={games}
+        future={slate.games.filter(g => g.week > week && !g.completed).map(g => ({ ...g, fieldHomePct: null }))}
+        model={fieldModel} poolId={poolId} initialConfig={activePool?.config} onReport={setContestReport}
+        onAdopt={entry => { setObjective("ev"); setOverrides(prev => {
+          const next = { ...prev }; games.forEach((g, i) => { if(g.kickoff && Date.parse(g.kickoff)>Date.now()) next[g.gameId] = { ...next[g.gameId], pickHome: entry.pickHome[i] }; }); return next;
+        }); }} />}
+      {world?.warnings.length ? <p className="text-xs text-muted-foreground">Field sensitivity: {[...new Set(world.warnings)].join(". ")}</p> : null}
       <OddsFreshnessBanner games={weekGames} evidence={evidence} now={reviewAt} week={week} />
 
       {/* ---- controls --------------------------------------------------- */}
@@ -646,7 +675,7 @@ export default function PickemClient({ slate, pools, ledger, evidence, initialWe
           Week
           <select
             value={week}
-            onChange={(e) => setWeek(Number(e.target.value))}
+            onChange={(e) => { setWeek(Number(e.target.value)); setContestReport(null); }}
             className="h-8 rounded border bg-background px-2 text-sm"
           >
             {slate.weeks.map((w) => (
@@ -741,10 +770,10 @@ export default function PickemClient({ slate, pools, ledger, evidence, initialWe
         <div className="ml-auto flex items-center gap-2">
           <button
             onClick={freezeCard}
-            disabled={pending || games.length === 0 || weekHasStarted}
+            disabled={pending || games.length === 0 || (weekHasStarted && !perGameFreeze)}
             className="inline-flex items-center gap-1.5 rounded border border-emerald-500/50 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-500/20 disabled:opacity-40 dark:text-emerald-400"
             title={
-              weekHasStarted
+              weekHasStarted && !perGameFreeze
                 ? "This week has already started — a card frozen after kickoff is hindsight."
                 : "Freeze this card and the max-points baseline into the ledger"
             }
@@ -1500,8 +1529,8 @@ export default function PickemClient({ slate, pools, ledger, evidence, initialWe
         {liveLedger.length === 0 ? (
           <p className="p-4 text-sm text-muted-foreground">
             Nothing frozen yet. Set the week and objective above, then{" "}
-            <strong className="text-foreground">Freeze card</strong> before the first kickoff. A card
-            can only be frozen while every game is still ahead of it.
+            <strong className="text-foreground">Freeze card</strong> before first kickoff. For per-game
+            pools, capture completed-game entry scores and compare again to freeze only remaining games.
           </p>
         ) : (
           <>
@@ -1606,6 +1635,7 @@ export default function PickemClient({ slate, pools, ledger, evidence, initialWe
                           <div className="font-mono text-[10px]">
                             {r.poolEntries} entries · {r.format}
                           </div>
+                          {r.fieldModel.frozenScope === "remaining_unlocked_games" && <div className="text-[10px]">Remaining games only; completed entry scores retained in the frozen comparison.</div>}
                         </td>
                         <td className="px-3 py-2">
                           <span
@@ -1625,7 +1655,7 @@ export default function PickemClient({ slate, pools, ledger, evidence, initialWe
                         </td>
                         <td className="px-3 py-2 text-right font-mono tabular-nums">
                           {r.baselineActualPoints != null
-                            ? r.baselineActualPoints.toFixed(0)
+                            ? r.baselineActualPoints.toFixed(1)
                             : r.baselineExpectedPoints?.toFixed(1) ?? "—"}
                           {r.baselineActualPoints == null && (
                             <span className="ml-1 text-[9px] uppercase text-muted-foreground">exp</span>
@@ -1633,7 +1663,7 @@ export default function PickemClient({ slate, pools, ledger, evidence, initialWe
                         </td>
                         <td className="px-3 py-2 text-right font-mono tabular-nums">
                           {r.recommendedActualPoints != null
-                            ? r.recommendedActualPoints.toFixed(0)
+                            ? r.recommendedActualPoints.toFixed(1)
                             : r.recommendedExpectedPoints?.toFixed(1) ?? "—"}
                           {r.recommendedActualPoints == null && (
                             <span className="ml-1 text-[9px] uppercase text-muted-foreground">exp</span>
@@ -1650,7 +1680,7 @@ export default function PickemClient({ slate, pools, ledger, evidence, initialWe
                                   : "text-muted-foreground"
                           }`}
                         >
-                          {delta == null ? "—" : `${delta >= 0 ? "+" : ""}${delta.toFixed(0)}`}
+                          {delta == null ? "—" : `${delta >= 0 ? "+" : ""}${delta.toFixed(1)}`}
                         </td>
                         <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground">
                           {r.brier != null ? r.brier.toFixed(3) : "—"}
@@ -1748,7 +1778,7 @@ export default function PickemClient({ slate, pools, ledger, evidence, initialWe
             <p>
               <strong className="text-foreground">3. Deviation has an exact price.</strong> Swapping
               two confidence weights costs <code className="font-mono">(cᵢ−cⱼ)(pᵢ−pⱼ)</code>; flipping a
-              side costs <code className="font-mono">c(2p−1)</code>. Nothing about those numbers is
+              side costs <code className="font-mono">c(1−t)(2p−1)</code> for tie chance t and conditional win chance p. Nothing about those numbers is
               estimated, which is why every move this page suggests arrives with its bill attached.
             </p>
             <p>
@@ -1850,10 +1880,13 @@ export default function PickemClient({ slate, pools, ledger, evidence, initialWe
 
         <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">
           Win probabilities come from <code className="font-mono">nfl_game_win_probs</code>, the same
-          table the survivor page reads, with tie probability renormalised away (a pool scores two
-          outcomes, not three). Simulation: {DEFAULT_SIMS.toLocaleString()} slates,{" "}
-          {SAMPLE_OPPONENTS} sampled opponents per slate, common random numbers so candidate entries
-          are compared under identical draws. Model {slate.modelVersion ?? "—"}, computed{" "}
+          table the survivor page reads. Displayed home/away chances are conditional on no tie;
+          simulations also retain the separate tie chance. The weekly illustration gives game ties zero
+          points; the configured prize comparison uses your pool&apos;s selected tie rule and includes
+          season prizes when standings and remaining-week scenarios are complete. Weekly illustration:
+          {" "}{DEFAULT_SIMS.toLocaleString()} slates, {SAMPLE_OPPONENTS} sampled opponents per slate.
+          Selection and evaluation use independent draws; candidates share draws within each comparison.
+          Model {slate.modelVersion ?? "—"}, computed{" "}
           {slate.computedAt ?? "—"}. Page loaded {loadedAt}.
         </p>
       </section>

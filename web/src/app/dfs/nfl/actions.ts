@@ -5,6 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { restoreSavedLineups, savedSlateLabel } from '@/lib/nfl-dfs/saved-workspace';
 import { and, desc, eq, or, sql } from "drizzle-orm";
 import { db } from "@/db";
+import {readMatchupComparison,type MatchupProjectionComparison} from '@/db/nfl-matchup';
 import { ensureNflDfsTables } from "@/db/ensure-schema";
 import {
   nflDfsLineups,
@@ -1001,6 +1002,7 @@ export async function readNflOptimizerAudit(runId:string) {
 
 export type NflProjectionExplanation = {
   ok: true;
+  matchupComparison: MatchupProjectionComparison | null;
   player: { name: string; position: string; team: string; opponent: string | null; salary: number | null };
   status: string;                       // historical | position_prior | unavailable | out
   projection: number | null;            // model_proj_fpts — the headline number
@@ -1106,6 +1108,7 @@ export async function explainNflPlayerProjection(
 
   return {
     ok: true,
+    matchupComparison: await readMatchupComparison(uploadId,slateRow.ffPlayerId),
     player: { name: slateRow.name, position: slateRow.position, team: slateRow.team,
               opponent: slateRow.opponent, salary: slateRow.salary },
     projectionScenario: here?.projectionScenario ?? 'baseline_simulation',

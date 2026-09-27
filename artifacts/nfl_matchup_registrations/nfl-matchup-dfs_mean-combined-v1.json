@@ -1,0 +1,101 @@
+{
+  "status": "registered",
+  "registered_at": "2026-09-27T14:19:53.382080+00:00",
+  "holdout_start_at": "2026-09-27T14:19:53.382080+00:00",
+  "holdout_end_at": "2026-12-01T00:00:00+00:00",
+  "development_note": "All 2023-2025 data are retrospective development; no held-out historical performance or tuning split is claimed. Fixed priors/settings are declared before prospective evaluation.",
+  "feature_versions": {
+    "shared": "nfl-matchup-features-v1"
+  },
+  "source_versions": {
+    "pfr": "nflverse_pfr_fields_percentage_points",
+    "pbp": "retained-source-revision-manifest"
+  },
+  "candidate_config_hash": "328c5854d91b8cc43f17eac9bae722413e333c4624ae7167978b85065675db9c",
+  "baseline_config_hash": "7b4f1cc538f694e24716cdfeb5483b69b09e09b774d3618239158f5f6ef1b600",
+  "family_size": 6,
+  "seed": 20260927,
+  "bootstrap_draws": 10000,
+  "fallback": "exact_frozen_approved_baseline",
+  "rollback": {
+    "weeks": 8,
+    "rule": "primary_delta_lower_ci_above_zero_or_guardrail_harm"
+  },
+  "calibration_bins": [
+    0.0,
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9,
+    1.0
+  ],
+  "study_id": "nfl-matchup-dfs_mean-combined-v1",
+  "kind": "dfs_mean",
+  "consumer": "nfl_dfs_projection",
+  "hypothesis": "combined matchup evidence improves the registered same-input forecast beyond its frozen baseline.",
+  "cohort": {
+    "positions": [
+      "QB",
+      "RB"
+    ]
+  },
+  "affected_positions": [
+    "QB",
+    "RB"
+  ],
+  "components": [
+    "pressure",
+    "contact"
+  ],
+  "scoring_version": "nfl-dk-realized-v2",
+  "gates": {
+    "min_weeks": 8,
+    "min_rows": 200,
+    "min_games": 50,
+    "primary_metric": "mean_absolute_error",
+    "primary_materiality": 0.05,
+    "mean_harm": 0.1,
+    "position_mean_harm": 0.1,
+    "p90_harm": 0.05,
+    "boom_thresholds": {
+      "QB": 30,
+      "RB": 25
+    },
+    "boom_brier_harm": 0.01,
+    "coverage_harm": 0.02,
+    "width_harm": 2.0,
+    "interval_alphas": [
+      0.2
+    ]
+  },
+  "development_start_at": "2023-01-01T00:00:00+00:00",
+  "development_end_at": "2026-03-01T00:00:00+00:00",
+  "tuning_mode": "fixed_prior_no_tuning",
+  "model_artifacts": {
+    "pressure": "49b6d36be15e5c854ed75d2213554fbcd80fa547c81e12458c9e0aab872f839f",
+    "contact": "39b53ecff13299f0265794d2459f5ab2ecb7e25caf4a293b9602ab3f0be2d3dc"
+  },
+  "model_version": "nfl-dfs-historical-v5",
+  "parameter_contract": {
+    "ridge": 20.0,
+    "intercept": false,
+    "max_relative_efficiency_adjustment": 0.1,
+    "minimum_development_rows": 100,
+    "affected_stats": {
+      "pressure": [
+        "passing_yards"
+      ],
+      "contact": [
+        "rushing_yards"
+      ]
+    },
+    "pressure_min_games_each_side": 2,
+    "contact_min_rb_carries_each_side": 20,
+    "lookback_games": 4
+  }
+}

@@ -1,0 +1,174 @@
+{
+  "pressure": {
+    "version": "nfl-matchup-shadow-v1",
+    "family": "pressure",
+    "status": "research_fitted",
+    "authority": "shadow_only",
+    "features": [
+      "own_pressure",
+      "opp_pressure"
+    ],
+    "center": [
+      20.858200947603123,
+      20.86158723522854
+    ],
+    "scale": [
+      6.115402002061526,
+      6.034262168944055
+    ],
+    "coefficients": [
+      0.021729113297050816,
+      -0.0660832693609381
+    ],
+    "ridge": 20.0,
+    "max_efficiency_change": 0.1,
+    "n": 1196,
+    "training_rows_digest": "e402161b457d6e9198448447ad440f95b257ac92e42f9604ba4030a72a34aace",
+    "source_manifest": {
+      "files": [
+        {
+          "path": "data\\pfr\\matchup-development\\advstats_week_pass_2023.csv",
+          "source_url": "https://github.com/nflverse/nflverse-data/releases/download/pfr_advstats/advstats_week_pass_2023.csv",
+          "sha256": "49c06072012f206781838c4af18d5eba988f716c059009714de51e3c9a59f070",
+          "observed_at": "2026-09-27T14:03:52.871522+00:00",
+          "historical_availability": "retrospective_development_only"
+        },
+        {
+          "path": "data\\pfr\\matchup-development\\advstats_week_rush_2023.csv",
+          "source_url": "https://github.com/nflverse/nflverse-data/releases/download/pfr_advstats/advstats_week_rush_2023.csv",
+          "sha256": "ff1c7ae7483dde1e8f006396815c6c3a0570751eb8703adadeb42562cbd506eb",
+          "observed_at": "2026-09-27T14:03:52.946172+00:00",
+          "historical_availability": "retrospective_development_only"
+        },
+        {
+          "path": "data\\pfr\\matchup-development\\advstats_week_pass_2024.csv",
+          "source_url": "https://github.com/nflverse/nflverse-data/releases/download/pfr_advstats/advstats_week_pass_2024.csv",
+          "sha256": "64f466fdf19d7da0e6c2057c758d1709fd23666a3a07941c709f40680b112033",
+          "observed_at": "2026-09-27T14:03:52.910860+00:00",
+          "historical_availability": "retrospective_development_only"
+        },
+        {
+          "path": "data\\pfr\\matchup-development\\advstats_week_rush_2024.csv",
+          "source_url": "https://github.com/nflverse/nflverse-data/releases/download/pfr_advstats/advstats_week_rush_2024.csv",
+          "sha256": "6e61097bacd6bd3311b70229d316803cd7d8f1f40f8310111d172169d197b365",
+          "observed_at": "2026-09-27T14:03:53.271934+00:00",
+          "historical_availability": "retrospective_development_only"
+        },
+        {
+          "path": "data\\pfr\\matchup-development\\advstats_week_pass_2025.csv",
+          "source_url": "https://github.com/nflverse/nflverse-data/releases/download/pfr_advstats/advstats_week_pass_2025.csv",
+          "sha256": "79cd92f9a3b46a3fcc50904b3199b39303f7cab8b484040a1cb2b2c3bf51bd40",
+          "observed_at": "2026-09-27T14:03:53.252139+00:00",
+          "historical_availability": "retrospective_development_only"
+        },
+        {
+          "path": "data\\pfr\\matchup-development\\advstats_week_rush_2025.csv",
+          "source_url": "https://github.com/nflverse/nflverse-data/releases/download/pfr_advstats/advstats_week_rush_2025.csv",
+          "sha256": "a348586c1d392b64fa3c0947d652fb5f0ecab76a04ed3035d59834a99183027b",
+          "observed_at": "2026-09-27T14:03:53.307903+00:00",
+          "historical_availability": "retrospective_development_only"
+        }
+      ],
+      "history_digest": "f251316fb28239237a6b7b103a31bfe49308d0155981d9da5a08f4ad8b31c19c",
+      "crosswalk_digest": "9e035028dab8d097ae0a15de6a31676932413cf630f395dd085cb01723abdc9f",
+      "training_window": "2023-2025 regular season",
+      "availability": "retrospective_development_only",
+      "baseline": "previous eight player games opportunity-weighted efficiency; prospective gate compares exact v5",
+      "test_outcomes_used": false
+    },
+    "target": "yards_per_attempt_residual",
+    "forward_weeks": 0,
+    "production_qualified": false,
+    "artifact_hash": "49b6d36be15e5c854ed75d2213554fbcd80fa547c81e12458c9e0aab872f839f"
+  },
+  "contact": {
+    "version": "nfl-matchup-shadow-v1",
+    "family": "contact",
+    "status": "research_fitted",
+    "authority": "shadow_only",
+    "features": [
+      "own_ybc",
+      "opp_ybc",
+      "own_yac",
+      "opp_yac"
+    ],
+    "center": [
+      2.397074190019705,
+      2.400816986417864,
+      1.9629718141028567,
+      1.9501358711400958
+    ],
+    "scale": [
+      0.6938691713797828,
+      0.7071072929478935,
+      0.5967914909232427,
+      0.5859562570267077
+    ],
+    "coefficients": [
+      -0.2658549234687911,
+      0.11349633633519711,
+      -0.18630545091443773,
+      0.06384513446698857
+    ],
+    "ridge": 20.0,
+    "max_efficiency_change": 0.1,
+    "n": 1837,
+    "training_rows_digest": "fcb66ad113be923c7c3a07dcdd06346b64d9d5cf164052168ebf01a959dd4e4a",
+    "source_manifest": {
+      "files": [
+        {
+          "path": "data\\pfr\\matchup-development\\advstats_week_pass_2023.csv",
+          "source_url": "https://github.com/nflverse/nflverse-data/releases/download/pfr_advstats/advstats_week_pass_2023.csv",
+          "sha256": "49c06072012f206781838c4af18d5eba988f716c059009714de51e3c9a59f070",
+          "observed_at": "2026-09-27T14:03:52.871522+00:00",
+          "historical_availability": "retrospective_development_only"
+        },
+        {
+          "path": "data\\pfr\\matchup-development\\advstats_week_rush_2023.csv",
+          "source_url": "https://github.com/nflverse/nflverse-data/releases/download/pfr_advstats/advstats_week_rush_2023.csv",
+          "sha256": "ff1c7ae7483dde1e8f006396815c6c3a0570751eb8703adadeb42562cbd506eb",
+          "observed_at": "2026-09-27T14:03:52.946172+00:00",
+          "historical_availability": "retrospective_development_only"
+        },
+        {
+          "path": "data\\pfr\\matchup-development\\advstats_week_pass_2024.csv",
+          "source_url": "https://github.com/nflverse/nflverse-data/releases/download/pfr_advstats/advstats_week_pass_2024.csv",
+          "sha256": "64f466fdf19d7da0e6c2057c758d1709fd23666a3a07941c709f40680b112033",
+          "observed_at": "2026-09-27T14:03:52.910860+00:00",
+          "historical_availability": "retrospective_development_only"
+        },
+        {
+          "path": "data\\pfr\\matchup-development\\advstats_week_rush_2024.csv",
+          "source_url": "https://github.com/nflverse/nflverse-data/releases/download/pfr_advstats/advstats_week_rush_2024.csv",
+          "sha256": "6e61097bacd6bd3311b70229d316803cd7d8f1f40f8310111d172169d197b365",
+          "observed_at": "2026-09-27T14:03:53.271934+00:00",
+          "historical_availability": "retrospective_development_only"
+        },
+        {
+          "path": "data\\pfr\\matchup-development\\advstats_week_pass_2025.csv",
+          "source_url": "https://github.com/nflverse/nflverse-data/releases/download/pfr_advstats/advstats_week_pass_2025.csv",
+          "sha256": "79cd92f9a3b46a3fcc50904b3199b39303f7cab8b484040a1cb2b2c3bf51bd40",
+          "observed_at": "2026-09-27T14:03:53.252139+00:00",
+          "historical_availability": "retrospective_development_only"
+        },
+        {
+          "path": "data\\pfr\\matchup-development\\advstats_week_rush_2025.csv",
+          "source_url": "https://github.com/nflverse/nflverse-data/releases/download/pfr_advstats/advstats_week_rush_2025.csv",
+          "sha256": "a348586c1d392b64fa3c0947d652fb5f0ecab76a04ed3035d59834a99183027b",
+          "observed_at": "2026-09-27T14:03:53.307903+00:00",
+          "historical_availability": "retrospective_development_only"
+        }
+      ],
+      "history_digest": "f251316fb28239237a6b7b103a31bfe49308d0155981d9da5a08f4ad8b31c19c",
+      "crosswalk_digest": "9e035028dab8d097ae0a15de6a31676932413cf630f395dd085cb01723abdc9f",
+      "training_window": "2023-2025 regular season",
+      "availability": "retrospective_development_only",
+      "baseline": "previous eight player games opportunity-weighted efficiency; prospective gate compares exact v5",
+      "test_outcomes_used": false
+    },
+    "target": "yards_per_carry_residual",
+    "forward_weeks": 0,
+    "production_qualified": false,
+    "artifact_hash": "39b53ecff13299f0265794d2459f5ab2ecb7e25caf4a293b9602ab3f0be2d3dc"
+  }
+}

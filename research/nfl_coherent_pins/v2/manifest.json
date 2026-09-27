@@ -1,0 +1,20 @@
+{
+  "study_id": "nfl-coherent-matchup-v2",
+  "model_version": "nfl-coherent-matchup-research-v2",
+  "source_files_sha256_lf": {
+    "model/nfl_matchup_scenarios.py": "91bc6f075541350c38c095cf64b50d660aeadc937840185946009497acc887a2",
+    "model/nfl_dfs_efficiency.py": "276e6f37e88c5a70852b02f394a3b241f825cbfefbc488cc724dc2d34ccf40ba",
+    "model/nfl_dfs_workload.py": "a7f60305d4d0288bba106dc36fd59617cf8fc69be5ade07cc4b9a697c0a53283",
+    "ingest/nfl_dfs_results.py": "bc5b1b3270d0a102418c82401cbacda183ee70b1f35e923061a03ba3947ae225",
+    "research/nfl_coherent_scenario_export.py": "fd8b3cfbb7235576fb0f82a7bd5843d488403b60befc25652585b8ec4e4d015a",
+    "model/nfl_matchup_projection.py": "93ab2c8f314f1746ea60673582ebe267aa1d2a6f805125ed2c1a46cd57bd37d2",
+    "model/nfl_dfs_historical.py": "e68c45b32151a8fb77f94eb295d181ec5ad5881ee6b3384fb04e4a95b28b5b55",
+    "research/nfl_matchup_scenario_export.py": "943d284ebae7e6915617b1092e49c4a8b4a44888730f471b1fe875131168deaf",
+    "web/src/lib/nfl-dfs/scoring.ts": "83e8b8c293519e7605f4d5be76a302bd442835fa4dc43a6d02744922a5729e3c",
+    "web/src/lib/nfl-dfs/scenarios.ts": "98ed595731bc69ee1fcde4d9c42109880382cff3dbf480ce0f0043fdf46e2fd9",
+    "web/src/lib/nfl-dfs/portfolio-selection.ts": "2d1160dbed00c4dd2bd24d94dbd81a6550054b2d1bbd377d292a459eaa2c1b31",
+    "web/src/lib/nfl-dfs/matchup-contest.ts": "ece4314c037379d69db32a408bed392e7070b466340d9bda5d79d52ba763d79a",
+    "web/src/app/dfs/nfl/nfl-optimizer-shadow.ts": "b698ecf87515fa10179460886fee1392ec1fff4caae9e941cb4e514a5c689c1d"
+  },
+  "purpose": "Immutable historical v2 source bundle. Restore at original relative paths in a separate replay checkout; never replace current production files."
+}

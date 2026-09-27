@@ -1,0 +1,53 @@
+{
+  "version": "nfl-context-outcome-compatibility-v1",
+  "registered_at": "2026-09-27T15:45:13.637239+00:00",
+  "original_gate_registration": "2026-09-22",
+  "reason": "Merged main uses realized-v3 for PBP DST scoring. AST-equal skill-position scoring and SCORING_FIELDS preserve the original QB/RB/WR/TE paired estimand and eight-week gates. V3 DST is excluded from this context study; no changed DST scores are pooled with v2. Forecasts, carries formula, shadow pin, gate thresholds, and first eight scorable weeks are unchanged. Only v3 outcome revisions computed after this declaration can enter.",
+  "outcomes_consulted": false,
+  "equivalence_proof": {
+    "ingest/nfl_dfs_results.py:score_source_row": {
+      "equal_ast": true,
+      "ast_sha256": "60a185408b0341d014689c0b04163ed45e29ea6492bc4c8e99a9d695f89a53b2"
+    },
+    "ingest/nfl_dfs_results.py:_number": {
+      "equal_ast": true,
+      "ast_sha256": "5f3279952e577faf469fbeaa65e5861f016c6d576deaf9b66ac770c63a6af9a7"
+    },
+    "model/nfl_dfs_historical.py:draftkings_points": {
+      "equal_ast": true,
+      "ast_sha256": "ffa62ea431fa7740d76e521f2e59f93ba8b38c34604deaf69c65a7b48299be3d"
+    }
+  },
+  "scoring_fields_equal_ast": true,
+  "hash_algorithm": "sha256_lf_normalized",
+  "versions": {
+    "nfl-dk-realized-v2": {
+      "positions": [
+        "QB",
+        "RB",
+        "WR",
+        "TE",
+        "DST"
+      ],
+      "implementation_hashes": {
+        "ingest/nfl_dfs_results.py": "bc5b1b3270d0a102418c82401cbacda183ee70b1f35e923061a03ba3947ae225",
+        "model/nfl_dfs_historical.py": "e68c45b32151a8fb77f94eb295d181ec5ad5881ee6b3384fb04e4a95b28b5b55"
+      }
+    },
+    "nfl-dk-realized-v3": {
+      "positions": [
+        "QB",
+        "RB",
+        "WR",
+        "TE"
+      ],
+      "effective_at": "2026-09-27T15:45:13.637239+00:00",
+      "implementation_hashes": {
+        "ingest/nfl_dfs_results.py": "f85b13bb33a1533658f883ce9c264f6c3f45d4b82b2992772eeffcf3ffe3dcb2",
+        "model/nfl_dfs_historical.py": "e68c45b32151a8fb77f94eb295d181ec5ad5881ee6b3384fb04e4a95b28b5b55",
+        "model/nfl_dst_components.py": "52adf221bef481df191c0df2b235401771d6985e8c32074fd82c8ee7925d88da",
+        "model/nfl_team_aliases.py": "47035370d763ec3064650c4d0bb9c02c4885b692998b4c7e667bde6c5e53e7bf"
+      }
+    }
+  }
+}

@@ -1081,6 +1081,7 @@ const PICKEM_DDLS = [
       CHECK (format IN ('confidence', 'straight')),
       CHECK (pool_entries >= 1)
   )`,
+  `ALTER TABLE pickem_pools ADD COLUMN IF NOT EXISTS config_json JSONB`,
   // Append-only. A changed recommendation for the same pool-week inserts a new
   // row and marks the old one superseded; nothing is ever rewritten, because
   // the question this table has to answer later is "what did it say, and when".
@@ -1166,6 +1167,8 @@ END $$;`,
   `CREATE INDEX IF NOT EXISTS idx_pickem_recs_live ON pickem_recommendations(season, status) WHERE superseded_by IS NULL`,
   `CREATE INDEX IF NOT EXISTS idx_pickem_rec_games ON pickem_recommendation_games(recommendation_id)`,
   `ALTER TABLE pickem_recommendation_games ADD COLUMN IF NOT EXISTS evidence_json JSONB`,
+  `ALTER TABLE pickem_recommendation_games ADD COLUMN IF NOT EXISTS result_tie BOOLEAN`,
+  `ALTER TABLE pickem_recommendation_games ADD COLUMN IF NOT EXISTS result_revisions JSONB NOT NULL DEFAULT '[]'::jsonb`,
   `CREATE TABLE IF NOT EXISTS pickem_news (
     id BIGSERIAL PRIMARY KEY,
     game_id INTEGER NOT NULL REFERENCES nfl_season_games(id),

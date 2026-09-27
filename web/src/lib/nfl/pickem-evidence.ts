@@ -1,4 +1,5 @@
 /** Shared evidence contracts and decision arithmetic. No inferred injury adjustments. */
+import type { PfrEvidence } from "./pickem-pfr";
 export type MarketQuote = {
   capturedAt: string;
   pHome: number | null;
@@ -31,6 +32,8 @@ export type Performance = {
   kickReturnTdsAllowed: number;
 };
 export type GameEvidence = {
+  matchup?: import("./pickem-matchup").MatchupForecast | null;
+  pfr?: PfrEvidence[];
   opening: MarketQuote | null;
   latest: MarketQuote | null;
   news: PickemNews[];
@@ -44,6 +47,9 @@ export type PickemEvidence = {
 };
 export type PickemScenario = { pHome: number; reason: string };
 export type FrozenEvidence = GameEvidence & {
+  pTie?: number | null;
+  tiePoints?: number;
+  fieldObservation?: import("./pickem-strategy").PickemGame["fieldObservation"] | null;
   version: 1;
   recordedAt: string;
   probabilityComputedAt: string | null;

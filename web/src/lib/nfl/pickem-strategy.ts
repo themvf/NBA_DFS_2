@@ -47,8 +47,17 @@ export type PickemGame = {
   week: number;
   homeAbbrev: string;
   awayAbbrev: string;
-  /** Our probability that the HOME team wins. Ties are folded in by the caller. */
+  /** Probability that the HOME team wins, conditional on no tie. */
   pHome: number;
+  /** Probability of a game tie; pHome remains conditional on no tie. */
+  pTie?: number | null;
+  fieldObservation?: {
+    population: "rivals" | "all" | "unknown";
+    entryCount: number | null;
+    observedOwnHomePick: boolean | null;
+    capturedAt: string | null;
+    source: string;
+  };
   provenance: string;
   kickoff: string | null;
   completed: boolean;
@@ -153,7 +162,7 @@ export function fieldHomeShare(game: PickemGame, model: FieldModel): {
   source: "observed" | "modeled";
 } {
   if (game.fieldHomePct != null && Number.isFinite(game.fieldHomePct)) {
-    return { share: Math.min(Math.max(game.fieldHomePct, 0.01), 0.99), source: "observed" };
+    return { share: Math.min(Math.max(game.fieldHomePct, 0), 1), source: "observed" };
   }
   return { share: sigmoid(model.favoriteBias * logit(game.pHome)), source: "modeled" };
 }
@@ -164,7 +173,18 @@ export function fieldHomeShare(game: PickemGame, model: FieldModel): {
 
 /** P(this entry's pick on game i is correct). */
 export function pickProbability(game: PickemGame, pickHome: boolean): number {
-  return pickHome ? game.pHome : 1 - game.pHome;
+  return (1 - tieProbability(game)) * (pickHome ? game.pHome : 1 - game.pHome);
+}
+
+export function tieProbability(game: PickemGame): number {
+  if (game.pTie == null) return 0; // Explicitly reported as a sensitivity in resolveField.
+  if (!Number.isFinite(game.pTie) || game.pTie < 0 || game.pTie > 1) throw new Error("Invalid tie probability");
+  return game.pTie;
+}
+
+export type GameOutcome = boolean | null;
+export function outcomePoints(pickHome: boolean, outcome: GameOutcome, tiePoints = 0): number {
+  return outcome === null ? tiePoints : Number(pickHome === outcome);
 }
 
 export function expectedPoints(games: PickemGame[], entry: Entry): number {
@@ -186,7 +206,7 @@ export function evOptimalEntry(games: PickemGame[], format: PoolFormat): Entry {
   const confidence = new Array<number>(n).fill(1);
   if (format === "confidence") {
     const order = games
-      .map((g, i) => ({ i, edge: Math.max(g.pHome, 1 - g.pHome) }))
+      .map((g, i) => ({ i, edge: Math.max(pickProbability(g, true), pickProbability(g, false)) }))
       .sort((a, b) => b.edge - a.edge);
     order.forEach((row, rank) => {
       confidence[row.i] = n - rank;
@@ -204,8 +224,44 @@ export function swapCost(games: PickemGame[], entry: Entry, i: number, j: number
 
 /** Exact expected-points cost of flipping game i to the other side. */
 export function flipCost(games: PickemGame[], entry: Entry, i: number): number {
-  const p = pickProbability(games[i], entry.pickHome[i]);
-  return entry.confidence[i] * (2 * p - 1);
+  return entry.confidence[i] * (pickProbability(games[i], entry.pickHome[i]) -
+    pickProbability(games[i], !entry.pickHome[i]));
+}
+
+/** Preserve total rival marginals while varying complete-card dependence. */
+export function resolveField(games: PickemGame[], model: FieldModel, poolEntries: number) {
+  if (!Number.isInteger(poolEntries) || poolEntries < 1) throw new Error("Pool entries must be a positive integer");
+  const rivalCount = poolEntries - 1;
+  const warnings: string[] = [];
+  const shares = games.map(g => {
+    const field = fieldHomeShare(g, model);
+    let share = field.share;
+    if (field.source === "observed" && rivalCount > 0) {
+      const o = g.fieldObservation;
+      if (!o || o.population === "unknown") warnings.push(`${g.gameId}: pick-share population unknown; rivals-only sensitivity`);
+      else if (o.population === "all") {
+        if (o.entryCount !== poolEntries || o.observedOwnHomePick == null) {
+          warnings.push(`${g.gameId}: cannot remove own entry; using modeled rival share`);
+          return { share: sigmoid(model.favoriteBias * logit(g.pHome)), source: "modeled" as const };
+        }
+        share = (poolEntries * share - Number(o.observedOwnHomePick)) / rivalCount;
+        if (share < -EPS || share > 1 + EPS) throw new Error(`${g.gameId}: inconsistent whole-pool observation`);
+        share = Math.min(1, Math.max(0, share));
+      } else if (o.entryCount != null && o.entryCount !== rivalCount) {
+        warnings.push(`${g.gameId}: observed rival count differs; treating share as sensitivity`);
+      }
+    }
+    if (g.pTie == null) warnings.push(`${g.gameId}: tie probability unavailable; zero-tie sensitivity`);
+    return { ...field, share };
+  });
+  const requestedChalk = Math.round(rivalCount * Math.min(1, Math.max(0, model.chalkFraction ?? 0)));
+  const maxChalk = Math.floor(rivalCount * Math.min(1, ...shares.map((s, i) => games[i].pHome >= .5 ? s.share : 1 - s.share)) + EPS);
+  const chalkRivals = Math.min(requestedChalk, maxChalk);
+  if (chalkRivals !== requestedChalk) warnings.push(`All-favorite rivals reduced from ${requestedChalk} to ${chalkRivals} to preserve observed shares`);
+  const noisyRivals = rivalCount - chalkRivals;
+  const nonChalkShares = shares.map((s, i) => noisyRivals === 0 ? s.share :
+    Math.min(1, Math.max(0, (rivalCount * s.share - chalkRivals * Number(games[i].pHome >= .5)) / noisyRivals)));
+  return { rivalCount, chalkRivals, noisyRivals, shares, nonChalkShares, warnings };
 }
 
 // ---------------------------------------------------------------------------
@@ -233,17 +289,20 @@ export type SimulatedWorld = {
   /** Score the all-favourites card achieves in sim s. */
   chalkScores: Float64Array;
   /** outcomes[s][g] === true when HOME won in sim s. */
-  outcomes: boolean[][];
+  outcomes: GameOutcome[][];
   /** Sorted NOISY opponent scores for sim s. */
   oppScores: Float64Array[];
   fieldSources: Array<"observed" | "modeled">;
+  warnings: string[];
+  tiePoints: number;
+  seed: number;
 };
 
 export function simulateWorld(
   games: PickemGame[],
   format: PoolFormat,
   model: FieldModel,
-  options: { sims: number; poolEntries: number; sampleOpponents?: number; seed?: number },
+  options: { sims: number; poolEntries: number; sampleOpponents?: number; seed?: number; tiePoints?: number },
 ): SimulatedWorld {
   const n = games.length;
   const sims = Math.max(1, options.sims);
@@ -251,19 +310,19 @@ export function simulateWorld(
   const opponents = Math.max(1, Math.min(rivalCount || 1, options.sampleOpponents ?? 240));
   const rng = makeRng(options.seed ?? 12345);
 
-  const shares = games.map((g) => fieldHomeShare(g, model));
+  const resolved = resolveField(games, model, options.poolEntries);
+  const { shares, nonChalkShares, chalkRivals, noisyRivals } = resolved;
   const fieldSources = shares.map((s) => s.source);
 
   // Chalk rivals submit the EV-optimal card itself -- every favourite, and in
   // a confidence pool ranked by probability. They are scored analytically in
   // evaluateEntry rather than sampled, because they have no randomness in them.
-  const chalkFraction = Math.min(Math.max(model.chalkFraction ?? 0, 0), 1);
-  const chalkRivals = Math.round(rivalCount * chalkFraction);
-  const noisyRivals = rivalCount - chalkRivals;
   const chalkEntry = evOptimalEntry(games, format);
   const chalkScores = new Float64Array(sims);
 
-  const outcomes: boolean[][] = new Array(sims);
+  const outcomes: GameOutcome[][] = new Array(sims);
+  const tiePoints = options.tiePoints ?? 0;
+  if (![0, .5, 1].includes(tiePoints)) throw new Error("Unsupported game-tie score");
   const oppScores: Float64Array[] = new Array(sims);
 
   // Opponent confidence orderings are redrawn per opponent per sim: two people
@@ -273,13 +332,16 @@ export function simulateWorld(
   const idx = new Array<number>(n);
 
   for (let s = 0; s < sims; s += 1) {
-    const outcome = new Array<boolean>(n);
-    for (let g = 0; g < n; g += 1) outcome[g] = rng() < games[g].pHome;
+    const outcome = new Array<GameOutcome>(n);
+    for (let g = 0; g < n; g += 1) {
+      const draw = rng(), tie = tieProbability(games[g]);
+      outcome[g] = draw < tie ? null : draw < tie + (1 - tie) * games[g].pHome;
+    }
     outcomes[s] = outcome;
 
     let chalkScore = 0;
     for (let g = 0; g < n; g += 1) {
-      if (chalkEntry.pickHome[g] === outcome[g]) chalkScore += chalkEntry.confidence[g];
+      chalkScore += chalkEntry.confidence[g] * outcomePoints(chalkEntry.pickHome[g], outcome[g], tiePoints);
     }
     chalkScores[s] = chalkScore;
 
@@ -300,8 +362,8 @@ export function simulateWorld(
       }
       let score = 0;
       for (let g = 0; g < n; g += 1) {
-        const tookHome = rng() < shares[g].share;
-        if (tookHome === outcome[g]) score += weight[g];
+        const tookHome = rng() < nonChalkShares[g];
+        score += weight[g] * outcomePoints(tookHome, outcome[g], tiePoints);
       }
       scores[k] = score;
     }
@@ -311,7 +373,7 @@ export function simulateWorld(
 
   return {
     sims, opponents, rivalCount, chalkRivals, noisyRivals,
-    chalkScores, outcomes, oppScores, fieldSources,
+    chalkScores, outcomes, oppScores, fieldSources, warnings: resolved.warnings, tiePoints, seed: options.seed ?? 12345,
   };
 }
 
@@ -412,7 +474,7 @@ export function evaluateEntry(
     const outcome = world.outcomes[s];
     let score = 0;
     for (let g = 0; g < n; g += 1) {
-      if (entry.pickHome[g] === outcome[g]) score += entry.confidence[g];
+      score += entry.confidence[g] * outcomePoints(entry.pickHome[g], outcome[g], world.tiePoints);
     }
     scoreTotal += score;
     scoreSq += score * score;
@@ -434,7 +496,7 @@ export function evaluateEntry(
 
   const mean = scoreTotal / world.sims;
   return {
-    expectedPoints: expectedPoints(games, entry),
+    expectedPoints: expectedPoints(games, entry) + games.reduce((sum, g, i) => sum + entry.confidence[i] * tieProbability(g) * world.tiePoints, 0),
     prizeShare: shareTotal / world.sims,
     pAtLeastTied: tiedTotal / world.sims,
     meanScore: mean,

@@ -1,0 +1,10 @@
+{
+  "study_id": "nfl-matchup-dfs_mean-contact-v1",
+  "registration_manifest_hash": "9a31a975293b5ab9041a37a2245e3ab857fa10cdd9ba301ba555989730b7c56a",
+  "pinned_at": "2026-09-27T14:21:29.894025+00:00",
+  "hashes": {
+    "model/nfl_matchup_features.py": "9f8d88b72aaa172c837a0c91be11cfc33072abd64f0fe383a4a0f495d9af4542",
+    "model/nfl_matchup_projection.py": "bec01a840e0cd3f1e501ed42a2f06607f3ba6a7b1015e891a5db6e88b4b8f08c",
+    "model/nfl_dfs_historical.py": "e68c45b32151a8fb77f94eb295d181ec5ad5881ee6b3384fb04e4a95b28b5b55"
+  }
+}

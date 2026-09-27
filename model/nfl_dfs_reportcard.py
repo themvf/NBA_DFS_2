@@ -4,7 +4,9 @@ from datetime import datetime, timezone
 from math import isfinite
 
 VERSION = "nfl-dfs-weekly-report-v1"
-VARIANTS = ("production", "shadow_baseline", "opportunity", "efficiency_research")
+VARIANTS = ("production", "shadow_baseline", "opportunity", "efficiency_research",
+            "context:env_baseline", "context:env_trailing", "context:opp_carries",
+            "context:interval_rq", "context:prior8")
 
 
 def timestamp(value):
@@ -88,6 +90,13 @@ def build_report(*, season, week, games, players, forecasts, results, now):
         previous = selected.get(key)
         if previous is None or (captured, str(f["forecast_id"])) > (timestamp(previous["captured_at"]), str(previous["forecast_id"])):
             selected[key] = f
+    # Contexts are one bundle from the same last accepted shadow capture.
+    # Never recover an older available variant when the latest bundle lacks it.
+    for key, value in list(selected.items()):
+        if key[2].startswith("context:"):
+            base = selected.get((key[0], key[1], "shadow_baseline"))
+            if not base or (base.get("run_id"), base["forecast_id"]) != (value.get("run_id"), value["forecast_id"]):
+                del selected[key]
     # Preserve forecasted players even if later roster refreshes mark them inactive.
     universe = {(p["player_id"], by_team[p["team"]]["id"]): p for p in players if p.get("team") in by_team}
     for (player_id, game_id, _), f in selected.items():

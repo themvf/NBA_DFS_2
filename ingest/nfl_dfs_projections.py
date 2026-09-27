@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import uuid
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -389,6 +390,37 @@ def build_week(
         projections, statuses, positions=("QB",) if transfer_enabled else ())
     availability_report["policy_mode"] = "shared_v1" if transfer_enabled else "safety_rollback_v1"
 
+    # Optional evidence/shadow extension. The protected v5 draws and active
+    # numbers stay unchanged; unqualified context never becomes a multiplier.
+    matchup_health = {"status": "disabled", "active_projection_changes": 0}
+    if model_config.get("matchup_shadow_enabled", True):
+        from ingest.nfl_matchup_context import load_matchups
+        from model.nfl_matchup_projection import sample_baseline_draws, shadow_projection
+        from model.nfl_pfr_supplement import team_code
+        model_path = Path(__file__).resolve().parents[1] / "artifacts/nfl_matchup_models_v1.json"
+        try:
+            matchups = load_matchups(db, season, week, as_of_at)
+            fitted = json.loads(model_path.read_text(encoding="utf-8")) if model_path.exists() else {}
+            by_team = {team: m for m in matchups.values() for team in (m["home"], m["away"])}
+            covered = applied = 0
+            for player in projections:
+                matchup = by_team.get(team_code(player["team"]))
+                if not matchup:
+                    continue
+                draws = sample_baseline_draws(player, history, model_config, seed)
+                challenger = shadow_projection(player, draws, matchup, fitted)
+                player["feature_snapshot"]["matchup"] = {"evidence": matchup, "shadow": challenger}
+                covered += 1
+                applied += challenger["status"] == "under_evaluation"
+            matchup_health = {"status": "shadow_only", "games": len(matchups), "players": covered,
+                              "numerical_challengers": applied, "active_projection_changes": 0}
+        except (ValueError, OSError, KeyError) as exc:
+            matchup_health = {"status": "unavailable", "reason": type(exc).__name__, "active_projection_changes": 0}
+        except Exception as exc:
+            # Source/schema outages must not disable the independently approved
+            # baseline. Record a class-only diagnostic without database secrets.
+            matchup_health = {"status": "source_error", "reason": type(exc).__name__, "active_projection_changes": 0}
+
     snapshot_rows = db.execute(
         """SELECT DISTINCT ON (season,dataset)
                   id,response_hash,season,dataset
@@ -427,6 +459,7 @@ def build_week(
         "availability_decisions": availability_decisions,
         "availability_health": _availability_health(availability_decisions),
         "availability_migration_audit": availability_migration_audit,
+        "matchup_health": matchup_health,
         "prop_inputs": [],
     }
     manifest["artifact_digest"] = artifact_digest(manifest)
@@ -549,6 +582,7 @@ def main() -> None:
         "availability_health": manifest["availability_health"],
         "availability_migration_changes": len(manifest["availability_migration_audit"]),
         "availability_policy_mode": manifest["availability"].get("policy_mode"),
+        "matchup_health": manifest.get("matchup_health"),
         "prop_inputs": [],
     }, indent=2, sort_keys=True))
 

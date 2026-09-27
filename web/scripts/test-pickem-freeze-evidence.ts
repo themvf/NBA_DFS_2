@@ -6,6 +6,7 @@ import { getNflPickemSlate, getPickemLedger } from "../src/db/queries";
 import { freezePickemRecommendation, savePickemNews } from "../src/app/nfl/pickem/actions";
 import { evOptimalEntry } from "../src/lib/nfl/pickem-strategy";
 import { timestamp } from "../src/lib/nfl/pickem-evidence";
+import { EMPTY_POOL_CONFIG } from "../src/lib/nfl/pickem-contest";
 
 async function main() {
   await ensurePickemTables();
@@ -59,6 +60,26 @@ async function main() {
     assert.equal(history.length, 2);
     assert.equal(history.filter(r => r.supersededBy == null).length, 1);
     assert.equal(history.find(r => r.id === cards[0].id)?.games[0].evidence?.recordedAt, cards[0].games[0].evidence?.recordedAt);
+    const partialWeek=slate.weeks.find(w=>{
+      const gs=slate.games.filter(g=>g.week===w);
+      return gs.some(g=>g.completed) && gs.some(g=>timestamp(g.kickoff)>Date.now()) && gs.every(g=>g.completed || timestamp(g.kickoff)>Date.now());
+    });
+    if(partialWeek != null) {
+      const whole=slate.games.filter(g=>g.week===partialWeek), remaining=whole.filter(g=>timestamp(g.kickoff)>Date.now());
+      const entry=evOptimalEntry(remaining.map(g=>({...g,fieldHomePct:null})),"straight");
+      const config={...EMPTY_POOL_CONFIG,entries:3,weeklyPayouts:[100],gameTieRule:"half" as const,prizeTieRule:"split" as const,lockRule:"per_game" as const,
+        settledWeek:{capturedAt:new Date().toISOString(),gameIds:whole.filter(g=>g.completed).map(g=>g.gameId),ownPoints:0,rivalPoints:[0,0]}};
+      const partialInput={...input,week:partialWeek,format:"straight" as const,poolEntries:3,
+        fieldModel:{favoriteBias:1.3,chalkFraction:.25,contestComparison:{config}},
+        games:remaining.map((g,i)=>({...g,baselinePickHome:entry.pickHome[i],recommendedPickHome:entry.pickHome[i],baselineConfidence:1,recommendedConfidence:1,fieldHomeShare:.6,fieldSource:"observed" as const}))};
+      const partial=await freezePickemRecommendation(partialInput);
+      assert.equal(partial.ok,true,JSON.stringify(partial));
+      const saved=(await getPickemLedger(2026)).find(r=>r.poolId===poolId && r.week===partialWeek)!;
+      assert.equal(saved.games.length,remaining.length);
+      assert.ok(saved.games.every(g=>remaining.some(r=>r.gameId===g.gameId)));
+      const invalid=await freezePickemRecommendation({...partialInput,fieldModel:{contestComparison:{config:{...config,settledWeek:null}}}});
+      assert.equal(invalid.ok,false,"Missing locked-game score evidence must reject midweek freeze");
+    }
     console.log("Freeze integration passed: atomic complete cards, immutable evidence, scenario isolation, invalid/stale/late refusals and superseding.");
   } finally {
     await db.execute(sql`DELETE FROM pickem_pools WHERE id = ${poolId}`);

@@ -1,0 +1,644 @@
+﻿player,team,position,salary,baseline_dk,candidate_dk,change_dk,baseline_p90,candidate_p90,status,reason,frozen_at
+Breece Hall,NYJ,RB,6400,14.2261,15.274701277246143,1.0486075617107602,23.1445,24.228028830488572,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Javonte Williams,DAL,RB,6700,14.1868,15.050611427632173,0.8637717643847562,25.8138,26.218960342349224,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Audric Estime,NO,RB,4000,8.9655,9.678173882532235,0.7126390875191753,17.2323,21.009691369402084,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Bucky Irving,TB,RB,6300,13.7889,13.233194603954493,-0.5557206291976939,20.3779,20.01274540381491,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Tyrone Tracy Jr.,NYG,RB,4100,9.059,9.61340086565056,0.5543525052976204,27.4347,30.941130313518432,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Derrick Henry,BAL,RB,7700,26.9018,26.41858163418449,-0.4832157280025413,54.8233,54.155663341781136,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Travis Etienne Jr.,NO,RB,5800,13.1373,13.580207065298614,0.44288166623870673,21.8744,22.53966050998551,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Woody Marks,HOU,RB,5000,8.5652,8.988087605381295,0.422888567961186,15.3915,16.066126490894042,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Michael Burton,CLE,RB,4000,7.6484,8.063685053985703,0.4153337319750099,18.7679,20.40686938010623,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Quinshon Judkins,CLE,RB,5500,9.8814,10.285911334045169,0.4045055640281703,15.3386,16.211884707624275,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Noah Whittington,HOU,RB,4000,7.7276,8.131052759926776,0.4034727625729735,19.2738,21.126860991112274,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Andrew Beck,NYJ,RB,4000,7.4031,7.804550801312107,0.4014494507204933,18.6187,20.740587811281603,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+De'Von Achane,MIA,RB,6500,15.1394,15.526065475300584,0.38670476323813574,22.8847,23.45617771912115,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Jawhar Jordan,HOU,RB,4000,7.4206,7.806360115731995,0.385727304868448,16.6919,17.69396887128477,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Alvin Kamara,NO,RB,4800,8.8997,9.271231136057162,0.37156219843770266,14.7224,15.556259857218189,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+David Montgomery,HOU,RB,6000,10.605,10.959894955105408,0.3549048678781883,28.4146,29.00990155433996,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Jahmyr Gibbs,DET,RB,8800,25.732,25.39331969523939,-0.3386986151490632,41.852,41.66274837635394,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Chase Brown,CIN,RB,6600,19.2039,19.535548963872404,0.33167593214136204,32.2996,32.67346991375256,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Tyler Shough,NO,QB,5400,21.2984,20.96969751568312,-0.32866828199763987,29.9971,29.526073303409962,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Cam Skattebo,NYG,RB,6200,13.8111,14.129403884043063,0.3182608035436747,22.8447,23.35972434824134,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Zach Wilson,NO,QB,4000,5.2139,4.9317662626472405,-0.28211656533504037,16.9457,16.467900847258804,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Sean Tucker,TB,RB,4000,4.6399,4.373423226105198,-0.26645824110033,8.3523,8.070406320906631,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Jaleel McLaughlin,CLE,RB,4000,3.6376,3.878499588812795,0.2409315161263943,6.5254,6.91881760580493,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Jaylen Wright,MIA,RB,4000,3.1611,3.400262478206478,0.23915122085311902,10.6267,10.837178085298676,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Kendre Miller,NO,RB,4300,5.5714,5.794410068254875,0.22303364740307963,10.3564,10.8752809638128,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Grant Finley,NYG,RB,4000,7.5663,7.784110747721299,0.21785118079129084,19.1823,20.295505889571825,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Jarquez Hunter,MIA,RB,4000,6.9806,7.197453101995356,0.21690030712454966,17.5632,17.905110994550668,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Spencer Rattler,NO,QB,4000,10.3924,10.17765708750016,-0.2147526475496928,17.2149,16.927291005099615,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Carlos Washington Jr.,MIA,RB,4000,7.1945,7.4090623134033144,0.21451436581993022,18.7562,19.047267402003104,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Kenny Gainwell,TB,RB,4800,10.2526,10.04640293347313,-0.2061768618184434,20.6683,20.42596905980127,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Braelon Allen,NYJ,RB,4400,4.6947,4.895513498062726,0.20081837644581224,8.0404,8.108684203270183,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Jeremiyah Love,ARI,RB,5500,9.4996,9.69922253299584,0.1996356753559354,16.4597,17.04587502953964,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Jabari Small,DET,RB,4000,8.8568,8.677529174428795,-0.17931058823751123,23.6147,23.570458991354347,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Raheim Sanders,CLE,RB,4500,4.1662,4.339297205432784,0.17314319645697474,6.9092,7.077901443123858,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Aaron Jones Sr.,MIN,RB,5900,11.2328,11.064224441408713,-0.16854198876211868,14.9903,14.8443969041108,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Tyler Allgeier,ARI,RB,5000,5.8006,5.963520179718282,0.16292879744098165,9.4573,9.78300019464767,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Jonathan Ward,BAL,RB,4000,8.4262,8.264795446509794,-0.16145207085324387,21.7116,20.615533171230645,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Devin Singletary,NYG,RB,4200,7.8425,8.003465717171036,0.16097875157668096,16.0018,16.27708958251094,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Cam Ward,TEN,QB,5100,12.3686,12.529378709661723,0.16079576457497957,17.0175,17.183297166635512,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Jacory Croskey-Merritt,WAS,RB,5300,7.6806,7.525895869026862,-0.15469548079343998,19.1355,18.985892142460884,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+TreVeyon Henderson,NE,RB,5200,13.4625,13.614963806021711,0.15242600384045524,31.0168,31.149964208531202,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Kentrel Bullock,CIN,RB,4000,7.8793,8.02982698285753,0.15053220557789881,19.7628,20.736939322523824,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Isaiah Davis,NYJ,RB,4000,4.0888,4.2339587888931955,0.14517015983863235,12.9211,13.48722504374439,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Emari Demercado,DAL,RB,4200,3.6999,3.836767305085997,0.13686995764043441,9.0985,9.683305949098497,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Max Bredeson,MIN,RB,4000,7.8521,7.722691805131994,-0.12940917190551016,19.9313,19.56128579357802,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Christian McCaffrey,SF,RB,8300,23.8007,23.671766034438544,-0.12889992277806428,39.3574,39.143649596415166,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Chuba Hubbard,CAR,RB,6100,11.1929,11.318655586993948,0.12576938076638555,23.3417,23.496217841483137,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Ahmani Marshall,CAR,RB,4000,7.8993,8.022208037890625,0.12291206709031144,20.0546,20.305615039854807,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Anthony Tyus III,CAR,RB,4000,8.0368,8.15920537268124,0.12236574434527192,21.146,21.72195211087179,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Israel Abanikanda,DAL,RB,4000,3.0637,3.185727539800955,0.12206990631281611,6.2374,6.268466026164367,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Robert Henry Jr.,WAS,RB,4000,7.0545,6.938348638649053,-0.11616776241678028,16.6384,16.527380132343026,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Omarion Hampton,LAC,RB,6800,15.0268,15.141366149819827,0.1145289576375994,24.335,24.454754008709628,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Cade Klubnik,NYJ,QB,4000,13.5732,13.46402796963309,-0.10916227428201708,26.0135,25.88095711787134,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Rhamondre Stevenson,NE,RB,5400,14.3824,14.48895696886321,0.10650771938279924,36.9573,37.20999893009049,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Bam Knight,ARI,RB,4000,6.3772,6.482099412978611,0.10491472420066117,13.9007,14.094492081077297,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Tony Pollard,TEN,RB,5400,9.1907,9.291271804403356,0.10056631905990798,16.0834,16.24603071889622,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+British Brooks,HOU,RB,4000,1.0835,1.181914728144634,0.09838807718574993,6.2506,6.875705893180518,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Najee Harris,NYG,RB,4700,2.7998,2.8968587707178446,0.09710340619526203,6.5538,6.723271866391535,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Geno Smith,NYJ,QB,4900,11.8472,11.751470595011423,-0.09576711722633569,15.0371,14.921210517549609,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Ollie Gordon II,MIA,RB,4000,1.909,2.0006635985489383,0.09167428215857343,6.3723,6.529510097735006,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Samaje Perine,CIN,RB,4100,6.3373,6.427482170042574,0.09020857815764849,11.9049,12.029585632297547,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Behren Morton,NE,QB,4000,13.7202,13.63197293624034,-0.0881861847378449,25.7952,25.709711352188062,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Kyle Juszczyk,SF,RB,4000,8.6264,8.539765342289058,-0.08668066473155989,23.574,22.29301511145793,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Sincere McCormick,SF,RB,4000,7.6174,7.533208828974553,-0.0841743827110113,12.3809,12.275665820811403,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Rachaad White,WAS,RB,5100,7.4712,7.3881256460805504,-0.08306995592581856,13.2257,13.117231654003147,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Bailey Zappe,NYJ,QB,4000,9.0283,8.946538578847605,-0.08179646047218903,16.6576,16.522551673263973,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Joe Burrow,CIN,QB,6600,19.7063,19.625579821981788,-0.08073878401012635,32.188,32.09305137484722,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Will Levis,NYJ,QB,4000,10.5938,10.515006758626605,-0.07876090289885873,17.2975,17.17660339128625,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Hendon Hooker,TEN,QB,4000,4.0529,4.13118069468982,0.07832994592940778,13.5574,13.744628040981882,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Jonathan Taylor,IND,RB,7600,19.257,19.332045982381377,0.0750947298124629,27.582,27.664078126555207,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Alec Ingold,LAC,RB,4000,7.7451,7.820125814877543,0.0750171382465794,19.8076,19.942635069046645,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Gregory Desrosiers,LAC,RB,4000,7.7801,7.8523188894084,0.07224439627330526,19.906,20.85168559724351,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Hunter Luepke,DAL,RB,4000,2.2188,2.2895370256640857,0.07073208068403769,5.5832,5.859958196506865,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Zamir White,NO,RB,4000,1.9074,1.9770616485145844,0.06966221668221739,3.3506,3.5435233380110422,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Drake Maye,NE,QB,6100,17.2414,17.172789638636278,-0.0686074490670876,27.905,27.80715814345531,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+DJ Herman,MIA,RB,4000,2.3763,2.444511398787862,0.06824710884934859,6.1042,6.449131047971552,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Mitchell Trubisky,TEN,QB,4000,6.7984,6.863886895755064,0.06544286300482582,24.8441,25.03615187398816,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Jaret Patterson,MIN,RB,4000,4.3533,4.2885301375411915,-0.06476266625003468,11.1363,10.991439301404197,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Kaelon Black,SF,RB,4800,5.6557,5.591418567881268,-0.06423366111788908,12.4229,12.358005293688613,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Kyle McCord,MIA,QB,4000,12.0503,12.11285908574452,0.06252936592275304,23.1031,23.178453440011356,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Emanuel Wilson,SEA,RB,4900,5.6334,5.570950050001029,-0.06240108352570317,9.4783,9.332594059853612,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Michael Carter,TEN,RB,4000,6.9989,7.0608252075858235,0.06196900470156752,12.3933,12.494103260031643,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Brady Cook,MIA,QB,4000,6.9714,7.0285910913849925,0.05720223633362753,12.9644,13.05677881901196,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Kimani Vidal,LAC,RB,4000,5.5606,5.6169389905961475,0.05637740254871204,17.3471,17.530544422945745,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+AJ Dillon,CAR,RB,4000,2.872,2.9269127326607585,0.054945410711477294,9.0287,9.281352177576936,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Sam Howell,DAL,QB,4000,12.1014,12.155710691539305,0.05435932017192613,23.7716,23.822455498424855,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+DJ Uiagalelei,LAC,QB,4000,13.5842,13.532593169517966,-0.05163734885658755,26.4109,26.353428161682274,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Joe Flacco,CIN,QB,4400,9.9218,9.8704309006004,-0.05134925194620088,28.1038,28.018567948050464,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Jadarian Price,SEA,RB,5300,7.1148,7.064733879360729,-0.05008654988839645,13.127,13.094231927224774,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Josh Allen,BUF,QB,8000,31.8809,31.83143930324762,-0.049476370380663326,46.7283,46.677677395537664,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Justice Hill,BAL,RB,4200,5.5072,5.45835502287934,-0.048887231488911276,10.0194,9.948491018183384,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Davon Booth,IND,RB,4000,7.5648,7.609313573752598,0.0445106975513756,18.3432,18.38040398264811,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Tyjae Spears,TEN,RB,4900,7.4501,7.493874636620178,0.0437482967535292,15.1586,15.261399842520552,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Tommy DeVito,NE,QB,4000,7.99,7.946995781212401,-0.042959016417928986,16.932,16.8768805957329,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Anderson Castle,IND,RB,4000,7.4012,7.443168260350162,0.04197646133137756,19.3083,19.37676406668582,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Justin Herbert,LAC,QB,5800,15.5563,15.516900064871308,-0.039367473626654714,29.322,29.266739160862763,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Evan Hull,ARI,RB,4000,0.9734,1.0127134152826736,0.0393605293760122,1.9276,1.9542556964331201,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Malik Willis,MIA,QB,4900,11.1721,11.210777654627643,0.038661592409669154,28.0038,28.07761331219121,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Josh Johnson,CIN,QB,4000,7.0582,7.020526608068383,-0.037627004164481725,17.8889,17.844951444847524,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Keaton Mitchell,LAC,RB,4300,3.963,4.0002498657432755,0.03725588730185381,7.48,7.600794312423496,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Kaytron Allen,WAS,RB,4300,1.8864,1.8514001014394088,-0.03502185070910313,4.2544,4.2600363181238805,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Shane Buechele,BUF,QB,4000,8.1932,8.158652817971591,-0.03457846062045,20.7985,20.736085153276953,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Sean Clifford,CIN,QB,4000,5.2771,5.243378143405473,-0.03375214475994426,16.0836,16.01526672665893,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Jaylen Warren,PIT,RB,5700,12.06,12.092388467141532,0.03243208329582714,17.6868,17.735682969092643,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Josh Williams,TB,RB,4000,0.4919,0.46033946281406907,-0.031577324138436225,1.3609,1.3122791315034301,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Dak Prescott,DAL,QB,6700,20.8372,20.867762784519996,0.030578964306521073,31.8268,31.86058338624279,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+CJ Donaldson,NO,RB,4000,0.6795,0.709928432788763,0.03040931919009482,1.8276,1.9494455040060745,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Lan Larison,NE,RB,4000,2.6448,2.675105332450378,0.0303063020403469,6.6653,6.736843026412609,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Daniel Jones,IND,QB,5000,13.2662,13.238193902595876,-0.028044034011612595,21.1172,21.07694242243762,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Corey Kiner,NE,RB,4000,1.56,1.5877775186151135,0.027771668845491204,4.7049,4.749387307965338,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Trey Lance,LAC,QB,4000,5.4338,5.407973125692086,-0.025860104837049924,12.1649,12.099222531599594,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+George Holani,SEA,RB,4500,2.4127,2.3911981910141913,-0.021526388101697602,6.0,6.0,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Tahj Brooks,CIN,RB,4000,0.7022,0.7234199689236265,0.021178626758658003,2.9112,2.969292745687346,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Anthony Richardson Sr.,IND,QB,4000,11.4133,11.392664166641012,-0.020590289374622373,21.6219,21.605844906972152,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Jerome Ford,MIN,RB,4000,3.2179,3.1994479226858297,-0.018496082880262943,7.6092,7.523967868683458,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Jared Goff,DET,QB,6300,24.2222,24.203988269665334,-0.01822945839079182,36.888,36.86664703387863,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Riley Leonard,IND,QB,4000,7.9225,7.905931348605216,-0.016551148772822266,21.9516,21.91162154851026,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Demond Claiborne,MIN,RB,4400,1.1549,1.1401873645461948,-0.01470608127292361,3.2611,3.2545047491217245,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Joe Milton III,DAL,QB,4000,6.9866,7.000455267205517,0.01381803815130489,21.6213,21.653636625385865,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+DJ Giddens,IND,RB,4000,1.916,1.9295488312271492,0.013513161144908192,3.9686,4.008139436257211,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Sione Vaki,DET,RB,4300,1.1581,1.1448292669165976,-0.013234131364472157,3.1977,3.166333134510594,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Kendall Milton,CIN,RB,4000,0.6153,0.6284890664380304,0.013226467518377971,2.2085,2.3172626227331237,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Luke Altmyer,DET,QB,4000,15.9454,15.932769672152867,-0.012653534395218102,30.8407,30.821179093519774,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Jacardia Wright,SEA,RB,4000,2.0479,2.0353383546211887,-0.0125410292169299,5.5634,5.517435325481006,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Jordan James,SF,RB,4000,1.5105,1.4986412805973017,-0.01184455263962847,4.0504,4.007142714279825,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Kirk Cousins,LV,QB,4800,13.9446,13.934166115902894,-0.010436338126977418,19.4739,19.460681130433983,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+DeeJay Dallas,MIN,RB,4200,1.4187,1.4083503082084685,-0.010319961086651785,2.9646,2.9493658367630733,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Kyle Allen,BUF,QB,4000,2.705,2.695315811383547,-0.009692786059817937,12.4105,12.365606250049888,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Fernando Mendoza,LV,QB,4300,12.8906,12.881323171575623,-0.009236347814796986,24.677,24.665391926686922,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Rasheen Ali,BAL,RB,4000,1.6002,1.5911372032941316,-0.00903591846375762,3.5174,3.5055208212364346,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Amar Johnson,LAC,RB,4000,0.7697,0.7771865393461659,0.007463442179273194,2.559,2.6159378489238483,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Craig Reynolds,WAS,RB,4000,0.2696,0.2624960557004573,-0.007089394980266395,0.9249,0.8869717665542779,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Velus Jones Jr.,SEA,RB,4000,0.9241,0.9172919225372229,-0.006841407576281711,3.2968,3.26616773279605,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Patrick Ricard,NYG,RB,4000,0.7613,0.7679556860180023,0.006622221721582,2.3131,2.3131091151668,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Kalel Mullings,TEN,RB,4000,0.4123,0.41857597686719716,0.006273909313473436,1.2023,1.233854313294927,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Chris Rodriguez Jr.,JAX,RB,4600,6.884,6.889890637644463,0.00586470451121901,16.0137,16.02438395928641,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Bhayshul Tuten,JAX,RB,5600,8.7066,8.711953537162902,0.005397777917799829,14.8845,14.894472813824974,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+J'Mari Taylor,JAX,RB,4000,8.2517,8.25712407805769,0.005383800072522149,22.1996,22.206576423117145,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Jacob Saylors,DET,RB,4000,0.191,0.18583428640978303,-0.005167073416392831,0.3198,0.30460765430003356,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Joshua Dobbs,DET,QB,4000,4.2186,4.213989209099058,-0.004648990040972301,15.4609,15.44017108040987,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Reggie Gilliam,NE,RB,4000,0.8683,0.8725445118251348,0.00428857854735476,3.5287,3.5458674963278685,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Seth McGowan,IND,RB,4100,0.5266,0.5299879840740856,0.003354826742090089,1.4199,1.4387909705496464,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Julius Chestnut,TEN,RB,4000,0.1429,0.14566310244847228,0.002767576867630628,0.2775,0.2854525915454541,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Lew Nichols,PIT,RB,4000,0.5664,0.568585795637631,0.0021847491330270197,2.1019,2.1196358416654215,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Travis Homer,PIT,RB,4000,0.4512,0.45292054842058227,0.001733906263306384,1.5286,1.5364979494551056,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Ameer Abdullah,JAX,RB,4000,3.6902,3.691758470371906,0.0016031257309352398,8.4383,8.448604442942669,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Eli Heidenreich,PIT,RB,4000,0.4067,0.40818048528370593,0.0014846487250619878,1.6242,1.6249639921339787,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+LeQuint Allen Jr.,JAX,RB,4000,1.1288,1.1298173095038606,0.001041349473136055,2.8744,2.874373895463264,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Brady Russell,SEA,RB,4000,0.8332,0.8324388857622632,-0.0007911831890936583,4.121,4.121015419501679,under_evaluation,prospective_gate_not_yet_scorable,2026-09-27T14:54:57.829203+00:00
+Jake Haener,NYG,QB,4000,13.0584,13.0584,0.0,25.4135,25.4135,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Ja'Marr Chase,CIN,WR,8100,19.7884,19.7884,0.0,26.6895,26.6895,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Amon-Ra St. Brown,DET,WR,7900,27.036,27.036,0.0,42.1287,42.1287,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+CeeDee Lamb,DAL,WR,7800,20.1067,20.1067,0.0,40.2904,40.2904,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Lamar Jackson,BAL,QB,7500,20.443,20.443,0.0,32.0775,32.0775,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Justin Jefferson,MIN,WR,7500,13.962,13.962,0.0,30.5971,30.5971,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Malik Davis,DAL,RB,4000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Kenneth Walker III,KC,RB,7400,21.1648,21.1648,0.0,40.9562,40.9562,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Chris Olave,NO,WR,7200,23.3599,23.3599,0.0,31.6325,31.6325,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Ashton Jeanty,LV,RB,7100,15.5557,15.5557,0.0,30.5307,30.5307,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Nico Collins,HOU,WR,7000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+James Cook III,BUF,RB,6900,19.0606,19.0606,0.0,32.7489,32.7489,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Zay Flowers,BAL,WR,6900,21.7467,21.7467,0.0,36.3729,36.3729,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Mike Evans,SF,WR,6800,13.7826,13.7826,0.0,23.4651,23.4651,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Trey McBride,ARI,TE,6700,17.9113,17.9113,0.0,29.1216,29.1216,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jaxon Smith-Njigba,SEA,WR,8600,27.2542,27.2542,0.0,47.8412,47.8412,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+George Pickens,DAL,WR,6600,12.7649,12.7649,0.0,30.2784,30.2784,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Brock Bowers,LV,TE,6600,13.3072,13.3072,0.0,20.5507,20.5507,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Brock Purdy,SF,QB,6500,27.0625,27.0625,0.0,39.9527,39.9527,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Malik Nabers,NYG,WR,6500,12.3699,12.3699,0.0,37.0275,37.0275,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Rashee Rice,KC,WR,6400,16.3567,16.3567,0.0,28.5562,28.5562,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Garrett Wilson,NYJ,WR,6300,13.0473,13.0473,0.0,21.7063,21.7063,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Patrick Mahomes,KC,QB,6200,24.4574,24.4574,0.0,35.4989,35.4989,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Emeka Egbuka,TB,WR,6200,8.673,8.673,0.0,13.4175,13.4175,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Tee Higgins,CIN,WR,6100,14.6657,14.6657,0.0,22.7755,22.7755,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jayden Daniels,WAS,QB,6000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Parker Washington,JAX,WR,6000,17.2962,17.2962,0.0,22.5047,22.5047,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Tetairoa McMillan,CAR,WR,6000,12.6526,12.6526,0.0,19.0625,19.0625,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jaxson Dart,NYG,QB,5900,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Ladd McConkey,LAC,WR,5900,10.4238,10.4238,0.0,18.725,18.725,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+DJ Moore,BUF,WR,5800,11.1918,11.1918,0.0,26.5512,26.5512,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Trevor Lawrence,JAX,QB,5700,22.3549,22.3549,0.0,32.9096,32.9096,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Josh Downs,IND,WR,5700,9.0829,9.0829,0.0,13.7448,13.7448,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Bryce Young,CAR,QB,5600,19.6703,19.6703,0.0,34.919,34.919,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Alec Pierce,IND,WR,5600,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+C.J. Stroud,HOU,QB,5500,16.3209,16.3209,0.0,23.044,23.044,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Stefon Diggs,WAS,WR,5500,13.5072,13.5072,0.0,19.6904,19.6904,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jalen Coker,CAR,WR,5500,14.3252,14.3252,0.0,36.3625,36.3625,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Dalton Kincaid,BUF,TE,5500,14.8406,14.8406,0.0,27.7872,27.7872,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Sam Darnold,SEA,QB,5400,11.6129,11.6129,0.0,24.6976,24.6976,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Jameson Williams,DET,WR,5400,12.9551,12.9551,0.0,29.6593,29.6593,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+DK Metcalf,PIT,WR,5400,10.2775,10.2775,0.0,19.8938,19.8938,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Baker Mayfield,TB,QB,5300,15.1828,15.1828,0.0,22.3864,22.3864,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Chris Godwin Jr.,TB,WR,5300,10.8327,10.8327,0.0,25.836,25.836,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Deebo Samuel Sr.,SF,WR,5300,11.1166,11.1166,0.0,19.9907,19.9907,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Tyler Warren,IND,TE,5300,9.5739,9.5739,0.0,13.5974,13.5974,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Drew Lock,SEA,QB,5200,11.576,11.576,0.0,22.7511,22.7511,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Michael Wilson,ARI,WR,5200,12.8595,12.8595,0.0,19.7606,19.7606,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Kyler Murray,MIN,QB,5100,14.0883,14.0883,0.0,21.8794,21.8794,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Romeo Doubs,NE,WR,5100,8.4439,8.4439,0.0,18.8013,18.8013,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Terry McLaurin,WAS,WR,5100,9.035,9.035,0.0,14.9736,14.9736,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Aaron Rodgers,PIT,QB,5000,11.7141,11.7141,0.0,17.7645,17.7645,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Carnell Tate,TEN,WR,5000,6.0606,6.0606,0.0,11.3852,11.3852,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Tre Tucker,LV,WR,5000,9.9509,9.9509,0.0,24.5508,24.5508,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Quentin Johnston,LAC,WR,4900,9.2627,9.2627,0.0,22.906,22.906,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jordan Addison,MIN,WR,4900,6.2223,6.2223,0.0,12.2233,12.2233,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jacoby Brissett,ARI,QB,4800,14.2464,14.2464,0.0,20.1341,20.1341,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Khalil Shakir,BUF,WR,4800,10.1112,10.1112,0.0,16.2601,16.2601,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jakobi Meyers,JAX,WR,4800,10.397,10.397,0.0,15.7057,15.7057,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+George Kittle,SF,TE,4800,15.6638,15.6638,0.0,28.0967,28.0967,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Deshaun Watson,CLE,QB,4700,12.8226,12.8226,0.0,18.3578,18.3578,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Rico Dowdle,PIT,RB,4700,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Michael Pittman Jr.,PIT,WR,4700,8.1571,8.1571,0.0,16.7195,16.7195,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Rashod Bateman,BAL,WR,4700,7.9101,7.9101,0.0,24.0411,24.0411,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Marvin Harrison Jr.,ARI,WR,4700,6.6257,6.6257,0.0,17.0619,17.0619,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Isaiah Likely,NYG,TE,4700,9.062,9.062,0.0,26.028,26.028,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Carson Wentz,MIN,QB,4600,13.3854,13.3854,0.0,25.6829,25.6829,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Jonathon Brooks,CAR,RB,4600,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Keenan Allen,IND,WR,4600,7.2379,7.2379,0.0,10.2602,10.2602,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Brian Thomas Jr.,JAX,WR,4600,9.4959,9.4959,0.0,17.8615,17.8615,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Marcus Mariota,WAS,QB,4500,10.2002,10.2002,0.0,19.8024,19.8024,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Denzel Boston,CLE,WR,4500,16.2011,16.2011,0.0,26.566,26.566,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Kayshon Boutte,HOU,WR,4500,6.3804,6.3804,0.0,13.3079,13.3079,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Wan'Dale Robinson,TEN,WR,4500,10.811,10.811,0.0,23.6246,23.6246,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Travis Kelce,KC,TE,4500,13.7294,13.7294,0.0,30.5585,30.5585,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Emmett Johnson,KC,RB,4400,7.5762,7.5762,0.0,14.7678,14.7678,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Ray Davis,BUF,RB,4400,5.4789,5.4789,0.0,30.8783,30.8783,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Xavier Worthy,KC,WR,4400,8.495,8.495,0.0,15.1942,15.1942,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Devaughn Vele,NO,WR,4400,11.1811,11.1811,0.0,20.3798,20.3798,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Malik Washington,MIA,WR,4200,6.4922,6.4922,0.0,10.1643,10.1643,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Malachi Fields,NYG,WR,4400,4.5971,4.5971,0.0,9.1561,9.1561,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Mark Andrews,BAL,TE,4400,8.1799,8.1799,0.0,11.8899,11.8899,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+KC Concepcion Jr.,CLE,WR,4300,8.0614,8.0614,0.0,15.2579,15.2579,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Adonai Mitchell,NYJ,WR,4300,7.3247,7.3247,0.0,13.702,13.702,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Keon Coleman,BUF,WR,4300,8.3158,8.3158,0.0,13.2756,13.2756,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Sam LaPorta,DET,TE,4300,14.383,14.383,0.0,22.6337,22.6337,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Shedeur Sanders,CLE,QB,4200,11.0498,11.0498,0.0,21.3174,21.3174,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Mack Hollins,NE,WR,4200,7.8546,7.8546,0.0,13.6247,13.6247,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Rashid Shaheed,SEA,WR,4200,6.2654,6.2654,0.0,13.5994,13.5994,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Dalton Schultz,HOU,TE,4200,13.3884,13.3884,0.0,28.7963,28.7963,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+J.J. McCarthy,MIN,QB,4100,13.2282,13.2282,0.0,23.8977,23.8977,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Mike Washington Jr.,LV,RB,4100,2.1632,2.1632,0.0,4.7021,4.7021,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Darnell Mooney,NYG,WR,4100,5.7809,5.7809,0.0,8.0959,8.0959,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jalen McMillan,TB,WR,4100,10.4127,10.4127,0.0,20.8859,20.8859,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Antonio Williams,WAS,WR,4100,9.3044,9.3044,0.0,16.0928,16.0928,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jake Ferguson,DAL,TE,4100,9.935,9.935,0.0,21.7815,21.7815,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jalen Milroe,SEA,QB,4000,4.3324,4.3324,0.0,15.7808,15.7808,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Justin Fields,KC,QB,4000,16.6721,16.6721,0.0,31.4372,31.4372,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Aidan O'Connell,LV,QB,4000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Mac Jones,SF,QB,4000,8.2932,8.2932,0.0,27.7144,27.7144,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Kurtis Rourke,SF,QB,4000,15.9807,15.9807,0.0,31.0434,31.0434,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Gardner Minshew II,ARI,QB,4000,5.5648,5.5648,0.0,17.5336,17.5336,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Carson Beck,ARI,QB,4000,13.2119,13.2119,0.0,25.3898,25.3898,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Athan Kaliakmanis,WAS,QB,4000,11.8661,11.8661,0.0,22.1412,22.1412,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Sam Hartman,WAS,QB,4000,12.2256,12.2256,0.0,22.7054,22.7054,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Jameis Winston,NYG,QB,4000,12.0129,12.0129,0.0,34.1072,34.1072,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Davis Mills,HOU,QB,4000,9.4553,9.4553,0.0,22.4012,22.4012,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Graham Mertz,HOU,QB,4000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Kenny Pickett,CAR,QB,4000,3.0174,3.0174,0.0,9.8761,9.8761,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Haynes King,CAR,QB,4000,13.4177,13.4177,0.0,25.328,25.328,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Taylen Green,CLE,QB,4000,13.3,13.3,0.0,25.3552,25.3552,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Dillon Gabriel,CLE,QB,4000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Mason Rudolph,PIT,QB,4000,5.3907,5.3907,0.0,15.3469,15.3469,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Will Howard,PIT,QB,4000,12.6172,12.6172,0.0,23.2812,23.2812,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Drew Allar,PIT,QB,4000,13.0965,13.0965,0.0,25.0872,25.0872,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Ty Johnson,BUF,RB,4000,10.1231,10.1231,0.0,22.5008,22.5008,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Nick Mullens,JAX,QB,4000,3.5777,3.5777,0.0,15.4331,15.4331,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Quinn Ewers,JAX,QB,4000,10.1345,10.1345,0.0,16.9994,16.9994,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Joey Aguilar,JAX,QB,4000,14.856,14.856,0.0,28.6885,28.6885,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Garrett Nussmeier,KC,QB,4000,15.9704,15.9704,0.0,30.7527,30.7527,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Jalon Daniels,TB,QB,4000,13.2378,13.2378,0.0,25.2587,25.2587,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Easton Stick,TB,QB,4000,14.1008,14.1008,0.0,20.8395,20.8395,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Max Brosmer,MIN,QB,4000,3.626,3.626,0.0,11.4207,11.4207,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Tyler Huntley,BAL,QB,4000,10.4978,10.4978,0.0,18.3795,18.3795,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Joe Fagnano,BAL,QB,4000,16.0742,16.0742,0.0,30.7527,30.7527,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Skylar Thompson,BAL,QB,4000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Jordan Mason,MIN,RB,4000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Dylan Sampson,CLE,RB,4000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Ty Chandler,NO,RB,4000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Dylan Laube,LV,RB,4000,0.0426,0.0426,0.0,0.3838,0.3838,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Chris Collier,LV,RB,4000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Dare Ogunbowale,LV,RB,4000,2.1545,2.1545,0.0,6.1415,6.1415,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Connor Heyward,LV,RB,4000,7.3412,7.3412,0.0,17.9597,17.9597,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Roman Hemby,LV,RB,4000,7.4084,7.4084,0.0,19.0558,19.0558,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Isaac Guerendo,SF,RB,4000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+James Conner,ARI,RB,4000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Trey Benson,ARI,RB,4000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Jeremy McNichols,WAS,RB,4000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Zach Charbonnet,SEA,RB,4000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Robbie Ouzts,SEA,RB,4000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Trevor Etienne,CAR,RB,4000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Kene Nwangwu,NYJ,RB,4000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Chip Trayanum,NYJ,RB,4000,7.641,7.641,0.0,20.6326,20.6326,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Isiah Pacheco,DET,RB,4000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Myles Montgomery,NE,RB,4000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Brashard Smith,KC,RB,4000,4.0088,4.0088,0.0,10.9306,10.9306,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Nate Carter,KC,RB,4000,2.6552,2.6552,0.0,5.8624,5.8624,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Ben VanSumeren,KC,RB,4000,0.3452,0.3452,0.0,1.0659,1.0659,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Jaydn Ott,KC,RB,4000,8.8366,8.8366,0.0,24.9093,24.9093,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Scott Matlock,LAC,RB,4000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Frank Gore Jr.,BUF,RB,4000,0.6444,0.6444,0.0,2.345,2.345,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Brock Lampe,BUF,RB,4000,8.6704,8.6704,0.0,22.4423,22.4423,not_applied,insufficient_matching_pressure_or_rb_contact_history,2026-09-27T14:54:57.829203+00:00
+Adam Randall,BAL,RB,4000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Xavier Hutchinson,HOU,WR,4000,6.0072,6.0072,0.0,13.295,13.295,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Calvin Ridley,TEN,WR,4000,7.261,7.261,0.0,19.7402,19.7402,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Cooper Kupp,SEA,WR,4000,6.4957,6.4957,0.0,12.1997,12.1997,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Harold Fannin Jr.,CLE,TE,4000,10.7619,10.7619,0.0,17.8638,17.8638,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Germie Bernard,PIT,WR,3900,7.2523,7.2523,0.0,15.2984,15.2984,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Tre' Harris,LAC,WR,3900,5.0271,5.0271,0.0,8.4891,8.4891,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Caleb Douglas,MIA,WR,3900,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Hunter Henry,NE,TE,3900,9.4358,9.4358,0.0,14.9785,14.9785,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Demarcus Robinson,SF,WR,3800,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Jerry Jeudy,CLE,WR,3800,5.6477,5.6477,0.0,14.0159,14.0159,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Ryan Flournoy,DAL,WR,3800,8.4851,8.4851,0.0,12.2003,12.2003,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Pat Freiermuth,PIT,TE,3800,8.7369,8.7369,0.0,14.4385,14.4385,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Seahawks,SEA,DST,3800,9.705,9.705,0.0,16.0,16.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Kendrick Bourne,ARI,WR,3700,5.8127,5.8127,0.0,14.9388,14.9388,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+DeMario Douglas,NE,WR,3700,4.6326,4.6326,0.0,6.8614,6.8614,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jalen Nailor,LV,WR,3700,4.9563,4.9563,0.0,10.0491,10.0491,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Juwan Johnson,NO,TE,3700,11.4535,11.4535,0.0,17.1592,17.1592,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Chiefs,KC,DST,3700,5.6305,5.6305,0.0,12.0,12.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jaylin Noel,HOU,WR,3600,4.7491,4.7491,0.0,11.6083,11.6083,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Cyrus Allen,KC,WR,3600,0.54,0.54,0.0,2.0252,2.0252,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jauan Jennings,MIN,WR,3600,10.0643,10.0643,0.0,18.221,18.221,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Chig Okonkwo,WAS,TE,3600,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+49ers,SF,DST,3600,5.9185,5.9185,0.0,11.0,11.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Devontez Walker,BAL,WR,3500,5.1474,5.1474,0.0,14.2349,14.2349,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Xavier Legette,CAR,WR,3500,4.8588,4.8588,0.0,8.3342,8.3342,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Joshua Palmer,BUF,WR,3500,6.6771,6.6771,0.0,12.8492,12.8492,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jack Bech,LV,WR,3500,4.6364,4.6364,0.0,10.4193,10.4193,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Oronde Gadsden II,LAC,TE,3500,7.5625,7.5625,0.0,11.8355,11.8355,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Kenyon Sadiq,NYJ,TE,3500,7.2668,7.2668,0.0,13.1564,13.1564,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Lions,DET,DST,3500,4.3385,4.3385,0.0,10.0,10.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Roman Wilson,PIT,WR,3400,4.6947,4.6947,0.0,10.5214,10.5214,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Elijah Sarratt,BAL,WR,3400,7.2259,7.2259,0.0,19.095,19.095,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Isaac TeSlaa,DET,WR,3400,5.8095,5.8095,0.0,15.6206,15.6206,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Chris Bell,MIA,WR,3400,1.4464,1.4464,0.0,3.2371,3.2371,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Kyle Williams,NE,WR,3400,3.1338,3.1338,0.0,12.1359,12.1359,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Brenton Strange,JAX,TE,3400,9.4701,9.4701,0.0,17.9642,17.9642,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Darren Waller,CAR,TE,3400,9.922,9.922,0.0,18.575,18.575,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Giants,NYG,DST,3400,5.427,5.427,0.0,12.0,12.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Tyquan Thornton,KC,WR,3300,5.9249,5.9249,0.0,13.4302,13.4302,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Deion Burks,IND,WR,3300,1.4549,1.4549,0.0,4.4525,4.4525,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Elic Ayomanor,TEN,WR,3300,7.0496,7.0496,0.0,11.9215,11.9215,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jacob Cowing,SF,WR,3300,1.0005,1.0005,0.0,6.0756,6.0756,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+T.J. Hockenson,MIN,TE,3200,8.1177,8.1177,0.0,13.3104,13.3104,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Noah Fant,NO,TE,3200,4.603,4.603,0.0,13.6786,13.6786,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Odell Beckham Jr.,NYG,WR,3300,3.0919,3.0919,0.0,6.5541,6.5541,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Isaiah Williams,NYJ,WR,3300,5.7718,5.7718,0.0,10.5423,10.5423,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Michael Mayer,LV,TE,3300,6.4354,6.4354,0.0,14.9295,14.9295,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Mike Gesicki,CIN,TE,3300,9.1767,9.1767,0.0,18.9163,18.9163,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Saints,NO,DST,3300,6.78,6.78,0.0,12.0,12.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Ashton Dulin,IND,WR,3200,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Dyami Brown,WAS,WR,3200,2.4915,2.4915,0.0,5.4567,5.4567,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Ryan Miller,MIA,WR,3200,3.1335,3.1335,0.0,12.8464,12.8464,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Cody White,LV,WR,3200,3.7843,3.7843,0.0,14.889,14.889,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Texans,HOU,DST,3200,6.1015,6.1015,0.0,11.0,11.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Chris Moore,BAL,WR,3100,3.8182,3.8182,0.0,8.3246,8.3246,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Travis Hunter,JAX,WR,3100,6.8658,6.8658,0.0,17.4509,17.4509,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jared Wayne,HOU,WR,3100,3.9216,3.9216,0.0,7.0444,7.0444,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jordan Watkins,SF,WR,3100,2.4142,2.4142,0.0,4.9031,4.9031,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Laquon Treadwell,IND,WR,3100,1.7378,1.7378,0.0,8.8083,8.8083,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Cade Otton,TB,TE,3100,8.7379,8.7379,0.0,21.4751,21.4751,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+AJ Barner,SEA,TE,3100,7.8151,7.8151,0.0,15.8056,15.8056,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Vikings,MIN,DST,3100,11.0215,11.0215,0.0,18.1,18.1,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Trey Palmer,NO,WR,3000,1.9364,1.9364,0.0,5.1782,5.1782,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Bryce Lance,NO,WR,3000,4.4789,4.4789,0.0,9.138,9.138,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Tory Horton,SEA,WR,3000,8.8923,8.8923,0.0,22.1329,22.1329,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Ja'Kobi Lane,BAL,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+LaJohntay Wester,BAL,WR,3000,1.0386,1.0386,0.0,3.7306,3.7306,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Omar Cooper Jr.,NYJ,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Jalen Royals,KC,WR,3000,3.5102,3.5102,0.0,9.9713,9.9713,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Ted Hurst III,TB,WR,3000,5.4473,5.4473,0.0,10.8901,10.8901,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Brenen Thompson,LAC,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+KeAndre Lambert-Smith,LAC,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+De'Zhaun Stribling,SF,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Andrei Iosivas,CIN,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Cedric Tillman,NO,WR,3000,4.2408,4.2408,0.0,8.3258,8.3258,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Barion Brown,NO,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Kevin Austin Jr.,NO,WR,3000,5.2729,5.2729,0.0,15.6078,15.6078,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jordyn Tyson,NO,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Mason Tipton,NO,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Jalen Moreno-Cropper,NO,WR,3000,0.3195,0.3195,0.0,1.2286,1.2286,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Kyrese Rowan,NO,WR,3000,6.663,6.663,0.0,17.0576,17.0576,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Malik Benson,LV,WR,3000,0.4877,0.4877,0.0,1.2475,1.2475,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Dareke Young,LV,WR,3000,0.9698,0.9698,0.0,3.5506,3.5506,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Dont'e Thornton Jr.,LV,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Justin Shorter,LV,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Corey Rucker,LV,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Deven Thompkins,LV,WR,3000,0.609,0.609,0.0,2.495,2.495,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Ronnie Bell,LV,WR,3000,3.0206,3.0206,0.0,9.4597,9.4597,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+KhaDarel Hodge,SF,WR,3000,1.0019,1.0019,0.0,2.9845,2.9845,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Christian Kirk,SF,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Ricky Pearsall,SF,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Wesley Grimes,SF,WR,3000,7.5811,7.5811,0.0,19.9907,19.9907,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Will Pauling,SF,WR,3000,7.4313,7.4313,0.0,19.0899,19.0899,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jalen Brooks,ARI,WR,3000,1.6244,1.6244,0.0,5.0117,5.0117,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Simi Fehoko,ARI,WR,3000,0.5814,0.5814,0.0,2.024,2.024,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Devin Duvernay,ARI,WR,3000,0.278,0.278,0.0,0.0,0.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Reggie Virgil,ARI,WR,3000,6.2198,6.2198,0.0,15.4235,15.4235,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Harrison Wallace III,ARI,WR,3000,6.3849,6.3849,0.0,14.9388,14.9388,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jaylin Lane,WAS,WR,3000,1.8863,1.8863,0.0,6.0,6.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Treylon Burks,WAS,WR,3000,2.3615,2.3615,0.0,6.1873,6.1873,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Luke McCaffrey,WAS,WR,3000,3.8816,3.8816,0.0,8.7769,8.7769,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jaden Bradley,WAS,WR,3000,6.2271,6.2271,0.0,15.2049,15.2049,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Xavier Restrepo,TEN,WR,3000,3.2241,3.2241,0.0,6.5749,6.5749,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Van Jefferson,WAS,WR,3000,4.7128,4.7128,0.0,7.029,7.029,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Montorie Foster Jr.,SEA,WR,3000,0.5028,0.5028,0.0,1.8545,1.8545,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Irvin Charles,SEA,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Jake Bobo,SEA,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Ricky White III,SEA,WR,3000,7.161,7.161,0.0,18.9685,18.9685,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Julian Hicks,SEA,WR,3000,7.0055,7.0055,0.0,17.557,17.557,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Emmanuel Henderson Jr.,SEA,WR,3000,6.7079,6.7079,0.0,16.8962,16.8962,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Calvin Austin III,NYG,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Gunner Olszewski,NYG,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Dalen Cambre,NYG,WR,3000,0.3088,0.3088,0.0,1.1662,1.1662,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jalin Hyatt,NYG,WR,3000,1.627,1.627,0.0,4.5298,4.5298,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Charlie Jones,NYG,WR,3000,0.5613,0.5613,0.0,1.1662,1.1662,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Braxton Berrios,NYG,WR,3000,1.0795,1.0795,0.0,3.8552,3.8552,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Chimere Dike,TEN,WR,3000,5.0037,5.0037,0.0,11.6441,11.6441,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+K.J. Osborn,TEN,WR,3000,3.266,3.266,0.0,9.0544,9.0544,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Tyren Montgomery,TEN,WR,3000,6.1281,6.1281,0.0,14.4187,14.4187,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Anthony Gould,IND,WR,3000,0.3491,0.3491,0.0,1.2583,1.2583,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+D.J. Montgomery,IND,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Nick Westbrook-Ikhine,IND,WR,3000,1.7607,1.7607,0.0,4.4525,4.4525,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Lewis Bond,HOU,WR,3000,6.6144,6.6144,0.0,16.4828,16.4828,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Tank Dell,HOU,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Jayden Higgins,HOU,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Jimmy Horn Jr.,CLE,WR,3000,1.9169,1.9169,0.0,4.04,4.04,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Daniel Sobkowicz,HOU,WR,3000,6.698,6.698,0.0,17.5941,17.5941,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Mitch Tinsley,HOU,WR,3000,3.5797,3.5797,0.0,10.7283,10.7283,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Josh Kelly,HOU,WR,3000,6.6414,6.6414,0.0,16.2715,16.2715,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Bryce Oliver,HOU,WR,3000,1.5573,1.5573,0.0,3.671,3.671,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Brycen Tremayne,CAR,WR,3000,1.055,1.055,0.0,4.6632,4.6632,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+John Metchie III,CAR,WR,3000,4.7178,4.7178,0.0,7.342,7.342,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Chris Brazzell II,CAR,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Ja'seem Reed,CAR,WR,3000,6.6908,6.6908,0.0,16.6684,16.6684,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Casey Washington,CAR,WR,3000,2.5321,2.5321,0.0,6.2506,6.2506,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+David Moore,CAR,WR,3000,3.7967,3.7967,0.0,9.9345,9.9345,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Isaiah Bond,CLE,WR,3000,3.1574,3.1574,0.0,8.1623,8.1623,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Tylan Wallace,CLE,WR,3000,0.8773,0.8773,0.0,2.3031,2.3031,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Malachi Corley,CLE,WR,3000,1.8418,1.8418,0.0,5.5658,5.5658,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Bub Means,CLE,WR,3000,6.3256,6.3256,0.0,14.4497,14.4497,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Ben Skowronek,PIT,WR,3000,0.7314,0.7314,0.0,2.1974,2.1974,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Kaden Wetjen,PIT,WR,3000,0.3072,0.3072,0.0,1.0509,1.0509,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Cole Burgess,PIT,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Brandon Smith,PIT,WR,3000,6.2773,6.2773,0.0,15.2315,15.2315,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Brandon Johnson,PIT,WR,3000,6.3709,6.3709,0.0,14.6232,14.6232,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Colbie Young,CIN,WR,3000,1.6089,1.6089,0.0,4.7182,4.7182,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jamaal Pritchett,NYJ,WR,3000,6.3323,6.3323,0.0,15.1302,15.1302,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Sterling Shepard,NYJ,WR,3000,4.7908,4.7908,0.0,9.859,9.859,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Dohnte Meyers,CIN,WR,3000,1.9201,1.9201,0.0,4.2163,4.2163,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Ke'Shawn Williams,CIN,WR,3000,0.4631,0.4631,0.0,1.5058,1.5058,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Noah Thomas,CIN,WR,3000,6.7477,6.7477,0.0,16.8081,16.8081,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jordan Moore,CIN,WR,3000,6.5989,6.5989,0.0,16.8081,16.8081,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Arian Smith,NYJ,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Tim Patrick,NYJ,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Malik McClain,NYJ,WR,3000,6.4427,6.4427,0.0,16.0447,16.0447,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Tyler Johnson,NYJ,WR,3000,4.0603,4.0603,0.0,13.3115,13.3115,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Tom Kennedy,DET,WR,3000,0.4101,0.4101,0.0,0.0,0.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Tay Martin,DET,WR,3000,1.0145,1.0145,0.0,2.5581,2.5581,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Kendrick Law,DET,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Lucky Jackson,DET,WR,3000,7.0837,7.0837,0.0,18.4554,18.4554,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Dominic Lovett,DET,WR,3000,0.3762,0.3762,0.0,1.3857,1.3857,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Josh Cameron,JAX,WR,3000,5.0047,5.0047,0.0,10.5729,10.5729,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Kameron Johnson,TB,WR,3000,0.3372,0.3372,0.0,0.0,0.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+CJ Williams,JAX,WR,3000,6.9792,6.9792,0.0,17.1429,17.1429,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Trebor Pena,JAX,WR,3000,7.0739,7.0739,0.0,17.6562,17.6562,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Tim Jones,JAX,WR,3000,1.1615,1.1615,0.0,2.6793,2.6793,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Michael Wortham,JAX,WR,3000,6.8487,6.8487,0.0,17.4502,17.4502,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Austin Trammell,JAX,WR,3000,0.934,0.934,0.0,5.1594,5.1594,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Efton Chism III,NE,WR,3000,2.5944,2.5944,0.0,11.5478,11.5478,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+A.J. Brown,NE,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Jeremiah Webb,NE,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Cameron Dorner,NE,WR,3000,6.5586,6.5586,0.0,16.1547,16.1547,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Kyle Dixon,NE,WR,3000,6.4506,6.4506,0.0,15.8821,15.8821,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Kevin Coleman Jr.,MIA,WR,3000,0.4209,0.4209,0.0,1.7573,1.7573,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jalen Tolbert,MIA,WR,3000,3.7348,3.7348,0.0,10.9966,10.9966,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jalen Reagor,MIA,WR,3000,2.2651,2.2651,0.0,5.0868,5.0868,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Will Sheppard,MIA,WR,3000,6.1512,6.1512,0.0,14.8811,14.8811,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Nikko Remigio,KC,WR,3000,0.1829,0.1829,0.0,0.0,0.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jeff Caldwell,KC,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Jimmy Holiday,KC,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Omari Evans,KC,WR,3000,7.0514,7.0514,0.0,18.3489,18.3489,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Andrew Armstrong,KC,WR,3000,7.5558,7.5558,0.0,19.5213,19.5213,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Derius Davis,LAC,WR,3000,0.5753,0.5753,0.0,1.6732,1.6732,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Gary Jennings,LAC,WR,3000,6.4536,6.4536,0.0,15.9692,15.9692,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Theo Wease Jr.,LAC,WR,3000,8.3104,8.3104,0.0,14.1727,14.1727,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Marquez Valdes-Scantling,LAC,WR,3000,4.7675,4.7675,0.0,8.5876,8.5876,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Skyler Bell,BUF,WR,3000,7.3484,7.3484,0.0,18.8182,18.8182,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Tyrell Shavers,BUF,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Stephen Gosnell,BUF,WR,3000,7.3439,7.3439,0.0,18.8182,18.8182,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Greg Dortch,BUF,WR,3000,5.8888,5.8888,0.0,18.7116,18.7116,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Ja'Mori Maclin,BUF,WR,3000,7.1279,7.1279,0.0,17.5675,17.5675,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Trent Sherfield Sr.,BUF,WR,3000,1.2726,1.2726,0.0,2.6647,2.6647,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Tez Johnson,TB,WR,3000,4.2511,4.2511,0.0,10.9843,10.9843,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Eric Rivers Jr.,TB,WR,3000,6.5272,6.5272,0.0,15.9418,15.9418,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Garrett Greene,TB,WR,3000,6.617,6.617,0.0,16.3306,16.3306,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Dean Patterson IV,TB,WR,3000,6.3332,6.3332,0.0,15.9344,15.9344,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Tai Felton,MIN,WR,3000,0.5647,0.5647,0.0,1.9764,1.9764,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Myles Price,MIN,WR,3000,0.036,0.036,0.0,0.0,0.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jonathan Mingo,DAL,WR,3000,1.4223,1.4223,0.0,3.6187,3.6187,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+John Bates,WAS,TE,2500,2.7729,2.7729,0.0,7.8521,7.8521,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Dillon Bell,MIN,WR,3000,6.7516,6.7516,0.0,16.3738,16.3738,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jeshaun Jones,MIN,WR,3000,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Michael Briscoe,MIN,WR,3000,6.4019,6.4019,0.0,15.3803,15.3803,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Trayvon Rudolph,MIN,WR,3000,6.2424,6.2424,0.0,15.0891,15.0891,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Gage Larvadain,BAL,WR,3000,0.9418,0.9418,0.0,4.0504,4.0504,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Xavier Guillory,BAL,WR,3000,7.1551,7.1551,0.0,18.6051,18.6051,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Camden Brown,DAL,WR,3000,6.837,6.837,0.0,17.663,17.663,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Anthony Smith,DAL,WR,3000,7.165,7.165,0.0,17.7493,17.7493,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jordan Hudson,DAL,WR,3000,7.1196,7.1196,0.0,17.8697,17.8697,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+KaVontae Turpin,DAL,WR,3000,4.2036,4.2036,0.0,14.6146,14.6146,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Greg Dulcich,MIA,TE,3000,5.2033,5.2033,0.0,9.4244,9.4244,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Noah Gray,KC,TE,3000,2.7164,2.7164,0.0,6.3954,6.3954,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Tommy Tremble,CAR,TE,2500,4.3953,4.3953,0.0,12.6134,12.6134,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Panthers,CAR,DST,3000,8.91,8.91,0.0,26.0,26.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Eli Pancol,IND,WR,3000,6.3925,6.3925,0.0,15.2264,15.2264,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Isaiah Hodgins,PIT,WR,3000,3.0997,3.0997,0.0,10.2228,10.2228,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Shedrick Jackson,BAL,WR,3000,3.4518,3.4518,0.0,10.9306,10.9306,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Eli Raridon,NE,TE,2900,5.2077,5.2077,0.0,9.7039,9.7039,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Gunnar Helm,TEN,TE,2900,4.8156,4.8156,0.0,10.2661,10.2661,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Bengals,CIN,DST,2900,8.6185,8.6185,0.0,18.0,18.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jaguars,JAX,DST,2900,8.2635,8.2635,0.0,13.0,13.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Dawson Knox,BUF,TE,2800,7.8215,7.8215,0.0,18.3082,18.3082,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Darnell Washington,PIT,TE,2800,3.8952,3.8952,0.0,6.3176,6.3176,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Bills,BUF,DST,2800,5.6345,5.6345,0.0,9.0,9.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Ravens,BAL,DST,2800,6.1075,6.1075,0.0,11.0,11.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+David Njoku,LAC,TE,2700,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Theo Johnson,NYG,TE,2700,5.0126,5.0126,0.0,10.8936,10.8936,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Patriots,NE,DST,2700,9.418,9.418,0.0,21.0,21.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Mason Taylor,NYJ,TE,2500,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Steelers,PIT,DST,2700,8.5045,8.5045,0.0,18.0,18.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Ben Sinnott,WAS,TE,2600,2.5425,2.5425,0.0,5.4567,5.4567,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Drew Sample,CIN,TE,2600,3.4698,3.4698,0.0,5.1198,5.1198,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Raiders,LV,DST,2600,7.6915,7.6915,0.0,18.0,18.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Buccaneers,TB,DST,2600,4.8225,4.8225,0.0,8.0,8.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jake Tonges,SF,TE,2500,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Foster Moreau,HOU,TE,2500,3.6754,3.6754,0.0,6.6574,6.6574,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Daniel Bellinger,TEN,TE,2500,3.1946,3.1946,0.0,10.1643,10.1643,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Brock Wright,DET,TE,2500,2.8908,2.8908,0.0,6.2888,6.2888,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Brevyn Spann-Ford,DAL,TE,2500,2.165,2.165,0.0,5.1696,5.1696,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Charlie Kolar,LAC,TE,2500,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Oscar Delp,NO,TE,2500,1.7819,1.7819,0.0,4.4675,4.4675,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Treyton Welch,NO,TE,2500,1.1924,1.1924,0.0,3.2491,3.2491,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Moliki Matavao,NO,TE,2500,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Stone Smartt,NO,TE,2500,3.2099,3.2099,0.0,8.5288,8.5288,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Ian Thomas,LV,TE,2500,2.6237,2.6237,0.0,5.8683,5.8683,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Chris Myarick,LV,TE,2500,5.2411,5.2411,0.0,13.4901,13.4901,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Carter Runyon,LV,TE,2500,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Patrick Gurd,LV,TE,2500,5.423,5.423,0.0,13.8739,13.8739,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Luke Farrell,SF,TE,2500,1.8505,1.8505,0.0,4.157,4.157,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Brayden Willis,SF,TE,2500,0.3025,0.3025,0.0,1.1359,1.1359,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jack Stoll,SF,TE,2500,1.6223,1.6223,0.0,2.2384,2.2384,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Khalil Dinkins,SF,TE,2500,6.1247,6.1247,0.0,16.2601,16.2601,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Elijah Higgins,ARI,TE,2500,3.4848,3.4848,0.0,14.0742,14.0742,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Hunter Long,ARI,TE,2500,2.0835,2.0835,0.0,5.5997,5.5997,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Tip Reiman,ARI,TE,2500,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Jameson Geers,ARI,TE,2500,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Teagan Quitoriano,ARI,TE,2500,1.072,1.072,0.0,3.0841,3.0841,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Shawn Bowman,ARI,TE,2500,5.5459,5.5459,0.0,13.5055,13.5055,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Colson Yankoff,WAS,TE,2500,0.7952,0.7952,0.0,2.2197,2.2197,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jack Westover,WAS,TE,2500,0.6399,0.6399,0.0,1.7665,1.7665,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Eric Saubert,SEA,TE,2500,1.0932,1.0932,0.0,3.0908,3.0908,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Elijah Arroyo,SEA,TE,2500,2.2718,2.2718,0.0,6.5936,6.5936,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Nick Kallerup,SEA,TE,2500,0.6674,0.6674,0.0,2.1635,2.1635,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Chris Manhertz,NYG,TE,2500,0.8776,0.8776,0.0,2.5059,2.5059,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Thomas Fidone II,NYG,TE,2500,0.9557,0.9557,0.0,2.5059,2.5059,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+David Martin-Robinson,TEN,TE,2500,1.0419,1.0419,0.0,2.2197,2.2197,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Kylen Granson,TEN,TE,2500,1.7124,1.7124,0.0,6.4741,6.4741,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Blake Whiteheart,CLE,TE,2500,2.2116,2.2116,0.0,7.9243,7.9243,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jaren Kanak,TEN,TE,2500,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Joel Wilson,TEN,TE,2500,5.1357,5.1357,0.0,13.6788,13.6788,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Mo Alie-Cox,IND,TE,2500,3.688,3.688,0.0,10.3064,10.3064,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Drew Ogletree,IND,TE,2500,1.1805,1.1805,0.0,3.0974,3.0974,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Will Mallory,IND,TE,2500,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Carson Towt,IND,TE,2500,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Pharaoh Brown,IND,TE,2500,0.7515,0.7515,0.0,2.0327,2.0327,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Kenny Fletcher Jr.,IND,TE,2500,5.3758,5.3758,0.0,14.1782,14.1782,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Marlin Klein,HOU,TE,2500,2.7042,2.7042,0.0,7.3549,7.3549,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Cade Stover,HOU,TE,2500,2.4921,2.4921,0.0,5.1593,5.1593,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Brevin Jordan,HOU,TE,2500,4.1542,4.1542,0.0,9.7361,9.7361,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Zaire Mitchell-Paden,HOU,TE,2500,1.448,1.448,0.0,2.7781,2.7781,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Mitchell Evans,CAR,TE,2500,2.5435,2.5435,0.0,5.2585,5.2585,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Feleipe Franks,CAR,TE,2500,0.2526,0.2526,0.0,0.1984,0.1984,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Ja'Tavion Sanders,CAR,TE,2500,4.3886,4.3886,0.0,8.7439,8.7439,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Carsen Ryan,CLE,TE,2500,0.9446,0.9446,0.0,2.7829,2.7829,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Joe Royer,CLE,TE,2500,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Messiah Swinson,CLE,TE,2500,5.2135,5.2135,0.0,13.3941,13.3941,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Robert Tonyan,PIT,TE,2500,1.4385,1.4385,0.0,4.2038,4.2038,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Lake McRee,PIT,TE,2500,5.4055,5.4055,0.0,13.7793,13.7793,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Erick All Jr.,CIN,TE,2500,3.8782,3.8782,0.0,6.8263,6.8263,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jack Endries,CIN,TE,2500,5.8477,5.8477,0.0,15.0012,15.0012,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Tanner Hudson,CIN,TE,2500,3.7763,3.7763,0.0,8.476,8.476,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jeremy Ruckert,NYJ,TE,2500,2.5563,2.5563,0.0,3.807,3.807,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jelani Woods,NYJ,TE,2500,0.9615,0.9615,0.0,2.3427,2.3427,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Tyler Conklin,DET,TE,2500,4.8617,4.8617,0.0,11.4264,11.4264,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jackson Meeks,DET,TE,2500,6.2313,6.2313,0.0,16.1535,16.1535,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Thomas Gordon,DET,TE,2500,6.5094,6.5094,0.0,16.2601,16.2601,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Nate Boerkircher,JAX,TE,2500,1.9123,1.9123,0.0,4.6195,4.6195,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Quintin Morris,JAX,TE,2500,2.0882,2.0882,0.0,8.0065,8.0065,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Tanner Koziol,JAX,TE,2500,5.7157,5.7157,0.0,15.0898,15.0898,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Cameron Latu,NE,TE,2500,0.2447,0.2447,0.0,0.0,0.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Tanner Arkin,NE,TE,2500,5.3759,5.3759,0.0,13.9983,13.9983,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Julian Hill,NE,TE,2500,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Will Kacmarek,MIA,TE,2500,0.9159,0.9159,0.0,2.2197,2.2197,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Seydou Traore,MIA,TE,2500,5.2486,5.2486,0.0,13.5863,13.5863,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Justin Joly,MIA,TE,2500,5.1068,5.1068,0.0,12.9482,12.9482,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Cole Turner,MIA,TE,2500,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Tre Watson,MIA,TE,2500,5.3305,5.3305,0.0,13.6788,13.6788,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jake Briningstool,KC,TE,2500,2.021,2.021,0.0,4.7965,4.7965,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jared Wiley,KC,TE,2500,1.2272,1.2272,0.0,2.5581,2.5581,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+John Michael Gyllenborg,KC,TE,2500,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Evan Svoboda,LAC,TE,2500,5.7164,5.7164,0.0,14.5913,14.5913,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Patrick Herbert,LAC,TE,2500,5.6,5.6,0.0,14.0007,14.0007,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jackson Hawes,BUF,TE,2500,4.2106,4.2106,0.0,8.5857,8.5857,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Keleki Latu,BUF,TE,2500,1.5395,1.5395,0.0,6.5019,6.5019,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Payne Durham,TB,TE,2500,1.3007,1.3007,0.0,3.791,3.791,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Ko Kieft,TB,TE,2500,0.4821,0.4821,0.0,1.5553,1.5553,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Bauer Sharp,TB,TE,2500,1.0234,1.0234,0.0,2.819,2.819,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+CJ Dippre,TB,TE,2500,5.5324,5.5324,0.0,14.7679,14.7679,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Josh Oliver,MIN,TE,2500,4.1431,4.1431,0.0,7.4039,7.4039,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Gavin Bartholomew,MIN,TE,2500,5.4154,5.4154,0.0,13.3408,13.3408,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Ben Yurosek,MIN,TE,2500,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Cam Grandy,MIN,TE,2500,1.729,1.729,0.0,3.1623,3.1623,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Durham Smythe,BAL,TE,2500,1.1266,1.1266,0.0,2.2384,2.2384,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Tanner Conner,NE,TE,2500,1.8872,1.8872,0.0,3.7247,3.7247,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Josh Cuevas,BAL,TE,2500,6.4496,6.4496,0.0,16.6864,16.6864,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Nick Vannett,BAL,TE,2500,6.3458,6.3458,0.0,16.793,16.793,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Luke Schoonmaker,DAL,TE,2500,2.5941,2.5941,0.0,4.0323,4.0323,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Princeton Fant,DAL,TE,2500,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+DJ Rogers,DAL,TE,2500,0.0,0.0,0.0,0.0,0.0,not_applied,ineligible_or_out,2026-09-27T14:54:57.829203+00:00
+Titans,TEN,DST,2400,3.9515,3.9515,0.0,10.0,10.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Michael Trigg,DAL,TE,2500,6.0874,6.0874,0.0,15.957,15.957,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+James Mitchell,DAL,TE,2500,2.8692,2.8692,0.0,4.5493,4.5493,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Colts,IND,DST,2500,2.143,2.143,0.0,7.0,7.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Browns,CLE,DST,2500,6.0715,6.0715,0.0,15.0,15.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Brenden Bates,JAX,TE,2500,1.5554,1.5554,0.0,4.4142,4.4142,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Cowboys,DAL,DST,2400,3.26,3.26,0.0,7.0,7.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Commanders,WAS,DST,2300,3.1725,3.1725,0.0,9.0,9.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Cardinals,ARI,DST,2300,3.053,3.053,0.0,10.0,10.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Chargers,LAC,DST,2200,5.572,5.572,0.0,13.0,13.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Jets,NYJ,DST,2100,3.0535,3.0535,0.0,7.0,7.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00
+Dolphins,MIA,DST,2000,3.2725,3.2725,0.0,12.0,12.0,not_applied,no_registered_effect_for_position,2026-09-27T14:54:57.829203+00:00

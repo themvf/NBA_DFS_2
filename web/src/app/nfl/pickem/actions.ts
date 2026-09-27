@@ -24,9 +24,23 @@ import { getPickemEvidence } from "@/db/pickem-evidence";
 import { getNflPickemSlate } from "@/db/queries";
 import { narrativeRead, tagSeason } from "@/lib/nfl/pickem-archetypes";
 import { evOptimalEntry } from "@/lib/nfl/pickem-strategy";
+import { compareContestCards, validatePoolConfig, type PoolConfig } from "@/lib/nfl/pickem-contest";
+import type { PickemGame } from "@/lib/nfl/pickem-strategy";
 import { EMPTY_EVIDENCE, safeSourceUrl, timestamp, type PickemNews, type PickemScenario, type FrozenEvidence } from "@/lib/nfl/pickem-evidence";
 
 export type ActionResult = { ok: true; message: string } | { ok: false; error: string };
+
+export async function savePickemPoolConfig(poolId: number, raw: PoolConfig): Promise<ActionResult> {
+  try {
+    const config = validatePoolConfig(raw);
+    await ensurePickemTables();
+    const result = await db.execute(sql`UPDATE pickem_pools SET config_json=${JSON.stringify(config)}::jsonb,
+      updated_at=NOW() WHERE id=${poolId} RETURNING id`);
+    if (!result.rows.length) return { ok: false, error: "Select a saved pool first." };
+    revalidatePath("/nfl/pickem");
+    return { ok: true, message: "Pool rules and standings saved. Frozen cards keep their original rules." };
+  } catch (e) { return { ok: false, error: e instanceof Error ? e.message : "Could not save pool rules" }; }
+}
 
 export type FrozenGame = {
   gameId: number;
@@ -41,6 +55,7 @@ export type FrozenGame = {
   recommendedConfidence: number;
   fieldHomeShare: number;
   fieldSource: "observed" | "modeled";
+  fieldObservation?: PickemGame["fieldObservation"];
   scenario?: PickemScenario | null;
 };
 
@@ -146,17 +161,19 @@ export async function freezePickemRecommendation(input: {
 
   await ensurePickemTables();
   try {
-    // The lock is the week's FIRST kickoff: a pick'em card is submitted whole,
-    // so the moment any game on it starts, the card is no longer a forecast.
-    // Verified against the schedule rather than trusted from the client.
+    const comparison = input.fieldModel.contestComparison as { config?: PoolConfig } | null;
+    const config = comparison?.config ? validatePoolConfig(comparison.config) : null;
+    const perGame = input.format === "straight" && config?.lockRule === "per_game";
+    // Whole-card pools lock at first kickoff. Per-game records contain only
+    // still-unlocked games and preserve completed-game scores in their audit.
     const kickoffRow = await db.execute(sql`
-      SELECT MIN(kickoff) AS "locksAt", COUNT(*) FILTER (WHERE kickoff <= NOW()) AS started
+      SELECT MIN(kickoff) FILTER (WHERE NOT ${perGame} OR kickoff > NOW()) AS "locksAt", COUNT(*) FILTER (WHERE kickoff <= NOW()) AS started
       FROM nfl_season_games
       WHERE season = ${input.season} AND week = ${input.week}
     `);
     const kick = kickoffRow.rows[0] as Record<string, unknown> | undefined;
     const locksAt = kick?.locksAt != null ? String(kick.locksAt) : null;
-    if (Number(kick?.started ?? 0) > 0) {
+    if (Number(kick?.started ?? 0) > 0 && !perGame) {
       return {
         ok: false,
         error:
@@ -167,7 +184,8 @@ export async function freezePickemRecommendation(input: {
 
     const evidence = await getPickemEvidence(input.season);
     const slate = await getNflPickemSlate(input.season, evidence);
-    const canonical = slate.games.filter(g => g.week === input.week);
+    const wholeWeek = slate.games.filter(g => g.week === input.week);
+    const canonical = wholeWeek.filter(g => !perGame || (g.kickoff != null && timestamp(g.kickoff) > Date.now()));
     const exactBaseline = evOptimalEntry(canonical.map(g => ({ ...g, fieldHomePct: null })), input.format);
     const validProbability = (n: number) => Number.isFinite(n) && n > 0 && n < 1;
     const weights = input.games.map(g => g.recommendedConfidence).sort((a, b) => a - b);
@@ -185,14 +203,38 @@ export async function freezePickemRecommendation(input: {
             !validProbability(g.pHome) || Math.abs(real.pHome - g.pHome) > 1e-8 || real.provenance !== g.provenance ||
             typeof g.recommendedPickHome !== "boolean" || typeof g.baselinePickHome !== "boolean" ||
             g.baselinePickHome !== exactBaseline.pickHome[index] || g.baselineConfidence !== exactBaseline.confidence[index] ||
-            !validProbability(g.fieldHomeShare) || !["observed", "modeled"].includes(g.fieldSource) ||
+            !Number.isFinite(g.fieldHomeShare) || g.fieldHomeShare < 0 || g.fieldHomeShare > 1 || !["observed", "modeled"].includes(g.fieldSource) ||
             (g.scenario != null && (!validProbability(g.scenario.pHome) || !g.scenario.reason.trim() || g.scenario.reason.length > 500));
         })) {
       return { ok: false, error: "Card data is invalid or probabilities changed. Reload the page and review the complete card before freezing." };
     }
     const tags = tagSeason(slate.games);
-    const baselineExpectedPoints = input.games.reduce((sum, g) => sum + g.baselineConfidence * (g.baselinePickHome ? g.pHome : 1 - g.pHome), 0);
-    const recommendedExpectedPoints = input.games.reduce((sum, g) => sum + g.recommendedConfidence * (g.recommendedPickHome ? g.pHome : 1 - g.pHome), 0);
+    const fieldModel = { ...input.fieldModel };
+    const tieRule = comparison?.config ? validatePoolConfig(comparison.config).gameTieRule : "zero";
+    const tiePoints = tieRule === "half" ? .5 : tieRule === "point" ? 1 : 0;
+    const points = (g: FrozenGame, home: boolean) => {
+      const pTie = canonical.find(x => x.gameId === g.gameId)?.pTie ?? 0;
+      return (1-pTie)*(home ? g.pHome : 1-g.pHome)+pTie*tiePoints;
+    };
+    const baselineExpectedPoints = input.games.reduce((sum, g) => sum + g.baselineConfidence * points(g,g.baselinePickHome), 0);
+    const recommendedExpectedPoints = input.games.reduce((sum, g) => sum + g.recommendedConfidence * points(g,g.recommendedPickHome), 0);
+    if (comparison?.config && input.format === "straight") {
+      const config = validatePoolConfig(comparison.config);
+      fieldModel.contestComparison = compareContestCards(wholeWeek.map(g => {
+        const supplied = input.games.find(x => x.gameId === g.gameId);
+        return { ...g, fieldHomePct: supplied?.fieldSource === "observed" ? supplied.fieldHomeShare : null,
+          fieldObservation: supplied?.fieldObservation ? { ...supplied.fieldObservation, population: config.sharePopulation,
+            entryCount: config.entries == null ? null : config.entries - Number(config.sharePopulation === "rivals") } : undefined };
+      }), slate.games.filter(g => g.week > input.week && !g.completed).map(g => ({ ...g, fieldHomePct: null })), config,
+      { favoriteBias: Number(input.fieldModel.favoriteBias ?? 1.3), skillSigma: Number(input.fieldModel.skillSigma ?? .35), chalkFraction: Number(input.fieldModel.chalkFraction ?? .25) });
+    }
+    if (perGame) {
+      const verified = fieldModel.contestComparison as ReturnType<typeof compareContestCards>;
+      if (!verified.eligibility.weekly && !verified.eligibility.season)
+        return {ok:false,error:"Remaining-game freeze requires valid lock rules and complete current-week score evidence. " + verified.warnings.join(" ")};
+      fieldModel.frozenScope = "remaining_unlocked_games";
+      fieldModel.completedWeekScores = config?.settledWeek ?? null;
+    }
     const marketRank = [...canonical].sort((a, b) => {
       const pa = evidence.games[a.gameId]?.latest?.pHome ?? 0.5;
       const pb = evidence.games[b.gameId]?.latest?.pHome ?? 0.5;
@@ -207,6 +249,7 @@ export async function freezePickemRecommendation(input: {
       const snapshot: FrozenEvidence = { ...context, version: 1, recordedAt: evidence.loadedAt,
         coverageWarnings: evidence.warnings,
         probabilityComputedAt: real.computedAt, favoriteHome,
+        pTie: real.pTie, tiePoints, fieldObservation: g.fieldObservation ?? null,
         narrative: narrativeRead(favoriteHome ? t.home : t.away, favoriteHome ? t.away : t.home).verdict,
         scenario: g.scenario ?? null,
         marketBaselinePickHome: marketComplete ? context.latest!.pHome! >= 0.5 : null,
@@ -228,11 +271,12 @@ export async function freezePickemRecommendation(input: {
               ${Math.round(input.poolEntries)}, ${Math.round(input.sims)}, ${input.modelVersion},
               ${baselineExpectedPoints}, ${recommendedExpectedPoints},
               ${input.baselinePrizeShare}, ${input.recommendedPrizeShare},
-              ${JSON.stringify(input.fieldModel)}::jsonb,
+              ${JSON.stringify(fieldModel)}::jsonb,
               ${JSON.stringify(input.deviations)}::jsonb,
               ${locksAt}::timestamptz, ${input.games.length}
       WHERE NOT EXISTS (SELECT 1 FROM nfl_season_games WHERE season = ${input.season}
-        AND week = ${input.week} AND (kickoff IS NULL OR kickoff <= NOW()))
+        AND week = ${input.week} AND (NOT ${perGame} OR id IN (${sql.join(input.games.map(g=>sql`${g.gameId}`),sql`, `)}))
+        AND (kickoff IS NULL OR kickoff <= NOW()))
       RETURNING id
       ), game_rows AS (
         INSERT INTO pickem_recommendation_games
@@ -262,7 +306,7 @@ export async function freezePickemRecommendation(input: {
     revalidatePath("/nfl/pickem");
     return {
       ok: true,
-      message: `Week ${input.week} frozen: ${input.games.length} games, both entries recorded.`,
+      message: `Week ${input.week} frozen: ${input.games.length} ${perGame ? "remaining " : ""}games, both entries recorded.`,
     };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not freeze the card." };
@@ -272,10 +316,8 @@ export async function freezePickemRecommendation(input: {
 /**
  * Settle every pending recommendation whose games have final scores.
  *
- * Pure arithmetic over nfl_season_games. Ties are left ungraded rather than
- * scored as misses: pools normally void them, and scoring one as a loss would
- * penalise both entries and corrupt the paired delta, which is the number that
- * has to be exact.
+ * Pure arithmetic over nfl_season_games. Ties use the immutable card's chosen
+ * tie points. Result revisions are retained separately from the frozen forecast.
  *
  * Idempotent. Re-running re-derives every graded field from current scores, so
  * a corrected score simply produces a corrected settlement.
@@ -286,16 +328,26 @@ export async function settlePickemRecommendations(season: number): Promise<Actio
     // Stamp each frozen game with its real result.
     await db.execute(sql`
       UPDATE pickem_recommendation_games g
-      SET home_won = CASE
+      SET result_revisions = CASE WHEN s.completed AND s.home_score IS NOT NULL AND s.away_score IS NOT NULL
+          AND (jsonb_array_length(g.result_revisions)=0 OR
+            (g.result_revisions->-1->>'homeScore')::int IS DISTINCT FROM s.home_score OR
+            (g.result_revisions->-1->>'awayScore')::int IS DISTINCT FROM s.away_score)
+          THEN g.result_revisions || jsonb_build_array(jsonb_build_object('homeScore',s.home_score,'awayScore',s.away_score,'recordedAt',NOW()))
+          ELSE g.result_revisions END,
+          result_tie = CASE WHEN s.completed AND s.home_score IS NOT NULL AND s.away_score IS NOT NULL THEN s.home_score=s.away_score ELSE NULL END,
+          home_won = CASE
+            WHEN NOT s.completed THEN NULL
             WHEN s.home_score IS NULL OR s.away_score IS NULL THEN NULL
             WHEN s.home_score = s.away_score THEN NULL
             ELSE s.home_score > s.away_score
           END,
           baseline_correct = CASE
+            WHEN NOT s.completed THEN NULL
             WHEN s.home_score IS NULL OR s.away_score IS NULL OR s.home_score = s.away_score THEN NULL
             ELSE g.baseline_pick_home = (s.home_score > s.away_score)
           END,
           recommended_correct = CASE
+            WHEN NOT s.completed THEN NULL
             WHEN s.home_score IS NULL OR s.away_score IS NULL OR s.home_score = s.away_score THEN NULL
             ELSE g.recommended_pick_home = (s.home_score > s.away_score)
           END
@@ -328,12 +380,15 @@ export async function settlePickemRecommendations(season: number): Promise<Actio
       FROM (
         SELECT
           g.recommendation_id AS rec_id,
-          COUNT(*) FILTER (WHERE g.home_won IS NOT NULL) AS graded,
-          COALESCE(SUM(g.baseline_confidence) FILTER (WHERE g.baseline_correct), 0) AS baseline_points,
-          COALESCE(SUM(g.recommended_confidence) FILTER (WHERE g.recommended_correct), 0) AS recommended_points,
+          COUNT(*) FILTER (WHERE g.home_won IS NOT NULL OR g.result_tie) AS graded,
+          COALESCE(SUM(CASE WHEN g.result_tie THEN g.baseline_confidence * COALESCE((g.evidence_json->>'tiePoints')::float,0)
+            WHEN g.baseline_correct THEN g.baseline_confidence ELSE 0 END), 0) AS baseline_points,
+          COALESCE(SUM(CASE WHEN g.result_tie THEN g.recommended_confidence * COALESCE((g.evidence_json->>'tiePoints')::float,0)
+            WHEN g.recommended_correct THEN g.recommended_confidence ELSE 0 END), 0) AS recommended_points,
           COUNT(*) FILTER (WHERE g.baseline_correct) AS baseline_hits,
           COUNT(*) FILTER (WHERE g.recommended_correct) AS recommended_hits,
-          COALESCE(SUM(g.recommended_confidence) FILTER (WHERE g.home_won IS NOT NULL), 0) AS max_points,
+          COALESCE(SUM(CASE WHEN g.result_tie THEN g.recommended_confidence * COALESCE((g.evidence_json->>'tiePoints')::float,0)
+            WHEN g.home_won IS NOT NULL THEN g.recommended_confidence ELSE 0 END), 0) AS max_points,
           AVG(POWER(g.p_home - CASE WHEN g.home_won THEN 1 ELSE 0 END, 2))
             FILTER (WHERE g.home_won IS NOT NULL) AS brier,
           AVG(POWER(0.5 - CASE WHEN g.home_won THEN 1 ELSE 0 END, 2))

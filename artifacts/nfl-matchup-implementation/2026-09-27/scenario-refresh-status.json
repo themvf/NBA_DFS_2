@@ -1,0 +1,54 @@
+{
+  "version": "nfl-matchup-scenario-refresh-v1",
+  "checked_at": "2026-09-27T15:31:28.921018+00:00",
+  "production_changed": false,
+  "model_refitted": false,
+  "persist_requested": true,
+  "dry_run": false,
+  "steps": [
+    {
+      "name": "baseline-marginals",
+      "started_at": "2026-09-27T15:31:29.017171+00:00",
+      "log_file": "C:\\Docs\\_AI Python Projects\\NBADFS_v2\\artifacts\\nfl-matchup-implementation\\2026-09-27\\scenario-runs\\20260927T153128921018Z-a3d70c40b2f9\\baseline-marginals.log",
+      "returncode": 0,
+      "completed_at": "2026-09-27T15:33:26.084826+00:00"
+    },
+    {
+      "name": "scenario-export",
+      "started_at": "2026-09-27T15:33:26.087645+00:00",
+      "log_file": "C:\\Docs\\_AI Python Projects\\NBADFS_v2\\artifacts\\nfl-matchup-implementation\\2026-09-27\\scenario-runs\\20260927T153128921018Z-a3d70c40b2f9\\scenario-export.log",
+      "returncode": 0,
+      "completed_at": "2026-09-27T15:35:23.915448+00:00"
+    },
+    {
+      "name": "coherent-verification",
+      "started_at": "2026-09-27T15:35:23.919920+00:00",
+      "log_file": "C:\\Docs\\_AI Python Projects\\NBADFS_v2\\artifacts\\nfl-matchup-implementation\\2026-09-27\\scenario-runs\\20260927T153128921018Z-a3d70c40b2f9\\coherent-verification.log",
+      "returncode": 0,
+      "completed_at": "2026-09-27T15:35:26.397948+00:00"
+    },
+    {
+      "name": "portfolio-comparison",
+      "started_at": "2026-09-27T15:35:26.404218+00:00",
+      "log_file": "C:\\Docs\\_AI Python Projects\\NBADFS_v2\\artifacts\\nfl-matchup-implementation\\2026-09-27\\scenario-runs\\20260927T153128921018Z-a3d70c40b2f9\\portfolio-comparison.log",
+      "returncode": 0,
+      "completed_at": "2026-09-27T15:40:31.761927+00:00"
+    },
+    {
+      "name": "compact-report",
+      "started_at": "2026-09-27T15:40:31.765829+00:00",
+      "log_file": "C:\\Docs\\_AI Python Projects\\NBADFS_v2\\artifacts\\nfl-matchup-implementation\\2026-09-27\\scenario-runs\\20260927T153128921018Z-a3d70c40b2f9\\compact-report.log",
+      "returncode": 0,
+      "completed_at": "2026-09-27T15:40:36.698763+00:00"
+    }
+  ],
+  "snapshot_dir": "C:\\Docs\\_AI Python Projects\\NBADFS_v2\\artifacts\\nfl-matchup-implementation\\2026-09-27\\scenario-runs\\20260927T153128921018Z-a3d70c40b2f9",
+  "status": "completed",
+  "season": 2026,
+  "week": 3,
+  "upload_id": "d5d97cc7-0574-491b-ae89-efad4b836b37",
+  "baseline_run_id": "3ef96f66-7a8c-5070-a41e-6ae59b5712b0",
+  "comparison_as_of_at": "2026-09-27T14:54:57.829203+00:00",
+  "persisted": true,
+  "completed_at": "2026-09-27T15:40:36.701394+00:00"
+}

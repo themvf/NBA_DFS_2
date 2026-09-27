@@ -1,0 +1,1875 @@
+{
+  "version": "nfl-fixed-pool-attribution-v1",
+  "productionChanged": false,
+  "baselineRunId": "3ef96f66-7a8c-5070-a41e-6ae59b5712b0",
+  "originalReportDigest": "0936ffd48e723eba4e6cd758a8173101960d73538ae443ed2e0287c14e9f80ae",
+  "limitation": "A fixed union of previously generated candidates isolates selection/forecast sensitivity within this inspected candidate set. Independent player draws omit football dependence. This is neither causal proof of PFR improvement nor tournament profit/win evidence.",
+  "records": [
+    {
+      "mode": "single_entry",
+      "count": 1,
+      "candidatePool": 29,
+      "originalUnderBaseline": 139.69099000000762,
+      "originalUnderPfr": 139.32588500000747,
+      "policyOnlyExpectedBest": 156.67403500000856,
+      "policyAndPfrExpectedBest": 156.74500500000866,
+      "baselinePolicyLineups": [
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220229
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220412
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220692
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221152
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220614
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ]
+      ],
+      "pfrPolicyLineups": [
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220229
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220412
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220692
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221152
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220614
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ]
+      ],
+      "status": "construction_only"
+    },
+    {
+      "mode": "three_entry",
+      "count": 3,
+      "candidatePool": 29,
+      "originalUnderBaseline": 162.27165500000908,
+      "originalUnderPfr": 161.9728200000091,
+      "policyOnlyExpectedBest": 172.16955500000944,
+      "policyAndPfrExpectedBest": 172.05532000000957,
+      "baselinePolicyLineups": [
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220229
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220412
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220692
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221152
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220614
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220229
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220310
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220692
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221116
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220802
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220261
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220346
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220696
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220614
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221122
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44221114
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ]
+      ],
+      "pfrPolicyLineups": [
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220229
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220412
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220692
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221152
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220614
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220229
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220310
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220692
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221116
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220802
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220261
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220346
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220696
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220614
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221122
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44221114
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ]
+      ],
+      "status": "construction_only"
+    },
+    {
+      "mode": "multi_entry",
+      "count": 20,
+      "candidatePool": 29,
+      "originalUnderBaseline": 182.07535000000965,
+      "originalUnderPfr": 181.87563500001005,
+      "policyOnlyExpectedBest": 186.7118300000096,
+      "policyAndPfrExpectedBest": 186.76457000001048,
+      "baselinePolicyLineups": [
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220229
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220412
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220692
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221152
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220614
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220229
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220310
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220692
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221116
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220802
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220261
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220346
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220696
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220614
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221122
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44221114
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220229
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220310
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220692
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220614
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221122
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220412
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220217
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220346
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220674
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221164
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220412
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220300
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220346
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220614
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220616
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221116
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220412
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220261
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220346
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220630
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220696
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220624
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221116
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220310
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220300
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220346
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220616
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221122
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220412
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221411
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220229
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220354
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220346
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220692
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221116
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220306
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220261
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220412
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220630
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220724
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221122
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220614
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220229
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220346
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220692
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221122
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220656
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220261
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220310
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220386
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220696
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220630
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220614
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221116
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220306
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220300
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220386
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220614
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220616
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221122
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220346
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220229
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220346
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220692
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220630
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221122
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220310
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220261
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220310
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220630
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220696
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221116
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220412
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221411
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220229
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220386
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220692
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221112
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220346
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220261
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220412
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220630
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220696
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221116
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220624
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220261
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220346
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220630
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221122
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220696
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221411
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220300
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220386
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220616
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221116
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220412
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220229
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220412
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220692
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220630
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221116
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220610
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ]
+      ],
+      "pfrPolicyLineups": [
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220229
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220412
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220692
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221152
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220614
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220229
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220310
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220692
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221116
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220802
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220261
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220346
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220696
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220614
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221122
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44221114
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220229
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220310
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220692
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220614
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221122
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220412
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220217
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220346
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220674
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221164
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220412
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220300
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220346
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220614
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220616
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221116
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220412
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220261
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220346
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220630
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220696
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220624
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221116
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220310
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220300
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220346
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220616
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221122
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220412
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221411
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220229
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220354
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220346
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220692
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221116
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220306
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220261
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220412
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220630
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220724
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221122
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220614
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220229
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220346
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220692
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221122
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220656
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220261
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220310
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220630
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220696
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221116
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220412
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221411
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220300
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220386
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220614
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220616
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221122
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220346
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220229
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220346
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220692
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220630
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221122
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220310
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220261
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220310
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220386
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220696
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220630
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220614
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221116
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220306
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220261
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220412
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220630
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220696
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221116
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220624
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220229
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220386
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220692
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221112
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220346
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220261
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220346
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220630
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221122
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220696
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221411
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220300
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220386
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220610
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220616
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221116
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220412
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ],
+        [
+          {
+            "slot": "QB",
+            "playerId": 44220229
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220306
+          },
+          {
+            "slot": "RB",
+            "playerId": 44220412
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220692
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220654
+          },
+          {
+            "slot": "WR",
+            "playerId": 44220630
+          },
+          {
+            "slot": "TE",
+            "playerId": 44221116
+          },
+          {
+            "slot": "FLEX",
+            "playerId": 44220610
+          },
+          {
+            "slot": "DST",
+            "playerId": 44221406
+          }
+        ]
+      ],
+      "status": "construction_only"
+    }
+  ]
+}

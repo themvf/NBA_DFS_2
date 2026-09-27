@@ -40,6 +40,7 @@
  * present a win rate as though it settled anything.
  */
 
+import { threeWayLoss } from "./pickem-matchup";
 /** One frozen game inside a recommendation, joined to its result. */
 export type GradedGameRow = {
   gameId: number;
@@ -48,6 +49,9 @@ export type GradedGameRow = {
   provenance: string;
   /** Null until the game is final; null forever on a tie. */
   homeWon: boolean | null;
+  isTie?: boolean | null;
+  pTie?: number | null;
+  tiePoints?: number;
   baselinePickHome: boolean;
   baselineConfidence: number;
   recommendedPickHome: boolean;
@@ -72,6 +76,9 @@ export type RecommendationGrade = {
    * constant 0.25 would be comparing across different game sets.
    */
   coinflipBrier: number | null;
+  threeWayBrier: number | null;
+  threeWayLogLoss: number | null;
+  threeWayGames: number;
 };
 
 /**
@@ -92,10 +99,25 @@ export function gradeRecommendation(rows: GradedGameRow[]): RecommendationGrade 
   let maxPossiblePoints = 0;
   let brierSum = 0;
   let coinflipSum = 0;
+  let twoWayGames = 0, threeWayGames = 0, threeWayBrier = 0, threeWayLogLoss = 0;
 
   for (const row of rows) {
-    if (row.homeWon == null) continue;
+    if (row.homeWon == null && row.isTie !== true) continue;
     gamesGraded += 1;
+
+    if (row.pTie != null) {
+      const loss = threeWayLoss({ home: (1-row.pTie)*row.pHome, away: (1-row.pTie)*(1-row.pHome), tie: row.pTie },
+        row.isTie ? "tie" : row.homeWon ? "home" : "away");
+      threeWayBrier += loss.brier; threeWayLogLoss += loss.logLoss; threeWayGames++;
+    }
+    if (row.isTie) {
+      const points = row.tiePoints ?? 0;
+      baselinePoints += row.baselineConfidence * points;
+      recommendedPoints += row.recommendedConfidence * points;
+      maxPossiblePoints += row.recommendedConfidence * points;
+      continue;
+    }
+    twoWayGames++;
 
     if (row.baselinePickHome === row.homeWon) {
       baselinePoints += row.baselineConfidence;
@@ -123,8 +145,11 @@ export function gradeRecommendation(rows: GradedGameRow[]): RecommendationGrade 
     baselineCorrect,
     recommendedCorrect,
     maxPossiblePoints,
-    brier: gamesGraded > 0 ? brierSum / gamesGraded : null,
-    coinflipBrier: gamesGraded > 0 ? coinflipSum / gamesGraded : null,
+    brier: twoWayGames > 0 ? brierSum / twoWayGames : null,
+    coinflipBrier: twoWayGames > 0 ? coinflipSum / twoWayGames : null,
+    threeWayBrier: threeWayGames ? threeWayBrier / threeWayGames : null,
+    threeWayLogLoss: threeWayGames ? threeWayLogLoss / threeWayGames : null,
+    threeWayGames,
   };
 }
 
