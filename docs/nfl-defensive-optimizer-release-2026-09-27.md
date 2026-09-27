@@ -1,6 +1,6 @@
 # Defensive optimizer connection: September 27 verification
 
-Status: locally implemented and exercised against the saved pregame Classic slate. Deployment and browser acceptance remain open. The active default remains **Off**; neither defensive profile has a qualified production verdict.
+Status: implemented on the draft PR and exercised against the saved pregame Classic slate. The Vercel preview deployment passed; browser acceptance remains open. The active default remains **Off**; neither defensive profile has a qualified production verdict.
 
 ## Consumer contract
 
@@ -21,5 +21,5 @@ The 149/493 research counts are **not** optimizer applied counts. Players with u
 
 - TypeScript compile and a complete Next.js Webpack production build passed on current main after integration. Controlled tests passed again there: GPP ranking changes with equal means but different P90/boom, cash ranking responds to P10, and a near-tie Classic roster changes. Two archived Showdown replay fixtures passed legal Captain pricing, one 1.5× multiplier, three-lineup generation and CSV identities. The full volume draw loop reproduced its prior compact mean, tails and boom in a fixture.
 - After the 17:00 UTC first kickoff, server actions rejected both new adjusted generation and a rewrite of an earlier saved entry run. Historical read/download remains available.
-- All saved Showdown slates inspected on September 27 were already started; no two upcoming Showdown cases were available for live production-action acceptance. The browser flow and deployed commit have **not** been verified. Those gates remain open before calling the overall handoff complete.
+- All saved Showdown slates inspected on September 27 were already started; no two upcoming Showdown cases were available for live production-action acceptance. Vercel deployed the draft PR preview successfully, but a browser check of the page did not run because the browser inspection tool failed before opening it. The browser flow and a deployed end-to-end run remain unverified. Those gates remain open before calling the overall handoff complete.
 - Approved mode has no active PASS record; the server policy falls back to baseline. A real default promotion remains subject to the existing forward qualification contracts. The environment controls are `NFL_DEFENSIVE_ACTIVATION`, `NFL_DEFENSIVE_QUALIFICATION`, and the immediate `NFL_DEFENSIVE_REVOKE=true` kill switch.
