@@ -4,7 +4,7 @@ on:
   schedule:
     # Cadence is owned by Vercel Cron, NOT by this schedule: GitHub skipped the
     # 21:35 UTC slot on 2026-09-26 and Sunday's slate was left on a 1:22 PM
-    # projection. /api/cron/nfl-projections dispatches this workflow at the
+    # projection. /api/cron/dispatch (job nfl-projections) dispatches this workflow at the
     # slots in web/src/lib/nfl-dfs/projection-cadence.ts (13:35 and 21:35
     # daily, plus 16:05 and 19:05 UTC on Sundays). The rebuild has to happen,
     # not just the injury feed: the zero-and-replace rule runs inside

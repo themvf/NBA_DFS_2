@@ -1,7 +1,7 @@
 name: Capture Odds History
 
 on:
-  # Primary trigger is Vercel Cron (web/src/app/api/cron/mlb-odds-capture),
+  # Primary trigger is Vercel Cron (/api/cron/dispatch, job mlb-odds-capture in web/src/lib/cron-dispatch.ts),
   # which fires this via `workflow_dispatch` every ~15 min from 10 AM ET
   # through 11:59 PM ET. GitHub's native `schedule:` trigger below is a
   # fallback only — verified 2026-08-04 that GitHub silently delays/drops
