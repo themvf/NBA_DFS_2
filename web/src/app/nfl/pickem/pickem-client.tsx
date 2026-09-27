@@ -38,7 +38,7 @@ import {
   Trash2,
 } from "lucide-react";
 import type { PickemLedgerRow, PickemPoolRow, PickemSlate, PickemSlateGame } from "@/db/queries";
-import { selectPickemDefensiveForecasts, type PickemDefensiveMode } from "@/lib/nfl/pickem-defensive";
+import { comparePickemDefensiveForecasts } from "@/lib/nfl/pickem-defensive";
 import PickemTabs from "./pickem-tabs";
 import { ContestPolicyPanel } from "./contest-policy-panel";
 import type { ContestComparison } from "@/lib/nfl/pickem-contest";
@@ -117,7 +117,6 @@ const STORAGE_KEY = "nfl-pickem-v1";
 const SELECTABLE_SEASONS = [2026, 2025, 2024, 2023, 2022, 2021, 2020];
 
 type Stored = {
-  defensiveMode?: PickemDefensiveMode;
   scenarios?: Record<number, PickemScenario>;
   week: number;
   format: PoolFormat;
@@ -131,7 +130,7 @@ type Stored = {
 
 const PROVENANCE_LABEL: Record<string, string> = {
   market_ml_novig: "Market",
-  experimental_defensive_matchup: "Experimental defense",
+  experimental_defensive_matchup: "Defense adjusted",
   market_spread: "Market",
   model_spread: "Model",
   blocked: "None",
@@ -157,7 +156,6 @@ export default function PickemClient({ slate: approvedSlate, pools, ledger, evid
   const router = useRouter();
   const [scenarios, setScenarios] = useState<Record<number, PickemScenario>>({});
   const [reviewAt, setReviewAt] = useState(loadedAt);
-  const [defensiveMode, setDefensiveMode] = useState<PickemDefensiveMode>("approved");
   const [week, setWeek] = useState(initialWeek);
   const [format, setFormat] = useState<PoolFormat>("straight");
   const [contestReport, setContestReport] = useState<ContestComparison | null>(null);
@@ -173,8 +171,8 @@ export default function PickemClient({ slate: approvedSlate, pools, ledger, evid
   const [newPoolName, setNewPoolName] = useState("");
   const [toast, setToast] = useState<ActionResult | null>(null);
   const [pending, startTransition] = useTransition();
-  const selectedDefensive = useMemo(() => selectPickemDefensiveForecasts(
-    approvedSlate, evidence, defensiveMode, reviewAt), [approvedSlate, evidence, defensiveMode, reviewAt]);
+  const selectedDefensive = useMemo(() => comparePickemDefensiveForecasts(
+    approvedSlate, evidence, reviewAt), [approvedSlate, evidence, reviewAt]);
   const slate = selectedDefensive.slate;
 
   const run = (fn: () => Promise<ActionResult>) => {
@@ -256,8 +254,6 @@ export default function PickemClient({ slate: approvedSlate, pools, ledger, evid
             setPoolEntries(parsed.poolEntries);
           }
           if (parsed.objective === "ev" || parsed.objective === "win") setObjective(parsed.objective);
-          if (parsed.defensiveMode === "approved" || parsed.defensiveMode === "experimental")
-            setDefensiveMode(parsed.defensiveMode);
           if (typeof parsed.favoriteBias === "number" && Number.isFinite(parsed.favoriteBias)) {
             setFavoriteBias(Math.min(Math.max(parsed.favoriteBias, 1), 2));
           }
@@ -293,12 +289,12 @@ export default function PickemClient({ slate: approvedSlate, pools, ledger, evid
     try {
       window.localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ week, format, poolEntries, objective, defensiveMode, favoriteBias, chalkFraction, overrides, scenarios }),
+        JSON.stringify({ week, format, poolEntries, objective, favoriteBias, chalkFraction, overrides, scenarios }),
       );
     } catch {
       /* ignore */
     }
-  }, [hydrated, week, format, poolEntries, objective, defensiveMode, favoriteBias, chalkFraction, overrides, scenarios]);
+  }, [hydrated, week, format, poolEntries, objective, favoriteBias, chalkFraction, overrides, scenarios]);
 
   // ---- the slate ---------------------------------------------------------
   const weekGames: PickemSlateGame[] = useMemo(
@@ -443,7 +439,10 @@ export default function PickemClient({ slate: approvedSlate, pools, ledger, evid
           pick: pickHome ? g.homeAbbrev : g.awayAbbrev,
           against: pickHome ? g.awayAbbrev : g.homeAbbrev,
           p,
-          defensiveDeltaPp: g.provenance === "experimental_defensive_matchup" ? 100 * (p - approvedPickP) : null,
+          baselineP: approvedPickP,
+          defenseAdjustedP: p,
+          defenseApplied: selectedDefensive.comparisons[g.gameId]?.applied ?? false,
+          defensiveDeltaPp: selectedDefensive.comparisons[g.gameId]?.applied ? 100 * (p - approvedPickP) : null,
           confidence: activeEntry.confidence[i],
           baselineConfidence: baseline.confidence[i],
           baselinePickHome: baseline.pickHome[i],
@@ -470,7 +469,7 @@ export default function PickemClient({ slate: approvedSlate, pools, ledger, evid
         };
       })
       .sort((a, b) => b.confidence - a.confidence || b.p - a.p);
-  }, [games, weekGames, activeEntry, baseline, fieldModel, archetypesByGame, approvedSlate.games]);
+  }, [games, weekGames, activeEntry, baseline, fieldModel, archetypesByGame, approvedSlate.games, selectedDefensive.comparisons]);
 
   const toggleSide = (gameId: number, current: boolean) => {
     setOverrides((prev) => ({ ...prev, [gameId]: { ...prev[gameId], pickHome: !current } }));
@@ -607,7 +606,6 @@ export default function PickemClient({ slate: approvedSlate, pools, ledger, evid
         season: slate.season,
         week,
         format,
-        defensiveMode,
         objective,
         poolEntries: contestReport?.config.entries ?? poolEntries,
         sims: contestReport?.sims ?? DEFAULT_SIMS,
@@ -694,16 +692,6 @@ export default function PickemClient({ slate: approvedSlate, pools, ledger, evid
             {slate.weeks.map((w) => (
               <option key={w} value={w}>{w}</option>
             ))}
-          </select>
-        </label>
-
-        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          Defensive forecast
-          <select value={defensiveMode}
-            onChange={e => { setDefensiveMode(e.target.value as PickemDefensiveMode); setContestReport(null); }}
-            className="h-8 rounded border bg-background px-2 text-sm">
-            <option value="approved">Approved baseline</option>
-            <option value="experimental">Experimental matchup</option>
           </select>
         </label>
 
@@ -827,12 +815,11 @@ export default function PickemClient({ slate: approvedSlate, pools, ledger, evid
         </div>
       </div>
 
-      {defensiveMode === "experimental" && <div role="status"
-        className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-        Experimental defensive matchup forecast: {selectedDefensive.appliedGameIds.filter(id => weekGames.some(g => g.gameId === id)).length}
-        {" "}of {weekGames.length} games adjusted. Remaining games retain their approved probability.
-        This candidate has no forward qualification verdict and is separate from the DFS player adjustment.
-      </div>}
+      <div role="status" className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+        Baseline and Baseline + Defense Opponent Adjusted are shown together. Opponent data changes {selectedDefensive.appliedGameIds.filter(id => weekGames.some(g => g.gameId === id)).length}
+        {" "}of {weekGames.length} games; the second number equals baseline where a complete, matching pregame forecast is unavailable.
+        This game winner adjustment has not established a forward accuracy gain.
+      </div>
       {staleProbabilityCount > 0 && (
         <div role="status" className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
           {staleProbabilityCount} remaining game{staleProbabilityCount === 1 ? " has" : "s have"}{" "}
@@ -1095,7 +1082,8 @@ export default function PickemClient({ slate: approvedSlate, pools, ledger, evid
                   {format === "confidence" && <th className="px-3 py-2 font-medium">Conf</th>}
                   <th className="px-3 py-2 font-medium">Pick</th>
                   <th className="px-3 py-2 font-medium">Over</th>
-                  <th className="px-3 py-2 text-right font-medium">Win prob</th>
+                  <th className="px-3 py-2 text-right font-medium">Baseline</th>
+                  <th className="px-3 py-2 text-right font-medium">Baseline + Defense Opponent Adjusted</th>
                   <th className="px-3 py-2 font-medium">Source</th>
                   <th className="px-3 py-2 text-right font-medium">Field on my side</th>
                   <th className="px-3 py-2 text-right font-medium">Leverage</th>
@@ -1136,10 +1124,12 @@ export default function PickemClient({ slate: approvedSlate, pools, ledger, evid
                         )}
                       </td>
                       <td className="px-3 py-2 text-muted-foreground">{r.against}</td>
-                      <td className="px-3 py-2 text-right font-mono tabular-nums">{pct(r.p)}
+                      <td className="px-3 py-2 text-right font-mono tabular-nums">{pct(r.baselineP)}</td>
+                      <td className="px-3 py-2 text-right font-mono tabular-nums">{pct(r.defenseAdjustedP)}
                         {r.defensiveDeltaPp != null && <div className="text-[10px] text-amber-700 dark:text-amber-400">
-                          {r.defensiveDeltaPp >= 0 ? "+" : ""}{r.defensiveDeltaPp.toFixed(2)} pp vs approved
+                          {r.defensiveDeltaPp >= 0 ? "+" : ""}{r.defensiveDeltaPp.toFixed(2)} pp
                         </div>}
+                        {!r.defenseApplied && <div className="text-[10px] text-muted-foreground">No adjustment</div>}
                       </td>
                       <td className="px-3 py-2">
                         <span
@@ -1669,7 +1659,7 @@ export default function PickemClient({ slate: approvedSlate, pools, ledger, evid
                             {r.poolEntries} entries · {r.format}
                           </div>
                           {r.fieldModel.defensiveMode === "experimental" && <div className="text-[10px] text-amber-700 dark:text-amber-400">
-                            Experimental defense · {Array.isArray(r.fieldModel.defensiveAdjustedGameIds)
+                            Defense adjusted · {Array.isArray(r.fieldModel.defensiveAdjustedGameIds)
                               ? r.fieldModel.defensiveAdjustedGameIds.length : 0} adjusted games
                           </div>}
                           {r.fieldModel.frozenScope === "remaining_unlocked_games" && <div className="text-[10px]">Remaining games only; completed entry scores retained in the frozen comparison.</div>}

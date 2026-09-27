@@ -4,6 +4,30 @@ import { timestamp } from "./pickem-evidence";
 
 export type PickemDefensiveMode = "approved" | "experimental";
 
+export type PickemDefensiveComparison = {
+  gameId: number;
+  baselineHome: number;
+  baselinePlusDefenseHome: number;
+  applied: boolean;
+};
+
+/** Always provide a paired number for the same current game and quote. */
+export function comparePickemDefensiveForecasts(
+  slate: PickemSlate,
+  evidence: PickemEvidence,
+  asOf: string,
+): { slate: PickemSlate; comparisons: Record<number, PickemDefensiveComparison>; appliedGameIds: number[] } {
+  const selected = selectPickemDefensiveForecasts(slate, evidence, "experimental", asOf);
+  const applied = new Set(selected.appliedGameIds);
+  const comparisons = Object.fromEntries(slate.games.map((game, index) => [game.gameId, {
+    gameId: game.gameId,
+    baselineHome: game.pHome,
+    baselinePlusDefenseHome: selected.slate.games[index].pHome,
+    applied: applied.has(game.gameId),
+  }]));
+  return { slate: selected.slate, comparisons, appliedGameIds: selected.appliedGameIds };
+}
+
 /** The frozen market-residual study is a separate pick'em model, not a conversion of DFS points. */
 export function selectPickemDefensiveForecasts(
   slate: PickemSlate,

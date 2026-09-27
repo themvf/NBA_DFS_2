@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { selectPickemDefensiveForecasts } from "../src/lib/nfl/pickem-defensive";
+import { comparePickemDefensiveForecasts, selectPickemDefensiveForecasts } from "../src/lib/nfl/pickem-defensive";
 import { matchupResidual, type ResidualInput } from "../src/lib/nfl/pickem-matchup";
 import { evOptimalEntry } from "../src/lib/nfl/pickem-strategy";
 import type { PickemSlate } from "../src/db/queries";
@@ -28,6 +28,11 @@ const experimental = selectPickemDefensiveForecasts(slate, evidence, "experiment
 assert.deepEqual(experimental.appliedGameIds, [1]);
 assert.equal(experimental.slate.games[0].pHome, matchup.candidate!.homeConditional);
 assert.equal(experimental.slate.games[0].provenance, "experimental_defensive_matchup");
+const comparison = comparePickemDefensiveForecasts(slate, evidence, asOf);
+assert.deepEqual(comparison.comparisons[1], { gameId: 1, baselineHome: .49,
+  baselinePlusDefenseHome: matchup.candidate!.homeConditional, applied: true });
+const missing = comparePickemDefensiveForecasts(slate, { ...evidence, games: { 1: { ...evidence.games[1], matchup: null } } }, asOf);
+assert.deepEqual(missing.comparisons[1], { gameId: 1, baselineHome: .49, baselinePlusDefenseHome: .49, applied: false });
 assert.equal(evOptimalEntry(approved.slate.games.map(g => ({ ...g, fieldHomePct: null })), "straight").pickHome[0], false);
 assert.equal(evOptimalEntry(experimental.slate.games.map(g => ({ ...g, fieldHomePct: null })), "straight").pickHome[0], true);
 assert.deepEqual(selectPickemDefensiveForecasts(slate, evidence, "experimental", kickoff).appliedGameIds, []);
@@ -36,4 +41,4 @@ assert.deepEqual(selectPickemDefensiveForecasts(slate, { ...evidence, games: { 1
   latest: { ...evidence.games[1].latest!, pHome: .48 } } } }, "experimental", asOf).appliedGameIds, []);
 assert.deepEqual(selectPickemDefensiveForecasts(slate, { ...evidence, games: { 1: { ...evidence.games[1],
   latest: { ...evidence.games[1].latest!, capturedAt: "2026-10-04T16:09:00Z" } } } }, "experimental", asOf).appliedGameIds, []);
-console.log("Pick'em defensive selection: approved unchanged, experimental card flip, lock and exact-market fallback passed.");
+console.log("Pick'em defensive comparison: baseline preserved, adjusted card flip, lock and exact-market fallback passed.");

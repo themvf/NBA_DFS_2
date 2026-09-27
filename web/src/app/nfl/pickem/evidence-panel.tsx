@@ -98,13 +98,13 @@ export function EvidencePanel({ game, evidence, now, pickHome, confidence, basel
         </section>
         <PfrEvidencePanel evidence={evidence.pfr} />
         <section className="space-y-2 border-t pt-2" aria-label="Matchup forecast comparison">
-          <h3 className="font-semibold">Matchup forecast · {evidence.matchup?.status === "qualified" ? "Qualified" : "Under evaluation"}</h3>
-          {!evidence.matchup ? <p>No eligible fitted matchup forecast has been published for this game. Pressure, contact, and availability remain evidence; the approved market/model forecast is retained.</p> : <>
+          <h3 className="font-semibold">Baseline + defense opponent adjustment</h3>
+          {!evidence.matchup ? <p>No opponent forecast has been published for this game. The second number remains the baseline.</p> : <>
             <p>Frozen comparison at {time(evidence.matchup.input.decisionCutoff)}.</p>
             {evidence.matchup.baseline && <p>Baseline: {game.homeAbbrev} {pct(evidence.matchup.baseline.home)} · {game.awayAbbrev} {pct(evidence.matchup.baseline.away)} · tie {pct(evidence.matchup.baseline.tie)}.</p>}
-            {evidence.matchup.candidate && <p>Matchup candidate: {game.homeAbbrev} {pct(evidence.matchup.candidate.home)} · {game.awayAbbrev} {pct(evidence.matchup.candidate.away)} · tie {pct(evidence.matchup.candidate.tie)}.
+            {evidence.matchup.candidate && <p>Research forecast (applied only when the current quote matches and the game has not started): {game.homeAbbrev} {pct(evidence.matchup.candidate.home)} · {game.awayAbbrev} {pct(evidence.matchup.candidate.away)} · tie {pct(evidence.matchup.candidate.tie)}.
               {" "}Home change: {signed(100 * (evidence.matchup.candidate.home - evidence.matchup.baseline!.home))} percentage points.</p>}
-            {evidence.matchup.reasons.map((reason, i) => <p key={i} className="text-muted-foreground">{reason}</p>)}
+            {evidence.matchup.reasons.map((reason, i) => <p key={i} className="text-muted-foreground">{reason.includes("forward qualification") || reason.includes("active forecast is unchanged") ? "Forward accuracy has not been established." : reason}</p>)}
             {evidence.matchup.contributions.length > 0 && <details><summary>What contributes to the candidate</summary>
               {evidence.matchup.contributions.map(c => <p key={c.definitionId}>{c.definitionId}: {c.value.toFixed(3)}; fitted log-odds contribution {c.deltaLogit.toFixed(4)}.</p>)}</details>}
           </>}
@@ -206,6 +206,10 @@ export function EvidenceLedger({ ledger, poolId }: { ledger: PickemLedgerRow[]; 
           {r.games.map(g => <div key={g.gameId} className="mt-2 border-t pt-2"><strong>{g.awayAbbrev} at {g.homeAbbrev}</strong>
             {!g.evidence ? <p>No evidence snapshot on this older card.</p> : <>
               <p>Quote: {time(g.evidence.latest?.capturedAt ?? null)} · forecast calculated: {time(g.evidence.probabilityComputedAt)} · narrative: {g.evidence.narrative}</p>
+              {g.evidence.defensiveComparison && <p>
+                Baseline: {g.homeAbbrev} {pct(g.evidence.defensiveComparison.baselineHome)} · Baseline + Defense Opponent Adjusted: {g.homeAbbrev} {pct(g.evidence.defensiveComparison.baselinePlusDefenseHome)}
+                {!g.evidence.defensiveComparison.applied && " · No adjustment"}
+              </p>}
               {g.evidence.scenario && <p>Scenario assumption: {g.evidence.scenario.reason} · {g.homeAbbrev} {pct(g.evidence.scenario.pHome)}</p>}
               {g.evidence.news.map(n => <p key={n.id}>{n.team}: {n.headline} · {n.status} · {time(n.publishedAt)} · {n.url && safeSourceUrl(n.url) ? <a href={n.url} className="underline" target="_blank" rel="noreferrer">{n.source}</a> : n.source}</p>)}
               <details><summary className="cursor-pointer">Full frozen snapshot</summary><pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words p-2">{JSON.stringify(g.evidence, null, 2)}</pre></details>

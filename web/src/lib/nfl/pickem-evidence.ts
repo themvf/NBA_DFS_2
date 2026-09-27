@@ -47,6 +47,12 @@ export type PickemEvidence = {
 };
 export type PickemScenario = { pHome: number; reason: string };
 export type FrozenEvidence = GameEvidence & {
+  defensiveComparison?: {
+    baselineHome: number;
+    baselinePlusDefenseHome: number;
+    applied: boolean;
+    forecastId: string | null;
+  };
   pTie?: number | null;
   tiePoints?: number;
   fieldObservation?: import("./pickem-strategy").PickemGame["fieldObservation"] | null;

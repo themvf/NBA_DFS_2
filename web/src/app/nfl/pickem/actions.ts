@@ -165,7 +165,7 @@ export async function freezePickemRecommendation(input: {
   try {
     if (input.defensiveMode != null && !["approved", "experimental"].includes(input.defensiveMode))
       return { ok: false, error: "Unknown pick'em defensive mode." };
-    const defensiveMode = input.defensiveMode ?? "approved";
+    const defensiveMode = input.defensiveMode ?? "experimental";
     const comparison = input.fieldModel.contestComparison as { config?: PoolConfig } | null;
     const config = comparison?.config ? validatePoolConfig(comparison.config) : null;
     const perGame = input.format === "straight" && config?.lockRule === "per_game";
@@ -188,8 +188,9 @@ export async function freezePickemRecommendation(input: {
     }
 
     const evidence = await getPickemEvidence(input.season);
+    const baselineSlate = await getNflPickemSlate(input.season, evidence);
     const selected = selectPickemDefensiveForecasts(
-      await getNflPickemSlate(input.season, evidence), evidence, defensiveMode, evidence.loadedAt);
+      baselineSlate, evidence, defensiveMode, evidence.loadedAt);
     const slate = selected.slate;
     const wholeWeek = slate.games.filter(g => g.week === input.week);
     const canonical = wholeWeek.filter(g => !perGame || (g.kickoff != null && timestamp(g.kickoff) > Date.now()));
@@ -258,6 +259,12 @@ export async function freezePickemRecommendation(input: {
         coverageWarnings: evidence.warnings,
         probabilityComputedAt: real.computedAt, favoriteHome,
         pTie: real.pTie, tiePoints, fieldObservation: g.fieldObservation ?? null,
+        defensiveComparison: {
+          baselineHome: baselineSlate.games.find(row => row.gameId === g.gameId)?.pHome ?? real.pHome,
+          baselinePlusDefenseHome: real.pHome,
+          applied: selected.appliedGameIds.includes(g.gameId),
+          forecastId: context.matchup?.forecastId ?? null,
+        },
         narrative: narrativeRead(favoriteHome ? t.home : t.away, favoriteHome ? t.away : t.home).verdict,
         scenario: g.scenario ?? null,
         marketBaselinePickHome: marketComplete ? context.latest!.pHome! >= 0.5 : null,
