@@ -2,9 +2,13 @@ name: Refresh NFL availability context
 
 on:
   schedule:
-    # The job itself captures hourly within six hours of a kickoff and every
-    # two hours otherwise. Keeping the decision in code makes DST irrelevant.
-    - cron: "17 * * 9-12 *"
+    # Cadence is owned by Vercel Cron, NOT by this schedule: GitHub fired this
+    # workflow once in its first four hours on 2026-09-26. /api/cron/dispatch
+    # (web/src/lib/cron-dispatch.ts) dispatches it hourly September-December;
+    # the job's own gate then captures hourly within six hours of a kickoff
+    # and every two hours otherwise, so the decision stays in code and DST is
+    # irrelevant. This 6-hourly run is a thin fallback for a broken bridge.
+    - cron: "17 */6 * 9-12 *"
   workflow_dispatch:
     inputs:
       season:

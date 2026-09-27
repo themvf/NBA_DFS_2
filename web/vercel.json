@@ -6,20 +6,12 @@
       "schedule": "* * * * *"
     },
     {
-      "path": "/api/cron/mlb-odds-capture",
-      "schedule": "7,37 14-23,0-3 * * *"
-    },
-    {
       "path": "/api/cron/event-closing-lines",
       "schedule": "* * * * *"
     },
     {
-      "path": "/api/cron/nfl-dk-pool",
+      "path": "/api/cron/dispatch",
       "schedule": "7,37 * * * *"
-    },
-    {
-      "path": "/api/cron/nfl-projections",
-      "schedule": "5,35 13-21 * * *"
     }
   ]
 }

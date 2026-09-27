@@ -116,7 +116,8 @@
     "test:cfb-results": "node --import tsx ./scripts/test-cfb-results.ts",
     "test:cfb-live-status": "node --import tsx ./scripts/test-cfb-live-status.ts",
     "test:x-news": "tsx scripts/test-x-news.ts",
-    "test:nfl-projection-cadence": "node --import tsx ./scripts/test-nfl-projection-cadence.ts"
+    "test:nfl-projection-cadence": "node --import tsx ./scripts/test-nfl-projection-cadence.ts",
+    "test:cron-dispatch": "node --import tsx ./scripts/test-cron-dispatch.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",

@@ -11,7 +11,7 @@ name: Refresh NFL DraftKings Pool Status
 #
 # Cadence: owned by Vercel Cron, NOT by the schedule below. GitHub skipped all
 # four of this workflow's first Thursday slots (16:00-17:30 UTC, 2026-09-24),
-# so /api/cron/nfl-dk-pool now dispatches it on a game-proximity cadence
+# so /api/cron/dispatch (job nfl-dk-pool) now dispatches it on a game-proximity cadence
 # (web/src/lib/nfl-dfs/dk-pool-cadence.ts): every 30 minutes through the
 # Thursday, Sunday and Monday game windows, sparse otherwise. The schedule
 # below is a thin fallback in case the bridge itself breaks -- the same

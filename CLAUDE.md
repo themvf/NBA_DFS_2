@@ -241,7 +241,7 @@ delayed/dropped under load), not a bug in the workflow itself (28/30 sampled run
 succeeded when they did fire).
 
 **Fix:** Vercel Cron (Pro plan — fires within the configured minute, unlike GitHub's
-best-effort scheduler) now owns the real cadence. `web/src/app/api/cron/mlb-odds-capture`
+best-effort scheduler) now owns the real cadence. `web/src/app/api/cron/mlb-odds-capture` (since folded into `/api/cron/dispatch`, see below)
 is a thin route that Vercel invokes on a `7,37 14-23,0-3 * * *` schedule
 (`web/vercel.json`) and does nothing but fire a `workflow_dispatch` REST call against
 `capture_odds_history.yml` — **no capture/business logic moved**; the single-writer
@@ -275,6 +275,16 @@ steam between captures is now less likely to be observed. The 15-minute cadence
 was originally chosen precisely because GitHub's own sub-hourly scheduler was
 unreliable; that reasoning is unchanged, and this is a budget concession to be
 revisited if quota headroom is restored.
+
+**Consolidated 2026-09-26.** The per-workflow routes became one:
+`/api/cron/dispatch`, ticking at `7,37 * * * *`, with the job table in
+`web/src/lib/cron-dispatch.ts` (MLB odds capture, NFL DK pool, NFL projection
+rebuild, NFL availability context). Each entry is a workflow file plus a
+`due(now)` rule, so bridging another workflow is one table entry and a test in
+`scripts/test-cron-dispatch.ts`. The work stays in Python; a bridged workflow
+keeps a thin GitHub `schedule:` as fallback and its own in-job gate. The route
+logs when `GITHUB_DISPATCH_TOKEN` is within 30 days of expiry, since a lapsed
+PAT silences every bridged job at once.
 
 Deliberately NOT ported to a Vercel Python Function: Vercel's Root Directory (`web/`)
 cannot access files outside itself (`..` is blocked), so a real port would mean either
