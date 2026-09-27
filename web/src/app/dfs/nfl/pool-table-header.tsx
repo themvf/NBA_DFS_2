@@ -27,7 +27,7 @@ const COLUMNS: readonly { label: string; key?: PoolSortKey; align: "left" | "rig
   { label: "DK Avg", key: "avgFptsDk", align: "right" },
   { label: "FantasyPros", key: "fantasyprosProj", align: "right" },
   { label: "LineStar", key: "linestarProj", align: "right" },
-  { label: "Own", key: "linestarOwnPct", align: "right", pad: true },
+  { label: "Own", key: "ownPct", align: "right", pad: true, hint: "Projected field ownership: LineStar when the feed is present, otherwise our stated prior (uncalibrated)." },
 ];
 
 const JUSTIFY = { left: "justify-start", right: "justify-end", center: "justify-center" } as const;

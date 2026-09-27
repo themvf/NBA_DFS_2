@@ -33,7 +33,7 @@ import type { ValueAssessment } from "./salary-value";
 export type PoolSortKey =
   | "name" | "position" | "team" | "salary" | "value" | "ourProj"
   | "floorFpts" | "ceilingFpts" | "avgFptsDk" | "fantasyprosProj"
-  | "linestarProj" | "linestarOwnPct";
+  | "linestarProj" | "linestarOwnPct" | "ownPct";
 
 export type SortDirection = "asc" | "desc";
 export type PoolSort = { key: PoolSortKey; direction: SortDirection };
@@ -55,6 +55,7 @@ export const POOL_SORT_COLUMNS: readonly { key: PoolSortKey; kind: "text" | "num
   { key: "fantasyprosProj", kind: "number" },
   { key: "linestarProj", kind: "number" },
   { key: "linestarOwnPct", kind: "number" },
+  { key: "ownPct", kind: "number" },
 ];
 
 const KIND = new Map(POOL_SORT_COLUMNS.map((c) => [c.key, c.kind]));
@@ -87,6 +88,7 @@ export type SortablePoolPlayer = {
   fantasyprosProj: number | null;
   linestarProj: number | null;
   linestarOwnPct: number | null;
+  ownPct?: number | null;
 };
 
 /**
@@ -135,6 +137,7 @@ function slotFor(
     case "fantasyprosProj": return numericSlot(player.fantasyprosProj);
     case "linestarProj": return numericSlot(player.linestarProj);
     case "linestarOwnPct": return numericSlot(player.linestarOwnPct);
+    case "ownPct": return numericSlot(player.ownPct ?? null);
   }
 }
 

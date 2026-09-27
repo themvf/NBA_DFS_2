@@ -56,6 +56,7 @@ import {
 import { searchTeamNews, type XNewsResult } from "@/lib/x-news";
 import { NFL_TRUSTED_ACCOUNTS, isXHandle } from "@/lib/x-news-accounts";
 import { NFL_TEAM_NICKNAMES } from "@/lib/nfl-dfs/x-news-teams";
+import { projectOwnershipPrior } from "@/lib/nfl-dfs/ownership-prior";
 
 export type NflWorkspacePlayer = NflOptimizerPlayer & {
   ffPlayerId: number | null;
@@ -464,7 +465,7 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
   }
   const inheritedBy = new Map(redistribution.applied.map(r => [r.key, r]));
 
-  return {
+  const workspace: NflWorkspaceSlate = {
     redistribution: {
       version: redistribution.version,
       unresolved: redistribution.unresolved,
@@ -579,6 +580,27 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
       })(),
     })),
   };
+  return attachOwnership(workspace);
+}
+
+/**
+ * Projected ownership for every player: LineStar when the feed carried it,
+ * otherwise our stated prior (`nfl-ownership-prior-v1`, see
+ * docs/nfl-ownership-model.md). The prior is computed from the SAME
+ * projections this workspace shows, after availability zeroing, so a ruled-out
+ * player draws nothing. It is a heuristic: the optimizer applies it only
+ * through the user's opt-in, labelled uncalibrated.
+ */
+function attachOwnership(workspace: NflWorkspaceSlate): NflWorkspaceSlate {
+  const prior = projectOwnershipPrior(workspace.players.map((p) => ({ dkPlayerId: p.dkPlayerId, position: p.position, salary: p.salary,
+    projection: p.ourProj, dkAvg: p.avgFptsDk, isOut: p.isOut, dkStatus: p.dkStatus, captainSalary: p.captainSalary })), workspace.format);
+  const byId = new Map(prior.players.map((p) => [p.dkPlayerId, p]));
+  return { ...workspace, players: workspace.players.map((p) => {
+    const ours = byId.get(p.dkPlayerId);
+    const linestar = p.linestarOwnPct != null && Number.isFinite(p.linestarOwnPct) ? p.linestarOwnPct : null;
+    return { ...p, ourOwnPct: ours?.ownPct ?? null, captainOwnPct: ours?.captainPct ?? null, flexOwnPct: ours?.flexPct ?? null,
+      ownPct: linestar ?? ours?.ownPct ?? null, ownSource: linestar != null ? "linestar" : ours ? prior.version : null };
+  }) };
 }
 
 export async function loadNflSalaryCsv(formData: FormData): Promise<NflWorkspaceSlate> {
@@ -887,7 +909,7 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
   // features (duplication model, contrarian-captain thresholds) stay off.
   const ownershipAssessment = assessOwnership(
     eligible.filter(p=>!p.isOut).map(p=>({playerId:p.dkPlayerId, medianProjection: p.medianFpts ?? p.ourProj ?? null})),
-    eligible.filter(p=>p.linestarOwnPct!=null).map(p=>({playerId:p.dkPlayerId, flexPct:(p.linestarOwnPct as number)/100, captainPct:null, source:'linestar', asOf:slate.modelAsOf})),
+    eligible.filter(p=>p.ownPct!=null).map(p=>({playerId:p.dkPlayerId, flexPct:(p.ownPct as number)/100, captainPct:null, source:p.ownSource??null, asOf:slate.modelAsOf})),
     { heuristic: true, optIntoHeuristic: settings.useHeuristicOwnershipLeverage ?? true, format: slate.format },
   );
   const resolvedSettings: NflOptimizerSettings = { ...settings,
