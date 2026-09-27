@@ -74,7 +74,9 @@ def prospective_reports(db, season, now, registry):
         return {"version": "nfl-matchup-forward-report-v1", "studies": [], "reason": "no registered DFS studies"}
     first_registered = min(timestamp(resolve_registration(m)["registered_at"]) for m in registered)
     records = db.execute("""SELECT p.player_id,p.game_id,p.kickoff,p.projection,
-        f.run_id,f.season,f.week,f.created_at,f.as_of_at,f.manifest,
+        f.run_id,f.season,f.week,f.created_at,f.as_of_at,
+        jsonb_build_object('model_hashes',f.manifest->'model_hashes',
+                          'implementation_hashes',f.manifest->'implementation_hashes') manifest,
         b.model_version baseline_version,b.model_config baseline_config,b.created_at baseline_created_at,
         r.id result_id,r.actual_dk_fpts,r.scoring_status,r.scoring_version,r.input_digest result_digest,r.computed_at result_at
         FROM nfl_matchup_player_forecasts p JOIN nfl_matchup_forecast_runs f ON f.run_id=p.run_id
