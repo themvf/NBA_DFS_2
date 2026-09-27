@@ -24,6 +24,7 @@ import { getPickemEvidence } from "@/db/pickem-evidence";
 import { getNflPickemSlate } from "@/db/queries";
 import { narrativeRead, tagSeason } from "@/lib/nfl/pickem-archetypes";
 import { evOptimalEntry } from "@/lib/nfl/pickem-strategy";
+import { selectPickemDefensiveForecasts, type PickemDefensiveMode } from "@/lib/nfl/pickem-defensive";
 import { compareContestCards, validatePoolConfig, type PoolConfig } from "@/lib/nfl/pickem-contest";
 import type { PickemGame } from "@/lib/nfl/pickem-strategy";
 import { EMPTY_EVIDENCE, safeSourceUrl, timestamp, type PickemNews, type PickemScenario, type FrozenEvidence } from "@/lib/nfl/pickem-evidence";
@@ -143,6 +144,7 @@ export async function freezePickemRecommendation(input: {
   season: number;
   week: number;
   format: "confidence" | "straight";
+  defensiveMode?: PickemDefensiveMode;
   objective: "ev" | "win";
   poolEntries: number;
   sims: number;
@@ -161,6 +163,9 @@ export async function freezePickemRecommendation(input: {
 
   await ensurePickemTables();
   try {
+    if (input.defensiveMode != null && !["approved", "experimental"].includes(input.defensiveMode))
+      return { ok: false, error: "Unknown pick'em defensive mode." };
+    const defensiveMode = input.defensiveMode ?? "approved";
     const comparison = input.fieldModel.contestComparison as { config?: PoolConfig } | null;
     const config = comparison?.config ? validatePoolConfig(comparison.config) : null;
     const perGame = input.format === "straight" && config?.lockRule === "per_game";
@@ -183,7 +188,9 @@ export async function freezePickemRecommendation(input: {
     }
 
     const evidence = await getPickemEvidence(input.season);
-    const slate = await getNflPickemSlate(input.season, evidence);
+    const selected = selectPickemDefensiveForecasts(
+      await getNflPickemSlate(input.season, evidence), evidence, defensiveMode, evidence.loadedAt);
+    const slate = selected.slate;
     const wholeWeek = slate.games.filter(g => g.week === input.week);
     const canonical = wholeWeek.filter(g => !perGame || (g.kickoff != null && timestamp(g.kickoff) > Date.now()));
     const exactBaseline = evOptimalEntry(canonical.map(g => ({ ...g, fieldHomePct: null })), input.format);
@@ -209,7 +216,8 @@ export async function freezePickemRecommendation(input: {
       return { ok: false, error: "Card data is invalid or probabilities changed. Reload the page and review the complete card before freezing." };
     }
     const tags = tagSeason(slate.games);
-    const fieldModel = { ...input.fieldModel };
+    const fieldModel: Record<string, unknown> = { ...input.fieldModel, defensiveMode,
+      defensiveAdjustedGameIds: selected.appliedGameIds.filter(id => canonical.some(g => g.gameId === id)) };
     const tieRule = comparison?.config ? validatePoolConfig(comparison.config).gameTieRule : "zero";
     const tiePoints = tieRule === "half" ? .5 : tieRule === "point" ? 1 : 0;
     const points = (g: FrozenGame, home: boolean) => {
