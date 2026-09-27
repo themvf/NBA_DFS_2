@@ -3,7 +3,9 @@ import { sql } from "drizzle-orm";
 import { db } from "../src/db";
 import { ensurePickemTables } from "../src/db/ensure-schema";
 import { getNflPickemSlate, getPickemLedger } from "../src/db/queries";
+import { getPickemEvidence } from "../src/db/pickem-evidence";
 import { freezePickemRecommendation, savePickemNews } from "../src/app/nfl/pickem/actions";
+import { selectPickemDefensiveForecasts } from "../src/lib/nfl/pickem-defensive";
 import { evOptimalEntry } from "../src/lib/nfl/pickem-strategy";
 import { timestamp } from "../src/lib/nfl/pickem-evidence";
 import { EMPTY_POOL_CONFIG } from "../src/lib/nfl/pickem-contest";
@@ -54,11 +56,22 @@ async function main() {
       url: "javascript:alert(1)", publishedAt: new Date().toISOString(), status: "reported" });
     assert.equal(invalidNews.ok, false);
     assert.equal((await getPickemLedger(2026)).filter(r => r.poolId === poolId).length, 1, "Refusals leave no partial cards");
-    const second = await freezePickemRecommendation(input);
+    const defensiveEvidence = await getPickemEvidence(2026);
+    const defensiveSlate = selectPickemDefensiveForecasts(
+      await getNflPickemSlate(2026, defensiveEvidence), defensiveEvidence, "experimental", defensiveEvidence.loadedAt);
+    const defensiveGames = defensiveSlate.slate.games.filter(g => g.week === week);
+    const defensiveBaseline = evOptimalEntry(defensiveGames.map(g => ({ ...g, fieldHomePct: null })), "confidence");
+    const second = await freezePickemRecommendation({ ...input, defensiveMode: "experimental",
+      games: defensiveGames.map((g, i) => ({ ...g,
+        baselinePickHome: defensiveBaseline.pickHome[i], baselineConfidence: defensiveBaseline.confidence[i],
+        recommendedPickHome: defensiveBaseline.pickHome[i], recommendedConfidence: defensiveBaseline.confidence[i],
+        fieldHomeShare: .6, fieldSource: "observed" as const })) });
     assert.equal(second.ok, true, JSON.stringify(second));
     const history = (await getPickemLedger(2026)).filter(r => r.poolId === poolId);
     assert.equal(history.length, 2);
     assert.equal(history.filter(r => r.supersededBy == null).length, 1);
+    assert.equal(history.find(r => r.supersededBy == null)?.fieldModel.defensiveMode, "experimental");
+    assert.ok(Array.isArray(history.find(r => r.supersededBy == null)?.fieldModel.defensiveAdjustedGameIds));
     assert.equal(history.find(r => r.id === cards[0].id)?.games[0].evidence?.recordedAt, cards[0].games[0].evidence?.recordedAt);
     const partialWeek=slate.weeks.find(w=>{
       const gs=slate.games.filter(g=>g.week===w);

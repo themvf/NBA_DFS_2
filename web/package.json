@@ -123,7 +123,8 @@
     "test:nfl-gpp-leverage": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-leverage.ts",
     "test:pickem-contest": "node --import tsx ./scripts/test-pickem-contest.ts",
     "test:pickem-pfr": "node --import tsx ./scripts/test-pickem-pfr.ts",
-    "test:pickem-matchup": "node --import tsx ./scripts/test-pickem-matchup.ts"
+    "test:pickem-matchup": "node --import tsx ./scripts/test-pickem-matchup.ts",
+    "test:pickem-defensive": "node --import tsx ./scripts/test-pickem-defensive.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",
