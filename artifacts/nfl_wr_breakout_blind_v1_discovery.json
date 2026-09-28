@@ -1,0 +1,299 @@
+{
+ "study": "nfl-wr-breakout-blind-v1",
+ "mode": "discovery",
+ "generated_at": "2026-09-28T11:58:00.284831+00:00",
+ "sources": {
+  "games.csv": "19b97bc83fbb2235791eda3e14d8436e4bdc8db64702c9e492806b524abf01a0",
+  "roster_weekly_2019.csv": "af6aa7b8aa7850c47fe307d548d66fa7c1cac88fe11e5951c781974cb6909e03",
+  "stats_player_week_2019.csv": "a05558126b1209b80fe11a8f18938cb35816370bf9990975a87de49e9eed7376",
+  "roster_weekly_2020.csv": "0b948cca8735a2417cbda14464f4532aeee58d871e2fcd8464a23e969e45789e",
+  "stats_player_week_2020.csv": "05b992676faccc8940efbf6242cb76358069372d31d7c2e02c1a4acdcd3cbe18",
+  "roster_weekly_2021.csv": "88adfe0fba5cbedd260d7928ad373476d4fb168d0213cb52ef1163ed5d3056b7",
+  "stats_player_week_2021.csv": "41915fb49238902ad1f129ebf0405b11a1e710454ae0fe8f7b3e4f9145875f48",
+  "roster_weekly_2022.csv": "bd6a50de334473c10f8058afa948fd0c6adc8a8b081da41c500cc0aa069c5312",
+  "stats_player_week_2022.csv": "ad426c3fe5bf1cc30c3f137fdfe96d054e19d400879ee4413129da49fa7b54be",
+  "roster_weekly_2023.csv": "1433f1f239784dde7fcb35349d211a9b83abfc0156337b72ec4f923abf715bd3",
+  "stats_player_week_2023.csv": "f19cb71a5de0dce7fd09376026237c9ee9d5a93fe13815a2ea3ec2d37204cb17",
+  "roster_weekly_2024.csv": "074ecaeb9325de943c11f7bbc941425626985090ef8386f90cd837fa5cb5d4b3",
+  "stats_player_week_2024.csv": "3ddc45a84f759aa348ce465ae001752c530575455717657cdfe1f8abfcdb4759",
+  "roster_weekly_2025.csv": "c2f7a1ffebe06058400af1989d1cd2900cc5c9659f084623708a06d4e28de35b",
+  "stats_player_week_2025.csv": "e5e0615b3d96a3eaebfaee91e55afb4a4e7fe0caf057454177bcd7d6ad4bcfc2"
+ },
+ "data_quality": {
+  "roster_rows_missing_gsis": 96,
+  "roster_rows_without_game": 467,
+  "games_without_snap_rows": 0
+ },
+ "structure": {
+  "first_game_events": 148,
+  "first_game_rows": 1046,
+  "under_way_events": 224,
+  "control_games": 1633,
+  "control_rows": 12340,
+  "first_game_by_season": {
+   "2020": 28,
+   "2021": 28,
+   "2022": 22,
+   "2023": 19,
+   "2024": 21,
+   "2025": 30
+  }
+ },
+ "primary": {
+  "events": 148,
+  "rows": 1046,
+  "control_events": 1633,
+  "control_rows": 12340,
+  "boom_rate": 0.06118546845124283,
+  "expected_rate": 0.03827439362017419,
+  "control_boom_rate": 0.06418152350081037,
+  "control_expected_rate": 0.06935988338212298,
+  "gap": 0.022911074831068644,
+  "control_gap": -0.005178359881312611,
+  "effect": 0.028089434712381255,
+  "ci": [
+   0.014673646707352824,
+   0.04196122035006829
+  ]
+ },
+ "described": {
+  "first_game_25_points": {
+   "events": 148,
+   "rows": 1046,
+   "control_events": 1633,
+   "control_rows": 12340,
+   "boom_rate": 0.03441682600382409,
+   "expected_rate": 0.019239133899637013,
+   "control_boom_rate": 0.03241491085899514,
+   "control_expected_rate": 0.035446554524586484,
+   "gap": 0.015177692104187084,
+   "control_gap": -0.003031643665591341,
+   "effect": 0.018209335769778425,
+   "ci": [
+    0.007142126385036109,
+    0.029669283908010043
+   ]
+  },
+  "first_game_any_boom": {
+   "events": 148,
+   "any_boom_rate": 0.3918918918918919,
+   "expected": 0.25041647991730814,
+   "control_any_boom_rate": 0.4084507042253521,
+   "control_expected": 0.43668298447983206,
+   "effect": 0.16970769222906373,
+   "ci": [
+    0.08644488291641896,
+    0.25290442818398096
+   ]
+  },
+  "first_game_by_role": {
+   "lead_WR": {
+    "events": 148,
+    "rows": 148,
+    "control_events": 1633,
+    "control_rows": 1633,
+    "boom_rate": 0.25,
+    "expected_rate": 0.15932861787546848,
+    "control_boom_rate": 0.23453766074709123,
+    "control_expected_rate": 0.27571875281127,
+    "gap": 0.0906713821245315,
+    "control_gap": -0.04118109206417882,
+    "effect": 0.13185247418871032,
+    "ci": [
+     0.058665102348916115,
+     0.20663667355232349
+    ]
+   },
+   "other_WR": {
+    "events": 148,
+    "rows": 452,
+    "control_events": 1633,
+    "control_rows": 6076,
+    "boom_rate": 0.03761061946902655,
+    "expected_rate": 0.013698323692054062,
+    "control_boom_rate": 0.04591836734693878,
+    "control_expected_rate": 0.04407158998476245,
+    "gap": 0.023912295776972486,
+    "control_gap": 0.0018467773621763277,
+    "effect": 0.02206551841479616,
+    "ci": [
+     0.0047858828514063725,
+     0.04223245015281509
+    ]
+   },
+   "TE": {
+    "events": 148,
+    "rows": 446,
+    "control_events": 1633,
+    "control_rows": 4631,
+    "boom_rate": 0.02242152466367713,
+    "expected_rate": 0.023010623256332786,
+    "control_boom_rate": 0.02807169077952926,
+    "control_expected_rate": 0.029771811022927447,
+    "gap": -0.0005890985926556554,
+    "control_gap": -0.0017001202433981847,
+    "effect": 0.0011110216507425293,
+    "ci": [
+     -0.013109697352049792,
+     0.016349980465996426
+    ]
+   }
+  },
+  "pass_heavy_cut": 0.6091608621188679,
+  "first_game_pass_heavy": {
+   "events": 74,
+   "rows": 514,
+   "control_events": 1633,
+   "control_rows": 12340,
+   "boom_rate": 0.07198443579766536,
+   "expected_rate": 0.048602906308797954,
+   "control_boom_rate": 0.06418152350081037,
+   "control_expected_rate": 0.06935988338212298,
+   "gap": 0.023381529488867403,
+   "control_gap": -0.005178359881312611,
+   "effect": 0.028559889370180013,
+   "ci": [
+    0.007885240876332177,
+    0.050640813625301144
+   ]
+  },
+  "first_game_pass_light": {
+   "events": 74,
+   "rows": 532,
+   "control_events": 1633,
+   "control_rows": 12340,
+   "boom_rate": 0.05075187969924812,
+   "expected_rate": 0.028295341887180532,
+   "control_boom_rate": 0.06418152350081037,
+   "control_expected_rate": 0.06935988338212298,
+   "gap": 0.022456537812067582,
+   "control_gap": -0.005178359881312611,
+   "effect": 0.027634897693380192,
+   "ci": [
+    0.01157405554153206,
+    0.04453706874818749
+   ]
+  },
+  "under_way": {
+   "events": 224,
+   "rows": 1653,
+   "control_events": 1633,
+   "control_rows": 12340,
+   "boom_rate": 0.06594071385359952,
+   "expected_rate": 0.05221112212327381,
+   "control_boom_rate": 0.06418152350081037,
+   "control_expected_rate": 0.06935988338212298,
+   "gap": 0.013729591730325697,
+   "control_gap": -0.005178359881312611,
+   "effect": 0.01890795161163831,
+   "ci": [
+    0.007498969703944599,
+    0.03040883021190919
+   ]
+  },
+  "by_season": {
+   "2020": {
+    "events": 28,
+    "rows": 184,
+    "control_events": 1633,
+    "control_rows": 12340,
+    "boom_rate": 0.059782608695652176,
+    "expected_rate": 0.046449862556381484,
+    "control_boom_rate": 0.06418152350081037,
+    "control_expected_rate": 0.06935988338212298,
+    "gap": 0.013332746139270695,
+    "control_gap": -0.005178359881312611,
+    "effect": 0.018511106020583305,
+    "ci": [
+     -0.013059118937104078,
+     0.05112427602736387
+    ]
+   },
+   "2021": {
+    "events": 28,
+    "rows": 199,
+    "control_events": 1633,
+    "control_rows": 12340,
+    "boom_rate": 0.04522613065326633,
+    "expected_rate": 0.04092741641899769,
+    "control_boom_rate": 0.06418152350081037,
+    "control_expected_rate": 0.06935988338212298,
+    "gap": 0.00429871423426864,
+    "control_gap": -0.005178359881312611,
+    "effect": 0.009477074115581251,
+    "ci": [
+     -0.01807867878063514,
+     0.042450921106637826
+    ]
+   },
+   "2022": {
+    "events": 22,
+    "rows": 154,
+    "control_events": 1633,
+    "control_rows": 12340,
+    "boom_rate": 0.08441558441558442,
+    "expected_rate": 0.04391840884511657,
+    "control_boom_rate": 0.06418152350081037,
+    "control_expected_rate": 0.06935988338212298,
+    "gap": 0.04049717557046784,
+    "control_gap": -0.005178359881312611,
+    "effect": 0.04567553545178046,
+    "ci": [
+     0.011472347310914956,
+     0.08266700798535309
+    ]
+   },
+   "2023": {
+    "events": 19,
+    "rows": 141,
+    "control_events": 1633,
+    "control_rows": 12340,
+    "boom_rate": 0.07092198581560284,
+    "expected_rate": 0.03915152898359262,
+    "control_boom_rate": 0.06418152350081037,
+    "control_expected_rate": 0.06935988338212298,
+    "gap": 0.03177045683201021,
+    "control_gap": -0.005178359881312611,
+    "effect": 0.03694881671332283,
+    "ci": [
+     0.00045722013543722295,
+     0.07580010698703224
+    ]
+   },
+   "2024": {
+    "events": 21,
+    "rows": 153,
+    "control_events": 1633,
+    "control_rows": 12340,
+    "boom_rate": 0.0457516339869281,
+    "expected_rate": 0.024330634018634605,
+    "control_boom_rate": 0.06418152350081037,
+    "control_expected_rate": 0.06935988338212298,
+    "gap": 0.0214209999682935,
+    "control_gap": -0.005178359881312611,
+    "effect": 0.02659935984960611,
+    "ci": [
+     -0.0030312301117342063,
+     0.05635939473320399
+    ]
+   },
+   "2025": {
+    "events": 30,
+    "rows": 215,
+    "control_events": 1633,
+    "control_rows": 12340,
+    "boom_rate": 0.06511627906976744,
+    "expected_rate": 0.03412696555935748,
+    "control_boom_rate": 0.06418152350081037,
+    "control_expected_rate": 0.06935988338212298,
+    "gap": 0.030989313510409972,
+    "control_gap": -0.005178359881312611,
+    "effect": 0.03616767339172258,
+    "ci": [
+     0.009911742572528935,
+     0.06383846477951952
+    ]
+   }
+  }
+ }
+}
