@@ -45,6 +45,16 @@ assert.ok(keys("2026-09-27T16:07:00Z").includes("nfl-projections"), "Sunday 16:0
 assert.ok(!keys("2026-09-30T16:07:00Z").includes("nfl-projections"), "no 16:05 pass on a Wednesday");
 assert.ok(keys("2026-09-27T18:07:00Z").includes("nfl-dk-pool"), "Sunday game window polls every tick");
 
+// Post-week review + upside grade: Tuesday and Wednesday 10:07 UTC only, once each.
+let postweekTicks = 0;
+for (let d = 27; d <= 30; d += 1) for (let h = 0; h < 24; h += 1) for (const m of ["07", "37"]) {
+  if (keys(`2026-09-${d}T${String(h).padStart(2, "0")}:${m}:00Z`).includes("nfl-dfs-postweek")) postweekTicks += 1;
+}
+assert.equal(postweekTicks, 2, "one dispatch Tuesday, one Wednesday, across Sun 27 - Wed 30 Sep");
+assert.ok(keys("2026-09-29T10:07:00Z").includes("nfl-dfs-postweek"), "Tuesday 10:07 UTC");
+assert.ok(keys("2026-09-30T10:07:00Z").includes("nfl-dfs-postweek"), "Wednesday 10:07 UTC");
+assert.ok(!keys("2026-09-29T10:37:00Z").includes("nfl-dfs-postweek"), "not the :37 tick");
+
 (async () => {
   // A GitHub failure is an outcome, not an exception; a 204 is success.
   const fake = (status: number) => (async () => new Response(status === 204 ? null : "nope", { status })) as unknown as typeof fetch;

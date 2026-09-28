@@ -104,6 +104,8 @@ The gate is pre-registered in
 grades the frozen pregame pool captures on DraftKings results, 2026 week 4
 onward. The "if job" P90 must beat the baseline and a generic ceiling
 widening, and its boom rate must not be worse. The grade is blinded until 60
-absence events, then there is one look. Until it passes, the optimizer reads
+absence events, then there is one look. It runs itself every Tuesday and
+Wednesday after DraftKings results are ingested, and its progress shows on
+`/dfs/nfl/results`. Until it passes, the optimizer reads
 only the baseline. Any change to π, the thresholds or the trigger is a new
 version.

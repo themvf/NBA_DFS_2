@@ -9,6 +9,9 @@ name: Refresh NFL DFS Post-Week Review
 #   2. the slate-scoped report cards, which grade our projections against what
 #      DraftKings actually paid;
 #   3. the field-ownership audit over whatever contests have been imported.
+#   4. the weekly replacement-upside grade (second job, below), pre-registered
+#      in docs/nfl-replacement-upside-grading.md. Blinded until its floors are
+#      met; the first run past them freezes the verdict in the database.
 #
 # What does NOT run here, and cannot:
 #   getting the DraftKings contest standings export. DraftKings gates it behind
@@ -20,11 +23,15 @@ name: Refresh NFL DFS Post-Week Review
 #
 # Slots, against nflverse's publish cadence (the weekly stats release is
 # rebuilt each morning during the season):
-#   Tuesday 10:00 UTC = after Monday night's game has been published.
-#   Wednesday 10:00 UTC = a second pass, so a late nflverse correction is
+#   Tuesday 10:07 UTC = after Monday night's game has been published.
+#   Wednesday 10:07 UTC = a second pass, so a late nflverse correction is
 #                         picked up without waiting a week. The results ledger
 #                         is append-only and keyed by input digest, so an
 #                         unchanged week inserts nothing.
+# Those two slots are dispatched by Vercel Cron (/api/cron/dispatch, job
+# nfl-dfs-postweek): GitHub's own schedule has skipped slots on this repo.
+# The schedule below is only the fallback, later the same days; every step is
+# idempotent, so a second pass costs minutes and changes nothing.
 
 on:
   workflow_dispatch:
@@ -34,8 +41,7 @@ on:
         required: false
         default: ""
   schedule:
-    - cron: "0 10 * * 2"
-    - cron: "0 10 * * 3"
+    - cron: "41 14 * * 2,3"   # fallback only; see the note above
 
 concurrency:
   group: nfl-dfs-postweek
@@ -94,5 +100,45 @@ jobs:
           name: nfl-dfs-postweek-review
           path: |
             artifacts/**
+          if-no-files-found: ignore
+          retention-days: 90
+
+  # The weekly replacement-upside grade (nfl-replacement-upside-grade-v1).
+  # Runs after the review even if one of its steps failed: the grade reads only
+  # results that exist, and blocking it on an unrelated report-card failure is
+  # the health-gate mistake recorded in CLAUDE.md.
+  grade-replacement-upside:
+    needs: review
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: web
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # `npm install`, not `npm ci`: see run_nfl_cash_optimizer.yml.
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      # Refuse to grade if the gate's own logic or frozen constants are broken.
+      - name: Verify the registered gate
+        run: npm run test:nfl-replacement-upside-grade
+      - name: Grade
+        run: |
+          mkdir -p ../artifacts
+          npm run grade:nfl-replacement-upside -- --out ../artifacts/nfl_replacement_upside_grade_latest.json
+      - name: Save the grade report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nfl-replacement-upside-grade
+          path: artifacts/nfl_replacement_upside_grade_latest.json
           if-no-files-found: ignore
           retention-days: 90

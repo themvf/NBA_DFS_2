@@ -64,6 +64,15 @@ export const DISPATCH_JOBS: readonly DispatchJob[] = [
     due: (now) => { const m = now.getUTCMonth() + 1; return m >= 9 && m <= 12 && firstHalf(now); },
     why: "Sleeper injury/depth capture and the pinned availability decisions the DFS slate reads.",
   },
+  {
+    key: "nfl-dfs-postweek",
+    workflow: "refresh_nfl_dfs_postweek.yml",
+    // Tuesday and Wednesday, the 10:07 UTC tick: after Monday night's game is
+    // published, then a second pass for late corrections. Every step is
+    // idempotent, so the workflow's later GitHub fallback slot is harmless.
+    due: (now) => [2, 3].includes(now.getUTCDay()) && now.getUTCHours() === 10 && firstHalf(now),
+    why: "Realized DK points, slate report cards, and the weekly replacement-upside grade.",
+  },
 ];
 
 export function dueJobs(now: Date): DispatchJob[] {

@@ -279,7 +279,7 @@ revisited if quota headroom is restored.
 **Consolidated 2026-09-26.** The per-workflow routes became one:
 `/api/cron/dispatch`, ticking at `7,37 * * * *`, with the job table in
 `web/src/lib/cron-dispatch.ts` (MLB odds capture, NFL DK pool, NFL projection
-rebuild, NFL availability context). Each entry is a workflow file plus a
+rebuild, NFL availability context, NFL DFS post-week review + upside grade). Each entry is a workflow file plus a
 `due(now)` rule, so bridging another workflow is one table entry and a test in
 `scripts/test-cron-dispatch.ts`. The work stays in Python; a bridged workflow
 keeps a thin GitHub `schedule:` as fallback and its own in-job gate. The route
@@ -6891,10 +6891,15 @@ records the upside run). It covers 2026 weeks 4+, since weeks 1–3 were seen
 during design. Outcomes follow the DK zero rule. The "if job" P90 must beat
 both the baseline and a generic ceiling widening fitted on full-strength
 backups (pinball, event-clustered bootstrap), and boom must not be worse. The
-weekly run (`npm run grade:nfl-replacement-upside`) is blinded until 60
-events / 130 flagged player-games / 8 weeks. The first run past those floors
-freezes the verdict to `artifacts/nfl_replacement_upside_grade_v1_verdict.json`
-(one look).
+weekly run is blinded until 60 events / 130 flagged player-games / 8 weeks,
+and the first run past those floors freezes the verdict (one look). It is
+fully automated. It is the second job of `refresh_nfl_dfs_postweek.yml`,
+dispatched Tuesday and Wednesday 10:07 UTC by `/api/cron/dispatch` (job
+`nfl-dfs-postweek`), with a GitHub fallback at 14:41 UTC. Runs are recorded in
+`nfl_replacement_upside_grade_runs` and the verdict in
+`nfl_replacement_upside_grade_verdicts`: one row per grade version,
+append-only, so it cannot be written twice. Status is shown on
+`/dfs/nfl/results`.
 The rest of this section is the historical v1 design.
 
 A ruled-out player's work goes to his teammates. Implemented at the **slate

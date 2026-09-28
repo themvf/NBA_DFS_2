@@ -4,24 +4,23 @@
  *
  *   cd web && npm run grade:nfl-replacement-upside [-- --out report.json]
  *
- * Reads the append-only pool captures (last pregame look per upload and game,
- * digest-verified), the schedule and DraftKings results. Read-only against the
- * database.
+ * Runs automatically as the second job of refresh_nfl_dfs_postweek.yml, after
+ * that week's DraftKings results are ingested. Reads the append-only pool
+ * captures (last pregame look per upload and game, digest-verified), the
+ * schedule and DraftKings results.
  *
- * Until every floor is met the output is BLINDED (counts and health only). The
- * first run past the floors is the one look: it writes
- * artifacts/nfl_replacement_upside_grade_v1_verdict.json, which must be
- * committed at once and is never overwritten. Later runs print the frozen
- * verdict and label everything else post-verdict monitoring.
+ * Every run is recorded in nfl_replacement_upside_grade_runs. Until every
+ * floor is met the record is BLINDED (counts and health only). The first run
+ * past the floors is the one look: it writes the verdict to
+ * nfl_replacement_upside_grade_verdicts in the same statement, and the table's
+ * primary key stops any later run from writing another. Later runs are
+ * post-verdict monitoring and cannot change it.
  */
 import { config } from 'dotenv';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import path from 'node:path';
+import { appendFileSync, writeFileSync } from 'node:fs';
 
 config({ path: '.env.local', quiet: true });
-
-const VERDICT_PATH = path.resolve(process.cwd(), '..', 'artifacts', 'nfl_replacement_upside_grade_v1_verdict.json');
 
 (async () => {
   const outFlag = process.argv.indexOf('--out');
@@ -29,6 +28,7 @@ const VERDICT_PATH = path.resolve(process.cwd(), '..', 'artifacts', 'nfl_replace
   const { db } = await import('../src/db');
   const { sql } = await import('drizzle-orm');
   const { auditGames } = await import('../src/db/nfl-dfs-pool-audit');
+  const { readFrozenVerdict, recordGradeRun } = await import('../src/db/nfl-replacement-upside-grade');
   const { canonicalAuditJson } = await import('../src/lib/nfl-dfs/audit-json');
   const g = await import('../src/lib/nfl-dfs/replacement-upside-grade');
   const rowsOf = (r: unknown) => (r as { rows: Record<string, unknown>[] }).rows;
@@ -37,7 +37,8 @@ const VERDICT_PATH = path.resolve(process.cwd(), '..', 'artifacts', 'nfl_replace
   const captures: ReturnType<typeof g.captureFromRow>[] = [];
   const games: Awaited<ReturnType<typeof auditGames>> = [];
   const results: import('../src/lib/nfl-dfs/replacement-upside-grade').GradeResult[] = [];
-  for (const window of g.UPSIDE_GRADE_SPEC.windows) {
+  const captureTable = rowsOf(await db.execute(sql`SELECT to_regclass('nfl_dfs_pool_captures') AS name`))[0]?.name;
+  for (const window of captureTable ? g.UPSIDE_GRADE_SPEC.windows : []) {
     const weeks = rowsOf(await db.execute(sql`SELECT DISTINCT week FROM nfl_season_games
       WHERE season=${window.season} AND game_type='REG' AND week>=${window.firstWeek} AND kickoff<=clock_timestamp() ORDER BY week`));
     for (const { week } of weeks) {
@@ -70,27 +71,36 @@ const VERDICT_PATH = path.resolve(process.cwd(), '..', 'artifacts', 'nfl_replace
   }
 
   const report = g.gradeReplacementUpside({ captures, games, results, now: new Date().toISOString() });
+  const codeRevision = process.env.GITHUB_SHA ?? process.env.VERCEL_GIT_COMMIT_SHA ?? null;
   const f = report.floors;
-  console.log(`${report.version} | floors: events ${f.events.have}/${f.events.required}, flagged ${f.flagged.have}/${f.flagged.required}, weeks ${f.weeks.have}/${f.weeks.required}`);
-  console.log(`health: ${report.health.gamesWithFeatureCapture}/${report.health.completedGamesInWindow} completed games have a pregame capture with the feature; `
-    + `${report.health.playerGamesWithoutFeature} player-games without it; ${report.health.skippedStarters.length} skipped starters`);
-  console.log(`accrual by role: ${JSON.stringify(report.accrual.byRole)} | statuses: ${JSON.stringify(report.accrual.flaggedStatuses)}`);
+  const lines = [
+    `${report.version} | floors: events ${f.events.have}/${f.events.required}, flagged ${f.flagged.have}/${f.flagged.required}, weeks ${f.weeks.have}/${f.weeks.required}`,
+    `health: ${report.health.gamesWithFeatureCapture}/${report.health.completedGamesInWindow} completed games have a pregame capture with the feature; `
+      + `${report.health.playerGamesWithoutFeature} player-games without it; ${report.health.skippedStarters.length} skipped starters`,
+    `accrual by role: ${JSON.stringify(report.accrual.byRole)} | statuses: ${JSON.stringify(report.accrual.flaggedStatuses)}`,
+  ];
 
+  const already = await readFrozenVerdict(report.version);
   if (!report.revealed) {
-    console.log('BLINDED: no outcome metric until every floor is met.');
-  } else if (!existsSync(VERDICT_PATH)) {
-    const frozen = { version: report.version, featureVersion: report.featureVersion, frozenAt: report.evaluatedAt,
-      verdict: report.verdict, meaning: report.meaning, metrics: report.metrics, widening: report.widening,
-      floors: report.floors, accrual: report.accrual, health: report.health, spec: report.spec,
-      flaggedRows: report.rows.flagged.map((r) => ({ event: r.event, playerId: r.playerId, actual: r.actual, captureDigest: r.captureDigest })) };
-    writeFileSync(VERDICT_PATH, `${JSON.stringify(frozen, null, 1)}\n`);
-    console.log(`FIRST LOOK. Verdict ${report.verdict}: ${report.meaning}`);
-    console.log(`Frozen to ${VERDICT_PATH}. Commit it now; it is never overwritten.`);
-    console.log(JSON.stringify(report.metrics, null, 1));
+    await recordGradeRun({ gradeVersion: report.version, revealed: false, floorsMet: false, codeRevision, report });
+    lines.push('BLINDED: no outcome metric until every floor is met.');
   } else {
-    const frozen = JSON.parse(readFileSync(VERDICT_PATH, 'utf8'));
-    console.log(`Frozen verdict (${frozen.frozenAt}): ${frozen.verdict}. Everything below is post-verdict monitoring and cannot change it.`);
-    console.log(JSON.stringify({ monitoring: report.metrics, exceedance: report.descriptive.exceedance }, null, 1));
+    const verdict = { verdict: report.verdict, payload: { meaning: report.meaning, metrics: report.metrics, widening: report.widening,
+      floors: report.floors, accrual: report.accrual, health: report.health, spec: report.spec,
+      flaggedRows: report.rows.flagged.map((r) => ({ event: r.event, playerId: r.playerId, actual: r.actual, captureDigest: r.captureDigest })) } };
+    const { runId, froze } = await recordGradeRun({ gradeVersion: report.version, revealed: true, floorsMet: true, codeRevision, report,
+      verdict: already ? undefined : verdict });
+    if (froze) {
+      lines.push(`FIRST LOOK (run ${runId}). Verdict ${report.verdict}: ${report.meaning}`, JSON.stringify(report.metrics));
+    } else {
+      const frozen = already ?? await readFrozenVerdict(report.version);
+      lines.push(`Frozen verdict (${frozen?.frozenAt}): ${frozen?.verdict}. This run is post-verdict monitoring and cannot change it.`,
+        JSON.stringify({ monitoring: report.metrics, exceedance: report.descriptive.exceedance }));
+    }
+  }
+  for (const line of lines) console.log(line);
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Replacement upside grade\n\n${lines.map((l) => `- ${l}`).join('\n')}\n`);
   }
   if (outPath) {
     writeFileSync(outPath, `${JSON.stringify(report, null, 1)}\n`);

@@ -6,10 +6,12 @@ Registered 2026-09-28, before the first week-4 kickoff (Thursday 2026-10-01,
 PIT@CLE). No week-4-or-later outcome existed when this was written.
 
 Code: `web/src/lib/nfl-dfs/replacement-upside-grade.ts` (the gate, pure),
-`web/scripts/grade-nfl-replacement-upside.ts` (weekly run, read-only).
+`web/scripts/grade-nfl-replacement-upside.ts` (weekly run),
+`web/src/db/nfl-replacement-upside-grade.ts` (run log and frozen verdict).
 Tests: `npm run test:nfl-replacement-upside-grade` (includes a check that the
-code's constants match this document). Weekly run, after DraftKings results
-are ingested (Tuesday): `cd web && npm run grade:nfl-replacement-upside`.
+code's constants match this document). The weekly run is automatic (see
+"Automation" below); `cd web && npm run grade:nfl-replacement-upside` runs it
+by hand.
 
 ## The question
 
@@ -122,12 +124,37 @@ Losses are 90th-percentile pinball: `L(q, y) = 0.9·(y − q)` if `y ≥ q`, els
   rate, `k`, actual score or verdict. The code enforces this: a blinded report
   does not contain those fields.
 - **One look.** The first run in which every floor is met computes the
-  verdict. It writes `artifacts/nfl_replacement_upside_grade_v1_verdict.json`,
-  which must be committed at once and is never overwritten. The look happens
-  when the sample size is reached, not when a result looks good, so there is no
-  optional stopping.
+  verdict. It writes it to `nfl_replacement_upside_grade_verdicts` in the same
+  statement as its run record. That table allows one row per grade version and
+  rejects updates and deletes, so the verdict cannot be written twice or
+  edited. The look happens when the sample size is reached, not when a result
+  looks good, so there is no optional stopping.
 - **After the look**, later runs print the frozen verdict and label everything
   else post-verdict monitoring, which cannot change it.
+
+## Automation
+
+Nothing in this grade needs a person to run it.
+
+| Step | What runs it | When |
+|---|---|---|
+| Freeze what the slate showed | Vercel cron `/api/cron/nfl-pool-capture` (existing pool audit) | Every minute; one copy within 24 hours of each kickoff, then every minute of the last 20 |
+| DraftKings results | `refresh_nfl_dfs_postweek.yml`, job `review` | Tuesday and Wednesday 10:07 UTC, dispatched by Vercel cron (`/api/cron/dispatch`, job `nfl-dfs-postweek`); GitHub schedule 14:41 UTC the same days as fallback |
+| Grade | Same workflow, job `grade-replacement-upside`, after `review` | Same slots. It first runs the gate's own tests and refuses to grade if they fail |
+| Record | `nfl_replacement_upside_grade_runs` (every run) and `nfl_replacement_upside_grade_verdicts` (the one look) | Each run |
+| Show | "If he gets the job" grade card on `/dfs/nfl/results` | Floor progress while blinded, the frozen verdict after |
+
+Each run also writes a job summary and a report file kept 90 days as a
+workflow artifact. Running twice on the same data is harmless. Before the
+floors, a second run is another blinded count. After them, the verdict is
+already frozen.
+
+**Amendment, 2026-09-28, before any week-4 game.** The first version of this
+registration froze the verdict to a JSON file in `artifacts/` that had to be
+committed by hand. An automated run starts from a fresh checkout and cannot
+remember an earlier look, so the verdict moved to the append-only table above.
+Only where the verdict is stored changed. The population, metrics, gates,
+floors and decision table are unchanged.
 
 ## Verdicts and what each one licenses
 
