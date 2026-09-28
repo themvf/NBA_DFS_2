@@ -52,6 +52,8 @@
     "test:nfl-competitor-benchmark": "node --import tsx ./scripts/test-nfl-competitor-benchmark.ts",
     "test:nfl-absence-preview": "node --import tsx ./scripts/test-nfl-absence-preview.ts",
     "test:nfl-replacement-upside": "node --import tsx ./scripts/test-nfl-replacement-upside.ts",
+    "test:nfl-replacement-upside-grade": "node --import tsx ./scripts/test-nfl-replacement-upside-grade.ts",
+    "grade:nfl-replacement-upside": "tsx --conditions=react-server scripts/grade-nfl-replacement-upside.ts",
     "test:nfl-projection-audit": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-projection-audit.ts",
     "test:nfl-position-workload": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-position-workload.ts",
     "test:nfl-workload-optimizer": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-workload-optimizer.ts",

@@ -6883,6 +6883,18 @@ otherwise his own, so the ceiling and boom rate move far more than the mean.
 when a WR sits (neither held up on the recheck). The optimizer, ownership
 prior and projection column keep the baseline until it is graded on 2026
 slates; changing π, thresholds or the trigger is a new version.
+The grade is pre-registered as `nfl-replacement-upside-grade-v1`
+([gate](docs/nfl-replacement-upside-grading.md),
+`web/src/lib/nfl-dfs/replacement-upside-grade.ts`). It reads only the
+append-only pregame pool captures (`nfl_dfs_pool_captures`, whose context now
+records the upside run). It covers 2026 weeks 4+, since weeks 1–3 were seen
+during design. Outcomes follow the DK zero rule. The "if job" P90 must beat
+both the baseline and a generic ceiling widening fitted on full-strength
+backups (pinball, event-clustered bootstrap), and boom must not be worse. The
+weekly run (`npm run grade:nfl-replacement-upside`) is blinded until 60
+events / 130 flagged player-games / 8 weeks. The first run past those floors
+freezes the verdict to `artifacts/nfl_replacement_upside_grade_v1_verdict.json`
+(one look).
 The rest of this section is the historical v1 design.
 
 A ruled-out player's work goes to his teammates. Implemented at the **slate

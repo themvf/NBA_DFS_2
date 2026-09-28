@@ -98,8 +98,12 @@ ceiling moves far more than the average, which is the point.
 
 ## How to promote it
 
-Grade weekly on DraftKings results: for flagged players, compare the
-baseline and the "if job" P90 (pinball loss) and boom rate (log loss)
-against actual scores. Pre-register the promotion gate before looking at
-2026 results. Until it passes, the optimizer reads only the baseline. Any
-change to π, the thresholds or the trigger is a new version.
+The gate is pre-registered in
+[nfl-replacement-upside-grading.md](nfl-replacement-upside-grading.md)
+(`nfl-replacement-upside-grade-v1`, registered 2026-09-28, before week 4). It
+grades the frozen pregame pool captures on DraftKings results, 2026 week 4
+onward. The "if job" P90 must beat the baseline and a generic ceiling
+widening, and its boom rate must not be worse. The grade is blinded until 60
+absence events, then there is one look. Until it passes, the optimizer reads
+only the baseline. Any change to π, the thresholds or the trigger is a new
+version.

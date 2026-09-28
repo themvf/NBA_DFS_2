@@ -51,7 +51,10 @@ export async function capturePool(uploadId:string, dueOnly=false) {
       fileDigest:String(info.file_digest),projectionRunId:slate.projectionRunId,modelAsOf:slate.modelAsOf,
       codeRevision:process.env.VERCEL_GIT_COMMIT_SHA??process.env.NFL_POOL_CODE_REVISION??'local-uncommitted',
       origin:'live_pool',game:group.game,players:group.players,
+      // replacementUpside: which upside version ran, skipped starters, errors.
+      // docs/nfl-replacement-upside-grading.md grades only captures carrying it.
       context:{modelVersion:slate.modelVersion,format:slate.format,redistribution:slate.redistribution,
+        replacementUpside:slate.replacementUpside??null,
         injuryCoverage:slate.injuryCoverage,warnings:slate.warnings,situationTeams:slate.situationTeams,
         totalSalaryPool:slate.players.length,projectionSource:'our',resolvedAt:new Date().toISOString()}};
     const inserted=await savePoolCapture(payload);saved+=inserted.length;if(inserted.length)players+=group.players.length;
