@@ -6841,6 +6841,18 @@ in RB-absence games beat their baseline by ≈ +1.25 points on average; v2
 removes that bias but cannot place the points on the right back. Do not wire
 either pie into the slate as-is; any next variant (a backfield-level bias
 correction, or display-only carries) is a new registration on 2026+ data.
+One exception passed a blind test: `nfl-rb-first-game-blind-v1`
+([study](docs/nfl-rb-first-game-blind-study.md),
+`model/nfl_rb_first_game_blind.py`). In the FIRST game a material back misses,
+the v2 pie (φ 0.5/0.5) improves the lead remaining back's points squared error
+on 2014–2018, seasons no absence study had graded: −13.23 [−21.24, −5.63],
+MAE −0.35 [−0.74, +0.05], 259 events → PROMOTE. Pre-2019 inactives come from a
+proxy (no stat or snap row = inactive), validated against true `INA` on
+2019–2025 (98% recall, 95% precision). Once the absence is under way it adds
+nothing. The license is a live SHADOW only (adjusted vs baseline, graded weekly
+on DK results); optimizer projections keep baselines until that record exists.
+nflverse team codes differ by file (historical in schedules, current in stats,
+GSIS codes in 2013–15 rosters); join on one franchise key.
 The rest of this section is the historical v1 design.
 
 A ruled-out player's work goes to his teammates. Implemented at the **slate

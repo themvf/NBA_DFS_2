@@ -166,3 +166,8 @@ worse, MSE 37.2 versus 25.1.
      per-player split;
   2. showing the carries estimate as display-only volume information, which
      the carries evidence alone supports.
+
+**Follow-up:** the first-game slice was registered and tested blind on
+2014–2018 as [`nfl-rb-first-game-blind-v1`](nfl-rb-first-game-blind-study.md):
+PROMOTE for the lead remaining back in the first game of an absence (shadow
+only). This study's broader NOT_PROMOTED stands.

@@ -150,3 +150,61 @@ once the absence is under way (expected near zero), and by season.
    in 2019). No event, prediction or points outcome was computed on any
    2013–2018 data. The 2013–2015 files and all snap counts were downloaded
    for this study.
+
+## Result (unmasked once, 2026-09-28, after registration commit 977a850)
+
+No deviations from the registration. Proxy validation re-ran inside `unmask`
+and passed. Full output and source digests:
+`artifacts/nfl_rb_first_game_blind_v1_unmask.json`.
+
+**Verdict: PROMOTE** (G1 ✓, G2 ✓, G3 ✓, G4 ✓).
+
+Primary — first game of the absence, lead remaining back, 2014–2018, 259
+events, frozen φ 0.5/0.5 versus BASE:
+
+| measure | BASE → frozen | delta | 95% CI | gate |
+|---|---|---:|---|---|
+| points squared error | 82.73 → 69.50 | −13.23 (−16%) | [−21.24, −5.63] | G1 ✓ |
+| points MAE | 6.922 → 6.576 | −0.345 | [−0.744, +0.053] | G2 ✓ (upper < +0.50) |
+| carries squared error | 69.91 → 45.45 | −24.46 | [−32.78, −16.73] | G3 ✓ |
+| RB-room targets squared error | 6.88 → 5.82 | −1.05 | [−1.68, −0.45] | |
+| bias (actual − pred), points | +3.34 → +0.45 | | | |
+
+The blind effect (−13.23) is almost the same size as the discovery effect on
+2020–2025 (−13.45), and MAE, which was flat in discovery, improved here.
+
+Secondary and descriptive (none gate):
+
+| slice | n | points MSE | delta [95% CI] | points MAE delta | bias |
+|---|---:|---|---|---|---|
+| narrow: backup < 6 carries replacing a 12+ starter (predicted < 0) | 41 | 95.06 → 59.66 | −35.40 [−59.82, −11.87] | −1.34 [−2.66, +0.04] | +6.65 → +2.04 |
+| other backs, first game | 354 rows | 31.63 → 29.73 | −1.90 [−3.29, −0.60] | −0.03 | +1.70 → +0.97 |
+| lead back, absence already under way (expected ≈ 0) | 384 | 67.63 → 67.29 | −0.34 [−3.93, +2.96] | +0.15 [−0.03, +0.34] | +0.80 → −0.53 |
+
+By season (lead back, first game), MSE delta: 2014 −0.5 [−16.4, +13.3],
+2015 −18.6 [−47.6, +7.8], 2016 −18.7 [−32.3, −5.7], 2017 −16.0 [−32.7, −0.2],
+2018 −11.4 [−28.5, +4.6]. All five point estimates are negative; single
+seasons are too small to resolve on their own.
+
+### What it means
+
+- **The first game is where the baseline is wrong.** A back taking over for
+  the first time beat his baseline by +3.3 points on average in 2014–2018 (and
+  +3.7 in 2020–2025). The fixed pie removes almost all of that miss. Once the
+  absence is under way, his own recent games already carry the new role and the
+  adjustment adds nothing, as predicted.
+- **The biggest change is the one the question was about.** When a backup
+  averaging under 6 carries replaces a 12+ carry starter, squared error falls
+  37%. Even then the adjusted projection is still about 2 points short on
+  average, because φ = 0.5 hands on only half the leftover. That is noted, not
+  retuned: raising φ for this slice would be a new registration on 2026+ data.
+- **v2's broader NOT_PROMOTED stands.** Averaged over every absence game and
+  every back, the per-player split did not beat the baseline. This result is
+  specific to the first game and the lead back.
+
+### What happens next (per the license above)
+
+A live shadow, not a projection change: for a back the slate rules out who
+played his team's previous game, show the lead remaining back's adjusted
+projection next to his baseline and grade both against DraftKings results each
+week. The optimizer keeps baselines until that forward record exists.

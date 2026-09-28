@@ -18,6 +18,9 @@ stat row or a snap-count row for the game; otherwise a player listed ACT
 counts as inactive. The proxy is checked against the true status on 2019-2025
 before the blind seasons are unmasked.
 
+Result (2014-2018, 259 events): PROMOTE. Lead-back points squared error
+-13.23 [-21.24, -5.63], MAE -0.35 [-0.74, +0.05]. Licenses a live shadow only.
+
 Usage:
     python -m model.nfl_rb_first_game_blind discovery   # 2020-2025, already-seen data
     python -m model.nfl_rb_first_game_blind validate    # proxy vs true status, 2019-2025
