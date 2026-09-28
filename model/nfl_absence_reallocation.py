@@ -65,6 +65,10 @@ class PoolSpec:
     recipients: frozenset
     budget_excludes: frozenset
     material: float
+    # When set, only these positions count toward the team budget (a
+    # position-room pie, e.g. RB-room targets); otherwise every position
+    # except `budget_excludes` counts.
+    budget_only: frozenset | None = None
 
 
 POOLS = {
@@ -248,18 +252,17 @@ def _stat(game: TeamGame, pid: str, field_name: str) -> float:
     return game.stats.get(pid, {}).get(field_name, 0.0)
 
 
-def _linear(game: TeamGame, pid: str, pool: str) -> float:
+def _linear(game: TeamGame, pid: str, unit: str) -> float:
     s = game.stats.get(pid)
     if not s:
         return 0.0
-    if pool == "targets":
+    if unit == "targets":
         return s["receptions"] + 0.1 * s["receiving_yards"] + 6.0 * s["receiving_tds"]
     return 0.1 * s["rushing_yards"] + 6.0 * s["rushing_tds"]
 
 
 def team_total(game: TeamGame, spec: PoolSpec) -> float:
-    return sum(v[spec.unit] for pid, v in game.stats.items()
-               if game.position.get(pid, "") not in spec.budget_excludes)
+    return sum(v[spec.unit] for pid, v in game.stats.items() if counted(game, pid, spec))
 
 
 @dataclass
@@ -283,7 +286,7 @@ def player_baselines(window: list[TeamGame], spec: PoolSpec) -> dict[str, Baseli
             a[0] += w
             a[1] += w * _stat(game, pid, spec.unit)
             a[2] += w * _stat(game, pid, "fantasy_points_ppr")
-            a[3] += w * _linear(game, pid, spec.name)
+            a[3] += w * _linear(game, pid, spec.unit)
             a[4] += 1
     out = {}
     for pid, (w, wu, wp, wl, n) in acc.items():
@@ -302,7 +305,10 @@ def team_budget(window: list[TeamGame], spec: PoolSpec) -> float | None:
 
 
 def counted(game: TeamGame, pid: str, spec: PoolSpec) -> bool:
-    return game.position.get(pid, "") not in spec.budget_excludes
+    position = game.position.get(pid, "")
+    if spec.budget_only is not None:
+        return position in spec.budget_only
+    return position not in spec.budget_excludes
 
 
 def donors_in(game: TeamGame, baselines: dict[str, Baseline], spec: PoolSpec):
