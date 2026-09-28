@@ -65,6 +65,7 @@ import { NFL_TEAM_NICKNAMES } from "@/lib/nfl-dfs/x-news-teams";
 import { projectOwnershipPrior } from "@/lib/nfl-dfs/ownership-prior";
 import { computeReplacementUpside, REPLACEMENT_UPSIDE_VERSION, type ReplacementUpside, type ReplacementUpsideReport, type UpsidePlayer } from "@/lib/nfl-dfs/replacement-upside";
 import { readTeamUsageWindows } from "@/db/nfl-dfs-usage-window";
+import { applyConfirmedStartingQbs, confirmStarterAvailability, INJURED_STATUSES, sanitizeConfirmedStartingQbs, type ConfirmedStarterReport, type ConfirmedStartingQbs } from "@/lib/nfl-dfs/confirmed-starter";
 
 export type NflWorkspacePlayer = NflOptimizerPlayer & {
   ffPlayerId: number | null;
@@ -166,6 +167,8 @@ export type NflWorkspaceSlate = {
   };
   /** Display-only replacement upside for this slate: who was flagged, and which absences were not. */
   replacementUpside?: { version: string; flagged: number; skipped: ReplacementUpsideReport['skipped']; error?: string };
+  /** Starting QBs the user confirmed for this read, and any that could not be applied. */
+  confirmedStartingQbs?: ConfirmedStarterReport;
 };
 
 export type NflComparisonSource = "fantasypros" | "linestar" | "custom";
@@ -273,7 +276,7 @@ async function latestProjectionRun(players: readonly SlateGame[]) {
   return rows[0] ?? null;
 }
 
-async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
+async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQbs = {}): Promise<NflWorkspaceSlate> {
   const uploads = await db.select().from(nflDfsSlateUploads).where(eq(nflDfsSlateUploads.uploadId, uploadId)).limit(1);
   const upload = uploads[0];
   if (!upload) throw new Error("NFL slate upload was not found.");
@@ -445,12 +448,17 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
     name: row.name,
     availability: baseAvailability(row),
   })));
-  const availability = (row: typeof rows[number]) => applyTeamQbContext(
+  const starterName = (team: string) => rows.find((row) => row.dkPlayerId === startingQbs[team])?.name;
+  const availability = (row: typeof rows[number]) => confirmStarterAvailability(applyTeamQbContext(
     baseAvailability(row),
     row.position,
     teamQb1s.get(row.team) ?? teamQb1s.get(({ LA: 'LAR', WAS: 'WSH', AZ: 'ARI', JAC: 'JAX' } as Record<string, string>)[row.team] ?? row.team),
-  );
-  const redistribution = redistributeOutOpportunity(
+  ), { dkPlayerId: row.dkPlayerId, team: row.team, position: row.position, platformOut: platformOut(row) }, startingQbs, starterName);
+  const injuredOut = (row: typeof rows[number]) => platformOut(row) || row.projectionStatus === 'out' || INJURED_STATUSES.has(availability(row).status);
+  // A starter the user confirmed replaces the depth chart's QB roles for that
+  // team only; see `confirmed-starter.ts` for why the chart cannot be trusted
+  // once the regular starter is ruled out.
+  const confirmedStarters = applyConfirmedStartingQbs(
     rows.flatMap((row): RedistributionRow[] => {
       const stats = statsByPlayer.get(row.ffPlayerId ?? -1);
       if (!stats || !row.team) return [];
@@ -471,7 +479,10 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
         ceilingFpts: numeric(row.ceilingFpts),
       }];
     }),
+    startingQbs,
+    (candidate) => { const row = rows.find((r) => r.dkPlayerId === candidate.key); return row ? injuredOut(row) : false; },
   );
+  const redistribution = redistributeOutOpportunity(confirmedStarters.rows);
   for (const row of rows) {
     const note = notesByPlayer.get(row.ffPlayerId ?? -1) as { rule?: string; from_player?: string;
       offered_opportunity?: number; assigned_opportunity?: number; unassigned_opportunity?: number } | undefined;
@@ -484,6 +495,7 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
   const inheritedBy = new Map(redistribution.applied.map(r => [r.key, r]));
 
   const workspace: NflWorkspaceSlate = {
+    confirmedStartingQbs: confirmedStarters.report,
     redistribution: {
       version: redistribution.version,
       unresolved: redistribution.unresolved,
@@ -881,9 +893,9 @@ export async function listSavedNflSlates() {
     .filter(row => { if (seen.has(row.label)) return false; seen.add(row.label); return true; });
 }
 
-export async function loadSavedNflWorkspace(uploadId: string) {
+export async function loadSavedNflWorkspace(uploadId: string, startingQbs?: ConfirmedStartingQbs) {
   if (!/^[0-9a-f-]{36}$/.test(uploadId)) throw new Error(`Invalid saved slate: ${JSON.stringify(uploadId)}`);
-  const slate = await workspaceSlate(uploadId);
+  const slate = await workspaceSlate(uploadId, sanitizeConfirmedStartingQbs(startingQbs));
   return { slate, runs: await slateRuns(uploadId) };
 }
 
@@ -958,7 +970,7 @@ export async function runNflOptimizer(
   settings: NflOptimizerSettings,
 ): Promise<{ runId: string; slate: NflWorkspaceSlate; result: NflOptimizerResult; ownership?: OwnershipAssessment;effectiveSettings:NflOptimizerSettings }> {
   await ensureNflDfsTables();
-  const slate = await workspaceSlate(uploadId);
+  const slate = await workspaceSlate(uploadId, sanitizeConfirmedStartingQbs(settings.confirmedStartingQbs));
   if(settings.format!==slate.format)throw new Error("Optimizer format must match the saved salary slate.");
   return saveOptimizerResult(slate,settings);
 }
@@ -981,7 +993,7 @@ export async function generateNflLineups(uploadId: string, settings: NflOptimize
 export async function compareNflWorkload(uploadId:string, settings:NflOptimizerSettings) {
   await ensureNflDfsTables();
   validateWorkloadPositions(settings.workloadPositions);
-  const slate=await workspaceSlate(uploadId);
+  const slate=await workspaceSlate(uploadId,sanitizeConfirmedStartingQbs(settings.confirmedStartingQbs));
   // One server-read cohort, both sources, identical controls and deterministic search.
   if(!Number.isInteger(settings.nLineups)||settings.nLineups<1||settings.nLineups>150)throw new Error('Lineup count must be 1–150.');
   const now=Date.now();

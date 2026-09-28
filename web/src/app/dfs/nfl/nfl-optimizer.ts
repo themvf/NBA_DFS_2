@@ -139,6 +139,8 @@ export type NflOptimizerSettings = {
   mode: NflOptimizerMode;
   projectionSource: NflProjectionSource;
   defensiveAdjustments?: DefensiveSettings;
+  /** Team -> DK id of a user-confirmed starting QB; see `confirmed-starter.ts`. */
+  confirmedStartingQbs?: Record<string, number>;
   allowDkFallback: boolean;
   workloadPositions?: WorkloadPositions;
   situations?: SituationSettings;

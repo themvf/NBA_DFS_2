@@ -3,6 +3,7 @@
 import { formFromSettings, sameGenerationSettings, settingsFromForm, type NflBuildForm } from "@/lib/nfl-dfs/generation-settings";
 import { nflIdentityLabel } from "@/lib/nfl-dfs/identity";
 import { DEFAULT_DFS_DEFENSIVE_SETTINGS, defensiveSettingsFor, selectedDefensiveForecast } from "@/lib/nfl-dfs/defensive-display";
+import { INJURED_STATUSES } from "@/lib/nfl-dfs/confirmed-starter";
 
 import ProjectionAuditPanel from './projection-audit-panel';
 import {DEFAULT_SITUATIONS} from '@/lib/nfl-dfs/projection-audit';
@@ -110,7 +111,7 @@ export default function NflDfsClient() {
   // gate) are kept alongside the punt policy — the policy owns cheap-player
   // roles, while requireObservedHistory still removes any-priced players whose
   // projection is a position average, not theirs.
-  const [settings, setSettings] = useState({ mode: "gpp" as "cash" | "gpp", projectionSource: "our" as NflProjectionSource, defensiveAdjustments:{...DEFAULT_DFS_DEFENSIVE_SETTINGS}, allowDkFallback: false, workloadPositions:{...DEFAULT_WORKLOAD_POSITIONS}, situations:DEFAULT_SITUATIONS, nLineups: 20, minSalary: 45000, minPlayerSalary: 1000, requireObservedHistory: true, maxExposure: .6, minUnique: 2, stackPassCatchers: 1 as 0 | 1 | 2, bringBack: true, randomness: .08, useHeuristicOwnershipLeverage: true, puntPolicy: {...DEFAULT_NFL_PUNT_POLICY} as import("@/lib/nfl-dfs/punt-policy").NflPuntPolicy, puntOverrides: [] as import("@/lib/nfl-dfs/punt-policy").PuntOverride[] });
+  const [settings, setSettings] = useState({ mode: "gpp" as "cash" | "gpp", projectionSource: "our" as NflProjectionSource, defensiveAdjustments:{...DEFAULT_DFS_DEFENSIVE_SETTINGS}, confirmedStartingQbs: {} as Record<string, number>, allowDkFallback: false, workloadPositions:{...DEFAULT_WORKLOAD_POSITIONS}, situations:DEFAULT_SITUATIONS, nLineups: 20, minSalary: 45000, minPlayerSalary: 1000, requireObservedHistory: true, maxExposure: .6, minUnique: 2, stackPassCatchers: 1 as 0 | 1 | 2, bringBack: true, randomness: .08, useHeuristicOwnershipLeverage: true, puntPolicy: {...DEFAULT_NFL_PUNT_POLICY} as import("@/lib/nfl-dfs/punt-policy").NflPuntPolicy, puntOverrides: [] as import("@/lib/nfl-dfs/punt-policy").PuntOverride[] });
 
   function restoreRunEvidence(evidence:Awaited<ReturnType<typeof loadSavedNflLineups>>['evidence']) {
     setSavedQaEvidenceAvailable(Boolean(evidence));
@@ -217,7 +218,7 @@ export default function NflDfsClient() {
         const next = await loadSavedNflWorkspace(uploadId);
         setSlate(next.slate); setLibraryId(uploadId); setSavedRuns(next.runs);
         setLineups([]); setRunId(null); setCompletedSettings(null); setShowVisuals(false); clearRunReports();
-        if (!restoreLineups) setSettings(current => ({...current,defensiveAdjustments:defensiveSettingsFor(current.projectionSource)}));
+        if (!restoreLineups) setSettings(current => ({...current,defensiveAdjustments:defensiveSettingsFor(current.projectionSource),confirmedStartingQbs:{}}));
         setLocked([]); setExcluded([]); setTargetExposure({}); setCaptainTargets({}); setCaptainSuggestion(null); setEntryFile(null); setQuery(''); setPosition('ALL'); setPlayerPage(1);
         try { localStorage.setItem('nfl-saved-slate', uploadId); } catch { /* Selection memory is optional. */ }
         setMessage('Saved player pool loaded. Availability refreshed.');
@@ -265,7 +266,7 @@ export default function NflDfsClient() {
   function loadSalary(file: File | null) {
     if (!file) return; setError(null); setMessage(null); setLineups([]); setShowVisuals(false); setTargetExposure({}); setCaptainTargets({}); setCaptainSuggestion(null); setLocked([]); setExcluded([]); setRunId(null); clearRunReports();
     const form = new FormData(); form.set("file", file);
-    startTransition(async () => { try { const result = await loadNflSalaryCsv(form); setSlate(result); setLibraryId(result.uploadId); setCompletedSettings(null); setSettings(current=>({...current,defensiveAdjustments:defensiveSettingsFor(current.projectionSource)})); setEntryFile(null); setSavedRuns((await loadSavedNflWorkspace(result.uploadId)).runs); await refreshLibrary(); try { localStorage.setItem("nfl-saved-slate", result.uploadId); } catch {} setMessage(`${file.name} saved with ${result.players.length} players and linked to the latest projection run.`); } catch (reason) { setError(reason instanceof Error ? reason.message : "Salary upload failed."); } });
+    startTransition(async () => { try { const result = await loadNflSalaryCsv(form); setSlate(result); setLibraryId(result.uploadId); setCompletedSettings(null); setSettings(current=>({...current,defensiveAdjustments:defensiveSettingsFor(current.projectionSource),confirmedStartingQbs:{}})); setEntryFile(null); setSavedRuns((await loadSavedNflWorkspace(result.uploadId)).runs); await refreshLibrary(); try { localStorage.setItem("nfl-saved-slate", result.uploadId); } catch {} setMessage(`${file.name} saved with ${result.players.length} players and linked to the latest projection run.`); } catch (reason) { setError(reason instanceof Error ? reason.message : "Salary upload failed."); } });
   }
   function refreshProjections() {
     if (!slate) return;
@@ -285,6 +286,28 @@ export default function NflDfsClient() {
   function importComparison(file: File | null) {
     if (!file || !slate) return; setError(null); setMessage(null);
     startTransition(async () => { try { const parsed = parseNflComparisonCsv(await file.text()); const result = await applyNflComparison(slate.uploadId, comparisonSource, parsed.rows, file.name); setSlate(result.slate); setMessage(`${SOURCE_LABELS[comparisonSource]}: matched ${result.matched}/${parsed.rows.length}; ${result.unmatched.length} unmatched.${parsed.warnings.length ? ` ${parsed.warnings.length} rows warned.` : ""}`); } catch (reason) { setError(reason instanceof Error ? reason.message : "Comparison import failed."); } });
+  }
+  // Teams that need a starting-QB decision: the regular starter is ruled out,
+  // no quarterback could be identified as QB1, or the user already chose one.
+  const qbDecisions = useMemo(() => {
+    const qbs = (slate?.players ?? []).filter((p) => p.position === "QB");
+    const injured = (p: (typeof qbs)[number]) => ["O", "OUT"].includes((p.dkStatus ?? "").toUpperCase()) || INJURED_STATUSES.has(p.availability?.status ?? "");
+    return [...new Set(qbs.map((p) => p.team))].sort().map((team) => {
+      const teamQbs = qbs.filter((p) => p.team === team);
+      const out = teamQbs.filter(injured).map((p) => p.name);
+      const unresolved = !teamQbs.some((p) => !p.isOut && p.availability?.role?.startsWith("Expected starter"));
+      return { team, out, unresolved, options: teamQbs.filter((p) => !injured(p)),
+        needed: out.length > 0 || unresolved || settings.confirmedStartingQbs[team] != null };
+    }).filter((decision) => decision.needed && decision.options.length);
+  }, [slate, settings.confirmedStartingQbs]);
+  function confirmStartingQb(team: string, value: string) {
+    if (!slate) return;
+    const next = { ...settings.confirmedStartingQbs };
+    if (value) next[team] = Number(value); else delete next[team];
+    setSettings({ ...settings, confirmedStartingQbs: next });
+    setError(null);
+    // Re-read the pool so its projections show the promotion before Generate.
+    startTransition(async () => { try { setSlate((await loadSavedNflWorkspace(slate.uploadId, next)).slate); } catch (reason) { setError(reason instanceof Error ? reason.message : "The pool could not be refreshed for that starter."); } });
   }
   function generate() {
     if (!slate) return; setError(null); setMessage(null);
@@ -430,7 +453,7 @@ export default function NflDfsClient() {
           <p className="text-xs text-slate-500">{playerRulesSummary}</p>
           {lineups.length && settingsChanged ? <p className="mt-1 text-xs text-amber-800">Settings changed since these lineups were built.</p> : null}
           <button disabled={pending} onClick={generate} className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 text-sm font-bold text-white disabled:opacity-40"><Play className="h-4 w-4" />{pending ? "Working…" : "Generate & save"}</button>
-          <div className="mt-4 space-y-3"><Field label="Objective"><select value={settings.mode} onChange={(e) => setSettings({ ...settings, mode: e.target.value as "cash" | "gpp" })} className="control"><option value="gpp">GPP ceiling</option><option value="cash">Cash floor</option></select></Field><Field label="Projection source"><select value={settings.projectionSource} onChange={(e) => { const source=e.target.value as NflProjectionSource; setSettings({...settings,projectionSource:source,defensiveAdjustments:defensiveSettingsFor(source,settings.defensiveAdjustments)}); }} className="control">{Object.entries(SOURCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
+          <div className="mt-4 space-y-3"><Field label="Objective"><select value={settings.mode} onChange={(e) => setSettings({ ...settings, mode: e.target.value as "cash" | "gpp" })} className="control"><option value="gpp">GPP ceiling</option><option value="cash">Cash floor</option></select></Field><Field label="Projection source"><select value={settings.projectionSource} onChange={(e) => { const source=e.target.value as NflProjectionSource; setSettings({...settings,projectionSource:source,defensiveAdjustments:defensiveSettingsFor(source,settings.defensiveAdjustments)}); }} className="control">{Object.entries(SOURCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>{qbDecisions.map((decision) => { const report = slate?.confirmedStartingQbs; const applied = report?.applied.find((a) => a.team === decision.team); const rejected = report?.rejected.find((r) => r.team === decision.team); return <Field key={decision.team} label={`${decision.team} starting QB${decision.out.length ? ` (${decision.out.join(", ")} OUT)` : decision.unresolved ? " (roles unresolved)" : ""}`}><select value={settings.confirmedStartingQbs[decision.team] ?? ""} onChange={(e) => confirmStartingQb(decision.team, e.target.value)} className="control"><option value="">Depth chart (automatic)</option>{decision.options.map((p) => <option key={p.dkPlayerId} value={p.dkPlayerId}>{p.name}</option>)}</select><span className="mt-1 block text-[11px] font-normal text-slate-600">{applied ? `${applied.starter} takes over ${applied.donor}'s pass attempts at his own efficiency.` : rejected ? rejected.reason : decision.out.length ? "The depth-chart feed reorders an injured starter, so it can name the wrong replacement. Pick the confirmed starter: he takes the starter's workload and the other QBs are blocked." : "No QB on this team could be confirmed as QB1, so backups are not blocked. Pick the starter to block the others."}</span></Field>; })}
           <Field label="Lineups"><input type="number" min={1} max={150} value={settings.nLineups} onChange={(e) => setSettings({ ...settings, nLineups: Number(e.target.value) })} className="control" /></Field>
           {slate.format === "showdown" ? <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px]">
             <h3 className="text-sm font-bold text-slate-800">Portfolio plan (archetypes)</h3>
