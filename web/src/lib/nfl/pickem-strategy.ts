@@ -464,34 +464,18 @@ export function evaluateEntry(
   entry: Entry,
   world: SimulatedWorld,
 ): EntryEvaluation {
-  const n = games.length;
   let shareTotal = 0;
   let tiedTotal = 0;
   let scoreTotal = 0;
   let scoreSq = 0;
 
   for (let s = 0; s < world.sims; s += 1) {
-    const outcome = world.outcomes[s];
-    let score = 0;
-    for (let g = 0; g < n; g += 1) {
-      score += entry.confidence[g] * outcomePoints(entry.pickHome[g], outcome[g], world.tiePoints);
-    }
+    const score = entryScoreInSim(entry, world, s);
     scoreTotal += score;
     scoreSq += score * score;
-
-    // A chalk rival outscoring us settles the sim: no share at all.
-    const chalkScore = world.chalkScores[s];
-    if (world.chalkRivals > 0 && chalkScore > score) continue;
-    const tiedChalk = world.chalkRivals > 0 && chalkScore === score ? world.chalkRivals : 0;
-
-    const opp = world.oppScores[s];
-    // opp is sorted: binary search the block equal to `score`.
-    const lo = lowerBound(opp, score);
-    const hi = upperBound(opp, score);
-    const y = lo / world.opponents;
-    const x = (hi - lo) / world.opponents;
-    shareTotal += prizeShareWithTies(x, y, world.noisyRivals, tiedChalk);
-    tiedTotal += Math.pow(Math.min(1, x + y), world.noisyRivals);
+    const result = shareInSim(world, s, score);
+    shareTotal += result.share;
+    tiedTotal += result.atLeastTied;
   }
 
   const mean = scoreTotal / world.sims;
@@ -501,6 +485,34 @@ export function evaluateEntry(
     pAtLeastTied: tiedTotal / world.sims,
     meanScore: mean,
     scoreStdDev: Math.sqrt(Math.max(0, scoreSq / world.sims - mean * mean)),
+  };
+}
+
+function entryScoreInSim(entry: Entry, world: SimulatedWorld, s: number): number {
+  const outcome = world.outcomes[s];
+  let score = 0;
+  for (let g = 0; g < outcome.length; g += 1) {
+    score += entry.confidence[g] * outcomePoints(entry.pickHome[g], outcome[g], world.tiePoints);
+  }
+  return score;
+}
+
+/** Prize share, and P(no rival strictly above), in simulated slate `s` for an entry scoring `score`. */
+function shareInSim(world: SimulatedWorld, s: number, score: number): { share: number; atLeastTied: number } {
+  // A chalk rival outscoring us settles the sim: no share at all.
+  const chalkScore = world.chalkScores[s];
+  if (world.chalkRivals > 0 && chalkScore > score) return { share: 0, atLeastTied: 0 };
+  const tiedChalk = world.chalkRivals > 0 && chalkScore === score ? world.chalkRivals : 0;
+
+  const opp = world.oppScores[s];
+  // opp is sorted: binary search the block equal to `score`.
+  const lo = lowerBound(opp, score);
+  const hi = upperBound(opp, score);
+  const y = lo / world.opponents;
+  const x = (hi - lo) / world.opponents;
+  return {
+    share: prizeShareWithTies(x, y, world.noisyRivals, tiedChalk),
+    atLeastTied: Math.pow(Math.min(1, x + y), world.noisyRivals),
   };
 }
 
@@ -750,4 +762,197 @@ export function cheapDifferentiation(
   // Separation bought per expected point paid.
   out.sort((a, b) => b.confidenceGap / (b.evCost + 0.05) - a.confidenceGap / (a.evCost + 0.05));
   return out.slice(0, limit);
+}
+
+// ---------------------------------------------------------------------------
+// Cheapest flips -- exact cost, exact parity, simulated payoff
+// ---------------------------------------------------------------------------
+
+export type FlipCandidate = {
+  /** Game index. */
+  i: number;
+  /** The favourite the all-favourites card holds, and the underdog you would take instead. */
+  fromAbbrev: string;
+  toAbbrev: string;
+  /** P(each side wins | no tie). */
+  pFrom: number;
+  pTo: number;
+  /** Confidence weight the all-favourites card puts on this game; 1 in a straight pool. */
+  confidence: number;
+  /** Exact expected points surrendered by the flip: c * (P(from) - P(to)). */
+  evCost: number;
+  /** Rival share on each side, and whether the pool published it or it was modeled. */
+  fieldOnFrom: number;
+  fieldOnTo: number;
+  fieldSource: "observed" | "modeled";
+  /**
+   * P(underdog wins) minus the share of the field on the underdog. Only new
+   * information when the share was observed: a modeled share is a function of
+   * the same probability, so its leverage is a restatement of the price.
+   */
+  leverage: number;
+};
+
+/**
+ * Every favourite you could fade, cheapest first.
+ *
+ * "Cheapest" is the only ranking this page can defend: five pre-registered
+ * studies in this repo found nothing that predicts which underdog wins better
+ * than the closing line does, so the flip to make is the one that costs the
+ * fewest expected points -- the game nearest a coin flip -- not the one with
+ * the most persuasive story. The k cheapest flips are also the minimum-cost
+ * card with k flips, because each flip's cost is independent of the others.
+ *
+ * `eligible[i]` false removes a game (already started, or locked).
+ */
+export function cheapestFlips(
+  games: PickemGame[],
+  format: PoolFormat,
+  model: FieldModel,
+  eligible: boolean[],
+): FlipCandidate[] {
+  const chalk = evOptimalEntry(games, format);
+  const out: FlipCandidate[] = [];
+  for (let i = 0; i < games.length; i += 1) {
+    if (!eligible[i]) continue;
+    const g = games[i];
+    const favHome = chalk.pickHome[i];
+    const field = fieldHomeShare(g, model);
+    const fieldOnFrom = favHome ? field.share : 1 - field.share;
+    const pTo = favHome ? 1 - g.pHome : g.pHome;
+    out.push({
+      i,
+      fromAbbrev: favHome ? g.homeAbbrev : g.awayAbbrev,
+      toAbbrev: favHome ? g.awayAbbrev : g.homeAbbrev,
+      pFrom: 1 - pTo,
+      pTo,
+      confidence: chalk.confidence[i],
+      evCost: flipCost(games, chalk, i),
+      fieldOnFrom,
+      fieldOnTo: 1 - fieldOnFrom,
+      fieldSource: field.source,
+      leverage: pTo - (1 - fieldOnFrom),
+    });
+  }
+  // Ties broken by game index so the order never depends on sort stability.
+  return out.sort((a, b) => a.evCost - b.evCost || a.i - b.i);
+}
+
+/**
+ * Exact, ignoring game ties: can a card that differs from the all-favourites
+ * card only by flipping games with these confidence weights ever finish LEVEL
+ * with it?
+ *
+ * The two cards agree everywhere except the flipped games. On each flipped
+ * game one of them scores the weight and the other scores nothing, so the
+ * score difference is sum(weights of flips that hit) - sum(weights of flips
+ * that missed). It is zero for some outcome exactly when the flipped weights
+ * split into two equal-sum halves. In a straight pool every weight is 1, so
+ * that is "the number of flips is even" -- including zero, where you are the
+ * all-favourites card and always tie every rival holding it.
+ *
+ * Game ties are ignored because both cards score a tied game identically,
+ * which removes it from the difference; at well under 1% of NFL games that is
+ * a rounding error on the parity, not a reversal of it.
+ */
+export function canTieChalkCard(flippedWeights: number[]): boolean {
+  const total = flippedWeights.reduce((a, b) => a + b, 0);
+  if (flippedWeights.some((w) => !Number.isInteger(w) || w < 0)) {
+    throw new Error("Confidence weights must be non-negative integers");
+  }
+  if (total % 2 !== 0) return false;
+  const half = total / 2;
+  const reachable = new Uint8Array(half + 1);
+  reachable[0] = 1;
+  for (const w of flippedWeights) {
+    for (let t = half; t >= w; t -= 1) if (reachable[t - w]) reachable[t] = 1;
+  }
+  return reachable[half] === 1;
+}
+
+/**
+ * How an entry differs from the all-favourites card: which games it flipped,
+ * and whether its confidence weights are the same. The parity check only
+ * applies when they are -- a card that also reorders confidence differs from
+ * the chalk card on unflipped games too.
+ */
+export function flipsFromChalk(
+  games: PickemGame[],
+  format: PoolFormat,
+  entry: Entry,
+): { flipped: number[]; sameConfidence: boolean; canTieChalk: boolean | null } {
+  const chalk = evOptimalEntry(games, format);
+  const flipped: number[] = [];
+  for (let i = 0; i < games.length; i += 1) if (entry.pickHome[i] !== chalk.pickHome[i]) flipped.push(i);
+  const sameConfidence = entry.confidence.every((c, i) => c === chalk.confidence[i]);
+  return {
+    flipped,
+    sameConfidence,
+    canTieChalk: sameConfidence ? canTieChalkCard(flipped.map((i) => chalk.confidence[i])) : null,
+  };
+}
+
+export type FlipLadderStep = {
+  /** Number of flips; the cheapest k candidates. */
+  k: number;
+  flips: number[];
+  /** Exact cumulative expected points surrendered. */
+  evCost: number;
+  /** Simulated expected prize share against the modeled or observed field. */
+  prizeShare: number;
+  /** Paired against the all-favourites card on the same simulated slates. */
+  gainVsChalk: number;
+  /** Monte Carlo standard error of that paired gain. Says nothing about field-model error. */
+  gainStdErr: number;
+  /** Exact: can this card finish level with every all-favourites rival? */
+  canTieChalk: boolean;
+};
+
+/**
+ * The all-favourites card with its 0, 1, ..., maxK cheapest flips applied,
+ * each scored against the SAME simulated world so the rows differ only by the
+ * flips. The cost and tie columns are exact; the prize share is the simulator
+ * and is only as good as its field.
+ */
+export function flipLadder(
+  games: PickemGame[],
+  format: PoolFormat,
+  world: SimulatedWorld,
+  candidates: FlipCandidate[],
+  maxK = 3,
+): FlipLadderStep[] {
+  const chalk = evOptimalEntry(games, format);
+  const sims = world.sims;
+  const chalkShares = new Float64Array(sims);
+  for (let s = 0; s < sims; s += 1) chalkShares[s] = shareInSim(world, s, entryScoreInSim(chalk, world, s)).share;
+
+  const steps: FlipLadderStep[] = [];
+  const top = Math.min(maxK, candidates.length);
+  for (let k = 0; k <= top; k += 1) {
+    const flips = candidates.slice(0, k).map((c) => c.i);
+    const entry: Entry = { pickHome: [...chalk.pickHome], confidence: [...chalk.confidence] };
+    for (const i of flips) entry.pickHome[i] = !entry.pickHome[i];
+    let shareSum = 0;
+    let diffSum = 0;
+    let diffSq = 0;
+    for (let s = 0; s < sims; s += 1) {
+      const share = k === 0 ? chalkShares[s] : shareInSim(world, s, entryScoreInSim(entry, world, s)).share;
+      const d = share - chalkShares[s];
+      shareSum += share;
+      diffSum += d;
+      diffSq += d * d;
+    }
+    const meanDiff = diffSum / sims;
+    const variance = sims > 1 ? Math.max(0, (diffSq - sims * meanDiff * meanDiff) / (sims - 1)) : 0;
+    steps.push({
+      k,
+      flips,
+      evCost: candidates.slice(0, k).reduce((sum, c) => sum + c.evCost, 0),
+      prizeShare: shareSum / sims,
+      gainVsChalk: meanDiff,
+      gainStdErr: Math.sqrt(variance / sims),
+      canTieChalk: canTieChalkCard(flips.map((i) => chalk.confidence[i])),
+    });
+  }
+  return steps;
 }

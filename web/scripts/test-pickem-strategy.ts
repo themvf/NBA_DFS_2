@@ -16,7 +16,11 @@
  */
 
 import {
+  canTieChalkCard,
   cheapDifferentiation,
+  cheapestFlips,
+  flipLadder,
+  flipsFromChalk,
   evOptimalEntry,
   evaluateEntry,
   expectedPoints,
@@ -492,6 +496,143 @@ console.log("\nParity sawtooth and search lookahead");
     plan.recommendedEval.prizeShare >= Math.max(s0, s1, s2, s3) - 1e-9,
     `${(plan.recommendedEval.prizeShare * 100).toFixed(2)}% vs ${(s3 * 100).toFixed(2)}%`,
   );
+}
+
+// ---------------------------------------------------------------------------
+console.log("\nCheapest flips, exact parity and the flip ladder");
+// ---------------------------------------------------------------------------
+
+{
+  const probs = [0.88, 0.79, 0.72, 0.66, 0.61, 0.58, 0.565, 0.555, 0.545, 0.535, 0.525, 0.515, 0.508, 0.504];
+  // Mix home and away favourites so "from" and "to" are exercised both ways.
+  const slate3 = probs.map((p, i) => game(i, i % 2 === 0 ? p : 1 - p));
+  const all = slate3.map(() => true);
+  const field = { favoriteBias: 1.3, skillSigma: 0.35, chalkFraction: 0.25 };
+
+  for (const format of ["straight", "confidence"] as PoolFormat[]) {
+    const chalk = evOptimalEntry(slate3, format);
+    const flips = cheapestFlips(slate3, format, field, all);
+    check(`${format}: one candidate per eligible game`, flips.length === slate3.length);
+    check(
+      `${format}: candidates are sorted cheapest first`,
+      flips.every((c, k) => k === 0 || flips[k - 1].evCost <= c.evCost + 1e-15),
+    );
+    check(
+      `${format}: each cost is the exact closed-form flip cost`,
+      flips.every((c) => close(c.evCost, flipCost(slate3, chalk, c.i), 1e-12) &&
+        close(c.evCost, c.confidence * (c.pFrom - c.pTo), 1e-12)),
+    );
+    check(
+      `${format}: every candidate fades the favourite`,
+      flips.every((c) => c.pFrom >= 0.5 && c.fromAbbrev === (chalk.pickHome[c.i] ? slate3[c.i].homeAbbrev : slate3[c.i].awayAbbrev)),
+    );
+
+    // Minimum-cost claim: the k cheapest flips cost no more than ANY k-subset.
+    const small = slate3.slice(6);
+    const smallFlips = cheapestFlips(small, format, field, small.map(() => true));
+    const smallChalk = evOptimalEntry(small, format);
+    let minimal = true;
+    for (let k = 1; k <= 3; k += 1) {
+      const claimed = smallFlips.slice(0, k).reduce((s, c) => s + c.evCost, 0);
+      for (let mask = 0; mask < 1 << small.length; mask += 1) {
+        const members = small.map((_, i) => i).filter((i) => (mask >> i) & 1);
+        if (members.length !== k) continue;
+        const cost = members.reduce((s, i) => s + flipCost(small, smallChalk, i), 0);
+        if (cost < claimed - 1e-12) minimal = false;
+      }
+    }
+    check(`${format}: the k cheapest flips are the minimum-cost k-flip card (brute force)`, minimal);
+  }
+
+  check(
+    "ineligible (started) games are never offered",
+    cheapestFlips(slate3, "straight", field, slate3.map((_, i) => i !== 13)).every((c) => c.i !== 13),
+  );
+
+  // Parity: brute-force every hit/miss pattern against the subset-sum answer.
+  const bruteTie = (w: number[]) => {
+    for (let mask = 0; mask < 1 << w.length; mask += 1) {
+      let diff = 0;
+      w.forEach((x, i) => { diff += (mask >> i) & 1 ? x : -x; });
+      if (diff === 0) return true;
+    }
+    return false;
+  };
+  check(
+    "straight pool: a card can tie the all-favourites card iff its flip count is even",
+    [0, 1, 2, 3, 4, 5, 6].every((k) => canTieChalkCard(new Array(k).fill(1)) === (k % 2 === 0)),
+  );
+  const rng = makeRng(99);
+  let parityAgrees = true;
+  for (let t = 0; t < 400; t += 1) {
+    const k = 1 + Math.floor(rng() * 6);
+    const w = Array.from({ length: k }, () => 1 + Math.floor(rng() * 16));
+    if (canTieChalkCard(w) !== bruteTie(w)) parityAgrees = false;
+  }
+  check("confidence pool: subset-sum parity matches brute force on 400 random weight sets", parityAgrees);
+  check("confidence pool: two flips with different weights can never tie", !canTieChalkCard([3, 5]));
+  check("confidence pool: three flips can tie when two weights sum to the third", canTieChalkCard([2, 3, 5]));
+
+  // Ladder reproduces evaluateEntry exactly, and parity shows up in the draws.
+  const world = simulateWorld(slate3, "straight", field, { sims: 3000, poolEntries: 50, sampleOpponents: 200, seed: 21 });
+  const flips = cheapestFlips(slate3, "straight", field, all);
+  const ladder = flipLadder(slate3, "straight", world, flips, 3);
+  const chalk = evOptimalEntry(slate3, "straight");
+  const chalkEval = evaluateEntry(slate3, chalk, world).prizeShare;
+  check("ladder runs k = 0..3", ladder.map((s) => s.k).join(",") === "0,1,2,3");
+  check("ladder k=0 is the all-favourites card, zero cost, zero gain",
+    ladder[0].evCost === 0 && ladder[0].gainVsChalk === 0 && close(ladder[0].prizeShare, chalkEval, 1e-12));
+  check(
+    "every ladder row matches evaluateEntry on the same world",
+    ladder.every((step) => {
+      const e: Entry = { pickHome: [...chalk.pickHome], confidence: [...chalk.confidence] };
+      for (const i of step.flips) e.pickHome[i] = !e.pickHome[i];
+      const share = evaluateEntry(slate3, e, world).prizeShare;
+      return close(step.prizeShare, share, 1e-12) && close(step.gainVsChalk, share - chalkEval, 1e-12);
+    }),
+  );
+  check("ladder cost is the cumulative exact cost", ladder.every((s) =>
+    close(s.evCost, flips.slice(0, s.k).reduce((sum, c) => sum + c.evCost, 0), 1e-12)));
+  check("ladder parity column is odd/even in a straight pool", ladder.every((s) => s.canTieChalk === (s.k % 2 === 0)));
+  check("paired standard errors are finite and non-negative", ladder.every((s) => Number.isFinite(s.gainStdErr) && s.gainStdErr >= 0));
+
+  // Parity in the simulated draws themselves: an odd card never lands exactly
+  // on the chalk score; an even one does, often.
+  const levelCount = (k: number) => {
+    const idx = flips.slice(0, k).map((c) => c.i);
+    let level = 0;
+    for (let s = 0; s < world.sims; s += 1) {
+      let score = 0;
+      for (let g = 0; g < slate3.length; g += 1) {
+        const pick = idx.includes(g) ? !chalk.pickHome[g] : chalk.pickHome[g];
+        score += world.outcomes[s][g] === pick ? 1 : 0;
+      }
+      if (score === world.chalkScores[s]) level += 1;
+    }
+    return level;
+  };
+  check("odd flips never finish level with the all-favourites card in simulation", levelCount(1) === 0 && levelCount(3) === 0);
+  check("two flips finish level with it in a large share of simulations", levelCount(2) > world.sims * 0.3,
+    `${levelCount(2)} of ${world.sims}`);
+
+  // An entry's own relationship to the chalk card.
+  const two: Entry = { pickHome: [...chalk.pickHome], confidence: [...chalk.confidence] };
+  two.pickHome[flips[0].i] = !two.pickHome[flips[0].i];
+  two.pickHome[flips[1].i] = !two.pickHome[flips[1].i];
+  const rel = flipsFromChalk(slate3, "straight", two);
+  check("flipsFromChalk finds both flips and warns they can tie",
+    rel.flipped.length === 2 && rel.sameConfidence && rel.canTieChalk === true);
+  const conf = evOptimalEntry(slate3, "confidence");
+  const reordered: Entry = { pickHome: [...conf.pickHome], confidence: [...conf.confidence] };
+  [reordered.confidence[0], reordered.confidence[1]] = [reordered.confidence[1], reordered.confidence[0]];
+  const relConf = flipsFromChalk(slate3, "confidence", reordered);
+  check("a reordered confidence card gets no parity verdict", !relConf.sameConfidence && relConf.canTieChalk === null);
+
+  // Observed share: leverage is real information, and computed on the right side.
+  const observed = [game(0, 0.6, 0.8)];
+  const [c0] = cheapestFlips(observed, "straight", field, [true]);
+  check("an entered pick share is marked observed", c0.fieldSource === "observed");
+  check("leverage is P(underdog) minus the field on the underdog", close(c0.leverage, 0.4 - 0.2, 1e-12) && close(c0.fieldOnFrom, 0.8, 1e-12));
 }
 
 // ---------------------------------------------------------------------------

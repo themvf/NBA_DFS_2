@@ -40,6 +40,7 @@ import {
 import type { PickemLedgerRow, PickemPoolRow, PickemSlate, PickemSlateGame } from "@/db/queries";
 import { comparePickemDefensiveForecasts } from "@/lib/nfl/pickem-defensive";
 import PickemTabs from "./pickem-tabs";
+import { CheapestFlipsPanel } from "./cheapest-flips-panel";
 import { ContestPolicyPanel } from "./contest-policy-panel";
 import type { ContestComparison } from "@/lib/nfl/pickem-contest";
 import { EvidencePanel, EvidenceLedger } from "./evidence-panel";
@@ -84,9 +85,12 @@ import {
 } from "@/lib/nfl/pickem-archetypes";
 import {
   cheapDifferentiation,
+  cheapestFlips,
   evOptimalEntry,
   evaluateEntry,
   fieldHomeShare,
+  flipLadder,
+  flipsFromChalk,
   optimizeEntry,
   simulateWorld,
   type Entry,
@@ -135,6 +139,12 @@ const PROVENANCE_LABEL: Record<string, string> = {
   model_spread: "Model",
   blocked: "None",
 };
+
+/** Postgres `timestamptz::text` ("2026-09-28 17:00:00+00") to epoch ms. */
+function stampMs(value: string | null): number {
+  if (!value) return NaN;
+  return Date.parse(value.replace(" ", "T").replace(/([+-]\d{2})$/, "$1:00"));
+}
 
 function pct(x: number, digits = 1): string {
   return `${(x * 100).toFixed(digits)}%`;
@@ -579,6 +589,28 @@ export default function PickemClient({ slate: approvedSlate, pools, ledger, evid
   );
   const perGameFreeze = format === "straight" && contestReport?.config.lockRule === "per_game" &&
     (contestReport.eligibility.weekly || contestReport.eligibility.season);
+
+  // ---- cheapest flips ----------------------------------------------------
+  // A game can still be flipped only if it has not kicked off AND the card is
+  // not already locked -- the same lock the freeze button applies.
+  const cardLocked = weekHasStarted && !perGameFreeze;
+  const flipEligible = useMemo(() => {
+    const now = Date.parse(reviewAt);
+    return games.map((g) => !cardLocked && !g.completed && !(stampMs(g.kickoff) <= now));
+  }, [games, reviewAt, cardLocked]);
+  const flipCandidates = useMemo(
+    () => cheapestFlips(games, format, fieldModel, flipEligible),
+    [games, format, fieldModel, flipEligible],
+  );
+  const ladder = useMemo(
+    () => (evaluationWorld && flipCandidates.length ? flipLadder(games, format, evaluationWorld, flipCandidates, 3) : []),
+    [games, format, evaluationWorld, flipCandidates],
+  );
+  const cardVsChalk = useMemo(
+    () => (activeEntry ? flipsFromChalk(games, format, activeEntry) : null),
+    [games, format, activeEntry],
+  );
+  const readByGame = useMemo(() => new Map(rows.map((r) => [r.game.gameId, r.read.verdict])), [rows]);
 
   const freezeCard = () => {
     if (!plan || !activeEntry || !baseline || games.length === 0) return;
@@ -1357,6 +1389,24 @@ export default function PickemClient({ slate: approvedSlate, pools, ledger, evid
         )}
       </section>
 
+      {/* ---- cheapest flips ---------------------------------------------- */}
+      {rows.length > 0 && (
+        <CheapestFlipsPanel
+          games={games}
+          format={format}
+          candidates={flipCandidates}
+          ladder={ladder}
+          cardVsChalk={cardVsChalk}
+          readByGame={readByGame}
+          cardLocked={cardLocked}
+          poolEntries={poolEntries}
+          chalkFraction={chalkFraction}
+          chalkRivals={evaluationWorld?.chalkRivals ?? null}
+          rivalCount={evaluationWorld?.rivalCount ?? null}
+          sims={DEFAULT_SIMS}
+        />
+      )}
+
       {/* ---- how the room reads the slate --------------------------------- */}
       {rows.length > 0 && (
         <section className="rounded-lg border bg-card">
@@ -1431,41 +1481,6 @@ export default function PickemClient({ slate: approvedSlate, pools, ledger, evid
               );
             })}
           </div>
-
-          {(() => {
-            // The hunt: cheap by price AND quiet by narrative. Cheapest first.
-            const targets = rows
-              .filter((r) => r.p >= 0.5 && r.p <= 0.62 && r.read.verdict !== "contrarian")
-              .sort((a, b) => a.p - b.p)
-              .slice(0, 4);
-            return (
-              <div className="border-t px-3 py-2">
-                <div className="mb-1 text-xs font-semibold">Cheapest uncrowded flips this week</div>
-                {targets.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    Nothing in the cheap band is free of a loud underdog story this week. Take the
-                    cheapest game anyway — price decides whether to flip; archetypes only break ties.
-                  </p>
-                ) : (
-                  <ul className="space-y-1 text-xs">
-                    {targets.map((r) => (
-                      <li key={r.game.gameId} className="text-muted-foreground">
-                        <span className="font-semibold text-foreground">
-                          {r.dogAbbrev} over {r.favAbbrev}
-                        </span>{" "}
-                        — favourite at {pct(r.p)}, costs{" "}
-                        <span className="font-mono">{(2 * r.p - 1).toFixed(3)}</span> expected wins,{" "}
-                        {r.read.verdict === "crowded"
-                          ? "and the room is on the favourite — good, that is who you are fading"
-                          : "no loud story either way"}
-                        .
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            );
-          })()}
 
           <p className="border-t px-3 py-2 text-xs text-muted-foreground">
             <strong className="text-foreground">Visibility is a stated prior, not a

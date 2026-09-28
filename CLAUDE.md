@@ -6590,10 +6590,22 @@ should be trusted less than its own CI implies.
 ### The practical answer
 
 `analyze:how-many-dogs`. Take every favourite, then flip the **cheapest** game
-— the one closest to a coin flip, not the one that feels due. Flip **one or
-three, never two** (parity). One flip a week cost about **one correct pick
-across the whole 2025 season**. Selection is by price, not by prediction,
-because five studies say prediction is not available.
+— the one closest to a coin flip, not the one that feels due. One flip a week
+cost about **one correct pick across the whole 2025 season**. Selection is by
+price, not by prediction, because five studies say prediction is not available.
+
+**Parity is exact; "one or three, never two" is not.** In a straight pool an
+even number of flips can finish level with the all-favourites card (a tie with
+every rival holding it) and an odd number never can; in a confidence pool the
+condition is that the flipped weights split into equal halves. Whether zero,
+one or three flips is best depends on pool size and the chalk share, and
+`test:pickem` records that preserving field marginals changed the preferred
+count on its own fixture. The page's **Cheapest flips** panel
+(`cheapestFlips` / `flipLadder` / `flipsFromChalk` in `pickem-strategy.ts`,
+`cheapest-flips-panel.tsx`) shows the exact cost and tie verdict for the
+cheapest 0–3 flips and the simulated prize share for each on paired draws with
+a Monte Carlo band; it also warns when the user's own card can tie the chalk
+card. The prize-share column is only as good as the unmeasured field model.
 
 **A methodological trap recorded so it is not repeated:** the first version of
 that script scored candidate cards against the ACTUAL 2025 results. With
