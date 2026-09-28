@@ -31,6 +31,11 @@ assert.equal(experimental.slate.games[0].provenance, "experimental_defensive_mat
 const comparison = comparePickemDefensiveForecasts(slate, evidence, asOf);
 assert.deepEqual(comparison.comparisons[1], { gameId: 1, baselineHome: .49,
   baselinePlusDefenseHome: matchup.candidate!.homeConditional, applied: true });
+const zeroTieSlate = { ...slate, games: [{ ...slate.games[0], pTie: 0 }] };
+const zeroTieComparison = comparePickemDefensiveForecasts(zeroTieSlate, evidence, asOf);
+assert.deepEqual(zeroTieComparison.appliedGameIds, [1]);
+assert.equal(zeroTieComparison.slate.games[0].pTie, 0);
+assert.equal(zeroTieComparison.slate.games[0].pHome, matchup.candidate!.homeConditional);
 const missing = comparePickemDefensiveForecasts(slate, { ...evidence, games: { 1: { ...evidence.games[1], matchup: null } } }, asOf);
 assert.deepEqual(missing.comparisons[1], { gameId: 1, baselineHome: .49, baselinePlusDefenseHome: .49, applied: false });
 assert.equal(evOptimalEntry(approved.slate.games.map(g => ({ ...g, fieldHomePct: null })), "straight").pickHome[0], false);

@@ -55,6 +55,105 @@ def test_multi_qb_rate_cannot_be_pooled_without_denominator():
     assert out["teams"]["TB"]["offense"]["pressure_pct"] is None
 
 
+def multi_qb_sources():
+    games, snaps = sources()
+    gid = games[0]["game_id"]
+    qb = snaps[0]["payload"]["rows"][0]
+    qb["stats"].update(times_pressured=7, times_pressured_pct=28)
+    backup = deepcopy(qb)
+    backup.update(gsis_id="backup")
+    backup["stats"].update(times_pressured=1, times_pressured_pct=25)
+    snaps[0]["payload"]["rows"].append(backup)
+    weekly = [{"id": i, "source": "nflverse", "fetched_at": NOW-timedelta(minutes=10),
+        "source_row": {"game_id": gid, "team": "TB", "player_id": player,
+            "player_name": name, "position": "QB", "attempts": attempts,
+            "sacks_suffered": 0, "carries": carries}}
+        for i, (player, name, attempts, carries) in enumerate(
+            [(qb["gsis_id"], "M.Stafford", 25, 2), ("backup", "S.Bennett", 3, 1)], 1)]
+    plays = [{"game_id": gid, "play_id": i, "team": "TB", "qb_name": name,
+        "scramble": scramble, "sack": False, "available_at": (NOW-timedelta(minutes=5)).isoformat()}
+        for i, (name, scramble) in enumerate([("M.Stafford", False)]*25
+            + [("S.Bennett", False)]*3 + [("S.Bennett", True)], 1)]
+    manifest = participant_manifests(weekly, games, NOW, plays)[gid]
+    # Retain the fixture's other participants so coverage checks remain intact.
+    originals = snaps[0]["participant_manifest"]["rows"]
+    manifest["rows"] += [r for r in originals if r["gsis_id"] != qb["gsis_id"]]
+    snaps[0]["participant_manifest"] = manifest
+    return games, snaps, weekly, plays
+
+
+def test_real_stafford_bennett_example_pools_counts_for_offense_and_defense():
+    games, snaps, _, _ = multi_qb_sources()
+    out = build_matchup(game=GAME, prior_games=games, snapshots=snaps, as_of=NOW)
+    own = out["teams"]["TB"]["offense"]
+    assert own["pressure_coverage_complete"] is True
+    assert own["pressure_pct"] == pytest.approx(100 * 8 / 29)
+    assert own["pressure_pct"] != pytest.approx((28 + 25) / 2)
+    assert own["pressure_game_observations"][0]["dropbacks"] == 29
+    # The same source rows define pressure created by the opponent's defense.
+    opponent_game = {**GAME, "away": "ATL"}
+    defense = build_matchup(game=opponent_game, prior_games=games, snapshots=snaps,
+        as_of=NOW)["teams"]["ATL"]["defense"]
+    assert defense["pressure_pct"] == own["pressure_pct"]
+
+
+def test_multi_qb_inputs_reach_combined_pickem_calculation():
+    from research.nfl_pickem_matchup import matchup_values, paired_probabilities
+    games, snaps, _, _ = multi_qb_sources()
+    for game, snap in zip(list(games), list(snaps)):
+        away_rb = {"section": "rushing_advanced", "team": game["away"], "position": "RB",
+            "gsis_id": game["away"]+"-rb", "identity_status": "resolved",
+            "stats": {"carries": 10, "rushing_yards_before_contact": 20, "rushing_yards_after_contact": 30}}
+        snap["payload"]["rows"].append(away_rb)
+        snap["participant_manifest"]["rows"].append({**away_rb, "passer": False, "rusher": True, "carries": 10})
+        older_game = {**game, "game_id": game["game_id"]+"-older", "kickoff": game["kickoff"]-timedelta(days=7)}
+        older_snap = deepcopy(snap)
+        older_snap.update(snapshot_id=snap["snapshot_id"]+10, game_id=older_game["game_id"])
+        games.append(older_game); snaps.append(older_snap)
+    matchup = build_matchup(game=GAME, prior_games=games, snapshots=snaps, as_of=NOW)
+    values = matchup_values(matchup)
+    assert values is not None
+    assert values["own_pressure"] == pytest.approx(100 * 8 / 29 - 20)
+    baseline, adjusted = paired_probabilities(.49, .003, values["own_pressure"] * .01)
+    assert adjusted["home"] > baseline["home"]
+
+
+def test_passing_play_manifest_is_json_serializable_and_preserves_observation_time():
+    import json
+    games, _, weekly, plays = multi_qb_sources()
+    for p in plays:
+        p["available_at"] = NOW-timedelta(minutes=5)
+    result = participant_manifests(weekly, games, NOW, plays)
+    json.dumps(result)
+    participant = result[games[0]["game_id"]]["rows"][0]
+    assert participant["available_at"] == (NOW-timedelta(minutes=5)).isoformat()
+    assert participant["pressure_play_source"]["plays"][0]["available_at"] == participant["available_at"]
+
+
+@pytest.mark.parametrize("mutation", ["missing_play", "future_play", "wrong_name", "duplicate_play", "wrong_sack", "wrong_rate"])
+def test_multi_qb_requires_reconciled_timely_exposures(mutation):
+    games, snaps, weekly, plays = multi_qb_sources()
+    if mutation == "missing_play":
+        plays.pop(0)
+    elif mutation == "future_play":
+        plays[0]["available_at"] = (NOW+timedelta(seconds=1)).isoformat()
+    elif mutation == "wrong_name":
+        plays[0]["qb_name"] = "different-quarterback"
+    elif mutation == "duplicate_play":
+        plays.append(deepcopy(plays[0]))
+    elif mutation == "wrong_sack":
+        plays[0]["sack"] = True
+    else:
+        snaps[0]["payload"]["rows"][0]["stats"]["times_pressured_pct"] = 35
+    rows = participant_manifests(weekly, games, NOW, plays)[games[0]["game_id"]]["rows"]
+    originals = snaps[0]["participant_manifest"]["rows"]
+    snaps[0]["participant_manifest"]["rows"] = rows + [r for r in originals if r["position"] != "QB" or r["team"] != "TB"]
+    own = build_matchup(game=GAME, prior_games=games, snapshots=snaps, as_of=NOW)["teams"]["TB"]["offense"]
+    assert own["pressure_coverage_complete"] is False
+    assert own["pressure_pct"] is None
+    assert "qb_pressure_denominator_missing_or_mismatched" in own["participant_coverage"][0]["pressure"]["reasons"]
+
+
 def test_html_and_csv_units_match_and_future_freeze_rejected():
     html={"parser_version":"pfr-boxscore-v1","rows":[{"team":"WSH","section":"passing_advanced","stats":{"pass_pressured_pct":20}}]}
     csv={"stats_schema":SCHEMA,"rows":[{"team":"WAS","section":"passing_advanced","stats":{"times_pressured_pct":20}}]}

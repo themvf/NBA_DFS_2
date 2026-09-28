@@ -54,10 +54,11 @@ export function selectPickemDefensiveForecasts(
         quote.pHome == null || !Number.isFinite(quote.pHome) ||
         Math.abs(quote.pHome - game.pHome) > 1e-10 ||
         Math.abs(comparison.input.baseline.homeConditional - game.pHome) > 1e-10 ||
-        comparison.input.baseline.tie !== game.pTie ||
         !Number.isFinite(comparison.candidate.homeConditional) ||
         comparison.candidate.homeConditional <= 0 || comparison.candidate.homeConditional >= 1) return game;
     appliedGameIds.push(game.gameId);
+    // pHome is conditional on no tie. Apply that residual while retaining
+    // the slate's tie assumption; the research model's tie mass is separate.
     return { ...game, pHome: comparison.candidate.homeConditional,
       provenance: "experimental_defensive_matchup", computedAt: comparison.input.decisionCutoff };
   });

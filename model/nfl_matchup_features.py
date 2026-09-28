@@ -89,15 +89,24 @@ def latest_eligible(snapshots: list[dict], prior_games: list[dict], cutoff: date
     return [value[1] for _, value in sorted(selected.items())]
 
 
-def participant_manifests(weekly_rows: list[dict], games: list[dict], cutoff: datetime) -> dict:
+def participant_manifests(weekly_rows: list[dict], games: list[dict], cutoff: datetime,
+                          passing_plays: list[dict] | None = None) -> dict:
     """Freeze expected participants from retained weekly stats, not mutable names.
 
-    This fallback is explicitly weekly box-score evidence, not play-by-play.
+    Participants come from weekly box-score evidence. Optional retained PBP
+    verifies passing-play exposures, with its own observation times and digest.
     Each retained row includes its source identity, availability and raw digest.
     No currently joined player roster or alias table participates in the join.
     """
     cutoff = stamp(cutoff)
     eligible = {g["game_id"]: g for g in games if g.get("completed") and stamp(g["kickoff"]) < cutoff}
+    play_groups = {}
+    for play in passing_plays or []:
+        if play["game_id"] not in eligible or stamp(play["available_at"]) > cutoff:
+            continue
+        play = {**play, "available_at": stamp(play["available_at"]).isoformat()}
+        key = (play["game_id"], team_code(play["team"]), play.get("qb_name"))
+        play_groups.setdefault(key, []).append(play)
     grouped = {}
     for row in weekly_rows:
         raw = row.get("source_row") or {}
@@ -113,10 +122,28 @@ def participant_manifests(weekly_rows: list[dict], games: list[dict], cutoff: da
         rusher = (carries or 0) > 0
         if not passer and not rusher:
             continue
-        grouped.setdefault(gid, []).append({"source_row_id": str(row["id"]), "source": row.get("source"),
+        participant = {"source_row_id": str(row["id"]), "source": row.get("source"),
             "available_at": stamp(row["fetched_at"]).isoformat(), "raw_digest": stable_digest(raw),
             "team": team, "gsis_id": raw.get("player_id"), "position": position,
-            "attempts": attempts, "sacks_suffered": sacks, "carries": carries, "passer": passer, "rusher": rusher})
+            "attempts": attempts, "sacks_suffered": sacks, "carries": carries, "passer": passer, "rusher": rusher}
+        # Attribute retained PBP names through the retained weekly source row;
+        # never use today's roster or infer exposures from rounded percentages.
+        plays = play_groups.get((gid, team, raw.get("player_name")), [])
+        if plays and attempts is not None and sacks is not None:
+            pbp_attempts = sum(not p["scramble"] and not p["sack"] for p in plays)
+            pbp_sacks = sum(p["sack"] for p in plays)
+            if (len({p["play_id"] for p in plays}) == len(plays)
+                    and pbp_attempts == attempts and pbp_sacks == sacks
+                    and sum(p["scramble"] for p in plays) <= (carries or 0)):
+                participant["pressure_dropbacks"] = len(plays)
+                participant["pressure_play_source"] = {
+                    "source_kind": "nfl_pbp_archetypes", "qb_name": raw.get("player_name"),
+                    "available_at": max(stamp(p["available_at"]) for p in plays).isoformat(),
+                    "plays": sorted(plays, key=lambda p: p["play_id"]),
+                    "raw_digest": stable_digest(sorted(plays, key=lambda p: p["play_id"]))}
+                participant["available_at"] = max(participant["available_at"],
+                    participant["pressure_play_source"]["available_at"])
+        grouped.setdefault(gid, []).append(participant)
     result = {}
     for gid, rows in grouped.items():
         rows.sort(key=lambda r: (r["team"], r["gsis_id"] or "", r["source_row_id"]))
@@ -126,6 +153,27 @@ def participant_manifests(weekly_rows: list[dict], games: list[dict], cutoff: da
         manifest["manifest_hash"] = stable_digest(manifest)
         result[gid] = manifest
     return result
+
+
+def pressure_observation(rows, expected):
+    """Keep single-QB rates; pool multi-QB counts using verified PBP exposures."""
+    if len(rows) == 1:
+        return rows[0]["stats"].get("times_pressured_pct"), None, None
+    if not rows:
+        return None, None, "missing_qb_pressure_rows"
+    participants = {r.get("gsis_id"): r for r in expected}
+    pressures = dropbacks = 0
+    for row in rows:
+        count = row["stats"].get("times_pressured")
+        rate = row["stats"].get("times_pressured_pct")
+        exposure = participants.get(row.get("gsis_id"), {}).get("pressure_dropbacks")
+        if (exposure is None or exposure <= 0 or exposure != int(exposure)
+                or count is None or count < 0 or count > exposure or count != int(count)
+                or rate is None or abs(100 * count / exposure - rate) > 0.051):
+            return None, None, "qb_pressure_denominator_missing_or_mismatched"
+        pressures += count
+        dropbacks += exposure
+    return 100 * pressures / dropbacks, dropbacks, None
 
 
 def _coverage(rows, expected, manifest, *, family):
@@ -148,8 +196,9 @@ def _coverage(rows, expected, manifest, *, family):
     if set(actual_ids) != set(expected_ids):
         reasons.append("participant_set_mismatch")
     if family == "pressure":
-        if len(relevant) != 1:
-            reasons.append("multiple_or_missing_qb_denominator")
+        _, _, reason = pressure_observation(relevant, expected)
+        if reason:
+            reasons.append(reason)
         if any(r["stats"].get("times_pressured_pct") is None or not 0 <= r["stats"]["times_pressured_pct"] <= 100 for r in relevant):
             reasons.append("pressure_rate_missing_or_invalid")
     else:
@@ -166,6 +215,7 @@ def _coverage(rows, expected, manifest, *, family):
 
 def _summarize(snapshots: list[dict], team: str, *, defense: bool) -> dict:
     pressures, pressure_games, sacks, contacts, ids, unresolved = [], [], [], [], [], 0
+    pressure_observations = []
     coverage = []
     for s in snapshots:
         m = snapshot_manifest(s)
@@ -180,12 +230,12 @@ def _summarize(snapshots: list[dict], team: str, *, defense: bool) -> dict:
                 c["complete"] = False; c["reasons"].append("pfr_identity_manifest_missing")
         coverage.append({"game_id": m["game_id"], "pressure": pressure_coverage, "contact": contact_coverage})
         qbs = [r for r in rows if r["section"] == "passing_advanced"]
-        # A game with multiple QB rows has no exposure denominator for pooling.
-        # Preserve those rows but withhold its aggregate rate.
-        if pressure_coverage["complete"] and len(qbs) == 1 and qbs[0]["stats"].get("times_pressured_pct") is not None:
-            rate = qbs[0]["stats"]["times_pressured_pct"]
+        if pressure_coverage["complete"]:
+            rate, denominator, _ = pressure_observation(qbs, [r for r in expected if r["passer"]])
             if 0 <= rate <= 100:
                 pressures.append(rate); pressure_games.append(m["game_id"])
+                pressure_observations.append({"game_id": m["game_id"], "rate": rate,
+                    "dropbacks": denominator, "quarterbacks": len(qbs)})
         sacks.extend(r["stats"]["times_sacked"] for r in qbs if r["stats"].get("times_sacked") is not None)
         for r in rows:
             if r["section"] != "rushing_advanced":
@@ -204,7 +254,8 @@ def _summarize(snapshots: list[dict], team: str, *, defense: bool) -> dict:
     before, after = sum(c[1] for c in contacts), sum(c[2] for c in contacts)
     return {"games": len(snapshots), "snapshot_ids": ids, "pressure_game_ids": pressure_games,
             "pressure_games": len(pressures), "pressure_pct": mean(pressures) if pressures else None,
-            "pressure_aggregation": "unweighted single-QB game average; multi-QB games withheld",
+            "pressure_aggregation": "unweighted game average; multi-QB game counts pooled using verified PBP dropbacks",
+            "pressure_game_observations": pressure_observations,
             "pressure_exact_denominator": None, "charted_sacks": sum(sacks) if sacks else None,
             "rb_carries": carries or None, "rb_before_contact_yards": before if carries else None,
             "rb_after_contact_yards": after if carries else None,

@@ -195,6 +195,19 @@ def test_outcome_amendment_is_forward_only_and_has_an_exact_scorer_pin(tmp_path)
     assert result["scoring_version"] == "nfl-dk-realized-v3"
     assert original["scoring_version"] == "nfl-dk-realized-v2"
     assert outcome_implementation_errors(result) == []
+    first_pin = {"registration_manifest_hash": digest(original), "pinned_at": "2026-10-01T00:00:00+00:00",
+                 "hashes": {"forecast.py": "a"*64}}
+    later_pin = {**first_pin, "pinned_at": "2026-10-03T00:00:00+00:00",
+                 "previous_pin_hash": digest(first_pin), "hashes": {"forecast.py": "b"*64}}
+    pin_paths = [tmp_path / "first-pin.json", tmp_path / "later-pin.json"]
+    for pin_path, pin in zip(pin_paths, [first_pin, later_pin]):
+        pin_path.write_text(json.dumps(pin))
+    index["implementation_pin_files"] = [str(p) for p in pin_paths]
+    result = resolve_registration(index)
+    assert result["scoring_version"] == "nfl-dk-realized-v3"
+    assert result["implementation_pinned_at"] == later_pin["pinned_at"]
+    assert result["registered_at"] == amended_at
+    assert result["implementation_hashes"] == later_pin["hashes"]
     source.write_bytes(b"SCORING_VERSION='v3'\nchanged=True\n")
     assert outcome_implementation_errors(result) == [str(source)]
     amendment["registered_at"] = "2026-09-01T00:00:00+00:00"

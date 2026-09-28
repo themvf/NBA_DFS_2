@@ -1,0 +1,22 @@
+{
+  "study_id": "nfl-matchup-pickem-combined-v1",
+  "registration_manifest_hash": "2daa45bd9c19e0431adb4b5dbedd9de616222b6cd65868e316c6c43ac8fcf65d",
+  "previous_pin_hash": "3c342f90a24b4ff9169d94898c453ee1c444fb5145b3fab0004ad2bad2042db8",
+  "pinned_at": "2026-09-28T00:45:56.301448+00:00",
+  "hash_algorithm": "sha256_lf_normalized",
+  "hashes": {
+    "model/nfl_matchup_features.py": "9607fd4ffe4d01fe9f20488a48be47b14cdc94bdd33ad6cf5696307009178209",
+    "model/nfl_matchup_projection.py": "93ab2c8f314f1746ea60673582ebe267aa1d2a6f805125ed2c1a46cd57bd37d2",
+    "research/nfl_pickem_matchup.py": "0c5fccb26e28a603a97df6f9459da67a88e7134ef6b922c9f8f2ae11f16ddb3b",
+    "ingest/nfl_matchup_context.py": "a222375163c1f79073c52becb43611e4e15d49af752a419dcbd7150587f44f94",
+    "db/nfl_pfr_schema.py": "da5f40c0fa9e8b044de2799b6c7af11651b73b6942d4341f866abafebfbd31e1"
+  },
+  "reason": "Forward-only multi-quarterback pressure aggregation fix: freeze retained PBP passing-play exposures (including official spike attempts), reconcile attempts and sacks with retained weekly participant rows, verify reported pressure rates, and pool pressure counts within each game. Preserve single-QB rates, coefficients, numerical gates and all earlier frozen forecasts.",
+  "outcomes_consulted": false,
+  "qualification_scope": {
+    "consumer": "nfl_pickem_probability",
+    "usage": "predictive_shadow_only",
+    "platform": "straight_pickem",
+    "capture": "eligible_upcoming_regular_season_games"
+  }
+}

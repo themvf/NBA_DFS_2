@@ -1,0 +1,23 @@
+{
+  "study_id": "nfl-matchup-dfs_mean-contact-v1",
+  "registration_manifest_hash": "9a31a975293b5ab9041a37a2245e3ab857fa10cdd9ba301ba555989730b7c56a",
+  "previous_pin_hash": "468b6b4f9d67a1da7d7d91a8bd1fc4825caf84be4996bdb3ac39e2cc8151499d",
+  "pinned_at": "2026-09-28T00:45:56.301448+00:00",
+  "hash_algorithm": "sha256_lf_normalized",
+  "hashes": {
+    "model/nfl_matchup_features.py": "9607fd4ffe4d01fe9f20488a48be47b14cdc94bdd33ad6cf5696307009178209",
+    "model/nfl_matchup_projection.py": "93ab2c8f314f1746ea60673582ebe267aa1d2a6f805125ed2c1a46cd57bd37d2",
+    "model/nfl_dfs_historical.py": "e68c45b32151a8fb77f94eb295d181ec5ad5881ee6b3384fb04e4a95b28b5b55",
+    "ingest/nfl_matchup_context.py": "a222375163c1f79073c52becb43611e4e15d49af752a419dcbd7150587f44f94",
+    "research/nfl_matchup_implementation.py": "47e65568c20f797f4ed96f89d8659c81a3b67d9523dcaed148d8f50c5ccbb64a",
+    "db/nfl_pfr_schema.py": "da5f40c0fa9e8b044de2799b6c7af11651b73b6942d4341f866abafebfbd31e1"
+  },
+  "reason": "Forward-only multi-quarterback pressure aggregation fix: freeze retained PBP passing-play exposures (including official spike attempts), reconcile attempts and sacks with retained weekly participant rows, verify reported pressure rates, and pool pressure counts within each game. Preserve single-QB rates, coefficients, numerical gates and all earlier frozen forecasts.",
+  "outcomes_consulted": false,
+  "qualification_scope": {
+    "consumer": "nfl_dfs_projection",
+    "usage": "predictive_shadow_only",
+    "platform": "DraftKings",
+    "capture": "saved_current_week_Classic_salary_pool"
+  }
+}

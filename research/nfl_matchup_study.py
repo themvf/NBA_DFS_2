@@ -153,12 +153,15 @@ def resolve_registration(index_entry):
     result = dict(original)
     pin_files = index_entry.get("implementation_pin_files") or ([index_entry["implementation_pin_file"]] if index_entry.get("implementation_pin_file") else [])
     previous_pin = None
+    first_pin_at = None
     for path in pin_files:
         pin = json.loads(Path(path).read_text())
         if pin["registration_manifest_hash"] != digest(original):
             raise ValueError("Implementation pin does not match immutable study registration")
         if previous_pin and (pin.get("previous_pin_hash") != digest(previous_pin) or timestamp(pin["pinned_at"]) < timestamp(previous_pin["pinned_at"])):
             raise ValueError("Broken immutable implementation pin chain")
+        if first_pin_at is None:
+            first_pin_at = timestamp(pin["pinned_at"])
         result.update(implementation_hashes=pin["hashes"], implementation_pinned_at=pin["pinned_at"],
                       implementation_hash_algorithm=pin.get("hash_algorithm","sha256_raw_bytes"),
                       qualification_scope=pin.get("qualification_scope"))
@@ -178,7 +181,9 @@ def resolve_registration(index_entry):
                 or amendment["previous_scoring_version"] != result["scoring_version"]
                 or amendment.get("previous_amendment_hash") != previous_outcome_amendment):
             raise ValueError("Broken immutable outcome amendment chain")
-        earliest = max(timestamp(result["registered_at"]), timestamp(result.get("implementation_pinned_at") or result["registered_at"]))
+        # A later forecast-processing pin cannot make an already valid scorer
+        # amendment appear backdated. Its own latest pin still bounds evaluation.
+        earliest = max(timestamp(result["registered_at"]), first_pin_at or timestamp(result["registered_at"]))
         if timestamp(amendment["registered_at"]) < earliest:
             raise ValueError("Outcome amendment cannot be backdated")
         if amendment.get("hash_algorithm") != "sha256_lf_normalized" or not amendment.get("implementation_hashes"):

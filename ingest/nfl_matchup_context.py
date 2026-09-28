@@ -17,9 +17,16 @@ def load_matchups(db, season, week, as_of):
         snapshot_id,game_id,captured_at,recorded_at,payload FROM nfl_pfr_game_snapshots
         WHERE season=%s AND GREATEST(captured_at,recorded_at)<=%s
         ORDER BY game_id,captured_at DESC,snapshot_id DESC""", (season, as_of))]
+    # Official pass attempts include spikes even when qb_dropback is false.
+    passing_plays = [dict(r) for r in db.execute("""SELECT game_id,play_id,play_type,posteam team,
+        COALESCE(passer,rusher) qb_name, COALESCE(scramble,FALSE) scramble,
+        COALESCE(had_sack,FALSE) sack, labelled_at available_at
+        FROM nfl_pbp_archetypes WHERE season=%s AND (qb_dropback=TRUE OR play_type='qb_spike')
+          AND play_type <> 'no_play' AND COALESCE(two_point_result,'')=''
+          AND labelled_at<=%s ORDER BY game_id,play_id""", (season, as_of))]
     participants = participant_manifests([dict(r) for r in db.execute("""SELECT id,team,source,source_row,fetched_at
         FROM ff_player_week_stats WHERE season=%s AND season_type='REG' AND source='nflverse'
-          AND fetched_at<=%s ORDER BY id""", (season, as_of))], games, as_of)
+          AND fetched_at<=%s ORDER BY id""", (season, as_of))], games, as_of, passing_plays)
     for snapshot in snapshots:
         snapshot["participant_manifest"] = participants.get(snapshot["game_id"])
     return {g["game_id"]: build_matchup(game=g, prior_games=games, snapshots=snapshots, as_of=as_of)

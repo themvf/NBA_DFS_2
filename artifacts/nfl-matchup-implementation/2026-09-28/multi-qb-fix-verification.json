@@ -1,0 +1,106 @@
+{
+  "verified_at": "2026-09-28T00:51:41.103358+00:00",
+  "fresh_odds_games": 1,
+  "tests": "61 targeted Python regression tests plus normal pickem-consumer check",
+  "forecasts": [
+    {
+      "game_id": "2026_03_PHI_CHI",
+      "forecast_id": "855b5b754561382a746712fcc49c1268bd7eb8449f6af97eccf9949c76c3e226",
+      "status": "shadow",
+      "baseline": {
+        "home": 0.35194845574518063,
+        "away": 0.6468260540587409,
+        "tie": 0.0012254901960784314
+      },
+      "adjusted": {
+        "home": 0.35729960909178937,
+        "away": 0.6414749007121321,
+        "tie": 0.0012254901960784314,
+        "homeConditional": 0.35773801352012286
+      },
+      "quote_at": "2026-09-28T00:51:40+00:00",
+      "pressure_observations": {
+        "CHI": {
+          "offense": [
+            {
+              "game_id": "2026_01_CHI_CAR",
+              "rate": 28.2,
+              "dropbacks": null,
+              "quarterbacks": 1
+            },
+            {
+              "game_id": "2026_02_MIN_CHI",
+              "rate": 38.095238095238095,
+              "dropbacks": 42,
+              "quarterbacks": 2
+            }
+          ],
+          "defense": [
+            {
+              "game_id": "2026_01_CHI_CAR",
+              "rate": 46.51162790697674,
+              "dropbacks": 43,
+              "quarterbacks": 2
+            },
+            {
+              "game_id": "2026_02_MIN_CHI",
+              "rate": 20.8,
+              "dropbacks": null,
+              "quarterbacks": 1
+            }
+          ]
+        },
+        "PHI": {
+          "offense": [
+            {
+              "game_id": "2026_01_WAS_PHI",
+              "rate": 21.9,
+              "dropbacks": null,
+              "quarterbacks": 1
+            },
+            {
+              "game_id": "2026_02_PHI_TEN",
+              "rate": 26.2,
+              "dropbacks": null,
+              "quarterbacks": 1
+            }
+          ],
+          "defense": [
+            {
+              "game_id": "2026_01_WAS_PHI",
+              "rate": 18.4,
+              "dropbacks": null,
+              "quarterbacks": 1
+            },
+            {
+              "game_id": "2026_02_PHI_TEN",
+              "rate": 16.7,
+              "dropbacks": null,
+              "quarterbacks": 1
+            }
+          ]
+        }
+      },
+      "implementation_hashes": {
+        "model/nfl_matchup_features.py": "9607fd4ffe4d01fe9f20488a48be47b14cdc94bdd33ad6cf5696307009178209",
+        "model/nfl_matchup_projection.py": "93ab2c8f314f1746ea60673582ebe267aa1d2a6f805125ed2c1a46cd57bd37d2",
+        "research/nfl_pickem_matchup.py": "0c5fccb26e28a603a97df6f9459da67a88e7134ef6b922c9f8f2ae11f16ddb3b",
+        "ingest/nfl_matchup_context.py": "a222375163c1f79073c52becb43611e4e15d49af752a419dcbd7150587f44f94",
+        "db/nfl_pfr_schema.py": "da5f40c0fa9e8b044de2799b6c7af11651b73b6942d4341f866abafebfbd31e1"
+      }
+    }
+  ],
+  "normal_consumer_verification": {
+    "verified_at": "2026-09-28T00:55:33.798Z",
+    "game": "PHI at CHI",
+    "comparison": {
+      "gameId": 48,
+      "baselineHome": 0.352380294341187,
+      "baselinePlusDefenseHome": 0.3577380135201228,
+      "applied": true
+    },
+    "pick": "PHI",
+    "slateTie": 0,
+    "consumedAdjustedForecast": true
+  }
+}
