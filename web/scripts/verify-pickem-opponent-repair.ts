@@ -18,7 +18,7 @@ async function main() {
   assert.equal(comparison.slate.games.find(g => g.gameId === game.gameId)!.pHome, pair.baselinePlusDefenseHome);
   assert.ok(evidence.games[game.gameId].matchup?.input.model?.definitionId.startsWith("pickem_matchup_combined:"),
     "Normal reader must choose the preferred combined arm rather than the latest standalone arm");
-  const receipt = { checkedAt: evidence.loadedAt, gameId: game.gameId,
+  const receipt = { checkedAt: evidence.loadedAt,
     matchup: "PHI@CHI", ...pair, forecastId: evidence.games[game.gameId].matchup?.forecastId };
   await writeFile("../artifacts/nfl-matchup-implementation/2026-09-28/normal-pickem-repair-verification.json",
     JSON.stringify(receipt, null, 2) + "\n");
