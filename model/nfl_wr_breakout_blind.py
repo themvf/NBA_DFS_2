@@ -18,6 +18,11 @@ the gap between how often they actually boomed and how often that history
 predicted, in the first game of a star's absence, minus the same gap in
 full-strength games (the control removes any general bias in the estimate).
 
+Result (2014-2018, 86 events): PROMOTE at the edge. Effect +2.09pp
+[+0.01, +4.17] vs discovery +2.81pp. Which receiver benefits did not
+replicate (discovery: top remaining WR; blind: the other WRs), so the flag
+belongs on the whole room. Licenses a live shadow only.
+
 Usage:
     python -m model.nfl_wr_breakout_blind discovery   # 2020-2025, already-seen seasons
     python -m model.nfl_wr_breakout_blind validate    # activity proxy vs true status, 2019-2025

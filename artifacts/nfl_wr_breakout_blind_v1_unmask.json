@@ -1,0 +1,302 @@
+{
+ "study": "nfl-wr-breakout-blind-v1",
+ "mode": "unmask",
+ "generated_at": "2026-09-28T12:01:24.219110+00:00",
+ "registered": "docs/nfl-wr-breakout-blind-study.md",
+ "sources": {
+  "games.csv": "19b97bc83fbb2235791eda3e14d8436e4bdc8db64702c9e492806b524abf01a0",
+  "roster_weekly_2013.csv": "76c47a629075ffd75f9c4ee49fadb6dad45396be486af897078fee5722969781",
+  "stats_player_week_2013.csv": "f7329a8f15084c9c23d841f14eb117fcc630d6c82913501f3c60f2d8f4e651a4",
+  "snap_counts_2013.csv": "9d1fdd557875b9a2c71d88e583da24a739dfca671edf8223d6171e39a421000e",
+  "roster_weekly_2014.csv": "331022cd3b0c69d99c581f02b6fde6853e87ac431739c4b49841ee6e02893d6c",
+  "stats_player_week_2014.csv": "a389b10d94eb8e6b9a153223d381aab821b0eff4cd73967835a21032192abc61",
+  "snap_counts_2014.csv": "84540709d9483552185c8ca3ef30b2f66fb94b30c3e6c21e7a27205f337f21d3",
+  "roster_weekly_2015.csv": "198904f48eeebafc1f34028a00c1b8c0fc135aba04fc4b276e636ef87709751a",
+  "stats_player_week_2015.csv": "21052baa3b3291a92faf3e6827891295010dca8cc5cefd5a909984b9d7b64664",
+  "snap_counts_2015.csv": "841496252ada825c3c50d3ba9b4b26d3f4fabd0fedc5fb44f286ddaaa5bdb7e0",
+  "roster_weekly_2016.csv": "ab05dfeffe6f9a1d969133cd6740f1625d135bfad672aaa916adb609ab662883",
+  "stats_player_week_2016.csv": "eb0264c65d1ef593196afcd4ba24e9f2e9b7942923bf6f4bb4639684e2c4d470",
+  "snap_counts_2016.csv": "a778e24e9eb665ffe8f16093b03c5a263dca0250b3aa92bd6002f61f534bea59",
+  "roster_weekly_2017.csv": "fd3fe005b676fe0ad8d88c50701d71adef4287501397c33f479c9765cd8c45d4",
+  "stats_player_week_2017.csv": "592b0916065987b0b3afb0480162f03350d16b12250dc42b0f194e2ab1378563",
+  "snap_counts_2017.csv": "eab2fad2df99249d4061ed9c5c34d312cdba07cf3159d027d255bdc9b6526917",
+  "roster_weekly_2018.csv": "c3bca1ee53e63e21b964f1bb42c251e25b7b4b8c55210730dd4ded2f9d4a709a",
+  "stats_player_week_2018.csv": "c53021bcfc9f89d30edd6f1fe145a1d7d6ce469efeec75974fe9f0adac568642",
+  "snap_counts_2018.csv": "9a408b78a55f799110aed70de3564e157faf089ce9bed780d0368bf49ae13e0b"
+ },
+ "data_quality": {
+  "roster_rows_missing_gsis": 35,
+  "roster_rows_without_game": 5341,
+  "snap_rows": 137240,
+  "snap_rows_matching_no_roster_player": 1484,
+  "played_by_snap_name": 28164,
+  "played_by_snap_pfr_id": 7957,
+  "games_without_snap_rows": 0
+ },
+ "discovery_effect": 0.0281,
+ "proxy_validation": {
+  "V1_recall": true,
+  "V2_precision": true,
+  "V3_proxy_replicates": true
+ },
+ "structure": {
+  "first_game_events": 86,
+  "first_game_rows": 549,
+  "under_way_events": 103,
+  "control_games": 1442,
+  "control_rows": 10338,
+  "first_game_by_season": {
+   "2014": 11,
+   "2015": 19,
+   "2016": 22,
+   "2017": 20,
+   "2018": 14
+  }
+ },
+ "primary": {
+  "events": 86,
+  "rows": 549,
+  "control_events": 1442,
+  "control_rows": 10338,
+  "boom_rate": 0.06375227686703097,
+  "expected_rate": 0.04608461448848213,
+  "control_boom_rate": 0.073515186689882,
+  "control_expected_rate": 0.07672379267766474,
+  "gap": 0.01766766237854884,
+  "control_gap": -0.0032086059877827464,
+  "effect": 0.020876268366331587,
+  "ci": [
+   0.00013301619560022055,
+   0.04171136799987922
+  ]
+ },
+ "gate": {
+  "G1_breakout_rate_above_history": true,
+  "G2_holds_half_of_discovery": true,
+  "G3_sample": true,
+  "verdict": "PROMOTE"
+ },
+ "described": {
+  "first_game_25_points": {
+   "events": 86,
+   "rows": 549,
+   "control_events": 1442,
+   "control_rows": 10338,
+   "boom_rate": 0.03825136612021858,
+   "expected_rate": 0.02604490683526725,
+   "control_boom_rate": 0.038305281485780614,
+   "control_expected_rate": 0.04165324305186507,
+   "gap": 0.012206459284951331,
+   "control_gap": -0.003347961566084451,
+   "effect": 0.015554420851035783,
+   "ci": [
+    -0.0005999111220810439,
+    0.033589141876003134
+   ]
+  },
+  "first_game_any_boom": {
+   "events": 86,
+   "any_boom_rate": 0.3372093023255814,
+   "expected": 0.2709078401481951,
+   "control_any_boom_rate": 0.4368932038834951,
+   "control_expected": 0.448268807448264,
+   "effect": 0.0776770657421551,
+   "ci": [
+    -0.025032105725729493,
+    0.18564539570570812
+   ]
+  },
+  "first_game_by_role": {
+   "lead_WR": {
+    "events": 86,
+    "rows": 86,
+    "control_events": 1442,
+    "control_rows": 1436,
+    "boom_rate": 0.1511627906976744,
+    "expected_rate": 0.17652760765294925,
+    "control_boom_rate": 0.25974930362116994,
+    "control_expected_rate": 0.28295823329839687,
+    "gap": -0.02536481695527483,
+    "control_gap": -0.02320892967722698,
+    "effect": -0.002155887278047851,
+    "ci": [
+     -0.08569179952910176,
+     0.08366705979821597
+    ]
+   },
+   "other_WR": {
+    "events": 86,
+    "rows": 242,
+    "control_events": 1442,
+    "control_rows": 5108,
+    "boom_rate": 0.05371900826446281,
+    "expected_rate": 0.018435659462022195,
+    "control_boom_rate": 0.0495301487862177,
+    "control_expected_rate": 0.04891840235239539,
+    "gap": 0.03528334880244061,
+    "control_gap": 0.000611746433822312,
+    "effect": 0.0346716023686183,
+    "ci": [
+     0.008630699122881813,
+     0.06231553261123745
+    ]
+   },
+   "TE": {
+    "events": 86,
+    "rows": 221,
+    "control_events": 1442,
+    "control_rows": 3794,
+    "boom_rate": 0.04072398190045249,
+    "expected_rate": 0.02560022401001666,
+    "control_boom_rate": 0.035318924617817604,
+    "control_expected_rate": 0.03610104018691736,
+    "gap": 0.015123757890435826,
+    "control_gap": -0.0007821155690997495,
+    "effect": 0.015905873459535574,
+    "ci": [
+     -0.010510034180920317,
+     0.04449960358866725
+    ]
+   }
+  },
+  "pass_heavy_cut": 0.6145455025930331,
+  "first_game_pass_heavy": {
+   "events": 43,
+   "rows": 283,
+   "control_events": 1442,
+   "control_rows": 10338,
+   "boom_rate": 0.07420494699646643,
+   "expected_rate": 0.06296351704542537,
+   "control_boom_rate": 0.073515186689882,
+   "control_expected_rate": 0.07672379267766474,
+   "gap": 0.011241429951041071,
+   "control_gap": -0.0032086059877827464,
+   "effect": 0.014450035938823817,
+   "ci": [
+    -0.01731361412113301,
+    0.04771015852557615
+   ]
+  },
+  "first_game_pass_light": {
+   "events": 43,
+   "rows": 266,
+   "control_events": 1442,
+   "control_rows": 10338,
+   "boom_rate": 0.05263157894736842,
+   "expected_rate": 0.028126985076395914,
+   "control_boom_rate": 0.073515186689882,
+   "control_expected_rate": 0.07672379267766474,
+   "gap": 0.024504593870972508,
+   "control_gap": -0.0032086059877827464,
+   "effect": 0.027713199858755255,
+   "ci": [
+    0.00302462669100575,
+    0.054061153355208495
+   ]
+  },
+  "under_way": {
+   "events": 103,
+   "rows": 693,
+   "control_events": 1442,
+   "control_rows": 10338,
+   "boom_rate": 0.050505050505050504,
+   "expected_rate": 0.04485359479732374,
+   "control_boom_rate": 0.073515186689882,
+   "control_expected_rate": 0.07672379267766474,
+   "gap": 0.005651455707726755,
+   "control_gap": -0.0032086059877827464,
+   "effect": 0.008860061695509501,
+   "ci": [
+    -0.007835785935099756,
+    0.02655011206117569
+   ]
+  },
+  "by_season": {
+   "2014": {
+    "events": 11,
+    "rows": 72,
+    "control_events": 1442,
+    "control_rows": 10338,
+    "boom_rate": 0.125,
+    "expected_rate": 0.06585737204666299,
+    "control_boom_rate": 0.073515186689882,
+    "control_expected_rate": 0.07672379267766474,
+    "gap": 0.05914262795333701,
+    "control_gap": -0.0032086059877827464,
+    "effect": 0.06235123394111976,
+    "ci": [
+     -0.023371216849287633,
+     0.1481415623849111
+    ]
+   },
+   "2015": {
+    "events": 19,
+    "rows": 121,
+    "control_events": 1442,
+    "control_rows": 10338,
+    "boom_rate": 0.08264462809917356,
+    "expected_rate": 0.057434632960032504,
+    "control_boom_rate": 0.073515186689882,
+    "control_expected_rate": 0.07672379267766474,
+    "gap": 0.025209995139141045,
+    "control_gap": -0.0032086059877827464,
+    "effect": 0.028418601126923793,
+    "ci": [
+     -0.0075060691423043,
+     0.06861969761825115
+    ]
+   },
+   "2016": {
+    "events": 22,
+    "rows": 149,
+    "control_events": 1442,
+    "control_rows": 10338,
+    "boom_rate": 0.04697986577181208,
+    "expected_rate": 0.042116230999049806,
+    "control_boom_rate": 0.073515186689882,
+    "control_expected_rate": 0.07672379267766474,
+    "gap": 0.004863634772762275,
+    "control_gap": -0.0032086059877827464,
+    "effect": 0.00807224076054502,
+    "ci": [
+     -0.02517514574179761,
+     0.0464829329994764
+    ]
+   },
+   "2017": {
+    "events": 20,
+    "rows": 120,
+    "control_events": 1442,
+    "control_rows": 10338,
+    "boom_rate": 0.041666666666666664,
+    "expected_rate": 0.027301141719308718,
+    "control_boom_rate": 0.073515186689882,
+    "control_expected_rate": 0.07672379267766474,
+    "gap": 0.014365524947357945,
+    "control_gap": -0.0032086059877827464,
+    "effect": 0.01757413093514069,
+    "ci": [
+     -0.014481059897720453,
+     0.05322577329448943
+    ]
+   },
+   "2018": {
+    "events": 14,
+    "rows": 87,
+    "control_events": 1442,
+    "control_rows": 10338,
+    "boom_rate": 0.04597701149425287,
+    "expected_rate": 0.04663996038479946,
+    "control_boom_rate": 0.073515186689882,
+    "control_expected_rate": 0.07672379267766474,
+    "gap": -0.0006629488905465864,
+    "control_gap": -0.0032086059877827464,
+    "effect": 0.00254565709723616,
+    "ci": [
+     -0.040837314594550034,
+     0.05173249183398413
+    ]
+   }
+  }
+ }
+}

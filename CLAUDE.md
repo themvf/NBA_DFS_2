@@ -6853,6 +6853,15 @@ nothing. The license is a live SHADOW only (adjusted vs baseline, graded weekly
 on DK results); optimizer projections keep baselines until that record exists.
 nflverse team codes differ by file (historical in schedules, current in stats,
 GSIS codes in 2013–15 rosters); join on one franchise key.
+A second blind test graded the TAIL rather than the mean:
+`nfl-wr-breakout-blind-v1` ([study](docs/nfl-wr-breakout-blind-study.md),
+`model/nfl_wr_breakout_blind.py`). In the first game a WR with 7+ targets a game
+misses, the remaining WRs/TEs reach 20+ DK points more often than their own
+recent games predict, after a full-strength control: discovery 2020–25 +2.81pp
+[+1.47, +4.20], blind 2014–18 +2.09pp [+0.01, +4.17] → PROMOTE at the edge
+(shadow only). Which receiver benefits did NOT replicate (top remaining WR in
+discovery, the other WRs blind), and pass-heavy teams show no larger effect, so
+any flag goes on the whole room, never one player.
 The rest of this section is the historical v1 design.
 
 A ruled-out player's work goes to his teammates. Implemented at the **slate

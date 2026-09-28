@@ -118,3 +118,64 @@ effect and TEs show none; the team-level "at least one" rate is above expected;
    committed and pushed before `unmask` runs.
 2. `python -m model.nfl_wr_breakout_blind unmask` runs once; its output is
    recorded below verbatim.
+
+## Result (unmasked once, 2026-09-28, after registration commit 3b1bf90)
+
+No deviations from the registration. Proxy validation re-ran inside `unmask`
+and passed. Full output and source digests:
+`artifacts/nfl_wr_breakout_blind_v1_unmask.json`.
+
+**Verdict: PROMOTE** (G1 ✓, G2 ✓, G3 ✓), **with the lower bound at the edge.**
+
+Primary — first game of a star WR's absence, every remaining WR/TE, 20+ DK
+points, 2014–2018 (86 events, 549 rows; control 1,442 games, 10,338 rows):
+
+| | actual | expected from history | gap |
+|---|---:|---:|---:|
+| first-game rows | 6.4% | 4.6% | +1.8 pp |
+| control rows | 7.4% | 7.7% | −0.3 pp |
+| **effect** | | | **+2.09 pp [+0.01, +4.17]** |
+
+G2: +2.09 ≥ +1.40 (half of discovery's +2.81). The blind effect is about 75% of
+discovery's, and its CI lower bound is +0.01 pp: a pass, not a comfortable one.
+
+Stated in advance, gating nothing:
+
+| prediction | 2014–2018 result | held? |
+|---|---|---|
+| top remaining WR carries most of it | 15.1% vs 17.7% expected; −0.22 pp [−8.57, +8.37] | **no** |
+| other WRs | 5.4% vs 1.8%; **+3.47 pp [+0.86, +6.23]** | (effect moved here) |
+| TEs show nothing | 4.1% vs 2.6%; +1.59 pp [−1.05, +4.45] | inconclusive |
+| team: at least one WR/TE hits 20+ is above expected | 33.7% vs 27.1%; +7.77 pp [−2.50, +18.56] | direction yes, CI crosses 0 |
+| 25+ same direction | +1.56 pp [−0.06, +3.36] | direction yes, CI crosses 0 |
+| pass-heavy teams not different | pass-heavy +1.45 [−1.73, +4.77], run-heavy +2.77 [+0.30, +5.41] | yes |
+
+Absence already under way: +0.89 pp [−0.78, +2.66]. By season, all five point
+estimates are positive (+0.25 to +6.24); none resolves alone.
+
+### What it means
+
+- **The general claim holds on data nobody had looked at.** In the first game
+  a star WR misses, the remaining WRs and TEs as a group reach 20+ DraftKings
+  points more often than their own recent games predict: about +2 to +3
+  percentage points each, on a base of 4–5%, so roughly one and a half times
+  as often. Pooled over both periods (234 events) the effect is about +2.5 pp.
+- **Who breaks out is not stable.** Discovery pointed at the top remaining WR;
+  the blind seasons pointed at the other WRs. The honest reading is that the
+  extra big games are spread across the room and we cannot say in advance
+  which receiver gets one. That supports a team-level flag on every remaining
+  WR/TE, not a boost pinned to one player.
+- **Pass-heavy teams are not where it lives.** Neither period shows a larger
+  effect on pass-heavy teams.
+- **It is a first-game effect.** Once the absence is under way, recent games
+  already carry the new roles and the gap mostly closes.
+- The lower bound sits at zero, so the forward shadow record carries real
+  weight here: it has to keep showing the uplift before anything changes in
+  the optimizer.
+
+### What happens next (per the license above)
+
+A live shadow flag, not a projection change: when the slate rules out a WR
+with 7+ targets a game who played his team's last game, flag every remaining
+WR/TE with the measured uplift (about +2.5 pp on a 20+ game, pooled), shown
+beside their normal ceiling and graded weekly against DraftKings results.
