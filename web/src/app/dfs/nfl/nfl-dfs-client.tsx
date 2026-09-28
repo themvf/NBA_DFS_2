@@ -2,7 +2,7 @@
 
 import { formFromSettings, sameGenerationSettings, settingsFromForm, type NflBuildForm } from "@/lib/nfl-dfs/generation-settings";
 import { nflIdentityLabel } from "@/lib/nfl-dfs/identity";
-import { DEFAULT_DFS_DEFENSIVE_SETTINGS, selectedDefensiveForecast } from "@/lib/nfl-dfs/defensive-display";
+import { DEFAULT_DFS_DEFENSIVE_SETTINGS, defensiveSettingsFor, selectedDefensiveForecast } from "@/lib/nfl-dfs/defensive-display";
 
 import ProjectionAuditPanel from './projection-audit-panel';
 import {DEFAULT_SITUATIONS} from '@/lib/nfl-dfs/projection-audit';
@@ -21,7 +21,7 @@ import type { CaptainTarget } from '@/lib/nfl-dfs/generation-settings';
 import { availabilityCoverage } from '@/lib/nfl-dfs/availability-coverage';
 import { AlertTriangle, BarChart3, CheckCircle2, Download, FileUp, HelpCircle, Lock, Play, Search, ShieldCheck, Unlock, XCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { refreshNflSlateProjections, listSavedNflSlates, loadSavedNflWorkspace, loadSavedNflLineups, readNflOptimizerAudit, exportSavedNflDefensiveEntries, applyNflComparison, loadNflSalaryCsv, runNflOptimizer, searchNflStarterNews, type NflComparisonSource, type NflWorkspaceSlate } from "./actions";
+import { refreshNflSlateProjections, listSavedNflSlates, loadSavedNflWorkspace, loadSavedNflLineups, readNflOptimizerAudit, exportSavedNflDefensiveEntries, applyNflComparison, loadNflSalaryCsv, generateNflLineups, searchNflStarterNews, type NflComparisonSource, type NflWorkspaceSlate } from "./actions";
 import type { NflGeneratedLineup, NflOptimizerSettings, NflProjectionSource } from "./nfl-optimizer";
 import { DEFAULT_NFL_PUNT_POLICY } from "@/lib/nfl-dfs/punt-policy";
 import { PUNT_PRESETS, resolvePuntPreset, describePuntPolicy, type PuntPresetKey } from "@/lib/nfl-dfs/punt-presets";
@@ -217,7 +217,7 @@ export default function NflDfsClient() {
         const next = await loadSavedNflWorkspace(uploadId);
         setSlate(next.slate); setLibraryId(uploadId); setSavedRuns(next.runs);
         setLineups([]); setRunId(null); setCompletedSettings(null); setShowVisuals(false); clearRunReports();
-        if (!restoreLineups) setSettings(current => ({...current,defensiveAdjustments:{...DEFAULT_DFS_DEFENSIVE_SETTINGS}}));
+        if (!restoreLineups) setSettings(current => ({...current,defensiveAdjustments:defensiveSettingsFor(current.projectionSource)}));
         setLocked([]); setExcluded([]); setTargetExposure({}); setCaptainTargets({}); setCaptainSuggestion(null); setEntryFile(null); setQuery(''); setPosition('ALL'); setPlayerPage(1);
         try { localStorage.setItem('nfl-saved-slate', uploadId); } catch { /* Selection memory is optional. */ }
         setMessage('Saved player pool loaded. Availability refreshed.');
@@ -265,7 +265,7 @@ export default function NflDfsClient() {
   function loadSalary(file: File | null) {
     if (!file) return; setError(null); setMessage(null); setLineups([]); setShowVisuals(false); setTargetExposure({}); setCaptainTargets({}); setCaptainSuggestion(null); setLocked([]); setExcluded([]); setRunId(null); clearRunReports();
     const form = new FormData(); form.set("file", file);
-    startTransition(async () => { try { const result = await loadNflSalaryCsv(form); setSlate(result); setLibraryId(result.uploadId); setCompletedSettings(null); setSettings(current=>({...current,defensiveAdjustments:{...DEFAULT_DFS_DEFENSIVE_SETTINGS}})); setEntryFile(null); setSavedRuns((await loadSavedNflWorkspace(result.uploadId)).runs); await refreshLibrary(); try { localStorage.setItem("nfl-saved-slate", result.uploadId); } catch {} setMessage(`${file.name} saved with ${result.players.length} players and linked to the latest projection run.`); } catch (reason) { setError(reason instanceof Error ? reason.message : "Salary upload failed."); } });
+    startTransition(async () => { try { const result = await loadNflSalaryCsv(form); setSlate(result); setLibraryId(result.uploadId); setCompletedSettings(null); setSettings(current=>({...current,defensiveAdjustments:defensiveSettingsFor(current.projectionSource)})); setEntryFile(null); setSavedRuns((await loadSavedNflWorkspace(result.uploadId)).runs); await refreshLibrary(); try { localStorage.setItem("nfl-saved-slate", result.uploadId); } catch {} setMessage(`${file.name} saved with ${result.players.length} players and linked to the latest projection run.`); } catch (reason) { setError(reason instanceof Error ? reason.message : "Salary upload failed."); } });
   }
   function refreshProjections() {
     if (!slate) return;
@@ -290,7 +290,7 @@ export default function NflDfsClient() {
     if (!slate) return; setError(null); setMessage(null);
     const payload = currentSettings;
     setShowVisuals(false);
-    startTransition(async () => { try { const response = await runNflOptimizer(slate.uploadId, payload); setLineups(response.result.lineups); setEligibility(response.result.eligibility ?? []); setOwnership(response.ownership ?? null); setExposureReport(response.result.exposureReport ?? []); setSalaryBands(response.result.salaryBandReport ?? []); setDuplication(response.result.duplication ?? []); setQaOverrides([]); setSavedQaEvidenceAvailable(true); setSlate(response.slate); setCompletedSettings(response.effectiveSettings); setRunId(response.runId); chooseStage("review"); setSavedRuns((await loadSavedNflWorkspace(slate.uploadId)).runs); setMessage(`Saved optimizer run ${response.runId.slice(0, 8)} with ${response.result.lineups.length}/${settings.nLineups} lineups. ${response.result.warnings.join(" ")}`); } catch (reason) { setError(reason instanceof Error ? reason.message : "Optimizer failed."); } });
+    startTransition(async () => { try { const response = await generateNflLineups(slate.uploadId, payload); if (!response.ok) { setError(response.error); return; } setLineups(response.result.lineups); setEligibility(response.result.eligibility ?? []); setOwnership(response.ownership ?? null); setExposureReport(response.result.exposureReport ?? []); setSalaryBands(response.result.salaryBandReport ?? []); setDuplication(response.result.duplication ?? []); setQaOverrides([]); setSavedQaEvidenceAvailable(true); setSlate(response.slate); setCompletedSettings(response.effectiveSettings); setRunId(response.runId); chooseStage("review"); setSavedRuns((await loadSavedNflWorkspace(slate.uploadId)).runs); setMessage(`Saved optimizer run ${response.runId.slice(0, 8)} with ${response.result.lineups.length}/${settings.nLineups} lineups. ${response.result.warnings.join(" ")}`); } catch (reason) { setError(reason instanceof Error ? reason.message : "Optimizer failed."); } });
   }
   function allowCheapPlayer(dkPlayerId: number, name: string) {
     // Salary is never a valid reason — the spec requires a role reason (§8.1).
@@ -430,7 +430,7 @@ export default function NflDfsClient() {
           <p className="text-xs text-slate-500">{playerRulesSummary}</p>
           {lineups.length && settingsChanged ? <p className="mt-1 text-xs text-amber-800">Settings changed since these lineups were built.</p> : null}
           <button disabled={pending} onClick={generate} className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 text-sm font-bold text-white disabled:opacity-40"><Play className="h-4 w-4" />{pending ? "Working…" : "Generate & save"}</button>
-          <div className="mt-4 space-y-3"><Field label="Objective"><select value={settings.mode} onChange={(e) => setSettings({ ...settings, mode: e.target.value as "cash" | "gpp" })} className="control"><option value="gpp">GPP ceiling</option><option value="cash">Cash floor</option></select></Field><Field label="Projection source"><select value={settings.projectionSource} onChange={(e) => { const source=e.target.value as NflProjectionSource; setSettings({...settings,projectionSource:source,defensiveAdjustments:source==="our"?settings.defensiveAdjustments:{...settings.defensiveAdjustments,mode:"off"}}); }} className="control">{Object.entries(SOURCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
+          <div className="mt-4 space-y-3"><Field label="Objective"><select value={settings.mode} onChange={(e) => setSettings({ ...settings, mode: e.target.value as "cash" | "gpp" })} className="control"><option value="gpp">GPP ceiling</option><option value="cash">Cash floor</option></select></Field><Field label="Projection source"><select value={settings.projectionSource} onChange={(e) => { const source=e.target.value as NflProjectionSource; setSettings({...settings,projectionSource:source,defensiveAdjustments:defensiveSettingsFor(source,settings.defensiveAdjustments)}); }} className="control">{Object.entries(SOURCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
           <Field label="Lineups"><input type="number" min={1} max={150} value={settings.nLineups} onChange={(e) => setSettings({ ...settings, nLineups: Number(e.target.value) })} className="control" /></Field>
           {slate.format === "showdown" ? <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px]">
             <h3 className="text-sm font-bold text-slate-800">Portfolio plan (archetypes)</h3>
