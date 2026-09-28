@@ -1,0 +1,95 @@
+{
+ "study": "nfl-rb-first-game-blind-v1",
+ "mode": "validate",
+ "generated_at": "2026-09-28T11:39:42.412563+00:00",
+ "sources": {
+  "games.csv": "19b97bc83fbb2235791eda3e14d8436e4bdc8db64702c9e492806b524abf01a0",
+  "roster_weekly_2019.csv": "af6aa7b8aa7850c47fe307d548d66fa7c1cac88fe11e5951c781974cb6909e03",
+  "stats_player_week_2019.csv": "a05558126b1209b80fe11a8f18938cb35816370bf9990975a87de49e9eed7376",
+  "snap_counts_2019.csv": "0cd52be8fa57f18503b670cb8263246c4f548375b768cbcad1c7a7462c98970d",
+  "roster_weekly_2020.csv": "0b948cca8735a2417cbda14464f4532aeee58d871e2fcd8464a23e969e45789e",
+  "stats_player_week_2020.csv": "05b992676faccc8940efbf6242cb76358069372d31d7c2e02c1a4acdcd3cbe18",
+  "snap_counts_2020.csv": "512e35f17d076eb5d99b933c4a144eb95dcddf40c0320dbb397cae3c35683716",
+  "roster_weekly_2021.csv": "88adfe0fba5cbedd260d7928ad373476d4fb168d0213cb52ef1163ed5d3056b7",
+  "stats_player_week_2021.csv": "41915fb49238902ad1f129ebf0405b11a1e710454ae0fe8f7b3e4f9145875f48",
+  "snap_counts_2021.csv": "8e4dae054a4749cf2d4919508d9161a6068fd67509979aefa385bfb3803d0ee5",
+  "roster_weekly_2022.csv": "bd6a50de334473c10f8058afa948fd0c6adc8a8b081da41c500cc0aa069c5312",
+  "stats_player_week_2022.csv": "ad426c3fe5bf1cc30c3f137fdfe96d054e19d400879ee4413129da49fa7b54be",
+  "snap_counts_2022.csv": "0018a4833fbf0f825286c1c27450c6254391b548d6c55bcde728e93e4816815a",
+  "roster_weekly_2023.csv": "1433f1f239784dde7fcb35349d211a9b83abfc0156337b72ec4f923abf715bd3",
+  "stats_player_week_2023.csv": "f19cb71a5de0dce7fd09376026237c9ee9d5a93fe13815a2ea3ec2d37204cb17",
+  "snap_counts_2023.csv": "303b61aa5c33ffda863f93a750fc14483f397f9187ad502b1ce71e9b516a64c0",
+  "roster_weekly_2024.csv": "074ecaeb9325de943c11f7bbc941425626985090ef8386f90cd837fa5cb5d4b3",
+  "stats_player_week_2024.csv": "3ddc45a84f759aa348ce465ae001752c530575455717657cdfe1f8abfcdb4759",
+  "snap_counts_2024.csv": "a2aa58efe093f8aa0ad5aadf09f81d8ec690a1183bd2dde68d20e7f109a9c335",
+  "roster_weekly_2025.csv": "c2f7a1ffebe06058400af1989d1cd2900cc5c9659f084623708a06d4e28de35b",
+  "stats_player_week_2025.csv": "e5e0615b3d96a3eaebfaee91e55afb4a4e7fe0caf057454177bcd7d6ad4bcfc2",
+  "snap_counts_2025.csv": "3fc2deb0e9ad86d34d4578cb80bb21c95253e088ee22ca028adf46f7485eff1f"
+ },
+ "data_quality": {
+  "roster_rows_missing_gsis": 96,
+  "snap_rows": 173236,
+  "snap_rows_matching_no_roster_player": 1440,
+  "played_by_snap_name": 31174,
+  "played_by_snap_pfr_id": 17364,
+  "roster_rows_without_game": 467,
+  "games_without_snap_rows": 0
+ },
+ "player_game_confusion": {
+  "true_ACT_proxy_ACT": 37953,
+  "true_INA_proxy_INA": 5102,
+  "true_ACT_proxy_INA": 369,
+  "true_INA_proxy_ACT": 1
+ },
+ "true_first_game_events": 353,
+ "proxy_first_game_events": 364,
+ "same_event_same_lead": 346,
+ "recall": 0.9801699716713881,
+ "precision": 0.9505494505494505,
+ "true_status_points": {
+  "events": 353,
+  "rows": 353,
+  "mse_a": 72.91799875693462,
+  "mse_b": 86.37070103093737,
+  "mae_a": 6.88918561094283,
+  "mae_b": 6.988702544445374,
+  "bias_a": 0.4632100153106861,
+  "bias_b": 3.7278710160488706,
+  "mse_delta": -13.452702274002897,
+  "mse_ci": [
+   -21.457268121403427,
+   -5.5573118723490325
+  ],
+  "mae_delta": -0.09951693350254416,
+  "mae_ci": [
+   -0.5060722962968863,
+   0.30279522742968207
+  ]
+ },
+ "proxy_status_points": {
+  "events": 364,
+  "rows": 364,
+  "mse_a": 71.49028060051104,
+  "mse_b": 85.01947265846245,
+  "mae_a": 6.838609261859048,
+  "mae_b": 6.945124820333678,
+  "bias_a": 0.25841416990978266,
+  "bias_b": 3.559047340896762,
+  "mse_delta": -13.529192057951475,
+  "mse_ci": [
+   -21.84496057620629,
+   -5.650590436586609
+  ],
+  "mae_delta": -0.1065155584746318,
+  "mae_ci": [
+   -0.5105044979250045,
+   0.2986585414580495
+  ]
+ },
+ "checks": {
+  "V1_recall": true,
+  "V2_precision": true,
+  "V3_proxy_replicates": true
+ },
+ "passed": true
+}

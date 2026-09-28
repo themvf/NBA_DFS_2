@@ -1,0 +1,48 @@
+{
+ "study": "nfl-rb-first-game-blind-v1",
+ "mode": "blind",
+ "generated_at": "2026-09-28T11:40:11.427136+00:00",
+ "sources": {
+  "games.csv": "19b97bc83fbb2235791eda3e14d8436e4bdc8db64702c9e492806b524abf01a0",
+  "roster_weekly_2013.csv": "76c47a629075ffd75f9c4ee49fadb6dad45396be486af897078fee5722969781",
+  "stats_player_week_2013.csv": "f7329a8f15084c9c23d841f14eb117fcc630d6c82913501f3c60f2d8f4e651a4",
+  "snap_counts_2013.csv": "9d1fdd557875b9a2c71d88e583da24a739dfca671edf8223d6171e39a421000e",
+  "roster_weekly_2014.csv": "331022cd3b0c69d99c581f02b6fde6853e87ac431739c4b49841ee6e02893d6c",
+  "stats_player_week_2014.csv": "a389b10d94eb8e6b9a153223d381aab821b0eff4cd73967835a21032192abc61",
+  "snap_counts_2014.csv": "84540709d9483552185c8ca3ef30b2f66fb94b30c3e6c21e7a27205f337f21d3",
+  "roster_weekly_2015.csv": "198904f48eeebafc1f34028a00c1b8c0fc135aba04fc4b276e636ef87709751a",
+  "stats_player_week_2015.csv": "21052baa3b3291a92faf3e6827891295010dca8cc5cefd5a909984b9d7b64664",
+  "snap_counts_2015.csv": "841496252ada825c3c50d3ba9b4b26d3f4fabd0fedc5fb44f286ddaaa5bdb7e0",
+  "roster_weekly_2016.csv": "ab05dfeffe6f9a1d969133cd6740f1625d135bfad672aaa916adb609ab662883",
+  "stats_player_week_2016.csv": "eb0264c65d1ef593196afcd4ba24e9f2e9b7942923bf6f4bb4639684e2c4d470",
+  "snap_counts_2016.csv": "a778e24e9eb665ffe8f16093b03c5a263dca0250b3aa92bd6002f61f534bea59",
+  "roster_weekly_2017.csv": "fd3fe005b676fe0ad8d88c50701d71adef4287501397c33f479c9765cd8c45d4",
+  "stats_player_week_2017.csv": "592b0916065987b0b3afb0480162f03350d16b12250dc42b0f194e2ab1378563",
+  "snap_counts_2017.csv": "eab2fad2df99249d4061ed9c5c34d312cdba07cf3159d027d255bdc9b6526917",
+  "roster_weekly_2018.csv": "c3bca1ee53e63e21b964f1bb42c251e25b7b4b8c55210730dd4ded2f9d4a709a",
+  "stats_player_week_2018.csv": "c53021bcfc9f89d30edd6f1fe145a1d7d6ce469efeec75974fe9f0adac568642",
+  "snap_counts_2018.csv": "9a408b78a55f799110aed70de3564e157faf089ce9bed780d0368bf49ae13e0b"
+ },
+ "data_quality": {
+  "roster_rows_missing_gsis": 35,
+  "roster_rows_without_game": 5341,
+  "snap_rows": 137240,
+  "snap_rows_matching_no_roster_player": 1484,
+  "played_by_snap_name": 28164,
+  "played_by_snap_pfr_id": 7957,
+  "games_without_snap_rows": 0
+ },
+ "structure": {
+  "absence_games": 643,
+  "first_game_events": 259,
+  "under_way_events": 384,
+  "narrow_slice_events": 41,
+  "first_game_by_season": {
+   "2014": 48,
+   "2015": 39,
+   "2016": 66,
+   "2017": 51,
+   "2018": 55
+  }
+ }
+}
