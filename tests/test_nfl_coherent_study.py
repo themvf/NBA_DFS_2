@@ -99,3 +99,41 @@ def test_scenario_and_exact_outcome_scoring_contracts_are_explicit():
     assert grade(m,rows)["verdict"]=="PASS"
     rows[0]["scoring_version"]="unregistered-scoring"
     assert grade(m,rows)["frozen_rows"]==479
+
+
+def test_current_coherent_registration_matches_code_and_preserves_prior_contract():
+    import json
+    from pathlib import Path
+    from hashlib import sha256
+    from model.nfl_matchup_scenarios import VERSION
+    from research.nfl_coherent_study import registered_manifests
+
+    current_path = Path("research/nfl_coherent_scenario_study.json")
+    current = json.loads(current_path.read_text())
+    previous_path = Path("research/nfl_coherent_scenario_study_v3.json")
+    previous = json.loads(previous_path.read_text())
+    assert current["model_version"] == VERSION == "nfl-coherent-matchup-research-v4"
+    assert current["previous_registration_sha256_lf"] == sha256(previous_path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+    assert current_path.read_bytes() == Path("research/nfl_coherent_scenario_study_v4.json").read_bytes()
+    assert current["registered_at"] > previous["registered_at"]
+    for name, expected in current["implementation_hashes"].items():
+        assert sha256(Path(name).read_bytes().replace(b"\r\n", b"\n")).hexdigest() == expected, name
+    for key in ("baseline_config_hash", "forecast_gate", "portfolio_gate", "forward_start",
+                "evaluation_end_at", "scoring_version", "outcome_scoring_version", "seed",
+                "draws", "bootstrap_draws", "cohorts", "production_authority", "protected_studies"):
+        assert current[key] == previous[key], key
+    manifests = registered_manifests()
+    assert any(digest(m) == digest(previous) for m in manifests)
+    assert any(digest(m) == digest(current) for m in manifests)
+
+
+def test_forward_registration_never_inherits_previous_version_rows():
+    old = manifest()
+    new = deepcopy(old)
+    new.update(study_id="new-cohort", model_version="coherent-new", registered_at="2026-09-28T12:00:00+00:00")
+    historical = records(old)
+    result = grade(new, historical)
+    assert result["frozen_rows"] == 0
+    assert result["rejected"]["different coherent registration/model"] == len(historical)
+    assert result["verdict"] == "NO_VERDICT"
+    assert grade(old, historical)["verdict"] == "PASS"
