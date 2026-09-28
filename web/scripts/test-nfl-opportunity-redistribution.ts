@@ -37,6 +37,8 @@ assert.deepEqual(withheld.donors.map(d=>[d.name,d.historicalUnits]), [
   ['Jordan Mason',9.701],['Jauan Jennings',.0435],['Ben Yurosek',.002],
 ]);
 assert.equal(report.withheld!.find(p=>p.pool==='target')!.unit,'receptions');
+// Withholding cites the graded study, per pool, rather than a missing budget.
+for (const pool of ['rush','target'] as const) assert.match(report.withheld!.find(p=>p.pool===pool)!.reason, /nfl-absence-reallocation-v1/);
 assert(!report.withheld!.some(p=>p.donors.some(d=>d.name==='Kyler Murray')));
 assert.deepEqual(rows,original,'Read-time resolution never changes immutable inputs');
 for(const input of [rows,[...rows].reverse(),rows.filter(r=>r.isOut||r.key===jones.key)]) {

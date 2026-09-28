@@ -133,3 +133,69 @@ only for donors the slate itself rules out. A pool that is not promoted keeps
 the v3 behaviour: baseline retained, the scenario shown as unapplied research.
 Neither outcome licenses re-tuning φ, α, thresholds or the window on
 confirmation data; that is a new registration.
+
+## Result (run 2026-09-28, after registration commit 69dda8c)
+
+No deviations from the registration. Reproduce with
+`python -m model.nfl_absence_reallocation study`; full output, source digests
+and data-quality counts in `artifacts/nfl_absence_reallocation_v1.json`.
+
+**Neither pool is promoted. The app keeps baseline projections for non-QB
+absences (v3 behaviour).**
+
+### Discovery (2022–2023) selection
+
+| pool | events / rows | BASE MAE | best FIX (frozen) | OLD MAE |
+|---|---|---:|---:|---:|
+| targets | 497 / 4,755 | **1.684** | 1.699 (φ 0.5, α 0.5) | 1.952 |
+| carries | 247 / 639 | 3.552 | **3.306** (φ 0.5) | 4.804 |
+
+Every targets configuration was already worse than BASE in discovery; the
+rule still carries the best one to confirmation.
+
+### Confirmation (2024–2025), frozen configuration
+
+| pool | events / rows | units Δ FIX−BASE | points Δ FIX−BASE | G1 | G2 | G3 | verdict |
+|---|---|---|---|---|---|---|---|
+| targets | 502 / 4,662 | −0.006 [−0.017, +0.005] | +0.040 [+0.021, +0.058] | ✗ | ✗ | ✓ | **NOT_PROMOTED** |
+| carries | 266 / 654 | **−0.367 [−0.525, −0.210]** | −0.005 [−0.112, +0.102] | ✓ | ✗ | ✗ | **INSUFFICIENT** |
+
+The withdrawn additive transfer, reproduced for reference, is worse in both
+pools: targets +0.256 units [+0.217, +0.295] and **+0.527 points [+0.461,
++0.594]**; carries +1.014 units and **+0.654 points [+0.372, +0.936]**. That
+is the same size and sign as the 2026 week-2 grading (+0.63), so the
+withdrawal stands on two independent samples.
+
+Carries by season: 2024 −0.43 [−0.69, −0.17], 2025 −0.32 [−0.51, −0.13] —
+the volume gain is stable, but it never reaches fantasy points. Even without
+the row floor, G2 fails. 2026 weeks 1–3 (descriptive, 15–17 events) show no
+consistent direction.
+
+### Why targets fail (discovery diagnostics)
+
+In a discovery absence game the donors averaged 8.5 targets, but the fixed pie
+found only 3.2 left over: established teammates' baselines already covered the
+rest, because most absences run several weeks and those averages had already
+absorbed them. What the recipients actually gained was smaller still, +1.15
+targets combined. The team threw 0.7 fewer targets than its budget, and 2.1
+per game went to players outside the modelled recipients (call-ups and depth
+receivers without two recent active games, plus the odd QB or lineman).
+Spread over ~10 recipients, the real per-player shift is a few tenths of a
+target, below the noise, and the extra points estimate made points slightly
+worse.
+
+For carries the backup back does inherit the work: recipients gained +2.95
+carries, and φ = 0.5 of the leftover (3.2) matched it. The fantasy value of
+those carries is what the method does not capture.
+
+### What this changes
+
+- The missing team budget was the stated reason for withholding non-QB
+  absence adjustments. It now exists and has been tested; withholding stands
+  on evidence rather than on its absence.
+- A carries follow-up needs its own registration: something that turns the
+  volume gain into points (backup efficiency, goal-line share), graded on
+  points, with a pool-appropriate sample floor.
+- Targets: no further fixed-pie variant on this data. Anything new here needs
+  new information (depth-chart or snap-share role data at the time of the
+  absence), not another split rule.

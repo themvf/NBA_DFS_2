@@ -6819,6 +6819,23 @@ here — and the in-play question is the only place in this family where being
 
 ## NFL DFS — Out-Player Opportunity Redistribution (2026-09-19)
 
+**Current state (2026-09-28): non-QB redistribution is WITHHELD, on evidence.**
+The v1 design below was graded on the 2026 week-2 classic slate and made
+projections worse at every position (paired MAE 4.37 → 5.00, CI [+0.29,
++1.02]); v3 (`nfl-dfs-redistribution-v3-budget-required`) keeps baselines and
+only promotes QB1→backup. The missing team budget was then built and tested in
+the pre-registered `nfl-absence-reallocation-v1`
+([study](docs/nfl-absence-reallocation-study.md),
+`model/nfl_absence_reallocation.py`): hand out only the volume left over after
+active teammates' own averages, graded on 2022–2025 nflverse gameday
+inactives (`INA`/`RES` weekly-roster status — the historical absence data
+earlier research said did not exist). Targets: no volume gain, points slightly
+worse → NOT_PROMOTED. Carries: volume clearly better (−0.37 carries/player) but
+points flat → INSUFFICIENT. The old additive transfer is +0.53/+0.65 points
+worse again. Do not wire the fixed pie into the slate as-is; a carries
+follow-up needs its own registration graded on points. The rest of this
+section is the historical v1 design.
+
 A ruled-out player's work goes to his teammates. Implemented at the **slate
 read layer** (`web/src/lib/nfl-dfs/opportunity-redistribution.ts`,
 `nfl-dfs-redistribution-v1`), applied in `workspaceSlate` immediately before
