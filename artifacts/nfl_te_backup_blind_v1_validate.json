@@ -1,0 +1,107 @@
+{
+ "study": "nfl-te-backup-blind-v1",
+ "mode": "validate",
+ "generated_at": "2026-09-28T12:54:13.652416+00:00",
+ "sources": {
+  "games.csv": "19b97bc83fbb2235791eda3e14d8436e4bdc8db64702c9e492806b524abf01a0",
+  "roster_weekly_2019.csv": "af6aa7b8aa7850c47fe307d548d66fa7c1cac88fe11e5951c781974cb6909e03",
+  "stats_player_week_2019.csv": "a05558126b1209b80fe11a8f18938cb35816370bf9990975a87de49e9eed7376",
+  "snap_counts_2019.csv": "0cd52be8fa57f18503b670cb8263246c4f548375b768cbcad1c7a7462c98970d",
+  "roster_weekly_2020.csv": "0b948cca8735a2417cbda14464f4532aeee58d871e2fcd8464a23e969e45789e",
+  "stats_player_week_2020.csv": "05b992676faccc8940efbf6242cb76358069372d31d7c2e02c1a4acdcd3cbe18",
+  "snap_counts_2020.csv": "512e35f17d076eb5d99b933c4a144eb95dcddf40c0320dbb397cae3c35683716",
+  "roster_weekly_2021.csv": "88adfe0fba5cbedd260d7928ad373476d4fb168d0213cb52ef1163ed5d3056b7",
+  "stats_player_week_2021.csv": "41915fb49238902ad1f129ebf0405b11a1e710454ae0fe8f7b3e4f9145875f48",
+  "snap_counts_2021.csv": "8e4dae054a4749cf2d4919508d9161a6068fd67509979aefa385bfb3803d0ee5",
+  "roster_weekly_2022.csv": "bd6a50de334473c10f8058afa948fd0c6adc8a8b081da41c500cc0aa069c5312",
+  "stats_player_week_2022.csv": "ad426c3fe5bf1cc30c3f137fdfe96d054e19d400879ee4413129da49fa7b54be",
+  "snap_counts_2022.csv": "0018a4833fbf0f825286c1c27450c6254391b548d6c55bcde728e93e4816815a",
+  "roster_weekly_2023.csv": "1433f1f239784dde7fcb35349d211a9b83abfc0156337b72ec4f923abf715bd3",
+  "stats_player_week_2023.csv": "f19cb71a5de0dce7fd09376026237c9ee9d5a93fe13815a2ea3ec2d37204cb17",
+  "snap_counts_2023.csv": "303b61aa5c33ffda863f93a750fc14483f397f9187ad502b1ce71e9b516a64c0",
+  "roster_weekly_2024.csv": "074ecaeb9325de943c11f7bbc941425626985090ef8386f90cd837fa5cb5d4b3",
+  "stats_player_week_2024.csv": "3ddc45a84f759aa348ce465ae001752c530575455717657cdfe1f8abfcdb4759",
+  "snap_counts_2024.csv": "a2aa58efe093f8aa0ad5aadf09f81d8ec690a1183bd2dde68d20e7f109a9c335",
+  "roster_weekly_2025.csv": "c2f7a1ffebe06058400af1989d1cd2900cc5c9659f084623708a06d4e28de35b",
+  "stats_player_week_2025.csv": "e5e0615b3d96a3eaebfaee91e55afb4a4e7fe0caf057454177bcd7d6ad4bcfc2",
+  "snap_counts_2025.csv": "3fc2deb0e9ad86d34d4578cb80bb21c95253e088ee22ca028adf46f7485eff1f"
+ },
+ "true_first_game_events": 113,
+ "proxy_first_game_events": 123,
+ "same_event_same_lead": 113,
+ "recall": 1.0,
+ "precision": 0.9186991869918699,
+ "true_status_points": {
+  "events": 113,
+  "rows": 113,
+  "mse_a": 40.46075743091539,
+  "mse_b": 42.46475460759337,
+  "mae_a": 4.886961337178985,
+  "mae_b": 4.646844336798471,
+  "bias_a": -0.11355285988085849,
+  "bias_b": 2.9426197578594904,
+  "mse_delta": -2.0039971766779794,
+  "mse_ci": [
+   -9.982514919490113,
+   6.128443518610793
+  ],
+  "mae_delta": 0.24011700038051492,
+  "mae_ci": [
+   -0.3538312689535445,
+   0.8264504591430001
+  ]
+ },
+ "proxy_status_points": {
+  "events": 123,
+  "rows": 123,
+  "mse_a": 38.908051561770044,
+  "mse_b": 41.4341441323698,
+  "mae_a": 4.821389818844005,
+  "mae_b": 4.587859147793062,
+  "bias_a": -0.15864910570604943,
+  "bias_b": 2.8001643701248757,
+  "mse_delta": -2.526092570599761,
+  "mse_ci": [
+   -9.942363580548472,
+   4.947090514324148
+  ],
+  "mae_delta": 0.23353067105094183,
+  "mae_ci": [
+   -0.3077736946410719,
+   0.7790179427666807
+  ]
+ },
+ "true_status_big_game": {
+  "rows": 113,
+  "control_rows": 1846,
+  "boom_rate": 0.12389380530973451,
+  "expected_rate": 0.04229150828469391,
+  "control_boom_rate": 0.03683640303358613,
+  "control_expected_rate": 0.03667246114811766,
+  "effect": 0.08143835513957212,
+  "ci": [
+   0.02289887971329934,
+   0.14625836957408894
+  ]
+ },
+ "proxy_status_big_game": {
+  "rows": 123,
+  "control_rows": 1827,
+  "boom_rate": 0.13008130081300814,
+  "expected_rate": 0.051177179522676995,
+  "control_boom_rate": 0.03557744937055282,
+  "control_expected_rate": 0.03676391061946122,
+  "effect": 0.08009058253923954,
+  "ci": [
+   0.02165321307224559,
+   0.1417609602124726
+  ]
+ },
+ "checks": {
+  "V1_recall": true,
+  "V2_precision": true,
+  "V3_proxy_replicates_points": true,
+  "V4_proxy_replicates_big_game": true
+ },
+ "passed": true
+}
