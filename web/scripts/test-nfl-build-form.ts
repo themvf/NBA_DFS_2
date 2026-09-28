@@ -3,7 +3,7 @@
  */
 import assert from "node:assert/strict";
 import { formFromSettings, sameGenerationSettings, settingsFromForm, type NflBuildForm } from "../src/lib/nfl-dfs/generation-settings";
-import { DEFAULT_DFS_DEFENSIVE_SETTINGS } from "../src/lib/nfl-dfs/defensive-display";
+import { DEFAULT_DFS_DEFENSIVE_SETTINGS, defensiveSettingsFor } from "../src/lib/nfl-dfs/defensive-display";
 
 const defaults = { mode: "gpp" as "cash" | "gpp", projectionSource: "our" as const, allowDkFallback: false, nLineups: 20,
   minSalary: 45000, maxExposure: 0.6, minUnique: 2, stackPassCatchers: 1 as 0 | 1 | 2, bringBack: true, randomness: 0.08 };
@@ -61,5 +61,16 @@ const legacyDefensiveRun = formFromSettings(sent, defensiveDefaults);
 assert.deepEqual(legacyDefensiveRun.settings.defensiveAdjustments, { mode: 'off', profile: 'pfr-efficiency' });
 const selectedDefensiveRun = formFromSettings({ ...sent, defensiveAdjustments: defensiveDefaults.defensiveAdjustments }, defensiveDefaults);
 assert.deepEqual(selectedDefensiveRun.settings.defensiveAdjustments, defensiveDefaults.defensiveAdjustments);
+
+// Defensive adjustments exist only for the historical forecast, and the server
+// rejects them elsewhere. Loading a slate reset them to "experimental" while
+// the form stayed on Position workload, and Generate failed (PHI@CHI, 2026-09-28).
+assert.deepEqual(defensiveSettingsFor("workload"), { mode: "off", profile: "pfr-efficiency" });
+assert.deepEqual(defensiveSettingsFor("our"), DEFAULT_DFS_DEFENSIVE_SETTINGS);
+const workloadForm = { ...form, settings: { ...defensiveDefaults, projectionSource: "workload" as const } };
+assert.equal(settingsFromForm(workloadForm as never, "showdown", teams).defensiveAdjustments?.mode, "off",
+  "a non-historical source never sends defensive adjustments");
+assert.equal(settingsFromForm({ ...form, settings: defensiveDefaults }, "showdown", teams).defensiveAdjustments?.mode, "experimental",
+  "the historical source keeps the user's defensive choice");
 
 console.log("Build form: saved runs load back into the form and rebuild the same run.");

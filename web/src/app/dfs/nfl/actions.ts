@@ -963,6 +963,21 @@ export async function runNflOptimizer(
   return saveOptimizerResult(slate,settings);
 }
 
+/**
+ * runNflOptimizer for the build form. In production Next.js replaces a thrown
+ * server-action message with a generic "error in the Server Components render"
+ * digest, so every validation reason above reached the page as that banner.
+ * Returning the reason keeps it readable; scripts keep the throwing version.
+ */
+export async function generateNflLineups(uploadId: string, settings: NflOptimizerSettings) {
+  try {
+    return { ok: true as const, ...(await runNflOptimizer(uploadId, settings)) };
+  } catch (error) {
+    console.error("NFL optimizer run failed", error);
+    return { ok: false as const, error: error instanceof Error ? error.message : "Optimizer failed." };
+  }
+}
+
 export async function compareNflWorkload(uploadId:string, settings:NflOptimizerSettings) {
   await ensureNflDfsTables();
   validateWorkloadPositions(settings.workloadPositions);

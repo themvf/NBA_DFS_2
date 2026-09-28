@@ -2,6 +2,7 @@ import type { NflOptimizerSettings } from '@/app/dfs/nfl/nfl-optimizer';
 import type { PlayerExposurePolicy } from './exposure-plan';
 import { canonicalAuditJson } from './audit-json';
 import type { ArchetypeQuota } from './archetypes';
+import { defensiveSettingsFor } from './defensive-display';
 
 /** A Showdown captain range for one player, in PERCENT (0-100). Null = no bound. */
 export type CaptainTarget = { min: number | null; max: number | null };
@@ -83,7 +84,9 @@ export function settingsFromForm<S extends FormBase>(form: NflBuildForm<S>, form
   const custom = form.planMode === 'custom';
   const underdog = form.favorite ? teams.find((team) => team !== form.favorite) ?? null : null;
   const fades = form.fades;
-  return { ...generationSettings(form.settings, format, form.locked, form.excluded, form.targets, form.captainTargets),
+  const defensive = form.settings.defensiveAdjustments;
+  const settings = defensive ? { ...form.settings, defensiveAdjustments: defensiveSettingsFor(form.settings.projectionSource, defensive) } : form.settings;
+  return { ...generationSettings(settings, format, form.locked, form.excluded, form.targets, form.captainTargets),
     archetypeMode: form.planMode,
     archetypeQuotas: custom && form.quotas.length ? form.quotas : undefined,
     favoriteTeam: custom && form.favorite ? form.favorite : undefined,
