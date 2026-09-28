@@ -208,7 +208,7 @@ export function EvidenceLedger({ ledger, poolId }: { ledger: PickemLedgerRow[]; 
               <p>Quote: {time(g.evidence.latest?.capturedAt ?? null)} · forecast calculated: {time(g.evidence.probabilityComputedAt)} · narrative: {g.evidence.narrative}</p>
               {g.evidence.defensiveComparison && <p>
                 Baseline: {g.homeAbbrev} {pct(g.evidence.defensiveComparison.baselineHome)} · Baseline + Defense Opponent Adjusted: {g.homeAbbrev} {pct(g.evidence.defensiveComparison.baselinePlusDefenseHome)}
-                {!g.evidence.defensiveComparison.applied && " · No adjustment"}
+                {!g.evidence.defensiveComparison.applied && ` · ${g.evidence.defensiveComparison.reason ?? "Opponent adjustment was unavailable when this card was saved"}`}
               </p>}
               {g.evidence.scenario && <p>Scenario assumption: {g.evidence.scenario.reason} · {g.homeAbbrev} {pct(g.evidence.scenario.pHome)}</p>}
               {g.evidence.news.map(n => <p key={n.id}>{n.team}: {n.headline} · {n.status} · {time(n.publishedAt)} · {n.url && safeSourceUrl(n.url) ? <a href={n.url} className="underline" target="_blank" rel="noreferrer">{n.source}</a> : n.source}</p>)}

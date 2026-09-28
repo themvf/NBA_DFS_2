@@ -4,9 +4,67 @@ from copy import deepcopy
 import pytest
 
 from model.nfl_matchup_features import build_matchup, normalized_rows, participant_manifests, SCHEMA
+from model.nfl_matchup_features import _coverage
 
 NOW = datetime(2026,9,27,14,tzinfo=timezone.utc)
 GAME = {"game_id":"2026_03_MIN_TB","home":"TB","away":"MIN","kickoff":NOW+timedelta(hours=3)}
+
+
+@pytest.mark.parametrize("name,carries", [("N.Mullens", 3), ("K.Pickett", 1), ("M.Jones", 2)])
+def test_kneel_only_backups_are_not_expected_pressure_passers(name, carries):
+    games, _ = sources()
+    row = {"id": name, "fetched_at": NOW-timedelta(minutes=5), "source": "nflverse",
+           "source_row": {"game_id": games[0]["game_id"], "team": "TB", "player_id": name,
+                          "player_name": name, "position": "QB", "attempts": 0, "sacks_suffered": 0, "carries": carries}}
+    manifest = participant_manifests([row], games, NOW, [])[games[0]["game_id"]]
+    assert manifest["rows"][0]["passer"] is False
+
+
+@pytest.mark.parametrize("position,attempts,sacks,scramble", [("P", 1, 0, False), ("QB", 0, 1, False), ("QB", 0, 0, True)])
+def test_non_qb_passers_and_sack_or_scramble_only_qbs_are_retained(position, attempts, sacks, scramble):
+    games, _ = sources(); gid = games[0]["game_id"]
+    row = {"id": "player", "fetched_at": NOW-timedelta(minutes=5), "source": "nflverse",
+           "source_row": {"game_id": gid, "team": "TB", "player_id": "player", "player_name": "P.Test",
+                          "position": position, "attempts": attempts, "sacks_suffered": sacks, "carries": int(scramble)}}
+    play = {"game_id": gid, "play_id": 1, "team": "TB", "qb_name": "P.Test", "scramble": scramble,
+            "sack": bool(sacks), "available_at": (NOW-timedelta(minutes=4)).isoformat()}
+    player = participant_manifests([row], games, NOW, [play])[gid]["rows"][0]
+    assert player["passer"] and player["pressure_dropbacks"] == 1
+
+
+def test_fullback_scope_preserves_source_position_and_matching_carry():
+    games, _ = sources(); gid = games[0]["game_id"]
+    row = {"id": "heyward", "fetched_at": NOW-timedelta(minutes=5), "source": "nflverse",
+           "source_row": {"game_id": gid, "team": "TB", "player_id": "heyward", "position": "FB",
+                          "attempts": 0, "sacks_suffered": 0, "carries": 1}}
+    manifest = participant_manifests([row], games, NOW)[gid]
+    player = manifest["rows"][0]
+    assert player["position"] == "RB" and player["source_position"] == "FB"
+    actual = {"gsis_id": "heyward", "identity_status": "resolved", "position": "RB", "section": "rushing_advanced",
+              "stats": {"carries": 1, "rushing_yards_before_contact": 1, "rushing_yards_after_contact": 0}}
+    assert _coverage([actual], [player], manifest, family="contact")["complete"]
+    missing = _coverage([actual], [], manifest, family="contact")
+    assert "participant_set_mismatch" in missing["reasons"]
+    assert "rb_carry_count_mismatch" not in missing["reasons"]
+    mismatch = _coverage([actual], [{**player, "carries": 2}], manifest, family="contact")
+    assert mismatch["discrepancies"] == [{"gsis_id": "heyward", "issue": "rb_carry_count_mismatch", "pfr_carries": 1, "weekly_carries": 2}]
+
+
+def test_bad_prior_game_does_not_discard_other_verified_history():
+    from model.nfl_matchup_projection import feature_vector
+    games, snaps = sources()
+    for i in range(2):
+        game = {**games[0], "game_id": f"extra-{i}", "kickoff": NOW-timedelta(days=14+7*i)}
+        snap = deepcopy(snaps[0]); snap.update(game_id=game["game_id"], snapshot_id=10+i)
+        snap["payload"]["game_id"] = game["game_id"]
+        if i == 1:
+            snap["participant_manifest"]["rows"].append({"team": "TB", "gsis_id": "missing", "position": "QB", "passer": True, "rusher": False})
+        games.append(game); snaps.append(snap)
+    own = build_matchup(game=GAME, prior_games=games, snapshots=snaps, as_of=NOW)["teams"]["TB"]["offense"]
+    assert own["pressure_games"] == 2
+    assert own["pressure_coverage_complete"] is False and own["pressure_coverage_usable"] is True
+    matchup = {"home": "TB", "away": "MIN", "teams": {"TB": {"offense": own}, "MIN": {"defense": own}}}
+    assert feature_vector(matchup, "TB", "pressure") is not None
 
 
 def sources():

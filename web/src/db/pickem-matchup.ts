@@ -11,13 +11,17 @@ export async function getPickemMatchup(season: number, asOf: string): Promise<Re
     JOIN LATERAL (SELECT forecast_id,payload FROM nfl_pickem_matchup_forecasts f
       WHERE f.game_id=g.nflverse_game_id AND f.available_at<=${asOf}::timestamptz
         AND f.available_at<g.kickoff AND f.decision_cutoff<g.kickoff
-      ORDER BY f.available_at DESC,f.forecast_id DESC LIMIT 1) f ON TRUE WHERE g.season=${season}`);
+      ORDER BY f.decision_cutoff DESC,
+        COALESCE((f.payload->>'selectedForDefault')::boolean,TRUE) DESC,
+        f.available_at DESC,f.forecast_id DESC LIMIT 1) f ON TRUE WHERE g.season=${season}`);
   const out: Record<number, MatchupForecast> = {};
   for (const row of result.rows) {
-    const payload = row.payload as { input?: ResidualInput } & ResidualInput;
+    const payload = row.payload as { input?: ResidualInput; reasons?: string[] } & ResidualInput;
     const input = payload.input ?? payload;
     if (!input.baseline || !Array.isArray(input.features)) continue;
     const forecast = matchupResidual(input); forecast.forecastId = String(row.forecast_id);
+    if (forecast.status !== "shadow" && payload.reasons?.length)
+      forecast.reasons = [...new Set([...payload.reasons, ...forecast.reasons])];
     if (forecast.status === "shadow" && forecast.candidate && input.model) {
       const model = input.model, required = [model.definitionId, ...Object.keys(model.coefficients)];
       const qualifications = await db.execute(sql`SELECT q.definition_id, q.policy_version, q.max_age_seconds, d.definition

@@ -26,6 +26,7 @@ VERSION = "pickem-matchup-residual-shadow-v1"
 KEYS = ("own_pressure", "opp_pressure", "own_ybc", "opp_ybc", "own_yac", "opp_yac")
 DEFINITIONS = {k: f"pickem_home_minus_away_{k}@v1" for k in KEYS}
 MODEL_PATH = Path("artifacts/nfl_pickem_matchup_model_v1.json")
+FAMILY_MODEL_PATHS = {family: Path(f"artifacts/nfl_pickem_matchup_model_{family}_v2.json") for family in ("pressure", "contact")}
 REGISTRATION_PATH = Path("artifacts/nfl_matchup_registrations/nfl-matchup-pickem-combined-v1.json")
 DDL = """CREATE TABLE IF NOT EXISTS nfl_pickem_matchup_forecasts (
  forecast_id TEXT PRIMARY KEY, game_id TEXT NOT NULL, available_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -64,15 +65,15 @@ def require_model_before_cutoff(model, cutoff):
         raise ValueError("Model fit and training outcomes must precede the prospective decision cutoff")
 
 
-def fit_offset(x, outcome, market, ridge=20.0):
+def fit_offset(x, outcome, market, ridge=20.0, keys=KEYS):
     """Fixed-scale ridge logistic regression with market logit offset, no intercept."""
     x = np.asarray(x, dtype=float)
     outcome, market = np.asarray(outcome, dtype=float), np.asarray(market, dtype=float)
-    if len(outcome) < 100 or x.shape != (len(outcome), len(KEYS)) or not np.isfinite(x).all():
+    if len(outcome) < 100 or x.shape != (len(outcome), len(keys)) or not np.isfinite(x).all():
         raise ValueError("At least 100 complete development games required")
     # Explicit unit scales, not fitted on held-out labels: pressure percentage
     # points / 10, contact yards per carry / 1.
-    scales = np.asarray([10., 10., 1., 1., 1., 1.])
+    scales = np.asarray([10. if "pressure" in k else 1. for k in keys])
     design = x / scales
     offset = np.log(np.clip(market, 1e-6, 1-1e-6) / np.clip(1-market, 1e-6, 1-1e-6))
     def objective(beta):
@@ -80,13 +81,14 @@ def fit_offset(x, outcome, market, ridge=20.0):
         loss = np.sum(np.logaddexp(0, logits) - outcome * logits) + ridge / 2 * np.sum(beta ** 2)
         gradient = design.T @ (expit(logits) - outcome) + ridge * beta
         return float(loss), gradient
-    result = minimize(objective, np.zeros(len(KEYS)), jac=True, method="L-BFGS-B")
+    result = minimize(objective, np.zeros(len(keys)), jac=True, method="L-BFGS-B")
     if not result.success or not np.isfinite(result.x).all():
         raise ValueError(f"Residual fit did not converge: {result.message}")
-    return {k: float(v) for k, v in zip(KEYS, result.x / scales)}
+    return {k: float(v) for k, v in zip(keys, result.x / scales)}
 
 
-def fit_model(db, feature_path):
+def fit_model(db, feature_path, *, family="combined"):
+    keys = KEYS if family == "combined" else tuple(k for k in KEYS if ("pressure" in k) == (family == "pressure"))
     raw = json.loads(feature_path.read_text(encoding="utf-8"))
     rows = raw.get("rows", raw.get("games", [])) if isinstance(raw, dict) else raw
     by_game = {}
@@ -106,18 +108,19 @@ def fit_model(db, feature_path):
         market = no_vig(g["quoted_home_ml"], g["quoted_away_ml"])
         if not home or not away or market is None or g["home_score"] is None or g["away_score"] is None or g["home_score"] == g["away_score"]:
             continue
-        if any(home.get(k) is None or away.get(k) is None for k in KEYS):
+        if any(home.get(k) is None or away.get(k) is None for k in keys):
             continue
         if any(int(r["season"]) != int(g["season"]) or int(r["week"]) != int(g["week"]) for r in (home, away)):
             raise ValueError("Development feature/schedule season or week mismatch")
-        values = [float(home[k])-float(away[k]) for k in KEYS]
+        values = [float(home[k])-float(away[k]) for k in keys]
         if not np.isfinite(values).all():
             continue
         x.append(values); y.append(int(g["home_score"] > g["away_score"])); p.append(market); ids.append(g["game_id"])
-    coefficients = fit_offset(x, y, p)
+    coefficients = fit_offset(x, y, p, keys=keys)
     manifest = {"version": VERSION, "status": "development_fitted_shadow_only", "trainedThrough": max(g["kickoff"] for g in games).isoformat(),
-        "developmentSeasons": [2023, 2024, 2025], "n": len(x), "featureKeys": list(KEYS), "coefficients": coefficients,
-        "intercept": 0, "ridge": 20, "featureUnits": ["percentage_points"]*2+["yards_per_carry"]*4,
+        "developmentSeasons": [2023, 2024, 2025], "n": len(x), "featureKeys": list(keys), "coefficients": coefficients,
+        "family": family, "intercept": 0, "ridge": 20,
+        "featureUnits": ["percentage_points" if "pressure" in k else "yards_per_carry" for k in keys],
         "tieProbability": ties/scored if scored else None, "tieModel": {"version": "training-empirical-ties-v1", "ties": ties, "games": scored},
         "trainingManifest": {"availability": "retrospective_development_only", "feature_file": str(feature_path),
           "feature_digest": stable_digest(raw), "market_digest": stable_digest(games), "game_ids": ids,
@@ -126,20 +129,78 @@ def fit_model(db, feature_path):
           "holdout": "none; prospective study starts only after a real pregame freeze", "productionAuthority": "none"},
         "fittedAt": datetime.now(timezone.utc).isoformat()}
     manifest["artifactId"] = stable_digest(manifest)
-    manifest["definitionId"] = f"pickem_matchup_combined:{manifest['artifactId']}"
-    MODEL_PATH.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    manifest["definitionId"] = f"pickem_matchup_{family}:{manifest['artifactId']}"
+    output = MODEL_PATH if family == "combined" else FAMILY_MODEL_PATHS[family]
+    output.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return manifest
 
 
-def matchup_values(matchup):
+def matchup_values(matchup, family="combined"):
     values = {}
     for team in (matchup["home"], matchup["away"]):
-        pressure = feature_vector(matchup, team, "pressure")
-        contact = feature_vector(matchup, team, "contact")
+        pressure = feature_vector(matchup, team, "pressure") if family != "contact" else {}
+        contact = feature_vector(matchup, team, "contact") if family != "pressure" else {}
         if pressure is None or contact is None:
             return None
         values[team] = {**pressure, **contact}
-    return {k: values[matchup["home"]][k]-values[matchup["away"]][k] for k in KEYS}
+    return {k: values[matchup["home"]][k]-values[matchup["away"]][k] for k in values[matchup["home"]]}
+
+
+def select_model_features(matchup, model, family_models):
+    """Prefer full coverage; otherwise use a separately fitted family model."""
+    features = matchup_values(matchup)
+    if features is not None:
+        return model, features
+    for family in ("pressure", "contact"):
+        features = matchup_values(matchup, family)
+        if features is not None and family in family_models:
+            return family_models[family], features
+    return model, None
+
+
+def coverage_reasons(matchup):
+    reasons = []
+    for team, sides in matchup["teams"].items():
+        for side in ("offense", "defense"):
+            summary = sides[side]
+            for game in summary.get("participant_coverage", []):
+                for family in ("pressure", "contact"):
+                    check = game[family]
+                    if not check["complete"]:
+                        details = json.dumps(check.get("discrepancies", []), sort_keys=True)
+                        reasons.append(f"{team} {side} {game['game_id']} {family}: {', '.join(check['reasons'])}; {details}")
+            if (summary.get("pressure_games") or 0) < 2:
+                reasons.append(f"{team} {side}: fewer than two verified pressure games")
+            if (summary.get("rb_carries") or 0) < 20:
+                reasons.append(f"{team} {side}: fewer than twenty verified RB/FB carries")
+        if sides.get("missing_game_ids"):
+            reasons.append(f"{team}: missing prior snapshots {', '.join(sides['missing_game_ids'])}")
+    return reasons
+
+
+def registered_model(model, cutoff, persist):
+    """Resolve immutable study and code pin for each separately fitted artifact."""
+    require_model_before_cutoff(model, cutoff)
+    index = json.loads(Path("docs/nfl-matchup-studies.json").read_text(encoding="utf-8"))
+    studies = index.get("studies", [])
+    if isinstance(studies, dict):
+        studies = list(studies.values())
+    entry = next((s for s in studies if s.get("status") == "registered" and s.get("kind") == "pickem"
+                  and s.get("candidate_config_hash") == model["artifactId"]), None)
+    if not entry:
+        if persist:
+            raise ValueError("Prospective registration required for fitted matchup artifact")
+        return None
+    registration = json.loads(Path(entry["registration_file"]).read_text(encoding="utf-8"))
+    pin = json.loads(Path(entry["implementation_pin_file"]).read_text(encoding="utf-8"))
+    hashes = {p: hashlib.sha256(Path(p).read_bytes().replace(b"\r\n", b"\n")).hexdigest() for p in pin["hashes"]}
+    if hashes != pin["hashes"] or registration["candidate_config_hash"] != model["artifactId"]:
+        raise ValueError("Registration model/code pin mismatch; append a new implementation pin")
+    if datetime.fromisoformat(registration["registered_at"].replace("Z", "+00:00")) > cutoff:
+        raise ValueError("Registration must precede prospective freeze")
+    return {"study_id": registration["study_id"], "baseline_config_hash": registration["baseline_config_hash"],
+            "candidate_config_hash": registration["candidate_config_hash"], "implementation_hashes": hashes,
+            "registration_manifest_hash": pin["registration_manifest_hash"], "registered_at": registration["registered_at"]}
 
 
 def current_quotes(db, season, week, cutoff):
@@ -158,59 +219,49 @@ def current_quotes(db, season, week, cutoff):
 def freeze_forecasts(db, model, season, week, persist=False):
     cutoff = datetime.now(timezone.utc)
     require_model_before_cutoff(model, cutoff)
-    registration = None
-    if REGISTRATION_PATH.exists():
-        registration = json.loads(REGISTRATION_PATH.read_text(encoding="utf-8"))
-        study_index = json.loads(Path("docs/nfl-matchup-studies.json").read_text(encoding="utf-8"))
-        studies = study_index.get("studies", [])
-        if isinstance(studies, dict):
-            studies = list(studies.values())
-        study_entry = next((s for s in studies if s.get("study_id") == registration["study_id"]), {})
-        pin_path = Path(study_entry["implementation_pin_file"]) if study_entry.get("implementation_pin_file") else REGISTRATION_PATH.with_name(REGISTRATION_PATH.stem+".implementation-pin.json")
-        pin = json.loads(pin_path.read_text(encoding="utf-8")) if pin_path.exists() else {}
-        actual_hashes = {path:hashlib.sha256(Path(path).read_bytes().replace(b"\r\n",b"\n")).hexdigest() for path in pin.get("hashes",{})}
-        if registration["candidate_config_hash"] != model["artifactId"] or not actual_hashes or actual_hashes != pin.get("hashes"):
-            raise ValueError("Registration model/code pin mismatch; create a new approved implementation pin before freezing")
-        if datetime.fromisoformat(registration["registered_at"].replace("Z", "+00:00")) > cutoff:
-            raise ValueError("Registration must precede the prospective freeze")
-        registration = {"study_id":registration["study_id"],"baseline_config_hash":registration["baseline_config_hash"],
-            "candidate_config_hash":registration["candidate_config_hash"],"implementation_hashes":actual_hashes,
-            "registration_manifest_hash":pin.get("registration_manifest_hash"),"registered_at":registration["registered_at"]}
-    elif persist:
-        raise ValueError("Prospective registration and implementation pin are required before persistence")
+    family_models = {family: json.loads(path.read_text(encoding="utf-8"))
+                     for family, path in FAMILY_MODEL_PATHS.items() if path.exists()}
+    registrations = {m["artifactId"]: registered_model(m, cutoff, persist)
+                     for m in [model, *family_models.values()]}
     matchups = load_matchups(db, season, week, cutoff)
     quotes = {r["game_id"]: r for r in current_quotes(db, season, week, cutoff)}
     forecasts = []
     for game_id, matchup in matchups.items():
         q = quotes.get(game_id) or {}; probability = no_vig(q.get("home_ml"), q.get("away_ml"))
-        features = matchup_values(matchup)
-        reasons = []
-        if probability is None or q.get("captured_at") is None:
-            reasons.append("Missing contemporaneous two-sided market quote")
-        elif not eligible_quote(q["captured_at"], cutoff, datetime.fromisoformat(matchup["kickoff"])):
-            reasons.append("Market quote is stale at cutoff")
-        if features is None:
-            reasons.append("Complete pressure/contact matchup features unavailable")
-        tie = model["tieProbability"]
-        input_ = {"gameId":game_id,"decisionCutoff":cutoff.isoformat(),"kickoff":matchup["kickoff"],
-          "baseline":{"homeConditional":probability,"tie":tie,"marketCapturedAt":q["captured_at"].isoformat() if q.get("captured_at") else None,
-            "source":"market_ml_novig","quoteId":q.get("quote_id"),"quoteSource":q.get("quote_source"),"homeMoneyline":q.get("home_ml"),"awayMoneyline":q.get("away_ml")},
-          "model":{"artifactId":model["artifactId"],"definitionId":model["definitionId"],"version":VERSION,"consumerId":"nfl-pickem",
-            "useCase":"game-win","cohort":"regular-season","coefficients":{DEFINITIONS[k]:v for k,v in model["coefficients"].items()},
-            "intercept":0,"trainedThrough":model["trainedThrough"],"trainingManifest":model["trainingManifest"]},
-          "features":[{"definitionId":DEFINITIONS[k],"value":v,"snapshotId":matchup["manifest_hash"]+":"+k,
-            "availableAt":cutoff.isoformat(),"sourceManifest":matchup} for k,v in (features or {}).items()]}
-        baseline = candidate = None; residual = None
-        market_eligible = probability is not None and eligible_quote(q.get("captured_at"), cutoff, datetime.fromisoformat(matchup["kickoff"]))
-        if market_eligible and tie is not None:
-            residual = sum(features[k]*model["coefficients"][k] for k in KEYS) if features is not None else 0.0
-            baseline, candidate = paired_probabilities(probability, tie, residual)
-        covered = candidate is not None and features is not None
-        forecast = {"input":input_,"status":"shadow" if covered else "fallback" if candidate else "unavailable", "covered":covered,"baseline":baseline,"candidate":candidate,
-          "residual":residual,"reasons":reasons+["Retrospective development fit; no forward qualification or active forecast change"],
-          "tieModel":model["tieModel"],"featureManifest":matchup,"forecastBuiltAt":datetime.now(timezone.utc).isoformat(),
-          **(registration or {})}
-        forecast["forecastId"] = stable_digest(forecast); forecasts.append(forecast)
+        preferred, _ = select_model_features(matchup, model, family_models)
+        arms = [(model, matchup_values(matchup))] + [
+            (fitted, matchup_values(matchup, family)) for family, fitted in family_models.items()]
+        # Freeze every registered arm, including its exact fallback. The normal
+        # reader chooses the preferred usable model; grading retains full cohorts.
+        for selected_model, features in arms:
+            registration = registrations[selected_model["artifactId"]]
+            reasons = coverage_reasons(matchup)
+            if probability is None or q.get("captured_at") is None:
+                reasons.append("Missing contemporaneous two-sided market quote")
+            elif not eligible_quote(q["captured_at"], cutoff, datetime.fromisoformat(matchup["kickoff"])):
+                reasons.append("Market quote is stale at cutoff")
+            if features is None:
+                reasons.append("No fitted model has sufficient verified opponent history")
+            tie = selected_model["tieProbability"]
+            input_ = {"gameId":game_id,"decisionCutoff":cutoff.isoformat(),"kickoff":matchup["kickoff"],
+              "baseline":{"homeConditional":probability,"tie":tie,"marketCapturedAt":q["captured_at"].isoformat() if q.get("captured_at") else None,
+                "source":"market_ml_novig","quoteId":q.get("quote_id"),"quoteSource":q.get("quote_source"),"homeMoneyline":q.get("home_ml"),"awayMoneyline":q.get("away_ml")},
+              "model":{"artifactId":selected_model["artifactId"],"definitionId":selected_model["definitionId"],"version":VERSION,"consumerId":"nfl-pickem",
+                "useCase":"game-win","cohort":"regular-season","coefficients":{DEFINITIONS[k]:v for k,v in selected_model["coefficients"].items()},
+                "intercept":0,"trainedThrough":selected_model["trainedThrough"],"trainingManifest":selected_model["trainingManifest"]},
+              "features":[{"definitionId":DEFINITIONS[k],"value":v,"snapshotId":matchup["manifest_hash"]+":"+k,
+                "availableAt":cutoff.isoformat(),"sourceManifest":matchup} for k,v in (features or {}).items()]}
+            baseline = candidate = None; residual = None
+            market_eligible = probability is not None and eligible_quote(q.get("captured_at"), cutoff, datetime.fromisoformat(matchup["kickoff"]))
+            if market_eligible and tie is not None:
+                residual = sum(features[k]*selected_model["coefficients"][k] for k in selected_model["coefficients"]) if features is not None else 0.0
+                baseline, candidate = paired_probabilities(probability, tie, residual)
+            covered = candidate is not None and features is not None
+            forecast = {"input":input_,"status":"shadow" if covered else "fallback" if candidate else "unavailable", "covered":covered,"selectedForDefault":selected_model["artifactId"] == preferred["artifactId"],"baseline":baseline,"candidate":candidate,
+              "residual":residual,"reasons":reasons+["Retrospective development fit; no forward qualification or active forecast change"],
+              "tieModel":selected_model["tieModel"],"selectedFamily":selected_model.get("family", "combined"),"featureManifest":matchup,"forecastBuiltAt":datetime.now(timezone.utc).isoformat(),
+              **(registration or {})}
+            forecast["forecastId"] = stable_digest(forecast); forecasts.append(forecast)
     if persist:
         from psycopg2.extras import Json
         db.execute(DDL)
@@ -222,10 +273,11 @@ def freeze_forecasts(db, model, season, week, persist=False):
                   VALUES (%s,%s,'v1',%s,%s,%s) ON CONFLICT DO NOTHING""",
                   (definition_id,"pickem_home_minus_away_"+key,"percentage_points" if "pressure" in key else "yards_per_carry",
                    "Prior-four-game home-minus-away matchup residual feature",Json({"featureKey":key,"lookback":4,"population":"prior eligible games","authority":"shadow_only"})))
-            cur.execute("""INSERT INTO nfl_context_definitions
-              (definition_id,context_key,version,unit,description,definition)
-              VALUES (%s,'pickem_matchup_combined',%s,'log_odds',%s,%s) ON CONFLICT DO NOTHING""",
-              (model["definitionId"],model["artifactId"],"Fitted market-offset combined matchup residual",Json(model)))
+            for fitted in [model, *family_models.values()]:
+                cur.execute("""INSERT INTO nfl_context_definitions
+                  (definition_id,context_key,version,unit,description,definition)
+                  VALUES (%s,'pickem_matchup',%s,'log_odds',%s,%s) ON CONFLICT DO NOTHING""",
+                  (fitted["definitionId"], fitted["artifactId"], "Fitted market-offset opponent residual", Json(fitted)))
             for f in forecasts:
                 if datetime.fromisoformat(f["input"]["kickoff"])<=datetime.now(timezone.utc):
                     continue
@@ -244,11 +296,12 @@ def main():
     parser.add_argument("--season",type=int,required=True);parser.add_argument("--week",type=int,required=True)
     parser.add_argument("--fit",action="store_true");parser.add_argument("--persist",action="store_true")
     parser.add_argument("--fit-only",action="store_true")
+    parser.add_argument("--family", choices=("combined", "pressure", "contact"), default="combined")
     parser.add_argument("--development-features",type=Path,default=Path("artifacts/nfl_matchup_development_games.json"))
     parser.add_argument("--output",type=Path,default=Path("artifacts/nfl-matchup-implementation/2026-09-27/pickem-shadow.json"))
     args=parser.parse_args();db=DatabaseManager(load_config().database_url,initialize_schema=False)
     with db.reuse_connection():
-        model=fit_model(db,args.development_features) if args.fit else json.loads(MODEL_PATH.read_text(encoding="utf-8"))
+        model=fit_model(db,args.development_features,family=args.family) if args.fit else json.loads(MODEL_PATH.read_text(encoding="utf-8"))
         if args.fit_only:
             print(json.dumps({"development_games":model["n"],"artifact_id":model["artifactId"],"model_path":str(MODEL_PATH)}))
             return

@@ -21,6 +21,28 @@ def test_one_completed_game_does_not_require_full_season_row_count():
     assert len(validate_partial_feed(teams, 2026, team=True)) == 1
 
 
+def test_fullback_and_punter_evidence_survive_fantasy_filter_without_anonymous_team_rows():
+    rows = pd.concat([player_frame(), player_frame().assign(player_id="fb", position="FB", carries=1),
+                      player_frame().assign(player_id="punter", position="P", attempts=1),
+                      player_frame().assign(player_id=None, position=None, receptions=0, receiving_yards=0)])
+    selected = validate_partial_feed(rows, 2026, team=False)
+    assert set(selected.player_id) == {"p1", "fb", "punter"}
+    with pytest.raises(ValueError, match="identity"):
+        validate_partial_feed(rows.iloc[-1:].assign(carries=1), 2026, team=False)
+
+
+def test_raw_evidence_is_independent_of_fantasy_universe_and_append_only():
+    from ingest.nfl_weekly_evidence import save_participant_evidence
+    class Writer:
+        def __init__(self): self.calls = []
+        def execute(self, statement, params=None): self.calls.append((statement, params))
+    writer = Writer()
+    save_participant_evidence(writer, 2026, player_frame().assign(position="FB"))
+    statement, params = writer.calls[-1]
+    assert "ON CONFLICT DO NOTHING" in statement and "UPDATE" not in statement
+    assert params[4] == "p1" and params[-1].adapted["position"] == "FB"
+
+
 def test_malformed_missing_duplicate_and_wrong_season_are_not_zero_results():
     frame = player_frame()
     for broken in (frame.iloc[:0], frame.drop(columns=["receptions"]), pd.concat([frame, frame]),

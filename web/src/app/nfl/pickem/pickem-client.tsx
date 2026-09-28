@@ -428,7 +428,11 @@ export default function PickemClient({ slate: approvedSlate, pools, ledger, evid
         const pickHome = activeEntry.pickHome[i];
         const p = pickHome ? g.pHome : 1 - g.pHome;
         const approvedGame = approvedSlate.games.find(row => row.gameId === g.gameId);
-        const approvedPickP = approvedGame ? (pickHome ? approvedGame.pHome : 1 - approvedGame.pHome) : p;
+        const pair = selectedDefensive.comparisons[g.gameId];
+        const baseHome = pair?.baselineHome ?? approvedGame?.pHome ?? g.pHome;
+        const adjustedHome = pair?.baselinePlusDefenseHome ?? g.pHome;
+        const approvedPickP = pickHome ? baseHome : 1 - baseHome;
+        const adjustedPickP = pickHome ? adjustedHome : 1 - adjustedHome;
         const field = fieldHomeShare(g, fieldModel);
         const fieldOnMyPick = pickHome ? field.share : 1 - field.share;
         return {
@@ -440,9 +444,10 @@ export default function PickemClient({ slate: approvedSlate, pools, ledger, evid
           against: pickHome ? g.awayAbbrev : g.homeAbbrev,
           p,
           baselineP: approvedPickP,
-          defenseAdjustedP: p,
+          defenseAdjustedP: adjustedPickP,
+          defenseReason: pair?.reason,
           defenseApplied: selectedDefensive.comparisons[g.gameId]?.applied ?? false,
-          defensiveDeltaPp: selectedDefensive.comparisons[g.gameId]?.applied ? 100 * (p - approvedPickP) : null,
+          defensiveDeltaPp: pair?.applied ? 100 * (adjustedPickP - approvedPickP) : null,
           confidence: activeEntry.confidence[i],
           baselineConfidence: baseline.confidence[i],
           baselinePickHome: baseline.pickHome[i],
@@ -1129,7 +1134,7 @@ export default function PickemClient({ slate: approvedSlate, pools, ledger, evid
                         {r.defensiveDeltaPp != null && <div className="text-[10px] text-amber-700 dark:text-amber-400">
                           {r.defensiveDeltaPp >= 0 ? "+" : ""}{r.defensiveDeltaPp.toFixed(2)} pp
                         </div>}
-                        {!r.defenseApplied && <div className="text-[10px] text-muted-foreground">No adjustment</div>}
+                        {r.defenseReason && <div className="text-[10px] text-muted-foreground">{r.defenseReason}</div>}
                       </td>
                       <td className="px-3 py-2">
                         <span

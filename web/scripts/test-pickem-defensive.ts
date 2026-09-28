@@ -37,7 +37,7 @@ assert.deepEqual(zeroTieComparison.appliedGameIds, [1]);
 assert.equal(zeroTieComparison.slate.games[0].pTie, 0);
 assert.equal(zeroTieComparison.slate.games[0].pHome, matchup.candidate!.homeConditional);
 const missing = comparePickemDefensiveForecasts(slate, { ...evidence, games: { 1: { ...evidence.games[1], matchup: null } } }, asOf);
-assert.deepEqual(missing.comparisons[1], { gameId: 1, baselineHome: .49, baselinePlusDefenseHome: .49, applied: false });
+assert.deepEqual(missing.comparisons[1], { gameId: 1, baselineHome: .49, baselinePlusDefenseHome: .49, applied: false, reason: "Opponent forecast has not been generated" });
 assert.equal(evOptimalEntry(approved.slate.games.map(g => ({ ...g, fieldHomePct: null })), "straight").pickHome[0], false);
 assert.equal(evOptimalEntry(experimental.slate.games.map(g => ({ ...g, fieldHomePct: null })), "straight").pickHome[0], true);
 assert.deepEqual(selectPickemDefensiveForecasts(slate, evidence, "experimental", kickoff).appliedGameIds, []);
@@ -45,5 +45,36 @@ assert.deepEqual(selectPickemDefensiveForecasts(slate, evidence, "experimental",
 assert.deepEqual(selectPickemDefensiveForecasts(slate, { ...evidence, games: { 1: { ...evidence.games[1],
   latest: { ...evidence.games[1].latest!, pHome: .48 } } } }, "experimental", asOf).appliedGameIds, []);
 assert.deepEqual(selectPickemDefensiveForecasts(slate, { ...evidence, games: { 1: { ...evidence.games[1],
-  latest: { ...evidence.games[1].latest!, capturedAt: "2026-10-04T16:09:00Z" } } } }, "experimental", asOf).appliedGameIds, []);
+  latest: { ...evidence.games[1].latest!, capturedAt: "2026-10-04T16:09:00Z" } } } }, "experimental", asOf).appliedGameIds, [1]);
 console.log("Pick'em defensive comparison: baseline preserved, adjusted card flip, lock and exact-market fallback passed.");
+
+const movedQuote = "2026-10-04T16:09:00Z";
+const movedSlate = { ...slate, games: [{ ...slate.games[0], pHome: .55 }] };
+const movedEvidence = { ...evidence, games: { 1: { ...evidence.games[1], latest: {
+  ...evidence.games[1].latest!, capturedAt: movedQuote, pHome: .55 } } } };
+const moved = selectPickemDefensiveForecasts(movedSlate, movedEvidence, "experimental", asOf);
+assert.deepEqual(moved.appliedGameIds, [1]);
+assert.equal(moved.forecasts[1].input.baseline.marketCapturedAt, movedQuote);
+assert.equal(moved.forecasts[1].input.baseline.homeConditional, .55);
+assert.equal(moved.forecasts[1].residual, matchup.residual);
+assert.equal(moved.forecasts[1].input.features, input.features);
+assert.ok(moved.slate.games[0].pHome > .55);
+const reopened = matchupResidual(JSON.parse(JSON.stringify(moved.forecasts[1].input)));
+assert.equal(reopened.candidate!.homeConditional, moved.slate.games[0].pHome);
+const staleInput = { ...input, baseline: { ...input.baseline, marketCapturedAt: "2026-10-04T12:00:00Z" } };
+const staleMatchup = matchupResidual(staleInput);
+assert.equal(staleMatchup.status, "unavailable");
+const recovered = selectPickemDefensiveForecasts(slate, { ...evidence, games: { 1: {
+  ...evidence.games[1], matchup: staleMatchup } } }, "experimental", asOf);
+assert.deepEqual(recovered.appliedGameIds, [1]);
+const staleNow = selectPickemDefensiveForecasts(slate, { ...evidence, games: { 1: {
+  ...evidence.games[1], latest: { ...evidence.games[1].latest!, capturedAt: "2026-10-04T12:00:00Z" } } } }, "experimental", asOf);
+assert.deepEqual(staleNow.appliedGameIds, []);
+assert.equal(staleNow.reasons[1], "Odds need a fresh capture");
+const frozenAfterKick = comparePickemDefensiveForecasts(slate, evidence, "2026-10-04T18:00:00Z");
+assert.deepEqual(frozenAfterKick.appliedGameIds, []);
+assert.equal(frozenAfterKick.comparisons[1].historical, true);
+assert.equal(frozenAfterKick.comparisons[1].baselineHome, .49);
+assert.equal(frozenAfterKick.comparisons[1].baselinePlusDefenseHome, matchup.candidate!.homeConditional);
+assert.equal(frozenAfterKick.comparisons[1].reason, "Saved pregame forecast");
+console.log("Fresh-quote recomputation, stale recovery, saved-input replay and historical pair display passed.");
