@@ -63,6 +63,8 @@ import { searchTeamNews, type XNewsResult } from "@/lib/x-news";
 import { NFL_TRUSTED_ACCOUNTS, isXHandle } from "@/lib/x-news-accounts";
 import { NFL_TEAM_NICKNAMES } from "@/lib/nfl-dfs/x-news-teams";
 import { projectOwnershipPrior } from "@/lib/nfl-dfs/ownership-prior";
+import { computeReplacementUpside, REPLACEMENT_UPSIDE_VERSION, type ReplacementUpside, type ReplacementUpsideReport, type UpsidePlayer } from "@/lib/nfl-dfs/replacement-upside";
+import { readTeamUsageWindows } from "@/db/nfl-dfs-usage-window";
 
 export type NflWorkspacePlayer = NflOptimizerPlayer & {
   ffPlayerId: number | null;
@@ -87,6 +89,14 @@ export type NflWorkspacePlayer = NflOptimizerPlayer & {
   projectionScenario?: ProjectionScenario;
   statMeans?: Record<string, number>;
   medianFpts?: number | null;
+  /**
+   * Display only (`nfl-replacement-upside-v1`): this player's range if he
+   * takes a ruled-out starter's job, next to his unchanged baseline. The
+   * optimizer and ownership prior never read it.
+   */
+  replacementUpside?: ReplacementUpside | null;
+  /** Behind a ruled-out starter but deliberately not adjusted, and why. */
+  replacementUpsideUnchanged?: { from: string; reason: string } | null;
   platformEligibility?: PlatformEligibilityDecision;
   availabilityEvidence?: {gameDecisionId:string|null;platformManifestDigest:string|null;
     platformDecisionState:'ELIGIBLE'|'INELIGIBLE'|null;decisionAt:string|null};
@@ -154,6 +164,8 @@ export type NflWorkspaceSlate = {
     unresolved: { team: string; pool: string; pooled: number; from: string[]; reason: string }[];
     donorsWithoutOpportunity: { team: string; name: string; position: string; reason: string }[];
   };
+  /** Display-only replacement upside for this slate: who was flagged, and which absences were not. */
+  replacementUpside?: { version: string; flagged: number; skipped: ReplacementUpsideReport['skipped']; error?: string };
 };
 
 export type NflComparisonSource = "fantasypros" | "linestar" | "custom";
@@ -586,7 +598,65 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
       })(),
     })),
   };
+  await attachReplacementUpside(workspace, rows.map((row) => ({
+    dkPlayerId: row.dkPlayerId, ffPlayerId: row.ffPlayerId, team: row.team, out: outFlag(row),
+    stored: { mean: numeric(row.ourProj), p10: numeric(row.floorFpts), median: numeric(row.medianFpts),
+      p90: numeric(row.ceilingFpts), boom: numeric(row.boomRate) },
+  })), run, identityMap);
   return attachOwnership(workspace);
+}
+
+/**
+ * Replacement upside (`nfl-replacement-upside-v1`, display only): when a
+ * starter who played his team's last game is ruled out, the players behind
+ * him get a second range -- "if he gets the job" -- next to their unchanged
+ * baseline. A ruled-out starter's range is read from his STORED projection,
+ * because the workspace row has already been zeroed. Failure to read usage
+ * history must never take the slate down; it is reported instead.
+ */
+async function attachReplacementUpside(
+  workspace: NflWorkspaceSlate,
+  stored: { dkPlayerId: number; ffPlayerId: number | null; team: string; out: boolean;
+    stored: { mean: number | null; p10: number | null; median: number | null; p90: number | null; boom: number | null } }[],
+  run: { season: number; week: number | null } | null,
+  identityMap: ReadonlyMap<number, string>,
+): Promise<void> {
+  if (!run?.week) {
+    workspace.replacementUpside = { version: REPLACEMENT_UPSIDE_VERSION, flagged: 0, skipped: [], error: 'No projection run week, so no usage history to read.' };
+    return;
+  }
+  try {
+    const byKey = new Map(stored.map((row) => [row.dkPlayerId, row]));
+    const identities = new Map<number, { team: string; gsis: string }>();
+    for (const row of stored) {
+      const gsis = identityMap.get(row.ffPlayerId ?? -1);
+      if (gsis && row.team) identities.set(row.dkPlayerId, { team: benchmarkTeam(row.team), gsis });
+    }
+    const windows = await readTeamUsageWindows(run.season, run.week, identities);
+    const dist = (d: { mean: number | null; p10: number | null; median: number | null; p90: number | null; boom: number | null }) =>
+      d.mean == null || d.p10 == null || d.median == null || d.p90 == null ? null
+        : { mean: d.mean, p10: d.p10, median: d.median, p90: d.p90, boom: d.boom };
+    const players: UpsidePlayer[] = workspace.players.flatMap((player) => {
+      const row = byKey.get(player.dkPlayerId);
+      if (!row || !identities.has(player.dkPlayerId)) return [];
+      const out = row.out || player.isOut;
+      return [{
+        key: player.dkPlayerId, name: player.name, position: player.position, team: identities.get(player.dkPlayerId)!.team, out,
+        dist: out ? dist(row.stored) : dist({ mean: player.ourProj, p10: player.floorFpts, median: player.medianFpts ?? null,
+          p90: player.ceilingFpts, boom: player.boomRate }),
+      }];
+    });
+    const report = computeReplacementUpside(players, windows);
+    const upside = new Map(report.upside.map((u) => [u.key, u]));
+    const unchanged = new Map(report.unchanged.map((u) => [u.key, { from: u.from, reason: u.reason }]));
+    workspace.players = workspace.players.map((player) =>
+      upside.has(player.dkPlayerId) ? { ...player, replacementUpside: upside.get(player.dkPlayerId)! }
+        : unchanged.has(player.dkPlayerId) ? { ...player, replacementUpsideUnchanged: unchanged.get(player.dkPlayerId)! } : player);
+    workspace.replacementUpside = { version: report.version, flagged: report.upside.length, skipped: report.skipped };
+  } catch (error) {
+    workspace.replacementUpside = { version: REPLACEMENT_UPSIDE_VERSION, flagged: 0, skipped: [],
+      error: error instanceof Error ? error.message : 'Usage history could not be read.' };
+  }
 }
 
 /**

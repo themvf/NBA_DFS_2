@@ -6870,6 +6870,19 @@ own history says (discovery +8.14pp [+2.29, +14.63], blind 2014–18 +9.52pp
 after discovery (disclosed). The TE-room target pie (φ 0.5) did NOT improve his
 points projection in either period (blind squared error +1.87 [−8.10, +12.15]):
 flag the wider upside, do not raise his mean.
+Those three results ship as ONE display-only feature,
+`nfl-replacement-upside-v1` ([doc](docs/nfl-replacement-upside.md),
+`web/src/lib/nfl-dfs/replacement-upside.ts`): when a starter who played his
+team's last game is OUT, the players behind him show a second range, "if he
+gets the job", next to their unchanged baseline. It is a MIXTURE, not an
+added average: with chance π the backup plays the starter's projected range,
+otherwise his own, so the ceiling and boom rate move far more than the mean.
+π by role is fitted on 2020–25 by P90 pinball loss and rechecked on 2014–18
+(`model/nfl_replacement_upside_fit.py`): RB lead 0.5 / other 0.2, TE lead
+0.4 / other 0.2, WR other 0.2, and 0 for the top remaining WR and for a TE
+when a WR sits (neither held up on the recheck). The optimizer, ownership
+prior and projection column keep the baseline until it is graded on 2026
+slates; changing π, thresholds or the trigger is a new version.
 The rest of this section is the historical v1 design.
 
 A ruled-out player's work goes to his teammates. Implemented at the **slate

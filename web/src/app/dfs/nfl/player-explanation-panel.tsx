@@ -11,6 +11,7 @@ import {
 } from "@/lib/nfl-dfs/scoring";
 import { VALUE_TIER_LABEL, type ValueIndex } from "@/lib/nfl-dfs/salary-value";
 import { ValueChip, valueTooltip } from "./value-chip";
+import { ReplacementUpsideTable } from "./replacement-upside-display";
 import { explainNflPlayerProjection, type NflProjectionExplanation, type NflWorkspacePlayer } from "./actions";
 
 /*
@@ -370,6 +371,10 @@ function Breakdown({ e, player, peers, valueIndex }: {
           <TrendingUp className="h-4 w-4 shrink-0" />{e.inheritedNote}
         </div>
       )}
+      {player.replacementUpside && <Card icon={<TrendingUp className="h-4 w-4" style={{color:ACCENT}}/>}
+        title="If he gets the job · display only" hint="A starter ahead of him is ruled out after playing his team's last game.">
+        <ReplacementUpsideTable upside={player.replacementUpside}/>
+      </Card>}
       {e.adjustmentUnresolved && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{e.adjustmentUnresolved}</p>}
       {e.projectionScenario === 'availability_estimate' && !e.inheritedNote && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">The pipeline applied an availability estimate. No new simulation was run; median, outcome range and boom rate are withheld.</p>}
 
