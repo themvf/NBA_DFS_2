@@ -1,0 +1,283 @@
+{
+ "study": "nfl-te-backup-blind-v1",
+ "mode": "unmask",
+ "generated_at": "2026-09-28T12:55:20.266504+00:00",
+ "registered": "docs/nfl-te-backup-blind-study.md",
+ "sources": {
+  "games.csv": "19b97bc83fbb2235791eda3e14d8436e4bdc8db64702c9e492806b524abf01a0",
+  "roster_weekly_2013.csv": "76c47a629075ffd75f9c4ee49fadb6dad45396be486af897078fee5722969781",
+  "stats_player_week_2013.csv": "f7329a8f15084c9c23d841f14eb117fcc630d6c82913501f3c60f2d8f4e651a4",
+  "snap_counts_2013.csv": "9d1fdd557875b9a2c71d88e583da24a739dfca671edf8223d6171e39a421000e",
+  "roster_weekly_2014.csv": "331022cd3b0c69d99c581f02b6fde6853e87ac431739c4b49841ee6e02893d6c",
+  "stats_player_week_2014.csv": "a389b10d94eb8e6b9a153223d381aab821b0eff4cd73967835a21032192abc61",
+  "snap_counts_2014.csv": "84540709d9483552185c8ca3ef30b2f66fb94b30c3e6c21e7a27205f337f21d3",
+  "roster_weekly_2015.csv": "198904f48eeebafc1f34028a00c1b8c0fc135aba04fc4b276e636ef87709751a",
+  "stats_player_week_2015.csv": "21052baa3b3291a92faf3e6827891295010dca8cc5cefd5a909984b9d7b64664",
+  "snap_counts_2015.csv": "841496252ada825c3c50d3ba9b4b26d3f4fabd0fedc5fb44f286ddaaa5bdb7e0",
+  "roster_weekly_2016.csv": "ab05dfeffe6f9a1d969133cd6740f1625d135bfad672aaa916adb609ab662883",
+  "stats_player_week_2016.csv": "eb0264c65d1ef593196afcd4ba24e9f2e9b7942923bf6f4bb4639684e2c4d470",
+  "snap_counts_2016.csv": "a778e24e9eb665ffe8f16093b03c5a263dca0250b3aa92bd6002f61f534bea59",
+  "roster_weekly_2017.csv": "fd3fe005b676fe0ad8d88c50701d71adef4287501397c33f479c9765cd8c45d4",
+  "stats_player_week_2017.csv": "592b0916065987b0b3afb0480162f03350d16b12250dc42b0f194e2ab1378563",
+  "snap_counts_2017.csv": "eab2fad2df99249d4061ed9c5c34d312cdba07cf3159d027d255bdc9b6526917",
+  "roster_weekly_2018.csv": "c3bca1ee53e63e21b964f1bb42c251e25b7b4b8c55210730dd4ded2f9d4a709a",
+  "stats_player_week_2018.csv": "c53021bcfc9f89d30edd6f1fe145a1d7d6ce469efeec75974fe9f0adac568642",
+  "snap_counts_2018.csv": "9a408b78a55f799110aed70de3564e157faf089ce9bed780d0368bf49ae13e0b"
+ },
+ "frozen": {
+  "phi": 0.5,
+  "mae_margin": 0.5,
+  "big_game_discovery_effect": 0.0814
+ },
+ "proxy_validation": {
+  "V1_recall": true,
+  "V2_precision": true,
+  "V3_proxy_replicates_points": true,
+  "V4_proxy_replicates_big_game": true
+ },
+ "structure": {
+  "first_game_events": 75,
+  "under_way_events": 109,
+  "control_games": 1722,
+  "excluded_already_graded": 10,
+  "star_wr_also_out": 0,
+  "lead_te_single_te_room": 24,
+  "first_game_by_season": {
+   "2014": 12,
+   "2015": 15,
+   "2016": 19,
+   "2017": 13,
+   "2018": 16
+  }
+ },
+ "H1_points": {
+  "events": 75,
+  "rows": 75,
+  "mse_a": 39.090445407499665,
+  "mse_b": 37.21956583729022,
+  "mae_a": 5.0245447216387324,
+  "mae_b": 4.633986383417745,
+  "bias_a": -0.9805733383185211,
+  "bias_b": 2.2090983187437594,
+  "mse_delta": 1.8708795702094494,
+  "mse_ci": [
+   -8.09911725123267,
+   12.15401999643154
+  ],
+  "mae_delta": 0.3905583382209885,
+  "mae_ci": [
+   -0.3796340452063193,
+   1.1734392091887367
+  ]
+ },
+ "H1_targets": {
+  "events": 75,
+  "rows": 75,
+  "mse_a": 7.948958730268819,
+  "mse_b": 8.746537751137774,
+  "mae_a": 2.304424677962889,
+  "mae_b": 2.293594138652753,
+  "bias_a": -0.37679765110644536,
+  "bias_b": 1.4306216077568052,
+  "mse_delta": -0.7975790208689553,
+  "mse_ci": [
+   -3.377297482892009,
+   1.739618463851837
+  ],
+  "mae_delta": 0.010830539310135829,
+  "mae_ci": [
+   -0.38637467935212305,
+   0.4111575911494672
+  ]
+ },
+ "H1_gate": {
+  "G1_points_squared_error": false,
+  "G2_points_mae_noninferior": false,
+  "G3_targets": true,
+  "G4_sample": true,
+  "verdict": "NOT_PROMOTED"
+ },
+ "H2_big_game": {
+  "rows": 75,
+  "control_rows": 1618,
+  "boom_rate": 0.2,
+  "expected_rate": 0.11079882019835643,
+  "control_boom_rate": 0.046353522867737945,
+  "control_expected_rate": 0.051909872814677606,
+  "effect": 0.09475752974858323,
+  "ci": [
+   0.011198755008947934,
+   0.184523676495528
+  ]
+ },
+ "H2_gate": {
+  "B1_ci_above_zero": true,
+  "B2_half_of_discovery": true,
+  "B3_sample": true,
+  "verdict": "PROMOTE"
+ },
+ "described": {
+  "big_game_12_lead_te_under_way": {
+   "rows": 109,
+   "control_rows": 1618,
+   "boom_rate": 0.14678899082568808,
+   "expected_rate": 0.11486780799170002,
+   "control_boom_rate": 0.046353522867737945,
+   "control_expected_rate": 0.051909872814677606,
+   "effect": 0.03747753278092773,
+   "ci": [
+    -0.0315024205456638,
+    0.1069607373444074
+   ]
+  },
+  "big_game_12_lead_te_star_wr_also_out": {
+   "rows": 0
+  },
+  "other_tes_first_game": {
+   "events": 75,
+   "rows": 58,
+   "mse_a": 15.369837083732465,
+   "mse_b": 15.730717953689977,
+   "mae_a": 2.5347863657770158,
+   "mae_b": 2.4678277875656267,
+   "bias_a": 0.9175761100505186,
+   "bias_b": 1.5207005653935175,
+   "mse_delta": -0.36088086995751384,
+   "mse_ci": [
+    -3.2234982313135436,
+    3.3723737190078515
+   ],
+   "mae_delta": 0.0669585782113896,
+   "mae_ci": [
+    -0.1359228052825685,
+    0.2914838380447561
+   ]
+  },
+  "under_way_lead_te": {
+   "events": 109,
+   "rows": 109,
+   "mse_a": 40.58003079333285,
+   "mse_b": 40.184647466917724,
+   "mae_a": 4.587049113103119,
+   "mae_b": 4.4651871860434245,
+   "bias_a": -0.5710967029950696,
+   "bias_b": 1.248989140778722,
+   "mse_delta": 0.3953833264151345,
+   "mse_ci": [
+    -4.760468987930177,
+    5.30818884445945
+   ],
+   "mae_delta": 0.12186192705969354,
+   "mae_ci": [
+    -0.2952596871715249,
+    0.5418556396247189
+   ]
+  },
+  "star_wr_also_out": {
+   "events": 0,
+   "rows": 0
+  },
+  "by_season": {
+   "2014": {
+    "events": 12,
+    "rows": 12,
+    "mse_a": 19.15877809486415,
+    "mse_b": 17.10951720569127,
+    "mae_a": 3.2977780948801474,
+    "mae_b": 2.8617095188205575,
+    "bias_a": -1.4775521893011412,
+    "bias_b": 1.3376915483446137,
+    "mse_delta": 2.0492608891728814,
+    "mse_ci": [
+     -6.32313847321674,
+     10.371407644577065
+    ],
+    "mae_delta": 0.4360685760595895,
+    "mae_ci": [
+     -0.865670812263876,
+     1.7039576629437505
+    ]
+   },
+   "2015": {
+    "events": 15,
+    "rows": 15,
+    "mse_a": 25.29869795399848,
+    "mse_b": 24.53488220278242,
+    "mae_a": 4.082297303083421,
+    "mae_b": 3.8153173567525505,
+    "bias_a": -0.6913325424698519,
+    "bias_b": 2.575321104640097,
+    "mse_delta": 0.7638157512160589,
+    "mse_ci": [
+     -16.22425809293259,
+     20.61571725735725
+    ],
+    "mae_delta": 0.26697994633087124,
+    "mae_ci": [
+     -1.3777665922993287,
+     2.1849658732600883
+    ]
+   },
+   "2016": {
+    "events": 19,
+    "rows": 19,
+    "mse_a": 61.47322273257905,
+    "mse_b": 47.30156022926483,
+    "mae_a": 6.777269725840663,
+    "mae_b": 5.751284785345399,
+    "bias_a": -2.2671637826893023,
+    "bias_b": 1.7343615235434249,
+    "mse_delta": 14.171662503314236,
+    "mse_ci": [
+     -12.97089248735624,
+     42.12376023490709
+    ],
+    "mae_delta": 1.0259849404952628,
+    "mae_ci": [
+     -0.8354825571836358,
+     2.868338644613067
+    ]
+   },
+   "2017": {
+    "events": 13,
+    "rows": 13,
+    "mse_a": 46.00511008690202,
+    "mse_b": 74.73038621433005,
+    "mae_a": 4.850828168238778,
+    "mae_b": 6.565518427625002,
+    "bias_a": 1.845589442586389,
+    "bias_b": 4.927612928717498,
+    "mse_delta": -28.725276127428035,
+    "mse_ci": [
+     -52.94918186438684,
+     -7.160195726947418
+    ],
+    "mae_delta": -1.7146902593862237,
+    "mae_ci": [
+     -2.956055732197237,
+     -0.32616525888322934
+    ]
+   },
+   "2018": {
+    "events": 16,
+    "rows": 16,
+    "mse_a": 34.771246004087445,
+    "mse_b": 21.744083321525743,
+    "mae_a": 5.262760403750948,
+    "mae_b": 3.8345346061567662,
+    "bias_a": -1.6474335529846207,
+    "bias_b": 0.8742763584620391,
+    "mse_delta": 13.027162682561704,
+    "mse_ci": [
+     -2.651152056106844,
+     29.63340262082458
+    ],
+    "mae_delta": 1.4282257975941821,
+    "mae_ci": [
+     0.011317287404751183,
+     2.8903752371926617
+    ]
+   }
+  }
+ }
+}

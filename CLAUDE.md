@@ -6862,6 +6862,14 @@ recent games predict, after a full-strength control: discovery 2020–25 +2.81pp
 (shadow only). Which receiver benefits did NOT replicate (top remaining WR in
 discovery, the other WRs blind), and pass-heavy teams show no larger effect, so
 any flag goes on the whole room, never one player.
+A third, `nfl-te-backup-blind-v1` ([study](docs/nfl-te-backup-blind-study.md),
+`model/nfl_te_backup_blind.py`): in the first game a TE with 4+ targets a game
+misses, the TE who takes over reaches 12+ DK points about twice as often as his
+own history says (discovery +8.14pp [+2.29, +14.63], blind 2014–18 +9.52pp
+[+1.12, +18.45] vs control TE2) → PROMOTE, shadow flag only. That test was added
+after discovery (disclosed). The TE-room target pie (φ 0.5) did NOT improve his
+points projection in either period (blind squared error +1.87 [−8.10, +12.15]):
+flag the wider upside, do not raise his mean.
 The rest of this section is the historical v1 design.
 
 A ruled-out player's work goes to his teammates. Implemented at the **slate

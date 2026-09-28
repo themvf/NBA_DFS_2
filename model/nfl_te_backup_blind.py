@@ -16,6 +16,10 @@ The TE room is its own pie: the team budget counts only tight ends' targets,
 and only tight ends inherit. Everything else is v1's walk-forward machinery
 (8-game window, half-life 4, >= 2 active games, full-strength reserve, 4x cap).
 
+Result (unmasked once 2026-09-28, docs/nfl-te-backup-blind-study.md):
+H2 PROMOTE, +9.52 pp [+1.12, +18.45] on 2014-2018 (75 events); H1
+NOT_PROMOTED, points squared error +1.87 [-8.10, +12.15]. Shadow flag only.
+
 Usage:
     python -m model.nfl_te_backup_blind discovery   # 2020-2025, already-seen seasons
     python -m model.nfl_te_backup_blind validate    # activity proxy vs true status, 2019-2025

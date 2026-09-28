@@ -158,3 +158,63 @@ refuses to grade if it fails (`VOID`).
    committed and pushed before `unmask` runs.
 2. `python -m model.nfl_te_backup_blind unmask` runs once; its output is
    recorded below verbatim.
+
+## Result (unmasked once, 2026-09-28, after registration commit 593f080)
+
+No deviations from the registration. Proxy validation re-ran inside `unmask`
+and passed (V1–V4). Full output and source digests:
+`artifacts/nfl_te_backup_blind_v1_unmask.json`.
+
+2014–2018: 75 first-game events, 109 under way, 1,722 control games (1,618
+with a second TE); 10 excluded as registered.
+
+### H2, big game: **PROMOTE** (B1 ✓, B2 ✓, B3 ✓)
+
+| | 12+ rate | expected from history | gap |
+|---|---:|---:|---:|
+| lead remaining TE, first game (75) | 20.0% (15) | 11.1% (8.3) | +8.9 pp |
+| TE2, control games (1,618) | 4.6% | 5.2% | −0.6 pp |
+| **effect** | | | **+9.52 pp [+1.12, +18.45]** |
+
+B2: +9.52 ≥ +4.07 (half of discovery's +8.14). The blind effect is slightly
+larger than discovery's; pooled over both periods (188 events) it is about
++8.7 pp. Absence already under way: +3.70 pp [−3.15, +10.70], not resolved
+(discovery +6.68 pp).
+
+### H1, mean projection: **NOT_PROMOTED** (G1 ✗, G2 ✗, G3 ✓, G4 ✓)
+
+| measure (φ 0.5 − BASE) | delta | 95% CI |
+|---|---:|---|
+| points squared error | +1.87 | [−8.10, +12.15] |
+| points MAE | +0.39 | [−0.38, +1.17] |
+| targets squared error | −0.80 | [−3.38, +1.74] |
+| bias (actual − projected), points | BASE +2.21 → φ 0.5 −0.98 | |
+
+By season the points delta swings from −28.7 (2017) to +14.2 (2016). Other
+remaining TEs: −0.36 [−3.22, +3.37]; under way: +0.40 [−4.76, +5.31]. No
+star-WR-also-out events remained (all 10 were excluded).
+
+### What it means
+
+- **The TE who takes over has a big game about twice as often as his own
+  recent games say**, and that held on seasons nobody had looked at: 20% vs
+  11% expected blind, 12% vs 4% in discovery, while backup TEs in
+  full-strength games land right on their history. Roughly one extra 12+ game
+  in every 11 such spots.
+- **His average projection should not simply be raised.** Handing him the
+  leftover targets removes the ~2–3 point average under-projection but makes
+  squared error no better in either period: some backups take the role and
+  many do not, and history cannot tell which. The honest signal is a wider
+  upside, not a higher mean. Same shape as the RB v2 carries result.
+- **It is a first-game effect, as with RBs and WRs.** Discovery showed the
+  gap persisting after the first game; the blind seasons do not resolve it.
+- H2 was chosen after discovery; the blind pass is what makes it credible, and
+  the lower bound (+1.1 pp) clears zero without much room.
+
+### What happens next (per the license above)
+
+A live shadow flag only: when the slate rules out a TE with 4+ targets a game
+who played his team's last game, flag the TE who takes over with the measured
+12+ uplift (about +9 pp, pooled) beside his normal ceiling, and grade it
+weekly against DraftKings results. Projections and optimizer ceilings do not
+change until that forward record exists. H1 licenses nothing.
