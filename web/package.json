@@ -112,6 +112,7 @@
     "test:nfl-chalk-leverage": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-chalk-leverage.ts",
     "test:nfl-workspace-stage": "node --import tsx ./scripts/test-nfl-workspace-stage.ts",
     "test:nfl-build-form": "node --import tsx ./scripts/test-nfl-build-form.ts",
+    "test:nfl-confirmed-starter": "node --import tsx ./scripts/test-nfl-confirmed-starter.ts",
     "test:nfl-results-history": "node --import tsx ./scripts/test-nfl-results-history.ts",
     "test:nfl-captain-simulation": "node --import tsx ./scripts/test-nfl-captain-simulation.ts",
     "test:cfb-dfs": "node --import tsx ./scripts/test-cfb-dfs.ts",
