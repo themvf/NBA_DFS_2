@@ -6832,9 +6832,16 @@ inactives (`INA`/`RES` weekly-roster status — the historical absence data
 earlier research said did not exist). Targets: no volume gain, points slightly
 worse → NOT_PROMOTED. Carries: volume clearly better (−0.37 carries/player) but
 points flat → INSUFFICIENT. The old additive transfer is +0.53/+0.65 points
-worse again. Do not wire the fixed pie into the slate as-is; a carries
-follow-up needs its own registration graded on points. The rest of this
-section is the historical v1 design.
+worse again. The carries follow-up `nfl-rb-absence-reallocation-v2`
+([study](docs/nfl-rb-absence-reallocation-study.md)) also moved RB-room
+targets, was graded on points squared error, and confirmed on 2020–21 (the
+seasons before 2019 lack `INA` status and cannot be used): carries confirmed a
+third time, points −1.28 [−3.66, +1.18] with MAE +0.11 → NOT_PROMOTED. Backs
+in RB-absence games beat their baseline by ≈ +1.25 points on average; v2
+removes that bias but cannot place the points on the right back. Do not wire
+either pie into the slate as-is; any next variant (a backfield-level bias
+correction, or display-only carries) is a new registration on 2026+ data.
+The rest of this section is the historical v1 design.
 
 A ruled-out player's work goes to his teammates. Implemented at the **slate
 read layer** (`web/src/lib/nfl-dfs/opportunity-redistribution.ts`,

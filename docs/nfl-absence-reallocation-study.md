@@ -195,7 +195,9 @@ those carries is what the method does not capture.
   on evidence rather than on its absence.
 - A carries follow-up needs its own registration: something that turns the
   volume gain into points (backup efficiency, goal-line share), graded on
-  points, with a pool-appropriate sample floor.
+  points, with a pool-appropriate sample floor. **Done as
+  [`nfl-rb-absence-reallocation-v2`](nfl-rb-absence-reallocation-study.md):
+  carries confirmed again on 2020–21, points not (NOT_PROMOTED).**
 - Targets: no further fixed-pie variant on this data. Anything new here needs
   new information (depth-chart or snap-share role data at the time of the
   absence), not another split rule.

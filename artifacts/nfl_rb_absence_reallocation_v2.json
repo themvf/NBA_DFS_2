@@ -1,0 +1,165 @@
+{
+ "study": "nfl-rb-absence-reallocation-v2",
+ "registered": "docs/nfl-rb-absence-reallocation-study.md",
+ "generated_at": "2026-09-28T01:39:19.983530+00:00",
+ "sources": {
+  "games.csv": "19b97bc83fbb2235791eda3e14d8436e4bdc8db64702c9e492806b524abf01a0",
+  "roster_weekly_2021.csv": "88adfe0fba5cbedd260d7928ad373476d4fb168d0213cb52ef1163ed5d3056b7",
+  "stats_player_week_2021.csv": "41915fb49238902ad1f129ebf0405b11a1e710454ae0fe8f7b3e4f9145875f48",
+  "roster_weekly_2022.csv": "bd6a50de334473c10f8058afa948fd0c6adc8a8b081da41c500cc0aa069c5312",
+  "stats_player_week_2022.csv": "ad426c3fe5bf1cc30c3f137fdfe96d054e19d400879ee4413129da49fa7b54be",
+  "roster_weekly_2023.csv": "1433f1f239784dde7fcb35349d211a9b83abfc0156337b72ec4f923abf715bd3",
+  "stats_player_week_2023.csv": "f19cb71a5de0dce7fd09376026237c9ee9d5a93fe13815a2ea3ec2d37204cb17",
+  "roster_weekly_2024.csv": "074ecaeb9325de943c11f7bbc941425626985090ef8386f90cd837fa5cb5d4b3",
+  "stats_player_week_2024.csv": "3ddc45a84f759aa348ce465ae001752c530575455717657cdfe1f8abfcdb4759",
+  "roster_weekly_2025.csv": "c2f7a1ffebe06058400af1989d1cd2900cc5c9659f084623708a06d4e28de35b",
+  "stats_player_week_2025.csv": "e5e0615b3d96a3eaebfaee91e55afb4a4e7fe0caf057454177bcd7d6ad4bcfc2",
+  "roster_weekly_2019.csv": "af6aa7b8aa7850c47fe307d548d66fa7c1cac88fe11e5951c781974cb6909e03",
+  "stats_player_week_2019.csv": "a05558126b1209b80fe11a8f18938cb35816370bf9990975a87de49e9eed7376",
+  "roster_weekly_2020.csv": "0b948cca8735a2417cbda14464f4532aeee58d871e2fcd8464a23e969e45789e",
+  "stats_player_week_2020.csv": "05b992676faccc8940efbf6242cb76358069372d31d7c2e02c1a4acdcd3cbe18",
+  "roster_weekly_2026.csv": "ba0cbf0fbba3b9432b79a226adff4ff3af55490ca852f1b1b208c65f0a181fac",
+  "stats_player_week_2026.csv": "11cbecd3da8e41c2e84f7858976599685c3dbfa1ce10e44b322464cc6d12706a"
+ },
+ "selection": {
+  "phi_carries": 0.5,
+  "phi_targets": 0.5,
+  "points_mse": {
+   "phi_carries=0.5,phi_targets=0": 41.325,
+   "phi_carries=0.5,phi_targets=0.5": 40.543,
+   "phi_carries=0.5,phi_targets=1": 40.964,
+   "phi_carries=1,phi_targets=0": 41.684,
+   "phi_carries=1,phi_targets=0.5": 42.023,
+   "phi_carries=1,phi_targets=1": 43.497
+  },
+  "points_mae": {
+   "phi_carries=0.5,phi_targets=0": 4.5334,
+   "phi_carries=0.5,phi_targets=0.5": 4.5438,
+   "phi_carries=0.5,phi_targets=1": 4.6035,
+   "phi_carries=1,phi_targets=0": 4.6127,
+   "phi_carries=1,phi_targets=0.5": 4.6601,
+   "phi_carries=1,phi_targets=1": 4.7603
+  },
+  "base_points_mse": 44.797,
+  "base_points_mae": 4.564,
+  "events": 513,
+  "rows": 1293
+ },
+ "frozen": {
+  "phi_carries": 0.5,
+  "phi_targets": 0.5
+ },
+ "confirmation": {
+  "points": {
+   "mse_delta": -1.279188345947492,
+   "mse_ci": [
+    -3.664501635145257,
+    1.1770375529394217
+   ],
+   "mae_delta": 0.1066498791054269,
+   "mae_ci": [
+    -0.027171662974753433,
+    0.24758305341151482
+   ],
+   "events": 334,
+   "rows": 946,
+   "bias_actual_minus_pred": 0.06019977604762781
+  },
+  "carries": {
+   "mse_delta": -5.6799521140932345,
+   "mse_ci": [
+    -7.516521859778709,
+    -3.899219454648878
+   ],
+   "mae_delta": -0.2574262572115694,
+   "mae_ci": [
+    -0.3736689436019562,
+    -0.14222994103132514
+   ],
+   "events": 334,
+   "rows": 946,
+   "bias_actual_minus_pred": 0.3117619396441659
+  },
+  "targets": {
+   "mse_delta": -0.18114623851265477,
+   "mse_ci": [
+    -0.3774697589768067,
+    0.0070872412468888915
+   ],
+   "mae_delta": 0.01223821572009541,
+   "mae_ci": [
+    -0.020403237060335703,
+    0.04522670393352001
+   ],
+   "events": 334,
+   "rows": 946,
+   "bias_actual_minus_pred": 0.04939203727515091
+  },
+  "by_season": {
+   "2020": {
+    "mse_delta": -1.6380025252244343,
+    "mse_ci": [
+     -5.015357573682179,
+     1.4174244645155005
+    ],
+    "mae_delta": 0.06699123203643863,
+    "mae_ci": [
+     -0.11063461543714392,
+     0.23809188765198008
+    ],
+    "events": 163,
+    "rows": 481,
+    "bias_actual_minus_pred": -0.08270893524132347
+   },
+   "2021": {
+    "mse_delta": -0.9080278723298374,
+    "mse_ci": [
+     -4.3632161112379615,
+     2.6365642960168443
+    ],
+    "mae_delta": 0.14767312478324057,
+    "mae_ci": [
+     -0.06388602930526135,
+     0.3656343417789435
+    ],
+    "events": 171,
+    "rows": 465,
+    "bias_actual_minus_pred": 0.20802577632716673
+   }
+  },
+  "carries_only_v1_points": {
+   "mse_delta": -1.3011723794302723,
+   "mse_ci": [
+    -2.9418565864390254,
+    0.386595102632566
+   ],
+   "mae_delta": 0.030666265968373685,
+   "mae_ci": [
+    -0.06524613661308798,
+    0.13366763473670668
+   ],
+   "events": 334,
+   "rows": 946,
+   "bias_actual_minus_pred": 0.5078888167137372
+  },
+  "gate": {
+   "G1_points_squared_error": false,
+   "G2_points_mae_noninferior": false,
+   "G3_mechanism": true,
+   "G4_sample": true,
+   "verdict": "NOT_PROMOTED"
+  }
+ },
+ "descriptive_2026": {
+  "events": 15,
+  "rows": 29,
+  "points_mse": {
+   "BASE": 25.105567278518784,
+   "FROZEN": 37.235139782839504
+  },
+  "points_mae": {
+   "BASE": 3.9041496542279175,
+   "FROZEN": 4.530830380234166
+  }
+ }
+}

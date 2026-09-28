@@ -115,3 +115,54 @@ Verdicts: `PROMOTE`, `NOT_PROMOTED` (G4 passes, another gate fails),
 - **NOT_PROMOTED / INSUFFICIENT:** v3 behaviour stays (baseline retained).
   No retuning of φ, thresholds, window or metric on 2020–2021. A further
   variant is a new registration on data neither study has graded.
+
+## Result (run 2026-09-28, after registration commit eafe710)
+
+No deviations from the registration. Reproduce with
+`python -m model.nfl_rb_absence_reallocation study`; full output and source
+digests in `artifacts/nfl_rb_absence_reallocation_v2.json`.
+
+**Verdict: NOT_PROMOTED.** Baselines stay for RB absences (v3 behaviour).
+
+Confirmation 2020–2021, frozen setting (φ 0.5 / 0.5) versus BASE, 334 events,
+946 rows:
+
+| measure | delta | 95% CI | gate |
+|---|---:|---|---|
+| points squared error | −1.28 | [−3.66, +1.18] | G1 ✗ |
+| points MAE | +0.107 | [−0.027, +0.248] | G2 ✗ (upper > +0.15) |
+| carries squared error | −5.68 | [−7.52, −3.90] | G3 ✓ |
+| RB-room targets squared error | −0.18 | [−0.38, +0.01] | G3 ✓ |
+| sample | 334 events / 946 rows | | G4 ✓ |
+
+| setting | points MSE | points MAE | bias (actual − pred) |
+|---|---:|---:|---:|
+| BASE | 43.90 | 4.663 | +1.250 |
+| v1 carries only (0.5, 0) | 42.60 | 4.694 | +0.508 |
+| v2 frozen (0.5, 0.5) | 42.62 | 4.770 | +0.060 |
+
+By season (points squared error): 2020 −1.64 [−5.02, +1.42], 2021 −0.91
+[−4.36, +2.64]. 2026 weeks 1–3 (15 events, 29 rows, descriptive): frozen
+worse, MSE 37.2 versus 25.1.
+
+### What it means
+
+- **The carries allocation is real.** It is now confirmed in three separate
+  periods: 2022–23 discovery, 2024–25 (v1) and 2020–21 (v2), with carries MAE
+  −0.26 [−0.37, −0.14] here.
+- **The baseline's average under-projection is real too.** Backs in
+  RB-absence games beat their baseline by +1.25 points in 2020–21 and +1.39 in
+  2022–25. v2 removes almost all of it (bias +0.06).
+- **What does not survive is player-level points skill.** The squared-error
+  gain (−1.28) is about what removing a +1.25 average bias is worth on its own
+  (1.25² ≈ 1.56). Beyond that, spreading the points across individual backs
+  adds as much error as it removes, and typical misses (MAE) get slightly
+  worse. The discovery gain (−4.25) shrank to a third out of sample, which is
+  also what selecting the best of six settings on discovery predicts.
+- Per the registration, φ, thresholds, window and metric are not retuned on
+  2020–2021. Two ideas are left, each a **new registration** on data neither
+  study has graded (2026 onward):
+  1. a backfield-level (team) correction of that average bias rather than a
+     per-player split;
+  2. showing the carries estimate as display-only volume information, which
+     the carries evidence alone supports.

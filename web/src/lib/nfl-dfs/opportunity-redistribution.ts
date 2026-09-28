@@ -53,8 +53,15 @@
  *   carries  volume better -0.367 [-0.525, -0.210], points flat    INSUFFICIENT
  *   old additive transfer: +0.53 / +0.65 points worse, as in week 2
  *
- * Withholding now rests on that evidence. A carries follow-up needs its own
- * registration graded on points; do not wire the fixed pie in here as-is.
+ * The carries follow-up (docs/nfl-rb-absence-reallocation-study.md, v2) also
+ * moved RB-room targets and was graded on points squared error, on 2020-21:
+ *
+ *   carries  -5.68 squared error [-7.52, -3.90]   volume confirmed again
+ *   points   -1.28 [-3.66, +1.18], MAE +0.11       NOT_PROMOTED
+ *
+ * Backs in these games beat their baseline by about +1.25 points on average,
+ * and v2 removes that bias, but it cannot say which back gets the points.
+ * Withholding rests on that evidence; do not wire either pie in here as-is.
  */
 
 import { scoreNflOffenseLinear } from "./scoring";
@@ -193,7 +200,7 @@ export const POOLS: Readonly<Record<PoolName, PoolSpec>> = {
 const WITHHELD_REASON: Readonly<Record<PoolName, string>> = {
   pass: '',
   target: 'Baseline retained on evidence: handing teammates the targets left over after their own averages was tested on 2024–25 gameday inactives and did not predict their targets better, and made fantasy points slightly worse (nfl-absence-reallocation-v1).',
-  rush: 'Baseline retained on evidence: handing the backup the carries left over was tested on 2024–25 gameday inactives. It predicted carries better but not fantasy points, so it is not applied (nfl-absence-reallocation-v1).',
+  rush: 'Baseline retained on evidence: handing the remaining backs the leftover carries (and, in a second test, the leftover RB receiving work) predicted their carries better on 2020–21 and 2024–25 gameday inactives, but not their fantasy points, so it is not applied (nfl-absence-reallocation-v1, nfl-rb-absence-reallocation-v2).',
 };
 
 /** Scaled by total touches rather than by any single pool. */
