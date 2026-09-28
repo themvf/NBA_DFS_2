@@ -215,3 +215,41 @@ def test_outcome_amendment_is_forward_only_and_has_an_exact_scorer_pin(tmp_path)
     import pytest
     with pytest.raises(ValueError, match="backdated"):
         resolve_registration(index)
+
+
+def test_prospective_adapter_reports_foreign_envelopes_without_grading_them(monkeypatch):
+    from model.nfl_matchup_study import digest
+    from research import nfl_matchup_study as adapter
+    m = manifest()
+    m["baseline_config_hash"] = digest({"model_version": "nfl-dfs-historical-v5", "model_config": {}})
+    monkeypatch.setattr(adapter, "resolve_registration", lambda entry: deepcopy(entry))
+    row = rows(m)[0]
+    distribution = {"mean": 10., "p50": 11., "p10": 0., "p90": 20., "boom": .1}
+    valid = {"forecast_model_version": "nfl-matchup-shadow-v1", "player_id": "qb", "game_id": row["game_id"],
+        "season": row["season"], "week": row["week"], "kickoff": row["kickoff"], "run_id": "pfr-run",
+        "created_at": row["captured_at"], "as_of_at": row["decision_cutoff"], "baseline_created_at": row["available_at"],
+        "baseline_version": "nfl-dfs-historical-v5", "baseline_config": {},
+        "manifest": {"model_hashes": {"pressure": m["candidate_config_hash"]}},
+        "projection": {"position": "QB", "baseline": {"id": "saved-qb"}, "shadow": {
+            "status": "under_evaluation", "baseline": distribution, "candidate": dict(distribution),
+            "matchup_manifest_hash": "c"*64}}}
+    foreign = {"forecast_model_version": "nfl-allowed-rushing-volume-v1", "run_id": "allowed-run",
+               "projection": {"baseline": {"position": "RB"}, "shadow": {}}, "manifest": {}}
+    assert "position" not in foreign["projection"]
+    class Database:
+        def __init__(self):
+            self.calls = 0
+        def execute(self, sql, params):
+            self.calls += 1
+            if self.calls == 1:
+                assert "f.model_version forecast_model_version" in sql
+                return [foreign, valid]
+            return []
+    report = adapter.prospective_reports(Database(), 2026, NOW, {"studies": [m]})
+    assert report["source_forecast_rows"] == 2
+    assert report["supported_forecast_rows"] == 1
+    assert report["ignored_foreign_forecast_rows"] == 1
+    assert report["ignored_foreign_model_versions"] == {"nfl-allowed-rushing-volume-v1": 1}
+    assert report["studies"][0]["frozen_rows"] == 1
+    assert report["studies"][0]["rejected"] == {"unscored": 1}
+    assert report["studies"][0]["registration_errors"] == []
