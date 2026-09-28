@@ -1,0 +1,24 @@
+{
+  "study_id": "nfl-matchup-pickem-pressure-v2",
+  "registration_manifest_hash": "4b95c9dc4504bdf57f19b79b3de5f7207c86d0e99a138d1a40cb1e78e2645efd",
+  "pinned_at": "2026-09-28T02:06:55.439045+00:00",
+  "hash_algorithm": "sha256_lf_normalized",
+  "hashes": {
+    "db/nfl_pfr_schema.py": "da5f40c0fa9e8b044de2799b6c7af11651b73b6942d4341f866abafebfbd31e1",
+    "ingest/nfl_dfs_weekly.py": "fc06c1dc4a432a24867b23f4f17acabefdad9b063f7b8904160555c712d70104",
+    "ingest/nfl_matchup_context.py": "4165224eae613ba64799870ae28faa4e1f4e8160823680335d6d763b450e56dd",
+    "ingest/nfl_pickem_refresh.py": "ef2168cba37c31c4d6546b7b69b37019d621edb23989a6a84e604c0fe42d846e",
+    "ingest/nfl_weekly_evidence.py": "47f32171f71fe36185ac3a204ba1fa95349f2f1c8671d99d7e06703397a55d23",
+    "model/nfl_matchup_features.py": "1c184902cedd13c89400aacec343f194fb7feb8678bc8900817c7704d3e803d2",
+    "model/nfl_matchup_projection.py": "634bfff4d1bc687d05585be7ff00218b35a1812c0a8073ed79846dc1259fe4c7",
+    "research/nfl_pickem_matchup.py": "a75d043bac2677c2d28acab5b0dfc04c733059a435d4f92d15c61545e4f1b7ce"
+  },
+  "reason": "Forward-only preservation of complete evaluation cohorts: freeze every registered combined, pressure and contact arm including exact fallbacks; separately mark the preferred usable default forecast. Earlier forecasts and model coefficients remain immutable.",
+  "outcomes_consulted": false,
+  "qualification_scope": {
+    "consumer": "nfl_pickem_probability",
+    "usage": "predictive_shadow_only",
+    "capture": "eligible_upcoming_regular_season_games"
+  },
+  "previous_pin_hash": "103a9ba6abe16ded2a3d23ff575c5db425cb21f9eabb75892df101ebcf67d06e"
+}

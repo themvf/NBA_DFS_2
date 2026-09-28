@@ -123,12 +123,12 @@ def feature_vector(matchup, team, family):
     own = matchup["teams"][team]["offense"]
     allowed = matchup["teams"][opponent]["defense"]
     if family == "pressure":
-        if own.get("pressure_coverage_complete") is not True or allowed.get("pressure_coverage_complete") is not True:
+        if own.get("pressure_coverage_usable", own.get("pressure_coverage_complete")) is not True or allowed.get("pressure_coverage_usable", allowed.get("pressure_coverage_complete")) is not True:
             return None
         if min(own["pressure_games"], allowed["pressure_games"]) < 2:
             return None
         return {"own_pressure": own["pressure_pct"], "opp_pressure": allowed["pressure_pct"]}
-    if own.get("contact_coverage_complete") is not True or allowed.get("contact_coverage_complete") is not True:
+    if own.get("contact_coverage_usable", own.get("contact_coverage_complete")) is not True or allowed.get("contact_coverage_usable", allowed.get("contact_coverage_complete")) is not True:
         return None
     if min(own.get("rb_carries") or 0, allowed.get("rb_carries") or 0) < 20:
         return None

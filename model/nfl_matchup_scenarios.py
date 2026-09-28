@@ -18,7 +18,7 @@ from model.nfl_dfs_efficiency import CONFIG, simulate_team
 from model.nfl_dfs_historical import draftkings_points, BOOM_THRESHOLDS
 from ingest.nfl_dfs_results import _score_dst
 
-VERSION = "nfl-coherent-matchup-research-v3"
+VERSION = "nfl-coherent-matchup-research-v4"
 OFFENSE_MAP = {"passing_yards": "passYds", "passing_tds": "passTds", "passing_interceptions": "interceptions",
                "rushing_yards": "rushYds", "rushing_tds": "rushTds", "receiving_yards": "recYds", "receiving_tds": "recTds",
                "receptions": "receptions", "fumbles_lost_total": "fumblesLost", "special_teams_tds": "returnTds", "fumble_recovery_tds": "offensiveFumbleRecoveryTds"}
@@ -150,7 +150,7 @@ def build_coherent_banks(*, slate, forecasts, history, team_rows, identities, ba
     manifests = {"version": VERSION, "sources": source_manifest, "draws": draws, "seed": seed,
                  "history_games": len(blocks), "rejected_game_ids": rejected, "budget_means": budget_means,
                  "conversion_rates": conversion_rates.tolist(), "rate_factors": rate_factors or {},
-                 "research_registration": "nfl-coherent-matchup-v3", "kicker_roles": kicker_roles, "authority": "shadow_only"}
+                 "research_registration": "nfl-coherent-matchup-v4", "kicker_roles": kicker_roles, "authority": "shadow_only"}
     snapshot = stable_digest({"manifest": manifests, "slate": slate, "forecasts": forecasts, "identities": identities, "decision": decision_at})
     banks, diagnostics = [], []
     common_supported = None

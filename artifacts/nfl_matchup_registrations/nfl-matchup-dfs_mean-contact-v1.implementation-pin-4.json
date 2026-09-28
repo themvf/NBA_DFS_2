@@ -1,0 +1,26 @@
+{
+  "study_id": "nfl-matchup-dfs_mean-contact-v1",
+  "registration_manifest_hash": "9a31a975293b5ab9041a37a2245e3ab857fa10cdd9ba301ba555989730b7c56a",
+  "previous_pin_hash": "d2277a588ff880d6b0303aa183433b4e5a9740e7f9ac08ccb6c41a1f8151fab7",
+  "pinned_at": "2026-09-28T01:58:20.336815+00:00",
+  "hash_algorithm": "sha256_lf_normalized",
+  "hashes": {
+    "db/nfl_pfr_schema.py": "da5f40c0fa9e8b044de2799b6c7af11651b73b6942d4341f866abafebfbd31e1",
+    "ingest/nfl_dfs_weekly.py": "fc06c1dc4a432a24867b23f4f17acabefdad9b063f7b8904160555c712d70104",
+    "ingest/nfl_matchup_context.py": "4165224eae613ba64799870ae28faa4e1f4e8160823680335d6d763b450e56dd",
+    "ingest/nfl_pickem_refresh.py": "ef2168cba37c31c4d6546b7b69b37019d621edb23989a6a84e604c0fe42d846e",
+    "ingest/nfl_weekly_evidence.py": "47f32171f71fe36185ac3a204ba1fa95349f2f1c8671d99d7e06703397a55d23",
+    "model/nfl_dfs_historical.py": "e68c45b32151a8fb77f94eb295d181ec5ad5881ee6b3384fb04e4a95b28b5b55",
+    "model/nfl_matchup_features.py": "1c184902cedd13c89400aacec343f194fb7feb8678bc8900817c7704d3e803d2",
+    "model/nfl_matchup_projection.py": "634bfff4d1bc687d05585be7ff00218b35a1812c0a8073ed79846dc1259fe4c7",
+    "research/nfl_matchup_implementation.py": "47e65568c20f797f4ed96f89d8659c81a3b67d9523dcaed148d8f50c5ccbb64a"
+  },
+  "reason": "Forward-only participant reconciliation and usable-history repair: preserve complete weekly participant evidence independently of fantasy eligibility, exclude kneel-only pressure participants, normalize FB/RB contact scope, diagnose true count mismatches, retain verified prior games with unchanged minimum evidence, and support separately fitted pressure/contact pickem fallbacks. No 2026 outcomes used to fit or choose coefficients; earlier forecasts remain immutable.",
+  "outcomes_consulted": false,
+  "qualification_scope": {
+    "consumer": "nfl_dfs_projection",
+    "usage": "predictive_shadow_only",
+    "platform": "DraftKings",
+    "capture": "saved_current_week_Classic_salary_pool"
+  }
+}

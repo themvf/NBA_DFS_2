@@ -52,6 +52,7 @@ export type FrozenEvidence = GameEvidence & {
     baselinePlusDefenseHome: number;
     applied: boolean;
     forecastId: string | null;
+    reason?: string;
   };
   pTie?: number | null;
   tiePoints?: number;

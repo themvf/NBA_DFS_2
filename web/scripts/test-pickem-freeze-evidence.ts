@@ -90,6 +90,17 @@ async function main() {
       const saved=(await getPickemLedger(2026)).find(r=>r.poolId===poolId && r.week===partialWeek)!;
       assert.equal(saved.games.length,remaining.length);
       assert.ok(saved.games.every(g=>remaining.some(r=>r.gameId===g.gameId)));
+      for (const row of saved.games) {
+        const pair = row.evidence?.defensiveComparison;
+        assert.ok(pair, "Saved cards must retain both projection numbers");
+        assert.equal(pair.baselinePlusDefenseHome, row.pHome);
+        if (pair.applied) {
+          assert.ok(row.evidence?.matchup?.candidate);
+          assert.equal(row.evidence.matchup.candidate.homeConditional, row.pHome);
+          assert.equal(row.evidence.matchup.input.baseline.homeConditional, pair.baselineHome);
+          assert.equal(row.evidence.matchup.input.baseline.marketCapturedAt, row.evidence.latest?.capturedAt);
+        }
+      }
       const invalid=await freezePickemRecommendation({...partialInput,fieldModel:{contestComparison:{config:{...config,settledWeek:null}}}});
       assert.equal(invalid.ok,false,"Missing locked-game score evidence must reject midweek freeze");
     }

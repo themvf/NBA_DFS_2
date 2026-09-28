@@ -117,18 +117,21 @@ def participant_manifests(weekly_rows: list[dict], games: list[dict], cutoff: da
         if team not in {team_code(eligible[gid]["home"]), team_code(eligible[gid]["away"])}:
             continue
         attempts, carries, sacks = (number(raw.get(k)) for k in ("attempts", "carries", "sacks_suffered"))
-        position = raw.get("position")
-        passer = (attempts or 0) > 0 or (sacks or 0) > 0 or (position == "QB" and (carries or 0) > 0)
+        source_position = raw.get("position")
+        position = "RB" if source_position == "FB" else source_position
+        plays = play_groups.get((gid, team, raw.get("player_name")), [])
+        # Carries include kneels and designed runs. Only passing exposure makes
+        # a participant part of the pressure population, including non-QB passes.
+        passer = (attempts or 0) > 0 or (sacks or 0) > 0 or bool(plays)
         rusher = (carries or 0) > 0
         if not passer and not rusher:
             continue
         participant = {"source_row_id": str(row["id"]), "source": row.get("source"),
             "available_at": stamp(row["fetched_at"]).isoformat(), "raw_digest": stable_digest(raw),
-            "team": team, "gsis_id": raw.get("player_id"), "position": position,
+            "team": team, "gsis_id": raw.get("player_id"), "position": position, "source_position": source_position,
             "attempts": attempts, "sacks_suffered": sacks, "carries": carries, "passer": passer, "rusher": rusher}
         # Attribute retained PBP names through the retained weekly source row;
         # never use today's roster or infer exposures from rounded percentages.
-        plays = play_groups.get((gid, team, raw.get("player_name")), [])
         if plays and attempts is not None and sacks is not None:
             pbp_attempts = sum(not p["scramble"] and not p["sack"] for p in plays)
             pbp_sacks = sum(p["sack"] for p in plays)
@@ -178,6 +181,7 @@ def pressure_observation(rows, expected):
 
 def _coverage(rows, expected, manifest, *, family):
     reasons = []
+    discrepancies = []
     if not manifest:
         reasons.append("participant_source_unavailable")
     if not expected:
@@ -186,7 +190,9 @@ def _coverage(rows, expected, manifest, *, family):
         reasons.append("expected_identity_unresolved")
     relevant = [r for r in rows if r.get("section") == ("passing_advanced" if family == "pressure" else "rushing_advanced")]
     if family == "contact":
-        relevant = [r for r in relevant if r.get("position") == "RB" or r.get("identity_status") != "resolved"]
+        expected_by_id = {r.get("gsis_id"): r for r in expected}
+        relevant = [r for r in relevant if r.get("position") in ("RB", "FB")
+                    or r.get("gsis_id") in expected_by_id or r.get("identity_status") != "resolved"]
     if any(not r.get("gsis_id") or r.get("identity_status") != "resolved" for r in relevant):
         reasons.append("pfr_identity_unresolved")
     actual_ids = [r.get("gsis_id") for r in relevant]
@@ -195,6 +201,10 @@ def _coverage(rows, expected, manifest, *, family):
         reasons.append("duplicate_participant_identity")
     if set(actual_ids) != set(expected_ids):
         reasons.append("participant_set_mismatch")
+        discrepancies.extend({"gsis_id": identity, "issue": "missing_pfr_participant"}
+                             for identity in sorted(set(expected_ids) - set(actual_ids), key=str))
+        discrepancies.extend({"gsis_id": identity, "issue": "missing_weekly_participant"}
+                             for identity in sorted(set(actual_ids) - set(expected_ids), key=str))
     if family == "pressure":
         _, _, reason = pressure_observation(relevant, expected)
         if reason:
@@ -207,9 +217,15 @@ def _coverage(rows, expected, manifest, *, family):
             stats = r["stats"]
             if any(stats.get(k) is None for k in ("carries", "rushing_yards_before_contact", "rushing_yards_after_contact")):
                 reasons.append("rb_contact_fields_missing")
-            if stats.get("carries") != expected_carries.get(r.get("gsis_id")):
+            identity = r.get("gsis_id")
+            if identity in expected_carries and stats.get("carries") is not None and expected_carries[identity] is not None and stats["carries"] != expected_carries[identity]:
                 reasons.append("rb_carry_count_mismatch")
+                discrepancies.append({"gsis_id": identity, "issue": "rb_carry_count_mismatch",
+                                      "pfr_carries": stats["carries"], "weekly_carries": expected_carries[identity]})
+            elif identity in expected_carries and expected_carries[identity] is None:
+                reasons.append("weekly_carries_missing")
     return {"complete": not reasons, "reasons": sorted(set(reasons)), "expected_ids": sorted(x for x in expected_ids if x),
+            "discrepancies": discrepancies,
             "observed_ids": sorted(x for x in actual_ids if x), "participant_manifest_hash": (manifest or {}).get("manifest_hash")}
 
 
@@ -243,7 +259,8 @@ def _summarize(snapshots: list[dict], team: str, *, defense: bool) -> dict:
             if r.get("identity_status") != "resolved" or not m.get("identity_manifest"):
                 unresolved += 1
                 continue
-            if r.get("position") != "RB":
+            expected_contact = {r["gsis_id"] for r in expected if r["rusher"] and r.get("position") == "RB"}
+            if r.get("position") not in ("RB", "FB") and r.get("gsis_id") not in expected_contact:
                 continue
             stats = r["stats"]
             c, before, after = (stats.get(k) for k in ("carries", "rushing_yards_before_contact", "rushing_yards_after_contact"))
@@ -263,6 +280,7 @@ def _summarize(snapshots: list[dict], team: str, *, defense: bool) -> dict:
             "rb_after_contact_per_carry": after / carries if carries else None,
             "rb_contact_yards_per_carry": (before + after) / carries if carries else None,
             "unresolved_rushing_rows": unresolved, "participant_coverage": coverage,
+            "pressure_coverage_usable": bool(pressures), "contact_coverage_usable": bool(contacts),
             "pressure_coverage_complete": bool(coverage) and all(c["pressure"]["complete"] for c in coverage),
             "contact_coverage_complete": bool(coverage) and all(c["contact"]["complete"] for c in coverage)}
 
@@ -288,6 +306,7 @@ def build_matchup(*, game: dict, prior_games: list[dict], snapshots: list[dict],
                 teams[team][side]["pressure_coverage_complete"] = False
                 teams[team][side]["contact_coverage_complete"] = False
     result = {"version": VERSION, "game_id": game["game_id"], "kickoff": stamp(game["kickoff"]).isoformat(),
+              "coverage_policy": "valid_prior_games_minimum_two_pressure_games_twenty_rb_fb_carries_v2",
               "as_of_at": as_of.isoformat(), "home": team_code(game["home"]), "away": team_code(game["away"]),
               "teams": teams, "sources": sorted(used.values(), key=lambda s: s["snapshot_id"]),
               "participant_sources": sorted({s["participant_manifest"]["manifest_hash"]: s["participant_manifest"]

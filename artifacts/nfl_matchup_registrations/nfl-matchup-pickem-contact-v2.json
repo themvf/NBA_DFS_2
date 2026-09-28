@@ -1,0 +1,111 @@
+{
+  "status": "registered",
+  "registered_at": "2026-09-28T01:58:20.336815+00:00",
+  "holdout_start_at": "2026-09-28T01:58:20.336815+00:00",
+  "holdout_end_at": "2026-12-01T00:00:00+00:00",
+  "development_note": "All 2023-2025 data are retrospective development; no held-out historical performance or tuning split is claimed. Fixed priors/settings are declared before prospective evaluation.",
+  "feature_versions": {
+    "shared": "nfl-matchup-features-v1",
+    "coverage": "verified_prior_games_v2",
+    "family": "contact"
+  },
+  "source_versions": {
+    "pfr": "nflverse_pfr_fields_percentage_points",
+    "game_outcomes": "nfl_season_games.completed/home_score/away_score",
+    "market": "frozen_latest_valid_two_sided_novig"
+  },
+  "candidate_config_hash": "733fc2e3272491ee0523dc128d7e8e34092719beb7b2600cd7ba52ab0696fe4f",
+  "baseline_config_hash": "6909ff312194872b6532ebe05abbb9e97fce3d972b3c798cce31735529434b21",
+  "family_size": 6,
+  "seed": 20260927,
+  "bootstrap_draws": 10000,
+  "fallback": "exact_frozen_approved_baseline",
+  "rollback": {
+    "weeks": 8,
+    "rule": "primary_delta_lower_ci_above_zero_or_guardrail_harm"
+  },
+  "calibration_bins": [
+    0.0,
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9,
+    1.0
+  ],
+  "study_id": "nfl-matchup-pickem-contact-v2",
+  "kind": "pickem",
+  "consumer": "nfl_pickem_probability",
+  "hypothesis": "Separately fitted contact opponent evidence improves the paired market baseline when combined evidence is unavailable.",
+  "cohort": {
+    "league": "NFL",
+    "game_type": "REG"
+  },
+  "affected_positions": [],
+  "components": [
+    "contact"
+  ],
+  "scoring_version": "nfl-game-outcome-three-class-v1",
+  "gates": {
+    "min_weeks": 8,
+    "min_rows": 100,
+    "min_games": 100,
+    "primary_metric": "three_class_log_loss",
+    "primary_materiality": 0.001,
+    "brier_harm": 0.002,
+    "calibration_harm": 0.01,
+    "tie_model_version": "training-empirical-ties-v1"
+  },
+  "development_start_at": "2023-01-01T00:00:00+00:00",
+  "development_end_at": "2026-03-01T00:00:00+00:00",
+  "tuning_mode": "fixed_prior_no_tuning",
+  "baseline_config": {
+    "version": "pickem-market-baseline-v1",
+    "market": "latest_valid_two_sided_novig",
+    "tie_model": {
+      "version": "training-empirical-ties-v1",
+      "ties": 1,
+      "games": 816
+    },
+    "tie_probability": 0.0012254901960784314,
+    "probability_clip": 1e-06,
+    "clip_normalization": true,
+    "freshness_seconds": {
+      "inside_24h": 7200,
+      "otherwise": 86400
+    },
+    "quote_eligibility": "captured_at<=decision_cutoff<kickoff; two-sided abs moneylines>=100; no paid refresh",
+    "sources": [
+      "game_odds_history",
+      "nfl_season_games.market"
+    ],
+    "tied_timestamp_order": "captured_at DESC, quote_source ASC, quote_id DESC"
+  },
+  "model_artifacts": {
+    "contact": "733fc2e3272491ee0523dc128d7e8e34092719beb7b2600cd7ba52ab0696fe4f"
+  },
+  "parameter_contract": {
+    "ridge": 20.0,
+    "intercept": false,
+    "feature_scales": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "feature_keys": [
+      "own_ybc",
+      "opp_ybc",
+      "own_yac",
+      "opp_yac"
+    ],
+    "lookback_games": 4,
+    "tie": "shared frozen empirical2023-2025 training component",
+    "coverage": "valid games only; >=2 pressure games or >=20 RB/FB carries per relevant side",
+    "selection": "combined preferred; standalone family only when combined unavailable"
+  }
+}

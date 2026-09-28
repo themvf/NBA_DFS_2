@@ -255,7 +255,9 @@ export async function freezePickemRecommendation(input: {
       const context = evidence.games[g.gameId] ?? EMPTY_EVIDENCE;
       const t = tags.get(g.gameId) ?? { home: [], away: [] };
       const favoriteHome = g.pHome >= 0.5;
-      const snapshot: FrozenEvidence = { ...context, version: 1, recordedAt: evidence.loadedAt,
+      const snapshot: FrozenEvidence = { ...context,
+        matchup: selected.forecasts[g.gameId] ?? context.matchup,
+        version: 1, recordedAt: evidence.loadedAt,
         coverageWarnings: evidence.warnings,
         probabilityComputedAt: real.computedAt, favoriteHome,
         pTie: real.pTie, tiePoints, fieldObservation: g.fieldObservation ?? null,
@@ -264,6 +266,7 @@ export async function freezePickemRecommendation(input: {
           baselinePlusDefenseHome: real.pHome,
           applied: selected.appliedGameIds.includes(g.gameId),
           forecastId: context.matchup?.forecastId ?? null,
+          reason: selected.reasons[g.gameId],
         },
         narrative: narrativeRead(favoriteHome ? t.home : t.away, favoriteHome ? t.away : t.home).verdict,
         scenario: g.scenario ?? null,

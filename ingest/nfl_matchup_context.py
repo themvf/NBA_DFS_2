@@ -24,9 +24,18 @@ def load_matchups(db, season, week, as_of):
         FROM nfl_pbp_archetypes WHERE season=%s AND (qb_dropback=TRUE OR play_type='qb_spike')
           AND play_type <> 'no_play' AND COALESCE(two_point_result,'')=''
           AND labelled_at<=%s ORDER BY game_id,play_id""", (season, as_of))]
-    participants = participant_manifests([dict(r) for r in db.execute("""SELECT id,team,source,source_row,fetched_at
+    weekly = [dict(r) for r in db.execute("""SELECT id,team,source,source_row,fetched_at
         FROM ff_player_week_stats WHERE season=%s AND season_type='REG' AND source='nflverse'
-          AND fetched_at<=%s ORDER BY id""", (season, as_of))], games, as_of, passing_plays)
+          AND fetched_at<=%s ORDER BY id""", (season, as_of))]
+    exists = db.execute_one("SELECT to_regclass('nfl_weekly_participant_evidence') present")
+    if exists and exists["present"]:
+        full = [dict(r) for r in db.execute("""SELECT DISTINCT ON(game_id,gsis_id)
+            id,team,source,source_row,fetched_at FROM nfl_weekly_participant_evidence
+            WHERE season=%s AND fetched_at<=%s
+            ORDER BY game_id,gsis_id,fetched_at DESC,id DESC""", (season, as_of))]
+        keys = {(r["source_row"]["game_id"], r["source_row"]["player_id"]) for r in full}
+        weekly = full + [r for r in weekly if (r["source_row"].get("game_id"), r["source_row"].get("player_id")) not in keys]
+    participants = participant_manifests(weekly, games, as_of, passing_plays)
     for snapshot in snapshots:
         snapshot["participant_manifest"] = participants.get(snapshot["game_id"])
     return {g["game_id"]: build_matchup(game=g, prior_games=games, snapshots=snapshots, as_of=as_of)

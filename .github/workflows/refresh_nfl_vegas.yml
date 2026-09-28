@@ -41,3 +41,5 @@ jobs:
           echo "NFL_TARGET_DATE=$TARGET_DATE" >> "$GITHUB_ENV"
       - name: Refresh NFL schedule, odds, scores, alerts, and pickem probabilities
         run: python -m ingest.refresh_nfl_vegas --date "$NFL_TARGET_DATE"
+      - name: Rebuild opponent forecasts for changed NFL odds
+        run: python -m ingest.nfl_pickem_refresh

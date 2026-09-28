@@ -154,3 +154,11 @@ of the exact comparison and an SHA256 archive manifest. A same-day rerun never
 overwrites the earlier bank, ledgers, or report referenced by an immutable DB
 record. Each stage must produce fresh outputs before the next stage can use
 them. The status file at the date directory is only the latest-run pointer.
+
+## September 28 coherent registration repair
+
+The current coherent registration is `nfl-coherent-matchup-v4`, recorded at 2026-09-28T11:50:46.075313+00:00. The opponent processing repair changed the pressure/contact coverage predicate in `model/nfl_matchup_projection.py`; v3 correctly rejected that changed implementation. v4 pins the current implementation and gives new banks a distinct model identity. The immutable v3 manifest remains in `research/nfl_coherent_scenario_study_v3.json`; v4 is archived alongside it. Historical compact reports keep their original registrations and are graded separately.
+
+The baseline configuration, fitted models, scoring contracts, independent simulation streams, draw counts, first full forward week (2026 Week 4), December 1 endpoint, eight-week evidence floor, and distribution/portfolio gates are unchanged. There is no refit or production promotion. Captures must occur after the new registration and before kickoff. A missing current salary slate remains a separate coverage blocker.
+
+Run `python -m pytest tests/test_nfl_coherent_study.py tests/test_nfl_matchup_scenarios.py tests/test_nfl_matchup_scenario_refresh.py tests/test_nfl_matchup_projection.py -q` to verify the current code pin, historical cohort isolation, simulation invariants, and refresh guards. Then use the existing scheduled scenario refresh with a fresh comparison and a saved upcoming salary slate.

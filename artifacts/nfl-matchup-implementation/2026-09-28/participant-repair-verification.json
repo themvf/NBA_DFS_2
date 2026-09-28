@@ -1,0 +1,99 @@
+{
+  "verified_at": "2026-09-28T01:59:01.009571+00:00",
+  "participant_checks": [
+    {
+      "game": "2026_01_CLE_JAX",
+      "team": "CLE",
+      "pressure_reasons": [],
+      "contact_reasons": []
+    },
+    {
+      "game": "2026_01_ATL_PIT",
+      "team": "PIT",
+      "pressure_reasons": [],
+      "contact_reasons": []
+    },
+    {
+      "game": "2026_02_CIN_HOU",
+      "team": "HOU",
+      "pressure_reasons": [],
+      "contact_reasons": []
+    },
+    {
+      "game": "2026_02_CIN_HOU",
+      "team": "CIN",
+      "pressure_reasons": [],
+      "contact_reasons": []
+    },
+    {
+      "game": "2026_01_CLE_JAX",
+      "team": "JAX",
+      "pressure_reasons": [],
+      "contact_reasons": []
+    },
+    {
+      "game": "2026_01_MIA_LV",
+      "team": "MIA",
+      "pressure_reasons": [],
+      "contact_reasons": []
+    },
+    {
+      "game": "2026_02_MIA_SF",
+      "team": "MIA",
+      "pressure_reasons": [],
+      "contact_reasons": []
+    },
+    {
+      "game": "2026_02_LV_LAC",
+      "team": "LAC",
+      "pressure_reasons": [],
+      "contact_reasons": []
+    },
+    {
+      "game": "2026_02_MIA_SF",
+      "team": "SF",
+      "pressure_reasons": [],
+      "contact_reasons": []
+    },
+    {
+      "game": "2026_01_MIA_LV",
+      "team": "LV",
+      "pressure_reasons": [],
+      "contact_reasons": []
+    },
+    {
+      "game": "2026_02_LV_LAC",
+      "team": "LV",
+      "pressure_reasons": [],
+      "contact_reasons": []
+    },
+    {
+      "game": "2026_02_CAR_ATL",
+      "team": "CAR",
+      "pressure_reasons": [],
+      "contact_reasons": []
+    },
+    {
+      "game": "2026_01_ATL_PIT",
+      "team": "ATL",
+      "pressure_reasons": [],
+      "contact_reasons": []
+    },
+    {
+      "game": "2026_02_CAR_ATL",
+      "team": "ATL",
+      "pressure_reasons": [],
+      "contact_reasons": []
+    }
+  ],
+  "forecasts": [
+    {
+      "game": "2026_03_PHI_CHI",
+      "id": "7d79318e8c9175c75937ab2e2a22539a69f9bcb9b12d32e27cc8c04e42ec200e",
+      "status": "shadow",
+      "family": "combined",
+      "baseline": 0.352380294341187,
+      "adjusted": 0.35773801352012286
+    }
+  ]
+}

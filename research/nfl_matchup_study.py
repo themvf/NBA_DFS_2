@@ -9,7 +9,7 @@ Examples:
 from __future__ import annotations
 
 import argparse
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -74,7 +74,7 @@ def prospective_reports(db, season, now, registry):
         return {"version": "nfl-matchup-forward-report-v1", "studies": [], "reason": "no registered DFS studies"}
     first_registered = min(timestamp(resolve_registration(m)["registered_at"]) for m in registered)
     records = db.execute("""SELECT p.player_id,p.game_id,p.kickoff,p.projection,
-        f.run_id,f.season,f.week,f.created_at,f.as_of_at,
+        f.run_id,f.season,f.week,f.created_at,f.as_of_at,f.model_version forecast_model_version,
         jsonb_build_object('model_hashes',f.manifest->'model_hashes',
                           'implementation_hashes',f.manifest->'implementation_hashes') manifest,
         b.model_version baseline_version,b.model_config baseline_config,b.created_at baseline_created_at,
@@ -89,6 +89,11 @@ def prospective_reports(db, season, now, registry):
     completed = db.execute("""SELECT season,week FROM nfl_season_games WHERE season=%s AND game_type='REG'
         GROUP BY season,week HAVING bool_and(completed) AND max(kickoff)<%s""", (season, now))
     complete = [(r["season"], r["week"]) for r in completed]
+    # Shared storage also contains independently registered allowed-volume
+    # forecasts. Their payload is not the PFR mean-study envelope.
+    supported_records = [row for row in records if row.get("forecast_model_version") == "nfl-matchup-shadow-v1"]
+    foreign_versions = Counter(str(row.get("forecast_model_version") or "missing")
+                               for row in records if row.get("forecast_model_version") != "nfl-matchup-shadow-v1")
     reports = []
     for manifest in registered:
         manifest = resolve_registration(manifest)
@@ -100,7 +105,7 @@ def prospective_reports(db, season, now, registry):
             reports.append(rejected_report)
             continue
         rows = []
-        for record in records:
+        for record in supported_records:
             p, run = record["projection"], record["manifest"]
             if p["position"] not in manifest["affected_positions"]:
                 continue
@@ -142,7 +147,10 @@ def prospective_reports(db, season, now, registry):
         evaluated["seen_baseline_config_hashes"] = sorted({r["baseline_config_hash"] for r in rows})
         reports.append(evaluated)
     return {"version": "nfl-matchup-forward-report-v1", "evaluated_at": now.isoformat(), "season": season,
-            "source_forecast_rows": len(records), "studies": reports, "production_promotion": False}
+            "source_forecast_rows": len(records), "supported_forecast_rows": len(supported_records),
+            "ignored_foreign_forecast_rows": sum(foreign_versions.values()),
+            "ignored_foreign_model_versions": dict(foreign_versions),
+            "studies": reports, "production_promotion": False}
 
 
 def resolve_registration(index_entry):

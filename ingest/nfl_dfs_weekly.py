@@ -39,7 +39,7 @@ class BatchedWeeklyWriter(RefreshDatabase):
         self.pending = {}
 
     def execute(self, statement, params=None):
-        if "INSERT INTO ff_player_week_stats" in statement:
+        if "INSERT INTO ff_player_week_stats" in statement or "INSERT INTO nfl_weekly_participant_evidence" in statement:
             self.pending.setdefault(statement, []).append(params)
             return []
         return super().execute(statement, params)
@@ -78,7 +78,11 @@ def validate_partial_feed(frame: pd.DataFrame, season: int, *, team: bool) -> pd
         raise ValueError(f"weekly feed missing columns: {sorted(missing)}")
     selected = frame[(frame["season"] == season) & (frame["season_type"] == "REG")].copy()
     if not team:
-        selected = selected[selected["position"].isin(WEEKLY_STAT_POSITIONS)]
+        # nflverse includes anonymous team-only defensive records. They are
+        # not player participants; a nameless row with offensive exposure is
+        # still an identity failure and must not be silently discarded.
+        exposure = selected[[k for k in ("attempts", "carries", "sacks_suffered", "receptions") if k in selected]].fillna(0).ne(0).any(axis=1)
+        selected = selected[selected["player_id"].notna() | exposure | selected["position"].isin(WEEKLY_STAT_POSITIONS)]
     if selected.empty:
         raise ValueError("weekly feed has no current-season regular-season rows")
     if not selected["week"].between(1, 18).all():
@@ -133,6 +137,8 @@ def refresh_results(db, season: int) -> dict:
                         (season, list(WEEKLY_STAT_POSITIONS) + ["DST"]))]
         if not universe:
             raise ValueError("No canonical current-season player universe")
+        from ingest.nfl_weekly_evidence import save_participant_evidence
+        participant_count = save_participant_evidence(writer, season, players)
         player_count = save_weekly_history(writer, universe, season, players)
         dst_count = save_dst_weekly_history(writer, universe, season, teams, schedule)
         if not player_count or not dst_count:
@@ -150,6 +156,7 @@ def refresh_results(db, season: int) -> dict:
         raise
     return {"season": season, "status": "refreshed", "completed_games": len(completed),
             "player_weeks": player_count, "dst_weeks": dst_count,
+            "matchup_participants": participant_count,
             "unmatched_eligible_player_rows": int(players["position"].isin(WEEKLY_STAT_POSITIONS).sum()) - player_count,
             "completed_games_missing_team_feed": len(set(completed["game_id"]) - set(teams["game_id"])),
             "results": materialize(db, [season])}
