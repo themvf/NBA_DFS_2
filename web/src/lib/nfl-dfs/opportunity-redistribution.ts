@@ -42,6 +42,19 @@
  * structural reason -- no released team/game budget -- and that reason is
  * unchanged by any single week's error. Reviving it needs a budget, not a
  * result.
+ *
+ * ## The budget was then built and tested (2026-09-28)
+ *
+ * `model/nfl_absence_reallocation.py` hands out only the team volume left
+ * over after active teammates' baselines, graded on 2022-2025 gameday
+ * inactives (docs/nfl-absence-reallocation-study.md, pre-registered):
+ *
+ *   targets  no volume gain [-0.017, +0.005], points WORSE +0.040  NOT_PROMOTED
+ *   carries  volume better -0.367 [-0.525, -0.210], points flat    INSUFFICIENT
+ *   old additive transfer: +0.53 / +0.65 points worse, as in week 2
+ *
+ * Withholding now rests on that evidence. A carries follow-up needs its own
+ * registration graded on points; do not wire the fixed pie in here as-is.
  */
 
 import { scoreNflOffenseLinear } from "./scoring";
@@ -171,6 +184,16 @@ export const POOLS: Readonly<Record<PoolName, PoolSpec>> = {
     single: false,
     label: "receptions",
   },
+};
+
+/**
+ * Why a non-QB pool keeps the baseline, in the words the slate panel shows.
+ * Figures are the confirmation seasons of nfl-absence-reallocation-v1.
+ */
+const WITHHELD_REASON: Readonly<Record<PoolName, string>> = {
+  pass: '',
+  target: 'Baseline retained on evidence: handing teammates the targets left over after their own averages was tested on 2024–25 gameday inactives and did not predict their targets better, and made fantasy points slightly worse (nfl-absence-reallocation-v1).',
+  rush: 'Baseline retained on evidence: handing the backup the carries left over was tested on 2024–25 gameday inactives. It predicted carries better but not fantasy points, so it is not applied (nfl-absence-reallocation-v1).',
 };
 
 /** Scaled by total touches rather than by any single pool. */
@@ -333,7 +356,7 @@ export function redistributeOutOpportunity(rows: readonly RedistributionRow[]): 
       // Do not call their sum "offered" or an "unassigned reserve".
       if (!spec.single) {
         report.withheld!.push({ team, pool: name, unit: spec.label,
-          reason: 'Adjustment unresolved: no supported team/game budget, current role allocation, or evidence that this absence is not already reflected in the baseline. Baseline projections retained.',
+          reason: WITHHELD_REASON[name],
           donors: donors.map(d => ({ key: d.key, name: d.name, historicalUnits: round(num(d.statMeans[spec.unit])) })),
         });
         continue;

@@ -1,0 +1,361 @@
+{
+ "study": "nfl-absence-reallocation-v1",
+ "registered": "docs/nfl-absence-reallocation-study.md",
+ "generated_at": "2026-09-28T00:52:53.373426+00:00",
+ "sources": {
+  "games.csv": "19b97bc83fbb2235791eda3e14d8436e4bdc8db64702c9e492806b524abf01a0",
+  "roster_weekly_2021.csv": "88adfe0fba5cbedd260d7928ad373476d4fb168d0213cb52ef1163ed5d3056b7",
+  "stats_player_week_2021.csv": "41915fb49238902ad1f129ebf0405b11a1e710454ae0fe8f7b3e4f9145875f48",
+  "roster_weekly_2022.csv": "bd6a50de334473c10f8058afa948fd0c6adc8a8b081da41c500cc0aa069c5312",
+  "stats_player_week_2022.csv": "ad426c3fe5bf1cc30c3f137fdfe96d054e19d400879ee4413129da49fa7b54be",
+  "roster_weekly_2023.csv": "1433f1f239784dde7fcb35349d211a9b83abfc0156337b72ec4f923abf715bd3",
+  "stats_player_week_2023.csv": "f19cb71a5de0dce7fd09376026237c9ee9d5a93fe13815a2ea3ec2d37204cb17",
+  "roster_weekly_2024.csv": "074ecaeb9325de943c11f7bbc941425626985090ef8386f90cd837fa5cb5d4b3",
+  "stats_player_week_2024.csv": "3ddc45a84f759aa348ce465ae001752c530575455717657cdfe1f8abfcdb4759",
+  "roster_weekly_2025.csv": "c2f7a1ffebe06058400af1989d1cd2900cc5c9659f084623708a06d4e28de35b",
+  "stats_player_week_2025.csv": "e5e0615b3d96a3eaebfaee91e55afb4a4e7fe0caf057454177bcd7d6ad4bcfc2",
+  "roster_weekly_2026.csv": "ba0cbf0fbba3b9432b79a226adff4ff3af55490ca852f1b1b208c65f0a181fac",
+  "stats_player_week_2026.csv": "11cbecd3da8e41c2e84f7858976599685c3dbfa1ce10e44b322464cc6d12706a"
+ },
+ "constants": {
+  "window_games": 8,
+  "half_life": 4.0,
+  "min_act_games": 2,
+  "max_multiplier": 4.0,
+  "absent_statuses": [
+   "INA",
+   "RES"
+  ],
+  "bootstrap_draws": 10000,
+  "seed": 20260928
+ },
+ "pools": {
+  "targets": {
+   "spec": {
+    "unit": "targets",
+    "donors": [
+     "FB",
+     "RB",
+     "TE",
+     "WR"
+    ],
+    "recipients": [
+     "FB",
+     "RB",
+     "TE",
+     "WR"
+    ],
+    "budget_excludes": [],
+    "material": 3.0
+   },
+   "data_quality": {
+    "discovery": {
+     "candidate_events": 497,
+     "donor_with_stat_row": 0
+    },
+    "confirmation": {
+     "candidate_events": 502,
+     "donor_with_stat_row": 0
+    },
+    "2026": {
+     "candidate_events": 17,
+     "donor_with_stat_row": 0
+    }
+   },
+   "selection": {
+    "phi": 0.5,
+    "alpha": 0.5,
+    "discovery_mae": {
+     "phi=0.5,alpha=0": 1.7052,
+     "phi=0.5,alpha=0.5": 1.6985,
+     "phi=0.5,alpha=1": 1.6989,
+     "phi=1,alpha=0": 1.7494,
+     "phi=1,alpha=0.5": 1.7419,
+     "phi=1,alpha=1": 1.7562
+    },
+    "discovery_base_mae": 1.6839,
+    "discovery_old_mae": 1.9518,
+    "discovery_events": 497,
+    "discovery_rows": 4755
+   },
+   "confirmation": {
+    "config": {
+     "phi": 0.5,
+     "alpha": 0.5
+    },
+    "mae": {
+     "BASE": 1.6735570038629777,
+     "FIX": 1.6675076888126894,
+     "OLD": 1.9291813773241508
+    },
+    "units_fix_minus_base": {
+     "delta": -0.006049315050288445,
+     "ci": [
+      -0.017450235179288412,
+      0.005199918688088719
+     ],
+     "rows": 4662,
+     "events": 502,
+     "bias_actual_minus_pred": 0.021479558454776098
+    },
+    "points_fix_minus_base": {
+     "delta": 0.03954507748710183,
+     "ci": [
+      0.021016513670221924,
+      0.057843972754139744
+     ],
+     "rows": 4662,
+     "events": 502,
+     "bias_actual_minus_pred": 0.04163170812037944
+    },
+    "units_old_minus_base": {
+     "delta": 0.2556243734611727,
+     "ci": [
+      0.21740447200585963,
+      0.29511817895465925
+     ],
+     "rows": 4662,
+     "events": 502,
+     "bias_actual_minus_pred": -0.7675753895438304
+    },
+    "points_old_minus_base": {
+     "delta": 0.5272822276368683,
+     "ci": [
+      0.4613594948819384,
+      0.594200445147822
+     ],
+     "rows": 4662,
+     "events": 502,
+     "bias_actual_minus_pred": -1.305586420165671
+    },
+    "units_base_bias": 0.20550453056030513,
+    "allocated_volume": 857.9244199559761,
+    "cap_dropped_volume": 3.094043807675629,
+    "by_season": {
+     "2024": {
+      "delta": -0.01786526358475227,
+      "ci": [
+       -0.035961895756200304,
+       -0.0008338749117728148
+      ],
+      "rows": 2299,
+      "events": 245,
+      "bias_actual_minus_pred": 0.0569371573347833
+     },
+     "2025": {
+      "delta": 0.005446607793864047,
+      "ci": [
+       -0.009056923663102994,
+       0.01998073371646945
+      ],
+      "rows": 2363,
+      "events": 257,
+      "bias_actual_minus_pred": -0.01301769919445651
+     }
+    },
+    "by_donor_group": {
+     "RB": {
+      "delta": 0.006605337108459415,
+      "ci": [
+       -0.009203932685632875,
+       0.02223203597853021
+      ],
+      "rows": 665,
+      "events": 72,
+      "bias_actual_minus_pred": -0.06690803848906605
+     },
+     "TE": {
+      "delta": 0.009090996713748486,
+      "ci": [
+       -0.011406431513876972,
+       0.029494802539980387
+      ],
+      "rows": 1035,
+      "events": 114,
+      "bias_actual_minus_pred": -0.02300544286332136
+     },
+     "WR": {
+      "delta": -0.014180836441694773,
+      "ci": [
+       -0.03031818722927751,
+       0.0016999063816604688
+      ],
+      "rows": 2962,
+      "events": 316,
+      "bias_actual_minus_pred": 0.05686771791861328
+     }
+    },
+    "gate": {
+     "G1_units": false,
+     "G2_points": false,
+     "G3_sample": true,
+     "verdict": "NOT_PROMOTED"
+    }
+   },
+   "descriptive_2026": {
+    "events": 17,
+    "rows": 124,
+    "mae": {
+     "BASE": 1.8563069193309267,
+     "FIX": 1.810153243366298,
+     "OLD": 1.9190955756549792
+    }
+   }
+  },
+  "carries": {
+   "spec": {
+    "unit": "carries",
+    "donors": [
+     "FB",
+     "RB",
+     "TE",
+     "WR"
+    ],
+    "recipients": [
+     "FB",
+     "RB"
+    ],
+    "budget_excludes": [
+     "QB"
+    ],
+    "material": 5.0
+   },
+   "data_quality": {
+    "discovery": {
+     "candidate_events": 248,
+     "donor_with_stat_row": 0,
+     "excluded_no_recipients": 1
+    },
+    "confirmation": {
+     "candidate_events": 268,
+     "donor_with_stat_row": 0,
+     "excluded_no_recipients": 2
+    },
+    "2026": {
+     "candidate_events": 17,
+     "donor_with_stat_row": 0,
+     "excluded_no_recipients": 2
+    }
+   },
+   "selection": {
+    "phi": 0.5,
+    "alpha": 0.0,
+    "discovery_mae": {
+     "phi=0.5,alpha=0": 3.3056,
+     "phi=0.5,alpha=0.5": 3.3056,
+     "phi=0.5,alpha=1": 3.3056,
+     "phi=1,alpha=0": 3.6663,
+     "phi=1,alpha=0.5": 3.6663,
+     "phi=1,alpha=1": 3.6663
+    },
+    "discovery_base_mae": 3.5524,
+    "discovery_old_mae": 4.8037,
+    "discovery_events": 247,
+    "discovery_rows": 639
+   },
+   "confirmation": {
+    "config": {
+     "phi": 0.5,
+     "alpha": 0.0
+    },
+    "mae": {
+     "BASE": 3.9762331881522925,
+     "FIX": 3.6095844265156907,
+     "OLD": 4.990201899976566
+    },
+    "units_fix_minus_base": {
+     "delta": -0.36664876163659965,
+     "ci": [
+      -0.5249472090706861,
+      -0.2099736803384899
+     ],
+     "rows": 654,
+     "events": 266,
+     "bias_actual_minus_pred": 0.5736855142405491
+    },
+    "points_fix_minus_base": {
+     "delta": -0.004868928865144534,
+     "ci": [
+      -0.11216989781688488,
+      0.10156543201866661
+     ],
+     "rows": 654,
+     "events": 266,
+     "bias_actual_minus_pred": 0.9866768876996233
+    },
+    "units_old_minus_base": {
+     "delta": 1.0139687118242733,
+     "ci": [
+      0.6214993203389109,
+      1.4040287258697177
+     ],
+     "rows": 654,
+     "events": 266,
+     "bias_actual_minus_pred": -3.066621966269424
+    },
+    "points_old_minus_base": {
+     "delta": 0.6541670472758477,
+     "ci": [
+      0.3718237356101982,
+      0.9361234741106425
+     ],
+     "rows": 654,
+     "events": 266,
+     "bias_actual_minus_pred": -1.2259416745276719
+    },
+    "units_base_bias": 1.775917986192029,
+    "allocated_volume": 786.2600366562676,
+    "cap_dropped_volume": 21.939346520455096,
+    "by_season": {
+     "2024": {
+      "delta": -0.4263571667928214,
+      "ci": [
+       -0.6914499675702769,
+       -0.1680000529844214
+      ],
+      "rows": 301,
+      "events": 131,
+      "bias_actual_minus_pred": 0.5455112597006327
+     },
+     "2025": {
+      "delta": -0.3157359289113227,
+      "ci": [
+       -0.5082669468495266,
+       -0.13457263518093346
+      ],
+      "rows": 353,
+      "events": 135,
+      "bias_actual_minus_pred": 0.5977094536641034
+     }
+    },
+    "by_donor_group": {
+     "RB": {
+      "delta": -0.3701596252619622,
+      "ci": [
+       -0.5334918060800858,
+       -0.21231653160094827
+      ],
+      "rows": 648,
+      "events": 264,
+      "bias_actual_minus_pred": 0.5885637632023923
+     }
+    },
+    "gate": {
+     "G1_units": true,
+     "G2_points": false,
+     "G3_sample": false,
+     "verdict": "INSUFFICIENT"
+    }
+   },
+   "descriptive_2026": {
+    "events": 15,
+    "rows": 29,
+    "mae": {
+     "BASE": 3.5274480860157507,
+     "FIX": 3.7817048445364523,
+     "OLD": 5.334872595726597
+    }
+   }
+  }
+ }
+}
