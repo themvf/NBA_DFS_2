@@ -20,11 +20,20 @@ the workflow -- and since the web deploy is instant while the ingest is not,
 that opened a window where the page expected columns the stored rows did not
 have. Stale mode asks the table which games disagree with the CURRENT
 versions and relabels exactly those, so a version bump repairs itself and no
-season list has to be maintained anywhere.
+season list has to be maintained anywhere. It also compares the release
+itself: each labelled game's release content is digested into
+`nfl_pbp_source_digests`, and a game nflverse has corrected since it was
+labelled is relabelled. The current NFL season is always in scope, so a new
+season is picked up without a manual `--season` run, and a release that
+cannot be read once games have been played fails the run.
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
+import math
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -32,6 +41,7 @@ from psycopg2.extras import execute_batch
 
 from config import load_config
 from db.database import DatabaseManager
+from ingest.nfl_dfs_weekly import target_season
 from model.nfl_drive_archetypes import VERSION as DRIVE_VERSION, label_drives, load_pbp
 from model.nfl_participation import VERSION as PARTICIPATION_VERSION, load_participation
 from model.nfl_play_archetypes import VERSION as PLAY_VERSION, label_plays
@@ -105,8 +115,131 @@ def seasons_present(db: DatabaseManager) -> list[int]:
     return [int(r["season"]) for r in rows if r["season"] is not None]
 
 
-def missing_games(db: DatabaseManager, cache: Path | None = None) -> dict[int, list[str]]:
-    """Games the nflverse release carries that this table has never labelled.
+def scoped_seasons(db: DatabaseManager, now: datetime | None = None) -> list[int]:
+    """Seasons whose release is compared with the table on every stale pass.
+
+    The latest season the table carries AND the current NFL season. Only the
+    first used to be checked, so a new season could never be picked up: in
+    September the table's latest season is still last year's, and every new
+    game sat outside it forever.
+    """
+    present = seasons_present(db)
+    return sorted(set(present[-1:]) | {target_season(None, now or datetime.now(timezone.utc))})
+
+
+def completed_games(db: DatabaseManager, season: int) -> int:
+    row = db.execute_one(
+        """SELECT COUNT(*)::int AS n FROM nfl_season_games
+           WHERE season = %s AND game_type = 'REG' AND completed""",
+        (season,),
+    )
+    return int(row["n"]) if row else 0
+
+
+def load_release(db: DatabaseManager, season: int, cache: Path | None = None) -> pd.DataFrame | None:
+    """The season's nflverse release, or None when it cannot exist yet.
+
+    A missing release is only benign before the season has a completed game.
+    Once games have been played, a download failure is a failure: it used to
+    print a warning and then "nothing stale or missing, no work to do", and
+    exit 0 -- the same message a healthy, current table produces.
+    """
+    try:
+        return load_pbp(season, cache)
+    except Exception as exc:  # noqa: BLE001 - classified below, never swallowed
+        played = completed_games(db, season)
+        if played:
+            raise RuntimeError(
+                f"season {season}: the nflverse play-by-play release could not be read ({exc}) although "
+                f"{played} regular-season games are completed; nothing was checked or labelled"
+            ) from exc
+        print(f"  season {season}: no release yet ({type(exc).__name__}) and no completed games; nothing to label")
+        return None
+
+
+def _digest_value(value):
+    """A JSON-stable form of one release cell."""
+    if value is None or isinstance(value, (str, bool)):
+        return value
+    if isinstance(value, (list, tuple)) or type(value).__name__ == "ndarray":
+        return [_digest_value(v) for v in list(value)]
+    if isinstance(value, dict):
+        return {str(k): _digest_value(v) for k, v in sorted(value.items(), key=lambda kv: str(kv[0]))}
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if hasattr(value, "item"):  # numpy scalar
+        value = value.item()
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            return str(value)
+        if value.is_integer():
+            # A column's dtype depends on the rest of the season (one NaN turns
+            # an int column float); the same play must digest the same either way.
+            return int(value)
+    return value if isinstance(value, (int, float, bool, str)) else str(value)
+
+
+def game_digests(pbp: pd.DataFrame) -> dict[str, tuple[str, int]]:
+    """Per game: (digest of its release content, play count)."""
+    columns = sorted(pbp.columns)
+    out: dict[str, tuple[str, int]] = {}
+    for game_id, frame in pbp.groupby("game_id", sort=True):
+        ordered = frame.sort_values("play_id", kind="mergesort")[columns]
+        records = [[_digest_value(v) for v in row] for row in ordered.itertuples(index=False, name=None)]
+        payload = json.dumps([columns, records], separators=(",", ":"), allow_nan=False, default=str)
+        out[str(game_id)] = (hashlib.sha256(payload.encode("utf-8")).hexdigest(), len(ordered))
+    return out
+
+
+def stored_digests(db: DatabaseManager, season: int) -> dict[str, str]:
+    rows = db.execute("SELECT game_id, source_digest FROM nfl_pbp_source_digests WHERE season = %s", (season,))
+    return {str(r["game_id"]): str(r["source_digest"]) for r in rows}
+
+
+def record_digests(db: DatabaseManager, season: int, digests: dict[str, tuple[str, int]]) -> int:
+    if not digests:
+        return 0
+    with db.connect() as connection:
+        with connection.cursor() as cursor:
+            execute_batch(cursor, """
+                INSERT INTO nfl_pbp_source_digests (game_id, season, source_digest, play_count)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (game_id) DO UPDATE SET season = EXCLUDED.season,
+                    source_digest = EXCLUDED.source_digest, play_count = EXCLUDED.play_count,
+                    recorded_at = NOW()
+                WHERE nfl_pbp_source_digests.source_digest IS DISTINCT FROM EXCLUDED.source_digest""",
+                [(game_id, season, digest, plays) for game_id, (digest, plays) in sorted(digests.items())],
+                page_size=500)
+    return len(digests)
+
+
+def release_changes(labelled: set[str], stored: dict[str, str],
+                    current: dict[str, tuple[str, int]]) -> dict[str, list[str]]:
+    """Compare one season's release with the table. Pure.
+
+    - `new`: played and never labelled;
+    - `corrected`: labelled from content that nflverse has since changed;
+    - `baseline`: labelled before digests were recorded. Their digest is
+      recorded without relabelling: a relabel replaces the game's rows and
+      resets `labelled_at`, which point-in-time readers
+      (`labelled_at <= as_of`, ingest/nfl_matchup_context.py) would see as the
+      whole season disappearing from every earlier replay.
+    """
+    released = set(current)
+    return {
+        "new": sorted(released - labelled),
+        "corrected": sorted(g for g in released & labelled if g in stored and stored[g] != current[g][0]),
+        "baseline": sorted(g for g in released & labelled if g not in stored),
+    }
+
+
+def missing_games(db: DatabaseManager, cache: Path | None = None,
+                  now: datetime | None = None) -> tuple[dict[int, list[str]], dict[int, pd.DataFrame]]:
+    """Games the release carries that the table has never labelled, or has
+    labelled from content nflverse has since corrected.
 
     WHY THIS EXISTS. `stale_games` refreshes games already in the table, and
     that is all the merge-triggered path could ever do -- so a week of real
@@ -116,33 +249,46 @@ def missing_games(db: DatabaseManager, cache: Path | None = None) -> dict[int, l
     Sunday games and Monday night then sat outside the table with every
     automatic path reporting "nothing stale, no work to do" -- which was true,
     and useless. A pipeline that only heals what it already knows about is
-    half a pipeline.
+    half a pipeline. The same held for corrections: nflverse revises a game's
+    play-by-play after it is first published, and a game labelled once was
+    never looked at again.
 
-    SCOPED TO THE LATEST SEASON PRESENT, and only that one. Keeping the
-    current season complete is routine; backfilling a historical one is a
-    deliberate act with a real cost, and conflating them would mean a single
-    game labelled once for a test quietly triggering a 285-game rebuild on
-    the next unrelated merge. Older seasons stay the job of an explicit
-    `--season` run, which is exactly the kind of decision a person should
-    make on purpose.
+    SCOPED TO `scoped_seasons` (the latest season present plus the current
+    season). Keeping the current season complete is routine; backfilling a
+    historical one is a deliberate act with a real cost, and conflating them
+    would mean a single game labelled once for a test quietly triggering a
+    285-game rebuild on the next unrelated merge. Older seasons stay the job
+    of an explicit `--season` run.
+
+    Returns the games to label per season and the releases already loaded, so
+    the caller does not download them twice.
     """
-    seasons = seasons_present(db)
     found: dict[int, list[str]] = {}
-    for season in seasons[-1:]:
+    releases: dict[int, pd.DataFrame] = {}
+    for season in scoped_seasons(db, now):
+        released = load_release(db, season, cache)
+        if released is None:
+            continue
+        releases[season] = released
         rows = db.execute(
             "SELECT DISTINCT game_id FROM nfl_pbp_archetypes WHERE season = %s",
             (season,),
         )
-        have = {str(r["game_id"]) for r in rows}
-        try:
-            released = load_pbp(season, cache)
-        except Exception as exc:  # noqa: BLE001 - a missing release is not fatal
-            print(f"  WARNING season {season}: release unavailable ({exc}); skipped")
-            continue
-        new = sorted(set(released["game_id"].dropna().astype(str)) - have)
-        if new:
-            found[season] = new
-    return found
+        current = game_digests(released[released["game_id"].notna()])
+        changes = release_changes({str(r["game_id"]) for r in rows}, stored_digests(db, season), current)
+        if changes["baseline"]:
+            record_digests(db, season, {g: current[g] for g in changes["baseline"]})
+            print(f"  season {season}: recorded the release digest of {len(changes['baseline'])} "
+                  f"already-labelled game(s) (first check; not relabelled)")
+        if changes["new"]:
+            print(f"  season {season}: {len(changes['new'])} newly-played game(s) not yet labelled")
+        if changes["corrected"]:
+            print(f"  season {season}: {len(changes['corrected'])} game(s) corrected by nflverse since they "
+                  f"were labelled: {', '.join(changes['corrected'])}")
+        todo = sorted(set(changes["new"]) | set(changes["corrected"]))
+        if todo:
+            found[season] = todo
+    return found, releases
 
 
 def build_rows(pbp: pd.DataFrame, participation: pd.DataFrame | None = None) -> list[tuple]:
@@ -367,16 +513,17 @@ def main() -> None:
 
     if args.relabel_stale:
         stale = stale_games(db)
-        # Newly-played games are handled on the same pass: both are "the table
-        # disagrees with the release", and splitting them into two flags meant
-        # the automatic path silently covered only one of the two.
-        fresh = missing_games(db, args.cache)
+        # Newly-played and nflverse-corrected games are handled on the same
+        # pass: all are "the table disagrees with the release", and splitting
+        # them into separate flags meant the automatic path silently covered
+        # only some of them. A release that cannot be read for a season with
+        # completed games raises here rather than reading as "nothing to do".
+        fresh, releases = missing_games(db, args.cache)
         for season, ids in fresh.items():
-            merged = sorted(set(stale.get(season, [])) | set(ids))
-            stale[season] = merged
-            print(f"  season {season}: {len(ids)} newly-played game(s) not yet labelled")
+            stale[season] = sorted(set(stale.get(season, [])) | set(ids))
         if not stale:
-            print(f"{PLAY_VERSION} + {DRIVE_VERSION}: nothing stale or missing, no work to do")
+            print(f"{PLAY_VERSION} + {DRIVE_VERSION}: nothing stale, missing or corrected in "
+                  f"{sorted(releases) or 'no published'} release(s); no work to do")
             return
         total = 0
         for season in sorted(set(stale) | set(seasons_present(db))):
@@ -393,7 +540,7 @@ def main() -> None:
                     game_ids = sorted(set(game_ids) | set(extra))
             if not game_ids:
                 continue
-            pbp = load_pbp(season, args.cache)
+            pbp = releases[season] if season in releases else load_pbp(season, args.cache)
             pbp = pbp[pbp["game_id"].isin(game_ids)]
             if pbp.empty:
                 # The rows name a game the current release no longer carries.
@@ -401,8 +548,12 @@ def main() -> None:
                 print(f"  WARNING season {season}: {len(game_ids)} stale games "
                       f"absent from the nflverse release; left as-is")
                 continue
+            digests = game_digests(pbp)
             total += write(db, build_rows(pbp, part))
             write_participants(db, participant_rows(pbp))
+            # Recorded after the labels commit: a failed write leaves the old
+            # digest, so the next pass retries the game.
+            record_digests(db, season, digests)
             print(f"  season {season}: labelled {len(game_ids)} games")
         print(f"{PLAY_VERSION} + {DRIVE_VERSION}: wrote {total} plays")
         return
@@ -413,9 +564,11 @@ def main() -> None:
     if pbp.empty:
         raise SystemExit("no plays matched")
 
+    digests = game_digests(pbp)
     rows = build_rows(pbp, _participation(args.season))
     written = write(db, rows)
     credited = write_participants(db, participant_rows(pbp))
+    record_digests(db, args.season, digests)
     print(f"{PLAY_VERSION} + {DRIVE_VERSION}: wrote {written} plays "
           f"across {len(set(r[0] for r in rows))} games")
     print(f"{PARTICIPANTS_VERSION}: wrote {credited} player credits")

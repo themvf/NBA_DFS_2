@@ -18,6 +18,7 @@ import warnings
 import math
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -738,12 +739,59 @@ def save_history(
 # the team feed and its own Yahoo tier derivation, which is a separate job.
 WEEKLY_STAT_POSITIONS = ("QB", "RB", "WR", "TE", "K")
 
+# `fetched_at` on ff_player_week_stats is when THIS content became available:
+# point-in-time readers select `fetched_at <= as_of`
+# (ingest/nfl_matchup_context.py). Rewriting it on every refresh made every
+# stored week look brand new -- on 2026-09-29 all 1,243 rows for 2026 carried
+# that morning's timestamp, so a replay as of any earlier moment saw no 2026
+# weeks at all. An upsert therefore changes a row, and its fetched_at, only
+# when the stored content differs; an unchanged row is left exactly as it was.
+WEEK_STATS_CHANGED = """
+               WHERE (ff_player_week_stats.team, ff_player_week_stats.opponent,
+                      ff_player_week_stats.fantasy_points_std, ff_player_week_stats.fantasy_points_ppr,
+                      ff_player_week_stats.source_row)
+                     IS DISTINCT FROM
+                     (EXCLUDED.team, EXCLUDED.opponent, EXCLUDED.fantasy_points_std,
+                      EXCLUDED.fantasy_points_ppr, EXCLUDED.source_row)"""
+
+
+# Identity coverage for the weekly feed. The default is for the DFS results
+# path, where the universe is the SAME season's roster: every 2026 player-week
+# matched on 2026-09-29 (0 of 1,174), so more than 5% unmatched (and more than
+# 10 rows, so a single early-week call-up cannot trip it) is an identity
+# failure, and every one of those players would otherwise be graded as a DK 0.
+# The board refresh and the backfill match a PAST season against the current
+# roster, where retirements and free agents are structurally unmatched (5.1%
+# of 2025 rows against the 2026 roster: Tyreek Hill, Russell Wilson, ...), so
+# they pass the looser prior-season share.
+WEEKLY_UNMATCHED_MAX_SHARE = 0.05
+WEEKLY_UNMATCHED_MIN_ROWS = 10
+PRIOR_SEASON_UNMATCHED_MAX_SHARE = 0.15
+WEEKLY_IDENTITY_REPORT_DIR = Path("artifacts/nfl-weekly-identity")
+
+
+class WeeklyIdentityError(ValueError):
+    """The weekly feed cannot be attached to players without guessing."""
+
+
+def _write_identity_report(report_dir: Path | None, weekly_season: int, report: dict[str, Any]) -> Path | None:
+    if report_dir is None:
+        return None
+    report_dir = Path(report_dir)
+    report_dir.mkdir(parents=True, exist_ok=True)
+    path = report_dir / f"unmatched-{weekly_season}.json"
+    path.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
+    return path
+
 
 def save_weekly_history(
     db: RefreshDatabase,
     universe: list[dict[str, Any]],
     weekly_season: int,
     frame: pd.DataFrame,
+    *,
+    max_unmatched_share: float = WEEKLY_UNMATCHED_MAX_SHARE,
+    report_dir: Path | None = WEEKLY_IDENTITY_REPORT_DIR,
 ) -> int:
     """Persist per-week fantasy points for the most recent completed season.
 
@@ -756,11 +804,29 @@ def save_weekly_history(
     kicker-weeks), so Yahoo's distance-tiered scoring is recomputed here from
     the per-distance buckets the weekly feed carries, through the same
     `yahoo_kicker_points` helper the season path uses.
+
+    Identity is resolved for the whole frame BEFORE anything is written:
+    - a feed row that matches no player is recorded (with its name, week and
+      points) in `report_dir/unmatched-<season>.json` and printed; above
+      `max_unmatched_share` of eligible rows the run raises instead of
+      quietly storing a partial week;
+    - a row that resolves to an ambiguous identity (two universe players
+      sharing the gsis id, or the name+position fallback), or two feed rows
+      that resolve to the same player-week, raise `WeeklyIdentityError`.
+      Previously the second silently overwrote the first, putting one
+      player's stats on another.
     """
-    by_gsis = {str(row.get("gsis_id") or "").strip(): row for row in universe if str(row.get("gsis_id") or "").strip()}
-    by_name_position = {(normalize_name(str(row["name"])), row["position"]): row for row in universe}
+    by_gsis: dict[str, list[dict[str, Any]]] = {}
+    by_name_position: dict[tuple[str, Any], list[dict[str, Any]]] = {}
+    for row in universe:
+        gsis_id = str(row.get("gsis_id") or "").strip()
+        if gsis_id:
+            by_gsis.setdefault(gsis_id, []).append(row)
+        by_name_position.setdefault((normalize_name(str(row["name"])), row["position"]), []).append(row)
     wanted = set(WEEKLY_STAT_POSITIONS)
-    written = 0
+    resolved: list[tuple[dict[str, Any], dict[str, Any], int]] = []
+    unmatched: list[dict[str, Any]] = []
+    claimed: dict[tuple[int, int], dict[str, Any]] = {}
     for _, series in frame.iterrows():
         if str(series.get("season_type") or "REG") != "REG":
             continue
@@ -768,14 +834,60 @@ def save_weekly_history(
             continue
         raw = _clean(series.to_dict())
         gsis = str(raw.get("player_id") or "").strip()
-        player = by_gsis.get(gsis) or by_name_position.get(
-            (normalize_name(str(raw.get("player_display_name") or raw.get("player_name") or "")), raw.get("position"))
-        )
-        if not player:
-            continue
+        name = str(raw.get("player_display_name") or raw.get("player_name") or "")
+        candidates = by_gsis.get(gsis) or [
+            # The name fallback never crosses two different gsis ids: those
+            # are two people who share a name, not one player.
+            row for row in by_name_position.get((normalize_name(name), raw.get("position")), [])
+            if not (gsis and str(row.get("gsis_id") or "").strip())
+        ]
+        if len(candidates) > 1:
+            raise WeeklyIdentityError(
+                f"nflverse {weekly_season} week {raw.get('week')} row for {name} ({gsis or 'no gsis'}, "
+                f"{raw.get('position')}) matches {len(candidates)} players "
+                f"(ids {sorted(c['player_id'] for c in candidates)}); refusing to guess which one scored"
+            )
         week = as_int(raw.get("week"))
+        if not candidates:
+            unmatched.append({"gsis_id": gsis or None, "name": name, "position": raw.get("position"),
+                              "team": normalize_team(raw.get("team")), "week": week,
+                              "fantasy_points_ppr": as_float(raw.get("fantasy_points_ppr"))})
+            continue
         if week is None:
             continue
+        player = candidates[0]
+        target = (int(player["player_id"]), week)
+        if target in claimed:
+            first = claimed[target]
+            raise WeeklyIdentityError(
+                f"two nflverse {weekly_season} week {week} rows resolve to player {player['player_id']} "
+                f"({player['name']}): {first['name']} ({first['gsis'] or 'no gsis'}) and {name} "
+                f"({gsis or 'no gsis'}); the second would overwrite the first"
+            )
+        claimed[target] = {"name": name, "gsis": gsis}
+        resolved.append((player, raw, week))
+
+    eligible = len(resolved) + len(unmatched)
+    share = len(unmatched) / eligible if eligible else 0.0
+    report = {"season": weekly_season, "eligible_rows": eligible, "matched_rows": len(resolved),
+              "unmatched_rows": len(unmatched), "unmatched_share": round(share, 4),
+              "max_unmatched_share": max_unmatched_share,
+              "unmatched": sorted(unmatched, key=lambda r: (-(r["fantasy_points_ppr"] or 0), str(r["name"])))}
+    path = _write_identity_report(report_dir, weekly_season, report)
+    if unmatched:
+        top = ", ".join(f"{r['name']} ({r['position']}, wk {r['week']}, {r['fantasy_points_ppr']})"
+                        for r in report["unmatched"][:10])
+        print(f"  weekly identity {weekly_season}: {len(unmatched)} of {eligible} eligible rows unmatched "
+              f"({share:.1%}); top by PPR: {top}" + (f"; full list: {path}" if path else ""))
+    if len(unmatched) > WEEKLY_UNMATCHED_MIN_ROWS and share > max_unmatched_share:
+        raise WeeklyIdentityError(
+            f"{len(unmatched)} of {eligible} nflverse {weekly_season} player-week rows ({share:.1%}) match no "
+            f"player, above the {max_unmatched_share:.0%} limit; nothing was written. Investigate identity "
+            f"coverage" + (f" (list: {path})" if path else "")
+        )
+
+    written = 0
+    for player, raw, week in resolved:
         std = as_float(raw.get("fantasy_points")) or 0.0
         ppr = as_float(raw.get("fantasy_points_ppr")) or 0.0
         if player["position"] == "K":
@@ -789,7 +901,7 @@ def save_weekly_history(
                 team=EXCLUDED.team,opponent=EXCLUDED.opponent,
                 fantasy_points_std=EXCLUDED.fantasy_points_std,
                 fantasy_points_ppr=EXCLUDED.fantasy_points_ppr,
-                source_row=EXCLUDED.source_row,fetched_at=NOW()""",
+                source_row=EXCLUDED.source_row,fetched_at=NOW()""" + WEEK_STATS_CHANGED,
             (
                 player["player_id"], weekly_season, week,
                 normalize_team(raw.get("team")), normalize_team(raw.get("opponent_team")),
@@ -974,7 +1086,7 @@ def save_dst_weekly_history(
                 team=EXCLUDED.team,opponent=EXCLUDED.opponent,
                 fantasy_points_std=EXCLUDED.fantasy_points_std,
                 fantasy_points_ppr=EXCLUDED.fantasy_points_ppr,
-                source_row=EXCLUDED.source_row,fetched_at=NOW()""",
+                source_row=EXCLUDED.source_row,fetched_at=NOW()""" + WEEK_STATS_CHANGED,
             (
                 player["player_id"], weekly_season, week, team,
                 normalize_team(raw.get("opponent_team")), fpts, fpts,
@@ -1583,7 +1695,10 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
         digest=weekly_digest, row_count=len(weekly_frame),
         params={"url": weekly_url, "season_type": "REG", "positions": list(WEEKLY_STAT_POSITIONS)},
     )
-    weekly_rows = save_weekly_history(db, universe, weekly_season, weekly_frame)
+    # A past season against the current roster: retirements and free agents
+    # are unmatched by construction, hence the looser identity limit.
+    weekly_rows = save_weekly_history(db, universe, weekly_season, weekly_frame,
+                                      max_unmatched_share=PRIOR_SEASON_UNMATCHED_MAX_SHARE)
 
     # Team defenses have no row in the per-player weekly feed, so DST weeks
     # come from the team-week release and reuse `schedule` (already fetched)

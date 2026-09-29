@@ -12,6 +12,10 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
+import requests
+
+from ingest import nfl_dfs_dk_pool as dk
 from ingest.nfl_dfs_dk_pool import (
     CONTEST_TYPE_FORMAT, is_salary_cap_pool, normalize_players, payload_digest,
     in_window, _parse_start,
@@ -194,3 +198,149 @@ def test_out_statuses_exclude_doubtful_and_questionable():
     # Those two are judgement calls the optimizer owns, not facts a feed asserts.
     assert is_out_status("O") and is_out_status("ir") and is_out_status("PUP")
     assert not is_out_status("D") and not is_out_status("Q") and not is_out_status(None)
+
+
+# ── A failed read turns the run red; a benign empty group does not ──────────
+
+
+class _Response:
+    def __init__(self, payload=None, status=200):
+        self.payload, self.status_code = payload, status
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise requests.HTTPError(f"{self.status_code} Server Error")
+
+    def json(self):
+        if isinstance(self.payload, Exception):
+            raise self.payload
+        return self.payload
+
+
+class _Session:
+    def __init__(self, response):
+        self.response = response
+
+    def get(self, *args, **kwargs):
+        return self.response
+
+
+class _Cursor:
+    def __init__(self, conn):
+        self.conn = conn
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def execute(self, sql, params=None):
+        self.conn.statements.append(sql)
+
+    @property
+    def connection(self):
+        return self.conn
+
+
+class _Conn:
+    def __init__(self, db):
+        self.db, self.statements = db, []
+        self.encoding = "UTF8"
+
+    def cursor(self):
+        return _Cursor(self)
+
+
+class _Db:
+    """Records polls; `connect()` is one transaction that commits on clean exit."""
+
+    def __init__(self, fail_player_insert=False):
+        self.polls, self.committed, self.fail = [], [], fail_player_insert
+
+    def execute(self, sql, params=None):
+        assert "nfl_dfs_dk_pool_polls" in sql
+        self.polls.append(params)
+
+    def execute_one(self, sql, params=None):
+        return None
+
+    def connect(self):
+        from contextlib import contextmanager
+
+        @contextmanager
+        def transaction():
+            conn = _Conn(self)
+            yield conn
+            self.committed.append(conn.statements)
+        return transaction()
+
+
+GROUP = {"draft_group_id": 1, "contest_type_id": 21, "format": "classic",
+         "start_date": NOW + timedelta(hours=10), "game_count": 2}
+PLAYERS = [{"pid": i, "fn": "P", "ln": str(i), "pn": "WR", "tid": 1, "htid": 1, "htabbr": "ATL",
+            "atabbr": "GB", "s": 5000 + 100 * (i % 3), "i": "", "swp": True, "news": 0,
+            "IsDisabledFromDrafting": False} for i in range(6)]
+
+
+def test_the_lobby_raises_on_an_http_error_or_a_non_lobby_body():
+    with pytest.raises(requests.HTTPError):
+        dk.fetch_draft_groups(_Session(_Response({"DraftGroups": []}, status=503)))
+    with pytest.raises(ValueError, match="DraftGroups"):
+        dk.fetch_draft_groups(_Session(_Response({"error": "blocked"})))
+    assert dk.fetch_draft_groups(_Session(_Response({"DraftGroups": []}))) == []
+
+
+def test_an_unpopulated_group_is_recorded_and_benign():
+    db = _Db()
+    result = dk.capture(db, GROUP, session=_Session(_Response({"playerList": []})))
+    assert result["state"] == "not_populated" and not result["fatal"]
+    assert db.polls[0][1] is False and "empty player list" in db.polls[0][4]
+
+
+def test_an_http_failure_on_a_pool_is_recorded_and_fatal():
+    db = _Db()
+    result = dk.capture(db, GROUP, session=_Session(_Response({}, status=403)))
+    assert result["state"] == "failed" and result["fatal"]
+    assert len(db.polls) == 1 and db.polls[0][1] is False
+
+
+def test_snapshot_header_and_players_commit_together(monkeypatch):
+    written = []
+    monkeypatch.setattr(dk, "execute_values", lambda cursor, sql, rows, **kw: written.append(len(rows)))
+    db = _Db()
+    result = dk.capture(db, GROUP, session=_Session(_Response({"playerList": PLAYERS})))
+    assert result["state"] == "captured"
+    assert len(db.committed) == 1, "header and players must be one transaction"
+    assert "INSERT INTO nfl_dfs_dk_pool_snapshots" in db.committed[0][0]
+    assert written == [len(PLAYERS)]
+    assert db.polls[-1][1] is True  # the ok poll is recorded only after the commit
+
+
+def test_a_failed_player_insert_leaves_no_header_behind(monkeypatch):
+    def fail(cursor, sql, rows, **kw):
+        raise RuntimeError("connection reset")
+    monkeypatch.setattr(dk, "execute_values", fail)
+    db = _Db()
+    with pytest.raises(RuntimeError):
+        dk.capture(db, GROUP, session=_Session(_Response({"playerList": PLAYERS})))
+    assert db.committed == [] and db.polls == []
+
+
+def test_no_draft_groups_during_a_game_week_is_red():
+    lines, status = dk.summarize([], hours=120, explicit=False, games_soon=3)
+    assert status == 1 and "no salary-cap NFL draft group" in lines[0]
+    assert dk.summarize([], hours=120, explicit=False, games_soon=0)[1] == 0
+    # An explicit --draft-group run says nothing about the lobby.
+    assert dk.summarize([], hours=120, explicit=True, games_soon=3)[1] == 0
+
+
+def test_run_status_red_only_for_failed_reads():
+    benign = {"draft_group_id": 1, "ok": False, "changed": False, "fatal": False,
+              "state": "not_populated", "detail": "not populated yet: empty player list"}
+    ok = {"draft_group_id": 2, "ok": True, "changed": False, "fatal": False, "state": "unchanged"}
+    failed = {"draft_group_id": 3, "ok": False, "changed": False, "fatal": True, "state": "failed",
+              "detail": "403 Client Error"}
+    assert dk.summarize([benign, ok], hours=120, explicit=False, games_soon=5)[1] == 0
+    lines, status = dk.summarize([benign, ok, failed], hours=120, explicit=False, games_soon=5)
+    assert status == 1 and any("FAILED  403" in line for line in lines)

@@ -67,11 +67,38 @@ CONTEST_TYPE_FORMAT = {21: "classic", 96: "showdown"}
 # why this is checked against the payload rather than assumed from the id.
 MIN_REAL_SALARY = 200
 
+# When an NFL game kicks off within this many hours, DraftKings has a
+# salary-cap slate for it; finding none means the lobby read is broken (an
+# error page, a changed contest-type id), not that there is nothing to poll.
+# Narrower than the polling window on purpose: next week's Thursday slate is
+# usually, but not provably always, posted before Monday night kicks off.
+ACTIVE_WEEK_HOURS = 48
+
+
+class NotPopulated(ValueError):
+    """DraftKings lists the draft group but has not attached its players yet.
+
+    Observed for dg 153809 (a Monday-night classic): 38 empty polls over three
+    days, then populated a day before kickoff. Recorded, never fatal.
+    """
+
+
+class NotSalaryCap(ValueError):
+    """The group prices players by rank: a different game, not a failure."""
+
 
 def fetch_draft_groups(session: requests.Session | None = None) -> list[dict]:
-    """Salary-cap NFL draft groups from the public lobby, newest start first."""
+    """Salary-cap NFL draft groups from the public lobby, newest start first.
+
+    Raises on an HTTP error or a body that is not the lobby: an error page
+    must not read as "no draft groups today".
+    """
     get = (session or requests).get
-    payload = get(LOBBY_URL, headers=HEADERS, timeout=45).json()
+    response = get(LOBBY_URL, headers=HEADERS, timeout=45)
+    response.raise_for_status()
+    payload = response.json()
+    if not isinstance(payload, dict) or "DraftGroups" not in payload:
+        raise ValueError("DraftKings lobby response carries no DraftGroups list")
     groups = []
     for group in payload.get("DraftGroups", []):
         fmt = CONTEST_TYPE_FORMAT.get(group.get("ContestTypeId"))
@@ -177,18 +204,30 @@ def payload_digest(rows: list[dict]) -> str:
 
 
 def capture(db: PipelineDatabase, group: dict, *, session=None) -> dict:
-    """Poll one draft group. Always records the look; writes a snapshot only on change."""
+    """Poll one draft group. Always records the look; writes a snapshot only on change.
+
+    The result's `state` says what the look found: `captured` / `unchanged`,
+    `not_populated` or `not_salary_cap` (both recorded, not fatal), or
+    `failed` -- an HTTP, transport or parse error, which `fatal` marks so the
+    run can end red after every group has been polled and recorded.
+    """
     gid = group["draft_group_id"]
     try:
         fetched = fetch_pool(gid, session)
         players = fetched["payload"].get("playerList") or []
         if not players:
-            raise ValueError("empty player list")
+            raise NotPopulated("not populated yet: empty player list")
         if not is_salary_cap_pool(players):
-            raise ValueError("pool prices players by rank, not salary -- not a salary-cap slate")
-    except Exception as exc:  # noqa: BLE001 - the failure is the record
+            raise NotSalaryCap("pool prices players by rank, not salary -- not a salary-cap slate")
+    except (NotPopulated, NotSalaryCap) as exc:
         _record_poll(db, gid, ok=False, changed=False, snapshot_id=None, detail=str(exc)[:500])
-        return {"draft_group_id": gid, "ok": False, "changed": False, "detail": str(exc)[:200]}
+        return {"draft_group_id": gid, "ok": False, "changed": False, "fatal": False,
+                "state": "not_populated" if isinstance(exc, NotPopulated) else "not_salary_cap",
+                "detail": str(exc)[:200]}
+    except Exception as exc:  # noqa: BLE001 - the failure is the record, and it turns the run red
+        _record_poll(db, gid, ok=False, changed=False, snapshot_id=None, detail=str(exc)[:500])
+        return {"draft_group_id": gid, "ok": False, "changed": False, "fatal": True, "state": "failed",
+                "detail": str(exc)[:200]}
 
     rows = normalize_players(players)
     digest = payload_digest(rows)
@@ -198,20 +237,24 @@ def capture(db: PipelineDatabase, group: dict, *, session=None) -> dict:
     )
     if existing:
         _record_poll(db, gid, ok=True, changed=False, snapshot_id=existing["snapshot_id"], detail=None)
-        return {"draft_group_id": gid, "ok": True, "changed": False, "players": len(rows)}
+        return {"draft_group_id": gid, "ok": True, "changed": False, "fatal": False, "state": "unchanged",
+                "players": len(rows)}
 
     snapshot_id = str(uuid.uuid4())
     teams = sorted({row["team"] for row in rows if row["team"]})
-    db.execute(
-        """INSERT INTO nfl_dfs_dk_pool_snapshots
-           (snapshot_id, draft_group_id, contest_type_id, format, start_date, game_count,
-            teams, player_count, payload_digest, source_url)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-        (snapshot_id, gid, group.get("contest_type_id"), group["format"], group.get("start_date"),
-         group.get("game_count"), Json(teams), len(rows), digest, fetched["url"]),
-    )
+    # Header and player rows in ONE transaction. Committed separately, a
+    # failure between them left a snapshot with no players that every later
+    # poll with the same digest would point at as "unchanged".
     with db.connect() as connection:
         with connection.cursor() as cursor:
+            cursor.execute(
+                """INSERT INTO nfl_dfs_dk_pool_snapshots
+                   (snapshot_id, draft_group_id, contest_type_id, format, start_date, game_count,
+                    teams, player_count, payload_digest, source_url)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (snapshot_id, gid, group.get("contest_type_id"), group["format"], group.get("start_date"),
+                 group.get("game_count"), Json(teams), len(rows), digest, fetched["url"]),
+            )
             execute_values(
                 cursor,
                 """INSERT INTO nfl_dfs_dk_pool_player_status
@@ -223,8 +266,8 @@ def capture(db: PipelineDatabase, group: dict, *, session=None) -> dict:
                   r["is_disabled"], r["swappable"], r["news"]) for r in rows],
             )
     _record_poll(db, gid, ok=True, changed=True, snapshot_id=snapshot_id, detail=None)
-    return {"draft_group_id": gid, "ok": True, "changed": True, "players": len(rows),
-            "flagged": sum(1 for r in rows if r["status"]), "snapshot_id": snapshot_id}
+    return {"draft_group_id": gid, "ok": True, "changed": True, "fatal": False, "state": "captured",
+            "players": len(rows), "flagged": sum(1 for r in rows if r["status"]), "snapshot_id": snapshot_id}
 
 
 def _record_poll(db, gid, *, ok, changed, snapshot_id, detail):
@@ -316,6 +359,52 @@ def report(db: PipelineDatabase) -> None:
               f"  {row['polls']:>4} polls  {row['failures']:>3} failed")
 
 
+def upcoming_games(db: PipelineDatabase, now: datetime, *, hours: int) -> int:
+    """Regular-season games kicking off within `hours` -- is a game week on?"""
+    row = db.execute_one(
+        """SELECT COUNT(*)::int AS n FROM nfl_season_games
+           WHERE game_type = 'REG' AND kickoff > %s AND kickoff <= %s""",
+        (now, now + timedelta(hours=hours)),
+    )
+    return int(row["n"]) if row else 0
+
+
+def summarize(results: list[dict], *, hours: int, explicit: bool, games_soon: int) -> tuple[list[str], int]:
+    """What to print, and the exit status.
+
+    Red when any poll hit an HTTP/transport/parse failure, or when a game kicks
+    off within ACTIVE_WEEK_HOURS and the lobby yielded no salary-cap draft
+    group at all. A group DraftKings has listed but not yet populated is a
+    recorded, benign state.
+    """
+    if not results:
+        if games_soon and not explicit:
+            return ([f"FAILED: {games_soon} NFL game(s) kick off within {ACTIVE_WEEK_HOURS}h but the DraftKings "
+                     f"lobby lists no salary-cap NFL draft group starting within {hours}h. The lobby read or "
+                     f"its contest-type filter ({sorted(CONTEST_TYPE_FORMAT)}) is broken; no pool was captured."],
+                    1)
+        return [f"No salary-cap NFL draft groups start within {hours}h, and no NFL game kicks off within "
+                f"{ACTIVE_WEEK_HOURS}h."], 0
+    lines = []
+    for result in results:
+        gid = f"dg={result['draft_group_id']:<7}"
+        state = result.get("state")
+        if state == "failed":
+            lines.append(f"  {gid} FAILED  {result['detail']}")
+        elif state in ("not_populated", "not_salary_cap"):
+            lines.append(f"  {gid} skipped ({state.replace('_', ' ')})  {result['detail']}")
+        elif result["changed"]:
+            lines.append(f"  {gid} changed  {result['players']} players, {result['flagged']} tagged")
+        else:
+            lines.append(f"  {gid} unchanged")
+    failed = [r for r in results if r.get("fatal")]
+    lines.append(f"{sum(r['changed'] for r in results)} of {len(results)} draft groups changed.")
+    if failed:
+        lines.append(f"FAILED: {len(failed)} of {len(results)} polls could not read DraftKings "
+                     f"(recorded in nfl_dfs_dk_pool_polls).")
+    return lines, 1 if failed else 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--hours", type=int, default=120,
@@ -329,18 +418,13 @@ def main() -> None:
         report(db)
         return
     results = run(db, hours=args.hours, only=args.draft_group)
-    if not results:
-        print(f"No salary-cap NFL draft groups start within {args.hours}h.")
-        return
-    for result in results:
-        if not result["ok"]:
-            print(f"  dg={result['draft_group_id']:<7} FAILED  {result['detail']}")
-        elif result["changed"]:
-            print(f"  dg={result['draft_group_id']:<7} changed  {result['players']} players,"
-                  f" {result['flagged']} tagged")
-        else:
-            print(f"  dg={result['draft_group_id']:<7} unchanged")
-    print(f"{sum(r['changed'] for r in results)} of {len(results)} draft groups changed.")
+    games_soon = 0 if results or args.draft_group is not None else upcoming_games(
+        db, datetime.now(timezone.utc), hours=ACTIVE_WEEK_HOURS)
+    lines, status = summarize(results, hours=args.hours, explicit=args.draft_group is not None,
+                              games_soon=games_soon)
+    print("\n".join(lines))
+    if status:
+        raise SystemExit(status)
 
 
 if __name__ == "__main__":

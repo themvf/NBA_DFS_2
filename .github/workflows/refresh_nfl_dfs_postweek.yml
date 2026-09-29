@@ -4,12 +4,20 @@ name: Refresh NFL DFS Post-Week Review
 # typing a command.
 #
 # What runs here:
-#   1. realized DraftKings points for the week (`nfl_dfs_player_week_results`),
-#      which is where the play-by-play DST components land;
-#   2. the slate-scoped report cards, which grade our projections against what
+#   1. the results phase of the daily pipeline (`ingest.nfl_dfs_weekly --phase
+#      results`): refresh the schedule, download nflverse's current player-week
+#      and team-week stats, store them, and score them into
+#      `nfl_dfs_player_week_results` (where the play-by-play DST components
+#      land). Until 2026-09-29 this job only RE-SCORED rows already stored, so
+#      it could never score a game the projections workflow had not fetched --
+#      Monday night's PHI@CHI sat at zero result rows while the run went green;
+#   2. a coverage check that names every completed game still not scorable
+#      (warning while nflverse may still be publishing, error once it is
+#      GRACE_HOURS old -- see ingest/nfl_dfs_results_coverage.py);
+#   3. the slate-scoped report cards, which grade our projections against what
 #      DraftKings actually paid;
-#   3. the field-ownership audit over whatever contests have been imported.
-#   4. the weekly replacement-upside grade (second job, below), pre-registered
+#   4. the field-ownership audit over whatever contests have been imported.
+#   5. the weekly replacement-upside grade (second job, below), pre-registered
 #      in docs/nfl-replacement-upside-grading.md. Blinded until its floors are
 #      met; the first run past them freezes the verdict in the database.
 #
@@ -21,17 +29,22 @@ name: Refresh NFL DFS Post-Week Review
 #   job then keeps the audit current from that point on, and re-running it is
 #   free -- the audit is recomputed from stored ownership, never cached.
 #
-# Slots, against nflverse's publish cadence (the weekly stats release is
-# rebuilt each morning during the season):
-#   Tuesday 10:07 UTC = after Monday night's game has been published.
-#   Wednesday 10:07 UTC = a second pass, so a late nflverse correction is
-#                         picked up without waiting a week. The results ledger
-#                         is append-only and keyed by input digest, so an
+# Slots, against nflverse's publish cadence:
+#   Tuesday 10:07 UTC = Sunday's games are published by then. Monday night's
+#                       game usually is NOT: on 2026-09-29 nflverse's player-
+#                       and team-week stats for PHI@CHI landed at 11:34 UTC,
+#                       after this slot. The coverage check reports it as
+#                       pending (a warning, not a failure) and a later pass
+#                       scores it.
+#   Wednesday 10:07 UTC = a second pass: scores Monday night and picks up late
+#                         nflverse corrections. The results ledger is
+#                         append-only and keyed by input digest, so an
 #                         unchanged week inserts nothing.
 # Those two slots are dispatched by Vercel Cron (/api/cron/dispatch, job
 # nfl-dfs-postweek): GitHub's own schedule has skipped slots on this repo.
-# The schedule below is only the fallback, later the same days; every step is
-# idempotent, so a second pass costs minutes and changes nothing.
+# The schedule below is the fallback, later the same days (14:41 UTC, after
+# nflverse's Monday-night publish); every step is idempotent, so a second pass
+# costs minutes and changes nothing.
 
 on:
   workflow_dispatch:
@@ -66,28 +79,39 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # Realized DK points. DST components come from play-by-play when it is
-      # present and fall back to the team-week aggregate when it is not, so a
-      # week whose pbp has not published yet still scores.
-      - name: Materialize realized DraftKings points
-        run: |
-          if [ -n "$SEASON" ]; then
-            python -m ingest.nfl_dfs_results --season "$SEASON"
-          else
-            # Same rule the report cards use: before April, last year's season.
-            python -m ingest.nfl_dfs_results --season "$(python -c 'from datetime import datetime,timezone; from ingest.nfl_dfs_weekly import target_season; print(target_season(None, datetime.now(timezone.utc)))')"
-          fi
+      # Fetch, store and score the week: the same results phase the
+      # projections workflow runs. It refreshes the schedule (so a finished
+      # Monday-night game is marked completed), downloads nflverse's current
+      # player-week and team-week stats, writes them to ff_player_week_stats,
+      # and materializes realized DK points. DST components come from
+      # play-by-play when it is present and fall back to the team-week
+      # aggregate when it is not. A malformed feed or a failed schedule health
+      # gate fails this step visibly. Blank season = the pipeline's own rule
+      # (before April, last year's season).
+      - name: Fetch, store and score the week's results
+        id: results
+        run: python -m ingest.nfl_dfs_weekly --phase results ${SEASON:+--season "$SEASON"}
+
+      # The results phase can succeed and still leave a game unscored (nflverse
+      # not yet published, or a whole team failing identity). Name every such
+      # game: a warning while it is recent, an error once it is overdue.
+      - name: Check every completed game is scorable
+        if: ${{ !cancelled() }}
+        run: python -m ingest.nfl_dfs_results_coverage ${SEASON:+--season "$SEASON"}
 
       # How far our projections were from what DraftKings paid, per completed
       # slate upload. Scored on the players DK listed, so the zero a listed
-      # absentee was paid counts.
+      # absentee was paid counts -- but only in games whose player feed has
+      # landed. Runs even if the fetch failed: it grades whatever is stored.
       - name: Slate report cards
+        if: ${{ !cancelled() }}
         run: python -m ingest.nfl_dfs_slate_reportcard --pooled
 
       # What the field knew that we did not, over every contest already
       # imported. Prints nothing useful until a contest export has been
       # uploaded, and says so rather than failing.
       - name: Field-ownership audit
+        if: ${{ !cancelled() }}
         run: python -m ingest.nfl_dfs_field_audit --report
 
       # The run log is the record. Kept so a week can be read back without
