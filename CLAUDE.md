@@ -216,6 +216,18 @@ Each slate: "Load Slate" button          → reads all of the above from Neon �
 
 ## GitHub Actions
 
+### `tests.yml` — CI on every PR and push to main (2026-09-28)
+
+Runs every web `test:*` script (plus any `web/scripts/test-*.ts` no script
+references), `tsc`, ESLint and pytest, offline with no secrets. A test that
+cannot run in CI is listed with its reason in `EXCLUDED`
+(`web/scripts/run-test-scripts.mjs`) or `EXPECTED_SKIPS`
+(`scripts/ci_pytest_summary.py`); both lists are checked, so a stale entry, a
+new `--env-file` script, or an unlisted skip turns CI red. Pre-existing ESLint
+errors are baselined in `web/eslint-suppressions.json`; only new ones fail (run
+`npx eslint . --prune-suppressions` after fixing one). Mark a known Python
+failure `@pytest.mark.xfail(reason=...)`; never delete a test to go green.
+
 The `daily_stats.yml` workflow was removed (2026-03-28) because stats.nba.com blocks
 GitHub shared runner IPs (ReadTimeout on every attempt).
 

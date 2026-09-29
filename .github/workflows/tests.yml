@@ -1,0 +1,102 @@
+name: Tests
+
+# Runs every automated test on each pull request to main and each push to main,
+# and goes red when any of them fails.
+#
+# Why: on 2026-09-28 test-nfl-availability-coverage turned out to have been
+# failing since 2026-09-24, and four more tests had been broken since early
+# September, because nothing ran them. See docs/nfl-dfs-reliability-program.md,
+# item C4.
+#
+# Nothing here is skipped silently. Tests that cannot run in CI are listed, with
+# the reason, in exactly two places:
+#   - web:    EXCLUDED in web/scripts/run-test-scripts.mjs
+#   - python: EXPECTED_SKIPS in scripts/ci_pytest_summary.py
+# Both lists are checked: a stale entry, or a new skip nobody listed, fails CI.
+#
+# No secrets: every test here runs offline, without the production database.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.event.pull_request.number || github.ref }}
+  # Supersede stale runs on a PR; let every commit on main get its own result.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  web-tests:
+    name: Web test scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # `npm ci`, not the `npm install` the older NFL workflows use: the lockfile
+      # is back in sync with package.json (checked 2026-09-28 with npm 10 and 11),
+      # and a test gate should fail on lockfile drift rather than paper over it.
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      # Every `test:*` script in package.json, plus every scripts/test-*.ts file
+      # that no script references. Per-test results go to the job summary.
+      - name: Run every test script
+        run: node scripts/run-test-scripts.mjs
+
+  web-static:
+    name: Web type check and lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Type check
+        run: npx tsc --noEmit -p .
+      # Warnings never fail. The 90 errors that already existed on 2026-09-28 are
+      # recorded, per file and rule, in web/eslint-suppressions.json, so only NEW
+      # errors fail. Fixing a suppressed error makes ESLint ask for
+      # `npx eslint . --prune-suppressions`, which shrinks the baseline.
+      - name: Lint
+        run: npx eslint .
+
+  python-tests:
+    name: Python tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run pytest
+        run: python -m pytest -q -rfEs -p no:cacheprovider --junitxml=pytest-results.xml
+      # Writes the job summary, and fails on any skip not listed in EXPECTED_SKIPS
+      # (a skipped test looks green but has stopped running).
+      - name: Summarize and check skips
+        if: ${{ !cancelled() && hashFiles('pytest-results.xml') != '' }}
+        run: python scripts/ci_pytest_summary.py pytest-results.xml
