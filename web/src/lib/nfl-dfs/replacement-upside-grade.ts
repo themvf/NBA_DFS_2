@@ -184,6 +184,9 @@ function controlIds(capture: GradeCapture): Set<number> {
 
 export type ActualStatus = 'scored' | 'pending_result' | 'awaiting_source' | 'game_missing' | 'schedule_changed' | 'result_identity_conflict';
 
+/** Positions written by the player feed; DST rows come from the separate team feed. */
+const SKILL_POSITIONS = new Set(['QB', 'RB', 'WR', 'TE']);
+
 /** Latest exact result per game and player, as of `now`. */
 function exactResults(results: readonly GradeResult[], now: string) {
   const byGame = new Map<number, Map<number, GradeResult>>();
@@ -201,8 +204,8 @@ function exactResults(results: readonly GradeResult[], now: string) {
 
 /**
  * DraftKings' convention, identical to `nfl-dfs-slate-report-v1`: a listed
- * player in a completed game that has at least one exact result, with no row
- * of his own, scored 0. A backup who never touched the ball is exactly the
+ * player in a completed game where his team has at least one exact QB/RB/WR/TE
+ * result (the player feed has run), with no row of his own, scored 0. A backup who never touched the ball is exactly the
  * "didn't get the job" outcome, so he must not drop out as missing.
  */
 export function resolveActual(capture: GradeCapture, player: GradeCapturePlayer,
@@ -214,6 +217,13 @@ export function resolveActual(capture: GradeCapture, player: GradeCapturePlayer,
   if (!game.completed) return { status: 'pending_result', actual: null };
   const rows = exact.get(game.id);
   if (!rows || rows.size === 0) return { status: 'awaiting_source', actual: null };
+  // A zero is real only once the PLAYER feed has run for his team: DST rows come
+  // from the team feed and can land first, which used to score every listed
+  // player 0. Same rule as nfl-dfs-slate-report-v1 (skill_coverage), which the
+  // registration requires this grade to match.
+  const team = benchmarkTeam(player.team);
+  const skillFeedRan = [...rows.values()].some((r) => SKILL_POSITIONS.has(String(r.position).toUpperCase()) && benchmarkTeam(r.team) === team);
+  if (!skillFeedRan) return { status: 'awaiting_source', actual: null };
   const hit = rows.get(player.playerId!);
   if (hit && benchmarkTeam(hit.team) !== benchmarkTeam(player.team)) return { status: 'result_identity_conflict', actual: null };
   return { status: 'scored', actual: hit ? hit.actual! : 0 };
