@@ -1,4 +1,5 @@
 import { selectedSportsbooks } from "@/lib/sportsbook-policy";
+import { NHL_FIRST_CAPTURE_DUE_MINUTES, nhlFreshnessTargetMinutes } from "@/lib/nhl-market";
 import { getPickemEvidence } from "./pickem-evidence";
 import { usablePickemQuote, type PickemEvidence } from "@/lib/nfl/pickem-evidence";
 import { db } from ".";
@@ -10560,6 +10561,225 @@ export async function getCfbTerminalBoard(gameDate?: string): Promise<CfbTermina
   };
 }
 
+export type NhlTerminalRow = {
+  matchupId: number;
+  nhlGameId: number;
+  oddsEventId: string | null;
+  gameDate: string;
+  gameType: number;
+  commenceTime: string | null;
+  homeTeam: string;
+  awayTeam: string;
+  homeAbbrev: string;
+  awayAbbrev: string;
+  homeLogo: string | null;
+  awayLogo: string | null;
+  venue: string | null;
+  networks: string | null;
+  neutralSite: boolean;
+  gameState: string | null;
+  scheduleState: string;
+  completed: boolean;
+  homeScore: number | null;
+  awayScore: number | null;
+  lastPeriodType: string | null;
+  /** Full days off since the team's previous game; 0 = back-to-back, null = none on record. */
+  homeRestDays: number | null;
+  awayRestDays: number | null;
+  captures: number;
+  openingBooks: CfbBookMap | null;
+  currentBooks: CfbBookMap | null;
+  closingBooks: CfbBookMap | null;
+  openingCapturedAt: string | null;
+  latestCapturedAt: string | null;
+  closingCapturedAt: string | null;
+  closeQuality: "A" | "B" | "C" | "stale" | null;
+  closeLeadSeconds: number | null;
+  closeBoundarySource: string | null;
+  history: Array<{ capturedAt: string; books: CfbBookMap }>;
+};
+
+export type NhlTerminalStatus = "live" | "stale" | "partial" | "scheduled" | "final" | "unavailable";
+
+export type NhlTerminalBoard = {
+  gameDate: string;
+  asOf: string;
+  status: NhlTerminalStatus;
+  statusDetail: string;
+  games: NhlTerminalRow[];
+  unmappedEvents: number;
+};
+
+export async function getNhlDefaultGameDate(): Promise<string> {
+  await ensureOddsHistoryTables();
+  const today = easternDateNow();
+  const rows = await db.execute(sql`
+    SELECT COALESCE(
+      MIN(game_date) FILTER (WHERE game_date >= ${today}::date),
+      MAX(game_date),
+      ${today}::date
+    )::text AS game_date
+    FROM nhl_matchups
+  `);
+  const row = rows.rows[0] as Record<string, unknown> | undefined;
+  return row?.game_date ? String(row.game_date) : today;
+}
+
+/** The CFB terminal's point-in-time ledger read, for hockey. Only captures
+ * strictly before the scheduled start are eligible for open/current/tape. */
+export async function getNhlTerminalBoard(gameDate?: string): Promise<NhlTerminalBoard> {
+  await ensureOddsHistoryTables();
+  const targetDate = gameDate ?? await getNhlDefaultGameDate();
+  const rows = await db.execute(sql`
+    WITH eligible AS (
+      SELECT h.*,
+             ROW_NUMBER() OVER (PARTITION BY h.matchup_id ORDER BY h.captured_at, h.id) AS open_rank,
+             ROW_NUMBER() OVER (PARTITION BY h.matchup_id ORDER BY h.captured_at DESC, h.id DESC) AS latest_rank,
+             COUNT(*) OVER (PARTITION BY h.matchup_id)::int AS capture_count
+      FROM game_odds_history h
+      JOIN nhl_matchups m ON m.id=h.matchup_id
+      WHERE h.sport='nhl' AND h.books IS NOT NULL
+        AND m.game_date=${targetDate}::date
+        AND m.commence_time IS NOT NULL
+        AND h.captured_at < m.commence_time
+    ), opening AS (
+      SELECT * FROM eligible WHERE open_rank=1
+    ), latest AS (
+      SELECT * FROM eligible WHERE latest_rank=1
+    ), trails AS (
+      SELECT matchup_id,
+             JSONB_AGG(JSONB_BUILD_OBJECT('capturedAt', captured_at::text, 'books', books)
+                       ORDER BY captured_at, id) AS history
+      FROM eligible
+      GROUP BY matchup_id
+    )
+    SELECT
+      m.id AS "matchupId",
+      m.nhl_game_id AS "nhlGameId",
+      m.odds_event_id AS "oddsEventId",
+      m.game_date::text AS "gameDate",
+      m.game_type AS "gameType",
+      m.commence_time::text AS "commenceTime",
+      ht.name AS "homeTeam",
+      at.name AS "awayTeam",
+      ht.abbreviation AS "homeAbbrev",
+      at.abbreviation AS "awayAbbrev",
+      NULLIF(ht.logo_url, '') AS "homeLogo",
+      NULLIF(at.logo_url, '') AS "awayLogo",
+      m.venue,
+      m.networks,
+      m.neutral_site AS "neutralSite",
+      m.game_state AS "gameState",
+      COALESCE(m.schedule_state, 'OK') AS "scheduleState",
+      m.completed,
+      m.home_score AS "homeScore",
+      m.away_score AS "awayScore",
+      m.last_period_type AS "lastPeriodType",
+      m.game_date - home_prev.game_date - 1 AS "homeRestDays",
+      m.game_date - away_prev.game_date - 1 AS "awayRestDays",
+      COALESCE(latest.capture_count, 0)::int AS captures,
+      opening.books AS "openingBooks",
+      latest.books AS "currentBooks",
+      close_history.books AS "closingBooks",
+      opening.captured_at::text AS "openingCapturedAt",
+      latest.captured_at::text AS "latestCapturedAt",
+      close_history.captured_at::text AS "closingCapturedAt",
+      COALESCE(vclose.quality, close_audit.quality) AS "closeQuality",
+      vclose.lead_seconds AS "closeLeadSeconds",
+      vclose.boundary_source AS "closeBoundarySource",
+      COALESCE(trails.history, '[]'::jsonb) AS history
+    FROM nhl_matchups m
+    JOIN nhl_teams ht ON ht.team_id=m.home_team_id
+    JOIN nhl_teams at ON at.team_id=m.away_team_id
+    LEFT JOIN LATERAL (
+      SELECT MAX(p.game_date) AS game_date FROM nhl_matchups p
+      WHERE m.home_team_id IN (p.home_team_id, p.away_team_id)
+        AND p.commence_time < m.commence_time AND COALESCE(p.schedule_state, 'OK')='OK'
+    ) home_prev ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT MAX(p.game_date) AS game_date FROM nhl_matchups p
+      WHERE m.away_team_id IN (p.home_team_id, p.away_team_id)
+        AND p.commence_time < m.commence_time AND COALESCE(p.schedule_state, 'OK')='OK'
+    ) away_prev ON TRUE
+    LEFT JOIN opening ON opening.matchup_id=m.id
+    LEFT JOIN latest ON latest.matchup_id=m.id
+    LEFT JOIN trails ON trails.matchup_id=m.id
+    LEFT JOIN verified_clv_closes vclose ON vclose.sport='nhl' AND vclose.matchup_id=m.id
+    LEFT JOIN event_closing_lines close_audit ON close_audit.sport='nhl' AND close_audit.matchup_id=m.id
+    LEFT JOIN game_odds_history close_history ON close_history.id=vclose.history_id
+    WHERE m.game_date=${targetDate}::date
+    ORDER BY m.commence_time NULLS LAST, m.id
+  `);
+  const books = (value: unknown) => value && typeof value === "object" ? selectedSportsbooks(value as CfbBookMap) : null;
+  const text = (value: unknown) => value != null ? String(value) : null;
+  const games = rows.rows.map((row) => {
+    const r = row as Record<string, unknown>;
+    const history = Array.isArray(r.history) ? r.history.flatMap((item) => {
+      if (!item || typeof item !== "object") return [];
+      const point = item as Record<string, unknown>;
+      return [{ capturedAt: String(point.capturedAt), books: books(point.books) ?? {} }];
+    }) : [];
+    return {
+      matchupId: Number(r.matchupId), nhlGameId: Number(r.nhlGameId), oddsEventId: text(r.oddsEventId),
+      gameDate: String(r.gameDate), gameType: Number(r.gameType), commenceTime: text(r.commenceTime),
+      homeTeam: String(r.homeTeam), awayTeam: String(r.awayTeam),
+      homeAbbrev: String(r.homeAbbrev), awayAbbrev: String(r.awayAbbrev),
+      homeLogo: text(r.homeLogo), awayLogo: text(r.awayLogo),
+      venue: text(r.venue), networks: text(r.networks), neutralSite: Boolean(r.neutralSite),
+      gameState: text(r.gameState), scheduleState: String(r.scheduleState ?? "OK"), completed: Boolean(r.completed),
+      homeScore: r.homeScore != null ? Number(r.homeScore) : null,
+      awayScore: r.awayScore != null ? Number(r.awayScore) : null,
+      lastPeriodType: text(r.lastPeriodType),
+      homeRestDays: r.homeRestDays != null ? Number(r.homeRestDays) : null,
+      awayRestDays: r.awayRestDays != null ? Number(r.awayRestDays) : null,
+      captures: Number(r.captures ?? 0),
+      openingBooks: books(r.openingBooks), currentBooks: books(r.currentBooks), closingBooks: books(r.closingBooks),
+      openingCapturedAt: text(r.openingCapturedAt), latestCapturedAt: text(r.latestCapturedAt),
+      closingCapturedAt: text(r.closingCapturedAt),
+      closeQuality: ["A", "B", "C", "stale"].includes(String(r.closeQuality)) ? String(r.closeQuality) as NhlTerminalRow["closeQuality"] : null,
+      closeLeadSeconds: r.closeLeadSeconds != null ? Number(r.closeLeadSeconds) : null,
+      closeBoundarySource: text(r.closeBoundarySource),
+      history,
+    } satisfies NhlTerminalRow;
+  });
+  const unmappedRows = await db.execute(sql`
+    SELECT COUNT(*)::int AS n FROM nhl_unmapped_events
+    WHERE resolved_at IS NULL
+      AND (commence_time AT TIME ZONE 'America/New_York')::date = ${targetDate}::date
+  `);
+  const unmapped = Number((unmappedRows.rows[0] as Record<string, unknown> | undefined)?.n ?? 0);
+  const now = Date.now();
+  const lead = (game: NhlTerminalRow) => (Date.parse(game.commenceTime ?? "") - now) / 60_000;
+  const upcoming = games.filter((game) => !game.completed && game.scheduleState === "OK" && lead(game) > 0);
+  const owed = upcoming.filter((game) => lead(game) <= NHL_FIRST_CAPTURE_DUE_MINUTES);
+  const missing = owed.filter((game) => !game.latestCapturedAt);
+  const unmappedGames = owed.filter((game) => !game.oddsEventId);
+  const stale = owed.filter((game) => {
+    if (!game.latestCapturedAt) return false;
+    const target = nhlFreshnessTargetMinutes(lead(game));
+    return target != null && (now - Date.parse(game.latestCapturedAt)) / 60_000 > target;
+  });
+  let status: NhlTerminalStatus = "live";
+  let statusDetail = "Every upcoming game's latest capture meets its checkpoint freshness target.";
+  if (!games.length) {
+    status = "unavailable";
+    statusDetail = "No NHL regular-season or playoff games are loaded for this date.";
+  } else if (!upcoming.length) {
+    status = "final";
+    statusDetail = "Every game on this date has started; showing the frozen pregame tape and closes.";
+  } else if (missing.length || unmappedGames.length || unmapped) {
+    status = "partial";
+    statusDetail = `${missing.length} game(s) owed a capture have none; ${unmappedGames.length} lack a sportsbook event mapping; ${unmapped} provider event(s) quarantined.`;
+  } else if (stale.length) {
+    status = "stale";
+    statusDetail = `${stale.length} upcoming game(s) missed a checkpoint freshness target.`;
+  } else if (!owed.length && upcoming.every((game) => !game.latestCapturedAt)) {
+    status = "scheduled";
+    statusDetail = "Schedule loaded. Sportsbook captures begin 24 hours before each game.";
+  }
+  return { gameDate: targetDate, asOf: new Date().toISOString(), status, statusDetail, games, unmappedEvents: unmapped };
+}
+
 export type LineMovementLane = "sportsbook" | "polymarket";
 
 function americanOddsProbability(value: unknown): number | null {
@@ -10936,7 +11156,7 @@ export type MarketSignalScorecardRow = {
 };
 
 export type MarketCaptureHealth = {
-  sport: "cfb" | "tennis";
+  sport: "cfb" | "tennis" | "nhl";
   asOf: string;
   scheduled: number;
   captured: number;
@@ -11113,7 +11333,7 @@ export async function getMarketSignalScorecard(sport: "cfb" | "tennis"): Promise
  * future checkpoints; coverage therefore cannot be inflated by work that has
  * not been expected yet. */
 export async function getMarketCaptureHealth(
-  sport: "cfb" | "tennis",
+  sport: "cfb" | "tennis" | "nhl",
   gameDate?: string,
 ): Promise<MarketCaptureHealth> {
   const rows = await db.execute(sql`

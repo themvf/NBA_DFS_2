@@ -1,0 +1,140 @@
+/* Extends ../cfb/cfb-terminal.module.css (shared line-terminal look). */
+
+/* Book ladder with a vig-free column: BOOK · UPDATED · LINE · PRICE · FAIR */
+.bookGrid {
+  grid-template-columns: 84px minmax(62px, 1fr) 76px 50px 50px;
+}
+
+.offLine {
+  opacity: 0.55;
+}
+
+.metricTabs button {
+  padding: 4px 10px;
+  font-size: 10px;
+}
+
+.movers {
+  border-bottom: 1px solid var(--terminal-line);
+  background: #0b0f0f;
+}
+
+.moversHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px 4px;
+}
+
+.moversHead h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.moversHead span,
+.moversPolicy {
+  color: var(--terminal-muted);
+  font-size: 10px;
+}
+
+.moversPolicy {
+  margin: 0;
+  padding: 0 12px 8px;
+}
+
+.moversHead button {
+  cursor: pointer;
+  border: 1px solid var(--terminal-line);
+  background: transparent;
+  padding: 3px 8px;
+  color: var(--terminal-text);
+}
+
+.moverCards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 8px;
+  padding: 0 12px 12px;
+}
+
+.moverCard {
+  display: grid;
+  gap: 4px;
+  cursor: pointer;
+  border: 1px solid var(--terminal-line);
+  background: var(--terminal-panel);
+  padding: 9px 10px;
+  color: var(--terminal-text);
+  text-align: left;
+}
+
+.moverCard[aria-pressed="true"] {
+  border-color: var(--terminal-orange);
+}
+
+.moverCard strong {
+  font-size: 12px;
+}
+
+.moverCard span,
+.moverCard small {
+  color: var(--terminal-muted);
+  font-size: 10px;
+}
+
+.moverCard b {
+  color: var(--terminal-orange);
+}
+
+.moversEmpty {
+  margin: 0;
+  padding: 0 12px 12px;
+  color: var(--terminal-muted);
+  font-size: 10px;
+}
+
+.contextGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  border-bottom: 1px solid var(--terminal-line);
+}
+
+.contextGrid > div {
+  display: grid;
+  gap: 3px;
+  border-right: 1px solid var(--terminal-line-soft);
+  padding: 10px 12px;
+}
+
+.contextGrid span {
+  color: var(--terminal-muted);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+}
+
+.contextGrid strong {
+  font-size: 13px;
+}
+
+.contextGrid small {
+  color: var(--terminal-muted);
+  font-size: 10px;
+}
+
+.b2b {
+  color: var(--terminal-orange);
+}
+
+.final {
+  color: var(--terminal-green);
+}
+
+@media (max-width: 650px) {
+  .bookGrid {
+    grid-template-columns: minmax(64px, 1fr) minmax(56px, 1fr) 64px 46px 46px;
+  }
+}
