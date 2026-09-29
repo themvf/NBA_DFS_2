@@ -125,6 +125,12 @@ def test_live_scan_tags_only_first_walking_without_relabeling(monkeypatch, prior
 
     class DB:
         def execute(self, sql, params):
+            # Since 2026-09-06 (235ffea) scan() also records movement lifecycles
+            # via model.signal_observations, whose ledger query is a SELECT
+            # DISTINCT too. Model that ledger as empty (no earlier observation)
+            # instead of handing it the capture row.
+            if "FROM market_signal_observations" in sql:
+                return []
             return [row] if "SELECT DISTINCT" in sql else []
 
         def execute_one(self, sql, params):

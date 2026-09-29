@@ -38,10 +38,12 @@ assert.equal(summarizeSignals([
 console.log("MLB terminal date, quote, matched-book history and scorecard checks passed");
 
 const books = sportsbookTrails(h, "moneyline", "home");
-assert.deepEqual(books.map((series) => series.key), ["draftkings", "fanduel"]);
-assert.equal(books[1].points[0].value, null, "A book arriving later must leave a gap");
-assert.notEqual(books[0].points[1].value, books[1].points[1].value, "Book disagreement must remain visible");
-assert.equal(sportsbookTrails([h[1]], "moneyline", "home")[1].color, books[1].color);
+// Series follow the six-book policy order (SPORTSBOOK_KEYS), where FanDuel precedes DraftKings.
+assert.deepEqual(books.map((series) => series.key), ["fanduel", "draftkings"]);
+const trailOf = (series: typeof books, key: string) => series.find((s) => s.key === key)!;
+assert.equal(trailOf(books, "fanduel").points[0].value, null, "A book arriving later must leave a gap");
+assert.notEqual(trailOf(books, "draftkings").points[1].value, trailOf(books, "fanduel").points[1].value, "Book disagreement must remain visible");
+assert.equal(trailOf(sportsbookTrails([h[1]], "moneyline", "home"), "fanduel").color, trailOf(books, "fanduel").color);
 assert.deepEqual(sportsbookTrails(pricedHistory, "total", "over")[0].points.map((p) => p.value), [8, 8.5, 8.5]);
 assert.equal(sportsbookTrails([{ ...h[0], books: { draftkings: { ml_home: -110 } } }], "moneyline", "home").length, 0, "Unpaired prices cannot become fair probabilities");
 assert.equal(sportsbookTrails([], "run_line", "away").length, 0);
