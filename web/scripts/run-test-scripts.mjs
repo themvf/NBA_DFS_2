@@ -153,11 +153,17 @@ function runOne(test, timeoutMs) {
     const finish = (code, error) => {
       clearTimeout(timer);
       const output = Buffer.concat(chunks).toString("utf8") + (error ? `\n${error.stack ?? error}` : "");
+      // Every test prints a result line when it finishes. An exit 0 with no
+      // output is what a test looks like when it stopped before its checks ran
+      // (e.g. an async test whose pending promise did not keep Node alive), so
+      // it is a failure, not a pass.
+      const silent = !timedOut && code === 0 && output.trim() === "";
       resolve({
         ...test,
-        status: !timedOut && code === 0 ? "pass" : "fail",
+        status: !timedOut && code === 0 && !silent ? "pass" : "fail",
         exitCode: code,
         timedOut,
+        silent,
         seconds: (Date.now() - started) / 1000,
         output,
       });
@@ -194,7 +200,7 @@ function report(result) {
     console.log(`PASS  ${result.name}  (${time})`);
     return;
   }
-  const why = result.timedOut ? "timed out" : `exit ${result.exitCode}`;
+  const why = result.timedOut ? "timed out" : result.silent ? "exit 0 but printed nothing: it may have stopped before its checks ran" : `exit ${result.exitCode}`;
   console.log(`FAIL  ${result.name}  (${why}, ${time})`);
   if (onActions) console.log(`::group::Output of ${result.name}`);
   console.log(result.output.trimEnd());

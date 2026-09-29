@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { AlertTriangle, CheckCircle2, CircleSlash, HelpCircle } from "lucide-react";
 import { getPipelineHealth, type PipelineHealthRow } from "@/db/queries";
+import FailingJobs from "./failing-jobs";
 
 export const metadata = {
   title: "Pipeline Health",
@@ -44,9 +45,12 @@ export default async function HealthPage() {
           Whether each scheduled job is still writing data — judged on{" "}
           <strong className="font-semibold text-foreground">the data itself</strong>, not on whether
           its workflow went green. Status lies in both directions: a workflow can pass while writing
-          nothing, and fail while writing everything that matters.
+          nothing, and fail while writing everything that matters. So both are shown: the jobs whose
+          last run failed, then the freshness of the data each one writes.
         </p>
       </header>
+
+      <FailingJobs />
 
       {health.checkedAt === null ? (
         <div className="rounded border border-dashed p-6 text-sm">
