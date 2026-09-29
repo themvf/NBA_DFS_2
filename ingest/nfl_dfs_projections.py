@@ -24,7 +24,7 @@ from db.database import DatabaseManager
 from ingest.nfl_availability_context_publish import persist_availability_contexts
 from ingest.nfl_target_week import SeasonComplete, target_week
 from model.nfl_dfs_availability import apply as apply_availability, last_game_passing_leaders, player_identity
-from model.nfl_game_availability import resolve_game_availability
+from model.nfl_game_availability import game_has_started, pregame_decision_time, resolve_game_availability
 from model.nfl_dfs_historical import (
     MODEL_CONFIG,
     MODEL_VERSION,
@@ -369,17 +369,27 @@ def build_week(
     # Pre-kickoff availability. A status only counts if WE captured it before
     # this player's own kickoff — so a Tuesday run uses Tuesday's truth and a
     # Sunday-morning run uses Sunday's, with no list to maintain in between.
+    #
+    # A game that has already kicked off keeps its last pregame decision: it is
+    # resolved at kickoff - 1us, never at `as_of_at`. A run built after an
+    # early kickoff therefore still zeroes that game's ruled-out players (and
+    # promotes their backups) exactly as the pregame run did, while the games
+    # not yet started resolve normally at `as_of_at`.
     observed = _availability(db, season, week)
     statuses: dict[int, str] = {}
     availability_decisions: dict[str, dict[str, Any]] = {}
     availability_migration_audit: list[dict[str, Any]] = []
+    started_games: set[str] = set()
     for player in projections:
         if not player.get("player_id"):
             continue
+        kickoff = player.get("commence_time")
+        if game_has_started(kickoff, as_of_at):
+            started_games.add(str(player.get("game_id") or player.get("event_id") or ""))
         decision = resolve_game_availability(
             observed.get(int(player["player_id"])),
-            as_of_at=as_of_at,
-            kickoff=player.get("commence_time"),
+            as_of_at=pregame_decision_time(as_of_at, kickoff),
+            kickoff=kickoff,
         )
         availability_decisions[str(player["player_id"])] = decision.as_dict()
         legacy_status = _legacy_fantasypros_status(
@@ -402,6 +412,8 @@ def build_week(
     projections, availability_report = apply_availability(
         projections, statuses, positions=("QB",) if transfer_enabled else ())
     availability_report["policy_mode"] = "shared_v1" if transfer_enabled else "safety_rollback_v1"
+    # Games resolved at their last pregame instant (kicked off before as_of_at).
+    availability_report["pregame_frozen_games"] = sorted(started_games)
 
     # Optional evidence/shadow extension. The protected v5 draws and active
     # numbers stay unchanged; unqualified context never becomes a multiplier.
@@ -488,6 +500,7 @@ def persist_week(db: DatabaseManager, projections: list[dict[str, Any]], manifes
     availability_manifest = {
         "policy": manifest["availability_health"]["policy"],
         "policy_mode": manifest["availability"].get("policy_mode"),
+        "pregame_frozen_games": manifest["availability"].get("pregame_frozen_games", []),
         "health": manifest["availability_health"],
         "migration_audit": manifest["availability_migration_audit"],
         "decisions_digest": artifact_digest(manifest["availability_decisions"]),

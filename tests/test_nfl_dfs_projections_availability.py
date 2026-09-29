@@ -34,11 +34,11 @@ class StubDB:
             return []
         return []
 
-def run(captured_at, config=None):
+def run(captured_at, config=None, *, as_of_at=TUESDAY, kickoff=KICKOFF):
     monkey = {
         "_history": lambda db, season, wk: HISTORY,
         "_slate_environment": lambda db, season, wk: {
-            "LAR": {"opponent": "SEA", "event_id": "e1", "commence_time": KICKOFF,
+            "LAR": {"opponent": "SEA", "event_id": "e1", "commence_time": kickoff,
                     "team_implied_total": 24.0}},
         "_players": lambda db, season, teams: [
             {"id": 1, "gsis_id": "00-1", "canonical_name": "Starter", "normalized_name": "starter",
@@ -51,7 +51,7 @@ def run(captured_at, config=None):
         setattr(proj, name, fn)
     try:
         return proj.build_week(StubDB(captured_at), season=2026, week=3,
-                               as_of_at=TUESDAY, seed=7, config=config)
+                               as_of_at=as_of_at, seed=7, config=config)
     finally:
         for name, fn in originals.items():
             setattr(proj, name, fn)
@@ -167,3 +167,47 @@ def test_unverified_roster_age_cannot_authorize_a_promotion(captured):
 
 def test_fresh_role_evidence_keeps_depth():
     assert proj.qualified_depth({"depth_order":2,"roster_fetched_at":TUESDAY},TUESDAY)==2
+
+
+# ── a rebuild after kickoff keeps the pregame decision ─────────────────
+# Kickoff two hours after the Tuesday roster capture so the depth evidence is
+# still fresh for a run built an hour after kickoff.
+EARLY = TUESDAY + timedelta(hours=2)
+
+
+def test_a_rebuild_after_kickoff_keeps_the_pregame_out_and_promotion():
+    projections, manifest = run(TUESDAY, as_of_at=EARLY + timedelta(hours=1), kickoff=EARLY)
+    players = by_name(projections)
+    assert players["Starter"]["model_proj_fpts"] == 0.0, "a post-kickoff UNKNOWN must not un-zero him"
+    assert players["Backup"]["availability"]["applied"] is True
+    decision = manifest["availability_decisions"]["1"]
+    assert decision["state"] == "OUT_CONFIRMED"
+    assert decision["as_of_at"] == (EARLY - timedelta(microseconds=1)).isoformat()
+    assert manifest["availability"]["pregame_frozen_games"] == ["e1"]
+
+
+def test_the_rebuild_reproduces_the_last_pregame_decision_exactly():
+    before, pregame = run(TUESDAY, as_of_at=EARLY - timedelta(microseconds=1), kickoff=EARLY)
+    after, rebuilt = run(TUESDAY, as_of_at=EARLY + timedelta(hours=1), kickoff=EARLY)
+    assert rebuilt["availability_decisions"] == pregame["availability_decisions"]
+    assert [p["model_proj_fpts"] for p in after] == [p["model_proj_fpts"] for p in before]
+
+
+def test_a_capture_after_kickoff_still_cannot_change_a_started_game():
+    projections, manifest = run(EARLY + timedelta(minutes=10), as_of_at=EARLY + timedelta(hours=1), kickoff=EARLY)
+    assert by_name(projections)["Starter"]["model_proj_fpts"] > 0
+    assert manifest["availability_decisions"]["1"]["display_only_observation_ids"] == [10]
+
+
+def test_a_game_not_yet_started_resolves_at_the_run_time():
+    _, manifest = run(TUESDAY, as_of_at=TUESDAY + timedelta(hours=1), kickoff=EARLY)
+    assert manifest["availability_decisions"]["1"]["as_of_at"] == (TUESDAY + timedelta(hours=1)).isoformat()
+    assert manifest["availability"]["pregame_frozen_games"] == []
+
+
+def test_pregame_decision_time():
+    from model.nfl_game_availability import pregame_decision_time
+    assert pregame_decision_time(TUESDAY, EARLY) == TUESDAY
+    assert pregame_decision_time(EARLY, EARLY) == EARLY - timedelta(microseconds=1)
+    assert pregame_decision_time(EARLY + timedelta(days=1), EARLY) == EARLY - timedelta(microseconds=1)
+    assert pregame_decision_time(TUESDAY, None) == TUESDAY

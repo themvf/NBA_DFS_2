@@ -83,6 +83,33 @@ def _id(row: Mapping[str, Any], key: str) -> int | None:
         return None
 
 
+LAST_PREGAME_INSTANT = timedelta(microseconds=1)
+
+
+def pregame_decision_time(as_of_at: datetime, kickoff: datetime | None) -> datetime:
+    """The decision time a caller should use for one player-game.
+
+    Before kickoff this is ``as_of_at``. Once the game has kicked off, the
+    decision is frozen at the last pregame instant (``kickoff - 1us``): the
+    resolver still sees only observations available before kickoff, so a run
+    built after kickoff reproduces the pregame decision instead of receiving
+    the post-kickoff UNKNOWN below. Without this, every rebuild after a
+    kickoff un-zeroed that game's ruled-out players and republished all of
+    its contexts as UNKNOWN (2026 week 3: 1,087 of 1,087 current contexts
+    UNKNOWN, 3,152 OUT_CONFIRMED rows superseded). A missing or naive kickoff
+    is returned unchanged; the resolver reports it as not pregame.
+    """
+    if _aware(kickoff) and as_of_at >= kickoff:
+        return kickoff - LAST_PREGAME_INSTANT
+    return as_of_at
+
+
+def game_has_started(kickoff: Any, as_of_at: datetime) -> bool:
+    """True when ``kickoff`` (datetime or ISO string) is at or before ``as_of_at``."""
+    parsed = _timestamp(kickoff)
+    return parsed is not None and parsed <= as_of_at
+
+
 def resolve_game_availability(
     observations: Iterable[Mapping[str, Any]] | None,
     *,
