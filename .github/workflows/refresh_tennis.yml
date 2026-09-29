@@ -139,6 +139,9 @@ jobs:
             python -m model.tennis_bets
           fi
 
+      # Judges readiness only inside the US Open window (provider lists the
+      # tournament, or a week before to a day after the stored edition);
+      # outside it the script logs "skipped" and exits 0.
       - name: US Open draw and metadata readiness gate
         if: inputs.debug_discovery != true
         run: python -m ingest.tennis_us_open_preflight --enrich --fail-on-unready

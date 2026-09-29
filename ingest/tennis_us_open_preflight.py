@@ -3,12 +3,21 @@
 The check is intentionally executable in CI. It enriches deterministic Slam
 metadata, reconciles the 128-player first-round draw (64 matches per tour),
 and fails loudly when odds capture or identity coverage is incomplete.
+
+It only judges readiness inside the tournament window: while the provider
+advertises a US Open, or from a week before the latest stored edition's first
+match to a day after its last. Outside that window it reports "skipped" and
+exits 0 even with --fail-on-unready, because a finished (or not yet drawn)
+Slam cannot be "ready". Until 2026-09-29 it ran on every tennis refresh after
+the 2026 final and turned each run red on "provider does not advertise an
+active US Open".
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+from datetime import datetime, timedelta, timezone
 
 from config import load_config
 from db.database import DatabaseManager
@@ -16,6 +25,11 @@ from ingest.tennis_schedule import discover_tournaments
 
 FIRST_ROUND_EXPECTED_PER_TOUR = 64
 TOURNAMENT_PATTERN = "%us open%"
+# Readiness window around the latest stored edition's schedule.
+WINDOW_LEAD = timedelta(days=7)
+WINDOW_GRACE = timedelta(days=1)
+# Stored events this close to the latest one belong to the same edition.
+EDITION_SPAN_DAYS = 30
 
 
 def is_us_open(sport_key: str, title: str) -> bool:
@@ -57,8 +71,52 @@ def enrich_us_open_metadata(db: DatabaseManager) -> int:
     return len(rows)
 
 
-def preflight(db: DatabaseManager, api_key: str, *, enrich: bool = False) -> dict:
+def stored_edition_window(db: DatabaseManager) -> tuple[datetime | None, datetime | None]:
+    """First and last scheduled match of the latest stored US Open edition."""
+    row = db.execute_one(
+        """
+        WITH latest AS (
+          SELECT MAX(scheduled_at) AS last_at
+          FROM tennis_events
+          WHERE canonical_tournament ILIKE %s AND scheduled_at IS NOT NULL
+        )
+        SELECT MIN(e.scheduled_at) AS first_at, MAX(latest.last_at) AS last_at
+        FROM tennis_events e CROSS JOIN latest
+        WHERE e.canonical_tournament ILIKE %s
+          AND e.scheduled_at >= latest.last_at - make_interval(days => %s)
+        """,
+        (TOURNAMENT_PATTERN, TOURNAMENT_PATTERN, EDITION_SPAN_DAYS),
+    ) or {}
+    return row.get("first_at"), row.get("last_at")
+
+
+def tournament_window(
+    db: DatabaseManager, provider_active: bool, now: datetime | None = None,
+) -> dict:
+    """Whether a readiness verdict means anything right now, and why."""
+    if provider_active:
+        return {"in_window": True, "reason": "The Odds API advertises an active US Open"}
+    now = now or datetime.now(timezone.utc)
+    first_at, last_at = stored_edition_window(db)
+    if first_at is None or last_at is None:
+        return {"in_window": False,
+                "reason": "no US Open fixtures are stored and the provider advertises none"}
+    opens, closes = first_at - WINDOW_LEAD, last_at + WINDOW_GRACE
+    if opens <= now <= closes:
+        return {"in_window": True,
+                "reason": f"inside the stored US Open window {opens:%Y-%m-%d} to {closes:%Y-%m-%d}"}
+    return {"in_window": False,
+            "reason": (f"outside the US Open window (latest stored edition ran "
+                       f"{first_at:%Y-%m-%d} to {last_at:%Y-%m-%d}) and the provider advertises none")}
+
+
+def preflight(db: DatabaseManager, api_key: str, *, enrich: bool = False,
+              now: datetime | None = None) -> dict:
     active = active_us_open_tournaments(discover_tournaments(api_key))
+    window = tournament_window(db, bool(active), now)
+    if not window["in_window"]:
+        return {"ready": None, "skipped": True, "reason": window["reason"],
+                "provider_us_open_active": False, "provider_tournaments": []}
     enriched = enrich_us_open_metadata(db) if enrich else 0
     coverage_rows = db.execute(
         """
@@ -154,6 +212,8 @@ if __name__ == "__main__":
     result = preflight(
         DatabaseManager(config.database_url), config.odds_api.api_key, enrich=args.enrich,
     )
+    if result.get("skipped"):
+        print(f"US Open preflight skipped: {result['reason']}.")
     print(json.dumps(result, indent=2))
-    if args.fail_on_unready and not result["ready"]:
+    if args.fail_on_unready and result["ready"] is False:
         raise SystemExit(2)
