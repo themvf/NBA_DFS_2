@@ -90,6 +90,9 @@ async function callDeepSeek(transcriptWithTimestamps: string): Promise<VideoAnal
       response_format: { type: "json_object" },
     }),
   });
+  if (resp.status === 402) {
+    throw new Error("DeepSeek account has no credit (402); top it up at platform.deepseek.com");
+  }
   if (!resp.ok) {
     throw new Error(`DeepSeek call failed (HTTP ${resp.status})`);
   }

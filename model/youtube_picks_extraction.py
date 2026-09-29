@@ -30,6 +30,11 @@ import httpx
 
 from config import load_config
 from db.database import DatabaseManager
+from model.deepseek_account import (
+    DeepSeekAccountError,
+    account_error_for,
+    exit_on_account_error,
+)
 from db.queries import (
     get_youtube_pick_videos_without_picks,
     insert_youtube_pick,
@@ -111,6 +116,9 @@ def _call_deepseek(cfg, transcript_text: str) -> dict:
         except httpx.HTTPStatusError as exc:
             last_exc = exc
             status = exc.response.status_code
+            account_error = account_error_for(status)
+            if account_error is not None:
+                raise account_error from None
             if status not in (429, 500, 502, 503, 504):
                 raise
             logger.warning("DeepSeek call: HTTP %s on attempt %d/%d. Retrying in %.0fs...",
@@ -250,4 +258,7 @@ if __name__ == "__main__":
     if args.report:
         print_report(db)
     else:
-        extract_picks_for_pending_videos(db, limit=args.limit)
+        try:
+            extract_picks_for_pending_videos(db, limit=args.limit)
+        except DeepSeekAccountError as exc:
+            exit_on_account_error(exc, job="YouTube picks extraction")

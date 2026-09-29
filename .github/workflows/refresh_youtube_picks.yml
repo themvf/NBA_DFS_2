@@ -44,5 +44,9 @@ jobs:
       - name: Extract picks with DeepSeek
         run: python -m model.youtube_picks_extraction
 
+      # Settlement reads only already-extracted picks and final scores, so a
+      # DeepSeek or feed outage in the steps above must not also stop grading.
+      # The job still ends red when either earlier step failed.
       - name: Settle moneyline picks (MLB/soccer/tennis)
+        if: ${{ !cancelled() }}
         run: python -m model.youtube_picks_settlement
