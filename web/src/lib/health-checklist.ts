@@ -58,7 +58,7 @@ export interface ChecklistInputs {
   /** workflow file -> why its runs could not be read (one bad read never hides the rest). */
   workflowErrors?: Record<string, string>;
   githubError: string | null;
-  datasets: { key: string; label: string; status: string; lastRowAt: string | null; ageHours: number | null; maxAgeHours: number; ownerWorkflow: string; checkedAt: string; note?: string | null }[] | null;
+  datasets: { key: string; label: string; status: string; lastRowAt: string | null; ageHours: number | null; maxAgeHours: number; ownerWorkflow: string; checkedAt: string; note?: string | null; detail?: string | null }[] | null;
   datasetsError: string | null;
   /** How often the freshness monitor runs, for its next-check time. */
   datasetCadenceHours: number;
@@ -86,6 +86,26 @@ const et = (value: string | Date) => {
     ? t.toLocaleString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) + " ET"
     : String(value);
 };
+
+/** Hours past its cadence before the freshness monitor itself is overdue. */
+export const MONITOR_GRACE_HOURS = 1;
+
+const hours = (h: number) => (h < 1 ? `${Math.round(h * 60)} min` : h < 48 ? `${h.toFixed(1)} h` : `${(h / 24).toFixed(1)} days`);
+
+/**
+ * What the freshness reading saw, stated as of that reading: its age figure was
+ * true when it was taken, not now. A row that is not due explains why in the
+ * checker's own words (a season, a weekly deadline) instead of a generic label.
+ */
+export function datasetDetail(d: NonNullable<ChecklistInputs["datasets"]>[number]): string {
+  const at = `at the ${et(d.checkedAt)} reading`;
+  const reason = d.detail?.trim();
+  if (d.status === "dormant" && reason && /^paused:/i.test(reason)) return `Paused on purpose: ${reason.replace(/^paused:\s*/i, "")}.`;
+  if (d.status === "dormant") return `Not due now: ${reason || d.note || "not expected to write"}.`;
+  if (d.ageHours == null) return reason && !/^no rows at all$/i.test(reason) ? `${reason[0].toUpperCase()}${reason.slice(1)} (${at}).` : `No rows at all ${at}; written by ${d.ownerWorkflow}.`;
+  const over = d.status === "stale" ? `, ${(d.ageHours / d.maxAgeHours).toFixed(1)}x its ${d.maxAgeHours} h budget` : `; budget ${d.maxAgeHours} h`;
+  return `Newest row was ${hours(d.ageHours)} old ${at}${over}; written by ${d.ownerWorkflow}.`;
+}
 
 function unreadable(key: string, group: HealthGroup, label: string, error: string, input: ChecklistInputs): HealthItem {
   return { key, group, label, status: "fail", detail: `Could not be checked: ${error}`, url: null, lastEventAt: null, nextEventAt: null,
@@ -188,19 +208,26 @@ export function buildChecklist(input: ChecklistInputs): HealthItem[] {
   else {
     const newest = input.datasets.reduce((m, d) => Math.max(m, Date.parse(d.checkedAt)), 0);
     const monitorAgeH = newest ? (input.now.getTime() - newest) / 3600_000 : null;
+    // A reading is due every cadence; one hour of grace covers queueing. Past that the
+    // readings below describe the past, so this row fails rather than vouching for them.
+    const monitorLimitH = input.datasetCadenceHours + MONITOR_GRACE_HOURS;
+    const monitorNext = nextRunByWorkflow.get("pipeline_health.yml") ?? (newest ? new Date(newest + input.datasetCadenceHours * 3600_000).toISOString() : null);
     items.push({ key: "checklist:freshness-monitor", group: "Checklist", label: "Data freshness monitor (Pipeline Health job)",
-      status: monitorAgeH != null && monitorAgeH <= input.datasetCadenceHours * 2 + 1 ? "pass" : "fail",
-      detail: monitorAgeH == null ? "It has never recorded a reading." : `Last reading ${monitorAgeH.toFixed(1)} h ago; it should run every ${input.datasetCadenceHours} h.`,
+      status: monitorAgeH != null && monitorAgeH <= monitorLimitH ? "pass" : "fail",
+      detail: monitorAgeH == null ? "It has never recorded a reading."
+        : monitorAgeH <= monitorLimitH ? `Last reading ${monitorAgeH.toFixed(1)} h ago; it runs every ${input.datasetCadenceHours} h.`
+        : `Overdue: last reading ${monitorAgeH.toFixed(1)} h ago, but it runs every ${input.datasetCadenceHours} h. The data rows show that old reading.`,
       url: `${REPO}/actions/workflows/pipeline_health.yml`, lastEventAt: newest ? new Date(newest).toISOString() : null,
-      nextEventAt: newest ? new Date(newest + input.datasetCadenceHours * 3600_000).toISOString() : null, lastCheckedAt: now, nextCheckAt: nextCheck });
+      nextEventAt: monitorNext, lastCheckedAt: now, nextCheckAt: nextCheck });
     for (const d of input.datasets) {
-      const status: HealthStatus = d.status === "fresh" ? "pass" : d.status === "dormant" ? "info" : "fail";
-      const age = d.ageHours == null ? "never written" : `last write ${d.ageHours < 48 ? `${d.ageHours.toFixed(1)} h` : `${(d.ageHours / 24).toFixed(1)} days`} ago`;
-      items.push({ key: `data:${d.key}`, group: d.key.startsWith("nfl") ? "NFL DFS" : "Data freshness", label: d.label, status,
-        detail: d.status === "dormant" ? `Out of season (${d.note ?? "not expected to write"}).` : `${age}; budget ${d.maxAgeHours} h; written by ${d.ownerWorkflow}.`,
+      items.push({ key: `data:${d.key}`, group: d.key.startsWith("nfl") ? "NFL DFS" : "Data freshness", label: d.label,
+        status: d.status === "fresh" ? "pass" : d.status === "dormant" ? "info" : "fail",
+        detail: datasetDetail(d),
         // The next write is expected when the job that writes it next runs.
         url: `${REPO}/actions/workflows/${d.ownerWorkflow}`, lastEventAt: d.lastRowAt, nextEventAt: nextRunByWorkflow.get(d.ownerWorkflow) ?? null,
-        lastCheckedAt: d.checkedAt, nextCheckAt: new Date(Date.parse(d.checkedAt) + input.datasetCadenceHours * 3600_000).toISOString() });
+        // The verdict belongs to the reading, so "checked" is the reading time and the next
+        // check is the monitor's next run; a lagging monitor is the monitor row's FAIL.
+        lastCheckedAt: d.checkedAt, nextCheckAt: monitorNext ?? new Date(Date.parse(d.checkedAt) + input.datasetCadenceHours * 3600_000).toISOString() });
     }
   }
 
@@ -226,7 +253,8 @@ export function buildChecklist(input: ChecklistInputs): HealthItem[] {
     items.push({ key: "nfl:availability-monitor", group: "NFL DFS", label: "Injury and depth-chart monitor",
       status: !ops ? "fail" : ops.status === "healthy" ? "pass" : ops.status === "critical" ? "fail" : "info",
       detail: !ops ? "No monitor result recorded." : `Week ${ops.week}: ${ops.status}${ops.alerts.length ? ` (${ops.alerts.slice(0, 3).join("; ")}${ops.alerts.length > 3 ? "; …" : ""})` : ""}.`,
-      url: `${REPO}/actions/workflows/refresh_nfl_availability_context.yml`, lastEventAt: ops?.evaluatedAt ?? null, nextEventAt: null,
+      url: `${REPO}/actions/workflows/refresh_nfl_availability_context.yml`, lastEventAt: ops?.evaluatedAt ?? null,
+      nextEventAt: nextRunByWorkflow.get("refresh_nfl_availability_context.yml") ?? null,
       lastCheckedAt: now, nextCheckAt: nextCheck });
   }
 

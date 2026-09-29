@@ -87,6 +87,14 @@ assert.ok(keys("2026-09-28T12:07:00Z").includes("nfl-pbp-archetypes"), "Monday 1
 assert.ok(keys("2026-09-29T09:07:00Z").includes("nfl-pbp-archetypes"), "Tuesday 09:07 UTC");
 assert.ok(!keys("2026-09-29T09:22:00Z").includes("nfl-pbp-archetypes"), "once, not on the quarter-hour");
 
+// MLB terminal settlement: hourly in March-November, never in the winter.
+let settleTicks = 0;
+for (let h = 0; h < 24; h += 1) for (const m of TICKS) if (keys(`2026-09-30T${hh(h)}:${m}:00Z`).includes("mlb-terminal-settlement")) settleTicks += 1;
+assert.equal(settleTicks, 24, "hourly");
+assert.ok(keys("2026-11-30T20:07:00Z").includes("mlb-terminal-settlement"), "November (World Series fallout)");
+assert.ok(!keys("2026-12-15T20:07:00Z").includes("mlb-terminal-settlement"), "no MLB in December");
+assert.ok(!keys("2027-02-15T20:07:00Z").includes("mlb-terminal-settlement"), "no MLB in February");
+
 // Post-week review + upside grade: Tuesday and Wednesday 10:07 UTC only, once each.
 let postweekTicks = 0;
 for (let d = 27; d <= 30; d += 1) for (let h = 0; h < 24; h += 1) for (const m of TICKS) {

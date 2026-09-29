@@ -27,7 +27,7 @@ def ds(**over) -> P.Dataset:
 def test_the_registry_is_coherent() -> None:
     keys = [d.key for d in P.DATASET_REGISTRY]
     assert len(keys) == len(set(keys)), "dataset keys must be unique"
-    assert P.CHECK_VERSION == "pipeline-health-v1"
+    assert P.CHECK_VERSION == "pipeline-health-v2"
     for d in P.DATASET_REGISTRY:
         assert d.max_age_hours > 0
         assert d.owner_workflow.endswith(".yml"), d.key
@@ -50,6 +50,20 @@ def test_a_write_past_its_budget_is_stale_and_names_the_workflow() -> None:
 
 def test_an_empty_table_is_reported_not_treated_as_fresh() -> None:
     assert P.classify(ds(), None, NOW).status == P.EMPTY
+
+
+def test_a_paused_feed_is_dormant_with_its_reason_not_stale() -> None:
+    """A deliberate pause is a decision to revisit, not a failure to email daily."""
+    h = P.classify(ds(paused="capture paused for quota; resume with run_props=true"), NOW - timedelta(days=37), NOW)
+    assert h.status == P.DORMANT
+    assert h.detail == "paused: capture paused for quota; resume with run_props=true"
+    assert h.last_row_at is not None, "the last write is still shown"
+    # Out of season wins: a paused feed in its off-season reads as out of season.
+    assert "out of season" in P.classify(ds(paused="x", season_months=(6,)), None, NOW).detail
+    # Only the MLB prop feed is paused today, and it names how to resume.
+    paused = [d for d in P.DATASET_REGISTRY if d.paused]
+    assert [d.key for d in paused] == ["mlb_props"]
+    assert "run_props=true" in paused[0].paused
 
 
 def test_an_out_of_season_pipeline_is_dormant_not_broken() -> None:
