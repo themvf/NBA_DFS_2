@@ -3554,6 +3554,20 @@ TABLES = [
     CREATE INDEX IF NOT EXISTS idx_nfl_pbp_archetypes_season
         ON nfl_pbp_archetypes(season, week)
     """,
+    # The nflverse release content each labelled game was last labelled from,
+    # one digest per game. `ingest/nfl_pbp_archetypes.py --relabel-stale`
+    # compares it with the current release so a correction nflverse publishes
+    # for an already-labelled game is relabelled rather than kept forever.
+    # Written only by that ingest.
+    """
+    CREATE TABLE IF NOT EXISTS nfl_pbp_source_digests (
+        game_id TEXT PRIMARY KEY,
+        season INTEGER NOT NULL,
+        source_digest TEXT NOT NULL,
+        play_count INTEGER NOT NULL,
+        recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
 
 
     # Versioned realized DraftKings scoring derived from immutable nflverse
