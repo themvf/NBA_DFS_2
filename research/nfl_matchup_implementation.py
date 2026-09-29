@@ -1,6 +1,13 @@
-"""Fit retrospective challengers and freeze a paired real-slate comparison.
+"""Fit retrospective challengers and freeze paired real-slate comparisons.
 
 python -m research.nfl_matchup_implementation --season 2026 --week 3 --fit --persist
+
+Without --upload-id, every saved upload of the week that the NFL DFS page can
+still open is captured -- Classic and Showdown alike, each against its own
+bound projection run, once per slate (see research/nfl_saved_upload_selection.py)
+-- for both defensive profiles: PFR efficiency and allowed rushing volume.
+slate-comparison.json keeps its original meaning (the newest Classic upload of
+the week) for the scenario research; per-upload artifacts go under uploads/.
 """
 from __future__ import annotations
 
@@ -19,8 +26,11 @@ from db.database import DatabaseManager
 from ingest.nfl_dfs_projections import _history, infer_target_week
 from ingest.nfl_matchup_context import load_matchups, persist_matchups, persist_forecasts
 from model.nfl_context_engine import stable_digest
+from model.nfl_matchup_features import stamp
 from model.nfl_matchup_projection import VERSION, fit_family, sample_baseline_draws, shadow_projection
 from model.nfl_pfr_supplement import team_code
+from research import nfl_allowed_rushing_volume_capture as volume
+from research.nfl_saved_upload_selection import plan_captures, pregame_teams, research_primary, week_uploads
 
 MODEL_PATH = Path("artifacts/nfl_matchup_models_v1.json")
 
@@ -101,12 +111,20 @@ def fit_models(db, development_dir):
     return fitted
 
 
-def compare_slate(db, *, season, week, upload_id, fitted, as_of, baseline_run_id=None):
+def compare_slate(db, *, season, week, upload_id, fitted, as_of, baseline_run_id=None, history=None, matchups=None):
+    """Freeze one upload against its bound run.
+
+    `history` and `matchups` depend only on (season, week, as_of); a caller
+    capturing several uploads of one week passes them once.
+    """
     upload=db.execute_one("""SELECT u.* FROM nfl_dfs_slate_uploads u JOIN nfl_dfs_projection_runs r ON r.run_id=u.projection_run_id
         WHERE u.upload_id=%s AND r.season=%s AND r.week=%s""",(upload_id,season,week)) if upload_id else db.execute_one(
         """SELECT u.* FROM nfl_dfs_slate_uploads u JOIN nfl_dfs_projection_runs r ON r.run_id=u.projection_run_id
-        WHERE u.format='classic' AND r.season=%s AND r.week=%s ORDER BY u.created_at DESC LIMIT 1""",(season,week))
+        WHERE u.format='classic' AND r.season=%s AND r.week=%s AND u.created_at<=%s
+        ORDER BY u.created_at DESC LIMIT 1""",(season,week,as_of))
     if not upload: raise ValueError("No saved salary slate")
+    if stamp(upload["created_at"]) > stamp(as_of):
+        raise ValueError("The saved salary upload was not available at the decision cutoff")
     # A saved salary upload is bound to one production run. Capturing against
     # the newest week-level run instead creates plausible-looking rows that no
     # optimizer can safely consume with that upload's frozen player values.
@@ -117,14 +135,22 @@ def compare_slate(db, *, season, week, upload_id, fitted, as_of, baseline_run_id
         AND (%s::uuid IS NULL OR run_id=%s::uuid) ORDER BY as_of_at DESC LIMIT 1""",(season,week,as_of,as_of,baseline_run_id,baseline_run_id))
     if not run: raise ValueError("No eligible v5 baseline")
     salary=[dict(r) for r in db.execute("SELECT * FROM nfl_dfs_slate_players WHERE upload_id=%s ORDER BY id",(upload["upload_id"],))]
+    # The page keys a capture on (ff_player_id, dk_player_id) from this same
+    # row. A saved Showdown row is one player carrying his FLEX id in
+    # dk_player_id and his Captain id separately, so the FLEX id is the key.
+    # Storage allows one row per player; should a Captain-only duplicate ever
+    # appear, the FLEX row is kept rather than whichever row sorted first.
+    salary.sort(key=lambda s: "CPT" in (s.get("roster_positions") or []))
     projections={int(r["player_id"]):dict(r) for r in db.execute("SELECT * FROM nfl_dfs_player_projections WHERE run_id=%s",(run["run_id"],))}
-    history=_history(db,season,week)
-    matchups=load_matchups(db,season,week,as_of)
+    if history is None: history=_history(db,season,week)
+    if matchups is None: matchups=load_matchups(db,season,week,as_of)
     team_game={team_code(t):m for m in matchups.values() for t in (m["home"],m["away"])}
-    players=[]; skipped=defaultdict(int)
+    players=[]; skipped=defaultdict(int); seen=set()
     for s in salary:
         p=projections.get(s["ff_player_id"])
         if not p: skipped["unmatched_projection"]+=1; continue
+        if s["ff_player_id"] in seen: skipped["duplicate_player_identity"]+=1; continue
+        seen.add(s["ff_player_id"])
         m=team_game.get(team_code(s["team"]))
         if not m: skipped["not_upcoming_this_week"]+=1; continue
         source=p.get("source_evidence") or {}
@@ -139,7 +165,7 @@ def compare_slate(db, *, season, week, upload_id, fitted, as_of, baseline_run_id
                         "sources":[{**s,"identity_manifest":{k:v for k,v in (s.get("identity_manifest") or {}).items() if k!="mappings"}}
                                    for s in m["sources"]],"matchup_manifest_hash":m["manifest_hash"]})
     artifact={"version":VERSION,"season":season,"week":week,"as_of_at":as_of.isoformat(),"upload_id":str(upload["upload_id"]),
-              "file_name":upload["file_name"],"baseline_run_id":str(run["run_id"]),"baseline_version":run["model_version"],
+              "format":upload["format"],"file_name":upload["file_name"],"baseline_run_id":str(run["run_id"]),"baseline_version":run["model_version"],
               "baseline_as_of_at":run["as_of_at"].isoformat(),"salary_rows":len(salary),"skipped":dict(skipped),
               "baseline_config_hash":stable_digest({"model_version":run["model_version"],"model_config":run["model_config"]}),
               "model_hashes":{k:v.get("artifact_hash") for k,v in fitted.items()},"players":players,
@@ -175,34 +201,121 @@ def render(artifact):
     return "\n".join(lines)+"\n"
 
 
+PFR, VOLUME = "pfr-efficiency", "allowed-rushing-volume"
+PROFILES = (PFR, VOLUME)
+
+
+def _write(output_dir, stem, artifact):
+    if output_dir is None: return
+    path=Path(output_dir)/stem
+    path.parent.mkdir(parents=True,exist_ok=True)
+    path.with_suffix(".json").write_text(json.dumps(artifact,indent=2),encoding="utf-8")
+    path.with_suffix(".md").write_text(render(artifact),encoding="utf-8")
+
+
+def _applied(artifact):
+    return sum(p["shadow"]["status"]=="under_evaluation" for p in artifact["players"])
+
+
+def capture_week(db, *, season, week, as_of, fitted, profiles=PROFILES, upload_id=None, baseline_run_id=None,
+                 persist=False, output_dir=None):
+    """Capture both defensive profiles for every eligible saved upload of one week.
+
+    Each upload is captured against its own bound run, so the page can read
+    it for exactly the slate it has open. Every upload not captured is listed
+    with its reason. A failure on one upload never starves the others; it is
+    reported in `failed` and the caller exits non-zero.
+    """
+    if baseline_run_id and not upload_id:
+        raise ValueError("A pinned baseline belongs to one upload; pass upload_id")
+    matchups=load_matchups(db,season,week,as_of)
+    report={"season":season,"week":week,"as_of_at":as_of.isoformat(),"profiles":[p for p in PROFILES if p in profiles],
+            "matchup_games":len(matchups),"production_changed":False,"uploads":[],"skipped":[],"failed":[]}
+    if persist: report["context_rows"]=persist_matchups(db,matchups)
+    uploads=week_uploads(db,season=season,week=week,as_of=as_of)
+    if upload_id:  # manual research: capture exactly this upload; guards stay inside the captures
+        selected=[u for u in uploads if str(u["upload_id"])==str(upload_id)]
+        primary=selected[0] if selected else None
+    else:
+        selected,report["skipped"]=plan_captures(uploads,as_of=as_of,
+            pregame_teams=pregame_teams(db,season=season,week=week,as_of=as_of))
+        primary=research_primary(uploads)
+    if not uploads or (upload_id and not selected):
+        report["status"]="awaiting_current_salary_slate"
+        return report
+    history=prior_inputs=None
+    artifacts={}
+    for upload in selected:
+        uid=str(upload["upload_id"])
+        entry={"upload_id":uid,"format":upload["format"],"file_name":upload["file_name"],
+               "baseline_run_id":str(baseline_run_id or upload["projection_run_id"])}
+        if history is None: history=_history(db,season,week)
+        if PFR in profiles:
+            try:
+                artifact,_=compare_slate(db,season=season,week=week,upload_id=uid,fitted=fitted,as_of=as_of,
+                                         baseline_run_id=baseline_run_id,history=history,matchups=matchups)
+                _write(output_dir,f"uploads/{uid}/slate-comparison",artifact)
+                artifacts[uid]=artifact
+                entry[PFR]={"players":len(artifact["players"]),"applied":_applied(artifact),
+                            "persisted":persist_forecasts(db,artifact) if persist else None}
+            except Exception as exc:  # one broken upload must not starve the others
+                report["failed"].append({"upload_id":uid,"profile":PFR,"error":f"{type(exc).__name__}: {exc}"})
+        if VOLUME in profiles:
+            if prior_inputs is None: prior_inputs=volume.load_prior_inputs(db)
+            entry[VOLUME]=volume.capture_outcome(db,uid,as_of,persist=persist,output_dir=output_dir,
+                                                 history=history,prior_inputs=prior_inputs)
+            if entry[VOLUME]["status"]=="failed":
+                report["failed"].append({"upload_id":uid,"profile":VOLUME,"error":entry[VOLUME]["error"]})
+        report["uploads"].append(entry)
+    # slate-comparison.json keeps its original meaning for the scenario
+    # research: the newest Classic upload of the week, even when its games have
+    # started (zero players) -- that research falls back to a Showdown capture
+    # of its own. It is written, never persisted, unless it was captured above.
+    if primary is not None and PFR in profiles:
+        pid=str(primary["upload_id"])
+        artifact=artifacts.get(pid)
+        if artifact is None:
+            try:
+                if history is None: history=_history(db,season,week)
+                artifact,_=compare_slate(db,season=season,week=week,upload_id=pid,fitted=fitted,as_of=as_of,
+                                         history=history,matchups=matchups)
+            except ValueError as exc:
+                report["research_primary"]={"upload_id":pid,"error":str(exc)}
+        if artifact is not None:
+            _write(output_dir,"slate-comparison",artifact)
+            report["research_primary"]={"upload_id":pid,"players":len(artifact["players"])}
+    report["status"]="captured" if report["uploads"] else "no_pregame_upload"
+    return report
+
+
 def main():
-    parser=argparse.ArgumentParser(description=__doc__)
+    parser=argparse.ArgumentParser(description=__doc__,formatter_class=argparse.RawDescriptionHelpFormatter)
     today=datetime.now(timezone.utc)
     parser.add_argument("--season",type=int,default=today.year-(today.month<=3));parser.add_argument("--week",type=int)
-    parser.add_argument("--upload-id");parser.add_argument("--fit",action="store_true");parser.add_argument("--persist",action="store_true")
-    parser.add_argument("--baseline-run-id",help="Pin an existing eligible v5 baseline for a reproducible comparison")
-    parser.add_argument("--upcoming",action="store_true",help="Use the current/upcoming week and latest matching saved slate")
+    parser.add_argument("--upload-id",help="Capture only this saved upload (manual research)")
+    parser.add_argument("--fit",action="store_true");parser.add_argument("--persist",action="store_true")
+    parser.add_argument("--baseline-run-id",help="Pin an existing eligible v5 baseline for --upload-id")
+    parser.add_argument("--profile",action="append",choices=PROFILES,help="Defensive profile to capture (repeatable). Default: both")
+    parser.add_argument("--as-of",type=stamp,help="Replay a past decision time (ISO-8601 with offset). Dry run only; needs --week")
+    parser.add_argument("--upcoming",action="store_true",help="Accepted for compatibility; the target week is the default")
     parser.add_argument("--development-dir",type=Path,default=Path("data/pfr/matchup-development"))
     parser.add_argument("--output-dir",type=Path,default=Path("artifacts/nfl-matchup-implementation")/today.date().isoformat())
-    args=parser.parse_args();db=DatabaseManager(load_config().database_url,initialize_schema=False)
+    args=parser.parse_args()
+    if args.as_of and args.persist: parser.error("--as-of replays a past decision time and cannot persist a capture")
+    if args.as_of and args.week is None: parser.error("--as-of needs an explicit --week")
+    if args.baseline_run_id and not args.upload_id: parser.error("--baseline-run-id pins one upload's baseline; pass --upload-id")
+    db=DatabaseManager(load_config().database_url,initialize_schema=False)
     with db.reuse_connection():
         args.week=args.week if args.week is not None else infer_target_week(db,args.season)
         fitted=fit_models(db,args.development_dir) if args.fit else json.loads(MODEL_PATH.read_text())
         print(json.dumps({"fitted":{k:{"n":v.get("n"),"status":v.get("status")} for k,v in fitted.items()}}),flush=True)
-        try:
-            artifact,matchups=compare_slate(db,season=args.season,week=args.week,upload_id=args.upload_id,fitted=fitted,as_of=datetime.now(timezone.utc),baseline_run_id=args.baseline_run_id)
-        except ValueError as exc:
-            if str(exc)!="No saved salary slate": raise
-            matchups=load_matchups(db,args.season,args.week,datetime.now(timezone.utc))
-            print(json.dumps({"status":"awaiting_current_salary_slate","season":args.season,"week":args.week,
-                              "matchup_games":len(matchups),"context_rows":persist_matchups(db,matchups) if args.persist else 0}))
-            return
-        args.output_dir.mkdir(parents=True,exist_ok=True)
-        (args.output_dir/"slate-comparison.json").write_text(json.dumps(artifact,indent=2),encoding="utf-8")
-        (args.output_dir/"slate-comparison.md").write_text(render(artifact),encoding="utf-8")
-        persisted={"context_rows":persist_matchups(db,matchups),**persist_forecasts(db,artifact)} if args.persist else None
-        print(json.dumps({"players":len(artifact["players"]),"applied":sum(p["shadow"]["status"]=="under_evaluation" for p in artifact["players"]),
-                          "production_changed":False,"output":str(args.output_dir),"persisted":persisted}))
+        report=capture_week(db,season=args.season,week=args.week,as_of=args.as_of or datetime.now(timezone.utc),
+                            fitted=fitted,profiles=set(args.profile or PROFILES),upload_id=args.upload_id,
+                            baseline_run_id=args.baseline_run_id,persist=args.persist,output_dir=args.output_dir)
+    args.output_dir.mkdir(parents=True,exist_ok=True)
+    (args.output_dir/"capture-summary.json").write_text(json.dumps(report,indent=2,default=str),encoding="utf-8")
+    print(json.dumps({**report,"output":str(args.output_dir)},default=str))
+    if report["failed"]: raise SystemExit(1)
 
 
 if __name__=="__main__":main()
