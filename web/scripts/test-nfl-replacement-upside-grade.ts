@@ -11,9 +11,9 @@ const close = (a: number | null, b: number, tol = 1e-9, msg?: string) => assert.
 
 // The registration is frozen: these literals must match docs/nfl-replacement-upside-grading.md.
 {
-  assert.equal(UPSIDE_GRADE_VERSION, 'nfl-replacement-upside-grade-v1');
+  assert.equal(UPSIDE_GRADE_VERSION, 'nfl-replacement-upside-grade-v2');
   assert.deepEqual(JSON.parse(JSON.stringify(UPSIDE_GRADE_SPEC)), {
-    featureVersion: 'nfl-replacement-upside-v1',
+    featureVersion: 'nfl-replacement-upside-v2',
     windows: [{ season: 2026, firstWeek: 4 }, { season: 2027, firstWeek: 1 }],
     tau: 0.9, floors: { events: 60, flagged: 130, weeks: 8 },
     bootstrap: { draws: 10000, seed: 20260928, level: 0.95 },
@@ -21,7 +21,7 @@ const close = (a: number | null, b: number, tol = 1e-9, msg?: string) => assert.
   });
   const doc = fs.readFileSync('../docs/nfl-replacement-upside-grading.md', 'utf8');
   for (const line of ['| Absence events (clusters) | 60 |', '| Flagged player-games | 130 |', '| Distinct weeks with a flagged player | 8 |',
-    'nfl-replacement-upside-grade-v1', '20260928', '10,000']) {
+    'nfl-replacement-upside-grade-v2', '20260928', '10,000']) {
     assert.ok(doc.includes(line), `registration doc must state: ${line}`);
   }
   assert.ok(!inWindow(2026, 3) && inWindow(2026, 4) && inWindow(2027, 1), 'window: 2026 week 4 onward, then 2027');
@@ -35,7 +35,7 @@ close(pinball(10, 10), 0);
 // Fixtures.
 const dist = (mean: number, p90: number, boom: number | null): UpsideDistribution => ({ mean, p10: mean * 0.3, median: mean * 0.9, p90, boom });
 const upside = (role: 'lead' | 'other', pi: number, base: UpsideDistribution, mix: UpsideDistribution, key = 1): ReplacementUpside => ({
-  version: 'nfl-replacement-upside-v1', key, role, room: 'RB', pi,
+  version: 'nfl-replacement-upside-v2', key, role, room: 'RB', pi,
   from: { key: 99, name: 'Starter RB', position: 'RB', volume: 15, unit: 'carries' },
   baseline: base, ifStarterRole: mix, note: 'fixture',
 });
@@ -43,7 +43,7 @@ const player = (over: Partial<GradeCapturePlayer> & { dkPlayerId: number }): Gra
   playerId: over.dkPlayerId, name: `P${over.dkPlayerId}`, team: 'AAA', position: 'RB', isOut: false,
   projection: 5, ceiling: 10, boom: 0.02, upside: null, unchanged: null, ...over,
 });
-const FEATURE = { version: 'nfl-replacement-upside-v1', flagged: 2, skipped: [] };
+const FEATURE = { version: 'nfl-replacement-upside-v2', flagged: 2, skipped: [] };
 const game = (id: number, week: number, kickoff: string, completed = true): GradeGame => ({ id, season: 2026, week, kickoff, completed });
 const cap = (over: Partial<GradeCapture> & { digest: string; game: GradeGame; players: GradeCapturePlayer[] }): GradeCapture => ({
   uploadId: 'u1', uploadCreatedAt: '2026-09-30T00:00:00.000Z', observedAt: new Date(Date.parse(over.game.kickoff) - 60_000).toISOString(),
@@ -68,7 +68,7 @@ const result = (playerId: number, gameId: number, actual: number, over: Partial<
       { dkPlayerId: 2, playerId: 12, name: 'B', team: 'AAA', position: 'WR', isOut: false, projection: 9, ceiling: 20, boom: 0.05,
         evidence: { replacementUpsideUnchanged: { from: 'Star', reason: 'r' } } }],
     } });
-  assert.equal(c.feature?.version, 'nfl-replacement-upside-v1');
+  assert.equal(c.feature?.version, 'nfl-replacement-upside-v2');
   assert.deepEqual(c.players[0].upside, u);
   assert.equal(c.players[1].unchanged?.from, 'Star');
   assert.equal(c.codeRevision, 'rev');

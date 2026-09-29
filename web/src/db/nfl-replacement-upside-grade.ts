@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '@/db';
 
 /**
- * Storage for the weekly `nfl-replacement-upside-grade-v1` run
+ * Storage for the weekly `nfl-replacement-upside-grade-v2` run (v1 superseded 2026-09-29)
  * (docs/nfl-replacement-upside-grading.md).
  *
  * - `nfl_replacement_upside_grade_runs`: one row per weekly run. Blinded runs

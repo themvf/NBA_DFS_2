@@ -91,7 +91,7 @@ export type NflWorkspacePlayer = NflOptimizerPlayer & {
   statMeans?: Record<string, number>;
   medianFpts?: number | null;
   /**
-   * Display only (`nfl-replacement-upside-v1`): this player's range if he
+   * Display only (`nfl-replacement-upside-v2`): this player's range if he
    * takes a ruled-out starter's job, next to his unchanged baseline. The
    * optimizer and ownership prior never read it.
    */
@@ -616,20 +616,28 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
       })(),
     })),
   };
-  await attachReplacementUpside(workspace, rows.map((row) => ({
-    dkPlayerId: row.dkPlayerId, ffPlayerId: row.ffPlayerId, team: row.team, out: outFlag(row),
-    stored: { mean: numeric(row.ourProj), p10: numeric(row.floorFpts), median: numeric(row.medianFpts),
-      p90: numeric(row.ceilingFpts), boom: numeric(row.boomRate) },
-  })), run, identityMap);
+  await attachReplacementUpside(workspace, rows.map((row) => {
+    // A starter the pipeline already ruled out has a zeroed slate row; his
+    // pre-availability range (recorded at zeroing, same run) is what a
+    // replacement steps into. Runs predating it fall back to the row.
+    const before = notesByPlayer.get(row.ffPlayerId ?? -1)?.pre_availability;
+    const stored = before && row.projectionStatus === 'out'
+      ? { mean: numeric(before.model_proj_fpts), p10: numeric(before.floor_fpts), median: numeric(before.median_fpts),
+          p90: numeric(before.ceiling_fpts), boom: numeric(before.boom_rate) }
+      : { mean: numeric(row.ourProj), p10: numeric(row.floorFpts), median: numeric(row.medianFpts),
+          p90: numeric(row.ceilingFpts), boom: numeric(row.boomRate) };
+    return { dkPlayerId: row.dkPlayerId, ffPlayerId: row.ffPlayerId, team: row.team, out: outFlag(row), stored };
+  }), run, identityMap);
   return attachOwnership(workspace);
 }
 
 /**
- * Replacement upside (`nfl-replacement-upside-v1`, display only): when a
+ * Replacement upside (`nfl-replacement-upside-v2`, display only): when a
  * starter who played his team's last game is ruled out, the players behind
  * him get a second range -- "if he gets the job" -- next to their unchanged
- * baseline. A ruled-out starter's range is read from his STORED projection,
- * because the workspace row has already been zeroed. Failure to read usage
+ * baseline. A ruled-out starter's range is his pre-availability range when
+ * the pipeline ruled him out (v2), else his stored projection, because the
+ * workspace row has already been zeroed. Failure to read usage
  * history must never take the slate down; it is reported instead.
  */
 async function attachReplacementUpside(

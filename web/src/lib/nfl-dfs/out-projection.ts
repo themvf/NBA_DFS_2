@@ -168,6 +168,13 @@ export function storedSlateProjection(projection: RunProjectionFields | null | u
  * up his work -- two different players, never the same row.
  */
 export type ModelAvailabilityNote = {
+  /**
+   * The range the pipeline projected BEFORE ruling the player out
+   * (model/nfl_dfs_availability.zero_out, availability v3+): same run, same
+   * cutoff. Absent on runs built before 2026-09-29.
+   */
+  pre_availability?: { model_proj_fpts?: number | null; floor_fpts?: number | null; median_fpts?: number | null;
+    ceiling_fpts?: number | null; boom_rate?: number | null } | null;
   rule?: string | null;
   status?: string | null;
   applied?: boolean | null;

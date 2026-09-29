@@ -1,9 +1,21 @@
 # Replacement upside: the weekly grading gate (pre-registered)
 
-Grade version `nfl-replacement-upside-grade-v1`, grading feature
-`nfl-replacement-upside-v1` ([feature doc](nfl-replacement-upside.md)).
-Registered 2026-09-28, before the first week-4 kickoff (Thursday 2026-10-01,
-PIT@CLE). No week-4-or-later outcome existed when this was written.
+Grade version `nfl-replacement-upside-grade-v2`, grading feature
+`nfl-replacement-upside-v2` ([feature doc](nfl-replacement-upside.md)).
+Registered 2026-09-28 as v1; re-registered as v2 on 2026-09-29, before the
+first week-4 capture and kickoff (Thursday 2026-10-01, PIT@CLE). No
+week-4-or-later outcome existed when either was written.
+
+**Why v2 (2026-09-29).** v1 skipped every ruled-out starter the projection
+pipeline already knew was out, because the pipeline zeroed his stored range
+and the feature read the zero (Dallas Goedert on PHI@CHI, 2026-09-28). Only
+late DraftKings OUT tags could fire it. From availability v3 the pipeline
+records the range it zeroed (`pre_availability`, same run and cutoff), and
+feature v2 reads it. That changes which absence events are flagged, so under
+the non-negotiables below it is a new feature version and a new grade version,
+not an edit. v1 accrued nothing: no week-4 capture ran under it. π, the
+thresholds, the trigger, the mixture, the population rules, metrics, gates,
+floors, bootstrap and seed are copied unchanged from v1.
 
 Code: `web/src/lib/nfl-dfs/replacement-upside-grade.ts` (the gate, pure),
 `web/scripts/grade-nfl-replacement-upside.ts` (weekly run),
@@ -54,14 +66,14 @@ contains the player, across all complete uploads of that week:
   the outcome.
 
 The player-game is graded only if that selected capture ran
-`nfl-replacement-upside-v1` without error. An earlier capture is never
+`nfl-replacement-upside-v2` without error. An earlier capture is never
 substituted, because that would grade a staler number than the one shown last.
 
 ## Population
 
 | Group | Definition | Role in the grade |
 |---|---|---|
-| Flagged player-games | Selected capture carries a v1 `replacementUpside` for the player with finite baseline and "if job" mean and P90 | Graded (G1–G3) |
+| Flagged player-games | Selected capture carries a v2 `replacementUpside` for the player with finite baseline and "if job" mean and P90 | Graded (G1–G3) |
 | Absence events | One per game, team and room (RB/FB, TE, WR): all backups behind one ruled-out starter | Bootstrap cluster |
 | Controls | RB/FB, WR, TE in the same selected captures, in a team-room with no one ruled out and no upside marker, below the room's top baseline projection, projecting ≥ 1.0 DK points with a positive ceiling | Fit the generic widening `k` (G2) |
 | Unchanged | Top remaining WR behind a ruled-out WR (π = 0) | Descriptive only |

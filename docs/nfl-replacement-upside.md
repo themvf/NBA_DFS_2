@@ -40,8 +40,9 @@ For each flagged player:
     with chance π:       the ruled-out starter's projected range
 
 The mixture's mean, P10, median, P90 and boom rate are shown next to the
-baseline. The starter's range is read from his stored projection, because the
-workspace row has already been zeroed.
+baseline. The starter's range is the one the pipeline projected before ruling
+him out (`pre_availability`, same run; feature v2), else his stored
+projection, because the workspace row has already been zeroed.
 
 **Trigger.** A player the slate marks OUT who was a starter over his team's
 last 8 games (recency-weighted, half-life 4, ≥ 2 games with a stat row):
@@ -93,8 +94,9 @@ ceiling moves far more than the average, which is the point.
   theirs 15–18% of the time), so part of the gain is correcting that.
 - The stat-row activity proxy treats a player who appeared without a stat
   as inactive, which can raise his per-game baseline slightly.
-- A starter whose stored projection is already zero (the model knew he was
-  out) is skipped with a reason, never mixed in.
+- A starter the pipeline ruled out is read from its pre-availability range
+  (v2, 2026-09-29). On runs built before that, whose zeroed range was not
+  kept, he is still skipped with a stated reason, never mixed in.
 
 ## How to promote it
 

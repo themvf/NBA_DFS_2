@@ -4,7 +4,7 @@ import type { ReplacementUpside } from "@/lib/nfl-dfs/replacement-upside";
 
 /*
  * Replacement upside, shown BESIDE the baseline and never instead of it
- * (`nfl-replacement-upside-v1`, display only). Violet is the only colour this
+ * (`nfl-replacement-upside-v2`, display only). Violet is the only colour this
  * adds: it marks "a second range", not a better or worse player, so it stays
  * off the green/red trust colours the rest of the workspace uses.
  */
