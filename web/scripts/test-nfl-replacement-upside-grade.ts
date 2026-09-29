@@ -109,7 +109,14 @@ const result = (playerId: number, gameId: number, actual: number, over: Partial<
   assert.equal(resolveActual(c, p, games, exact([])).status, 'awaiting_source');
   assert.equal(resolveActual(c, p, new Map([[1, { ...g4, completed: false }]]), exact([result(50, 1, 12)])).status, 'pending_result');
   assert.equal(resolveActual(c, p, new Map([[1, { ...g4, kickoff: '2026-10-05T00:15:00.000Z' }]]), exact([result(50, 1, 12)])).status, 'schedule_changed');
-  assert.equal(resolveActual(c, p, games, exact([result(1, 1, 7.5, { team: 'BBB' })])).status, 'result_identity_conflict');
+  assert.equal(resolveActual(c, p, games, exact([result(1, 1, 7.5, { team: 'BBB' })])).status, 'awaiting_source', 'no player-feed row for his own team yet');
+  assert.equal(resolveActual(c, p, games, exact([result(1, 1, 7.5, { team: 'BBB' }), result(50, 1, 12)])).status, 'result_identity_conflict');
+  // Only DST rows (the team feed can land before the player feed): not a zero, still waiting.
+  assert.equal(resolveActual(c, p, games, exact([result(90, 1, 9, { position: 'DST' })])).status, 'awaiting_source', 'a DST row alone cannot vouch for a player zero');
+  // The other team's player feed alone does not vouch for this player's team.
+  assert.equal(resolveActual(c, p, games, exact([result(60, 1, 14, { team: 'BBB', position: 'WR' })])).status, 'awaiting_source');
+  // Once his team has a player-feed row, a missing row of his own is DraftKings' 0.
+  assert.deepEqual(resolveActual(c, p, games, exact([result(90, 1, 9, { position: 'DST' }), result(51, 1, 3, { position: 'QB' })])), { status: 'scored', actual: 0 });
 }
 
 // Widening: flat loss ties to the smaller k; an under-covered control set pushes k up.

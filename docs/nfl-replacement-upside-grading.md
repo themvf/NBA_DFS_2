@@ -87,15 +87,16 @@ is not pooled. It needs its own registration.
 
 DraftKings points from `nfl_dfs_player_week_results`: the latest `exact` row
 per player and game. The rule is DraftKings' own and is the same as
-`nfl-dfs-slate-report-v1`: **a listed player in a completed game that has at
-least one exact result, with no row of his own, scored 0.** A backup who never
+`nfl-dfs-slate-report-v1`: **a listed player in a completed game where his
+team has at least one exact QB/RB/WR/TE result, with no row of his own, scored
+0.** (See the 2026-09-29 amendment below.) A backup who never
 touched the ball is exactly the "didn't get the job" case; dropping him as
 "missing" would bias the grade toward the mixture.
 
 These are counted and excluded, never guessed:
 
 - `pending_result`: the game is not completed.
-- `awaiting_source`: no exact result for the game yet.
+- `awaiting_source`: no exact QB/RB/WR/TE result for the player's team yet.
 - `schedule_changed`: the kickoff moved after capture.
 - `result_identity_conflict`: the result's team differs from the slate's.
 
@@ -167,6 +168,16 @@ committed by hand. An automated run starts from a fresh checkout and cannot
 remember an earlier look, so the verdict moved to the append-only table above.
 Only where the verdict is stored changed. The population, metrics, gates,
 floors and decision table are unchanged.
+
+**Amendment, 2026-09-29, before any week-4 game.** The outcome rule said a game
+was ready once it had any exact result, and the results table also holds DST
+rows, which come from the team feed and can land before the player feed. A game
+with only DST rows would have scored every listed player 0. The rule now needs an
+exact QB/RB/WR/TE result for the player's own team, which is what
+`nfl-dfs-slate-report-v1` itself was tightened to the same day (#313), and this
+registration requires the two to match. No graded week existed when this was
+changed. The population, metrics, gates, floors and decision table are
+unchanged.
 
 ## Verdicts and what each one licenses
 
