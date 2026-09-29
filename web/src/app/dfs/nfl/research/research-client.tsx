@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import CompetitorPanel from "../competitor-panel";
 import AbsencePreview from "../absence-preview";
-import { listSavedNflSlates, loadSavedNflWorkspace, type NflWorkspaceSlate } from "../actions";
+import { listSavedNflSlates, loadSavedNflWorkspace, type NflWorkspaceSlate } from "../client-actions";
 
 export default function ResearchClient({ uploadId }: { uploadId: string | null }) {
   const [slates, setSlates] = useState<Awaited<ReturnType<typeof listSavedNflSlates>>>([]);

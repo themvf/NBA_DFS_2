@@ -4,7 +4,9 @@ import { resolveSlateWeek, type SlateGame, type ScheduledGame } from "@/lib/nfl-
 import { createHash, randomUUID } from "node:crypto";
 import { restoreSavedLineups, savedSlateLabel } from '@/lib/nfl-dfs/saved-workspace';
 import { exportNflDkEntries } from '@/lib/nfl-dfs/entry-export';
-import { runNflPreExportQa } from '@/lib/nfl-dfs/pre-export-qa';
+import { isDeployedBuild, runNflPreExportQa } from '@/lib/nfl-dfs/pre-export-qa';
+import { buildSlateCheck, type SlateCheck } from '@/lib/nfl-dfs/slate-check';
+import { availabilityCoverage } from '@/lib/nfl-dfs/availability-coverage';
 import { and, desc, eq, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {readMatchupComparison,type MatchupProjectionComparison} from '@/db/nfl-matchup';
@@ -70,6 +72,8 @@ import { applyConfirmedStartingQbs, confirmStarterAvailability, INJURED_STATUSES
 export type NflWorkspacePlayer = NflOptimizerPlayer & {
   ffPlayerId: number | null;
   workloadEligible?: boolean;
+  /** QB only: led his team in pass attempts in its most recent completed game (starter evidence). */
+  ledLastTeamGame?: boolean;
   identityMethod: string;
   identityEvidence?: unknown;
   modelConfidence: number | null;
@@ -169,6 +173,10 @@ export type NflWorkspaceSlate = {
   replacementUpside?: { version: string; flagged: number; skipped: ReplacementUpsideReport['skipped']; error?: string };
   /** Starting QBs the user confirmed for this read, and any that could not be applied. */
   confirmedStartingQbs?: ConfirmedStarterReport;
+  /** Players each defensive profile would actually adjust on this slate (captures that pass every check). */
+  opponentAdjustments?: { profile: 'pfr-efficiency' | 'allowed-rushing-volume'; label: string; applied: number; eligible: number }[];
+  /** The Slate Check: every pipeline step's outcome for this slate, in plain words. */
+  slateCheck?: SlateCheck;
 };
 
 export type NflComparisonSource = "fantasypros" | "linestar" | "custom";
@@ -573,6 +581,7 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
         platformDecisionState:(row.platformEligibility as PlatformEligibilityDecision|null)?.state??null,
         decisionAt:availability(row).evaluatedAt??null},
       workloadEligible:workloadPoolEligible({...row,availability:availability(row)},now),
+      ledLastTeamGame: row.position === 'QB' && passingLeaders.get(nflTeamKey(row.team)) != null && passingLeaders.get(nflTeamKey(row.team)) === identityMap.get(row.ffPlayerId ?? -1),
       identityMethod: row.identityMethod,
       identityEvidence: row.identityEvidence,
       // A player who is not playing projects zero, not his healthy number.
@@ -628,7 +637,69 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
           p90: numeric(row.ceilingFpts), boom: numeric(row.boomRate) };
     return { dkPlayerId: row.dkPlayerId, ffPlayerId: row.ffPlayerId, team: row.team, out: outFlag(row), stored };
   }), run, identityMap);
-  return attachOwnership(workspace);
+  const owned = attachOwnership(workspace);
+  owned.opponentAdjustments = await opponentAdjustmentCoverage(owned);
+  owned.slateCheck = slateCheckFor(owned, { incompleteWarning, rosterStaleWarning, rosterCapturedAt, games: upload.games as string[] });
+  return owned;
+}
+
+/**
+ * How many players each defensive profile would really adjust, using the same
+ * capture read and the same checks as generation. The page used to show
+ * "Experimental" while 0 of 56 players on PHI@CHI had a capture.
+ */
+async function opponentAdjustmentCoverage(slate: NflWorkspaceSlate): Promise<NonNullable<NflWorkspaceSlate['opponentAdjustments']>> {
+  if (!slate.projectionRunId) return [];
+  const decisionAt = new Date();
+  const eligible = slate.players.filter((p) => !p.isOut && p.ffPlayerId != null);
+  const out: NonNullable<NflWorkspaceSlate['opponentAdjustments']> = [];
+  for (const [profile, label] of [['pfr-efficiency', 'PFR efficiency'], ['allowed-rushing-volume', 'Allowed rushing volume']] as const) {
+    try {
+      const captures = await readDefensiveCaptures(slate.uploadId, slate.projectionRunId, profile, decisionAt);
+      const applied = eligible.filter((p) => resolveDefensiveForecast(p, slate.projectionRunId!, { mode: 'experimental', profile },
+        captures.get(p.ffPlayerId ?? -1) ?? null).status === 'applied').length;
+      out.push({ profile, label, applied, eligible: eligible.length });
+    } catch { out.push({ profile, label, applied: 0, eligible: eligible.length }); }
+  }
+  return out;
+}
+
+const OUT_STATUSES = new Set(['OUT', 'IR', 'PUP', 'NFI', 'SUSPENDED', 'INACTIVE']);
+
+function slateCheckFor(slate: NflWorkspaceSlate, context: { incompleteWarning: string | null; rosterStaleWarning: string | null;
+  rosterCapturedAt: number | null; games: string[] }): SlateCheck {
+  const qbs = slate.players.filter((p) => p.position === 'QB').map((p) => ({
+    name: p.name, team: p.team,
+    injured: ['O', 'OUT'].includes((p.dkStatus ?? '').toUpperCase()) || OUT_STATUSES.has(p.availability?.status ?? '')
+      || p.availability?.blockedReason?.startsWith('Unavailable') === true,
+    role: p.availability?.role ?? null, chartRole: p.availability?.chartRole ?? null,
+    confirmedByUser: p.availability?.confirmedStarter === true, promoted: p.projectionScenario === 'availability_estimate',
+    startedLastGame: p.ledLastTeamGame === true,
+  }));
+  const ownership = assessOwnership(
+    slate.players.filter((p) => !p.isOut).map((p) => ({ playerId: p.dkPlayerId, medianProjection: p.medianFpts ?? p.ourProj ?? null })),
+    slate.players.filter((p) => p.ownPct != null).map((p) => { const slotted = slate.format === 'showdown' && p.ownSource !== 'linestar' && p.flexOwnPct != null;
+      return { playerId: p.dkPlayerId, flexPct: (slotted ? p.flexOwnPct as number : p.ownPct as number) / 100,
+        captainPct: slotted && p.captainOwnPct != null ? (p.captainOwnPct as number) / 100 : null, source: p.ownSource ?? null, asOf: slate.modelAsOf }; }),
+    { heuristic: true, optIntoHeuristic: true, format: slate.format });
+  const coverage = availabilityCoverage(slate.players as never);
+  return buildSlateCheck({
+    label: slate.format === 'showdown' ? (context.games[0] ?? 'Showdown').replace('@', ' @ ') : `Classic · ${context.games.length} games`,
+    now: Date.now(), firstKickoff: slate.firstKickoff ?? null,
+    deployedBuild: isDeployedBuild(nflBuildInfo().commitSha),
+    incompleteWarning: context.incompleteWarning,
+    refreshAvailable: Boolean(slate.refreshAvailable), projectionAsOf: slate.modelAsOf ?? null,
+    rosterStaleWarning: context.rosterStaleWarning,
+    rosterCapturedAt: context.rosterCapturedAt == null ? null : new Date(context.rosterCapturedAt).toISOString(),
+    qbs,
+    opponentAdjustments: (slate.opponentAdjustments ?? []).map(({ label, applied, eligible }) => ({ label, applied, eligible })),
+    ownership: { source: slate.players.find((p) => p.ownSource)?.ownSource ?? null, errors: ownership.errors },
+    availability: { state: coverage.state, resolved: coverage.resolved, considered: coverage.considered },
+    liveDk: slate.liveDkStatus ? { applied: slate.liveDkStatus.applied, reason: slate.liveDkStatus.reason ?? null, capturedAt: slate.liveDkStatus.capturedAt ?? null } : null,
+    upside: slate.replacementUpside ? { flagged: slate.replacementUpside.flagged, error: slate.replacementUpside.error,
+      skipped: slate.replacementUpside.skipped.map((s) => ({ name: s.name, reason: s.reason })) } : null,
+    unmatched: slate.players.filter((p) => p.ffPlayerId == null).map((p) => p.name),
+  });
 }
 
 /**
@@ -940,6 +1011,7 @@ export async function loadSavedNflLineups(uploadId: string, runId: string) {
     salaryBandReport:NflOptimizerResult['salaryBandReport'];duplication:NflOptimizerResult['duplication'];
     ownership:OwnershipAssessment}};
   return { runId, settings: savedSettings, evidence:savedSettings.runEvidence??null,
+    build:{commitSha:((run as {buildInfo?:{commitSha?:string}}).buildInfo?.commitSha)??null},
     defensiveForecasts:(Array.isArray(run.inputSnapshot)?run.inputSnapshot:[]).flatMap((p:unknown)=>{
       const row=p as {dkPlayerId?:number;defensiveForecast?:NflOptimizerPlayer['defensiveForecast']};
       return row.dkPlayerId!=null&&row.defensiveForecast?[{dkPlayerId:row.dkPlayerId,bundle:row.defensiveForecast}]:[];
@@ -982,7 +1054,7 @@ export async function applyNflComparison(
 export async function runNflOptimizer(
   uploadId: string,
   settings: NflOptimizerSettings,
-): Promise<{ runId: string; slate: NflWorkspaceSlate; result: NflOptimizerResult; ownership?: OwnershipAssessment;effectiveSettings:NflOptimizerSettings }> {
+): Promise<{ runId: string; slate: NflWorkspaceSlate; result: NflOptimizerResult; ownership?: OwnershipAssessment;effectiveSettings:NflOptimizerSettings; build:{commitSha:string|null} }> {
   await ensureNflDfsTables();
   const slate = await workspaceSlate(uploadId, sanitizeConfirmedStartingQbs(settings.confirmedStartingQbs));
   if(settings.format!==slate.format)throw new Error("Optimizer format must match the saved salary slate.");
@@ -1048,7 +1120,8 @@ export async function exportSavedNflDefensiveEntries(runId:string,entryTemplate:
     eligibility:settings.runEvidence.eligibility,exposureReport:settings.runEvidence.exposureReport,
     salaryBandReport:settings.runEvidence.salaryBandReport,duplication:settings.runEvidence.duplication,
     ownership:{capability:settings.runEvidence.ownership.capability,errors:settings.runEvidence.ownership.errors,
-      features:{leverage:settings.runEvidence.ownership.features.leverage}}});
+      features:{leverage:settings.runEvidence.ownership.features.leverage}},
+    build:{commitSha:(run.buildInfo as {commitSha?:string}|null)?.commitSha??null}});
   if(qa.decision==='blocked')throw new Error(`Saved pre-export QA blocked: ${qa.openBlockers.join(', ')}.`);
   await assertSlatePregame(slate); // Close the generation/export kickoff race.
   return exportNflDkEntries(entryTemplate,saved.lineups);
@@ -1204,7 +1277,7 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
     projectedOwnership: lineup.projectedOwnership,
   })));
   } catch { throw new Error("Unable to save optimizer results. Refresh the slate and retry; an incomplete run may remain saved."); }
-  return { runId, slate:{...slate,players:prepared}, result, ownership: ownershipAssessment,effectiveSettings:resolvedSettings };
+  return { runId, slate:{...slate,players:prepared}, result, ownership: ownershipAssessment,effectiveSettings:resolvedSettings, build:{commitSha:buildInfo.commitSha??null} };
 }
 
 export async function readNflOptimizerAudit(runId:string) {
@@ -1699,4 +1772,29 @@ export async function searchNflStarterNews(uploadId: string, extraAccounts: stri
     players: [...new Set(slate.players.filter((p) => p.team === code && p.position !== "DST" && watched(p)).map((p) => p.name))],
   }));
   return searchTeamNews(key, requests, { trusted: [...NFL_TRUSTED_ACCOUNTS, ...extraAccounts.filter(isXHandle).slice(0, 20)] });
+}
+
+/** Save the build form for this slate (keyed by slate signature). */
+export async function saveNflBuildDraft(uploadId: string, form: unknown) {
+  if (!/^[0-9a-f-]{36}$/.test(uploadId)) throw new Error('Invalid saved slate.');
+  const json = JSON.stringify(form ?? null);
+  if (json.length > 200_000) throw new Error('Build settings are too large to save.');
+  await ensureNflDfsTables();
+  const [upload] = await db.select({ signature: nflDfsSlateUploads.slateSignature }).from(nflDfsSlateUploads)
+    .where(eq(nflDfsSlateUploads.uploadId, uploadId)).limit(1);
+  if (!upload) throw new Error('Saved salary slate not found.');
+  await db.execute(sql`INSERT INTO nfl_dfs_build_drafts (slate_signature, upload_id, form, updated_at)
+    VALUES (${upload.signature}, ${uploadId}::uuid, ${json}::jsonb, NOW())
+    ON CONFLICT (slate_signature) DO UPDATE SET form=EXCLUDED.form, upload_id=EXCLUDED.upload_id, updated_at=NOW()`);
+  return { savedAt: new Date().toISOString() };
+}
+
+/** The build form last saved for this slate, or null. */
+export async function readNflBuildDraft(uploadId: string) {
+  if (!/^[0-9a-f-]{36}$/.test(uploadId)) throw new Error('Invalid saved slate.');
+  await ensureNflDfsTables();
+  const rows = await db.execute(sql`SELECT d.form, d.updated_at FROM nfl_dfs_build_drafts d
+    JOIN nfl_dfs_slate_uploads u ON u.slate_signature=d.slate_signature WHERE u.upload_id=${uploadId}::uuid LIMIT 1`);
+  const row = rows.rows[0];
+  return row ? { form: row.form as unknown, updatedAt: new Date(String(row.updated_at)).toISOString() } : null;
 }

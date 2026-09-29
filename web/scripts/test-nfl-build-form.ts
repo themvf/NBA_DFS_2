@@ -2,7 +2,7 @@
  * Loading a saved run into the build form must rebuild the same run.
  */
 import assert from "node:assert/strict";
-import { formFromSettings, sameGenerationSettings, settingsFromForm, type NflBuildForm } from "../src/lib/nfl-dfs/generation-settings";
+import { formFromDraft, formFromSettings, sameGenerationSettings, settingsFromForm, type NflBuildForm } from "../src/lib/nfl-dfs/generation-settings";
 import { DEFAULT_DFS_DEFENSIVE_SETTINGS, defensiveSettingsFor } from "../src/lib/nfl-dfs/defensive-display";
 
 const defaults = { mode: "gpp" as "cash" | "gpp", projectionSource: "our" as const, allowDkFallback: false, nLineups: 20,
@@ -35,7 +35,16 @@ assert.equal((loaded.settings as Record<string, unknown>).ownershipDisclosure, u
 // target comes back as what was applied, which reproduces the run.
 const uneven = settingsFromForm({ ...form, settings: { ...form.settings, nLineups: 20 }, targets: { "21": 33 } }, "showdown", teams);
 const unevenLoaded = formFromSettings(uneven, defaults);
-assert.equal(unevenLoaded.targets["21"], 35, "33% of 20 lineups was applied as 7 lineups = 35%");
+assert.deepEqual(unevenLoaded.targets["21"], { min: 35, max: 35 }, "33% of 20 lineups was applied as 7 lineups = 35% (an exact target)");
+
+// A max alone is a cap: it never exceeds the typed percent and survives a reload.
+const capped = settingsFromForm({ ...form, settings: { ...form.settings, nLineups: 20 }, targets: { "21": { min: null, max: 70 }, "22": { min: null, max: 33 } } }, "showdown", teams);
+assert.equal(capped.maxExposureByPlayer["21"], 0.7, "70% of 20 = 14 lineups");
+assert.equal(capped.maxExposureByPlayer["22"], 0.3, "33% of 20 rounds DOWN to 6 lineups, never above the cap");
+assert.equal(capped.minExposureByPlayer["21"], undefined, "a cap sets no minimum");
+const cappedLoaded = formFromSettings(capped, defaults);
+assert.deepEqual(cappedLoaded.targets["21"], { min: null, max: 70 });
+assert.ok(sameGenerationSettings(settingsFromForm(cappedLoaded, "showdown", teams), capped), "a capped run rebuilds itself");
 assert.ok(sameGenerationSettings(settingsFromForm(unevenLoaded, "showdown", teams), uneven));
 
 // Custom plan: quotas, the user's favorite and fades round-trip.
@@ -72,5 +81,23 @@ assert.equal(settingsFromForm(workloadForm as never, "showdown", teams).defensiv
   "a non-historical source never sends defensive adjustments");
 assert.equal(settingsFromForm({ ...form, settings: defensiveDefaults }, "showdown", teams).defensiveAdjustments?.mode, "experimental",
   "the historical source keeps the user's defensive choice");
+
+// A server-saved draft rebuilds the form against the current defaults: unknown
+// keys are dropped, wrong types fall back, legacy exact targets become ranges.
+const draft = formFromDraft({ settings: { ...form.settings, nLineups: 30, bogus: 1, maxExposure: "0.9" },
+  locked: [11, "x"], excluded: [12], targets: { "21": 35, "22": { min: null, max: 70 }, "23": "bad" },
+  captainTargets: { "31": { min: 20, max: 40 } }, planMode: "chalk_leverage", fades: [], quotas: [] }, defaults)!;
+assert.equal(draft.settings.nLineups, 30);
+assert.equal((draft.settings as Record<string, unknown>).bogus, undefined, "keys the form does not have are dropped");
+assert.equal(draft.settings.maxExposure, defaults.maxExposure, "a wrong type falls back to the default");
+assert.deepEqual(draft.locked, [11]);
+assert.deepEqual(draft.targets, { "21": { min: 35, max: 35 }, "22": { min: null, max: 70 } });
+assert.equal(draft.planMode, "chalk_leverage");
+assert.equal(formFromDraft(null, defaults), null);
+
+// The form shows what the user asked for, not the server's downgrade.
+const asked = formFromSettings({ ...sent, defensiveAdjustments: { mode: "off", profile: "pfr-efficiency" },
+  requestedDefensiveAdjustments: { mode: "approved", profile: "pfr-efficiency" } } as never, defensiveDefaults);
+assert.deepEqual(asked.settings.defensiveAdjustments, { mode: "approved", profile: "pfr-efficiency" });
 
 console.log("Build form: saved runs load back into the form and rebuild the same run.");

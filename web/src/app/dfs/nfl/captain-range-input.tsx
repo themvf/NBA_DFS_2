@@ -40,3 +40,43 @@ export default function CaptainRangeInput({ name, value, nLineups, disabled, onC
     </div> : null}
   </div>;
 }
+
+/**
+ * A player's overall exposure: minimum and maximum share of lineups, captain
+ * and flex combined. A max alone is a cap and is always honoured exactly, in
+ * every plan (decided 2026-09-28); the old single box could only express an
+ * exact target, so "cap Swift at 70%" had no way in. Blank means automatic.
+ */
+export function ExposureRangeInput({ label, name, value, nLineups, disabled, onChange }: {
+  label: string;
+  name: string;
+  value: CaptainTarget | undefined;
+  nLineups: number;
+  disabled: boolean;
+  onChange: (next: CaptainTarget) => void;
+}) {
+  const parse = (raw: string) => (raw === "" ? null : Math.max(0, Math.min(100, Number(raw))));
+  const min = value?.min ?? null, max = value?.max ?? null;
+  const invalid = min != null && max != null && min > max;
+  const lo = min == null ? null : Math.ceil((min / 100) * nLineups - 1e-9);
+  const hi = max == null ? null : Math.floor((max / 100) * nLineups + 1e-9);
+  const summary = invalid ? "min exceeds max"
+    : min != null && max != null && min === max ? `exactly ${Math.round((min / 100) * nLineups)} of ${nLineups}`
+    : lo != null && hi != null ? `${lo}–${hi} of ${nLineups}`
+    : hi != null ? `at most ${hi} of ${nLineups}`
+    : lo != null ? `at least ${lo} of ${nLineups}` : null;
+  return <div>
+    <div className="inline-flex items-center gap-0.5 text-[10px]">
+      <span className="font-bold text-slate-700">{label}</span>
+      <input aria-label={`${name} exposure minimum percentage`} disabled={disabled} type="number" min={0} max={100} step={5}
+        placeholder="min" value={min ?? ""} onChange={(e) => onChange({ min: parse(e.target.value), max })}
+        className={`h-7 w-11 rounded border px-1 text-right disabled:bg-slate-100 ${invalid ? "border-red-500" : ""}`} />
+      <span className="text-slate-400">–</span>
+      <input aria-label={`${name} exposure maximum percentage`} disabled={disabled} type="number" min={0} max={100} step={5}
+        placeholder="max" value={max ?? ""} onChange={(e) => onChange({ min, max: parse(e.target.value) })}
+        className={`h-7 w-11 rounded border px-1 text-right disabled:bg-slate-100 ${invalid ? "border-red-500" : ""}`} />
+      <span className="text-slate-500">%</span>
+    </div>
+    {summary ? <div className={`text-[9px] font-bold ${invalid ? "text-red-700" : "text-blue-700"}`}>{summary}</div> : null}
+  </div>;
+}

@@ -44,6 +44,7 @@
     "test:nfl-player-pool-sort": "node --import tsx ./scripts/test-nfl-player-pool-sort.ts",
     "test:nfl-opportunity-redistribution": "node --import tsx ./scripts/test-nfl-opportunity-redistribution.ts",
     "test:nfl-stale-run": "node --import tsx ./scripts/test-nfl-stale-run.ts",
+    "test:nfl-slate-check": "node --import tsx ./scripts/test-nfl-slate-check.ts",
     "test:nfl-slate-persist": "node --import tsx ./scripts/test-nfl-slate-persist.ts",
     "test:nfl-removal": "node --import tsx ./scripts/test-nfl-removal.ts",
     "test:nfl-availability-board": "node --import tsx ./scripts/test-nfl-availability-board.ts",

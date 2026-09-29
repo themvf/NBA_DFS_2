@@ -1197,6 +1197,15 @@ export async function ensurePickemTables(): Promise<void> {
 }
 
 const NFL_DFS_DDLS = [
+  // The build form per slate (locks, exposure, captain ranges, plan, starting
+  // QBs), saved as the user edits so a reload or another device keeps it.
+  // Keyed by slate signature, so a re-upload of the same slate shares it.
+  `CREATE TABLE IF NOT EXISTS nfl_dfs_build_drafts (
+    slate_signature TEXT PRIMARY KEY,
+    upload_id UUID NOT NULL,
+    form JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
   `CREATE TABLE IF NOT EXISTS nfl_dfs_projection_runs (run_id UUID PRIMARY KEY, model_version TEXT NOT NULL, scoring TEXT NOT NULL DEFAULT 'DK', slate_date DATE, season INTEGER NOT NULL, week INTEGER, as_of_at TIMESTAMPTZ NOT NULL, seed BIGINT NOT NULL, history_cutoff_season INTEGER NOT NULL, history_cutoff_week INTEGER, source_snapshot_ids JSONB NOT NULL DEFAULT '[]'::jsonb, model_config JSONB NOT NULL DEFAULT '{}'::jsonb, availability_manifest JSONB NOT NULL DEFAULT '{}'::jsonb, player_count INTEGER NOT NULL, artifact_digest TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(model_version,artifact_digest))`,
   `ALTER TABLE nfl_dfs_projection_runs ADD COLUMN IF NOT EXISTS availability_manifest JSONB NOT NULL DEFAULT '{}'::jsonb`,
   `CREATE TABLE IF NOT EXISTS nfl_dfs_player_projections (id BIGSERIAL PRIMARY KEY, run_id UUID NOT NULL REFERENCES nfl_dfs_projection_runs(run_id) ON DELETE CASCADE, dk_player_id BIGINT, player_id BIGINT REFERENCES ff_players(id), player_gsis_id TEXT, player_name TEXT NOT NULL, normalized_name TEXT NOT NULL, team TEXT, opponent TEXT, position TEXT NOT NULL, salary INTEGER, identity_method TEXT NOT NULL, projection_status TEXT NOT NULL, history_games INTEGER NOT NULL, prior_games INTEGER NOT NULL, model_proj_fpts DOUBLE PRECISION, baseline_fpts DOUBLE PRECISION, floor_fpts DOUBLE PRECISION, median_fpts DOUBLE PRECISION, ceiling_fpts DOUBLE PRECISION, boom_rate DOUBLE PRECISION, confidence DOUBLE PRECISION NOT NULL, stat_means JSONB NOT NULL DEFAULT '{}'::jsonb, feature_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb, source_evidence JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(run_id,player_id))`,

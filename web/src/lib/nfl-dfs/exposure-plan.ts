@@ -25,6 +25,12 @@ export interface PlayerExposurePolicy {
   flex: ExposureRange;
   /** When true, min and max counts are forced equal (an exact target). Off by default. */
   exactTargetMode: boolean;
+  /**
+   * True when the overall bound is one the user set for this player, as
+   * opposed to the global default carried over. A user's cap is exact in
+   * every plan; only the default may stretch (chalk captains).
+   */
+  overallFromUser?: boolean;
 }
 
 export interface ExposureCounts {

@@ -968,7 +968,9 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   const policyById = new Map((settings.exposurePolicies ?? []).map((p) => [p.playerId, p]));
   const effectivePolicy = (player: ResolvedPlayer): PlayerExposurePolicy => {
     const resolved = baseEffectivePolicy(player);
-    return chalkCaptainSet.has(player.dkPlayerId) ? chalkCaptainPolicy(resolved) : resolved;
+    const userBound = resolved.overallFromUser ?? (settings.maxExposureByPlayer[String(player.dkPlayerId)] != null
+      || settings.minExposureByPlayer[String(player.dkPlayerId)] != null);
+    return chalkCaptainSet.has(player.dkPlayerId) ? chalkCaptainPolicy(resolved, userBound) : resolved;
   };
   const baseEffectivePolicy = (player: ResolvedPlayer): PlayerExposurePolicy => {
     const explicit = policyById.get(player.dkPlayerId);
@@ -1032,7 +1034,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     warnings.push(`Chalk captain model: captains limited to ${chalk.chalkCaptainIds.map(nameOf).join(", ")} `
       + `(chalk ranked by ${chalk.basis === "projection" ? "projection -- no ownership feed" : "projected ownership"}). `
       + `Leverage rotates through ${chalk.rotation.join(" → ")}, outside the core of ${chalk.coreIds.map(nameOf).join(", ")}. `
-      + `A chalk captain's max exposure caps his FLEX use; his captaincy is set by the captain plan.`);
+      + `Chalk captains may pass the ${Math.round(settings.maxExposure * 100)}% default through their captain slots (it still caps their flex use); a cap you set on a player is always exact.`);
     plan = chalk.lineups.map((lineup) => ({ archetypeId: "chalk_captain_leverage" as ArchetypeId, compiled: lineup.compiled }));
   } else if (archetypeQuotas?.length) {
     const allocation = allocateArchetypeQuotas(archetypeQuotas, settings.nLineups);
