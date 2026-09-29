@@ -60,6 +60,15 @@ jobs:
         id: results
         run: |
           python -c "import os,sys; sys.argv=['weekly','--phase','results']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season')] if os.environ.get(key)]; from ingest.nfl_dfs_weekly import main; main()"
+      # Every nflverse player-week row the results phase could not attach to a
+      # player (name, week, points). More than 5% unmatched fails the step.
+      - name: Retain weekly identity coverage
+        if: ${{ !cancelled() && hashFiles('artifacts/nfl-weekly-identity/*.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: nfl-weekly-identity
+          path: artifacts/nfl-weekly-identity/
+          retention-days: 30
       # Optional input: a failure leaves the build on the last stored capture.
       # It stays green, but the final step reports it as degraded.
       - name: Capture game-week injury evidence

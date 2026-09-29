@@ -47,6 +47,15 @@ jobs:
       - name: Build independent rankings from Sleeper and nflverse
         if: ${{ inputs.mode == '' || inputs.mode == 'full' }}
         run: python -m ingest.ff_independent --season "${{ inputs.season || '2026' }}"
+      # Every nflverse player-week row the board refresh could not attach to a
+      # player, by name, week and points (ingest.ff_independent.save_weekly_history).
+      - name: Retain weekly identity coverage
+        if: ${{ always() && hashFiles('artifacts/nfl-weekly-identity/*.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ff-weekly-identity
+          path: artifacts/nfl-weekly-identity/
+          retention-days: 30
       - name: Audit upgraded FantasyPros endpoint contracts
         id: fantasypros-audit
         if: ${{ inputs.mode != 'fantasypros-history-audit' && inputs.mode != 'fantasypros-rookie-check' }}

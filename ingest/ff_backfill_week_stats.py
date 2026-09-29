@@ -23,6 +23,7 @@ from ingest.ff_independent import (
     NFLVERSE_SCHEDULE_URL,
     NFLVERSE_WEEKLY_STATS_URL,
     NFLVERSE_WEEKLY_TEAM_STATS_URL,
+    PRIOR_SEASON_UNMATCHED_MAX_SHARE,
     WEEKLY_STAT_POSITIONS,
     _fetch_csv,
     save_dst_weekly_history,
@@ -62,7 +63,10 @@ def backfill(season: int) -> int:
         if len(frame) < 5000:
             raise RuntimeError(f"nflverse {season} weekly stats returned {len(frame)} rows; expected thousands")
 
-        written = save_weekly_history(db, universe, season, frame)
+        # A completed season against today's roster: retired and released
+        # players are unmatched by construction, hence the looser limit.
+        written = save_weekly_history(db, universe, season, frame,
+                                      max_unmatched_share=PRIOR_SEASON_UNMATCHED_MAX_SHARE)
 
         team_url = NFLVERSE_WEEKLY_TEAM_STATS_URL.format(season=season)
         team_frame, _ = _fetch_csv(team_url)
