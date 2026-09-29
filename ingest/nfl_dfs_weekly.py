@@ -163,7 +163,7 @@ def refresh_results(db, season: int) -> dict:
 
 
 def refresh_projections(db, season: int, week: int | None) -> dict:
-    from ingest.nfl_dfs_projections import infer_target_week, build_week, persist_week
+    from ingest.nfl_dfs_projections import infer_target_week, build_week, persist_week, production_config
     if week is None:
         upcoming = db.execute_one("""SELECT COUNT(*)::int n FROM nfl_season_games
             WHERE season=%s AND game_type='REG' AND kickoff > NOW()""", (season,))
@@ -171,7 +171,8 @@ def refresh_projections(db, season: int, week: int | None) -> dict:
             return {"status": "no_upcoming_regular_season_games", "season": season}
         week = infer_target_week(db, season)
     rows, manifest = build_week(db, season=season, week=week,
-                               as_of_at=datetime.now(timezone.utc), seed=20260902)
+                               as_of_at=datetime.now(timezone.utc), seed=20260902,
+                               config=production_config())
     return {"run_id": persist_week(db, rows, manifest), "players": len(rows), "season": season, "week": week}
 
 
@@ -194,7 +195,7 @@ def main():
                 stream.write("## Production projection snapshot\n\n")
                 stream.write(f"Completed at {datetime.now(timezone.utc).isoformat()}.\n\n")
                 stream.write("```json\n" + json.dumps(result, indent=2) + "\n```\n\n")
-                stream.write("Research forecasts run in a separate job; their status does not invalidate this saved snapshot.\n")
+                stream.write("Research forecasts run afterwards in refresh_nfl_dfs_research.yml; their status does not invalidate this saved snapshot.\n")
 
 
 if __name__ == "__main__":

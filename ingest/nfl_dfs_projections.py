@@ -40,6 +40,20 @@ from model.nfl_team_aliases import normalize_team
 RUN_NAMESPACE = uuid.UUID("8abcf42c-6a0d-49cc-9f34-1ad6f17b0d77")
 
 
+def production_config(*, safety_rollback: bool = False) -> dict[str, Any]:
+    """The configuration every scheduled production writer records.
+
+    Two workflows publish production snapshots: refresh_nfl_dfs_projections
+    (through ingest.nfl_dfs_weekly) and refresh_nfl_availability_context
+    (through this module's main). Only the second recorded the already-default
+    QB-transfer flag, so behaviourally identical runs carried two configuration
+    identities, and the registered research cohorts (``baseline_config_hash``)
+    rejected every slate bound to a run from the first. One definition keeps
+    the writers from drifting apart again.
+    """
+    return {"availability_qb_transfer_enabled": not safety_rollback}
+
+
 def infer_target_week(db: DatabaseManager, season: int) -> int:
     """Select the next scheduled regular-season week from the canonical schedule."""
     rows = db.execute(
@@ -571,7 +585,7 @@ def main() -> None:
     projections, manifest = build_week(
         db, season=args.season, week=week,
         as_of_at=datetime.now(timezone.utc), seed=args.seed,
-        config={"availability_qb_transfer_enabled": not args.availability_safety_rollback},
+        config=production_config(safety_rollback=args.availability_safety_rollback),
     )
     run_id = None if args.no_persist else persist_week(db, projections, manifest)
     counts: dict[str, int] = {}

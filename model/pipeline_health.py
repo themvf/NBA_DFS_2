@@ -88,7 +88,7 @@ DATASET_REGISTRY: tuple[Dataset, ...] = (
             36, "refresh_nfl_dfs_projections.yml", _NFL,
             "Feeds the DFS Lab and the six player topics on the specials board."),
     Dataset("nfl_shadow", "NFL shadow research forecasts", "nfl_dfs_shadow_predictions", "captured_at",
-            240, "refresh_nfl_dfs_projections.yml", _NFL,
+            240, "refresh_nfl_dfs_research.yml", _NFL,
             "Weekly pregame evidence; separate from production projection freshness."),
     Dataset("nfl_schedule_odds", "NFL schedule + market lines", "nfl_season_games", "source_captured_at",
             36, "refresh_nfl_vegas.yml", _NFL,
@@ -189,7 +189,7 @@ def check_all(db: DatabaseManager, now: datetime | None = None) -> list[Health]:
 def check_nfl_context_freezes(db, now):
     """A recently written shadow table can still be missing its context bundle."""
     dataset = Dataset("nfl_context_variant_freeze", "NFL context variant freeze", "nfl_dfs_shadow_predictions",
-                      "captured_at", 168, "refresh_nfl_dfs_projections.yml", _NFL,
+                      "captured_at", 168, "refresh_nfl_dfs_research.yml", _NFL,
                       "Current study pin; zero context rows by Saturday 21:35 UTC fails.")
     if not in_season(dataset, now):
         return [Health(dataset, DORMANT, None, None)]

@@ -216,7 +216,8 @@ the registered gate.
 - Verify week 4 froze with `context_variants` before its first kickoff
   (query `nfl_dfs_shadow_predictions` by week). Record the answer in
   `docs/nfl-dfs-environment-and-interval-studies.md`.
-- The research job that freezes it is the second job of
+- The research job that freezes it is `refresh_nfl_dfs_research.yml`
+  (split out 2026-09-28), which runs after each green
   `refresh_nfl_dfs_projections.yml`, dispatched by `/api/cron/dispatch`
   (job `nfl-projections`, 13:35/21:35 UTC daily, 16:05/19:05 UTC Sundays).
   Add a `pipeline_health` check: a regular-season week with zero

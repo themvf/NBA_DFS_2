@@ -104,9 +104,12 @@ it does not silently overwrite the evidence behind an earlier report.
 ## Cadence and operational checks
 
 The existing `refresh_nfl_dfs_projections.yml` now refreshes published PFR
-evidence before production projections. Research steps freeze the registered
-DFS and pick'em challengers, grade completed observations, and retain the
-forecast/grading artifacts. They use committed fitted artifacts and never
+evidence before production projections, then freezes the registered DFS
+matchup forecasts the page reads for defensive adjustments. Since 2026-09-28
+the remaining research steps run in `refresh_nfl_dfs_research.yml`, after each
+green production run: they freeze the pick'em challengers and coherent
+scenarios, grade completed observations, and retain the forecast/grading
+artifacts. They use committed fitted artifacts and never
 refit on the daily refresh. A missing current salary slate is a coverage
 state, not permission to recycle an old slate as a new one.
 

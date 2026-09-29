@@ -66,3 +66,24 @@ def test_no_completed_games_is_explicit_pending_and_does_not_fetch_stats(monkeyp
     monkeypatch.setattr(module, "verify_season", lambda *args: [])
     monkeypatch.setattr(module, "fetch_partial", lambda *args, **kwargs: pytest.fail("not due"))
     assert refresh_results(None, 2026)["status"] == "awaiting_completed_games"
+
+
+def test_both_production_writers_record_the_same_configuration(monkeypatch):
+    """refresh_nfl_dfs_projections and refresh_nfl_availability_context both
+    publish production snapshots. When only one recorded the default QB-transfer
+    flag, identical projections carried two config identities and the coherent
+    scenario study rejected every slate bound to the weekly writer's runs."""
+    import ingest.nfl_dfs_projections as projections
+    from ingest.nfl_dfs_weekly import refresh_projections
+    seen = {}
+
+    def build_week(db, **kwargs):
+        seen.update(kwargs)
+        return [], {}
+
+    monkeypatch.setattr(projections, "build_week", build_week)
+    monkeypatch.setattr(projections, "persist_week", lambda db, rows, manifest: "run")
+    assert refresh_projections(None, 2026, 3)["run_id"] == "run"
+    assert seen["config"] == projections.production_config()
+    assert projections.production_config() == {"availability_qb_transfer_enabled": True}
+    assert projections.production_config(safety_rollback=True) == {"availability_qb_transfer_enabled": False}
