@@ -15,7 +15,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  buildLiveStatusOverlay, isLiveOutStatus, statusClass, EMPTY_LIVE_OVERLAY,
+  buildLiveStatusOverlay, describeLastDkCheck, isLiveOutStatus, statusClass, EMPTY_LIVE_OVERLAY,
   SALARY_AGREEMENT_FLOOR, MIN_MATCHED_FOR_SALARY_CHECK,
   type LivePool, type SlateRowForLive,
 } from "../src/lib/nfl-dfs/live-dk-status";
@@ -159,6 +159,17 @@ function main() {
   console.log("  - a different game, format or contest type is refused whole");
   console.log("  - a repeated name is dropped rather than guessed");
   console.log("  - an observation older than the salary file is not news");
+
+  // "Last checked" is the last check that WORKED; a failed latest check is said (2026-09-29 audit).
+  const t = Date.parse("2026-09-28T20:00:00Z");
+  const ok = describeLastDkCheck({ lastPolledAt: "2026-09-28T19:58:00Z", lastPollOk: true, lastSuccessfulPollAt: "2026-09-28T19:58:00Z" }, t);
+  assert.deepEqual(ok, { lastGood: "2 min ago", failure: null });
+  const bad = describeLastDkCheck({ lastPolledAt: "2026-09-28T19:58:00Z", lastPollOk: false, lastSuccessfulPollAt: "2026-09-28T16:00:00Z" }, t);
+  assert.equal(bad.lastGood, "4 h ago", "the failed poll's time is not 'checked'");
+  assert.equal(bad.failure, "The latest check of DraftKings failed (2 min ago); the last successful check was 4 h ago. Late changes may be missing.");
+  assert.equal(describeLastDkCheck({ lastPolledAt: "2026-09-28T19:58:00Z", lastPollOk: false, lastSuccessfulPollAt: null }, t).failure,
+    "The latest check of DraftKings failed (2 min ago); no check has succeeded for this slate. Late changes may be missing.");
+  console.log("  - 'last checked' is the last successful check, and a failed latest check is said");
   console.log("  - thresholds, the OUT set and the join key are pinned against Python");
 }
 
