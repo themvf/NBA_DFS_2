@@ -72,8 +72,18 @@ export interface ChecklistInputs {
 
 const REPO = "https://github.com/themvf/NBA_DFS_2";
 const FAILED = new Set(["failure", "timed_out", "startup_failure"]);
-/** GitHub's scheduler runs up to ~95 min late; a dispatched run can queue behind another. */
-const OVERDUE_GRACE_MS = 2 * 3600_000;
+/**
+ * How late a run may be before it counts as missed depends on who starts it.
+ * The Vercel dispatcher fires on time, so a dispatched slot gets 2 h (queueing).
+ * GitHub's own scheduler is best effort: measured 2026-09-26..29 it started
+ * this repo's schedules about every 4-8 h whatever the cron asked for (every-
+ * 15-minute jobs ran 3.8-4.7 h apart, every-3-hour jobs 5.7-7 h, daily ones
+ * ~26 h), with the longest gap ~10 h. A 2 h grace there would flag most GitHub
+ * jobs most of the time. 12 h still catches a schedule GitHub has stopped
+ * running; a job whose timing matters belongs on the dispatcher.
+ */
+export const DISPATCH_GRACE_MS = 2 * 3600_000;
+export const GITHUB_CRON_GRACE_MS = 12 * 3600_000;
 const MANUAL_FAIL_WINDOW_MS = 14 * 86400_000;
 const NFL_WORKFLOWS = new Set(["refresh_nfl_dfs_projections.yml", "refresh_nfl_availability_context.yml", "refresh_nfl_dk_pool.yml",
   "capture_nfl_availability.yml", "refresh_nfl_vegas.yml", "refresh_nfl_dfs_research.yml", "refresh_nfl_dfs_postweek.yml",
@@ -123,7 +133,6 @@ function workflowItem(w: ManifestWorkflow, input: ChecklistInputs, runsByName: M
   const pastCron = w.crons.length ? cronTimes(w.crons, new Date(now - 8 * 86400_000), 8 * 1440).filter((t) => t.getTime() <= now) : [];
   const futureCron = w.crons.length ? cronTimes(w.crons, input.now, 8 * 1440, 50) : [];
   const future = [...futureCron, ...dispatch.future].sort((a, b) => a.getTime() - b.getTime());
-  const past = [...pastCron, ...dispatch.past].sort((a, b) => a.getTime() - b.getTime());
   const scheduled = w.crons.length > 0 || dispatch.future.length > 0 || dispatch.past.length > 0;
   const followsOthers = w.afterWorkflows.length > 0;
   const group: HealthGroup = NFL_WORKFLOWS.has(w.file) ? "NFL DFS" : "Scheduled jobs";
@@ -161,10 +170,15 @@ function workflowItem(w: ManifestWorkflow, input: ChecklistInputs, runsByName: M
   }
 
   // Overdue against its own schedule: it should have run at `due` and has not run since.
-  const due = [...past].reverse().find((t) => now - t.getTime() >= OVERDUE_GRACE_MS);
-  if (scheduled && due && (!last || Date.parse(last.createdAt) < due.getTime() - 30 * 60_000)) {
+  // Each slot gets the grace of whoever starts it (see DISPATCH_GRACE_MS).
+  const slots = [...pastCron.map((t) => ({ t, by: "GitHub's scheduler", grace: GITHUB_CRON_GRACE_MS })),
+    ...dispatch.past.map((t) => ({ t, by: "the dispatcher", grace: DISPATCH_GRACE_MS }))];
+  const due = slots.filter((s) => now - s.t.getTime() >= s.grace).sort((a, b) => b.t.getTime() - a.t.getTime())[0];
+  if (scheduled && due && (!last || Date.parse(last.createdAt) < due.t.getTime() - 30 * 60_000)) {
+    const late = `${Math.round(due.grace / 3600_000)} h`;
     return { ...base, status: "fail",
-      detail: last ? `Overdue: scheduled ${et(due)} but has not run since ${et(last.createdAt)}.` : `Scheduled (${et(due)}) but no run found.` };
+      detail: last ? `Overdue: ${due.by} was due to start it ${et(due.t)} (allowing ${late}), but it has not run since ${et(last.createdAt)}.`
+        : `Scheduled by ${due.by} (${et(due.t)}, allowing ${late}) but no run found.` };
   }
 
   // A workflow_run follower that did not follow its trigger's latest success.
