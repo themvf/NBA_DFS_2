@@ -322,7 +322,7 @@
       "name": "Refresh NFL PBP Archetypes",
       "crons": [
         "0 12 * * 1",
-        "0 9 * * 2"
+        "0 14 * * 2"
       ],
       "dispatch": true,
       "afterWorkflows": [],

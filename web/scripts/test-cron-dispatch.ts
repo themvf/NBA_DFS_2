@@ -73,7 +73,7 @@ assert.equal(nearTicks, 24 + 6, "the two hours before a kickoff add six quarter-
 assert.ok(keys("2027-01-05T09:07:00Z").includes("nfl-availability-context"), "week 17 is in January");
 assert.ok(keys("2027-02-07T09:07:00Z").includes("nfl-availability-context"), "the Super Bowl is in February");
 
-// Health: freshness readings every 3 h; the failure sweep once a day at 11:07 UTC; pbp Mon 12:07 / Tue 09:07.
+// Health: freshness readings every 3 h; the failure sweep once a day at 11:07 UTC; pbp Mon 12:07 / Tue 13:07.
 let healthTicks = 0, sweepTicks = 0;
 for (let h = 0; h < 24; h += 1) for (const m of TICKS) {
   const k = keys(`2026-09-30T${hh(h)}:${m}:00Z`);
@@ -84,7 +84,8 @@ assert.equal(healthTicks, 8, "Pipeline Health every 3 hours");
 assert.equal(sweepTicks, 1, "one failure sweep a day");
 assert.ok(keys("2026-09-30T11:07:00Z").includes("daily-failure-sweep"));
 assert.ok(keys("2026-09-28T12:07:00Z").includes("nfl-pbp-archetypes"), "Monday 12:07 UTC");
-assert.ok(keys("2026-09-29T09:07:00Z").includes("nfl-pbp-archetypes"), "Tuesday 09:07 UTC");
+assert.ok(keys("2026-09-29T13:07:00Z").includes("nfl-pbp-archetypes"), "Tuesday 13:07 UTC, after Monday night is published");
+assert.ok(!keys("2026-09-29T09:07:00Z").includes("nfl-pbp-archetypes"), "not 09:07, before Monday night is published");
 assert.ok(!keys("2026-09-29T09:22:00Z").includes("nfl-pbp-archetypes"), "once, not on the quarter-hour");
 
 // MLB terminal settlement: hourly in March-November, never in the winter.
@@ -95,13 +96,15 @@ assert.ok(keys("2026-11-30T20:07:00Z").includes("mlb-terminal-settlement"), "Nov
 assert.ok(!keys("2026-12-15T20:07:00Z").includes("mlb-terminal-settlement"), "no MLB in December");
 assert.ok(!keys("2027-02-15T20:07:00Z").includes("mlb-terminal-settlement"), "no MLB in February");
 
-// Post-week review + upside grade: Tuesday and Wednesday 10:07 UTC only, once each.
+// Post-week review + upside grade: Tuesday 14:07 (after the 13:07 pbp relabel DST scoring reads) and Wednesday 10:07 UTC only, once each.
 let postweekTicks = 0;
 for (let d = 27; d <= 30; d += 1) for (let h = 0; h < 24; h += 1) for (const m of TICKS) {
   if (keys(`2026-09-${d}T${hh(h)}:${m}:00Z`).includes("nfl-dfs-postweek")) postweekTicks += 1;
 }
 assert.equal(postweekTicks, 2, "one dispatch Tuesday, one Wednesday, across Sun 27 - Wed 30 Sep");
-assert.ok(keys("2026-09-29T10:07:00Z").includes("nfl-dfs-postweek"), "Tuesday 10:07 UTC");
+assert.ok(keys("2026-09-29T14:07:00Z").includes("nfl-dfs-postweek"), "Tuesday 14:07 UTC, after Monday night's stats land (~11:34)");
+assert.ok(!keys("2026-09-29T13:07:00Z").includes("nfl-dfs-postweek"), "not alongside the pbp relabel it depends on");
+assert.ok(!keys("2026-09-29T10:07:00Z").includes("nfl-dfs-postweek"), "not Tuesday 10:07, before they land");
 assert.ok(keys("2026-09-30T10:07:00Z").includes("nfl-dfs-postweek"), "Wednesday 10:07 UTC");
 assert.ok(!keys("2026-09-29T10:37:00Z").includes("nfl-dfs-postweek"), "not the :37 tick");
 
