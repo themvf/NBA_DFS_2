@@ -1702,3 +1702,28 @@ export async function searchNflStarterNews(uploadId: string, extraAccounts: stri
   }));
   return searchTeamNews(key, requests, { trusted: [...NFL_TRUSTED_ACCOUNTS, ...extraAccounts.filter(isXHandle).slice(0, 20)] });
 }
+
+/** Save the build form for this slate (keyed by slate signature). */
+export async function saveNflBuildDraft(uploadId: string, form: unknown) {
+  if (!/^[0-9a-f-]{36}$/.test(uploadId)) throw new Error('Invalid saved slate.');
+  const json = JSON.stringify(form ?? null);
+  if (json.length > 200_000) throw new Error('Build settings are too large to save.');
+  await ensureNflDfsTables();
+  const [upload] = await db.select({ signature: nflDfsSlateUploads.slateSignature }).from(nflDfsSlateUploads)
+    .where(eq(nflDfsSlateUploads.uploadId, uploadId)).limit(1);
+  if (!upload) throw new Error('Saved salary slate not found.');
+  await db.execute(sql`INSERT INTO nfl_dfs_build_drafts (slate_signature, upload_id, form, updated_at)
+    VALUES (${upload.signature}, ${uploadId}::uuid, ${json}::jsonb, NOW())
+    ON CONFLICT (slate_signature) DO UPDATE SET form=EXCLUDED.form, upload_id=EXCLUDED.upload_id, updated_at=NOW()`);
+  return { savedAt: new Date().toISOString() };
+}
+
+/** The build form last saved for this slate, or null. */
+export async function readNflBuildDraft(uploadId: string) {
+  if (!/^[0-9a-f-]{36}$/.test(uploadId)) throw new Error('Invalid saved slate.');
+  await ensureNflDfsTables();
+  const rows = await db.execute(sql`SELECT d.form, d.updated_at FROM nfl_dfs_build_drafts d
+    JOIN nfl_dfs_slate_uploads u ON u.slate_signature=d.slate_signature WHERE u.upload_id=${uploadId}::uuid LIMIT 1`);
+  const row = rows.rows[0];
+  return row ? { form: row.form as unknown, updatedAt: new Date(String(row.updated_at)).toISOString() } : null;
+}

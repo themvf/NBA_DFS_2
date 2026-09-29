@@ -12,7 +12,7 @@ import {
 import { VALUE_TIER_LABEL, type ValueIndex } from "@/lib/nfl-dfs/salary-value";
 import { ValueChip, valueTooltip } from "./value-chip";
 import { ReplacementUpsideTable } from "./replacement-upside-display";
-import { explainNflPlayerProjection, type NflProjectionExplanation, type NflWorkspacePlayer } from "./actions";
+import { explainNflPlayerProjection, type NflProjectionExplanation, type NflWorkspacePlayer } from "./client-actions";
 
 /*
  * Chart palette. Validated for the light surface (#ffffff) with the dataviz

@@ -143,6 +143,14 @@ export function formFromSettings<S extends object>(saved: NflOptimizerSettings, 
     const fallback = (defaults as { defensiveAdjustments: { profile: 'pfr-efficiency' | 'allowed-rushing-volume' } }).defensiveAdjustments;
     (settings as Record<string, unknown>).defensiveAdjustments = { mode: 'off', profile: fallback.profile };
   }
+  // The form shows what the user ASKED for. When the server could not honour a
+  // choice (an "approved" defensive profile with no approved policy runs as
+  // off), comparing the form with the effective setting reported "Settings
+  // changed" right after Generate (PHI@CHI 2026-09-28). The downgrade is
+  // disclosed separately instead.
+  if (source.requestedDefensiveAdjustments && 'defensiveAdjustments' in defaults) {
+    (settings as Record<string, unknown>).defensiveAdjustments = source.requestedDefensiveAdjustments;
+  }
   const percent = (value: number) => Math.round(value * 10000) / 100;
   const targets: Record<string, ExposureTarget> = {};
   for (const id of new Set([...Object.keys(saved.minExposureByPlayer ?? {}), ...Object.keys(saved.maxExposureByPlayer ?? {})])) {
@@ -166,5 +174,47 @@ export function formFromSettings<S extends object>(saved: NflOptimizerSettings, 
     quotas: custom ? [...(saved.archetypeQuotas ?? [])] : [],
     favorite: custom ? saved.favoriteTeam ?? '' : '',
     fades,
+  };
+}
+
+const PLAN_MODES: readonly ArchetypePlanMode[] = ['balanced', 'standard', 'custom', 'chalk_leverage'];
+
+/**
+ * A build form saved on the server (a draft) rebuilt against the current form
+ * defaults. Only keys the defaults know are taken, with the default's type, so
+ * a draft written by an older page cannot inject settings the form no longer
+ * has or crash it with a wrong shape.
+ */
+export function formFromDraft<S extends object>(raw: unknown, defaults: S): NflBuildForm<S> | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const draft = raw as Record<string, unknown>;
+  const saved = (draft.settings && typeof draft.settings === 'object' ? draft.settings : {}) as Record<string, unknown>;
+  const settings = { ...defaults };
+  for (const key of Object.keys(defaults) as Array<keyof S & string>) {
+    const value = saved[key], fallback = (defaults as Record<string, unknown>)[key];
+    if (value === undefined || value === null) continue;
+    const sameKind = Array.isArray(fallback) ? Array.isArray(value) : typeof value === typeof fallback;
+    if (sameKind) (settings as Record<string, unknown>)[key] = value;
+  }
+  const ids = (value: unknown) => Array.isArray(value) ? value.filter((v): v is number => Number.isSafeInteger(v)) : [];
+  const ranges = (value: unknown): Record<string, CaptainTarget> => {
+    if (!value || typeof value !== 'object') return {};
+    const out: Record<string, CaptainTarget> = {};
+    for (const [id, range] of Object.entries(value as Record<string, unknown>)) {
+      if (typeof range === 'number') { out[id] = { min: range, max: range }; continue; }
+      if (!range || typeof range !== 'object') continue;
+      const r = range as { min?: unknown; max?: unknown };
+      const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+      if (num(r.min) != null || num(r.max) != null) out[id] = { min: num(r.min), max: num(r.max) };
+    }
+    return out;
+  };
+  const planMode = PLAN_MODES.includes(draft.planMode as ArchetypePlanMode) ? draft.planMode as ArchetypePlanMode : 'balanced';
+  return {
+    settings, locked: ids(draft.locked), excluded: ids(draft.excluded),
+    targets: ranges(draft.targets), captainTargets: ranges(draft.captainTargets), planMode,
+    quotas: Array.isArray(draft.quotas) ? draft.quotas as ArchetypeQuota[] : [],
+    favorite: typeof draft.favorite === 'string' ? draft.favorite : '',
+    fades: ids(draft.fades),
   };
 }

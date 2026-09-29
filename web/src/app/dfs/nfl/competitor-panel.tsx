@@ -1,6 +1,6 @@
 "use client";
 import {useState,useTransition} from 'react';
-import {freezeNflBenchmark,loadNflBenchmarks,previewNflTargetRedistribution,type NflWorkspaceSlate} from './actions';
+import {freezeNflBenchmark,loadNflBenchmarks,previewNflTargetRedistribution,type NflWorkspaceSlate} from './client-actions';
 import type {Competitor} from '@/lib/nfl-dfs/competitor-benchmark';
 const points=(x:number|null)=>x===null?'Pending':x.toFixed(2);
 function download(name:string,value:unknown) {const url=URL.createObjectURL(new Blob([JSON.stringify(value,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=name;a.click();URL.revokeObjectURL(url);}
