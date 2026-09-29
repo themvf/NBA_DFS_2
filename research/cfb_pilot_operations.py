@@ -15,6 +15,7 @@ import subprocess
 import time
 
 from config import PROJECT_DIR, load_config
+from ingest.event_closing_lines import CHECKPOINTS_BY_SPORT
 from research.cfb_study_evaluation import status as study_status
 
 
@@ -93,6 +94,67 @@ def _expected_slots(workflow: str, start: datetime, cutoff: datetime) -> int:
         count += int(due)
         slot += timedelta(minutes=1)
     return count
+
+
+def _cfb_checkpoint_windows(matchups: list[tuple]) -> list[dict]:
+    """Capture windows the closing-line worker owes each CFB game.
+
+    Uses the worker's own checkpoint table (`CHECKPOINTS_BY_SPORT["cfb"]`), so
+    the monitor and the worker cannot disagree about when a capture was due.
+    `matchups` rows are (matchup_id, commence_time).
+    """
+    windows = []
+    for matchup_id, commence in matchups:
+        for name, target_lead, due_lead in CHECKPOINTS_BY_SPORT["cfb"]:
+            windows.append({"matchup_id": matchup_id, "checkpoint": name,
+                            "target_at": commence - timedelta(minutes=target_lead),
+                            "due_until": commence - timedelta(minutes=due_lead)})
+    return windows
+
+
+def _uncaptured_window_during_gap(windows: list[dict], captures: dict, since: datetime,
+                                  cutoff: datetime, threshold_minutes: int) -> dict | None:
+    """First CFB window that was open at least `threshold_minutes` ago, after the
+    last successful run, and still has no capture. None means nothing was due."""
+    horizon = cutoff - timedelta(minutes=threshold_minutes)
+    for window in sorted(windows, key=lambda item: item["target_at"]):
+        if window["target_at"] > horizon or window["due_until"] < since:
+            continue
+        if any(window["target_at"] <= at <= window["due_until"]
+               for at in captures.get(window["matchup_id"], ())):
+            continue
+        return window
+    return None
+
+
+def _run_gap_check(last: datetime | None, cutoff: datetime, threshold_minutes: int, *,
+                   start: datetime, windows: list[dict] | None = None,
+                   captures: dict | None = None) -> dict:
+    """Pass, idle or alert for one workflow's time since its last success.
+
+    With `windows`, a long gap is only an alert when a CFB capture was actually
+    due in it. The closing-line workflow is dispatched only when a checkpoint is
+    due, so between game weeks (2026-09-27 03:00 to 2026-10-02 00:00 UTC had no
+    CFB games) a 20-minute gap is the design, not an outage. Until 2026-09-29
+    that gap failed this monitor on every run.
+    """
+    age_minutes = (cutoff - last).total_seconds() / 60 if last else None
+    check = {"last_success_utc": last.isoformat() if last else None,
+             "age_minutes": round(age_minutes, 1) if age_minutes is not None else None,
+             "threshold_minutes": threshold_minutes}
+    if age_minutes is not None and age_minutes <= threshold_minutes:
+        return {"status": "pass", **check}
+    if windows is None:
+        return {"status": "alert", **check}
+    missed = _uncaptured_window_during_gap(windows, captures or {}, last or start, cutoff, threshold_minutes)
+    if missed is None:
+        return {"status": "idle", **check,
+                "reason": "no CFB capture checkpoint was due since the last successful run"}
+    return {"status": "alert", **check,
+            "reason": (f"CFB checkpoint {missed['checkpoint']} for matchup {missed['matchup_id']} "
+                       f"opened {missed['target_at'].isoformat()} and has no capture or successful run"),
+            "due_window": {key: (value.isoformat() if isinstance(value, datetime) else value)
+                           for key, value in missed.items()}}
 
 
 def _build_once(database_url: str, start: datetime = PILOT_START) -> dict:
@@ -196,6 +258,19 @@ def _build_once(database_url: str, start: datetime = PILOT_START) -> dict:
                 WHERE a.sport='cfb' AND a.origin='prospective' AND a.created_at >= %s AND a.created_at < %s
                 ORDER BY a.created_at,s.as_of_at,s.snapshot_id LIMIT 1""", (start, cutoff))
             trace_row = cursor.fetchone()
+            # Games whose capture windows can fall inside [start, cutoff]; the
+            # widest window opens 48h before kickoff.
+            cursor.execute("""SELECT id, commence_time FROM cfb_matchups
+                WHERE odds_event_id IS NOT NULL AND start_time_tbd = FALSE
+                  AND commence_time >= %s AND commence_time < %s + INTERVAL '49 hours'""",
+                (start, cutoff))
+            cfb_windows = _cfb_checkpoint_windows(cursor.fetchall())
+            cursor.execute("""SELECT matchup_id, captured_at FROM game_odds_history
+                WHERE sport='cfb' AND captured_at >= %s AND captured_at < %s
+                  AND COALESCE(books, '{}'::jsonb) - 'polymarket' <> '{}'::jsonb""", (start, cutoff))
+            cfb_captures: dict[int, list[datetime]] = {}
+            for matchup_id, captured_at in cursor.fetchall():
+                cfb_captures.setdefault(matchup_id, []).append(captured_at)
             real_data_trace = dict(zip(("signal_id", "trigger_history_id", "capture_id", "capture_observed_at",
                                         "normalized_quote_count", "snapshot_id", "source_manifest_id",
                                         "definition_version", "snapshot_as_of_at", "economic_resolution_id",
@@ -271,11 +346,10 @@ def _build_once(database_url: str, start: datetime = PILOT_START) -> dict:
     for workflow, maximum_gap_minutes in ((WORKFLOWS[0], 20), (WORKFLOWS[1], 120)):
         completed = [row for row in run_history[workflow]["runs"] if row["conclusion"] == "success"]
         last = max((datetime.fromisoformat(row["updatedAt"].replace("Z", "+00:00")) for row in completed), default=None)
-        age_minutes = (cutoff - last).total_seconds() / 60 if last else None
-        checks[workflow] = {"status": "pass" if age_minutes is not None and age_minutes <= maximum_gap_minutes else "alert",
-                            "last_success_utc": last.isoformat() if last else None,
-                            "age_minutes": round(age_minutes, 1) if age_minutes is not None else None,
-                            "threshold_minutes": maximum_gap_minutes}
+        # Only the closing-line workflow is dispatched on due work; the terminal
+        # refresh runs on its own fixed cron, so its gap check is unchanged.
+        due_work = {"windows": cfb_windows, "captures": cfb_captures} if workflow == WORKFLOWS[0] else {}
+        checks[workflow] = _run_gap_check(last, cutoff, maximum_gap_minutes, start=start, **due_work)
     candidate_total = sum(row[0] for row in funnel_rows)
     eligible_total = sum(row[1] for row in funnel_rows)
     failed_persistence = sum(row[2] for row in funnel_rows)
@@ -300,7 +374,7 @@ def _build_once(database_url: str, start: datetime = PILOT_START) -> dict:
         else "not_evaluable" if any(value != "success" for value in step_status.values())
         else "pass")
     return {
-        "status": "operationally_verified" if not findings and all(check["status"] == "pass" for check in checks.values())
+        "status": "operationally_verified" if not findings and all(check["status"] in ("pass", "idle") for check in checks.values())
                   and all(value == "pass" for key, value in funnel_monitoring.items() if key in (
                       "zero_eligible_opportunities", "temporal_rejection_spike", "stale_book_spike",
                       "persistence_or_publication_failure"))
@@ -360,8 +434,9 @@ def main() -> None:
     args.output.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
     alerts = [name for name, check in report["run_gap_checks"].items() if check["status"] == "alert"]
     alerts += [name for name, value in report["funnel_monitoring"].items() if value == "alert"]
+    idle = {name: check["reason"] for name, check in report["run_gap_checks"].items() if check["status"] == "idle"}
     print(json.dumps({"output": str(args.output), "status": report["status"],
-                      "alerts": alerts, "findings": report["findings"]}, indent=2))
+                      "alerts": alerts, "idle": idle, "findings": report["findings"]}, indent=2))
     if args.fail_on_alert and report["monitor_active"] and alerts:
         raise SystemExit(1)
 
