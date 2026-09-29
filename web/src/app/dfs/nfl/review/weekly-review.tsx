@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { loadPlayerHistory } from "./actions";
+import { loadPlayerHistory } from "../client-actions";
 import { CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { reportSummary, VARIANT_LABELS, type ReportRow, type ReportVariant, type WeeklyReport } from "@/lib/nfl-dfs/report-card";
 import { DELTA_FILL, DELTA_POLE, delta as rowDelta, deltaBucket, deltaScales,

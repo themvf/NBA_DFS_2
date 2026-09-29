@@ -940,6 +940,7 @@ export async function loadSavedNflLineups(uploadId: string, runId: string) {
     salaryBandReport:NflOptimizerResult['salaryBandReport'];duplication:NflOptimizerResult['duplication'];
     ownership:OwnershipAssessment}};
   return { runId, settings: savedSettings, evidence:savedSettings.runEvidence??null,
+    build:{commitSha:((run as {buildInfo?:{commitSha?:string}}).buildInfo?.commitSha)??null},
     defensiveForecasts:(Array.isArray(run.inputSnapshot)?run.inputSnapshot:[]).flatMap((p:unknown)=>{
       const row=p as {dkPlayerId?:number;defensiveForecast?:NflOptimizerPlayer['defensiveForecast']};
       return row.dkPlayerId!=null&&row.defensiveForecast?[{dkPlayerId:row.dkPlayerId,bundle:row.defensiveForecast}]:[];
@@ -982,7 +983,7 @@ export async function applyNflComparison(
 export async function runNflOptimizer(
   uploadId: string,
   settings: NflOptimizerSettings,
-): Promise<{ runId: string; slate: NflWorkspaceSlate; result: NflOptimizerResult; ownership?: OwnershipAssessment;effectiveSettings:NflOptimizerSettings }> {
+): Promise<{ runId: string; slate: NflWorkspaceSlate; result: NflOptimizerResult; ownership?: OwnershipAssessment;effectiveSettings:NflOptimizerSettings; build:{commitSha:string|null} }> {
   await ensureNflDfsTables();
   const slate = await workspaceSlate(uploadId, sanitizeConfirmedStartingQbs(settings.confirmedStartingQbs));
   if(settings.format!==slate.format)throw new Error("Optimizer format must match the saved salary slate.");
@@ -1048,7 +1049,8 @@ export async function exportSavedNflDefensiveEntries(runId:string,entryTemplate:
     eligibility:settings.runEvidence.eligibility,exposureReport:settings.runEvidence.exposureReport,
     salaryBandReport:settings.runEvidence.salaryBandReport,duplication:settings.runEvidence.duplication,
     ownership:{capability:settings.runEvidence.ownership.capability,errors:settings.runEvidence.ownership.errors,
-      features:{leverage:settings.runEvidence.ownership.features.leverage}}});
+      features:{leverage:settings.runEvidence.ownership.features.leverage}},
+    build:{commitSha:(run.buildInfo as {commitSha?:string}|null)?.commitSha??null}});
   if(qa.decision==='blocked')throw new Error(`Saved pre-export QA blocked: ${qa.openBlockers.join(', ')}.`);
   await assertSlatePregame(slate); // Close the generation/export kickoff race.
   return exportNflDkEntries(entryTemplate,saved.lineups);
@@ -1204,7 +1206,7 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
     projectedOwnership: lineup.projectedOwnership,
   })));
   } catch { throw new Error("Unable to save optimizer results. Refresh the slate and retry; an incomplete run may remain saved."); }
-  return { runId, slate:{...slate,players:prepared}, result, ownership: ownershipAssessment,effectiveSettings:resolvedSettings };
+  return { runId, slate:{...slate,players:prepared}, result, ownership: ownershipAssessment,effectiveSettings:resolvedSettings, build:{commitSha:buildInfo.commitSha??null} };
 }
 
 export async function readNflOptimizerAudit(runId:string) {
@@ -1699,4 +1701,29 @@ export async function searchNflStarterNews(uploadId: string, extraAccounts: stri
     players: [...new Set(slate.players.filter((p) => p.team === code && p.position !== "DST" && watched(p)).map((p) => p.name))],
   }));
   return searchTeamNews(key, requests, { trusted: [...NFL_TRUSTED_ACCOUNTS, ...extraAccounts.filter(isXHandle).slice(0, 20)] });
+}
+
+/** Save the build form for this slate (keyed by slate signature). */
+export async function saveNflBuildDraft(uploadId: string, form: unknown) {
+  if (!/^[0-9a-f-]{36}$/.test(uploadId)) throw new Error('Invalid saved slate.');
+  const json = JSON.stringify(form ?? null);
+  if (json.length > 200_000) throw new Error('Build settings are too large to save.');
+  await ensureNflDfsTables();
+  const [upload] = await db.select({ signature: nflDfsSlateUploads.slateSignature }).from(nflDfsSlateUploads)
+    .where(eq(nflDfsSlateUploads.uploadId, uploadId)).limit(1);
+  if (!upload) throw new Error('Saved salary slate not found.');
+  await db.execute(sql`INSERT INTO nfl_dfs_build_drafts (slate_signature, upload_id, form, updated_at)
+    VALUES (${upload.signature}, ${uploadId}::uuid, ${json}::jsonb, NOW())
+    ON CONFLICT (slate_signature) DO UPDATE SET form=EXCLUDED.form, upload_id=EXCLUDED.upload_id, updated_at=NOW()`);
+  return { savedAt: new Date().toISOString() };
+}
+
+/** The build form last saved for this slate, or null. */
+export async function readNflBuildDraft(uploadId: string) {
+  if (!/^[0-9a-f-]{36}$/.test(uploadId)) throw new Error('Invalid saved slate.');
+  await ensureNflDfsTables();
+  const rows = await db.execute(sql`SELECT d.form, d.updated_at FROM nfl_dfs_build_drafts d
+    JOIN nfl_dfs_slate_uploads u ON u.slate_signature=d.slate_signature WHERE u.upload_id=${uploadId}::uuid LIMIT 1`);
+  const row = rows.rows[0];
+  return row ? { form: row.form as unknown, updatedAt: new Date(String(row.updated_at)).toISOString() } : null;
 }
