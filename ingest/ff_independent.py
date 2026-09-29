@@ -738,6 +738,21 @@ def save_history(
 # the team feed and its own Yahoo tier derivation, which is a separate job.
 WEEKLY_STAT_POSITIONS = ("QB", "RB", "WR", "TE", "K")
 
+# `fetched_at` on ff_player_week_stats is when THIS content became available:
+# point-in-time readers select `fetched_at <= as_of`
+# (ingest/nfl_matchup_context.py). Rewriting it on every refresh made every
+# stored week look brand new -- on 2026-09-29 all 1,243 rows for 2026 carried
+# that morning's timestamp, so a replay as of any earlier moment saw no 2026
+# weeks at all. An upsert therefore changes a row, and its fetched_at, only
+# when the stored content differs; an unchanged row is left exactly as it was.
+WEEK_STATS_CHANGED = """
+               WHERE (ff_player_week_stats.team, ff_player_week_stats.opponent,
+                      ff_player_week_stats.fantasy_points_std, ff_player_week_stats.fantasy_points_ppr,
+                      ff_player_week_stats.source_row)
+                     IS DISTINCT FROM
+                     (EXCLUDED.team, EXCLUDED.opponent, EXCLUDED.fantasy_points_std,
+                      EXCLUDED.fantasy_points_ppr, EXCLUDED.source_row)"""
+
 
 def save_weekly_history(
     db: RefreshDatabase,
@@ -789,7 +804,7 @@ def save_weekly_history(
                 team=EXCLUDED.team,opponent=EXCLUDED.opponent,
                 fantasy_points_std=EXCLUDED.fantasy_points_std,
                 fantasy_points_ppr=EXCLUDED.fantasy_points_ppr,
-                source_row=EXCLUDED.source_row,fetched_at=NOW()""",
+                source_row=EXCLUDED.source_row,fetched_at=NOW()""" + WEEK_STATS_CHANGED,
             (
                 player["player_id"], weekly_season, week,
                 normalize_team(raw.get("team")), normalize_team(raw.get("opponent_team")),
@@ -974,7 +989,7 @@ def save_dst_weekly_history(
                 team=EXCLUDED.team,opponent=EXCLUDED.opponent,
                 fantasy_points_std=EXCLUDED.fantasy_points_std,
                 fantasy_points_ppr=EXCLUDED.fantasy_points_ppr,
-                source_row=EXCLUDED.source_row,fetched_at=NOW()""",
+                source_row=EXCLUDED.source_row,fetched_at=NOW()""" + WEEK_STATS_CHANGED,
             (
                 player["player_id"], weekly_season, week, team,
                 normalize_team(raw.get("opponent_team")), fpts, fpts,
