@@ -12,6 +12,7 @@ from model.nfl_availability_context import (
     build_availability_contexts,
 )
 from model.nfl_context_engine import ContextMeasurement, stable_digest
+from model.nfl_game_availability import game_has_started
 
 
 CONSUMERS = (
@@ -30,7 +31,31 @@ def persist_availability_contexts(
     manifest: Mapping[str, Any],
     available_at: datetime,
 ) -> dict[str, Any]:
-    decisions = manifest.get("availability_decisions") or {}
+    as_of_at = datetime.fromisoformat(str(manifest["as_of_at"]))
+    # A game that kicked off at or before this run's decision time keeps its
+    # pregame context as the current row. Publishing for it would supersede
+    # that row (the supersession below only requires an older as_of_at), which
+    # is how every week-3 context became a post-kickoff UNKNOWN on 2026-09-29.
+    # Its game id is also left out of the withdrawal cohort below, so nothing
+    # in a started game is touched.
+    rows = list(projections)
+    started_games = sorted({
+        _game_id(row) for row in rows if game_has_started(row.get("commence_time"), as_of_at)
+    })
+    projections = [row for row in rows if _game_id(row) not in started_games]
+    all_decisions = manifest.get("availability_decisions") or {}
+    decisions = {
+        str(row["player_id"]): all_decisions[str(row["player_id"])]
+        for row in projections if str(row.get("player_id")) in all_decisions
+    }
+    if not projections:
+        return {
+            "releaseId": None, "contextsPublished": 0, "snapshotCount": 0,
+            "snapshotManifestDigest": stable_digest([]),
+            "definitions": [PLAYER_GAME_AVAILABILITY.definition_id, TEAM_QB_STATE.definition_id],
+            "coverage": {}, "policyVersion": POLICY_VERSION,
+            "startedGamesSkipped": started_games,
+        }
     source_observation_ids = sorted({
         str(observation_id)
         for decision in decisions.values()
@@ -49,7 +74,7 @@ def persist_availability_contexts(
         decisions,
         season=int(manifest["season"]),
         week=manifest.get("week"),
-        as_of_at=datetime.fromisoformat(str(manifest["as_of_at"])),
+        as_of_at=as_of_at,
         available_at=available_at,
         fact_release_id=release_id,
     )
@@ -165,4 +190,9 @@ def persist_availability_contexts(
         ],
         "coverage": coverage,
         "policyVersion": POLICY_VERSION,
+        "startedGamesSkipped": started_games,
     }
+
+
+def _game_id(row: Mapping[str, Any]) -> str:
+    return str(row.get("game_id") or row.get("event_id") or "")

@@ -22,8 +22,9 @@ from psycopg2.extras import Json, execute_values
 from config import load_config
 from db.database import DatabaseManager
 from ingest.nfl_availability_context_publish import persist_availability_contexts
+from ingest.nfl_target_week import SeasonComplete, target_week
 from model.nfl_dfs_availability import apply as apply_availability, last_game_passing_leaders, player_identity
-from model.nfl_game_availability import resolve_game_availability
+from model.nfl_game_availability import game_has_started, pregame_decision_time, resolve_game_availability
 from model.nfl_dfs_historical import (
     MODEL_CONFIG,
     MODEL_VERSION,
@@ -54,21 +55,14 @@ def production_config(*, safety_rollback: bool = False) -> dict[str, Any]:
     return {"availability_qb_transfer_enabled": not safety_rollback}
 
 
-def infer_target_week(db: DatabaseManager, season: int) -> int:
-    """Select the next scheduled regular-season week from the canonical schedule."""
-    rows = db.execute(
-        """SELECT week, MIN(kickoff) first_kickoff
-           FROM nfl_season_games
-           WHERE season=%s AND game_type='REG'
-             AND kickoff >= NOW() - INTERVAL '6 hours'
-           GROUP BY week
-           ORDER BY first_kickoff, week
-           LIMIT 1""",
-        (season,),
-    )
-    if not rows:
-        raise ValueError(f"No current or upcoming regular-season week is loaded for {season}")
-    return int(rows[0]["week"])
+def infer_target_week(db: DatabaseManager, season: int, now: datetime | None = None) -> int:
+    """Select the current regular-season week (see ``ingest.nfl_target_week``).
+
+    Kept as the stable entry point: ``ingest.nfl_dfs_weekly`` imports it.
+    Raises ``SeasonComplete`` (a ``ValueError``) once every game is past its
+    grace window, and ``ValueError`` when no schedule is loaded.
+    """
+    return target_week(db, season, now or datetime.now(timezone.utc))
 
 
 def _history(db: DatabaseManager, season: int, week: int | None) -> list[HistoricalWeek]:
@@ -375,17 +369,27 @@ def build_week(
     # Pre-kickoff availability. A status only counts if WE captured it before
     # this player's own kickoff — so a Tuesday run uses Tuesday's truth and a
     # Sunday-morning run uses Sunday's, with no list to maintain in between.
+    #
+    # A game that has already kicked off keeps its last pregame decision: it is
+    # resolved at kickoff - 1us, never at `as_of_at`. A run built after an
+    # early kickoff therefore still zeroes that game's ruled-out players (and
+    # promotes their backups) exactly as the pregame run did, while the games
+    # not yet started resolve normally at `as_of_at`.
     observed = _availability(db, season, week)
     statuses: dict[int, str] = {}
     availability_decisions: dict[str, dict[str, Any]] = {}
     availability_migration_audit: list[dict[str, Any]] = []
+    started_games: set[str] = set()
     for player in projections:
         if not player.get("player_id"):
             continue
+        kickoff = player.get("commence_time")
+        if game_has_started(kickoff, as_of_at):
+            started_games.add(str(player.get("game_id") or player.get("event_id") or ""))
         decision = resolve_game_availability(
             observed.get(int(player["player_id"])),
-            as_of_at=as_of_at,
-            kickoff=player.get("commence_time"),
+            as_of_at=pregame_decision_time(as_of_at, kickoff),
+            kickoff=kickoff,
         )
         availability_decisions[str(player["player_id"])] = decision.as_dict()
         legacy_status = _legacy_fantasypros_status(
@@ -408,6 +412,8 @@ def build_week(
     projections, availability_report = apply_availability(
         projections, statuses, positions=("QB",) if transfer_enabled else ())
     availability_report["policy_mode"] = "shared_v1" if transfer_enabled else "safety_rollback_v1"
+    # Games resolved at their last pregame instant (kicked off before as_of_at).
+    availability_report["pregame_frozen_games"] = sorted(started_games)
 
     # Optional evidence/shadow extension. The protected v5 draws and active
     # numbers stay unchanged; unqualified context never becomes a multiplier.
@@ -486,6 +492,26 @@ def build_week(
     return projections, manifest
 
 
+def availability_resolution_summary(report: dict[str, Any]) -> dict[str, Any]:
+    """What the zero-and-promote pass did, in the form the run row persists.
+
+    Only ``policy_mode`` used to reach ``nfl_dfs_projection_runs``, so a
+    starting QB ruled out with no promotable backup left no trace outside the
+    in-memory report: his team simply lost its quarterback's projection.
+    ``unresolved_starters`` counts exactly that case (an unresolved entry
+    carrying starter evidence); other unresolved entries are backups whose
+    absence has nothing to promote.
+    """
+    unresolved = list(report.get("unresolved") or [])
+    return {
+        "zeroed_count": len(report.get("zeroed") or []),
+        "transfers_applied": sum(1 for row in report.get("transfers") or [] if row.get("applied")),
+        "unresolved": unresolved,
+        "unresolved_count": len(unresolved),
+        "unresolved_starters": sum(1 for row in unresolved if row.get("starter_evidence")),
+    }
+
+
 def persist_week(db: DatabaseManager, projections: list[dict[str, Any]], manifest: dict[str, Any]) -> str:
     digest = manifest["artifact_digest"]
     run_id = str(uuid.uuid5(RUN_NAMESPACE, f"{MODEL_VERSION}:{digest}"))
@@ -494,6 +520,8 @@ def persist_week(db: DatabaseManager, projections: list[dict[str, Any]], manifes
     availability_manifest = {
         "policy": manifest["availability_health"]["policy"],
         "policy_mode": manifest["availability"].get("policy_mode"),
+        "pregame_frozen_games": manifest["availability"].get("pregame_frozen_games", []),
+        **availability_resolution_summary(manifest["availability"]),
         "health": manifest["availability_health"],
         "migration_audit": manifest["availability_migration_audit"],
         "decisions_digest": artifact_digest(manifest["availability_decisions"]),
@@ -571,20 +599,35 @@ def persist_week(db: DatabaseManager, projections: list[dict[str, Any]], manifes
 
 
 def main() -> None:
+    from ingest.nfl_dfs_weekly import target_season
+
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--season", type=int, default=datetime.now(timezone.utc).year)
+    # Defaults to the NFL season, not the calendar year: weeks 17-18 are played
+    # in January, when the calendar year is already the next season's.
+    parser.add_argument("--season", type=int)
     parser.add_argument("--week", type=int)
     parser.add_argument("--seed", type=int, default=20260902)
     parser.add_argument("--no-persist", action="store_true")
     parser.add_argument("--availability-safety-rollback", action="store_true",
                         help="Keep qualified OUT zeroing but disable opportunity transfer; never restores the legacy source bypass")
     args = parser.parse_args()
+    now = datetime.now(timezone.utc)
+    args.season = target_season(args.season, now)
     config = load_config()
     db = DatabaseManager(config.database_url)
-    week = args.week if args.week is not None else infer_target_week(db, args.season)
+    if args.week is not None:
+        week = args.week
+    else:
+        try:
+            week = infer_target_week(db, args.season, now)
+        except SeasonComplete as exc:
+            # Nothing left to publish is not a failure; a missing schedule is
+            # (target_week raises a plain ValueError for that).
+            print(json.dumps({"status": "season_complete", "season": args.season, "reason": str(exc)}))
+            return
     projections, manifest = build_week(
         db, season=args.season, week=week,
-        as_of_at=datetime.now(timezone.utc), seed=args.seed,
+        as_of_at=now, seed=args.seed,
         config=production_config(safety_rollback=args.availability_safety_rollback),
     )
     run_id = None if args.no_persist else persist_week(db, projections, manifest)
@@ -601,6 +644,7 @@ def main() -> None:
         "availability_health": manifest["availability_health"],
         "availability_migration_changes": len(manifest["availability_migration_audit"]),
         "availability_policy_mode": manifest["availability"].get("policy_mode"),
+        "availability_unresolved_starters": availability_resolution_summary(manifest["availability"])["unresolved_starters"],
         "matchup_health": manifest.get("matchup_health"),
         "prop_inputs": [],
     }, indent=2, sort_keys=True))

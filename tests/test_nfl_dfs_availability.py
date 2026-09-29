@@ -111,6 +111,14 @@ def test_no_depth_order_means_no_guess():
     _, report = apply([starter, backup], {1: "OUT"})
     assert report["unresolved"], "an unresolvable handoff must be reported, not silently skipped"
     assert report["transfers"] == []
+    # The entry says WHY it matters: a starter is out and nobody inherits.
+    assert report["unresolved"][0]["player_id"] == 1
+    assert report["unresolved"][0]["starter_evidence"] == "depth_chart"
+
+def test_a_ruled_out_backup_is_unresolved_without_starter_evidence():
+    starter, backup, third = qb(1, "S", 1, 35, 250, 1.6, 23.6), qb(2, "B", 2, 6, 40, 0.2, 4.0), qb(3, "T", 3, 5, 30, 0.1, 3.0)
+    _, report = apply([starter, backup, third], {3: "OUT"})
+    assert [row["starter_evidence"] for row in report["unresolved"]] == [None]
 
 # ── the handoff itself ─────────────────────────────────────────────────
 def test_volume_transfers_and_efficiency_does_not():

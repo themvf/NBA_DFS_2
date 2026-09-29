@@ -11,6 +11,7 @@ from ingest.ff_fantasypros import FantasyProsClient, RefreshDatabase, response_h
 from ingest.ff_injuries import persist_injury_observation
 from ingest.ff_source_contracts import SnapshotProvenance, persist_source_snapshot
 from ingest.nfl_dfs_weekly import target_season
+from ingest.nfl_target_week import SeasonComplete, target_week
 from model.nfl_dfs_injury_identity import audit
 
 
@@ -24,6 +25,23 @@ def validate_payload(payload, season, week):
             if record.get(field) is not None and int(record[field]) != expected:
                 raise ValueError('Provider period does not match requested game week')
     return payload['injuries']
+
+
+def load_identity_candidates(db, season):
+    """Canonical players an injury row may bind to: ACTIVE rows only.
+
+    `ingest.ff_dedupe_identities` deactivates a FantasyPros-only duplicate
+    (no gsis/sleeper id) once its nflverse twin exists, but the duplicate
+    keeps its fantasypros_player_id -- the first key the identity audit
+    tries. Without this filter every FantasyPros capture bound Puka Nacua to
+    the deactivated id 34 instead of the active id 560 (94 observations in
+    2026), so the projection, which reads active players only, never saw
+    them. With the duplicate excluded the row falls through to the active
+    twin by Yahoo id or exact name/team/position.
+    """
+    return db.execute("""SELECT id,canonical_name,normalized_name,team_abbrev,position,fantasypros_player_id,
+      COALESCE(yahoo_id,metadata->'sleeper'->>'yahoo_id') yahoo_id FROM ff_players
+      WHERE season=%s AND active""", (season,))
 
 
 def capture_contract(season,week,params,payload,identities,provider_contract):
@@ -53,15 +71,15 @@ def main():
         if not os.environ.get('FANTASYPROS_API_KEY'):
             raise ValueError('FANTASYPROS_API_KEY is not configured')
         db = RefreshDatabase(load_config().database_url)
-        week = args.week or db.execute_one("SELECT min(week) week FROM nfl_season_games WHERE season=%s AND game_type='REG' AND kickoff>%s", (season, now))['week']
+        # Same week as the Sleeper capture, monitor and projection publisher.
+        week = args.week or target_week(db, season, now)
         if week is None or not 1 <= week <= 18:
             raise ValueError('No eligible regular-season week')
         report['week'] = week
         params = {'year': season, 'week': week, 'include_probabilities': 'true'}
         payload = FantasyProsClient(os.environ['FANTASYPROS_API_KEY']).get('nfl/injuries', params)
         rows = validate_payload(payload, season, week)
-        players = db.execute("""SELECT id,canonical_name,normalized_name,team_abbrev,position,fantasypros_player_id,
-          COALESCE(yahoo_id,metadata->'sleeper'->>'yahoo_id') yahoo_id FROM ff_players WHERE season=%s""", (season,))
+        players = load_identity_candidates(db, season)
         identities = audit(rows,players)
         provider_contract = {'period': 'documented_request_not_echoed' if payload.get('week') is None else 'echoed',
                              'timestamp_timezone': 'unverified', 'public_api_limited': payload.get('public_api_limited'),
@@ -85,6 +103,9 @@ def main():
                       period_confirmed=payload.get('week') is not None,
                       limits=['A requested week is not proof of provider coverage.', 'Missing players are not cleared.',
                               'Reported availability is not official game-day confirmation.'])
+    except SeasonComplete as exc:
+        # No regular-season week left to capture: nothing to do, not a failure.
+        report.update(status='season_complete', reason=str(exc))
     except Exception as exc:
         failed = True
         # Do not serialize HTTP errors, URLs or credentials.
