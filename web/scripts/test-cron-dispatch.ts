@@ -69,6 +69,32 @@ let nearTicks = 0;
 for (let h = 0; h < 24; h += 1) for (const m of TICKS) if (keys(`2026-10-04T${hh(h)}:${m}:00Z`, early).includes("nfl-availability-context")) nearTicks += 1;
 assert.equal(nearTicks, 24 + 6, "the two hours before a kickoff add six quarter-hour dispatches (the :07 ticks were already due)");
 
+// NFL availability runs in January (weeks 17-18) and February (playoffs), not in July.
+assert.ok(keys("2027-01-05T09:07:00Z").includes("nfl-availability-context"), "week 17 is in January");
+assert.ok(keys("2027-02-07T09:07:00Z").includes("nfl-availability-context"), "the Super Bowl is in February");
+
+// Health: freshness readings every 3 h; the failure sweep once a day at 11:07 UTC; pbp Mon 12:07 / Tue 09:07.
+let healthTicks = 0, sweepTicks = 0;
+for (let h = 0; h < 24; h += 1) for (const m of TICKS) {
+  const k = keys(`2026-09-30T${hh(h)}:${m}:00Z`);
+  if (k.includes("pipeline-health")) healthTicks += 1;
+  if (k.includes("daily-failure-sweep")) sweepTicks += 1;
+}
+assert.equal(healthTicks, 8, "Pipeline Health every 3 hours");
+assert.equal(sweepTicks, 1, "one failure sweep a day");
+assert.ok(keys("2026-09-30T11:07:00Z").includes("daily-failure-sweep"));
+assert.ok(keys("2026-09-28T12:07:00Z").includes("nfl-pbp-archetypes"), "Monday 12:07 UTC");
+assert.ok(keys("2026-09-29T09:07:00Z").includes("nfl-pbp-archetypes"), "Tuesday 09:07 UTC");
+assert.ok(!keys("2026-09-29T09:22:00Z").includes("nfl-pbp-archetypes"), "once, not on the quarter-hour");
+
+// MLB terminal settlement: hourly in March-November, never in the winter.
+let settleTicks = 0;
+for (let h = 0; h < 24; h += 1) for (const m of TICKS) if (keys(`2026-09-30T${hh(h)}:${m}:00Z`).includes("mlb-terminal-settlement")) settleTicks += 1;
+assert.equal(settleTicks, 24, "hourly");
+assert.ok(keys("2026-11-30T20:07:00Z").includes("mlb-terminal-settlement"), "November (World Series fallout)");
+assert.ok(!keys("2026-12-15T20:07:00Z").includes("mlb-terminal-settlement"), "no MLB in December");
+assert.ok(!keys("2027-02-15T20:07:00Z").includes("mlb-terminal-settlement"), "no MLB in February");
+
 // Post-week review + upside grade: Tuesday and Wednesday 10:07 UTC only, once each.
 let postweekTicks = 0;
 for (let d = 27; d <= 30; d += 1) for (let h = 0; h < 24; h += 1) for (const m of TICKS) {

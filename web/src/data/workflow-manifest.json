@@ -1,0 +1,457 @@
+{
+  "generatedBy": "scripts/build_workflow_manifest.py",
+  "workflows": [
+    {
+      "file": "backfill_cfb_plays.yml",
+      "name": "Backfill CFB Drives and Plays",
+      "crons": [],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "backfill_mlb_history.yml",
+      "name": "Backfill MLB History",
+      "crons": [
+        "20 13 * * *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "capture_event_closes.yml",
+      "name": "Capture Event Closing Lines",
+      "crons": [
+        "*/5 * * * *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "capture_nfl_availability.yml",
+      "name": "Capture NFL game-week availability",
+      "crons": [],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "capture_nfl_odds.yml",
+      "name": "Capture NFL Odds",
+      "crons": [],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "capture_odds_history.yml",
+      "name": "Capture Odds History",
+      "crons": [
+        "12 14,20,2 * * *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "cfb_data_probe.yml",
+      "name": "CFB Data Probe",
+      "crons": [],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "cfb_player_games.yml",
+      "name": "CFB Player Game Stats",
+      "crons": [
+        "15 11 * * *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "compare_injury_sources.yml",
+      "name": "Injury Source Checks",
+      "crons": [],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "daily_failure_sweep.yml",
+      "name": "Daily Failure Sweep",
+      "crons": [
+        "41 12 * * *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "fantasy_football_refresh.yml",
+      "name": "Refresh Fantasy Football Draft Data",
+      "crons": [
+        "17 1,7,13,19 * * *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "load_mlb_slate.yml",
+      "name": "Load MLB DFS Slate",
+      "crons": [],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "load_slate.yml",
+      "name": "Load DFS Slate",
+      "crons": [],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "monitor_cfb_pilot.yml",
+      "name": "Monitor CFB Pilot Operations",
+      "crons": [
+        "3,18,33,48 * * * *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "nfl_dfs_removal_probe.yml",
+      "name": "NFL DFS Removal Probe",
+      "crons": [],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "nfl_prop_probe.yml",
+      "name": "NFL Prop Market Probe",
+      "crons": [],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "pipeline_health.yml",
+      "name": "Pipeline Health",
+      "crons": [
+        "40 */6 * * *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "refresh_cfb_research.yml",
+      "name": "Refresh CFB Research Context",
+      "crons": [
+        "17 10 * 8-12 4"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "refresh_cfb_terminal.yml",
+      "name": "Refresh CFB Line Terminal",
+      "crons": [
+        "7 */6 * * *",
+        "7 1-5,7-11,13-17,19-23 * * *",
+        "22,37,52 * * * *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "refresh_ff_adp_snapshot.yml",
+      "name": "Refresh Fantasy Football ADP Snapshot",
+      "crons": [
+        "7 0,12 * 7,8 *",
+        "7 0,12 1-10 9 *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "refresh_mlb_beat_articles.yml",
+      "name": "Refresh MLB Beat-Writer Articles",
+      "crons": [
+        "0 */3 * * *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "refresh_mlb_stats.yml",
+      "name": "Refresh MLB Stats",
+      "crons": [
+        "0 13 * * *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "refresh_mlb_terminal_settlement.yml",
+      "name": "Settle MLB Terminal Signals",
+      "crons": [
+        "47 */6 * 3-11 *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "refresh_mlb_vegas.yml",
+      "name": "Refresh MLB Vegas",
+      "crons": [
+        "10 13 * * *",
+        "10 17 * * *",
+        "10 22 * * *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "refresh_nba_stats.yml",
+      "name": "Refresh NBA Stats",
+      "crons": [
+        "0 16 * * *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "refresh_nfl_availability_context.yml",
+      "name": "Refresh NFL availability context",
+      "crons": [
+        "17 */6 * 9-12 *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "refresh_nfl_dfs_postweek.yml",
+      "name": "Refresh NFL DFS Post-Week Review",
+      "crons": [
+        "41 14 * * 2,3"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "refresh_nfl_dfs_projections.yml",
+      "name": "Refresh NFL DFS Projections",
+      "crons": [
+        "50 14 * * *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "refresh_nfl_dfs_research.yml",
+      "name": "NFL DFS Research Forecasts",
+      "crons": [],
+      "dispatch": true,
+      "afterWorkflows": [
+        "Refresh NFL DFS Projections"
+      ],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "refresh_nfl_dk_pool.yml",
+      "name": "Refresh NFL DraftKings Pool Status",
+      "crons": [
+        "22 3,15 * * *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "refresh_nfl_pbp_archetypes.yml",
+      "name": "Refresh NFL PBP Archetypes",
+      "crons": [
+        "0 12 * * 1",
+        "0 9 * * 2"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": true,
+      "pullRequest": false
+    },
+    {
+      "file": "refresh_nfl_specials.yml",
+      "name": "Refresh NFL Slate Specials",
+      "crons": [
+        "0 14 * * 4",
+        "0 14 * * 0"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "refresh_nfl_survivor.yml",
+      "name": "Refresh NFL Survivor",
+      "crons": [
+        "20 13 * * 2,4"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "refresh_nfl_vegas.yml",
+      "name": "Refresh NFL Vegas",
+      "crons": [
+        "20 13 * * *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "refresh_polymarket_watchlist.yml",
+      "name": "Refresh Polymarket Wallet Watchlist",
+      "crons": [
+        "10 11 * * *",
+        "10 12 * * 1"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "refresh_soccer.yml",
+      "name": "Refresh Soccer (World Cup)",
+      "crons": [
+        "0 */3 * * *",
+        "0 6 * * 1"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "refresh_tennis.yml",
+      "name": "Refresh Tennis",
+      "crons": [
+        "0 */6 * 1-7,10-12 *",
+        "0 */6 1-23 8 *",
+        "0 */3 24-31 8 *",
+        "0 */3 1-13 9 *",
+        "0 */6 14-30 9 *",
+        "0 5 * * 1"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "refresh_tennis_settlement.yml",
+      "name": "Tennis Settlement (frequent)",
+      "crons": [
+        "*/15 * * * *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "refresh_youtube_picks.yml",
+      "name": "Refresh YouTube Picks (BettingPros)",
+      "crons": [
+        "0 */3 * * *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "run_ff_dk_bestball_adp.yml",
+      "name": "Load DraftKings Best Ball ADP",
+      "crons": [],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "run_nfl_cash_optimizer.yml",
+      "name": "Run NFL DFS cash optimizer",
+      "crons": [],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "tests.yml",
+      "name": "Tests",
+      "crons": [],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": true,
+      "pullRequest": true
+    }
+  ]
+}

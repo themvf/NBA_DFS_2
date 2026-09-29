@@ -47,7 +47,7 @@ from psycopg2.extras import Json
 from config import load_config
 from db.database import DatabaseManager
 
-CHECK_VERSION = "pipeline-health-v1"
+CHECK_VERSION = "pipeline-health-v2"  # v2: a deliberately paused feed reads dormant, with its reason
 
 
 @dataclass(frozen=True)
@@ -72,6 +72,9 @@ class Dataset:
     owner_workflow: str
     season_months: tuple[int, ...] = ()
     note: str = ""
+    # A feed switched off on purpose: shown with this reason, never flagged stale.
+    # A pause is a decision someone must revisit, so the reason says how to resume.
+    paused: str = ""
 
 
 # Seasons as calendar months, stated rather than inferred. Wrong-by-a-few-weeks
@@ -105,7 +108,9 @@ DATASET_REGISTRY: tuple[Dataset, ...] = (
     Dataset("mlb_schedule", "MLB schedule + odds", "mlb_matchups", "fetched_at",
             36, "refresh_mlb_vegas.yml", _MLB),
     Dataset("mlb_props", "MLB player-prop odds", "prop_odds_history", "captured_at",
-            24, "refresh_mlb_vegas.yml", _MLB),
+            24, "refresh_mlb_vegas.yml", _MLB,
+            paused="scheduled capture paused 2026-08-26 for Odds API quota (#138); "
+                   "resume by dispatching refresh_mlb_vegas.yml with run_props=true"),
     Dataset("mlb_beat", "MLB beat-writer articles", "mlb_beat_articles", "scraped_at",
             12, "refresh_mlb_beat_articles.yml", _MLB),
     Dataset("tennis_matches", "Tennis matches", "tennis_matches", "fetched_at",
@@ -160,6 +165,8 @@ def classify(dataset: Dataset, last_row_at: datetime | None, now: datetime) -> H
     """Pure: the whole decision, so it is testable without a database."""
     if not in_season(dataset, now):
         return Health(dataset, DORMANT, last_row_at, None)
+    if dataset.paused:
+        return Health(dataset, DORMANT, last_row_at, None, f"paused: {dataset.paused}")
     if last_row_at is None:
         return Health(dataset, EMPTY, None, None)
     if last_row_at.tzinfo is None:

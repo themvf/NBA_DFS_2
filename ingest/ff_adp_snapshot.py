@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
 from config import load_config
@@ -37,6 +37,14 @@ from ingest.ff_independent import (
 
 MIN_PLAYER_UNIVERSE = 100
 MIN_ADP_ROWS = 100
+
+
+def draft_season_open(today: date) -> bool:
+    """Drafts run from July until Week 1 kicks off, which is always by September 10
+    (the Thursday after Labor Day). After that the ADP feeds thin out to a few
+    dozen rows and the MIN_ADP_ROWS guard fails every run (it did, twice a day,
+    from 2026-09-14 until this window existed)."""
+    return today.month in (7, 8) or (today.month == 9 and today.day <= 10)
 
 
 def _floor_to_12h(moment: datetime) -> datetime:
@@ -150,4 +158,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--season", type=int, default=2026)
     args = parser.parse_args()
-    print(json.dumps(run(args.season), indent=2))
+    today = datetime.now(timezone.utc).date()
+    if not draft_season_open(today):
+        # A stated, visible skip: out of draft season there is no ADP market to track.
+        print(f"::notice::Draft season is over ({today}); ADP snapshots run July 1 to September 10. Nothing captured.")
+        print(json.dumps({"skipped": "draft season over", "date": today.isoformat()}, indent=2))
+    else:
+        print(json.dumps(run(args.season), indent=2))

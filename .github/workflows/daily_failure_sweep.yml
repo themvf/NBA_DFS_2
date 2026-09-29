@@ -1,0 +1,68 @@
+name: Daily Failure Sweep
+
+# Once a day, check everything that can fail quietly and tell a person.
+#
+# It refreshes the data-freshness readings, runs the same checklist as /health
+# (every workflow, every dataset, every Vercel clock, every upcoming NFL slate,
+# the NFL availability monitor), stores it, and then manages ONE GitHub issue
+# labelled `failure-sweep` that @mentions the owner, so GitHub emails them:
+#   - problems found  -> open the issue, or comment on it (new / still failing
+#                        with how long / resolved), at most once a day unless
+#                        something new appears;
+#   - nothing wrong   -> comment "all clear" and close it.
+#
+# Cadence is owned by Vercel Cron (/api/cron/dispatch, job
+# daily-failure-sweep, 11:07 UTC); this schedule is only the fallback. A second
+# run on the same day updates the issue without emailing again.
+#
+# This job does not go red because it FOUND problems (a red sweep would be one
+# more red nobody reads); it goes red only when it could not run. It records a
+# heartbeat, and /health shows it late if a day passes without one.
+
+on:
+  schedule:
+    - cron: "41 12 * * *"   # fallback; see above
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+concurrency:
+  group: daily-failure-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      # Fresh readings first. If the freshness monitor itself fails, the sweep
+      # still runs and reports its readings as old.
+      - name: Refresh data-freshness readings
+        continue-on-error: true
+        run: python -m model.pipeline_health --record
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci --no-audit --no-fund
+      - name: Run the checklist and update the tracking issue
+        working-directory: web
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SWEEP_MENTION: themvf
+        run: node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/daily-failure-sweep.ts | tee -a "$GITHUB_STEP_SUMMARY"
+        shell: bash
