@@ -1,5 +1,5 @@
 /**
- * Weekly grade of `nfl-replacement-upside-v1` (pre-registered in
+ * Weekly grade of `nfl-replacement-upside-v2` (pre-registered in
  * docs/nfl-replacement-upside-grading.md).
  *
  *   cd web && npm run grade:nfl-replacement-upside [-- --out report.json]

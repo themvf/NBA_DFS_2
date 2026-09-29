@@ -28,7 +28,14 @@
  */
 import { fitQuantileShape, quantile, type QuantileShape } from './captain-simulation';
 
-export const REPLACEMENT_UPSIDE_VERSION = 'nfl-replacement-upside-v1';
+/**
+ * v2 (2026-09-29): a starter the pipeline ruled out is read from his
+ * pre-availability range instead of being skipped. That changes which absence
+ * events are flagged, so it is a new version, graded by
+ * nfl-replacement-upside-grade-v2 and never pooled with v1 (which accrued no
+ * week-4 capture). pi, thresholds, trigger and mixture are unchanged.
+ */
+export const REPLACEMENT_UPSIDE_VERSION = 'nfl-replacement-upside-v2';
 
 export const WINDOW_GAMES = 8;
 export const HALF_LIFE = 4;
@@ -189,7 +196,7 @@ export function computeReplacementUpside(players: readonly UpsidePlayer[], windo
       if (!starters.length) continue;
       const star = starters[0];
       if (!validDist(star.p.dist)) {
-        skipped.push({ team, name: star.p.name, reason: 'No stored projection range for the ruled-out starter.' });
+        skipped.push({ team, name: star.p.name, reason: 'No stored projection range for the ruled-out starter (runs built before 2026-09-29 did not record the range the pipeline zeroed).' });
         continue;
       }
       const recipients = roster.filter((p) => !p.out && positions.has(p.position)).flatMap((p) => {

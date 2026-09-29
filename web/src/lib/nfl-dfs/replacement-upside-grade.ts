@@ -1,8 +1,8 @@
 /**
- * Weekly grade of `nfl-replacement-upside-v1` against what DraftKings paid.
+ * Weekly grade of `nfl-replacement-upside-v2` against what DraftKings paid.
  *
  * Pre-registered in docs/nfl-replacement-upside-grading.md (grade version
- * `nfl-replacement-upside-grade-v1`) before any week-4 2026 game was played.
+ * `nfl-replacement-upside-grade-v1`, superseded by v2 on 2026-09-29) before any week-4 2026 game was played.
  * Every constant below is frozen by that registration; changing one is a new
  * grade version, never an edit.
  *
@@ -22,7 +22,7 @@ import { benchmarkTeam } from './competitor-benchmark';
 import { nflRandom } from './random';
 import { BOOM_THRESHOLDS, REPLACEMENT_UPSIDE_VERSION, type ReplacementUpside } from './replacement-upside';
 
-export const UPSIDE_GRADE_VERSION = 'nfl-replacement-upside-grade-v1';
+export const UPSIDE_GRADE_VERSION = 'nfl-replacement-upside-grade-v2';
 
 export const UPSIDE_GRADE_SPEC = {
   featureVersion: REPLACEMENT_UPSIDE_VERSION,

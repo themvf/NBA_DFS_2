@@ -6887,7 +6887,8 @@ after discovery (disclosed). The TE-room target pie (φ 0.5) did NOT improve his
 points projection in either period (blind squared error +1.87 [−8.10, +12.15]):
 flag the wider upside, do not raise his mean.
 Those three results ship as ONE display-only feature,
-`nfl-replacement-upside-v1` ([doc](docs/nfl-replacement-upside.md),
+`nfl-replacement-upside-v2` (v1 until 2026-09-29; v2 reads a pipeline-ruled-out starter's
+pre-availability range instead of skipping him) ([doc](docs/nfl-replacement-upside.md),
 `web/src/lib/nfl-dfs/replacement-upside.ts`): when a starter who played his
 team's last game is OUT, the players behind him show a second range, "if he
 gets the job", next to their unchanged baseline. It is a MIXTURE, not an
@@ -6899,7 +6900,8 @@ otherwise his own, so the ceiling and boom rate move far more than the mean.
 when a WR sits (neither held up on the recheck). The optimizer, ownership
 prior and projection column keep the baseline until it is graded on 2026
 slates; changing π, thresholds or the trigger is a new version.
-The grade is pre-registered as `nfl-replacement-upside-grade-v1`
+The grade is pre-registered as `nfl-replacement-upside-grade-v2` (re-registered from v1
+before any week-4 capture)
 ([gate](docs/nfl-replacement-upside-grading.md),
 `web/src/lib/nfl-dfs/replacement-upside-grade.ts`). It reads only the
 append-only pregame pool captures (`nfl_dfs_pool_captures`, whose context now
