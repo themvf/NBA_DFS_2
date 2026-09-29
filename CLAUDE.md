@@ -48,6 +48,17 @@ Successful snapshot persistence alone does not establish projection correctness.
   recorded there are deliberately asymmetric between sports and are backed
   by measurement, not preference -- re-measure before reversing one.
 
+### NHL line terminal (`/nhl`, 2026-09-29)
+
+CFB-terminal design for hockey: the free NHL API (`api-web.nhle.com`) owns
+game identity and finals; Odds API `icehockey_nhl` quotes go to
+`game_odds_history` (`sport='nhl'`) through the shared close worker
+(`nhl-dense-v1` checkpoints). Read
+[`docs/nhl-line-terminal.md`](docs/nhl-line-terminal.md) before changing the
+cadence, the mapping, or `CLOSE_CAPTURE_SPORTS` in `db/schema.py` (its web
+mirror in `ensure-schema.ts` must match or cold starts break). No NHL movement
+detectors exist yet: football-point thresholds do not fit a fixed ±1.5 puck line.
+
 ### NFL regular-season odds cadence — UNDECIDED (opens 2026-09-09)
 
 `refresh_nfl_vegas` currently runs **1x/day** (16 credits: 12 odds + 4

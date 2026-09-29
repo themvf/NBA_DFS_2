@@ -818,6 +818,137 @@ def quarantine_cfb_event(
     )
 
 
+# ── NHL line terminal ─────────────────────────────────────────
+
+
+def upsert_nhl_team(
+    db: DatabaseManager,
+    *,
+    nhl_team_id: int,
+    abbreviation: str,
+    name: str,
+    place_name: str | None = None,
+    common_name: str | None = None,
+    logo_url: str = "",
+) -> int:
+    row = db.execute_one(
+        """
+        INSERT INTO nhl_teams (
+            nhl_team_id, abbreviation, name, place_name, common_name, logo_url, updated_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, NOW())
+        ON CONFLICT (nhl_team_id) DO UPDATE SET
+            abbreviation = EXCLUDED.abbreviation,
+            name = EXCLUDED.name,
+            place_name = EXCLUDED.place_name,
+            common_name = EXCLUDED.common_name,
+            logo_url = COALESCE(NULLIF(EXCLUDED.logo_url, ''), nhl_teams.logo_url),
+            updated_at = NOW()
+        RETURNING team_id
+        """,
+        (nhl_team_id, abbreviation, name, place_name, common_name, logo_url),
+    )
+    return int(row["team_id"]) if row else 0
+
+
+def upsert_nhl_matchup(db: DatabaseManager, **game) -> int:
+    """Upsert one NHL game by its NHL game id.
+
+    A reschedule moves the existing row (commence_time/game_date update in
+    place); odds_event_id is never touched here. Once a final score is stored
+    it is only replaced by another final, never cleared by a later payload.
+    """
+    row = db.execute_one(
+        """
+        INSERT INTO nhl_matchups (
+            nhl_game_id, season, game_type, game_date, commence_time,
+            home_team_id, away_team_id, venue, neutral_site, networks,
+            game_state, schedule_state, completed, home_score, away_score,
+            last_period_type, fetched_at, final_at
+        ) VALUES (
+            %(nhl_game_id)s, %(season)s, %(game_type)s, %(game_date)s, %(commence_time)s,
+            %(home_team_id)s, %(away_team_id)s, %(venue)s, %(neutral_site)s, %(networks)s,
+            %(game_state)s, %(schedule_state)s, %(completed)s, %(home_score)s, %(away_score)s,
+            %(last_period_type)s, NOW(), CASE WHEN %(completed)s THEN NOW() END
+        )
+        ON CONFLICT (nhl_game_id) DO UPDATE SET
+            season = EXCLUDED.season,
+            game_type = EXCLUDED.game_type,
+            game_date = EXCLUDED.game_date,
+            commence_time = EXCLUDED.commence_time,
+            home_team_id = EXCLUDED.home_team_id,
+            away_team_id = EXCLUDED.away_team_id,
+            venue = EXCLUDED.venue,
+            neutral_site = EXCLUDED.neutral_site,
+            networks = COALESCE(EXCLUDED.networks, nhl_matchups.networks),
+            game_state = EXCLUDED.game_state,
+            schedule_state = EXCLUDED.schedule_state,
+            completed = EXCLUDED.completed OR nhl_matchups.completed,
+            home_score = CASE WHEN EXCLUDED.completed THEN EXCLUDED.home_score
+                              WHEN nhl_matchups.completed THEN nhl_matchups.home_score
+                              ELSE EXCLUDED.home_score END,
+            away_score = CASE WHEN EXCLUDED.completed THEN EXCLUDED.away_score
+                              WHEN nhl_matchups.completed THEN nhl_matchups.away_score
+                              ELSE EXCLUDED.away_score END,
+            last_period_type = COALESCE(EXCLUDED.last_period_type, nhl_matchups.last_period_type),
+            final_at = CASE WHEN EXCLUDED.completed AND nhl_matchups.final_at IS NULL
+                            THEN NOW() ELSE nhl_matchups.final_at END,
+            fetched_at = NOW()
+        RETURNING id
+        """,
+        game,
+    )
+    return int(row["id"]) if row else 0
+
+
+def build_nhl_team_name_cache(db: DatabaseManager) -> dict[str, int]:
+    """Full team names (e.g. "Florida Panthers") keyed to internal team_id."""
+    return {
+        str(row["name"]): int(row["team_id"])
+        for row in db.execute("SELECT team_id, name FROM nhl_teams")
+    }
+
+
+def map_nhl_odds_event(db: DatabaseManager, *, matchup_id: int, event_id: str) -> None:
+    row = db.execute_one(
+        "SELECT odds_event_id FROM nhl_matchups WHERE id=%s",
+        (matchup_id,),
+    )
+    if not row:
+        raise ValueError(f"unknown NHL matchup id {matchup_id}")
+    existing = row.get("odds_event_id")
+    if existing and str(existing) != event_id:
+        raise ValueError(
+            f"NHL matchup {matchup_id} already maps to odds event {existing}"
+        )
+    db.execute(
+        "UPDATE nhl_matchups SET odds_event_id=%s, fetched_at=NOW() WHERE id=%s",
+        (event_id, matchup_id),
+    )
+
+
+def quarantine_nhl_event(
+    db: DatabaseManager, *, event_id: str, home_name: str | None,
+    away_name: str | None, commence_time, reason: str, raw_json: dict,
+) -> None:
+    db.execute(
+        """
+        INSERT INTO nhl_unmapped_events (
+            provider, provider_event_id, home_name, away_name, commence_time,
+            reason, raw_json
+        ) VALUES ('odds_api', %s, %s, %s, %s, %s, %s::jsonb)
+        ON CONFLICT (provider, provider_event_id) DO UPDATE SET
+            home_name=EXCLUDED.home_name,
+            away_name=EXCLUDED.away_name,
+            commence_time=EXCLUDED.commence_time,
+            reason=EXCLUDED.reason,
+            raw_json=EXCLUDED.raw_json,
+            last_seen_at=NOW(),
+            occurrences=nhl_unmapped_events.occurrences + 1
+        """,
+        (event_id, home_name, away_name, commence_time, reason, json.dumps(raw_json)),
+    )
+
+
 def insert_cfb_historical_line(db: DatabaseManager, row: dict) -> int:
     """Insert one provider historical line; identical source payloads are idempotent."""
     result = db.execute_one(

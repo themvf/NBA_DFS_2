@@ -402,3 +402,134 @@ def test_discovery_probe_is_bounded_and_skips_captured_or_distant_events():
     from db.schema import INDEXES
     ddl = next(sql for sql in INDEXES if sql.startswith("ALTER TABLE odds_capture_checkpoints ADD CONSTRAINT odds_capture_checkpoints_checkpoint_check"))
     assert "checkpoint = 'nfl_first_observed'" in ddl
+
+
+def test_nhl_cadence_covers_goalie_news_through_close() -> None:
+    checkpoints = closes.CHECKPOINTS_BY_SPORT["nhl"]
+    assert ("t_minus_6h", 360, 330) in checkpoints  # morning skate
+    assert ("nhl_t_minus_45m", 45, 35) in checkpoints  # goalie confirmation
+    assert ("closing_candidate", 5, 0) in checkpoints
+    assert len({name for name, _, _ in checkpoints}) == len(checkpoints)
+    assert all(target > due >= 0 for _, target, due in checkpoints)
+    windows = sorted((due, target) for _, target, due in checkpoints if target <= 180)
+    # No gap wider than 20 minutes in the final three hours.
+    assert max(later[0] - earlier[1] for earlier, later in zip(windows, windows[1:])) <= 20
+
+
+def _nhl_capture_setup(monkeypatch, fetch):
+    jobs = [
+        {"id": 21, "sport": "nhl", "event_id": "a", "scheduled_start_at": "2026-09-29T23:00:00Z"},
+        {"id": 22, "sport": "nhl", "event_id": "b", "scheduled_start_at": "2026-09-30T00:00:00Z"},
+        {"id": 23, "sport": "nfl", "event_id": "n", "season_type": "regular",
+         "scheduled_start_at": "2026-10-04T17:00:00Z"},
+    ]
+    failures: list[tuple[list[int], str]] = []
+    audits: list[dict] = []
+    nfl_calls: list = []
+    monkeypatch.setattr(closes, "seed_checkpoints", lambda *_args: 0)
+    monkeypatch.setattr(closes, "reconcile_checkpoints", lambda *_args: 0)
+    monkeypatch.setattr(closes, "due_checkpoints", lambda *_args: jobs)
+    monkeypatch.setattr(closes, "quota_allows", lambda *_args: (True, None))
+    monkeypatch.setattr(closes, "_audit_usage", lambda *_args, **kwargs: audits.append(kwargs))
+    monkeypatch.setattr(closes, "_mark_attempt", lambda *_args: None)
+    monkeypatch.setattr(closes, "_mark_failure", lambda _db, jobs, reason: failures.append(([j["id"] for j in jobs], reason)))
+    monkeypatch.setattr(closes, "fetch_nfl_odds", lambda *_a, **k: nfl_calls.append(k) or
+                        k["request_audit"].update({"request_count": 1}) or 1)
+    monkeypatch.setattr(closes, "fetch_nhl_odds", fetch)
+    result = closes.capture_due_checkpoints(EmptyDb(), "key", now=datetime(2026, 9, 29, 17, tzinfo=timezone.utc))
+    return result, failures, audits, nfl_calls
+
+
+def test_nhl_due_games_share_one_bulk_capture(monkeypatch) -> None:
+    observed = {}
+
+    def fetch(_db, _key, *, event_ids, request_audit):
+        observed["event_ids"] = event_ids
+        request_audit.update({"endpoint": "odds", "status": 200, "request_count": 1, "requests_last": "3"})
+        return 5
+
+    result, failures, audits, nfl_calls = _nhl_capture_setup(monkeypatch, fetch)
+    assert observed["event_ids"] == {"a", "b"}
+    assert result["paid_requests"] == 2 and result["groups"] == 2  # one NFL, one NHL
+    assert failures == []
+    assert audits[-1]["sport"] == "nhl" and audits[-1]["metadata"]["cadence_version"] == "nhl-dense-v1"
+    assert len(nfl_calls) == 1
+
+
+def test_nhl_provider_failure_is_isolated_and_audited(monkeypatch) -> None:
+    import requests
+
+    def fetch(_db, _key, *, event_ids, request_audit):
+        request_audit.update({"endpoint": "odds", "status": 500, "request_count": 1})
+        raise requests.HTTPError("500 Server Error")
+
+    result, failures, audits, nfl_calls = _nhl_capture_setup(monkeypatch, fetch)
+    assert len(nfl_calls) == 1  # NFL, earlier in the run, is unaffected
+    assert failures == [([21, 22], "provider request failed: 500 Server Error")]
+    assert audits[-1]["sport"] == "nhl" and "error" in audits[-1]["metadata"]
+    assert result["paid_requests"] == 2
+
+
+def test_nhl_skipped_fetch_is_not_billed_or_misreported(monkeypatch) -> None:
+    result, failures, audits, _ = _nhl_capture_setup(monkeypatch, lambda *_a, **_k: 0)
+    assert result["paid_requests"] == 1  # the NFL call only
+    assert [a["sport"] for a in audits] == ["nfl"]
+    assert failures == [([21, 22], "no due game still mapped and upcoming; no request made")]
+
+
+def test_reconcile_supersedes_rescheduled_or_postponed_nhl_jobs() -> None:
+    db = EmptyDb()
+    closes.reconcile_checkpoints(db, now=datetime(2026, 9, 29, 12, tzinfo=timezone.utc))
+    nhl_sql = next(sql for sql, _ in db.calls if "c.sport='nhl'" in sql)
+    assert "c.scheduled_start_at IS DISTINCT FROM m.commence_time" in nhl_sql
+    assert "schedule_state" in nhl_sql
+
+
+def test_nhl_close_uses_scheduled_boundary(monkeypatch) -> None:
+    rows = [{"sport": "nhl", "matchup_id": 9, "official_game_id": None, "event_id": "evt",
+             "scheduled_start_at": datetime(2026, 9, 29, 21, tzinfo=timezone.utc)}]
+
+    class Db:
+        def execute(self, sql, params=None):
+            assert "FROM nhl_matchups m" in sql
+            return rows
+    frozen = {}
+    monkeypatch.setattr(closes, "_freeze_one", lambda _db, **kwargs: frozen.update(kwargs) or True)
+    result = closes.freeze_due_closes(Db(), now=datetime(2026, 9, 29, 21, 5, tzinfo=timezone.utc))
+    assert result["frozen"] == 1
+    assert frozen["boundary_source"] == "scheduled_nhl"
+    assert frozen["boundary"] == datetime(2026, 9, 29, 21, tzinfo=timezone.utc)
+
+
+def test_nhl_seed_failure_does_not_stop_other_sports(monkeypatch) -> None:
+    seeded: list[str] = []
+
+    class Db:
+        def execute(self, sql, params=None):
+            sport = params[0] if params else None
+            if sport == "nhl":
+                raise RuntimeError("new row violates check constraint")
+            seeded.append(sport)
+            return [{"id": 1}]
+    monkeypatch.setattr(closes, "_seed_nfl_checkpoints", lambda *_args: 7)
+    assert closes.seed_checkpoints(Db(), datetime(2026, 9, 29, tzinfo=timezone.utc)) == 3 + 7
+    assert seeded == ["mlb", "tennis", "cfb"]
+
+
+def test_nhl_freeze_failure_does_not_stop_other_sports(monkeypatch) -> None:
+    rows = [
+        {"sport": "nhl", "matchup_id": 9, "official_game_id": None, "event_id": "e",
+         "scheduled_start_at": datetime(2026, 9, 29, 21, tzinfo=timezone.utc)},
+        {"sport": "cfb", "matchup_id": 4, "official_game_id": None, "event_id": "f",
+         "scheduled_start_at": datetime(2026, 9, 29, 21, tzinfo=timezone.utc)},
+    ]
+
+    class Db:
+        def execute(self, sql, params=None): return rows
+
+    def freeze(_db, **kwargs):
+        if kwargs["sport"] == "nhl":
+            raise RuntimeError("constraint")
+        return True
+    monkeypatch.setattr(closes, "_freeze_one", freeze)
+    assert closes.freeze_due_closes(Db(), now=datetime(2026, 9, 29, 21, 5, tzinfo=timezone.utc))["frozen"] == 1

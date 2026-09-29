@@ -364,6 +364,18 @@
       "pullRequest": false
     },
     {
+      "file": "refresh_nhl_terminal.yml",
+      "name": "Refresh NHL Line Terminal",
+      "crons": [
+        "7 */6 * * *",
+        "37 * * * *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
       "file": "refresh_polymarket_watchlist.yml",
       "name": "Refresh Polymarket Wallet Watchlist",
       "crons": [

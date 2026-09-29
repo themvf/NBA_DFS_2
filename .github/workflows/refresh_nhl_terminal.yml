@@ -1,0 +1,50 @@
+name: Refresh NHL Line Terminal
+
+# Free sources only: the NHL API (schedule, status, final scores) and The Odds
+# API's quota-free /events list (provider-event mapping). Paid checkpoint
+# captures and frozen closes belong to capture_event_closes.yml, so this job
+# can never buy a snapshot that worker is also buying.
+on:
+  schedule:
+    # Full 14-day schedule refresh.
+    - cron: "7 */6 * * *"
+    # Recent finals + mapping for newly listed events.
+    - cron: "37 * * * *"
+  workflow_dispatch:
+    inputs:
+      capture_now:
+        description: "Make one paid bulk odds capture (3 credits) outside checkpoint windows"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: refresh-nhl-terminal
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Refresh canonical NHL schedule (next 14 days)
+        if: github.event.schedule == '7 */6 * * *' || github.event_name == 'workflow_dispatch'
+        run: python -m ingest.nhl_schedule --refresh-schedule
+      - name: Refresh recent NHL scores
+        run: python -m ingest.nhl_schedule --refresh-scores
+      - name: Refresh free provider-event mappings
+        run: python -m ingest.nhl_schedule --refresh-events
+      - name: Optional manual market capture
+        if: github.event_name == 'workflow_dispatch' && inputs.capture_now == true
+        run: python -m ingest.nhl_schedule --capture-now
+      - name: Report NHL data health
+        run: python -m ingest.nhl_schedule --health
