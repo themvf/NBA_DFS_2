@@ -6,10 +6,51 @@ All queries use %s placeholders (native PostgreSQL).
 
 from __future__ import annotations
 
+import hashlib
 import time
 from contextlib import contextmanager
 
 from db.schema import TABLES, INDEXES, MIGRATIONS
+
+# The schema digest last applied in full. Every scheduled job constructs a
+# DatabaseManager, and the full pass drops and recreates 17 immutability
+# triggers (ACCESS EXCLUSIVE on their tables) and re-issues every index: run on
+# each start it contended with live writers and killed jobs on
+# `LockNotAvailable` (the 2026-09-28 23:07 UTC NFL availability refresh, for
+# one). Every statement is idempotent, so once a digest is applied the pass
+# changes nothing until the schema text changes.
+SCHEMA_STATE_DDL = (
+    "CREATE TABLE IF NOT EXISTS db_schema_state ("
+    "id SMALLINT PRIMARY KEY CHECK (id = 1), "
+    "digest TEXT NOT NULL, "
+    "applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())"
+)
+
+
+def schema_digest() -> str:
+    """Digest of the schema text this code would apply (read at call time)."""
+    digest = hashlib.sha256()
+    for part in (TABLES, MIGRATIONS, INDEXES):
+        for sql in part:
+            digest.update(sql.encode("utf-8"))
+            digest.update(b"\x00")
+        digest.update(b"\x01")
+    return digest.hexdigest()
+
+
+def _first(row, key: str):
+    if row is None:
+        return None
+    return row[key] if isinstance(row, dict) else row[0]
+
+
+def schema_is_current(cur, digest: str) -> bool:
+    """True when this exact schema text was already applied in full."""
+    cur.execute("SELECT to_regclass('public.db_schema_state') IS NOT NULL AS present")
+    if not _first(cur.fetchone(), "present"):
+        return False
+    cur.execute("SELECT digest FROM db_schema_state WHERE id = 1")
+    return _first(cur.fetchone(), "digest") == digest
 
 
 class DatabaseManager:
@@ -127,8 +168,20 @@ class DatabaseManager:
         (column additions/changes), INDEXES last (may reference migrated columns).
         Scheduled jobs all construct this manager, so schema work is serialized
         to prevent incompatible DDL locks across concurrent workflows.
+
+        When the schema text is unchanged since the last full pass (its digest
+        is recorded in `db_schema_state`), nothing is executed: two catalog
+        reads, no DDL, no table locks.
         """
         import psycopg2
+
+        digest = schema_digest()
+        try:
+            with self.connect() as conn:
+                if schema_is_current(conn.cursor(), digest):
+                    return
+        except psycopg2.Error:
+            pass  # fall through to the full pass, which reports real failures
 
         retryable = (psycopg2.errors.DeadlockDetected, psycopg2.errors.LockNotAvailable)
         attempts = 4
@@ -141,12 +194,21 @@ class DatabaseManager:
                         "SELECT pg_advisory_xact_lock(hashtext(%s))",
                         ("nba_dfs_v2_schema_initialization",),
                     )
+                    # Another job may have applied it while this one waited.
+                    if schema_is_current(cur, digest):
+                        return
                     for table_sql in TABLES:
                         cur.execute(table_sql)
                     for migration_sql in MIGRATIONS:
                         cur.execute(migration_sql)
                     for index_sql in INDEXES:
                         cur.execute(index_sql)
+                    cur.execute(SCHEMA_STATE_DDL)
+                    cur.execute(
+                        "INSERT INTO db_schema_state (id, digest, applied_at) VALUES (1, %s, NOW()) "
+                        "ON CONFLICT (id) DO UPDATE SET digest = EXCLUDED.digest, applied_at = NOW()",
+                        (digest,),
+                    )
                 return
             except retryable:
                 if attempt == attempts - 1:

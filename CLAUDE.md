@@ -334,15 +334,17 @@ cron; Hobby caps at once/day with ±59min imprecision). The dispatch route itsel
 single outbound HTTPS call (~1-2s), well under a cent/month even at ~90 invocations/day,
 fully absorbed by the $20/month usage credit already included with the Pro seat.
 
-**Known residual issue, not fixed here:** `db/database.py`'s `_ensure_schema()` runs
-schema DDL (with a 4-attempt/lock-timeout retry) on every single script invocation
-across every Python workflow in this repo; it occasionally hard-fails a job
-(`psycopg2.errors.LockNotAvailable`) when contending with another concurrent writer —
-observed once in the sampled runs above, after that run's actual odds capture had
-already committed. Low priority (doesn't touch the capture step itself, rare), but a
-real fix (schema init as a separate one-time migration rather than per-invocation)
-touches every Python entrypoint in the repo and deserves its own change, not a
-drive-by edit inside this fix.
+**Schema-lock failures (fixed 2026-09-29):** `db/database.py`'s `_ensure_schema()` used to
+run the full DDL pass on every script invocation across every Python workflow,
+including dropping and recreating 17 immutability triggers (ACCESS EXCLUSIVE on
+their tables). It hard-failed jobs on `psycopg2.errors.LockNotAvailable` when
+another writer was active (the NFL availability refresh at 2026-09-28 23:07 UTC,
+for one). It now records the digest of the schema text it applied in
+`db_schema_state` and skips the pass when the digest is unchanged: two catalog
+reads and no locks (11.3 s to 0.16 s measured). Every statement is idempotent, so
+skipping an unchanged pass changes nothing; editing `db/schema.py` changes the
+digest and the next job applies it once, under the existing advisory lock.
+No entrypoint had to change.
 
 ## NBA Lineup Structure (DraftKings)
 ```
