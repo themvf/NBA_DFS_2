@@ -84,6 +84,7 @@ _NFL = (9, 10, 11, 12, 1, 2)
 _MLB = (3, 4, 5, 6, 7, 8, 9, 10)
 _NBA = (10, 11, 12, 1, 2, 3, 4, 5, 6)
 _TENNIS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
+_NHL = (9, 10, 11, 12, 1, 2, 3, 4, 5, 6)
 _FANTASY_DRAFT = (7, 8, 9)
 
 DATASET_REGISTRY: tuple[Dataset, ...] = (
@@ -115,6 +116,9 @@ DATASET_REGISTRY: tuple[Dataset, ...] = (
             12, "refresh_mlb_beat_articles.yml", _MLB),
     Dataset("tennis_matches", "Tennis matches", "tennis_matches", "fetched_at",
             24, "refresh_tennis.yml", _TENNIS),
+    Dataset("nhl_schedule", "NHL schedule + finals", "nhl_matchups", "fetched_at",
+            12, "refresh_nhl_terminal.yml", _NHL,
+            "Canonical games behind the /nhl line terminal; refreshed hourly from the free NHL API."),
     Dataset("youtube_picks", "YouTube picks videos", "youtube_pick_videos", "scraped_at",
             12, "refresh_youtube_picks.yml"),
     Dataset("ff_board", "Fantasy football draft board", "ff_ranking_sets", "created_at",
