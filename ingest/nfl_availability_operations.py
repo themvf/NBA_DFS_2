@@ -22,6 +22,7 @@ from ingest.ff_injuries import persist_injury_observation
 from ingest.ff_independent import normalize_team
 from ingest.ff_source_contracts import SnapshotProvenance, persist_source_snapshot
 from ingest.nfl_dfs_weekly import target_season
+from ingest.nfl_target_week import SeasonComplete, target_week
 from model.nfl_context_engine import stable_digest
 
 
@@ -257,10 +258,16 @@ def main() -> int:
     now = datetime.now(timezone.utc); season = target_season(args.season, now)
     db = RefreshDatabase(load_config().database_url); failed = False
     try:
-        week = args.week or db.execute_one(
-            "SELECT min(week) week FROM nfl_season_games WHERE season=%s AND game_type='REG' AND kickoff>%s",
-            (season, now),
-        )["week"]
+        try:
+            week = args.week or target_week(db, season, now)
+        except SeasonComplete as exc:
+            # After the final regular-season game there is no week to capture,
+            # monitor or freeze. Report it plainly instead of running with
+            # week=None (which used to write week-less snapshots and a vacuous
+            # "healthy" report).
+            print(json.dumps({"season": season, "mode": args.mode, "status": "season_complete",
+                              "reason": str(exc)}, indent=2))
+            return 0
         kickoffs = [row["kickoff"] for row in db.execute(
             "SELECT kickoff FROM nfl_season_games WHERE season=%s AND week=%s AND game_type='REG'",
             (season, week),

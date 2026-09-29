@@ -22,6 +22,7 @@ from psycopg2.extras import Json, execute_values
 from config import load_config
 from db.database import DatabaseManager
 from ingest.nfl_availability_context_publish import persist_availability_contexts
+from ingest.nfl_target_week import SeasonComplete, target_week
 from model.nfl_dfs_availability import apply as apply_availability, last_game_passing_leaders, player_identity
 from model.nfl_game_availability import resolve_game_availability
 from model.nfl_dfs_historical import (
@@ -54,21 +55,14 @@ def production_config(*, safety_rollback: bool = False) -> dict[str, Any]:
     return {"availability_qb_transfer_enabled": not safety_rollback}
 
 
-def infer_target_week(db: DatabaseManager, season: int) -> int:
-    """Select the next scheduled regular-season week from the canonical schedule."""
-    rows = db.execute(
-        """SELECT week, MIN(kickoff) first_kickoff
-           FROM nfl_season_games
-           WHERE season=%s AND game_type='REG'
-             AND kickoff >= NOW() - INTERVAL '6 hours'
-           GROUP BY week
-           ORDER BY first_kickoff, week
-           LIMIT 1""",
-        (season,),
-    )
-    if not rows:
-        raise ValueError(f"No current or upcoming regular-season week is loaded for {season}")
-    return int(rows[0]["week"])
+def infer_target_week(db: DatabaseManager, season: int, now: datetime | None = None) -> int:
+    """Select the current regular-season week (see ``ingest.nfl_target_week``).
+
+    Kept as the stable entry point: ``ingest.nfl_dfs_weekly`` imports it.
+    Raises ``SeasonComplete`` (a ``ValueError``) once every game is past its
+    grace window, and ``ValueError`` when no schedule is loaded.
+    """
+    return target_week(db, season, now or datetime.now(timezone.utc))
 
 
 def _history(db: DatabaseManager, season: int, week: int | None) -> list[HistoricalWeek]:
@@ -571,20 +565,35 @@ def persist_week(db: DatabaseManager, projections: list[dict[str, Any]], manifes
 
 
 def main() -> None:
+    from ingest.nfl_dfs_weekly import target_season
+
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--season", type=int, default=datetime.now(timezone.utc).year)
+    # Defaults to the NFL season, not the calendar year: weeks 17-18 are played
+    # in January, when the calendar year is already the next season's.
+    parser.add_argument("--season", type=int)
     parser.add_argument("--week", type=int)
     parser.add_argument("--seed", type=int, default=20260902)
     parser.add_argument("--no-persist", action="store_true")
     parser.add_argument("--availability-safety-rollback", action="store_true",
                         help="Keep qualified OUT zeroing but disable opportunity transfer; never restores the legacy source bypass")
     args = parser.parse_args()
+    now = datetime.now(timezone.utc)
+    args.season = target_season(args.season, now)
     config = load_config()
     db = DatabaseManager(config.database_url)
-    week = args.week if args.week is not None else infer_target_week(db, args.season)
+    if args.week is not None:
+        week = args.week
+    else:
+        try:
+            week = infer_target_week(db, args.season, now)
+        except SeasonComplete as exc:
+            # Nothing left to publish is not a failure; a missing schedule is
+            # (target_week raises a plain ValueError for that).
+            print(json.dumps({"status": "season_complete", "season": args.season, "reason": str(exc)}))
+            return
     projections, manifest = build_week(
         db, season=args.season, week=week,
-        as_of_at=datetime.now(timezone.utc), seed=args.seed,
+        as_of_at=now, seed=args.seed,
         config=production_config(safety_rollback=args.availability_safety_rollback),
     )
     run_id = None if args.no_persist else persist_week(db, projections, manifest)
