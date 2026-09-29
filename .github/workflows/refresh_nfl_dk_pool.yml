@@ -50,6 +50,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+      # Red when DraftKings could not be read (HTTP, transport or parse error
+      # on the lobby or any pool), or when an NFL game kicks off within 48h
+      # and the lobby lists no salary-cap draft group. A group DraftKings has
+      # listed but not yet populated is recorded and stays green.
       - name: Capture DraftKings pool status
         run: python -m ingest.nfl_dfs_dk_pool --hours "${HOURS:-120}"
       - name: Report
