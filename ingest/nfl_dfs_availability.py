@@ -27,6 +27,23 @@ def validate_payload(payload, season, week):
     return payload['injuries']
 
 
+def load_identity_candidates(db, season):
+    """Canonical players an injury row may bind to: ACTIVE rows only.
+
+    `ingest.ff_dedupe_identities` deactivates a FantasyPros-only duplicate
+    (no gsis/sleeper id) once its nflverse twin exists, but the duplicate
+    keeps its fantasypros_player_id -- the first key the identity audit
+    tries. Without this filter every FantasyPros capture bound Puka Nacua to
+    the deactivated id 34 instead of the active id 560 (94 observations in
+    2026), so the projection, which reads active players only, never saw
+    them. With the duplicate excluded the row falls through to the active
+    twin by Yahoo id or exact name/team/position.
+    """
+    return db.execute("""SELECT id,canonical_name,normalized_name,team_abbrev,position,fantasypros_player_id,
+      COALESCE(yahoo_id,metadata->'sleeper'->>'yahoo_id') yahoo_id FROM ff_players
+      WHERE season=%s AND active""", (season,))
+
+
 def capture_contract(season,week,params,payload,identities,provider_contract):
     total=len(payload['injuries'])
     matched=identities['counts'].get('matched',0)
@@ -62,8 +79,7 @@ def main():
         params = {'year': season, 'week': week, 'include_probabilities': 'true'}
         payload = FantasyProsClient(os.environ['FANTASYPROS_API_KEY']).get('nfl/injuries', params)
         rows = validate_payload(payload, season, week)
-        players = db.execute("""SELECT id,canonical_name,normalized_name,team_abbrev,position,fantasypros_player_id,
-          COALESCE(yahoo_id,metadata->'sleeper'->>'yahoo_id') yahoo_id FROM ff_players WHERE season=%s""", (season,))
+        players = load_identity_candidates(db, season)
         identities = audit(rows,players)
         provider_contract = {'period': 'documented_request_not_echoed' if payload.get('week') is None else 'echoed',
                              'timestamp_timezone': 'unverified', 'public_api_limited': payload.get('public_api_limited'),
