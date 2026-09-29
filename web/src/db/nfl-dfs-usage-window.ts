@@ -58,3 +58,27 @@ export async function readTeamUsageWindows(
     return { team, games: window, usage: teamUsage };
   });
 }
+
+/**
+ * Team key -> GSIS id of the quarterback who led that team in pass attempts in
+ * its most recent completed regular-season game before the slate's week, with
+ * at least 15 attempts (a start, not a mop-up cameo). Mirrors
+ * `last_game_passing_leaders` in model/nfl_dfs_availability.py. Point-in-time
+ * safe: only games before `week` are read.
+ */
+export async function readLastGamePassingLeaders(season: number, week: number, teamKey: (team: unknown) => string): Promise<Map<string, string>> {
+  const rows = await db.execute(sql`WITH last_game AS (
+      SELECT DISTINCT ON (w.team) w.team, w.season, w.week
+      FROM ff_player_week_stats w
+      WHERE w.season_type='REG' AND w.source='nflverse' AND w.season BETWEEN ${season - 1} AND ${season}
+        AND (w.season < ${season} OR w.week < ${week}) AND w.team IS NOT NULL
+      ORDER BY w.team, w.season DESC, w.week DESC)
+    SELECT DISTINCT ON (w.team) w.team, p.gsis_id AS gsis, (w.source_row->>'attempts')::float AS attempts
+    FROM ff_player_week_stats w
+    JOIN last_game l ON l.team=w.team AND l.season=w.season AND l.week=w.week
+    JOIN ff_players p ON p.id=w.player_id
+    WHERE w.season_type='REG' AND w.source='nflverse' AND p.position='QB' AND p.gsis_id IS NOT NULL
+      AND (w.source_row->>'attempts')::float >= 15
+    ORDER BY w.team, (w.source_row->>'attempts')::float DESC`);
+  return new Map((rows.rows as { team: string; gsis: string }[]).map((row) => [teamKey(row.team), String(row.gsis)]));
+}

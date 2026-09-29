@@ -100,7 +100,9 @@ function main() {
   // --- The export gate ------------------------------------------------------
   const lineup = {
     lineupNumber: 1, playerIds: [1, 2, 3, 4, 5, 6], totalSalary: 49000,
-    slots: [1, 2, 3, 4, 5, 6].map((id) => ({ slot: "FLEX", playerId: id })),
+    // A legal Showdown roster (one captain): since 82df438 the legality check
+    // blocks a captainless lineup, which left this test failing unnoticed.
+    slots: [1, 2, 3, 4, 5, 6].map((id) => ({ slot: id === 1 ? "CPT" : "FLEX", playerId: id })),
   };
   const qa = (cov?: Parameters<typeof runNflPreExportQa>[0]["availabilityCoverage"]) =>
     runNflPreExportQa({ format: "showdown", requestedLineups: 1, lineups: [lineup], availabilityCoverage: cov });

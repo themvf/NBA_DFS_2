@@ -22,7 +22,7 @@ from psycopg2.extras import Json, execute_values
 from config import load_config
 from db.database import DatabaseManager
 from ingest.nfl_availability_context_publish import persist_availability_contexts
-from model.nfl_dfs_availability import apply as apply_availability
+from model.nfl_dfs_availability import apply as apply_availability, last_game_passing_leaders, player_identity
 from model.nfl_game_availability import resolve_game_availability
 from model.nfl_dfs_historical import (
     MODEL_CONFIG,
@@ -324,6 +324,9 @@ def build_week(
     defenses = opponent_factors(history, season, str(model_config.get("opponent_mode", "off")))
     players = _players(db, season, sorted(environment))
     assert_unique_identities(players)
+    # Who actually started each team's last game; survives a depth chart that
+    # has already moved an injured starter down (see model/nfl_dfs_availability).
+    passing_leaders = last_game_passing_leaders(history)
     projections: list[dict[str, Any]] = []
     for player in players:
         env = environment[player["team_abbrev"]]
@@ -347,6 +350,8 @@ def build_week(
             "normalized_name": player["normalized_name"],
             # Carried so the replacement rule can resolve the next man up.
             "depth_order": qualified_depth(player, as_of_at),
+            "led_last_team_game": passing_leaders.get(normalize_team(player["team_abbrev"]))
+                == player_identity(player["gsis_id"], player["id"]),
             "team": player["team_abbrev"],
             "opponent": env["opponent"],
             "event_id": env["event_id"],

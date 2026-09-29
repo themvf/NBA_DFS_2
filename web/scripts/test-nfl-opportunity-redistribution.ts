@@ -108,3 +108,20 @@ assert.equal(MIN_OBSERVED_GAMES,2);
 assert(hasObservedOpportunity({historyGames:2}));
 assert(!hasObservedOpportunity({historyGames:null}));
 console.log('NFL opportunity: captured Jones, budget withholding, QB promotion, accounting, shared scenario and scoring regressions passed');
+
+// A depth chart that moved the injured starter down (PHI@CHI 2026-09-28): he led
+// the team's last game, so the chart's QB1 takes his workload. A benched former
+// starter with big career volume (Kyler Murray, MIN) is not the starter.
+{
+  const qb = (key: number, name: string, depthOrder: number | null, attempts: number, extra: Partial<RedistributionRow> = {}): RedistributionRow =>
+    player({ key, name, team: 'CHI', isOut: false, depthOrder, historyGames: 12, statMeans: { attempts, passing_yards: attempts * 6.5 }, ourProj: attempts * .3, ...extra });
+  const williams = qb(11, 'Caleb Williams', 3, 32.1, { isOut: true, ledLastTeamGame: true });
+  const keenum = qb(12, 'Case Keenum', 1, 21, { historyGames: 2 });
+  const bagent = qb(13, 'Tyson Bagent', 2, 9.7);
+  const promoted = redistributeOutOpportunity([williams, keenum, bagent]).applied;
+  assert.equal(promoted.length, 1);
+  assert.equal(promoted[0].name, 'Case Keenum', 'the chart QB1 starts when the starter was moved below him');
+  assert.equal(redistributeOutOpportunity([{ ...williams, ledLastTeamGame: false }, keenum, bagent]).applied.length, 0,
+    'career volume alone does not make an absent QB the starter');
+  console.log('NFL opportunity: last-game starter promotion passed');
+}
