@@ -9,7 +9,8 @@ DST scoring is rebuilt from PLAY-BY-PLAY components when they are available
 when they are not; both records are kept in the evidence with any per-component
 disagreement named.  Points allowed is adjusted to remove scores produced by
 the opponent's defense.  The component ledger is retained for custom redraft
-rules.
+rules.  ``SCORING_VERSION`` v4 changes DST points only (play-by-play
+components v2); every other position scores exactly as under v3.
 
 Usage:
     python -m ingest.nfl_dfs_results --season 2023 2024 2025
@@ -40,7 +41,15 @@ from model.nfl_dst_components import (
 # v3: DST components are sourced from play-by-play when available rather than
 # the team-week aggregate, which drops events. Semantics changed, so v2 rows
 # keep their version and are never reinterpreted under this one.
-SCORING_VERSION = "nfl-dk-realized-v3"
+# v4: DST play-by-play components v2 (`model/nfl_dst_components`) credit
+# special-teams fumble recoveries and read only the ruling that stands. Only
+# DST points change; the QB/RB/WR/TE/K scorer is unchanged. The bump is
+# global anyway, as v3's was, because every downstream contract (study
+# outcome amendments, the context-study compatibility declaration, the
+# coherent registration) names ONE realized version per result row set: a
+# per-position version could not be declared without rewriting those
+# registrations in place.
+SCORING_VERSION = "nfl-dk-realized-v4"
 EXACT_POSITIONS = {"QB", "RB", "WR", "TE", "K", "DST"}
 SCORING_FIELDS = {
     "QB": (
@@ -127,12 +136,19 @@ def _score_dst(source_row: Mapping[str, Any], context: Mapping[str, Any] | None)
     )
     points_allowed = max(0, round(float(context["opponent_final_points"]) - opponent_defensive_points))
 
-    # The team-week aggregate drops events (a returned strip-sack reaching it
-    # as `def_tds: 0`, a third sack recorded as two). Play-by-play carries
-    # them and agreed with DraftKings on 26/26 team-defenses where the
-    # aggregate managed 24/26 -- see `model/nfl_dst_components`. Prefer it
-    # when the caller supplies it; fall back to the aggregate when it is
-    # absent, so a week without play data still scores rather than vanishing.
+    # Resolution, per component: every derived component comes from
+    # play-by-play when the caller supplies it, and the aggregate is kept as
+    # an independent cross-check. With pbp components v2 the two records agree
+    # exactly on interceptions, fumble recoveries, safeties and blocked kicks
+    # (1,726/1,726 team-weeks, 2023-2026). They differ only on sacks (the
+    # aggregate records one fewer, 33 times) and fumble-return touchdowns,
+    # which `def_tds` omits by construction (its total equals the
+    # interception-return touchdowns exactly); DraftKings sided with the play
+    # record each time either was tested. Against the four imported 2026
+    # contests, pbp v2 matches DraftKings on 56/56 team-defenses, pbp v1 on
+    # 51/56 and the aggregate on 53/56 -- see `model/nfl_dst_components`.
+    # Fall back to the aggregate when play data is absent, so a week still
+    # scores rather than vanishing.
     aggregate = {
         "sacks": _number(raw, "def_sacks"),
         "interceptions": _number(raw, "def_interceptions"),
@@ -181,7 +197,7 @@ def _score_dst(source_row: Mapping[str, Any], context: Mapping[str, Any] | None)
             # Both independent records are kept whenever both exist, with the
             # per-component disagreements called out. A disagreement is a
             # data-quality signal to audit, not evidence either source is
-            # right: only one week of DraftKings ground truth exists so far.
+            # right: two weeks of DraftKings ground truth exist so far.
             "team_aggregate_components": aggregate if derived else None,
             "component_disagreements": compare_components(derived, aggregate) or None,
         },
