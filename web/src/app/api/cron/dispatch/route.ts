@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { dispatchWorkflow, dueJobs } from "@/lib/cron-dispatch";
+import { sql } from "drizzle-orm";
+import { db } from "@/db";
+import { dispatchWorkflow, dueJobs, NEAR_KICKOFF_MS, type DispatchContext } from "@/lib/cron-dispatch";
 
-// The one Vercel Cron -> GitHub Actions bridge. Vercel calls this every half
-// hour (see vercel.json); src/lib/cron-dispatch.ts decides which workflows
-// are due on this tick and this route fires them. It replaced three
+// The one Vercel Cron -> GitHub Actions bridge. Vercel calls this every 15
+// minutes (see vercel.json); src/lib/cron-dispatch.ts decides which workflows
+// are due on this tick and this route fires them. The only thing read here is
+// the next few NFL kickoffs, so the availability jobs can run every tick in
+// the two hours before one; if that read fails the half-hour cadence runs. It replaced three
 // single-workflow routes (mlb-odds-capture, nfl-dk-pool, nfl-projections) on
 // 2026-09-26 so that adding a bridged workflow is one table entry.
 //
@@ -31,7 +35,7 @@ export async function GET(request: NextRequest) {
   }
 
   const now = new Date();
-  const jobs = dueJobs(now);
+  const jobs = dueJobs(now, await dispatchContext(now));
   if (!jobs.length) return NextResponse.json({ ok: true, at: now.toISOString(), dispatched: [], skipped: "no job due on this tick" });
 
   const token = process.env.GITHUB_DISPATCH_TOKEN;
@@ -49,4 +53,15 @@ export async function GET(request: NextRequest) {
   }
   const failed = results.filter((r) => !r.ok);
   return NextResponse.json({ ok: failed.length === 0, at: now.toISOString(), dispatched: results }, { status: failed.length ? 502 : 200 });
+}
+
+async function dispatchContext(now: Date): Promise<DispatchContext> {
+  try {
+    const rows = await db.execute(sql`SELECT kickoff FROM nfl_season_games
+      WHERE kickoff > ${now.toISOString()}::timestamptz AND kickoff <= ${new Date(now.getTime() + NEAR_KICKOFF_MS).toISOString()}::timestamptz`);
+    return { nflKickoffs: rows.rows.map((row) => new Date(String(row.kickoff))).filter((d) => Number.isFinite(d.getTime())) };
+  } catch (error) {
+    console.error("cron dispatch: could not read NFL kickoffs; near-kickoff ticks skipped", error);
+    return { nflKickoffs: null };
+  }
 }

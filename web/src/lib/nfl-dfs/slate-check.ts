@@ -65,6 +65,8 @@ export interface SlateCheckInput {
   liveDk: { applied: boolean; reason: string | null; capturedAt: string | null } | null;
   upside: { flagged: number; skipped: { name: string; reason: string }[]; error?: string } | null;
   unmatched: string[];
+  /** The experimental projection sources (workload, calibrated): usable now, or why not. */
+  experimentalSources?: { label: string; usable: boolean; reason: string }[] | null;
 }
 
 const STARTER = "Expected starter · QB1";
@@ -150,6 +152,12 @@ export function buildSlateCheck(input: SlateCheckInput): SlateCheck {
     if (input.upside.error) add({ id: "upside", level: "info", text: `Replacement ranges unavailable: ${input.upside.error}` });
     else if (input.upside.flagged) add({ id: "upside", level: "ok", text: `${input.upside.flagged} backup${input.upside.flagged === 1 ? "" : "s"} show an "if he gets the job" range.` });
     for (const skip of input.upside.skipped) add({ id: `upside-skip:${skip.name}`, level: "info", text: `${skip.name}: ${skip.reason}` });
+  }
+
+  // Experimental sources are opt-in, so their state is a note, never a nag.
+  for (const source of input.experimentalSources ?? []) {
+    add({ id: `source:${source.label}`, level: source.usable ? "ok" : "info",
+      text: source.usable ? `${source.label} source ready. ${source.reason}` : `${source.label} source unavailable: ${source.reason}` });
   }
 
   if (input.unmatched.length) add({ id: "unmatched", level: "attention", text: `${input.unmatched.length} player${input.unmatched.length === 1 ? "" : "s"} couldn't be matched to our model and have no projection: ${input.unmatched.slice(0, 3).join(", ")}${input.unmatched.length > 3 ? ", …" : ""}.` });

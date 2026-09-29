@@ -73,4 +73,12 @@ assert.equal(after.needs, 0, "nothing to act on after kickoff");
 assert.match(after.headline, /games have started, building is closed/);
 assert.equal(after.items.some((i) => i.id === "opponent"), false);
 
+// Experimental sources: a note when unavailable, a passed check when usable; never a nag.
+const sources = buildSlateCheck(base({ experimentalSources: [
+  { label: "Workload (experimental)", usable: false, reason: "No WR volume-share run has been recorded yet." },
+  { label: "Calibrated (experimental)", usable: true, reason: "Calibrated: DST 2 usable forecasts." }] }));
+assert.equal(sources.needs, 0);
+assert.equal(sources.items.find((i) => i.id === "source:Workload (experimental)")!.level, "info");
+assert.match(sources.items.find((i) => i.id === "source:Calibrated (experimental)")!.text, /^Calibrated \(experimental\) source ready\. Calibrated: DST 2/);
+
 console.log("Slate Check: clean slate is quiet; the PHI@CHI failures each become one plain line with a fix; overrides and local builds are flagged.");

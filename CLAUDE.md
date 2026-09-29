@@ -298,6 +298,20 @@ keeps a thin GitHub `schedule:` as fallback and its own in-job gate. The route
 logs when `GITHUB_DISPATCH_TOKEN` is within 30 days of expiry, since a lapsed
 PAT silences every bridged job at once.
 
+**15-minute tick and "Update data" (2026-09-29).** The tick is now
+`7,22,37,52 * * * *`. Jobs keep their half-hour cadence on the :07/:37 ticks
+(MLB still captures exactly 28 times a day; a test pins it). The NFL
+availability context (Sleeper injury/depth capture + projection rebuild) and
+the DraftKings status poll also fire on the quarter-hour ticks in the two
+hours before any kickoff; the route reads those kickoffs from
+`nfl_season_games` and falls back to the half-hour cadence if the read fails.
+The NFL DFS page's "Update data" button (`web/src/lib/nfl-dfs/data-update.ts`,
+`web/src/app/dfs/nfl/data-update-actions.ts`) dispatches the same two
+workflows on demand with `return_run_details`, follows the exact runs GitHub
+names (and a newer scheduled run when GitHub cancels a queued one), records
+each press in `nfl_dfs_data_updates`, and moves the slate to the newest
+projections when both finish. Closed once the slate's first game starts.
+
 **NFL DFS production and research are separate workflows (2026-09-28).**
 `refresh_nfl_dfs_projections.yml` holds only what the DFS page needs to build a
 lineup (results, availability, PFR evidence, the projection snapshot, and the
