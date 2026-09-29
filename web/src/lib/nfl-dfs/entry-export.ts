@@ -6,7 +6,7 @@ function normalized(value: string): string {
   return value.replace(/^\uFEFF/, "").trim().toUpperCase();
 }
 
-export function exportNflDkEntries(content: string, lineups: NflGeneratedLineup[]): string {
+function readEntryFile(content: string) {
   const rawLines = content.split(/\r?\n/).filter((line) => line.trim());
   const headerIndex = rawLines.findIndex((line) => parseCsvLine(line).some((cell) => normalized(cell) === "ENTRY ID"));
   if (headerIndex < 0) throw new Error("Could not find the DraftKings Entry ID header.");
@@ -15,6 +15,19 @@ export function exportNflDkEntries(content: string, lineups: NflGeneratedLineup[
   if (firstSlot < 0) throw new Error("Could not find NFL roster columns in the DraftKings entry file.");
   const expectedSlots = normalized(header[firstSlot]) === "CPT" ? 6 : 9;
   const entryRows = rawLines.slice(headerIndex + 1).map(parseCsvLine).filter((row) => row[0]?.trim());
+  return { rawLines, headerIndex, header, firstSlot, expectedSlots, entryRows };
+}
+
+/**
+ * How many entries the DraftKings file holds. Export fills the first N and
+ * leaves the rest untouched, so pre-export QA compares this with the lineups.
+ */
+export function countNflDkEntryRows(content: string): number {
+  return readEntryFile(content).entryRows.length;
+}
+
+export function exportNflDkEntries(content: string, lineups: NflGeneratedLineup[]): string {
+  const { rawLines, headerIndex, header, firstSlot, expectedSlots, entryRows } = readEntryFile(content);
   if (lineups.length > entryRows.length) {
     throw new Error(`Generated ${lineups.length} lineups but the entry file has only ${entryRows.length} entries.`);
   }
