@@ -27,13 +27,20 @@ def player(pid, **kw):
 
 
 def result(pid, gid=1, pts=12.0, **kw):
-    return {"id": pid * 10, "player_id": pid, "game_id": gid, "actual_dk_fpts": pts, "scoring_status": "exact",
-            "computed_at": KICK + timedelta(hours=8), **kw}
+    return {"id": pid * 10, "player_id": pid, "game_id": gid, "position": "RB", "team": "ATL",
+            "actual_dk_fpts": pts, "scoring_status": "exact", "computed_at": KICK + timedelta(hours=8), **kw}
+
+
+def feed(gid=1):
+    """The player feed having run for a game: one skill result per team, for
+    players who are not on the slate (ids 900+)."""
+    teams = {1: ("CAR", "ATL"), 2: ("SEA", "ARI")}[gid]
+    return [result(900 + gid * 10 + i, gid=gid, pts=5.0, team=team, position="WR") for i, team in enumerate(teams)]
 
 
 def test_missing_stat_row_scores_zero_only_when_the_game_has_results():
     players = [player(1), player(2), player(3, game_key="SEA@ARI")]
-    rep = build_slate_report(upload=UPLOAD, players=players, games=GAMES, results=[result(1)], now=NOW)
+    rep = build_slate_report(upload=UPLOAD, players=players, games=GAMES, results=[result(1), *feed(1)], now=NOW)
     rows = {r["ff_player_id"]: r for r in rep["rows"]}
     assert rows[1]["actual"] == 12.0 and rows[1]["stat_row_present"]
     # Game 1 has results, so player 2's missing row is the 0 DK paid.
@@ -41,6 +48,49 @@ def test_missing_stat_row_scores_zero_only_when_the_game_has_results():
     # Game 2 is completed but the results source has not run for it: unknown, not zero.
     assert rows[3]["status"] == "awaiting_source" and rows[3]["actual"] is None
     assert rep["scorable_games"] == 1 and rep["version"] == VERSION
+
+
+def test_defense_rows_alone_do_not_make_a_game_scorable():
+    """DST results come from the team-week feed. When the player feed lags, a
+    game can carry both defenses and no skill player at all; grading that as
+    'results-bearing' would score every listed skill player a DK 0."""
+    players = [player(1), player(2, position="WR")]
+    dst = [result(701, pts=6.0, position="DST", team="ATL"), result(702, pts=2.0, position="DST", team="CAR")]
+    rep = build_slate_report(upload=UPLOAD, players=players, games=GAMES, results=dst, now=NOW)
+    assert rep["scorable_games"] == 0
+    assert {r["status"] for r in rep["rows"]} == {"awaiting_source"}
+    assert all(r["actual"] is None for r in rep["rows"])
+    assert rep["games_awaiting_player_feed"] == {"CAR@ATL": ["ATL", "CAR"]}
+
+
+def test_one_team_without_player_results_holds_the_game_back():
+    # ATL's skill rows are in, CAR's are not (a per-team identity failure):
+    # CAR's listed players must not be graded as zeros.
+    players = [player(1), player(2, team="CAR")]
+    rep = build_slate_report(upload=UPLOAD, players=players, games=GAMES,
+                             results=[result(1), result(701, position="DST", team="CAR")], now=NOW)
+    assert rep["scorable_games"] == 0
+    assert rep["games_awaiting_player_feed"] == {"CAR@ATL": ["CAR"]}
+    # Once CAR has a skill result the game scores, and player 2's absence is the 0 DK paid.
+    rep = build_slate_report(upload=UPLOAD, players=players, games=GAMES,
+                             results=[result(1), result(801, team="CAR", position="QB")], now=NOW)
+    rows = {r["ff_player_id"]: r for r in rep["rows"]}
+    assert rep["scorable_games"] == 1 and rows[2]["actual"] == 0.0 and rows[2]["status"] == "scored"
+    assert rep["games_awaiting_player_feed"] == {}
+
+
+def test_team_aliases_count_toward_coverage():
+    # Results and schedule spell four teams differently across sources.
+    games = [{"id": 5, "game_key": "WSH@LAR", "kickoff": KICK, "completed": True}]
+    rep = build_slate_report(upload=UPLOAD, players=[player(1, team="LAR", game_key="WSH@LAR")], games=games,
+                             results=[result(1, gid=5, team="LA"), result(2, gid=5, team="WAS")], now=NOW)
+    assert rep["scorable_games"] == 1
+
+
+def test_result_rows_without_position_cannot_vouch_for_the_feed():
+    bare = {k: v for k, v in result(1).items() if k != "position"}
+    rep = build_slate_report(upload=UPLOAD, players=[player(1)], games=GAMES, results=[bare], now=NOW)
+    assert rep["scorable_games"] == 0
 
 
 def test_cohorts_separate_prior_rows_and_out_players():
@@ -51,7 +101,7 @@ def test_cohorts_separate_prior_rows_and_out_players():
     assert cohort_for(player(1, projection_status="out", our_proj=0.0)) == "out"
     players = [player(1, projection_status="position_prior", history_games=0, our_proj=8.0),
                player(2, is_out=True, our_proj=0.0), player(3)]
-    rep = build_slate_report(upload=UPLOAD, players=players, games=GAMES, results=[result(3)], now=NOW)
+    rep = build_slate_report(upload=UPLOAD, players=players, games=GAMES, results=[result(3), *feed(1)], now=NOW)
     s = rep["summary"]["RB"]
     assert s["hist_0"]["scored"] == 1 and s["hist_0"]["bias_actual_minus_projected"] == pytest.approx(-8.0)
     assert s["out"]["scored"] == 1 and s["out"]["mae"] == 0.0
@@ -70,13 +120,14 @@ def test_pending_game_and_unlinked_identity_are_not_scored():
 
 def test_alternative_forecast_stream_grades_the_same_population():
     players = [player(1, our_proj=10.0), player(2, our_proj=10.0)]
-    rep = build_slate_report(upload=UPLOAD, players=players, games=GAMES, results=[result(1), result(2, pts=4.0)],
+    rep = build_slate_report(upload=UPLOAD, players=players, games=GAMES,
+                             results=[result(1), result(2, pts=4.0), *feed(1)],
                              now=NOW, forecasts={1: {"mean": 12.0, "p10": 5.0, "p90": 20.0}, 2: {"mean": 4.0, "p10": 0.0, "p90": 9.0}})
     assert rep["forecast_stream"] == "alternative"
     rows = {r["ff_player_id"]: r for r in rep["rows"]}
     assert rows[1]["error"] == pytest.approx(0.0) and rows[2]["error"] == pytest.approx(0.0)
     # A player the alternative stream did not project is not scored under it.
-    rep2 = build_slate_report(upload=UPLOAD, players=players, games=GAMES, results=[result(1)], now=NOW,
+    rep2 = build_slate_report(upload=UPLOAD, players=players, games=GAMES, results=[result(1), *feed(1)], now=NOW,
                               forecasts={1: {"mean": 12.0}})
     assert {r["ff_player_id"]: r["status"] for r in rep2["rows"]} == {1: "scored", 2: "no_projection"}
 

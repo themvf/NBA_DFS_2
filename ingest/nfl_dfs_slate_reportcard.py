@@ -64,7 +64,7 @@ def inputs(db, upload: dict) -> dict:
     )]
     results = [dict(r) for r in db.execute(
         """
-        SELECT id, player_id, game_id, actual_dk_fpts, scoring_status, computed_at
+        SELECT id, player_id, game_id, position, team, actual_dk_fpts, scoring_status, computed_at
         FROM nfl_dfs_player_week_results WHERE season = %s AND week = %s
         """,
         (upload["season"], upload["week"]),
@@ -131,6 +131,12 @@ def main() -> None:
         report = build_slate_report(upload=upload, now=now, **inputs(db, upload))
         report["upload_created_at"] = upload["created_at"].isoformat()
         report["implementation"] = implementation
+        awaiting = report["games_awaiting_player_feed"]
+        if awaiting:
+            # Completed games the player feed has not reached: their listed
+            # players are held back as awaiting_source, never graded as 0.
+            print(f"{upload['week']:>2}w {upload['format']:<8} {upload['upload_id'][:8]} completed games "
+                  f"without player-feed results: {awaiting}")
         if report["scorable_games"] == 0:
             print(f"{upload['week']:>2}w {upload['format']:<8} {upload['upload_id'][:8]} not scorable yet "
                   f"({report['statuses']})")

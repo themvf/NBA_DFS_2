@@ -18,8 +18,12 @@ game has no row for the player. That is not a claim the player was inactive;
 it is what the slate paid, which is what a projection on that slate was for.
 
 Guards, so a lag in the results feed cannot masquerade as a slate of zeros:
-- a game is scorable only when it is completed AND at least one exact result
-  exists for it (the source has run for that game);
+- a game is scorable only when it is completed AND each of its teams has at
+  least one exact QB/RB/WR/TE result (the PLAYER feed has run for that game).
+  A DST row does not count: DST results come from nflverse's separate
+  team-week feed, so a game can carry both defenses while the player feed
+  still lags, and treating that as "results-bearing" graded every listed
+  skill player a DraftKings 0;
 - players the slate itself marked OUT are reported as their own cohort and
   excluded from the accuracy cohorts (their projection was zeroed by policy);
 - every row carries its projection_status / history bucket so the hist-0
@@ -36,9 +40,15 @@ from collections import Counter, defaultdict
 from datetime import datetime
 from math import isfinite
 
+from model.nfl_team_aliases import normalize_team
+
 VERSION = "nfl-dfs-slate-report-v1"
 POSITIONS = ("QB", "RB", "WR", "TE", "DST")
 COHORTS = ("hist_0", "hist_1_5", "hist_6_plus", "out")
+# Positions whose results come from nflverse's PLAYER-week feed. Kickers do
+# too, but a team can finish a game without a kicker stat line, so they are
+# not evidence the feed has run; DST comes from the separate team-week feed.
+SKILL_POSITIONS = frozenset({"QB", "RB", "WR", "TE"})
 
 
 def _ts(value):
@@ -69,6 +79,46 @@ def cohort_for(player: dict) -> str:
     return "hist_1_5" if games <= 5 else "hist_6_plus"
 
 
+def latest_exact_results(results: list[dict], now) -> dict[int, dict[int, dict]]:
+    """Latest exact result per (game, player), as of `now`."""
+    now = _ts(now)
+    exact_by_game: dict[int, dict[int, dict]] = defaultdict(dict)
+    for r in results:
+        if r.get("scoring_status") != "exact" or _num(r.get("actual_dk_fpts")) is None:
+            continue
+        if r.get("computed_at") is not None and _ts(r["computed_at"]) > now:
+            continue
+        prev = exact_by_game[r["game_id"]].get(r["player_id"])
+        if prev is None or (_ts(r.get("computed_at")) or now, r.get("id", 0)) > (_ts(prev.get("computed_at")) or now, prev.get("id", 0)):
+            exact_by_game[r["game_id"]][r["player_id"]] = r
+    return exact_by_game
+
+
+def game_teams(game_key) -> frozenset[str] | None:
+    """The two canonical teams of an 'AWAY@HOME' key, or None if it does not parse."""
+    parts = str(game_key or "").split("@")
+    if len(parts) != 2:
+        return None
+    teams = frozenset(normalize_team(part) for part in parts)
+    return teams if None not in teams and len(teams) == 2 else None
+
+
+def skill_coverage(game: dict, rows: dict[int, dict] | None) -> dict:
+    """Has the PLAYER feed run for this game?
+
+    `rows` are the game's latest exact results. Covered means every team in
+    the game has at least one exact QB/RB/WR/TE result. When the game key does
+    not name two teams, one skill result for the game is the fallback -- still
+    never a DST row, which comes from a different feed.
+    """
+    skill = [r for r in (rows or {}).values() if str(r.get("position") or "").upper() in SKILL_POSITIONS]
+    skill_teams = {normalize_team(r.get("team")) for r in skill} - {None}
+    teams = game_teams(game.get("game_key"))
+    missing = sorted(teams - skill_teams) if teams else ([] if skill else ["(any team)"])
+    return {"skill_results": len(skill), "teams_with_skill_results": sorted(skill_teams),
+            "teams_missing_skill_results": missing, "covered": bool(skill) and not missing}
+
+
 def build_slate_report(*, upload: dict, players: list[dict], games: list[dict],
                        results: list[dict], now, forecasts: dict | None = None) -> dict:
     """Grade one completed slate.
@@ -79,27 +129,23 @@ def build_slate_report(*, upload: dict, players: list[dict], games: list[dict],
                 projection_status, history_games, is_out, our_proj,
                 floor_fpts, ceiling_fpts}
     games    : {id, game_key ('AWAY@HOME'), kickoff, completed}
-    results  : {player_id, game_id, actual_dk_fpts, scoring_status, computed_at}
+    results  : {player_id, game_id, position, team, actual_dk_fpts,
+                scoring_status, computed_at}. `position` and `team` decide
+               whether the player feed has run for a game (skill coverage);
+               a result row without them cannot vouch for it.
     forecasts: optional {ff_player_id: {mean, p10, p90}} overriding the slate's
                own projection, so an alternative model stream can be graded on
                the identical population (the v3-vs-v4 pairing in WP1b).
     """
     now = _ts(now)
     by_key = {g["game_key"]: g for g in games}
-    exact_by_game: dict[int, dict[int, dict]] = defaultdict(dict)
-    for r in results:
-        if r.get("scoring_status") != "exact" or _num(r.get("actual_dk_fpts")) is None:
-            continue
-        if r.get("computed_at") is not None and _ts(r["computed_at"]) > now:
-            continue
-        prev = exact_by_game[r["game_id"]].get(r["player_id"])
-        if prev is None or (_ts(r.get("computed_at")) or now, r.get("id", 0)) > (_ts(prev.get("computed_at")) or now, prev.get("id", 0)):
-            exact_by_game[r["game_id"]][r["player_id"]] = r
+    exact_by_game = latest_exact_results(results, now)
     # Only the slate's own games count as scorable; results for other games
     # that week say nothing about whether THIS slate's source has run.
     slate_keys = {p.get("game_key") for p in players}
-    slate_game_ids = {by_key[k]["id"] for k in slate_keys if k in by_key}
-    scorable = {gid for gid, rows in exact_by_game.items() if rows and gid in slate_game_ids}
+    slate_games = {by_key[k]["id"]: by_key[k] for k in slate_keys if k in by_key}
+    coverage = {gid: skill_coverage(game, exact_by_game.get(gid)) for gid, game in slate_games.items()}
+    scorable = {gid for gid, cov in coverage.items() if cov["covered"]}
 
     rows = []
     for p in players:
@@ -150,8 +196,15 @@ def build_slate_report(*, upload: dict, players: list[dict], games: list[dict],
         "model_version": upload.get("model_version"), "projection_run_id": upload.get("projection_run_id"),
         "forecast_stream": "alternative" if forecasts is not None else "slate_production",
         "evaluated_at": now.isoformat(),
-        "population": "players DraftKings listed on this slate; actual = 0 when a completed, results-bearing game has no stat line (DK convention)",
+        "population": "players DraftKings listed on this slate; actual = 0 when a completed game whose teams both have player-feed results has no stat line (DK convention)",
         "scorable_games": len(scorable), "slate_games": len(by_key),
+        # Completed slate games the player feed has not reached: named, so an
+        # "awaiting_source" count can be traced to the game and team.
+        "games_awaiting_player_feed": {
+            game["game_key"]: coverage[gid]["teams_missing_skill_results"]
+            for gid, game in sorted(slate_games.items())
+            if gid not in scorable and game.get("completed")
+        },
         "statuses": dict(Counter(r["status"] for r in rows)),
         "summary": summary, "rows": rows,
     }
