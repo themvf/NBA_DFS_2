@@ -390,6 +390,14 @@ to a person.
   failing (with first-seen time) / resolved; at most one comment a day unless
   something new appears; closed with "all clear" when nothing fails. It goes red
   only if it could not run, and its own heartbeat shows on /health.
+- **Never set a read-only (or any) session setting on `DATABASE_URL`.** It is
+  Neon's pooled endpoint (PgBouncer transaction mode): psycopg2
+  `set_session(readonly=True)` / `SET default_transaction_read_only` sticks to
+  the shared server connection and leaks into other jobs. An audit session doing
+  exactly that made production writes fail with "cannot execute ... in a
+  read-only transaction" (MLB odds capture, 2026-09-29 01:37-02:08 UTC). For a
+  read-only check, just run SELECTs, or `BEGIN READ ONLY; ...; ROLLBACK;` in one
+  transaction.
 - **Rule for new work:** every new scheduled job or data feed must show up on this
   checklist (a workflow appears automatically via the manifest; a new dataset
   needs a `model/pipeline_health.py` entry), and every fallback must surface a
