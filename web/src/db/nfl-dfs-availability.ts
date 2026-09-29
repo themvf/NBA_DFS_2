@@ -24,10 +24,38 @@ export async function getNflInjuryCoverage(season: number, week: number | null):
   } catch { return null; }
 }
 
-export async function getNflRosterEvidence(season: number, week?: number | null): Promise<Map<number, RosterEvidence>> {
+/**
+ * Roster evidence per player. With `asOf`, the Sleeper depth/role evidence is
+ * read as it stood at that time.
+ *
+ * `ff_players.metadata.sleeper` holds only the LATEST capture, and every
+ * capture moves `fetched_at` forward. A saved slate is evaluated at its
+ * projection cutoff, so after any later roster refresh the current row looks
+ * future-dated, is correctly rejected, and every role went blank (all 671
+ * players on 2026-09-27; every QB on PHI@CHI 2026-09-28, which left backups
+ * unblocked). Each capture also appends one archived row per player to
+ * `ff_player_injury_observations` (source `sleeper`), so the pregame state is
+ * recoverable: the latest archived row at or before `asOf`. Rows without a
+ * `depth_chart_order` key come from a partial writer and are skipped, or they
+ * would reintroduce the blank role. A player with no archived row keeps the
+ * current row, which the resolver still rejects as future-dated.
+ */
+export async function getNflRosterEvidence(season: number, week?: number | null, asOf?: Date | null): Promise<Map<number, RosterEvidence>> {
   const result = await db.execute(sql`SELECT id, team_abbrev, position, fetched_at,
     metadata->'sleeper' AS sleeper FROM ff_players WHERE season=${season}`);
   const roster = new Map<number, RosterEvidence>(result.rows.map(r => [Number(r.id), { team: String(r.team_abbrev ?? ""), position: String(r.position), fetchedAt: new Date(r.fetched_at as string).toISOString(), sleeper: r.sleeper }]));
+  if (asOf && Number.isFinite(asOf.getTime())) {
+    const archived = await db.execute(sql`SELECT DISTINCT ON (o.player_id) o.player_id, o.observed_at, o.raw_payload
+      FROM ff_player_injury_observations o
+      WHERE o.source='sleeper' AND o.season=${season} AND o.observed_at <= ${asOf.toISOString()}::timestamptz
+        AND o.raw_payload ? 'depth_chart_order'
+      ORDER BY o.player_id, o.observed_at DESC, o.id DESC`);
+    for (const row of archived.rows) {
+      const player = roster.get(Number(row.player_id));
+      if (!player) continue;
+      roster.set(Number(row.player_id), { ...player, fetchedAt: new Date(row.observed_at as string).toISOString(), sleeper: row.raw_payload, archived: true });
+    }
+  }
   if (!week) return roster;
   try {
     const identityRoster=await getNflIdentityRoster(season);

@@ -50,7 +50,10 @@ const avail = (role: string, blockedReason: string | null, status = "EXPECTED_AC
 const name = () => "Tyson Bagent";
 const player = (dkPlayerId: number, platformOut = false) => ({ dkPlayerId, team: "CHI", position: "QB", platformOut });
 const bagent = confirmStarterAvailability(avail("Backup · QB2", "Listed QB2; starter workload not supported"), player(3), { CHI: 3 }, name);
-assert.equal(bagent.blockedReason, null); assert.ok(bagent.role.startsWith("Expected starter"));
+assert.equal(bagent.blockedReason, null);
+assert.equal(bagent.role, "Expected starter · QB1", "the canonical role string, which exact-match checks rely on");
+assert.equal(bagent.chartRole, "Backup · QB2", "what the depth chart said is kept for the contradiction warning");
+assert.equal(bagent.confirmedStarter, true);
 const keenum = confirmStarterAvailability(avail("Expected starter · QB1", null), player(2), { CHI: 3 }, name);
 assert.match(keenum.blockedReason ?? "", /Tyson Bagent is the confirmed starter/);
 const williams = avail("QB role unresolved", "Unavailable: OUT", "OUT");

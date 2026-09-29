@@ -24,7 +24,7 @@ import { readDefensiveCaptures } from '@/db/nfl-defensive-projections';
 import { resolveDefensiveForecast } from '@/lib/nfl-dfs/defensive-projection';
 import { readServerDefensivePolicy } from '@/lib/nfl-dfs/defensive-policy';
 import { getNflRosterEvidence, getNflInjuryCoverage, type InjuryCoverage } from "@/db/nfl-dfs-availability";
-import { presentPinnedGameAvailability, resolveGameAvailability, applyTeamQbContext, identifyTeamQb1s, ROSTER_FRESH_MS, type Availability, type PinnedGameAvailabilityDecision } from "@/lib/nfl-dfs/availability";
+import { presentPinnedGameAvailability, resolveGameAvailability, applyTeamQbContext, identifyTeamQb1s, nflTeamKey, ROSTER_FRESH_MS, type Availability, type PinnedGameAvailabilityDecision } from "@/lib/nfl-dfs/availability";
 import { previewAbsence } from "@/lib/nfl-dfs/absence-preview";
 import type { PlayerContext } from "@/lib/nfl-dfs/player-context";
 import { benchmarkPool, type Competitor, type ImportEvidence, type BenchmarkSnapshot, benchmarkTeam } from '@/lib/nfl-dfs/competitor-benchmark';
@@ -64,7 +64,7 @@ import { NFL_TRUSTED_ACCOUNTS, isXHandle } from "@/lib/x-news-accounts";
 import { NFL_TEAM_NICKNAMES } from "@/lib/nfl-dfs/x-news-teams";
 import { projectOwnershipPrior } from "@/lib/nfl-dfs/ownership-prior";
 import { computeReplacementUpside, REPLACEMENT_UPSIDE_VERSION, type ReplacementUpside, type ReplacementUpsideReport, type UpsidePlayer } from "@/lib/nfl-dfs/replacement-upside";
-import { readTeamUsageWindows } from "@/db/nfl-dfs-usage-window";
+import { readLastGamePassingLeaders, readTeamUsageWindows } from "@/db/nfl-dfs-usage-window";
 import { applyConfirmedStartingQbs, confirmStarterAvailability, INJURED_STATUSES, sanitizeConfirmedStartingQbs, type ConfirmedStarterReport, type ConfirmedStartingQbs } from "@/lib/nfl-dfs/confirmed-starter";
 
 export type NflWorkspacePlayer = NflOptimizerPlayer & {
@@ -391,11 +391,15 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
     catch { calibrationWarning = "Calibrated forecasts could not be loaded; historical projections remain available."; }
   }
   const byPlayer = new Map(snapshots.map(s => [s.playerId, s]));
-  const roster = run ? await getNflRosterEvidence(run.season, run.week) : new Map();
+  // Roles as they stood at the run's cutoff, not whatever the latest refresh says.
+  const roster = run ? await getNflRosterEvidence(run.season, run.week, run.asOfAt ?? null) : new Map();
   const injuryCoverage = run ? await getNflInjuryCoverage(run.season,run.week) : null;
   const {default:workloadReport}=await import('@/data/nfl-volume-share-report.json');
   const identities=run ? await db.execute(sql`SELECT id, gsis_id FROM ff_players WHERE season=${run.season} AND gsis_id IS NOT NULL`) : {rows:[]};
   const identityMap=new Map(identities.rows.map(r=>[Number(r.id),String(r.gsis_id)]));
+  // Who started each team's last game; the evidence that survives a depth chart
+  // that has already moved an injured starter down.
+  const passingLeaders = run?.week ? await readLastGamePassingLeaders(run.season, run.week, nflTeamKey) : new Map<string, string>();
   // A saved projection run is a decision-time artifact. Page-read time must
   // not allow a later injury observation to rewrite its player pool.
   const now = run?.asOfAt?.getTime() ?? Date.now();
@@ -440,7 +444,7 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
     const evidence=roster.get(row.ffPlayerId ?? -1);
     const legacy=resolveGameAvailability(evidence,row.team,row.position,now,run?.week??null,evidence?.kickoff??null);
     const pinned=decisionsByPlayer.get(row.ffPlayerId??-1);
-    return pinned?presentPinnedGameAvailability(pinned,legacy.role):legacy;
+    return pinned?presentPinnedGameAvailability(pinned,legacy.role,legacy.roleBlockedReason??null):legacy;
   };
   const teamQb1s = identifyTeamQb1s(rows.map((row) => ({
     team: row.team,
@@ -469,6 +473,8 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
         team: row.team,
         historyGames: row.historyGames,
         depthOrder: availability(row).fresh ? Number((roster.get(row.ffPlayerId ?? -1)?.sleeper as { depth_chart_order?: number })?.depth_chart_order) || null : null,
+        ledLastTeamGame: row.position === 'QB' && passingLeaders.get(nflTeamKey(row.team)) != null
+          && passingLeaders.get(nflTeamKey(row.team)) === identityMap.get(row.ffPlayerId ?? -1),
         canDonate: (platformOut(row) || row.projectionStatus === 'out' || ['OUT','IR','PUP','NFI','SUSPENDED','INACTIVE'].includes(availability(row).status))
           && notesByPlayer.get(row.ffPlayerId ?? -1)?.slate_transfer_allowed !== false,
         isOut: outFlag(row),

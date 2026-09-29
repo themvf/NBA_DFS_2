@@ -33,9 +33,15 @@ export function confirmStarterAvailability(availability: Availability, player: {
   if (player.position !== "QB" || starter == null) return availability;
   const injured = player.platformOut || INJURED_STATUSES.has(availability.status) || availability.blockedReason?.startsWith("Unavailable") === true;
   if (injured) return availability;
-  if (player.dkPlayerId === starter) return { ...availability, role: "Expected starter · QB1 (confirmed by you)", blockedReason: null,
-    warnings: [...(availability.warnings ?? []), "Starter confirmed in the build form; the depth-chart role was overridden."] };
-  return { ...availability, role: "Backup · starter confirmed",
+  // The role string stays the canonical "Expected starter · QB1": other
+  // checks (the workload source) compare it exactly, and a decorated label
+  // silently failed them. The override is recorded in `source`, `warnings`
+  // and `chartRole` instead, so the page can show what the chart said.
+  const chartRole = availability.chartRole ?? availability.role;
+  if (player.dkPlayerId === starter) return { ...availability, role: "Expected starter · QB1", chartRole, blockedReason: null,
+    source: "Starting QB confirmed in the build form", confirmedStarter: true,
+    warnings: [...(availability.warnings ?? []), `Starter confirmed in the build form; the depth chart listed him as ${chartRole}.`] };
+  return { ...availability, role: "Backup · starter confirmed", chartRole,
     blockedReason: availability.blockedReason ?? `${starterName(player.team) ?? "Another quarterback"} is the confirmed starter; starter workload not supported` };
 }
 

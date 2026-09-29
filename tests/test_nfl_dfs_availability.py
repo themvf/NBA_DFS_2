@@ -2,7 +2,7 @@
 import pytest
 
 from model.nfl_dfs_availability import (
-    MAX_TRANSFER_MULTIPLIER, OUT_CLASS, apply, is_out, replacement_for,
+    MAX_TRANSFER_MULTIPLIER, OUT_CLASS, apply, is_out, last_game_passing_leaders, replacement_for,
     transfer_opportunity, zero_out, mark_transferred,
 )
 
@@ -208,3 +208,47 @@ def test_transfer_preserves_simulated_bonus_expectation():
     # Doubling crosses 300 yards, but must not invent a deterministic +3 bonus.
     expected_delta = 160/25 + 4 - .8 + 10/10 + .6 - .2
     assert updated["model_proj_fpts"] == pytest.approx(14 + expected_delta)
+
+
+# ── the chart moves an injured starter down (PHI@CHI, 2026-09-28) ──────
+def chicago():
+    williams = {**qb(1, "Caleb Williams", 3, 32.1, 210, 1.2, 17.0, team="CHI"), "led_last_team_game": True}
+    keenum = {**qb(2, "Case Keenum", 1, 21.0, 140, 0.6, 6.6, team="CHI"), "history_games": 2}
+    bagent = qb(3, "Tyson Bagent", 2, 9.7, 60, 0.2, 3.5, team="CHI")
+    return williams, keenum, bagent
+
+def test_a_starter_relisted_below_the_backups_still_hands_off_to_the_charts_qb1():
+    williams, keenum, bagent = chicago()
+    rows, report = apply([williams, keenum, bagent], {1: "OUT"})
+    by_name = {p["player_name"]: p for p in rows}
+    assert report["transfers"][0]["to"] == "Case Keenum", "the chart's QB1 starts, not the next body down"
+    assert report["transfers"][0]["starter_evidence"] == "last_game_starter"
+    assert by_name["Case Keenum"]["stat_means"]["attempts"] == pytest.approx(32.1)
+    assert by_name["Tyson Bagent"] == bagent, "the listed QB2 is untouched"
+    assert by_name["Caleb Williams"]["availability"]["transferred"] is True
+
+def test_a_benched_former_starter_is_not_the_starter_whatever_his_career_volume():
+    """Kyler Murray, MIN 2026: 30 attempts a game from Arizona, behind Wentz."""
+    williams, keenum, bagent = chicago()
+    williams["led_last_team_game"] = False
+    _, report = apply([williams, keenum, bagent], {1: "OUT"})
+    assert report["transfers"] == []
+
+def test_last_game_passing_leaders_uses_the_latest_game_and_a_start_floor():
+    from model.nfl_dfs_historical import HistoricalWeek
+    def row(pid, gsis, week, attempts, team="CHI", pos="QB"):
+        return HistoricalWeek(pid, gsis, f"P{pid}", pos, 2026, week, team, "OPP", {"attempts": attempts})
+    rows = [row(1, "W", 1, 29), row(1, "W", 2, 26), row(3, "B", 2, 9),
+            row(7, "M", 1, 5, team="MIN"), row(8, "C", 1, 19, team="MIN"),
+            row(9, "S", 2, 12, team="SEA")]
+    leaders = last_game_passing_leaders(rows)
+    assert leaders["CHI"] == "gsis:W"
+    assert leaders["MIN"] == "gsis:C", "the backup's cameo is not a start"
+    assert "SEA" not in leaders, "12 attempts is not a start"
+
+def test_zeroing_keeps_the_range_he_would_have_had():
+    williams, _, _ = chicago()
+    zeroed = zero_out(williams, "OUT")
+    assert zeroed["ceiling_fpts"] == 0.0
+    assert zeroed["availability"]["pre_availability"]["ceiling_fpts"] == pytest.approx(17.0 * 1.6)
+    assert zeroed["availability"]["pre_availability"]["model_proj_fpts"] == 17.0

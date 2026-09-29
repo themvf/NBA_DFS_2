@@ -66,7 +66,29 @@
 
 import { scoreNflOffenseLinear } from "./scoring";
 
-export const VERSION = "nfl-dfs-redistribution-v3-budget-required";
+export const VERSION = "nfl-dfs-redistribution-v4-starter-evidence";
+
+/**
+ * Why a ruled-out quarterback counts as the starter, or null if he does not.
+ * Mirrors `starter_evidence` in model/nfl_dfs_availability.py.
+ *
+ * A depth chart moves an injured starter down as soon as he is ruled out
+ * (PHI@CHI 2026-09-28: Caleb Williams relisted QB3), so "the absent QB is
+ * QB1" fails exactly when a promotion is needed. The evidence that survives is
+ * the game: he led this team in pass attempts in its most recent completed
+ * game (`ledLastTeamGame`). Career volume is not that evidence -- a benched
+ * former starter (Kyler Murray behind Carson Wentz, MIN 2026) carries it.
+ */
+export function qbStarterEvidence(absent: RedistributionRow): "depth_chart" | "last_game_starter" | null {
+  if (absent.depthOrder === 1) return "depth_chart";
+  return absent.position === "QB" && absent.ledLastTeamGame === true ? "last_game_starter" : null;
+}
+
+/** A listed backup, or the chart's QB1 when the starter was moved below him. */
+function promotableQb(donor: RedistributionRow, player: RedistributionRow): boolean {
+  if (player.depthOrder == null) return false;
+  return player.depthOrder > 1 || (player.depthOrder === 1 && donor.depthOrder !== 1);
+}
 
 /**
  * A backup with a handful of mop-up snaps has a noisy efficiency estimate.
@@ -216,6 +238,8 @@ export type RedistributionRow = {
   /** Eligibility blocks (e.g. QB2) are not evidence of an injury donation. */
   canDonate?: boolean;
   depthOrder?: number | null;
+  /** Led this team in pass attempts in its most recent completed game (pre-slate). */
+  ledLastTeamGame?: boolean;
   /**
    * `projection_status` from the immutable row. When it reads `out`, the
    * Python pipeline ruled this player out upstream. That alone does NOT mean
@@ -350,7 +374,7 @@ export function redistributeOutOpportunity(rows: readonly RedistributionRow[]): 
 
     for (const [name, spec] of Object.entries(POOLS) as [PoolName, PoolSpec][]) {
       const donors = absent.filter(r =>
-        spec.donors.has(r.position) && r.canDonate !== false && (r.position !== "QB" || r.depthOrder === 1) && hasObservedOpportunity(r) && num(r.statMeans[spec.unit]) > 0);
+        spec.donors.has(r.position) && r.canDonate !== false && (r.position !== "QB" || qbStarterEvidence(r) !== null) && hasObservedOpportunity(r) && num(r.statMeans[spec.unit]) > 0);
       const pooled = donors.reduce((sum, r) => sum + num(r.statMeans[spec.unit]), 0);
       if (pooled <= 0) continue;
       for (const donor of donors) contributed.add(donor.key);
@@ -376,7 +400,7 @@ export function redistributeOutOpportunity(rows: readonly RedistributionRow[]): 
       }
 
       const eligible = available.filter(r =>
-        spec.recipients.has(r.position) && (r.position !== "QB" || (r.depthOrder ?? 0) > 1) && hasObservedOpportunity(r) && num(r.statMeans[spec.unit]) > 0);
+        spec.recipients.has(r.position) && (r.position !== "QB" || promotableQb(donors[0], r)) && hasObservedOpportunity(r) && num(r.statMeans[spec.unit]) > 0);
       if (eligible.length === 0) {
         report.pools.push({ team, pool: name, offered: round(pooled), assigned: 0, unassigned: round(pooled) });
         report.unresolved.push({
@@ -416,7 +440,7 @@ export function redistributeOutOpportunity(rows: readonly RedistributionRow[]): 
       const cleared = Object.values(donor.statMeans).every(v => num(v) === 0);
       report.donorsWithoutOpportunity.push({
         team, name: donor.name, position: donor.position,
-        reason: donor.canDonate === false || donor.position === "QB" && donor.depthOrder !== 1
+        reason: donor.canDonate === false || donor.position === "QB" && qbStarterEvidence(donor) === null
           ? "no new donation: role evidence or the pipeline transfer decision does not support it"
           : !hasObservedOpportunity(donor)
           ? `he has fewer than ${MIN_OBSERVED_GAMES} games of his own, so his stat line describes the average `

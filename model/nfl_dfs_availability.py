@@ -20,7 +20,7 @@ from typing import Any, Iterable, Mapping
 
 from model.nfl_dfs_historical import MODEL_CONFIG, draftkings_points
 
-VERSION = "nfl-dfs-availability-v2"
+VERSION = "nfl-dfs-availability-v3"
 MIN_OBSERVED_GAMES = int(MODEL_CONFIG["minimum_historical_games"])
 
 # A designation in this set means "not playing". QUESTIONABLE is deliberately
@@ -45,6 +45,48 @@ VOLUME_SCALED = (
 # Scaling it 17x turns that noise into a projection, so the multiplier is
 # capped and the cap is reported rather than hidden.
 MAX_TRANSFER_MULTIPLIER = 4.0
+
+# Depth charts move an injured starter DOWN as soon as he is ruled out
+# (PHI@CHI 2026-09-28: Caleb Williams relisted QB3 behind Keenum and Bagent),
+# so "the absent QB is QB1" stops being true at exactly the moment the
+# promotion is needed. The evidence that survives is the game itself: the
+# quarterback who threw the most passes for this team in its most recent
+# completed game was its starter. Career volume is NOT that evidence -- a
+# benched former starter (Kyler Murray behind Carson Wentz, MIN 2026) carries
+# starter-level attempts from another team. The floor keeps a mop-up
+# appearance in a blowout from counting as a start; a stated threshold.
+LAST_GAME_MIN_ATTEMPTS = 15.0
+
+
+def last_game_passing_leaders(history: Iterable[Any], *, min_attempts: float = LAST_GAME_MIN_ATTEMPTS) -> dict[str, str]:
+    """Team -> identity of the QB who led its most recent game in pass attempts.
+
+    The identity is the GSIS id when present (``gsis:<id>``), else the row's
+    player id (``id:<n>``): player ids are per season, so a week-1 slate whose
+    last game was last season can only be matched by GSIS. ``history`` holds
+    only games before the projection cutoff, so this is point-in-time safe.
+    """
+    from model.nfl_team_aliases import normalize_team
+    latest: dict[str, tuple[int, int]] = {}
+    rows = [row for row in history if getattr(row, "team", None)]
+    for row in rows:
+        team = normalize_team(row.team)
+        key = (int(row.season), int(row.week))
+        if key > latest.get(team, (0, 0)):
+            latest[team] = key
+    leaders: dict[str, tuple[float, str]] = {}
+    for row in rows:
+        team = normalize_team(row.team)
+        if row.position != "QB" or (int(row.season), int(row.week)) != latest.get(team):
+            continue
+        attempts = _num((row.stats or {}).get("attempts"))
+        if attempts >= min_attempts and attempts > leaders.get(team, (0.0, ""))[0]:
+            leaders[team] = (attempts, player_identity(getattr(row, "player_gsis_id", None), row.player_id))
+    return {team: identity for team, (_, identity) in leaders.items()}
+
+
+def player_identity(gsis_id: Any, player_id: Any) -> str:
+    return f"gsis:{gsis_id}" if gsis_id else f"id:{player_id}"
 
 
 def is_out(status: str | None) -> bool:
@@ -81,12 +123,18 @@ def zero_out(projection: Mapping[str, Any], status: str) -> dict[str, Any]:
     actually been paid.
     """
     zeroed = dict(projection)
-    for key in ("model_proj_fpts", "baseline_fpts", "floor_fpts", "median_fpts",
-                "ceiling_fpts", "boom_rate"):
+    keys = ("model_proj_fpts", "baseline_fpts", "floor_fpts", "median_fpts",
+            "ceiling_fpts", "boom_rate")
+    # The range he WOULD have had is kept beside the zero. Without it nothing
+    # downstream can say what a replacement is stepping into: the display-only
+    # replacement upside skipped every starter the pipeline had already ruled
+    # out ("No stored projection range", Goedert on PHI@CHI 2026-09-28).
+    before = {key: projection.get(key) for key in keys}
+    for key in keys:
         zeroed[key] = 0.0
     zeroed["projection_status"] = "out"
     zeroed["availability"] = {"version": VERSION, "rule": "zeroed", "status": status,
-                              "transferred": False}
+                              "transferred": False, "pre_availability": before}
     return zeroed
 
 
@@ -107,6 +155,29 @@ def mark_transferred(donor: Mapping[str, Any], replacement_name: str | None) -> 
     return moved
 
 
+def starter_evidence(absent: Mapping[str, Any], teammates: Iterable[Mapping[str, Any]] = ()) -> str | None:
+    """Why the absent player counts as the starter, or None if he does not.
+
+    ``depth_chart``: still listed first. ``last_game_starter``: a quarterback
+    the chart has already moved down who led this team in pass attempts in
+    its most recent game (``led_last_team_game``, set by the caller from
+    pre-cutoff history via ``last_game_passing_leaders``).
+    """
+    if absent.get("depth_order") == 1:
+        return "depth_chart"
+    if absent.get("position") == "QB" and absent.get("led_last_team_game") is True:
+        return "last_game_starter"
+    return None
+
+
+def _promotable(absent: Mapping[str, Any], player: Mapping[str, Any]) -> bool:
+    """A listed backup, or the chart's QB1 when the starter was moved below him."""
+    depth = player.get("depth_order")
+    if depth is None:
+        return False
+    return int(depth) > 1 or (int(depth) == 1 and absent.get("depth_order") != 1)
+
+
 def replacement_for(
     absent: Mapping[str, Any],
     teammates: Iterable[Mapping[str, Any]],
@@ -117,7 +188,8 @@ def replacement_for(
     Returns None rather than guessing when no candidate has a depth order —
     a silent wrong handoff is worse than no handoff.
     """
-    if absent.get("depth_order") != 1:
+    teammates = list(teammates)
+    if starter_evidence(absent, teammates) is None:
         return None
     candidates = [
         player for player in teammates
@@ -125,8 +197,7 @@ def replacement_for(
         and player.get("team") == absent.get("team")
         and player.get("position") == absent.get("position")
         and not is_out(statuses.get(player.get("player_id")))
-        and player.get("depth_order") is not None
-        and int(player["depth_order"]) > 1
+        and _promotable(absent, player)
     ]
     if not candidates:
         return None
@@ -138,6 +209,7 @@ def transfer_opportunity(
     replacement: Mapping[str, Any],
     *,
     cap: float = MAX_TRANSFER_MULTIPLIER,
+    evidence: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Scale the replacement to the absent player's volume, keeping his own rates.
 
@@ -154,9 +226,11 @@ def transfer_opportunity(
         note.update(applied=False, reason="no opportunity stat defined for this position")
         return dict(replacement), note
 
-    if absent.get("depth_order") != 1 or _num(replacement.get("depth_order")) <= 1:
+    evidence = evidence or ("depth_chart" if absent.get("depth_order") == 1 else None)
+    if evidence is None or not _promotable(absent, replacement):
         note.update(applied=False, reason="absence does not establish a starter-to-backup promotion")
         return dict(replacement), note
+    note.update(starter_evidence=evidence)
     if any(_num(p.get("history_games")) < MIN_OBSERVED_GAMES for p in (absent, replacement)):
         note.update(applied=False, reason="fewer than two observed games; position priors cannot transfer workload")
         return dict(replacement), note
@@ -249,7 +323,8 @@ def apply(
                                          "position": player.get("position"),
                                          "reason": "no verified starter-to-backup promotion with depth evidence"})
             continue
-        updated, note = transfer_opportunity(player, result[backup["player_id"]], cap=cap)
+        updated, note = transfer_opportunity(player, result[backup["player_id"]], cap=cap,
+                                             evidence=starter_evidence(player, projections))
         result[backup["player_id"]] = updated
         # Only a transfer that actually applied closes the donor's pool. When
         # it did not (no usable opportunity history, no stat for the position),
