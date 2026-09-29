@@ -124,6 +124,29 @@ def test_an_ambiguous_name_match_is_an_error(tmp_path):
         save_weekly_history(Recorder(), universe, 2026, frame, report_dir=tmp_path)
 
 
+def test_one_player_listed_twice_in_the_universe_is_not_ambiguous(tmp_path):
+    # nflverse lists a player once per roster week (a mid-season team change
+    # gives him two rows), so the universe can carry the SAME player_id twice.
+    # That is one player seen twice, not two players: it must resolve, not
+    # refuse the whole refresh ("matches 2 players (ids [266, 266])", the
+    # 2026-09-29 outage that froze the board for six hours).
+    twice = UNIVERSE + [dict(UNIVERSE[0], team="NO")]
+    db = Recorder()
+    written = save_weekly_history(db, twice, 2026, pd.DataFrame([player_row("00-0000001", "Alpha Back", "RB")]),
+                                  report_dir=tmp_path)
+    assert written == 1 and db.calls[0][1][0] == 1
+    # The same holds for the name fallback (no gsis on the feed row).
+    db = Recorder()
+    written = save_weekly_history(db, twice, 2026, pd.DataFrame([player_row(None, "Alpha Back", "RB")]),
+                                  report_dir=tmp_path)
+    assert written == 1 and db.calls[0][1][0] == 1
+    # Two DIFFERENT players sharing a gsis id is still ambiguous.
+    clash = UNIVERSE + [{"player_id": 9, "gsis_id": "00-0000001", "name": "Alpha Back", "position": "RB", "team": "NO"}]
+    with pytest.raises(WeeklyIdentityError, match=r"matches 2 players \(ids \[1, 9\]\)"):
+        save_weekly_history(Recorder(), clash, 2026, pd.DataFrame([player_row("00-0000001", "Alpha Back", "RB")]),
+                            report_dir=tmp_path)
+
+
 def test_the_name_fallback_never_crosses_two_gsis_ids(tmp_path):
     # A different person who shares Beta Wide's name and position: his stats
     # must not land on player 2.
