@@ -152,8 +152,10 @@ function main() {
   // cross: an inactive player stays refused even when locked.
   assert.equal(decide(doubtful, { lockedPlayerIds: [90] }).d.eligible, true,
     "a lock overrides the Doubtful default");
-  assert.equal(decide({ ...doubtful, isOut: true }, { lockedPlayerIds: [90] }).d.eligible, false,
-    "a lock never overrides OUT/IR");
+  // A lock never overrides OUT/IR, and says so instead of silently building
+  // without him (2026-09-29: the lock used to make every lineup infeasible).
+  assert.throws(() => decide({ ...doubtful, isOut: true }, { lockedPlayerIds: [90] }),
+    /^Error: Doubtful TE is locked but can't be used: inactive \(OUT\/IR\)\. Remove the lock/, "a lock never overrides OUT/IR");
 
   // Questionable players stay in the pool; they only lose the Captain slot.
   const q = decide({ ...doubtful, dkStatus: "Q", availabilityStatus: "QUESTIONABLE" });

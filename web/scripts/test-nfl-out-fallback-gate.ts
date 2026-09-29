@@ -146,8 +146,9 @@ function main() {
 
   // --- A lock is the user's own instruction and still outranks the gate?
   //     No: an inactive player is refused before locks, as before this change. --
-  const locked = decision(pool, 99, { lockedPlayerIds: [99] });
-  assert.equal(locked.d.eligible, false, "inactivity is not overridable by a lock");
+  //     Since 2026-09-29 the refused lock is an error naming him and why. -------
+  assert.throws(() => decision(pool, 99, { lockedPlayerIds: [99] }),
+    /^Error: Zeroed WR is locked but can't be used: ruled out by our availability feed/, "inactivity is not overridable by a lock");
 
   console.log("Out-fallback gate: a policy zero is a decision, not a missing value.");
   console.log("  - our feed's ruling is honoured even when DK says only Doubtful");

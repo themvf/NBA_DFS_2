@@ -73,4 +73,16 @@ for(const [away,home] of [['ATL','GB'],['SEA','NE']]) {
       .includes(`(${captain.player.captainDkPlayerId})`));
   }
 }
-console.log('Defensive bundle, GPP upper-tail selection, cash lower-tail selection, and baseline fallbacks passed.');
+// "Fall back to DK's season average" works in defensive mode too (the default).
+// Before 2026-09-29 the defensive branch returned first, and 17 players on the
+// week-3 classic silently left the pool.
+const noProjection={...player(11,'WR'),ourProj:null,floorFpts:null,ceilingFpts:null,avgFptsDk:9};
+const fallbackPool=[...pool,noProjection].map(p=>({...p,defensiveForecast:resolveDefensiveForecast(input(p),'baseline-1',defensive,null)}));
+const withFallback=optimizeNflLineups(fallbackPool,{...baseSettings,allowDkFallback:true,defensiveAdjustments:defensive});
+assert.equal(withFallback.eligibility!.find(e=>e.dkPlayerId===11)!.eligible,true,'DK average fills the missing projection');
+assert.ok(withFallback.warnings.includes('1 players used DK Avg fallback.'),'and the page is told');
+assert.equal(optimizeNflLineups(fallbackPool,{...baseSettings,defensiveAdjustments:defensive}).eligibility!.find(e=>e.dkPlayerId===11)!.eligible,false,'off: still excluded');
+const ruledOutNoProjection=fallbackPool.map(p=>p.dkPlayerId===11?{...p,isOut:true}:p);
+assert.equal(optimizeNflLineups(ruledOutNoProjection,{...baseSettings,allowDkFallback:true,defensiveAdjustments:defensive}).eligibility!.find(e=>e.dkPlayerId===11)!.eligible,false,'never restores a ruled-out player');
+
+console.log('Defensive bundle, GPP upper-tail selection, cash lower-tail selection, baseline fallbacks and the DK-average fallback passed.');
