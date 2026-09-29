@@ -123,9 +123,10 @@ def parse_schedule_games(payload: dict) -> list[dict]:
                 "game_state": state or None,
                 "schedule_state": str(game.get("gameScheduleState") or "OK"),
                 "completed": completed,
-                # Live payloads carry running scores; only a final is settlement.
-                "home_score": int(home["score"]) if home.get("score") is not None else None,
-                "away_score": int(away["score"]) if away.get("score") is not None else None,
+                # Live payloads carry running scores. Only a final is stored:
+                # alert settlement reads these columns.
+                "home_score": int(home["score"]) if completed and home.get("score") is not None else None,
+                "away_score": int(away["score"]) if completed and away.get("score") is not None else None,
                 "last_period_type": outcome.get("lastPeriodType") if completed else None,
                 "home_team": home,
                 "away_team": away,

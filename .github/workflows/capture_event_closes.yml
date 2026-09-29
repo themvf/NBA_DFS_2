@@ -55,3 +55,6 @@ jobs:
         run: python -m model.line_alerts --sport nfl --existing-schema
       - name: Rebuild opponent forecasts for changed NFL odds
         run: python -m ingest.nfl_pickem_refresh
+      # Last so an NHL failure cannot skip the established sports' steps.
+      - name: Detect and grade NHL moneyline signals
+        run: python -m model.line_alerts --sport nhl --existing-schema

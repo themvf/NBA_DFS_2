@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getMarketCaptureHealth, getNhlTerminalBoard, type MarketCaptureHealth, type NhlTerminalBoard } from "@/db/queries";
+import { getLineAlerts, getMarketCaptureHealth, getMarketSignalScorecard, getNhlTerminalBoard, type LineAlertRow, type MarketCaptureHealth, type MarketSignalScorecardRow, type NhlTerminalBoard } from "@/db/queries";
 import NhlTerminalClient from "./nhl-terminal-client";
 
 export const dynamic = "force-dynamic";
@@ -30,10 +30,16 @@ export default async function NhlPage({
     };
   }
   let captureHealth: MarketCaptureHealth | null = null;
+  let signals: LineAlertRow[] = [];
+  let scorecard: MarketSignalScorecardRow[] = [];
   try {
-    captureHealth = await getMarketCaptureHealth("nhl", board.gameDate);
+    [captureHealth, signals, scorecard] = await Promise.all([
+      getMarketCaptureHealth("nhl", board.gameDate),
+      getLineAlerts("nhl", 250, undefined, board.games.map((game) => game.matchupId)),
+      getMarketSignalScorecard("nhl"),
+    ]);
   } catch {
-    // The market board stays useful while the checkpoint ledger is unavailable.
+    // The market board stays useful while the audit tables are unavailable.
   }
-  return <NhlTerminalClient board={board} captureHealth={captureHealth} />;
+  return <NhlTerminalClient board={board} captureHealth={captureHealth} signals={signals} scorecard={scorecard} />;
 }

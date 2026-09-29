@@ -56,8 +56,10 @@ game identity and finals; Odds API `icehockey_nhl` quotes go to
 (`nhl-dense-v1` checkpoints). Read
 [`docs/nhl-line-terminal.md`](docs/nhl-line-terminal.md) before changing the
 cadence, the mapping, or `CLOSE_CAPTURE_SPORTS` in `db/schema.py` (its web
-mirror in `ensure-schema.ts` must match or cold starts break). No NHL movement
-detectors exist yet: football-point thresholds do not fit a fixed ±1.5 puck line.
+mirror in `ensure-schema.ts` must match or cold starts break). NHL runs the four generic
+moneyline detectors (Pinnacle gap, DK value, steam, walk) with thresholds
+unchanged; puck-line/total detectors are deferred because football-point
+thresholds do not fit a fixed ±1.5 puck line.
 
 ### NFL regular-season odds cadence — UNDECIDED (opens 2026-09-09)
 

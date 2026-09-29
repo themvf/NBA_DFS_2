@@ -4,7 +4,7 @@ import styles from "./market-signal-scorecard.module.css";
 const LABELS: Record<string, string> = {
   steam: "STEAM", walking: "WALKING", reversal: "REVERSAL",
   reference_led: "REFERENCE LED", price_pressure: "PRICE PRESSURE",
-  pinnacle_divergence: "PINNACLE GAP", book_disagreement: "BOOK DISAGREEMENT",
+  pinnacle_divergence: "PINNACLE GAP", dk_value: "DK VALUE", book_disagreement: "BOOK DISAGREEMENT",
   market_convergence: "CONVERGENCE", late_move: "LATE MOVE",
   favorite_flip: "FAVORITE FLIP", key_cross: "KEY CROSS",
 };
@@ -12,9 +12,9 @@ const LABELS: Record<string, string> = {
 const number = (value: number | null, suffix = "") => value == null ? "—" : `${value > 0 ? "+" : ""}${value.toFixed(1)}${suffix}`;
 const rate = (value: number | null) => value == null ? "—" : `${(value * 100).toFixed(1)}%`;
 
-export default function MarketSignalScorecard({ rows, sport }: { rows: MarketSignalScorecardRow[]; sport: "CFB" | "TENNIS" }) {
+export default function MarketSignalScorecard({ rows, sport }: { rows: MarketSignalScorecardRow[]; sport: "CFB" | "TENNIS" | "NHL" }) {
   return <section className={styles.scorecard} aria-label={`${sport} prospective signal scorecard`}>
-    <header><div><strong>TOP 10 PROSPECTIVE SIGNAL SCORECARD</strong><span>{sport} · RETROSPECTIVE ROWS EXCLUDED</span></div><p>Evidence only · no signal is labeled predictive</p></header>
+    <header><div><strong>{rows.length === 10 ? "TOP 10 " : ""}PROSPECTIVE SIGNAL SCORECARD</strong><span>{sport} · RETROSPECTIVE ROWS EXCLUDED</span></div><p>Evidence only · no signal is labeled predictive</p></header>
     <div className={styles.scroll}><table><thead><tr><th>Signal</th><th>Stage</th><th>Obs</th><th>Pending</th><th>Settled</th><th>W-L-V</th><th>Median CLV</th><th>Avg CLV</th><th>Beat close</th><th>Units</th><th>ROI / settled</th></tr></thead>
       <tbody>{rows.map(row => <tr key={row.alertType}>
         <td>{LABELS[row.alertType] ?? row.alertType.replaceAll("_", " ").toUpperCase()}</td>

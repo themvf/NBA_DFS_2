@@ -107,16 +107,36 @@ differences:
   (`web/src/db/ensure-schema.ts`) is dropped and re-added on every cold start.
   It must list every sport in `CLOSE_CAPTURE_SPORTS`; a test enforces it.
 
+## Moneyline signals (enabled 2026-09-29)
+
+`model/line_alerts.py --sport nhl` runs the four generic moneyline detectors,
+**thresholds unchanged** from MLB/tennis/soccer: `pinnacle_divergence` (≥2pp),
+`dk_value` (DK EV ≥2%), `steam` (≥3 books move ≥1.5pp between consecutive
+captures) and `walking` (≥2pp drift since the first capture). Nothing was fitted
+to NHL data. It runs as the last step of `capture_event_closes.yml` and in the
+hourly NHL refresh.
+
+- **Grading:** CLV against the verified frozen close only (NHL joins the
+  verified_clv_v1 cohort, like CFB/NFL: no close, no grade). Outcomes come from
+  `nhl_matchups` only when `completed`; the schedule refresh no longer stores
+  running scores for live games. Units are recorded at the price frozen at
+  trigger (`exec_decimal`), as CFB does.
+- **Steam spans vary.** NHL checkpoints run from 18h apart down to 10m, so an
+  NHL `steam` can compare captures hours apart. `interval_minutes` is stamped
+  on every NHL steam alert; slice on it before reading steam results.
+- `pinnacle_polymarket_delta` is not registered: NHL captures carry no
+  Polymarket book. The Python and web detector registries are parity-tested
+  for NHL.
+
 ## Deferred (decided 2026-09-29: ship on Vegas odds only)
 
 The launch deliberately uses only the odds pipeline above. Everything below is
 kept for later.
 
-- **Movement detectors.** `model/line_alerts.py` thresholds are football-point
-  based (spread 1.0, total 1.5, key numbers 3/7/10/14). The puck line is fixed at
-  ±1.5 and totals sit at 5.5–6.5, so hockey moves are price-first. NHL
-  detectors need hockey-specific, pre-registered thresholds before they are
-  enabled; until then the page shows descriptive open-to-latest movement only.
+- **Puck-line and total detectors.** The football detectors' thresholds are in
+  points (spread 1.0, total 1.5, key numbers 3/7/10/14). The puck line is fixed at
+  ±1.5 and totals sit at 5.5–6.5, so hockey moves are price-first. These need
+  hockey-specific, pre-registered thresholds before they are enabled.
 - **Starting goalies, injuries, history, a second market.** Candidate sources,
   each probed live on 2026-09-29 so this does not have to be redone:
 

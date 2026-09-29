@@ -53,6 +53,7 @@ _MATCHUP_TBL = {
     "cfb": "cfb_matchups",
     "soccer": "soccer_matchups",
     "tennis": "tennis_matches",
+    "nhl": "nhl_matchups",
 }
 
 
