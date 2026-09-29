@@ -940,6 +940,7 @@ export async function loadSavedNflLineups(uploadId: string, runId: string) {
     salaryBandReport:NflOptimizerResult['salaryBandReport'];duplication:NflOptimizerResult['duplication'];
     ownership:OwnershipAssessment}};
   return { runId, settings: savedSettings, evidence:savedSettings.runEvidence??null,
+    build:{commitSha:((run as {buildInfo?:{commitSha?:string}}).buildInfo?.commitSha)??null},
     defensiveForecasts:(Array.isArray(run.inputSnapshot)?run.inputSnapshot:[]).flatMap((p:unknown)=>{
       const row=p as {dkPlayerId?:number;defensiveForecast?:NflOptimizerPlayer['defensiveForecast']};
       return row.dkPlayerId!=null&&row.defensiveForecast?[{dkPlayerId:row.dkPlayerId,bundle:row.defensiveForecast}]:[];
@@ -982,7 +983,7 @@ export async function applyNflComparison(
 export async function runNflOptimizer(
   uploadId: string,
   settings: NflOptimizerSettings,
-): Promise<{ runId: string; slate: NflWorkspaceSlate; result: NflOptimizerResult; ownership?: OwnershipAssessment;effectiveSettings:NflOptimizerSettings }> {
+): Promise<{ runId: string; slate: NflWorkspaceSlate; result: NflOptimizerResult; ownership?: OwnershipAssessment;effectiveSettings:NflOptimizerSettings; build:{commitSha:string|null} }> {
   await ensureNflDfsTables();
   const slate = await workspaceSlate(uploadId, sanitizeConfirmedStartingQbs(settings.confirmedStartingQbs));
   if(settings.format!==slate.format)throw new Error("Optimizer format must match the saved salary slate.");
@@ -1048,7 +1049,8 @@ export async function exportSavedNflDefensiveEntries(runId:string,entryTemplate:
     eligibility:settings.runEvidence.eligibility,exposureReport:settings.runEvidence.exposureReport,
     salaryBandReport:settings.runEvidence.salaryBandReport,duplication:settings.runEvidence.duplication,
     ownership:{capability:settings.runEvidence.ownership.capability,errors:settings.runEvidence.ownership.errors,
-      features:{leverage:settings.runEvidence.ownership.features.leverage}}});
+      features:{leverage:settings.runEvidence.ownership.features.leverage}},
+    build:{commitSha:(run.buildInfo as {commitSha?:string}|null)?.commitSha??null}});
   if(qa.decision==='blocked')throw new Error(`Saved pre-export QA blocked: ${qa.openBlockers.join(', ')}.`);
   await assertSlatePregame(slate); // Close the generation/export kickoff race.
   return exportNflDkEntries(entryTemplate,saved.lineups);
@@ -1204,7 +1206,7 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
     projectedOwnership: lineup.projectedOwnership,
   })));
   } catch { throw new Error("Unable to save optimizer results. Refresh the slate and retry; an incomplete run may remain saved."); }
-  return { runId, slate:{...slate,players:prepared}, result, ownership: ownershipAssessment,effectiveSettings:resolvedSettings };
+  return { runId, slate:{...slate,players:prepared}, result, ownership: ownershipAssessment,effectiveSettings:resolvedSettings, build:{commitSha:buildInfo.commitSha??null} };
 }
 
 export async function readNflOptimizerAudit(runId:string) {

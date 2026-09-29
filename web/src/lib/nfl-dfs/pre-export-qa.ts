@@ -82,6 +82,16 @@ export interface QaInput {
    * therefore not checked.
    */
   availabilityCoverage?: { state: "blind" | "thin" | "adequate"; resolved: number; considered: number; fresh: number };
+  /**
+   * The code that built these lineups (the run's `build_info.commitSha`).
+   * Absent means the caller did not supply it and is not checked.
+   */
+  build?: { commitSha: string | null };
+}
+
+/** A commit SHA that identifies deployed code, not a local working copy. */
+export function isDeployedBuild(commitSha: string | null | undefined): boolean {
+  return typeof commitSha === "string" && /^[0-9a-f]{7,40}$/i.test(commitSha);
 }
 
 const STALE_BLOCK_HOURS = 48;
@@ -93,6 +103,22 @@ export function runNflPreExportQa(input: QaInput, overrides: QaOverride[] = []):
   const add = (c: Omit<QaCheck, "overridable"> & { overridable?: boolean }) => checks.push({ overridable: false, ...c });
 
   const rosterSize = input.format === "showdown" ? 6 : 9;
+
+  // --- Was this built by the live site? ---
+  // Not overridable. The 2026-09-27 contest lineups were built from a local
+  // checkout 132 commits behind main (commitSha "local-uncommitted"), missing
+  // fixes the live site had; a rule to "use the live site" was broken again
+  // the next evening. A mechanical guard replaces the rule.
+  if (input.build && !isDeployedBuild(input.build.commitSha)) {
+    add({
+      id: "live_build",
+      title: "Built by the live site",
+      severity: "blocker",
+      passed: false,
+      detail: `These lineups were built from a local copy of the code (${input.build.commitSha ?? "no version recorded"}), not the live site, so they may be missing fixes. Rebuild them on the live site to export.`,
+      affected: input.lineups.map((l) => l.lineupNumber),
+    });
+  }
 
   // --- Did we know who was playing? ---
   // Overridable: exporting a slate we are blind on is a legitimate choice as

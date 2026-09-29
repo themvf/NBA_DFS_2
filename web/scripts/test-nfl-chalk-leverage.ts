@@ -9,16 +9,16 @@ import { recommendCaptainRanges, type CaptainCandidate } from "../src/lib/nfl-df
 
 // ── CPT control ─────────────────────────────────────────────────────────────
 {
-  const [policy] = captainExposurePolicies({ "7": { min: 10, max: 20 } }, {}, 0.6);
+  const [policy] = captainExposurePolicies({ "7": { min: 10, max: 20 } }, { min: {}, max: {} }, 0.6);
   assert.deepEqual(policy.captain, { minPct: 0.1, maxPct: 0.2 });
   // The regression this exists for: a per-player policy REPLACES the flat max,
   // so a captain range alone once took a player from 60% to 94-100% overall.
   assert.deepEqual(policy.overall, { minPct: null, maxPct: 0.6 }, "the global cap is carried across");
 
-  const [targeted] = captainExposurePolicies({ "7": { min: null, max: 30 } }, { "7": 0.5 }, 0.6);
+  const [targeted] = captainExposurePolicies({ "7": { min: null, max: 30 } }, { min: { "7": 0.5 }, max: { "7": 0.5 } }, 0.6);
   assert.deepEqual(targeted.overall, { minPct: 0.5, maxPct: 0.5 }, "an explicit overall target wins");
-  assert.deepEqual(captainExposurePolicies({ "7": { min: null, max: null } }, {}, 0.6), [], "blank is no policy");
-  assert.equal(captainExposurePolicies({ "7": { min: -5, max: 250 } }, {}, 0.6)[0].captain.maxPct, 1, "clamped");
+  assert.deepEqual(captainExposurePolicies({ "7": { min: null, max: null } }, { min: {}, max: {} }, 0.6), [], "blank is no policy");
+  assert.equal(captainExposurePolicies({ "7": { min: -5, max: 250 } }, { min: {}, max: {} }, 0.6)[0].captain.maxPct, 1, "clamped");
 
   const base = { mode: "gpp", projectionSource: "our", allowDkFallback: false, nLineups: 20, minSalary: 0,
     maxExposure: 0.6, minUnique: 1, stackPassCatchers: 0, bringBack: false, randomness: 0 } as never;
@@ -89,6 +89,15 @@ const ctx: ArchetypeSlateContext = {
     assert.equal(lineup.archetype?.beneficiariesSatisfied.length, 1, "every lineup carries its leverage player");
   }
   assert.ok(result.warnings.some((w) => w.startsWith("Chalk captain model:")), "the run discloses what it chose");
+
+  // A cap the user types is exact even for a chalk captain (decided 2026-09-28;
+  // Swift went 19/20 under a 60% cap on PHI@CHI). Only the default stretches.
+  const cappedRun = optimizeNflLineups(pool, { ...settings, maxExposure: 0.6, maxExposureByPlayer: { "1": 0.5 } });
+  const bijan = cappedRun.lineups.filter((l) => l.slots.some((s) => s.player.name === "Bijan")).length;
+  assert.ok(bijan <= 4, `Bijan capped at 50% of 8 appears in ${bijan}`);
+  const defaultRun = optimizeNflLineups(pool, { ...settings, maxExposure: 0.6 });
+  const stretched = Math.max(...["Bijan", "Watson", "Love"].map((n) => defaultRun.lineups.filter((l) => l.slots.some((s) => s.player.name === n)).length));
+  assert.ok(stretched > Math.floor(0.6 * 8), "the 60% default may stretch for a chalk captain through captain slots");
 }
 
 console.log("Chalk captain model + CPT control:");

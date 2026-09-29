@@ -251,11 +251,13 @@ export const LEVERAGE_ROTATION = ["WR", "TE", "RB", "K/DST", "QB"] as const;
  * So in this model the cap limits how often a chalk captain is FLEX, and his
  * CAPTAINCY is set by the captain plan (the CPT control, or the objective).
  *
- * An overall TARGET the user set explicitly (min == max) is left untouched --
- * that is their instruction, not a default.
+ * Any overall bound the USER set for the player -- an exact target or a cap
+ * -- is left untouched: that is their instruction, not a default. Decided
+ * 2026-09-28: a typed cap is exact (captain + flex combined); only the global
+ * default may stretch for chalk captains, and the page says so.
  */
-export function chalkCaptainPolicy(policy: PlayerExposurePolicy): PlayerExposurePolicy {
-  if (policy.overall.minPct != null) return policy;
+export function chalkCaptainPolicy(policy: PlayerExposurePolicy, userBound = policy.overallFromUser === true): PlayerExposurePolicy {
+  if (policy.overall.minPct != null || userBound) return policy;
   return {
     ...policy,
     overall: { minPct: null, maxPct: 1 },
