@@ -1197,6 +1197,21 @@ export async function ensurePickemTables(): Promise<void> {
 }
 
 const NFL_DFS_DDLS = [
+  // Recorded Slate Checks (db/nfl-dfs-slate-checks): the scheduled check on
+  // upcoming slates and plain page loads. A repeat result only moves
+  // checked_at, so a new row means something changed.
+  `CREATE TABLE IF NOT EXISTS nfl_dfs_slate_checks (
+    id BIGSERIAL PRIMARY KEY,
+    upload_id UUID NOT NULL,
+    slate_signature TEXT NOT NULL,
+    checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    source TEXT NOT NULL CHECK (source IN ('schedule','page')),
+    headline TEXT NOT NULL,
+    needs INTEGER NOT NULL,
+    items JSONB NOT NULL,
+    digest TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_nfl_dfs_slate_checks_signature ON nfl_dfs_slate_checks (slate_signature, checked_at DESC)`,
   // "Update data" presses: the workflow runs each one dispatched and how they
   // ended (lib/nfl-dfs/data-update). The data is global, so one update serves
   // every slate; upload_id records only where it was pressed.

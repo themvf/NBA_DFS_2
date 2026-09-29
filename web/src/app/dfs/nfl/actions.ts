@@ -6,6 +6,7 @@ import { restoreSavedLineups, savedSlateLabel } from '@/lib/nfl-dfs/saved-worksp
 import { exportNflDkEntries } from '@/lib/nfl-dfs/entry-export';
 import { isDeployedBuild, runNflPreExportQa } from '@/lib/nfl-dfs/pre-export-qa';
 import { buildSlateCheck, type SlateCheck } from '@/lib/nfl-dfs/slate-check';
+import { latestSlateChecks, recordSlateCheck, type RecordedSlateCheck } from '@/db/nfl-dfs-slate-checks';
 import { availabilityCoverage } from '@/lib/nfl-dfs/availability-coverage';
 import { and, desc, eq, or, sql } from "drizzle-orm";
 import { db } from "@/db";
@@ -668,6 +669,13 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
   const owned = attachOwnership(workspace);
   owned.opponentAdjustments = await opponentAdjustmentCoverage(owned);
   owned.slateCheck = slateCheckFor(owned, { incompleteWarning, rosterStaleWarning, rosterCapturedAt, games: upload.games as string[] });
+  // Record what the page saw, on the live site only (a local copy adds its own
+  // "local code" line) and only for a plain read: a confirmed-starter override
+  // is the user's what-if, not the slate's state.
+  if (isDeployedBuild(nflBuildInfo().commitSha) && !Object.keys(startingQbs).length) {
+    try { await recordSlateCheck(uploadId, upload.slateSignature, owned.slateCheck, 'page'); }
+    catch (error) { console.error('NFL slate check could not be recorded', error); }
+  }
   return owned;
 }
 
@@ -994,6 +1002,10 @@ export async function loadLatestNflSlate(): Promise<NflWorkspaceSlate | null> {
 }
 
 export async function listSavedNflSlates() {
+  // The last recorded Slate Check per slate; never allowed to block the list.
+  let checks = new Map<string, RecordedSlateCheck>();
+  try { await ensureNflDfsTables(); checks = await latestSlateChecks(); }
+  catch (error) { console.error('Recorded slate checks could not be read', error); }
   const rows = await db.select({ uploadId: nflDfsSlateUploads.uploadId, signature: nflDfsSlateUploads.slateSignature,
     format: nflDfsSlateUploads.format, games: nflDfsSlateUploads.games, claimed: nflDfsSlateUploads.playerCount,
     stored: sql<number>`(select count(*)::int from nfl_dfs_slate_players p where p.upload_id = nfl_dfs_slate_uploads.upload_id)`,
@@ -1006,8 +1018,50 @@ export async function listSavedNflSlates() {
     // is exactly what happened on 2026-09-19: a 10-player row hid a 670-player
     // row for the same file, and the workspace served the 10.
     .filter(row => isSlateComplete(row.claimed, row.stored))
-    .map(row => ({ uploadId: row.uploadId, label: savedSlateLabel(row.format, row.gameInfo, row.games as string[]) }))
+    .map(row => ({ uploadId: row.uploadId, label: savedSlateLabel(row.format, row.gameInfo, row.games as string[]),
+      check: checks.get(row.signature) ?? null }))
     .filter(row => { if (seen.has(row.label)) return false; seen.add(row.label); return true; });
+}
+
+/** Upcoming saved slates: newest complete upload per slate, first kickoff within `days`. */
+async function upcomingSlateUploads(now: number, days = 8): Promise<{ uploadId: string; signature: string; firstKickoff: string }[]> {
+  const rows = await db.execute(sql`SELECT u.upload_id, u.slate_signature, u.player_count,
+      (SELECT count(*)::int FROM nfl_dfs_slate_players p WHERE p.upload_id=u.upload_id) AS stored,
+      (SELECT array_agg(DISTINCT p.game_info) FROM nfl_dfs_slate_players p WHERE p.upload_id=u.upload_id) AS infos
+    FROM nfl_dfs_slate_uploads u WHERE u.created_at > NOW() - INTERVAL '14 days' ORDER BY u.created_at DESC`);
+  const seen = new Set<string>(), out: { uploadId: string; signature: string; firstKickoff: string }[] = [];
+  for (const row of rows.rows) {
+    const signature = String(row.slate_signature);
+    if (seen.has(signature) || !isSlateComplete(Number(row.player_count), Number(row.stored))) continue;
+    seen.add(signature);
+    const times = ((row.infos as string[] | null) ?? []).map((info) => Date.parse(parseDkGameInfoKickoff(info) ?? '')).filter(Number.isFinite);
+    if (!times.length) continue;
+    const first = Math.min(...times);
+    if (first > now && first - now <= days * 864e5) out.push({ uploadId: String(row.upload_id), signature, firstKickoff: new Date(first).toISOString() });
+  }
+  return out;
+}
+
+/**
+ * The scheduled Slate Check: run the same check the page shows on every
+ * upcoming slate and record it, so a problem (a starter ruled out, stale
+ * depth charts, a source gone dark) is visible on the slate picker before
+ * anyone opens the slate. Called by /api/cron/nfl-slate-check.
+ */
+export async function runScheduledSlateChecks(now = Date.now()) {
+  await ensureNflDfsTables();
+  const results: { uploadId: string; firstKickoff: string; headline?: string; needs?: number; changed?: boolean; error?: string }[] = [];
+  for (const slate of await upcomingSlateUploads(now)) {
+    try {
+      const workspace = await workspaceSlate(slate.uploadId);
+      if (!workspace.slateCheck) { results.push({ ...slate, error: 'No slate check was computed.' }); continue; }
+      const changed = await recordSlateCheck(slate.uploadId, slate.signature, workspace.slateCheck, 'schedule');
+      results.push({ uploadId: slate.uploadId, firstKickoff: slate.firstKickoff, headline: workspace.slateCheck.headline, needs: workspace.slateCheck.needs, changed });
+    } catch (error) {
+      results.push({ uploadId: slate.uploadId, firstKickoff: slate.firstKickoff, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+  return results;
 }
 
 export async function loadSavedNflWorkspace(uploadId: string, startingQbs?: ConfirmedStartingQbs) {
