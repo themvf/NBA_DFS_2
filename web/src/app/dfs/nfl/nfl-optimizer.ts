@@ -514,6 +514,20 @@ export function ownershipPct(player: Pick<NflOptimizerPlayer, "ownPct" | "linest
   return finite(player.ownPct ?? null) ?? finite(player.linestarOwnPct);
 }
 
+/**
+ * Ownership for one Showdown slot. Captain and flex are different fields: a
+ * chalk flex play can be a quiet captain. Applying the combined figure to both
+ * faded the same player twice (PHI@CHI 2026-09-28). A single combined feed
+ * (LineStar) has no slot split, so it is used as is.
+ */
+export function slotOwnershipPct(player: Pick<NflOptimizerPlayer, "ownPct" | "linestarOwnPct" | "captainOwnPct" | "flexOwnPct" | "ownSource">, slot: string): number | null {
+  if (player.ownSource !== "linestar") {
+    if (slot === "CPT" && finite(player.captainOwnPct ?? null) !== null) return finite(player.captainOwnPct ?? null);
+    if (slot === "FLEX" && finite(player.flexOwnPct ?? null) !== null) return finite(player.flexOwnPct ?? null);
+  }
+  return ownershipPct(player);
+}
+
 export const DEFAULT_LEVERAGE_EXPONENT = 0.5;
 export const DEFAULT_MAX_CEILING_MULTIPLE = 2.5;
 /** Ownership above this is clamped so the factor never reaches zero. */
@@ -535,7 +549,7 @@ export function cappedCeiling(ceiling: number, projection: number, maxMultiple: 
   return Math.min(ceiling, projection * maxMultiple);
 }
 
-function objective(player: ResolvedPlayer, settings: NflOptimizerSettings, lineupNumber: number): number {
+function objective(player: ResolvedPlayer, settings: NflOptimizerSettings, lineupNumber: number, slot = "CLASSIC"): number {
   const defensive=player.defensiveForecast?.status==='applied' && settings.defensiveAdjustments?.mode!=='off' ? player.defensiveForecast.selected:null;
   const historical = player.resolvedSource === "our" || player.resolvedSource === "our_fallback";
   const rawBase = settings.mode === "cash"
@@ -553,7 +567,7 @@ function objective(player: ResolvedPlayer, settings: NflOptimizerSettings, lineu
   // penalty could not move a P90 objective; a factor can (53.5% owned at
   // k = 0.5 is ×0.68). Cash mode never fades chalk.
   const leverage = leverageEnabled && settings.mode === "gpp"
-    ? leverageFactor(ownershipPct(player), settings.leverageExponent ?? DEFAULT_LEVERAGE_EXPONENT) : 1;
+    ? leverageFactor(slotOwnershipPct(player, slot), settings.leverageExponent ?? DEFAULT_LEVERAGE_EXPONENT) : 1;
   const workload=player.resolvedSource === "workload"?selectedWorkload(player,settings.workloadPositions):null;
   const boomBonus = settings.mode === "gpp" ? (defensive ? defensive.boom : workload && "boom" in workload ? workload.boom : player.resolvedSource === "calibrated" ? player.calibrated!.boom : historical ? finite(player.boomRate) ?? 0 : 0) * 2 : 0;
   return (base + boomBonus) * leverage + jitter(20260902, lineupNumber, player.dkPlayerId) * settings.randomness * player.projection;
@@ -694,7 +708,7 @@ function buildOne(
       const multiplier = slot === "CPT" ? 1.5 : 1;
       const salary = settings.format === "showdown" ? showdownSalary(player, slot === "CPT") : player.salary;
       const variable: Record<string, number> = {
-        score: objective(player, settings, lineupNumber) * multiplier,
+        score: objective(player, settings, lineupNumber, slot) * multiplier,
         salary,
         [`player_${player.dkPlayerId}`]: 1,
       };

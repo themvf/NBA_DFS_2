@@ -7246,7 +7246,16 @@ DraftKings College Football Classic lives apart from NFL DFS by design: route
 
 ---
 
-## NFL DFS — Field-ownership prior (`nfl-ownership-prior-v1`, 2026-09-27)
+## NFL DFS — Field-ownership prior (`nfl-ownership-prior-v2`, 2026-09-29; v1 2026-09-27)
+
+**v2 corrections (after PHI@CHI 2026-09-28).** Showdown captain + flex ownership
+is capped jointly at 95% (a player fills one slot per lineup; v1 read Swift at
+111%), and value uses at least $3,000 of salary (v1 put a $200 back at 93%).
+Leverage now reads the slot's own ownership (captain for CPT, flex for FLEX),
+and ownership that fails validation switches leverage off with a stated reason
+instead of silently driving the fade. Each run's snapshot records the
+ownership the optimizer actually used.
+
 
 Every leverage feature in the NFL optimizer (ownership penalty, chalk-fade
 archetypes, duplication estimate) is gated on ownership being present; with

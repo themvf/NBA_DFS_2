@@ -4,7 +4,7 @@
  * the source can never be rated validated.
  */
 import assert from "node:assert/strict";
-import { allocateBudget, CLASSIC_MAX_PCT, ownershipScore, projectOwnershipPrior, type OwnershipPriorPlayer } from "../src/lib/nfl-dfs/ownership-prior";
+import { allocateBudget, CLASSIC_MAX_PCT, ownershipScore, projectOwnershipPrior, SHOWDOWN_TOTAL_MAX_PCT, VALUE_SALARY_FLOOR, type OwnershipPriorPlayer } from "../src/lib/nfl-dfs/ownership-prior";
 import { assessOwnership } from "../src/lib/nfl-dfs/ownership-capability";
 
 let id = 0;
@@ -64,4 +64,26 @@ const assessment = assessOwnership(
 );
 assert.equal(assessment.capability, "heuristic_uncalibrated");
 assert.equal(assessment.features.duplicationModel, false, "validated-only features stay off");
+
+// v2 (PHI@CHI 2026-09-28). A Showdown player fills one slot per lineup, so
+// captain + flex can never pass the total cap -- v1 read Swift at 111%.
+const star = (over: Partial<OwnershipPriorPlayer>) => mk("RB", 9600, 15.6, { captainSalary: 14400, ...over });
+const game = [mk("QB", 10800, 18.6, { captainSalary: 16200 }), star({}), mk("WR", 10600, 14.1, { captainSalary: 15900 }),
+  mk("RB", 200, 5.8, { captainSalary: 300 }), ...Array.from({ length: 14 }, (_, i) => mk("WR", 3000 + i * 300, 3 + i * .4, { captainSalary: Math.round((3000 + i * 300) * 1.5) }))];
+const sd2 = projectOwnershipPrior(game, "showdown");
+assert.equal(sd2.version, "nfl-ownership-prior-v2");
+assert.ok(sd2.players.every((p) => p.ownPct <= SHOWDOWN_TOTAL_MAX_PCT + 1e-6), "no player over the one-slot total");
+// Value is floored: a $200 salary no longer makes a backup chalk (v1: Salvon Ahmed 93%).
+const cheap = sd2.players.find((p) => p.dkPlayerId === game[3].dkPlayerId)!;
+const hurts = sd2.players.find((p) => p.dkPlayerId === game[0].dkPlayerId)!;
+assert.ok(cheap.ownPct < hurts.ownPct / 2, `a $200 backup (${cheap.ownPct.toFixed(1)}%) is well below the starting QB (${hurts.ownPct.toFixed(1)}%)`);
+assert.equal(ownershipScore(mk("RB", 200, 5.8)), ownershipScore(mk("RB", VALUE_SALARY_FLOOR, 5.8)), "below the floor, salary no longer moves value");
+
+// Invalid ownership never drives leverage, even when opted in.
+const broken = assessOwnership([{ playerId: 1, medianProjection: 10 }],
+  [{ playerId: 1, flexPct: .87, captainPct: .24, source: "x", asOf: null }], { heuristic: true, optIntoHeuristic: true, format: "showdown" });
+assert.equal(broken.features.leverage, false, "a 111% player switches leverage off");
+assert.match(broken.errors.join(" "), /exceeds 100%/);
+assert.match(broken.warnings.join(" "), /leverage and the chalk fade are off/);
+
 console.log("NFL ownership prior: sums to 900 (100 + 500 showdown), capped, deterministic, never validated by declaration.");
