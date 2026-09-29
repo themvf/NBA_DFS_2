@@ -74,18 +74,25 @@ def test_reviewer_identity_is_mandatory():
         prepare_import(ReviewDb(), payload(), reviewed_by=" ", reviewed_at=NOW)
 
 
+DEFAULT_CONTEXTS = [
+    {"snapshot_id": "player-snap", "source_snapshot_ids": [101], "target_id": "2026_03_ARI_SF"},
+    {"snapshot_id": "qb-snap", "source_snapshot_ids": [101, 102], "target_id": "2026_03_ARI_SF"},
+]
+
+
 class FreezeDb:
-    def __init__(self):
+    def __init__(self, *, games=None, contexts=None, run=True, health=None):
+        self.games = games if games is not None else ["2026_03_ARI_SF"]
+        self.contexts = DEFAULT_CONTEXTS if contexts is None else contexts
+        self.run = run
+        self.health = health
         self.inserts = []
 
     def execute(self, sql, params=None):
         if "FROM nfl_season_games" in sql:
-            return [{"game_id": "2026_03_ARI_SF", "kickoff": NOW + timedelta(minutes=60)}]
+            return [{"game_id": game, "kickoff": NOW + timedelta(minutes=60)} for game in self.games]
         if "FROM nfl_context_snapshots" in sql:
-            return [
-                {"snapshot_id": "player-snap", "source_snapshot_ids": [101]},
-                {"snapshot_id": "qb-snap", "source_snapshot_ids": [101, 102]},
-            ]
+            return [row for row in self.contexts if row["target_id"] in params[0]]
         if "INSERT INTO nfl_availability_prelock_manifests" in sql:
             self.inserts.append(params)
             return []
@@ -93,7 +100,9 @@ class FreezeDb:
 
     def execute_one(self, sql, params=None):
         if "FROM nfl_dfs_projection_runs" in sql:
-            return {"run_id": "00000000-0000-0000-0000-000000000001"}
+            return {"run_id": "00000000-0000-0000-0000-000000000001"} if self.run else None
+        if "FROM nfl_availability_operation_runs" in sql:
+            return self.health
         raise AssertionError(sql)
 
 
@@ -105,10 +114,12 @@ class HealthDb:
     monitor actually sends rather than a hand-picked answer.
     """
 
-    def __init__(self, snapshots, *, kickoff, unresolved=None):
+    def __init__(self, snapshots, *, kickoff, unresolved=None, games=None, official_games=()):
         self.snapshots = snapshots
         self.kickoff = kickoff
         self.unresolved = unresolved or []
+        self.games = games or [(f"2026_04_G{i}", kickoff) for i in range(16)]
+        self.official_games = set(official_games)
         self.inserts = []
 
     def _snapshots(self, sql, params):
@@ -127,7 +138,7 @@ class HealthDb:
 
     def execute(self, sql, params=None):
         if "FROM nfl_season_games" in sql:
-            return [{"game_id": f"2026_04_G{i}", "kickoff": self.kickoff} for i in range(16)]
+            return [{"game_id": game, "kickoff": kickoff} for game, kickoff in self.games]
         if "FROM nfl_context_snapshots" in sql:
             rows = []
             for game in params[0]:
@@ -147,7 +158,9 @@ class HealthDb:
             rows = self._snapshots(sql, params)
             return rows[0] if rows else None
         if "ff_player_injury_observations" in sql:
-            return {"observations": 0, "games": 0, "prelock_games": 0}
+            prelock_ids = set(params[0])
+            return {"observations": 3 * len(self.official_games), "games": len(self.official_games),
+                    "prelock_games": len(self.official_games & prelock_ids)}
         if "FROM nfl_dfs_projection_runs" in sql:
             return {"run_id": "00000000-0000-0000-0000-000000000009", "unresolved": self.unresolved}
         raise AssertionError(sql)
@@ -219,3 +232,93 @@ def test_prelock_manifest_freezes_saved_context_ids_without_reresolving():
     assert manifests[0]["sourceSnapshotIds"] == ["101", "102"]
     assert manifests[0]["projectionRunId"].endswith("0001")
     assert len(db.inserts) == 1
+
+
+def test_a_wave_without_contexts_is_refused_not_written():
+    db = FreezeDb(contexts=[])
+    [wave] = freeze_prelock(db, season=2026, week=3, now=NOW)
+    assert wave["refused"] is True
+    assert "no current availability contexts" in wave["reason"]
+    assert db.inserts == []
+
+
+def test_a_wave_without_a_projection_run_is_refused():
+    db = FreezeDb(run=False)
+    [wave] = freeze_prelock(db, season=2026, week=3, now=NOW)
+    assert wave["refused"] is True and "no projection run" in wave["reason"]
+    assert db.inserts == []
+
+
+def test_a_game_with_no_contexts_refuses_its_whole_wave():
+    db = FreezeDb(games=["2026_03_ARI_SF", "2026_03_LV_KC"])
+    [wave] = freeze_prelock(db, season=2026, week=3, now=NOW)
+    assert wave["refused"] is True and "2026_03_LV_KC" in wave["reason"]
+    assert wave["coverage"]["contextsByGame"] == {"2026_03_ARI_SF": 2, "2026_03_LV_KC": 0}
+    assert db.inserts == []
+
+
+def test_the_manifest_embeds_the_monitor_verdict():
+    report = {"status": "critical", "runId": "op-run", "evaluatedAt": NOW.isoformat(),
+              "alerts": [{"code": "sleeper_stale", "severity": "critical"}]}
+    db = FreezeDb()
+    [manifest] = freeze_prelock(db, season=2026, week=3, now=NOW, health=report)
+    assert manifest["coverage"]["health"] == {"status": "critical", "runId": "op-run",
+                                              "evaluatedAt": NOW.isoformat(), "alertCodes": ["sleeper_stale"]}
+    stored_coverage = db.inserts[0][10].adapted
+    assert stored_coverage["health"]["status"] == "critical"
+
+
+def test_a_separate_freeze_reads_the_latest_monitor_run():
+    fresh = {"run_id": "op-1", "evaluated_at": NOW - timedelta(minutes=1), "status": "warning",
+             "alerts": [{"code": "official_inactives_incomplete"}]}
+    [manifest] = freeze_prelock(FreezeDb(health=fresh), season=2026, week=3, now=NOW)
+    assert manifest["coverage"]["health"]["status"] == "warning"
+    assert manifest["coverage"]["health"]["alertCodes"] == ["official_inactives_incomplete"]
+    old = {**fresh, "evaluated_at": NOW - timedelta(hours=5)}
+    [manifest] = freeze_prelock(FreezeDb(health=old), season=2026, week=3, now=NOW)
+    assert manifest["coverage"]["health"]["status"] == "unmonitored"
+    [manifest] = freeze_prelock(FreezeDb(health=None), season=2026, week=3, now=NOW)
+    assert manifest["coverage"]["health"]["status"] == "unmonitored"
+
+
+class MainDb:
+    def execute(self, sql, params=None):
+        return []
+
+    def close(self, error=False):
+        self.closed_with_error = error
+
+
+@pytest.mark.parametrize("waves, expected", [
+    ([{"refused": True, "slateKey": "2026-3-x", "reason": "pre-lock manifest refused: no contexts"}], 3),
+    ([{"manifestId": "m", "slateKey": "2026-3-x"}], 0),
+    ([], 0),
+])
+def test_freeze_mode_exits_nonzero_when_a_wave_is_refused(monkeypatch, capsys, waves, expected):
+    import ingest.nfl_availability_operations as operations
+    monkeypatch.setattr(operations, "RefreshDatabase", lambda url: MainDb())
+    monkeypatch.setattr(operations, "load_config", lambda: type("C", (), {"database_url": "x"})())
+    monkeypatch.setattr(operations, "freeze_prelock", lambda db, **kwargs: waves)
+    monkeypatch.setattr("sys.argv", ["ops", "--mode", "freeze", "--season", "2026", "--week", "3"])
+    assert operations.main() == expected
+    err = capsys.readouterr().err
+    assert ("Pre-lock freeze refused" in err) is (expected == 3)
+
+
+def test_official_inactives_count_only_games_inside_the_prelock_window():
+    """Thursday's inactive list must not satisfy the check for a Sunday wave."""
+    evaluated = datetime(2026, 10, 4, 15, 45, tzinfo=timezone.utc)
+    sunday = datetime(2026, 10, 4, 17, 0, tzinfo=timezone.utc)
+    db = HealthDb(
+        [snap(6000, "players-live-2026-2026100415", datetime(2026, 10, 4, 15, 7, tzinfo=timezone.utc), 1060)],
+        kickoff=sunday,
+        games=[("2026_04_THU", datetime(2026, 10, 2, 0, 15, tzinfo=timezone.utc)), ("2026_04_SUN", sunday)],
+        official_games={"2026_04_THU"})
+    report = availability_health(db, season=2026, week=4, now=evaluated, persist=False)
+    alerts = {alert["code"]: alert for alert in report["alerts"]}
+    assert report["prelockGames"] == ["2026_04_SUN"]
+    assert report["officialInactivePrelockGames"] == 0
+    assert alerts["official_inactives_incomplete"]["message"].startswith("Official inactive coverage is 0 of 1")
+    covered = HealthDb(db.snapshots, kickoff=sunday, games=db.games, official_games={"2026_04_THU", "2026_04_SUN"})
+    report = availability_health(covered, season=2026, week=4, now=evaluated, persist=False)
+    assert "official_inactives_incomplete" not in {alert["code"] for alert in report["alerts"]}

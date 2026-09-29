@@ -68,7 +68,9 @@ jobs:
         # status=critical. Exit codes: monitor 0 healthy/warning, 2 critical,
         # anything else a crash. A crash skips the freeze (nothing trustworthy
         # to freeze against); a critical result still freezes -- the manifest
-        # records the health status -- and then turns the step red.
+        # records the health status -- and then turns the step red. The freeze
+        # exits 3 when it refuses a wave (no projection run, or a game with no
+        # contexts), which also turns the step red.
         shell: bash
         run: |
           set -euo pipefail

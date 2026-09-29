@@ -11,6 +11,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
+import sys
 from typing import Any
 
 import requests
@@ -36,6 +37,11 @@ VERSION = "nfl-availability-operations-v1"
 # a day and raised a false critical (``implausible_rows``) -- and, worse, could
 # hide a stale live feed behind a fresh unrelated snapshot.
 LIVE_DATASET_PREFIX = "players-live-"
+# Kickoff waves inside this horizon are frozen, and are the games the official
+# inactive-list check is held to.
+PRELOCK_MINUTES = 90
+# A freeze embeds the monitor result only if it is this recent.
+HEALTH_MAX_AGE = timedelta(hours=2)
 
 
 def should_capture(now: datetime, kickoffs: list[datetime]) -> bool:
@@ -128,13 +134,20 @@ def availability_health(db: Any, *, season: int, week: int, now: datetime,
         (season, live_pattern, now, latest["id"] if latest else None),
     )
     game_ids = [str(row["game_id"]) for row in games]
+    prelock_games = [row for row in games if timedelta(0) < row["kickoff"] - now <= timedelta(minutes=PRELOCK_MINUTES)]
+    prelock_ids = [str(row["game_id"]) for row in prelock_games]
+    # The pre-lock alert compares against games INSIDE the window. Counting the
+    # whole week let an earlier wave's inactive list (Thursday's, say) satisfy
+    # the check for a Sunday wave that had none.
     official = db.execute_one(
         """SELECT COUNT(*)::int observations,
-                  COUNT(DISTINCT raw_payload->>'gameId')::int games
+                  COUNT(DISTINCT o.raw_payload->>'gameId')::int games,
+                  (COUNT(DISTINCT o.raw_payload->>'gameId')
+                     FILTER (WHERE o.raw_payload->>'gameId' = ANY(%s)))::int prelock_games
            FROM ff_player_injury_observations o
            JOIN ff_source_snapshots s ON s.id=o.source_snapshot_id
            WHERE o.source='nfl_official' AND o.season=%s AND s.week=%s""",
-        (season, week),
+        (prelock_ids, season, week),
     )
     rows = db.execute(
         """SELECT definition_id,target_id,payload
@@ -186,9 +199,9 @@ def availability_health(db: Any, *, season: int, week: int, now: datetime,
         names = ", ".join(f"{row.get('player')} ({row.get('team')})" for row in unresolved_starters[:6])
         alerts.append({"severity": "warning", "code": "starter_promotion_unresolved",
                        "message": f"{len(unresolved_starters)} ruled-out starter(s) have no promoted replacement: {names}."})
-    prelock_games = [row for row in games if timedelta(0) < row["kickoff"] - now <= timedelta(minutes=90)]
-    if prelock_games and int(official["games"] or 0) < len(prelock_games):
-        alerts.append({"severity": "warning", "code": "official_inactives_incomplete", "message": f"Official inactive coverage is {int(official['games'] or 0)} of {len(prelock_games)} games inside the pre-lock window."})
+    prelock_covered = int(official["prelock_games"] or 0)
+    if prelock_games and prelock_covered < len(prelock_games):
+        alerts.append({"severity": "warning", "code": "official_inactives_incomplete", "message": f"Official inactive coverage is {prelock_covered} of {len(prelock_games)} games inside the pre-lock window."})
     critical = any(row["severity"] == "critical" for row in alerts)
     status = "critical" if critical else "warning" if alerts else "healthy"
     report = {
@@ -197,6 +210,7 @@ def availability_health(db: Any, *, season: int, week: int, now: datetime,
         "qbContexts": len(qb_rows), "playerContexts": len(player_rows),
         "officialInactiveObservations": int(official["observations"] or 0),
         "officialInactiveGames": int(official["games"] or 0),
+        "prelockGames": prelock_ids, "officialInactivePrelockGames": prelock_covered,
         "states": dict(sorted(states.items())), "latestSleeperSnapshotId": latest["id"] if latest else None,
         "latestSleeperDataset": latest.get("dataset") if latest else None,
         "latestProjectionRunId": str(latest_run["run_id"]) if latest_run else None,
@@ -216,8 +230,42 @@ def availability_health(db: Any, *, season: int, week: int, now: datetime,
     return {**report, "runId": run_id}
 
 
+def latest_health(db: Any, *, season: int, week: int, now: datetime) -> dict[str, Any]:
+    """The most recent monitor verdict for the week, as a freeze embeds it."""
+    row = db.execute_one(
+        """SELECT run_id,evaluated_at,status,report->'alerts' alerts
+           FROM nfl_availability_operation_runs
+           WHERE season=%s AND week=%s AND evaluated_at<=%s
+           ORDER BY evaluated_at DESC,created_at DESC LIMIT 1""",
+        (season, week, now),
+    )
+    if not row or now - row["evaluated_at"] > HEALTH_MAX_AGE:
+        return {"status": "unmonitored", "runId": row["run_id"] if row else None,
+                "evaluatedAt": row["evaluated_at"].isoformat() if row else None, "alertCodes": []}
+    return {"status": row["status"], "runId": row["run_id"], "evaluatedAt": row["evaluated_at"].isoformat(),
+            "alertCodes": sorted({str(alert.get("code")) for alert in (row["alerts"] or [])})}
+
+
+def _health_summary(report: dict[str, Any]) -> dict[str, Any]:
+    return {"status": report.get("status"), "runId": report.get("runId"),
+            "evaluatedAt": report.get("evaluatedAt"),
+            "alertCodes": sorted({str(alert.get("code")) for alert in report.get("alerts") or []})}
+
+
 def freeze_prelock(db: Any, *, season: int, week: int, now: datetime,
-                   horizon_minutes: int = 90) -> list[dict[str, Any]]:
+                   horizon_minutes: int = PRELOCK_MINUTES,
+                   health: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """Freeze each kickoff wave inside the horizon, or refuse it with a reason.
+
+    A manifest is an audit claim ("this is what we knew before lock"). One
+    with no projection run, no contexts, or a game that has no contexts at all
+    freezes nothing and used to be written anyway; those waves are now
+    returned as refusals (``refused: True`` + ``reason``) and nothing is
+    inserted. Every written manifest carries the monitor verdict it was frozen
+    under in ``coverage.health``.
+    """
+    health = _health_summary(health) if health is not None else latest_health(
+        db, season=season, week=week, now=now)
     games = db.execute(
         """SELECT nflverse_game_id game_id,kickoff FROM nfl_season_games
            WHERE season=%s AND week=%s AND game_type='REG'
@@ -230,7 +278,7 @@ def freeze_prelock(db: Any, *, season: int, week: int, now: datetime,
     saved = []
     for kickoff, game_ids in waves.items():
         contexts = db.execute(
-            """SELECT snapshot_id,source_snapshot_ids FROM nfl_context_snapshots
+            """SELECT snapshot_id,source_snapshot_ids,target_id FROM nfl_context_snapshots
                WHERE publication_status='current' AND target_id=ANY(%s)
                  AND as_of_at<=%s AND available_at<=%s
                  AND definition_id IN ('player_game_availability@v1','team_qb_state@v1')
@@ -245,13 +293,28 @@ def freeze_prelock(db: Any, *, season: int, week: int, now: datetime,
         )
         context_ids = sorted(str(row["snapshot_id"]) for row in contexts)
         source_ids = sorted({str(value) for row in contexts for value in (row["source_snapshot_ids"] or [])})
-        coverage = {"games": len(game_ids), "contexts": len(context_ids), "hasProjectionRun": bool(run)}
+        per_game = Counter(str(row["target_id"]) for row in contexts)
+        games_without_contexts = sorted(game for game in game_ids if not per_game.get(game))
+        coverage = {"games": len(game_ids), "contexts": len(context_ids), "hasProjectionRun": bool(run),
+                    "contextsByGame": {game: per_game.get(game, 0) for game in sorted(game_ids)},
+                    "health": health}
         body = {
             "season": season, "week": week, "slateKey": f"{season}-{week}-{kickoff.isoformat()}",
             "decisionAt": now.isoformat(), "kickoffAt": kickoff.isoformat(), "gameIds": sorted(game_ids),
             "projectionRunId": str(run["run_id"]) if run else None,
             "contextSnapshotIds": context_ids, "sourceSnapshotIds": source_ids, "coverage": coverage,
         }
+        if not run:
+            reason = "no projection run exists for the week as of the decision time"
+        elif not context_ids:
+            reason = "no current availability contexts exist for any game in the wave"
+        elif games_without_contexts:
+            reason = f"no current availability contexts for {', '.join(games_without_contexts)}"
+        else:
+            reason = None
+        if reason:
+            saved.append({"refused": True, "reason": f"pre-lock manifest refused: {reason}", **body})
+            continue
         digest = stable_digest(body); manifest_id = stable_digest({"type": "prelock", **body})
         db.execute(
             """INSERT INTO nfl_availability_prelock_manifests
@@ -296,8 +359,15 @@ def main() -> int:
         if args.mode in {"monitor", "all"}:
             result["health"] = availability_health(db, season=season, week=week, now=now)
         if args.mode in {"freeze", "all"}:
-            result["prelock"] = freeze_prelock(db, season=season, week=week, now=now)
+            result["prelock"] = freeze_prelock(db, season=season, week=week, now=now,
+                                               health=result.get("health"))
         print(json.dumps(result, indent=2, default=str))
+        refused = [wave for wave in result.get("prelock", []) if wave.get("refused")]
+        for wave in refused:
+            # stderr, so the JSON on stdout stays parseable in the artifact.
+            print(f"::error title=Pre-lock freeze refused::{wave['slateKey']}: {wave['reason']}", file=sys.stderr)
+        if refused:
+            return 3
         return 2 if result.get("health", {}).get("status") == "critical" else 0
     except Exception:
         failed = True
