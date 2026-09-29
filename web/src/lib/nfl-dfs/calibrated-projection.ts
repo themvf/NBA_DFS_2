@@ -1,4 +1,5 @@
 import release from "./calibrated-release.json";
+import { sameNflTeam } from "./availability";
 
 export { release as calibratedRelease };
 /** The release shape the readers need; tests inject a synthetic one. */
@@ -57,7 +58,9 @@ function readPinnedProjection(snapshot: CalibrationSnapshot | undefined, target:
   if (!snapshot) return no("No frozen candidate for this player and week.");
   if (snapshot.playerId !== target.ffPlayerId || snapshot.season !== season || snapshot.week !== week) return no("Candidate identity/week mismatch.");
   const p = record(snapshot.payload), candidate = record(p.candidate);
-  if (p.position !== target.position || p.team !== target.team || !target.opponent || p.opponent !== target.opponent) return no("Candidate matchup mismatch.");
+  // By franchise: the shadow job writes WSH, DraftKings writes WAS, so a string
+  // comparison refused every Washington candidate as a "matchup mismatch".
+  if (p.position !== target.position || !sameNflTeam(p.team, target.team) || !target.opponent || !sameNflTeam(p.opponent, target.opponent)) return no("Candidate matchup mismatch.");
   if (p.source_study_digest !== pinned.studyDigest || candidate.recipe_digest !== policy.recipeDigest) return no("Candidate recipe is not pinned to this release.");
   const captured = Date.parse(snapshot.capturedAt), kickoff = Date.parse(snapshot.kickoff);
   if (![captured, kickoff, now].every(Number.isFinite) || captured > now || captured >= kickoff || now >= kickoff) return no("Candidate is not usable before kickoff.");

@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 import { optimizeNflLineups, DEFAULT_NFL_PUNT_POLICY, type NflOptimizerPlayer, type NflOptimizerSettings, type NflPuntPolicy } from "../src/app/dfs/nfl/nfl-optimizer";
 import { evaluatePuntEligibility, validateNflPuntPolicy, type NflPlayerRoleEvidence, type PuntOverride } from "../src/lib/nfl-dfs/punt-policy";
+import { rolePolicyEvidence, ROSTER_FRESH_MS, type Availability } from "../src/lib/nfl-dfs/availability";
 
 function player(over: Partial<NflOptimizerPlayer> & { dkPlayerId: number; salary: number }): NflOptimizerPlayer {
   return {
@@ -146,7 +147,25 @@ function main() {
     "locking a $300 body produces a readable error, not zero lineups",
   );
 
-  console.log("NFL GPP Phase 1 (punt policy): P1-AC1..AC5 and unit precedence passed.");
+  // --- The stale-role gate the preset text promises actually fires (2026-09-29 audit) ---
+  // Nothing set availabilityState before, so "stale role evidence fails closed" never ran.
+  const at = Date.parse("2026-09-28T18:00:00Z");
+  const roster = (capturedAt: string, over: Partial<Availability> = {}): Availability =>
+    ({ role: "Listed WR3", status: "ACTIVE", source: "Sleeper roster", capturedAt, blockedReason: null, fresh: at - Date.parse(capturedAt) <= ROSTER_FRESH_MS, ...over });
+  assert.deepEqual(rolePolicyEvidence(roster("2026-09-28T12:00:00Z"), at), { availabilityState: "probable", depthRole: "Listed WR3" });
+  assert.deepEqual(rolePolicyEvidence(roster("2026-09-24T12:00:00Z"), at), { availabilityState: "stale", depthRole: "Listed WR3" });
+  assert.equal(rolePolicyEvidence(roster("2026-09-28T12:00:00Z", { officialConfirmed: true }), at).availabilityState, "confirmed");
+  assert.deepEqual(rolePolicyEvidence(roster("2026-09-24T12:00:00Z", { pinned: true, role: "Role unresolved" }), at), { availabilityState: "unknown", depthRole: null }, "an unresolved pinned decision is unknown, not stale");
+  assert.equal(rolePolicyEvidence(undefined, at).availabilityState, "unknown");
+  const staleCheap = player({ dkPlayerId: 60, salary: 2500, ourProj: 7, ...rolePolicyEvidence(roster("2026-09-24T12:00:00Z"), at) });
+  const staleRun = optimizeNflLineups([...corePool(), staleCheap], showdownSettings());
+  const staleDecision = staleRun.eligibility!.find((e) => e.dkPlayerId === 60)!;
+  assert.equal(staleDecision.eligible, false);
+  assert.equal(staleDecision.reasonCode, "EVIDENCE_STALE");
+  const freshCheap = player({ dkPlayerId: 61, salary: 2500, ourProj: 7, ...rolePolicyEvidence(roster("2026-09-28T12:00:00Z"), at) });
+  assert.equal(optimizeNflLineups([...corePool(), freshCheap], showdownSettings()).eligibility!.find((e) => e.dkPlayerId === 61)!.eligible, true, "fresh evidence clears the same player");
+
+  console.log("NFL GPP Phase 1 (punt policy): P1-AC1..AC5, unit precedence and the stale-role gate passed.");
 }
 
 main();
