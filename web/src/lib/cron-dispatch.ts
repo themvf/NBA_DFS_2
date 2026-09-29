@@ -102,19 +102,24 @@ export const DISPATCH_JOBS: readonly DispatchJob[] = [
   {
     key: "nfl-dfs-postweek",
     workflow: "refresh_nfl_dfs_postweek.yml",
-    // Tuesday and Wednesday, the 10:07 UTC tick: after Monday night's game is
-    // published, then a second pass for late corrections. Every step is
-    // idempotent, so the workflow's later GitHub fallback slot is harmless.
-    due: (now) => [2, 3].includes(now.getUTCDay()) && now.getUTCHours() === 10 && hourTick(now),
+    // Tuesday 14:07 UTC, after Monday night's stats are published (nflverse
+    // landed them at 11:34 UTC on 2026-09-29, so the old 10:07 slot always
+    // missed MNF) and an hour after the 13:07 pbp relabel, whose labels DST
+    // scoring reads (nfl_dfs_results.pbp_components). Then Wednesday 10:07 UTC
+    // for late corrections. Every step is idempotent, so the workflow's later
+    // GitHub fallback slot is harmless.
+    due: (now) => ((now.getUTCDay() === 2 && now.getUTCHours() === 14) || (now.getUTCDay() === 3 && now.getUTCHours() === 10)) && hourTick(now),
     why: "Realized DK points, slate report cards, and the weekly replacement-upside grade.",
   },
   {
     key: "nfl-pbp-archetypes",
     workflow: "refresh_nfl_pbp_archetypes.yml",
-    // Monday 12:07 and Tuesday 09:07 UTC (its former GitHub slots, which
-    // GitHub skipped on 09-14 and 09-21 and ran seven hours late on 09-28).
+    // Monday 12:07 and Tuesday 13:07 UTC. GitHub skipped its own slots on 09-14,
+    // 09-21 and 09-29 and ran one seven hours late on 09-28. Tuesday is after
+    // Monday night's data is published (~11:34 UTC on 2026-09-29) and an hour
+    // before the post-week DST scoring that reads these labels.
     // Dispatched with no inputs = the self-healing --relabel-stale mode.
-    due: (now) => ((now.getUTCDay() === 1 && now.getUTCHours() === 12) || (now.getUTCDay() === 2 && now.getUTCHours() === 9)) && hourTick(now),
+    due: (now) => ((now.getUTCDay() === 1 && now.getUTCHours() === 12) || (now.getUTCDay() === 2 && now.getUTCHours() === 13)) && hourTick(now),
     why: "Play-by-play labels behind DST scoring and the matchup studies.",
   },
   {

@@ -151,7 +151,7 @@ Nothing in this grade needs a person to run it.
 | Step | What runs it | When |
 |---|---|---|
 | Freeze what the slate showed | Vercel cron `/api/cron/nfl-pool-capture` (existing pool audit) | Every minute; one copy within 24 hours of each kickoff, then every minute of the last 20 |
-| DraftKings results | `refresh_nfl_dfs_postweek.yml`, job `review` | Tuesday and Wednesday 10:07 UTC, dispatched by Vercel cron (`/api/cron/dispatch`, job `nfl-dfs-postweek`); GitHub schedule 14:41 UTC the same days as fallback |
+| DraftKings results | `refresh_nfl_dfs_postweek.yml`, job `review` | Tuesday 14:07 and Wednesday 10:07 UTC, dispatched by Vercel cron (`/api/cron/dispatch`, job `nfl-dfs-postweek`); GitHub schedule 14:41 UTC the same days as fallback. Tuesday moved from 10:07 on 2026-09-29, before any graded week: Monday night's stats landed at 11:34 UTC, so 10:07 always missed them; 14:07 also follows the 13:07 pbp relabel that DST scoring reads. Timing only; the grade is unchanged |
 | Grade | Same workflow, job `grade-replacement-upside`, after `review` | Same slots. It first runs the gate's own tests and refuses to grade if they fail |
 | Record | `nfl_replacement_upside_grade_runs` (every run) and `nfl_replacement_upside_grade_verdicts` (the one look) | Each run |
 | Show | "If he gets the job" grade card on `/dfs/nfl/results` | Floor progress while blinded, the frozen verdict after |

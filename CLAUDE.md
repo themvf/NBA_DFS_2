@@ -7005,7 +7005,7 @@ backups (pinball, event-clustered bootstrap), and boom must not be worse. The
 weekly run is blinded until 60 events / 130 flagged player-games / 8 weeks,
 and the first run past those floors freezes the verdict (one look). It is
 fully automated. It is the second job of `refresh_nfl_dfs_postweek.yml`,
-dispatched Tuesday and Wednesday 10:07 UTC by `/api/cron/dispatch` (job
+dispatched Tuesday 14:07 and Wednesday 10:07 UTC by `/api/cron/dispatch` (job
 `nfl-dfs-postweek`), with a GitHub fallback at 14:41 UTC. Runs are recorded in
 `nfl_replacement_upside_grade_runs` and the verdict in
 `nfl_replacement_upside_grade_verdicts`: one row per grade version,
