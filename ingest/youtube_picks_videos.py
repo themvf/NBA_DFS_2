@@ -76,14 +76,24 @@ def _get_proxy_config():
     return None
 
 
-def _fetch_rss_entries(channel_id: str) -> list[dict]:
-    """Return [{"video_id", "title", "published_at"}, ...], most recent first."""
-    resp = requests.get(
-        f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}",
-        headers={"User-Agent": "Mozilla/5.0"},
-        timeout=20,
-    )
-    resp.raise_for_status()
+def _fetch_rss_entries(channel_id: str, attempts: int = 2) -> list[dict]:
+    """Return [{"video_id", "title", "published_at"}, ...], most recent first.
+
+    YouTube's feed endpoint intermittently answers 404/5xx for a live channel
+    (BettingPros 404'd at 05:15 UTC 2026-09-29 and answered 200 minutes
+    later), so one retry after a short pause. A persistent 404 still raises:
+    that is what a terminated or renamed channel looks like.
+    """
+    url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
+    for attempt in range(attempts):
+        try:
+            resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=20)
+            resp.raise_for_status()
+            break
+        except requests.exceptions.RequestException:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(3)
     root = ET.fromstring(resp.text)
     entries = []
     for entry in root.findall("atom:entry", _RSS_NS):
@@ -245,12 +255,45 @@ def fetch_new_videos_for_all_channels(db: DatabaseManager, limit: int = _DEFAULT
         return 0
 
     totals = {"stored": 0, "ip_blocked": 0, "other_failed": 0, "candidates": 0}
+    failed_channels: list[tuple[dict, str]] = []
     for c in channels:
-        s = fetch_new_pick_videos(db, channel_id=c["channel_id"], channel_name=c["channel_name"], limit=limit)
+        # One unreachable channel must not stop every channel after it. Until
+        # 2026-09-29 a single terminated channel (BetUS, whose feed 404s)
+        # raised here on every run, so the 16 channels ordered after it went
+        # unscraped from 2026-07-28 on while the job just showed red.
+        try:
+            s = fetch_new_pick_videos(db, channel_id=c["channel_id"], channel_name=c["channel_name"], limit=limit)
+        except (requests.exceptions.RequestException, ET.ParseError) as exc:
+            reason = _describe_feed_failure(exc)
+            failed_channels.append((c, reason))
+            print(f"::warning title=YouTube channel skipped::{c['channel_name']} ({c['channel_id']}): {reason}")
+            continue
         for k in totals:
             totals[k] += s[k]
     _report_scrape_health(totals, len(channels))
+    if failed_channels:
+        print(f"YouTube picks: {len(failed_channels)} of {len(channels)} channel feed(s) failed: "
+              + "; ".join(f"{c['channel_name']} ({reason})" for c, reason in failed_channels))
+    if len(failed_channels) == len(channels):
+        # Nothing was checked at all: that is an outage, not a quiet run.
+        print(f"::error title=YouTube picks scrape::every channel feed failed ({len(channels)} of "
+              f"{len(channels)}); YouTube's RSS endpoint or this runner's network is down")
+        raise SystemExit(1)
     return totals["stored"]
+
+
+def _describe_feed_failure(exc: Exception) -> str:
+    """One plain line for a channel whose RSS feed could not be read."""
+    response = getattr(exc, "response", None)
+    status = getattr(response, "status_code", None)
+    if status == 404:
+        return ("RSS feed returned 404 twice; the channel may be terminated or renamed "
+                "(deactivate it on /youtube-picks if this persists)")
+    if status is not None:
+        return f"RSS feed returned HTTP {status}"
+    if isinstance(exc, ET.ParseError):
+        return "RSS feed was not valid XML"
+    return f"RSS feed request failed ({type(exc).__name__})"
 
 
 if __name__ == "__main__":
