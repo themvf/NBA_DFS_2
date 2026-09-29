@@ -36,7 +36,9 @@ const base = (over: Partial<ChecklistInputs> = {}): ChecklistInputs => ({
   manifest: [
     wf("hourly.yml", { crons: ["5 * * * *"] }),                 // ran 12:05: pass
     wf("broken.yml", { crons: ["0 */3 * * *"] }),               // last run failed
-    wf("dropped.yml", { crons: ["0 9 * * 2"] }),                // should have run 09:00 today, last ran yesterday
+    wf("dropped.yml"),                                          // the dispatcher started it at 09:07 today; it never ran
+    wf("late.yml", { crons: ["0 9 * * *"] }),                   // GitHub daily 09:00, not run yet today: late, not missed
+    wf("stopped.yml", { crons: ["0 9 * * *"] }),                // GitHub daily, last ran two days ago: missed
     wf("follower.yml", { afterWorkflows: ["hourly"] }),         // did not follow hourly's success
     wf("manual.yml"),                                           // manual, succeeded
     wf("oldmanual.yml"),                                        // manual, failed a month ago
@@ -44,11 +46,13 @@ const base = (over: Partial<ChecklistInputs> = {}): ChecklistInputs => ({
     wf("new.yml", { crons: ["0 12 * * *"] }),                   // not on GitHub yet (404)
     wf("never.yml", { crons: ["0 * * * *"] }),                  // scheduled, no runs at all
   ],
-  dispatchTimes: {},
+  dispatchTimes: { "dropped.yml": { past: [new Date("2026-09-28T09:07:00Z"), new Date("2026-09-29T09:07:00Z")], future: [new Date("2026-09-30T09:07:00Z")] } },
   runs: {
     "hourly.yml": [run("hourly.yml", "2026-09-29T11:05:00Z", "success", "hourly"), run("hourly.yml", "2026-09-29T12:05:00Z", "success", "hourly")],
     "broken.yml": [run("broken.yml", "2026-09-29T09:00:00Z", "failure"), run("broken.yml", "2026-09-29T12:00:00Z", "failure"), run("broken.yml", "2026-09-29T06:00:00Z", "success")],
-    "dropped.yml": [run("dropped.yml", "2026-09-28T19:01:00Z", "success")],
+    "dropped.yml": [run("dropped.yml", "2026-09-28T09:08:00Z", "success")],
+    "late.yml": [run("late.yml", "2026-09-28T11:40:00Z", "success")],
+    "stopped.yml": [run("stopped.yml", "2026-09-27T10:02:00Z", "success")],
     "follower.yml": [run("follower.yml", "2026-09-29T09:00:00Z", "success")],
     "manual.yml": [run("manual.yml", "2026-09-20T10:00:00Z", "success")],
     "oldmanual.yml": [run("oldmanual.yml", "2026-08-20T10:00:00Z", "failure")],
@@ -80,7 +84,12 @@ assert.match(get("workflow:hourly.yml").nextEventAt!, /2026-09-29T13:05/);
 assert.equal(get("workflow:broken.yml").status, "fail");
 assert.match(get("workflow:broken.yml").detail, /2 runs in a row failed.*last success/);
 assert.equal(get("workflow:dropped.yml").status, "fail");
-assert.match(get("workflow:dropped.yml").detail, /Overdue: scheduled .* has not run since/);
+assert.match(get("workflow:dropped.yml").detail, /^Overdue: the dispatcher was due to start it Sep 29, 5:07 AM ET \(allowing 2 h\), but it has not run since/);
+// GitHub's scheduler is best effort: a daily job 3.7 h late is late, not missed.
+assert.equal(get("workflow:late.yml").status, "pass", "GitHub slot inside its 12 h grace");
+// But a GitHub schedule that has stopped firing is caught once a slot is 12 h old.
+assert.equal(get("workflow:stopped.yml").status, "fail");
+assert.match(get("workflow:stopped.yml").detail, /^Overdue: GitHub's scheduler was due to start it Sep 28, 5:00 AM ET \(allowing 12 h\), but it has not run since Sep 27/);
 assert.equal(get("workflow:follower.yml").status, "fail");
 assert.match(get("workflow:follower.yml").detail, /Did not run after hourly succeeded/);
 assert.equal(get("workflow:follower.yml").nextEventNote, "after hourly");
@@ -92,6 +101,7 @@ assert.match(get("workflow:disabled.yml").detail, /disabled manually/);
 assert.equal(get("workflow:new.yml").status, "info");
 assert.match(get("workflow:new.yml").detail, /Not on GitHub's default branch yet/);
 assert.equal(get("workflow:never.yml").status, "fail");
+assert.match(get("workflow:never.yml").detail, /^Scheduled by GitHub's scheduler .*allowing 12 h\) but no run found\.$/);
 assert.equal(get("data:nfl_dfs_projections").status, "pass");
 assert.equal(get("data:nfl_dfs_projections").group, "NFL DFS");
 assert.equal(get("data:nfl_dfs_projections").nextEventAt, get("workflow:hourly.yml").nextEventAt, "next write = owner job's next run");

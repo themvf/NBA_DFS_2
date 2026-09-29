@@ -420,6 +420,12 @@ to a person.
   (March-November). The PBP archetypes Tuesday run had been dropped by GitHub the
   same way. Data rows state what the freshness reading saw *as of that reading*,
   and the monitor row fails one hour past its 3 h cadence.
+- **GitHub starts this repo's schedules every ~4-8 h, whatever the cron says**
+  (measured 2026-09-26..29: every-15-minute jobs ran 3.8-4.7 h apart, every-3-hour
+  jobs 5.7-7 h, daily jobs ~26 h). So "overdue" allows 2 h after a dispatcher slot
+  (Vercel fires on time) but 12 h after a GitHub-cron slot, which still catches a
+  schedule GitHub has stopped running. A job whose timing matters goes on
+  `/api/cron/dispatch`, not a tighter GitHub cron.
 - **Rule for new work:** every new scheduled job or data feed must show up on this
   checklist (a workflow appears automatically via the manifest; a new dataset
   needs a `model/pipeline_health.py` entry), and every fallback must surface a
