@@ -63,12 +63,19 @@ def test_nfl_table_gates_every_derived_rate() -> None:
     """Raw counts are always allowed; derived rates are not. "2-6" is an
     observation, "25.0%" is an inference the sample cannot support."""
     src = _read(NFL_PANEL)
-    block = src.split("Sharp-signal accrual")[1]
-    for field in ("row.winRate", "row.beatClose", "row.avgClvPp"):
-        occurrences = block.count(field)
-        assert occurrences, f"{field} no longer rendered — test needs updating"
-        # Each must sit behind the disclosure gate.
-        assert re.search(rf"d\.disclosable\s*\?[^:]*{re.escape(field)}", block), (
+    # The audit table's heading. It was "Sharp-signal accrual" until the
+    # 2026-09-06 terminal-layout rewrite (473f5d1), which also renamed the row
+    # variable from `row` to `r`; nothing ran this test, so it sat broken until
+    # CI was added. Match any row variable name, not one spelling.
+    anchor = "PROSPECTIVE SIGNAL AUDIT"
+    assert anchor in src, f"audit table heading {anchor!r} not found — test needs updating"
+    block = src.split(anchor)[1]
+    for field in ("winRate", "beatClose", "avgClvPp"):
+        uses = re.findall(rf"\b\w+\.{field}\b", block)
+        assert uses, f"{field} no longer rendered — test needs updating"
+        # Each rendering must sit behind the disclosure gate.
+        gated = re.findall(rf"d\.disclosable\s*\?[^:]*\b\w+\.{field}\b", block)
+        assert len(gated) == len(uses), (
             f"{field} is rendered without checking disclosure()"
         )
     assert "multiplicityNote" in src, "the multiplicity warning must be present"

@@ -8,11 +8,13 @@ assert.equal(movementKind("reversal"), "reversal");
 assert.equal(movementKind("dk_value"), null);
 const game: Pick<CfbTerminalRow, "commenceTime" | "history"> = {
   commenceTime: "2026-09-05T19:00:00Z",
+  // Book keys must be in the six-book policy (src/lib/sportsbook-policy.ts);
+  // movementSeries ignores any other book since 2026-09-07.
   history: [
-    { capturedAt: "2026-09-05T18:30:00Z", books: { a: { spread_home: -4, total_line: 51 } } },
-    { capturedAt: "2026-09-05T18:00:00Z", books: { a: { spread_home: -3, total_line: 50 }, b: { spread_home: -2.5 } } },
-    { capturedAt: "2026-09-05T19:00:00Z", books: { a: { spread_home: -8 } } },
-    { capturedAt: "2026-09-05T18:15:00Z", books: { a: { spread_home: null } } },
+    { capturedAt: "2026-09-05T18:30:00Z", books: { draftkings: { spread_home: -4, total_line: 51 } } },
+    { capturedAt: "2026-09-05T18:00:00Z", books: { draftkings: { spread_home: -3, total_line: 50 }, fanduel: { spread_home: -2.5 } } },
+    { capturedAt: "2026-09-05T19:00:00Z", books: { draftkings: { spread_home: -8 } } },
+    { capturedAt: "2026-09-05T18:15:00Z", books: { draftkings: { spread_home: null } } },
   ],
 };
 assert.deepEqual(movementSeries(game, "spread").map((p) => p.value), [-3, -4]);

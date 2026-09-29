@@ -1,0 +1,85 @@
+{
+  "scripts/compare-nfl-matchup-attribution.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    }
+  },
+  "scripts/compare-nfl-matchup-portfolios.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 5
+    }
+  },
+  "scripts/pickem-action-test-stub.cjs": {
+    "@typescript-eslint/no-require-imports": {
+      "count": 2
+    }
+  },
+  "scripts/rebind-nfl-coherent-portfolio.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    }
+  },
+  "scripts/server-only-stub.cjs": {
+    "@typescript-eslint/no-require-imports": {
+      "count": 1
+    }
+  },
+  "scripts/verify-nfl-coherent-bank.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 17
+    }
+  },
+  "scripts/verify-nfl-matchup-saved-slates.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 5
+    }
+  },
+  "src/app/analytics/page.tsx": {
+    "react-hooks/error-boundaries": {
+      "count": 27
+    }
+  },
+  "src/app/dfs/dfs-client.tsx": {
+    "react-hooks/preserve-manual-memoization": {
+      "count": 2
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 7
+    }
+  },
+  "src/app/dfs/nfl/captain-suggestion-panel.tsx": {
+    "react/no-unescaped-entities": {
+      "count": 1
+    }
+  },
+  "src/app/dfs/nfl/field-audit-panel.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/app/dfs/nfl/live-status-banner.tsx": {
+    "react-hooks/purity": {
+      "count": 1
+    }
+  },
+  "src/app/dfs/nfl/matchup-research/page.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 10
+    }
+  },
+  "src/app/vegas/soccer-vegas-client.tsx": {
+    "react-hooks/purity": {
+      "count": 1
+    }
+  },
+  "src/db/nfl-matchup-research.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "src/db/queries-fantasy-football.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  }
+}
