@@ -121,6 +121,7 @@ alone.
 | NFL game lines | `ingest.nfl_schedule` | 2 regions × 3 markets × 2 keys | 12 | 1×/day | 12 |
 | NFL scores | `ingest.nfl_schedule` | `daysFrom=3` × 2 keys | 4 | 1×/day | 4 |
 | CFB game lines | `ingest.event_closing_lines` | 10 named books × 3 markets | expected 3/bulk call | T−48h, T−24h, T−6h, T−90m, T−15m, T−2m/game cluster | quota guarded |
+| NHL game lines | `ingest.event_closing_lines` (via `ingest.nhl_schedule.fetch_odds`) | 6 named books × 3 markets (bulk) | 3/bulk call | T−24h, T−6h, T−3h, T−2h, T−90m, T−45m, T−30m, T−15m, close; one call records every mapped game ≤72h out | ~86 simulated (36–180), ~2,600/30d |
 | MLB props | `ingest.mlb_prop_odds` | 4 markets × 1 (10 books) | 4/event | **PAUSED 2026-08-24** | 0 |
 | Soccer | `refresh_soccer.yml` | — | — | **disabled 2026-08-01** | 0 |
 
@@ -244,6 +245,12 @@ used 2026-05-22.
   checkpoints are T−48h, T−24h, T−6h, T−90m, T−15m, and T−2m; one bulk call
   satisfies every due mapped game in that run. Request success alone does not
   mark fulfillment, and the daily cap plus monthly reserve remain hard guards.
+- **NHL uses the shared event-close worker (2026-09-29).** Schedule, finals and
+  provider-event mapping are free (NHL API + `/events`); only checkpoint captures
+  are paid. The burn figure is a simulation of the `*/5` worker against the real
+  October 2026 schedule (`nhl-dense-v1` windows), not a measurement — replace it
+  with `odds_api_usage WHERE sport='nhl'` once a few weeks exist. See
+  [nhl-line-terminal.md](nhl-line-terminal.md).
 - **NFL regular season needs a cadence.** Currently 1×/day (16 credits) for
   weekly games, with preseason and regular both fetched daily. The right
   cadence is undecided; the season opens 2026-09-09.

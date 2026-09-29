@@ -31,6 +31,10 @@ jobs:
         run: python -m ingest.cfb_context_migrate --apply
       - name: Ensure append-only movement observation storage
         run: python -m model.signal_observations
+      # The capture step runs with --existing-schema but seeds NHL checkpoints
+      # from nhl_matchups; this bootstrap is one catalog read once applied.
+      - name: Ensure NHL tables and close-capture constraints
+        run: python -m ingest.nhl_schedule --ensure-schema
       - name: Capture due checkpoints and freeze verified closes
         run: python -m ingest.event_closing_lines --existing-schema
       - name: Normalize stored CFB captures for the frozen pilot

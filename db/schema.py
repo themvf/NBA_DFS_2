@@ -34,7 +34,114 @@ Tables:
                        Automated YouTube picks-channel pipeline: raw scraped
                        videos/transcripts + DeepSeek-extracted structured
                        picks (sport-agnostic, one channel's track record).
+
+  NHL:
+  - nhl_teams, nhl_matchups, nhl_unmapped_events
+                       Canonical schedule from the free NHL API; Odds API
+                       events map onto it. Quotes live in game_odds_history
+                       (sport='nhl'), exactly like the CFB line terminal.
 """
+
+# Sports whose checkpoints and closes ingest/event_closing_lines.py owns. One
+# definition feeds the table DDL, the migration that re-adds each CHECK, and
+# the NHL bootstrap (ingest.nhl_schedule.ensure_nhl_schema), so they cannot
+# disagree. The web mirror of the event_closing_lines CHECK lives in
+# web/src/db/ensure-schema.ts; keep it in sync or a web cold start will fail
+# to re-add the constraint once a row for a new sport exists.
+CLOSE_CAPTURE_SPORTS = ("mlb", "tennis", "nfl", "cfb", "nhl")
+_CLOSE_SPORTS_SQL = "(" + ", ".join(f"'{sport}'" for sport in CLOSE_CAPTURE_SPORTS) + ")"
+CLOSE_CAPTURE_CONSTRAINT_DDLS = [
+    "ALTER TABLE odds_capture_checkpoints DROP CONSTRAINT IF EXISTS odds_capture_checkpoints_sport_check",
+    f"ALTER TABLE odds_capture_checkpoints ADD CONSTRAINT odds_capture_checkpoints_sport_check CHECK (sport IN {_CLOSE_SPORTS_SQL})",
+    "ALTER TABLE odds_capture_checkpoints DROP CONSTRAINT IF EXISTS odds_capture_checkpoints_checkpoint_check",
+    """ALTER TABLE odds_capture_checkpoints ADD CONSTRAINT odds_capture_checkpoints_checkpoint_check
+       CHECK (
+         checkpoint IN ('t_minus_48h', 't_minus_24h', 't_minus_6h', 't_minus_90m',
+                        't_minus_30m', 't_minus_15m', 't_minus_2m', 'closing_candidate')
+         OR checkpoint ~ '^(d_minus_[1-7]|game_day)_[0-2][0-9]$'
+         OR checkpoint ~ '^cfb_t_minus_[0-9]{2,3}m$'
+         OR checkpoint ~ '^tennis_t_minus_[0-9]{1,3}m$'
+         OR checkpoint ~ '^nfl_t_minus_[0-9]{1,3}m$'
+         OR checkpoint ~ '^nhl_t_minus_[0-9]{1,3}m$'
+         OR checkpoint = 'nfl_first_observed'
+       )""",
+    "ALTER TABLE event_closing_lines DROP CONSTRAINT IF EXISTS event_closing_lines_sport_check",
+    f"ALTER TABLE event_closing_lines ADD CONSTRAINT event_closing_lines_sport_check CHECK (sport IN {_CLOSE_SPORTS_SQL})",
+]
+
+# ── NHL: canonical NHL-API schedule for the line terminal ────────
+# The NHL game id is the identity; Odds API event ids are mappings onto it,
+# never keys. Scores follow sportsbook settlement: a shootout win counts as
+# one goal for the winner, which is what the NHL API's final score reports.
+NHL_TABLES = [
+    """
+    CREATE TABLE IF NOT EXISTS nhl_teams (
+        team_id SERIAL PRIMARY KEY,
+        nhl_team_id INTEGER NOT NULL UNIQUE,
+        abbreviation TEXT NOT NULL,
+        name TEXT NOT NULL,
+        place_name TEXT,
+        common_name TEXT,
+        logo_url TEXT DEFAULT '',
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS nhl_matchups (
+        id SERIAL PRIMARY KEY,
+        nhl_game_id BIGINT NOT NULL UNIQUE,
+        odds_event_id TEXT UNIQUE,
+        season INTEGER NOT NULL,
+        game_type SMALLINT NOT NULL,
+        game_date DATE NOT NULL,
+        commence_time TIMESTAMPTZ,
+        home_team_id INTEGER NOT NULL REFERENCES nhl_teams(team_id),
+        away_team_id INTEGER NOT NULL REFERENCES nhl_teams(team_id),
+        venue TEXT,
+        neutral_site BOOLEAN NOT NULL DEFAULT FALSE,
+        networks TEXT,
+        game_state TEXT,
+        schedule_state TEXT,
+        completed BOOLEAN NOT NULL DEFAULT FALSE,
+        home_score INTEGER,
+        away_score INTEGER,
+        last_period_type TEXT,
+        home_ml INTEGER,
+        away_ml INTEGER,
+        home_spread DOUBLE PRECISION,
+        vegas_total DOUBLE PRECISION,
+        vegas_prob_home DOUBLE PRECISION,
+        fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        odds_fetched_at TIMESTAMPTZ,
+        final_at TIMESTAMPTZ,
+        CHECK (home_team_id <> away_team_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS nhl_unmapped_events (
+        id BIGSERIAL PRIMARY KEY,
+        provider TEXT NOT NULL,
+        provider_event_id TEXT NOT NULL,
+        home_name TEXT,
+        away_name TEXT,
+        commence_time TIMESTAMPTZ,
+        reason TEXT NOT NULL,
+        raw_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        occurrences INTEGER NOT NULL DEFAULT 1,
+        resolved_at TIMESTAMPTZ,
+        UNIQUE(provider, provider_event_id)
+    )
+    """,
+]
+
+NHL_INDEXES = [
+    "CREATE INDEX IF NOT EXISTS idx_nhl_matchups_date ON nhl_matchups(game_date, commence_time)",
+    "CREATE INDEX IF NOT EXISTS idx_nhl_matchups_upcoming ON nhl_matchups(commence_time) WHERE completed = FALSE",
+    "CREATE INDEX IF NOT EXISTS idx_nhl_matchups_teams ON nhl_matchups(home_team_id, away_team_id, commence_time)",
+    "CREATE INDEX IF NOT EXISTS idx_nhl_unmapped_open ON nhl_unmapped_events(last_seen_at DESC) WHERE resolved_at IS NULL",
+]
 
 TABLES = [
     # ── NBA teams ─────────────────────────────────────────────
@@ -389,6 +496,8 @@ TABLES = [
         UNIQUE(provider, provider_event_id)
     )
     """,
+
+    *NHL_TABLES,
 
     # Historical CFBD lines are intentionally separate from the prospective,
     # exact-book game_odds_history ledger.  CFBD exposes source-reported opens
@@ -5240,6 +5349,7 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_survivor_picks_pending ON survivor_entry_picks(result) WHERE result = 'pending'",
     "CREATE INDEX IF NOT EXISTS idx_survivor_recs_entry ON survivor_recommendations(entry_id, week, frozen_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_survivor_recs_open ON survivor_recommendations(season, week) WHERE superseded_by IS NULL",
+    *NHL_INDEXES,
     "CREATE INDEX IF NOT EXISTS idx_cfb_matchups_date ON cfb_matchups(game_date, commence_time)",
     "CREATE INDEX IF NOT EXISTS idx_cfb_matchups_upcoming ON cfb_matchups(commence_time) WHERE completed = FALSE",
     "CREATE INDEX IF NOT EXISTS idx_cfb_alias_lookup ON cfb_team_aliases(provider, alias)",
@@ -5578,7 +5688,7 @@ INDEXES = [
     # every close still points to one immutable pre-boundary history row.
     """CREATE TABLE IF NOT EXISTS odds_capture_checkpoints (
         id BIGSERIAL PRIMARY KEY,
-        sport TEXT NOT NULL CHECK (sport IN ('mlb', 'tennis', 'nfl', 'cfb')),
+        sport TEXT NOT NULL CHECK (sport IN ('mlb', 'tennis', 'nfl', 'cfb', 'nhl')),
         matchup_id INTEGER NOT NULL,
         event_id TEXT NOT NULL,
         checkpoint TEXT NOT NULL CHECK (
@@ -5604,7 +5714,7 @@ INDEXES = [
     )""",
     """CREATE TABLE IF NOT EXISTS event_closing_lines (
         id BIGSERIAL PRIMARY KEY,
-        sport TEXT NOT NULL CHECK (sport IN ('mlb', 'tennis', 'nfl', 'cfb')),
+        sport TEXT NOT NULL CHECK (sport IN ('mlb', 'tennis', 'nfl', 'cfb', 'nhl')),
         matchup_id INTEGER NOT NULL,
         event_id TEXT,
         scheduled_start_at TIMESTAMPTZ NOT NULL,
@@ -5643,21 +5753,7 @@ INDEXES = [
         response_status INTEGER,
         metadata JSONB NOT NULL DEFAULT '{}'::jsonb
     )""",
-    "ALTER TABLE odds_capture_checkpoints DROP CONSTRAINT IF EXISTS odds_capture_checkpoints_sport_check",
-    "ALTER TABLE odds_capture_checkpoints ADD CONSTRAINT odds_capture_checkpoints_sport_check CHECK (sport IN ('mlb', 'tennis', 'nfl', 'cfb'))",
-    "ALTER TABLE odds_capture_checkpoints DROP CONSTRAINT IF EXISTS odds_capture_checkpoints_checkpoint_check",
-    """ALTER TABLE odds_capture_checkpoints ADD CONSTRAINT odds_capture_checkpoints_checkpoint_check
-       CHECK (
-         checkpoint IN ('t_minus_48h', 't_minus_24h', 't_minus_6h', 't_minus_90m',
-                        't_minus_30m', 't_minus_15m', 't_minus_2m', 'closing_candidate')
-         OR checkpoint ~ '^(d_minus_[1-7]|game_day)_[0-2][0-9]$'
-         OR checkpoint ~ '^cfb_t_minus_[0-9]{2,3}m$'
-         OR checkpoint ~ '^tennis_t_minus_[0-9]{1,3}m$'
-         OR checkpoint ~ '^nfl_t_minus_[0-9]{1,3}m$'
-         OR checkpoint = 'nfl_first_observed'
-       )""",
-    "ALTER TABLE event_closing_lines DROP CONSTRAINT IF EXISTS event_closing_lines_sport_check",
-    "ALTER TABLE event_closing_lines ADD CONSTRAINT event_closing_lines_sport_check CHECK (sport IN ('mlb', 'tennis', 'nfl', 'cfb'))",
+    *CLOSE_CAPTURE_CONSTRAINT_DDLS,
     "ALTER TABLE event_closing_lines ADD COLUMN IF NOT EXISTS methodology_version TEXT NOT NULL DEFAULT 'event-close-v1'",
     "ALTER TABLE event_closing_lines ADD COLUMN IF NOT EXISTS clv_cohort TEXT NOT NULL DEFAULT 'non_primary'",
     "ALTER TABLE event_closing_lines ADD COLUMN IF NOT EXISTS verification_level TEXT NOT NULL DEFAULT 'scheduled_boundary'",

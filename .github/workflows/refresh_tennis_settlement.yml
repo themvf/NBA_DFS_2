@@ -44,6 +44,11 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # The worker below seeds NHL checkpoints from nhl_matchups; this makes a
+      # fresh deploy safe and is one catalog read once applied.
+      - name: Ensure NHL tables and close-capture constraints
+        run: python -m ingest.nhl_schedule --ensure-schema
+
       - name: Closing-line fallback poll (MLB + Tennis)
         run: python -m ingest.event_closing_lines --existing-schema
 

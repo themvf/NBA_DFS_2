@@ -32,6 +32,12 @@ async function hasDueWork() {
         WHERE m.commence_time BETWEEN NOW() - INTERVAL '3 minutes' AND NOW() + INTERVAL '54 hours'
           AND m.completed = FALSE AND m.start_time_tbd = FALSE
           AND m.odds_event_id IS NOT NULL
+        UNION ALL
+        SELECT 'nhl', m.id, m.commence_time
+        FROM nhl_matchups m
+        WHERE m.commence_time BETWEEN NOW() - INTERVAL '3 minutes' AND NOW() + INTERVAL '30 hours'
+          AND m.completed = FALSE AND COALESCE(m.schedule_state, 'OK') = 'OK'
+          AND m.odds_event_id IS NOT NULL
       ), windows AS (
         SELECT *, starts_at - offset_minutes * INTERVAL '1 minute' AS target_at,
           starts_at - due_minutes * INTERVAL '1 minute' AS due_until
@@ -40,7 +46,10 @@ async function hasDueWork() {
           SELECT * FROM (VALUES
             ('cfb', 2880, 2520), ('cfb', 1440, 1200),
             ('all', 360, 330), ('all', 90, 60), ('all', 15, 5), ('all', 2, 0),
-            ('cfb', 5, 0)
+            ('cfb', 5, 0),
+            -- Mirrors CHECKPOINTS_BY_SPORT["nhl"] in ingest/event_closing_lines.py.
+            ('nhl', 1440, 1200), ('nhl', 180, 140), ('nhl', 120, 100),
+            ('nhl', 45, 35), ('nhl', 30, 20), ('nhl', 5, 0)
           ) AS base(sport, lead, due)
           UNION ALL
           SELECT 'cfb', lead, lead - 60 FROM generate_series(420, 720, 60) AS lead

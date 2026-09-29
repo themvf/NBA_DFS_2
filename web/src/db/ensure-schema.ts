@@ -629,6 +629,66 @@ const ODDS_HISTORY_DDLS = [
       qualified_for_tracking BOOLEAN NOT NULL DEFAULT FALSE,
       UNIQUE(game_id, team_id, hypothesis_id, model_version)
     )`,
+  // NHL line terminal (Python owns the writes; mirrors NHL_TABLES/NHL_INDEXES
+  // in db/schema.py so the page can render before the first ingest run).
+  `CREATE TABLE IF NOT EXISTS nhl_teams (
+      team_id SERIAL PRIMARY KEY,
+      nhl_team_id INTEGER NOT NULL UNIQUE,
+      abbreviation TEXT NOT NULL,
+      name TEXT NOT NULL,
+      place_name TEXT,
+      common_name TEXT,
+      logo_url TEXT DEFAULT '',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  `CREATE TABLE IF NOT EXISTS nhl_matchups (
+      id SERIAL PRIMARY KEY,
+      nhl_game_id BIGINT NOT NULL UNIQUE,
+      odds_event_id TEXT UNIQUE,
+      season INTEGER NOT NULL,
+      game_type SMALLINT NOT NULL,
+      game_date DATE NOT NULL,
+      commence_time TIMESTAMPTZ,
+      home_team_id INTEGER NOT NULL REFERENCES nhl_teams(team_id),
+      away_team_id INTEGER NOT NULL REFERENCES nhl_teams(team_id),
+      venue TEXT,
+      neutral_site BOOLEAN NOT NULL DEFAULT FALSE,
+      networks TEXT,
+      game_state TEXT,
+      schedule_state TEXT,
+      completed BOOLEAN NOT NULL DEFAULT FALSE,
+      home_score INTEGER,
+      away_score INTEGER,
+      last_period_type TEXT,
+      home_ml INTEGER,
+      away_ml INTEGER,
+      home_spread DOUBLE PRECISION,
+      vegas_total DOUBLE PRECISION,
+      vegas_prob_home DOUBLE PRECISION,
+      fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      odds_fetched_at TIMESTAMPTZ,
+      final_at TIMESTAMPTZ,
+      CHECK (home_team_id <> away_team_id)
+    )`,
+  `CREATE TABLE IF NOT EXISTS nhl_unmapped_events (
+      id BIGSERIAL PRIMARY KEY,
+      provider TEXT NOT NULL,
+      provider_event_id TEXT NOT NULL,
+      home_name TEXT,
+      away_name TEXT,
+      commence_time TIMESTAMPTZ,
+      reason TEXT NOT NULL,
+      raw_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+      first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      occurrences INTEGER NOT NULL DEFAULT 1,
+      resolved_at TIMESTAMPTZ,
+      UNIQUE(provider, provider_event_id)
+    )`,
+  `CREATE INDEX IF NOT EXISTS idx_nhl_matchups_date ON nhl_matchups(game_date, commence_time)`,
+  `CREATE INDEX IF NOT EXISTS idx_nhl_matchups_upcoming ON nhl_matchups(commence_time) WHERE completed = FALSE`,
+  `CREATE INDEX IF NOT EXISTS idx_nhl_matchups_teams ON nhl_matchups(home_team_id, away_team_id, commence_time)`,
+  `CREATE INDEX IF NOT EXISTS idx_nhl_unmapped_open ON nhl_unmapped_events(last_seen_at DESC) WHERE resolved_at IS NULL`,
   `CREATE INDEX IF NOT EXISTS idx_cfb_matchups_date ON cfb_matchups(game_date, commence_time)`,
   `CREATE INDEX IF NOT EXISTS idx_cfb_matchups_upcoming ON cfb_matchups(commence_time) WHERE completed=FALSE`,
   `CREATE INDEX IF NOT EXISTS idx_cfb_unmapped_open ON cfb_unmapped_events(last_seen_at DESC) WHERE resolved_at IS NULL`,
@@ -672,7 +732,7 @@ const ODDS_HISTORY_DDLS = [
   `ALTER TABLE game_odds_history ADD COLUMN IF NOT EXISTS draw_ml INTEGER`,
   `CREATE TABLE IF NOT EXISTS event_closing_lines (
       id BIGSERIAL PRIMARY KEY,
-      sport TEXT NOT NULL CHECK (sport IN ('mlb', 'tennis', 'nfl', 'cfb')),
+      sport TEXT NOT NULL CHECK (sport IN ('mlb', 'tennis', 'nfl', 'cfb', 'nhl')),
       matchup_id INTEGER NOT NULL,
       event_id TEXT,
       scheduled_start_at TIMESTAMPTZ NOT NULL,
@@ -693,7 +753,10 @@ const ODDS_HISTORY_DDLS = [
       UNIQUE (sport, matchup_id)
     )`,
   `ALTER TABLE event_closing_lines DROP CONSTRAINT IF EXISTS event_closing_lines_sport_check`,
-  `ALTER TABLE event_closing_lines ADD CONSTRAINT event_closing_lines_sport_check CHECK (sport IN ('mlb', 'tennis', 'nfl', 'cfb'))`,
+  // Mirrors CLOSE_CAPTURE_SPORTS in db/schema.py. This constraint is dropped and
+  // re-added on every cold start, so a sport missing here fails the re-add (and
+  // every page that ensures these tables) once one of its closes is frozen.
+  `ALTER TABLE event_closing_lines ADD CONSTRAINT event_closing_lines_sport_check CHECK (sport IN ('mlb', 'tennis', 'nfl', 'cfb', 'nhl'))`,
   `CREATE OR REPLACE VIEW verified_clv_closes AS
      SELECT * FROM event_closing_lines
      WHERE methodology_version='event-close-v1'
