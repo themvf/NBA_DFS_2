@@ -253,3 +253,157 @@ def test_prospective_adapter_reports_foreign_envelopes_without_grading_them(monk
     assert report["studies"][0]["frozen_rows"] == 1
     assert report["studies"][0]["rejected"] == {"unscored": 1}
     assert report["studies"][0]["registration_errors"] == []
+
+
+# --- Registered capture scope (enforced from the capture's recorded format) ---
+
+CLASSIC_SCOPE = {"consumer": "nfl_dfs_projection", "usage": "predictive_shadow_only",
+                 "platform": "DraftKings", "capture": "saved_current_week_Classic_salary_pool"}
+
+
+def test_a_showdown_capture_never_enters_a_classic_scoped_study():
+    """Since #295 Showdown captures share the Classic tables. A later
+    Showdown capture of the same player/game must not displace the Classic
+    one, and Showdown-only rows must not be graded at all."""
+    m = manifest()
+    m["qualification_scope"] = CLASSIC_SCOPE
+    classic = rows(m)
+    for row in classic:
+        row["capture_format"] = "classic"
+    assert evaluate(m, classic)["verdict"] == "PASS"
+    showdown = deepcopy(classic)
+    for row in showdown:
+        row.update(capture_format="showdown", forecast_id="sd:" + row["forecast_id"],
+                   captured_at=row["captured_at"] + timedelta(minutes=30))
+        row["candidate"]["mean"] = 5.  # would flip the verdict if it were pooled
+    mixed = evaluate(m, classic + showdown)
+    assert mixed["verdict"] == "PASS"
+    assert mixed["frozen_rows"] == len(classic)
+    assert mixed["rejected"]["capture outside the registered slate format"] == len(showdown)
+    assert mixed["registered_capture_format"] == "classic"
+    only_showdown = evaluate(m, showdown)
+    assert only_showdown["frozen_rows"] == 0 and only_showdown["verdict"] == "NO_VERDICT"
+
+
+def test_a_capture_with_no_recorded_format_is_not_assumed_classic():
+    m = manifest()
+    m["qualification_scope"] = CLASSIC_SCOPE
+    result = evaluate(m, rows(m))
+    assert result["frozen_rows"] == 0
+    assert result["rejected"]["capture outside the registered slate format"] == 240
+
+
+def test_an_unrecognized_capture_scope_is_refused_not_guessed():
+    m = manifest()
+    m["qualification_scope"] = {**CLASSIC_SCOPE, "capture": "saved_current_week_any_salary_pool"}
+    data = rows(m)
+    for row in data:
+        row["capture_format"] = "classic"
+    result = evaluate(m, data)
+    assert result["frozen_rows"] == 0
+    assert result["rejected"] == {"unrecognized registered capture scope: saved_current_week_any_salary_pool": 240}
+
+
+def test_a_scope_that_is_not_a_salary_slate_imposes_no_format():
+    m = manifest("pickem")
+    m["qualification_scope"] = {"consumer": "nfl_pickem_probability", "usage": "predictive_shadow_only",
+                                "capture": "eligible_upcoming_regular_season_games"}
+    assert evaluate(m, rows(m))["verdict"] == "PASS"
+
+
+def test_the_prospective_adapter_carries_the_capture_format(monkeypatch):
+    from model.nfl_matchup_study import digest
+    from research import nfl_matchup_study as adapter
+    m = manifest()
+    m["baseline_config_hash"] = digest({"model_version": "nfl-dfs-historical-v5", "model_config": {}})
+    m["qualification_scope"] = CLASSIC_SCOPE
+    monkeypatch.setattr(adapter, "resolve_registration", lambda entry: deepcopy(entry))
+    row = rows(m)[0]
+    distribution = {"mean": 10., "p50": 11., "p10": 0., "p90": 20., "boom": .1}
+    def record(fmt, run_id, created):
+        return {"forecast_model_version": "nfl-matchup-shadow-v1", "player_id": "qb", "game_id": row["game_id"],
+            "season": row["season"], "week": row["week"], "kickoff": row["kickoff"], "run_id": run_id,
+            "created_at": created, "as_of_at": row["decision_cutoff"], "baseline_created_at": row["available_at"],
+            "baseline_version": "nfl-dfs-historical-v5", "baseline_config": {},
+            "manifest": {"model_hashes": {"pressure": m["candidate_config_hash"]}, "format": fmt},
+            "projection": {"position": "QB", "baseline": {"id": "saved-qb"}, "shadow": {
+                "status": "under_evaluation", "baseline": distribution, "candidate": dict(distribution),
+                "matchup_manifest_hash": "c"*64}}}
+    class Database:
+        def __init__(self):
+            self.calls = 0
+        def execute(self, sql, params):
+            self.calls += 1
+            if self.calls == 1:
+                assert "'format',f.manifest->'format'" in sql
+                return [record("classic", "classic-run", row["captured_at"]),
+                        record("showdown", "showdown-run", row["captured_at"] + timedelta(minutes=5))]
+            return []
+    study = adapter.prospective_reports(Database(), 2026, NOW, {"studies": [m]})["studies"][0]
+    assert study["frozen_rows"] == 1
+    assert study["rejected"] == {"capture outside the registered slate format": 1, "unscored": 1}
+    assert [f["forecast_id"] for f in study["forecast_evidence"]] == ["classic-run:qb"]
+
+
+# --- The checked-in registrations agree with the checked-out code ------------
+
+def _registry():
+    return json.loads(Path("docs/nfl-matchup-studies.json").read_text())["studies"]
+
+
+def test_dfs_captures_record_exactly_the_files_their_latest_pin_binds():
+    """Pin 4 bound nine files while captures recorded six, so no capture could
+    ever match (n=0). Captures and the latest pin must name the same set, at
+    the checked-out hashes."""
+    from research.nfl_matchup_implementation import IMPLEMENTATION_FILES, implementation_hashes
+    from research.nfl_matchup_study import resolve_registration
+    dfs = [s for s in _registry() if s.get("status") == "registered" and s["kind"] == "dfs_mean"]
+    assert len(dfs) == 3
+    assert "research/nfl_saved_upload_selection.py" in IMPLEMENTATION_FILES
+    for entry in dfs:
+        resolved = resolve_registration(entry)
+        assert set(resolved["implementation_hashes"]) == set(IMPLEMENTATION_FILES), entry["study_id"]
+        assert resolved["implementation_hashes"] == implementation_hashes(), entry["study_id"]
+        assert resolved["qualification_scope"]["capture"] == "saved_current_week_Classic_salary_pool"
+
+
+def test_dfs_studies_grade_the_current_realized_version_with_its_pinned_scorer():
+    from ingest.nfl_dfs_results import SCORING_VERSION
+    from model.nfl_matchup_study import validate_manifest
+    from research.nfl_matchup_study import outcome_implementation_errors, resolve_registration
+    for entry in (s for s in _registry() if s.get("status") == "registered" and s["kind"] == "dfs_mean"):
+        resolved = resolve_registration(entry)
+        assert resolved["scoring_version"] == entry["scoring_version"] == SCORING_VERSION
+        assert outcome_implementation_errors(resolved) == []
+        assert validate_manifest(resolved) == []
+        # The outcome amendment restarts the holdout; the pin gates captures.
+        assert resolved["holdout_start_at"] == resolved["registered_at"]
+        assert resolved["implementation_pinned_at"] <= resolved["holdout_start_at"]
+
+
+def test_pickem_freezes_pass_their_latest_implementation_pin():
+    """freeze-pickem refuses to capture when the pinned files drift; every
+    registered pickem artifact must resolve against the checked-out code."""
+    from datetime import datetime, timezone
+    from research import nfl_pickem_matchup as pickem
+    model = json.loads(pickem.MODEL_PATH.read_text())
+    families = [json.loads(p.read_text(encoding="utf-8")) for p in pickem.FAMILY_MODEL_PATHS.values() if p.exists()]
+    resolved = [pickem.registered_model(m, datetime.now(timezone.utc), True) for m in [model, *families]]
+    assert {r["study_id"] for r in resolved} == {
+        "nfl-matchup-pickem-combined-v1", "nfl-matchup-pickem-pressure-v2", "nfl-matchup-pickem-contact-v2"}
+
+
+def test_context_compatibility_declares_the_current_realized_version():
+    from ingest.nfl_dfs_results import SCORING_VERSION
+    from research.nfl_matchup_study import outcome_implementation_errors
+    compat = json.loads(Path("research/nfl_dfs_context_scoring_compatibility.json").read_text())
+    rule = compat["versions"][SCORING_VERSION]
+    assert rule["positions"] == ["QB", "RB", "WR", "TE"], "DST stays excluded"
+    assert outcome_implementation_errors({"outcome_implementation_hashes": rule["implementation_hashes"]}) == []
+    assert all(proof["equal_ast"] for proof in rule["equivalence_proof"].values())
+    assert rule["scoring_fields_equal_ast"] is True
+    # The skill-position scorer is the one the v3 declaration proved.
+    assert rule["equivalence_proof"]["ingest/nfl_dfs_results.py:score_source_row"]["ast_sha256"] == \
+        compat["equivalence_proof"]["ingest/nfl_dfs_results.py:score_source_row"]["ast_sha256"]
+    for earlier in ("nfl-dk-realized-v2", "nfl-dk-realized-v3"):
+        assert earlier in compat["versions"], "earlier declarations are kept"

@@ -20,6 +20,30 @@ REQUIRED = ("study_id", "hypothesis", "kind", "consumer", "cohort", "feature_ver
             "calibration_bins", "affected_positions", "components", "status")
 
 
+# The salary-slate format each registered capture scope admits (None: the
+# scope is not a salary slate). An implementation pin's `qualification_scope`
+# is part of the registration. Since saved Showdown uploads are captured into
+# the same tables as the Classic pool the DFS studies registered, and the
+# grader keeps the latest capture per player/game, an unenforced scope would
+# let a Showdown forecast silently replace the Classic one. A scope not listed
+# here is refused, never guessed.
+SCOPE_CAPTURE_FORMATS = {
+    "saved_current_week_Classic_salary_pool": "classic",
+    "eligible_upcoming_regular_season_games": None,
+}
+
+
+def registered_capture_format(manifest):
+    """The slate format a registered capture scope requires, or None."""
+    scope = manifest.get("qualification_scope")
+    if not scope:
+        return None
+    capture = scope.get("capture")
+    if capture not in SCOPE_CAPTURE_FORMATS:
+        raise ValueError(f"unrecognized registered capture scope: {capture}")
+    return SCOPE_CAPTURE_FORMATS[capture]
+
+
 def digest(value):
     return sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), default=str, allow_nan=False).encode()).hexdigest()
 
@@ -170,11 +194,18 @@ def evaluate_study(manifest, records, *, phase="promotion", now=None, complete_w
     selected, rejected = {}, Counter()
     complete = {tuple(w) for w in complete_weeks}
     kind, gates = manifest["kind"], manifest["gates"]
+    try:
+        required_format, scope_error = registered_capture_format(manifest), None
+    except ValueError as exc:
+        required_format, scope_error = None, str(exc)
+    report["registered_capture_format"] = required_format
     for raw in records:
         row = deepcopy(raw)
         try:
             if row["study_id"] != manifest["study_id"]:
                 raise ValueError("other study")
+            if scope_error:
+                raise ValueError(scope_error)
             capture, cutoff, available, kick = (timestamp(row[k]) for k in ("captured_at", "decision_cutoff", "available_at", "kickoff"))
             if not available <= cutoff <= capture < kick or not start <= kick < end or (now and capture > now):
                 raise ValueError("ineligible as-of window")
@@ -183,6 +214,10 @@ def evaluate_study(manifest, records, *, phase="promotion", now=None, complete_w
             if manifest.get("implementation_hashes"):
                 if capture < timestamp(manifest["implementation_pinned_at"]) or row.get("implementation_hashes") != manifest["implementation_hashes"]:
                     raise ValueError("implementation pin mismatch or forecast preceded pin")
+            # Before selection, so an out-of-scope capture can never be the
+            # "latest" forecast that displaces an in-scope one.
+            if required_format and row.get("capture_format") != required_format:
+                raise ValueError("capture outside the registered slate format")
             if row.get("scoring_version") != manifest["scoring_version"]:
                 raise ValueError("incompatible scoring")
             input_hash = row.get("input_manifest_hash", "")

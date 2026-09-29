@@ -1,0 +1,37 @@
+{
+  "study_id": "nfl-matchup-dfs_mean-contact-v1",
+  "registration_manifest_hash": "9a31a975293b5ab9041a37a2245e3ab857fa10cdd9ba301ba555989730b7c56a",
+  "registered_at": "2026-09-29T01:57:29.430760+00:00",
+  "previous_scoring_version": "nfl-dk-realized-v3",
+  "scoring_version": "nfl-dk-realized-v4",
+  "previous_amendment_hash": "e0e096e8d9feac00ef90afd2f39d7fd8577738fc01cf206b16e44d69b9200622",
+  "hash_algorithm": "sha256_lf_normalized",
+  "implementation_hashes": {
+    "ingest/nfl_dfs_results.py": "6d0b2a74f6fddc58fcb5a99b2771e609ed6f8b4bf90a8c4deae25a2b74ff9663",
+    "model/nfl_dfs_historical.py": "e68c45b32151a8fb77f94eb295d181ec5ad5881ee6b3384fb04e4a95b28b5b55",
+    "model/nfl_dst_components.py": "bcb1128d3249f290bb7bd16d7d7186c21ba3693cc790551b0bd372b917a95f58",
+    "model/nfl_team_aliases.py": "47035370d763ec3064650c4d0bb9c02c4885b692998b4c7e667bde6c5e53e7bf"
+  },
+  "reason": "Main's realized scorer moves to nfl-dk-realized-v4: play-by-play DST components v2 credit special-teams fumble recoveries and read only the ruling that stands. Only DST points change. The QB/RB scorer is AST-identical to v3 (skill_position_scorer_equivalence), so this study's estimand is unchanged, but its outcome rows will carry the v4 version string, so the exact result version and scorer implementation are declared before new prospective captures. The holdout restarts at this amendment, per the outcome-amendment procedure.",
+  "outcomes_consulted": false,
+  "outcomes_consulted_detail": "DST DraftKings contest scores for 2026 weeks 2-3 (contests 195648006, 195786073, 196128919, 195943238) were consulted to choose the DST component rule: 56/56 team-defenses match under v4 against 51/56 under v3. No QB/RB/WR/TE outcome and no study forecast was consulted.",
+  "skill_position_scorer_equivalence": {
+    "ingest/nfl_dfs_results.py:score_source_row": {
+      "equal_ast": true,
+      "ast_sha256": "60a185408b0341d014689c0b04163ed45e29ea6492bc4c8e99a9d695f89a53b2"
+    },
+    "ingest/nfl_dfs_results.py:_number": {
+      "equal_ast": true,
+      "ast_sha256": "5f3279952e577faf469fbeaa65e5861f016c6d576deaf9b66ac770c63a6af9a7"
+    },
+    "model/nfl_dfs_historical.py:draftkings_points": {
+      "equal_ast": true,
+      "ast_sha256": "ffa62ea431fa7740d76e521f2e59f93ba8b38c34604deaf69c65a7b48299be3d"
+    },
+    "SCORING_FIELDS": {
+      "equal_ast": true
+    }
+  },
+  "prior_freezes": "excluded from amended cohort, never relabeled",
+  "candidate_refitted": false
+}
