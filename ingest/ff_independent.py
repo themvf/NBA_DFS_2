@@ -816,13 +816,24 @@ def save_weekly_history(
       Previously the second silently overwrote the first, putting one
       player's stats on another.
     """
+    # One entry per PLAYER, not per universe row: a player listed twice on the
+    # nflverse roster (two weeks, a mid-season team change) arrives here twice
+    # with the same player_id, and counting him twice read as "matches 2
+    # players (ids [266, 266])" and refused the whole refresh (2026-09-29).
+    # Ambiguity means two different players, never one player seen twice.
     by_gsis: dict[str, list[dict[str, Any]]] = {}
     by_name_position: dict[tuple[str, Any], list[dict[str, Any]]] = {}
+    seen: set[tuple[str, int]] = set()
     for row in universe:
+        player_id = int(row["player_id"])
         gsis_id = str(row.get("gsis_id") or "").strip()
-        if gsis_id:
+        if gsis_id and (gsis_id, player_id) not in seen:
+            seen.add((gsis_id, player_id))
             by_gsis.setdefault(gsis_id, []).append(row)
-        by_name_position.setdefault((normalize_name(str(row["name"])), row["position"]), []).append(row)
+        name_key = (normalize_name(str(row["name"])), row["position"])
+        if (f"name:{name_key}", player_id) not in seen:
+            seen.add((f"name:{name_key}", player_id))
+            by_name_position.setdefault(name_key, []).append(row)
     wanted = set(WEEKLY_STAT_POSITIONS)
     resolved: list[tuple[dict[str, Any], dict[str, Any], int]] = []
     unmatched: list[dict[str, Any]] = []
