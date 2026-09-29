@@ -151,7 +151,8 @@ export default function ResultsStep({ uploadId, runId, lineupCount, locked, pool
           <h2 className="font-bold">How far our projections were off</h2>
           <a href={poolReviewHref} className="text-sm font-semibold text-blue-700 underline">Full projection review</a>
         </div>
-        <p className="mt-1 text-xs text-slate-500">Average miss per player against what DraftKings paid. Bias below zero means we projected too high. Ruled-out players are not graded.</p>
+        <p className="mt-1 text-xs text-slate-500">Average miss per player against what DraftKings paid, using the projections the page showed. Bias below zero means we projected too high. Players the page marked out or blocked are not graded.</p>
+        {results.positionErrorNote ? <p className="mt-1 text-xs font-semibold text-amber-800">{results.positionErrorNote}</p> : null}
         <table className="mt-3 w-full max-w-xl text-left text-sm">
           <thead className="text-xs uppercase text-slate-500"><tr><th className="p-2">Position</th><th className="p-2 text-right">Players</th><th className="p-2 text-right">Avg miss</th><th className="p-2 text-right">Bias</th></tr></thead>
           <tbody>{results.positionError.map((e) => <tr key={e.position} className={`border-t ${e.position === "All" ? "font-semibold" : ""}`}>

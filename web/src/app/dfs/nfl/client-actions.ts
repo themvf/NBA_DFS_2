@@ -22,6 +22,7 @@ export const loadSavedNflWorkspace = async (...a: Args<typeof safe.safeLoadSaved
 export const loadSavedNflLineups = async (...a: Args<typeof safe.safeLoadSavedNflLineups>) => unwrap(await safe.safeLoadSavedNflLineups(...a));
 export const readNflOptimizerAudit = async (...a: Args<typeof safe.safeReadNflOptimizerAudit>) => unwrap(await safe.safeReadNflOptimizerAudit(...a));
 export const exportSavedNflDefensiveEntries = async (...a: Args<typeof safe.safeExportSavedNflDefensiveEntries>) => unwrap(await safe.safeExportSavedNflDefensiveEntries(...a));
+export const exportSavedNflEntries = async (...a: Args<typeof safe.safeExportSavedNflEntries>) => unwrap(await safe.safeExportSavedNflEntries(...a));
 export const applyNflComparison = async (...a: Args<typeof safe.safeApplyNflComparison>) => unwrap(await safe.safeApplyNflComparison(...a));
 export const loadNflSalaryCsv = async (...a: Args<typeof safe.safeLoadNflSalaryCsv>) => unwrap(await safe.safeLoadNflSalaryCsv(...a));
 export const searchNflStarterNews = async (...a: Args<typeof safe.safeSearchNflStarterNews>) => unwrap(await safe.safeSearchNflStarterNews(...a));
