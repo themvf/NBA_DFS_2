@@ -3,7 +3,10 @@ name: Settle MLB Terminal Signals
 on:
   schedule:
     # Includes late West Coast finishes. Free scores + stored-quote grading only.
-    - cron: "17,47 * * * *"
+    # The hourly cadence comes from /api/cron/dispatch (job mlb-terminal-settlement):
+    # GitHub started the old every-30-minutes schedule only every 4-6 hours. This is
+    # the thin fallback in case the Vercel bridge breaks.
+    - cron: "47 */6 * 3-11 *"
   workflow_dispatch:
 
 concurrency:

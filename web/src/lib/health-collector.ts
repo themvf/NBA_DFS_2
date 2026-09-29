@@ -89,6 +89,8 @@ async function readGithub(token: string | null, fetchImpl: typeof fetch) {
   return { runs, states, workflowErrors, error: null };
 }
 
+const text = (value: unknown) => (value == null || value === "" ? null : String(value));
+
 async function readDatasets() {
   try {
     const db = await database();
@@ -99,7 +101,8 @@ async function readDatasets() {
       lastRowAt: r.last_row_at == null ? null : new Date(String(r.last_row_at)).toISOString(),
       ageHours: r.age_hours == null ? null : Number(r.age_hours), maxAgeHours: Number(r.max_age_hours),
       ownerWorkflow: String(r.owner_workflow), checkedAt: new Date(String(r.checked_at)).toISOString(),
-      note: ((r.detail_json ?? {}) as Record<string, unknown>).note == null ? null : String(((r.detail_json ?? {}) as Record<string, unknown>).note),
+      note: text((r.detail_json as Record<string, unknown> | null)?.note),
+      detail: text((r.detail_json as Record<string, unknown> | null)?.detail),
     })), error: null };
   } catch (error) { return { datasets: null, error: errorText(error) }; }
 }

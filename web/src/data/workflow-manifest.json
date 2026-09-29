@@ -198,7 +198,8 @@
       "file": "refresh_ff_adp_snapshot.yml",
       "name": "Refresh Fantasy Football ADP Snapshot",
       "crons": [
-        "7 0,12 * 7-9 *"
+        "7 0,12 * 7,8 *",
+        "7 0,12 1-10 9 *"
       ],
       "dispatch": true,
       "afterWorkflows": [],
@@ -231,7 +232,7 @@
       "file": "refresh_mlb_terminal_settlement.yml",
       "name": "Settle MLB Terminal Signals",
       "crons": [
-        "17,47 * * * *"
+        "47 */6 * 3-11 *"
       ],
       "dispatch": true,
       "afterWorkflows": [],

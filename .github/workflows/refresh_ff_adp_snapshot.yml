@@ -5,7 +5,10 @@ on:
     # Every 12 hours during the NFL draft season -- ADP-only, much lighter
     # than the full board rebuild (fantasy_football_refresh.yml), so this can
     # run independently on a tighter cadence to build real ADP history.
-    - cron: "7 0,12 * 7-9 *"
+    # Draft season ends at Week 1 kickoff, always by September 10; after that
+    # the feeds thin out and every run failed (2026-09-14 onward).
+    - cron: "7 0,12 * 7,8 *"
+    - cron: "7 0,12 1-10 9 *"
   workflow_dispatch:
     inputs:
       season:

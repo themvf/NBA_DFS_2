@@ -125,6 +125,14 @@ export const DISPATCH_JOBS: readonly DispatchJob[] = [
     why: "Data-freshness readings for the /health checklist.",
   },
   {
+    key: "mlb-terminal-settlement",
+    workflow: "refresh_mlb_terminal_settlement.yml",
+    // Hourly, March-November. Its GitHub schedule said every 30 minutes but GitHub
+    // started it only every 4-6 hours (2026-09-23..29). Free scores + stored quotes, no credits.
+    due: (now) => { const m = now.getUTCMonth() + 1; return m >= 3 && m <= 11 && hourTick(now); },
+    why: "Grades recorded MLB terminal signals once games are final.",
+  },
+  {
     key: "daily-failure-sweep",
     workflow: "daily_failure_sweep.yml",
     // 11:07 UTC (7:07 am ET): the daily email of everything failing.

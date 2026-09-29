@@ -110,6 +110,39 @@ for (const i of items) { assert.ok(i.lastCheckedAt, `${i.key} has a last-checked
 const quiet = buildChecklist(base({ datasets: base().datasets!.map((d) => ({ ...d, checkedAt: "2026-09-29T02:00:00Z" })) }));
 assert.equal(quiet.find((i) => i.key === "checklist:freshness-monitor")!.status, "fail");
 
+// The monitor is overdue one hour past its cadence, and its row says the data rows are that old.
+const at = (iso: string) => base().datasets!.map((d) => ({ ...d, checkedAt: iso }));
+assert.equal(buildChecklist(base({ datasets: at("2026-09-29T09:10:00Z") })).find((i) => i.key === "checklist:freshness-monitor")!.status, "pass", "3.5 h old reading, 3 h cadence");
+const lagging = buildChecklist(base({ datasets: at("2026-09-29T08:10:00Z") })).find((i) => i.key === "checklist:freshness-monitor")!;
+assert.equal(lagging.status, "fail", "4.5 h old reading is overdue");
+assert.match(lagging.detail, /^Overdue: last reading 4\.5 h ago/);
+// With the job in the manifest, its next run comes from the job's schedule, and data rows check again then.
+const withMonitor = buildChecklist(base({ manifest: [...base().manifest, wf("pipeline_health.yml", { crons: ["7 */3 * * *"] })],
+  runs: { ...base().runs!, "pipeline_health.yml": [run("pipeline_health.yml", "2026-09-29T12:07:00Z", "success")] } }));
+assert.match(withMonitor.find((i) => i.key === "checklist:freshness-monitor")!.nextEventAt!, /2026-09-29T15:07/);
+assert.match(withMonitor.find((i) => i.key === "data:mlb_props")!.nextCheckAt!, /2026-09-29T15:07/);
+
+// Data rows state what the reading saw, as of the reading, never an age that reads as "now".
+assert.equal(get("data:nfl_dfs_projections").detail, "Newest row was 30 min old at the Sep 29, 8:00 AM ET reading; budget 36 h; written by hourly.yml.");
+assert.equal(get("data:mlb_props").detail, "Newest row was 36.7 days old at the Sep 29, 8:00 AM ET reading, 36.7x its 24 h budget; written by broken.yml.");
+// A row that is not due gives the checker's reason, not a generic "out of season".
+const pending = buildChecklist(base({ datasets: [{ key: "nfl_context_variant_freeze", label: "NFL context variant freeze", status: "dormant", lastRowAt: null, ageHours: null,
+  maxAgeHours: 168, ownerWorkflow: "hourly.yml", checkedAt: "2026-09-29T12:00:00Z", note: "Current study pin; zero context rows by Saturday 21:35 UTC fails.",
+  detail: "week 4: pending; 0 eligible player-weeks; deadline 2026-10-03T21:35:00+00:00; missing started games []" }] }));
+const freeze = pending.find((i) => i.key === "data:nfl_context_variant_freeze")!;
+assert.equal(freeze.status, "info");
+assert.match(freeze.detail, /^Not due now: week 4: pending/);
+assert.doesNotMatch(freeze.detail, /season/i);
+// A check with its own explanation and no timestamp (the freeze check failing) shows that explanation.
+const broke = buildChecklist(base({ datasets: [{ key: "nfl_context_variant_freeze", label: "x", status: "empty", lastRowAt: null, ageHours: null, maxAgeHours: 168,
+  ownerWorkflow: "hourly.yml", checkedAt: "2026-09-29T12:00:00Z", detail: "context freeze check failed: KeyError" }] })).find((i) => i.key === "data:nfl_context_variant_freeze")!;
+assert.equal(broke.status, "fail");
+assert.match(broke.detail, /^Context freeze check failed: KeyError \(at the Sep 29, 8:00 AM ET reading\)\.$/);
+// The availability monitor's next run is its workflow's.
+const avail = buildChecklist(base({ manifest: [...base().manifest, wf("refresh_nfl_availability_context.yml", { crons: ["17 */6 * 1,2,9-12 *"] })],
+  runs: { ...base().runs!, "refresh_nfl_availability_context.yml": [run("refresh_nfl_availability_context.yml", "2026-09-29T12:17:00Z", "success")] } }));
+assert.match(avail.find((i) => i.key === "nfl:availability-monitor")!.nextEventAt!, /2026-09-29T18:17/);
+
 // Unreadable sources are FAIL rows, never gaps.
 const blind = buildChecklist(base({ runs: null, githubError: "GitHub answered 401", datasets: null, datasetsError: "db down", heartbeats: null, heartbeatsError: "db down", slates: null, slatesError: "db down", availabilityOps: null, availabilityOpsError: "db down" }));
 for (const key of ["checklist:github", "checklist:datasets", "checklist:heartbeats", "checklist:slates", "checklist:availability-ops"]) {
