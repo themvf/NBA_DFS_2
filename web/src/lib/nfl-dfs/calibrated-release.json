@@ -1,5 +1,6 @@
 {
   "evidence": "2023 fit, 2024 selection, 2025 retrospective diagnostic; fresh forward validation pending",
+  "generatedFrom": "artifacts/nfl_dfs_shadow_config.json",
   "limits": [
     "Not a DK slate profitability backtest",
     "Benchmark disables market inputs; not archived live projections",
@@ -10,199 +11,214 @@
   "positions": {
     "DST": {
       "enabledForOptIn": true,
-      "recipeDigest": "4a527756ddbee7785e910ad69057f3d5484e4bee5121a526c379df3a669abc88",
+      "recipeDigest": "1c2112c2869f351e724a5c0fa67cffbb52117c64cb65f43d71c83f5a4d1dbdca",
+      "releaseMetricsQualify": true,
       "seasons": {
         "2024": {
           "baseline": {
-            "boomBrier": 0.07813598345588234,
-            "coverage80": 0.7775735294117647,
-            "intervalScore80": 19.560110294117646,
-            "mae": 4.316369485294119,
+            "boomBrier": 0.08014067095588236,
+            "coverage80": 0.75,
+            "intervalScore80": 20.652757352941173,
+            "mae": 4.31561580882353,
             "n": 544
           },
           "opportunity": {
-            "boomBrier": 0.07419798208997141,
-            "coverage80": 0.8069852941176471,
-            "intervalScore80": 18.92189328651367,
-            "mae": 4.22458242248495,
+            "boomBrier": 0.07408574123008578,
+            "coverage80": 0.8088235294117647,
+            "intervalScore80": 18.84953554184814,
+            "mae": 4.206412109342437,
             "n": 544
           }
         },
         "2025": {
           "baseline": {
-            "boomBrier": 0.07744260110294117,
-            "coverage80": 0.7996323529411765,
-            "intervalScore80": 20.734558823529408,
-            "mae": 4.384457720588236,
+            "boomBrier": 0.08049011948529412,
+            "coverage80": 0.7555147058823529,
+            "intervalScore80": 21.939705882352943,
+            "mae": 4.430450367647059,
             "n": 544
           },
           "opportunity": {
-            "boomBrier": 0.07173191098605886,
+            "boomBrier": 0.07175492889740888,
             "coverage80": 0.8180147058823529,
-            "intervalScore80": 19.32004926097452,
-            "mae": 4.26371412359876,
+            "intervalScore80": 19.317396541298912,
+            "mae": 4.2749324826924,
             "n": 544
           }
         }
-      }
+      },
+      "shadowCandidate": true,
+      "studyCandidateStatus": "eligible_for_shadow_only"
     },
     "QB": {
-      "enabledForOptIn": true,
-      "recipeDigest": "9a8d14a3d978bdff6f40d765311e063529b1c9ab2871074150813b3d404224e5",
+      "enabledForOptIn": false,
+      "recipeDigest": "949db11ec2c562b81d77335d128bac54d1582c2acfced68329b7a00926f465c6",
+      "releaseMetricsQualify": true,
       "seasons": {
         "2024": {
           "baseline": {
-            "boomBrier": 0.057987771739130445,
-            "coverage80": 0.718944099378882,
-            "intervalScore80": 29.667403726708077,
-            "mae": 6.773650776397514,
+            "boomBrier": 0.0594041149068323,
+            "coverage80": 0.7003105590062112,
+            "intervalScore80": 30.600549689440996,
+            "mae": 6.683141149068323,
             "n": 644
           },
           "opportunity": {
-            "boomBrier": 0.055681319760918335,
-            "coverage80": 0.8027950310559007,
-            "intervalScore80": 28.877101766095716,
-            "mae": 6.6575306149439815,
+            "boomBrier": 0.055182715992738524,
+            "coverage80": 0.7981366459627329,
+            "intervalScore80": 28.83733077976494,
+            "mae": 6.607472223304525,
             "n": 644
           }
         },
         "2025": {
           "baseline": {
-            "boomBrier": 0.05355090408805031,
-            "coverage80": 0.7515723270440252,
-            "intervalScore80": 30.577650943396225,
-            "mae": 7.054789308176101,
+            "boomBrier": 0.05492260220125786,
+            "coverage80": 0.7421383647798742,
+            "intervalScore80": 31.68722955974843,
+            "mae": 6.97066965408805,
             "n": 636
           },
           "opportunity": {
-            "boomBrier": 0.05035056060215212,
-            "coverage80": 0.779874213836478,
-            "intervalScore80": 29.739760699509546,
-            "mae": 6.9542815439436625,
+            "boomBrier": 0.05042695915174184,
+            "coverage80": 0.7735849056603774,
+            "intervalScore80": 29.938635206895913,
+            "mae": 6.930540534127897,
             "n": 636
           }
         }
-      }
+      },
+      "shadowCandidate": false,
+      "studyCandidateStatus": "not_eligible"
     },
     "RB": {
       "enabledForOptIn": false,
-      "recipeDigest": "072989d9f70586ce4281227cfce38acba283b04d2f8f7aa73912b4b5a6873fa2",
+      "recipeDigest": "62836bbd74a21731fc1e736c82083fe99f5b290532164b72ba5aa26802233b2a",
+      "releaseMetricsQualify": false,
       "seasons": {
         "2024": {
           "baseline": {
-            "boomBrier": 0.046514658090724435,
-            "coverage80": 0.7650643195666892,
-            "intervalScore80": 21.51726066350711,
-            "mae": 4.68762153012864,
+            "boomBrier": 0.047498121191604604,
+            "coverage80": 0.7373053486797563,
+            "intervalScore80": 22.026376438727148,
+            "mae": 4.627078808395396,
             "n": 1477
           },
           "opportunity": {
-            "boomBrier": 0.046685466368196295,
-            "coverage80": 0.8144888287068381,
-            "intervalScore80": 23.37771934989152,
-            "mae": 4.6088597547836425,
+            "boomBrier": 0.04638897120572463,
+            "coverage80": 0.8111035883547731,
+            "intervalScore80": 23.311490538029226,
+            "mae": 4.602904131180743,
             "n": 1477
           }
         },
         "2025": {
           "baseline": {
-            "boomBrier": 0.04836957531519575,
-            "coverage80": 0.787657597876576,
-            "intervalScore80": 22.09196416721964,
-            "mae": 4.7333970802919705,
+            "boomBrier": 0.04972831785003318,
+            "coverage80": 0.7471798274717982,
+            "intervalScore80": 22.740520238885203,
+            "mae": 4.677528599867286,
             "n": 1507
           },
           "opportunity": {
-            "boomBrier": 0.04796871551885599,
-            "coverage80": 0.8088918380889184,
-            "intervalScore80": 24.222978703956894,
-            "mae": 4.663953324524809,
+            "boomBrier": 0.048280615531671886,
+            "coverage80": 0.8069011280690113,
+            "intervalScore80": 24.354679147131417,
+            "mae": 4.661687383771648,
             "n": 1507
           }
         }
-      }
+      },
+      "shadowCandidate": false,
+      "studyCandidateStatus": "not_eligible"
     },
     "TE": {
       "enabledForOptIn": false,
-      "recipeDigest": "4418fb2bab3b4bee71ef2f61c76280e1b0e6a366c10e44297916d678dfdaa206",
+      "recipeDigest": "2d711f24ec9348e16e96b1972ba2ec94e94875474de08b74d6e1713aed1153fc",
+      "releaseMetricsQualify": false,
       "seasons": {
         "2024": {
           "baseline": {
-            "boomBrier": 0.03358305697278911,
-            "coverage80": 0.8112244897959183,
-            "intervalScore80": 16.549350340136055,
-            "mae": 3.6507313775510206,
+            "boomBrier": 0.035424170918367345,
+            "coverage80": 0.7738095238095238,
+            "intervalScore80": 17.082304421768708,
+            "mae": 3.674124914965987,
             "n": 1176
           },
           "opportunity": {
-            "boomBrier": 0.03530332527747941,
-            "coverage80": 0.8018707482993197,
-            "intervalScore80": 18.09546222578743,
-            "mae": 3.634065802983951,
+            "boomBrier": 0.035402502182775235,
+            "coverage80": 0.7959183673469388,
+            "intervalScore80": 18.186941865417403,
+            "mae": 3.6745127480502293,
             "n": 1176
           }
         },
         "2025": {
           "baseline": {
-            "boomBrier": 0.032602377115229654,
-            "coverage80": 0.7993553585817889,
-            "intervalScore80": 17.437526188557616,
-            "mae": 3.692385334407736,
+            "boomBrier": 0.034271212731668006,
+            "coverage80": 0.7630942788074134,
+            "intervalScore80": 18.31095890410959,
+            "mae": 3.7198614020950846,
             "n": 1241
           },
           "opportunity": {
-            "boomBrier": 0.03201871354020153,
-            "coverage80": 0.7937147461724415,
-            "intervalScore80": 18.68316620300216,
-            "mae": 3.650028191033644,
+            "boomBrier": 0.032332735289780264,
+            "coverage80": 0.7784045124899275,
+            "intervalScore80": 18.86182780415573,
+            "mae": 3.6779504687687052,
             "n": 1241
           }
         }
-      }
+      },
+      "shadowCandidate": false,
+      "studyCandidateStatus": "not_eligible"
     },
     "WR": {
       "enabledForOptIn": false,
-      "recipeDigest": "82b17a2d2ebdf23bbfd33d5647441b77cc61473031b4ea8dccf5a02649cf065e",
+      "recipeDigest": "abdb7d6e7a8072ae26c7f38f0c461e9b8950005d5b8cae0990d9c8507e1a2542",
+      "releaseMetricsQualify": false,
       "seasons": {
         "2024": {
           "baseline": {
-            "boomBrier": 0.04580060845431256,
-            "coverage80": 0.7997438087105039,
-            "intervalScore80": 22.708699402220326,
-            "mae": 4.846403586678053,
+            "boomBrier": 0.04725026686592656,
+            "coverage80": 0.771135781383433,
+            "intervalScore80": 23.247598633646458,
+            "mae": 4.810496968403075,
             "n": 2342
           },
           "opportunity": {
-            "boomBrier": 0.04313136975488636,
-            "coverage80": 0.8035866780529461,
-            "intervalScore80": 24.463406006161563,
-            "mae": 4.743483255741747,
+            "boomBrier": 0.04343725958434972,
+            "coverage80": 0.8001707941929974,
+            "intervalScore80": 24.52563082261738,
+            "mae": 4.761186864098213,
             "n": 2342
           }
         },
         "2025": {
           "baseline": {
-            "boomBrier": 0.03458172120961061,
-            "coverage80": 0.8032311516155758,
-            "intervalScore80": 20.760865782932893,
-            "mae": 4.56365869925435,
+            "boomBrier": 0.03544989643744822,
+            "coverage80": 0.7613918806959403,
+            "intervalScore80": 21.521946147473074,
+            "mae": 4.526401905550952,
             "n": 2414
           },
           "opportunity": {
-            "boomBrier": 0.034221323152431454,
-            "coverage80": 0.8185584092792046,
-            "intervalScore80": 22.601479049742426,
-            "mae": 4.466434562543495,
+            "boomBrier": 0.03420667712107636,
+            "coverage80": 0.8152444076222038,
+            "intervalScore80": 22.708954918446757,
+            "mae": 4.493434958490227,
             "n": 2414
           }
         }
-      }
+      },
+      "shadowCandidate": false,
+      "studyCandidateStatus": "not_eligible"
     }
   },
-  "predictionsDigest": "f2ca4d3a7caa8008ca4fc2ca57e4f4aac12bd78ccdcd1f4ceecd1947985f5be8",
+  "predictionsDigest": "afdf5e669d08bb6c84c489d3ed599e6df559b4904212ce91f7fe86fd3afa7306",
   "productionDefaultPromotion": false,
-  "rule": "Opt-in only: qualified opportunity recipe, >=100 paired rows per split, lower MAE, interval score and boom Brier in 2024 and 2025. Others retain the chosen fallback.",
-  "studyDigest": "5298a404d8447281db9d4f5d8c8361d62e82da61232d3a58bc5d47e32f9be970",
-  "studyId": "8bab909112d93a5d0f0c1bcfa2674262d7116aebe04d58402cfd7d5e717d033e",
-  "version": "nfl-dfs-calibrated-opt-in-v1"
+  "rule": "Opt-in only: the pinned study marks the opportunity recipe eligible_for_shadow_only, >=100 paired rows per split, lower MAE, interval score and boom Brier in 2024 and 2025. Others retain the chosen fallback.",
+  "studyDigest": "2d038206a4b88c5ad992735578be5f8f65f4a3498567eaa90231d3bc559532b5",
+  "studyId": "7ff4d4049b8c10be84ee9ba83d5e9704e4fab1522b396e1e18b6c2d26a511c9f",
+  "version": "nfl-dfs-calibrated-opt-in-v2"
 }

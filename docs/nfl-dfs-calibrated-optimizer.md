@@ -22,9 +22,21 @@ The existing schema initializer expands the optimizer-run source constraint to a
 
 Cash and GPP use source-specific player tail estimates. Summed player tails are explicitly labeled search heuristics, not complete-lineup percentiles. External sources no longer inherit historical model tails or boom probabilities. Joint scenarios remain in Scenario Lab. Kelly sizing requires calibrated contest payouts and portfolio dependence, so it is deferred.
 
+## Release v2: generated from the shadow pin (2026-09-29, B4)
+
+The release named study `8bab9091` in code. The shadow job was re-pinned twice (current `7ff4d404`, recomputed against historical-v5), so from week 3 the page read a study that froze nothing and the source silently produced no forecast. `ingest/nfl_dfs_optimizer_release.py` now reads the study from `artifacts/nfl_dfs_shadow_config.json`, refuses a config whose report disagrees, and records each position's study status; tests assert the release names the shadow pin (`tests/test_nfl_dfs_optimizer_release.py`, `test:nfl-calibrated`). The same gate re-run against `7ff4d404`:
+
+| Position | 2025 MAE baseline → candidate | 80% interval score | Study status | Opt-in |
+|---|---|---|---|---|
+| DST | 4.430 → 4.275 | 21.94 → 19.32 | eligible_for_shadow_only | Yes |
+| QB | 6.971 → 6.931 | 31.69 → 29.94 | not_eligible | No |
+| RB / WR / TE | small mean gains | worse ranges | not_eligible | No |
+
+QB still passes the release's own metric screen but the study no longer freezes a QB candidate (it fell below the study's ≥1% retrospective MAE gain once v5 improved the baseline), so it cannot be offered. The source is therefore **Calibrated (experimental)** with DST only; the table above supersedes the v1 table for current use. Snapshots are read at or before the slate's projection cutoff, so a later daily freeze no longer replaces a saved slate's candidates.
+
 ## Reproduction
 
-From the repository root, run `python -m ingest.nfl_dfs_optimizer_release` with the saved research artifacts available. This regenerates `web/src/lib/nfl-dfs/calibrated-release.json`, including paired metrics and artifact digests, without fitting or database writes.
+From the repository root, run `python -m ingest.nfl_dfs_optimizer_release` with the saved research artifacts available. This regenerates `web/src/lib/nfl-dfs/calibrated-release.json` from the pinned study, including paired metrics and artifact digests, without fitting or database writes. Re-run it whenever the shadow config is re-pinned.
 
 From `web`, run `npm run test:nfl-calibrated`, `npm run test:nfl-dfs-workspace`, and `npm run build`. The calibrated tests cover identity and time rejection, source-specific objectives, actual lineup changes, historical fallback, empty coverage rejection, and Showdown captain scaling.
 

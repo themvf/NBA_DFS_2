@@ -2,14 +2,18 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { calibratedRelease, type CalibrationSnapshot } from "@/lib/nfl-dfs/calibrated-projection";
+import { calibratedSnapshotsQuery } from "@/lib/nfl-dfs/source-queries";
 
-/** Read-only: existing daily shadow job owns immutable forecast snapshots. */
-export async function getCalibratedSnapshots(season: number, week: number): Promise<CalibrationSnapshot[]> {
-  const result = await db.execute(sql`SELECT DISTINCT ON (player_id)
-    id::text,player_id,season,week,captured_at,kickoff,payload
-    FROM nfl_dfs_shadow_predictions
-    WHERE study_run_id=${calibratedRelease.studyId} AND season=${season} AND week=${week}
-    ORDER BY player_id,captured_at DESC,id DESC`);
+/**
+ * Read-only: existing daily shadow job owns immutable forecast snapshots.
+ *
+ * The newest capture per player AT OR BEFORE `asOf` (a saved slate's projection
+ * cutoff). Without the bound a later freeze replaced the slate's candidate with
+ * one captured after its decision time, which the reader then refused, so every
+ * saved slate lost its candidates at the next daily freeze.
+ */
+export async function getCalibratedSnapshots(season: number, week: number, asOf: Date): Promise<CalibrationSnapshot[]> {
+  const result = await db.execute(calibratedSnapshotsQuery(calibratedRelease.studyId, season, week, asOf));
   type Recipe={features:string[];center:number[];scale:number[];coefficients:number[]};
   let recipes:Record<string,{recipe:Recipe}>={};
   try {

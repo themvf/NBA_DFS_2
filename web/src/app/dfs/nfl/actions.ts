@@ -48,9 +48,12 @@ import type { HistorySlate } from '@/lib/nfl-dfs/results-history';
 import { estimateRank, projectionError, scoreLineups, summarizeSet, type PositionError, type ScoreCurve, type ScoredLineup, type SetSummary } from '@/lib/nfl-dfs/slate-results';
 import { parseDkGameInfoKickoff } from '@/lib/nfl-dfs/workspace-stage';
 import {buildDraftKingsEligibilityManifest,type PlatformEligibilityDecision} from '@/lib/nfl-dfs/platform-eligibility';
-import { readWorkloadProjection, workloadPoolEligible, type WorkloadReport } from "@/lib/nfl-dfs/workload-projection";
+import { readWorkloadProjection, workloadPoolEligible } from "@/lib/nfl-dfs/workload-projection";
 import { getCalibratedSnapshots } from "@/db/nfl-dfs-calibrated";
-import { readCalibratedProjection, readPositionWorkloadProjection, type CalibrationSnapshot } from "@/lib/nfl-dfs/calibrated-projection";
+import { getVolumeShareReport, type VolumeShareLoad } from "@/db/nfl-volume-share";
+import { calibratedRelease, readCalibratedProjection, readPositionWorkloadProjection, type CalibrationSnapshot } from "@/lib/nfl-dfs/calibrated-projection";
+import { computeSourceAvailability, sourceBlockedReason, type NflSourceAvailability } from "@/lib/nfl-dfs/source-availability";
+import type { DecisionClock } from "@/lib/nfl-dfs/availability";
 import { nflBuildInfo } from "@/lib/nfl-dfs/build-info";
 import { assessOwnership, type OwnershipAssessment } from "@/lib/nfl-dfs/ownership-capability";
 import {
@@ -139,6 +142,10 @@ export type NflWorkspaceSlate = {
     conflicts?:number;unknown?:number;rollback_policy?:string}|null;
   refreshAvailable?: boolean;
   refreshMessage?: string | null;
+  /** True only when this slate's run is known to be the newest for its week. */
+  onNewestRun?: boolean;
+  /** Whether each experimental source can produce a forecast now, and why not (server rule = generation rule). */
+  sourceAvailability?: NflSourceAvailability;
   /** ISO time of the slate's first kickoff; drives which workspace step opens. */
   firstKickoff?: string | null;
   format: "classic" | "showdown";
@@ -241,7 +248,7 @@ export async function previewNflAbsence(uploadId: string, receiverId: number, te
   if (!receiver || !teammate) return {ok:false as const,error:'Both players must belong to this saved salary slate.'};
   const { default: history } = await import('@/data/nfl-player-context-2025.json');
   try {
-    const result = previewAbsence(history as unknown as PlayerContext, receiver, teammate, Date.now());
+    const result = previewAbsence(history as unknown as PlayerContext, receiver, teammate, {now:Date.now(),decisionAt:slate.modelAsOf,onNewestRun:slate.onNewestRun===true});
     return {ok:true as const,result:{...result,uploadId,projectionRunId:slate.projectionRunId,digest:sha256(JSON.stringify(result))}};
   } catch (error) {
     return {ok:false as const,error:error instanceof Error ? error.message : 'Scenario evidence is unavailable.'};
@@ -393,16 +400,27 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
   catch (error) { refreshMessage = error instanceof Error ? error.message : 'Could not check projection freshness.'; }
   const staleWarning = staleRunWarning(run, newestRun);
   const refreshAvailable = Boolean(newestRun && newestRun.runId !== upload.projectionRunId);
+  // Unknown (the check failed) is not "newest": decision-time evidence then fails closed.
+  const onNewestRun = Boolean(run && newestRun && newestRun.runId === upload.projectionRunId);
   let calibrationWarning: string | null = null;
+  let calibratedReason: string | null = null;
   if (run?.week) {
-    try { snapshots = await getCalibratedSnapshots(run.season, run.week); }
-    catch { calibrationWarning = "Calibrated forecasts could not be loaded; historical projections remain available."; }
+    try {
+      // At or before the run's cutoff: a later freeze must not replace the slate's candidates.
+      snapshots = await getCalibratedSnapshots(run.season, run.week, run.asOfAt);
+      if (!snapshots.length) calibratedReason = `Shadow study ${calibratedRelease.studyId.slice(0, 8)} froze no forecasts for ${run.season} week ${run.week} at or before this slate's projection cutoff.`;
+    } catch { calibrationWarning = "Calibrated forecasts could not be loaded; historical projections remain available."; calibratedReason = calibrationWarning; }
   }
   const byPlayer = new Map(snapshots.map(s => [s.playerId, s]));
   // Roles as they stood at the run's cutoff, not whatever the latest refresh says.
   const roster = run ? await getNflRosterEvidence(run.season, run.week, run.asOfAt ?? null) : new Map();
   const injuryCoverage = run ? await getNflInjuryCoverage(run.season,run.week) : null;
-  const {default:workloadReport}=await import('@/data/nfl-volume-share-report.json');
+  // The WR run in force at the run's cutoff; none yet is a stated reason, never an error.
+  let volumeShare: VolumeShareLoad = { report: null, runDigest: null, reason: 'Load a slate linked to a projection run.' };
+  if (run?.week) {
+    try { volumeShare = await getVolumeShareReport(run.season, run.week, run.asOfAt); }
+    catch { volumeShare = { report: null, runDigest: null, reason: 'WR volume-share runs could not be loaded.' }; }
+  }
   const identities=run ? await db.execute(sql`SELECT id, gsis_id FROM ff_players WHERE season=${run.season} AND gsis_id IS NOT NULL`) : {rows:[]};
   const identityMap=new Map(identities.rows.map(r=>[Number(r.id),String(r.gsis_id)]));
   // Who started each team's last game; the evidence that survives a depth chart
@@ -411,6 +429,10 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
   // A saved projection run is a decision-time artifact. Page-read time must
   // not allow a later injury observation to rewrite its player pool.
   const now = run?.asOfAt?.getTime() ?? Date.now();
+  // Forecasts attach as of that decision time; whether a build may USE them is a
+  // request-time question (kickoff, expiry, newest run), answered with this clock
+  // exactly as generation answers it.
+  const clock: DecisionClock = { now: Date.now(), decisionAt: run?.asOfAt?.toISOString() ?? null, onNewestRun };
   const situations=run?.week?await loadSituationContext(run.season,run.week,roster,now):null;
   // The depth chart is what blocks backup quarterbacks, and its feed has now
   // twice gone silently stale for days because an unrelated step in the same
@@ -543,7 +565,7 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
     availabilityResolution:{policy:'player-game-availability-v1',pinnedPlayers:pinnedDecisionCount,
       legacyPlayers:projectionStats.length-pinnedDecisionCount,decisionAt:run?.asOfAt?.toISOString()??null},
     availabilityHealth:runAvailability.health??null,
-    refreshAvailable, refreshMessage,
+    refreshAvailable, refreshMessage, onNewestRun,
     favoriteTeam, underdogTeam,
     format: upload.format as "classic" | "showdown",
     games: upload.games as string[],
@@ -580,7 +602,7 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
         platformManifestDigest:upload.eligibilityManifestDigest,
         platformDecisionState:(row.platformEligibility as PlatformEligibilityDecision|null)?.state??null,
         decisionAt:availability(row).evaluatedAt??null},
-      workloadEligible:workloadPoolEligible({...row,availability:availability(row)},now),
+      workloadEligible:workloadPoolEligible({...row,availability:availability(row)},clock),
       ledLastTeamGame: row.position === 'QB' && passingLeaders.get(nflTeamKey(row.team)) != null && passingLeaders.get(nflTeamKey(row.team)) === identityMap.get(row.ffPlayerId ?? -1),
       identityMethod: row.identityMethod,
       identityEvidence: row.identityEvidence,
@@ -618,13 +640,16 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
       customProj: numeric(row.customProj),
       ...(() => {
         const candidate = readCalibratedProjection(byPlayer.get(row.ffPlayerId ?? -1), row, run?.season ?? 0, run?.week ?? 0, now);
-        const workload=readWorkloadProjection(workloadReport as WorkloadReport,{identity:identityMap.get(row.ffPlayerId??-1)??null,position:row.position,team:row.team,gameInfo:row.gameInfo,isOut:row.isOut,availability:availability(row)},run?.season??0,run?.week??0,now);
+        const workload=volumeShare.report?readWorkloadProjection(volumeShare.report,{identity:identityMap.get(row.ffPlayerId??-1)??null,position:row.position,team:row.team,gameInfo:row.gameInfo,isOut:row.isOut,availability:availability(row)},run?.season??0,run?.week??0,now):{projection:null,reason:volumeShare.reason??'No WR volume-share run.'};
         const positionCandidate=readPositionWorkloadProjection(byPlayer.get(row.ffPlayerId??-1),row,run?.season??0,run?.week??0,now);
         const eligiblePosition=workloadPoolEligible({...row,availability:availability(row)},now)&&positionCandidate.projection&&Date.parse(positionCandidate.projection.kickoff)===Date.parse(availability(row).kickoff??'');
         return { positionWorkload:eligiblePosition?positionCandidate.projection:null,positionWorkloadReason:positionCandidate.projection&&!eligiblePosition?'Current roster, starting role or schedule evidence is unresolved.':positionCandidate.reason, calibrated: candidate.projection, calibrationReason: candidate.reason, workload:workload.projection,workloadReason:workload.reason };
       })(),
     })),
   };
+  workspace.sourceAvailability = computeSourceAvailability(workspace.players, clock, {
+    slateReason: run?.week ? null : 'Load a slate linked to a projection run.',
+    volumeShareReason: volumeShare.report ? null : volumeShare.reason, calibratedReason, release: calibratedRelease });
   await attachReplacementUpside(workspace, rows.map((row) => {
     // A starter the pipeline already ruled out has a zeroed slate row; his
     // pre-availability range (recorded at zeroing, same run) is what a
@@ -1082,8 +1107,10 @@ export async function compareNflWorkload(uploadId:string, settings:NflOptimizerS
   const slate=await workspaceSlate(uploadId,sanitizeConfirmedStartingQbs(settings.confirmedStartingQbs));
   // One server-read cohort, both sources, identical controls and deterministic search.
   if(!Number.isInteger(settings.nLineups)||settings.nLineups<1||settings.nLineups>150)throw new Error('Lineup count must be 1–150.');
-  const now=Date.now();
-  const common=slate.players.filter(p=>(p.ourProj!==null&&p.ourProj>0||settings.allowDkFallback&&p.avgFptsDk!==null&&p.avgFptsDk>0)&&workloadPoolEligible(p,now));
+  const blocked=slate.sourceAvailability?sourceBlockedReason(slate.sourceAvailability,'workload',settings.workloadPositions):null;
+  if(blocked)throw new Error(blocked);
+  const clock:DecisionClock={now:Date.now(),decisionAt:slate.modelAsOf,onNewestRun:slate.onNewestRun===true};
+  const common=slate.players.filter(p=>(p.ourProj!==null&&p.ourProj>0||settings.allowDkFallback&&p.avgFptsDk!==null&&p.avgFptsDk>0)&&workloadPoolEligible(p,clock));
   const pairedSlate={...slate,players:common};
   const paired={...settings,format:slate.format,randomness:0,nLineups:Math.min(5,settings.nLineups)};
   if(!common.some(p=>selectedWorkload(p,settings.workloadPositions)&&!p.isOut))throw new Error('No eligible pregame workload forecasts for comparison.');
@@ -1152,6 +1179,11 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
   }
   const uploadId=slate.uploadId;
   const now=Date.now();
+  // Decision time (the run's cutoff) vs request time; see availabilityCurrent.
+  const clock=(at:number):DecisionClock=>({now:at,decisionAt:slate.modelAsOf,onNewestRun:slate.onNewestRun===true});
+  // The page offers a source only when this same rule passes; say why when it does not.
+  const sourceBlocked=slate.sourceAvailability?sourceBlockedReason(slate.sourceAvailability,settings.projectionSource,settings.workloadPositions):null;
+  if(sourceBlocked)throw new Error(sourceBlocked);
   validateSituations(settings.situations,slate.teams);
   const requestedDefensive=settings.defensiveAdjustments;
   if(requestedDefensive?.mode && requestedDefensive.mode!=='off') {
@@ -1175,8 +1207,8 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
   if(defensive?.mode && defensive.mode!=='off')await assertSlatePregame(slate);
   const sourcePlayers=defensive?.mode && defensive.mode!=='off' ? slate.players.map(player=>({...player,
     defensiveForecast:resolveDefensiveForecast(player,slate.projectionRunId!,defensive,candidateCaptures.get(player.ffPlayerId??-1)??null)})):slate.players;
-  const prepared= settings.projectionSource==='workload'?prepareProjectionAudits(sourcePlayers,slate.situationTeams??[],settings.workloadPositions,settings.situations,now):sourcePlayers;
-  const eligible= settings.projectionSource==='workload' ? prepared.filter(p=>workloadPoolEligible(p,now)) : prepared;
+  const prepared= settings.projectionSource==='workload'?prepareProjectionAudits(sourcePlayers,slate.situationTeams??[],settings.workloadPositions,settings.situations,clock(now)):sourcePlayers;
+  const eligible= settings.projectionSource==='workload' ? prepared.filter(p=>workloadPoolEligible(p,clock(now))) : prepared;
   // Phase 2: the SERVER authoritatively resolves ownership capability from the
   // actual feed — the client can never claim "validated". Missing ownership
   // stays null. LineStar supplies a single combined percentage, not slot-level
@@ -1211,7 +1243,7 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
   if(eligible.length!==slate.players.length)result.warnings.push(`${slate.players.length-eligible.length} players excluded: workload optimization requires an unstarted, matching salary game.`);
   if (result.lineups.some(l => l.slots.some(s => s.projectionSource === "calibrated" && Date.parse(s.player.calibrated!.kickoff) <= Date.now()))) throw new Error("A calibrated player's game started during optimization. Refresh the slate before regenerating.");
   if (result.lineups.some(l => l.slots.some(s => s.projectionSource === "workload" && (Date.parse(selectedWorkload(s.player,settings.workloadPositions)!.kickoff) <= Date.now() || Date.now()-Date.parse(selectedWorkload(s.player,settings.workloadPositions)!.capturedAt)>72*3600000)))) throw new Error("A workload forecast expired during optimization. Refresh forecasts before regenerating.");
-  if(settings.projectionSource==='workload'&&result.lineups.some(l=>l.slots.some(s=>!workloadPoolEligible(slate.players.find(p=>p.dkPlayerId===s.player.dkPlayerId)!,Date.now()))))throw new Error('Roster or kickoff evidence expired during optimization. Refresh the slate.');
+  if(settings.projectionSource==='workload'&&result.lineups.some(l=>l.slots.some(s=>!workloadPoolEligible(slate.players.find(p=>p.dkPlayerId===s.player.dkPlayerId)!,clock(Date.now())))))throw new Error('Roster or kickoff evidence expired during optimization. Refresh the slate.');
   const runId = randomUUID();
   const inputSnapshot = prepared.map((player) => ({
     dkPlayerId: player.dkPlayerId, ffPlayerId: player.ffPlayerId, identityMethod: player.identityMethod, identityEvidence:player.identityEvidence, gameInfo: player.gameInfo, name: player.name, team: player.team, position: player.position,

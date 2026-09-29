@@ -8,9 +8,12 @@ name: NFL DFS Research Forecasts
 # hiding a production outage behind it.
 #
 # Some outputs are read by the page as opt-in sources (shadow predictions for
-# "Calibrated", workload/efficiency runs for "Position workload" situation
-# audits). Each degrades there with a stated reason when missing; none is
-# needed for a default build.
+# "Calibrated" and the QB/RB/TE "Position workload" candidates, WR volume-share
+# runs for the WR "Position workload" candidates, workload/efficiency runs for
+# its situation audits). A saved slate reads the newest capture at or before its
+# projection cutoff, so what this run writes applies to slates on the NEXT
+# projection run. Each degrades there with a stated reason when missing; none
+# is needed for a default build.
 #
 # Production hands over the matchup comparison it persisted (and the season,
 # week and capture window it used) as the nfl-dfs-research-handoff artifact.
@@ -129,6 +132,16 @@ jobs:
         if: ${{ !cancelled() && steps.workload.outcome == 'success' }}
         run: |
           python -c "import os,sys; sys.argv=['efficiency']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_efficiency import main; main()"
+      # WR volume/share forecasts (nfl_dfs_volume_share_runs) for the page's
+      # "Position workload" WR candidates. Until 2026-09-29 these came from a
+      # committed JSON frozen at week 1, so the WR source could not work after
+      # week 1. History is the stored nflverse weekly rows, strictly before the
+      # target week; the week defaults to the next unstarted one.
+      - name: Freeze research-only WR volume-share forecasts
+        id: volume_share
+        if: ${{ !cancelled() }}
+        run: |
+          python -c "import os,sys; sys.argv=['volume-share']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_target_share import main; main()"
       # One retry, and only on a lock conflict. Scheduled jobs elsewhere run
       # schema DDL on every start (db/database.py _ensure_schema holds
       # AccessExclusive locks across many tables in one transaction), and one

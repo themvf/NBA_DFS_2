@@ -1,11 +1,24 @@
 import assert from "node:assert/strict";
-import { calibratedRelease, readCalibratedProjection, type CalibrationSnapshot, type CalibrationTarget } from "../src/lib/nfl-dfs/calibrated-projection";
+import { readFileSync } from "node:fs";
+import { calibratedRelease, readCalibratedProjection, type CalibratedRelease, type CalibrationSnapshot, type CalibrationTarget } from "../src/lib/nfl-dfs/calibrated-projection";
 import { optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings } from "../src/app/dfs/nfl/nfl-optimizer";
+
+// The release names the study the shadow job is pinned to (generated from it), never a stale one.
+const shadowConfig = JSON.parse(readFileSync(new URL("../../artifacts/nfl_dfs_shadow_config.json", import.meta.url), "utf8"));
+assert.equal(calibratedRelease.studyId, shadowConfig.study_run_id, "calibrated release must pin the shadow study");
+assert.equal(calibratedRelease.studyDigest, shadowConfig.output_digest);
+assert.equal(calibratedRelease.version, "nfl-dfs-calibrated-opt-in-v2");
+// Under that study only DST qualifies; QB is disabled with the study's own status, not silently empty.
+assert.equal(calibratedRelease.positions.DST.enabledForOptIn, true);
+assert.equal(calibratedRelease.positions.QB.enabledForOptIn, false);
 
 const now = Date.parse("2026-09-12T12:00:00Z");
 const target: CalibrationTarget = { ffPlayerId: 1, position: "QB", team: "BUF", opponent: "MIA", gameInfo: "BUF@MIA 09/13/2026 01:00PM ET" };
 const snapshot: CalibrationSnapshot = { id: "42", playerId: 1, season: 2026, week: 1, capturedAt: "2026-09-12T10:00:00Z", kickoff: "2026-09-13T17:00:00Z", payload: { position: "QB", team: "BUF", opponent: "MIA", source_study_digest: calibratedRelease.studyDigest, history_cutoff: [2025, 18], baseline: 20, p10: 8, p90: 30, candidate: { prediction: 24, p10: 10, median: 22, p90: 37, boom_probability: .3, recipe_digest: calibratedRelease.positions.QB.recipeDigest } } };
-const decoded = readCalibratedProjection(snapshot, target, 2026, 1, now).projection!;
+assert.match(readCalibratedProjection(snapshot, target, 2026, 1, now).reason, /release gate did not qualify QB in study 7ff4d404/);
+// Reader logic against a release that qualifies QB.
+const qbRelease: CalibratedRelease = { ...calibratedRelease, positions: { ...calibratedRelease.positions, QB: { ...calibratedRelease.positions.QB, enabledForOptIn: true, shadowCandidate: true } } };
+const decoded = readCalibratedProjection(snapshot, target, 2026, 1, now, qbRelease).projection!;
 assert.equal(decoded.mean, 24); assert.equal(decoded.p90, 37);
 assert.notEqual(decoded.p90 - decoded.baselineP90, decoded.mean - decoded.baselineMean, "range is not a translated baseline");
 for (const changed of [
@@ -14,9 +27,9 @@ for (const changed of [
   { ...snapshot, payload: { ...(snapshot.payload as object), history_cutoff: [2026, 1] } },
   { ...snapshot, payload: { ...(snapshot.payload as object), candidate: null } },
   { ...snapshot, payload: { ...(snapshot.payload as object), source_study_digest: "wrong" } },
-]) assert.equal(readCalibratedProjection(changed, target, 2026, 1, now).projection, null);
-for (const changed of [{ ...target, position: "WR" }, { ...target, opponent: "NYJ" }, { ...target, gameInfo: "BUF@MIA 09/13/2026 04:00PM ET" }, { ...target, gameInfo: null }]) assert.equal(readCalibratedProjection(snapshot, changed, 2026, 1, now).projection, null);
-assert.equal(readCalibratedProjection(snapshot, target, 2026, 1, Date.parse(snapshot.kickoff)).projection, null);
+]) assert.equal(readCalibratedProjection(changed, target, 2026, 1, now, qbRelease).projection, null);
+for (const changed of [{ ...target, position: "WR" }, { ...target, opponent: "NYJ" }, { ...target, gameInfo: "BUF@MIA 09/13/2026 04:00PM ET" }, { ...target, gameInfo: null }]) assert.equal(readCalibratedProjection(snapshot, changed, 2026, 1, now, qbRelease).projection, null);
+assert.equal(readCalibratedProjection(snapshot, target, 2026, 1, Date.parse(snapshot.kickoff), qbRelease).projection, null);
 
 let id = 0;
 const pool: NflOptimizerPlayer[] = [];

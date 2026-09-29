@@ -27,9 +27,10 @@ Run from the repo root:
 
 ```
 python -m pytest tests/test_nfl_dfs_target_share.py -q
-python -m ingest.nfl_dfs_target_share --source-root "C:/Docs/_AI Python Projects/NBADFS_v2"
+python -m ingest.nfl_dfs_target_share --dry-run          # read-only
+python -m ingest.nfl_dfs_target_share --season 2026 --week 4
 ```
 
-The ingestion command verifies cached 2023–2025 weekly-stat bytes against the source manifest. PostgreSQL is read-only; no existing study, shadow prediction, optimizer record or production model changes. It writes a dated local archive under `artifacts/nfl_volume_share/` and the current UI report at `web/src/data/nfl-volume-share-report.json`. Database evidence changes across runs; snapshot, roster and recipe digests make that visible.
+Since 2026-09-29 (B4) the command reads history from the stored nflverse weekly rows (`ff_player_week_stats`) instead of local parquet, builds one run for the target week, and appends it to `nfl_dfs_volume_share_runs`; the research workflow runs it after every production refresh, and the page reads the newest run at or before a slate's projection cutoff. The committed `web/src/data/nfl-volume-share-report.json` is retired. The table above is the parquet replay; the digest-verified parquet reader (`read_sources`) remains for the studies that import it. See [the WR release](nfl-workload-optimizer-release.md#weekly-refresh-b4-2026-09-29-run-v2) for the history rule and the measured difference between stored rows and parquet. No existing study, shadow prediction, optimizer record or production model changes; snapshot, roster and recipe digests make run-to-run changes visible.
 
 Tests cover budget conservation, unavailable shares, unknown reserve, invalid numbers, temporal cutoff, team isolation, pregame source age and same-week residual leakage. Before promotion, compare against the actual optimizer on identical cohorts and collect timestamped 2026 forward outcomes, including non-participation. Keep injury-adjustment calibration separate from the volume/share mean improvement.

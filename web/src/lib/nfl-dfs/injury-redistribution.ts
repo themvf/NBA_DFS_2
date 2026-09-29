@@ -1,20 +1,19 @@
-import type {Availability} from './availability';
+import {evaluationCurrent,toDecisionClock,type Availability,type DecisionClock} from './availability';
 import type {RoleMember} from './role-allocation';
 
 export type InjuryRole = RoleMember & {availability:Availability};
 /** Frozen hypothesis: half of removed known share, proportional to supported remaining roles.
  * Unknown roles and the other half remain reserved. This is not calibrated redistribution.
  */
-export function redistributeInjuryTargets(members:InjuryRole[],targetBudget:number,currentQb:string|null,historicalQb:string|null,now:number) {
+export function redistributeInjuryTargets(members:InjuryRole[],targetBudget:number,currentQb:string|null,historicalQb:string|null,nowOrClock:number|DecisionClock) {
+  const clock=toDecisionClock(nowOrClock);
   if(!Number.isFinite(targetBudget)||targetBudget<0)throw new Error('Invalid target budget.');
   if(new Set(members.map(p=>p.id)).size!==members.length)throw new Error('Duplicate roster player.');
   const absent=members.filter(p=>['WR','TE'].includes(p.position)&&p.availability.officialConfirmed&&p.availability.status==='INACTIVE');
   if(absent.length!==1)throw new Error('Requires exactly one verified inactive WR/TE on the full roster.');
   if(!currentQb||!historicalQb||currentQb!==historicalQb)throw new Error('Current QB differs from the historical reference or is unresolved; a new team passing budget is required.');
-  const fresh=(p:InjuryRole)=>{
-    const a=p.availability,stamp=Date.parse(a.evaluatedAt??''),kickoff=Date.parse(a.kickoff??'');
-    return a.fresh&&Number.isFinite(stamp)&&stamp<=now&&now-stamp<=60000&&kickoff>now;
-  };
+  // Decision-time evidence on the newest run, or live evidence under a minute old.
+  const fresh=(p:InjuryRole)=>evaluationCurrent(p.availability,clock).ok;
   if(!fresh(absent[0]))throw new Error('Inactive player roster or game evidence is stale.');
   const reference=(p:InjuryRole)=>!p.new_team&&!p.rookie&&p.prior_target_share!==null;
   for(const p of members)if(p.prior_target_share!==null&&(!Number.isFinite(p.prior_target_share)||p.prior_target_share<0||p.prior_target_share>1))throw new Error('Invalid prior target share.');

@@ -20,6 +20,71 @@ export const nflTeamKey = teamKey;
 
 export const ROSTER_FRESH_MS = 72 * 3600000;
 
+/** How recent a live-resolved (unpinned) evaluation must be; see `availabilityCurrent`. */
+export const LIVE_AVAILABILITY_MAX_AGE_MS = 60_000;
+
+/**
+ * Two different times, kept apart. `decisionAt` is when a saved slate's
+ * evidence was evaluated: its projection run's cutoff (`modelAsOf`), which is
+ * also the evaluation time of every pinned decision on that run. `now` is when
+ * this request runs. `onNewestRun` says whether that run is still the newest
+ * one for the week -- false when the newest run cannot be established.
+ */
+export type DecisionClock = { now: number; decisionAt: string | null; onNewestRun: boolean };
+
+/** A plain timestamp is a live-resolved check: no decision time, not on a known run. */
+export const liveClock = (now: number): DecisionClock => ({ now, decisionAt: null, onNewestRun: false });
+export const toDecisionClock = (value: number | DecisionClock): DecisionClock => typeof value === "number" ? liveClock(value) : value;
+
+/**
+ * May this availability evidence still gate a build right now?
+ *
+ * Before 2026-09-29 every experimental source required `now - evaluatedAt <=
+ * 60s`. That was written when availability was resolved at request time. Since
+ * #280 a saved slate evaluates at its projection cutoff, so the check failed for
+ * every non-DST player once the cutoff was a minute old: the page showed them
+ * eligible (it evaluated at the cutoff) and the server then dropped them.
+ *
+ * Decision-time evidence (evaluated exactly at `decisionAt`) is current when the
+ * game has not started and the slate is on the NEWEST projection run. Newest-run,
+ * not an age window, because supersession is the correctness signal: a newer run
+ * carries newer injury and depth-chart evidence, so the old decision may now be
+ * wrong; while no newer run exists the pinned decision is the best evidence there
+ * is, and its age is already surfaced separately (the stale-roster warning, the
+ * 72-hour forecast expiry). An age window would keep a superseded decision live
+ * for up to 72 hours after a newer run ruled a player out. An unknown newest run
+ * fails closed.
+ *
+ * Anything else is live-resolved evidence and keeps the 60-second rule.
+ */
+export function availabilityCurrent(a: Availability | undefined, clock: DecisionClock): { ok: boolean; reason: string } {
+  if (a?.blockedReason) return { ok: false, reason: a.blockedReason };
+  return evaluationCurrent(a, clock);
+}
+
+/**
+ * The timing half of `availabilityCurrent`, without the eligibility block: is
+ * this evaluation still usable at `clock.now`? A verified-inactive player's
+ * evidence is current even though it blocks him (the injury scenario needs it).
+ */
+export function evaluationCurrent(a: Availability | undefined, clock: DecisionClock): { ok: boolean; reason: string } {
+  const no = (reason: string) => ({ ok: false, reason });
+  const { now } = clock;
+  if (!a) return no("No availability evidence.");
+  if (!a.fresh) return no("Roster evidence was not fresh when it was evaluated.");
+  const evaluated = Date.parse(a.evaluatedAt ?? ""), kickoff = Date.parse(a.kickoff ?? ""), decision = Date.parse(clock.decisionAt ?? "");
+  if (!Number.isFinite(now) || !Number.isFinite(evaluated)) return no("Availability evaluation time is unknown.");
+  if (!Number.isFinite(kickoff)) return no("Kickoff is unresolved.");
+  if (now >= kickoff) return no("The game has started.");
+  if (Number.isFinite(decision) && evaluated === decision) {
+    if (decision > now) return no("The projection decision time is in the future.");
+    if (!clock.onNewestRun) return no("A newer projection run exists (or the newest run could not be checked). Move this slate to the newest projections before building.");
+    return { ok: true, reason: "Decision-time evidence from the newest projection run." };
+  }
+  if (evaluated > now || now - evaluated > LIVE_AVAILABILITY_MAX_AGE_MS) return no("Current roster eligibility is unavailable or stale.");
+  return { ok: true, reason: "Live evidence evaluated within the last minute." };
+}
+
 /**
  * Present a decision saved on the projection row; never re-run source precedence in Vercel.
  *
