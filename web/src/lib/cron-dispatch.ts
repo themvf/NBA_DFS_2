@@ -87,14 +87,15 @@ export const DISPATCH_JOBS: readonly DispatchJob[] = [
   {
     key: "nfl-availability-context",
     workflow: "refresh_nfl_availability_context.yml",
-    // Hourly, September-December, plus every 15 minutes in the two hours
-    // before a kickoff. The job's own gate (should_capture in
+    // Hourly, September-February (weeks 17-18 fall in January, the playoffs
+    // run into February), plus every 15 minutes in the two hours before a
+    // kickoff. The job's own gate (should_capture in
     // ingest/nfl_availability_operations.py) captures on every run within six
     // hours of a kickoff and every two hours otherwise; dispatching without
     // `force` leaves that decision where the developer put it.
     due: (now, context) => {
       const m = now.getUTCMonth() + 1;
-      return m >= 9 && m <= 12 && (hourTick(now) || nearNflKickoff(now, context));
+      return (m >= 9 || m <= 2) && (hourTick(now) || nearNflKickoff(now, context));
     },
     why: "Sleeper injury/depth capture, the projection rebuild and the pinned availability decisions the DFS slate reads.",
   },
@@ -106,6 +107,29 @@ export const DISPATCH_JOBS: readonly DispatchJob[] = [
     // idempotent, so the workflow's later GitHub fallback slot is harmless.
     due: (now) => [2, 3].includes(now.getUTCDay()) && now.getUTCHours() === 10 && hourTick(now),
     why: "Realized DK points, slate report cards, and the weekly replacement-upside grade.",
+  },
+  {
+    key: "nfl-pbp-archetypes",
+    workflow: "refresh_nfl_pbp_archetypes.yml",
+    // Monday 12:07 and Tuesday 09:07 UTC (its former GitHub slots, which
+    // GitHub skipped on 09-14 and 09-21 and ran seven hours late on 09-28).
+    // Dispatched with no inputs = the self-healing --relabel-stale mode.
+    due: (now) => ((now.getUTCDay() === 1 && now.getUTCHours() === 12) || (now.getUTCDay() === 2 && now.getUTCHours() === 9)) && hourTick(now),
+    why: "Play-by-play labels behind DST scoring and the matchup studies.",
+  },
+  {
+    key: "pipeline-health",
+    workflow: "pipeline_health.yml",
+    // Every three hours: the data-freshness readings on /health.
+    due: (now) => now.getUTCHours() % 3 === 0 && hourTick(now),
+    why: "Data-freshness readings for the /health checklist.",
+  },
+  {
+    key: "daily-failure-sweep",
+    workflow: "daily_failure_sweep.yml",
+    // 11:07 UTC (7:07 am ET): the daily email of everything failing.
+    due: (now) => now.getUTCHours() === 11 && hourTick(now),
+    why: "Daily failure sweep: opens/updates a GitHub issue that emails the owner.",
   },
 ];
 

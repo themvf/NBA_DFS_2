@@ -10,7 +10,8 @@ import { CRON_ROUTES, cronStatuses, lateAfterMs, type CronHeartbeat } from "../s
 // Every cron path in vercel.json has a heartbeat entry, and every entry is a real cron.
 const vercel = JSON.parse(readFileSync(path.resolve(__dirname, "..", "vercel.json"), "utf8")) as { crons: { path: string }[] };
 const cronRoutes = vercel.crons.map((c) => c.path.replace(/^\/api\/cron\//, "")).sort();
-assert.deepEqual(Object.keys(CRON_ROUTES).sort(), cronRoutes, "CRON_ROUTES must list exactly the crons in vercel.json");
+const vercelRoutes = Object.entries(CRON_ROUTES).filter(([, s]) => (s.source ?? "vercel") === "vercel").map(([k]) => k).sort();
+assert.deepEqual(vercelRoutes, cronRoutes, "CRON_ROUTES must list exactly the crons in vercel.json");
 // Each route file wraps its handler.
 for (const route of cronRoutes) {
   const src = readFileSync(path.resolve(__dirname, "..", "src", "app", "api", "cron", route, "route.ts"), "utf8");
@@ -31,10 +32,12 @@ const statuses = cronStatuses([
 const s = (route: string) => statuses.find((x) => x.route === route)!;
 assert.equal(s("dispatch").state, "ok");
 assert.equal(s("nfl-slate-check").state, "late");
-assert.match(s("nfl-slate-check").text, /Last ran 200 min ago; it should run every 30 min/);
+assert.match(s("nfl-slate-check").text, /Last ran 3.3 h ago; it should run every 30 min/);
 assert.equal(s("nfl-pool-capture").state, "failing");
 assert.match(s("nfl-pool-capture").text, /boom/);
 assert.equal(s("event-closing-lines").state, "never", "no heartbeat is never, not ok");
 assert.equal(lateAfterMs(CRON_ROUTES["dispatch"]), 50 * 60_000);
+assert.equal(lateAfterMs(CRON_ROUTES["daily-failure-sweep"]), 26 * 3600_000, "the daily sweep is late after 26 h, not 3 days");
+assert.equal(s("dispatch").nextRunAt, new Date(now - 10 * 60_000 + 15 * 60_000).toISOString());
 
 console.log("Cron heartbeat: every vercel.json cron is registered and wrapped; never / late / failing / ok are distinguished.");

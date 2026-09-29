@@ -16,6 +16,10 @@
     {
       "path": "/api/cron/nfl-slate-check",
       "schedule": "12,42 * * * *"
+    },
+    {
+      "path": "/api/cron/health-check",
+      "schedule": "3,33 * * * *"
     }
   ]
 }
