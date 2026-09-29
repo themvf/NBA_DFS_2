@@ -34,6 +34,9 @@ export const loadNflBenchmarks = async (...a: Args<typeof safe.safeLoadNflBenchm
 export const freezeNflBenchmark = async (...a: Args<typeof safe.safeFreezeNflBenchmark>) => unwrap(await safe.safeFreezeNflBenchmark(...a));
 export const previewNflTargetRedistribution = async (...a: Args<typeof safe.safePreviewNflTargetRedistribution>) => unwrap(await safe.safePreviewNflTargetRedistribution(...a));
 export const previewNflAbsence = async (...a: Args<typeof safe.safePreviewNflAbsence>) => unwrap(await safe.safePreviewNflAbsence(...a));
+export const startNflDataUpdate = async (...a: Args<typeof safe.safeStartNflDataUpdate>) => unwrap(await safe.safeStartNflDataUpdate(...a));
+export const readNflDataUpdate = async (...a: Args<typeof safe.safeReadNflDataUpdate>) => unwrap(await safe.safeReadNflDataUpdate(...a));
+export type { NflDataUpdateResult } from "./data-update-actions";
 export const saveNflBuildDraft = async (...a: Args<typeof safe.safeSaveNflBuildDraft>) => unwrap(await safe.safeSaveNflBuildDraft(...a));
 export const readNflBuildDraft = async (...a: Args<typeof safe.safeReadNflBuildDraft>) => unwrap(await safe.safeReadNflBuildDraft(...a));
 export const captureCurrentPool = async (...a: Args<typeof safe.safeCaptureCurrentPool>) => unwrap(await safe.safeCaptureCurrentPool(...a));

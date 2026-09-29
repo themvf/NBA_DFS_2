@@ -11,7 +11,7 @@
     },
     {
       "path": "/api/cron/dispatch",
-      "schedule": "7,37 * * * *"
+      "schedule": "7,22,37,52 * * * *"
     }
   ]
 }

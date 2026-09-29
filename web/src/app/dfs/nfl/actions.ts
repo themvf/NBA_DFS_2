@@ -148,6 +148,8 @@ export type NflWorkspaceSlate = {
   sourceAvailability?: NflSourceAvailability;
   /** ISO time of the slate's first kickoff; drives which workspace step opens. */
   firstKickoff?: string | null;
+  /** When the roster/depth evidence the slate reads was captured (ISO). */
+  rosterCapturedAt?: string | null;
   format: "classic" | "showdown";
   games: string[];
   teams: string[];
@@ -542,6 +544,7 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
     },
     situationTeams:situations?.teams??[],
     injuryCoverage,
+    rosterCapturedAt: rosterCapturedAt == null ? null : new Date(rosterCapturedAt).toISOString(),
     firstKickoff: (() => {
       const times = rows.map((row) => Date.parse(availability(row).kickoff ?? parseDkGameInfoKickoff(row.gameInfo) ?? ""))
         .filter(Number.isFinite);
@@ -724,6 +727,10 @@ function slateCheckFor(slate: NflWorkspaceSlate, context: { incompleteWarning: s
     upside: slate.replacementUpside ? { flagged: slate.replacementUpside.flagged, error: slate.replacementUpside.error,
       skipped: slate.replacementUpside.skipped.map((s) => ({ name: s.name, reason: s.reason })) } : null,
     unmatched: slate.players.filter((p) => p.ffPlayerId == null).map((p) => p.name),
+    experimentalSources: slate.sourceAvailability ? [
+      { label: 'Workload (experimental)', usable: slate.sourceAvailability.workload.usable, reason: slate.sourceAvailability.workload.reason },
+      { label: 'Calibrated (experimental)', usable: slate.sourceAvailability.calibrated.usable, reason: slate.sourceAvailability.calibrated.reason },
+    ] : null,
   });
 }
 

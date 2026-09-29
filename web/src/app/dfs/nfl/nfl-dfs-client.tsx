@@ -19,6 +19,7 @@ import type { CaptainRecommendation } from '@/lib/nfl-dfs/captain-recommendation
 import { recommendFromSimulation, simulateCaptainOdds } from '@/lib/nfl-dfs/captain-simulation';
 import CaptainSuggestionPanel from './captain-suggestion-panel';
 import SlateCheckCard from './slate-check-card';
+import DataUpdatePanel from './data-update-panel';
 import { exposureBounds, exposureRange, type CaptainTarget, type ExposureTarget } from '@/lib/nfl-dfs/generation-settings';
 import { availabilityCoverage } from '@/lib/nfl-dfs/availability-coverage';
 import { AlertTriangle, BarChart3, CheckCircle2, Download, FileUp, HelpCircle, Lock, Play, Search, ShieldCheck, Unlock, XCircle } from "lucide-react";
@@ -315,7 +316,23 @@ export default function NflDfsClient() {
     const form = new FormData(); form.set("file", file);
     startTransition(async () => { try { const result = await loadNflSalaryCsv(form); setSlate(result); setLibraryId(result.uploadId); setCompletedSettings(null); setSettings(current=>({...current,defensiveAdjustments:defensiveSettingsFor(current.projectionSource),confirmedStartingQbs:{}})); setEntryFile(null); setSavedRuns((await loadSavedNflWorkspace(result.uploadId)).runs); draftReadyFor.current = null; await restoreDraft(result.uploadId); await refreshLibrary(); try { localStorage.setItem("nfl-saved-slate", result.uploadId); } catch {} setMessage(`${file.name} saved with ${result.players.length} players and linked to the latest projection run.`); } catch (reason) { setError(reason instanceof Error ? reason.message : "Salary upload failed."); } });
   }
-  function refreshProjections() {
+  async function afterDataUpdate(succeeded: boolean) {
+    if (!slate) return;
+    try {
+      const next = await loadSavedNflWorkspace(slate.uploadId, settings.confirmedStartingQbs);
+      if (!succeeded) { setSlate(next.slate); setError("The data update did not finish. The slate keeps the last good data; open the failed run for details."); return; }
+      if (next.slate.refreshAvailable && lineups.length === 0) {
+        refreshProjections("Data updated. The slate now uses the newest projections, injuries and depth charts.");
+        return;
+      }
+      setSlate(next.slate);
+      setMessage(next.slate.refreshAvailable
+        ? "Data updated. Newer projections are ready; use Refresh projections in the Slate Check to move to them (your current lineups stay saved)."
+        : "Data updated. Nothing changed that affects this slate's projections; DraftKings statuses are current.");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "The slate could not be reloaded after the update."); }
+  }
+
+  function refreshProjections(doneMessage?: string) {
     if (!slate) return;
     setError(null);
     startTransition(async () => {
@@ -326,7 +343,7 @@ export default function NflDfsClient() {
         setSavedRuns((await loadSavedNflWorkspace(next.uploadId)).runs);
         await refreshLibrary();
         try { localStorage.setItem('nfl-saved-slate', next.uploadId); } catch {}
-        setMessage('Created a refreshed projection snapshot. Generate new lineups; previous lineup audits are preserved.');
+        setMessage(doneMessage ?? 'Created a refreshed projection snapshot. Generate new lineups; previous lineup audits are preserved.');
       } catch (error) { setError(error instanceof Error ? error.message : 'Projection refresh failed.'); }
     });
   }
@@ -480,6 +497,9 @@ export default function NflDfsClient() {
       {stage === "review" ? <section className="flex flex-wrap items-end gap-3 rounded-xl border bg-white p-4"><Field label="Lineup set"><select className="control min-w-80" value={runId ?? ''} disabled={pending || !savedRuns.length} onChange={e => openRun(e.target.value)}><option value="" disabled>{savedRuns.length ? 'Choose a saved run' : 'No lineups for this slate yet'}</option>{savedRuns.map(r => <option key={r.runId} value={r.runId}>{new Date(r.createdAt).toLocaleString()} · {r.count} lineups · {r.mode.toUpperCase()} · {SOURCE_LABELS[r.source as NflProjectionSource] ?? r.source}{r.defensiveMode==="experimental" ? ` · Experimental ${r.defensiveProfile}` : r.defensiveMode==="approved" ? ` · Approved ${r.defensiveProfile}` : ""}</option>)}</select></Field><p className="text-xs text-slate-500">Every “Generate &amp; save” adds a set here.</p></section> : null}
       <button hidden={stage !== "build" && stage !== "review"} type="button" aria-expanded={showBuilder} aria-controls="nfl-lineup-builder" onClick={() => setShowBuilder(value => !value)} className="nfl-mobile-builder-toggle rounded-lg border bg-white px-4 py-2 text-sm font-semibold">{showBuilder ? "Hide build settings" : "Build settings & export"}</button>{draftStatus === "error" ? <p className="mt-1 text-[11px] font-semibold text-red-700">Your build settings could not be saved; they will reset if you reload.</p> : draftStatus === "saved" ? <p className="mt-1 text-[11px] text-slate-500">Build settings saved for this slate.</p> : null}
       <section hidden={stage !== "build" && stage !== "review"} className="nfl-work-grid grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]"><div className="space-y-5">
+        <DataUpdatePanel uploadId={slate.uploadId}
+          asOf={{ roster: slate.rosterCapturedAt ?? null, dkStatuses: slate.liveDkStatus?.capturedAt ?? null, projections: slate.modelAsOf ?? null }}
+          onFinished={afterDataUpdate} />
         <SlateCheckCard check={slate.slateCheck} pending={pending} onAction={(action, item) => {
           if (action === "refresh_projections") refreshProjections();
           if (action === "pick_starter") { setShowBuilder(true); const el = document.getElementById(`qb-starter-${item.team ?? ""}`); el?.scrollIntoView({ behavior: "smooth", block: "center" }); (el as HTMLSelectElement | null)?.focus(); }

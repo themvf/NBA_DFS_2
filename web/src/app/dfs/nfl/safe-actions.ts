@@ -9,6 +9,7 @@
  */
 import type { SafeResult } from "@/lib/nfl-dfs/safe-result";
 import * as actions from "./actions";
+import * as dataUpdates from "./data-update-actions";
 import { captureCurrentPool } from "./pool-review/actions";
 import { loadPlayerHistory } from "./review/actions";
 
@@ -23,6 +24,8 @@ async function run<T>(label: string, fn: () => Promise<T>): Promise<SafeResult<T
 
 type Args<F extends (...args: never[]) => unknown> = Parameters<F>;
 
+export async function safeStartNflDataUpdate(...args: Args<typeof dataUpdates.startNflDataUpdate>) { return run("Starting the data update", () => dataUpdates.startNflDataUpdate(...args)); }
+export async function safeReadNflDataUpdate(...args: Args<typeof dataUpdates.readNflDataUpdate>) { return run("Checking the data update", () => dataUpdates.readNflDataUpdate(...args)); }
 export async function safeRefreshNflSlateProjections(...args: Args<typeof actions.refreshNflSlateProjections>) { return run("Projection refresh", () => actions.refreshNflSlateProjections(...args)); }
 export async function safeListSavedNflSlates(...args: Args<typeof actions.listSavedNflSlates>) { return run("Listing saved slates", () => actions.listSavedNflSlates(...args)); }
 export async function safeLoadSavedNflWorkspace(...args: Args<typeof actions.loadSavedNflWorkspace>) { return run("Loading the slate", () => actions.loadSavedNflWorkspace(...args)); }

@@ -1197,6 +1197,17 @@ export async function ensurePickemTables(): Promise<void> {
 }
 
 const NFL_DFS_DDLS = [
+  // "Update data" presses: the workflow runs each one dispatched and how they
+  // ended (lib/nfl-dfs/data-update). The data is global, so one update serves
+  // every slate; upload_id records only where it was pressed.
+  `CREATE TABLE IF NOT EXISTS nfl_dfs_data_updates (
+    id UUID PRIMARY KEY,
+    upload_id UUID,
+    requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    finished_at TIMESTAMPTZ,
+    jobs JSONB NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_nfl_dfs_data_updates_requested ON nfl_dfs_data_updates (requested_at DESC)`,
   // The build form per slate (locks, exposure, captain ranges, plan, starting
   // QBs), saved as the user edits so a reload or another device keeps it.
   // Keyed by slate signature, so a re-upload of the same slate shares it.
