@@ -5,7 +5,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { restoreSavedLineups, savedSlateLabel } from '@/lib/nfl-dfs/saved-workspace';
 import { exportNflDkEntries } from '@/lib/nfl-dfs/entry-export';
 import { isDeployedBuild, runNflPreExportQa } from '@/lib/nfl-dfs/pre-export-qa';
-import { buildSlateCheck, type SlateCheck } from '@/lib/nfl-dfs/slate-check';
+import { buildSlateCheck, type SlateCheck, type SlateCheckInput } from '@/lib/nfl-dfs/slate-check';
+import { NFL_PIPELINE_WORKFLOWS, readFailingWorkflows } from '@/lib/workflow-health';
 import { latestSlateChecks, recordSlateCheck, type RecordedSlateCheck } from '@/db/nfl-dfs-slate-checks';
 import { availabilityCoverage } from '@/lib/nfl-dfs/availability-coverage';
 import { and, desc, eq, or, sql } from "drizzle-orm";
@@ -668,7 +669,8 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
   }), run, identityMap);
   const owned = attachOwnership(workspace);
   owned.opponentAdjustments = await opponentAdjustmentCoverage(owned);
-  owned.slateCheck = slateCheckFor(owned, { incompleteWarning, rosterStaleWarning, rosterCapturedAt, games: upload.games as string[] });
+  owned.slateCheck = slateCheckFor(owned, { incompleteWarning, rosterStaleWarning, rosterCapturedAt, games: upload.games as string[],
+    pipeline: await nflPipelineStatus() });
   // Record what the page saw, on the live site only (a local copy adds its own
   // "local code" line) and only for a plain read: a confirmed-starter override
   // is the user's what-if, not the slate's state.
@@ -700,10 +702,27 @@ async function opponentAdjustmentCoverage(slate: NflWorkspaceSlate): Promise<Non
   return out;
 }
 
+/**
+ * NFL data jobs whose latest run failed. A failure to read GitHub is reported
+ * as such, never as "all clear".
+ */
+async function nflPipelineStatus(): Promise<NonNullable<SlateCheckInput['pipeline']>> {
+  const token = process.env.GITHUB_DISPATCH_TOKEN;
+  if (!token) return { failing: [], error: 'the GitHub token is not configured on this deployment' };
+  try {
+    const failing = (await readFailingWorkflows(token)).filter((f) => NFL_PIPELINE_WORKFLOWS[f.workflow])
+      .map((f) => ({ label: NFL_PIPELINE_WORKFLOWS[f.workflow].label, affectsBuild: NFL_PIPELINE_WORKFLOWS[f.workflow].affectsBuild,
+        failedAt: f.failedAt, url: f.url, streak: f.streak, streakCapped: f.streakCapped }));
+    return { failing, error: null };
+  } catch (error) {
+    return { failing: [], error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 const OUT_STATUSES = new Set(['OUT', 'IR', 'PUP', 'NFI', 'SUSPENDED', 'INACTIVE']);
 
 function slateCheckFor(slate: NflWorkspaceSlate, context: { incompleteWarning: string | null; rosterStaleWarning: string | null;
-  rosterCapturedAt: number | null; games: string[] }): SlateCheck {
+  rosterCapturedAt: number | null; games: string[]; pipeline?: SlateCheckInput['pipeline'] }): SlateCheck {
   const qbs = slate.players.filter((p) => p.position === 'QB').map((p) => ({
     name: p.name, team: p.team,
     injured: ['O', 'OUT'].includes((p.dkStatus ?? '').toUpperCase()) || OUT_STATUSES.has(p.availability?.status ?? '')
@@ -735,6 +754,7 @@ function slateCheckFor(slate: NflWorkspaceSlate, context: { incompleteWarning: s
     upside: slate.replacementUpside ? { flagged: slate.replacementUpside.flagged, error: slate.replacementUpside.error,
       skipped: slate.replacementUpside.skipped.map((s) => ({ name: s.name, reason: s.reason })) } : null,
     unmatched: slate.players.filter((p) => p.ffPlayerId == null).map((p) => p.name),
+    pipeline: context.pipeline ?? null,
     experimentalSources: slate.sourceAvailability ? [
       { label: 'Workload (experimental)', usable: slate.sourceAvailability.workload.usable, reason: slate.sourceAvailability.workload.reason },
       { label: 'Calibrated (experimental)', usable: slate.sourceAvailability.calibrated.usable, reason: slate.sourceAvailability.calibrated.reason },

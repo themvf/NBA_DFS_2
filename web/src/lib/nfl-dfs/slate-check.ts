@@ -22,6 +22,8 @@ export interface SlateCheckItem {
   text: string;
   action?: SlateCheckAction;
   team?: string;
+  /** A page that shows the evidence (e.g. the failed GitHub run). */
+  href?: string;
 }
 
 export interface SlateCheck {
@@ -65,6 +67,11 @@ export interface SlateCheckInput {
   liveDk: { applied: boolean; reason: string | null; capturedAt: string | null } | null;
   upside: { flagged: number; skipped: { name: string; reason: string }[]; error?: string } | null;
   unmatched: string[];
+  /**
+   * NFL data jobs whose latest run failed (lib/workflow-health), or why their
+   * status could not be read. Null when not checked at all.
+   */
+  pipeline?: { failing: { label: string; failedAt: string; url: string; streak: number; streakCapped: boolean; affectsBuild: boolean }[]; error: string | null } | null;
   /** The experimental projection sources (workload, calibrated): usable now, or why not. */
   experimentalSources?: { label: string; usable: boolean; reason: string }[] | null;
 }
@@ -152,6 +159,21 @@ export function buildSlateCheck(input: SlateCheckInput): SlateCheck {
     if (input.upside.error) add({ id: "upside", level: "info", text: `Replacement ranges unavailable: ${input.upside.error}` });
     else if (input.upside.flagged) add({ id: "upside", level: "ok", text: `${input.upside.flagged} backup${input.upside.flagged === 1 ? "" : "s"} show an "if he gets the job" range.` });
     for (const skip of input.upside.skipped) add({ id: `upside-skip:${skip.name}`, level: "info", text: `${skip.name}: ${skip.reason}` });
+  }
+
+  // Data jobs. A failed injury/projection/DraftKings job can leave the slate on
+  // older data while every other line still reads fine, so it needs the user;
+  // a failed research job changes nothing about a build, so it is a note.
+  if (input.pipeline) {
+    for (const job of input.pipeline.failing) {
+      const times = job.streak > 1 ? ` (${job.streakCapped ? `at least ${job.streak}` : job.streak} runs in a row)` : "";
+      add({ id: `pipeline:${job.label}`, level: job.affectsBuild && !started ? "attention" : "info", href: job.url,
+        text: job.affectsBuild
+          ? `The ${job.label.toLowerCase()} failed ${clock(job.failedAt)}${times}. This slate may be on older data until it runs cleanly.`
+          : `The ${job.label.toLowerCase()} failed ${clock(job.failedAt)}${times}. Builds are unaffected; results and report cards may lag.` });
+    }
+    if (input.pipeline.error) add({ id: "pipeline:unknown", level: "info", text: `Couldn't check whether the data jobs are running: ${input.pipeline.error}` });
+    else if (!input.pipeline.failing.length) add({ id: "pipeline", level: "ok", text: "Every NFL data job's latest run succeeded." });
   }
 
   // Experimental sources are opt-in, so their state is a note, never a nag.

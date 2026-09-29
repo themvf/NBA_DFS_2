@@ -81,4 +81,19 @@ assert.equal(sources.needs, 0);
 assert.equal(sources.items.find((i) => i.id === "source:Workload (experimental)")!.level, "info");
 assert.match(sources.items.find((i) => i.id === "source:Calibrated (experimental)")!.text, /^Calibrated \(experimental\) source ready\. Calibrated: DST 2/);
 
+// Data jobs: a failed injury/projection job needs the user; a failed research job is a note;
+// a GitHub read failure is said plainly, never shown as "all clear".
+const jobs = buildSlateCheck(base({ pipeline: { error: null, failing: [
+  { label: "Injury and depth-chart refresh", affectsBuild: true, failedAt: "2026-09-28T19:07:00Z", url: "https://github.com/r/1", streak: 3, streakCapped: false },
+  { label: "Research and report-card job", affectsBuild: false, failedAt: "2026-09-28T01:45:00Z", url: "https://github.com/r/2", streak: 1, streakCapped: false }] } }));
+const injury = jobs.items.find((i) => i.id === "pipeline:Injury and depth-chart refresh")!;
+assert.equal(injury.level, "attention"); assert.equal(injury.href, "https://github.com/r/1");
+assert.match(injury.text, /failed .* \(3 runs in a row\)\. This slate may be on older data/);
+assert.equal(jobs.items.find((i) => i.id === "pipeline:Research and report-card job")!.level, "info");
+assert.equal(jobs.needs, 1);
+const unknown = buildSlateCheck(base({ pipeline: { error: "GitHub answered 401", failing: [] } }));
+assert.match(unknown.items.find((i) => i.id === "pipeline:unknown")!.text, /Couldn't check whether the data jobs are running: GitHub answered 401/);
+assert.equal(unknown.items.some((i) => i.id === "pipeline"), false, "no all-clear when the status is unknown");
+assert.equal(buildSlateCheck(base({ pipeline: { error: null, failing: [] } })).items.find((i) => i.id === "pipeline")!.level, "ok");
+
 console.log("Slate Check: clean slate is quiet; the PHI@CHI failures each become one plain line with a fix; overrides and local builds are flagged.");
