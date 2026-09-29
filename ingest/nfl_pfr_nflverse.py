@@ -1,11 +1,25 @@
-"""Import public nflverse-distributed PFR stats into the game supplement store."""
+"""Import public nflverse-distributed PFR stats into the game supplement store.
+
+Exit status, which the production workflow reads (continue-on-error step):
+  0  refreshed. Every completed game is charted, OR the only uncharted games
+     finished less than PUBLICATION_GRACE_HOURS ago. PFR charts games days
+     after they are played, so a Sunday game missing on Monday is the normal
+     state, not a degraded input.
+  2  degraded. A game finished more than PUBLICATION_GRACE_HOURS ago is still
+     uncharted (or partly charted), a game's kickoff cannot be dated, or the
+     PFR identity crosswalk refresh failed (the run falls back to the frozen
+     mappings).
+  1  (uncaught exception) a download or parse failure: nothing was refreshed.
+
+`run-status.json` in the output directory says which, with the game ids.
+"""
 from __future__ import annotations
 
 import argparse
 import hashlib
 import io
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -15,7 +29,7 @@ from config import load_config
 from db.database import DatabaseManager
 from db.nfl_pfr_schema import DDL, save_snapshot
 from ingest.nfl_pfr_supplement import select_games
-from ingest.nfl_season_schedule import fetch_schedule
+from ingest.nfl_season_schedule import _kickoff, fetch_schedule
 from model.nfl_pfr_supplement import SECTIONS, boxscore_id, team_code
 
 KINDS = {"pass": "passing_advanced", "rush": "rushing_advanced",
@@ -23,6 +37,13 @@ KINDS = {"pass": "passing_advanced", "rush": "rushing_advanced",
 IDENTITY = {"game_id", "pfr_game_id", "season", "week", "game_type", "team", "opponent",
             "pfr_player_name", "pfr_player_id"}
 VERSION = "nflverse-pfr-v1"
+# How long after a game ends PFR may take to chart it before its absence is a
+# degraded input. A stated default, not a measured publication lag: the one
+# observation so far is the 2026-09-24 Thursday game, charted within ~60h.
+PUBLICATION_GRACE_HOURS = 72
+# Kickoff to final whistle, generously, to date "completed" from the schedule.
+GAME_LENGTH_HOURS = 4
+STATUS_FILE = "run-status.json"
 
 
 class NotPublished(ValueError):
@@ -82,7 +103,41 @@ def build_supplement(game: dict, frames: dict, sources: dict, captured_at: str) 
             "status": "partial", "coverage": coverage, "rows": rows}
 
 
-def main(argv=None):
+def publication_lag(game: dict, now: datetime) -> str:
+    """'recent' while PFR is still inside its charting window, else 'overdue'.
+
+    A game whose kickoff cannot be dated is 'overdue': with no way to tell a
+    normal delay from a missing chart, the absence is reported, not excused.
+    """
+    try:
+        kickoff = _kickoff(game.get("gameday"), game.get("gametime"))
+    except ValueError:
+        kickoff = None
+    if kickoff is None:
+        return "overdue"
+    completed = kickoff + timedelta(hours=GAME_LENGTH_HOURS)
+    return "recent" if now - completed < timedelta(hours=PUBLICATION_GRACE_HOURS) else "overdue"
+
+
+def run_status(games: list[dict], uncharted: list[str], identity_report: dict, now: datetime) -> dict:
+    """Classify one run: refreshed, awaiting (expected), or degraded."""
+    by_id = {g["game_id"]: g for g in games}
+    recent = sorted(g for g in uncharted if publication_lag(by_id[g], now) == "recent")
+    overdue = sorted(g for g in uncharted if g not in recent)
+    reasons = []
+    if overdue:
+        reasons.append(f"{len(overdue)} completed game(s) still not fully charted by PFR after "
+                       f"{PUBLICATION_GRACE_HOURS}h: {', '.join(overdue)}")
+    if identity_report.get("status") == "refresh_unavailable":
+        reasons.append(f"PFR identity crosswalk refresh failed ({identity_report.get('reason')}); "
+                       f"frozen mappings used")
+    status = "degraded" if reasons else ("awaiting_publication" if recent else "refreshed")
+    return {"status": status, "reasons": reasons, "awaiting_publication": recent, "overdue": overdue,
+            "grace_hours": PUBLICATION_GRACE_HOURS, "identity_refresh": identity_report.get("status"),
+            "evaluated_at": now.isoformat()}
+
+
+def main(argv=None, *, now: datetime | None = None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--season", type=int, required=True)
     parser.add_argument("--week", type=int)
@@ -91,6 +146,9 @@ def main(argv=None):
     parser.add_argument("--output-dir", type=Path, default=Path("data/pfr/nflverse-output"))
     parser.add_argument("--write-db", action="store_true")
     args = parser.parse_args(argv)
+    # A status left by an earlier run must not describe this one if it dies
+    # before writing its own (a download or parse failure).
+    (args.output_dir / STATUS_FILE).unlink(missing_ok=True)
     config = load_config()
     games = select_games(fetch_schedule(), args.season, args.week, args.game)
     frames, sources = {}, {}
@@ -137,11 +195,15 @@ def main(argv=None):
     (args.output_dir / "run-report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     (args.output_dir / "identity-report.json").write_text(json.dumps(identity_report, indent=2), encoding="utf-8")
     incomplete = [p['game_id'] for p in payloads if any(p['coverage'][s]['status'] != 'available' for s in KINDS.values())]
+    status = run_status(games, [p["game_id"] for p in pending] + incomplete, identity_report,
+                        now or datetime.now(timezone.utc))
+    (args.output_dir / STATUS_FILE).write_text(json.dumps(status, indent=2), encoding="utf-8")
     print(json.dumps({"games": len(payloads), "awaiting_publication": len(pending), "incomplete_advanced_games": incomplete,
                       "player_section_rows": sum(len(p["rows"]) for p in payloads),
                       "written_to_db": bool(db), "identity_refresh": identity_report,
-                      "missing_sections": [s for s in SECTIONS if s not in KINDS.values()]}))
-    return 2 if pending or incomplete else 0
+                      "missing_sections": [s for s in SECTIONS if s not in KINDS.values()],
+                      "run_status": status}))
+    return 2 if status["status"] == "degraded" else 0
 
 
 if __name__ == "__main__":

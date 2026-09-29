@@ -84,7 +84,11 @@ jobs:
         run: |
           python -c "import os,sys; sys.argv=['dedupe']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season')] if os.environ.get(key)]; from ingest.ff_dedupe_identities import main; main()"
       # Optional input, like the injury capture: the build and the matchup
-      # forecasts fall back to the last published PFR evidence.
+      # forecasts fall back to the last published PFR evidence. Exit 0 also
+      # covers games PFR has not charted yet because they finished less than
+      # 72h ago (normal); exit 2 = degraded (an overdue chart or a failed
+      # identity refresh); exit 1 = download/parse failure. run-status.json
+      # says which, and the report step below reads it.
       - name: Refresh published PFR matchup evidence
         id: pfr
         if: ${{ !cancelled() }}
@@ -98,6 +102,7 @@ jobs:
           name: nfl-pfr-publication-coverage
           path: |
             data/pfr/nflverse-output/run-report.json
+            data/pfr/nflverse-output/run-status.json
             data/pfr/nflverse-output/identity-report.json
             data/pfr/nflverse-output/identity/
           retention-days: 90
@@ -136,11 +141,14 @@ jobs:
           retention-days: 7
       # Degraded is not broken, so this never fails the run; it makes the
       # difference visible instead of leaving it behind continue-on-error.
+      # "All optional inputs refreshed" is printed only when it is literally
+      # true: both steps succeeded and PFR has nothing left to chart.
       - name: Report degraded optional inputs
         if: ${{ !cancelled() }}
         env:
           INJURY_OUTCOME: ${{ steps.injury.outcome }}
           PFR_OUTCOME: ${{ steps.pfr.outcome }}
+          PFR_STATUS_FILE: data/pfr/nflverse-output/run-status.json
         run: |
           degraded=0
           report() {
@@ -148,7 +156,22 @@ jobs:
             echo "- $1" >> "$GITHUB_STEP_SUMMARY"
             degraded=1
           }
+          pfr_field() {
+            python -c "import json,sys; d=json.load(open(sys.argv[1])); v=d.get(sys.argv[2]); print('; '.join(v) if isinstance(v,list) else (v or ''))" "$PFR_STATUS_FILE" "$1" 2>/dev/null || true
+          }
           echo "## Optional production inputs" >> "$GITHUB_STEP_SUMMARY"
-          if [ "$INJURY_OUTCOME" = failure ]; then report "FantasyPros injury evidence did not refresh; the build used the last stored capture."; fi
-          if [ "$PFR_OUTCOME" = failure ]; then report "PFR matchup evidence did not refresh; the build and matchup forecasts used the last published evidence."; fi
-          if [ "$degraded" = 0 ]; then echo "- All optional inputs refreshed." >> "$GITHUB_STEP_SUMMARY"; fi
+          if [ "$INJURY_OUTCOME" != success ]; then report "FantasyPros injury evidence did not refresh ($INJURY_OUTCOME); the build used the last stored capture."; fi
+          pfr_status=$(pfr_field status)
+          if [ "$PFR_OUTCOME" != success ]; then
+            if [ -n "$pfr_status" ]; then
+              report "PFR matchup evidence is degraded: $(pfr_field reasons). The build and matchup forecasts used the last published evidence for those games."
+            else
+              report "PFR matchup evidence did not refresh ($PFR_OUTCOME): the download or parse failed before any game was checked. The build and matchup forecasts used the last published evidence."
+            fi
+          fi
+          awaiting=""
+          if [ "$PFR_OUTCOME" = success ] && [ "$pfr_status" = awaiting_publication ]; then
+            awaiting=$(pfr_field awaiting_publication)
+            echo "- PFR has not charted these games yet; they finished less than 72h ago, which is normal (not degraded): $awaiting" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ "$degraded" = 0 ] && [ -z "$awaiting" ]; then echo "- All optional inputs refreshed." >> "$GITHUB_STEP_SUMMARY"; fi
