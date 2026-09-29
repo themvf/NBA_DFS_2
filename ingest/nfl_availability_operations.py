@@ -27,6 +27,14 @@ from model.nfl_context_engine import stable_digest
 
 SLEEPER_URL = "https://api.sleeper.app/v1/players/nfl?active=true"
 VERSION = "nfl-availability-operations-v1"
+# Every capture this module writes is named ``players-live-<season>-<YYYYMMDDHH>``.
+# The fantasy-football refresh (``ingest.ff_independent``) ALSO writes
+# ``source='sleeper'`` snapshots, as dataset ``players`` with matched_count=0
+# (it records the raw roster, not canonical identity matches). Monitoring
+# "the latest Sleeper snapshot" without this filter picked that row three times
+# a day and raised a false critical (``implausible_rows``) -- and, worse, could
+# hide a stale live feed behind a fresh unrelated snapshot.
+LIVE_DATASET_PREFIX = "players-live-"
 
 
 def should_capture(now: datetime, kickoffs: list[datetime]) -> bool:
@@ -54,7 +62,7 @@ def capture_sleeper(db: Any, *, season: int, week: int, now: datetime) -> dict[s
     if len(matched) < 500:
         raise ValueError("Sleeper identity coverage is implausibly low; no writes performed")
     digest = hashlib.sha256(response.content).hexdigest()
-    dataset = f"players-live-{season}-{now:%Y%m%d%H}"
+    dataset = f"{LIVE_DATASET_PREFIX}{season}-{now:%Y%m%d%H}"
     snapshot_id = persist_source_snapshot(db, SnapshotProvenance(
         source="sleeper", dataset=dataset, season=season, week=week,
         request_params={"url": SLEEPER_URL, "captureWindowUtc": now.strftime("%Y-%m-%dT%H:00Z")},
@@ -90,24 +98,33 @@ def capture_sleeper(db: Any, *, season: int, week: int, now: datetime) -> dict[s
     }
 
 
-def availability_health(db: Any, *, season: int, week: int, now: datetime) -> dict[str, Any]:
+def availability_health(db: Any, *, season: int, week: int, now: datetime,
+                        persist: bool = True) -> dict[str, Any]:
+    """Evaluate capture freshness and context coverage for one game week.
+
+    ``persist=False`` evaluates without recording an operation run (read-only
+    diagnostics against production).
+    """
     games = db.execute(
         """SELECT nflverse_game_id game_id,kickoff FROM nfl_season_games
            WHERE season=%s AND week=%s AND game_type='REG' ORDER BY kickoff""",
         (season, week),
     )
+    live_pattern = f"{LIVE_DATASET_PREFIX}%"
+    # Bounded by ``now`` so an evaluation can be replayed as of a past moment.
     latest = db.execute_one(
-        """SELECT id,fetched_at,row_count,matched_count,unmatched_count,status
+        """SELECT id,dataset,fetched_at,row_count,matched_count,unmatched_count,status
            FROM ff_source_snapshots WHERE source='sleeper' AND season=%s
+             AND dataset LIKE %s AND fetched_at<=%s
            ORDER BY fetched_at DESC,id DESC LIMIT 1""",
-        (season,),
+        (season, live_pattern, now),
     )
     prior = db.execute_one(
-        """SELECT id,fetched_at,row_count,matched_count,unmatched_count,status
+        """SELECT id,dataset,fetched_at,row_count,matched_count,unmatched_count,status
            FROM ff_source_snapshots WHERE source='sleeper' AND season=%s
-             AND id<>COALESCE(%s,-1)
+             AND dataset LIKE %s AND fetched_at<=%s AND id<>COALESCE(%s,-1)
            ORDER BY fetched_at DESC,id DESC LIMIT 1""",
-        (season, latest["id"] if latest else None),
+        (season, live_pattern, now, latest["id"] if latest else None),
     )
     game_ids = [str(row["game_id"]) for row in games]
     official = db.execute_one(
@@ -165,16 +182,18 @@ def availability_health(db: Any, *, season: int, week: int, now: datetime) -> di
         "officialInactiveObservations": int(official["observations"] or 0),
         "officialInactiveGames": int(official["games"] or 0),
         "states": dict(sorted(states.items())), "latestSleeperSnapshotId": latest["id"] if latest else None,
+        "latestSleeperDataset": latest.get("dataset") if latest else None,
         "latestSleeperAgeHours": age_hours, "alerts": alerts,
     }
     run_id = stable_digest(report)
-    db.execute(
-        """INSERT INTO nfl_availability_operation_runs
-             (run_id,season,week,evaluated_at,status,report)
-           VALUES (%s,%s,%s,%s,%s,%s)
-           ON CONFLICT(run_id) DO NOTHING""",
-        (run_id, season, week, now, status, Json(report)),
-    )
+    if persist:
+        db.execute(
+            """INSERT INTO nfl_availability_operation_runs
+                 (run_id,season,week,evaluated_at,status,report)
+               VALUES (%s,%s,%s,%s,%s,%s)
+               ON CONFLICT(run_id) DO NOTHING""",
+            (run_id, season, week, now, status, Json(report)),
+        )
     return {**report, "runId": run_id}
 
 
