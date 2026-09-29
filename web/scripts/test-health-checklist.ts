@@ -135,10 +135,10 @@ assert.match(freeze.detail, /^Not due now: week 4: pending/);
 assert.doesNotMatch(freeze.detail, /season/i);
 // A deliberately paused feed says so, with how to resume, and is not emailed.
 const pausedRow = buildChecklist(base({ datasets: [{ key: "mlb_props", label: "MLB player-prop odds", status: "dormant", lastRowAt: "2026-08-23T13:47:00Z", ageHours: null,
-  maxAgeHours: 24, ownerWorkflow: "refresh_mlb_vegas.yml", checkedAt: "2026-09-29T12:00:00Z", detail: "paused: scheduled capture paused 2026-08-26 for Odds API quota (#138); resume by dispatching refresh_mlb_vegas.yml with run_props=true" }] }))
+  maxAgeHours: 24, ownerWorkflow: "refresh_mlb_vegas.yml", checkedAt: "2026-09-29T12:00:00Z", detail: "paused on the schedule: 'Capture MLB player-prop odds' in refresh_mlb_vegas.yml runs only when `inputs.run_props == true`; last write 37.0d ago (2026-08-23)" }] }))
   .find((i) => i.key === "data:mlb_props")!;
 assert.equal(pausedRow.status, "info");
-assert.equal(pausedRow.detail, "Paused on purpose: scheduled capture paused 2026-08-26 for Odds API quota (#138); resume by dispatching refresh_mlb_vegas.yml with run_props=true.");
+assert.equal(pausedRow.detail, "Paused on purpose: 'Capture MLB player-prop odds' in refresh_mlb_vegas.yml runs only when `inputs.run_props == true`; last write 37.0d ago (2026-08-23).");
 assert.equal(pausedRow.lastEventAt, "2026-08-23T13:47:00Z", "the last write is still shown");
 
 // A check with its own explanation and no timestamp (the freeze check failing) shows that explanation.
