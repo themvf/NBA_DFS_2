@@ -35,7 +35,16 @@ assert.equal((loaded.settings as Record<string, unknown>).ownershipDisclosure, u
 // target comes back as what was applied, which reproduces the run.
 const uneven = settingsFromForm({ ...form, settings: { ...form.settings, nLineups: 20 }, targets: { "21": 33 } }, "showdown", teams);
 const unevenLoaded = formFromSettings(uneven, defaults);
-assert.equal(unevenLoaded.targets["21"], 35, "33% of 20 lineups was applied as 7 lineups = 35%");
+assert.deepEqual(unevenLoaded.targets["21"], { min: 35, max: 35 }, "33% of 20 lineups was applied as 7 lineups = 35% (an exact target)");
+
+// A max alone is a cap: it never exceeds the typed percent and survives a reload.
+const capped = settingsFromForm({ ...form, settings: { ...form.settings, nLineups: 20 }, targets: { "21": { min: null, max: 70 }, "22": { min: null, max: 33 } } }, "showdown", teams);
+assert.equal(capped.maxExposureByPlayer["21"], 0.7, "70% of 20 = 14 lineups");
+assert.equal(capped.maxExposureByPlayer["22"], 0.3, "33% of 20 rounds DOWN to 6 lineups, never above the cap");
+assert.equal(capped.minExposureByPlayer["21"], undefined, "a cap sets no minimum");
+const cappedLoaded = formFromSettings(capped, defaults);
+assert.deepEqual(cappedLoaded.targets["21"], { min: null, max: 70 });
+assert.ok(sameGenerationSettings(settingsFromForm(cappedLoaded, "showdown", teams), capped), "a capped run rebuilds itself");
 assert.ok(sameGenerationSettings(settingsFromForm(unevenLoaded, "showdown", teams), uneven));
 
 // Custom plan: quotas, the user's favorite and fades round-trip.

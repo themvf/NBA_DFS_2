@@ -87,6 +87,18 @@ function main() {
   const warnOnly = runNflPreExportQa(baseInput({ salaryBandReport: [{ band: { min: 0, max: 400 }, withinPlan: false, count: 5, minCount: 0, maxCount: 1 }] }));
   assert.equal(warnOnly.decision, "ready_with_warnings");
 
+  // --- Export requires the live site's code (2026-09-27 lineups came from a stale local checkout) ---
+  const local = runNflPreExportQa(baseInput({ build: { commitSha: "local-uncommitted" } }));
+  assert.equal(local.decision, "blocked");
+  assert.ok(local.openBlockers.includes("live_build"));
+  assert.equal(local.checks.find((c) => c.id === "live_build")!.overridable, false, "a local build cannot be overridden into export");
+  const stillLocal = runNflPreExportQa(baseInput({ build: { commitSha: "local-uncommitted" } }),
+    [{ checkId: "live_build", reason: "trust me", user: "t", at: "2026-09-29T00:00:00Z", rulesetVersion: NFL_QA_RULESET_VERSION, runId: "r" }]);
+  assert.ok(stillLocal.openBlockers.includes("live_build"), "an override does not clear it");
+  assert.equal(runNflPreExportQa(baseInput({ build: { commitSha: null } })).decision, "blocked", "no recorded version is not the live site");
+  assert.equal(runNflPreExportQa(baseInput({ build: { commitSha: "aad997934e7dabffd111312c3fff43226c2edca5" } })).decision, "ready");
+  assert.equal(runNflPreExportQa(baseInput()).checks.some((c) => c.id === "live_build"), false, "not supplied is not checked");
+
   console.log("NFL GPP Phase 6 (pre-export QA): P6-AC1..AC5 and severity/override units passed.");
 }
 
