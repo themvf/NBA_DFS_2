@@ -1,6 +1,6 @@
 "use client";
 import { useState, useTransition } from 'react';
-import { previewNflAbsence, type NflWorkspaceSlate } from './actions';
+import { previewNflAbsence, type NflWorkspaceSlate } from './client-actions';
 
 export default function AbsencePreview({slate}:{slate:NflWorkspaceSlate}) {
   const [receiverId,setReceiver]=useState(''),[teammateId,setTeammate]=useState('');

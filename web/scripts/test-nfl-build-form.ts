@@ -2,7 +2,7 @@
  * Loading a saved run into the build form must rebuild the same run.
  */
 import assert from "node:assert/strict";
-import { formFromSettings, sameGenerationSettings, settingsFromForm, type NflBuildForm } from "../src/lib/nfl-dfs/generation-settings";
+import { formFromDraft, formFromSettings, sameGenerationSettings, settingsFromForm, type NflBuildForm } from "../src/lib/nfl-dfs/generation-settings";
 import { DEFAULT_DFS_DEFENSIVE_SETTINGS, defensiveSettingsFor } from "../src/lib/nfl-dfs/defensive-display";
 
 const defaults = { mode: "gpp" as "cash" | "gpp", projectionSource: "our" as const, allowDkFallback: false, nLineups: 20,
@@ -81,5 +81,23 @@ assert.equal(settingsFromForm(workloadForm as never, "showdown", teams).defensiv
   "a non-historical source never sends defensive adjustments");
 assert.equal(settingsFromForm({ ...form, settings: defensiveDefaults }, "showdown", teams).defensiveAdjustments?.mode, "experimental",
   "the historical source keeps the user's defensive choice");
+
+// A server-saved draft rebuilds the form against the current defaults: unknown
+// keys are dropped, wrong types fall back, legacy exact targets become ranges.
+const draft = formFromDraft({ settings: { ...form.settings, nLineups: 30, bogus: 1, maxExposure: "0.9" },
+  locked: [11, "x"], excluded: [12], targets: { "21": 35, "22": { min: null, max: 70 }, "23": "bad" },
+  captainTargets: { "31": { min: 20, max: 40 } }, planMode: "chalk_leverage", fades: [], quotas: [] }, defaults)!;
+assert.equal(draft.settings.nLineups, 30);
+assert.equal((draft.settings as Record<string, unknown>).bogus, undefined, "keys the form does not have are dropped");
+assert.equal(draft.settings.maxExposure, defaults.maxExposure, "a wrong type falls back to the default");
+assert.deepEqual(draft.locked, [11]);
+assert.deepEqual(draft.targets, { "21": { min: 35, max: 35 }, "22": { min: null, max: 70 } });
+assert.equal(draft.planMode, "chalk_leverage");
+assert.equal(formFromDraft(null, defaults), null);
+
+// The form shows what the user asked for, not the server's downgrade.
+const asked = formFromSettings({ ...sent, defensiveAdjustments: { mode: "off", profile: "pfr-efficiency" },
+  requestedDefensiveAdjustments: { mode: "approved", profile: "pfr-efficiency" } } as never, defensiveDefaults);
+assert.deepEqual(asked.settings.defensiveAdjustments, { mode: "approved", profile: "pfr-efficiency" });
 
 console.log("Build form: saved runs load back into the form and rebuild the same run.");

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { FileUp } from "lucide-react";
-import { importNflContestResults, readNflFieldAudit } from "./actions";
+import { importNflContestResults, readNflFieldAudit } from "./client-actions";
 import { parseContestExport, DESCRIPTIVE_ONLY_BELOW, type FieldAudit } from "@/lib/nfl-dfs/field-audit";
 
 type Contest = { contestId: string; entryCount: number; winningScore: number | null; medianScore: number | null; format: string };

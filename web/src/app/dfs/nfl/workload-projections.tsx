@@ -1,7 +1,7 @@
 "use client";
 import {previewAudits} from './projection-audit-panel';
 import {useState,useTransition} from 'react';
-import {compareNflWorkload,type NflWorkspaceSlate} from './actions';
+import {compareNflWorkload,type NflWorkspaceSlate} from './client-actions';
 import type {NflOptimizerSettings} from './nfl-optimizer';
 import {WORKLOAD_POSITIONS,LEGACY_WORKLOAD_POSITIONS,selectedWorkload,workloadSourceReason,type WorkloadPositions} from '@/lib/nfl-dfs/workload-selection';
 import {calibratedRelease} from '@/lib/nfl-dfs/calibrated-projection';

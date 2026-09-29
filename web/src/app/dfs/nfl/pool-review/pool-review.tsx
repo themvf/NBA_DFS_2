@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useMemo,useState,useTransition } from 'react';
 import type { poolAuditIndex,readPoolReview } from '@/db/nfl-dfs-pool-audit';
 import { summarizePool, type PoolReviewRow } from '@/lib/nfl-dfs/pool-audit';
-import { captureCurrentPool } from './actions';
+import { captureCurrentPool } from '../client-actions';
 type Index=Awaited<ReturnType<typeof poolAuditIndex>>;
 type Review=Awaited<ReturnType<typeof readPoolReview>>;
 const num=(n:number|null)=>n===null?'—':n.toFixed(2);

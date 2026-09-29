@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import FieldAuditPanel from "./field-audit-panel";
-import { readNflSlateResults, type NflSlateResults } from "./actions";
+import { readNflSlateResults, type NflSlateResults } from "./client-actions";
 
 const PLAN_LABELS: Record<string, string> = {
   balanced: "Balanced mix", chalk_leverage: "Chalk captain, rotating leverage", standard: "Standard ceiling", custom: "Custom plan",
