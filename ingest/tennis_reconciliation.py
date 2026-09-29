@@ -130,6 +130,30 @@ def reconciliation_report(
     return metrics, healthy
 
 
+def stale_unresolved_detail(db: DatabaseManager, *, max_stale_hours: int = 72,
+                            limit: int = 25) -> list[dict]:
+    """The fixtures behind `stale_unresolved_matches`, oldest first.
+
+    The providers deliberately never guess a retirement, walkover or draw
+    replacement (see `_completion_evidence`), so these need a reviewed,
+    evidence-backed entry in `ingest/repair_tennis_stale_results.py`. Naming
+    them is what turns "status: unhealthy" into something a person can act on.
+    """
+    return db.execute(
+        """SELECT tm.id, tm.tour, tm.tournament, tm.home_player, tm.away_player,
+                  COALESCE(tm.commence_time, tm.match_date::timestamp) AS starts_at,
+                  (SELECT COUNT(*) FROM tennis_bets tb
+                   WHERE tb.match_id=tm.id AND tb.status='pending') AS pending_bets
+           FROM tennis_matches tm
+           WHERE tm.winner IS NULL AND tm.completion_status='scheduled'
+             AND COALESCE(tm.commence_time, tm.match_date::timestamp) <
+                 NOW() - (%s * INTERVAL '1 hour')
+           ORDER BY starts_at, tm.id
+           LIMIT %s""",
+        (max_stale_hours, limit),
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Repair and gate Tennis settlement health")
     parser.add_argument("--max-stale-hours", type=int, default=72)
@@ -147,7 +171,28 @@ def main() -> int:
     for key, value in metrics.items():
         print(f"  {key}: {value}")
     print(f"  status: {'healthy' if healthy else 'unhealthy'}")
+    if metrics["stale_unresolved_matches"]:
+        rows = stale_unresolved_detail(db, max_stale_hours=args.max_stale_hours)
+        print(format_stale_unresolved(rows, metrics["stale_unresolved_matches"], args.max_stale_hours))
     return 1 if args.fail_on_unhealthy and not healthy else 0
+
+
+def format_stale_unresolved(rows: list[dict], total: int, max_stale_hours: int) -> str:
+    """Plain-language list of fixtures no provider will settle on its own."""
+    pending = sum(int(r["pending_bets"]) for r in rows)
+    lines = [
+        f"::error title=Tennis settlement::{total} fixture(s) started more than {max_stale_hours}h ago "
+        f"and have no result ({pending} pending bet(s)); providers never auto-settle a retirement, "
+        "walkover or draw replacement. Add a reviewed entry to ingest/repair_tennis_stale_results.py.",
+    ]
+    for r in rows:
+        lines.append(
+            f"  match {r['id']}: {r['tournament']} | {r['home_player']} v "
+            f"{r['away_player']} | {r['starts_at']:%Y-%m-%d %H:%M} UTC | {r['pending_bets']} pending bet(s)"
+        )
+    if total > len(rows):
+        lines.append(f"  ... and {total - len(rows)} more")
+    return "\n".join(lines)
 
 
 if __name__ == "__main__":

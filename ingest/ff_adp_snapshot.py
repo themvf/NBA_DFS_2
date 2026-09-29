@@ -13,6 +13,14 @@ Requires `ff_players` to already be populated for the season (run
 `ingest.ff_independent` at least once first) -- this script only matches
 against the existing player universe, it does not build one.
 
+The draft market ends with week 1 of the NFL regular season. After the last
+week-1 kickoff (from `nfl_season_games`) the script stores nothing and exits 0
+with a one-line reason. Before then the row-count guard still refuses a thin
+response, because during draft season a short feed means a truncated one.
+FFC's 2026 feed shrank from ~260 players per format on 2026-09-06 to 118/54/29
+(STD/HALF/PPR, sample windows ending 09-15/09-14/09-25) by 2026-09-29, and the
+guard turned every run from 2026-09-14 on red.
+
 Usage:
     python -m ingest.ff_adp_snapshot --season 2026
 """
@@ -21,7 +29,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from typing import Any
 
 from config import load_config
@@ -37,14 +45,6 @@ from ingest.ff_independent import (
 
 MIN_PLAYER_UNIVERSE = 100
 MIN_ADP_ROWS = 100
-
-
-def draft_season_open(today: date) -> bool:
-    """Drafts run from July until Week 1 kicks off, which is always by September 10
-    (the Thursday after Labor Day). After that the ADP feeds thin out to a few
-    dozen rows and the MIN_ADP_ROWS guard fails every run (it did, twice a day,
-    from 2026-09-14 until this window existed)."""
-    return today.month in (7, 8) or (today.month == 9 and today.day <= 10)
 
 
 def _floor_to_12h(moment: datetime) -> datetime:
@@ -73,8 +73,26 @@ def _player_lookup(db: RefreshDatabase, season: int) -> dict[tuple[str, str], in
     return lookup
 
 
-def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
-    captured_at = _floor_to_12h(datetime.now(timezone.utc))
+def draft_market_close(db: RefreshDatabase, season: int) -> datetime | None:
+    """Last week-1 regular-season kickoff: after it, redraft drafting is over."""
+    row = db.execute_one(
+        """SELECT MAX(kickoff) AS closes_at FROM nfl_season_games
+           WHERE season=%s AND game_type='REG' AND week=1""",
+        (season,),
+    )
+    return row["closes_at"] if row else None
+
+
+def _run(season: int, db: RefreshDatabase, now: datetime | None = None) -> dict[str, Any]:
+    now = now or datetime.now(timezone.utc)
+    closes_at = draft_market_close(db, season)
+    if closes_at is not None and now > closes_at:
+        return {
+            "season": season, "skipped": True,
+            "reason": (f"the {season} draft market closed when NFL week 1 ended "
+                       f"({closes_at.astimezone(timezone.utc):%Y-%m-%d %H:%M} UTC); nothing stored"),
+        }
+    captured_at = _floor_to_12h(now)
     player_lookup = _player_lookup(db, season)
     if len(player_lookup) < MIN_PLAYER_UNIVERSE:
         raise RuntimeError(
@@ -158,10 +176,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--season", type=int, default=2026)
     args = parser.parse_args()
-    today = datetime.now(timezone.utc).date()
-    if not draft_season_open(today):
-        # A stated, visible skip: out of draft season there is no ADP market to track.
-        print(f"::notice::Draft season is over ({today}); ADP snapshots run July 1 to September 10. Nothing captured.")
-        print(json.dumps({"skipped": "draft season over", "date": today.isoformat()}, indent=2))
-    else:
-        print(json.dumps(run(args.season), indent=2))
+    result = run(args.season)
+    if result.get("skipped"):
+        print(f"ADP snapshot skipped: {result['reason']}.")
+    print(json.dumps(result, indent=2))

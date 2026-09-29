@@ -399,9 +399,12 @@ to a person.
   read-only check, just run SELECTs, or `BEGIN READ ONLY; ...; ROLLBACK;` in one
   transaction.
 - **What the first live checklist caught (2026-09-29).** FF ADP snapshot had failed
-  twice a day since 2026-09-14: its schedule covered all of September, but the
-  source feed thins out once Week 1 kicks off. It now runs July 1 to September 10
-  and says so if dispatched outside that window. Settle MLB Terminal Signals ran
+  twice a day since 2026-09-14: the source feed thins out once Week 1 kicks off.
+  After the last Week 1 kickoff (from `nfl_season_games`) it now stores nothing and
+  says why (#309). MLB prop capture, paused on the schedule for quota since
+  2026-08-26, reads "Paused on purpose": pipeline_health reads the step's `if:`
+  gate from the workflow file, so removing the gate turns STALE reporting back on
+  by itself. Never hard-code a pause flag. Settle MLB Terminal Signals ran
   every 4-6 h against a 30-minute GitHub schedule; it is now dispatched hourly
   (March-November). The PBP archetypes Tuesday run had been dropped by GitHub the
   same way. Data rows state what the freshness reading saw *as of that reading*,

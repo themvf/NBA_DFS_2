@@ -47,7 +47,7 @@ from psycopg2.extras import Json
 from config import load_config
 from db.database import DatabaseManager
 
-CHECK_VERSION = "pipeline-health-v2"  # v2: a deliberately paused feed reads dormant, with its reason
+CHECK_VERSION = "pipeline-health-v2"  # v2: a step gated to manual dispatch reads dormant, with the gate quoted
 
 
 @dataclass(frozen=True)
@@ -63,6 +63,12 @@ class Dataset:
 
     `season_months` gates the check: a sport out of season is DORMANT, not
     broken. Empty means all year.
+
+    `schedule_step` names the step in `owner_workflow` that writes the table.
+    When that step's `if:` lets it run only on manual dispatch, the pipeline
+    was switched off on purpose and a stale table is reported as DORMANT with
+    the gate quoted, not as STALE. The gate is read from the workflow file on
+    every check, so removing the `if:` turns STALE reporting back on by itself.
     """
     key: str
     label: str
@@ -72,9 +78,7 @@ class Dataset:
     owner_workflow: str
     season_months: tuple[int, ...] = ()
     note: str = ""
-    # A feed switched off on purpose: shown with this reason, never flagged stale.
-    # A pause is a decision someone must revisit, so the reason says how to resume.
-    paused: str = ""
+    schedule_step: str = ""
 
 
 # Seasons as calendar months, stated rather than inferred. Wrong-by-a-few-weeks
@@ -107,10 +111,10 @@ DATASET_REGISTRY: tuple[Dataset, ...] = (
             "Every sport's line-movement trail; the single largest Odds API consumer."),
     Dataset("mlb_schedule", "MLB schedule + odds", "mlb_matchups", "fetched_at",
             36, "refresh_mlb_vegas.yml", _MLB),
+    # Paused on the schedule since 2026-08-24 (Odds API quota, cb326f5): last
+    # write 2026-08-23 13:47 UTC. Reported as a pause, not an outage.
     Dataset("mlb_props", "MLB player-prop odds", "prop_odds_history", "captured_at",
-            24, "refresh_mlb_vegas.yml", _MLB,
-            paused="scheduled capture paused 2026-08-26 for Odds API quota (#138); "
-                   "resume by dispatching refresh_mlb_vegas.yml with run_props=true"),
+            24, "refresh_mlb_vegas.yml", _MLB, schedule_step="Capture MLB player-prop odds"),
     Dataset("mlb_beat", "MLB beat-writer articles", "mlb_beat_articles", "scraped_at",
             12, "refresh_mlb_beat_articles.yml", _MLB),
     Dataset("tennis_matches", "Tennis matches", "tennis_matches", "fetched_at",
@@ -157,21 +161,65 @@ def _age(hours: float) -> str:
     return f"{hours / 24:.1f}d"
 
 
+WORKFLOW_DIR = Path(__file__).resolve().parent.parent / ".github" / "workflows"
+
+
+def manual_only_gate(workflow: str, step_prefix: str, workflow_dir: Path = WORKFLOW_DIR) -> str | None:
+    """The step's `if:` when it can run only on manual dispatch, else None.
+
+    A small line reader rather than a YAML dependency: it finds the
+    `- name:` item starting with `step_prefix` and reads that item's `if:`.
+    A condition on `inputs.` or `workflow_dispatch` that never mentions
+    `schedule` is false on every scheduled run.
+    """
+    try:
+        lines = (workflow_dir / workflow).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped.startswith("- name:"):
+            continue
+        name = stripped[len("- name:"):].strip().strip("\"'")
+        if not name.startswith(step_prefix):
+            continue
+        indent = len(line) - len(line.lstrip())
+        for follow in lines[index + 1:]:
+            text = follow.strip()
+            if text.startswith("- ") and len(follow) - len(follow.lstrip()) <= indent:
+                break
+            if text.startswith("if:"):
+                condition = text[3:].strip()
+                manual = "inputs." in condition or "workflow_dispatch" in condition
+                return condition if manual and "schedule" not in condition else None
+        return None
+    return None
+
+
 def in_season(dataset: Dataset, now: datetime) -> bool:
     return not dataset.season_months or now.month in dataset.season_months
 
 
-def classify(dataset: Dataset, last_row_at: datetime | None, now: datetime) -> Health:
-    """Pure: the whole decision, so it is testable without a database."""
+def classify(dataset: Dataset, last_row_at: datetime | None, now: datetime,
+             schedule_gate: str | None = None) -> Health:
+    """Pure: the whole decision, so it is testable without a database.
+
+    `schedule_gate` is the manual-only `if:` guarding the writing step (see
+    `manual_only_gate`). A fresh table wins over the gate: a manual run that
+    wrote data is simply fresh.
+    """
     if not in_season(dataset, now):
         return Health(dataset, DORMANT, last_row_at, None)
-    if dataset.paused:
-        return Health(dataset, DORMANT, last_row_at, None, f"paused: {dataset.paused}")
+    if last_row_at is not None and last_row_at.tzinfo is None:
+        last_row_at = last_row_at.replace(tzinfo=timezone.utc)
+    age = (now - last_row_at).total_seconds() / 3600 if last_row_at is not None else None
+    if schedule_gate and (age is None or age > dataset.max_age_hours):
+        last = f"last write {_age(age)} ago ({last_row_at:%Y-%m-%d})" if age is not None else "no rows yet"
+        return Health(dataset, DORMANT, last_row_at, age,
+                      f"paused on the schedule: '{dataset.schedule_step}' in {dataset.owner_workflow} "
+                      f"runs only when `{schedule_gate}`; {last}")
     if last_row_at is None:
         return Health(dataset, EMPTY, None, None)
-    if last_row_at.tzinfo is None:
-        last_row_at = last_row_at.replace(tzinfo=timezone.utc)
-    age = (now - last_row_at).total_seconds() / 3600
     return Health(dataset, STALE if age > dataset.max_age_hours else FRESH, last_row_at, age)
 
 
@@ -188,7 +236,8 @@ def check_all(db: DatabaseManager, now: datetime | None = None) -> list[Health]:
             results.append(Health(dataset, EMPTY, None, None))
             print(f"  ! {dataset.key}: {exc}", file=sys.stderr)
             continue
-        results.append(classify(dataset, last, now))
+        gate = manual_only_gate(dataset.owner_workflow, dataset.schedule_step) if dataset.schedule_step else None
+        results.append(classify(dataset, last, now, gate))
     results.extend(check_nfl_context_freezes(db, now))
     return results
 

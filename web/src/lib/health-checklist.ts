@@ -100,7 +100,8 @@ const hours = (h: number) => (h < 1 ? `${Math.round(h * 60)} min` : h < 48 ? `${
 export function datasetDetail(d: NonNullable<ChecklistInputs["datasets"]>[number]): string {
   const at = `at the ${et(d.checkedAt)} reading`;
   const reason = d.detail?.trim();
-  if (d.status === "dormant" && reason && /^paused:/i.test(reason)) return `Paused on purpose: ${reason.replace(/^paused:\s*/i, "")}.`;
+  // pipeline_health reads a step's `if:` gate: "paused on the schedule: '<step>' in <file> runs only when ...".
+  if (d.status === "dormant" && reason && /^paused\b[^:]*:/i.test(reason)) return `Paused on purpose: ${reason.replace(/^paused\b[^:]*:\s*/i, "")}.`;
   if (d.status === "dormant") return `Not due now: ${reason || d.note || "not expected to write"}.`;
   if (d.ageHours == null) return reason && !/^no rows at all$/i.test(reason) ? `${reason[0].toUpperCase()}${reason.slice(1)} (${at}).` : `No rows at all ${at}; written by ${d.ownerWorkflow}.`;
   const over = d.status === "stale" ? `, ${(d.ageHours / d.maxAgeHours).toFixed(1)}x its ${d.maxAgeHours} h budget` : `; budget ${d.maxAgeHours} h`;

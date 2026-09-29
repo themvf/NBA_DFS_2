@@ -52,20 +52,6 @@ def test_an_empty_table_is_reported_not_treated_as_fresh() -> None:
     assert P.classify(ds(), None, NOW).status == P.EMPTY
 
 
-def test_a_paused_feed_is_dormant_with_its_reason_not_stale() -> None:
-    """A deliberate pause is a decision to revisit, not a failure to email daily."""
-    h = P.classify(ds(paused="capture paused for quota; resume with run_props=true"), NOW - timedelta(days=37), NOW)
-    assert h.status == P.DORMANT
-    assert h.detail == "paused: capture paused for quota; resume with run_props=true"
-    assert h.last_row_at is not None, "the last write is still shown"
-    # Out of season wins: a paused feed in its off-season reads as out of season.
-    assert "out of season" in P.classify(ds(paused="x", season_months=(6,)), None, NOW).detail
-    # Only the MLB prop feed is paused today, and it names how to resume.
-    paused = [d for d in P.DATASET_REGISTRY if d.paused]
-    assert [d.key for d in paused] == ["mlb_props"]
-    assert "run_props=true" in paused[0].paused
-
-
 def test_an_out_of_season_pipeline_is_dormant_not_broken() -> None:
     """The detector-health lesson: flagging a dormant sport makes the page noise."""
     soccer = ds(season_months=(6, 7))          # World Cup months only
@@ -104,6 +90,66 @@ def test_the_report_puts_problems_first() -> None:
     text = P.report(results)
     assert text.index("Broken") < text.index("Healthy") < text.index("Asleep")
     assert "1 needing attention of 3 datasets" in text
+
+
+# --- Deliberately paused pipelines (2026-09-29: MLB player-prop odds read
+# "STALE ... 36.9x over" although prop capture was switched off on the
+# schedule on purpose on 2026-08-24 for Odds API quota). --------------------
+
+PROP_GATE = "inputs.run_props == true"
+
+
+def test_a_step_gated_to_manual_dispatch_is_a_pause_not_an_outage() -> None:
+    props = ds(max_age_hours=24, owner_workflow="refresh_mlb_vegas.yml",
+               schedule_step="Capture MLB player-prop odds")
+    last = datetime(2026, 8, 23, 13, 47, tzinfo=timezone.utc)
+    h = P.classify(props, last, datetime(2026, 9, 29, 12, 0, tzinfo=timezone.utc), PROP_GATE)
+    assert h.status == P.DORMANT
+    assert "paused on the schedule" in h.detail
+    assert "`inputs.run_props == true`" in h.detail
+    assert "(2026-08-23)" in h.detail
+    assert "0 needing attention of 1 datasets" in P.report([h])
+
+
+def test_fresh_data_wins_over_the_gate() -> None:
+    # A manual run with run_props=true wrote rows: that is just fresh.
+    props = ds(max_age_hours=24, schedule_step="Capture")
+    assert P.classify(props, NOW - timedelta(hours=2), NOW, PROP_GATE).status == P.FRESH
+
+
+def test_without_a_gate_the_same_age_is_stale() -> None:
+    props = ds(max_age_hours=24, schedule_step="Capture")
+    assert P.classify(props, NOW - timedelta(days=37), NOW, None).status == P.STALE
+
+
+def test_gate_is_read_from_the_real_workflow_file() -> None:
+    # If someone removes the `if:` to resume capture, this returns None and
+    # STALE reporting comes back on its own.
+    by_key = {d.key: d for d in P.DATASET_REGISTRY}
+    props = by_key["mlb_props"]
+    assert props.schedule_step
+    assert P.manual_only_gate(props.owner_workflow, props.schedule_step) == PROP_GATE
+    assert P.manual_only_gate(props.owner_workflow, "Scan + settle sharp line alerts") is None
+
+
+def test_gate_reader_ignores_schedule_conditions_and_missing_files(tmp_path) -> None:
+    (tmp_path / "w.yml").write_text(
+        "jobs:\n  j:\n    steps:\n"
+        "      - name: Weekly rebuild\n"
+        "        if: github.event.schedule == '0 5 * * 1' || inputs.rebuild == true\n"
+        "        run: x\n"
+        "      - name: Manual only\n"
+        "        # a comment inside the step\n"
+        "        if: github.event_name == 'workflow_dispatch'\n"
+        "        run: y\n"
+        "      - name: Always\n"
+        "        run: z\n",
+        encoding="utf-8",
+    )
+    assert P.manual_only_gate("w.yml", "Weekly rebuild", tmp_path) is None
+    assert P.manual_only_gate("w.yml", "Manual only", tmp_path) == "github.event_name == 'workflow_dispatch'"
+    assert P.manual_only_gate("w.yml", "Always", tmp_path) is None
+    assert P.manual_only_gate("missing.yml", "Always", tmp_path) is None
 
 
 def test_the_monitor_does_not_fail_the_run_by_default() -> None:

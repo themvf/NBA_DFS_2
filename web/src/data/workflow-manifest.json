@@ -198,8 +198,7 @@
       "file": "refresh_ff_adp_snapshot.yml",
       "name": "Refresh Fantasy Football ADP Snapshot",
       "crons": [
-        "7 0,12 * 7,8 *",
-        "7 0,12 1-10 9 *"
+        "7 0,12 * 7-9 *"
       ],
       "dispatch": true,
       "afterWorkflows": [],
