@@ -4,6 +4,7 @@ import Link from "next/link";
 import { AlertTriangle, CheckCircle2, CircleSlash, HelpCircle } from "lucide-react";
 import { getPipelineHealth, type PipelineHealthRow } from "@/db/queries";
 import FailingJobs from "./failing-jobs";
+import CronClocks from "./cron-clocks";
 
 export const metadata = {
   title: "Pipeline Health",
@@ -51,6 +52,7 @@ export default async function HealthPage() {
       </header>
 
       <FailingJobs />
+      <CronClocks />
 
       {health.checkedAt === null ? (
         <div className="rounded border border-dashed p-6 text-sm">

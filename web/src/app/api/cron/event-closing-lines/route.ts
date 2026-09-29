@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withHeartbeat } from "@/lib/cron-heartbeat";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 
@@ -74,7 +75,7 @@ async function hasDueWork() {
   }
 }
 
-export async function GET(request: NextRequest) {
+async function handle(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret) {
     console.error("event-closing-lines cron: CRON_SECRET is not configured");
@@ -140,4 +141,10 @@ export async function GET(request: NextRequest) {
     console.error("event-closing-lines cron: dispatch threw", error);
     return NextResponse.json({ ok: false, error: "Dispatch failed" }, { status: 502 });
   }
+}
+
+// Every run records its outcome for /health (lib/cron-heartbeat): Vercel's own
+// logs are not visible from here, so a failing or stopped cron would be silent.
+export async function GET(request: NextRequest) {
+  return withHeartbeat("event-closing-lines", () => handle(request));
 }

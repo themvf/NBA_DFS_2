@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withHeartbeat } from "@/lib/cron-heartbeat";
 import { runScheduledSlateChecks } from "@/app/dfs/nfl/actions";
 
 // The scheduled Slate Check (C2 in docs/nfl-dfs-reliability-program.md): every
@@ -12,7 +13,7 @@ import { runScheduledSlateChecks } from "@/app/dfs/nfl/actions";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-export async function GET(request: NextRequest) {
+async function handle(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret) {
     console.error("nfl slate check: CRON_SECRET is not readable by this deployment");
@@ -26,4 +27,10 @@ export async function GET(request: NextRequest) {
   const failed = results.filter((r) => r.error);
   for (const r of failed) console.error(`nfl slate check: ${r.uploadId} failed: ${r.error}`);
   return NextResponse.json({ ok: failed.length === 0, at: startedAt.toISOString(), slates: results }, { status: failed.length ? 500 : 200 });
+}
+
+// Every run records its outcome for /health (lib/cron-heartbeat): Vercel's own
+// logs are not visible from here, so a failing or stopped cron would be silent.
+export async function GET(request: NextRequest) {
+  return withHeartbeat("nfl-slate-check", () => handle(request));
 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withHeartbeat } from "@/lib/cron-heartbeat";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { dispatchWorkflow, dueJobs, NEAR_KICKOFF_MS, type DispatchContext } from "@/lib/cron-dispatch";
@@ -18,7 +19,7 @@ import { dispatchWorkflow, dueJobs, NEAR_KICKOFF_MS, type DispatchContext } from
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-export async function GET(request: NextRequest) {
+async function handle(request: NextRequest) {
   // Distinguish "secret missing from this deployment" (a build/config problem
   // to surface in logs) from "wrong caller" (a rejection). Env vars are baked
   // in at build time, so a newly added variable needs a redeploy.
@@ -64,4 +65,10 @@ async function dispatchContext(now: Date): Promise<DispatchContext> {
     console.error("cron dispatch: could not read NFL kickoffs; near-kickoff ticks skipped", error);
     return { nflKickoffs: null };
   }
+}
+
+// Every run records its outcome for /health (lib/cron-heartbeat): Vercel's own
+// logs are not visible from here, so a failing or stopped cron would be silent.
+export async function GET(request: NextRequest) {
+  return withHeartbeat("dispatch", () => handle(request));
 }
