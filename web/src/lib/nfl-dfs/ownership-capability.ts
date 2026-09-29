@@ -98,6 +98,10 @@ export function assessOwnership(
         errors.push(`${label} ownership for player ${row.playerId} is out of the 0–100% range.`);
       }
     }
+    // One slot per lineup: a player's captain and flex shares cannot sum past 100%.
+    if (row.flexPct !== null && row.captainPct !== null && row.flexPct + row.captainPct > 1 + 1e-9) {
+      errors.push(`Captain + flex ownership for player ${row.playerId} exceeds 100%.`);
+    }
   }
 
   // Coverage: fraction of eligible players with any validated ownership value.
@@ -124,10 +128,16 @@ export function assessOwnership(
   // validated — and slot-sum invariants do not apply to it, because they test
   // a structure the feed never claimed to have.
   if (options.heuristic) {
-    const enabled = Boolean(options.optIntoHeuristic);
+    // Invalid ownership never drives leverage, opted in or not. Before
+    // 2026-09-29 it did: Showdown values over 100% passed straight into the
+    // chalk fade and pushed Hurts and Swift out of every lineup, and the only
+    // signal was an export block after the build.
+    const enabled = Boolean(options.optIntoHeuristic) && errors.length === 0;
+    const off = options.optIntoHeuristic && errors.length
+      ? [`Ownership failed validation, so leverage and the chalk fade are off for this build: ${errors[0]}`] : [];
     return {
       capability: "heuristic_uncalibrated", source, asOf, coverage, massCoverage, captainTotal, flexTotal,
-      errors, warnings: [...warnings, "Ownership is a heuristic estimate, not a validated feed. Every dependent metric is labeled 'Uncalibrated estimate'."],
+      errors, warnings: [...warnings, ...off, "Ownership is a heuristic estimate, not a validated feed. Every dependent metric is labeled 'Uncalibrated estimate'."],
       features: { leverage: enabled, ownershipFade: enabled, duplicationModel: false },
     };
   }

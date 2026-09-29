@@ -1113,7 +1113,10 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
   // features (duplication model, contrarian-captain thresholds) stay off.
   const ownershipAssessment = assessOwnership(
     eligible.filter(p=>!p.isOut).map(p=>({playerId:p.dkPlayerId, medianProjection: p.medianFpts ?? p.ourProj ?? null})),
-    eligible.filter(p=>p.ownPct!=null).map(p=>({playerId:p.dkPlayerId, flexPct:(p.ownPct as number)/100, captainPct:null, source:p.ownSource??null, asOf:slate.modelAsOf})),
+    // Showdown slot shares from our prior are validated per slot (and their sum);
+    // a single combined feed (LineStar) has no captain split.
+    eligible.filter(p=>p.ownPct!=null).map(p=>{ const slotted=slate.format==='showdown'&&p.ownSource!=='linestar'&&p.flexOwnPct!=null;
+      return {playerId:p.dkPlayerId, flexPct:(slotted?p.flexOwnPct as number:p.ownPct as number)/100, captainPct:slotted&&p.captainOwnPct!=null?(p.captainOwnPct as number)/100:null, source:p.ownSource??null, asOf:slate.modelAsOf}; }),
     { heuristic: true, optIntoHeuristic: settings.useHeuristicOwnershipLeverage ?? true, format: slate.format },
   );
   const resolvedSettings: NflOptimizerSettings = { ...settings, defensiveAdjustments:defensive,
@@ -1146,7 +1149,9 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
     projectionScenario: player.projectionScenario, redistributionVersion: slate.redistribution?.version,
     statMeans: player.statMeans,
     dkAvg: player.avgFptsDk, fantasypros: player.fantasyprosProj,
-    linestar: player.linestarProj, ownership: player.linestarOwnPct, custom: player.customProj,
+    linestar: player.linestarProj, custom: player.customProj,
+    // The ownership the optimizer actually read, so a leverage run can be replayed from the ledger.
+    ownership: {total:player.ownPct??null, flex:player.flexOwnPct??null, captain:player.captainOwnPct??null, source:player.ownSource??null, linestar:player.linestarOwnPct??null},
     availability: player.availability, isOut: player.isOut,
     availabilityDecisionId:player.availability?.decisionId??null,
     availabilityEvidence:player.availabilityEvidence??null,

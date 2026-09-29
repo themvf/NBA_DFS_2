@@ -28,7 +28,18 @@
  * Deterministic and pure: same inputs, same output, no clock, no randomness.
  */
 
-export const NFL_OWNERSHIP_PRIOR_VERSION = "nfl-ownership-prior-v1";
+/**
+ * v2 (2026-09-29, after PHI@CHI 2026-09-28):
+ *   - Showdown: a player's captain + flex ownership is at most
+ *     SHOWDOWN_TOTAL_MAX_PCT. A player fills one slot per lineup, so the two
+ *     can never sum past 100%; v1 capped them separately (90 + 50) and read
+ *     Swift at 111% and Hurts at 100%, which the leverage factor then crushed.
+ *   - Value is computed on at least VALUE_SALARY_FLOOR of salary. Points per
+ *     $1,000 explodes near a $200 Showdown salary; v1 put Salvon Ahmed ($200,
+ *     5.8 projected) at 93%.
+ * Both are structural corrections, not fitted constants.
+ */
+export const NFL_OWNERSHIP_PRIOR_VERSION = "nfl-ownership-prior-v2";
 
 /** Roster budget per position for a 9-slot Classic lineup, in percent. Sums to 900. */
 export const CLASSIC_POSITION_BUDGETS: Readonly<Record<string, number>> = { QB: 100, RB: 255, WR: 340, TE: 105, DST: 100 };
@@ -38,6 +49,14 @@ export const SHOWDOWN_FLEX_BUDGET = 500;
 export const SHOWDOWN_CAPTAIN_BUDGET = 100;
 export const SHOWDOWN_FLEX_MAX_PCT = 90;
 export const SHOWDOWN_CAPTAIN_MAX_PCT = 50;
+/** A player is in at most one slot per lineup, so captain + flex never passes this. */
+export const SHOWDOWN_TOTAL_MAX_PCT = 95;
+/**
+ * Value (points per $1,000) is computed on at least this salary: DraftKings'
+ * Classic minimum for a skill player. Below it the ratio measures the price
+ * floor, not how attractive the player is to the field.
+ */
+export const VALUE_SALARY_FLOOR = 3000;
 /** Captain ownership concentrates harder than flex: same scores, steeper exponent. */
 export const CAPTAIN_EXPONENT = 1.5;
 export const STATUS_MULTIPLIER: Readonly<Record<string, number>> = { Q: 0.6, D: 0.25 };
@@ -94,7 +113,7 @@ export function ownershipScore(player: OwnershipPriorPlayer, salary = player.sal
   if (player.isOut || !(salary > 0)) return 0;
   const points = fieldPoints(player);
   if (points == null || points <= 0) return 0;
-  const value = points / (salary / 1000);
+  const value = points / (Math.max(salary, VALUE_SALARY_FLOOR) / 1000);
   const status = STATUS_MULTIPLIER[(player.dkStatus ?? "").trim().toUpperCase()] ?? 1;
   return Math.pow(Math.max(points, 0.5), POINTS_EXPONENT) * Math.pow(Math.max(value, 0.2), VALUE_EXPONENT) * status;
 }
@@ -108,17 +127,19 @@ export function allocateBudget(scores: ReadonlyMap<number, number>, budget: numb
   return allocateBudgetDetailed(scores, budget, maxPct).shares;
 }
 
-export function allocateBudgetDetailed(scores: ReadonlyMap<number, number>, budget: number, maxPct: number): { shares: Map<number, number>; unallocated: number } {
+/** `maxPct` may be one cap for everyone or a per-player cap. */
+export function allocateBudgetDetailed(scores: ReadonlyMap<number, number>, budget: number, maxPct: number | ((id: number) => number)): { shares: Map<number, number>; unallocated: number } {
+  const capFor = typeof maxPct === "number" ? () => maxPct : maxPct;
   const out = new Map<number, number>();
   const open = new Map([...scores].filter(([, s]) => s > 0));
   let remaining = budget;
-  for (let pass = 0; pass < 8 && open.size; pass += 1) {
+  for (let pass = 0; pass < 16 && open.size; pass += 1) {
     const total = [...open.values()].reduce((a, b) => a + b, 0);
     if (total <= 0) break;
     let capped = false;
     for (const [id, s] of open) {
-      const share = remaining * (s / total);
-      if (share > maxPct) { out.set(id, maxPct); open.delete(id); remaining -= maxPct; capped = true; }
+      const share = remaining * (s / total), cap = Math.max(0, capFor(id));
+      if (share > cap) { out.set(id, cap); open.delete(id); remaining -= cap; capped = true; }
     }
     if (!capped) { for (const [id, s] of open) out.set(id, remaining * (s / total)); remaining = 0; open.clear(); }
   }
@@ -132,9 +153,13 @@ export function projectOwnershipPrior(players: readonly OwnershipPriorPlayer[], 
     const flexScores = new Map(players.map((p) => [p.dkPlayerId, ownershipScore(p)]));
     const captainScores = new Map(players.map((p) => [p.dkPlayerId,
       p.captainSalary == null ? 0 : Math.pow(ownershipScore(p, p.captainSalary), CAPTAIN_EXPONENT)]));
-    const flexAlloc = allocateBudgetDetailed(flexScores, SHOWDOWN_FLEX_BUDGET, SHOWDOWN_FLEX_MAX_PCT);
+    // Captain first; each player's flex cap is what his captain share leaves
+    // under the one-slot-per-lineup total.
     const captainAlloc = allocateBudgetDetailed(captainScores, SHOWDOWN_CAPTAIN_BUDGET, SHOWDOWN_CAPTAIN_MAX_PCT);
-    const flex = flexAlloc.shares, captain = captainAlloc.shares;
+    const captain = captainAlloc.shares;
+    const flexAlloc = allocateBudgetDetailed(flexScores, SHOWDOWN_FLEX_BUDGET,
+      (id) => Math.min(SHOWDOWN_FLEX_MAX_PCT, SHOWDOWN_TOTAL_MAX_PCT - (captain.get(id) ?? 0)));
+    const flex = flexAlloc.shares;
     return { version: NFL_OWNERSHIP_PRIOR_VERSION, format, budgetPct: SHOWDOWN_FLEX_BUDGET + SHOWDOWN_CAPTAIN_BUDGET,
       unallocatedPct: round(flexAlloc.unallocated + captainAlloc.unallocated),
       players: players.map((p) => { const f = flex.get(p.dkPlayerId) ?? 0, c = captain.get(p.dkPlayerId) ?? 0;
