@@ -43,6 +43,9 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - name: Check every pipeline's freshness
+        # Explicit bash = -eo pipefail: without it `| tee` reports tee's exit code
+        # and a crashed check (or --fail-on-stale) would still turn the job green.
+        shell: bash
         run: |
           FLAGS="--record"
           if [ "${{ inputs.fail_on_stale }}" = "true" ]; then FLAGS="$FLAGS --fail-on-stale"; fi
