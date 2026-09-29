@@ -76,7 +76,8 @@ def prospective_reports(db, season, now, registry):
     records = db.execute("""SELECT p.player_id,p.game_id,p.kickoff,p.projection,
         f.run_id,f.season,f.week,f.created_at,f.as_of_at,f.model_version forecast_model_version,
         jsonb_build_object('model_hashes',f.manifest->'model_hashes',
-                          'implementation_hashes',f.manifest->'implementation_hashes') manifest,
+                          'implementation_hashes',f.manifest->'implementation_hashes',
+                          'format',f.manifest->'format') manifest,
         b.model_version baseline_version,b.model_config baseline_config,b.created_at baseline_created_at,
         r.id result_id,r.actual_dk_fpts,r.scoring_status,r.scoring_version,r.input_digest result_digest,r.computed_at result_at
         FROM nfl_matchup_player_forecasts p JOIN nfl_matchup_forecast_runs f ON f.run_id=p.run_id
@@ -136,7 +137,7 @@ def prospective_reports(db, season, now, registry):
                 "available_at": max(available), "kickoff": record["kickoff"],
                 "input_manifest_hash": digest({"matchup": shadow["matchup_manifest_hash"], "baseline": original.get("id"), "run": record["run_id"]}),
                 "candidate_config_hash": config_hash, "baseline_config_hash": digest({"model_version": record["baseline_version"], "model_config": record["baseline_config"]}),
-                "implementation_hashes": run.get("implementation_hashes"),
+                "implementation_hashes": run.get("implementation_hashes"), "capture_format": run.get("format"),
                 "scoring_version": record.get("scoring_version") or manifest["scoring_version"],
                 "actual": record.get("actual_dk_fpts"), "scoring_status": record.get("scoring_status"),
                 "result_id": record.get("result_id"), "result_at": record.get("result_at"), "result_digest": record.get("result_digest"),

@@ -34,6 +34,30 @@ from research.nfl_saved_upload_selection import plan_captures, pregame_teams, re
 
 MODEL_PATH = Path("artifacts/nfl_matchup_models_v1.json")
 
+# The source files a capture records hashes for. The DFS-mean grader admits a
+# capture only when this record EQUALS the study's latest implementation pin,
+# so the two lists must be the same set: pin 4 bound nine files while captures
+# recorded six, and every capture after pin 4 was rejected. Pin 5 binds exactly
+# this tuple; tests/test_nfl_matchup_study.py fails if the two drift apart.
+IMPLEMENTATION_FILES = (
+    "db/nfl_pfr_schema.py",
+    "ingest/nfl_dfs_weekly.py",
+    "ingest/nfl_matchup_context.py",
+    "ingest/nfl_pickem_refresh.py",
+    "ingest/nfl_weekly_evidence.py",
+    "model/nfl_dfs_historical.py",
+    "model/nfl_matchup_features.py",
+    "model/nfl_matchup_projection.py",
+    "research/nfl_matchup_implementation.py",
+    "research/nfl_saved_upload_selection.py",
+)
+
+
+def implementation_hashes() -> dict[str, str]:
+    """SHA256 over LF-normalized bytes, so Windows and Linux agree."""
+    return {path: hashlib.sha256(Path(path).read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+            for path in IMPLEMENTATION_FILES}
+
 
 def fit_models(db, development_dir):
     crosswalk = {r["external_id"]: r["gsis_id"] for r in db.execute(
@@ -171,9 +195,7 @@ def compare_slate(db, *, season, week, upload_id, fitted, as_of, baseline_run_id
               "model_hashes":{k:v.get("artifact_hash") for k,v in fitted.items()},"players":players,
               "matchups":matchups,
               "implementation_hash_algorithm":"sha256_lf_normalized",
-              "implementation_hashes":{path:hashlib.sha256(Path(path).read_bytes().replace(b'\r\n',b'\n')).hexdigest() for path in
-                  ("model/nfl_matchup_features.py","model/nfl_matchup_projection.py","model/nfl_dfs_historical.py",
-                   "ingest/nfl_matchup_context.py","research/nfl_matchup_implementation.py","db/nfl_pfr_schema.py")},
+              "implementation_hashes":implementation_hashes(),
               "production_changed":False,"forecast_state":"shadow_only; forward outcomes not yet available"}
     # Normalize database decimals/UUID/time values once, before hashing/storage.
     return json.loads(json.dumps(artifact,default=str)),matchups
