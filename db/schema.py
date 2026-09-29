@@ -3606,6 +3606,21 @@ TABLES = [
         payload JSONB NOT NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )""",
+    # Research-only WR volume/share forecasts (ingest/nfl_dfs_target_share.py),
+    # one append-only run per refresh. The DFS page's "Position workload"
+    # source reads the newest run captured at or before a slate's projection
+    # cutoff (web/src/db/nfl-volume-share.ts). Replaces the committed week-1
+    # JSON that sat frozen from 2026-09-06.
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_volume_share_runs (
+        run_digest TEXT PRIMARY KEY,
+        season INTEGER NOT NULL,
+        week INTEGER NOT NULL,
+        as_of_at TIMESTAMPTZ NOT NULL,
+        payload JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )""",
+    """CREATE INDEX IF NOT EXISTS idx_nfl_dfs_volume_share_runs_week
+        ON nfl_dfs_volume_share_runs (season, week, as_of_at DESC)""",
     """CREATE TABLE IF NOT EXISTS nfl_dfs_efficiency_runs (
         run_digest TEXT PRIMARY KEY,
         workload_run_digest TEXT NOT NULL REFERENCES nfl_dfs_workload_runs(run_digest),

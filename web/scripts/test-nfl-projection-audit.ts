@@ -22,6 +22,9 @@ assert.ok(Math.abs(audit.baseline!+audit.steps.reduce((s,a)=>s+a.points,0)-audit
 assert.equal(result.workload!.p90-wr.workload!.p90,audit.final!-14);
 assert.equal(JSON.stringify(wr),raw,'source forecast immutable');
 assert.deepEqual(auditProjection(wr,positions,DEFAULT_SITUATIONS,now),result,'repeated previews never compound');
+// Evidence evaluated at a saved run's cutoff: still applies hours later on the newest run, not once superseded.
+assert.equal(auditProjection(wr,positions,DEFAULT_SITUATIONS,{now:now+3*3600000,decisionAt:stamp,onNewestRun:true}).projectionAudit!.final,audit.final,'decision-time evidence is not 60-second evidence');
+assert.equal(auditProjection(wr,positions,DEFAULT_SITUATIONS,{now:now+3*3600000,decisionAt:stamp,onNewestRun:false}).projectionAudit!.final,14,'a newer run blocks the situation adjustment');
 assert.equal(auditProjection(wr,positions,undefined,now).workload!.mean,14,'legacy settings unchanged');
 assert.equal(auditProjection(wr,{...positions,WR:false},DEFAULT_SITUATIONS,now).projectionAudit!.final,12);
 const modify=(fn:(p:AuditPlayer)=>void)=>{const p=structuredClone(wr);fn(p);return auditProjection(p,positions,DEFAULT_SITUATIONS,now);};

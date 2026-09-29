@@ -13,7 +13,7 @@ export function selectedWorkload(player:PositionWorkloadPlayer, controls?:Worklo
 }
 export function workloadSourceReason(player:PositionWorkloadPlayer, controls:WorkloadPositions|undefined, allowDkFallback:boolean):string {
   if(player.isOut)return 'Excluded by availability.';
-  if(player.workloadEligible===false)return 'Excluded from workload runs: roster, QB starter or kickoff evidence unresolved.';
+  if(player.workloadEligible===false)return 'Excluded from workload runs: roster, QB starter or kickoff evidence unresolved, or a newer projection run exists.';
   const supported=WORKLOAD_POSITIONS.includes(player.position as WorkloadPosition);
   const enabled=supported&&(controls??LEGACY_WORKLOAD_POSITIONS)[player.position as WorkloadPosition];
   if(selectedWorkload(player,controls))return `${player.position} workload candidate`;

@@ -7,7 +7,8 @@ import {benchmarkTeam} from '@/lib/nfl-dfs/competitor-benchmark';
 import type {RoleSettings} from '@/lib/nfl-dfs/role-allocation';
 
 export function previewAudits(slate:NflWorkspaceSlate,settings:NflOptimizerSettings) {
-  return prepareProjectionAudits(slate.players,slate.situationTeams??[],settings.workloadPositions,settings.situations,Date.now());
+  // Same decision/request clock the server uses when it generates.
+  return prepareProjectionAudits(slate.players,slate.situationTeams??[],settings.workloadPositions,settings.situations,{now:Date.now(),decisionAt:slate.modelAsOf,onNewestRun:slate.onNewestRun===true});
 }
 function download(name:string,value:unknown) {
   const url=URL.createObjectURL(new Blob([JSON.stringify(value,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=name;a.click();URL.revokeObjectURL(url);

@@ -1,4 +1,4 @@
-import type { Availability } from './availability';
+import { evaluationCurrent, toDecisionClock, type Availability, type DecisionClock } from './availability';
 import type { PlayerContext } from './player-context';
 import { workloadScenario } from './workload-scenario';
 
@@ -7,12 +7,13 @@ const nameKey = (s: string) => s.normalize('NFKD').replace(/[\u0300-\u036f]/g,''
 const teamKey = (s: string) => ({WAS:'WSH',LA:'LAR',JAC:'JAX',AZ:'ARI'}[s] ?? s);
 
 /** Evidence-gated historical sensitivity, never an automatic injury uplift. */
-export function previewAbsence(data: PlayerContext, receiver: Player, teammate: Player, now: number) {
+export function previewAbsence(data: PlayerContext, receiver: Player, teammate: Player, nowOrClock: number | DecisionClock) {
+  const clock = toDecisionClock(nowOrClock), now = clock.now;
   if (receiver.dkPlayerId === teammate.dkPlayerId || receiver.position !== 'WR' || !['QB','WR','TE'].includes(teammate.position)) throw new Error('Choose a WR and a different QB, WR or TE teammate.');
   if (teamKey(receiver.team) !== teamKey(teammate.team) || !receiver.gameKey || receiver.gameKey !== teammate.gameKey) throw new Error('Players must share the same team and slate game.');
+  // Timing only: the teammate is expected to be inactive, i.e. blocked.
   for (const p of [receiver,teammate]) {
-    const a=p.availability, evaluated=Date.parse(a?.evaluatedAt??''), kickoff=Date.parse(a?.kickoff??'');
-    if (!a?.fresh || !Number.isFinite(evaluated) || evaluated>now || now-evaluated>60000 || !Number.isFinite(kickoff) || kickoff<=now) throw new Error('Refresh matching pregame roster and availability evidence.');
+    if (!evaluationCurrent(p.availability, clock).ok) throw new Error('Refresh matching pregame roster and availability evidence.');
   }
   if (receiver.isOut || receiver.availability?.blockedReason) throw new Error('The selected receiver is excluded.');
   if (!teammate.availability?.officialConfirmed || teammate.availability.status !== 'INACTIVE') throw new Error('This scenario requires a verified official inactive report; questionable or undated reports cannot trigger it.');

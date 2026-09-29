@@ -1,6 +1,7 @@
 import { selectedWorkload, type WorkloadPositions, type PositionWorkloadPlayer } from './workload-selection';
 import { allocateRoles, type RoleSettings } from './role-allocation';
 import { benchmarkTeam } from './competitor-benchmark';
+import { availabilityCurrent, toDecisionClock, type DecisionClock } from './availability';
 import { redistributeInjuryTargets, type InjuryRole } from './injury-redistribution';
 import type { EfficiencyRate } from './efficiency';
 import { PASS_YARD_PTS, PASS_TD_PTS, INTERCEPTION_PTS, RUSH_YARD_PTS, RUSH_TD_PTS, REC_YARD_PTS, REC_TD_PTS, RECEPTION_PTS } from './scoring';
@@ -35,7 +36,8 @@ export function validateSituations(settings:SituationSettings|undefined, teams:s
   }
 }
 
-export function prepareProjectionAudits<T extends AuditPlayer>(players:T[], teams:SituationTeam[], positions:WorkloadPositions|undefined, settings:SituationSettings|undefined, now:number):T[] {
+export function prepareProjectionAudits<T extends AuditPlayer>(players:T[], teams:SituationTeam[], positions:WorkloadPositions|undefined, settings:SituationSettings|undefined, nowOrClock:number|DecisionClock):T[] {
+  const clock=toDecisionClock(nowOrClock), now=clock.now;
   validateSituations(settings,players.map(p=>p.team));
   if(settings?.enabled)for(const [key,a] of Object.entries(settings.teams)) {
     const team=teams.find(t=>t.team===benchmarkTeam(key));
@@ -50,7 +52,7 @@ export function prepareProjectionAudits<T extends AuditPlayer>(players:T[], team
     allocateRoles(team.members.map(m=>({...m,out:!!m.availability.blockedReason,evidence_current:m.availability.fresh,captured_at:m.availability.capturedAt,role:m.availability.role==='Expected starter · QB1'?'Listed QB1':m.role})),a.roles,b.targets,b.carries,now);
     if(!players.some(p=>benchmarkTeam(p.team)===team.team&&!p.isOut&&p.workloadEligible!==false&&selectedWorkload(p,positions)&&p.situationEvidence?.rates&&!p.situationEvidence.reason))throw new Error(`${key}: no enabled player has matching workload and efficiency evidence. Assumption cannot affect this run.`);
   }
-  return players.map(p=>auditProjection({...p,situationEvidence:{...(p.situationEvidence??{rates:null,ratesAsOf:null,ratesDigest:null,reason:'Efficiency evidence unavailable.'}),team:teams.find(t=>t.team===benchmarkTeam(p.team))??null}},positions,settings,now));
+  return players.map(p=>auditProjection({...p,situationEvidence:{...(p.situationEvidence??{rates:null,ratesAsOf:null,ratesDigest:null,reason:'Efficiency evidence unavailable.'}),team:teams.find(t=>t.team===benchmarkTeam(p.team))??null}},positions,settings,clock));
 }
 
 function budgets(p:TeamProfile, plays:number) {
@@ -71,7 +73,8 @@ function coefficients(r:Record<string,EfficiencyRate>) {
 }
 
 /** Never mutate the source forecasts: repeat previews must not compound adjustments. */
-export function auditProjection<T extends AuditPlayer>(player:T, positions:WorkloadPositions|undefined, settings:SituationSettings|undefined, now:number):T {
+export function auditProjection<T extends AuditPlayer>(player:T, positions:WorkloadPositions|undefined, settings:SituationSettings|undefined, nowOrClock:number|DecisionClock):T {
+  const clock=toDecisionClock(nowOrClock), now=clock.now;
   const candidate=selectedWorkload(player,positions), baseline=player.ourProj;
   const evidence=player.situationEvidence??null, team=evidence?.team;
   const assumption=settings?.teams[player.team]??settings?.teams[benchmarkTeam(player.team)]??null;
@@ -103,8 +106,7 @@ export function auditProjection<T extends AuditPlayer>(player:T, positions:Workl
     add('Situation adjustments',team?.reason??evidence?.reason??'Team context or efficiency evidence is unavailable, stale or locked.');return audit();
   }
   const member=team.members.find(m=>m.id===String(player.ffPlayerId));
-  const stamp=Date.parse(member?.availability.evaluatedAt??'');
-  if(!member||!member.availability.fresh||member.availability.blockedReason||!Number.isFinite(stamp)||stamp>now||now-stamp>60000||Date.parse(member.availability.kickoff??'')!==Date.parse(candidate.kickoff)) {
+  if(!member||!availabilityCurrent(member.availability,clock).ok||Date.parse(member.availability.kickoff??'')!==Date.parse(candidate.kickoff)) {
     add('Roster and role','Current full-roster identity, availability or kickoff is unresolved.');return audit();
   }
   try {
@@ -120,7 +122,7 @@ export function auditProjection<T extends AuditPlayer>(player:T, positions:Workl
     let injuryGain=0, hasInjury=false;
     if(Object.keys(assumption?.roles??{}).length)add('Teammate injury','Manual full-roster shares replace automatic redistribution to prevent double counting.');
     else try {
-      const injury=redistributeInjuryTargets(team.members,nextBudget.targets,team.currentQb,team.historicalQb,now);
+      const injury=redistributeInjuryTargets(team.members,nextBudget.targets,team.currentQb,team.historicalQb,clock);
       hasInjury=true;
       injuryGain=injury.rows.find(r=>r.id===member.id)?.gain??0;
       add('Teammate injury evidence',`Verified inactive ${team.members.find(m=>m.id===injury.absentId)?.name}. Fixed hypothesis: redistribute 50% of removed share pro rata; ${injury.reservedTargets.toFixed(2)} team targets remain unassigned. Not calibrated.`);

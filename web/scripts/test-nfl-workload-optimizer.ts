@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import {readWorkloadProjection,workloadPoolEligible,type WorkloadReport,type WorkloadTarget} from '../src/lib/nfl-dfs/workload-projection';
+import {readWorkloadProjection,workloadPoolEligible,VOLUME_SHARE_RUN_VERSION,type WorkloadReport,type WorkloadTarget} from '../src/lib/nfl-dfs/workload-projection';
 import {optimizeNflLineups,type NflOptimizerPlayer,type NflOptimizerSettings} from '../src/app/dfs/nfl/nfl-optimizer';
 const now=Date.parse('2026-09-10T12:00:00Z'),kickoff='2026-09-13T17:00:00Z';
 const row={identity:'gsis-1',history_games:8,targets_baseline:5,targets_volume:7,fpts_volume:40,p10:30,p50:38,p90:60};
-const report:WorkloadReport={version:'nfl-dfs-volume-share-v1',season:2026,week:1,history_cutoff_exclusive:[2026,1],as_of:new Date(now-1000).toISOString(),snapshot_digest:'a'.repeat(64),recipe_digest:'b'.repeat(64),roster_evidence_digest:'c'.repeat(64),sources:[{season:2025}],forward:[{team:'BUF',kickoff,players:[row]}]};
+const report:WorkloadReport={version:'nfl-dfs-volume-share-v1',report_version:VOLUME_SHARE_RUN_VERSION,season:2026,week:1,history_cutoff_exclusive:[2026,1],history_through:[2025,18],as_of:new Date(now-1000).toISOString(),snapshot_digest:'a'.repeat(64),recipe_digest:'b'.repeat(64),roster_evidence_digest:'c'.repeat(64),sources:[{season:2025,latest_week:18}],forward:[{team:'BUF',kickoff,players:[row]}]};
 const target:WorkloadTarget={identity:'gsis-1',position:'WR',team:'BUF',gameInfo:'BUF@MIA 09/13/2026 01:00PM ET',isOut:false,availability:{fresh:true,blockedReason:null,status:'ACTIVE',role:'Listed WR1',source:'test',capturedAt:report.as_of,evaluatedAt:new Date(now).toISOString(),kickoff}};
 assert.ok(workloadPoolEligible(target,now));
 assert.equal(workloadPoolEligible({...target,position:'QB'},now),false);
@@ -13,8 +13,21 @@ assert.equal(workloadPoolEligible(target,Date.parse(kickoff)),false);
 const decoded=readWorkloadProjection(report,target,2026,1,now).projection!;
 assert.equal(decoded.mean,40);assert.equal(decoded.targets,7);assert.equal(decoded.injuryAdjusted,false);
 for(const changed of [{...target,team:'KC'},{...target,identity:null},{...target,position:'RB'},{...target,isOut:true},{...target,gameInfo:target.gameInfo!.replace('01:00','04:00')},{...target,availability:{...target.availability!,fresh:false}},{...target,availability:{...target.availability!,evaluatedAt:new Date(now-61000).toISOString()}}])assert.equal(readWorkloadProjection(report,changed,2026,1,now).projection,null);
-for(const changed of [{...report,week:2},{...report,as_of:new Date(now+1000).toISOString()},{...report,as_of:new Date(now-73*3600000).toISOString()},{...report,sources:[{season:2026}]},{...report,forward:[...report.forward,...report.forward]},{...report,forward:[{...report.forward[0],players:[row,row]}]},{...report,forward:[{...report.forward[0],players:[{...row,p90:0}]}]}])assert.equal(readWorkloadProjection(changed,target,2026,1,now).projection,null);
+for(const changed of [{...report,week:2},{...report,as_of:new Date(now+1000).toISOString()},{...report,as_of:new Date(now-73*3600000).toISOString()},{...report,sources:[{season:2026,latest_week:1}]},{...report,history_through:[2026,1]},{...report,report_version:undefined},{...report,sources:[{season:2025}]},{...report,forward:[...report.forward,...report.forward]},{...report,forward:[{...report.forward[0],players:[row,row]}]},{...report,forward:[{...report.forward[0],players:[{...row,p90:0}]}]}])assert.equal(readWorkloadProjection(changed,target,2026,1,now).projection,null);
 assert.equal(readWorkloadProjection(report,target,2026,1,Date.parse(kickoff)).projection,null);
+// Run v2: an in-season week may use same-season history, strictly before the target week (the replay's population).
+const week3:WorkloadReport={...report,week:3,history_cutoff_exclusive:[2026,3],history_through:[2026,2],sources:[{season:2025,latest_week:18},{season:2026,latest_week:2}]};
+assert.equal(readWorkloadProjection(week3,target,2026,3,now).projection!.mean,40);
+for(const changed of [{...week3,history_through:[2026,3]},{...week3,sources:[{season:2026,latest_week:3}]},{...week3,history_cutoff_exclusive:[2026,2]}])assert.equal(readWorkloadProjection(changed,target,2026,3,now).projection,null);
+// Decision time vs request time: evidence evaluated at the run cutoff stays usable on the newest run, hours later.
+const decisionAt=new Date(now).toISOString(),later=now+5*3600000;
+const pinned={...target,availability:{...target.availability!,evaluatedAt:decisionAt,pinned:true}};
+assert.ok(workloadPoolEligible(pinned,{now:later,decisionAt,onNewestRun:true}),'decision-time evidence on the newest run passes long after 60s');
+assert.equal(workloadPoolEligible(pinned,{now:later,decisionAt,onNewestRun:false}),false,'a newer run supersedes the decision');
+assert.equal(workloadPoolEligible(pinned,later),false,'without a decision time the 60-second live rule applies');
+assert.equal(workloadPoolEligible(pinned,{now:Date.parse(kickoff),decisionAt,onNewestRun:true}),false,'never after kickoff');
+assert.equal(readWorkloadProjection(report,pinned,2026,1,{now:later,decisionAt,onNewestRun:true}).projection!.mean,40);
+assert.equal(readWorkloadProjection({...report,as_of:new Date(now+1000).toISOString()},pinned,2026,1,{now:later,decisionAt,onNewestRun:true}).projection,null,'a run captured after the cutoff never applies');
 let id=0;const pool:NflOptimizerPlayer[]=[];
 for(const [team,opponent] of [['BUF','MIA'],['MIA','BUF'],['KC','DEN'],['DEN','KC']])for(const position of ['QB','RB','RB','WR','WR','WR','TE','DST'] as const){id++;pool.push({id,dkPlayerId:id,captainDkPlayerId:id+1000,name:`${team} ${position} ${id}`,position,team,opponent,gameKey:[team,opponent].sort().join('@'),salary:5000,captainSalary:7500,isOut:false,projectionStatus:'historical',ourProj:10,floorFpts:5,ceilingFpts:15,boomRate:.1,avgFptsDk:9,fantasyprosProj:null,linestarProj:null,linestarOwnPct:null,customProj:null});}
 const upgraded=pool.find(p=>p.position==='WR')!;upgraded.ourProj=1;upgraded.floorFpts=.5;upgraded.ceilingFpts=1.5;upgraded.workload=decoded;

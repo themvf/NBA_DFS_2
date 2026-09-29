@@ -25,7 +25,9 @@ Lower error is better. QB/RB/TE are the existing shadow-study opportunity regres
 
 ## Refresh and evaluation
 
-QB/RB/TE read the existing daily shadow forecast in `nfl_dfs_shadow_predictions`. WR still uses the dated volume-share report documented in [the WR release](nfl-workload-optimizer-release.md). All forecasts expire after 72 hours or kickoff. No new provider or live scheme feed is introduced.
+QB/RB/TE read the daily shadow forecast in `nfl_dfs_shadow_predictions` for the study `calibrated-release.json` names, which is now generated from the shadow job's own pin (`artifacts/nfl_dfs_shadow_config.json`). WR reads the weekly volume-share run documented in [the WR release](nfl-workload-optimizer-release.md). Each source reads the newest capture at or before the slate's projection cutoff. All forecasts expire after 72 hours or kickoff. No new provider or live scheme feed is introduced.
+
+**Status since 2026-09-29 (B4): QB, RB and TE are disabled.** The shadow study was re-pinned to `7ff4d404` on 2026-09-26 against the historical-v5 baseline, and that study marks `QB/RB/WR/TE:opportunity` `not_eligible` (only DST remains eligible), so the shadow job freezes no QB/RB/TE candidate. The page disables those checkboxes with that reason instead of offering a source that cannot forecast; old recipes are not revived (the study-pin guard forbids it). Releases are `nfl-dfs-position-workload-opt-in-v2`. The page computes each source's usability per position on the server (`nfl-source-availability-v1`) with the rule generation applies, and generation refuses a source that rule rejects with the same reason.
 
 The matched comparison freezes one common pregame pool, controls, salaries, and zero randomness for historical and selected workload sources. Up to five lineups per arm are saved; postgame performance remains pending. No historical lineup replay is fabricated without verified salary pools.
 

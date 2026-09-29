@@ -58,6 +58,8 @@
     "test:nfl-projection-audit": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-projection-audit.ts",
     "test:nfl-position-workload": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-position-workload.ts",
     "test:nfl-workload-optimizer": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-workload-optimizer.ts",
+    "test:nfl-source-availability": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-source-availability.ts",
+    "verify:nfl-source-availability": "node --env-file=.env.local -r ./scripts/server-only-stub.cjs --import tsx ./scripts/verify-nfl-source-availability.ts",
     "test:nfl-workload": "node --import tsx ./scripts/test-nfl-workload.ts",
     "test:nfl-availability": "node --import tsx ./scripts/test-nfl-availability.ts",
     "test:nfl-platform-eligibility": "node --import tsx ./scripts/test-nfl-platform-eligibility.ts",
