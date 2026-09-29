@@ -11260,8 +11260,11 @@ export async function getMovementSignalObservations(sport: string, matchupIds: n
 /** Prospective-only, fixed-family audit. Zero-observation detectors remain
  * visible so silence cannot be mistaken for a missing UI row. CFB market
  * variants are rolled into the common STEAM and WALKING families. */
-export async function getMarketSignalScorecard(sport: "cfb" | "tennis"): Promise<MarketSignalScorecardRow[]> {
-  const signalTypes = sport === "cfb"
+export async function getMarketSignalScorecard(sport: "cfb" | "tennis" | "nhl"): Promise<MarketSignalScorecardRow[]> {
+  // NHL runs only the four generic moneyline detectors (model/line_alerts.py).
+  const signalTypes = sport === "nhl"
+    ? ["pinnacle_divergence", "dk_value", "steam", "walking"]
+    : sport === "cfb"
     ? ["steam", "walking", "reversal", "reference_led", "price_pressure", "pinnacle_divergence", "book_disagreement", "market_convergence", "late_move", "key_cross"]
     : ["steam", "walking", "reversal", "reference_led", "price_pressure", "pinnacle_divergence", "book_disagreement", "market_convergence", "late_move", "favorite_flip"];
   const rows = await db.execute(sql`
@@ -11472,6 +11475,11 @@ const ELAPSED_BOUND_TYPES = new Set(["reversal", "reference_led", "price_pressur
 const ELAPSED_BOUND_MINUTES = 30;
 
 const DETECTOR_REGISTRY: { sport: string; alertType: string; deployedAt: string }[] = [
+  // NHL: generic moneyline detectors only (no Polymarket book is captured).
+  { sport: "nhl", alertType: "pinnacle_divergence", deployedAt: "2026-09-29" },
+  { sport: "nhl", alertType: "dk_value", deployedAt: "2026-09-29" },
+  { sport: "nhl", alertType: "steam", deployedAt: "2026-09-29" },
+  { sport: "nhl", alertType: "walking", deployedAt: "2026-09-29" },
   { sport: "mlb", alertType: "pinnacle_divergence", deployedAt: "2026-07-02" },
   { sport: "mlb", alertType: "dk_value", deployedAt: "2026-07-02" },
   { sport: "mlb", alertType: "steam", deployedAt: "2026-07-02" },

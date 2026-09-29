@@ -3,9 +3,11 @@
 import { Activity, ArrowLeft, ArrowRight, BellRing, BookOpen, Radio, Search, ShieldAlert, TrendingDown, TrendingUp, Zap } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { MarketCaptureHealth, NhlTerminalBoard, NhlTerminalRow } from "@/db/queries";
+import type { LineAlertRow, MarketCaptureHealth, MarketSignalScorecardRow, NhlTerminalBoard, NhlTerminalRow } from "@/db/queries";
+import MarketSignalScorecard from "@/components/market-signal-scorecard";
+import MovementIntelligence from "@/components/movement-intelligence";
 import SportsbookHistory from "@/components/sportsbook-history";
-import { comparableTrail } from "@/lib/movement-intelligence";
+import { buildMovementInsights, cfbIntelligenceEvents, comparableTrail } from "@/lib/movement-intelligence";
 import { selectedSportsbooks } from "@/lib/sportsbook-policy";
 import {
   NHL_MARKET_LABELS, bookFairProbability, buildNhlMarket, marketSnapshot, nhlFreshnessTargetMinutes, pct, sidesFor,
@@ -16,6 +18,24 @@ import n from "./nhl-terminal.module.css";
 
 type PaperPosition = { id: string; game: string; market: string; book: string; entry: string; observedAt: string };
 type Point = { time: number; value: number };
+
+// The four generic moneyline detectors (model/line_alerts.py), thresholds shared
+// with MLB/tennis/soccer. No puck-line or total detector exists for NHL yet.
+const SIGNAL_LABELS: Record<string, string> = {
+  pinnacle_divergence: "PIN GAP", dk_value: "DK VALUE", steam: "ML STEAM", walking: "ML WALK",
+};
+
+function signalKind(type: string): string | undefined {
+  return type === "steam" ? "steam" : type === "walking" ? "walk" : undefined;
+}
+
+/** The size that tripped the detector, in its own units. */
+function signalMetric(signal: LineAlertRow): string | null {
+  const d = signal.details ?? {};
+  const pp = (key: string) => typeof d[key] === "number" ? `${Number(d[key]) > 0 ? "+" : ""}${Number(d[key]).toFixed(1)}pp` : null;
+  if (signal.alertType === "dk_value") return typeof d.ev_pct === "number" ? `EV ${Number(d.ev_pct) > 0 ? "+" : ""}${Number(d.ev_pct).toFixed(1)}%` : null;
+  return pp(signal.alertType === "steam" ? "avg_move_pp" : signal.alertType === "walking" ? "drift_pp" : "gap_pp");
+}
 
 function fmtEt(value: string | number, compact = false): string {
   return new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", ...(compact ? { hour: "numeric", minute: "2-digit" } : { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }) }).format(new Date(value));
@@ -64,7 +84,8 @@ function MiniChart({ points, label, percent }: { points: Point[]; label: string;
   </span>;
 }
 
-function WatchGame({ game, active, asOf, onChoose }: { game: NhlTerminalRow; active: boolean; asOf: string; onChoose: () => void }) {
+function WatchGame({ game, signals, active, asOf, onChoose }: { game: NhlTerminalRow; signals: LineAlertRow[]; active: boolean; asOf: string; onChoose: () => void }) {
+  const latestByType = signals.filter((signal, index) => signals.findIndex((other) => other.alertType === signal.alertType) === index);
   const moneyline = tapeSeries(game.history, game.commenceTime, "moneyline");
   const total = tapeSeries(game.history, game.commenceTime, "total");
   const move = moneyline.length > 1 ? moneyline.at(-1)!.value - moneyline[0].value : null;
@@ -78,6 +99,7 @@ function WatchGame({ game, active, asOf, onChoose }: { game: NhlTerminalRow; act
     <span className={styles.watchLine}>{favoriteLabel(game)}</span>
     <span className={move != null && move > 0 ? styles.positive : move != null && move < 0 ? styles.negative : styles.neutral} title={`${game.homeAbbrev} vig-free win probability, first capture to latest`}><Trend aria-hidden="true" /> {move == null ? "—" : `${Math.abs(move * 100).toFixed(1)}`}</span>
     <span className={styles.miniCharts}><MiniChart points={moneyline} label={`${game.homeAbbrev} ML %`} percent /><MiniChart points={total} label="TOTAL" percent={false} /></span>
+    <span className={styles.movementBadges}>{latestByType.map((signal) => <span key={signal.alertType} data-kind={signalKind(signal.alertType)} title={`${SIGNAL_LABELS[signal.alertType] ?? signal.alertType} · ${signal.side} · ${fmtEt(signal.createdAt)} · ${signal.outcome ?? "result pending"}`}>{SIGNAL_LABELS[signal.alertType] ?? signal.alertType.toUpperCase()} · {signal.side.toUpperCase()}{signalMetric(signal) ? ` · ${signalMetric(signal)}` : ""} · {fmtEt(signal.createdAt, true)}</span>)}{!signals.length ? <small>{game.captures < 2 ? "INSUFFICIENT HISTORY" : "NO RECORDED MONEYLINE SIGNAL"}</small> : null}</span>
     <span className={styles.watchHealth}>{game.latestCapturedAt ? `OBS ${fmtEt(game.latestCapturedAt)}` : "NEVER CAPTURED"}{stale && !game.completed ? " · STALE" : ""}{game.closeQuality ? ` · CLOSE ${game.closeQuality.toUpperCase()}` : ""}{b2b.length ? <span className={n.b2b}> · B2B {b2b.join(", ")}</span> : null}</span>
   </button>;
 }
@@ -128,7 +150,7 @@ function Movers({ movers, selected, onSelect }: { movers: Mover[]; selected: num
   </section>;
 }
 
-export default function NhlTerminalClient({ board, captureHealth }: { board: NhlTerminalBoard; captureHealth: MarketCaptureHealth | null }) {
+export default function NhlTerminalClient({ board, captureHealth, signals, scorecard }: { board: NhlTerminalBoard; captureHealth: MarketCaptureHealth | null; signals: LineAlertRow[]; scorecard: MarketSignalScorecardRow[] }) {
   const router = useRouter();
   function goToDate(next: string) { if (next) router.push(`/nhl?date=${next}`); }
   function shiftDate(delta: number) {
@@ -148,6 +170,8 @@ export default function NhlTerminalClient({ board, captureHealth }: { board: Nhl
   const view = useMemo(() => game ? buildNhlMarket(game, marketKey, side, metric, board.asOf) : null, [game, marketKey, side, metric, board.asOf]);
   const quote = view?.books.find((item) => item.key === selectedBook) ?? view?.books[0] ?? null;
   const filteredGames = useMemo(() => { const normalized = query.trim().toLowerCase(); return board.games.filter((item) => `${item.awayTeam} ${item.homeTeam} ${item.awayAbbrev} ${item.homeAbbrev} ${item.networks ?? ""}`.toLowerCase().includes(normalized)); }, [board.games, query]);
+  const gameSignals = useMemo(() => signals.filter((item) => item.matchupId === game?.matchupId), [signals, game?.matchupId]);
+  const intelligence = useMemo(() => buildMovementInsights(cfbIntelligenceEvents(filteredGames), signals, Math.max(observedNow, Date.parse(board.asOf))), [filteredGames, signals, observedNow, board.asOf]);
   const movers = useMemo(() => buildMovers(filteredGames, Math.max(observedNow, Date.parse(board.asOf))), [filteredGames, observedNow, board.asOf]);
   function chooseGame(id: number) { setGameId(id); setSelectedBook(""); setLockMessage(null); }
   function chooseMarket(next: NhlMarketKey) { setMarketKey(next); setSide(sidesFor(next)[0]); setMetric("price"); setSelectedBook(""); setLockMessage(null); }
@@ -170,11 +194,12 @@ export default function NhlTerminalClient({ board, captureHealth }: { board: Nhl
       </div>
       <span className={styles.navCount}>{board.games.length} SCHEDULED</span>
     </nav>
+    <MovementIntelligence items={intelligence} selectedKey={`${game?.matchupId}:${marketKey}`} onSelect={(item) => { chooseGame(item.matchupId); chooseMarket("moneyline"); chooseSide(item.side); }} />
     <Movers movers={movers} selected={game?.matchupId ?? null} onSelect={(id) => { chooseGame(id); chooseMarket("moneyline"); }} />
     <section className={styles.watchPane} aria-label="NHL market watch"><div className={styles.sectionTitle}><span>MARKET WATCH</span><span>{board.gameDate}</span></div>
       <p className={styles.watchLegend}>Favorite = vig-free moneyline consensus. Arrow = home win probability, first capture to latest (pp). Charts show observed consensus; dashed gaps exceed 30m. B2B = back-to-back.</p>
       <div className={styles.watchList}>
-        {filteredGames.map((item) => <WatchGame key={item.matchupId} game={item} active={item.matchupId === game?.matchupId} asOf={board.asOf} onChoose={() => chooseGame(item.matchupId)} />)}
+        {filteredGames.map((item) => <WatchGame key={item.matchupId} game={item} signals={signals.filter((signal) => signal.matchupId === item.matchupId)} active={item.matchupId === game?.matchupId} asOf={board.asOf} onChoose={() => chooseGame(item.matchupId)} />)}
         {!filteredGames.length ? <div className={styles.empty}>{board.games.length ? "No games match this search." : board.statusDetail}</div> : null}
       </div></section>
     <div className={styles.shell}>
@@ -185,7 +210,7 @@ export default function NhlTerminalClient({ board, captureHealth }: { board: Nhl
           <div className={styles.marketTabs}>{sidesFor(marketKey).map((option) => <button key={option} type="button" data-active={side === option} onClick={() => chooseSide(option)}>{option === "home" ? game.homeTeam : option === "away" ? game.awayTeam : option.toUpperCase()}</button>)}</div>
           {marketKey !== "moneyline" ? <div className={`${styles.marketTabs} ${n.metricTabs}`} aria-label="Chart metric">{(["price", "line"] as NhlMetric[]).map((option) => <button key={option} type="button" data-active={metric === option} onClick={() => setMetric(option)}>{option === "price" ? "FAIR PRICE AT CONSENSUS LINE" : "LINE"}</button>)}</div> : null}
         </section>
-        <section className={styles.chartSection}><div className={styles.chartLabelRow}><span>{view.axisLabel}</span><span>{game.latestCapturedAt ? `observed ${fmtEt(game.latestCapturedAt)} · ${plural(game.captures, "capture")}` : "scheduled · never captured"}</span></div><div className={styles.chartWrap}><SportsbookHistory key={`${game.matchupId}:${marketKey}:${side}:${metric}`} label={view.axisLabel} percentage={view.percentage} points={view.history} /></div></section>
+        <section className={styles.chartSection}><div className={styles.chartLabelRow}><span>{view.axisLabel}</span><span>{game.latestCapturedAt ? `observed ${fmtEt(game.latestCapturedAt)} · ${plural(game.captures, "capture")}` : "scheduled · never captured"}</span></div><div className={styles.chartWrap}><SportsbookHistory key={`${game.matchupId}:${marketKey}:${side}:${metric}`} label={view.axisLabel} percentage={view.percentage} points={view.history} markers={marketKey === "moneyline" ? gameSignals.map((signal) => ({ at: signal.createdAt, label: `${SIGNAL_LABELS[signal.alertType] ?? signal.alertType} · ${signal.side.toUpperCase()}` })) : []} /></div></section>
         <section className={styles.lowerGrid}>
           <div className={styles.ladderPane}><div className={styles.sectionTitle}><span>EXACT BOOK QUOTES</span><span>OBSERVED QUOTES</span></div>
             <div className={`${styles.bookHeader} ${n.bookGrid}`}><span>BOOK</span><span>UPDATED</span><span>LINE</span><span>PRICE</span><span>FAIR</span></div>
@@ -209,17 +234,20 @@ export default function NhlTerminalClient({ board, captureHealth }: { board: Nhl
           </div>
         </section>
         <section className={styles.blotter}><div className={styles.sectionTitle}><span>SESSION PAPER BLOTTER</span><span>{positions.length} OPEN</span></div>{!positions.length ? <div className={styles.blotterEmpty}>A paper position can be recorded only from an observation no more than five minutes old.</div> : <div className={styles.blotterTableWrap}><table><thead><tr><th>Game</th><th>Market</th><th>Book</th><th>Entry</th><th>Observed</th></tr></thead><tbody>{positions.map((position) => <tr key={position.id}><td>{position.game}</td><td>{position.market}</td><td>{position.book}</td><td>{position.entry}</td><td>{fmtEt(position.observedAt)}</td></tr>)}</tbody></table></div>}</section>
-        <section className={styles.researchPane}><div className={styles.sectionTitle}><span>MOVEMENT DETECTORS</span><span>NOT ENABLED FOR NHL</span></div><p className={styles.researchDisclosure}>The CFB detectors are tuned to football point moves (spread 1.0, total 1.5, key numbers 3/7/10/14). Hockey moves are price-first: the puck line is fixed at ±1.5 and totals sit at 5.5–6.5. NHL detectors need hockey-specific, pre-registered thresholds before any signal is recorded, so none are shown here. The quote tape above is collected either way.</p></section>
+        <section className={styles.researchPane}><div className={styles.sectionTitle}><span>MOVEMENT DETECTORS</span><span>MONEYLINE ONLY · PROSPECTIVE</span></div><p className={styles.researchDisclosure}>Four moneyline detectors run on every capture, unchanged from MLB, tennis and soccer: Pinnacle gap (Pinnacle vs retail fair price ≥2pp), DK value (DraftKings EV ≥2% against Pinnacle fair), steam (≥3 books move ≥1.5pp between consecutive captures) and walk (≥2pp drift since the first capture). Each is graded against the frozen close (CLV) and the final, with units at the price frozen at trigger. Puck-line and total detectors are not enabled: the football thresholds are in points, and hockey lines move by price. Signals are observations, not recommendations.</p></section>
       </>}</main>
       <aside className={styles.pulsePane}><div className={styles.sectionTitle}><span>DATA PULSE</span><span>{statusLabel}</span></div>
         <article className={styles.pulseRow} data-tone={healthy ? "market" : "critical"}><div><span>{fmtEt(board.asOf, true)}</span><strong>{healthy ? <Zap aria-hidden="true" /> : <ShieldAlert aria-hidden="true" />} FEED STATE</strong></div><h3>{statusLabel}</h3><p>{board.statusDetail}</p></article>
         {captureHealth ? <article className={styles.pulseRow} data-tone={captureHealth.status === "partial" ? "critical" : "market"}><div><span>{captureHealth.eventsCovered} EVENTS</span><strong><Activity aria-hidden="true" /> CHECKPOINTS</strong></div><h3>{captureHealth.due ? `${captureHealth.dueCaptured}/${captureHealth.due} due captured` : "No checkpoints due"}</h3><p>{captureHealth.missed} missed · {captureHealth.failed} failed · {captureHealth.pending} scheduled ahead</p></article> : null}
         {game ? <><article className={styles.pulseRow} data-tone="market"><div><span>{game.latestCapturedAt ? fmtEt(game.latestCapturedAt, true) : "—"}</span><strong><Activity aria-hidden="true" /> CAPTURE</strong></div><h3>{plural(game.captures, "observation")}</h3><p>Every chart point comes from the append-only exact-book ledger.</p></article>
           <div className={styles.sectionTitle}><span>CROSS-MARKET</span><span>RELATED</span></div>
-          {(Object.keys(NHL_MARKET_LABELS) as NhlMarketKey[]).map((key) => { const related = buildNhlMarket(game, key, sidesFor(key)[0], "price", board.asOf); return <div key={key} className={styles.relatedRow}><span>{NHL_MARKET_LABELS[key]}</span><strong>{related.currentLabel}</strong><small>{related.move}</small></div>; })}</> : null}
+          {(Object.keys(NHL_MARKET_LABELS) as NhlMarketKey[]).map((key) => { const related = buildNhlMarket(game, key, sidesFor(key)[0], "price", board.asOf); return <div key={key} className={styles.relatedRow}><span>{NHL_MARKET_LABELS[key]}</span><strong>{related.currentLabel}</strong><small>{related.move}</small></div>; })}
+          <div className={styles.sectionTitle}><span>SIGNAL TAPE</span><span>{gameSignals.length} RECORDED</span></div>
+          {gameSignals.length ? gameSignals.slice(0, 8).map((signal) => <article key={`${signal.alertType}-${signal.side}`} className={styles.signalRow} data-tone="market"><div><strong>{SIGNAL_LABELS[signal.alertType] ?? signal.alertType.toUpperCase()}</strong><span>{fmtEt(signal.createdAt, true)}</span></div><p>MONEYLINE · {signal.side.toUpperCase()}{signalMetric(signal) ? ` · ${signalMetric(signal)}` : ""} · retail {pct(signal.alertProb)}{signal.sharpProb != null ? ` · Pinnacle ${pct(signal.sharpProb)}` : ""}</p><small>{signal.outcome ? `${signal.outcome.toUpperCase()}${signal.clvPp != null ? ` · CLV ${signed(signal.clvPp)}pp` : ""}` : "result pending"}</small></article>) : <div className={styles.signalEmpty}>No qualifying moneyline signal for this game.</div>}</> : null}
         <div className={styles.disclosure}><BellRing aria-hidden="true" /><div><strong>Research terminal</strong><p>Quotes are observations, not recommendations. No predictive edge or real-money execution is represented.</p></div></div>
       </aside>
     </div>
+    <MarketSignalScorecard rows={scorecard} sport="NHL" />
     <footer className={styles.ticker}><span><strong>STATUS</strong> {board.statusDetail}</span><span><strong>BOARD</strong> {board.games.length} GAMES</span><span><strong>QUARANTINE</strong> {board.unmappedEvents} UNMAPPED EVENTS</span><span><strong>CONSENSUS</strong> LOWER MEDIAN · SAME-LINE FAIR PRICE</span><span><strong>PAPER</strong> FIVE-MINUTE FRESHNESS REQUIRED</span></footer>
   </div>;
 }

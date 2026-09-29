@@ -46,5 +46,8 @@ jobs:
       - name: Optional manual market capture
         if: github.event_name == 'workflow_dispatch' && inputs.capture_now == true
         run: python -m ingest.nhl_schedule --capture-now
+      # Before health: finals must settle even when a coverage check fails.
+      - name: Detect and settle NHL moneyline signals
+        run: python -m model.line_alerts --sport nhl
       - name: Report NHL data health
         run: python -m ingest.nhl_schedule --health

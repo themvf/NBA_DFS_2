@@ -119,7 +119,7 @@ _LATE_MOVE_PP = 1.0
 # Sports wired into the alert pipeline. NBA joins when the season resumes —
 # nba_matchups has no commence_time column yet, which scan()/settle()/dk_board
 # all join on.
-_ALERT_SPORTS = ("mlb", "nfl", "cfb", "soccer", "tennis")
+_ALERT_SPORTS = ("mlb", "nfl", "cfb", "soccer", "tennis", "nhl")
 
 TOP_TEN_SIGNAL_TYPES = {
     "nfl": ("steam", "walking", "reversal", "reference_led", "price_pressure",
@@ -152,6 +152,12 @@ _HEALTH_MIN_DAYS = 14          # don't judge a detector before it's had this lon
 _HEALTH_OPPORTUNITY_DAYS = 14  # "has this sport had eligible games recently"
 
 DETECTOR_REGISTRY: list[dict] = [
+    # NHL (2026-09-29): the generic moneyline detectors only, thresholds unchanged.
+    # pinnacle_polymarket_delta is not registered: NHL captures carry no
+    # Polymarket book, so it could never fire. Puck-line/total detectors need
+    # hockey-specific, pre-registered thresholds first (docs/nhl-line-terminal.md).
+    *[{"sport": "nhl", "alert_type": kind, "deployed_at": date(2026, 9, 29)}
+      for kind in ("pinnacle_divergence", "dk_value", "steam", "walking")],
     *[{"sport": "nfl", "alert_type": kind, "deployed_at": date(2026, 9, 6)}
       for kind in ("reversal", "reference_led", "price_pressure", "key_cross",
                    "book_disagreement", "market_convergence", "late_move")],
@@ -306,7 +312,7 @@ _SCORE_COLS = {
 def _game_side_outcome(sport: str, home_score: int, away_score: int, side: str) -> str:
     """Grade a frozen home/away game-line selection from a final score."""
     winner = "home" if home_score > away_score else "away" if away_score > home_score else "draw"
-    if sport in ("nfl", "cfb") and winner == "draw":
+    if sport in ("nfl", "cfb", "nhl") and winner == "draw":
         return "void"
     return "won" if winner == side else "lost"
 
@@ -1118,7 +1124,7 @@ def scan(db: DatabaseManager, sport: str) -> int:
             cfb_funnel.begin_event(r)
             r["cfb_funnel"] = cfb_funnel
         r["movement_candidates"] = []
-        if sport in ("mlb", "tennis", "cfb", "nfl"):
+        if sport in ("mlb", "tennis", "cfb", "nfl", "nhl"):
             r["books"] = selected_books(r["books"])
         books = r["books"] or {}
         label = f"{r['away_team_name']} @ {r['home_team_name']}"
@@ -1211,7 +1217,7 @@ def scan(db: DatabaseManager, sport: str) -> int:
             """,
             (sport, r["matchup_id"], r["captured_at"]),
         )
-        if prev and sport in ("mlb", "tennis", "cfb", "nfl"):
+        if prev and sport in ("mlb", "tennis", "cfb", "nfl", "nhl"):
             prev["books"] = selected_books(prev["books"])
         if prev and prev["books"]:
             pb = prev["books"]
@@ -1233,6 +1239,12 @@ def scan(db: DatabaseManager, sport: str) -> int:
                         details={"books_moved": len(movers),
                                  "avg_move_pp": round(sum(movers) / len(movers), 2),
                                  "market": "moneyline",
+                                 # NHL checkpoints run from 18h apart down to 10m,
+                                 # so this "steam" can span hours. Stamp the gap
+                                 # so the audit can slice it (NFL's WP9 lesson).
+                                 **({"interval_minutes": round(
+                                     (r["captured_at"] - prev["captured_at"]).total_seconds() / 60, 1)}
+                                    if sport == "nhl" else {}),
                                  **_freeze_game_price(sport, books, market="moneyline",
                                                       side=side)},
                     ))
@@ -1260,7 +1272,7 @@ def scan(db: DatabaseManager, sport: str) -> int:
             """,
             (sport, r["matchup_id"]),
         )
-        if first and sport in ("mlb", "tennis", "cfb", "nfl"):
+        if first and sport in ("mlb", "tennis", "cfb", "nfl", "nhl"):
             first["books"] = selected_books(first["books"])
         if first and first["books"]:
             fb = first["books"]
@@ -2639,7 +2651,7 @@ def settle(db: DatabaseManager, sport: str) -> int:
                           WHERE source.book_key <> 'polymarket'
                         )""")
         if (
-            sport in ("mlb", "tennis", "cfb", "nfl")
+            sport in ("mlb", "tennis", "cfb", "nfl", "nhl")
             and a["alert_type"] != "pinnacle_polymarket_delta"
         ):
             close = _verified_close(db, sport, a["matchup_id"], include_id=(sport == "cfb"))
@@ -2647,8 +2659,8 @@ def settle(db: DatabaseManager, sport: str) -> int:
             close = None
         # Historical alerts and the short interval before the close worker
         # freezes a new event retain the explicitly-labelled legacy fallback.
-        if close is None and sport in ("cfb", "nfl"):
-            # CFB and NFL belong to the prospective verified-close cohort.
+        if close is None and sport in ("cfb", "nfl", "nhl"):
+            # CFB, NFL and NHL belong to the prospective verified-close cohort.
             # Waiting is preferable to silently grading against a latest-row proxy.
             continue
         if close is None:
@@ -2700,6 +2712,15 @@ def settle(db: DatabaseManager, sport: str) -> int:
                     "moneyline", a["side"], None, m["game_status"], m["home_score"], m["away_score"],
                     rescheduled=m["game_date"] != a["game_date"],
                 )
+        elif sport == "nhl":
+            # Only a final settles: the schedule refresh sees live games, and a
+            # shootout win is already credited as one goal in the final score.
+            m = db.execute_one(
+                "SELECT home_score, away_score, completed FROM nhl_matchups WHERE id=%s",
+                (a["matchup_id"],),
+            )
+            if m and m["completed"] and m["home_score"] is not None and m["away_score"] is not None:
+                outcome = _game_side_outcome(sport, int(m["home_score"]), int(m["away_score"]), a["side"])
         else:
             hs_col, as_col = _SCORE_COLS[sport]
             m = db.execute_one(
@@ -2726,6 +2747,16 @@ def settle(db: DatabaseManager, sport: str) -> int:
                 pnl_units = (float(entry_decimal) - 1 if outcome == "won"
                              else -1.0 if outcome == "lost" else 0.0)
                 g["grading_json"]["pnl_units"] = round(pnl_units, 4)
+        if sport == "nhl" and outcome is not None:
+            # Units at the price frozen at trigger, as CFB records them.
+            try:
+                entry_decimal = float((a["details_json"] or {}).get("exec_decimal"))
+            except (TypeError, ValueError):
+                entry_decimal = None
+            if entry_decimal is not None and entry_decimal > 1:
+                pnl_units = (entry_decimal - 1 if outcome == "won"
+                             else -1.0 if outcome == "lost" else 0.0)
+                g["grading_json"] = {**(g["grading_json"] or {}), "pnl_units": round(pnl_units, 4)}
         if sport == "mlb" and m:
             g["grading_json"] = {**(g["grading_json"] or {}), "settlement_reason": mlb_reason}
         if sport == "tennis" and m:
@@ -3013,12 +3044,12 @@ def report(db: DatabaseManager, *, include_legacy: bool = False) -> None:
     print()
 
     cohort_predicate = "TRUE" if include_legacy else """(a.origin='prospective' AND (
-        a.sport NOT IN ('mlb', 'tennis', 'cfb', 'nfl') OR EXISTS (
+        a.sport NOT IN ('mlb', 'tennis', 'cfb', 'nfl', 'nhl') OR EXISTS (
             SELECT 1 FROM verified_clv_closes c
             WHERE c.sport=a.sport AND c.matchup_id=a.matchup_id
         )
     ))"""
-    cohort_label = "including non-primary/legacy" if include_legacy else "verified_clv_v1 for MLB/Tennis/NFL/CFB"
+    cohort_label = "including non-primary/legacy" if include_legacy else "verified_clv_v1 for MLB/Tennis/NFL/CFB/NHL"
     # WP3: the pre-registered total_walking fade study is BLIND until its
     # floors are met. Its population's aggregate record is the exact negative
     # of the sealed fade-side CLV, so it is withheld from every public
@@ -3265,7 +3296,7 @@ if __name__ == "__main__":
 
     config = load_config()
     db = DatabaseManager(config.database_url, initialize_schema=not args.existing_schema)
-    if args.sport in ("cfb", "nfl", "tennis"):
+    if args.sport in ("cfb", "nfl", "tennis", "nhl"):
         with db.reuse_connection():
             _run_cli(db, args)
     else:
