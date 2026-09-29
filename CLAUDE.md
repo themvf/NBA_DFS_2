@@ -360,6 +360,49 @@ skipping an unchanged pass changes nothing; editing `db/schema.py` changes the
 digest and the next job applies it once, under the existing advisory lock.
 No entrypoint had to change.
 
+## Health checklist and daily failure sweep (2026-09-29)
+
+On 2026-09-29 nine scheduled runs had failed overnight, five jobs had failed
+every one of their last ten runs, and /health read "ok" for most of them: it
+only judged data freshness. Failures are now collected in one place and pushed
+to a person.
+
+- **`/health` is the checklist**: every GitHub workflow, every dataset the
+  freshness monitor watches, every Vercel cron, every upcoming NFL Slate Check,
+  and the NFL availability monitor, one row each with PASS/FAIL/INFO, last run,
+  next run, last checked and next check. Evaluated by
+  `web/src/lib/health-checklist.ts` (pure) from inputs gathered by
+  `web/src/lib/health-collector.ts`, stored in `health_checks` every 30 min by
+  `/api/cron/health-check`. If that checker stops, the page runs the checks
+  live and says so.
+- A workflow is FAIL when its last finished run failed, when it is overdue
+  against its own schedule (its GitHub crons plus its Vercel dispatcher slots,
+  from the checked-in `web/src/data/workflow-manifest.json`), when it never ran
+  although scheduled, or when a `workflow_run` follower did not follow. Disabled
+  and manual jobs are INFO. An unreadable source is its own FAIL row, never a gap.
+- **After editing any workflow, run `python scripts/build_workflow_manifest.py`**;
+  `tests/test_workflow_manifest.py` fails CI otherwise.
+- **Every Vercel cron route runs through `withHeartbeat`** (`web/src/lib/cron-heartbeat.ts`);
+  a new route must be added to `CRON_ROUTES` (a test pins this against `vercel.json`).
+- **Daily failure sweep** (`.github/workflows/daily_failure_sweep.yml`, dispatched
+  11:07 UTC): runs the same checklist and manages one GitHub issue labelled
+  `failure-sweep` that @mentions `themvf`, so GitHub emails him. New / still
+  failing (with first-seen time) / resolved; at most one comment a day unless
+  something new appears; closed with "all clear" when nothing fails. It goes red
+  only if it could not run, and its own heartbeat shows on /health.
+- **Never set a read-only (or any) session setting on `DATABASE_URL`.** It is
+  Neon's pooled endpoint (PgBouncer transaction mode): psycopg2
+  `set_session(readonly=True)` / `SET default_transaction_read_only` sticks to
+  the shared server connection and leaks into other jobs. An audit session doing
+  exactly that made production writes fail with "cannot execute ... in a
+  read-only transaction" (MLB odds capture, 2026-09-29 01:37-02:08 UTC). For a
+  read-only check, just run SELECTs, or `BEGIN READ ONLY; ...; ROLLBACK;` in one
+  transaction.
+- **Rule for new work:** every new scheduled job or data feed must show up on this
+  checklist (a workflow appears automatically via the manifest; a new dataset
+  needs a `model/pipeline_health.py` entry), and every fallback must surface a
+  visible reason. "Done" requires the run id and its conclusion, not "it started".
+
 ## NBA Lineup Structure (DraftKings)
 ```
 PG / SG / SF / PF / C / G / F / UTIL  (8 players, $50,000 salary cap)

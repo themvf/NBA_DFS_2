@@ -48,6 +48,7 @@
     "test:nfl-data-update": "node --import tsx ./scripts/test-nfl-data-update.ts",
     "test:workflow-health": "node --import tsx ./scripts/test-workflow-health.ts",
     "test:cron-heartbeat": "node --import tsx ./scripts/test-cron-heartbeat.ts",
+    "test:health-checklist": "node --import tsx ./scripts/test-health-checklist.ts",
     "verify:nfl-data-update": "node -r ./scripts/server-only-stub.cjs --env-file=.env.local --import tsx ./scripts/verify-nfl-data-update.ts",
     "test:nfl-slate-persist": "node --import tsx ./scripts/test-nfl-slate-persist.ts",
     "test:nfl-removal": "node --import tsx ./scripts/test-nfl-removal.ts",
