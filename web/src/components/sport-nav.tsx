@@ -14,13 +14,14 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import type { Sport } from "@/db/queries";
 
-type NavSport = Sport | "cfb";
+type NavSport = Sport | "cfb" | "nhl";
 
 const SPORTS: { sport: NavSport; label: string; icon: string }[] = [
   { sport: "nba", label: "NBA", icon: "🏀" },
   { sport: "mlb", label: "MLB", icon: "⚾" },
   { sport: "nfl", label: "NFL", icon: "🏈" },
   { sport: "cfb", label: "CFB", icon: "📈" },
+  { sport: "nhl", label: "NHL", icon: "🏒" },
   { sport: "soccer", label: "World Cup", icon: "⚽" },
   { sport: "tennis", label: "Tennis", icon: "🎾" },
 ];
@@ -41,6 +42,7 @@ const PAGE_LINKS: Array<{
   { href: "/nfl/pbp", label: "PBP Archetypes", sports: ["nfl"] },
   { href: "/cfb", label: "Line Terminal", sports: ["cfb"] },
   { href: "/cfb/dfs", label: "CFB DFS", sports: ["cfb"] },
+  { href: "/nhl", label: "Line Terminal", sports: ["nhl"] },
   { href: "/fantasy-football/nfl", label: "NFL Teams", sports: ["nfl"] },
   { href: "/fantasy-football", label: "Fantasy Football", sports: ["nfl"] },
   { href: "/fantasy-football/projections", label: "Projection Scatter", sports: ["nfl"] },
@@ -71,15 +73,20 @@ export function SportNav() {
   const sportsSection = pathname === "/sports" || pathname.startsWith("/sports/");
   const currentSport = (pathname === "/cfb" || pathname.startsWith("/cfb/")
     ? "cfb"
+    : pathname === "/nhl" || pathname.startsWith("/nhl/")
+    ? "nhl"
     : pathname === "/nfl" || pathname.startsWith("/nfl/") || pathname.startsWith("/dfs/nfl") || pathname.startsWith("/fantasy-football")
     ? "nfl"
     : searchParams.get("sport") ?? "nba") as NavSport;
   const visiblePageLinks = sportsSection ? [{href:"/sports/tracking",label:"Tracking"}] : PAGE_LINKS.filter((link) => !link.sports || link.sports.includes(currentSport));
 
+  // Sports that own a dedicated route rather than a ?sport= view.
+  const routedSport = (sport: NavSport) => sport === "nfl" || sport === "cfb" || sport === "nhl";
   const sportHref = (sport: NavSport): string => {
     if (sport === "cfb") return "/cfb";
+    if (sport === "nhl") return "/nhl";
     if (sport === "nfl") return "/nfl";
-    if (sportsSection || currentSport === "nfl" || currentSport === "cfb") {
+    if (sportsSection || routedSport(currentSport)) {
       return sport === "nba" || sport === "mlb" ? `/dfs?sport=${sport}` : `/vegas?sport=${sport}`;
     }
     return `${pathname}?sport=${sport}`;
@@ -104,7 +111,7 @@ export function SportNav() {
 
         {/* Logo */}
         <Link
-          href={currentSport === "cfb" ? "/cfb" : currentSport === "nfl" ? "/nfl" : currentSport === "soccer" || currentSport === "tennis" ? `/vegas?sport=${currentSport}` : `/dfs?sport=${currentSport}`}
+          href={currentSport === "cfb" || currentSport === "nhl" ? `/${currentSport}` : currentSport === "nfl" ? "/nfl" : currentSport === "soccer" || currentSport === "tennis" ? `/vegas?sport=${currentSport}` : `/dfs?sport=${currentSport}`}
           className="mr-3 shrink-0 font-bold text-lg tracking-tight"
         >
           DFS
@@ -138,7 +145,7 @@ export function SportNav() {
         {/* Page links — carry current sport forward */}
         <nav className="flex items-center gap-1 text-sm">
           {visiblePageLinks.map((l) => {
-            const href = sportsSection || currentSport === "nfl" || currentSport === "cfb" ? l.href : `${l.href}?sport=${currentSport}`;
+            const href = sportsSection || routedSport(currentSport) ? l.href : `${l.href}?sport=${currentSport}`;
             // Prefer the most specific matching href so nested routes (e.g.
             // /vegas/wimbledon under /vegas) don't also highlight their parent.
             const matches = (p: string) => pathname === p || pathname.startsWith(`${p}/`);

@@ -72,6 +72,28 @@ gives ~86 credits/day (36–180), ~2,600 per 30 days, about 2.6% of the 100k
 plan and far inside the 2,000/day shared close-capture cap. It is a
 simulation; replace it with `odds_api_usage WHERE sport='nhl'` once measured.
 
+## The page (`/nhl`)
+
+Same layout and CSS as `/cfb` (`web/src/app/nhl/`, logic in
+`web/src/lib/nhl-market.ts`, tested by `web/scripts/test-nhl-market.ts`):
+market watch with sparklines, instrument chart per book, exact book ladder,
+market quality, paper blotter, data pulse, checkpoint health. Hockey
+differences:
+
+- **Markets are moneyline, puck line, total.** Football terminals chart the
+  line; hockey lines barely move (puck line ±1.5, totals 5.5–6.5), so the
+  default chart is each book's **vig-free price at the consensus line**. Books
+  on a different line gap rather than blend, and a `LINE` toggle shows the
+  line path. When the consensus line itself moves, the move is reported as a
+  line move, never as a price change across two different bets.
+- **FAIR** column: vig removed from that book's own two-sided pair.
+- **Largest moves** strip replaces CFB's movement intelligence: open-to-latest
+  moneyline change on a stable book cohort. Descriptive only; no detector.
+- **Game context:** rest days / back-to-backs derived from the schedule
+  (preseason not loaded, so openers read "no prior game"); finals with REG/OT/SO.
+- **Status** follows the checkpoint cadence: nothing is owed before T-24h
+  closes, and freshness bounds are the worst case per band plus slack.
+
 ## Operations
 
 - `refresh_nhl_terminal.yml`: full 14-day schedule every 6h; recent finals and
