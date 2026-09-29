@@ -107,11 +107,36 @@ differences:
   (`web/src/db/ensure-schema.ts`) is dropped and re-added on every cold start.
   It must list every sport in `CLOSE_CAPTURE_SPORTS`; a test enforces it.
 
-## Not built yet
+## Deferred (decided 2026-09-29: ship on Vegas odds only)
+
+The launch deliberately uses only the odds pipeline above. Everything below is
+kept for later.
 
 - **Movement detectors.** `model/line_alerts.py` thresholds are football-point
   based (spread 1.0, total 1.5, key numbers 3/7/10/14). The puck line is fixed at
   ±1.5 and totals sit at 5.5–6.5, so hockey moves are price-first. NHL
   detectors need hockey-specific, pre-registered thresholds before they are
   enabled; until then the page shows descriptive open-to-latest movement only.
-- Starting-goalie confirmations, injuries, and back-to-back context.
+- **Starting goalies, injuries, history, a second market.** Candidate sources,
+  each probed live on 2026-09-29 so this does not have to be redone:
+
+| Need | Source | Verified 2026-09-29 | Catch |
+|---|---|---|---|
+| Injuries | FantasyPros `nhl/injuries` (our key) | 621 rows, all 32 teams; status, injury type, note, update date; `sport: NHL` | Licensed, so it satisfies the provenance rule. **Preferred.** |
+| Injuries (alt) | ESPN `site.api.espn.com/.../hockey/nhl/injuries` | 111 rows, 31 teams, dated | Undocumented, no license. Not preferred. |
+| Starting goalie, live | DailyFaceoff `/starting-goalies` page | Confirmed/unconfirmed status per game | Web scraping only; robots.txt allows the page, disallows `/api/`; terms not verified. |
+| Starting goalie, history | NHL API `gamecenter/{id}/boxscore` | `starter: true` per goalie, back to at least 2015 | History only; nothing pregame. The pregame `landing` lists each team's goalies with season stats, not the starter. |
+| Results / team stats history | NHL API (`club-schedule-season`, `api.nhle.com/stats/rest`, play-by-play) | Full seasons back to at least 2015; team stats to 2010-11 | Unofficial, undocumented; [Zmalski/NHL-API-Reference](https://github.com/Zmalski/NHL-API-Reference) (MIT) documents it. |
+| Advanced stats (xG, goalie quality) | MoneyPuck CSVs (teams, goalies, shot-level) | 2025 files download | Free for **non-commercial** use only; credit MoneyPuck wherever shown. |
+| Historical odds | Sportsbook Reviews Online archive | Open/close ML, puck line, total per game | Stops at 2022-23; reference lines, not verified closes. |
+| Second live market | Polymarket Gamma (`tag_slug=nhl`) | 42 open game events; 6 markets each | Free and unmetered; thin on some games ($556 to $97k volume). |
+
+**FantasyPros has no NHL starters or depth charts.** `nhl/depth-charts`,
+`nhl/starting-goalies`, `nhl/goalies` and `nhl/lines` return the gateway's
+route-not-found 403 (`Missing Authentication Token`), as does
+`nfl/depth-charts`: the public API has no depth charts for any sport. Goalie
+`projections` came back empty (the API ignores `type`/`week` and answers
+`preseason, week 0`); goalie `consensus-rankings` are season-long ranks, not
+starters. The NHL `news` feed's newest item was 2026-08-29 on opening day, with
+no goalie-start items. Recheck projections and news after the season's first
+week; a 200 from FantasyPros is never proof of coverage (check `sport`).
