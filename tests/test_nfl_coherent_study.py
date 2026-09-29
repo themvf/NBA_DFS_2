@@ -108,22 +108,38 @@ def test_current_coherent_registration_matches_code_and_preserves_prior_contract
     from model.nfl_matchup_scenarios import VERSION
     from research.nfl_coherent_study import registered_manifests
 
+    from ingest.nfl_dfs_results import SCORING_VERSION
+
+    def lf_sha(path):
+        return sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+
+    contract = ("baseline_config_hash", "forecast_gate", "portfolio_gate", "forward_start",
+                "evaluation_end_at", "scoring_version", "outcome_scoring_version", "seed",
+                "draws", "bootstrap_draws", "cohorts", "production_authority", "protected_studies")
+    # The only contract key each re-registration may change, and to what. v5
+    # declares main's realized-v4 outcome scorer (DST components v2); nothing
+    # else in the contract moves, at v5 or at any earlier step of the chain.
+    declared = {5: {"outcome_scoring_version": "nfl-dk-realized-v4"}}
+
     current_path = Path("research/nfl_coherent_scenario_study.json")
     current = json.loads(current_path.read_text())
-    previous_path = Path("research/nfl_coherent_scenario_study_v3.json")
-    previous = json.loads(previous_path.read_text())
-    assert current["model_version"] == VERSION == "nfl-coherent-matchup-research-v4"
-    assert current["previous_registration_sha256_lf"] == sha256(previous_path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
-    assert current_path.read_bytes() == Path("research/nfl_coherent_scenario_study_v4.json").read_bytes()
-    assert current["registered_at"] > previous["registered_at"]
+    assert current["model_version"] == VERSION == "nfl-coherent-matchup-research-v5"
+    assert current_path.read_bytes() == Path("research/nfl_coherent_scenario_study_v5.json").read_bytes()
+    assert current["outcome_scoring_version"] == SCORING_VERSION
     for name, expected in current["implementation_hashes"].items():
         assert sha256(Path(name).read_bytes().replace(b"\r\n", b"\n")).hexdigest() == expected, name
-    for key in ("baseline_config_hash", "forecast_gate", "portfolio_gate", "forward_start",
-                "evaluation_end_at", "scoring_version", "outcome_scoring_version", "seed",
-                "draws", "bootstrap_draws", "cohorts", "production_authority", "protected_studies"):
-        assert current[key] == previous[key], key
+
+    chain = {n: Path(f"research/nfl_coherent_scenario_study_v{n}.json") for n in (3, 4, 5)}
     manifests = registered_manifests()
-    assert any(digest(m) == digest(previous) for m in manifests)
+    for n in (4, 5):
+        previous, later = json.loads(chain[n - 1].read_text()), json.loads(chain[n].read_text())
+        assert later["previous_registration_sha256_lf"] == lf_sha(chain[n - 1]), n
+        assert later["supersedes_study_id"] == previous["study_id"], n
+        assert later["registered_at"] > previous["registered_at"], n
+        for key in contract:
+            expected = declared.get(n, {}).get(key, previous[key])
+            assert later[key] == expected, (n, key)
+        assert any(digest(m) == digest(previous) for m in manifests), n
     assert any(digest(m) == digest(current) for m in manifests)
 
 

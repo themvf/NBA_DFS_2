@@ -1,0 +1,24 @@
+{
+  "study_id": "nfl-matchup-pickem-contact-v2",
+  "registration_manifest_hash": "733d5798efe58a49a575713e9bd36961962e5788b955be9c518c7c5a51b723c4",
+  "previous_pin_hash": "a5cd3936bdeecc5a1eeb33676d1f20f555982e382127a3d714c2c0192e0e6eaf",
+  "pinned_at": "2026-09-29T01:57:29.430760+00:00",
+  "hash_algorithm": "sha256_lf_normalized",
+  "hashes": {
+    "db/nfl_pfr_schema.py": "da5f40c0fa9e8b044de2799b6c7af11651b73b6942d4341f866abafebfbd31e1",
+    "ingest/nfl_dfs_weekly.py": "f3343f399e169574bddc5f045ff999116efd117a2aa90781b7bfb87b084453df",
+    "ingest/nfl_matchup_context.py": "4165224eae613ba64799870ae28faa4e1f4e8160823680335d6d763b450e56dd",
+    "ingest/nfl_pickem_refresh.py": "ef2168cba37c31c4d6546b7b69b37019d621edb23989a6a84e604c0fe42d846e",
+    "ingest/nfl_weekly_evidence.py": "47f32171f71fe36185ac3a204ba1fa95349f2f1c8671d99d7e06703397a55d23",
+    "model/nfl_matchup_features.py": "1c184902cedd13c89400aacec343f194fb7feb8678bc8900817c7704d3e803d2",
+    "model/nfl_matchup_projection.py": "634bfff4d1bc687d05585be7ff00218b35a1812c0a8073ed79846dc1259fe4c7",
+    "research/nfl_pickem_matchup.py": "a75d043bac2677c2d28acab5b0dfc04c733059a435d4f92d15c61545e4f1b7ce"
+  },
+  "reason": "Forward-only re-pin of the same file set. ingest/nfl_dfs_weekly.py changed after the previous pin (6a07cc0 records production_config() on the projection writer; 44fd1cd edits a run-summary line), so freeze-pickem refused every freeze with 'Registration model/code pin mismatch' from the #292 merge onward. No pickem feature, coefficient, fallback or gate changed; every other pinned file is byte-identical. Captures before this pin remain under the earlier pin and are not relabeled.",
+  "outcomes_consulted": false,
+  "qualification_scope": {
+    "consumer": "nfl_pickem_probability",
+    "usage": "predictive_shadow_only",
+    "capture": "eligible_upcoming_regular_season_games"
+  }
+}

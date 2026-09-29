@@ -48,6 +48,45 @@
         "model/nfl_dst_components.py": "52adf221bef481df191c0df2b235401771d6985e8c32074fd82c8ee7925d88da",
         "model/nfl_team_aliases.py": "47035370d763ec3064650c4d0bb9c02c4885b692998b4c7e667bde6c5e53e7bf"
       }
+    },
+    "nfl-dk-realized-v4": {
+      "positions": [
+        "QB",
+        "RB",
+        "WR",
+        "TE"
+      ],
+      "effective_at": "2026-09-29T01:57:29.430760+00:00",
+      "registered_at": "2026-09-29T01:57:29.430760+00:00",
+      "reason": "Main's realized scorer moves to v4 for DST only (play-by-play components v2). The skill-position scorer, field mapping and DraftKings point function are AST-identical to v3, so later v4 QB/RB/WR/TE outcome revisions grade the original context forecasts without restarting the eight-week window or changing the shadow pin, carries formula or gates. V4 DST is excluded, as v3 DST was. Only v4 outcome revisions computed after this declaration can enter.",
+      "outcomes_consulted": false,
+      "outcomes_consulted_detail": "DST DraftKings contest scores for 2026 weeks 2-3 (contests 195648006, 195786073, 196128919, 195943238) were consulted to choose the DST component rule: 56/56 team-defenses match under v4 against 51/56 under v3. No QB/RB/WR/TE outcome and no study forecast was consulted.",
+      "equivalence_proof": {
+        "ingest/nfl_dfs_results.py:score_source_row": {
+          "equal_ast": true,
+          "ast_sha256": "60a185408b0341d014689c0b04163ed45e29ea6492bc4c8e99a9d695f89a53b2"
+        },
+        "ingest/nfl_dfs_results.py:_number": {
+          "equal_ast": true,
+          "ast_sha256": "5f3279952e577faf469fbeaa65e5861f016c6d576deaf9b66ac770c63a6af9a7"
+        },
+        "model/nfl_dfs_historical.py:draftkings_points": {
+          "equal_ast": true,
+          "ast_sha256": "ffa62ea431fa7740d76e521f2e59f93ba8b38c34604deaf69c65a7b48299be3d"
+        }
+      },
+      "scoring_fields_equal_ast": true,
+      "compared_against": {
+        "source": "170235ebab55690b0cc9a5bf53d7f33342bf5ef0",
+        "scoring_version": "nfl-dk-realized-v3"
+      },
+      "previous_declaration_sha256_lf": "e9fb19398955de9b2bdd43d88c66ccc67bfb9e0ebcf1dbcd49789749479c031a",
+      "implementation_hashes": {
+        "ingest/nfl_dfs_results.py": "6d0b2a74f6fddc58fcb5a99b2771e609ed6f8b4bf90a8c4deae25a2b74ff9663",
+        "model/nfl_dfs_historical.py": "e68c45b32151a8fb77f94eb295d181ec5ad5881ee6b3384fb04e4a95b28b5b55",
+        "model/nfl_dst_components.py": "bcb1128d3249f290bb7bd16d7d7186c21ba3693cc790551b0bd372b917a95f58",
+        "model/nfl_team_aliases.py": "47035370d763ec3064650c4d0bb9c02c4885b692998b4c7e667bde6c5e53e7bf"
+      }
     }
   }
 }

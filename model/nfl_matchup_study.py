@@ -206,10 +206,6 @@ def evaluate_study(manifest, records, *, phase="promotion", now=None, complete_w
                 raise ValueError("other study")
             if scope_error:
                 raise ValueError(scope_error)
-            # Before selection, so an out-of-scope capture can never be the
-            # "latest" forecast that displaces an in-scope one.
-            if required_format and row.get("capture_format") != required_format:
-                raise ValueError("capture outside the registered slate format")
             capture, cutoff, available, kick = (timestamp(row[k]) for k in ("captured_at", "decision_cutoff", "available_at", "kickoff"))
             if not available <= cutoff <= capture < kick or not start <= kick < end or (now and capture > now):
                 raise ValueError("ineligible as-of window")
@@ -218,6 +214,10 @@ def evaluate_study(manifest, records, *, phase="promotion", now=None, complete_w
             if manifest.get("implementation_hashes"):
                 if capture < timestamp(manifest["implementation_pinned_at"]) or row.get("implementation_hashes") != manifest["implementation_hashes"]:
                     raise ValueError("implementation pin mismatch or forecast preceded pin")
+            # Before selection, so an out-of-scope capture can never be the
+            # "latest" forecast that displaces an in-scope one.
+            if required_format and row.get("capture_format") != required_format:
+                raise ValueError("capture outside the registered slate format")
             if row.get("scoring_version") != manifest["scoring_version"]:
                 raise ValueError("incompatible scoring")
             input_hash = row.get("input_manifest_hash", "")

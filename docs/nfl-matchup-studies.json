@@ -54,7 +54,7 @@
       "components": [
         "pressure"
       ],
-      "scoring_version": "nfl-dk-realized-v3",
+      "scoring_version": "nfl-dk-realized-v4",
       "gates": {
         "min_weeks": 8,
         "min_rows": 200,
@@ -100,7 +100,7 @@
         "lookback_games": 4
       },
       "registration_file": "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-pressure-v1.json",
-      "implementation_pin_file": "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-pressure-v1.implementation-pin-4.json",
+      "implementation_pin_file": "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-pressure-v1.implementation-pin-5.json",
       "amendment_files": [
         "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-pressure-v1.baseline-amendment-1.json"
       ],
@@ -108,10 +108,12 @@
         "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-pressure-v1.implementation-pin.json",
         "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-pressure-v1.implementation-pin-2.json",
         "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-pressure-v1.implementation-pin-3.json",
-        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-pressure-v1.implementation-pin-4.json"
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-pressure-v1.implementation-pin-4.json",
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-pressure-v1.implementation-pin-5.json"
       ],
       "outcome_amendment_files": [
-        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-pressure-v1.outcome-amendment-1.json"
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-pressure-v1.outcome-amendment-1.json",
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-pressure-v1.outcome-amendment-2.json"
       ]
     },
     {
@@ -165,7 +167,7 @@
       "components": [
         "contact"
       ],
-      "scoring_version": "nfl-dk-realized-v3",
+      "scoring_version": "nfl-dk-realized-v4",
       "gates": {
         "min_weeks": 8,
         "min_rows": 200,
@@ -211,7 +213,7 @@
         "lookback_games": 4
       },
       "registration_file": "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-contact-v1.json",
-      "implementation_pin_file": "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-contact-v1.implementation-pin-4.json",
+      "implementation_pin_file": "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-contact-v1.implementation-pin-5.json",
       "amendment_files": [
         "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-contact-v1.baseline-amendment-1.json"
       ],
@@ -219,10 +221,12 @@
         "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-contact-v1.implementation-pin.json",
         "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-contact-v1.implementation-pin-2.json",
         "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-contact-v1.implementation-pin-3.json",
-        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-contact-v1.implementation-pin-4.json"
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-contact-v1.implementation-pin-4.json",
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-contact-v1.implementation-pin-5.json"
       ],
       "outcome_amendment_files": [
-        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-contact-v1.outcome-amendment-1.json"
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-contact-v1.outcome-amendment-1.json",
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-contact-v1.outcome-amendment-2.json"
       ]
     },
     {
@@ -279,7 +283,7 @@
         "pressure",
         "contact"
       ],
-      "scoring_version": "nfl-dk-realized-v3",
+      "scoring_version": "nfl-dk-realized-v4",
       "gates": {
         "min_weeks": 8,
         "min_rows": 200,
@@ -326,7 +330,7 @@
         "lookback_games": 4
       },
       "registration_file": "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-combined-v1.json",
-      "implementation_pin_file": "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-combined-v1.implementation-pin-4.json",
+      "implementation_pin_file": "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-combined-v1.implementation-pin-5.json",
       "amendment_files": [
         "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-combined-v1.baseline-amendment-1.json"
       ],
@@ -334,10 +338,12 @@
         "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-combined-v1.implementation-pin.json",
         "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-combined-v1.implementation-pin-2.json",
         "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-combined-v1.implementation-pin-3.json",
-        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-combined-v1.implementation-pin-4.json"
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-combined-v1.implementation-pin-4.json",
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-combined-v1.implementation-pin-5.json"
       ],
       "outcome_amendment_files": [
-        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-combined-v1.outcome-amendment-1.json"
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-combined-v1.outcome-amendment-1.json",
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-combined-v1.outcome-amendment-2.json"
       ]
     },
     {
@@ -578,13 +584,14 @@
         "tie": "shared frozen empirical2023-2025 training component"
       },
       "registration_file": "artifacts/nfl_matchup_registrations/nfl-matchup-pickem-combined-v1.json",
-      "implementation_pin_file": "artifacts/nfl_matchup_registrations/nfl-matchup-pickem-combined-v1.implementation-pin-5.json",
+      "implementation_pin_file": "artifacts/nfl_matchup_registrations/nfl-matchup-pickem-combined-v1.implementation-pin-6.json",
       "implementation_pin_files": [
         "artifacts/nfl_matchup_registrations/nfl-matchup-pickem-combined-v1.implementation-pin.json",
         "artifacts/nfl_matchup_registrations/nfl-matchup-pickem-combined-v1.implementation-pin-2.json",
         "artifacts/nfl_matchup_registrations/nfl-matchup-pickem-combined-v1.implementation-pin-3.json",
         "artifacts/nfl_matchup_registrations/nfl-matchup-pickem-combined-v1.implementation-pin-4.json",
-        "artifacts/nfl_matchup_registrations/nfl-matchup-pickem-combined-v1.implementation-pin-5.json"
+        "artifacts/nfl_matchup_registrations/nfl-matchup-pickem-combined-v1.implementation-pin-5.json",
+        "artifacts/nfl_matchup_registrations/nfl-matchup-pickem-combined-v1.implementation-pin-6.json"
       ]
     },
     {
@@ -694,10 +701,11 @@
         "selection": "combined preferred; standalone family only when combined unavailable"
       },
       "registration_file": "artifacts/nfl_matchup_registrations/nfl-matchup-pickem-pressure-v2.json",
-      "implementation_pin_file": "artifacts/nfl_matchup_registrations/nfl-matchup-pickem-pressure-v2.implementation-pin-2.json",
+      "implementation_pin_file": "artifacts/nfl_matchup_registrations/nfl-matchup-pickem-pressure-v2.implementation-pin-3.json",
       "implementation_pin_files": [
         "artifacts/nfl_matchup_registrations/nfl-matchup-pickem-pressure-v2.implementation-pin.json",
-        "artifacts/nfl_matchup_registrations/nfl-matchup-pickem-pressure-v2.implementation-pin-2.json"
+        "artifacts/nfl_matchup_registrations/nfl-matchup-pickem-pressure-v2.implementation-pin-2.json",
+        "artifacts/nfl_matchup_registrations/nfl-matchup-pickem-pressure-v2.implementation-pin-3.json"
       ]
     },
     {
@@ -811,10 +819,11 @@
         "selection": "combined preferred; standalone family only when combined unavailable"
       },
       "registration_file": "artifacts/nfl_matchup_registrations/nfl-matchup-pickem-contact-v2.json",
-      "implementation_pin_file": "artifacts/nfl_matchup_registrations/nfl-matchup-pickem-contact-v2.implementation-pin-2.json",
+      "implementation_pin_file": "artifacts/nfl_matchup_registrations/nfl-matchup-pickem-contact-v2.implementation-pin-3.json",
       "implementation_pin_files": [
         "artifacts/nfl_matchup_registrations/nfl-matchup-pickem-contact-v2.implementation-pin.json",
-        "artifacts/nfl_matchup_registrations/nfl-matchup-pickem-contact-v2.implementation-pin-2.json"
+        "artifacts/nfl_matchup_registrations/nfl-matchup-pickem-contact-v2.implementation-pin-2.json",
+        "artifacts/nfl_matchup_registrations/nfl-matchup-pickem-contact-v2.implementation-pin-3.json"
       ]
     }
   ]
