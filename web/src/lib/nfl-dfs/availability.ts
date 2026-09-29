@@ -1,3 +1,5 @@
+import type { EvidenceState } from "./punt-policy";
+
 export type InjuryEvidence = { identityBridge?: {sourceLocalId:number;targetLocalId:number;method:string}; id: string; source: string; status: string; practice: string | null; observedAt: string; updatedAt: string | null; team: string; week: number | null; hash: string; reportType?: string; kickoff?: string; url?: string; unverifiedUpdate?: string };
 /** `archived`: the Sleeper evidence is the archived capture at or before the evaluation time, not the latest row. */
 export type RosterEvidence = { team: string; position: string; fetchedAt: string; sleeper: unknown; injuries?: InjuryEvidence[]; injuryReadFailed?: boolean; kickoff?: string | null; archived?: boolean };
@@ -17,8 +19,46 @@ const aliases: Record<string, string> = { LA: "LAR", WAS: "WSH", AZ: "ARI", JAC:
 const teamKey = (value: unknown) => { const key = normalize(value); return aliases[key] ?? key; };
 /** One key per franchise across DraftKings, Sleeper and nflverse codes (LA/LAR, WAS/WSH, AZ/ARI, JAC/JAX). */
 export const nflTeamKey = teamKey;
+/** Same franchise under any of those codes. Compare teams across sources with this, never with `===`. */
+export const sameNflTeam = (a: unknown, b: unknown): boolean => teamKey(a) === teamKey(b);
+
+export type ShowdownGameRow = { home: string; away: string; home_ml: number | string | null; away_ml: number | string | null };
+
+/**
+ * The earliest scheduled game between a Showdown slate's two teams, with both
+ * teams restated in the slate's own (DraftKings) codes so a favorite chosen
+ * from it matches the players' `team`. `rows` must be in kickoff order.
+ */
+export function showdownGame(rows: readonly ShowdownGameRow[], slateTeams: readonly string[]):
+  { home: string; away: string; home_ml: number | null; away_ml: number | null } | null {
+  const bySlateKey = new Map(slateTeams.map((team) => [teamKey(team), team]));
+  for (const row of rows) {
+    const home = bySlateKey.get(teamKey(row.home)), away = bySlateKey.get(teamKey(row.away));
+    if (!home || !away || home === away) continue;
+    return { home, away, home_ml: row.home_ml == null ? null : Number(row.home_ml), away_ml: row.away_ml == null ? null : Number(row.away_ml) };
+  }
+  return null;
+}
 
 export const ROSTER_FRESH_MS = 72 * 3600000;
+
+/**
+ * What the cheap-player policy reads about a player's role evidence
+ * (`availabilityState`, `depthRole`). Nothing set them before 2026-09-29, so
+ * the policy's "stale role evidence fails closed" rule could never fire.
+ * Stale means an unpinned roster capture older than ROSTER_FRESH_MS at the
+ * evaluation time; a pinned decision that could not resolve is unknown, not
+ * stale. The depth label is informational (the policy gates on confidence).
+ */
+export function rolePolicyEvidence(a: Availability | undefined, evaluatedAt: number): { availabilityState: EvidenceState; depthRole: string | null } {
+  if (!a) return { availabilityState: "unknown", depthRole: null };
+  const label = a.chartRole ?? a.role;
+  const depthRole = label && !/role unresolved/i.test(label) ? label : null;
+  if (a.fresh) return { availabilityState: a.officialConfirmed ? "confirmed" : "probable", depthRole };
+  const captured = Date.parse(a.capturedAt ?? "");
+  const stale = !a.pinned && Number.isFinite(captured) && Number.isFinite(evaluatedAt) && evaluatedAt - captured > ROSTER_FRESH_MS;
+  return { availabilityState: stale ? "stale" : "unknown", depthRole };
+}
 
 /** How recent a live-resolved (unpinned) evaluation must be; see `availabilityCurrent`. */
 export const LIVE_AVAILABILITY_MAX_AGE_MS = 60_000;

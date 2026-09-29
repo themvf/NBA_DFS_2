@@ -17,9 +17,25 @@
  */
 import { hasObservedOpportunity, type RedistributionRow } from "./opportunity-redistribution";
 import type { Availability } from "./availability";
+import { isLiveOutStatus } from "./live-dk-status";
 
 /** Statuses that mean a quarterback is not playing, as opposed to listed behind someone. */
 export const INJURED_STATUSES: ReadonlySet<string> = new Set(["OUT", "IR", "PUP", "NFI", "SUSPENDED", "INACTIVE"]);
+
+/**
+ * The one "this player is not playing" rule: a DraftKings out tag (O/OUT/IR/
+ * PUP/SUSP/NA) or platform ruling, our feed's zeroed projection, or an
+ * injury status. A depth-chart block (a listed backup) is NOT this: he is
+ * available, just not the starter. The server's QB promotion, the Slate Check
+ * and the page's starter picker all read it; before 2026-09-29 the last two
+ * counted only DK "O"/"OUT", so a starter DraftKings tagged IR never prompted
+ * anyone to pick his replacement.
+ */
+export function ruledOutPlayer(p: { platformOut?: boolean; dkStatus?: string | null; projectionStatus?: string | null;
+  availability?: Pick<Availability, "status" | "blockedReason"> | null }): boolean {
+  return Boolean(p.platformOut) || isLiveOutStatus(p.dkStatus) || p.projectionStatus === "out"
+    || INJURED_STATUSES.has(p.availability?.status ?? "") || p.availability?.blockedReason?.startsWith("Unavailable") === true;
+}
 
 /**
  * The confirmation also decides who may be rostered. The depth chart blocks

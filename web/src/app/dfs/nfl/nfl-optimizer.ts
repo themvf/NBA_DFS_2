@@ -50,9 +50,12 @@ import {
   type SalaryBandReport,
   type LineupDuplication,
 } from '@/lib/nfl-dfs/salary-duplication';
+import { nflOverlapCap } from '@/lib/nfl-dfs/pre-export-qa';
 
 // Record the strict Showdown purchase and completed-roster validation.
-export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v7-showdown-legality";
+// v8: DK-average fallback honoured in defensive mode; a lock or exposure
+// minimum on a player outside the pool is an error instead of being dropped.
+export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v8-defensive-dk-fallback";
 
 export type NflProjectionSource = "our" | "workload" | "calibrated" | "dk_avg" | "fantasypros" | "linestar" | "custom";
 export type NflOptimizerMode = "cash" | "gpp";
@@ -95,6 +98,8 @@ export type NflOptimizerPlayer = {
    * `captainBlockedByAvailability`.
    */
   availabilityStatus?: string | null;
+  /** The resolved availability; only its block reason is read here, to say why a player is out. */
+  availability?: { blockedReason?: string | null } | null;
   /**
    * DraftKings' own Status column, verbatim ("Q", "D", "OUT", "IR", ...).
    * `dk-salary-csv.ts` maps only OUT/IR-family codes to `isOut` and leaves the
@@ -290,6 +295,8 @@ export type NflOptimizerResult = {
   duplication?: LineupDuplication[];
   /** Phase 5: maximum shared players between any two lineups in the portfolio. */
   maxPairwiseOverlap?: number;
+  /** Phase 4: the portfolio plan's quota per archetype against what was built; absent without a plan. */
+  archetypePlan?: Array<{ archetypeId: ArchetypeId; label: string; requested: number; realized: number }>;
 };
 
 type ResolvedPlayer = NflOptimizerPlayer & {
@@ -453,8 +460,13 @@ function projectionFor(player: NflOptimizerPlayer, settings: NflOptimizerSetting
       throw new Error('Defensive forecast bundle does not match optimizer settings.');
     if (bundle.status === 'applied') return bundle.selected.mean > 0
       ? {value:bundle.selected.mean,source:'defensive'}:null;
-    return finite(player.ourProj)!==null && player.ourProj!>0
-      ? {value:player.ourProj!,source:'our_fallback'}:null;
+    if (finite(player.ourProj)!==null && player.ourProj!>0) return {value:player.ourProj!,source:'our_fallback'};
+    // Defensive mode is the default, and it used to return here, so "fall
+    // back to DK's season average" did nothing: 17 players on the 2026 week-3
+    // classic silently left the pool. The same opt-in applies in every mode,
+    // and `ruledOut` above still wins, so it never restores an absent player.
+    const dkAvg = finite(player.avgFptsDk);
+    return settings.allowDkFallback && dkAvg != null && dkAvg > 0 ? { value: dkAvg, source: "dk_avg_fallback" } : null;
   }
   if (settings.projectionSource === "workload") {
     const candidate=selectedWorkload(player,settings.workloadPositions);
@@ -674,7 +686,7 @@ function buildOne(
   // Phase 5: the shared-player cap between any two lineups is the stricter of the
   // min-unique rule and an explicit maxPairwiseOverlap. Exact duplicates are
   // impossible because at least one player must differ (overlap < rosterSize).
-  const overlapCap = Math.min(rosterSize - settings.minUnique, settings.maxPairwiseOverlap ?? rosterSize, rosterSize - 1);
+  const overlapCap = nflOverlapCap(settings.format, settings.minUnique, settings.maxPairwiseOverlap);
   previous.forEach((lineup, index) => { constraints[`prior_${index}`] = { max: overlapCap }; });
 
   if (settings.format === "classic" && settings.mode === "gpp" && settings.stackPassCatchers > 0) {
@@ -843,8 +855,11 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
       // availability feed can rule out a player DK lists Doubtful/Questionable,
       // and says so by stamping the projection `out`. Honouring only the first
       // let the DK-average fallback restore the second (see `ruledOut`).
+      // `isOut` also carries availability blocks (a listed backup QB), which
+      // are not OUT/IR; name the block rather than calling him inactive.
+      const blocked = player.availability?.blockedReason?.trim();
       const reason = player.isOut
-        ? "Inactive (OUT/IR)."
+        ? blocked ? `Not available: ${blocked}.` : "Inactive (OUT/IR)."
         : "Ruled out by our availability feed; projection zeroed. DraftKings did not flag him OUT/IR, so only the projection status records it.";
       eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden: false, reason, reasonCode: "INACTIVE" });
       coverage.excluded++; continue;
@@ -916,10 +931,39 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     pool.push({ ...player, projectionAudit:resolveProjectionAudit(player,settings), projection: resolved.value, resolvedSource: resolved.source, salaryRelief, captainEligible });
   }
 
+  // A lock, or any minimum exposure, on a player outside the pool used to be
+  // dropped: a lock made every lineup infeasible with a solver message that
+  // named nobody, and a captain range was skipped while QA said "All exposure
+  // ranges satisfied". Say who and why before generating anything.
+  const inPool = new Set(pool.map((player) => player.dkPlayerId));
+  const decisionById = new Map(eligibility.map((decision) => [decision.dkPlayerId, decision]));
+  const nameOf = (id: number) => players.find((player) => player.dkPlayerId === id)?.name ?? `Player ${id}`;
+  const whyOut = (id: number): string => {
+    const decision = decisionById.get(id);
+    if (!decision) return "he is not on this slate";
+    const reason = (decision.reason ?? "he is not in the player pool").replace(/\.$/, "");
+    return reason.charAt(0).toLowerCase() + reason.slice(1);
+  };
+  for (const id of settings.lockedPlayerIds) {
+    if (!inPool.has(id)) throw new Error(`${nameOf(id)} is locked but can't be used: ${whyOut(id)}. Remove the lock to build without him.`);
+  }
   for (const [rawId, target] of Object.entries(settings.minExposureByPlayer)) {
-    if (target > 0 && !pool.some((player) => player.dkPlayerId === Number(rawId))) {
-      const named = players.find((player) => player.dkPlayerId === Number(rawId));
-      throw new Error(`${named?.name ?? `Player ${rawId}`} has a target exposure but is unavailable in the selected projection source.`);
+    if (target > 0 && !inPool.has(Number(rawId))) {
+      throw new Error(`${nameOf(Number(rawId))} has a minimum exposure but can't be used: ${whyOut(Number(rawId))}. Clear his exposure range to build without him.`);
+    }
+  }
+  for (const policy of settings.exposurePolicies ?? []) {
+    if (inPool.has(policy.playerId)) continue;
+    const minimum = (policy.captain.minPct ?? 0) > 0 ? "captain" : (policy.flex.minPct ?? 0) > 0 ? "flex" : (policy.overall.minPct ?? 0) > 0 ? "overall" : null;
+    if (minimum) throw new Error(`${nameOf(policy.playerId)} has a ${minimum} minimum but can't be used: ${whyOut(policy.playerId)}. Clear his ${minimum === "captain" ? "CPT " : ""}range to build without him.`);
+    if (policy.captain.maxPct != null || policy.flex.maxPct != null || policy.overallFromUser) {
+      warnings.push(`${nameOf(policy.playerId)}'s range was ignored: ${whyOut(policy.playerId)}.`);
+    }
+  }
+  for (const rawId of Object.keys(settings.maxExposureByPlayer)) {
+    const id = Number(rawId);
+    if (!inPool.has(id) && !(settings.minExposureByPlayer[rawId] > 0) && !(settings.exposurePolicies ?? []).some((p) => p.playerId === id)) {
+      warnings.push(`${nameOf(id)}'s exposure cap was ignored: ${whyOut(id)}.`);
     }
   }
   if (puntBlocked) warnings.push(`${puntBlocked} player(s) blocked by the ${policy!.mode} punt policy. See the cheap-player review for the reason on each; allow a player for the run to keep him.`);
@@ -1118,5 +1162,14 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     ? estimateDuplication(lineups.map((l) => ({ lineupNumber: l.lineupNumber, playerIds: l.playerIds, totalSalary: l.totalSalary })), { ownershipValidated, ownershipByPlayer })
     : undefined;
 
-  return { lineups, warnings, sourceCoverage: coverage, eligibility, exposureReport, salaryBandReport, duplication, maxPairwiseOverlap: overlap };
+  // The plan's quotas against what was built, so QA checks them instead of
+  // showing "Archetype quotas met" unevaluated. Only when a plan shaped the
+  // portfolio; plain Standard ceiling has no quota to miss.
+  const planned = chalkPlan || archetypeQuotas?.length ? plan : [];
+  const requestedById = new Map<ArchetypeId, number>();
+  for (const slot of planned) requestedById.set(slot.archetypeId, (requestedById.get(slot.archetypeId) ?? 0) + 1);
+  const archetypePlan = planned.length ? [...requestedById].map(([archetypeId, requested]) => ({ archetypeId, label: ARCHETYPE_LABELS[archetypeId], requested,
+    realized: lineups.filter((lineup) => lineup.archetype?.id === archetypeId).length })) : undefined;
+
+  return { lineups, warnings, sourceCoverage: coverage, eligibility, exposureReport, salaryBandReport, duplication, maxPairwiseOverlap: overlap, archetypePlan };
 }

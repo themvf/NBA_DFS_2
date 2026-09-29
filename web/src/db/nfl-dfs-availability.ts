@@ -8,11 +8,19 @@ import {nflIdentityLocalLinks} from '@/lib/nfl-dfs/identity';
 export type InjuryCoverage = { snapshotId: string; capturedAt: string; counts: Record<string,number>; limited: boolean | null;
   unresolved: {name: string; team: string; position: string; category: string}[] };
 
-export async function getNflInjuryCoverage(season: number, week: number | null): Promise<InjuryCoverage | null> {
+/**
+ * Injury-report coverage as it stood at `asOf` (a saved slate's projection
+ * cutoff). Without the bound this read the latest report as of the page
+ * request, so a slate evaluated at its cutoff described coverage from a report
+ * captured after it, which the slate's own availability had refused to use.
+ */
+export async function getNflInjuryCoverage(season: number, week: number | null, asOf?: Date | null): Promise<InjuryCoverage | null> {
   if (!week) return null;
+  const cutoff = asOf && Number.isFinite(asOf.getTime()) ? asOf.toISOString() : null;
   try {
     const result = await db.execute(sql`SELECT id,fetched_at,missingness FROM ff_source_snapshots
-      WHERE source='fantasypros' AND dataset=${`game-week-injuries-v2-${season}-${week}`} AND fetched_at<=NOW()
+      WHERE source='fantasypros' AND dataset=${`game-week-injuries-v2-${season}-${week}`}
+        AND fetched_at<=COALESCE(${cutoff}::timestamptz, NOW())
       ORDER BY fetched_at DESC,id DESC LIMIT 1`);
     const row=result.rows[0];
     if (!row) return null;

@@ -204,3 +204,29 @@ export function statusClass(status: string | null | undefined): StatusClass {
 
 export const isLiveOutStatus = (status: string | null | undefined): boolean =>
   LIVE_OUT_STATUSES.has((status ?? "").trim().toUpperCase());
+
+/**
+ * "Last checked", told honestly: the age of the last check that WORKED, and a
+ * sentence when the very latest check failed. Before 2026-09-29 the banner
+ * said "Checked 2 min ago" off the latest poll even when that poll had failed
+ * and the statuses on screen were hours old.
+ */
+export function describeLastDkCheck(
+  live: { lastPolledAt: string | null; lastPollOk?: boolean | null; lastSuccessfulPollAt?: string | null },
+  now: number,
+): { lastGood: string | null; failure: string | null } {
+  const since = (iso: string | null | undefined) => {
+    const t = iso ? Date.parse(iso) : NaN;
+    if (!Number.isFinite(t)) return null;
+    const minutes = Math.max(0, Math.round((now - t) / 60000));
+    return minutes < 60 ? `${minutes} min ago` : minutes < 60 * 36 ? `${Math.round(minutes / 60)} h ago` : `${Math.round(minutes / 1440)} days ago`;
+  };
+  const failed = live.lastPollOk === false;
+  const lastGood = since(live.lastSuccessfulPollAt ?? (failed ? null : live.lastPolledAt));
+  return {
+    lastGood,
+    failure: failed
+      ? `The latest check of DraftKings failed (${since(live.lastPolledAt) ?? "at an unknown time"}); ${lastGood ? `the last successful check was ${lastGood}` : "no check has succeeded for this slate"}. Late changes may be missing.`
+      : null,
+  };
+}

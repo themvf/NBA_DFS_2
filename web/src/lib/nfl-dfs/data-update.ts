@@ -39,7 +39,13 @@ export const DATA_UPDATE_JOBS: readonly DataUpdateJobSpec[] = [
   },
 ];
 
-export type DataUpdateJobStatus = "dispatch_failed" | "queued" | "in_progress" | "completed";
+/**
+ * `untracked`: GitHub accepted the dispatch but did not name the run, so it
+ * cannot be followed. It is neither running nor done as far as we can tell.
+ * (Rows written before 2026-09-29 store it as completed + conclusion
+ * "untracked"; both read the same.)
+ */
+export type DataUpdateJobStatus = "dispatch_failed" | "queued" | "in_progress" | "completed" | "untracked";
 
 export interface DataUpdateJob {
   key: DataUpdateJobKey;
@@ -67,19 +73,34 @@ export interface DataUpdate {
 /** A run older than this that has not finished is treated as stuck. */
 export const DATA_UPDATE_STALE_MS = 30 * 60 * 1000;
 
-export type DataUpdateState = "running" | "succeeded" | "failed" | "stuck";
+/**
+ * `untracked`: nothing failed and nothing we can follow is still running, but
+ * at least one job started without a run to follow. Never reported as
+ * succeeded: its data may not be in yet (before 2026-09-29 it read "Data
+ * updated" and the page reloaded before the job had run).
+ */
+export type DataUpdateState = "running" | "succeeded" | "failed" | "stuck" | "untracked";
+
+/** How a watched update ended, as the page is told. */
+export type DataUpdateOutcome = "succeeded" | "failed" | "untracked";
 
 export interface DataUpdateView {
   state: DataUpdateState;
   headline: string;
-  lines: { key: DataUpdateJobKey; label: string; state: "waiting" | "running" | "done" | "failed"; text: string; href: string | null }[];
+  lines: { key: DataUpdateJobKey; label: string; state: "waiting" | "running" | "done" | "failed" | "untracked"; text: string; href: string | null }[];
 }
+
+const isUntracked = (job: DataUpdateJob) => job.status === "untracked" || (job.status === "completed" && job.conclusion === "untracked");
 
 const jobState = (job: DataUpdateJob): DataUpdateView["lines"][number]["state"] => {
   if (job.status === "dispatch_failed") return "failed";
-  if (job.status === "completed") return job.conclusion === "success" || job.conclusion === "untracked" ? "done" : "failed";
+  if (isUntracked(job)) return "untracked";
+  if (job.status === "completed") return job.conclusion === "success" ? "done" : "failed";
   return job.status === "in_progress" ? "running" : "waiting";
 };
+
+/** Whether a job still needs following: queued or running on GitHub. */
+export const jobOpen = (job: DataUpdateJob) => job.status === "queued" || job.status === "in_progress";
 
 /** GitHub run status, reduced to the three we display. */
 export function toJobStatus(status: string): Exclude<DataUpdateJobStatus, "dispatch_failed"> {
@@ -93,7 +114,8 @@ export function describeDataUpdate(update: DataUpdate, now: number): DataUpdateV
   const lines = update.jobs.map((job) => {
     const state = jobState(job);
     const typical = specs.get(job.key)?.typicalMinutes;
-    const text = state === "done" ? (job.conclusion === "untracked" ? (job.note ?? "Started.") : "Done.")
+    const text = state === "done" ? "Done."
+      : state === "untracked" ? `Started, but GitHub didn't say which run it is, so its progress can't be followed here${typical ? `; it usually takes ${typical} min` : ""}. Check back in a few minutes.`
       : state === "failed" ? (job.status === "dispatch_failed" ? `Could not start: ${job.note ?? "GitHub refused the request."}`
         : `Failed (${job.conclusion ?? "unknown"}). The slate keeps the last good data.`)
       : state === "running" ? `Running${typical ? `; usually ${typical} min` : ""}.${job.note ? ` ${job.note}` : ""}`
@@ -102,10 +124,11 @@ export function describeDataUpdate(update: DataUpdate, now: number): DataUpdateV
   });
   const failed = lines.filter((l) => l.state === "failed");
   const open = lines.filter((l) => l.state === "waiting" || l.state === "running");
+  const untracked = lines.filter((l) => l.state === "untracked");
   if (!open.length) {
-    return failed.length
-      ? { state: "failed", headline: `${failed.map((l) => l.label).join(" and ")} failed. The slate keeps the last good data.`, lines }
-      : { state: "succeeded", headline: "Data updated.", lines };
+    if (failed.length) return { state: "failed", headline: `${failed.map((l) => l.label).join(" and ")} failed. The slate keeps the last good data.`, lines };
+    if (untracked.length) return { state: "untracked", headline: `${untracked.map((l) => l.label).join(" and ")} started, but can't be followed from here, so the new data may not be in yet. Check back in a few minutes.`, lines };
+    return { state: "succeeded", headline: "Data updated.", lines };
   }
   if (now - Date.parse(update.requestedAt) > DATA_UPDATE_STALE_MS) {
     return { state: "stuck", headline: "This update is taking much longer than usual. Open the run to see why, or start a new update.", lines };

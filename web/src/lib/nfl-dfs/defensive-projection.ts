@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { sameNflTeam } from './availability';
 
 export type DefensiveMode = 'off' | 'experimental' | 'approved';
 export type DefensiveProfile = 'pfr-efficiency' | 'allowed-rushing-volume';
@@ -36,10 +37,17 @@ export type DefensiveCapture = {
 
 const numeric = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 const close = (left: number, right: number) => Math.abs(left - right) <= 0.00011;
+/**
+ * nflverse game ids end `_{away}_{home}` in nflverse codes (LA for the Rams,
+ * WAS), while the salary key uses DraftKings codes (LAR). Compare by franchise:
+ * a string suffix match refused every Rams capture.
+ */
 const sameGame = (salaryKey: string | null, gameId: string) => {
   if (!salaryKey) return false;
   const [away, home] = salaryKey.split('@');
-  return !!away && !!home && gameId.endsWith(`_${away}_${home}`);
+  const parts = gameId.split('_');
+  if (!away || !home || parts.length < 2) return false;
+  return sameNflTeam(parts[parts.length - 2], away) && sameNflTeam(parts[parts.length - 1], home);
 };
 const complete = (value: unknown): value is ForecastSummary => {
   const v = value as ForecastSummary | null;

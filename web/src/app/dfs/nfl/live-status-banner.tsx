@@ -1,6 +1,7 @@
 "use client";
 
 import type { NflLiveDkStatus } from "./actions";
+import { describeLastDkCheck } from "@/lib/nfl-dfs/live-dk-status";
 
 /**
  * How stale is the availability you are about to draft against?
@@ -16,12 +17,10 @@ import type { NflLiveDkStatus } from "./actions";
 export default function LiveStatusBanner({ live }: { live?: NflLiveDkStatus }) {
   if (!live) return null;
 
-  const polled = live.lastPolledAt ? new Date(live.lastPolledAt) : null;
-  const ageMinutes = polled ? Math.max(0, Math.round((Date.now() - polled.getTime()) / 60000)) : null;
-  const age = ageMinutes === null ? null
-    : ageMinutes < 60 ? `${ageMinutes} min ago`
-    : ageMinutes < 60 * 36 ? `${Math.round(ageMinutes / 60)} h ago`
-    : `${Math.round(ageMinutes / 1440)} days ago`;
+  // "Checked" means the last check that WORKED. A failed latest check used to
+  // read as "Checked 2 min ago" while the statuses were hours old.
+  const { lastGood, failure: failureText } = describeLastDkCheck(live, Date.now());
+  const failure = failureText ? <p className="mt-1 text-xs font-semibold text-red-800">{failureText}</p> : null;
 
   if (!live.applied) {
     return <div className="rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm">
@@ -29,8 +28,9 @@ export default function LiveStatusBanner({ live }: { live?: NflLiveDkStatus }) {
       <span className="text-slate-700">{live.reason}</span>{" "}
       <span className="text-slate-500">
         Availability below is whatever the uploaded salary file said.
-        {age ? ` Last checked DraftKings ${age}.` : ""}
+        {lastGood ? ` Last successful check of DraftKings ${lastGood}.` : ""}
       </span>
+      {failure}
     </div>;
   }
 
@@ -48,10 +48,11 @@ export default function LiveStatusBanner({ live }: { live?: NflLiveDkStatus }) {
       {outs.length ? ` — ${outs.length} now ruled out.` : "."}
     </strong>{" "}
     <span className="opacity-80">
-      Checked {age ?? "at an unknown time"}; matched {live.matched} players
+      Last successful check {lastGood ?? "at an unknown time"}; matched {live.matched} players
       {live.draftGroupId ? ` (draft group ${live.draftGroupId})` : ""}.
       {live.changes.length ? " Projections and eligibility below already use the newer value." : ""}
     </span>
+    {failure}
     {live.changes.length ? <details className="mt-2">
       <summary className="cursor-pointer text-xs font-bold">Show what changed</summary>
       <ul className="mt-1 max-h-48 space-y-0.5 overflow-auto text-xs">
