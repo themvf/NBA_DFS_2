@@ -4,11 +4,12 @@ on:
   schedule:
     # Cadence is owned by Vercel Cron, NOT by this schedule: GitHub fired this
     # workflow once in its first four hours on 2026-09-26. /api/cron/dispatch
-    # (web/src/lib/cron-dispatch.ts) dispatches it hourly September-December;
+    # (web/src/lib/cron-dispatch.ts) dispatches it hourly through the season;
     # the job's own gate then captures hourly within six hours of a kickoff
     # and every two hours otherwise, so the decision stays in code and DST is
     # irrelevant. This 6-hourly run is a thin fallback for a broken bridge.
-    - cron: "17 */6 * 9-12 *"
+    # January and February carry weeks 17-18 and the playoffs.
+    - cron: "17 */6 * 1,2,9-12 *"
   workflow_dispatch:
     inputs:
       season:
@@ -60,10 +61,29 @@ jobs:
         run: |
           python -c "import os,sys; sys.argv=['projections']; [(sys.argv.extend([flag,os.environ[key]])) for key,flag in [('NFL_SEASON','--season'),('NFL_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_projections import main; main()"
       - name: Evaluate freshness and freeze eligible pre-lock waves
+        # `shell: bash` is load-bearing: GitHub then runs `bash -eo pipefail`.
+        # The default shell has no pipefail, so the pipe into tee swallowed the
+        # monitor's exit 2 on a critical alert (and any crash of monitor or
+        # freeze): run 36534763333 was green while op run 55becc11 recorded
+        # status=critical. Exit codes: monitor 0 healthy/warning, 2 critical,
+        # anything else a crash. A crash skips the freeze (nothing trustworthy
+        # to freeze against); a critical result still freezes -- the manifest
+        # records the health status -- and then turns the step red.
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p artifacts
-          python -c "import os,sys; sys.argv=['availability-ops','--mode','monitor']; [(sys.argv.extend([flag,os.environ[key]])) for key,flag in [('NFL_SEASON','--season'),('NFL_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_availability_operations import main; sys.exit(main())" | tee artifacts/nfl-availability-operations.json
+          monitor_status=0
+          python -c "import os,sys; sys.argv=['availability-ops','--mode','monitor']; [(sys.argv.extend([flag,os.environ[key]])) for key,flag in [('NFL_SEASON','--season'),('NFL_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_availability_operations import main; sys.exit(main())" | tee artifacts/nfl-availability-operations.json || monitor_status=$?
+          if [ "$monitor_status" -ne 0 ] && [ "$monitor_status" -ne 2 ]; then
+            echo "::error title=Availability monitor crashed::exit ${monitor_status}; pre-lock freeze skipped"
+            exit "$monitor_status"
+          fi
           python -c "import os,sys; sys.argv=['availability-ops','--mode','freeze']; [(sys.argv.extend([flag,os.environ[key]])) for key,flag in [('NFL_SEASON','--season'),('NFL_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_availability_operations import main; sys.exit(main())" | tee -a artifacts/nfl-availability-operations.json
+          if [ "$monitor_status" -eq 2 ]; then
+            echo "::error title=Availability monitor critical::see the health report in artifacts/nfl-availability-operations.json"
+            exit 2
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
