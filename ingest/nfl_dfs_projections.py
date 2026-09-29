@@ -492,6 +492,26 @@ def build_week(
     return projections, manifest
 
 
+def availability_resolution_summary(report: dict[str, Any]) -> dict[str, Any]:
+    """What the zero-and-promote pass did, in the form the run row persists.
+
+    Only ``policy_mode`` used to reach ``nfl_dfs_projection_runs``, so a
+    starting QB ruled out with no promotable backup left no trace outside the
+    in-memory report: his team simply lost its quarterback's projection.
+    ``unresolved_starters`` counts exactly that case (an unresolved entry
+    carrying starter evidence); other unresolved entries are backups whose
+    absence has nothing to promote.
+    """
+    unresolved = list(report.get("unresolved") or [])
+    return {
+        "zeroed_count": len(report.get("zeroed") or []),
+        "transfers_applied": sum(1 for row in report.get("transfers") or [] if row.get("applied")),
+        "unresolved": unresolved,
+        "unresolved_count": len(unresolved),
+        "unresolved_starters": sum(1 for row in unresolved if row.get("starter_evidence")),
+    }
+
+
 def persist_week(db: DatabaseManager, projections: list[dict[str, Any]], manifest: dict[str, Any]) -> str:
     digest = manifest["artifact_digest"]
     run_id = str(uuid.uuid5(RUN_NAMESPACE, f"{MODEL_VERSION}:{digest}"))
@@ -501,6 +521,7 @@ def persist_week(db: DatabaseManager, projections: list[dict[str, Any]], manifes
         "policy": manifest["availability_health"]["policy"],
         "policy_mode": manifest["availability"].get("policy_mode"),
         "pregame_frozen_games": manifest["availability"].get("pregame_frozen_games", []),
+        **availability_resolution_summary(manifest["availability"]),
         "health": manifest["availability_health"],
         "migration_audit": manifest["availability_migration_audit"],
         "decisions_digest": artifact_digest(manifest["availability_decisions"]),
@@ -623,6 +644,7 @@ def main() -> None:
         "availability_health": manifest["availability_health"],
         "availability_migration_changes": len(manifest["availability_migration_audit"]),
         "availability_policy_mode": manifest["availability"].get("policy_mode"),
+        "availability_unresolved_starters": availability_resolution_summary(manifest["availability"])["unresolved_starters"],
         "matchup_health": manifest.get("matchup_health"),
         "prop_inputs": [],
     }, indent=2, sort_keys=True))

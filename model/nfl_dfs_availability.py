@@ -316,22 +316,31 @@ def apply(
             result[player["player_id"]]["availability"]["slate_transfer_allowed"] = False
         if player.get("position") not in positions:
             continue
+        # `starter_evidence` separates the case that matters (a starter is out
+        # and nobody inherits his work) from a backup being ruled out, where
+        # there is nothing to promote. It is persisted with the run so the
+        # health report can surface the first kind.
+        evidence = starter_evidence(player, projections)
         backup = replacement_for(player, projections, statuses)
         if backup is None:
-            report["unresolved"].append({"player": player.get("player_name"),
+            report["unresolved"].append({"player_id": player.get("player_id"),
+                                         "player": player.get("player_name"),
                                          "team": player.get("team"),
                                          "position": player.get("position"),
+                                         "starter_evidence": evidence,
                                          "reason": "no verified starter-to-backup promotion with depth evidence"})
             continue
         updated, note = transfer_opportunity(player, result[backup["player_id"]], cap=cap,
-                                             evidence=starter_evidence(player, projections))
+                                             evidence=evidence)
         result[backup["player_id"]] = updated
         # Only a transfer that actually applied closes the donor's pool. When
         # it did not (no usable opportunity history, no stat for the position),
         # his line stays intact so the slate layer can still place the work.
         if not note.get("applied"):
-            report["unresolved"].append({"player": player.get("player_name"),
-                "team": player.get("team"), "position": player.get("position"), "reason": note["reason"]})
+            report["unresolved"].append({"player_id": player.get("player_id"),
+                "player": player.get("player_name"), "team": player.get("team"),
+                "position": player.get("position"), "starter_evidence": evidence,
+                "replacement": backup.get("player_name"), "reason": note["reason"]})
         if note.get("applied"):
             result[player["player_id"]] = mark_transferred(
                 result[player["player_id"]], backup.get("player_name"))

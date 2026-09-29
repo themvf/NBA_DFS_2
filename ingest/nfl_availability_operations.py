@@ -143,6 +143,17 @@ def availability_health(db: Any, *, season: int, week: int, now: datetime,
              AND definition_id IN ('player_game_availability@v1','team_qb_state@v1')""",
         (game_ids,),
     ) if game_ids else []
+    latest_run = db.execute_one(
+        """SELECT run_id,availability_manifest->'unresolved' unresolved
+           FROM nfl_dfs_projection_runs
+           WHERE season=%s AND week=%s AND as_of_at<=%s
+           ORDER BY as_of_at DESC,created_at DESC LIMIT 1""",
+        (season, week, now),
+    )
+    unresolved_starters = [
+        row for row in ((latest_run or {}).get("unresolved") or [])
+        if isinstance(row, dict) and row.get("starter_evidence")
+    ]
     player_rows = [row for row in rows if row["definition_id"] == "player_game_availability@v1"]
     qb_rows = [row for row in rows if row["definition_id"] == "team_qb_state@v1"]
     states = Counter(str(row["payload"].get("resolved_availability_state") or "UNKNOWN") for row in player_rows)
@@ -171,6 +182,10 @@ def availability_health(db: Any, *, season: int, week: int, now: datetime,
         alerts.append({"severity": "warning", "code": "missing_qb_context", "message": f"QB context covers {len(qb_rows)} of {len(game_ids) * 2} team-games."})
     if player_rows and states.get("STALE", 0) / len(player_rows) > 0.10:
         alerts.append({"severity": "warning", "code": "stale_context_rate", "message": "More than 10% of player contexts are stale."})
+    if unresolved_starters:
+        names = ", ".join(f"{row.get('player')} ({row.get('team')})" for row in unresolved_starters[:6])
+        alerts.append({"severity": "warning", "code": "starter_promotion_unresolved",
+                       "message": f"{len(unresolved_starters)} ruled-out starter(s) have no promoted replacement: {names}."})
     prelock_games = [row for row in games if timedelta(0) < row["kickoff"] - now <= timedelta(minutes=90)]
     if prelock_games and int(official["games"] or 0) < len(prelock_games):
         alerts.append({"severity": "warning", "code": "official_inactives_incomplete", "message": f"Official inactive coverage is {int(official['games'] or 0)} of {len(prelock_games)} games inside the pre-lock window."})
@@ -184,6 +199,9 @@ def availability_health(db: Any, *, season: int, week: int, now: datetime,
         "officialInactiveGames": int(official["games"] or 0),
         "states": dict(sorted(states.items())), "latestSleeperSnapshotId": latest["id"] if latest else None,
         "latestSleeperDataset": latest.get("dataset") if latest else None,
+        "latestProjectionRunId": str(latest_run["run_id"]) if latest_run else None,
+        "unresolvedStarters": [{key: row.get(key) for key in ("player_id", "player", "team", "position", "reason")}
+                               for row in unresolved_starters],
         "latestSleeperAgeHours": age_hours, "alerts": alerts,
     }
     run_id = stable_digest(report)

@@ -205,6 +205,47 @@ def test_a_game_not_yet_started_resolves_at_the_run_time():
     assert manifest["availability"]["pregame_frozen_games"] == []
 
 
+class RecordingConnection:
+    """persist_week's connection, recording the manifest it finally stores."""
+    def __init__(self):
+        self.statements = []
+    def __enter__(self):
+        return self
+    def __exit__(self, *exc):
+        return False
+    def cursor(self):
+        return self
+    def execute(self, sql, params=None):
+        self.statements.append((" ".join(sql.split()), params))
+    def fetchone(self):
+        return {"created_at": TUESDAY}
+
+
+class PersistDB:
+    def __init__(self):
+        self.conn = RecordingConnection()
+    def connect(self):
+        return self.conn
+
+
+def test_an_unresolved_starter_is_persisted_on_the_run():
+    _, manifest = run(TUESDAY)
+    manifest["availability"]["unresolved"] = [
+        {"player_id": 1, "player": "Starter", "team": "LAR", "position": "QB",
+         "starter_evidence": "depth_chart", "reason": "no verified starter-to-backup promotion with depth evidence"},
+        {"player_id": 3, "player": "Third", "team": "LAR", "position": "QB",
+         "starter_evidence": None, "reason": "no verified starter-to-backup promotion with depth evidence"},
+    ]
+    db = PersistDB()
+    proj.persist_week(db, [], manifest)
+    stored = [params[0].adapted for sql, params in db.conn.statements
+              if sql.startswith("UPDATE nfl_dfs_projection_runs SET availability_manifest")][-1]
+    assert stored["unresolved_count"] == 2
+    assert stored["unresolved_starters"] == 1
+    assert stored["unresolved"][0]["player"] == "Starter"
+    assert stored["zeroed_count"] == 1 and stored["transfers_applied"] == 1
+
+
 def test_pregame_decision_time():
     from model.nfl_game_availability import pregame_decision_time
     assert pregame_decision_time(TUESDAY, EARLY) == TUESDAY

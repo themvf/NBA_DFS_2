@@ -105,9 +105,10 @@ class HealthDb:
     monitor actually sends rather than a hand-picked answer.
     """
 
-    def __init__(self, snapshots, *, kickoff):
+    def __init__(self, snapshots, *, kickoff, unresolved=None):
         self.snapshots = snapshots
         self.kickoff = kickoff
+        self.unresolved = unresolved or []
         self.inserts = []
 
     def _snapshots(self, sql, params):
@@ -147,6 +148,8 @@ class HealthDb:
             return rows[0] if rows else None
         if "ff_player_injury_observations" in sql:
             return {"observations": 0, "games": 0, "prelock_games": 0}
+        if "FROM nfl_dfs_projection_runs" in sql:
+            return {"run_id": "00000000-0000-0000-0000-000000000009", "unresolved": self.unresolved}
         raise AssertionError(sql)
 
 
@@ -186,6 +189,26 @@ def test_a_stale_live_feed_is_not_hidden_by_a_fresh_roster_snapshot():
     assert "implausible_rows" not in codes
     assert report["status"] == "critical"
     assert db.inserts == [], "persist=False must not record an operation run"
+
+
+def test_a_starter_out_without_a_promoted_backup_is_reported():
+    evaluated = datetime(2026, 9, 29, 8, 16, tzinfo=timezone.utc)
+    db = HealthDb(
+        [snap(5107, "players-live-2026-2026092908", datetime(2026, 9, 29, 8, 7, tzinfo=timezone.utc), 1060)],
+        kickoff=datetime(2026, 10, 2, 0, 15, tzinfo=timezone.utc),
+        unresolved=[
+            {"player_id": 7, "player": "Starter QB", "team": "CHI", "position": "QB",
+             "starter_evidence": "depth_chart", "reason": "no verified starter-to-backup promotion"},
+            # A ruled-out backup has nothing to promote: not an alert.
+            {"player_id": 8, "player": "Third QB", "team": "CHI", "position": "QB",
+             "starter_evidence": None, "reason": "no verified starter-to-backup promotion"},
+        ])
+    report = availability_health(db, season=2026, week=4, now=evaluated, persist=False)
+    alerts = {alert["code"]: alert for alert in report["alerts"]}
+    assert alerts["starter_promotion_unresolved"]["severity"] == "warning"
+    assert "Starter QB (CHI)" in alerts["starter_promotion_unresolved"]["message"]
+    assert [row["player_id"] for row in report["unresolvedStarters"]] == [7]
+    assert report["status"] == "warning"
 
 
 def test_prelock_manifest_freezes_saved_context_ids_without_reresolving():
