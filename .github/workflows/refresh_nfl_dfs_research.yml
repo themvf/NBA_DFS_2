@@ -1,0 +1,237 @@
+name: NFL DFS Research Forecasts
+
+# RESEARCH ONLY: shadow and coherent-scenario studies, matchup grading, model
+# input audits and report cards. Nothing the DFS page needs to build a lineup
+# is produced here; that is refresh_nfl_dfs_projections.yml, whose red means
+# production broke. This workflow runs after every successful production
+# refresh and keeps its own red/green, so a broken study is visible without
+# hiding a production outage behind it.
+#
+# Some outputs are read by the page as opt-in sources (shadow predictions for
+# "Calibrated", workload/efficiency runs for "Position workload" situation
+# audits). Each degrades there with a stated reason when missing; none is
+# needed for a default build.
+#
+# Production hands over the matchup comparison it persisted (and the season,
+# week and capture window it used) as the nfl-dfs-research-handoff artifact.
+# A manual dispatch can name a production run to grade; without one, the
+# coherent scenario step can use only a Showdown captured by this run.
+
+on:
+  workflow_run:
+    workflows: ["Refresh NFL DFS Projections"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      production_run_id:
+        description: "Production run whose matchup comparison to use (optional)"
+        required: false
+        type: string
+      season:
+        description: "NFL season year (overrides the production run's)"
+        required: false
+        type: string
+      week:
+        description: "Optional explicit regular-season week (overrides the production run's)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: refresh-nfl-dfs-research
+  cancel-in-progress: false
+
+jobs:
+  research:
+    name: Research forecasts and report cards
+    # Research against a failed production refresh would study a snapshot that
+    # was never published, so it waits for a green one.
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PRODUCTION_RUN_ID: ${{ github.event.workflow_run.id || inputs.production_run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The commit production ran, so pinned study hashes see the same files.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # The repository's current lockfile is incomplete; follow the existing
+      # NFL optimizer workflow rather than silently failing npm ci.
+      - name: Install scenario and optimizer dependencies
+        id: scenario_dependencies
+        working-directory: web
+        run: npm install --no-audit --no-fund
+      - name: Download the production handoff
+        id: handoff
+        if: ${{ env.PRODUCTION_RUN_ID != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: nfl-dfs-research-handoff
+          path: artifacts
+          run-id: ${{ env.PRODUCTION_RUN_ID }}
+          github-token: ${{ github.token }}
+      - name: Resolve season, week and the comparison window
+        id: resolve
+        if: ${{ !cancelled() }}
+        env:
+          INPUT_SEASON: ${{ inputs.season }}
+          INPUT_WEEK: ${{ inputs.week }}
+        run: |
+          python - <<'EOF'
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          path = Path("artifacts/nfl-dfs-research-handoff.json")
+          handoff = json.loads(path.read_text()) if path.exists() else {}
+          now = datetime.now(timezone.utc)
+          values = {
+              "NFL_RESEARCH_SEASON": os.environ.get("INPUT_SEASON") or handoff.get("nfl_research_season", ""),
+              "NFL_RESEARCH_WEEK": os.environ.get("INPUT_WEEK") or handoff.get("nfl_research_week", ""),
+              # Without a handoff, only a comparison captured after this start counts.
+              "NFL_MATCHUP_CAPTURE_NOT_BEFORE": handoff.get("nfl_matchup_capture_not_before") or now.isoformat(),
+              "NFL_MATCHUP_OUTPUT_DIR": handoff.get("nfl_matchup_output_dir")
+                  or f"artifacts/nfl-matchup-implementation/{now.date().isoformat()}",
+          }
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.writelines(f"{key}={value}\n" for key, value in values.items())
+          print(json.dumps({"handoff": handoff or None, **values}, indent=2))
+          if not handoff:
+              print("::warning title=No production handoff::No production matchup comparison was handed over; "
+                    "the coherent scenario step can use only a Showdown captured by this run.")
+          elif handoff.get("matchup_outcome") != "success":
+              print(f"::warning title=Production matchup capture::The production matchup step ended "
+                    f"'{handoff.get('matchup_outcome')}'; its comparison may be missing.")
+          EOF
+      - name: Freeze research-only workload forecasts
+        id: workload
+        if: ${{ !cancelled() }}
+        run: |
+          python -c "import os,sys; sys.argv=['workload']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_workload import main; main()"
+      - name: Freeze research-only efficiency forecasts
+        id: efficiency
+        if: ${{ !cancelled() && steps.workload.outcome == 'success' }}
+        run: |
+          python -c "import os,sys; sys.argv=['efficiency']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_efficiency import main; main()"
+      # One retry, and only on a lock conflict. Scheduled jobs elsewhere run
+      # schema DDL on every start (db/database.py _ensure_schema holds
+      # AccessExclusive locks across many tables in one transaction), and one
+      # deadlocked this reader on 2026-09-28. Every write here is ON CONFLICT
+      # DO NOTHING and an extra capture is what a second daily run produces,
+      # so a rerun is safe. Any other failure fails immediately.
+      - name: Freeze and settle shadow-only research forecasts
+        id: shadow
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          for attempt in 1 2; do
+            if python -c "import os,sys; sys.argv=['shadow']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_shadow import main; main()" 2>&1 | tee shadow.log; then
+              exit 0
+            fi
+            if [ "$attempt" = 2 ] || ! grep -qE 'DeadlockDetected|LockNotAvailable' shadow.log; then
+              exit 1
+            fi
+            echo "::warning title=Shadow lock conflict::A concurrent schema refresh deadlocked the shadow reader; retrying once in 30s."
+            sleep 30
+          done
+      - name: Freeze coherent research scenarios and publish the compact comparison
+        id: scenarios
+        if: ${{ !cancelled() && steps.scenario_dependencies.outcome == 'success' }}
+        run: |
+          python -c "import os,sys; sys.argv=['scenario-refresh','--persist','--not-before',os.environ['NFL_MATCHUP_CAPTURE_NOT_BEFORE'],'--output-dir',os.environ['NFL_MATCHUP_OUTPUT_DIR']]; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from research.nfl_matchup_scenario_refresh import main; sys.exit(main())"
+      - name: Freeze registered pickem matchup forecasts
+        id: pickem
+        if: ${{ !cancelled() }}
+        run: |
+          python -c "import os,sys; sys.argv=['matchup-study','freeze-pickem']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from research.nfl_matchup_study import main; sys.exit(main())"
+      - name: Grade registered matchup forecasts on completed weeks
+        id: grade
+        if: ${{ !cancelled() }}
+        run: |
+          python -c "import os,sys; sys.argv=['matchup-study','prospective','--capture-results','--output','artifacts/nfl-matchup-forward-report.json']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season')] if os.environ.get(key)]; from research.nfl_matchup_study import main; sys.exit(main())"
+      - name: Audit stored model input coverage
+        id: feature_audit
+        if: ${{ !cancelled() }}
+        run: python -m ingest.nfl_dfs_feature_audit
+      - name: Grade frozen context variants and verify freeze coverage
+        id: context
+        if: ${{ !cancelled() }}
+        run: |
+          python -c "import os,sys; sys.argv=['matchup-study','context']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season')] if os.environ.get(key)]; from research.nfl_matchup_study import main; sys.exit(main())"
+      - name: Retain context grading and health evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: nfl-context-variant-study
+          path: artifacts/nfl_dfs_context_variant_study.json
+          retention-days: 90
+      - name: Retain matchup forecast and evaluation evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: nfl-matchup-forward-evidence
+          path: |
+            artifacts/nfl-matchup-implementation/
+            artifacts/nfl-matchup-forward-report.json
+          retention-days: 90
+      - name: Save weekly production and shadow report cards
+        id: reportcard
+        if: ${{ !cancelled() }}
+        run: |
+          python -c "import os,sys; sys.argv=['reportcard']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season')] if os.environ.get(key)]; from ingest.nfl_dfs_reportcard import main; main()"
+      # Slate-scoped stream: the players DK actually listed, graded under DK's
+      # own no-stat-line = 0 rule. Separate version/table from the roster
+      # report above; it is the grader for the zero-history prior study (WP1).
+      - name: Save slate-scoped report cards (DraftKings convention)
+        id: slate_reportcard
+        if: ${{ !cancelled() }}
+        run: |
+          python -c "import os,sys; sys.argv=['slate-reportcard']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season')] if os.environ.get(key)]; from ingest.nfl_dfs_slate_reportcard import main; main()"
+      # Phone-readable weekly review. Read-only and fail-soft: a digest that
+      # cannot render must not redden a run whose actual work succeeded. The
+      # outcome table below still reports it.
+      - name: Publish the weekly review to the run summary
+        id: digest
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        # `shell: bash` sets pipefail, without which the pipe into tee would
+        # swallow a non-zero exit and report a green step over an empty summary.
+        # tee, not `>>`: the digest belongs in BOTH the run summary (readable on
+        # a phone) and the job log (readable by anything without database access).
+        shell: bash
+        run: |
+          python -c "import os,sys; sys.argv=['digest']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_review_digest import main; sys.exit(main())" | tee -a "$GITHUB_STEP_SUMMARY"
+      # One line per study, so a red run says which study broke without a log
+      # dive, and the fail-soft digest cannot fail unseen.
+      - name: Summarize research step outcomes
+        if: ${{ always() }}
+        env:
+          STEP_RESULTS: ${{ toJSON(steps) }}
+        run: |
+          python - <<'EOF'
+          import json, os
+          results = json.loads(os.environ["STEP_RESULTS"])
+          lines = ["## Research step outcomes", "", "| step | outcome |", "|---|---|"]
+          lines += [f"| {name} | {result.get('outcome')} |" for name, result in results.items()]
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write("\n".join(lines) + "\n")
+          for name, result in results.items():
+              if result.get("outcome") == "failure":
+                  print(f"::warning title=Research step failed::{name}")
+          EOF

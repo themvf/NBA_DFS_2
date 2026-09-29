@@ -195,7 +195,7 @@ def main():
                 stream.write("## Production projection snapshot\n\n")
                 stream.write(f"Completed at {datetime.now(timezone.utc).isoformat()}.\n\n")
                 stream.write("```json\n" + json.dumps(result, indent=2) + "\n```\n\n")
-                stream.write("Research forecasts run in a separate job; their status does not invalidate this saved snapshot.\n")
+                stream.write("Research forecasts run afterwards in refresh_nfl_dfs_research.yml; their status does not invalidate this saved snapshot.\n")
 
 
 if __name__ == "__main__":

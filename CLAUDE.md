@@ -286,6 +286,22 @@ keeps a thin GitHub `schedule:` as fallback and its own in-job gate. The route
 logs when `GITHUB_DISPATCH_TOKEN` is within 30 days of expiry, since a lapsed
 PAT silences every bridged job at once.
 
+**NFL DFS production and research are separate workflows (2026-09-28).**
+`refresh_nfl_dfs_projections.yml` holds only what the DFS page needs to build a
+lineup (results, availability, PFR evidence, the projection snapshot, and the
+matchup forecasts behind defensive adjustments), so a red run means production
+broke. Research (shadow, coherent scenarios, matchup grading, input audits,
+report cards) runs in `refresh_nfl_dfs_research.yml`, triggered by
+`workflow_run` after each green production run, with its own status. Production
+hands over its persisted matchup comparison, season/week and capture window as
+the `nfl-dfs-research-handoff` artifact. Don't move a research step back into
+production to "keep it fresh"; that is how 6 of 8 production runs went red on
+research while the snapshot saved fine. Both production projection writers
+(this workflow and `refresh_nfl_availability_context.yml`) take their config
+from `production_config()` in `ingest/nfl_dfs_projections.py`, because research
+cohorts pin `baseline_config_hash` and a one-key drift rejected every slate
+bound to one writer's runs.
+
 Deliberately NOT ported to a Vercel Python Function: Vercel's Root Directory (`web/`)
 cannot access files outside itself (`..` is blocked), so a real port would mean either
 changing the Vercel project's Root Directory to the repo root (risky, dashboard-only,
