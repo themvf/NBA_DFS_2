@@ -266,7 +266,7 @@
       "file": "refresh_nfl_availability_context.yml",
       "name": "Refresh NFL availability context",
       "crons": [
-        "17 */6 * 9-12 *"
+        "17 */6 * 1,2,9-12 *"
       ],
       "dispatch": true,
       "afterWorkflows": [],
