@@ -6,7 +6,7 @@
  */
 import assert from "node:assert/strict";
 import {
-  DATA_UPDATE_JOBS, DATA_UPDATE_STALE_MS, dataUpdateBlockedReason, describeDataAsOf, describeDataUpdate, replacementRun, runningUpdate, toJobStatus,
+  DATA_UPDATE_JOBS, DATA_UPDATE_STALE_MS, dataUpdateBlockedReason, describeDataAsOf, describeDataUpdate, jobOpen, replacementRun, runningUpdate, toJobStatus,
   type DataUpdate, type DataUpdateJob,
 } from "../src/lib/nfl-dfs/data-update";
 
@@ -42,10 +42,24 @@ const refused = describeDataUpdate(update([job("availability", { status: "dispat
 assert.equal(refused.state, "failed");
 assert.match(refused.lines[0].text, /^Could not start: GitHub answered 401\.$/);
 
-// A dispatch GitHub accepted without naming its run reads as started, not failed.
-const untracked = describeDataUpdate(update([job("availability", { status: "completed", conclusion: "untracked", runId: null, note: "Started, but GitHub did not name the run; check the Actions page." }), job("dk_status", { status: "completed", conclusion: "success" })]), t0);
-assert.equal(untracked.state, "succeeded");
-assert.match(untracked.lines[0].text, /did not name the run/);
+// A dispatch GitHub accepted without naming its run is neither failed nor done:
+// it has its own state and is never reported as "Data updated" (2026-09-29 audit).
+const untracked = describeDataUpdate(update([job("availability", { status: "untracked", runId: null }), job("dk_status", { status: "completed", conclusion: "success" })]), t0);
+assert.equal(untracked.state, "untracked");
+assert.notEqual(untracked.headline, "Data updated.");
+assert.match(untracked.headline, /^Injuries, depth charts and projections started, but can't be followed from here, so the new data may not be in yet\. Check back in a few minutes\.$/);
+assert.equal(untracked.lines[0].state, "untracked");
+assert.match(untracked.lines[0].text, /^Started, but GitHub didn't say which run it is, so its progress can't be followed here; it usually takes 2-10 min\. Check back in a few minutes\.$/);
+assert.equal(untracked.lines[1].state, "done");
+// Rows saved before the fix (completed + conclusion "untracked") read the same.
+const legacy = describeDataUpdate(update([job("availability", { status: "completed", conclusion: "untracked", runId: null }), job("dk_status", { status: "completed", conclusion: "success" })]), t0);
+assert.equal(legacy.state, "untracked");
+// While a followable job still runs, the update is running; an untracked job never holds it open.
+assert.equal(describeDataUpdate(update([job("availability", { status: "untracked", runId: null }), job("dk_status", { status: "in_progress" })]), t0 + 60_000).state, "running");
+assert.equal(jobOpen(job("availability", { status: "untracked", runId: null })), false);
+assert.equal(jobOpen(job("availability", { status: "queued" })), true);
+// A failure still outranks an untracked job.
+assert.equal(describeDataUpdate(update([job("availability", { status: "untracked", runId: null }), job("dk_status", { status: "completed", conclusion: "failure" })]), t0).state, "failed");
 
 // Stuck: still open after 30 minutes.
 const stuck = describeDataUpdate(update([job("availability", { status: "queued" })]), t0 + DATA_UPDATE_STALE_MS + 1);
@@ -80,4 +94,4 @@ assert.equal(toJobStatus("waiting"), "queued"); assert.equal(toJobStatus("in_pro
 assert.equal(describeDataAsOf({ roster: "2026-10-04T15:07:00Z", dkStatuses: null, projections: "2026-10-04T15:12:00Z" }),
   "Depth charts Sun 11:07 AM ET · DraftKings statuses not checked · Projections Sun 11:12 AM ET");
 
-console.log("Data update: running, done, failed, refused and stuck each read plainly; closed at kickoff; a replaced run is followed.");
+console.log("Data update: running, done, failed, refused, stuck and started-but-unfollowable each read plainly; an unfollowable job is never reported as done; closed at kickoff; a replaced run is followed.");

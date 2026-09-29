@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CheckCircle2, ExternalLink, Loader2, RefreshCw, XCircle, Clock } from "lucide-react";
-import { describeDataAsOf, type DataAsOf } from "@/lib/nfl-dfs/data-update";
+import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, RefreshCw, XCircle, Clock } from "lucide-react";
+import { describeDataAsOf, type DataAsOf, type DataUpdateOutcome } from "@/lib/nfl-dfs/data-update";
 import { readNflDataUpdate, startNflDataUpdate, type NflDataUpdateResult } from "./client-actions";
 
 const POLL_MS = 8_000;
@@ -16,8 +16,8 @@ const POLL_MS = 8_000;
 export default function DataUpdatePanel({ uploadId, asOf, onFinished }: {
   uploadId: string;
   asOf: DataAsOf;
-  /** Called once when an update this panel watched finishes (either way). */
-  onFinished: (succeeded: boolean) => void | Promise<void>;
+  /** Called once when an update this panel watched finishes: succeeded, failed, or started but not followable. */
+  onFinished: (outcome: DataUpdateOutcome) => void | Promise<void>;
 }) {
   const [result, setResult] = useState<NflDataUpdateResult | null>(null);
   const [busy, setBusy] = useState(false);
@@ -33,9 +33,9 @@ export default function DataUpdatePanel({ uploadId, asOf, onFinished }: {
     if (state === "running") { watching.current = id; return; }
     // Only an update seen running in this session hands off; a finished one
     // found on load is history, and the Slate Check already says what is stale.
-    if (id && watching.current === id && (state === "succeeded" || state === "failed")) {
+    if (id && watching.current === id && (state === "succeeded" || state === "failed" || state === "untracked")) {
       watching.current = null;
-      void onFinishedRef.current(state === "succeeded");
+      void onFinishedRef.current(state);
     }
   }, []);
 
@@ -78,10 +78,11 @@ export default function DataUpdatePanel({ uploadId, asOf, onFinished }: {
     {blocked && !running ? <p className="mt-2 text-xs text-slate-500">{blocked}</p> : null}
     {error ? <p className="mt-2 text-xs font-semibold text-red-700">{error}</p> : null}
     {recent && view ? <div className="mt-3 rounded-lg bg-slate-50 p-3">
-      <p className={`text-sm font-semibold ${view.state === "failed" || view.state === "stuck" ? "text-red-800" : view.state === "succeeded" ? "text-emerald-800" : "text-slate-800"}`}>{view.headline}</p>
+      <p className={`text-sm font-semibold ${view.state === "failed" || view.state === "stuck" ? "text-red-800" : view.state === "succeeded" ? "text-emerald-800" : view.state === "untracked" ? "text-amber-800" : "text-slate-800"}`}>{view.headline}</p>
       <ul className="mt-2 space-y-1.5">{view.lines.map((line) => <li key={line.key} className="flex flex-wrap items-start gap-2 text-xs text-slate-700">
         {line.state === "done" ? <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
           : line.state === "failed" ? <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-600" />
+          : line.state === "untracked" ? <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
           : line.state === "running" ? <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-slate-500" />
           : <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />}
         <span className="font-semibold">{line.label}:</span><span className="min-w-0 flex-1">{line.text}</span>

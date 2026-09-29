@@ -14,7 +14,7 @@ import { ensureNflDfsTables } from "@/db/ensure-schema";
 import { nflDfsSlatePlayers, nflDfsSlateUploads } from "@/db/schema";
 import { dispatchWorkflow, listDispatchedRuns, readWorkflowRun } from "@/lib/cron-dispatch";
 import {
-  DATA_UPDATE_JOBS, dataUpdateBlockedReason, describeDataUpdate, replacementRun, runningUpdate, toJobStatus,
+  DATA_UPDATE_JOBS, dataUpdateBlockedReason, describeDataUpdate, jobOpen, replacementRun, runningUpdate, toJobStatus,
   type DataUpdate, type DataUpdateJob, type DataUpdateView,
 } from "@/lib/nfl-dfs/data-update";
 import { parseDkGameInfoKickoff } from "@/lib/nfl-dfs/workspace-stage";
@@ -56,7 +56,7 @@ async function follow(update: DataUpdate, githubToken: string): Promise<DataUpda
   if (update.finishedAt) return update;
   const jobs: DataUpdateJob[] = [];
   for (const job of update.jobs) {
-    if (job.status === "completed" || job.status === "dispatch_failed" || job.runId == null) { jobs.push(job); continue; }
+    if (!jobOpen(job) || job.runId == null) { jobs.push(job); continue; }
     try {
       const run = await readWorkflowRun(job.runId, githubToken);
       let next: DataUpdateJob = { ...job, htmlUrl: run.htmlUrl, status: toJobStatus(run.status), conclusion: run.conclusion,
@@ -76,7 +76,7 @@ async function follow(update: DataUpdate, githubToken: string): Promise<DataUpda
       jobs.push(job);
     }
   }
-  const finished = jobs.every((j) => j.status === "completed" || j.status === "dispatch_failed");
+  const finished = !jobs.some(jobOpen);
   const next: DataUpdate = { ...update, jobs, finishedAt: finished ? new Date().toISOString() : null };
   await db.execute(sql`UPDATE nfl_dfs_data_updates SET jobs=${JSON.stringify(next.jobs)}::jsonb,
     finished_at=${next.finishedAt}::timestamptz WHERE id=${next.id}::uuid`);
@@ -132,18 +132,17 @@ export async function beginNflDataUpdate(uploadId: string, githubToken: string):
     jobs.push({
       key: spec.key, label: spec.label, workflow: spec.workflow,
       runId: outcome.runId ?? null, htmlUrl: outcome.htmlUrl ?? null,
-      status: !outcome.ok ? "dispatch_failed" : "queued", conclusion: null,
-      note: !outcome.ok ? `GitHub answered ${outcome.status || "no response"}${outcome.detail ? `: ${outcome.detail.slice(0, 160)}` : ""}.`
-        : outcome.runId == null ? "Started, but GitHub did not name the run; check the Actions page." : null,
+      // A dispatch GitHub accepted without naming the run can't be followed:
+      // it is its own state, so the update neither waits on it forever nor
+      // reports it as done (see describeDataUpdate).
+      status: !outcome.ok ? "dispatch_failed" : outcome.runId == null ? "untracked" : "queued", conclusion: null,
+      note: !outcome.ok ? `GitHub answered ${outcome.status || "no response"}${outcome.detail ? `: ${outcome.detail.slice(0, 160)}` : ""}.` : null,
       dispatchedAt, completedAt: null,
     });
   }
-  // A dispatch GitHub accepted without naming the run cannot be followed; it
-  // counts as finished here so the update does not wait on it forever.
-  const tracked = jobs.map((j) => j.status === "queued" && j.runId == null ? { ...j, status: "completed" as const, conclusion: "untracked" } : j);
   const update: DataUpdate = {
     id: randomUUID(), uploadId, requestedAt: new Date(now).toISOString(),
-    finishedAt: tracked.every((j) => j.status !== "queued") ? new Date().toISOString() : null, jobs: tracked,
+    finishedAt: jobs.some(jobOpen) ? null : new Date().toISOString(), jobs,
   };
   await db.execute(sql`INSERT INTO nfl_dfs_data_updates (id, upload_id, requested_at, finished_at, jobs)
     VALUES (${update.id}::uuid, ${uploadId}::uuid, ${update.requestedAt}::timestamptz, ${update.finishedAt}::timestamptz, ${JSON.stringify(update.jobs)}::jsonb)`);
