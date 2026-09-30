@@ -16,6 +16,9 @@ on:
 jobs:
   refresh-youtube-picks:
     runs-on: ubuntu-latest
+    # Proxied YouTube transcript fetches plus DeepSeek; the longest recent
+    # run was 18 minutes.
+    timeout-minutes: 45
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}

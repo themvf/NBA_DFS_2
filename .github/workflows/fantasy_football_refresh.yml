@@ -35,6 +35,9 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    # Sleeper, nflverse and FantasyPros are all remote; the longest recent run
+    # was 17 minutes.
+    timeout-minutes: 40
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:

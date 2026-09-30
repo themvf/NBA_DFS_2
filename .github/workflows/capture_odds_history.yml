@@ -37,6 +37,9 @@ concurrency:
 jobs:
   capture-odds:
     runs-on: ubuntu-latest
+    # A hung Odds API or Polymarket call must not hold the concurrency group
+    # for GitHub's 6-hour default while every dispatch behind it queues.
+    timeout-minutes: 20
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
