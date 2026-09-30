@@ -59,7 +59,7 @@ jobs:
       - name: Refresh current-season inputs and immutable results
         id: results
         run: |
-          python -c "import os,sys; sys.argv=['weekly','--phase','results']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season')] if os.environ.get(key)]; from ingest.nfl_dfs_weekly import main; main()"
+          python -c "import os,sys; sys.argv=['weekly','--phase','results']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season')] if os.environ.get(key)]; from ingest.nfl_dfs_weekly import main; sys.exit(main())"
       # Every nflverse player-week row the results phase could not attach to a
       # player (name, week, points). More than 5% unmatched fails the step.
       - name: Retain weekly identity coverage
@@ -78,7 +78,7 @@ jobs:
         env:
           FANTASYPROS_API_KEY: ${{ secrets.FANTASYPROS_API_KEY }}
         run: |
-          python -c "import os,sys; sys.argv=['availability']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_availability import main; main()"
+          python -c "import os,sys; sys.argv=['availability']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_availability import main; sys.exit(main())"
       - name: Retain availability coverage audit
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -91,7 +91,7 @@ jobs:
       - name: Deactivate duplicate roster identities
         if: ${{ !cancelled() }}
         run: |
-          python -c "import os,sys; sys.argv=['dedupe']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season')] if os.environ.get(key)]; from ingest.ff_dedupe_identities import main; main()"
+          python -c "import os,sys; sys.argv=['dedupe']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season')] if os.environ.get(key)]; from ingest.ff_dedupe_identities import main; sys.exit(main())"
       # Optional input, like the injury capture: the build and the matchup
       # forecasts fall back to the last published PFR evidence. Exit 0 also
       # covers games PFR has not charted yet because they finished less than
@@ -119,7 +119,7 @@ jobs:
         id: projections
         if: ${{ !cancelled() }}
         run: |
-          python -c "import os,sys; sys.argv=['weekly','--phase','projections']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_weekly import main; main()"
+          python -c "import os,sys; sys.argv=['weekly','--phase','projections']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_weekly import main; sys.exit(main())"
       # The comparison window and output directory are fixed here, once, so the
       # research workflow grades exactly the comparison this run persisted --
       # even when it starts after midnight UTC.
@@ -132,7 +132,7 @@ jobs:
         id: matchup
         if: ${{ !cancelled() }}
         run: |
-          python -c "import os,sys; sys.argv=['matchup','--persist','--output-dir',os.environ['NFL_MATCHUP_OUTPUT_DIR']]; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from research.nfl_matchup_implementation import main; main()"
+          python -c "import os,sys; sys.argv=['matchup','--persist','--output-dir',os.environ['NFL_MATCHUP_OUTPUT_DIR']]; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from research.nfl_matchup_implementation import main; sys.exit(main())"
       - name: Write the research handoff
         if: ${{ !cancelled() }}
         env:
