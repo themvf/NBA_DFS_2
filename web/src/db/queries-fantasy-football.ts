@@ -214,8 +214,11 @@ export async function getFantasyProsSourceHealth(season: number): Promise<Fantas
 
 export async function getFantasyRankings(rankingSetId: number): Promise<FantasyRankingRow[]> {
   await ensureFantasyFootballTables();
+  // "Prior season" is the ranking set's own season minus one, never a literal
+  // year: a 2027 board joined to 2025 actuals would silently show the wrong
+  // "last season" column with no error.
   const result = await db.execute(sql`WITH scoring_context AS (
-      SELECT COALESCE(scoring_profile->>'preset','PPR') AS scoring
+      SELECT COALESCE(scoring_profile->>'preset','PPR') AS scoring, season - 1 AS prior_season
       FROM ff_ranking_sets WHERE id=${rankingSetId}
     ), prior_points AS (
       SELECT sf.player_id,prior_player.position,
@@ -227,7 +230,7 @@ export async function getFantasyRankings(rankingSetId: number): Promise<FantasyR
       FROM ff_player_season_features sf
       JOIN ff_players prior_player ON prior_player.id=sf.player_id
       CROSS JOIN scoring_context sc
-      WHERE sf.season=2025 AND sf.source='nflverse'
+      WHERE sf.season=sc.prior_season AND sf.source='nflverse'
     ), prior_position_finishes AS (
       SELECT player_id,
         RANK() OVER (PARTITION BY position ORDER BY fantasy_points DESC)::int AS position_finish,
@@ -271,7 +274,7 @@ export async function getFantasyRankings(rankingSetId: number): Promise<FantasyR
       FILTER (WHERE i.id IS NOT NULL),'[]'::jsonb) AS indicators
     FROM ff_player_rankings r JOIN ff_players p ON p.id=r.player_id
     JOIN ff_ranking_sets rs ON rs.id=r.ranking_set_id
-    LEFT JOIN ff_player_season_features f ON f.player_id=p.id AND f.season=2025 AND f.source='nflverse'
+    LEFT JOIN ff_player_season_features f ON f.player_id=p.id AND f.season=rs.season-1 AND f.source='nflverse'
     LEFT JOIN prior_position_finishes prior ON prior.player_id=p.id
     LEFT JOIN ff_player_indicators i ON i.ranking_set_id=r.ranking_set_id AND i.player_id=p.id
     LEFT JOIN LATERAL (
@@ -818,7 +821,7 @@ export async function getProjectionScatter(rankingSetId: number): Promise<Projec
     JOIN ff_players p ON p.id=r.player_id
     JOIN ff_ranking_sets rs ON rs.id=r.ranking_set_id
     LEFT JOIN ff_player_season_features f
-      ON f.player_id=p.id AND f.season=2025 AND f.source='nflverse'
+      ON f.player_id=p.id AND f.season=rs.season-1 AND f.source='nflverse'
     WHERE r.ranking_set_id=${rankingSetId}
       AND r.our_projected_points IS NOT NULL
     ORDER BY r.our_projected_points DESC`);
