@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { getNflSpecialsBoard } from "@/db/queries";
 import SpecialsClient from "./specials-client";
+import { resolveNflSeason } from "@/lib/nfl/season";
 
 export const metadata = {
   title: "NFL Slate Specials",
@@ -18,8 +19,7 @@ export default async function SpecialsPage({
 }) {
   const { season, week, scope, family } = await searchParams;
 
-  const parsedSeason = Number(season);
-  const targetSeason = Number.isFinite(parsedSeason) && parsedSeason > 2000 ? parsedSeason : 2026;
+  const targetSeason = resolveNflSeason(season);
   const targetScope = scope && SCOPES.has(scope) ? scope : "sunday_all";
 
   // With no week given, probe for which weeks have a run and take the newest,

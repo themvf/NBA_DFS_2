@@ -12,6 +12,7 @@ import {
   REDRAFT_TEAM_COUNT,
 } from "@/lib/fantasy-football/redraft";
 import RedraftClient from "./redraft-client";
+import { currentNflSeason } from "@/lib/nfl/season";
 
 // Board size: a full 10-team x 15-round draft is 150 picks. 260 leaves real
 // depth on the board at the end rather than forcing the last rounds to pick
@@ -22,7 +23,7 @@ export default async function RedraftPage() {
   const set = await getLatestRankingSet("PPR");
   const [allRankings, fantasyProsHealth] = await Promise.all([
     set ? getFantasyRankings(set.id) : Promise.resolve([]),
-    getFantasyProsSourceHealth(set?.season ?? 2026),
+    getFantasyProsSourceHealth(set?.season ?? currentNflSeason()),
   ]);
   const rankings = buildDraftPool(
     allRankings,

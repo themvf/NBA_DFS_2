@@ -34,6 +34,7 @@ import type {
 } from "@/db/queries";
 import { DK_SLATE_TIMING_OPTIONS } from "@/lib/dk-slate-timing";
 import type { DkSlateTiming } from "@/lib/dk-slate-timing";
+import { easternDateString } from "@/lib/eastern-date";
 import { saveHistoricalSlate, uploadResults, fetchPlayerStatsAction } from "@/app/dfs/actions";
 import SlateTypePerformancePanel from "./slate-type-performance-panel";
 
@@ -129,7 +130,7 @@ export default function AnalyticsClient({
   const [isUploadingResults, setIsUploadingResults] = useState(false);
 
   // Fetch Player Stats state
-  const [statsDate, setStatsDate] = useState(new Date().toISOString().slice(0, 10));
+  const [statsDate, setStatsDate] = useState(easternDateString());
   const [statsMsg, setStatsMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [isFetchingStats, setIsFetchingStats] = useState(false);
 

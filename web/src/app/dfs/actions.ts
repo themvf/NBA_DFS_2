@@ -18,6 +18,7 @@ import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, 
 import { persistNbaOddsSignalReport } from "@/lib/nba-odds-signal";
 import { canWebSurfaceWriteMlbOdds } from "@/lib/mlb-odds-writer-policy";
 import { normalizeDkSlateTiming } from "@/lib/dk-slate-timing";
+import { easternDateString } from "@/lib/eastern-date";
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
 import { optimizeLineups, optimizeLineupsWithDebug, buildMultiEntryCSV, probeOptimizerAll } from "./optimizer";
 import type { OptimizerPlayer, OptimizerSettings, GeneratedLineup } from "./optimizer";
@@ -4467,7 +4468,7 @@ async function enrichAndSave(
     const d = parseSlateDate(p.gameInfo);
     if (d) { slateDate = d; break; }
   }
-  if (!slateDate) slateDate = new Date().toISOString().slice(0, 10);
+  if (!slateDate) slateDate = easternDateString();
 
   const gameCount = new Set(dkPlayers_.map((p) => p.gameInfo.split(" ")[0])).size;
 
