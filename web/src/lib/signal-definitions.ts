@@ -178,3 +178,12 @@ export const otherDefinitions: SignalDefinition[] = [
     "definition": "Historical soccer signal identifying an unusually generous DraftKings price relative to other books. Retired; historical records remain. Outside Sports → Tracking."
   }
 ];
+
+/**
+ * Display label per detector alert_type, derived from the definitions above
+ * so the detector pages cannot carry a second, shorter hand-written list that
+ * silently falls back to the raw key for every newer detector.
+ */
+export const DETECTOR_TYPE_LABELS: Record<string, string> = Object.fromEntries(
+  [...movementDefinitions, ...valueDefinitions, ...otherDefinitions].map((d) => [d.key, d.name]),
+);
