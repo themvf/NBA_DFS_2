@@ -56,10 +56,10 @@ jobs:
       - name: Capture independent FantasyPros corroboration
         continue-on-error: true
         run: |
-          python -c "import os,sys; sys.argv=['fantasypros-availability']; [(sys.argv.extend([flag,os.environ[key]])) for key,flag in [('NFL_SEASON','--season'),('NFL_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_availability import main; main()"
+          python -c "import os,sys; sys.argv=['fantasypros-availability']; [(sys.argv.extend([flag,os.environ[key]])) for key,flag in [('NFL_SEASON','--season'),('NFL_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_availability import main; sys.exit(main())"
       - name: Publish immutable projection and shared availability contexts
         run: |
-          python -c "import os,sys; sys.argv=['projections']; [(sys.argv.extend([flag,os.environ[key]])) for key,flag in [('NFL_SEASON','--season'),('NFL_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_projections import main; main()"
+          python -c "import os,sys; sys.argv=['projections']; [(sys.argv.extend([flag,os.environ[key]])) for key,flag in [('NFL_SEASON','--season'),('NFL_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_projections import main; sys.exit(main())"
       - name: Evaluate freshness and freeze eligible pre-lock waves
         # `shell: bash` is load-bearing: GitHub then runs `bash -eo pipefail`.
         # The default shell has no pipefail, so the pipe into tee swallowed the
