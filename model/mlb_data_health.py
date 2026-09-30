@@ -9,6 +9,20 @@ from datetime import date
 from config import load_config
 from db.database import DatabaseManager
 
+# Age budget for the point-in-time team/pitcher histories the game-line models
+# read. `refresh_mlb_stats.yml` writes them once a day (13:00 UTC), so 48h
+# allows one missed run. The pitcher history went 79 days without a row
+# (2026-07-12 -> 2026-09-29) while every refresh reported success and this
+# module only ever *observed* the age; the gate applies on dates that have
+# games, since a stale table matters only when there is a decision to make.
+STATS_HISTORY_MAX_AGE_HOURS = 48.0
+
+
+def _format_team_game(row: dict) -> str:
+    commence = row.get("commence_time")
+    when = f"{commence:%Y-%m-%d %H:%M}Z" if commence is not None else "no start time"
+    return f"{row['away']}@{row['home']} {when} [{row['team']}]"
+
 
 def collect_mlb_data_health(db: DatabaseManager, target_date: str) -> dict:
     stats = db.execute_one(
@@ -83,6 +97,30 @@ def collect_mlb_data_health(db: DatabaseManager, target_date: str) -> dict:
         """,
         (target_date,),
     ) or {}
+    # The team-games with NO snapshot at all, named, and whether each game has
+    # already started. "6/8" said nothing about which game or why; on
+    # 2026-09-29 it was PHI@ATL 18:00Z, whose first pitch came before the day's
+    # first refresh fired (the 13:10 UTC schedule ran at 18:36 UTC), so no
+    # pregame snapshot could ever be built and the count failed all day.
+    missing_team_games = [dict(row) for row in db.execute(
+        """
+        SELECT m.id AS matchup_id, m.commence_time, sides.team_id,
+               t.abbreviation AS team, ht.abbreviation AS home, at.abbreviation AS away,
+               (m.commence_time IS NOT NULL AND m.commence_time <= NOW()) AS started
+        FROM mlb_matchups m
+        JOIN LATERAL (VALUES (m.home_team_id), (m.away_team_id)) AS sides(team_id) ON TRUE
+        JOIN mlb_teams t ON t.team_id = sides.team_id
+        JOIN mlb_teams ht ON ht.team_id = m.home_team_id
+        JOIN mlb_teams at ON at.team_id = m.away_team_id
+        WHERE m.game_date = %s AND m.game_id IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM mlb_bullpen_snapshots b
+            WHERE b.matchup_id = m.id AND b.team_id = sides.team_id
+          )
+        ORDER BY m.commence_time NULLS LAST, m.id, sides.team_id
+        """,
+        (target_date,),
+    ) or []]
     weather = db.execute_one(
         """
         SELECT
@@ -124,6 +162,21 @@ def collect_mlb_data_health(db: DatabaseManager, target_date: str) -> dict:
             "remedy": None if passed else remedy,
         })
 
+    def warn(key: str, passed: bool, detail: str, note: str) -> None:
+        """A named, visible defect that nothing later in the day can repair.
+
+        It is reported with status 'warn' and does not fail the day: failing
+        would skip prop capture and the alert scan for every game that has
+        NOT started, which is the incident this module's history records.
+        """
+        checks.append({
+            "key": key,
+            "status": "pass" if passed else "warn",
+            "severity": "ok" if passed else "warning",
+            "detail": detail,
+            "remedy": None if passed else note,
+        })
+
     team_entities = int(number(stats, "team_entities"))
     team_captures = int(number(stats, "team_captures"))
     pitcher_captures = int(number(stats, "pitcher_captures"))
@@ -152,6 +205,20 @@ def collect_mlb_data_health(db: DatabaseManager, target_date: str) -> dict:
     games = int(number(schedule, "games"))
     starts = int(number(schedule, "starts"))
     revisions = int(number(schedule, "revisions"))
+    # Freshness of the histories, gated only when the date has games to decide.
+    for label, key in (("team", "team_age_hours"), ("pitcher", "pitcher_age_hours")):
+        age = stats.get(key)
+        age_hours = float(age) if age is not None else None
+        fresh = age_hours is not None and age_hours <= STATS_HISTORY_MAX_AGE_HOURS
+        detail = (
+            f"latest {label} history capture is {age_hours / 24:.1f} days old"
+            if age_hours is not None else f"no {label} history captures at all"
+        ) + f" (budget {STATS_HISTORY_MAX_AGE_HOURS:g}h)"
+        add(
+            f"{label}_history_freshness", games == 0 or fresh, detail,
+            f"Run python -m ingest.mlb_stats for the active season; refresh_mlb_stats.yml has "
+            f"not written a {label} history row inside the budget, whatever its run status says.",
+        )
     add(
         "schedule_starts", games == starts,
         f"{starts}/{games} games have a start time on {target_date}",
@@ -183,10 +250,38 @@ def collect_mlb_data_health(db: DatabaseManager, target_date: str) -> dict:
     # revisions of an existing team-game are correct behaviour, not a defect --
     # any BAD row is still caught by the bullpen_provenance check below, which
     # deliberately keeps scanning every row rather than only the latest.
+    #
+    # Two different defects hide in one count. A team-game whose game has NOT
+    # started and has no snapshot is repairable now, so it fails the day. A
+    # team-game whose game started before any refresh built a pregame
+    # snapshot cannot be repaired by anything that runs later, so it is named
+    # and warned about instead of failing every later refresh of the day
+    # (which skips prop capture and the alert scan for the games still to come).
+    missing_upcoming = [row for row in missing_team_games if not row.get("started")]
+    missing_started = [row for row in missing_team_games if row.get("started")]
+    coverage = f"{bullpen_team_games}/{expected_bullpen} team-games have a bullpen snapshot on {target_date}"
+    # The count stays authoritative: a shortfall the listing cannot name is
+    # still a shortfall, never a pass.
+    unnamed_shortfall = bullpen_team_games < expected_bullpen and not missing_team_games
     add(
-        "bullpen_snapshots", bullpen_team_games == expected_bullpen,
-        f"{bullpen_team_games}/{expected_bullpen} team-games have a bullpen snapshot on {target_date}",
-        f"Run python -m ingest.mlb_bullpen through the latest completed date for {target_date}.",
+        "bullpen_snapshots", not missing_upcoming and not unnamed_shortfall,
+        coverage + (
+            "; missing before first pitch: " + ", ".join(_format_team_game(r) for r in missing_upcoming)
+            if missing_upcoming else ""
+        ),
+        f"Run python -m ingest.mlb_bullpen through the latest completed date for {target_date}; "
+        "the named team-games still have no pregame snapshot.",
+    )
+    warn(
+        "bullpen_pregame_missed", not missing_started,
+        (
+            f"{len(missing_started)} team-game(s) started with no pregame bullpen snapshot: "
+            + ", ".join(_format_team_game(r) for r in missing_started)
+            if missing_started else "every started game had a pregame bullpen snapshot"
+        ),
+        "No refresh ran between the game's publication and its first pitch (the scheduled "
+        "run fired late), so the snapshot was never built; it cannot be repaired after first "
+        "pitch. Check the refresh_mlb_vegas.yml run times for that morning.",
     )
     invalid_bullpen = int(
         number(bullpen, "relief_missing_provenance")
@@ -215,12 +310,26 @@ def collect_mlb_data_health(db: DatabaseManager, target_date: str) -> dict:
 
     return {
         "target_date": target_date,
-        "status": "pass" if all(check["status"] == "pass" for check in checks) else "fail",
+        # 'warn' checks are visible in `checks` but do not fail the day.
+        "status": "pass" if all(check["status"] != "fail" for check in checks) else "fail",
         "checks": checks,
         "observed": {
             "team_age_hours": number(stats, "team_age_hours"),
             "pitcher_age_hours": number(stats, "pitcher_age_hours"),
+            "bullpen_missing_team_games": [
+                {**_row_summary(row)} for row in missing_team_games
+            ],
         },
+    }
+
+
+def _row_summary(row: dict) -> dict:
+    return {
+        "matchup_id": row.get("matchup_id"),
+        "team": row.get("team"),
+        "game": f"{row.get('away')}@{row.get('home')}",
+        "commence_time": str(row.get("commence_time")) if row.get("commence_time") is not None else None,
+        "started": bool(row.get("started")),
     }
 
 
