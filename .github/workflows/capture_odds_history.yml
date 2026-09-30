@@ -91,5 +91,20 @@ jobs:
         # Free, no API key — polls Polymarket's Gamma API for short-lived
         # match-winner markets. Writes to game_odds_history so the existing
         # pinnacle_polymarket_delta detector picks them up automatically.
+        # Optional: a failure must not fail the odds capture, but it starves
+        # that detector, so the report step below names it.
+        id: polymarket
         continue-on-error: true
         run: python -m ingest.polymarket_tennis --matches-only
+
+      - name: Report optional step outcomes
+        if: ${{ always() }}
+        env:
+          POLYMARKET_OUTCOME: ${{ steps.polymarket.outcome }}
+        run: |
+          report() {
+            echo "- $1: $2" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$2" = failure ]; then echo "::warning title=Optional step failed::$1 ended $2"; fi
+          }
+          echo "## Optional steps" >> "$GITHUB_STEP_SUMMARY"
+          report "Polymarket tennis match prices" "$POLYMARKET_OUTCOME"
