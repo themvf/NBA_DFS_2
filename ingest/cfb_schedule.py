@@ -567,7 +567,7 @@ def collect_data_health(db: DatabaseManager) -> dict:
     return result
 
 
-def main() -> None:
+def main() -> int:
     parser = argparse.ArgumentParser(description="Refresh canonical CFB schedule and sportsbook checkpoints")
     parser.add_argument("--year", type=int, default=datetime.now().year)
     parser.add_argument("--week", type=int)
@@ -586,6 +586,7 @@ def main() -> None:
     cfbd_key = getattr(config, "cfbd_api_key", None) or __import__("os").getenv("CFBD_API_KEY", "")
     odds_key = config.odds_api.api_key
     ran = False
+    status = 0
     if args.refresh_team_aliases:
         refresh_team_aliases(db, cfbd_key)
         ran = True
@@ -605,15 +606,20 @@ def main() -> None:
         print(json.dumps(capture_due_checkpoints(db, odds_key, dry_run=args.dry_run), indent=2, default=str))
         ran = True
     if args.health:
-        print(json.dumps(collect_data_health(db), indent=2, default=str))
+        health = collect_data_health(db)
+        print(json.dumps(health, indent=2, default=str))
+        # Same contract as ingest.nhl_schedule --health: "fail" is an exit
+        # code, not only a printed word, so the workflow step goes red.
+        status = 1 if health["status"] == "fail" else 0
         ran = True
     if not ran:
         fetch_schedule(db, cfbd_key, year=args.year, week=args.week, season_type=args.season_type)
         fetch_events(db, odds_key)
         print(json.dumps(capture_due_checkpoints(db, odds_key), indent=2, default=str))
+    return status
 
 
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    main()
+    raise SystemExit(main())
