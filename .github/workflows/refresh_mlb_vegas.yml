@@ -124,6 +124,20 @@ jobs:
       - name: MLB prop-value program status (pre-registered, read-only)
         # Reports accrual against the frozen floors. Withholds any rate,
         # interval or verdict below floor — raw counts only. Never fails the
-        # workflow: it is a report, not a gate.
+        # workflow: it is a report, not a gate. Its outcome is still named
+        # below so a crashed report is not mistaken for a quiet one.
+        id: prop_program
         continue-on-error: true
         run: python -m model.mlb_prop_program
+
+      - name: Report optional step outcomes
+        if: ${{ always() }}
+        env:
+          PROP_PROGRAM_OUTCOME: ${{ steps.prop_program.outcome }}
+        run: |
+          report() {
+            echo "- $1: $2" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$2" = failure ]; then echo "::warning title=Optional step failed::$1 ended $2"; fi
+          }
+          echo "## Optional steps" >> "$GITHUB_STEP_SUMMARY"
+          report "MLB prop-value program status" "$PROP_PROGRAM_OUTCOME"
