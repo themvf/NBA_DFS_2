@@ -215,6 +215,18 @@ const offSeason = only([wf("adp.yml", { crons: ["7 0,12 * 7-9 *"] })], { "adp.ym
 assert.equal(offSeason.status, "pass");
 assert.equal(offSeason.nextEventAt, "2027-07-01T00:07:00.000Z", "next season's first slot, not a blank");
 
+// One workflow the checklist cannot judge (a cron the parser rejects) is its own FAIL row; it
+// used to throw out of buildChecklist and take every other row down with it.
+const partial = only([wf("bad.yml", { crons: ["0 9 * * MON"] }), wf("good.yml", { crons: ["0 * * * *"] })], { "bad.yml": [], "good.yml": [run("good.yml", "2026-09-29T12:00:00Z", "success")] });
+assert.equal(partial.find((i) => i.key === "workflow:bad.yml")!.status, "fail");
+assert.match(partial.find((i) => i.key === "workflow:bad.yml")!.detail, /^Could not be checked: the checklist could not judge this workflow \(bad cron field "MON"\)/);
+assert.equal(partial.find((i) => i.key === "workflow:good.yml")!.status, "pass", "the other workflows are still judged");
+// A scheduled job whose recent runs were all cancelled has no finished run to vouch for it; this
+// crashed the whole checklist ("Cannot read properties of null") instead of being a FAIL row.
+const cancelledOnly = only([wf("c.yml", { crons: ["0 * * * *"] })], { "c.yml": [run("c.yml", "2026-09-29T12:00:00Z", "cancelled"), run("c.yml", "2026-09-29T11:00:00Z", "cancelled")] }).find((i) => i.key === "workflow:c.yml")!;
+assert.equal(cancelledOnly.status, "fail");
+assert.match(cancelledOnly.detail, /^None of its last 2 runs finished \(newest was cancelled/);
+
 // --- sweep ---
 const problems = problemsFromChecklist(items);
 assert.ok(problems.every((p) => items.find((i) => i.key === p.key)?.status === "fail"));

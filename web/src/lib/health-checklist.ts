@@ -207,7 +207,16 @@ function workflowItem(w: ManifestWorkflow, input: ChecklistInputs, runsByName: M
   const gap = longestGapMs(future, input.now);
   const cadence = gap == null ? "" : gap < 3600_000 ? ` Runs about every ${Math.round(gap / 60_000)} min.` : gap < 86400_000 * 2 ? ` Runs at least every ${Math.round(gap / 3600_000)} h.` : "";
   if (!scheduled && !followsOthers) return { ...base, status: lastFinished?.conclusion === "success" ? "pass" : "info", detail: `Manual job; last run ${lastFinished?.conclusion ?? last.status} ${et(last.createdAt)}.` };
-  return { ...base, status: "pass", detail: `Last run succeeded ${et(lastFinished!.createdAt)}.${cadence}` };
+  // Every recent run was cancelled or skipped: nothing finished, so there is no success to report.
+  if (!lastFinished) return { ...base, status: "fail", detail: `None of its last ${runs.length} runs finished (newest was ${last.conclusion} at ${et(last.createdAt)}).` };
+  return { ...base, status: "pass", detail: `Last run succeeded ${et(lastFinished.createdAt)}.${cadence}` };
+}
+
+/** A workflow the checklist could not judge (a bad cron in the manifest, an unexpected run shape) is its own FAIL row, never a crash that empties the page. */
+function unjudgedWorkflow(w: ManifestWorkflow, error: unknown, input: ChecklistInputs): HealthItem {
+  const group: HealthGroup = NFL_WORKFLOWS.has(w.file) ? "NFL DFS" : "Scheduled jobs";
+  return { ...unreadable(`workflow:${w.file}`, group, w.name, `the checklist could not judge this workflow (${error instanceof Error ? error.message : String(error)})`, input),
+    url: `${REPO}/actions/workflows/${w.file}` };
 }
 
 export function buildChecklist(input: ChecklistInputs): HealthItem[] {
@@ -222,7 +231,8 @@ export function buildChecklist(input: ChecklistInputs): HealthItem[] {
     const runsByName = new Map<string, WorkflowRunLite[]>();
     for (const w of input.manifest) runsByName.set(w.name, input.runs[w.file] ?? []);
     for (const w of input.manifest) {
-      const item = workflowItem(w, input, runsByName);
+      let item: HealthItem;
+      try { item = workflowItem(w, input, runsByName); } catch (error) { item = unjudgedWorkflow(w, error, input); }
       nextRunByWorkflow.set(w.file, item.nextEventAt);
       items.push(item);
     }
