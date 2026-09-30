@@ -816,8 +816,12 @@ export default function SurvivorClient({ grid, pools, ledger, loadedAt }: Props)
             )}
             <span className="text-muted-foreground">Click a cell to use that team that week</span>
           </div>
-          <span className="font-mono text-[11px] text-muted-foreground">
-            {grid.modelVersion ?? "—"} · {new Date(loadedAt).toLocaleTimeString()}
+          <span
+            className="font-mono text-[11px] text-muted-foreground"
+            title={`Win probabilities computed ${grid.computedAt ?? "— (never)"} · page loaded ${loadedAt}`}
+          >
+            {grid.modelVersion ?? "—"} · probabilities as of{" "}
+            {grid.computedAt ? new Date(grid.computedAt).toLocaleString() : "never computed"}
           </span>
         </header>
 
