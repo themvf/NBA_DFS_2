@@ -51,12 +51,8 @@ export default async function MlbOwnershipModelPanel({
   sortBy: OwnershipDetailSort;
   basePath?: string;
 }) {
-  let report;
-  try {
-    report = await getCachedMlbOwnershipModelReport(selectedSlateId, sortBy);
-  } catch {
-    return null;
-  }
+  // A thrown read propagates to the section wrapper, which renders it by name.
+  const report = await getCachedMlbOwnershipModelReport(selectedSlateId, sortBy);
 
   if (!report) {
     return (

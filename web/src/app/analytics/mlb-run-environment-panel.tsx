@@ -3,12 +3,8 @@ import { getCachedMlbRunEnvironmentReport } from "@/db/analytics-cache";
 const fmt2 = (v: number | null | undefined) => (v == null ? "—" : v.toFixed(2));
 
 export default async function MlbRunEnvironmentPanel() {
-  let report;
-  try {
-    report = await getCachedMlbRunEnvironmentReport();
-  } catch {
-    return null;
-  }
+  // A thrown read propagates to AnalyticsSection, which renders it by name.
+  const report = await getCachedMlbRunEnvironmentReport();
 
   if (!report) return null;
 

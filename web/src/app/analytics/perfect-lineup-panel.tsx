@@ -311,14 +311,10 @@ function MlbPerfectLineupTables({ analytics }: { analytics: MlbPerfectLineupAnal
 }
 
 export default async function PerfectLineupPanel({ sport }: { sport: Sport }) {
-  let analytics;
-  try {
-    analytics = sport === "mlb"
-      ? await getCachedMlbPerfectLineupAnalytics()
-      : await getCachedNbaPerfectLineupAnalytics();
-  } catch {
-    return null;
-  }
+  // A thrown read propagates to AnalyticsSection, which renders it by name.
+  const analytics = sport === "mlb"
+    ? await getCachedMlbPerfectLineupAnalytics()
+    : await getCachedNbaPerfectLineupAnalytics();
 
   if (!analytics) return null;
 

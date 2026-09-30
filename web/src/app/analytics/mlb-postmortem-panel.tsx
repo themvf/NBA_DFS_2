@@ -594,12 +594,8 @@ function OwnershipMisses({ rows }: { rows: MlbPostmortemOwnershipMissRow[] }) {
 }
 
 export default async function MlbPostmortemPanel() {
-  let report;
-  try {
-    report = await getCachedMlbPostmortemReport();
-  } catch {
-    return null;
-  }
+  // A thrown read propagates to the section wrapper, which renders it by name.
+  const report = await getCachedMlbPostmortemReport();
 
   if (!report) {
     return (

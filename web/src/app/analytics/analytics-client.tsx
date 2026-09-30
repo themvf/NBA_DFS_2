@@ -37,6 +37,7 @@ import type { DkSlateTiming } from "@/lib/dk-slate-timing";
 import { easternDateString } from "@/lib/eastern-date";
 import { saveHistoricalSlate, uploadResults, fetchPlayerStatsAction } from "@/app/dfs/actions";
 import SlateTypePerformancePanel from "./slate-type-performance-panel";
+import type { SectionLoadError } from "./analytics-loads";
 
 const fmt1 = (v: number | null | undefined) =>
   v == null ? "—" : v.toFixed(1);
@@ -78,6 +79,10 @@ type Props = {
   mlbLsProjTeamSal: TeamSalaryBiasRow[];
   mlbLsOwnTeamPos: TeamPositionBiasRow[];
   mlbLsOwnTeamSal: TeamSalaryBiasRow[];
+  /** Sections whose query threw. Listed by name so a failed read never looks like "no data". */
+  loadErrors?: SectionLoadError[];
+  /** The accuracy-trend query itself failed, so "no data yet" would be the wrong message. */
+  crossSlateFailed?: boolean;
   sport: Sport;
   showHeader?: boolean;
 };
@@ -106,6 +111,8 @@ export default function AnalyticsClient({
   mlbLsProjTeamSal,
   mlbLsOwnTeamPos,
   mlbLsOwnTeamSal,
+  loadErrors = [],
+  crossSlateFailed = false,
   sport,
   showHeader = true,
 }: Props) {
@@ -325,6 +332,21 @@ export default function AnalyticsClient({
         </div>
       ) : null}
 
+      {loadErrors.length > 0 && (
+        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+          <p className="font-semibold">
+            {loadErrors.length} section{loadErrors.length === 1 ? "" : "s"} could not be loaded. They are missing below, not empty.
+          </p>
+          <ul className="mt-1 list-disc pl-5">
+            {loadErrors.map((failure) => (
+              <li key={failure.label}>
+                <span className="font-medium">{failure.label}</span>: <span className="font-mono">{failure.error}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* ── Results Ingestion ────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
@@ -488,11 +510,15 @@ export default function AnalyticsClient({
       </div>
 
       {!hasData && (
-        <div className="rounded-lg border bg-card p-6 text-center text-sm text-gray-400">
-          <>
-            No {sport.toUpperCase()} accuracy data yet — save a historical slate above, or upload a DK results CSV
-            from the <a href={`/dfs?sport=${sport}`} className="underline">DFS page</a>.
-          </>
+        <div className={`rounded-lg border p-6 text-center text-sm ${crossSlateFailed ? "border-red-200 bg-red-50 text-red-800" : "bg-card text-gray-400"}`}>
+          {crossSlateFailed ? (
+            <>Could not load {sport.toUpperCase()} accuracy data — the accuracy-trend query failed (see above). This is a read failure, not an empty history.</>
+          ) : (
+            <>
+              No {sport.toUpperCase()} accuracy data yet — save a historical slate above, or upload a DK results CSV
+              from the <a href={`/dfs?sport=${sport}`} className="underline">DFS page</a>.
+            </>
+          )}
         </div>
       )}
 
