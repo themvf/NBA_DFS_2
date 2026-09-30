@@ -36,6 +36,7 @@ export default async function CfbPage({
   let research: CfbResearchBoard = {};
   let scorecard: MarketSignalScorecardRow[] = [];
   let captureHealth: MarketCaptureHealth | null = null;
+  let auditError: string | null = null;
   try {
     [signals, backtest, research, scorecard, captureHealth, observations] = await Promise.all([
       getLineAlerts("cfb", 250, undefined, board.games.map((game) => game.matchupId)),
@@ -45,8 +46,12 @@ export default async function CfbPage({
       getMarketCaptureHealth("cfb", board.gameDate),
       getMovementSignalObservations("cfb", board.games.map(game => game.matchupId)),
     ]);
-  } catch {
-    // The market board remains useful during a first-deploy schema bootstrap.
+  } catch (error) {
+    // The market board remains useful during a first-deploy schema bootstrap,
+    // but the page must say the signal ledger, backtest, research context,
+    // scorecard and checkpoints could not be read rather than render them empty.
+    auditError = error instanceof Error ? error.message : "Unknown audit read error";
+    console.error("CFB audit feeds unavailable", error);
   }
-  return <CfbTerminalClient board={board} observations={observations} signals={signals} backtest={backtest} research={research} scorecard={scorecard} captureHealth={captureHealth} />;
+  return <CfbTerminalClient board={board} observations={observations} signals={signals} backtest={backtest} research={research} scorecard={scorecard} captureHealth={captureHealth} auditError={auditError} />;
 }

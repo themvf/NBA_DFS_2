@@ -84,7 +84,7 @@ function MiniChart({ points, label, percent }: { points: Point[]; label: string;
   </span>;
 }
 
-function WatchGame({ game, signals, active, asOf, onChoose }: { game: NhlTerminalRow; signals: LineAlertRow[]; active: boolean; asOf: string; onChoose: () => void }) {
+function WatchGame({ game, signals, active, asOf, auditUnavailable, onChoose }: { game: NhlTerminalRow; signals: LineAlertRow[]; active: boolean; asOf: string; auditUnavailable: boolean; onChoose: () => void }) {
   const latestByType = signals.filter((signal, index) => signals.findIndex((other) => other.alertType === signal.alertType) === index);
   const moneyline = tapeSeries(game.history, game.commenceTime, "moneyline");
   const total = tapeSeries(game.history, game.commenceTime, "total");
@@ -99,7 +99,7 @@ function WatchGame({ game, signals, active, asOf, onChoose }: { game: NhlTermina
     <span className={styles.watchLine}>{favoriteLabel(game)}</span>
     <span className={move != null && move > 0 ? styles.positive : move != null && move < 0 ? styles.negative : styles.neutral} title={`${game.homeAbbrev} vig-free win probability, first capture to latest`}><Trend aria-hidden="true" /> {move == null ? "—" : `${Math.abs(move * 100).toFixed(1)}`}</span>
     <span className={styles.miniCharts}><MiniChart points={moneyline} label={`${game.homeAbbrev} ML %`} percent /><MiniChart points={total} label="TOTAL" percent={false} /></span>
-    <span className={styles.movementBadges}>{latestByType.map((signal) => <span key={signal.alertType} data-kind={signalKind(signal.alertType)} title={`${SIGNAL_LABELS[signal.alertType] ?? signal.alertType} · ${signal.side} · ${fmtEt(signal.createdAt)} · ${signal.outcome ?? "result pending"}`}>{SIGNAL_LABELS[signal.alertType] ?? signal.alertType.toUpperCase()} · {signal.side.toUpperCase()}{signalMetric(signal) ? ` · ${signalMetric(signal)}` : ""} · {fmtEt(signal.createdAt, true)}</span>)}{!signals.length ? <small>{game.captures < 2 ? "INSUFFICIENT HISTORY" : "NO RECORDED MONEYLINE SIGNAL"}</small> : null}</span>
+    <span className={styles.movementBadges}>{latestByType.map((signal) => <span key={signal.alertType} data-kind={signalKind(signal.alertType)} title={`${SIGNAL_LABELS[signal.alertType] ?? signal.alertType} · ${signal.side} · ${fmtEt(signal.createdAt)} · ${signal.outcome ?? "result pending"}`}>{SIGNAL_LABELS[signal.alertType] ?? signal.alertType.toUpperCase()} · {signal.side.toUpperCase()}{signalMetric(signal) ? ` · ${signalMetric(signal)}` : ""} · {fmtEt(signal.createdAt, true)}</span>)}{!signals.length ? <small>{auditUnavailable ? "SIGNAL LEDGER UNAVAILABLE" : game.captures < 2 ? "INSUFFICIENT HISTORY" : "NO RECORDED MONEYLINE SIGNAL"}</small> : null}</span>
     <span className={styles.watchHealth}>{game.latestCapturedAt ? `OBS ${fmtEt(game.latestCapturedAt)}` : "NEVER CAPTURED"}{stale && !game.completed ? " · STALE" : ""}{game.closeQuality ? ` · CLOSE ${game.closeQuality.toUpperCase()}` : ""}{b2b.length ? <span className={n.b2b}> · B2B {b2b.join(", ")}</span> : null}</span>
   </button>;
 }
@@ -150,7 +150,7 @@ function Movers({ movers, selected, onSelect }: { movers: Mover[]; selected: num
   </section>;
 }
 
-export default function NhlTerminalClient({ board, captureHealth, signals, scorecard }: { board: NhlTerminalBoard; captureHealth: MarketCaptureHealth | null; signals: LineAlertRow[]; scorecard: MarketSignalScorecardRow[] }) {
+export default function NhlTerminalClient({ board, captureHealth, signals, scorecard, auditError = null }: { board: NhlTerminalBoard; captureHealth: MarketCaptureHealth | null; signals: LineAlertRow[]; scorecard: MarketSignalScorecardRow[]; auditError?: string | null }) {
   const router = useRouter();
   function goToDate(next: string) { if (next) router.push(`/nhl?date=${next}`); }
   function shiftDate(delta: number) {
@@ -199,7 +199,7 @@ export default function NhlTerminalClient({ board, captureHealth, signals, score
     <section className={styles.watchPane} aria-label="NHL market watch"><div className={styles.sectionTitle}><span>MARKET WATCH</span><span>{board.gameDate}</span></div>
       <p className={styles.watchLegend}>Favorite = vig-free moneyline consensus. Arrow = home win probability, first capture to latest (pp). Charts show observed consensus; dashed gaps exceed 30m. B2B = back-to-back.</p>
       <div className={styles.watchList}>
-        {filteredGames.map((item) => <WatchGame key={item.matchupId} game={item} signals={signals.filter((signal) => signal.matchupId === item.matchupId)} active={item.matchupId === game?.matchupId} asOf={board.asOf} onChoose={() => chooseGame(item.matchupId)} />)}
+        {filteredGames.map((item) => <WatchGame key={item.matchupId} game={item} signals={signals.filter((signal) => signal.matchupId === item.matchupId)} active={item.matchupId === game?.matchupId} asOf={board.asOf} auditUnavailable={auditError != null} onChoose={() => chooseGame(item.matchupId)} />)}
         {!filteredGames.length ? <div className={styles.empty}>{board.games.length ? "No games match this search." : board.statusDetail}</div> : null}
       </div></section>
     <div className={styles.shell}>
@@ -238,12 +238,13 @@ export default function NhlTerminalClient({ board, captureHealth, signals, score
       </>}</main>
       <aside className={styles.pulsePane}><div className={styles.sectionTitle}><span>DATA PULSE</span><span>{statusLabel}</span></div>
         <article className={styles.pulseRow} data-tone={healthy ? "market" : "critical"}><div><span>{fmtEt(board.asOf, true)}</span><strong>{healthy ? <Zap aria-hidden="true" /> : <ShieldAlert aria-hidden="true" />} FEED STATE</strong></div><h3>{statusLabel}</h3><p>{board.statusDetail}</p></article>
-        {captureHealth ? <article className={styles.pulseRow} data-tone={captureHealth.status === "partial" ? "critical" : "market"}><div><span>{captureHealth.eventsCovered} EVENTS</span><strong><Activity aria-hidden="true" /> CHECKPOINTS</strong></div><h3>{captureHealth.due ? `${captureHealth.dueCaptured}/${captureHealth.due} due captured` : "No checkpoints due"}</h3><p>{captureHealth.missed} missed · {captureHealth.failed} failed · {captureHealth.pending} scheduled ahead</p></article> : null}
+        {auditError ? <article className={styles.pulseRow} data-tone="critical"><div><span>{fmtEt(board.asOf, true)}</span><strong><ShieldAlert aria-hidden="true" /> AUDIT FEEDS</strong></div><h3>UNAVAILABLE</h3><p>Could not read the signal ledger, capture checkpoints or scorecard: {auditError}. Empty signal tapes below mean "not read", not "nothing fired".</p></article> : null}
+        {captureHealth ?<article className={styles.pulseRow} data-tone={captureHealth.status === "partial" ? "critical" : "market"}><div><span>{captureHealth.eventsCovered} EVENTS</span><strong><Activity aria-hidden="true" /> CHECKPOINTS</strong></div><h3>{captureHealth.due ? `${captureHealth.dueCaptured}/${captureHealth.due} due captured` : "No checkpoints due"}</h3><p>{captureHealth.missed} missed · {captureHealth.failed} failed · {captureHealth.pending} scheduled ahead</p></article> : null}
         {game ? <><article className={styles.pulseRow} data-tone="market"><div><span>{game.latestCapturedAt ? fmtEt(game.latestCapturedAt, true) : "—"}</span><strong><Activity aria-hidden="true" /> CAPTURE</strong></div><h3>{plural(game.captures, "observation")}</h3><p>Every chart point comes from the append-only exact-book ledger.</p></article>
           <div className={styles.sectionTitle}><span>CROSS-MARKET</span><span>RELATED</span></div>
           {(Object.keys(NHL_MARKET_LABELS) as NhlMarketKey[]).map((key) => { const related = buildNhlMarket(game, key, sidesFor(key)[0], "price", board.asOf); return <div key={key} className={styles.relatedRow}><span>{NHL_MARKET_LABELS[key]}</span><strong>{related.currentLabel}</strong><small>{related.move}</small></div>; })}
           <div className={styles.sectionTitle}><span>SIGNAL TAPE</span><span>{gameSignals.length} RECORDED</span></div>
-          {gameSignals.length ? gameSignals.slice(0, 8).map((signal) => <article key={`${signal.alertType}-${signal.side}`} className={styles.signalRow} data-tone="market"><div><strong>{SIGNAL_LABELS[signal.alertType] ?? signal.alertType.toUpperCase()}</strong><span>{fmtEt(signal.createdAt, true)}</span></div><p>MONEYLINE · {signal.side.toUpperCase()}{signalMetric(signal) ? ` · ${signalMetric(signal)}` : ""} · retail {pct(signal.alertProb)}{signal.sharpProb != null ? ` · Pinnacle ${pct(signal.sharpProb)}` : ""}</p><small>{signal.outcome ? `${signal.outcome.toUpperCase()}${signal.clvPp != null ? ` · CLV ${signed(signal.clvPp)}pp` : ""}` : "result pending"}</small></article>) : <div className={styles.signalEmpty}>No qualifying moneyline signal for this game.</div>}</> : null}
+          {gameSignals.length ? gameSignals.slice(0, 8).map((signal) => <article key={`${signal.alertType}-${signal.side}`} className={styles.signalRow} data-tone="market"><div><strong>{SIGNAL_LABELS[signal.alertType] ?? signal.alertType.toUpperCase()}</strong><span>{fmtEt(signal.createdAt, true)}</span></div><p>MONEYLINE · {signal.side.toUpperCase()}{signalMetric(signal) ? ` · ${signalMetric(signal)}` : ""} · retail {pct(signal.alertProb)}{signal.sharpProb != null ? ` · Pinnacle ${pct(signal.sharpProb)}` : ""}</p><small>{signal.outcome ? `${signal.outcome.toUpperCase()}${signal.clvPp != null ? ` · CLV ${signed(signal.clvPp)}pp` : ""}` : "result pending"}</small></article>) : <div className={styles.signalEmpty}>{auditError ? "Signal ledger could not be read for this game." : "No qualifying moneyline signal for this game."}</div>}</> : null}
         <div className={styles.disclosure}><BellRing aria-hidden="true" /><div><strong>Research terminal</strong><p>Quotes are observations, not recommendations. No predictive edge or real-money execution is represented.</p></div></div>
       </aside>
     </div>
