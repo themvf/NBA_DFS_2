@@ -173,9 +173,15 @@ async function ensureTable(): Promise<void> {
 }
 
 /**
- * Replace the stored checklist with this run's items, in one transaction. A
- * failing item keeps the time it first failed; items that no longer exist are
- * removed.
+ * Replace the stored checklist with this run's items, in one transaction
+ * (neon-http's `batch` runs its statements in one transaction). A failing
+ * item keeps the time it first failed; items that no longer exist are removed.
+ *
+ * Two checkers can overlap (the 30-minute cron and the daily sweep both
+ * store), and the one that started earlier can finish later. A row is only
+ * ever replaced by a newer reading, and whatever is older than the newest
+ * reading in the table is removed, so the table always holds one reading and
+ * an older run cannot roll a fresher verdict back.
  */
 export async function storeHealth(items: HealthItem[], runAt: Date): Promise<void> {
   await ensureTable();
@@ -190,8 +196,9 @@ export async function storeHealth(items: HealthItem[], runAt: Date): Promise<voi
       ON CONFLICT (item_key) DO UPDATE SET grp = EXCLUDED.grp, label = EXCLUDED.label, status = EXCLUDED.status, detail = EXCLUDED.detail,
         url = EXCLUDED.url, last_event_at = EXCLUDED.last_event_at, next_event_at = EXCLUDED.next_event_at, next_event_note = EXCLUDED.next_event_note,
         last_checked_at = EXCLUDED.last_checked_at, next_check_at = EXCLUDED.next_check_at, run_at = EXCLUDED.run_at,
-        failing_since = CASE WHEN EXCLUDED.status <> 'fail' THEN NULL ELSE COALESCE(health_checks.failing_since, EXCLUDED.failing_since) END`),
-    db.execute(sql`DELETE FROM health_checks WHERE run_at < ${at}::timestamptz`),
+        failing_since = CASE WHEN EXCLUDED.status <> 'fail' THEN NULL ELSE COALESCE(health_checks.failing_since, EXCLUDED.failing_since) END
+      WHERE health_checks.run_at < EXCLUDED.run_at`),
+    db.execute(sql`DELETE FROM health_checks WHERE run_at < (SELECT max(run_at) FROM health_checks)`),
   ]);
 }
 
