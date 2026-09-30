@@ -16,7 +16,7 @@
  *
  * Pure: the collector (lib/health-collector) gathers inputs and stores results.
  */
-import { cronTimes, longestGapMs } from "@/lib/cron-schedule";
+import { cronTimes, lastCronTime, longestGapMs, nextCronTime } from "@/lib/cron-schedule";
 import { cronStatuses, type CronHeartbeat } from "@/lib/cron-heartbeat";
 import type { WorkflowRunLite } from "@/lib/workflow-health";
 
@@ -130,16 +130,18 @@ function workflowItem(w: ManifestWorkflow, input: ChecklistInputs, runsByName: M
   const last = runs[0] ?? null;
   const lastFinished = finished[0] ?? null;
   const dispatch = input.dispatchTimes[w.file] ?? { past: [], future: [] };
-  const pastCron = w.crons.length ? cronTimes(w.crons, new Date(now - 8 * 86400_000), 8 * 1440).filter((t) => t.getTime() <= now) : [];
+  // The next 8 days of fire times give the cadence text; a cron that fires less
+  // often than that (monthly, seasonal) still gets its true next time.
   const futureCron = w.crons.length ? cronTimes(w.crons, input.now, 8 * 1440, 50) : [];
   const future = [...futureCron, ...dispatch.future].sort((a, b) => a.getTime() - b.getTime());
+  const nextEvent = future[0] ?? (w.crons.length ? nextCronTime(w.crons, input.now) : null);
   const scheduled = w.crons.length > 0 || dispatch.future.length > 0 || dispatch.past.length > 0;
   const followsOthers = w.afterWorkflows.length > 0;
   const group: HealthGroup = NFL_WORKFLOWS.has(w.file) ? "NFL DFS" : "Scheduled jobs";
   const state = input.workflowStates?.[w.file];
   const readError = input.workflowErrors?.[w.file];
   if (readError) {
-    const base0 = { key: `workflow:${w.file}`, group, label: w.name, url: `${REPO}/actions/workflows/${w.file}`, lastEventAt: null, nextEventAt: iso(future[0]),
+    const base0 = { key: `workflow:${w.file}`, group, label: w.name, url: `${REPO}/actions/workflows/${w.file}`, lastEventAt: null, nextEventAt: iso(nextEvent),
       lastCheckedAt: input.now.toISOString(), nextCheckAt: iso(input.nextCheckAt) };
     // A 404 is a workflow added in code but not yet on GitHub's default branch.
     return /\b404\b/.test(readError)
@@ -148,8 +150,8 @@ function workflowItem(w: ManifestWorkflow, input: ChecklistInputs, runsByName: M
   }
   const base = {
     key: `workflow:${w.file}`, group, label: w.name, url: last?.url ?? `${REPO}/actions/workflows/${w.file}`,
-    lastEventAt: last?.createdAt ?? null, nextEventAt: iso(future[0]),
-    nextEventNote: !future.length && followsOthers ? `after ${w.afterWorkflows.join(", ")}` : !future.length && !scheduled ? "manual" : null,
+    lastEventAt: last?.createdAt ?? null, nextEventAt: iso(nextEvent),
+    nextEventNote: !nextEvent && followsOthers ? `after ${w.afterWorkflows.join(", ")}` : !nextEvent && !scheduled ? "manual" : null,
     lastCheckedAt: input.now.toISOString(), nextCheckAt: iso(input.nextCheckAt),
   };
   // Disabling a workflow is a deliberate act (e.g. soccer after the World Cup): shown, not emailed.
@@ -170,10 +172,18 @@ function workflowItem(w: ManifestWorkflow, input: ChecklistInputs, runsByName: M
   }
 
   // Overdue against its own schedule: it should have run at `due` and has not run since.
-  // Each slot gets the grace of whoever starts it (see DISPATCH_GRACE_MS).
-  const slots = [...pastCron.map((t) => ({ t, by: "GitHub's scheduler", grace: GITHUB_CRON_GRACE_MS })),
-    ...dispatch.past.map((t) => ({ t, by: "the dispatcher", grace: DISPATCH_GRACE_MS }))];
-  const due = slots.filter((s) => now - s.t.getTime() >= s.grace).sort((a, b) => b.t.getTime() - a.t.getTime())[0];
+  // Each slot gets the grace of whoever starts it (see DISPATCH_GRACE_MS). The GitHub
+  // slot is the newest fire time that is already past its grace, found by walking
+  // the cron back up to 400 days, so a monthly or seasonal schedule is judged too
+  // (an 8-day window used to let a missed monthly slot age out into PASS, and a
+  // 400-slot cap left a */5 cron judged only against slots 6.6 days old).
+  const githubDue = w.crons.length ? lastCronTime(w.crons, new Date(now - GITHUB_CRON_GRACE_MS)) : null;
+  const dispatchDue = dispatch.past.filter((t) => now - t.getTime() >= DISPATCH_GRACE_MS).sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
+  const slots = [
+    ...(githubDue ? [{ t: githubDue, by: "GitHub's scheduler", grace: GITHUB_CRON_GRACE_MS }] : []),
+    ...(dispatchDue ? [{ t: dispatchDue, by: "the dispatcher", grace: DISPATCH_GRACE_MS }] : []),
+  ];
+  const due = slots.sort((a, b) => b.t.getTime() - a.t.getTime())[0];
   if (scheduled && due && (!last || Date.parse(last.createdAt) < due.t.getTime() - 30 * 60_000)) {
     const late = `${Math.round(due.grace / 3600_000)} h`;
     return { ...base, status: "fail",
