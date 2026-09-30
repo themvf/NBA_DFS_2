@@ -6,12 +6,8 @@ const fmtPct = (v: number | null | undefined) => (v == null ? "-" : `${v.toFixed
 const fmtDt = (v: string | null | undefined) => (v ? new Date(v).toLocaleString() : "-");
 
 export default async function MlbBlowupCandidatePanel() {
-  let report;
-  try {
-    report = await getCachedMlbBlowupCandidateReport();
-  } catch {
-    return null;
-  }
+  // A thrown read propagates to AnalyticsSection, which renders it by name.
+  const report = await getCachedMlbBlowupCandidateReport();
 
   if (!report) {
     return (

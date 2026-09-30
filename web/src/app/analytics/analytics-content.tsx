@@ -25,19 +25,7 @@ import {
 } from "@/db/analytics-cache";
 import type { Sport } from "@/db/queries";
 import AnalyticsClient from "./analytics-client";
-
-/**
- * Run fn(), returning null on any error (including synchronous throws).
- * Using a lambda wrapper — not safe(fn()) — so that synchronous throws
- * inside fn() are caught before they escape this async boundary.
- */
-async function safeRun<T>(fn: () => Promise<T>): Promise<T | null> {
-  try {
-    return await fn();
-  } catch {
-    return null;
-  }
-}
+import { loadSection, sectionErrors, sectionValue, skippedSection } from "./analytics-loads";
 
 export default async function AnalyticsContent({
   sport,
@@ -48,7 +36,10 @@ export default async function AnalyticsContent({
 }) {
   // Run all independent queries in parallel — reduces total DB time from
   // sum(query latencies) to max(query latency), preventing function timeouts
-  // on cache miss when Neon wakes from suspend.
+  // on cache miss when Neon wakes from suspend. Each load records its own
+  // outcome; a failed section is named on the page, never rendered as empty.
+  const mlbOnly = <T,>(label: string, fn: () => Promise<T>, empty: T) =>
+    sport === "mlb" ? loadSection(label, fn) : Promise.resolve(skippedSection(label, empty));
   const [
     crossSlate,
     posAccuracy,
@@ -74,56 +65,68 @@ export default async function AnalyticsContent({
     mlbLsOwnTeamPos,
     mlbLsOwnTeamSal,
   ] = await Promise.all([
-    safeRun(() => getCachedCrossSlateAccuracy(sport)),
-    safeRun(() => getCachedPositionAccuracy(sport)),
-    safeRun(() => getCachedSalaryTierAccuracy(sport)),
-    safeRun(() => getCachedPositionSalaryMatrix(sport)),
-    safeRun(() => getCachedSlateTypePerformance(sport)),
-    safeRun(() => getCachedLeverageCalibration(sport)),
-    safeRun(() => getCachedOwnershipVsTeamTotal(sport)),
-    sport === "mlb" ? safeRun(() => getCachedMlbBattingOrderCalibration()) : Promise.resolve(null),
-    safeRun(() => getCachedProjectionSourceBreakdown(sport)),
-    safeRun(() => getCachedStatLevelAccuracy(sport)),
-    sport === "nba" ? safeRun(() => getCachedGameTotalModelAccuracy()) : Promise.resolve(null),
-    safeRun(() => getCachedLsProjectionBiasMatrix(sport)),
-    safeRun(() => getCachedOurOwnershipBiasMatrix(sport)),
-    safeRun(() => getCachedLsOwnershipBiasMatrix(sport)),
-    safeRun(() => getCachedLsOwnershipTeamPositionMatrix(sport)),
-    sport === "mlb" ? safeRun(() => getCachedMlbOurProjTeamPositionMatrix()) : Promise.resolve(null),
-    sport === "mlb" ? safeRun(() => getCachedMlbOurProjTeamSalaryMatrix())   : Promise.resolve(null),
-    sport === "mlb" ? safeRun(() => getCachedMlbOurOwnTeamPositionMatrix())  : Promise.resolve(null),
-    sport === "mlb" ? safeRun(() => getCachedMlbOurOwnTeamSalaryMatrix())    : Promise.resolve(null),
-    sport === "mlb" ? safeRun(() => getCachedMlbLsProjTeamPositionMatrix())  : Promise.resolve(null),
-    sport === "mlb" ? safeRun(() => getCachedMlbLsProjTeamSalaryMatrix())    : Promise.resolve(null),
-    sport === "mlb" ? safeRun(() => getCachedMlbLsOwnTeamPositionMatrix())   : Promise.resolve(null),
-    sport === "mlb" ? safeRun(() => getCachedMlbLsOwnTeamSalaryMatrix())     : Promise.resolve(null),
+    loadSection("Accuracy trend", () => getCachedCrossSlateAccuracy(sport)),
+    loadSection("Position breakdown", () => getCachedPositionAccuracy(sport)),
+    loadSection("Salary tier", () => getCachedSalaryTierAccuracy(sport)),
+    loadSection("Position x salary matrix", () => getCachedPositionSalaryMatrix(sport)),
+    loadSection("Slate type performance", () => getCachedSlateTypePerformance(sport)),
+    loadSection("Leverage calibration", () => getCachedLeverageCalibration(sport)),
+    loadSection("Ownership vs team total", () => getCachedOwnershipVsTeamTotal(sport)),
+    mlbOnly("Batting order calibration", () => getCachedMlbBattingOrderCalibration(), []),
+    loadSection("Projection source breakdown", () => getCachedProjectionSourceBreakdown(sport)),
+    loadSection("Stat-level accuracy", () => getCachedStatLevelAccuracy(sport)),
+    sport === "nba"
+      ? loadSection("Game total model", () => getCachedGameTotalModelAccuracy())
+      : Promise.resolve(skippedSection("Game total model", [])),
+    loadSection("LineStar projection bias matrix", () => getCachedLsProjectionBiasMatrix(sport)),
+    loadSection("Our ownership bias matrix", () => getCachedOurOwnershipBiasMatrix(sport)),
+    loadSection("LineStar ownership bias matrix", () => getCachedLsOwnershipBiasMatrix(sport)),
+    loadSection("LineStar ownership team x position", () => getCachedLsOwnershipTeamPositionMatrix(sport)),
+    mlbOnly("MLB our projection team x position", () => getCachedMlbOurProjTeamPositionMatrix(), []),
+    mlbOnly("MLB our projection team x salary", () => getCachedMlbOurProjTeamSalaryMatrix(), []),
+    mlbOnly("MLB our ownership team x position", () => getCachedMlbOurOwnTeamPositionMatrix(), []),
+    mlbOnly("MLB our ownership team x salary", () => getCachedMlbOurOwnTeamSalaryMatrix(), []),
+    mlbOnly("MLB LineStar projection team x position", () => getCachedMlbLsProjTeamPositionMatrix(), []),
+    mlbOnly("MLB LineStar projection team x salary", () => getCachedMlbLsProjTeamSalaryMatrix(), []),
+    mlbOnly("MLB LineStar ownership team x position", () => getCachedMlbLsOwnTeamPositionMatrix(), []),
+    mlbOnly("MLB LineStar ownership team x salary", () => getCachedMlbLsOwnTeamSalaryMatrix(), []),
+  ]);
+
+  const loadErrors = sectionErrors([
+    crossSlate, posAccuracy, salaryTier, positionSalaryMatrix, slateTypePerformance, leverageCalib,
+    ownVsTotal, battingOrderCalib, projSourceBreakdown, statLevelAccuracy, gameTotalModel,
+    lsProjectionBiasMatrix, ourOwnershipBiasMatrix, lsOwnershipBiasMatrix, lsOwnershipTeamPositionMatrix,
+    mlbOurProjTeamPos, mlbOurProjTeamSal, mlbOurOwnTeamPos, mlbOurOwnTeamSal,
+    mlbLsProjTeamPos, mlbLsProjTeamSal, mlbLsOwnTeamPos, mlbLsOwnTeamSal,
   ]);
 
   return (
     <AnalyticsClient
-      crossSlate={crossSlate ?? []}
-      posAccuracy={posAccuracy ?? []}
-      salaryTier={salaryTier ?? []}
-      positionSalaryMatrix={positionSalaryMatrix ?? []}
-      slateTypePerformance={slateTypePerformance ?? []}
-      leverageCalib={leverageCalib ?? []}
-      ownVsTotal={ownVsTotal ?? []}
-      battingOrderCalib={battingOrderCalib ?? []}
-      projSourceBreakdown={projSourceBreakdown ?? []}
-      statLevelAccuracy={statLevelAccuracy ?? []}
-      gameTotalModel={gameTotalModel ?? []}
-      lsProjectionBiasMatrix={lsProjectionBiasMatrix ?? []}
-      ourOwnershipBiasMatrix={ourOwnershipBiasMatrix ?? []}
-      lsOwnershipBiasMatrix={lsOwnershipBiasMatrix ?? []}
-      lsOwnershipTeamPositionMatrix={lsOwnershipTeamPositionMatrix ?? []}
-      mlbOurProjTeamPos={mlbOurProjTeamPos ?? []}
-      mlbOurProjTeamSal={mlbOurProjTeamSal ?? []}
-      mlbOurOwnTeamPos={mlbOurOwnTeamPos ?? []}
-      mlbOurOwnTeamSal={mlbOurOwnTeamSal ?? []}
-      mlbLsProjTeamPos={mlbLsProjTeamPos ?? []}
-      mlbLsProjTeamSal={mlbLsProjTeamSal ?? []}
-      mlbLsOwnTeamPos={mlbLsOwnTeamPos ?? []}
-      mlbLsOwnTeamSal={mlbLsOwnTeamSal ?? []}
+      crossSlate={sectionValue(crossSlate, [])}
+      crossSlateFailed={!crossSlate.ok}
+      posAccuracy={sectionValue(posAccuracy, [])}
+      salaryTier={sectionValue(salaryTier, [])}
+      positionSalaryMatrix={sectionValue(positionSalaryMatrix, [])}
+      slateTypePerformance={sectionValue(slateTypePerformance, [])}
+      leverageCalib={sectionValue(leverageCalib, [])}
+      ownVsTotal={sectionValue(ownVsTotal, [])}
+      battingOrderCalib={sectionValue(battingOrderCalib, [])}
+      projSourceBreakdown={sectionValue(projSourceBreakdown, [])}
+      statLevelAccuracy={sectionValue(statLevelAccuracy, [])}
+      gameTotalModel={sectionValue(gameTotalModel, [])}
+      lsProjectionBiasMatrix={sectionValue(lsProjectionBiasMatrix, [])}
+      ourOwnershipBiasMatrix={sectionValue(ourOwnershipBiasMatrix, [])}
+      lsOwnershipBiasMatrix={sectionValue(lsOwnershipBiasMatrix, [])}
+      lsOwnershipTeamPositionMatrix={sectionValue(lsOwnershipTeamPositionMatrix, [])}
+      mlbOurProjTeamPos={sectionValue(mlbOurProjTeamPos, [])}
+      mlbOurProjTeamSal={sectionValue(mlbOurProjTeamSal, [])}
+      mlbOurOwnTeamPos={sectionValue(mlbOurOwnTeamPos, [])}
+      mlbOurOwnTeamSal={sectionValue(mlbOurOwnTeamSal, [])}
+      mlbLsProjTeamPos={sectionValue(mlbLsProjTeamPos, [])}
+      mlbLsProjTeamSal={sectionValue(mlbLsProjTeamSal, [])}
+      mlbLsOwnTeamPos={sectionValue(mlbLsOwnTeamPos, [])}
+      mlbLsOwnTeamSal={sectionValue(mlbLsOwnTeamSal, [])}
+      loadErrors={loadErrors}
       sport={sport}
       showHeader={showHeader}
     />
