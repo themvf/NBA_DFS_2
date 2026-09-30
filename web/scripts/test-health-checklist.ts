@@ -10,7 +10,7 @@
  *   closes the tracking issue correctly.
  */
 import assert from "node:assert/strict";
-import { cronTimes, parseCron, cronMatches } from "../src/lib/cron-schedule";
+import { cronTimes, lastCronTime, nextCronTime, parseCron, cronMatches } from "../src/lib/cron-schedule";
 import { buildChecklist, type ChecklistInputs, type ManifestWorkflow } from "../src/lib/health-checklist";
 import { planSweep, problemsFromChecklist, parseState } from "../src/lib/failure-sweep";
 import type { WorkflowRunLite } from "../src/lib/workflow-health";
@@ -22,6 +22,32 @@ assert.equal(cronTimes(["0 12 * * 1"], new Date("2026-09-29T12:00:00Z"), 8 * 144
 assert.equal(cronTimes(["17 */6 * 1,2,9-12 *"], new Date("2026-12-31T23:00:00Z"), 120)[0].toISOString(), "2027-01-01T00:17:00.000Z", "January is included");
 assert.ok(cronMatches(parseCron("0 9 * * 7"), new Date("2026-09-27T09:00:00Z")), "7 means Sunday");
 assert.throws(() => parseCron("* * *"), /5 fields/);
+// Steps, ranges with steps, start/step, and 7 inside a range.
+assert.deepEqual([...parseCron("0 9 1-10/3 * *").dom], [1, 4, 7, 10]);
+assert.deepEqual([...parseCron("5/10 * * * *").minute], [5, 15, 25, 35, 45, 55]);
+assert.deepEqual([...parseCron("*/15 * * * *").minute], [0, 15, 30, 45]);
+assert.deepEqual([...parseCron("0 9 * * 5-7").dow], [5, 6, 0]);
+// Day-of-month and day-of-week both restricted: either may match (standard cron).
+const either = parseCron("0 9 1-10 * 2");
+assert.ok(cronMatches(either, new Date("2026-09-15T09:00:00Z")), "Tuesday the 15th matches on the weekday");
+assert.ok(cronMatches(either, new Date("2026-09-03T09:00:00Z")), "Thursday the 3rd matches on the day of month");
+assert.ok(!cronMatches(either, new Date("2026-09-16T09:00:00Z")), "Wednesday the 16th matches neither");
+// A field that can never fire throws; it used to parse to an empty set and describe a job that could never be overdue.
+for (const bad of ["60 9 * * *", "0 24 * * *", "0 9 0 * *", "0 9 32 * *", "0 9 * 13 *", "0 9 * * 8", "0 9 10-1 * *", "*/ * * * *", "1/0 * * * *", "0 9 * * MON", "0 9 * JAN *", "1.5 * * * *"]) {
+  assert.throws(() => parseCron(bad), /bad cron field/, `${bad} must throw`);
+}
+// Exact last/next fire times beyond the 8-day scan: monthly, seasonal, and dense crons.
+const probeAt = new Date("2026-09-29T12:43:00Z");
+assert.equal(lastCronTime(["0 6 1 * *"], probeAt)!.toISOString(), "2026-09-01T06:00:00.000Z", "monthly: last fire 28 days back");
+assert.equal(nextCronTime(["0 6 1 * *"], probeAt)!.toISOString(), "2026-10-01T06:00:00.000Z", "monthly: next fire beyond 8 days");
+assert.equal(lastCronTime(["0 6 1 * *"], probeAt, 20), null, "nothing inside a 20-day lookback");
+assert.equal(lastCronTime(["17 */6 * 1,2,9-12 *"], new Date("2026-03-15T00:00:00Z"))!.toISOString(), "2026-02-28T18:17:00.000Z", "seasonal: last slot of February");
+assert.equal(nextCronTime(["17 */6 * 1,2,9-12 *"], new Date("2026-03-15T00:00:00Z"))!.toISOString(), "2026-09-01T00:17:00.000Z", "seasonal: first slot of September");
+assert.equal(lastCronTime(["*/5 * * * *"], probeAt)!.toISOString(), "2026-09-29T12:40:00.000Z");
+assert.equal(nextCronTime(["*/5 * * * *"], probeAt)!.toISOString(), "2026-09-29T12:45:00.000Z");
+assert.equal(lastCronTime(["*/5 * * * *"], new Date("2026-09-29T12:40:00Z"))!.toISOString(), "2026-09-29T12:40:00.000Z", "at or before");
+assert.equal(lastCronTime(["7 */6 * * *", "37 * * * *"], probeAt)!.toISOString(), "2026-09-29T12:37:00.000Z", "newest across two specs on one day");
+assert.equal(nextCronTime(["0 12 * * 1", "0 14 * * 2"], new Date("2026-12-31T23:59:00Z"))!.toISOString(), "2027-01-04T12:00:00.000Z", "year boundary");
 
 // --- checklist ---
 const now = new Date("2026-09-29T12:40:00Z");
@@ -167,6 +193,27 @@ for (const key of ["checklist:github", "checklist:datasets", "checklist:heartbea
   assert.equal(blind.find((i) => i.key === key)?.status, "fail", `${key} is a FAIL row when unreadable`);
 }
 assert.match(blind.find((i) => i.key === "checklist:github")!.detail, /Could not be checked: GitHub answered 401/);
+
+// A job on a dense GitHub cron (*/5) that stopped two days ago. The old 8-day scan was
+// capped at 400 fire times, so the newest slot it could judge against was 6.6 days old
+// and the job read PASS until it had been dead for a week.
+const only = (manifest: ManifestWorkflow[], runs: Record<string, WorkflowRunLite[]>, over: Partial<ChecklistInputs> = {}) =>
+  buildChecklist(base({ manifest, runs, dispatchTimes: {}, workflowStates: {}, workflowErrors: {}, ...over }));
+const dense = only([wf("five.yml", { crons: ["*/5 * * * *"] })], { "five.yml": [run("five.yml", "2026-09-27T12:00:00Z", "success")] }).find((i) => i.key === "workflow:five.yml")!;
+assert.equal(dense.status, "fail");
+assert.match(dense.detail, /^Overdue: GitHub's scheduler was due to start it Sep 28, 8:40 PM ET \(allowing 12 h\), but it has not run since Sep 27/);
+// A monthly cron whose slot was four weeks ago and whose last run was two months ago: an
+// 8-day window used to let this age out into "Last run succeeded Aug 1"; its next run
+// is also more than 8 days away and must still be shown.
+const monthly = only([wf("monthly.yml", { crons: ["0 6 1 * *"] })], { "monthly.yml": [run("monthly.yml", "2026-08-01T06:01:00Z", "success")] }).find((i) => i.key === "workflow:monthly.yml")!;
+assert.equal(monthly.status, "fail");
+assert.match(monthly.detail, /^Overdue: GitHub's scheduler was due to start it Sep 1, 2:00 AM ET \(allowing 12 h\), but it has not run since Aug 1/);
+assert.equal(monthly.nextEventAt, "2026-10-01T06:00:00.000Z");
+// The same monthly job that ran on time is fine, and a seasonal job out of season is not overdue.
+assert.equal(only([wf("monthly.yml", { crons: ["0 6 1 * *"] })], { "monthly.yml": [run("monthly.yml", "2026-09-01T06:01:00Z", "success")] }).find((i) => i.key === "workflow:monthly.yml")!.status, "pass");
+const offSeason = only([wf("adp.yml", { crons: ["7 0,12 * 7-9 *"] })], { "adp.yml": [run("adp.yml", "2026-09-30T12:07:30Z", "success")] }, { now: new Date("2026-11-15T12:00:00Z"), nextCheckAt: new Date("2026-11-15T12:30:00Z") }).find((i) => i.key === "workflow:adp.yml")!;
+assert.equal(offSeason.status, "pass");
+assert.equal(offSeason.nextEventAt, "2027-07-01T00:07:00.000Z", "next season's first slot, not a blank");
 
 // --- sweep ---
 const problems = problemsFromChecklist(items);
