@@ -20,6 +20,7 @@ on:
 jobs:
   load-slate:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       DNN_COOKIE:   ${{ secrets.DNN_COOKIE }}

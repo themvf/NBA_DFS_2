@@ -15,6 +15,9 @@ on:
 jobs:
   refresh-stats:
     runs-on: ubuntu-latest
+    # stats.nba.com is known to hang from shared runners; recent runs take
+    # about 30 minutes, so this bounds a hang without cutting a slow one.
+    timeout-minutes: 60
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
 

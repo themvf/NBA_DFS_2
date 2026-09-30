@@ -36,6 +36,8 @@ concurrency:
 jobs:
   refresh-nfl-survivor:
     runs-on: ubuntu-latest
+    # Recent runs take under 7 minutes; --recalibrate is documented as slow.
+    timeout-minutes: 45
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}

@@ -37,6 +37,9 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    # Runs every 15 minutes: a hung CFBD or Odds API call would otherwise
+    # queue the next runs behind it for GitHub's 6-hour default.
+    timeout-minutes: 30
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
