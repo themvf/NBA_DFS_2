@@ -11506,6 +11506,17 @@ const DETECTOR_REGISTRY: { sport: string; alertType: string; deployedAt: string 
   { sport: "nfl", alertType: "steam", deployedAt: "2026-08-01" },
   { sport: "nfl", alertType: "walking", deployedAt: "2026-08-01" },
   { sport: "nfl", alertType: "pinnacle_polymarket_delta", deployedAt: "2026-08-01" },
+  // NFL market-structure detectors (2026-09-06) and tennis's Pinnacle
+  // favourite forward test (2026-08-29) were registered in Python only until
+  // 2026-09-29; scripts/test-detector-registry.ts now diffs the two copies.
+  { sport: "nfl", alertType: "reversal", deployedAt: "2026-09-06" },
+  { sport: "nfl", alertType: "reference_led", deployedAt: "2026-09-06" },
+  { sport: "nfl", alertType: "price_pressure", deployedAt: "2026-09-06" },
+  { sport: "nfl", alertType: "key_cross", deployedAt: "2026-09-06" },
+  { sport: "nfl", alertType: "book_disagreement", deployedAt: "2026-09-06" },
+  { sport: "nfl", alertType: "market_convergence", deployedAt: "2026-09-06" },
+  { sport: "nfl", alertType: "late_move", deployedAt: "2026-09-06" },
+  { sport: "tennis", alertType: "pinnacle_favorite_forward", deployedAt: "2026-08-29" },
   { sport: "mlb", alertType: "dk_prop_value", deployedAt: "2026-07-02" },
   { sport: "mlb", alertType: "prop_line_gap", deployedAt: "2026-07-02" },
   { sport: "tennis", alertType: "dk_prop_value", deployedAt: "2026-07-02" },
