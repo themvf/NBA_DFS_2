@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { getCfbResearchBoard, getCfbSignalBacktest, getCfbTerminalBoard, getLineAlerts, getMovementSignalObservations, getMarketCaptureHealth, getMarketSignalScorecard, type CfbResearchBoard, type CfbSignalBacktestRow, type CfbTerminalBoard, type LineAlertRow, type MarketCaptureHealth, type MarketSignalScorecardRow } from "@/db/queries";
 import CfbTerminalClient from "./cfb-terminal-client";
+import { easternDateString } from "@/lib/eastern-date";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,7 @@ export default async function CfbPage({
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Unknown CFB data error";
     board = {
-      gameDate: date ?? new Date().toISOString().slice(0, 10),
+      gameDate: date ?? easternDateString(),
       asOf: new Date().toISOString(),
       status: "unavailable",
       statusDetail: `CFB live data is unavailable: ${detail}`,

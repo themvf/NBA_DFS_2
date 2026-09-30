@@ -6,6 +6,12 @@ import { db } from ".";
 import { ensureSurvivorTables, ensureDkPlayerPropColumns, ensureProjectionExperimentTables, ensureAnalyticsColumns, ensureOwnershipExperimentTables, ensureMlbBlowupTrackingTables, ensureMlbHomerunTrackingTables, ensureOddsHistoryTables, ensureMlbGamePredictionTables } from "./ensure-schema";
 import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, mlbTeams, mlbTeamStats, mlbMatchups } from "./schema";
 import { eq, desc, sql, gte, and } from "drizzle-orm";
+import { easternDateString } from "@/lib/eastern-date";
+import { currentNflSeason } from "@/lib/nfl/season";
+// Hard-coded on purpose: it must match the season string the Python ingest
+// (config.py NbaApiConfig.season) writes to nba_team_stats/nba_player_stats.
+// Change both together at the October rollover; the /stats page shows the
+// newest fetched_at so a stale season is visible rather than silent.
 const CURRENT_SEASON = "2025-26";
 
 type SolverModel = {
@@ -6110,7 +6116,7 @@ export type VegasMatchupRow = {
 };
 
 export async function getVegasMatchups(gameDate?: string): Promise<VegasMatchupRow[]> {
-  const targetDate = gameDate ?? new Date().toISOString().slice(0, 10);
+  const targetDate = gameDate ?? easternDateString();
   const rows = await db.execute(sql`
     SELECT
       nm.id            AS "matchupId",
@@ -8428,7 +8434,7 @@ export async function getNflPipelineHealth(gameDate: string, throughDate?: strin
  * capture job writes sport='nfl' rows, the page fills in without a UI change.
  */
 export async function getNflVegasBoard(gameDate?: string, throughDate?: string): Promise<NflVegasBoardRow[]> {
-  const targetDate = gameDate ?? new Date().toISOString().slice(0, 10);
+  const targetDate = gameDate ?? easternDateString();
   await ensureOddsHistoryTables();
   const rows = await db.execute(sql`
     WITH captures AS (
@@ -8601,7 +8607,7 @@ export type SurvivorGrid = {
  * recompute anything -- provenance and horizon widening are decided once, at
  * ingest, so the page cannot quietly disagree with the stored record.
  */
-export async function getNflSurvivorGrid(season = 2026): Promise<SurvivorGrid> {
+export async function getNflSurvivorGrid(season = currentNflSeason()): Promise<SurvivorGrid> {
   const rows = await db.execute(sql`
     SELECT
       w.week, w.game_id AS "gameId", w.team_id AS "teamId", w.is_home AS "isHome",
@@ -8772,7 +8778,7 @@ export type SurvivorLedgerRow = {
   result: "pending" | "won" | "lost" | "push" | "void";
 };
 
-export async function getSurvivorPools(season = 2026): Promise<SurvivorPoolRow[]> {
+export async function getSurvivorPools(season = currentNflSeason()): Promise<SurvivorPoolRow[]> {
   await ensureSurvivorTables();
   const pools = await db.execute(sql`
     SELECT id, name, season, pool_size AS "poolSize", tie_rule AS "tieRule",
@@ -8848,7 +8854,7 @@ export async function getSurvivorPools(season = 2026): Promise<SurvivorPoolRow[]
 }
 
 /** The frozen recommendation ledger, newest first. Superseded rows are kept. */
-export async function getSurvivorLedger(season = 2026, limit = 100): Promise<SurvivorLedgerRow[]> {
+export async function getSurvivorLedger(season = currentNflSeason(), limit = 100): Promise<SurvivorLedgerRow[]> {
   await ensureSurvivorTables();
   const rows = await db.execute(sql`
     SELECT r.id, r.entry_id AS "entryId", e.label AS "entryLabel", r.week,
@@ -8884,7 +8890,7 @@ export async function getSurvivorLedger(season = 2026, limit = 100): Promise<Sur
 }
 
 export async function getMlbVegasMatchups(gameDate?: string): Promise<VegasMatchupRow[]> {
-  const targetDate = gameDate ?? new Date().toISOString().slice(0, 10);
+  const targetDate = gameDate ?? easternDateString();
   await ensureAnalyticsColumns();
   await ensureMlbGamePredictionTables();
   const rows = await db.execute(sql`
@@ -10381,14 +10387,7 @@ export async function getCfbSignalBacktest(): Promise<CfbSignalBacktestRow[]> {
 }
 
 function easternDateNow(): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/New_York",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${value.year}-${value.month}-${value.day}`;
+  return easternDateString();
 }
 
 export async function getCfbDefaultGameDate(): Promise<string> {
@@ -14079,7 +14078,7 @@ export type PickemSlate = {
  * Persisted model probabilities remain the fallback and historical baseline.
  * Share an evidence snapshot with callers so the card and its audit agree.
  */
-export async function getNflPickemSlate(season = 2026, evidence?: PickemEvidence): Promise<PickemSlate> {
+export async function getNflPickemSlate(season = currentNflSeason(), evidence?: PickemEvidence): Promise<PickemSlate> {
   evidence ??= await getPickemEvidence(season);
   const rows = await db.execute(sql`
     SELECT

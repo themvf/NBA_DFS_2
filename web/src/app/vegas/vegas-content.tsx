@@ -35,6 +35,7 @@ import {
 } from "@/db/queries";
 import { getTennisVegasMatchups, getTennisBets, getTennisBetBacktest, getTennisLegacyBetSummary, getTennisEloDashboard } from "@/db/queries";
 import type { Sport } from "@/db/queries";
+import { easternDateString } from "@/lib/eastern-date";
 import VegasClient from "./vegas-client";
 import SoccerVegasClient from "./soccer-vegas-client";
 import TennisVegasClient from "./tennis-vegas-client";
@@ -157,7 +158,7 @@ export default async function VegasContent({ date, sport = "nba" }: { date?: str
       biggestMisses={biggestMisses}
       teamInsights={teamInsights}
       moneylineBacktest={moneylineBacktest}
-      queryDate={date ?? new Date().toISOString().slice(0, 10)}
+      queryDate={date ?? easternDateString()}
       sport={sport}
     />
   );

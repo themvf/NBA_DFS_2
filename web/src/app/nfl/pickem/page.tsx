@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { getNflPickemSlate, getPickemLedger, getPickemPools } from "@/db/queries";
 import PickemClient from "./pickem-client";
 import { getPickemEvidence } from "@/db/pickem-evidence";
+import { resolveNflSeason } from "@/lib/nfl/season";
 
 export const metadata = {
   title: "NFL Pick'em Pools",
@@ -16,8 +17,7 @@ export default async function PickemPage({
   searchParams: Promise<{ season?: string; week?: string }>;
 }) {
   const { season, week } = await searchParams;
-  const parsedSeason = Number(season);
-  const targetSeason = Number.isFinite(parsedSeason) && parsedSeason > 2000 ? parsedSeason : 2026;
+  const targetSeason = resolveNflSeason(season);
 
   const evidencePromise = getPickemEvidence(targetSeason);
   const [slate, pools, ledger, evidence] = await Promise.all([
