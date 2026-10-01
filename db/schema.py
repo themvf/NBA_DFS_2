@@ -2683,6 +2683,18 @@ TABLES = [
             ALTER TABLE nfl_dfs_field_contests ADD COLUMN score_curve JSONB;
         END IF;
     END $$""",
+    # One row per (contest, definition version): duplication, who fills the
+    # field, and pair co-ownership, computed from the export's full lineups
+    # (model/nfl_dfs_field_structure.py). Python owns writes; the lineups
+    # themselves are not stored, the standings file is the source.
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_field_structure (
+        contest_id TEXT NOT NULL REFERENCES nfl_dfs_field_contests(contest_id) ON DELETE CASCADE,
+        version TEXT NOT NULL,
+        entries INTEGER NOT NULL,
+        summary JSONB NOT NULL,
+        computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (contest_id, version)
+    )""",
 
     # ── DraftKings' own live player pool ─────────────────────────────────────
     #
