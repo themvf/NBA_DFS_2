@@ -75,3 +75,11 @@ def test_context_variants_share_exact_shadow_capture_and_missing_stays_missing()
     newer = {**old, "forecast_id": "new", "captured_at": KICK-timedelta(minutes=1)}
     r = report([old, context, newer])
     assert r["summary"]["context:opp_carries"]["forecasted"] == 0
+
+
+def test_snapshots_the_loader_dropped_still_count_as_rejected():
+    # ingest.nfl_dfs_reportcard loads only the selected production forecast and
+    # passes how many non-pregame rows it dropped; the report must count them.
+    r = report([forecast(), forecast(forecast_id="3", mean=100., captured_at=KICK)], prior_rejected=7)
+    assert r["rejected_non_pregame_snapshots"] == 8
+    assert r["rows"][0]["forecast"]["forecast_id"] == "1"

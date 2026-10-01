@@ -13,17 +13,40 @@ from model.nfl_dfs_reportcard import build_report
 from model.nfl_dfs_context_variant_study import context_forecasts
 
 
-def inputs(db, season, week):
+def inputs(db, season, week, now):
     games = db.execute("""SELECT g.id,g.kickoff,g.completed,h.abbreviation home_team,a.abbreviation away_team
         FROM nfl_season_games g JOIN nfl_teams h ON h.team_id=g.home_team_id
         JOIN nfl_teams a ON a.team_id=g.away_team_id
         WHERE g.season=%s AND g.week=%s AND g.game_type='REG'""", (season, week))
     players = db.execute("""SELECT id player_id,gsis_id,canonical_name name,position,team_abbrev team
         FROM ff_players WHERE season=%s AND active AND position IN ('QB','RB','WR','TE','DST')""", (season,))
-    production = db.execute("""SELECT p.*,r.model_version,r.model_config,r.seed,r.artifact_digest,
-        GREATEST(p.created_at,r.created_at,r.as_of_at) captured_at
-        FROM nfl_dfs_player_projections p JOIN nfl_dfs_projection_runs r ON r.run_id=p.run_id
-        WHERE r.season=%s AND r.week=%s AND p.position IN ('QB','RB','WR','TE','DST')""", (season, week))
+    # Only the forecast `build_report` keeps: the last capture before the
+    # player's kickoff (ties broken by forecast id, as there). Loading every run
+    # killed the runner from 2026-09-30: the 15-minute pre-kickoff cadence put
+    # 88 runs (323 MB) in week 3 and 52 runs (1.5 GB) in week 4 by Wednesday.
+    # Rows this drops are counted, so `rejected_non_pregame_snapshots` and the
+    # report digest are unchanged; superseded pregame rows were never counted.
+    production_sql = """WITH g AS (SELECT g.id game_id,g.kickoff,h.abbreviation home_team,a.abbreviation away_team
+            FROM nfl_season_games g JOIN nfl_teams h ON h.team_id=g.home_team_id
+            JOIN nfl_teams a ON a.team_id=g.away_team_id
+            WHERE g.season=%(season)s AND g.week=%(week)s AND g.game_type='REG'),
+        f AS (SELECT p.id,p.player_id,p.team,GREATEST(p.created_at,r.created_at,r.as_of_at) captured_at
+            FROM nfl_dfs_player_projections p JOIN nfl_dfs_projection_runs r ON r.run_id=p.run_id
+            WHERE r.season=%(season)s AND r.week=%(week)s AND p.player_id IS NOT NULL
+              AND p.position IN ('QB','RB','WR','TE','DST')),
+        m AS (SELECT f.*,g.game_id,g.kickoff FROM f LEFT JOIN LATERAL (
+            SELECT * FROM g WHERE f.team IN (g.home_team,g.away_team) ORDER BY g.kickoff,g.game_id LIMIT 1) g ON TRUE)"""
+    rejected = db.execute(production_sql + """
+        SELECT count(*) n FROM m WHERE game_id IS NULL OR captured_at IS NULL OR kickoff IS NULL
+            OR captured_at >= kickoff OR captured_at > %(now)s""", {"season": season, "week": week, "now": now})
+    production = db.execute(production_sql + """,
+        pick AS (SELECT DISTINCT ON (player_id,game_id) id FROM m
+            WHERE game_id IS NOT NULL AND captured_at < kickoff AND captured_at <= %(now)s
+            ORDER BY player_id,game_id,captured_at DESC,id::text COLLATE "C" DESC)
+        SELECT p.*,r.model_version,r.model_config,r.seed,r.artifact_digest,
+            GREATEST(p.created_at,r.created_at,r.as_of_at) captured_at
+        FROM pick JOIN nfl_dfs_player_projections p ON p.id=pick.id
+        JOIN nfl_dfs_projection_runs r ON r.run_id=p.run_id""", {"season": season, "week": week, "now": now})
     forecasts = [{"player_id": p["player_id"], "forecast_id": str(p["id"]), "variant": "production",
         "name": p["player_name"], "team": p["team"], "position": p["position"], "captured_at": p["captured_at"],
         "mean": p["model_proj_fpts"], "median": p["median_fpts"], "p10": p["floor_fpts"], "p90": p["ceiling_fpts"],
@@ -79,7 +102,8 @@ def inputs(db, season, week):
                     "seed": projection["seed"],
                 })
     results = db.execute("""SELECT * FROM nfl_dfs_player_week_results WHERE season=%s AND week=%s""", (season, week))
-    return dict(games=games, players=players, forecasts=forecasts, results=results)
+    return dict(games=games, players=players, forecasts=forecasts, results=results,
+                prior_rejected=int(rejected[0]["n"]))
 
 
 def persist(db, report):
@@ -113,7 +137,7 @@ def main():
         UNION SELECT week FROM nfl_season_games WHERE season=%s AND completed
         ) weeks WHERE week IS NOT NULL ORDER BY week""", (season, season, season))]
     for week in weeks:
-        report = build_report(season=season, week=week, now=now, **inputs(db, season, week))
+        report = build_report(season=season, week=week, now=now, **inputs(db, season, week, now))
         report["implementation"] = {p: hashlib.sha256(Path(p).read_bytes()).hexdigest()
                                     for p in ("model/nfl_dfs_reportcard.py", "ingest/nfl_dfs_reportcard.py")}
         if args.output:

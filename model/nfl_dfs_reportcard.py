@@ -74,7 +74,8 @@ def summarize(rows):
             "interval_n": len(intervals)}
 
 
-def build_report(*, season, week, games, players, forecasts, results, now):
+def build_report(*, season, week, games, players, forecasts, results, now, prior_rejected=0):
+    # `prior_rejected`: non-pregame snapshots the loader dropped before this call.
     now = timestamp(now)
     by_game = {g["id"]: g for g in games}
     by_team = {team: g for g in games for team in (g["home_team"], g["away_team"])}
@@ -125,7 +126,7 @@ def build_report(*, season, week, games, players, forecasts, results, now):
     return {"version": VERSION, "season": season, "week": week,
             "evaluated_at": now.isoformat(), "scheduled_games": len(games),
             "completed_games": sum(g["completed"] for g in games),
-            "rejected_non_pregame_snapshots": rejected,
+            "rejected_non_pregame_snapshots": rejected + prior_rejected,
             "checkpoint": "last accepted pregame forecast per player/game/model stream",
             "population": "canonical weekly roster plus preserved forecast identities; not a DK salary slate",
             "missing_policy": "No stat row is not evidence of DNP or zero. No verified-inactive feed is integrated.",

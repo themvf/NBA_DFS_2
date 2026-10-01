@@ -108,6 +108,28 @@ assert.ok(!keys("2026-09-29T10:07:00Z").includes("nfl-dfs-postweek"), "not Tuesd
 assert.ok(keys("2026-09-30T10:07:00Z").includes("nfl-dfs-postweek"), "Wednesday 10:07 UTC");
 assert.ok(!keys("2026-09-29T10:37:00Z").includes("nfl-dfs-postweek"), "not the :37 tick");
 
+// CFB terminal: every tick August-January, with the slot that matches the
+// cron line it replaced, so the full CFBD schedule refresh stays six-hourly.
+{
+  const cfb = (iso: string) => dueJobs(new Date(iso)).find((j) => j.key === "cfb-terminal");
+  const slots: Record<string, number> = {};
+  for (let h = 0; h < 24; h += 1) for (const m of TICKS) {
+    const job = cfb(`2026-10-03T${hh(h)}:${m}:00Z`);
+    assert.ok(job, `CFB terminal dispatches at ${hh(h)}:${m}`);
+    assert.equal(job!.inputs?.force_schedule, "false", "never the manual full-refresh default");
+    assert.equal(job!.inputs?.capture_now, "false", "never a paid capture");
+    slots[job!.inputs!.slot] = (slots[job!.inputs!.slot] ?? 0) + 1;
+  }
+  assert.deepEqual(slots, { schedule: 4, scores: 20, events: 72 }, "same mix as the former three cron lines");
+  assert.equal(cfb("2026-10-03T06:07:00Z")!.inputs!.slot, "schedule");
+  assert.equal(cfb("2026-10-03T07:07:00Z")!.inputs!.slot, "scores");
+  assert.equal(cfb("2026-10-03T07:22:00Z")!.inputs!.slot, "events");
+  assert.ok(cfb("2027-01-10T12:07:00Z"), "bowl season in January");
+  assert.equal(cfb("2026-06-15T12:07:00Z"), undefined, "off season");
+  // The table entry itself carries no stale static inputs.
+  assert.equal(DISPATCH_JOBS.find((j) => j.key === "cfb-terminal")!.inputs, undefined);
+}
+
 (async () => {
   // A GitHub failure is an outcome, not an exception; a 204 is success.
   const fake = (status: number) => (async () => new Response(status === 204 ? null : "nope", { status })) as unknown as typeof fetch;

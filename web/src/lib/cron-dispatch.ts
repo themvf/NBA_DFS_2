@@ -40,6 +40,8 @@ export interface DispatchJob {
   due: (now: Date, context: DispatchContext) => boolean;
   /** `workflow_dispatch` inputs, when the workflow needs any. */
   inputs?: Record<string, string>;
+  /** Inputs that depend on the tick; `dueJobs` resolves them into `inputs`. */
+  inputsAt?: (now: Date) => Record<string, string>;
   why: string;
 }
 
@@ -61,6 +63,13 @@ export function nearNflKickoff(now: Date, context: DispatchContext): boolean {
     const lead = kickoff.getTime() - now.getTime();
     return lead > 0 && lead <= NEAR_KICKOFF_MS;
   });
+}
+
+/** Which of refresh_cfb_terminal.yml's former cron lines a tick replaces. */
+export function cfbTerminalSlot(now: Date): "schedule" | "scores" | "events" {
+  if (!hourTick(now)) return "events";              // was `22,37,52 * * * *`
+  return now.getUTCHours() % 6 === 0 ? "schedule"   // was `7 */6 * * *`
+    : "scores";                                     // was `7 1-5,7-11,13-17,19-23 * * *`
 }
 
 export const DISPATCH_JOBS: readonly DispatchJob[] = [
@@ -138,6 +147,21 @@ export const DISPATCH_JOBS: readonly DispatchJob[] = [
     why: "Grades recorded MLB terminal signals once games are final.",
   },
   {
+    key: "cfb-terminal",
+    workflow: "refresh_cfb_terminal.yml",
+    // Every tick, August-January. Its GitHub schedule asked for :07/:22/:37/:52
+    // but GitHub started it every 1-3 hours, so the CFB pilot monitor (which
+    // expects those four slots) alarmed on gaps nobody chose. The job makes no
+    // paid Odds API request (closes are capture_event_closes.yml's), so the
+    // extra runs cost GitHub minutes only. `slot` tells the job which of its
+    // three former cron lines this tick stands in for, so it still refreshes
+    // the full CFBD schedule every six hours and scores hourly, not on every
+    // tick (a plain dispatch would refresh the schedule each time).
+    due: (now) => { const m = now.getUTCMonth() + 1; return m >= 8 || m <= 1; },
+    inputsAt: (now) => ({ force_schedule: "false", capture_now: "false", slot: cfbTerminalSlot(now) }),
+    why: "CFB line terminal: event mappings every 15 minutes, scores hourly, full schedule every 6 hours.",
+  },
+  {
     key: "daily-failure-sweep",
     workflow: "daily_failure_sweep.yml",
     // 11:07 UTC (7:07 am ET): the daily email of everything failing.
@@ -147,7 +171,8 @@ export const DISPATCH_JOBS: readonly DispatchJob[] = [
 ];
 
 export function dueJobs(now: Date, context: DispatchContext = NO_CONTEXT): DispatchJob[] {
-  return DISPATCH_JOBS.filter((job) => job.due(now, context));
+  return DISPATCH_JOBS.filter((job) => job.due(now, context))
+    .map((job) => job.inputsAt ? { ...job, inputs: { ...job.inputs, ...job.inputsAt(now) } } : job);
 }
 
 export interface DispatchOutcome {

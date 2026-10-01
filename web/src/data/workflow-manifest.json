@@ -185,9 +185,7 @@
       "file": "refresh_cfb_terminal.yml",
       "name": "Refresh CFB Line Terminal",
       "crons": [
-        "7 */6 * * *",
-        "7 1-5,7-11,13-17,19-23 * * *",
-        "22,37,52 * * * *"
+        "7 */6 * * *"
       ],
       "dispatch": true,
       "afterWorkflows": [],
