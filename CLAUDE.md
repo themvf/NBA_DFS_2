@@ -304,7 +304,7 @@ revisited if quota headroom is restored.
 **Consolidated 2026-09-26.** The per-workflow routes became one:
 `/api/cron/dispatch`, ticking at `7,37 * * * *`, with the job table in
 `web/src/lib/cron-dispatch.ts` (MLB odds capture, NFL DK pool, NFL projection
-rebuild, NFL availability context, NFL DFS post-week review + upside grade). Each entry is a workflow file plus a
+rebuild, NFL availability context, NFL DFS post-week review + upside grade, CFB line terminal with a per-tick `slot` input). Each entry is a workflow file plus a
 `due(now)` rule, so bridging another workflow is one table entry and a test in
 `scripts/test-cron-dispatch.ts`. The work stays in Python; a bridged workflow
 keeps a thin GitHub `schedule:` as fallback and its own in-job gate. The route

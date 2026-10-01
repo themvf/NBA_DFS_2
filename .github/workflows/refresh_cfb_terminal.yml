@@ -1,12 +1,13 @@
 name: Refresh CFB Line Terminal
 
 on:
+  # Cadence is owned by the Vercel dispatcher (web/src/lib/cron-dispatch.ts,
+  # job `cfb-terminal`), which fires every :07/:22/:37/:52 tick and names the
+  # slot: `schedule` every six hours, `scores` on the other :07 ticks, `events`
+  # otherwise. GitHub started the old 15-minute schedule only every 1-3 hours.
+  # This 6-hourly line is the fallback for a broken bridge: a full refresh.
   schedule:
-    # Polling is free unless a game is missing a due checkpoint. Lead-time
-    # windows, not exact clock instants, make delayed GitHub schedules safe.
     - cron: "7 */6 * * *"
-    - cron: "7 1-5,7-11,13-17,19-23 * * *"
-    - cron: "22,37,52 * * * *"
   workflow_dispatch:
     inputs:
       year:
@@ -23,6 +24,11 @@ on:
         required: false
         default: false
         type: boolean
+      slot:
+        description: "Dispatcher slot (schedule | scores | events); empty for a manual run"
+        required: false
+        default: ""
+        type: string
 
 concurrency:
   group: refresh-cfb-terminal
@@ -48,24 +54,36 @@ jobs:
           INPUT_YEAR: ${{ inputs.year }}
           FORCE_SCHEDULE: ${{ inputs.force_schedule }}
           SCHEDULE: ${{ github.event.schedule }}
+          SLOT: ${{ inputs.slot }}
         run: |
           year="${INPUT_YEAR:-$(TZ=America/New_York date +%Y)}"
           echo "CFB_YEAR=$year" >> "$GITHUB_ENV"
+          case "${SLOT:-}" in
+            ""|schedule|scores|events) ;;
+            *) echo "::error title=Unknown slot::slot must be schedule, scores or events, got '$SLOT'"; exit 1 ;;
+          esac
           refresh=false
-          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "${FORCE_SCHEDULE:-true}" = "true" ]; then
+          scores=false
+          if [ "$SLOT" = "schedule" ] || [ "$SCHEDULE" = "7 */6 * * *" ]; then
             refresh=true
-          elif [ "$SCHEDULE" = "7 */6 * * *" ]; then
-            refresh=true
+          elif [ "$SLOT" = "scores" ]; then
+            scores=true
+          elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ -z "$SLOT" ]; then
+            # Manual run: as before, a full schedule refresh unless unticked,
+            # in which case recent scores only.
+            if [ "${FORCE_SCHEDULE:-true}" = "true" ]; then refresh=true; else scores=true; fi
           fi
           echo "CFB_REFRESH_SCHEDULE=$refresh" >> "$GITHUB_ENV"
+          echo "CFB_REFRESH_SCORES=$scores" >> "$GITHUB_ENV"
+          echo "Slot '${SLOT:-${SCHEDULE:-manual}}': schedule=$refresh scores=$scores"
       - name: Refresh canonical CFBD schedule and scores
         if: env.CFB_REFRESH_SCHEDULE == 'true'
         run: python -m ingest.cfb_schedule --year "$CFB_YEAR" --refresh-schedule
-      - name: Refresh recent scores hourly (delay-safe scheduled slot)
-        if: github.event.schedule == '7 1-5,7-11,13-17,19-23 * * *' || (github.event_name == 'workflow_dispatch' && inputs.force_schedule == false)
+      - name: Refresh recent scores hourly (dispatcher `scores` slot)
+        if: env.CFB_REFRESH_SCORES == 'true'
         run: python -m ingest.cfb_schedule --refresh-scores
       - name: Synchronize exact official school and mascot aliases
-        if: env.CFB_REFRESH_SCHEDULE == 'true' || github.event_name == 'workflow_dispatch'
+        if: env.CFB_REFRESH_SCHEDULE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.slot == '')
         run: python -m ingest.cfb_schedule --refresh-team-aliases
       - name: Refresh free provider-event mappings
         run: python -m ingest.cfb_schedule --refresh-events

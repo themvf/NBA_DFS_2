@@ -49,16 +49,85 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  research:
-    name: Research forecasts and report cards
+  # Three jobs on three machines (split 2026-09-30). The report cards ran last
+  # in one 45-minute job; on 2026-09-30 the weekly card loaded all 88 week-3
+  # projection runs (~3 GB in Python) and GitHub killed the machine three runs
+  # in a row, taking the slate cards and the digest with it. The loader now
+  # reads only the forecast it grades; the split also keeps a study that
+  # exhausts its machine from silencing the report cards, and each job has its
+  # own red/green.
+  resolve:
+    name: Resolve the research week
     # Research against a failed production refresh would study a snapshot that
     # was never published, so it waits for a green one.
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 5
+    env:
+      PRODUCTION_RUN_ID: ${{ github.event.workflow_run.id || inputs.production_run_id }}
+    outputs:
+      season: ${{ steps.resolve.outputs.NFL_RESEARCH_SEASON }}
+      week: ${{ steps.resolve.outputs.NFL_RESEARCH_WEEK }}
+      not_before: ${{ steps.resolve.outputs.NFL_MATCHUP_CAPTURE_NOT_BEFORE }}
+      output_dir: ${{ steps.resolve.outputs.NFL_MATCHUP_OUTPUT_DIR }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Download the production handoff
+        id: handoff
+        if: ${{ env.PRODUCTION_RUN_ID != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: nfl-dfs-research-handoff
+          path: artifacts
+          run-id: ${{ env.PRODUCTION_RUN_ID }}
+          github-token: ${{ github.token }}
+      - name: Resolve season, week and the comparison window
+        id: resolve
+        env:
+          INPUT_SEASON: ${{ inputs.season }}
+          INPUT_WEEK: ${{ inputs.week }}
+        run: |
+          python - <<'EOF'
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          path = Path("artifacts/nfl-dfs-research-handoff.json")
+          handoff = json.loads(path.read_text()) if path.exists() else {}
+          now = datetime.now(timezone.utc)
+          values = {
+              "NFL_RESEARCH_SEASON": os.environ.get("INPUT_SEASON") or handoff.get("nfl_research_season", ""),
+              "NFL_RESEARCH_WEEK": os.environ.get("INPUT_WEEK") or handoff.get("nfl_research_week", ""),
+              # Without a handoff, only a comparison captured after this start counts.
+              "NFL_MATCHUP_CAPTURE_NOT_BEFORE": handoff.get("nfl_matchup_capture_not_before") or now.isoformat(),
+              "NFL_MATCHUP_OUTPUT_DIR": handoff.get("nfl_matchup_output_dir")
+                  or f"artifacts/nfl-matchup-implementation/{now.date().isoformat()}",
+          }
+          for target in ("GITHUB_ENV", "GITHUB_OUTPUT"):
+              with open(os.environ[target], "a", encoding="utf-8") as out:
+                  out.writelines(f"{key}={value}\n" for key, value in values.items())
+          print(json.dumps({"handoff": handoff or None, **values}, indent=2))
+          if not handoff:
+              print("::warning title=No production handoff::No production matchup comparison was handed over; "
+                    "the coherent scenario step can use only a Showdown captured by this run.")
+          elif handoff.get("matchup_outcome") != "success":
+              print(f"::warning title=Production matchup capture::The production matchup step ended "
+                    f"'{handoff.get('matchup_outcome')}'; its comparison may be missing.")
+          EOF
+
+  studies:
+    name: Research forecasts and studies
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      PRODUCTION_RUN_ID: ${{ github.event.workflow_run.id || inputs.production_run_id }}
+      NFL_RESEARCH_SEASON: ${{ needs.resolve.outputs.season }}
+      NFL_RESEARCH_WEEK: ${{ needs.resolve.outputs.week }}
+      NFL_MATCHUP_CAPTURE_NOT_BEFORE: ${{ needs.resolve.outputs.not_before }}
+      NFL_MATCHUP_OUTPUT_DIR: ${{ needs.resolve.outputs.output_dir }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -80,48 +149,6 @@ jobs:
         id: scenario_dependencies
         working-directory: web
         run: npm install --no-audit --no-fund
-      - name: Download the production handoff
-        id: handoff
-        if: ${{ env.PRODUCTION_RUN_ID != '' }}
-        uses: actions/download-artifact@v4
-        with:
-          name: nfl-dfs-research-handoff
-          path: artifacts
-          run-id: ${{ env.PRODUCTION_RUN_ID }}
-          github-token: ${{ github.token }}
-      - name: Resolve season, week and the comparison window
-        id: resolve
-        if: ${{ !cancelled() }}
-        env:
-          INPUT_SEASON: ${{ inputs.season }}
-          INPUT_WEEK: ${{ inputs.week }}
-        run: |
-          python - <<'EOF'
-          import json, os
-          from datetime import datetime, timezone
-          from pathlib import Path
-
-          path = Path("artifacts/nfl-dfs-research-handoff.json")
-          handoff = json.loads(path.read_text()) if path.exists() else {}
-          now = datetime.now(timezone.utc)
-          values = {
-              "NFL_RESEARCH_SEASON": os.environ.get("INPUT_SEASON") or handoff.get("nfl_research_season", ""),
-              "NFL_RESEARCH_WEEK": os.environ.get("INPUT_WEEK") or handoff.get("nfl_research_week", ""),
-              # Without a handoff, only a comparison captured after this start counts.
-              "NFL_MATCHUP_CAPTURE_NOT_BEFORE": handoff.get("nfl_matchup_capture_not_before") or now.isoformat(),
-              "NFL_MATCHUP_OUTPUT_DIR": handoff.get("nfl_matchup_output_dir")
-                  or f"artifacts/nfl-matchup-implementation/{now.date().isoformat()}",
-          }
-          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
-              env.writelines(f"{key}={value}\n" for key, value in values.items())
-          print(json.dumps({"handoff": handoff or None, **values}, indent=2))
-          if not handoff:
-              print("::warning title=No production handoff::No production matchup comparison was handed over; "
-                    "the coherent scenario step can use only a Showdown captured by this run.")
-          elif handoff.get("matchup_outcome") != "success":
-              print(f"::warning title=Production matchup capture::The production matchup step ended "
-                    f"'{handoff.get('matchup_outcome')}'; its comparison may be missing.")
-          EOF
       - name: Freeze research-only workload forecasts
         id: workload
         if: ${{ !cancelled() }}
@@ -203,6 +230,49 @@ jobs:
             artifacts/nfl-matchup-implementation/
             artifacts/nfl-matchup-forward-report.json
           retention-days: 90
+      # One line per study, so a red run says which study broke without a log
+      # dive, and the fail-soft digest cannot fail unseen.
+      - name: Summarize research step outcomes
+        if: ${{ always() }}
+        env:
+          STEP_RESULTS: ${{ toJSON(steps) }}
+        run: |
+          python - <<'EOF'
+          import json, os
+          results = json.loads(os.environ["STEP_RESULTS"])
+          lines = ["## Research step outcomes", "", "| step | outcome |", "|---|---|"]
+          lines += [f"| {name} | {result.get('outcome')} |" for name, result in results.items()]
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write("\n".join(lines) + "\n")
+          for name, result in results.items():
+              if result.get("outcome") == "failure":
+                  print(f"::warning title=Research step failed::{name}")
+          EOF
+
+  report-cards:
+    name: Report cards and weekly review
+    needs: [resolve, studies]
+    # After the studies, as before (the cards grade what they froze), but on
+    # its own machine and whether or not a study failed.
+    if: ${{ !cancelled() && needs.resolve.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      NFL_RESEARCH_SEASON: ${{ needs.resolve.outputs.season }}
+      NFL_RESEARCH_WEEK: ${{ needs.resolve.outputs.week }}
+      NFL_MATCHUP_CAPTURE_NOT_BEFORE: ${{ needs.resolve.outputs.not_before }}
+      NFL_MATCHUP_OUTPUT_DIR: ${{ needs.resolve.outputs.output_dir }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The commit production ran, so pinned study hashes see the same files.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
       - name: Save weekly production and shadow report cards
         id: reportcard
         if: ${{ !cancelled() }}
