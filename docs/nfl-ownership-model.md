@@ -116,3 +116,38 @@ sum 900.0%, source `nfl-ownership-prior-v1`; top chalk Smith-Njigba 53.5%,
 St. Brown 51.0%, Henry 38.9%, Allen 18.5% — the same WR-heavy,
 QB-light skew as lesson 1, visible before results and left unchanged on
 purpose.
+
+## Field structure from the standings lineups — 2026-09-30
+
+`model/nfl_dfs_field_structure.py` (`nfl-dfs-field-structure-v1`) summarizes each
+imported contest's full lineups into `nfl_dfs_field_structure`: duplication, who
+fills the field, and pair co-ownership. Backfill an already-imported contest with
+`python -m ingest.nfl_dfs_field_audit --contest FILE --structure-only` (refuses a
+file whose digest differs from the one imported); a fresh `--contest` import now
+stores it automatically. The lineups themselves are not stored; the file is the
+source. Stored entries run 0.06-0.65% under `entry_count`: those are unfilled
+entries (blank lineup, score 0), not parse losses.
+
+| contest | entries | unique lineups | entries in a duplicated lineup | users with 20+ entries -> share of entries |
+|---|---:|---:|---:|---|
+| wk2 Classic | 316,828 | 299,470 | 8.3% (max 156 copies) | 4,892 -> 31% |
+| wk3 Classic | 7,130 | 6,710 | 8.6% (max 25) | 159 -> 45% |
+| wk2 Showdown | 47,255 | 9,382 | **89.7%** (max 556) | 1,440 -> 61% |
+| wk3 Showdown | 82,798 | 12,242 | **93.3%** (max 394) | 1,989 -> 48% |
+
+Read these as description, not a model. Two things worth carrying forward:
+
+- **Showdown is a duplication contest.** Roughly nine in ten entries share a
+  lineup, and 98% of the top 1% do. Classic is the opposite (8-9%), so any
+  duplication model must be fitted per format, never pooled.
+- **Stacks are visible only at pair level.** Classic QB pairings sit at 3.4-4.3x
+  independence (Mayfield-Egbuka 4.3x, Wentz-Jefferson 4.1x, Purdy-Evans 3.7x)
+  while the most-owned pairs sit near 1.0x. Pairs are limited to the top 40
+  players by ownership, so tail stacks are not measured.
+
+Sample: 2 Classic and 2 Showdown contests. Still short of the 4 held-out Classic
+slates the Phase 2 gate needs; this adds labels per slate, not slates.
+
+FantasyCruncher (the 2025 archive's `fc_catalogue` points at it) was probed: its
+public pages are a link index with no ownership numbers, so 2025 ownership
+history is not recoverable from public pages. Not pursued further.

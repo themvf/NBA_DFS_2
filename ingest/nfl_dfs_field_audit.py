@@ -13,6 +13,7 @@ never rewrites history.
 Usage:
     python -m ingest.nfl_dfs_field_audit --contest path/to/contest-standings-NNN.csv
     python -m ingest.nfl_dfs_field_audit --contest FILE --upload <slate-upload-id>
+    python -m ingest.nfl_dfs_field_audit --contest FILE --structure-only   # lineups only
     python -m ingest.nfl_dfs_field_audit --report          # every imported contest
     python -m ingest.nfl_dfs_field_audit --report --season 2026 --week 2
 """
@@ -32,6 +33,7 @@ from ingest.nfl_dfs_weekly import PipelineDatabase
 from model.nfl_dfs_field_audit import (
     VERSION, audit_slate, is_showdown, normalize_name, parse_contest_export, pooled_summary,
 )
+from model import nfl_dfs_field_structure as structure
 
 # A standings lineup cell can be long; the default field limit rejects them.
 csv.field_size_limit(min(sys.maxsize, 2**31 - 1))
@@ -53,6 +55,30 @@ def read_export(path: Path) -> tuple[dict, str]:
         next(reader, None)                      # header
         parsed = parse_contest_export(reader)
     return parsed, digest
+
+
+def read_entries(path: Path) -> list[tuple[int, str, str]]:
+    """(rank, entry name, lineup text) for every entry. Columns 0, 2 and 5 of the
+    export; the player table to the right of them is read by read_export."""
+    out = []
+    with path.open(newline="", encoding="utf-8-sig") as handle:
+        reader = csv.reader(handle)
+        next(reader, None)
+        for row in reader:
+            if len(row) > 5 and row[5].strip() and row[0].strip().isdigit():
+                out.append((int(row[0]), row[2], row[5]))
+    return out
+
+
+def persist_structure(db: PipelineDatabase, contest_id: str, summary: dict) -> None:
+    with db.connect() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """INSERT INTO nfl_dfs_field_structure (contest_id, version, entries, summary)
+                   VALUES (%s,%s,%s,%s)
+                   ON CONFLICT (contest_id, version) DO UPDATE SET
+                     entries = EXCLUDED.entries, summary = EXCLUDED.summary, computed_at = NOW()""",
+                (contest_id, summary["version"], summary["entries"], Json(summary)))
 
 
 def resolve_upload(db: PipelineDatabase, parsed: dict, fmt: str, upload_id: str | None) -> dict | None:
@@ -221,6 +247,9 @@ def main() -> None:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--contest", help="path to a DraftKings contest-standings CSV")
     parser.add_argument("--upload", help="slate upload id, when auto-matching cannot resolve it")
+    parser.add_argument("--structure-only", action="store_true",
+                        help="with --contest: compute and store lineup structure for a contest "
+                             "ALREADY imported, without re-upserting its ownership or slate link")
     parser.add_argument("--report", action="store_true", help="audit every imported contest")
     parser.add_argument("--season", type=int)
     parser.add_argument("--week", type=int)
@@ -230,6 +259,21 @@ def main() -> None:
 
     db = PipelineDatabase(load_config().database_url)
 
+    if args.contest and args.structure_only:
+        path = Path(args.contest)
+        contest_id = contest_id_from_path(path)
+        rows = db.execute("SELECT format, file_digest FROM nfl_dfs_field_contests WHERE contest_id = %s",
+                          (contest_id,))
+        if not rows:
+            sys.exit(f"contest {contest_id} is not imported; run without --structure-only first")
+        if hashlib.sha256(path.read_bytes()).hexdigest() != rows[0]["file_digest"]:
+            sys.exit(f"{path.name} differs from the file imported as contest {contest_id}; refusing to attach")
+        summary = structure.analyze(read_entries(path), rows[0]["format"])
+        persist_structure(db, contest_id, summary)
+        print(f"structure stored for contest {contest_id} ({summary['entries']:,} lineups, "
+              f"{summary['duplication']['unique_lineups']:,} unique)")
+        return
+
     if args.contest:
         path = Path(args.contest)
         parsed, digest = read_export(path)
@@ -237,6 +281,13 @@ def main() -> None:
         upload = resolve_upload(db, parsed, fmt, args.upload)
         contest_id = contest_id_from_path(path)
         persist(db, contest_id, parsed, fmt, path, digest, upload)
+        summary = structure.analyze(read_entries(path), fmt)
+        persist_structure(db, contest_id, summary)
+        dup, users = summary["duplication"], summary["users"]
+        print(f"  structure: {summary['entries']:,} lineups, {dup['unique_lineups']:,} unique, "
+              f"{dup['entry_share_in_duplicated_lineup']:.1%} of entries duplicated, "
+              f"{users['users_ge_20']:,} users with 20+ entries "
+              f"({users['entry_share_from_users_ge_20']:.0%} of entries)")
         print(f"imported contest {contest_id}: {parsed['entry_count']:,} entries, "
               f"{len(parsed['players'])} players with ownership, format={fmt}")
         if upload:
