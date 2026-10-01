@@ -17,12 +17,13 @@ function eastern(value: string): string {
 }
 
 export default function CfbEvidenceLoop({
-  quote, closeQuality, backtest, study,
+  quote, closeQuality, backtest, study, auditUnavailable,
 }: {
   quote: SelectedQuote;
   closeQuality: string | null;
   backtest: CfbSignalBacktestRow[];
   study: CfbStudyStatus | null;
+  auditUnavailable: boolean;
 }) {
   const observations = backtest.reduce((sum, row) => sum + row.observations, 0);
   const settled = backtest.reduce((sum, row) => sum + row.settled, 0);
@@ -37,12 +38,12 @@ export default function CfbEvidenceLoop({
       <article>
         <span>OBSERVE</span>
         <strong>{quote ? `${quote.book} ${quote.line} ${quote.price}` : "No selected quote"}</strong>
-        <p>{quote?.updatedAt ? `Book updated ${eastern(quote.updatedAt)} · ${quote.fresh ? "fresh" : "stale"}` : "Select a captured book quote."} Close: {closeQuality?.toUpperCase() ?? "unavailable"}.</p>
+        <p>{quote?.updatedAt ? `Book updated ${eastern(quote.updatedAt)} · ${quote.fresh ? "fresh" : "stale"}` : "Select a captured book quote."} Game close: {closeQuality?.toUpperCase() ?? "unavailable"}; selected-book close may differ.</p>
       </article>
       <article>
         <span>ORIENT</span>
-        <strong>{settled} settled / {observations} alerts</strong>
-        <p>{pending} pending · {voided} void · {excluded} excluded. Returns use resolved stakes and profit. One game can produce multiple alerts.</p>
+        <strong>{auditUnavailable ? "Audit unavailable" : `${settled} settled / ${observations} alerts`}</strong>
+        <p>{auditUnavailable ? "The economic audit could not be loaded. Counts and returns are hidden." : `${pending} pending · ${voided} void · ${excluded} excluded. Returns use resolved stakes and profit. One game can produce multiple alerts.`}</p>
       </article>
       <article>
         <span>DECIDE</span>
