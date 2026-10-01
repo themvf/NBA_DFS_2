@@ -252,3 +252,32 @@ def test_pregame_decision_time():
     assert pregame_decision_time(EARLY, EARLY) == EARLY - timedelta(microseconds=1)
     assert pregame_decision_time(EARLY + timedelta(days=1), EARLY) == EARLY - timedelta(microseconds=1)
     assert pregame_decision_time(TUESDAY, None) == TUESDAY
+
+
+def test_matchup_evidence_is_stored_once_and_referenced_by_digest(monkeypatch):
+    # 2026-09-30: the game's evidence (~170 KB) was copied onto every player
+    # row of every run, 1.6 GB of the projection table. It is now one row per
+    # content digest; each player row keeps the digest and its shadow result.
+    _, manifest = run(TUESDAY)
+    evidence = {"game_id": "2026_04_PIT_CLE", "home": "CLE", "away": "PIT", "context": list(range(50))}
+    def player(pid, name):
+        return {"player_id": pid, "player_gsis_id": f"00-{pid}", "player_name": name, "normalized_name": name.lower(),
+                "team": "CLE", "opponent": "PIT", "position": "WR", "projection_status": "historical",
+                "history_games": 10, "prior_games": 0, "model_proj_fpts": 10.0, "baseline_fpts": 10.0,
+                "floor_fpts": 2.0, "median_fpts": 9.0, "ceiling_fpts": 20.0, "boom_rate": 0.1, "confidence": 0.5,
+                "stat_means": {}, "event_id": "e1", "game_id": "2026_04_PIT_CLE", "commence_time": TUESDAY,
+                "feature_snapshot": {"seed": 1, "matchup": {"evidence": evidence, "shadow": {"status": "under_evaluation", "delta": 0.4}}}}
+    rows = [player(101, "A"), player(102, "B")]
+    calls = []
+    monkeypatch.setattr(proj, "execute_values", lambda cur, sql, values, **kw: calls.append((" ".join(sql.split()), values)))
+    monkeypatch.setattr(proj, "persist_availability_contexts", lambda *a, **kw: {})
+    proj.persist_week(PersistDB(), rows, manifest)
+    stored_evidence = [v for sql, v in calls if sql.startswith("INSERT INTO nfl_dfs_matchup_evidence")]
+    assert len(stored_evidence) == 1 and len(stored_evidence[0]) == 1, "one row for one game's evidence"
+    digest, payload = stored_evidence[0][0]
+    assert payload.adapted == evidence
+    player_rows = [v for sql, v in calls if sql.startswith("INSERT INTO nfl_dfs_player_projections")][0]
+    snapshots = [row[20].adapted for row in player_rows]
+    assert all(s["matchup"] == {"evidence_digest": digest, "shadow": {"status": "under_evaluation", "delta": 0.4}} for s in snapshots)
+    assert all(s["seed"] == 1 for s in snapshots), "the rest of the snapshot is unchanged"
+    assert rows[0]["feature_snapshot"]["matchup"]["evidence"] == evidence, "the in-memory projections are not mutated"
