@@ -614,6 +614,8 @@ function buildOne(
   captainCounts: Map<number, number>,
   flexCounts: Map<number, number>,
   compiled: CompiledArchetype | null = null,
+  remaining: number = settings.nLineups - lineupNumber + 1,
+  enforceSlotMinimums = true,
 ): NflGeneratedLineup | null {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const solver = require("javascript-lp-solver") as { Solve: (model: SolverModel) => SolverResult };
@@ -699,6 +701,7 @@ function buildOne(
 
   const variables: SolverModel["variables"] = {};
   const binaries: SolverModel["binaries"] = {};
+  let slotForced = false;
   for (const player of available) {
     const purchaseTypes = settings.format === "classic" ? ["CLASSIC"] : ["CPT", "FLEX"];
     for (const purchaseType of purchaseTypes) {
@@ -744,6 +747,22 @@ function buildOne(
         }
       }
       if (forcedIds.has(player.dkPlayerId)) variable[`force_${player.dkPlayerId}`] = 1;
+      // A captain/flex MINIMUM is a promise, not a report line: once the
+      // remaining lineups equal the slot appearances still owed, force that
+      // slot variable in. The constraint is only created alongside a variable
+      // that can satisfy it, so it can never be unsatisfiable by absence.
+      if (enforceSlotMinimums && settings.format === "showdown" && slot !== "CLASSIC") {
+        const counts = countsById.get(player.dkPlayerId);
+        const owed = slot === "CPT"
+          ? (counts?.captainMin ?? 0) - (captainCounts.get(player.dkPlayerId) ?? 0)
+          : (counts?.flexMin ?? 0) - (flexCounts.get(player.dkPlayerId) ?? 0);
+        if (owed >= remaining) {
+          const forceKey = `${slot === "CPT" ? "forcecpt" : "forceflex"}_${player.dkPlayerId}`;
+          constraints[forceKey] = { equal: 1 };
+          variable[forceKey] = 1;
+          slotForced = true;
+        }
+      }
       previous.forEach((lineup, index) => { if (lineup.playerIds.includes(player.dkPlayerId)) variable[`prior_${index}`] = 1; });
       if (settings.format === "classic" && settings.mode === "gpp" && settings.stackPassCatchers > 0) {
         for (const quarterback of available.filter((candidate) => candidate.position === "QB")) {
@@ -762,7 +781,13 @@ function buildOne(
     }
   }
   const solved = solver.Solve({ optimize: "score", opType: "max", constraints, variables, binaries });
-  if (solved.feasible === false) return null;
+  if (solved.feasible === false) {
+    // Forcing slot minimums made this lineup impossible (salary, team caps,
+    // overlap). Build it without them rather than ending the run early; the
+    // exposure report still flags the missed minimum honestly.
+    if (slotForced) return buildOne(pool, settings, lineupNumber, previous, exposureCounts, forcedIds, countsById, captainCounts, flexCounts, compiled, remaining, false);
+    return null;
+  }
   const purchases: { player: ResolvedPlayer; slot: "CPT" | "FLEX" | "CLASSIC" }[] = [];
   for (const [key, raw] of Object.entries(solved)) {
     if (!/^[xcf]_/.test(key) || typeof raw !== "number" || raw < 0.5) continue;
@@ -1109,7 +1134,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
       const current = exposureCounts.get(player.dkPlayerId) ?? 0;
       if (target - current >= remaining) forced.add(player.dkPlayerId);
     }
-    const lineup = buildOne(pool, settings, lineupNumber, lineups, exposureCounts, forced, countsById, captainCounts, flexCounts, plan[lineupNumber - 1].compiled);
+    const lineup = buildOne(pool, settings, lineupNumber, lineups, exposureCounts, forced, countsById, captainCounts, flexCounts, plan[lineupNumber - 1].compiled, remaining);
     if (!lineup) {
       warnings.push(`Stopped after ${lineups.length} lineup(s): the ${ARCHETYPE_LABELS[plan[lineupNumber - 1].archetypeId]} quota or remaining exposure/uniqueness/salary constraints are infeasible.`);
       break;
