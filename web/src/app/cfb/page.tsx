@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getCfbResearchBoard, getCfbSignalBacktest, getCfbTerminalBoard, getLineAlerts, getMovementSignalObservations, getMarketCaptureHealth, getMarketSignalScorecard, type CfbResearchBoard, type CfbSignalBacktestRow, type CfbTerminalBoard, type LineAlertRow, type MarketCaptureHealth, type MarketSignalScorecardRow } from "@/db/queries";
+import { getCfbResearchBoard, getCfbSignalBacktest, getCfbStudyStatus, getCfbTerminalBoard, getLineAlerts, getMovementSignalObservations, getMarketCaptureHealth, getMarketSignalScorecard, type CfbResearchBoard, type CfbSignalBacktestRow, type CfbStudyStatus, type CfbTerminalBoard, type LineAlertRow, type MarketCaptureHealth, type MarketSignalScorecardRow } from "@/db/queries";
 import CfbTerminalClient from "./cfb-terminal-client";
 
 export const dynamic = "force-dynamic";
@@ -35,8 +35,9 @@ export default async function CfbPage({
   let research: CfbResearchBoard = {};
   let scorecard: MarketSignalScorecardRow[] = [];
   let captureHealth: MarketCaptureHealth | null = null;
-  try {
-    [signals, backtest, research, scorecard, captureHealth, observations] = await Promise.all([
+  let studyStatus: CfbStudyStatus | null = null;
+  const [signalsResult, backtestResult, researchResult, scorecardResult, healthResult, observationsResult] =
+    await Promise.allSettled([
       getLineAlerts("cfb", 250, undefined, board.games.map((game) => game.matchupId)),
       getCfbSignalBacktest(),
       getCfbResearchBoard(board.gameDate),
@@ -44,8 +45,16 @@ export default async function CfbPage({
       getMarketCaptureHealth("cfb", board.gameDate),
       getMovementSignalObservations("cfb", board.games.map(game => game.matchupId)),
     ]);
+  if (signalsResult.status === "fulfilled") signals = signalsResult.value;
+  if (backtestResult.status === "fulfilled") backtest = backtestResult.value;
+  if (researchResult.status === "fulfilled") research = researchResult.value;
+  if (scorecardResult.status === "fulfilled") scorecard = scorecardResult.value;
+  if (healthResult.status === "fulfilled") captureHealth = healthResult.value;
+  if (observationsResult.status === "fulfilled") observations = observationsResult.value;
+  try {
+    studyStatus = await getCfbStudyStatus();
   } catch {
-    // The market board remains useful during a first-deploy schema bootstrap.
+    // A missing study must never imply permission to act on research signals.
   }
-  return <CfbTerminalClient board={board} observations={observations} signals={signals} backtest={backtest} research={research} scorecard={scorecard} captureHealth={captureHealth} />;
+  return <CfbTerminalClient board={board} observations={observations} signals={signals} backtest={backtest} research={research} scorecard={scorecard} captureHealth={captureHealth} studyStatus={studyStatus} />;
 }
