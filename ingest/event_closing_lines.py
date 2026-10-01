@@ -14,7 +14,7 @@ import json
 import logging
 import os
 from collections import defaultdict
-from datetime import datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -37,6 +37,14 @@ VERIFIED_CLV_START_AT = datetime(2026, 8, 31, 4, 0, tzinfo=timezone.utc)
 CLV_METHODOLOGY_VERSION = "event-close-v1"
 VERIFIED_CLV_COHORT = "verified_clv_v1"
 EASTERN = ZoneInfo("America/New_York")
+# Two future CFB slates, including their Thursday/Friday games. The pilot
+# expires after the October 17 slate without changing the established cadence.
+CFB_EARLY_PILOT_FIRST_GAME = date(2026, 10, 8)
+CFB_EARLY_PILOT_LAST_GAME = date(2026, 10, 17)
+CFB_EARLY_PILOT_CHECKPOINTS = (
+    ("cfb_t_minus_7d", 7 * 24 * 60, 7 * 24 * 60 - 360),
+    ("cfb_t_minus_4d", 4 * 24 * 60, 4 * 24 * 60 - 360),
+)
 CORE_CHECKPOINTS = (
     ("t_minus_6h", 360, 330),
     ("t_minus_90m", 90, 60),
@@ -52,6 +60,7 @@ CHECKPOINTS_BY_SPORT = {
         *((f"tennis_t_minus_{lead}m", lead, lead - 5) for lead in range(30, 0, -5)),
     ),
     "cfb": (
+        *CFB_EARLY_PILOT_CHECKPOINTS,
         ("t_minus_48h", 48 * 60, 42 * 60),
         ("t_minus_24h", 24 * 60, 20 * 60),
         *CORE_CHECKPOINTS,
@@ -279,11 +288,11 @@ def seed_checkpoints(db: DatabaseManager, now: datetime | None = None) -> int:
               AND completion_status = 'scheduled'
         """,
         "cfb": """
-            SELECT id AS matchup_id, odds_event_id AS event_id,
+            SELECT id AS matchup_id, odds_event_id AS event_id, game_date,
                    commence_time AS scheduled_start_at
             FROM cfb_matchups
             WHERE odds_event_id IS NOT NULL
-              AND commence_time BETWEEN %s - INTERVAL '8 hours' AND %s + INTERVAL '54 hours'
+              AND commence_time BETWEEN %s - INTERVAL '8 hours' AND %s + INTERVAL '8 days'
               AND completed = FALSE AND start_time_tbd = FALSE
         """,
         "nhl": """
@@ -300,6 +309,12 @@ def seed_checkpoints(db: DatabaseManager, now: datetime | None = None) -> int:
             f"('{name}', {target_lead}, {due_lead})"
             for name, target_lead, due_lead in CHECKPOINTS_BY_SPORT[sport]
         )
+        pilot_filter = ""
+        params: tuple = (sport, now, now)
+        if sport == "cfb":
+            pilot_filter = """WHERE w.checkpoint NOT IN ('cfb_t_minus_7d', 'cfb_t_minus_4d')
+                OR e.game_date BETWEEN %s AND %s"""
+            params += (CFB_EARLY_PILOT_FIRST_GAME, CFB_EARLY_PILOT_LAST_GAME)
         try:
             rows = db.execute(
                 f"""
@@ -313,10 +328,11 @@ def seed_checkpoints(db: DatabaseManager, now: datetime | None = None) -> int:
                        e.scheduled_start_at - w.due_lead * INTERVAL '1 minute'
                 FROM ({source_sql}) e
                 CROSS JOIN (VALUES {values_sql}) AS w(checkpoint, target_lead, due_lead)
+                {pilot_filter}
                 ON CONFLICT (sport, matchup_id, checkpoint, scheduled_start_at) DO NOTHING
                 RETURNING id
                 """,
-                (sport, now, now),
+                params,
             )
         except Exception:
             # The newest sport must never stop the established ones (or NFL,
@@ -415,6 +431,8 @@ def due_checkpoints(db: DatabaseManager, now: datetime | None = None) -> list[di
         LEFT JOIN nfl_matchups nm ON c.sport='nfl' AND nm.id=c.matchup_id
         WHERE c.status IN ('pending', 'attempted', 'failed')
           AND (c.checkpoint <> 'nfl_first_observed' OR c.attempted_at IS NULL)
+          AND (c.checkpoint NOT IN ('cfb_t_minus_7d', 'cfb_t_minus_4d')
+               OR c.attempted_at IS NULL)
           AND c.target_at <= %s AND c.due_until >= %s
           AND c.scheduled_start_at > %s
         ORDER BY c.sport, c.scheduled_start_at, c.matchup_id
@@ -589,6 +607,9 @@ def capture_due_checkpoints(
                 _mark_failure(db, jobs, "provider returned no accepted prestart events")
 
     if cfb_jobs:
+        early_names = {name for name, _, _ in CFB_EARLY_PILOT_CHECKPOINTS}
+        early_due = sorted({str(job.get("checkpoint")) for job in cfb_jobs
+                            if job.get("checkpoint") in early_names})
         allowed, reason = quota_allows(db)
         if not allowed:
             _mark_failure(db, cfb_jobs, f"quota deferred: {reason}")
@@ -603,7 +624,9 @@ def capture_due_checkpoints(
             )
             _audit_usage(
                 db, sport="cfb", event_count=len(event_ids), audit=audit,
-                metadata={"event_ids": sorted(event_ids), "cadence_version": "cfb-dense-v1",
+                metadata={"event_ids": sorted(event_ids),
+                          "cadence_version": "cfb-early-pilot-v1" if early_due else "cfb-dense-v1",
+                          "early_pilot_checkpoints": early_due,
                           "daily_credit_cap": DAILY_CREDIT_CAP},
             )
             result["groups"] += 1

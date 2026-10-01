@@ -56,7 +56,8 @@ CLOSE_CAPTURE_CONSTRAINT_DDLS = [
     "ALTER TABLE odds_capture_checkpoints DROP CONSTRAINT IF EXISTS odds_capture_checkpoints_checkpoint_check",
     """ALTER TABLE odds_capture_checkpoints ADD CONSTRAINT odds_capture_checkpoints_checkpoint_check
        CHECK (
-         checkpoint IN ('t_minus_48h', 't_minus_24h', 't_minus_6h', 't_minus_90m',
+         checkpoint IN ('cfb_t_minus_7d', 'cfb_t_minus_4d',
+                        't_minus_48h', 't_minus_24h', 't_minus_6h', 't_minus_90m',
                         't_minus_30m', 't_minus_15m', 't_minus_2m', 'closing_candidate')
          OR checkpoint ~ '^(d_minus_[1-7]|game_day)_[0-2][0-9]$'
          OR checkpoint ~ '^cfb_t_minus_[0-9]{2,3}m$'
@@ -5714,6 +5715,7 @@ INDEXES = [
         event_id TEXT NOT NULL,
         checkpoint TEXT NOT NULL CHECK (
             checkpoint IN (
+                'cfb_t_minus_7d', 'cfb_t_minus_4d',
                 't_minus_48h', 't_minus_24h', 't_minus_6h',
                 't_minus_90m', 't_minus_30m', 't_minus_15m', 't_minus_2m',
                 'closing_candidate', 'nfl_first_observed'
