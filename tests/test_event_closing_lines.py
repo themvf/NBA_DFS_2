@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from ingest import event_closing_lines as closes
 from ingest import mlb_schedule, tennis_schedule
@@ -19,6 +19,8 @@ def test_close_quality_boundaries() -> None:
 
 def test_cfb_uses_early_and_late_market_checkpoints() -> None:
     checkpoints = closes.CHECKPOINTS_BY_SPORT["cfb"]
+    assert ("cfb_t_minus_7d", 10080, 9720) in checkpoints
+    assert ("cfb_t_minus_4d", 5760, 5400) in checkpoints
     assert ("t_minus_48h", 2880, 2520) in checkpoints
     assert ("t_minus_24h", 1440, 1200) in checkpoints
     assert ("t_minus_6h", 360, 330) in checkpoints
@@ -31,6 +33,40 @@ def test_cfb_uses_early_and_late_market_checkpoints() -> None:
     assert max(b - a for a, b in zip(targets, targets[1:])) <= 15
     assert len({name for name, _, _ in checkpoints}) == len(checkpoints)
     assert all(target > due >= 0 for _, target, due in checkpoints)
+
+
+def test_cfb_early_pilot_is_limited_to_two_future_slates() -> None:
+    calls: list[tuple[str, tuple]] = []
+
+    class Db:
+        def execute(self, sql, params=None):
+            calls.append((sql, params))
+            return []
+
+    closes.seed_checkpoints(Db(), datetime(2026, 10, 1, tzinfo=timezone.utc))
+    cfb_sql, params = next((sql, params) for sql, params in calls if params[0] == "cfb")
+    assert "INTERVAL '8 days'" in cfb_sql
+    assert "e.game_date BETWEEN %s AND %s" in cfb_sql
+    assert params[-2:] == (closes.CFB_EARLY_PILOT_FIRST_GAME, closes.CFB_EARLY_PILOT_LAST_GAME)
+    assert params[-2:] == (date(2026, 10, 8), date(2026, 10, 17))
+
+
+def test_cfb_early_pilot_does_not_repeat_paid_attempts() -> None:
+    class Db:
+        def execute(self, sql, params=None):
+            assert "c.checkpoint NOT IN ('cfb_t_minus_7d', 'cfb_t_minus_4d')" in sql
+            assert "OR c.attempted_at IS NULL" in sql
+            return []
+
+    assert closes.due_checkpoints(Db(), datetime(2026, 10, 3, tzinfo=timezone.utc)) == []
+
+
+def test_cfb_early_pilot_checkpoint_names_are_allowed_by_schema() -> None:
+    from db.schema import CLOSE_CAPTURE_CONSTRAINT_DDLS, INDEXES, MIGRATIONS, TABLES
+
+    definitions = "\n".join((*CLOSE_CAPTURE_CONSTRAINT_DDLS, *INDEXES, *MIGRATIONS, *TABLES))
+    for name, _, _ in closes.CFB_EARLY_PILOT_CHECKPOINTS:
+        assert definitions.count(f"'{name}'") >= 2
 
 
 def test_tennis_dense_cadence_preserves_legacy_and_covers_final_thirty_minutes():
@@ -208,8 +244,10 @@ def test_reconcile_supersedes_old_nfl_kickoff_jobs() -> None:
 
 def test_cfb_due_games_share_one_paid_bulk_capture(monkeypatch) -> None:
     jobs = [
-        {"id": 1, "sport": "cfb", "event_id": "a", "scheduled_start_at": "2026-09-05T16:00:00Z"},
-        {"id": 2, "sport": "cfb", "event_id": "b", "scheduled_start_at": "2026-09-05T16:00:00Z"},
+        {"id": 1, "sport": "cfb", "event_id": "a", "checkpoint": "cfb_t_minus_7d",
+         "scheduled_start_at": "2026-10-10T16:00:00Z"},
+        {"id": 2, "sport": "cfb", "event_id": "b", "checkpoint": "t_minus_48h",
+         "scheduled_start_at": "2026-10-03T16:00:00Z"},
     ]
     db = EmptyDb()
     observed = {}
@@ -217,7 +255,7 @@ def test_cfb_due_games_share_one_paid_bulk_capture(monkeypatch) -> None:
     monkeypatch.setattr(closes, "reconcile_checkpoints", lambda *_args: 0)
     monkeypatch.setattr(closes, "due_checkpoints", lambda *_args: jobs)
     monkeypatch.setattr(closes, "quota_allows", lambda *_args: (True, None))
-    monkeypatch.setattr(closes, "_audit_usage", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(closes, "_audit_usage", lambda *_args, **kwargs: observed.update(metadata=kwargs["metadata"]))
     monkeypatch.setattr(closes, "_mark_attempt", lambda *_args: None)
     monkeypatch.setattr(closes, "_mark_failure", lambda *_args: None)
 
@@ -228,9 +266,12 @@ def test_cfb_due_games_share_one_paid_bulk_capture(monkeypatch) -> None:
 
     monkeypatch.setattr(closes, "fetch_cfb_odds", fake_fetch)
     result = closes.capture_due_checkpoints(
-        db, "key", now=datetime(2026, 9, 5, 10, tzinfo=timezone.utc),
+        db, "key", now=datetime(2026, 10, 3, 16, tzinfo=timezone.utc),
     )
-    assert observed == {"event_ids": {"a", "b"}, "refresh_events": False}
+    assert observed["event_ids"] == {"a", "b"}
+    assert observed["refresh_events"] is False
+    assert observed["metadata"]["early_pilot_checkpoints"] == ["cfb_t_minus_7d"]
+    assert observed["metadata"]["cadence_version"] == "cfb-early-pilot-v1"
     assert result["paid_requests"] == 1
     assert result["groups"] == 1
 

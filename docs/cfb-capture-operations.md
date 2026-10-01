@@ -14,6 +14,21 @@ share one accepted observation. These are targets, not guaranteed delivery:
 GitHub scheduling delays, provider outages, missing mappings, and quota guards
 can still cause misses. No synthetic or retrospective snapshots are inserted.
 
+### Early-line pilot (October 8–17 games)
+
+For the two October 10 and 17 slates, including their Thursday/Friday games,
+`cfb-early-pilot-v1` adds one T-7d and one T-4d checkpoint per mapped game.
+Each has a six-hour window and at most one paid attempt. Due games still share
+one bulk CFB request across moneyline, spread, and total markets. The existing
+daily credit cap and remaining-credit reserve apply. An absent early quote is
+recorded as failed or missed, never filled with a later price; requests and
+event IDs are recorded in `odds_api_usage`. These are first *observed* prices,
+not guaranteed bookmaker openers. No early checkpoints are seeded for games
+outside October 8–17, so this cadence expires after the second slate.
+
+Review captured versus failed early checkpoints, exact-book coverage, and
+incremental credits after each slate before extending the pilot.
+
 Repository variables explicitly configure the upgraded allowance:
 
 - `ODDS_CLOSE_DAILY_CREDIT_CAP=2000`: all sports in this capture worker, ET day.
