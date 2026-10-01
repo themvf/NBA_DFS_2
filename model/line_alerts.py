@@ -2586,7 +2586,7 @@ def _verified_close(db: DatabaseManager, sport: str, matchup_id: int, *, include
     return None
 
 
-def _cfb_moneyline_close_grade(a: dict, close: dict) -> dict:
+def _cfb_moneyline_close_grade(a: dict, close: dict | None) -> dict:
     """Compare the frozen execution quote with that book's verified close."""
     details = a["details_json"] or {}
     book = details.get("exec_book")
@@ -2596,12 +2596,12 @@ def _cfb_moneyline_close_grade(a: dict, close: dict) -> dict:
         "entry_decimal": details.get("exec_decimal"),
         "close_decimal": None,
         "price_clv_pct": None,
-        "close_history_id": int(close["history_id"]),
-        "close_source": "verified_clv_closes",
+        "close_history_id": int(close["history_id"]) if close else None,
+        "close_source": "verified_clv_closes" if close else "unavailable",
         "price_comparison_status": "CLOSE_UNAVAILABLE",
         "settlement_rule_status": "UNVERIFIED_LEGACY_QUOTES",
     }
-    quote = (close.get("books") or {}).get(book) if book else None
+    quote = (close.get("books") or {}).get(book) if close and book else None
     if not isinstance(quote, dict):
         return result
     if side not in ("home", "away"):
@@ -2634,7 +2634,9 @@ def settle(db: DatabaseManager, sport: str) -> int:
         "SELECT * FROM line_alerts WHERE sport = %s AND origin = 'prospective' "
         "AND (settled_at IS NULL OR (%s = 'cfb' AND created_at >= '2026-09-25' "
         "AND close_history_id IS NULL AND COALESCE(details_json->>'market', 'moneyline') = 'moneyline' "
-        "AND details_json ? 'exec_decimal')) "
+        "AND details_json ? 'exec_decimal' "
+        "AND EXISTS (SELECT 1 FROM verified_clv_closes v "
+        "WHERE v.sport='cfb' AND v.matchup_id=line_alerts.matchup_id))) "
         "AND (alert_type IN ('pinnacle_divergence', 'pinnacle_favorite_forward', 'pinnacle_polymarket_delta', 'steam', 'dk_value', 'walking', "
         "'book_disagreement', 'market_convergence', 'late_move') "
         "OR (%s = 'tennis' AND alert_type IN ('favorite_flip', 'reversal', 'reference_led', 'price_pressure'))) "
@@ -2643,6 +2645,7 @@ def settle(db: DatabaseManager, sport: str) -> int:
     )
     graded = 0
     for a in open_alerts:
+        is_cfb_moneyline = sport == "cfb" and (a["details_json"] or {}).get("market") in (None, "moneyline")
         # CLV: vig-free P(side) at the last pre-commence per-book capture.
         close_source = ("AND books ? 'polymarket'"
                         if a["alert_type"] == "pinnacle_polymarket_delta"
@@ -2659,11 +2662,11 @@ def settle(db: DatabaseManager, sport: str) -> int:
             close = None
         # Historical alerts and the short interval before the close worker
         # freezes a new event retain the explicitly-labelled legacy fallback.
-        if close is None and sport in ("cfb", "nfl", "nhl"):
-            # CFB, NFL and NHL belong to the prospective verified-close cohort.
-            # Waiting is preferable to silently grading against a latest-row proxy.
+        if close is None and (sport in ("nfl", "nhl") or (sport == "cfb" and not is_cfb_moneyline)):
+            # Keep other prospective CLV cohorts on verified closes. A final
+            # CFB moneyline result can settle without a comparable close.
             continue
-        if close is None:
+        if close is None and sport != "cfb":
             close = db.execute_one(
                 f"""
                 SELECT books FROM game_odds_history
@@ -2721,6 +2724,13 @@ def settle(db: DatabaseManager, sport: str) -> int:
             )
             if m and m["completed"] and m["home_score"] is not None and m["away_score"] is not None:
                 outcome = _game_side_outcome(sport, int(m["home_score"]), int(m["away_score"]), a["side"])
+        elif sport == "cfb":
+            m = db.execute_one(
+                "SELECT home_score AS hs, away_score AS as_, completed FROM cfb_matchups WHERE id = %s",
+                (a["matchup_id"],),
+            )
+            if m and m["completed"] and m["hs"] is not None and m["as_"] is not None:
+                outcome = _game_side_outcome(sport, int(m["hs"]), int(m["as_"]), a["side"])
         else:
             hs_col, as_col = _SCORE_COLS[sport]
             m = db.execute_one(
@@ -2735,15 +2745,28 @@ def settle(db: DatabaseManager, sport: str) -> int:
         # and is filled in the same pass on a later run if still NULL then.
         if clv_pp is None and outcome is None:
             continue
-        g = _grade_alert_prices(db, a)
+        if is_cfb_moneyline and close is None:
+            # Price CLV requires a verified close. The final score does not.
+            g = {
+                "dk_close_decimal": None, "dk_clv_pct": None,
+                "pin_close_prob": None, "convergence": None,
+                "dk_survival_min": None, "grading_json": {"close_source": "unavailable"},
+                "comparison_status": "NO_CLOSE", "grading_version": _GRADING_VERSION,
+            }
+        else:
+            g = _grade_alert_prices(db, a)
         close_history_id = None
         pnl_units = None
-        if sport == "cfb" and (a["details_json"] or {}).get("market") in (None, "moneyline"):
+        if is_cfb_moneyline:
             price_grade = _cfb_moneyline_close_grade(a, close)
             g["grading_json"] = {**(g["grading_json"] or {}), **price_grade}
             close_history_id = price_grade["close_history_id"]
             entry_decimal = price_grade["entry_decimal"]
-            if outcome is not None and entry_decimal is not None:
+            try:
+                entry_decimal = float(entry_decimal)
+            except (TypeError, ValueError):
+                entry_decimal = None
+            if outcome is not None and entry_decimal is not None and entry_decimal > 1:
                 pnl_units = (float(entry_decimal) - 1 if outcome == "won"
                              else -1.0 if outcome == "lost" else 0.0)
                 g["grading_json"]["pnl_units"] = round(pnl_units, 4)

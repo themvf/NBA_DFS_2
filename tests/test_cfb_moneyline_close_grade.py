@@ -44,6 +44,13 @@ def test_missing_selection_price_remains_missing() -> None:
     assert grade["price_clv_pct"] is None
 
 
+def test_missing_verified_close_keeps_price_clv_unavailable() -> None:
+    grade = _cfb_moneyline_close_grade(_alert(), None)
+    assert grade["close_history_id"] is None
+    assert grade["close_source"] == "unavailable"
+    assert grade["price_clv_pct"] is None
+
+
 @pytest.mark.parametrize(
     ("market", "alert_type"), [("moneyline", "steam"), (None, "dk_value")],
 )
@@ -89,7 +96,7 @@ def test_settlement_persists_verified_price_and_regrades_existing_result(
             }]
 
         def execute_one(self, sql, params=None):
-            return {"hs": 10, "as_": 24}
+            return {"hs": 10, "as_": 24, "completed": True}
 
         def connect(self):
             return self.connection
@@ -113,3 +120,64 @@ def test_settlement_persists_verified_price_and_regrades_existing_result(
     assert params[-3] == pytest.approx(0.8333)
     assert params[-2] == "won"
     assert __import__("json").loads(params[8])["price_clv_pct"] == 6.301
+
+
+@pytest.mark.parametrize("completed, expected", [(True, 1), (False, 0)])
+def test_final_score_settles_without_close_but_live_score_does_not(
+    monkeypatch, completed, expected,
+) -> None:
+    class Cursor:
+        def __init__(self):
+            self.writes = []
+
+        def execute(self, sql, params=None):
+            self.writes.append((sql, params))
+
+    class Connection:
+        def __init__(self):
+            self.cursor_instance = Cursor()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def cursor(self):
+            return self.cursor_instance
+
+    class Db:
+        database_url = None
+
+        def __init__(self):
+            self.connection = Connection()
+
+        def execute(self, sql, params=None):
+            return [{
+                "id": 100, "matchup_id": 10, "side": "away", "sport": "cfb",
+                "alert_type": "steam", "alert_prob": 0.5,
+                "details_json": _alert()["details_json"],
+            }]
+
+        def execute_one(self, sql, params=None):
+            return {"hs": 10, "as_": 24, "completed": completed}
+
+        def connect(self):
+            return self.connection
+
+    db = Db()
+    monkeypatch.setattr(line_alerts, "_verified_close", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(line_alerts, "_grade_alert_prices", lambda *_args: pytest.fail("unverified price grade"))
+    monkeypatch.setattr(line_alerts, "_append_grade_history_cur", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(line_alerts, "_settle_football_line_alerts", lambda *_args: 0)
+
+    assert line_alerts.settle(db, "cfb") == expected
+    assert len(db.connection.cursor_instance.writes) == expected
+    if completed:
+        _, params = db.connection.cursor_instance.writes[0]
+        assert params[-4] is None  # no fabricated closing history
+        assert params[-3] == pytest.approx(0.8333)
+        assert params[-2] == "won"
+        grade = __import__("json").loads(params[8])
+        assert grade["close_source"] == "unavailable"
+        assert grade["price_clv_pct"] is None

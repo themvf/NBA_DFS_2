@@ -10330,6 +10330,7 @@ export type CfbTerminalBoard = {
 
 export type CfbSignalBacktestRow = {
   alertType: string;
+  market: string;
   signalVersion: string;
   observations: number;
   settled: number;
@@ -10341,34 +10342,61 @@ export type CfbSignalBacktestRow = {
   units: number | null;
   roiPerBet: number | null;
   gameDates: number;
+  games: number;
+  pending: number;
+  void: number;
+  excluded: number;
+  nClv: number;
+  clvUnit: "points" | "probability_pp";
 };
 
 export async function getCfbSignalBacktest(): Promise<CfbSignalBacktestRow[]> {
   await ensureOddsHistoryTables();
   const rows = await db.execute(sql`
+    WITH heads AS (
+      SELECT r.* FROM cfb_economic_resolutions r
+      WHERE NOT EXISTS (
+        SELECT 1 FROM cfb_economic_resolutions next
+        WHERE next.supersedes_resolution_id = r.resolution_id
+      )
+    ), observations AS (
+      SELECT a.alert_type, a.signal_version, a.details_json, a.game_date,
+             COALESCE(a.details_json->>'market', 'moneyline') AS market,
+             a.matchup_id, r.result_state, r.outcome, r.pnl_units,
+             r.roi_stake_units,
+             CASE WHEN a.details_json->>'market' IN ('spread', 'total')
+                  THEN (r.metrics->>'line_clv')::numeric
+                  ELSE (r.metrics->>'probability_clv_pp')::numeric END AS clv
+      FROM line_alerts a LEFT JOIN heads r ON r.alert_id = a.id
+      WHERE a.sport='cfb' AND a.origin='prospective'
+    )
     SELECT alert_type AS "alertType",
+           market,
            COALESCE(signal_version, details_json->>'signal_version', 'unstamped') AS "signalVersion",
            COUNT(*)::int AS observations,
-           COUNT(*) FILTER (WHERE outcome IN ('won','lost','void'))::int AS settled,
-           COUNT(*) FILTER (WHERE outcome='won')::int AS wins,
-           COUNT(*) FILTER (WHERE outcome='lost')::int AS losses,
-           COUNT(*) FILTER (WHERE outcome='void')::int AS pushes,
-           AVG((grading_json->>'line_clv')::numeric)
-             FILTER (WHERE grading_json ? 'line_clv') AS "avgLineClv",
-           AVG(((grading_json->>'line_clv')::numeric > 0)::int)
-             FILTER (WHERE grading_json ? 'line_clv') AS "beatClose",
-           SUM(pnl_units) FILTER (WHERE pnl_units IS NOT NULL) AS units,
-           AVG(pnl_units) FILTER (WHERE pnl_units IS NOT NULL) AS "roiPerBet",
+           COUNT(DISTINCT matchup_id)::int AS games,
+           COUNT(*) FILTER (WHERE result_state='settled')::int AS settled,
+           COUNT(*) FILTER (WHERE result_state IS NULL OR result_state='pending')::int AS pending,
+           COUNT(*) FILTER (WHERE result_state='void')::int AS void,
+           COUNT(*) FILTER (WHERE result_state IN ('conflict','missing_entry'))::int AS excluded,
+           COUNT(*) FILTER (WHERE clv IS NOT NULL)::int AS "nClv",
+           COUNT(*) FILTER (WHERE result_state='settled' AND outcome='won')::int AS wins,
+           COUNT(*) FILTER (WHERE result_state='settled' AND outcome='lost')::int AS losses,
+           COUNT(*) FILTER (WHERE result_state='settled' AND outcome='push')::int AS pushes,
+           AVG(clv) AS "avgLineClv",
+           AVG((clv > 0)::int) FILTER (WHERE clv IS NOT NULL) AS "beatClose",
+           SUM(pnl_units) FILTER (WHERE result_state='settled') AS units,
+           SUM(pnl_units) FILTER (WHERE result_state='settled')
+             / NULLIF(SUM(roi_stake_units) FILTER (WHERE result_state='settled'), 0) AS "roiPerBet",
            COUNT(DISTINCT game_date)::int AS "gameDates"
-    FROM line_alerts
-    WHERE sport='cfb' AND origin='prospective'
-    GROUP BY alert_type, COALESCE(signal_version, details_json->>'signal_version', 'unstamped')
-    ORDER BY observations DESC, alert_type
+    FROM observations
+    GROUP BY alert_type, market, COALESCE(signal_version, details_json->>'signal_version', 'unstamped')
+    ORDER BY observations DESC, alert_type, market
   `);
   return rows.rows.map((row) => {
     const r = row as Record<string, unknown>;
     return {
-      alertType: String(r.alertType), signalVersion: String(r.signalVersion),
+      alertType: String(r.alertType), market: String(r.market), signalVersion: String(r.signalVersion),
       observations: Number(r.observations), settled: Number(r.settled),
       wins: Number(r.wins), losses: Number(r.losses), pushes: Number(r.pushes),
       avgLineClv: r.avgLineClv != null ? Number(r.avgLineClv) : null,
@@ -10376,8 +10404,58 @@ export async function getCfbSignalBacktest(): Promise<CfbSignalBacktestRow[]> {
       units: r.units != null ? Number(r.units) : null,
       roiPerBet: r.roiPerBet != null ? Number(r.roiPerBet) : null,
       gameDates: Number(r.gameDates),
+      games: Number(r.games), pending: Number(r.pending), void: Number(r.void), excluded: Number(r.excluded),
+      nClv: Number(r.nClv),
+      clvUnit: r.market === "spread" || r.market === "total" ? "points" : "probability_pp",
     };
   });
+}
+
+export type CfbStudyStatus = {
+  studyVersion: number;
+  primaryMetric: string;
+  consumerPermission: "decision-denied";
+  window: { label: string; state: "scheduled" | "collecting" | "awaiting_review" | "finalized"; endsAt: string } | null;
+};
+
+export async function getCfbStudyStatus(): Promise<CfbStudyStatus | null> {
+  const rows = await db.execute(sql`
+    WITH latest AS (SELECT * FROM cfb_engine_studies ORDER BY study_version DESC LIMIT 1)
+    SELECT l.study_version AS "studyVersion", l.primary_metric AS "primaryMetric",
+           w.window_key AS label, w.end_at::text AS "endsAt",
+           CASE WHEN e.result IS NOT NULL THEN 'finalized'
+                WHEN NOW() < w.start_at THEN 'scheduled'
+                WHEN NOW() < w.end_at THEN 'collecting'
+                ELSE 'awaiting_review' END AS state
+    FROM latest l
+    LEFT JOIN LATERAL (
+      SELECT * FROM cfb_engine_study_windows w
+      WHERE w.study_id=l.study_id AND w.study_version=l.study_version
+        AND (w.end_at > NOW() OR NOT EXISTS (
+          SELECT 1 FROM cfb_engine_evaluations e
+          WHERE e.study_id=l.study_id AND e.study_version=l.study_version
+            AND e.window_key=w.window_key
+        ))
+      ORDER BY w.start_at LIMIT 1
+    ) w ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT result FROM cfb_engine_evaluations e
+      WHERE e.study_id=l.study_id AND e.study_version=l.study_version
+        AND e.window_key=w.window_key
+      ORDER BY report_revision DESC LIMIT 1
+    ) e ON TRUE
+  `);
+  const r = rows.rows[0] as Record<string, unknown> | undefined;
+  if (!r) return null;
+  return {
+    studyVersion: Number(r.studyVersion), primaryMetric: String(r.primaryMetric),
+    consumerPermission: "decision-denied",
+    window: r.label == null ? null : {
+      label: String(r.label),
+      state: String(r.state) as NonNullable<CfbStudyStatus["window"]>["state"],
+      endsAt: String(r.endsAt),
+    },
+  };
 }
 
 function easternDateNow(): string {
