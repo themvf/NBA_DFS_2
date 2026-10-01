@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import type { CfbBookQuote, CfbResearchBoard, CfbResearchContext, CfbResearchRecord, CfbSignalBacktestRow, CfbStudyStatus, CfbTeamFeatureContext, CfbTerminalBoard, CfbTerminalRow, LineAlertRow, MarketCaptureHealth, MarketSignalScorecardRow } from "@/db/queries";
 import MarketSignalScorecard from "@/components/market-signal-scorecard";
 import CfbEvidenceLoop from "./cfb-evidence-loop";
+import { isCfbQuoteFresh } from "@/lib/cfb-quote-freshness";
 import MovementIntelligence from "@/components/movement-intelligence";
 import { buildMovementInsights, cfbIntelligenceEvents } from "@/lib/movement-intelligence";
 import SportsbookHistory from "@/components/sportsbook-history";
@@ -75,14 +76,9 @@ function bookTitle(key: string, quote?: CfbBookQuote): string {
 function fmtEt(value: string, compact = false): string {
   return new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", ...(compact ? { hour: "numeric", minute: "2-digit" } : { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }) }).format(new Date(value));
 }
-function quoteFresh(updatedAt: string | null, capturedAt: string | null, asOf: string): boolean {
-  if (!updatedAt || !capturedAt) return false;
-  const now = new Date(asOf).getTime();
-  return now - new Date(updatedAt).getTime() <= 5 * 60_000 && now - new Date(capturedAt).getTime() <= 5 * 60_000;
-}
 function selectionFor(market: MarketKey): SelectionSide { return market === "total" ? "over" : "home"; }
 
-function buildBookRows(game: CfbTerminalRow, market: MarketKey, side: SelectionSide, asOf: string): BookRow[] {
+function buildBookRows(game: CfbTerminalRow, market: MarketKey, side: SelectionSide, nowMs: number): BookRow[] {
   return Object.entries(selectedSportsbooks(game.currentBooks)).flatMap(([key, quote]) => {
     let line: string; let price: number | null | undefined;
     if (market === "spread") {
@@ -101,14 +97,14 @@ function buildBookRows(game: CfbTerminalRow, market: MarketKey, side: SelectionS
       line = `${side === "home" ? game.homeTeam : game.awayTeam} ML`;
     }
     const updatedAt = quote.last_update ? String(quote.last_update) : null;
-    return [{ key, book: bookTitle(key, quote), line, price: american(Number(price)), side, updatedAt, fresh: quoteFresh(updatedAt, game.latestCapturedAt, asOf) }];
+    return [{ key, book: bookTitle(key, quote), line, price: american(Number(price)), side, updatedAt, fresh: isCfbQuoteFresh(updatedAt, game.latestCapturedAt, game.commenceTime, nowMs) }];
   }).sort((a, b) => {
     const ai = BOOK_PRIORITY.indexOf(a.key); const bi = BOOK_PRIORITY.indexOf(b.key);
     return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi) || a.book.localeCompare(b.book);
   });
 }
 
-function buildMarket(game: CfbTerminalRow, market: MarketKey, side: SelectionSide, asOf: string): MarketView {
+function buildMarket(game: CfbTerminalRow, market: MarketKey, side: SelectionSide, nowMs: number): MarketView {
   const currentValues = Object.values(game.currentBooks ?? {}).flatMap((book) => { const value = valueFor(book, market, side); return value == null ? [] : [value]; });
   const openingValues = Object.values(game.openingBooks ?? {}).flatMap((book) => { const value = valueFor(book, market, side); return value == null ? [] : [value]; });
   const closingValues = Object.values(game.closingBooks ?? {}).flatMap((book) => { const value = valueFor(book, market, side); return value == null ? [] : [value]; });
@@ -129,7 +125,7 @@ function buildMarket(game: CfbTerminalRow, market: MarketKey, side: SelectionSid
     move: movement == null ? "Awaiting two captures" : market === "moneyline" ? `${signed(movement * 100)}pp` : `${signed(movement)} pts`,
     closeMove: closingMovement == null ? "CLV close pending" : market === "moneyline" ? `${signed(closingMovement * 100)}pp open→close` : `${signed(closingMovement)} pts open→close`,
     axisLabel: market === "moneyline" ? `Vig-free ${side === "away" ? game.awayTeam : game.homeTeam} probability` : market === "spread" ? `${side === "away" ? game.awayTeam : game.homeTeam} spread` : "Game total",
-    series: orderedBooks, history, books: buildBookRows(game, market, side, asOf), selectedLineBookCount, marketBookCount: currentValues.length,
+    series: orderedBooks, history, books: buildBookRows(game, market, side, nowMs), selectedLineBookCount, marketBookCount: currentValues.length,
   };
 }
 
@@ -258,14 +254,14 @@ function MovementMiniChart({ game, market }: { game: CfbTerminalRow; market: "sp
   </span>;
 }
 
-function WatchGame({ item, signals, active, asOf, onChoose }: { item: CfbTerminalRow; signals: LineAlertRow[]; active: boolean; asOf: string; onChoose: () => void }) {
-  const itemMarket = buildMarket(item, "spread", "home", asOf);
+function WatchGame({ item, signals, active, nowMs, onChoose }: { item: CfbTerminalRow; signals: LineAlertRow[]; active: boolean; nowMs: number; onChoose: () => void }) {
+  const itemMarket = buildMarket(item, "spread", "home", nowMs);
   const series = movementSeries(item, "spread");
   const move = series.length > 1 ? series.at(-1)!.value - series[0].value : null;
   const Trend = move != null && move > 0 ? TrendingUp : move != null && move < 0 ? TrendingDown : Activity;
   const recorded = movementSignals(signals, item.matchupId);
   const latestByType = recorded.filter((signal, index) => recorded.findIndex((other) => other.alertType === signal.alertType && other.details?.market === signal.details?.market) === index);
-  const stale = item.latestCapturedAt && Date.parse(asOf) - Date.parse(item.latestCapturedAt) > 30 * 60_000;
+  const stale = item.latestCapturedAt && nowMs - Date.parse(item.latestCapturedAt) > 30 * 60_000;
   return <button type="button" className={styles.watchRow} data-active={active} onClick={onChoose} aria-pressed={active}>
     <span className={styles.watchGame}><strong title={`${item.awayTeam} @ ${item.homeTeam}`}>{item.awayTeam} @ {item.homeTeam}</strong><small>{item.commenceTime ? fmtEt(item.commenceTime, true) : "TBD"} · {item.captures} captures</small></span>
     <span className={styles.watchLine}>{itemMarket.current}</span>
@@ -278,7 +274,7 @@ function WatchGame({ item, signals, active, asOf, onChoose }: { item: CfbTermina
   </button>;
 }
 
-export default function CfbTerminalClient({ board, observations, signals, backtest, research, scorecard, captureHealth, studyStatus }: { board: CfbTerminalBoard; observations?: LineAlertRow[]; signals: LineAlertRow[]; backtest: CfbSignalBacktestRow[]; research: CfbResearchBoard; scorecard: MarketSignalScorecardRow[]; captureHealth: MarketCaptureHealth | null; studyStatus: CfbStudyStatus | null }) {
+export default function CfbTerminalClient({ board, observations, signals, backtest, research, scorecard, captureHealth, studyStatus, dataFailures }: { board: CfbTerminalBoard; observations?: LineAlertRow[]; signals: LineAlertRow[]; backtest: CfbSignalBacktestRow[]; research: CfbResearchBoard; scorecard: MarketSignalScorecardRow[]; captureHealth: MarketCaptureHealth | null; studyStatus: CfbStudyStatus | null; dataFailures: string[] }) {
   const router = useRouter();
   function goToDate(next: string) { if (next) router.push(`/cfb?date=${next}`); }
   function shiftDate(delta: number) {
@@ -293,9 +289,13 @@ export default function CfbTerminalClient({ board, observations, signals, backte
   const [movementFilter, setMovementFilter] = useState("all");
   const [observedNow, setObservedNow] = useState(Date.parse(board.asOf));
   const [positions, setPositions] = useState<PaperPosition[]>([]); const [lockMessage, setLockMessage] = useState<string | null>(null);
-  useEffect(() => { const timer = window.setInterval(() => { setObservedNow(Date.now()); router.refresh(); }, 60_000); return () => window.clearInterval(timer); }, [router]);
+  useEffect(() => {
+    const clock = window.setInterval(() => setObservedNow(Date.now()), 5_000);
+    const refresh = window.setInterval(() => router.refresh(), 60_000);
+    return () => { window.clearInterval(clock); window.clearInterval(refresh); };
+  }, [router]);
   const game = board.games.find((item) => item.matchupId === gameId) ?? board.games[0] ?? null;
-  const market = useMemo(() => game ? buildMarket(game, marketKey, side, board.asOf) : null, [game, marketKey, side, board.asOf]);
+  const market = useMemo(() => game ? buildMarket(game, marketKey, side, observedNow) : null, [game, marketKey, side, observedNow]);
   const quote = market?.books.find((item) => item.key === selectedBook) ?? market?.books[0] ?? null;
   const gameSignals = useMemo(() => signals.filter((item) => item.matchupId === game?.matchupId), [signals, game?.matchupId]);
   const marketSignals = useMemo(() => gameSignals.filter((item) => signalMarket(item) === marketKey), [gameSignals, marketKey]);
@@ -306,11 +306,15 @@ export default function CfbTerminalClient({ board, observations, signals, backte
   function chooseMarket(next: MarketKey) { setMarketKey(next); setSide(selectionFor(next)); setSelectedBook(""); setLockMessage(null); }
   function chooseSide(next: SelectionSide) { setSide(next); setSelectedBook(""); setLockMessage(null); }
   function addPaperPosition() {
-    if (!game || !quote || !quote.fresh) return;
+    if (!game || !quote || !isCfbQuoteFresh(quote.updatedAt, game.latestCapturedAt, game.commenceTime, Date.now())) {
+      setLockMessage("Paper entry blocked: the quote is stale or kickoff has begun.");
+      return;
+    }
     setPositions((current) => [{ id: `${game.matchupId}-${marketKey}-${quote.key}-${Date.now()}`, game: `${game.awayTeam} @ ${game.homeTeam}`, market: `${MARKET_LABELS[marketKey]} · ${quote.side.toUpperCase()}`, book: quote.book, entry: `${quote.line} ${quote.price}`, observedAt: quote.updatedAt ?? board.asOf }, ...current]);
     setLockMessage(`Recorded paper position at ${quote.book}; this did not place a wager.`);
   }
   const statusLabel = board.status.toUpperCase();
+  const auditUnavailable = dataFailures.includes("prospective signal audit");
   const sideOptions: SelectionSide[] = marketKey === "total" ? ["over", "under"] : ["home", "away"];
   return <div className={styles.terminal}>
     <header className={styles.topbar}><div className={styles.brand}>CFB LINE TERMINAL</div><label className={styles.command}><Search aria-hidden="true" /><span className={styles.srOnly}>Search market watch</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="SEARCH TEAM OR GAME" /></label><div className={styles.marketOpen}><Radio aria-hidden="true" /> {board.games.length ? "MARKET BOARD" : "NO BOARD"}</div><div className={styles.shadowMode} title={board.statusDetail}>{statusLabel} · AS OF {fmtEt(board.asOf, true)}</div></header>
@@ -323,13 +327,14 @@ export default function CfbTerminalClient({ board, observations, signals, backte
       </div>
       <span className={styles.navCount}>{board.games.length} SCHEDULED</span>
     </nav>
+    {dataFailures.length ? <div className={styles.dataFailure} role="alert">CFB data unavailable: {dataFailures.join(", ")}. Affected sections cannot be trusted until the next successful refresh.</div> : null}
     <MovementIntelligence items={intelligence} selectedKey={`${game?.matchupId}:${marketKey}`} onSelect={(item) => { chooseGame(item.matchupId); chooseMarket(item.market); chooseSide(item.side); }} />
-    <CfbEvidenceLoop quote={quote} closeQuality={game?.closeQuality ?? null} backtest={backtest} study={studyStatus} />
+    <CfbEvidenceLoop quote={quote} closeQuality={game?.closeQuality ?? null} backtest={backtest} study={studyStatus} auditUnavailable={auditUnavailable} />
     <section className={styles.watchPane} aria-label="CFB market watch"><div className={styles.sectionTitle}><span>MARKET WATCH</span><span>{board.gameDate}</span></div>
         <div className={styles.movementFilters} aria-label="Filter recorded movements">{["all", "steam", "walk", "reversal"].map((kind) => <button key={kind} type="button" aria-pressed={movementFilter === kind} onClick={() => setMovementFilter(kind)}>{kind.toUpperCase()}</button>)}</div>
         <p className={styles.watchLegend}>S = home spread · T = total · ML = moneyline. Badges are recorded signals, not recommendations. Charts show observed consensus; dashed gaps exceed 30m.</p>
         <div className={styles.watchList}>
-        {filteredGames.map((item) => <WatchGame key={item.matchupId} item={item} signals={signals} active={item.matchupId === game?.matchupId} asOf={board.asOf} onChoose={() => chooseGame(item.matchupId)} />)}
+        {filteredGames.map((item) => <WatchGame key={item.matchupId} item={item} signals={signals} active={item.matchupId === game?.matchupId} nowMs={observedNow} onChoose={() => chooseGame(item.matchupId)} />)}
         {!filteredGames.length ? <div className={styles.empty}>{board.games.length ? "No games match this search and movement filter." : board.statusDetail}</div> : null}
       </div></section>
     <div className={styles.shell}>
@@ -340,9 +345,9 @@ export default function CfbTerminalClient({ board, observations, signals, backte
           <div className={styles.catalystPane}><div className={styles.sectionTitle}><span>MARKET QUALITY</span><span>AUDIT</span></div><div className={styles.catalystRow}><span>NOW</span><strong>SUPPORT</strong><p>{market.selectedLineBookCount} books at selected consensus line · {market.marketBookCount} books in market</p></div><div className={styles.catalystRow}><span>OPEN</span><strong>HISTORY</strong><p>{game.captures} accepted pregame captures; post-kickoff rows excluded</p></div><div className={styles.catalystRow}><span>CLOSE</span><strong>{game.closeQuality ? `GRADE ${game.closeQuality}` : "PENDING"}</strong><p>{game.closingCapturedAt ? `${market.closeMove}; ${Math.round((game.closeLeadSeconds ?? 0) / 60)}m before ${game.closeBoundarySource}` : "Frozen only after the scheduled CFB kickoff boundary; no latest-row proxy."}</p></div><div className={styles.catalystRow}><span>MAP</span><strong>IDENTITY</strong><p>CFBD game {game.cfbdGameId} · Odds event {game.oddsEventId ?? "provider event unavailable"}</p></div></div></section>
         <HistoryPanel context={researchContext} game={game} />
         <section className={styles.blotter}><div className={styles.sectionTitle}><span>SESSION PAPER BLOTTER</span><span>{positions.length} OPEN</span></div>{!positions.length ? <div className={styles.blotterEmpty}>A paper position can be recorded only from an observation no more than five minutes old.</div> : <div className={styles.blotterTableWrap}><table><thead><tr><th>Game</th><th>Market</th><th>Book</th><th>Entry</th><th>Observed</th></tr></thead><tbody>{positions.map((position) => <tr key={position.id}><td>{position.game}</td><td>{position.market}</td><td>{position.book}</td><td>{position.entry}</td><td>{fmtEt(position.observedAt)}</td></tr>)}</tbody></table></div>}</section>
-        <section className={styles.researchPane}><div className={styles.sectionTitle}><span>PROSPECTIVE SIGNAL AUDIT</span><span>CFB-LINES-V1 · NO EDGE CLAIM</span></div>{!backtest.length ? <div className={styles.blotterEmpty}>No prospective CFB signals yet. Metrics appear only after immutable detector observations are recorded.</div> : <div className={styles.researchTableWrap}><table><thead><tr><th>Signal</th><th>Market</th><th>Version</th><th>Obs</th><th>Games</th><th>Dates</th><th>Settled</th><th>Pending</th><th>Void</th><th>W-L-P</th><th>Avg CLV</th><th>CLV n</th><th>Beat close</th><th>Units</th><th>ROI/bet</th><th>Excluded</th></tr></thead><tbody>{backtest.map((row) => <tr key={`${row.alertType}-${row.market}-${row.signalVersion}`}><td>{SIGNAL_LABELS[row.alertType] ?? row.alertType}</td><td>{row.market.toUpperCase()}</td><td>{row.signalVersion}</td><td>{row.observations}</td><td>{row.games}</td><td>{row.gameDates}</td><td>{row.settled}</td><td>{row.pending}</td><td>{row.void}</td><td>{row.wins}-{row.losses}-{row.pushes}</td><td>{row.avgLineClv == null ? "—" : `${signed(row.avgLineClv)} ${row.clvUnit === "points" ? "pts" : "pp"}`}</td><td>{row.nClv}</td><td>{pct(row.beatClose)}</td><td>{row.units == null ? "—" : signed(row.units, 2)}</td><td>{row.roiPerBet == null ? "—" : `${signed(row.roiPerBet * 100, 1)}%`}</td><td>{row.excluded || "—"}</td></tr>)}</tbody></table></div>}<p className={styles.researchDisclosure}>Descriptive research only. Small samples, repeated game dates, and mixed execution books can make apparent ROI unstable; model promotion requires prospective CLV and out-of-sample evidence.</p></section>
+        <section className={styles.researchPane}><div className={styles.sectionTitle}><span>PROSPECTIVE SIGNAL AUDIT</span><span>CFB-LINES-V1 · NO EDGE CLAIM</span></div>{auditUnavailable ? <div className={styles.blotterEmpty} role="alert">Prospective signal audit unavailable. Results are temporarily hidden.</div> : !backtest.length ? <div className={styles.blotterEmpty}>No prospective CFB signals yet. Metrics appear only after immutable detector observations are recorded.</div> : <div className={styles.researchTableWrap}><table><thead><tr><th>Signal</th><th>Market</th><th>Version</th><th>Obs</th><th>Games</th><th>Dates</th><th>Settled</th><th>Pending</th><th>Void</th><th>W-L-P</th><th>Avg market/line CLV</th><th>CLV n</th><th>Exact price n</th><th>Beat market/line close</th><th>Units</th><th>ROI/bet</th><th>Excluded</th></tr></thead><tbody>{backtest.map((row) => <tr key={`${row.alertType}-${row.market}-${row.signalVersion}`}><td>{SIGNAL_LABELS[row.alertType] ?? row.alertType}</td><td>{row.market.toUpperCase()}</td><td>{row.signalVersion}</td><td>{row.observations}</td><td>{row.games}</td><td>{row.gameDates}</td><td>{row.settled}</td><td>{row.pending}</td><td>{row.void}</td><td>{row.wins}-{row.losses}-{row.pushes}</td><td>{row.avgLineClv == null ? "—" : `${signed(row.avgLineClv)} ${row.clvUnit === "points" ? "pts" : "pp"}`}</td><td>{row.nClv}</td><td>{row.market === "moneyline" ? row.nExactPriceClv : "—"}</td><td>{pct(row.beatClose)}</td><td>{row.units == null ? "—" : signed(row.units, 2)}</td><td>{row.roiPerBet == null ? "—" : `${signed(row.roiPerBet * 100, 1)}%`}</td><td>{row.excluded || "—"}</td></tr>)}</tbody></table></div>}<p className={styles.researchDisclosure}>Moneyline CLV is a market probability comparison; Exact price n counts same-book price comparisons. Spread and total CLV is in points. Small samples, repeated game dates, and mixed execution books can make apparent ROI unstable; model promotion requires prospective CLV and out-of-sample evidence.</p></section>
       </>}</main>
-      <aside className={styles.pulsePane}><div className={styles.sectionTitle}><span>DATA PULSE</span><span>{statusLabel}</span></div><article className={styles.pulseRow} data-tone={board.status === "live" ? "market" : "critical"}><div><span>{fmtEt(board.asOf, true)}</span><strong>{board.status === "live" ? <Zap aria-hidden="true" /> : <ShieldAlert aria-hidden="true" />} FEED STATE</strong></div><h3>{statusLabel}</h3><p>{board.statusDetail}</p></article>{captureHealth ? <article className={styles.pulseRow} data-tone={captureHealth.status === "healthy" ? "market" : "critical"}><div><span>{captureHealth.eventsCovered} EVENTS</span><strong><Activity aria-hidden="true" /> CHECKPOINTS</strong></div><h3>{captureHealth.due ? `${captureHealth.dueCaptured}/${captureHealth.due} due captured` : "No checkpoints due"}</h3><p>{captureHealth.missed} missed · {captureHealth.failed} failed · {captureHealth.pending} scheduled ahead</p></article> : null}{game ? <><article className={styles.pulseRow} data-tone="market"><div><span>{game.latestCapturedAt ? fmtEt(game.latestCapturedAt, true) : "—"}</span><strong><Activity aria-hidden="true" /> CAPTURE</strong></div><h3>{game.captures} observations</h3><p>Every chart point comes from the append-only exact-book ledger.</p></article><div className={styles.sectionTitle}><span>CROSS-MARKET</span><span>RELATED</span></div>{(["spread", "total", "moneyline"] as MarketKey[]).map((key) => { const view = buildMarket(game, key, selectionFor(key), board.asOf); return <div key={key} className={styles.relatedRow}><span>{MARKET_LABELS[key]}</span><strong>{view.current}</strong><small>{view.move}</small></div>; })}<div className={styles.sectionTitle}><span>SIGNAL TAPE</span><span>{gameSignals.length} RECORDED</span></div>{gameSignals.length ? gameSignals.slice(0, 8).map((signal) => { const observedAt = signalObservedAt(signal); return <article key={`${signal.alertType}-${observedAt}`} className={styles.signalRow} data-tone={signal.alertType === "reversal" ? "risk" : "market"}><div><strong>{SIGNAL_LABELS[signal.alertType] ?? signal.alertType.toUpperCase()}</strong><span>{fmtEt(observedAt, true)}</span></div><p>{String(signal.details?.market ?? signalMarket(signal)).toUpperCase()} · {signal.side.toUpperCase()} · line {String(signal.details?.trigger_line ?? "—")} · support {String(signal.details?.consensus_support ?? "—")}</p><small>{String(signal.details?.signal_version ?? "unstamped")} · evidence #{String(signal.details?.trigger_history_id ?? "—")}</small></article>; }) : <div className={styles.signalEmpty}>No qualifying prospective signal for this game.</div>}</> : null}<div className={styles.disclosure}><BellRing aria-hidden="true" /><div><strong>Research terminal</strong><p>Signals are versioned observations, not recommendations. No predictive edge or real-money execution is represented.</p></div></div></aside>
+      <aside className={styles.pulsePane}><div className={styles.sectionTitle}><span>DATA PULSE</span><span>{statusLabel}</span></div><article className={styles.pulseRow} data-tone={board.status === "live" ? "market" : "critical"}><div><span>{fmtEt(board.asOf, true)}</span><strong>{board.status === "live" ? <Zap aria-hidden="true" /> : <ShieldAlert aria-hidden="true" />} FEED STATE</strong></div><h3>{statusLabel}</h3><p>{board.statusDetail}</p></article>{captureHealth ? <article className={styles.pulseRow} data-tone={captureHealth.status === "healthy" ? "market" : "critical"}><div><span>{captureHealth.eventsCovered} EVENTS</span><strong><Activity aria-hidden="true" /> CHECKPOINTS</strong></div><h3>{captureHealth.due ? `${captureHealth.dueCaptured}/${captureHealth.due} due captured` : "No checkpoints due"}</h3><p>{captureHealth.missed} missed · {captureHealth.failed} failed · {captureHealth.pending} scheduled ahead</p></article> : null}{game ? <><article className={styles.pulseRow} data-tone="market"><div><span>{game.latestCapturedAt ? fmtEt(game.latestCapturedAt, true) : "—"}</span><strong><Activity aria-hidden="true" /> CAPTURE</strong></div><h3>{game.captures} observations</h3><p>Every chart point comes from the append-only exact-book ledger.</p></article><div className={styles.sectionTitle}><span>CROSS-MARKET</span><span>RELATED</span></div>{(["spread", "total", "moneyline"] as MarketKey[]).map((key) => { const view = buildMarket(game, key, selectionFor(key), observedNow); return <div key={key} className={styles.relatedRow}><span>{MARKET_LABELS[key]}</span><strong>{view.current}</strong><small>{view.move}</small></div>; })}<div className={styles.sectionTitle}><span>SIGNAL TAPE</span><span>{gameSignals.length} RECORDED</span></div>{gameSignals.length ? gameSignals.slice(0, 8).map((signal) => { const observedAt = signalObservedAt(signal); return <article key={`${signal.alertType}-${observedAt}`} className={styles.signalRow} data-tone={signal.alertType === "reversal" ? "risk" : "market"}><div><strong>{SIGNAL_LABELS[signal.alertType] ?? signal.alertType.toUpperCase()}</strong><span>{fmtEt(observedAt, true)}</span></div><p>{String(signal.details?.market ?? signalMarket(signal)).toUpperCase()} · {signal.side.toUpperCase()} · line {String(signal.details?.trigger_line ?? "—")} · support {String(signal.details?.consensus_support ?? "—")}</p><small>{String(signal.details?.signal_version ?? "unstamped")} · evidence #{String(signal.details?.trigger_history_id ?? "—")}</small></article>; }) : <div className={styles.signalEmpty}>No qualifying prospective signal for this game.</div>}</> : null}<div className={styles.disclosure}><BellRing aria-hidden="true" /><div><strong>Research terminal</strong><p>Signals are versioned observations, not recommendations. No predictive edge or real-money execution is represented.</p></div></div></aside>
     </div>
     <MarketSignalScorecard rows={scorecard} sport="CFB" />
     <footer className={styles.ticker}><span><strong>STATUS</strong> {board.statusDetail}</span><span><strong>BOARD</strong> {board.games.length} GAMES</span><span><strong>QUARANTINE</strong> {board.unmappedEvents} UNMAPPED EVENTS</span><span><strong>CONSENSUS</strong> LOWER MEDIAN · EXACT-LINE PRICE SUPPORT</span><span><strong>PAPER</strong> FIVE-MINUTE FRESHNESS REQUIRED</span></footer>

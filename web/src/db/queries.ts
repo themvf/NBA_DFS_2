@@ -10347,6 +10347,7 @@ export type CfbSignalBacktestRow = {
   void: number;
   excluded: number;
   nClv: number;
+  nExactPriceClv: number;
   clvUnit: "points" | "probability_pp";
 };
 
@@ -10364,6 +10365,7 @@ export async function getCfbSignalBacktest(): Promise<CfbSignalBacktestRow[]> {
              COALESCE(a.details_json->>'market', 'moneyline') AS market,
              a.matchup_id, r.result_state, r.outcome, r.pnl_units,
              r.roi_stake_units,
+             (r.metrics->>'decimal_price_ratio_pct')::numeric AS exact_price_clv,
              CASE WHEN a.details_json->>'market' IN ('spread', 'total')
                   THEN (r.metrics->>'line_clv')::numeric
                   ELSE (r.metrics->>'probability_clv_pp')::numeric END AS clv
@@ -10380,6 +10382,7 @@ export async function getCfbSignalBacktest(): Promise<CfbSignalBacktestRow[]> {
            COUNT(*) FILTER (WHERE result_state='void')::int AS void,
            COUNT(*) FILTER (WHERE result_state IN ('conflict','missing_entry'))::int AS excluded,
            COUNT(*) FILTER (WHERE clv IS NOT NULL)::int AS "nClv",
+           COUNT(*) FILTER (WHERE market='moneyline' AND exact_price_clv IS NOT NULL)::int AS "nExactPriceClv",
            COUNT(*) FILTER (WHERE result_state='settled' AND outcome='won')::int AS wins,
            COUNT(*) FILTER (WHERE result_state='settled' AND outcome='lost')::int AS losses,
            COUNT(*) FILTER (WHERE result_state='settled' AND outcome='push')::int AS pushes,
@@ -10406,6 +10409,7 @@ export async function getCfbSignalBacktest(): Promise<CfbSignalBacktestRow[]> {
       gameDates: Number(r.gameDates),
       games: Number(r.games), pending: Number(r.pending), void: Number(r.void), excluded: Number(r.excluded),
       nClv: Number(r.nClv),
+      nExactPriceClv: Number(r.nExactPriceClv),
       clvUnit: r.market === "spread" || r.market === "total" ? "points" : "probability_pp",
     };
   });
