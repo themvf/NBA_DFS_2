@@ -541,6 +541,26 @@ def persist_week(db: DatabaseManager, projections: list[dict[str, Any]], manifes
              manifest["seed"], manifest["season"], manifest["week"], Json(source_ids),
              Json(manifest["model_config"]), Json(availability_manifest), len(projections), digest),
         )
+        # Game-level matchup evidence is stored once per content digest, not on
+        # every player row. Embedded per player it was ~170 KB per row (both
+        # teams' context, repeated for ~70 players a game, ~30 runs a day) and
+        # 1.6 GB of this table by 2026-09-30. Each row keeps the small shadow
+        # result and the digest that names its evidence.
+        evidence_rows = {}
+        snapshots = {}
+        for row in projections:
+            snapshot = row["feature_snapshot"]
+            matchup = snapshot.get("matchup") if isinstance(snapshot, dict) else None
+            if isinstance(matchup, dict) and isinstance(matchup.get("evidence"), dict):
+                evidence_digest = artifact_digest(matchup["evidence"])
+                evidence_rows[evidence_digest] = matchup["evidence"]
+                snapshot = {**snapshot, "matchup": {"evidence_digest": evidence_digest,
+                                                    "shadow": matchup.get("shadow")}}
+            snapshots[id(row)] = snapshot
+        if evidence_rows:
+            execute_values(cur, """INSERT INTO nfl_dfs_matchup_evidence (evidence_digest,evidence)
+                VALUES %s ON CONFLICT (evidence_digest) DO NOTHING""",
+                [(d, Json(e)) for d, e in evidence_rows.items()])
         values = []
         for row in projections:
             evidence = {
@@ -567,7 +587,7 @@ def persist_week(db: DatabaseManager, projections: list[dict[str, Any]], manifes
                 row["projection_status"], row["history_games"], row["prior_games"],
                 row["model_proj_fpts"], row["baseline_fpts"], row["floor_fpts"],
                 row["median_fpts"], row["ceiling_fpts"], row["boom_rate"], row["confidence"],
-                Json(row["stat_means"]), Json(row["feature_snapshot"]), Json(evidence),
+                Json(row["stat_means"]), Json(snapshots[id(row)]), Json(evidence),
             ))
         if values:
             execute_values(cur, """INSERT INTO nfl_dfs_player_projections

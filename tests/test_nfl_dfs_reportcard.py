@@ -83,3 +83,16 @@ def test_snapshots_the_loader_dropped_still_count_as_rejected():
     r = report([forecast(), forecast(forecast_id="3", mean=100., captured_at=KICK)], prior_rejected=7)
     assert r["rejected_non_pregame_snapshots"] == 8
     assert r["rows"][0]["forecast"]["forecast_id"] == "1"
+
+
+def test_a_report_that_only_changed_its_evaluation_time_is_not_rewritten():
+    from ingest.nfl_dfs_reportcard import same_content
+    import json
+    first = report()
+    later = report(now=KICK + timedelta(days=3, minutes=30))
+    stored = json.loads(json.dumps(first, default=str))
+    assert later["evaluated_at"] != first["evaluated_at"]
+    assert same_content(stored, later)
+    changed = report(results=[result(actual_dk_fpts=20.)])
+    assert not same_content(stored, changed)
+    assert not same_content(None, later)

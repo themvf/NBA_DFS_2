@@ -106,13 +106,29 @@ def inputs(db, season, week, now):
                 prior_rejected=int(rejected[0]["n"]))
 
 
+def same_content(previous, report):
+    """True when two reports differ only in when they were evaluated."""
+    if previous is None:
+        return False
+    current = json.loads(json.dumps(report, default=str))
+    return ({k: v for k, v in previous.items() if k != "evaluated_at"}
+            == {k: v for k, v in current.items() if k != "evaluated_at"})
+
+
 def persist(db, report):
-    # A new observation records when coverage was checked, even if outcomes
-    # are unchanged. Re-persisting this exact report is idempotent; the UI
-    # reads one latest report per week, never sums observations as samples.
+    # The UI and review digest read one latest report per week. A report that
+    # differs from the newest stored one only in `evaluated_at` is not written:
+    # each is ~7 MB and the research job runs several times a day, so repeats
+    # cost 80-200 MB a day by 2026-09-30. Returns the stored digest either way.
     digest = artifact_digest(report)
     with db.connect() as connection:
         with connection.cursor() as cursor:
+            cursor.execute("""SELECT report_digest,payload FROM nfl_dfs_weekly_report_cards
+                WHERE season=%s AND week=%s ORDER BY created_at DESC, report_digest DESC LIMIT 1""",
+                (report["season"], report["week"]))
+            latest = cursor.fetchone()
+            if latest and same_content(latest["payload"], report):
+                return latest["report_digest"]
             cursor.execute("""INSERT INTO nfl_dfs_weekly_report_cards(report_digest,season,week,payload)
                 VALUES (%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
                 (digest, report["season"], report["week"], Json(report, dumps=lambda x: json.dumps(x, default=str))))

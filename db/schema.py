@@ -2593,6 +2593,13 @@ TABLES = [
         CHECK(scoring = 'DK'),
         CHECK(player_count >= 0)
     )""",
+    # Game-level matchup evidence referenced from
+    # nfl_dfs_player_projections.feature_snapshot->'matchup'->>'evidence_digest'.
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_matchup_evidence (
+        evidence_digest TEXT PRIMARY KEY,
+        evidence JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )""",
     """CREATE TABLE IF NOT EXISTS nfl_dfs_player_projections (
         id BIGSERIAL PRIMARY KEY,
         run_id UUID NOT NULL REFERENCES nfl_dfs_projection_runs(run_id) ON DELETE CASCADE,
