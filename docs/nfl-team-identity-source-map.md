@@ -2,6 +2,8 @@
 
 **Status:** The Team Identity page is implemented at `/nfl/team-identity` and computes its profile on each request. A persisted team-profile summary does not exist. Source coverage below was verified against the local database on 2026-10-01; recheck live coverage before relying on counts.
 
+The page's team directory links to every active NFL team and uses the same season, game, market, and settlement queries for each one. On the Monday and Tuesday `refresh_nfl_pbp_archetypes.yml` runs, `ingest.nfl_season_schedule` first refreshes the current season's completed games, scores, and matchup links from nflverse; `ingest.nfl_pbp_archetypes --relabel-stale` then labels newly published games. The page is dynamic, so its rolling summary and postgame rows advance on the next request after both steps succeed. The scheduled runs are not live during a game. A quote appears only when a verified pre-kickoff odds capture exists for that matchup; missing market data remains marked unavailable.
+
 This is the starting point for agents maintaining cross-season NFL team archetypes. The existing `/nfl/pbp` page is the game and play evidence view. The Team Identity page summarizes a team's choices and results across games, then links back to the exact games and plays. Keep source facts in their existing tables; a future profile table or view should store only derived measures and provenance.
 
 ## Source ownership and keys

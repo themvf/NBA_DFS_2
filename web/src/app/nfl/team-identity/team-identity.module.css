@@ -13,6 +13,9 @@
 .controls select,.controls button{background:#13272a;color:#edf7f3;border:1px solid #37615b;border-radius:7px;min-height:39px;padding:7px 11px;font-size:13px;}
 .controls button{cursor:pointer;background:#2b766d;border-color:#3a9c8e;font-weight:800;}
 .controls>span{margin-left:auto;color:#91a9a4;font-size:12px;align-self:center;}
+.teamDirectory{display:grid;gap:13px;margin:0 0 24px;padding:17px;background:#102023;border:1px solid #284047;border-radius:10px;}
+.teamDirectory>div:first-child{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;}.teamDirectory strong{color:#e8f0ed;font-size:13px;}.teamDirectory span,.teamDirectory p{color:#9db9b5;font-size:12px;line-height:1.5;}.teamDirectory p{margin:0;}
+.teamLinks{display:grid;grid-template-columns:repeat(auto-fit,minmax(64px,1fr));gap:7px;}.teamLinks a{display:block;padding:8px 4px;border:1px solid #34514e;border-radius:6px;text-align:center;color:#a8d6cd;text-decoration:none;font-size:12px;font-weight:800;}.teamLinks a:hover{background:#1c3b3c;color:#ecf8f4;}.teamLinks a[aria-current="page"]{background:#2b766d;border-color:#4cb9a8;color:#fff;}
 .hero{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,1fr);gap:18px;background:linear-gradient(135deg,#173632,#11292c 65%,#102024);border:1px solid #3c776c;border-radius:12px;padding:clamp(20px,3vw,36px);}
 .hero h2{font-size:clamp(23px,3vw,34px);margin:0 0 15px;letter-spacing:-.025em;}
 .summary{font-size:clamp(16px,1.7vw,21px);line-height:1.45;max-width:800px;margin:0;}

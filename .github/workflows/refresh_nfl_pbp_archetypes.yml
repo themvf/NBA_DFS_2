@@ -9,7 +9,7 @@ name: Refresh NFL PBP Archetypes
 # the season):
 #   Monday 12:00 UTC  = 08:00 ET in daylight time -- picks up Thursday +
 #                       Sunday games the morning after the Sunday slate.
-#   Tuesday 09:00 UTC = after Monday night's game has been published.
+#   Tuesday 14:00 UTC = fallback after Monday night's game has been published.
 # Cron is UTC, so the Monday slot drifts to 07:00 ET once clocks fall back;
 # nflverse has already published by then, so that is harmless.
 
@@ -29,6 +29,7 @@ on:
       - "model/nfl_context_engine.py"
       - "model/nfl_context_measures.py"
       - "ingest/nfl_pbp_archetypes.py"
+      - "ingest/nfl_season_schedule.py"
       - "ingest/nfl_context_publish.py"
 
   workflow_dispatch:
@@ -76,6 +77,14 @@ jobs:
           pip install -r requirements.txt
           # The labellers read nflverse's parquet release directly.
           pip install "pandas>=2" "pyarrow>=15"
+
+      # Team Identity requires final scores and the canonical odds bridge as
+      # well as labelled plays. Refresh these before deciding which games are
+      # stale, so every team's postgame comparison advances with the release.
+      - name: Refresh current-season schedule and final scores
+        run: |
+          SEASON=$(python -c "from datetime import datetime, timezone; from ingest.nfl_dfs_weekly import target_season; print(target_season(None, datetime.now(timezone.utc)))")
+          python -m ingest.nfl_season_schedule --season "$SEASON"
 
       # Relabel only what disagrees with the release: a stale labeller version
       # or a game played since the last run. Pushes, both scheduled slots, and

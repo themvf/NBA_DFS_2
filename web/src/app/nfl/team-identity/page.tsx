@@ -87,6 +87,12 @@ export default async function NflTeamIdentityPage({ searchParams }: {
         <span>{current.games} completed {current.games === 1 ? "game" : "games"} · {current.offensePlays} offensive run-pass plays</span>
       </form>
 
+      <nav className={s.teamDirectory} aria-label="All NFL team profiles">
+        <div><strong>All {options.teams.length} team profiles</strong><span>Choose a team to see its rolling summary and each completed game&apos;s pregame lines beside the result.</span></div>
+        <div className={s.teamLinks}>{options.teams.map(row => <Link key={row.abbreviation} href={`/nfl/team-identity?team=${encodeURIComponent(row.abbreviation)}&season=${season}`} aria-current={row.abbreviation === selectedTeam.abbreviation ? "page" : undefined}>{row.abbreviation}</Link>)}</div>
+        <p>Profiles update after the weekly play-by-play and final-score refresh. New market comparisons appear when a verified pregame quote is available.</p>
+      </nav>
+
       {!latest ? <section className={s.empty}><h2>No completed games yet</h2><p>The summary will appear after this team&apos;s first completed game has been labeled.</p></section> : <>
         <section className={s.hero} aria-labelledby="identity-summary">
           <div className={s.heroCopy}>
