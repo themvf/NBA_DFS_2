@@ -49,12 +49,19 @@
 .weekStats{display:flex;gap:10px;flex-wrap:wrap;}
 .weekStats span{background:#0b1d20;padding:7px 10px;border-radius:5px;color:#a7bbb5;font-size:11px;}
 .weekStats b{color:#e6f2ed;margin-left:5px;font-variant-numeric:tabular-nums;}
-.gameGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:13px;}
+.marketExplainer{margin:-3px 0 17px;padding:12px 15px;border-left:3px solid #5ac7b7;background:#183033;color:#bad0c8;font-size:12px;line-height:1.55;}.marketExplainer strong{color:#e6f3ed;}
+.gameGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:13px;}
 .gameCard{background:#172b2e;border:1px solid #34514e;border-radius:9px;padding:16px;}
 .gameTitle{display:grid;grid-template-columns:1fr auto;align-items:center;gap:3px;}
 .gameTitle span{color:#8ecdc3;font-size:11px;font-weight:800;grid-column:1/-1;}
 .gameTitle h3{font-size:21px;margin:2px 0 9px;}
 .gameTitle strong{font-size:19px;margin-bottom:9px;font-variant-numeric:tabular-nums;}
+.marketReadout{border:1px solid #3b5c56;border-radius:7px;overflow:hidden;margin:4px 0 15px;}
+.marketColumns,.marketRow{display:grid;grid-template-columns:1fr 1fr;}
+.marketColumns{background:#0d2225;color:#8dd8ca;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;}
+.marketColumns span{padding:8px 10px;}.marketColumns span+span{border-left:1px solid #34534d;}
+.marketRow{background:#173134;border-top:1px solid #35554e;}.marketRow>div{display:grid;gap:3px;align-content:start;padding:10px;min-width:0;}.marketRow>div+div{border-left:1px solid #34534d;}
+.marketRow span{color:#9bbdb4;font-size:10px;text-transform:uppercase;letter-spacing:.04em;font-weight:800;}.marketRow strong{font-size:14px;color:#eef8f3;font-variant-numeric:tabular-nums;}.marketRow strong[data-tone="good"]{color:#78e3bf;}.marketRow strong[data-tone="bad"]{color:#ffaaa1;}.marketRow small{color:#9db8af;font-size:10px;line-height:1.35;}
 .gameCard dl{display:grid;grid-template-columns:1fr auto;gap:7px;margin:4px 0 16px;font-size:12px;border-top:1px solid #37534e;padding-top:13px;}
 .gameCard dt{color:#9cb3ac;}.gameCard dd{margin:0;text-align:right;font-weight:700;font-variant-numeric:tabular-nums;}
 .gameLinks{display:flex;gap:15px;flex-wrap:wrap;font-size:12px;}
@@ -66,4 +73,4 @@
 .empty{background:#102023;border:1px solid #284047;border-radius:12px;padding:35px;}.empty h2{margin-top:0;}.empty p{color:#a8bbb5;}
 .page a:focus-visible,.page button:focus-visible,.page select:focus-visible,.page summary:focus-visible{outline:2px solid #7bdfd0;outline-offset:3px;}
 @media(max-width:860px){.hero{grid-template-columns:1fr;}.header,.sectionHead{align-items:start;flex-direction:column;}.controls>span{margin-left:0;width:100%;}}
-@media(max-width:520px){.shell{padding:16px 12px 50px;}.section{padding:16px;}.weekTop a{margin-left:0;width:100%;}.controls label:first-child{width:100%;}.controls select{width:100%;}}
+@media(max-width:520px){.shell{padding:16px 12px 50px;}.section{padding:16px;}.weekTop a{margin-left:0;width:100%;}.controls label:first-child{width:100%;}.controls select{width:100%;}.gameGrid{grid-template-columns:minmax(0,1fr);}.marketRow strong{font-size:12px;}}

@@ -51,6 +51,8 @@ export type NflIdentityGame = {
   driveVersion: string;
   market: {
     source: "captured" | "archive";
+    moneyline: number | null;
+    winProbability: number | null;
     spread: number | null;
     total: number | null;
     impliedPoints: number | null;
@@ -67,6 +69,10 @@ function resultRows(result: unknown): Record<string, unknown>[] {
 
 const number = (value: unknown): number => Number(value ?? 0);
 const optionalNumber = (value: unknown): number | null => value == null ? null : Number(value);
+const moneyline = (value: unknown): number | null => {
+  const parsed = optionalNumber(value);
+  return parsed === 0 ? null : parsed;
+};
 const dateText = (value: unknown): string => value instanceof Date ? value.toISOString() : String(value);
 
 export async function getNflIdentityOptions(): Promise<{ teams: NflIdentityTeam[]; seasons: number[] }> {
@@ -160,19 +166,23 @@ export async function getNflIdentityGames(team: string, season: number): Promise
     )
     SELECT gs.*,
            market.id AS market_id, market.captured_at AS market_at,
+           market.home_ml AS market_home_ml, market.away_ml AS market_away_ml,
+           market.vegas_prob_home AS market_home_win_probability,
            market.home_spread AS market_home_spread, market.vegas_total AS market_total,
            market.home_implied AS market_home_implied, market.away_implied AS market_away_implied,
            archived.id AS archive_id, archived.snapshot_at AS archive_at,
-           archived.home_spread AS archive_home_spread
+           archived.home_spread AS archive_home_spread,
+           archived.home_ml AS archive_home_ml, archived.away_ml AS archive_away_ml
     FROM game_stats gs
     LEFT JOIN LATERAL (
-      SELECT h.id, h.captured_at, h.home_spread, h.vegas_total, h.home_implied, h.away_implied
+      SELECT h.id, h.captured_at, h.home_ml, h.away_ml, h.vegas_prob_home,
+             h.home_spread, h.vegas_total, h.home_implied, h.away_implied
       FROM game_odds_history h
       WHERE h.sport = 'nfl' AND h.matchup_id = gs.matchup_id AND h.captured_at < gs.kickoff
       ORDER BY h.captured_at DESC, h.id DESC LIMIT 1
     ) market ON TRUE
     LEFT JOIN LATERAL (
-      SELECT s.id, s.snapshot_at, s.home_spread
+      SELECT s.id, s.snapshot_at, s.home_ml, s.away_ml, s.home_spread
       FROM nfl_line_snapshots s
       WHERE gs.matchup_id IS NULL AND s.season = gs.season
         AND s.home_team = gs.home_name AND s.away_team = gs.away_name
@@ -184,14 +194,23 @@ export async function getNflIdentityGames(team: string, season: number): Promise
 
   const games = resultRows(result).map((row): NflIdentityGame => {
     const isHome = String(row.home_team) === team;
+    const homeMoneyline = moneyline(row.market_home_ml);
+    const awayMoneyline = moneyline(row.market_away_ml);
+    const archivedHomeMoneyline = moneyline(row.archive_home_ml);
+    const archivedAwayMoneyline = moneyline(row.archive_away_ml);
     const market = row.market_id != null ? {
       source: "captured" as const,
+      moneyline: isHome ? homeMoneyline : awayMoneyline,
+      winProbability: optionalNumber(row.market_home_win_probability) == null ? null
+        : isHome ? optionalNumber(row.market_home_win_probability) : 1 - optionalNumber(row.market_home_win_probability)!,
       spread: optionalNumber(row.market_home_spread) == null ? null : optionalNumber(row.market_home_spread)! * (isHome ? 1 : -1),
       total: optionalNumber(row.market_total),
       impliedPoints: optionalNumber(isHome ? row.market_home_implied : row.market_away_implied),
       observedAt: dateText(row.market_at), snapshotId: number(row.market_id),
     } : row.archive_id != null ? {
       source: "archive" as const,
+      moneyline: isHome ? archivedHomeMoneyline : archivedAwayMoneyline,
+      winProbability: null,
       spread: optionalNumber(row.archive_home_spread) == null ? null : optionalNumber(row.archive_home_spread)! * (isHome ? 1 : -1),
       total: null, impliedPoints: null,
       observedAt: dateText(row.archive_at), snapshotId: number(row.archive_id),

@@ -96,3 +96,39 @@ export function identitySummary(team: string, week: NflIdentityWeek, priorSeason
 export function signed(value: number, digits: number): string {
   return `${value > 0 ? "+" : ""}${value.toFixed(digits)}`;
 }
+
+export type NflMarketSettlement = {
+  winner: "Won" | "Lost" | "Tied" | null;
+  margin: number | null;
+  spreadResult: "Covered" | "Missed" | "Push" | null;
+  spreadEdge: number | null;
+  totalPoints: number | null;
+  totalResult: "Over" | "Under" | "Push" | null;
+  totalEdge: number | null;
+  impliedPointsEdge: number | null;
+};
+
+/** Grades the selected pregame team line against the final score. No odds are treated as a wager. */
+export function settleNflIdentityMarket(game: Pick<NflIdentityGame, "teamScore" | "opponentScore" | "market">): NflMarketSettlement {
+  const { teamScore, opponentScore, market } = game;
+  if (teamScore == null || opponentScore == null) {
+    return { winner: null, margin: null, spreadResult: null, spreadEdge: null,
+      totalPoints: null, totalResult: null, totalEdge: null, impliedPointsEdge: null };
+  }
+  const margin = teamScore - opponentScore;
+  const spreadEdge = market?.spread == null ? null : margin + market.spread;
+  const totalPoints = teamScore + opponentScore;
+  const totalEdge = market?.total == null ? null : totalPoints - market.total;
+  const result = (edge: number | null, positive: string, negative: string) =>
+    edge == null ? null : Math.abs(edge) < 1e-9 ? "Push" : edge > 0 ? positive : negative;
+  return {
+    winner: margin > 0 ? "Won" : margin < 0 ? "Lost" : "Tied",
+    margin,
+    spreadResult: result(spreadEdge, "Covered", "Missed") as NflMarketSettlement["spreadResult"],
+    spreadEdge,
+    totalPoints,
+    totalResult: result(totalEdge, "Over", "Under") as NflMarketSettlement["totalResult"],
+    totalEdge,
+    impliedPointsEdge: market?.impliedPoints == null ? null : teamScore - market.impliedPoints,
+  };
+}

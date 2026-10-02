@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { getCurrentNflAvailabilityCoverage } from "@/db/nfl-context";
 import { getNflIdentityGames, getNflIdentityOptions, type NflIdentityGame } from "@/db/nfl-team-identity";
-import { aggregateNflIdentityGames, buildNflIdentityWeeks, identitySummary, signed, type NflIdentityMetrics } from "@/lib/nfl/team-identity";
+import { aggregateNflIdentityGames, buildNflIdentityWeeks, identitySummary, settleNflIdentityMarket, signed, type NflIdentityMetrics } from "@/lib/nfl/team-identity";
 import s from "./team-identity.module.css";
 
 export const metadata = { title: "NFL Team Identity" };
@@ -119,13 +119,22 @@ export default async function NflTeamIdentityPage({ searchParams }: {
         </section>
 
         <section className={s.section} aria-labelledby="context-heading">
-          <div className={s.sectionHead}><div><p className={s.eyebrow}>GAME CONDITIONS</p><h2 id="context-heading">Pregame context and evidence</h2></div><p>Market quotes are the latest stored observations strictly before kickoff; they are not necessarily a sportsbook&apos;s official close.</p></div>
-          <div className={s.gameGrid}>{currentGames.map(game => <article key={game.gameId} className={s.gameCard}>
+          <div className={s.sectionHead}><div><p className={s.eyebrow}>GAME CONDITIONS</p><h2 id="context-heading">Pregame expectations, postgame results</h2></div><p>Market quotes are the latest stored observations strictly before kickoff; they are not necessarily a sportsbook&apos;s official close.</p></div>
+          <p className={s.marketExplainer}><strong>How to read this:</strong> Moneyline is the American price on an outright win: a negative price is the amount risked to win $100, while a positive price is the profit on a $100 stake. The spread adds the listed points to this team&apos;s final margin; exactly zero is a push. The total compares both teams&apos; combined points with the pregame line; an exact match is a push. The win chance removes the bookmaker&apos;s margin when both moneylines are available. Final team points can include defense or special teams scoring.</p>
+          <div className={s.gameGrid}>{currentGames.map(game => {
+            const settled = settleNflIdentityMarket(game);
+            return <article key={game.gameId} className={s.gameCard}>
             <div className={s.gameTitle}><span>W{game.week} · {game.date}</span><h3>{game.isHome ? "vs" : "at"} {game.opponent}</h3><strong>{game.teamScore ?? "—"}–{game.opponentScore ?? "—"}</strong></div>
-            <dl><dt>Pregame spread</dt><dd>{game.market?.spread == null ? "Unavailable" : signed(game.market.spread, 1)}</dd><dt>Pregame total</dt><dd>{game.market?.total == null ? "Unavailable" : plain(game.market.total)}</dd><dt>Team implied points</dt><dd>{game.market?.impliedPoints == null ? "Unavailable" : plain(game.market.impliedPoints, 2)}</dd><dt>Offense EPA/play</dt><dd>{game.offenseEpaCount ? decimal(game.offenseEpaSum / game.offenseEpaCount, 3) : "—"}</dd><dt>TD drives</dt><dd>{game.touchdownDrives} / {game.drives}</dd><dt>Rest / roof</dt><dd>{game.restDays == null ? "—" : `${game.restDays}d`} / {game.roof ?? "—"}</dd><dt>Temp / wind</dt><dd>{game.temp == null ? "—" : `${game.temp}°F`} / {game.wind == null ? "—" : `${game.wind} mph`}</dd></dl>
+            <div className={s.marketReadout} aria-label={`Pregame market and postgame result for Week ${game.week}`}>
+              <div className={s.marketColumns}><span>Pregame quote</span><span>Postgame result</span></div>
+              <div className={s.marketRow}><div><span>Moneyline</span><strong>{game.market?.moneyline == null ? "Unavailable" : signed(game.market.moneyline, 0)}</strong><small>{game.market?.winProbability == null ? "Win chance unavailable" : `${percent(game.market.winProbability)} chance to win, margin removed`}</small></div><div><strong data-tone={settled.winner === "Won" ? "good" : settled.winner === "Lost" ? "bad" : "neutral"}>{settled.winner == null ? "Pending" : settled.winner === "Tied" ? "Tied" : `${settled.winner} outright`}</strong><small>{settled.margin == null ? "Final score pending" : `Final margin ${signed(settled.margin, 0)}`}</small></div></div>
+              <div className={s.marketRow}><div><span>Team spread</span><strong>{game.market?.spread == null ? "Unavailable" : signed(game.market.spread, 1)}</strong><small>Team margin + listed points</small></div><div><strong data-tone={settled.spreadResult === "Covered" ? "good" : settled.spreadResult === "Missed" ? "bad" : "neutral"}>{settled.spreadResult == null ? "No quoted result" : settled.spreadResult === "Push" ? "Push — landed exactly" : `${settled.spreadResult} by ${plain(Math.abs(settled.spreadEdge!), 1)}`}</strong><small>{settled.spreadEdge == null ? "Spread comparison unavailable" : `Adjusted margin ${signed(settled.spreadEdge, 1)}`}</small></div></div>
+              <div className={s.marketRow}><div><span>Game total</span><strong>{game.market?.total == null ? "Unavailable" : plain(game.market.total)}</strong><small>Both teams combined</small></div><div><strong data-tone="neutral">{settled.totalResult == null ? "No quoted result" : settled.totalResult === "Push" ? "Push — landed exactly" : `${settled.totalResult} by ${plain(Math.abs(settled.totalEdge!), 1)}`}</strong><small>{settled.totalPoints == null ? "Final score pending" : `${settled.totalPoints} final points`}</small></div></div>
+            </div>
+            <dl><dt>Team implied points</dt><dd>{game.market?.impliedPoints == null ? "Unavailable" : `${plain(game.market.impliedPoints, 2)} · ${settled.impliedPointsEdge == null ? "—" : `${signed(settled.impliedPointsEdge, 2)} vs final`}`}</dd><dt>Offense EPA/play</dt><dd>{game.offenseEpaCount ? decimal(game.offenseEpaSum / game.offenseEpaCount, 3) : "—"}</dd><dt>TD drives</dt><dd>{game.touchdownDrives} / {game.drives}</dd><dt>Rest / roof</dt><dd>{game.restDays == null ? "—" : `${game.restDays}d`} / {game.roof ?? "—"}</dd><dt>Temp / wind</dt><dd>{game.temp == null ? "—" : `${game.temp}°F`} / {game.wind == null ? "—" : `${game.wind} mph`}</dd></dl>
             <div className={s.gameLinks}><Link href={`/nfl/pbp?game=${encodeURIComponent(game.gameId)}`}>Open PbP evidence ↗</Link><Link href={`/nfl?date=${encodeURIComponent(game.date)}`}>Market board ↗</Link></div>
             <p className={s.source}>{game.market ? `${game.market.source === "archive" ? "Historical archive" : "Odds capture"} #${game.market.snapshotId} · ${quoteTime(game.market.observedAt)}` : "No verified pregame market snapshot"}</p>
-          </article>)}</div>
+          </article>})}</div>
           {matchedPrior.length > 0 && <div className={s.priorMarket}>
             <h3>{season - 1} same-week market reference</h3>
             <p>Archived pregame spreads are shown where the historical event join is verified. Comparable historical game totals and implied points are not stored here.</p>
