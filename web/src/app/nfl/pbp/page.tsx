@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { getNflArchetypeGames, getNflArchetypeParticipants, getNflArchetypePlays } from "@/db/queries";
+import { getNflArchetypeGameById } from "@/db/nfl-team-identity";
 import { getCurrentEligibleNflContext, getCurrentNflAvailabilityCoverage, getNflContextResearchSummary, type NflAvailabilityCoverage, type NflResolvedContext } from "@/db/nfl-context";
 import PbpArchetypeClient from "./pbp-archetype-client";
 
@@ -12,8 +13,11 @@ export default async function NflPbpArchetypePage({
   searchParams: Promise<{ game?: string }>;
 }) {
   const { game } = await searchParams;
-  const games = await getNflArchetypeGames();
-  // Default to the most recently labelled game rather than an empty table.
+  const recentGames = await getNflArchetypeGames();
+  // Direct links to older seasons must resolve even when the selector is limited to recent games.
+  const requestedGame = game && !recentGames.some(row => row.gameId === game)
+    ? await getNflArchetypeGameById(game) : null;
+  const games = requestedGame ? [requestedGame, ...recentGames] : recentGames;
   const selected = game && games.some(row => row.gameId === game) ? game : games[0]?.gameId ?? null;
   const [plays, participants, research] = await Promise.all([
     selected ? getNflArchetypePlays(selected) : Promise.resolve([]),

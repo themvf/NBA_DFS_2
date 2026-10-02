@@ -40,6 +40,7 @@ const PAGE_LINKS: Array<{
   { href: "/nfl/pickem", label: "Pick'em Pools", sports: ["nfl"] },
   { href: "/nfl/specials", label: "Slate Specials", sports: ["nfl"] },
   { href: "/nfl/pbp", label: "PBP Archetypes", sports: ["nfl"] },
+  { href: "/nfl/team-identity", label: "Team Identity", sports: ["nfl"] },
   { href: "/cfb", label: "Line Terminal", sports: ["cfb"] },
   { href: "/cfb/dfs", label: "CFB DFS", sports: ["cfb"] },
   { href: "/nhl", label: "Line Terminal", sports: ["nhl"] },
