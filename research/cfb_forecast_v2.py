@@ -29,33 +29,33 @@ from research.cfb_forecast_v1 import (
 VERSION = "cfb-score-possession-v2"
 
 
-def train(rows: list[dict], start: int, end: int):
+def train(rows: list[dict], start: int, end: int, feature_key: str = "v2"):
     eligible = [row for row in rows if start <= row["season"] <= end
                 and row["completed"] and row["home_actual_drives"]
                 and row["away_actual_drives"]]
     if len(eligible) < 300:
         raise RuntimeError(f"Only {len(eligible)} complete training games")
-    x = [row["home_v2_features"] for row in eligible] + [row["away_v2_features"] for row in eligible]
+    x = [row[f"home_{feature_key}_features"] for row in eligible] + [row[f"away_{feature_key}_features"] for row in eligible]
     y = ([float(row["home_score"]) / row["home_actual_drives"] for row in eligible]
          + [float(row["away_score"]) / row["away_actual_drives"] for row in eligible])
     model = make_pipeline(StandardScaler(), Ridge(alpha=100.0))
     model.fit(x, y)
     margins = []
     for row in eligible:
-        home, away = score(row, model)
+        home, away = score(row, model, feature_key)
         margins.append(float(row["home_score"] - row["away_score"]) - (home - away))
     margin_sd = float(np.std(margins, ddof=1))
     return model, margin_sd, len(eligible)
 
 
-def score(row: dict, model) -> tuple[float, float]:
-    home_rate, away_rate = model.predict([row["home_v2_features"], row["away_v2_features"]])
+def score(row: dict, model, feature_key: str = "v2") -> tuple[float, float]:
+    home_rate, away_rate = model.predict([row[f"home_{feature_key}_features"], row[f"away_{feature_key}_features"]])
     return (max(0.0, float(home_rate) * row["home_expected_drives"]),
             max(0.0, float(away_rate) * row["away_expected_drives"]))
 
 
-def predict(row: dict, model, margin_sd: float) -> dict:
-    home, away = score(row, model)
+def predict(row: dict, model, margin_sd: float, feature_key: str = "v2") -> dict:
+    home, away = score(row, model, feature_key)
     return {
         "home_points": home, "away_points": away,
         "home_margin": home - away, "total": home + away,
@@ -225,6 +225,8 @@ def publish(db: DatabaseManager, report: dict) -> int:
                 (run_id,game_id,kickoff,home_points,away_points,home_win_probability,
                  home_current_games,away_current_games,home_ppa_plays,away_ppa_plays)
                 VALUES %s""", values, page_size=500)
+        from research.cfb_comparison import freeze_comparisons
+        freeze_comparisons(cursor, run_id, report)
     return run_id
 
 

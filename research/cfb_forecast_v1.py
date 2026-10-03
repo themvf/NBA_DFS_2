@@ -154,6 +154,8 @@ def replay_games(games: list[dict], plays: dict, drives: dict) -> list[dict]:
                 "away_features": score_features(away, home, home=False),
                 "home_v2_features": [adjusted(home, home_id, "off_ppd", "def_ppd"), adjusted(away, away_id, "def_ppd", "off_ppd"), home["off_ppa"], away["def_ppa"], 1.0],
                 "away_v2_features": [adjusted(away, away_id, "off_ppd", "def_ppd"), adjusted(home, home_id, "def_ppd", "off_ppd"), away["off_ppa"], home["def_ppa"], 0.0],
+                "home_v3_features": [adjusted(home, home_id, "off_ppd", "def_ppd"), adjusted(away, away_id, "def_ppd", "off_ppd"), adjusted(home, home_id, "off_ppa", "def_ppa"), adjusted(away, away_id, "def_ppa", "off_ppa"), 1.0],
+                "away_v3_features": [adjusted(away, away_id, "off_ppd", "def_ppd"), adjusted(home, home_id, "def_ppd", "off_ppd"), adjusted(away, away_id, "off_ppa", "def_ppa"), adjusted(home, home_id, "def_ppa", "off_ppa"), 0.0],
                 "home_expected_drives": (home["off_drives"] + away["def_drives"]) / 2,
                 "away_expected_drives": (away["off_drives"] + home["def_drives"]) / 2,
                 "home_actual_drives": drives.get((int(game["id"]), home_id)),
@@ -500,6 +502,8 @@ def publish(db: DatabaseManager, report: dict) -> int:
                 values,
                 page_size=500,
             )
+        from research.cfb_comparison import freeze_comparisons
+        freeze_comparisons(cursor, run_id, report)
     return run_id
 
 

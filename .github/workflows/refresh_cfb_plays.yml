@@ -46,6 +46,8 @@ jobs:
         run: python -m research.cfb_forecast_v1 --publish --output artifacts/cfb/forecast-validation.json
       - name: Freeze possession challenger and validation
         run: python -m research.cfb_forecast_v2 --publish --output artifacts/cfb/challenger-validation.json
+      - name: Freeze opponent-adjusted play challenger
+        run: python -m research.cfb_forecast_v3 --publish --output artifacts/cfb/opponent-ppa-validation.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -54,4 +56,5 @@ jobs:
             artifacts/cfb/play-audits
             artifacts/cfb/forecast-validation.json
             artifacts/cfb/challenger-validation.json
+            artifacts/cfb/opponent-ppa-validation.json
           if-no-files-found: warn

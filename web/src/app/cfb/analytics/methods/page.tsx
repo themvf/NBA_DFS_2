@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { getCfbAnalyticsCoverage, getCfbForecastValidation, getCfbChallengerValidation } from "@/db/cfb-analytics";
+import { getCfbAnalyticsCoverage, getCfbForecastValidation, getCfbChallengerValidation, getCfbOpponentPpaValidation } from "@/db/cfb-analytics";
+import { getCfbFrozenMarketEvaluation } from "@/db/cfb-comparisons";
 import { AnalyticsShell, formatEt } from "../_components";
 import styles from "../analytics.module.css";
 
@@ -23,6 +24,8 @@ export default async function CfbAnalyticsMethodsPage() {
   let coverage: Awaited<ReturnType<typeof getCfbAnalyticsCoverage>> = [];
   let validation: Awaited<ReturnType<typeof getCfbForecastValidation>> = null;
   let challenger: Awaited<ReturnType<typeof getCfbChallengerValidation>> = null;
+  let opponentPpa: Awaited<ReturnType<typeof getCfbOpponentPpaValidation>> = null;
+  let frozenEvaluation: Awaited<ReturnType<typeof getCfbFrozenMarketEvaluation>> = [];
   let coverageUnavailable = false;
   let validationUnavailable = false;
   try { coverage = await getCfbAnalyticsCoverage(); }
@@ -31,6 +34,10 @@ export default async function CfbAnalyticsMethodsPage() {
   catch (error) { console.error("CFB forecast validation unavailable", error); validationUnavailable = true; }
   try { challenger = await getCfbChallengerValidation(); }
   catch (error) { console.error("CFB challenger validation unavailable", error); }
+  try { opponentPpa = await getCfbOpponentPpaValidation(); }
+  catch (error) { console.error("CFB opponent-adjusted PPA validation unavailable", error); }
+  try { frozenEvaluation = await getCfbFrozenMarketEvaluation(); }
+  catch (error) { console.error("CFB frozen market evaluation unavailable", error); }
   const better = (model: number | null, market: number | null) =>
     model == null || market == null ? "—" : model < market ? "Model" : "Market";
   const metric = (group: Record<string, { n: number; mean: number | null }>, key: string) => group[key]?.mean?.toFixed(key.includes("brier") ? 3 : 2) ?? "—";
@@ -73,5 +80,24 @@ export default async function CfbAnalyticsMethodsPage() {
       </> : <p className={styles.empty}>The challenger comparison will appear after its first pregame run.</p>}
     </section>
     <section className={styles.section}><div className={styles.note}><strong>Interpretation rules</strong><p>Historical CFBD line references are not verified sportsbook closes. A missing metric stays blank. New score or probability models should be trained and evaluated only with evidence available before each game, against a contemporaneous market baseline, before they appear beside observed lines.</p></div></section>
+    <section className={styles.section}>
+      <div className={styles.sectionHead}><h2>Opponent-adjusted play-value trial</h2><p>{opponentPpa ? `${opponentPpa.version} · refreshed ${formatEt(opponentPpa.generatedAt, true)}` : "Awaiting first run"}</p></div>
+      <p>The third research model keeps the possession forecast and adjusts each team's prior play PPA for opponents. It is trained before the evaluation season. It remains off game pages while its performance is tested.</p>
+      {opponentPpa && <div className={styles.tableWrap}><table className={styles.table}>
+        <thead><tr><th>Sample and measure</th><th>Adjusted PPA</th><th>Possession v2</th><th>Market</th></tr></thead>
+        <tbody>{(["margin_error", "total_error", "brier"] as const).flatMap((measure) => [
+          <tr key={`holdout-${measure}`}><td>2025 holdout · {measure.replaceAll("_", " ")}</td><td>{metric(opponentPpa.holdout, `candidate_${measure}`)}</td><td>{metric(opponentPpa.holdout, `baseline_${measure}`)}</td><td>—</td></tr>,
+          <tr key={`forward-${measure}`}><td>2026 retrospective · {measure.replaceAll("_", " ")}</td><td>{metric(opponentPpa.forward, `market_candidate_${measure}`)}</td><td>{metric(opponentPpa.forward, `market_baseline_${measure}`)}</td><td>{metric(opponentPpa.forward, `market_${measure}`)}</td></tr>,
+        ])}</tbody>
+      </table></div>}
+    </section>
+    <section className={styles.section}>
+      <div className={styles.sectionHead}><h2>Frozen market comparisons</h2><p>Completed current-season games · source quotes fixed when each forecast was published</p></div>
+      <p>Only markets with at least three fresh selected books and a timely capture enter these scores. Excluded games remain counted. Spread and total use mean absolute error in points; moneyline uses Brier score. Lower is better.</p>
+      {frozenEvaluation.length ? <div className={styles.tableWrap}><table className={styles.table}>
+        <thead><tr><th>Model</th><th>Market</th><th>Eligible games</th><th>Excluded</th><th>Model error</th><th>Observed market error</th></tr></thead>
+        <tbody>{frozenEvaluation.map((row) => <tr key={`${row.version}:${row.market}`}><td>{row.version}</td><td>{row.market}</td><td>{row.eligibleGames}</td><td>{row.excluded}</td><td>{row.modelError?.toFixed(row.market === "moneyline" ? 3 : 2) ?? "—"}</td><td>{row.marketError?.toFixed(row.market === "moneyline" ? 3 : 2) ?? "—"}</td></tr>)}</tbody>
+      </table></div> : <p className={styles.empty}>No completed games with the new frozen comparison record yet.</p>}
+    </section>
   </AnalyticsShell>;
 }

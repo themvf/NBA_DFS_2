@@ -66,6 +66,44 @@ sample size, and validation state. Do not infer current-season PPA from
 historical play storage, and do not interpret a research forecast as a fair
 betting line.
 
+## Frozen market comparisons and coverage audit
+
+Each newly published pregame forecast now writes one append-only
+`cfb_market_comparisons` row in the same transaction as the forecast. It
+records the forecast/version, point-in-time explanation, exact odds history
+ID available when the forecast was generated, and per-market eligibility.
+The market reference is fixed at publication; a later backfill cannot change
+it. If no capture existed, the source ID is null and all markets are
+ineligible. Eligibility requires a stored market value, three selected books
+quoting both sides, three books updated within five minutes of the capture,
+and a capture no older than 90 minutes within 12 hours of kickoff or six
+hours earlier. The exact failure reasons remain in the record. These are
+research comparison rules, not claims that a quote was executable.
+
+`/cfb/coverage` also audits due capture checkpoints over the prior 14 days,
+separately for spread, total, and moneyline. It counts usable, captured but
+thin, and missed windows; the gap list links back to each game. This audit
+uses the checkpoint's linked history row and never treats a successful API
+request as proof that all three markets were quoted.
+
+The Methods page reports completed games from the latest frozen forecast per
+game and version. Only eligible market pairs enter error metrics; excluded
+games are counted. A new `cfb-score-opponent-ppa-v3` trial retains the v2
+possession framework but adjusts prior play PPA for opponent profiles known
+before each kickoff. It is trained through the prior season and compared
+against v2 on the same 2025 holdout and 2026 retrospective games, then
+frozen prospectively with the other models. It remains research-only and off
+game pages until prospective comparisons support a change.
+
+The first read-only v3 replay on October 3, 2026 improved on v2 in the
+653-game 2025 holdout: spread MAE 12.46 versus 12.49, total MAE 12.81 versus
+12.96, and win Brier 0.1863 versus 0.1865. On 67 completed 2026 games,
+v3's spread MAE was 12.91 versus v2's 13.11 and market 11.28; total MAE was
+11.89 versus 11.96 and market 11.76. On 66 market moneylines, v3 Brier was
+0.180 versus v2 0.184 and market 0.141. This is retrospective and the market
+still leads all three measures. The first frozen v3 forecasts will create a
+prospective sample after those games finish.
+
 ## Forecast diagnosis and possession challenger
 
 The v1 forecast run now stores an exact linear attribution for each upcoming

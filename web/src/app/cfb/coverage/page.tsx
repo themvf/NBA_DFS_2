@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getCfbCoverage } from "@/db/cfb-coverage";
+import { getCfbCoverage, getCfbCoverageAudit } from "@/db/cfb-coverage";
 import type { MarketCoverage } from "@/lib/cfb-coverage";
 import styles from "./coverage.module.css";
 
@@ -19,11 +19,14 @@ function marketLabel(value: MarketCoverage) {
 
 export default async function CfbCoveragePage() {
   let data: Awaited<ReturnType<typeof getCfbCoverage>>;
+  let audit: Awaited<ReturnType<typeof getCfbCoverageAudit>> | null = null;
   try { data = await getCfbCoverage(); }
   catch (error) {
     console.error("CFB coverage unavailable", error);
     return <main className={styles.page}><Link href="/cfb">← CFB terminal</Link><h1>Line coverage unavailable</h1><p>The live coverage check could not be loaded. Try again shortly.</p></main>;
   }
+  try { audit = await getCfbCoverageAudit(); }
+  catch (error) { console.error("CFB historical coverage audit unavailable", error); }
   const flagged = data.games.filter((game) => game.issues.length);
   const unmapped = data.games.filter((game) => !game.mapped).length;
   const overdue = data.games.filter((game) => game.issues.includes("Capture overdue") || game.issues.includes("Checkpoint due now")).length;
@@ -47,5 +50,27 @@ export default async function CfbCoveragePage() {
           {game.nextCheckpoint && <small>Next: {et(game.nextCheckpoint.targetAt)}</small>}</td>
       </tr>)}</tbody>
     </table></div>}
+    <section>
+      <h2>Completed capture windows · last 14 days</h2>
+      <p className={styles.note}>A market is usable here when its scheduled capture exists before kickoff and at least three selected books quoted both sides with updates within five minutes of capture. A successful request can still lack a usable moneyline.</p>
+      {audit ? <>
+        <div className={styles.tableWrap}><table className={styles.table}>
+          <thead><tr><th>Market</th><th>Usable</th><th>Captured, thin</th><th>Missed</th><th>Usable rate</th></tr></thead>
+          <tbody>{(["spread", "total", "moneyline"] as const).map((market) => {
+            const row = audit.markets[market];
+            const total = row.usable + row.capturedButThin + row.missed;
+            return <tr key={market}><td>{market}</td><td>{row.usable}</td><td>{row.capturedButThin}</td><td>{row.missed}</td><td>{total ? `${Math.round(row.usable / total * 100)}%` : "—"}</td></tr>;
+          })}</tbody>
+        </table></div>
+        {audit.gaps.length > 0 && <details><summary>Inspect gaps ({audit.gaps.length} shown)</summary>
+          <div className={styles.tableWrap}><table className={styles.table}>
+            <thead><tr><th>Game</th><th>Checkpoint</th><th>Market</th><th>Reason</th></tr></thead>
+            <tbody>{audit.gaps.map((gap) => <tr key={`${gap.gameId}:${gap.checkpoint}:${gap.market}`}>
+              <td><Link href={`/cfb?date=${gap.gameDate}&game=${gap.gameId}`}>{gap.game}</Link></td>
+              <td>{gap.checkpoint}<small>{et(gap.targetAt)}</small></td><td>{gap.market}</td><td>{gap.reason}</td>
+            </tr>)}</tbody>
+          </table></div></details>}
+      </> : <p>Historical checkpoint audit is temporarily unavailable.</p>}
+    </section>
   </main>;
 }
