@@ -76,7 +76,7 @@ export async function getCfbCoverageAudit(): Promise<CfbCoverageAudit> {
         targetAt: iso(row.target_at)!, market,
         reason: capturedAt
           ? `${quality[market].books} books, ${quality[market].freshAtCapture} fresh`
-          : row.status,
+          : row.status === "captured" ? "No linked pregame history" : row.status,
       });
     }
   }

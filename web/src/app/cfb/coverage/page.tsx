@@ -55,7 +55,7 @@ export default async function CfbCoveragePage() {
       <p className={styles.note}>A market is usable here when its scheduled capture exists before kickoff and at least three selected books quoted both sides with updates within five minutes of capture. A successful request can still lack a usable moneyline.</p>
       {audit ? <>
         <div className={styles.tableWrap}><table className={styles.table}>
-          <thead><tr><th>Market</th><th>Usable</th><th>Captured, thin</th><th>Missed</th><th>Usable rate</th></tr></thead>
+          <thead><tr><th>Market</th><th>Usable</th><th>Captured, thin</th><th>No valid capture</th><th>Usable rate</th></tr></thead>
           <tbody>{(["spread", "total", "moneyline"] as const).map((market) => {
             const row = audit.markets[market];
             const total = row.usable + row.capturedButThin + row.missed;
