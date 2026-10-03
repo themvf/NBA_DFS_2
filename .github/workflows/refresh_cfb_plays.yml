@@ -1,0 +1,54 @@
+name: Refresh Current CFB Plays and Drives
+
+on:
+  schedule:
+    # Sunday catches Saturday games; Friday catches Thursday games.
+    - cron: "17 10 * 8-12 0,5"
+    - cron: "17 10 * 1-2 0,5"
+  workflow_dispatch:
+    inputs:
+      bootstrap:
+        description: "Fetch every completed week rather than the two latest weeks"
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: refresh-current-cfb-plays
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Refresh completed games
+        shell: bash
+        env:
+          BOOTSTRAP: ${{ inputs.bootstrap }}
+        run: |
+          if [ "$BOOTSTRAP" = "true" ]; then
+            python -m ingest.cfb_plays --current-season
+          else
+            python -m ingest.cfb_plays --current-season --recent-completed-weeks 2
+          fi
+      - name: Freeze research forecasts and validation
+        run: python -m research.cfb_forecast_v1 --publish --output artifacts/cfb/forecast-validation.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: current-cfb-play-coverage
+          path: |
+            artifacts/cfb/play-audits
+            artifacts/cfb/forecast-validation.json
+          if-no-files-found: warn

@@ -171,6 +171,18 @@
       "pullRequest": false
     },
     {
+      "file": "refresh_cfb_plays.yml",
+      "name": "Refresh Current CFB Plays and Drives",
+      "crons": [
+        "17 10 * 8-12 0,5",
+        "17 10 * 1-2 0,5"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
       "file": "refresh_cfb_research.yml",
       "name": "Refresh CFB Research Context",
       "crons": [
