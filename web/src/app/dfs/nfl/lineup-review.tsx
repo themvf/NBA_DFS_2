@@ -21,6 +21,7 @@ export default function LineupReview({ lineups, runId, airMatchupMinimumPct = 0,
   }), [lineups, order]);
   const airMatchupCount = lineups.filter(lineup => lineup.slots.some(({ player }) => player.playerSignals?.some(signal => signal.code === "AIR_MATCHUP"))).length;
   const goalLineCount = lineups.filter(lineup => lineup.slots.some(({ player }) => player.position === "RB" && player.playerSignals?.some(signal => signal.code === "INSIDE_FIVE"))).length;
+  const adjustedRbCount = lineups.filter(lineup => lineup.slots.some(({ player }) => player.position === "RB" && player.defensiveForecast?.status === "applied" && player.defensiveForecast.profile === "allowed-rushing-volume")).length;
 
   return <section className="rounded-xl border bg-white">
     <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
@@ -28,6 +29,7 @@ export default function LineupReview({ lineups, runId, airMatchupMinimumPct = 0,
         <p className="mt-1 text-xs text-slate-500">Run {runId?.slice(0, 8) ?? "unsaved"} · Select a lineup to inspect its roster.</p></div>
       {airMatchupMinimumPct > 0 ? <p className="text-xs font-semibold text-blue-800">Air-yard matchup: {airMatchupCount}/{lineups.length} lineups · minimum {Math.ceil((plannedLineups ?? lineups.length) * airMatchupMinimumPct / 100)} ({airMatchupMinimumPct}%)</p> : null}
       {goalLineMinimumPct > 0 ? <p className="text-xs font-semibold text-blue-800">Goal-line RB: {goalLineCount}/{lineups.length} lineups · minimum {Math.ceil((plannedLineups ?? lineups.length) * goalLineMinimumPct / 100)} ({goalLineMinimumPct}%)</p> : null}
+      {adjustedRbCount > 0 ? <p className="text-xs font-semibold text-amber-800">Opponent-adjusted RB forecast: {adjustedRbCount}/{lineups.length} lineups</p> : null}
       <label className="text-sm">Sort <select className="ml-2 rounded-lg border px-2 py-2" value={order} onChange={e => setOrder(e.target.value)}>
         <option value="original">Original order</option><option value="projection">Projection ↓</option><option value="salary">Salary ↓</option><option value="ceiling">Ceiling sum ↓</option>
       </select></label>
@@ -49,6 +51,12 @@ export default function LineupReview({ lineups, runId, airMatchupMinimumPct = 0,
               <span key={player.dkPlayerId} title={player.playerSignals?.find(signal => signal.code === "AIR_MATCHUP")?.detail}>Air-yard matchup: {player.name}</span>)}
             {lineup.slots.filter(({ player }) => player.position === "RB" && player.playerSignals?.some(signal => signal.code === "INSIDE_FIVE")).map(({ player }) =>
               <span key={player.dkPlayerId} title={player.playerSignals?.find(signal => signal.code === "INSIDE_FIVE")?.detail}>Goal-line RB: {player.name}</span>)}
+            {lineup.slots.filter(({ player }) => player.position === "RB" && player.defensiveForecast?.status === "applied" && player.defensiveForecast.profile === "allowed-rushing-volume").map(({ player }) => {
+              const forecast = player.defensiveForecast!;
+              return <span key={`adjusted-${player.dkPlayerId}`} title={`Frozen opponent capture ${forecast.capturedAt ?? "unknown"}; ${forecast.version}`}>
+                Opponent-adjusted: {player.name} ({(forecast.selected.mean - forecast.baseline.mean) >= 0 ? "+" : ""}{(forecast.selected.mean - forecast.baseline.mean).toFixed(1)} mean, {(forecast.selected.p90 - forecast.baseline.p90) >= 0 ? "+" : ""}{(forecast.selected.p90 - forecast.baseline.p90).toFixed(1)} P90)
+              </span>;
+            })}
           </div>
           <table className="w-full text-sm">
             <thead className="text-left text-xs text-slate-500"><tr><th className="py-2">Slot</th><th>Player</th><th className="text-right">Slot salary</th></tr></thead>

@@ -198,7 +198,7 @@ export type NflWorkspaceSlate = {
   /** Starting QBs the user confirmed for this read, and any that could not be applied. */
   confirmedStartingQbs?: ConfirmedStarterReport;
   /** Players each defensive profile would actually adjust on this slate (captures that pass every check). */
-  opponentAdjustments?: { profile: 'pfr-efficiency' | 'allowed-rushing-volume'; label: string; applied: number; eligible: number; captured: number; error?: string }[];
+  opponentAdjustments?: { profile: 'pfr-efficiency' | 'allowed-rushing-volume'; label: string; applied: number; rbApplied: number; eligible: number; captured: number; error?: string }[];
   /** The Slate Check: every pipeline step's outcome for this slate, in plain words. */
   slateCheck?: SlateCheck;
 };
@@ -777,14 +777,16 @@ async function opponentAdjustmentCoverage(slate: NflWorkspaceSlate): Promise<Non
   for (const [profile, label] of [['pfr-efficiency', 'PFR efficiency'], ['allowed-rushing-volume', 'Allowed rushing volume']] as const) {
     try {
       const captures = await readDefensiveCaptures(slate.uploadId, slate.projectionRunId, profile, decisionAt);
-      const applied = eligible.filter((p) => resolveDefensiveForecast(p, slate.projectionRunId!, { mode: 'experimental', profile },
-        captures.get(p.ffPlayerId ?? -1) ?? null).status === 'applied').length;
+      const adjusted = eligible.filter((p) => resolveDefensiveForecast(p, slate.projectionRunId!, { mode: 'experimental', profile },
+        captures.get(p.ffPlayerId ?? -1) ?? null).status === 'applied');
+      const applied = adjusted.length;
+      const rbApplied = adjusted.filter((p) => p.position === 'RB').length;
       // Any capture at all for this upload: zero means none exists yet, not that checks failed.
       const captured = eligible.filter((p) => captures.has(p.ffPlayerId ?? -1)).length;
-      out.push({ profile, label, applied, eligible: eligible.length, captured });
+      out.push({ profile, label, applied, rbApplied, eligible: eligible.length, captured });
     } catch (error) {
       // A read failure is not "no captures yet"; the Slate Check says which.
-      out.push({ profile, label, applied: 0, eligible: eligible.length, captured: 0, error: error instanceof Error && error.message ? error.message : 'the capture read failed' });
+      out.push({ profile, label, applied: 0, rbApplied: 0, eligible: eligible.length, captured: 0, error: error instanceof Error && error.message ? error.message : 'the capture read failed' });
     }
   }
   return out;
