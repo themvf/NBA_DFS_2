@@ -42,6 +42,7 @@ const PAGE_LINKS: Array<{
   { href: "/nfl/pbp", label: "PBP Archetypes", sports: ["nfl"] },
   { href: "/nfl/team-identity", label: "Team Identity", sports: ["nfl"] },
   { href: "/cfb", label: "Line Terminal", sports: ["cfb"] },
+  { href: "/cfb/analytics", label: "CFB Analytics", sports: ["cfb"] },
   { href: "/cfb/dfs", label: "CFB DFS", sports: ["cfb"] },
   { href: "/nhl", label: "Line Terminal", sports: ["nhl"] },
   { href: "/fantasy-football/nfl", label: "NFL Teams", sports: ["nfl"] },
