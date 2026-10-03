@@ -76,6 +76,7 @@ export function generationSettings(
   // Captain ranges only mean something on Showdown, where a captain exists.
   const policies = format === 'showdown' ? captainExposurePolicies(captainTargets, bounds, settings.maxExposure) : [];
   return { ...settings, format, lockedPlayerIds: locked, excludedPlayerIds: excluded,
+    gppSignalMinPerLineup: format === 'classic' && settings.mode === 'gpp' ? settings.gppSignalMinPerLineup ?? 0 : 0,
     minExposureByPlayer: bounds.min, maxExposureByPlayer: bounds.max,
     ...(policies.length ? { exposurePolicies: policies } : {}) };
 }

@@ -51,6 +51,7 @@ import {
   type LineupDuplication,
 } from '@/lib/nfl-dfs/salary-duplication';
 import { nflOverlapCap } from '@/lib/nfl-dfs/pre-export-qa';
+import { isNflGppSignalPlayer, type NflPlayerSignal, type NflPlayerSignalCode } from '@/lib/nfl-dfs/player-signals';
 
 // Record the strict Showdown purchase and completed-roster validation.
 // v8: DK-average fallback honoured in defensive mode; a lock or exposure
@@ -62,6 +63,7 @@ export type NflOptimizerMode = "cash" | "gpp";
 export type NflSlateFormat = "classic" | "showdown";
 
 export type NflOptimizerPlayer = {
+  playerSignals?: NflPlayerSignal[];
   id: number;
   dkPlayerId: number;
   captainDkPlayerId: number | null;
@@ -142,6 +144,9 @@ export type NflOptimizerPlayer = {
 export type NflOptimizerSettings = {
   format: NflSlateFormat;
   mode: NflOptimizerMode;
+  /** Optional Classic GPP lineup rule; chips are descriptive and never modify projections. */
+  gppSignalMinPerLineup?: 0 | 1;
+  gppSignalCodes?: NflPlayerSignalCode[];
   projectionSource: NflProjectionSource;
   defensiveAdjustments?: DefensiveSettings;
   /** Team -> DK id of a user-confirmed starting QB; see `confirmed-starter.ts`. */
@@ -586,6 +591,10 @@ function objective(player: ResolvedPlayer, settings: NflOptimizerSettings, lineu
 }
 
 function validateSettings(settings: NflOptimizerSettings): void {
+  if (![0, 1].includes(settings.gppSignalMinPerLineup ?? 0)) throw new Error("GPP signal minimum must be 0 or 1.");
+  if (settings.gppSignalMinPerLineup && (settings.format !== "classic" || settings.mode !== "gpp")) throw new Error("Opportunity signals can only be required in Classic GPP.");
+  if (settings.gppSignalMinPerLineup && settings.gppSignalCodes?.length === 0) throw new Error("Select at least one opportunity signal.");
+  if (settings.gppSignalCodes?.some(code => !["AIR_VOLUME", "YAC_RUNWAY", "INSIDE_FIVE", "CLOSE_TARGET"].includes(code))) throw new Error("Unknown opportunity signal.");
   if (settings.defensiveAdjustments?.mode !== undefined && settings.defensiveAdjustments.mode !== 'off') {
     if (settings.projectionSource !== 'our') throw new Error('Defensive adjustments require the historical projection source.');
     if (settings.defensiveAdjustments.mode !== 'experimental' && settings.defensiveAdjustments.mode !== 'approved') throw new Error('Unknown defensive mode.');
@@ -636,6 +645,7 @@ function buildOne(
   const captainFull = (player: ResolvedPlayer) => (captainCounts.get(player.dkPlayerId) ?? 0) >= (countsById.get(player.dkPlayerId)?.captainMax ?? settings.nLineups);
   const flexFull = (player: ResolvedPlayer) => (flexCounts.get(player.dkPlayerId) ?? 0) >= (countsById.get(player.dkPlayerId)?.flexMax ?? settings.nLineups);
   const constraints: SolverModel["constraints"] = { salary: { max: salaryMax, min: salaryMin } };
+  if (settings.gppSignalMinPerLineup) constraints.gpp_opportunity_signal = { min: settings.gppSignalMinPerLineup };
   if (settings.format === "classic") {
     constraints.roster = { equal: 9 };
     constraints.qb = { equal: 1 };
@@ -729,6 +739,7 @@ function buildOne(
       };
       // Count this pick against the per-lineup salary-relief cap.
       if (settings.puntPolicy && player.salaryRelief) variable.salary_relief = 1;
+      if (constraints.gpp_opportunity_signal && isNflGppSignalPlayer(player.playerSignals, settings.gppSignalCodes)) variable.gpp_opportunity_signal = 1;
       if (settings.format === "classic") {
         variable.roster = 1;
         variable[player.position.toLowerCase()] = 1;
@@ -961,6 +972,9 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   // named nobody, and a captain range was skipped while QA said "All exposure
   // ranges satisfied". Say who and why before generating anything.
   const inPool = new Set(pool.map((player) => player.dkPlayerId));
+  if (settings.gppSignalMinPerLineup && !pool.some(player => isNflGppSignalPlayer(player.playerSignals, settings.gppSignalCodes))) {
+    throw new Error("No eligible player has a selected opportunity signal. Change the selected signals or turn off the lineup rule.");
+  }
   const decisionById = new Map(eligibility.map((decision) => [decision.dkPlayerId, decision]));
   const nameOf = (id: number) => players.find((player) => player.dkPlayerId === id)?.name ?? `Player ${id}`;
   const whyOut = (id: number): string => {

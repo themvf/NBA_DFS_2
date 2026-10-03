@@ -72,6 +72,8 @@ import { NFL_TEAM_NICKNAMES } from "@/lib/nfl-dfs/x-news-teams";
 import { projectOwnershipPrior } from "@/lib/nfl-dfs/ownership-prior";
 import { computeReplacementUpside, REPLACEMENT_UPSIDE_VERSION, type ReplacementUpside, type ReplacementUpsideReport, type UpsidePlayer } from "@/lib/nfl-dfs/replacement-upside";
 import { readLastGamePassingLeaders, readTeamUsageWindows } from "@/db/nfl-dfs-usage-window";
+import { readNflDfsPlayerSignalEvidence } from "@/db/nfl-dfs-player-signals";
+import { classifyNflPlayerSignals, type NflPlayerSignalEvidence } from "@/lib/nfl-dfs/player-signals";
 import { applyConfirmedStartingQbs, confirmStarterAvailability, ruledOutPlayer, sanitizeConfirmedStartingQbs, type ConfirmedStarterReport, type ConfirmedStartingQbs } from "@/lib/nfl-dfs/confirmed-starter";
 
 export type NflWorkspacePlayer = NflOptimizerPlayer & {
@@ -455,6 +457,12 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
   }
   const identities=run ? await db.execute(sql`SELECT id, gsis_id FROM ff_players WHERE season=${run.season} AND gsis_id IS NOT NULL`) : {rows:[]};
   const identityMap=new Map(identities.rows.map(r=>[Number(r.id),String(r.gsis_id)]));
+  let signalEvidence = new Map<string, NflPlayerSignalEvidence>();
+  let signalWarning: string | null = null;
+  if (run?.week && run.asOfAt) {
+    try { signalEvidence = await readNflDfsPlayerSignalEvidence(run.season, run.week, run.asOfAt); }
+    catch (error) { signalWarning = `Player opportunity chips could not be loaded: ${error instanceof Error ? error.message : String(error)}.`; }
+  }
   // Who started each team's last game; the evidence that survives a depth chart
   // that has already moved an injured starter down.
   const passingLeaders = run?.week ? await readLastGamePassingLeaders(run.season, run.week, nflTeamKey) : new Map<string, string>();
@@ -608,7 +616,7 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
     format: upload.format as "classic" | "showdown",
     games: upload.games as string[],
     teams: upload.teams as string[],
-    warnings: [...upload.warnings as string[], ...(incompleteWarning ? [incompleteWarning] : []), ...(staleWarning ? [staleWarning] : []), ...(rosterStaleWarning ? [rosterStaleWarning] : []), ...(refreshMessage ? [refreshMessage] : []), ...(calibrationWarning ? [calibrationWarning] : []),
+    warnings: [...upload.warnings as string[], ...(incompleteWarning ? [incompleteWarning] : []), ...(staleWarning ? [staleWarning] : []), ...(rosterStaleWarning ? [rosterStaleWarning] : []), ...(refreshMessage ? [refreshMessage] : []), ...(calibrationWarning ? [calibrationWarning] : []), ...(signalWarning ? [signalWarning] : []),
       ...(projectionStats.length&&pinnedDecisionCount<projectionStats.length?[`${projectionStats.length-pinnedDecisionCount} legacy projection rows lack a pinned availability decision; current evidence is display-only for those rows.`]:[])],
     fileName: upload.fileName,
     players: rows.map((row) => ({
@@ -617,6 +625,7 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
       captainDkPlayerId: row.captainDkPlayerId,
       rosterPositions: row.rosterPositions as string[],
       ffPlayerId: row.ffPlayerId,
+      playerSignals: classifyNflPlayerSignals(row.position, signalEvidence.get(identityMap.get(row.ffPlayerId ?? -1) ?? "") ?? null),
       situationEvidence:situations?.rates.get(`${benchmarkTeam(row.team)}:${identityMap.get(row.ffPlayerId??-1)}:${row.position}`)??{team:null,rates:null,ratesDigest:null,ratesAsOf:null,reason:situations?.failure??'No model-linked situation evidence.'},
       name: row.name,
       position: row.position as NflWorkspacePlayer["position"],
@@ -1438,6 +1447,7 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
     salary: player.salary, captainSalary: player.captainSalary, rosterPositions: player.rosterPositions, status: player.dkStatus,
     ourProj: player.ourProj, floor: player.floorFpts, median:player.medianFpts, ceiling: player.ceilingFpts,
     defensiveForecast:player.defensiveForecast??null,
+    playerSignals:player.playerSignals??[],
     projectionScenario: player.projectionScenario, redistributionVersion: slate.redistribution?.version,
     statMeans: player.statMeans,
     dkAvg: player.avgFptsDk, fantasypros: player.fantasyprosProj,

@@ -228,6 +228,12 @@ export default function PlayerExplanationPanel({ uploadId, player, slatePlayers,
         </div>
 
         <div className="space-y-3 p-4">
+          {player.playerSignals?.length ? <section className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm">
+            <h3 className="font-semibold text-blue-950">Play opportunity signals</h3>
+            <ul className="mt-2 space-y-1 text-xs text-blue-950">{player.playerSignals.map(signal =>
+              <li key={signal.code}><strong>{signal.label}:</strong> {signal.detail}</li>)}</ul>
+            <p className="mt-2 text-xs text-blue-800">These are prior-game usage observations. They do not change this projection or establish low ownership.</p>
+          </section> : null}
           {pending && !e && <p className="text-sm text-slate-500">Loading the projection breakdown&hellip;</p>}
 
           {data && !data.ok && (
