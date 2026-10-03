@@ -53,13 +53,17 @@ jobs:
       - name: Capture authoritative Sleeper injury and depth state
         run: |
           python -c "import os,sys; sys.argv=['availability-ops','--mode','capture']; [(sys.argv.extend([flag,os.environ[key]])) for key,flag in [('NFL_SEASON','--season'),('NFL_WEEK','--week')] if os.environ.get(key)]; sys.argv.extend(['--force']) if os.environ.get('FORCE_CAPTURE') == 'true' else None; from ingest.nfl_availability_operations import main; sys.exit(main())"
+      # Optional input: Sleeper stays authoritative when this fails, so the run
+      # stays green -- but the failure is named by the report step below, not
+      # left behind continue-on-error where nothing reads it.
       - name: Capture independent FantasyPros corroboration
+        id: fantasypros
         continue-on-error: true
         run: |
-          python -c "import os,sys; sys.argv=['fantasypros-availability']; [(sys.argv.extend([flag,os.environ[key]])) for key,flag in [('NFL_SEASON','--season'),('NFL_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_availability import main; main()"
+          python -c "import os,sys; sys.argv=['fantasypros-availability']; [(sys.argv.extend([flag,os.environ[key]])) for key,flag in [('NFL_SEASON','--season'),('NFL_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_availability import main; sys.exit(main())"
       - name: Publish immutable projection and shared availability contexts
         run: |
-          python -c "import os,sys; sys.argv=['projections']; [(sys.argv.extend([flag,os.environ[key]])) for key,flag in [('NFL_SEASON','--season'),('NFL_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_projections import main; main()"
+          python -c "import os,sys; sys.argv=['projections']; [(sys.argv.extend([flag,os.environ[key]])) for key,flag in [('NFL_SEASON','--season'),('NFL_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_projections import main; sys.exit(main())"
       - name: Evaluate freshness and freeze eligible pre-lock waves
         # `shell: bash` is load-bearing: GitHub then runs `bash -eo pipefail`.
         # The default shell has no pipefail, so the pipe into tee swallowed the
@@ -86,6 +90,19 @@ jobs:
             echo "::error title=Availability monitor critical::see the health report in artifacts/nfl-availability-operations.json"
             exit 2
           fi
+      # Fail-soft steps report here so a failure that does not redden the run
+      # is still visible in the summary and as an annotation.
+      - name: Report optional step outcomes
+        if: ${{ always() }}
+        env:
+          FANTASYPROS_OUTCOME: ${{ steps.fantasypros.outcome }}
+        run: |
+          report() {
+            echo "- $1: $2" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$2" = failure ]; then echo "::warning title=Optional step failed::$1 ended $2"; fi
+          }
+          echo "## Optional steps" >> "$GITHUB_STEP_SUMMARY"
+          report "FantasyPros corroboration (artifacts/nfl-availability-audit.json)" "$FANTASYPROS_OUTCOME"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

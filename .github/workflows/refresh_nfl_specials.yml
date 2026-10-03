@@ -53,6 +53,7 @@ concurrency:
 jobs:
   refresh-nfl-specials:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:

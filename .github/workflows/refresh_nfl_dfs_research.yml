@@ -153,12 +153,12 @@ jobs:
         id: workload
         if: ${{ !cancelled() }}
         run: |
-          python -c "import os,sys; sys.argv=['workload']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_workload import main; main()"
+          python -c "import os,sys; sys.argv=['workload']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_workload import main; sys.exit(main())"
       - name: Freeze research-only efficiency forecasts
         id: efficiency
         if: ${{ !cancelled() && steps.workload.outcome == 'success' }}
         run: |
-          python -c "import os,sys; sys.argv=['efficiency']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_efficiency import main; main()"
+          python -c "import os,sys; sys.argv=['efficiency']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_efficiency import main; sys.exit(main())"
       # WR volume/share forecasts (nfl_dfs_volume_share_runs) for the page's
       # "Position workload" WR candidates. Until 2026-09-29 these came from a
       # committed JSON frozen at week 1, so the WR source could not work after
@@ -168,7 +168,7 @@ jobs:
         id: volume_share
         if: ${{ !cancelled() }}
         run: |
-          python -c "import os,sys; sys.argv=['volume-share']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_target_share import main; main()"
+          python -c "import os,sys; sys.argv=['volume-share']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_target_share import main; sys.exit(main())"
       # One retry, and only on a lock conflict. Scheduled jobs elsewhere run
       # schema DDL on every start (db/database.py _ensure_schema holds
       # AccessExclusive locks across many tables in one transaction), and one
@@ -181,7 +181,7 @@ jobs:
         shell: bash
         run: |
           for attempt in 1 2; do
-            if python -c "import os,sys; sys.argv=['shadow']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_shadow import main; main()" 2>&1 | tee shadow.log; then
+            if python -c "import os,sys; sys.argv=['shadow']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_shadow import main; sys.exit(main())" 2>&1 | tee shadow.log; then
               exit 0
             fi
             if [ "$attempt" = 2 ] || ! grep -qE 'DeadlockDetected|LockNotAvailable' shadow.log; then
@@ -277,7 +277,7 @@ jobs:
         id: reportcard
         if: ${{ !cancelled() }}
         run: |
-          python -c "import os,sys; sys.argv=['reportcard']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season')] if os.environ.get(key)]; from ingest.nfl_dfs_reportcard import main; main()"
+          python -c "import os,sys; sys.argv=['reportcard']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season')] if os.environ.get(key)]; from ingest.nfl_dfs_reportcard import main; sys.exit(main())"
       # Slate-scoped stream: the players DK actually listed, graded under DK's
       # own no-stat-line = 0 rule. Separate version/table from the roster
       # report above; it is the grader for the zero-history prior study (WP1).
@@ -285,7 +285,7 @@ jobs:
         id: slate_reportcard
         if: ${{ !cancelled() }}
         run: |
-          python -c "import os,sys; sys.argv=['slate-reportcard']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season')] if os.environ.get(key)]; from ingest.nfl_dfs_slate_reportcard import main; main()"
+          python -c "import os,sys; sys.argv=['slate-reportcard']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season')] if os.environ.get(key)]; from ingest.nfl_dfs_slate_reportcard import main; sys.exit(main())"
       # Phone-readable weekly review. Read-only and fail-soft: a digest that
       # cannot render must not redden a run whose actual work succeeded. The
       # outcome table below still reports it.
