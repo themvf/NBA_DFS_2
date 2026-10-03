@@ -91,6 +91,13 @@ export type CfbChallengerValidation = {
   prospective: Record<string, { n: number; mean: number | null }>;
 };
 
+export type CfbOpponentPpaValidation = {
+  version: string; generatedAt: string;
+  holdoutGames: number; forwardGames: number;
+  holdout: Record<string, { n: number; mean: number | null }>;
+  forward: Record<string, { n: number; mean: number | null }>;
+};
+
 export type CfbAnalyticsResult = {
   id: number;
   date: string;
@@ -445,4 +452,23 @@ export async function getCfbChallengerValidation(): Promise<CfbChallengerValidat
     forward: metrics(forward.metrics),
     prospective: metrics(record(prospective.market_comparison)),
   };
+}
+
+export async function getCfbOpponentPpaValidation(): Promise<CfbOpponentPpaValidation | null> {
+  const rows = await db.execute(sql`
+    SELECT version,generated_at::text AS "generatedAt",report_json AS report
+    FROM cfb_forecast_runs WHERE version='cfb-score-opponent-ppa-v3'
+    ORDER BY id DESC LIMIT 1`);
+  if (!rows.rows.length) return null;
+  const row = rows.rows[0] as Record<string, unknown>;
+  const report = record(row.report);
+  const holdout = record(report.holdout);
+  const forward = record(report.forward);
+  const metrics = (value: unknown) => Object.fromEntries(Object.entries(record(value)).map(([key, raw]) => {
+    const metric = record(raw);
+    return [key, { n: Number(metric.n ?? 0), mean: numberOrNull(metric.mean) }];
+  }));
+  return { version: String(row.version), generatedAt: String(row.generatedAt),
+    holdoutGames: Number(holdout.games ?? 0), forwardGames: Number(forward.games ?? 0),
+    holdout: metrics(holdout.metrics), forward: metrics(forward.metrics) };
 }
