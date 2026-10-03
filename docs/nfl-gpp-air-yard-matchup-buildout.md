@@ -98,3 +98,7 @@ Keep the new feature and scenario settings optional and versioned in saved runs.
 | M3 backtest | Pre-registered manifest, walk-forward ablations, uncertainty and promotion memo | Promotion gate above or explicit retain-as-experiment decision |
 
 The first October 4, 2026 report may describe Weeks 1–3 observations and generate shadow lineups. One slate cannot establish a profitable adjustment or a universal bring-back rule.
+
+## Current opt-in bridge
+
+Classic GPP generation has an experimental air-yard matchup chip and an optional minimum lineup percentage. The percentage rounds up to a lineup count: 25% of 20 lineups requires at least five lineups with a qualifying player. Additional qualifying lineups are allowed when selected naturally. A 100% preset retains the previous every-lineup behavior. The realized count appears in lineup review, and the saved run records the requested percentage and frozen chips. This construction rule does not promote a point adjustment or complete the coherent-scenario and walk-forward gates above.

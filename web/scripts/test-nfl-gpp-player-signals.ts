@@ -41,6 +41,16 @@ const matchupPool = pool.map(player => player.dkPlayerId === 9 ? { ...player, pl
 const matchupLineup = optimizeNflLineups(matchupPool, { ...settings, gppSignalMinPerLineup: 1, gppSignalCodes: ["AIR_MATCHUP"] }).lineups[0];
 assert.ok(matchupLineup?.playerIds.includes(9));
 assert.equal(matchupLineup.slots.find(slot => slot.player.dkPlayerId === 9)?.projection, 2);
+const percentRun = optimizeNflLineups(matchupPool, { ...settings, nLineups: 4, gppAirMatchupMinPct: 25 });
+assert.equal(percentRun.lineups.length, 4);
+assert.ok(percentRun.lineups.filter(lineup => lineup.playerIds.includes(9)).length >= 1);
+assert.ok(percentRun.warnings.some(warning => warning.includes("minimum 1/4 requested")));
+const fullMatchupRun = optimizeNflLineups(matchupPool, { ...settings, nLineups: 2, gppAirMatchupMinPct: 100 });
+assert.ok(fullMatchupRun.lineups.every(lineup => lineup.playerIds.includes(9)));
+assert.throws(() => optimizeNflLineups(matchupPool, { ...settings, nLineups: 2, maxExposure: 0.5, gppAirMatchupMinPct: 100 }), /Could not meet the air-yard matchup minimum/);
+assert.throws(() => optimizeNflLineups(pool, { ...settings, gppAirMatchupMinPct: 25 }), /No eligible player has an air-yard matchup tag/);
+assert.throws(() => optimizeNflLineups(matchupPool, { ...settings, mode: "cash", gppAirMatchupMinPct: 25 }), /Classic GPP/);
+assert.throws(() => optimizeNflLineups(matchupPool, { ...settings, gppAirMatchupMinPct: 101 }), /between 0 and 100/);
 const limited = optimizeNflLineups(pool, { ...settings, nLineups: 2, maxExposure: 0.5,
   gppSignalMinPerLineup: 1 });
 assert.ok(limited.lineups.length < 2);

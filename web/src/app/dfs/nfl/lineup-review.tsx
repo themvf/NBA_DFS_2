@@ -5,9 +5,11 @@ import type { NflGeneratedLineup } from "./nfl-optimizer";
 
 const money = (value: number) => `$${value.toLocaleString()}`;
 
-export default function LineupReview({ lineups, runId }: {
+export default function LineupReview({ lineups, runId, airMatchupMinimumPct = 0, plannedLineups }: {
   lineups: NflGeneratedLineup[];
   runId: string | null;
+  airMatchupMinimumPct?: number;
+  plannedLineups?: number;
 }) {
   const [order, setOrder] = useState("original");
   const sorted = useMemo(() => [...lineups].sort((a, b) => {
@@ -16,11 +18,13 @@ export default function LineupReview({ lineups, runId }: {
     if (order === "ceiling") return b.ceilingFpts - a.ceilingFpts || a.lineupNumber - b.lineupNumber;
     return a.lineupNumber - b.lineupNumber;
   }), [lineups, order]);
+  const airMatchupCount = lineups.filter(lineup => lineup.slots.some(({ player }) => player.playerSignals?.some(signal => signal.code === "AIR_MATCHUP"))).length;
 
   return <section className="rounded-xl border bg-white">
     <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
       <div><h2 className="font-semibold">Portfolio · {lineups.length} lineups</h2>
         <p className="mt-1 text-xs text-slate-500">Run {runId?.slice(0, 8) ?? "unsaved"} · Select a lineup to inspect its roster.</p></div>
+      {airMatchupMinimumPct > 0 ? <p className="text-xs font-semibold text-blue-800">Air-yard matchup: {airMatchupCount}/{lineups.length} lineups · minimum {Math.ceil((plannedLineups ?? lineups.length) * airMatchupMinimumPct / 100)} ({airMatchupMinimumPct}%)</p> : null}
       <label className="text-sm">Sort <select className="ml-2 rounded-lg border px-2 py-2" value={order} onChange={e => setOrder(e.target.value)}>
         <option value="original">Original order</option><option value="projection">Projection ↓</option><option value="salary">Salary ↓</option><option value="ceiling">Ceiling sum ↓</option>
       </select></label>
