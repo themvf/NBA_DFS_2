@@ -103,7 +103,7 @@ export type NflOptimizerPlayer = {
    */
   availabilityStatus?: string | null;
   /** The resolved availability; only its block reason is read here, to say why a player is out. */
-  availability?: { blockedReason?: string | null } | null;
+  availability?: { blockedReason?: string | null; status?: string | null } | null;
   /**
    * DraftKings' own Status column, verbatim ("Q", "D", "OUT", "IR", ...).
    * `dk-salary-csv.ts` maps only OUT/IR-family codes to `isOut` and leaves the
@@ -351,13 +351,29 @@ function observedHistoryReason(player: NflOptimizerPlayer): string {
 }
 
 /** Build role evidence for the punt policy from a slate player, keeping unknowns as null. */
-function roleEvidenceFor(player: NflOptimizerPlayer): NflPlayerRoleEvidence {
+function receiverChartRank(player: NflOptimizerPlayer): number | null {
+  const match = player.position === "WR" ? player.depthRole?.match(/\bWR\s*(\d+)\b/i) : null;
+  return match ? Number(match[1]) : null;
+}
+
+/** Only a documented OUT/IR status can promote a receiver ahead on the chart. */
+function verifiedReceiverOut(player: NflOptimizerPlayer): boolean {
+  if (player.position !== "WR" || !player.isOut) return false;
+  const dkStatus = player.dkStatus?.trim().toUpperCase();
+  if (dkStatus && ["OUT", "O", "IR", "PUP", "SUSP", "NA"].includes(dkStatus)) return true;
+  const status = player.availability?.status?.trim().toUpperCase();
+  return (player.availabilityState === "confirmed" || player.availabilityState === "probable")
+    && Boolean(status && ["OUT", "IR", "PUP", "NFI", "SUSPENDED", "INACTIVE"].includes(status));
+}
+
+function roleEvidenceFor(player: NflOptimizerPlayer, verifiedReceiversOutAhead = 0): NflPlayerRoleEvidence {
   const observed = player.historyGames ?? null;
   return {
     playerId: player.dkPlayerId,
     verifiedActive: player.isOut ? false : null,
     availabilityState: player.availabilityState ?? "unknown",
     depthRole: player.depthRole ?? null,
+    verifiedReceiversOutAhead,
     // If role confidence is not supplied but the player has observed games of
     // his own, treat observed history as weak role evidence rather than unknown.
     // Season-aware: a rookie starter who has played every game his team has
@@ -897,6 +913,14 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   const pool: ResolvedPlayer[] = [];
   const eligibility: NflEligibilityDecision[] = [];
   const warnings: string[] = [];
+  const absentReceiverRanks = new Map<string, Set<number>>();
+  for (const player of players) {
+    const rank = receiverChartRank(player);
+    if (rank === null || !verifiedReceiverOut(player)) continue;
+    const teamRanks = absentReceiverRanks.get(player.team) ?? new Set<number>();
+    teamRanks.add(rank);
+    absentReceiverRanks.set(player.team, teamRanks);
+  }
   let belowSalaryFloor = 0;
   let withoutHistory = 0;
   let puntBlocked = 0;
@@ -938,7 +962,9 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     if (policy) {
       // Role-aware no-punt policy (spec §8) is the single eligibility authority
       // when present. It fully supersedes the bare salary floor.
-      const decision = evaluatePuntEligibility(player, roleEvidenceFor(player), policy, overrides);
+      const rank = receiverChartRank(player);
+      const outAhead = rank === null ? 0 : [...(absentReceiverRanks.get(player.team) ?? [])].filter(outRank => outRank < rank).length;
+      const decision = evaluatePuntEligibility(player, roleEvidenceFor(player, outAhead), policy, overrides);
       if (!decision.eligible) {
         eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden: false, reason: decision.detail, reasonCode: decision.reason });
         // A locked player who is ineligible must produce a readable error, not a

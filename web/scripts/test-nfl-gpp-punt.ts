@@ -16,7 +16,7 @@ function player(over: Partial<NflOptimizerPlayer> & { dkPlayerId: number; salary
     historyGames: over.historyGames ?? 6, ourProj: over.ourProj ?? 10, floorFpts: 7, ceilingFpts: 14, boomRate: 0.2,
     avgFptsDk: 10, fantasyprosProj: null, linestarProj: null, linestarOwnPct: null, customProj: null,
     depthRole: over.depthRole, roleConfidence: over.roleConfidence, projectedOpportunities: over.projectedOpportunities,
-    availabilityState: over.availabilityState,
+    availabilityState: over.availabilityState, dkStatus: over.dkStatus, availability: over.availability,
   };
 }
 
@@ -92,7 +92,8 @@ function main() {
   // Two cheap-but-qualified salary-relief players; default cap is 1 per lineup.
   const reliefPool = [
     ...corePool(),
-    player({ dkPlayerId: 300, salary: 2200, position: "WR", team: "AAA", roleConfidence: 0.7, projectedOpportunities: 5, ourProj: 6 }),
+    player({ dkPlayerId: 300, salary: 2200, position: "WR", team: "AAA", depthRole: "Listed WR3",
+      availabilityState: "probable", roleConfidence: 0.7, projectedOpportunities: 5, ourProj: 6 }),
     player({ dkPlayerId: 301, salary: 2400, position: "RB", team: "BBB", roleConfidence: 0.7, projectedOpportunities: 5, ourProj: 6 }),
   ];
   const capped = optimizeNflLineups(reliefPool, showdownSettings({ nLineups: 4 }));
@@ -108,14 +109,12 @@ function main() {
   }
 
   // --- Regression (found in review): a cheap veteran in PRODUCTION shape ---
-  // The live slate supplies historyGames but never depthRole / roleConfidence /
-  // projectedOpportunities. Observed history must serve as weak role evidence:
-  // a $2,800 player with 6 games of his own is eligible salary relief, while a
-  // no-history body at the same price still fails closed.
+  // Observed history can still serve as weak role evidence for a back. It
+  // cannot establish a receiver's current route share or depth-chart role.
   const productionShape = optimizeNflLineups(
     [...corePool(),
-      player({ dkPlayerId: 600, salary: 2800, position: "WR", team: "BBB", historyGames: 6, ourProj: 7 }),
-      player({ dkPlayerId: 601, salary: 2800, position: "WR", team: "BBB", historyGames: 0, ourProj: 7 })],
+      player({ dkPlayerId: 600, salary: 2800, position: "RB", team: "BBB", historyGames: 6, ourProj: 7 }),
+      player({ dkPlayerId: 601, salary: 2800, position: "RB", team: "BBB", historyGames: 0, ourProj: 7 })],
     showdownSettings());
   const veteran = productionShape.eligibility!.find((e) => e.dkPlayerId === 600)!;
   assert.equal(veteran.eligible, true, "cheap veteran with observed games is eligible without a feed");
@@ -123,6 +122,68 @@ function main() {
   const noHistory = productionShape.eligibility!.find((e) => e.dkPlayerId === 601)!;
   assert.equal(noHistory.eligible, false, "cheap no-history body still fails closed");
   assert.equal(noHistory.reasonCode, "ROLE_UNRESOLVED");
+
+  // The $3,000 boundary previously skipped the role gate entirely. A fresh
+  // WR4 and an unresolved receiver both fail despite old scoring history.
+  const cheapReceivers = optimizeNflLineups(
+    [...corePool(),
+      player({ dkPlayerId: 610, name: "Tory Horton", salary: 3000, position: "WR", team: "BBB", historyGames: 9,
+        depthRole: "Listed WR4", availabilityState: "probable", roleConfidence: 0.75, ourProj: 9.18 }),
+      player({ dkPlayerId: 611, name: "Theo Wease Jr.", salary: 3000, position: "WR", team: "BBB", historyGames: 3,
+        depthRole: null, availabilityState: "probable", roleConfidence: 0.5, ourProj: 7.78 }),
+      player({ dkPlayerId: 612, name: "Current WR3", salary: 3000, position: "WR", team: "BBB", historyGames: 9,
+        depthRole: "Listed WR3", availabilityState: "probable", roleConfidence: 0.75, ourProj: 8 })],
+    showdownSettings());
+  const decision = (id: number) => cheapReceivers.eligibility!.find((entry) => entry.dkPlayerId === id)!;
+  assert.equal(decision(610).reasonCode, "ROLE_UNRESOLVED");
+  assert.equal(decision(611).reasonCode, "ROLE_UNKNOWN");
+  assert.equal(decision(612).eligible, true);
+  assert.equal(decision(612).salaryRelief, true, "$3,000 now counts toward the cheap-player cap");
+  assert.equal(cheapReceivers.lineups.some((lineup) => lineup.playerIds.includes(610) || lineup.playerIds.includes(611)), false);
+
+  const replacementPool = [...corePool(),
+    player({ dkPlayerId: 615, salary: 3000, position: "WR", team: "BBB", depthRole: "Listed WR4",
+      availabilityState: "probable", historyGames: 9, ourProj: 9 }),
+    player({ dkPlayerId: 616, salary: 6000, position: "WR", team: "BBB", depthRole: "Listed WR1",
+      availabilityState: "probable", isOut: true, dkStatus: "OUT" })];
+  const promoted = optimizeNflLineups(replacementPool, showdownSettings());
+  assert.equal(promoted.eligibility!.find((entry) => entry.dkPlayerId === 615)?.eligible, true,
+    "a documented WR1 absence promotes a listed WR4 to effective WR3");
+  const officialInactive = optimizeNflLineups(replacementPool.map(p => p.dkPlayerId === 616
+    ? { ...p, dkStatus: null, availability: { status: "INACTIVE" }, availabilityState: "confirmed" as const } : p), showdownSettings());
+  assert.equal(officialInactive.eligibility!.find((entry) => entry.dkPlayerId === 615)?.eligible, true,
+    "a current inactive report also promotes the next receiver");
+  const uncertain = optimizeNflLineups(replacementPool.map(p => p.dkPlayerId === 616
+    ? { ...p, isOut: false, dkStatus: "Q" } : p), showdownSettings());
+  assert.equal(uncertain.eligibility!.find((entry) => entry.dkPlayerId === 615)?.reasonCode, "ROLE_UNRESOLVED",
+    "questionable is not a verified absence");
+  const unresolvedReplacement = optimizeNflLineups(replacementPool.map(p => p.dkPlayerId === 615
+    ? { ...p, depthRole: null } : p), showdownSettings());
+  assert.equal(unresolvedReplacement.eligibility!.find((entry) => entry.dkPlayerId === 615)?.reasonCode, "ROLE_UNKNOWN",
+    "an unknown chart position cannot be promoted by subtraction");
+
+  const unsupportedAllowlist = optimizeNflLineups(
+    [...corePool(), player({ dkPlayerId: 613, salary: 3000, position: "WR", team: "BBB", historyGames: 9,
+      depthRole: "Listed WR4", availabilityState: "probable" })],
+    showdownSettings({ puntPolicy: { ...DEFAULT_NFL_PUNT_POLICY, allowlistedPlayerIds: [613] } }));
+  assert.equal(unsupportedAllowlist.eligibility!.find((entry) => entry.dkPlayerId === 613)?.eligible, false,
+    "an allowlist ID without a recorded role reason cannot bypass the gate");
+
+  const verifiedPromotion = optimizeNflLineups(
+    [...corePool(), player({ dkPlayerId: 614, salary: 3000, position: "WR", team: "BBB", historyGames: 9,
+      depthRole: "Listed WR3", availabilityState: "stale", roleConfidence: 0.75 })],
+    showdownSettings());
+  assert.equal(verifiedPromotion.eligibility!.find((entry) => entry.dkPlayerId === 614)?.reasonCode, "EVIDENCE_STALE",
+    "a former WR3 must have a current role decision");
+
+  const roleOverride: PuntOverride[] = [{ playerId: 613, reason: "Verified injury replacement with first-team routes",
+    user: "tester", at: "2026-10-03T12:00:00Z", slot: "FLEX" }];
+  const admittedDepthReceiver = optimizeNflLineups(
+    [...corePool(), player({ dkPlayerId: 613, salary: 3000, position: "WR", team: "BBB", historyGames: 9,
+      depthRole: "Listed WR4", availabilityState: "probable" })],
+    showdownSettings({ puntPolicy: { ...DEFAULT_NFL_PUNT_POLICY, allowlistedPlayerIds: [613] }, puntOverrides: roleOverride }));
+  assert.equal(admittedDepthReceiver.eligibility!.find((entry) => entry.dkPlayerId === 613)?.eligible, true,
+    "a recorded role-based override admits a verified replacement");
 
   // --- P1-AC3/§8.3: an allowlisted cheap player is admitted, Flex-only by default ---
   const overrides: PuntOverride[] = [{ playerId: 400, reason: "Active as returner/RB3 with a verified package", user: "tester", at: "2026-09-20T12:00:00Z", slot: "FLEX" }];
