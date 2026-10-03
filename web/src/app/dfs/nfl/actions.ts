@@ -1066,6 +1066,24 @@ async function persistSalarySlate(slate: NflDkSlate, digest: string, fileName: s
   return workspaceSlate(uploadId);
 }
 
+/**
+ * Whether a newer projection run exists for this upload's week right now.
+ * Cheap on purpose: Generate asks it just before building, because a page
+ * left open can miss a run published after it loaded (the Sunday 12:05 PM ET
+ * inactives pass, in the freshness simulation). Same rule as the page load.
+ */
+export async function checkNflSlateFreshness(uploadId: string): Promise<{ refreshAvailable: boolean; newestAsOf: string | null }> {
+  if (!/^[0-9a-f-]{36}$/.test(uploadId)) throw new Error('Invalid saved slate.');
+  await ensureNflDfsTables();
+  const [upload] = await db.select({ projectionRunId: nflDfsSlateUploads.projectionRunId }).from(nflDfsSlateUploads)
+    .where(eq(nflDfsSlateUploads.uploadId, uploadId)).limit(1);
+  if (!upload) throw new Error('Saved salary slate not found.');
+  const games = await db.select({ gameKey: nflDfsSlatePlayers.gameKey, gameInfo: nflDfsSlatePlayers.gameInfo })
+    .from(nflDfsSlatePlayers).where(eq(nflDfsSlatePlayers.uploadId, uploadId));
+  const newest = await latestProjectionRun(games);
+  return { refreshAvailable: Boolean(newest && newest.runId !== upload.projectionRunId), newestAsOf: newest?.asOfAt?.toISOString() ?? null };
+}
+
 /** Clone salaries onto a compatible newer run; old slate and lineup snapshots stay immutable. */
 export async function refreshNflSlateProjections(uploadId: string): Promise<NflWorkspaceSlate> {
   await ensureNflDfsTables();

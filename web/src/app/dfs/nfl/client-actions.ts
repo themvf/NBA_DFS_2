@@ -16,6 +16,7 @@ export { generateNflLineups } from "./actions";
 
 type Args<F extends (...args: never[]) => unknown> = Parameters<F>;
 
+export const checkNflSlateFreshness = async (...a: Args<typeof safe.safeCheckNflSlateFreshness>) => unwrap(await safe.safeCheckNflSlateFreshness(...a));
 export const refreshNflSlateProjections = async (...a: Args<typeof safe.safeRefreshNflSlateProjections>) => unwrap(await safe.safeRefreshNflSlateProjections(...a));
 export const listSavedNflSlates = async (...a: Args<typeof safe.safeListSavedNflSlates>) => unwrap(await safe.safeListSavedNflSlates(...a));
 export const loadSavedNflWorkspace = async (...a: Args<typeof safe.safeLoadSavedNflWorkspace>) => unwrap(await safe.safeLoadSavedNflWorkspace(...a));

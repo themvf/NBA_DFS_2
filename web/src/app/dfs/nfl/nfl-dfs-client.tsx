@@ -25,7 +25,7 @@ import { exposureBounds, exposureRange, type CaptainTarget, type ExposureTarget 
 import { availabilityCoverage } from '@/lib/nfl-dfs/availability-coverage';
 import { AlertTriangle, BarChart3, CheckCircle2, Download, FileUp, HelpCircle, Lock, Play, Search, ShieldCheck, Unlock, XCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { refreshNflSlateProjections, listSavedNflSlates, loadSavedNflWorkspace, loadSavedNflLineups, readNflOptimizerAudit, exportSavedNflEntries, applyNflComparison, loadNflSalaryCsv, generateNflLineups, searchNflStarterNews, saveNflBuildDraft, readNflBuildDraft, type NflComparisonSource, type NflWorkspaceSlate } from "./client-actions";
+import { checkNflSlateFreshness, refreshNflSlateProjections, listSavedNflSlates, loadSavedNflWorkspace, loadSavedNflLineups, readNflOptimizerAudit, exportSavedNflEntries, applyNflComparison, loadNflSalaryCsv, generateNflLineups, searchNflStarterNews, saveNflBuildDraft, readNflBuildDraft, type NflComparisonSource, type NflWorkspaceSlate } from "./client-actions";
 import type { NflGeneratedLineup, NflOptimizerSettings, NflProjectionSource } from "./nfl-optimizer";
 import { DEFAULT_NFL_PUNT_POLICY } from "@/lib/nfl-dfs/punt-policy";
 import { PUNT_PRESETS, resolvePuntPreset, describePuntPolicy, type PuntPresetKey } from "@/lib/nfl-dfs/punt-presets";
@@ -305,6 +305,9 @@ export default function NflDfsClient() {
   /** Move a slate onto the newest projection run (a new upload); lineup audits on the old one stay. */
   async function adoptNewestProjections(uploadId: string) {
     const next = await refreshNflSlateProjections(uploadId);
+    // Drafts are stored per slate signature, which a move keeps; follow the new upload
+    // so autosave doesn't silently stop on the old one.
+    if (draftReadyFor.current === uploadId) draftReadyFor.current = next.uploadId;
     setSlate(next); setLibraryId(next.uploadId); setLineups([]); setRunId(null); setCompletedSettings(null);
     setShowVisuals(false); selectEntryFile(null); setExplainPlayer(null);
     setSavedRuns((await loadSavedNflWorkspace(next.uploadId)).runs);
@@ -469,10 +472,28 @@ export default function NflDfsClient() {
     if (!slate) return; setError(null); setMessage(null);
     const payload = currentSettings;
     setShowVisuals(false);
-    startTransition(async () => { try { const response = await generateNflLineups(slate.uploadId, payload); if (!response.ok) { setError(response.error); return; } setLineups(response.result.lineups); setEligibility(response.result.eligibility ?? []); setOwnership(response.ownership ?? null); setExposureReport(response.result.exposureReport ?? []); setSalaryBands(response.result.salaryBandReport ?? []); setDuplication(response.result.duplication ?? []); setQaOverrides([]); setSavedQaEvidenceAvailable(true);
+    startTransition(async () => { try {
+        // A page left open misses runs published after it loaded (the Sunday 12:05 PM ET
+        // inactives pass). Re-check now and move first, under the same rule as opening.
+        let uploadId = slate.uploadId;
+        let freshness = "";
+        if (savedRuns.length === 0 && lineups.length === 0) {
+          try {
+            const fresh = await checkNflSlateFreshness(uploadId);
+            if (shouldAdoptNewestProjections({ refreshAvailable: fresh.refreshAvailable, firstKickoff: slate.firstKickoff ?? null, now, builtLineups: 0 })) {
+              const moved = await adoptNewestProjections(uploadId);
+              uploadId = moved.uploadId;
+              freshness = `Moved to the newest projections${moved.modelAsOf ? ` (${formatEt(moved.modelAsOf)})` : ""} before building. `;
+            }
+          } catch (reason) {
+            // Never silent: build on the pinned run and say why.
+            freshness = `Couldn't check for newer projections, so this build uses the run the slate was on (${reason instanceof Error ? reason.message : "the check failed"}). `;
+          }
+        }
+        const response = await generateNflLineups(uploadId, payload); if (!response.ok) { setError(response.error); return; } setLineups(response.result.lineups); setEligibility(response.result.eligibility ?? []); setOwnership(response.ownership ?? null); setExposureReport(response.result.exposureReport ?? []); setSalaryBands(response.result.salaryBandReport ?? []); setDuplication(response.result.duplication ?? []); setQaOverrides([]); setSavedQaEvidenceAvailable(true);
         setQaEvidence({ eligibility: response.result.eligibility ?? [], exposureReport: response.result.exposureReport ?? [], archetypePlan: response.result.archetypePlan });
         setRunProjection({ runId: response.slate.projectionRunId, asOf: response.slate.modelAsOf }); setRunWarnings(response.result.warnings);
-        setSlate(response.slate); setCompletedSettings({ ...response.effectiveSettings, requestedDefensiveAdjustments: payload.defensiveAdjustments } as NflOptimizerSettings); setRunId(response.runId); setRunBuild(response.build ?? null); chooseStage("review"); setSavedRuns((await loadSavedNflWorkspace(slate.uploadId)).runs); setMessage(`Saved optimizer run ${response.runId.slice(0, 8)} with ${response.result.lineups.length}/${settings.nLineups} lineups. ${response.result.warnings.join(" ")}`); } catch (reason) { setError(reason instanceof Error ? reason.message : "Optimizer failed."); } });
+        setSlate(response.slate); setCompletedSettings({ ...response.effectiveSettings, requestedDefensiveAdjustments: payload.defensiveAdjustments } as NflOptimizerSettings); setRunId(response.runId); setRunBuild(response.build ?? null); chooseStage("review"); setSavedRuns((await loadSavedNflWorkspace(uploadId)).runs); setMessage(`${freshness}Saved optimizer run ${response.runId.slice(0, 8)} with ${response.result.lineups.length}/${settings.nLineups} lineups. ${response.result.warnings.join(" ")}`); } catch (reason) { setError(reason instanceof Error ? reason.message : "Optimizer failed."); } });
   }
   function allowCheapPlayer(dkPlayerId: number, name: string) {
     // Salary is never a valid reason — the spec requires a role reason (§8.1).
