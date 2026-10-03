@@ -105,6 +105,15 @@ def test_weeks_ignore_games_from_another_season():
     assert schedule_weeks([_game(1, week=1), other], 2024)["regular"] == [1]
 
 
+def test_current_season_weeks_ignore_unfinished_games():
+    unfinished = _game(2, week=2)
+    unfinished["completed"] = False
+    unfinished["homePoints"] = None
+    assert schedule_weeks([_game(1, week=1), unfinished], 2024, completed_only=True) == {
+        "regular": [1], "postseason": [],
+    }
+
+
 # ── row building ─────────────────────────────────────────────────
 
 _MATCHUPS = {401001: 55}
@@ -289,6 +298,44 @@ def test_season_loop_records_games_it_could_not_place_in_the_schedule(monkeypatc
     )
     assert report["play_rows"] == 0
     assert report["skipped"]["game_not_in_schedule"] >= 1
+
+
+def test_current_season_reports_missing_completed_game_feed(monkeypatch):
+    import psycopg2.extras
+
+    monkeypatch.setattr(psycopg2.extras, "execute_values", lambda *a, **k: None)
+    monkeypatch.setattr(
+        cfb_plays, "_upsert_game",
+        lambda db, game, *, team_cache, venue_cache, **_: (
+            team_cache.update({int(game["homeId"]): 11, int(game["awayId"]): 22}) or 501
+        ),
+    )
+    report = ingest_season(
+        _FakeDb(), season=2024, games=[_game()],
+        fetch_week=lambda endpoint, season_type, week: [], completed_only=True,
+    )
+    assert report["coverage_failures"] == [{
+        "season_type": "regular", "week": 1, "expected_fbs_games": 1,
+        "missing_drive_game_ids": [401001], "missing_play_game_ids": [401001],
+    }]
+
+
+def test_recurring_refresh_limits_weeks_but_bootstrap_keeps_all(monkeypatch):
+    import psycopg2.extras
+
+    monkeypatch.setattr(psycopg2.extras, "execute_values", lambda *a, **k: None)
+    monkeypatch.setattr(cfb_plays, "_upsert_game", lambda *a, **k: 501)
+    games = [_game(401001, week=1), _game(401002, week=2)]
+    seen = []
+    def fetch(endpoint, season_type, week):
+        seen.append((endpoint, week))
+        return []
+    report = ingest_season(
+        _FakeDb(), season=2024, games=games, fetch_week=fetch,
+        completed_only=True, recent_completed_weeks=1,
+    )
+    assert report["weeks"]["regular"] == [2]
+    assert seen == [("drives", 2), ("plays", 2)]
 
 
 def test_a_missing_wallclock_becomes_null_rather_than_failing_the_week():

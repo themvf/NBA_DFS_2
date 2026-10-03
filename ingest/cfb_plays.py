@@ -1,4 +1,4 @@
-"""Backfill CFBD drives and plays for completed seasons.
+"""Backfill CFBD drives and plays, including the current season.
 
 Why this is a separate, leak-proof backfill
 -------------------------------------------
@@ -20,6 +20,8 @@ Usage
 -----
     python -m ingest.cfb_plays --start-season 2022 --end-season 2025
     python -m ingest.cfb_plays --season 2024 --audit-only
+    python -m ingest.cfb_plays --current-season
+    python -m ingest.cfb_plays --current-season --recent-completed-weeks 2
 """
 
 from __future__ import annotations
@@ -126,11 +128,19 @@ def fetch_cfbd_week(
     raise RuntimeError(f"CFBD /{endpoint} {season} {season_type} w{week} failed: {response}")
 
 
-def schedule_weeks(games: list[dict], season: int) -> dict[str, list[int]]:
-    """Week list per season type, taken from the season's own schedule."""
+def schedule_weeks(
+    games: list[dict], season: int, *, completed_only: bool = False,
+) -> dict[str, list[int]]:
+    """Week list from the schedule; current seasons exclude future games."""
     weeks: dict[str, set[int]] = {season_type: set() for season_type in SEASON_TYPES}
     for game in games:
         if int(game.get("season") or 0) != season:
+            continue
+        if completed_only and not (
+            game.get("completed") is True
+            and game.get("homePoints") is not None
+            and game.get("awayPoints") is not None
+        ):
             continue
         season_type = str(game.get("seasonType") or "regular").lower()
         if season_type not in weeks:
@@ -334,6 +344,8 @@ def ingest_season(
     season: int,
     games: list[dict],
     fetch_week,
+    completed_only: bool = False,
+    recent_completed_weeks: int = 0,
 ) -> dict:
     """Upsert every drive and play for one season.
 
@@ -342,7 +354,12 @@ def ingest_season(
     """
     from psycopg2.extras import execute_values
 
-    weeks = schedule_weeks(games, season)
+    weeks = schedule_weeks(games, season, completed_only=completed_only)
+    if recent_completed_weeks > 0:
+        weeks = {
+            kind: values[-recent_completed_weeks:]
+            for kind, values in weeks.items()
+        }
     games_by_id = {
         int(game["id"]): game for game in games
         if game.get("id") is not None and int(game.get("season") or 0) == season
@@ -353,6 +370,7 @@ def ingest_season(
     venue_cache: dict[tuple[int | None, str], int] = {}
     skipped: Counter[str] = Counter()
     per_week: dict[str, dict[str, int]] = {}
+    coverage_failures: list[dict] = []
     drive_total = play_total = 0
 
     with db.connect() as connection:
@@ -362,6 +380,30 @@ def ingest_season(
             for week in weeks.get(season_type, []):
                 drives = fetch_week("drives", season_type, week)
                 plays = fetch_week("plays", season_type, week)
+                if completed_only:
+                    expected = {
+                        int(game["id"])
+                        for game in games
+                        if int(game.get("season") or 0) == season
+                        and str(game.get("seasonType") or "regular").lower() == season_type
+                        and game.get("week") == week
+                        and game.get("completed") is True
+                        and game.get("homePoints") is not None
+                        and game.get("awayPoints") is not None
+                        and str(game.get("homeClassification") or "").lower() == CLASSIFICATION
+                        and str(game.get("awayClassification") or "").lower() == CLASSIFICATION
+                    }
+                    drive_games = {_int(row.get("gameId")) for row in drives}
+                    play_games = {_int(row.get("gameId")) for row in plays}
+                    missing_drives = sorted(expected - drive_games)
+                    missing_plays = sorted(expected - play_games)
+                    if missing_drives or missing_plays:
+                        coverage_failures.append({
+                            "season_type": season_type, "week": week,
+                            "expected_fbs_games": len(expected),
+                            "missing_drive_game_ids": missing_drives,
+                            "missing_play_game_ids": missing_plays,
+                        })
                 touched = {
                     _int(row.get("gameId"))
                     for row in (*drives, *plays)
@@ -412,6 +454,7 @@ def ingest_season(
         "plays_per_game": round(play_total / len(matchup_ids), 1) if matchup_ids else 0,
         "skipped": dict(sorted(skipped.items())),
         "per_week": per_week,
+        "coverage_failures": coverage_failures,
     }
 
 
@@ -452,6 +495,14 @@ def main() -> None:
     parser.add_argument("--end-season", type=int, default=2025)
     parser.add_argument("--audit-only", action="store_true")
     parser.add_argument("--no-cache", action="store_true")
+    parser.add_argument(
+        "--current-season", action="store_true",
+        help="Use the current UTC year, fetch fresh payloads, and audit every completed FBS game.",
+    )
+    parser.add_argument(
+        "--recent-completed-weeks", type=int, default=0,
+        help="Limit recurring current-season refreshes to the latest N completed weeks; 0 bootstraps all.",
+    )
     parser.add_argument("--cache-dir", type=Path, default=DATA_DIR / "cfb" / "play-cache")
     parser.add_argument(
         "--schedule-cache-dir", type=Path, default=DATA_DIR / "cfb" / "history-cache",
@@ -459,28 +510,35 @@ def main() -> None:
     )
     parser.add_argument("--artifact-dir", type=Path, default=Path("artifacts/cfb/play-audits"))
     args = parser.parse_args()
+    if args.recent_completed_weeks < 0:
+        parser.error("--recent-completed-weeks must be nonnegative")
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
     from ingest.cfb_history import fetch_cfbd
 
     api_key = os.getenv("CFBD_API_KEY", "")
-    seasons = [args.season] if args.season else list(range(args.start_season, args.end_season + 1))
+    seasons = ([datetime.now(timezone.utc).year] if args.current_season else
+               [args.season] if args.season else list(range(args.start_season, args.end_season + 1)))
     db = None if args.audit_only else DatabaseManager(load_config().database_url or "")
 
     for season in seasons:
+        current = args.current_season or season == datetime.now(timezone.utc).year
+        use_cache = not args.no_cache and not current
         games = fetch_cfbd(
             "games", api_key=api_key, season=season,
-            cache_dir=args.schedule_cache_dir, use_cache=not args.no_cache,
+            cache_dir=args.schedule_cache_dir, use_cache=use_cache,
         )
 
         def fetch_week(endpoint: str, season_type: str, week: int, _season=season) -> list[dict]:
             return fetch_cfbd_week(
                 endpoint, api_key=api_key, season=_season, season_type=season_type,
-                week=week, cache_dir=args.cache_dir, use_cache=not args.no_cache,
+                week=week, cache_dir=args.cache_dir, use_cache=use_cache,
             )
 
         if args.audit_only:
-            weeks = schedule_weeks(games, season)
+            weeks = schedule_weeks(games, season, completed_only=current)
+            if args.recent_completed_weeks:
+                weeks = {kind: values[-args.recent_completed_weeks:] for kind, values in weeks.items()}
             drives: list[dict] = []
             plays: list[dict] = []
             for season_type in SEASON_TYPES:
@@ -489,10 +547,19 @@ def main() -> None:
                     plays.extend(fetch_week("plays", season_type, week))
             report = {"season": season, "weeks": weeks, **audit_rows(drives, plays)}
         else:
-            report = ingest_season(db, season=season, games=games, fetch_week=fetch_week)
+            report = ingest_season(
+                db, season=season, games=games, fetch_week=fetch_week,
+                completed_only=current,
+                recent_completed_weeks=args.recent_completed_weeks,
+            )
 
         _write_audit(args.artifact_dir, season, report)
         print(json.dumps(report, indent=2, sort_keys=True))
+        if report.get("coverage_failures"):
+            raise RuntimeError(
+                f"CFBD play/drive coverage incomplete for {season}: "
+                f"{report['coverage_failures']}"
+            )
 
 
 if __name__ == "__main__":
