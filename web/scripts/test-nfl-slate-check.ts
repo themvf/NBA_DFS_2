@@ -39,7 +39,7 @@ const text = night.items.map((i) => `${i.level}:${i.text}`).join("\n");
 assert.match(text, /attention:.*Newer projections are available/);
 assert.match(text, /attention:PHI: no quarterback could be confirmed as QB1, so backups aren't blocked/);
 assert.match(text, /attention:CHI: Caleb Williams is out and Case Keenum is listed QB1, but his projection still carries backup volume/);
-assert.match(text, /attention:Opponent adjustments aren't available for this slate yet/);
+assert.match(text, /attention:No opponent adjustments have been captured for this upload yet/);
 assert.match(text, /attention:The ownership estimate failed its checks/);
 assert.equal(night.needs, 5);
 assert.equal(night.headline, "PHI @ CHI: 5 things need you");
@@ -148,6 +148,22 @@ assert.equal(ruledOutPlayer({ platformOut: true }), true);
 const irStarter = buildSlateCheck(base({ qbs: [qb("Jalen Hurts", "PHI", { role: "Expected starter · QB1" }),
   qb("Caleb Williams", "CHI", { injured: ruledOutPlayer({ dkStatus: "IR" }), role: "Expected starter · QB1" }), qb("Case Keenum", "CHI")] }));
 assert.equal(line(irStarter, "qb:CHI")!.action, "pick_starter", "an IR-tagged starter prompts a pick");
+
+// Opponent adjustments: "none captured" vs "captured but none passed", and whether the next run beats kickoff.
+const opp = (over: Partial<SlateCheckInput>) => buildSlateCheck(base(over)).items.find((i) => i.id === "opponent")!;
+// PIT@CLE 2026-10-01: uploaded after the 5:35 PM ET run, kickoff 8:15 PM ET.
+const pit = opp({ now: Date.parse("2026-10-01T22:13:00Z"), firstKickoff: "2026-10-02T00:15:00Z",
+  opponentAdjustments: [{ label: "PFR efficiency", applied: 0, eligible: 50, captured: 0 }], nextOpponentCapture: "2026-10-02T13:35:00Z" });
+assert.equal(pit.level, "attention");
+assert.match(pit.text, /No opponent adjustments have been captured for this upload yet/);
+assert.match(pit.text, /after kickoff, so this slate won't get them/);
+// Sunday slate uploaded Friday night: the next run is in time.
+const early = opp({ now: Date.parse("2026-10-02T23:00:00Z"), firstKickoff: "2026-10-04T17:00:00Z",
+  opponentAdjustments: [{ label: "PFR efficiency", applied: 0, eligible: 300, captured: 0 }], nextOpponentCapture: "2026-10-03T13:35:00Z" });
+assert.match(early.text, /reload after it to pick them up/);
+// Captured, but none passed: a different sentence, no schedule talk.
+const failedChecks = opp({ opponentAdjustments: [{ label: "PFR efficiency", applied: 0, eligible: 56, captured: 40 }], nextOpponentCapture: "2026-09-29T13:35:00Z" });
+assert.match(failedChecks.text, /were captured for this upload, but no player passed their checks/);
 
 // A check that couldn't be saved says so on the card, not only in the server log.
 const unsaved = withRecordFailure(clean, new Error("deadlock detected"));
