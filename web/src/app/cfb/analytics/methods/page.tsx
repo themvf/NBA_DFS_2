@@ -26,6 +26,8 @@ export default async function CfbAnalyticsMethodsPage() {
   let challenger: Awaited<ReturnType<typeof getCfbChallengerValidation>> = null;
   let opponentPpa: Awaited<ReturnType<typeof getCfbOpponentPpaValidation>> = null;
   let frozenEvaluation: Awaited<ReturnType<typeof getCfbFrozenMarketEvaluation>> = [];
+  let opponentPpaUnavailable = false;
+  let frozenEvaluationUnavailable = false;
   let coverageUnavailable = false;
   let validationUnavailable = false;
   try { coverage = await getCfbAnalyticsCoverage(); }
@@ -35,9 +37,9 @@ export default async function CfbAnalyticsMethodsPage() {
   try { challenger = await getCfbChallengerValidation(); }
   catch (error) { console.error("CFB challenger validation unavailable", error); }
   try { opponentPpa = await getCfbOpponentPpaValidation(); }
-  catch (error) { console.error("CFB opponent-adjusted PPA validation unavailable", error); }
+  catch (error) { console.error("CFB opponent-adjusted PPA validation unavailable", error); opponentPpaUnavailable = true; }
   try { frozenEvaluation = await getCfbFrozenMarketEvaluation(); }
-  catch (error) { console.error("CFB frozen market evaluation unavailable", error); }
+  catch (error) { console.error("CFB frozen market evaluation unavailable", error); frozenEvaluationUnavailable = true; }
   const better = (model: number | null, market: number | null) =>
     model == null || market == null ? "—" : model < market ? "Model" : "Market";
   const metric = (group: Record<string, { n: number; mean: number | null }>, key: string) => group[key]?.mean?.toFixed(key.includes("brier") ? 3 : 2) ?? "—";
@@ -81,7 +83,7 @@ export default async function CfbAnalyticsMethodsPage() {
     </section>
     <section className={styles.section}><div className={styles.note}><strong>Interpretation rules</strong><p>Historical CFBD line references are not verified sportsbook closes. A missing metric stays blank. New score or probability models should be trained and evaluated only with evidence available before each game, against a contemporaneous market baseline, before they appear beside observed lines.</p></div></section>
     <section className={styles.section}>
-      <div className={styles.sectionHead}><h2>Opponent-adjusted play-value trial</h2><p>{opponentPpa ? `${opponentPpa.version} · refreshed ${formatEt(opponentPpa.generatedAt, true)}` : "Awaiting first run"}</p></div>
+      <div className={styles.sectionHead}><h2>Opponent-adjusted play-value trial</h2><p>{opponentPpa ? `${opponentPpa.version} · refreshed ${formatEt(opponentPpa.generatedAt, true)}` : opponentPpaUnavailable ? "Validation temporarily unavailable" : "Awaiting first run"}</p></div>
       <p>The third research model keeps the possession forecast and adjusts each team&apos;s prior play PPA for opponents. It is trained before the evaluation season. It remains off game pages while its performance is tested.</p>
       {opponentPpa && <div className={styles.tableWrap}><table className={styles.table}>
         <thead><tr><th>Sample and measure</th><th>Adjusted PPA</th><th>Possession v2</th><th>Market</th></tr></thead>
@@ -97,7 +99,7 @@ export default async function CfbAnalyticsMethodsPage() {
       {frozenEvaluation.length ? <div className={styles.tableWrap}><table className={styles.table}>
         <thead><tr><th>Model</th><th>Market</th><th>Eligible games</th><th>Excluded</th><th>Model error</th><th>Observed market error</th></tr></thead>
         <tbody>{frozenEvaluation.map((row) => <tr key={`${row.version}:${row.market}`}><td>{row.version}</td><td>{row.market}</td><td>{row.eligibleGames}</td><td>{row.excluded}</td><td>{row.modelError?.toFixed(row.market === "moneyline" ? 3 : 2) ?? "—"}</td><td>{row.marketError?.toFixed(row.market === "moneyline" ? 3 : 2) ?? "—"}</td></tr>)}</tbody>
-      </table></div> : <p className={styles.empty}>No completed games with the new frozen comparison record yet.</p>}
+      </table></div> : <p className={styles.empty}>{frozenEvaluationUnavailable ? "Frozen market evaluation is temporarily unavailable." : "No completed games with the new frozen comparison record yet."}</p>}
     </section>
   </AnalyticsShell>;
 }
