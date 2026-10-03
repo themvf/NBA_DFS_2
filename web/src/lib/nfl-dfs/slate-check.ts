@@ -62,8 +62,15 @@ export interface SlateCheckInput {
   rosterStaleWarning: string | null;
   rosterCapturedAt: string | null;
   qbs: SlateCheckQb[];
-  /** Per defensive profile: players adjusted / eligible, or why the captures could not be read. Null when not computed. */
-  opponentAdjustments: { label: string; applied: number; eligible: number; error?: string | null }[] | null;
+  /**
+   * Per defensive profile: players adjusted / eligible, or why the captures
+   * could not be read. `captured`: players with ANY capture for this upload;
+   * 0 means none exists yet, which is a different problem from captures that
+   * all failed their checks. Null when not computed.
+   */
+  opponentAdjustments: { label: string; applied: number; eligible: number; captured?: number; error?: string | null }[] | null;
+  /** When the next scheduled opponent capture starts (ISO); null when unknown. */
+  nextOpponentCapture?: string | null;
   /** `coverage`: how many players' ownership came from each source, when LineStar supplied any. */
   ownership: { source: string | null; errors: string[]; coverage?: { linestar: number; estimate: number; total: number } | null } | null;
   availability: { state: "blind" | "thin" | "adequate"; resolved: number; considered: number } | null;
@@ -116,6 +123,30 @@ export function withRecordFailure(check: SlateCheck, error: unknown): SlateCheck
   const reason = error instanceof Error && error.message ? error.message : String(error);
   return { ...check, items: [...check.items, { id: "record", level: "info",
     text: `This check couldn't be saved, so the slate list may still show an older one: ${reason}` }] };
+}
+
+/**
+ * Why no player has an opponent adjustment, in words that say what to do.
+ *
+ * Captures are written by the scheduled projection workflow for the uploads
+ * that exist when it runs, keyed to the exact upload. A slate uploaded (or
+ * refreshed onto newer projections, which makes a new upload) after the last
+ * run before kickoff therefore never gets one. PIT@CLE 2026-10-01 was uploaded
+ * after the 5:35 PM ET run; the page said "not available yet" and the build
+ * note said "no player passed the frozen capture checks", though none existed.
+ */
+function opponentMissingText(input: SlateCheckInput): string {
+  const captured = input.opponentAdjustments?.some((p) => (p.captured ?? 0) > 0) ?? false;
+  if (captured) return "Opponent adjustments were captured for this upload, but no player passed their checks, so builds use unadjusted projections.";
+  const next = input.nextOpponentCapture ?? null;
+  const nextAt = next ? Date.parse(next) : NaN;
+  const kickoff = input.firstKickoff ? Date.parse(input.firstKickoff) : NaN;
+  const when = clock(next);
+  const timing = !when ? ""
+    : Number.isFinite(kickoff) && nextAt >= kickoff
+      ? ` The next scheduled capture starts ${when}, after kickoff, so this slate won't get them.`
+      : ` The next scheduled capture starts ${when} and takes several minutes; reload after it to pick them up.`;
+  return `No opponent adjustments have been captured for this upload yet, so builds use unadjusted projections. They're captured on a schedule, only for slates already uploaded.${timing}`;
 }
 
 export function buildSlateCheck(input: SlateCheckInput): SlateCheck {
@@ -178,7 +209,7 @@ export function buildSlateCheck(input: SlateCheckInput): SlateCheck {
     const failed = input.opponentAdjustments.filter((p) => p.error);
     if (any.length) add({ id: "opponent", level: "ok", text: `Opponent adjustments ready: ${any.map((p) => `${p.label} ${p.applied} of ${p.eligible} players`).join("; ")}.` });
     if (failed.length && !started) add({ id: "opponent-error", level: "attention", text: `Couldn't read opponent adjustments (${failed.map((p) => `${p.label}: ${p.error}`).join("; ")}), so builds that use them get unadjusted projections.` });
-    else if (!any.length && !started) add({ id: "opponent", level: "attention", text: "Opponent adjustments aren't available for this slate yet, so builds use unadjusted projections." });
+    else if (!any.length && !started) add({ id: "opponent", level: "attention", text: opponentMissingText(input) });
   }
 
   // Ownership estimate.

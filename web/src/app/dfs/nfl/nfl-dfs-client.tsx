@@ -11,7 +11,7 @@ import AvailabilityPanel from './availability-panel';
 import ResultsStep from './results-step';
 import WorkspaceStepper from './workspace-stepper';
 import StatusLine from './status-line';
-import { isLocked, prioritizeStatus, recommendedStage, type StatusItem, type WorkspaceStage } from '@/lib/nfl-dfs/workspace-stage';
+import { isLocked, prioritizeStatus, recommendedStage, shouldAdoptNewestProjections, type StatusItem, type WorkspaceStage } from '@/lib/nfl-dfs/workspace-stage';
 import LiveStatusBanner from './live-status-banner';
 import XNewsPanel from '@/components/x-news-panel';
 import CaptainRangeInput, { ExposureRangeInput } from './captain-range-input';
@@ -81,6 +81,9 @@ function downloadText(name: string, content: string) {
   const url = URL.createObjectURL(new Blob([content], { type: name.endsWith(".json")?"application/json":"text/csv;charset=utf-8" }));
   const anchor = document.createElement("a"); anchor.href = url; anchor.download = name; anchor.click(); URL.revokeObjectURL(url);
 }
+
+/** "Thu 6:07 PM ET" for a projection timestamp. */
+const formatEt = (iso: string) => new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" }).format(new Date(iso)) + " ET";
 
 export default function NflDfsClient() {
   const salaryRef = useRef<HTMLInputElement>(null), comparisonRef = useRef<HTMLInputElement>(null), entryRef = useRef<HTMLInputElement>(null);
@@ -299,6 +302,16 @@ export default function NflDfsClient() {
     } catch (reason) { setError(reason instanceof Error ? `Your saved build settings could not be restored: ${reason.message}` : 'Your saved build settings could not be restored.'); }
     draftReadyFor.current = uploadId;
   }
+  /** Move a slate onto the newest projection run (a new upload); lineup audits on the old one stay. */
+  async function adoptNewestProjections(uploadId: string) {
+    const next = await refreshNflSlateProjections(uploadId);
+    setSlate(next); setLibraryId(next.uploadId); setLineups([]); setRunId(null); setCompletedSettings(null);
+    setShowVisuals(false); selectEntryFile(null); setExplainPlayer(null);
+    setSavedRuns((await loadSavedNflWorkspace(next.uploadId)).runs);
+    await refreshLibrary();
+    try { localStorage.setItem('nfl-saved-slate', next.uploadId); } catch {}
+    return next;
+  }
   function openSaved(uploadId: string, restoreLineups = true) {
     // The chooser's placeholder option carries an empty value. Posting that to
     // the server just to be told it is not a slate turns a no-op into an error
@@ -308,6 +321,22 @@ export default function NflDfsClient() {
     startTransition(async () => {
       try {
         const next = await loadSavedNflWorkspace(uploadId);
+        // Injury and depth news published since upload reaches the slate without a click,
+        // when nothing built from the pinned run would be hidden by moving.
+        if (shouldAdoptNewestProjections({ refreshAvailable: Boolean(next.slate.refreshAvailable), firstKickoff: next.slate.firstKickoff ?? null,
+          now: Date.now(), builtLineups: next.runs.length })) {
+          try {
+            setLocked([]); setExcluded([]); setTargetExposure({}); setCaptainTargets({}); setCaptainSuggestion(null); clearRunReports();
+            setQuery(''); setPosition('ALL'); setPlayerPage(1); draftReadyFor.current = null;
+            const moved = await adoptNewestProjections(uploadId);
+            await restoreDraft(moved.uploadId);
+            setMessage(`Moved this slate to the newest projections${moved.modelAsOf ? ` (${formatEt(moved.modelAsOf)})` : ''}, which include the latest injuries and depth charts. Any build settings you saved for this slate carried over.`);
+            return;
+          } catch (reason) {
+            // Never silent: the slate stays on its pinned run, and the Slate Check keeps offering the refresh.
+            setError(`Couldn't move this slate to the newest projections, so it still uses the run it was uploaded with: ${reason instanceof Error ? reason.message : 'the refresh failed'}.`);
+          }
+        }
         setSlate(next.slate); setLibraryId(uploadId); setSavedRuns(next.runs);
         setLineups([]); setRunId(null); setCompletedSettings(null); setShowVisuals(false); clearRunReports();
         if (!restoreLineups) setSettings(current => ({...current,defensiveAdjustments:defensiveSettingsFor(current.projectionSource),confirmedStartingQbs:{}}));
@@ -384,7 +413,7 @@ export default function NflDfsClient() {
         setMessage("The update started, but part of it can't be followed from here, so its data may not be in yet. Check back in a few minutes and use Refresh saved player pool.");
         return;
       }
-      if (next.slate.refreshAvailable && lineups.length === 0) {
+      if (shouldAdoptNewestProjections({ refreshAvailable: Boolean(next.slate.refreshAvailable), firstKickoff: next.slate.firstKickoff ?? null, now, builtLineups: lineups.length })) {
         refreshProjections("Data updated. The slate now uses the newest projections, injuries and depth charts.");
         return;
       }
@@ -400,12 +429,7 @@ export default function NflDfsClient() {
     setError(null);
     startTransition(async () => {
       try {
-        const next = await refreshNflSlateProjections(slate.uploadId);
-        setSlate(next); setLibraryId(next.uploadId); setLineups([]); setRunId(null); setCompletedSettings(null);
-        setShowVisuals(false); selectEntryFile(null); setExplainPlayer(null);
-        setSavedRuns((await loadSavedNflWorkspace(next.uploadId)).runs);
-        await refreshLibrary();
-        try { localStorage.setItem('nfl-saved-slate', next.uploadId); } catch {}
+        await adoptNewestProjections(slate.uploadId);
         setMessage(doneMessage ?? 'Created a refreshed projection snapshot. Generate new lineups; previous lineup audits are preserved.');
       } catch (error) { setError(error instanceof Error ? error.message : 'Projection refresh failed.'); }
     });
@@ -596,7 +620,7 @@ export default function NflDfsClient() {
           <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
             <Field label="Defensive adjustments"><select value={settings.defensiveAdjustments.mode} disabled={settings.projectionSource!=="our"} onChange={e=>setSettings({...settings,defensiveAdjustments:{...settings.defensiveAdjustments,mode:e.target.value as 'off'|'experimental'|'approved'}})} className="control"><option value="off">Off · saved historical forecast</option><option value="experimental">Experimental · selected profile</option><option value="approved">Approved policy · selected profile</option></select></Field>
             <Field label="Defensive profile"><select value={settings.defensiveAdjustments.profile} onChange={e=>setSettings({...settings,defensiveAdjustments:{...settings.defensiveAdjustments,profile:e.target.value as 'pfr-efficiency'|'allowed-rushing-volume'}})} className="control"><option value="pfr-efficiency">PFR efficiency · QB/RB</option><option value="allowed-rushing-volume">Allowed rushing volume</option></select></Field>
-            <p className="mt-1 text-xs text-amber-900">{settings.defensiveAdjustments.mode === 'off' ? 'Opponent adjustments are off for this build.' : (() => { const cov = slate.opponentAdjustments?.find((c) => c.profile === settings.defensiveAdjustments.profile); return cov == null ? 'Coverage for this slate is unknown.' : cov.error ? `This profile's adjustments couldn't be read (${cov.error}), so builds with it use unadjusted projections.` : cov.applied ? `This profile adjusts ${cov.applied} of ${cov.eligible} players on this slate; the rest keep their baseline.` : 'No adjustments are available for this slate yet, so builds use unadjusted projections.'; })()}</p>
+            <p className="mt-1 text-xs text-amber-900">{settings.defensiveAdjustments.mode === 'off' ? 'Opponent adjustments are off for this build.' : (() => { const cov = slate.opponentAdjustments?.find((c) => c.profile === settings.defensiveAdjustments.profile); return cov == null ? 'Coverage for this slate is unknown.' : cov.error ? `This profile's adjustments couldn't be read (${cov.error}), so builds with it use unadjusted projections.` : cov.applied ? `This profile adjusts ${cov.applied} of ${cov.eligible} players on this slate; the rest keep their baseline.` : cov.captured ? 'Adjustments were captured for this slate, but no player passed their checks, so builds use unadjusted projections.' : 'No adjustments have been captured for this upload yet, so builds use unadjusted projections. See the Slate Check for when the next capture runs.'; })()}</p>
           </div>
           <p className="mt-1 text-xs text-slate-600">{buildSummary}</p>
           <p className="text-xs text-slate-500">{playerRulesSummary}</p>

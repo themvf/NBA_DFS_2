@@ -3,6 +3,7 @@
  */
 import assert from "node:assert/strict";
 import {
+  shouldAdoptNewestProjections,
   isLocked, parseDkGameInfoKickoff, prioritizeStatus, recommendedStage, type StatusItem,
 } from "../src/lib/nfl-dfs/workspace-stage";
 import { buildScoreCurve, estimateRank, projectionError, scoreLineups, summarizeSet } from "../src/lib/nfl-dfs/slate-results";
@@ -109,3 +110,17 @@ console.log("  - one prioritized status line; pre-lock notices drop after kickof
 console.log("  - ET kickoffs resolve daylight and standard time");
 console.log("  - rank exact in the top 100, interpolated and labelled below");
 console.log("  - captain at 1.5x; unknown players leave a score unknown, not zero");
+
+// Opening a slate moves it to the newest projections only when nothing built would be hidden.
+{
+  const kickoff = "2026-10-04T17:00:00Z";
+  const before = Date.parse("2026-10-03T15:00:00Z");
+  const adopt = (over: Partial<Parameters<typeof shouldAdoptNewestProjections>[0]>) =>
+    shouldAdoptNewestProjections({ refreshAvailable: true, firstKickoff: kickoff, now: before, builtLineups: 0, ...over });
+  assert.equal(adopt({}), true, "newer run, pre-lock, nothing built: move");
+  assert.equal(adopt({ refreshAvailable: false }), false, "already newest");
+  assert.equal(adopt({ builtLineups: 1 }), false, "saved lineups stay with the run that built them");
+  assert.equal(adopt({ now: Date.parse(kickoff) }), false, "locked at kickoff");
+  assert.equal(adopt({ firstKickoff: null }), true, "unknown kickoff is not locked");
+  console.log("  - opening a slate adopts newer projections only pre-lock with no lineups built");
+}
