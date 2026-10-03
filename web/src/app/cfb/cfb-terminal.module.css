@@ -1273,3 +1273,7 @@
 @media (max-width: 650px) {
   .watchList { max-height: 300px; }
 }
+.analyticsLinkBar{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;padding:10px 18px;background:#15231c;border-bottom:1px solid #3c5543;color:#a8b9ad;font-size:12px}
+.analyticsLinkBar span{font-size:10px;font-weight:800;letter-spacing:.12em}
+.analyticsLinkBar a{color:#d6f7ad;text-decoration:none;font-weight:700}
+.analyticsLinkBar a:hover{text-decoration:underline}

@@ -1,5 +1,6 @@
 "use client";
 import { SPORTSBOOK_KEYS, SPORTSBOOK_NAMES, selectedSportsbooks } from "@/lib/sportsbook-policy";
+import Link from "next/link";
 
 import { Activity, ArrowLeft, ArrowRight, BellRing, BookOpen, Radio, Search, ShieldAlert, TrendingDown, TrendingUp, Zap } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -274,7 +275,7 @@ function WatchGame({ item, signals, active, nowMs, onChoose }: { item: CfbTermin
   </button>;
 }
 
-export default function CfbTerminalClient({ board, observations, signals, backtest, research, scorecard, captureHealth, studyStatus, dataFailures }: { board: CfbTerminalBoard; observations?: LineAlertRow[]; signals: LineAlertRow[]; backtest: CfbSignalBacktestRow[]; research: CfbResearchBoard; scorecard: MarketSignalScorecardRow[]; captureHealth: MarketCaptureHealth | null; studyStatus: CfbStudyStatus | null; dataFailures: string[] }) {
+export default function CfbTerminalClient({ board, initialGameId, observations, signals, backtest, research, scorecard, captureHealth, studyStatus, dataFailures }: { board: CfbTerminalBoard; initialGameId?: number; observations?: LineAlertRow[]; signals: LineAlertRow[]; backtest: CfbSignalBacktestRow[]; research: CfbResearchBoard; scorecard: MarketSignalScorecardRow[]; captureHealth: MarketCaptureHealth | null; studyStatus: CfbStudyStatus | null; dataFailures: string[] }) {
   const router = useRouter();
   function goToDate(next: string) { if (next) router.push(`/cfb?date=${next}`); }
   function shiftDate(delta: number) {
@@ -282,7 +283,7 @@ export default function CfbTerminalClient({ board, observations, signals, backte
     next.setUTCDate(next.getUTCDate() + delta);
     goToDate(next.toISOString().slice(0, 10));
   }
-  const [gameId, setGameId] = useState(board.games[0]?.matchupId ?? 0);
+  const [gameId, setGameId] = useState(board.games.find((item) => item.matchupId === initialGameId)?.matchupId ?? board.games[0]?.matchupId ?? 0);
   const [marketKey, setMarketKey] = useState<MarketKey>("spread");
   const [side, setSide] = useState<SelectionSide>("home");
   const [query, setQuery] = useState(""); const [selectedBook, setSelectedBook] = useState("");
@@ -327,6 +328,7 @@ export default function CfbTerminalClient({ board, observations, signals, backte
       </div>
       <span className={styles.navCount}>{board.games.length} SCHEDULED</span>
     </nav>
+    <div className={styles.analyticsLinkBar}><span>FOOTBALL CONTEXT</span><Link href="/cfb/analytics">Open standalone CFB Analytics →</Link>{game && <Link href={`/cfb/analytics/games/${game.matchupId}`}>Analyze {game.awayTeam} at {game.homeTeam} →</Link>}</div>
     {dataFailures.length ? <div className={styles.dataFailure} role="alert">CFB data unavailable: {dataFailures.join(", ")}. Affected sections cannot be trusted until the next successful refresh.</div> : null}
     <MovementIntelligence items={intelligence} selectedKey={`${game?.matchupId}:${marketKey}`} onSelect={(item) => { chooseGame(item.matchupId); chooseMarket(item.market); chooseSide(item.side); }} />
     <CfbEvidenceLoop quote={quote} closeQuality={game?.closeQuality ?? null} backtest={backtest} study={studyStatus} auditUnavailable={auditUnavailable} />
