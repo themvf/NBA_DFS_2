@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { CfbBookMap, CfbTerminalRow } from "../src/db/queries";
 import {
   FAVORITE_WATCH_MAX_PROB, FAVORITE_WATCH_MIN_DROP_PP, FAVORITE_WATCH_MIN_PROB,
-  buildFavoriteWatch, consensusHome,
+  buildFavoriteWatch, consensusHome, hasAnchorBook,
 } from "../src/lib/cfb-favorite-watch";
 
 const NOW = Date.parse("2026-10-03T15:00:00Z");
@@ -76,9 +76,17 @@ assert.equal(result.rows.length, 0);
 assert.equal(result.excluded.completed, 1);
 assert.equal(result.excluded.kicked_off, 1);
 
-// 8. Book support: fewer than three two-sided books at open or now is excluded, never guessed.
-result = buildFavoriteWatch([game({ matchupId: 9, openingBooks: books(-200, 170, ["pinnacle"]), currentBooks: books(-150, 130) })], NOW);
-assert.equal(result.excluded.too_few_books, 1);
+// 8. Anchor rule: Pinnacle OR DraftKings alone is enough, at both captures; FanDuel-only is not.
+assert.equal(hasAnchorBook(books(-150, 130, ["pinnacle"])), true);
+assert.equal(hasAnchorBook(books(-150, 130, ["draftkings"])), true);
+assert.equal(hasAnchorBook(books(-150, 130, ["fanduel", "betmgm", "fanatics"])), false);
+assert.equal(hasAnchorBook({ pinnacle: { ml_home: -150, ml_away: null } }), false);
+result = buildFavoriteWatch([game({ matchupId: 9, openingBooks: books(-200, 170, ["pinnacle"]), currentBooks: books(-150, 130, ["draftkings"]) })], NOW);
+assert.equal(result.rows.length, 1);
+result = buildFavoriteWatch([game({ matchupId: 9, openingBooks: books(-200, 170, ["fanduel", "betmgm", "fanatics"]), currentBooks: books(-150, 130) })], NOW);
+assert.equal(result.excluded.no_anchor_book, 1);
+result = buildFavoriteWatch([game({ matchupId: 9, openingBooks: books(-200, 170), currentBooks: books(-150, 130, ["fanduel", "betmgm", "fanatics"]) })], NOW);
+assert.equal(result.excluded.no_anchor_book, 1);
 result = buildFavoriteWatch([game({ matchupId: 10, openingBooks: null, currentBooks: books(-150, 130) })], NOW);
 assert.equal(result.excluded.no_opening, 1);
 

@@ -15,12 +15,15 @@ import { SPORTSBOOK_NAMES, selectedSportsbooks } from "@/lib/sportsbook-policy";
  * partial season and a 2.6-SD pattern of the kind that regresses. The constants below are FROZEN so the list can be graded
  * against future results; do not tune them against 2026 outcomes. Changing
  * any of them is a new version.
+ *
+ * v2 (2026-10-03): the v1 "at least 3 two-sided books" floor was replaced by an
+ * anchor rule: Pinnacle or DraftKings must quote both sides at open and now.
  */
-export const CFB_FAVORITE_WATCH_VERSION = "cfb-favorite-watch-v1";
+export const CFB_FAVORITE_WATCH_VERSION = "cfb-favorite-watch-v2";
 export const FAVORITE_WATCH_MIN_PROB = 0.51;   // inclusive, current consensus
 export const FAVORITE_WATCH_MAX_PROB = 0.60;   // exclusive (user choice 2026-10-03: no favorite above 60%)
 export const FAVORITE_WATCH_MIN_DROP_PP = 2.0; // open -> current, percentage points
-export const FAVORITE_WATCH_MIN_BOOKS = 3;     // books quoting both sides at open AND now
+export const FAVORITE_WATCH_ANCHOR_BOOKS = ["pinnacle", "draftkings"] as const; // one of these must quote both sides at open AND now (v2: replaced the v1 3-book floor, user choice 2026-10-03)
 
 export type FavoriteWatchRow = {
   matchupId: number;
@@ -43,7 +46,7 @@ export type FavoriteWatchRow = {
 };
 
 export type FavoriteWatchExclusion =
-  | "completed" | "kicked_off" | "no_opening" | "no_current" | "too_few_books"
+  | "completed" | "kicked_off" | "no_opening" | "no_current" | "no_anchor_book"
   | "favorite_flipped" | "outside_band" | "did_not_cheapen";
 
 export type FavoriteWatchResult = {
@@ -78,6 +81,11 @@ export function consensusHome(books: CfbBookMap | null | undefined): { prob: num
   return { prob: lowerMedian(values), books: values.length };
 }
 
+/** True when Pinnacle or DraftKings quotes BOTH moneyline sides in this capture. */
+export function hasAnchorBook(books: CfbBookMap | null | undefined): boolean {
+  return FAVORITE_WATCH_ANCHOR_BOOKS.some((key) => fairHome(books?.[key] ?? {}) != null);
+}
+
 function bestFavoritePrice(books: CfbBookMap | null | undefined, favorite: "home" | "away"): { book: string; price: number } | null {
   let best: { book: string; price: number } | null = null;
   for (const [key, quote] of Object.entries(selectedSportsbooks(books))) {
@@ -92,7 +100,7 @@ function bestFavoritePrice(books: CfbBookMap | null | undefined, favorite: "home
 
 export function buildFavoriteWatch(games: CfbTerminalRow[], nowMs: number): FavoriteWatchResult {
   const excluded: Record<FavoriteWatchExclusion, number> = {
-    completed: 0, kicked_off: 0, no_opening: 0, no_current: 0, too_few_books: 0,
+    completed: 0, kicked_off: 0, no_opening: 0, no_current: 0, no_anchor_book: 0,
     favorite_flipped: 0, outside_band: 0, did_not_cheapen: 0,
   };
   const rows: FavoriteWatchRow[] = [];
@@ -106,7 +114,7 @@ export function buildFavoriteWatch(games: CfbTerminalRow[], nowMs: number): Favo
     const current = consensusHome(game.currentBooks);
     if (open.prob == null) { excluded.no_opening += 1; continue; }
     if (current.prob == null) { excluded.no_current += 1; continue; }
-    if (open.books < FAVORITE_WATCH_MIN_BOOKS || current.books < FAVORITE_WATCH_MIN_BOOKS) { excluded.too_few_books += 1; continue; }
+    if (!hasAnchorBook(game.openingBooks) || !hasAnchorBook(game.currentBooks)) { excluded.no_anchor_book += 1; continue; }
     const favorite: "home" | "away" = current.prob >= 0.5 ? "home" : "away";
     const currentProb = favorite === "home" ? current.prob : 1 - current.prob;
     const openProb = favorite === "home" ? open.prob : 1 - open.prob;

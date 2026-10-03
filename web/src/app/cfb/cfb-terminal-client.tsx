@@ -14,7 +14,7 @@ import { buildMovementInsights, cfbIntelligenceEvents } from "@/lib/movement-int
 import SportsbookHistory from "@/components/sportsbook-history";
 import styles from "./cfb-terminal.module.css";
 import { movementKind, movementSeries, movementSignals } from "@/lib/cfb-movement";
-import { CFB_FAVORITE_WATCH_VERSION, FAVORITE_WATCH_MAX_PROB, FAVORITE_WATCH_MIN_BOOKS, FAVORITE_WATCH_MIN_DROP_PP, FAVORITE_WATCH_MIN_PROB, buildFavoriteWatch, type FavoriteWatchResult } from "@/lib/cfb-favorite-watch";
+import { CFB_FAVORITE_WATCH_VERSION, FAVORITE_WATCH_MAX_PROB, FAVORITE_WATCH_MIN_DROP_PP, FAVORITE_WATCH_MIN_PROB, buildFavoriteWatch, type FavoriteWatchResult } from "@/lib/cfb-favorite-watch";
 
 type MarketKey = "spread" | "total" | "moneyline";
 type SelectionSide = "home" | "away" | "over" | "under";
@@ -278,11 +278,11 @@ function WatchGame({ item, signals, active, nowMs, onChoose }: { item: CfbTermin
 }
 
 function FavoriteWatchPanel({ watch, gameDate, asOf, boardStatusDetail, scheduled, onOpenGame }: { watch: FavoriteWatchResult; gameDate: string; asOf: string; boardStatusDetail: string; scheduled: number; onOpenGame: (id: number) => void }) {
-  const exclusionLabels: Record<string, string> = { completed: "final", kicked_off: "kicked off", no_opening: "no opening capture", no_current: "no current capture", too_few_books: `fewer than ${FAVORITE_WATCH_MIN_BOOKS} books`, favorite_flipped: "favorite flipped", outside_band: "favorite outside 51-80%", did_not_cheapen: `favorite did not cheapen ${FAVORITE_WATCH_MIN_DROP_PP}pp` };
+  const exclusionLabels: Record<string, string> = { completed: "final", kicked_off: "kicked off", no_opening: "no opening capture", no_current: "no current capture", no_anchor_book: "neither Pinnacle nor DraftKings quoted both sides at open and now", favorite_flipped: "favorite flipped", outside_band: `favorite outside ${Math.round(FAVORITE_WATCH_MIN_PROB * 100)}-${Math.round(FAVORITE_WATCH_MAX_PROB * 100)}%`, did_not_cheapen: `favorite did not cheapen ${FAVORITE_WATCH_MIN_DROP_PP}pp` };
   const excludedText = Object.entries(watch.excluded).filter(([, n]) => n > 0).map(([key, n]) => `${n} ${exclusionLabels[key] ?? key}`).join(", ") || "none";
   return <section className={styles.favoritePane} aria-label="CFB favorite watch">
     <div className={styles.sectionTitle}><span>FAVORITE WATCH · UPCOMING ONLY</span><span>{CFB_FAVORITE_WATCH_VERSION.toUpperCase()} · DESCRIPTIVE · NO EDGE CLAIM</span></div>
-    <p className={styles.favoriteRule}>Upcoming games on {gameDate} where the current moneyline favorite is priced {Math.round(FAVORITE_WATCH_MIN_PROB * 100)}-{Math.round(FAVORITE_WATCH_MAX_PROB * 100)}% (no-vig lower-median consensus across the selected sportsbooks) and that probability has fallen at least {FAVORITE_WATCH_MIN_DROP_PP} points since the opening capture: the market walked toward the underdog and the favorite got cheaper. Both captures need at least {FAVORITE_WATCH_MIN_BOOKS} two-sided books. A game drops off at kickoff.</p>
+    <p className={styles.favoriteRule}>Upcoming games on {gameDate} where the current moneyline favorite is priced {Math.round(FAVORITE_WATCH_MIN_PROB * 100)}-{Math.round(FAVORITE_WATCH_MAX_PROB * 100)}% (no-vig lower-median consensus across the selected sportsbooks) and that probability has fallen at least {FAVORITE_WATCH_MIN_DROP_PP} points since the opening capture: the market walked toward the underdog and the favorite got cheaper. Pinnacle or DraftKings must quote both sides at the open and now. A game drops off at kickoff.</p>
     <p className={styles.favoriteContext}>Why this list exists: across 262 completed 2026 FBS games with a verified close, favorites beat their closing price in every band (+4.8% ROI at close), and the 35 favorites whose probability fell 2+ points went 27-8 against a 65.8% expectation. That is one partial season and a 2.6-SD pattern of the kind that regresses. The thresholds are frozen so this list can be graded forward, not tuned. Nothing here is a recommendation.</p>
     {!watch.rows.length ? <div className={styles.empty}>{scheduled ? `No upcoming game on this date meets the filter. Excluded: ${excludedText}.` : boardStatusDetail}</div>
       : <div className={styles.favoriteTableWrap}><table><thead><tr><th>Kick (ET)</th><th>Game</th><th>Favorite</th><th>Open</th><th>Now</th><th>Drop</th><th>Pinnacle now</th><th>Best price now</th><th>Books</th><th>Captured</th><th></th></tr></thead><tbody>
