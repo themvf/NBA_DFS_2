@@ -102,6 +102,18 @@
       "pullRequest": false
     },
     {
+      "file": "evaluate_cfb_prospective.yml",
+      "name": "Grade Prospective CFB Forecasts",
+      "crons": [
+        "17 14 * 8-12 0,1",
+        "17 14 * 1-2 0,1"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
       "file": "fantasy_football_refresh.yml",
       "name": "Refresh Fantasy Football Draft Data",
       "crons": [
