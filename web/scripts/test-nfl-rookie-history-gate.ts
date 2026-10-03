@@ -19,6 +19,7 @@ function player(over: Partial<NflOptimizerPlayer> & { dkPlayerId: number; salary
     opponent: over.team === "BBB" ? "AAA" : "BBB", gameKey: "AAA@BBB", salary: over.salary,
     captainSalary: Math.round(over.salary * 1.5), isOut: false, projectionStatus: "historical",
     historyGames: over.historyGames ?? 6, teamSeasonGames: over.teamSeasonGames,
+    depthRole: over.depthRole, availabilityState: over.availabilityState,
     ourProj: over.ourProj ?? 10, floorFpts: 7, ceilingFpts: 14, boomRate: 0.2,
     avgFptsDk: 10, fantasyprosProj: null, linestarProj: null, linestarOwnPct: null, customProj: null,
   };
@@ -109,13 +110,13 @@ function main() {
   //     is season-aware too, so a $2,800 week-2 starter passes the role gate
   //     as capped salary relief while a week-3 one-game player does not. ---
   {
-    const cheapRookieWk2 = player({ dkPlayerId: 94, salary: 2800, position: "WR", team: "BBB", historyGames: 1, teamSeasonGames: 1, ourProj: 6 });
+    const cheapRookieWk2 = player({ dkPlayerId: 94, salary: 2800, position: "WR", team: "BBB", historyGames: 1, teamSeasonGames: 1, ourProj: 6, depthRole: "WR3", availabilityState: "confirmed" });
     const { d } = decisionFor([...corePool(1), cheapRookieWk2], 94, { puntPolicy: DEFAULT_NFL_PUNT_POLICY });
     assert.equal(d.eligible, true, "cheap week-2 rookie clears the role gate on his own game");
     assert.equal(d.salaryRelief, true, "he is still capped salary relief, not a free pass");
   }
   {
-    const cheapOneGameWk3 = player({ dkPlayerId: 95, salary: 2800, position: "WR", team: "BBB", historyGames: 1, teamSeasonGames: 2, ourProj: 6 });
+    const cheapOneGameWk3 = player({ dkPlayerId: 95, salary: 2800, position: "WR", team: "BBB", historyGames: 1, teamSeasonGames: 2, ourProj: 6, depthRole: "WR3", availabilityState: "confirmed" });
     const { d } = decisionFor([...corePool(2), cheapOneGameWk3], 95, { puntPolicy: DEFAULT_NFL_PUNT_POLICY });
     assert.equal(d.eligible, false, "cheap one-game player in week 3 still fails closed");
     assert.equal(d.reasonCode, "ROLE_UNKNOWN");
