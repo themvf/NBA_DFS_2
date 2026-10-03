@@ -71,8 +71,9 @@ normalized; fuzzy team matching is not allowed. Provider events must still match
 both teams and the canonical kickoff window before any odds are accepted.
 Three remaining provider variants have explicit, source-reviewed mappings in
 code: [Citadel Bulldogs](https://citadelsports.com/),
-[Nicholls State Colonels](https://geauxcolonels.com/), and
-[Southeastern Louisiana Lions](https://lionsports.net/sports/2008/11/7/GEN_1107082533.aspx).
+[Nicholls State Colonels](https://geauxcolonels.com/),
+[Southeastern Louisiana Lions](https://lionsports.net/sports/2008/11/7/GEN_1107082533.aspx),
+and [McNeese State Cowboys](https://mcneesesports.com/sports/football/schedule/2026?grid=true).
 Conflicts fail closed rather than replacing another team's identity.
 
 Full canonical schedule refreshes run every six hours. Recent game weeks refresh
