@@ -40,12 +40,13 @@ def test_official_aliases_include_mascots_but_reject_ambiguous_names():
 
 def test_reviewed_provider_variants_are_exact_and_fail_closed(monkeypatch):
     monkeypatch.setattr(cfb_schedule, "build_cfb_team_name_cache", lambda db: {
-        "The Citadel": 1, "Nicholls": 2, "SE Louisiana": 3,
+        "The Citadel": 1, "Nicholls": 2, "SE Louisiana": 3, "McNeese": 4,
         "Nicholls State Colonels": 99,
     })
     cache = cfb_schedule._team_cache(object())
     assert cache["citadelbulldogs"] == 1
     assert cache["southeasternlouisianalions"] == 3
+    assert cache["mcneesestatecowboys"] == 4
     assert "nichollsstatecolonels" not in cache
 
 
