@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { optimizeNflLineups, DEFAULT_NFL_PUNT_POLICY, type NflOptimizerPlayer, type NflOptimizerSettings, type NflPuntPolicy } from "../src/app/dfs/nfl/nfl-optimizer";
 import { evaluatePuntEligibility, validateNflPuntPolicy, type NflPlayerRoleEvidence, type PuntOverride } from "../src/lib/nfl-dfs/punt-policy";
 import { rolePolicyEvidence, ROSTER_FRESH_MS, type Availability } from "../src/lib/nfl-dfs/availability";
+import { deriveReceiverRoleChanges } from "../src/lib/nfl-dfs/receiver-role";
 
 function player(over: Partial<NflOptimizerPlayer> & { dkPlayerId: number; salary: number }): NflOptimizerPlayer {
   return {
@@ -147,6 +148,11 @@ function main() {
     player({ dkPlayerId: 616, salary: 6000, position: "WR", team: "BBB", depthRole: "Listed WR1",
       availabilityState: "probable", isOut: true, dkStatus: "OUT" })];
   const promoted = optimizeNflLineups(replacementPool, showdownSettings());
+  const roleChanges = deriveReceiverRoleChanges(replacementPool);
+  assert.deepEqual(roleChanges.get(615), {
+    listedRank: 4, effectiveRank: 3,
+    absentAhead: [{ playerId: 616, name: "P616", rank: 1, status: "OUT", source: "DraftKings status", capturedAt: null }],
+  }, "the player-pool facet and gate share the same named absence evidence");
   assert.equal(promoted.eligibility!.find((entry) => entry.dkPlayerId === 615)?.eligible, true,
     "a documented WR1 absence promotes a listed WR4 to effective WR3");
   const officialInactive = optimizeNflLineups(replacementPool.map(p => p.dkPlayerId === 616

@@ -7,6 +7,7 @@ import type { CalibratedProjection } from "@/lib/nfl-dfs/calibrated-projection";
 import type { SituationSettings, ProjectionAudit, SituationEvidence } from '@/lib/nfl-dfs/projection-audit';
 import { MIN_OBSERVED_GAMES, observedHistoryRequirement } from '@/lib/nfl-dfs/opportunity-redistribution';
 import { OUT_PROJECTION_STATUS } from '@/lib/nfl-dfs/out-projection';
+import { deriveReceiverRoleChanges } from '@/lib/nfl-dfs/receiver-role';
 import {
   DEFAULT_NFL_PUNT_POLICY,
   evaluatePuntEligibility,
@@ -351,21 +352,6 @@ function observedHistoryReason(player: NflOptimizerPlayer): string {
 }
 
 /** Build role evidence for the punt policy from a slate player, keeping unknowns as null. */
-function receiverChartRank(player: NflOptimizerPlayer): number | null {
-  const match = player.position === "WR" ? player.depthRole?.match(/\bWR\s*(\d+)\b/i) : null;
-  return match ? Number(match[1]) : null;
-}
-
-/** Only a documented OUT/IR status can promote a receiver ahead on the chart. */
-function verifiedReceiverOut(player: NflOptimizerPlayer): boolean {
-  if (player.position !== "WR" || !player.isOut) return false;
-  const dkStatus = player.dkStatus?.trim().toUpperCase();
-  if (dkStatus && ["OUT", "O", "IR", "PUP", "SUSP", "NA"].includes(dkStatus)) return true;
-  const status = player.availability?.status?.trim().toUpperCase();
-  return (player.availabilityState === "confirmed" || player.availabilityState === "probable")
-    && Boolean(status && ["OUT", "IR", "PUP", "NFI", "SUSPENDED", "INACTIVE"].includes(status));
-}
-
 function roleEvidenceFor(player: NflOptimizerPlayer, verifiedReceiversOutAhead = 0): NflPlayerRoleEvidence {
   const observed = player.historyGames ?? null;
   return {
@@ -913,14 +899,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   const pool: ResolvedPlayer[] = [];
   const eligibility: NflEligibilityDecision[] = [];
   const warnings: string[] = [];
-  const absentReceiverRanks = new Map<string, Set<number>>();
-  for (const player of players) {
-    const rank = receiverChartRank(player);
-    if (rank === null || !verifiedReceiverOut(player)) continue;
-    const teamRanks = absentReceiverRanks.get(player.team) ?? new Set<number>();
-    teamRanks.add(rank);
-    absentReceiverRanks.set(player.team, teamRanks);
-  }
+  const receiverRoleChanges = deriveReceiverRoleChanges(players);
   let belowSalaryFloor = 0;
   let withoutHistory = 0;
   let puntBlocked = 0;
@@ -962,8 +941,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     if (policy) {
       // Role-aware no-punt policy (spec §8) is the single eligibility authority
       // when present. It fully supersedes the bare salary floor.
-      const rank = receiverChartRank(player);
-      const outAhead = rank === null ? 0 : [...(absentReceiverRanks.get(player.team) ?? [])].filter(outRank => outRank < rank).length;
+      const outAhead = receiverRoleChanges.get(player.dkPlayerId)?.absentAhead.length ?? 0;
       const decision = evaluatePuntEligibility(player, roleEvidenceFor(player, outAhead), policy, overrides);
       if (!decision.eligible) {
         eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden: false, reason: decision.detail, reasonCode: decision.reason });
