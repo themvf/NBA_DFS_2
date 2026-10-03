@@ -22,6 +22,7 @@ export type CfbAnalyticsGame = {
   id: number;
   cfbdGameId: number;
   gameDate: string;
+  observedAt: string;
   kickoff: string | null;
   kickoffTbd: boolean;
   completed: boolean;
@@ -37,6 +38,7 @@ export type CfbAnalyticsGame = {
   homeSpread: number | null;
   total: number | null;
   forecast: CfbResearchForecast | null;
+  challenger: CfbResearchForecast | null;
 };
 
 export type CfbResearchForecast = {
@@ -50,6 +52,7 @@ export type CfbResearchForecast = {
   awayCurrentGames: number;
   homePpaPlays: number;
   awayPpaPlays: number;
+  explanation: Record<string, unknown>;
 };
 
 export type CfbForecastValidation = {
@@ -75,6 +78,17 @@ export type CfbForecastValidation = {
   prospectiveMarketTotalMae: number | null;
   prospectiveModelBrier: number | null;
   prospectiveMarketBrier: number | null;
+};
+
+export type CfbChallengerValidation = {
+  version: string;
+  generatedAt: string;
+  holdoutGames: number;
+  forwardGames: number;
+  prospectiveGames: number;
+  holdout: Record<string, { n: number; mean: number | null }>;
+  forward: Record<string, { n: number; mean: number | null }>;
+  prospective: Record<string, { n: number; mean: number | null }>;
 };
 
 export type CfbAnalyticsResult = {
@@ -106,6 +120,7 @@ function gameFromRow(row: Record<string, unknown>): CfbAnalyticsGame {
     id: Number(row.id),
     cfbdGameId: Number(row.cfbdGameId),
     gameDate: String(row.gameDate),
+    observedAt: String(row.observedAt),
     kickoff: row.kickoff == null ? null : String(row.kickoff),
     kickoffTbd: Boolean(row.kickoffTbd),
     completed: Boolean(row.completed),
@@ -141,12 +156,27 @@ function gameFromRow(row: Record<string, unknown>): CfbAnalyticsGame {
       awayCurrentGames: Number(row.forecastAwayCurrentGames),
       homePpaPlays: Number(row.forecastHomePpaPlays),
       awayPpaPlays: Number(row.forecastAwayPpaPlays),
+      explanation: record(row.forecastExplanation),
+    },
+    challenger: row.challengerVersion == null ? null : {
+      version: String(row.challengerVersion),
+      generatedAt: String(row.challengerGeneratedAt),
+      status: String(row.challengerStatus) as CfbResearchForecast["status"],
+      homePoints: Number(row.challengerHomePoints),
+      awayPoints: Number(row.challengerAwayPoints),
+      homeWinProbability: Number(row.challengerHomeWinProbability),
+      homeCurrentGames: Number(row.challengerHomeCurrentGames),
+      awayCurrentGames: Number(row.challengerAwayCurrentGames),
+      homePpaPlays: Number(row.challengerHomePpaPlays),
+      awayPpaPlays: Number(row.challengerAwayPpaPlays),
+      explanation: record(row.challengerExplanation),
     },
   };
 }
 
 const GAME_SELECT = sql`
   SELECT m.id, m.cfbd_game_id AS "cfbdGameId", m.game_date::text AS "gameDate",
+         NOW()::text AS "observedAt",
          m.commence_time::text AS kickoff, m.start_time_tbd AS "kickoffTbd",
          m.completed, m.home_score AS "homeScore", m.away_score AS "awayScore",
          m.home_team_id AS "homeTeamId", ht.name AS "homeTeam",
@@ -165,6 +195,16 @@ const GAME_SELECT = sql`
          fc.away_current_games AS "forecastAwayCurrentGames",
          fc.home_ppa_plays AS "forecastHomePpaPlays",
          fc.away_ppa_plays AS "forecastAwayPpaPlays",
+         fc.explanation AS "forecastExplanation",
+         v2.version AS "challengerVersion", v2.generated_at::text AS "challengerGeneratedAt",
+         v2.status AS "challengerStatus", v2.home_points AS "challengerHomePoints",
+         v2.away_points AS "challengerAwayPoints",
+         v2.home_win_probability AS "challengerHomeWinProbability",
+         v2.home_current_games AS "challengerHomeCurrentGames",
+         v2.away_current_games AS "challengerAwayCurrentGames",
+         v2.home_ppa_plays AS "challengerHomePpaPlays",
+         v2.away_ppa_plays AS "challengerAwayPpaPlays",
+         v2.explanation AS "challengerExplanation",
          hf.feature_version AS "homeFeatureVersion", hf.as_of_at::text AS "homeFeatureAsOf",
          hf.games_played AS "homeGamesPlayed", hf.current_weight AS "homeCurrentWeight",
          hf.source_completeness AS "homeCompleteness", hf.features_json AS "homeValues",
@@ -184,13 +224,28 @@ const GAME_SELECT = sql`
     SELECT r.version, r.generated_at, r.status,
            f.home_points, f.away_points, f.home_win_probability,
            f.home_current_games, f.away_current_games,
-           f.home_ppa_plays, f.away_ppa_plays
+           f.home_ppa_plays, f.away_ppa_plays,
+           r.report_json->'explanations'->(m.id::text) AS explanation
     FROM cfb_game_forecasts f
     JOIN cfb_forecast_runs r ON r.id=f.run_id
     WHERE f.game_id=m.id AND f.kickoff=m.commence_time
+      AND r.version='cfb-score-context-v1'
       AND r.generated_at < m.commence_time
     ORDER BY r.generated_at DESC, f.id DESC LIMIT 1
   ) fc ON TRUE
+  LEFT JOIN LATERAL (
+    SELECT r.version, r.generated_at, r.status,
+           f.home_points, f.away_points, f.home_win_probability,
+           f.home_current_games, f.away_current_games,
+           f.home_ppa_plays, f.away_ppa_plays,
+           r.report_json->'explanations'->(m.id::text) AS explanation
+    FROM cfb_game_forecasts f
+    JOIN cfb_forecast_runs r ON r.id=f.run_id
+    WHERE f.game_id=m.id AND f.kickoff=m.commence_time
+      AND r.version='cfb-score-possession-v2'
+      AND r.generated_at < m.commence_time
+    ORDER BY r.generated_at DESC, f.id DESC LIMIT 1
+  ) v2 ON TRUE
   LEFT JOIN LATERAL (
     SELECT feature_version, as_of_at, games_played, current_weight, source_completeness, features_json
     FROM cfb_team_game_features
@@ -324,7 +379,7 @@ export async function getCfbForecastValidation(): Promise<CfbForecastValidation 
   const rows = await db.execute(sql`
     SELECT version, generated_at::text AS "generatedAt", status,
            report_json AS report
-    FROM cfb_forecast_runs ORDER BY id DESC LIMIT 1`);
+    FROM cfb_forecast_runs WHERE version='cfb-score-context-v1' ORDER BY id DESC LIMIT 1`);
   if (!rows.rows.length) return null;
   const row = rows.rows[0] as Record<string, unknown>;
   const report = record(row.report);
@@ -359,5 +414,35 @@ export async function getCfbForecastValidation(): Promise<CfbForecastValidation 
     prospectiveMarketTotalMae: prospectiveMean("market_total_error"),
     prospectiveModelBrier: prospectiveMean("model_brier"),
     prospectiveMarketBrier: prospectiveMean("market_brier"),
+  };
+}
+
+export async function getCfbChallengerValidation(): Promise<CfbChallengerValidation | null> {
+  const rows = await db.execute(sql`
+    SELECT version, generated_at::text AS "generatedAt", report_json AS report
+    FROM cfb_forecast_runs WHERE version='cfb-score-possession-v2'
+    ORDER BY id DESC LIMIT 1`);
+  if (!rows.rows.length) return null;
+  const row = rows.rows[0] as Record<string, unknown>;
+  const report = record(row.report);
+  const holdout = record(report.holdout);
+  const forward = record(report.forward);
+  const prospective = record(report.prospective);
+  const metrics = (value: unknown) => {
+    const output: Record<string, { n: number; mean: number | null }> = {};
+    for (const [key, raw] of Object.entries(record(value))) {
+      const metric = record(raw);
+      output[key] = { n: Number(metric.n ?? 0), mean: numberOrNull(metric.mean) };
+    }
+    return output;
+  };
+  return {
+    version: String(row.version), generatedAt: String(row.generatedAt),
+    holdoutGames: Number(holdout.games ?? 0),
+    forwardGames: Number(forward.games ?? 0),
+    prospectiveGames: Number(prospective.games ?? 0),
+    holdout: metrics(holdout.metrics),
+    forward: metrics(forward.metrics),
+    prospective: metrics(record(prospective.market_comparison)),
   };
 }

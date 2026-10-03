@@ -2,7 +2,12 @@
 
 from datetime import datetime, timedelta, timezone
 
-from research.cfb_forecast_v1 import american_probability, replay_games
+import numpy as np
+from sklearn.linear_model import Ridge
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+
+from research.cfb_forecast_v1 import american_probability, explain_prediction, replay_games
 
 
 def _fixture():
@@ -48,3 +53,18 @@ def test_moneyline_probability_requires_a_real_quote():
     assert american_probability(0) is None
     assert round(american_probability(-150), 4) == 0.6
     assert round(american_probability(200), 4) == 0.3333
+
+
+def test_explanation_reconciles_to_model_scores():
+    model = make_pipeline(StandardScaler(), Ridge(alpha=1.0))
+    model.fit(
+        [[25, 25, 0.1, 0.1, 12, 12, 1], [30, 20, 0.2, -0.1, 11, 10, 0],
+         [15, 35, -0.1, 0.2, 10, 13, 1], [35, 30, 0.3, 0.1, 14, 12, 0]],
+        [26, 31, 15, 36],
+    )
+    row = {"home_features": [27, 24, 0.2, 0.1, 12, 11, 1],
+           "away_features": [22, 29, 0.0, 0.2, 11, 12, 0]}
+    explanation = explain_prediction(row, model)
+    home, away = model.predict([row["home_features"], row["away_features"]])
+    assert np.isclose(sum(explanation["margin"].values()), home - away, atol=0.001)
+    assert np.isclose(explanation["total_baseline"] + sum(explanation["total"].values()), home + away, atol=0.001)
