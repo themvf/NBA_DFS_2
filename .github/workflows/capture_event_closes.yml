@@ -7,14 +7,13 @@ on:
     - cron: "*/5 * * * *"
   workflow_dispatch:
 
-concurrency:
-  group: capture-event-closing-lines
-  cancel-in-progress: false
-
 jobs:
   capture:
     runs-on: ubuntu-latest
     timeout-minutes: 12
+    concurrency:
+      group: capture-event-closing-lines-paid
+      cancel-in-progress: false
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
@@ -39,6 +38,24 @@ jobs:
         run: python -m ingest.cfb_early_capture_schema
       - name: Capture due checkpoints and freeze verified closes
         run: python -m ingest.event_closing_lines --existing-schema
+
+  process:
+    needs: capture
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    concurrency:
+      group: capture-event-closing-lines-processing
+      cancel-in-progress: false
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - run: pip install -r requirements.txt
       - name: Normalize stored CFB captures for the frozen pilot
         run: python -m ingest.cfb_context_bootstrap --origin-mode auto --apply
       - name: Publish CFB market context from stored captures
