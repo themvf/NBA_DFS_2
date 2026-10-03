@@ -36,6 +36,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -57,6 +58,14 @@ logger = logging.getLogger(__name__)
 CLASSIFICATION = "fbs"
 SEASON_TYPES = ("regular", "postseason")
 PERIOD_SECONDS = 900
+MIN_COMPLETE_GAME_PPA_PLAYS = 40
+MIN_COMPLETE_GAME_DRIVES = 6
+
+
+def football_season_year(now: datetime | None = None) -> int:
+    """January and February bowl games belong to the preceding fall season."""
+    eastern = (now or datetime.now(timezone.utc)).astimezone(ZoneInfo("America/New_York"))
+    return eastern.year - 1 if eastern.month <= 2 else eastern.year
 
 
 def _cache_path(cache_dir: Path, endpoint: str, season: int, season_type: str, week: int) -> Path:
@@ -395,14 +404,29 @@ def ingest_season(
                     }
                     drive_games = {_int(row.get("gameId")) for row in drives}
                     play_games = {_int(row.get("gameId")) for row in plays}
+                    ppa_counts = Counter(
+                        _int(row.get("gameId")) for row in plays
+                        if row.get("ppa") is not None
+                    )
+                    drive_counts = Counter(_int(row.get("gameId")) for row in drives)
                     missing_drives = sorted(expected - drive_games)
                     missing_plays = sorted(expected - play_games)
-                    if missing_drives or missing_plays:
+                    low_ppa = sorted(
+                        game_id for game_id in expected
+                        if ppa_counts[game_id] < MIN_COMPLETE_GAME_PPA_PLAYS
+                    )
+                    low_drives = sorted(
+                        game_id for game_id in expected
+                        if drive_counts[game_id] < MIN_COMPLETE_GAME_DRIVES
+                    )
+                    if missing_drives or missing_plays or low_ppa or low_drives:
                         coverage_failures.append({
                             "season_type": season_type, "week": week,
                             "expected_fbs_games": len(expected),
                             "missing_drive_game_ids": missing_drives,
                             "missing_play_game_ids": missing_plays,
+                            "low_ppa_game_ids": low_ppa,
+                            "low_drive_game_ids": low_drives,
                         })
                 touched = {
                     _int(row.get("gameId"))
@@ -497,7 +521,7 @@ def main() -> None:
     parser.add_argument("--no-cache", action="store_true")
     parser.add_argument(
         "--current-season", action="store_true",
-        help="Use the current UTC year, fetch fresh payloads, and audit every completed FBS game.",
+        help="Use the active football season, fetch fresh payloads, and audit every completed FBS game.",
     )
     parser.add_argument(
         "--recent-completed-weeks", type=int, default=0,
@@ -517,12 +541,12 @@ def main() -> None:
     from ingest.cfb_history import fetch_cfbd
 
     api_key = os.getenv("CFBD_API_KEY", "")
-    seasons = ([datetime.now(timezone.utc).year] if args.current_season else
+    seasons = ([football_season_year()] if args.current_season else
                [args.season] if args.season else list(range(args.start_season, args.end_season + 1)))
     db = None if args.audit_only else DatabaseManager(load_config().database_url or "")
 
     for season in seasons:
-        current = args.current_season or season == datetime.now(timezone.utc).year
+        current = args.current_season or season == football_season_year()
         use_cache = not args.no_cache and not current
         games = fetch_cfbd(
             "games", api_key=api_key, season=season,

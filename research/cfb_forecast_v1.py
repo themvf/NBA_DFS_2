@@ -25,6 +25,7 @@ from sklearn.preprocessing import StandardScaler
 
 from config import load_config
 from db.database import DatabaseManager
+from ingest.cfb_plays import football_season_year
 
 VERSION = "cfb-score-context-v1"
 PRIOR_GAMES = 4
@@ -40,7 +41,7 @@ DEFAULTS = {
 METRICS = tuple(DEFAULTS)
 
 
-def load_rows(db: DatabaseManager):
+def load_rows(db: DatabaseManager, season: int):
     games = [dict(row) for row in db.execute("""
         SELECT m.id, m.season, m.week, m.commence_time, m.completed,
                m.home_team_id, m.away_team_id, m.home_score, m.away_score,
@@ -48,12 +49,12 @@ def load_rows(db: DatabaseManager):
         FROM cfb_matchups m
         JOIN cfb_teams ht ON ht.team_id=m.home_team_id
         JOIN cfb_teams at ON at.team_id=m.away_team_id
-        WHERE m.season BETWEEN 2022 AND 2026
+        WHERE m.season BETWEEN %s AND %s
           AND LOWER(ht.classification)='fbs'
           AND LOWER(at.classification)='fbs'
           AND m.commence_time IS NOT NULL
         ORDER BY m.commence_time, m.id
-    """)]
+    """, (max(2022, season - 5), season))]
     plays = {
         (int(row["game_id"]), int(row["team_id"])): dict(row)
         for row in db.execute("""
@@ -61,18 +62,18 @@ def load_rows(db: DatabaseManager):
                    COUNT(*) FILTER (WHERE ppa IS NOT NULL)::int ppa_plays,
                    AVG(ppa) off_ppa
             FROM cfb_plays
-            WHERE season BETWEEN 2022 AND 2026 AND offense_team_id IS NOT NULL
+            WHERE season BETWEEN %s AND %s AND offense_team_id IS NOT NULL
             GROUP BY game_id, offense_team_id
-        """)
+        """, (max(2022, season - 5), season))
     }
     drives = {
         (int(row["game_id"]), int(row["team_id"])): int(row["drives"])
         for row in db.execute("""
             SELECT game_id, offense_team_id team_id, COUNT(*)::int drives
             FROM cfb_drives
-            WHERE season BETWEEN 2022 AND 2026 AND offense_team_id IS NOT NULL
+            WHERE season BETWEEN %s AND %s AND offense_team_id IS NOT NULL
             GROUP BY game_id, offense_team_id
-        """)
+        """, (max(2022, season - 5), season))
     }
     markets = {
         int(row["id"]): dict(row)
@@ -82,9 +83,9 @@ def load_rows(db: DatabaseManager):
             FROM cfb_matchups m
             JOIN game_odds_history h ON h.matchup_id=m.id
              AND h.sport='cfb' AND h.captured_at<m.commence_time
-            WHERE m.season=2026
+            WHERE m.season=%s
             ORDER BY m.id, h.captured_at DESC, h.id DESC
-        """)
+        """, (season,))
     }
     return games, plays, drives, markets
 
@@ -168,10 +169,10 @@ def replay_games(games: list[dict], plays: dict, drives: dict) -> list[dict]:
     return rows
 
 
-def train(rows: list[dict], through_season: int):
+def train(rows: list[dict], from_season: int, through_season: int):
     eligible = [
         row for row in rows
-        if row["season"] <= through_season and row["completed"]
+        if from_season <= row["season"] <= through_season and row["completed"]
         and row["home_score"] is not None and row["away_score"] is not None
     ]
     x = [row["home_features"] for row in eligible] + [row["away_features"] for row in eligible]
@@ -262,21 +263,103 @@ def summarize(rows: list[dict], model, residual_sd: float, markets: dict) -> dic
     return result
 
 
+def prospective_summary(db: DatabaseManager, season: int) -> dict:
+    """Grade the most recent forecast frozen before each completed kickoff."""
+    present = db.execute_one(
+        "SELECT to_regclass('public.cfb_game_forecasts') IS NOT NULL AS present"
+    )
+    if not present or not present["present"]:
+        rows = []
+    else:
+        rows = db.execute("""
+        SELECT DISTINCT ON (f.game_id)
+               m.id, m.home_score, m.away_score,
+               f.home_points, f.away_points, f.home_win_probability,
+               h.home_ml, h.away_ml, h.home_spread, h.vegas_total
+        FROM cfb_game_forecasts f
+        JOIN cfb_forecast_runs r ON r.id=f.run_id
+        JOIN cfb_matchups m ON m.id=f.game_id
+        LEFT JOIN LATERAL (
+            SELECT home_ml, away_ml, home_spread, vegas_total
+            FROM game_odds_history
+            WHERE sport='cfb' AND matchup_id=m.id
+              AND captured_at<=r.generated_at
+              AND captured_at<m.commence_time
+            ORDER BY captured_at DESC, id DESC LIMIT 1
+        ) h ON TRUE
+        WHERE m.season=%s AND m.completed=TRUE
+          AND m.home_score IS NOT NULL AND m.away_score IS NOT NULL
+          AND r.generated_at<m.commence_time
+        ORDER BY f.game_id, r.generated_at DESC, f.id DESC
+        """, (season,))
+    values = defaultdict(list)
+    for row in rows:
+        actual_margin = float(row["home_score"] - row["away_score"])
+        actual_total = float(row["home_score"] + row["away_score"])
+        home_p = american_probability(row["home_ml"])
+        away_p = american_probability(row["away_ml"])
+        if row["home_spread"] is not None:
+            values["model_margin_error"].append(
+                abs(float(row["home_points"] - row["away_points"]) - actual_margin)
+            )
+            values["market_margin_error"].append(
+                abs(-float(row["home_spread"]) - actual_margin)
+            )
+        if row["vegas_total"] is not None:
+            values["model_total_error"].append(
+                abs(float(row["home_points"] + row["away_points"]) - actual_total)
+            )
+            values["market_total_error"].append(
+                abs(float(row["vegas_total"]) - actual_total)
+            )
+        if home_p is not None and away_p is not None:
+            actual_win = float(actual_margin > 0)
+            values["model_brier"].append(
+                (float(row["home_win_probability"]) - actual_win) ** 2
+            )
+            values["market_brier"].append(
+                (home_p / (home_p + away_p) - actual_win) ** 2
+            )
+    return {
+        "games": len(rows),
+        "market_comparison": {
+            key: {
+                "n": len(values[key]),
+                "mean": round(float(np.mean(values[key])), 4) if values[key] else None,
+            }
+            for key in (
+                "model_margin_error", "market_margin_error",
+                "model_total_error", "market_total_error",
+                "model_brier", "market_brier",
+            )
+        },
+    }
+
+
 def run(db: DatabaseManager) -> dict:
-    games, plays, drives, markets = load_rows(db)
+    season = football_season_year()
+    games, plays, drives, markets = load_rows(db, season)
     rows = replay_games(games, plays, drives)
-    holdout_model, holdout_sd, holdout_train_games = train(rows, 2024)
+    first_train_season = max(2022, season - 4)
+    holdout_season = season - 1
+    holdout_model, holdout_sd, holdout_train_games = train(
+        rows, first_train_season, holdout_season - 1,
+    )
     holdout = summarize(
-        [row for row in rows if row["season"] == 2025], holdout_model, holdout_sd, {},
+        [row for row in rows if row["season"] == holdout_season],
+        holdout_model, holdout_sd, {},
     )
-    model, residual_sd, trained_games = train(rows, 2025)
+    model, residual_sd, trained_games = train(
+        rows, first_train_season, holdout_season,
+    )
     forward = summarize(
-        [row for row in rows if row["season"] == 2026], model, residual_sd, markets,
+        [row for row in rows if row["season"] == season], model, residual_sd, markets,
     )
+    prospective = prospective_summary(db, season)
     upcoming = []
     now = datetime.now(timezone.utc)
     for row in rows:
-        if row["season"] != 2026 or row["completed"]:
+        if row["season"] != season or row["completed"]:
             continue
         if not now < row["kickoff"] <= now + timedelta(days=14):
             continue
@@ -292,19 +375,28 @@ def run(db: DatabaseManager) -> dict:
             **{k: round(v, 4) for k, v in predict(row, model, residual_sd).items()},
         })
     comparison = forward.get("market_comparison", {})
+    prospective_comparison = prospective["market_comparison"]
     metrics = ("margin_error", "total_error", "brier")
     benchmark_passed = all(
         comparison.get(f"model_{metric}", {}).get("n", 0) >= 200
         and comparison[f"model_{metric}"]["mean"] < comparison[f"market_{metric}"]["mean"]
+        and prospective_comparison[f"model_{metric}"]["n"] >= 100
+        and prospective_comparison[f"model_{metric}"]["mean"]
+            < prospective_comparison[f"market_{metric}"]["mean"]
         for metric in metrics
     )
     return {
-        "version": VERSION, "generated_at": datetime.now(timezone.utc).isoformat(),
+        "version": VERSION, "season": season,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "status": "BENCHMARK_PASSED" if benchmark_passed else "RESEARCH_ONLY",
-        "promotion_rule": "At least 200 matched 2026 games and lower model error than contemporaneous market for margin, total, and moneyline Brier score; passing still does not establish a betting edge.",
-        "training": {"seasons": [2022, 2023, 2024, 2025], "games": trained_games},
-        "holdout_2025": {"trained_games": holdout_train_games, **holdout},
-        "forward_2026": forward,
+        "promotion_rule": "At least 200 retrospective and 100 prospectively frozen matched current-season games, with lower model error than contemporaneous market for margin, total, and moneyline Brier score in both samples; passing still does not establish a betting edge.",
+        "training": {
+            "seasons": list(range(first_train_season, holdout_season + 1)),
+            "games": trained_games,
+        },
+        "holdout": {"season": holdout_season, "trained_games": holdout_train_games, **holdout},
+        "forward": {"season": season, **forward},
+        "prospective": {"season": season, **prospective},
         "upcoming": upcoming,
     }
 

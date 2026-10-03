@@ -3,7 +3,8 @@ name: Refresh Current CFB Plays and Drives
 on:
   schedule:
     # Sunday catches Saturday games; Friday catches Thursday games.
-    - cron: "17 10 * * 0,5"
+    - cron: "17 10 * 8-12 0,5"
+    - cron: "17 10 * 1-2 0,5"
   workflow_dispatch:
     inputs:
       bootstrap:
@@ -41,9 +42,13 @@ jobs:
           else
             python -m ingest.cfb_plays --current-season --recent-completed-weeks 2
           fi
+      - name: Freeze research forecasts and validation
+        run: python -m research.cfb_forecast_v1 --publish --output artifacts/cfb/forecast-validation.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: current-cfb-play-coverage
-          path: artifacts/cfb/play-audits
+          path: |
+            artifacts/cfb/play-audits
+            artifacts/cfb/forecast-validation.json
           if-no-files-found: warn

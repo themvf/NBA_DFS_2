@@ -13,15 +13,23 @@ import json
 import pytest
 
 from ingest import cfb_plays
+from datetime import datetime, timezone
+
 from ingest.cfb_plays import (
     audit_rows,
     clock_seconds,
     drive_rows,
+    football_season_year,
     game_seconds_remaining,
     ingest_season,
     play_rows,
     schedule_weeks,
 )
+
+
+def test_bowl_season_stays_with_previous_fall():
+    assert football_season_year(datetime(2027, 1, 12, tzinfo=timezone.utc)) == 2026
+    assert football_season_year(datetime(2026, 10, 3, tzinfo=timezone.utc)) == 2026
 
 
 def _game(game_id=401001, week=1, season_type="regular"):
@@ -317,7 +325,32 @@ def test_current_season_reports_missing_completed_game_feed(monkeypatch):
     assert report["coverage_failures"] == [{
         "season_type": "regular", "week": 1, "expected_fbs_games": 1,
         "missing_drive_game_ids": [401001], "missing_play_game_ids": [401001],
+        "low_ppa_game_ids": [401001], "low_drive_game_ids": [401001],
     }]
+
+
+def test_partial_completed_game_feed_fails_coverage_floor(monkeypatch):
+    import psycopg2.extras
+
+    monkeypatch.setattr(psycopg2.extras, "execute_values", lambda *a, **k: None)
+    monkeypatch.setattr(
+        cfb_plays, "_upsert_game",
+        lambda db, game, *, team_cache, venue_cache, **_: (
+            team_cache.update({int(game["homeId"]): 11, int(game["awayId"]): 22}) or 501
+        ),
+    )
+    report = ingest_season(
+        _FakeDb(), season=2024, games=[_game()],
+        fetch_week=lambda endpoint, season_type, week: (
+            [_drive()] if endpoint == "drives" else [_play()]
+        ),
+        completed_only=True,
+    )
+    failure = report["coverage_failures"][0]
+    assert failure["missing_drive_game_ids"] == []
+    assert failure["missing_play_game_ids"] == []
+    assert failure["low_ppa_game_ids"] == [401001]
+    assert failure["low_drive_game_ids"] == [401001]
 
 
 def test_recurring_refresh_limits_weeks_but_bootstrap_keeps_all(monkeypatch):
