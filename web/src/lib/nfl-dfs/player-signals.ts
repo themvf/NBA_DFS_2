@@ -1,7 +1,7 @@
 /** Observable pregame opportunity flags. These are not fantasy-point or ownership forecasts. */
-export const NFL_PLAYER_SIGNAL_VERSION = "nfl-dfs-player-signals-v1";
+export const NFL_PLAYER_SIGNAL_VERSION = "nfl-dfs-player-signals-v2-air-matchup";
 
-export type NflPlayerSignalCode = "AIR_VOLUME" | "YAC_RUNWAY" | "INSIDE_FIVE" | "CLOSE_TARGET";
+export type NflPlayerSignalCode = "AIR_VOLUME" | "AIR_MATCHUP" | "YAC_RUNWAY" | "INSIDE_FIVE" | "CLOSE_TARGET";
 export type NflPlayerSignal = {
   code: NflPlayerSignalCode;
   label: string;
@@ -22,6 +22,32 @@ export type NflPlayerSignalEvidence = {
   carriesInsideFive: number;
   targetsInsideTen: number;
 };
+
+export type NflAirDefenseEvidence = { games: number; targets: number; targetAirYards: number };
+
+/** Experimental construction tag, calculated only from games before the slate. */
+export function airMatchupSignals(
+  position: string, playerSignals: readonly NflPlayerSignal[], opponent: string | null,
+  defenses: ReadonlyMap<string, NflAirDefenseEvidence>,
+): NflPlayerSignal[] {
+  if (!["WR", "TE"].includes(position) || !opponent || !playerSignals.some(signal => signal.code === "AIR_VOLUME")) return [];
+  const eligible = [...defenses.entries()].filter(([, row]) => row.games >= 2 && row.targets >= 40 && Number.isFinite(row.targetAirYards));
+  if (eligible.length < 16) return [];
+  const totalTargets = eligible.reduce((sum, [, row]) => sum + row.targets, 0);
+  const leagueDepth = eligible.reduce((sum, [, row]) => sum + row.targetAirYards, 0) / totalTargets;
+  if (!Number.isFinite(leagueDepth)) return [];
+  // A fixed 60-target prior dampens short samples; the top quartile is a
+  // transparent experimental threshold, not a validated point adjustment.
+  const depth = (row: NflAirDefenseEvidence) => (row.targetAirYards + 60 * leagueDepth) / (row.targets + 60);
+  const ranked = eligible.sort((a, b) => depth(b[1]) - depth(a[1]) || a[0].localeCompare(b[0]));
+  const rank = ranked.findIndex(([team]) => team === opponent);
+  if (rank < 0 || rank >= Math.ceil(ranked.length / 4)) return [];
+  const row = ranked[rank][1];
+  return [{ code: "AIR_MATCHUP", label: "Air-yard matchup",
+    detail: `Air-volume receiver vs ${opponent}: ${row.targetAirYards.toFixed(0)} target air yards on ${row.targets} targets allowed in ${row.games} games (${(row.targetAirYards / row.targets).toFixed(1)} per target; top ${rank + 1} of ${ranked.length} after sample shrinkage). Experimental lineup-construction signal.`,
+    evidence: { defenseGames: row.games, defenseTargets: row.targets, defenseTargetAirYards: row.targetAirYards,
+      defenseAirYardsPerTarget: row.targetAirYards / row.targets, regressedAirYardsPerTarget: depth(row), defenseRank: rank + 1, defensesRanked: ranked.length } }];
+}
 
 /** Fixed descriptive thresholds. Revisit them with held-out slate outcomes before changing optimizer defaults. */
 export function classifyNflPlayerSignals(

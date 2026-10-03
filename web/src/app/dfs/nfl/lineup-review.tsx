@@ -38,6 +38,8 @@ export default function LineupReview({ lineups, runId }: {
           <div className="mb-3 flex flex-wrap gap-4 text-xs text-slate-600">
             <span>Floor sum: {lineup.floorFpts.toFixed(1)}</span><span>Ceiling sum: {lineup.ceilingFpts.toFixed(1)}</span>
             <span>Stack: {lineup.stackSummary.quarterback ? [lineup.stackSummary.quarterback, ...lineup.stackSummary.passCatchers].join(" + ") : "None"}{lineup.stackSummary.bringBack ? ` / ${lineup.stackSummary.bringBack}` : ""}</span>
+            {lineup.slots.filter(({ player }) => player.playerSignals?.some(signal => signal.code === "AIR_MATCHUP")).map(({ player }) =>
+              <span key={player.dkPlayerId} title={player.playerSignals?.find(signal => signal.code === "AIR_MATCHUP")?.detail}>Air-yard matchup: {player.name}</span>)}
           </div>
           <table className="w-full text-sm">
             <thead className="text-left text-xs text-slate-500"><tr><th className="py-2">Slot</th><th>Player</th><th className="text-right">Slot salary</th></tr></thead>

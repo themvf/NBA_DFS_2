@@ -594,7 +594,7 @@ function validateSettings(settings: NflOptimizerSettings): void {
   if (![0, 1].includes(settings.gppSignalMinPerLineup ?? 0)) throw new Error("GPP signal minimum must be 0 or 1.");
   if (settings.gppSignalMinPerLineup && (settings.format !== "classic" || settings.mode !== "gpp")) throw new Error("Opportunity signals can only be required in Classic GPP.");
   if (settings.gppSignalMinPerLineup && settings.gppSignalCodes?.length === 0) throw new Error("Select at least one opportunity signal.");
-  if (settings.gppSignalCodes?.some(code => !["AIR_VOLUME", "YAC_RUNWAY", "INSIDE_FIVE", "CLOSE_TARGET"].includes(code))) throw new Error("Unknown opportunity signal.");
+  if (settings.gppSignalCodes?.some(code => !["AIR_VOLUME", "AIR_MATCHUP", "YAC_RUNWAY", "INSIDE_FIVE", "CLOSE_TARGET"].includes(code))) throw new Error("Unknown opportunity signal.");
   if (settings.defensiveAdjustments?.mode !== undefined && settings.defensiveAdjustments.mode !== 'off') {
     if (settings.projectionSource !== 'our') throw new Error('Defensive adjustments require the historical projection source.');
     if (settings.defensiveAdjustments.mode !== 'experimental' && settings.defensiveAdjustments.mode !== 'approved') throw new Error('Unknown defensive mode.');

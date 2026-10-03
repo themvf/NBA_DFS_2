@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings } from "../src/app/dfs/nfl/nfl-optimizer";
+import { airMatchupSignals, type NflAirDefenseEvidence } from "../src/lib/nfl-dfs/player-signals";
 
 const spec: Array<[number, string, NflOptimizerPlayer["position"], number]> = [
   [1, "QB", "QB", 10], [2, "RB one", "RB", 9], [3, "RB two", "RB", 8],
@@ -29,6 +30,17 @@ const signaled = optimizeNflLineups(pool, { ...settings, gppSignalMinPerLineup: 
 assert.ok(signaled?.playerIds.includes(9));
 assert.equal(signaled.slots.find(slot => slot.player.dkPlayerId === 9)?.projection, 2,
   "the signal changes construction, not player fantasy points");
+const defenses = new Map<string, NflAirDefenseEvidence>(Array.from({ length: 32 }, (_, index) => [
+  `T${index}`, { games: 3, targets: 90, targetAirYards: 400 + index * 20 },
+]));
+const matchup = airMatchupSignals("WR", pool[8].playerSignals ?? [], "T31", defenses);
+assert.equal(matchup[0]?.code, "AIR_MATCHUP");
+assert.equal(airMatchupSignals("WR", pool[8].playerSignals ?? [], "T0", defenses).length, 0);
+assert.equal(airMatchupSignals("WR", [], "T31", defenses).length, 0);
+const matchupPool = pool.map(player => player.dkPlayerId === 9 ? { ...player, playerSignals: matchup } : player);
+const matchupLineup = optimizeNflLineups(matchupPool, { ...settings, gppSignalMinPerLineup: 1, gppSignalCodes: ["AIR_MATCHUP"] }).lineups[0];
+assert.ok(matchupLineup?.playerIds.includes(9));
+assert.equal(matchupLineup.slots.find(slot => slot.player.dkPlayerId === 9)?.projection, 2);
 const limited = optimizeNflLineups(pool, { ...settings, nLineups: 2, maxExposure: 0.5,
   gppSignalMinPerLineup: 1 });
 assert.ok(limited.lineups.length < 2);

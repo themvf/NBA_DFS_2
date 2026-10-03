@@ -2,6 +2,8 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import type { NflPlayerSignalEvidence } from "@/lib/nfl-dfs/player-signals";
+import type { NflAirDefenseEvidence } from "@/lib/nfl-dfs/player-signals";
+import { canonicalNflTeam } from "@/lib/nfl-dfs/dk-salary-csv";
 
 /** Participant GSIS ids are the player join; game/play ids are the play join. */
 export async function readNflDfsPlayerSignalEvidence(
@@ -44,5 +46,26 @@ export async function readNflDfsPlayerSignalEvidence(
       expectedYac: metric("expectedYac"), carries: metric("carries"),
       carriesInsideFive: metric("carriesInsideFive"), targetsInsideTen: metric("targetsInsideTen"),
     } satisfies NflPlayerSignalEvidence] as const;
+  }));
+}
+
+/** Unique pass plays only: target air yards include incompletions. */
+export async function readNflAirDefenseEvidence(
+  season: number, week: number, asOf: Date,
+): Promise<Map<string, NflAirDefenseEvidence>> {
+  if (!Number.isInteger(season) || !Number.isInteger(week) || week < 1 || !Number.isFinite(asOf.getTime())) return new Map();
+  const result = await db.execute(sql`
+    SELECT p.defteam AS team, COUNT(DISTINCT p.game_id)::int AS games,
+      COUNT(*)::int AS targets, SUM(p.air_yards)::float8 AS "targetAirYards"
+    FROM nfl_pbp_archetypes p
+    WHERE p.season = ${season} AND p.week >= ${Math.max(1, week - 3)} AND p.week < ${week}
+      AND p.season_type = 'REG' AND p.labelled_at <= ${asOf}
+      AND p.play_type = 'pass' AND p.air_yards IS NOT NULL AND p.defteam IS NOT NULL
+    GROUP BY p.defteam`);
+  return new Map(result.rows.map(raw => {
+    const row = raw as Record<string, unknown>;
+    return [canonicalNflTeam(String(row.team)), {
+      games: Number(row.games), targets: Number(row.targets), targetAirYards: Number(row.targetAirYards),
+    }] as const;
   }));
 }
