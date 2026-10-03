@@ -6,7 +6,7 @@ import { formFromDraft, formFromSettings, sameGenerationSettings, settingsFromFo
 import { DEFAULT_DFS_DEFENSIVE_SETTINGS, defensiveSettingsFor } from "../src/lib/nfl-dfs/defensive-display";
 
 const defaults = { mode: "gpp" as "cash" | "gpp", projectionSource: "our" as const, allowDkFallback: false, nLineups: 20,
-  minSalary: 45000, maxExposure: 0.6, minUnique: 2, stackPassCatchers: 1 as 0 | 1 | 2, bringBack: true, randomness: 0.08 };
+  minSalary: 45000, maxExposure: 0.6, minUnique: 2, stackPassCatchers: 1 as 0 | 1 | 2, bringBack: true, randomness: 0.08, gppGoalLineMinPct: 0 };
 type Form = NflBuildForm<typeof defaults>;
 const teams = ["ATL", "GB"];
 
@@ -27,6 +27,12 @@ assert.deepEqual(loaded.settings, form.settings, "scalar settings come back");
 assert.deepEqual(loaded.locked, [11]); assert.deepEqual(loaded.excluded, [12, 13]);
 assert.deepEqual(loaded.captainTargets, form.captainTargets, "captain ranges come back exactly");
 assert.equal(loaded.planMode, "chalk_leverage");
+const goalLineForm: Form = { ...form, settings: { ...form.settings, gppGoalLineMinPct: 25 } };
+const goalLineSaved = settingsFromForm(goalLineForm, "classic", teams);
+assert.equal(goalLineSaved.gppGoalLineMinPct, 25);
+assert.equal(settingsFromForm(goalLineForm, "showdown", teams).gppGoalLineMinPct, 0);
+assert.equal(formFromSettings(goalLineSaved, defaults).settings.gppGoalLineMinPct, 25);
+assert.ok(sameGenerationSettings(settingsFromForm(formFromSettings(goalLineSaved, defaults), "classic", teams), goalLineSaved));
 assert.equal(loaded.favorite, "", "a favorite the SERVER resolved is not a user choice");
 assert.ok(sameGenerationSettings(settingsFromForm(loaded, "showdown", teams), sent), "reloading rebuilds the same run");
 assert.equal((loaded.settings as Record<string, unknown>).ownershipDisclosure, undefined, "save-time extras stay out of the form");

@@ -151,6 +151,8 @@ export type NflOptimizerSettings = {
   gppSignalCodes?: NflPlayerSignalCode[];
   /** Minimum share of Classic GPP lineups with an AIR_MATCHUP player. 0 disables it. */
   gppAirMatchupMinPct?: number;
+  /** Minimum share of Classic GPP lineups with an INSIDE_FIVE RB. 0 disables it. */
+  gppGoalLineMinPct?: number;
   projectionSource: NflProjectionSource;
   defensiveAdjustments?: DefensiveSettings;
   /** Team -> DK id of a user-confirmed starting QB; see `confirmed-starter.ts`. */
@@ -602,6 +604,9 @@ function validateSettings(settings: NflOptimizerSettings): void {
   const airPct = settings.gppAirMatchupMinPct ?? 0;
   if (!Number.isFinite(airPct) || airPct < 0 || airPct > 100) throw new Error("Air-yard matchup lineup percentage must be between 0 and 100.");
   if (airPct > 0 && (settings.format !== "classic" || settings.mode !== "gpp")) throw new Error("Air-yard matchup lineup percentage is only available in Classic GPP.");
+  const goalLinePct = settings.gppGoalLineMinPct ?? 0;
+  if (!Number.isFinite(goalLinePct) || goalLinePct < 0 || goalLinePct > 100) throw new Error("Goal-line RB lineup percentage must be between 0 and 100.");
+  if (goalLinePct > 0 && (settings.format !== "classic" || settings.mode !== "gpp")) throw new Error("Goal-line RB lineup percentage is only available in Classic GPP.");
   if (settings.defensiveAdjustments?.mode !== undefined && settings.defensiveAdjustments.mode !== 'off') {
     if (settings.projectionSource !== 'our') throw new Error('Defensive adjustments require the historical projection source.');
     if (settings.defensiveAdjustments.mode !== 'experimental' && settings.defensiveAdjustments.mode !== 'approved') throw new Error('Unknown defensive mode.');
@@ -633,6 +638,7 @@ function buildOne(
   remaining: number = settings.nLineups - lineupNumber + 1,
   enforceSlotMinimums = true,
   requireAirMatchup = false,
+  requireGoalLine = false,
 ): NflGeneratedLineup | null {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const solver = require("javascript-lp-solver") as { Solve: (model: SolverModel) => SolverResult };
@@ -655,6 +661,7 @@ function buildOne(
   const constraints: SolverModel["constraints"] = { salary: { max: salaryMax, min: salaryMin } };
   if (settings.gppSignalMinPerLineup) constraints.gpp_opportunity_signal = { min: settings.gppSignalMinPerLineup };
   if (requireAirMatchup) constraints.air_matchup = { min: 1 };
+  if (requireGoalLine) constraints.goal_line_rb = { min: 1 };
   if (settings.format === "classic") {
     constraints.roster = { equal: 9 };
     constraints.qb = { equal: 1 };
@@ -750,6 +757,7 @@ function buildOne(
       if (settings.puntPolicy && player.salaryRelief) variable.salary_relief = 1;
       if (constraints.gpp_opportunity_signal && isNflGppSignalPlayer(player.playerSignals, settings.gppSignalCodes)) variable.gpp_opportunity_signal = 1;
       if (constraints.air_matchup && isNflGppSignalPlayer(player.playerSignals, ["AIR_MATCHUP"])) variable.air_matchup = 1;
+      if (constraints.goal_line_rb && player.position === "RB" && isNflGppSignalPlayer(player.playerSignals, ["INSIDE_FIVE"])) variable.goal_line_rb = 1;
       if (settings.format === "classic") {
         variable.roster = 1;
         variable[player.position.toLowerCase()] = 1;
@@ -806,7 +814,7 @@ function buildOne(
     // Forcing slot minimums made this lineup impossible (salary, team caps,
     // overlap). Build it without them rather than ending the run early; the
     // exposure report still flags the missed minimum honestly.
-    if (slotForced) return buildOne(pool, settings, lineupNumber, previous, exposureCounts, forcedIds, countsById, captainCounts, flexCounts, compiled, remaining, false, requireAirMatchup);
+    if (slotForced) return buildOne(pool, settings, lineupNumber, previous, exposureCounts, forcedIds, countsById, captainCounts, flexCounts, compiled, remaining, false, requireAirMatchup, requireGoalLine);
     return null;
   }
   const purchases: { player: ResolvedPlayer; slot: "CPT" | "FLEX" | "CLASSIC" }[] = [];
@@ -989,6 +997,10 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   if (airMatchupTarget && !pool.some(player => isNflGppSignalPlayer(player.playerSignals, ["AIR_MATCHUP"]))) {
     throw new Error("No eligible player has an air-yard matchup tag. Lower the requested percentage or turn off the air-yard matchup rule.");
   }
+  const goalLineTarget = Math.ceil(settings.nLineups * (settings.gppGoalLineMinPct ?? 0) / 100);
+  if (goalLineTarget && !pool.some(player => player.position === "RB" && isNflGppSignalPlayer(player.playerSignals, ["INSIDE_FIVE"]))) {
+    throw new Error("No eligible RB has an inside-5 work tag. Lower the requested percentage or turn off the goal-line RB rule.");
+  }
   const decisionById = new Map(eligibility.map((decision) => [decision.dkPlayerId, decision]));
   const nameOf = (id: number) => players.find((player) => player.dkPlayerId === id)?.name ?? `Player ${id}`;
   const whyOut = (id: number): string => {
@@ -1153,6 +1165,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   const flexCounts = new Map<number, number>();
   const lineups: NflGeneratedLineup[] = [];
   let airMatchupLineups = 0;
+  let goalLineLineups = 0;
   for (let lineupNumber = 1; lineupNumber <= plan.length; lineupNumber++) {
     const remaining = plan.length - lineupNumber + 1;
     const forced = new Set(locked);
@@ -1164,14 +1177,18 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
       if (target - current >= remaining) forced.add(player.dkPlayerId);
     }
     const requireAirMatchup = airMatchupTarget > 0 && airMatchupTarget - airMatchupLineups >= remaining;
-    const lineup = buildOne(pool, settings, lineupNumber, lineups, exposureCounts, forced, countsById, captainCounts, flexCounts, plan[lineupNumber - 1].compiled, remaining, true, requireAirMatchup);
+    const requireGoalLine = goalLineTarget > 0 && goalLineTarget - goalLineLineups >= remaining;
+    const lineup = buildOne(pool, settings, lineupNumber, lineups, exposureCounts, forced, countsById, captainCounts, flexCounts, plan[lineupNumber - 1].compiled, remaining, true, requireAirMatchup, requireGoalLine);
     if (!lineup) {
+      if (requireAirMatchup && requireGoalLine) throw new Error(`Could not meet the air-yard matchup and goal-line RB minimums together with the remaining exposure, salary, and roster constraints. Lower a percentage or adjust player limits.`);
       if (requireAirMatchup) throw new Error(`Could not meet the air-yard matchup minimum of ${airMatchupTarget}/${settings.nLineups} lineups with the remaining exposure, salary, and roster constraints. Lower the percentage or adjust player limits.`);
+      if (requireGoalLine) throw new Error(`Could not meet the goal-line RB minimum of ${goalLineTarget}/${settings.nLineups} lineups with the remaining exposure, salary, and roster constraints. Lower the percentage or adjust player limits.`);
       warnings.push(`Stopped after ${lineups.length} lineup(s): the ${ARCHETYPE_LABELS[plan[lineupNumber - 1].archetypeId]} quota or remaining exposure/uniqueness/salary constraints are infeasible.`);
       break;
     }
     lineups.push(lineup);
     if (lineup.slots.some(({ player }) => isNflGppSignalPlayer(player.playerSignals, ["AIR_MATCHUP"]))) airMatchupLineups++;
+    if (lineup.slots.some(({ player }) => player.position === "RB" && isNflGppSignalPlayer(player.playerSignals, ["INSIDE_FIVE"]))) goalLineLineups++;
     // Track overall and slot-specific appearances. Captain and Flex are counted
     // independently; overall is their union (each player appears once per lineup).
     lineup.playerIds.forEach((id) => exposureCounts.set(id, (exposureCounts.get(id) ?? 0) + 1));
@@ -1184,6 +1201,10 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   if (airMatchupTarget) {
     if (airMatchupLineups < airMatchupTarget) throw new Error(`Air-yard matchup minimum missed: ${airMatchupLineups}/${airMatchupTarget} required lineups. Adjust the percentage or player limits.`);
     warnings.push(`Air-yard matchup coverage: ${airMatchupLineups}/${lineups.length} generated lineups; minimum ${airMatchupTarget}/${settings.nLineups} requested (${settings.gppAirMatchupMinPct}%).`);
+  }
+  if (goalLineTarget) {
+    if (goalLineLineups < goalLineTarget) throw new Error(`Goal-line RB minimum missed: ${goalLineLineups}/${goalLineTarget} required lineups. Adjust the percentage or player limits.`);
+    warnings.push(`Goal-line RB coverage: ${goalLineLineups}/${lineups.length} generated lineups; minimum ${goalLineTarget}/${settings.nLineups} requested (${settings.gppGoalLineMinPct}%).`);
   }
 
   // Report realized vs requested per slot and flag missed minimums (P3-AC2/AC5).
