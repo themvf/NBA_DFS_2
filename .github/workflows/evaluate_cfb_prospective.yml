@@ -1,0 +1,35 @@
+name: Grade Prospective CFB Forecasts
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Grade after weekend finals without calling CFBD or the paid odds API.
+    - cron: "17 14 * 8-12 0,1"
+    - cron: "17 14 * 1-2 0,1"
+
+concurrency:
+  group: grade-prospective-cfb
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Audit finals, verified closes, and paired forecasts
+        run: python -m research.cfb_prospective_evaluation --publish --output artifacts/cfb/prospective-evaluation.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cfb-prospective-evaluation
+          path: artifacts/cfb/prospective-evaluation.json
+          if-no-files-found: warn

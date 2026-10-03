@@ -41,7 +41,8 @@ def _fresh(quote: dict, captured_at: datetime) -> bool:
         return False
 
 
-def comparison(forecast: dict, market: dict | None, feature: dict | None) -> dict:
+def comparison(forecast: dict, market: dict | None, feature: dict | None,
+               version: str | None = None) -> dict:
     freeze_at = forecast["generated_at"]
     kickoff = forecast["kickoff"]
     lead_hours = (kickoff - freeze_at).total_seconds() / 3600
@@ -77,13 +78,17 @@ def comparison(forecast: dict, market: dict | None, feature: dict | None) -> dic
             reasons.append("kickoff_time_unconfirmed")
         by_market[name] = {"value": values[name], "books": len(quoting),
                            "fresh_books": fresh, "eligible": not reasons, "reasons": reasons}
-    return {"definition": "cfb-comparison-v1", "forecast_at": freeze_at.isoformat(),
+    result = {"definition": "cfb-comparison-v1", "forecast_at": freeze_at.isoformat(),
             "kickoff": kickoff.isoformat(), "market_captured_at": captured_at.isoformat() if captured_at else None,
             "market_age_minutes": round(age_minutes, 1) if age_minutes is not None else None,
             "max_market_age_minutes": max_age, "lead_hours": round(lead_hours, 2),
             "forecast": {key: forecast.get(key) for key in
                          ("home_points", "away_points", "home_win_probability")},
             "feature": feature or {}, "markets": by_market}
+    if version == "cfb-score-opponent-ppa-v3":
+        from research.cfb_market_anchor import anchored_values
+        result["anchor"] = anchored_values(forecast, by_market)
+    return result
 
 
 def freeze_comparisons(cursor, run_id: int, report: dict) -> None:
@@ -108,7 +113,7 @@ def freeze_comparisons(cursor, run_id: int, report: dict) -> None:
         row = dict(row)
         feature = report.get("explanations", {}).get(str(row["game_id"]))
         market = row if row["odds_history_id"] is not None else None
-        evidence = comparison(row, market, feature)
+        evidence = comparison(row, market, feature, report["version"])
         cursor.execute("""
             INSERT INTO cfb_market_comparisons
               (forecast_id,run_id,game_id,odds_history_id,forecast_at,evidence_json)

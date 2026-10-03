@@ -10,6 +10,7 @@ Analytics section has stable, directly addressable routes:
 | `/cfb/analytics/teams` | FBS team directory |
 | `/cfb/analytics/teams/[id]` | Team context, upcoming games, and completed results |
 | `/cfb/analytics/methods` | Definitions, planned foundation layers, and live source coverage |
+| `/cfb/analytics/evaluation` | Prospective forecast grading, coverage, and same-capture comparisons |
 
 The Terminal links to the selected game's Analytics route. The game page links
 back to the Terminal with both `date` and `game` query parameters, so a direct
@@ -103,6 +104,36 @@ v3's spread MAE was 12.91 versus v2's 13.11 and market 11.28; total MAE was
 0.180 versus v2 0.184 and market 0.141. This is retrospective and the market
 still leads all three measures. The first frozen v3 forecasts will create a
 prospective sample after those games finish.
+
+## Prospective evaluation and market anchor
+
+`research/cfb_prospective_evaluation.py` reads the latest pregame frozen
+comparison for each game and model version. It grades only games with an
+official completed result and only markets that met the frozen eligibility
+rules. A verified close is joined by canonical matchup and scheduled kickoff;
+missing closes remain missing. The report retains coverage and exclusion
+reasons and is published append-only in `cfb_prospective_evaluation_runs`.
+The standalone `/cfb/analytics/evaluation` page shows the latest report.
+
+Each model is compared with the market quote frozen at that model's forecast
+time. The strict v1/v2/v3 comparison also requires the same game, exact odds
+history ID, and forecast times within 15 minutes. Spread and total use mean
+absolute error in points. Moneyline uses Brier score, with log loss and
+calibration bias retained in the report. Differences are model error minus
+market error; negative favors the model. Confidence intervals resample game
+dates and are withheld until 20 settled games span at least four dates.
+Directional movement toward a verified close is descriptive only.
+
+The fixed `cfb-market-anchor-v1` challenger blends 75% of each eligible
+observed market value with 25% of the v3 football estimate. Its rule was fixed
+before prospective outcomes and is frozen with new v3 comparisons. Historical
+comparisons are not rewritten to add it. It remains research-only regardless
+of an early favorable sample; no betting action is generated.
+
+The refresh workflow publishes evaluation after new forecasts. A separate
+Sunday/Monday workflow regrades official finals and verified closes without
+calling CFBD or the paid odds API. Both runs preserve the underlying frozen
+comparison and can be audited by report version and generation time.
 
 ## Forecast diagnosis and possession challenger
 
