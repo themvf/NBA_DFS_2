@@ -4,6 +4,7 @@ import { resolveDefensiveForecast, type DefensiveCapture, type DefensivePlayerIn
 import { captureProfileFor, selectedDefensiveForecast, DEFAULT_DFS_DEFENSIVE_SETTINGS } from '../src/lib/nfl-dfs/defensive-display';
 import { assertShowdownLineup } from '../src/lib/nfl-dfs/showdown-legality';
 import { exportNflDkEntries } from '../src/lib/nfl-dfs/entry-export';
+import { formFromDraft } from '../src/lib/nfl-dfs/generation-settings';
 
 const player = (id:number, position:NflOptimizerPlayer['position'], mean=12):NflOptimizerPlayer => ({
   id,dkPlayerId:id,captainDkPlayerId:null,name:`P${id}`,position,
@@ -39,6 +40,10 @@ assert.equal(selectedDefensiveForecast(adjusted[4].defensiveForecast,defensive,'
 assert.equal(selectedDefensiveForecast(adjusted[4].defensiveForecast,{...defensive,mode:'off'},'RB'),null);
 assert.equal(selectedDefensiveForecast(adjusted[4].defensiveForecast,{...defensive,profile:'allowed-rushing-volume'},'RB'),null);
 assert.deepEqual(DEFAULT_DFS_DEFENSIVE_SETTINGS,{mode:'experimental',profile:'gpp-integrated'});
+const defaults={projectionSource:'our',defensiveAdjustments:DEFAULT_DFS_DEFENSIVE_SETTINGS};
+assert.equal(formFromDraft({settings:{defensiveAdjustments:defensive}},defaults)?.settings.defensiveAdjustments.profile,'gpp-integrated');
+assert.equal(formFromDraft({schemaVersion:2,settings:{defensiveAdjustments:defensive}},defaults)?.settings.defensiveAdjustments.profile,'pfr-efficiency');
+assert.equal(formFromDraft({settings:{defensiveAdjustments:{...defensive,mode:'off'}}},defaults)?.settings.defensiveAdjustments.mode,'off');
 const integrated=pool.map(p=>{
   const profile=captureProfileFor('gpp-integrated',p.position);
   const candidate=p.dkPlayerId===1?capture(p,7,24,.3):p.dkPlayerId===5?capture(p,2,40,.6):null;

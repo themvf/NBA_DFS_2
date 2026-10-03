@@ -208,7 +208,7 @@ export default function NflDfsClient() {
   const settingsChanged = Boolean(completedSettings && !sameGenerationSettings(
     settingsFromForm(formFromSettings(completedSettings, settings), slateFormat, slateTeams), currentSettings));
   // Autosave the build form to the server for this slate.
-  const draftForm = useMemo(() => ({ settings, locked, excluded, targets: targetExposure, captainTargets,
+  const draftForm = useMemo(() => ({ schemaVersion: 2, settings, locked, excluded, targets: targetExposure, captainTargets,
     planMode: archetypePlanMode, quotas: archetypeQuotas, favorite: archetypeFavorite, fades: archetypeFades }),
     [settings, locked, excluded, targetExposure, captainTargets, archetypePlanMode, archetypeQuotas, archetypeFavorite, archetypeFades]);
   const slateUploadId = slate?.uploadId ?? null;

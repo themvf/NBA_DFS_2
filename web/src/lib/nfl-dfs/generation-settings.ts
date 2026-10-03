@@ -201,6 +201,13 @@ export function formFromDraft<S extends object>(raw: unknown, defaults: S): NflB
     const sameKind = Array.isArray(fallback) ? Array.isArray(value) : typeof value === typeof fallback;
     if (sameKind) (settings as Record<string, unknown>)[key] = value;
   }
+  // Existing drafts predate the combined default. Upgrade their experimental
+  // single-profile selection once; versioned drafts retain deliberate edits.
+  if (draft.schemaVersion !== 2 && 'defensiveAdjustments' in settings) {
+    const defensive = (settings as { defensiveAdjustments: { mode: string; profile: string } }).defensiveAdjustments;
+    if (defensive?.mode === 'experimental' && ['pfr-efficiency', 'allowed-rushing-volume'].includes(defensive.profile))
+      (settings as { defensiveAdjustments: { mode: string; profile: string } }).defensiveAdjustments = { ...defensive, profile: 'gpp-integrated' };
+  }
   const ids = (value: unknown) => Array.isArray(value) ? value.filter((v): v is number => Number.isSafeInteger(v)) : [];
   const ranges = (value: unknown): Record<string, CaptainTarget> => {
     if (!value || typeof value !== 'object') return {};
