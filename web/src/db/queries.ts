@@ -10317,6 +10317,86 @@ export type CfbTerminalRow = {
   history: Array<{ capturedAt: string; books: CfbBookMap }>;
 };
 
+export type CfbFavoriteWatchHistoryRow = {
+  matchupId: number;
+  gameDate: string;
+  commenceTime: string | null;
+  homeTeam: string;
+  awayTeam: string;
+  network: string | null;
+  completed: boolean;
+  homeScore: number | null;
+  awayScore: number | null;
+  openingBooks: CfbBookMap | null;
+  openingCapturedAt: string | null;
+  closingBooks: CfbBookMap | null;
+  closingCapturedAt: string | null;
+  closeQuality: string | null;
+};
+
+/**
+ * Every CFB game of the season that has kicked off, with its opening capture
+ * and its verified pre-kickoff close. Input to gradeFavoriteWatch(): the
+ * Favorite Watch record is the frozen close state, never what the live tab
+ * showed at some point during the day.
+ */
+export async function getCfbFavoriteWatchHistory(season?: number): Promise<CfbFavoriteWatchHistoryRow[]> {
+  await ensureOddsHistoryTables();
+  const rows = await db.execute(sql`
+    WITH opening AS (
+      SELECT DISTINCT ON (h.matchup_id) h.matchup_id, h.books, h.captured_at
+      FROM game_odds_history h
+      JOIN cfb_matchups m ON m.id=h.matchup_id
+      WHERE h.sport='cfb' AND h.books IS NOT NULL AND m.commence_time IS NOT NULL AND h.captured_at < m.commence_time
+      ORDER BY h.matchup_id, h.captured_at, h.id
+    )
+    SELECT
+      m.id AS "matchupId",
+      m.game_date::text AS "gameDate",
+      m.commence_time::text AS "commenceTime",
+      ht.name AS "homeTeam",
+      at.name AS "awayTeam",
+      m.network,
+      m.completed,
+      m.home_score AS "homeScore",
+      m.away_score AS "awayScore",
+      opening.books AS "openingBooks",
+      opening.captured_at::text AS "openingCapturedAt",
+      close_history.books AS "closingBooks",
+      close_history.captured_at::text AS "closingCapturedAt",
+      vclose.quality AS "closeQuality"
+    FROM cfb_matchups m
+    JOIN cfb_teams ht ON ht.team_id=m.home_team_id
+    JOIN cfb_teams at ON at.team_id=m.away_team_id
+    LEFT JOIN opening ON opening.matchup_id=m.id
+    LEFT JOIN verified_clv_closes vclose ON vclose.sport='cfb' AND vclose.matchup_id=m.id
+    LEFT JOIN game_odds_history close_history ON close_history.id=vclose.history_id
+    WHERE m.commence_time IS NOT NULL AND m.commence_time <= NOW()
+      AND m.season=${season ?? sql`(SELECT MAX(season) FROM cfb_matchups)`}
+      AND opening.matchup_id IS NOT NULL
+    ORDER BY m.commence_time DESC, m.id
+  `);
+  return rows.rows.map((row) => {
+    const r = row as Record<string, unknown>;
+    return {
+      matchupId: Number(r.matchupId),
+      gameDate: String(r.gameDate),
+      commenceTime: r.commenceTime != null ? String(r.commenceTime) : null,
+      homeTeam: String(r.homeTeam),
+      awayTeam: String(r.awayTeam),
+      network: r.network != null ? String(r.network) : null,
+      completed: Boolean(r.completed),
+      homeScore: r.homeScore != null ? Number(r.homeScore) : null,
+      awayScore: r.awayScore != null ? Number(r.awayScore) : null,
+      openingBooks: r.openingBooks && typeof r.openingBooks === "object" ? selectedSportsbooks(r.openingBooks as CfbBookMap) : null,
+      openingCapturedAt: r.openingCapturedAt != null ? String(r.openingCapturedAt) : null,
+      closingBooks: r.closingBooks && typeof r.closingBooks === "object" ? selectedSportsbooks(r.closingBooks as CfbBookMap) : null,
+      closingCapturedAt: r.closingCapturedAt != null ? String(r.closingCapturedAt) : null,
+      closeQuality: r.closeQuality != null ? String(r.closeQuality) : null,
+    };
+  });
+}
+
 export type CfbTerminalStatus = "live" | "stale" | "partial" | "unavailable";
 
 export type CfbTerminalBoard = {

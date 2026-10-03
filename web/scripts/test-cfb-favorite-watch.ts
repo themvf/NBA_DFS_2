@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { CfbBookMap, CfbTerminalRow } from "../src/db/queries";
 import {
   FAVORITE_WATCH_MAX_PROB, FAVORITE_WATCH_MIN_DROP_PP, FAVORITE_WATCH_MIN_PROB,
-  buildFavoriteWatch, consensusHome, hasAnchorBook,
+  buildFavoriteWatch, consensusHome, gradeFavoriteWatch, hasAnchorBook,
 } from "../src/lib/cfb-favorite-watch";
 
 const NOW = Date.parse("2026-10-03T15:00:00Z");
@@ -96,5 +96,39 @@ result = buildFavoriteWatch([
   game({ matchupId: 12, openingBooks: books(-250, 210), currentBooks: books(-150, 130) }),
 ], NOW);
 assert.deepEqual(result.rows.map((row) => row.matchupId), [12, 11]);
+
+// 10. Grading at the verified close: open -200/+170 (0.667) -> close -150/+130 (0.580) qualifies.
+function hist(overrides: Record<string, unknown>) {
+  return { matchupId: 100, awayTeam: "Away", homeTeam: "Home", commenceTime: "2026-09-12T20:00:00Z", network: null,
+    openingBooks: books(-200, 170), openingCapturedAt: "2026-09-10T12:00:00Z", gameDate: "2026-09-12",
+    completed: true, homeScore: 28, awayScore: 24, closingBooks: books(-150, 130), closingCapturedAt: "2026-09-12T19:55:00Z", closeQuality: "A", ...overrides };
+}
+let graded = gradeFavoriteWatch([
+  hist({ matchupId: 100 }),                                                    // favorite (home) won: +0.667u at -150
+  hist({ matchupId: 101, homeScore: 20, awayScore: 24 }),                      // favorite lost: -1u
+  hist({ matchupId: 102, completed: false, homeScore: null, awayScore: null }), // pending
+  hist({ matchupId: 103, closingBooks: null }),                                 // no verified close -> excluded
+  hist({ matchupId: 104, openingBooks: books(-150, 130), closingBooks: books(-150, 130) }), // unchanged -> did not cheapen
+]);
+assert.equal(graded.summary.qualified, 3);
+assert.equal(graded.summary.settled, 2);
+assert.equal(graded.summary.won, 1);
+assert.equal(graded.summary.lost, 1);
+assert.equal(graded.summary.pending, 1);
+assert.equal(graded.excluded.no_close, 1);
+assert.equal(graded.excluded.did_not_cheapen, 1);
+assert.ok(Math.abs((graded.summary.units ?? 0) - (0.6667 - 1)) < 0.001, `units ${graded.summary.units}`);
+assert.equal(graded.summary.winRate, 0.5);
+assert.ok(Math.abs((graded.summary.expectedWinRate ?? 0) - 0.5797) < 0.001);
+const wonRow = graded.rows.find((row) => row.matchupId === 100);
+assert.equal(wonRow?.outcome, "won"); assert.equal(wonRow?.score, "24-28");
+assert.equal(graded.rows.find((row) => row.matchupId === 102)?.outcome, "pending");
+assert.equal(graded.rows.find((row) => row.matchupId === 102)?.pnlUnits, null);
+// Away favorite that lost grades against the away side, not the home side.
+graded = gradeFavoriteWatch([hist({ matchupId: 105, openingBooks: books(170, -200), closingBooks: books(130, -150), homeScore: 30, awayScore: 10 })]);
+assert.equal(graded.rows[0].favorite, "away");
+assert.equal(graded.rows[0].outcome, "lost");
+// Grading ignores the live-tab lifecycle: a completed game is graded, never excluded as "completed".
+assert.equal(gradeFavoriteWatch([hist({ matchupId: 106 })]).summary.qualified, 1);
 
 console.log("CFB favorite watch checks passed");

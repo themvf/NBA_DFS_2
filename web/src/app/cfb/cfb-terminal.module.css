@@ -1293,3 +1293,10 @@
 .favoriteTableWrap td strong { color: var(--terminal-orange); }
 .favoriteOpen { cursor: pointer; border: 1px solid var(--terminal-line); background: #101514; color: var(--terminal-text); padding: 3px 8px; font-size: 10px; }
 .favoriteOpen:hover { border-color: var(--terminal-orange); }
+
+.favoriteResults { margin-top: 14px; border-top: 1px solid var(--terminal-line); }
+.favoriteSummary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; padding: 10px 18px 0; }
+.favoriteSummary div { border: 1px solid var(--terminal-line); background: var(--terminal-panel-raised); padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; }
+.favoriteSummary span { font-size: 9px; letter-spacing: .1em; color: var(--terminal-muted); }
+.favoriteSummary strong { font-size: 16px; color: var(--terminal-text); }
+.favoriteSummary em { font-size: 10px; font-style: normal; color: var(--terminal-muted); }

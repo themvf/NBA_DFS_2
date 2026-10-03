@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getCfbResearchBoard, getCfbSignalBacktest, getCfbStudyStatus, getCfbTerminalBoard, getLineAlerts, getMovementSignalObservations, getMarketCaptureHealth, getMarketSignalScorecard, type CfbResearchBoard, type CfbSignalBacktestRow, type CfbStudyStatus, type CfbTerminalBoard, type LineAlertRow, type MarketCaptureHealth, type MarketSignalScorecardRow } from "@/db/queries";
+import { getCfbFavoriteWatchHistory, type CfbFavoriteWatchHistoryRow, getCfbResearchBoard, getCfbSignalBacktest, getCfbStudyStatus, getCfbTerminalBoard, getLineAlerts, getMovementSignalObservations, getMarketCaptureHealth, getMarketSignalScorecard, type CfbResearchBoard, type CfbSignalBacktestRow, type CfbStudyStatus, type CfbTerminalBoard, type LineAlertRow, type MarketCaptureHealth, type MarketSignalScorecardRow } from "@/db/queries";
 import CfbTerminalClient from "./cfb-terminal-client";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +39,7 @@ export default async function CfbPage({
   let scorecard: MarketSignalScorecardRow[] = [];
   let captureHealth: MarketCaptureHealth | null = null;
   let studyStatus: CfbStudyStatus | null = null;
+  let favoriteHistory: CfbFavoriteWatchHistoryRow[] | null = null;
   const dataFailures: string[] = [];
   const [signalsResult, backtestResult, researchResult, scorecardResult, healthResult, observationsResult] =
     await Promise.allSettled([
@@ -66,9 +67,14 @@ export default async function CfbPage({
   if (observationsResult.status === "fulfilled") observations = observationsResult.value;
   else failed("movement observations", observationsResult.reason);
   try {
+    favoriteHistory = await getCfbFavoriteWatchHistory();
+  } catch (error) {
+    failed("favorite watch history", error);
+  }
+  try {
     studyStatus = await getCfbStudyStatus();
   } catch (error) {
     failed("study status", error);
   }
-  return <CfbTerminalClient board={board} initialGameId={initialGameId} initialView={initialView} observations={observations} signals={signals} backtest={backtest} research={research} scorecard={scorecard} captureHealth={captureHealth} studyStatus={studyStatus} dataFailures={dataFailures} />;
+  return <CfbTerminalClient board={board} initialGameId={initialGameId} initialView={initialView} observations={observations} signals={signals} backtest={backtest} research={research} scorecard={scorecard} captureHealth={captureHealth} studyStatus={studyStatus} favoriteHistory={favoriteHistory} dataFailures={dataFailures} />;
 }

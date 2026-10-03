@@ -98,6 +98,42 @@ function bestFavoritePrice(books: CfbBookMap | null | undefined, favorite: "home
   return best;
 }
 
+type RuleExclusion = Exclude<FavoriteWatchExclusion, "completed" | "kicked_off">;
+type RuleInput = Pick<CfbTerminalRow, "matchupId" | "awayTeam" | "homeTeam" | "commenceTime" | "network" | "openingBooks" | "openingCapturedAt">;
+
+/**
+ * Apply the frozen v2 rule to one game given the "now" capture (latest
+ * pre-kickoff capture on the live tab; the verified close when grading).
+ * Lifecycle (completed / kicked off) is the caller's business.
+ */
+export function evaluateFavoriteWatch(game: RuleInput, nowBooks: CfbBookMap | null | undefined, nowCapturedAt: string | null): { row: FavoriteWatchRow } | { exclusion: RuleExclusion } {
+  const open = consensusHome(game.openingBooks);
+  const current = consensusHome(nowBooks);
+  if (open.prob == null) return { exclusion: "no_opening" };
+  if (current.prob == null) return { exclusion: "no_current" };
+  if (!hasAnchorBook(game.openingBooks) || !hasAnchorBook(nowBooks)) return { exclusion: "no_anchor_book" };
+  const favorite: "home" | "away" = current.prob >= 0.5 ? "home" : "away";
+  const currentProb = favorite === "home" ? current.prob : 1 - current.prob;
+  const openProb = favorite === "home" ? open.prob : 1 - open.prob;
+  // The side must have been the favorite at open too; a flipped favorite is a different proposition.
+  if (openProb < 0.5) return { exclusion: "favorite_flipped" };
+  if (currentProb < FAVORITE_WATCH_MIN_PROB || currentProb >= FAVORITE_WATCH_MAX_PROB) return { exclusion: "outside_band" };
+  const dropPp = (openProb - currentProb) * 100;
+  if (dropPp < FAVORITE_WATCH_MIN_DROP_PP) return { exclusion: "did_not_cheapen" };
+  const pinnacle = nowBooks?.pinnacle ? fairHome(nowBooks.pinnacle) : null;
+  return { row: {
+    matchupId: game.matchupId, awayTeam: game.awayTeam, homeTeam: game.homeTeam,
+    commenceTime: game.commenceTime, network: game.network,
+    favorite, favoriteTeam: favorite === "home" ? game.homeTeam : game.awayTeam,
+    underdogTeam: favorite === "home" ? game.awayTeam : game.homeTeam,
+    openProb, currentProb, dropPp,
+    openingCapturedAt: game.openingCapturedAt, latestCapturedAt: nowCapturedAt,
+    openBooks: open.books, currentBooks: current.books,
+    pinnacleProb: pinnacle == null ? null : favorite === "home" ? pinnacle : 1 - pinnacle,
+    bestPrice: bestFavoritePrice(nowBooks, favorite),
+  } };
+}
+
 export function buildFavoriteWatch(games: CfbTerminalRow[], nowMs: number): FavoriteWatchResult {
   const excluded: Record<FavoriteWatchExclusion, number> = {
     completed: 0, kicked_off: 0, no_opening: 0, no_current: 0, no_anchor_book: 0,
@@ -110,32 +146,110 @@ export function buildFavoriteWatch(games: CfbTerminalRow[], nowMs: number): Favo
       const kickoff = Date.parse(game.commenceTime);
       if (Number.isFinite(kickoff) && kickoff <= nowMs) { excluded.kicked_off += 1; continue; }
     }
-    const open = consensusHome(game.openingBooks);
-    const current = consensusHome(game.currentBooks);
-    if (open.prob == null) { excluded.no_opening += 1; continue; }
-    if (current.prob == null) { excluded.no_current += 1; continue; }
-    if (!hasAnchorBook(game.openingBooks) || !hasAnchorBook(game.currentBooks)) { excluded.no_anchor_book += 1; continue; }
-    const favorite: "home" | "away" = current.prob >= 0.5 ? "home" : "away";
-    const currentProb = favorite === "home" ? current.prob : 1 - current.prob;
-    const openProb = favorite === "home" ? open.prob : 1 - open.prob;
-    // The side must have been the favorite at open too; a flipped favorite is a different proposition.
-    if (openProb < 0.5) { excluded.favorite_flipped += 1; continue; }
-    if (currentProb < FAVORITE_WATCH_MIN_PROB || currentProb >= FAVORITE_WATCH_MAX_PROB) { excluded.outside_band += 1; continue; }
-    const dropPp = (openProb - currentProb) * 100;
-    if (dropPp < FAVORITE_WATCH_MIN_DROP_PP) { excluded.did_not_cheapen += 1; continue; }
-    const pinnacle = game.currentBooks?.pinnacle ? fairHome(game.currentBooks.pinnacle) : null;
-    rows.push({
-      matchupId: game.matchupId, awayTeam: game.awayTeam, homeTeam: game.homeTeam,
-      commenceTime: game.commenceTime, network: game.network,
-      favorite, favoriteTeam: favorite === "home" ? game.homeTeam : game.awayTeam,
-      underdogTeam: favorite === "home" ? game.awayTeam : game.homeTeam,
-      openProb, currentProb, dropPp,
-      openingCapturedAt: game.openingCapturedAt, latestCapturedAt: game.latestCapturedAt,
-      openBooks: open.books, currentBooks: current.books,
-      pinnacleProb: pinnacle == null ? null : favorite === "home" ? pinnacle : 1 - pinnacle,
-      bestPrice: bestFavoritePrice(game.currentBooks, favorite),
-    });
+    const verdict = evaluateFavoriteWatch(game, game.currentBooks, game.latestCapturedAt);
+    if ("exclusion" in verdict) { excluded[verdict.exclusion] += 1; continue; }
+    rows.push(verdict.row);
   }
   rows.sort((a, b) => b.dropPp - a.dropPp || (Date.parse(a.commenceTime ?? "") || 0) - (Date.parse(b.commenceTime ?? "") || 0));
   return { version: CFB_FAVORITE_WATCH_VERSION, rows, excluded };
+}
+
+/* ------------------------------------------------------------------ */
+/* Results: the same rule graded at the VERIFIED PRE-KICKOFF CLOSE.    */
+/* ------------------------------------------------------------------ */
+
+/** One past game with its opening capture, verified close capture and final score. */
+export type FavoriteWatchHistoryGame = RuleInput & {
+  gameDate: string;
+  completed: boolean;
+  homeScore: number | null;
+  awayScore: number | null;
+  closingBooks: CfbBookMap | null;
+  closingCapturedAt: string | null;
+  closeQuality: string | null;
+};
+
+export type FavoriteWatchResultRow = FavoriteWatchRow & {
+  gameDate: string;
+  outcome: "won" | "lost" | "pending";
+  score: string | null;
+  /** Units won/lost on a 1-unit stake at the best selected-book favorite price at the close. */
+  pnlUnits: number | null;
+  closeQuality: string | null;
+};
+
+export type FavoriteWatchSummary = {
+  qualified: number;
+  settled: number;
+  won: number;
+  lost: number;
+  pending: number;
+  winRate: number | null;
+  expectedWinRate: number | null;   // mean no-vig close probability of the favorite, settled rows
+  units: number | null;
+  roiPerBet: number | null;
+  firstGameDate: string | null;
+  lastGameDate: string | null;
+};
+
+export type FavoriteWatchHistory = {
+  version: string;
+  rows: FavoriteWatchResultRow[];
+  summary: FavoriteWatchSummary;
+  gamesConsidered: number;
+  excluded: Record<RuleExclusion | "no_close", number>;
+};
+
+function decimalFromAmerican(price: number): number {
+  return price > 0 ? 1 + price / 100 : 1 + 100 / Math.abs(price);
+}
+
+/**
+ * Grade every game whose (opening capture, verified close) satisfied the rule.
+ * Because open and close are both pre-kickoff, this is leak-free and does not
+ * depend on anyone having looked at the live tab. A game that qualified mid-day
+ * but drifted out by the close is NOT counted; the close is the frozen state.
+ */
+export function gradeFavoriteWatch(games: FavoriteWatchHistoryGame[]): FavoriteWatchHistory {
+  const excluded: FavoriteWatchHistory["excluded"] = {
+    no_close: 0, no_opening: 0, no_current: 0, no_anchor_book: 0, favorite_flipped: 0, outside_band: 0, did_not_cheapen: 0,
+  };
+  const rows: FavoriteWatchResultRow[] = [];
+  for (const game of games) {
+    if (!game.closingBooks) { excluded.no_close += 1; continue; }
+    const verdict = evaluateFavoriteWatch(game, game.closingBooks, game.closingCapturedAt);
+    if ("exclusion" in verdict) { excluded[verdict.exclusion] += 1; continue; }
+    const row = verdict.row;
+    const settled = game.completed && game.homeScore != null && game.awayScore != null;
+    let outcome: FavoriteWatchResultRow["outcome"] = "pending";
+    let pnlUnits: number | null = null;
+    if (settled) {
+      const homeWon = (game.homeScore as number) > (game.awayScore as number);
+      const favoriteWon = row.favorite === "home" ? homeWon : !homeWon;
+      outcome = favoriteWon ? "won" : "lost";
+      if (row.bestPrice) pnlUnits = favoriteWon ? decimalFromAmerican(row.bestPrice.price) - 1 : -1;
+    }
+    rows.push({
+      ...row, gameDate: game.gameDate, outcome,
+      score: settled ? `${game.awayScore}-${game.homeScore}` : null,
+      pnlUnits, closeQuality: game.closeQuality,
+    });
+  }
+  rows.sort((a, b) => (Date.parse(b.commenceTime ?? b.gameDate) || 0) - (Date.parse(a.commenceTime ?? a.gameDate) || 0));
+  const settledRows = rows.filter((row) => row.outcome !== "pending");
+  const priced = settledRows.filter((row) => row.pnlUnits != null);
+  const won = settledRows.filter((row) => row.outcome === "won").length;
+  const units = priced.length ? priced.reduce((sum, row) => sum + (row.pnlUnits as number), 0) : null;
+  const dates = rows.map((row) => row.gameDate).sort();
+  return {
+    version: CFB_FAVORITE_WATCH_VERSION, rows, gamesConsidered: games.length, excluded,
+    summary: {
+      qualified: rows.length, settled: settledRows.length, won, lost: settledRows.length - won,
+      pending: rows.length - settledRows.length,
+      winRate: settledRows.length ? won / settledRows.length : null,
+      expectedWinRate: settledRows.length ? settledRows.reduce((sum, row) => sum + row.currentProb, 0) / settledRows.length : null,
+      units, roiPerBet: units != null && priced.length ? units / priced.length : null,
+      firstGameDate: dates[0] ?? null, lastGameDate: dates[dates.length - 1] ?? null,
+    },
+  };
 }
