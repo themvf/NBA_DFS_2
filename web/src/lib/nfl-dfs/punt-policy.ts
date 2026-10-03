@@ -28,11 +28,11 @@ export interface NflPuntPolicy {
   mode: PuntMode;
   /** Players at or below this salary are hard-blocked regardless of evidence. */
   absoluteMinSalary: number;
-  /** Below this salary, fresh role evidence is required to be eligible. */
+  /** At or below this salary, fresh role evidence is required to be eligible. */
   roleEvidenceRequiredBelowSalary: number;
-  /** 0..1. Minimum role confidence required below the evidence threshold. */
+  /** 0..1. Minimum role confidence required at or below the evidence threshold. */
   minimumRoleConfidence: number;
-  /** Minimum projected opportunities required below the evidence threshold; null disables the check. */
+  /** Minimum projected opportunities required at or below the evidence threshold; null disables the check. */
   minimumProjectedOpportunities: number | null;
   /** At most this many salary-relief players may appear in a single lineup. */
   maxSalaryReliefPlayersPerLineup: number;
@@ -48,6 +48,8 @@ export interface NflPlayerRoleEvidence {
   verifiedActive: boolean | null;
   availabilityState: EvidenceState;
   depthRole: string | null;
+  /** Verified inactive receivers with lower chart numbers on this team. */
+  verifiedReceiversOutAhead?: number;
   /** 0..1; null is unknown, NOT zero. */
   roleConfidence: number | null;
   /** Projected opportunities (touches/targets/etc); null is unknown, NOT zero. */
@@ -107,8 +109,8 @@ export function validateNflPuntPolicy(policy: NflPuntPolicy): void {
 
 const REASON_TEXT: Record<PuntReasonCode, string> = {
   ABSOLUTE_SALARY_BLOCK: "Priced at or below the absolute salary block — a punt by price, not a role.",
-  ROLE_UNKNOWN: "Cheap player with unknown role and no fresh evidence — fails closed.",
-  ROLE_UNRESOLVED: "Cheap player whose role confidence is below the required threshold.",
+  ROLE_UNKNOWN: "Cheap player without verified current role evidence — fails closed.",
+  ROLE_UNRESOLVED: "Cheap player without a supported current role.",
   NO_PROJECTED_OPPORTUNITY: "Cheap player with no projected opportunity — salary is not a role.",
   EVIDENCE_STALE: "Role evidence is stale; a cheap player cannot be cleared on stale evidence.",
   INACTIVE: "Player is inactive; the allowlist cannot override inactive status.",
@@ -119,13 +121,13 @@ const REASON_TEXT: Record<PuntReasonCode, string> = {
  * Decide a single player's eligibility under the policy.
  *
  * Precedence (most authoritative first): manual denylist, inactive status,
- * absolute salary block, then — only for players below the evidence threshold —
+ * absolute salary block, then — only for players at or below the evidence threshold —
  * stale evidence, unknown role, insufficient confidence, and missing
  * opportunity. An allowlisted player clears the cheap-player role gate but never
  * clears inactivity; a Captain admission requires an explicit CPT override.
  */
 export function evaluatePuntEligibility(
-  player: { dkPlayerId: number; salary: number; isOut: boolean },
+  player: { dkPlayerId: number; salary: number; isOut: boolean; position?: string },
   evidence: NflPlayerRoleEvidence,
   policy: NflPuntPolicy,
   overrides: PuntOverride[] = [],
@@ -133,8 +135,8 @@ export function evaluatePuntEligibility(
   const id = player.dkPlayerId;
   const deny = new Set(policy.denylistedPlayerIds);
   const allow = new Set(policy.allowlistedPlayerIds);
-  const override = overrides.find((o) => o.playerId === id);
-  const overridden = allow.has(id) || Boolean(override);
+  const override = overrides.find((o) => o.playerId === id && o.reason.trim());
+  const overridden = allow.has(id) && Boolean(override);
 
   const blocked = (reason: PuntReasonCode, extra = ""): PuntEligibility => ({
     playerId: id, eligible: false, reason, detail: `${REASON_TEXT[reason]}${extra ? ` ${extra}` : ""}`,
@@ -145,7 +147,7 @@ export function evaluatePuntEligibility(
   if (player.isOut || evidence.verifiedActive === false) return blocked("INACTIVE");
 
   const absoluteBlock = player.salary <= policy.absoluteMinSalary;
-  const belowEvidenceThreshold = player.salary < policy.roleEvidenceRequiredBelowSalary;
+  const belowEvidenceThreshold = player.salary <= policy.roleEvidenceRequiredBelowSalary;
 
   // The absolute block is a floor: below it there is no legitimate role at all.
   // Only a recorded override may lift it (spec §8.1: reason required).
@@ -154,7 +156,7 @@ export function evaluatePuntEligibility(
   const salaryRelief = belowEvidenceThreshold;
   if (!salaryRelief) return { playerId: id, eligible: true, salaryRelief: false, overridden };
 
-  // Below the evidence threshold. An override clears the ROLE gate (but the
+  // At or below the evidence threshold. An override clears the ROLE gate (but the
   // player is still counted as salary-relief and still cannot be inactive).
   if (overridden) return { playerId: id, eligible: true, salaryRelief: true, overridden: true };
 
@@ -164,11 +166,22 @@ export function evaluatePuntEligibility(
   }
 
   if (evidence.availabilityState === "stale") return blocked("EVIDENCE_STALE");
+  // Historical games show what a receiver once did, not that he has a route
+  // this week. A cheap WR4 needs a current chart promotion, verified absences
+  // ahead that make him effectively WR3, or a recorded manual admission.
+  // This also closes the $3,000 boundary that admitted Horton and Wease.
+  if (player.position === "WR") {
+    if (evidence.availabilityState !== "confirmed" && evidence.availabilityState !== "probable") {
+      return blocked("ROLE_UNKNOWN", "A current receiver role has not been verified.");
+    }
+    const depth = evidence.depthRole?.match(/\bWR\s*(\d+)\b/i);
+    if (!depth) return blocked("ROLE_UNKNOWN", "No current WR1–WR3 role is established; old games do not establish this week's targets.");
+    const effectiveRank = Math.max(1, Number(depth[1]) - (evidence.verifiedReceiversOutAhead ?? 0));
+    if (effectiveRank > 3) return blocked("ROLE_UNRESOLVED", `${evidence.depthRole} remains outside the top three after verified absences ahead.`);
+  }
   // Role confidence is the gate; depthRole is an informational label. Requiring
-  // a non-null label here would block every cheap player on slates whose feed
-  // carries confidence (e.g. derived from the player's own observed games) but
-  // no depth-chart string — confidence without a label is still evidence, a
-  // label without confidence is not.
+  // a depth label for other positions would block players whose observed games
+  // provide weak evidence but whose feed has no position-specific chart label.
   if (evidence.roleConfidence === null) return blocked("ROLE_UNKNOWN");
   if (evidence.roleConfidence < policy.minimumRoleConfidence) {
     return blocked("ROLE_UNRESOLVED", `confidence ${(evidence.roleConfidence * 100).toFixed(0)}% < ${(policy.minimumRoleConfidence * 100).toFixed(0)}%.`);
@@ -185,5 +198,5 @@ export function evaluatePuntEligibility(
 
 /** Whether a recorded override authorizes the player at Captain. Flex-only by default. */
 export function captainAdmissible(playerId: number, overrides: PuntOverride[]): boolean {
-  return overrides.some((o) => o.playerId === playerId && o.slot === "CPT");
+  return overrides.some((o) => o.playerId === playerId && o.slot === "CPT" && Boolean(o.reason.trim()));
 }

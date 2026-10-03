@@ -22,6 +22,28 @@ export const NFL_PROJECTION_SLOTS_UTC: ReadonlyArray<{ days: readonly number[] |
   { days: [0], hour: 19, minute: 5 },
 ];
 
+/**
+ * The next scheduled slot strictly after `now`. Opponent (defensive) captures
+ * are written by the same workflow, so this is also when a slate uploaded
+ * after the previous slot can first get them. Searches eight days ahead,
+ * which always contains a daily slot.
+ */
+export function nextNflProjectionSlot(now: Date): Date {
+  const start = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  let best: number | null = null;
+  for (let d = 0; d <= 8; d++) {
+    const dayStart = start + d * 86_400_000;
+    const weekday = new Date(dayStart).getUTCDay();
+    for (const slot of NFL_PROJECTION_SLOTS_UTC) {
+      if (slot.days !== "daily" && !slot.days.includes(weekday)) continue;
+      const at = dayStart + (slot.hour * 60 + slot.minute) * 60_000;
+      if (at > now.getTime() && (best === null || at < best)) best = at;
+    }
+    if (best !== null) break;
+  }
+  return new Date(best!);
+}
+
 /** True when `now` falls in the same half-hour as a scheduled slot. */
 export function nflProjectionDispatchDue(now: Date): boolean {
   const day = now.getUTCDay();

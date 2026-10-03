@@ -51,6 +51,23 @@ assert.throws(() => optimizeNflLineups(matchupPool, { ...settings, nLineups: 2, 
 assert.throws(() => optimizeNflLineups(pool, { ...settings, gppAirMatchupMinPct: 25 }), /No eligible player has an air-yard matchup tag/);
 assert.throws(() => optimizeNflLineups(matchupPool, { ...settings, mode: "cash", gppAirMatchupMinPct: 25 }), /Classic GPP/);
 assert.throws(() => optimizeNflLineups(matchupPool, { ...settings, gppAirMatchupMinPct: 101 }), /between 0 and 100/);
+const goalLinePool = matchupPool.map(player => player.dkPlayerId === 4 ? { ...player, ourProj: 1, floorFpts: .7, ceilingFpts: 1.4, avgFptsDk: 1,
+  playerSignals: [{ code: "INSIDE_FIVE" as const, label: "Inside-5 work", detail: "Three prior carries inside five.", evidence: { games: 3, carries: 25, carriesInsideFive: 3 } }] } : player);
+assert.ok(!optimizeNflLineups(goalLinePool, settings).lineups[0]?.playerIds.includes(4));
+const goalLineRun = optimizeNflLineups(goalLinePool, { ...settings, nLineups: 4, gppGoalLineMinPct: 25 });
+assert.equal(goalLineRun.lineups.length, 4);
+assert.ok(goalLineRun.lineups.filter(lineup => lineup.playerIds.includes(4)).length >= 1);
+assert.ok(goalLineRun.warnings.some(warning => warning.includes("Goal-line RB coverage") && warning.includes("minimum 1/4 requested")));
+const fullGoalLineRun = optimizeNflLineups(goalLinePool, { ...settings, nLineups: 2, gppGoalLineMinPct: 100 });
+assert.ok(fullGoalLineRun.lineups.every(lineup => lineup.playerIds.includes(4)));
+const bothRun = optimizeNflLineups(goalLinePool, { ...settings, gppAirMatchupMinPct: 100, gppGoalLineMinPct: 100 });
+assert.ok(bothRun.lineups[0]?.playerIds.includes(4) && bothRun.lineups[0]?.playerIds.includes(9));
+assert.equal(bothRun.lineups[0]?.slots.find(slot => slot.player.dkPlayerId === 4)?.projection, 1,
+  "goal-line selection must not increase projected points");
+assert.throws(() => optimizeNflLineups(goalLinePool, { ...settings, nLineups: 2, maxExposure: 0.5, gppGoalLineMinPct: 100 }), /Could not meet the goal-line RB minimum/);
+assert.throws(() => optimizeNflLineups(pool, { ...settings, gppGoalLineMinPct: 25 }), /No eligible RB has an inside-5 work tag/);
+assert.throws(() => optimizeNflLineups(goalLinePool, { ...settings, mode: "cash", gppGoalLineMinPct: 25 }), /Classic GPP/);
+assert.throws(() => optimizeNflLineups(goalLinePool, { ...settings, gppGoalLineMinPct: 101 }), /between 0 and 100/);
 const limited = optimizeNflLineups(pool, { ...settings, nLineups: 2, maxExposure: 0.5,
   gppSignalMinPerLineup: 1 });
 assert.ok(limited.lineups.length < 2);

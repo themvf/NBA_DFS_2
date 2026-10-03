@@ -78,6 +78,7 @@ export function generationSettings(
   return { ...settings, format, lockedPlayerIds: locked, excludedPlayerIds: excluded,
     gppSignalMinPerLineup: format === 'classic' && settings.mode === 'gpp' ? settings.gppSignalMinPerLineup ?? 0 : 0,
     gppAirMatchupMinPct: format === 'classic' && settings.mode === 'gpp' ? settings.gppAirMatchupMinPct ?? 0 : 0,
+    gppGoalLineMinPct: format === 'classic' && settings.mode === 'gpp' ? settings.gppGoalLineMinPct ?? 0 : 0,
     minExposureByPlayer: bounds.min, maxExposureByPlayer: bounds.max,
     ...(policies.length ? { exposurePolicies: policies } : {}) };
 }
@@ -85,6 +86,7 @@ export function generationSettings(
 export function sameGenerationSettings(a: NflOptimizerSettings, b: NflOptimizerSettings): boolean {
   const normalize = (s: NflOptimizerSettings) => ({ ...s, runEvidence:undefined,ownershipDisclosure:undefined,ownershipCapability:undefined,
     gppAirMatchupMinPct:s.gppAirMatchupMinPct??0,
+    gppGoalLineMinPct:s.gppGoalLineMinPct??0,
     lockedPlayerIds: [...s.lockedPlayerIds].sort((a,b) => a-b),
     excludedPlayerIds: [...s.excludedPlayerIds].sort((a,b) => a-b),
   });

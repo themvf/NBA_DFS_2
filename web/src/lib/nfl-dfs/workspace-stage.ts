@@ -39,6 +39,28 @@ export function isLocked(firstKickoff: string | null, now: number): boolean {
 }
 
 /**
+ * Whether opening a slate should move it to the newest projection run on its
+ * own, with no click.
+ *
+ * A saved slate is pinned to the run that was current at upload, so injury and
+ * depth-chart news published later never reached it unless someone pressed
+ * Update data or Refresh projections. Moving is safe only when nothing built
+ * from the pinned run would be hidden: refreshing makes a new upload, and
+ * saved lineups stay attached to the old one. So: a newer run exists, the
+ * slate has not locked, and no lineups have been built from it. Otherwise the
+ * Slate Check keeps asking, as before.
+ */
+export function shouldAdoptNewestProjections(input: {
+  refreshAvailable: boolean;
+  firstKickoff: string | null;
+  now: number;
+  /** Saved lineup runs on this upload (or lineups on screen). */
+  builtLineups: number;
+}): boolean {
+  return input.refreshAvailable && input.builtLineups === 0 && !isLocked(input.firstKickoff, input.now);
+}
+
+/**
  * The step the workspace should open on. Before a slate exists, the Slate
  * step; once its games have started nothing can be built or entered, so
  * Results; otherwise Review when lineups exist, Build when they don't.

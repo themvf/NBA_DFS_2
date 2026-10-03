@@ -48,7 +48,7 @@ export const ROSTER_FRESH_MS = 72 * 3600000;
  * the policy's "stale role evidence fails closed" rule could never fire.
  * Stale means an unpinned roster capture older than ROSTER_FRESH_MS at the
  * evaluation time; a pinned decision that could not resolve is unknown, not
- * stale. The depth label is informational (the policy gates on confidence).
+ * stale. Cheap receivers also need this label to verify their chart position.
  */
 export function rolePolicyEvidence(a: Availability | undefined, evaluatedAt: number): { availabilityState: EvidenceState; depthRole: string | null } {
   if (!a) return { availabilityState: "unknown", depthRole: null };

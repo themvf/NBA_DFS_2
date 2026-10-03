@@ -234,6 +234,24 @@ export default function PlayerExplanationPanel({ uploadId, player, slatePlayers,
               <li key={signal.code}><strong>{signal.label}:</strong> {signal.detail}</li>)}</ul>
             <p className="mt-2 text-xs text-blue-800">These are prior-game usage observations. They do not change this projection or establish low ownership.</p>
           </section> : null}
+          {player.airMatchupEvidence ? <section className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-sky-950">
+            <h3 className="text-sm font-semibold">Air-yard matchup evidence · shadow</h3>
+            {player.airMatchupEvidence.reason ? <p className="mt-1">Unavailable: {player.airMatchupEvidence.reason}</p> : null}
+            <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1">
+              <span>Player targets: {player.airMatchupEvidence.player.targets} in {player.airMatchupEvidence.player.games} games</span>
+              <span>Player air yards: {player.airMatchupEvidence.player.targetAirYards.toFixed(0)}</span>
+              <span>Target share: {pct(player.airMatchupEvidence.player.targetShare)}</span>
+              <span>Air-yard share: {pct(player.airMatchupEvidence.player.airYardShare)}</span>
+              <span>Air yards/target: {fmt(player.airMatchupEvidence.player.airYardsPerTarget)}</span>
+              <span>Opponent allowed: {fmt(player.airMatchupEvidence.defense.airYardsPerTarget)} per target on {player.airMatchupEvidence.defense.targets ?? "—"} targets in {player.airMatchupEvidence.defense.games ?? "—"} games</span>
+              <span>Opponent regressed: {fmt(player.airMatchupEvidence.defense.regressedAirYardsPerTarget)} per target</span>
+              <span>Projected team attempts: {fmt(player.airMatchupEvidence.projectedTeamPassAttempts)}</span>
+              <span>Neutral target air yards: {fmt(player.airMatchupEvidence.neutralTargetAirYards)}</span>
+              <span>Matchup sensitivity: {fmt(player.airMatchupEvidence.matchupTargetAirYards)}</span>
+            </div>
+            <p className="mt-2">Market: {player.airMatchupEvidence.market?.quoteId ? `quote ${player.airMatchupEvidence.market.quoteId} at ${player.airMatchupEvidence.market.capturedAt}; spread ${fmt(player.airMatchupEvidence.market.spread)}, total ${fmt(player.airMatchupEvidence.market.total)}, ML ${player.airMatchupEvidence.market.moneyline ?? "—"}` : "No pre-cutoff quote"}.</p>
+            <p className="mt-1 text-sky-800">The matchup estimate is a bounded sensitivity assumption. It does not change fantasy-point projections or prove tournament leverage.</p>
+          </section> : null}
           {pending && !e && <p className="text-sm text-slate-500">Loading the projection breakdown&hellip;</p>}
 
           {data && !data.ok && (

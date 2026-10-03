@@ -6,6 +6,7 @@ import { restoreSavedLineups, savedSlateLabel } from '@/lib/nfl-dfs/saved-worksp
 import { countNflDkEntryRows, exportNflDkEntries } from '@/lib/nfl-dfs/entry-export';
 import { currentPoolForQa, isDeployedBuild, nflOverlapCap, runNflPreExportQa, savedRunQaEvidence, type QaOverride } from '@/lib/nfl-dfs/pre-export-qa';
 import { buildSlateCheck, withRecordFailure, PROJECTION_STALE_HOURS, type SlateCheck, type SlateCheckInput } from '@/lib/nfl-dfs/slate-check';
+import { nextNflProjectionSlot } from '@/lib/nfl-dfs/projection-cadence';
 import { NFL_PIPELINE_WORKFLOWS, readFailingWorkflows } from '@/lib/workflow-health';
 import { latestSlateChecks, recordSlateCheck, type RecordedSlateCheck } from '@/db/nfl-dfs-slate-checks';
 import { availabilityCoverage } from '@/lib/nfl-dfs/availability-coverage';
@@ -72,8 +73,9 @@ import { NFL_TEAM_NICKNAMES } from "@/lib/nfl-dfs/x-news-teams";
 import { projectOwnershipPrior } from "@/lib/nfl-dfs/ownership-prior";
 import { computeReplacementUpside, REPLACEMENT_UPSIDE_VERSION, type ReplacementUpside, type ReplacementUpsideReport, type UpsidePlayer } from "@/lib/nfl-dfs/replacement-upside";
 import { readLastGamePassingLeaders, readTeamUsageWindows } from "@/db/nfl-dfs-usage-window";
-import { readNflDfsPlayerSignalEvidence, readNflAirDefenseEvidence } from "@/db/nfl-dfs-player-signals";
+import { readNflDfsPlayerSignalEvidence, readNflAirDefenseEvidence, readNflAirTeamEvidence, readNflAirMarketEvidence } from "@/db/nfl-dfs-player-signals";
 import { airMatchupSignals, classifyNflPlayerSignals, NFL_PLAYER_SIGNAL_VERSION, type NflAirDefenseEvidence, type NflPlayerSignalEvidence } from "@/lib/nfl-dfs/player-signals";
+import { buildNflAirMatchupEvidence, type NflAirTeamEvidence, type NflAirMarketEvidence } from "@/lib/nfl-dfs/air-matchup-evidence";
 import { applyConfirmedStartingQbs, confirmStarterAvailability, ruledOutPlayer, sanitizeConfirmedStartingQbs, type ConfirmedStarterReport, type ConfirmedStartingQbs } from "@/lib/nfl-dfs/confirmed-starter";
 
 export type NflWorkspacePlayer = NflOptimizerPlayer & {
@@ -196,7 +198,7 @@ export type NflWorkspaceSlate = {
   /** Starting QBs the user confirmed for this read, and any that could not be applied. */
   confirmedStartingQbs?: ConfirmedStarterReport;
   /** Players each defensive profile would actually adjust on this slate (captures that pass every check). */
-  opponentAdjustments?: { profile: 'pfr-efficiency' | 'allowed-rushing-volume'; label: string; applied: number; eligible: number; error?: string }[];
+  opponentAdjustments?: { profile: 'pfr-efficiency' | 'allowed-rushing-volume'; label: string; applied: number; rbApplied: number; eligible: number; captured: number; error?: string }[];
   /** The Slate Check: every pipeline step's outcome for this slate, in plain words. */
   slateCheck?: SlateCheck;
 };
@@ -459,12 +461,18 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
   const identityMap=new Map(identities.rows.map(r=>[Number(r.id),String(r.gsis_id)]));
   let signalEvidence = new Map<string, NflPlayerSignalEvidence>();
   let airDefenseEvidence = new Map<string, NflAirDefenseEvidence>();
+  let airTeamEvidence = new Map<string, NflAirTeamEvidence>();
+  let airMarketEvidence = new Map<string, NflAirMarketEvidence>();
   let signalWarning: string | null = null;
   if (run?.week && run.asOfAt) {
     try { signalEvidence = await readNflDfsPlayerSignalEvidence(run.season, run.week, run.asOfAt); }
     catch (error) { signalWarning = `Player opportunity chips could not be loaded: ${error instanceof Error ? error.message : String(error)}.`; }
     try { airDefenseEvidence = await readNflAirDefenseEvidence(run.season, run.week, run.asOfAt); }
     catch (error) { signalWarning = `${signalWarning ?? ""} Air-yard matchup defense evidence could not be loaded: ${error instanceof Error ? error.message : String(error)}.`.trim(); }
+    try { airTeamEvidence = await readNflAirTeamEvidence(run.season, run.week, run.asOfAt); }
+    catch (error) { signalWarning = `${signalWarning ?? ""} Team target evidence could not be loaded: ${error instanceof Error ? error.message : String(error)}.`.trim(); }
+    try { airMarketEvidence = await readNflAirMarketEvidence(run.season, run.week, run.asOfAt); }
+    catch (error) { signalWarning = `${signalWarning ?? ""} Pregame market evidence could not be loaded: ${error instanceof Error ? error.message : String(error)}.`.trim(); }
   }
   // Who started each team's last game; the evidence that survives a depth chart
   // that has already moved an injured starter down.
@@ -703,6 +711,25 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
       })(),
     })),
   };
+  if (run?.asOfAt) {
+    const attemptsByTeam = new Map<string, number>();
+    for (const player of workspace.players) {
+      const attempts = player.position === 'QB' && !player.isOut ? Number(player.statMeans?.attempts) : NaN;
+      if (Number.isFinite(attempts) && attempts > 0) {
+        const team = canonicalNflTeam(player.team);
+        attemptsByTeam.set(team, (attemptsByTeam.get(team) ?? 0) + attempts);
+      }
+    }
+    for (const player of workspace.players) {
+      if (player.position !== 'WR' && player.position !== 'TE') continue;
+      const team = canonicalNflTeam(player.team), opponent = player.opponent ? canonicalNflTeam(player.opponent) : null;
+      player.airMatchupEvidence = buildNflAirMatchupEvidence({ asOf: run.asOfAt.toISOString(), opponent,
+        player: signalEvidence.get(identityMap.get(player.ffPlayerId ?? -1) ?? '') ?? null,
+        team: airTeamEvidence.get(team) ?? null, defense: opponent ? airDefenseEvidence.get(opponent) ?? null : null,
+        allDefenses: airDefenseEvidence, projectedTeamPassAttempts: attemptsByTeam.get(team) ?? null,
+        market: airMarketEvidence.get(team) ?? null });
+    }
+  }
   workspace.sourceAvailability = computeSourceAvailability(workspace.players, clock, {
     slateReason: run?.week ? null : 'Load a slate linked to a projection run.',
     volumeShareReason: volumeShare.report ? null : volumeShare.reason, calibratedReason, release: calibratedRelease });
@@ -750,12 +777,16 @@ async function opponentAdjustmentCoverage(slate: NflWorkspaceSlate): Promise<Non
   for (const [profile, label] of [['pfr-efficiency', 'PFR efficiency'], ['allowed-rushing-volume', 'Allowed rushing volume']] as const) {
     try {
       const captures = await readDefensiveCaptures(slate.uploadId, slate.projectionRunId, profile, decisionAt);
-      const applied = eligible.filter((p) => resolveDefensiveForecast(p, slate.projectionRunId!, { mode: 'experimental', profile },
-        captures.get(p.ffPlayerId ?? -1) ?? null).status === 'applied').length;
-      out.push({ profile, label, applied, eligible: eligible.length });
+      const adjusted = eligible.filter((p) => resolveDefensiveForecast(p, slate.projectionRunId!, { mode: 'experimental', profile },
+        captures.get(p.ffPlayerId ?? -1) ?? null).status === 'applied');
+      const applied = adjusted.length;
+      const rbApplied = adjusted.filter((p) => p.position === 'RB').length;
+      // Any capture at all for this upload: zero means none exists yet, not that checks failed.
+      const captured = eligible.filter((p) => captures.has(p.ffPlayerId ?? -1)).length;
+      out.push({ profile, label, applied, rbApplied, eligible: eligible.length, captured });
     } catch (error) {
       // A read failure is not "no captures yet"; the Slate Check says which.
-      out.push({ profile, label, applied: 0, eligible: eligible.length, error: error instanceof Error && error.message ? error.message : 'the capture read failed' });
+      out.push({ profile, label, applied: 0, rbApplied: 0, eligible: eligible.length, captured: 0, error: error instanceof Error && error.message ? error.message : 'the capture read failed' });
     }
   }
   return out;
@@ -808,7 +839,8 @@ function slateCheckFor(slate: NflWorkspaceSlate, context: { incompleteWarning: s
     rosterStaleWarning: context.rosterStaleWarning,
     rosterCapturedAt: context.rosterCapturedAt == null ? null : new Date(context.rosterCapturedAt).toISOString(),
     qbs,
-    opponentAdjustments: (slate.opponentAdjustments ?? []).map(({ label, applied, eligible, error }) => ({ label, applied, eligible, error: error ?? null })),
+    opponentAdjustments: (slate.opponentAdjustments ?? []).map(({ label, applied, eligible, captured, error }) => ({ label, applied, eligible, captured, error: error ?? null })),
+    nextOpponentCapture: nextNflProjectionSlot(new Date()).toISOString(),
     ownership: { source: fromLinestar ? 'linestar' : slate.players.find((p) => p.ownSource)?.ownSource ?? null, errors: ownership.errors,
       coverage: fromLinestar ? { linestar: fromLinestar, estimate: owned.length - fromLinestar, total: owned.length } : null },
     availability: { state: coverage.state, resolved: coverage.resolved, considered: coverage.considered },
@@ -1440,7 +1472,10 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
   if(defensive?.mode && defensive.mode!=='off') {
     await assertSlatePregame(slate);
     const applied=prepared.filter(p=>p.defensiveForecast?.status==='applied').length;
-    result.warnings.push(applied?`${defensive.mode} ${defensive.profile}: ${applied} players adjusted, ${prepared.length-applied} retained baseline.`:`${defensive.mode} ${defensive.profile}: baseline only; no player passed the frozen capture checks.`);
+    // "No capture exists" and "captures failed their checks" are different problems; say which.
+    result.warnings.push(applied?`${defensive.mode} ${defensive.profile}: ${applied} players adjusted, ${prepared.length-applied} retained baseline.`
+      :candidateCaptures.size?`${defensive.mode} ${defensive.profile}: baseline only; captures exist for this upload but no player passed their checks.`
+      :`${defensive.mode} ${defensive.profile}: baseline only; no capture exists for this upload yet (captures run on the projection schedule, only for slates already uploaded).`);
   }
   if(eligible.length!==slate.players.length)result.warnings.push(`${slate.players.length-eligible.length} players excluded: workload optimization requires an unstarted, matching salary game.`);
   if (result.lineups.some(l => l.slots.some(s => s.projectionSource === "calibrated" && Date.parse(s.player.calibrated!.kickoff) <= Date.now()))) throw new Error("A calibrated player's game started during optimization. Refresh the slate before regenerating.");
@@ -1454,6 +1489,7 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
     ourProj: player.ourProj, floor: player.floorFpts, median:player.medianFpts, ceiling: player.ceilingFpts,
     defensiveForecast:player.defensiveForecast??null,
     playerSignals:player.playerSignals??[], playerSignalVersion:NFL_PLAYER_SIGNAL_VERSION,
+    airMatchupEvidence:player.airMatchupEvidence??null,
     projectionScenario: player.projectionScenario, redistributionVersion: slate.redistribution?.version,
     statMeans: player.statMeans,
     dkAvg: player.avgFptsDk, fantasypros: player.fantasyprosProj,

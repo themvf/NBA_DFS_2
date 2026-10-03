@@ -47,11 +47,13 @@ CFB_SPORT_KEY = "americanfootball_ncaaf"
 CFB_BOOKMAKERS = BOOKMAKER_KEYS
 CFB_MARKETS = "h2h,spreads,totals"
 # Reviewed against official athletics identities, not fuzzy name similarity:
-# citadelsports.com, geauxcolonels.com, lionsports.net.
+# citadelsports.com, geauxcolonels.com, lionsports.net,
+# mcneesesports.com/sports/football/schedule/2026.
 REVIEWED_ODDS_ALIASES = {
     "Citadel Bulldogs": "The Citadel",
     "Nicholls State Colonels": "Nicholls",
     "Southeastern Louisiana Lions": "SE Louisiana",
+    "McNeese State Cowboys": "McNeese",
 }
 CHECKPOINTS = (
     ("t_minus_48h", 42 * 60, 48 * 60),

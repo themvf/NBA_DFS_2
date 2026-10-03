@@ -2,9 +2,9 @@ name: Refresh Current CFB Plays and Drives
 
 on:
   schedule:
-    # Sunday catches Saturday games; Friday catches Thursday games.
-    - cron: "17 10 * 8-12 0,5"
-    - cron: "17 10 * 1-2 0,5"
+    # Friday catches Thursday, Saturday freezes the main slate, Sunday grades it.
+    - cron: "17 10 * 8-12 0,5,6"
+    - cron: "17 10 * 1-2 0,5,6"
   workflow_dispatch:
     inputs:
       bootstrap:
@@ -44,6 +44,10 @@ jobs:
           fi
       - name: Freeze research forecasts and validation
         run: python -m research.cfb_forecast_v1 --publish --output artifacts/cfb/forecast-validation.json
+      - name: Freeze possession challenger and validation
+        run: python -m research.cfb_forecast_v2 --publish --output artifacts/cfb/challenger-validation.json
+      - name: Freeze opponent-adjusted play challenger
+        run: python -m research.cfb_forecast_v3 --publish --output artifacts/cfb/opponent-ppa-validation.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -51,4 +55,6 @@ jobs:
           path: |
             artifacts/cfb/play-audits
             artifacts/cfb/forecast-validation.json
+            artifacts/cfb/challenger-validation.json
+            artifacts/cfb/opponent-ppa-validation.json
           if-no-files-found: warn
