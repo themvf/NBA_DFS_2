@@ -1100,21 +1100,31 @@ def scan(db: DatabaseManager, sport: str) -> int:
                      else "NULL::text AS tour, NULL::text AS tournament, NULL::text AS surface")
     tennis_join = ("LEFT JOIN tennis_events te ON te.id=m.canonical_event_id"
                    if sport == "tennis" else "")
+    # Capture and normalization run independently. Choose each game's latest
+    # raw row first, then defer that game if this exact row is not yet typed.
+    # Filtering before DISTINCT ON would silently fall back to an older quote.
+    cfb_normalized = ("WHERE EXISTS (SELECT 1 FROM cfb_engine_captures c "
+                      "WHERE c.history_id=latest.history_id)" if sport == "cfb" else "")
     rows = db.execute(
         f"""
-        SELECT DISTINCT ON (h.matchup_id)
-               h.id AS history_id, h.matchup_id, h.game_date, h.home_team_name, h.away_team_name,
-               h.captured_at, h.capture_key, h.books, m.commence_time, {tennis_fields}
-        FROM game_odds_history h
-        JOIN {matchup_tbl} m ON m.id = h.matchup_id
-        {tennis_join}
-        WHERE h.sport = %s AND h.books IS NOT NULL
-          AND EXISTS (
-            SELECT 1 FROM jsonb_object_keys(h.books) AS source(book_key)
-            WHERE source.book_key <> 'polymarket'
-          )
-          AND m.commence_time > NOW()
-        ORDER BY h.matchup_id, h.captured_at DESC
+        WITH latest AS (
+            SELECT DISTINCT ON (h.matchup_id)
+                   h.id AS history_id, h.matchup_id, h.game_date, h.home_team_name, h.away_team_name,
+                   h.captured_at, h.capture_key, h.books, m.commence_time, {tennis_fields}
+            FROM game_odds_history h
+            JOIN {matchup_tbl} m ON m.id = h.matchup_id
+            {tennis_join}
+            WHERE h.sport = %s AND h.books IS NOT NULL
+              AND EXISTS (
+                SELECT 1 FROM jsonb_object_keys(h.books) AS source(book_key)
+                WHERE source.book_key <> 'polymarket'
+              )
+              AND m.commence_time > NOW()
+            ORDER BY h.matchup_id, h.captured_at DESC, h.id DESC
+        )
+        SELECT * FROM latest
+        {cfb_normalized}
+        ORDER BY matchup_id
         """,
         (sport,),
     )

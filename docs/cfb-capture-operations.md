@@ -14,6 +14,10 @@ and audits may continue while a new T-5m or T-2m capture starts. The capture
 job remains the single paid checkpoint writer. A manual terminal `capture_now`
 normalizes its newly saved history before running the CFB detector funnel.
 Capture success and later analysis success are distinct workflow stages.
+The CFB detector selects each game's latest raw capture first and defers that
+game if that exact capture has not yet been normalized. A new capture landing
+during analysis therefore waits for the next scan; it never causes a detector
+failure or substitutes an older normalized quote for the newest one.
 
 The standalone `/cfb/coverage` page links from the line terminal and lists
 upcoming event mappings, accepted capture times, next checkpoints, and per-market
