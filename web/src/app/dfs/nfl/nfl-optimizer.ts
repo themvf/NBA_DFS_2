@@ -1,5 +1,6 @@
 import "server-only";
 import type { DefensiveForecastBundle, DefensiveSettings } from '@/lib/nfl-dfs/defensive-projection';
+import { captureProfileFor } from '@/lib/nfl-dfs/defensive-display';
 import { assertShowdownLineup, showdownSalary, showdownFlexEligible } from '@/lib/nfl-dfs/showdown-legality';
 import {selectedWorkload,validateWorkloadPositions,WORKLOAD_POSITIONS,type WorkloadPositions} from "@/lib/nfl-dfs/workload-selection";
 import type { WorkloadProjection } from "@/lib/nfl-dfs/workload-projection";
@@ -469,7 +470,7 @@ function projectionFor(player: NflOptimizerPlayer, settings: NflOptimizerSetting
   if (ruledOut(player)) return null;
   if (settings.defensiveAdjustments?.mode !== undefined && settings.defensiveAdjustments.mode !== 'off') {
     const bundle = player.defensiveForecast;
-    if (!bundle || bundle.profile !== settings.defensiveAdjustments.profile || bundle.mode !== settings.defensiveAdjustments.mode)
+    if (!bundle || bundle.profile !== captureProfileFor(settings.defensiveAdjustments.profile, player.position) || bundle.mode !== settings.defensiveAdjustments.mode)
       throw new Error('Defensive forecast bundle does not match optimizer settings.');
     if (bundle.status === 'applied') return bundle.selected.mean > 0
       ? {value:bundle.selected.mean,source:'defensive'}:null;
@@ -612,7 +613,8 @@ function validateSettings(settings: NflOptimizerSettings): void {
   if (settings.defensiveAdjustments?.mode !== undefined && settings.defensiveAdjustments.mode !== 'off') {
     if (settings.projectionSource !== 'our') throw new Error('Defensive adjustments require the historical projection source.');
     if (settings.defensiveAdjustments.mode !== 'experimental' && settings.defensiveAdjustments.mode !== 'approved') throw new Error('Unknown defensive mode.');
-    if (settings.defensiveAdjustments.profile !== 'pfr-efficiency' && settings.defensiveAdjustments.profile !== 'allowed-rushing-volume') throw new Error('Unknown defensive profile.');
+    if (!['pfr-efficiency', 'allowed-rushing-volume', 'gpp-integrated'].includes(settings.defensiveAdjustments.profile)) throw new Error('Unknown defensive profile.');
+    if (settings.defensiveAdjustments.profile === 'gpp-integrated' && settings.defensiveAdjustments.mode !== 'experimental') throw new Error('The integrated profile requires experimental mode.');
   }
   if(settings.projectionSource === "workload")validateWorkloadPositions(settings.workloadPositions);
   if (!["our", "workload", "calibrated", "dk_avg", "fantasypros", "linestar", "custom"].includes(settings.projectionSource)) throw new Error("Unknown projection source.");

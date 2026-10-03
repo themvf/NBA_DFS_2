@@ -1,7 +1,12 @@
-import type { DefensiveForecastBundle, DefensiveSettings, ForecastSummary } from './defensive-projection';
+import type { CaptureProfile, DefensiveForecastBundle, DefensiveProfile, DefensiveSettings, ForecastSummary } from './defensive-projection';
+
+/** One captured distribution per player. RB volume and QB efficiency are never multiplied together. */
+export function captureProfileFor(profile: DefensiveProfile, position: string): CaptureProfile {
+  return profile === 'gpp-integrated' ? position === 'RB' ? 'allowed-rushing-volume' : 'pfr-efficiency' : profile;
+}
 
 export const DEFAULT_DFS_DEFENSIVE_SETTINGS: DefensiveSettings = {
-  mode: 'experimental', profile: 'pfr-efficiency',
+  mode: 'experimental', profile: 'gpp-integrated',
 };
 
 /**
@@ -21,8 +26,9 @@ export function defensiveSettingsFor(
 export function selectedDefensiveForecast(
   bundle: DefensiveForecastBundle | null | undefined,
   settings: DefensiveSettings | null | undefined,
+  position: string,
 ): ForecastSummary | null {
-  return settings?.mode !== 'off' && bundle?.status === 'applied'
-    && bundle.mode === settings?.mode && bundle.profile === settings?.profile
+  return settings != null && settings.mode !== 'off' && bundle?.status === 'applied'
+    && bundle.mode === settings.mode && bundle.profile === captureProfileFor(settings.profile, position)
     ? bundle.selected : null;
 }

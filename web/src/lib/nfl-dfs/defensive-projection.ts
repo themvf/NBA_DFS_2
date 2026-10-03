@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { sameNflTeam } from './availability';
 
 export type DefensiveMode = 'off' | 'experimental' | 'approved';
-export type DefensiveProfile = 'pfr-efficiency' | 'allowed-rushing-volume';
+export type CaptureProfile = 'pfr-efficiency' | 'allowed-rushing-volume';
+export type DefensiveProfile = CaptureProfile | 'gpp-integrated';
 export type DefensiveSettings = { mode: DefensiveMode; profile: DefensiveProfile };
 export type ForecastSummary = {
   mean: number; p10: number; p50: number; p90: number; boom: number;

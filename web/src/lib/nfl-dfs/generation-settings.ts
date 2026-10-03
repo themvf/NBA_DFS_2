@@ -145,7 +145,7 @@ export function formFromSettings<S extends object>(saved: NflOptimizerSettings, 
   // Runs saved before defensive adjustments existed used the historical
   // forecast. Restoring one must not silently inherit today's new-build mode.
   if (source.defensiveAdjustments === undefined && 'defensiveAdjustments' in defaults) {
-    const fallback = (defaults as { defensiveAdjustments: { profile: 'pfr-efficiency' | 'allowed-rushing-volume' } }).defensiveAdjustments;
+    const fallback = (defaults as { defensiveAdjustments: { profile: 'pfr-efficiency' | 'allowed-rushing-volume' | 'gpp-integrated' } }).defensiveAdjustments;
     (settings as Record<string, unknown>).defensiveAdjustments = { mode: 'off', profile: fallback.profile };
   }
   // The form shows what the user ASKED for. When the server could not honour a

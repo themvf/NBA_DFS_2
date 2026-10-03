@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings } from '../src/app/dfs/nfl/nfl-optimizer';
 import { resolveDefensiveForecast, type DefensiveCapture, type DefensivePlayerInput } from '../src/lib/nfl-dfs/defensive-projection';
-import { selectedDefensiveForecast } from '../src/lib/nfl-dfs/defensive-display';
+import { captureProfileFor, selectedDefensiveForecast, DEFAULT_DFS_DEFENSIVE_SETTINGS } from '../src/lib/nfl-dfs/defensive-display';
 import { assertShowdownLineup } from '../src/lib/nfl-dfs/showdown-legality';
 import { exportNflDkEntries } from '../src/lib/nfl-dfs/entry-export';
 
@@ -35,9 +35,23 @@ const adjusted=pool.map(p=>({...p,defensiveForecast:resolveDefensiveForecast(inp
 assert.equal(adjusted[4].defensiveForecast.status,'applied');
 assert.equal(adjusted[4].defensiveForecast.selected.mean,12);
 assert.equal(adjusted[4].defensiveForecast.selected.p90,40);
-assert.equal(selectedDefensiveForecast(adjusted[4].defensiveForecast,defensive)?.p90,40);
-assert.equal(selectedDefensiveForecast(adjusted[4].defensiveForecast,{...defensive,mode:'off'}),null);
-assert.equal(selectedDefensiveForecast(adjusted[4].defensiveForecast,{...defensive,profile:'allowed-rushing-volume'}),null);
+assert.equal(selectedDefensiveForecast(adjusted[4].defensiveForecast,defensive,'RB')?.p90,40);
+assert.equal(selectedDefensiveForecast(adjusted[4].defensiveForecast,{...defensive,mode:'off'},'RB'),null);
+assert.equal(selectedDefensiveForecast(adjusted[4].defensiveForecast,{...defensive,profile:'allowed-rushing-volume'},'RB'),null);
+assert.deepEqual(DEFAULT_DFS_DEFENSIVE_SETTINGS,{mode:'experimental',profile:'gpp-integrated'});
+const integrated=pool.map(p=>{
+  const profile=captureProfileFor('gpp-integrated',p.position);
+  const candidate=p.dkPlayerId===1?capture(p,7,24,.3):p.dkPlayerId===5?capture(p,2,40,.6):null;
+  return {...p,defensiveForecast:resolveDefensiveForecast(input(p),'baseline-1',
+    {mode:'experimental',profile},candidate)};
+});
+assert.equal(integrated[0].defensiveForecast.profile,'pfr-efficiency');
+assert.equal(integrated[4].defensiveForecast.profile,'allowed-rushing-volume');
+assert.equal(selectedDefensiveForecast(integrated[4].defensiveForecast,DEFAULT_DFS_DEFENSIVE_SETTINGS,'RB')?.p90,40);
+assert.equal(selectedDefensiveForecast(integrated[4].defensiveForecast,DEFAULT_DFS_DEFENSIVE_SETTINGS,'QB'),null);
+const integratedRun=optimizeNflLineups(integrated,{...baseSettings,defensiveAdjustments:DEFAULT_DFS_DEFENSIVE_SETTINGS});
+assert.equal(integratedRun.lineups.length,1);
+assert.ok(integratedRun.lineups[0].playerIds.includes(5));
 const on=optimizeNflLineups(adjusted,{...baseSettings,defensiveAdjustments:defensive}).lineups[0];
 assert.ok(on);
 assert.notDeepEqual(on.playerIds,off.playerIds,'adjusted upper tail must affect the selected roster');

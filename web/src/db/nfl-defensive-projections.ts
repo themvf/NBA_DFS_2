@@ -1,11 +1,11 @@
 import 'server-only';
 import { sql } from 'drizzle-orm';
 import { db } from '@/db';
-import type { DefensiveCapture, DefensiveProfile, FrozenDefensiveCandidate } from '@/lib/nfl-dfs/defensive-projection';
+import type { DefensiveCapture, CaptureProfile, FrozenDefensiveCandidate } from '@/lib/nfl-dfs/defensive-projection';
 
 /** One slate manifest is selected before any player rows are read. */
 export async function readDefensiveCaptures(uploadId: string, baselineRunId: string,
-  profile: DefensiveProfile, decisionAt: Date): Promise<Map<number, DefensiveCapture>> {
+  profile: CaptureProfile, decisionAt: Date): Promise<Map<number, DefensiveCapture>> {
   const modelVersion=profile==='pfr-efficiency'?'nfl-matchup-shadow-v1':'nfl-allowed-rushing-volume-v1';
   const run = await db.execute(sql`SELECT run_id,baseline_run_id,as_of_at,created_at,artifact_digest
     FROM nfl_matchup_forecast_runs
