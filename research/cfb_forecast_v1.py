@@ -37,8 +37,16 @@ DEFAULTS = {
     "def_ppa": 0.0,
     "off_drives": 12.0,
     "def_drives": 12.0,
+    "off_ppd": 26.0 / 12.0,
+    "def_ppd": 26.0 / 12.0,
 }
 METRICS = tuple(DEFAULTS)
+FEATURE_GROUPS = {
+    "scoring_history": (0, 1),
+    "play_value": (2, 3),
+    "drives": (4, 5),
+    "home_field": (6,),
+}
 
 
 def load_rows(db: DatabaseManager, season: int):
@@ -124,6 +132,19 @@ def replay_games(games: list[dict], plays: dict, drives: dict) -> list[dict]:
         home_id, away_id = int(game["home_team_id"]), int(game["away_team_id"])
         home = team_profile(history[home_id], season)
         away = team_profile(history[away_id], season)
+        def adjusted(profile: dict, team_id: int, own_metric: str, opponent_metric: str) -> float:
+            prior_games = [entry for entry in history[team_id] if entry["season"] in (season, season - 1)]
+            if not prior_games:
+                return profile[own_metric]
+            baseline = DEFAULTS[opponent_metric]
+            correction = []
+            for entry in prior_games:
+                opponent_id = entry.get("opponent_id")
+                if opponent_id is None:
+                    continue
+                opponent = team_profile(history[opponent_id], entry["season"])
+                correction.append(opponent[opponent_metric] - baseline)
+            return profile[own_metric] - (float(np.mean(correction)) if correction else 0.0)
         if home["current_games"] >= MIN_CURRENT_GAMES and away["current_games"] >= MIN_CURRENT_GAMES:
             rows.append({
                 "id": int(game["id"]), "season": season,
@@ -131,6 +152,12 @@ def replay_games(games: list[dict], plays: dict, drives: dict) -> list[dict]:
                 "home_name": game["home_name"], "away_name": game["away_name"],
                 "home_features": score_features(home, away, home=True),
                 "away_features": score_features(away, home, home=False),
+                "home_v2_features": [adjusted(home, home_id, "off_ppd", "def_ppd"), adjusted(away, away_id, "def_ppd", "off_ppd"), home["off_ppa"], away["def_ppa"], 1.0],
+                "away_v2_features": [adjusted(away, away_id, "off_ppd", "def_ppd"), adjusted(home, home_id, "def_ppd", "off_ppd"), away["off_ppa"], home["def_ppa"], 0.0],
+                "home_expected_drives": (home["off_drives"] + away["def_drives"]) / 2,
+                "away_expected_drives": (away["off_drives"] + home["def_drives"]) / 2,
+                "home_actual_drives": drives.get((int(game["id"]), home_id)),
+                "away_actual_drives": drives.get((int(game["id"]), away_id)),
                 "home_current_games": home["current_games"],
                 "away_current_games": away["current_games"],
                 "home_ppa_plays": home["current_ppa_plays"],
@@ -153,17 +180,23 @@ def replay_games(games: list[dict], plays: dict, drives: dict) -> list[dict]:
         history[home_id].append({
             "season": season, "points_for": float(game["home_score"]),
             "points_against": float(game["away_score"]),
+            "opponent_id": away_id,
             "off_ppa": float(home_play["off_ppa"]),
             "def_ppa": float(away_play["off_ppa"]),
             "off_drives": float(home_drives), "def_drives": float(away_drives),
+            "off_ppd": float(game["home_score"]) / home_drives,
+            "def_ppd": float(game["away_score"]) / away_drives,
             "ppa_plays": int(home_play["ppa_plays"]),
         })
         history[away_id].append({
             "season": season, "points_for": float(game["away_score"]),
             "points_against": float(game["home_score"]),
+            "opponent_id": home_id,
             "off_ppa": float(away_play["off_ppa"]),
             "def_ppa": float(home_play["off_ppa"]),
             "off_drives": float(away_drives), "def_drives": float(home_drives),
+            "off_ppd": float(game["away_score"]) / away_drives,
+            "def_ppd": float(game["home_score"]) / home_drives,
             "ppa_plays": int(away_play["ppa_plays"]),
         })
     return rows
@@ -196,6 +229,28 @@ def predict(row: dict, model, residual_sd: float) -> dict:
         "home_points": home_points, "away_points": away_points,
         "home_margin": margin, "total": home_points + away_points,
         "home_win_probability": win_probability,
+    }
+
+
+def explain_prediction(row: dict, model) -> dict:
+    """Exact linear attribution, centered on the training scoring average."""
+    scaler, ridge = model.steps[0][1], model.steps[1][1]
+    coefficients = ridge.coef_ / scaler.scale_
+    home = np.asarray(row["home_features"], dtype=float)
+    away = np.asarray(row["away_features"], dtype=float)
+    center = scaler.mean_
+    margin = {}
+    total = {}
+    for name, indexes in FEATURE_GROUPS.items():
+        margin[name] = round(float(sum(coefficients[i] * (home[i] - away[i]) for i in indexes)), 4)
+        total[name] = round(float(sum(coefficients[i] * (home[i] + away[i] - 2 * center[i]) for i in indexes)), 4)
+    return {
+        "margin": margin,
+        "total": total,
+        "total_baseline": round(2 * float(ridge.intercept_), 4),
+        "home_features": [round(float(value), 4) for value in home],
+        "away_features": [round(float(value), 4) for value in away],
+        "feature_order": ["points_for", "opponent_points_against", "off_ppa", "opponent_def_ppa", "off_drives", "opponent_def_drives", "home"],
     }
 
 
@@ -288,10 +343,11 @@ def prospective_summary(db: DatabaseManager, season: int) -> dict:
             ORDER BY captured_at DESC, id DESC LIMIT 1
         ) h ON TRUE
         WHERE m.season=%s AND m.completed=TRUE
+          AND r.version=%s
           AND m.home_score IS NOT NULL AND m.away_score IS NOT NULL
           AND r.generated_at<m.commence_time
         ORDER BY f.game_id, r.generated_at DESC, f.id DESC
-        """, (season,))
+        """, (season, VERSION))
     values = defaultdict(list)
     for row in rows:
         actual_margin = float(row["home_score"] - row["away_score"])
@@ -357,6 +413,7 @@ def run(db: DatabaseManager) -> dict:
     )
     prospective = prospective_summary(db, season)
     upcoming = []
+    explanations = {}
     now = datetime.now(timezone.utc)
     for row in rows:
         if row["season"] != season or row["completed"]:
@@ -374,6 +431,7 @@ def run(db: DatabaseManager) -> dict:
             "away_ppa_plays": row["away_ppa_plays"],
             **{k: round(v, 4) for k, v in predict(row, model, residual_sd).items()},
         })
+        explanations[str(row["id"])] = explain_prediction(row, model)
     comparison = forward.get("market_comparison", {})
     prospective_comparison = prospective["market_comparison"]
     metrics = ("margin_error", "total_error", "brier")
@@ -398,6 +456,7 @@ def run(db: DatabaseManager) -> dict:
         "forward": {"season": season, **forward},
         "prospective": {"season": season, **prospective},
         "upcoming": upcoming,
+        "explanations": explanations,
     }
 
 
@@ -456,7 +515,7 @@ def main():
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(report, indent=2), encoding="utf-8")
-    print(json.dumps({k: v for k, v in report.items() if k != "upcoming"}, indent=2))
+    print(json.dumps({k: v for k, v in report.items() if k not in ("upcoming", "explanations")}, indent=2))
     print(json.dumps({
         "upcoming_games": len(report["upcoming"]),
         "ucf_houston": [
