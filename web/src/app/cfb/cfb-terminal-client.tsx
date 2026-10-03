@@ -328,7 +328,7 @@ export default function CfbTerminalClient({ board, initialGameId, observations, 
       </div>
       <span className={styles.navCount}>{board.games.length} SCHEDULED</span>
     </nav>
-    <div className={styles.analyticsLinkBar}><span>FOOTBALL CONTEXT</span><Link href="/cfb/analytics">Open standalone CFB Analytics →</Link>{game && <Link href={`/cfb/analytics/games/${game.matchupId}`}>Analyze {game.awayTeam} at {game.homeTeam} →</Link>}</div>
+    <div className={styles.analyticsLinkBar}><span>FOOTBALL CONTEXT</span><Link href="/cfb/analytics">Open standalone CFB Analytics →</Link><Link href="/cfb/coverage">Line coverage &amp; capture health →</Link>{game && <Link href={`/cfb/analytics/games/${game.matchupId}`}>Analyze {game.awayTeam} at {game.homeTeam} →</Link>}</div>
     {dataFailures.length ? <div className={styles.dataFailure} role="alert">CFB data unavailable: {dataFailures.join(", ")}. Affected sections cannot be trusted until the next successful refresh.</div> : null}
     <MovementIntelligence items={intelligence} selectedKey={`${game?.matchupId}:${marketKey}`} onSelect={(item) => { chooseGame(item.matchupId); chooseMarket(item.market); chooseSide(item.side); }} />
     <CfbEvidenceLoop quote={quote} closeQuality={game?.closeQuality ?? null} backtest={backtest} study={studyStatus} auditUnavailable={auditUnavailable} />

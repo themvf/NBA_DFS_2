@@ -3,9 +3,25 @@
 ## Prospective measurements
 
 The shared `capture_event_closes.yml` worker owns paid captures. It polls every
-five minutes; Vercel can also dispatch the same serialized workflow. Due games
+five minutes; Vercel can also dispatch the same capture workflow. Due games
 are batched into one CFB request for spreads, totals, and moneylines. The CFB
 terminal refresher does not make duplicate paid calls unless explicitly forced.
+
+The workflow now has a serialized `capture` job followed by a separately
+serialized `process` job. The one-minute Vercel due-work check waits only while
+the paid capture job is queued or running; normalization, detection, grading,
+and audits may continue while a new T-5m or T-2m capture starts. The capture
+job remains the single paid checkpoint writer. A manual terminal `capture_now`
+normalizes its newly saved history before running the CFB detector funnel.
+Capture success and later analysis success are distinct workflow stages.
+
+The standalone `/cfb/coverage` page links from the line terminal and lists
+upcoming event mappings, accepted capture times, next checkpoints, and per-market
+book counts, quote freshness at capture, and overlap with the previous capture.
+`research.cfb_line_coverage` runs in the pilot monitor and saves a read-only
+exception list for unmapped games within 24 hours, overdue captures, and current
+schedule checkpoint misses. A rescheduled kickoff's superseded checkpoints are
+excluded. Missing or stale data is never filled with a later quote.
 
 `cfb-dense-v1` adds hourly targets from T-12h through T-7h and 15-minute targets
 through the last six hours. Existing T-48h, T-24h, T-6h, T-90m, T-15m, and T-2m

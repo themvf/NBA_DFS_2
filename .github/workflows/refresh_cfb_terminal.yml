@@ -95,5 +95,10 @@ jobs:
         run: python -m ingest.cfb_schedule --capture-now
       - name: Report CFB data health
         run: python -m ingest.cfb_schedule --health
+      # Manual paid captures create history rows that the detector funnel reads
+      # by normalized capture ID. The closing-lines worker already does this;
+      # keep the independent terminal path in the same order.
+      - name: Normalize stored CFB captures
+        run: python -m ingest.cfb_context_bootstrap --origin-mode auto --apply
       - name: Detect and settle CFB market signals
         run: python -m model.line_alerts --sport cfb

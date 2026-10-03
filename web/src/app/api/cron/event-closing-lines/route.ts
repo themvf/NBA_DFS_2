@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { withHeartbeat } from "@/lib/cron-heartbeat";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
+import { captureStageBlocksDispatch } from "@/lib/event-close-capture-state";
 
 const GITHUB_OWNER = "themvf";
 const GITHUB_REPO = "NBA_DFS_2";
@@ -119,9 +120,22 @@ async function handle(request: NextRequest) {
       },
     );
     if (runsResponse.ok) {
-      const runs = (await runsResponse.json()) as { workflow_runs?: Array<{ status?: string }> };
-      if ((runs.workflow_runs ?? []).some((run) => run.status === "queued" || run.status === "in_progress")) {
-        return NextResponse.json({ ok: true, dispatched: false, reason: "workflow_already_active" });
+      const runs = (await runsResponse.json()) as { workflow_runs?: Array<{ id: number; status?: string }> };
+      for (const run of runs.workflow_runs ?? []) {
+        if (run.status !== "queued" && run.status !== "in_progress") continue;
+        const jobsResponse = await fetch(
+          `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/runs/${run.id}/jobs?per_page=20`,
+          { headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${token}`,
+            "X-GitHub-Api-Version": "2022-11-28" }, cache: "no-store" },
+        );
+        // An unknown capture state must not start a second paid attempt.
+        if (!jobsResponse.ok) {
+          return NextResponse.json({ ok: false, error: "Capture job status unavailable" }, { status: 502 });
+        }
+        const jobs = (await jobsResponse.json()) as { jobs?: Array<{ name: string; status: string }> };
+        if (captureStageBlocksDispatch(jobs.jobs ?? [])) {
+          return NextResponse.json({ ok: true, dispatched: false, reason: "capture_already_active" });
+        }
       }
     }
     const response = await fetch(
