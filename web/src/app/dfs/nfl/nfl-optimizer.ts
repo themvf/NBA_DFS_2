@@ -52,6 +52,7 @@ import {
 } from '@/lib/nfl-dfs/salary-duplication';
 import { nflOverlapCap } from '@/lib/nfl-dfs/pre-export-qa';
 import { isNflGppSignalPlayer, type NflPlayerSignal, type NflPlayerSignalCode } from '@/lib/nfl-dfs/player-signals';
+import type { NflAirMatchupEvidence } from '@/lib/nfl-dfs/air-matchup-evidence';
 
 // Record the strict Showdown purchase and completed-roster validation.
 // v8: DK-average fallback honoured in defensive mode; a lock or exposure
@@ -64,6 +65,7 @@ export type NflSlateFormat = "classic" | "showdown";
 
 export type NflOptimizerPlayer = {
   playerSignals?: NflPlayerSignal[];
+  airMatchupEvidence?: NflAirMatchupEvidence | null;
   id: number;
   dkPlayerId: number;
   captainDkPlayerId: number | null;

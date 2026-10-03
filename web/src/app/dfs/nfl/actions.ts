@@ -72,8 +72,9 @@ import { NFL_TEAM_NICKNAMES } from "@/lib/nfl-dfs/x-news-teams";
 import { projectOwnershipPrior } from "@/lib/nfl-dfs/ownership-prior";
 import { computeReplacementUpside, REPLACEMENT_UPSIDE_VERSION, type ReplacementUpside, type ReplacementUpsideReport, type UpsidePlayer } from "@/lib/nfl-dfs/replacement-upside";
 import { readLastGamePassingLeaders, readTeamUsageWindows } from "@/db/nfl-dfs-usage-window";
-import { readNflDfsPlayerSignalEvidence, readNflAirDefenseEvidence } from "@/db/nfl-dfs-player-signals";
+import { readNflDfsPlayerSignalEvidence, readNflAirDefenseEvidence, readNflAirTeamEvidence, readNflAirMarketEvidence } from "@/db/nfl-dfs-player-signals";
 import { airMatchupSignals, classifyNflPlayerSignals, NFL_PLAYER_SIGNAL_VERSION, type NflAirDefenseEvidence, type NflPlayerSignalEvidence } from "@/lib/nfl-dfs/player-signals";
+import { buildNflAirMatchupEvidence, type NflAirTeamEvidence, type NflAirMarketEvidence } from "@/lib/nfl-dfs/air-matchup-evidence";
 import { applyConfirmedStartingQbs, confirmStarterAvailability, ruledOutPlayer, sanitizeConfirmedStartingQbs, type ConfirmedStarterReport, type ConfirmedStartingQbs } from "@/lib/nfl-dfs/confirmed-starter";
 
 export type NflWorkspacePlayer = NflOptimizerPlayer & {
@@ -459,12 +460,18 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
   const identityMap=new Map(identities.rows.map(r=>[Number(r.id),String(r.gsis_id)]));
   let signalEvidence = new Map<string, NflPlayerSignalEvidence>();
   let airDefenseEvidence = new Map<string, NflAirDefenseEvidence>();
+  let airTeamEvidence = new Map<string, NflAirTeamEvidence>();
+  let airMarketEvidence = new Map<string, NflAirMarketEvidence>();
   let signalWarning: string | null = null;
   if (run?.week && run.asOfAt) {
     try { signalEvidence = await readNflDfsPlayerSignalEvidence(run.season, run.week, run.asOfAt); }
     catch (error) { signalWarning = `Player opportunity chips could not be loaded: ${error instanceof Error ? error.message : String(error)}.`; }
     try { airDefenseEvidence = await readNflAirDefenseEvidence(run.season, run.week, run.asOfAt); }
     catch (error) { signalWarning = `${signalWarning ?? ""} Air-yard matchup defense evidence could not be loaded: ${error instanceof Error ? error.message : String(error)}.`.trim(); }
+    try { airTeamEvidence = await readNflAirTeamEvidence(run.season, run.week, run.asOfAt); }
+    catch (error) { signalWarning = `${signalWarning ?? ""} Team target evidence could not be loaded: ${error instanceof Error ? error.message : String(error)}.`.trim(); }
+    try { airMarketEvidence = await readNflAirMarketEvidence(run.season, run.week, run.asOfAt); }
+    catch (error) { signalWarning = `${signalWarning ?? ""} Pregame market evidence could not be loaded: ${error instanceof Error ? error.message : String(error)}.`.trim(); }
   }
   // Who started each team's last game; the evidence that survives a depth chart
   // that has already moved an injured starter down.
@@ -703,6 +710,25 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
       })(),
     })),
   };
+  if (run?.asOfAt) {
+    const attemptsByTeam = new Map<string, number>();
+    for (const player of workspace.players) {
+      const attempts = player.position === 'QB' && !player.isOut ? Number(player.statMeans?.attempts) : NaN;
+      if (Number.isFinite(attempts) && attempts > 0) {
+        const team = canonicalNflTeam(player.team);
+        attemptsByTeam.set(team, (attemptsByTeam.get(team) ?? 0) + attempts);
+      }
+    }
+    for (const player of workspace.players) {
+      if (player.position !== 'WR' && player.position !== 'TE') continue;
+      const team = canonicalNflTeam(player.team), opponent = player.opponent ? canonicalNflTeam(player.opponent) : null;
+      player.airMatchupEvidence = buildNflAirMatchupEvidence({ asOf: run.asOfAt.toISOString(), opponent,
+        player: signalEvidence.get(identityMap.get(player.ffPlayerId ?? -1) ?? '') ?? null,
+        team: airTeamEvidence.get(team) ?? null, defense: opponent ? airDefenseEvidence.get(opponent) ?? null : null,
+        allDefenses: airDefenseEvidence, projectedTeamPassAttempts: attemptsByTeam.get(team) ?? null,
+        market: airMarketEvidence.get(team) ?? null });
+    }
+  }
   workspace.sourceAvailability = computeSourceAvailability(workspace.players, clock, {
     slateReason: run?.week ? null : 'Load a slate linked to a projection run.',
     volumeShareReason: volumeShare.report ? null : volumeShare.reason, calibratedReason, release: calibratedRelease });
@@ -1454,6 +1480,7 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
     ourProj: player.ourProj, floor: player.floorFpts, median:player.medianFpts, ceiling: player.ceilingFpts,
     defensiveForecast:player.defensiveForecast??null,
     playerSignals:player.playerSignals??[], playerSignalVersion:NFL_PLAYER_SIGNAL_VERSION,
+    airMatchupEvidence:player.airMatchupEvidence??null,
     projectionScenario: player.projectionScenario, redistributionVersion: slate.redistribution?.version,
     statMeans: player.statMeans,
     dkAvg: player.avgFptsDk, fantasypros: player.fantasyprosProj,

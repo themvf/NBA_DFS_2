@@ -1,0 +1,21 @@
+import assert from 'node:assert/strict';
+import { buildNflAirMatchupEvidence } from '../src/lib/nfl-dfs/air-matchup-evidence';
+import { simulateAirMatchupOpportunity } from '../src/lib/nfl-dfs/air-matchup-shadow-sim';
+import type { NflPlayerSignalEvidence } from '../src/lib/nfl-dfs/player-signals';
+
+const player:NflPlayerSignalEvidence={games:3,targets:30,catches:18,targetAirYards:360,caughtAirYards:180,deepTargets:6,yardsAfterCatch:80,expectedYac:70,carries:0,carriesInsideFive:0,targetsInsideTen:2};
+const defenses=new Map(Array.from({length:32},(_,i)=>[i===0?'BUF':`T${i}`,{games:3,targets:100,targetAirYards:i===0?1300:1000}] as const));
+const evidence=buildNflAirMatchupEvidence({asOf:'2026-10-01T00:00:00Z',opponent:'BUF',player,team:{games:3,targets:100,targetAirYards:1000},defense:defenses.get('BUF')!,allDefenses:defenses,projectedTeamPassAttempts:40,market:null});
+assert.equal(evidence.state,'ready');
+assert.equal(evidence.player.targetShare,.3);
+assert.equal(evidence.neutralTargetAirYards,144);
+assert.ok(evidence.matchupFactor!>1);
+assert.ok(evidence.matchupFactor!<=1.2);
+const mismatched=buildNflAirMatchupEvidence({asOf:'2026-10-01T00:00:00Z',opponent:'BUF',player,team:{games:3,targets:100,targetAirYards:1000},defense:defenses.get('BUF')!,allDefenses:defenses,projectedTeamPassAttempts:40,market:{gameId:'game',opponent:'MIA',kickoff:null,quoteId:1,capturedAt:'2026-09-30T00:00:00Z',spread:1,total:45,moneyline:120}});
+assert.equal(mismatched.market,null);
+const one=simulateAirMatchupOpportunity(evidence,1337,1000);
+assert.deepEqual(one,simulateAirMatchupOpportunity(evidence,1337,1000));
+assert.ok(one.neutral.matchup.mean>one.neutral.neutral.mean);
+assert.ok(one.trailing.neutral.mean>one.leading.neutral.mean);
+assert.equal(buildNflAirMatchupEvidence({...{asOf:'2026-10-01T00:00:00Z',opponent:'BUF',player,team:{games:3,targets:100,targetAirYards:1000},defense:defenses.get('BUF')!,allDefenses:defenses,projectedTeamPassAttempts:null,market:null}}).state,'unavailable');
+console.log('Air matchup evidence and paired shadow scenario tests passed.');

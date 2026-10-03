@@ -99,6 +99,10 @@ Keep the new feature and scenario settings optional and versioned in saved runs.
 
 The first October 4, 2026 report may describe Weeks 1–3 observations and generate shadow lineups. One slate cannot establish a profitable adjustment or a universal bring-back rule.
 
+### Initial matchup evidence and sensitivity check
+
+The first implementation exposes a versioned, player-level shadow record: player and team target/air-yard denominators, prior-game counts, opponent raw and regressed air yards per target, projected team pass attempts, neutral and matchup target-air-yard opportunity, and the selected as-of market quote. The saved optimizer input snapshot retains it. A deterministic paired simulation varies team attempts by an assumed 15% dispersion, allocates player targets binomially, and varies target depth with an assumed lognormal dispersion. It compares the same draws under neutral and bounded opponent-depth factors for leading/neutral/trailing attempt budgets (0.9/1.0/1.1). These assumptions are diagnostic; no fantasy points, lineup score, ownership, ROI, or full game dependence are inferred. The scenario is not the coherent joint-bank Step 2 arm and does not change production projections or optimizer rankings.
+
 ## Current opt-in bridge
 
 Classic GPP generation has an experimental air-yard matchup chip and an optional minimum lineup percentage. The percentage rounds up to a lineup count: 25% of 20 lineups requires at least five lineups with a qualifying player. Additional qualifying lineups are allowed when selected naturally. A 100% preset retains the previous every-lineup behavior. The realized count appears in lineup review, and the saved run records the requested percentage and frozen chips. This construction rule does not promote a point adjustment or complete the coherent-scenario and walk-forward gates above.
