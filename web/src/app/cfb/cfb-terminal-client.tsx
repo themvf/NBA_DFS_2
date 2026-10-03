@@ -14,12 +14,14 @@ import { buildMovementInsights, cfbIntelligenceEvents } from "@/lib/movement-int
 import SportsbookHistory from "@/components/sportsbook-history";
 import styles from "./cfb-terminal.module.css";
 import { movementKind, movementSeries, movementSignals } from "@/lib/cfb-movement";
+import { CFB_FAVORITE_WATCH_VERSION, FAVORITE_WATCH_MAX_PROB, FAVORITE_WATCH_MIN_BOOKS, FAVORITE_WATCH_MIN_DROP_PP, FAVORITE_WATCH_MIN_PROB, buildFavoriteWatch, type FavoriteWatchResult } from "@/lib/cfb-favorite-watch";
 
 type MarketKey = "spread" | "total" | "moneyline";
 type SelectionSide = "home" | "away" | "over" | "under";
 type HistoryPoint = { capturedAt: string; time: string; values: Record<string, number> };
 type BookRow = { key: string; book: string; line: string; price: string; side: SelectionSide; updatedAt: string | null; fresh: boolean };
 type MarketView = { label: string; current: string; open: string; close: string; move: string; closeMove: string; axisLabel: string; series: string[]; history: HistoryPoint[]; books: BookRow[]; selectedLineBookCount: number; marketBookCount: number };
+type TerminalView = "terminal" | "favorites";
 type PaperPosition = { id: string; game: string; market: string; book: string; entry: string; observedAt: string };
 
 const MARKET_LABELS: Record<MarketKey, string> = { spread: "SPREAD", total: "TOTAL", moneyline: "MONEYLINE" };
@@ -275,14 +277,42 @@ function WatchGame({ item, signals, active, nowMs, onChoose }: { item: CfbTermin
   </button>;
 }
 
-export default function CfbTerminalClient({ board, initialGameId, observations, signals, backtest, research, scorecard, captureHealth, studyStatus, dataFailures }: { board: CfbTerminalBoard; initialGameId?: number; observations?: LineAlertRow[]; signals: LineAlertRow[]; backtest: CfbSignalBacktestRow[]; research: CfbResearchBoard; scorecard: MarketSignalScorecardRow[]; captureHealth: MarketCaptureHealth | null; studyStatus: CfbStudyStatus | null; dataFailures: string[] }) {
+function FavoriteWatchPanel({ watch, gameDate, asOf, boardStatusDetail, scheduled, onOpenGame }: { watch: FavoriteWatchResult; gameDate: string; asOf: string; boardStatusDetail: string; scheduled: number; onOpenGame: (id: number) => void }) {
+  const exclusionLabels: Record<string, string> = { completed: "final", kicked_off: "kicked off", no_opening: "no opening capture", no_current: "no current capture", too_few_books: `fewer than ${FAVORITE_WATCH_MIN_BOOKS} books`, favorite_flipped: "favorite flipped", outside_band: "favorite outside 51-80%", did_not_cheapen: `favorite did not cheapen ${FAVORITE_WATCH_MIN_DROP_PP}pp` };
+  const excludedText = Object.entries(watch.excluded).filter(([, n]) => n > 0).map(([key, n]) => `${n} ${exclusionLabels[key] ?? key}`).join(", ") || "none";
+  return <section className={styles.favoritePane} aria-label="CFB favorite watch">
+    <div className={styles.sectionTitle}><span>FAVORITE WATCH · UPCOMING ONLY</span><span>{CFB_FAVORITE_WATCH_VERSION.toUpperCase()} · DESCRIPTIVE · NO EDGE CLAIM</span></div>
+    <p className={styles.favoriteRule}>Upcoming games on {gameDate} where the current moneyline favorite is priced {Math.round(FAVORITE_WATCH_MIN_PROB * 100)}-{Math.round(FAVORITE_WATCH_MAX_PROB * 100)}% (no-vig lower-median consensus across the selected sportsbooks) and that probability has fallen at least {FAVORITE_WATCH_MIN_DROP_PP} points since the opening capture: the market walked toward the underdog and the favorite got cheaper. Both captures need at least {FAVORITE_WATCH_MIN_BOOKS} two-sided books. A game drops off at kickoff.</p>
+    <p className={styles.favoriteContext}>Why this list exists: across 262 completed 2026 FBS games with a verified close, favorites beat their closing price in every band (+4.8% ROI at close), and the 35 favorites whose probability fell 2+ points went 27-8 against a 65.8% expectation. That is one partial season and a 2.6-SD pattern of the kind that regresses. The thresholds are frozen so this list can be graded forward, not tuned. Nothing here is a recommendation.</p>
+    {!watch.rows.length ? <div className={styles.empty}>{scheduled ? `No upcoming game on this date meets the filter. Excluded: ${excludedText}.` : boardStatusDetail}</div>
+      : <div className={styles.favoriteTableWrap}><table><thead><tr><th>Kick (ET)</th><th>Game</th><th>Favorite</th><th>Open</th><th>Now</th><th>Drop</th><th>Pinnacle now</th><th>Best price now</th><th>Books</th><th>Captured</th><th></th></tr></thead><tbody>
+        {watch.rows.map((row) => <tr key={row.matchupId}>
+          <td>{row.commenceTime ? fmtEt(row.commenceTime, true) : "TBD"}</td>
+          <td>{row.awayTeam} @ {row.homeTeam}{row.network ? <em> · {row.network}</em> : null}</td>
+          <td><strong>{row.favoriteTeam}</strong><em> vs {row.underdogTeam}</em></td>
+          <td>{pct(row.openProb)}</td>
+          <td>{pct(row.currentProb)}</td>
+          <td className={styles.negative}>-{row.dropPp.toFixed(1)}pp</td>
+          <td>{pct(row.pinnacleProb)}</td>
+          <td>{row.bestPrice ? `${american(row.bestPrice.price)} ${row.bestPrice.book}` : "—"}</td>
+          <td>{row.openBooks} → {row.currentBooks}</td>
+          <td>{row.openingCapturedAt ? fmtEt(row.openingCapturedAt) : "—"} → {row.latestCapturedAt ? fmtEt(row.latestCapturedAt, true) : "—"}</td>
+          <td><button type="button" className={styles.favoriteOpen} onClick={() => onOpenGame(row.matchupId)}>Open in terminal</button></td>
+        </tr>)}
+      </tbody></table></div>}
+    <p className={styles.researchDisclosure}>{watch.rows.length} of {scheduled} scheduled games qualify as of {fmtEt(asOf)}. Excluded: {excludedText}. Open and Now are favorite win probabilities with the vig removed; Best price is the highest favorite moneyline among the selected sportsbooks at the latest capture and may already be gone.</p>
+  </section>;
+}
+
+export default function CfbTerminalClient({ board, initialGameId, initialView = "terminal", observations, signals, backtest, research, scorecard, captureHealth, studyStatus, dataFailures }: { board: CfbTerminalBoard; initialGameId?: number; initialView?: TerminalView; observations?: LineAlertRow[]; signals: LineAlertRow[]; backtest: CfbSignalBacktestRow[]; research: CfbResearchBoard; scorecard: MarketSignalScorecardRow[]; captureHealth: MarketCaptureHealth | null; studyStatus: CfbStudyStatus | null; dataFailures: string[] }) {
   const router = useRouter();
-  function goToDate(next: string) { if (next) router.push(`/cfb?date=${next}`); }
+  function goToDate(next: string) { if (next) router.push(`/cfb?date=${next}${view === "favorites" ? "&view=favorites" : ""}`); }
   function shiftDate(delta: number) {
     const next = new Date(`${board.gameDate}T12:00:00Z`);
     next.setUTCDate(next.getUTCDate() + delta);
     goToDate(next.toISOString().slice(0, 10));
   }
+  const [view, setView] = useState<TerminalView>(initialView);
   const [gameId, setGameId] = useState(board.games.find((item) => item.matchupId === initialGameId)?.matchupId ?? board.games[0]?.matchupId ?? 0);
   const [marketKey, setMarketKey] = useState<MarketKey>("spread");
   const [side, setSide] = useState<SelectionSide>("home");
@@ -314,6 +344,8 @@ export default function CfbTerminalClient({ board, initialGameId, observations, 
     setPositions((current) => [{ id: `${game.matchupId}-${marketKey}-${quote.key}-${Date.now()}`, game: `${game.awayTeam} @ ${game.homeTeam}`, market: `${MARKET_LABELS[marketKey]} · ${quote.side.toUpperCase()}`, book: quote.book, entry: `${quote.line} ${quote.price}`, observedAt: quote.updatedAt ?? board.asOf }, ...current]);
     setLockMessage(`Recorded paper position at ${quote.book}; this did not place a wager.`);
   }
+  const favoriteWatch = useMemo(() => buildFavoriteWatch(board.games, Math.max(observedNow, Date.parse(board.asOf))), [board.games, board.asOf, observedNow]);
+  function chooseView(next: TerminalView) { setView(next); const params = new URLSearchParams({ date: board.gameDate }); if (next === "favorites") params.set("view", "favorites"); window.history.replaceState(null, "", `/cfb?${params.toString()}`); }
   const statusLabel = board.status.toUpperCase();
   const auditUnavailable = dataFailures.includes("prospective signal audit");
   const sideOptions: SelectionSide[] = marketKey === "total" ? ["over", "under"] : ["home", "away"];
@@ -328,6 +360,11 @@ export default function CfbTerminalClient({ board, initialGameId, observations, 
       </div>
       <span className={styles.navCount}>{board.games.length} SCHEDULED</span>
     </nav>
+    <div className={styles.viewTabs} role="tablist" aria-label="CFB terminal view">
+      <button type="button" role="tab" aria-selected={view === "terminal"} data-active={view === "terminal"} onClick={() => chooseView("terminal")}>LINE TERMINAL</button>
+      <button type="button" role="tab" aria-selected={view === "favorites"} data-active={view === "favorites"} onClick={() => chooseView("favorites")}>FAVORITE WATCH{favoriteWatch.rows.length ? ` (${favoriteWatch.rows.length})` : ""}</button>
+    </div>
+    {view === "favorites" ? <FavoriteWatchPanel watch={favoriteWatch} gameDate={board.gameDate} asOf={board.asOf} boardStatusDetail={board.statusDetail} scheduled={board.games.length} onOpenGame={(id) => { chooseGame(id); chooseMarket("moneyline"); chooseView("terminal"); }} /> : <>
     <div className={styles.analyticsLinkBar}><span>FOOTBALL CONTEXT</span><Link href="/cfb/analytics">Open standalone CFB Analytics →</Link>{game && <Link href={`/cfb/analytics/games/${game.matchupId}`}>Analyze {game.awayTeam} at {game.homeTeam} →</Link>}</div>
     {dataFailures.length ? <div className={styles.dataFailure} role="alert">CFB data unavailable: {dataFailures.join(", ")}. Affected sections cannot be trusted until the next successful refresh.</div> : null}
     <MovementIntelligence items={intelligence} selectedKey={`${game?.matchupId}:${marketKey}`} onSelect={(item) => { chooseGame(item.matchupId); chooseMarket(item.market); chooseSide(item.side); }} />
@@ -353,5 +390,6 @@ export default function CfbTerminalClient({ board, initialGameId, observations, 
     </div>
     <MarketSignalScorecard rows={scorecard} sport="CFB" />
     <footer className={styles.ticker}><span><strong>STATUS</strong> {board.statusDetail}</span><span><strong>BOARD</strong> {board.games.length} GAMES</span><span><strong>QUARANTINE</strong> {board.unmappedEvents} UNMAPPED EVENTS</span><span><strong>CONSENSUS</strong> LOWER MEDIAN · EXACT-LINE PRICE SUPPORT</span><span><strong>PAPER</strong> FIVE-MINUTE FRESHNESS REQUIRED</span></footer>
+  </>}
   </div>;
 }

@@ -1277,3 +1277,19 @@
 .analyticsLinkBar span{font-size:10px;font-weight:800;letter-spacing:.12em}
 .analyticsLinkBar a{color:#d6f7ad;text-decoration:none;font-weight:700}
 .analyticsLinkBar a:hover{text-decoration:underline}
+
+.viewTabs { display: flex; gap: 2px; padding: 8px 18px 0; border-bottom: 1px solid var(--terminal-line); background: var(--terminal-panel); }
+.viewTabs button { cursor: pointer; border: 1px solid var(--terminal-line); border-bottom: none; background: #101514; padding: 7px 14px; color: var(--terminal-muted); font-size: 11px; font-weight: 700; letter-spacing: .08em; }
+.viewTabs button:hover { color: var(--terminal-text); }
+.viewTabs button[data-active="true"] { border-color: var(--terminal-orange); background: var(--terminal-orange); color: #101313; font-weight: 800; }
+.favoritePane { padding: 0 0 12px; border-bottom: 1px solid var(--terminal-line); }
+.favoriteRule, .favoriteContext { margin: 0; padding: 8px 18px 0; font-size: 11px; line-height: 1.55; color: var(--terminal-text); max-width: 1100px; }
+.favoriteContext { color: var(--terminal-muted); }
+.favoriteTableWrap { overflow-x: auto; padding: 10px 18px 0; }
+.favoriteTableWrap table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.favoriteTableWrap th { text-align: left; padding: 6px 8px; color: var(--terminal-muted); border-bottom: 1px solid var(--terminal-line); font-size: 10px; letter-spacing: .08em; white-space: nowrap; }
+.favoriteTableWrap td { padding: 7px 8px; border-bottom: 1px solid var(--terminal-line-soft); white-space: nowrap; vertical-align: top; }
+.favoriteTableWrap td em { color: var(--terminal-muted); font-style: normal; }
+.favoriteTableWrap td strong { color: var(--terminal-orange); }
+.favoriteOpen { cursor: pointer; border: 1px solid var(--terminal-line); background: #101514; color: var(--terminal-text); padding: 3px 8px; font-size: 10px; }
+.favoriteOpen:hover { border-color: var(--terminal-orange); }

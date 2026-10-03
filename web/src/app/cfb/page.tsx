@@ -12,9 +12,10 @@ export const metadata: Metadata = {
 export default async function CfbPage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string; game?: string }>;
+  searchParams: Promise<{ date?: string; game?: string; view?: string }>;
 }) {
-  const { date, game } = await searchParams;
+  const { date, game, view } = await searchParams;
+  const initialView = view === "favorites" ? "favorites" : "terminal";
   const requestedGameId = Number(game);
   const initialGameId = Number.isSafeInteger(requestedGameId) && requestedGameId > 0 ? requestedGameId : undefined;
   let board: CfbTerminalBoard;
@@ -69,5 +70,5 @@ export default async function CfbPage({
   } catch (error) {
     failed("study status", error);
   }
-  return <CfbTerminalClient board={board} initialGameId={initialGameId} observations={observations} signals={signals} backtest={backtest} research={research} scorecard={scorecard} captureHealth={captureHealth} studyStatus={studyStatus} dataFailures={dataFailures} />;
+  return <CfbTerminalClient board={board} initialGameId={initialGameId} initialView={initialView} observations={observations} signals={signals} backtest={backtest} research={research} scorecard={scorecard} captureHealth={captureHealth} studyStatus={studyStatus} dataFailures={dataFailures} />;
 }
