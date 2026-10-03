@@ -690,6 +690,34 @@ TABLES = [
     """,
 
     """
+    CREATE TABLE IF NOT EXISTS cfb_forecast_runs (
+        id BIGSERIAL PRIMARY KEY,
+        version TEXT NOT NULL,
+        generated_at TIMESTAMPTZ NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('RESEARCH_ONLY', 'BENCHMARK_PASSED')),
+        report_json JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS cfb_game_forecasts (
+        id BIGSERIAL PRIMARY KEY,
+        run_id BIGINT NOT NULL REFERENCES cfb_forecast_runs(id) ON DELETE CASCADE,
+        game_id INTEGER NOT NULL REFERENCES cfb_matchups(id) ON DELETE CASCADE,
+        kickoff TIMESTAMPTZ NOT NULL,
+        home_points DOUBLE PRECISION NOT NULL,
+        away_points DOUBLE PRECISION NOT NULL,
+        home_win_probability DOUBLE PRECISION NOT NULL,
+        home_current_games INTEGER NOT NULL,
+        away_current_games INTEGER NOT NULL,
+        home_ppa_plays INTEGER NOT NULL,
+        away_ppa_plays INTEGER NOT NULL,
+        UNIQUE (run_id, game_id)
+    )
+    """,
+
+    """
     CREATE TABLE IF NOT EXISTS cfb_hypotheses (
         id BIGSERIAL PRIMARY KEY,
         hypothesis_key TEXT NOT NULL,
@@ -5391,6 +5419,7 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_cfb_plays_drive ON cfb_plays(cfbd_drive_id)",
     "CREATE INDEX IF NOT EXISTS idx_cfb_plays_season ON cfb_plays(season, season_type, week)",
     "CREATE INDEX IF NOT EXISTS idx_cfb_plays_endgame ON cfb_plays(game_seconds_remaining) WHERE game_seconds_remaining IS NOT NULL",
+    "CREATE INDEX IF NOT EXISTS idx_cfb_game_forecasts_game_run ON cfb_game_forecasts(game_id, run_id DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_schedule_revisions_game ON mlb_schedule_revisions(game_id, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_schedule_revisions_matchup ON mlb_schedule_revisions(matchup_id, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_starter_workload_matchup ON mlb_starter_workload_snapshots(matchup_id, side, available_at DESC)",
