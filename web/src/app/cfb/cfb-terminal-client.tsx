@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Activity, ArrowLeft, ArrowRight, BellRing, BookOpen, Radio, Search, ShieldAlert, TrendingDown, TrendingUp, Zap } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CfbBookQuote, CfbResearchBoard, CfbResearchContext, CfbResearchRecord, CfbSignalBacktestRow, CfbStudyStatus, CfbTeamFeatureContext, CfbTerminalBoard, CfbTerminalRow, LineAlertRow, MarketCaptureHealth, MarketSignalScorecardRow } from "@/db/queries";
+import type { CfbBookQuote, CfbFavoriteWatchHistoryRow, CfbResearchBoard, CfbResearchContext, CfbResearchRecord, CfbSignalBacktestRow, CfbStudyStatus, CfbTeamFeatureContext, CfbTerminalBoard, CfbTerminalRow, LineAlertRow, MarketCaptureHealth, MarketSignalScorecardRow } from "@/db/queries";
 import MarketSignalScorecard from "@/components/market-signal-scorecard";
 import CfbEvidenceLoop from "./cfb-evidence-loop";
 import { isCfbQuoteFresh } from "@/lib/cfb-quote-freshness";
@@ -14,7 +14,7 @@ import { buildMovementInsights, cfbIntelligenceEvents } from "@/lib/movement-int
 import SportsbookHistory from "@/components/sportsbook-history";
 import styles from "./cfb-terminal.module.css";
 import { movementKind, movementSeries, movementSignals } from "@/lib/cfb-movement";
-import { CFB_FAVORITE_WATCH_VERSION, FAVORITE_WATCH_MAX_PROB, FAVORITE_WATCH_MIN_DROP_PP, FAVORITE_WATCH_MIN_PROB, buildFavoriteWatch, type FavoriteWatchResult } from "@/lib/cfb-favorite-watch";
+import { CFB_FAVORITE_WATCH_VERSION, FAVORITE_WATCH_MAX_PROB, FAVORITE_WATCH_MIN_DROP_PP, FAVORITE_WATCH_MIN_PROB, buildFavoriteWatch, gradeFavoriteWatch, type FavoriteWatchHistory, type FavoriteWatchResult } from "@/lib/cfb-favorite-watch";
 
 type MarketKey = "spread" | "total" | "moneyline";
 type SelectionSide = "home" | "away" | "over" | "under";
@@ -277,7 +277,7 @@ function WatchGame({ item, signals, active, nowMs, onChoose }: { item: CfbTermin
   </button>;
 }
 
-function FavoriteWatchPanel({ watch, gameDate, asOf, boardStatusDetail, scheduled, onOpenGame }: { watch: FavoriteWatchResult; gameDate: string; asOf: string; boardStatusDetail: string; scheduled: number; onOpenGame: (id: number) => void }) {
+function FavoriteWatchPanel({ watch, history, gameDate, asOf, boardStatusDetail, scheduled, onOpenGame }: { watch: FavoriteWatchResult; history: FavoriteWatchHistory | null; gameDate: string; asOf: string; boardStatusDetail: string; scheduled: number; onOpenGame: (id: number) => void }) {
   const exclusionLabels: Record<string, string> = { completed: "final", kicked_off: "kicked off", no_opening: "no opening capture", no_current: "no current capture", no_anchor_book: "neither Pinnacle nor DraftKings quoted both sides at open and now", favorite_flipped: "favorite flipped", outside_band: `favorite outside ${Math.round(FAVORITE_WATCH_MIN_PROB * 100)}-${Math.round(FAVORITE_WATCH_MAX_PROB * 100)}%`, did_not_cheapen: `favorite did not cheapen ${FAVORITE_WATCH_MIN_DROP_PP}pp` };
   const excludedText = Object.entries(watch.excluded).filter(([, n]) => n > 0).map(([key, n]) => `${n} ${exclusionLabels[key] ?? key}`).join(", ") || "none";
   return <section className={styles.favoritePane} aria-label="CFB favorite watch">
@@ -301,10 +301,44 @@ function FavoriteWatchPanel({ watch, gameDate, asOf, boardStatusDetail, schedule
         </tr>)}
       </tbody></table></div>}
     <p className={styles.researchDisclosure}>{watch.rows.length} of {scheduled} scheduled games qualify as of {fmtEt(asOf)}. Excluded: {excludedText}. Open and Now are favorite win probabilities with the vig removed; Best price is the highest favorite moneyline among the selected sportsbooks at the latest capture and may already be gone.</p>
+    <FavoriteWatchResults history={history} />
   </section>;
 }
 
-export default function CfbTerminalClient({ board, initialGameId, initialView = "terminal", observations, signals, backtest, research, scorecard, captureHealth, studyStatus, dataFailures }: { board: CfbTerminalBoard; initialGameId?: number; initialView?: TerminalView; observations?: LineAlertRow[]; signals: LineAlertRow[]; backtest: CfbSignalBacktestRow[]; research: CfbResearchBoard; scorecard: MarketSignalScorecardRow[]; captureHealth: MarketCaptureHealth | null; studyStatus: CfbStudyStatus | null; dataFailures: string[] }) {
+function FavoriteWatchResults({ history }: { history: FavoriteWatchHistory | null }) {
+  if (!history) return <div className={styles.favoriteResults}><div className={styles.sectionTitle}><span>RESULTS · GRADED AT THE VERIFIED CLOSE</span><span>UNAVAILABLE</span></div><div className={styles.empty} role="alert">Favorite Watch history could not be loaded. Results are hidden rather than shown partially.</div></div>;
+  const s = history.summary;
+  const excludedText = Object.entries(history.excluded).filter(([, n]) => n > 0).map(([key, n]) => `${n} ${key.replaceAll("_", " ")}`).join(", ") || "none";
+  return <div className={styles.favoriteResults}>
+    <div className={styles.sectionTitle}><span>RESULTS · GRADED AT THE VERIFIED CLOSE</span><span>{history.version.toUpperCase()} · {s.settled} SETTLED · {s.pending} PENDING</span></div>
+    <p className={styles.favoriteContext}>Every game this season is re-run through the same rule using its opening capture and its verified pre-kickoff close, so the record is the frozen state at kickoff, not whatever this tab showed during the day, and it does not depend on anyone having opened the page. A game that qualified mid-day but drifted out by the close is not counted. Units assume one unit on the favorite at the best selected-book price in the close capture.</p>
+    <div className={styles.favoriteSummary}>
+      <div><span>Qualified</span><strong>{s.qualified}</strong><em>of {history.gamesConsidered} games</em></div>
+      <div><span>Record</span><strong>{s.won}-{s.lost}</strong><em>{s.pending} pending</em></div>
+      <div><span>Favorite win rate</span><strong>{pct(s.winRate)}</strong><em>close expected {pct(s.expectedWinRate)}</em></div>
+      <div><span>Units</span><strong className={s.units == null ? "" : s.units >= 0 ? styles.positive : styles.negative}>{s.units == null ? "—" : signed(s.units, 2)}</strong><em>{s.roiPerBet == null ? "—" : `${signed(s.roiPerBet * 100, 1)}% per bet`}</em></div>
+      <div><span>Span</span><strong>{s.firstGameDate ?? "—"}</strong><em>to {s.lastGameDate ?? "—"}</em></div>
+    </div>
+    <p className={styles.researchDisclosure}>{s.settled < 30 ? `Fewer than 30 settled games: this is a tally, not a rate anyone should trust yet. ` : ""}Excluded from the record: {excludedText}. No edge claim; the motivating pattern is one partial season.</p>
+    {!history.rows.length ? <div className={styles.empty}>No game this season has met the rule at its verified close yet.</div>
+      : <div className={styles.favoriteTableWrap}><table><thead><tr><th>Date</th><th>Game</th><th>Favorite</th><th>Open</th><th>Close</th><th>Drop</th><th>Best close price</th><th>Score</th><th>Result</th><th>Units</th></tr></thead><tbody>
+        {history.rows.map((row) => <tr key={row.matchupId}>
+          <td>{row.gameDate}</td>
+          <td>{row.awayTeam} @ {row.homeTeam}</td>
+          <td><strong>{row.favoriteTeam}</strong><em> vs {row.underdogTeam}</em></td>
+          <td>{pct(row.openProb)}</td>
+          <td>{pct(row.currentProb)}</td>
+          <td className={styles.negative}>-{row.dropPp.toFixed(1)}pp</td>
+          <td>{row.bestPrice ? `${american(row.bestPrice.price)} ${row.bestPrice.book}` : "—"}</td>
+          <td>{row.score ?? "—"}</td>
+          <td className={row.outcome === "won" ? styles.positive : row.outcome === "lost" ? styles.negative : styles.neutral}>{row.outcome.toUpperCase()}</td>
+          <td className={row.pnlUnits == null ? "" : row.pnlUnits >= 0 ? styles.positive : styles.negative}>{row.pnlUnits == null ? "—" : signed(row.pnlUnits, 2)}</td>
+        </tr>)}
+      </tbody></table></div>}
+  </div>;
+}
+
+export default function CfbTerminalClient({ board, initialGameId, initialView = "terminal", favoriteHistory = null, observations, signals, backtest, research, scorecard, captureHealth, studyStatus, dataFailures }: { board: CfbTerminalBoard; initialGameId?: number; initialView?: TerminalView; observations?: LineAlertRow[]; signals: LineAlertRow[]; backtest: CfbSignalBacktestRow[]; research: CfbResearchBoard; scorecard: MarketSignalScorecardRow[]; captureHealth: MarketCaptureHealth | null; studyStatus: CfbStudyStatus | null; favoriteHistory?: CfbFavoriteWatchHistoryRow[] | null; dataFailures: string[] }) {
   const router = useRouter();
   function goToDate(next: string) { if (next) router.push(`/cfb?date=${next}${view === "favorites" ? "&view=favorites" : ""}`); }
   function shiftDate(delta: number) {
@@ -345,6 +379,7 @@ export default function CfbTerminalClient({ board, initialGameId, initialView = 
     setLockMessage(`Recorded paper position at ${quote.book}; this did not place a wager.`);
   }
   const favoriteWatch = useMemo(() => buildFavoriteWatch(board.games, Math.max(observedNow, Date.parse(board.asOf))), [board.games, board.asOf, observedNow]);
+  const favoriteHistoryGraded = useMemo(() => favoriteHistory ? gradeFavoriteWatch(favoriteHistory) : null, [favoriteHistory]);
   function chooseView(next: TerminalView) { setView(next); const params = new URLSearchParams({ date: board.gameDate }); if (next === "favorites") params.set("view", "favorites"); window.history.replaceState(null, "", `/cfb?${params.toString()}`); }
   const statusLabel = board.status.toUpperCase();
   const auditUnavailable = dataFailures.includes("prospective signal audit");
@@ -364,7 +399,7 @@ export default function CfbTerminalClient({ board, initialGameId, initialView = 
       <button type="button" role="tab" aria-selected={view === "terminal"} data-active={view === "terminal"} onClick={() => chooseView("terminal")}>LINE TERMINAL</button>
       <button type="button" role="tab" aria-selected={view === "favorites"} data-active={view === "favorites"} onClick={() => chooseView("favorites")}>FAVORITE WATCH{favoriteWatch.rows.length ? ` (${favoriteWatch.rows.length})` : ""}</button>
     </div>
-    {view === "favorites" ? <FavoriteWatchPanel watch={favoriteWatch} gameDate={board.gameDate} asOf={board.asOf} boardStatusDetail={board.statusDetail} scheduled={board.games.length} onOpenGame={(id) => { chooseGame(id); chooseMarket("moneyline"); chooseView("terminal"); }} /> : <>
+    {view === "favorites" ? <FavoriteWatchPanel watch={favoriteWatch} history={favoriteHistoryGraded} gameDate={board.gameDate} asOf={board.asOf} boardStatusDetail={board.statusDetail} scheduled={board.games.length} onOpenGame={(id) => { chooseGame(id); chooseMarket("moneyline"); chooseView("terminal"); }} /> : <>
     <div className={styles.analyticsLinkBar}><span>FOOTBALL CONTEXT</span><Link href="/cfb/analytics">Open standalone CFB Analytics →</Link><Link href="/cfb/coverage">Line coverage &amp; capture health →</Link>{game && <Link href={`/cfb/analytics/games/${game.matchupId}`}>Analyze {game.awayTeam} at {game.homeTeam} →</Link>}</div>
     {dataFailures.length ? <div className={styles.dataFailure} role="alert">CFB data unavailable: {dataFailures.join(", ")}. Affected sections cannot be trusted until the next successful refresh.</div> : null}
     <MovementIntelligence items={intelligence} selectedKey={`${game?.matchupId}:${marketKey}`} onSelect={(item) => { chooseGame(item.matchupId); chooseMarket(item.market); chooseSide(item.side); }} />
