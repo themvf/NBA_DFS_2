@@ -48,6 +48,8 @@ jobs:
         run: python -m research.cfb_forecast_v2 --publish --output artifacts/cfb/challenger-validation.json
       - name: Freeze opponent-adjusted play challenger
         run: python -m research.cfb_forecast_v3 --publish --output artifacts/cfb/opponent-ppa-validation.json
+      - name: Grade frozen forecasts and market anchor
+        run: python -m research.cfb_prospective_evaluation --publish --output artifacts/cfb/prospective-evaluation.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -57,4 +59,5 @@ jobs:
             artifacts/cfb/forecast-validation.json
             artifacts/cfb/challenger-validation.json
             artifacts/cfb/opponent-ppa-validation.json
+            artifacts/cfb/prospective-evaluation.json
           if-no-files-found: warn

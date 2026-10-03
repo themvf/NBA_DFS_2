@@ -70,17 +70,17 @@ assert.equal(oldLoaded.planMode, "standard", "a run with no plan was a plain cei
 
 // A newly enabled defensive default must not rewrite the meaning of an old
 // saved run when the user opens it later.
-assert.deepEqual(DEFAULT_DFS_DEFENSIVE_SETTINGS, { mode: 'experimental', profile: 'pfr-efficiency' });
+assert.deepEqual(DEFAULT_DFS_DEFENSIVE_SETTINGS, { mode: 'experimental', profile: 'gpp-integrated' });
 const defensiveDefaults = { ...defaults, defensiveAdjustments: DEFAULT_DFS_DEFENSIVE_SETTINGS };
 const legacyDefensiveRun = formFromSettings(sent, defensiveDefaults);
-assert.deepEqual(legacyDefensiveRun.settings.defensiveAdjustments, { mode: 'off', profile: 'pfr-efficiency' });
+assert.deepEqual(legacyDefensiveRun.settings.defensiveAdjustments, { mode: 'off', profile: 'gpp-integrated' });
 const selectedDefensiveRun = formFromSettings({ ...sent, defensiveAdjustments: defensiveDefaults.defensiveAdjustments }, defensiveDefaults);
 assert.deepEqual(selectedDefensiveRun.settings.defensiveAdjustments, defensiveDefaults.defensiveAdjustments);
 
 // Defensive adjustments exist only for the historical forecast, and the server
 // rejects them elsewhere. Loading a slate reset them to "experimental" while
 // the form stayed on Position workload, and Generate failed (PHI@CHI, 2026-09-28).
-assert.deepEqual(defensiveSettingsFor("workload"), { mode: "off", profile: "pfr-efficiency" });
+assert.deepEqual(defensiveSettingsFor("workload"), { mode: "off", profile: "gpp-integrated" });
 assert.deepEqual(defensiveSettingsFor("our"), DEFAULT_DFS_DEFENSIVE_SETTINGS);
 const workloadForm = { ...form, settings: { ...defensiveDefaults, projectionSource: "workload" as const } };
 assert.equal(settingsFromForm(workloadForm as never, "showdown", teams).defensiveAdjustments?.mode, "off",
