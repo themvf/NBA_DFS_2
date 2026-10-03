@@ -81,6 +81,8 @@ def comparison(forecast: dict, market: dict | None, feature: dict | None) -> dic
             "kickoff": kickoff.isoformat(), "market_captured_at": captured_at.isoformat() if captured_at else None,
             "market_age_minutes": round(age_minutes, 1) if age_minutes is not None else None,
             "max_market_age_minutes": max_age, "lead_hours": round(lead_hours, 2),
+            "forecast": {key: forecast.get(key) for key in
+                         ("home_points", "away_points", "home_win_probability")},
             "feature": feature or {}, "markets": by_market}
 
 
@@ -88,6 +90,7 @@ def freeze_comparisons(cursor, run_id: int, report: dict) -> None:
     """Run inside the forecast publication transaction."""
     cursor.execute("""
         SELECT f.id forecast_id, f.game_id, f.kickoff, r.generated_at,
+               f.home_points,f.away_points,f.home_win_probability,
                m.start_time_tbd,
                h.id odds_history_id, h.captured_at, h.books,
                h.home_ml, h.away_ml, h.home_spread, h.vegas_total

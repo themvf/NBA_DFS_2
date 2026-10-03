@@ -92,6 +92,10 @@ def run(db: DatabaseManager) -> dict:
             **{key: round(value, 4) for key, value in forecast.items()},
         })
         explanations[str(row["id"])] = {
+            "home_features": [round(float(value), 4) for value in row["home_v3_features"]],
+            "away_features": [round(float(value), 4) for value in row["away_v3_features"]],
+            "feature_order": ["opponent_adjusted_off_ppd", "opponent_adjusted_def_ppd",
+                              "opponent_adjusted_off_ppa", "opponent_adjusted_def_ppa", "home_field"],
             "home_adjusted_off_ppa": round(row["home_v3_features"][2], 4),
             "home_adjusted_opponent_def_ppa": round(row["home_v3_features"][3], 4),
             "away_adjusted_off_ppa": round(row["away_v3_features"][2], 4),

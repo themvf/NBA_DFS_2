@@ -82,7 +82,7 @@ export default async function CfbAnalyticsMethodsPage() {
     <section className={styles.section}><div className={styles.note}><strong>Interpretation rules</strong><p>Historical CFBD line references are not verified sportsbook closes. A missing metric stays blank. New score or probability models should be trained and evaluated only with evidence available before each game, against a contemporaneous market baseline, before they appear beside observed lines.</p></div></section>
     <section className={styles.section}>
       <div className={styles.sectionHead}><h2>Opponent-adjusted play-value trial</h2><p>{opponentPpa ? `${opponentPpa.version} · refreshed ${formatEt(opponentPpa.generatedAt, true)}` : "Awaiting first run"}</p></div>
-      <p>The third research model keeps the possession forecast and adjusts each team's prior play PPA for opponents. It is trained before the evaluation season. It remains off game pages while its performance is tested.</p>
+      <p>The third research model keeps the possession forecast and adjusts each team&apos;s prior play PPA for opponents. It is trained before the evaluation season. It remains off game pages while its performance is tested.</p>
       {opponentPpa && <div className={styles.tableWrap}><table className={styles.table}>
         <thead><tr><th>Sample and measure</th><th>Adjusted PPA</th><th>Possession v2</th><th>Market</th></tr></thead>
         <tbody>{(["margin_error", "total_error", "brier"] as const).flatMap((measure) => [

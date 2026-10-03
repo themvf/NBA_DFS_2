@@ -13,7 +13,8 @@ def test_comparison_is_market_specific_and_point_in_time():
         "last_update": (captured - timedelta(minutes=1)).isoformat(),
     }
     row = comparison(
-        {"generated_at": frozen, "kickoff": frozen + timedelta(hours=2)},
+        {"generated_at": frozen, "kickoff": frozen + timedelta(hours=2),
+         "home_points": 27.5, "away_points": 24.0, "home_win_probability": 0.61},
         {"captured_at": captured, "books": {
             "draftkings": quote, "fanduel": quote, "betmgm": quote},
          "home_spread": -3, "vegas_total": 48.5,
@@ -26,6 +27,7 @@ def test_comparison_is_market_specific_and_point_in_time():
     assert "missing_market_value" in row["markets"]["moneyline"]["reasons"]
     assert row["market_age_minutes"] == 5
     assert row["feature"]["home_adjusted_off_ppa"] == 0.1
+    assert row["forecast"]["home_points"] == 27.5
 
 
 def test_old_capture_is_excluded_even_with_three_books():

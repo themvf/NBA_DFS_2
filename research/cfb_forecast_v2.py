@@ -65,6 +65,10 @@ def predict(row: dict, model, margin_sd: float, feature_key: str = "v2") -> dict
 
 def explain(row: dict, forecast: dict) -> dict:
     return {
+        "home_features": [round(float(value), 4) for value in row["home_v2_features"]],
+        "away_features": [round(float(value), 4) for value in row["away_v2_features"]],
+        "feature_order": ["opponent_adjusted_off_ppd", "opponent_adjusted_def_ppd",
+                          "off_ppa", "opponent_def_ppa", "home_field"],
         "home_expected_drives": round(row["home_expected_drives"], 2),
         "away_expected_drives": round(row["away_expected_drives"], 2),
         "home_adjusted_off_ppd": round(row["home_v2_features"][0], 3),

@@ -12,8 +12,10 @@ export type FrozenMarketEvaluation = {
 
 type RawRow = {
   game_id: number; version: string; home_score: number; away_score: number;
-  home_points: number; away_points: number; home_win_probability: number;
-  evidence_json: { markets?: Record<string, { eligible?: boolean; value?: number | null }> };
+  evidence_json: {
+    forecast?: { home_points?: number; away_points?: number; home_win_probability?: number };
+    markets?: Record<string, { eligible?: boolean; value?: number | null }>;
+  };
 };
 
 /** Latest prospectively frozen forecast for each completed game and version.
@@ -22,7 +24,7 @@ export async function getCfbFrozenMarketEvaluation(): Promise<FrozenMarketEvalua
   const result = await db.execute(sql`
     SELECT DISTINCT ON (r.version,f.game_id)
       f.game_id,r.version,m.home_score,m.away_score,
-      f.home_points,f.away_points,f.home_win_probability,c.evidence_json
+      c.evidence_json
     FROM cfb_market_comparisons c
     JOIN cfb_game_forecasts f ON f.id=c.forecast_id
     JOIN cfb_forecast_runs r ON r.id=c.run_id
@@ -41,16 +43,20 @@ export async function getCfbFrozenMarketEvaluation(): Promise<FrozenMarketEvalua
       const key = `${raw.version}:${market}`;
       const group = groups.get(key) ?? { model: [], market: [], excluded: 0 };
       const quote = raw.evidence_json?.markets?.[market];
-      if (!quote?.eligible || quote.value == null) { group.excluded++; groups.set(key, group); continue; }
+      const forecast = raw.evidence_json?.forecast;
+      if (!quote?.eligible || quote.value == null || forecast?.home_points == null
+        || forecast.away_points == null || forecast.home_win_probability == null) {
+        group.excluded++; groups.set(key, group); continue;
+      }
       const marketValue = Number(quote.value);
       if (market === "spread") {
-        group.model.push(Math.abs(Number(raw.home_points) - Number(raw.away_points) - actualMargin));
+        group.model.push(Math.abs(Number(forecast.home_points) - Number(forecast.away_points) - actualMargin));
         group.market.push(Math.abs(marketValue - actualMargin));
       } else if (market === "total") {
-        group.model.push(Math.abs(Number(raw.home_points) + Number(raw.away_points) - actualTotal));
+        group.model.push(Math.abs(Number(forecast.home_points) + Number(forecast.away_points) - actualTotal));
         group.market.push(Math.abs(marketValue - actualTotal));
       } else {
-        group.model.push((Number(raw.home_win_probability) - actualWin) ** 2);
+        group.model.push((Number(forecast.home_win_probability) - actualWin) ** 2);
         group.market.push((marketValue - actualWin) ** 2);
       }
       groups.set(key, group);
