@@ -822,3 +822,7 @@ Deliberately open, per the spec's own honesty rules: R7's live wiring awaits
 model-generated scenario banks, and R8's ROI metrics await licensed contest
 field/payout data — both engines are capability-gated and refuse to fabricate
 results (P7-AC6, P8-AC3).
+
+The proposed Classic air-yard matchup extension, including its feature, scenario,
+and walk-forward promotion gates, is specified in
+[NFL Classic GPP air-yard matchup buildout](./nfl-gpp-air-yard-matchup-buildout.md).
