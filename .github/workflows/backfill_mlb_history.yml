@@ -33,6 +33,7 @@ concurrency:
 jobs:
   backfill-mlb-history:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
@@ -89,9 +90,12 @@ jobs:
         if: ${{ inputs.include_odds != false }}
         shell: bash
         run: |
+          # A missing secret is a misconfiguration, not a reason for a green
+          # no-op: this step is the only writer of historical MLB odds, and an
+          # unset key would otherwise stop it silently for good.
           if [ -z "$ODDS_API_KEY" ]; then
-            echo "ODDS_API_KEY not set; skipping MLB historical odds backfill."
-            exit 0
+            echo "::error title=ODDS_API_KEY not set::MLB historical odds backfill cannot run without it"
+            exit 1
           fi
 
           python -m ingest.backfill_mlb_odds \

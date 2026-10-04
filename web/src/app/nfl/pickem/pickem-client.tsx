@@ -45,6 +45,7 @@ import type { ContestComparison } from "@/lib/nfl/pickem-contest";
 import { EvidencePanel, EvidenceLedger } from "./evidence-panel";
 import { OddsFreshnessBanner } from "./odds-freshness-banner";
 import { EMPTY_EVIDENCE, marketReview, type PickemEvidence, type PickemScenario } from "@/lib/nfl/pickem-evidence";
+import { selectableNflSeasons } from "@/lib/nfl/season";
 import {
   ledgerVerdict,
   summarizeLedger,
@@ -114,7 +115,7 @@ const STORAGE_KEY = "nfl-pickem-v1";
  * probability. Listing a season here does not populate it; see the empty
  * state, which names the two commands rather than showing a blank page.
  */
-const SELECTABLE_SEASONS = [2026, 2025, 2024, 2023, 2022, 2021, 2020];
+const SELECTABLE_SEASONS = selectableNflSeasons();
 
 type Stored = {
   scenarios?: Record<number, PickemScenario>;

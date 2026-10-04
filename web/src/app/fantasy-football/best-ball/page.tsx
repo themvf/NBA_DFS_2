@@ -8,6 +8,7 @@ import BestBallClient from "./best-ball-client";
 import { getBestBallAdvisorAvailability } from "@/lib/fantasy-football/ai-draft-advisor-env";
 import ProjectionMethodExplainer from "./projection-method-explainer";
 import { requireProjectionModelVersion } from "@/lib/fantasy-football/projection-model";
+import { currentNflSeason } from "@/lib/nfl/season";
 
 // 12 x 20 = 240 picks; 260 leaves real depth at the end of the draft.
 const BEST_BALL_BOARD_SIZE = 260;
@@ -16,8 +17,8 @@ export default async function BestBallPage() {
   const set = await getLatestRankingSet("PPR");
   const [allRankings, fantasyProsHealth, dkBestBallHealth] = await Promise.all([
     set ? getFantasyRankings(set.id) : Promise.resolve([]),
-    getFantasyProsSourceHealth(set?.season ?? 2026),
-    getDkBestBallAdpHealth(set?.season ?? 2026),
+    getFantasyProsSourceHealth(set?.season ?? currentNflSeason()),
+    getDkBestBallAdpHealth(set?.season ?? currentNflSeason()),
   ]);
   const rankings = buildDraftPool(
     allRankings,

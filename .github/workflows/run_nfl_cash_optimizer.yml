@@ -62,6 +62,7 @@ jobs:
       # "which slate did this use" is the first question when a run looks wrong -- the
       # first live run failed precisely because the newest upload was a Showdown file.
       - name: List saved slates
+        id: list_slates
         if: ${{ !cancelled() }}
         continue-on-error: true
         run: npm run optimize:nfl --silent -- --list
@@ -80,13 +81,17 @@ jobs:
             | tee lineup.txt
       - name: Publish lineup to the run summary
         if: ${{ !cancelled() }}
+        env:
+          LIST_OUTCOME: ${{ steps.list_slates.outcome }}
         run: |
           {
             echo '## NFL ${{ inputs.mode }} lineup'
             echo '```'
             cat lineup.txt 2>/dev/null || echo 'No output; see the Run optimizer step log.'
             echo '```'
+            echo "- Saved-slate listing (fail-soft): $LIST_OUTCOME"
           } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$LIST_OUTCOME" = failure ]; then echo "::warning title=Optional step failed::List saved slates ended $LIST_OUTCOME"; fi
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:

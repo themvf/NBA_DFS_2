@@ -575,9 +575,14 @@ if __name__ == "__main__":
     db = DatabaseManager(config.database_url)
     fetch_schedule_and_odds(db, config.odds_api.api_key, args.date)
 
-    # Write our model predictions (our_* columns) for the same fixtures.
+    # Write our model predictions (our_* columns) for the same fixtures. The
+    # odds above are already committed, so a failure here loses nothing they
+    # wrote; it is still re-raised, because a predictor that crashes on every
+    # run must turn the step red rather than leave stale our_* columns behind
+    # a warning nobody reads. No fixtures is not a failure (it returns 0).
     try:
         from model.soccer_predictions import predict_and_write
         predict_and_write(db, game_date=args.date)
-    except Exception as exc:
-        logger.warning("Soccer predictions skipped: %s", exc)
+    except Exception:
+        logger.error("Soccer predictions failed after the odds refresh completed")
+        raise

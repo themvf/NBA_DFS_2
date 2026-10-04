@@ -38,6 +38,7 @@ import argparse
 import hashlib
 import json
 import logging
+from collections.abc import Callable
 from datetime import date, datetime, time, timedelta, timezone
 
 import pandas as pd
@@ -85,6 +86,66 @@ _MIN_PA  = 1
 _MIN_IP  = 1.0
 _STATS_TRANSFORMATION_VERSION = "mlb-stats-history-v2"
 
+# The FanGraphs player id column pybaseball's leaderboard frames carry. The
+# rolling-window functions (batting_stats_range / pitching_stats_range) scrape
+# BASEBALL-REFERENCE, whose frames carry `mlbID` and none of these -- so every
+# row of such a frame fails `_get_player_id()` and is skipped. From 2026-07-13
+# to 2026-09-29 the daily refresh printed "Batter stats: 0 players upserted" /
+# "Pitcher stats: 0 pitchers upserted" 79 times and stayed green; a frame
+# without a FanGraphs id is treated as unavailable so the fallbacks run, and a
+# non-empty frame that writes zero rows is a hard failure (see
+# MlbStatsRefreshError), never a success line.
+_FANGRAPHS_ID_COLUMNS = ("playerid", "IDfg")
+
+
+class MlbStatsRefreshError(RuntimeError):
+    """A stats refresh stage completed without refreshing anything.
+
+    Raised instead of returning 0 so a scheduled run cannot report success
+    while the tables the DFS projections and game-line models read stay weeks
+    old. The message always carries the counts that explain the zero.
+    """
+
+
+def _has_fangraphs_ids(df: pd.DataFrame | None) -> bool:
+    if df is None or df.empty:
+        return False
+    return any(col in df.columns for col in _FANGRAPHS_ID_COLUMNS)
+
+
+def _usable_frame(df: pd.DataFrame | None, label: str) -> pd.DataFrame | None:
+    """Return `df` only when it can be keyed into the FanGraphs-id tables."""
+    if df is None or df.empty:
+        return df
+    if _has_fangraphs_ids(df):
+        return df
+    logger.warning(
+        "%s returned %d rows without a FanGraphs player id column (columns: %s); "
+        "these cannot be written to the FanGraphs-keyed stats tables -- treating "
+        "the window as unavailable so the season/MLB Stats API fallbacks run",
+        label, len(df), ", ".join(str(c) for c in list(df.columns)[:12]),
+    )
+    return None
+
+
+def _skip_summary(skipped: dict[str, int]) -> str:
+    return ", ".join(f"{reason}={count}" for reason, count in skipped.items() if count) or "none"
+
+
+def _current_state_age_note(db: DatabaseManager, table: str, season: str) -> str:
+    """One line saying how old the current-state row set is (never raises)."""
+    try:
+        row = db.execute_one(
+            f"SELECT MAX(fetched_at) AS latest FROM {table} WHERE season = %s",  # noqa: S608
+            (season,),
+        ) or {}
+    except Exception as exc:  # noqa: BLE001 - a diagnostic must not mask the real stage result
+        return f"{table}: current-state age unavailable ({type(exc).__name__})"
+    latest = row.get("latest")
+    if latest is None:
+        return f"{table}: no current-state rows for {season}"
+    return f"{table}: current-state rows last refreshed {latest:%Y-%m-%d %H:%M} UTC"
+
 
 def _capture_times() -> tuple[datetime, datetime]:
     """Return capture time and the exclusive stats cutoff for today's run."""
@@ -127,25 +188,32 @@ def fetch_batter_stats(db: DatabaseManager, season: str, days: int = 45, full_se
         return fetch_batter_stats_from_mlb_api(db, season)
 
     # Apply minimum PA filter
+    fetched = len(df)
     df = df[df["PA"].fillna(0).astype(float) >= _MIN_PA].copy()
     if df.empty:
-        logger.warning("All batters filtered out (PA < %d)", _MIN_PA)
-        return 0
+        raise MlbStatsRefreshError(
+            f"batter stats: {fetched} FanGraphs rows fetched for {season} ({source}) "
+            f"but every one was filtered out (PA < {_MIN_PA}); nothing written"
+        )
 
     abbrev_cache = build_mlb_team_abbrev_cache(db)
     updated = 0
+    skipped = {"no_games": 0, "no_player_id": 0, "no_name": 0}
 
     for _, row in df.iterrows():
         games = int(_safe_float(row.get("G")) or 0)
         if games == 0:
+            skipped["no_games"] += 1
             continue
 
         player_id = _get_player_id(row)
         if player_id is None:
+            skipped["no_player_id"] += 1
             continue
 
         name = str(row.get("Name", "")).strip()
         if not name:
+            skipped["no_name"] += 1
             continue
 
         team_id = _resolve_team(row, abbrev_cache)
@@ -210,7 +278,13 @@ def fetch_batter_stats(db: DatabaseManager, season: str, days: int = 45, full_se
         )
         updated += 1
 
-    print(f"Batter stats: {updated} players upserted for {season} ({source})")
+    if updated == 0:
+        raise MlbStatsRefreshError(
+            f"batter stats: {len(df)} FanGraphs rows fetched for {season} ({source}) but 0 were "
+            f"written (skipped: {_skip_summary(skipped)}); the frame's shape no longer matches "
+            "the FanGraphs-id tables"
+        )
+    print(f"Batter stats: {updated} players upserted for {season} ({source}; skipped {_skip_summary(skipped)})")
     return updated
 
 
@@ -252,18 +326,22 @@ def fetch_pitcher_stats(db: DatabaseManager, season: str, days: int = 45, full_s
     source_name = f"pybaseball_fangraphs_{source}"
     window_label = "season_to_date" if full_season else f"rolling_{days}d"
     updated = 0
+    skipped = {"no_games": 0, "no_player_id": 0, "no_name": 0}
 
     for _, row in df.iterrows():
         games = int(_safe_float(row.get("G")) or 0)
         if games == 0:
+            skipped["no_games"] += 1
             continue
 
         player_id = _get_player_id(row)
         if player_id is None:
+            skipped["no_player_id"] += 1
             continue
 
         name = str(row.get("Name", "")).strip()
         if not name:
+            skipped["no_name"] += 1
             continue
 
         team_id = _resolve_team(row, abbrev_cache)
@@ -360,7 +438,13 @@ def fetch_pitcher_stats(db: DatabaseManager, season: str, days: int = 45, full_s
         )
         updated += 1
 
-    print(f"Pitcher stats: {updated} pitchers upserted for {season} ({source})")
+    if updated == 0:
+        raise MlbStatsRefreshError(
+            f"pitcher stats: {len(df)} FanGraphs rows fetched for {season} ({source}) but 0 were "
+            f"written (skipped: {_skip_summary(skipped)}); the frame's shape no longer matches "
+            "the FanGraphs-id tables"
+        )
+    print(f"Pitcher stats: {updated} pitchers upserted for {season} ({source}; skipped {_skip_summary(skipped)})")
     return updated
 
 
@@ -385,8 +469,7 @@ def fetch_team_stats(db: DatabaseManager, season: str) -> int:
         return fetch_team_stats_from_mlb_api(db, season)
 
     if bat_df is None or bat_df.empty:
-        logger.warning("team_batting returned empty data for %s", season)
-        return 0
+        raise MlbStatsRefreshError(f"team stats: FanGraphs team_batting returned no rows for {season}")
 
     abbrev_cache = build_mlb_team_abbrev_cache(db)
     captured_at, stats_through_at = _capture_times()
@@ -457,6 +540,11 @@ def fetch_team_stats(db: DatabaseManager, season: str) -> int:
         )
         updated += 1
 
+    if updated == 0:
+        raise MlbStatsRefreshError(
+            f"team stats: FanGraphs returned {len(bat_df)} team rows for {season} but none mapped "
+            "to mlb_teams (team code mapping drifted?); nothing written"
+        )
     print(f"Team stats: {updated}/30 teams updated for {season}")
     return updated
 
@@ -539,7 +627,15 @@ def fetch_team_stats_from_mlb_api(db: DatabaseManager, season: str) -> int:
         )
         updated += 1
 
-    print(f"Team stats history: {updated}/30 official MLB captures for {season}")
+    if updated == 0:
+        raise MlbStatsRefreshError(
+            f"team stats: the MLB Stats API fallback wrote 0/{len(teams)} team captures for {season}"
+        )
+    # The fallback deliberately never touches the current-state table (MLB
+    # publishes no wRC+/FIP), so say how old that table is instead of letting a
+    # green run imply it was refreshed. FanGraphs has 403'd since 2026-04-06.
+    print(f"Team stats history: {updated}/30 official MLB captures for {season} "
+          f"(FanGraphs unavailable; {_current_state_age_note(db, 'mlb_team_stats', season)})")
     return updated
 
 
@@ -553,8 +649,10 @@ def fetch_batter_stats_from_mlb_api(db: DatabaseManager, season: str) -> int:
     logger.info("Fetching MLB Stats API batter season stats for %s ...", season)
     rows = _fetch_mlb_api_player_stats(season, "hitting")
     if not rows:
-        logger.warning("MLB Stats API returned no batter rows for %s", season)
-        return 0
+        raise MlbStatsRefreshError(
+            f"batter stats: FanGraphs was unavailable and the MLB Stats API fallback returned "
+            f"0 hitting rows for {season}; nothing written"
+        )
 
     abbrev_cache = build_mlb_team_abbrev_cache(db)
     existing_ids = _existing_player_id_lookup(db, season, "mlb_batter_stats")
@@ -641,6 +739,11 @@ def fetch_batter_stats_from_mlb_api(db: DatabaseManager, season: str) -> int:
         )
         updated += 1
 
+    if updated == 0:
+        raise MlbStatsRefreshError(
+            f"batter stats: the MLB Stats API returned {len(rows)} hitting rows for {season} "
+            "but 0 were written"
+        )
     print(f"Batter stats: {updated} players upserted for {season} (MLB Stats API season)")
     return updated
 
@@ -650,8 +753,10 @@ def fetch_pitcher_stats_from_mlb_api(db: DatabaseManager, season: str) -> int:
     logger.info("Fetching MLB Stats API pitcher season stats for %s ...", season)
     rows = _fetch_mlb_api_player_stats(season, "pitching")
     if not rows:
-        logger.warning("MLB Stats API returned no pitcher rows for %s", season)
-        return 0
+        raise MlbStatsRefreshError(
+            f"pitcher stats: FanGraphs was unavailable and the MLB Stats API fallback returned "
+            f"0 pitching rows for {season}; nothing written"
+        )
 
     abbrev_cache = build_mlb_team_abbrev_cache(db)
     existing_ids = _existing_player_id_lookup(db, season, "mlb_pitcher_stats")
@@ -760,6 +865,11 @@ def fetch_pitcher_stats_from_mlb_api(db: DatabaseManager, season: str) -> int:
         )
         updated += 1
 
+    if updated == 0:
+        raise MlbStatsRefreshError(
+            f"pitcher stats: the MLB Stats API returned {len(rows)} pitching rows for {season} "
+            "but 0 were written"
+        )
     print(f"Pitcher stats: {updated} pitchers upserted for {season} (MLB Stats API season)")
     return updated
 
@@ -821,32 +931,36 @@ def fetch_batter_splits(db: DatabaseManager, season: str) -> int:
         print(f"Batter splits: no data returned for {season} — skipping L/R split update")
         return 0
 
-    # Update players that have matching FG playerid in mlb_batter_stats
+    # Update players that have matching FG playerid in mlb_batter_stats.
+    # A database failure here propagates: it used to be logged and swallowed,
+    # which printed "0 players updated" and left the run green.
+    #
+    # `fetched_at` is deliberately NOT stamped: it means "this batter's stat
+    # line was refreshed", and stamping it from the split update made the
+    # table read as refreshed today while the stat lines were from April
+    # (396 rows dated 2026-09-29 over a max games-played of 30).
     updated = 0
-    try:
-        with db.connect() as conn:
-            with conn.cursor() as cur:
+    with db.connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, player_id FROM mlb_batter_stats WHERE season = %s",
+                (season,)
+            )
+            rows = cur.fetchall()
+            for row in rows:
+                row_id = row["id"] if isinstance(row, dict) else row[0]
+                player_id = row["player_id"] if isinstance(row, dict) else row[1]
+                wrc_l = splits["L"].get(player_id)
+                wrc_r = splits["R"].get(player_id)
+                if wrc_l is None and wrc_r is None:
+                    continue
                 cur.execute(
-                    "SELECT id, player_id FROM mlb_batter_stats WHERE season = %s",
-                    (season,)
+                    """UPDATE mlb_batter_stats
+                       SET wrc_plus_vs_l = %s, wrc_plus_vs_r = %s
+                       WHERE id = %s""",
+                    (wrc_l, wrc_r, row_id)
                 )
-                rows = cur.fetchall()
-                for row in rows:
-                    row_id = row["id"] if isinstance(row, dict) else row[0]
-                    player_id = row["player_id"] if isinstance(row, dict) else row[1]
-                    wrc_l = splits["L"].get(player_id)
-                    wrc_r = splits["R"].get(player_id)
-                    if wrc_l is None and wrc_r is None:
-                        continue
-                    cur.execute(
-                        """UPDATE mlb_batter_stats
-                           SET wrc_plus_vs_l = %s, wrc_plus_vs_r = %s, fetched_at = NOW()
-                           WHERE id = %s""",
-                        (wrc_l, wrc_r, row_id)
-                    )
-                    updated += 1
-    except Exception as exc:
-        logger.warning("DB update for batter splits failed: %s", exc)
+                updated += 1
 
     print(f"Batter splits: {updated} players updated with L/R wRC+ for {season}")
     captured = capture_team_offense_split_snapshots(db, season)
@@ -909,14 +1023,14 @@ def _fetch_batting(
     """Try rolling-window first; fall back to full-season aggregates."""
     if full_season:
         try:
-            return season_fn(int(season), qual=1), f"{season} full season"
+            return _usable_frame(season_fn(int(season), qual=1), "batting_stats"), f"{season} full season"
         except Exception as exc:
             logger.warning("batting_stats(%s) failed: %s", season, exc)
             return None, f"{season} full season"
 
     df: pd.DataFrame | None = None
     try:
-        df = range_fn(start_dt, end_dt)
+        df = _usable_frame(range_fn(start_dt, end_dt), "batting_stats_range")
     except Exception as exc:
         logger.warning("batting_stats_range failed: %s", exc)
 
@@ -933,7 +1047,7 @@ def _fetch_batting(
         qualified_count, season,
     )
     try:
-        df = season_fn(int(season), qual=1)
+        df = _usable_frame(season_fn(int(season), qual=1), "batting_stats")
         return df, f"{season} full season"
     except Exception as exc:
         logger.warning("batting_stats(%s) failed: %s", season, exc)
@@ -946,14 +1060,14 @@ def _fetch_pitching(
     """Try rolling-window first; fall back to full-season aggregates."""
     if full_season:
         try:
-            return season_fn(int(season), qual=1), f"{season} full season"
+            return _usable_frame(season_fn(int(season), qual=1), "pitching_stats"), f"{season} full season"
         except Exception as exc:
             logger.warning("pitching_stats(%s) failed: %s", season, exc)
             return None, f"{season} full season"
 
     df: pd.DataFrame | None = None
     try:
-        df = range_fn(start_dt, end_dt)
+        df = _usable_frame(range_fn(start_dt, end_dt), "pitching_stats_range")
     except Exception as exc:
         logger.warning("pitching_stats_range failed: %s", exc)
 
@@ -970,7 +1084,7 @@ def _fetch_pitching(
         qualified_count, season,
     )
     try:
-        df = season_fn(int(season), qual=1)
+        df = _usable_frame(season_fn(int(season), qual=1), "pitching_stats")
         return df, f"{season} full season"
     except Exception as exc:
         logger.warning("pitching_stats(%s) failed: %s", season, exc)
@@ -1056,7 +1170,12 @@ def _estimate_qs_pct(ip_pg: float, era: float) -> float | None:
 
 
 def _fetch_mlb_api_player_stats(season: str, group: str) -> list[dict]:
-    """Return MLB Stats API season aggregate split rows for hitting/pitching."""
+    """Return MLB Stats API season aggregate split rows for hitting/pitching.
+
+    This is the last fallback, so a transport failure is the stage's failure:
+    it is raised with the HTTP status rather than returned as an empty list
+    (which read as "no rows" and let the run finish green).
+    """
     try:
         resp = requests.get(
             f"{MLB_API_BASE}/stats",
@@ -1074,8 +1193,11 @@ def _fetch_mlb_api_player_stats(season: str, group: str) -> list[dict]:
         )
         resp.raise_for_status()
     except requests.RequestException as exc:
-        logger.warning("MLB Stats API %s stats failed for %s: %s", group, season, exc)
-        return []
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        raise MlbStatsRefreshError(
+            f"MLB Stats API {group} stats request failed for {season} "
+            f"(HTTP {status if status is not None else 'unavailable'}): {exc}"
+        ) from exc
 
     stats = resp.json().get("stats") or []
     if not stats:
@@ -1176,6 +1298,41 @@ def _safe_float(val) -> float | None:
         return None
 
 
+def run_refresh(db: DatabaseManager, season: str, *, days: int = 45, full_season: bool = False) -> dict[str, int]:
+    """Run every stage, then fail the run if any stage refreshed nothing.
+
+    Each stage still runs even when an earlier one failed, so one log shows
+    the whole picture (a batter failure must not hide whether pitchers were
+    written). The summary line names the failed stages and their reasons; the
+    exception carries the same text so the exit status is non-zero.
+    """
+    stages: list[tuple[str, Callable[[], int]]] = [
+        ("team_stats", lambda: fetch_team_stats(db, season)),
+        ("batter_stats", lambda: fetch_batter_stats(db, season, days=days, full_season=full_season)),
+        ("pitcher_stats", lambda: fetch_pitcher_stats(db, season, days=days, full_season=full_season)),
+        ("batter_splits", lambda: fetch_batter_splits(db, season)),
+    ]
+    counts: dict[str, int] = {}
+    failures: list[str] = []
+    for label, stage in stages:
+        try:
+            counts[label] = int(stage())
+        except Exception as exc:  # noqa: BLE001 - every stage is reported, then the run fails
+            logger.exception("%s failed: %s", label, exc)
+            print(f"{label}: FAILED ({type(exc).__name__}: {exc})")
+            failures.append(f"{label}: {type(exc).__name__}: {exc}")
+    print(
+        "MLB stats refresh summary: "
+        + ", ".join(f"{label}={counts.get(label, 'FAILED')}" for label, _ in stages)
+    )
+    if failures:
+        raise MlbStatsRefreshError(
+            f"{len(failures)} of {len(stages)} MLB stats stages refreshed nothing -- "
+            + "; ".join(failures)
+        )
+    return counts
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description="Fetch MLB stats from FanGraphs via pybaseball")
@@ -1188,7 +1345,4 @@ if __name__ == "__main__":
     db = DatabaseManager(config.database_url)
     season = args.season or config.mlb_api.season
 
-    fetch_team_stats(db, season)
-    fetch_batter_stats(db, season, days=args.days, full_season=args.full_season)
-    fetch_pitcher_stats(db, season, days=args.days, full_season=args.full_season)
-    fetch_batter_splits(db, season)
+    run_refresh(db, season, days=args.days, full_season=args.full_season)

@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { getAllDetectorHealth } from "@/db/queries";
 import type { DetectorHealthRow } from "@/db/queries";
+import { DETECTOR_TYPE_LABELS } from "@/lib/signal-definitions";
 
 // Single cross-sport status page — the "check this first" destination the
 // per-sport Detector Health panels don't provide on their own. Those panels
@@ -17,25 +18,19 @@ import type { DetectorHealthRow } from "@/db/queries";
 const SPORT_LABEL: Record<string, string> = {
   mlb: "MLB ⚾",
   nfl: "NFL 🏈",
+  cfb: "CFB 🏈",
+  nhl: "NHL 🏒",
   soccer: "Soccer ⚽",
   tennis: "Tennis 🎾",
 };
 
-const SPORT_ORDER = ["mlb", "nfl", "soccer", "tennis"];
+// Every sport with a registered detector. CFB (15 detectors) and NHL (4)
+// were registered but absent from this list until 2026-09-29, so the page
+// counted them in "N detectors tracked" and then never rendered them;
+// scripts/test-detector-registry.ts now checks this list against the registry.
+const SPORT_ORDER = ["mlb", "nfl", "cfb", "nhl", "soccer", "tennis"];
 
-const typeLabel = (t: string) =>
-  t === "pinnacle_divergence" ? "Pin divergence"
-  : t === "pinnacle_polymarket_delta" ? "Pin/Poly gap"
-  : t === "steam" ? "Steam"
-  : t === "walking" ? "Walking"
-  : t === "dk_value" ? "DK value"
-  : t === "dk_prop_value" ? "DK prop value"
-  : t === "prop_line_gap" ? "Prop line gap"
-  : t === "total_steam" ? "Total steam"
-  : t === "spread_steam" ? "Spread steam"
-  : t === "total_walking" ? "Total walking"
-  : t === "spread_walking" ? "Spread walking"
-  : t;
+const typeLabel = (t: string) => DETECTOR_TYPE_LABELS[t] ?? t;
 
 const DOT: Record<DetectorHealthRow["status"], string> = {
   dead: "bg-red-500",

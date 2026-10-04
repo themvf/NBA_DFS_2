@@ -18,6 +18,8 @@ import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, 
 import { persistNbaOddsSignalReport } from "@/lib/nba-odds-signal";
 import { canWebSurfaceWriteMlbOdds } from "@/lib/mlb-odds-writer-policy";
 import { normalizeDkSlateTiming } from "@/lib/dk-slate-timing";
+import { easternDateString } from "@/lib/eastern-date";
+import { consensusAmerican, noVigHomeProbability } from "@/lib/odds-consensus";
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
 import { optimizeLineups, optimizeLineupsWithDebug, buildMultiEntryCSV, probeOptimizerAll } from "./optimizer";
 import type { OptimizerPlayer, OptimizerSettings, GeneratedLineup } from "./optimizer";
@@ -4402,15 +4404,18 @@ async function ensureMatchupsForSlate(
               }
             }
           }
-          const homeMl = homePrices.length ? Math.round(homePrices.reduce((a, b) => a + b, 0) / homePrices.length) : null;
-          const awayMl = awayPrices.length ? Math.round(awayPrices.reduce((a, b) => a + b, 0) / awayPrices.length) : null;
+          // Probability-space consensus (lib/odds-consensus): an arithmetic
+          // mean of American prices produces impossible numbers near even money.
+          const homeMl = consensusAmerican(homePrices);
+          const awayMl = consensusAmerican(awayPrices);
           const homeSpread = homeSpreads.length ? roundHalf(homeSpreads.reduce((a, b) => a + b, 0) / homeSpreads.length) : null;
           const vegasTotal = totalPoints.length ? roundHalf(totalPoints.reduce((a, b) => a + b, 0) / totalPoints.length) : null;
-          const homeWinProb = homeMl != null && awayMl != null ? mlToProb(homeMl) / (mlToProb(homeMl) + mlToProb(awayMl)) : null;
+          const homeWinProb = noVigHomeProbability(homeMl, awayMl);
           if (homeMl || awayMl || vegasTotal || homeSpread) {
             await db.execute(sql`
               UPDATE nba_matchups
-              SET home_ml = ${homeMl}, away_ml = ${awayMl}, home_spread = ${homeSpread}, vegas_total = ${vegasTotal}, vegas_prob_home = ${homeWinProb}
+              SET home_ml = ${homeMl}, away_ml = ${awayMl}, home_spread = ${homeSpread}, vegas_total = ${vegasTotal}, vegas_prob_home = ${homeWinProb},
+                  fetched_at = NOW()
               WHERE id = ${matchup.id}
             `);
             historyRows.push({
@@ -4467,7 +4472,7 @@ async function enrichAndSave(
     const d = parseSlateDate(p.gameInfo);
     if (d) { slateDate = d; break; }
   }
-  if (!slateDate) slateDate = new Date().toISOString().slice(0, 10);
+  if (!slateDate) slateDate = easternDateString();
 
   const gameCount = new Set(dkPlayers_.map((p) => p.gameInfo.split(" ")[0])).size;
 

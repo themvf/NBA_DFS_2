@@ -26,6 +26,7 @@ on:
 jobs:
   probe:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
       FANTASYPROS_API_KEY: ${{ secrets.FANTASYPROS_API_KEY }}

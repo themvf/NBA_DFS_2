@@ -12,6 +12,9 @@ concurrency:
 jobs:
   capture-nfl-odds:
     runs-on: ubuntu-latest
+    # Shares capture-event-closing-lines with the 5-minute closes worker: a
+    # hung manual run must not block it for GitHub's 6-hour default.
+    timeout-minutes: 15
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}

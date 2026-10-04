@@ -37,6 +37,9 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    # Runs every 15 minutes: a hung CFBD or Odds API call would otherwise
+    # queue the next runs behind it for GitHub's 6-hour default.
+    timeout-minutes: 30
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
@@ -93,12 +96,18 @@ jobs:
       - name: Optional manual market capture
         if: github.event_name == 'workflow_dispatch' && inputs.capture_now == true
         run: python -m ingest.cfb_schedule --capture-now
-      - name: Report CFB data health
-        run: python -m ingest.cfb_schedule --health
       # Manual paid captures create history rows that the detector funnel reads
       # by normalized capture ID. The closing-lines worker already does this;
       # keep the independent terminal path in the same order.
       - name: Normalize stored CFB captures
         run: python -m ingest.cfb_context_bootstrap --origin-mode auto --apply
+      # Before health, as in refresh_nhl_terminal.yml: finals must settle even
+      # when a coverage check fails.
       - name: Detect and settle CFB market signals
         run: python -m model.line_alerts --sport cfb
+      # Red when the health status is "fail" (a game past kickoff with no
+      # capture, or a final with no score); "warn" and "pass" stay green.
+      # Until 2026-09-29 the status was printed and the step was green
+      # regardless, unlike the NHL equivalent.
+      - name: Report CFB data health
+        run: python -m ingest.cfb_schedule --health

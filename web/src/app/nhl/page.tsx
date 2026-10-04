@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { getLineAlerts, getMarketCaptureHealth, getMarketSignalScorecard, getNhlTerminalBoard, type LineAlertRow, type MarketCaptureHealth, type MarketSignalScorecardRow, type NhlTerminalBoard } from "@/db/queries";
 import NhlTerminalClient from "./nhl-terminal-client";
+import { easternDateString } from "@/lib/eastern-date";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,7 @@ export default async function NhlPage({
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Unknown NHL data error";
     board = {
-      gameDate: date ?? new Date().toISOString().slice(0, 10),
+      gameDate: date ?? easternDateString(),
       asOf: new Date().toISOString(),
       status: "unavailable",
       statusDetail: `NHL live data is unavailable: ${detail}`,
@@ -32,14 +33,19 @@ export default async function NhlPage({
   let captureHealth: MarketCaptureHealth | null = null;
   let signals: LineAlertRow[] = [];
   let scorecard: MarketSignalScorecardRow[] = [];
+  let auditError: string | null = null;
   try {
     [captureHealth, signals, scorecard] = await Promise.all([
       getMarketCaptureHealth("nhl", board.gameDate),
       getLineAlerts("nhl", 250, undefined, board.games.map((game) => game.matchupId)),
       getMarketSignalScorecard("nhl"),
     ]);
-  } catch {
-    // The market board stays useful while the audit tables are unavailable.
+  } catch (error) {
+    // The market board stays useful while the audit tables are unavailable,
+    // but the page must say the signal ledger, checkpoints and scorecard
+    // could not be read; an empty tape is not "no signals fired".
+    auditError = error instanceof Error ? error.message : "Unknown audit read error";
+    console.error("NHL audit feeds unavailable", error);
   }
-  return <NhlTerminalClient board={board} captureHealth={captureHealth} signals={signals} scorecard={scorecard} />;
+  return <NhlTerminalClient board={board} captureHealth={captureHealth} signals={signals} scorecard={scorecard} auditError={auditError} />;
 }
