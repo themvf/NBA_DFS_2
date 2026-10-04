@@ -55,11 +55,12 @@ import {
 import { nflOverlapCap } from '@/lib/nfl-dfs/pre-export-qa';
 import { isNflGppSignalPlayer, type NflPlayerSignal, type NflPlayerSignalCode } from '@/lib/nfl-dfs/player-signals';
 import type { NflAirMatchupEvidence } from '@/lib/nfl-dfs/air-matchup-evidence';
+import type { SpecialTeamsProjection } from '@/lib/nfl-dfs/special-teams-projection';
 
 // Record the strict Showdown purchase and completed-roster validation.
 // v8: DK-average fallback honoured in defensive mode; a lock or exposure
 // minimum on a player outside the pool is an error instead of being dropped.
-export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v8-defensive-dk-fallback";
+export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v9-special-teams-candidate";
 
 export type NflProjectionSource = "our" | "workload" | "calibrated" | "dk_avg" | "fantasypros" | "linestar" | "custom";
 export type NflOptimizerMode = "cash" | "gpp";
@@ -140,6 +141,8 @@ export type NflOptimizerPlayer = {
   positionWorkloadReason?: string;
   calibrated?: CalibratedProjection | null;
   calibrationReason?: string;
+  specialTeams?: SpecialTeamsProjection | null;
+  specialTeamsReason?: string | null;
   situationEvidence?: SituationEvidence;
   projectionAudit?: ProjectionAudit;
   defensiveForecast?: DefensiveForecastBundle | null;
@@ -158,6 +161,8 @@ export type NflOptimizerSettings = {
   /** Minimum share of Classic GPP lineups with an INSIDE_FIVE RB. 0 disables it. */
   gppGoalLineMinPct?: number;
   projectionSource: NflProjectionSource;
+  /** Explicit opt-in; unavailable saved candidates stop the build. */
+  specialTeamsMode?: 'off' | 'experimental';
   defensiveAdjustments?: DefensiveSettings;
   /** Team -> DK id of a user-confirmed starting QB; see `confirmed-starter.ts`. */
   confirmedStartingQbs?: Record<string, number>;
@@ -260,7 +265,7 @@ export type NflLineupSlot = {
   salary: number;
   multiplier: number;
   projection: number;
-  projectionSource: NflProjectionSource | "dk_avg_fallback" | "our_fallback" | "defensive";
+  projectionSource: NflProjectionSource | "dk_avg_fallback" | "our_fallback" | "defensive" | "special_teams";
 };
 
 export type NflGeneratedLineup = {
@@ -316,7 +321,7 @@ export type NflOptimizerResult = {
 
 type ResolvedPlayer = NflOptimizerPlayer & {
   projection: number;
-  resolvedSource: NflProjectionSource | "dk_avg_fallback" | "our_fallback" | "defensive";
+  resolvedSource: NflProjectionSource | "dk_avg_fallback" | "our_fallback" | "defensive" | "special_teams";
   /** Phase 1: whether this player counts against the per-lineup salary-relief cap. */
   salaryRelief: boolean;
   /** Phase 1: whether this player may be used at Captain (Flex-only for overridden cheap players by default). */
@@ -470,6 +475,11 @@ function projectionFor(player: NflOptimizerPlayer, settings: NflOptimizerSetting
   // Fail closed before any source is consulted: no projection exists for a
   // player we have decided is not playing, in any source.
   if (ruledOut(player)) return null;
+  if (settings.specialTeamsMode === 'experimental' && (player.position === 'DST' || player.position === 'K')) {
+    if (settings.projectionSource !== 'our') throw new Error('Experimental DST/kicker projections require Our historical model.');
+    if (!player.specialTeams) throw new Error(`${player.name}: ${player.specialTeamsReason ?? 'Refresh projections to create the saved DST/kicker candidate.'}`);
+    return { value: player.specialTeams.mean, source: 'special_teams' };
+  }
   if (settings.defensiveAdjustments?.mode !== undefined && settings.defensiveAdjustments.mode !== 'off') {
     const bundle = player.defensiveForecast;
     if (!bundle || bundle.profile !== captureProfileFor(settings.defensiveAdjustments.profile, player.position) || bundle.mode !== settings.defensiveAdjustments.mode)
@@ -508,6 +518,16 @@ function projectionFor(player: NflOptimizerPlayer, settings: NflOptimizerSetting
 
 export function resolveProjectionAudit(player:NflOptimizerPlayer,settings:NflOptimizerSettings):ProjectionAudit {
   const resolved=projectionFor(player,settings);
+  if (resolved?.source === 'special_teams' && player.specialTeams) {
+    const baseline=finite(player.ourProj);
+    return {version:'nfl-projection-audit-v1',baseline,final:resolved.value,source:resolved.source,
+      excluded:settings.excludedPlayerIds.includes(player.dkPlayerId),modelSnapshot:player.specialTeams,
+      evidence:player.specialTeams.feature_snapshot,assumption:null,
+      rangeMethod:'Saved historical whole-game draws conditioned on a pregame team total and, for DST, opponent history.',
+      steps:[{label:'Experimental DST/kicker projection',status:'applied',
+        points:baseline===null?0:resolved.value-baseline,
+        reason:`${player.specialTeams.version}; forward validation pending.`}]};
+  }
   if (settings.defensiveAdjustments?.mode !== undefined && settings.defensiveAdjustments.mode !== 'off' && player.defensiveForecast) {
     const bundle=player.defensiveForecast;
     return {version:'nfl-projection-audit-v1',baseline:bundle.baseline.mean,final:bundle.selected.mean,
@@ -579,10 +599,11 @@ export function cappedCeiling(ceiling: number, projection: number, maxMultiple: 
 
 function objective(player: ResolvedPlayer, settings: NflOptimizerSettings, lineupNumber: number, slot = "CLASSIC"): number {
   const defensive=player.defensiveForecast?.status==='applied' && settings.defensiveAdjustments?.mode!=='off' ? player.defensiveForecast.selected:null;
+  const special=player.resolvedSource === 'special_teams' ? player.specialTeams : null;
   const historical = player.resolvedSource === "our" || player.resolvedSource === "our_fallback";
   const rawBase = settings.mode === "cash"
-    ? (defensive ? defensive.p10 : player.resolvedSource === "workload" ? selectedWorkload(player,settings.workloadPositions)!.p10 : player.resolvedSource === "calibrated" ? player.calibrated!.p10 : historical ? finite(player.floorFpts) : null) ?? player.projection * 0.74
-    : (defensive ? defensive.p90 : player.resolvedSource === "workload" ? selectedWorkload(player,settings.workloadPositions)!.p90 : player.resolvedSource === "calibrated" ? player.calibrated!.p90 : historical ? finite(player.ceilingFpts) : null) ?? player.projection * 1.28;
+    ? (special ? special.p10 : defensive ? defensive.p10 : player.resolvedSource === "workload" ? selectedWorkload(player,settings.workloadPositions)!.p10 : player.resolvedSource === "calibrated" ? player.calibrated!.p10 : historical ? finite(player.floorFpts) : null) ?? player.projection * 0.74
+    : (special ? special.p90 : defensive ? defensive.p90 : player.resolvedSource === "workload" ? selectedWorkload(player,settings.workloadPositions)!.p90 : player.resolvedSource === "calibrated" ? player.calibrated!.p90 : historical ? finite(player.ceilingFpts) : null) ?? player.projection * 1.28;
   const base = settings.mode === "gpp" ? cappedCeiling(rawBase, player.projection, settings.maxCeilingMultiple ?? DEFAULT_MAX_CEILING_MULTIPLE) : rawBase;
   // Phase 2: leverage (ownership penalty) applies when the server resolved it
   // as permitted — a validated feed, or a declared-heuristic feed the user
@@ -597,11 +618,13 @@ function objective(player: ResolvedPlayer, settings: NflOptimizerSettings, lineu
   const leverage = leverageEnabled && settings.mode === "gpp"
     ? leverageFactor(slotOwnershipPct(player, slot), settings.leverageExponent ?? DEFAULT_LEVERAGE_EXPONENT) : 1;
   const workload=player.resolvedSource === "workload"?selectedWorkload(player,settings.workloadPositions):null;
-  const boomBonus = settings.mode === "gpp" ? (defensive ? defensive.boom : workload && "boom" in workload ? workload.boom : player.resolvedSource === "calibrated" ? player.calibrated!.boom : historical ? finite(player.boomRate) ?? 0 : 0) * 2 : 0;
+  const boomBonus = settings.mode === "gpp" ? (special ? special.boom : defensive ? defensive.boom : workload && "boom" in workload ? workload.boom : player.resolvedSource === "calibrated" ? player.calibrated!.boom : historical ? finite(player.boomRate) ?? 0 : 0) * 2 : 0;
   return (base + boomBonus) * leverage + jitter(20260902, lineupNumber, player.dkPlayerId) * settings.randomness * player.projection;
 }
 
 function validateSettings(settings: NflOptimizerSettings): void {
+  if (settings.specialTeamsMode && !['off', 'experimental'].includes(settings.specialTeamsMode)) throw new Error('Unknown DST/kicker projection mode.');
+  if (settings.specialTeamsMode === 'experimental' && settings.projectionSource !== 'our') throw new Error('Experimental DST/kicker projections require Our historical model.');
   if (![0, 1].includes(settings.gppSignalMinPerLineup ?? 0)) throw new Error("GPP signal minimum must be 0 or 1.");
   if (settings.gppSignalMinPerLineup && (settings.format !== "classic" || settings.mode !== "gpp")) throw new Error("Opportunity signals can only be required in Classic GPP.");
   if (settings.gppSignalMinPerLineup && settings.gppSignalCodes?.length === 0) throw new Error("Select at least one opportunity signal.");
@@ -864,8 +887,8 @@ function buildOne(
     playerIds: chosen.map((entry) => entry.player.dkPlayerId),
     totalSalary: chosen.reduce((sum, entry) => sum + entry.salary, 0),
     projectedFpts: chosen.reduce((sum, entry) => sum + entry.projection, 0),
-    floorFpts: chosen.reduce((sum, entry) => sum + (entry.projectionSource==='defensive' ? entry.player.defensiveForecast!.selected.p10 : entry.projectionSource === "workload" ? selectedWorkload(entry.player,settings.workloadPositions)!.p10 : entry.projectionSource === "calibrated" ? entry.player.calibrated!.p10 : entry.projectionSource === "our" || entry.projectionSource === "our_fallback" ? entry.player.floorFpts ?? entry.projection / entry.multiplier * .74 : entry.projection / entry.multiplier * .74) * entry.multiplier, 0),
-    ceilingFpts: chosen.reduce((sum, entry) => sum + (entry.projectionSource==='defensive' ? entry.player.defensiveForecast!.selected.p90 : entry.projectionSource === "workload" ? selectedWorkload(entry.player,settings.workloadPositions)!.p90 : entry.projectionSource === "calibrated" ? entry.player.calibrated!.p90 : entry.projectionSource === "our" || entry.projectionSource === "our_fallback" ? entry.player.ceilingFpts ?? entry.projection / entry.multiplier * 1.28 : entry.projection / entry.multiplier * 1.28) * entry.multiplier, 0),
+    floorFpts: chosen.reduce((sum, entry) => sum + (entry.projectionSource==='special_teams' ? entry.player.specialTeams!.p10 : entry.projectionSource==='defensive' ? entry.player.defensiveForecast!.selected.p10 : entry.projectionSource === "workload" ? selectedWorkload(entry.player,settings.workloadPositions)!.p10 : entry.projectionSource === "calibrated" ? entry.player.calibrated!.p10 : entry.projectionSource === "our" || entry.projectionSource === "our_fallback" ? entry.player.floorFpts ?? entry.projection / entry.multiplier * .74 : entry.projection / entry.multiplier * .74) * entry.multiplier, 0),
+    ceilingFpts: chosen.reduce((sum, entry) => sum + (entry.projectionSource==='special_teams' ? entry.player.specialTeams!.p90 : entry.projectionSource==='defensive' ? entry.player.defensiveForecast!.selected.p90 : entry.projectionSource === "workload" ? selectedWorkload(entry.player,settings.workloadPositions)!.p90 : entry.projectionSource === "calibrated" ? entry.player.calibrated!.p90 : entry.projectionSource === "our" || entry.projectionSource === "our_fallback" ? entry.player.ceilingFpts ?? entry.projection / entry.multiplier * 1.28 : entry.projection / entry.multiplier * 1.28) * entry.multiplier, 0),
     projectedOwnership: chosen.some((entry) => ownershipPct(entry.player) != null)
       ? chosen.reduce((sum, entry) => sum + (ownershipPct(entry.player) ?? 0), 0)
       : null,
@@ -1045,7 +1068,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   // family because it modifies that same saved distribution.
   const objectiveSources = new Map<string, number>();
   for (const player of pool) {
-    const source = ["our", "our_fallback", "defensive"].includes(player.resolvedSource)
+    const source = ["our", "our_fallback", "defensive", "special_teams"].includes(player.resolvedSource)
       ? "historical" : player.resolvedSource;
     objectiveSources.set(source, (objectiveSources.get(source) ?? 0) + 1);
   }
@@ -1063,6 +1086,11 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   const ourFallback = pool.filter(p => p.resolvedSource === "our_fallback").length;
   if (dkFallback) warnings.push(`${dkFallback} players used DK Avg fallback.`);
   if (ourFallback) warnings.push(`${ourFallback} players retained historical baseline projections.`);
+  if (settings.specialTeamsMode === 'experimental') {
+    const dst = pool.filter(p => p.resolvedSource === 'special_teams' && p.position === 'DST').length;
+    const kicker = pool.filter(p => p.resolvedSource === 'special_teams' && p.position === 'K').length;
+    warnings.push(`Experimental special teams: ${dst} DST and ${kicker} kicker forecasts used saved opponent/team-total candidates. Forward validation is pending; other positions use historical projections.`);
+  }
   if (settings.projectionSource === "calibrated") {
     if (!coverage.direct) throw new Error("No qualified pregame calibrated projections are available. Refresh forecasts or choose the historical model.");
     warnings.push("Calibrated QB/DST is experimental; forward validation is pending.");

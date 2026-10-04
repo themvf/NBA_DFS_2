@@ -6,7 +6,7 @@ export type RunRiskSummary = {
 };
 
 function sourceFamily(source: string): string {
-  return source === "our" || source === "our_fallback" || source === "defensive" ? "historical" : source;
+  return source === "our" || source === "our_fallback" || source === "defensive" || source === "special_teams" ? "historical" : source;
 }
 
 /** Inspect the saved roster itself; older runs may lack a complete pool audit. */

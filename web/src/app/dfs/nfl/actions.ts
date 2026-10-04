@@ -79,6 +79,7 @@ import { readLastGamePassingLeaders, readTeamUsageWindows } from "@/db/nfl-dfs-u
 import { readNflDfsPlayerSignalEvidence, readNflAirDefenseEvidence, readNflAirTeamEvidence, readNflAirMarketEvidence } from "@/db/nfl-dfs-player-signals";
 import { airMatchupSignals, classifyNflPlayerSignals, NFL_PLAYER_SIGNAL_VERSION, type NflAirDefenseEvidence, type NflPlayerSignalEvidence } from "@/lib/nfl-dfs/player-signals";
 import { buildNflAirMatchupEvidence, type NflAirTeamEvidence, type NflAirMarketEvidence } from "@/lib/nfl-dfs/air-matchup-evidence";
+import { readSpecialTeamsProjection } from "@/lib/nfl-dfs/special-teams-projection";
 import { applyConfirmedStartingQbs, confirmStarterAvailability, ruledOutPlayer, sanitizeConfirmedStartingQbs, type ConfirmedStarterReport, type ConfirmedStartingQbs } from "@/lib/nfl-dfs/confirmed-starter";
 
 export type NflWorkspacePlayer = NflOptimizerPlayer & {
@@ -516,10 +517,12 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
     ? await db.select({
         playerId: nflDfsPlayerProjections.playerId,
         statMeans: nflDfsPlayerProjections.statMeans,
+        featureSnapshot: nflDfsPlayerProjections.featureSnapshot,
         sourceEvidence: nflDfsPlayerProjections.sourceEvidence,
       }).from(nflDfsPlayerProjections).where(eq(nflDfsPlayerProjections.runId, upload.projectionRunId))
     : [];
   const statsByPlayer = new Map(projectionStats.map(r => [Number(r.playerId), (r.statMeans ?? {}) as Record<string, number>]));
+  const specialTeamsByPlayer = new Map(projectionStats.map(r => [Number(r.playerId), r.featureSnapshot]));
   const notesByPlayer = new Map(projectionStats.map(r => [Number(r.playerId),
     (r.sourceEvidence as { availability?: ModelAvailabilityNote & { slate_transfer_allowed?: boolean; points_before?: number } })?.availability]));
   const decisionsByPlayer = new Map(projectionStats.map(r => [Number(r.playerId),
@@ -699,6 +702,10 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
         (notesByPlayer.get(row.ffPlayerId ?? -1)?.rule === 'inherits' && notesByPlayer.get(row.ffPlayerId ?? -1)?.applied === true
           ? numeric(notesByPlayer.get(row.ffPlayerId ?? -1)?.points_before) : null),
       modelConfidence: numeric(row.modelConfidence),
+      ...(() => {
+        const saved=readSpecialTeamsProjection(specialTeamsByPlayer.get(row.ffPlayerId ?? -1),row.position);
+        return {specialTeams:saved.projection,specialTeamsReason:saved.reason};
+      })(),
       historyGames: row.historyGames,
       // Week-1 teams legitimately read 0 (requirement floors at 1 game); null
       // only when the season itself is unresolved.
@@ -1510,6 +1517,8 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
   // The page offers a source only when this same rule passes; say why when it does not.
   const sourceBlocked=slate.sourceAvailability?sourceBlockedReason(slate.sourceAvailability,settings.projectionSource,settings.workloadPositions):null;
   if(sourceBlocked)throw new Error(sourceBlocked);
+  if(settings.specialTeamsMode === 'experimental' && settings.projectionSource !== 'our')
+    throw new Error('Experimental DST/kicker projections require Our historical model.');
   validateSituations(settings.situations,slate.teams);
   const requestedDefensive=settings.defensiveAdjustments;
   if(requestedDefensive?.mode && requestedDefensive.mode!=='off') {
@@ -1592,6 +1601,7 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
     salary: player.salary, captainSalary: player.captainSalary, rosterPositions: player.rosterPositions, status: player.dkStatus,
     ourProj: player.ourProj, floor: player.floorFpts, median:player.medianFpts, ceiling: player.ceilingFpts,
     defensiveForecast:player.defensiveForecast??null,
+    specialTeams:player.specialTeams??null,specialTeamsReason:player.specialTeamsReason??null,
     playerSignals:player.playerSignals??[], playerSignalVersion:NFL_PLAYER_SIGNAL_VERSION,
     airMatchupEvidence:player.airMatchupEvidence??null,
     projectionScenario: player.projectionScenario, redistributionVersion: slate.redistribution?.version,
