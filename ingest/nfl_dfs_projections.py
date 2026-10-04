@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import uuid
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Mapping
 
 from psycopg2.extras import Json, execute_values
 
@@ -39,6 +40,91 @@ from model.nfl_team_aliases import normalize_team
 
 
 RUN_NAMESPACE = uuid.UUID("8abcf42c-6a0d-49cc-9f34-1ad6f17b0d77")
+
+# How long a persisted run may stand in for a rebuild whose consumer-visible
+# output is identical. The hourly availability job rebuilt and wrote a full run
+# on every tick (51 runs, 258 MB of projection rows on 2026-10-04) although 68
+# of the 120 runs over the preceding three days were numerically identical to
+# the run before them. Reusing the newest identical run writes nothing; the
+# cap keeps as_of_at within the "about hourly" freshness every reader assumes
+# (web PROJECTION_STALE_HOURS is 12 h, the pipeline-health budget 36 h).
+REUSE_MAX_AGE = timedelta(hours=6)
+
+# Decision fields that change with every Sleeper capture even when the decision
+# itself (state, status, reason, source, kickoff, version) is unchanged.
+DECISION_VOLATILE_KEYS = frozenset({
+    "as_of_at", "available_at", "observation_id", "source_snapshot_id",
+    "qualifying_observation_ids", "display_only_observation_ids",
+    "qualifying_source_snapshot_ids", "display_only_source_snapshot_ids",
+})
+
+_OUTPUT_FIELDS = (
+    "player_id", "player_gsis_id", "player_name", "normalized_name", "team", "opponent",
+    "position", "projection_status", "history_games", "prior_games", "model_proj_fpts",
+    "baseline_fpts", "floor_fpts", "median_fpts", "ceiling_fpts", "boom_rate", "confidence",
+    "stat_means",
+)
+
+
+def output_digest(projections: list[dict[str, Any]], manifest: Mapping[str, Any]) -> str:
+    """Digest of everything a consumer reads from a persisted run.
+
+    Covers every player row column, the availability transfer result, the
+    availability decision minus its capture identifiers, the frozen matchup
+    evidence (by digest), and the run's model version and configuration.
+    Excludes the research-only matchup shadow and the capture ids/timestamps
+    that differ between two captures of the same facts.
+    """
+    decisions = manifest.get("availability_decisions") or {}
+    rows = []
+    for row in sorted(projections, key=lambda r: int(r["player_id"])):
+        snapshot = row.get("feature_snapshot")
+        if isinstance(snapshot, dict) and isinstance(snapshot.get("matchup"), dict):
+            matchup = snapshot["matchup"]
+            evidence = matchup.get("evidence")
+            digest = artifact_digest(evidence) if isinstance(evidence, dict) else matchup.get("evidence_digest")
+            snapshot = {**snapshot, "matchup": {"evidence_digest": digest}}
+        decision = decisions.get(str(row["player_id"]))
+        if isinstance(decision, dict):
+            decision = {key: value for key, value in decision.items() if key not in DECISION_VOLATILE_KEYS}
+        rows.append({
+            **{field: row.get(field) for field in _OUTPUT_FIELDS},
+            "feature_snapshot": snapshot,
+            "availability": row.get("availability"),
+            "availability_decision": decision,
+        })
+    return artifact_digest({
+        "model_version": MODEL_VERSION,
+        "season": manifest["season"],
+        "week": manifest["week"],
+        "model_config": manifest["model_config"],
+        "players": rows,
+    })
+
+
+def reusable_run(db: DatabaseManager, *, season: int, week: int, digest: str, now: datetime) -> dict[str, Any] | None:
+    """The newest persisted run for the week, if its output digest matches and it is recent.
+
+    Only the newest run is compared: consumers read the newest run, so an
+    older identical run is never the one that would stand in. Runs persisted
+    before the digest existed carry no digest and are never reused.
+    """
+    row = db.execute_one(
+        """SELECT run_id,as_of_at,availability_manifest->>'output_digest' AS output_digest
+           FROM nfl_dfs_projection_runs
+           WHERE season=%s AND week=%s AND model_version=%s
+           ORDER BY as_of_at DESC,created_at DESC LIMIT 1""",
+        (season, week, MODEL_VERSION),
+    )
+    if not row or not row.get("output_digest") or row["output_digest"] != digest:
+        return None
+    as_of_at = row.get("as_of_at")
+    if not isinstance(as_of_at, datetime):
+        return None
+    age = now - as_of_at
+    if age < timedelta(0) or age > REUSE_MAX_AGE:
+        return None
+    return {"run_id": str(row["run_id"]), "as_of_at": as_of_at.isoformat(), "age_seconds": age.total_seconds()}
 
 
 def production_config(*, safety_rollback: bool = False) -> dict[str, Any]:
@@ -527,6 +613,9 @@ def persist_week(db: DatabaseManager, projections: list[dict[str, Any]], manifes
         "decisions_digest": artifact_digest(manifest["availability_decisions"]),
         "decision_count": len(manifest["availability_decisions"]),
         "as_of_at": manifest["as_of_at"],
+        # Read by reusable_run(): a later rebuild with identical output reuses
+        # this run instead of writing another copy of it.
+        "output_digest": output_digest(projections, manifest),
     }
     with db.connect() as conn:
         cur = conn.cursor()
@@ -628,6 +717,8 @@ def main() -> None:
     parser.add_argument("--week", type=int)
     parser.add_argument("--seed", type=int, default=20260902)
     parser.add_argument("--no-persist", action="store_true")
+    parser.add_argument("--always-persist", action="store_true",
+                        help="Write a new run even when its output matches the newest run (the default reuses a run under REUSE_MAX_AGE)")
     parser.add_argument("--availability-safety-rollback", action="store_true",
                         help="Keep qualified OUT zeroing but disable opportunity transfer; never restores the legacy source bypass")
     args = parser.parse_args()
@@ -650,12 +741,25 @@ def main() -> None:
         as_of_at=now, seed=args.seed,
         config=production_config(safety_rollback=args.availability_safety_rollback),
     )
-    run_id = None if args.no_persist else persist_week(db, projections, manifest)
+    reused = None
+    if not args.no_persist and not args.always_persist:
+        reused = reusable_run(db, season=args.season, week=week,
+                              digest=output_digest(projections, manifest), now=now)
+    if reused:
+        run_id = reused["run_id"]
+        # Visible in the job log and as a GitHub annotation: a reused run is a
+        # decision, not a silent no-op.
+        print(f"::notice title=Projections unchanged::reusing run {run_id} from {reused['as_of_at']} "
+              f"({reused['age_seconds'] / 60:.0f} min old); nothing written", file=sys.stderr)
+    else:
+        run_id = None if args.no_persist else persist_week(db, projections, manifest)
     counts: dict[str, int] = {}
     for row in projections:
         counts[row["projection_status"]] = counts.get(row["projection_status"], 0) + 1
     print(json.dumps({
         "run_id": run_id,
+        "persisted": reused is None and not args.no_persist,
+        "reused_run": reused,
         "artifact_digest": manifest["artifact_digest"],
         "season": args.season,
         "week": week,
