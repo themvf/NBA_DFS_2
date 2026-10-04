@@ -137,6 +137,7 @@
     "test:cron-dispatch": "node --import tsx ./scripts/test-cron-dispatch.ts",
     "test:nfl-ownership-prior": "node --import tsx ./scripts/test-nfl-ownership-prior.ts",
     "calibrate:nfl-ownership": "tsx --conditions=react-server scripts/nfl-ownership-calibration.ts",
+    "test:nfl-defensive-capture-status": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-defensive-capture-status.ts",
     "test:nfl-captain-minimum": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-captain-minimum.ts",
     "test:nfl-gpp-leverage": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-leverage.ts",
     "test:pickem-contest": "node --import tsx ./scripts/test-pickem-contest.ts",

@@ -14,7 +14,7 @@
  */
 
 export type SlateCheckLevel = "blocked" | "attention" | "ok" | "info";
-export type SlateCheckAction = "refresh_projections" | "pick_starter";
+export type SlateCheckAction = "refresh_projections" | "pick_starter" | "retry_capture";
 
 export interface SlateCheckItem {
   id: string;
@@ -71,6 +71,12 @@ export interface SlateCheckInput {
   opponentAdjustments: { label: string; applied: number; eligible: number; captured?: number; error?: string | null }[] | null;
   /** When the next scheduled opponent capture starts (ISO); null when unknown. */
   nextOpponentCapture?: string | null;
+  /**
+   * Per profile, what happened to this upload's own capture request
+   * (lib/nfl-dfs/defensive-capture-status). Absent on reads that predate it;
+   * the scheduled-capture wording is then used.
+   */
+  defensiveCaptures?: { status: string; text: string; retryable: boolean }[] | null;
   /** `coverage`: how many players' ownership came from each source, when LineStar supplied any. */
   ownership: { source: string | null; errors: string[]; coverage?: { linestar: number; estimate: number; total: number } | null } | null;
   availability: { state: "blind" | "thin" | "adequate"; resolved: number; considered: number } | null;
@@ -209,7 +215,19 @@ export function buildSlateCheck(input: SlateCheckInput): SlateCheck {
     const failed = input.opponentAdjustments.filter((p) => p.error);
     if (any.length) add({ id: "opponent", level: "ok", text: `Opponent adjustments ready: ${any.map((p) => `${p.label} ${p.applied} of ${p.eligible} players`).join("; ")}.` });
     if (failed.length && !started) add({ id: "opponent-error", level: "attention", text: `Couldn't read opponent adjustments (${failed.map((p) => `${p.label}: ${p.error}`).join("; ")}), so builds that use them get unadjusted projections.` });
-    else if (!any.length && !started) add({ id: "opponent", level: "attention", text: opponentMissingText(input) });
+    else if (!any.length && !started) {
+      const captures = input.defensiveCaptures ?? [];
+      const pending = captures.filter((c) => c.status === "pending");
+      const failedCaptures = captures.filter((c) => c.status === "failed");
+      if (!captures.length) add({ id: "opponent", level: "attention", text: opponentMissingText(input) });
+      else if (failedCaptures.length) add({ id: "opponent", level: "attention", action: failedCaptures.some((c) => c.retryable) ? "retry_capture" : undefined,
+        text: `Opponent adjustments failed for this upload, so builds use unadjusted projections. ${captures.map((c) => c.text).join(" ")}` });
+      // Waiting is not something to fix: say what is happening and that a build now is unadjusted.
+      else if (pending.length) add({ id: "opponent", level: "info",
+        text: `Opponent adjustments are being captured for this upload; builds before they finish use unadjusted projections. ${captures.map((c) => c.text).join(" ")}` });
+      else add({ id: "opponent", level: "attention", action: captures.some((c) => c.retryable) ? "retry_capture" : undefined,
+        text: `No opponent adjustments apply to this upload, so builds use unadjusted projections. ${captures.map((c) => c.text).join(" ")}` });
+    }
   }
 
   // Ownership estimate.

@@ -144,6 +144,34 @@ NHL_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_nhl_unmapped_open ON nhl_unmapped_events(last_seen_at DESC) WHERE resolved_at IS NULL",
 ]
 
+# One opponent-capture request per (salary upload, projection run, profile).
+# Written by the web app on upload; drained by ingest/nfl_defensive_capture_requests.py.
+# Mirrored in web/src/db/ensure-schema.ts (ensureNflDfsTables).
+NFL_DEFENSIVE_CAPTURE_REQUESTS_DDL = """
+CREATE TABLE IF NOT EXISTS nfl_dfs_defensive_capture_requests (
+  request_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  upload_id UUID NOT NULL REFERENCES nfl_dfs_slate_uploads(upload_id) ON DELETE CASCADE,
+  projection_run_id UUID NOT NULL,
+  profile TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'pending',
+  attempts INTEGER NOT NULL DEFAULT 0,
+  requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  lease_until TIMESTAMPTZ,
+  dispatched_at TIMESTAMPTZ,
+  dispatch_error TEXT,
+  worker_run_url TEXT,
+  capture_run_id TEXT,
+  captured_players INTEGER,
+  last_error TEXT,
+  finished_at TIMESTAMPTZ,
+  UNIQUE(upload_id, projection_run_id, profile),
+  CHECK(profile IN ('pfr-efficiency','allowed-rushing-volume')),
+  CHECK(state IN ('pending','running','captured','failed','ineligible')),
+  CHECK(attempts >= 0)
+)"""
+
+
 TABLES = [
     # ── NBA teams ─────────────────────────────────────────────
     """
@@ -2865,6 +2893,7 @@ TABLES = [
         -- salary file unwritable -- see web/src/lib/nfl-dfs/slate-persist.ts.
         CHECK(projection_status IN ('historical','position_prior','unavailable','unmatched','out','unsupported'))
     )""",
+    NFL_DEFENSIVE_CAPTURE_REQUESTS_DDL,
     """CREATE TABLE IF NOT EXISTS nfl_dfs_optimizer_runs (
         run_id UUID PRIMARY KEY,
         upload_id UUID NOT NULL REFERENCES nfl_dfs_slate_uploads(upload_id) ON DELETE CASCADE,

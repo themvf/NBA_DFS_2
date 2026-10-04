@@ -1300,6 +1300,32 @@ const NFL_DFS_DDLS = [
   `CREATE TABLE IF NOT EXISTS nfl_dfs_player_projections (id BIGSERIAL PRIMARY KEY, run_id UUID NOT NULL REFERENCES nfl_dfs_projection_runs(run_id) ON DELETE CASCADE, dk_player_id BIGINT, player_id BIGINT REFERENCES ff_players(id), player_gsis_id TEXT, player_name TEXT NOT NULL, normalized_name TEXT NOT NULL, team TEXT, opponent TEXT, position TEXT NOT NULL, salary INTEGER, identity_method TEXT NOT NULL, projection_status TEXT NOT NULL, history_games INTEGER NOT NULL, prior_games INTEGER NOT NULL, model_proj_fpts DOUBLE PRECISION, baseline_fpts DOUBLE PRECISION, floor_fpts DOUBLE PRECISION, median_fpts DOUBLE PRECISION, ceiling_fpts DOUBLE PRECISION, boom_rate DOUBLE PRECISION, confidence DOUBLE PRECISION NOT NULL, stat_means JSONB NOT NULL DEFAULT '{}'::jsonb, feature_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb, source_evidence JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(run_id,player_id))`,
   `CREATE TABLE IF NOT EXISTS nfl_dfs_slate_uploads (upload_id UUID PRIMARY KEY, slate_signature TEXT NOT NULL, file_name TEXT NOT NULL, file_digest TEXT NOT NULL, format TEXT NOT NULL, games JSONB NOT NULL DEFAULT '[]'::jsonb, teams JSONB NOT NULL DEFAULT '[]'::jsonb, warnings JSONB NOT NULL DEFAULT '[]'::jsonb, player_count INTEGER NOT NULL, projection_run_id UUID REFERENCES nfl_dfs_projection_runs(run_id), eligibility_manifest_digest TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(file_digest,projection_run_id))`,
   `CREATE TABLE IF NOT EXISTS nfl_dfs_slate_players (id BIGSERIAL PRIMARY KEY, upload_id UUID NOT NULL REFERENCES nfl_dfs_slate_uploads(upload_id) ON DELETE CASCADE, dk_player_id BIGINT NOT NULL, captain_dk_player_id BIGINT, ff_player_id BIGINT REFERENCES ff_players(id), name TEXT NOT NULL, normalized_name TEXT NOT NULL, position TEXT NOT NULL, roster_positions JSONB NOT NULL, team TEXT NOT NULL, opponent TEXT, game_key TEXT, game_info TEXT, salary INTEGER NOT NULL, captain_salary INTEGER, avg_fpts_dk DOUBLE PRECISION, dk_status TEXT, is_out BOOLEAN NOT NULL DEFAULT FALSE, identity_method TEXT NOT NULL, platform_eligibility JSONB NOT NULL DEFAULT '{}'::jsonb, projection_status TEXT NOT NULL, our_proj DOUBLE PRECISION, floor_fpts DOUBLE PRECISION, median_fpts DOUBLE PRECISION, ceiling_fpts DOUBLE PRECISION, boom_rate DOUBLE PRECISION, model_confidence DOUBLE PRECISION, history_games INTEGER, fantasypros_proj DOUBLE PRECISION, linestar_proj DOUBLE PRECISION, linestar_own_pct DOUBLE PRECISION, custom_proj DOUBLE PRECISION, comparison_evidence JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(upload_id,dk_player_id))`,
+  // Opponent-capture requests written on upload, drained by
+  // ingest/nfl_defensive_capture_requests.py. Mirror of db/schema.py
+  // NFL_DEFENSIVE_CAPTURE_REQUESTS_DDL (tests/test_nfl_defensive_capture_requests.py pins it).
+  `CREATE TABLE IF NOT EXISTS nfl_dfs_defensive_capture_requests (
+  request_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  upload_id UUID NOT NULL REFERENCES nfl_dfs_slate_uploads(upload_id) ON DELETE CASCADE,
+  projection_run_id UUID NOT NULL,
+  profile TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'pending',
+  attempts INTEGER NOT NULL DEFAULT 0,
+  requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  lease_until TIMESTAMPTZ,
+  dispatched_at TIMESTAMPTZ,
+  dispatch_error TEXT,
+  worker_run_url TEXT,
+  capture_run_id TEXT,
+  captured_players INTEGER,
+  last_error TEXT,
+  finished_at TIMESTAMPTZ,
+  UNIQUE(upload_id, projection_run_id, profile),
+  CHECK(profile IN ('pfr-efficiency','allowed-rushing-volume')),
+  CHECK(state IN ('pending','running','captured','failed','ineligible')),
+  CHECK(attempts >= 0)
+)`,
+  `CREATE INDEX IF NOT EXISTS idx_nfl_dfs_defensive_capture_requests_upload ON nfl_dfs_defensive_capture_requests (upload_id)`,
   `ALTER TABLE nfl_dfs_slate_uploads ADD COLUMN IF NOT EXISTS eligibility_manifest_digest TEXT`,
   `ALTER TABLE nfl_dfs_slate_players ADD COLUMN IF NOT EXISTS identity_evidence JSONB NOT NULL DEFAULT '{}'::jsonb`,
   `ALTER TABLE nfl_dfs_slate_players ADD COLUMN IF NOT EXISTS platform_eligibility JSONB NOT NULL DEFAULT '{}'::jsonb`,

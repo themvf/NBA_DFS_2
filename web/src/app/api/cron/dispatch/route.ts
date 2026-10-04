@@ -68,13 +68,36 @@ async function handle(request: NextRequest) {
 }
 
 async function dispatchContext(now: Date): Promise<DispatchContext> {
+  return { nflKickoffs: await nflKickoffs(now), nflDefensiveCapturesPending: await nflDefensiveCapturesPending(now) };
+}
+
+async function nflKickoffs(now: Date): Promise<Date[] | null> {
   try {
     const rows = await db.execute(sql`SELECT kickoff FROM nfl_season_games
       WHERE kickoff > ${now.toISOString()}::timestamptz AND kickoff <= ${new Date(now.getTime() + NEAR_KICKOFF_MS).toISOString()}::timestamptz`);
-    return { nflKickoffs: rows.rows.map((row) => new Date(String(row.kickoff))).filter((d) => Number.isFinite(d.getTime())) };
+    return rows.rows.map((row) => new Date(String(row.kickoff))).filter((d) => Number.isFinite(d.getTime()));
   } catch (error) {
     console.error("cron dispatch: could not read NFL kickoffs; near-kickoff ticks skipped", error);
-    return { nflKickoffs: null };
+    return null;
+  }
+}
+
+/**
+ * Whether an opponent-capture request needs a worker: pending for longer than
+ * the upload's own dispatch needs to start (10 minutes), or holding an expired
+ * lease. A missing table (before the first upload creates it) reads as false.
+ */
+async function nflDefensiveCapturesPending(now: Date): Promise<boolean | null> {
+  try {
+    const grace = new Date(now.getTime() - 10 * 60_000).toISOString();
+    const rows = await db.execute(sql`SELECT EXISTS (SELECT 1 FROM nfl_dfs_defensive_capture_requests
+      WHERE attempts < 3 AND ((state = 'pending' AND COALESCE(dispatched_at, requested_at) < ${grace}::timestamptz)
+        OR (state = 'running' AND lease_until < ${now.toISOString()}::timestamptz))) AS due`);
+    return rows.rows[0]?.due === true;
+  } catch (error) {
+    if (/does not exist/i.test(error instanceof Error ? error.message : "")) return false;
+    console.error("cron dispatch: could not read opponent-capture requests; retry skipped this tick", error);
+    return null;
   }
 }
 
