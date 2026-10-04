@@ -4,7 +4,7 @@ assert.equal(canonicalAuditJson({b:2,a:{z:0,b:[3,1]},omit:undefined}),canonicalA
 import {auditProjection,validateSituations,DEFAULT_SITUATIONS,type AuditPlayer,type SituationTeam,type SituationSettings} from '../src/lib/nfl-dfs/projection-audit';
 import type {EfficiencyRate} from '../src/lib/nfl-dfs/efficiency';
 import type {InjuryRole} from '../src/lib/nfl-dfs/injury-redistribution';
-import {optimizeNflLineups,type NflOptimizerPlayer,type NflOptimizerSettings} from '../src/app/dfs/nfl/nfl-optimizer';
+import {optimizeNflLineups,resolveProjectionAudit,type NflOptimizerPlayer,type NflOptimizerSettings} from '../src/app/dfs/nfl/nfl-optimizer';
 const now=Date.parse('2026-09-12T12:00:00Z'),stamp=new Date(now).toISOString(),kickoff='2026-09-13T17:00:00Z';
 const positions={QB:true,RB:true,WR:true,TE:true};
 function member(id:number,pos:string,share:number,carry=0):InjuryRole{return {id:String(id),identity:String(id),name:`Player ${id}`,position:pos,role:pos==='QB'?'Listed QB1':'Listed starter',evidence_current:true,out:false,new_team:false,rookie:false,captured_at:stamp,prior_target_share:share,prior_carry_share:carry,availability:{fresh:true,status:'ACTIVE',source:'test',role:pos==='QB'?'Expected starter · QB1':'Listed starter',capturedAt:stamp,blockedReason:null,evaluatedAt:stamp,officialConfirmed:true,kickoff}};}
@@ -47,6 +47,7 @@ let id=10;const pool:NflOptimizerPlayer[]=[];
 for(const [t,o] of [['BUF','MIA'],['MIA','BUF'],['KC','DEN']])for(const pos of ['QB','RB','RB','WR','WR','WR','TE','DST'] as const){id++;pool.push({id,dkPlayerId:id,captainDkPlayerId:id+1000,name:`${t} ${pos} ${id}`,position:pos,team:t,opponent:o,gameKey:[t,o].sort().join('@'),salary:5000,captainSalary:7500,isOut:false,projectionStatus:'historical',ourProj:10,floorFpts:5,ceilingFpts:15,boomRate:.1,avgFptsDk:9,fantasyprosProj:null,linestarProj:null,linestarOwnPct:null,customProj:null});}
 pool.push({...pool.find(p=>p.position==='WR')!,...result,id:2,name:'Audited receiver',position:'WR',dkPlayerId:2,captainDkPlayerId:1002});
 const settings:NflOptimizerSettings={format:'classic',mode:'gpp',projectionSource:'workload',workloadPositions:positions,allowDkFallback:false,nLineups:1,minSalary:0,maxExposure:1,minUnique:1,stackPassCatchers:0,bringBack:false,randomness:0,lockedPlayerIds:[2],excludedPlayerIds:[],minExposureByPlayer:{},maxExposureByPlayer:{}};
-for(const mode of ['cash','gpp'] as const){const l=optimizeNflLineups(pool,{...settings,mode}).lineups[0],slot=l.slots.find(s=>s.player.dkPlayerId===2)!;assert.equal(slot.projection,audit.final);assert.deepEqual(slot.player.projectionAudit,audit);}
-const sd=optimizeNflLineups(pool.filter(p=>['BUF','MIA'].includes(p.team)),{...settings,format:'showdown'}).lineups[0];const cpt=sd.slots.find(s=>s.slot==='CPT')!;assert.equal(cpt.player.dkPlayerId,2);assert.equal(cpt.projection,audit.final!*1.5);
-console.log('Projection audit: exact ledger, verified absence, all-position scoring, team shares, immutable inputs, freshness, QB change, explicit assumptions, solver/CPT integration passed.');
+assert.deepEqual(resolveProjectionAudit(pool.find(p=>p.dkPlayerId===2)!,settings),audit,'adjusted workload evidence remains available for review');
+for(const mode of ['cash','gpp'] as const)assert.throws(()=>optimizeNflLineups(pool,{...settings,mode}),/Cannot build lineups from mixed objective sources \(24 historical and 1 workload\)/);
+assert.throws(()=>optimizeNflLineups(pool.filter(p=>['BUF','MIA'].includes(p.team)),{...settings,format:'showdown'}),/Cannot build lineups from mixed objective sources/);
+console.log('Projection audit: exact ledger, verified absence, all-position scoring, team shares, immutable inputs, freshness, QB change, explicit assumptions, and mixed-source guard passed.');
