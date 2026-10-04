@@ -478,6 +478,30 @@ to a person.
   checklist (a workflow appears automatically via the manifest; a new dataset
   needs a `model/pipeline_health.py` entry), and every fallback must surface a
   visible reason. "Done" requires the run id and its conclusion, not "it started".
+- **Muting is one list: `MUTED` in `web/src/lib/health-checklist.ts`.** A FAIL
+  row whose key equals an entry's `match`, or starts with it (`data:tennis`), is
+  shown on /health as INFO reading "Muted by owner since <date>: <reason>.
+  Underlying: <what it would have said>", and is never emailed, because the
+  sweep takes only FAIL rows. Every entry carries a date and a reason, and this
+  is the only way to quiet a row: do not disable the workflow, drop the dataset
+  entry or loosen a threshold to stop an email. Muted 2026-09-29: tennis
+  (workflows and data), the MLB DFS slate loader, the MLB beat-writer articles
+  and the YouTube picks extraction.
+- **Three rows come from observations, not from the run that reads them.**
+  - *Dispatch token*: GitHub returns the PAT's expiry only on responses to that
+    token, so the dispatcher and the health-check route record it as an `obs:`
+    row in `cron_heartbeats` (`recordObservation`, `web/src/lib/cron-heartbeat.ts`;
+    never in `CRON_ROUTES`, so never a clock), and the daily sweep (Actions
+    token) reads it from there. FAIL inside 30 days of expiry: when it lapses
+    every dispatched job stops at once.
+  - *Odds API credits*: the newest `odds_api_usage` reading, plan = used +
+    remaining; FAIL below 10% left, INFO when the newest reading is over 48 h
+    old. The daily spend rate restarts at a rise in `remaining`, which is the
+    monthly reset, not an error.
+  - *Production deployment*: the health-check route records
+    `VERCEL_GIT_COMMIT_SHA`; the row shows it beside main's head and is always
+    INFO, because Vercel skips builds when nothing under `web/` changed, so
+    production trailing main is expected.
 
 ## NBA Lineup Structure (DraftKings)
 ```

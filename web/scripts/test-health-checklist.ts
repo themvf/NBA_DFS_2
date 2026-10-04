@@ -11,7 +11,7 @@
  */
 import assert from "node:assert/strict";
 import { cronTimes, lastCronTime, nextCronTime, parseCron, cronMatches } from "../src/lib/cron-schedule";
-import { buildChecklist, type ChecklistInputs, type ManifestWorkflow } from "../src/lib/health-checklist";
+import { applyMutes, buildChecklist, oddsApiDailySpend, type ChecklistInputs, type HealthItem, type ManifestWorkflow } from "../src/lib/health-checklist";
 import { planSweep, problemsFromChecklist, parseState } from "../src/lib/failure-sweep";
 import type { WorkflowRunLite } from "../src/lib/workflow-health";
 
@@ -227,6 +227,17 @@ const cancelledOnly = only([wf("c.yml", { crons: ["0 * * * *"] })], { "c.yml": [
 assert.equal(cancelledOnly.status, "fail");
 assert.match(cancelledOnly.detail, /^None of its last 2 runs finished \(newest was cancelled/);
 
+// Cancelled runs did no work. An hourly job whose last success was three days ago and whose
+// eight runs since were all cancelled read "Last run succeeded Sep 26"; three in a row is a FAIL,
+// and even one is named rather than skipped over.
+const cancelledRuns = (n: number) => Array.from({ length: n }, (_, k) => run("h.yml", new Date(now.getTime() - (k + 1) * 3600_000).toISOString(), "cancelled"));
+const cancelledStreak = only([wf("h.yml", { crons: ["0 * * * *"] })], { "h.yml": [...cancelledRuns(8), run("h.yml", "2026-09-26T12:00:00Z", "success")] }).find((i) => i.key === "workflow:h.yml")!;
+assert.equal(cancelledStreak.status, "fail");
+assert.match(cancelledStreak.detail, /^Its last 8 runs were cancelled before finishing \(latest Sep 29, 7:40 AM ET\); last success Sep 26/);
+const cancelledOnce = only([wf("h.yml", { crons: ["0 * * * *"] })], { "h.yml": [...cancelledRuns(1), run("h.yml", "2026-09-29T10:00:00Z", "success")] }).find((i) => i.key === "workflow:h.yml")!;
+assert.equal(cancelledOnce.status, "pass", "one cancelled run is forgiven");
+assert.match(cancelledOnce.detail, /^Last completed run succeeded Sep 29, 6:00 AM ET; its newest run \(latest Sep 29, 7:40 AM ET\) was cancelled before finishing\./);
+
 // --- sweep ---
 const problems = problemsFromChecklist(items);
 assert.ok(problems.every((p) => items.find((i) => i.key === p.key)?.status === "fail"));
@@ -258,5 +269,46 @@ if (fewer.kind === "comment") assert.match(fewer.comment, /\*\*Resolved \(1\)\*\
 // All clear: close. No problems and no issue: nothing.
 assert.equal(planSweep(open.body, [], "2026-09-30T11:07:00Z", "themvf").kind, "close");
 assert.equal(planSweep(null, [], "2026-09-30T11:07:00Z", "themvf").kind, "none");
+
+// --- mutes and observation rows (2026-10-04) ---
+{
+  const row = (key: string, status: HealthItem["status"]): HealthItem => ({ key, group: "Scheduled jobs", label: key, status, detail: "Last run failed.",
+    url: null, lastEventAt: null, nextEventAt: null, lastCheckedAt: now.toISOString(), nextCheckAt: null });
+  const muted = applyMutes([row("workflow:refresh_tennis.yml", "fail"), row("data:tennis_matches", "fail"), row("workflow:refresh_mlb_vegas.yml", "fail"), row("workflow:refresh_youtube_picks.yml", "pass")]);
+  assert.equal(muted[0].status, "info", "a muted workflow is INFO, so it is never emailed");
+  assert.match(muted[0].detail, /^Muted by owner since 2026-09-29: tennis is out of scope for now\. Underlying: Last run failed\.$/);
+  assert.equal(muted[1].status, "info", "a prefix mutes every matching dataset");
+  assert.equal(muted[2].status, "fail", "an in-scope failure is untouched");
+  assert.equal(muted[3].status, "pass", "a passing muted row stays as it is");
+
+  const rows = (over: Partial<ChecklistInputs>) => buildChecklist(base(over));
+  const find = (items: HealthItem[], key: string) => items.find((i) => i.key === key);
+  // Inputs never supplied (an older collector) add no rows rather than guessing.
+  const bare = rows({});
+  assert.ok(!find(bare, "checklist:dispatch-token") && !find(bare, "data:odds-api-credits") && !find(bare, "checklist:deployed-commit"));
+
+  const day = 86_400_000;
+  const token = (days: number) => find(rows({ dispatchToken: { expiresAt: new Date(now.getTime() + days * day).toISOString(), observedAt: now.toISOString() } }), "checklist:dispatch-token")!;
+  assert.equal(token(120).status, "pass");
+  assert.equal(token(20).status, "fail", "inside 30 days the token row fails, a month before every dispatched job stops");
+  assert.match(token(-1).detail, /^Expired/);
+  assert.equal(find(rows({ dispatchToken: null }), "checklist:dispatch-token")!.status, "info", "never observed is INFO, not a guess");
+
+  const reading = (hoursAgo: number, used: number, remaining: number) => ({ requestedAt: new Date(now.getTime() - hoursAgo * 3600_000).toISOString(), used, remaining });
+  // 4,000 spent over two days with a reset in between: only the part after the reset counts.
+  assert.equal(oddsApiDailySpend([reading(72, 90_000, 10_000), reading(48, 0, 100_000), reading(24, 2_000, 98_000), reading(0, 4_000, 96_000)]), 2_000);
+  assert.equal(oddsApiDailySpend([reading(0, 1, 2)]), null, "one reading has no rate");
+  const odds = (latest: ReturnType<typeof reading>, series = [latest]) => find(rows({ oddsApi: { latest, series } }), "data:odds-api-credits")!;
+  assert.equal(odds(reading(1, 20_000, 80_000)).status, "pass");
+  const low = odds(reading(1, 95_000, 5_000));
+  assert.equal(low.status, "fail", "below 10% of the plan fails");
+  assert.match(low.detail, /^5,000 of 100,000 left/);
+  assert.equal(odds(reading(72, 95_000, 5_000)).status, "info", "a reading three days old is not current, so it cannot fail the row");
+  assert.equal(find(rows({ oddsApiError: "db down" }), "checklist:odds-api")!.status, "fail", "an unreadable quota is its own FAIL row");
+
+  const deployed = find(rows({ deployedCommit: { sha: "aaaaaaa1111", observedAt: now.toISOString() }, mainHead: { sha: "bbbbbbb2222", at: now.toISOString(), source: "commits/main" } }), "checklist:deployed-commit")!;
+  assert.equal(deployed.status, "info", "production may trail main by design (builds skip when web/ is unchanged)");
+  assert.match(deployed.detail, /Production runs aaaaaaa .* main is at bbbbbbb .*They differ/);
+}
 
 console.log(`Health checklist: ${items.length} synthetic items classified; unreadable sources become FAIL rows; the sweep opens, reminds daily, updates quietly, and closes.`);

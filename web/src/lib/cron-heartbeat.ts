@@ -101,6 +101,26 @@ export async function recordCronRun(route: string, ok: boolean, detail: string):
   }
 }
 
+/**
+ * Observations: facts one process learns in passing that the checklist needs
+ * from another. The dispatch token's expiry is a response header only the PAT
+ * receives (the daily sweep runs with the Actions token and never sees it);
+ * the deployed commit is an env var only Vercel has. They are stored as
+ * heartbeat rows under an `obs:` route key, which CRON_ROUTES never lists, so
+ * they are not rendered as clocks; `lastRunAt` is when the value was observed.
+ */
+export const OBSERVATION_PREFIX = "obs:";
+
+export async function recordObservation(key: string, value: string): Promise<void> {
+  return recordCronRun(OBSERVATION_PREFIX + key, true, value);
+}
+
+/** Pure: the stored observation for `key`, or null when none has been recorded. */
+export function observation(heartbeats: CronHeartbeat[], key: string): { value: string; observedAt: string } | null {
+  const hb = heartbeats.find((h) => h.route === OBSERVATION_PREFIX + key);
+  return hb?.lastDetail ? { value: hb.lastDetail, observedAt: hb.lastRunAt } : null;
+}
+
 export async function readCronHeartbeats(): Promise<CronHeartbeat[]> {
   await ensureTable();
   const db = await database();

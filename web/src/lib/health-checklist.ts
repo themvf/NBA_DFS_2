@@ -68,6 +68,71 @@ export interface ChecklistInputs {
   slatesError: string | null;
   availabilityOps: { status: string; evaluatedAt: string; week: number; alerts: string[] } | null;
   availabilityOpsError: string | null;
+  /** When the dispatch PAT expires (ISO) and when that was observed; null when never observed. */
+  dispatchToken?: { expiresAt: string; observedAt: string } | null;
+  /** The Odds API quota as the capture jobs recorded it. */
+  oddsApi?: { latest: OddsApiReading; series: OddsApiReading[] } | null;
+  oddsApiError?: string | null;
+  /** The commit production runs, as the deployed health-check route last reported it. */
+  deployedCommit?: { sha: string; observedAt: string } | null;
+  /** main's head commit. */
+  mainHead?: { sha: string; at: string; source: string } | null;
+  mainHeadError?: string | null;
+}
+
+/** One Odds API quota reading from `odds_api_usage`. */
+export interface OddsApiReading { requestedAt: string; used: number; remaining: number }
+
+/**
+ * The only way to quiet a row. A FAIL row whose key equals `match`, or starts
+ * with it, is shown as INFO ("Muted by owner since ...") and is never emailed,
+ * because the daily sweep takes only FAIL rows. Never disable a workflow, drop a
+ * dataset or loosen a threshold to stop an email; add an entry here, with a date
+ * and a reason, and remove it to bring the row back.
+ */
+export const MUTED: ReadonlyArray<{ match: string; since: string; reason: string }> = [
+  { match: "workflow:refresh_tennis", since: "2026-09-29", reason: "tennis is out of scope for now" },
+  { match: "data:tennis", since: "2026-09-29", reason: "tennis is out of scope for now" },
+  { match: "workflow:load_mlb_slate.yml", since: "2026-09-29", reason: "MLB DFS is out of scope for now" },
+  { match: "workflow:refresh_mlb_beat_articles.yml", since: "2026-09-29", reason: "the MLB beat-writer pilot is out of scope for now" },
+  { match: "data:mlb_beat", since: "2026-09-29", reason: "the MLB beat-writer pilot is out of scope for now" },
+  { match: "workflow:refresh_youtube_picks.yml", since: "2026-09-29", reason: "YouTube picks are out of scope for now" },
+  { match: "data:youtube_picks", since: "2026-09-29", reason: "YouTube picks are out of scope for now" },
+];
+
+/** A fail row covered by MUTED becomes INFO and keeps what it would have said. */
+export function applyMutes(items: HealthItem[], mutes = MUTED): HealthItem[] {
+  return items.map((item) => {
+    if (item.status !== "fail") return item;
+    const mute = mutes.find((m) => item.key === m.match || item.key.startsWith(m.match));
+    return mute ? { ...item, status: "info", detail: `Muted by owner since ${mute.since}: ${mute.reason}. Underlying: ${item.detail}` } : item;
+  });
+}
+
+/** The dispatch PAT fails its row this many days before expiry: every bridged job stops when it lapses. */
+export const TOKEN_WARN_DAYS = 30;
+/** The Odds API row fails below this share of the plan left. */
+export const ODDS_API_LOW_SHARE = 0.10;
+/** A quota reading older than this is not current. */
+const ODDS_API_STALE_HOURS = 48;
+
+/**
+ * Credits spent per day over the series, oldest first. A rise in `remaining`
+ * is the monthly reset, not an error, so the window restarts there.
+ */
+export function oddsApiDailySpend(series: OddsApiReading[]): number | null {
+  if (series.length < 2) return null;
+  let spent = 0;
+  let prev = series[0];
+  let start = Date.parse(series[0].requestedAt);
+  for (let i = 1; i < series.length; i += 1) {
+    const r = series[i];
+    if (r.remaining > prev.remaining) { spent = 0; start = Date.parse(r.requestedAt); }
+    else spent += prev.remaining - r.remaining;
+    prev = r;
+  }
+  const days = (Date.parse(series[series.length - 1].requestedAt) - start) / 86_400_000;
+  return days >= 0.5 ? spent / days : null;
 }
 
 const REPO = "https://github.com/themvf/NBA_DFS_2";
@@ -85,6 +150,12 @@ const FAILED = new Set(["failure", "timed_out", "startup_failure"]);
 export const DISPATCH_GRACE_MS = 2 * 3600_000;
 export const GITHUB_CRON_GRACE_MS = 12 * 3600_000;
 const MANUAL_FAIL_WINDOW_MS = 14 * 86400_000;
+/**
+ * A cancelled run did no work. One is shown and forgiven (a replaced queued
+ * run, a person stopping it); this many in a row means the job is not getting
+ * to run, which "Last run succeeded <weeks ago>" used to hide.
+ */
+export const CANCELLED_FAIL_STREAK = 3;
 const NFL_WORKFLOWS = new Set(["refresh_nfl_dfs_projections.yml", "refresh_nfl_availability_context.yml", "refresh_nfl_dk_pool.yml",
   "capture_nfl_availability.yml", "refresh_nfl_vegas.yml", "refresh_nfl_dfs_research.yml", "refresh_nfl_dfs_postweek.yml",
   "refresh_nfl_pbp_archetypes.yml", "refresh_nfl_specials.yml", "refresh_nfl_survivor.yml", "capture_nfl_odds.yml"]);
@@ -129,6 +200,8 @@ function workflowItem(w: ManifestWorkflow, input: ChecklistInputs, runsByName: M
   const finished = runs.filter((r) => r.status === "completed" && r.conclusion !== "cancelled" && r.conclusion !== "skipped");
   const last = runs[0] ?? null;
   const lastFinished = finished[0] ?? null;
+  let cancelled = 0;
+  for (const r of runs) { if (r.status === "completed" && r.conclusion === "cancelled") cancelled += 1; else break; }
   const dispatch = input.dispatchTimes[w.file] ?? { past: [], future: [] };
   // The next 8 days of fire times give the cadence text; a cron that fires less
   // often than that (monthly, seasonal) still gets its true next time.
@@ -209,6 +282,10 @@ function workflowItem(w: ManifestWorkflow, input: ChecklistInputs, runsByName: M
   if (!scheduled && !followsOthers) return { ...base, status: lastFinished?.conclusion === "success" ? "pass" : "info", detail: `Manual job; last run ${lastFinished?.conclusion ?? last.status} ${et(last.createdAt)}.` };
   // Every recent run was cancelled or skipped: nothing finished, so there is no success to report.
   if (!lastFinished) return { ...base, status: "fail", detail: `None of its last ${runs.length} runs finished (newest was ${last.conclusion} at ${et(last.createdAt)}).` };
+  if (cancelled >= CANCELLED_FAIL_STREAK) {
+    return { ...base, status: "fail", detail: `Its last ${cancelled} runs were cancelled before finishing (latest ${et(last.createdAt)}); last success ${lastFinished.conclusion === "success" ? et(lastFinished.createdAt) : "not in recent runs"}.` };
+  }
+  if (cancelled) return { ...base, status: "pass", detail: `Last completed run succeeded ${et(lastFinished.createdAt)}; its newest ${cancelled === 1 ? "run" : `${cancelled} runs`} (latest ${et(last.createdAt)}) ${cancelled === 1 ? "was" : "were"} cancelled before finishing.${cadence}` };
   return { ...base, status: "pass", detail: `Last run succeeded ${et(lastFinished.createdAt)}.${cadence}` };
 }
 
@@ -293,6 +370,54 @@ export function buildChecklist(input: ChecklistInputs): HealthItem[] {
       lastCheckedAt: now, nextCheckAt: nextCheck });
   }
 
+  // The dispatch token. When it lapses, every job on the Vercel dispatcher stops at once.
+  if (input.dispatchToken !== undefined) {
+    const t = input.dispatchToken;
+    const days = t ? (Date.parse(t.expiresAt) - input.now.getTime()) / 86_400_000 : null;
+    items.push({ key: "checklist:dispatch-token", group: "Checklist", label: "GitHub dispatch token (GITHUB_DISPATCH_TOKEN)",
+      status: days == null ? "info" : days < TOKEN_WARN_DAYS ? "fail" : "pass",
+      detail: days == null || !t ? "No expiry has been observed yet; the dispatcher records it on its next tick."
+        : days < 0 ? `Expired ${et(t.expiresAt)}: every dispatched job has stopped. Create a new token and update it in Vercel.`
+        : days < TOKEN_WARN_DAYS ? `Expires ${et(t.expiresAt)} (${Math.floor(days)} days). Renew it before then, or every dispatched job stops.`
+        : `Expires ${et(t.expiresAt)} (${Math.floor(days)} days).`,
+      url: null, lastEventAt: t?.observedAt ?? null, nextEventAt: null, lastCheckedAt: now, nextCheckAt: nextCheck });
+  }
+
+  // The shared Odds API quota. Exhaustion answers 401 on every paid call, across every sport.
+  if (input.oddsApiError) items.push(unreadable("checklist:odds-api", "Checklist", "Odds API credits", input.oddsApiError, input));
+  else if (input.oddsApi !== undefined) {
+    const u = input.oddsApi;
+    const plan = u ? u.latest.used + u.latest.remaining : null;
+    const ageH = u ? (input.now.getTime() - Date.parse(u.latest.requestedAt)) / 3600_000 : null;
+    const stale = ageH != null && ageH > ODDS_API_STALE_HOURS;
+    const rate = u ? oddsApiDailySpend(u.series) : null;
+    const daysLeft = u && rate && rate > 0 ? u.latest.remaining / rate : null;
+    const low = u && plan ? u.latest.remaining / plan < ODDS_API_LOW_SHARE : false;
+    items.push({ key: "data:odds-api-credits", group: "Data freshness", label: "Odds API credits (shared by every sport)",
+      status: !u || stale ? "info" : low ? "fail" : "pass",
+      detail: !u || plan == null ? "No quota reading has been recorded."
+        : `${u.latest.remaining.toLocaleString("en-US")} of ${plan.toLocaleString("en-US")} left as of ${et(u.latest.requestedAt)}`
+          + (rate != null ? `; spending about ${Math.round(rate).toLocaleString("en-US")} a day` : "")
+          + (daysLeft != null ? ` (about ${Math.floor(daysLeft)} days at that rate)` : "")
+          + (low ? `. Below ${ODDS_API_LOW_SHARE * 100}% of the plan: at zero every paid call answers 401 for every sport.` : ".")
+          + (stale && ageH != null ? ` No reading for ${Math.floor(ageH)} h.` : ""),
+      url: null, lastEventAt: u?.latest.requestedAt ?? null, nextEventAt: null, lastCheckedAt: now, nextCheckAt: nextCheck });
+  }
+
+  // Which commit production runs. Informational: Vercel skips a build when nothing under
+  // web/ changed (web/vercel.json ignoreCommand), so production can trail main by design.
+  if (input.deployedCommit !== undefined || input.mainHead !== undefined) {
+    const d = input.deployedCommit ?? null;
+    const m = input.mainHead ?? null;
+    const short = (sha: string) => sha.slice(0, 7);
+    items.push({ key: "checklist:deployed-commit", group: "Checklist", label: "Production deployment",
+      status: "info",
+      detail: (d ? `Production runs ${short(d.sha)} (reported ${et(d.observedAt)})` : "Production has not reported its commit yet")
+        + (m ? `; main is at ${short(m.sha)} (${et(m.at)})` : input.mainHeadError ? `; main could not be read (${input.mainHeadError})` : "")
+        + (d && m && d.sha !== m.sha ? ". They differ, which is expected when the newer commits changed nothing under web/." : "."),
+      url: null, lastEventAt: d?.observedAt ?? null, nextEventAt: null, lastCheckedAt: now, nextCheckAt: nextCheck });
+  }
+
   const order: Record<HealthStatus, number> = { fail: 0, info: 1, pass: 2 };
-  return items.sort((a, b) => order[a.status] - order[b.status] || a.group.localeCompare(b.group) || a.label.localeCompare(b.label));
+  return applyMutes(items).sort((a, b) => order[a.status] - order[b.status] || a.group.localeCompare(b.group) || a.label.localeCompare(b.label));
 }
