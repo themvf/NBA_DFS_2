@@ -113,19 +113,37 @@ def backfill(db: DatabaseManager, start: str, end: str, dry_run: bool = False) -
         print(f"  {skipped} dates skipped due to API errors")
 
     scores_updated = 0
+    score_failures = 0
     for i, d in enumerate(need_scores):
         try:
             n = fetch_scores(db, d)
             scores_updated += n
         except Exception as exc:
             logger.warning("Scores failed for %s: %s", d, exc)
+            score_failures += 1
         if i < len(need_scores) - 1:
             time.sleep(SLEEP_BETWEEN_DATES)
 
     print(
-        f"\nDone: {total_games} games ingested across {len(need_schedule)} dates, "
-        f"{scores_updated} score updates across {len(need_scores)} dates"
+        f"\nDone: {total_games} games ingested across {len(need_schedule)} dates "
+        f"({skipped} schedule fetches failed), "
+        f"{scores_updated} score updates across {len(need_scores)} dates "
+        f"({score_failures} score fetches failed)"
     )
+    # A per-date skip is fine only while some dates succeed. When EVERY date
+    # in the window failed, nothing was backfilled and the caller must not
+    # read the completed run as a healed window. (fetch_schedule/fetch_scores
+    # used to swallow their own transport errors, so this counter never moved.)
+    if need_schedule and skipped == len(need_schedule):
+        raise RuntimeError(
+            f"MLB schedule backfill: all {skipped} schedule fetches failed for {start}..{end}; "
+            "nothing was backfilled"
+        )
+    if need_scores and score_failures == len(need_scores):
+        raise RuntimeError(
+            f"MLB schedule backfill: all {score_failures} score fetches failed for {start}..{end}; "
+            "no scores were backfilled"
+        )
 
 
 if __name__ == "__main__":
