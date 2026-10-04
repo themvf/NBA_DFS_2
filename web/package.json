@@ -105,6 +105,7 @@
     "test:nfl-gpp-baseline": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-baseline.ts",
     "test:nfl-gpp-punt": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-punt.ts",
     "test:nfl-gpp-ownership": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-ownership.ts",
+    "test:nfl-top-projected-coverage": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-top-projected-coverage.ts",
     "test:nfl-gpp-exposure": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-exposure.ts",
     "test:nfl-gpp-archetypes": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-archetypes.ts",
     "test:nfl-balanced-plan": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-balanced-plan.ts",

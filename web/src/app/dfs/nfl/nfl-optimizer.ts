@@ -148,6 +148,8 @@ export type NflOptimizerPlayer = {
 export type NflOptimizerSettings = {
   format: NflSlateFormat;
   mode: NflOptimizerMode;
+  /** Classic GPP: give eligible leaders by selected mean projection a lineup without manual exposure targets. */
+  topProjectedCoverage?: boolean;
   /** Optional Classic GPP lineup rule; chips are descriptive and never modify projections. */
   gppSignalMinPerLineup?: 0 | 1;
   gppSignalCodes?: NflPlayerSignalCode[];
@@ -1166,6 +1168,31 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     plan = Array.from({ length: settings.nLineups }, () => ({ archetypeId: "standard_ceiling" as ArchetypeId, compiled: null }));
   }
 
+  // Coverage is a portfolio rule, not a change to a player's projection or
+  // GPP score. Rank by the SELECTED source's mean so ownership and salary
+  // cannot silently remove every appearance of a leading scorer. Only a
+  // player who can make a legal lineup under the current rules is promised.
+  const topProjectedTargets: ResolvedPlayer[] = [];
+  if (settings.topProjectedCoverage && settings.format === "classic" && settings.mode === "gpp") {
+    const emptyCounts = new Map<number, number>();
+    const preflightSteps = plan.filter((step, index) => plan.findIndex(other => other.archetypeId === step.archetypeId) === index);
+    for (const [position, count] of [["QB", 1], ["RB", 2], ["WR", 2], ["TE", 1]] as const) {
+      const ranked = pool.filter(player => player.position === position
+        && (countsById.get(player.dkPlayerId)?.overallMax ?? 0) > 0)
+        .sort((a, b) => b.projection - a.projection || a.dkPlayerId - b.dkPlayerId);
+      for (const candidate of ranked.slice(0, count + 3)) {
+        if (topProjectedTargets.filter(player => player.position === position).length >= count) break;
+        const canRoster = preflightSteps.some(step => buildOne(pool, settings, 1, [], emptyCounts,
+          new Set([...locked, candidate.dkPlayerId]), countsById, emptyCounts, emptyCounts,
+          step.compiled, plan.length, true, false, false));
+        if (canRoster) topProjectedTargets.push(candidate);
+        else warnings.push(`Top projected coverage skipped ${candidate.name}: no legal lineup with the current salary, stack, exposure, and lineup rules.`);
+      }
+    }
+    topProjectedTargets.sort((a, b) => b.projection - a.projection || a.dkPlayerId - b.dkPlayerId);
+    topProjectedTargets.splice(Math.max(1, settings.nLineups));
+  }
+
   const exposureCounts = new Map<number, number>();
   const captainCounts = new Map<number, number>();
   const flexCounts = new Map<number, number>();
@@ -1184,7 +1211,15 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     }
     const requireAirMatchup = airMatchupTarget > 0 && airMatchupTarget - airMatchupLineups >= remaining;
     const requireGoalLine = goalLineTarget > 0 && goalLineTarget - goalLineLineups >= remaining;
-    const lineup = buildOne(pool, settings, lineupNumber, lineups, exposureCounts, forced, countsById, captainCounts, flexCounts, plan[lineupNumber - 1].compiled, remaining, true, requireAirMatchup, requireGoalLine);
+    let lineup: NflGeneratedLineup | null = null;
+    for (const candidate of topProjectedTargets) {
+      if ((exposureCounts.get(candidate.dkPlayerId) ?? 0) > 0) continue;
+      lineup = buildOne(pool, settings, lineupNumber, lineups, exposureCounts,
+        new Set([...forced, candidate.dkPlayerId]), countsById, captainCounts, flexCounts,
+        plan[lineupNumber - 1].compiled, remaining, true, requireAirMatchup, requireGoalLine);
+      if (lineup) break;
+    }
+    lineup ??= buildOne(pool, settings, lineupNumber, lineups, exposureCounts, forced, countsById, captainCounts, flexCounts, plan[lineupNumber - 1].compiled, remaining, true, requireAirMatchup, requireGoalLine);
     if (!lineup) {
       if (requireAirMatchup && requireGoalLine) throw new Error(`Could not meet the air-yard matchup and goal-line RB minimums together with the remaining exposure, salary, and roster constraints. Lower a percentage or adjust player limits.`);
       if (requireAirMatchup) throw new Error(`Could not meet the air-yard matchup minimum of ${airMatchupTarget}/${settings.nLineups} lineups with the remaining exposure, salary, and roster constraints. Lower the percentage or adjust player limits.`);
@@ -1211,6 +1246,11 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   if (goalLineTarget) {
     if (goalLineLineups < goalLineTarget) throw new Error(`Goal-line RB minimum missed: ${goalLineLineups}/${goalLineTarget} required lineups. Adjust the percentage or player limits.`);
     warnings.push(`Goal-line RB coverage: ${goalLineLineups}/${lineups.length} generated lineups; minimum ${goalLineTarget}/${settings.nLineups} requested (${settings.gppGoalLineMinPct}%).`);
+  }
+  if (topProjectedTargets.length) {
+    const missed = topProjectedTargets.filter(player => !exposureCounts.get(player.dkPlayerId));
+    if (missed.length) throw new Error(`Top projected coverage could not be completed for ${missed.map(player => player.name).join(", ")}. The lineup rules conflict with covering these players; adjust the rules or turn off top projected coverage.`);
+    warnings.push(`Top projected coverage: ${topProjectedTargets.map(player => player.name).join(", ")} each appeared in at least one lineup (ranked by selected mean projection).`);
   }
 
   // Report realized vs requested per slot and flag missed minimums (P3-AC2/AC5).
