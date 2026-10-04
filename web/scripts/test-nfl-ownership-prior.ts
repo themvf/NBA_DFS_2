@@ -4,7 +4,7 @@
  * the source can never be rated validated.
  */
 import assert from "node:assert/strict";
-import { allocateBudget, CLASSIC_MAX_PCT, ownershipScore, projectOwnershipPrior, SHOWDOWN_TOTAL_MAX_PCT, VALUE_SALARY_FLOOR, type OwnershipPriorPlayer } from "../src/lib/nfl-dfs/ownership-prior";
+import { allocateBudget, CLASSIC_MAX_PCT, ownershipScore, projectOwnershipPrior, SHOWDOWN_TOTAL_MAX_PCT, SHOWDOWN_VALUE_EXPONENT, VALUE_SALARY_FLOOR, type OwnershipPriorPlayer } from "../src/lib/nfl-dfs/ownership-prior";
 import { assessOwnership } from "../src/lib/nfl-dfs/ownership-capability";
 
 let id = 0;
@@ -71,13 +71,27 @@ const star = (over: Partial<OwnershipPriorPlayer>) => mk("RB", 9600, 15.6, { cap
 const game = [mk("QB", 10800, 18.6, { captainSalary: 16200 }), star({}), mk("WR", 10600, 14.1, { captainSalary: 15900 }),
   mk("RB", 200, 5.8, { captainSalary: 300 }), ...Array.from({ length: 14 }, (_, i) => mk("WR", 3000 + i * 300, 3 + i * .4, { captainSalary: Math.round((3000 + i * 300) * 1.5) }))];
 const sd2 = projectOwnershipPrior(game, "showdown");
-assert.equal(sd2.version, "nfl-ownership-prior-v2");
+assert.equal(sd2.version, "nfl-ownership-prior-v3");
 assert.ok(sd2.players.every((p) => p.ownPct <= SHOWDOWN_TOTAL_MAX_PCT + 1e-6), "no player over the one-slot total");
 // Value is floored: a $200 salary no longer makes a backup chalk (v1: Salvon Ahmed 93%).
 const cheap = sd2.players.find((p) => p.dkPlayerId === game[3].dkPlayerId)!;
 const hurts = sd2.players.find((p) => p.dkPlayerId === game[0].dkPlayerId)!;
 assert.ok(cheap.ownPct < hurts.ownPct / 2, `a $200 backup (${cheap.ownPct.toFixed(1)}%) is well below the starting QB (${hurts.ownPct.toFixed(1)}%)`);
 assert.equal(ownershipScore(mk("RB", 200, 5.8)), ownershipScore(mk("RB", VALUE_SALARY_FLOOR, 5.8)), "below the floor, salary no longer moves value");
+
+// v3 (2026-10-04): Showdown reads value at SHOWDOWN_VALUE_EXPONENT (0.5), Classic keeps 1.5.
+// Pinned to the Python mirror (model/nfl_showdown_ownership_eval.prior_showdown,
+// tests/test_nfl_showdown_ownership_eval.py) on this exact pool: both languages must agree.
+assert.equal(SHOWDOWN_VALUE_EXPONENT, 0.5);
+const near = (actual: number | null | undefined, expected: number, label: string) =>
+  assert.ok(actual != null && Math.abs(actual - expected) < 0.02, `${label}: ${actual} vs ${expected}`);
+[[0, 51.94, 43.06], [1, 70.68, 24.32], [2, 79.54, 15.46], [3, 25.07, 1.93]].forEach(([i, flex, captain]) => {
+  const row = sd2.players.find((p) => p.dkPlayerId === game[i].dkPlayerId)!;
+  near(row.flexPct, flex, `showdown flex #${i}`); near(row.captainPct, captain, `showdown captain #${i}`);
+});
+const classicScore = ownershipScore(mk("WR", 6000, 15));
+assert.equal(ownershipScore(mk("WR", 6000, 15), 6000, 0.5) < classicScore, true, "a lower value exponent lowers a score whose value exceeds 1");
+assert.equal(classicScore, ownershipScore(mk("WR", 6000, 15), 6000), "Classic default exponent is unchanged");
 
 // Invalid ownership never drives leverage, even when opted in.
 const broken = assessOwnership([{ playerId: 1, medianProjection: 10 }],

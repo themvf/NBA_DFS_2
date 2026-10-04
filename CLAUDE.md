@@ -7516,6 +7516,17 @@ slates, holdout by slate) are registered in `docs/nfl-ownership-model.md`.
 the largest GPP entered each week, that is the training set. Do not tune the
 prior's constants against the slates it is graded on.
 
+**v3 (2026-10-04, Showdown only).** Value exponent 1.5 -> 0.5; Classic untouched.
+Better than v2 on the two contests it was read off AND on two week 4 Showdown
+contests imported afterwards (flex MAE 4.35 -> 3.82, 5.23 -> 4.61), but four
+contests of one format is "improved", not validated, and on built portfolios it
+is roughly neutral. True punts and kickers are still missed. Evaluate any
+Showdown ownership change with `python -m research.nfl_showdown_ownership_eval`
+(projected points kept at equal real-field duplication), not accuracy alone, and
+see the "Showdown: value exponent" section of `docs/nfl-ownership-model.md`.
+Contest standings lineups are summarized per contest in `nfl_dfs_field_structure`
+(`nfl-dfs-field-structure-v1`): duplication, heavy multi-entry share, pair lift.
+
 ### GPP objective: multiplicative leverage and the ceiling cap (2026-09-27)
 
 The first build with the ownership prior live produced the SAME three lineups
