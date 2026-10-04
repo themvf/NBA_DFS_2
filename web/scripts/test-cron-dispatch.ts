@@ -157,5 +157,11 @@ assert.ok(!keys("2026-09-29T10:37:00Z").includes("nfl-dfs-postweek"), "not the :
   assert.equal((await dispatchWorkflow(job, "t", (async () => new Response("nope", { status: 422, headers: { "github-authentication-token-expiration": "2026-11-15 12:00:00 UTC" } })) as unknown as typeof fetch)).tokenExpiresAt,
     "2026-11-15T12:00:00.000Z", "a failed dispatch still reports the expiry");
 })().then(() => {
-  console.log(`Cron dispatch: ${DISPATCH_JOBS.length} bridged workflows on a 15-minute tick; half-hour cadences unchanged, NFL availability every 15 minutes before a kickoff.`);
+  // Upload-triggered opponent captures: dispatched only when the database says a request is waiting.
+assert.ok(keys("2026-10-03T15:22:00Z", { nflKickoffs: [], nflDefensiveCapturesPending: true }).includes("nfl-defensive-capture"));
+assert.ok(!keys("2026-10-03T15:22:00Z", { nflKickoffs: [], nflDefensiveCapturesPending: false }).includes("nfl-defensive-capture"));
+assert.ok(!keys("2026-10-03T15:22:00Z", { nflKickoffs: [], nflDefensiveCapturesPending: null }).includes("nfl-defensive-capture"), "unreadable: no blind dispatch");
+assert.ok(!keys("2026-10-03T15:22:00Z").includes("nfl-defensive-capture"), "no context, no dispatch");
+
+console.log(`Cron dispatch: ${DISPATCH_JOBS.length} bridged workflows on a 15-minute tick; half-hour cadences unchanged, NFL availability every 15 minutes before a kickoff.`);
 }).catch((e) => { console.error(e); process.exit(1); });

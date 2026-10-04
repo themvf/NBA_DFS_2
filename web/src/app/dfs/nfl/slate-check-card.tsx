@@ -6,6 +6,7 @@ import type { SlateCheck, SlateCheckAction, SlateCheckItem } from "@/lib/nfl-dfs
 const ACTION_LABELS: Record<SlateCheckAction, string> = {
   refresh_projections: "Refresh projections",
   pick_starter: "Pick the starter",
+  retry_capture: "Retry capture",
 };
 
 /**

@@ -28,6 +28,11 @@ export const WORKFLOW_REF = "main";
 export interface DispatchContext {
   /** NFL kickoffs in the next few hours; null when the schedule could not be read. */
   nflKickoffs: Date[] | null;
+  /**
+   * Opponent-capture requests waiting for a worker (pending past the dispatch
+   * grace, or with an expired lease). Null or absent when it could not be read.
+   */
+  nflDefensiveCapturesPending?: boolean | null;
 }
 
 export const NO_CONTEXT: DispatchContext = { nflKickoffs: null };
@@ -160,6 +165,17 @@ export const DISPATCH_JOBS: readonly DispatchJob[] = [
     due: (now) => { const m = now.getUTCMonth() + 1; return m >= 8 || m <= 1; },
     inputsAt: (now) => ({ force_schedule: "false", capture_now: "false", slot: cfbTerminalSlot(now) }),
     why: "CFB line terminal: event mappings every 15 minutes, scores hourly, full schedule every 6 hours.",
+  },
+  {
+    key: "nfl-defensive-capture",
+    workflow: "capture_nfl_defensive_on_upload.yml",
+    // Only when the database says a request is waiting. The upload itself
+    // dispatches the worker; this is the retry when that dispatch failed or the
+    // run died holding a lease. Never on a schedule of its own, so an idle week
+    // costs nothing.
+    due: (_now, context) => context.nflDefensiveCapturesPending === true,
+    inputs: { upload_id: "" },
+    why: "Upload-triggered opponent captures: retries any request still pending after its own dispatch.",
   },
   {
     key: "daily-failure-sweep",

@@ -26,6 +26,9 @@ type Args<F extends (...args: never[]) => unknown> = Parameters<F>;
 
 export async function safeStartNflDataUpdate(...args: Args<typeof dataUpdates.startNflDataUpdate>) { return run("Starting the data update", () => dataUpdates.startNflDataUpdate(...args)); }
 export async function safeReadNflDataUpdate(...args: Args<typeof dataUpdates.readNflDataUpdate>) { return run("Checking the data update", () => dataUpdates.readNflDataUpdate(...args)); }
+export async function safeReadNflDefensiveCaptureStatus(...args: Args<typeof actions.readNflDefensiveCaptureStatus>) { return run("Checking the opponent capture", () => actions.readNflDefensiveCaptureStatus(...args)); }
+export async function safeRetryNflDefensiveCapture(...args: Args<typeof actions.retryNflDefensiveCapture>) { return run("Retrying the opponent capture", () => actions.retryNflDefensiveCapture(...args)); }
+export async function safeCheckNflSlateFreshness(...args: Args<typeof actions.checkNflSlateFreshness>) { return run("Checking for newer projections", () => actions.checkNflSlateFreshness(...args)); }
 export async function safeRefreshNflSlateProjections(...args: Args<typeof actions.refreshNflSlateProjections>) { return run("Projection refresh", () => actions.refreshNflSlateProjections(...args)); }
 export async function safeListSavedNflSlates(...args: Args<typeof actions.listSavedNflSlates>) { return run("Listing saved slates", () => actions.listSavedNflSlates(...args)); }
 export async function safeLoadSavedNflWorkspace(...args: Args<typeof actions.loadSavedNflWorkspace>) { return run("Loading the slate", () => actions.loadSavedNflWorkspace(...args)); }
