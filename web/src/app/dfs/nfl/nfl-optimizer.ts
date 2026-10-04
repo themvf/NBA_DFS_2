@@ -1,7 +1,7 @@
 import "server-only";
 import type { DefensiveForecastBundle, DefensiveSettings } from '@/lib/nfl-dfs/defensive-projection';
 import { captureProfileFor } from '@/lib/nfl-dfs/defensive-display';
-import { assertShowdownLineup, showdownSalary, showdownFlexEligible } from '@/lib/nfl-dfs/showdown-legality';
+import { assertDstGameScript, assertShowdownLineup, showdownSalary, showdownFlexEligible } from '@/lib/nfl-dfs/showdown-legality';
 import {selectedWorkload,validateWorkloadPositions,WORKLOAD_POSITIONS,type WorkloadPositions} from "@/lib/nfl-dfs/workload-selection";
 import type { WorkloadProjection } from "@/lib/nfl-dfs/workload-projection";
 import type { CalibratedProjection } from "@/lib/nfl-dfs/calibrated-projection";
@@ -60,7 +60,7 @@ import type { SpecialTeamsProjection } from '@/lib/nfl-dfs/special-teams-project
 // Record the strict Showdown purchase and completed-roster validation.
 // v8: DK-average fallback honoured in defensive mode; a lock or exposure
 // minimum on a player outside the pool is an error instead of being dropped.
-export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v10-special-teams-auto";
+export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v11-dst-script";
 
 export type NflProjectionSource = "our" | "workload" | "calibrated" | "dk_avg" | "fantasypros" | "linestar" | "custom";
 export type NflOptimizerMode = "cash" | "gpp";
@@ -674,6 +674,11 @@ function buildOne(
   // Phase 4: faded players are removed from the pool entirely for this lineup.
   const faded = new Set(compiled?.fadePlayerIds ?? []);
   const available = pool.filter((player) => !faded.has(player.dkPlayerId) && ((exposureCounts.get(player.dkPlayerId) ?? 0) < maxCount(player) || forcedIds.has(player.dkPlayerId)));
+  const defenseOpponents = new Map(available.filter(player => player.position === "DST").map(defense => {
+    const opponent = defense.gameKey?.split("@").find(team => team !== defense.team);
+    if (!opponent) throw new Error(`${defense.name} has no matching game opponent. Refresh the salary slate before building.`);
+    return [defense.dkPlayerId, opponent] as const;
+  }));
   // Phase 5: salary-used window. A salary policy sets an explicit min/max used;
   // salary-left is the cap minus salary used, so these bound salary left too.
   const salaryMin = settings.salaryPolicy ? Math.max(settings.salaryPolicy.minSalaryUsed, NFL_SALARY_CAP - settings.salaryPolicy.maxSalaryLeft) : settings.minSalary;
@@ -704,6 +709,16 @@ function buildOne(
   }
   if (settings.format === "showdown") {
     for (const team of new Set(available.map((player) => player.team))) constraints[`team_${safe(team)}`] = { max: 5 };
+    // A DST may coexist with a small opposing bring-back. It cannot accompany
+    // four opposing offensive players, or an opposing offensive Captain plus
+    // two teammates. With six slots, 4*DST + offense + offensive CPT <= 7
+    // leaves ordinary lineups unrestricted when that DST is absent.
+    for (const id of defenseOpponents.keys()) constraints[`dst_script_${id}`] = { max: 7 };
+  }
+  if (settings.format === "classic") {
+    // Nine roster slots: 6*DST + opposing offense <= 9 permits at most three
+    // opposing offensive players when the DST is present.
+    for (const id of defenseOpponents.keys()) constraints[`dst_script_${id}`] = { max: 9 };
   }
   // Phase 1 (P1-AC4): the salary-relief cap is a lineup CONSTRAINT, not a
   // post-generation filter. At most this many cheap salary-relief players may
@@ -790,6 +805,12 @@ function buildOne(
         variable[slot === "CPT" ? "cpt" : "flex"] = 1;
       }
       if (settings.format === "showdown") variable[`team_${safe(player.team)}`] = 1;
+      for (const [defenseId, opponent] of defenseOpponents) {
+        const key = `dst_script_${defenseId}`;
+        if (player.dkPlayerId === defenseId) variable[key] = settings.format === "showdown" ? 4 : 6;
+        else if (player.team === opponent && ["QB", "RB", "WR", "TE"].includes(player.position))
+          variable[key] = slot === "CPT" ? 2 : 1;
+      }
       if (player.gameKey) variable[`game_${safe(player.gameKey)}`] = 1;
       // Phase 4: archetype constraint coefficients.
       if (compiled) {
@@ -873,6 +894,7 @@ function buildOne(
   chosen.sort((a, b) => (slotOrder.get(a.slot) ?? 99) - (slotOrder.get(b.slot) ?? 99));
   if (chosen.length !== rosterSize) return null;
   if (settings.format === "showdown") assertShowdownLineup({ slots: chosen, playerIds: chosen.map(s => s.player.dkPlayerId), totalSalary: chosen.reduce((sum, s) => sum + s.salary, 0) });
+  else assertDstGameScript("classic", chosen);
   const qb = chosen.find((entry) => entry.player.position === "QB")?.player ?? null;
   const passCatchers = qb ? chosen.filter((entry) => ["WR", "TE"].includes(entry.player.position) && entry.player.team === qb.team).map((entry) => entry.player.name) : [];
   const bringBack = qb ? chosen.find((entry) => ["RB", "WR", "TE"].includes(entry.player.position) && entry.player.team === qb.opponent)?.player.name ?? null : null;
@@ -1038,6 +1060,8 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   for (const id of settings.lockedPlayerIds) {
     if (!inPool.has(id)) throw new Error(`${nameOf(id)} is locked but can't be used: ${whyOut(id)}. Remove the lock to build without him.`);
   }
+  assertDstGameScript(settings.format, pool.filter(player => settings.lockedPlayerIds.includes(player.dkPlayerId))
+    .map(player => ({slot:"FLEX",player})));
   for (const [rawId, target] of Object.entries(settings.minExposureByPlayer)) {
     if (target > 0 && !inPool.has(Number(rawId))) {
       throw new Error(`${nameOf(Number(rawId))} has a minimum exposure but can't be used: ${whyOut(Number(rawId))}. Clear his exposure range to build without him.`);
@@ -1263,7 +1287,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
       if (requireAirMatchup && requireGoalLine) throw new Error(`Could not meet the air-yard matchup and goal-line RB minimums together with the remaining exposure, salary, and roster constraints. Lower a percentage or adjust player limits.`);
       if (requireAirMatchup) throw new Error(`Could not meet the air-yard matchup minimum of ${airMatchupTarget}/${settings.nLineups} lineups with the remaining exposure, salary, and roster constraints. Lower the percentage or adjust player limits.`);
       if (requireGoalLine) throw new Error(`Could not meet the goal-line RB minimum of ${goalLineTarget}/${settings.nLineups} lineups with the remaining exposure, salary, and roster constraints. Lower the percentage or adjust player limits.`);
-      warnings.push(`Stopped after ${lineups.length} lineup(s): the ${ARCHETYPE_LABELS[plan[lineupNumber - 1].archetypeId]} quota or remaining exposure/uniqueness/salary constraints are infeasible.`);
+      warnings.push(`Stopped after ${lineups.length} lineup(s): the ${ARCHETYPE_LABELS[plan[lineupNumber - 1].archetypeId]} quota or remaining exposure, uniqueness, salary, and DST game-script rules cannot all be met.`);
       break;
     }
     lineups.push(lineup);

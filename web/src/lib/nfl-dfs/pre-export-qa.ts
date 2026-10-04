@@ -10,10 +10,10 @@
  * Pure and deterministic: given the same run inputs it returns the same report.
  */
 
-import { assertShowdownLineup, type ShowdownPlayer } from './showdown-legality';
+import { assertDstGameScript, assertShowdownLineup, type ShowdownPlayer } from './showdown-legality';
 import { maxPairwiseOverlap as realizedMaxOverlap } from './salary-duplication';
 
-export const NFL_QA_RULESET_VERSION = "nfl-gpp-qa-v3-current-pool";
+export const NFL_QA_RULESET_VERSION = "nfl-gpp-qa-v4-dst-script";
 
 /**
  * Evidence a run saved (or failed to save) for one QA check. `undefined` means
@@ -247,10 +247,16 @@ export function runNflPreExportQa(input: QaInput, overrides: QaOverride[] = []):
         }) });
       } catch { return true; }
     }
+    if (input.format === 'classic' && l.slots.some(s => s.player !== undefined)) {
+      try {
+        if (l.slots.some(s => !s.player)) throw new Error('Missing player data.');
+        assertDstGameScript('classic', l.slots.map(s => ({slot:s.slot,player:s.player!})));
+      } catch { return true; }
+    }
     return false;
   });
-  add({ id: "legal_roster", title: "Legal roster and salary", severity: "blocker", passed: illegal.length === 0,
-    detail: illegal.length ? `${illegal.length} lineup(s) have invalid roster slots, player eligibility, game composition, or salary. Regenerate before exporting.` : "All lineups are legal.",
+  add({ id: "legal_roster", title: "Roster, salary, and DST game script", severity: "blocker", passed: illegal.length === 0,
+    detail: illegal.length ? `${illegal.length} lineup(s) break a roster, salary, or DST game-script rule. Regenerate before exporting.` : "All lineups pass roster and game-script rules.",
     affected: illegal.map((l) => l.lineupNumber) });
 
   // --- Every requested lineup built, and every entry filled ---
