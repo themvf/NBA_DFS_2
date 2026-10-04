@@ -3,7 +3,7 @@ import { NHL_FIRST_CAPTURE_DUE_MINUTES, nhlFreshnessTargetMinutes } from "@/lib/
 import { getPickemEvidence } from "./pickem-evidence";
 import { usablePickemQuote, type PickemEvidence } from "@/lib/nfl/pickem-evidence";
 import { db } from ".";
-import { ensureSurvivorTables, ensureDkPlayerPropColumns, ensureProjectionExperimentTables, ensureAnalyticsColumns, ensureOwnershipExperimentTables, ensureMlbBlowupTrackingTables, ensureMlbHomerunTrackingTables, ensureOddsHistoryTables, ensureMlbGamePredictionTables } from "./ensure-schema";
+import { ensureSurvivorTables, ensurePickemTables, ensureDkPlayerPropColumns, ensureProjectionExperimentTables, ensureAnalyticsColumns, ensureOwnershipExperimentTables, ensureMlbBlowupTrackingTables, ensureMlbHomerunTrackingTables, ensureOddsHistoryTables, ensureMlbGamePredictionTables } from "./ensure-schema";
 import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, mlbTeams, mlbTeamStats, mlbMatchups } from "./schema";
 import { eq, desc, sql, gte, and } from "drizzle-orm";
 import { easternDateString } from "@/lib/eastern-date";
@@ -14417,8 +14417,12 @@ export type PickemLedgerRow = {
   games: PickemLedgerGame[];
 };
 
-export async function getPickemPools(season = 2026): Promise<PickemPoolRow[]> {
-  try {
+export async function getPickemPools(season = currentNflSeason()): Promise<PickemPoolRow[]> {
+  // Provision the tables (they used to appear only after the first server
+  // action, hence a catch returning []), then let a real read failure reach
+  // the NFL error page instead of rendering as "no pools".
+  await ensurePickemTables();
+  {
     const rows = await db.execute(sql`
       SELECT id, name, season, format, pool_entries AS "poolEntries", notes, config_json
       FROM pickem_pools WHERE season = ${season} ORDER BY created_at
@@ -14435,10 +14439,6 @@ export async function getPickemPools(season = 2026): Promise<PickemPoolRow[]> {
         config: (r.config_json ?? null) as import("@/lib/nfl/pickem-contest").PoolConfig | null,
       };
     });
-  } catch {
-    // The table is created lazily by the first server action. An empty list is
-    // the correct answer before that happens, not a page failure.
-    return [];
   }
 }
 
@@ -14449,8 +14449,11 @@ export async function getPickemPools(season = 2026): Promise<PickemPoolRow[]> {
  * before it changed its mind, which is exactly what an audit trail is for --
  * the caller filters them out of summaries rather than the query hiding them.
  */
-export async function getPickemLedger(season = 2026): Promise<PickemLedgerRow[]> {
-  try {
+export async function getPickemLedger(season = currentNflSeason()): Promise<PickemLedgerRow[]> {
+  // Same contract as getPickemPools: provision the tables, then let a real
+  // read failure throw to the page instead of rendering as an empty ledger.
+  await ensurePickemTables();
+  {
     const rows = await db.execute(sql`
       SELECT r.*, p.name AS "poolName"
       FROM pickem_recommendations r
@@ -14533,8 +14536,6 @@ export async function getPickemLedger(season = 2026): Promise<PickemLedgerRow[]>
         games: byRec.get(id) ?? [],
       };
     });
-  } catch {
-    return [];
   }
 }
 
