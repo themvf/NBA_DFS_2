@@ -1,0 +1,58 @@
+name: Capture NFL Opponent Adjustments On Upload
+
+# Captures opponent (defensive) adjustments for salary uploads as soon as they
+# are made, instead of waiting for the twice-daily projection workflow, which
+# only captures uploads that already exist when it runs (PIT@CLE 2026-10-01 was
+# uploaded after the last pregame pass and never got one).
+#
+# The web app writes requests to nfl_dfs_defensive_capture_requests and
+# dispatches this workflow on upload. /api/cron/dispatch (job
+# nfl-defensive-capture) dispatches it again on any 15-minute tick where a
+# request is still pending, so a failed dispatch does not strand one. Every run
+# drains all claimable requests under a lease; the schedule below is a thin
+# fallback in case the bridge itself breaks.
+#
+# Red when a capture failed. Ineligible requests (slate started, upload
+# incomplete, rebound to another run) are recorded with the reason and stay
+# green. Spec: docs/nfl-dfs-freshness-capture-on-upload-spec.md
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_id:
+        description: "Upload that triggered this run (logged only; every run drains all pending requests)."
+        required: false
+        default: ""
+  schedule:
+    - cron: "41 1,7,13,19 * * *"   # fallback only; see the note above
+
+concurrency:
+  group: nfl-defensive-capture
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      UPLOAD_ID: ${{ inputs.upload_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Drain pending opponent capture requests
+        run: |
+          if [ -n "${UPLOAD_ID}" ]; then python -m ingest.nfl_defensive_capture_requests --upload-id "${UPLOAD_ID}"; else python -m ingest.nfl_defensive_capture_requests; fi
+      - name: Upload drain summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nfl-defensive-capture-requests
+          path: artifacts/nfl-defensive-capture-requests/
+          if-no-files-found: ignore
