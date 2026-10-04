@@ -14,6 +14,7 @@ export function AnalyticsShell({ eyebrow, title, description, children }: {
       <nav className={styles.localNav} aria-label="CFB analytics">
         <Link href="/cfb/analytics">Overview</Link>
         <Link href="/cfb/analytics/teams">Teams</Link>
+        <Link href="/cfb/analytics/evaluation">Evaluation</Link>
         <Link href="/cfb/analytics/methods">Methods & coverage</Link>
         <Link href="/cfb">Line Terminal</Link>
       </nav>

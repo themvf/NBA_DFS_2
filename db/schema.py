@@ -1464,6 +1464,17 @@ TABLES = [
     """,
 
     """
+    CREATE TABLE IF NOT EXISTS cfb_prospective_evaluation_runs (
+        id BIGSERIAL PRIMARY KEY,
+        version TEXT NOT NULL,
+        season INTEGER NOT NULL,
+        generated_at TIMESTAMPTZ NOT NULL,
+        report_json JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+
+    """
     CREATE TABLE IF NOT EXISTS player_prop_history (
         id SERIAL PRIMARY KEY,
         sport TEXT NOT NULL,
@@ -5434,6 +5445,7 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_cfb_plays_endgame ON cfb_plays(game_seconds_remaining) WHERE game_seconds_remaining IS NOT NULL",
     "CREATE INDEX IF NOT EXISTS idx_cfb_game_forecasts_game_run ON cfb_game_forecasts(game_id, run_id DESC)",
     "CREATE INDEX IF NOT EXISTS idx_cfb_market_comparisons_game_run ON cfb_market_comparisons(game_id, run_id DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_cfb_prospective_eval_season ON cfb_prospective_evaluation_runs(season, id DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_schedule_revisions_game ON mlb_schedule_revisions(game_id, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_schedule_revisions_matchup ON mlb_schedule_revisions(matchup_id, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_mlb_starter_workload_matchup ON mlb_starter_workload_snapshots(matchup_id, side, available_at DESC)",

@@ -114,6 +114,16 @@ jobs:
         if: ${{ !cancelled() }}
         run: python -m ingest.nfl_dfs_field_audit --report
 
+      # Keep storage bounded (ingest/nfl_dfs_storage.py): for weeks whose
+      # games are all final and two days old, delete projection runs nothing
+      # references (slates, optimizer runs, study pins, the forecasts report
+      # cards grade, the last run before each kickoff), and keep the newest
+      # two weekly report cards. ~30 runs a day otherwise accumulate for good.
+      # No VACUUM FULL here: it locks the tables; normal vacuum reuses space.
+      - name: Prune finished weeks' unreferenced projection runs
+        if: ${{ !cancelled() }}
+        run: python -m ingest.nfl_dfs_storage retention reportcards --apply ${SEASON:+--season "$SEASON"}
+
       # The run log is the record. Kept so a week can be read back without
       # re-running anything, and so a change in the numbers has a dated
       # before/after rather than only a current value.

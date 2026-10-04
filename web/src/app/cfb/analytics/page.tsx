@@ -35,6 +35,6 @@ export default async function CfbAnalyticsPage() {
         {upcoming.map((game) => <tr key={game.id}><td>{game.kickoffTbd ? "Time TBD" : formatEt(game.kickoff, true)}</td><td><Link href={`/cfb/analytics/games/${game.id}`}>{game.away.name} at {game.home.name}</Link></td><td>{signed(game.homeSpread)}</td><td>{game.total == null ? "—" : game.total.toFixed(1)}</td><td>{game.capturedAt ? `${game.bookmakerCount} books` : game.oddsEventMapped ? "Mapped" : "No event"}</td></tr>)}
       </tbody></table></div>
     </section>
-    <section className={styles.section}><div className={styles.note}><strong>Build on the same evidence</strong><p><Link className={styles.textLink} href="/cfb/analytics/teams">Browse standalone team profiles →</Link> · <Link className={styles.textLink} href="/cfb/analytics/methods">See the ten foundation layers and coverage →</Link></p></div></section>
+    <section className={styles.section}><div className={styles.note}><strong>Build on the same evidence</strong><p><Link className={styles.textLink} href="/cfb/analytics/teams">Browse standalone team profiles →</Link> · <Link className={styles.textLink} href="/cfb/analytics/evaluation">Track frozen forecast evaluation →</Link> · <Link className={styles.textLink} href="/cfb/analytics/methods">See the ten foundation layers and coverage →</Link></p></div></section>
   </AnalyticsShell>;
 }
