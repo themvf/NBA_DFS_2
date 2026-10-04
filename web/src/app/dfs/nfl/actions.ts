@@ -1517,8 +1517,6 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
   // The page offers a source only when this same rule passes; say why when it does not.
   const sourceBlocked=slate.sourceAvailability?sourceBlockedReason(slate.sourceAvailability,settings.projectionSource,settings.workloadPositions):null;
   if(sourceBlocked)throw new Error(sourceBlocked);
-  if(settings.specialTeamsMode === 'experimental' && settings.projectionSource !== 'our')
-    throw new Error('Experimental DST/kicker projections require Our historical model.');
   validateSituations(settings.situations,slate.teams);
   const requestedDefensive=settings.defensiveAdjustments;
   if(requestedDefensive?.mode && requestedDefensive.mode!=='off') {

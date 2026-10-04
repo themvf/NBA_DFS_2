@@ -60,7 +60,7 @@ import type { SpecialTeamsProjection } from '@/lib/nfl-dfs/special-teams-project
 // Record the strict Showdown purchase and completed-roster validation.
 // v8: DK-average fallback honoured in defensive mode; a lock or exposure
 // minimum on a player outside the pool is an error instead of being dropped.
-export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v9-special-teams-candidate";
+export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v10-special-teams-auto";
 
 export type NflProjectionSource = "our" | "workload" | "calibrated" | "dk_avg" | "fantasypros" | "linestar" | "custom";
 export type NflOptimizerMode = "cash" | "gpp";
@@ -161,8 +161,6 @@ export type NflOptimizerSettings = {
   /** Minimum share of Classic GPP lineups with an INSIDE_FIVE RB. 0 disables it. */
   gppGoalLineMinPct?: number;
   projectionSource: NflProjectionSource;
-  /** Explicit opt-in; unavailable saved candidates stop the build. */
-  specialTeamsMode?: 'off' | 'experimental';
   defensiveAdjustments?: DefensiveSettings;
   /** Team -> DK id of a user-confirmed starting QB; see `confirmed-starter.ts`. */
   confirmedStartingQbs?: Record<string, number>;
@@ -475,9 +473,8 @@ function projectionFor(player: NflOptimizerPlayer, settings: NflOptimizerSetting
   // Fail closed before any source is consulted: no projection exists for a
   // player we have decided is not playing, in any source.
   if (ruledOut(player)) return null;
-  if (settings.specialTeamsMode === 'experimental' && (player.position === 'DST' || player.position === 'K')) {
-    if (settings.projectionSource !== 'our') throw new Error('Experimental DST/kicker projections require Our historical model.');
-    if (!player.specialTeams) throw new Error(`${player.name}: ${player.specialTeamsReason ?? 'Refresh projections to create the saved DST/kicker candidate.'}`);
+  if (settings.projectionSource === 'our' && player.specialTeams &&
+      (player.position === 'DST' || player.position === 'K')) {
     return { value: player.specialTeams.mean, source: 'special_teams' };
   }
   if (settings.defensiveAdjustments?.mode !== undefined && settings.defensiveAdjustments.mode !== 'off') {
@@ -524,9 +521,9 @@ export function resolveProjectionAudit(player:NflOptimizerPlayer,settings:NflOpt
       excluded:settings.excludedPlayerIds.includes(player.dkPlayerId),modelSnapshot:player.specialTeams,
       evidence:player.specialTeams.feature_snapshot,assumption:null,
       rangeMethod:'Saved historical whole-game draws conditioned on a pregame team total and, for DST, opponent history.',
-      steps:[{label:'Experimental DST/kicker projection',status:'applied',
+      steps:[{label:'DST/kicker game context',status:'applied',
         points:baseline===null?0:resolved.value-baseline,
-        reason:`${player.specialTeams.version}; forward validation pending.`}]};
+        reason:`${player.specialTeams.version}; saved with the projection run.`}]};
   }
   if (settings.defensiveAdjustments?.mode !== undefined && settings.defensiveAdjustments.mode !== 'off' && player.defensiveForecast) {
     const bundle=player.defensiveForecast;
@@ -623,8 +620,6 @@ function objective(player: ResolvedPlayer, settings: NflOptimizerSettings, lineu
 }
 
 function validateSettings(settings: NflOptimizerSettings): void {
-  if (settings.specialTeamsMode && !['off', 'experimental'].includes(settings.specialTeamsMode)) throw new Error('Unknown DST/kicker projection mode.');
-  if (settings.specialTeamsMode === 'experimental' && settings.projectionSource !== 'our') throw new Error('Experimental DST/kicker projections require Our historical model.');
   if (![0, 1].includes(settings.gppSignalMinPerLineup ?? 0)) throw new Error("GPP signal minimum must be 0 or 1.");
   if (settings.gppSignalMinPerLineup && (settings.format !== "classic" || settings.mode !== "gpp")) throw new Error("Opportunity signals can only be required in Classic GPP.");
   if (settings.gppSignalMinPerLineup && settings.gppSignalCodes?.length === 0) throw new Error("Select at least one opportunity signal.");
@@ -1074,7 +1069,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   }
   if (objectiveSources.size > 1) {
     const mix = [...objectiveSources].map(([source, count]) => `${count} ${source}`).join(" and ");
-    throw new Error(`Cannot build lineups from mixed objective sources (${mix}). Their ceilings and boom bonuses are not on one scale. Choose Our historical model, or a source that covers the full eligible player pool. Experimental forecasts can still be reviewed without building lineups.`);
+    throw new Error(`Cannot build lineups from mixed objective sources (${mix}). Their ceilings and boom bonuses are not on one scale. Choose Our projections, or a source that covers the full eligible player pool. Experimental forecasts can still be reviewed without building lineups.`);
   }
   if (puntBlocked) warnings.push(`${puntBlocked} player(s) blocked by the ${policy!.mode} punt policy. See the cheap-player review for the reason on each; allow a player for the run to keep him.`);
   if (withoutHistory) warnings.push(`${withoutHistory} player(s) with too few games of their own were removed (${MIN_OBSERVED_GAMES} required, capped at the games their team has completed this season): their projection is their position's average, not theirs. Lock a player to keep him regardless.`);
@@ -1086,10 +1081,12 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   const ourFallback = pool.filter(p => p.resolvedSource === "our_fallback").length;
   if (dkFallback) warnings.push(`${dkFallback} players used DK Avg fallback.`);
   if (ourFallback) warnings.push(`${ourFallback} players retained historical baseline projections.`);
-  if (settings.specialTeamsMode === 'experimental') {
+  if (settings.projectionSource === 'our') {
     const dst = pool.filter(p => p.resolvedSource === 'special_teams' && p.position === 'DST').length;
     const kicker = pool.filter(p => p.resolvedSource === 'special_teams' && p.position === 'K').length;
-    warnings.push(`Experimental special teams: ${dst} DST and ${kicker} kicker forecasts used saved opponent/team-total candidates. Forward validation is pending; other positions use historical projections.`);
+    const fallback = pool.filter(p => (p.position === 'DST' || p.position === 'K') && p.resolvedSource !== 'special_teams');
+    warnings.push(`Special teams forecasts: ${dst} DST used opponent context and ${kicker} kickers used team scoring context.`);
+    if (fallback.length) warnings.push(`${fallback.length} DST/kicker players used historical baselines because game-context projections were unavailable: ${fallback.slice(0, 3).map(p => `${p.name} (${p.specialTeamsReason ?? 'no saved candidate'})`).join('; ')}${fallback.length > 3 ? '; …' : ''}. Refresh projections for current game context.`);
   }
   if (settings.projectionSource === "calibrated") {
     if (!coverage.direct) throw new Error("No qualified pregame calibrated projections are available. Refresh forecasts or choose the historical model.");

@@ -32,11 +32,11 @@ for (const [team, opponent] of [['BUF', 'MIA'], ['MIA', 'BUF']] as const) {
 const dst = players.find(p => p.position === 'DST')!;
 const kicker = players.find(p => p.position === 'K')!;
 const settings: NflOptimizerSettings = {format:'showdown', mode:'gpp', projectionSource:'our',
-  specialTeamsMode:'experimental', allowDkFallback:false, nLineups:1, minSalary:0,
+  allowDkFallback:false, nLineups:1, minSalary:0,
   maxExposure:1, minUnique:1, stackPassCatchers:0, bringBack:false, randomness:0,
   lockedPlayerIds:[dst.dkPlayerId,kicker.dkPlayerId], excludedPlayerIds:[],
   minExposureByPlayer:{}, maxExposureByPlayer:{}};
-const baseline = optimizeNflLineups(players, {...settings, specialTeamsMode:'off'}).lineups[0];
+const baseline = optimizeNflLineups(players.map(p => ({...p,specialTeams:null})), settings).lineups[0];
 const adjusted = optimizeNflLineups(players, settings).lineups[0];
 assert.ok(baseline && adjusted);
 for (const [player, expected] of [[dst, 12], [kicker, 10]] as const) {
@@ -61,9 +61,10 @@ const classicDst=classicPlayers.find(p=>p.position==='DST')!;
 const classic=optimizeNflLineups(classicPlayers,{...settings,format:'classic',lockedPlayerIds:[classicDst.dkPlayerId]}).lineups[0];
 assert.ok(classic);
 assert.equal(classic.slots.find(s=>s.player.dkPlayerId===classicDst.dkPlayerId)?.projectionSource,'special_teams');
-assert.throws(() => optimizeNflLineups(players.map(p => p.dkPlayerId === kicker.dkPlayerId
-  ? {...p, specialTeams:null, specialTeamsReason:'Team implied total is missing'} : p), settings),
-  /Team implied total is missing/);
-assert.throws(() => optimizeNflLineups(players, {...settings, projectionSource:'dk_avg'}),
-  /require Our historical model/);
-console.log('Special-teams saved candidate reading, lineup use, and missing-input stop passed.');
+const missing = optimizeNflLineups(players.map(p => p.dkPlayerId === kicker.dkPlayerId
+  ? {...p, specialTeams:null, specialTeamsReason:'Team implied total is missing'} : p), settings);
+assert.equal(missing.lineups[0].slots.find(s=>s.player.dkPlayerId===kicker.dkPlayerId)?.projectionSource,'our');
+assert.ok(missing.warnings.some(w=>w.includes('Team implied total is missing')));
+const external = optimizeNflLineups(players, {...settings, projectionSource:'dk_avg'});
+assert.ok(external.lineups[0].slots.every(s=>s.projectionSource==='dk_avg'));
+console.log('Special-teams saved candidate reading, automatic Classic/Showdown use, and disclosed fallback passed.');

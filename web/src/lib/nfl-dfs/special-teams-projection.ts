@@ -16,7 +16,7 @@ const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 
-/** A missing or malformed saved candidate cannot silently become an optimizer score. */
+/** A missing or malformed candidate cannot be presented as game context. */
 export function readSpecialTeamsProjection(
   featureSnapshot: unknown, position: string,
 ): { projection: SpecialTeamsProjection | null; reason: string | null } {

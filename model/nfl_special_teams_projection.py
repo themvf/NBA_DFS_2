@@ -1,13 +1,13 @@
 """Pregame DraftKings DST and Showdown kicker forecast candidate.
 
-This module leaves the historical-v5 production baseline untouched. It draws
+This module leaves the saved historical-v5 baseline untouched. It draws
 the same eligible whole-game histories, then conditions DST points allowed on
 the opposing team's implied total and sack/turnover points on that offense's
 pre-cutoff history. Kicker PAT points use the kicking team's implied total;
 field-goal points keep their observed distance mix because a higher team total
-does not by itself establish more stalled drives. The result is a separately
-versioned candidate until paired forward and lineup grading qualifies it as a
-production default.
+does not by itself establish more stalled drives. The optimizer selects the
+separately versioned result automatically when it is complete; forward grading
+still determines whether this formula should be retained.
 """
 
 from __future__ import annotations

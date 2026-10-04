@@ -463,8 +463,8 @@ def build_week(
                 seed=seed,
                 config=model_config,
             )
-            # The saved baseline stays unchanged. Only an explicit experimental
-            # optimizer selection may consume this frozen candidate.
+            # The saved baseline stays available for older runs and missing
+            # context; the optimizer uses this frozen candidate automatically.
             projection_row["feature_snapshot"]["special_teams_candidate"] = candidate.as_dict()
         projections.append({
             **projection_row,

@@ -20,13 +20,20 @@ component produces an explicit unavailable reason and null candidate values.
   22.5. This does not infer field-goal tries from points or assign a starting
   role from a depth rank.
 
-The Build lineups form offers **Pregame context (experimental)** when using
-Our historical model. It is off by default pending forward validation. The
-server stops a build if a needed DST or kicker candidate is absent, malformed,
-or from the wrong model version. The optimizer consumes its saved P10/P90 and
-boom with the same scoring units as the offensive historical objective, records
-the selected source on lineup slots, and includes the frozen candidate in the
-optimizer audit. A new projection refresh is required for older saved slates.
+Our projections use a complete saved DST or kicker candidate
+automatically. If a slate predates the candidate or required data is missing,
+the player keeps the historical baseline and the build notes name the fallback
+and reason. The builder shows coverage without another user choice. The
+optimizer consumes the candidate's saved P10/P90 and boom on the same point
+scale as the offensive historical objective, records the method on lineup
+slots, and includes the frozen candidate in the optimizer audit. Refresh
+projections to add game context to an older saved slate.
+
+The main Build panel now lists ordinary projection sources and links to Model
+Lab for research. It no longer offers experimental defensive modes, the air
+matchup rule, or uncalibrated ownership leverage as build choices. Earlier
+saved research lineups remain reviewable; reopening their form starts a new
+build from Our projections with those unvalidated inputs turned off.
 
 ## Diagnostic evidence and limits
 
@@ -49,7 +56,9 @@ promotion verdict. Kicker interval and boom results worsened slightly in 2024;
 the kicker adjustment is intentionally small. The registered coherent scenario
 study remains separate. Its forward 8-week, 200 paired player games per position,
 50 NFL games, and untouched Showdown/Classic lineup gates cannot be declared
-passed from this retrospective screen. No production default switches on here.
+passed from this retrospective screen. The automatic selection is a product
+decision; the forward study still determines whether the adjustment improves
+outcomes and whether its formula should be revised.
 
 ## Availability
 
