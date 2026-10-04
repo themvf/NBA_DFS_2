@@ -36,6 +36,11 @@ from model.nfl_dfs_historical import (
     opponent_factors,
     project_player,
 )
+from model.nfl_special_teams_projection import (
+    VERSION as SPECIAL_TEAMS_VERSION,
+    SpecialTeamsContext,
+    project_special_teams,
+)
 from model.nfl_team_aliases import normalize_team
 
 
@@ -439,8 +444,30 @@ def build_week(
             seed=seed,
             config=model_config,
         )
+        projection_row = projection.as_dict()
+        if player["position"] in {"DST", "K"}:
+            opponent_env = environment.get(env["opponent"], {})
+            candidate = project_special_teams(
+                player_id=int(player["id"]),
+                player_gsis_id=player["gsis_id"],
+                player_name=player["canonical_name"],
+                position=player["position"],
+                historical_rows=history,
+                cutoff_season=season,
+                cutoff_week=week,
+                context=SpecialTeamsContext(
+                    team_implied_total=env["team_implied_total"],
+                    opponent_implied_total=opponent_env.get("team_implied_total"),
+                    opponent_team=env["opponent"],
+                ),
+                seed=seed,
+                config=model_config,
+            )
+            # The saved baseline stays unchanged. Only an explicit experimental
+            # optimizer selection may consume this frozen candidate.
+            projection_row["feature_snapshot"]["special_teams_candidate"] = candidate.as_dict()
         projections.append({
-            **projection.as_dict(),
+            **projection_row,
             "normalized_name": player["normalized_name"],
             # Carried so the replacement rule can resolve the next man up.
             "depth_order": qualified_depth(player, as_of_at),
@@ -559,6 +586,16 @@ def build_week(
         source_evidence.extend(dict(row) for row in availability_source_rows)
     manifest = {
         "model_version": MODEL_VERSION,
+        "special_teams_candidate_version": SPECIAL_TEAMS_VERSION,
+        "special_teams_candidate_coverage": {
+            position: {
+                "available": sum(p["feature_snapshot"].get("special_teams_candidate", {}).get("status") == "candidate"
+                                 for p in projections if p["position"] == position),
+                "unavailable": sum(p["feature_snapshot"].get("special_teams_candidate", {}).get("status") == "unavailable"
+                                   for p in projections if p["position"] == position),
+            }
+            for position in ("DST", "K")
+        },
         "season": season,
         "week": week,
         "seed": seed,
