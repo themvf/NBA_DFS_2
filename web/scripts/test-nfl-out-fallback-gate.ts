@@ -20,7 +20,7 @@
  * against 0.11% field ownership.
  */
 import assert from "node:assert/strict";
-import { optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings }
+import { optimizeNflLineups, resolveProjectionAudit, type NflOptimizerPlayer, type NflOptimizerSettings }
   from "../src/app/dfs/nfl/nfl-optimizer";
 import { OUT_PROJECTION_STATUS, zeroOutProjection, storedSlateProjection }
   from "../src/lib/nfl-dfs/out-projection";
@@ -106,10 +106,8 @@ function main() {
     dkPlayerId: 97, salary: 4600, position: "WR", team: "BBB",
     isOut: false, projectionStatus: "unmatched", ourProj: null, avgFptsDk: 11,
   });
-  const m = decision([...corePool(), missing], 97);
-  assert.equal(m.d.eligible, true, "absence is not a decision: the DK fallback still applies");
-  assert.equal(m.run.sourceCoverage.fallback, 1, "he is the one player resolved by fallback");
-  assert.ok(m.run.warnings.some((w) => /DK Avg fallback/.test(w)), "and the run says so");
+  assert.equal(resolveProjectionAudit(missing, settings()).source, "dk_avg_fallback", "absence is not a decision: DK fallback still resolves the player");
+  assert.throws(() => decision([...corePool(), missing], 97), /Cannot build lineups from mixed objective sources/, "a fallback on a different objective scale blocks the build");
 
   // ...and turning the fallback off excludes him, as before.
   assert.equal(decision([...corePool(), missing], 97, { allowDkFallback: false }).d.eligible, false);
@@ -120,8 +118,8 @@ function main() {
     dkPlayerId: 96, salary: 4000, position: "WR", team: "BBB",
     isOut: false, projectionStatus: "historical", ourProj: 0, avgFptsDk: 9,
   });
-  const z = decision([...corePool(), trueZero], 96);
-  assert.equal(z.d.eligible, true, "a model zero on a playing player is not the policy zero");
+  assert.equal(resolveProjectionAudit(trueZero, settings()).source, "dk_avg_fallback", "a model zero on a playing player is not a policy zero");
+  assert.throws(() => decision([...corePool(), trueZero], 96), /Cannot build lineups from mixed objective sources/);
 
   // --- The two writers that produce the policy zero agree with the gate. -------
   const zeroed = zeroOutProjection(
@@ -153,7 +151,7 @@ function main() {
   console.log("Out-fallback gate: a policy zero is a decision, not a missing value.");
   console.log("  - our feed's ruling is honoured even when DK says only Doubtful");
   console.log("  - the DK average can no longer restore a player we ruled out");
-  console.log("  - a genuinely missing projection still falls back as intended");
+  console.log("  - a genuinely missing projection resolves to fallback, and a mixed-scale build is blocked");
 }
 
 main();
