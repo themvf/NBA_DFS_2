@@ -20,13 +20,13 @@ const upgrades=WORKLOAD_POSITIONS.map(position=>{const p=pool.find(p=>p.position
 const all:WorkloadPositions={QB:true,RB:true,WR:true,TE:true},none:WorkloadPositions={QB:false,RB:false,WR:false,TE:false};
 const settings:NflOptimizerSettings={format:'classic',mode:'gpp',projectionSource:'workload',workloadPositions:all,allowDkFallback:false,nLineups:1,minSalary:0,maxExposure:1,minUnique:1,stackPassCatchers:0,bringBack:false,randomness:0,lockedPlayerIds:[],excludedPlayerIds:[],minExposureByPlayer:{},maxExposureByPlayer:{}};
 const before=JSON.stringify(pool);
-for(const mode of ['cash','gpp'] as const){const base=optimizeNflLineups(pool,{...settings,mode,projectionSource:'our'}).lineups[0];assert.ok(upgrades.every(p=>!base.playerIds.includes(p.dkPlayerId)));const result=optimizeNflLineups(pool,{...settings,mode});const l=result.lineups[0];assert.ok(upgrades.every(p=>l.playerIds.includes(p.dkPlayerId)));assert.equal(l.projectedFpts,210);assert.equal(l.floorFpts,145);assert.equal(l.ceilingFpts,315);assert.equal(l.slots.filter(s=>s.projectionSource==='workload').length,4);assert.equal(l.totalSalary,45000);assert.deepEqual(result,optimizeNflLineups(pool,{...settings,mode}));
-  for(const position of WORKLOAD_POSITIONS){const one={...none,[position]:true};const single=optimizeNflLineups(pool,{...settings,mode,workloadPositions:one}).lineups[0];assert.deepEqual(single.slots.filter(s=>s.projectionSource==='workload').map(s=>s.player.position),[position]);const sd=optimizeNflLineups(pool.filter(p=>['BUF','MIA'].includes(p.team)),{...settings,mode,format:'showdown',workloadPositions:one}).lineups[0];const cpt=sd.slots.find(s=>s.slot==='CPT')!;assert.equal(cpt.player.position,position);assert.equal(cpt.projectionSource,'workload');assert.equal(cpt.projection,60);}
+for(const mode of ['cash','gpp'] as const){const base=optimizeNflLineups(pool,{...settings,mode,projectionSource:'our'}).lineups[0];assert.ok(upgrades.every(p=>!base.playerIds.includes(p.dkPlayerId)));assert.throws(()=>optimizeNflLineups(pool,{...settings,mode}),/mixed objective sources/);
+  for(const position of WORKLOAD_POSITIONS){const one={...none,[position]:true};assert.throws(()=>optimizeNflLineups(pool,{...settings,mode,workloadPositions:one}),/mixed objective sources/);assert.throws(()=>optimizeNflLineups(pool.filter(p=>['BUF','MIA'].includes(p.team)),{...settings,mode,format:'showdown',workloadPositions:one}),/mixed objective sources/);}
 }
-assert.deepEqual(optimizeNflLineups(pool,{...settings,workloadPositions:undefined}).lineups[0].slots.filter(s=>s.projectionSource==='workload').map(s=>s.player.position),['WR'],'old saved settings stay WR-only');
+assert.throws(()=>optimizeNflLineups(pool,{...settings,workloadPositions:undefined}),/mixed objective sources/,'old WR-only settings cannot bypass the guard');
 assert.equal(selectedWorkload(upgrades[0],none),null);
 assert.throws(()=>optimizeNflLineups(pool,{...settings,workloadPositions:none}),/Enable at least/);
 assert.throws(()=>validateWorkloadPositions({...all,RB:'yes'} as unknown as WorkloadPositions),/true\/false/);
 assert.throws(()=>optimizeNflLineups(pool.map(p=>({...p,positionWorkload:null,workload:null})),settings),/No eligible/);
 assert.equal(JSON.stringify(pool),before);
-console.log('Position workload: pinned QB/RB/TE gates, legacy isolation, all-position and independent cash/GPP selection, CPT scaling, controls and reproducibility passed.');
+console.log('Position workload: pinned QB/RB/TE gates, controls and mixed-objective build guard passed.');

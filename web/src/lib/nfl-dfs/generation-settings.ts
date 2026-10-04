@@ -147,6 +147,10 @@ export function formFromSettings<S extends object>(saved: NflOptimizerSettings, 
   if (source.topProjectedCoverage === undefined && 'topProjectedCoverage' in defaults) {
     (settings as Record<string, unknown>).topProjectedCoverage = false;
   }
+  if (source.useHeuristicOwnershipLeverage === undefined && 'useHeuristicOwnershipLeverage' in defaults) {
+    (settings as Record<string, unknown>).useHeuristicOwnershipLeverage =
+      source.ownershipCapability === 'heuristic_uncalibrated' && source.ownershipLeverageEnabled === true;
+  }
   // Runs saved before defensive adjustments existed used the historical
   // forecast. Restoring one must not silently inherit today's new-build mode.
   if (source.defensiveAdjustments === undefined && 'defensiveAdjustments' in defaults) {

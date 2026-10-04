@@ -1039,6 +1039,20 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
       warnings.push(`${nameOf(id)}'s exposure cap was ignored: ${whyOut(id)}.`);
     }
   }
+  // A workload P90 without boom and a historical P90 with boom are not one
+  // comparable objective. Do not let the solver hide that mismatch behind a
+  // fallback label. A qualified defensive adjustment remains in the historical
+  // family because it modifies that same saved distribution.
+  const objectiveSources = new Map<string, number>();
+  for (const player of pool) {
+    const source = ["our", "our_fallback", "defensive"].includes(player.resolvedSource)
+      ? "historical" : player.resolvedSource;
+    objectiveSources.set(source, (objectiveSources.get(source) ?? 0) + 1);
+  }
+  if (objectiveSources.size > 1) {
+    const mix = [...objectiveSources].map(([source, count]) => `${count} ${source}`).join(" and ");
+    throw new Error(`Cannot build lineups from mixed objective sources (${mix}). Their ceilings and boom bonuses are not on one scale. Choose Our historical model, or a source that covers the full eligible player pool. Experimental forecasts can still be reviewed without building lineups.`);
+  }
   if (puntBlocked) warnings.push(`${puntBlocked} player(s) blocked by the ${policy!.mode} punt policy. See the cheap-player review for the reason on each; allow a player for the run to keep him.`);
   if (withoutHistory) warnings.push(`${withoutHistory} player(s) with too few games of their own were removed (${MIN_OBSERVED_GAMES} required, capped at the games their team has completed this season): their projection is their position's average, not theirs. Lock a player to keep him regardless.`);
   if (belowSalaryFloor) warnings.push(`${belowSalaryFloor} player(s) priced under the $${salaryFloor.toLocaleString()} per-player salary floor were removed. Lock a player to keep him regardless.`);

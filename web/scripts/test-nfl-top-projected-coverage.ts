@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings } from "../src/app/dfs/nfl/nfl-optimizer";
 import { formFromSettings } from "../src/lib/nfl-dfs/generation-settings";
+import { summarizeRunRisks } from "../src/lib/nfl-dfs/run-risk-summary";
 
 const specs: Array<[number, string, NflOptimizerPlayer["position"], number, number, number, number]> = [
   [1, "Top QB", "QB", 22, 35, 5000, 10], [2, "Other QB", "QB", 20, 32, 5000, 10],
@@ -24,6 +25,13 @@ const settings: NflOptimizerSettings = {
   bringBack: false, randomness: 0, ownershipLeverageEnabled: true,
   lockedPlayerIds: [], excludedPlayerIds: [], minExposureByPlayer: {}, maxExposureByPlayer: {},
 };
+assert.throws(() => optimizeNflLineups(pool.map(player => ({ ...player,
+  fantasyprosProj: player.dkPlayerId === 7 ? player.ourProj : null })),
+  { ...settings, projectionSource: "fantasypros", allowDkFallback: true }),
+  /mixed objective sources/, "a direct source cannot compete with a different fallback scale");
+assert.ok(optimizeNflLineups(pool.map(player => ({ ...player, fantasyprosProj: player.ourProj })),
+  { ...settings, projectionSource: "fantasypros", allowDkFallback: false, nLineups: 1 }).lineups.length,
+"a single selected source can still build");
 
 const without = optimizeNflLineups(pool, settings);
 assert.equal(without.lineups.length, 6);
@@ -54,5 +62,15 @@ assert.ok(impossible.lineups.some(lineup => lineup.playerIds.includes(9)),
 
 assert.equal(formFromSettings(settings, { topProjectedCoverage: true }).settings.topProjectedCoverage, false,
   "restoring a legacy run does not claim it used the new default");
+
+const savedLineup = withCoverage.lineups[0];
+const reviewedLineup = { ...savedLineup, slots: savedLineup.slots.map(slot => ({
+  ...slot,
+  projectionSource: slot.player.position === "WR" ? "workload" as const : slot.projectionSource,
+  player: slot.player.position === "DST" ? { ...slot.player, opponent: "AAA" } : slot.player,
+})) };
+const riskSummary = summarizeRunRisks([reviewedLineup]);
+assert.deepEqual(riskSummary.sourceFamilies, ["historical", "workload"]);
+assert.deepEqual(riskSummary.dstOpponentLineups, [savedLineup.lineupNumber]);
 
 console.log("NFL top projected portfolio coverage: OK");
