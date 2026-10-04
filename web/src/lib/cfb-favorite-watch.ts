@@ -1,8 +1,12 @@
-import type { CfbBookMap, CfbBookQuote, CfbTerminalRow } from "@/db/queries";
+import type { CfbBookMap, CfbBookQuote } from "@/db/queries";
 import { SPORTSBOOK_NAMES, selectedSportsbooks } from "@/lib/sportsbook-policy";
 
 /**
  * Favorite Watch — descriptive filter, not a signal.
+ *
+ * Sport-neutral: the book-quote shape (CfbBookQuote) is the one every sport's
+ * game_odds_history.books JSON uses, so the CFB and NFL terminals share this
+ * module. The file keeps its original name for history; nothing in it is CFB-specific.
  *
  * Lists UPCOMING games whose current moneyline favorite is priced inside a
  * probability band and whose no-vig win probability has FALLEN since the
@@ -99,7 +103,22 @@ function bestFavoritePrice(books: CfbBookMap | null | undefined, favorite: "home
 }
 
 type RuleExclusion = Exclude<FavoriteWatchExclusion, "completed" | "kicked_off">;
-type RuleInput = Pick<CfbTerminalRow, "matchupId" | "awayTeam" | "homeTeam" | "commenceTime" | "network" | "openingBooks" | "openingCapturedAt">;
+type RuleInput = {
+  matchupId: number;
+  awayTeam: string;
+  homeTeam: string;
+  commenceTime: string | null;
+  network: string | null;
+  openingBooks: CfbBookMap | null;
+  openingCapturedAt: string | null;
+};
+
+/** What the live tab needs per game. CfbTerminalRow satisfies it structurally; NFL rows are adapted. */
+export type FavoriteWatchInput = RuleInput & {
+  completed: boolean;
+  currentBooks: CfbBookMap | null;
+  latestCapturedAt: string | null;
+};
 
 /**
  * Apply the frozen v2 rule to one game given the "now" capture (latest
@@ -134,7 +153,7 @@ export function evaluateFavoriteWatch(game: RuleInput, nowBooks: CfbBookMap | nu
   } };
 }
 
-export function buildFavoriteWatch(games: CfbTerminalRow[], nowMs: number): FavoriteWatchResult {
+export function buildFavoriteWatch(games: FavoriteWatchInput[], nowMs: number): FavoriteWatchResult {
   const excluded: Record<FavoriteWatchExclusion, number> = {
     completed: 0, kicked_off: 0, no_opening: 0, no_current: 0, no_anchor_book: 0,
     favorite_flipped: 0, outside_band: 0, did_not_cheapen: 0,
