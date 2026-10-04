@@ -131,13 +131,33 @@ def bootstrap(database_url: str, *, apply: bool, new_origin: str = "legacy") -> 
           (policy_id,provider,version,retention_mode,terms_artifact_id,approved_by,approved_at,retain_until,scope)
           VALUES %s ON CONFLICT(provider,version) DO NOTHING""", policy_rows)
 
+        # Send only rows that are missing. These sets (one row per team, game,
+        # schedule revision and schedule source, ~9,000 each) were re-sent in
+        # full on every run (370 runs a day) as ON CONFLICT DO NOTHING inserts.
+        # A no-op insert still probes the unique index, the heap and every
+        # foreign key per row: 650-850 MB of pages touched per statement, and
+        # the largest single reason the compute never sat at its minimum size.
+        def missing(rows: list[tuple], table: str, column: str) -> list[tuple]:
+            if not rows:
+                return rows
+            cursor.execute(f"SELECT {column} AS k FROM {table} WHERE {column}=ANY(%s)", ([row[0] for row in rows],))
+            present = {row["k"] for row in cursor.fetchall()}
+            return [row for row in rows if row[0] not in present]
+
+        def insert_missing(rows: list[tuple], table: str, column: str, sql: str, **kwargs) -> int:
+            new_rows = missing(rows, table, column)
+            if new_rows:
+                execute_values(cursor, sql, new_rows, **kwargs)
+            return len(new_rows)
+
         subjects = [(f"cfb:team:{row['team_id']}", "cfb", "team") for row in teams]
         subjects += [(f"cfb:event:{row['id']}", "cfb", "event") for row in games]
-        execute_values(cursor, "INSERT INTO cfb_engine_subjects(subject_key,namespace,entity_type) VALUES %s ON CONFLICT DO NOTHING", subjects)
-        execute_values(cursor, "INSERT INTO cfb_engine_teams(team_key,entity_type,team_id) VALUES %s ON CONFLICT DO NOTHING",
-                       [(f"cfb:team:{row['team_id']}", "team", row["team_id"]) for row in teams])
-        execute_values(cursor, "INSERT INTO cfb_engine_events(event_key,entity_type,matchup_id) VALUES %s ON CONFLICT DO NOTHING",
-                       [(f"cfb:event:{row['id']}", "event", row["id"]) for row in games])
+        new_subjects = insert_missing(subjects, "cfb_engine_subjects", "subject_key",
+            "INSERT INTO cfb_engine_subjects(subject_key,namespace,entity_type) VALUES %s ON CONFLICT DO NOTHING")
+        insert_missing([(f"cfb:team:{row['team_id']}", "team", row["team_id"]) for row in teams], "cfb_engine_teams", "team_key",
+            "INSERT INTO cfb_engine_teams(team_key,entity_type,team_id) VALUES %s ON CONFLICT DO NOTHING")
+        new_events = insert_missing([(f"cfb:event:{row['id']}", "event", row["id"]) for row in games], "cfb_engine_events", "event_key",
+            "INSERT INTO cfb_engine_events(event_key,entity_type,matchup_id) VALUES %s ON CONFLICT DO NOTHING")
 
         payload_schema = _id("artifact", "cfb-context-payload-schema-v1")
         definitions = [
@@ -205,12 +225,12 @@ def bootstrap(database_url: str, *, apply: bool, new_origin: str = "legacy") -> 
                                 "legacy", schedule_schema))
             revision_rows.append((_id("schedule-revision", f"{game['id']}:{revision}"), f"cfb:event:{game['id']}", source_id,
                                   game.get("commence_time"), game.get("fetched_at") or datetime.now().astimezone(), revision))
-        execute_values(cursor, """INSERT INTO cfb_engine_sources
+        insert_missing(source_rows, "cfb_engine_sources", "source_id", """INSERT INTO cfb_engine_sources
           (source_id,provider,provider_record_key,revision_key,artifact_id,representation,event_at,published_at,observed_at,origin,projection_schema_id)
-          VALUES %s ON CONFLICT(provider,provider_record_key,revision_key) DO NOTHING""", source_rows, page_size=1000)
-        execute_values(cursor, """INSERT INTO cfb_engine_schedule_revisions
+          VALUES %s ON CONFLICT(provider,provider_record_key,revision_key) DO NOTHING""", page_size=1000)
+        new_revisions = insert_missing(revision_rows, "cfb_engine_schedule_revisions", "schedule_revision_id", """INSERT INTO cfb_engine_schedule_revisions
           (schedule_revision_id,event_key,source_id,scheduled_kickoff,observed_at,revision_digest) VALUES %s
-          ON CONFLICT(event_key,revision_digest) DO NOTHING""", revision_rows, page_size=1000)
+          ON CONFLICT(event_key,revision_digest) DO NOTHING""", page_size=1000)
         revisions_by_game = {game["id"]: revision_rows[index][0] for index, game in enumerate(games)}
         games_by_id = {game["id"]: game for game in games}
 
@@ -261,6 +281,7 @@ def bootstrap(database_url: str, *, apply: bool, new_origin: str = "legacy") -> 
            system_observed_at,settlement_rule_id,line_role,quote_digest) VALUES %s ON CONFLICT DO NOTHING""", quotes, page_size=1000)
         connection.commit()
         return {"mode": "applied", "teams": len(teams), "events": len(games), "captures": len(captures), "quotes": len(quotes),
+                "new_subjects": new_subjects, "new_events": new_events, "new_schedule_revisions": new_revisions,
                 "origin_mode": new_origin, "prospective_captures": sum(row[8] == "prospective" for row in captures)}
 
 

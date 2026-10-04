@@ -434,6 +434,31 @@ endpoints/ep-holy-lab-ampee3vi`), delete RegIntel's preview branches and
 turn on the integration's auto-delete, and find what keeps RegIntel's
 production compute awake.
 
+**Why the compute sits at 0.5 CU, measured (2026-10-04 evening).** Neon sizes
+the compute to the largest of three goals: CPU under 90%, memory under 75% of
+RAM, and the cache working set within 75% of RAM. At 0.25 CU that budget is
+about 750 MB; the hourly consumption history shows both NBADFS and RegIntel
+at a 0.50 CU floor in every quiet hour, so the working set, not CPU, sets the
+size. `approximate_working_set_size_seconds` (the `neon` extension, installed
+on neondb) read 1.3 GB over 5 minutes and 1.8 GB over an hour during a Sunday
+slate, and `pg_stat_statements` (also installed) attributed it: in 23 minutes
+the CFB movement reconciliation touched 7.7 GB of pages while inserting zero
+rows, the CFB context bootstrap re-sent every team, game, schedule revision
+and source row (650-850 MB per statement), and each NFL availability run
+touched about 5 GB, mostly a season-wide read of injury observations with
+their JSON payloads and a sequential scan of the 1.3 GB context table. Fixes
+shipped the same day: `record_movements` reconciles only games with
+unprocessed snapshots (`cfb_quote_movement_coverage` records every processed
+snapshot; the full pass runs from pipeline_health.yml every six hours),
+the bootstrap inserts only missing rows, the availability loader bounds
+Sleeper observations to the two weeks before the week's first kickoff keyed
+to the schedule rather than now(), and a partial index serves the current-
+context lookups. Re-measure the quiet-hour working set after a few days; if
+it sits under 750 MB the autoscaler can drop to 0.25 CU and the compute line
+roughly halves. If it does not, the remaining levers are the lineups of
+every-minute Vercel routes and off-tick GitHub crons that keep the compute
+awake, not query tuning.
+
 Standing rules from this: never write a row whose content did not change
 (both the projection and CFB findings were "rewrite everything every run");
 a Vercel preview integration that branches the database is a per-branch

@@ -43,6 +43,12 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements.txt
+      # The CFB line-alert scan (hundreds of runs a day) reconciles movements
+      # only for games with new snapshots. This pass re-derives every transition
+      # from all pregame history and fails on any disagreement, so a ledger
+      # defect is caught within six hours instead of on every run.
+      - name: Reconcile the full CFB movement ledger
+        run: python -m ingest.cfb_movements --full
       - name: Check every pipeline's freshness
         # Explicit bash = -eo pipefail: without it `| tee` reports tee's exit code
         # and a crashed check (or --fail-on-stale) would still turn the job green.
