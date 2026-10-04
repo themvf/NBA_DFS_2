@@ -3,11 +3,11 @@
  * coverage the generation reader sees always wins over the request's state.
  */
 import assert from "node:assert/strict";
-import { profileCaptureStatus, type CaptureRequestRow } from "../src/lib/nfl-dfs/defensive-capture-status";
+import { profileCaptureStatus, type CaptureCoverage, type CaptureRequestRow } from "../src/lib/nfl-dfs/defensive-capture-status";
 
 const req = (over: Partial<CaptureRequestRow> = {}): CaptureRequestRow => ({ profile: "pfr-efficiency", state: "pending",
   capturedPlayers: null, lastError: null, dispatchError: null, workerRunUrl: null, updatedAt: null, ...over });
-const none = { applied: 0, eligible: 50, captured: 0 };
+const none: CaptureCoverage = { applied: 0, eligible: 50, captured: 0 };
 const pre = { started: false };
 const st = (r: CaptureRequestRow | null, c = none, o = pre) => profileCaptureStatus("PFR efficiency", r, c, o);
 
