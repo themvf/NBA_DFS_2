@@ -24,6 +24,11 @@ import { SPORTSBOOK_NAMES, selectedSportsbooks } from "@/lib/sportsbook-policy";
  * anchor rule: Pinnacle or DraftKings must quote both sides at open and now.
  */
 export const CFB_FAVORITE_WATCH_VERSION = "cfb-favorite-watch-v2";
+/** Display label for the shared rule version, e.g. "NFL-FAVORITE-WATCH-V2". The stored version string is unchanged. */
+export function favoriteWatchLabel(sport: "CFB" | "NFL", version: string): string {
+  return `${sport}-${version.replace(/^cfb-/i, "")}`.toUpperCase();
+}
+
 export const FAVORITE_WATCH_MIN_PROB = 0.51;   // inclusive, current consensus
 export const FAVORITE_WATCH_MAX_PROB = 0.60;   // exclusive (user choice 2026-10-03: no favorite above 60%)
 export const FAVORITE_WATCH_MIN_DROP_PP = 2.0; // open -> current, percentage points

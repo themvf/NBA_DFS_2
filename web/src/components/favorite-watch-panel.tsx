@@ -1,7 +1,7 @@
 "use client";
 
 import styles from "@/app/cfb/cfb-terminal.module.css";
-import { FAVORITE_WATCH_MAX_PROB, FAVORITE_WATCH_MIN_DROP_PP, FAVORITE_WATCH_MIN_PROB, CFB_FAVORITE_WATCH_VERSION, type FavoriteWatchHistory, type FavoriteWatchResult } from "@/lib/cfb-favorite-watch";
+import { FAVORITE_WATCH_MAX_PROB, FAVORITE_WATCH_MIN_DROP_PP, FAVORITE_WATCH_MIN_PROB, CFB_FAVORITE_WATCH_VERSION, favoriteWatchLabel, type FavoriteWatchHistory, type FavoriteWatchResult } from "@/lib/cfb-favorite-watch";
 
 /**
  * Favorite Watch tab body, shared by the CFB and NFL line terminals. The rule,
@@ -26,7 +26,7 @@ export default function FavoriteWatchPanel({ sport, watch, history, gameDate, as
   const exclusionLabels: Record<string, string> = { completed: "final", kicked_off: "kicked off", no_opening: "no opening capture", no_current: "no current capture", no_anchor_book: "neither Pinnacle nor DraftKings quoted both sides at open and now", favorite_flipped: "favorite flipped", outside_band: `favorite outside ${Math.round(FAVORITE_WATCH_MIN_PROB * 100)}-${Math.round(FAVORITE_WATCH_MAX_PROB * 100)}%`, did_not_cheapen: `favorite did not cheapen ${FAVORITE_WATCH_MIN_DROP_PP}pp` };
   const excludedText = Object.entries(watch.excluded).filter(([, n]) => n > 0).map(([key, n]) => `${n} ${exclusionLabels[key] ?? key}`).join(", ") || "none";
   return <section className={styles.favoritePane} aria-label={`${sport} favorite watch`}>
-    <div className={styles.sectionTitle}><span>FAVORITE WATCH · UPCOMING ONLY</span><span>{CFB_FAVORITE_WATCH_VERSION.toUpperCase()} · DESCRIPTIVE · NO EDGE CLAIM</span></div>
+    <div className={styles.sectionTitle}><span>FAVORITE WATCH · UPCOMING ONLY</span><span>{favoriteWatchLabel(sport, CFB_FAVORITE_WATCH_VERSION)} · DESCRIPTIVE · NO EDGE CLAIM</span></div>
     <p className={styles.favoriteRule}>Upcoming games on {gameDate} where the current moneyline favorite is priced {Math.round(FAVORITE_WATCH_MIN_PROB * 100)}-{Math.round(FAVORITE_WATCH_MAX_PROB * 100)}% (no-vig lower-median consensus across the selected sportsbooks) and that probability has fallen at least {FAVORITE_WATCH_MIN_DROP_PP} points since the opening capture: the market walked toward the underdog and the favorite got cheaper. Pinnacle or DraftKings must quote both sides at the open and now. A game drops off at kickoff.</p>
     <p className={styles.favoriteContext}>{motivation}</p>
     {!watch.rows.length ? <div className={styles.empty}>{scheduled ? `No upcoming game on this date meets the filter. Excluded: ${excludedText}.` : boardStatusDetail}</div>
@@ -46,16 +46,16 @@ export default function FavoriteWatchPanel({ sport, watch, history, gameDate, as
         </tr>)}
       </tbody></table></div>}
     <p className={styles.researchDisclosure}>{watch.rows.length} of {scheduled} scheduled games qualify as of {fmtEt(asOf)}. Excluded: {excludedText}. Open and Now are favorite win probabilities with the vig removed; Best price is the highest favorite moneyline among the selected sportsbooks at the latest capture and may already be gone.</p>
-    <FavoriteWatchResults history={history} />
+    <FavoriteWatchResults sport={sport} history={history} />
   </section>;
 }
 
-function FavoriteWatchResults({ history }: { history: FavoriteWatchHistory | null }) {
+function FavoriteWatchResults({ sport, history }: { sport: "CFB" | "NFL"; history: FavoriteWatchHistory | null }) {
   if (!history) return <div className={styles.favoriteResults}><div className={styles.sectionTitle}><span>RESULTS · GRADED AT THE VERIFIED CLOSE</span><span>UNAVAILABLE</span></div><div className={styles.empty} role="alert">Favorite Watch history could not be loaded. Results are hidden rather than shown partially.</div></div>;
   const s = history.summary;
   const excludedText = Object.entries(history.excluded).filter(([, n]) => n > 0).map(([key, n]) => `${n} ${key.replaceAll("_", " ")}`).join(", ") || "none";
   return <div className={styles.favoriteResults}>
-    <div className={styles.sectionTitle}><span>RESULTS · GRADED AT THE VERIFIED CLOSE</span><span>{history.version.toUpperCase()} · {s.settled} SETTLED · {s.pending} PENDING</span></div>
+    <div className={styles.sectionTitle}><span>RESULTS · GRADED AT THE VERIFIED CLOSE</span><span>{favoriteWatchLabel(sport, history.version)} · {s.settled} SETTLED · {s.pending} PENDING</span></div>
     <p className={styles.favoriteContext}>Every game this season is re-run through the same rule using its opening capture and its verified pre-kickoff close, so the record is the frozen state at kickoff, not whatever this tab showed during the day, and it does not depend on anyone having opened the page. A game that qualified mid-day but drifted out by the close is not counted. Units assume one unit on the favorite at the best selected-book price in the close capture.</p>
     <div className={styles.favoriteSummary}>
       <div><span>Qualified</span><strong>{s.qualified}</strong><em>of {history.gamesConsidered} games</em></div>

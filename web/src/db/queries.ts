@@ -10397,7 +10397,7 @@ export async function getCfbFavoriteWatchHistory(season?: number): Promise<CfbFa
   });
 }
 
-/** NFL twin of getCfbFavoriteWatchHistory: same shape, nfl_matchups + sport='nfl' closes. */
+/** NFL twin of getCfbFavoriteWatchHistory: same shape, nfl_matchups + sport='nfl' closes, regular season only. */
 export async function getNflFavoriteWatchHistory(season?: number): Promise<CfbFavoriteWatchHistoryRow[]> {
   await ensureOddsHistoryTables();
   const rows = await db.execute(sql`
@@ -10438,6 +10438,9 @@ export async function getNflFavoriteWatchHistory(season?: number): Promise<CfbFa
     LEFT JOIN game_odds_history close_history ON close_history.id=vclose.history_id
     WHERE m.commence_time IS NOT NULL AND m.commence_time <= NOW()
       AND m.season=${season ?? sql`(SELECT MAX(season) FROM nfl_matchups)`}
+      -- Regular season only: preseason is a different regime (starters rest) and
+      -- predates NFL verified closes, so including it only inflated "no close".
+      AND COALESCE(m.season_type, 'regular') = 'regular'
       AND opening.matchup_id IS NOT NULL
     ORDER BY m.commence_time DESC, m.id
   `);
