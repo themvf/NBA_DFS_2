@@ -375,16 +375,30 @@ No entrypoint had to change.
 
 ## Neon cost review (2026-10-04)
 
-September's Neon invoice (Launch plan) was $95.31: compute $57.75 for 545
-CU-hours, extra branches $34.15 for 22.8 branch-months, root storage $3.12,
-instant restore $0.29, and 291 GB of the 500 GB free egress used. The
-database never suspends (two Vercel crons write every minute; GitHub ran 718
-jobs in one day), so compute hours are fixed at the whole month and the bill
-is the average compute size times the plan rate. The effective size was 2 CU
-(`max_connections` 901) averaging 0.76 CU. The extra branches are empty
-`preview/<git-branch>` branches the Neon Vercel previews integration creates
-for every git branch that gets a preview deployment and deletes only when the
-git branch is deleted and "Automatically delete obsolete Neon branches" is on.
+September's Neon invoice (Launch plan, one account, five projects) was $95.31:
+compute $57.75 for 545 CU-hours, extra branches $34.15 for 22.8
+branch-months, root storage $3.12, instant restore $0.29, and 291 GB of the
+500 GB free egress used. Per project, from the consumption API:
+
+| project | CU-hours | egress GB | extra branches |
+|---|---:|---:|---:|
+| NBADFS (this repo) | 353 | 257 | 0 |
+| RegIntel | 191 | 33 | all of them |
+| other three | 0 | 0 | 0 |
+
+So this database is about 40% of the bill. Its compute never suspends (two
+Vercel crons write every minute; GitHub ran 718 jobs in one day), so its
+hours are the whole month and it averaged 0.49 CU against an autoscaling
+range of 0.25 to 8 CU (`max_connections` 901 is min(8, 8 x 0.25) = 2 CU, the
+effective size Neon derives from that range). The branch charge is entirely
+RegIntel's: 75 archived `preview/<git-branch>` branches, each with an idle
+compute, created by the Neon Vercel previews integration on that project,
+and deleted only when the git branch is deleted and "Automatically delete
+obsolete Neon branches" is on. RegIntel's production compute also never
+suspends (191 CU-hours is 0.25 CU around the clock). NBADFS has one branch.
+Egress is almost all NBADFS (GitHub Actions and Vercel reading the database);
+at September's rate it stays under the free tier, but a full NFL and CFB
+month should be checked against 500 GB.
 
 Done in code (this section's commit) and on GitHub:
 
@@ -410,6 +424,15 @@ Done in code (this section's commit) and on GitHub:
   find the next CPU driver instead of inferring from `pg_stat_user_tables`.
 - **Tennis, beat-writer and YouTube workflows are disabled** (`gh workflow
   disable`), per the 2026-09-29 scope decision; `/health` shows them as INFO.
+- **95 merged remote git branches deleted** (merged into main, not checked
+  out in any worktree, not an open PR head).
+
+Still the owner's, in the Neon console or with the Neon CLI (`npx neon@latest`,
+signed in 2026-10-04; the skills live in this worktree's `.claude/skills/`):
+cap the NBADFS compute at 1 CU (`PATCH /projects/bitter-bonus-28267197/
+endpoints/ep-holy-lab-ampee3vi`), delete RegIntel's preview branches and
+turn on the integration's auto-delete, and find what keeps RegIntel's
+production compute awake.
 
 Standing rules from this: never write a row whose content did not change
 (both the projection and CFB findings were "rewrite everything every run");
