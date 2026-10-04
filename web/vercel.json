@@ -1,5 +1,6 @@
 {
   "framework": "nextjs",
+  "ignoreCommand": "git diff --quiet \"${VERCEL_GIT_PREVIOUS_SHA:-HEAD^}\" HEAD -- .",
   "crons": [
     {
       "path": "/api/cron/nfl-pool-capture",
