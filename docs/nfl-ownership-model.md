@@ -151,3 +151,21 @@ slates the Phase 2 gate needs; this adds labels per slate, not slates.
 FantasyCruncher (the 2025 archive's `fc_catalogue` points at it) was probed: its
 public pages are a link index with no ownership numbers, so 2025 ownership
 history is not recoverable from public pages. Not pursued further.
+
+## Showdown value exponent: research candidate (2026-10-04)
+
+`model/nfl_showdown_ownership_eval.py` and its read-only runner compare the
+current v2 value exponent (1.5) with a candidate exponent (0.5). The runner
+builds equal-size Showdown portfolios and measures projected points retained
+against actual contest-lineup duplication. It also reports ownership error and
+chalk ranking. The production prior remains v2.
+
+The candidate improved flex and captain ownership error and chalk rank on two
+fit contests (weeks 2-3) and two subsequently imported week-4 contests. On the
+week-4 contests, flex MAE fell 4.35 to 3.82 and 5.23 to 4.61; captain MAE fell
+1.63 to 1.49 and 1.38 to 1.04. These are four contests in one format. The
+portfolio trade-off was roughly neutral: the candidate kept more projected
+points but produced slightly more duplication. It also missed true punts and
+overestimated kickers. Treat it as an evaluation candidate, not a promoted
+lineup input. Reassess on additional saved contests before changing the live
+Showdown prior.
