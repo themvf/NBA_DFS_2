@@ -7,6 +7,7 @@ import { nbaMatchups, mlbMatchups, teams, mlbTeams } from "@/db/schema";
 import { sql } from "drizzle-orm";
 import type { Sport } from "@/db/queries";
 import { canWebSurfaceWriteMlbOdds } from "@/lib/mlb-odds-writer-policy";
+import { consensusAmerican, noVigHomeProbability } from "@/lib/odds-consensus";
 
 type OddsGame = {
   id: string;
@@ -50,6 +51,8 @@ export type FetchOddsResult = {
   gamesFound: number;
   upserted: number;
   updated: number;
+  /** Games the Odds API returned whose team names matched no row in our team table. */
+  unmatchedTeams?: string[];
 };
 
 function usesManagedMlbOddsPipeline(sport: Sport): boolean {
@@ -124,7 +127,14 @@ export async function fetchVegasOdds(date: string, sport: Sport = "nba"): Promis
     };
   }
 
-  // Insert matchup rows for any games not yet in DB
+  // Insert matchup rows for any games not yet in DB. A team name the feed
+  // spells differently from our team table is COUNTED and reported, never
+  // silently dropped: the old code filtered it out and reported success.
+  const unmatchedTeams = new Set<string>();
+  for (const g of dateGames) {
+    if (!nameToId.has(g.home_team)) unmatchedTeams.add(g.home_team);
+    if (!nameToId.has(g.away_team)) unmatchedTeams.add(g.away_team);
+  }
   const toInsert = dateGames
     .map((g) => ({
       gameDate: date,
@@ -161,9 +171,10 @@ export async function fetchVegasOdds(date: string, sport: Sport = "nba"): Promis
 
   // Update odds on each matchup
   let updated = 0;
+  let skippedNoMatchup = 0;
   for (const g of dateGames) {
     const matchupId = byHome.get(g.home_team);
-    if (!matchupId) continue;
+    if (!matchupId) { skippedNoMatchup += 1; continue; }
 
     const homePrices: number[] = [];
     const awayPrices: number[] = [];
@@ -188,14 +199,14 @@ export async function fetchVegasOdds(date: string, sport: Sport = "nba"): Promis
     }
 
     const avg = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
-    const homeMl = homePrices.length ? Math.round(avg(homePrices)) : null;
-    const awayMl = awayPrices.length ? Math.round(avg(awayPrices)) : null;
+    // Moneylines are averaged in probability space (see lib/odds-consensus):
+    // an arithmetic mean of American prices manufactures impossible numbers
+    // for mixed-sign near-even pairs. Spreads and totals are linear and fine.
+    const homeMl = consensusAmerican(homePrices);
+    const awayMl = consensusAmerican(awayPrices);
     const homeSpread = homeSpreads.length ? roundHalf(avg(homeSpreads)) : null;
     const vegasTotal = totalPoints.length ? roundHalf(avg(totalPoints)) : null;
-    const homeWinProb =
-      homeMl != null && awayMl != null
-        ? mlToRaw(homeMl) / (mlToRaw(homeMl) + mlToRaw(awayMl))
-        : null;
+    const homeWinProb = noVigHomeProbability(homeMl, awayMl);
 
     let homeImplied: number | null = null;
     let awayImplied: number | null = null;
@@ -216,6 +227,8 @@ export async function fetchVegasOdds(date: string, sport: Sport = "nba"): Promis
         WHERE id = ${matchupId}
       `);
     } else {
+      // fetched_at is the "lines as of" stamp the /vegas page shows; an odds
+      // write that left it at row-creation time would show a stale as-of.
       await db.execute(sql`
         UPDATE nba_matchups
         SET home_ml         = ${homeMl},
@@ -224,7 +237,8 @@ export async function fetchVegasOdds(date: string, sport: Sport = "nba"): Promis
             vegas_total     = ${vegasTotal},
             vegas_prob_home = ${homeWinProb},
             home_implied    = ${homeImplied},
-            away_implied    = ${awayImplied}
+            away_implied    = ${awayImplied},
+            fetched_at      = NOW()
         WHERE id = ${matchupId}
       `);
     }
@@ -235,13 +249,21 @@ export async function fetchVegasOdds(date: string, sport: Sport = "nba"): Promis
 
   const parts: string[] = [];
   if (upserted > 0) parts.push(`${upserted} game${upserted > 1 ? "s" : ""} added`);
-  parts.push(`${updated} matchup${updated !== 1 ? "s" : ""} updated with lines`);
+  parts.push(`${updated} of ${dateGames.length} matchup${dateGames.length !== 1 ? "s" : ""} updated with lines`);
+  if (unmatchedTeams.size > 0) {
+    parts.push(`${unmatchedTeams.size} team name${unmatchedTeams.size > 1 ? "s" : ""} not in our team table (no lines written): ${[...unmatchedTeams].sort().join(", ")}`);
+  }
+  if (skippedNoMatchup > unmatchedTeams.size) {
+    parts.push(`${skippedNoMatchup} game${skippedNoMatchup > 1 ? "s" : ""} skipped with no matchup row for ${date}`);
+  }
 
   return {
-    ok: true,
-    message: parts.join(", "),
+    // A fetch that wrote nothing is not a success, whatever the API returned.
+    ok: updated > 0,
+    message: parts.join("; "),
     gamesFound: dateGames.length,
     upserted,
     updated,
+    unmatchedTeams: [...unmatchedTeams].sort(),
   };
 }

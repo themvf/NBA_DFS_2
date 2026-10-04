@@ -54,16 +54,11 @@ function KpiTile({
 // ── main component ────────────────────────────────────────────────────────────
 
 export default async function MlbHealthCard() {
-  let postmortem = null;
-  let blowup = null;
-  try {
-    [postmortem, blowup] = await Promise.all([
-      getCachedMlbPostmortemReport(),
-      getCachedMlbBlowupCandidateReport(),
-    ]);
-  } catch {
-    return null;
-  }
+  // A thrown read propagates to AnalyticsSection, which renders it by name.
+  const [postmortem, blowup] = await Promise.all([
+    getCachedMlbPostmortemReport(),
+    getCachedMlbBlowupCandidateReport(),
+  ]);
 
   if (!postmortem) return null;
 

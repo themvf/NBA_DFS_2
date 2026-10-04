@@ -1,4 +1,9 @@
 export const dynamic = "force-dynamic";
+// When the stored checklist is stale the page runs the checks itself: ~43
+// GitHub reads (8 s cap each, in parallel) plus five database reads. Vercel's
+// default function limit would cut that off with a bare 504 instead of the
+// page's own error banner.
+export const maxDuration = 60;
 
 import Link from "next/link";
 import { AlertTriangle, CheckCircle2, CircleSlash, XCircle } from "lucide-react";
@@ -82,8 +87,9 @@ export default async function HealthPage({ searchParams }: { searchParams: Promi
       ) : null}
 
       <div className="flex flex-wrap items-center gap-3 rounded border bg-card p-3 text-sm">
-        <span className={`rounded border px-2 py-0.5 font-mono text-xs font-bold ${counts.fail ? STATUS.fail.chip : STATUS.pass.chip}`}>
-          {counts.fail ? `${counts.fail} FAIL` : "ALL PASS"}
+        {/* No rows is not "all pass": it is the stored checklist being empty and the live check having failed too. */}
+        <span className={`rounded border px-2 py-0.5 font-mono text-xs font-bold ${counts.fail ? STATUS.fail.chip : rows.length ? STATUS.pass.chip : STATUS.fail.chip}`}>
+          {counts.fail ? `${counts.fail} FAIL` : rows.length ? "ALL PASS" : "NO RESULTS"}
         </span>
         <span>{rows.length} items · {counts.pass} pass · {counts.fail} fail · {counts.info} info</span>
         <span className="text-xs text-muted-foreground">

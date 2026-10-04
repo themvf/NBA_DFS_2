@@ -676,9 +676,12 @@ if __name__ == "__main__":
     fetch_player_props(db, config.odds_api.api_key, args.date)
     fetch_player_stats(db, args.date)
 
-    # Write game-total model predictions for upcoming games
+    # Write game-total model predictions for upcoming games. Everything above
+    # is already committed; a crash here is re-raised so the run exits
+    # non-zero instead of leaving stale predictions behind a warning.
     try:
         from model.game_predictions import predict_and_write
         predict_and_write(db, game_date=args.date)
-    except Exception as exc:
-        logger.warning("Game predictions skipped: %s", exc)
+    except Exception:
+        logger.error("Game predictions failed after the schedule/odds refresh completed")
+        raise

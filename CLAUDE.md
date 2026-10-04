@@ -453,10 +453,55 @@ to a person.
   (Vercel fires on time) but 12 h after a GitHub-cron slot, which still catches a
   schedule GitHub has stopped running. A job whose timing matters goes on
   `/api/cron/dispatch`, not a tighter GitHub cron.
+- **Third silent-failure audit (2026-09-29, `pipeline-health-v3`).** The class
+  the workflow rows cannot see is a green run that writes nothing, and the only
+  defence is the data. `DATASET_REGISTRY` went from 13 to 48 rows: every
+  scheduled or follower workflow that writes a table a page or a downstream job
+  reads now has one (the registry in `model/pipeline_health.py` is the coverage
+  list). Shared
+  tables are watched **per sport** through a `filter` (`game_odds_history`,
+  `event_closing_lines`, `line_alerts`), because one MAX let NFL checkpoints hide
+  a dead MLB capture; `min_rows`/`window_hours` add a floor for append-only
+  captures whose newest row can move on a trivial write. What it found on its
+  first live run: `mlb_pitcher_stats_history` has a single snapshot day
+  (2026-07-12) while `refresh_mlb_stats.yml` has been green daily, and
+  `mlb_team_stats.fetched_at` has been frozen since 2026-04-06 because the
+  FanGraphs path 403s and the official-API fallback writes only the history
+  snapshot (`ingest/mlb_stats.py:383-385`, `:462-543`). **Rule for a new dataset:**
+  the timestamp column must be one the writer stamps on every successful run. A
+  UNIQUE-keyed upsert whose `ON CONFLICT` list omits the timestamp, or a
+  checksum-keyed `DO NOTHING` insert, cannot tell "refreshed" from "untouched"
+  and is not registered; watch the run/snapshot/`_history` table instead, and
+  say so in the note. Budgets are set against the clock that actually starts
+  the job (Vercel on the minute; GitHub cron ~4-8 h late), never `COUNT == expected`.
 - **Rule for new work:** every new scheduled job or data feed must show up on this
   checklist (a workflow appears automatically via the manifest; a new dataset
   needs a `model/pipeline_health.py` entry), and every fallback must surface a
   visible reason. "Done" requires the run id and its conclusion, not "it started".
+- **Muting is one list: `MUTED` in `web/src/lib/health-checklist.ts`.** A FAIL
+  row whose key equals an entry's `match`, or starts with it (`data:tennis`), is
+  shown on /health as INFO reading "Muted by owner since <date>: <reason>.
+  Underlying: <what it would have said>", and is never emailed, because the
+  sweep takes only FAIL rows. Every entry carries a date and a reason, and this
+  is the only way to quiet a row: do not disable the workflow, drop the dataset
+  entry or loosen a threshold to stop an email. Muted 2026-09-29: tennis
+  (workflows and data), the MLB DFS slate loader, the MLB beat-writer articles
+  and the YouTube picks extraction.
+- **Three rows come from observations, not from the run that reads them.**
+  - *Dispatch token*: GitHub returns the PAT's expiry only on responses to that
+    token, so the dispatcher and the health-check route record it as an `obs:`
+    row in `cron_heartbeats` (`recordObservation`, `web/src/lib/cron-heartbeat.ts`;
+    never in `CRON_ROUTES`, so never a clock), and the daily sweep (Actions
+    token) reads it from there. FAIL inside 30 days of expiry: when it lapses
+    every dispatched job stops at once.
+  - *Odds API credits*: the newest `odds_api_usage` reading, plan = used +
+    remaining; FAIL below 10% left, INFO when the newest reading is over 48 h
+    old. The daily spend rate restarts at a rise in `remaining`, which is the
+    monthly reset, not an error.
+  - *Production deployment*: the health-check route records
+    `VERCEL_GIT_COMMIT_SHA`; the row shows it beside main's head and is always
+    INFO, because Vercel skips builds when nothing under `web/` changed, so
+    production trailing main is expected.
 
 ## NBA Lineup Structure (DraftKings)
 ```

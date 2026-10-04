@@ -10,8 +10,8 @@
  *   closes the tracking issue correctly.
  */
 import assert from "node:assert/strict";
-import { cronTimes, parseCron, cronMatches } from "../src/lib/cron-schedule";
-import { buildChecklist, type ChecklistInputs, type ManifestWorkflow } from "../src/lib/health-checklist";
+import { cronTimes, lastCronTime, nextCronTime, parseCron, cronMatches } from "../src/lib/cron-schedule";
+import { applyMutes, buildChecklist, oddsApiDailySpend, type ChecklistInputs, type HealthItem, type ManifestWorkflow } from "../src/lib/health-checklist";
 import { planSweep, problemsFromChecklist, parseState } from "../src/lib/failure-sweep";
 import type { WorkflowRunLite } from "../src/lib/workflow-health";
 
@@ -22,6 +22,32 @@ assert.equal(cronTimes(["0 12 * * 1"], new Date("2026-09-29T12:00:00Z"), 8 * 144
 assert.equal(cronTimes(["17 */6 * 1,2,9-12 *"], new Date("2026-12-31T23:00:00Z"), 120)[0].toISOString(), "2027-01-01T00:17:00.000Z", "January is included");
 assert.ok(cronMatches(parseCron("0 9 * * 7"), new Date("2026-09-27T09:00:00Z")), "7 means Sunday");
 assert.throws(() => parseCron("* * *"), /5 fields/);
+// Steps, ranges with steps, start/step, and 7 inside a range.
+assert.deepEqual([...parseCron("0 9 1-10/3 * *").dom], [1, 4, 7, 10]);
+assert.deepEqual([...parseCron("5/10 * * * *").minute], [5, 15, 25, 35, 45, 55]);
+assert.deepEqual([...parseCron("*/15 * * * *").minute], [0, 15, 30, 45]);
+assert.deepEqual([...parseCron("0 9 * * 5-7").dow], [5, 6, 0]);
+// Day-of-month and day-of-week both restricted: either may match (standard cron).
+const either = parseCron("0 9 1-10 * 2");
+assert.ok(cronMatches(either, new Date("2026-09-15T09:00:00Z")), "Tuesday the 15th matches on the weekday");
+assert.ok(cronMatches(either, new Date("2026-09-03T09:00:00Z")), "Thursday the 3rd matches on the day of month");
+assert.ok(!cronMatches(either, new Date("2026-09-16T09:00:00Z")), "Wednesday the 16th matches neither");
+// A field that can never fire throws; it used to parse to an empty set and describe a job that could never be overdue.
+for (const bad of ["60 9 * * *", "0 24 * * *", "0 9 0 * *", "0 9 32 * *", "0 9 * 13 *", "0 9 * * 8", "0 9 10-1 * *", "*/ * * * *", "1/0 * * * *", "0 9 * * MON", "0 9 * JAN *", "1.5 * * * *"]) {
+  assert.throws(() => parseCron(bad), /bad cron field/, `${bad} must throw`);
+}
+// Exact last/next fire times beyond the 8-day scan: monthly, seasonal, and dense crons.
+const probeAt = new Date("2026-09-29T12:43:00Z");
+assert.equal(lastCronTime(["0 6 1 * *"], probeAt)!.toISOString(), "2026-09-01T06:00:00.000Z", "monthly: last fire 28 days back");
+assert.equal(nextCronTime(["0 6 1 * *"], probeAt)!.toISOString(), "2026-10-01T06:00:00.000Z", "monthly: next fire beyond 8 days");
+assert.equal(lastCronTime(["0 6 1 * *"], probeAt, 20), null, "nothing inside a 20-day lookback");
+assert.equal(lastCronTime(["17 */6 * 1,2,9-12 *"], new Date("2026-03-15T00:00:00Z"))!.toISOString(), "2026-02-28T18:17:00.000Z", "seasonal: last slot of February");
+assert.equal(nextCronTime(["17 */6 * 1,2,9-12 *"], new Date("2026-03-15T00:00:00Z"))!.toISOString(), "2026-09-01T00:17:00.000Z", "seasonal: first slot of September");
+assert.equal(lastCronTime(["*/5 * * * *"], probeAt)!.toISOString(), "2026-09-29T12:40:00.000Z");
+assert.equal(nextCronTime(["*/5 * * * *"], probeAt)!.toISOString(), "2026-09-29T12:45:00.000Z");
+assert.equal(lastCronTime(["*/5 * * * *"], new Date("2026-09-29T12:40:00Z"))!.toISOString(), "2026-09-29T12:40:00.000Z", "at or before");
+assert.equal(lastCronTime(["7 */6 * * *", "37 * * * *"], probeAt)!.toISOString(), "2026-09-29T12:37:00.000Z", "newest across two specs on one day");
+assert.equal(nextCronTime(["0 12 * * 1", "0 14 * * 2"], new Date("2026-12-31T23:59:00Z"))!.toISOString(), "2027-01-04T12:00:00.000Z", "year boundary");
 
 // --- checklist ---
 const now = new Date("2026-09-29T12:40:00Z");
@@ -168,6 +194,50 @@ for (const key of ["checklist:github", "checklist:datasets", "checklist:heartbea
 }
 assert.match(blind.find((i) => i.key === "checklist:github")!.detail, /Could not be checked: GitHub answered 401/);
 
+// A job on a dense GitHub cron (*/5) that stopped two days ago. The old 8-day scan was
+// capped at 400 fire times, so the newest slot it could judge against was 6.6 days old
+// and the job read PASS until it had been dead for a week.
+const only = (manifest: ManifestWorkflow[], runs: Record<string, WorkflowRunLite[]>, over: Partial<ChecklistInputs> = {}) =>
+  buildChecklist(base({ manifest, runs, dispatchTimes: {}, workflowStates: {}, workflowErrors: {}, ...over }));
+const dense = only([wf("five.yml", { crons: ["*/5 * * * *"] })], { "five.yml": [run("five.yml", "2026-09-27T12:00:00Z", "success")] }).find((i) => i.key === "workflow:five.yml")!;
+assert.equal(dense.status, "fail");
+assert.match(dense.detail, /^Overdue: GitHub's scheduler was due to start it Sep 28, 8:40 PM ET \(allowing 12 h\), but it has not run since Sep 27/);
+// A monthly cron whose slot was four weeks ago and whose last run was two months ago: an
+// 8-day window used to let this age out into "Last run succeeded Aug 1"; its next run
+// is also more than 8 days away and must still be shown.
+const monthly = only([wf("monthly.yml", { crons: ["0 6 1 * *"] })], { "monthly.yml": [run("monthly.yml", "2026-08-01T06:01:00Z", "success")] }).find((i) => i.key === "workflow:monthly.yml")!;
+assert.equal(monthly.status, "fail");
+assert.match(monthly.detail, /^Overdue: GitHub's scheduler was due to start it Sep 1, 2:00 AM ET \(allowing 12 h\), but it has not run since Aug 1/);
+assert.equal(monthly.nextEventAt, "2026-10-01T06:00:00.000Z");
+// The same monthly job that ran on time is fine, and a seasonal job out of season is not overdue.
+assert.equal(only([wf("monthly.yml", { crons: ["0 6 1 * *"] })], { "monthly.yml": [run("monthly.yml", "2026-09-01T06:01:00Z", "success")] }).find((i) => i.key === "workflow:monthly.yml")!.status, "pass");
+const offSeason = only([wf("adp.yml", { crons: ["7 0,12 * 7-9 *"] })], { "adp.yml": [run("adp.yml", "2026-09-30T12:07:30Z", "success")] }, { now: new Date("2026-11-15T12:00:00Z"), nextCheckAt: new Date("2026-11-15T12:30:00Z") }).find((i) => i.key === "workflow:adp.yml")!;
+assert.equal(offSeason.status, "pass");
+assert.equal(offSeason.nextEventAt, "2027-07-01T00:07:00.000Z", "next season's first slot, not a blank");
+
+// One workflow the checklist cannot judge (a cron the parser rejects) is its own FAIL row; it
+// used to throw out of buildChecklist and take every other row down with it.
+const partial = only([wf("bad.yml", { crons: ["0 9 * * MON"] }), wf("good.yml", { crons: ["0 * * * *"] })], { "bad.yml": [], "good.yml": [run("good.yml", "2026-09-29T12:00:00Z", "success")] });
+assert.equal(partial.find((i) => i.key === "workflow:bad.yml")!.status, "fail");
+assert.match(partial.find((i) => i.key === "workflow:bad.yml")!.detail, /^Could not be checked: the checklist could not judge this workflow \(bad cron field "MON"\)/);
+assert.equal(partial.find((i) => i.key === "workflow:good.yml")!.status, "pass", "the other workflows are still judged");
+// A scheduled job whose recent runs were all cancelled has no finished run to vouch for it; this
+// crashed the whole checklist ("Cannot read properties of null") instead of being a FAIL row.
+const cancelledOnly = only([wf("c.yml", { crons: ["0 * * * *"] })], { "c.yml": [run("c.yml", "2026-09-29T12:00:00Z", "cancelled"), run("c.yml", "2026-09-29T11:00:00Z", "cancelled")] }).find((i) => i.key === "workflow:c.yml")!;
+assert.equal(cancelledOnly.status, "fail");
+assert.match(cancelledOnly.detail, /^None of its last 2 runs finished \(newest was cancelled/);
+
+// Cancelled runs did no work. An hourly job whose last success was three days ago and whose
+// eight runs since were all cancelled read "Last run succeeded Sep 26"; three in a row is a FAIL,
+// and even one is named rather than skipped over.
+const cancelledRuns = (n: number) => Array.from({ length: n }, (_, k) => run("h.yml", new Date(now.getTime() - (k + 1) * 3600_000).toISOString(), "cancelled"));
+const cancelledStreak = only([wf("h.yml", { crons: ["0 * * * *"] })], { "h.yml": [...cancelledRuns(8), run("h.yml", "2026-09-26T12:00:00Z", "success")] }).find((i) => i.key === "workflow:h.yml")!;
+assert.equal(cancelledStreak.status, "fail");
+assert.match(cancelledStreak.detail, /^Its last 8 runs were cancelled before finishing \(latest Sep 29, 7:40 AM ET\); last success Sep 26/);
+const cancelledOnce = only([wf("h.yml", { crons: ["0 * * * *"] })], { "h.yml": [...cancelledRuns(1), run("h.yml", "2026-09-29T10:00:00Z", "success")] }).find((i) => i.key === "workflow:h.yml")!;
+assert.equal(cancelledOnce.status, "pass", "one cancelled run is forgiven");
+assert.match(cancelledOnce.detail, /^Last completed run succeeded Sep 29, 6:00 AM ET; its newest run \(latest Sep 29, 7:40 AM ET\) was cancelled before finishing\./);
+
 // --- sweep ---
 const problems = problemsFromChecklist(items);
 assert.ok(problems.every((p) => items.find((i) => i.key === p.key)?.status === "fail"));
@@ -199,5 +269,46 @@ if (fewer.kind === "comment") assert.match(fewer.comment, /\*\*Resolved \(1\)\*\
 // All clear: close. No problems and no issue: nothing.
 assert.equal(planSweep(open.body, [], "2026-09-30T11:07:00Z", "themvf").kind, "close");
 assert.equal(planSweep(null, [], "2026-09-30T11:07:00Z", "themvf").kind, "none");
+
+// --- mutes and observation rows (2026-10-04) ---
+{
+  const row = (key: string, status: HealthItem["status"]): HealthItem => ({ key, group: "Scheduled jobs", label: key, status, detail: "Last run failed.",
+    url: null, lastEventAt: null, nextEventAt: null, lastCheckedAt: now.toISOString(), nextCheckAt: null });
+  const muted = applyMutes([row("workflow:refresh_tennis.yml", "fail"), row("data:tennis_matches", "fail"), row("workflow:refresh_mlb_vegas.yml", "fail"), row("workflow:refresh_youtube_picks.yml", "pass")]);
+  assert.equal(muted[0].status, "info", "a muted workflow is INFO, so it is never emailed");
+  assert.match(muted[0].detail, /^Muted by owner since 2026-09-29: tennis is out of scope for now\. Underlying: Last run failed\.$/);
+  assert.equal(muted[1].status, "info", "a prefix mutes every matching dataset");
+  assert.equal(muted[2].status, "fail", "an in-scope failure is untouched");
+  assert.equal(muted[3].status, "pass", "a passing muted row stays as it is");
+
+  const rows = (over: Partial<ChecklistInputs>) => buildChecklist(base(over));
+  const find = (items: HealthItem[], key: string) => items.find((i) => i.key === key);
+  // Inputs never supplied (an older collector) add no rows rather than guessing.
+  const bare = rows({});
+  assert.ok(!find(bare, "checklist:dispatch-token") && !find(bare, "data:odds-api-credits") && !find(bare, "checklist:deployed-commit"));
+
+  const day = 86_400_000;
+  const token = (days: number) => find(rows({ dispatchToken: { expiresAt: new Date(now.getTime() + days * day).toISOString(), observedAt: now.toISOString() } }), "checklist:dispatch-token")!;
+  assert.equal(token(120).status, "pass");
+  assert.equal(token(20).status, "fail", "inside 30 days the token row fails, a month before every dispatched job stops");
+  assert.match(token(-1).detail, /^Expired/);
+  assert.equal(find(rows({ dispatchToken: null }), "checklist:dispatch-token")!.status, "info", "never observed is INFO, not a guess");
+
+  const reading = (hoursAgo: number, used: number, remaining: number) => ({ requestedAt: new Date(now.getTime() - hoursAgo * 3600_000).toISOString(), used, remaining });
+  // 4,000 spent over two days with a reset in between: only the part after the reset counts.
+  assert.equal(oddsApiDailySpend([reading(72, 90_000, 10_000), reading(48, 0, 100_000), reading(24, 2_000, 98_000), reading(0, 4_000, 96_000)]), 2_000);
+  assert.equal(oddsApiDailySpend([reading(0, 1, 2)]), null, "one reading has no rate");
+  const odds = (latest: ReturnType<typeof reading>, series = [latest]) => find(rows({ oddsApi: { latest, series } }), "data:odds-api-credits")!;
+  assert.equal(odds(reading(1, 20_000, 80_000)).status, "pass");
+  const low = odds(reading(1, 95_000, 5_000));
+  assert.equal(low.status, "fail", "below 10% of the plan fails");
+  assert.match(low.detail, /^5,000 of 100,000 left/);
+  assert.equal(odds(reading(72, 95_000, 5_000)).status, "info", "a reading three days old is not current, so it cannot fail the row");
+  assert.equal(find(rows({ oddsApiError: "db down" }), "checklist:odds-api")!.status, "fail", "an unreadable quota is its own FAIL row");
+
+  const deployed = find(rows({ deployedCommit: { sha: "aaaaaaa1111", observedAt: now.toISOString() }, mainHead: { sha: "bbbbbbb2222", at: now.toISOString(), source: "commits/main" } }), "checklist:deployed-commit")!;
+  assert.equal(deployed.status, "info", "production may trail main by design (builds skip when web/ is unchanged)");
+  assert.match(deployed.detail, /Production runs aaaaaaa .* main is at bbbbbbb .*They differ/);
+}
 
 console.log(`Health checklist: ${items.length} synthetic items classified; unreadable sources become FAIL rows; the sweep opens, reminds daily, updates quietly, and closes.`);

@@ -35,6 +35,9 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    # Sleeper, nflverse and FantasyPros are all remote; the longest recent run
+    # was 17 minutes.
+    timeout-minutes: 40
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:
@@ -110,10 +113,20 @@ jobs:
       - name: Report FantasyPros soft-dependency state
         if: ${{ always() }}
         shell: bash
+        env:
+          AUDIT_OUTCOME: ${{ steps.fantasypros-audit.outcome }}
+          HISTORY_AUDIT_OUTCOME: ${{ steps.fantasypros-history-audit.outcome }}
+          ROOKIE_CHECK_OUTCOME: ${{ steps.fantasypros-rookie-check.outcome }}
         run: |
-          if [[ "${{ steps.fantasypros-audit.outcome }}" == "success" || "${{ steps.fantasypros-history-audit.outcome }}" == "success" ]]; then
+          if [[ "$AUDIT_OUTCOME" == "success" || "$HISTORY_AUDIT_OUTCOME" == "success" ]]; then
             echo "### FantasyPros: full required endpoint contracts passed" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "### FantasyPros: unavailable, invalid, or sample-sized" >> "$GITHUB_STEP_SUMMARY"
             echo "The independent Sleeper/nflverse board completed and remains authoritative." >> "$GITHUB_STEP_SUMMARY"
           fi
+          # Every fail-soft step by outcome, so a crashed audit is not read as a
+          # quiet one.
+          for pair in "endpoint audit=$AUDIT_OUTCOME" "2020-2025 history audit=$HISTORY_AUDIT_OUTCOME" "rookie projection check=$ROOKIE_CHECK_OUTCOME"; do
+            echo "- ${pair%%=*}: ${pair#*=}" >> "$GITHUB_STEP_SUMMARY"
+            if [[ "${pair#*=}" == "failure" ]]; then echo "::warning title=Optional step failed::FantasyPros ${pair%%=*} ended failure"; fi
+          done

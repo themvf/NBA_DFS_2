@@ -3,9 +3,15 @@ import { NHL_FIRST_CAPTURE_DUE_MINUTES, nhlFreshnessTargetMinutes } from "@/lib/
 import { getPickemEvidence } from "./pickem-evidence";
 import { usablePickemQuote, type PickemEvidence } from "@/lib/nfl/pickem-evidence";
 import { db } from ".";
-import { ensureSurvivorTables, ensureDkPlayerPropColumns, ensureProjectionExperimentTables, ensureAnalyticsColumns, ensureOwnershipExperimentTables, ensureMlbBlowupTrackingTables, ensureMlbHomerunTrackingTables, ensureOddsHistoryTables, ensureMlbGamePredictionTables } from "./ensure-schema";
+import { ensureSurvivorTables, ensurePickemTables, ensureDkPlayerPropColumns, ensureProjectionExperimentTables, ensureAnalyticsColumns, ensureOwnershipExperimentTables, ensureMlbBlowupTrackingTables, ensureMlbHomerunTrackingTables, ensureOddsHistoryTables, ensureMlbGamePredictionTables } from "./ensure-schema";
 import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, mlbTeams, mlbTeamStats, mlbMatchups } from "./schema";
 import { eq, desc, sql, gte, and } from "drizzle-orm";
+import { easternDateString } from "@/lib/eastern-date";
+import { currentNflSeason } from "@/lib/nfl/season";
+// Hard-coded on purpose: it must match the season string the Python ingest
+// (config.py NbaApiConfig.season) writes to nba_team_stats/nba_player_stats.
+// Change both together at the October rollover; the /stats page shows the
+// newest fetched_at so a stale season is visible rather than silent.
 const CURRENT_SEASON = "2025-26";
 
 type SolverModel = {
@@ -6110,7 +6116,7 @@ export type VegasMatchupRow = {
 };
 
 export async function getVegasMatchups(gameDate?: string): Promise<VegasMatchupRow[]> {
-  const targetDate = gameDate ?? new Date().toISOString().slice(0, 10);
+  const targetDate = gameDate ?? easternDateString();
   const rows = await db.execute(sql`
     SELECT
       nm.id            AS "matchupId",
@@ -8428,7 +8434,7 @@ export async function getNflPipelineHealth(gameDate: string, throughDate?: strin
  * capture job writes sport='nfl' rows, the page fills in without a UI change.
  */
 export async function getNflVegasBoard(gameDate?: string, throughDate?: string): Promise<NflVegasBoardRow[]> {
-  const targetDate = gameDate ?? new Date().toISOString().slice(0, 10);
+  const targetDate = gameDate ?? easternDateString();
   await ensureOddsHistoryTables();
   const rows = await db.execute(sql`
     WITH captures AS (
@@ -8601,7 +8607,7 @@ export type SurvivorGrid = {
  * recompute anything -- provenance and horizon widening are decided once, at
  * ingest, so the page cannot quietly disagree with the stored record.
  */
-export async function getNflSurvivorGrid(season = 2026): Promise<SurvivorGrid> {
+export async function getNflSurvivorGrid(season = currentNflSeason()): Promise<SurvivorGrid> {
   const rows = await db.execute(sql`
     SELECT
       w.week, w.game_id AS "gameId", w.team_id AS "teamId", w.is_home AS "isHome",
@@ -8772,7 +8778,7 @@ export type SurvivorLedgerRow = {
   result: "pending" | "won" | "lost" | "push" | "void";
 };
 
-export async function getSurvivorPools(season = 2026): Promise<SurvivorPoolRow[]> {
+export async function getSurvivorPools(season = currentNflSeason()): Promise<SurvivorPoolRow[]> {
   await ensureSurvivorTables();
   const pools = await db.execute(sql`
     SELECT id, name, season, pool_size AS "poolSize", tie_rule AS "tieRule",
@@ -8848,7 +8854,7 @@ export async function getSurvivorPools(season = 2026): Promise<SurvivorPoolRow[]
 }
 
 /** The frozen recommendation ledger, newest first. Superseded rows are kept. */
-export async function getSurvivorLedger(season = 2026, limit = 100): Promise<SurvivorLedgerRow[]> {
+export async function getSurvivorLedger(season = currentNflSeason(), limit = 100): Promise<SurvivorLedgerRow[]> {
   await ensureSurvivorTables();
   const rows = await db.execute(sql`
     SELECT r.id, r.entry_id AS "entryId", e.label AS "entryLabel", r.week,
@@ -8884,7 +8890,7 @@ export async function getSurvivorLedger(season = 2026, limit = 100): Promise<Sur
 }
 
 export async function getMlbVegasMatchups(gameDate?: string): Promise<VegasMatchupRow[]> {
-  const targetDate = gameDate ?? new Date().toISOString().slice(0, 10);
+  const targetDate = gameDate ?? easternDateString();
   await ensureAnalyticsColumns();
   await ensureMlbGamePredictionTables();
   const rows = await db.execute(sql`
@@ -10543,14 +10549,7 @@ export async function getCfbStudyStatus(): Promise<CfbStudyStatus | null> {
 }
 
 function easternDateNow(): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/New_York",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${value.year}-${value.month}-${value.day}`;
+  return easternDateString();
 }
 
 export async function getCfbDefaultGameDate(): Promise<string> {
@@ -11669,6 +11668,17 @@ const DETECTOR_REGISTRY: { sport: string; alertType: string; deployedAt: string 
   { sport: "nfl", alertType: "steam", deployedAt: "2026-08-01" },
   { sport: "nfl", alertType: "walking", deployedAt: "2026-08-01" },
   { sport: "nfl", alertType: "pinnacle_polymarket_delta", deployedAt: "2026-08-01" },
+  // NFL market-structure detectors (2026-09-06) and tennis's Pinnacle
+  // favourite forward test (2026-08-29) were registered in Python only until
+  // 2026-09-29; scripts/test-detector-registry.ts now diffs the two copies.
+  { sport: "nfl", alertType: "reversal", deployedAt: "2026-09-06" },
+  { sport: "nfl", alertType: "reference_led", deployedAt: "2026-09-06" },
+  { sport: "nfl", alertType: "price_pressure", deployedAt: "2026-09-06" },
+  { sport: "nfl", alertType: "key_cross", deployedAt: "2026-09-06" },
+  { sport: "nfl", alertType: "book_disagreement", deployedAt: "2026-09-06" },
+  { sport: "nfl", alertType: "market_convergence", deployedAt: "2026-09-06" },
+  { sport: "nfl", alertType: "late_move", deployedAt: "2026-09-06" },
+  { sport: "tennis", alertType: "pinnacle_favorite_forward", deployedAt: "2026-08-29" },
   { sport: "mlb", alertType: "dk_prop_value", deployedAt: "2026-07-02" },
   { sport: "mlb", alertType: "prop_line_gap", deployedAt: "2026-07-02" },
   { sport: "tennis", alertType: "dk_prop_value", deployedAt: "2026-07-02" },
@@ -14241,7 +14251,7 @@ export type PickemSlate = {
  * Persisted model probabilities remain the fallback and historical baseline.
  * Share an evidence snapshot with callers so the card and its audit agree.
  */
-export async function getNflPickemSlate(season = 2026, evidence?: PickemEvidence): Promise<PickemSlate> {
+export async function getNflPickemSlate(season = currentNflSeason(), evidence?: PickemEvidence): Promise<PickemSlate> {
   evidence ??= await getPickemEvidence(season);
   const rows = await db.execute(sql`
     SELECT
@@ -14407,8 +14417,12 @@ export type PickemLedgerRow = {
   games: PickemLedgerGame[];
 };
 
-export async function getPickemPools(season = 2026): Promise<PickemPoolRow[]> {
-  try {
+export async function getPickemPools(season = currentNflSeason()): Promise<PickemPoolRow[]> {
+  // Provision the tables (they used to appear only after the first server
+  // action, hence a catch returning []), then let a real read failure reach
+  // the NFL error page instead of rendering as "no pools".
+  await ensurePickemTables();
+  {
     const rows = await db.execute(sql`
       SELECT id, name, season, format, pool_entries AS "poolEntries", notes, config_json
       FROM pickem_pools WHERE season = ${season} ORDER BY created_at
@@ -14425,10 +14439,6 @@ export async function getPickemPools(season = 2026): Promise<PickemPoolRow[]> {
         config: (r.config_json ?? null) as import("@/lib/nfl/pickem-contest").PoolConfig | null,
       };
     });
-  } catch {
-    // The table is created lazily by the first server action. An empty list is
-    // the correct answer before that happens, not a page failure.
-    return [];
   }
 }
 
@@ -14439,8 +14449,11 @@ export async function getPickemPools(season = 2026): Promise<PickemPoolRow[]> {
  * before it changed its mind, which is exactly what an audit trail is for --
  * the caller filters them out of summaries rather than the query hiding them.
  */
-export async function getPickemLedger(season = 2026): Promise<PickemLedgerRow[]> {
-  try {
+export async function getPickemLedger(season = currentNflSeason()): Promise<PickemLedgerRow[]> {
+  // Same contract as getPickemPools: provision the tables, then let a real
+  // read failure throw to the page instead of rendering as an empty ledger.
+  await ensurePickemTables();
+  {
     const rows = await db.execute(sql`
       SELECT r.*, p.name AS "poolName"
       FROM pickem_recommendations r
@@ -14523,8 +14536,6 @@ export async function getPickemLedger(season = 2026): Promise<PickemLedgerRow[]>
         games: byRec.get(id) ?? [],
       };
     });
-  } catch {
-    return [];
   }
 }
 

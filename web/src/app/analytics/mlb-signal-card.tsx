@@ -5,12 +5,8 @@ const fmtPct = (v: number | null | undefined) =>
   v == null ? "—" : `${v.toFixed(1)}%`;
 
 export default async function MlbSignalCard() {
-  let report;
-  try {
-    report = await getCachedMlbPostmortemReport();
-  } catch {
-    return null;
-  }
+  // A thrown read propagates to AnalyticsSection, which renders it by name.
+  const report = await getCachedMlbPostmortemReport();
 
   if (!report || report.signalFollowThrough.length === 0) return null;
 

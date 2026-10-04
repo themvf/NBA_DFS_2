@@ -49,6 +49,7 @@ jobs:
       # Fresh readings first. If the freshness monitor itself fails, the sweep
       # still runs and reports its readings as old.
       - name: Refresh data-freshness readings
+        id: freshness
         continue-on-error: true
         run: python -m model.pipeline_health --record
       - uses: actions/setup-node@v4
@@ -66,3 +67,16 @@ jobs:
           SWEEP_MENTION: themvf
         run: node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/daily-failure-sweep.ts | tee -a "$GITHUB_STEP_SUMMARY"
         shell: bash
+      # The freshness refresh is fail-soft by design (see above); its outcome
+      # still goes in the summary so a crash there is not invisible.
+      - name: Report optional step outcomes
+        if: ${{ always() }}
+        env:
+          FRESHNESS_OUTCOME: ${{ steps.freshness.outcome }}
+        run: |
+          report() {
+            echo "- $1: $2" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$2" = failure ]; then echo "::warning title=Optional step failed::$1 ended $2"; fi
+          }
+          echo "## Optional steps" >> "$GITHUB_STEP_SUMMARY"
+          report "Data-freshness readings (model.pipeline_health --record)" "$FRESHNESS_OUTCOME"

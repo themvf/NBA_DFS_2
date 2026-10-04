@@ -14,7 +14,8 @@ export const maxDuration = 15;
 
 type WorkRow = { has_work: boolean };
 
-async function hasDueWork() {
+/** Whether a capture is due, and why the answer may be a guess rather than a reading. */
+async function hasDueWork(): Promise<{ due: boolean; warning?: string }> {
   try {
     const rows = await db.execute<WorkRow>(sql`
       WITH events AS (
@@ -76,12 +77,15 @@ async function hasDueWork() {
           )
       ) AS has_work
     `);
-    return Boolean(rows.rows[0]?.has_work);
+    return { due: Boolean(rows.rows[0]?.has_work) };
   } catch (error) {
     // First deployment: the Python workflow owns schema migration. Dispatch
     // once to bootstrap instead of letting a missing new table deadlock rollout.
+    // The reason travels in the response (and so into the heartbeat detail on
+    // /health): a query that keeps failing would otherwise look like a healthy
+    // route dispatching every minute.
     console.warn("event-closing-lines cron: due-work query failed; dispatching bootstrap", error);
-    return true;
+    return { due: true, warning: `due-work query failed, dispatching as a bootstrap: ${error instanceof Error ? error.message : String(error)}`.slice(0, 200) };
   }
 }
 
@@ -103,9 +107,11 @@ async function handle(request: NextRequest) {
     );
   }
 
-  if (!(await hasDueWork())) {
+  const work = await hasDueWork();
+  if (!work.due) {
     return NextResponse.json({ ok: true, dispatched: false, reason: "no_due_event" });
   }
+  const warning = work.warning ? { warning: work.warning } : {};
 
   try {
     const runsResponse = await fetch(
@@ -134,7 +140,7 @@ async function handle(request: NextRequest) {
         }
         const jobs = (await jobsResponse.json()) as { jobs?: Array<{ name: string; status: string }> };
         if (captureStageBlocksDispatch(jobs.jobs ?? [])) {
-          return NextResponse.json({ ok: true, dispatched: false, reason: "capture_already_active" });
+          return NextResponse.json({ ok: true, dispatched: false, reason: "capture_already_active", ...warning });
         }
       }
     }
@@ -152,7 +158,7 @@ async function handle(request: NextRequest) {
       },
     );
     if (response.status === 204) {
-      return NextResponse.json({ ok: true, dispatchedAt: new Date().toISOString() });
+      return NextResponse.json({ ok: true, dispatchedAt: new Date().toISOString(), ...warning });
     }
     const body = await response.text();
     console.error(`event-closing-lines cron: GitHub dispatch failed (${response.status}): ${body}`);

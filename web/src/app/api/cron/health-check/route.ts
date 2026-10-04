@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { withHeartbeat } from "@/lib/cron-heartbeat";
-import { collectHealth, storeHealth } from "@/lib/health-collector";
+import { recordObservation, withHeartbeat } from "@/lib/cron-heartbeat";
+import { collectHealth, OBS_DEPLOYED_COMMIT, storeHealth } from "@/lib/health-collector";
 
 // The /health checklist, every 30 minutes (vercel.json): evaluate every
 // workflow, dataset, clock, upcoming NFL slate and the NFL availability
@@ -15,6 +15,9 @@ async function handle(request: NextRequest) {
   if (!cronSecret) return NextResponse.json({ ok: false, error: "CRON_SECRET is not configured in this deployment" }, { status: 500 });
   if (request.headers.get("authorization") !== `Bearer ${cronSecret}`) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   const now = new Date();
+  // Only the deployment knows which commit it runs; record it for every checker.
+  const deployed = process.env.VERCEL_GIT_COMMIT_SHA;
+  if (deployed) await recordObservation(OBS_DEPLOYED_COMMIT, deployed);
   const items = await collectHealth({ githubToken: process.env.GITHUB_DISPATCH_TOKEN || null, now });
   await storeHealth(items, now);
   const fail = items.filter((i) => i.status === "fail");

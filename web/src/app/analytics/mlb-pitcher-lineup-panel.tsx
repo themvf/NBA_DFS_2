@@ -52,12 +52,9 @@ function BucketTable({
 }
 
 export default async function MlbPitcherLineupPanel() {
-  let report;
-  try {
-    report = await getCachedMlbPitcherLineupReport();
-  } catch {
-    return null;
-  }
+  // A thrown read propagates to AnalyticsSection, which renders it by name.
+  // Catching it here made a failed query vanish from the page.
+  const report = await getCachedMlbPitcherLineupReport();
 
   if (!report) return null;
 

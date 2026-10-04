@@ -1,4 +1,5 @@
 import type { DetectorHealthRow } from "@/db/queries";
+import { DETECTOR_TYPE_LABELS } from "@/lib/signal-definitions";
 
 // Catches a detector that has run since it shipped but never fired once —
 // distinct from "fired before, quiet lately" and from "no eligible games
@@ -24,19 +25,7 @@ const STATUS_STYLE: Record<DetectorHealthRow["status"], string> = {
   no_opportunity: "bg-gray-100 text-gray-500",
 };
 
-const typeLabel = (t: string) =>
-  t === "pinnacle_divergence" ? "Pin divergence"
-  : t === "pinnacle_polymarket_delta" ? "Pin/Poly gap"
-  : t === "steam" ? "Steam"
-  : t === "walking" ? "Walking"
-  : t === "dk_value" ? "DK value"
-  : t === "dk_prop_value" ? "DK prop value"
-  : t === "prop_line_gap" ? "Prop line gap"
-  : t === "total_steam" ? "Total steam"
-  : t === "spread_steam" ? "Spread steam"
-  : t === "total_walking" ? "Total walking"
-  : t === "spread_walking" ? "Spread walking"
-  : t;
+const typeLabel = (t: string) => DETECTOR_TYPE_LABELS[t] ?? t;
 
 export default function DetectorHealthPanel({ health }: { health: DetectorHealthRow[] }) {
   if (health.length === 0) return null;

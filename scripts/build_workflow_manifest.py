@@ -31,9 +31,14 @@ def _triggers(doc: dict) -> dict:
     return on or {}
 
 
+def workflow_files() -> list[Path]:
+    """Every workflow GitHub would run: it accepts both .yml and .yaml."""
+    return sorted([*WORKFLOWS.glob("*.yml"), *WORKFLOWS.glob("*.yaml")], key=lambda p: p.name)
+
+
 def build() -> dict:
     entries = []
-    for path in sorted(WORKFLOWS.glob("*.yml")):
+    for path in workflow_files():
         doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         on = _triggers(doc)
         crons = [item["cron"] for item in (on.get("schedule") or []) if isinstance(item, dict) and "cron" in item]

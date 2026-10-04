@@ -52,6 +52,29 @@ from model.soccer_bet_rating import american_to_prob, prob_to_american
 logger = logging.getLogger(__name__)
 
 MLB_API_BASE = "https://statsapi.mlb.com/api/v1"
+
+
+class MlbStatsApiError(requests.RequestException):
+    """The MLB Stats API could not be read. Not the same as an empty slate.
+
+    Subclasses RequestException so callers that already catch transport
+    failures (the checkpoint worker, per-date backfills) keep working, while
+    the stage wrappers that catch Exception report it as FAILED instead of
+    "completed ([])".
+    """
+
+
+class OddsApiError(requests.RequestException):
+    """A paid Odds API call failed (401 at quota exhaustion, 5xx, timeout).
+
+    Carries the response so the checkpoint worker can audit status/quota
+    headers exactly as it does for a raw RequestException.
+    """
+
+
+def _http_status(exc: requests.RequestException) -> str:
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    return str(status) if status is not None else "unavailable"
 MLB_ODDS_REGIONS = "us,eu,us_ex"
 NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search"
 OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
@@ -571,12 +594,19 @@ def fetch_schedule(db: DatabaseManager, game_date: str | None = None) -> list[in
         resp.raise_for_status()
         data = resp.json()
     except requests.RequestException as e:
-        logger.warning("MLB Stats API request failed: %s", e)
-        return []
+        # A failed fetch used to return [] -- indistinguishable from an
+        # off-day to every caller (refresh_mlb_vegas printed "completed ([])"
+        # and the day's health passed with 0/0 games). Could-not-fetch and
+        # fetched-and-empty are different answers; only the second is quiet.
+        raise MlbStatsApiError(
+            f"MLB Stats API schedule request failed for {target_date} "
+            f"(HTTP {_http_status(e)}): {e}",
+            response=getattr(e, "response", None),
+        ) from e
 
     dates = data.get("dates", [])
     if not dates:
-        print(f"No games found for {target_date}")
+        print(f"No games found for {target_date} (schedule fetched, empty)")
         return []
 
     abbrev_cache = build_mlb_team_abbrev_cache(db)
@@ -925,9 +955,15 @@ def fetch_odds(
         resp.raise_for_status()
         games = resp.json()
     except requests.RequestException as e:
-        logger.warning("Odds API request failed (%s, HTTP %s)", type(e).__name__,
-                       e.response.status_code if e.response is not None else "unavailable")
-        return 0
+        # The Odds API answers 401 (not 429) when the shared monthly quota is
+        # exhausted (2026-08-24); returning 0 here made that read as "0
+        # matchups updated" and the stage completed. Raise with the status so
+        # the caller's stage reports FAILED and the retry loop / sweep sees it.
+        raise OddsApiError(
+            f"Odds API MLB odds request failed for {target_date} "
+            f"(HTTP {_http_status(e)}, {type(e).__name__}); nothing captured",
+            response=getattr(e, "response", None),
+        ) from e
 
     # Build lookup: home team name → ALL matchup rows for that home team today.
     # A split doubleheader is two rows with the same (date, teams) and distinct
@@ -1163,8 +1199,11 @@ def fetch_scores(db: DatabaseManager, game_date: str | None = None) -> int:
         resp.raise_for_status()
         data = resp.json()
     except requests.RequestException as e:
-        logger.warning("MLB Stats API scores request failed: %s", e)
-        return 0
+        raise MlbStatsApiError(
+            f"MLB Stats API scores request failed for {target_date} "
+            f"(HTTP {_http_status(e)}): {e}",
+            response=getattr(e, "response", None),
+        ) from e
 
     dates = data.get("dates", [])
     if not dates:

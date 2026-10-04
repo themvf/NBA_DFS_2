@@ -14,6 +14,7 @@ import { isDraftStrategy } from "@/lib/fantasy-football/draft-strategy";
 import { queryRows } from "@/db/query-result";
 import { ANALYST_NOTE_STYLE, isAnalystVerdict, isNoteCategory, validateNoteInput } from "@/lib/fantasy-football/analyst-notes";
 import { requireProjectionModelVersion } from "@/lib/fantasy-football/projection-model";
+import { currentNflSeason } from "@/lib/nfl/season";
 
 export async function createFantasyDraft(formData: FormData): Promise<void> {
   await ensureFantasyFootballTables();
@@ -22,7 +23,7 @@ export async function createFantasyDraft(formData: FormData): Promise<void> {
   const teamCount = Number(formData.get("teamCount") || 12);
   const controlledSlot = Number(formData.get("controlledSlot") || 1);
   const rounds = Number(formData.get("rounds") || 15);
-  const season = Number(formData.get("season") || 2026);
+  const season = Number(formData.get("season") || currentNflSeason());
   const scoringPreset = String(formData.get("scoring") || "HALF");
   const rosterPreset = String(formData.get("roster") || "hood-rivals");
   const draftMode = String(formData.get("draftMode") || "simulator");

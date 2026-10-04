@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { CRON_ROUTES, cronStatuses, lateAfterMs, type CronHeartbeat } from "../src/lib/cron-heartbeat";
+import { CRON_ROUTES, cronStatuses, lateAfterMs, observation, OBSERVATION_PREFIX, type CronHeartbeat } from "../src/lib/cron-heartbeat";
 
 // Every cron path in vercel.json has a heartbeat entry, and every entry is a real cron.
 const vercel = JSON.parse(readFileSync(path.resolve(__dirname, "..", "vercel.json"), "utf8")) as { crons: { path: string }[] };
@@ -39,5 +39,11 @@ assert.equal(s("event-closing-lines").state, "never", "no heartbeat is never, no
 assert.equal(lateAfterMs(CRON_ROUTES["dispatch"]), 50 * 60_000);
 assert.equal(lateAfterMs(CRON_ROUTES["daily-failure-sweep"]), 26 * 3600_000, "the daily sweep is late after 26 h, not 3 days");
 assert.equal(s("dispatch").nextRunAt, new Date(now - 10 * 60_000 + 15 * 60_000).toISOString());
+
+// Observations share the table under an `obs:` key: readable from any process, never rendered as a clock.
+const obs = hb(`${OBSERVATION_PREFIX}github-dispatch-token`, 30, true, { lastDetail: "2026-11-15T12:00:00.000Z" });
+assert.deepEqual(observation([obs], "github-dispatch-token"), { value: "2026-11-15T12:00:00.000Z", observedAt: obs.lastRunAt });
+assert.equal(observation([obs], "deployed-commit"), null, "an observation never recorded is null, not a guess");
+assert.ok(!cronStatuses([obs], now).some((x) => x.route.startsWith(OBSERVATION_PREFIX)), "an observation is not a clock row");
 
 console.log("Cron heartbeat: every vercel.json cron is registered and wrapped; never / late / failing / ok are distinguished.");

@@ -42,6 +42,7 @@ on:
 jobs:
   refresh-positions:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # GitHub runs every job for every matching schedule entry, so without
     # this the Monday cron would fire a SECOND position capture an hour
     # after the daily one -- harmless but contradicting "daily", and it
@@ -69,6 +70,7 @@ jobs:
 
   score-forward:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # Only on the Monday cron, or when explicitly asked for. The daily run
     # must not silently re-read the experiment.
     if: >-
