@@ -244,11 +244,18 @@ def bootstrap(database_url: str, *, apply: bool, new_origin: str = "legacy") -> 
         execute_values(cursor, """INSERT INTO cfb_engine_captures
           (capture_id,event_key,history_id,source_id,schedule_revision_id,provider,request_key,observed_at,origin,pregame_state,normalization_version)
           VALUES %s ON CONFLICT(provider,request_key,event_key,normalization_version) DO NOTHING""", captures, page_size=500)
-        cursor.execute("""UPDATE cfb_engine_captures c SET pregame_state=CASE
-            WHEN r.scheduled_kickoff IS NULL THEN 'unknown'
-            WHEN c.observed_at<r.scheduled_kickoff THEN 'pregame' ELSE 'in_play' END
-          FROM cfb_engine_schedule_revisions r WHERE r.schedule_revision_id=c.schedule_revision_id
-            AND c.normalization_version=%s""", (NORMALIZATION_VERSION,))
+        # Only rows whose state actually changes are written. This ran after
+        # every capture (229 runs a day) and rewrote all ~12k capture rows each
+        # time: 11.9M updates on a 12k-row table by 2026-10-04, 98% of them not
+        # HOT, so index churn, WAL and vacuum work for no change in content.
+        cursor.execute("""UPDATE cfb_engine_captures c SET pregame_state=s.state
+          FROM (SELECT c2.capture_id, CASE
+                  WHEN r.scheduled_kickoff IS NULL THEN 'unknown'
+                  WHEN c2.observed_at<r.scheduled_kickoff THEN 'pregame' ELSE 'in_play' END AS state
+                FROM cfb_engine_captures c2
+                JOIN cfb_engine_schedule_revisions r ON r.schedule_revision_id=c2.schedule_revision_id
+                WHERE c2.normalization_version=%s) s
+          WHERE s.capture_id=c.capture_id AND c.pregame_state IS DISTINCT FROM s.state""", (NORMALIZATION_VERSION,))
         execute_values(cursor, """INSERT INTO cfb_engine_quote_observations
           (quote_id,capture_id,source_id,source_locator,book,market,selection,line,decimal_price,bookmaker_updated_at,
            system_observed_at,settlement_rule_id,line_role,quote_digest) VALUES %s ON CONFLICT DO NOTHING""", quotes, page_size=1000)

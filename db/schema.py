@@ -5357,6 +5357,10 @@ MIGRATIONS = [
 INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_ff_players_season_position ON ff_players(season, position, active)",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_ff_players_sleeper_unique ON ff_players(season, sleeper_player_id) WHERE sleeper_player_id IS NOT NULL",
+    # Per-player identity lookups in ingest/ff_independent.py (gsis id, then
+    # name+position+team) ran as sequential scans: 3.2M of them by 2026-10-04.
+    "CREATE INDEX IF NOT EXISTS idx_ff_players_season_gsis ON ff_players(season, gsis_id) WHERE gsis_id IS NOT NULL",
+    "CREATE INDEX IF NOT EXISTS idx_ff_players_season_name ON ff_players(season, normalized_name, position)",
     "CREATE INDEX IF NOT EXISTS idx_ff_injury_observations_player ON ff_player_injury_observations(player_id, observed_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_ff_injury_observations_source ON ff_player_injury_observations(source, season, observed_at DESC)",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_ff_player_injuries_one_active ON ff_player_injuries(player_id) WHERE active",

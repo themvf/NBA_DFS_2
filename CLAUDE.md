@@ -373,6 +373,51 @@ skipping an unchanged pass changes nothing; editing `db/schema.py` changes the
 digest and the next job applies it once, under the existing advisory lock.
 No entrypoint had to change.
 
+## Neon cost review (2026-10-04)
+
+September's Neon invoice (Launch plan) was $95.31: compute $57.75 for 545
+CU-hours, extra branches $34.15 for 22.8 branch-months, root storage $3.12,
+instant restore $0.29, and 291 GB of the 500 GB free egress used. The
+database never suspends (two Vercel crons write every minute; GitHub ran 718
+jobs in one day), so compute hours are fixed at the whole month and the bill
+is the average compute size times the plan rate. The effective size was 2 CU
+(`max_connections` 901) averaging 0.76 CU. The extra branches are empty
+`preview/<git-branch>` branches the Neon Vercel previews integration creates
+for every git branch that gets a preview deployment and deletes only when the
+git branch is deleted and "Automatically delete obsolete Neon branches" is on.
+
+Done in code (this section's commit) and on GitHub:
+
+- **Identical projection rebuilds are reused, not rewritten.** The hourly
+  availability job wrote a full run on every tick (51 runs, 258 MB of rows on
+  2026-10-04) while 68 of the preceding 120 runs were numerically identical to
+  the run before. `ingest/nfl_dfs_projections.py` now stores an
+  `output_digest` (every player column, the transfer result, the decision
+  minus capture ids, the frozen matchup evidence, model version and config)
+  in `availability_manifest`, and `main()` reuses the newest run when the
+  digest matches and that run is under `REUSE_MAX_AGE` (6 h). The cap keeps
+  `as_of_at` inside the "about hourly" freshness the web (12 h) and health
+  (36 h) readers assume. The Sleeper capture, monitor and freeze steps are
+  unchanged; `--always-persist` writes regardless. A reused run prints a
+  GitHub notice and `persisted: false`, never a silent no-op.
+- **`cfb_context_bootstrap` updates only capture rows whose `pregame_state`
+  changes.** It ran after every capture and rewrote all 12k rows each time
+  (11.9M updates, 98% not HOT).
+- **Two `ff_players` lookup indexes** (`season, gsis_id` and
+  `season, normalized_name, position`) for the per-player identity lookups
+  that ran as 3.2M sequential scans.
+- **`pg_stat_statements` is enabled** on the production database; use it to
+  find the next CPU driver instead of inferring from `pg_stat_user_tables`.
+- **Tennis, beat-writer and YouTube workflows are disabled** (`gh workflow
+  disable`), per the 2026-09-29 scope decision; `/health` shows them as INFO.
+
+Standing rules from this: never write a row whose content did not change
+(both the projection and CFB findings were "rewrite everything every run");
+a Vercel preview integration that branches the database is a per-branch
+cost, so merged git branches must be deleted; and compute, not storage, is
+the Neon bill for an always-on database, so the levers are the plan rate,
+the autoscaling maximum, and the load that pushes the average up.
+
 ## Parallel agents: commit locally, one session pushes (2026-10-04)
 
 Every push to GitHub starts a Vercel build (a branch push builds Preview, a
