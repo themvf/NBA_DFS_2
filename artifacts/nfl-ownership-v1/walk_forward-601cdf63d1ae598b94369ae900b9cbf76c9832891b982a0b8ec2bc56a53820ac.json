@@ -1,0 +1,287 @@
+{
+  "artifact_digest": "601cdf63d1ae598b94369ae900b9cbf76c9832891b982a0b8ec2bc56a53820ac",
+  "folds": [
+    {
+      "contest_id": "195648006",
+      "decision_at": "2026-09-20 16:03:43.535716+00:00",
+      "model": {
+        "OVERALL": {
+          "bias_pp": -8.484092367284778e-17,
+          "calibration_buckets": [
+            {
+              "actual_mean": 0.07164246199874538,
+              "n": 361,
+              "predicted_mean": 0.6587496319246078,
+              "predicted_range": [
+                0,
+                1
+              ]
+            },
+            {
+              "actual_mean": 2.373056824073715,
+              "n": 295,
+              "predicted_mean": 1.9657043771161418,
+              "predicted_range": [
+                1,
+                5
+              ]
+            },
+            {
+              "actual_mean": 12.43466486547906,
+              "n": 14,
+              "predicted_mean": 5.879185116139628,
+              "predicted_range": [
+                5,
+                10
+              ]
+            }
+          ],
+          "labeled_players": 670,
+          "mae_pp": 1.535015643620662,
+          "rmse_pp": 3.241071797720842,
+          "top10_overlap": 3
+        }
+      },
+      "model_digest": "fe494cf538f50f4c5ccf0759293d6a4514a4e0031498d0cc1e76fb2ccd197c08",
+      "salary_baseline": {
+        "OVERALL": {
+          "bias_pp": -8.484092367284778e-17,
+          "calibration_buckets": [
+            {
+              "actual_mean": 0.07164246199874538,
+              "n": 361,
+              "predicted_mean": 0.6587496319246078,
+              "predicted_range": [
+                0,
+                1
+              ]
+            },
+            {
+              "actual_mean": 2.373056824073715,
+              "n": 295,
+              "predicted_mean": 1.9657043771161418,
+              "predicted_range": [
+                1,
+                5
+              ]
+            },
+            {
+              "actual_mean": 12.43466486547906,
+              "n": 14,
+              "predicted_mean": 5.879185116139628,
+              "predicted_range": [
+                5,
+                10
+              ]
+            }
+          ],
+          "labeled_players": 670,
+          "mae_pp": 1.535015643620662,
+          "rmse_pp": 3.241071797720842,
+          "top10_overlap": 3
+        }
+      },
+      "slate_id": "f067c8b9-f920-4b26-b77c-36f43a2c9df0",
+      "status": "prior_only_no_earlier_same_format_history",
+      "trained_contests": []
+    },
+    {
+      "contest_id": "195786073",
+      "decision_at": "2026-09-21 20:00:46.415874+00:00",
+      "model": {
+        "CPT": {
+          "bias_pp": 2.790286345792883e-16,
+          "calibration_buckets": [
+            {
+              "actual_mean": 0.1301449582054809,
+              "n": 32,
+              "predicted_mean": 0.11975603913294952,
+              "predicted_range": [
+                0,
+                1
+              ]
+            },
+            {
+              "actual_mean": 0.8036593604258404,
+              "n": 13,
+              "predicted_mean": 2.5646967411708377,
+              "predicted_range": [
+                1,
+                5
+              ]
+            },
+            {
+              "actual_mean": 10.673473706486087,
+              "n": 8,
+              "predicted_mean": 7.853343639065594,
+              "predicted_range": [
+                5,
+                10
+              ]
+            }
+          ],
+          "labeled_players": 53,
+          "mae_pp": 1.3755685747014001,
+          "rmse_pp": 2.827811988878025,
+          "top10_overlap": 7
+        },
+        "FLEX": {
+          "bias_pp": 1.7548855450560847e-15,
+          "calibration_buckets": [
+            {
+              "actual_mean": 0.7114277540687446,
+              "n": 27,
+              "predicted_mean": 0.10322112415953413,
+              "predicted_range": [
+                0,
+                1
+              ]
+            },
+            {
+              "actual_mean": 3.591758997536164,
+              "n": 7,
+              "predicted_mean": 3.0417951178337854,
+              "predicted_range": [
+                1,
+                5
+              ]
+            },
+            {
+              "actual_mean": 5.753888477409798,
+              "n": 4,
+              "predicted_mean": 7.84305420323388,
+              "predicted_range": [
+                5,
+                10
+              ]
+            },
+            {
+              "actual_mean": 16.15878390293796,
+              "n": 6,
+              "predicted_mean": 13.860858439448322,
+              "predicted_range": [
+                10,
+                20
+              ]
+            },
+            {
+              "actual_mean": 37.29787559223598,
+              "n": 9,
+              "predicted_mean": 40.153677374803415,
+              "predicted_range": [
+                20,
+                101
+              ]
+            }
+          ],
+          "labeled_players": 53,
+          "mae_pp": 4.012664496417088,
+          "rmse_pp": 8.89524916443113,
+          "top10_overlap": 7
+        }
+      },
+      "model_digest": "2ea9e4567d9b1e006660056681b3ce02547c0c4894fe11fc8d43676ddc2ef1c4",
+      "salary_baseline": {
+        "CPT": {
+          "bias_pp": 2.790286345792883e-16,
+          "calibration_buckets": [
+            {
+              "actual_mean": 0.1301449582054809,
+              "n": 32,
+              "predicted_mean": 0.11975603913294952,
+              "predicted_range": [
+                0,
+                1
+              ]
+            },
+            {
+              "actual_mean": 0.8036593604258404,
+              "n": 13,
+              "predicted_mean": 2.5646967411708377,
+              "predicted_range": [
+                1,
+                5
+              ]
+            },
+            {
+              "actual_mean": 10.673473706486087,
+              "n": 8,
+              "predicted_mean": 7.853343639065594,
+              "predicted_range": [
+                5,
+                10
+              ]
+            }
+          ],
+          "labeled_players": 53,
+          "mae_pp": 1.3755685747014001,
+          "rmse_pp": 2.827811988878025,
+          "top10_overlap": 7
+        },
+        "FLEX": {
+          "bias_pp": 1.7548855450560847e-15,
+          "calibration_buckets": [
+            {
+              "actual_mean": 0.7114277540687446,
+              "n": 27,
+              "predicted_mean": 0.10322112415953413,
+              "predicted_range": [
+                0,
+                1
+              ]
+            },
+            {
+              "actual_mean": 3.591758997536164,
+              "n": 7,
+              "predicted_mean": 3.0417951178337854,
+              "predicted_range": [
+                1,
+                5
+              ]
+            },
+            {
+              "actual_mean": 5.753888477409798,
+              "n": 4,
+              "predicted_mean": 7.84305420323388,
+              "predicted_range": [
+                5,
+                10
+              ]
+            },
+            {
+              "actual_mean": 16.15878390293796,
+              "n": 6,
+              "predicted_mean": 13.860858439448322,
+              "predicted_range": [
+                10,
+                20
+              ]
+            },
+            {
+              "actual_mean": 37.29787559223598,
+              "n": 9,
+              "predicted_mean": 40.153677374803415,
+              "predicted_range": [
+                20,
+                101
+              ]
+            }
+          ],
+          "labeled_players": 53,
+          "mae_pp": 4.012664496417088,
+          "rmse_pp": 8.89524916443113,
+          "top10_overlap": 7
+        }
+      },
+      "slate_id": "746487fd-2ebe-444a-b74c-214e6d8854e3",
+      "status": "prior_only_no_earlier_same_format_history",
+      "trained_contests": []
+    }
+  ],
+  "history_digest": "1bd5f2f070c51b7bbf3642de539d14db896831797ee72f1734412d97f8f8c0f7",
+  "kind": "walk_forward",
+  "policy": "All contests for a slate stay together; labels must be available before the frozen decision.",
+  "qualification": "experimental_uncalibrated",
+  "trained_forward_folds": 0,
+  "version": "nfl-ownership-v1"
+}

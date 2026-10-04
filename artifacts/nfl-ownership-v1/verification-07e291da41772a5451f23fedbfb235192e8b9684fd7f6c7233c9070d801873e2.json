@@ -1,0 +1,20 @@
+{
+  "artifact_digest": "07e291da41772a5451f23fedbfb235192e8b9684fd7f6c7233c9070d801873e2",
+  "checks": {
+    "629_player_coverage": "pass",
+    "artifact_digests": "pass",
+    "classic_900_percent": "pass",
+    "created_before_lock": "pass",
+    "forecast_replay": "exact_match",
+    "forward_accuracy_claim": "withheld_no_supported_folds",
+    "refit_coefficients": "exact_match"
+  },
+  "forecast_digest": "8a9ed4f3d580516f9ddc55941dc9153d23dd27e37c40e1e743a261ab6a9b643e",
+  "kind": "verification",
+  "model_digest": "01867041f59fc7446b6020cc1bf4c189e838660ca5eaa153ab7808ef2b049318",
+  "test_suite": {
+    "command": "python -m pytest tests/test_nfl_ownership.py -q",
+    "passed": 15
+  },
+  "version": "nfl-ownership-verification-v1"
+}

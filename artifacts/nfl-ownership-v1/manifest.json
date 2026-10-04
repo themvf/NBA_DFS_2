@@ -1,0 +1,58 @@
+{
+  "version": "nfl-ownership-handoff-v1",
+  "code_commit": "72c402a30a20416178340a76bf1144fb988eff4d",
+  "branch": "agent/nfl-ownership-history",
+  "created_at": "2026-10-04T16:42:55.6216733Z",
+  "as_of": "2026-10-04T16:42:53.6014189Z",
+  "history": {
+    "path": "artifacts\\nfl-ownership-v1\\history-3a8e5f3b98e7fc02ff2b78bc456044ac00efbf66bbfe4146de60d2e46bd37e85.json",
+    "digest": "3a8e5f3b98e7fc02ff2b78bc456044ac00efbf66bbfe4146de60d2e46bd37e85",
+    "kind": "history",
+    "status": null,
+    "players": 0,
+    "csv": null
+  },
+  "model": {
+    "path": "artifacts\\nfl-ownership-v1\\model-01867041f59fc7446b6020cc1bf4c189e838660ca5eaa153ab7808ef2b049318.json",
+    "digest": "01867041f59fc7446b6020cc1bf4c189e838660ca5eaa153ab7808ef2b049318",
+    "kind": "model",
+    "status": "experimental_uncalibrated",
+    "players": 0,
+    "csv": null
+  },
+  "snapshot": {
+    "path": "artifacts\\nfl-ownership-v1\\snapshot-0e275fedf52eab2b40d5dcb2c7937b58d88a8f27f92264ad7a3480c65515a7d3.json",
+    "digest": "0e275fedf52eab2b40d5dcb2c7937b58d88a8f27f92264ad7a3480c65515a7d3",
+    "kind": "snapshot",
+    "status": null,
+    "players": 629,
+    "csv": null
+  },
+  "forecast": {
+    "path": "artifacts\\nfl-ownership-v1\\forecast-8a9ed4f3d580516f9ddc55941dc9153d23dd27e37c40e1e743a261ab6a9b643e.json",
+    "digest": "8a9ed4f3d580516f9ddc55941dc9153d23dd27e37c40e1e743a261ab6a9b643e",
+    "kind": "forecast",
+    "status": "experimental_uncalibrated",
+    "players": 629,
+    "csv": "artifacts\\nfl-ownership-v1\\forecast-8a9ed4f3d580516f9ddc55941dc9153d23dd27e37c40e1e743a261ab6a9b643e.csv"
+  },
+  "evaluation": {
+    "path": "artifacts\\nfl-ownership-v1\\walk_forward-601cdf63d1ae598b94369ae900b9cbf76c9832891b982a0b8ec2bc56a53820ac.json",
+    "digest": "601cdf63d1ae598b94369ae900b9cbf76c9832891b982a0b8ec2bc56a53820ac",
+    "kind": "walk_forward",
+    "status": "experimental_uncalibrated",
+    "players": 0,
+    "csv": null
+  },
+  "validation": {
+    "passed": 15,
+    "forward_trained_folds": 0,
+    "command": "python -m pytest tests/test_nfl_ownership.py -q"
+  },
+  "qualification": "experimental_uncalibrated",
+  "integration": "New standalone files only. See docs/nfl-ownership-weekly-runbook.md. Saved salary availability has not been refreshed.",
+  "verification": {
+    "path": "artifacts\\nfl-ownership-v1\\verification-07e291da41772a5451f23fedbfb235192e8b9684fd7f6c7233c9070d801873e2.json",
+    "digest": "07e291da41772a5451f23fedbfb235192e8b9684fd7f6c7233c9070d801873e2"
+  }
+}

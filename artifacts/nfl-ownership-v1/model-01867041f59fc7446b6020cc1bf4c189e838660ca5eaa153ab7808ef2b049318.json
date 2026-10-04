@@ -1,0 +1,4374 @@
+{
+  "artifact_digest": "01867041f59fc7446b6020cc1bf4c189e838660ca5eaa153ab7808ef2b049318",
+  "as_of": "2026-10-04T16:42:53.6014189Z",
+  "classic_flex_allocation": {
+    "RB": 0.38954921913467244,
+    "TE": 0.1132897029302965,
+    "WR": 0.4971610779350311
+  },
+  "created_at": "2026-10-04T16:42:54.098605+00:00",
+  "excluded_contests": [],
+  "groups": {
+    "classic:OVERALL": {
+      "coefficients": [
+        0.2607545940891813,
+        0.2728745638395489,
+        0.6433427108402857,
+        0.03840687205716432,
+        0.0,
+        1.1645409900122592,
+        0.28020439799161034,
+        -0.11907796366427013,
+        -0.19546393429943332,
+        0.0,
+        -0.37538007056017747,
+        -0.14334666703819238,
+        0.16307073706772857,
+        -0.018632614949321676,
+        0.5838739693976442,
+        0.0
+      ],
+      "evidence": [
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 6.511419445251051,
+          "player_id": 44132567,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 10.571666645624756,
+          "player_id": 44132568,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 3.0028911586097187,
+          "player_id": 44132569,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 2.3100862297524207,
+          "player_id": 44132570,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 11.833234436350322,
+          "player_id": 44132571,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 7.659360915070637,
+          "player_id": 44132572,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 10.872776396025603,
+          "player_id": 44132573,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.5206989281250394,
+          "player_id": 44132574,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 2.6026740060853206,
+          "player_id": 44132575,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 4.381557185602283,
+          "player_id": 44132576,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 4.29949373161463,
+          "player_id": 44132577,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.550683651697451,
+          "player_id": 44132578,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 9.121352910727587,
+          "player_id": 44132579,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.7571048013433157,
+          "player_id": 44132580,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 5.712247654878988,
+          "player_id": 44132582,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 2.9991036145795196,
+          "player_id": 44132583,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.6776547527365006,
+          "player_id": 44132584,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.20010857626219905,
+          "player_id": 44132585,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.5984319567714975,
+          "player_id": 44132587,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.34624465009405736,
+          "player_id": 44132588,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.09658237277008346,
+          "player_id": 44132589,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.1005971694420948,
+          "player_id": 44132590,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.8534599214715871,
+          "player_id": 44132591,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0009468860075498378,
+          "player_id": 44132593,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 8.53933364475362,
+          "player_id": 44132594,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.34435087807895765,
+          "player_id": 44132595,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.009468860075498377,
+          "player_id": 44132596,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0018937720150996756,
+          "player_id": 44132597,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.001262514676733117,
+          "player_id": 44132598,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.003471915361016072,
+          "player_id": 44132599,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.4974307826328481,
+          "player_id": 44132600,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44132601,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0059969447144823055,
+          "player_id": 44132602,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132603,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0009468860075498378,
+          "player_id": 44132604,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44132605,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44132606,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132607,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132608,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44132609,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132610,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0009468860075498378,
+          "player_id": 44132611,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132612,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0009468860075498378,
+          "player_id": 44132613,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132614,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44132615,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132616,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132617,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132618,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44132619,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132620,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132621,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132622,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132623,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132625,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132626,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132627,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44132628,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132629,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132630,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132631,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132632,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132633,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00410317269938263,
+          "player_id": 44132634,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132635,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132636,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132637,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132638,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132639,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132640,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132641,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132642,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132643,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132644,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132645,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132646,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132648,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132649,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44132650,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132651,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0009468860075498378,
+          "player_id": 44132652,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132653,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.001262514676733117,
+          "player_id": 44132655,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 42.60639842438169,
+          "player_id": 44132656,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 20.486510030679106,
+          "player_id": 44132658,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 37.57843372429205,
+          "player_id": 44132660,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 10.481396846238338,
+          "player_id": 44132662,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.9474288888608329,
+          "player_id": 44132664,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 15.51378034769654,
+          "player_id": 44132666,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 3.570391505801255,
+          "player_id": 44132668,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 3.5722852778163547,
+          "player_id": 44132670,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 12.756763922380598,
+          "player_id": 44132672,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 15.780170944487228,
+          "player_id": 44132674,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 7.084285479818703,
+          "player_id": 44132676,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 8.740073478354185,
+          "player_id": 44132680,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 12.795270620020958,
+          "player_id": 44132682,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 2.084411731286376,
+          "player_id": 44132684,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.4648326536795993,
+          "player_id": 44132686,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 5.806304998295605,
+          "player_id": 44132688,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 4.461095610236469,
+          "player_id": 44132690,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 3.32641054452258,
+          "player_id": 44132692,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 3.8705543701945535,
+          "player_id": 44132694,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 3.9759743457017684,
+          "player_id": 44132696,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.2334768391682553,
+          "player_id": 44132698,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.7736058681682174,
+          "player_id": 44132700,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.9389069147928844,
+          "player_id": 44132702,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.865769439569735,
+          "player_id": 44132704,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.24776850530887423,
+          "player_id": 44132706,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.03566603961771056,
+          "player_id": 44132710,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.5967654373982096,
+          "player_id": 44132712,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 19.994760564091557,
+          "player_id": 44132714,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.07638213794235357,
+          "player_id": 44132716,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.23640587321827616,
+          "player_id": 44132718,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.893140757761309,
+          "player_id": 44132720,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.17075511002815408,
+          "player_id": 44132722,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.3269913012738773,
+          "player_id": 44132724,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.223780726450945,
+          "player_id": 44132726,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.09374171474743394,
+          "player_id": 44132728,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.17896145542691935,
+          "player_id": 44132730,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.04071609832464303,
+          "player_id": 44132732,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.03976921231709318,
+          "player_id": 44132734,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.12372643831984546,
+          "player_id": 44132736,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.05902256113727322,
+          "player_id": 44132738,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.6050601588243463,
+          "player_id": 44132740,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.7590869493857866,
+          "player_id": 44132742,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.34592902142487403,
+          "player_id": 44132744,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.05460375976870731,
+          "player_id": 44132746,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.018306462812630195,
+          "player_id": 44132748,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.010415746083048214,
+          "player_id": 44132750,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.04134735566300958,
+          "player_id": 44132752,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.024303407527112506,
+          "player_id": 44132754,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0577600464605401,
+          "player_id": 44132758,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.07038519322787128,
+          "player_id": 44132760,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00852197406794854,
+          "player_id": 44132762,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.009153231406315097,
+          "player_id": 44132764,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.013572032774881008,
+          "player_id": 44132766,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.011047003421414774,
+          "player_id": 44132768,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.08648225535621851,
+          "player_id": 44132770,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.12498895299657858,
+          "player_id": 44132772,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.009153231406315097,
+          "player_id": 44132774,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0760665092731703,
+          "player_id": 44132776,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.003471915361016072,
+          "player_id": 44132778,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.04829118638504173,
+          "player_id": 44132780,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.14361104447839207,
+          "player_id": 44132782,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.010415746083048216,
+          "player_id": 44132784,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0022094006842829548,
+          "player_id": 44132790,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0059969447144823055,
+          "player_id": 44132792,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.02146274950446299,
+          "player_id": 44132802,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.03976921231709318,
+          "player_id": 44132804,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44132806,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00820634539876526,
+          "player_id": 44132808,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0018937720150996756,
+          "player_id": 44132812,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.006628202052848864,
+          "player_id": 44132814,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0015781433459163962,
+          "player_id": 44132818,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.014518918782430846,
+          "player_id": 44132820,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0009468860075498378,
+          "player_id": 44132822,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44132824,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0022094006842829548,
+          "player_id": 44132826,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0009468860075498378,
+          "player_id": 44132828,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.005681316045299027,
+          "player_id": 44132832,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44132834,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0009468860075498378,
+          "player_id": 44132836,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132838,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44132840,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44132842,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44132846,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44132848,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0015781433459163964,
+          "player_id": 44132852,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.001262514676733117,
+          "player_id": 44132854,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.002525029353466234,
+          "player_id": 44132856,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0044188013685659095,
+          "player_id": 44132858,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.002525029353466234,
+          "player_id": 44132860,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132862,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44132864,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0009468860075498378,
+          "player_id": 44132868,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0009468860075498378,
+          "player_id": 44132870,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44132876,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0009468860075498378,
+          "player_id": 44132878,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.001262514676733117,
+          "player_id": 44132880,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44132882,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132884,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44132886,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44132888,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.003471915361016072,
+          "player_id": 44132890,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132892,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132894,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44132898,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44132900,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132906,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132908,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132910,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132912,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44132914,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44132916,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44132918,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44132920,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44132924,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44132926,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0009468860075498378,
+          "player_id": 44132928,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44132930,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0334566389334276,
+          "player_id": 44132932,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0009468860075498378,
+          "player_id": 44132934,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132936,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44132938,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44132940,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132942,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.001262514676733117,
+          "player_id": 44132944,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0015781433459163964,
+          "player_id": 44132946,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44132948,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.001262514676733117,
+          "player_id": 44132950,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44132952,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44132954,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44132956,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0037875440301993507,
+          "player_id": 44132958,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0009468860075498378,
+          "player_id": 44132960,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 10.692552425921951,
+          "player_id": 44132962,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 19.143510043304254,
+          "player_id": 44132964,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 12.308886840809524,
+          "player_id": 44132966,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 17.54074766119156,
+          "player_id": 44132968,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 4.359778807428636,
+          "player_id": 44132970,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 4.295074930246064,
+          "player_id": 44132974,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.10731374752231496,
+          "player_id": 44132976,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 10.084651609074955,
+          "player_id": 44132978,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 3.007309959978285,
+          "player_id": 44132980,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 14.447902331864608,
+          "player_id": 44132982,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 16.8226924387996,
+          "player_id": 44132984,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 13.993081419571503,
+          "player_id": 44132986,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.0876563940055803,
+          "player_id": 44132988,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 3.808059893696264,
+          "player_id": 44132990,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 5.260583029277715,
+          "player_id": 44132992,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 3.335879404598079,
+          "player_id": 44132994,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 10.972199426818337,
+          "player_id": 44132996,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 9.303786281515523,
+          "player_id": 44132998,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.2609365333872005,
+          "player_id": 44133000,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 11.01007486712033,
+          "player_id": 44133002,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 4.450679864153421,
+          "player_id": 44133004,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 5.913934374487103,
+          "player_id": 44133006,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.2445238425896703,
+          "player_id": 44133008,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 9.694534573964422,
+          "player_id": 44133010,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 9.16775032509753,
+          "player_id": 44133012,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 11.91182597497696,
+          "player_id": 44133014,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 6.1247743255015346,
+          "player_id": 44133016,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 3.2026841062027342,
+          "player_id": 44133018,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.568447233199086,
+          "player_id": 44133020,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 17.080245432853157,
+          "player_id": 44133022,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 6.206837779489186,
+          "player_id": 44133024,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.4537856502581843,
+          "player_id": 44133026,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.7489868319719217,
+          "player_id": 44133028,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.1937076268511622,
+          "player_id": 44133030,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.8531442928024038,
+          "player_id": 44133032,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 14.776471776484401,
+          "player_id": 44133036,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.04008484098627646,
+          "player_id": 44133038,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.990127135227947,
+          "player_id": 44133040,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.3702324289519866,
+          "player_id": 44133042,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.6612420619389701,
+          "player_id": 44133044,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.8729405229335792,
+          "player_id": 44133046,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.2840658022649513,
+          "player_id": 44133048,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 3.2762255861224387,
+          "player_id": 44133050,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 7.875566553461184,
+          "player_id": 44133052,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.5002714406554977,
+          "player_id": 44133054,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 3.44287752345121,
+          "player_id": 44133056,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.6024467534435087,
+          "player_id": 44133058,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.432007272084538,
+          "player_id": 44133060,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.5813880086356004,
+          "player_id": 44133062,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 9.418990745767418,
+          "player_id": 44133064,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.290605628290429,
+          "player_id": 44133066,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.05649753178380698,
+          "player_id": 44133068,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.6763922380597674,
+          "player_id": 44133070,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.8408347747042559,
+          "player_id": 44133072,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 3.36397035615539,
+          "player_id": 44133074,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.8566162081634199,
+          "player_id": 44133076,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.7748683828449506,
+          "player_id": 44133078,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.3241506432512278,
+          "player_id": 44133080,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.22621737977704,
+          "player_id": 44133082,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.1934803742093502,
+          "player_id": 44133084,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.1362632090598053,
+          "player_id": 44133088,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.08016968197255292,
+          "player_id": 44133094,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.595591298748848,
+          "player_id": 44133096,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.9868824725087428,
+          "player_id": 44133098,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.6059186688045248,
+          "player_id": 44133100,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 5.012498895299657,
+          "player_id": 44133102,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.1581299632608229,
+          "player_id": 44133104,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.05365687376115747,
+          "player_id": 44133108,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.2771219715429192,
+          "player_id": 44133110,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 4.1577764591513375,
+          "player_id": 44133112,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.13445781307207696,
+          "player_id": 44133114,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 4.6365851503023725,
+          "player_id": 44133116,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.023987778857929222,
+          "player_id": 44133118,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.09247920007070082,
+          "player_id": 44133120,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.010415746083048216,
+          "player_id": 44133122,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.05807567512972338,
+          "player_id": 44133124,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.13603595641799338,
+          "player_id": 44133126,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.06659764919767193,
+          "player_id": 44133128,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.06186321915992274,
+          "player_id": 44133130,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.1158357215902635,
+          "player_id": 44133132,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.5820192659739669,
+          "player_id": 44133134,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.01988460615854659,
+          "player_id": 44133136,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.06470387718257224,
+          "player_id": 44133138,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.017675205474263638,
+          "player_id": 44133140,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.36171045488403797,
+          "player_id": 44133144,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.3278498112540558,
+          "player_id": 44133146,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.027459694218945292,
+          "player_id": 44133148,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.3055285517694143,
+          "player_id": 44133150,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.023672150188745945,
+          "player_id": 44133152,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.14802984584695797,
+          "player_id": 44133154,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.11993889428964612,
+          "player_id": 44133156,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.036928554294443666,
+          "player_id": 44133158,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.12341080965066219,
+          "player_id": 44133160,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.013887661444064286,
+          "player_id": 44133162,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.3856982337419672,
+          "player_id": 44133164,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.027459694218945292,
+          "player_id": 44133166,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.007259459391215423,
+          "player_id": 44133174,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.020515863496913152,
+          "player_id": 44133180,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.013256404105697728,
+          "player_id": 44133184,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.003471915361016072,
+          "player_id": 44133186,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00789071672958198,
+          "player_id": 44133188,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.018937720150996755,
+          "player_id": 44133190,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.020200234827729875,
+          "player_id": 44133192,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00820634539876526,
+          "player_id": 44133194,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0037875440301993507,
+          "player_id": 44133196,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.015465804789980683,
+          "player_id": 44133198,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.008837602737131819,
+          "player_id": 44133200,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0009468860075498378,
+          "player_id": 44133204,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133206,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0022094006842829548,
+          "player_id": 44133208,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0015781433459163964,
+          "player_id": 44133210,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.001262514676733117,
+          "player_id": 44133212,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0022094006842829548,
+          "player_id": 44133214,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.006312573383665585,
+          "player_id": 44133216,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133224,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133226,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0009468860075498378,
+          "player_id": 44133228,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0044188013685659095,
+          "player_id": 44133230,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44133232,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133234,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133236,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133238,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0009468860075498378,
+          "player_id": 44133244,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.006628202052848864,
+          "player_id": 44133246,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133248,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133250,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133252,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133254,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133256,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133258,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133260,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0015781433459163964,
+          "player_id": 44133262,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0009468860075498378,
+          "player_id": 44133264,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0018937720150996756,
+          "player_id": 44133266,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0018937720150996756,
+          "player_id": 44133268,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44133270,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133272,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133278,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133280,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0637569911750224,
+          "player_id": 44133282,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133284,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133286,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133288,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133290,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133292,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.001262514676733117,
+          "player_id": 44133294,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133296,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133298,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133300,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.005365687376115747,
+          "player_id": 44133302,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0018937720150996754,
+          "player_id": 44133304,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44133308,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133310,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133312,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44133314,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0015781433459163964,
+          "player_id": 44133316,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133318,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133322,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.004734430037749189,
+          "player_id": 44133324,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0009468860075498378,
+          "player_id": 44133326,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133328,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133330,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0015781433459163962,
+          "player_id": 44133332,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.001262514676733117,
+          "player_id": 44133334,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133338,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44133340,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0034719153610160715,
+          "player_id": 44133342,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0009468860075498378,
+          "player_id": 44133344,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44133348,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133350,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133352,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44133354,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133358,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133360,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.001262514676733117,
+          "player_id": 44133362,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133364,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0018937720150996754,
+          "player_id": 44133366,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133368,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133370,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0022094006842829548,
+          "player_id": 44133372,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0022094006842829548,
+          "player_id": 44133374,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133378,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133380,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133382,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133386,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.001262514676733117,
+          "player_id": 44133388,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0015781433459163962,
+          "player_id": 44133390,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44133394,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133396,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133398,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133400,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133402,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133404,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44133406,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.001262514676733117,
+          "player_id": 44133408,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133410,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44133412,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133414,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133416,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0009468860075498378,
+          "player_id": 44133418,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.013572032774881008,
+          "player_id": 44133420,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44133422,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44133424,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133426,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.010415746083048216,
+          "player_id": 44133428,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133430,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0022094006842829548,
+          "player_id": 44133432,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133434,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133436,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.002840658022649513,
+          "player_id": 44133438,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.007890716729581982,
+          "player_id": 44133440,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 5.523501710707387,
+          "player_id": 44133442,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.01609706212834724,
+          "player_id": 44133444,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 9.569229992298661,
+          "player_id": 44133446,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 3.3911144217051525,
+          "player_id": 44133448,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 11.083931975709216,
+          "player_id": 44133450,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 4.644160238362771,
+          "player_id": 44133452,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.0286338328683071,
+          "player_id": 44133454,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 11.269521633188987,
+          "player_id": 44133456,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 2.0651583824661963,
+          "player_id": 44133458,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 2.511457320691353,
+          "player_id": 44133460,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 4.697185854785562,
+          "player_id": 44133462,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.7425858825608846,
+          "player_id": 44133464,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 4.795346370901561,
+          "player_id": 44133466,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 2.2056131402527552,
+          "player_id": 44133468,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.7299607357935538,
+          "player_id": 44133472,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 10.60575454189655,
+          "player_id": 44133474,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 4.946532503440353,
+          "player_id": 44133476,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.31689118386001236,
+          "player_id": 44133478,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 4.320009595111543,
+          "player_id": 44133480,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.49206509525673237,
+          "player_id": 44133482,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.24452384258967,
+          "player_id": 44133484,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.3421414773946747,
+          "player_id": 44133486,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.9922481598848587,
+          "player_id": 44133488,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 18.425770449581474,
+          "player_id": 44133490,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.14550481649349173,
+          "player_id": 44133492,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.8354690873281403,
+          "player_id": 44133494,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.1657050513212216,
+          "player_id": 44133496,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.898822073806608,
+          "player_id": 44133498,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.04797555771585845,
+          "player_id": 44133500,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.6887017561579154,
+          "player_id": 44133502,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.24871539131642406,
+          "player_id": 44133504,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.1398235004481927,
+          "player_id": 44133506,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.09184794273233426,
+          "player_id": 44133508,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.07701339528072014,
+          "player_id": 44133510,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.03282538159506104,
+          "player_id": 44133512,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.06312573383665586,
+          "player_id": 44133514,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.04955370106177484,
+          "player_id": 44133516,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.02682843688057874,
+          "player_id": 44133518,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.6208415922835103,
+          "player_id": 44133520,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.3863294910803338,
+          "player_id": 44133524,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.06754453520522176,
+          "player_id": 44133526,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.008837602737131819,
+          "player_id": 44133528,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.1868521721565013,
+          "player_id": 44133530,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.03566603961771056,
+          "player_id": 44133532,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.029984723572411526,
+          "player_id": 44133534,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00410317269938263,
+          "player_id": 44133536,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.01862209148181348,
+          "player_id": 44133538,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0044188013685659095,
+          "player_id": 44133540,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0059969447144823055,
+          "player_id": 44133544,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0009468860075498378,
+          "player_id": 44133546,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.007575088060398702,
+          "player_id": 44133550,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0059969447144823055,
+          "player_id": 44133552,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44133554,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0009468860075498378,
+          "player_id": 44133558,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44133560,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44133566,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133568,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.31436615450654615,
+          "player_id": 44133570,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44133572,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133574,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.003787544030199351,
+          "player_id": 44133576,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133578,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133580,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.001262514676733117,
+          "player_id": 44133584,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133586,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133588,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00410317269938263,
+          "player_id": 44133590,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133592,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133598,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133600,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133602,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0009468860075498378,
+          "player_id": 44133604,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0022094006842829548,
+          "player_id": 44133606,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44133608,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133612,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0009468860075498378,
+          "player_id": 44133614,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133616,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0015781433459163964,
+          "player_id": 44133618,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44133620,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133624,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133626,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.010731374752231494,
+          "player_id": 44133628,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.027459694218945292,
+          "player_id": 44133630,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133632,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44133634,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133636,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133638,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133642,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133646,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0015781433459163962,
+          "player_id": 44133648,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133652,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133654,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133656,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133660,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0015781433459163962,
+          "player_id": 44133662,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44133664,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133666,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133668,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0022094006842829548,
+          "player_id": 44133670,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44133672,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133674,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133676,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133680,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44133682,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133684,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44133686,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0009468860075498378,
+          "player_id": 44133688,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133692,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0009468860075498378,
+          "player_id": 44133694,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133696,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133698,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133700,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133702,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0037875440301993507,
+          "player_id": 44133704,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133706,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0,
+          "player_id": 44133710,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0044188013685659095,
+          "player_id": 44133712,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133714,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44133716,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.014203290113247568,
+          "player_id": 44133718,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0015781433459163962,
+          "player_id": 44133724,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133726,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.005050058706932468,
+          "player_id": 44133728,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44133730,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0022094006842829548,
+          "player_id": 44133732,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0006312573383665585,
+          "player_id": 44133734,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.004734430037749189,
+          "player_id": 44133736,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0015781433459163964,
+          "player_id": 44133738,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0044188013685659095,
+          "player_id": 44133740,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 10.91664878104208,
+          "player_id": 44133742,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 6.22640675697855,
+          "player_id": 44133743,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 13.924905627027915,
+          "player_id": 44133744,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 4.715807946267375,
+          "player_id": 44133745,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.2786117388614642,
+          "player_id": 44133746,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 5.589468102566692,
+          "player_id": 44133747,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 2.406668602522504,
+          "player_id": 44133748,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 4.988826745110912,
+          "player_id": 44133749,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 2.2052975115835722,
+          "player_id": 44133750,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.9177597939576048,
+          "player_id": 44133751,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.984445819182648,
+          "player_id": 44133752,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.9705581577385837,
+          "player_id": 44133753,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 3.7951191182597497,
+          "player_id": 44133754,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 5.304139785625008,
+          "player_id": 44133755,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 2.627924299619983,
+          "player_id": 44133756,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 4.6716199325817165,
+          "player_id": 44133757,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.068087416516217,
+          "player_id": 44133758,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 2.0430643756233664,
+          "player_id": 44133759,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 4.076975519840418,
+          "player_id": 44133760,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.3137348971681796,
+          "player_id": 44133761,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 9.76839168255331,
+          "player_id": 44133762,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 4.101910184705897,
+          "player_id": 44133763,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.46681480172207,
+          "player_id": 44133764,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 2.3567992727915463,
+          "player_id": 44133765,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 2.079677301248627,
+          "player_id": 44133766,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 1.200335828904011,
+          "player_id": 44133767,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.001262514676733117,
+          "player_id": 44173808,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.001262514676733117,
+          "player_id": 44173810,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00031562866918327925,
+          "player_id": 44173812,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.001262514676733117,
+          "player_id": 44173814,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.002840658022649513,
+          "player_id": 44173816,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0022094006842829548,
+          "player_id": 44173818,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0018937720150996756,
+          "player_id": 44192192,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.002525029353466234,
+          "player_id": 44192194,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.010100117413864936,
+          "player_id": 44192196,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.0031562866918327923,
+          "player_id": 44192198,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.005365687376115747,
+          "player_id": 44192200,
+          "slot": "OVERALL"
+        },
+        {
+          "contest_id": "195648006",
+          "ownership_pct": 0.00852197406794854,
+          "player_id": 44192202,
+          "slot": "OVERALL"
+        }
+      ],
+      "intercept": -7.196185013281426,
+      "mean": [
+        3.784148397976398,
+        7.108466273187189,
+        3.9976391231028665,
+        0.043844856661045505,
+        0.0,
+        0.5000000000000033,
+        0.4999999999999998,
+        0.5000000000000001,
+        4.9420227250336595,
+        0.0,
+        0.1399662731871837,
+        0.22765598650927465,
+        0.36593591905565076,
+        0.22259696458684633,
+        0.043844856661045505,
+        0.0
+      ],
+      "scale": [
+        1.1626066796803647,
+        5.5911262549684375,
+        7.22814397010511,
+        0.2047498112463545,
+        1.0,
+        0.25959423762106076,
+        0.29110549690916093,
+        0.2911054969091609,
+        0.47731362170938363,
+        1.0,
+        0.34695203639303285,
+        0.41931937507794526,
+        0.48169162562841467,
+        0.41598985076990513,
+        0.2047498112463548,
+        1.0
+      ],
+      "training_rows": 593
+    },
+    "showdown:CPT": {
+      "coefficients": [
+        0.7589297292412278,
+        -0.06517208980477901,
+        0.542682761828603,
+        -0.21977990595592817,
+        0.0,
+        0.7920442118159738,
+        0.15011794867871314,
+        -0.2573046125578219,
+        -0.27578054811131153,
+        0.0,
+        0.26369150149568665,
+        -0.0958569784507186,
+        -0.08144193719322027,
+        -0.03742835921518306,
+        0.22277400624786273,
+        -0.009011248985717505
+      ],
+      "evidence": [
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.16506189821182943,
+          "player_id": 44191122,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 11.095122209290022,
+          "player_id": 44191123,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 20.355517934610095,
+          "player_id": 44191124,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 14.969844460903609,
+          "player_id": 44191125,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 5.506295630092054,
+          "player_id": 44191126,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 9.105914718019257,
+          "player_id": 44191127,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 15.784573061051741,
+          "player_id": 44191128,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 8.405459739710084,
+          "player_id": 44191129,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.8866786583430325,
+          "player_id": 44191135,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.6052269601100413,
+          "player_id": 44191136,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.32377526187705,
+          "player_id": 44191137,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 2.1817797058512327,
+          "player_id": 44191138,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 1.447465876626812,
+          "player_id": 44191139,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.2962649455084118,
+          "player_id": 44191140,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 2.061157549465665,
+          "player_id": 44191141,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.06348534546608825,
+          "player_id": 44191142,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.9120727965294678,
+          "player_id": 44191143,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 1.1998730293090678,
+          "player_id": 44191144,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.40630621098296477,
+          "player_id": 44191145,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.05925298910168236,
+          "player_id": 44191146,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.004232356364405883,
+          "player_id": 44191147,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.0761824145593059,
+          "player_id": 44191148,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 2.463231404084224,
+          "player_id": 44191149,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.0867633054703206,
+          "player_id": 44191150,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.04443974182626177,
+          "player_id": 44191151,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.14390011638980002,
+          "player_id": 44191152,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.7702888583218707,
+          "player_id": 44191153,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.2708708073219765,
+          "player_id": 44191154,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.0,
+          "player_id": 44191155,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.008464712728811765,
+          "player_id": 44191156,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.0,
+          "player_id": 44191157,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.0,
+          "player_id": 44191158,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.0,
+          "player_id": 44191159,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.0,
+          "player_id": 44191160,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.004232356364405883,
+          "player_id": 44191163,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.24759284731774414,
+          "player_id": 44191164,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.0,
+          "player_id": 44191165,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.0,
+          "player_id": 44191166,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.0,
+          "player_id": 44191167,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.0,
+          "player_id": 44191168,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.0,
+          "player_id": 44191169,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.0,
+          "player_id": 44191170,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.010580890911014707,
+          "player_id": 44191171,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.0,
+          "player_id": 44191172,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.0021161781822029413,
+          "player_id": 44191173,
+          "slot": "CPT"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.0,
+          "player_id": 44191174,
+          "slot": "CPT"
+        }
+      ],
+      "intercept": -6.432095690024477,
+      "mean": [
+        3.0000000000000036,
+        6.996271739130435,
+        3.739130434782608,
+        0.04347826086956522,
+        0.0,
+        0.5,
+        0.5000000000000001,
+        0.5,
+        2.4748121533358685,
+        0.0,
+        0.04347826086956522,
+        0.2608695652173914,
+        0.3695652173913044,
+        0.2391304347826088,
+        0.04347826086956522,
+        0.04347826086956522
+      ],
+      "scale": [
+        3.3510543441417524,
+        5.894073211126104,
+        6.555896060562574,
+        0.20393111999232305,
+        1.0,
+        0.33362903662889715,
+        0.3418481795557973,
+        0.3418481795557974,
+        0.5594620907105978,
+        1.0,
+        0.2039311199923234,
+        0.43910891036356875,
+        0.48268702850379386,
+        0.4265525406597519,
+        0.20393111999232327,
+        0.20393111999232336
+      ],
+      "training_rows": 46
+    },
+    "showdown:FLEX": {
+      "coefficients": [
+        0.5952900347707826,
+        -0.15784653777731136,
+        0.4231548275931369,
+        -0.5204742335458538,
+        0.0,
+        1.232630142153217,
+        0.15721825073306564,
+        -0.4295816374463605,
+        -0.4223397092399301,
+        0.0,
+        0.25664162282813785,
+        -0.06927340564337008,
+        -0.19097894327149664,
+        -0.044830178745655175,
+        0.17773042246407103,
+        0.26058836561160265
+      ],
+      "evidence": [
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.6433181673896942,
+          "player_id": 44191122,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 54.404824886255426,
+          "player_id": 44191123,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 62.02941487673262,
+          "player_id": 44191124,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 49.12919267802349,
+          "player_id": 44191125,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 32.134165696751666,
+          "player_id": 44191126,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 44.10961802983811,
+          "player_id": 44191127,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 45.88720770288858,
+          "player_id": 44191128,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 34.682044228124006,
+          "player_id": 44191129,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 12.6610940641202,
+          "player_id": 44191135,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 18.444609036080838,
+          "player_id": 44191136,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 11.135329594751878,
+          "player_id": 44191137,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 26.801396677600255,
+          "player_id": 44191138,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 11.645328536662786,
+          "player_id": 44191139,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 8.447783303354143,
+          "player_id": 44191140,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 20.478256269177866,
+          "player_id": 44191141,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.7406623637710296,
+          "player_id": 44191142,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 5.411067611892921,
+          "player_id": 44191143,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 11.95640672944662,
+          "player_id": 44191144,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 4.907417204528621,
+          "player_id": 44191145,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 1.8389588403343562,
+          "player_id": 44191146,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.0021161781822029413,
+          "player_id": 44191147,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.7173844037667971,
+          "player_id": 44191148,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 19.386308327161146,
+          "player_id": 44191149,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 1.2125700984022856,
+          "player_id": 44191150,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.5819490001058089,
+          "player_id": 44191151,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 1.4030261348005502,
+          "player_id": 44191152,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 9.152470638027722,
+          "player_id": 44191153,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 2.8399111205163474,
+          "player_id": 44191154,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.12062215638556767,
+          "player_id": 44191155,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.2751031636863824,
+          "player_id": 44191156,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.03385885091524706,
+          "player_id": 44191157,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.012697069093217649,
+          "player_id": 44191158,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.0063485345466088245,
+          "player_id": 44191159,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.0021161781822029413,
+          "player_id": 44191160,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.046555920008464716,
+          "player_id": 44191163,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 6.4204846048037245,
+          "player_id": 44191164,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.0063485345466088245,
+          "player_id": 44191165,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.010580890911014707,
+          "player_id": 44191166,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.008464712728811765,
+          "player_id": 44191167,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.0,
+          "player_id": 44191168,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.055020632737276476,
+          "player_id": 44191169,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.0063485345466088245,
+          "player_id": 44191170,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.07406623637710295,
+          "player_id": 44191171,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.0021161781822029413,
+          "player_id": 44191172,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.0063485345466088245,
+          "player_id": 44191173,
+          "slot": "FLEX"
+        },
+        {
+          "contest_id": "195786073",
+          "ownership_pct": 0.0063485345466088245,
+          "player_id": 44191174,
+          "slot": "FLEX"
+        }
+      ],
+      "intercept": -4.729047452044489,
+      "mean": [
+        3.0000000000000036,
+        6.996271739130435,
+        3.739130434782608,
+        0.04347826086956522,
+        0.0,
+        0.5,
+        0.5000000000000001,
+        0.5,
+        2.4748121533358685,
+        0.0,
+        0.04347826086956522,
+        0.2608695652173914,
+        0.3695652173913044,
+        0.2391304347826088,
+        0.04347826086956522,
+        0.04347826086956522
+      ],
+      "scale": [
+        3.3510543441417524,
+        5.894073211126104,
+        6.555896060562574,
+        0.20393111999232305,
+        1.0,
+        0.33362903662889715,
+        0.3418481795557973,
+        0.3418481795557974,
+        0.5594620907105978,
+        1.0,
+        0.2039311199923234,
+        0.43910891036356875,
+        0.48268702850379386,
+        0.4265525406597519,
+        0.20393111999232327,
+        0.20393111999232336
+      ],
+      "training_rows": 46
+    }
+  },
+  "implementation_digest": "24030343b291b1308f2202a7089eee6e9f5178e29dba127bd7a26859b1d625cf",
+  "kind": "model",
+  "qualification": "experimental_uncalibrated",
+  "recipe": {
+    "contest_weight": "equal; each contest's labeled players share its weight",
+    "features": [
+      "salary_k",
+      "projection",
+      "dk_average",
+      "projection_missing",
+      "dk_average_missing",
+      "salary_rank",
+      "projection_rank",
+      "value_rank",
+      "log_position_pool",
+      "backup_role",
+      "position_QB",
+      "position_RB",
+      "position_WR",
+      "position_TE",
+      "position_DST",
+      "position_K"
+    ],
+    "flex_prior": {
+      "RB": 0.35,
+      "TE": 0.1,
+      "WR": 0.55
+    },
+    "flex_prior_contests": 3,
+    "ridge_alpha": 0.05,
+    "salary_limit": 50000,
+    "status": "experimental_uncalibrated",
+    "target_probability_floor": 0.0001
+  },
+  "runtime": {
+    "numpy": "2.3.4"
+  },
+  "support": {
+    "classic": {
+      "contests": 1,
+      "slates": 1
+    },
+    "showdown": {
+      "contests": 1,
+      "slates": 1
+    }
+  },
+  "training_contests": [
+    "195648006",
+    "195786073"
+  ],
+  "training_digest": "1bd5f2f070c51b7bbf3642de539d14db896831797ee72f1734412d97f8f8c0f7",
+  "training_slates": [
+    "746487fd-2ebe-444a-b74c-214e6d8854e3",
+    "f067c8b9-f920-4b26-b77c-36f43a2c9df0"
+  ],
+  "training_sources": [
+    {
+      "contest_id": "195648006",
+      "labels_available_at": "2026-09-23 13:32:05.535309+00:00",
+      "snapshot_digest": "824ec73df54d042d0648d39b59d6d47caa1ac983cf323688877b0da539305429",
+      "source_digest": "649577eb3c31b250d3701eb750ae1f299494f5b598f4018b44788e02df7e3e32"
+    },
+    {
+      "contest_id": "195786073",
+      "labels_available_at": "2026-09-23 21:40:57.038159+00:00",
+      "snapshot_digest": "636c8317cf1d6714ae71e222197218a0653450c7be4a6c9f06992258f3bbcfad",
+      "source_digest": "e67da5ba7e2810a959fa6d4a39a71f812e78b502d699ee0d0186d21446ed9227"
+    }
+  ],
+  "version": "nfl-ownership-v1"
+}
