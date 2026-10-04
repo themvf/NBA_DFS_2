@@ -29,6 +29,20 @@ scale as the offensive historical objective, records the method on lineup
 slots, and includes the frozen candidate in the optimizer audit. Refresh
 projections to add game context to an older saved slate.
 
+## Showdown lineup coherence
+
+Both Classic and Showdown permit a small opposing offensive bring-back with a
+DST. They reject a DST with four or more opposing QB/RB/WR/TE players. Showdown
+also rejects an opposing offensive Captain plus two more offensive teammates.
+The same rules block export of saved lineups through the shared lineup check
+and pre-export QA. This is a lineup construction rule; displayed P90 values remain
+individual ceilings rather than a joint lineup forecast.
+
+Comparison ownership must declare `Format` as `Classic` or `Showdown`, and the
+declared format must match the salary slate before any rows are saved. Older
+LineStar ownership imports without matching format evidence are ignored by new
+builds; their projections remain available for comparison.
+
 The main Build panel now lists ordinary projection sources and links to Model
 Lab for research. It no longer offers experimental defensive modes, the air
 matchup rule, or uncalibrated ownership leverage as build choices. Earlier

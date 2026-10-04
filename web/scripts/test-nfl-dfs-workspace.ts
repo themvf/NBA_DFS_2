@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings } from "../src/app/dfs/nfl/nfl-optimizer";
-import { parseNflComparisonCsv } from "../src/lib/nfl-dfs/comparison-csv";
+import { assertComparisonOwnershipFormat, parseNflComparisonCsv, verifiedComparisonOwnership } from "../src/lib/nfl-dfs/comparison-csv";
 import { exportNflDkEntries } from "../src/lib/nfl-dfs/entry-export";
 import { averagePairwiseUnique, buildLineupInsight, lineupOverlap } from "../src/lib/nfl-dfs/lineup-insights";
 
@@ -62,12 +62,20 @@ const zeroExposure = optimizeNflLineups(pool, {
 });
 assert.equal(zeroExposure.lineups[0].playerIds.includes(targetId), false);
 
-const comparison = parseNflComparisonCsv("Player,Team,Proj,Own%\nJosh Allen,BUF,24.5,12.3%\nTyreek Hill,MIA,19.2,0.18\n");
+const comparison = parseNflComparisonCsv("Player,Team,Proj,Own%,Format\nJosh Allen,BUF,24.5,12.3%,Classic\nTyreek Hill,MIA,19.2,0.18,Classic\n");
 assert.equal(comparison.rows[0].projection, 24.5);
 assert.equal(comparison.rows[1].ownership, 18);
+assert.equal(comparison.rows[0].format, 'classic');
+assert.throws(() => parseNflComparisonCsv("Player,Own%\nJosh Allen,12.3%\n"), /needs Format/);
+assertComparisonOwnershipFormat(comparison.rows, 'classic');
+assert.throws(() => assertComparisonOwnershipFormat(comparison.rows, 'showdown'), /saved slate is showdown/);
+assert.equal(verifiedComparisonOwnership({linestar:{format:'classic'}}, 'showdown'), false);
+assert.equal(verifiedComparisonOwnership({linestar:{format:'showdown'}}, 'showdown'), true);
+assert.equal(verifiedComparisonOwnership({linestar:{rowCount:30}}, 'showdown'), false);
 
 const entries = "Entry ID,Contest Name,Contest ID,Entry Fee,QB,RB,RB,WR,WR,WR,TE,FLEX,DST\n1,Test,2,$1,,,,,,,,,\n";
 const exported = exportNflDkEntries(entries, [result.lineups[0]]);
-assert.match(exported, /BUF QB \(101\)|MIA QB \(/);
+const selectedQb = result.lineups[0].slots.find(slot => slot.slot === 'QB')!.player;
+assert.ok(exported.includes(`${selectedQb.name} (${selectedQb.dkPlayerId})`));
 assert.equal(exported.split(/\r?\n/)[1].split(",").filter(Boolean).length >= 10, true);
 console.log("NFL DFS workspace tests passed");

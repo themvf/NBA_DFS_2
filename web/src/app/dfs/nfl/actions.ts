@@ -80,6 +80,7 @@ import { readNflDfsPlayerSignalEvidence, readNflAirDefenseEvidence, readNflAirTe
 import { airMatchupSignals, classifyNflPlayerSignals, NFL_PLAYER_SIGNAL_VERSION, type NflAirDefenseEvidence, type NflPlayerSignalEvidence } from "@/lib/nfl-dfs/player-signals";
 import { buildNflAirMatchupEvidence, type NflAirTeamEvidence, type NflAirMarketEvidence } from "@/lib/nfl-dfs/air-matchup-evidence";
 import { readSpecialTeamsProjection } from "@/lib/nfl-dfs/special-teams-projection";
+import { assertComparisonOwnershipFormat, verifiedComparisonOwnership } from "@/lib/nfl-dfs/comparison-csv";
 import { applyConfirmedStartingQbs, confirmStarterAvailability, ruledOutPlayer, sanitizeConfirmedStartingQbs, type ConfirmedStarterReport, type ConfirmedStartingQbs } from "@/lib/nfl-dfs/confirmed-starter";
 
 export type NflWorkspacePlayer = NflOptimizerPlayer & {
@@ -287,7 +288,7 @@ export async function previewNflAbsence(uploadId: string, receiverId: number, te
     return {ok:false as const,error:error instanceof Error ? error.message : 'Scenario evidence is unavailable.'};
   }
 }
-export type NflComparisonRow = { name: string; team?: string | null; projection?: number | null; ownership?: number | null };
+export type NflComparisonRow = { name: string; team?: string | null; projection?: number | null; ownership?: number | null; format?: "classic" | "showdown" | null };
 
 function normalizeName(value: string): string {
   return value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
@@ -712,7 +713,7 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
       teamSeasonGames: seasonKnown ? completedByTeam.get(nflTeamKey(row.team)) ?? 0 : null,
       fantasyprosProj: numeric(row.fantasyprosProj),
       linestarProj: numeric(row.linestarProj),
-      linestarOwnPct: numeric(row.linestarOwnPct),
+      linestarOwnPct: verifiedComparisonOwnership(row.comparisonEvidence, upload.format) ? numeric(row.linestarOwnPct) : null,
       customProj: numeric(row.customProj),
       ...(() => {
         const candidate = readCalibratedProjection(byPlayer.get(row.ffPlayerId ?? -1), row, run?.season ?? 0, run?.week ?? 0, now);
@@ -1331,10 +1332,15 @@ export async function applyNflComparison(
   fileName: string,
 ): Promise<{ slate: NflWorkspaceSlate; matched: number; unmatched: string[] }> {
   await ensureNflDfsTables();
+  const upload = await db.select({format:nflDfsSlateUploads.format}).from(nflDfsSlateUploads)
+    .where(eq(nflDfsSlateUploads.uploadId, uploadId)).limit(1);
+  if (!upload.length) throw new Error("Saved salary slate was not found.");
+  assertComparisonOwnershipFormat(rows.map(row => ({...row,ownership:numeric(row.ownership)})), upload[0].format);
   const players = await db.select().from(nflDfsSlatePlayers).where(eq(nflDfsSlatePlayers.uploadId, uploadId));
   const unmatched: string[] = [];
   let matched = 0;
-  const evidence = { fileName, importedAt: new Date().toISOString(), rowCount: rows.length, digest: sha256(JSON.stringify(rows)) };
+  const evidence = { fileName, importedAt: new Date().toISOString(), rowCount: rows.length,
+    format:upload[0].format, digest: sha256(JSON.stringify(rows)) };
   for (const incoming of rows) {
     const name = normalizeName(incoming.name);
     const team = incoming.team?.trim().toUpperCase() ?? "";
