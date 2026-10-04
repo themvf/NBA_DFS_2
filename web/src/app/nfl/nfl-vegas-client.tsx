@@ -4,7 +4,9 @@ import { Activity, Radio, Search } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { LineAlertBacktestRow, LineAlertRow, LineMovementHistoryRow, NflHealthIssue, NflVegasBoardRow, DetectorHealthRow } from "@/db/queries";
+import type { CfbFavoriteWatchHistoryRow, LineAlertBacktestRow, LineAlertRow, LineMovementHistoryRow, NflHealthIssue, NflVegasBoardRow, DetectorHealthRow } from "@/db/queries";
+import FavoriteWatchPanel from "@/components/favorite-watch-panel";
+import { buildFavoriteWatch, gradeFavoriteWatch, type FavoriteWatchInput } from "@/lib/cfb-favorite-watch";
 import SportsbookHistory from "@/components/sportsbook-history";
 import MovementIntelligence from "@/components/movement-intelligence";
 import { buildMovementInsights, cfbIntelligenceEvents, insightMarket, type IntelligenceMarket as Market, type IntelligenceSide as Side } from "@/lib/movement-intelligence";
@@ -13,7 +15,8 @@ import { MIN_SETTLED_FOR_CI, disclosure, multiplicityNote, verdict } from "@/lib
 import s from "../cfb/cfb-terminal.module.css";
 import n from "./nfl-terminal.module.css";
 
-type Props = { weekView?:boolean; queryDate:string; evaluatedAt:string; matchups:NflVegasBoardRow[]; lineAlerts:LineAlertRow[]; observations:LineAlertRow[]; lineAlertBacktest:LineAlertBacktestRow[]; lineMovementHistory:LineMovementHistoryRow[]; health:NflHealthIssue[]; detectorHealth:DetectorHealthRow[] };
+type TerminalView = "terminal" | "favorites";
+type Props = { weekView?:boolean; queryDate:string; evaluatedAt:string; initialView?:TerminalView; favoriteHistory?:CfbFavoriteWatchHistoryRow[] | null; matchups:NflVegasBoardRow[]; lineAlerts:LineAlertRow[]; observations:LineAlertRow[]; lineAlertBacktest:LineAlertBacktestRow[]; lineMovementHistory:LineMovementHistoryRow[]; health:NflHealthIssue[]; detectorHealth:DetectorHealthRow[] };
 const markets: Market[] = ["spread", "total", "moneyline"];
 function time(value:string | null, compact=false) {
   if (!value || !Number.isFinite(Date.parse(value))) return "—";
@@ -22,6 +25,13 @@ function time(value:string | null, compact=false) {
 function shifted(date:string, days:number) { const value=new Date(`${date}T12:00:00Z`); value.setUTCDate(value.getUTCDate()+days); return value.toISOString().slice(0,10); }
 function label(type:string) { return type.replaceAll("_"," ").toUpperCase(); }
 function value(v:number | null, market:Market) { return market === "moneyline" ? pct(v) : market === "spread" ? signed(v) : v == null ? "—" : v.toFixed(1); }
+/** Adapt an NFL board row to the shared Favorite Watch rule: opening = first pregame capture, now = latest. */
+export function favoriteWatchInput(g: NflVegasBoardRow): FavoriteWatchInput {
+  const trail = g.trail.slice().sort((a, b) => Date.parse(a.capturedAt) - Date.parse(b.capturedAt));
+  const first = trail[0] ?? null, last = trail.at(-1) ?? null;
+  return { matchupId: g.matchupId, awayTeam: g.awayTeam, homeTeam: g.homeTeam, commenceTime: g.commenceTime, network: null, completed: g.completed,
+    openingBooks: first?.books ?? null, openingCapturedAt: first?.capturedAt ?? null, currentBooks: last?.books ?? null, latestCapturedAt: last?.capturedAt ?? g.latestCapturedAt };
+}
 function state(o:LineAlertRow, now:number) { return now-Date.parse(o.createdAt)>1_800_000 ? "EXPIRED" : label(String(o.details?.lifecycle_state ?? "triggered")); }
 
 function Chart({view, market, axis, mini=false}:{view:ReturnType<typeof nflMarket>; market:Market; axis:string; mini?:boolean}) {
@@ -43,11 +53,15 @@ function Chart({view, market, axis, mini=false}:{view:ReturnType<typeof nflMarke
   </svg>;
 }
 
-export default function NflVegasClient({queryDate,weekView=false,evaluatedAt,matchups,lineAlerts,observations,lineAlertBacktest,lineMovementHistory,health,detectorHealth}:Props) {
+export default function NflVegasClient({queryDate,weekView=false,evaluatedAt,initialView="terminal",favoriteHistory=null,matchups,lineAlerts,observations,lineAlertBacktest,lineMovementHistory,health,detectorHealth}:Props) {
   const router=useRouter(); const [refreshing,startRefresh]=useTransition();
   const [query,setQuery]=useState(""); const [filter,setFilter]=useState("all"); const [gameId,setGameId]=useState<number|null>(null);
   const [market,setMarket]=useState<Market>("spread"); const [side,setSide]=useState<Side>("home");
   const now=Date.parse(evaluatedAt);
+  const [tab,setTab]=useState<TerminalView>(initialView);
+  const favoriteWatch=useMemo(()=>buildFavoriteWatch(matchups.map(favoriteWatchInput),now),[matchups,now]);
+  const favoriteHistoryGraded=useMemo(()=>favoriteHistory?gradeFavoriteWatch(favoriteHistory):null,[favoriteHistory]);
+  const chooseView=(next:TerminalView)=>{setTab(next);router.replace(`/nfl?date=${queryDate}&view=${next==="favorites"?"favorites":weekView?"week":"day"}`);};
   useEffect(()=>{const id=window.setInterval(()=>{if(document.visibilityState==="visible")startRefresh(()=>router.refresh());},60000);return()=>window.clearInterval(id);},[router]);
   const filtered=useMemo(()=>matchups.filter(g=>`${g.awayTeam} ${g.homeTeam}`.toLowerCase().includes(query.trim().toLowerCase()) && (filter==="all" || observations.some(o=>o.matchupId===g.matchupId && (filter==="walk" ? o.alertType.includes("walking") : o.alertType.includes(filter))))),[matchups,query,filter,observations]);
   const game=filtered.find(g=>g.matchupId===gameId) ?? filtered[0];
@@ -64,6 +78,11 @@ export default function NflVegasClient({queryDate,weekView=false,evaluatedAt,mat
     <header className={s.topbar}><div className={s.brand}>NFL LINE TERMINAL</div><label className={s.command}><Search aria-hidden="true"/><span className={s.srOnly}>Search NFL market watch</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="SEARCH TEAM OR GAME"/></label><div className={s.marketOpen}><Radio aria-hidden="true"/> MARKET BOARD</div><div className={s.shadowMode}>{feed} · AS OF {time(evaluatedAt,true)}</div></header>
     <div className={n.toolbar}><button aria-label="Previous date" onClick={()=>router.push(`/nfl?date=${shifted(queryDate,-1)}`)}>←</button><label>DATE<input aria-label="NFL board date" type="date" value={queryDate} onChange={e=>{if(e.target.value)router.push(`/nfl?date=${e.target.value}`);}}/></label><button aria-label="Next date" onClick={()=>router.push(`/nfl?date=${shifted(queryDate,1)}`)}>→</button><button disabled={refreshing} onClick={()=>startRefresh(()=>router.refresh())}>{refreshing?"REFRESHING…":"REFRESH"}</button><span>{matchups.length} GAMES · {recent} RECENT CAPTURES</span><div className={n.links}><Link href="/dfs/nfl/model">MODEL LAB</Link><Link href="/dfs/nfl/review">PLAYER REVIEW</Link><Link href="/dfs/nfl/availability">AVAILABILITY</Link><Link href="/dfs/nfl">NFL DFS</Link></div></div>
     <div className={`${s.movementFilters} ${n.viewControls}`}><button aria-pressed={!weekView} onClick={()=>router.push(`/nfl?date=${queryDate}&view=day`)}>SELECTED DAY</button><button aria-pressed={weekView} onClick={()=>router.push(`/nfl?date=${queryDate}&view=week`)}>UPCOMING WEEK</button><button aria-pressed={signalView==="recent"} onClick={()=>setSignalView("recent")}>FRESH · 30M</button><button aria-pressed={signalView==="developing"} onClick={()=>setSignalView("developing")}>DEVELOPING THIS WEEK</button></div>
+    <div className={s.viewTabs} role="tablist" aria-label="NFL terminal view">
+      <button type="button" role="tab" aria-selected={tab==="terminal"} data-active={tab==="terminal"} onClick={()=>chooseView("terminal")}>LINE TERMINAL</button>
+      <button type="button" role="tab" aria-selected={tab==="favorites"} data-active={tab==="favorites"} onClick={()=>chooseView("favorites")}>FAVORITE WATCH{favoriteWatch.rows.length?` (${favoriteWatch.rows.length})`:""}</button>
+    </div>
+    {tab==="favorites" ? <FavoriteWatchPanel sport="NFL" watch={favoriteWatch} history={favoriteHistoryGraded} gameDate={`${queryDate} + 7 days`} asOf={evaluatedAt} boardStatusDetail="No NFL games in this window." scheduled={matchups.length} onOpenGame={(id)=>{setGameId(id);setMarket("moneyline");setSide("home");chooseView("terminal");}}/> : <>
     <MovementIntelligence mode={signalView} items={insights} selectedKey={`${game?.matchupId}:${market}`} onSelect={item=>{setGameId(item.matchupId);setMarket(item.market);setSide(item.side);}}/>
     <div className={s.shell}>
       <aside className={s.watchPane} aria-label="NFL market watch"><div className={s.sectionTitle}><span>MARKET WATCH</span><span>{queryDate}{weekView ? " + 7 DAYS" : ""}</span></div><div className={s.movementFilters}>{["all","steam","walk","reversal"].map(f=><button key={f} aria-pressed={filter===f} onClick={()=>setFilter(f)}>{f.toUpperCase()}</button>)}</div><p className={s.watchLegend}>S = home spread · T = total. Sparklines follow the first available reference/retail series; dashed gaps exceed 30m.</p><div className={s.watchHeader}><span>GAME</span><span>LINE</span><span>MOVE</span></div><div className={s.watchList}>
@@ -85,6 +104,7 @@ export default function NflVegasClient({queryDate,weekView=false,evaluatedAt,mat
     <details className={n.audit}><summary>ORIGINAL SIGNAL TRIGGERS · {lineAlerts.length}</summary><div className={n.scroll}><table><thead><tr><th>Game</th><th>Signal</th><th>Market / side</th><th>Observed</th><th>Result</th></tr></thead><tbody>{lineAlerts.map((o,i)=><tr key={i}><td>{o.matchup}</td><td>{label(o.alertType)}</td><td>{insightMarket(o)} / {o.side}</td><td>{time(typeof o.details?.trigger_capture_at==="string"?o.details.trigger_capture_at:o.createdAt)}</td><td>{o.outcome ?? "pending"}</td></tr>)}</tbody></table></div></details>
     <details className={n.audit}><summary>DETECTOR HEALTH · {detectorHealth.length} TRACKED</summary><p>Never-fired detectors with sufficient age and opportunities require investigation. New detectors are withheld from judgment.</p><div className={n.scroll}><table><thead><tr><th>Detector</th><th>Deployed</th><th>Alerts ever</th><th>Last alert</th><th>Status</th></tr></thead><tbody>{detectorHealth.map(d=><tr key={`${d.sport}-${d.alertType}`}><td>{label(d.alertType)}</td><td>{d.deployedAt}</td><td>{d.alertsEver}</td><td>{time(d.lastAlertAt)}</td><td>{label(d.status)}</td></tr>)}</tbody></table></div></details>
     <details className={n.audit}><summary>OPEN-TO-CLOSE RESULTS · {lineMovementHistory.length} GAMES</summary><div className={n.scroll}><table><thead><tr><th>Date</th><th>Game</th><th>Open</th><th>Close</th><th>Moved toward</th><th>Score</th><th>Moved side won</th></tr></thead><tbody>{lineMovementHistory.map(r=><tr key={`${r.matchupId}-${r.gameDate}`}><td>{r.gameDate}</td><td>{r.matchup}</td><td>{pct(r.openProb)}</td><td>{pct(r.closeProb)}</td><td>{r.movedToward ?? "quiet"}</td><td>{r.score ?? "pending"}</td><td>{r.movedSideWon==null?"—":r.movedSideWon?"Yes":"No"}</td></tr>)}</tbody></table></div>{!lineMovementHistory.length&&<p>No completed NFL movement history yet.</p>}</details>
+    </>}
     <footer className={s.ticker}><span><strong>STATUS</strong> {feed}</span><span><strong>BOARD</strong> {matchups.length} GAMES</span><span><strong>QUOTES</strong> OBSERVED BOOK MEDIAN · NO-VIG MONEYLINES</span><span><strong>REFRESH</strong> 60 SECONDS</span></footer>
   </div>;
 }
