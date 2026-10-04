@@ -7,6 +7,8 @@ import { countNflDkEntryRows, exportNflDkEntries } from '@/lib/nfl-dfs/entry-exp
 import { currentPoolForQa, isDeployedBuild, nflOverlapCap, runNflPreExportQa, savedRunQaEvidence, type QaOverride } from '@/lib/nfl-dfs/pre-export-qa';
 import { buildSlateCheck, withRecordFailure, PROJECTION_STALE_HOURS, type SlateCheck, type SlateCheckInput } from '@/lib/nfl-dfs/slate-check';
 import { nextNflProjectionSlot } from '@/lib/nfl-dfs/projection-cadence';
+import { profileCaptureStatus, type ProfileCaptureStatus } from '@/lib/nfl-dfs/defensive-capture-status';
+import { readDefensiveCaptureRequests, requestDefensiveCaptures } from '@/db/nfl-defensive-capture-requests';
 import { NFL_PIPELINE_WORKFLOWS, readFailingWorkflows } from '@/lib/workflow-health';
 import { latestSlateChecks, recordSlateCheck, type RecordedSlateCheck } from '@/db/nfl-dfs-slate-checks';
 import { availabilityCoverage } from '@/lib/nfl-dfs/availability-coverage';
@@ -200,6 +202,8 @@ export type NflWorkspaceSlate = {
   opponentAdjustments?: { profile: 'pfr-efficiency' | 'allowed-rushing-volume'; label: string; applied: number; eligible: number; captured: number; error?: string }[];
   /** The Slate Check: every pipeline step's outcome for this slate, in plain words. */
   slateCheck?: SlateCheck;
+  /** Per defensive profile: what happened to this upload's opponent capture (request + reader coverage). */
+  defensiveCaptures?: (ProfileCaptureStatus & { profile: 'pfr-efficiency' | 'allowed-rushing-volume'; label: string })[];
 };
 
 export type NflComparisonSource = "fantasypros" | "linestar" | "custom";
@@ -721,6 +725,7 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
   }), run, identityMap);
   const owned = attachOwnership(workspace);
   owned.opponentAdjustments = await opponentAdjustmentCoverage(owned);
+  owned.defensiveCaptures = await defensiveCaptureStatuses(owned, { backfill: options.recordCheck !== false });
   owned.slateCheck = slateCheckFor(owned, { incompleteWarning, rosterStaleWarning, rosterCapturedAt, games: upload.games as string[],
     pipeline: await nflPipelineStatus() });
   // Record what the page saw, on the live site only (a local copy adds its own
@@ -762,6 +767,61 @@ async function opponentAdjustmentCoverage(slate: NflWorkspaceSlate): Promise<Non
     }
   }
   return out;
+}
+
+/**
+ * Per profile, what happened to this upload's opponent capture. An upload made
+ * before upload-time captures existed has no request; the first page read of
+ * it before kickoff requests one (the rollout backfill), so existing slates
+ * benefit without a projection refresh. Never throws.
+ */
+async function defensiveCaptureStatuses(slate: NflWorkspaceSlate, options: { backfill: boolean }): Promise<NonNullable<NflWorkspaceSlate['defensiveCaptures']>> {
+  if (!slate.projectionRunId) return [];
+  const started = slate.firstKickoff ? Date.parse(slate.firstKickoff) <= Date.now() : true;
+  let requests: Awaited<ReturnType<typeof readDefensiveCaptureRequests>> = [];
+  try {
+    requests = await readDefensiveCaptureRequests(slate.uploadId, slate.projectionRunId);
+    const anyCaptured = (slate.opponentAdjustments ?? []).some((c) => c.captured > 0);
+    if (options.backfill && !started && !requests.length && !anyCaptured) {
+      await requestDefensiveCaptures(slate.uploadId, slate.projectionRunId);
+      requests = await readDefensiveCaptureRequests(slate.uploadId, slate.projectionRunId);
+    }
+  } catch (error) {
+    console.error('NFL opponent capture requests could not be read', error);
+  }
+  return (slate.opponentAdjustments ?? []).map((coverage) => ({
+    profile: coverage.profile, label: coverage.label,
+    ...profileCaptureStatus(coverage.label, requests.find((r) => r.profile === coverage.profile) ?? null, coverage, { started }),
+  }));
+}
+
+/**
+ * Request states only, for the page to poll cheaply while a capture is pending.
+ * Coverage needs the full slate read; the page reloads once when nothing is
+ * pending any more.
+ */
+export async function readNflDefensiveCaptureStatus(uploadId: string) {
+  if (!/^[0-9a-f-]{36}$/.test(uploadId)) throw new Error('Invalid saved slate.');
+  await ensureNflDfsTables();
+  const [upload] = await db.select({ projectionRunId: nflDfsSlateUploads.projectionRunId }).from(nflDfsSlateUploads)
+    .where(eq(nflDfsSlateUploads.uploadId, uploadId)).limit(1);
+  if (!upload?.projectionRunId) return { pending: false, requests: [] };
+  const requests = await readDefensiveCaptureRequests(uploadId, upload.projectionRunId);
+  return { pending: requests.some((r) => r.state === 'pending' || r.state === 'running'), requests };
+}
+
+/** Re-queue failed (or missing) captures for this upload and start the worker. Closed at kickoff. */
+export async function retryNflDefensiveCapture(uploadId: string) {
+  if (!/^[0-9a-f-]{36}$/.test(uploadId)) throw new Error('Invalid saved slate.');
+  await ensureNflDfsTables();
+  const [upload] = await db.select({ projectionRunId: nflDfsSlateUploads.projectionRunId }).from(nflDfsSlateUploads)
+    .where(eq(nflDfsSlateUploads.uploadId, uploadId)).limit(1);
+  if (!upload?.projectionRunId) throw new Error('This slate has no projection run to capture against.');
+  const games = await db.select({ gameInfo: nflDfsSlatePlayers.gameInfo }).from(nflDfsSlatePlayers).where(eq(nflDfsSlatePlayers.uploadId, uploadId));
+  if (slateHasStarted(games.map((g) => g.gameInfo))) throw new Error('Games have started, so no new capture can be made for this slate.');
+  const outcome = await requestDefensiveCaptures(uploadId, upload.projectionRunId, { retry: true });
+  if (outcome.error && !outcome.requested) throw new Error(outcome.error);
+  return outcome;
 }
 
 /**
@@ -813,6 +873,7 @@ function slateCheckFor(slate: NflWorkspaceSlate, context: { incompleteWarning: s
     qbs,
     opponentAdjustments: (slate.opponentAdjustments ?? []).map(({ label, applied, eligible, captured, error }) => ({ label, applied, eligible, captured, error: error ?? null })),
     nextOpponentCapture: nextNflProjectionSlot(new Date()).toISOString(),
+    defensiveCaptures: (slate.defensiveCaptures ?? []).map(({ status, text, retryable }) => ({ status, text, retryable })),
     ownership: { source: fromLinestar ? 'linestar' : slate.players.find((p) => p.ownSource)?.ownSource ?? null, errors: ownership.errors,
       coverage: fromLinestar ? { linestar: fromLinestar, estimate: owned.length - fromLinestar, total: owned.length } : null },
     availability: { state: coverage.state, resolved: coverage.resolved, considered: coverage.considered },
@@ -1063,7 +1124,18 @@ async function persistSalarySlate(slate: NflDkSlate, digest: string, fileName: s
     .from(nflDfsSlatePlayers).where(eq(nflDfsSlatePlayers.uploadId, uploadId));
   assertSlateFullyPersisted(slate.players.length, stored?.n ?? 0, fileName);
 
+  // A new (or repaired) upload requests its own opponent captures now, rather
+  // than waiting for a scheduled run that may come after kickoff. Never fails
+  // the upload; the Slate Check shows what happened.
+  if (run && !slateHasStarted(slate.players.map((p) => p.gameInfo))) await requestDefensiveCaptures(uploadId, run.runId);
+
   return workspaceSlate(uploadId);
+}
+
+/** True once any game on the slate has kicked off (DK game-info times), or when no kickoff can be read. */
+function slateHasStarted(gameInfos: readonly (string | null)[], now = Date.now()): boolean {
+  const times = gameInfos.map((info) => Date.parse(parseDkGameInfoKickoff(info) ?? '')).filter(Number.isFinite);
+  return !times.length || Math.min(...times) <= now;
 }
 
 /**

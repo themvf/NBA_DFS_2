@@ -100,3 +100,13 @@ def test_process_ends_ineligible_without_capturing(monkeypatch):
     db = FakeDB(None)
     out = process(db, dict(REQ), fitted={}, output_dir=None)
     assert out["state"] == "ineligible" and called == []
+
+
+def test_web_schema_mirrors_the_python_ddl():
+    """The web app creates the table on first upload; both definitions must agree."""
+    import re
+    from pathlib import Path
+    from db.schema import NFL_DEFENSIVE_CAPTURE_REQUESTS_DDL
+    norm = lambda text: re.sub(r"\s+", " ", text).strip()
+    web = Path(__file__).resolve().parents[1] / "web" / "src" / "db" / "ensure-schema.ts"
+    assert norm(NFL_DEFENSIVE_CAPTURE_REQUESTS_DDL) in norm(web.read_text(encoding="utf-8"))

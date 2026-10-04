@@ -25,7 +25,7 @@ import { exposureBounds, exposureRange, type CaptainTarget, type ExposureTarget 
 import { availabilityCoverage } from '@/lib/nfl-dfs/availability-coverage';
 import { AlertTriangle, BarChart3, CheckCircle2, Download, FileUp, HelpCircle, Lock, Play, Search, ShieldCheck, Unlock, XCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { checkNflSlateFreshness, refreshNflSlateProjections, listSavedNflSlates, loadSavedNflWorkspace, loadSavedNflLineups, readNflOptimizerAudit, exportSavedNflEntries, applyNflComparison, loadNflSalaryCsv, generateNflLineups, searchNflStarterNews, saveNflBuildDraft, readNflBuildDraft, type NflComparisonSource, type NflWorkspaceSlate } from "./client-actions";
+import { checkNflSlateFreshness, readNflDefensiveCaptureStatus, retryNflDefensiveCapture, refreshNflSlateProjections, listSavedNflSlates, loadSavedNflWorkspace, loadSavedNflLineups, readNflOptimizerAudit, exportSavedNflEntries, applyNflComparison, loadNflSalaryCsv, generateNflLineups, searchNflStarterNews, saveNflBuildDraft, readNflBuildDraft, type NflComparisonSource, type NflWorkspaceSlate } from "./client-actions";
 import type { NflGeneratedLineup, NflOptimizerSettings, NflProjectionSource } from "./nfl-optimizer";
 import { DEFAULT_NFL_PUNT_POLICY } from "@/lib/nfl-dfs/punt-policy";
 import { PUNT_PRESETS, resolvePuntPreset, describePuntPolicy, type PuntPresetKey } from "@/lib/nfl-dfs/punt-presets";
@@ -150,6 +150,9 @@ export default function NflDfsClient() {
   // roles, while requireObservedHistory still removes any-priced players whose
   // projection is a position average, not theirs.
   const [settings, setSettings] = useState({ mode: "gpp" as "cash" | "gpp", projectionSource: "our" as NflProjectionSource, defensiveAdjustments:{...DEFAULT_DFS_DEFENSIVE_SETTINGS}, confirmedStartingQbs: {} as Record<string, number>, allowDkFallback: false, workloadPositions:{...DEFAULT_WORKLOAD_POSITIONS}, situations:DEFAULT_SITUATIONS, nLineups: 20, minSalary: 45000, minPlayerSalary: 1000, requireObservedHistory: true, maxExposure: .6, minUnique: 2, stackPassCatchers: 1 as 0 | 1 | 2, gppSignalMinPerLineup: 0 as 0 | 1, gppAirMatchupMinPct: 0, gppSignalCodes: SIGNAL_OPTIONS.filter(option => option.code !== "AIR_MATCHUP").map(option => option.code), bringBack: true, randomness: .08, useHeuristicOwnershipLeverage: true, puntPolicy: {...DEFAULT_NFL_PUNT_POLICY} as import("@/lib/nfl-dfs/punt-policy").NflPuntPolicy, puntOverrides: [] as import("@/lib/nfl-dfs/punt-policy").PuntOverride[] });
+  // Latest settings for async callbacks (the capture poll) without restarting them on every edit.
+  const settingsRef = useRef(settings);
+  useEffect(() => { settingsRef.current = settings; }, [settings]);
 
   function restoreRunEvidence(saved:Awaited<ReturnType<typeof loadSavedNflLineups>>) {
     const evidence = saved.evidence;
@@ -427,6 +430,41 @@ export default function NflDfsClient() {
     } catch (reason) { setError(reason instanceof Error ? reason.message : "The slate could not be reloaded after the update."); }
   }
 
+  // While this upload's opponent capture is pending, poll only the request
+  // states every 30 seconds (for at most 30 minutes); once none is pending,
+  // re-read the slate once so coverage and the Slate Check are real. No upload
+  // move, no reset of build settings or lineups.
+  const capturePending = Boolean(slate?.defensiveCaptures?.some((c) => c.status === "pending"));
+  const captureUploadId = slate?.uploadId ?? null;
+  useEffect(() => {
+    if (!capturePending || !captureUploadId) return;
+    let stopped = false;
+    const started = Date.now();
+    const timer = setInterval(async () => {
+      if (stopped || Date.now() - started > 30 * 60_000) { clearInterval(timer); return; }
+      try {
+        const status = await readNflDefensiveCaptureStatus(captureUploadId);
+        if (stopped || status.pending) return;
+        clearInterval(timer);
+        const next = await loadSavedNflWorkspace(captureUploadId, settingsRef.current.confirmedStartingQbs);
+        if (!stopped) setSlate((current) => current && current.uploadId === captureUploadId ? next.slate : current);
+      } catch { /* the next tick tries again; the Slate Check keeps the last known state */ }
+    }, 30_000);
+    return () => { stopped = true; clearInterval(timer); };
+  }, [capturePending, captureUploadId]);
+  function retryCapture() {
+    if (!slate) return;
+    const uploadId = slate.uploadId;
+    setError(null);
+    startTransition(async () => {
+      try {
+        const outcome = await retryNflDefensiveCapture(uploadId);
+        const next = await loadSavedNflWorkspace(uploadId, settings.confirmedStartingQbs);
+        setSlate((current) => current && current.uploadId === uploadId ? next.slate : current);
+        setMessage(outcome.error ? `Capture queued, but starting it failed (${outcome.error}); it retries within 15 minutes.` : "Opponent capture requested again; this page updates when it finishes.");
+      } catch (reason) { setError(reason instanceof Error ? reason.message : "The capture could not be retried."); }
+    });
+  }
   function refreshProjections(doneMessage?: string) {
     if (!slate) return;
     setError(null);
@@ -621,6 +659,7 @@ export default function NflDfsClient() {
           onFinished={afterDataUpdate} />
         <SlateCheckCard check={slate.slateCheck} pending={pending} onAction={(action, item) => {
           if (action === "refresh_projections") refreshProjections();
+          if (action === "retry_capture") retryCapture();
           if (action === "pick_starter") { setShowBuilder(true); const el = document.getElementById(`qb-starter-${item.team ?? ""}`); el?.scrollIntoView({ behavior: "smooth", block: "center" }); (el as HTMLSelectElement | null)?.focus(); }
         }} />
         <section hidden={workspaceView !== "players"} data-columns={columnView} className="nfl-player-pool rounded-xl border border-slate-200 bg-white shadow-sm"><div className="flex flex-wrap items-end gap-3 border-b p-4"><div className="mr-auto"><h2 className="font-bold">Player pool</h2><p className="text-xs text-slate-500">Select a player for projection details. OUT/IR players are excluded automatically. Our projection and player tails reflect the selected defensive profile after you generate; players without a matched adjustment retain the historical forecast.</p></div><label className="flex min-h-10 min-w-56 items-center gap-2 rounded-lg border px-3"><Search className="h-4 w-4 text-slate-400" /><input className="w-full text-sm outline-none" aria-label="Search players or teams" placeholder="Search player or team" value={query} onChange={(e) => { setQuery(e.target.value); setPlayerPage(1); }} /></label><select aria-label="Filter the player pool by position" title={`FLEX shows ${NFL_FLEX_POSITIONS.join(", ")} together — the positions eligible for the DK Classic FLEX slot.`} className="min-h-10 rounded-lg border bg-white px-3 text-sm" value={position} onChange={(e) => { if (isPoolPositionFilter(e.target.value)) { setPosition(e.target.value); setPlayerPage(1); } }}>{POOL_POSITION_FILTERS.map((p) => <option key={p} value={p}>{POOL_FILTER_LABELS[p]} ({positionCounts[p]})</option>)}</select><label className="text-xs font-semibold text-slate-600">Columns<select aria-label="Player column view" value={columnView} onChange={e => { setColumnView(e.target.value); if(e.target.value === "essential") { setSort(DEFAULT_POOL_SORT); setPlayerPage(1); } }} className="ml-2 min-h-10 rounded-lg border bg-white px-3 text-sm"><option value="essential">Build</option><option value="research">All columns</option></select></label></div>

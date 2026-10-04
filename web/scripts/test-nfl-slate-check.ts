@@ -165,6 +165,22 @@ assert.match(early.text, /reload after it to pick them up/);
 const failedChecks = opp({ opponentAdjustments: [{ label: "PFR efficiency", applied: 0, eligible: 56, captured: 40 }], nextOpponentCapture: "2026-09-29T13:35:00Z" });
 assert.match(failedChecks.text, /were captured for this upload, but no player passed their checks/);
 
+// Upload-time captures: the request's own state replaces the schedule wording.
+const capture = (defensiveCaptures: SlateCheckInput["defensiveCaptures"]) => opp({ opponentAdjustments: [{ label: "PFR efficiency", applied: 0, eligible: 56, captured: 0 }],
+  nextOpponentCapture: "2026-09-29T13:35:00Z", defensiveCaptures });
+const waiting = capture([{ status: "pending", text: "PFR efficiency: capture requested; it usually takes a few minutes.", retryable: false }]);
+assert.equal(waiting.level, "info", "waiting is not something to fix");
+assert.match(waiting.text, /being captured for this upload; builds before they finish use unadjusted projections/);
+const broke = capture([{ status: "failed", text: "PFR efficiency: capture failed (boom).", retryable: true },
+  { status: "pending", text: "Allowed rushing volume: capture requested.", retryable: false }]);
+assert.equal(broke.level, "attention");
+assert.equal(broke.action, "retry_capture");
+assert.match(broke.text, /failed for this upload.*capture failed \(boom\)/);
+const refused = capture([{ status: "ineligible", text: "PFR efficiency: not captured (slate_started_or_unscheduled (PIT)).", retryable: false }]);
+assert.equal(refused.action, undefined, "an ineligible capture has nothing to retry");
+assert.match(refused.text, /No opponent adjustments apply to this upload/);
+assert.equal(capture([]).text.startsWith("No opponent adjustments have been captured"), true, "no request data: the schedule wording");
+
 // A check that couldn't be saved says so on the card, not only in the server log.
 const unsaved = withRecordFailure(clean, new Error("deadlock detected"));
 assert.equal(unsaved.items.at(-1)!.text, "This check couldn't be saved, so the slate list may still show an older one: deadlock detected");
