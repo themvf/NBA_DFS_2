@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { CfbBookMap, CfbTerminalRow } from "../src/db/queries";
 import {
   FAVORITE_WATCH_MAX_PROB, FAVORITE_WATCH_MIN_DROP_PP, FAVORITE_WATCH_MIN_PROB,
-  buildFavoriteWatch, consensusHome, gradeFavoriteWatch, hasAnchorBook,
+  buildFavoriteWatch, consensusHome, favoriteWatchLabel, gradeFavoriteWatch, hasAnchorBook,
 } from "../src/lib/cfb-favorite-watch";
 
 const NOW = Date.parse("2026-10-03T15:00:00Z");
@@ -130,5 +130,17 @@ assert.equal(graded.rows[0].favorite, "away");
 assert.equal(graded.rows[0].outcome, "lost");
 // Grading ignores the live-tab lifecycle: a completed game is graded, never excluded as "completed".
 assert.equal(gradeFavoriteWatch([hist({ matchupId: 106 })]).summary.qualified, 1);
+
+// 11. Sport-neutral input: a minimal NFL-shaped object (no CfbTerminalRow fields) runs the same rule.
+const nflShaped = { matchupId: 500, awayTeam: "Cowboys", homeTeam: "Texans", commenceTime: "2026-10-04T17:00:00Z", network: null, completed: false,
+  openingBooks: books(-200, 170), openingCapturedAt: "2026-09-27T12:04:00Z", currentBooks: books(-150, 130), latestCapturedAt: "2026-10-04T14:01:00Z" };
+const nflResult = buildFavoriteWatch([nflShaped], Date.parse("2026-10-04T15:00:00Z"));
+assert.equal(nflResult.rows.length, 1);
+assert.equal(nflResult.rows[0].favoriteTeam, "Texans");
+assert.equal(nflResult.rows[0].latestCapturedAt, "2026-10-04T14:01:00Z");
+
+// 12. Display label: CFB keeps its historical label, NFL no longer shows "CFB-".
+assert.equal(favoriteWatchLabel("CFB", "cfb-favorite-watch-v2"), "CFB-FAVORITE-WATCH-V2");
+assert.equal(favoriteWatchLabel("NFL", "cfb-favorite-watch-v2"), "NFL-FAVORITE-WATCH-V2");
 
 console.log("CFB favorite watch checks passed");

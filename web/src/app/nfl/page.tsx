@@ -7,7 +7,9 @@ import {
   getLineMovementHistory,
   getNflPipelineHealth,
   getNflVegasBoard,
+  getNflFavoriteWatchHistory,
   getDetectorHealth,
+  type CfbFavoriteWatchHistoryRow,
 } from "@/db/queries";
 import NflVegasClient from "./nfl-vegas-client";
 
@@ -30,7 +32,9 @@ export default async function NflPage({
   const { date, view } = await searchParams;
   const evaluatedAt = new Date().toISOString();
   const queryDate = date ?? easternDate(new Date(evaluatedAt));
-  const weekView = view === "week" || (!date && view !== "day");
+  const favoritesView = view === "favorites";
+  // The favorites tab always looks at the upcoming week; it is a list of upcoming games, not a day board.
+  const weekView = favoritesView || view === "week" || (!date && view !== "day");
   const end = new Date(`${queryDate}T12:00:00Z`);
   end.setUTCDate(end.getUTCDate() + 7);
   const board = await getNflVegasBoard(queryDate, weekView ? end.toISOString().slice(0, 10) : undefined);
@@ -44,6 +48,13 @@ export default async function NflPage({
     getMovementSignalObservations("nfl", matchups.map(row => row.matchupId)),
   ]);
 
+  let favoriteHistory: CfbFavoriteWatchHistoryRow[] | null = null;
+  try {
+    favoriteHistory = await getNflFavoriteWatchHistory();
+  } catch (error) {
+    console.error("NFL favorite watch history unavailable", error);
+  }
+
   return (
     <NflVegasClient
       queryDate={queryDate}
@@ -56,6 +67,8 @@ export default async function NflPage({
       lineMovementHistory={lineMovementHistory}
       health={health}
       detectorHealth={detectorHealth}
+      initialView={favoritesView ? "favorites" : "terminal"}
+      favoriteHistory={favoriteHistory}
     />
   );
 }

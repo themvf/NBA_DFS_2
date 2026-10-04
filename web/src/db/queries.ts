@@ -10403,6 +10403,74 @@ export async function getCfbFavoriteWatchHistory(season?: number): Promise<CfbFa
   });
 }
 
+/** NFL twin of getCfbFavoriteWatchHistory: same shape, nfl_matchups + sport='nfl' closes, regular season only. */
+export async function getNflFavoriteWatchHistory(season?: number): Promise<CfbFavoriteWatchHistoryRow[]> {
+  await ensureOddsHistoryTables();
+  const rows = await db.execute(sql`
+    WITH opening AS (
+      SELECT DISTINCT ON (h.matchup_id) h.matchup_id, h.books, h.captured_at
+      FROM game_odds_history h
+      JOIN nfl_matchups m ON m.id=h.matchup_id
+      WHERE h.sport='nfl' AND h.books IS NOT NULL AND m.commence_time IS NOT NULL AND h.captured_at < m.commence_time
+      ORDER BY h.matchup_id, h.captured_at, h.id
+    )
+    SELECT
+      m.id AS "matchupId",
+      m.game_date::text AS "gameDate",
+      m.commence_time::text AS "commenceTime",
+      ht.name AS "homeTeam",
+      at.name AS "awayTeam",
+      NULL::text AS network,
+      -- nfl_matchups.score_fetched_at is sometimes never written; the nflverse
+      -- schedule row is the authoritative final and is joined by matchup_id.
+      (m.completed OR COALESCE(sg.completed, FALSE)) AS completed,
+      COALESCE(m.home_score, sg.home_score) AS "homeScore",
+      COALESCE(m.away_score, sg.away_score) AS "awayScore",
+      opening.books AS "openingBooks",
+      opening.captured_at::text AS "openingCapturedAt",
+      close_history.books AS "closingBooks",
+      close_history.captured_at::text AS "closingCapturedAt",
+      vclose.quality AS "closeQuality"
+    FROM nfl_matchups m
+    JOIN nfl_teams ht ON ht.team_id=m.home_team_id
+    JOIN nfl_teams at ON at.team_id=m.away_team_id
+    LEFT JOIN opening ON opening.matchup_id=m.id
+    LEFT JOIN LATERAL (
+      SELECT g.completed, g.home_score, g.away_score FROM nfl_season_games g
+      WHERE g.matchup_id=m.id AND g.home_score IS NOT NULL AND g.away_score IS NOT NULL
+      ORDER BY g.id LIMIT 1
+    ) sg ON TRUE
+    LEFT JOIN verified_clv_closes vclose ON vclose.sport='nfl' AND vclose.matchup_id=m.id
+    LEFT JOIN game_odds_history close_history ON close_history.id=vclose.history_id
+    WHERE m.commence_time IS NOT NULL AND m.commence_time <= NOW()
+      AND m.season=${season ?? sql`(SELECT MAX(season) FROM nfl_matchups)`}
+      -- Regular season only: preseason is a different regime (starters rest) and
+      -- predates NFL verified closes, so including it only inflated "no close".
+      AND COALESCE(m.season_type, 'regular') = 'regular'
+      AND opening.matchup_id IS NOT NULL
+    ORDER BY m.commence_time DESC, m.id
+  `);
+  return rows.rows.map((row) => {
+    const r = row as Record<string, unknown>;
+    return {
+      matchupId: Number(r.matchupId),
+      gameDate: String(r.gameDate),
+      commenceTime: r.commenceTime != null ? String(r.commenceTime) : null,
+      homeTeam: String(r.homeTeam),
+      awayTeam: String(r.awayTeam),
+      network: null,
+      completed: Boolean(r.completed),
+      homeScore: r.homeScore != null ? Number(r.homeScore) : null,
+      awayScore: r.awayScore != null ? Number(r.awayScore) : null,
+      openingBooks: r.openingBooks && typeof r.openingBooks === "object" ? selectedSportsbooks(r.openingBooks as CfbBookMap) : null,
+      openingCapturedAt: r.openingCapturedAt != null ? String(r.openingCapturedAt) : null,
+      closingBooks: r.closingBooks && typeof r.closingBooks === "object" ? selectedSportsbooks(r.closingBooks as CfbBookMap) : null,
+      closingCapturedAt: r.closingCapturedAt != null ? String(r.closingCapturedAt) : null,
+      closeQuality: r.closeQuality != null ? String(r.closeQuality) : null,
+    };
+  });
+}
+
 export type CfbTerminalStatus = "live" | "stale" | "partial" | "unavailable";
 
 export type CfbTerminalBoard = {
