@@ -142,6 +142,15 @@ export function formFromSettings<S extends object>(saved: NflOptimizerSettings, 
   for (const key of Object.keys(defaults) as Array<keyof S & string>) {
     if (source[key] !== undefined) (settings as Record<string, unknown>)[key] = source[key];
   }
+  // An older saved run did not apply automatic leader coverage. Show that run
+  // honestly when restoring its form; new builds keep the checked default.
+  if (source.topProjectedCoverage === undefined && 'topProjectedCoverage' in defaults) {
+    (settings as Record<string, unknown>).topProjectedCoverage = false;
+  }
+  if (source.useHeuristicOwnershipLeverage === undefined && 'useHeuristicOwnershipLeverage' in defaults) {
+    (settings as Record<string, unknown>).useHeuristicOwnershipLeverage =
+      source.ownershipCapability === 'heuristic_uncalibrated' && source.ownershipLeverageEnabled === true;
+  }
   // Runs saved before defensive adjustments existed used the historical
   // forecast. Restoring one must not silently inherit today's new-build mode.
   if (source.defensiveAdjustments === undefined && 'defensiveAdjustments' in defaults) {

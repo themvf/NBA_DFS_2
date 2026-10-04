@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings } from '../src/app/dfs/nfl/nfl-optimizer';
+import { optimizeNflLineups, resolveProjectionAudit, type NflOptimizerPlayer, type NflOptimizerSettings } from '../src/app/dfs/nfl/nfl-optimizer';
 import { resolveDefensiveForecast, type DefensiveCapture, type DefensivePlayerInput } from '../src/lib/nfl-dfs/defensive-projection';
 import { captureProfileFor, selectedDefensiveForecast, DEFAULT_DFS_DEFENSIVE_SETTINGS } from '../src/lib/nfl-dfs/defensive-display';
 import { assertShowdownLineup } from '../src/lib/nfl-dfs/showdown-legality';
@@ -97,11 +97,10 @@ for(const [away,home] of [['ATL','GB'],['SEA','NE']]) {
 // week-3 classic silently left the pool.
 const noProjection={...player(11,'WR'),ourProj:null,floorFpts:null,ceilingFpts:null,avgFptsDk:9};
 const fallbackPool=[...pool,noProjection].map(p=>({...p,defensiveForecast:resolveDefensiveForecast(input(p),'baseline-1',defensive,null)}));
-const withFallback=optimizeNflLineups(fallbackPool,{...baseSettings,allowDkFallback:true,defensiveAdjustments:defensive});
-assert.equal(withFallback.eligibility!.find(e=>e.dkPlayerId===11)!.eligible,true,'DK average fills the missing projection');
-assert.ok(withFallback.warnings.includes('1 players used DK Avg fallback.'),'and the page is told');
+assert.equal(resolveProjectionAudit(fallbackPool.at(-1)!,{...baseSettings,allowDkFallback:true,defensiveAdjustments:defensive}).source,'dk_avg_fallback','DK average resolves a missing projection');
+assert.throws(()=>optimizeNflLineups(fallbackPool,{...baseSettings,allowDkFallback:true,defensiveAdjustments:defensive}),/Cannot build lineups from mixed objective sources/,'mixed fallback and historical objective scales block the build');
 assert.equal(optimizeNflLineups(fallbackPool,{...baseSettings,defensiveAdjustments:defensive}).eligibility!.find(e=>e.dkPlayerId===11)!.eligible,false,'off: still excluded');
 const ruledOutNoProjection=fallbackPool.map(p=>p.dkPlayerId===11?{...p,isOut:true}:p);
 assert.equal(optimizeNflLineups(ruledOutNoProjection,{...baseSettings,allowDkFallback:true,defensiveAdjustments:defensive}).eligibility!.find(e=>e.dkPlayerId===11)!.eligible,false,'never restores a ruled-out player');
 
-console.log('Defensive bundle, GPP upper-tail selection, cash lower-tail selection, baseline fallbacks and the DK-average fallback passed.');
+console.log('Defensive bundle, GPP upper-tail selection, cash lower-tail selection, baseline fallbacks and the mixed-scale DK-average guard passed.');

@@ -1469,7 +1469,7 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
     // a single combined feed (LineStar) has no captain split.
     eligible.filter(p=>p.ownPct!=null).map(p=>{ const slotted=slate.format==='showdown'&&p.ownSource!=='linestar'&&p.flexOwnPct!=null;
       return {playerId:p.dkPlayerId, flexPct:(slotted?p.flexOwnPct as number:p.ownPct as number)/100, captainPct:slotted&&p.captainOwnPct!=null?(p.captainOwnPct as number)/100:null, source:p.ownSource??null, asOf:slate.modelAsOf}; }),
-    { heuristic: true, optIntoHeuristic: settings.useHeuristicOwnershipLeverage ?? true, format: slate.format },
+    { heuristic: true, optIntoHeuristic: settings.useHeuristicOwnershipLeverage ?? false, format: slate.format },
   );
   const resolvedSettings: NflOptimizerSettings = { ...settings, defensiveAdjustments:defensive,
     ownershipCapability: ownershipAssessment.capability,

@@ -44,22 +44,12 @@ for (const [team, opponent] of [["BUF", "MIA"], ["MIA", "BUF"], ["KC", "DEN"], [
 const settings: NflOptimizerSettings = { format: "classic", mode: "gpp", projectionSource: "our", allowDkFallback: false, nLineups: 1, minSalary: 0, maxExposure: 1, minUnique: 1, stackPassCatchers: 0, bringBack: false, randomness: 0, lockedPlayerIds: [], excludedPlayerIds: [], minExposureByPlayer: {}, maxExposureByPlayer: {} };
 for (const mode of ["cash", "gpp"] as const) {
   const baseline = optimizeNflLineups(pool, { ...settings, mode }).lineups[0];
-  const result = optimizeNflLineups(pool, { ...settings, mode, projectionSource: "calibrated" });
-  const lineup = result.lineups[0];
   assert.equal(baseline.slots.find(s => s.slot === "QB")!.player.team, "BUF");
-  assert.equal(lineup.slots.find(s => s.slot === "QB")!.player.team, "MIA", "source changes real optimizer choice");
-  assert.equal(lineup.projectedFpts, 120);
-  assert.equal(lineup.floorFpts, 70); assert.equal(lineup.ceilingFpts, 180);
-  assert.equal(lineup.slots.filter(s => s.projectionSource === "our_fallback").length, 8);
-  assert.equal(result.sourceCoverage.direct, 1);
-  assert.equal(new Set(lineup.playerIds).size, 9);
+  assert.throws(() => optimizeNflLineups(pool, { ...settings, mode, projectionSource: "calibrated" }), /mixed objective sources/);
 }
-const sd = optimizeNflLineups(pool.filter(p => ["BUF", "MIA"].includes(p.team)), { ...settings, format: "showdown", projectionSource: "calibrated" }).lineups[0];
-const captain = sd.slots.find(s => s.slot === "CPT")!;
-assert.equal(captain.projectionSource, "calibrated"); assert.equal(captain.projection, 60);
-assert.equal(sd.ceilingFpts, 187.5); assert.equal(sd.floorFpts, 77.5); // 45 CPT + BUF QB 12.5 + four 5-point floors
-assert.ok(sd.totalSalary <= 50000);
+assert.throws(() => optimizeNflLineups(pool.filter(p => ["BUF", "MIA"].includes(p.team)),
+  { ...settings, format: "showdown", projectionSource: "calibrated" }), /mixed objective sources/);
 assert.throws(() => optimizeNflLineups(pool.map(p => ({ ...p, calibrated: null })), { ...settings, projectionSource: "calibrated" }), /No qualified/);
 const dk = optimizeNflLineups(pool, { ...settings, projectionSource: "dk_avg" }).lineups[0];
 assert.ok(Math.abs(dk.floorFpts - 9 * 10 * .74) < 1e-8, "external source never inherits historical tails");
-console.log("Calibrated source: identity/time/recipe gates, real cash/GPP selection changes, Showdown CPT and source-consistent ranges passed.");
+console.log("Calibrated source: identity/time/recipe gates, uniform-source build guard and external-source ranges passed.");
