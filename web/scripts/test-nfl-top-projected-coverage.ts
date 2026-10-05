@@ -14,8 +14,10 @@ const specs: Array<[number, string, NflOptimizerPlayer["position"], number, numb
   [14, "Top DST", "DST", 8, 15, 5000, 5], [15, "Other DST", "DST", 7, 14, 5000, 5],
 ];
 const pool: NflOptimizerPlayer[] = specs.map(([id, name, position, mean, p90, salary, own]) => ({
-  id, dkPlayerId: id, captainDkPlayerId: null, name, position, team: "AAA", opponent: "BBB",
-  gameKey: null, salary, captainSalary: null, isOut: false, projectionStatus: "historical", historyGames: 4,
+  id, dkPlayerId: id, captainDkPlayerId: null, name, position,
+  team: position === "DST" ? "CCC" : "AAA", opponent: position === "DST" ? "DDD" : "BBB",
+  gameKey: position === "DST" ? "CCC@DDD" : "AAA@BBB", salary, captainSalary: null,
+  isOut: false, projectionStatus: "historical", historyGames: 4,
   ourProj: mean, floorFpts: mean * .7, ceilingFpts: p90, boomRate: 0, avgFptsDk: mean,
   fantasyprosProj: null, linestarProj: null, linestarOwnPct: own, customProj: null,
 }));

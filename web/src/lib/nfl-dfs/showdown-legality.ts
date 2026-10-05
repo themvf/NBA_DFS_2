@@ -4,6 +4,7 @@ export type ShowdownPlayer = {
   captainDkPlayerId: number | null;
   name: string;
   team: string;
+  position: "QB" | "RB" | "WR" | "TE" | "K" | "DST";
   gameKey: string | null;
   salary: number;
   captainSalary: number | null;
@@ -26,6 +27,21 @@ export function showdownFlexEligible(player: ShowdownPlayer): boolean {
   return player.rosterPositions ? player.rosterPositions.includes("FLEX") : player.dkPlayerId !== player.captainDkPlayerId;
 }
 
+export function assertDstGameScript(format: "classic" | "showdown", slots: readonly {
+  slot: string; player: Pick<ShowdownPlayer, "name" | "team" | "position" | "gameKey">;
+}[]): void {
+  for (const defense of slots.filter(entry => entry.player.position === "DST")) {
+    const opponent = defense.player.gameKey?.split("@").find(team => team !== defense.player.team);
+    if (!opponent) throw new Error(`${defense.player.name} has no matching game opponent. Regenerate this lineup.`);
+    const opposingOffense = slots.filter(entry => entry.player.team === opponent
+      && ["QB", "RB", "WR", "TE"].includes(entry.player.position));
+    if (opposingOffense.length >= 4 ||
+        (format === "showdown" && opposingOffense.length >= 3 && opposingOffense.some(entry => entry.slot === "CPT"))) {
+      throw new Error(`${defense.player.name} conflicts with the opposing offensive game script. Regenerate this lineup.`);
+    }
+  }
+}
+
 export function assertShowdownLineup(lineup: {
   slots: Array<{ slot: string; salary: number; player: ShowdownPlayer }>;
   totalSalary: number;
@@ -46,6 +62,7 @@ export function assertShowdownLineup(lineup: {
   if (!game || games.size !== 1 || teams.size !== 2 || [...teams].some(team => !game.split("@").includes(team))) {
     throw new Error("Showdown requires players from both teams in one game.");
   }
+  assertDstGameScript("showdown", slots);
   let total = 0;
   for (const entry of slots) {
     const captain = entry.slot === "CPT";

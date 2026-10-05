@@ -14,6 +14,7 @@
  *   blend  = 0.6 * our projection + 0.4 * DK season average   (DK avg alone if we have no projection)
  *   value  = blend per $1,000 of salary
  *   score  = blend^2 * value^1.5 * status multiplier   (Q 0.6, D 0.25)
+ *            (Showdown uses value^0.5 since v3)
  *   share  = score / sum(score) within the position, times that position's
  *            roster budget (QB 100%, RB 255%, WR 340%, TE 105%, DST 100% —
  *            the 9 Classic slots with FLEX split 55/40/5 RB/WR/TE), capped at
@@ -29,6 +30,26 @@
  */
 
 /**
+ * v3 (2026-10-04, Showdown only; Classic is unchanged):
+ *   - The Showdown value exponent drops from 1.5 to SHOWDOWN_VALUE_EXPONENT (0.5).
+ *     On a six-player, one-game pool the cap is not the binding constraint it is
+ *     in Classic, and the field drafts the stars on points far more than on
+ *     points per dollar; the heavy value term sent a kicker to 74% owned (actual
+ *     28.5%) and over-ranked cheap role players.
+ *   - Evidence, stated at its real strength: scored against the two imported
+ *     2026 Showdown contests (weeks 2 and 3), flex MAE fell 7.18 -> 6.30 and
+ *     5.73 -> 5.48, captain MAE 1.63 -> 1.26 and 1.68 -> 1.52, chalk rank
+ *     0.69 -> 0.76 and 0.79 -> 0.80, and the exponent picked on either week
+ *     alone was 0.5. The constant was read off those two slates; the two week 4
+ *     Showdown contests, imported afterwards, are the holdout, and v3 beat v2
+ *     on both (flex MAE 4.35 -> 3.82 and 5.23 -> 4.61, captain MAE 1.63 -> 1.49
+ *     and 1.38 -> 1.04, chalk rank 0.90 -> 0.93 and 0.83 -> 0.85). Four
+ *     contests, one format: improved, NOT validated. Judged on what the forecast does to a
+ *     built portfolio (model/nfl_showdown_ownership_eval.py) it is roughly
+ *     neutral: more projected points kept, slightly less uniqueness, on about
+ *     the same trade-off line. It does NOT fix true punts (a $1,800 TE owned
+ *     19% against 0.8% predicted); those are role and news effects with no
+ *     feature here.
  * v2 (2026-09-29, after PHI@CHI 2026-09-28):
  *   - Showdown: a player's captain + flex ownership is at most
  *     SHOWDOWN_TOTAL_MAX_PCT. A player fills one slot per lineup, so the two
@@ -39,7 +60,7 @@
  *     5.8 projected) at 93%.
  * Both are structural corrections, not fitted constants.
  */
-export const NFL_OWNERSHIP_PRIOR_VERSION = "nfl-ownership-prior-v2";
+export const NFL_OWNERSHIP_PRIOR_VERSION = "nfl-ownership-prior-v3";
 
 /** Roster budget per position for a 9-slot Classic lineup, in percent. Sums to 900. */
 export const CLASSIC_POSITION_BUDGETS: Readonly<Record<string, number>> = { QB: 100, RB: 255, WR: 340, TE: 105, DST: 100 };
@@ -63,6 +84,8 @@ export const STATUS_MULTIPLIER: Readonly<Record<string, number>> = { Q: 0.6, D: 
 const PROJECTION_WEIGHT = 0.6;
 const POINTS_EXPONENT = 2;
 const VALUE_EXPONENT = 1.5;
+/** Showdown only; see the v3 note above. Classic keeps VALUE_EXPONENT. */
+export const SHOWDOWN_VALUE_EXPONENT = 0.5;
 
 export interface OwnershipPriorPlayer {
   dkPlayerId: number;
@@ -109,13 +132,13 @@ export function fieldPoints(player: Pick<OwnershipPriorPlayer, "projection" | "d
 }
 
 /** Unnormalised attractiveness to the field; 0 for anyone who is out or has nothing to draft on. */
-export function ownershipScore(player: OwnershipPriorPlayer, salary = player.salary): number {
+export function ownershipScore(player: OwnershipPriorPlayer, salary = player.salary, valueExponent = VALUE_EXPONENT): number {
   if (player.isOut || !(salary > 0)) return 0;
   const points = fieldPoints(player);
   if (points == null || points <= 0) return 0;
   const value = points / (Math.max(salary, VALUE_SALARY_FLOOR) / 1000);
   const status = STATUS_MULTIPLIER[(player.dkStatus ?? "").trim().toUpperCase()] ?? 1;
-  return Math.pow(Math.max(points, 0.5), POINTS_EXPONENT) * Math.pow(Math.max(value, 0.2), VALUE_EXPONENT) * status;
+  return Math.pow(Math.max(points, 0.5), POINTS_EXPONENT) * Math.pow(Math.max(value, 0.2), valueExponent) * status;
 }
 
 /**
@@ -150,9 +173,9 @@ export function allocateBudgetDetailed(scores: ReadonlyMap<number, number>, budg
 export function projectOwnershipPrior(players: readonly OwnershipPriorPlayer[], format: "classic" | "showdown"): OwnershipPriorResult {
   const round = (v: number) => Math.round(v * 100) / 100;
   if (format === "showdown") {
-    const flexScores = new Map(players.map((p) => [p.dkPlayerId, ownershipScore(p)]));
+    const flexScores = new Map(players.map((p) => [p.dkPlayerId, ownershipScore(p, p.salary, SHOWDOWN_VALUE_EXPONENT)]));
     const captainScores = new Map(players.map((p) => [p.dkPlayerId,
-      p.captainSalary == null ? 0 : Math.pow(ownershipScore(p, p.captainSalary), CAPTAIN_EXPONENT)]));
+      p.captainSalary == null ? 0 : Math.pow(ownershipScore(p, p.captainSalary, SHOWDOWN_VALUE_EXPONENT), CAPTAIN_EXPONENT)]));
     // Captain first; each player's flex cap is what his captain share leaves
     // under the one-slot-per-lineup total.
     const captainAlloc = allocateBudgetDetailed(captainScores, SHOWDOWN_CAPTAIN_BUDGET, SHOWDOWN_CAPTAIN_MAX_PCT);
