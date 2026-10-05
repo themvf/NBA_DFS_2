@@ -1,6 +1,7 @@
 import { parseCsvLine, stringifyCsvLine } from "@/app/dfs/csv";
 import type { NflGeneratedLineup } from "@/app/dfs/nfl/nfl-optimizer";
 import { assertDstGameScript, assertShowdownLineup } from "./showdown-legality";
+import { kickerRoleBlockedReason } from './availability';
 
 function normalized(value: string): string {
   return value.replace(/^\uFEFF/, "").trim().toUpperCase();
@@ -36,6 +37,10 @@ export function exportNflDkEntries(content: string, lineups: NflGeneratedLineup[
     const row = entryRows[index];
     const lineup = lineups[index];
     if (lineup) {
+      for (const { player } of lineup.slots) {
+        const reason = kickerRoleBlockedReason(player);
+        if (reason) throw new Error(`${player.name}: ${reason} Regenerate before exporting.`);
+      }
       if (lineup.slots.length !== expectedSlots) throw new Error("Lineup format does not match the DraftKings entry file.");
       if (expectedSlots === 6) assertShowdownLineup(lineup);
       else assertDstGameScript("classic", lineup.slots);

@@ -38,6 +38,7 @@ import type { PlayerContext } from "@/lib/nfl-dfs/player-context";
 import { benchmarkPool, type Competitor, type ImportEvidence, type BenchmarkSnapshot, benchmarkTeam } from '@/lib/nfl-dfs/competitor-benchmark';
 import { saveNflBenchmark, readNflBenchmarks } from '@/db/nfl-dfs-benchmark';
 import { redistributeInjuryTargets } from '@/lib/nfl-dfs/injury-redistribution';
+import { buildCompletion } from '@/lib/nfl-dfs/build-completion';
 import { availabilityNote, storedSlateProjection, type ModelAvailabilityNote } from '@/lib/nfl-dfs/out-projection';
 import { redistributeOutOpportunity, inheritanceNote, paidByDonor, type RedistributionRow, type InheritedFrom } from '@/lib/nfl-dfs/opportunity-redistribution';
 import { resolveOpportunityProjection, type ProjectionScenario } from '@/lib/nfl-dfs/resolved-projection';
@@ -1654,7 +1655,7 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
   // Build identity is part of what makes a run reproducible, so it is inside the
   // digest: two runs with different code cannot share an input digest.
   const inputDigest = sha256(canonicalAuditJson({ settings: persistedSettings, inputSnapshot, optimizerVersion: NFL_OPTIMIZER_VERSION, buildInfo }));
-  const status = result.lineups.length === settings.nLineups ? "complete" : result.lineups.length ? "partial" : "failed";
+  const { status } = buildCompletion({ ...result, requestedLineups: settings.nLineups, generatedLineups: result.lineups.length });
   try {
   await db.insert(nflDfsOptimizerRuns).values({
     runId, uploadId, projectionRunId: slate.projectionRunId,

@@ -19,7 +19,7 @@ function player(over: Partial<NflOptimizerPlayer> & { dkPlayerId: number; salary
     opponent: over.team === "BBB" ? "AAA" : "BBB", gameKey: "AAA@BBB", salary: over.salary,
     captainSalary: Math.round(over.salary * 1.5), isOut: false, projectionStatus: "historical",
     historyGames: over.historyGames ?? 6, teamSeasonGames: over.teamSeasonGames,
-    depthRole: over.depthRole, availabilityState: over.availabilityState,
+    depthRole: over.depthRole ?? (over.position === "K" ? "Listed K1" : null), availabilityState: over.availabilityState,
     ourProj: over.ourProj ?? 10, floorFpts: 7, ceilingFpts: 14, boomRate: 0.2,
     avgFptsDk: 10, fantasyprosProj: null, linestarProj: null, linestarOwnPct: null, customProj: null,
   };
