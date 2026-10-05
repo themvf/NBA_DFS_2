@@ -22,6 +22,18 @@ export const nflTeamKey = teamKey;
 /** Same franchise under any of those codes. Compare teams across sources with this, never with `===`. */
 export const sameNflTeam = (a: unknown, b: unknown): boolean => teamKey(a) === teamKey(b);
 
+/** Health and salary inclusion do not establish who will take the kicks. */
+export function kickerRoleBlockedReason(player: {
+  position: string; depthRole?: string | null;
+  availability?: { role?: string; chartRole?: string; blockedReason?: string | null; fresh?: boolean } | null;
+}): string | null {
+  if (player.position !== 'K') return null;
+  if (player.availability?.blockedReason) return player.availability.blockedReason;
+  if (player.availability?.fresh === false) return 'Kicking role evidence is stale or unresolved. Refresh roster data before building.';
+  const role = player.availability?.chartRole ?? player.availability?.role ?? player.depthRole;
+  return role === 'Listed K1' ? null : 'Kicking role unresolved or backup; a listed K1 role is required. Refresh roster data before building.';
+}
+
 export type ShowdownGameRow = { home: string; away: string; home_ml: number | string | null; away_ml: number | string | null };
 
 /**
@@ -154,7 +166,8 @@ export function presentPinnedGameAvailability(decision:PinnedGameAvailabilityDec
  * still resolves to unknown.
  */
 export function resolveAvailability(evidence: RosterEvidence | undefined, team: string, position: string, now: number): Availability {
-  const unknown: Availability = { role: position === "QB" ? "QB role unresolved" : "Role unresolved", status: "UNKNOWN", source: "No matching current roster", capturedAt: null, blockedReason: null, fresh: false };
+  const missingRole = kickerRoleBlockedReason({ position });
+  const unknown: Availability = { role: position === "QB" ? "QB role unresolved" : "Role unresolved", status: "UNKNOWN", source: "No matching current roster", capturedAt: null, blockedReason: missingRole, roleBlockedReason: missingRole, fresh: false };
   if (!evidence || teamKey(evidence.team) !== teamKey(team) || evidence.position !== position) return unknown;
   const captured = Date.parse(evidence.fetchedAt);
   if (!Number.isFinite(captured) || captured > now) return { ...unknown, source: "Roster capture time invalid", capturedAt: evidence.fetchedAt };
@@ -165,7 +178,8 @@ export function resolveAvailability(evidence: RosterEvidence | undefined, team: 
   const status = normalize(s.injury_status || s.status);
   const rosterStatus = normalize(s.status);
   const staleNote = fresh ? "" : ` (roster captured ${evidence.fetchedAt.slice(0, 10)}; blocks still apply, clearances do not)`;
-  const roleBlockedReason = position === "QB" && depth !== null && depth > 1 ? `Listed QB${depth}; starter workload not supported${staleNote}` : null;
+  const roleBlockedReason = position === "QB" && depth !== null && depth > 1 ? `Listed QB${depth}; starter workload not supported${staleNote}`
+    : position === 'K' && (depth !== 1 || !fresh) ? `Kicking role ${depth === null ? 'unresolved' : `listed K${depth}${staleNote}`}; fresh K1 evidence is required.` : null;
   const blockedReason = unavailable.has(status) || unavailable.has(rosterStatus) ? `Unavailable: ${unavailable.has(status) ? status : rosterStatus}${staleNote}`
     : roleBlockedReason;
   return {

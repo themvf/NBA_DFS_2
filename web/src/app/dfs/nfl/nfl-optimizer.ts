@@ -1,4 +1,5 @@
 import "server-only";
+import { kickerRoleBlockedReason } from '@/lib/nfl-dfs/availability';
 import type { DefensiveForecastBundle, DefensiveSettings } from '@/lib/nfl-dfs/defensive-projection';
 import { captureProfileFor } from '@/lib/nfl-dfs/defensive-display';
 import { assertDstGameScript, assertShowdownLineup, showdownSalary, showdownFlexEligible } from '@/lib/nfl-dfs/showdown-legality';
@@ -60,7 +61,7 @@ import type { SpecialTeamsProjection } from '@/lib/nfl-dfs/special-teams-project
 // Record the strict Showdown purchase and completed-roster validation.
 // v8: DK-average fallback honoured in defensive mode; a lock or exposure
 // minimum on a player outside the pool is an error instead of being dropped.
-export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v11-dst-script";
+export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v12-lineup-integrity";
 
 export type NflProjectionSource = "our" | "workload" | "calibrated" | "dk_avg" | "fantasypros" | "linestar" | "custom";
 export type NflOptimizerMode = "cash" | "gpp";
@@ -106,7 +107,7 @@ export type NflOptimizerPlayer = {
    */
   availabilityStatus?: string | null;
   /** The resolved availability; only its block reason is read here, to say why a player is out. */
-  availability?: { blockedReason?: string | null; status?: string | null } | null;
+  availability?: { blockedReason?: string | null; status?: string | null; role?: string; chartRole?: string; fresh?: boolean } | null;
   /**
    * DraftKings' own Status column, verbatim ("Q", "D", "OUT", "IR", ...).
    * `dk-salary-csv.ts` maps only OUT/IR-family codes to `isOut` and leaves the
@@ -779,6 +780,17 @@ function buildOne(
       // spent, so Captain and Flex maxima are enforced independently.
       if (purchaseType === "CPT" && captainFull(player)) continue;
       if (purchaseType === "FLEX" && flexFull(player)) continue;
+      // Reserve overall appearances for the other slot's outstanding minimum.
+      // Spending Olave's overall cap on FLEX used to make his Captain target
+      // unreachable before the end-of-run minimum constraints were attempted.
+      if (settings.format === 'showdown') {
+        const counts = countsById.get(player.dkPlayerId);
+        const availableOverall = maxCount(player) - (exposureCounts.get(player.dkPlayerId) ?? 0);
+        const otherSlotOwed = purchaseType === 'FLEX'
+          ? (counts?.captainMin ?? 0) - (captainCounts.get(player.dkPlayerId) ?? 0)
+          : (counts?.flexMin ?? 0) - (flexCounts.get(player.dkPlayerId) ?? 0);
+        if (otherSlotOwed > 0 && availableOverall <= otherSlotOwed) continue;
+      }
       // Phase 4: archetype captain restrictions (contrarian / underdog captain
       // sets, forbidden chalk captains).
       if (purchaseType === "CPT" && compiled?.eligibleCaptainIds && !compiled.eligibleCaptainIds.includes(player.dkPlayerId)) continue;
@@ -830,6 +842,15 @@ function buildOne(
         const owed = slot === "CPT"
           ? (counts?.captainMin ?? 0) - (captainCounts.get(player.dkPlayerId) ?? 0)
           : (counts?.flexMin ?? 0) - (flexCounts.get(player.dkPlayerId) ?? 0);
+        // Make progress on Captain commitments while compatible archetypes
+        // remain, instead of deferring them to the final restricted lineups.
+        // If this archetype cannot accommodate one, the existing retry builds
+        // it without this progress constraint and the final audit stays honest.
+        if (slot === 'CPT' && owed > 0) {
+          constraints.captain_target_progress = { min: 1 };
+          variable.captain_target_progress = 1;
+          slotForced = true;
+        }
         if (owed >= remaining) {
           const forceKey = `${slot === "CPT" ? "forcecpt" : "forceflex"}_${player.dkPlayerId}`;
           constraints[forceKey] = { equal: 1 };
@@ -950,6 +971,13 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
 
   for (const player of players) {
     const named = { dkPlayerId: player.dkPlayerId, name: player.name, salary: player.salary };
+    const kickerBlock = kickerRoleBlockedReason(player);
+    if (kickerBlock) {
+      eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden: false,
+        reason: kickerBlock, reasonCode: 'KICKER_ROLE' });
+      if (locked.has(player.dkPlayerId)) throw new Error(`${player.name}: ${kickerBlock}`);
+      coverage.excluded++; continue;
+    }
     // Manual exclusion and inactivity are handled first so they always win.
     if (ruledOut(player)) {
       // Two sources, one gate. DK's Status column covers OUT/IR; our own
@@ -1328,11 +1356,13 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     else if (settings.format === "showdown" && flex < c.flexMin) binding = `flex min missed (${flex}/${c.flexMin})`;
     else if (overall >= c.overallMax) binding = `overall max reached (${overall}/${c.overallMax})`;
     if (binding && (overall < c.overallMin || (settings.format === "showdown" && (captain < c.captainMin || flex < c.flexMin)))) {
-      warnings.push(`${player.name}: ${binding}; constraints were infeasible for the remaining lineups.`);
+      warnings.push(`${player.name}: ${binding}; this build did not satisfy the requested target. Adjust targets or construction rules and generate again.`);
     }
     return { dkPlayerId: player.dkPlayerId, name: player.name, overall, captain, flex,
       overallMin: c.overallMin, overallMax: c.overallMax, captainMin: c.captainMin, captainMax: c.captainMax, flexMin: c.flexMin, flexMax: c.flexMax, binding };
   });
+  const blockedKickers = eligibility.filter(p => p.reasonCode === 'KICKER_ROLE');
+  if (blockedKickers.length) warnings.push(`Kickers excluded without a supported starting role: ${blockedKickers.map(p => p.name).join(', ')}. Healthy status and salary inclusion do not establish kicking duties.`);
 
   // Phase 5: salary-band distribution, exact-duplicate/overlap check, and
   // capability-gated duplication estimate.

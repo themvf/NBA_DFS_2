@@ -25,7 +25,7 @@ for (const [team, opponent] of [['BUF', 'MIA'], ['MIA', 'BUF']] as const) {
     const candidate = position === 'DST' || position === 'K'
       ? readSpecialTeamsProjection(snapshot(position, position === 'DST' ? 12 : 10), position).projection : null;
     players.push({id: ownId, dkPlayerId: ownId, captainDkPlayerId: ownId + 100,
-      name: `${team} ${position}`, position, team, opponent, gameKey: 'BUF@MIA',
+      name: `${team} ${position}`, position, team, opponent, depthRole: position === 'K' ? 'Listed K1' : null, gameKey: 'BUF@MIA',
       salary: 5000, captainSalary: 7500, isOut: false, projectionStatus: 'historical',
       ourProj: 6, floorFpts: 3, ceilingFpts: 9, boomRate: .1,
       avgFptsDk: 5, fantasyprosProj: null, linestarProj: null,

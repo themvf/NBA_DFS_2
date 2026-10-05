@@ -145,7 +145,8 @@
     "test:pickem-pfr": "node --import tsx ./scripts/test-pickem-pfr.ts",
     "test:pickem-matchup": "node --import tsx ./scripts/test-pickem-matchup.ts",
     "test:pickem-defensive": "node --import tsx ./scripts/test-pickem-defensive.ts",
-    "test:nfl-forecast-experience": "node --import tsx ./scripts/test-nfl-forecast-experience.tsx"
+    "test:nfl-forecast-experience": "node --import tsx ./scripts/test-nfl-forecast-experience.tsx",
+    "test:nfl-lineup-integrity": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-lineup-integrity.tsx"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",

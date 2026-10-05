@@ -39,6 +39,7 @@ function fixedShowdownPool(): NflOptimizerPlayer[] {
     captainDkPlayerId: dkPlayerId + 100_000,
     name,
     position,
+    depthRole: position === "K" ? "Listed K1" : null,
     team,
     opponent: team === "AAA" ? "BBB" : "AAA",
     gameKey: "AAA@BBB",

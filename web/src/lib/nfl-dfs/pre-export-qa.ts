@@ -11,9 +11,10 @@
  */
 
 import { assertDstGameScript, assertShowdownLineup, type ShowdownPlayer } from './showdown-legality';
+import { kickerRoleBlockedReason } from './availability';
 import { maxPairwiseOverlap as realizedMaxOverlap } from './salary-duplication';
 
-export const NFL_QA_RULESET_VERSION = "nfl-gpp-qa-v4-dst-script";
+export const NFL_QA_RULESET_VERSION = "nfl-gpp-qa-v5-kicker-role";
 
 /**
  * Evidence a run saved (or failed to save) for one QA check. `undefined` means
@@ -44,7 +45,9 @@ export interface CurrentPoolPlayer {
   ruledOut?: boolean;
   projectionStatus?: string | null;
   dkStatus?: string | null;
-  availability?: { blockedReason?: string | null } | null;
+  position?: string;
+  depthRole?: string | null;
+  availability?: { blockedReason?: string | null; role?: string; chartRole?: string; fresh?: boolean } | null;
 }
 
 /**
@@ -63,6 +66,8 @@ function roleOnlyBlock(player: CurrentPoolPlayer, reason: string): boolean {
 export function currentUnavailableReason(player: CurrentPoolPlayer): string | null {
   const blocked = player.availability?.blockedReason?.trim();
   if (blocked) return blocked;
+  const kickerBlock = kickerRoleBlockedReason({ ...player, position: player.position ?? '' });
+  if (kickerBlock) return kickerBlock;
   if (player.isOut) return player.dkStatus ? `DraftKings lists him ${player.dkStatus.trim().toUpperCase()}` : "ruled out";
   if (player.projectionStatus === "out") return "ruled out by our injury feed";
   return null;
