@@ -9,8 +9,9 @@ const spec: Array<[number, string, NflOptimizerPlayer["position"], number]> = [
   [9, "WR with air-yard signal", "WR", 2], [10, "TE", "TE", 6], [11, "DST", "DST", 5],
 ];
 const pool: NflOptimizerPlayer[] = spec.map(([id, name, position, projection]) => ({
-  id, dkPlayerId: id, captainDkPlayerId: null, name, position, team: "AAA",
-  opponent: "BBB", gameKey: null, salary: 5000, captainSalary: null,
+  id, dkPlayerId: id, captainDkPlayerId: null, name, position,
+  team: position === "DST" ? "CCC" : "AAA", opponent: position === "DST" ? "DDD" : "BBB",
+  gameKey: position === "DST" ? "CCC@DDD" : "AAA@BBB", salary: 5000, captainSalary: null,
   isOut: false, projectionStatus: "historical", historyGames: 3,
   ourProj: projection, floorFpts: projection * 0.7, ceilingFpts: projection * 1.4,
   boomRate: 0, avgFptsDk: projection, fantasyprosProj: null, linestarProj: null,

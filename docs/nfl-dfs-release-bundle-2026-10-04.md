@@ -14,8 +14,9 @@ Branch: `codex/nfl-dfs-release-bundle`, based on `origin/main` at `901bf8f4`.
 
 Individual commits remain separate. Documentation conflicts retained the
 ownership registration and added the field-structure and Showdown findings.
-The top-projected coverage fixture now supplies valid game identity, with its
-DST in a second game, satisfying the existing Classic multi-game requirement.
+The top-projected coverage and opportunity-signal fixtures supply valid game
+identity, with their DST in a second game, satisfying the existing Classic
+multi-game requirement.
 No primary-checkout edits were incorporated.
 
 ## Product behavior and limits
@@ -43,11 +44,12 @@ No primary-checkout edits were incorporated.
 
 - 75 Python tests passed across special teams, projection availability,
   fitted ownership, Showdown ownership evaluation and field structure.
-- 23 web suites passed: special teams, Showdown legality, workspace, QA,
+- 24 web suites passed: special teams, Showdown legality, workspace, QA,
   balanced plan, archetypes, baseline, ownership capability, ownership prior,
   top projected coverage, chalk leverage, GPP leverage, build form, cash,
   Showdown salary floor, punts, exposures, salary policy, portfolio selection,
-  backtest, Captain availability, Captain minimums and workload optimizer.
+  backtest, Captain availability, Captain minimums, workload optimizer and
+  opportunity signals.
 - TypeScript check passed. Targeted lint has zero errors and one existing
   `openSaved` effect dependency warning in the client.
 - Full web lint passed with zero errors and 63 warnings from the existing
