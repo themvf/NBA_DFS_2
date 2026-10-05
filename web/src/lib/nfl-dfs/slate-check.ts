@@ -14,7 +14,7 @@
  */
 
 export type SlateCheckLevel = "blocked" | "attention" | "ok" | "info";
-export type SlateCheckAction = "refresh_projections" | "pick_starter" | "retry_capture";
+export type SlateCheckAction = "refresh_projections" | "pick_starter" | "retry_capture" | "update_data";
 
 export interface SlateCheckItem {
   id: string;
@@ -24,6 +24,8 @@ export interface SlateCheckItem {
   team?: string;
   /** A page that shows the evidence (e.g. the failed GitHub run). */
   href?: string;
+  /** Research evidence is retained but does not compete with build readiness. */
+  category?: 'research';
 }
 
 export interface SlateCheck {
@@ -31,6 +33,7 @@ export interface SlateCheck {
   /** Items that need the user: blocked + attention. */
   needs: number;
   items: SlateCheckItem[];
+  archived?: boolean;
 }
 
 export interface SlateCheckQb {
@@ -95,6 +98,7 @@ export interface SlateCheckInput {
   pipeline?: { failing: { label: string; failedAt: string; url: string; streak: number; streakCapped: boolean; affectsBuild: boolean }[]; error: string | null } | null;
   /** The experimental projection sources (workload, calibrated): usable now, or why not. */
   experimentalSources?: { label: string; usable: boolean; reason: string }[] | null;
+  specialTeams?: { text: string; action?: 'refresh_projections' | 'update_data'; missing: readonly unknown[] } | null;
 }
 
 const STARTER = "Expected starter · QB1";
@@ -162,7 +166,7 @@ export function buildSlateCheck(input: SlateCheckInput): SlateCheck {
   if (!input.deployedBuild) add({ id: "code", level: "blocked", text: "This page is running a local copy of the code. Lineups built here can't be exported; build on the live site." });
   if (input.incompleteWarning) add({ id: "slate", level: "blocked", text: input.incompleteWarning });
   const started = input.firstKickoff != null && Date.parse(input.firstKickoff) <= input.now;
-  if (started) add({ id: "started", level: "info", text: "Games have started. Building and export are closed for this slate; results arrive after the games." });
+  if (started) add({ id: "started", level: "info", text: "Games have started. Saved projections and lineups are preserved. Open Results to review this slate." });
 
   // Projections and roster freshness, both relative to now.
   const hoursSince = (iso: string | null | undefined) => {
@@ -172,7 +176,8 @@ export function buildSlateCheck(input: SlateCheckInput): SlateCheck {
   const ago = (hours: number) => hours < 1 ? `${Math.max(1, Math.round(hours * 60))} minutes` : `${Math.round(hours)} hour${Math.round(hours) === 1 ? "" : "s"}`;
   const projectionAge = hoursSince(input.projectionAsOf);
   const projectionStale = !started && projectionAge != null && projectionAge > PROJECTION_STALE_HOURS;
-  if (input.refreshAvailable) add({ id: "projections", level: "attention", action: "refresh_projections", text: "Newer projections are available. Refresh before building so the pool reflects the latest injuries and roles." });
+  if (started && input.projectionAsOf) add({ id: "projections", level: "ok", text: `Saved projections were built ${clock(input.projectionAsOf)}; this snapshot is retained.` });
+  else if (input.refreshAvailable) add({ id: "projections", level: "attention", action: "refresh_projections", text: "Newer projections are available. Refresh before building so the pool reflects the latest injuries and roles." });
   else if (input.refreshError) add({ id: "projections", level: "attention", text: `Couldn't check for newer projections: ${input.refreshError}${input.projectionAsOf ? ` These were built ${clock(input.projectionAsOf)}.` : ""}` });
   else if (projectionStale) add({ id: "projections", level: "attention", text: `Projections were built ${ago(projectionAge!)} ago (${clock(input.projectionAsOf)}) and nothing newer exists; they normally rebuild every hour in season. Use Update data before building.` });
   else if (input.projectionAsOf) add({ id: "projections", level: "ok", text: `Projections are current (built ${clock(input.projectionAsOf)}).` });
@@ -267,9 +272,9 @@ export function buildSlateCheck(input: SlateCheckInput): SlateCheck {
 
   // Replacement upside.
   if (input.upside) {
-    if (input.upside.error) add({ id: "upside", level: "info", text: `Replacement ranges unavailable: ${input.upside.error}` });
+    if (input.upside.error) add({ id: "upside", category: 'research', level: "info", text: `Replacement ranges unavailable: ${input.upside.error}` });
     else if (input.upside.flagged) add({ id: "upside", level: "ok", text: `${input.upside.flagged} backup${input.upside.flagged === 1 ? "" : "s"} show an "if he gets the job" range.` });
-    for (const skip of input.upside.skipped) add({ id: `upside-skip:${skip.name}`, level: "info", text: `${skip.name}: ${skip.reason}` });
+    for (const skip of input.upside.skipped) add({ id: `upside-skip:${skip.name}`, category: 'research', level: "info", text: `${skip.name}: ${skip.reason}` });
   }
 
   // Data jobs. A failed injury/projection/DraftKings job can leave the slate on
@@ -278,7 +283,7 @@ export function buildSlateCheck(input: SlateCheckInput): SlateCheck {
   if (input.pipeline) {
     for (const job of input.pipeline.failing) {
       const times = job.streak > 1 ? ` (${job.streakCapped ? `at least ${job.streak}` : job.streak} runs in a row)` : "";
-      add({ id: `pipeline:${job.label}`, level: job.affectsBuild && !started ? "attention" : "info", href: job.url,
+      add({ id: `pipeline:${job.label}`, category: job.affectsBuild ? undefined : 'research', level: job.affectsBuild && !started ? "attention" : "info", href: job.url,
         text: job.affectsBuild
           ? `The ${job.label.toLowerCase()} failed ${clock(job.failedAt)}${times}. This slate may be on older data until it runs cleanly.`
           : `The ${job.label.toLowerCase()} failed ${clock(job.failedAt)}${times}. Builds are unaffected; results and report cards may lag.` });
@@ -289,12 +294,17 @@ export function buildSlateCheck(input: SlateCheckInput): SlateCheck {
 
   // Experimental sources are opt-in, so their state is a note, never a nag.
   for (const source of input.experimentalSources ?? []) {
-    add({ id: `source:${source.label}`, level: source.usable ? "ok" : "info",
+    add({ id: `source:${source.label}`, category: 'research', level: source.usable ? "ok" : "info",
       text: source.usable ? `${source.label} source ready. ${source.reason}` : `${source.label} source unavailable: ${source.reason}` });
   }
 
   if (input.unmatched.length) add({ id: "unmatched", level: "attention", text: `${input.unmatched.length} player${input.unmatched.length === 1 ? "" : "s"} couldn't be matched to our model and have no projection: ${input.unmatched.slice(0, 3).join(", ")}${input.unmatched.length > 3 ? ", …" : ""}.` });
 
+  if (input.specialTeams) add({ id: 'special-teams', level: input.specialTeams.missing.length ? !started && input.specialTeams.action ? 'attention' : 'info' : 'ok',
+    text: input.specialTeams.text, action: started ? undefined : input.specialTeams.action });
+  // Keep the diagnostic record without presenting past preparation chores as
+  // current advice, or permitting an old action from a saved check.
+  if (started) for (const item of items) delete item.action;
   const order: Record<SlateCheckLevel, number> = { blocked: 0, attention: 1, ok: 2, info: 3 };
   items.sort((a, b) => order[a.level] - order[b.level]);
   // After kickoff nothing can be acted on; the items stay as a record, but the
@@ -303,6 +313,6 @@ export function buildSlateCheck(input: SlateCheckInput): SlateCheck {
   return {
     headline: started ? `${input.label}: games have started, building is closed`
       : needs ? `${input.label}: ${needs} thing${needs === 1 ? "" : "s"} need${needs === 1 ? "s" : ""} you` : `${input.label}: everything checked out`,
-    needs, items,
+    needs, items, archived: started,
   };
 }

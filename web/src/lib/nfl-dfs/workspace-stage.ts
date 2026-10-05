@@ -38,6 +38,15 @@ export function isLocked(firstKickoff: string | null, now: number): boolean {
   return Number.isFinite(start) && now >= start;
 }
 
+/** Fail before any projection refresh writes; every game's time must be known. */
+export function assertPregameProjectionRefresh(gameInfos: readonly (string | null)[], now = Date.now()): void {
+  const times = gameInfos.map(info => Date.parse(parseDkGameInfoKickoff(info) ?? ''));
+  if (!times.length || times.some(t => !Number.isFinite(t)))
+    throw new Error('Cannot refresh projections until every game has a verified kickoff time.');
+  if (Math.min(...times) <= now)
+    throw new Error('Games have started. Saved projections and lineups are preserved; open Results to review this slate.');
+}
+
 /**
  * Whether opening a slate should move it to the newest projection run on its
  * own, with no click.
@@ -57,7 +66,8 @@ export function shouldAdoptNewestProjections(input: {
   /** Saved lineup runs on this upload (or lineups on screen). */
   builtLineups: number;
 }): boolean {
-  return input.refreshAvailable && input.builtLineups === 0 && !isLocked(input.firstKickoff, input.now);
+  const kickoff = Date.parse(input.firstKickoff ?? '');
+  return input.refreshAvailable && input.builtLineups === 0 && Number.isFinite(kickoff) && input.now < kickoff;
 }
 
 /**
@@ -109,6 +119,9 @@ export function parseDkGameInfoKickoff(gameInfo: string | null | undefined): str
   const m = String(gameInfo ?? "").match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)\s*ET/i);
   if (!m) return null;
   const [, mm, dd, yyyy, hh, mi, ampm] = m;
+  if (Number(mm) < 1 || Number(mm) > 12 || Number(hh) < 1 || Number(hh) > 12 || Number(mi) > 59) return null;
+  const date = new Date(Date.UTC(Number(yyyy), Number(mm) - 1, Number(dd)));
+  if (date.getUTCMonth() !== Number(mm) - 1 || date.getUTCDate() !== Number(dd)) return null;
   let hour = Number(hh) % 12;
   if (ampm.toUpperCase() === "PM") hour += 12;
   // Treat the wall-clock time as UTC, then shift by New York's offset that day.

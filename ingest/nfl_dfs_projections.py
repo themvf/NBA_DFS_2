@@ -103,6 +103,8 @@ def output_digest(projections: list[dict[str, Any]], manifest: Mapping[str, Any]
         "season": manifest["season"],
         "week": manifest["week"],
         "model_config": manifest["model_config"],
+        "special_teams_candidate_version": manifest.get("special_teams_candidate_version"),
+        "special_teams_candidate_coverage": manifest.get("special_teams_candidate_coverage"),
         "players": rows,
     })
 
@@ -665,6 +667,8 @@ def persist_week(db: DatabaseManager, projections: list[dict[str, Any]], manifes
         # Read by reusable_run(): a later rebuild with identical output reuses
         # this run instead of writing another copy of it.
         "output_digest": output_digest(projections, manifest),
+        "special_teams_candidate_version": manifest.get("special_teams_candidate_version"),
+        "special_teams_candidate_coverage": manifest.get("special_teams_candidate_coverage"),
     }
     with db.connect() as conn:
         cur = conn.cursor()

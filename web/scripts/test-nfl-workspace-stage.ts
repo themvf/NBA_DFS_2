@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import {
   shouldAdoptNewestProjections,
-  isLocked, parseDkGameInfoKickoff, prioritizeStatus, recommendedStage, type StatusItem,
+  assertPregameProjectionRefresh, isLocked, parseDkGameInfoKickoff, prioritizeStatus, recommendedStage, type StatusItem,
 } from "../src/lib/nfl-dfs/workspace-stage";
 import { buildScoreCurve, estimateRank, projectionError, scoreLineups, summarizeSet } from "../src/lib/nfl-dfs/slate-results";
 
@@ -121,6 +121,18 @@ console.log("  - captain at 1.5x; unknown players leave a score unknown, not zer
   assert.equal(adopt({ refreshAvailable: false }), false, "already newest");
   assert.equal(adopt({ builtLineups: 1 }), false, "saved lineups stay with the run that built them");
   assert.equal(adopt({ now: Date.parse(kickoff) }), false, "locked at kickoff");
-  assert.equal(adopt({ firstKickoff: null }), true, "unknown kickoff is not locked");
+  assert.equal(adopt({ firstKickoff: null }), false, "unknown kickoff cannot authorize a projection refresh");
+  assert.equal(adopt({ firstKickoff: 'invalid' }), false);
   console.log("  - opening a slate adopts newer projections only pre-lock with no lineups built");
 }
+
+// Refresh decisions use all games, fail closed on missing/invalid times, and
+// stop exactly at kickoff. Covers Classic's earliest game and Showdown.
+const infos = ['BUF@MIA 10/04/2026 01:00PM ET', 'DET@CAR 10/04/2026 08:20PM ET'];
+const first = Date.parse('2026-10-04T17:00:00Z');
+assert.doesNotThrow(() => assertPregameProjectionRefresh(infos, first - 1));
+assert.throws(() => assertPregameProjectionRefresh(infos, first), /Games have started/);
+assert.throws(() => assertPregameProjectionRefresh(infos, first + 1), /Saved projections and lineups are preserved/);
+assert.doesNotThrow(() => assertPregameProjectionRefresh([infos[1]], first));
+for (const invalid of [[], [null], [infos[1], null], ['date missing'], ['BUF@MIA 02/31/2026 01:00PM ET'], ['BUF@MIA 10/04/2026 13:00PM ET']])
+  assert.throws(() => assertPregameProjectionRefresh(invalid, first - 1), /verified kickoff/);

@@ -144,7 +144,8 @@
     "test:pickem-contest": "node --import tsx ./scripts/test-pickem-contest.ts",
     "test:pickem-pfr": "node --import tsx ./scripts/test-pickem-pfr.ts",
     "test:pickem-matchup": "node --import tsx ./scripts/test-pickem-matchup.ts",
-    "test:pickem-defensive": "node --import tsx ./scripts/test-pickem-defensive.ts"
+    "test:pickem-defensive": "node --import tsx ./scripts/test-pickem-defensive.ts",
+    "test:nfl-forecast-experience": "node --import tsx ./scripts/test-nfl-forecast-experience.tsx"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",

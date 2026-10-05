@@ -85,7 +85,7 @@ export function ValueLegend({ className = "" }: { className?: string }) {
       <span className="whitespace-nowrap"><ChevronUp className="inline h-3 w-3" aria-hidden /> top 25%</span>{" · "}
       <span className="whitespace-nowrap"><Minus className="inline h-3 w-3" aria-hidden /> mid</span>{" · "}
       <span className="whitespace-nowrap"><ChevronDown className="inline h-3 w-3" aria-hidden /> bottom 25%</span>{" · "}
-      <span className="whitespace-nowrap"><HelpCircle className="inline h-3 w-3" aria-hidden /> projection is a position prior, so the multiple is not evidence</span>.
+      <span><HelpCircle className="inline h-3 w-3" aria-hidden /> projection is a position prior, so the multiple is not evidence</span>.
     </p>
   );
 }
