@@ -21,3 +21,6 @@ artifacts/nfl_volume_share/
 
 # Generated audit artifacts from labeller review runs (never source)
 .audit_*.parquet
+
+# Written by `npx neon skills` when the Neon agent skills are installed locally
+skills-lock.json

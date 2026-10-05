@@ -5426,6 +5426,9 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_nfl_evidence_source_key ON nfl_evidence_observations(source, source_record_key, system_observed_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_nfl_play_fact_current ON nfl_play_fact_revisions(game_id, play_id) WHERE revision_status = 'current'",
     "CREATE INDEX IF NOT EXISTS idx_nfl_context_current ON nfl_context_snapshots(definition_id, subject_id, target_id, as_of_at DESC)",
+    # The availability monitor reads current contexts by game (target_id) and
+    # the publisher withdraws by game; both scanned the whole 1.3 GB table.
+    "CREATE INDEX IF NOT EXISTS idx_nfl_context_current_target ON nfl_context_snapshots(target_id, definition_id) WHERE publication_status='current'",
     "CREATE INDEX IF NOT EXISTS idx_nfl_context_policy ON nfl_context_qualifications(consumer_id, use_case, cohort, usage, policy_version)",
     "CREATE INDEX IF NOT EXISTS idx_player_prop_history_lookup ON player_prop_history(sport, slate_id, market_key, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_player_prop_history_player ON player_prop_history(sport, dk_player_id, market_key, captured_at DESC)",
@@ -5671,6 +5674,15 @@ INDEXES = [
         UNIQUE(history_id,book,field)
     )""",
     "CREATE INDEX IF NOT EXISTS idx_cfb_quote_movements_game ON cfb_quote_movements(matchup_id,history_id)",
+    # Every pregame CFB snapshot ingest/cfb_movements.py has processed, with or
+    # without a transition, so the incremental run reconciles only games with
+    # new snapshots (see record_movements).
+    """CREATE TABLE IF NOT EXISTS cfb_quote_movement_coverage (
+        history_id INTEGER PRIMARY KEY REFERENCES game_odds_history(id),
+        matchup_id INTEGER NOT NULL REFERENCES cfb_matchups(id),
+        recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_cfb_quote_movement_coverage_game ON cfb_quote_movement_coverage(matchup_id)",
 
     # 2026-07-02: sharp line-movement ALERTS — an auditable ledger, not a toast.
     # Each row freezes the trigger-time market state (first breach only —

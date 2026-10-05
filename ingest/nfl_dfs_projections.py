@@ -275,6 +275,14 @@ def _availability(db: DatabaseManager, season: int, week: int | None) -> dict[in
     """Return raw candidate observations; the shared resolver qualifies them."""
     if week is None:
         return {}
+    # Sleeper writes one observation per matched player per capture (at least
+    # six captures a day in season), so the two weeks before the week's first
+    # kickoff hold every observation a pregame decision can prefer. Without that
+    # bound the loader read the whole season's observations with their JSON
+    # payloads on every run: 311k rows and 930 MB of pages per run by
+    # 2026-10-04. The bound is keyed to the week's schedule, never to now(), so a
+    # replay of a past week reads the same rows it did then. The week-keyed
+    # sources (FantasyPros, official inactives) keep their own filter.
     rows = db.execute(
         """SELECT o.id observation_id, o.player_id, o.source,
                   CASE WHEN o.source='nfl_official'
@@ -288,12 +296,16 @@ def _availability(db: DatabaseManager, season: int, week: int | None) -> dict[in
            FROM ff_player_injury_observations o
            JOIN ff_source_snapshots s ON s.id = o.source_snapshot_id
            WHERE o.season = %s AND (
-             o.source='sleeper'
+             (o.source='sleeper'
+              AND o.observed_at >= COALESCE(
+                    (SELECT min(g.kickoff) - interval '14 days' FROM nfl_season_games g
+                     WHERE g.season = %s AND g.week = %s AND g.game_type = 'REG'),
+                    '-infinity'::timestamptz))
              OR (o.source IN ('fantasypros','nfl_official')
                  AND (s.week=%s OR s.request_params->>'week'=%s OR s.dataset LIKE %s))
            )
            ORDER BY o.player_id, available_at DESC, o.id DESC""",
-        (season, week, str(week), f"game-week-injuries-v2-{season}-{week}%"),
+        (season, season, week, week, str(week), f"game-week-injuries-v2-{season}-{week}%"),
     )
     observed: dict[int, list[dict[str, Any]]] = {}
     for row in rows:
