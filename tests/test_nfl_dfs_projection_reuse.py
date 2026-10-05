@@ -75,6 +75,18 @@ def test_a_persisted_row_with_an_evidence_digest_matches_the_in_memory_row():
     assert proj.output_digest([stored], manifest()) == proj.output_digest([player()], manifest())
 
 
+def test_special_teams_readiness_changes_reuse_identity_even_without_players():
+    legacy = manifest()
+    current = {**legacy, "special_teams_candidate_version": proj.SPECIAL_TEAMS_VERSION,
+               "special_teams_candidate_coverage": {"DST": {"available": 2, "unavailable": 0}}}
+    assert proj.output_digest([], current) != proj.output_digest([], legacy)
+    assert proj.output_digest([], {**current, "special_teams_candidate_version": "next-version"}) != proj.output_digest([], current)
+    assert proj.output_digest([], {**current, "special_teams_candidate_coverage": {"DST": {"available": 1, "unavailable": 1}}}) != proj.output_digest([], current)
+    row = player(position="DST")
+    row["feature_snapshot"]["special_teams_candidate"] = {"version": proj.SPECIAL_TEAMS_VERSION, "mean": 8}
+    assert proj.output_digest([row], current) != proj.output_digest([player(position="DST")], current)
+
+
 class RunDB:
     def __init__(self, row):
         self.row = row
@@ -141,13 +153,17 @@ def test_persist_week_records_the_output_digest_on_the_run(monkeypatch):
     rows = [player()]
     full = {**manifest(), "artifact_digest": "art", "as_of_at": NOW.isoformat(), "source_evidence": [],
             "seed": 1, "availability": {"policy_mode": "v2", "pregame_frozen_games": [], "unresolved": []},
-            "availability_health": {"policy": "p"}, "availability_migration_audit": []}
+            "availability_health": {"policy": "p"}, "availability_migration_audit": [],
+            "special_teams_candidate_version": proj.SPECIAL_TEAMS_VERSION,
+            "special_teams_candidate_coverage": {"DST": {"available": 2, "unavailable": 1}}}
     db = PersistDB()
     proj.persist_week(db, rows, full)
     inserted = [params for sql, params in db.conn.statements if sql.startswith("INSERT INTO nfl_dfs_projection_runs")][0]
     assert inserted[10].adapted["output_digest"] == proj.output_digest(rows, full)
     updated = [params for sql, params in db.conn.statements if sql.startswith("UPDATE nfl_dfs_projection_runs SET availability_manifest")][-1]
     assert updated[0].adapted["output_digest"] == proj.output_digest(rows, full)
+    for field in ("special_teams_candidate_version", "special_teams_candidate_coverage"):
+        assert inserted[10].adapted[field] == updated[0].adapted[field] == full[field]
 
 
 def run_main(monkeypatch, argv, reused, capsys):
