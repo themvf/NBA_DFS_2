@@ -17,9 +17,11 @@ export default function NflDfsPage() {
   ].map(([path, label]) => <Link key={path} className="rounded px-3 py-2 text-sm hover:bg-slate-50" href={`/dfs/nfl/${path}`}>{label}</Link>)}</div></details></nav><NflDfsClient />
     <footer aria-label="Build identity" className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-1 border-t pt-3 text-[11px] text-slate-500">
       <span>build <code className="font-mono text-slate-700">{shortCommitSha(build.commitSha)}</code></span>
-      <span>built <span className="font-mono">{build.buildTime}</span></span>
+      <details><summary className="min-h-11 cursor-pointer content-center font-semibold">Build details</summary><div className="flex flex-wrap gap-x-4 gap-y-1">
+      <span>{build.buildTime === 'unknown' ? 'Build time unavailable' : <>Built <span className="font-mono">{build.buildTime}</span></>}</span>
       <span>settings <span className="font-mono">{build.settingsSchemaVersion}</span></span>
       <span>optimizer <span className="font-mono">{build.optimizerVersion}</span></span>
       <span>scorer <span className="font-mono">{build.scorerVersion}</span></span>
+      </div></details>
     </footer></>;
 }

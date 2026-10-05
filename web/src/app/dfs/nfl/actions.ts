@@ -52,7 +52,8 @@ import { canonicalAuditJson } from '@/lib/nfl-dfs/audit-json';
 import { auditSlate, normalizeName as normalizeFieldName, type FieldAudit } from '@/lib/nfl-dfs/field-audit';
 import type { HistorySlate } from '@/lib/nfl-dfs/results-history';
 import { estimateRank, projectionError, scoreLineups, summarizeSet, type PositionError, type ScoreCurve, type ScoredLineup, type SetSummary } from '@/lib/nfl-dfs/slate-results';
-import { parseDkGameInfoKickoff } from '@/lib/nfl-dfs/workspace-stage';
+import { assertPregameProjectionRefresh, parseDkGameInfoKickoff } from '@/lib/nfl-dfs/workspace-stage';
+import { specialTeamsStatus } from '@/lib/nfl-dfs/special-teams-status';
 import {buildDraftKingsEligibilityManifest,type PlatformEligibilityDecision} from '@/lib/nfl-dfs/platform-eligibility';
 import { readWorkloadProjection, workloadPoolEligible } from "@/lib/nfl-dfs/workload-projection";
 import { getCalibratedSnapshots } from "@/db/nfl-dfs-calibrated";
@@ -921,6 +922,8 @@ function slateCheckFor(slate: NflWorkspaceSlate, context: { incompleteWarning: s
       skipped: slate.replacementUpside.skipped.map((s) => ({ name: s.name, reason: s.reason })) } : null,
     unmatched: slate.players.filter((p) => p.ffPlayerId == null).map((p) => p.name),
     pipeline: context.pipeline ?? null,
+    specialTeams: specialTeamsStatus({ players: slate.players, firstKickoff: slate.firstKickoff ?? null,
+      now: Date.now(), refreshAvailable: Boolean(slate.refreshAvailable) }),
     experimentalSources: slate.sourceAvailability ? [
       { label: 'Workload (experimental)', usable: slate.sourceAvailability.workload.usable, reason: slate.sourceAvailability.workload.reason },
       { label: 'Calibrated (experimental)', usable: slate.sourceAvailability.calibrated.usable, reason: slate.sourceAvailability.calibrated.reason },
@@ -1013,7 +1016,8 @@ export async function loadNflSalaryCsv(formData: FormData): Promise<NflWorkspace
 }
 
 async function persistSalarySlate(slate: NflDkSlate, digest: string, fileName: string,
-  comparisonRows: (typeof nflDfsSlatePlayers.$inferSelect)[] = []): Promise<NflWorkspaceSlate> {
+  comparisonRows: (typeof nflDfsSlatePlayers.$inferSelect)[] = [], pregameRefresh = false): Promise<NflWorkspaceSlate> {
+  if (pregameRefresh) assertPregameProjectionRefresh(slate.players.map(p => p.gameInfo));
   const run = await latestProjectionRun(slate.players);
   if (!run) throw new Error('No projection snapshot exists for this slate game week. Refresh projections before uploading.');
   const projectionRows = run
@@ -1153,6 +1157,9 @@ async function persistSalarySlate(slate: NflDkSlate, digest: string, fileName: s
     }),
   );
   const writes = [headerWrite, ...playerWrites];
+  // A refresh may have started before kickoff and spent time reading sources.
+  // Recheck immediately before the transaction instead of trusting the browser.
+  if (pregameRefresh) assertPregameProjectionRefresh(slate.players.map(p => p.gameInfo));
   if (writes.length) await db.batch(writes as [(typeof writes)[number], ...(typeof writes)[number][]]);
 
   // Trust, then verify. The transaction is a claim made by the driver; the row
@@ -1201,13 +1208,14 @@ export async function refreshNflSlateProjections(uploadId: string): Promise<NflW
   if (!upload) throw new Error('Saved salary slate not found.');
   const rows = await db.select().from(nflDfsSlatePlayers).where(eq(nflDfsSlatePlayers.uploadId, uploadId));
   assertSlateFullyPersisted(upload.playerCount, rows.length, upload.fileName);
+  assertPregameProjectionRefresh(rows.map(row => row.gameInfo));
   const slate: NflDkSlate = { format: upload.format as NflDkSlate['format'], games: upload.games as string[],
     teams: upload.teams as string[], warnings: upload.warnings as string[],
     players: rows.map(r => ({ dkPlayerId:r.dkPlayerId, name:r.name, position:r.position as NflDkSlate['players'][number]['position'],
       rosterPositions:r.rosterPositions as string[], teamAbbrev:r.team, opponent:r.opponent, homeAway:null,
       gameKey:r.gameKey, gameInfo:r.gameInfo, salary:r.salary, avgFptsDk:numeric(r.avgFptsDk), status:r.dkStatus, isOut:r.isOut,
       captain:r.captainDkPlayerId != null && r.captainSalary != null ? {dkPlayerId:r.captainDkPlayerId,salary:r.captainSalary}:null })) };
-  return persistSalarySlate(slate, upload.fileDigest, upload.fileName, rows);
+  return persistSalarySlate(slate, upload.fileDigest, upload.fileName, rows, true);
 }
 
 /** Resume an existing salary snapshot while reading the latest qualified candidates. */

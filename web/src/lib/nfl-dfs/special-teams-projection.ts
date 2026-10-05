@@ -1,4 +1,5 @@
 export const SPECIAL_TEAMS_VERSION = 'nfl-special-teams-pregame-v1';
+export const MISSING_SPECIAL_TEAMS_REASON = 'No matchup forecast was saved in this projection run.';
 
 export type SpecialTeamsProjection = {
   version: typeof SPECIAL_TEAMS_VERSION;
@@ -22,7 +23,7 @@ export function readSpecialTeamsProjection(
 ): { projection: SpecialTeamsProjection | null; reason: string | null } {
   if (position !== 'DST' && position !== 'K') return { projection: null, reason: null };
   const raw = record(featureSnapshot) ? featureSnapshot.special_teams_candidate : null;
-  if (!record(raw)) return { projection: null, reason: 'Refresh projections to create the saved DST/kicker candidate.' };
+  if (!record(raw)) return { projection: null, reason: MISSING_SPECIAL_TEAMS_REASON };
   if (raw.status === 'unavailable') {
     const detail = record(raw.feature_snapshot) ? raw.feature_snapshot.reason : null;
     return { projection: null, reason: typeof detail === 'string' ? detail : 'Required pregame inputs are missing.' };
@@ -31,7 +32,7 @@ export function readSpecialTeamsProjection(
       !finite(raw.mean) || !finite(raw.p10) || !finite(raw.p50) || !finite(raw.p90) ||
       !finite(raw.boom) || raw.boom < 0 || raw.boom > 1 || raw.p10 > raw.p50 || raw.p50 > raw.p90 ||
       !record(raw.feature_snapshot) || raw.feature_snapshot.authority !== 'candidate_only') {
-    return { projection: null, reason: 'Saved DST/kicker candidate failed its version or scoring checks.' };
+    return { projection: null, reason: 'The saved matchup forecast failed its version or scoring checks.' };
   }
   return { projection: raw as SpecialTeamsProjection, reason: null };
 }

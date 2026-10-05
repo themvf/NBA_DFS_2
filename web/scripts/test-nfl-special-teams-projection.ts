@@ -13,7 +13,7 @@ const snapshot = (position: 'DST' | 'K', mean: number) => ({special_teams_candid
 }});
 assert.equal(readSpecialTeamsProjection(snapshot('DST', 9), 'DST').projection?.mean, 9);
 assert.equal(readSpecialTeamsProjection(snapshot('DST', -2), 'DST').projection?.mean, -2);
-assert.match(readSpecialTeamsProjection({}, 'DST').reason ?? '', /Refresh projections/);
+assert.match(readSpecialTeamsProjection({}, 'DST').reason ?? '', /No matchup forecast was saved/);
 assert.match(readSpecialTeamsProjection(snapshot('K', 9), 'DST').reason ?? '', /failed/);
 assert.match(readSpecialTeamsProjection({special_teams_candidate: {...snapshot('K', 9).special_teams_candidate, p90: 1}}, 'K').reason ?? '', /failed/);
 

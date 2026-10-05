@@ -166,9 +166,10 @@ type Props = {
   /** Built once by the pool so the drawer cannot disagree with the row. */
   valueIndex: ValueIndex;
   onClose: () => void;
+  useMatchupForecast?: boolean;
 };
 
-export default function PlayerExplanationPanel({ uploadId, player, slatePlayers, valueIndex, onClose }: Props) {
+export default function PlayerExplanationPanel({ uploadId, player, slatePlayers, valueIndex, onClose, useMatchupForecast = true }: Props) {
   // Keyed by the player id we last fetched for, so a stale response from a
   // previously-opened player can never be painted under this one's header.
   const [state, setState] = useState<{ id: number | null; data: NflProjectionExplanation | null }>({ id: null, data: null });
@@ -208,6 +209,9 @@ export default function PlayerExplanationPanel({ uploadId, player, slatePlayers,
   const e = data && data.ok ? data : null;
 
   if (!player) return null;
+  const specialTeams = useMatchupForecast ? player.specialTeams : null;
+  const rawImplied = specialTeams?.feature_snapshot[player.position === 'DST' ? 'opponent_implied_total' : 'team_implied_total'];
+  const implied = typeof rawImplied === 'number' && Number.isFinite(rawImplied) ? rawImplied : null;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true"
@@ -228,6 +232,13 @@ export default function PlayerExplanationPanel({ uploadId, player, slatePlayers,
         </div>
 
         <div className="space-y-3 p-4">
+          {(player.position === 'DST' || player.position === 'K') && useMatchupForecast ? <section aria-label="Player forecast source" className="rounded-lg border bg-white p-3 text-sm">
+            <h3 className="font-semibold">{specialTeams ? player.position === 'DST' ? 'Opponent forecast' : 'Team scoring forecast' : 'Historical forecast'}</h3>
+            <p className="mt-1">Mean {fmt(specialTeams?.mean ?? player.ourProj)} · Floor {fmt(specialTeams?.p10 ?? player.floorFpts)} · Ceiling {fmt(specialTeams?.p90 ?? player.ceilingFpts)}</p>
+            {specialTeams ? <><p className="mt-1 text-xs">{player.position === 'DST' ? 'Opponent' : 'Team'} implied points: {fmt(implied)}. Boom rate: {pct(specialTeams.boom)}.</p><p className="mt-1 text-xs text-slate-600">This saved matchup forecast is used with Our projections. Tournament benefit has not been established.</p></>
+              : <p className="mt-1 text-xs text-slate-600">{player.specialTeamsReason ?? 'No matchup forecast was saved.'} The pool uses the saved historical forecast.</p>}
+            {specialTeams ? <details className="mt-2 text-xs"><summary className="min-h-11 cursor-pointer content-center font-semibold">Saved forecast inputs</summary><pre className="max-h-56 overflow-auto whitespace-pre-wrap break-all">{JSON.stringify(specialTeams.feature_snapshot, null, 2)}</pre></details> : null}
+          </section> : null}
           {player.playerSignals?.length ? <section className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm">
             <h3 className="font-semibold text-blue-950">Play opportunity signals</h3>
             <ul className="mt-2 space-y-1 text-xs text-blue-950">{player.playerSignals.map(signal =>
@@ -260,7 +271,8 @@ export default function PlayerExplanationPanel({ uploadId, player, slatePlayers,
             </div>
           )}
 
-          {e && <Breakdown e={e} player={player} peers={peers} valueIndex={valueIndex} />}
+          {e && (specialTeams ? <details><summary className="min-h-11 cursor-pointer content-center text-sm font-semibold">Historical baseline details</summary><p className="mb-3 text-xs text-slate-600">These explain the historical baseline. The matchup forecast above supplies the points used in Our projections.</p><Breakdown e={e} player={player} peers={peers} valueIndex={valueIndex} /></details>
+            : <Breakdown e={e} player={player} peers={peers} valueIndex={valueIndex} />)}
         </div>
       </div>
     </div>
