@@ -34,3 +34,12 @@ largely from one-fix-per-PR pushes by parallel sessions.
   touch `web/` anyway (a workflow edit regenerates
   `web/src/data/workflow-manifest.json`), so this saves roughly 1 build in 4;
   the batching rule above is the main saving.
+
+## Prediction evidence and decision quality
+
+- Before recommending a player, strategy, or bet, verify that the calculation models the exact requested outcome. Yardage, explosive gains, touchdown probability, longest touchdown, and game-leader probability are distinct outcomes.
+- Inspect source coverage, canonical identities and joins, decision-time boundaries, player availability, expected opportunities, opponent context, and material missing factors before drawing a conclusion. Preserve source provenance and frozen pregame inputs for later audits.
+- Distinguish observed statistics, manually chosen assumptions, descriptive rankings, and validated predictions. If an important calculation is missing, investigate it within the authorized scope and disclose the gap before recommending an action.
+- For probabilities and edges, verify relevant historical performance and calibration using information available before each historical decision. Simulation count and mechanical consistency checks do not establish predictive accuracy. Label estimates without this evidence as exploratory; do not imply reliable profitability.
+- Define acceptance criteria before building analytical features and verify the path from source data to displayed assessments. Check rare outcomes using eligible opportunities and the distribution of outcomes, not just averages or recent maxima.
+- For postgame reviews, preserve original predictions and compare them with verified results. Separate outcome variance from demonstrated data, modeling, and communication failures. Do not tune a model only to explain the latest missed result.
