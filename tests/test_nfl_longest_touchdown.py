@@ -191,3 +191,31 @@ def test_grade_rejects_baseline_frozen_at_a_different_decision_time():
     baseline = {**forecast, "decision_at": "2025-09-01T00:00:00Z"}
     with pytest.raises(ValueError, match="decision time"):
         grade({"plays": [play(1, field=20, td=True)]}, forecast, baseline)
+
+
+def test_newcomer_share_counts_players_absent_from_prior_three_team_games():
+    from model.nfl_longest_touchdown import newcomer_share
+    rows = []
+    for g in range(5):
+        for k, actor in enumerate(["a", "a", "a", "new" if g == 4 else "a"]):
+            rows.append({"game_id": f"G{g}", "kickoff": f"2025-09-0{g+1}T00:00:00Z", "season": 2025,
+                         "team": "ATL", "action": "run", "actor": actor})
+    share = newcomer_share(rows)
+    # Games 3 and 4 have three prior games; one of their eight carries is new.
+    assert share["run"] == 1/8 and share["pass"] == 0.
+
+
+def test_newcomer_reserve_gives_unlisted_scorers_nonzero_mass_and_keeps_accounting():
+    snapshot, request = fixture()
+    extra = [play(10_000+i, team="ATL", actor=f"depth{i}", field=50, td=(i % 5 == 0),
+                  game_id=f"2025_0{2+i//10}_ATL_NO", kickoff=f"2025-09-{10+i//10}T00:00:00Z",
+                  canonical_week=2+i//10, week=2+i//10)
+             for i in range(40)]
+    snapshot = {"plays": snapshot["plays"] + extra}
+    off = simulate(snapshot, request, Settings(draws=400, newcomer_reserve=False))
+    on = simulate(snapshot, request, Settings(draws=400, newcomer_reserve=True))
+    share = {p["identity"]: p for p in on["players"]}
+    assert {p["identity"]: p for p in off["players"]}["OTHER:ATL"]["mean_opportunities"] == 0
+    assert share["OTHER:ATL"]["mean_opportunities"] > 0
+    total = sum(p["longest_td_win_share"] for p in on["players"]) + on["no_scrimmage_td_probability"]
+    assert abs(total - 1) < 1e-9

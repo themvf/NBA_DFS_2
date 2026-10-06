@@ -55,6 +55,11 @@ class Settings:
     role_prior_opportunities: float = 20.
     half_life_weeks: float = 6.
     max_snaps: int = 220
+    # v1 hands every team opportunity to a named supported player, so a scorer
+    # outside that list (newcomer, depth player, unsupported roster name) has a
+    # structural zero. When on, OTHER:TEAM receives the share of opportunities
+    # that historically went to players absent from the team's prior three games.
+    newcomer_reserve: bool = False
 
     def __post_init__(self):
         if self.draws < 1 or self.max_snaps < 1:
@@ -143,6 +148,33 @@ def prepare(snapshot: dict, decision_at: str, *, retrospective: bool = False) ->
     return rows, dict(audit)
 
 
+def newcomer_share(rows: list[dict]) -> dict:
+    """Per action, the share of team opportunities taken by players who had no
+    rushing/receiving opportunity in that team's previous three games.
+
+    Computed only from the supplied (pre-decision) training rows, pooled across
+    teams, within each team-season (offseason churn is not an in-season
+    newcomer), so it is walk-forward safe. Games without three prior same-season
+    team games are skipped.
+    """
+    by_team = defaultdict(lambda: defaultdict(list))
+    kickoff = {}
+    for r in rows:
+        if r["action"] in ("run", "pass") and r["actor"]:
+            by_team[r["team"], int(r["season"])][r["game_id"]].append(r)
+            kickoff[r["game_id"]] = timestamp(r["kickoff"])
+    counts = {"run": [0, 0], "pass": [0, 0]}
+    for games in by_team.values():
+        ordered = sorted(games, key=lambda g: kickoff[g])
+        for i in range(3, len(ordered)):
+            seen = {r["actor"] for g in ordered[i-3:i] for r in games[g]}
+            for r in games[ordered[i]]:
+                c = counts[r["action"]]
+                c[0] += r["actor"] not in seen
+                c[1] += 1
+    return {a: (c[0]/c[1] if c[1] else 0.) for a, c in counts.items()}
+
+
 class TouchdownModel:
     def __init__(self, rows: list[dict], season: int, week: int, settings: Settings):
         self.rows, self.season, self.week, self.cfg = rows, season, week, settings
@@ -156,6 +188,7 @@ class TouchdownModel:
         self.cache = {}
         self.weights = {}
         self.starts = []
+        self.reserve = newcomer_share(rows) if settings.newcomer_reserve else {"run": 0., "pass": 0.}
         for r in rows:
             age = max(0, week - int(r["week"])) if int(r["season"]) == season else 0
             w = .5 ** (age / settings.half_life_weeks) if int(r["season"]) == season else settings.prior_season_weight ** (season - int(r["season"]))
@@ -361,7 +394,7 @@ def simulate(snapshot: dict, request: dict, settings: Settings = Settings()) -> 
                 roles = model.role_pool(team, action, field, diff, active[team])
                 if action == "pass" and template.get("had_sack"):
                     event = template
-                elif roles:
+                elif roles and not (model.reserve[action] and rng.random() < model.reserve[action]):
                     participant = model.pick(rng, roles)
                     actor, position = participant["actor"], participant["position"]
                     opportunities[draw, id_index[actor]] += 1
@@ -457,6 +490,7 @@ def simulate(snapshot: dict, request: dict, settings: Settings = Settings()) -> 
         "no_scrimmage_td_probability": float(np.mean(~any_td)),
         "mean_team_scores": dict(zip(teams, scores.mean(axis=0).tolist())),
         "diagnostics": dict(diagnostics), "sample_ledgers": sample_ledgers,
+        "newcomer_reserve": model.reserve,
         "market_inputs_used": False, "roster_evidence": request.get("roster_evidence", "caller_supplied_unverified"),
         "limitations": ["Scrimmage rushing/receiving TDs only; excludes defensive and return scores, laterals, safeties, overtime and two-point plays.",
             "Possession mechanics approximate kicks, halftime receiving order, clock, penalties, turnovers and extra points; not a full football rules engine.",
@@ -490,4 +524,11 @@ def evaluate(prediction: dict, actual_rows: list[dict]) -> dict:
             "winners": sorted(winners), "brier_score": sum((probabilities[i]-observed[i])**2 for i in probabilities),
             "log_loss": -sum(observed[i]*math.log(max(probabilities[i], 1e-12)) for i in probabilities),
             "top_choice_hit": prediction["players"][0]["identity"] in winners,
-            "calibration_rows": [{"identity": i, "probability": probabilities[i], "observed_share": observed[i]} for i in probabilities]}
+            "calibration_rows": [{"identity": i, "probability": probabilities[i], "observed_share": observed[i]} for i in probabilities],
+            # Per-player TD events carry far more information than one winner per
+            # game; they test whether the simulated TD rates themselves are right.
+            "td_event_rows": [{"identity": p["identity"], "any_td_probability": p["any_td_probability"],
+                               "td_40_plus_probability": p["td_40_plus_probability"],
+                               "scored": longest.get(p["identity"], 0) > 0,
+                               "scored_40_plus": longest.get(p["identity"], 0) >= 40}
+                              for p in prediction["players"] if "any_td_probability" in p]}

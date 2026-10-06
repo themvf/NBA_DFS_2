@@ -172,3 +172,32 @@ The 7 MB PBP inputs stay local and are identified by `source_sha256`.
 For the postgame audit, capture PBP after the game and run `grade` on
 `forecast.json` with `baseline.json`; do not select the best sensitivity after
 seeing the result. The outcome is pending and no calibration gate has passed.
+
+## Improvement round 1 — newcomer reserve (registered 2026-10-06, before results)
+
+**Defect.** v1 gives every team opportunity to a named, supported player. A
+scorer outside that list (a depth player, an in-season newcomer, one of the ten
+unsupported Thursday names) therefore has probability exactly zero, and when one
+wins, log loss hits the 1e-12 floor (~27.6). The first two-game 2024 check hit
+this on TB@ATL week 5 (a 45-yard overtime-era TD by a player outside the
+inferred roster).
+
+**Fix (`Settings.newcomer_reserve`, off by default so v1 forecasts reproduce).**
+`OTHER:TEAM` receives, per action, the share of team carries/targets that went
+to players absent from that team's prior three same-season games. It is computed
+from the pre-decision training rows only. Measured on the Thursday input it is
+4.8% of carries and 4.0% of targets; pooling across seasons would have inflated
+it with offseason churn, so the estimate is within team-season.
+
+**Evaluation (frozen before any result is read).**
+- Development: 2024 weeks 4–18, current v1 vs v1 + reserve, same games, same
+  seed, 2,000 draws. Adopt the reserve only if its mean log loss is lower.
+- Confirmation: 2025 weeks 4–18, untouched by any tuning. Report the paired
+  model-minus-v1 log-loss difference with a game-level bootstrap 95% CI, and the
+  same comparison against the independent-TD baseline. Promotion of the
+  reserve as default requires the 2025 CI to exclude zero in its favour.
+- Always reported, gating nothing: Brier, top-choice hit rate, how often the
+  winner was priced at zero or was `OTHER`, and per-player any-TD and 40+ TD
+  calibration (many more outcomes than one winner per game).
+- Retrospective runs reconstruct rosters from prior usage and use corrected
+  PBP; they are research evidence, not archived pregame forecasts.

@@ -278,6 +278,7 @@ def main():
     for name in ('forecast','backtest'):
         p = sub.add_parser(name); p.add_argument('--input',type=Path,required=True)
         p.add_argument('--draws',type=int,default=2000); p.add_argument('--seed',type=int,default=20261006)
+        p.add_argument('--newcomer-reserve',action='store_true')
         if name=='forecast':
             p.add_argument('--request',type=Path,required=True); p.add_argument('--sensitivity',action='store_true')
         else:
@@ -296,7 +297,8 @@ def main():
             result = capture(db,args.minimum_season,args.maximum_season)
     else:
         snapshot = read(args.input)
-        settings = Settings(draws=args.draws,seed=args.seed) if hasattr(args,'draws') else None
+        settings = (Settings(draws=args.draws,seed=args.seed,newcomer_reserve=getattr(args,'newcomer_reserve',False))
+                    if hasattr(args,'draws') else None)
         if args.command=='grade':
             result = grade(snapshot,read(args.forecast),read(args.baseline) if args.baseline else None)
         elif args.command=='baseline':
