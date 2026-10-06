@@ -67,12 +67,33 @@ def test_the_digest_covers_everything_a_consumer_reads():
     assert proj.output_digest([player(), player(2)], manifest()) != base, "the player set"
 
 
-def test_a_persisted_row_with_an_evidence_digest_matches_the_in_memory_row():
-    # persist_week stores the evidence by digest; a row read back carries only the digest.
-    evidence = {"home": "CLE", "ctx": [1, 2]}
+def test_the_evidence_run_timestamp_and_self_hash_do_not_block_reuse():
+    # 2026-10-05..06: 0 of 43 availability runs reused. Consecutive runs
+    # differed only in each game's evidence as_of_at and manifest_hash (a hash
+    # over the whole evidence, timestamp included).
+    def stamped(as_of, manifest_hash, ctx=(1, 2)):
+        row = player()
+        row["feature_snapshot"]["matchup"]["evidence"] = {
+            "home": "CLE", "ctx": list(ctx), "as_of_at": as_of, "manifest_hash": manifest_hash}
+        return row
+    first = proj.output_digest([stamped("2026-10-06T11:07:55+00:00", "7fd5")], manifest())
+    later = proj.output_digest([stamped("2026-10-06T12:12:54+00:00", "008a")], manifest())
+    assert first == later
+    changed = proj.output_digest([stamped("2026-10-06T12:12:54+00:00", "9c60", ctx=(1, 3))], manifest())
+    assert changed != first, "a real change inside the evidence still blocks reuse"
+
+
+def test_a_stored_row_uses_its_stored_evidence_digest_deterministically():
+    # A row read back from the database carries only the full-document digest;
+    # it is used as-is (not comparable to an in-memory digest, by design).
     stored = player()
-    stored["feature_snapshot"] = {"seed": 1, "matchup": {"evidence_digest": proj.artifact_digest(evidence), "shadow": None}}
-    assert proj.output_digest([stored], manifest()) == proj.output_digest([player()], manifest())
+    stored["feature_snapshot"] = {"seed": 1, "matchup": {"evidence_digest": "abc", "shadow": None}}
+    again = player()
+    again["feature_snapshot"] = {"seed": 1, "matchup": {"evidence_digest": "abc", "shadow": {"delta": 9}}}
+    assert proj.output_digest([stored], manifest()) == proj.output_digest([again], manifest())
+    other = player()
+    other["feature_snapshot"] = {"seed": 1, "matchup": {"evidence_digest": "abd", "shadow": None}}
+    assert proj.output_digest([other], manifest()) != proj.output_digest([stored], manifest())
 
 
 def test_special_teams_readiness_changes_reuse_identity_even_without_players():
