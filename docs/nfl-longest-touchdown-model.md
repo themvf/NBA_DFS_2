@@ -179,8 +179,8 @@ seeing the result. The outcome is pending and no calibration gate has passed.
 scorer outside that list (a depth player, an in-season newcomer, one of the ten
 unsupported Thursday names) therefore has probability exactly zero, and when one
 wins, log loss hits the 1e-12 floor (~27.6). The first two-game 2024 check hit
-this on TB@ATL week 5 (a 45-yard overtime-era TD by a player outside the
-inferred roster).
+this on TB@ATL week 5 (KhaDarel Hodge's 45-yard overtime TD; he was outside the
+inferred roster). Overtime is not simulated but is graded, a known mismatch.
 
 **Fix (`Settings.newcomer_reserve`, off by default so v1 forecasts reproduce).**
 `OTHER:TEAM` receives, per action, the share of team carries/targets that went
