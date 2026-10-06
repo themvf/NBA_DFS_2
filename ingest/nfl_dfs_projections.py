@@ -63,6 +63,16 @@ DECISION_VOLATILE_KEYS = frozenset({
     "qualifying_source_snapshot_ids", "display_only_source_snapshot_ids",
 })
 
+# Matchup evidence fields stamped by the run itself. model/nfl_matchup_features
+# writes the run's as_of_at into each game's evidence and then hashes the whole
+# document into manifest_hash, so both change on every run while nothing else
+# does. Comparing them made reuse impossible: 0 of 43 availability runs reused
+# between 2026-10-05 and 10-06, although each consecutive pair differed ONLY in
+# these two fields. Every other evidence field still counts, and manifest_hash
+# covers nothing that is not also in the evidence, so a real change still
+# changes the digest.
+EVIDENCE_VOLATILE_KEYS = frozenset({"as_of_at", "manifest_hash"})
+
 _OUTPUT_FIELDS = (
     "player_id", "player_gsis_id", "player_name", "normalized_name", "team", "opponent",
     "position", "projection_status", "history_games", "prior_games", "model_proj_fpts",
@@ -76,9 +86,12 @@ def output_digest(projections: list[dict[str, Any]], manifest: Mapping[str, Any]
 
     Covers every player row column, the availability transfer result, the
     availability decision minus its capture identifiers, the frozen matchup
-    evidence (by digest), and the run's model version and configuration.
-    Excludes the research-only matchup shadow and the capture ids/timestamps
-    that differ between two captures of the same facts.
+    evidence minus the run's own timestamp and self-hash, and the run's model
+    version and configuration. Excludes the research-only matchup shadow and
+    the capture ids/timestamps that differ between two captures of the same
+    facts. Computed from in-memory rows (the evidence dict); a row read back
+    from the database carries only the full-document evidence_digest, which is
+    used as-is and is not comparable to an in-memory digest.
     """
     decisions = manifest.get("availability_decisions") or {}
     rows = []
@@ -87,7 +100,8 @@ def output_digest(projections: list[dict[str, Any]], manifest: Mapping[str, Any]
         if isinstance(snapshot, dict) and isinstance(snapshot.get("matchup"), dict):
             matchup = snapshot["matchup"]
             evidence = matchup.get("evidence")
-            digest = artifact_digest(evidence) if isinstance(evidence, dict) else matchup.get("evidence_digest")
+            digest = (artifact_digest({k: v for k, v in evidence.items() if k not in EVIDENCE_VOLATILE_KEYS})
+                      if isinstance(evidence, dict) else matchup.get("evidence_digest"))
             snapshot = {**snapshot, "matchup": {"evidence_digest": digest}}
         decision = decisions.get(str(row["player_id"]))
         if isinstance(decision, dict):

@@ -414,6 +414,12 @@ Done in code (this section's commit) and on GitHub:
   (36 h) readers assume. The Sleeper capture, monitor and freeze steps are
   unchanged; `--always-persist` writes regardless. A reused run prints a
   GitHub notice and `persisted: false`, never a silent no-op.
+  **The first version never fired (fixed 2026-10-06):** 0 of 43 runs
+  reused, because each game's matchup evidence carries the run's own
+  `as_of_at` and a `manifest_hash` over the whole document, and those two
+  fields were the only difference between consecutive runs.
+  `EVIDENCE_VOLATILE_KEYS` leaves them out of the comparison; replayed on six
+  real runs, four of five hourly runs reuse and the fifth carried a real change.
 - **`cfb_context_bootstrap` updates only capture rows whose `pregame_state`
   changes.** It ran after every capture and rewrote all 12k rows each time
   (11.9M updates, 98% not HOT).
