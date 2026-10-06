@@ -30,7 +30,8 @@ def test_dry_run_never_calls_export_or_publisher(tmp_path):
         raise AssertionError("dry run executed a subprocess")
     result, code = run_cycle(tmp_path,now=NOW,persist=True,dry_run=True,runner=unexpected)
     assert code == 0 and result["status"] == "dry_run_ready"
-    assert len(result["planned_steps"]) == 5
+    assert len(result["planned_steps"]) == 6
+    assert result["planned_steps"][4]["name"] == "joint-constraint-comparison"
     assert not result["model_refitted"] and not result["production_changed"]
 
 
