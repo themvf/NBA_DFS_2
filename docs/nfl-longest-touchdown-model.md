@@ -201,3 +201,31 @@ it with offseason churn, so the estimate is within team-season.
   calibration (many more outcomes than one winner per game).
 - Retrospective runs reconstruct rosters from prior usage and use corrected
   PBP; they are research evidence, not archived pregame forecasts.
+
+### Development result (2024 weeks 4–18, 224 games, read 2026-10-06)
+
+| | v1 | v1 + reserve |
+|---|---:|---:|
+| mean log loss | 4.566 | **3.043** |
+| median log loss | **2.769** | 2.810 |
+| mean log loss, floor at 1/2000 instead of 1e-12 | 3.268 | **3.043** |
+| winner priced at exactly zero | 14 | **0** |
+| mean Brier | 0.928 | 0.925 |
+| top-choice hit rate | 9.8% | 10.3% |
+| any-TD Brier (5,562 player-games) | 0.1203 | 0.1202 |
+
+Paired reserve-minus-v1 log loss: −1.52, 95% CI [−2.32, −0.80]. Per the rule,
+the reserve is adopted for the 2025 confirmation. Read it honestly: the whole gain
+comes from removing 14 zero-priced catastrophes. The reserve is slightly worse in
+a typical game (median difference +0.04; better in 83 of 224), because it moves
+about 4–5% of probability away from named players. It is insurance against
+blow-ups, not a sharper forecast.
+
+Two findings outside the registered question, recorded as observations only:
+- **v1 was not clearly better than the simple baseline**: model minus baseline
+  −0.07, CI [−0.31, +0.07]. The reserve's large lead over the baseline (−1.59)
+  is mostly the same zero-pricing defect, which the baseline also has, so it is
+  not evidence that the simulation engine beats a simple TD-count model.
+- Per-player any-TD probabilities are well calibrated from 0% to 50%, but the
+  ≥50% bin is overconfident (predicted 0.53–0.54, observed 0.37–0.40, n=73–100).
+  The heaviest-usage scorers are overpriced. Not acted on; a separate study.
