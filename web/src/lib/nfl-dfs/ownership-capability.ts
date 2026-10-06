@@ -9,6 +9,7 @@
  * combined into a single per-player percentage for scoring or reporting.
  */
 
+import { ownershipAccuracyReason, type OwnershipCalibration } from './ownership-calibration';
 export type OwnershipCapability = "validated" | "heuristic_uncalibrated" | "unavailable";
 
 export interface NflOwnershipInput {
@@ -69,7 +70,7 @@ export interface EligibleOwnershipPlayer {
 export function assessOwnership(
   eligible: EligibleOwnershipPlayer[],
   ownership: NflOwnershipInput[],
-  options: { thresholds?: OwnershipValidationThresholds; optIntoHeuristic?: boolean; heuristic?: boolean; format?: "classic" | "showdown" } = {},
+  options: { thresholds?: OwnershipValidationThresholds; optIntoHeuristic?: boolean; heuristic?: boolean; format?: "classic" | "showdown"; calibration?: OwnershipCalibration } = {},
 ): OwnershipAssessment {
   const thresholds = options.thresholds ?? DEFAULT_OWNERSHIP_THRESHOLDS;
   const format = options.format ?? "showdown";
@@ -107,7 +108,8 @@ export function assessOwnership(
   // Coverage: fraction of eligible players with any validated ownership value.
   const covered = eligible.filter((p) => {
     const row = byId.get(p.playerId);
-    return row && (row.flexPct !== null || row.captainPct !== null);
+    return row && (options.heuristic ? row.flexPct !== null || row.captainPct !== null
+      : row.flexPct !== null && (format !== 'showdown' || row.captainPct !== null));
   });
   const coverage = eligible.length ? covered.length / eligible.length : 0;
 
@@ -158,7 +160,9 @@ export function assessOwnership(
   const flexOk = Math.abs(flexTotal - flexSlots) <= thresholds.flexTotalTolerance * (flexSlots / 5);
   if (!flexOk) errors.push(`Flex ownership totals ${(flexTotal * 100).toFixed(0)}%, outside the expected ~${flexSlots * 100}% (${flexSlots} roster slots).`);
 
-  const validated = errors.length === 0
+  const accuracyReason = ownershipAccuracyReason(options.calibration, format, ownership.map(row => row.source));
+  if (accuracyReason) warnings.push(accuracyReason);
+  const validated = !accuracyReason && errors.length === 0
     && coverage >= thresholds.minCoverage
     && massCoverage >= thresholds.minMassCoverage
     && captainOk && flexOk;
@@ -166,7 +170,7 @@ export function assessOwnership(
   if (validated) {
     return {
       capability: "validated", source, asOf, coverage, massCoverage, captainTotal, flexTotal,
-      errors, warnings, features: { leverage: true, ownershipFade: true, duplicationModel: true },
+      errors, warnings, features: { leverage: true, ownershipFade: true, duplicationModel: false },
     };
   }
 

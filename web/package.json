@@ -137,6 +137,8 @@
     "test:nfl-projection-cadence": "node --import tsx ./scripts/test-nfl-projection-cadence.ts",
     "test:cron-dispatch": "node --import tsx ./scripts/test-cron-dispatch.ts",
     "test:nfl-ownership-prior": "node --import tsx ./scripts/test-nfl-ownership-prior.ts",
+    "test:nfl-live-review": "node --import tsx ./scripts/test-nfl-live-review.ts",
+    "test:nfl-latest-eligibility": "node --import tsx ./scripts/test-nfl-latest-eligibility.ts",
     "calibrate:nfl-ownership": "tsx --conditions=react-server scripts/nfl-ownership-calibration.ts",
     "test:nfl-defensive-capture-status": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-defensive-capture-status.ts",
     "test:nfl-captain-minimum": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-captain-minimum.ts",

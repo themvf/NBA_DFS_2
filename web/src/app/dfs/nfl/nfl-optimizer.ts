@@ -180,6 +180,8 @@ export type NflOptimizerSettings = {
   puntOverrides?: PuntOverride[];
   /** Phase 2: resolved ownership capability. When not "validated", leverage is disabled. */
   ownershipCapability?: OwnershipCapability;
+  /** Calibrated marginal ownership alone does not qualify a joint field/duplication model. */
+  duplicationModelValidated?: boolean;
   /**
    * Phase 2: whether the ownership penalty may be applied, resolved by the
    * SERVER from the assessment's features (validated feeds, or a declared
@@ -269,6 +271,8 @@ export type NflLineupSlot = {
 
 export type NflGeneratedLineup = {
   lineupNumber: number;
+  /** Concrete construction rules, frozen for constraint-preserving research replay. */
+  constructionContract?: CompiledArchetype | null;
   slots: NflLineupSlot[];
   playerIds: number[];
   totalSalary: number;
@@ -302,6 +306,8 @@ export type NflEligibilityDecision = {
 
 export type NflOptimizerResult = {
   lineups: NflGeneratedLineup[];
+  /** Frozen leader identities: reselection must preserve their automatic coverage. */
+  topProjectedPlayerIds?: number[];
   warnings: string[];
   sourceCoverage: { requested: number; direct: number; fallback: number; excluded: number };
   /** Phase 1: eligibility decisions for every input player (present when a punt policy is applied). */
@@ -921,6 +927,7 @@ function buildOne(
   const bringBack = qb ? chosen.find((entry) => ["RB", "WR", "TE"].includes(entry.player.position) && entry.player.team === qb.opponent)?.player.name ?? null : null;
   return {
     lineupNumber,
+    constructionContract: compiled,
     slots: chosen,
     playerIds: chosen.map((entry) => entry.player.dkPlayerId),
     totalSalary: chosen.reduce((sum, entry) => sum + entry.salary, 0),
@@ -1377,7 +1384,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   const exactDuplicates = findExactDuplicates(lineups);
   if (exactDuplicates.length) warnings.push(`${exactDuplicates.length} exact-duplicate lineup pair(s) detected — this should not happen; report the run.`);
   const overlap = computeMaxOverlap(lineups);
-  const ownershipValidated = (settings.ownershipCapability ?? "unavailable") === "validated";
+  const ownershipValidated = settings.duplicationModelValidated === true && settings.ownershipCapability === "validated";
   const ownershipByPlayer = new Map(pool.filter((p) => ownershipPct(p) != null).map((p) => [p.dkPlayerId, (ownershipPct(p) as number) / 100]));
   const duplication = ownershipByPlayer.size
     ? estimateDuplication(lineups.map((l) => ({ lineupNumber: l.lineupNumber, playerIds: l.playerIds, totalSalary: l.totalSalary })), { ownershipValidated, ownershipByPlayer })
@@ -1392,5 +1399,5 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   const archetypePlan = planned.length ? [...requestedById].map(([archetypeId, requested]) => ({ archetypeId, label: ARCHETYPE_LABELS[archetypeId], requested,
     realized: lineups.filter((lineup) => lineup.archetype?.id === archetypeId).length })) : undefined;
 
-  return { lineups, warnings, sourceCoverage: coverage, eligibility, exposureReport, salaryBandReport, duplication, maxPairwiseOverlap: overlap, archetypePlan };
+  return { lineups, warnings, sourceCoverage: coverage, eligibility, exposureReport, salaryBandReport, duplication, maxPairwiseOverlap: overlap, archetypePlan, topProjectedPlayerIds: topProjectedTargets.map(player => player.dkPlayerId) };
 }
