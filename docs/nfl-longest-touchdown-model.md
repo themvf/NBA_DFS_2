@@ -229,3 +229,33 @@ Two findings outside the registered question, recorded as observations only:
 - Per-player any-TD probabilities are well calibrated from 0% to 50%, but the
   ≥50% bin is overconfident (predicted 0.53–0.54, observed 0.37–0.40, n=73–100).
   The heaviest-usage scorers are overpriced. Not acted on; a separate study.
+
+### Why v1 does not beat the simple baseline (diagnosed 2026-10-06, 2024 dev games)
+
+1. **On a fair scale it is a tie, not a loss.** Both models price some actual
+   winners at exactly zero (model 16 games, baseline 17), and the 1e-12 floor
+   lets those few games dominate the mean. With both floored at 1/2000 instead:
+   model 3.240, baseline 3.219. Probability on the actual winner: 6.8% vs 7.1%.
+2. **The two models mostly agree.** Player win shares correlate 0.875. Both are
+   built from the same ingredients (workload, TD rate per opportunity, empirical TD
+   distances); field position, score state and defense change the ranking little.
+   Margin is no better by winning distance (1–9, 10–19, 20–39, 40+ all within ±0.06).
+3. **The model has better workload information, then gives it back through
+   bias.** Per-player opportunity MAE is 2.59 vs 2.71 for the baseline's
+   three-game average, and its calibration slope is better (0.82 vs 0.79). But it
+   hands named players 4.82 opportunities a game against 4.40 actual (+9.5%),
+   which inflates TD chances where it matters: the top usage player's any-TD is
+   48% predicted vs 40% observed, its 15–25% win-share bin wins 8.5% of the time
+   (n=80, baseline 13.3%), and no-TD games are priced at 0.4% vs 0.9% actual.
+4. **The +9.5% has three measured sources:**
+   - ~4.5%: newcomers and depth players (the missing `OTHER` share). The reserve
+     brings named workload to 4.61.
+   - ~2%: every non-sack pass gets a receiver. 3.8% of 2024 pass plays have no
+     targeted player (throwaways and similar); sacks are handled, these are not.
+   - ~2%: slightly too many plays (62.3 run+pass per team vs 61.1 actual).
+5. **Ceiling.** Even a good forecast puts only ~7% on the realised winner; most
+   of the outcome is noise, so a real edge over the baseline will be small and
+   needs many games to show.
+
+Not yet fixed or tested: dropping the receiver on no-target pass templates, and
+the play-count excess. Each needs its own development run before use.
