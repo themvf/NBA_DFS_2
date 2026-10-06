@@ -1,0 +1,174 @@
+# Local longest-touchdown research model
+
+Status: implemented locally, exploratory, no production/optimizer integration.
+Owner: `model/nfl_longest_touchdown.py`; capture/forecast/evaluation CLI:
+`research/nfl_longest_touchdown.py`. Source joins are documented in
+`docs/nfl-team-identity-source-map.md`.
+
+## What it predicts
+
+For a supplied two-team game and eligible roster, simulate regulation possessions
+and retain each player's longest **rushing or receiving** touchdown. Output each
+player's probability of any touchdown, a 20+ yard touchdown, a 40+ yard touchdown,
+sole longest touchdown, longest including ties, and fractional longest-TD win
+share. A no-scrimmage-touchdown outcome is separate; non-scorers never tie for
+first at zero. Fractional shares plus the no-TD probability sum to one.
+
+This is a scrimmage-only scope, not a forecast for markets including returns or
+defensive touchdowns. It does not publish betting edges or calibrated fair odds.
+
+## How it works
+
+1. Validate canonical game/season/week/home/away joins and unique play identities.
+   Reject target/future games and, in strict mode, labels after the decision.
+2. Verify offensive scoring from descriptions plus field position/yardage agreement
+   and an unambiguous GSIS receiver/rusher. Exclude no-play, overturned, lateral,
+   fumble/recovery, return and unverified scoring rows. Report exclusions.
+3. Estimate touchdown probability per target or carry within starting-field bins:
+   1–5, 6–10, 11–20, 21–39, 40–59 and 60–99 yards from the goal. Include non-scoring
+   opportunities in the denominator. Blend player rates with position-peer and
+   league-role rates so a player's zero recent long TDs need not imply zero risk.
+4. Apply a shrunk opponent TD-risk factor for the same opportunity type/field bin.
+   Compare each current-season offense against the defense with its opportunities
+   against other defenses. This is an outcome association, not a causal effect.
+5. Simulate snaps using empirical down, distance, field, score-state and late-game
+   action cells, with team/league smoothing. Player role shares use current team
+   history when available, conditioned on field and score state with overall-role
+   fallback. Trailing does not automatically mean deeper throws: non-scoring gain
+   templates are empirical player/peer plays conditioned on field and score state.
+6. Update down, yards to gain, field, remaining clock and score. A touchdown's
+   simulated distance is exactly its starting distance to the end zone. Ordinary
+   gains cannot silently turn into touchdowns. Keep sample snap ledgers for review.
+7. Grade chronologically fitted forecasts against actual scoring outcomes and a
+   simpler independent-player TD-count/distance baseline. Report top-choice hits,
+   multiclass Brier score, log loss and calibration bins. Lower Brier/log loss is
+   better; a larger simulation is not empirical validation.
+
+## Local commands
+
+Run from the repository root. Existing dependencies suffice; no schema migration
+or database write is required. Database capture needs configured read access.
+
+```powershell
+python -m research.nfl_longest_touchdown capture --minimum-season 2023 --maximum-season 2026 --output artifacts/nfl-longest-td/input.json.gz
+python -m research.nfl_longest_touchdown forecast --input artifacts/nfl-longest-td/input.json.gz --request artifacts/nfl-longest-td/request.json --draws 2000 --sensitivity --output artifacts/nfl-longest-td/forecast.json
+python -m research.nfl_longest_touchdown backtest --input artifacts/nfl-longest-td/input.json.gz --season 2025 --start-week 5 --end-week 8 --draws 2000 --output artifacts/nfl-longest-td/evaluation.json
+# Before kickoff: freeze the challenger baseline from the forecast's own input and request.
+python -m research.nfl_longest_touchdown baseline --input artifacts/nfl-longest-td/input.json.gz --request artifacts/nfl-longest-td/request.json --output artifacts/nfl-longest-td/baseline.json
+# After the game: capture fresh PBP, then grade the frozen forecast (and baseline).
+python -m research.nfl_longest_touchdown grade --input artifacts/nfl-longest-td/postgame.json.gz --forecast artifacts/nfl-longest-td/forecast.json --baseline artifacts/nfl-longest-td/baseline.json --output artifacts/nfl-longest-td/grade.json
+```
+
+`baseline` refuses to run at or after kickoff and records the same source and
+request digests as the forecast. `grade` returns one of three statuses:
+`graded`; `outcome_unknown` when the target game has no PBP (never a no-TD
+result); or `needs_review` when any run/pass play in the target game mentions a
+touchdown but failed scoring verification (reversal text, lateral, fumble,
+yardage mismatch). That play could be the real longest TD, so it is never scored
+silently. A winner outside the modeled roster is graded as `OTHER:TEAM`, which
+every forecast prices at zero, so its log loss hits the 1e-12 floor (about 27.6)
+and `winner_was_unmodeled` is set.
+
+Outputs are exclusive-create; choose a new filename for every new run. Saved
+source, request and implementation digests identify the inputs/logic used.
+Sensitivity changes peer/defense smoothing; its ranges are not confidence intervals.
+
+Request format (GSIS IDs must match participants; target must match the captured
+canonical schedule):
+
+```json
+{
+  "decision_at": "2026-10-05T22:25:08+00:00",
+  "game": {
+    "game_id": "2026_04_ATL_NO", "season": 2026, "week": 4,
+    "kickoff": "2026-10-06T00:15:00+00:00", "away": "ATL", "home": "NO"
+  },
+  "players": [
+    {"identity": "GSIS_ID", "name": "Player name", "team": "ATL", "status": "active"},
+    {"identity": "OTHER_GSIS_ID", "name": "Player name", "team": "NO", "status": "out"}
+  ],
+  "roster_evidence": {"description": "Record source IDs, timestamps and unresolved roles here"},
+  "retrospective": false
+}
+```
+
+Supply the full eligible field on both teams, including supported rushing QBs.
+`active` is a caller assumption, not something this model verifies. Use the
+repository's roster/injury evidence workflow before making a current-game claim.
+Unsupported new players appear in `unresolved_players`, without invented named
+probabilities. Missing team-role support uses visible `OTHER:TEAM` residual
+scorers. When inactive players are removed, historical supported-role weights
+are renormalized among the supplied eligible players; no injury-specific
+replacement workload forecast is learned.
+
+## Historical and modeling limits
+
+- Historical PBP labels were captured later. Walk-forward fitting excludes future
+  games, but deliberately allows later corrections and reconstructs eligible
+  players from prior three-game usage. It is **retrospective research**, not an
+  archived pregame forecast with verified inactives. Missing actual PBP is unknown,
+  never a no-TD result.
+- Positions come from season/week/GSIS historical roster rows or unambiguous
+  same-season `ff_players` mappings. Missing/conflicting positions remain UNKNOWN.
+- A score-state model is implemented, but field bins and all smoothing amounts are
+  assumptions. It has not passed a calibration/promotion gate.
+- Kicks, possession starting fields, halftime receiving order, clock and extra
+  points are approximate. There is no overtime, timeout inventory, two-point,
+  safety, return-TD or penalty-resolution simulation. Defensive/return scores
+  excluded from scoring can also affect real game script; this is a material limit.
+- No Vegas inputs, direct weather effects or quantified defender-absence effects.
+- `simple_baseline` draws independent player TD counts and empirical TD distances.
+  It is a comparison model, not a production probability benchmark. Calibration
+  rows are correlated within games; bin counts are not independent sample sizes.
+- Zero wins in a finite Monte Carlo run is not proof of zero underlying probability.
+  Log-loss scoring uses a disclosed numerical floor of 1e-12.
+
+## Acceptance checks and next gate
+
+Focused tests cover scoring vs long gains, nullified/return/ambiguous scores,
+canonical joins, label/future-game leakage, rare-event priors, score-state play
+choice, distance geometry, tie/no-TD treatment, missing actuals, inactive and
+unsupported players, repeatability and immutable artifact files.
+
+The local real-data capture contains 879 regular-season games in 2023–2026. The
+position-enriched pre-Oct-5 sample has 4,129 verified offensive touchdowns, 217
+excluded return/complex scores, and 86 attributed plays lacking a mapped position.
+These are capture-specific coverage facts, not constants in the model.
+
+Before using these outputs for decisions: review scoring exclusions and roster
+coverage, run larger untouched-season evaluations, assess parameter sensitivity
+and calibration against the baseline, then retain frozen forward forecasts with
+verified availability. Existing example/smoke artifacts are development evidence;
+the initial smoke input without historical positions is superseded for interpretation.
+
+## First frozen Thursday forward test
+
+The October 8, 2026 TB–DAL uploaded showdown slate is frozen locally under
+`artifacts/nfl-longest-td/thursday-20261008/`. Start with `report.md` and
+`test-manifest.json`; `forecast.json` is the primary prediction for later grading.
+The request decision time is October 6 at 13:49:36 UTC. The refreshed source
+contains 880 games, including all 64 current-season games through Week 4.
+
+Five runs use 2,000 simulations each: standard settings, two smoothing variations,
+TB offense restricted to Week 4, and disputed Ko Kieft availability included.
+The Week-4 restriction changes player scoring evidence and team tendencies
+together; it does not isolate a causal quarterback effect. Kieft inclusion leaves
+the known-player results unchanged because his current role is unmodeled.
+Neither result resolves replacement workloads or future Tucker usage.
+
+Both published depth sources and week-matched injury observations are retained,
+including source timestamps and disagreements. No Thursday inactive list yet
+exists at this decision time. Ten eligible players lack historical team-role
+support; the probability field is conditional on modeled roles and does not
+reserve quantified probability for every unsupported player's possible work.
+Do not interpret unresolved names or unchanged Kieft results as proven zeros.
+
+The challenger baseline was frozen on October 6 (before kickoff) from the same
+input and request (`baseline.json`; digests match `forecast.json`). It also puts
+CeeDee Lamb first, at 20.0% versus the model's 14.3%, so a Lamb result cannot
+separate the two models on top choice; Brier score and log loss can, slightly.
+The 7 MB PBP inputs stay local and are identified by `source_sha256`.
+
+For the postgame audit, capture PBP after the game and run `grade` on
+`forecast.json` with `baseline.json`; do not select the best sensitivity after
+seeing the result. The outcome is pending and no calibration gate has passed.
