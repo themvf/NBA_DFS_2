@@ -528,13 +528,24 @@ to a person.
   something new appears; closed with "all clear" when nothing fails. It goes red
   only if it could not run, and its own heartbeat shows on /health.
 - **Never set a read-only (or any) session setting on `DATABASE_URL`.** It is
-  Neon's pooled endpoint (PgBouncer transaction mode): psycopg2
-  `set_session(readonly=True)` / `SET default_transaction_read_only` sticks to
-  the shared server connection and leaks into other jobs. An audit session doing
-  exactly that made production writes fail with "cannot execute ... in a
-  read-only transaction" (MLB odds capture, 2026-09-29 01:37-02:08 UTC). For a
+  Neon's pooled endpoint (PgBouncer transaction mode): `SET
+  default_transaction_read_only` sticks to the shared server connection and
+  leaks into other jobs. An audit session doing exactly that made production
+  writes fail with "cannot execute ... in a read-only transaction" (MLB odds
+  capture, 2026-09-29 01:37-02:08 UTC). Measured 2026-10-07 with psycopg2 2.9:
+  `set_session(readonly=True)` on a normal connection only begins each
+  transaction `READ ONLY` (safe; 11 audit scripts rely on it), but with
+  `autocommit=True` it issues the session-wide SET (the leak).
+  `tests/test_no_readonly_session_leak.py` blocks that combination. For a
   read-only check, just run SELECTs, or `BEGIN READ ONLY; ...; ROLLBACK;` in one
   transaction.
+- **A failed read raises; it is never an empty result (2026-10-07).**
+  `DatabaseManager.execute` used to turn any exception from `fetchall` into
+  `[]`. The pick'em grader's query hit `MemoryError` locally and reported "no
+  eligible paired forward outcomes" from a green run; on a GitHub runner the
+  same query got the job killed every run from 2026-10-03. It now returns `[]`
+  only for a statement with no result set (`cursor.description is None`), as do
+  the copies in `ingest/cfb_history.py` and `ingest/ff_fantasypros.py`.
 - **What the first live checklist caught (2026-09-29).** FF ADP snapshot had failed
   twice a day since 2026-09-14: the source feed thins out once Week 1 kicks off.
   After the last Week 1 kickoff (from `nfl_season_games`) it now stores nothing and

@@ -33,3 +33,15 @@ def test_checkpoint_warning_distinguishes_live_window_from_reschedule():
     superseded = {**pending, "status": "missed", "failure_reason": "superseded by kickoff reschedule"}
     assert "due_now:closing_candidate" in classify_game(game(), [pending], NOW)
     assert not any(issue.startswith("missed:") for issue in classify_game(game(), [superseded], NOW))
+
+
+def test_early_checkpoint_created_after_its_window_is_a_provider_limit_not_an_alert():
+    window = {"checkpoint": "cfb_t_minus_7d", "status": "missed", "failure_reason": None,
+              "target_at": NOW - timedelta(days=3), "due_until": NOW - timedelta(days=3) + timedelta(hours=6)}
+    listed_late = {**window, "created_at": NOW - timedelta(days=1)}
+    listed_in_time = {**window, "created_at": NOW - timedelta(days=4)}
+    assert "missed:cfb_t_minus_7d" not in classify_game(game(lead_minutes=4 * 1440), [listed_late], NOW)
+    assert "missed:cfb_t_minus_7d" in classify_game(game(lead_minutes=4 * 1440), [listed_in_time], NOW)
+    # A core checkpoint is never excused, however late its row was created.
+    core = {**listed_late, "checkpoint": "t_minus_6h"}
+    assert "missed:t_minus_6h" in classify_game(game(lead_minutes=4 * 1440), [core], NOW)
