@@ -172,10 +172,8 @@ class _TransactionDb:
     def execute(self, sql: str, params=None):
         cursor = self.connection.cursor()
         cursor.execute(sql, params or ())
-        try:
-            return cursor.fetchall()
-        except Exception:
-            return []
+        # No result set is []; a failed fetch raises (never an empty answer).
+        return cursor.fetchall() if cursor.description is not None else []
 
     def execute_one(self, sql: str, params=None):
         cursor = self.connection.cursor()

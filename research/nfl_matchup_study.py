@@ -67,13 +67,46 @@ def context_report(db, season, now, config):
     return report
 
 
+SUPPORTED_FORECAST_VERSION = "nfl-matchup-shadow-v1"
+
+# The subset of nfl_matchup_player_forecasts.projection that prospective grading
+# reads: position, the shadow distributions, six baseline fields, and each
+# source's availability timestamps. Keys absent in the stored row come back as
+# JSON null, which every reader below already treats as missing.
+GRADED_PROJECTION_SQL = """jsonb_build_object(
+  'position', p.projection->'position',
+  'shadow', jsonb_build_object(
+     'status', p.projection->'shadow'->'status',
+     'baseline', p.projection->'shadow'->'baseline',
+     'candidate', p.projection->'shadow'->'candidate',
+     'matchup_manifest_hash', p.projection->'shadow'->'matchup_manifest_hash'),
+  'baseline', jsonb_build_object(
+     'id', p.projection->'baseline'->'id',
+     'model_proj_fpts', p.projection->'baseline'->'model_proj_fpts',
+     'median_fpts', p.projection->'baseline'->'median_fpts',
+     'floor_fpts', p.projection->'baseline'->'floor_fpts',
+     'ceiling_fpts', p.projection->'baseline'->'ceiling_fpts',
+     'boom_rate', p.projection->'baseline'->'boom_rate'),
+  'sources', CASE WHEN jsonb_typeof(p.projection->'sources')='array' THEN (
+     SELECT coalesce(jsonb_agg(jsonb_build_object(
+        'captured_at', s->'captured_at', 'recorded_at', s->'recorded_at',
+        'identity_manifest', jsonb_build_object('captured_at', s->'identity_manifest'->'captured_at'))), '[]'::jsonb)
+     FROM jsonb_array_elements(p.projection->'sources') s) ELSE '[]'::jsonb END)"""
+
+
 def prospective_reports(db, season, now, registry):
     """Join immutable matchup snapshots to latest exact, revisioned outcomes."""
     registered = [m for m in registry["studies"] if m.get("status") == "registered" and m["kind"].startswith("dfs_")]
     if not registered:
         return {"version": "nfl-matchup-forward-report-v1", "studies": [], "reason": "no registered DFS studies"}
     first_registered = min(timestamp(resolve_registration(m)["registered_at"]) for m in registered)
-    records = db.execute("""SELECT p.player_id,p.game_id,p.kickoff,p.projection,
+    # Only the fields the grader reads leave the database. The full projection
+    # (source files, baseline stat lines, ledgers) is ~20 KB a row and grows with
+    # every shadow run; loading it whole peaked at 8.6 GB on 14,357 rows
+    # (2026-10-07) and the runner killed the job every run from 2026-10-03.
+    # Foreign envelopes are only counted, so they carry no payload at all.
+    records = db.execute(f"""SELECT p.player_id,p.game_id,p.kickoff,
+        CASE WHEN f.model_version='{SUPPORTED_FORECAST_VERSION}' THEN {GRADED_PROJECTION_SQL} END projection,
         f.run_id,f.season,f.week,f.created_at,f.as_of_at,f.model_version forecast_model_version,
         jsonb_build_object('model_hashes',f.manifest->'model_hashes',
                           'implementation_hashes',f.manifest->'implementation_hashes',
@@ -92,9 +125,9 @@ def prospective_reports(db, season, now, registry):
     complete = [(r["season"], r["week"]) for r in completed]
     # Shared storage also contains independently registered allowed-volume
     # forecasts. Their payload is not the PFR mean-study envelope.
-    supported_records = [row for row in records if row.get("forecast_model_version") == "nfl-matchup-shadow-v1"]
+    supported_records = [row for row in records if row.get("forecast_model_version") == SUPPORTED_FORECAST_VERSION]
     foreign_versions = Counter(str(row.get("forecast_model_version") or "missing")
-                               for row in records if row.get("forecast_model_version") != "nfl-matchup-shadow-v1")
+                               for row in records if row.get("forecast_model_version") != SUPPORTED_FORECAST_VERSION)
     reports = []
     for manifest in registered:
         manifest = resolve_registration(manifest)
@@ -244,12 +277,62 @@ def capture_game_results(db, season, now):
     return count
 
 
+# What pick'em grading reads from a frozen payload. `input` keeps only its
+# baseline (the market capture time); its full digest is stored once per row in
+# input_digest by fill_pickem_input_digests, computed exactly as before.
+PICKEM_GRADED_PAYLOAD_SQL = """jsonb_build_object(
+  'study_id', f.payload->'study_id',
+  'input', jsonb_build_object('baseline', f.payload->'input'->'baseline'),
+  'featureManifest', jsonb_build_object('sources', CASE WHEN jsonb_typeof(f.payload->'featureManifest'->'sources')='array' THEN (
+     SELECT coalesce(jsonb_agg(jsonb_build_object(
+        'captured_at', s->'captured_at', 'recorded_at', s->'recorded_at',
+        'identity_manifest', jsonb_build_object('captured_at', s->'identity_manifest'->'captured_at'))), '[]'::jsonb)
+     FROM jsonb_array_elements(f.payload->'featureManifest'->'sources') s) ELSE '[]'::jsonb END),
+  'candidate_config_hash', f.payload->'candidate_config_hash',
+  'baseline_config_hash', f.payload->'baseline_config_hash',
+  'implementation_hashes', f.payload->'implementation_hashes',
+  'baseline', f.payload->'baseline',
+  'candidate', f.payload->'candidate',
+  'covered', coalesce(f.payload->'covered', 'false'::jsonb))"""
+
+PICKEM_DIGEST_BATCH = 50
+
+
+def fill_pickem_input_digests(db, batch=PICKEM_DIGEST_BATCH):
+    """Store digest(payload.input) once per frozen forecast.
+
+    The payload is immutable, so its input digest never changes; computing it
+    here from the stored JSONB is byte-for-byte what grading did inline. Small
+    batches bound memory, and each row is read in full only once, ever.
+    """
+    db.execute("ALTER TABLE nfl_pickem_matchup_forecasts ADD COLUMN IF NOT EXISTS input_digest TEXT")
+    filled = 0
+    while True:
+        rows = db.execute("""SELECT forecast_id, payload->'input' input FROM nfl_pickem_matchup_forecasts
+            WHERE input_digest IS NULL ORDER BY forecast_id LIMIT %s""", (batch,))
+        if not rows:
+            return filled
+        with db.connect() as connection:
+            with connection.cursor() as cursor:
+                for row in rows:
+                    cursor.execute("UPDATE nfl_pickem_matchup_forecasts SET input_digest=%s WHERE forecast_id=%s AND input_digest IS NULL",
+                                   (digest(row["input"]), row["forecast_id"]))
+        filled += len(rows)
+        del rows
+
+
 def pickem_prospective_reports(db, season, now, registry):
     studies = [m for m in registry["studies"] if m.get("status") == "registered" and m["kind"] == "pickem"]
     if not studies:
         return []
     first_registered = min(timestamp(resolve_registration(m)["registered_at"]) for m in studies)
-    records = db.execute("""SELECT f.*,g.season,g.week,g.kickoff,r.result_id,r.observed_at result_at,
+    fill_pickem_input_digests(db)
+    # Only the fields the grader reads. A frozen payload is ~800 KB (it carries the
+    # full matchup source manifest per feature); loading all of them peaked at
+    # 16 GB on 9,016 forecasts and the runner killed every run from 2026-10-03.
+    records = db.execute(f"""SELECT f.forecast_id,f.game_id,f.available_at,f.decision_cutoff,f.input_digest,
+        {PICKEM_GRADED_PAYLOAD_SQL} payload,
+        g.season,g.week,g.kickoff,r.result_id,r.observed_at result_at,
         r.outcome,r.source_digest result_digest,r.scoring_version
         FROM nfl_pickem_matchup_forecasts f JOIN nfl_season_games g ON g.nflverse_game_id=f.game_id
         LEFT JOIN LATERAL (SELECT r.* FROM nfl_matchup_game_results r WHERE r.game_id=f.game_id
@@ -266,6 +349,8 @@ def pickem_prospective_reports(db, season, now, registry):
             if payload.get("study_id") != manifest["study_id"]:
                 continue
             input_ = payload["input"]
+            if not record.get("input_digest"):
+                raise ValueError(f"pick'em forecast {record['forecast_id']} has no stored input digest")
             available = [timestamp(input_["baseline"]["marketCapturedAt"])] if input_["baseline"].get("marketCapturedAt") else [timestamp(record["decision_cutoff"])]
             for source in payload.get("featureManifest", {}).get("sources", []):
                 for key in ("captured_at", "recorded_at"):
@@ -277,7 +362,7 @@ def pickem_prospective_reports(db, season, now, registry):
             rows.append({"study_id": manifest["study_id"], "forecast_id": record["forecast_id"], "game_id": record["game_id"],
                 "season": record["season"], "week": record["week"], "kickoff": record["kickoff"],
                 "captured_at": record["available_at"], "decision_cutoff": record["decision_cutoff"], "available_at": max(available),
-                "input_manifest_hash": digest(input_), "candidate_config_hash": payload.get("candidate_config_hash"),
+                "input_manifest_hash": record["input_digest"], "candidate_config_hash": payload.get("candidate_config_hash"),
                 "baseline_config_hash": payload.get("baseline_config_hash"), "implementation_hashes": payload.get("implementation_hashes"),
                 "baseline": probability_arm(payload.get("baseline")), "candidate": probability_arm(payload.get("candidate")),
                 "covered": payload.get("covered",False), "scoring_version": record.get("scoring_version") or manifest["scoring_version"],

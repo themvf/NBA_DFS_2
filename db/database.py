@@ -103,14 +103,19 @@ class DatabaseManager:
             conn.close()
 
     def execute(self, sql: str, params=None):
-        """Execute a single SQL statement and return all rows."""
+        """Execute a single SQL statement and return all rows.
+
+        A statement with no result set (DDL, UPDATE without RETURNING) returns [].
+        A failure while fetching rows raises: until 2026-10-07 every exception
+        here became [], so a pick'em grading query that hit MemoryError
+        reported "no eligible outcomes" and exited green.
+        """
         with self.connect() as conn:
             cur = conn.cursor()
             cur.execute(sql, params or ())
-            try:
-                return cur.fetchall()
-            except Exception:
+            if cur.description is None:
                 return []
+            return cur.fetchall()
 
     def execute_one(self, sql: str, params=None):
         """Execute and return the first row, or None."""

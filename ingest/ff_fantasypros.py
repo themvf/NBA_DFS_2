@@ -741,10 +741,8 @@ class RefreshDatabase:
     def execute(self, statement: str, params: Any = None) -> list[dict[str, Any]]:
         cursor = self.conn.cursor()
         cursor.execute(statement, params or ())
-        try:
-            return list(cursor.fetchall())
-        except Exception:
-            return []
+        # No result set is []; a failed fetch raises (never an empty answer).
+        return list(cursor.fetchall()) if cursor.description is not None else []
 
     def execute_one(self, statement: str, params: Any = None) -> dict[str, Any] | None:
         cursor = self.conn.cursor()
