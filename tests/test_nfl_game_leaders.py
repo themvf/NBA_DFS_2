@@ -322,3 +322,55 @@ def test_player_transferred_between_opponents_cannot_be_overwritten_by_old_team(
     for family in result['metrics'].values():
         moved=next(p for p in family['players'] if p['identity']=='A0')
         assert moved['team']=='B' and not moved['residual']
+
+
+def test_total_yards_uses_joint_draws_not_component_leaders_or_quantiles():
+    from model.nfl_game_leaders import simulated_values, observed_value
+    # A leads rushing, B leads receiving, C leads total in both draws.
+    stats = {'a': np.array([[90, 0, 0], [10, 0, 0]]),
+             'b': np.array([[0, 1, 90], [0, 1, 10]]),
+             'c': np.array([[60, 1, 60], [6, 1, 6]])}
+    ids = list(stats)
+    totals = simulated_values(stats, ids, 'total_yards')
+    assert totals.tolist() == [[90, 90, 120], [10, 10, 12]]
+    assert np.argmax(totals, axis=1).tolist() == [2, 2]
+    # Negative official yardage is retained; passing/returns do not enter.
+    assert observed_value({'rushing_yards': -3, 'receiving_yards': 10,
+                           'passing_yards': 300, 'return_yards': 100}, 'total_yards') == 7
+
+
+def test_total_forecast_mean_baseline_and_single_outcome_match_joint():
+    h, _ = prepare(fixture(), '2025-10-02T00:00:00Z')
+    cfg = Settings(draws=300)
+    all_outcomes = forecast(h, request(), cfg)
+    total = forecast(h, request(), cfg, outcomes=('total_yards',))
+    assert total['metrics']['total_yards'] == all_outcomes['metrics']['total_yards']
+    families = all_outcomes['metrics']
+    for row in families['total_yards']['players']:
+        if row['residual']:
+            continue
+        rush = next(p for p in families['rushing_yards']['players'] if p['identity'] == row['identity'])
+        rec = next(p for p in families['receiving_yards']['players'] if p['identity'] == row['identity'])
+        assert row['mean'] == pytest.approx(rush['mean'] + rec['mean'])
+        assert row['baseline_mean'] == pytest.approx(rush['baseline_mean'] + rec['baseline_mean'])
+    counts, _ = prepare(fixture(), '2025-10-02T00:00:00Z', reconciliation_fields=('targets', 'receptions'))
+    with pytest.raises(ValueError, match='requested outcome'):
+        forecast(counts, request(), cfg, outcomes=('total_yards',))
+    h[0]['event_reconciled'] = False
+    with pytest.raises(ValueError, match='Unresolved recent yardage'):
+        forecast(h, request(), cfg, outcomes=('total_yards',))
+
+
+def test_total_grading_combines_official_components_and_splits_ties():
+    s = fixture(); g = s['games'][-1]
+    s['boxes'] = [{'game_id': g['game_id'], 'identity': i, 'team': t,
+                   'rushing_yards': rush, 'receiving_yards': rec}
+                  for i, t, rush, rec in [('a', 'A', 90, 0), ('b', 'B', 0, 90),
+                                          ('c', 'A', 60, 60), ('d', 'B', 70, 50)]]
+    rows = [{'identity': i, 'win_share': .5 if i in ('c', 'd') else 0,
+             'residual': False, 'mean': 120 if i in ('c', 'd') else 90,
+             'baseline_mean': 120 if i in ('c', 'd') else 90} for i in ('c', 'd', 'a', 'b')]
+    result = grade({'game': g, 'metrics': {'total_yards': {'players': rows}}}, s)
+    total = result['metrics']['total_yards']
+    assert total['winner_ids'] == ['c', 'd'] and total['winning_stat'] == 120
+    assert total['top_choice_credit'] == .5 and total['brier'] == 0

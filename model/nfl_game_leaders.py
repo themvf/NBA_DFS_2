@@ -11,9 +11,24 @@ import numpy as np
 
 from model.nfl_longest_touchdown import canonical, timestamp
 
-VERSION = 'nfl-game-leaders-v1'
-METRICS = ('rushing_yards', 'receptions', 'receiving_yards')
+VERSION = 'nfl-game-leaders-v2'
+SOURCE_METRICS = ('rushing_yards', 'receptions', 'receiving_yards')
+METRICS = (*SOURCE_METRICS, 'total_yards')
 IMPLEMENTATION_SHA256 = sha256(Path(__file__).read_bytes()).hexdigest()
+
+
+def observed_value(box, metric):
+    """Official yards from scrimmage, excluding passing and return yardage."""
+    if metric == 'total_yards':
+        return float(box['rushing_yards']) + float(box['receiving_yards'])
+    return float(box[metric])
+
+
+def simulated_values(stats, identities, metric):
+    """Add each player's rushing and receiving values in the SAME draw."""
+    if metric == 'total_yards':
+        return np.array([stats[i][:, 0] + stats[i][:, 2] for i in identities]).T
+    return np.array([stats[i][:, SOURCE_METRICS.index(metric)] for i in identities]).T
 
 
 @dataclass(frozen=True)
@@ -40,14 +55,14 @@ class Settings:
 
 
 def prepare(snapshot: dict, decision_at: str, retrospective: bool = False,
-            reconciliation_fields=('carries', 'targets', *METRICS)):
+            reconciliation_fields=('carries', 'targets', *SOURCE_METRICS)):
     """Reconcile PBP counts/yards with separately captured box totals, full game.
 
     Missing/ambiguous actors and complex stat corrections quarantine the complete
     training game rather than becoming zero-yard touches. All periods included.
     """
     fields = tuple(reconciliation_fields)
-    if not fields or set(fields) - {'carries', 'targets', *METRICS}:
+    if not fields or set(fields) - {'carries', 'targets', *SOURCE_METRICS}:
         raise ValueError('Unsupported reconciliation fields')
     cutoff = timestamp(decision_at)
     games = {g['game_id']: g for g in snapshot['games']}
@@ -67,7 +82,7 @@ def prepare(snapshot: dict, decision_at: str, retrospective: bool = False,
             raise ValueError('Box team does not match canonical schedule')
         if not retrospective and timestamp(row['fetched_at']) > cutoff:
             continue
-        for field in ('carries', 'targets', *METRICS):
+        for field in ('carries', 'targets', *SOURCE_METRICS):
             if row.get(field) is None or not np.isfinite(float(row[field])):
                 raise ValueError('Missing or nonfinite box stat')
         if min(row['carries'], row['targets'], row['receptions']) < 0 or row['receptions'] > row['targets']:
@@ -182,7 +197,7 @@ def prepare(snapshot: dict, decision_at: str, retrospective: bool = False,
                 for s in snapshot.get('box_verification', {}).get('sources', []))
             if gid in snapshot.get('box_verified_game_ids', []) and boxes[gid] and g.get('completed') and (retrospective or (verified_time and timestamp(g['source_captured_at']) <= cutoff)):
                 accepted.append({'game': g, 'boxes': boxes[gid], 'events': [],
-                    'validated_fields': ['carries', 'targets', *METRICS], 'event_reconciled': False,
+                    'validated_fields': ['carries', 'targets', *SOURCE_METRICS], 'event_reconciled': False,
                     'event_rejection_reasons': sorted(reasons)})
         else:
             accepted.append({'game': g, 'boxes': boxes[gid], 'events': events[gid],
@@ -200,7 +215,7 @@ def summaries(history):
             box = [r for r in item['boxes'] if r['team'] == team]
             result.append({**g, 'team': team, 'defense': defense,
                 'games':1,
-                **{k: sum(r[k] for r in box) for k in ('carries', 'targets', *METRICS)}})
+                **{k: sum(r[k] for r in box) for k in ('carries', 'targets', *SOURCE_METRICS)}})
     return result
 
 
@@ -281,9 +296,10 @@ def forecast(history, request, cfg=Settings(), outcomes=METRICS):
         raise ValueError('Unsupported outcomes')
     required = {'receptions': {'targets', 'receptions'},
                 'receiving_yards': {'targets', 'receptions', 'receiving_yards'},
-                'rushing_yards': {'carries', 'rushing_yards'}}
+                'rushing_yards': {'carries', 'rushing_yards'},
+                'total_yards': {'carries', 'rushing_yards', 'targets', 'receptions', 'receiving_yards'}}
     needed = set().union(*(required[m] for m in outcomes))
-    if any(not needed.issubset(h.get('validated_fields', ('carries', 'targets', *METRICS))) for h in history):
+    if any(not needed.issubset(h.get('validated_fields', ('carries', 'targets', *SOURCE_METRICS))) for h in history):
         raise ValueError('History does not reconcile requested outcome')
     game = request['game']
     cutoff = timestamp(request['decision_at'])
@@ -308,7 +324,7 @@ def forecast(history, request, cfg=Settings(), outcomes=METRICS):
                           'excluded_event_games': excluded_events}
         if expected is not None and (team not in expected or missing):
             raise ValueError(f'Incomplete recent history for {team}: {missing or "missing expected-game list"}')
-        if excluded_events and set(outcomes) & {'receiving_yards', 'rushing_yards'}:
+        if excluded_events and set(outcomes) & {'receiving_yards', 'rushing_yards', 'total_yards'}:
             raise ValueError(f'Unresolved recent yardage events for {team}: {excluded_events}')
     players = request['players']
     if len({p['identity'] for p in players}) != len(players):
@@ -450,10 +466,10 @@ def forecast(history, request, cfg=Settings(), outcomes=METRICS):
                             [y for y, _ in lateral], int(mask.sum()), p=lateral_weights)
     output = {}
     identities = list(stats)
-    for col, metric in enumerate(METRICS):
+    for metric in METRICS:
         if metric not in outcomes:
             continue
-        matrix = np.array([stats[i][:,col] for i in identities]).T
+        matrix = simulated_values(stats, identities, metric)
         wins = matrix==matrix.max(axis=1)[:,None]
         tie_count = wins.sum(axis=1)
         credits = wins/tie_count[:,None]
@@ -473,7 +489,7 @@ def forecast(history, request, cfg=Settings(), outcomes=METRICS):
                 'mean':None if residual else float(matrix[:,indices[0]].mean()),
                 'p10':None if residual else float(np.quantile(matrix[:,indices[0]],.1)),
                 'p90':None if residual else float(np.quantile(matrix[:,indices[0]],.9)),
-                'baseline_mean':None if residual else float(np.mean([sum(b[metric] for b in h['boxes'] if b['identity']==key and b['team']==p['team'])
+                'baseline_mean':None if residual else float(np.mean([sum(observed_value(b, metric) for b in h['boxes'] if b['identity']==key and b['team']==p['team'])
                     for h in history if p['team'] in (h['game']['away'],h['game']['home'])][-cfg.recent_games:]))}
             if metric == 'receptions' and not residual:
                 values, frequencies = np.unique(matrix[:, indices[0]].astype(int), return_counts=True)
@@ -513,8 +529,10 @@ def grade(prediction, snapshot):
     if len({b['identity'] for b in boxes}) != len(boxes):
         raise ValueError('Duplicate grading identity')
     result = {}
-    for metric in METRICS:
-        actual = {b['identity']:float(b[metric]) for b in boxes}
+    for metric in prediction['metrics']:
+        if metric not in METRICS:
+            raise ValueError('Unsupported grading outcome')
+        actual = {b['identity']:observed_value(b, metric) for b in boxes}
         if not all(np.isfinite(v) for v in actual.values()):
             raise ValueError('Invalid grading stat')
         best = max(actual.values())

@@ -17,7 +17,7 @@ from pathlib import Path
 
 import numpy as np
 
-from model.nfl_game_leaders import METRICS, VERSION, Settings, forecast, grade, prepare
+from model.nfl_game_leaders import METRICS, SOURCE_METRICS, VERSION, Settings, forecast, grade, prepare
 from model.nfl_longest_touchdown import canonical, timestamp
 from research.nfl_longest_touchdown import capture as capture_pbp, read, write
 
@@ -44,7 +44,7 @@ def full_box_capture(result, minimum_season, maximum_season):
             if s.get('season_type')!='REG' or not s.get('player_id'):
                 continue
             # All positions can produce a carry/catch (including specialists).
-            if not any(s.get(k) for k in ('carries','targets',*METRICS)):
+            if not any(s.get(k) for k in ('carries','targets',*SOURCE_METRICS)):
                 continue
             team=canonical(s.get('team') or s.get('recent_team'))
             opponent=canonical(s.get('opponent_team') or s.get('opponent'))
@@ -58,7 +58,7 @@ def full_box_capture(result, minimum_season, maximum_season):
             boxes.append({'game_id':g['game_id'],'identity':s['player_id'],
                 'name':s.get('player_display_name') or s.get('player_name') or s['player_id'],
                 'team':team,'position':s.get('position') or 'UNKNOWN','fetched_at':fetched,
-                **{k:s.get(k) for k in ('carries','targets',*METRICS)}})
+                **{k:s.get(k) for k in ('carries','targets',*SOURCE_METRICS)}})
     result.update(version=VERSION,boxes=boxes,box_source='complete nflverse weekly player source, canonical schedule/GSIS',
         box_sources=sources,box_unmatched=unmatched,
         box_coverage={'rows':len(boxes),'games':len({b['game_id'] for b in boxes})})

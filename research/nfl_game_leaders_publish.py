@@ -30,7 +30,7 @@ def publish(batch, evaluations):
         'season':batch['season'],'week':batch['week'],'decision_at':batch['decision_at'],
         'games':games,'skipped':batch['skipped'],'rejected_training_games':len(batch['reconciliation_rejections']),
         'evaluation':[{'season':e['season'],'weeks':e['weeks'],'games':e['graded_games'],
-            'skipped':len(e['skipped']),'summary':{m:{k:v for k,v in e['summary'][m].items() if k!='calibration'} for m in METRICS}}
+            'skipped':len(e['skipped']),'summary':{m:{k:v for k,v in e['summary'][m].items() if k!='calibration'} for m in METRICS if m in e['summary']}}
             for e in evaluations],
         'evaluation_limit':'Corrected historical records and reconstructed prior-usage rosters; not archived game-day availability or validated betting probabilities.'}
 

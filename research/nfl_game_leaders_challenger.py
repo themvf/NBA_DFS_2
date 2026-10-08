@@ -13,7 +13,7 @@ import io
 import json
 
 import numpy as np
-from model.nfl_game_leaders import METRICS, canonical, timestamp
+from model.nfl_game_leaders import SOURCE_METRICS as METRICS, canonical, timestamp
 from research.nfl_longest_touchdown import read, write
 
 FIELDS = ('carries', 'targets', *METRICS)

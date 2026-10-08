@@ -138,3 +138,23 @@ view, not an optimizer scoring path or a slate-upload dependency. Forecasts,
 requests, source digests, excluded games and evaluation reports belong under
 `artifacts/nfl-game-leaders/`; publication data lives in
 `web/src/data/game-leaders.json` (force-stage because the broad data ignore applies).
+
+
+### Total yards from scrimmage (local v2)
+
+`total_yards` means official rushing yards plus receiving yards for an individual
+player across the full game, including overtime. Passing, return and fantasy
+bonus yardage are excluded. The model adds both components within the SAME
+simulation draw before comparing every individual and splitting tied leaders.
+It does not add component leader probabilities or component percentiles.
+Recent-average baselines and grading derive the same sum from reconciled boxes;
+no new source field or player join is required. Both components must meet the
+existing reconciliation and recent-event coverage gates. The three source
+metrics remain separate from the four forecast outcomes.
+
+Original frozen forecasts remain unchanged. The v2 local Thursday example reruns
+the saved 2026-10-08 decision inputs, not a new availability capture. Older page
+snapshots explicitly mark total yards as not calculated, and historical summaries
+without that outcome show "Not evaluated". The registered three-outcome
+challenger experiment retains its original outcome scope. Mechanical verification
+of this addition does not establish predictive accuracy for total yards.
