@@ -1,5 +1,9 @@
 # Single-game player leaders — implementation contract
 
+Open repair work and acceptance checks are tracked in
+[nfl-game-leaders-backlog.md](nfl-game-leaders-backlog.md), including the
+2026 Dallas fumble/lateral discrepancies and incomplete-history forecast guard.
+
 ## Requested outcome and acceptance criteria
 For each canonical NFL game, estimate the full-field leader in rushing yards,
 receptions, and receiving yards, including overtime and all offensive positions.
