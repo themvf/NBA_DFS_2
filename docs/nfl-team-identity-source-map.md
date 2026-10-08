@@ -101,3 +101,27 @@ For 2026 Weeks 1–3 the canonical games are `2026_01_NYJ_TEN`, `2026_02_GB_NYJ`
 - Check non-null coverage by season/week for every compared feature; suppress a difference when one side lacks the field.
 - Check denominator logic for run/pass plays, neutral early downs, unique drives, and participant joins against a hand-inspected game.
 - Check that a 2025 game link opens its exact PbP game even if it is outside the 60 most recent games.
+
+## Single-game player leader model
+
+`docs/nfl-game-leaders-model.md` is the model and operation contract.
+`research/nfl_game_leaders.py` reuses the canonical PBP capture and independently
+reads the COMPLETE nflverse weekly player-stat source. Do not substitute
+`ff_player_week_stats`: the current-universe filter omits historical players.
+GSIS identities join only after unique canonical season/week/team/opponent and
+source game ID agreement. Reconcile per-player carries, targets, receptions,
+rushing yards and receiving yards before fitting/grading a complete game.
+All periods and official QB kneels count. Missing/ambiguous attribution and source
+corrections quarantine a game and remain visible in the report.
+
+Strict forecasts require kickoff, PBP label, canonical schedule capture and box
+fetch timestamps before the decision boundary. Historical later corrections are
+explicitly retrospective; participant rows still lack independent availability
+times. Each weekly game's provider capture has its own cutoff. Sleeper and
+FantasyPros depth evidence, week injuries and official inactive import coverage
+are retained in immutable requests. Depth positions are not projected workload.
+No odds enter this model. `/nfl/game-leaders` is a manually published independent
+view, not an optimizer scoring path or a slate-upload dependency. Forecasts,
+requests, source digests, excluded games and evaluation reports belong under
+`artifacts/nfl-game-leaders/`; publication data lives in
+`web/src/data/game-leaders.json` (force-stage because the broad data ignore applies).
