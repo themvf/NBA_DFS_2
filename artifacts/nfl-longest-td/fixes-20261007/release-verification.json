@@ -1,0 +1,20 @@
+{
+  "scope": "production experimental snapshot page and corrected research model",
+  "python_full_suite": {
+    "passed": 1699,
+    "skipped": 2
+  },
+  "additional_publisher_tests_passed": 8,
+  "web_test_scripts_passed": 133,
+  "web_test_scripts_excluded": 1,
+  "production_build": "passed",
+  "eslint": {
+    "errors": 0,
+    "existing_warnings": 64
+  },
+  "local_page_http_status": 200,
+  "visual_browser_check": "unavailable: browser kernel asset initialization failed",
+  "prediction_calibration": "not established",
+  "refresh": "manual reviewed snapshot publication",
+  "market_inputs_used": false
+}
