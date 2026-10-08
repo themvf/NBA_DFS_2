@@ -104,6 +104,19 @@ For 2026 Weeks 1–3 the canonical games are `2026_01_NYJ_TEN`, `2026_02_GB_NYJ`
 
 ## Single-game player leader model
 
+The game-leader capture additionally reads primary nflverse PBP player stat
+credits via `research/nfl_game_leaders_source.py`: join on canonical game ID and
+play ID, verify season/week/home/away and frozen description, and retain source
+URL, cache digest and capture time. Official receiving/rushing credit and lateral
+recipient GSIS fields supplement the archetype participants. Later stat captures
+cannot enter a forward decision. Final source play status controls replay/penalty
+counting; a nullified touchdown does not automatically erase credited yardage.
+Box workload is separately reconciled against the same provider's published team
+aggregates. Unresolved event games can supply verified workload, but never invented
+per-touch yardage. Each calculation records its coverage. Forecasts and publication
+require canonical latest-game coverage; recent unresolved yardage events block
+yardage forecasts. See the model contract and repair backlog for exact gates.
+
 `docs/nfl-game-leaders-model.md` is the model and operation contract.
 `research/nfl_game_leaders.py` reuses the canonical PBP capture and independently
 reads the COMPLETE nflverse weekly player-stat source. Do not substitute

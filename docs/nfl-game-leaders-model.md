@@ -23,6 +23,35 @@ prices are explicitly timestamp-unknown observations, not a live odds feed.
 Compare tie-split leader credit with offered-price break-even credit, not
 first-or-tied probability. The comparison does not de-vig an incomplete field.
 
+### Stat-credit repair and coverage gate (2026-10-08)
+
+Capture now preserves primary `receiving_yards`, `rushing_yards`, final completion
+and attempt status, and lateral recipient/yardage fields. Raw play type supplies
+the final no-play flag when the feed lacks a separate `no_play` column. Final
+status takes precedence over earlier text in replay descriptions or a nullified
+touchdown that leaves credited yardage. Lateral yards are separate events with no
+invented target, reception or carry. Their forecast incidence uses weighted
+historical lateral credits per team opportunity, separately from per-catch gains.
+This empirical rare-event assumption is recorded, not a calibrated coefficient.
+
+All 880 player-box games reconcile against the separate same-provider team
+aggregate feed; 871 event games fully reconcile. Nine games have primary-source
+disagreements and contribute workload only. Catch rates and target budgets use
+verified boxes; per-touch yard distributions use reconciled events only.
+Forward capture times apply to primary stat enrichment as well as labels/boxes.
+
+Acceptance gate: require all latest six team games, using current-season games
+within that window when present (otherwise prior-season games). Canonical expected
+IDs come from the complete schedule, never the already-filtered training set.
+Missing recent workload blocks forecasting. Recent event quarantine blocks
+yardage forecasting. Pure research calls without expected IDs are explicitly
+unverified; the publisher rejects them. The page shows coverage or marks older
+snapshots unverified. No old forecast file is overwritten.
+
+The repaired 2026 retrospective run grades 60 games and blocks four Week 1 games
+whose recent 2025 event history is unresolved. These are examined-week reruns,
+not untouched validation. See the repair backlog for source and test evidence.
+
 ## Requested outcome and acceptance criteria
 For each canonical NFL game, estimate the full-field leader in rushing yards,
 receptions, and receiving yards, including overtime and all offensive positions.

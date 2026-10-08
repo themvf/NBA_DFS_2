@@ -79,6 +79,18 @@ def roster(history, game, recent_games=3):
     return [p for _,p in candidates.values()]
 
 
+def expected_history(snapshot, game, decision_at, recent_games=6):
+    """Require the actual latest games, never silently replace rejected games."""
+    result = {}
+    for team in (game['away'], game['home']):
+        games = sorted((g for g in snapshot['games'] if g.get('completed')
+            and team in (g['away'], g['home']) and timestamp(g['kickoff']) < timestamp(decision_at)),
+            key=lambda g: (timestamp(g['kickoff']), g['game_id']))[-recent_games:]
+        current = [g for g in games if g['season'] == game['season']]
+        result[team] = [g['game_id'] for g in (current or games)]
+    return result
+
+
 def evidence_request(snapshot, game_id):
     """Freeze current dual depth, week injuries and official coverage, read only.
 
@@ -121,6 +133,7 @@ def evidence_request(snapshot, game_id):
         candidates.append({'identity':p['identity'],'name':p['name'],'team':p['team'],'position':p['position'],
             'status':'out' if out else 'unresolved','sleeper_status':sleeper,'fantasypros_injury_status':fp})
     return {'game':game,'decision_at':cutoff,'players':candidates,'availability_verified':False,
+        'expected_prior_game_ids':expected_history(snapshot,game,cutoff),
         'roster_evidence':'Both providers inspected; no depth-to-workload conversion. Unresolved statuses are scenario candidates, not confirmed active players.',
         'dual_depth':depth,'week_injuries':json.loads(json.dumps(injuries,default=str)),
         'official_inactive_imports':json.loads(json.dumps(inactives,default=str)),
@@ -146,6 +159,7 @@ def backtest(snapshot, season, start_week, end_week, cfg, limit=None):
         cutoff = timestamp(game['kickoff'])-timedelta(minutes=1)
         training = [h for h in history if timestamp(h['game']['kickoff'])<cutoff]
         request = {'game':game,'decision_at':cutoff.isoformat(),'players':roster(training,game),
+            'expected_prior_game_ids':expected_history(snapshot,game,cutoff.isoformat(),cfg.recent_games),
             'availability_verified':False,'roster_evidence':'reconstructed previous-three-game usage only'}
         try:
             prediction = forecast(training,request,cfg)
@@ -201,6 +215,7 @@ def batch(snapshot, season, week, decision_at, cfg, requests=None):
             # Each game's roster capture has its own boundary. Never attach the
             # later batch's training labels to an earlier decision record.
             game_history,_=prepare(snapshot,req['decision_at']) if req['decision_at']!=decision_at else (history,[])
+            req = {**req, 'expected_prior_game_ids': expected_history(snapshot, g, req['decision_at'], cfg.recent_games)}
             predictions.append(forecast(game_history,req,cfg))
         except ValueError as exc:
             skipped.append({'game_id':g['game_id'],'reason':str(exc)})
@@ -262,6 +277,8 @@ def main():
             with db.reuse_connection():
                 result=capture_pbp(db,args.minimum_season,args.maximum_season)
         result=full_box_capture(result,args.minimum_season,args.maximum_season)
+        from research.nfl_game_leaders_source import capture_stat_credits, capture_box_verification
+        result=capture_box_verification(capture_stat_credits(result,args.output.parent/'raw-stat-credits'))
     else:
         snapshot=read(args.input)
         if args.command=='week-requests':
@@ -308,6 +325,7 @@ def main():
                         for k in ('season','week','home','away')) or timestamp(canonical_games[0]['kickoff'])!=timestamp(request['game']['kickoff']):
                     raise ValueError('Forecast request must match the canonical game')
                 history,rejected=prepare(snapshot,request['decision_at'],args.retrospective)
+                request={**request,'expected_prior_game_ids':expected_history(snapshot,request['game'],request['decision_at'])}
                 result=forecast(history,request,Settings(draws=args.draws,seed=args.seed))
                 if args.sensitivity:
                     cfg=Settings(draws=args.draws,seed=args.seed)

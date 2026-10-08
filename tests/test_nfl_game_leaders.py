@@ -94,6 +94,80 @@ def test_reception_market_comparison_uses_tie_credit_not_full_tie_hit():
         analyze(p)
 
 
+def test_official_fumble_credit_and_lateral_without_extra_catch():
+    s = fixture()
+    play = next(p for p in s['plays'] if p['game_id'] == '2025_01_A_B' and p['play_type'] == 'pass' and p['yards_after_catch'] is not None)
+    identity = play['actors'][0]['player_id']
+    box = next(b for b in s['boxes'] if b['game_id'] == play['game_id'] and b['identity'] == identity)
+    play['description'] += ' FUMBLES.'
+    play['stat_credit'] = {'receiver_player_id': identity, 'complete_pass': 1, 'receiving_yards': 19}
+    play['stat_credit_captured_at'] = '2025-10-01T00:00:00Z'
+    box['receiving_yards'] = 19
+    h, rejected = prepare(s, '2025-10-02T00:00:00Z')
+    assert len(h) == 4 and not rejected
+    assert next(e for e in h[0]['events'] if e['identity'] == identity and e['caught'])['yards'] == 19
+    play['description'] += ' Lateral to new for 7 yards.'
+    play['stat_credit'].update(lateral_receiver_player_id='new', lateral_receiving_yards=7)
+    s['boxes'].append({'game_id': play['game_id'], 'identity': 'new', 'name': 'new', 'team': 'A', 'position': 'RB',
+                      'carries': 0, 'targets': 0, 'receptions': 0, 'rushing_yards': 0, 'receiving_yards': 7,
+                      'fetched_at': '2025-10-01T00:00:00Z'})
+    h, rejected = prepare(s, '2025-10-02T00:00:00Z')
+    assert len(h) == 4 and not rejected
+    lateral = next(e for e in h[0]['events'] if e['identity'] == 'new')
+    assert lateral['action'] == 'lateral_receiving' and not lateral['caught'] and lateral['yards'] == 7
+    play['stat_credit_captured_at'] = '2025-10-03T00:00:00Z'
+    h, rejected = prepare(s, '2025-10-02T00:00:00Z')
+    assert len(h) == 3 and 'later_stat_credit_capture' in rejected[0]['reasons']
+
+
+def test_verified_workload_survives_event_failure_but_yardage_is_blocked():
+    s = fixture(); s['boxes'][0]['receiving_yards'] += 1
+    s['box_verified_game_ids'] = [g['game_id'] for g in s['games']]
+    s['box_verification'] = {'sources': [{'captured_at': '2025-10-01T00:00:00Z'}]}
+    h, rejected = prepare(s, '2025-10-02T00:00:00Z')
+    assert len(h) == 4 and len(rejected) == 1
+    assert h[0]['events'] == [] and not h[0]['event_reconciled']
+    assert rejected[0]['discrepancies'][0]['field'] == 'receiving_yards'
+    req = request(); req['expected_prior_game_ids'] = {t: [g['game_id'] for g in s['games']] for t in ('A', 'B')}
+    with pytest.raises(ValueError, match='Unresolved recent yardage events'):
+        forecast(h, req, Settings(draws=100))
+    result = forecast(h, req, Settings(draws=100), outcomes=('receptions',))
+    assert result['recent_history_verified'] and result['workload_only_game_ids'] == ['2025_01_A_B']
+    with pytest.raises(ValueError, match='Incomplete recent history'):
+        forecast(h[1:], req, Settings(draws=100), outcomes=('receptions',))
+
+
+def test_final_status_preserves_partial_gain_after_nullified_touchdown():
+    s = fixture()
+    play = next(p for p in s['plays'] if p['play_type'] == 'pass' and p['yards_after_catch'] is not None)
+    play['description'] += ' TOUCHDOWN NULLIFIED by penalty.'
+    play['stat_credit'] = {'receiver_player_id': play['actors'][0]['player_id'], 'no_play': 0,
+                          'pass_attempt': 1, 'complete_pass': 1, 'receiving_yards': play['yards_gained']}
+    play['stat_credit_captured_at'] = '2025-10-01T00:00:00Z'
+    h, rejected = prepare(s, '2025-10-02T00:00:00Z')
+    assert len(h) == 4 and not rejected
+
+
+def test_primary_capture_canonical_identity_and_duplicate_checks():
+    import pandas as pd
+    from research.nfl_game_leaders_source import enrich
+    s = fixture(); p = s['plays'][0]
+    raw = {'game_id': p['game_id'], 'play_id': p['play_id'], 'season': 2025, 'week': 1,
+           'home_team': 'B', 'away_team': 'A', 'desc': p['description'], 'play_type': 'run',
+           'rusher_player_id': p['actors'][0]['player_id'], 'rusher_player_name': 'A0', 'rushing_yards': -1,
+           'rush_attempt': 1, 'pass_attempt': 0}
+    sources = [{'season': 2025, 'captured_at': '2025-10-01T00:00:00Z'}]
+    output = enrich(s, {2025: pd.DataFrame([raw])}, sources)
+    assert output['plays'][0]['stat_credit']['rushing_yards'] == -1
+    assert output['plays'][0]['stat_credit']['no_play'] == 0
+    assert 'stat_credit' not in s['plays'][0]
+    with pytest.raises(ValueError, match='Duplicate primary'):
+        enrich(s, {2025: pd.DataFrame([raw, raw])}, sources)
+    raw['home_team'] = 'WRONG'
+    with pytest.raises(ValueError, match='canonical'):
+        enrich(s, {2025: pd.DataFrame([raw])}, sources)
+
+
 def test_temporal_boundary_and_mismatch_quarantine():
     s=fixture()
     s['plays'][0]['labelled_at']='2025-10-04T00:00:00Z'
@@ -217,13 +291,18 @@ def test_batch_supports_each_game_and_preserves_capture_failure():
 
 def test_publisher_preserves_scope_provenance_and_rejects_odds():
     h,_=prepare(fixture(),'2025-10-02T00:00:00Z')
-    p=forecast(h,request(),Settings(draws=30))
+    req=request(); req['expected_prior_game_ids']={t:[r['game']['game_id'] for r in h] for t in ('A','B')}
+    p=forecast(h,req,Settings(draws=30))
     payload={'version':p['version'],'authority':p['authority'],'market_inputs_used':False,
         'season':2025,'week':5,'decision_at':p['decision_at'],'source_sha256':'frozen-source',
         'forecasts':[p],'skipped':[],'reconciliation_rejections':[]}
     result=publish(payload,[])
     assert result['games'][0]['metrics']==p['metrics']
     assert result['games'][0]['source_sha256']=='frozen-source'
+    p['recent_history_verified']=False
+    with pytest.raises(ValueError,match='recent-game coverage'):
+        publish(payload,[])
+    p['recent_history_verified']=True
     payload['market_inputs_used']=True
     with pytest.raises(ValueError,match='market-free'):
         publish(payload,[])

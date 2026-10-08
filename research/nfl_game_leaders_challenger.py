@@ -30,6 +30,7 @@ REGISTRATION = {
 def verify_boxes(snapshot, sources):
     """Full player sums versus separately published same-provider team aggregates."""
     indexed = {}
+    covered_seasons = {int(r['season']) for s in sources for r in s['rows']}
     for source in sources:
         for r in source['rows']:
             if r['season_type'] != 'REG':
@@ -50,7 +51,7 @@ def verify_boxes(snapshot, sources):
         boxes[b['game_id']].append({**b, 'team': canonical(b['team'])})
     good, rejected = [], []
     for g in sorted(snapshot['games'], key=lambda g: (timestamp(g['kickoff']), g['game_id'])):
-        if g['season'] not in (2023, 2024, 2025) or not g.get('completed') or g['game_id'] not in boxes:
+        if g['season'] not in covered_seasons or not g.get('completed') or g['game_id'] not in boxes:
             continue
         issues = []
         for team, opponent in ((g['away'], g['home']), (g['home'], g['away'])):

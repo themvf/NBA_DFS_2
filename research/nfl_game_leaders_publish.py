@@ -11,6 +11,8 @@ def publish(batch, evaluations):
         raise ValueError('Require exploratory market-free batch')
     games=[]
     for p in batch['forecasts']:
+        if p.get('recent_history_verified') is not True:
+            raise ValueError('Require verified recent-game coverage before publication')
         if p.get('market_inputs_used') is not False or p['scope']!='full_game_including_overtime':
             raise ValueError('Unsupported forecast scope or market inputs')
         for metric in METRICS:
@@ -19,6 +21,8 @@ def publish(batch, evaluations):
                 raise ValueError('Invalid probability accounting')
         games.append({'game':p['game'],'decision_at':p['decision_at'],
             'availability_verified':p['availability_verified'],'metrics':p['metrics'],
+            'history_coverage':p['history_coverage'],
+            'workload_only_training_games':len(p.get('workload_only_game_ids',[])),
             'training_games':len(p['training_game_ids']),'draws':p['settings']['draws'],
             'limits':p['limits'],'source_sha256':batch['source_sha256'],
             'role_scenarios':'See frozen request and diagnostics'})

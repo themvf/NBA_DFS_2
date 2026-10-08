@@ -93,12 +93,21 @@ def prepare(snapshot: dict, decision_at: str, retrospective: bool = False,
             issues[r['game_id']].add('later_labels')
             continue
         text = (r.get('description') or '').upper()
-        if r['play_type'] not in ('run', 'qb_kneel', 'pass') or any(t in text for t in (
-                'NO PLAY', 'NULLIFIED', 'TWO-POINT', 'TWO POINT', 'SPIKE')):
-            continue
+        credit = r.get('stat_credit')
+        if credit and credit.get('no_play') is not None:
+            if credit['no_play'] or credit.get('qb_spike') or credit.get('two_point_attempt'):
+                continue
+            source_action = 'carries' if credit.get('rush_attempt') else 'targets' if credit.get('pass_attempt') else None
+            if source_action is None:
+                continue
+        else:
+            if r['play_type'] not in ('run', 'qb_kneel', 'pass') or any(t in text for t in (
+                    'NO PLAY', 'NULLIFIED', 'TWO-POINT', 'TWO POINT', 'SPIKE')):
+                continue
+            source_action = 'carries' if r['play_type'] in ('run', 'qb_kneel') else 'targets'
         if r.get('quarter') is None:
             issues[r['game_id']].add('missing_period')
-        action = 'carries' if r['play_type'] in ('run','qb_kneel') else 'targets'
+        action = source_action
         role = 'rusher' if action == 'carries' else 'receiver'
         actors = {a['player_id']: a for a in r.get('actors', []) if a['role'] == role and a.get('player_id')}
         if not actors and action == 'targets' and (r.get('had_sack') or r.get('yards_after_catch') is None):
@@ -107,15 +116,32 @@ def prepare(snapshot: dict, decision_at: str, retrospective: bool = False,
             issues[r['game_id']].add('unresolved_actor')
             continue
         actor = next(iter(actors.values()))
-        caught = action == 'targets' and r.get('yards_after_catch') is not None
-        yards = r.get('yards_gained') if action == 'carries' else (
-            (r['air_yards'] + r['yards_after_catch'] if r.get('air_yards') is not None else r.get('yards_gained')) if caught else 0)
+        if credit and not retrospective and timestamp(r['stat_credit_captured_at']) > cutoff:
+            issues[r['game_id']].add('later_stat_credit_capture')
+            continue
+        identity_field = 'rusher_player_id' if action == 'carries' else 'receiver_player_id'
+        if credit and credit.get(identity_field) != actor['player_id']:
+            issues[r['game_id']].add('stat_credit_identity_mismatch')
+            continue
+        caught = action == 'targets' and (bool(credit['complete_pass']) if credit and credit.get('complete_pass') is not None else r.get('yards_after_catch') is not None)
+        official_yards = credit.get('rushing_yards' if action == 'carries' else 'receiving_yards') if credit else None
+        yards = official_yards if official_yards is not None else (r.get('yards_gained') if action == 'carries' else (
+            (r['air_yards'] + r['yards_after_catch'] if r.get('air_yards') is not None and r.get('yards_after_catch') is not None else r.get('yards_gained')) if caught else 0))
+        if credit is None and ('LATERAL' in text or ('FUMBL' in text and caught)) and set(fields) & {'receiving_yards', 'rushing_yards'}:
+            issues[r['game_id']].add('missing_complex_stat_credit')
         if yards is None or not np.isfinite(float(yards)):
             issues[r['game_id']].add('missing_yards')
             continue
         events[r['game_id']].append(dict(game_id=r['game_id'], team=canonical(r['posteam']),
             identity=actor['player_id'], position=actor.get('position') or 'UNKNOWN',
             action=action, caught=caught, yards=float(yards)))
+        if credit:
+            for kind in ('receiving', 'rushing'):
+                recipient = credit.get(f'lateral_{"receiver" if kind == "receiving" else "rusher"}_player_id')
+                lateral_yards = credit.get(f'lateral_{kind}_yards')
+                if recipient and lateral_yards is not None:
+                    events[r['game_id']].append(dict(game_id=r['game_id'], team=canonical(r['posteam']),
+                        identity=recipient, position='UNKNOWN', action=f'lateral_{kind}', caught=False, yards=float(lateral_yards)))
     accepted, rejected = [], []
     for gid, g in sorted(games.items(), key=lambda item: (timestamp(item[1]['kickoff']), item[0])):
         if timestamp(g['kickoff']) >= cutoff:
@@ -132,6 +158,9 @@ def prepare(snapshot: dict, decision_at: str, retrospective: bool = False,
         actual = defaultdict(lambda: dict(carries=0, targets=0, rushing_yards=0., receptions=0, receiving_yards=0.))
         for e in events[gid]:
             stats = actual[e['team'], e['identity']]
+            if e['action'].startswith('lateral_'):
+                stats['receiving_yards' if e['action'] == 'lateral_receiving' else 'rushing_yards'] += e['yards']
+                continue
             stats[e['action']] += 1
             if e['action'] == 'carries':
                 stats['rushing_yards'] += e['yards']
@@ -143,11 +172,21 @@ def prepare(snapshot: dict, decision_at: str, retrospective: bool = False,
             for field in fields:
                 if abs(actual[key][field] - expected.get(key, {}).get(field, 0)) > .01:
                     reasons.add('pbp_box_mismatch')
+        discrepancies = [{'team': key[0], 'identity': key[1], 'field': field,
+            'parsed': actual[key][field], 'box': expected.get(key, {}).get(field, 0)}
+            for key in sorted(set(actual) | set(expected)) for field in fields
+            if abs(actual[key][field] - expected.get(key, {}).get(field, 0)) > .01]
         if reasons:
-            rejected.append({'game_id': gid, 'reasons': sorted(reasons)})
+            rejected.append({'game_id': gid, 'reasons': sorted(reasons), 'discrepancies': discrepancies})
+            verified_time = all(timestamp(s.get('captured_at') or s.get('fetched_at')) <= cutoff
+                for s in snapshot.get('box_verification', {}).get('sources', []))
+            if gid in snapshot.get('box_verified_game_ids', []) and boxes[gid] and g.get('completed') and (retrospective or (verified_time and timestamp(g['source_captured_at']) <= cutoff)):
+                accepted.append({'game': g, 'boxes': boxes[gid], 'events': [],
+                    'validated_fields': ['carries', 'targets', *METRICS], 'event_reconciled': False,
+                    'event_rejection_reasons': sorted(reasons)})
         else:
             accepted.append({'game': g, 'boxes': boxes[gid], 'events': events[gid],
-                             'validated_fields': list(fields)})
+                             'validated_fields': list(fields), 'event_reconciled': True})
     if not accepted:
         raise ValueError('No complete reconciled prior games')
     return accepted, rejected
@@ -257,6 +296,20 @@ def forecast(history, request, cfg=Settings(), outcomes=METRICS):
         raise ValueError('Duplicate training game')
     history=sorted(history,key=lambda h:(timestamp(h['game']['kickoff']),h['game']['game_id']))
     teams = (game['away'], game['home'])
+    expected = request.get('expected_prior_game_ids')
+    coverage = {}
+    for team in teams:
+        actual = [h for h in history if team in (h['game']['away'], h['game']['home'])][-cfg.recent_games:]
+        current = [h for h in actual if h['game']['season'] == game['season']]
+        included = [h['game']['game_id'] for h in (current or actual)]
+        missing = sorted(set((expected or {}).get(team, [])) - set(included))
+        excluded_events = [h['game']['game_id'] for h in (current or actual) if h.get('event_reconciled') is False]
+        coverage[team] = {'expected': (expected or {}).get(team), 'included': included, 'excluded': missing,
+                          'excluded_event_games': excluded_events}
+        if expected is not None and (team not in expected or missing):
+            raise ValueError(f'Incomplete recent history for {team}: {missing or "missing expected-game list"}')
+        if excluded_events and set(outcomes) & {'receiving_yards', 'rushing_yards'}:
+            raise ValueError(f'Unresolved recent yardage events for {team}: {excluded_events}')
     players = request['players']
     if len({p['identity'] for p in players}) != len(players):
         raise ValueError('Duplicate request player identity')
@@ -356,8 +409,11 @@ def forecast(history, request, cfg=Settings(), outcomes=METRICS):
                     raise ValueError('No empirical efficiency distribution')
                 own_weights = np.array([cfg.prior_season_weight**max(0,game['season']-games['game']['season'])
                     for games in history for e in games['events'] if e['action']==action and e['identity']==p['identity']])
-                peer_catch = np.mean([e['caught'] for e in peer_events])
-                rate = (sum(w*e['caught'] for w,e in zip(own_weights,own_events))+cfg.efficiency_prior_events*peer_catch)/(own_weights.sum()+cfg.efficiency_prior_events)
+                peer_boxes = [b for h in history for b in h['boxes'] if p['position'] == 'UNKNOWN' or b['position'] == p['position']]
+                peer_catch = sum(b['receptions'] for b in peer_boxes) / max(1, sum(b['targets'] for b in peer_boxes))
+                own_boxes = [(b, cfg.prior_season_weight ** max(0, game['season'] - h['game']['season']))
+                    for h in history for b in h['boxes'] if b['identity'] == p['identity']]
+                rate = (sum(w*b['receptions'] for b,w in own_boxes)+cfg.efficiency_prior_events*peer_catch)/(sum(w*b['targets'] for b,w in own_boxes)+cfg.efficiency_prior_events)
                 receptions = rng.binomial(counts[:,j],np.clip(rate+shared_catch+catch_effect['adjustment'],0,1)) if action=='targets' else counts[:,j]
                 valid_own = [(e['yards'],w) for e,w in zip(own_events,own_weights) if action=='carries' or e['caught']]
                 peer_yards = [e['yards'] for e in peer_events if action=='carries' or e['caught']]
@@ -376,6 +432,22 @@ def forecast(history, request, cfg=Settings(), outcomes=METRICS):
                 stats[p['identity']][:,0 if action=='carries' else 2] = np.rint(yards)
                 if action=='targets':
                     stats[p['identity']][:,1] = receptions
+                # Lateral recipients receive yards without a catch/target/carry.
+                # Separate empirical incidence per team opportunity; no fake catch.
+                lateral_action = 'lateral_receiving' if action == 'targets' else 'lateral_rushing'
+                lateral = [(e['yards'], cfg.prior_season_weight ** max(0, game['season'] - h['game']['season']))
+                    for h in history for e in h['events'] if e['action'] == lateral_action and e['identity'] == p['identity']]
+                if lateral:
+                    exposure = sum(cfg.prior_season_weight ** max(0, game['season'] - h['game']['season']) *
+                        sum(b[action] for b in h['boxes'] if b['team'] == team)
+                        for h in history if team in (h['game']['away'], h['game']['home']))
+                    rate = min(1., sum(w for _, w in lateral) / max(exposure, 1))
+                    extra = rng.binomial(totals, rate)
+                    lateral_weights = np.array([w for _, w in lateral]); lateral_weights /= lateral_weights.sum()
+                    for k in range(int(extra.max(initial=0))):
+                        mask = extra > k
+                        stats[p['identity']][mask, 2 if action == 'targets' else 0] += rng.choice(
+                            [y for y, _ in lateral], int(mask.sum()), p=lateral_weights)
     output = {}
     identities = list(stats)
     for col, metric in enumerate(METRICS):
@@ -416,6 +488,8 @@ def forecast(history, request, cfg=Settings(), outcomes=METRICS):
         'request_sha256':sha256(json.dumps(request,sort_keys=True).encode()).hexdigest(),
         'market_inputs_used':False,'scope':'full_game_including_overtime','metrics':output,'diagnostics':diagnostics,
         'availability_verified':verified,'availability_evidence':request.get('availability_evidence',{}),
+        'history_coverage': coverage, 'recent_history_verified': expected is not None,
+        'workload_only_game_ids': [h['game']['game_id'] for h in history if h.get('event_reconciled') is False],
         'limits':['Reconstructed historical usage is not game-day availability.',
             'Role concentration and smoothing are assumptions, not fitted calibration.',
             'Absent/out workloads remain in unresolved slots unless an explicit role scenario is supplied.',
