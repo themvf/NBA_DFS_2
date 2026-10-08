@@ -144,3 +144,63 @@ The 15-game public snapshot uses `final-week5-forecast.json`, reviewed historica
 evaluation, and `reviewed-page-snapshot.json`. Raw source capture is
 `full-capture-20261008.json.gz`; the initial fantasy-DB capture is preserved only
 locally as diagnostic evidence and is not the full-field source.
+
+## Failed-model investigation (2026-10-08)
+
+The complete Weeks 1–4 review covers all 64 games. Full player boxes reconcile
+to the separately published nflverse team feed for all five statistics; this
+is a second aggregation from the same provider, not independent provider evidence.
+Target PBP discrepancies still exclude those games from event-model training.
+Original forecasts remain frozen; eight previously excluded target games were
+forecast without changing settings and graded against the reconciled boxes.
+
+First-choice fractional credit, model versus six-game average:
+
+| Outcome | Model | Average baseline |
+| --- | ---: | ---: |
+| Rushing yards | 43.8% | 50.0% |
+| Receptions | 17.7% | 22.4% |
+| Receiving yards | 25.0% | 25.0% |
+
+When model and baseline differed, rushing selections earned 6 versus 10 games
+of credit across 23 disagreements; receptions earned 2.83 versus 5.83 across 30;
+receiving yards earned 5 versus 5 across 29. These demonstrate harmful overrides,
+not a proven diagnosis that any specific opportunity or efficiency term caused them.
+
+`research/nfl_game_leaders_challenger.py` tests a separate conditional ranking
+model fitted directly to first-place outcomes, with split tie labels and an
+OTHER winner category for contributors absent from prior usage. OTHER is not
+a pooled yardage competitor and receives zero primary named-pick credit.
+Features include prior 1/3/6-game workload and production, team share, position,
+and prior opponent totals. Historical candidates use only earlier team usage;
+zero-touch games are retained in averages. Unobserved opposing-team transfers
+cannot receive credit under an obsolete team role. This is a ranking experiment,
+not a calibrated probability replacement for the joint simulator.
+
+Train: 2023 plus 2024 Weeks 1–10 (408 games after history warm-up).
+Selection: 2024 Weeks 11–18 (120 games), choosing among three registered
+regularization strengths and 1/3/6-game average baselines.
+Untouched evaluation: 2025 Weeks 13–18 (94 games). All 816 source games from
+2023–2025 reconcile to separately published team totals. This verified box
+history is broader than the event model's reconciled PBP training history;
+the two model results must not be presented as identical historical experiments.
+
+| Outcome | Challenger | Selected average baseline | Improvement 95% interval |
+| --- | ---: | ---: | ---: |
+| Rushing yards | 36.7% | 38.8% | −9.6 to +5.3 percentage points |
+| Receptions | 28.8% | 31.3% | −10.8 to +5.9 percentage points |
+| Receiving yards | 27.7% | 26.6% | −6.4 to +8.5 percentage points |
+
+Intervals resample paired games. All three categories failed the registered
+promotion gate. The initial report is retained; the reviewed rerun corrected
+transfer-label accounting and source-scope reporting without changing settings
+or any outcome scores. These 2025 weeks are now examined and cannot serve as
+an untouched holdout for subsequent tuning. No 2026 outcomes selected settings.
+Historical roster reconstruction and later stat corrections still limit
+pregame validity. Live forecasts remain unchanged and experimental.
+
+Reproduce the reviewed experiment from frozen sources with:
+`python -m research.nfl_game_leaders_challenger --output NEW_REPORT.json`.
+Existing outputs and the study registration are protected against overwrite.
+Preserved evidence lives under `artifacts/nfl-game-leaders/challenger-*`;
+the plain-language review is `model-quality-review.md` in that directory.
