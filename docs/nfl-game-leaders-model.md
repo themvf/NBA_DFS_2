@@ -4,6 +4,25 @@ Open repair work and acceptance checks are tracked in
 [nfl-game-leaders-backlog.md](nfl-game-leaders-backlog.md), including the
 2026 Dallas fumble/lateral discrepancies and incomplete-history forecast guard.
 
+### Count-only reception analysis
+
+`prepare(..., reconciliation_fields=('targets','receptions'))` admits only games
+whose player targets and catches reconcile, preserving Dallas Weeks 3–4 without
+pretending the unresolved fumble/lateral yardage is correct. Each accepted game
+records `validated_fields`. `forecast(..., outcomes=('receptions',))` restricts
+output to the validated outcome; a yardage forecast rejects count-only history.
+Named reception rows expose a discrete `count_probabilities` distribution.
+Default full-outcome reconciliation and existing saved forecasts remain intact.
+This is a scoped count analysis, not completion of the yardage repair backlog.
+
+The evening 2026-10-08 local analysis is frozen in
+`artifacts/nfl-game-leaders/receptions-forecast-20261008-evening.json`, with a fresh
+dual-provider request and all four current Dallas games. Its price comparison
+is reproducible with `research.nfl_receptions_analysis`; supplied screenshot
+prices are explicitly timestamp-unknown observations, not a live odds feed.
+Compare tie-split leader credit with offered-price break-even credit, not
+first-or-tied probability. The comparison does not de-vig an incomplete field.
+
 ## Requested outcome and acceptance criteria
 For each canonical NFL game, estimate the full-field leader in rushing yards,
 receptions, and receiving yards, including overtime and all offensive positions.

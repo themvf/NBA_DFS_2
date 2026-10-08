@@ -39,12 +39,16 @@ class Settings:
             raise ValueError('Prior-season weight must be <= 1')
 
 
-def prepare(snapshot: dict, decision_at: str, retrospective: bool = False):
+def prepare(snapshot: dict, decision_at: str, retrospective: bool = False,
+            reconciliation_fields=('carries', 'targets', *METRICS)):
     """Reconcile PBP counts/yards with separately captured box totals, full game.
 
     Missing/ambiguous actors and complex stat corrections quarantine the complete
     training game rather than becoming zero-yard touches. All periods included.
     """
+    fields = tuple(reconciliation_fields)
+    if not fields or set(fields) - {'carries', 'targets', *METRICS}:
+        raise ValueError('Unsupported reconciliation fields')
     cutoff = timestamp(decision_at)
     games = {g['game_id']: g for g in snapshot['games']}
     if len(games) != len(snapshot['games']):
@@ -136,13 +140,14 @@ def prepare(snapshot: dict, decision_at: str, retrospective: bool = False):
                 stats['receiving_yards'] += e['yards']
         expected = {(r['team'], r['identity']): r for r in boxes[gid]}
         for key in set(actual) | set(expected):
-            for field in ('carries', 'targets', *METRICS):
+            for field in fields:
                 if abs(actual[key][field] - expected.get(key, {}).get(field, 0)) > .01:
                     reasons.add('pbp_box_mismatch')
         if reasons:
             rejected.append({'game_id': gid, 'reasons': sorted(reasons)})
         else:
-            accepted.append({'game': g, 'boxes': boxes[gid], 'events': events[gid]})
+            accepted.append({'game': g, 'boxes': boxes[gid], 'events': events[gid],
+                             'validated_fields': list(fields)})
     if not accepted:
         raise ValueError('No complete reconciled prior games')
     return accepted, rejected
@@ -232,7 +237,15 @@ def availability_check(request):
     return True
 
 
-def forecast(history, request, cfg=Settings()):
+def forecast(history, request, cfg=Settings(), outcomes=METRICS):
+    if not outcomes or set(outcomes) - set(METRICS):
+        raise ValueError('Unsupported outcomes')
+    required = {'receptions': {'targets', 'receptions'},
+                'receiving_yards': {'targets', 'receptions', 'receiving_yards'},
+                'rushing_yards': {'carries', 'rushing_yards'}}
+    needed = set().union(*(required[m] for m in outcomes))
+    if any(not needed.issubset(h.get('validated_fields', ('carries', 'targets', *METRICS))) for h in history):
+        raise ValueError('History does not reconcile requested outcome')
     game = request['game']
     cutoff = timestamp(request['decision_at'])
     if cutoff >= timestamp(game['kickoff']):
@@ -366,6 +379,8 @@ def forecast(history, request, cfg=Settings()):
     output = {}
     identities = list(stats)
     for col, metric in enumerate(METRICS):
+        if metric not in outcomes:
+            continue
         matrix = np.array([stats[i][:,col] for i in identities]).T
         wins = matrix==matrix.max(axis=1)[:,None]
         tie_count = wins.sum(axis=1)
@@ -378,7 +393,7 @@ def forecast(history, request, cfg=Settings()):
         for key, indices in groups.items():
             residual = key.startswith('OTHER:')
             p = candidates[identities[indices[0]]]
-            rows_out.append({'identity':key,'name':key if residual else p['name'],'team':p['team'],
+            row = {'identity':key,'name':key if residual else p['name'],'team':p['team'],
                 'availability':p.get('status','unresolved'),
                 'residual':residual,'win_share':float(credits[:,indices].sum(axis=1).mean()),
                 'first_or_tied':float(wins[:,indices].any(axis=1).mean()),
@@ -387,7 +402,11 @@ def forecast(history, request, cfg=Settings()):
                 'p10':None if residual else float(np.quantile(matrix[:,indices[0]],.1)),
                 'p90':None if residual else float(np.quantile(matrix[:,indices[0]],.9)),
                 'baseline_mean':None if residual else float(np.mean([sum(b[metric] for b in h['boxes'] if b['identity']==key and b['team']==p['team'])
-                    for h in history if p['team'] in (h['game']['away'],h['game']['home'])][-cfg.recent_games:]))})
+                    for h in history if p['team'] in (h['game']['away'],h['game']['home'])][-cfg.recent_games:]))}
+            if metric == 'receptions' and not residual:
+                values, frequencies = np.unique(matrix[:, indices[0]].astype(int), return_counts=True)
+                row['count_probabilities'] = {str(int(v)): float(n / cfg.draws) for v, n in zip(values, frequencies)}
+            rows_out.append(row)
         if abs(sum(r['win_share'] for r in rows_out)-1)>1e-8:
             raise AssertionError('Leader share does not sum to one')
         output[metric]={'players':sorted(rows_out,key=lambda r:-r['win_share']),

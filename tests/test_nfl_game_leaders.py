@@ -53,6 +53,47 @@ def test_reconciled_all_periods_and_negative_yards():
     assert len(history[-1]['events'])==12  # OT retained
 
 
+def test_count_only_reconciliation_preserves_games_and_blocks_yardage_use():
+    s = fixture()
+    s['boxes'][0]['receiving_yards'] += 19
+    full, rejected = prepare(s, '2025-10-02T00:00:00Z')
+    assert len(full) == 3 and rejected[0]['reasons'] == ['pbp_box_mismatch']
+    counts, rejected = prepare(s, '2025-10-02T00:00:00Z', reconciliation_fields=('targets', 'receptions'))
+    assert len(counts) == 4 and not rejected
+    with pytest.raises(ValueError, match='requested outcome'):
+        forecast(counts, request(), Settings(draws=100))
+    result = forecast(counts, request(), Settings(draws=500), outcomes=('receptions',))
+    assert set(result['metrics']) == {'receptions'}
+    for r in result['metrics']['receptions']['players']:
+        if r['residual']:
+            continue
+        pmf = r['count_probabilities']
+        assert sum(pmf.values()) == pytest.approx(1)
+        assert sum(int(k) * p for k, p in pmf.items()) == pytest.approx(r['mean'])
+        tails = [sum(p for k, p in pmf.items() if int(k) >= n) for n in range(20)]
+        assert all(a >= b for a, b in zip(tails, tails[1:]))
+    s['boxes'][0]['targets'] += 1
+    counts, rejected = prepare(s, '2025-10-02T00:00:00Z', reconciliation_fields=('targets', 'receptions'))
+    assert len(counts) == 3 and rejected[0]['reasons'] == ['pbp_box_mismatch']
+
+
+def test_reception_market_comparison_uses_tie_credit_not_full_tie_hit():
+    from research.nfl_receptions_analysis import analyze
+    p = {'game': {}, 'decision_at': '2026-10-08T22:00:00Z', 'settings': {'draws': 100},
+         'source_sha256': 'source', 'implementation_sha256': 'implementation',
+         'reconciliation_fields': ['targets', 'receptions'], 'availability_verified': False,
+         'metrics': {'receptions': {'tie_probability': .2, 'players': [{
+             'name': 'CeeDee Lamb', 'residual': False, 'win_share': .5, 'first_or_tied': .6,
+             'mean': 6., 'count_probabilities': {'5': .5, '7': .5}}]}}}
+    r = analyze(p)['rows'][0]
+    assert r['at_least']['7'] == .5 and sum(r['bins'].values()) == 1
+    assert r['break_even_credit'] == pytest.approx(108 / 208)
+    assert r['model_expected_net_per_unit'] == pytest.approx(.5 * (1 + 100 / 108) - 1)
+    p['metrics']['receptions']['players'][0]['count_probabilities']['5'] = .6
+    with pytest.raises(ValueError, match='sum to one'):
+        analyze(p)
+
+
 def test_temporal_boundary_and_mismatch_quarantine():
     s=fixture()
     s['plays'][0]['labelled_at']='2025-10-04T00:00:00Z'
