@@ -1,5 +1,42 @@
 # NFL Team Identity: source and presentation map
 
+## Local longest-touchdown research consumer
+
+`model/nfl_longest_touchdown.py` and `research/nfl_longest_touchdown.py` implement
+an exploratory scrimmage-only TD-distance/leader simulator. See
+`docs/nfl-longest-touchdown-model.md` for definitions, commands and limits.
+The read-only capture verifies `nfl_season_games.nflverse_game_id = game_id`,
+season, week and home/away identities through `nfl_teams`. Receiver/rusher
+participants are deduplicated by role and GSIS before aggregation to one play.
+Positions resolve by `(season, week, player_gsis_id)` in `ff_v2_roster_weeks`
+when unambiguous, then `(season, gsis_id)` in `ff_players`; missing positions
+remain UNKNOWN. No name-only attribution or inferred scoring from gains alone.
+
+Touchdowns require a counted run/pass description, a unique scorer identity and
+yardage agreeing with distance to the goal. Complex/voided/unverified scoring
+rows are excluded with counts. Hazards use all attributed opportunities within
+field-position bins; defense adjustments compare current offenses against that
+defense with their other games. Strict fitting gates kickoff/label time before
+the decision; retrospective walk-forward studies permit later labels and must
+remain explicitly exploratory. Participants/roster corrections have no immutable
+play-level pregame availability guarantee. Output is frozen local JSON with
+input/request/implementation digests, not a production projection or page metric.
+No market inputs or production writes are introduced by this consumer.
+
+The v2 research capture additionally requires PBP `quarter`, `out_of_bounds`,
+canonical schedule `completed`, final scores and schedule capture time. Local
+`game_coverage` records captured play count and regulation-end evidence (Q4 zero
+clock, or an overtime END GAME marker). Forward and historical grading require
+that final metadata and coverage agree; incomplete sources remain unknown.
+Training, simple baselines and scoring all use regulation scrimmage TDs; overtime
+plays are explicitly excluded. Legacy snapshots without quarters must be
+recaptured. Original frozen forecasts remain immutable and can be graded on a
+new complete actuals capture. The optional unexpected-scorer reserve is also
+applied to the comparison baseline. See the model guide for the remaining scope
+and clock approximations and the reproducible development-comparison command.
+
+
+
 **Status:** The Team Identity page is implemented at `/nfl/team-identity` and computes its profile on each request. A persisted team-profile summary does not exist. Source coverage below was verified against the local database on 2026-10-01; recheck live coverage before relying on counts.
 
 The page's team directory links to every active NFL team and uses the same season, game, market, and settlement queries for each one. On the Monday and Tuesday `refresh_nfl_pbp_archetypes.yml` runs, `ingest.nfl_season_schedule` first refreshes the current season's completed games, scores, and matchup links from nflverse; `ingest.nfl_pbp_archetypes --relabel-stale` then labels newly published games. The page is dynamic, so its rolling summary and postgame rows advance on the next request after both steps succeed. The scheduled runs are not live during a game. A quote appears only when a verified pre-kickoff odds capture exists for that matchup; missing market data remains marked unavailable.
