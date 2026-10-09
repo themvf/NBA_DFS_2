@@ -2670,13 +2670,10 @@ def settle(db: DatabaseManager, sport: str) -> int:
             close = _verified_close(db, sport, a["matchup_id"], include_id=(sport == "cfb"))
         else:
             close = None
-        # Historical alerts and the short interval before the close worker
-        # freezes a new event retain the explicitly-labelled legacy fallback.
-        if close is None and (sport in ("nfl", "nhl") or (sport == "cfb" and not is_cfb_moneyline)):
-            # Keep other prospective CLV cohorts on verified closes. A final
-            # CFB moneyline result can settle without a comparable close.
+        settles_without_close = close is None and (sport in ("nfl", "nhl") or is_cfb_moneyline)
+        if close is None and sport == "cfb" and not is_cfb_moneyline:
             continue
-        if close is None and sport != "cfb":
+        if close is None and sport not in ("cfb", "nfl", "nhl"):
             close = db.execute_one(
                 f"""
                 SELECT books FROM game_odds_history
@@ -2755,7 +2752,9 @@ def settle(db: DatabaseManager, sport: str) -> int:
         # and is filled in the same pass on a later run if still NULL then.
         if clv_pp is None and outcome is None:
             continue
-        if is_cfb_moneyline and close is None:
+        if settles_without_close:
+            if outcome is None:
+                continue
             # Price CLV requires a verified close. The final score does not.
             g = {
                 "dk_close_decimal": None, "dk_clv_pct": None,
