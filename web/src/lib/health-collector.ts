@@ -12,7 +12,7 @@ import manifestJson from "@/data/workflow-manifest.json";
 import { DISPATCH_JOBS, GITHUB_OWNER, GITHUB_REPO, NO_CONTEXT, parseTokenExpiry } from "@/lib/cron-dispatch";
 import { observation, readCronHeartbeats, recordObservation, type CronHeartbeat } from "@/lib/cron-heartbeat";
 import { buildChecklist, type HealthItem, type ManifestWorkflow, type OddsApiReading } from "@/lib/health-checklist";
-import { toRunLite, type WorkflowRunLite } from "@/lib/workflow-health";
+import { didNotRun, isFailedRun, jobsNeverStarted, NEVER_STARTED_PROBE, toRunLite, type WorkflowRunLite } from "@/lib/workflow-health";
 
 const database = async () => (await import("@/db")).db;
 
@@ -63,6 +63,28 @@ async function github(path: string, token: string, fetchImpl: typeof fetch): Pro
 }
 
 /**
+ * GitHub reports a run it never gave a runner as "failure". Only its jobs show
+ * that, so each workflow's newest failed runs are probed. A run whose jobs
+ * cannot be read stays a failure.
+ */
+async function markNeverStarted(runs: Record<string, WorkflowRunLite[]>, token: string, fetchImpl: typeof fetch) {
+  const probes = Object.values(runs).flatMap((list) => {
+    const newestFirst = [...list].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const failed: WorkflowRunLite[] = [];
+    for (const run of newestFirst) {
+      if (run.status !== "completed" || didNotRun(run)) continue;
+      if (!isFailedRun(run) || failed.length === NEVER_STARTED_PROBE) break;
+      failed.push(run);
+    }
+    return failed;
+  });
+  await Promise.allSettled(probes.map(async (run) => {
+    const { body } = await github(`/actions/runs/${run.id}/jobs?per_page=100`, token, fetchImpl);
+    run.neverStarted = jobsNeverStarted((body.jobs as Record<string, unknown>[] | undefined) ?? []);
+  }));
+}
+
+/**
  * Each workflow is read on its own: one that cannot be read (or is not on
  * GitHub's default branch yet) becomes its own row, never a gap that hides
  * the rest.
@@ -80,6 +102,7 @@ async function readGithub(token: string | null, fetchImpl: typeof fetch) {
     if (result.status === "fulfilled") runs[w.file] = ((result.value.body.workflow_runs as Record<string, unknown>[] | undefined) ?? []).map(toRunLite);
     else workflowErrors[w.file] = errorText(result.reason);
   });
+  await markNeverStarted(runs, token, fetchImpl);
   const tokenExpiresAt = [workflows, ...perWorkflow].map((r) => (r.status === "fulfilled" ? r.value.tokenExpiresAt : null)).find((t) => t) ?? null;
   // Every read failed: GitHub itself is unreachable or the token is bad. Say that once.
   if (MANIFEST.length && Object.keys(workflowErrors).length === MANIFEST.length) {

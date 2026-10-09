@@ -11,7 +11,8 @@
  *
  * A workflow is failing when its latest finished run (pull-request runs
  * excluded) failed, timed out or could not start. A run GitHub cancelled
- * because a newer one replaced it is not a failure.
+ * because a newer one replaced it is not a failure, nor is one GitHub never
+ * assigned a runner (it reports those as "failure" during an outage).
  */
 import { GITHUB_OWNER, GITHUB_REPO } from "@/lib/cron-dispatch";
 
@@ -26,6 +27,8 @@ export interface WorkflowRunLite {
   conclusion: string | null;
   createdAt: string;
   url: string;
+  /** Set when GitHub assigned no runner to any of its jobs: the workflow's code never ran. */
+  neverStarted?: boolean;
 }
 
 export interface FailingWorkflow {
@@ -44,6 +47,17 @@ export interface FailingWorkflow {
 }
 
 const FAILED = new Set(["failure", "timed_out", "startup_failure"]);
+
+export const isFailedRun = (r: WorkflowRunLite) => FAILED.has(r.conclusion ?? "") && r.neverStarted !== true;
+export const didNotRun = (r: WorkflowRunLite) => r.status === "completed" && (r.conclusion === "cancelled" || r.neverStarted === true);
+export const isFinishedRun = (r: WorkflowRunLite) => r.status === "completed" && r.conclusion !== "skipped" && !didNotRun(r);
+
+/** How many of a workflow's newest failed runs are checked for a runner GitHub never assigned. */
+export const NEVER_STARTED_PROBE = 3;
+
+export function jobsNeverStarted(jobs: Record<string, unknown>[]): boolean {
+  return jobs.length > 0 && jobs.every((job) => !job.runner_name && !(job.steps as unknown[] | undefined)?.length);
+}
 
 export function toRunLite(run: Record<string, unknown>): WorkflowRunLite {
   const path = String(run.path ?? "");
@@ -64,12 +78,12 @@ export function failingWorkflows(runsByWorkflow: Map<number, WorkflowRunLite[]>)
   const out: FailingWorkflow[] = [];
   for (const runs of runsByWorkflow.values()) {
     const finished = runs
-      .filter((r) => r.event !== "pull_request" && r.status === "completed" && r.conclusion !== "cancelled" && r.conclusion !== "skipped")
+      .filter((r) => r.event !== "pull_request" && isFinishedRun(r))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     const latest = finished[0];
-    if (!latest || !FAILED.has(latest.conclusion ?? "")) continue;
+    if (!latest || !isFailedRun(latest)) continue;
     let streak = 0;
-    for (const run of finished) { if (FAILED.has(run.conclusion ?? "")) streak += 1; else break; }
+    for (const run of finished) { if (isFailedRun(run)) streak += 1; else break; }
     const success = finished.find((r) => r.conclusion === "success");
     out.push({ workflow: latest.workflow, name: latest.name, failedAt: latest.createdAt, url: latest.url, streak,
       streakCapped: streak === finished.length, failingSince: finished[streak - 1].createdAt,
