@@ -472,6 +472,24 @@ cost, so merged git branches must be deleted; and compute, not storage, is
 the Neon bill for an always-on database, so the levers are the plan rate,
 the autoscaling maximum, and the load that pushes the average up.
 
+**October (2026-10-09): transfer is now the line to watch.** Launch includes
+10 branches per project (the September invoice equals branch-hours above 10
+per hour), so RegIntel's remaining branches cost nothing. NBADFS sends ~46 GB
+a day against a 500 GB monthly allowance, then $0.10/GB. `pg_stat_statements`
+put over half of it on pick'em grading re-reading every ~850 KB frozen
+forecast each run (the fix, grading from a stored input digest, is on branch
+`claude/research-oom-and-failures`, unmerged as of this note). Rank readers by rows x row width, not by
+execution time: the transfer leaders were cheap queries. The per-capture CFB
+capture audit now reads only games that can still gain captures (the full
+audit runs in pipeline_health.yml, after the freshness reading so a failing
+integrity pass cannot stop /health updating), and `record_movements` looks up
+pending games in a separate query. `ingest/nfl_pickem_refresh.py`'s
+`DISTINCT ON` quote lookup costs ~6 s a call, but that file is hash-pinned by
+the registered pick'em studies: changing it needs a new implementation pin,
+and the grader accepts only captures after the latest pin, so a re-pin
+restarts the pick'em sample. Fold such fixes into the next re-pin that is
+needed anyway.
+
 ## Parallel agents: commit locally, one session pushes (2026-10-04)
 
 Every push to GitHub starts a Vercel build (a branch push builds Preview, a
