@@ -166,8 +166,11 @@ def fetch_props(db: DatabaseManager, api_key: str) -> int:
         r.raise_for_status()
         events = r.json()
     except requests.RequestException as e:
-        logger.warning("Odds API events request failed: %s", e)
-        return 0
+        # Returning 0 here printed "MLB props: 0 player-market rows captured"
+        # and the step passed; a failed event list is a failed capture.
+        raise PropCaptureError(
+            f"Odds API MLB events request failed (HTTP {_http_status(e)}): {e}"
+        ) from e
 
     now = datetime.now(timezone.utc)
     captured_at = now.replace(microsecond=0)
@@ -196,6 +199,8 @@ def fetch_props(db: DatabaseManager, api_key: str) -> int:
 
     written = 0
     skipped_live = 0
+    attempted = 0
+    failed: list[str] = []
     for ev in events:
         commence_iso = ev.get("commence_time", "")
         try:
@@ -206,6 +211,7 @@ def fetch_props(db: DatabaseManager, api_key: str) -> int:
             skipped_live += 1
             continue
 
+        attempted += 1
         try:
             r2 = requests.get(
                 f"{ODDS_BASE}/sports/baseball_mlb/events/{ev['id']}/odds",
@@ -216,7 +222,10 @@ def fetch_props(db: DatabaseManager, api_key: str) -> int:
             r2.raise_for_status()
             data = r2.json()
         except requests.RequestException as e:
-            logger.warning("Props fetch failed for %s: %s", ev.get("id"), e)
+            # One event's failure is skipped and COUNTED; every event failing
+            # (the 401 shape of an exhausted quota) fails the run below.
+            logger.warning("Props fetch failed for %s (HTTP %s): %s", ev.get("id"), _http_status(e), e)
+            failed.append(f"{ev.get('away_team')}@{ev.get('home_team')} HTTP {_http_status(e)}")
             continue
         time.sleep(SLEEP_BETWEEN_CALLS)
 
@@ -256,11 +265,26 @@ def fetch_props(db: DatabaseManager, api_key: str) -> int:
                 )
                 written += 1
 
-    msg = f"MLB props: {written} player-market rows captured"
+    msg = f"MLB props: {written} player-market rows captured from {attempted - len(failed)}/{attempted} upcoming events"
+    if failed:
+        msg += f"; {len(failed)} event fetch(es) failed: " + "; ".join(failed)
     if skipped_live:
         msg += f" ({skipped_live} in-play games skipped)"
     print(msg)
+    if attempted and len(failed) == attempted:
+        raise PropCaptureError(
+            f"every prop fetch failed ({len(failed)}/{attempted} upcoming events): " + "; ".join(failed)
+        )
     return written
+
+
+class PropCaptureError(RuntimeError):
+    """The prop capture could not fetch; distinct from a slate with nothing to price."""
+
+
+def _http_status(exc: requests.RequestException) -> str:
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    return str(status) if status is not None else "unavailable"
 
 
 if __name__ == "__main__":

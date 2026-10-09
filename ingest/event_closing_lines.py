@@ -543,12 +543,24 @@ def capture_due_checkpoints(
         event_ids = sorted({str(job["event_id"]) for job in jobs})
         _mark_attempt(db, jobs, now)
         audit: dict = {}
-        updated = fetch_mlb_odds(
-            db, api_key, game_date, event_ids=event_ids, bookmakers=BOOKMAKERS,
-            markets=MARKETS, request_audit=audit,
-        )
-        _audit_usage(db, sport="mlb", event_count=len(event_ids), audit=audit,
-                     metadata={"game_date": game_date, "event_ids": event_ids})
+        metadata = {"game_date": game_date, "event_ids": event_ids}
+        try:
+            updated = fetch_mlb_odds(
+                db, api_key, game_date, event_ids=event_ids, bookmakers=BOOKMAKERS,
+                markets=MARKETS, request_audit=audit,
+            )
+        except requests.RequestException as exc:
+            # fetch_mlb_odds raises OddsApiError on a failed paid call (it used
+            # to return 0, which was recorded here as "no accepted prestart
+            # events" -- the reason for an EMPTY slate, not a failed request).
+            # Record the real reason and keep the other sports' groups running.
+            _audit_usage(db, sport="mlb", event_count=len(event_ids), audit=audit,
+                         metadata={**metadata, "error": str(exc)})
+            _mark_failure(db, jobs, f"provider request failed: {exc}")
+            result["groups"] += 1
+            result["paid_requests"] += int(bool(audit))
+            continue
+        _audit_usage(db, sport="mlb", event_count=len(event_ids), audit=audit, metadata=metadata)
         result["groups"] += 1
         result["paid_requests"] += 1
         if updated == 0:
@@ -597,19 +609,30 @@ def capture_due_checkpoints(
             event_ids = {str(job["event_id"]) for job in cfb_jobs}
             _mark_attempt(db, cfb_jobs, now)
             audit = {}
-            updated = fetch_cfb_odds(
-                db, api_key, event_ids=event_ids, refresh_events=False,
-                request_audit=audit,
-            )
-            _audit_usage(
-                db, sport="cfb", event_count=len(event_ids), audit=audit,
-                metadata={"event_ids": sorted(event_ids), "cadence_version": "cfb-dense-v1",
-                          "daily_credit_cap": DAILY_CREDIT_CAP},
-            )
-            result["groups"] += 1
-            result["paid_requests"] += 1
-            if updated == 0:
-                _mark_failure(db, cfb_jobs, "provider returned no accepted prestart events")
+            cfb_metadata = {"event_ids": sorted(event_ids), "cadence_version": "cfb-dense-v1",
+                            "daily_credit_cap": DAILY_CREDIT_CAP}
+            try:
+                updated = fetch_cfb_odds(
+                    db, api_key, event_ids=event_ids, refresh_events=False,
+                    request_audit=audit,
+                )
+            except requests.RequestException as exc:
+                # fetch_cfb_odds raises on a failed paid call; before this the
+                # exception aborted the NFL and NHL groups queued after it and
+                # the reconcile, and the checkpoints stayed 'attempted' with no
+                # reason. Same isolation as the NFL and NHL groups.
+                _audit_usage(db, sport="cfb", event_count=len(event_ids), audit=audit,
+                             metadata={**cfb_metadata, "error": str(exc)})
+                _mark_failure(db, cfb_jobs, f"provider request failed: {exc}")
+                result["groups"] += 1
+                result["paid_requests"] += int(bool(audit))
+            else:
+                _audit_usage(db, sport="cfb", event_count=len(event_ids), audit=audit,
+                             metadata=cfb_metadata)
+                result["groups"] += 1
+                result["paid_requests"] += 1
+                if updated == 0:
+                    _mark_failure(db, cfb_jobs, "provider returned no accepted prestart events")
 
     for season_type, jobs in nfl_groups.items():
         allowed, reason = quota_allows(db)

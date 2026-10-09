@@ -109,7 +109,7 @@ def _backfill_date(
     game_date: str,
     matchup_candidates: list[dict],
     dry_run: bool,
-) -> int:
+) -> int | None:
     snapshot = f"{game_date}T{SNAPSHOT_HOUR_UTC:02d}:00:00Z"
 
     if dry_run:
@@ -119,8 +119,14 @@ def _backfill_date(
     try:
         games, remaining = _fetch_historical_odds(api_key, snapshot)
     except requests.RequestException as e:
-        logger.warning("Historical odds request failed for %s: %s", game_date, e)
-        return 0
+        # None, not 0: the caller counts failed dates separately from dates
+        # the provider genuinely had nothing for, and fails the run when every
+        # date failed (the 401 shape of an exhausted quota).
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        logger.warning("Historical odds request failed for %s (HTTP %s): %s", game_date,
+                       status if status is not None else "unavailable", e)
+        print(f"  {game_date}: FETCH FAILED (HTTP {status if status is not None else 'unavailable'})")
+        return None
 
     snapshot_at = datetime.fromisoformat(
         f"{game_date}T{SNAPSHOT_HOUR_UTC:02d}:00:00+00:00"
@@ -254,6 +260,7 @@ def backfill(
     )
 
     total_updated = 0
+    failed_dates: list[str] = []
     for i, game_date in enumerate(dates, 1):
         rows = db.execute(
             """
@@ -267,7 +274,10 @@ def backfill(
             (game_date,),
         )
         n = _backfill_date(db, api_key, game_date, rows, dry_run)
-        total_updated += n
+        if n is None:
+            failed_dates.append(game_date)
+        else:
+            total_updated += n
 
         if not dry_run and i < len(dates):
             time.sleep(SLEEP_BETWEEN_CALLS)
@@ -275,7 +285,14 @@ def backfill(
     if dry_run:
         print(f"\nDry-run complete: {len(dates)} dates, ~{credits_est} credits needed")
     else:
-        print(f"\nDone: {total_updated} game-odds rows updated across {len(dates)} dates")
+        print(f"\nDone: {total_updated} game-odds rows updated across {len(dates)} dates"
+              + (f" ({len(failed_dates)} date fetches failed: {', '.join(failed_dates)})" if failed_dates else ""))
+        if failed_dates and len(failed_dates) == len(dates):
+            raise RuntimeError(
+                f"MLB odds backfill: every historical odds request failed "
+                f"({len(failed_dates)}/{len(dates)} dates: {', '.join(failed_dates)}); "
+                "check the Odds API key/quota (401 means the monthly quota is exhausted)"
+            )
 
 
 if __name__ == "__main__":
