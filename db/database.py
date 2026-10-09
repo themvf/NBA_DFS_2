@@ -53,6 +53,11 @@ def schema_is_current(cur, digest: str) -> bool:
     return _first(cur.fetchone(), "digest") == digest
 
 
+def fetch_rows(cursor) -> list:
+    """Rows of the last statement; [] only when it produced no result set. A failed fetch raises."""
+    return cursor.fetchall() if cursor.description is not None else []
+
+
 class DatabaseManager:
     def __init__(self, database_url: str, *, initialize_schema: bool = True) -> None:
         if not database_url:
@@ -103,19 +108,11 @@ class DatabaseManager:
             conn.close()
 
     def execute(self, sql: str, params=None):
-        """Execute a single SQL statement and return all rows.
-
-        A statement with no result set (DDL, UPDATE without RETURNING) returns [].
-        A failure while fetching rows raises: until 2026-10-07 every exception
-        here became [], so a pick'em grading query that hit MemoryError
-        reported "no eligible outcomes" and exited green.
-        """
+        """Execute a single SQL statement and return all rows."""
         with self.connect() as conn:
             cur = conn.cursor()
             cur.execute(sql, params or ())
-            if cur.description is None:
-                return []
-            return cur.fetchall()
+            return fetch_rows(cur)
 
     def execute_one(self, sql: str, params=None):
         """Execute and return the first row, or None."""

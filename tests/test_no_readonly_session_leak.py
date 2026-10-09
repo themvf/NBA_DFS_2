@@ -1,12 +1,4 @@
-"""A read-only session setting must never reach the pooled connection.
-
-DATABASE_URL is Neon's PgBouncer endpoint in transaction mode, so a SESSION
-setting outlives the script and lands on other jobs' writes (MLB odds capture
-failed with "read-only transaction", 2026-09-29). Measured with psycopg2 2.9:
-set_session(readonly=True) on a normal connection only makes each transaction
-`BEGIN READ ONLY` (session default stays off), which is safe. With autocommit on
-it issues `SET default_transaction_read_only = on` for the session, which leaks.
-"""
+"""psycopg2 set_session(readonly=True) with autocommit on sets the SESSION default, which leaks through the pooled DATABASE_URL into other jobs."""
 from __future__ import annotations
 
 import re

@@ -31,7 +31,7 @@ from psycopg2.extras import Json
 from psycopg2.extras import RealDictCursor
 
 from config import load_config
-from db.database import DatabaseManager
+from db.database import DatabaseManager, fetch_rows
 from ingest.ff_injuries import persist_fantasypros_injury_observations
 from ingest.ff_source_contracts import SnapshotProvenance, persist_source_snapshot
 
@@ -741,8 +741,7 @@ class RefreshDatabase:
     def execute(self, statement: str, params: Any = None) -> list[dict[str, Any]]:
         cursor = self.conn.cursor()
         cursor.execute(statement, params or ())
-        # No result set is []; a failed fetch raises (never an empty answer).
-        return list(cursor.fetchall()) if cursor.description is not None else []
+        return fetch_rows(cursor)
 
     def execute_one(self, statement: str, params: Any = None) -> dict[str, Any] | None:
         cursor = self.conn.cursor()
