@@ -116,9 +116,14 @@ def give_up_expired(db, now: datetime) -> int:
 
 
 def claim(db, now: datetime, run_url: str | None) -> list[dict]:
-    """Take every claimable request under a lease. SKIP LOCKED keeps concurrent workers apart."""
+    """Take every claimable request under a lease. SKIP LOCKED keeps concurrent workers apart.
+
+    A claim proves a worker started, so an earlier dispatch failure is cleared here: the
+    cron's retry starts this worker without passing through the web app's recordDispatch.
+    """
     return [dict(r) for r in db.execute("""UPDATE nfl_dfs_defensive_capture_requests q
-        SET state='running', attempts=q.attempts+1, lease_until=%s, updated_at=%s, worker_run_url=%s
+        SET state='running', attempts=q.attempts+1, lease_until=%s, updated_at=%s, worker_run_url=%s,
+            dispatch_error=NULL
         WHERE q.request_id IN (
           SELECT request_id FROM nfl_dfs_defensive_capture_requests
           WHERE (state='pending' OR (state='running' AND lease_until < %s)) AND attempts < %s
