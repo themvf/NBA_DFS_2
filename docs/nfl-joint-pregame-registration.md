@@ -139,6 +139,43 @@ before the first 2025 kickoff (a cutoff equal to the opener's kickoff rejected t
 opener itself as "fit after decision" in the smoke run); 2,367 training games. Both fit files carry their training
 set and digests. The primary exact-set evaluation on 2025 has NOT been run.
 
+### 2025 evaluation result: NOT PROMOTED, both variants (2026-10-09, single look)
+
+`research/nfl_joint_score_state_eval.py`, output
+`artifacts/nfl-joint-score-state/eval-2025-single-look.json`. 264 of 272
+games graded (8 skipped by the candidate's own recent-history coverage rule),
+5,000 draws, seed 20261009, baseline = fitted role/gain candidate, identical
+history, roster and labels per game. Market input = nflverse closing line,
+labelled retrospective.
+
+Paired exact-set log loss, variant minus baseline (negative = better), 95%
+bootstrap over games:
+
+| family | V1 mean diff | V1 CI | V2 mean diff | V2 CI |
+|---|---|---|---|---|
+| receptions | -0.036 | [-0.318, +0.255] | +0.133 | [-0.146, +0.417] |
+| receiving yards | +0.466 | [-0.011, +0.973] | +0.187 | [-0.244, +0.644] |
+| rushing yards | -0.034 | [-0.180, +0.067] | -0.085 | [-0.357, +0.147] |
+| total yards | +0.124 | [-0.359, +0.611] | -0.044 | [-0.633, +0.577] |
+
+No family's CI upper bound is below zero for either variant, so the primary
+gate fails and the registration's kill rule applies. The CRPS and P90 guards
+both pass (every relative CRPS change is under 0.6%, every P90 exceedance
+shift under 0.3 pp), which says the variants are harmless to the ranges, not
+that they help the rankings. V1 drew its blocks from a median of 10 historical
+games (range 1 to 22), because the neighbour index spans 2016-2024 while the
+candidate's history starts in 2023; receiving yards is nominally worse under
+V1 and the sparse block set is the likely reason.
+
+Reading: the development gain on team carries (3-4% CRPS) did not reach the
+player-level leader rankings. Rushing yards, the one family where it should
+have shown, moved in the right direction under both variants but not
+significantly. Per the registration there is no re-slicing by spread
+magnitude, favourite or underdog, or family, and no re-tuning of k or ridge.
+Any next version (for example, replacing parent script variance rather than
+scaling it, or restricting V1's index to the candidate's own history) is a
+new registration.
+
 ### Honest prior
 
 Small gain expected. This repo's own results say play-by-play team tendencies
