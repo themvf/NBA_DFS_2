@@ -1,0 +1,20 @@
+{
+  "status": "implemented_local_exploratory",
+  "production_changed": false,
+  "pushed": false,
+  "tests": {
+    "passed": 9,
+    "suite": "tests/test_nfl_longest_touchdown.py"
+  },
+  "files": [
+    "model/nfl_longest_touchdown.py",
+    "research/nfl_longest_touchdown.py",
+    "tests/test_nfl_longest_touchdown.py",
+    "docs/nfl-longest-touchdown-model.md",
+    "docs/nfl-team-identity-source-map.md"
+  ],
+  "capture": "artifacts/nfl-longest-td/pbp-positions-20261006.json.gz",
+  "example": "artifacts/nfl-longest-td/example-atl-no-v2.json",
+  "evaluation": "artifacts/nfl-longest-td/retrospective-2025-week10-v2.json",
+  "validation_status": "No calibration or promotion gate passed; small retrospective development evaluation only."
+}
