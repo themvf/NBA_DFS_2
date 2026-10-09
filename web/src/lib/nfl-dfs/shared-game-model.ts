@@ -9,14 +9,24 @@ type PartialPlayer = { identity: string; name: string; team: string; residual: b
 export type SharedLeaderBank = { schema_version: number; scope: string;
   game: { game_id: string; kickoff: string; home: string; away: string };
   decision_at: string; implementation_sha256: string; scenario_ids: string[];
+  weights?: number[];
   modeled_fields: string[]; missing_fields: string[]; players: PartialPlayer[] };
 const partialFields = ['rushYds', 'recYds', 'receptions', 'targets', 'carries'] as const;
 
-export function correlation(a: number[], b: number[]) {
+export function correlation(a: number[], b: number[], suppliedWeights?: number[]) {
   if (a.length !== b.length || !a.length || [...a, ...b].some(v => !Number.isFinite(v))) throw new Error('Invalid paired draws');
-  const ma = a.reduce((s, v) => s + v, 0) / a.length, mb = b.reduce((s, v) => s + v, 0) / b.length;
-  const va = a.reduce((s, v) => s + (v - ma) ** 2, 0), vb = b.reduce((s, v) => s + (v - mb) ** 2, 0);
-  return va && vb ? a.reduce((s, v, i) => s + (v - ma) * (b[i] - mb), 0) / Math.sqrt(va * vb) : null;
+  const weights = normalizedScenarioWeights(a.length, suppliedWeights);
+  const ma = a.reduce((s, v, i) => s + v * weights[i], 0), mb = b.reduce((s, v, i) => s + v * weights[i], 0);
+  const va = a.reduce((s, v, i) => s + weights[i] * (v - ma) ** 2, 0), vb = b.reduce((s, v, i) => s + weights[i] * (v - mb) ** 2, 0);
+  return va && vb ? a.reduce((s, v, i) => s + weights[i] * (v - ma) * (b[i] - mb), 0) / Math.sqrt(va * vb) : null;
+}
+
+export function normalizedScenarioWeights(count: number, supplied?: number[]) {
+  const weights = supplied ?? Array(count).fill(1);
+  if (weights.length !== count || weights.some(v => !Number.isFinite(v) || v < 0)) throw new Error('Invalid scenario weights');
+  const sum = weights.reduce((a, b) => a + b, 0);
+  if (!(sum > 0)) throw new Error('Empty scenario weight support');
+  return weights.map(v => v / sum);
 }
 
 export function analyzePartialGame(bank: SharedLeaderBank) {
@@ -36,21 +46,21 @@ export function analyzePartialGame(bank: SharedLeaderBank) {
     }
     if (p.draws.receptions.some((n, i) => n > p.draws.targets[i])) throw new Error('Catches exceed targets');
   }
-  const weights = Array(count).fill(1 / count) as number[];
+  const weights = normalizedScenarioWeights(count, bank.weights);
   const scores = new Map(bank.players.map(p => [p.identity, p.draws.rushYds.map((rushYds, i) =>
     scoreNflOffense({ rushYds, recYds: p.draws.recYds[i], receptions: p.draws.receptions[i] }))]));
   const players = bank.players.filter(p => !p.residual).map(p => {
     const values = scores.get(p.identity)!;
     return { identity: p.identity, name: p.name, team: p.team,
       productionPoints: summarizeNflDraws(values, weights, 20),
-      rushBonusProbability: p.draws.rushYds.filter(v => v >= 100).length / count,
-      receivingBonusProbability: p.draws.recYds.filter(v => v >= 100).length / count,
+      rushBonusProbability: p.draws.rushYds.reduce((s, v, i) => s + (v >= 100 ? weights[i] : 0), 0),
+      receivingBonusProbability: p.draws.recYds.reduce((s, v, i) => s + (v >= 100 ? weights[i] : 0), 0),
       fullDfsPoints: null };
   }).sort((a, b) => b.productionPoints.mean - a.productionPoints.mean);
   const relevant = players.slice(0, 12);
   const correlations = relevant.flatMap((p, i) => relevant.slice(i + 1).map(q => ({
     first: p.name, second: q.name, sameTeam: p.team === q.team,
-    correlation: correlation(scores.get(p.identity)!, scores.get(q.identity)!) })));
+    correlation: correlation(scores.get(p.identity)!, scores.get(q.identity)!, weights) })));
   return { version: 'nfl-shared-game-analysis-v1', authority: 'exploratory', game: bank.game,
     decisionAt: bank.decision_at, implementationSha256: bank.implementation_sha256, draws: count,
     scoringScope: 'Receptions + rushing/receiving yards + their separate DraftKings bonuses',

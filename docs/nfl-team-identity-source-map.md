@@ -194,3 +194,27 @@ exits, fitted replacements, calibrated ranges and ownership are not implemented
 by this first expansion. Original example inputs remain frozen; no newly captured
 availability is implied. Historical range checks include zero projections and
 correlated player-game rows, so their pooled coverage is only descriptive.
+
+### Joint outcome candidate (local, 2026-10-09)
+
+`docs/nfl-joint-outcomes-implementation.md` records executable local fitting,
+forecasting, exact-set scoring, evidence timing, capture budgets and limitations.
+`model/nfl_joint_outcomes.py` adapts the existing reconciled leader source; ambiguous
+role/credit sequence joins leave target depth unknown because original prepared
+events omit play IDs. No name-only attribution or new database join is introduced.
+Non-exit role fitting, adjudicated segment exits and empirical gain profiles can
+also enter the separate complete event candidate through
+`model/nfl_joint_full_dfs.py`. Its production view shares actual event scenario IDs;
+unallocated contributors keep its leader scope explicitly incomplete.
+
+`research/nfl_alt_capture.py` adds local immutable raw/normalized quote evidence,
+including each ladder rung, side, bookmaker, provider identity, observation and
+publication time. It defaults to no calls/no credits. Canonical event/player
+mappings remain explicit, paired probabilities require matching book/line/time,
+and integer-push conditioning is preserved. No new production table or scheduled
+capture is enabled. Market-free, game-market and player-market branches remain
+distinct. The local page summary is `web/src/data/joint-outcomes.json`.
+
+These are exploratory implementations. Historical exit/ownership/alt-line data,
+chronological qualification and a future forward period are not implied by their
+availability as code. Existing exclusions and protected registered engines remain.

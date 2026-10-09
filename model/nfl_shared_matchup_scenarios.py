@@ -118,12 +118,16 @@ def _event_allocate(players, count, field, weight_field):
 
 def build_coherent_banks(*, slate, forecasts, history, team_rows, identities, baseline_means,
                          source_manifest, decision_at, seed=20260927, draws=400, rate_factors=None, kicker_roles=None, role_dispersion_evidence=None,
-                         replacement_roles=None, replacement_evidence=None):
+                         replacement_roles=None, replacement_evidence=None, joint_exit_fit=None, joint_gain_profiles=None):
     if slate.get("format") not in ("classic", "showdown"):
         raise ValueError("unsupported slate format")
     if slate["format"] == "showdown" and len({f["game_id"] for f in forecasts}) != 1:
         raise ValueError("Showdown requires exactly one paired game")
     role_concentrations = {}
+    if joint_exit_fit:
+        from model.nfl_longest_touchdown import timestamp
+        if not joint_exit_fit.get('exit_fit') or not joint_exit_fit.get('role_excluded_game_ids') or timestamp(joint_exit_fit['training_cutoff']) > timestamp(decision_at):
+            raise ValueError('Complete exits require prior fitted conditional non-exit roles')
     if replacement_roles:
         from model.nfl_longest_touchdown import timestamp
         evidence = replacement_evidence or {}
@@ -156,6 +160,10 @@ def build_coherent_banks(*, slate, forecasts, history, team_rows, identities, ba
                 raise ValueError('Invalid fitted role concentration')
             role_concentrations[action] = k
     candidate_version = VERSION + '-shared-roles' if role_dispersion_evidence is not None else VERSION
+    if joint_exit_fit:
+        candidate_version += '-exits'
+    if joint_gain_profiles is not None:
+        candidate_version += '-empirical-gains'
     kicker_roles = kicker_roles or {}
     for team, identity in kicker_roles.items():
         matching = [p for p in slate["players"] if p["dkPlayerId"] == identities.get(identity) and p["position"] == "K" and p.get("teamAbbrev") == team]
@@ -193,6 +201,10 @@ def build_coherent_banks(*, slate, forecasts, history, team_rows, identities, ba
     if replacement_roles:
         manifests['replacement_roles'] = replacement_roles
         manifests['replacement_evidence'] = replacement_evidence
+    if joint_exit_fit:
+        manifests['joint_exit_fit_sha256'] = joint_exit_fit['fit_sha256']
+    if joint_gain_profiles is not None:
+        manifests['joint_gain_profiles_sha256'] = stable_digest(joint_gain_profiles)
     manifests['implementation_hashes'] = {name: sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()
         for name in ('nfl_shared_matchup_scenarios.py', 'nfl_shared_dfs_efficiency.py', 'nfl_role_dispersion.py')}
     snapshot = stable_digest({"manifest": manifests, "slate": slate, "forecasts": forecasts, "identities": identities, "decision": decision_at})
@@ -212,12 +224,19 @@ def build_coherent_banks(*, slate, forecasts, history, team_rows, identities, ba
                 selected = blocks[int(rng.integers(len(blocks)))]
                 samples.append(selected if rng.integers(2) == 0 else selected[::-1])
             team_draws = []
+            exit_diagnostics = []
             for side, forecast in enumerate(game_forecasts):
                 budget = []
                 for block in samples:
                     budget.append({key: max(0, int(round(block[side]["stats"][key] * forecast["budgets"][key]["mean"] / budget_means[key]))) for key in budget_means})
+                allocator = None
+                if joint_exit_fit:
+                    from model.nfl_full_exit_allocation import exit_allocator
+                    allocator, exit_report = exit_allocator(forecast, joint_exit_fit, draws, game_seed ^ side, decision_at)
+                    exit_diagnostics.append(exit_report)
                 _, coherence = simulate_team(forecast, by_player, by_position, {**CONFIG, "seed": stream_seed, "draws": draws},
-                                             retain_draws=True, budget_draws=budget, rate_factors=rate_factors, strict_game_ledger=True, role_concentrations=role_concentrations)
+                                             retain_draws=True, budget_draws=budget, rate_factors=rate_factors, strict_game_ledger=True, role_concentrations=role_concentrations,
+                                             opportunity_allocator=allocator, joint_gain_profiles=joint_gain_profiles)
                 team_draws.append(coherence["retained_draws"])
             for index in range(draws):
                 events = []
@@ -233,14 +252,16 @@ def build_coherent_banks(*, slate, forecasts, history, team_rows, identities, ba
                             p[key] = 0
                     pass_yards = sum(players[p].get("passing_yards", 0) for p in qb_ids)
                     receivers = sorted(p for p in players if "receiving_yards" in players[p])
-                    yard_parts = integer_allocate(pass_yards, [max(0, players[p].get("receiving_yards", 0)) for p in receivers] + [max(0, draw["unallocated"]["receiving_yards"])])
-                    for identity, value in zip(receivers, yard_parts):
-                        players[identity]["receiving_yards"] = value
-                    draw["unallocated"]["receiving_yards"] = yard_parts[-1]
+                    if joint_gain_profiles is None:
+                        yard_parts = integer_allocate(pass_yards, [max(0, players[p].get("receiving_yards", 0)) for p in receivers] + [max(0, draw["unallocated"]["receiving_yards"])])
+                        for identity, value in zip(receivers, yard_parts):
+                            players[identity]["receiving_yards"] = value
+                        draw["unallocated"]["receiving_yards"] = yard_parts[-1]
                     unknown_fumbles = _event_allocate(players, sample["fumbles_lost_total"], "fumbles_lost_total", "fumbles_lost_total")
                     unknown_returns = _event_allocate(players, sample["special_teams_tds"], "special_teams_tds", "special_teams_tds")
                     touchdowns = sum(players[p].get("passing_tds", 0) for p in qb_ids) + sum(p.get("rushing_tds", 0) + p.get("fumble_recovery_tds", 0) for p in players.values())
                     events.append({"team": forecast["team"], "players": players, "qb_ids": qb_ids, "opportunities": draw["opportunities"],
+                                   "midgame_exit_allocation": exit_diagnostics[side] if joint_exit_fit and index == 0 else None,
                                    "participant_opportunities": draw["participant_opportunities"], "supplied_budgets": draw["supplied_budgets"], "budget_reconciliation": draw["budget_reconciliation"],
                                    "unallocated": {**draw["unallocated"], "fumbles_lost": unknown_fumbles, "return_tds": unknown_returns},
                                    "passing_yards": pass_yards, "offensive_tds": int(touchdowns), "interceptions_thrown": sum(players[p].get("passing_interceptions", 0) for p in qb_ids),

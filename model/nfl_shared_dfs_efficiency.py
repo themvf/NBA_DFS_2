@@ -294,6 +294,8 @@ def simulate_team(
     *, retain_draws: bool = False, budget_draws: Sequence[Mapping[str, int]] | None = None,
     rate_factors: Mapping[str, Mapping[str, float]] | None = None,
     strict_game_ledger: bool = False, role_concentrations: Mapping[str, float] | None = None,
+    opportunity_allocator=None,
+    joint_gain_profiles=None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Simulate one shared offensive game state and return player-level distributions."""
     if role_concentrations and (set(role_concentrations) - {'carries', 'targets'} or any(
@@ -330,6 +332,7 @@ def simulate_team(
     states = [{"scores": [], "stats": defaultdict(float), "contributions": defaultdict(float)} for _ in prepared]
     maximum_mismatch = defaultdict(float)
     unallocated_sums = defaultdict(float)
+    gain_cache = {}
 
     qbs = [index for index, item in enumerate(prepared) if item["position"] == "QB"]
     rushers = [index for index, item in enumerate(prepared) if "carries" in item["player"]["components"]]
@@ -342,8 +345,12 @@ def simulate_team(
             raise ValueError("supplied opportunity budgets require nonnegative integer counts")
         attempts = supplied["attempts"] if supplied is not None else _count(rng, (budgets.get("attempts") or {}).get("mean"))
         carries = supplied["carries"] if supplied is not None else _count(rng, (budgets.get("carries") or {}).get("mean"))
-        qb_attempts, unknown_attempts = _allocate_count(rng, attempts, [prepared[index]["player"]["components"]["attempts"]["share"] for index in qbs])
-        rushing_counts, unknown_carries = _allocate_count(rng, carries, [prepared[index]["player"]["components"]["carries"]["share"] for index in rushers], (role_concentrations or {}).get('carries'))
+        if opportunity_allocator is None:
+            qb_attempts, unknown_attempts = _allocate_count(rng, attempts, [prepared[index]["player"]["components"]["attempts"]["share"] for index in qbs])
+            rushing_counts, unknown_carries = _allocate_count(rng, carries, [prepared[index]["player"]["components"]["carries"]["share"] for index in rushers], (role_concentrations or {}).get('carries'))
+        else:
+            qb_attempts, unknown_attempts = opportunity_allocator(draw_index, rng, 'attempts', attempts, [prepared[i]['player'] for i in qbs], None)
+            rushing_counts, unknown_carries = opportunity_allocator(draw_index, rng, 'carries', carries, [prepared[i]['player'] for i in rushers], (role_concentrations or {}).get('carries'))
 
         draw_stats: list[dict[str, float]] = [dict() for _ in prepared]
         draw_opportunities = [dict() for _ in prepared]
@@ -361,7 +368,10 @@ def simulate_team(
             passing_tds += touchdowns
 
         targets = min(attempts, max(completions, supplied["targets"] if supplied is not None else _count(rng, (budgets.get("targets") or {}).get("mean"))))
-        target_counts, unknown_targets = _allocate_count(rng, targets, [prepared[index]["player"]["components"]["targets"]["share"] for index in receivers], (role_concentrations or {}).get('targets'))
+        if opportunity_allocator is None:
+            target_counts, unknown_targets = _allocate_count(rng, targets, [prepared[index]["player"]["components"]["targets"]["share"] for index in receivers], (role_concentrations or {}).get('targets'))
+        else:
+            target_counts, unknown_targets = opportunity_allocator(draw_index, rng, 'targets', targets, [prepared[i]['player'] for i in receivers], (role_concentrations or {}).get('targets'))
         catch_weights = [prepared[index]["rates"]["catch_rate"]["mean"] for index in receivers]
         reception_counts, unknown_receptions = _allocate_with_capacity(rng, completions, target_counts, catch_weights,
             unknown_targets if strict_game_ledger else unknown_targets + unknown_attempts)
@@ -373,13 +383,29 @@ def simulate_team(
         for weight in receiving_weights:
             known_receiving_yards.append(passing_yards * weight / yard_denominator if yard_denominator > 0 else 0.0)
         unknown_receiving_yards = passing_yards - sum(known_receiving_yards)
+        if joint_gain_profiles is not None:
+            from model.nfl_gain_distribution import sample_completed_yards
+            known_receiving_yards = [sample_completed_yards(rng, joint_gain_profiles, prepared[i]['player'], int(count), gain_cache) for i, count in zip(receivers, reception_counts)]
+            unknown_receiving_yards = sample_completed_yards(rng, joint_gain_profiles, {'identity': 'UNALLOCATED', 'position': 'UNKNOWN'}, int(unknown_receptions), gain_cache)
+            passing_yards = sum(known_receiving_yards) + unknown_receiving_yards
+            quarterback_weights = [draw_opportunities[i]['completions'] for i in qbs]
+            signed_yards, unknown_passing = _allocate_count(rng, abs(int(passing_yards)), [value / max(1, completions) for value in quarterback_weights])
+            if unknown_passing:
+                raise AssertionError('Completed yards lack an attributed quarterback')
+            for i, value in zip(qbs, signed_yards):
+                draw_stats[i]['passing_yards'] = value * (-1 if passing_yards < 0 else 1)
         td_weights = [prepared[index]["rates"]["receiving_td_rate"]["mean"] for index in receivers]
         receiving_tds, unknown_receiving_tds = _allocate_with_capacity(rng, passing_tds, reception_counts, td_weights, unknown_receptions)
 
         for index, carry_count in zip(rushers, rushing_counts):
             draw_opportunities[index]["carries"] = carry_count
             rates = prepared[index]["rates"]
-            draw_stats[index].update({"rushing_yards": max(0.0, _yards(rng, carry_count, rates["rushing_yards_per_carry"]["mean"], 3.5)),
+            if joint_gain_profiles is not None:
+                from model.nfl_gain_distribution import sample_gained_yards
+                rushing_yards = sample_gained_yards(rng, joint_gain_profiles, prepared[index]['player'], 'carries', int(carry_count), cache=gain_cache)
+            else:
+                rushing_yards = max(0.0, _yards(rng, carry_count, rates["rushing_yards_per_carry"]["mean"], 3.5))
+            draw_stats[index].update({"rushing_yards": rushing_yards,
                                       "rushing_tds": int(rng.binomial(carry_count, rates["rushing_td_rate"]["mean"]))})
         for index, receptions, yards, touchdowns, targets_for_player in zip(receivers, reception_counts, known_receiving_yards, receiving_tds, target_counts):
             draw_opportunities[index]["targets"] = targets_for_player
@@ -387,6 +413,8 @@ def simulate_team(
 
         for index, item in enumerate(prepared):
             for field, mean in item["rare"].items():
+                if opportunity_allocator is not None:
+                    mean *= opportunity_allocator.participation_fraction(draw_index, item['player']['identity'])
                 draw_stats[index][field] = int(rng.poisson(max(0.0, mean)))
             score = draftkings_points(item["position"], draw_stats[index])
             contributions = scoring_contributions(draw_stats[index])
