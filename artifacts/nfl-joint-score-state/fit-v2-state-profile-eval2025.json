@@ -1,7 +1,7 @@
 {
  "version": "nfl-joint-score-state-v1",
  "method": "state_profile",
- "training_cutoff": "2025-09-05T00:20:00+00:00",
+ "training_cutoff": "2025-09-04T00:00:00Z",
  "k": 40,
  "ridge": 100.0,
  "rows": 2367,
@@ -33193,5 +33193,5 @@
   "Part B is a league-level Poisson rate; team level comes from the parent draws it scales.",
   "Applied as a multiplicative ratio on parent totals, so parent script variance is retained and dispersion may widen."
  ],
- "fit_sha256": "6925185b8073ec8282922b44ce8bfd7da1833b51bdf7bec73b98914037a48023"
+ "fit_sha256": "f9beca80347fb1282a246f669e7a2b68fe3436c89b9529ce0a78d0c24916e5c5"
 }

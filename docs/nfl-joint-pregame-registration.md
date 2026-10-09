@@ -134,8 +134,9 @@ k and ridge and nothing else.
 
 **Frozen for the 2025 evaluation:** V2 `state_profile` k=40, ridge=100
 (`fit-v2-state-profile-eval2025.json`); V1 `market_weighted_blocks` k=40
-(`fit-v1-market-weighted-eval2025.json`); cutoff 2025-09-05T00:20:00Z, the
-first 2025 kickoff; 2,367 training games. Both fit files carry their training
+(`fit-v1-market-weighted-eval2025.json`); cutoff 2025-09-04T00:00:00Z, one day
+before the first 2025 kickoff (a cutoff equal to the opener's kickoff rejected the
+opener itself as "fit after decision" in the smoke run); 2,367 training games. Both fit files carry their training
 set and digests. The primary exact-set evaluation on 2025 has NOT been run.
 
 ### Honest prior

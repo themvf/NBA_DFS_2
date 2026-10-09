@@ -1,7 +1,7 @@
 {
  "version": "nfl-joint-score-state-v1",
  "method": "market_weighted_blocks",
- "training_cutoff": "2025-09-05T00:20:00+00:00",
+ "training_cutoff": "2025-09-04T00:00:00Z",
  "k": 40,
  "rows": 2367,
  "center": [
@@ -11853,5 +11853,5 @@
  "limits": [
   "Historical blocks outside the fitted line index receive zero weight and are reported."
  ],
- "fit_sha256": "41e261439d4cb4075d6f815b33c9beecce887bb37fb2a107bfe5f22bcd6fb38e"
+ "fit_sha256": "18090d0d2fe21bfbaae85462b9127a6e66d5a54d12cb6676b4764b49b027107b"
 }
