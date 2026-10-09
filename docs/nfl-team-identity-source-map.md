@@ -101,3 +101,147 @@ For 2026 Weeks 1–3 the canonical games are `2026_01_NYJ_TEN`, `2026_02_GB_NYJ`
 - Check non-null coverage by season/week for every compared feature; suppress a difference when one side lacks the field.
 - Check denominator logic for run/pass plays, neutral early downs, unique drives, and participant joins against a hand-inspected game.
 - Check that a 2025 game link opens its exact PbP game even if it is outside the 60 most recent games.
+
+## Single-game player leader model
+
+### Local leader-page formatting and context audit, 2026-10-09
+
+The weekly `/nfl/game-leaders` view remains the original independent leader
+model. The new joint candidate on `/nfl/game-model` is a separate frozen research
+replay and has not replaced the weekly batch. The page now identifies this
+distinction and its broad opponent adjustment versus absent scheme inputs and
+score-state simulation. Percentage displays use one decimal with `<0.1%` for
+positive smaller shares; range endpoints use at most one decimal. Displayed
+columns are not renormalized. First-or-tied counts ties in full; leader share
+splits them. Zero sampled wins do not establish an impossible outcome.
+
+A read-only canonical audit of current database rows for DET/ARI Weeks 1-4 found
+no populated 2026 man/zone, coverage, blitz or pressure fields across 316 measured
+dropbacks (ARI 124; DET 192). All 515 run/pass rows have score differential and
+remaining game clock. Matched 2025 Weeks 1-4 have populated scheme fields on 317
+dropbacks. This is current retrospective coverage, not frozen forecast evidence.
+The latest 2026 schedule refresh follows the saved forecast cutoff; use preserved
+snapshots to reconstruct that decision rather than treating current table state
+as historical availability. Coverage artifacts live under
+`artifacts/nfl-joint-outcomes/defense-style-*-coverage-20261009.json`.
+
+Missing scheme fields cannot be treated as no blitz or assumed unchanged 2025
+styles. Score/clock-conditioned modeling, scheme-to-player-role effects and the
+weekly joint-candidate publisher remain separate implementation tasks. See
+`docs/nfl-game-leaders-backlog.md` for the updated distinction between implemented
+research mechanisms, unavailable evidence and unfinished integrations.
+
+The game-leader capture additionally reads primary nflverse PBP player stat
+credits via `research/nfl_game_leaders_source.py`: join on canonical game ID and
+play ID, verify season/week/home/away and frozen description, and retain source
+URL, cache digest and capture time. Official receiving/rushing credit and lateral
+recipient GSIS fields supplement the archetype participants. Later stat captures
+cannot enter a forward decision. Final source play status controls replay/penalty
+counting; a nullified touchdown does not automatically erase credited yardage.
+Box workload is separately reconciled against the same provider's published team
+aggregates. Unresolved event games can supply verified workload, but never invented
+per-touch yardage. Each calculation records its coverage. Forecasts and publication
+require canonical latest-game coverage; recent unresolved yardage events block
+yardage forecasts. See the model contract and repair backlog for exact gates.
+
+`docs/nfl-game-leaders-model.md` is the model and operation contract.
+`research/nfl_game_leaders.py` reuses the canonical PBP capture and independently
+reads the COMPLETE nflverse weekly player-stat source. Do not substitute
+`ff_player_week_stats`: the current-universe filter omits historical players.
+GSIS identities join only after unique canonical season/week/team/opponent and
+source game ID agreement. Reconcile per-player carries, targets, receptions,
+rushing yards and receiving yards before fitting/grading a complete game.
+All periods and official QB kneels count. Missing/ambiguous attribution and source
+corrections quarantine a game and remain visible in the report.
+
+Strict forecasts require kickoff, PBP label, canonical schedule capture and box
+fetch timestamps before the decision boundary. Historical later corrections are
+explicitly retrospective; participant rows still lack independent availability
+times. Each weekly game's provider capture has its own cutoff. Sleeper and
+FantasyPros depth evidence, week injuries and official inactive import coverage
+are retained in immutable requests. Depth positions are not projected workload.
+No odds enter this model. `/nfl/game-leaders` is a manually published independent
+view, not an optimizer scoring path or a slate-upload dependency. Forecasts,
+requests, source digests, excluded games and evaluation reports belong under
+`artifacts/nfl-game-leaders/`; publication data lives in
+`web/src/data/game-leaders.json` (force-stage because the broad data ignore applies).
+
+
+### Total yards from scrimmage (local v2)
+
+`total_yards` means official rushing yards plus receiving yards for an individual
+player across the full game, including overtime. Passing, return and fantasy
+bonus yardage are excluded. The model adds both components within the SAME
+simulation draw before comparing every individual and splitting tied leaders.
+It does not add component leader probabilities or component percentiles.
+Recent-average baselines and grading derive the same sum from reconciled boxes;
+no new source field or player join is required. Both components must meet the
+existing reconciliation and recent-event coverage gates. The three source
+metrics remain separate from the four forecast outcomes.
+
+Original frozen forecasts remain unchanged. The v2 local Thursday example reruns
+the saved 2026-10-08 decision inputs, not a new availability capture. Older page
+snapshots explicitly mark total yards as not calculated, and historical summaries
+without that outcome show "Not evaluated". The registered three-outcome
+challenger experiment retains its original outcome scope. Mechanical verification
+of this addition does not establish predictive accuracy for total yards.
+
+
+### Shared workload and DFS expansion (local v3)
+
+See `docs/nfl-shared-simulation-expansion.md` for acceptance criteria and current
+scope. The fixed-dispersion leader baseline remains the default. An explicit
+`--role-dispersion empirical` candidate estimates prior team-season share variance
+with finite-count noise removed; all sample counts, fallbacks and bounds are
+reported. `--export-draws` emits aligned individual GSIS draws, including separate
+unresolved individuals, with source and implementation digests. Replacement role
+requests now require timestamped evidence and a complete allocation.
+
+`model/nfl_role_dispersion.py` supplies common role-share sampling and interval
+scoring. `model/nfl_shared_dfs_efficiency.py` and
+`model/nfl_shared_matchup_scenarios.py` are separate development copies of the
+pinned efficiency-v3 / coherent-v5 engine, with an optional common dispersion
+report. Originals and registered study hashes are preserved. New full-model
+inputs are frozen keyword inputs to `research.nfl_shared_dfs_export`; keep source
+capture time, canonical games, history, roster identities, salaries and source
+manifest. Later source replays require explicit retrospective mode.
+
+`web/src/lib/nfl-dfs/shared-game-model.ts` scores partial production components
+and complete supplied DFS banks through canonical scoring/scenario utilities.
+Partial production is never advertised as complete DFS points or a lower bound.
+The complete consumer preserves scenario order, salary comparisons, legal lineups
+and captain multipliers. Leaders derived from a salary pool are explicitly scoped
+to that modeled slate field, not full-game market probabilities. No candidate
+replaces optimizer points. The local view is `/nfl/game-model`; its saved data is
+`web/src/data/shared-game-model.json`, with frozen reports under the leader
+artifact directory. No DK upload is needed for the partial per-game view.
+
+Routes/snaps, role-specific defensive effects, sequential score states, early
+exits, fitted replacements, calibrated ranges and ownership are not implemented
+by this first expansion. Original example inputs remain frozen; no newly captured
+availability is implied. Historical range checks include zero projections and
+correlated player-game rows, so their pooled coverage is only descriptive.
+
+### Joint outcome candidate (local, 2026-10-09)
+
+`docs/nfl-joint-outcomes-implementation.md` records executable local fitting,
+forecasting, exact-set scoring, evidence timing, capture budgets and limitations.
+`model/nfl_joint_outcomes.py` adapts the existing reconciled leader source; ambiguous
+role/credit sequence joins leave target depth unknown because original prepared
+events omit play IDs. No name-only attribution or new database join is introduced.
+Non-exit role fitting, adjudicated segment exits and empirical gain profiles can
+also enter the separate complete event candidate through
+`model/nfl_joint_full_dfs.py`. Its production view shares actual event scenario IDs;
+unallocated contributors keep its leader scope explicitly incomplete.
+
+`research/nfl_alt_capture.py` adds local immutable raw/normalized quote evidence,
+including each ladder rung, side, bookmaker, provider identity, observation and
+publication time. It defaults to no calls/no credits. Canonical event/player
+mappings remain explicit, paired probabilities require matching book/line/time,
+and integer-push conditioning is preserved. No new production table or scheduled
+capture is enabled. Market-free, game-market and player-market branches remain
+distinct. The local page summary is `web/src/data/joint-outcomes.json`.
+
+These are exploratory implementations. Historical exit/ownership/alt-line data,
+chronological qualification and a future forward period are not implied by their
+availability as code. Existing exclusions and protected registered engines remain.
