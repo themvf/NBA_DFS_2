@@ -182,7 +182,7 @@ wins, log loss hits the 1e-12 floor (~27.6). The first two-game 2024 check hit
 this on TB@ATL week 5 (KhaDarel Hodge's 45-yard overtime TD; he was outside the
 inferred roster). Overtime is not simulated but is graded, a known mismatch.
 
-**Fix (`Settings.newcomer_reserve`, off by default so v1 forecasts reproduce).**
+**Fix (`Settings.newcomer_reserve`; default since v2, `--no-newcomer-reserve` reproduces v1).**
 `OTHER:TEAM` receives, per action, the share of team carries/targets that went
 to players absent from that team's prior three same-season games. It is computed
 from the pre-decision training rows only. Measured on the Thursday input it is
@@ -259,3 +259,27 @@ Two findings outside the registered question, recorded as observations only:
 
 Not yet fixed or tested: dropping the receiver on no-target pass templates, and
 the play-count excess. Each needs its own development run before use.
+
+### Confirmation result (2025 weeks 4–18, 224 games, read 2026-10-09) — reserve PROMOTED
+
+| | v1 | v1 + reserve |
+|---|---:|---:|
+| mean log loss | 3.700 | **3.003** |
+| median log loss | **2.701** | 2.740 |
+| winner priced at exactly zero | 7 | **0** |
+| mean Brier | 0.926 | 0.924 |
+| top-choice hit rate | 13.4% | 13.8% |
+| any-TD Brier | 0.1182 | 0.1178 |
+
+Paired reserve-minus-v1 log loss −0.70, 95% CI [−1.32, −0.18]: the registered
+bar is met, so the reserve is the default and the model version is now
+`nfl-longest-scrimmage-td-research-v2`. Same shape as 2024: the gain is the seven
+removed zero-priced games, and a typical game is slightly worse (median +0.03,
+better in 94 of 224).
+
+Against the independent-TD baseline on the fair scale (both floored at 1/2000):
+v1 3.074 vs 3.075 (−0.001, CI [−0.067, +0.063]); v2 3.003 vs 3.075 (−0.071,
+CI [−0.184, +0.030]). **v2 still does not beat the baseline with confidence.**
+The workload bias diagnosed above remains the leading explanation.
+
+The Thursday TB@DAL forecast stays the frozen v1 prediction; it is not re-run.

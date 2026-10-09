@@ -18,7 +18,7 @@ from typing import Any
 
 import numpy as np
 
-VERSION = "nfl-longest-scrimmage-td-research-v1"
+VERSION = "nfl-longest-scrimmage-td-research-v2"
 IMPLEMENTATION_SHA256 = sha256(Path(__file__).read_bytes()).hexdigest()
 FIELD_BOUNDS = (5, 10, 20, 39, 59, 99)
 
@@ -55,11 +55,10 @@ class Settings:
     role_prior_opportunities: float = 20.
     half_life_weeks: float = 6.
     max_snaps: int = 220
-    # v1 hands every team opportunity to a named supported player, so a scorer
-    # outside that list (newcomer, depth player, unsupported roster name) has a
-    # structural zero. When on, OTHER:TEAM receives the share of opportunities
-    # that historically went to players absent from the team's prior three games.
-    newcomer_reserve: bool = False
+    # OTHER:TEAM receives the share of opportunities that historically went to
+    # players absent from the team's prior three games. False reproduces v1, which
+    # gave a structural zero to every scorer outside the named roster.
+    newcomer_reserve: bool = True
 
     def __post_init__(self):
         if self.draws < 1 or self.max_snaps < 1:
