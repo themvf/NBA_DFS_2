@@ -3,6 +3,8 @@ import styles from "./market-signal-scorecard.module.css";
 
 const LABELS: Record<string, string> = {
   steam: "STEAM", walking: "WALKING", reversal: "REVERSAL",
+  moneyline_steam: "MONEYLINE STEAM", spread_steam: "SPREAD STEAM", total_steam: "TOTAL STEAM",
+  moneyline_walking: "MONEYLINE WALKING", spread_walking: "SPREAD WALKING", total_walking: "TOTAL WALKING",
   reference_led: "REFERENCE LED", price_pressure: "PRICE PRESSURE",
   pinnacle_divergence: "PINNACLE GAP", dk_value: "DK VALUE", book_disagreement: "BOOK DISAGREEMENT",
   market_convergence: "CONVERGENCE", late_move: "LATE MOVE",
@@ -19,9 +21,9 @@ export default function MarketSignalScorecard({ rows, sport }: { rows: MarketSig
       <tbody>{rows.map(row => <tr key={row.alertType}>
         <td>{LABELS[row.alertType] ?? row.alertType.replaceAll("_", " ").toUpperCase()}</td>
         <td><span className={styles.stage} data-stage={row.stage}>{row.stage === "validation_ready" ? "100+ SAMPLE" : row.stage === "initial_review" ? "EARLY REVIEW" : "COLLECTING"}</span></td>
-        <td>{row.observations}</td><td>{row.pending}</td><td>{row.settled}</td><td>{row.wins}-{row.losses}-{row.voids}</td>
-        <td>{number(row.medianClvPp, "pp")}</td><td>{number(row.avgClvPp, "pp")}</td><td>{rate(row.beatClose)}</td>
-        <td>{number(row.units, "u")}</td><td>{row.roiPerBet == null ? "—" : number(row.roiPerBet * 100, "%")}</td>
+        <td>{row.observations}</td><td>{row.pending}</td><td>{row.settled}</td><td>{row.wins}-{row.losses}-{row.pushes}-{row.voids}</td>
+        <td>{number(row.medianClvPp, row.clvUnit === "points" ? " pts" : "pp")}</td><td>{number(row.avgClvPp, row.clvUnit === "points" ? " pts" : "pp")}</td><td>{rate(row.beatClose)}</td>
+        <td>{number(row.units, "u")}</td><td>{row.roiPerBet == null ? "—" : number(row.roiPerBet * 100, "%")}</td><td>{row.conflicts + row.missingEntry || "—"}</td>
       </tr>)}</tbody></table></div>
     <footer>Stages describe sample size only. Promotion still requires prospective CLV, stable results, and out-of-sample review.</footer>
   </section>;

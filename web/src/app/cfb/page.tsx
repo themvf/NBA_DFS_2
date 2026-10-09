@@ -50,6 +50,7 @@ export default async function CfbPage({
       getMarketSignalScorecard("cfb"),
       getMarketCaptureHealth("cfb", board.gameDate),
       getMovementSignalObservations("cfb", board.games.map(game => game.matchupId)),
+      getCfbStudyStatus(),
     ]);
   function failed(label: string, reason: unknown) {
     console.error(`CFB ${label} unavailable`, reason);

@@ -87,6 +87,7 @@ import { assertComparisonOwnershipFormat, verifiedComparisonOwnership } from "@/
 import { applyConfirmedStartingQbs, confirmStarterAvailability, ruledOutPlayer, sanitizeConfirmedStartingQbs, type ConfirmedStarterReport, type ConfirmedStartingQbs } from "@/lib/nfl-dfs/confirmed-starter";
 
 export type NflWorkspacePlayer = NflOptimizerPlayer & {
+  qbMatchupContext?: QbMatchupContext | null;
   ffPlayerId: number | null;
   workloadEligible?: boolean;
   /** QB only: led his team in pass attempts in its most recent completed game (starter evidence). */
@@ -674,6 +675,9 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
       situationEvidence:situations?.rates.get(`${benchmarkTeam(row.team)}:${identityMap.get(row.ffPlayerId??-1)}:${row.position}`)??{team:null,rates:null,ratesDigest:null,ratesAsOf:null,reason:situations?.failure??'No model-linked situation evidence.'},
       name: row.name,
       position: row.position as NflWorkspacePlayer["position"],
+      playerSignals: classifyNflPlayerSignals(row.position, signalEvidence.get(identityMap.get(row.ffPlayerId ?? -1) ?? "") ?? null),
+      qbMatchupContext: row.position === "QB" && qbContexts.get(benchmarkTeam(row.team))?.opponent === benchmarkTeam(row.opponent ?? "")
+        ? qbContexts.get(benchmarkTeam(row.team)) ?? null : null,
       team: row.team,
       opponent: row.opponent,
       gameKey: row.gameKey,
