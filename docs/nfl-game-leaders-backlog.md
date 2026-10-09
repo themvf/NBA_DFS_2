@@ -1,6 +1,6 @@
 # NFL game-leader model: open fixes
 
-Updated: 2026-10-08. Checked items have local implementation and verification;
+Updated: 2026-10-09. Checked items have local implementation and verification;
 release status is separate. The remaining primary-source discrepancies are open.
 Model contract: [nfl-game-leaders-model.md](nfl-game-leaders-model.md).
 
@@ -92,7 +92,7 @@ Each checked item must link its verification evidence. Track release status
 separately from implementation and model validation.
 
 
-## Shared simulation expansion: local first tranche
+## Shared simulation expansion: first-tranche status on 2026-10-08
 
 - [x] Separate empirical workload-variability candidate with prior-only inputs,
   finite-count noise correction, sample counts and explicit fallback.
@@ -113,3 +113,45 @@ separately from implementation and model validation.
   the Thursday view currently shows partial production only.
 - [ ] Add ownership/contest-field evaluation before treating salary targets as
   tournament-selection guidance. See the expansion contract for all paths.
+
+## Current joint candidate and weekly-page gaps, 2026-10-09
+
+This section supersedes the first-tranche implementation status above. Code
+completion, data availability and predictive qualification are separate.
+
+- [x] Add pooled depth-conditioned gains, sourced exit fitting, non-exit role
+  fitting, remaining-work redistribution, guarded market reweighting, complete
+  DFS weight transfer and supplied-field contest scoring. Local evidence is in
+  `nfl-joint-outcomes-local-review.md` and the final verification manifest.
+- [x] Fix weekly percentage rounding and floating-point range display; explain
+  the original weekly model versus the separate expanded replay on the page.
+  Verified the DET/ARI rendered route, TypeScript type check and page lint.
+- [x] Audit DET/ARI defensive-style and game-state field coverage. Current 2026
+  Weeks 1-4 have zero populated scheme fields on 316 dropbacks; score and clock
+  exist on all 515 run/pass plays. The source map records denominators, timing
+  constraints and evidence paths.
+- [ ] **Connect the joint candidate to a versioned weekly per-game publisher.**
+  The expanded research engine currently has a separate single-game replay.
+  Acceptance: explicitly selectable original/candidate forecasts, identical
+  frozen requests and field scope, source/fit digests and no silent model switch.
+- [ ] **Fit opportunities to score and clock state.** Data already exists.
+  Acceptance: leading/tied/trailing and remaining-time effects are fitted on
+  earlier games; both teams share simulated states; opportunity conservation and
+  opponent-adjusted held-out joint scores are checked. Aggregate workload scaling
+  must not be described as a sequential game script.
+- [ ] **Capture current defensive scheme and role matchups.** Missing current
+  man/zone, coverage, blitz and pressure observations need source coverage, not
+  invented values. Acceptance: canonical unique play joins, capture/label times,
+  missingness by season and role, current data support and pooled historical fits.
+  Prior-season style is an explicitly uncertain prior, not a current observation.
+- [ ] **Fit scheme-to-role response where coverage permits.** Acceptance:
+  distinguish receiver depth/role and RB/QB usage; regularize sparse interactions;
+  compare registered variants with the existing broad opponent adjustment.
+- [ ] Supply adjudicated historical exit exposure, matched NFL alternate ladders,
+  ownership labels and realistic contest fields; then execute registered
+  incremental comparisons. Those consumers exist; their fitted production
+  evidence and qualification are outstanding.
+- [ ] Add sourced routes/snaps, offensive-line availability, weather and QB/coach
+  transitions only with decision-time coverage and registered incremental tests.
+- [ ] Complete tail/range and joint-ranking qualification on a genuinely untouched
+  or forward population. Already examined weeks cannot be recycled as a holdout.

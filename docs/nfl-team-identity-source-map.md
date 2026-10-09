@@ -104,6 +104,33 @@ For 2026 Weeks 1–3 the canonical games are `2026_01_NYJ_TEN`, `2026_02_GB_NYJ`
 
 ## Single-game player leader model
 
+### Local leader-page formatting and context audit, 2026-10-09
+
+The weekly `/nfl/game-leaders` view remains the original independent leader
+model. The new joint candidate on `/nfl/game-model` is a separate frozen research
+replay and has not replaced the weekly batch. The page now identifies this
+distinction and its broad opponent adjustment versus absent scheme inputs and
+score-state simulation. Percentage displays use one decimal with `<0.1%` for
+positive smaller shares; range endpoints use at most one decimal. Displayed
+columns are not renormalized. First-or-tied counts ties in full; leader share
+splits them. Zero sampled wins do not establish an impossible outcome.
+
+A read-only canonical audit of current database rows for DET/ARI Weeks 1-4 found
+no populated 2026 man/zone, coverage, blitz or pressure fields across 316 measured
+dropbacks (ARI 124; DET 192). All 515 run/pass rows have score differential and
+remaining game clock. Matched 2025 Weeks 1-4 have populated scheme fields on 317
+dropbacks. This is current retrospective coverage, not frozen forecast evidence.
+The latest 2026 schedule refresh follows the saved forecast cutoff; use preserved
+snapshots to reconstruct that decision rather than treating current table state
+as historical availability. Coverage artifacts live under
+`artifacts/nfl-joint-outcomes/defense-style-*-coverage-20261009.json`.
+
+Missing scheme fields cannot be treated as no blitz or assumed unchanged 2025
+styles. Score/clock-conditioned modeling, scheme-to-player-role effects and the
+weekly joint-candidate publisher remain separate implementation tasks. See
+`docs/nfl-game-leaders-backlog.md` for the updated distinction between implemented
+research mechanisms, unavailable evidence and unfinished integrations.
+
 The game-leader capture additionally reads primary nflverse PBP player stat
 credits via `research/nfl_game_leaders_source.py`: join on canonical game ID and
 play ID, verify season/week/home/away and frozen description, and retain source
