@@ -428,6 +428,27 @@ to a person.
   (Vercel fires on time) but 12 h after a GitHub-cron slot, which still catches a
   schedule GitHub has stopped running. A job whose timing matters goes on
   `/api/cron/dispatch`, not a tighter GitHub cron.
+- **Third silent-failure audit (2026-09-29, `pipeline-health-v3`).** The class
+  the workflow rows cannot see is a green run that writes nothing, and the only
+  defence is the data. `DATASET_REGISTRY` went from 13 to 48 rows: every
+  scheduled or follower workflow that writes a table a page or a downstream job
+  reads now has one (coverage table in
+  [`docs/pipeline-health-coverage.md`](docs/pipeline-health-coverage.md)). Shared
+  tables are watched **per sport** through a `filter` (`game_odds_history`,
+  `event_closing_lines`, `line_alerts`), because one MAX let NFL checkpoints hide
+  a dead MLB capture; `min_rows`/`window_hours` add a floor for append-only
+  captures whose newest row can move on a trivial write. What it found on its
+  first live run: `mlb_pitcher_stats_history` has a single snapshot day
+  (2026-07-12) while `refresh_mlb_stats.yml` has been green daily, and
+  `mlb_team_stats.fetched_at` has been frozen since 2026-04-06 because the
+  FanGraphs path 403s and the official-API fallback writes only the history
+  snapshot (`ingest/mlb_stats.py:383-385`, `:462-543`). **Rule for a new dataset:**
+  the timestamp column must be one the writer stamps on every successful run. A
+  UNIQUE-keyed upsert whose `ON CONFLICT` list omits the timestamp, or a
+  checksum-keyed `DO NOTHING` insert, cannot tell "refreshed" from "untouched"
+  and is not registered; watch the run/snapshot/`_history` table instead, and
+  say so in the note. Budgets are set against the clock that actually starts
+  the job (Vercel on the minute; GitHub cron ~4-8 h late), never `COUNT == expected`.
 - **Rule for new work:** every new scheduled job or data feed must show up on this
   checklist (a workflow appears automatically via the manifest; a new dataset
   needs a `model/pipeline_health.py` entry), and every fallback must surface a
