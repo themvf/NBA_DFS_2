@@ -1,6 +1,8 @@
 """Upload-triggered opponent captures: eligibility, outcome mapping and verification."""
+from datetime import datetime, timezone
+
 from ingest.nfl_defensive_capture_requests import (
-    MODEL_VERSIONS, PFR, VOLUME, outcome_from_report, preflight_reason, process, verify_capture,
+    MODEL_VERSIONS, PFR, VOLUME, claim, outcome_from_report, preflight_reason, process, verify_capture,
 )
 
 RUN = "11111111-1111-1111-1111-111111111111"
@@ -67,6 +69,13 @@ class FakeDB:
     def execute(self, sql, params=None):
         self.updates.append((sql, params))
         return []
+
+
+def test_claim_clears_a_dispatch_error_left_by_an_earlier_attempt():
+    db = FakeDB(None)
+    claim(db, datetime(2026, 10, 4, 22, 8, tzinfo=timezone.utc), "https://github.com/run/1")
+    (sql, _), = db.updates
+    assert "dispatch_error=NULL" in " ".join(sql.split())
 
 
 def test_verify_checks_upload_run_model_and_rows():
