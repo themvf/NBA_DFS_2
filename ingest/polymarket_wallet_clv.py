@@ -880,6 +880,72 @@ def bootstrap_gap_ci_by_wallet(
             gaps[min(int(0.975 * len(gaps)), len(gaps) - 1)])
 
 
+def within_market_gap(
+    sel_obs: List[Tuple[str, float, float]],
+    rest_obs: List[Tuple[str, float, float]],
+    rounds: int = BOOTSTRAP_ROUNDS,
+    seed: int = 771,
+) -> Dict[str, Any]:
+    """Selection gap as a WITHIN-MARKET contrast.
+
+    The pooled gap weights each group by its own dollars, so the two groups
+    do not have the same market weights and
+
+        gap = SUM_m (w_sel[m] - w_rest[m]) * mean_CLV[m]  +  within-market part
+
+    The first term is nonzero whenever the groups' money sits in different
+    markets, and mean_CLV[m] is not mean-zero across markets. If the selected
+    wallets happen to concentrate in markets that drifted, the pooled gap
+    reports that as skill. Concentration makes this worse, and both groups
+    here are ~57-60% one wallet.
+
+    This is the version where the market shock genuinely cancels: compare the
+    two groups only INSIDE markets where both traded, then average those
+    per-market differences. Markets with only one group present contribute
+    nothing and are counted separately -- if the overlap is small, the pooled
+    number was mostly comparing different markets to each other."""
+    sel: Dict[str, List[Tuple[float, float]]] = defaultdict(list)
+    rest: Dict[str, List[Tuple[float, float]]] = defaultdict(list)
+    for cid, weight, num in sel_obs:
+        sel[cid].append((weight, num))
+    for cid, weight, num in rest_obs:
+        rest[cid].append((weight, num))
+    both = sorted(set(sel) & set(rest))
+    if len(both) < 2:
+        return {"available": False, "overlap_markets": len(both),
+                "sel_only": len(set(sel) - set(rest)),
+                "rest_only": len(set(rest) - set(sel))}
+
+    def diff(cid: str) -> Optional[float]:
+        sw = sum(w for w, _ in sel[cid])
+        rw = sum(w for w, _ in rest[cid])
+        if sw <= 0 or rw <= 0:
+            return None
+        return (sum(n for _, n in sel[cid]) / sw) - (sum(n for _, n in rest[cid]) / rw)
+
+    diffs = [d for d in (diff(c) for c in both) if d is not None]
+    if len(diffs) < 2:
+        return {"available": False, "overlap_markets": len(both),
+                "sel_only": len(set(sel) - set(rest)),
+                "rest_only": len(set(rest) - set(sel))}
+    point = sum(diffs) / len(diffs)
+    rng = random.Random(seed)
+    n = len(diffs)
+    means: List[float] = []
+    for _ in range(rounds):
+        means.append(sum(diffs[rng.randrange(n)] for _ in range(n)) / n)
+    means.sort()
+    return {
+        "available": True,
+        "gap": point,
+        "ci": (means[int(0.025 * len(means))],
+               means[min(int(0.975 * len(means)), len(means) - 1)]),
+        "overlap_markets": len(diffs),
+        "sel_only": len(set(sel) - set(rest)),
+        "rest_only": len(set(rest) - set(sel)),
+    }
+
+
 def rank_by_clv(
     wallets: Dict[str, Dict[str, Any]],
     dev_wallets: Optional[Dict[str, Dict[str, Any]]] = None,
@@ -1109,6 +1175,7 @@ def walk_forward(
         "rest_holdout_clv": clv_of(rest_obs),
         "rest_holdout_obs": len(rest_obs),
         "gap_ci": bootstrap_gap_ci(sel_obs, rest_obs),
+        "within_market": within_market_gap(sel_obs, rest_obs),
         "gap_ci_wallet": bootstrap_gap_ci_by_wallet(
             {r["wallet"]: per_wallet_hold[r["wallet"]] for r in selected},
             {r["wallet"]: per_wallet_hold[r["wallet"]] for r in rest},
@@ -1178,6 +1245,20 @@ def print_walk_forward(wf: Dict[str, Any]) -> None:
         if not math.isnan(wlo) and not math.isnan(glo):
             print("    ^ the WIDER interval is the honest one -- the hypothesis is a")
             print("      persistent per-wallet effect, which market clustering cannot see")
+        wm = wf.get("within_market") or {}
+        if wm.get("available"):
+            mlo, mhi = wm["ci"]
+            mnote = "  EXCLUDES ZERO" if mlo > 0 else "  INCLUDES ZERO"
+            print(f"  WITHIN-MARKET contrast             {wm['gap']:>+9.4f}  95% CI "
+                  f"[{mlo:+.4f}, {mhi:+.4f}]{mnote}")
+            print(f"    over {wm['overlap_markets']} markets where BOTH groups traded "
+                  f"({wm['sel_only']} selected-only, {wm['rest_only']} control-only excluded)")
+            print("    ^ the only version where the market shock actually cancels;")
+            print("      the pooled gap above can reflect the two groups holding")
+            print("      different markets rather than trading them better")
+        else:
+            print(f"  within-market contrast: unavailable "
+                  f"(overlap {wm.get('overlap_markets', 0)} markets)")
     print(f"  selected wallets with positive holdout CLV: {wf['persisted']}/{wf['top_n']}")
     print()
     share = wf.get("dominant_stake_share") or 0.0

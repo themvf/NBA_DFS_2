@@ -800,3 +800,47 @@ def test_wallet_clustered_interval_needs_two_wallets_per_side():
     from ingest.polymarket_wallet_clv import bootstrap_gap_ci_by_wallet
     lo, hi = bootstrap_gap_ci_by_wallet({"a": [("m", 1.0, 1.0)]}, {"b": [("m", 1.0, 0.0)]})
     assert lo != lo and hi != hi  # NaN
+
+
+# --- within-market contrast --------------------------------------------------
+
+def test_within_market_contrast_cancels_a_market_composition_confound():
+    """The pooled gap weights each group by its OWN dollars, so if the groups
+    hold different markets it reports market drift as skill. Here neither
+    group trades better inside any shared market -- the selected group simply
+    concentrates in markets that drifted. Pooled says edge; within-market
+    correctly says none."""
+    from ingest.polymarket_wallet_clv import bootstrap_gap_ci, within_market_gap
+    sel, rest = [], []
+    for i in range(40):
+        drift = 20.0 if i < 20 else 0.0        # first 20 markets drifted
+        weight_sel = 900.0 if i < 20 else 100.0  # selected concentrate there
+        weight_rest = 100.0 if i < 20 else 900.0
+        sel.append((f"m{i}", weight_sel, weight_sel * drift / 100.0))
+        rest.append((f"m{i}", weight_rest, weight_rest * drift / 100.0))
+    # inside every market the two groups earn the SAME per-unit CLV
+    wm = within_market_gap(sel, rest, rounds=400)
+    assert wm["available"]
+    assert wm["gap"] == pytest.approx(0.0, abs=1e-9)
+    lo, hi = bootstrap_gap_ci(sel, rest, rounds=400)
+    assert lo > 0, "pooled gap should be fooled by the composition difference"
+
+
+def test_within_market_contrast_still_sees_a_real_within_market_edge():
+    from ingest.polymarket_wallet_clv import within_market_gap
+    sel = [(f"m{i}", 100.0, 3.0) for i in range(40)]
+    rest = [(f"m{i}", 100.0, 1.0) for i in range(40)]
+    wm = within_market_gap(sel, rest, rounds=400)
+    assert wm["gap"] == pytest.approx(0.02, abs=1e-9)
+    assert wm["ci"][0] > 0
+
+
+def test_within_market_reports_non_overlapping_markets():
+    """If the groups barely share markets, the pooled number was mostly
+    comparing different markets to each other -- the reader must see that."""
+    from ingest.polymarket_wallet_clv import within_market_gap
+    sel = [(f"a{i}", 100.0, 5.0) for i in range(30)] + [("shared1", 100.0, 5.0), ("shared2", 100.0, 5.0)]
+    rest = [(f"b{i}", 100.0, 1.0) for i in range(30)] + [("shared1", 100.0, 1.0), ("shared2", 100.0, 1.0)]
+    wm = within_market_gap(sel, rest, rounds=200)
+    assert wm["overlap_markets"] == 2
+    assert wm["sel_only"] == 30 and wm["rest_only"] == 30
