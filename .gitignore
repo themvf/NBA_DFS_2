@@ -24,3 +24,7 @@ artifacts/nfl_volume_share/
 
 # Written by `npx neon skills` when the Neon agent skills are installed locally
 skills-lock.json
+
+# Study 1 reproducible inputs (rebuilt by research.nfl_joint_score_state build-games; digest recorded in each fit)
+artifacts/nfl-joint-score-state/games-*.json
+artifacts/nfl-joint-score-state/cache/

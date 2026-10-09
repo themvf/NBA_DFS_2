@@ -294,7 +294,7 @@ def availability_check(request):
     return True
 
 
-def forecast(history, request, cfg=Settings(), outcomes=METRICS, include_draws=False):
+def forecast(history, request, cfg=Settings(), outcomes=METRICS, include_draws=False, block_weights=None):
     if not outcomes or set(outcomes) - set(METRICS):
         raise ValueError('Unsupported outcomes')
     required = {'receptions': {'targets', 'receptions'},
@@ -350,7 +350,15 @@ def forecast(history, request, cfg=Settings(), outcomes=METRICS, include_draws=F
     rows = summaries(history)
     rng = np.random.default_rng(cfg.seed)
     # Whole-game bootstrap: the same source game and orientation for both teams.
-    block_index = rng.integers(len(history), size=cfg.draws)
+    # `block_weights` (Study 1, V1) biases WHICH historical game is drawn; it never
+    # changes what happens inside a drawn game. None keeps the original stream.
+    if block_weights is None:
+        block_index = rng.integers(len(history), size=cfg.draws)
+    else:
+        block_weights = np.asarray(block_weights, float)
+        if block_weights.shape != (len(history),) or (block_weights < 0).any() or abs(block_weights.sum() - 1) > 1e-8:
+            raise ValueError('Block weights must be one nonnegative weight per history game summing to one')
+        block_index = rng.choice(len(history), size=cfg.draws, p=block_weights)
     orientation = rng.integers(2, size=cfg.draws)
     blocks = [[next(r for r in rows if r['game_id'] == h['game']['game_id'] and r['team'] == team)
                for team in (h['game']['away'], h['game']['home'])] for h in history]

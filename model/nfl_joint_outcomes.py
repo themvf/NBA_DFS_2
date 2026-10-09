@@ -11,6 +11,7 @@ from model.nfl_gain_distribution import fit_gain_profiles, sample_draws
 from model.nfl_game_leaders import Settings, forecast as baseline_forecast
 from model.nfl_joint_contracts import clone_bank, digest, validate_bank
 from model.nfl_joint_decisions import exact_sets, summarize
+from model.nfl_joint_score_state import block_weights, conditioned_volumes_state
 from model.nfl_longest_touchdown import timestamp
 from model.nfl_midgame_exits import participation
 from model.nfl_opportunity_process import allocate_segments, conditioned_volumes
@@ -117,14 +118,20 @@ def validate_fit(fitted, decision_at, target_game_ids=(), eligible_game_ids=None
 
 
 def generate(history, request, settings=Settings(), fitted=None, market=None, volume_fit=None):
-    baseline = baseline_forecast(history, request, settings, include_draws=True)
-    baseline_bank = baseline['shared_draws']
     if market and not volume_fit:
         raise ValueError('Game market conditioning requires historical fitted volume coefficients')
     if volume_fit and not market:
         raise ValueError('Volume fit requires an explicit game market')
     if fitted is None and market:
         raise ValueError('Game market branch requires a fitted candidate')
+    # Study 1 (docs/nfl-joint-pregame-registration.md). V1 weights the baseline's
+    # historical block draw by closing-line similarity; V2 conditions team totals
+    # on a drawn state profile. The legacy ridge fit stays as the third method.
+    volume_method = (volume_fit or {}).get('method')
+    weights, weight_report = (block_weights(volume_fit, history, market, request['decision_at'])
+                              if volume_method == 'market_weighted_blocks' else (None, None))
+    baseline = baseline_forecast(history, request, settings, include_draws=True, block_weights=weights)
+    baseline_bank = baseline['shared_draws']
     bank = clone_bank(baseline_bank, 'independent')
     if fitted is not None:
         validate_fit(fitted, request['decision_at'], [request['game']['game_id']], [h['game']['game_id'] for h in history])
@@ -132,7 +139,15 @@ def generate(history, request, settings=Settings(), fitted=None, market=None, vo
         if exit_fit and not fitted['role_excluded_game_ids']:
             raise ValueError('Explicit exits require conditional non-exit role fitting')
         rng = np.random.default_rng(settings.seed)
-        volumes = conditioned_volumes(bank, volume_fit, market) if market else {}
+        volume_diagnostics = None
+        if not market:
+            volumes = {}
+        elif volume_method == 'state_profile':
+            volumes, volume_diagnostics = conditioned_volumes_state(bank, volume_fit, market, settings.seed)
+        elif volume_method == 'market_weighted_blocks':
+            volumes, volume_diagnostics = {}, weight_report
+        else:
+            volumes = conditioned_volumes(bank, volume_fit, market)
         history_by_id = {h['game']['game_id']: h for h in history}
         total_targets = sum(b['targets'] for h in history for b in h['boxes'])
         league_catch = sum(b['receptions'] for h in history for b in h['boxes']) / max(total_targets, 1)
@@ -193,6 +208,8 @@ def generate(history, request, settings=Settings(), fitted=None, market=None, vo
             bank['branch'] = 'game-market-conditioned'
             bank['game_market'] = market
             bank['volume_fit_sha256'] = digest(volume_fit)
+            bank['volume_method'] = volume_method or 'ridge_log_volume'
+            bank['volume_diagnostics'] = volume_diagnostics
     bank['weights'] = validate_bank(bank).tolist()
     bank['implementation_sha256'] = implementation_digest()
     bank['authority'] = 'exploratory_not_calibrated'

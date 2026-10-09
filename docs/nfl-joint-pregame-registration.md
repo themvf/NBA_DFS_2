@@ -102,6 +102,42 @@ family; P10-P90 coverage.
 If V1 passes and V2 does not, ship V1. If both pass, ship V2 only if its CI
 excludes V1's point estimate; otherwise ship V1, the simpler one.
 
+### Development result (2026-10-09, before any 2025 outcome was examined)
+
+Built: `model/nfl_joint_score_state.py` (Parts A and B, both variants, the
+`conditioned_volumes` hook), `research/nfl_joint_score_state.py` (database
+build, fit, development grid), `tests/test_nfl_joint_score_state.py`, and the
+`block_weights` hook in `model/nfl_game_leaders.py::forecast` plus method
+dispatch in `model/nfl_joint_outcomes.py::generate`.
+
+Population: 2,639 regular-season games 2016-2025 from `nfl_pbp_archetypes`,
+438,075 plays. Kickoffs come from `nfl_season_games` for 2023 onward (816
+games) and from the nflverse schedule file for 2016-2022 (1,823 games); the
+source is recorded per game. The first build silently covered 2023-2025 only
+because the database has no kickoff before 2023; it was discarded.
+
+Development grid on the volume layer only, trained 2016-2023 (2,095 games),
+developed on 2024 (272 games, 544 team-games), team-total CRPS versus a
+control that uses the same machinery with every training game as the
+neighbourhood (`artifacts/nfl-joint-score-state/dev-grid-2024-v2.json`):
+
+| | targets CRPS delta vs control | carries CRPS delta vs control |
+|---|---|---|
+| range over the 9 grid points | -0.047 to +0.007 | -0.108 to -0.167 |
+| selected k=40, ridge=100 | -0.047 | -0.167 |
+| control CRPS | 4.53 | 4.08 |
+
+Reading: the line helps carries by about 3-4% of CRPS and helps pass attempts
+barely at all, the same asymmetry the opponent workload study found. No
+confidence interval is quoted for development numbers on purpose; they chose
+k and ridge and nothing else.
+
+**Frozen for the 2025 evaluation:** V2 `state_profile` k=40, ridge=100
+(`fit-v2-state-profile-eval2025.json`); V1 `market_weighted_blocks` k=40
+(`fit-v1-market-weighted-eval2025.json`); cutoff 2025-09-05T00:20:00Z, the
+first 2025 kickoff; 2,367 training games. Both fit files carry their training
+set and digests. The primary exact-set evaluation on 2025 has NOT been run.
+
 ### Honest prior
 
 Small gain expected. This repo's own results say play-by-play team tendencies

@@ -1,0 +1,172 @@
+{
+ "version": "nfl-joint-score-state-v1",
+ "train_through": 2023,
+ "develop": 2024,
+ "train_games": 2095,
+ "dev_games": 272,
+ "cutoff": "2024-09-06T00:20:00+00:00",
+ "draws": 400,
+ "grid": [
+  {
+   "k": 20,
+   "ridge": 1.0,
+   "crps": {
+    "targets": 4.524447307337467,
+    "carries": 3.9567462403064884
+   },
+   "n_team_games": 544,
+   "crps_vs_control": {
+    "targets": 0.007172111248435975,
+    "carries": -0.10987254966765825
+   }
+  },
+  {
+   "k": 40,
+   "ridge": 1.0,
+   "crps": {
+    "targets": 4.49505051796322,
+    "carries": 3.9254205934165203
+   },
+   "n_team_games": 544,
+   "crps_vs_control": {
+    "targets": -0.02222467812581108,
+    "carries": -0.14119819655762633
+   }
+  },
+  {
+   "k": 80,
+   "ridge": 1.0,
+   "crps": {
+    "targets": 4.496002862429895,
+    "carries": 3.9242638281325375
+   },
+   "n_team_games": 544,
+   "crps_vs_control": {
+    "targets": -0.02127233365913561,
+    "carries": -0.14235496184160912
+   }
+  },
+  {
+   "k": "all_training_games_control",
+   "ridge": 1.0,
+   "crps": {
+    "targets": 4.517275196089031,
+    "carries": 4.066618789974147
+   },
+   "n_team_games": 544,
+   "crps_vs_control": {
+    "targets": 0.0,
+    "carries": 0.0
+   }
+  },
+  {
+   "k": 20,
+   "ridge": 10.0,
+   "crps": {
+    "targets": 4.5092782764928225,
+    "carries": 3.939882897192328
+   },
+   "n_team_games": 544,
+   "crps_vs_control": {
+    "targets": -0.014210343863966024,
+    "carries": -0.10810537822723765
+   }
+  },
+  {
+   "k": 40,
+   "ridge": 10.0,
+   "crps": {
+    "targets": 4.509200091707011,
+    "carries": 3.927464308011313
+   },
+   "n_team_games": 544,
+   "crps_vs_control": {
+    "targets": -0.01428852864977781,
+    "carries": -0.12052396740825255
+   }
+  },
+  {
+   "k": 80,
+   "ridge": 10.0,
+   "crps": {
+    "targets": 4.48204499435506,
+    "carries": 3.937254813010111
+   },
+   "n_team_games": 544,
+   "crps_vs_control": {
+    "targets": -0.041443626001728795,
+    "carries": -0.11073346240945448
+   }
+  },
+  {
+   "k": "all_training_games_control",
+   "ridge": 10.0,
+   "crps": {
+    "targets": 4.523488620356789,
+    "carries": 4.0479882754195655
+   },
+   "n_team_games": 544,
+   "crps_vs_control": {
+    "targets": 0.0,
+    "carries": 0.0
+   }
+  },
+  {
+   "k": 20,
+   "ridge": 100.0,
+   "crps": {
+    "targets": 4.4993858356376695,
+    "carries": 3.9453441984692166
+   },
+   "n_team_games": 544,
+   "crps_vs_control": {
+    "targets": -0.02961872053701864,
+    "carries": -0.13027531841310402
+   }
+  },
+  {
+   "k": 40,
+   "ridge": 100.0,
+   "crps": {
+    "targets": 4.482137902854325,
+    "carries": 3.909097728454365
+   },
+   "n_team_games": 544,
+   "crps_vs_control": {
+    "targets": -0.04686665332036277,
+    "carries": -0.16652178842795573
+   }
+  },
+  {
+   "k": 80,
+   "ridge": 100.0,
+   "crps": {
+    "targets": 4.482659749625937,
+    "carries": 3.9161841269056414
+   },
+   "n_team_games": 544,
+   "crps_vs_control": {
+    "targets": -0.04634480654875084,
+    "carries": -0.15943538997667916
+   }
+  },
+  {
+   "k": "all_training_games_control",
+   "ridge": 100.0,
+   "crps": {
+    "targets": 4.529004556174688,
+    "carries": 4.075619516882321
+   },
+   "n_team_games": 544,
+   "crps_vs_control": {
+    "targets": 0.0,
+    "carries": 0.0
+   }
+  }
+ ],
+ "selected": {
+  "k": 40,
+  "ridge": 100.0,
+  "rule": "lowest summed CRPS delta vs control on the development season"
+ }
+}
