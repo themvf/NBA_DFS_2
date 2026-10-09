@@ -32,6 +32,15 @@ function main() {
   assert.equal(validated.features.duplicationModel, true);
   assert.equal(objectiveLabel("validated"), "GPP leverage");
 
+  // Classic has nine roster slots and no Captain slot. Its projected ownership
+  // must be checked against 900%, not the Showdown 100%/500% totals.
+  const classicFeed = validatedFeed(12).map(row => ({ ...row, flexPct: 9 / 12, captainPct: null }));
+  const classic = assessOwnership(pool, classicFeed, { format: "classic" });
+  assert.equal(classic.capability, "validated", classic.errors.join("; "));
+  assert.equal(classic.captainTotal, 0);
+  assert.ok(Math.abs(classic.flexTotal - 9) < 0.01);
+  assert.equal(assessOwnership(pool, validatedFeed(12), { format: "classic" }).capability, "unavailable");
+
   // --- P2-AC2: a malformed upload with Captain ownership totaling 35% fails validation ---
   const badCaptain: NflOwnershipInput[] = validatedFeed(12).map((r, i) => ({ ...r, captainPct: i < 5 ? 0.07 : 0 })); // sums to 0.35
   const badAssessment = assessOwnership(pool, badCaptain);

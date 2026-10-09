@@ -1,0 +1,93 @@
+{
+  "version": "nfl-context-consumers-v1",
+  "consumers": [
+    {
+      "consumerId": "nfl_pbp_explorer",
+      "codePath": "web/src/app/nfl/pbp",
+      "question": "What happened in this game and which evidence supports the description?",
+      "scope": ["game", "team", "play", "player"],
+      "evaluationTime": ["historical", "postgame"],
+      "currentCalculations": ["play archetype", "drive archetype", "EPA", "participant credit"],
+      "marketDependence": "Displays stored spread and total context but makes no independent pricing claim.",
+      "missingBehavior": "Display explicit unavailable state; never substitute a newer snapshot when explaining a saved run.",
+      "decisionAuthority": "descriptive"
+    },
+    {
+      "consumerId": "nfl_dfs_projection",
+      "codePath": "ingest/nfl_dfs_projections.py",
+      "question": "What opportunity, efficiency, and fantasy-point distributions should be forecast for the target slate?",
+      "scope": ["slate", "game", "team", "player"],
+      "evaluationTime": ["pregame"],
+      "currentCalculations": ["team implied total", "opponent factor", "player projection"],
+      "marketDependence": "Market-implied totals are direct model inputs; market imitation must be evaluated separately from outcome accuracy.",
+      "missingBehavior": "Use only a registered fallback and record it in the run manifest; otherwise reject the dependency.",
+      "decisionAuthority": "predictive"
+    },
+    {
+      "consumerId": "nfl_dfs_optimizer",
+      "codePath": "web/src/app/dfs/nfl",
+      "question": "Which lineups satisfy constraints and optimize an approved projection or portfolio objective?",
+      "scope": ["slate", "lineup", "player"],
+      "evaluationTime": ["pregame"],
+      "currentCalculations": ["lineup optimization", "exposure", "scenario constraints"],
+      "marketDependence": "Indirect through the selected projection source.",
+      "missingBehavior": "Fail closed on an unqualified context dependency; an independently approved projection source may be selected as fallback.",
+      "decisionAuthority": "decision"
+    },
+    {
+      "consumerId": "nfl_dfs_shadow",
+      "codePath": "ingest/nfl_dfs_shadow.py",
+      "question": "Does a challenger improve opportunity or forecast accuracy out of sample?",
+      "scope": ["season", "week", "team", "player"],
+      "evaluationTime": ["historical", "pregame", "postgame"],
+      "currentCalculations": ["shadow prediction", "frozen outcome evaluation"],
+      "marketDependence": "Declared per challenger; comparisons must identify market-derived inputs.",
+      "missingBehavior": "Exclude or use a registered fallback; retain the reason in the evaluation cohort.",
+      "decisionAuthority": "predictive-shadow-only"
+    },
+    {
+      "consumerId": "nfl_pickem",
+      "codePath": "web/src/app/nfl/pickem",
+      "question": "Which pool selections maximize expected contest value under the pool rules?",
+      "scope": ["pool", "week", "game", "team"],
+      "evaluationTime": ["pregame"],
+      "currentCalculations": ["market win probability", "pool strategy", "frozen evidence"],
+      "marketDependence": "Market prices are the primary win-probability evidence.",
+      "missingBehavior": "Preserve the existing market/model fallback hierarchy and record any context dependency separately.",
+      "decisionAuthority": "decision"
+    },
+    {
+      "consumerId": "nfl_survivor",
+      "codePath": "model/nfl_survivor_model.py",
+      "question": "Which remaining-team path maximizes survival probability and future option value?",
+      "scope": ["pool", "season", "week", "game", "team"],
+      "evaluationTime": ["pregame"],
+      "currentCalculations": ["market win probability", "survivor assignment", "field popularity"],
+      "marketDependence": "Market-first by design; contextual evidence cannot be presented as an independent edge without validation.",
+      "missingBehavior": "Use the documented rating fallback or mark unavailable.",
+      "decisionAuthority": "decision"
+    },
+    {
+      "consumerId": "nfl_prop_research",
+      "codePath": "ingest/nfl_prop_odds.py",
+      "question": "How do player opportunity and outcome distributions compare with time-qualified prop markets?",
+      "scope": ["game", "player", "market"],
+      "evaluationTime": ["pregame", "postgame"],
+      "currentCalculations": ["prospective raw and normalized prop capture"],
+      "marketDependence": "The quote is the comparison target; model features must identify any market-derived inputs to prevent circular evaluation.",
+      "missingBehavior": "No fabricated quote or player match; retain unsupported market shapes as raw evidence.",
+      "decisionAuthority": "research"
+    },
+    {
+      "consumerId": "nfl_market_research",
+      "codePath": "web/scripts/analyze-nfl-line-movement.ts",
+      "question": "What information was reflected in market prices at each observation time?",
+      "scope": ["season", "game", "market"],
+      "evaluationTime": ["historical", "pregame", "postgame"],
+      "currentCalculations": ["line movement", "archetype pricing", "closing comparison"],
+      "marketDependence": "Market data is the dependent variable for explanation studies.",
+      "missingBehavior": "Exclude windows without compatible timestamped quotes and report coverage.",
+      "decisionAuthority": "analytical"
+    }
+  ]
+}

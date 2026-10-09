@@ -2476,6 +2476,7 @@ TABLES = [
         history_cutoff_week INTEGER,
         source_snapshot_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
         model_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+        availability_manifest JSONB NOT NULL DEFAULT '{}'::jsonb,
         player_count INTEGER NOT NULL,
         artifact_digest TEXT NOT NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -2529,6 +2530,7 @@ TABLES = [
         warnings JSONB NOT NULL DEFAULT '[]'::jsonb,
         player_count INTEGER NOT NULL,
         projection_run_id UUID REFERENCES nfl_dfs_projection_runs(run_id),
+        eligibility_manifest_digest TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE(file_digest, projection_run_id),
         CHECK(format IN ('classic','showdown')),
@@ -2555,6 +2557,7 @@ TABLES = [
         is_out BOOLEAN NOT NULL DEFAULT FALSE,
         identity_method TEXT NOT NULL,
         identity_evidence JSONB NOT NULL DEFAULT '{}'::jsonb,
+        platform_eligibility JSONB NOT NULL DEFAULT '{}'::jsonb,
         projection_status TEXT NOT NULL,
         our_proj DOUBLE PRECISION,
         floor_fpts DOUBLE PRECISION,
@@ -3024,6 +3027,240 @@ TABLES = [
         source_captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE(season, week, home_team_id, away_team_id),
         CHECK (home_team_id <> away_team_id)
+    )
+    """,
+
+    # ---------------------------------------------------------------
+    # NFL evidence and context engine
+    # ---------------------------------------------------------------
+    # These append-only records are the replay boundary shared by PBP,
+    # forecasts, research, and presentation.  They intentionally coexist with
+    # nfl_pbp_archetypes while the older derived table is migrated consumer by
+    # consumer; no reader may infer "current" with MAX(created_at) across
+    # unrelated datasets.
+    """
+    CREATE TABLE IF NOT EXISTS nfl_evidence_observations (
+        observation_id TEXT PRIMARY KEY,
+        source TEXT NOT NULL,
+        source_record_key TEXT NOT NULL,
+        event_occurred_at TIMESTAMPTZ,
+        source_published_at TIMESTAMPTZ,
+        system_observed_at TIMESTAMPTZ NOT NULL,
+        ingested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        raw_payload JSONB NOT NULL,
+        payload_digest TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL UNIQUE,
+        revision_of TEXT REFERENCES nfl_evidence_observations(observation_id),
+        revision_status TEXT NOT NULL DEFAULT 'current',
+        CHECK (revision_status IN ('current', 'superseded', 'withdrawn'))
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS nfl_fact_releases (
+        release_id TEXT PRIMARY KEY,
+        dataset_key TEXT NOT NULL,
+        fact_schema_version TEXT NOT NULL,
+        source_observation_ids JSONB NOT NULL,
+        payload_digest TEXT NOT NULL,
+        published_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(dataset_key, payload_digest)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS nfl_play_fact_revisions (
+        fact_revision_id TEXT PRIMARY KEY,
+        game_id TEXT NOT NULL,
+        play_id INTEGER NOT NULL,
+        revision_number INTEGER NOT NULL CHECK(revision_number > 0),
+        fact_release_id TEXT NOT NULL REFERENCES nfl_fact_releases(release_id),
+        source_observation_id TEXT NOT NULL REFERENCES nfl_evidence_observations(observation_id),
+        snap_execution TEXT NOT NULL,
+        action_validity TEXT NOT NULL,
+        description TEXT,
+        fact_payload JSONB NOT NULL,
+        event_occurred_at TIMESTAMPTZ,
+        revision_status TEXT NOT NULL DEFAULT 'current',
+        revised_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(game_id, play_id, revision_number),
+        CHECK (snap_execution IN ('executed', 'no_snap', 'unknown')),
+        CHECK (action_validity IN ('counted', 'voided', 'administrative', 'unknown')),
+        CHECK (revision_status IN ('current', 'superseded', 'withdrawn'))
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS nfl_play_penalty_events (
+        fact_revision_id TEXT NOT NULL REFERENCES nfl_play_fact_revisions(fact_revision_id),
+        occurrence INTEGER NOT NULL CHECK(occurrence > 0),
+        adjudication TEXT NOT NULL,
+        penalty_type TEXT,
+        team TEXT,
+        player_id TEXT,
+        enforced_yards DOUBLE PRECISION,
+        automatic_first_down BOOLEAN,
+        enforcement JSONB NOT NULL DEFAULT '{}'::jsonb,
+        PRIMARY KEY(fact_revision_id, occurrence),
+        CHECK (adjudication IN ('accepted', 'declined', 'offsetting', 'unknown'))
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS nfl_context_definitions (
+        definition_id TEXT PRIMARY KEY,
+        context_key TEXT NOT NULL,
+        version TEXT NOT NULL,
+        unit TEXT NOT NULL,
+        description TEXT NOT NULL,
+        definition JSONB NOT NULL,
+        freshness_seconds INTEGER,
+        registered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(context_key, version),
+        CHECK(freshness_seconds IS NULL OR freshness_seconds >= 0)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS nfl_context_snapshots (
+        snapshot_id TEXT PRIMARY KEY,
+        definition_id TEXT NOT NULL REFERENCES nfl_context_definitions(definition_id),
+        subject_type TEXT NOT NULL,
+        subject_id TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        as_of_at TIMESTAMPTZ NOT NULL,
+        available_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        measurement_window JSONB NOT NULL,
+        numerator DOUBLE PRECISION,
+        denominator DOUBLE PRECISION,
+        value DOUBLE PRECISION,
+        value_state TEXT NOT NULL,
+        coverage JSONB NOT NULL,
+        uncertainty JSONB,
+        estimation JSONB,
+        source_snapshot_ids JSONB NOT NULL,
+        fact_release_id TEXT NOT NULL REFERENCES nfl_fact_releases(release_id),
+        payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+        publication_status TEXT NOT NULL DEFAULT 'current',
+        superseded_by TEXT REFERENCES nfl_context_snapshots(snapshot_id),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CHECK(denominator IS NULL OR denominator >= 0),
+        CHECK(value_state IN ('observed', 'estimated', 'scenario')),
+        CHECK(publication_status IN ('current', 'superseded', 'withdrawn')),
+        CHECK((value_state = 'estimated' AND estimation IS NOT NULL)
+              OR (value_state <> 'estimated' AND estimation IS NULL))
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS nfl_context_qualifications (
+        consumer_id TEXT NOT NULL,
+        definition_id TEXT NOT NULL REFERENCES nfl_context_definitions(definition_id),
+        use_case TEXT NOT NULL,
+        cohort TEXT NOT NULL,
+        usage TEXT NOT NULL,
+        policy_version TEXT NOT NULL,
+        approved BOOLEAN NOT NULL,
+        max_age_seconds INTEGER,
+        fallback_definition_id TEXT REFERENCES nfl_context_definitions(definition_id),
+        registered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY(consumer_id, definition_id, use_case, cohort, usage, policy_version),
+        CHECK(usage IN ('descriptive', 'predictive', 'scenario', 'decision')),
+        CHECK(max_age_seconds IS NULL OR max_age_seconds >= 0)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS nfl_consumer_policy_pointers (
+        consumer_id TEXT PRIMARY KEY,
+        policy_version TEXT NOT NULL,
+        activated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        activated_by TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS nfl_consumer_snapshot_manifests (
+        manifest_id TEXT PRIMARY KEY,
+        consumer_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        policy_version TEXT NOT NULL,
+        resolved_at TIMESTAMPTZ NOT NULL,
+        context_snapshot_ids JSONB NOT NULL,
+        fact_release_ids JSONB NOT NULL,
+        source_snapshot_ids JSONB NOT NULL,
+        eligibility_decisions JSONB NOT NULL,
+        fallback_decisions JSONB NOT NULL DEFAULT '[]'::jsonb,
+        model_artifact_id TEXT,
+        model_config_id TEXT,
+        scenario_id TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(consumer_id, run_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS nfl_context_postgame_reports (
+        run_id TEXT PRIMARY KEY,
+        target_id TEXT NOT NULL,
+        manifest_id TEXT NOT NULL REFERENCES nfl_consumer_snapshot_manifests(manifest_id),
+        report_version TEXT NOT NULL,
+        payload JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS nfl_availability_operation_runs (
+        run_id TEXT PRIMARY KEY,
+        season INTEGER NOT NULL,
+        week INTEGER NOT NULL,
+        evaluated_at TIMESTAMPTZ NOT NULL,
+        status TEXT NOT NULL,
+        report JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CHECK(status IN ('healthy','warning','critical'))
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS nfl_availability_prelock_manifests (
+        manifest_id TEXT PRIMARY KEY,
+        season INTEGER NOT NULL,
+        week INTEGER NOT NULL,
+        slate_key TEXT NOT NULL,
+        decision_at TIMESTAMPTZ NOT NULL,
+        kickoff_at TIMESTAMPTZ NOT NULL,
+        projection_run_id UUID REFERENCES nfl_dfs_projection_runs(run_id),
+        game_ids JSONB NOT NULL,
+        context_snapshot_ids JSONB NOT NULL,
+        source_snapshot_ids JSONB NOT NULL,
+        coverage JSONB NOT NULL,
+        payload_digest TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(slate_key, payload_digest)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS nfl_official_inactive_imports (
+        import_id TEXT PRIMARY KEY,
+        season INTEGER NOT NULL,
+        week INTEGER NOT NULL,
+        reviewed_by TEXT NOT NULL,
+        reviewed_at TIMESTAMPTZ NOT NULL,
+        source_label TEXT NOT NULL,
+        source_snapshot_id BIGINT NOT NULL REFERENCES ff_source_snapshots(id),
+        row_count INTEGER NOT NULL,
+        payload_digest TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS nfl_context_research_runs (
+        run_id TEXT PRIMARY KEY,
+        definition_id TEXT NOT NULL REFERENCES nfl_context_definitions(definition_id),
+        study_version TEXT NOT NULL,
+        status TEXT NOT NULL,
+        report JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CHECK(status IN ('not_qualified', 'eligible_for_shadow_only'))
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS nfl_market_context_research_runs (
+        run_id TEXT PRIMARY KEY,
+        study_version TEXT NOT NULL,
+        report JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
     """,
 
@@ -3781,6 +4018,11 @@ MIGRATIONS = [
     "ALTER TABLE nfl_pbp_archetypes ADD COLUMN IF NOT EXISTS drive_had_sack BOOLEAN",
     "ALTER TABLE nfl_pbp_archetypes ADD COLUMN IF NOT EXISTS drive_had_penalty BOOLEAN",
     "ALTER TABLE nfl_pbp_archetypes ADD COLUMN IF NOT EXISTS drive_failed_short BOOLEAN",
+    "ALTER TABLE nfl_play_fact_revisions ADD COLUMN IF NOT EXISTS fact_payload JSONB NOT NULL DEFAULT '{}'::jsonb",
+    "ALTER TABLE nfl_context_snapshots ADD COLUMN IF NOT EXISTS publication_status TEXT NOT NULL DEFAULT 'current'",
+    "ALTER TABLE nfl_context_snapshots ADD COLUMN IF NOT EXISTS superseded_by TEXT REFERENCES nfl_context_snapshots(snapshot_id)",
+    "ALTER TABLE nfl_context_snapshots ADD COLUMN IF NOT EXISTS available_at TIMESTAMPTZ NOT NULL DEFAULT NOW()",
+    "ALTER TABLE nfl_context_snapshots ADD COLUMN IF NOT EXISTS payload JSONB NOT NULL DEFAULT '{}'::jsonb",
     "ALTER TABLE ff_source_snapshots ADD COLUMN IF NOT EXISTS week INTEGER",
     "ALTER TABLE ff_source_snapshots ADD COLUMN IF NOT EXISTS contract_key TEXT",
     "ALTER TABLE ff_source_snapshots ADD COLUMN IF NOT EXISTS source_published_at TIMESTAMPTZ",
@@ -3791,6 +4033,9 @@ MIGRATIONS = [
     "ALTER TABLE ff_source_snapshots ADD COLUMN IF NOT EXISTS confidence_multiplier DOUBLE PRECISION NOT NULL DEFAULT 1.0",
     "ALTER TABLE ff_source_snapshots ADD COLUMN IF NOT EXISTS model_eligible BOOLEAN NOT NULL DEFAULT TRUE",
     "ALTER TABLE ff_source_snapshots ADD COLUMN IF NOT EXISTS eligibility_reason TEXT",
+    "ALTER TABLE nfl_dfs_slate_uploads ADD COLUMN IF NOT EXISTS eligibility_manifest_digest TEXT",
+    "ALTER TABLE nfl_dfs_slate_players ADD COLUMN IF NOT EXISTS platform_eligibility JSONB NOT NULL DEFAULT '{}'::jsonb",
+    "ALTER TABLE nfl_dfs_projection_runs ADD COLUMN IF NOT EXISTS availability_manifest JSONB NOT NULL DEFAULT '{}'::jsonb",
     # Older schedule backfills predate commence-time capture. Raw official
     # outcomes remain usable with a strict prior-date feature cutoff.
     "ALTER TABLE mlb_team_game_outcomes ALTER COLUMN commence_time DROP NOT NULL",
@@ -4803,6 +5048,10 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_dk_lineups_slate ON dk_lineups(slate_id, strategy)",
     "CREATE INDEX IF NOT EXISTS idx_game_odds_history_lookup ON game_odds_history(sport, game_date, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_game_odds_history_matchup ON game_odds_history(sport, matchup_id, captured_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_evidence_source_key ON nfl_evidence_observations(source, source_record_key, system_observed_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_play_fact_current ON nfl_play_fact_revisions(game_id, play_id) WHERE revision_status = 'current'",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_context_current ON nfl_context_snapshots(definition_id, subject_id, target_id, as_of_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_context_policy ON nfl_context_qualifications(consumer_id, use_case, cohort, usage, policy_version)",
     "CREATE INDEX IF NOT EXISTS idx_player_prop_history_lookup ON player_prop_history(sport, slate_id, market_key, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_player_prop_history_player ON player_prop_history(sport, dk_player_id, market_key, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_projection_runs_slate ON projection_runs(slate_id, created_at DESC)",

@@ -1,0 +1,38 @@
+name: Monitor CFB Pilot Operations
+
+on:
+  schedule:
+    - cron: "3,18,33,48 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: monitor-cfb-pilot
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Check pilot operations from stored evidence
+        run: python -m research.cfb_pilot_operations --output artifacts/cfb_pilot_operations_monitor.json --fail-on-alert
+      - name: Preserve pinned operations evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfb-pilot-operations-${{ github.run_id }}
+          path: artifacts/cfb_pilot_operations_monitor.json
+          if-no-files-found: warn

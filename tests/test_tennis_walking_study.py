@@ -125,14 +125,22 @@ def test_live_scan_tags_only_first_walking_without_relabeling(monkeypatch, prior
 
     class DB:
         def execute(self, sql, params):
-            return [row] if "SELECT DISTINCT" in sql else []
+            if "FROM game_odds_history" in sql:
+                return [row]
+            if "FROM market_signal_observations" in sql:
+                return []
+            raise AssertionError(f"Unexpected SQL: {sql}")
 
         def execute_one(self, sql, params):
             if "FROM line_alerts" in sql:
                 return {"id": 2} if prior_exists else None
             if "ORDER BY captured_at ASC" in sql:
                 return {"history_id": 1, "captured_at": now - timedelta(hours=3), "books": opening_books}
-            return None
+            if "FROM game_odds_history" in sql and "ORDER BY captured_at DESC" in sql:
+                return None
+            if "INSERT INTO market_signal_observations" in sql:
+                return None
+            raise AssertionError(f"Unexpected SQL: {sql}")
 
     inserted = []
     def capture(db, **kwargs):

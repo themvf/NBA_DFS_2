@@ -32,7 +32,7 @@ export function resolvePuntPreset(key: PuntPresetKey, current: NflPuntPolicy): N
 export function describePuntPolicy(policy: NflPuntPolicy): string[] {
   const lines = [
     `Players priced at or below $${policy.absoluteMinSalary.toLocaleString()} are blocked unless allowed for the run with a reason.`,
-    `Below $${policy.roleEvidenceRequiredBelowSalary.toLocaleString()}, a player needs fresh role evidence, role confidence ≥ ${(policy.minimumRoleConfidence * 100).toFixed(0)}%${policy.minimumProjectedOpportunities !== null ? `, and ≥ ${policy.minimumProjectedOpportunities} projected opportunity` : ""}.`,
+    `At or below $${policy.roleEvidenceRequiredBelowSalary.toLocaleString()}, a player needs fresh role evidence, role confidence ≥ ${(policy.minimumRoleConfidence * 100).toFixed(0)}%${policy.minimumProjectedOpportunities !== null ? `, and ≥ ${policy.minimumProjectedOpportunities} projected opportunity` : ""}.`,
     `At most ${policy.maxSalaryReliefPlayersPerLineup} salary-relief player${policy.maxSalaryReliefPlayersPerLineup === 1 ? "" : "s"} per lineup.`,
     "Unknown or stale role evidence fails closed. Salary alone is never a reason to keep a cheap player.",
   ];

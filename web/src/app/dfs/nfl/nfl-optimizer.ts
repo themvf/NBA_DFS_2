@@ -1,4 +1,6 @@
 import "server-only";
+import type { DefensiveForecastBundle, DefensiveSettings } from '@/lib/nfl-dfs/defensive-projection';
+import { assertShowdownLineup, showdownSalary, showdownFlexEligible } from '@/lib/nfl-dfs/showdown-legality';
 import {selectedWorkload,validateWorkloadPositions,WORKLOAD_POSITIONS,type WorkloadPositions} from "@/lib/nfl-dfs/workload-selection";
 import type { WorkloadProjection } from "@/lib/nfl-dfs/workload-projection";
 import type { CalibratedProjection } from "@/lib/nfl-dfs/calibrated-projection";
@@ -15,6 +17,7 @@ import {
   type EvidenceState,
 } from '@/lib/nfl-dfs/punt-policy';
 import type { OwnershipCapability } from '@/lib/nfl-dfs/ownership-capability';
+import { isNflGppSignalPlayer, type NflPlayerSignal, type NflPlayerSignalCode } from '@/lib/nfl-dfs/player-signals';
 import {
   deriveExposureCounts,
   detectExposureInfeasibility,
@@ -45,9 +48,8 @@ import {
   type LineupDuplication,
 } from '@/lib/nfl-dfs/salary-duplication';
 
-// Phase 0/1: bumped from v5 to record that role-aware eligibility now gates the
-// pool. Legacy runs keep their own recorded version and are not reinterpreted.
-export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v6-punt-policy";
+// Record the strict Showdown purchase and completed-roster validation.
+export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v7-showdown-legality";
 
 export type NflProjectionSource = "our" | "workload" | "calibrated" | "dk_avg" | "fantasypros" | "linestar" | "custom";
 export type NflOptimizerMode = "cash" | "gpp";
@@ -64,6 +66,7 @@ export type NflOptimizerPlayer = {
   gameKey: string | null;
   salary: number;
   captainSalary: number | null;
+  rosterPositions?: string[];
   isOut: boolean;
   projectionStatus: string;
   /** The player's OWN games behind his projection. 0 means the number is his position's average, not his. */
@@ -84,6 +87,7 @@ export type NflOptimizerPlayer = {
   fantasyprosProj: number | null;
   linestarProj: number | null;
   linestarOwnPct: number | null;
+  playerSignals?: NflPlayerSignal[];
   customProj: number | null;
   workload?: WorkloadProjection | null;
   workloadReason?: string;
@@ -93,12 +97,14 @@ export type NflOptimizerPlayer = {
   calibrationReason?: string;
   situationEvidence?: SituationEvidence;
   projectionAudit?: ProjectionAudit;
+  defensiveForecast?: DefensiveForecastBundle | null;
 };
 
 export type NflOptimizerSettings = {
   format: NflSlateFormat;
   mode: NflOptimizerMode;
   projectionSource: NflProjectionSource;
+  defensiveAdjustments?: DefensiveSettings;
   allowDkFallback: boolean;
   workloadPositions?: WorkloadPositions;
   situations?: SituationSettings;
@@ -114,6 +120,10 @@ export type NflOptimizerSettings = {
   puntOverrides?: PuntOverride[];
   /** Phase 2: resolved ownership capability. When not "validated", leverage is disabled. */
   ownershipCapability?: OwnershipCapability;
+  /** Opt-in Classic GPP construction rule; never changes a player's point projection. */
+  gppSignalMinPerLineup?: 0 | 1;
+  /** Which observed opportunity paths satisfy the opt-in lineup rule. */
+  gppSignalCodes?: NflPlayerSignalCode[];
   /** Phase 3: per-player Overall/Captain/Flex exposure ranges. Overrides the flat maxExposure per player. */
   exposurePolicies?: PlayerExposurePolicy[];
   /** Phase 4: per-archetype portfolio quotas. Absent = single Standard-ceiling quota. */
@@ -165,7 +175,7 @@ export type NflLineupSlot = {
   salary: number;
   multiplier: number;
   projection: number;
-  projectionSource: NflProjectionSource | "dk_avg_fallback" | "our_fallback";
+  projectionSource: NflProjectionSource | "dk_avg_fallback" | "our_fallback" | "defensive";
 };
 
 export type NflGeneratedLineup = {
@@ -219,7 +229,7 @@ export type NflOptimizerResult = {
 
 type ResolvedPlayer = NflOptimizerPlayer & {
   projection: number;
-  resolvedSource: NflProjectionSource | "dk_avg_fallback" | "our_fallback";
+  resolvedSource: NflProjectionSource | "dk_avg_fallback" | "our_fallback" | "defensive";
   /** Phase 1: whether this player counts against the per-lineup salary-relief cap. */
   salaryRelief: boolean;
   /** Phase 1: whether this player may be used at Captain (Flex-only for overridden cheap players by default). */
@@ -262,6 +272,16 @@ function roleEvidenceFor(player: NflOptimizerPlayer): NflPlayerRoleEvidence {
 }
 
 function projectionFor(player: NflOptimizerPlayer, settings: NflOptimizerSettings): { value: number; source: ResolvedPlayer["resolvedSource"] } | null {
+  if (settings.defensiveAdjustments?.mode !== undefined && settings.defensiveAdjustments.mode !== 'off') {
+    const bundle = player.defensiveForecast;
+    if (!bundle) throw new Error('Defensive forecasts were not resolved by the server.');
+    if (bundle.profile !== settings.defensiveAdjustments.profile || bundle.mode !== settings.defensiveAdjustments.mode)
+      throw new Error('Defensive forecast profile does not match optimizer settings.');
+    if(bundle.status==='applied')return Number.isFinite(bundle.selected.mean) && bundle.selected.mean > 0
+      ? {value:bundle.selected.mean,source:'defensive'}:null;
+    return finite(player.ourProj)!==null && player.ourProj!>0
+      ? {value:player.ourProj!,source:'our_fallback'}:null;
+  }
   if (settings.projectionSource === "workload") {
     const candidate=selectedWorkload(player,settings.workloadPositions);
     if (candidate && finite(candidate.mean) !== null && candidate.mean > 0) return { value: candidate.mean, source: "workload" };
@@ -286,6 +306,15 @@ function projectionFor(player: NflOptimizerPlayer, settings: NflOptimizerSetting
 
 export function resolveProjectionAudit(player:NflOptimizerPlayer,settings:NflOptimizerSettings):ProjectionAudit {
   const resolved=projectionFor(player,settings);
+  if (settings.defensiveAdjustments?.mode !== undefined && settings.defensiveAdjustments.mode !== 'off' && player.defensiveForecast) {
+    const bundle=player.defensiveForecast;
+    return {version:'nfl-projection-audit-v1',baseline:bundle.baseline.mean,final:bundle.selected.mean,
+      source:resolved?.source??'unavailable',excluded:player.isOut||settings.excludedPlayerIds.includes(player.dkPlayerId)||!resolved,
+      modelSnapshot:bundle,evidence:{digest:bundle.digest,candidateRunId:bundle.candidateRunId,capturedAt:bundle.capturedAt},assumption:null,
+      rangeMethod:'Frozen player distribution, rescored from adjusted stat draws.',
+      steps:[{label:'Defensive adjustments',status:bundle.status==='applied'?'applied':'not_applied',
+        points:bundle.selected.mean-bundle.baseline.mean,reason:`${bundle.profile}: ${bundle.reason}; bundle ${bundle.digest}.`}]};
+  }
   if(resolved?.source==='workload'&&player.projectionAudit)return {...player.projectionAudit,excluded:player.isOut||settings.excludedPlayerIds.includes(player.dkPlayerId)};
   const baseline=finite(player.ourProj),final=resolved?.value??null,delta=baseline!=null&&final!=null?final-baseline:0;
   return {version:'nfl-projection-audit-v1',baseline,final,source:resolved?.source??'unavailable',excluded:player.isOut||settings.excludedPlayerIds.includes(player.dkPlayerId)||!resolved,modelSnapshot:resolved?.source==='calibrated'?player.calibrated:null,evidence:player.projectionAudit?.evidence??null,assumption:null,rangeMethod:resolved?.source==='calibrated'?'Pinned calibrated player ranges.':resolved?.source==='our'||resolved?.source==='our_fallback'?'Historical player ranges.':'Source supplies a mean only; optimizer uses 0.74 × mean / 1.28 × mean range heuristics.',steps:[{label:'Selected projection source',status:delta?'applied':'not_applied',points:delta,reason:resolved?`${resolved.source}: ${baseline===null?'historical baseline unavailable; no comparative delta claimed':final===baseline?'historical estimate retained':'source replacement, not an inferred injury or matchup effect'}.`:'No usable projection; excluded.'},...(player.projectionAudit?.steps.filter(s=>s.label==='Situation adjustments')??[])]};
@@ -302,10 +331,11 @@ function jitter(seed: number, lineup: number, playerId: number): number {
 }
 
 function objective(player: ResolvedPlayer, settings: NflOptimizerSettings, lineupNumber: number): number {
+  const defensive=player.defensiveForecast?.status==='applied' && settings.defensiveAdjustments?.mode!=='off' ? player.defensiveForecast.selected:null;
   const historical = player.resolvedSource === "our" || player.resolvedSource === "our_fallback";
   const base = settings.mode === "cash"
-    ? (player.resolvedSource === "workload" ? selectedWorkload(player,settings.workloadPositions)!.p10 : player.resolvedSource === "calibrated" ? player.calibrated!.p10 : historical ? finite(player.floorFpts) : null) ?? player.projection * 0.74
-    : (player.resolvedSource === "workload" ? selectedWorkload(player,settings.workloadPositions)!.p90 : player.resolvedSource === "calibrated" ? player.calibrated!.p90 : historical ? finite(player.ceilingFpts) : null) ?? player.projection * 1.28;
+    ? (defensive ? defensive.p10 : player.resolvedSource === "workload" ? selectedWorkload(player,settings.workloadPositions)!.p10 : player.resolvedSource === "calibrated" ? player.calibrated!.p10 : historical ? finite(player.floorFpts) : null) ?? player.projection * 0.74
+    : (defensive ? defensive.p90 : player.resolvedSource === "workload" ? selectedWorkload(player,settings.workloadPositions)!.p90 : player.resolvedSource === "calibrated" ? player.calibrated!.p90 : historical ? finite(player.ceilingFpts) : null) ?? player.projection * 1.28;
   // Phase 2: leverage (ownership penalty) only applies when ownership is
   // validated. Missing ownership is null and contributes no penalty — it is
   // never rewarded as low ownership. When capability is not validated the
@@ -313,11 +343,16 @@ function objective(player: ResolvedPlayer, settings: NflOptimizerSettings, lineu
   const leverageEnabled = settings.mode === "gpp" && (settings.ownershipCapability ?? "unavailable") === "validated";
   const ownershipPenalty = leverageEnabled ? (finite(player.linestarOwnPct) ?? 0) * 0.025 : 0;
   const workload=player.resolvedSource === "workload"?selectedWorkload(player,settings.workloadPositions):null;
-  const boomBonus = settings.mode === "gpp" ? (workload && "boom" in workload ? workload.boom : player.resolvedSource === "calibrated" ? player.calibrated!.boom : historical ? finite(player.boomRate) ?? 0 : 0) * 2 : 0;
+  const boomBonus = settings.mode === "gpp" ? (defensive ? defensive.boom : workload && "boom" in workload ? workload.boom : player.resolvedSource === "calibrated" ? player.calibrated!.boom : historical ? finite(player.boomRate) ?? 0 : 0) * 2 : 0;
   return base + boomBonus - ownershipPenalty + jitter(20260902, lineupNumber, player.dkPlayerId) * settings.randomness * player.projection;
 }
 
 function validateSettings(settings: NflOptimizerSettings): void {
+  if (settings.defensiveAdjustments?.mode !== undefined && settings.defensiveAdjustments.mode !== 'off') {
+    if (settings.projectionSource !== 'our') throw new Error('Defensive adjustments require the historical projection source.');
+    if (settings.defensiveAdjustments.mode !== 'experimental' && settings.defensiveAdjustments.mode !== 'approved') throw new Error('Unknown defensive mode.');
+    if (settings.defensiveAdjustments.profile !== 'pfr-efficiency' && settings.defensiveAdjustments.profile !== 'allowed-rushing-volume') throw new Error('Unknown defensive profile.');
+  }
   if(settings.projectionSource === "workload")validateWorkloadPositions(settings.workloadPositions);
   if (!["our", "workload", "calibrated", "dk_avg", "fantasypros", "linestar", "custom"].includes(settings.projectionSource)) throw new Error("Unknown projection source.");
   if (!Number.isInteger(settings.nLineups) || settings.nLineups < 1 || settings.nLineups > 150) throw new Error("Lineup count must be between 1 and 150.");
@@ -326,6 +361,14 @@ function validateSettings(settings: NflOptimizerSettings): void {
   const floor = settings.minPlayerSalary ?? 0;
   if (!Number.isFinite(floor) || floor < 0 || floor > 50000) throw new Error("Minimum player salary must be between $0 and $50,000.");
   if (settings.puntPolicy) validateNflPuntPolicy(settings.puntPolicy);
+  if (![0, 1].includes(settings.gppSignalMinPerLineup ?? 0)) throw new Error("GPP signal minimum must be 0 or 1.");
+  if (settings.gppSignalMinPerLineup && settings.gppSignalCodes?.length === 0) throw new Error("Select at least one opportunity signal.");
+  if (settings.gppSignalCodes?.some(code => !["AIR_VOLUME", "YAC_RUNWAY", "INSIDE_FIVE", "CLOSE_TARGET"].includes(code))) {
+    throw new Error("Unknown opportunity signal code.");
+  }
+  if (settings.gppSignalMinPerLineup && (settings.format !== "classic" || settings.mode !== "gpp")) {
+    throw new Error("Player opportunity signals currently support Classic GPP lineups only.");
+  }
   const rosterSize = settings.format === "classic" ? 9 : 6;
   if (settings.minUnique < 1 || settings.minUnique > rosterSize) throw new Error(`Minimum unique players must be 1-${rosterSize}.`);
 }
@@ -386,6 +429,9 @@ function buildOne(
   if (settings.puntPolicy && available.some((player) => player.salaryRelief)) {
     constraints.salary_relief = { max: settings.puntPolicy.maxSalaryReliefPlayersPerLineup };
   }
+  if (settings.gppSignalMinPerLineup) {
+    constraints.gpp_opportunity_signal = { min: settings.gppSignalMinPerLineup };
+  }
   // Phase 4: archetype constraints. Team-count skew (favorite onslaught), K/DST
   // presence (low-scoring), and beneficiary minimums (fades' alternate paths).
   if (compiled?.teamCountRange && settings.format === "showdown" && compiled.eligibleCaptainIds === null) {
@@ -425,6 +471,7 @@ function buildOne(
     const purchaseTypes = settings.format === "classic" ? ["CLASSIC"] : ["CPT", "FLEX"];
     for (const purchaseType of purchaseTypes) {
       if (purchaseType === "CPT" && (player.captainDkPlayerId == null || player.captainSalary == null)) continue;
+      if (purchaseType === "FLEX" && !showdownFlexEligible(player)) continue;
       // Phase 1 (P1-AC1/§8.3): a cheap player admitted only by override is
       // Flex-only unless a Captain override is recorded. Skip his CPT variable.
       if (purchaseType === "CPT" && !player.captainEligible) continue;
@@ -439,7 +486,7 @@ function buildOne(
       const key = `${purchaseType === "CLASSIC" ? "x" : purchaseType === "CPT" ? "c" : "f"}_${player.dkPlayerId}`;
       const slot = purchaseType === "CPT" ? "CPT" : purchaseType === "FLEX" ? "FLEX" : "CLASSIC";
       const multiplier = slot === "CPT" ? 1.5 : 1;
-      const salary = slot === "CPT" ? player.captainSalary! : player.salary;
+      const salary = settings.format === "showdown" ? showdownSalary(player, slot === "CPT") : player.salary;
       const variable: Record<string, number> = {
         score: objective(player, settings, lineupNumber) * multiplier,
         salary,
@@ -447,6 +494,7 @@ function buildOne(
       };
       // Count this pick against the per-lineup salary-relief cap.
       if (settings.puntPolicy && player.salaryRelief) variable.salary_relief = 1;
+      if (constraints.gpp_opportunity_signal && isNflGppSignalPlayer(player.playerSignals, settings.gppSignalCodes)) variable.gpp_opportunity_signal = 1;
       if (settings.format === "classic") {
         variable.roster = 1;
         variable[player.position.toLowerCase()] = 1;
@@ -501,7 +549,7 @@ function buildOne(
     for (const purchase of purchases) {
       const slot = purchase.slot === "CPT" ? "CPT" : `FLEX${++flexIndex}`;
       const multiplier = purchase.slot === "CPT" ? 1.5 : 1;
-      chosen.push({ slot, player: purchase.player, salary: purchase.slot === "CPT" ? purchase.player.captainSalary! : purchase.player.salary, multiplier, projection: purchase.player.projection * multiplier, projectionSource: purchase.player.resolvedSource });
+      chosen.push({ slot, player: purchase.player, salary: showdownSalary(purchase.player, purchase.slot === "CPT"), multiplier, projection: purchase.player.projection * multiplier, projectionSource: purchase.player.resolvedSource });
     }
   } else {
     const byPosition = (position: NflOptimizerPlayer["position"]) => purchases.filter((entry) => entry.player.position === position).map((entry) => entry.player);
@@ -516,6 +564,7 @@ function buildOne(
   const slotOrder = new Map<string, number>(slots.map((slot, index) => [slot, index]));
   chosen.sort((a, b) => (slotOrder.get(a.slot) ?? 99) - (slotOrder.get(b.slot) ?? 99));
   if (chosen.length !== rosterSize) return null;
+  if (settings.format === "showdown") assertShowdownLineup({ slots: chosen, playerIds: chosen.map(s => s.player.dkPlayerId), totalSalary: chosen.reduce((sum, s) => sum + s.salary, 0) });
   const qb = chosen.find((entry) => entry.player.position === "QB")?.player ?? null;
   const passCatchers = qb ? chosen.filter((entry) => ["WR", "TE"].includes(entry.player.position) && entry.player.team === qb.team).map((entry) => entry.player.name) : [];
   const bringBack = qb ? chosen.find((entry) => ["RB", "WR", "TE"].includes(entry.player.position) && entry.player.team === qb.opponent)?.player.name ?? null : null;
@@ -525,8 +574,8 @@ function buildOne(
     playerIds: chosen.map((entry) => entry.player.dkPlayerId),
     totalSalary: chosen.reduce((sum, entry) => sum + entry.salary, 0),
     projectedFpts: chosen.reduce((sum, entry) => sum + entry.projection, 0),
-    floorFpts: chosen.reduce((sum, entry) => sum + (entry.projectionSource === "workload" ? selectedWorkload(entry.player,settings.workloadPositions)!.p10 : entry.projectionSource === "calibrated" ? entry.player.calibrated!.p10 : entry.projectionSource === "our" || entry.projectionSource === "our_fallback" ? entry.player.floorFpts ?? entry.projection / entry.multiplier * .74 : entry.projection / entry.multiplier * .74) * entry.multiplier, 0),
-    ceilingFpts: chosen.reduce((sum, entry) => sum + (entry.projectionSource === "workload" ? selectedWorkload(entry.player,settings.workloadPositions)!.p90 : entry.projectionSource === "calibrated" ? entry.player.calibrated!.p90 : entry.projectionSource === "our" || entry.projectionSource === "our_fallback" ? entry.player.ceilingFpts ?? entry.projection / entry.multiplier * 1.28 : entry.projection / entry.multiplier * 1.28) * entry.multiplier, 0),
+    floorFpts: chosen.reduce((sum, entry) => sum + (entry.projectionSource==='defensive' ? entry.player.defensiveForecast!.selected.p10 : entry.projectionSource === "workload" ? selectedWorkload(entry.player,settings.workloadPositions)!.p10 : entry.projectionSource === "calibrated" ? entry.player.calibrated!.p10 : entry.projectionSource === "our" || entry.projectionSource === "our_fallback" ? entry.player.floorFpts ?? entry.projection / entry.multiplier * .74 : entry.projection / entry.multiplier * .74) * entry.multiplier, 0),
+    ceilingFpts: chosen.reduce((sum, entry) => sum + (entry.projectionSource==='defensive' ? entry.player.defensiveForecast!.selected.p90 : entry.projectionSource === "workload" ? selectedWorkload(entry.player,settings.workloadPositions)!.p90 : entry.projectionSource === "calibrated" ? entry.player.calibrated!.p90 : entry.projectionSource === "our" || entry.projectionSource === "our_fallback" ? entry.player.ceilingFpts ?? entry.projection / entry.multiplier * 1.28 : entry.projection / entry.multiplier * 1.28) * entry.multiplier, 0),
     projectedOwnership: chosen.some((entry) => entry.player.linestarOwnPct != null)
       ? chosen.reduce((sum, entry) => sum + (entry.player.linestarOwnPct ?? 0), 0)
       : null,
@@ -648,6 +697,9 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     if (!coverage.direct) throw new Error("No eligible pregame forecasts for the enabled workload positions. Refresh the workload snapshot or select the historical source.");
     const counts=WORKLOAD_POSITIONS.map(pos=>`${pos}: ${pool.filter(p=>p.resolvedSource==='workload'&&p.position===pos).length}`).join(', ');
     warnings.push(`Workload coverage — ${counts}. Other players retain disclosed fallback. RB/WR/TE candidate ranges worsened historical interval scores. Situation effects, when enabled, are listed in each player audit; WR has no invented boom bonus.`);
+  }
+  if (settings.gppSignalMinPerLineup && !pool.some(player => isNflGppSignalPlayer(player.playerSignals, settings.gppSignalCodes))) {
+    throw new Error("No eligible player has a current opportunity signal. Refresh play-by-play or turn off the GPP signal rule.");
   }
   warnings.push("Lineup floor/ceiling sums are player-level search heuristics, not lineup P10/P90. Use Scenario Lab for joint distributions.");
 

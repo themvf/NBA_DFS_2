@@ -2,13 +2,18 @@
 
 import { Fragment, useMemo, useState } from "react";
 import type { NflArchetypeGameRow, NflArchetypePlayRow, NflArchetypeParticipantRow } from "@/db/queries";
+import type { NflAvailabilityCoverage, NflContextResearchSummary, NflResolvedContext } from "@/db/nfl-context";
 import s from "../../cfb/cfb-terminal.module.css";
 import n from "../nfl-terminal.module.css";
 import p from "./pbp-archetype.module.css";
+import RefreshButton from "./refresh-button";
 
 type Props = {
   games: NflArchetypeGameRow[]; gameId: string | null;
   plays: NflArchetypePlayRow[]; participants: NflArchetypeParticipantRow[];
+  contexts: NflResolvedContext[];
+  availability: NflAvailabilityCoverage | null;
+  research: NflContextResearchSummary;
 };
 
 // Colour carries MEANING, not decoration: scoring green, giveaway red, negative
@@ -43,7 +48,7 @@ const handler = (r: NflArchetypePlayRow) =>
   r.receiver ? `${r.passer ?? "?"} → ${r.receiver}` : r.passer ?? r.rusher ?? null;
 const num = (v: number | null, digits = 0) => (v == null ? "—" : v.toFixed(digits));
 
-export default function PbpArchetypeClient({ games, gameId, plays, participants }: Props) {
+export default function PbpArchetypeClient({ games, gameId, plays, participants, contexts, availability, research }: Props) {
   const [team, setTeam] = useState("all");
   const [playFilter, setPlayFilter] = useState("all");
   const [open, setOpen] = useState<number | null>(null);
@@ -87,6 +92,98 @@ export default function PbpArchetypeClient({ games, gameId, plays, participants 
       </p>
     </section>
 
+    {contexts.length > 0 && <section className={p.contextBand} aria-label="Shared NFL context">
+      <div className={p.contextIntro}>
+        <span className={p.contextEyebrow}>SHARED CONTEXT · DESCRIPTIVE</span>
+        <h2>Prior-season neutral snap interval</h2>
+        <p>
+          Game-clock seconds between adjacent eligible offensive snaps. These are saved,
+          policy-qualified context objects—not calculations performed by this page.
+        </p>
+      </div>
+      <div className={p.contextCards}>
+        {contexts.map(({ measurement, manifest }) => <article key={manifest.contextSnapshotId} className={p.contextCard}>
+          <strong>{measurement.subject.id}</strong>
+          <span className={p.contextValue}>
+            {measurement.measurement.value == null ? "—" : measurement.measurement.value.toFixed(1)}<small> sec</small>
+          </span>
+          <span>{String(measurement.coverage.eligibleIntervals ?? "—")} eligible intervals</span>
+          <details>
+            <summary>Evidence contract</summary>
+            <dl>
+              <dt>Definition</dt><dd>{measurement.definitionId}</dd>
+              <dt>As of</dt><dd>{new Date(measurement.asOfAt).toISOString().replace("T", " ").slice(0, 19)} UTC</dd>
+              <dt>Snapshot</dt><dd className={p.contextHash}>{manifest.contextSnapshotId}</dd>
+              <dt>Fact release</dt><dd className={p.contextHash}>{manifest.factReleaseId}</dd>
+              <dt>Policy</dt><dd>{manifest.policyVersion}</dd>
+            </dl>
+          </details>
+        </article>)}
+      </div>
+    </section>}
+
+    {availability && availability.players.length > 0 && <section className={p.contextBand} aria-label="Shared NFL availability context">
+      <div className={p.contextIntro}>
+        <span className={p.contextEyebrow}>AVAILABILITY · PINNED SHARED STATE</span>
+        <h2>Pregame personnel context</h2>
+        <p>
+          One immutable decision set is shared by this game view, DFS audit,
+          market research, and prop research. Platform eligibility is excluded.
+        </p>
+      </div>
+      <div className={p.contextCards}>
+        {availability.quarterbacks.map(({ measurement, manifest }) => {
+          const payload = measurement.payload;
+          return <article key={manifest.contextSnapshotId} className={p.contextCard}>
+            <strong>{String(payload.team ?? measurement.subject.id)} QB</strong>
+            <span className={p.contextValue}>{label(String(payload.starter_change_state ?? "UNRESOLVED"))}</span>
+            <span>Starter: {String(payload.expected_starter_player_id ?? "unresolved")}</span>
+            <details>
+              <summary>Evidence contract</summary>
+              <dl>
+                <dt>Decision</dt><dd>{new Date(measurement.asOfAt).toISOString().replace("T", " ").slice(0, 19)} UTC</dd>
+                <dt>Published</dt><dd>{new Date(measurement.availableAt).toISOString().replace("T", " ").slice(0, 19)} UTC</dd>
+                <dt>Snapshot</dt><dd className={p.contextHash}>{manifest.contextSnapshotId}</dd>
+                <dt>Policy</dt><dd>{manifest.policyVersion}</dd>
+              </dl>
+            </details>
+          </article>;
+        })}
+        <article className={p.contextCard}>
+          <strong>Coverage</strong>
+          <span className={p.contextValue}>{availability.players.length}<small> players</small></span>
+          <span>{availability.conflicts} conflicts · {availability.stale} stale · {availability.unknown} unknown</span>
+          <details>
+            <summary>State counts</summary>
+            <dl>{Object.entries(availability.stateCounts).map(([state, count]) => <Fragment key={state}><dt>{label(state)}</dt><dd>{count}</dd></Fragment>)}</dl>
+          </details>
+        </article>
+      </div>
+    </section>}
+
+    <section className={p.researchBand} aria-label="Context research status">
+      <article className={p.researchCard}>
+        <span className={p.contextEyebrow}>VEGAS EXPLANATION · ASSOCIATION</span>
+        <h2>What the opener appears to price</h2>
+        {research.market ? <>
+          <p>Across {research.market.sampleRows} historical openers, recent scoring margin dominated. PBP descriptors improved held-out reconstruction by {research.market.folds.map(fold => `${fold.maeGain.toFixed(2)} pts in ${fold.season}`).join(" and ")}.</p>
+          <p className={p.researchFine}>Largest PBP associations: {research.market.associations.filter(row => row.feature !== "margin_difference").map(row => label(row.feature)).join(", ")}. This explains a consensus number; it does not prove bookmaker intent.</p>
+        </> : <p>No completed market-attribution study is available.</p>}
+      </article>
+      <article className={p.researchCard}>
+        <span className={p.contextEyebrow}>DFS PROJECTION · QUALIFICATION</span>
+        <h2>{research.dfs?.status === "eligible_for_shadow_only" ? "Eligible for shadow" : "Pace did not clear the gate"}</h2>
+        <p>{research.dfs?.maeGain == null ? "No completed opportunity study is available." : `Neutral pace improved held-out team-play MAE by only ${research.dfs.maeGain.toFixed(3)} plays per game. The required gain is 0.25.`}</p>
+        <p className={p.researchFine}>Production projection effect: none. Optimizer effect: none.</p>
+      </article>
+      <article className={p.researchCard}>
+        <span className={p.contextEyebrow}>NFL PROPS · EVIDENCE</span>
+        <h2>{research.props.observations > 0 ? `${research.props.observations} captured quotes` : "Capture not yet activated"}</h2>
+        <p>Prop use requires time-qualified market quotes, player identity, a calibrated opportunity distribution, and forward settlement.</p>
+        <p className={p.researchFine}>No prop recommendation or betting edge is produced on this page.</p>
+      </article>
+    </section>
+
     <section className={p.controls}>
       <label>GAME
         <select value={gameId ?? ""} onChange={e => { window.location.search = `?game=${encodeURIComponent(e.target.value)}`; }}>
@@ -108,6 +205,7 @@ export default function PbpArchetypeClient({ games, gameId, plays, participants 
           {playTypes.map(t => <option key={t} value={t}>{label(t)}</option>)}
         </select>
       </label>
+      <RefreshButton />
       <span className={p.count}>{rows.length} of {plays.length} plays</span>
     </section>
 

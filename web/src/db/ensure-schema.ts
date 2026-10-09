@@ -20,6 +20,7 @@ let ensureFantasyFootballTablesPromise: Promise<void> | null = null;
 let ensureSurvivorTablesPromise: Promise<void> | null = null;
 let ensurePickemTablesPromise: Promise<void> | null = null;
 let ensureNflDfsTablesPromise: Promise<void> | null = null;
+let ensureNflContextTablesPromise: Promise<void> | null = null;
 
 const FANTASY_FOOTBALL_DDLS = [
   `CREATE TABLE IF NOT EXISTS ff_source_snapshots (id BIGSERIAL PRIMARY KEY, source TEXT NOT NULL, dataset TEXT NOT NULL, season INTEGER NOT NULL, scoring TEXT, ranking_type TEXT, request_params JSONB NOT NULL DEFAULT '{}'::jsonb, source_updated_at TIMESTAMPTZ, fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), response_hash TEXT NOT NULL, row_count INTEGER NOT NULL, matched_count INTEGER NOT NULL DEFAULT 0, unmatched_count INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, error_summary TEXT, UNIQUE(source, dataset, response_hash))`,
@@ -1080,6 +1081,7 @@ const PICKEM_DDLS = [
       CHECK (format IN ('confidence', 'straight')),
       CHECK (pool_entries >= 1)
   )`,
+  `ALTER TABLE pickem_pools ADD COLUMN IF NOT EXISTS config_json JSONB`,
   // Append-only. A changed recommendation for the same pool-week inserts a new
   // row and marks the old one superseded; nothing is ever rewritten, because
   // the question this table has to answer later is "what did it say, and when".
@@ -1165,6 +1167,8 @@ END $$;`,
   `CREATE INDEX IF NOT EXISTS idx_pickem_recs_live ON pickem_recommendations(season, status) WHERE superseded_by IS NULL`,
   `CREATE INDEX IF NOT EXISTS idx_pickem_rec_games ON pickem_recommendation_games(recommendation_id)`,
   `ALTER TABLE pickem_recommendation_games ADD COLUMN IF NOT EXISTS evidence_json JSONB`,
+  `ALTER TABLE pickem_recommendation_games ADD COLUMN IF NOT EXISTS result_tie BOOLEAN`,
+  `ALTER TABLE pickem_recommendation_games ADD COLUMN IF NOT EXISTS result_revisions JSONB NOT NULL DEFAULT '[]'::jsonb`,
   `CREATE TABLE IF NOT EXISTS pickem_news (
     id BIGSERIAL PRIMARY KEY,
     game_id INTEGER NOT NULL REFERENCES nfl_season_games(id),
@@ -1193,11 +1197,14 @@ export async function ensurePickemTables(): Promise<void> {
 }
 
 const NFL_DFS_DDLS = [
-  `CREATE TABLE IF NOT EXISTS nfl_dfs_projection_runs (run_id UUID PRIMARY KEY, model_version TEXT NOT NULL, scoring TEXT NOT NULL DEFAULT 'DK', slate_date DATE, season INTEGER NOT NULL, week INTEGER, as_of_at TIMESTAMPTZ NOT NULL, seed BIGINT NOT NULL, history_cutoff_season INTEGER NOT NULL, history_cutoff_week INTEGER, source_snapshot_ids JSONB NOT NULL DEFAULT '[]'::jsonb, model_config JSONB NOT NULL DEFAULT '{}'::jsonb, player_count INTEGER NOT NULL, artifact_digest TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(model_version,artifact_digest))`,
+  `CREATE TABLE IF NOT EXISTS nfl_dfs_projection_runs (run_id UUID PRIMARY KEY, model_version TEXT NOT NULL, scoring TEXT NOT NULL DEFAULT 'DK', slate_date DATE, season INTEGER NOT NULL, week INTEGER, as_of_at TIMESTAMPTZ NOT NULL, seed BIGINT NOT NULL, history_cutoff_season INTEGER NOT NULL, history_cutoff_week INTEGER, source_snapshot_ids JSONB NOT NULL DEFAULT '[]'::jsonb, model_config JSONB NOT NULL DEFAULT '{}'::jsonb, availability_manifest JSONB NOT NULL DEFAULT '{}'::jsonb, player_count INTEGER NOT NULL, artifact_digest TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(model_version,artifact_digest))`,
+  `ALTER TABLE nfl_dfs_projection_runs ADD COLUMN IF NOT EXISTS availability_manifest JSONB NOT NULL DEFAULT '{}'::jsonb`,
   `CREATE TABLE IF NOT EXISTS nfl_dfs_player_projections (id BIGSERIAL PRIMARY KEY, run_id UUID NOT NULL REFERENCES nfl_dfs_projection_runs(run_id) ON DELETE CASCADE, dk_player_id BIGINT, player_id BIGINT REFERENCES ff_players(id), player_gsis_id TEXT, player_name TEXT NOT NULL, normalized_name TEXT NOT NULL, team TEXT, opponent TEXT, position TEXT NOT NULL, salary INTEGER, identity_method TEXT NOT NULL, projection_status TEXT NOT NULL, history_games INTEGER NOT NULL, prior_games INTEGER NOT NULL, model_proj_fpts DOUBLE PRECISION, baseline_fpts DOUBLE PRECISION, floor_fpts DOUBLE PRECISION, median_fpts DOUBLE PRECISION, ceiling_fpts DOUBLE PRECISION, boom_rate DOUBLE PRECISION, confidence DOUBLE PRECISION NOT NULL, stat_means JSONB NOT NULL DEFAULT '{}'::jsonb, feature_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb, source_evidence JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(run_id,player_id))`,
-  `CREATE TABLE IF NOT EXISTS nfl_dfs_slate_uploads (upload_id UUID PRIMARY KEY, slate_signature TEXT NOT NULL, file_name TEXT NOT NULL, file_digest TEXT NOT NULL, format TEXT NOT NULL, games JSONB NOT NULL DEFAULT '[]'::jsonb, teams JSONB NOT NULL DEFAULT '[]'::jsonb, warnings JSONB NOT NULL DEFAULT '[]'::jsonb, player_count INTEGER NOT NULL, projection_run_id UUID REFERENCES nfl_dfs_projection_runs(run_id), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(file_digest,projection_run_id))`,
-  `CREATE TABLE IF NOT EXISTS nfl_dfs_slate_players (id BIGSERIAL PRIMARY KEY, upload_id UUID NOT NULL REFERENCES nfl_dfs_slate_uploads(upload_id) ON DELETE CASCADE, dk_player_id BIGINT NOT NULL, captain_dk_player_id BIGINT, ff_player_id BIGINT REFERENCES ff_players(id), name TEXT NOT NULL, normalized_name TEXT NOT NULL, position TEXT NOT NULL, roster_positions JSONB NOT NULL, team TEXT NOT NULL, opponent TEXT, game_key TEXT, game_info TEXT, salary INTEGER NOT NULL, captain_salary INTEGER, avg_fpts_dk DOUBLE PRECISION, dk_status TEXT, is_out BOOLEAN NOT NULL DEFAULT FALSE, identity_method TEXT NOT NULL, projection_status TEXT NOT NULL, our_proj DOUBLE PRECISION, floor_fpts DOUBLE PRECISION, median_fpts DOUBLE PRECISION, ceiling_fpts DOUBLE PRECISION, boom_rate DOUBLE PRECISION, model_confidence DOUBLE PRECISION, history_games INTEGER, fantasypros_proj DOUBLE PRECISION, linestar_proj DOUBLE PRECISION, linestar_own_pct DOUBLE PRECISION, custom_proj DOUBLE PRECISION, comparison_evidence JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(upload_id,dk_player_id))`,
+  `CREATE TABLE IF NOT EXISTS nfl_dfs_slate_uploads (upload_id UUID PRIMARY KEY, slate_signature TEXT NOT NULL, file_name TEXT NOT NULL, file_digest TEXT NOT NULL, format TEXT NOT NULL, games JSONB NOT NULL DEFAULT '[]'::jsonb, teams JSONB NOT NULL DEFAULT '[]'::jsonb, warnings JSONB NOT NULL DEFAULT '[]'::jsonb, player_count INTEGER NOT NULL, projection_run_id UUID REFERENCES nfl_dfs_projection_runs(run_id), eligibility_manifest_digest TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(file_digest,projection_run_id))`,
+  `CREATE TABLE IF NOT EXISTS nfl_dfs_slate_players (id BIGSERIAL PRIMARY KEY, upload_id UUID NOT NULL REFERENCES nfl_dfs_slate_uploads(upload_id) ON DELETE CASCADE, dk_player_id BIGINT NOT NULL, captain_dk_player_id BIGINT, ff_player_id BIGINT REFERENCES ff_players(id), name TEXT NOT NULL, normalized_name TEXT NOT NULL, position TEXT NOT NULL, roster_positions JSONB NOT NULL, team TEXT NOT NULL, opponent TEXT, game_key TEXT, game_info TEXT, salary INTEGER NOT NULL, captain_salary INTEGER, avg_fpts_dk DOUBLE PRECISION, dk_status TEXT, is_out BOOLEAN NOT NULL DEFAULT FALSE, identity_method TEXT NOT NULL, platform_eligibility JSONB NOT NULL DEFAULT '{}'::jsonb, projection_status TEXT NOT NULL, our_proj DOUBLE PRECISION, floor_fpts DOUBLE PRECISION, median_fpts DOUBLE PRECISION, ceiling_fpts DOUBLE PRECISION, boom_rate DOUBLE PRECISION, model_confidence DOUBLE PRECISION, history_games INTEGER, fantasypros_proj DOUBLE PRECISION, linestar_proj DOUBLE PRECISION, linestar_own_pct DOUBLE PRECISION, custom_proj DOUBLE PRECISION, comparison_evidence JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(upload_id,dk_player_id))`,
+  `ALTER TABLE nfl_dfs_slate_uploads ADD COLUMN IF NOT EXISTS eligibility_manifest_digest TEXT`,
   `ALTER TABLE nfl_dfs_slate_players ADD COLUMN IF NOT EXISTS identity_evidence JSONB NOT NULL DEFAULT '{}'::jsonb`,
+  `ALTER TABLE nfl_dfs_slate_players ADD COLUMN IF NOT EXISTS platform_eligibility JSONB NOT NULL DEFAULT '{}'::jsonb`,
   `DO $$ BEGIN
  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='nfl_dfs_slate_players'::regclass
    AND conname='nfl_dfs_slate_players_identity_method_check'
@@ -1263,6 +1270,130 @@ export async function ensureNflDfsTables(): Promise<void> {
     });
   }
   await ensureNflDfsTablesPromise;
+}
+
+const NFL_CONTEXT_DDLS = [
+  `CREATE TABLE IF NOT EXISTS nfl_fact_releases (
+      release_id TEXT PRIMARY KEY,
+      dataset_key TEXT NOT NULL,
+      fact_schema_version TEXT NOT NULL,
+      source_observation_ids JSONB NOT NULL,
+      payload_digest TEXT NOT NULL,
+      published_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(dataset_key, payload_digest))`,
+  `CREATE TABLE IF NOT EXISTS nfl_context_definitions (
+      definition_id TEXT PRIMARY KEY,
+      context_key TEXT NOT NULL,
+      version TEXT NOT NULL,
+      unit TEXT NOT NULL,
+      description TEXT NOT NULL,
+      definition JSONB NOT NULL,
+      freshness_seconds INTEGER,
+      registered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(context_key, version),
+      CHECK(freshness_seconds IS NULL OR freshness_seconds >= 0))`,
+  `CREATE TABLE IF NOT EXISTS nfl_context_snapshots (
+      snapshot_id TEXT PRIMARY KEY,
+      definition_id TEXT NOT NULL REFERENCES nfl_context_definitions(definition_id),
+      subject_type TEXT NOT NULL,
+      subject_id TEXT NOT NULL,
+      target_id TEXT NOT NULL,
+      as_of_at TIMESTAMPTZ NOT NULL,
+      available_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      measurement_window JSONB NOT NULL,
+      numerator DOUBLE PRECISION,
+      denominator DOUBLE PRECISION,
+      value DOUBLE PRECISION,
+      value_state TEXT NOT NULL,
+      coverage JSONB NOT NULL,
+      uncertainty JSONB,
+      estimation JSONB,
+      source_snapshot_ids JSONB NOT NULL,
+      fact_release_id TEXT NOT NULL REFERENCES nfl_fact_releases(release_id),
+      payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+      publication_status TEXT NOT NULL DEFAULT 'current',
+      superseded_by TEXT REFERENCES nfl_context_snapshots(snapshot_id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK(denominator IS NULL OR denominator >= 0),
+      CHECK(value_state IN ('observed', 'estimated', 'scenario')),
+      CHECK(publication_status IN ('current', 'superseded', 'withdrawn')),
+      CHECK((value_state = 'estimated' AND estimation IS NOT NULL)
+            OR (value_state <> 'estimated' AND estimation IS NULL)))`,
+  `CREATE TABLE IF NOT EXISTS nfl_context_qualifications (
+      consumer_id TEXT NOT NULL,
+      definition_id TEXT NOT NULL REFERENCES nfl_context_definitions(definition_id),
+      use_case TEXT NOT NULL,
+      cohort TEXT NOT NULL,
+      usage TEXT NOT NULL,
+      policy_version TEXT NOT NULL,
+      approved BOOLEAN NOT NULL,
+      max_age_seconds INTEGER,
+      fallback_definition_id TEXT REFERENCES nfl_context_definitions(definition_id),
+      registered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY(consumer_id, definition_id, use_case, cohort, usage, policy_version),
+      CHECK(usage IN ('descriptive', 'predictive', 'scenario', 'decision')),
+      CHECK(max_age_seconds IS NULL OR max_age_seconds >= 0))`,
+  `CREATE TABLE IF NOT EXISTS nfl_consumer_policy_pointers (
+      consumer_id TEXT PRIMARY KEY,
+      policy_version TEXT NOT NULL,
+      activated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      activated_by TEXT NOT NULL)`,
+  `ALTER TABLE nfl_context_snapshots ADD COLUMN IF NOT EXISTS publication_status TEXT NOT NULL DEFAULT 'current'`,
+  `ALTER TABLE nfl_context_snapshots ADD COLUMN IF NOT EXISTS superseded_by TEXT REFERENCES nfl_context_snapshots(snapshot_id)`,
+  `ALTER TABLE nfl_context_snapshots ADD COLUMN IF NOT EXISTS available_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+  `ALTER TABLE nfl_context_snapshots ADD COLUMN IF NOT EXISTS payload JSONB NOT NULL DEFAULT '{}'::jsonb`,
+  `CREATE INDEX IF NOT EXISTS idx_nfl_context_current
+      ON nfl_context_snapshots(definition_id, subject_id, target_id, as_of_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_nfl_context_policy
+      ON nfl_context_qualifications(consumer_id, use_case, cohort, usage, policy_version)`,
+  `CREATE TABLE IF NOT EXISTS nfl_context_research_runs (
+      run_id TEXT PRIMARY KEY,
+      definition_id TEXT NOT NULL REFERENCES nfl_context_definitions(definition_id),
+      study_version TEXT NOT NULL,
+      status TEXT NOT NULL,
+      report JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK(status IN ('not_qualified', 'eligible_for_shadow_only'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS nfl_market_context_research_runs (
+      run_id TEXT PRIMARY KEY,
+      study_version TEXT NOT NULL,
+      report JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE TABLE IF NOT EXISTS nfl_availability_operation_runs (
+      run_id TEXT PRIMARY KEY, season INTEGER NOT NULL, week INTEGER NOT NULL,
+      evaluated_at TIMESTAMPTZ NOT NULL, status TEXT NOT NULL, report JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK(status IN ('healthy','warning','critical')))`,
+  `CREATE TABLE IF NOT EXISTS nfl_availability_prelock_manifests (
+      manifest_id TEXT PRIMARY KEY, season INTEGER NOT NULL, week INTEGER NOT NULL,
+      slate_key TEXT NOT NULL, decision_at TIMESTAMPTZ NOT NULL,
+      kickoff_at TIMESTAMPTZ NOT NULL,
+      projection_run_id UUID REFERENCES nfl_dfs_projection_runs(run_id),
+      game_ids JSONB NOT NULL, context_snapshot_ids JSONB NOT NULL,
+      source_snapshot_ids JSONB NOT NULL, coverage JSONB NOT NULL,
+      payload_digest TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(slate_key, payload_digest))`,
+  `CREATE TABLE IF NOT EXISTS nfl_official_inactive_imports (
+      import_id TEXT PRIMARY KEY, season INTEGER NOT NULL, week INTEGER NOT NULL,
+      reviewed_by TEXT NOT NULL, reviewed_at TIMESTAMPTZ NOT NULL,
+      source_label TEXT NOT NULL,
+      source_snapshot_id BIGINT NOT NULL REFERENCES ff_source_snapshots(id),
+      row_count INTEGER NOT NULL, payload_digest TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+];
+
+export async function ensureNflContextTables(): Promise<void> {
+  if (!ensureNflContextTablesPromise) {
+    ensureNflContextTablesPromise = (async () => {
+      for (const ddl of NFL_CONTEXT_DDLS) await db.execute(sql.raw(ddl));
+    })().catch((error) => {
+      ensureNflContextTablesPromise = null;
+      throw error;
+    });
+  }
+  await ensureNflContextTablesPromise;
 }
 
 const YOUTUBE_PICK_CHANNELS_DDLS = [

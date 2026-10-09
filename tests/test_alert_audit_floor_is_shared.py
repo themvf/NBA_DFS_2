@@ -63,8 +63,9 @@ def test_nfl_table_gates_every_derived_rate() -> None:
     """Raw counts are always allowed; derived rates are not. "2-6" is an
     observation, "25.0%" is an inference the sample cannot support."""
     src = _read(NFL_PANEL)
-    block = src.split("Sharp-signal accrual")[1]
-    for field in ("row.winRate", "row.beatClose", "row.avgClvPp"):
+    block = src.split("lineAlertBacktest.map(")[1]
+    parameter = re.match(r"\s*([A-Za-z_$][\w$]*)\s*=>", block).group(1)
+    for field in (f"{parameter}.winRate", f"{parameter}.beatClose", f"{parameter}.avgClvPp"):
         occurrences = block.count(field)
         assert occurrences, f"{field} no longer rendered — test needs updating"
         # Each must sit behind the disclosure gate.

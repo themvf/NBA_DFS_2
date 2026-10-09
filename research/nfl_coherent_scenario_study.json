@@ -1,0 +1,110 @@
+{
+  "study_id": "nfl-coherent-matchup-v2",
+  "registered_on": "2026-09-27",
+  "status": "prospective_shadow_only",
+  "model_version": "nfl-coherent-matchup-research-v2",
+  "production_authority": false,
+  "hypothesis": "Shared empirical game opportunities and consistent offensive/defensive events improve player distribution forecasts and candidate-portfolio selection over the frozen production baseline.",
+  "baseline": "nfl-dfs-historical-v5; freeze exact run, model and config for every paired evaluation",
+  "development": "Historical seasons 2023 through pre-target 2026 weeks; descriptive empirical fitting on inspected data, never called an untouched holdout.",
+  "forward_start": {
+    "season": 2026,
+    "first_full_week": 4
+  },
+  "features": [
+    "paired empirical game attempts/carries/targets",
+    "existing team workload and player shares",
+    "existing conditional efficiency",
+    "frozen market environment factors",
+    "frozen PFR pressure/contact shadow factors",
+    "paired empirical sacks/fumbles/kicking/returns",
+    "shared offensive and DST scoring ledger"
+  ],
+  "marginal_policy": "Changed player and DST marginals require their own forward gate; emit mean, P10/P50/P90 and event-mean differences. Never claim marginal preservation.",
+  "missing_policy": "Reject incomplete historical event blocks; keep explicit unallocated opportunity; omit unmodeled players from the supported research pool with exclusions. No zero-fill of unavailable predictions.",
+  "forecast_gate": {
+    "minimum_full_forward_weeks": 8,
+    "minimum_paired_player_games_by_registered_position": 200,
+    "minimum_nfl_games": 50,
+    "primary": "WIS=(0.5*abs(y-median)+0.25*IS_0.5+0.1*IS_0.2)/2.5 using central50%/80% intervals; no interpolated baseline quantiles.",
+    "minimum_relative_improvement": 0.01,
+    "interval": "Week-clustered paired bootstrap; Holm familywise correction within each registered format and its declared positions.",
+    "pass": "Multiplicity-adjusted 95% upper confidence bound on candidate-minus-baseline WIS is below zero and minimum relative gain passes",
+    "guardrails": "95% upper bound on mean-MAE delta below +0.10 DK points in every affected position; report coverage, width and fixed position boom Brier; no invariant failures",
+    "insufficient_data": "no_verdict",
+    "multiplicity_method": "For observed improvement, two-sided centered week-bootstrap lower-tail p=min(1,2*(1+count(bootstrap_delta-observed_delta <= observed_delta))/(B+1)); otherwise p=1. Order p-values and apply Holm step-down alpha=.05/(remaining registered positions), separately by slate format. Require each corresponding percentile upper bound at 1-alpha/2 below zero, relative WIS gain >=1%, and unadjusted 95% mean-MAE delta upper bound <+.10."
+  },
+  "portfolio_gate": "Existing GPP revision 2 gate remains authoritative: 20 untouched Showdown slates, paired lower 95% bound above legacy, legality 100%, fulfillment >=99%, no increase in QA blockers. Classic and entry-mode claims require their own registered cohort and cannot inherit a Showdown pass.",
+  "construction_scope": "Classic and single-game Showdown research. Shared game FG/PAT events are assigned to an explicit unique eligible K salary identity conditional on that player handling kicking; ambiguous K roles remain unallocated and unsupported. Captain scoring/salary is applied once by the canonical lineup scorer. Contest fields/payouts remain absent unless explicitly supplied and validated.",
+  "revision": "v2 adds shared K events and a Showdown format contract before the first full forward week. Saved historical slates are development/mechanical replays, never qualification evidence. Preserve v1 artifacts as superseded diagnostics.",
+  "role_state": "Conditional normal-starter state: when a unique active depth-one quarterback has provider evidence captured within 24 hours before the decision, allocate passing attempts to that starter. Backup QB carries remain unallocated. Missing or ambiguous evidence preserves historical shares and is audited. No inferred injury or benching probabilities; this conditional model is not a calibrated availability mixture.",
+  "rollback": "No promotion in this registration; future active release retains frozen baseline and the existing study-specific rollback rules.",
+  "protected_studies": [
+    "opp_carries unchanged",
+    "pressure/contact registrations unchanged",
+    "availability registrations unchanged",
+    "GPP gates unchanged"
+  ],
+  "registered_at": "2026-09-27T15:29:37.273146+00:00",
+  "evaluation_end_at": "2026-12-01T00:00:00+00:00",
+  "positions": [
+    "QB",
+    "RB",
+    "WR",
+    "TE",
+    "DST",
+    "K"
+  ],
+  "cohorts": {
+    "classic": {
+      "positions": [
+        "QB",
+        "RB",
+        "WR",
+        "TE",
+        "DST"
+      ]
+    },
+    "showdown": {
+      "positions": [
+        "QB",
+        "RB",
+        "WR",
+        "TE",
+        "DST",
+        "K"
+      ]
+    }
+  },
+  "seed": 20260927,
+  "bootstrap_draws": 10000,
+  "draws": 300,
+  "scoring_version": "nfl-dk-scenario-v1",
+  "boom_thresholds": {
+    "QB": 30,
+    "RB": 25,
+    "WR": 25,
+    "TE": 20,
+    "DST": 15,
+    "K": 15
+  },
+  "baseline_config_hash": "0a4b14b66998e7aeaa89f7dc6aaefab8a016759c277db53bc11109a65a14bb5a",
+  "implementation_hashes": {
+    "model/nfl_matchup_scenarios.py": "91bc6f075541350c38c095cf64b50d660aeadc937840185946009497acc887a2",
+    "model/nfl_dfs_efficiency.py": "276e6f37e88c5a70852b02f394a3b241f825cbfefbc488cc724dc2d34ccf40ba",
+    "model/nfl_dfs_workload.py": "a7f60305d4d0288bba106dc36fd59617cf8fc69be5ade07cc4b9a697c0a53283",
+    "ingest/nfl_dfs_results.py": "bc5b1b3270d0a102418c82401cbacda183ee70b1f35e923061a03ba3947ae225",
+    "research/nfl_coherent_scenario_export.py": "fd8b3cfbb7235576fb0f82a7bd5843d488403b60befc25652585b8ec4e4d015a",
+    "model/nfl_matchup_projection.py": "93ab2c8f314f1746ea60673582ebe267aa1d2a6f805125ed2c1a46cd57bd37d2",
+    "model/nfl_dfs_historical.py": "e68c45b32151a8fb77f94eb295d181ec5ad5881ee6b3384fb04e4a95b28b5b55",
+    "research/nfl_matchup_scenario_export.py": "943d284ebae7e6915617b1092e49c4a8b4a44888730f471b1fe875131168deaf",
+    "web/src/lib/nfl-dfs/scoring.ts": "83e8b8c293519e7605f4d5be76a302bd442835fa4dc43a6d02744922a5729e3c",
+    "web/src/lib/nfl-dfs/scenarios.ts": "98ed595731bc69ee1fcde4d9c42109880382cff3dbf480ce0f0043fdf46e2fd9",
+    "web/src/lib/nfl-dfs/portfolio-selection.ts": "2d1160dbed00c4dd2bd24d94dbd81a6550054b2d1bbd377d292a459eaa2c1b31",
+    "web/src/lib/nfl-dfs/matchup-contest.ts": "ece4314c037379d69db32a408bed392e7070b466340d9bda5d79d52ba763d79a",
+    "web/src/app/dfs/nfl/nfl-optimizer-shadow.ts": "b698ecf87515fa10179460886fee1392ec1fff4caae9e941cb4e514a5c689c1d"
+  },
+  "baseline_config_hash_convention": "sha256_compact_sorted_json_model_version_and_model_config",
+  "pre_forward_pin_correction": "Corrected baseline hash envelope before any forward eligible week; config-only c8b483 audit preserved under coherent-v2/pin-audit. The production baseline and its configuration were unchanged.",
+  "outcome_scoring_version": "nfl-dk-realized-v2"
+}

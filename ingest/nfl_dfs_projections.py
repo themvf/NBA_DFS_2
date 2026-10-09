@@ -13,14 +13,17 @@ from __future__ import annotations
 import argparse
 import json
 import uuid
-from datetime import datetime, timezone
+from pathlib import Path
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from psycopg2.extras import Json, execute_values
 
 from config import load_config
 from db.database import DatabaseManager
+from ingest.nfl_availability_context_publish import persist_availability_contexts
 from model.nfl_dfs_availability import apply as apply_availability
+from model.nfl_game_availability import resolve_game_availability
 from model.nfl_dfs_historical import (
     MODEL_CONFIG,
     MODEL_VERSION,
@@ -94,7 +97,8 @@ def _slate_environment(db: DatabaseManager, season: int, week: int | None) -> di
     if week is None:
         raise ValueError("--week is required: nfl_season_games is the authoritative slate schedule")
     rows = db.execute(
-        """SELECT home.abbreviation home_team, away.abbreviation away_team,
+        """SELECT g.nflverse_game_id game_id,
+                  home.abbreviation home_team, away.abbreviation away_team,
                   m.home_implied, m.away_implied,
                   COALESCE(m.vegas_total,g.quoted_total_line) vegas_total,
                   COALESCE(m.home_spread,g.quoted_spread_line) home_spread,
@@ -113,7 +117,11 @@ def _slate_environment(db: DatabaseManager, season: int, week: int | None) -> di
         if (home_implied is None or away_implied is None) and row["vegas_total"] is not None and row["home_spread"] is not None:
             home_implied = (float(row["vegas_total"]) - float(row["home_spread"])) / 2.0
             away_implied = float(row["vegas_total"]) - home_implied
-        common = {"event_id": row["event_id"], "commence_time": row["commence_time"]}
+        common = {
+            "game_id": row["game_id"],
+            "event_id": row["event_id"],
+            "commence_time": row["commence_time"],
+        }
         result[row["home_team"]] = {**common, "opponent": row["away_team"], "team_implied_total": home_implied}
         result[row["away_team"]] = {**common, "opponent": row["home_team"], "team_implied_total": away_implied}
     return result
@@ -134,49 +142,66 @@ def _players(db: DatabaseManager, season: int, teams: list[str]) -> list[dict[st
 
 
 def _availability(db: DatabaseManager, season: int, week: int | None) -> dict[int, list[dict[str, Any]]]:
-    """Every week-scoped FantasyPros capture per player, newest first.
-
-    Deliberately NOT one row per player. Kickoffs within a week are days apart —
-    Thursday night against Sunday afternoon — so "the latest capture" is the
-    wrong row for anyone whose game has already started. The caller picks the
-    newest capture that precedes each player's own kickoff, which keeps a
-    Thursday player correctly ruled out when Sunday's run looks at him again.
-
-    FantasyPros rather than Sleeper because it is week-scoped: its row answers
-    "was this player out for this game". `fetched_at` is our own clock, which
-    is what makes the pregame test provable without trusting a provider
-    timestamp whose timezone is unverified.
-    """
+    """Return raw candidate observations; the shared resolver qualifies them."""
     if week is None:
         return {}
     rows = db.execute(
-        """SELECT o.player_id, o.normalized_status, s.fetched_at
+        """SELECT o.id observation_id, o.player_id, o.source,
+                  CASE WHEN o.source='nfl_official'
+                    THEN COALESCE(o.raw_payload->>'status',o.normalized_status)
+                    ELSE o.normalized_status END status,
+                  o.source_snapshot_id, s.model_eligible, s.status snapshot_status,
+                  GREATEST(s.fetched_at,o.observed_at) available_at,
+                  o.raw_payload->>'kickoff' observation_kickoff,
+                  CASE WHEN o.source <> 'nfl_official' THEN TRUE
+                    ELSE o.raw_payload->>'report_type'='inactive_list' END game_scope_valid
            FROM ff_player_injury_observations o
            JOIN ff_source_snapshots s ON s.id = o.source_snapshot_id
-           WHERE o.season = %s AND o.source = 'fantasypros'
-             AND s.dataset LIKE %s
-           ORDER BY o.player_id, s.fetched_at DESC, o.id DESC""",
-        (season, f"game-week-injuries-v2-{season}-{week}%"),
+           WHERE o.season = %s AND (
+             o.source='sleeper'
+             OR (o.source IN ('fantasypros','nfl_official')
+                 AND (s.week=%s OR s.request_params->>'week'=%s OR s.dataset LIKE %s))
+           )
+           ORDER BY o.player_id, available_at DESC, o.id DESC""",
+        (season, week, str(week), f"game-week-injuries-v2-{season}-{week}%"),
     )
     observed: dict[int, list[dict[str, Any]]] = {}
     for row in rows:
-        observed.setdefault(int(row["player_id"]), []).append(
-            {"status": row["normalized_status"], "captured_at": row["fetched_at"]})
+        observed.setdefault(int(row["player_id"]), []).append(dict(row))
     return observed
 
 
-def status_before_kickoff(captures, commence) -> str | None:
-    """The newest status we had captured before this player's game started.
+def status_before_kickoff(captures, commence, as_of_at=None) -> str | None:
+    """Compatibility wrapper around the point-in-time resolver.
 
-    No commence time means no pregame test is possible, so nothing is applied —
-    absence of a kickoff is not permission to use a status of unknown vintage.
+    New callers must pass ``as_of_at``.  The fallback to kickoff exists only
+    for older research callers and cannot expose a post-kickoff observation.
     """
-    if not captures or commence is None:
+    decision_at = as_of_at if as_of_at is not None else (
+        commence - timedelta(microseconds=1) if commence is not None else None)
+    if decision_at is None:
         return None
-    eligible = [c for c in captures if c.get("captured_at") is not None and c["captured_at"] < commence]
-    if not eligible:
-        return None
-    return max(eligible, key=lambda c: c["captured_at"]).get("status")
+    normalized = []
+    for index, capture in enumerate(captures or (), start=1):
+        available_at = capture.get("available_at") or capture.get("captured_at")
+        normalized.append({
+            **capture,
+            "observation_id": capture.get("observation_id", index),
+            "source": capture.get("source", "sleeper"),
+            "available_at": available_at,
+            "model_eligible": capture.get("model_eligible", True),
+            "snapshot_status": capture.get("snapshot_status", "success"),
+            "game_scope_valid": capture.get("game_scope_valid", True),
+        })
+    decision = resolve_game_availability(
+        normalized, as_of_at=decision_at, kickoff=commence)
+    if decision.projection_status:
+        return decision.projection_status
+    if decision.state == "EXPECTED_ACTIVE":
+        return "HEALTHY"
+    if decision.state in {"QUESTIONABLE", "DOUBTFUL"}:
+        return decision.state
+    return None
 
 
 def qualified_depth(player: dict[str, Any], as_of_at: datetime) -> int | None:
@@ -189,6 +214,35 @@ def qualified_depth(player: dict[str, Any], as_of_at: datetime) -> int | None:
     if not 0 <= age <= 72 * 3600 or not isinstance(depth, int) or isinstance(depth, bool) or depth < 1:
         return None
     return depth
+
+
+def _legacy_fantasypros_status(captures, kickoff) -> str | None:
+    """Audit only: reproduce the superseded direct-query eligibility bypass."""
+    if kickoff is None:
+        return None
+    rows = [row for row in captures or () if row.get("source") == "fantasypros"
+            and isinstance(row.get("available_at"), datetime)
+            and row["available_at"] < kickoff]
+    return max(rows, key=lambda row: row["available_at"]).get("status") if rows else None
+
+
+def _availability_health(decisions: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    state_counts: dict[str, int] = {}
+    display_only = qualifying = 0
+    for decision in decisions.values():
+        state = str(decision.get("state") or "UNKNOWN")
+        state_counts[state] = state_counts.get(state, 0) + 1
+        display_only += len(decision.get("display_only_observation_ids") or [])
+        qualifying += len(decision.get("qualifying_observation_ids") or [])
+    return {
+        "policy": "player-game-availability-v1",
+        "state_counts": state_counts,
+        "qualifying_observations": qualifying,
+        "display_only_observations": display_only,
+        "conflicts": state_counts.get("CONFLICT", 0),
+        "unknown": state_counts.get("UNKNOWN", 0),
+        "rollback_policy": "confirmed/platform exclusions only; direct ineligible FantasyPros reads remain disabled",
+    }
 
 
 def build_week(
@@ -227,6 +281,7 @@ def build_week(
             "team": player["team_abbrev"],
             "opponent": env["opponent"],
             "event_id": env["event_id"],
+            "game_id": env.get("game_id") or env["event_id"],
             "commence_time": env["commence_time"],
         })
     # Pre-kickoff availability. A status only counts if WE captured it before
@@ -234,14 +289,68 @@ def build_week(
     # Sunday-morning run uses Sunday's, with no list to maintain in between.
     observed = _availability(db, season, week)
     statuses: dict[int, str] = {}
+    availability_decisions: dict[str, dict[str, Any]] = {}
+    availability_migration_audit: list[dict[str, Any]] = []
     for player in projections:
         if not player.get("player_id"):
             continue
-        status = status_before_kickoff(
+        decision = resolve_game_availability(
+            observed.get(int(player["player_id"])),
+            as_of_at=as_of_at,
+            kickoff=player.get("commence_time"),
+        )
+        availability_decisions[str(player["player_id"])] = decision.as_dict()
+        legacy_status = _legacy_fantasypros_status(
             observed.get(int(player["player_id"])), player.get("commence_time"))
-        if status:
-            statuses[int(player["player_id"])] = status
-    projections, availability_report = apply_availability(projections, statuses)
+        legacy_projection_status = legacy_status if legacy_status in {"OUT", "IR", "PUP", "NFI", "SUSPENDED"} else None
+        if legacy_projection_status != decision.projection_status:
+            availability_migration_audit.append({
+                "player_id": int(player["player_id"]),
+                "player": player["player_name"],
+                "team": player["team"],
+                "legacy_direct_fantasypros_status": legacy_status,
+                "legacy_projection_status": legacy_projection_status,
+                "resolved_state": decision.state,
+                "resolved_projection_status": decision.projection_status,
+                "reason": decision.reason,
+            })
+        if decision.projection_status:
+            statuses[int(player["player_id"])] = decision.projection_status
+    transfer_enabled = bool(model_config.get("availability_qb_transfer_enabled", True))
+    projections, availability_report = apply_availability(
+        projections, statuses, positions=("QB",) if transfer_enabled else ())
+    availability_report["policy_mode"] = "shared_v1" if transfer_enabled else "safety_rollback_v1"
+
+    # Optional evidence/shadow extension. The protected v5 draws and active
+    # numbers stay unchanged; unqualified context never becomes a multiplier.
+    matchup_health = {"status": "disabled", "active_projection_changes": 0}
+    if model_config.get("matchup_shadow_enabled", True):
+        from ingest.nfl_matchup_context import load_matchups
+        from model.nfl_matchup_projection import sample_baseline_draws, shadow_projection
+        from model.nfl_pfr_supplement import team_code
+        model_path = Path(__file__).resolve().parents[1] / "artifacts/nfl_matchup_models_v1.json"
+        try:
+            matchups = load_matchups(db, season, week, as_of_at)
+            fitted = json.loads(model_path.read_text(encoding="utf-8")) if model_path.exists() else {}
+            by_team = {team: m for m in matchups.values() for team in (m["home"], m["away"])}
+            covered = applied = 0
+            for player in projections:
+                matchup = by_team.get(team_code(player["team"]))
+                if not matchup:
+                    continue
+                draws = sample_baseline_draws(player, history, model_config, seed)
+                challenger = shadow_projection(player, draws, matchup, fitted)
+                player["feature_snapshot"]["matchup"] = {"evidence": matchup, "shadow": challenger}
+                covered += 1
+                applied += challenger["status"] == "under_evaluation"
+            matchup_health = {"status": "shadow_only", "games": len(matchups), "players": covered,
+                              "numerical_challengers": applied, "active_projection_changes": 0}
+        except (ValueError, OSError, KeyError) as exc:
+            matchup_health = {"status": "unavailable", "reason": type(exc).__name__, "active_projection_changes": 0}
+        except Exception as exc:
+            # Source/schema outages must not disable the independently approved
+            # baseline. Record a class-only diagnostic without database secrets.
+            matchup_health = {"status": "source_error", "reason": type(exc).__name__, "active_projection_changes": 0}
 
     snapshot_rows = db.execute(
         """SELECT DISTINCT ON (season,dataset)
@@ -253,6 +362,21 @@ def build_week(
         (season,),
     )
     source_evidence = [dict(row) for row in snapshot_rows]
+    availability_snapshot_ids = sorted({
+        int(decision["source_snapshot_id"])
+        for decision in availability_decisions.values()
+        if decision.get("source_snapshot_id") is not None
+    })
+    if availability_snapshot_ids:
+        availability_source_rows = db.execute(
+            """SELECT id,response_hash,season,dataset,source,fetched_at,
+                      model_eligible,eligibility_reason
+               FROM ff_source_snapshots
+               WHERE id=ANY(%s)
+               ORDER BY id""",
+            (availability_snapshot_ids,),
+        )
+        source_evidence.extend(dict(row) for row in availability_source_rows)
     manifest = {
         "model_version": MODEL_VERSION,
         "season": season,
@@ -263,6 +387,10 @@ def build_week(
         "source_evidence": source_evidence,
         "projections": projections,
         "availability": availability_report,
+        "availability_decisions": availability_decisions,
+        "availability_health": _availability_health(availability_decisions),
+        "availability_migration_audit": availability_migration_audit,
+        "matchup_health": matchup_health,
         "prop_inputs": [],
     }
     manifest["artifact_digest"] = artifact_digest(manifest)
@@ -275,24 +403,34 @@ def persist_week(db: DatabaseManager, projections: list[dict[str, Any]], manifes
     run_id = str(uuid.uuid5(RUN_NAMESPACE, f"{MODEL_VERSION}:{digest}"))
     source_ids = [row["id"] for row in manifest["source_evidence"]]
     as_of_at = datetime.fromisoformat(manifest["as_of_at"])
+    availability_manifest = {
+        "policy": manifest["availability_health"]["policy"],
+        "policy_mode": manifest["availability"].get("policy_mode"),
+        "health": manifest["availability_health"],
+        "migration_audit": manifest["availability_migration_audit"],
+        "decisions_digest": artifact_digest(manifest["availability_decisions"]),
+        "decision_count": len(manifest["availability_decisions"]),
+        "as_of_at": manifest["as_of_at"],
+    }
     with db.connect() as conn:
         cur = conn.cursor()
         cur.execute(
             """INSERT INTO nfl_dfs_projection_runs
                (run_id,model_version,scoring,season,week,as_of_at,seed,
                 history_cutoff_season,history_cutoff_week,source_snapshot_ids,
-                model_config,player_count,artifact_digest)
-               VALUES (%s,%s,'DK',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                model_config,availability_manifest,player_count,artifact_digest)
+               VALUES (%s,%s,'DK',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                ON CONFLICT(model_version,artifact_digest) DO NOTHING""",
             (run_id, MODEL_VERSION, manifest["season"], manifest["week"], as_of_at,
              manifest["seed"], manifest["season"], manifest["week"], Json(source_ids),
-             Json(manifest["model_config"]), len(projections), digest),
+             Json(manifest["model_config"]), Json(availability_manifest), len(projections), digest),
         )
         values = []
         for row in projections:
             evidence = {
                 "source_snapshot_ids": source_ids,
                 "event_id": row["event_id"],
+                "game_id": row.get("game_id") or row["event_id"],
                 "commence_time": row["commence_time"].isoformat() if row["commence_time"] else None,
                 "prop_inputs": [],
                 # Availability was computed and then dropped on the way to the
@@ -301,6 +439,10 @@ def persist_week(db: DatabaseManager, projections: list[dict[str, Any]], manifes
                 # "ruled out and dropped". Both the web drawer's note and the
                 # slate layer's double-pay guard read this.
                 "availability": row.get("availability"),
+                # The exact point-in-time source decision is distinct from the
+                # downstream opportunity adjustment. Vercel presents this
+                # saved object instead of re-resolving mutable provider rows.
+                "availability_decision": manifest.get("availability_decisions", {}).get(str(row["player_id"])),
             }
             values.append((
                 run_id, row["player_id"], row["player_gsis_id"], row["player_name"],
@@ -318,6 +460,25 @@ def persist_week(db: DatabaseManager, projections: list[dict[str, Any]], manifes
                  model_proj_fpts,baseline_fpts,floor_fpts,median_fpts,ceiling_fpts,
                  boom_rate,confidence,stat_means,feature_snapshot,source_evidence)
                 VALUES %s ON CONFLICT(run_id,player_id) DO NOTHING""", values)
+        cur.execute(
+            "SELECT created_at FROM nfl_dfs_projection_runs WHERE run_id=%s",
+            (run_id,),
+        )
+        run_row = cur.fetchone()
+        if not run_row:
+            raise RuntimeError(f"projection run {run_id} was not persisted")
+        context_publication = persist_availability_contexts(
+            cur,
+            run_id=run_id,
+            projections=projections,
+            manifest=manifest,
+            available_at=run_row["created_at"],
+        )
+        availability_manifest["context_publication"] = context_publication
+        cur.execute(
+            "UPDATE nfl_dfs_projection_runs SET availability_manifest=%s WHERE run_id=%s",
+            (Json(availability_manifest), run_id),
+        )
     return run_id
 
 
@@ -327,6 +488,8 @@ def main() -> None:
     parser.add_argument("--week", type=int)
     parser.add_argument("--seed", type=int, default=20260902)
     parser.add_argument("--no-persist", action="store_true")
+    parser.add_argument("--availability-safety-rollback", action="store_true",
+                        help="Keep qualified OUT zeroing but disable opportunity transfer; never restores the legacy source bypass")
     args = parser.parse_args()
     config = load_config()
     db = DatabaseManager(config.database_url)
@@ -334,6 +497,7 @@ def main() -> None:
     projections, manifest = build_week(
         db, season=args.season, week=week,
         as_of_at=datetime.now(timezone.utc), seed=args.seed,
+        config={"availability_qb_transfer_enabled": not args.availability_safety_rollback},
     )
     run_id = None if args.no_persist else persist_week(db, projections, manifest)
     counts: dict[str, int] = {}
@@ -346,6 +510,10 @@ def main() -> None:
         "week": week,
         "players": len(projections),
         "status_counts": counts,
+        "availability_health": manifest["availability_health"],
+        "availability_migration_changes": len(manifest["availability_migration_audit"]),
+        "availability_policy_mode": manifest["availability"].get("policy_mode"),
+        "matchup_health": manifest.get("matchup_health"),
         "prop_inputs": [],
     }, indent=2, sort_keys=True))
 

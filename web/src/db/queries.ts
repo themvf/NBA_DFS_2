@@ -1,6 +1,6 @@
 import { selectedSportsbooks } from "@/lib/sportsbook-policy";
 import { getPickemEvidence } from "./pickem-evidence";
-import { usablePickemQuote, type PickemEvidence } from "@/lib/nfl/pickem-evidence";
+import { usablePickemQuote, timestamp, type PickemEvidence } from "@/lib/nfl/pickem-evidence";
 import { db } from ".";
 import { ensureSurvivorTables, ensureDkPlayerPropColumns, ensureProjectionExperimentTables, ensureAnalyticsColumns, ensureOwnershipExperimentTables, ensureMlbBlowupTrackingTables, ensureMlbHomerunTrackingTables, ensureOddsHistoryTables, ensureMlbGamePredictionTables } from "./ensure-schema";
 import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, dkLineups, mlbTeams, mlbTeamStats, mlbMatchups } from "./schema";
@@ -10313,7 +10313,7 @@ export type CfbTerminalRow = {
   closeBoundarySource: string | null;
   closeVerificationLevel: string | null;
   closeCohort: string | null;
-  history: Array<{ capturedAt: string; books: CfbBookMap }>;
+  history: Array<{ historyId?: number; capturedAt: string; books: CfbBookMap }>;
 };
 
 export type CfbTerminalStatus = "live" | "stale" | "partial" | "unavailable";
@@ -10335,32 +10335,162 @@ export type CfbSignalBacktestRow = {
   wins: number;
   losses: number;
   pushes: number;
-  avgLineClv: number | null;
+  avgClv: number | null;
+  clvUnit: "points" | "probability_pp";
   beatClose: number | null;
   units: number | null;
   roiPerBet: number | null;
   gameDates: number;
+  conflicts: number;
+  missingEntry: number;
 };
+
+export type CfbStudyStatus = {
+  studyVersion: number;
+  configurationDigest: string;
+  primaryMetric: string;
+  primaryUnit: string;
+  consumerPermission: "decision-denied";
+  windows: Array<{
+    windowKey: string;
+    purpose: string;
+    startsAt: string;
+    endsAt: string;
+    state: "scheduled" | "collecting" | "awaiting_settlement_grace" | "ready_to_finalize" | "finalized";
+    observations: number;
+    settled: number;
+    evaluationResult: string | null;
+  }>;
+  unresolvedProviderPolicies: number;
+  qualifications: number;
+};
+
+export async function getCfbStudyStatus(): Promise<CfbStudyStatus | null> {
+  const studyRows = await db.execute(sql`
+    WITH latest AS (
+      SELECT * FROM cfb_engine_studies ORDER BY study_version DESC LIMIT 1
+    ), heads AS (
+      SELECT r.* FROM cfb_economic_resolutions r
+      WHERE NOT EXISTS (SELECT 1 FROM cfb_economic_resolutions n WHERE n.supersedes_resolution_id=r.resolution_id)
+    )
+    SELECT l.study_version AS "studyVersion", l.configuration_digest AS "configurationDigest",
+           l.primary_metric AS "primaryMetric", l.primary_unit AS "primaryUnit",
+           w.window_key AS "windowKey", w.purpose, w.start_at::text AS "startsAt", w.end_at::text AS "endsAt",
+           CASE WHEN e.result IS NOT NULL THEN 'finalized'
+                WHEN clock_timestamp()<w.start_at THEN 'scheduled'
+                WHEN clock_timestamp()<w.end_at THEN 'collecting'
+                WHEN clock_timestamp()<w.end_at + make_interval(hours => COALESCE((l.execution_plan->'review_schedule'->>'settlement_grace_hours')::int,0)) THEN 'awaiting_settlement_grace'
+                ELSE 'ready_to_finalize' END AS state,
+           COUNT(a.id)::int AS observations,
+           COUNT(a.id) FILTER (WHERE h.result_state='settled')::int AS settled,
+           e.result AS "evaluationResult"
+    FROM latest l JOIN cfb_engine_study_windows w
+      ON w.study_id=l.study_id AND w.study_version=l.study_version
+    LEFT JOIN line_alerts a ON a.sport='cfb' AND a.origin='prospective'
+      AND a.created_at>=w.start_at AND a.created_at<w.end_at
+      AND EXISTS (SELECT 1 FROM jsonb_array_elements(l.cohort_rules->'candidate_definitions') d
+        WHERE d->>'alert_type'=a.alert_type
+          AND d->>'signal_version'=COALESCE(a.signal_version,a.details_json->>'signal_version'))
+    LEFT JOIN heads h ON h.alert_id=a.id
+    LEFT JOIN LATERAL (
+      SELECT result FROM cfb_engine_evaluations x
+      WHERE x.study_id=l.study_id AND x.study_version=l.study_version AND x.window_key=w.window_key
+      ORDER BY report_revision DESC LIMIT 1
+    ) e ON TRUE
+    GROUP BY l.study_version,l.configuration_digest,l.primary_metric,l.primary_unit,
+             w.window_key,w.purpose,w.start_at,w.end_at,e.result
+    ORDER BY w.start_at
+  `);
+  if (!studyRows.rows.length) return null;
+  const meta = await db.execute(sql`
+    SELECT (SELECT COUNT(*) FROM cfb_engine_evidence_policies WHERE retention_mode='unknown')::int AS unresolved,
+           (SELECT COUNT(*) FROM cfb_context_qualifications)::int AS qualifications
+  `);
+  const first = studyRows.rows[0] as Record<string, unknown>;
+  const counts = (meta.rows[0] ?? {}) as Record<string, unknown>;
+  return {
+    studyVersion: Number(first.studyVersion), configurationDigest: String(first.configurationDigest),
+    primaryMetric: String(first.primaryMetric), primaryUnit: String(first.primaryUnit),
+    consumerPermission: "decision-denied",
+    unresolvedProviderPolicies: Number(counts.unresolved ?? 0), qualifications: Number(counts.qualifications ?? 0),
+    windows: studyRows.rows.map(row => {
+      const record = row as Record<string, unknown>;
+      return { windowKey: String(record.windowKey), purpose: String(record.purpose),
+        startsAt: String(record.startsAt), endsAt: String(record.endsAt),
+        state: String(record.state) as CfbStudyStatus["windows"][number]["state"],
+        observations: Number(record.observations), settled: Number(record.settled),
+        evaluationResult: record.evaluationResult == null ? null : String(record.evaluationResult) };
+    }),
+  };
+}
 
 export async function getCfbSignalBacktest(): Promise<CfbSignalBacktestRow[]> {
   await ensureOddsHistoryTables();
   const rows = await db.execute(sql`
+    WITH current_grades AS (
+      SELECT alert_id, COUNT(*)::int AS grade_count, MIN(id) AS grade_id
+      FROM alert_grades WHERE is_current GROUP BY alert_id
+    ), canonical AS (
+      SELECT a.*,
+             CASE WHEN cg.grade_count > 1 OR (g.outcome IS NOT NULL AND a.outcome IS NOT NULL AND g.outcome <> a.outcome)
+                    OR (a.details_json ? 'exec_decimal' AND a.details_json ? 'dk_decimal'
+                        AND ABS((a.details_json->>'exec_decimal')::numeric - (a.details_json->>'dk_decimal')::numeric) > 0.0001)
+                  THEN 'conflict'
+                  WHEN COALESCE(g.outcome, a.outcome) = 'won'
+                       AND COALESCE((a.details_json->>'exec_decimal')::numeric, (a.details_json->>'dk_decimal')::numeric) IS NULL
+                  THEN 'missing_entry'
+                  WHEN COALESCE(g.outcome, a.outcome) IS NULL THEN 'pending'
+                  WHEN COALESCE(g.outcome, a.outcome) = 'void' AND (
+                    (COALESCE(g.grading_json,a.grading_json,'{}'::jsonb)->>'market'='spread'
+                     AND (COALESCE(g.grading_json,a.grading_json,'{}'::jsonb)->>'home_score')::numeric
+                       - (COALESCE(g.grading_json,a.grading_json,'{}'::jsonb)->>'away_score')::numeric
+                       + (COALESCE(g.grading_json,a.grading_json,a.details_json)->>'entry_home_line')::numeric = 0)
+                    OR (COALESCE(g.grading_json,a.grading_json,'{}'::jsonb)->>'market'='total'
+                     AND (COALESCE(g.grading_json,a.grading_json,'{}'::jsonb)->>'home_score')::numeric
+                       + (COALESCE(g.grading_json,a.grading_json,'{}'::jsonb)->>'away_score')::numeric
+                       = (COALESCE(g.grading_json,a.grading_json,a.details_json)->>'entry_line')::numeric)
+                  ) THEN 'settled'
+                  WHEN COALESCE(g.outcome, a.outcome) = 'void' THEN 'void'
+                  ELSE 'settled' END AS result_state,
+             CASE WHEN COALESCE(g.outcome, a.outcome)='void' AND (
+                    (COALESCE(g.grading_json,a.grading_json,'{}'::jsonb)->>'market'='spread'
+                     AND (COALESCE(g.grading_json,a.grading_json,'{}'::jsonb)->>'home_score')::numeric
+                       - (COALESCE(g.grading_json,a.grading_json,'{}'::jsonb)->>'away_score')::numeric
+                       + (COALESCE(g.grading_json,a.grading_json,a.details_json)->>'entry_home_line')::numeric = 0)
+                    OR (COALESCE(g.grading_json,a.grading_json,'{}'::jsonb)->>'market'='total'
+                     AND (COALESCE(g.grading_json,a.grading_json,'{}'::jsonb)->>'home_score')::numeric
+                       + (COALESCE(g.grading_json,a.grading_json,'{}'::jsonb)->>'away_score')::numeric
+                       = (COALESCE(g.grading_json,a.grading_json,a.details_json)->>'entry_line')::numeric)
+                  ) THEN 'push' ELSE COALESCE(g.outcome, a.outcome) END AS resolved_outcome,
+             COALESCE((a.details_json->>'exec_decimal')::numeric, (a.details_json->>'dk_decimal')::numeric) AS entry_decimal,
+             COALESCE(g.line_clv, (g.grading_json->>'line_clv')::numeric, (a.grading_json->>'line_clv')::numeric) AS line_clv
+      FROM line_alerts a
+      LEFT JOIN current_grades cg ON cg.alert_id=a.id
+      LEFT JOIN alert_grades g ON g.id=cg.grade_id
+      WHERE a.sport='cfb' AND a.origin='prospective'
+    )
     SELECT alert_type AS "alertType",
            COALESCE(signal_version, details_json->>'signal_version', 'unstamped') AS "signalVersion",
            COUNT(*)::int AS observations,
-           COUNT(*) FILTER (WHERE outcome IN ('won','lost','void'))::int AS settled,
-           COUNT(*) FILTER (WHERE outcome='won')::int AS wins,
-           COUNT(*) FILTER (WHERE outcome='lost')::int AS losses,
-           COUNT(*) FILTER (WHERE outcome='void')::int AS pushes,
-           AVG((grading_json->>'line_clv')::numeric)
-             FILTER (WHERE grading_json ? 'line_clv') AS "avgLineClv",
-           AVG(((grading_json->>'line_clv')::numeric > 0)::int)
-             FILTER (WHERE grading_json ? 'line_clv') AS "beatClose",
-           SUM(pnl_units) FILTER (WHERE pnl_units IS NOT NULL) AS units,
-           AVG(pnl_units) FILTER (WHERE pnl_units IS NOT NULL) AS "roiPerBet",
-           COUNT(DISTINCT game_date)::int AS "gameDates"
-    FROM line_alerts
-    WHERE sport='cfb' AND origin='prospective'
+           COUNT(*) FILTER (WHERE result_state='settled')::int AS settled,
+           COUNT(*) FILTER (WHERE result_state='settled' AND resolved_outcome='won')::int AS wins,
+           COUNT(*) FILTER (WHERE result_state='settled' AND resolved_outcome='lost')::int AS losses,
+           COUNT(*) FILTER (WHERE result_state='settled' AND resolved_outcome='push')::int AS pushes,
+           AVG(CASE WHEN alert_type IN ('spread_steam','total_steam','spread_walking','total_walking','key_cross')
+                    THEN line_clv ELSE clv_pp END) AS "avgClv",
+           AVG(((CASE WHEN alert_type IN ('spread_steam','total_steam','spread_walking','total_walking','key_cross')
+                       THEN line_clv ELSE clv_pp END) > 0)::int) AS "beatClose",
+           SUM(CASE WHEN result_state='settled' AND resolved_outcome='won' THEN entry_decimal - 1
+                    WHEN result_state='settled' AND resolved_outcome='lost' THEN -1
+                    WHEN result_state='settled' AND resolved_outcome='push' THEN 0 END) AS units,
+           SUM(CASE WHEN result_state='settled' AND resolved_outcome='won' THEN entry_decimal - 1
+                    WHEN result_state='settled' AND resolved_outcome='lost' THEN -1
+                    WHEN result_state='settled' AND resolved_outcome='push' THEN 0 END)
+             / NULLIF(COUNT(*) FILTER (WHERE result_state='settled' AND resolved_outcome IN ('won','lost','push')), 0) AS "roiPerBet",
+           COUNT(DISTINCT game_date)::int AS "gameDates",
+           COUNT(*) FILTER (WHERE result_state='conflict')::int AS conflicts,
+           COUNT(*) FILTER (WHERE result_state='missing_entry')::int AS "missingEntry"
+    FROM canonical
     GROUP BY alert_type, COALESCE(signal_version, details_json->>'signal_version', 'unstamped')
     ORDER BY observations DESC, alert_type
   `);
@@ -10370,11 +10500,13 @@ export async function getCfbSignalBacktest(): Promise<CfbSignalBacktestRow[]> {
       alertType: String(r.alertType), signalVersion: String(r.signalVersion),
       observations: Number(r.observations), settled: Number(r.settled),
       wins: Number(r.wins), losses: Number(r.losses), pushes: Number(r.pushes),
-      avgLineClv: r.avgLineClv != null ? Number(r.avgLineClv) : null,
+      avgClv: r.avgClv != null ? Number(r.avgClv) : null,
+      clvUnit: ["spread_steam", "total_steam", "spread_walking", "total_walking", "key_cross"].includes(String(r.alertType)) ? "points" : "probability_pp",
       beatClose: r.beatClose != null ? Number(r.beatClose) : null,
       units: r.units != null ? Number(r.units) : null,
       roiPerBet: r.roiPerBet != null ? Number(r.roiPerBet) : null,
       gameDates: Number(r.gameDates),
+      conflicts: Number(r.conflicts ?? 0), missingEntry: Number(r.missingEntry ?? 0),
     };
   });
 }
@@ -10427,6 +10559,7 @@ export async function getCfbTerminalBoard(gameDate?: string): Promise<CfbTermina
     ), trails AS (
       SELECT matchup_id,
              JSONB_AGG(JSONB_BUILD_OBJECT(
+               'historyId', id,
                'capturedAt', captured_at::text,
                'books', books
              ) ORDER BY captured_at, id) AS history
@@ -10486,6 +10619,7 @@ export async function getCfbTerminalBoard(gameDate?: string): Promise<CfbTermina
       if (!item || typeof item !== "object") return [];
       const point = item as Record<string, unknown>;
       return [{
+        historyId: point.historyId != null ? Number(point.historyId) : undefined,
         capturedAt: String(point.capturedAt),
         books: selectedSportsbooks(point.books && typeof point.books === "object" ? point.books as CfbBookMap : {}),
       }];
@@ -10924,11 +11058,15 @@ export type MarketSignalScorecardRow = {
   nClv: number;
   avgClvPp: number | null;
   medianClvPp: number | null;
+  clvUnit: "points" | "probability_pp";
   beatClose: number | null;
   settled: number;
   wins: number;
   losses: number;
   voids: number;
+  pushes: number;
+  conflicts: number;
+  missingEntry: number;
   units: number | null;
   roiPerBet: number | null;
   lastTriggeredAt: string | null;
@@ -11038,42 +11176,80 @@ export async function getMovementSignalObservations(sport: string, matchupIds: n
 }
 
 /** Prospective-only, fixed-family audit. Zero-observation detectors remain
- * visible so silence cannot be mistaken for a missing UI row. CFB market
- * variants are rolled into the common STEAM and WALKING families. */
+ * visible so silence cannot be mistaken for a missing UI row. Market-specific
+ * CFB variants stay separate because line points and probability pp are not
+ * interchangeable evidence. */
 export async function getMarketSignalScorecard(sport: "cfb" | "tennis"): Promise<MarketSignalScorecardRow[]> {
   const signalTypes = sport === "cfb"
-    ? ["steam", "walking", "reversal", "reference_led", "price_pressure", "pinnacle_divergence", "book_disagreement", "market_convergence", "late_move", "key_cross"]
+    ? ["moneyline_steam", "spread_steam", "total_steam", "moneyline_walking", "spread_walking", "total_walking", "reversal", "reference_led", "price_pressure", "pinnacle_divergence", "book_disagreement", "market_convergence", "late_move", "key_cross"]
     : ["steam", "walking", "reversal", "reference_led", "price_pressure", "pinnacle_divergence", "book_disagreement", "market_convergence", "late_move", "favorite_flip"];
   const rows = await db.execute(sql`
     WITH expected(alert_type, ordinal) AS (
       VALUES ${sql.join(signalTypes.map((type, index) => sql`(${type}, ${index})`), sql`, `)}
+    ), current_grades AS (
+      SELECT alert_id, COUNT(*)::int AS grade_count, MIN(id) AS grade_id
+      FROM alert_grades WHERE is_current GROUP BY alert_id
     ), normalized AS (
       SELECT CASE
-               WHEN alert_type IN ('steam','spread_steam','total_steam') THEN 'steam'
-               WHEN alert_type IN ('walking','spread_walking','total_walking') THEN 'walking'
+               WHEN ${sport} = 'cfb' AND alert_type = 'steam' THEN 'moneyline_steam'
+               WHEN ${sport} = 'cfb' AND alert_type = 'walking' THEN 'moneyline_walking'
                ELSE alert_type
              END AS alert_type,
-             created_at, outcome,
-             COALESCE(pnl_units,
-               CASE WHEN details_json ? 'dk_decimal' AND outcome = 'won' THEN (details_json->>'dk_decimal')::numeric - 1
-                    WHEN details_json ? 'dk_decimal' AND outcome = 'lost' THEN -1 END
-             ) AS effective_units,
-             COALESCE(clv_pp, (grading_json->>'line_clv')::numeric) AS clv
-      FROM line_alerts
-      WHERE sport = ${sport} AND origin = 'prospective'
+             a.created_at,
+             CASE WHEN cg.grade_count > 1 OR (g.outcome IS NOT NULL AND a.outcome IS NOT NULL AND g.outcome <> a.outcome)
+                    OR (a.details_json ? 'exec_decimal' AND a.details_json ? 'dk_decimal'
+                        AND ABS((a.details_json->>'exec_decimal')::numeric - (a.details_json->>'dk_decimal')::numeric) > 0.0001)
+                  THEN 'conflict'
+                  WHEN COALESCE(g.outcome, a.outcome)='won'
+                       AND COALESCE((a.details_json->>'exec_decimal')::numeric, (a.details_json->>'dk_decimal')::numeric) IS NULL
+                  THEN 'missing_entry'
+                  WHEN COALESCE(g.outcome, a.outcome) IS NULL THEN 'pending'
+                  WHEN COALESCE(g.outcome, a.outcome)='void' AND
+                       COALESCE(g.grading_json,a.grading_json,'{}'::jsonb)->>'market'='spread' AND
+                       (COALESCE(g.grading_json,a.grading_json,'{}'::jsonb)->>'home_score')::numeric
+                         - (COALESCE(g.grading_json,a.grading_json,'{}'::jsonb)->>'away_score')::numeric
+                         + (COALESCE(g.grading_json,a.grading_json,a.details_json)->>'entry_home_line')::numeric = 0
+                  THEN 'settled'
+                  WHEN COALESCE(g.outcome, a.outcome)='void' THEN 'void'
+                  ELSE 'settled' END AS result_state,
+             CASE WHEN COALESCE(g.outcome, a.outcome)='void' AND
+                       COALESCE(g.grading_json,a.grading_json,'{}'::jsonb)->>'market'='spread' AND
+                       (COALESCE(g.grading_json,a.grading_json,'{}'::jsonb)->>'home_score')::numeric
+                         - (COALESCE(g.grading_json,a.grading_json,'{}'::jsonb)->>'away_score')::numeric
+                         + (COALESCE(g.grading_json,a.grading_json,a.details_json)->>'entry_home_line')::numeric = 0
+                  THEN 'push' ELSE COALESCE(g.outcome, a.outcome) END AS outcome,
+             CASE WHEN COALESCE(g.outcome, a.outcome)='won' THEN COALESCE((a.details_json->>'exec_decimal')::numeric, (a.details_json->>'dk_decimal')::numeric) - 1
+                  WHEN COALESCE(g.outcome, a.outcome)='lost' THEN -1
+                  WHEN COALESCE(g.outcome, a.outcome)='push' THEN 0
+                  WHEN COALESCE(g.outcome, a.outcome)='void' AND
+                       COALESCE(g.grading_json,a.grading_json,'{}'::jsonb)->>'market'='spread' AND
+                       (COALESCE(g.grading_json,a.grading_json,'{}'::jsonb)->>'home_score')::numeric
+                         - (COALESCE(g.grading_json,a.grading_json,'{}'::jsonb)->>'away_score')::numeric
+                         + (COALESCE(g.grading_json,a.grading_json,a.details_json)->>'entry_home_line')::numeric = 0
+                  THEN 0 END AS effective_units,
+             CASE WHEN a.alert_type IN ('spread_steam','total_steam','spread_walking','total_walking','key_cross')
+                    THEN COALESCE(g.line_clv, (g.grading_json->>'line_clv')::numeric, (a.grading_json->>'line_clv')::numeric)
+                  ELSE a.clv_pp END AS clv
+      FROM line_alerts a
+      LEFT JOIN current_grades cg ON cg.alert_id=a.id
+      LEFT JOIN alert_grades g ON g.id=cg.grade_id
+      WHERE a.sport = ${sport} AND a.origin = 'prospective'
     ), aggregate AS (
       SELECT alert_type,
              COUNT(*)::int AS observations,
-             COUNT(*) FILTER (WHERE outcome IS NULL)::int AS pending,
+             COUNT(*) FILTER (WHERE result_state='pending')::int AS pending,
              COUNT(clv)::int AS n_clv,
              AVG(clv) AS avg_clv,
              percentile_cont(0.5) WITHIN GROUP (ORDER BY clv) AS median_clv,
              AVG((clv > 0)::int) FILTER (WHERE clv IS NOT NULL) AS beat_close,
-             COUNT(*) FILTER (WHERE outcome IN ('won','lost'))::int AS settled,
-             COUNT(*) FILTER (WHERE outcome = 'won')::int AS wins,
-             COUNT(*) FILTER (WHERE outcome = 'lost')::int AS losses,
-             COUNT(*) FILTER (WHERE outcome = 'void')::int AS voids,
-             SUM(effective_units) FILTER (WHERE outcome IN ('won','lost')) AS units,
+             COUNT(*) FILTER (WHERE result_state='settled')::int AS settled,
+             COUNT(*) FILTER (WHERE result_state='settled' AND outcome='won')::int AS wins,
+             COUNT(*) FILTER (WHERE result_state='settled' AND outcome='lost')::int AS losses,
+             COUNT(*) FILTER (WHERE result_state='void')::int AS voids,
+             COUNT(*) FILTER (WHERE result_state='settled' AND outcome='push')::int AS pushes,
+             COUNT(*) FILTER (WHERE result_state='conflict')::int AS conflicts,
+             COUNT(*) FILTER (WHERE result_state='missing_entry')::int AS missing_entry,
+             SUM(effective_units) FILTER (WHERE result_state='settled') AS units,
              MAX(created_at)::text AS last_triggered_at
       FROM normalized GROUP BY alert_type
     )
@@ -11084,7 +11260,9 @@ export async function getMarketSignalScorecard(sport: "cfb" | "tennis"): Promise
            aggregate.avg_clv AS "avgClvPp", aggregate.median_clv AS "medianClvPp",
            aggregate.beat_close AS "beatClose", COALESCE(aggregate.settled, 0)::int AS settled,
            COALESCE(aggregate.wins, 0)::int AS wins, COALESCE(aggregate.losses, 0)::int AS losses,
-           COALESCE(aggregate.voids, 0)::int AS voids, aggregate.units,
+           COALESCE(aggregate.voids, 0)::int AS voids, COALESCE(aggregate.pushes, 0)::int AS pushes,
+           COALESCE(aggregate.conflicts, 0)::int AS conflicts, COALESCE(aggregate.missing_entry, 0)::int AS "missingEntry",
+           aggregate.units,
            CASE WHEN aggregate.settled > 0 THEN aggregate.units / aggregate.settled ELSE NULL END AS "roiPerBet",
            aggregate.last_triggered_at AS "lastTriggeredAt"
     FROM expected LEFT JOIN aggregate USING (alert_type)
@@ -11098,9 +11276,12 @@ export async function getMarketSignalScorecard(sport: "cfb" | "tennis"): Promise
       pending: Number(rec.pending ?? 0), nClv: Number(rec.nClv ?? 0),
       avgClvPp: rec.avgClvPp == null ? null : Number(rec.avgClvPp),
       medianClvPp: rec.medianClvPp == null ? null : Number(rec.medianClvPp),
+      clvUnit: ["spread_steam", "total_steam", "spread_walking", "total_walking", "key_cross"].includes(String(rec.alertType)) ? "points" : "probability_pp",
       beatClose: rec.beatClose == null ? null : Number(rec.beatClose),
       settled: Number(rec.settled ?? 0), wins: Number(rec.wins ?? 0),
       losses: Number(rec.losses ?? 0), voids: Number(rec.voids ?? 0),
+      pushes: Number(rec.pushes ?? 0), conflicts: Number(rec.conflicts ?? 0),
+      missingEntry: Number(rec.missingEntry ?? 0),
       units: rec.units == null ? null : Number(rec.units),
       roiPerBet: rec.roiPerBet == null ? null : Number(rec.roiPerBet),
       lastTriggeredAt: rec.lastTriggeredAt == null ? null : String(rec.lastTriggeredAt),
@@ -13863,7 +14044,17 @@ export async function getNflPickemSlate(season = 2026, evidence?: PickemEvidence
 
     // Renormalise away the tie mass -- see the pHome doc comment.
     const denom = 1 - (pTie ?? 0);
-    const pHome = denom > 1e-9 ? Math.min(Math.max(pWin / denom, 1e-4), 1 - 1e-4) : pWin;
+    let pHome = denom > 1e-9 ? Math.min(Math.max(pWin / denom, 1e-4), 1 - 1e-4) : pWin;
+    const matchup = evidence.games[Number(record.gameId)]?.matchup;
+    if (matchup?.status === "qualified" && matchup.candidate && quote && !record.completed &&
+        timestamp(evidence.loadedAt) < timestamp(record.kickoff == null ? null : String(record.kickoff)) &&
+        matchup.input.baseline.marketCapturedAt === quote.capturedAt &&
+        matchup.input.baseline.tie === pTie && Math.abs(matchup.input.baseline.homeConditional - pHome) < 1e-10 &&
+        timestamp(evidence.loadedAt) - timestamp(quote.capturedAt) <=
+          (timestamp(String(record.kickoff)) - timestamp(evidence.loadedAt) <= 86400000 ? 7200000 : 86400000)) {
+      pHome = matchup.candidate.homeConditional;
+      record.provenance = "qualified_matchup_residual";
+    }
 
     modelVersion ??= record.modelVersion != null ? String(record.modelVersion) : null;
     const stamp = record.computedAt != null ? String(record.computedAt) : null;
@@ -13915,6 +14106,7 @@ export async function getNflPickemSlate(season = 2026, evidence?: PickemEvidence
 }
 
 export type PickemPoolRow = {
+  config?: import("@/lib/nfl/pickem-contest").PoolConfig | null;
   id: number;
   name: string;
   season: number;
@@ -13924,6 +14116,7 @@ export type PickemPoolRow = {
 };
 
 export type PickemLedgerGame = {
+  isTie?: boolean | null;
   evidence?: import("@/lib/nfl/pickem-evidence").FrozenEvidence | null;
   gameId: number;
   homeAbbrev: string;
@@ -13978,7 +14171,7 @@ export type PickemLedgerRow = {
 export async function getPickemPools(season = 2026): Promise<PickemPoolRow[]> {
   try {
     const rows = await db.execute(sql`
-      SELECT id, name, season, format, pool_entries AS "poolEntries", notes
+      SELECT id, name, season, format, pool_entries AS "poolEntries", notes, config_json
       FROM pickem_pools WHERE season = ${season} ORDER BY created_at
     `);
     return rows.rows.map((raw) => {
@@ -13990,6 +14183,7 @@ export async function getPickemPools(season = 2026): Promise<PickemPoolRow[]> {
         format: String(r.format) as "confidence" | "straight",
         poolEntries: Number(r.poolEntries),
         notes: r.notes != null ? String(r.notes) : null,
+        config: (r.config_json ?? null) as import("@/lib/nfl/pickem-contest").PoolConfig | null,
       };
     });
   } catch {
@@ -14046,6 +14240,7 @@ export async function getPickemLedger(season = 2026): Promise<PickemLedgerRow[]>
         fieldSource: String(r.field_source) as "observed" | "modeled",
         evidence: (r.evidence_json ?? null) as import("@/lib/nfl/pickem-evidence").FrozenEvidence | null,
         homeWon: r.home_won == null ? null : Boolean(r.home_won),
+        isTie: r.result_tie == null ? null : Boolean(r.result_tie),
       });
     }
 

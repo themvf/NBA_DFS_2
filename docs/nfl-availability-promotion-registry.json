@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "registered_at": "2026-09-25",
+  "rule": "Thresholds are frozen before candidate fitting. Insufficient samples remain prospective shadow and cannot be promoted.",
+  "candidates": [
+    {
+      "id": "availability_source_boundary_v1",
+      "consumer": "nfl_dfs_projection",
+      "minimum_independent_units": 0,
+      "horizon": "all automated unit, integration, and replay cases",
+      "baseline": "current direct FantasyPros week query",
+      "thresholds": {
+        "decision_time_violations": 0,
+        "ineligible_source_effects": 0,
+        "failed_refresh_clearances": 0,
+        "unproven_double_adjustments": 0
+      },
+      "insufficient_sample_action": "not applicable; invariant gate",
+      "allowed_state": "production only after every invariant passes"
+    },
+    {
+      "id": "confirmed_out_zero_v1",
+      "consumer": "nfl_dfs_projection",
+      "minimum_independent_units": 20,
+      "unit": "independent confirmed-OUT quarterback games",
+      "horizon": "at least 8 prospective weeks and 2 calendar months",
+      "baseline": "unadjusted historical projection",
+      "thresholds": {
+        "out_did_not_play_precision_min": 0.98,
+        "team_qb_group_mae_change_max": 0.0,
+        "known_active_false_exclusions": 0
+      },
+      "insufficient_sample_action": "retain deterministic zero for platform/official exclusions; keep source-derived canonical promotion shadow-only",
+      "allowed_state": "production safety rule after invariant and precision gates"
+    },
+    {
+      "id": "qb_opportunity_transfer_v1",
+      "consumer": "nfl_dfs_projection",
+      "minimum_independent_units": 40,
+      "unit": "independent games with a pregame-known QB1 absence and qualified replacement",
+      "horizon": "at least 2 seasons with expanding-season holdouts; prospective shadow until minimum is reached",
+      "baseline": "zero absent starter and leave replacement baseline unchanged",
+      "thresholds": {
+        "replacement_dk_mae_relative_improvement_min": 0.03,
+        "team_qb_group_dk_mae_relative_improvement_min": 0.02,
+        "wis_relative_improvement_min": 0.02,
+        "bootstrap_probability_of_positive_team_group_improvement_min": 0.9,
+        "event_accounting_failures": 0
+      },
+      "insufficient_sample_action": "keep transfer shadow-only; production retains zeroing without transfer",
+      "allowed_state": "consumer-specific predictive promotion"
+    },
+    {
+      "id": "availability_market_attribution_v1",
+      "consumer": "nfl_market_explanation",
+      "minimum_independent_units": 300,
+      "unit": "independent games, including at least 40 timestamped QB-state changes",
+      "horizon": "at least 2 held-out seasons",
+      "baseline": "registered scoring-environment plus PBP descriptor model",
+      "thresholds": {
+        "opening_spread_mae_improvement_points_min": 0.1,
+        "movement_mae_improvement_points_min": 0.1,
+        "bootstrap_probability_of_positive_improvement_min": 0.9,
+        "required_stable_holdout_seasons": 2,
+        "future_feature_joins": 0
+      },
+      "insufficient_sample_action": "display sourced facts only; no numerical contribution claim",
+      "allowed_state": "descriptive after quality gates; predictive requires separate registration"
+    },
+    {
+      "id": "participation_probability_v1",
+      "consumer": "dfs_and_props_shadow",
+      "minimum_independent_units": 500,
+      "unit": "independent player-games carrying QUESTIONABLE or DOUBTFUL pregame designation",
+      "horizon": "at least 2 held-out seasons and 8 prospective weeks",
+      "baseline": "position-by-designation empirical rate",
+      "thresholds": {
+        "brier_relative_improvement_min": 0.05,
+        "log_loss_relative_improvement_min": 0.03,
+        "expected_calibration_error_max": 0.05,
+        "required_stable_holdout_seasons": 2
+      },
+      "insufficient_sample_action": "participation_probability remains null and baseline projection is retained",
+      "allowed_state": "shadow until every calibration gate passes"
+    },
+    {
+      "id": "skill_position_redistribution_v1",
+      "consumer": "nfl_dfs_projection",
+      "minimum_independent_units": 100,
+      "unit": "independent qualified absence games per position family",
+      "horizon": "at least 2 held-out seasons per RB, WR, and TE candidate",
+      "baseline": "no redistribution; retain teammate baselines",
+      "thresholds": {
+        "team_opportunity_mae_relative_improvement_min": 0.03,
+        "recipient_opportunity_mae_relative_improvement_min": 0.03,
+        "wis_relative_improvement_min": 0.02,
+        "team_budget_reconciliation_failures": 0
+      },
+      "insufficient_sample_action": "position remains shadow-only and unresolved opportunity is displayed",
+      "allowed_state": "position-specific promotion only"
+    },
+    {
+      "id": "availability_conditioned_props_v1",
+      "consumer": "nfl_prop_research",
+      "minimum_independent_units": 500,
+      "unit": "settled predecision prop observations across at least 100 independent games per market family",
+      "horizon": "at least 1 full held-out season plus 8 prospective weeks",
+      "baseline": "same distribution model without availability context",
+      "thresholds": {
+        "wis_relative_improvement_min": 0.03,
+        "threshold_brier_relative_improvement_min": 0.03,
+        "expected_calibration_error_max": 0.05,
+        "future_quote_or_feature_joins": 0
+      },
+      "insufficient_sample_action": "research distribution only; no edge or recommendation label",
+      "allowed_state": "predictive research; betting authority requires a new prospective registry entry"
+    },
+    {
+      "id": "availability_conditioned_prop_decisions_v1",
+      "consumer": "nfl_prop_betting",
+      "minimum_independent_units": 300,
+      "unit": "prospectively recorded, executable decisions across at least 100 games",
+      "horizon": "at least 12 prospective weeks",
+      "baseline": "no-bet and closing-consensus price",
+      "thresholds": {
+        "median_closing_line_value_min": 0.0,
+        "bootstrap_roi_lower_95_bound_min": 0.0,
+        "policy_or_execution_violations": 0
+      },
+      "insufficient_sample_action": "recommendations disabled",
+      "allowed_state": "betting decision only after a separately reviewed prospective result"
+    }
+  ]
+}

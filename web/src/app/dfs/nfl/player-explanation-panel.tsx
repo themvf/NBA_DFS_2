@@ -227,6 +227,12 @@ export default function PlayerExplanationPanel({ uploadId, player, slatePlayers,
         </div>
 
         <div className="space-y-3 p-4">
+          {player.playerSignals?.length ? <section className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm">
+            <h3 className="font-bold text-blue-950">Play-by-play opportunity</h3>
+            <p className="mt-1 text-xs text-blue-800">Observed before this slate. These flags describe a scoring path; they are not added points or an ownership forecast.</p>
+            <ul className="mt-2 space-y-1 text-xs text-blue-950">{player.playerSignals.map(signal =>
+              <li key={signal.code}><b>{signal.label}:</b> {signal.detail}</li>)}</ul>
+          </section> : null}
           {pending && !e && <p className="text-sm text-slate-500">Loading the projection breakdown&hellip;</p>}
 
           {data && !data.ok && (
@@ -372,6 +378,41 @@ function Breakdown({ e, player, peers, valueIndex }: {
       )}
       {e.adjustmentUnresolved && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{e.adjustmentUnresolved}</p>}
       {e.projectionScenario === 'availability_estimate' && !e.inheritedNote && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">The pipeline applied an availability estimate. No new simulation was run; median, outcome range and boom rate are withheld.</p>}
+
+      {player.defensiveForecast && <Card icon={<Activity className="h-4 w-4" style={{color:ACCENT}}/>}
+        title={player.defensiveForecast.status==='applied'?`Applied to this optimizer run · ${player.defensiveForecast.mode} defense`:`${player.defensiveForecast.mode} defense · baseline retained`}
+        hint={`${player.defensiveForecast.profile} · ${player.defensiveForecast.reason}`}>
+        <div className="grid grid-cols-3 gap-2">
+          <Tile label="Selected mean" value={fmt(player.defensiveForecast.status==='applied'?player.defensiveForecast.selected.mean:player.ourProj)} sub="DK points"/>
+          <Tile label="Selected lower tail" value={fmt(player.defensiveForecast.status==='applied'?player.defensiveForecast.selected.p10:player.floorFpts)} sub="cash search"/>
+          <Tile label="Selected upper tail" value={fmt(player.defensiveForecast.status==='applied'?player.defensiveForecast.selected.p90:player.ceilingFpts)} sub="GPP search"/>
+        </div>
+        <p className="mt-2 text-xs">Big-game probability {pct(player.defensiveForecast.status==='applied'?player.defensiveForecast.selected.boom:player.boomRate)}. Bundle {player.defensiveForecast.digest}.</p>
+      </Card>}
+
+      {e.matchupComparison && <Card icon={<Activity className="h-4 w-4" style={{color:ACCENT}}/>}
+        title="Opponent matchup · under evaluation" hint="Separate research comparison; the saved-run bundle above identifies what optimization consumed.">
+        <div className="grid grid-cols-3 gap-2">
+          <Tile label="Comparison baseline" value={fmt(e.matchupComparison.baseline)} sub="DK points"/>
+          <Tile label="Matchup candidate" value={fmt(e.matchupComparison.candidate)} sub="under evaluation"/>
+          <Tile label="Candidate change" value={signed(e.matchupComparison.delta)} sub="DK points"/>
+        </div>
+        {e.matchupComparison.efficiencyBefore != null && <p className="mt-2 text-xs text-slate-600">
+          {e.matchupComparison.component === 'passing_yards' ? 'Passing' : 'Rushing'} efficiency: {fmt(e.matchupComparison.efficiencyBefore)} → {fmt(e.matchupComparison.efficiencyAfter)} yards per opportunity.
+          {' '}{fmt(e.matchupComparison.opportunity)} expected {e.matchupComparison.opportunityLabel}; opportunity and touchdown assumptions stay the same.
+        </p>}
+        {(e.matchupComparison.evidence?.length ?? 0) > 0 && <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+          {e.matchupComparison.evidence.map(item => <div key={item.label}>
+            <dt className="text-slate-500">{item.label}</dt><dd className="font-medium text-slate-800">{item.value.toFixed(2)} {item.unit}</dd>
+          </div>)}
+        </dl>}
+        <p className="mt-2 text-xs text-slate-600">P90: {fmt(e.matchupComparison.baselineP90)} → {fmt(e.matchupComparison.candidateP90)}.
+          {e.matchupComparison.candidateMedian != null && <> Candidate median {fmt(e.matchupComparison.candidateMedian)}, P10 {fmt(e.matchupComparison.candidateP10)}.</>}
+          {e.matchupComparison.candidateBoom != null && <> Big-game probability {(100 * e.matchupComparison.candidateBoom).toFixed(1)}%.</>}
+        </p>
+        <p className="mt-2 text-xs text-slate-600">{e.matchupComparison.reason}.</p>
+        <p className="mt-1 text-[10px] text-slate-500">{e.matchupComparison.sourceCount} frozen game sources · captured {new Date(e.matchupComparison.frozenAt).toLocaleString()}. Baseline run {e.matchupComparison.baselineRunId}.</p>
+      </Card>}
 
       {/* Waterfall */}
       <Card

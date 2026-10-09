@@ -20,16 +20,28 @@ on:
       - "model/nfl_play_archetypes.py"
       - "model/nfl_drive_archetypes.py"
       - "model/nfl_participation.py"
+      - "model/nfl_play_facts.py"
+      - "model/nfl_context_engine.py"
+      - "model/nfl_context_measures.py"
       - "ingest/nfl_pbp_archetypes.py"
+      - "ingest/nfl_context_publish.py"
 
   workflow_dispatch:
     inputs:
+      mode:
+        description: "stale = pick up whatever the release now carries (self-healing); season = rebuild a whole season/game"
+        required: false
+        default: "stale"
+        type: choice
+        options:
+          - stale
+          - season
       season:
-        description: "Season to label (e.g. 2026)"
-        required: true
+        description: "Season to label (season mode only, e.g. 2026)"
+        required: false
         default: "2026"
       game:
-        description: "Optional game_id substring (e.g. NE_SEA). Blank = whole season."
+        description: "Optional game_id substring (season mode only, e.g. NE_SEA). Blank = whole season."
         required: false
         default: ""
   schedule:
@@ -59,15 +71,19 @@ jobs:
           # The labellers read nflverse's parquet release directly.
           pip install "pandas>=2" "pyarrow>=15"
 
-      # On a push this relabels only what disagrees with the current versions,
-      # so an unrelated edit to these files is a cheap no-op rather than a
-      # full-season rebuild.
+      # Relabel only what disagrees with the current versions, so an unrelated
+      # edit is a cheap no-op rather than a full-season rebuild. This is the
+      # path a push takes, the weekly cron takes, and a dispatch takes when it
+      # asks for `stale` -- which is the on-demand button on /nfl/pbp: on a
+      # game day it picks up whatever nflverse has published so far.
       - name: Relabel stale games
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'stale')
         run: python -m ingest.nfl_pbp_archetypes --relabel-stale
 
+      # A deliberate rebuild of a whole season or a single game -- only ever a
+      # dispatch that explicitly asked for `season` mode.
       - name: Label plays and drives
-        if: github.event_name != 'push'
+        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'season'
         run: |
           if [ -n "${{ inputs.game }}" ]; then
             python -m ingest.nfl_pbp_archetypes \
@@ -75,3 +91,27 @@ jobs:
           else
             python -m ingest.nfl_pbp_archetypes --season "${{ inputs.season || 2026 }}"
           fi
+
+      # The context engine owns a separate append-only fact ledger. Publishing
+      # it here keeps the canonical facts current without coupling their
+      # revision lifecycle to the replace-in-place archetype presentation table.
+      - name: Publish revisioned play facts
+        shell: bash
+        run: |
+          SEASON="${{ inputs.season }}"
+          if [ -z "$SEASON" ]; then
+            SEASON=$(python -c "from datetime import datetime,timezone; n=datetime.now(timezone.utc); print(n.year-1 if n.month<=3 else n.year)")
+          fi
+          SOURCE="/tmp/play_by_play_${SEASON}.parquet"
+          curl --fail --location --retry 3 \
+            "https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_${SEASON}.parquet" \
+            --output "$SOURCE"
+          python -m ingest.nfl_context_publish "$SOURCE" --season-type REG --apply
+
+          HISTORY_SEASON=$((SEASON - 1))
+          HISTORY_SOURCE="/tmp/play_by_play_${HISTORY_SEASON}.parquet"
+          curl --fail --location --retry 3 \
+            "https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_${HISTORY_SEASON}.parquet" \
+            --output "$HISTORY_SOURCE"
+          python -m ingest.nfl_context_game_snapshots "$HISTORY_SOURCE" \
+            --season "$SEASON" --apply

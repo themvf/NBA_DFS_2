@@ -28,7 +28,7 @@ export interface NflPuntPolicy {
   mode: PuntMode;
   /** Players at or below this salary are hard-blocked regardless of evidence. */
   absoluteMinSalary: number;
-  /** Below this salary, fresh role evidence is required to be eligible. */
+  /** At or below this salary, fresh role evidence is required to be eligible. */
   roleEvidenceRequiredBelowSalary: number;
   /** 0..1. Minimum role confidence required below the evidence threshold. */
   minimumRoleConfidence: number;
@@ -141,7 +141,7 @@ export function evaluatePuntEligibility(
   if (player.isOut || evidence.verifiedActive === false) return blocked("INACTIVE");
 
   const absoluteBlock = player.salary <= policy.absoluteMinSalary;
-  const belowEvidenceThreshold = player.salary < policy.roleEvidenceRequiredBelowSalary;
+  const belowEvidenceThreshold = player.salary <= policy.roleEvidenceRequiredBelowSalary;
 
   // The absolute block is a floor: below it there is no legitimate role at all.
   // Only a recorded override may lift it (spec §8.1: reason required).

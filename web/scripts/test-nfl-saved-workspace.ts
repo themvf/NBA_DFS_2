@@ -5,7 +5,7 @@ import { exportNflDkEntries } from '../src/lib/nfl-dfs/entry-export';
 assert.equal(savedSlateLabel('showdown', 'NE@SEA 09/09/2026 08:20PM ET', ['NE@SEA']), 'Wednesday, Sep 9, 2026 · Showdown · NE@SEA');
 assert.match(savedSlateLabel('classic', 'NO@DET 09/13/2026 01:00PM ET', Array(12).fill('GAME')), /Sunday, Sep 13, 2026 · Classic · 12 games/);
 const snapshot = Array.from({ length: 6 }, (_, i) => ({ dkPlayerId: i + 1, captainDkPlayerId: 100 + i,
-  name: `Player ${i}`, position: 'WR', team: i < 3 ? 'NE' : 'SEA', salary: 5000, captainSalary: 7500,
+  name: `Player ${i}`, position: 'WR', team: i < 3 ? 'NE' : 'SEA', gameKey: 'NE@SEA', salary: 5000, captainSalary: 7500,
   ourProj: 10, floor: -1, ceiling: 20, dkAvg: 8, ownership: 0 }));
 const rows: SavedLineupRow[] = [{ lineupNumber: 1, slots: snapshot.map((p, i) => ({ slot: i ? `FLEX${i}` : 'CPT',
   dkPlayerId: p.dkPlayerId, captainDkPlayerId: p.captainDkPlayerId, name: p.name, team: p.team,

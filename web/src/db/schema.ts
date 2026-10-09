@@ -781,6 +781,7 @@ export const nflDfsProjectionRuns = pgTable(
     historyCutoffWeek: integer("history_cutoff_week"),
     sourceSnapshotIds: jsonb("source_snapshot_ids").notNull().default([]),
     modelConfig: jsonb("model_config").notNull().default({}),
+    availabilityManifest: jsonb("availability_manifest").notNull().default({}),
     playerCount: integer("player_count").notNull(),
     artifactDigest: text("artifact_digest").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -844,6 +845,7 @@ export const nflDfsSlateUploads = pgTable(
     warnings: jsonb("warnings").notNull().default([]),
     playerCount: integer("player_count").notNull(),
     projectionRunId: uuid("projection_run_id").references(() => nflDfsProjectionRuns.runId),
+    eligibilityManifestDigest: text("eligibility_manifest_digest"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -875,6 +877,7 @@ export const nflDfsSlatePlayers = pgTable(
     isOut: boolean("is_out").notNull().default(false),
     identityMethod: text("identity_method").notNull(),
     identityEvidence: jsonb("identity_evidence").notNull().default({}),
+    platformEligibility: jsonb("platform_eligibility").notNull().default({}),
     projectionStatus: text("projection_status").notNull(),
     ourProj: doublePrecision("our_proj"),
     floorFpts: doublePrecision("floor_fpts"),

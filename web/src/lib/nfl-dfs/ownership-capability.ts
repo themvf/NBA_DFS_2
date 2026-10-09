@@ -69,7 +69,7 @@ export interface EligibleOwnershipPlayer {
 export function assessOwnership(
   eligible: EligibleOwnershipPlayer[],
   ownership: NflOwnershipInput[],
-  options: { thresholds?: OwnershipValidationThresholds; optIntoHeuristic?: boolean; heuristic?: boolean } = {},
+  options: { thresholds?: OwnershipValidationThresholds; optIntoHeuristic?: boolean; heuristic?: boolean; format?: "classic" | "showdown" } = {},
 ): OwnershipAssessment {
   const thresholds = options.thresholds ?? DEFAULT_OWNERSHIP_THRESHOLDS;
   const byId = new Map(ownership.map((o) => [o.playerId, o]));
@@ -115,10 +115,12 @@ export function assessOwnership(
   const captainTotal = ownership.reduce((s, o) => s + (o.captainPct ?? 0), 0);
   const flexTotal = ownership.reduce((s, o) => s + (o.flexPct ?? 0), 0);
 
-  const captainOk = Math.abs(captainTotal - 1) <= thresholds.captainTotalTolerance;
-  const flexOk = Math.abs(flexTotal - 5) <= thresholds.flexTotalTolerance;
+  const classic = options.format === "classic";
+  const captainOk = classic || Math.abs(captainTotal - 1) <= thresholds.captainTotalTolerance;
+  const expectedFlexTotal = classic ? 9 : 5;
+  const flexOk = Math.abs(flexTotal - expectedFlexTotal) <= thresholds.flexTotalTolerance;
   if (!captainOk) errors.push(`Captain ownership totals ${(captainTotal * 100).toFixed(0)}%, outside the expected ~100% (a valid Showdown captain field sums near one lineup's worth).`);
-  if (!flexOk) errors.push(`Flex ownership totals ${(flexTotal * 100).toFixed(0)}%, outside the expected ~500% (five flex slots).`);
+  if (!flexOk) errors.push(`${classic ? "Classic" : "Flex"} ownership totals ${(flexTotal * 100).toFixed(0)}%, outside the expected ~${expectedFlexTotal * 100}%.`);
   if (coverage < thresholds.minCoverage) warnings.push(`Only ${(coverage * 100).toFixed(0)}% of eligible players have ownership (need ${(thresholds.minCoverage * 100).toFixed(0)}%).`);
   if (massCoverage < thresholds.minMassCoverage) warnings.push(`Only ${(massCoverage * 100).toFixed(0)}% of projection mass is covered (need ${(thresholds.minMassCoverage * 100).toFixed(0)}%).`);
 

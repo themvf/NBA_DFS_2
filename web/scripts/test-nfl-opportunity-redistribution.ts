@@ -83,6 +83,8 @@ assert.equal(resolved.projectionScenario,'availability_estimate');
 for(const p of [resolved,resolveOpportunityProjection(base,undefined,{rule:'inherits',applied:true},false)]) {
   for(const key of ['floorFpts','medianFpts','ceilingFpts','boomRate'] as const) assert.equal(p[key],null);
 }
+assert.throws(() => resolveOpportunityProjection(base,adjusted,{rule:'inherits',applied:true},false),
+  /already applied upstream/, 'drawer, pool and optimizer must never apply the same transfer twice');
 const unchanged = resolveOpportunityProjection(base,undefined,null,false);
 assert.equal(unchanged.ourProj,base.ourProj);
 assert.equal(unchanged.boomRate,.01);

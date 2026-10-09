@@ -40,10 +40,10 @@ export default function LineupReview({ lineups, runId }: {
             <span>Stack: {lineup.stackSummary.quarterback ? [lineup.stackSummary.quarterback, ...lineup.stackSummary.passCatchers].join(" + ") : "None"}{lineup.stackSummary.bringBack ? ` / ${lineup.stackSummary.bringBack}` : ""}</span>
           </div>
           <table className="w-full text-sm">
-            <thead className="text-left text-xs text-slate-500"><tr><th className="py-2">Slot</th><th>Player</th><th className="text-right">Base salary</th></tr></thead>
-            <tbody>{lineup.slots.map(({ slot, player }) => <tr key={slot} className="border-t"><td className="py-2 text-xs font-semibold text-slate-500">{slot}</td><td className="font-medium">{player.name}<span className="ml-2 text-xs text-slate-500">{player.team}</span></td><td className="text-right">{money(player.salary)}</td></tr>)}</tbody>
+            <thead className="text-left text-xs text-slate-500"><tr><th className="py-2">Slot</th><th>Player</th><th className="text-right">Slot salary</th></tr></thead>
+            <tbody>{lineup.slots.map(({ slot, player, salary }) => <tr key={slot} className="border-t"><td className="py-2 text-xs font-semibold text-slate-500">{slot}</td><td className="font-medium">{player.name}<span className="ml-2 text-xs text-slate-500">{player.team}</span></td><td className="text-right">{money(salary)}</td></tr>)}</tbody>
           </table>
-          {lineup.slots.some(({ slot }) => slot === "CPT") && <p className="mt-2 text-xs text-slate-500">Showdown captain salary is multiplied in the lineup total.</p>}
+          {lineup.slots.some(({ slot }) => slot === "CPT") && <p className="mt-2 text-xs text-slate-500">Captain salary includes the 1.5× multiplier. Slot salaries add up to the lineup total.</p>}
         </div>
       </details>)}
     </div>

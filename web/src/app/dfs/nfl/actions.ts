@@ -3,8 +3,11 @@
 import { resolveSlateWeek, type SlateGame, type ScheduledGame } from "@/lib/nfl-dfs/slate-week";
 import { createHash, randomUUID } from "node:crypto";
 import { restoreSavedLineups, savedSlateLabel } from '@/lib/nfl-dfs/saved-workspace';
+import { exportNflDkEntries } from '@/lib/nfl-dfs/entry-export';
+import { runNflPreExportQa } from '@/lib/nfl-dfs/pre-export-qa';
 import { and, desc, eq, or, sql } from "drizzle-orm";
 import { db } from "@/db";
+import {readMatchupComparison,type MatchupProjectionComparison} from '@/db/nfl-matchup';
 import { ensureNflDfsTables } from "@/db/ensure-schema";
 import {
   nflDfsLineups,
@@ -16,9 +19,12 @@ import {
 } from "@/db/schema";
 import { matchNflIdentity, resolveNflRosterIdentity, assertUniqueNflSalaryIdentities } from "@/lib/nfl-dfs/identity";
 import { getNflIdentityRoster } from "@/db/nfl-identity";
-import { parseNflDkSalaryCsv, type NflDkSlate } from "@/lib/nfl-dfs/dk-salary-csv";
+import { canonicalNflTeam, parseNflDkSalaryCsv, type NflDkSlate } from "@/lib/nfl-dfs/dk-salary-csv";
+import { readDefensiveCaptures } from '@/db/nfl-defensive-projections';
+import { resolveDefensiveForecast } from '@/lib/nfl-dfs/defensive-projection';
+import { readServerDefensivePolicy } from '@/lib/nfl-dfs/defensive-policy';
 import { getNflRosterEvidence, getNflInjuryCoverage, type InjuryCoverage } from "@/db/nfl-dfs-availability";
-import { resolveGameAvailability, type Availability } from "@/lib/nfl-dfs/availability";
+import { presentPinnedGameAvailability, resolveGameAvailability, type Availability, type PinnedGameAvailabilityDecision } from "@/lib/nfl-dfs/availability";
 import { previewAbsence } from "@/lib/nfl-dfs/absence-preview";
 import type { PlayerContext } from "@/lib/nfl-dfs/player-context";
 import { benchmarkPool, type Competitor, type ImportEvidence, type BenchmarkSnapshot, benchmarkTeam } from '@/lib/nfl-dfs/competitor-benchmark';
@@ -33,11 +39,16 @@ import { selectedWorkload,validateWorkloadPositions } from "@/lib/nfl-dfs/worklo
 import { prepareProjectionAudits, validateSituations, type SituationTeam } from '@/lib/nfl-dfs/projection-audit';
 import { loadSituationContext } from '@/lib/nfl-dfs/situation-context';
 import { canonicalAuditJson } from '@/lib/nfl-dfs/audit-json';
+import {buildDraftKingsEligibilityManifest,type PlatformEligibilityDecision} from '@/lib/nfl-dfs/platform-eligibility';
 import { readWorkloadProjection, workloadPoolEligible, type WorkloadReport } from "@/lib/nfl-dfs/workload-projection";
 import { getCalibratedSnapshots } from "@/db/nfl-dfs-calibrated";
 import { readCalibratedProjection, readPositionWorkloadProjection, type CalibrationSnapshot } from "@/lib/nfl-dfs/calibrated-projection";
 import { nflBuildInfo } from "@/lib/nfl-dfs/build-info";
 import { assessOwnership, type OwnershipAssessment } from "@/lib/nfl-dfs/ownership-capability";
+import { readNflDfsPlayerSignalEvidence } from "@/db/nfl-dfs-player-signals";
+import { readNflQbMatchupContexts } from "@/db/nfl-qb-matchup-context";
+import type { QbMatchupContext } from "@/lib/nfl-dfs/qb-matchup-context";
+import { classifyNflPlayerSignals } from "@/lib/nfl-dfs/player-signals";
 import {
   NFL_OPTIMIZER_VERSION,
   optimizeNflLineups,
@@ -48,6 +59,7 @@ import {
 } from "./nfl-optimizer";
 
 export type NflWorkspacePlayer = NflOptimizerPlayer & {
+  qbMatchupContext?: QbMatchupContext | null;
   ffPlayerId: number | null;
   workloadEligible?: boolean;
   identityMethod: string;
@@ -70,6 +82,9 @@ export type NflWorkspacePlayer = NflOptimizerPlayer & {
   projectionScenario?: ProjectionScenario;
   statMeans?: Record<string, number>;
   medianFpts?: number | null;
+  platformEligibility?: PlatformEligibilityDecision;
+  availabilityEvidence?: {gameDecisionId:string|null;platformManifestDigest:string|null;
+    platformDecisionState:'ELIGIBLE'|'INELIGIBLE'|null;decisionAt:string|null};
 };
 
 export type NflWorkspaceSlate = {
@@ -79,6 +94,10 @@ export type NflWorkspaceSlate = {
   projectionRunId: string | null;
   modelVersion: string | null;
   modelAsOf: string | null;
+  platformEligibilityManifestDigest?: string | null;
+  availabilityResolution?: {policy:string;pinnedPlayers:number;legacyPlayers:number;decisionAt:string|null};
+  availabilityHealth?: {state_counts?:Record<string,number>;qualifying_observations?:number;display_only_observations?:number;
+    conflicts?:number;unknown?:number;rollback_policy?:string}|null;
   refreshAvailable?: boolean;
   refreshMessage?: string | null;
   format: "classic" | "showdown";
@@ -244,15 +263,28 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
   const {default:workloadReport}=await import('@/data/nfl-volume-share-report.json');
   const identities=run ? await db.execute(sql`SELECT id, gsis_id FROM ff_players WHERE season=${run.season} AND gsis_id IS NOT NULL`) : {rows:[]};
   const identityMap=new Map(identities.rows.map(r=>[Number(r.id),String(r.gsis_id)]));
-  const now = Date.now();
+  // A saved projection run is a decision-time artifact. Page-read time must
+  // not allow a later injury observation to rewrite its player pool.
+  const now = run?.asOfAt?.getTime() ?? Date.now();
+  let signalReadWarning: string | null = null;
+  let qbContextWarning: string | null = null;
+  let qbContexts = new Map<string, QbMatchupContext>();
+  let signalEvidence = new Map<string, import("@/lib/nfl-dfs/player-signals").NflPlayerSignalEvidence>();
+  if (run?.week && run.asOfAt) {
+    try { signalEvidence = await readNflDfsPlayerSignalEvidence(run.season, run.week, run.asOfAt); }
+    catch { signalReadWarning = "Play-by-play opportunity signals could not be loaded; GPP signal selection is unavailable."; }
+    try { qbContexts = await readNflQbMatchupContexts(run.season, run.week, run.asOfAt); }
+    catch { qbContextWarning = "QB matchup evidence could not be loaded."; }
+  }
   const situations=run?.week?await loadSituationContext(run.season,run.week,roster,now):null;
-  const availability = (row: typeof rows[number]) => resolveGameAvailability(roster.get(row.ffPlayerId ?? -1), row.team, row.position, now, run?.week ?? null, roster.get(row.ffPlayerId ?? -1)?.kickoff ?? null);
 
   // A ruled-out player's work does not vanish -- it goes to his teammates.
   // The OUT flag is known here and only here (DK's Status column), while the
   // stat line needed to move opportunity lives on the immutable projection
   // row, so the two are joined at read time. Neither table is rewritten.
-  const outFlag = (row: typeof rows[number]) => row.isOut || row.projectionStatus === "out" || Boolean(availability(row).blockedReason);
+  const platformOut = (row: typeof rows[number]) =>
+    (row.platformEligibility as PlatformEligibilityDecision | null)?.state === 'INELIGIBLE' || row.isOut;
+  const outFlag = (row: typeof rows[number]) => platformOut(row) || row.projectionStatus === "out" || Boolean(availability(row).blockedReason);
   const projectionStats = upload.projectionRunId
     ? await db.select({
         playerId: nflDfsPlayerProjections.playerId,
@@ -263,6 +295,16 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
   const statsByPlayer = new Map(projectionStats.map(r => [Number(r.playerId), (r.statMeans ?? {}) as Record<string, number>]));
   const notesByPlayer = new Map(projectionStats.map(r => [Number(r.playerId),
     (r.sourceEvidence as { availability?: ModelAvailabilityNote & { slate_transfer_allowed?: boolean; points_before?: number } })?.availability]));
+  const decisionsByPlayer = new Map(projectionStats.map(r => [Number(r.playerId),
+    (r.sourceEvidence as {availability_decision?:PinnedGameAvailabilityDecision})?.availability_decision]));
+  const pinnedDecisionCount=[...decisionsByPlayer.values()].filter(Boolean).length;
+  const runAvailability=(run?.availabilityManifest??{}) as {health?:NflWorkspaceSlate['availabilityHealth'];policy?:string};
+  const availability = (row: typeof rows[number]) => {
+    const evidence=roster.get(row.ffPlayerId ?? -1);
+    const legacy=resolveGameAvailability(evidence,row.team,row.position,now,run?.week??null,evidence?.kickoff??null);
+    const pinned=decisionsByPlayer.get(row.ffPlayerId??-1);
+    return pinned?presentPinnedGameAvailability(pinned,legacy.role):legacy;
+  };
   const redistribution = redistributeOutOpportunity(
     rows.flatMap((row): RedistributionRow[] => {
       const stats = statsByPlayer.get(row.ffPlayerId ?? -1);
@@ -274,7 +316,7 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
         team: row.team,
         historyGames: row.historyGames,
         depthOrder: availability(row).fresh ? Number((roster.get(row.ffPlayerId ?? -1)?.sleeper as { depth_chart_order?: number })?.depth_chart_order) || null : null,
-        canDonate: (row.isOut || row.projectionStatus === 'out' || ['OUT','IR','PUP','NFI','SUSPENDED','INACTIVE'].includes(availability(row).status))
+        canDonate: (platformOut(row) || row.projectionStatus === 'out' || ['OUT','IR','PUP','NFI','SUSPENDED','INACTIVE'].includes(availability(row).status))
           && notesByPlayer.get(row.ffPlayerId ?? -1)?.slate_transfer_allowed !== false,
         isOut: outFlag(row),
         projectionStatus: row.projectionStatus,
@@ -311,20 +353,29 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
     projectionRunId: upload.projectionRunId,
     modelVersion: run?.modelVersion ?? null,
     modelAsOf: run?.asOfAt?.toISOString() ?? null,
+    platformEligibilityManifestDigest: upload.eligibilityManifestDigest,
+    availabilityResolution:{policy:'player-game-availability-v1',pinnedPlayers:pinnedDecisionCount,
+      legacyPlayers:projectionStats.length-pinnedDecisionCount,decisionAt:run?.asOfAt?.toISOString()??null},
+    availabilityHealth:runAvailability.health??null,
     refreshAvailable, refreshMessage,
     format: upload.format as "classic" | "showdown",
     games: upload.games as string[],
     teams: upload.teams as string[],
-    warnings: [...upload.warnings as string[], ...(incompleteWarning ? [incompleteWarning] : []), ...(staleWarning ? [staleWarning] : []), ...(refreshMessage ? [refreshMessage] : []), ...(calibrationWarning ? [calibrationWarning] : [])],
+    warnings: [...upload.warnings as string[], ...(incompleteWarning ? [incompleteWarning] : []), ...(staleWarning ? [staleWarning] : []), ...(refreshMessage ? [refreshMessage] : []), ...(calibrationWarning ? [calibrationWarning] : []), ...(signalReadWarning ? [signalReadWarning] : []), ...(qbContextWarning ? [qbContextWarning] : []),
+      ...(projectionStats.length&&pinnedDecisionCount<projectionStats.length?[`${projectionStats.length-pinnedDecisionCount} legacy projection rows lack a pinned availability decision; current evidence is display-only for those rows.`]:[])],
     fileName: upload.fileName,
     players: rows.map((row) => ({
       id: row.id,
       dkPlayerId: row.dkPlayerId,
       captainDkPlayerId: row.captainDkPlayerId,
+      rosterPositions: row.rosterPositions as string[],
       ffPlayerId: row.ffPlayerId,
       situationEvidence:situations?.rates.get(`${benchmarkTeam(row.team)}:${identityMap.get(row.ffPlayerId??-1)}:${row.position}`)??{team:null,rates:null,ratesDigest:null,ratesAsOf:null,reason:situations?.failure??'No model-linked situation evidence.'},
       name: row.name,
       position: row.position as NflWorkspacePlayer["position"],
+      playerSignals: classifyNflPlayerSignals(row.position, signalEvidence.get(identityMap.get(row.ffPlayerId ?? -1) ?? "") ?? null),
+      qbMatchupContext: row.position === "QB" && qbContexts.get(benchmarkTeam(row.team))?.opponent === benchmarkTeam(row.opponent ?? "")
+        ? qbContexts.get(benchmarkTeam(row.team)) ?? null : null,
       team: row.team,
       opponent: row.opponent,
       gameKey: row.gameKey,
@@ -333,8 +384,13 @@ async function workspaceSlate(uploadId: string): Promise<NflWorkspaceSlate> {
       captainSalary: row.captainSalary,
       avgFptsDk: numeric(row.avgFptsDk),
       dkStatus: row.dkStatus,
-      isOut: row.isOut || Boolean(availability(row).blockedReason),
+      platformEligibility: row.platformEligibility as NflWorkspacePlayer['platformEligibility'],
+      isOut: platformOut(row) || Boolean(availability(row).blockedReason),
       availability: availability(row),
+      availabilityEvidence:{gameDecisionId:availability(row).decisionId??null,
+        platformManifestDigest:upload.eligibilityManifestDigest,
+        platformDecisionState:(row.platformEligibility as PlatformEligibilityDecision|null)?.state??null,
+        decisionAt:availability(row).evaluatedAt??null},
       workloadEligible:workloadPoolEligible({...row,availability:availability(row)},now),
       identityMethod: row.identityMethod,
       identityEvidence: row.identityEvidence,
@@ -407,7 +463,7 @@ async function persistSalarySlate(slate: NflDkSlate, digest: string, fileName: s
   assertUniqueNflSalaryIdentities(identityDecisions.map(({decision},i)=>({name:slate.players[i].name,
     gsisId:decision.match?.gsisId,localPlayerId:decision.match?.playerId})));
   const signature = sha256(`${slate.format}|${[...new Set(slate.players.map(p => p.gameInfo))].sort().join("|")}`);
-  const existing = await db.select({ uploadId: nflDfsSlateUploads.uploadId })
+  const existing = await db.select({ uploadId: nflDfsSlateUploads.uploadId, createdAt:nflDfsSlateUploads.createdAt })
     .from(nflDfsSlateUploads)
     .where(run ? and(eq(nflDfsSlateUploads.fileDigest, digest), eq(nflDfsSlateUploads.projectionRunId, run.runId)) : eq(nflDfsSlateUploads.fileDigest, digest))
     .orderBy(desc(nflDfsSlateUploads.createdAt)).limit(1);
@@ -417,10 +473,15 @@ async function persistSalarySlate(slate: NflDkSlate, digest: string, fileName: s
     if (isSlateComplete(slate.players.length,stored?.n ?? 0)) return workspaceSlate(existing[0].uploadId);
   }
   const uploadId = existing[0]?.uploadId ?? randomUUID();
+  const eligibilityDecisionAt=(existing[0]?.createdAt??new Date()).toISOString();
+  const platformManifest=buildDraftKingsEligibilityManifest({slateId:uploadId,decisionAt:eligibilityDecisionAt,fileDigest:digest,
+    players:slate.players.map(player=>({dkPlayerId:player.dkPlayerId,status:player.status,isOut:player.isOut}))});
+  const eligibilityManifestDigest=platformManifest.digest;
+  const platformDecisionById=new Map(platformManifest.decisions.map(decision=>[decision.sourceRecordId,decision]));
   // Built, NOT awaited: the header row goes into the same transaction as the
   // players below. Committing it on its own is what let a failed player write
   // leave a slate that still looked whole -- see `slate-persist.ts`.
-  const headerWrite = existing[0] ? null : db.insert(nflDfsSlateUploads).values({
+  const headerWrite = existing[0] ? db.update(nflDfsSlateUploads).set({eligibilityManifestDigest}).where(eq(nflDfsSlateUploads.uploadId,uploadId)) : db.insert(nflDfsSlateUploads).values({
       uploadId,
       slateSignature: signature,
       fileName,
@@ -431,6 +492,7 @@ async function persistSalarySlate(slate: NflDkSlate, digest: string, fileName: s
       warnings: slate.warnings,
       playerCount: slate.players.length,
       projectionRunId: run?.runId ?? null,
+      eligibilityManifestDigest,
     });
   const playerRows = slate.players.map((player, playerIndex) => {
     const normalized = normalizeName(player.name);
@@ -456,6 +518,7 @@ async function persistSalarySlate(slate: NflDkSlate, digest: string, fileName: s
       dkStatus: player.status,
       isOut: player.isOut,
       identityMethod,
+      platformEligibility:platformDecisionById.get(player.dkPlayerId)!,
       identityEvidence: {version:'nfl-identity-registry-v1', method:identityMethod, gsisId:permanent?.gsisId ?? null,
         projectionRunId:run?.runId ?? null, projectionRowId:projection?.id ?? null,
         registryAvailable:identityRoster.available,
@@ -508,6 +571,7 @@ async function persistSalarySlate(slate: NflDkSlate, digest: string, fileName: s
         isOut: excluded(nflDfsSlatePlayers.isOut),
         identityMethod: excluded(nflDfsSlatePlayers.identityMethod),
         identityEvidence: excluded(nflDfsSlatePlayers.identityEvidence),
+        platformEligibility: excluded(nflDfsSlatePlayers.platformEligibility),
         projectionStatus: excluded(nflDfsSlatePlayers.projectionStatus),
         ourProj: excluded(nflDfsSlatePlayers.ourProj),
         floorFpts: excluded(nflDfsSlatePlayers.floorFpts),
@@ -520,7 +584,7 @@ async function persistSalarySlate(slate: NflDkSlate, digest: string, fileName: s
       },
     }),
   );
-  const writes = [...(headerWrite ? [headerWrite] : []), ...playerWrites];
+  const writes = [headerWrite, ...playerWrites];
   if (writes.length) await db.batch(writes as [(typeof writes)[number], ...(typeof writes)[number][]]);
 
   // Trust, then verify. The transaction is a claim made by the driver; the row
@@ -578,10 +642,14 @@ export async function loadSavedNflWorkspace(uploadId: string) {
   const uploads = await db.select().from(nflDfsSlateUploads).where(eq(nflDfsSlateUploads.uploadId, uploadId)).limit(1);
   const runs = await db.select({ runId: nflDfsOptimizerRuns.runId, createdAt: nflDfsOptimizerRuns.createdAt,
     count: nflDfsOptimizerRuns.generatedLineups, mode: nflDfsOptimizerRuns.mode, source: nflDfsOptimizerRuns.projectionSource,
+    settings:nflDfsOptimizerRuns.settings,
   }).from(nflDfsOptimizerRuns).innerJoin(nflDfsSlateUploads, eq(nflDfsOptimizerRuns.uploadId, nflDfsSlateUploads.uploadId))
     .where(and(or(eq(nflDfsSlateUploads.slateSignature, uploads[0].slateSignature), eq(nflDfsSlateUploads.fileDigest, uploads[0].fileDigest)), sql`${nflDfsOptimizerRuns.status} in ('complete','partial')`,
       sql`${nflDfsOptimizerRuns.generatedLineups} > 0`)).orderBy(desc(nflDfsOptimizerRuns.createdAt)).limit(100);
-  return { slate, runs: runs.map(run => ({ ...run, createdAt: run.createdAt.toISOString() })) };
+  return { slate, runs: runs.map(run => ({ ...run, createdAt: run.createdAt.toISOString(),
+    defensiveMode:(run.settings as NflOptimizerSettings).defensiveAdjustments?.mode??'off',
+    defensiveProfile:(run.settings as NflOptimizerSettings).defensiveAdjustments?.profile??null,
+    settings:undefined })) };
 }
 
 export async function loadSavedNflLineups(uploadId: string, runId: string) {
@@ -590,7 +658,15 @@ export async function loadSavedNflLineups(uploadId: string, runId: string) {
   const original = (await db.select().from(nflDfsSlateUploads).where(eq(nflDfsSlateUploads.uploadId, run.uploadId)).limit(1))[0];
   if (!selected || !original || (selected.slateSignature !== original.slateSignature && selected.fileDigest !== original.fileDigest)) throw new Error('This lineup set belongs to a different slate.');
   if (lineups.length !== run.generatedLineups) throw new Error('Saved lineup set is incomplete.');
-  return { runId, settings: run.settings as NflOptimizerSettings,
+  const savedSettings=run.settings as NflOptimizerSettings & {runEvidence?:{
+    eligibility:NflOptimizerResult['eligibility'];exposureReport:NflOptimizerResult['exposureReport'];
+    salaryBandReport:NflOptimizerResult['salaryBandReport'];duplication:NflOptimizerResult['duplication'];
+    ownership:OwnershipAssessment}};
+  return { runId, settings: savedSettings, evidence:savedSettings.runEvidence??null,
+    defensiveForecasts:(Array.isArray(run.inputSnapshot)?run.inputSnapshot:[]).flatMap((p:unknown)=>{
+      const row=p as {dkPlayerId?:number;defensiveForecast?:NflOptimizerPlayer['defensiveForecast']};
+      return row.dkPlayerId!=null&&row.defensiveForecast?[{dkPlayerId:row.dkPlayerId,bundle:row.defensiveForecast}]:[];
+    }),
     lineups: restoreSavedLineups(run.inputSnapshot, lineups.sort((a, b) => a.lineupNumber - b.lineupNumber)) };
 }
 
@@ -629,7 +705,7 @@ export async function applyNflComparison(
 export async function runNflOptimizer(
   uploadId: string,
   settings: NflOptimizerSettings,
-): Promise<{ runId: string; slate: NflWorkspaceSlate; result: NflOptimizerResult; ownership?: OwnershipAssessment }> {
+): Promise<{ runId: string; slate: NflWorkspaceSlate; result: NflOptimizerResult; ownership?: OwnershipAssessment;effectiveSettings:NflOptimizerSettings }> {
   await ensureNflDfsTables();
   const slate = await workspaceSlate(uploadId);
   if(settings.format!==slate.format)throw new Error("Optimizer format must match the saved salary slate.");
@@ -652,6 +728,59 @@ export async function compareNflWorkload(uploadId:string, settings:NflOptimizerS
   return {baseline,candidate,settings:paired,excludedFromComparison:slate.players.length-common.length,comparedAt:new Date().toISOString(),note:'Identical frozen player inputs and settings; up to five lineups, randomness zero. Generated scores are predictions, not measured performance.'};
 }
 
+export async function exportSavedNflDefensiveEntries(runId:string,entryTemplate:string):Promise<string> {
+  const {run}=await readNflOptimizerAudit(runId);
+  const settings=run.settings as NflOptimizerSettings & {runEvidence?:{
+    eligibility:NflOptimizerResult['eligibility'];exposureReport:NflOptimizerResult['exposureReport'];
+    salaryBandReport:NflOptimizerResult['salaryBandReport'];duplication:NflOptimizerResult['duplication'];
+    ownership:OwnershipAssessment}};
+  if(!['experimental','approved'].includes(settings.defensiveAdjustments?.mode??''))throw new Error('This export route requires a saved defensive run.');
+  if(!settings.runEvidence || !Array.isArray(settings.runEvidence.eligibility)
+    || !Array.isArray(settings.runEvidence.exposureReport) || !Array.isArray(settings.runEvidence.salaryBandReport)
+    || !Array.isArray(settings.runEvidence.duplication) || !settings.runEvidence.ownership)
+    throw new Error('Saved export QA evidence is missing. Regenerate before rewriting entries.');
+  if(sha256(canonicalAuditJson({settings:run.settings,inputSnapshot:run.inputSnapshot,
+    optimizerVersion:run.optimizerVersion,buildInfo:run.buildInfo}))!==run.inputDigest)
+    throw new Error('Saved optimizer input digest does not match.');
+  const saved=await loadSavedNflLineups(run.uploadId,runId);
+  const slate=await workspaceSlate(run.uploadId);
+  await assertSlatePregame(slate);
+  if(saved.lineups.some(l=>l.slots.some(s=>!s.player.defensiveForecast
+    || s.player.defensiveForecast.mode!==settings.defensiveAdjustments!.mode
+    || s.player.defensiveForecast.profile!==settings.defensiveAdjustments!.profile)))
+    throw new Error('A saved defensive roster is missing its selected forecast bundle.');
+  const qa=runNflPreExportQa({format:settings.format,requestedLineups:settings.nLineups,
+    lineups:saved.lineups.map(l=>({lineupNumber:l.lineupNumber,playerIds:l.playerIds,totalSalary:l.totalSalary,
+      slots:l.slots.map(s=>({slot:s.slot,playerId:s.player.dkPlayerId,salary:s.salary,player:s.player})),
+      archetype:l.archetype??null})),
+    eligibility:settings.runEvidence.eligibility,exposureReport:settings.runEvidence.exposureReport,
+    salaryBandReport:settings.runEvidence.salaryBandReport,duplication:settings.runEvidence.duplication,
+    ownership:{capability:settings.runEvidence.ownership.capability,errors:settings.runEvidence.ownership.errors,
+      features:{leverage:settings.runEvidence.ownership.features.leverage}}});
+  if(qa.decision==='blocked')throw new Error(`Saved pre-export QA blocked: ${qa.openBlockers.join(', ')}.`);
+  await assertSlatePregame(slate); // Close the generation/export kickoff race.
+  return exportNflDkEntries(entryTemplate,saved.lineups);
+}
+
+async function assertSlatePregame(slate:NflWorkspaceSlate):Promise<void> {
+  const dates=slate.players.flatMap(p=>[...(p.gameInfo?.matchAll(/\b\d{2}\/\d{2}\/(\d{4})\b/g)??[])].map(m=>Number(m[1])));
+  if(!dates.length)throw new Error('Defensive generation requires dated salary games.');
+  const schedule=await db.execute(sql`SELECT g.kickoff,h.abbreviation AS "homeTeam",a.abbreviation AS "awayTeam"
+    FROM nfl_season_games g JOIN nfl_teams h ON h.team_id=g.home_team_id
+    JOIN nfl_teams a ON a.team_id=g.away_team_id
+    WHERE g.game_type='REG' AND g.season BETWEEN ${Math.min(...dates)-1} AND ${Math.max(...dates)}`);
+  const formatter=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'});
+  const games=new Map(slate.players.map(p=>[`${p.gameKey}|${p.gameInfo}`,p]));
+  for(const game of games.values()) {
+    const key=game.gameKey?.split('@').map(canonicalNflTeam).join('@');
+    const date=game.gameInfo?.match(/\b(\d{2}\/\d{2}\/\d{4})\b/)?.[1];
+    const matches=schedule.rows.filter(r=>`${canonicalNflTeam(String(r.awayTeam))}@${canonicalNflTeam(String(r.homeTeam))}`===key
+      && formatter.format(new Date(String(r.kickoff)))===date);
+    if(matches.length!==1)throw new Error(`Cannot verify kickoff for ${game.gameInfo??'salary game'}.`);
+    if(Date.parse(String(matches[0].kickoff))<=Date.now())throw new Error('The slate has started. New defensive-adjusted lineups and entry rewrites are unavailable after the first kickoff.');
+  }
+}
+
 async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizerSettings) {
   if (slate.players.some(p=>p.identityMethod==='exact_name_position')) {
     throw new Error('This salary upload contains legacy player matches without team verification. Reload its salary CSV before optimizing.');
@@ -659,7 +788,29 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
   const uploadId=slate.uploadId;
   const now=Date.now();
   validateSituations(settings.situations,slate.teams);
-  const prepared= settings.projectionSource==='workload'?prepareProjectionAudits(slate.players,slate.situationTeams??[],settings.workloadPositions,settings.situations,now):slate.players;
+  const requestedDefensive=settings.defensiveAdjustments;
+  if(requestedDefensive?.mode && requestedDefensive.mode!=='off') {
+    if(settings.projectionSource!=='our')throw new Error('Defensive adjustments require historical projections.');
+    if(!['experimental','approved'].includes(requestedDefensive.mode))throw new Error('Unknown defensive mode.');
+    if(!['pfr-efficiency','allowed-rushing-volume'].includes(requestedDefensive.profile))throw new Error('Unknown defensive profile.');
+    if(slate.modelVersion!=='nfl-dfs-historical-v5'||!slate.projectionRunId)throw new Error('This defensive profile requires an exact historical v5 baseline.');
+  }
+  const candidateCaptures=requestedDefensive?.mode && requestedDefensive.mode!=='off'
+    ? await readDefensiveCaptures(uploadId,slate.projectionRunId!,requestedDefensive.profile,new Date(now)):new Map();
+  const candidateArtifact=[...candidateCaptures.values()][0]?.artifactDigest??'';
+  const baselineRun=requestedDefensive?.mode==='approved'?(await db.select({modelConfig:nflDfsProjectionRuns.modelConfig})
+    .from(nflDfsProjectionRuns).where(eq(nflDfsProjectionRuns.runId,slate.projectionRunId!)).limit(1))[0]:null;
+  const policyDecision=requestedDefensive?.mode==='approved' ? readServerDefensivePolicy({
+    profile:requestedDefensive.profile,baselineModelVersion:slate.modelVersion!,
+    configurationHash:sha256(canonicalAuditJson(baselineRun?.modelConfig??{})),
+    scoringVersion:'nfl-dfs-historical-v5-dk-scoring',implementationHash:candidateArtifact,
+  },new Date(now)):null;
+  const defensive=requestedDefensive?.mode==='approved'&&!policyDecision?.active
+    ? {...requestedDefensive,mode:'off' as const}:requestedDefensive;
+  if(defensive?.mode && defensive.mode!=='off')await assertSlatePregame(slate);
+  const sourcePlayers=defensive?.mode && defensive.mode!=='off' ? slate.players.map(player=>({...player,
+    defensiveForecast:resolveDefensiveForecast(player,slate.projectionRunId!,defensive,candidateCaptures.get(player.ffPlayerId??-1)??null)})):slate.players;
+  const prepared= settings.projectionSource==='workload'?prepareProjectionAudits(sourcePlayers,slate.situationTeams??[],settings.workloadPositions,settings.situations,now):sourcePlayers;
   const eligible= settings.projectionSource==='workload' ? prepared.filter(p=>workloadPoolEligible(p,now)) : prepared;
   // Phase 2: the SERVER authoritatively resolves ownership capability from the
   // actual feed — the client can never claim "validated". Missing ownership
@@ -668,24 +819,38 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
   const ownershipAssessment = assessOwnership(
     eligible.filter(p=>!p.isOut).map(p=>({playerId:p.dkPlayerId, medianProjection: p.medianFpts ?? p.ourProj ?? null})),
     eligible.filter(p=>p.linestarOwnPct!=null).map(p=>({playerId:p.dkPlayerId, flexPct:(p.linestarOwnPct as number)/100, captainPct:null, source:'linestar', asOf:slate.modelAsOf})),
+    {format:slate.format},
   );
-  const resolvedSettings: NflOptimizerSettings = { ...settings, ownershipCapability: ownershipAssessment.capability };
+  const resolvedSettings: NflOptimizerSettings = { ...settings, defensiveAdjustments:defensive, ownershipCapability: ownershipAssessment.capability };
   const result = optimizeNflLineups(eligible, resolvedSettings);
+  if(policyDecision&&!policyDecision.active)result.warnings.push(`Approved defensive policy retained baseline: ${policyDecision.reason}.`);
+  if(defensive?.mode && defensive.mode!=='off') {
+    await assertSlatePregame(slate);
+    const applied=prepared.filter(p=>p.defensiveForecast?.status==='applied').length;
+    result.warnings.push(applied?`${defensive.mode} ${defensive.profile}: ${applied} players adjusted, ${prepared.length-applied} retained baseline.`:`${defensive.mode} ${defensive.profile}: baseline only; no player passed the frozen capture checks.`);
+  }
   if(eligible.length!==slate.players.length)result.warnings.push(`${slate.players.length-eligible.length} players excluded: workload optimization requires an unstarted, matching salary game.`);
   if (result.lineups.some(l => l.slots.some(s => s.projectionSource === "calibrated" && Date.parse(s.player.calibrated!.kickoff) <= Date.now()))) throw new Error("A calibrated player's game started during optimization. Refresh the slate before regenerating.");
   if (result.lineups.some(l => l.slots.some(s => s.projectionSource === "workload" && (Date.parse(selectedWorkload(s.player,settings.workloadPositions)!.kickoff) <= Date.now() || Date.now()-Date.parse(selectedWorkload(s.player,settings.workloadPositions)!.capturedAt)>72*3600000)))) throw new Error("A workload forecast expired during optimization. Refresh forecasts before regenerating.");
   if(settings.projectionSource==='workload'&&result.lineups.some(l=>l.slots.some(s=>!workloadPoolEligible(slate.players.find(p=>p.dkPlayerId===s.player.dkPlayerId)!,Date.now()))))throw new Error('Roster or kickoff evidence expired during optimization. Refresh the slate.');
   const runId = randomUUID();
-  const inputSnapshot = slate.players.map((player) => ({
+  const inputSnapshot = prepared.map((player) => ({
     dkPlayerId: player.dkPlayerId, ffPlayerId: player.ffPlayerId, identityMethod: player.identityMethod, identityEvidence:player.identityEvidence, gameInfo: player.gameInfo, name: player.name, team: player.team, position: player.position,
     id:player.id,captainDkPlayerId:player.captainDkPlayerId,opponent:player.opponent,gameKey:player.gameKey,boomRate:player.boomRate,projectionStatus:player.projectionStatus,
-    salary: player.salary, captainSalary: player.captainSalary, status: player.dkStatus,
-    ourProj: player.ourProj, floor: player.floorFpts, ceiling: player.ceilingFpts,
+    salary: player.salary, captainSalary: player.captainSalary, rosterPositions: player.rosterPositions, status: player.dkStatus,
+    ourProj: player.ourProj, floor: player.floorFpts, median:player.medianFpts, ceiling: player.ceilingFpts,
+    defensiveForecast:player.defensiveForecast??null,
     projectionScenario: player.projectionScenario, redistributionVersion: slate.redistribution?.version,
     statMeans: player.statMeans,
     dkAvg: player.avgFptsDk, fantasypros: player.fantasyprosProj,
     linestar: player.linestarProj, ownership: player.linestarOwnPct, custom: player.customProj,
+    playerSignals: player.playerSignals ?? [],
+    qbMatchupContext: player.qbMatchupContext ?? null,
     availability: player.availability, isOut: player.isOut,
+    availabilityDecisionId:player.availability?.decisionId??null,
+    availabilityEvidence:player.availabilityEvidence??null,
+    platformEligibility:player.platformEligibility??null,
+    platformEligibilityManifestDigest:slate.platformEligibilityManifestDigest??null,
     injuryCoverageSnapshotId: slate.injuryCoverage?.snapshotId ?? null,
     calibrated: player.calibrated ?? null, calibrationReason: player.calibrationReason,
     workloadEligible:player.workloadEligible,
@@ -693,17 +858,19 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
     positionWorkload:player.positionWorkload??null,positionWorkloadReason:player.positionWorkloadReason,
     situationEvidence:player.situationEvidence,
     situationTeamEvidence:slate.players.find(p=>p.team===player.team)?.dkPlayerId===player.dkPlayerId?slate.situationTeams?.find(t=>t.team===benchmarkTeam(player.team)):undefined,
-    projectionAudit:resolveProjectionAudit(prepared.find(p=>p.dkPlayerId===player.dkPlayerId)!,settings),
+    projectionAudit:resolveProjectionAudit(player,resolvedSettings),
     baselineSource:{runId:slate.projectionRunId,modelVersion:slate.modelVersion,asOf:slate.modelAsOf},
   }));
   const buildInfo = nflBuildInfo();
   // Phase 2 (P2-AC3): persist the resolved capability and an ownership
   // disclosure so a projection-only export can never later claim leverage.
-  const persistedSettings = { ...resolvedSettings, ownershipDisclosure: {
+  const persistedSettings = { ...resolvedSettings, requestedDefensiveAdjustments:requestedDefensive??null,
+    defensivePolicyDecision:policyDecision, ownershipDisclosure: {
     capability: ownershipAssessment.capability, source: ownershipAssessment.source, asOf: ownershipAssessment.asOf,
     coverage: ownershipAssessment.coverage, captainTotal: ownershipAssessment.captainTotal, flexTotal: ownershipAssessment.flexTotal,
     errors: ownershipAssessment.errors,
-  } };
+  }, runEvidence:{eligibility:result.eligibility??[],exposureReport:result.exposureReport??[],
+    salaryBandReport:result.salaryBandReport??[],duplication:result.duplication??[],ownership:ownershipAssessment} };
   // Build identity is part of what makes a run reproducible, so it is inside the
   // digest: two runs with different code cannot share an input digest.
   const inputDigest = sha256(canonicalAuditJson({ settings: persistedSettings, inputSnapshot, optimizerVersion: NFL_OPTIMIZER_VERSION, buildInfo }));
@@ -731,7 +898,7 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
     projectedOwnership: lineup.projectedOwnership,
   })));
   } catch { throw new Error("Unable to save optimizer results. Refresh the slate and retry; an incomplete run may remain saved."); }
-  return { runId, slate, result, ownership: ownershipAssessment };
+  return { runId, slate:{...slate,players:prepared}, result, ownership: ownershipAssessment,effectiveSettings:resolvedSettings };
 }
 
 export async function readNflOptimizerAudit(runId:string) {
@@ -746,6 +913,7 @@ export async function readNflOptimizerAudit(runId:string) {
 
 export type NflProjectionExplanation = {
   ok: true;
+  matchupComparison: MatchupProjectionComparison | null;
   player: { name: string; position: string; team: string; opponent: string | null; salary: number | null };
   status: string;                       // historical | position_prior | unavailable | out
   projection: number | null;            // model_proj_fpts — the headline number
@@ -777,6 +945,9 @@ export type NflProjectionExplanation = {
   draws: number | null;                 // Monte Carlo sample count
   statMeans: Record<string, number>;    // projected mean stat line
   availabilityNote: string | null;      // why zeroed, if out
+  availabilityDecisionId: string | null;
+  platformEligibilityManifestDigest: string | null;
+  availabilityEvidence: NflWorkspacePlayer['availabilityEvidence'] | null;
 } | { ok: false; error: string };
 
 /** Decompose WHY a slate player carries his projection: pull the full immutable
@@ -831,7 +1002,7 @@ export async function explainNflPlayerProjection(
   // surfaces disagreeing about one player costs more.
   const slate = await workspaceSlate(uploadId);
   const here = slate.players.find(p => p.dkPlayerId === slateRow.dkPlayerId);
-  const outHere = here?.projectionStatus === 'out' || slateRow.isOut || availability?.rule === 'zeroed';
+  const outHere = here?.projectionStatus === 'out' || here?.isOut || availability?.rule === 'zeroed';
   const estimated = here?.projectionScenario === 'availability_estimate';
   const inherited = here?.inherited ?? null;
   const donors = paidByDonor({
@@ -848,6 +1019,7 @@ export async function explainNflPlayerProjection(
 
   return {
     ok: true,
+    matchupComparison: await readMatchupComparison(uploadId,slateRow.ffPlayerId),
     player: { name: slateRow.name, position: slateRow.position, team: slateRow.team,
               opponent: slateRow.opponent, salary: slateRow.salary },
     projectionScenario: here?.projectionScenario ?? 'baseline_simulation',
@@ -889,5 +1061,8 @@ export async function explainNflPlayerProjection(
     statMeans: here?.statMeans ?? statMeans,
     availabilityNote: availabilityNote(availability, { isOut: slateRow.isOut, dkStatus: slateRow.dkStatus },
       slateRow.isOut ? (donors ?? { paidTo: [], units: [] }) : null),
+    availabilityDecisionId:here?.availability?.decisionId??null,
+    platformEligibilityManifestDigest:slate.platformEligibilityManifestDigest??null,
+    availabilityEvidence:here?.availabilityEvidence??null,
   };
 }

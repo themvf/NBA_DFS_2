@@ -205,7 +205,7 @@
 .movementBadges > span[data-kind="reversal"] { color: #eea0ff; }
 .movementBadges small, .watchHealth { color: var(--terminal-muted); font-size: 8px; }
 .watchHealth { grid-column: 1 / -1; }
-.movementFilters { display: flex; gap: 4px; padding: 8px; }
+.movementFilters { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px; }
 .movementFilters button { border: 1px solid var(--terminal-line); padding: 5px; font-size: 9px; cursor: pointer; }
 .movementFilters button[aria-pressed="true"] { color: #080d0b; background: var(--terminal-orange); }
 .watchLegend { padding: 0 9px 8px; margin: 0; font-size: 9px; line-height: 1.5; color: var(--terminal-muted); }

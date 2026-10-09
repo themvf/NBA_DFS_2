@@ -1,0 +1,46 @@
+{
+  "study_id": "nfl-coherent-matchup-v1",
+  "registered_on": "2026-09-27",
+  "status": "prospective_shadow_only",
+  "model_version": "nfl-coherent-matchup-research-v1",
+  "production_authority": false,
+  "hypothesis": "Shared empirical game opportunities and consistent offensive/defensive events improve player distribution forecasts and candidate-portfolio selection over the frozen production baseline.",
+  "baseline": "nfl-dfs-historical-v5; freeze exact run, model and config for every paired evaluation",
+  "development": "Historical seasons 2023 through pre-target 2026 weeks; descriptive empirical fitting on inspected data, never called an untouched holdout.",
+  "forward_start": {
+    "season": 2026,
+    "first_full_week": 4
+  },
+  "features": [
+    "paired empirical game attempts/carries/targets",
+    "existing team workload and player shares",
+    "existing conditional efficiency",
+    "frozen market environment factors",
+    "frozen PFR pressure/contact shadow factors",
+    "paired empirical sacks/fumbles/kicking/returns",
+    "shared offensive and DST scoring ledger"
+  ],
+  "marginal_policy": "Changed player and DST marginals require their own forward gate; emit mean, P10/P50/P90 and event-mean differences. Never claim marginal preservation.",
+  "missing_policy": "Reject incomplete historical event blocks; keep explicit unallocated opportunity; omit unmodeled players from the supported research pool with exclusions. No zero-fill of unavailable predictions.",
+  "forecast_gate": {
+    "minimum_full_forward_weeks": 8,
+    "minimum_paired_player_games_by_registered_position": 200,
+    "minimum_nfl_games": 50,
+    "primary": "weighted interval score with equally weighted central 50% and 80% intervals plus median absolute error, scored with the standard WIS normalization",
+    "minimum_relative_improvement": 0.01,
+    "interval": "week-clustered paired bootstrap; Holm familywise correction across QB/RB/WR/TE/DST",
+    "pass": "Multiplicity-adjusted 95% upper confidence bound on candidate-minus-baseline WIS is below zero and minimum relative gain passes",
+    "guardrails": "95% upper bound on mean-MAE delta below +0.10 DK points in every affected position; report coverage, width and fixed position boom Brier; no invariant failures",
+    "insufficient_data": "no_verdict"
+  },
+  "portfolio_gate": "Existing GPP revision 2 gate remains authoritative: 20 untouched Showdown slates, paired lower 95% bound above legacy, legality 100%, fulfillment >=99%, no increase in QA blockers. Classic and entry-mode claims require their own registered cohort and cannot inherit a Showdown pass.",
+  "construction_scope": "Classic research first; kicker player allocation is unsupported. Contest fields/payouts are absent unless explicitly supplied and validated.",
+  "role_state": "Conditional normal-starter state: when a unique active depth-one quarterback has provider evidence captured within 24 hours before the decision, allocate passing attempts to that starter. Backup QB carries remain unallocated. Missing or ambiguous evidence preserves historical shares and is audited. No inferred injury or benching probabilities; this conditional model is not a calibrated availability mixture.",
+  "rollback": "No promotion in this registration; future active release retains frozen baseline and the existing study-specific rollback rules.",
+  "protected_studies": [
+    "opp_carries unchanged",
+    "pressure/contact registrations unchanged",
+    "availability registrations unchanged",
+    "GPP gates unchanged"
+  ]
+}

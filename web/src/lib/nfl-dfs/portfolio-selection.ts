@@ -79,6 +79,10 @@ export function selectPortfolio(
   evaluation: PreparedNflScenarios,
   options: { count: number; target: number; objective?: PortfolioObjective; maxPairwiseOverlap?: number },
 ): PortfolioSelectionResult {
+  if (!Number.isSafeInteger(options.count) || options.count < 1) throw new Error("Portfolio count must be positive.");
+  for (const field of ["snapshotId", "modelVersion", "decisionAt", "inputsCapturedAt", "source"] as const) {
+    if (selection.metadata[field] !== evaluation.metadata[field]) throw new Error(`Selection/evaluation ${field} mismatch.`);
+  }
   // Provenance: selection and evaluation banks MUST be independent (P7-AC4).
   if (selection.metadata.runId === evaluation.metadata.runId || selection.metadata.streamId === evaluation.metadata.streamId || selection.metadata.seed === evaluation.metadata.seed) {
     throw new Error("Selection and evaluation banks must be separate runs, streams and seeds.");
@@ -89,6 +93,8 @@ export function selectPortfolio(
   const objective = options.objective ?? "max_prob_any_top_threshold";
   const scored = scoreCandidates(slate, candidates, selection, options.target);
   const overlapCap = options.maxPairwiseOverlap ?? 6;
+  if (!Number.isSafeInteger(overlapCap) || overlapCap < 0 || overlapCap > (slate.format === "classic" ? 9 : 6)) throw new Error("Invalid overlap cap.");
+  if (new Set(scored.map((row) => row.key)).size !== scored.length) throw new Error("Duplicate canonical candidates.");
 
   const chosen: Array<{ key: string; lineup: NflLineup; draws: number[]; marginalContribution: number }> = [];
   const remaining = new Map(scored.map((c) => [c.key, c]));
@@ -102,7 +108,12 @@ export function selectPortfolio(
       const violatesOverlap = chosen.some((c) => c.lineup.filter((e) => playerIds.includes(e.playerId)).length > overlapCap);
       if (violatesOverlap) continue;
       const withCand = anySuccessProbability([...chosen.map((c) => c.draws), cand.selectionDraws], selection.weights, options.target);
-      const gain = objective === "max_prob_any_top_threshold" ? withCand - currentProb : cand.selection.mean;
+      const gain = objective === "max_prob_any_top_threshold" ? withCand - currentProb
+        : selection.weights.reduce((sum, weight, i) => {
+          // Marginal gain in the portfolio's best score, not the candidate's mean.
+          const current = chosen.length ? Math.max(...chosen.map((row) => row.draws[i])) : null;
+          return sum + weight * (current === null ? cand.selectionDraws[i] : Math.max(current, cand.selectionDraws[i]) - current);
+        }, 0);
       if (!best || gain > best.gain || (gain === best.gain && cand.key < best.key)) best = { key: cand.key, gain };
     }
     if (!best) break;

@@ -1,0 +1,13 @@
+{
+  "season": 2026,
+  "week": 3,
+  "source_label": "Reviewed league inactive report URL or document identifier",
+  "source_published_at": "2026-09-27T15:30:00Z",
+  "records": [
+    {
+      "game_id": "2026_03_ARI_SF",
+      "gsis_id": "00-0000001",
+      "status": "INACTIVE"
+    }
+  ]
+}

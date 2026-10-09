@@ -284,6 +284,9 @@ def simulate_team(
     by_player: Mapping[str, Sequence[Mapping[str, Any]]],
     by_position: Mapping[str, Sequence[Mapping[str, Any]]],
     config: Mapping[str, Any] = CONFIG,
+    *, retain_draws: bool = False, budget_draws: Sequence[Mapping[str, int]] | None = None,
+    rate_factors: Mapping[str, Mapping[str, float]] | None = None,
+    strict_game_ledger: bool = False,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Simulate one shared offensive game state and return player-level distributions."""
     prepared = []
@@ -297,6 +300,12 @@ def simulate_team(
                  for name, spec in RATE_DEFS.items() if position in spec["positions"]}
         if any(rate is None for rate in rates.values()):
             continue
+        for rate_name, factor in (rate_factors or {}).get(identity, {}).items():
+            if rate_name not in rates or not isfinite(float(factor)) or float(factor) < 0:
+                raise ValueError("invalid explicit research rate factor")
+            rates[rate_name] = {**rates[rate_name], "mean": rates[rate_name]["mean"] * float(factor), "research_factor": float(factor)}
+            if RATE_DEFS[rate_name].get("probability"):
+                rates[rate_name]["mean"] = min(1.0, rates[rate_name]["mean"])
         rare = {field: per_game_mean(by_player.get(identity, ()), peers, field, config=config)
                 for field, positions in RARE_FIELDS.items() if position in positions}
         prepared.append({"player": player, "position": position, "rates": rates, "rare": rare})
@@ -305,6 +314,9 @@ def simulate_team(
     seed = int(sha256(seed_key.encode()).hexdigest()[:16], 16)
     rng = np.random.default_rng(seed)
     draws = int(config["draws"])
+    if budget_draws is not None and len(budget_draws) != draws:
+        raise ValueError("budget draws must match configured draws")
+    retained = []
     states = [{"scores": [], "stats": defaultdict(float), "contributions": defaultdict(float)} for _ in prepared]
     maximum_mismatch = defaultdict(float)
     unallocated_sums = defaultdict(float)
@@ -314,17 +326,22 @@ def simulate_team(
     receivers = [index for index, item in enumerate(prepared) if "targets" in item["player"]["components"]]
     budgets = forecast["budgets"]
 
-    for _ in range(draws):
-        attempts = _count(rng, (budgets.get("attempts") or {}).get("mean"))
-        carries = _count(rng, (budgets.get("carries") or {}).get("mean"))
+    for draw_index in range(draws):
+        supplied = budget_draws[draw_index] if budget_draws is not None else None
+        if supplied is not None and any(type(supplied.get(key)) is not int or supplied[key] < 0 for key in ("attempts", "carries", "targets")):
+            raise ValueError("supplied opportunity budgets require nonnegative integer counts")
+        attempts = supplied["attempts"] if supplied is not None else _count(rng, (budgets.get("attempts") or {}).get("mean"))
+        carries = supplied["carries"] if supplied is not None else _count(rng, (budgets.get("carries") or {}).get("mean"))
         qb_attempts, unknown_attempts = _allocate_count(rng, attempts, [prepared[index]["player"]["components"]["attempts"]["share"] for index in qbs])
         rushing_counts, unknown_carries = _allocate_count(rng, carries, [prepared[index]["player"]["components"]["carries"]["share"] for index in rushers])
 
         draw_stats: list[dict[str, float]] = [dict() for _ in prepared]
+        draw_opportunities = [dict() for _ in prepared]
         completions = passing_yards = passing_tds = 0
         for index, attempts_for_qb in zip(qbs, qb_attempts):
             rates = prepared[index]["rates"]
             completed = int(rng.binomial(attempts_for_qb, rates["completion_rate"]["mean"]))
+            draw_opportunities[index].update(attempts=attempts_for_qb, completions=completed)
             yards = max(0.0, _yards(rng, completed, rates["passing_yards_per_completion"]["mean"], 5.0))
             touchdowns = int(rng.binomial(completed, rates["passing_td_rate"]["mean"]))
             draw_stats[index].update({"passing_yards": yards, "passing_tds": touchdowns,
@@ -333,10 +350,11 @@ def simulate_team(
             passing_yards += yards
             passing_tds += touchdowns
 
-        targets = min(attempts, max(completions, _count(rng, (budgets.get("targets") or {}).get("mean"))))
+        targets = min(attempts, max(completions, supplied["targets"] if supplied is not None else _count(rng, (budgets.get("targets") or {}).get("mean"))))
         target_counts, unknown_targets = _allocate_count(rng, targets, [prepared[index]["player"]["components"]["targets"]["share"] for index in receivers])
         catch_weights = [prepared[index]["rates"]["catch_rate"]["mean"] for index in receivers]
-        reception_counts, unknown_receptions = _allocate_with_capacity(rng, completions, target_counts, catch_weights, unknown_targets + unknown_attempts)
+        reception_counts, unknown_receptions = _allocate_with_capacity(rng, completions, target_counts, catch_weights,
+            unknown_targets if strict_game_ledger else unknown_targets + unknown_attempts)
 
         receiving_weights = [count * prepared[index]["rates"]["receiving_yards_per_reception"]["mean"] for index, count in zip(receivers, reception_counts)]
         unknown_yard_weight = unknown_receptions * (_weighted([rate["rates"]["receiving_yards_per_reception"]["position_prior"] for rate in prepared if rate["position"] in ("RB", "WR", "TE")]) or 10.0)
@@ -349,10 +367,12 @@ def simulate_team(
         receiving_tds, unknown_receiving_tds = _allocate_with_capacity(rng, passing_tds, reception_counts, td_weights, unknown_receptions)
 
         for index, carry_count in zip(rushers, rushing_counts):
+            draw_opportunities[index]["carries"] = carry_count
             rates = prepared[index]["rates"]
             draw_stats[index].update({"rushing_yards": max(0.0, _yards(rng, carry_count, rates["rushing_yards_per_carry"]["mean"], 3.5)),
                                       "rushing_tds": int(rng.binomial(carry_count, rates["rushing_td_rate"]["mean"]))})
-        for index, receptions, yards, touchdowns in zip(receivers, reception_counts, known_receiving_yards, receiving_tds):
+        for index, receptions, yards, touchdowns, targets_for_player in zip(receivers, reception_counts, known_receiving_yards, receiving_tds, target_counts):
+            draw_opportunities[index]["targets"] = targets_for_player
             draw_stats[index].update({"receptions": receptions, "receiving_yards": yards, "receiving_tds": touchdowns})
 
         for index, item in enumerate(prepared):
@@ -377,6 +397,14 @@ def simulate_team(
         for key, value in (("attempts", unknown_attempts), ("carries", unknown_carries), ("targets", unknown_targets),
                            ("receptions", unknown_receptions), ("receiving_yards", unknown_receiving_yards), ("receiving_tds", unknown_receiving_tds)):
             unallocated_sums[key] += value
+        if retain_draws:
+            retained.append({"players": {str(item["player"].get("identity")): dict(stats) for item, stats in zip(prepared, draw_stats)},
+                             "participant_opportunities": {str(item["player"].get("identity")): dict(counts) for item, counts in zip(prepared, draw_opportunities)},
+                             "opportunities": {"attempts": attempts, "carries": carries, "targets": targets, "completions": completions},
+                             "supplied_budgets": supplied,
+                             "budget_reconciliation": {"target_count_change": targets - supplied["targets"]} if supplied is not None else {},
+                             "unallocated": {"attempts": unknown_attempts, "carries": unknown_carries, "targets": unknown_targets,
+                                             "receptions": unknown_receptions, "receiving_yards": unknown_receiving_yards, "receiving_tds": unknown_receiving_tds}})
 
     output = []
     for item, state in zip(prepared, states):
@@ -391,7 +419,8 @@ def simulate_team(
             "coherence_scope": "team_coupled_offense"})
     return output, {"scope": "team_coupled_offense", "draws": draws, "seed": seed,
                     "max_absolute_mismatch": dict(sorted(maximum_mismatch.items())),
-                    "mean_unallocated": {key: value / draws for key, value in sorted(unallocated_sums.items())}}
+                    "mean_unallocated": {key: value / draws for key, value in sorted(unallocated_sums.items())},
+                    **({"retained_draws": retained} if retain_draws else {})}
 
 
 def simulate_player(

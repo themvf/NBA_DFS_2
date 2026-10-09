@@ -10,6 +10,7 @@ from config import load_config
 from ingest.nfl_dfs_weekly import PipelineDatabase, target_season
 from model.nfl_dfs_historical import artifact_digest
 from model.nfl_dfs_reportcard import build_report
+from model.nfl_dfs_context_variant_study import context_forecasts
 
 
 def inputs(db, season, week):
@@ -47,6 +48,7 @@ def inputs(db, season, week):
             "model_version": p.get("shadow_version", "shadow-v1")}
         forecasts.append({**base, "variant": "shadow_baseline", "mean": p["baseline"], "median": p.get("median"),
             "p10": p["p10"], "p90": p["p90"], "boom_probability": p["boom_probability"], "stat_means": p.get("stat_means", {})})
+        forecasts.extend(context_forecasts(base, p))
         if p.get("candidate"):
             c = p["candidate"]
             forecasts.append({**base, "variant": "opportunity", "mean": c["prediction"], "median": c.get("median"),
@@ -97,10 +99,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--season", type=int)
     parser.add_argument("--week", type=int)
+    parser.add_argument("--dry-run", action="store_true", help="read existing ledgers without schema changes or persistence")
+    parser.add_argument("--output", type=Path, help="save the report locally (requires --week)")
     args = parser.parse_args()
     now = datetime.now(timezone.utc)
     season = target_season(args.season, now)
-    db = PipelineDatabase(load_config().database_url)
+    if args.output and not args.week:
+        parser.error("--output requires --week")
+    db = PipelineDatabase(load_config().database_url, initialize_schema=not args.dry_run)
     weeks = [args.week] if args.week else [r["week"] for r in db.execute("""SELECT DISTINCT week FROM (
         SELECT week FROM nfl_dfs_projection_runs WHERE season=%s
         UNION SELECT week FROM nfl_dfs_shadow_predictions WHERE season=%s
@@ -110,7 +116,10 @@ def main():
         report = build_report(season=season, week=week, now=now, **inputs(db, season, week))
         report["implementation"] = {p: hashlib.sha256(Path(p).read_bytes()).hexdigest()
                                     for p in ("model/nfl_dfs_reportcard.py", "ingest/nfl_dfs_reportcard.py")}
-        digest = persist(db, report)
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
+        digest = artifact_digest(report) if args.dry_run else persist(db, report)
         print(json.dumps({"season": season, "week": week, "digest": digest, "summary": report["summary"]}))
 
 

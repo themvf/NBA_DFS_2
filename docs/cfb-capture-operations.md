@@ -61,6 +61,33 @@ each movement family. All signals for the displayed game's IDs are loaded, so a
 global recent-alert limit cannot silently hide old or busy-slate signals. These
 are research observations, not established predictive edges or live bet advice.
 
+### Moneyline timing classification (v2, September 26)
+
+The CFB moneyline detector now compares the same retail books at adjacent
+pregame captures using both sides of each book's moneyline to remove vig. Quotes
+must be at most 35 minutes old at each capture, and at least three retail books
+must support a 1.5 percentage-point move in the same direction. A capture gap
+of 40 minutes or less is labeled `steam`; a longer gap is labeled
+`gap_repricing`, which does not claim when or how fast the move occurred.
+Pinnacle remains a reference quote and does not count toward retail support.
+
+`walking` requires at least three captures over 40 minutes to six hours, no
+adjacent gap over 90 minutes, and at least three comparable retail books that
+each move monotonically by two percentage points across at least two observed
+steps. These are descriptive thresholds, not calibrated betting signals.
+
+Existing `cfb-lines-v1` records remain intact for audit. The terminal presents
+legacy moneyline steam over a long gap as a long-gap move, and legacy walking
+as an open-to-current move because the old rule did not establish a gradual
+path. Other legacy steam with insufficient timestamped book support is labeled
+timing unverified. The audit keeps v1 and v2 in separate rows.
+
+The existing capture cadence is sufficient to test timing labels in the final
+six hours, subject to actual checkpoint delivery. More frequent captures
+before T-12h would improve timing resolution, but should be a quota-budgeted
+pilot with measured missed-move reduction; classification now degrades to an
+explicit long-gap label when the path cannot be resolved.
+
 ## Verification
 
 ### 2026 historical pilot (missing games only)

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { resolveAvailability, type RosterEvidence } from '../src/lib/nfl-dfs/availability';
+import { presentPinnedGameAvailability, resolveAvailability, type RosterEvidence } from '../src/lib/nfl-dfs/availability';
 const now = Date.parse('2026-09-06T12:00:00Z');
 const e: RosterEvidence = {team:'NO',position:'QB',fetchedAt:'2026-09-06T10:00:00Z',sleeper:{team:'NO',position:'QB',status:'Active',depth_chart_order:1}};
 assert.equal(resolveAvailability(e,'NO','QB',now).role,'Expected starter · QB1');
@@ -19,3 +19,8 @@ for (const [alias, canonical] of [['WAS','WSH'],['LA','LAR'],['AZ','ARI'],['JAC'
  assert.equal(resolveAvailability(aliased,'BUF','QB',now).fresh,false);
 }
 assert.equal(resolveAvailability({...e,sleeper:{team:'NO',position:'QB',injury_status:'Questionable',status:'IR'}},'NO','QB',now).blockedReason,'Unavailable: IR');
+const pinned=presentPinnedGameAvailability({version:'player-game-availability-v1',state:'OUT_CONFIRMED',projection_status:'OUT',source:'sleeper',
+ observation_id:10,source_snapshot_id:20,available_at:'2026-09-06T10:00:00Z',as_of_at:'2026-09-06T12:00:00Z',
+ kickoff:'2026-09-06T17:00:00Z',reason:'Qualified status.',qualifying_observation_ids:[10],display_only_observation_ids:[11]},'Expected starter · QB1');
+assert.equal(pinned.pinned,true);assert.equal(pinned.status,'OUT');assert.match(pinned.blockedReason!,/OUT/);
+assert.equal(pinned.decisionId,'player-game-availability-v1:20:10:2026-09-06T12:00:00Z');

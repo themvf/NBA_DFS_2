@@ -21,6 +21,10 @@ from db.schema import TABLES
 from ingest.nfl_dfs_projections import _history, _players, _slate_environment, infer_target_week
 from model.nfl_dfs_historical import HistoricalWeek, MODEL_CONFIG, ProjectionContext, artifact_digest, project_player, BOOM_THRESHOLDS
 from model.nfl_dfs_research import SEED, POSITIONS, predict, metrics, clustered_mae_delta
+from model.nfl_dfs_shadow_gate import evaluate_forward_gate
+from ingest.nfl_dfs_workload import raw_history
+from model.nfl_dfs_workload_opponent import Prior as OpponentPrior, plays_faced
+from model.nfl_dfs_environment_variants import context_variants, residual_quantiles, rush_factor, trailing_points
 
 
 class Reader:
@@ -90,6 +94,19 @@ def freeze(connection, report: dict, season: int, week: int, now: datetime) -> d
     environment = _slate_environment(reader, season, week)
     players = _players(reader, season, sorted(environment))
     eligible = [r for r in players if r["position"] in POSITIONS]
+    # Context-bearing variants (WP6/WP7, docs/nfl-dfs-environment-and-interval-
+    # studies.md). Inputs are prepared once per freeze, all strictly before the
+    # cutoff: completed-game scores for the trailing team factor, the opponent
+    # workload study's prior for the allowed-carries term, and walk-forward
+    # residual quantiles from the frozen history itself.
+    context_games = reader.execute("""SELECT g.season,g.week,g.completed,g.home_score,g.away_score,
+          h.abbreviation home_team,a.abbreviation away_team
+        FROM nfl_season_games g JOIN nfl_teams h ON h.team_id=g.home_team_id JOIN nfl_teams a ON a.team_id=g.away_team_id
+        WHERE g.game_type='REG' AND g.completed AND g.home_score IS NOT NULL AND g.season>=%s""", (season - 1,))
+    _component_players, component_teams = raw_history(reader)
+    opponent_prior = OpponentPrior(component_teams, plays_faced(reader), (season, week))
+    quantiles = residual_quantiles(history)
+    connection.commit()
     inserts = []
     skipped = 0
     for player in eligible:
@@ -131,6 +148,14 @@ def freeze(connection, report: dict, season: int, week: int, now: datetime) -> d
             "source_study_digest": report["output_digest"], "candidate": None,
             "optimizer_effect": "none", "population": "canonical active weekly team roster, not a DK salary slate",
         }
+        row["context_variants"] = context_variants(
+            player_id=stable, player_gsis_id=gsis, player_name=player["canonical_name"], position=position,
+            historical_rows=priors, cutoff_season=season, cutoff_week=week, seed=SEED,
+            config={**MODEL_CONFIG, "draws": report["draws"]},
+            team_implied_total=env["team_implied_total"],
+            trailing=trailing_points(context_games, player["team_abbrev"], (season, week)),
+            rush=rush_factor(opponent_prior, player["team_abbrev"], env["opponent"]) if position != "DST" else None,
+            quantiles=quantiles, history_games=len(own))
         if candidate_allowed(report, position):
             recipe = report["candidates"][f"{position}:opportunity"]["recipe"]
             residuals = np.array(recipe["residuals"])
@@ -175,7 +200,7 @@ def settle(connection) -> int:
     return count
 
 
-def evaluation(connection, study_id: str) -> dict:
+def evaluation(connection, study_id: str, gate: dict | None = None) -> dict:
     # One (last accepted) pregame forecast per player-week, one latest outcome;
     # daily freezes never inflate the effective sample size.
     reader = Reader(connection)
@@ -204,6 +229,10 @@ def evaluation(connection, study_id: str) -> dict:
     counts = reader.execute("""SELECT COUNT(DISTINCT (player_id,season,week))::int n
       FROM nfl_dfs_shadow_predictions WHERE study_run_id=%s""", (study_id,))[0]
     return {"study_run_id": study_id, "cohorts": cohorts, "production_promotion": False,
+            # WP5: the frozen forward gate (model/nfl_dfs_shadow_gate.py). It
+            # reports per-position verdicts once the window is complete and
+            # never flips production_promotion on its own.
+            "forward_gate": evaluate_forward_gate(rows, gate),
             "weekly": weekly_metrics(rows),
             "frozen_player_weeks": counts["n"], "scored_player_weeks": len(rows),
             "unscored_player_weeks": counts["n"]-len(rows),
@@ -257,7 +286,7 @@ def main() -> None:
                 result.update(freeze(connection, report, season, week, now))
             else:
                 result["freeze_status"] = "no_upcoming_regular_season_games"
-        result["evaluation"] = evaluation(connection, report["run_id"])
+        result["evaluation"] = evaluation(connection, report["run_id"], config.get("forward_gate"))
         with connection.cursor() as cursor:
             cursor.execute("""INSERT INTO nfl_dfs_shadow_evaluations(evaluation_digest,study_run_id,payload)
               VALUES (%s,%s,%s) ON CONFLICT DO NOTHING""",

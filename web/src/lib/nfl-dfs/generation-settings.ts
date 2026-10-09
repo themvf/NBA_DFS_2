@@ -9,12 +9,14 @@ export function generationSettings(
     const n = Math.max(1, settings.nLineups);
     return [id, Math.max(0, Math.min(n, Math.round(percent / 100 * n))) / n];
   }));
-  return { ...settings, format, lockedPlayerIds: locked, excludedPlayerIds: excluded,
+  return { ...settings, format,
+    gppSignalMinPerLineup: format === 'classic' && settings.mode === 'gpp' ? settings.gppSignalMinPerLineup ?? 0 : 0,
+    lockedPlayerIds: locked, excludedPlayerIds: excluded,
     minExposureByPlayer: exposure, maxExposureByPlayer: exposure };
 }
 
 export function sameGenerationSettings(a: NflOptimizerSettings, b: NflOptimizerSettings): boolean {
-  const normalize = (s: NflOptimizerSettings) => ({ ...s,
+  const normalize = (s: NflOptimizerSettings) => ({ ...s, runEvidence:undefined,ownershipDisclosure:undefined,ownershipCapability:undefined,
     lockedPlayerIds: [...s.lockedPlayerIds].sort((a,b) => a-b),
     excludedPlayerIds: [...s.excludedPlayerIds].sort((a,b) => a-b),
   });

@@ -474,6 +474,15 @@ def fetch_odds(
             "vegas_total_raw": market["vegas_total_raw"],
         })
     inserted = insert_game_odds_history_rows(db, history_rows)
+    if history_rows and getattr(db, "database_url", None):
+        # Dual-write the normalized, timestamp-preserving engine records after
+        # the legacy capture commits. This acquires no extra provider data and
+        # remains idempotent if the legacy insert was already present.
+        from ingest.cfb_context_bootstrap import bootstrap
+        from ingest.cfb_context_publish import publish
+        bootstrap(db.database_url, apply=True, new_origin="auto")
+        publish(db.database_url, apply=True,
+                endpoint_after=min(row["captured_at"] for row in history_rows))
     print(f"CFB odds: {inserted} pregame event captures written")
     return inserted
 

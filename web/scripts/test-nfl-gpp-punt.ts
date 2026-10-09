@@ -80,6 +80,11 @@ function main() {
   const d4 = evaluatePuntEligibility({ dkPlayerId: 51, salary: 2500, isOut: false }, evidence({ playerId: 51, roleConfidence: null, depthRole: null }), DEFAULT_NFL_PUNT_POLICY);
   assert.equal(d4.eligible === false && d4.reason, "ROLE_UNKNOWN");
 
+  // The boundary price is included; $3,000 unknown-role receivers must not
+  // bypass the role gate merely because the comparison is strict.
+  const boundary = evaluatePuntEligibility({ dkPlayerId: 52, salary: 3000, isOut: false }, evidence({ playerId: 52, roleConfidence: null, depthRole: null }), DEFAULT_NFL_PUNT_POLICY);
+  assert.equal(boundary.eligible === false && boundary.reason, "ROLE_UNKNOWN");
+
   // --- P1-AC1 in the optimizer: a $400 body cannot enter a lineup ---
   const withBody = optimizeNflLineups([...corePool(), player({ dkPlayerId: 200, salary: 400, position: "WR", team: "AAA", historyGames: 0 })], showdownSettings());
   assert.ok(withBody.lineups.every((l) => !l.playerIds.includes(200)), "the $400 body never enters a lineup");
