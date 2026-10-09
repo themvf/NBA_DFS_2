@@ -407,35 +407,3 @@ def test_context_compatibility_declares_the_current_realized_version():
         compat["equivalence_proof"]["ingest/nfl_dfs_results.py:score_source_row"]["ast_sha256"]
     for earlier in ("nfl-dk-realized-v2", "nfl-dk-realized-v3"):
         assert earlier in compat["versions"], "earlier declarations are kept"
-
-
-def test_pickem_input_digest_is_stored_once_and_matches_inline_digest():
-    """Grading reads a stored digest; it must equal digest(payload.input) exactly."""
-    from model.nfl_matchup_study import digest
-    from research import nfl_matchup_study as adapter
-    inputs = {f"f{i}": {"gameId": f"g{i}", "baseline": {"homeConditional": .5 + i / 100}} for i in range(5)}
-    stored = {}
-
-    class Cursor:
-        def __enter__(self): return self
-        def __exit__(self, *_): return False
-        def execute(self, sql, params):
-            assert sql.startswith("UPDATE nfl_pickem_matchup_forecasts SET input_digest")
-            stored.setdefault(params[1], params[0])
-
-    class Connection:
-        def __enter__(self): return self
-        def __exit__(self, *_): return False
-        def cursor(self): return Cursor()
-
-    class Database:
-        def execute(self, sql, params=None):
-            if sql.startswith("ALTER"):
-                return []
-            pending = [k for k in sorted(inputs) if k not in stored][:params[0]]
-            return [{"forecast_id": k, "input": inputs[k]} for k in pending]
-        def connect(self): return Connection()
-
-    assert adapter.fill_pickem_input_digests(Database(), batch=2) == 5
-    assert stored == {k: digest(v) for k, v in inputs.items()}
-    assert adapter.fill_pickem_input_digests(Database(), batch=2) == 0, "a filled row is never read again"

@@ -205,6 +205,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           python -c "import os,sys; sys.argv=['matchup-study','prospective','--capture-results','--output','artifacts/nfl-matchup-forward-report.json']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season')] if os.environ.get(key)]; from research.nfl_matchup_study import main; sys.exit(main())"
+      - name: Store pick'em forecast manifests once
+        id: pickem_storage
+        if: ${{ !cancelled() }}
+        run: python -m research.nfl_pickem_storage
       - name: Audit stored model input coverage
         id: feature_audit
         if: ${{ !cancelled() }}

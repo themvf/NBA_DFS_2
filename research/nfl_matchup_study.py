@@ -16,6 +16,7 @@ from pathlib import Path
 
 from model.nfl_dfs_context_variant_study import evaluate_context_variants, freeze_health, timestamp
 from model.nfl_matchup_study import digest, evaluate_study, implementation_digest, validate_manifest
+from research import nfl_pickem_storage as pickem_storage
 
 
 def ledger_inputs(db, season, now, study_run_id=None):
@@ -69,11 +70,17 @@ def context_report(db, season, now, config):
 
 SUPPORTED_FORECAST_VERSION = "nfl-matchup-shadow-v1"
 
-# The subset of nfl_matchup_player_forecasts.projection that prospective grading
-# reads: position, the shadow distributions, six baseline fields, and each
-# source's availability timestamps. Keys absent in the stored row come back as
-# JSON null, which every reader below already treats as missing.
-GRADED_PROJECTION_SQL = """jsonb_build_object(
+
+def source_times_sql(sources: str) -> str:
+    return f"""CASE WHEN jsonb_typeof({sources})='array' THEN (
+     SELECT coalesce(jsonb_agg(jsonb_build_object(
+        'captured_at', s->'captured_at', 'recorded_at', s->'recorded_at',
+        'identity_manifest', jsonb_build_object('captured_at', s->'identity_manifest'->'captured_at'))), '[]'::jsonb)
+     FROM jsonb_array_elements({sources}) s) ELSE '[]'::jsonb END"""
+
+
+# Only what grading reads: a full projection is ~20 KB a row.
+GRADED_PROJECTION_SQL = f"""jsonb_build_object(
   'position', p.projection->'position',
   'shadow', jsonb_build_object(
      'status', p.projection->'shadow'->'status',
@@ -87,11 +94,7 @@ GRADED_PROJECTION_SQL = """jsonb_build_object(
      'floor_fpts', p.projection->'baseline'->'floor_fpts',
      'ceiling_fpts', p.projection->'baseline'->'ceiling_fpts',
      'boom_rate', p.projection->'baseline'->'boom_rate'),
-  'sources', CASE WHEN jsonb_typeof(p.projection->'sources')='array' THEN (
-     SELECT coalesce(jsonb_agg(jsonb_build_object(
-        'captured_at', s->'captured_at', 'recorded_at', s->'recorded_at',
-        'identity_manifest', jsonb_build_object('captured_at', s->'identity_manifest'->'captured_at'))), '[]'::jsonb)
-     FROM jsonb_array_elements(p.projection->'sources') s) ELSE '[]'::jsonb END)"""
+  'sources', {source_times_sql("p.projection->'sources'")})"""
 
 
 def prospective_reports(db, season, now, registry):
@@ -100,11 +103,6 @@ def prospective_reports(db, season, now, registry):
     if not registered:
         return {"version": "nfl-matchup-forward-report-v1", "studies": [], "reason": "no registered DFS studies"}
     first_registered = min(timestamp(resolve_registration(m)["registered_at"]) for m in registered)
-    # Only the fields the grader reads leave the database. The full projection
-    # (source files, baseline stat lines, ledgers) is ~20 KB a row and grows with
-    # every shadow run; loading it whole peaked at 8.6 GB on 14,357 rows
-    # (2026-10-07) and the runner killed the job every run from 2026-10-03.
-    # Foreign envelopes are only counted, so they carry no payload at all.
     records = db.execute(f"""SELECT p.player_id,p.game_id,p.kickoff,
         CASE WHEN f.model_version='{SUPPORTED_FORECAST_VERSION}' THEN {GRADED_PROJECTION_SQL} END projection,
         f.run_id,f.season,f.week,f.created_at,f.as_of_at,f.model_version forecast_model_version,
@@ -277,17 +275,10 @@ def capture_game_results(db, season, now):
     return count
 
 
-# What pick'em grading reads from a frozen payload. `input` keeps only its
-# baseline (the market capture time); its full digest is stored once per row in
-# input_digest by fill_pickem_input_digests, computed exactly as before.
-PICKEM_GRADED_PAYLOAD_SQL = """jsonb_build_object(
+PICKEM_GRADED_PAYLOAD_SQL = f"""jsonb_build_object(
   'study_id', f.payload->'study_id',
   'input', jsonb_build_object('baseline', f.payload->'input'->'baseline'),
-  'featureManifest', jsonb_build_object('sources', CASE WHEN jsonb_typeof(f.payload->'featureManifest'->'sources')='array' THEN (
-     SELECT coalesce(jsonb_agg(jsonb_build_object(
-        'captured_at', s->'captured_at', 'recorded_at', s->'recorded_at',
-        'identity_manifest', jsonb_build_object('captured_at', s->'identity_manifest'->'captured_at'))), '[]'::jsonb)
-     FROM jsonb_array_elements(f.payload->'featureManifest'->'sources') s) ELSE '[]'::jsonb END),
+  'featureManifest', jsonb_build_object('sources', {source_times_sql(pickem_storage.FEATURE_MANIFEST_SQL + "->'sources'")}),
   'candidate_config_hash', f.payload->'candidate_config_hash',
   'baseline_config_hash', f.payload->'baseline_config_hash',
   'implementation_hashes', f.payload->'implementation_hashes',
@@ -295,46 +286,20 @@ PICKEM_GRADED_PAYLOAD_SQL = """jsonb_build_object(
   'candidate', f.payload->'candidate',
   'covered', coalesce(f.payload->'covered', 'false'::jsonb))"""
 
-PICKEM_DIGEST_BATCH = 50
-
-
-def fill_pickem_input_digests(db, batch=PICKEM_DIGEST_BATCH):
-    """Store digest(payload.input) once per frozen forecast.
-
-    The payload is immutable, so its input digest never changes; computing it
-    here from the stored JSONB is byte-for-byte what grading did inline. Small
-    batches bound memory, and each row is read in full only once, ever.
-    """
-    db.execute("ALTER TABLE nfl_pickem_matchup_forecasts ADD COLUMN IF NOT EXISTS input_digest TEXT")
-    filled = 0
-    while True:
-        rows = db.execute("""SELECT forecast_id, payload->'input' input FROM nfl_pickem_matchup_forecasts
-            WHERE input_digest IS NULL ORDER BY forecast_id LIMIT %s""", (batch,))
-        if not rows:
-            return filled
-        with db.connect() as connection:
-            with connection.cursor() as cursor:
-                for row in rows:
-                    cursor.execute("UPDATE nfl_pickem_matchup_forecasts SET input_digest=%s WHERE forecast_id=%s AND input_digest IS NULL",
-                                   (digest(row["input"]), row["forecast_id"]))
-        filled += len(rows)
-        del rows
-
 
 def pickem_prospective_reports(db, season, now, registry):
     studies = [m for m in registry["studies"] if m.get("status") == "registered" and m["kind"] == "pickem"]
     if not studies:
         return []
     first_registered = min(timestamp(resolve_registration(m)["registered_at"]) for m in studies)
-    fill_pickem_input_digests(db)
-    # Only the fields the grader reads. A frozen payload is ~800 KB (it carries the
-    # full matchup source manifest per feature); loading all of them peaked at
-    # 16 GB on 9,016 forecasts and the runner killed every run from 2026-10-03.
+    pickem_storage.ensure(db)
+    pickem_storage.fill_input_digests(db)
     records = db.execute(f"""SELECT f.forecast_id,f.game_id,f.available_at,f.decision_cutoff,f.input_digest,
         {PICKEM_GRADED_PAYLOAD_SQL} payload,
         g.season,g.week,g.kickoff,r.result_id,r.observed_at result_at,
         r.outcome,r.source_digest result_digest,r.scoring_version
-        FROM nfl_pickem_matchup_forecasts f JOIN nfl_season_games g ON g.nflverse_game_id=f.game_id
+        FROM nfl_pickem_matchup_forecasts f {pickem_storage.MANIFEST_JOIN_SQL}
+        JOIN nfl_season_games g ON g.nflverse_game_id=f.game_id
         LEFT JOIN LATERAL (SELECT r.* FROM nfl_matchup_game_results r WHERE r.game_id=f.game_id
            AND r.observed_at<=%s ORDER BY r.observed_at DESC,r.result_id DESC LIMIT 1) r ON TRUE
         WHERE g.season=%s AND f.available_at<=%s AND f.available_at>=%s""", (now, season, now, first_registered))
