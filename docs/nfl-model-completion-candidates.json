@@ -1,0 +1,91 @@
+{
+  "version": "nfl-model-completion-registration-v1",
+  "registered_at": "2026-10-06T01:10:50Z",
+  "authority": "shadow_only",
+  "production_changed": false,
+  "forecast_promotion_allowed": false,
+  "forward_collection": "First newly captured eligible pregame decisions after registration, NFL 2026 Week 5 onward. No backdated current-roster reconstruction.",
+  "discovery_exclusions": [
+    "Previously inspected 2025 studies",
+    "2026 Weeks 1-4 outcomes",
+    "Synthetic mechanics tests"
+  ],
+  "candidates": {
+    "nfl-availability-workload-v1": {
+      "gates": [
+        "docs/nfl-availability-promotion-registry.json#skill_position_redistribution_v1"
+      ],
+      "prior_games": 8,
+      "minimum_own_history_games": 6,
+      "minimum_matching_absence_games": 3,
+      "maximum_evidence_age_hours": 72,
+      "fields": [
+        "targets",
+        "RB carries"
+      ],
+      "efficiency": "unchanged recipient efficiency",
+      "missing_data": "baseline retained; unsupported work unallocated",
+      "multiple_absences": "same-team historical matches must cover all current donors; boosts are not summed"
+    },
+    "nfl-workload-risk-v1": {
+      "gates": [
+        "docs/nfl-availability-promotion-registry.json#participation_probability_v1",
+        "Separate conditional workload/range qualification still required"
+      ],
+      "states": [
+        "inactive",
+        "limited",
+        "normal"
+      ],
+      "limited_label_ratio_below": 0.75,
+      "minimum_training_cases": 30,
+      "model": "standardized multinomial ridge with intercept",
+      "ridge_penalty": 0.05,
+      "learning_rate": 0.08,
+      "gradient_steps": 400,
+      "fallback_limited_factor": "0.5 unweighted sensitivity only; not a guessed probability",
+      "calibration_baseline": "earlier same-position/by-designation empirical rates with one pseudocount per state",
+      "reliability_bins": 10,
+      "promotion": "withheld even when retrospective metrics improve"
+    },
+    "nfl-joint-constrained-shadow-v1": {
+      "gates": [
+        "Existing coherent forecast forward qualification",
+        "Separate complete-portfolio forward qualification"
+      ],
+      "candidate_pool": "frozen baseline plus supplied legal shadow candidates",
+      "objective_gpp": "expected best joint lineup score",
+      "objective_cash": "mean joint lineup P10",
+      "search": "strictly improving single-lineup swaps from complete feasible incumbent",
+      "default_max_evaluations": 2000,
+      "hard_max_evaluations": 10000,
+      "evaluation": "independent model IID stream; never used to select entries",
+      "constraints": [
+        "exact roster/salary",
+        "availability/roles",
+        "locks/exclusions",
+        "Overall/Captain/Flex ranges",
+        "top projected coverage",
+        "opportunity coverage",
+        "QB stacking/bring-back",
+        "archetype and beneficiary contracts",
+        "salary bands",
+        "overlap and uniqueness"
+      ],
+      "claims": "No contest finish, duplication count, payout or ROI"
+    }
+  },
+  "implementation_hash_algorithm": "sha256_utf8_lf",
+  "implementation_hashes": {
+    "model/nfl_availability_scenarios.py": "599498c777e6aaee62398aee82a838dab07b77e64e9560b1e6b47c3bf01ef67c",
+    "research/nfl_availability_scenarios.py": "0276da927e2bb9a1a672562ff751a0311f6926a468d23537eeb6bc71fc35af24",
+    "model/nfl_workload_risk.py": "db2d0a13af40ed17df75dd5e9b68b143d26b6909ba014744e0b14d29828a7b29",
+    "research/nfl_workload_risk.py": "e8d67cb4945446fdc4ab857b69729a61e3c65dae2c1a17ed364bef49d637f344",
+    "web/src/lib/nfl-dfs/joint-portfolio.ts": "87588d7fb2782f347ea6bfe35e522da15a62063e4c2d287a0c703064430ebf9f",
+    "web/scripts/compare-nfl-joint-portfolios.ts": "05bf97642caba1b96d6d4420acf51502faa4468fcf40dc4e1607f51790298515",
+    "web/src/app/dfs/nfl/nfl-optimizer.ts": "aeff601263e2a6d0555e1d6fe731c5af9b4bbd37a851277b6f8881311d8cf024",
+    "model/nfl_matchup_scenarios.py": "9d133718c360a03a445965508061807c49644c3ac329ae220c4f68069a19e913",
+    "web/src/lib/nfl-dfs/scoring.ts": "83e8b8c293519e7605f4d5be76a302bd442835fa4dc43a6d02744922a5729e3c",
+    "web/src/lib/nfl-dfs/scenarios.ts": "98ed595731bc69ee1fcde4d9c42109880382cff3dbf480ce0f0043fdf46e2fd9"
+  }
+}

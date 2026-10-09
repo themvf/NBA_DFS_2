@@ -64,6 +64,7 @@ import { computeSourceAvailability, sourceBlockedReason, type NflSourceAvailabil
 import type { DecisionClock } from "@/lib/nfl-dfs/availability";
 import { nflBuildInfo } from "@/lib/nfl-dfs/build-info";
 import { assessOwnership, type OwnershipAssessment } from "@/lib/nfl-dfs/ownership-capability";
+import { applyLatestEligibility } from '@/lib/nfl-dfs/latest-eligibility';
 import {
   NFL_OPTIMIZER_VERSION,
   optimizeNflLineups,
@@ -102,6 +103,7 @@ export type NflWorkspacePlayer = NflOptimizerPlayer & {
   dkStatus: string | null;
   availability?: Availability;
   gameInfo: string | null;
+  latestEligibilityReview?: {runId:string;asOf:string;decision:PinnedGameAvailabilityDecision};
   /**
    * Opportunity this player picked up from a ruled-out teammate, one entry
    * per pool. `null` when he inherited nothing, which is the common case.
@@ -538,15 +540,33 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
     const pinned=decisionsByPlayer.get(row.ffPlayerId??-1);
     return pinned?presentPinnedGameAvailability(pinned,legacy.role,legacy.roleBlockedReason??null):legacy;
   };
+  // Current participation is a separate overlay on the frozen forecast. Use
+  // only a newer immutable, game-matched decision; never infer it from today's
+  // roster or let a later ACTIVE row clear a saved OUT. Apply before role/QB
+  // resolution so every eligibility/absence consumer sees the same decision.
+  const latestReviews=new Map<number,ReturnType<typeof applyLatestEligibility>[number]>();
+  const firstKickoff=rows.map(row=>Date.parse(parseDkGameInfoKickoff(row.gameInfo)??'')).filter(Number.isFinite).sort((a,b)=>a-b)[0];
+  if(newestRun && run && newestRun.asOfAt>run.asOfAt && Number.isFinite(firstKickoff) && Date.now()<firstKickoff) {
+    const latest=await db.select({playerId:nflDfsPlayerProjections.playerId,team:nflDfsPlayerProjections.team,
+      evidence:nflDfsPlayerProjections.sourceEvidence}).from(nflDfsPlayerProjections)
+      .where(eq(nflDfsPlayerProjections.runId,newestRun.runId));
+    const reviewed=applyLatestEligibility(rows.map(row=>({...row,ourProj:numeric(row.ourProj),floorFpts:numeric(row.floorFpts),
+      ceilingFpts:numeric(row.ceilingFpts),boomRate:numeric(row.boomRate),availability:baseAvailability(row)})),
+      latest.map(row=>({playerId:Number(row.playerId),team:row.team,
+        decision:(row.evidence as {availability_decision?:PinnedGameAvailabilityDecision}|null)?.availability_decision??null})),
+      {baselineAt:run.asOfAt.toISOString(),reviewRunId:newestRun.runId,reviewAt:newestRun.asOfAt.toISOString(),now:Date.now()});
+    for(const player of reviewed)if('latestEligibilityReview' in player && player.ffPlayerId!=null)latestReviews.set(player.ffPlayerId,player);
+  }
+  const currentAvailability=(row:typeof rows[number])=>latestReviews.get(row.ffPlayerId??-1)?.availability??baseAvailability(row);
   const teamQb1s = identifyTeamQb1s(rows.map((row) => ({
     team: row.team,
     position: row.position,
     name: row.name,
-    availability: baseAvailability(row),
+    availability: currentAvailability(row),
   })));
   const starterName = (team: string) => rows.find((row) => row.dkPlayerId === startingQbs[team])?.name;
   const availability = (row: typeof rows[number]) => confirmStarterAvailability(applyTeamQbContext(
-    baseAvailability(row),
+    currentAvailability(row),
     row.position,
     teamQb1s.get(nflTeamKey(row.team)),
   ), { dkPlayerId: row.dkPlayerId, team: row.team, position: row.position, platformOut: platformOut(row) }, startingQbs, starterName);
@@ -666,6 +686,7 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
       isOut: platformOut(row) || Boolean(availability(row).blockedReason),
       ruledOut: injuredOut(row),
       availability: availability(row),
+      latestEligibilityReview:latestReviews.get(row.ffPlayerId??-1)?.latestEligibilityReview,
       // Role evidence for the cheap-player policy, as of the same clock.
       ...rolePolicyEvidence(availability(row), now),
       // Flat copy for the optimizer, which gates the Showdown Captain slot on
@@ -1586,6 +1607,7 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
   const resolvedSettings: NflOptimizerSettings = { ...settings, defensiveAdjustments:defensive,
     ownershipCapability: ownershipAssessment.capability,
     ownershipLeverageEnabled: ownershipAssessment.features.leverage,
+    duplicationModelValidated: ownershipAssessment.features.duplicationModel,
     // Game-script context: an explicit user choice wins (with ITS underdog,
     // never a mixed pairing); otherwise the SERVER supplies the Vegas favorite
     // resolved from this game's own moneyline, so balanced-mode archetypes
@@ -1612,6 +1634,8 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
     dkPlayerId: player.dkPlayerId, ffPlayerId: player.ffPlayerId, identityMethod: player.identityMethod, identityEvidence:player.identityEvidence, gameInfo: player.gameInfo, name: player.name, team: player.team, position: player.position,
     id:player.id,captainDkPlayerId:player.captainDkPlayerId,opponent:player.opponent,gameKey:player.gameKey,boomRate:player.boomRate,projectionStatus:player.projectionStatus,
     salary: player.salary, captainSalary: player.captainSalary, rosterPositions: player.rosterPositions, status: player.dkStatus,
+    historyGames:player.historyGames,teamSeasonGames:player.teamSeasonGames,availabilityState:player.availabilityState,
+    availabilityStatus:player.availabilityStatus,depthRole:player.depthRole,roleConfidence:player.roleConfidence,projectedOpportunities:player.projectedOpportunities,
     ourProj: player.ourProj, floor: player.floorFpts, median:player.medianFpts, ceiling: player.ceilingFpts,
     defensiveForecast:player.defensiveForecast??null,
     specialTeams:player.specialTeams??null,specialTeamsReason:player.specialTeamsReason??null,
@@ -1624,6 +1648,7 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
     // The ownership the optimizer actually read, so a leverage run can be replayed from the ledger.
     ownership: {total:player.ownPct??null, flex:player.flexOwnPct??null, captain:player.captainOwnPct??null, source:player.ownSource??null, linestar:player.linestarOwnPct??null},
     availability: player.availability, isOut: player.isOut,
+    latestEligibilityReview:player.latestEligibilityReview??null,
     availabilityDecisionId:player.availability?.decisionId??null,
     availabilityEvidence:player.availabilityEvidence??null,
     platformEligibility:player.platformEligibility??null,
