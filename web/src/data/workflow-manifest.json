@@ -62,6 +62,15 @@
       "pullRequest": false
     },
     {
+      "file": "capture_nfl_props.yml",
+      "name": "Capture NFL prop evidence",
+      "crons": [],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
       "file": "capture_odds_history.yml",
       "name": "Capture Odds History",
       "crons": [
