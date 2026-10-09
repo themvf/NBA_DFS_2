@@ -13,18 +13,21 @@ from pathlib import Path
 
 from config import load_config
 
-# Early pilot checkpoints the provider often cannot serve: The Odds API lists
-# most CFB games only 2-5 days out (measured 2026-10-07: 15 of ~50 games listed
-# 9-10 days ahead, none 4-8 days). A checkpoint is created only once the game
-# has a provider event, so one created after its own window closed was never
-# capturable. That is a source limit, reported but not alerted.
 EARLY_CHECKPOINTS = ("cfb_t_minus_7d", "cfb_t_minus_4d")
+RESCHEDULED = "superseded by kickoff reschedule"
+MISS_ALERT_WINDOW = timedelta(hours=24)
 
 
-def listed_after_window(checkpoint: dict) -> bool:
+def missed_category(checkpoint: dict, now: datetime) -> str | None:
+    """A checkpoint created after its own window closed had no provider event to capture."""
+    if checkpoint["status"] != "missed" or checkpoint["failure_reason"] == RESCHEDULED:
+        return None
     created = checkpoint.get("created_at")
-    return (checkpoint["checkpoint"] in EARLY_CHECKPOINTS and created is not None
-            and created > checkpoint["due_until"])
+    if checkpoint["checkpoint"] in EARLY_CHECKPOINTS and created is not None and created > checkpoint["due_until"]:
+        return "provider_listed_late"
+    if now - checkpoint["due_until"] > MISS_ALERT_WINDOW:
+        return "earlier"
+    return "alert"
 
 
 def classify_game(game: dict, checkpoints: list[dict], now: datetime) -> list[str]:
@@ -44,15 +47,13 @@ def classify_game(game: dict, checkpoints: list[dict], now: datetime) -> list[st
     elif lead <= timedelta(hours=12) and latest is not None and now - latest > timedelta(minutes=90):
         issues.append("capture_overdue")
     for checkpoint in checkpoints:
-        if checkpoint["status"] == "missed" and checkpoint["failure_reason"] != "superseded by kickoff reschedule":
-            if not listed_after_window(checkpoint):
-                issues.append(f"missed:{checkpoint['checkpoint']}")
+        if missed_category(checkpoint, now) == "alert":
+            issues.append(f"missed:{checkpoint['checkpoint']}")
         elif (checkpoint["status"] in ("pending", "attempted", "failed")
               and checkpoint["target_at"] + timedelta(minutes=1 if checkpoint["checkpoint"] == "t_minus_2m" else 3)
               <= now <= checkpoint["due_until"]):
             issues.append(f"due_now:{checkpoint['checkpoint']}")
     return sorted(set(issues))
-
 
 def build_report(database_url: str, now: datetime | None = None) -> dict:
     import psycopg2
@@ -85,20 +86,25 @@ def build_report(database_url: str, now: datetime | None = None) -> dict:
                 for row in cursor.fetchall():
                     checkpoints.setdefault(row["matchup_id"], []).append(dict(row))
     entries = []
-    not_listed: dict[str, int] = {}
+    earlier: list[dict] = []
+    listed_late: dict[str, int] = {}
     for game in games:
+        label = f"{game['away_team']} at {game['home_team']}"
         game_checkpoints = checkpoints.get(game["id"], [])
         issues = classify_game(game, game_checkpoints, now)
         if issues:
-            entries.append({"matchup_id": game["id"], "game": f"{game['away_team']} at {game['home_team']}",
+            entries.append({"matchup_id": game["id"], "game": label,
                             "kickoff": game["commence_time"].isoformat(), "issues": issues})
         for checkpoint in game_checkpoints:
-            if checkpoint["status"] == "missed" and listed_after_window(checkpoint):
-                not_listed[checkpoint["checkpoint"]] = not_listed.get(checkpoint["checkpoint"], 0) + 1
+            category = missed_category(checkpoint, now)
+            if category == "provider_listed_late":
+                listed_late[checkpoint["checkpoint"]] = listed_late.get(checkpoint["checkpoint"], 0) + 1
+            elif category == "earlier":
+                earlier.append({"matchup_id": game["id"], "game": label, "checkpoint": checkpoint["checkpoint"],
+                                "due_until": checkpoint["due_until"].isoformat()})
     return {"as_of": now.isoformat(), "upcoming_games": len(games),
             "games_needing_review": len(entries), "exceptions": entries,
-            "provider_listed_after_window": not_listed}
-
+            "earlier_misses": earlier, "provider_listed_after_window": listed_late}
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="List actionable upcoming CFB line-coverage gaps")
