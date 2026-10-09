@@ -180,7 +180,10 @@ def backtest(snapshot, season, start_week, end_week, cfg, limit=None):
         differences=np.array([v['top_choice_credit']-v['mean_baseline_credit'] for v in values])
         rng=np.random.default_rng(cfg.seed)
         interval=np.quantile(rng.choice(differences,(2000,len(values))).mean(axis=1),[.025,.975]).tolist() if values else None
-        summary[metric]={'games':len(values),'top_choice_minus_baseline_95pct_game_bootstrap':interval,
+        intervals = [row for value in values for row in value.get('interval_diagnostics', {}).values()]
+        summary[metric]={'intervals': {'player_games':len(intervals),
+            'coverage_80pct':float(np.mean([r['covered'] for r in intervals])) if intervals else None,
+            'mean_interval_score':float(np.mean([r['interval_score'] for r in intervals])) if intervals else None}, 'games':len(values),'top_choice_minus_baseline_95pct_game_bootstrap':interval,
             **{key:float(np.mean([v[key] for v in values])) if values else None
                 for key in ('brier','log_loss','top_choice_credit','mean_baseline_credit')},
             'calibration':[{'range':[i/10,(i+1)/10],'player_game_rows':len(rs),
@@ -239,6 +242,7 @@ def main():
         if name in ('forecast','backtest','batch'):
             p.add_argument('--draws',type=int,default=5000)
             p.add_argument('--seed',type=int,default=20261008)
+            p.add_argument('--role-dispersion',choices=('fixed','empirical'),default='fixed')
         if name=='week-requests':
             p.add_argument('--season',type=int,required=True)
             p.add_argument('--week',type=int,required=True)
@@ -251,6 +255,7 @@ def main():
             p.add_argument('--request',type=Path,required=True)
             p.add_argument('--retrospective',action='store_true')
             p.add_argument('--sensitivity',action='store_true')
+            p.add_argument('--export-draws',action='store_true')
         elif name=='grade':
             p.add_argument('--forecast',type=Path,required=True)
         elif name in ('request','evidence-request'):
@@ -296,11 +301,11 @@ def main():
         elif args.command=='evidence-request':
             result=evidence_request(snapshot,args.game)
         elif args.command=='batch':
-            result=batch(snapshot,args.season,args.week,args.decision_at,Settings(draws=args.draws,seed=args.seed),
+            result=batch(snapshot,args.season,args.week,args.decision_at,Settings(draws=args.draws,seed=args.seed,role_dispersion=args.role_dispersion),
                 read(args.requests) if args.requests else None)
         elif args.command=='backtest':
             result=backtest(snapshot,args.season,args.start_week,args.end_week,
-                Settings(draws=args.draws,seed=args.seed),args.limit)
+                Settings(draws=args.draws,seed=args.seed,role_dispersion=args.role_dispersion),args.limit)
         elif args.command=='grade':
             prediction=read(args.forecast)
             # Exact PBP/box reconciliation gates official results as well.
@@ -326,7 +331,7 @@ def main():
                     raise ValueError('Forecast request must match the canonical game')
                 history,rejected=prepare(snapshot,request['decision_at'],args.retrospective)
                 request={**request,'expected_prior_game_ids':expected_history(snapshot,request['game'],request['decision_at'])}
-                result=forecast(history,request,Settings(draws=args.draws,seed=args.seed))
+                result=forecast(history,request,Settings(draws=args.draws,seed=args.seed,role_dispersion=args.role_dispersion),include_draws=args.export_draws)
                 if args.sensitivity:
                     cfg=Settings(draws=args.draws,seed=args.seed)
                     result['sensitivity']=[forecast(history,request,variant) for variant in (

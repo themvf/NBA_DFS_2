@@ -11,10 +11,11 @@ import numpy as np
 
 from model.nfl_longest_touchdown import canonical, timestamp
 
-VERSION = 'nfl-game-leaders-v2'
+VERSION = 'nfl-game-leaders-v3'
 SOURCE_METRICS = ('rushing_yards', 'receptions', 'receiving_yards')
 METRICS = (*SOURCE_METRICS, 'total_yards')
-IMPLEMENTATION_SHA256 = sha256(Path(__file__).read_bytes()).hexdigest()
+IMPLEMENTATION_SHA256 = sha256(Path(__file__).read_bytes() +
+    Path(__file__).with_name('nfl_role_dispersion.py').read_bytes()).hexdigest()
 
 
 def observed_value(box, metric):
@@ -42,8 +43,11 @@ class Settings:
     efficiency_prior_events: float = 30.
     opponent_prior_events: float = 150.
     surprise_slots: int = 3
+    role_dispersion: str = 'fixed'
 
     def __post_init__(self):
+        if self.role_dispersion not in ('fixed', 'empirical'):
+            raise ValueError('Unsupported role dispersion mode')
         if min(self.draws, self.recent_games, self.surprise_slots) < 1:
             raise ValueError('Positive simulation, window and surprise slot counts required')
         if any(not np.isfinite(v) or v <= 0 for v in (self.half_life_games,
@@ -242,9 +246,8 @@ def allocate(rng, totals, probabilities, concentration):
     p = np.asarray(probabilities, float)
     if not np.isfinite(p).all() or min(p) < 0 or abs(p.sum()-1) > 1e-8:
         raise ValueError('Role shares must be nonnegative and sum to one')
-    q = np.zeros((len(totals), len(p)))
-    positive = p > 0
-    q[:, positive] = rng.dirichlet(p[positive] * concentration, len(totals))
+    from model.nfl_role_dispersion import draw_role_shares
+    q = draw_role_shares(rng, p, concentration, len(totals))
     result = np.zeros_like(q, int)
     remaining, mass = totals.copy(), np.ones(len(totals))
     for j in range(len(p)-1):
@@ -291,7 +294,7 @@ def availability_check(request):
     return True
 
 
-def forecast(history, request, cfg=Settings(), outcomes=METRICS):
+def forecast(history, request, cfg=Settings(), outcomes=METRICS, include_draws=False):
     if not outcomes or set(outcomes) - set(METRICS):
         raise ValueError('Unsupported outcomes')
     required = {'receptions': {'targets', 'receptions'},
@@ -306,6 +309,15 @@ def forecast(history, request, cfg=Settings(), outcomes=METRICS):
     if cutoff >= timestamp(game['kickoff']):
         raise ValueError('Decision time must precede kickoff')
     verified = availability_check(request)
+    if request.get('role_scenarios'):
+        evidence = request.get('scenario_evidence')
+        if not isinstance(evidence, dict) or not evidence.get('source_ref') or not evidence.get('description') or not evidence.get('captured_at'):
+            raise ValueError('Role override requires timestamped scenario evidence')
+        if timestamp(evidence['captured_at']) > cutoff:
+            raise ValueError('Role scenario evidence is after decision cutoff')
+        if set(request['role_scenarios']) - set((game['away'], game['home'])) or any(
+                set(actions) - {'carries', 'targets'} for actions in request['role_scenarios'].values()):
+            raise ValueError('Unknown role scenario team/action')
     if any(timestamp(h['game']['kickoff']) >= cutoff for h in history):
         raise ValueError('Future/target games in training')
     if len({h['game']['game_id'] for h in history})!=len(history):
@@ -342,7 +354,11 @@ def forecast(history, request, cfg=Settings(), outcomes=METRICS):
     orientation = rng.integers(2, size=cfg.draws)
     blocks = [[next(r for r in rows if r['game_id'] == h['game']['game_id'] and r['team'] == team)
                for team in (h['game']['away'], h['game']['home'])] for h in history]
-    stats, candidates, diagnostics = {}, {}, {}
+    stats, candidates, diagnostics, opportunities = {}, {}, {}, {}
+    from model.nfl_role_dispersion import estimate_dispersion
+    dispersion = {action: estimate_dispersion(history, action) if cfg.role_dispersion == 'empirical' else
+                  {'concentration': concentration(history, action), 'method': 'fixed_assumption', 'fallback': False}
+                  for action in ('carries', 'targets')}
     for side, team in enumerate(teams):
         own = [h for h in history if team in (h['game']['away'], h['game']['home'])][-cfg.recent_games:]
         if len(own) < 3:
@@ -362,6 +378,7 @@ def forecast(history, request, cfg=Settings(), outcomes=METRICS):
         for p in roster:
             candidates[p['identity']] = {**p, 'residual': p.get('residual', False)}
             stats[p['identity']] = np.zeros((cfg.draws, 3))
+            opportunities[p['identity']] = {}
         selected_blocks = [blocks[b][(side+flip)%2] for b, flip in zip(block_index, orientation)]
         diagnostics[team] = {'prior_game_ids': [h['game']['game_id'] for h in recent], 'actions': {}}
         for action in ('carries', 'targets'):
@@ -402,7 +419,9 @@ def forecast(history, request, cfg=Settings(), outcomes=METRICS):
                 if set(override) != {p['identity'] for p in roster}:
                     raise ValueError('Role override must specify the full field including residual identities')
                 probabilities = np.array([override[p['identity']] for p in roster], float)
-            counts = allocate(rng, totals, probabilities, concentration(history, action))
+            counts = allocate(rng, totals, probabilities, dispersion[action]['concentration'])
+            for j, p in enumerate(roster):
+                opportunities[p['identity']][action] = counts[:, j]
             opponent = teams[1-side]
             yard_metric = 'rushing_yards' if action=='carries' else 'receiving_yards'
             denominator = action if action=='carries' else 'receptions'
@@ -410,7 +429,7 @@ def forecast(history, request, cfg=Settings(), outcomes=METRICS):
             catch_effect = opponent_effect(rows, opponent, game['season'], 'receptions','targets',cfg.opponent_prior_events)
             diagnostics[team]['actions'][action] = {'mean_budget':float(mean),'newcomer_reserve':reserve,
                 'opponent_volume':volume_effect,
-                'concentration_assumption':concentration(history, action),'opponent_yards':effect,
+                'concentration_assumption':dispersion[action]['concentration'], 'dispersion_evidence': dispersion[action],'opponent_yards':effect,
                 'opponent_catch':catch_effect,'max_budget_mismatch':int(abs(counts.sum(axis=1)-totals).max()),
                 'roles':{p['identity']:float(probabilities[j]) for j,p in enumerate(roster)}}
             league_catch = sum(r['receptions'] for r in rows)/sum(r['targets'] for r in rows)
@@ -499,7 +518,7 @@ def forecast(history, request, cfg=Settings(), outcomes=METRICS):
             raise AssertionError('Leader share does not sum to one')
         output[metric]={'players':sorted(rows_out,key=lambda r:-r['win_share']),
             'tie_probability':float(np.mean(tie_count>1)), 'all_zero_probability':float(np.mean(np.all(matrix==0,axis=1)))}
-    return {'version':VERSION,'authority':'exploratory_not_calibrated','game':game,'decision_at':request['decision_at'],
+    result = {'version':VERSION,'authority':'exploratory_not_calibrated','game':game,'decision_at':request['decision_at'],
         'settings':asdict(cfg),'implementation_sha256':IMPLEMENTATION_SHA256,'training_game_ids':[h['game']['game_id'] for h in history],
         'request_sha256':sha256(json.dumps(request,sort_keys=True).encode()).hexdigest(),
         'market_inputs_used':False,'scope':'full_game_including_overtime','metrics':output,'diagnostics':diagnostics,
@@ -512,6 +531,22 @@ def forecast(history, request, cfg=Settings(), outcomes=METRICS):
             'Paired game volumes approximate game scripts; no score-by-score simulation.',
             'Newcomers use three separate latent slots; vary this assumption before acting.',
             'No fitted weather, offensive-line injury, quarterback-change or coaching-change coefficients.']}
+    if include_draws:
+        result['shared_draws'] = {
+            'schema_version': 1, 'scope': 'partial_offense_not_full_dfs', 'game': game,
+            'decision_at': request['decision_at'], 'implementation_sha256': IMPLEMENTATION_SHA256,
+            'scenario_ids': [f"{game['game_id']}:{cfg.seed}:{j}" for j in range(cfg.draws)],
+            'scenario_evidence': request.get('scenario_evidence'),
+            'sampled_game_ids': [history[int(i)]['game']['game_id'] for i in block_index],
+            'sampled_orientation': orientation.tolist(),
+            'modeled_fields': ['rushYds', 'recYds', 'receptions', 'carries', 'targets'],
+            'missing_fields': ['passYds', 'passTds', 'rushTds', 'recTds', 'interceptions',
+                'fumblesLost', 'twoPointConversions', 'returnTds', 'offensiveFumbleRecoveryTds'],
+            'players': [{**candidates[i], 'draws': {
+                'rushYds': stats[i][:, 0].tolist(), 'receptions': stats[i][:, 1].tolist(),
+                'recYds': stats[i][:, 2].tolist(),
+                **{a: values.tolist() for a, values in opportunities[i].items()}}} for i in identities]}
+    return result
 
 
 def grade(prediction, snapshot):
@@ -555,4 +590,11 @@ def grade(prediction, snapshot):
             'log_loss':-sum(t*np.log(max(probabilities[i],1e-12)) for i,t in target.items()),
             'calibration_rows':[{'probability':p,'observed_credit':target.get(i,0),'residual':i.startswith('OTHER:')} for i,p in probabilities.items()],
             'absolute_mean_errors':{r['identity']:abs(r['mean']-actual.get(r['identity'],0)) for r in rows if not r['residual']}}
+    from model.nfl_role_dispersion import interval_diagnostic
+    for metric, family in result.items():
+        actual = {b['identity']: observed_value(b, metric) for b in boxes}
+        family['interval_diagnostics'] = {r['identity']: interval_diagnostic(
+            actual.get(r['identity'], 0), r['p10'], r['p90'])
+            for r in prediction['metrics'][metric]['players']
+            if not r['residual'] and r.get('p10') is not None and r.get('p90') is not None}
     return {'status':'graded','game_id':gid,'metrics':result}

@@ -158,3 +158,39 @@ snapshots explicitly mark total yards as not calculated, and historical summarie
 without that outcome show "Not evaluated". The registered three-outcome
 challenger experiment retains its original outcome scope. Mechanical verification
 of this addition does not establish predictive accuracy for total yards.
+
+
+### Shared workload and DFS expansion (local v3)
+
+See `docs/nfl-shared-simulation-expansion.md` for acceptance criteria and current
+scope. The fixed-dispersion leader baseline remains the default. An explicit
+`--role-dispersion empirical` candidate estimates prior team-season share variance
+with finite-count noise removed; all sample counts, fallbacks and bounds are
+reported. `--export-draws` emits aligned individual GSIS draws, including separate
+unresolved individuals, with source and implementation digests. Replacement role
+requests now require timestamped evidence and a complete allocation.
+
+`model/nfl_role_dispersion.py` supplies common role-share sampling and interval
+scoring. `model/nfl_shared_dfs_efficiency.py` and
+`model/nfl_shared_matchup_scenarios.py` are separate development copies of the
+pinned efficiency-v3 / coherent-v5 engine, with an optional common dispersion
+report. Originals and registered study hashes are preserved. New full-model
+inputs are frozen keyword inputs to `research.nfl_shared_dfs_export`; keep source
+capture time, canonical games, history, roster identities, salaries and source
+manifest. Later source replays require explicit retrospective mode.
+
+`web/src/lib/nfl-dfs/shared-game-model.ts` scores partial production components
+and complete supplied DFS banks through canonical scoring/scenario utilities.
+Partial production is never advertised as complete DFS points or a lower bound.
+The complete consumer preserves scenario order, salary comparisons, legal lineups
+and captain multipliers. Leaders derived from a salary pool are explicitly scoped
+to that modeled slate field, not full-game market probabilities. No candidate
+replaces optimizer points. The local view is `/nfl/game-model`; its saved data is
+`web/src/data/shared-game-model.json`, with frozen reports under the leader
+artifact directory. No DK upload is needed for the partial per-game view.
+
+Routes/snaps, role-specific defensive effects, sequential score states, early
+exits, fitted replacements, calibrated ranges and ownership are not implemented
+by this first expansion. Original example inputs remain frozen; no newly captured
+availability is implied. Historical range checks include zero projections and
+correlated player-game rows, so their pooled coverage is only descriptive.

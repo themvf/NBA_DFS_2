@@ -90,3 +90,26 @@ Model contract: [nfl-game-leaders-model.md](nfl-game-leaders-model.md).
 
 Each checked item must link its verification evidence. Track release status
 separately from implementation and model validation.
+
+
+## Shared simulation expansion: local first tranche
+
+- [x] Separate empirical workload-variability candidate with prior-only inputs,
+  finite-count noise correction, sample counts and explicit fallback.
+- [x] Export joint individual draws for leader and DFS consumers with matching
+  scenario IDs; preserve distinct unresolved people before leader grouping.
+- [x] Require timestamped evidence for explicit full-field replacement shares.
+- [x] Add interval coverage and interval score to result grading/development reports.
+- [x] Score partial production and complete supplied DFS banks through the canonical
+  scorer, legal-lineup validation and captain scoring; no automatic optimizer switch.
+- [x] Separate expanded full DFS event-model copies from registered studies so
+  prior validation contracts remain intact.
+- [ ] Capture routes/snaps with source/time/identity coverage and matchup role data.
+- [ ] Fit replacement mixtures, early exits and shared player-role changes.
+- [ ] Add depth/YAC and game-state-conditioned efficiency and opportunities.
+- [ ] Validate ranges by pregame workload cohort, position and game-level uncertainty;
+  retain zero-forecast coverage separately rather than presenting pooled calibration.
+- [ ] Freeze complete current-game DFS inputs and run the expanded full candidate;
+  the Thursday view currently shows partial production only.
+- [ ] Add ownership/contest-field evaluation before treating salary targets as
+  tournament-selection guidance. See the expansion contract for all paths.

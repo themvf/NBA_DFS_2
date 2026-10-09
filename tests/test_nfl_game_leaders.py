@@ -374,3 +374,43 @@ def test_total_grading_combines_official_components_and_splits_ties():
     total = result['metrics']['total_yards']
     assert total['winner_ids'] == ['c', 'd'] and total['winning_stat'] == 120
     assert total['top_choice_credit'] == .5 and total['brier'] == 0
+
+
+def test_export_draws_reproduce_leaders_and_preserve_opportunities():
+    h, _ = prepare(fixture(), '2025-10-02T00:00:00Z')
+    p = forecast(h, request(), Settings(draws=100, role_dispersion='empirical'), include_draws=True)
+    bank = p['shared_draws']
+    assert bank['missing_fields'] and len(set(bank['scenario_ids'])) == 100
+    assert bank['scope'] == 'partial_offense_not_full_dfs'
+    for metric, keys in [('rushing_yards', ['rushYds']), ('receiving_yards', ['recYds']),
+                         ('receptions', ['receptions']), ('total_yards', ['rushYds', 'recYds'])]:
+        matrix = np.array([sum((np.array(r['draws'][k]) for k in keys)) for r in bank['players']]).T
+        wins = matrix == matrix.max(axis=1)[:, None]
+        credit = wins / wins.sum(axis=1)[:, None]
+        for j, row in enumerate(bank['players']):
+            if row['residual']:
+                continue
+            expected = next(r for r in p['metrics'][metric]['players'] if r['identity'] == row['identity'])
+            assert expected['win_share'] == pytest.approx(credit[:, j].mean())
+            assert expected['p10'] == np.quantile(matrix[:, j], .1)
+    assert p['diagnostics']['A']['actions']['targets']['dispersion_evidence']['fallback']
+    for row in bank['players']:
+        assert all(r <= t for r, t in zip(row['draws']['receptions'], row['draws']['targets']))
+
+
+def test_documented_replacement_scenario_conserves_touches_and_rejects_future_evidence():
+    h, _ = prepare(fixture(), '2025-10-02T00:00:00Z'); req = request()
+    req['players'][0]['status'] = 'out'
+    baseline = forecast(h, req, Settings(draws=100))
+    identities = baseline['diagnostics']['A']['actions']['carries']['roles']
+    req['role_scenarios'] = {'A': {'carries': {i: float(i == 'A1') for i in identities}}}
+    req['scenario_evidence'] = {'captured_at': '2025-10-01T00:00:00Z',
+                              'source_ref': 'frozen-test-evidence', 'description': 'Explicit replacement assumption'}
+    result = forecast(h, req, Settings(draws=100), include_draws=True)
+    assert result['diagnostics']['A']['actions']['carries']['roles']['A1'] == 1
+    assert result['diagnostics']['A']['actions']['carries']['max_budget_mismatch'] == 0
+    assert all(sum(r['draws']['carries']) == 0 for r in result['shared_draws']['players']
+               if r['team'] == 'A' and r['identity'] != 'A1')
+    req['scenario_evidence']['captured_at'] = '2025-10-03T00:00:00Z'
+    with pytest.raises(ValueError, match='after decision'):
+        forecast(h, req, Settings(draws=100))

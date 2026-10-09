@@ -1,0 +1,287 @@
+{
+  "version": "nfl-shared-dfs-analysis-v1",
+  "authority": "exploratory",
+  "optimizerEnabled": false,
+  "provenance": {
+    "schemaVersion": 1,
+    "runId": "a611aadde363c9813379422c8e052fe53592bfdb6b9123623bd3da20e3e57943",
+    "modelVersion": "nfl-shared-matchup-research-v1-shared-roles",
+    "snapshotId": "ebc0bd1b57fedb623f4b952e94a212b1960844b3bf6b9040cc6642c10b21a50b",
+    "streamId": "ebc0bd1b57fedb623f4b952e94a212b1960844b3bf6b9040cc6642c10b21a50b:evaluation",
+    "decisionAt": "2026-09-27T14:00:00Z",
+    "inputsCapturedAt": "2026-09-27T14:00:00Z",
+    "source": "model",
+    "sampling": "iid",
+    "seed": 2760936858
+  },
+  "draws": 100,
+  "dependence": "supplied-joint",
+  "players": [
+    {
+      "playerId": 100,
+      "name": "100",
+      "team": "AAA",
+      "position": "QB",
+      "salary": 5000,
+      "points": {
+        "mean": 20.31419999999999,
+        "p10": 12.08,
+        "p50": 19.56,
+        "p90": 27.68,
+        "target": 15,
+        "targetProbability": 0.8300000000000002,
+        "monteCarlo95": null
+      },
+      "targetDefinition": "3x salary points",
+      "pointsPerThousand": 4.06284
+    },
+    {
+      "playerId": 101,
+      "name": "101",
+      "team": "AAA",
+      "position": "WR",
+      "salary": 5000,
+      "points": {
+        "mean": 46.382999999999974,
+        "p10": 22.6,
+        "p50": 46.3,
+        "p90": 67.7,
+        "target": 15,
+        "targetProbability": 0.9700000000000003,
+        "monteCarlo95": null
+      },
+      "targetDefinition": "3x salary points",
+      "pointsPerThousand": 9.276599999999998
+    },
+    {
+      "playerId": 102,
+      "name": "102",
+      "team": "AAA",
+      "position": "DST",
+      "salary": 5000,
+      "points": {
+        "mean": 5.809999999999996,
+        "p10": 2,
+        "p50": 5,
+        "p90": 11,
+        "target": 15,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "targetDefinition": "3x salary points",
+      "pointsPerThousand": 1.1619999999999997
+    },
+    {
+      "playerId": 110,
+      "name": "110",
+      "team": "BBB",
+      "position": "QB",
+      "salary": 5000,
+      "points": {
+        "mean": 21.18039999999998,
+        "p10": 10.92,
+        "p50": 21.2,
+        "p90": 30.14,
+        "target": 15,
+        "targetProbability": 0.7900000000000001,
+        "monteCarlo95": null
+      },
+      "targetDefinition": "3x salary points",
+      "pointsPerThousand": 4.236079999999999
+    },
+    {
+      "playerId": 111,
+      "name": "111",
+      "team": "BBB",
+      "position": "WR",
+      "salary": 5000,
+      "points": {
+        "mean": 45.745999999999995,
+        "p10": 29,
+        "p50": 43.2,
+        "p90": 65.9,
+        "target": 15,
+        "targetProbability": 0.9700000000000003,
+        "monteCarlo95": null
+      },
+      "targetDefinition": "3x salary points",
+      "pointsPerThousand": 9.149200000000006
+    },
+    {
+      "playerId": 112,
+      "name": "112",
+      "team": "BBB",
+      "position": "DST",
+      "salary": 5000,
+      "points": {
+        "mean": 5.989999999999997,
+        "p10": 1,
+        "p50": 6,
+        "p90": 10,
+        "target": 15,
+        "targetProbability": 0.029999999999999978,
+        "monteCarlo95": null
+      },
+      "targetDefinition": "3x salary points",
+      "pointsPerThousand": 1.1979999999999997
+    }
+  ],
+  "leaders": [
+    {
+      "game": "BBB@AAA",
+      "metric": "rushYds",
+      "fieldScope": "modeled_slate_players_only_not_full_game",
+      "players": [
+        {
+          "playerId": 110,
+          "share": 0.5250000000000001
+        },
+        {
+          "playerId": 100,
+          "share": 0.3850000000000002
+        },
+        {
+          "playerId": 101,
+          "share": 0.045000000000000005
+        },
+        {
+          "playerId": 111,
+          "share": 0.045000000000000005
+        }
+      ]
+    },
+    {
+      "game": "BBB@AAA",
+      "metric": "receptions",
+      "fieldScope": "modeled_slate_players_only_not_full_game",
+      "players": [
+        {
+          "playerId": 101,
+          "share": 0.5200000000000002
+        },
+        {
+          "playerId": 111,
+          "share": 0.48000000000000026
+        },
+        {
+          "playerId": 100,
+          "share": 0
+        },
+        {
+          "playerId": 110,
+          "share": 0
+        }
+      ]
+    },
+    {
+      "game": "BBB@AAA",
+      "metric": "recYds",
+      "fieldScope": "modeled_slate_players_only_not_full_game",
+      "players": [
+        {
+          "playerId": 101,
+          "share": 0.5200000000000002
+        },
+        {
+          "playerId": 111,
+          "share": 0.48000000000000026
+        },
+        {
+          "playerId": 100,
+          "share": 0
+        },
+        {
+          "playerId": 110,
+          "share": 0
+        }
+      ]
+    },
+    {
+      "game": "BBB@AAA",
+      "metric": "totalYards",
+      "fieldScope": "modeled_slate_players_only_not_full_game",
+      "players": [
+        {
+          "playerId": 101,
+          "share": 0.5200000000000002
+        },
+        {
+          "playerId": 111,
+          "share": 0.48000000000000026
+        },
+        {
+          "playerId": 100,
+          "share": 0
+        },
+        {
+          "playerId": 110,
+          "share": 0
+        }
+      ]
+    }
+  ],
+  "lineups": [],
+  "limits": [
+    "Full scoring uses the existing canonical DraftKings scorer; accuracy depends on the supplied bank.",
+    "Slate-player leader shares omit contributors outside that pool and are not sportsbook full-field probabilities.",
+    "Salary multiples and lineup thresholds are descriptive, not contest-winning or profitability probabilities."
+  ],
+  "generatorManifest": {
+    "version": "nfl-shared-matchup-research-v1-shared-roles",
+    "sources": {
+      "fixture": true
+    },
+    "draws": 100,
+    "seed": 20260927,
+    "history_games": 100,
+    "rejected_game_ids": [],
+    "budget_means": {
+      "attempts": 32,
+      "carries": 20.99,
+      "targets": 28
+    },
+    "conversion_rates": [
+      1,
+      0,
+      0,
+      0,
+      0
+    ],
+    "rate_factors": {},
+    "research_registration": "local-shared-roles-development-not-registered-holdout",
+    "kicker_roles": {},
+    "authority": "shadow_only",
+    "role_dispersion_evidence": {
+      "source_ref": "synthetic-mechanical-fixture-only",
+      "training_decision_at": "2026-09-26T00:00:00Z",
+      "actions": {
+        "carries": {
+          "method": "synthetic_test_assumption",
+          "concentration": 5
+        },
+        "targets": {
+          "method": "synthetic_test_assumption",
+          "concentration": 5
+        }
+      }
+    },
+    "implementation_hashes": {
+      "nfl_shared_matchup_scenarios.py": "43aa2a7e353b0b25e89d0fb1d6b10c5ec7f9c4e50e6951635a242aff30db39fa",
+      "nfl_shared_dfs_efficiency.py": "6045ac566c1aa449d6658696bcdc931120cc44bde8a9a558361fb73c39bfe622",
+      "nfl_role_dispersion.py": "19fffe7ed7f4651cb1169ea816f43d81426b4931110acc341c13d828cabecf46"
+    }
+  },
+  "sourceCoverage": {
+    "inputPlayers": 6,
+    "modeledPlayers": 6,
+    "excludedPlayerIds": []
+  },
+  "generatorLimits": [
+    "Separately named coherent research model; player and DST marginals change and are audited, not presented as preserved.",
+    "Paired historical-game budgets provide empirical cross-team dependence; this generator has not passed forward calibration or portfolio promotion.",
+    "Current-source historical reconstruction and current-roster assumptions are research-only. Unknown allocations remain explicit.",
+    "Sacks add to modeled attempts to define dropbacks; explicit scramble decomposition and sequential possession simulation are not supplied.",
+    "Kicker events are allocated only to explicit unique Showdown role identities; ambiguous roles remain unallocated and those K players are excluded. Captain salary and 1.5 scoring are applied by the canonical lineup scorer, never by the underlying player draws."
+  ],
+  "retrospective": null
+}
