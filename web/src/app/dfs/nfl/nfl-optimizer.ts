@@ -21,7 +21,6 @@ import {
   type EvidenceState,
 } from '@/lib/nfl-dfs/punt-policy';
 import type { OwnershipCapability } from '@/lib/nfl-dfs/ownership-capability';
-import { isNflGppSignalPlayer, type NflPlayerSignal, type NflPlayerSignalCode } from '@/lib/nfl-dfs/player-signals';
 import {
   deriveExposureCounts,
   detectExposureInfeasibility,
@@ -652,14 +651,6 @@ function validateSettings(settings: NflOptimizerSettings): void {
   const floor = settings.minPlayerSalary ?? 0;
   if (!Number.isFinite(floor) || floor < 0 || floor > 50000) throw new Error("Minimum player salary must be between $0 and $50,000.");
   if (settings.puntPolicy) validateNflPuntPolicy(settings.puntPolicy);
-  if (![0, 1].includes(settings.gppSignalMinPerLineup ?? 0)) throw new Error("GPP signal minimum must be 0 or 1.");
-  if (settings.gppSignalMinPerLineup && settings.gppSignalCodes?.length === 0) throw new Error("Select at least one opportunity signal.");
-  if (settings.gppSignalCodes?.some(code => !["AIR_VOLUME", "YAC_RUNWAY", "INSIDE_FIVE", "CLOSE_TARGET"].includes(code))) {
-    throw new Error("Unknown opportunity signal code.");
-  }
-  if (settings.gppSignalMinPerLineup && (settings.format !== "classic" || settings.mode !== "gpp")) {
-    throw new Error("Player opportunity signals currently support Classic GPP lineups only.");
-  }
   const rosterSize = settings.format === "classic" ? 9 : 6;
   if (settings.minUnique < 1 || settings.minUnique > rosterSize) throw new Error(`Minimum unique players must be 1-${rosterSize}.`);
 }
@@ -741,9 +732,6 @@ function buildOne(
   // appear in any single lineup.
   if (settings.puntPolicy && available.some((player) => player.salaryRelief)) {
     constraints.salary_relief = { max: settings.puntPolicy.maxSalaryReliefPlayersPerLineup };
-  }
-  if (settings.gppSignalMinPerLineup) {
-    constraints.gpp_opportunity_signal = { min: settings.gppSignalMinPerLineup };
   }
   // Phase 4: archetype constraints. Team-count skew (favorite onslaught), K/DST
   // presence (low-scoring), and beneficiary minimums (fades' alternate paths).
@@ -1167,9 +1155,6 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     if (!coverage.direct) throw new Error("No eligible pregame forecasts for the enabled workload positions. Refresh the workload snapshot or select the historical source.");
     const counts=WORKLOAD_POSITIONS.map(pos=>`${pos}: ${pool.filter(p=>p.resolvedSource==='workload'&&p.position===pos).length}`).join(', ');
     warnings.push(`Workload coverage — ${counts}. Other players retain disclosed fallback. RB/WR/TE candidate ranges worsened historical interval scores. Situation effects, when enabled, are listed in each player audit; WR has no invented boom bonus.`);
-  }
-  if (settings.gppSignalMinPerLineup && !pool.some(player => isNflGppSignalPlayer(player.playerSignals, settings.gppSignalCodes))) {
-    throw new Error("No eligible player has a current opportunity signal. Refresh play-by-play or turn off the GPP signal rule.");
   }
   warnings.push("Lineup floor/ceiling sums are player-level search heuristics, not lineup P10/P90. Use Scenario Lab for joint distributions.");
 

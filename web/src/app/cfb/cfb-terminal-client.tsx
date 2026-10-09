@@ -35,17 +35,9 @@ const SIGNAL_LABELS: Record<string, string> = {
   reversal: "REVERSAL", reference_led: "REFERENCE LED",
   pinnacle_divergence: "REFERENCE GAP", dk_value: "PRICE VALUE",
   steam: "ML STEAM", walking: "ML WALK",
-  gap_repricing: "ML LONG-GAP MOVE", timing_unverified: "ML TIMING UNVERIFIED",
-  cumulative_move: "ML OPEN-TO-CURRENT MOVE",
   book_disagreement: "BOOK DISAGREEMENT", market_convergence: "CONVERGENCE",
   late_move: "LATE MOVE", favorite_flip: "FAVORITE FLIP",
 };
-
-function auditSignalLabel(row: CfbSignalBacktestRow): string {
-  if (row.signalVersion === "cfb-lines-v1" && row.alertType === "steam") return "LEGACY ML STEAM (TIMING UNVERIFIED)";
-  if (row.signalVersion === "cfb-lines-v1" && row.alertType === "walking") return "LEGACY ML WALK (PATH UNVERIFIED)";
-  return SIGNAL_LABELS[row.alertType] ?? row.alertType;
-}
 
 function signalMarket(signal: LineAlertRow): MarketKey {
   const market = signal.details?.market;
@@ -151,13 +143,6 @@ function signalMagnitude(signal: LineAlertRow): string | null {
     if (typeof value === "number" && Number.isFinite(value)) return `${value > 0 ? "+" : ""}${value.toFixed(1)}${key.includes("pp") ? "pp" : " pts"}`;
   }
   return null;
-}
-
-function signalEvidence(signal: LineAlertRow): string {
-  if (signal.alertType === "gap_repricing") return `MONEYLINE · ${signal.side.toUpperCase()} · ${String(signal.details?.capture_gap_minutes ?? signal.details?.interval_minutes ?? "?")}m between captures · move speed unknown`;
-  if (signal.alertType === "cumulative_move") return `MONEYLINE · ${signal.side.toUpperCase()} · opening-to-current comparison · gradual path unverified`;
-  if (signal.alertType === "timing_unverified") return `MONEYLINE · ${signal.side.toUpperCase()} · legacy timing or book support unverified`;
-  return `${String(signal.details?.market ?? signalMarket(signal)).toUpperCase()} · ${signal.side.toUpperCase()} · line ${String(signal.details?.trigger_line ?? "—")} · support ${String(signal.details?.consensus_support ?? signal.details?.books_moved ?? "—")}`;
 }
 
 function recordLabel(record: CfbResearchRecord): string {
@@ -317,20 +302,11 @@ export default function CfbTerminalClient({ board, initialGameId, initialView = 
   const game = board.games.find((item) => item.matchupId === gameId) ?? board.games[0] ?? null;
   const market = useMemo(() => game ? buildMarket(game, marketKey, side, observedNow) : null, [game, marketKey, side, observedNow]);
   const quote = market?.books.find((item) => item.key === selectedBook) ?? market?.books[0] ?? null;
-  const gameById = useMemo(() => new Map(board.games.map(item => [item.matchupId, item])), [board.games]);
-  const classifiedSignals = useMemo(() => signals.map(item => {
-    const matchingGame = gameById.get(item.matchupId);
-    return matchingGame ? classifyCfbSignal(item, matchingGame) : item;
-  }), [signals, gameById]);
-  const classifiedObservations = useMemo(() => (observations ?? signals).map(item => {
-    const matchingGame = gameById.get(item.matchupId);
-    return matchingGame ? classifyCfbSignal(item, matchingGame) : item;
-  }), [observations, signals, gameById]);
-  const gameSignals = useMemo(() => classifiedSignals.filter((item) => item.matchupId === game?.matchupId), [classifiedSignals, game?.matchupId]);
+  const gameSignals = useMemo(() => signals.filter((item) => item.matchupId === game?.matchupId), [signals, game?.matchupId]);
   const marketSignals = useMemo(() => gameSignals.filter((item) => signalMarket(item) === marketKey), [gameSignals, marketKey]);
   const researchContext = game ? research[game.matchupId] ?? null : null;
-  const filteredGames = useMemo(() => { const normalized = query.trim().toLowerCase(); return board.games.filter((item) => `${item.awayTeam} ${item.homeTeam} ${item.network ?? ""}`.toLowerCase().includes(normalized) && (movementFilter === "all" || movementSignals(classifiedSignals, item.matchupId).some((signal) => movementKind(signal.alertType) === movementFilter))); }, [board.games, query, movementFilter, classifiedSignals]);
-  const intelligence = useMemo(() => buildMovementInsights(cfbIntelligenceEvents(filteredGames), classifiedObservations, Math.max(observedNow, Date.parse(board.asOf))), [filteredGames, classifiedObservations, observedNow, board.asOf]);
+  const filteredGames = useMemo(() => { const normalized = query.trim().toLowerCase(); return board.games.filter((item) => `${item.awayTeam} ${item.homeTeam} ${item.network ?? ""}`.toLowerCase().includes(normalized) && (movementFilter === "all" || movementSignals(signals, item.matchupId).some((signal) => movementKind(signal.alertType) === movementFilter))); }, [board.games, query, movementFilter, signals]);
+  const intelligence = useMemo(() => buildMovementInsights(cfbIntelligenceEvents(filteredGames), observations ?? signals, Math.max(observedNow, Date.parse(board.asOf))), [filteredGames, observations, signals, observedNow, board.asOf]);
   function chooseGame(id: number) { setGameId(id); setSelectedBook(""); setLockMessage(null); }
   function chooseMarket(next: MarketKey) { setMarketKey(next); setSide(selectionFor(next)); setSelectedBook(""); setLockMessage(null); }
   function chooseSide(next: SelectionSide) { setSide(next); setSelectedBook(""); setLockMessage(null); }
@@ -369,8 +345,8 @@ export default function CfbTerminalClient({ board, initialGameId, initialView = 
     <MovementIntelligence items={intelligence} selectedKey={`${game?.matchupId}:${marketKey}`} onSelect={(item) => { chooseGame(item.matchupId); chooseMarket(item.market); chooseSide(item.side); }} />
     <CfbEvidenceLoop quote={quote} closeQuality={game?.closeQuality ?? null} backtest={backtest} study={studyStatus} auditUnavailable={auditUnavailable} />
     <section className={styles.watchPane} aria-label="CFB market watch"><div className={styles.sectionTitle}><span>MARKET WATCH</span><span>{board.gameDate}</span></div>
-        <div className={styles.movementFilters} aria-label="Filter recorded movements">{["all", "steam", "walk", "gap", "cumulative", "reversal"].map((kind) => <button key={kind} type="button" aria-pressed={movementFilter === kind} onClick={() => setMovementFilter(kind)}>{kind.toUpperCase()}</button>)}</div>
-        <p className={styles.watchLegend}>S = home spread · T = total · ML = moneyline. Long-gap and cumulative badges do not establish move speed. Charts show observed consensus; dashed gaps exceed 30m.</p>
+        <div className={styles.movementFilters} aria-label="Filter recorded movements">{["all", "steam", "walk", "reversal"].map((kind) => <button key={kind} type="button" aria-pressed={movementFilter === kind} onClick={() => setMovementFilter(kind)}>{kind.toUpperCase()}</button>)}</div>
+        <p className={styles.watchLegend}>S = home spread · T = total · ML = moneyline. Badges are recorded signals, not recommendations. Charts show observed consensus; dashed gaps exceed 30m.</p>
         <div className={styles.watchList}>
         {filteredGames.map((item) => <WatchGame key={item.matchupId} item={item} signals={signals} active={item.matchupId === game?.matchupId} nowMs={observedNow} onChoose={() => chooseGame(item.matchupId)} />)}
         {!filteredGames.length ? <div className={styles.empty}>{board.games.length ? "No games match this search and movement filter." : board.statusDetail}</div> : null}
@@ -388,8 +364,6 @@ export default function CfbTerminalClient({ board, initialGameId, initialView = 
       <aside className={styles.pulsePane}><div className={styles.sectionTitle}><span>DATA PULSE</span><span>{statusLabel}</span></div><article className={styles.pulseRow} data-tone={board.status === "live" ? "market" : "critical"}><div><span>{fmtEt(board.asOf, true)}</span><strong>{board.status === "live" ? <Zap aria-hidden="true" /> : <ShieldAlert aria-hidden="true" />} FEED STATE</strong></div><h3>{statusLabel}</h3><p>{board.statusDetail}</p></article>{captureHealth ? <article className={styles.pulseRow} data-tone={captureHealth.status === "healthy" ? "market" : "critical"}><div><span>{captureHealth.eventsCovered} EVENTS</span><strong><Activity aria-hidden="true" /> CHECKPOINTS</strong></div><h3>{captureHealth.due ? `${captureHealth.dueCaptured}/${captureHealth.due} due captured` : "No checkpoints due"}</h3><p>{captureHealth.missed} missed · {captureHealth.failed} failed · {captureHealth.pending} scheduled ahead</p></article> : null}{game ? <><article className={styles.pulseRow} data-tone="market"><div><span>{game.latestCapturedAt ? fmtEt(game.latestCapturedAt, true) : "—"}</span><strong><Activity aria-hidden="true" /> CAPTURE</strong></div><h3>{game.captures} observations</h3><p>Every chart point comes from the append-only exact-book ledger.</p></article><div className={styles.sectionTitle}><span>CROSS-MARKET</span><span>RELATED</span></div>{(["spread", "total", "moneyline"] as MarketKey[]).map((key) => { const view = buildMarket(game, key, selectionFor(key), observedNow); return <div key={key} className={styles.relatedRow}><span>{MARKET_LABELS[key]}</span><strong>{view.current}</strong><small>{view.move}</small></div>; })}<div className={styles.sectionTitle}><span>SIGNAL TAPE</span><span>{gameSignals.length} RECORDED</span></div>{gameSignals.length ? gameSignals.slice(0, 8).map((signal) => { const observedAt = signalObservedAt(signal); return <article key={`${signal.alertType}-${observedAt}`} className={styles.signalRow} data-tone={signal.alertType === "reversal" ? "risk" : "market"}><div><strong>{SIGNAL_LABELS[signal.alertType] ?? signal.alertType.toUpperCase()}</strong><span>{fmtEt(observedAt, true)}</span></div><p>{String(signal.details?.market ?? signalMarket(signal)).toUpperCase()} · {signal.side.toUpperCase()} · line {String(signal.details?.trigger_line ?? "—")} · support {String(signal.details?.consensus_support ?? "—")}</p><small>{String(signal.details?.signal_version ?? "unstamped")} · evidence #{String(signal.details?.trigger_history_id ?? "—")}</small></article>; }) : <div className={styles.signalEmpty}>No qualifying prospective signal for this game.</div>}</> : null}<div className={styles.disclosure}><BellRing aria-hidden="true" /><div><strong>Research terminal</strong><p>Signals are versioned observations, not recommendations. No predictive edge or real-money execution is represented.</p></div></div></aside>
     </div>
     <MarketSignalScorecard rows={scorecard} sport="CFB" />
-    {studyStatus && <p className={styles.researchDisclosure}>Frozen study primary metric: {studyStatus.primaryMetric === "decimal_price_ratio_pct" ? "decimal price ratio" : studyStatus.primaryMetric} ({studyStatus.primaryUnit === "percent" ? "%" : studyStatus.primaryUnit}). Realized ROI and the adverse-price ROI check are separate economic measures. Implemented checks pass; end-to-end engine acceptance remains incomplete.</p>}
-    {studyStatus && <section className={styles.researchPane}><div className={styles.sectionTitle}><span>PHASE 5 STUDY STATUS</span><span>VERSION {studyStatus.studyVersion} · DECISION-DENIED</span></div><div className={styles.researchTableWrap}><table><thead><tr><th>Window</th><th>State</th><th>Starts</th><th>Ends</th><th>Obs</th><th>Settled</th><th>Evaluation</th></tr></thead><tbody>{studyStatus.windows.map(window => <tr key={window.windowKey}><td>{window.purpose.replaceAll("_", " ").toUpperCase()}</td><td>{window.state.replaceAll("_", " ").toUpperCase()}</td><td>{new Date(window.startsAt).toLocaleString()}</td><td>{new Date(window.endsAt).toLocaleString()}</td><td>{window.observations}</td><td>{window.settled}</td><td>{window.evaluationResult?.toUpperCase() ?? "—"}</td></tr>)}</tbody></table></div><p className={styles.researchDisclosure}>Configuration {studyStatus.configurationDigest.slice(0, 12)}… · {studyStatus.unresolvedProviderPolicies} unresolved provider policies · {studyStatus.qualifications} qualifications. Study results never activate a consumer automatically.</p></section>}
     <footer className={styles.ticker}><span><strong>STATUS</strong> {board.statusDetail}</span><span><strong>BOARD</strong> {board.games.length} GAMES</span><span><strong>QUARANTINE</strong> {board.unmappedEvents} UNMAPPED EVENTS</span><span><strong>CONSENSUS</strong> LOWER MEDIAN · EXACT-LINE PRICE SUPPORT</span><span><strong>PAPER</strong> FIVE-MINUTE FRESHNESS REQUIRED</span></footer>
   </>}
   </div>;

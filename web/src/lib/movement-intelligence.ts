@@ -20,8 +20,6 @@ export const INTELLIGENCE_WINDOW_MS = 30 * 60_000;
 const labels: Record<string, string> = {
   steam: "STEAM", spread_steam: "STEAM", total_steam: "STEAM",
   walking: "MARKET DRIFT", spread_walking: "MARKET DRIFT", total_walking: "MARKET DRIFT",
-  gap_repricing: "LONG-GAP MOVE", timing_unverified: "TIMING UNVERIFIED",
-  cumulative_move: "CUMULATIVE MOVE",
   reversal: "REVERSAL", key_cross: "KEY CROSS", reference_led: "REFERENCE LED",
   price_pressure: "PRICE PRESSURE", late_move: "LATE MOVE", favorite_flip: "FAVORITE FLIP",
 };
@@ -72,14 +70,11 @@ function magnitude(signal: LineAlertRow): string {
   return keyNumber != null ? `Crossed ${keyNumber}` : "Recorded movement";
 }
 function explanation(signal: LineAlertRow, selection: string): string {
-  const type = signal.alertType;
-  if (type === "gap_repricing") return `Books repriced toward ${selection} between widely spaced captures. The move's speed is unknown.`;
-  if (type === "timing_unverified") return `The legacy alert favored ${selection}, but the stored path does not verify its timing and book support.`;
-  if (type === "cumulative_move") return `The cumulative change favors ${selection}; the legacy alert does not establish a gradual path.`;
   const state = signal.details?.lifecycle_state;
   if (state === "weakened") return `The move toward ${selection} has partially retraced since its first observation.`;
   if (state === "strengthened") return `The move toward ${selection} has extended since its first observation across comparable books.`;
   if (state === "held" || state === "confirmed") return `The move toward ${selection} is holding across comparable books since its first observation.`;
+  const type = signal.alertType;
   if (type === "reversal") return `An earlier move reversed toward ${selection}. The original direction has lost support.`;
   if (type.endsWith("steam")) return `Multiple books moved toward ${selection} within the detector's capture interval.`;
   if (type.endsWith("walking")) return `The recorded market drift favors ${selection} versus the first captured line.`;
