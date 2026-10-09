@@ -227,6 +227,17 @@ const cancelledOnly = only([wf("c.yml", { crons: ["0 * * * *"] })], { "c.yml": [
 assert.equal(cancelledOnly.status, "fail");
 assert.match(cancelledOnly.detail, /^None of its last 2 runs finished \(newest was cancelled/);
 
+// Cancelled runs did no work. An hourly job whose last success was three days ago and whose
+// eight runs since were all cancelled read "Last run succeeded Sep 26"; three in a row is a FAIL,
+// and even one is named rather than skipped over.
+const cancelledRuns = (n: number) => Array.from({ length: n }, (_, k) => run("h.yml", new Date(now.getTime() - (k + 1) * 3600_000).toISOString(), "cancelled"));
+const cancelledStreak = only([wf("h.yml", { crons: ["0 * * * *"] })], { "h.yml": [...cancelledRuns(8), run("h.yml", "2026-09-26T12:00:00Z", "success")] }).find((i) => i.key === "workflow:h.yml")!;
+assert.equal(cancelledStreak.status, "fail");
+assert.match(cancelledStreak.detail, /^Its last 8 runs were cancelled before finishing \(latest Sep 29, 7:40 AM ET\); last success Sep 26/);
+const cancelledOnce = only([wf("h.yml", { crons: ["0 * * * *"] })], { "h.yml": [...cancelledRuns(1), run("h.yml", "2026-09-29T10:00:00Z", "success")] }).find((i) => i.key === "workflow:h.yml")!;
+assert.equal(cancelledOnce.status, "pass", "one cancelled run is forgiven");
+assert.match(cancelledOnce.detail, /^Last completed run succeeded Sep 29, 6:00 AM ET; its newest run \(latest Sep 29, 7:40 AM ET\) was cancelled before finishing\./);
+
 // --- sweep ---
 const problems = problemsFromChecklist(items);
 assert.ok(problems.every((p) => items.find((i) => i.key === p.key)?.status === "fail"));

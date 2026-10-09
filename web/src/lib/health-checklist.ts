@@ -85,6 +85,12 @@ const FAILED = new Set(["failure", "timed_out", "startup_failure"]);
 export const DISPATCH_GRACE_MS = 2 * 3600_000;
 export const GITHUB_CRON_GRACE_MS = 12 * 3600_000;
 const MANUAL_FAIL_WINDOW_MS = 14 * 86400_000;
+/**
+ * A cancelled run did no work. One is shown and forgiven (a replaced queued
+ * run, a person stopping it); this many in a row means the job is not getting
+ * to run, which "Last run succeeded <weeks ago>" used to hide.
+ */
+export const CANCELLED_FAIL_STREAK = 3;
 const NFL_WORKFLOWS = new Set(["refresh_nfl_dfs_projections.yml", "refresh_nfl_availability_context.yml", "refresh_nfl_dk_pool.yml",
   "capture_nfl_availability.yml", "refresh_nfl_vegas.yml", "refresh_nfl_dfs_research.yml", "refresh_nfl_dfs_postweek.yml",
   "refresh_nfl_pbp_archetypes.yml", "refresh_nfl_specials.yml", "refresh_nfl_survivor.yml", "capture_nfl_odds.yml"]);
@@ -129,6 +135,8 @@ function workflowItem(w: ManifestWorkflow, input: ChecklistInputs, runsByName: M
   const finished = runs.filter((r) => r.status === "completed" && r.conclusion !== "cancelled" && r.conclusion !== "skipped");
   const last = runs[0] ?? null;
   const lastFinished = finished[0] ?? null;
+  let cancelled = 0;
+  for (const r of runs) { if (r.status === "completed" && r.conclusion === "cancelled") cancelled += 1; else break; }
   const dispatch = input.dispatchTimes[w.file] ?? { past: [], future: [] };
   // The next 8 days of fire times give the cadence text; a cron that fires less
   // often than that (monthly, seasonal) still gets its true next time.
@@ -209,6 +217,10 @@ function workflowItem(w: ManifestWorkflow, input: ChecklistInputs, runsByName: M
   if (!scheduled && !followsOthers) return { ...base, status: lastFinished?.conclusion === "success" ? "pass" : "info", detail: `Manual job; last run ${lastFinished?.conclusion ?? last.status} ${et(last.createdAt)}.` };
   // Every recent run was cancelled or skipped: nothing finished, so there is no success to report.
   if (!lastFinished) return { ...base, status: "fail", detail: `None of its last ${runs.length} runs finished (newest was ${last.conclusion} at ${et(last.createdAt)}).` };
+  if (cancelled >= CANCELLED_FAIL_STREAK) {
+    return { ...base, status: "fail", detail: `Its last ${cancelled} runs were cancelled before finishing (latest ${et(last.createdAt)}); last success ${lastFinished.conclusion === "success" ? et(lastFinished.createdAt) : "not in recent runs"}.` };
+  }
+  if (cancelled) return { ...base, status: "pass", detail: `Last completed run succeeded ${et(lastFinished.createdAt)}; its newest ${cancelled === 1 ? "run" : `${cancelled} runs`} (latest ${et(last.createdAt)}) ${cancelled === 1 ? "was" : "were"} cancelled before finishing.${cadence}` };
   return { ...base, status: "pass", detail: `Last run succeeded ${et(lastFinished.createdAt)}.${cadence}` };
 }
 

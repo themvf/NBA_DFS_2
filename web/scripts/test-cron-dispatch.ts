@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { DISPATCH_JOBS, dispatchWorkflow, dueJobs, type DispatchContext } from "../src/lib/cron-dispatch";
+import { DISPATCH_JOBS, dispatchWorkflow, dueJobs, parseTokenExpiry, type DispatchContext } from "../src/lib/cron-dispatch";
 
 const root = path.resolve(__dirname, "..");
 const repo = path.resolve(root, "..");
@@ -124,6 +124,16 @@ assert.ok(!keys("2026-09-29T10:37:00Z").includes("nfl-dfs-postweek"), "not the :
   const created = await dispatchWorkflow(job, "t", withRun, { returnRunDetails: true });
   assert.equal(created.ok, true); assert.equal(created.runId, 42); assert.equal(created.htmlUrl, "https://github.com/x/runs/42");
   assert.equal(JSON.parse(sentBody).return_run_details, true);
+  // The token's expiry header (a fine-grained PAT's) rides on the outcome so the route can
+  // surface it; a token without one, or a header that does not parse, adds nothing.
+  assert.equal(parseTokenExpiry("2026-11-15 12:00:00 UTC"), "2026-11-15T12:00:00.000Z");
+  assert.equal(parseTokenExpiry(null), null);
+  assert.equal(parseTokenExpiry("never"), null);
+  const expiring = (async () => new Response(null, { status: 204, headers: { "github-authentication-token-expiration": "2026-11-15 12:00:00 UTC" } })) as unknown as typeof fetch;
+  assert.equal((await dispatchWorkflow(job, "t", expiring)).tokenExpiresAt, "2026-11-15T12:00:00.000Z");
+  assert.equal((await dispatchWorkflow(job, "t", fake(204))).tokenExpiresAt, undefined, "no header, no field");
+  assert.equal((await dispatchWorkflow(job, "t", (async () => new Response("nope", { status: 422, headers: { "github-authentication-token-expiration": "2026-11-15 12:00:00 UTC" } })) as unknown as typeof fetch)).tokenExpiresAt,
+    "2026-11-15T12:00:00.000Z", "a failed dispatch still reports the expiry");
 })().then(() => {
   console.log(`Cron dispatch: ${DISPATCH_JOBS.length} bridged workflows on a 15-minute tick; half-hour cadences unchanged, NFL availability every 15 minutes before a kickoff.`);
 }).catch((e) => { console.error(e); process.exit(1); });

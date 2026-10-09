@@ -154,6 +154,20 @@ export interface DispatchOutcome {
   key: string; workflow: string; ok: boolean; status: number; detail?: string;
   /** Present when GitHub returned the run it created (`returnRunDetails`). */
   runId?: number; htmlUrl?: string;
+  /** When the token used expires (ISO), from GitHub's response header; absent for tokens without one. */
+  tokenExpiresAt?: string;
+}
+
+/**
+ * GitHub's `github-authentication-token-expiration` header ("2026-11-15
+ * 12:00:00 UTC" for a fine-grained PAT), as an ISO time; null when absent or
+ * unparseable. A fine-grained PAT expires within a year, and when it does every
+ * bridged job goes quiet at once, so the date is surfaced on /health.
+ */
+export function parseTokenExpiry(header: string | null): string | null {
+  if (!header) return null;
+  const t = Date.parse(header);
+  return Number.isFinite(t) ? new Date(t).toISOString() : null;
 }
 
 /**
@@ -175,22 +189,21 @@ export async function dispatchWorkflow(job: Pick<DispatchJob, "key" | "workflow"
       body: JSON.stringify({ ref: WORKFLOW_REF, ...(job.inputs ? { inputs: job.inputs } : {}),
         ...(options.returnRunDetails ? { return_run_details: true } : {}) }),
     });
-    // A fine-grained PAT expires within a year; when it does every bridged job
-    // goes quiet at once. GitHub reports the date on each response, so log it.
-    const expires = response.headers.get("github-authentication-token-expiration");
-    if (expires) {
-      const daysLeft = (Date.parse(expires) - Date.now()) / 86_400_000;
-      if (Number.isFinite(daysLeft) && daysLeft < 30) console.error(`cron dispatch: GITHUB_DISPATCH_TOKEN expires in ${Math.floor(daysLeft)} days (${expires})`);
+    const tokenExpiresAt = parseTokenExpiry(response.headers.get("github-authentication-token-expiration"));
+    const expiry = tokenExpiresAt ? { tokenExpiresAt } : {};
+    if (tokenExpiresAt) {
+      const daysLeft = (Date.parse(tokenExpiresAt) - Date.now()) / 86_400_000;
+      if (daysLeft < 30) console.error(`cron dispatch: GITHUB_DISPATCH_TOKEN expires in ${Math.floor(daysLeft)} days (${tokenExpiresAt})`);
     }
-    if (response.status === 204) return { key: job.key, workflow: job.workflow, ok: true, status: 204 };
+    if (response.status === 204) return { key: job.key, workflow: job.workflow, ok: true, status: 204, ...expiry };
     if (response.status === 200) {
       const body = await response.json().catch(() => null) as { workflow_run_id?: number; html_url?: string } | null;
-      return { key: job.key, workflow: job.workflow, ok: true, status: 200,
+      return { key: job.key, workflow: job.workflow, ok: true, status: 200, ...expiry,
         ...(typeof body?.workflow_run_id === "number" ? { runId: body.workflow_run_id } : {}),
         ...(typeof body?.html_url === "string" ? { htmlUrl: body.html_url } : {}) };
     }
     const detail = (await response.text()).slice(0, 300);
-    return { key: job.key, workflow: job.workflow, ok: false, status: response.status, detail };
+    return { key: job.key, workflow: job.workflow, ok: false, status: response.status, detail, ...expiry };
   } catch (error) {
     return { key: job.key, workflow: job.workflow, ok: false, status: 0, detail: error instanceof Error ? error.message : String(error) };
   }

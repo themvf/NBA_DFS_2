@@ -432,6 +432,25 @@ to a person.
   checklist (a workflow appears automatically via the manifest; a new dataset
   needs a `model/pipeline_health.py` entry), and every fallback must surface a
   visible reason. "Done" requires the run id and its conclusion, not "it started".
+- **Muting is one list: `MUTED` in `web/src/lib/health-checklist.ts`.** A FAIL
+  row whose key matches an entry (exact key, or a prefix such as `data:tennis`)
+  is shown on /health as INFO reading "Muted by owner since <date>: <reason>.
+  Underlying: <what it would have said>" and is never emailed, because the sweep
+  takes only FAIL rows. Every entry carries a reason and a date, and this is the
+  only way to quiet a row: do not disable the workflow, drop the dataset entry
+  or loosen a threshold to stop an email. A muted row keeps its real last-run and
+  next-run columns, and the page counts muted rows in its summary strip. Muted
+  2026-09-29: tennis (workflows and data), the MLB DFS slate loader, the MLB
+  beat-writer articles and the YouTube picks extraction.
+- **Three rows come from observations, not from the run that reads them.** The
+  dispatch PAT's expiry is a response header only that token receives (the sweep
+  runs with the Actions token), and the deployed commit is an env var only Vercel
+  has, so the dispatcher and the health-check route record them as `obs:` rows in
+  `cron_heartbeats` (`recordObservation` in `web/src/lib/cron-heartbeat.ts`; never
+  listed in `CRON_ROUTES`, so never a clock) and every checker reads them from
+  there. The Odds API credit row reads `odds_api_usage` (plan size = used +
+  remaining of the newest reading; the counter resets on the billing day, so a
+  jump in `remaining` is a reset, not an error).
 
 ## NBA Lineup Structure (DraftKings)
 ```

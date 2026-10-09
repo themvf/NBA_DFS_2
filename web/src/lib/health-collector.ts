@@ -9,9 +9,9 @@
  */
 import { sql } from "drizzle-orm";
 import manifestJson from "@/data/workflow-manifest.json";
-import { DISPATCH_JOBS, GITHUB_OWNER, GITHUB_REPO, NO_CONTEXT } from "@/lib/cron-dispatch";
-import { readCronHeartbeats } from "@/lib/cron-heartbeat";
-import { buildChecklist, type HealthItem, type ManifestWorkflow } from "@/lib/health-checklist";
+import { DISPATCH_JOBS, GITHUB_OWNER, GITHUB_REPO, NO_CONTEXT, parseTokenExpiry } from "@/lib/cron-dispatch";
+import { observation, readCronHeartbeats, recordObservation, type CronHeartbeat } from "@/lib/cron-heartbeat";
+import { buildChecklist, type HealthItem, type ManifestWorkflow, type OddsApiReading } from "@/lib/health-checklist";
 import { toRunLite, type WorkflowRunLite } from "@/lib/workflow-health";
 
 const database = async () => (await import("@/db")).db;
@@ -20,7 +20,11 @@ export const HEALTH_CHECK_EVERY_MINUTES = 30;
 /** The Pipeline Health job's cadence (dispatched every 3 h). */
 export const DATASET_CADENCE_HOURS = 3;
 const GITHUB_TIMEOUT_MS = 8_000;
-const TICK_MINUTES = [7, 22, 37, 52];
+/** The dispatcher's tick minutes; a test pins these to vercel.json's schedule for /api/cron/dispatch. */
+export const TICK_MINUTES = [7, 22, 37, 52];
+/** Observation keys (lib/cron-heartbeat): facts recorded by one process for the checklist to read from any. */
+export const OBS_DISPATCH_TOKEN = "github-dispatch-token";
+export const OBS_DEPLOYED_COMMIT = "deployed-commit";
 
 export const MANIFEST = (manifestJson as { workflows: ManifestWorkflow[] }).workflows;
 
@@ -43,10 +47,11 @@ export function dispatcherTimes(now: Date): Record<string, { past: Date[]; futur
   return out;
 }
 
-async function github(path: string, token: string, fetchImpl: typeof fetch): Promise<Record<string, unknown>> {
+/** One GitHub read under /repos/{owner}/{repo}; the body plus the token's expiry header when the token has one. */
+async function github(path: string, token: string, fetchImpl: typeof fetch): Promise<{ body: Record<string, unknown>; tokenExpiresAt: string | null }> {
   let response: Response;
   try {
-    response = await fetchImpl(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions${path}`, {
+    response = await fetchImpl(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}${path}`, {
       headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${token}`, "X-GitHub-Api-Version": "2022-11-28" },
       signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS), cache: "no-store",
     });
@@ -54,7 +59,7 @@ async function github(path: string, token: string, fetchImpl: typeof fetch): Pro
     throw new Error(error instanceof Error && error.name === "TimeoutError" ? `GitHub did not answer within ${GITHUB_TIMEOUT_MS / 1000}s` : `GitHub request failed: ${errorText(error)}`);
   }
   if (!response.ok) throw new Error(`GitHub answered ${response.status} for ${path}`);
-  return await response.json() as Record<string, unknown>;
+  return { body: await response.json() as Record<string, unknown>, tokenExpiresAt: parseTokenExpiry(response.headers.get("github-authentication-token-expiration")) };
 }
 
 /**
@@ -63,30 +68,72 @@ async function github(path: string, token: string, fetchImpl: typeof fetch): Pro
  * the rest.
  */
 async function readGithub(token: string | null, fetchImpl: typeof fetch) {
-  if (!token) return { runs: null, states: null, workflowErrors: {}, error: "no GitHub token is configured for this checker" };
+  if (!token) return { runs: null, states: null, workflowErrors: {}, error: "no GitHub token is configured for this checker", tokenExpiresAt: null };
   const [workflows, ...perWorkflow] = await Promise.allSettled([
-    github("/workflows?per_page=100", token, fetchImpl),
-    ...MANIFEST.map((w) => github(`/workflows/${w.file}/runs?per_page=10&exclude_pull_requests=true`, token, fetchImpl)),
+    github("/actions/workflows?per_page=100", token, fetchImpl),
+    ...MANIFEST.map((w) => github(`/actions/workflows/${w.file}/runs?per_page=10&exclude_pull_requests=true`, token, fetchImpl)),
   ]);
   const runs: Record<string, WorkflowRunLite[]> = {};
   const workflowErrors: Record<string, string> = {};
   MANIFEST.forEach((w, i) => {
     const result = perWorkflow[i];
-    if (result.status === "fulfilled") runs[w.file] = ((result.value.workflow_runs as Record<string, unknown>[] | undefined) ?? []).map(toRunLite);
+    if (result.status === "fulfilled") runs[w.file] = ((result.value.body.workflow_runs as Record<string, unknown>[] | undefined) ?? []).map(toRunLite);
     else workflowErrors[w.file] = errorText(result.reason);
   });
+  const tokenExpiresAt = [workflows, ...perWorkflow].map((r) => (r.status === "fulfilled" ? r.value.tokenExpiresAt : null)).find((t) => t) ?? null;
   // Every read failed: GitHub itself is unreachable or the token is bad. Say that once.
   if (MANIFEST.length && Object.keys(workflowErrors).length === MANIFEST.length) {
-    return { runs: null, states: null, workflowErrors: {}, error: workflowErrors[MANIFEST[0].file] };
+    return { runs: null, states: null, workflowErrors: {}, error: workflowErrors[MANIFEST[0].file], tokenExpiresAt };
   }
   let states: Record<string, string> | null = null;
   if (workflows.status === "fulfilled") {
     states = {};
-    for (const w of (workflows.value.workflows as Record<string, unknown>[] | undefined) ?? []) {
+    for (const w of (workflows.value.body.workflows as Record<string, unknown>[] | undefined) ?? []) {
       states[String(w.path ?? "").replace(/^\.github\/workflows\//, "")] = String(w.state ?? "");
     }
   }
-  return { runs, states, workflowErrors, error: null };
+  return { runs, states, workflowErrors, error: null, tokenExpiresAt };
+}
+
+export interface MainHead { sha: string; at: string; source: string }
+
+/**
+ * main's head as GitHub knows it. `commits/main` needs Contents: read, which
+ * the dispatch PAT (Actions only) lacks, so the fallback is the newest
+ * push-triggered run on main: tests.yml runs on every push to main, so its
+ * head_sha is main's head and its creation time is the push time.
+ */
+export async function readMainHead(token: string | null, fetchImpl: typeof fetch): Promise<{ head: MainHead | null; error: string | null }> {
+  if (!token) return { head: null, error: "no GitHub token is configured for this checker" };
+  const errors: string[] = [];
+  try {
+    const { body } = await github("/commits/main", token, fetchImpl);
+    const sha = String(body.sha ?? ""), at = String((body.commit as { committer?: { date?: string } } | undefined)?.committer?.date ?? "");
+    if (sha && Number.isFinite(Date.parse(at))) return { head: { sha, at: new Date(at).toISOString(), source: "commits/main" }, error: null };
+    errors.push("commits/main answered without a sha and date");
+  } catch (error) { errors.push(errorText(error)); }
+  try {
+    const { body } = await github("/actions/runs?branch=main&event=push&per_page=1", token, fetchImpl);
+    const run = ((body.workflow_runs as Record<string, unknown>[] | undefined) ?? [])[0];
+    const sha = String(run?.head_sha ?? ""), at = String(run?.created_at ?? "");
+    if (sha && Number.isFinite(Date.parse(at))) return { head: { sha, at: new Date(at).toISOString(), source: "newest push run on main" }, error: null };
+    errors.push("no push-triggered run on main");
+  } catch (error) { errors.push(errorText(error)); }
+  return { head: null, error: errors.join("; ") };
+}
+
+/** The Odds API quota as the capture jobs recorded it: the newest reading and the past 7 days of readings, oldest first. */
+async function readOddsApi(): Promise<{ usage: { latest: OddsApiReading; series: OddsApiReading[] } | null; error: string | null }> {
+  try {
+    const db = await database();
+    const reading = (r: Record<string, unknown>): OddsApiReading => ({ requestedAt: new Date(String(r.requested_at)).toISOString(), used: Number(r.requests_used), remaining: Number(r.requests_remaining) });
+    const latest = await db.execute(sql`SELECT requested_at, requests_used, requests_remaining FROM odds_api_usage
+      WHERE requests_used IS NOT NULL AND requests_remaining IS NOT NULL ORDER BY requested_at DESC, id DESC LIMIT 1`);
+    if (!latest.rows[0]) return { usage: null, error: null };
+    const series = await db.execute(sql`SELECT requested_at, requests_used, requests_remaining FROM odds_api_usage
+      WHERE requests_used IS NOT NULL AND requests_remaining IS NOT NULL AND requested_at > NOW() - INTERVAL '7 days' ORDER BY requested_at, id`);
+    return { usage: { latest: reading(latest.rows[0]), series: series.rows.map(reading) }, error: null };
+  } catch (error) { return { usage: null, error: errorText(error) }; }
 }
 
 const text = (value: unknown) => (value == null || value === "" ? null : String(value));

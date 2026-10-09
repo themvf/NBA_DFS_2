@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { withHeartbeat } from "@/lib/cron-heartbeat";
+import { recordObservation, withHeartbeat } from "@/lib/cron-heartbeat";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { dispatchWorkflow, dueJobs, NEAR_KICKOFF_MS, type DispatchContext } from "@/lib/cron-dispatch";
@@ -36,8 +36,13 @@ async function handle(request: NextRequest) {
   }
 
   const now = new Date();
-  const jobs = dueJobs(now, await dispatchContext(now));
-  if (!jobs.length) return NextResponse.json({ ok: true, at: now.toISOString(), dispatched: [], skipped: "no job due on this tick" });
+  const context = await dispatchContext(now);
+  // A fallback that only logs is invisible: the response (and so the heartbeat
+  // detail on /health) says when this tick ran without the kickoff schedule.
+  const warnings = context.nflKickoffs === null ? ["NFL kickoffs could not be read; near-kickoff quarter-hour ticks were skipped on this tick"] : [];
+  const warned = warnings.length ? { warnings } : {};
+  const jobs = dueJobs(now, context);
+  if (!jobs.length) return NextResponse.json({ ok: true, at: now.toISOString(), ...warned, dispatched: [], skipped: "no job due on this tick" });
 
   const token = process.env.GITHUB_DISPATCH_TOKEN;
   if (!token) {
@@ -52,8 +57,14 @@ async function handle(request: NextRequest) {
     if (!outcome.ok) console.error(`cron dispatch: ${job.key} (${job.workflow}) failed (${outcome.status}): ${outcome.detail ?? ""}`);
     results.push(outcome);
   }
+  // The token's expiry rides on every GitHub response. It goes into the JSON
+  // ahead of the (long) outcome list so it survives the heartbeat's 500-char
+  // detail, and is recorded as an observation the checklist reads from any
+  // process (the daily sweep never holds this token).
+  const tokenExpiresAt = results.find((r) => r.tokenExpiresAt)?.tokenExpiresAt ?? null;
+  if (tokenExpiresAt) await recordObservation("github-dispatch-token", tokenExpiresAt);
   const failed = results.filter((r) => !r.ok);
-  return NextResponse.json({ ok: failed.length === 0, at: now.toISOString(), dispatched: results }, { status: failed.length ? 502 : 200 });
+  return NextResponse.json({ ok: failed.length === 0, at: now.toISOString(), tokenExpiresAt, ...warned, dispatched: results }, { status: failed.length ? 502 : 200 });
 }
 
 async function dispatchContext(now: Date): Promise<DispatchContext> {
