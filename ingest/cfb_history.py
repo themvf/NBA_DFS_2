@@ -21,7 +21,7 @@ from typing import Any
 import requests
 
 from config import DATA_DIR, load_config
-from db.database import DatabaseManager
+from db.database import DatabaseManager, fetch_rows
 from db.queries import (
     upsert_cfb_matchup,
     upsert_cfb_team,
@@ -172,10 +172,7 @@ class _TransactionDb:
     def execute(self, sql: str, params=None):
         cursor = self.connection.cursor()
         cursor.execute(sql, params or ())
-        try:
-            return cursor.fetchall()
-        except Exception:
-            return []
+        return fetch_rows(cursor)
 
     def execute_one(self, sql: str, params=None):
         cursor = self.connection.cursor()

@@ -7,7 +7,13 @@ import { matchupResidual, type MatchupForecast, type ResidualInput } from "@/lib
 export async function getPickemMatchup(season: number, asOf: string): Promise<Record<number, MatchupForecast>> {
   const exists = await db.execute(sql`SELECT to_regclass('nfl_pickem_matchup_forecasts') present`);
   if (!exists.rows[0]?.present) return {};
-  const result = await db.execute(sql`SELECT g.id, f.forecast_id, f.payload FROM nfl_season_games g
+  const result = await db.execute(sql`SELECT g.id, f.forecast_id,
+      CASE WHEN jsonb_typeof(f.payload->'input'->'features') = 'array'
+        THEN (f.payload - 'featureManifest') || jsonb_build_object('input', (f.payload->'input') || jsonb_build_object('features',
+          (SELECT coalesce(jsonb_agg(feature - 'sourceManifest' ORDER BY position), '[]'::jsonb)
+           FROM jsonb_array_elements(f.payload->'input'->'features') WITH ORDINALITY AS x(feature, position))))
+        ELSE f.payload - 'featureManifest' END AS payload
+    FROM nfl_season_games g
     JOIN LATERAL (SELECT forecast_id,payload FROM nfl_pickem_matchup_forecasts f
       WHERE f.game_id=g.nflverse_game_id AND f.available_at<=${asOf}::timestamptz
         AND f.available_at<g.kickoff AND f.decision_cutoff<g.kickoff

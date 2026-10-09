@@ -16,6 +16,7 @@ from pathlib import Path
 
 from model.nfl_dfs_context_variant_study import evaluate_context_variants, freeze_health, timestamp
 from model.nfl_matchup_study import digest, evaluate_study, implementation_digest, validate_manifest
+from research import nfl_pickem_storage as pickem_storage
 
 
 def ledger_inputs(db, season, now, study_run_id=None):
@@ -67,13 +68,43 @@ def context_report(db, season, now, config):
     return report
 
 
+SUPPORTED_FORECAST_VERSION = "nfl-matchup-shadow-v1"
+
+
+def source_times_sql(sources: str) -> str:
+    return f"""CASE WHEN jsonb_typeof({sources})='array' THEN (
+     SELECT coalesce(jsonb_agg(jsonb_build_object(
+        'captured_at', s->'captured_at', 'recorded_at', s->'recorded_at',
+        'identity_manifest', jsonb_build_object('captured_at', s->'identity_manifest'->'captured_at'))), '[]'::jsonb)
+     FROM jsonb_array_elements({sources}) s) ELSE '[]'::jsonb END"""
+
+
+# Only what grading reads: a full projection is ~20 KB a row.
+GRADED_PROJECTION_SQL = f"""jsonb_build_object(
+  'position', p.projection->'position',
+  'shadow', jsonb_build_object(
+     'status', p.projection->'shadow'->'status',
+     'baseline', p.projection->'shadow'->'baseline',
+     'candidate', p.projection->'shadow'->'candidate',
+     'matchup_manifest_hash', p.projection->'shadow'->'matchup_manifest_hash'),
+  'baseline', jsonb_build_object(
+     'id', p.projection->'baseline'->'id',
+     'model_proj_fpts', p.projection->'baseline'->'model_proj_fpts',
+     'median_fpts', p.projection->'baseline'->'median_fpts',
+     'floor_fpts', p.projection->'baseline'->'floor_fpts',
+     'ceiling_fpts', p.projection->'baseline'->'ceiling_fpts',
+     'boom_rate', p.projection->'baseline'->'boom_rate'),
+  'sources', {source_times_sql("p.projection->'sources'")})"""
+
+
 def prospective_reports(db, season, now, registry):
     """Join immutable matchup snapshots to latest exact, revisioned outcomes."""
     registered = [m for m in registry["studies"] if m.get("status") == "registered" and m["kind"].startswith("dfs_")]
     if not registered:
         return {"version": "nfl-matchup-forward-report-v1", "studies": [], "reason": "no registered DFS studies"}
     first_registered = min(timestamp(resolve_registration(m)["registered_at"]) for m in registered)
-    records = db.execute("""SELECT p.player_id,p.game_id,p.kickoff,p.projection,
+    records = db.execute(f"""SELECT p.player_id,p.game_id,p.kickoff,
+        CASE WHEN f.model_version='{SUPPORTED_FORECAST_VERSION}' THEN {GRADED_PROJECTION_SQL} END projection,
         f.run_id,f.season,f.week,f.created_at,f.as_of_at,f.model_version forecast_model_version,
         jsonb_build_object('model_hashes',f.manifest->'model_hashes',
                           'implementation_hashes',f.manifest->'implementation_hashes',
@@ -92,9 +123,9 @@ def prospective_reports(db, season, now, registry):
     complete = [(r["season"], r["week"]) for r in completed]
     # Shared storage also contains independently registered allowed-volume
     # forecasts. Their payload is not the PFR mean-study envelope.
-    supported_records = [row for row in records if row.get("forecast_model_version") == "nfl-matchup-shadow-v1"]
+    supported_records = [row for row in records if row.get("forecast_model_version") == SUPPORTED_FORECAST_VERSION]
     foreign_versions = Counter(str(row.get("forecast_model_version") or "missing")
-                               for row in records if row.get("forecast_model_version") != "nfl-matchup-shadow-v1")
+                               for row in records if row.get("forecast_model_version") != SUPPORTED_FORECAST_VERSION)
     reports = []
     for manifest in registered:
         manifest = resolve_registration(manifest)
@@ -244,14 +275,31 @@ def capture_game_results(db, season, now):
     return count
 
 
+PICKEM_GRADED_PAYLOAD_SQL = f"""jsonb_build_object(
+  'study_id', f.payload->'study_id',
+  'input', jsonb_build_object('baseline', f.payload->'input'->'baseline'),
+  'featureManifest', jsonb_build_object('sources', {source_times_sql(pickem_storage.FEATURE_MANIFEST_SQL + "->'sources'")}),
+  'candidate_config_hash', f.payload->'candidate_config_hash',
+  'baseline_config_hash', f.payload->'baseline_config_hash',
+  'implementation_hashes', f.payload->'implementation_hashes',
+  'baseline', f.payload->'baseline',
+  'candidate', f.payload->'candidate',
+  'covered', coalesce(f.payload->'covered', 'false'::jsonb))"""
+
+
 def pickem_prospective_reports(db, season, now, registry):
     studies = [m for m in registry["studies"] if m.get("status") == "registered" and m["kind"] == "pickem"]
     if not studies:
         return []
     first_registered = min(timestamp(resolve_registration(m)["registered_at"]) for m in studies)
-    records = db.execute("""SELECT f.*,g.season,g.week,g.kickoff,r.result_id,r.observed_at result_at,
+    pickem_storage.ensure(db)
+    pickem_storage.fill_input_digests(db)
+    records = db.execute(f"""SELECT f.forecast_id,f.game_id,f.available_at,f.decision_cutoff,f.input_digest,
+        {PICKEM_GRADED_PAYLOAD_SQL} payload,
+        g.season,g.week,g.kickoff,r.result_id,r.observed_at result_at,
         r.outcome,r.source_digest result_digest,r.scoring_version
-        FROM nfl_pickem_matchup_forecasts f JOIN nfl_season_games g ON g.nflverse_game_id=f.game_id
+        FROM nfl_pickem_matchup_forecasts f {pickem_storage.MANIFEST_JOIN_SQL}
+        JOIN nfl_season_games g ON g.nflverse_game_id=f.game_id
         LEFT JOIN LATERAL (SELECT r.* FROM nfl_matchup_game_results r WHERE r.game_id=f.game_id
            AND r.observed_at<=%s ORDER BY r.observed_at DESC,r.result_id DESC LIMIT 1) r ON TRUE
         WHERE g.season=%s AND f.available_at<=%s AND f.available_at>=%s""", (now, season, now, first_registered))
@@ -266,6 +314,8 @@ def pickem_prospective_reports(db, season, now, registry):
             if payload.get("study_id") != manifest["study_id"]:
                 continue
             input_ = payload["input"]
+            if not record.get("input_digest"):
+                raise ValueError(f"pick'em forecast {record['forecast_id']} has no stored input digest")
             available = [timestamp(input_["baseline"]["marketCapturedAt"])] if input_["baseline"].get("marketCapturedAt") else [timestamp(record["decision_cutoff"])]
             for source in payload.get("featureManifest", {}).get("sources", []):
                 for key in ("captured_at", "recorded_at"):
@@ -277,7 +327,7 @@ def pickem_prospective_reports(db, season, now, registry):
             rows.append({"study_id": manifest["study_id"], "forecast_id": record["forecast_id"], "game_id": record["game_id"],
                 "season": record["season"], "week": record["week"], "kickoff": record["kickoff"],
                 "captured_at": record["available_at"], "decision_cutoff": record["decision_cutoff"], "available_at": max(available),
-                "input_manifest_hash": digest(input_), "candidate_config_hash": payload.get("candidate_config_hash"),
+                "input_manifest_hash": record["input_digest"], "candidate_config_hash": payload.get("candidate_config_hash"),
                 "baseline_config_hash": payload.get("baseline_config_hash"), "implementation_hashes": payload.get("implementation_hashes"),
                 "baseline": probability_arm(payload.get("baseline")), "candidate": probability_arm(payload.get("candidate")),
                 "covered": payload.get("covered",False), "scoring_version": record.get("scoring_version") or manifest["scoring_version"],

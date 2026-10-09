@@ -472,6 +472,26 @@ cost, so merged git branches must be deleted; and compute, not storage, is
 the Neon bill for an always-on database, so the levers are the plan rate,
 the autoscaling maximum, and the load that pushes the average up.
 
+**Pick'em forecast manifests are stored once (2026-10-09).** Each frozen
+pick'em forecast carried its matchup source manifest five times (`featureManifest`
+plus every feature's `sourceManifest`), ~700 KB a row, 1.84 GB for 10,699 rows,
+and the research grader ran out of memory loading them.
+`research/nfl_pickem_storage.py` stores each distinct manifest once in
+`nfl_matchup_manifests` (sha256 of the JSONB text) and replaces the copies with
+`{"manifestRef": hash}`; the database function `nfl_pickem_swap_manifest` does
+both directions, and an update is refused unless rehydrating gives back the
+original payload exactly. `input_digest` is computed from the full payload
+before compaction, so grading and the registered `input_manifest_hash` are
+unchanged (verified: identical forward report, 200/200 rehydrated digests).
+Rows went to ~7 KB; manifests are 120 MB. The research workflow compacts after
+grading. The freezer (`research/nfl_pickem_matchup.py`) and
+`ingest/nfl_pickem_refresh.py` are hash-pinned by the three registered pick'em
+studies, so they still write full payloads; changing them (write references,
+skip freezes whose content did not change, sort plays deterministically) needs
+a new implementation pin, which makes the grader reject every earlier forecast.
+Do that only at a study version boundary. The table file shrinks only after
+`VACUUM FULL`, which is the owner's call (it locks reads).
+
 ## Parallel agents: commit locally, one session pushes (2026-10-04)
 
 Every push to GitHub starts a Vercel build (a branch push builds Preview, a
@@ -528,13 +548,39 @@ to a person.
   something new appears; closed with "all clear" when nothing fails. It goes red
   only if it could not run, and its own heartbeat shows on /health.
 - **Never set a read-only (or any) session setting on `DATABASE_URL`.** It is
-  Neon's pooled endpoint (PgBouncer transaction mode): psycopg2
-  `set_session(readonly=True)` / `SET default_transaction_read_only` sticks to
-  the shared server connection and leaks into other jobs. An audit session doing
-  exactly that made production writes fail with "cannot execute ... in a
-  read-only transaction" (MLB odds capture, 2026-09-29 01:37-02:08 UTC). For a
+  Neon's pooled endpoint (PgBouncer transaction mode): `SET
+  default_transaction_read_only` sticks to the shared server connection and
+  leaks into other jobs. An audit session doing exactly that made production
+  writes fail with "cannot execute ... in a read-only transaction" (MLB odds
+  capture, 2026-09-29 01:37-02:08 UTC). Measured 2026-10-07 with psycopg2 2.9:
+  `set_session(readonly=True)` on a normal connection only begins each
+  transaction `READ ONLY` (safe; 11 audit scripts rely on it), but with
+  `autocommit=True` it issues the session-wide SET (the leak).
+  `tests/test_no_readonly_session_leak.py` blocks that combination. For a
   read-only check, just run SELECTs, or `BEGIN READ ONLY; ...; ROLLBACK;` in one
   transaction.
+- **A failed read raises; it is never an empty result (2026-10-07).**
+  `DatabaseManager.execute` used to turn any exception from `fetchall` into
+  `[]`. The pick'em grader's query hit `MemoryError` locally and reported "no
+  eligible paired forward outcomes" from a green run; on a GitHub runner the
+  same query got the job killed every run from 2026-10-03. It now returns `[]`
+  only for a statement with no result set; every execute wrapper
+  (`DatabaseManager`, `ingest/cfb_history.py`, `ingest/ff_fantasypros.py`)
+  goes through `db.database.fetch_rows`.
+- **A run GitHub never started is not a failure of the job (2026-10-09).** In an
+  outage GitHub assigns no runner, cancels the job after 15 minutes with zero
+  steps, and still reports the run as `failure` (2026-10-05 19:30-21:20 UTC hit a
+  dozen workflows). The collector reads the jobs of each workflow's newest failed
+  runs (`NEVER_STARTED_PROBE`) and marks a run whose jobs have no runner and no
+  steps `neverStarted`; the checklist treats it like a cancelled run: forgiven
+  once, FAIL after `UNRUN_FAIL_STREAK` in a row, and the overdue rule still applies.
+  A run whose jobs could not be read stays a failure.
+- **The CFB coverage monitor alerts on a missed checkpoint for 24 h, then lists
+  it under `earlier_misses`.** A past miss cannot be fixed, so re-alerting it
+  every run until kickoff kept the job red for days. A 7d/4d checkpoint created
+  after its own window closed is `provider_listed_after_window`: The Odds API
+  lists most CFB games only 2-5 days out (measured 2026-10-07), so there was no
+  event to capture.
 - **What the first live checklist caught (2026-09-29).** FF ADP snapshot had failed
   twice a day since 2026-09-14: the source feed thins out once Week 1 kicks off.
   After the last Week 1 kickoff (from `nfl_season_games`) it now stores nothing and

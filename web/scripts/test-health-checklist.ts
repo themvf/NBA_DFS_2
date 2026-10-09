@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { cronTimes, lastCronTime, nextCronTime, parseCron, cronMatches } from "../src/lib/cron-schedule";
 import { applyMutes, buildChecklist, oddsApiDailySpend, type ChecklistInputs, type HealthItem, type ManifestWorkflow } from "../src/lib/health-checklist";
 import { planSweep, problemsFromChecklist, parseState } from "../src/lib/failure-sweep";
-import type { WorkflowRunLite } from "../src/lib/workflow-health";
+import { jobsNeverStarted, type WorkflowRunLite } from "../src/lib/workflow-health";
 
 // --- cron ---
 const every15 = cronTimes(["3,18,33,48 * * * *"], new Date("2026-09-29T12:40:00Z"), 60);
@@ -237,6 +237,21 @@ assert.match(cancelledStreak.detail, /^Its last 8 runs were cancelled before fin
 const cancelledOnce = only([wf("h.yml", { crons: ["0 * * * *"] })], { "h.yml": [...cancelledRuns(1), run("h.yml", "2026-09-29T10:00:00Z", "success")] }).find((i) => i.key === "workflow:h.yml")!;
 assert.equal(cancelledOnce.status, "pass", "one cancelled run is forgiven");
 assert.match(cancelledOnce.detail, /^Last completed run succeeded Sep 29, 6:00 AM ET; its newest run \(latest Sep 29, 7:40 AM ET\) was cancelled before finishing\./);
+
+const outageRuns = (n: number) => cancelledRuns(n).map((r) => ({ ...r, conclusion: "failure", neverStarted: true }));
+const outageOnce = only([wf("h.yml", { crons: ["0 * * * *"] })], { "h.yml": [...outageRuns(1), run("h.yml", "2026-09-29T10:00:00Z", "success")] }).find((i) => i.key === "workflow:h.yml")!;
+assert.equal(outageOnce.status, "pass", "a run GitHub never started is not a failure of the job");
+assert.match(outageOnce.detail, /its newest run \(latest Sep 29, 7:40 AM ET\) was never started by GitHub \(no runner was assigned\)\./);
+const outageStreak = only([wf("h.yml", { crons: ["0 * * * *"] })], { "h.yml": [...outageRuns(3), run("h.yml", "2026-09-26T12:00:00Z", "success")] }).find((i) => i.key === "workflow:h.yml")!;
+assert.equal(outageStreak.status, "fail", "three in a row means the job is not getting to run");
+assert.match(outageStreak.detail, /^Its last 3 runs were never started by GitHub/);
+const mixed = only([wf("h.yml", { crons: ["0 * * * *"] })], { "h.yml": [...outageRuns(1), ...cancelledRuns(3).slice(1), run("h.yml", "2026-09-26T12:00:00Z", "success")] }).find((i) => i.key === "workflow:h.yml")!;
+assert.match(mixed.detail, /were cancelled or never started by GitHub/);
+const unprobed = only([wf("h.yml", { crons: ["0 * * * *"] })], { "h.yml": [run("h.yml", "2026-09-29T11:00:00Z", "failure"), run("h.yml", "2026-09-29T10:00:00Z", "success")] }).find((i) => i.key === "workflow:h.yml")!;
+assert.equal(unprobed.status, "fail", "a failure whose jobs were not read stays a failure");
+assert.ok(jobsNeverStarted([{ runner_name: "", steps: [] }, { runner_name: null }]));
+assert.ok(!jobsNeverStarted([{ runner_name: "GitHub Actions 7", steps: [{ name: "x" }] }]), "a job that ran has a runner and steps");
+assert.ok(!jobsNeverStarted([]), "no jobs read is not evidence of an outage");
 
 // --- sweep ---
 const problems = problemsFromChecklist(items);

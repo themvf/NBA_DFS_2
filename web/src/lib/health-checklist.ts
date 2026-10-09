@@ -18,7 +18,7 @@
  */
 import { cronTimes, lastCronTime, longestGapMs, nextCronTime } from "@/lib/cron-schedule";
 import { cronStatuses, type CronHeartbeat } from "@/lib/cron-heartbeat";
-import type { WorkflowRunLite } from "@/lib/workflow-health";
+import { didNotRun, isFailedRun, isFinishedRun, type WorkflowRunLite } from "@/lib/workflow-health";
 
 export type HealthStatus = "pass" | "fail" | "info";
 export type HealthGroup = "NFL DFS" | "Scheduled jobs" | "Data freshness" | "Clocks" | "Checklist";
@@ -136,7 +136,6 @@ export function oddsApiDailySpend(series: OddsApiReading[]): number | null {
 }
 
 const REPO = "https://github.com/themvf/NBA_DFS_2";
-const FAILED = new Set(["failure", "timed_out", "startup_failure"]);
 /**
  * How late a run may be before it counts as missed depends on who starts it.
  * The Vercel dispatcher fires on time, so a dispatched slot gets 2 h (queueing).
@@ -151,11 +150,12 @@ export const DISPATCH_GRACE_MS = 2 * 3600_000;
 export const GITHUB_CRON_GRACE_MS = 12 * 3600_000;
 const MANUAL_FAIL_WINDOW_MS = 14 * 86400_000;
 /**
- * A cancelled run did no work. One is shown and forgiven (a replaced queued
- * run, a person stopping it); this many in a row means the job is not getting
- * to run, which "Last run succeeded <weeks ago>" used to hide.
+ * A cancelled run, or one GitHub never assigned a runner, did no work. One is
+ * shown and forgiven (a replaced queued run, a person stopping it, a GitHub
+ * outage); this many in a row means the job is not getting to run, which
+ * "Last run succeeded <weeks ago>" used to hide.
  */
-export const CANCELLED_FAIL_STREAK = 3;
+export const UNRUN_FAIL_STREAK = 3;
 const NFL_WORKFLOWS = new Set(["refresh_nfl_dfs_projections.yml", "refresh_nfl_availability_context.yml", "refresh_nfl_dk_pool.yml",
   "capture_nfl_availability.yml", "refresh_nfl_vegas.yml", "refresh_nfl_dfs_research.yml", "refresh_nfl_dfs_postweek.yml",
   "refresh_nfl_pbp_archetypes.yml", "refresh_nfl_specials.yml", "refresh_nfl_survivor.yml", "capture_nfl_odds.yml"]);
@@ -197,11 +197,14 @@ function unreadable(key: string, group: HealthGroup, label: string, error: strin
 function workflowItem(w: ManifestWorkflow, input: ChecklistInputs, runsByName: Map<string, WorkflowRunLite[]>): HealthItem {
   const now = input.now.getTime();
   const runs = (input.runs?.[w.file] ?? []).filter((r) => r.event !== "pull_request").sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  const finished = runs.filter((r) => r.status === "completed" && r.conclusion !== "cancelled" && r.conclusion !== "skipped");
+  const finished = runs.filter(isFinishedRun);
   const last = runs[0] ?? null;
   const lastFinished = finished[0] ?? null;
-  let cancelled = 0;
-  for (const r of runs) { if (r.status === "completed" && r.conclusion === "cancelled") cancelled += 1; else break; }
+  let unrun = 0;
+  for (const r of runs) { if (didNotRun(r)) unrun += 1; else break; }
+  const unrunRuns = runs.slice(0, unrun);
+  const unrunWhy = unrunRuns.every((r) => r.neverStarted) ? "never started by GitHub (no runner was assigned)"
+    : unrunRuns.some((r) => r.neverStarted) ? "cancelled or never started by GitHub" : "cancelled before finishing";
   const dispatch = input.dispatchTimes[w.file] ?? { past: [], future: [] };
   // The next 8 days of fire times give the cadence text; a cron that fires less
   // often than that (monthly, seasonal) still gets its true next time.
@@ -232,9 +235,9 @@ function workflowItem(w: ManifestWorkflow, input: ChecklistInputs, runsByName: M
     detail: `Workflow is ${state.replace(/_/g, " ")} in GitHub, so its schedule does not run. Re-enable it in GitHub Actions if that was not intended.` };
 
   // Failed last run.
-  if (lastFinished && FAILED.has(lastFinished.conclusion ?? "")) {
+  if (lastFinished && isFailedRun(lastFinished)) {
     let streak = 0;
-    for (const r of finished) { if (FAILED.has(r.conclusion ?? "")) streak += 1; else break; }
+    for (const r of finished) { if (isFailedRun(r)) streak += 1; else break; }
     const success = finished.find((r) => r.conclusion === "success");
     const manualOld = !scheduled && !followsOthers && now - Date.parse(lastFinished.createdAt) > MANUAL_FAIL_WINDOW_MS;
     if (!manualOld) {
@@ -276,16 +279,16 @@ function workflowItem(w: ManifestWorkflow, input: ChecklistInputs, runsByName: M
   }
 
   if (!last) return { ...base, status: scheduled || followsOthers ? "fail" : "info", detail: scheduled || followsOthers ? "No run found." : "Manual job; never run." };
-  if (last.status !== "completed") return { ...base, status: lastFinished && FAILED.has(lastFinished.conclusion ?? "") ? "fail" : "pass", detail: `Running now (started ${et(last.createdAt)}).` };
+  if (last.status !== "completed") return { ...base, status: lastFinished && isFailedRun(lastFinished) ? "fail" : "pass", detail: `Running now (started ${et(last.createdAt)}).` };
   const gap = longestGapMs(future, input.now);
   const cadence = gap == null ? "" : gap < 3600_000 ? ` Runs about every ${Math.round(gap / 60_000)} min.` : gap < 86400_000 * 2 ? ` Runs at least every ${Math.round(gap / 3600_000)} h.` : "";
   if (!scheduled && !followsOthers) return { ...base, status: lastFinished?.conclusion === "success" ? "pass" : "info", detail: `Manual job; last run ${lastFinished?.conclusion ?? last.status} ${et(last.createdAt)}.` };
   // Every recent run was cancelled or skipped: nothing finished, so there is no success to report.
   if (!lastFinished) return { ...base, status: "fail", detail: `None of its last ${runs.length} runs finished (newest was ${last.conclusion} at ${et(last.createdAt)}).` };
-  if (cancelled >= CANCELLED_FAIL_STREAK) {
-    return { ...base, status: "fail", detail: `Its last ${cancelled} runs were cancelled before finishing (latest ${et(last.createdAt)}); last success ${lastFinished.conclusion === "success" ? et(lastFinished.createdAt) : "not in recent runs"}.` };
+  if (unrun >= UNRUN_FAIL_STREAK) {
+    return { ...base, status: "fail", detail: `Its last ${unrun} runs were ${unrunWhy} (latest ${et(last.createdAt)}); last success ${lastFinished.conclusion === "success" ? et(lastFinished.createdAt) : "not in recent runs"}.` };
   }
-  if (cancelled) return { ...base, status: "pass", detail: `Last completed run succeeded ${et(lastFinished.createdAt)}; its newest ${cancelled === 1 ? "run" : `${cancelled} runs`} (latest ${et(last.createdAt)}) ${cancelled === 1 ? "was" : "were"} cancelled before finishing.${cadence}` };
+  if (unrun) return { ...base, status: "pass", detail: `Last completed run succeeded ${et(lastFinished.createdAt)}; its newest ${unrun === 1 ? "run" : `${unrun} runs`} (latest ${et(last.createdAt)}) ${unrun === 1 ? "was" : "were"} ${unrunWhy}.${cadence}` };
   return { ...base, status: "pass", detail: `Last run succeeded ${et(lastFinished.createdAt)}.${cadence}` };
 }
 
