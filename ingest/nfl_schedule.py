@@ -493,6 +493,49 @@ def fetch_scores(db: DatabaseManager, api_key: str, days_from: int = 3) -> int:
     return updated
 
 
+# A final is only copied from the schedule once the game is this far past kickoff,
+# so an in-progress or just-finished game never takes a score the Odds API has not
+# confirmed yet.
+SCHEDULE_FINAL_GRACE_HOURS = 6
+
+
+def backfill_finals_from_schedule(db: DatabaseManager) -> int:
+    """Copy missing finals into nfl_matchups from the nflverse schedule.
+
+    fetch_scores() asks the Odds API for at most the last three days, so a game
+    the score job missed in that window stayed unscored for good (Broncos @
+    Chiefs, 2026-09-14, was still 'Scheduled' three weeks later and its alert
+    never settled). nfl_season_games carries the official final for every
+    regular-season and postseason game, linked by matchup_id.
+
+    Fills gaps only: a row that already has a score is never overwritten, so the
+    Odds API's correction path in fetch_scores() stays the single place a stored
+    final can change. Both team ids must match, so a mislinked schedule row
+    cannot score the wrong game. Settlement picks the row up on its next pass.
+    """
+    rows = db.execute(
+        """
+        UPDATE nfl_matchups m SET
+            game_status = 'Final', completed = TRUE,
+            home_score = g.home_score, away_score = g.away_score,
+            score_fetched_at = NOW(), final_at = COALESCE(m.final_at, NOW())
+        FROM nfl_season_games g
+        WHERE g.matchup_id = m.id
+          AND g.home_team_id = m.home_team_id
+          AND g.away_team_id = m.away_team_id
+          AND g.completed
+          AND g.home_score IS NOT NULL AND g.away_score IS NOT NULL
+          AND m.commence_time IS NOT NULL
+          AND m.commence_time < NOW() - (%s || ' hours')::interval
+          AND (m.home_score IS NULL OR m.away_score IS NULL)
+        RETURNING m.id
+        """,
+        (SCHEDULE_FINAL_GRACE_HOURS,),
+    ) or []
+    print(f"NFL scores: {len(rows)} missing finals backfilled from the schedule")
+    return len(rows)
+
+
 def verify_fresh_upcoming_odds(
     db: DatabaseManager,
     game_date: str,
@@ -613,6 +656,7 @@ def main() -> int:
     db = DatabaseManager(config.database_url)
     if args.scores_only:
         fetch_scores(db, config.odds_api.api_key, args.days_from)
+        backfill_finals_from_schedule(db)
         return 0
     target_date = args.date or datetime.now(EASTERN).date().isoformat()
     fetch_odds(
@@ -623,6 +667,7 @@ def main() -> int:
     )
     if not args.skip_scores:
         fetch_scores(db, config.odds_api.api_key, args.days_from)
+        backfill_finals_from_schedule(db)
     if args.require_fresh_upcoming_odds:
         fresh = (
             verify_fresh_monitoring_window(db, monitoring_hours=args.monitoring_hours)
