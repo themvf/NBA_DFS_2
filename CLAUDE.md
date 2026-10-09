@@ -7627,3 +7627,22 @@ with leverage on and off. Two mechanisms, both in `objective()` in
 that a 6× lottery ceiling loses to a real 12-point projection under the cap.
 Neither constant has been fitted; grade them on imported contests before
 treating either as more than a judgement.
+
+---
+
+## CFB Early-Season Pattern Watch — pre-registered, local only (2026-10-09)
+
+A descriptive sweep of the first six weeks of 2026 (259 FBS-vs-FBS games with
+closing lines) found favorites 81.1% straight up against 75.3% implied with the
+spread market calibrated, concentrated in G5-vs-G5 and FBS-vs-FCS mismatches
+and the Saturday-evening window, plus fewer close games (overtime 2.7% vs
+5.8%). Five triggers were frozen BEFORE week 7 in
+[`docs/cfb-early-season-patterns-study.md`](docs/cfb-early-season-patterns-study.md),
+implemented by `model/cfb_pattern_watch.py` with an append-only local ledger
+(`artifacts/cfb_pattern_watch/ledger.jsonl`) and a Tuesday Windows scheduled
+task (`refresh_cfb_pattern_watch.bat`). Primary metric is flat ROI at the
+frozen closing price with a date-clustered bootstrap; verdict once, not before
+2026-12-07, only for triggers at their floor. Discovery ROI (+9% to +19%) is
+recorded there and cannot confirm anything: the moneyline triggers pay −300 to
+−500 and their narrow discovery intervals come from five to nine dates, not
+from precision. Not an edge, not on `/vegas`, not on `/health`, not pushed.

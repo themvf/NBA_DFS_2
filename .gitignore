@@ -24,3 +24,4 @@ artifacts/nfl_volume_share/
 
 # Written by `npx neon skills` when the Neon agent skills are installed locally
 skills-lock.json
+refresh_cfb_pattern_watch.log
