@@ -7656,16 +7656,31 @@ treating either as more than a judgement.
 `python -m ingest.dfsdb_contest <link>` pulls a public DraftKings contest from
 dfsdb ("The DFS Record Book") into `dfsdb_contests` / `dfsdb_contest_athletes`
 / `dfsdb_contest_standings`, plus `dfsdb_users` + `dfsdb_user_contest_history`
-with `--top-users N` and `dfsdb_lineups` with `--lineups-pages N`. The pure
+with `--top-users N` and `dfsdb_lineups` with `--lineups-pages N`.
+`--date 2026-10-08 --sport nfl [--search "TB @ DAL" | --series X | --type "Milly Maker"]
+[--format showdown]` instead lists that day's finished contests from
+`/api/contests` and imports the biggest fields first (`--min-entries 1000`,
+`--max-contests 15`, hard cap 50). The listing is date-descending with no date
+filter and an NFL Sunday is several hundred contests, so an unfiltered walk
+(12 pages) reaches only the last day or two; the report says "DATE NOT
+REACHED" rather than listing zero, and the server-side filters (showdown
+names carry the matchup; `/api/contests/filters` lists series and types) make
+an older day one or two requests. This
+exists because the DraftKings export only exists for contests you entered;
+dfsdb covers the ones you only projected. The pure
 layer is `model/dfsdb_contest.py` (`dfsdb-contest-import-v1`); tests in
 `tests/test_dfsdb_contest.py`. What the payload is, measured 2026-10-10:
 
 - The page is a Next.js shell; `/api/contest/{uuid}?page&limit&sortBy&sortOrder`
   carries everything, no login, `limit` max 100 (200 is a 400). Older contests
   can have an empty standings list while the card and athletes still answer.
-- **`athletes` is capped at 50 rows.** Near-complete for a showdown, a fraction
-  of a classic pool (a 2025 Milly Maker's 50 lacked Saquon Barkley). Showdown
-  ownership is FLEX-only (sums to ~500%); captain share is not broken out.
+- **`athletes` is capped at 50 rows, and they are the top SCORERS, not the
+  chalk.** Near-complete for a showdown; for a classic contest it is the
+  ownership of the 50 players who scored most (the 2026-10-04 Milly Maker's
+  highest-owned athlete among its 50 was 11.8%, Saquon Barkley was absent from
+  a 2025 one), so classic ownership from dfsdb cannot calibrate the ownership
+  prior. Showdown ownership is FLEX-only (sums to ~500%); captain share is
+  not broken out.
 - **`results` is one row per USER**: best rank, best points, and `winnings`
   summed across every entry that user had. The stored `payout_curve` therefore
   takes rank → payout from single-entry users only and records its coverage;
