@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import { shouldReviewLiveSlate, canApplyLiveReview } from '../src/lib/nfl-dfs/live-review';
+const kickoff='2026-10-06T00:15:00Z';
+const lock=Date.parse(kickoff);
+assert.equal(shouldReviewLiveSlate(kickoff,lock-60_000,true),true);
+assert.equal(shouldReviewLiveSlate(kickoff,lock-90*60_000,true),true);
+assert.equal(shouldReviewLiveSlate(kickoff,lock-91*60_000,true),false);
+assert.equal(shouldReviewLiveSlate(kickoff,lock,true),false);
+assert.equal(shouldReviewLiveSlate(kickoff,lock+1,true),false);
+assert.equal(shouldReviewLiveSlate(kickoff,lock-60_000,false),false);
+assert.equal(shouldReviewLiveSlate(null,lock-60_000,true),false);
+assert.equal(shouldReviewLiveSlate('unknown',lock-60_000,true),false);
+const response={requestedUploadId:'a',currentUploadId:'a',responseUploadId:'a',firstKickoff:kickoff,now:lock-1};
+assert.equal(canApplyLiveReview(response),true);
+assert.equal(canApplyLiveReview({...response,currentUploadId:'b'}),false);
+assert.equal(canApplyLiveReview({...response,responseUploadId:'b'}),false);
+assert.equal(canApplyLiveReview({...response,now:lock}),false);
+console.log('NFL live review: pregame interval, stale response identity and kickoff/archive boundaries passed.');

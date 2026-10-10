@@ -20,8 +20,10 @@ import CaptainSuggestionPanel from './captain-suggestion-panel';
 import SlateCheckCard from './slate-check-card';
 import DataUpdatePanel, { type DataUpdateHandle } from './data-update-panel';
 import SpecialTeamsStatusCard from './special-teams-status-card';
+import BuildModelSummary from './build-model-summary';
 import { specialTeamsStatus } from '@/lib/nfl-dfs/special-teams-status';
 import { describeDataAsOf } from '@/lib/nfl-dfs/data-update';
+import { shouldReviewLiveSlate, canApplyLiveReview, LIVE_REVIEW_INTERVAL_MS } from '@/lib/nfl-dfs/live-review';
 import type { DataUpdateOutcome } from '@/lib/nfl-dfs/data-update';
 import { exposureRange, type CaptainTarget, type ExposureTarget } from '@/lib/nfl-dfs/generation-settings';
 import { availabilityCoverage } from '@/lib/nfl-dfs/availability-coverage';
@@ -141,6 +143,8 @@ export default function NflDfsClient() {
   const [showBuilder, setShowBuilder] = useState(false);
   const dataUpdateRef = useRef<DataUpdateHandle | null>(null);
   const [dataUpdating, setDataUpdating] = useState(false);
+  const liveSlateId = useRef<string | undefined>(undefined);
+  useEffect(() => { liveSlateId.current = slate?.uploadId; }, [slate?.uploadId]);
   const [explainPlayer, setExplainPlayer] = useState<NflWorkspacePlayer | null>(null);
   const [eligibility, setEligibility] = useState<import("./nfl-optimizer").NflEligibilityDecision[]>([]);
   const [ownership, setOwnership] = useState<import("@/lib/nfl-dfs/ownership-capability").OwnershipAssessment | null>(null);
@@ -177,6 +181,36 @@ export default function NflDfsClient() {
   // Latest settings for async callbacks (the capture poll) without restarting them on every edit.
   const settingsRef = useRef(settings);
   useEffect(() => { settingsRef.current = settings; }, [settings]);
+
+  // Built entries still need late inactives/role checks. Saved entries,
+  // settings and run scores stay intact; ignore responses after slate/lock changes.
+  const reviewUploadId = slate?.uploadId;
+  const reviewKickoff = slate?.firstKickoff;
+  const reviewDue = shouldReviewLiveSlate(reviewKickoff, now, lineups.length > 0);
+  useEffect(() => {
+    if (!reviewUploadId || !reviewDue) return;
+    let stopped = false, inFlight = false;
+    const review = async () => {
+      if (stopped || inFlight || document.visibilityState === 'hidden') return;
+      if (!shouldReviewLiveSlate(reviewKickoff, Date.now(), true)) return;
+      inFlight = true;
+      try {
+        const next = await loadSavedNflWorkspace(reviewUploadId, settingsRef.current.confirmedStartingQbs);
+        if (!stopped && canApplyLiveReview({requestedUploadId:reviewUploadId,currentUploadId:liveSlateId.current,
+          responseUploadId:next.slate.uploadId,firstKickoff:reviewKickoff,now:Date.now()})) {
+          setSlate(next.slate);
+          setError(current => current?.startsWith('The latest availability check failed.') ? null : current);
+        }
+      } catch {
+        if (!stopped && liveSlateId.current === reviewUploadId && shouldReviewLiveSlate(reviewKickoff,Date.now(),true))
+          setError('The latest availability check failed. Saved lineups remain visible; refresh data before export.');
+      } finally { inFlight = false; }
+    };
+    void review();
+    const timer = setInterval(() => { void review(); }, LIVE_REVIEW_INTERVAL_MS);
+    document.addEventListener('visibilitychange', review);
+    return () => { stopped = true; clearInterval(timer); document.removeEventListener('visibilitychange', review); };
+  }, [reviewUploadId, reviewKickoff, reviewDue]);
 
   function restoreRunEvidence(saved:Awaited<ReturnType<typeof loadSavedNflLineups>>) {
     const evidence = saved.evidence;
@@ -735,6 +769,8 @@ export default function NflDfsClient() {
         <section hidden={stage === "review"} className="rounded-xl border bg-white p-4 shadow-sm"><h2 className="font-bold">{slateLocked ? 'Saved build settings' : 'Build lineups'}</h2>
           {slateLocked ? <div className="mt-2 text-xs text-slate-600"><p>Games have started. These settings are for review; saved forecasts and lineups stay unchanged.</p><div className="mt-2 flex flex-wrap gap-2"><button type="button" onClick={() => chooseStage('results')} className="min-h-11 rounded-lg border bg-white px-3 font-semibold">View results</button><button type="button" onClick={() => chooseStage('review')} className="min-h-11 rounded-lg border bg-white px-3 font-semibold">View saved lineups</button></div></div> : null}
           {settings.projectionSource === 'our' ? <div className="mt-3"><SpecialTeamsStatusCard status={specialTeams} pending={pending || dataUpdating} onAction={recoverForecast} /></div> : null}
+          <BuildModelSummary mode={settings.mode} historical={settings.projectionSource==='our'} heuristicLeverage={settings.useHeuristicOwnershipLeverage}
+            absenceTeams={(slate.redistribution?.withheld??[]).map(pool=>pool.team)} />
           <details open={!slateLocked} className="mt-3"><summary hidden={!slateLocked} className="min-h-11 cursor-pointer content-center text-xs font-semibold">View saved build settings</summary>
           <fieldset disabled={slateLocked} className="min-w-0">
           <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-950">

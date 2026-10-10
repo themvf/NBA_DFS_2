@@ -51,6 +51,8 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements.txt
+      - name: Apply additive CFB context schema
+        run: python -m ingest.cfb_context_migrate --apply
       - name: Resolve season and schedule-refresh slot
         shell: bash
         env:

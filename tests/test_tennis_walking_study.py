@@ -138,7 +138,11 @@ def test_live_scan_tags_only_first_walking_without_relabeling(monkeypatch, prior
                 return {"id": 2} if prior_exists else None
             if "ORDER BY captured_at ASC" in sql:
                 return {"history_id": 1, "captured_at": now - timedelta(hours=3), "books": opening_books}
-            return None
+            if "FROM game_odds_history" in sql and "ORDER BY captured_at DESC" in sql:
+                return None
+            if "INSERT INTO market_signal_observations" in sql:
+                return None
+            raise AssertionError(f"Unexpected SQL: {sql}")
 
     inserted = []
     def capture(db, **kwargs):

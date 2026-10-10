@@ -97,18 +97,21 @@ NOT the endpoint to use.
 Live use is one thing only: `ingest/polymarket_tennis.py` captures tennis
 match prices into `game_odds_history`, feeding the Pin/Poly delta detector.
 
-**Wallet tracking was closed 2026-08-26 and REOPENED 2026-08-27.** v1's
-ranking metric (`Wilson floor - entry price`) measured trading style, not
-skill: 52% of its top-50 leaderboard was automated. v2
-(`ingest/polymarket_wallet_clv.py`) re-asks the question with **closing-line
-value**, which a market maker cannot systematically win, scored against the
-last PRE-MATCH price (Gamma's `gameStartTime`) rather than the last trade
-before resolution. Result: **MLB shows a walk-forward selection gap of
-+0.0084 CLV, 95% CI [+0.0046, +0.0127]**, surviving concentration,
-favourite-longshot-drift and self-impact checks; **tennis fails** on
-concentration. That is one sport of two from an exploratory scan — a
-hypothesis for a pre-registered forward test, **not a confirmed edge**, and
-the fill-latency problem that would block acting on it is untouched. Read
+**Wallet tracking: v1 closed 2026-08-26, v2 reopened it 2026-08-27, and the
+v2 positive result was WITHDRAWN 2026-08-28 after review.** v1's metric
+measured trading style, not skill. v2 re-asked the question with
+closing-line value and appeared to find an MLB selection gap of +0.0084 —
+but an independent statistical review found the CLV metric was **weighting a
+price move by dollars instead of by shares**, which drops the 1/p converting
+dollars to shares and destroys the antisymmetry that makes CLV zero-sum.
+Two perfectly offsetting share positions scored +0.0400 instead of 0.0000,
+handing free CLV to whoever's dollars sat on favourites — a persistent
+style, so it survived the walk-forward looking like skill. Four further
+defects (gates leaking the holdout, market-clustered intervals blind to the
+per-wallet effect they test, leave-one-out on the level not the gap, and a
+powerless favourite-longshot check) were each independently capable of
+producing the same result. **Do not quote the +0.0084 figure.** All six are
+fixed and both sports are being re-measured. Read
 [`docs/polymarket-wallet-tracker.md`](docs/polymarket-wallet-tracker.md)
 before proposing wallet tracking again — it records the method, the five
 ranking bugs found in sequence, the negative result and why it is a real
@@ -491,6 +494,24 @@ skip freezes whose content did not change, sort plays deterministically) needs
 a new implementation pin, which makes the grader reject every earlier forecast.
 Do that only at a study version boundary. The table file shrinks only after
 `VACUUM FULL`, which is the owner's call (it locks reads).
+
+**October (2026-10-09): transfer is now the line to watch.** Launch includes
+10 branches per project (the September invoice equals branch-hours above 10
+per hour), so RegIntel's remaining branches cost nothing. NBADFS sends ~46 GB
+a day against a 500 GB monthly allowance, then $0.10/GB. `pg_stat_statements`
+put over half of it on pick'em grading re-reading every ~850 KB frozen
+forecast each run (the fix, grading from a stored input digest, is on branch
+`claude/research-oom-and-failures`, merged to main 2026-10-09). Rank readers by rows x row width, not by
+execution time: the transfer leaders were cheap queries. The per-capture CFB
+capture audit now reads only games that can still gain captures (the full
+audit runs in pipeline_health.yml, after the freshness reading so a failing
+integrity pass cannot stop /health updating), and `record_movements` looks up
+pending games in a separate query. `ingest/nfl_pickem_refresh.py`'s
+`DISTINCT ON` quote lookup costs ~6 s a call, but that file is hash-pinned by
+the registered pick'em studies: changing it needs a new implementation pin,
+and the grader accepts only captures after the latest pin, so a re-pin
+restarts the pick'em sample. Fold such fixes into the next re-pin that is
+needed anyway.
 
 ## Parallel agents: commit locally, one session pushes (2026-10-04)
 
@@ -7627,3 +7648,22 @@ with leverage on and off. Two mechanisms, both in `objective()` in
 that a 6× lottery ceiling loses to a real 12-point projection under the cap.
 Neither constant has been fitted; grade them on imported contests before
 treating either as more than a judgement.
+
+---
+
+## CFB Early-Season Pattern Watch — pre-registered, local only (2026-10-09)
+
+A descriptive sweep of the first six weeks of 2026 (259 FBS-vs-FBS games with
+closing lines) found favorites 81.1% straight up against 75.3% implied with the
+spread market calibrated, concentrated in G5-vs-G5 and FBS-vs-FCS mismatches
+and the Saturday-evening window, plus fewer close games (overtime 2.7% vs
+5.8%). Five triggers were frozen BEFORE week 7 in
+[`docs/cfb-early-season-patterns-study.md`](docs/cfb-early-season-patterns-study.md),
+implemented by `model/cfb_pattern_watch.py` with an append-only local ledger
+(`artifacts/cfb_pattern_watch/ledger.jsonl`) and a Tuesday Windows scheduled
+task (`refresh_cfb_pattern_watch.bat`). Primary metric is flat ROI at the
+frozen closing price with a date-clustered bootstrap; verdict once, not before
+2026-12-07, only for triggers at their floor. Discovery ROI (+9% to +19%) is
+recorded there and cannot confirm anything: the moneyline triggers pay −300 to
+−500 and their narrow discovery intervals come from five to nine dates, not
+from precision. Not an edge, not on `/vegas`, not on `/health`, not pushed.

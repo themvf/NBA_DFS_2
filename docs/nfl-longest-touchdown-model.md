@@ -182,7 +182,7 @@ wins, log loss hits the 1e-12 floor (~27.6). The first two-game 2024 check hit
 this on TB@ATL week 5 (KhaDarel Hodge's 45-yard overtime TD; he was outside the
 inferred roster). Overtime is not simulated but is graded, a known mismatch.
 
-**Fix (`Settings.newcomer_reserve`, off by default; frozen v1 artifacts are preserved).**
+**Fix (`Settings.newcomer_reserve`; default since 2026-10-09 after the 2025 confirmation, `--no-newcomer-reserve` reproduces v1; frozen v1 artifacts are preserved).**
 `OTHER:TEAM` receives, per action, the share of team carries/targets that went
 to players absent from that team's prior three same-season games. It is computed
 from the pre-decision training rows only. Measured on the Thursday input it is

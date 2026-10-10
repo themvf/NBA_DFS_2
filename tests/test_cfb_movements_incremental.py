@@ -33,6 +33,8 @@ class FakeCursor:
         self.sql.append((self.last, params))
 
     def fetchall(self):
+        if self.last.startswith("SELECT DISTINCT h.matchup_id"):
+            return [{"matchup_id": m} for m in dict.fromkeys(r["matchup_id"] for r in self.history_rows)]
         if "FROM game_odds_history h JOIN cfb_matchups m" in self.last:
             return [dict(r) for r in self.history_rows]
         if self.last.startswith("SELECT * FROM cfb_quote_movements"):
@@ -82,13 +84,23 @@ def install_execute_values(monkeypatch, cursor):
     return calls
 
 
+def history_reads(cursor):
+    return [(s, p) for s, p in cursor.sql
+            if "FROM game_odds_history h JOIN cfb_matchups m" in s and not s.startswith("SELECT DISTINCT")]
+
+
 def test_incremental_run_loads_only_uncovered_games_and_verifies_them_alone(monkeypatch):
     cursor = FakeCursor([snapshot(1, 7, 0, {"dk": {"total_line": 50}}),
                          snapshot(2, 7, 60, {"dk": {"total_line": 52}})])
     calls = install_execute_values(monkeypatch, cursor)
     result = mod.record_movements(FakeDB(cursor))
-    history_sql = cursor.sql[1][0]
-    assert "NOT EXISTS (SELECT 1 FROM cfb_quote_movement_coverage c WHERE c.history_id=h2.id)" in history_sql
+    pending_sql = cursor.sql[1][0]
+    assert pending_sql.startswith("SELECT DISTINCT h.matchup_id")
+    assert "NOT EXISTS (SELECT 1 FROM cfb_quote_movement_coverage c WHERE c.history_id=h.id)" in pending_sql
+    [(history_sql, history_params)] = history_reads(cursor)
+    assert history_sql.endswith("AND h.matchup_id=ANY(%s) ORDER BY h.matchup_id,h.captured_at,h.id")
+    assert "cfb_quote_movement_coverage" not in history_sql, "the pending games are resolved before the history read"
+    assert history_params == ([7],)
     verify = [s for s, p in cursor.sql if s.startswith("SELECT * FROM cfb_quote_movements")]
     assert verify == ["SELECT * FROM cfb_quote_movements WHERE matchup_id=ANY(%s)"], "only the affected games are verified"
     assert [p for s, p in cursor.sql if s.startswith("SELECT * FROM cfb_quote_movements")] == [([7],)]
@@ -102,8 +114,10 @@ def test_full_run_reads_everything_and_verifies_the_whole_ledger(monkeypatch):
     cursor = FakeCursor([snapshot(1, 7, 0, {"dk": {"ml_home": -110}}), snapshot(2, 7, 60, {"dk": {"ml_home": -115}})])
     install_execute_values(monkeypatch, cursor)
     result = mod.record_movements(FakeDB(cursor), full=True)
-    history_sql = cursor.sql[1][0]
-    assert "cfb_quote_movement_coverage" not in history_sql
+    [(history_sql, history_params)] = history_reads(cursor)
+    assert "cfb_quote_movement_coverage" not in history_sql and "ANY" not in history_sql
+    assert history_params is None
+    assert not any(s.startswith("SELECT DISTINCT h.matchup_id") for s, p in cursor.sql)
     assert [s for s, p in cursor.sql if s.startswith("SELECT * FROM cfb_quote_movements")] == ["SELECT * FROM cfb_quote_movements"]
     assert result["mode"] == "full" and result["field_transitions"] == 1
     assert sorted(cursor.coverage_rows) == [(1, 7), (2, 7)], "a full pass covers every snapshot so the next incremental run has nothing to redo"
@@ -115,6 +129,7 @@ def test_nothing_new_means_no_inserts_and_no_ledger_read(monkeypatch):
     result = mod.record_movements(FakeDB(cursor))
     assert result == {"integrity_status": "pass", "mode": "incremental", "snapshots": 0, "field_transitions": 0, "games": 0}
     assert calls == []
+    assert history_reads(cursor) == [], "no pending game means no history read at all"
     assert not any(s.startswith("SELECT * FROM cfb_quote_movements") for s, p in cursor.sql)
 
 

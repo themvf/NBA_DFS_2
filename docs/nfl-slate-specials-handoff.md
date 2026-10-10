@@ -15,7 +15,7 @@ silent default**, and **bump the version rather than tune in place**.
 ## 0a. Reframed 2026-09-19 — read this first
 
 **The product is a weekly projection board, not a bet ledger.** For each of the
-nine DK specials topics, show **our ranking of the candidates and the expected
+17 DK specials families (10 ranked topics and seven all-team propositions), show **our ranking of the candidates and the expected
 stat behind it**, every week, persisted so the topics accumulate a record.
 
 Two things follow, and they invert parts of this document:
@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS nfl_specials_market_captures (
     season INTEGER NOT NULL,
     week INTEGER NOT NULL,
     family TEXT NOT NULL,          -- see FAMILIES in §3.1
-    slate_scope TEXT NOT NULL,     -- 'sunday_all' | 'sunday_1pm'
+    slate_scope TEXT NOT NULL,     -- 'sunday_all' | 'sunday_1pm' | 'sunday_late' | 'sunday_main'
     selection_key TEXT NOT NULL,   -- normalized player / team / game key (§3.4)
     selection_label TEXT NOT NULL, -- exactly as DK printed it
     american INTEGER NOT NULL,
@@ -223,18 +223,25 @@ Add the `_ensure_lock_trigger`-style protections used on
 MODEL_VERSION = "nfl-specials-v1"
 N_DRAWS = 50_000
 
-FAMILIES = (
+RANKED_FAMILIES = (
     "highest_scoring_game", "lowest_scoring_game",
     "highest_scoring_team", "lowest_scoring_team",
-    "most_passing_yards", "most_receiving_yards",
+    "most_passing_yards", "most_receiving_yards", "most_rushing_yards",
     "first_td_scorer", "first_qb_td_pass", "first_qb_int",
 )
-MAGNITUDE_FAMILIES = FAMILIES[:6]   # need Layers A+B only
-TIMING_FAMILIES    = FAMILIES[6:]   # need Layer C
+PROPOSITION_FAMILIES = (
+    "all_teams_td", "all_teams_two_td", "all_teams_fg", "all_teams_td_and_fg",
+    "all_teams_passing_td", "all_teams_rushing_td", "all_teams_score",
+)
+FAMILIES = RANKED_FAMILIES + PROPOSITION_FAMILIES
+MAGNITUDE_FAMILIES = RANKED_FAMILIES[:7]   # need Layers A+B only
+TIMING_FAMILIES    = RANKED_FAMILIES[7:]   # need Layer C
 
 SLATE_SCOPES = {
     "sunday_all": lambda g: g.kickoff_et.weekday() == 6,
     "sunday_1pm": lambda g: g.kickoff_et.weekday() == 6 and g.kickoff_et.hour == 13,
+    "sunday_late": lambda g: g.kickoff_et.weekday() == 6 and g.kickoff_et.hour == 16,
+    "sunday_main": lambda g: g.kickoff_et.weekday() == 6 and g.kickoff_et.hour in (13, 16),
 }
 ```
 
@@ -582,7 +589,7 @@ classes already on `/nfl`:
 1. **Status strip.** `RESEARCH — no validated edge · 2★ cap · N slates
    settled of 17`. Amber. Green only when `gate.state === "validated"`,
    which cannot happen before P5.
-2. **Scope + week controls.** `?season&week&scope=sunday_all|sunday_1pm`.
+2. **Scope + week controls.** `?season&week&scope=sunday_all|sunday_1pm|sunday_late|sunday_main`.
 3. **Run provenance panel** (collapsed `<details>`): model version, seed,
    N, projection run, game list with included/excluded + reason. If
    `run == null`: the page says "No simulation run for this week" and
@@ -779,7 +786,7 @@ seeded fixtures in a local PostgreSQL 16.13.
 
 | Requirement | Implementation | Evidence |
 |---|---|---|
-| Ranked board, all 9 topics, weekly | `model/nfl_specials_board.py` | Live run produced 40 ranked rows for `sunday_1pm` and 46 for `sunday_all` across all nine families |
+| Ranked board and propositions, 17 families, weekly | `model/nfl_specials_board.py` | September 20 live rebuild: all 17 families in each scope; 301 rows sunday_1pm, 337 sunday_all, 283 sunday_late, 331 sunday_main; zero blocked rows. |
 | Ranking contract, measured not guessed | `RANKING_STAT`, `BOARD_DEPTH`, `ASCENDING_FAMILIES` in `model/nfl_slate_specials.py` | §12 |
 | Scope excludes, never down-weights | `games_in_scope` | A 16:25 ET kickoff is absent from `sunday_1pm` (4 games) and present in `sunday_all` (5) |
 | Team points from the schedule | imports `nfl_dfs_research.implied_totals` | Cross-checked against the helper: SF@PHI total 44.0 spread -1.5 → SF 22.75, PHI 21.25, i.e. the **away** favourite out-projects its host |
@@ -949,3 +956,37 @@ design screen on 8 comparisons, not an edge study, and nothing was promoted.
 
 Reproduce with the nflverse weekly release
 (`stats_player/stats_player_week_{season}.csv`, fetched with `curl -L`).
+
+## September 20 handoff update
+
+The family contract is `model/nfl_slate_specials.py`: ranked families are
+`highest_scoring_game`, `lowest_scoring_game`, `highest_scoring_team`,
+`lowest_scoring_team`, `most_passing_yards`, `most_receiving_yards`,
+`most_rushing_yards`, `first_td_scorer`, `first_qb_td_pass`, `first_qb_int`.
+Propositions are `all_teams_td`, `all_teams_two_td`, `all_teams_fg`,
+`all_teams_td_and_fg`, `all_teams_passing_td`, `all_teams_rushing_td`,
+and `all_teams_score`. Propositions report probabilities, not candidate ranks.
+
+| Scope | Sunday window (Eastern) |
+|---|---|
+| sunday_all | All games including Sunday night |
+| sunday_1pm | 13:00 kickoffs |
+| sunday_late | 16:05 and 16:25 kickoffs |
+| sunday_main | Both afternoon windows, excluding Sunday night |
+
+`--scope both` publishes all four registered scopes. Earlier numerical
+verification rows document the original board and do not establish coverage
+of the newly added families.
+
+Live rebuild verified September 20, 2026: week 2, projection snapshot
+`86f143f0-7177-5108-87f4-d9a510ced0bc`. Persisted board runs:
+
+| Scope | Run ID | Published rows |
+|---|---|---:|
+| sunday_1pm | 9ca1101f-558f-4b9a-a976-95254617ad36 | 301 |
+| sunday_all | c29a84d8-3349-4483-89aa-e22865a99bd8 | 337 |
+| sunday_late | e334fa53-3733-4333-b754-a305af3ab10b | 283 |
+| sunday_main | 5099b38b-6b16-4d0d-b1d6-fbfeb00b1020 | 331 |
+
+All four runs included all 17 families and zero blocked rows. This verifies
+publication and coverage, not statistical calibration or projection correctness.
