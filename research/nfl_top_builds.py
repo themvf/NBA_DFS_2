@@ -49,7 +49,7 @@ def stack_shape(roster: list[dict]) -> dict:
     """QB + teammates, and whether the opponent is brought back. Showdown (no QB slot) is 'no QB stack'."""
     qb = next((s for s in roster if (s.get("position") or s.get("slot")) == "QB"), None)
     if not qb or not qb.get("team"):
-        return {"qb": None, "teammates": 0, "bring_back": False, "label": "no QB"}
+        return {"qb": None, "qb_team": None, "teammates": 0, "bring_back": False, "bring_back_team": None, "label": "no QB"}
     mates = [s for s in roster if s is not qb and s.get("team") == qb["team"] and (s.get("position") or "") != "DST"]
     opp = qb.get("opponent")
     bring = [s for s in roster if opp and s.get("team") == opp and (s.get("position") or "") != "DST"]
@@ -278,6 +278,83 @@ def load_ours(db, contest: dict, run_id: str | None) -> tuple[dict | None, list[
 # Main
 # --------------------------------------------------------------------------
 
+def review_contest(db, contest_id: str, *, top: int = 5, run_id: str | None = None,
+                   players: int = 12, lineups_shown: int = 5) -> dict:
+    """The structured review of one contest: the top finishers' analysis, ours, and the printable text.
+
+    Raises LookupError when the contest or its user builds are not stored.
+    """
+    rows = db.execute(
+        """SELECT contest_id, contest_name, format, season, week, slate_upload_id, entry_count,
+                  winning_score, median_score, score_curve FROM nfl_dfs_field_contests WHERE contest_id = %s""",
+        (contest_id,))
+    if not rows:
+        raise LookupError(f"contest {contest_id} is not imported")
+    contest = dict(rows[0])
+    curve = contest["score_curve"] if isinstance(contest["score_curve"], list) else json.loads(contest["score_curve"] or "[]")
+    builds = load_builds(db, contest["contest_id"], top)
+    if not builds:
+        raise LookupError(f"contest {contest_id} has no stored user builds")
+    field_block = (builds[0]["analysis"] or {}).get("field") or {}
+    avg_slot = field_block.get("avg_points_per_slot")
+    opponents = {r["team"]: r["opponent"] for r in db.execute(
+        "SELECT DISTINCT team, opponent FROM nfl_dfs_slate_players WHERE upload_id = %s", (contest["slate_upload_id"],))}         if contest["slate_upload_id"] else {}
+
+    def summary(a: dict) -> dict:
+        return {k: a[k] for k in ("lineups", "dispersion", "ownership", "salary", "edge_total")} | {
+            "stacks": {k: (dict(v) if hasattr(v, "items") else v) for k, v in a["stacks"].items()},
+            "top_players": a["players"][:players]}
+
+    out = [f"{contest['contest_name']}  (DK {contest['contest_id']}, {contest['format']}, {contest['season']} week {contest['week']})",
+           f"  {contest['entry_count']:,} entries; winning {contest['winning_score']}, median {contest['median_score']}; "
+           f"field average {field_block.get('field_avg_lineup')} per lineup, {avg_slot} per seat"]
+    winners = []
+    for b in builds:
+        lineups = build_lineups_from_store(b, opponents)
+        a = analyze_portfolio(lineups, avg_slot)
+        winners.append({"username": b["username"], "best_rank": b["best_rank"], "entries": b["entries"], "cashed": b["cashed"],
+                        "total_payout": b["total_payout"], "avg_points": b["avg_points"], "players_used": b["players_used"],
+                        **summary(a)})
+        out += ["", f"== #{b['best_rank']}  {b['username']}: {b['entries']} entries, cashed {b['cashed']}, won ${b['total_payout']:,.0f}, "
+                    f"avg lineup {b['avg_points']} (field {field_block.get('field_avg_lineup')}), players used {b['players_used']}, "
+                    f"edge total {a['edge_total']:+.2f}"]
+        out += fmt_analysis(a)
+        out.append("    PLAYERS (by exposure):")
+        out += fmt_players(a["players"], players, indent="      ")
+        shown = sorted(lineups, key=lambda l: (l["rank"] or 10**9))[:lineups_shown]
+        out.append(f"    LINEUPS (best {len(shown)} of {len(lineups)}):")
+        for l in shown:
+            out += fmt_lineup(l, indent="      ")
+
+    ours_summary = None
+    run, ours = (None, []) if run_id == "none" else load_ours(db, contest, run_id)
+    if not ours:
+        out += ["", "== OURS: no optimizer run with lineups on this contest's slate"
+                + ("" if contest["slate_upload_id"] else " (contest not linked to a slate)")]
+    else:
+        for l in ours:
+            l["rank"] = estimate_rank(l["points"], curve)
+        a = analyze_portfolio(ours, avg_slot)
+        scores = sorted((l["points"] for l in ours), reverse=True)
+        best_rank = estimate_rank(scores[0], curve)
+        ours_summary = {"run_id": str(run["run_id"]), "mode": run["mode"], "created_at": run["created_at"].isoformat(),
+                        "best_points": scores[0], "best_rank_estimate": best_rank,
+                        "median_points": statistics.median(scores), "field_median": contest["median_score"],
+                        "lineups_above_field_median": sum(1 for s_ in scores if contest["median_score"] is not None and s_ > contest["median_score"]),
+                        **summary(a)}
+        out += ["", f"== OURS: run {str(run['run_id'])[:8]} ({run['mode']}, {run['created_at']:%Y-%m-%d %H:%M} UTC), {len(ours)} lineups, "
+                    f"scored with actual points: best {scores[0]:.2f} (~#{best_rank:,} of {contest['entry_count']:,}), "
+                    f"median {statistics.median(scores):.2f}, field median {contest['median_score']}; edge total {a['edge_total']:+.2f}"]
+        out += fmt_analysis(a)
+        out.append("    PLAYERS (by exposure):")
+        out += fmt_players(a["players"], players, indent="      ")
+        out.append(f"    LINEUPS (best {min(lineups_shown, len(ours))} of {len(ours)}, rank estimated from the contest's score curve):")
+        for l in sorted(ours, key=lambda l: -l["points"])[:lineups_shown]:
+            out += fmt_lineup({**l, "note": f"(our #{l['lineup_number']})"}, indent="      ")
+    return {"contest_id": contest["contest_id"], "run_id": ours_summary["run_id"] if ours_summary else None,
+            "top_n": top, "winners": winners, "ours": ours_summary, "text": "\n".join(out)}
+
+
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--contest", help="DraftKings contest id (default: the newest stat-api import)")
@@ -288,61 +365,18 @@ def main(argv=None) -> None:
     args = parser.parse_args(argv)
 
     db = DatabaseManager(load_config().database_url, initialize_schema=False)
-    where = "contest_id = %s" if args.contest else "file_name LIKE 'stat-api:%%'"
-    rows = db.execute(f"""SELECT contest_id, contest_name, format, season, week, slate_upload_id, entry_count,
-                                 winning_score, median_score, score_curve FROM nfl_dfs_field_contests
-                          WHERE {where} ORDER BY imported_at DESC LIMIT 1""", (args.contest,) if args.contest else None)
-    if not rows:
-        raise SystemExit("no such contest imported; run python -m ingest.statapi_contest first")
-    contest = dict(rows[0])
-    curve = contest["score_curve"] if isinstance(contest["score_curve"], list) else json.loads(contest["score_curve"] or "[]")
-    builds = load_builds(db, contest["contest_id"], args.top)
-    if not builds:
-        raise SystemExit(f"contest {contest['contest_id']} has no stored user builds")
-    field_block = (builds[0]["analysis"] or {}).get("field") or {}
-    avg_slot = field_block.get("avg_points_per_slot")
-    opponents = {r["team"]: r["opponent"] for r in db.execute(
-        "SELECT DISTINCT team, opponent FROM nfl_dfs_slate_players WHERE upload_id = %s", (contest["slate_upload_id"],))} \
-        if contest["slate_upload_id"] else {}
-
-    out = [f"{contest['contest_name']}  (DK {contest['contest_id']}, {contest['format']}, {contest['season']} week {contest['week']})",
-           f"  {contest['entry_count']:,} entries; winning {contest['winning_score']}, median {contest['median_score']}; "
-           f"field average {field_block.get('field_avg_lineup')} per lineup, {avg_slot} per seat"]
-    for b in builds:
-        lineups = build_lineups_from_store(b, opponents)
-        a = analyze_portfolio(lineups, avg_slot)
-        out += ["", f"== #{b['best_rank']}  {b['username']}: {b['entries']} entries, cashed {b['cashed']}, won ${b['total_payout']:,.0f}, "
-                    f"avg lineup {b['avg_points']} (field {field_block.get('field_avg_lineup')}), players used {b['players_used']}, "
-                    f"edge total {a['edge_total']:+.2f}"]
-        out += fmt_analysis(a)
-        out.append("    PLAYERS (by exposure):")
-        out += fmt_players(a["players"], args.players, indent="      ")
-        shown = sorted(lineups, key=lambda l: (l["rank"] or 10**9))[:args.lineups]
-        out.append(f"    LINEUPS (best {len(shown)} of {len(lineups)}):")
-        for l in shown:
-            out += fmt_lineup(l, indent="      ")
-
-    if args.ours != "none":
-        run, ours = load_ours(db, contest, None if args.ours == "latest" else args.ours)
-        if not ours:
-            out += ["", "== OURS: no optimizer run with lineups on this contest's slate"
-                    + ("" if contest["slate_upload_id"] else " (contest not linked to a slate)")]
-        else:
-            for l in ours:
-                l["rank"] = estimate_rank(l["points"], curve)
-            a = analyze_portfolio(ours, avg_slot)
-            scores = sorted((l["points"] for l in ours), reverse=True)
-            paid = next((s for r, s in curve if r >= (contest["entry_count"] or 0) * 0.23), None)
-            out += ["", f"== OURS: run {run['run_id'][:8]} ({run['mode']}, {run['created_at']:%Y-%m-%d %H:%M} UTC), {len(ours)} lineups, "
-                        f"scored with actual points: best {scores[0]:.2f} (~#{estimate_rank(scores[0], curve):,} of {contest['entry_count']:,}), "
-                        f"median {statistics.median(scores):.2f}, field median {contest['median_score']}; edge total {a['edge_total']:+.2f}"]
-            out += fmt_analysis(a)
-            out.append("    PLAYERS (by exposure):")
-            out += fmt_players(a["players"], args.players, indent="      ")
-            out.append(f"    LINEUPS (best {min(args.lineups, len(ours))} of {len(ours)}, rank estimated from the contest's score curve):")
-            for l in sorted(ours, key=lambda l: -l["points"])[:args.lineups]:
-                out += fmt_lineup({**l, "note": f"(our #{l['lineup_number']})"}, indent="      ")
-    print("\n".join(out))
+    contest_id = args.contest
+    if not contest_id:
+        rows = db.execute("SELECT contest_id FROM nfl_dfs_field_contests WHERE file_name LIKE 'stat-api:%%' ORDER BY imported_at DESC LIMIT 1")
+        if not rows:
+            raise SystemExit("no stat-api contest imported; run python -m ingest.statapi_contest first")
+        contest_id = rows[0]["contest_id"]
+    try:
+        review = review_contest(db, contest_id, top=args.top, run_id=None if args.ours == "latest" else args.ours,
+                                players=args.players, lineups_shown=args.lineups)
+    except LookupError as exc:
+        raise SystemExit(str(exc))
+    print(review["text"])
 
 
 if __name__ == "__main__":

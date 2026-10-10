@@ -7773,6 +7773,16 @@ analysis, exposure vs the field, and every lineup they entered). Pure layer
   in all 107, ownership sum averaging 64%, and its lineups differed from their
   closest twin by 2.1 players (the winners': 3.6-5.7). Our best lineup placed
   about #28,000 of 161,764.
+- **Weekly, automated (2026-10-10):** `ingest/nfl_dfs_flagship_review.py` runs in
+  `refresh_nfl_dfs_postweek.yml` (Tuesday and Wednesday). For the latest
+  completed week it probes the biggest-prize contest of every DraftKings slate
+  on each game day, imports the ones stat-api serves in full (the flagships),
+  and stores the winners-versus-us review in `nfl_dfs_field_build_reviews`
+  (one row per contest and review version; `nfl-dfs-flagship-review-v1`).
+  Both tables are on the health checklist (`nfl_flagship_builds`,
+  `nfl_build_reviews`, 192 h). A slate with no saved optimizer run reviews
+  the winners only and says so; save a build for every slate you project.
+  The contests listing quotes entry fee and prize pool in CENTS.
 - Discovery is `/slates?date&operator_id=1&sport=nfl` then `/contests?slate_id`
   (100 per slate without a key; sorted by id, so the big fields are present).
   In-Game slates are skipped. The `contest-analysis` tool page and the

@@ -2827,6 +2827,23 @@ TABLES = [
         PRIMARY KEY (contest_id, username)
     )""",
 
+    # The weekly winners-versus-us review (ingest/nfl_dfs_flagship_review.py):
+    # one row per contest and review version holding the top finishers'
+    # portfolio analysis and the same analysis of our saved build, so the
+    # comparison accumulates week by week. Python owns writes.
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_field_build_reviews (
+        contest_id TEXT NOT NULL REFERENCES nfl_dfs_field_contests(contest_id) ON DELETE CASCADE,
+        review_version TEXT NOT NULL,
+        season INTEGER,
+        week INTEGER,
+        run_id UUID,
+        top_n INTEGER NOT NULL,
+        winners JSONB NOT NULL,
+        ours JSONB,
+        computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (contest_id, review_version)
+    )""",
+
     # ── dfsdb.com contest archive (ingest/dfsdb_contest.py) ──────────────────
     #
     # One pasted contest link, imported on demand: the contest card, the

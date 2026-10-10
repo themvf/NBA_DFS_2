@@ -291,8 +291,9 @@ def listing_contests(contests: list[dict], slate: dict) -> list[dict]:
             continue
         rows.append({
             "statapi_id": int(c["id"]), "external_id": c.get("external_id"), "name": c.get("name") or "(unnamed)",
-            "entry_count": int(c.get("entry_count") or 0), "entry_fee": _float(c.get("entry_fee")),
-            "prize_pool": _float(c.get("prize_pool")), "lineups_status": c.get("lineups_status"),
+            # The listing quotes money in cents (a $0.50 mini-MAX lists entry_fee 50); the card quotes *_cents.
+            "entry_count": int(c.get("entry_count") or 0), "entry_fee": _cents(c.get("entry_fee")),
+            "prize_pool": _cents(c.get("prize_pool")), "lineups_status": c.get("lineups_status"),
             "slate_id": slate.get("id"), "slate_name": slate.get("name"),
             "format": str(slate.get("game_type") or "").lower() or contest_format({"name": c.get("name")}),
         })
@@ -367,6 +368,11 @@ def format_report(contest: dict, standings: list[dict], summary: dict, ownership
             lines.append("      " + ", ".join(f"{p['slot']} {p['name']} ({p['drafted_pct']:.1f}%)" if p["drafted_pct"] is not None
                                               else f"{p['slot']} {p['name']}" for p in l["players"]))
     return "\n".join(lines)
+
+
+def _cents(value):
+    amount = _float(value)
+    return None if amount is None else amount / 100
 
 
 def _int(value):
