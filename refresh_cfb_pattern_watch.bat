@@ -5,3 +5,4 @@ cd /d "%~dp0"
 echo %date% %time% - Starting CFB pattern watch >> "%LOGFILE%"
 python -m model.cfb_pattern_watch >> "%LOGFILE%" 2>&1
 echo %date% %time% - Done (exit code %ERRORLEVEL%) >> "%LOGFILE%"
+python -m model.cfb_pattern_publish >> "%LOGFILE%" 2>&1

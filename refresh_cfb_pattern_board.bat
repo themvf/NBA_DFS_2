@@ -5,3 +5,4 @@ cd /d "%~dp0"
 echo %date% %time% - board >> "%LOGFILE%"
 python -m model.cfb_pattern_board >> "%LOGFILE%" 2>&1
 echo %date% %time% - done (exit code %ERRORLEVEL%) >> "%LOGFILE%"
+python -m model.cfb_pattern_publish >> "%LOGFILE%" 2>&1
