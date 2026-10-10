@@ -7651,6 +7651,45 @@ treating either as more than a judgement.
 
 ---
 
+## dfsdb.com contest import — one pasted link at a time (2026-10-10)
+
+`python -m ingest.dfsdb_contest <link>` pulls a public DraftKings contest from
+dfsdb ("The DFS Record Book") into `dfsdb_contests` / `dfsdb_contest_athletes`
+/ `dfsdb_contest_standings`, plus `dfsdb_users` + `dfsdb_user_contest_history`
+with `--top-users N` and `dfsdb_lineups` with `--lineups-pages N`. The pure
+layer is `model/dfsdb_contest.py` (`dfsdb-contest-import-v1`); tests in
+`tests/test_dfsdb_contest.py`. What the payload is, measured 2026-10-10:
+
+- The page is a Next.js shell; `/api/contest/{uuid}?page&limit&sortBy&sortOrder`
+  carries everything, no login, `limit` max 100 (200 is a 400). Older contests
+  can have an empty standings list while the card and athletes still answer.
+- **`athletes` is capped at 50 rows.** Near-complete for a showdown, a fraction
+  of a classic pool (a 2025 Milly Maker's 50 lacked Saquon Barkley). Showdown
+  ownership is FLEX-only (sums to ~500%); captain share is not broken out.
+- **`results` is one row per USER**: best rank, best points, and `winnings`
+  summed across every entry that user had. The stored `payout_curve` therefore
+  takes rank → payout from single-entry users only and records its coverage;
+  `cash_line_points` is set only when the fetch reaches the last cashing rank.
+- `/api/player/{uuid}?summary=1` and `?history=1&sport=&page=` give a user's
+  per-sport record (contests, entries, ROI, cash rate, buy-in / contest-type /
+  slate-size splits) and per-contest results, but **no lineups**.
+- Lineups exist only in the global `/api/lineups?sport=&year=&page=&limit=50`
+  top-scoring feed (full rosters with DK player ids, salary, points); it
+  ignores contest/user filters, so a contest's lineups surface only if they
+  rank among the year's top scores (showdown scores never do). The NFL 2026
+  slice answered 503 on every try on 2026-10-10; 2025 and NBA answered.
+- `--mirror-field` writes an NFL **showdown** into `nfl_dfs_field_contests` /
+  `nfl_dfs_field_ownership` (contest id `dfsdb-<uuid>`, slate matched by name
+  overlap as the CSV path does) so `calibrate:nfl-ownership` can grade it; it
+  refuses classic contests because the 50-row cap would read most of the slate
+  as 0% owned. dfsdb names a DST by nickname ("Cowboys"), same as the DK slate.
+- **Terms:** dfsdb forbids automated tools that "systematically access or
+  download data", and robots.txt disallows `/api/`. This importer is one
+  contest per run on a human-pasted link, one request a second, an identifying
+  User-Agent, no schedule and a capped lineups scan. Do not put it on a cron
+  or loop it over the contests list. The built-in browser gets "Access denied"
+  from the site; plain requests do not.
+
 ## CFB Early-Season Pattern Watch — pre-registered, local only (2026-10-09)
 
 A descriptive sweep of the first six weeks of 2026 (259 FBS-vs-FBS games with
