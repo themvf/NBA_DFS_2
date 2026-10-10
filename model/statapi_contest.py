@@ -168,14 +168,17 @@ def user_build(payload: dict, contest_id: str) -> dict:
         "entries": _int(user.get("entries")), "best_rank": _int(user.get("best_rank")),
         "cashed": _int(user.get("cashed")), "total_payout": (user.get("total_payout_cents") or 0) / 100,
         "avg_points": _float(user.get("avg_points")), "players_used": _int(user.get("players_used")),
-        "analysis": payload.get("analysis") or {},
+        "analysis": {**(payload.get("analysis") or {}),
+                     "field": {k: (payload.get("field") or {}).get(k) for k in
+                               ("roster_slots", "pool_size", "players_owned", "avg_points_per_slot", "field_avg_lineup")}},
         "exposure": [{k: e.get(k) for k in ("name", "position", "team", "salary", "fantasy_points", "lineups",
                                              "captain_lineups", "exposure_pct", "field_pct", "leverage", "edge")}
                      for e in payload.get("exposure") or []],
         "lineups": [{"row": l["row"], "rank": l["rank"], "points": l["points"], "payout": l["payout"],
                      "salary_used": l["salary_used"], "ownership_sum": l["ownership_sum"], "stack": l["stack"],
                      "stack_team": l["stack_team"], "bring_back_team": l["bring_back_team"],
-                     "roster": [[r["slot"], r["name"]] for r in l["players"]]} for l in lineups],
+                     "roster": [[r["slot"], r["name"], r["team"], r["position"], r["salary"], r["fantasy_points"],
+                                 r["drafted_pct"]] for r in l["players"]]} for l in lineups],
         "source": SOURCE,
     }
 
