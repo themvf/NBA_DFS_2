@@ -7793,7 +7793,7 @@ analysis, exposure vs the field, and every lineup they entered). Pure layer
   it or giving others access to anything built on it is not. That fits this
   repo's private use. Nothing here is scheduled.
 
-## NFL DFS — Winners-shape build preset (`nfl-winners-shape-v1`, 2026-10-10)
+## NFL DFS — Winners-shape build preset (`nfl-winners-shape-v2`, 2026-10-11; v1 2026-10-10)
 
 A "Build shape" select on `/dfs/nfl` (GPP mode, Classic and Showdown):
 Standard, or Winners shape, which rearranges the same projections the way
@@ -7807,9 +7807,18 @@ every player the pool rules left out (`reasonCode` `WINNERS_SHAPE` /
 - **Classic:** min unique 4, max exposure 55%, each QB in at most
   `qbExposureCap(n)` of lineups (1.6 distinct QBs per 10 lineups, 15% floor:
   20 lineups -> 35%), a bring-back in 50% of lineups, at least one stacked
-  pass catcher, min salary $49,500. Pool: RBs with 4+ targets a game, WRs with
-  25%+ of their team's targets or under $5,000, TEs under $4,000 with 4+
-  targets a game, DSTs under $3,000. A rule that would leave a position too
+  pass catcher, min salary $49,500. Pool: RBs whose touches a game (carries +
+  targets, three prior weeks) rank in the slate's top quarter OR who see 4+
+  targets a game, WRs with 25%+ of their team's targets or under $5,000, TEs
+  under $4,000 with 4+ targets a game, DSTs under $3,000.
+  **v1's RB rule was targets-only and is why v2 exists:** on the week-5
+  Classic (2026-10-11) it kept 10 of 112 backs, leaving out Jonathan Taylor
+  (26 touches, 3.7 targets a game), Swift, Love, Skattebo and every other
+  bell-cow with a thin receiving role; v2 keeps 19 on the same slate. The
+  48-lineup v1 run on that slate (`0b216409`, 22:57 UTC 2026-10-10) is a
+  TEST, not the week's shadow build: it met every portfolio rule exactly
+  (10 QBs, 24/48 bring-backs, min unique 4, max 54%, $49,600+), but from an
+  8-back pool. Rebuild Standard and Winners shape on v2 before kickoff. A rule that would leave a position too
   thin (RB 4, WR 6, TE 2, DST 2) is skipped and said; so is a position with
   no prior data. Locks always win.
 - **Showdown:** every lineup 5-1 or 3-3 (three binaries pin the first team's
