@@ -1,6 +1,6 @@
 """CFB early-season pattern watch — pre-registered study (registered 2026-10-09).
 
-Five patterns found in a descriptive sweep of the first six weeks of the 2026
+Six patterns found in a descriptive sweep of the first six weeks of the 2026
 season (259 FBS-vs-FBS games, 70 FBS-vs-FCS games). Each is frozen here as a
 trigger, a bet, a price basis and a kill criterion BEFORE any week-7+ game is
 graded. The discovery sample can never confirm them; it is recorded only so
@@ -36,8 +36,12 @@ from db.database import DatabaseManager
 logger = logging.getLogger(__name__)
 
 # ── Frozen registration ──────────────────────────────────────────────────────
-STUDY_VERSION = "cfb-pattern-watch-v1"
+STUDY_VERSION = "cfb-pattern-watch-v2"
 REGISTERED_AT = datetime(2026, 10, 9, 22, 0, tzinfo=timezone.utc)
+# T6 was added 2026-10-10 before any week-7 Saturday kickoff (first at 16:00 UTC).
+# T1-T5 definitions and their registration time are unchanged; the v1 ledger
+# held zero rows when v2 was registered, so nothing is mixed.
+T6_REGISTERED_AT = datetime(2026, 10, 10, 13, 30, tzinfo=timezone.utc)
 DISCOVERY_START = datetime(2026, 8, 1, tzinfo=timezone.utc)
 SEASON = 2026
 VERDICT_NOT_BEFORE = datetime(2026, 12, 7, tzinfo=timezone.utc)  # after conference title games
@@ -55,7 +59,12 @@ TRIGGERS = {
     "T3_small_fav_dog_spread": ("underdog spread", 80),
     "T4_big_fav_over": ("over", 50),
     "T5_sat_evening_g5_fav_ml": ("favorite moneyline", 60),
+    "T6_mid_fav_spread": ("favorite spread", 80),
 }
+
+
+def trigger_registered_at(trigger: str) -> datetime:
+    return T6_REGISTERED_AT if trigger == "T6_mid_fav_spread" else REGISTERED_AT
 FAMILY_SIZE = len(TRIGGERS)
 
 DEFAULT_LEDGER = Path("artifacts") / "cfb_pattern_watch" / "ledger.jsonl"
@@ -112,6 +121,8 @@ def classify(game: dict) -> list[str]:
         et = _eastern(game["commence_time"])
         if et.strftime("%a") == "Sat" and 17 * 60 <= et.hour * 60 + et.minute < 20 * 60 + 30:
             out.append("T5_sat_evening_g5_fav_ml")
+    if fbs_both and 7 <= fav_sp <= 13.5:
+        out.append("T6_mid_fav_spread")
     return out
 
 
@@ -140,6 +151,12 @@ def grade(trigger: str, game: dict) -> dict:
         sel = f"{fav_name} ML {fav_ml:+d}"
         implied = fav_p
     elif trigger == "T2_fcs_fav_spread":
+        price = decimal_odds(SPREAD_TOTAL_PRICE)
+        c = fav_margin - fav_sp
+        result = "won" if c > 0 else "lost" if c < 0 else "push"
+        sel = f"{fav_name} -{fav_sp:g}"
+        implied = 0.5
+    elif trigger == "T6_mid_fav_spread":
         price = decimal_odds(SPREAD_TOTAL_PRICE)
         c = fav_margin - fav_sp
         result = "won" if c > 0 else "lost" if c < 0 else "push"
@@ -208,10 +225,18 @@ def append_rows(path: Path, rows: list[dict]) -> None:
 
 
 def build_rows(games: list[dict], origin: str, existing_keys: set[tuple[str, int]]) -> list[dict]:
+    """origin="prospective" keeps only games at/after the trigger's own registration;
+    origin="discovery" keeps only games before it. A trigger added later therefore
+    never counts a game that kicked off before it was frozen."""
     now = datetime.now(timezone.utc).isoformat()
     out = []
     for g in games:
         for trig in classify(g):
+            reg = trigger_registered_at(trig)
+            if origin == "prospective" and g["commence_time"] < reg:
+                continue
+            if origin == "discovery" and g["commence_time"] >= reg:
+                continue
             key = (trig, int(g["matchup_id"]))
             if key in existing_keys:
                 continue
@@ -267,7 +292,9 @@ def summarize(rows: list[dict], label: str, as_of: datetime | None = None) -> li
         )
     overlap = len({r["matchup_id"] for r in rows if r["trigger"] == "T1_g5_mid_fav_ml"} &
                   {r["matchup_id"] for r in rows if r["trigger"] == "T5_sat_evening_g5_fav_ml"})
-    lines.append(f"  T1/T5 overlapping games: {overlap}  (family size {FAMILY_SIZE}; Bonferroni CI needs ~99% per test)")
+    overlap16 = len({r["matchup_id"] for r in rows if r["trigger"] == "T1_g5_mid_fav_ml"} &
+                    {r["matchup_id"] for r in rows if r["trigger"] == "T6_mid_fav_spread"})
+    lines.append(f"  T1/T5 overlapping games: {overlap}; T1/T6 overlapping games: {overlap16}  (family size {FAMILY_SIZE}; Bonferroni CI needs ~99.2% per test)")
     return lines
 
 
@@ -281,9 +308,9 @@ def main(argv: list[str] | None = None) -> int:
     db = DatabaseManager(cfg.database_url, initialize_schema=False)
 
     if args.discovery:
-        games = load_games(db, DISCOVERY_START, REGISTERED_AT)
+        games = load_games(db, DISCOVERY_START, T6_REGISTERED_AT)
         rows = build_rows(games, "discovery", set())
-        for line in summarize(rows, f"DISCOVERY {DISCOVERY_START.date()} -> {REGISTERED_AT.isoformat()} ({len(games)} games) — cannot confirm anything"):
+        for line in summarize(rows, f"DISCOVERY {DISCOVERY_START.date()} -> each trigger's registration ({len(games)} games) — cannot confirm anything"):
             print(line)
         return 0
 

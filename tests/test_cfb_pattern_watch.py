@@ -1,4 +1,4 @@
-"""Frozen-rule tests for the CFB early-season pattern watch (cfb-pattern-watch-v1).
+"""Frozen-rule tests for the CFB early-season pattern watch (cfb-pattern-watch-v2).
 
 These pin the registered trigger definitions and grading so a quiet edit to a
 threshold shows up as a red test rather than a silently changed cohort.
@@ -24,12 +24,15 @@ def _game(**over):
 
 
 def test_registration_constants_are_frozen():
-    assert pw.STUDY_VERSION == "cfb-pattern-watch-v1"
+    assert pw.STUDY_VERSION == "cfb-pattern-watch-v2"
     assert pw.REGISTERED_AT == datetime(2026, 10, 9, 22, 0, tzinfo=timezone.utc)
+    assert pw.T6_REGISTERED_AT == datetime(2026, 10, 10, 13, 30, tzinfo=timezone.utc)
+    assert pw.trigger_registered_at("T6_mid_fav_spread") == pw.T6_REGISTERED_AT
+    assert pw.trigger_registered_at("T1_g5_mid_fav_ml") == pw.REGISTERED_AT
     assert pw.VERDICT_NOT_BEFORE == datetime(2026, 12, 7, tzinfo=timezone.utc)
     assert {k: v[1] for k, v in pw.TRIGGERS.items()} == {
         "T1_g5_mid_fav_ml": 40, "T2_fcs_fav_spread": 25, "T3_small_fav_dog_spread": 80,
-        "T4_big_fav_over": 50, "T5_sat_evening_g5_fav_ml": 60,
+        "T4_big_fav_over": 50, "T5_sat_evening_g5_fav_ml": 60, "T6_mid_fav_spread": 80,
     }
     assert pw.G5_TARGET_DOGS == {"Conference USA", "Sun Belt", "Mid-American"}
 
@@ -77,6 +80,30 @@ def test_t5_saturday_evening_window_and_g5_requirement():
     assert "T5_sat_evening_g5_fav_ml" in pw.classify(_game(hconf="SEC"))  # one G5 team is enough
 
 
+def test_t6_mid_favorite_spread_band_and_grade():
+    assert "T6_mid_fav_spread" in pw.classify(_game(home_spread=-7.0))
+    assert "T6_mid_fav_spread" in pw.classify(_game(home_spread=-13.5))
+    assert "T6_mid_fav_spread" in pw.classify(_game(home_spread=10.0, home_ml=320, away_ml=-400, hconf="SEC", aconf="Big Ten"))
+    assert "T6_mid_fav_spread" not in pw.classify(_game(home_spread=-6.5))
+    assert "T6_mid_fav_spread" not in pw.classify(_game(home_spread=-14.0))
+    assert "T6_mid_fav_spread" not in pw.classify(_game(home_spread=-10.0, aclass="fcs"))
+    won = pw.grade("T6_mid_fav_spread", _game(home_spread=-10.0, home_score=31, away_score=17))
+    assert won["result"] == "won" and won["selection"] == "Home U -10" and won["pnl_units"] == pytest.approx(100 / 110, abs=1e-4)
+    assert pw.grade("T6_mid_fav_spread", _game(home_spread=-10.0, home_score=27, away_score=17))["result"] == "push"
+    assert pw.grade("T6_mid_fav_spread", _game(home_spread=-10.0, home_score=20, away_score=17))["result"] == "lost"
+
+
+def test_t6_prospective_rows_start_at_its_own_registration_not_v1s():
+    before_t6 = dict(_game(home_spread=-10.0, commence_time=datetime(2026, 10, 10, 0, 0, tzinfo=timezone.utc)),
+                     matchup_id=5, week=7, game_date="2026-10-09", price_source="x")
+    rows = pw.build_rows([before_t6], "prospective", set())
+    trigs = {r["trigger"] for r in rows}
+    assert "T1_g5_mid_fav_ml" in trigs            # registered 10-09 22:00, this game is after that
+    assert "T6_mid_fav_spread" not in trigs        # registered 10-10 13:30, this game is before that
+    disc = {r["trigger"] for r in pw.build_rows([before_t6], "discovery", set())}
+    assert "T6_mid_fav_spread" in disc and "T1_g5_mid_fav_ml" not in disc
+
+
 def test_grading_moneyline_uses_consensus_price_and_spread_uses_minus_110():
     g = _game(home_score=31, away_score=17)  # home -10 favorite wins by 14
     ml = pw.grade("T1_g5_mid_fav_ml", g)
@@ -97,12 +124,12 @@ def test_grading_moneyline_uses_consensus_price_and_spread_uses_minus_110():
 def test_ledger_rows_are_written_once_per_trigger_game(tmp_path):
     g = dict(_game(), matchup_id=7, week=8, game_date="2026-10-17", price_source="verified_close:A")
     rows = pw.build_rows([g], "prospective", set())
-    assert {r["trigger"] for r in rows} == {"T1_g5_mid_fav_ml", "T5_sat_evening_g5_fav_ml"}
+    assert {r["trigger"] for r in rows} == {"T1_g5_mid_fav_ml", "T5_sat_evening_g5_fav_ml", "T6_mid_fav_spread"}
     path = tmp_path / "ledger.jsonl"
     pw.append_rows(path, rows)
     keys = {(r["trigger"], r["matchup_id"]) for r in pw.read_ledger(path)}
     assert pw.build_rows([g], "prospective", keys) == []
-    assert len(pw.read_ledger(path)) == 2
+    assert len(pw.read_ledger(path)) == 3
 
 
 def test_summary_withholds_verdict_below_floor():

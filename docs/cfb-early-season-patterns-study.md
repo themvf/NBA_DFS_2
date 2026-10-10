@@ -1,7 +1,7 @@
 # CFB Early-Season Pattern Watch — Pre-Registered Study
 
-**Version:** `cfb-pattern-watch-v1`
-**Registered:** 2026-10-09 22:00 UTC, before any week-7 game kicked off
+**Version:** `cfb-pattern-watch-v2` (v1 registered 2026-10-09 22:00 UTC with five triggers; T6 added 2026-10-10 13:30 UTC, before the first Saturday kickoff at 16:00 UTC, while the ledger held zero rows)
+**Registered:** 2026-10-09 22:00 UTC for T1-T5; 2026-10-10 13:30 UTC for T6
 **Implementation:** `model/cfb_pattern_watch.py` (classifier, grader, append-only ledger)
 **Ledger:** `artifacts/cfb_pattern_watch/ledger.jsonl` (local, JSON lines, never rewritten)
 **Verdict:** computed once, not before 2026-12-07 (after conference championship games)
@@ -12,7 +12,7 @@ A descriptive sweep of the 2026 season through 2026-10-09 (329 completed games
 with closing lines, 259 FBS-vs-FBS) found favorites winning straight up at
 81.1% against a market-implied 75.3%, with the spread market calibrated
 (favorites 51.8% ATS). Roughly sixty slices were examined across two passes.
-Five patterns were large enough to state as triggers. **None is an edge.** This
+Six patterns were large enough to state as triggers (five at v1; the sixth, the −110 spread form of the T1 story, was added the next morning at the owner's request after the moneyline prices were judged unplayable). **None is an edge.** This
 document freezes them so the rest of the season is a clean test, in the same
 form as the NFL `total_walking` fade study and the MLB underdog-value study.
 
@@ -36,11 +36,17 @@ and a real-price grade would need the per-book JSON.
 | T3 `small_fav_dog_spread` | FBS vs FBS, closing spread 3 to 6.5 | underdog spread | 80 |
 | T4 `big_fav_over` | FBS vs FBS, closing spread 14 to 20.5, total posted | over | 50 |
 | T5 `sat_evening_g5_fav_ml` | FBS vs FBS, at least one team outside the P4, Saturday kickoff 5:00 pm to 8:29 pm ET | favorite moneyline | 60 |
+| T6 `mid_fav_spread` | FBS vs FBS, closing spread 7 to 13.5 (any conference) | favorite spread | 80 |
 
-T1 and T5 overlap (11 of 24 discovery T1 games are also T5). They are graded
-separately and the overlap count is reported every run. The test family is
-five; the Bonferroni-adjusted bar is a 99% interval per trigger, reported
-beside the nominal 95%.
+T1 and T5 overlap (11 of 24 discovery T1 games are also T5), and every T1
+game is by construction also a T6 game (T1 is T6 restricted to G5 teams and
+three dog conferences, bet on the moneyline instead of the spread). They are
+graded separately and both overlap counts are reported every run. The test
+family is six; the Bonferroni-adjusted bar is a 99.2% interval per trigger,
+reported beside the nominal 95%. Each trigger's prospective population starts
+at its OWN registration time, so T6 never counts a game that kicked off
+before it was frozen (Friday 2026-10-09 games are T1-T5 prospective and T6
+discovery).
 
 ## Metrics
 
@@ -80,6 +86,7 @@ by the same code (`python -m model.cfb_pattern_watch --discovery`):
 | T3 underdog spread | 64 | 35-26-3 | 57.4% | 50.0% | +5.82 | +9.1% | [−22.4%, +45.8%] (13 dates) |
 | T4 over | 40 | 25-15-0 | 62.5% | 50.0% | +7.73 | +19.3% | [−19.9%, +45.1%] (7 dates) |
 | T5 favorite ML | 58 | 53-5-0 | 91.4% | 77.5% | +8.63 | +14.9% | [+7.4%, +25.2%] (5 dates) |
+| T6 favorite spread | 68 | 43-23-2 | 65.2% | 50.0% | +16.09 | +23.7% | [+4.0%, +45.7%] (13 dates) |
 
 Two honest readings of that table:
 
@@ -97,7 +104,10 @@ Two honest readings of that table:
 
 Historical base rates for the same triggers on 2022–2025 weeks 1–5, where the
 data allow: G5-vs-G5 favorites won at their implied rate (−0.3pp), 3–6.5 point
-favorites covered 46.5%, 14–20.5 point games went over 44.3%. The Saturday
+favorites covered 46.5%, 14–20.5 point games went over 44.3%, and **7–13.5
+point favorites covered 51.8%** (49.2% over the full 2022–2025 seasons). T6 is
+the trigger with the largest gap between its discovery rate and its historical
+base rate, which is the strongest reason to expect it to regress. The Saturday
 evening slot was the one window where underdogs historically beat their price.
 No FBS-vs-FCS baseline exists in our data.
 
