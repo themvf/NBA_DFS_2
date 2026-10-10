@@ -87,6 +87,7 @@ export function sameGenerationSettings(a: NflOptimizerSettings, b: NflOptimizerS
   const normalize = (s: NflOptimizerSettings) => ({ ...s, runEvidence:undefined,ownershipDisclosure:undefined,ownershipCapability:undefined,
     gppAirMatchupMinPct:s.gppAirMatchupMinPct??0,
     gppGoalLineMinPct:s.gppGoalLineMinPct??0,
+    buildShape:s.buildShape??'standard',
     lockedPlayerIds: [...s.lockedPlayerIds].sort((a,b) => a-b),
     excludedPlayerIds: [...s.excludedPlayerIds].sort((a,b) => a-b),
   });

@@ -144,6 +144,7 @@
     "test:nfl-defensive-capture-status": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-defensive-capture-status.ts",
     "test:nfl-captain-minimum": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-captain-minimum.ts",
     "test:nfl-gpp-leverage": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-leverage.ts",
+    "test:nfl-winners-shape": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-winners-shape.ts",
     "test:pickem-contest": "node --import tsx ./scripts/test-pickem-contest.ts",
     "test:pickem-pfr": "node --import tsx ./scripts/test-pickem-pfr.ts",
     "test:pickem-matchup": "node --import tsx ./scripts/test-pickem-matchup.ts",
