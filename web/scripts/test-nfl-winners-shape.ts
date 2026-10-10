@@ -88,6 +88,7 @@ const prior = (games: number, targets: number, targetShare: number | null = null
   const showdown = applyWinnersShape(settings({ format: "showdown" }), pool);
   assert.equal(showdown.settings.excludeKickers, true); assert.equal(showdown.settings.forbidFourTwoSplit, true);
   assert.equal(showdown.settings.maxCaptainExposure, WINNERS_SHAPE.captainMaxExposure);
+  assert.deepEqual(showdown.settings.captainPositions, ["QB", "RB", "WR"]);
   assert.equal(showdown.settings.minUnique, 2, "showdown keeps the user's min unique");
   assert.equal(showdown.excluded.size, 0, "the classic pool rules do not run on a showdown");
 }
@@ -149,13 +150,15 @@ console.log("Winners shape (classic): bring-back share alternates, quarterbacks 
   const positions: NflOptimizerPlayer["position"][] = ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "TE", "RB", "WR"];
   // Strong players are priced low so the best lineup fits the cap; the dear
   // filler lets six distinct lineups reach the preset's $49,500 floor.
-  for (let i = 0; i < 10; i++) pool.push(player({ dkPlayerId: id++, position: positions[i], team: "AAA", salary: 6000 + 450 * i, ourProj: i < 4 ? 22 - i : 6 - i * 0.2 }));
+  // AAA's strongest player is a tight end: the natural captain without the preset.
+  for (let i = 0; i < 10; i++) pool.push(player({ dkPlayerId: id++, position: positions[i], team: "AAA", salary: 6000 + 450 * i, ourProj: i < 3 ? 22 - i : i === 6 ? 26 : 6 - i * 0.2 }));
   for (let i = 0; i < 10; i++) pool.push(player({ dkPlayerId: id++, position: positions[i], team: "BBB", salary: 6050 + 450 * i, ourProj: i < 2 ? 20 - i : 5 - i * 0.2 }));
   for (const team of ["AAA", "BBB"]) pool.push(player({ dkPlayerId: id++, position: "K", team, salary: 3200, ourProj: 9, ceilingFpts: 14, depthRole: "Listed K1", availabilityStatus: "ACTIVE" }));
   const teamSplit = (l: { slots: { player: NflOptimizerPlayer }[] }) => l.slots.filter(s => s.player.team === "AAA").length;
 
   const plain = optimizeNflLineups(pool, settings({ format: "showdown", nLineups: 1, minSalary: 0, stackPassCatchers: 0 }));
   assert.equal(teamSplit(plain.lineups[0]), 4, "without the preset the best lineup is 4-2 (the ban has something to bind on)");
+  assert.equal(plain.lineups[0].slots.find(s => s.slot === "CPT")!.player.position, "TE", "without the preset the tight end is the captain (the position rule has something to bind on)");
 
   const n = 6;
   const result = optimizeNflLineups(pool, settings({ format: "showdown", nLineups: n, minSalary: 0, stackPassCatchers: 0, buildShape: "winners", maxExposure: 1 }));
@@ -165,10 +168,12 @@ console.log("Winners shape (classic): bring-back share alternates, quarterbacks 
     assert.ok(!lineup.slots.some(s => s.player.position === "K"), "no kicker");
     assert.ok(lineup.totalSalary >= WINNERS_SHAPE.minSalary, `salary ${lineup.totalSalary}`);
   }
+  for (const lineup of result.lineups) assert.ok(["QB", "RB", "WR"].includes(lineup.slots.find(s => s.slot === "CPT")!.player.position), "the captain is a QB, RB or WR");
+  assert.ok(result.lineups.some(l => l.slots.some(s => s.slot !== "CPT" && s.player.position === "TE" && s.player.ourProj === 26)), "the strong tight end still plays flex");
   const captains = result.lineups.map(l => l.slots.find(s => s.slot === "CPT")!.player.dkPlayerId);
   assert.equal(new Set(captains).size, n, "30% of 6 lineups is one captain slot each: six different captains");
   assert.equal(result.eligibility!.filter(e => e.reasonCode === "KICKER_EXCLUDED").length, 2, "both kickers are named as left out");
-  assert.ok(result.warnings.some(w => /Winners shape \(nfl-winners-shape-v2, showdown\)/.test(w)));
+  assert.ok(result.warnings.some(w => /Winners shape \(nfl-winners-shape-v3, showdown\)/.test(w)));
 
   // A captain range the user set outranks the cap.
   const ranged = optimizeNflLineups(pool, settings({ format: "showdown", nLineups: n, minSalary: 0, stackPassCatchers: 0, buildShape: "winners", maxExposure: 1,
@@ -176,7 +181,7 @@ console.log("Winners shape (classic): bring-back share alternates, quarterbacks 
   assert.ok(ranged.lineups.filter(l => l.slots.find(s => s.slot === "CPT")!.player.dkPlayerId === 200).length >= 3, "a 50% captain minimum the user set is honoured over the 30% cap");
 
   assert.throws(() => optimizeNflLineups(pool, settings({ format: "showdown", nLineups: 1, buildShape: "winners", lockedPlayerIds: [id - 1] })), /leaves kickers out/, "a locked kicker is refused by name");
-  assert.throws(() => optimizeNflLineups(pool, settings({ format: "classic", excludeKickers: true })), /Showdown rules/, "showdown-only rules are rejected on a classic slate");
+  assert.throws(() => optimizeNflLineups(pool, settings({ format: "classic", captainPositions: ["QB"] })), /Showdown rules/, "showdown-only rules are rejected on a classic slate");
   assert.throws(() => optimizeNflLineups(pool, settings({ format: "showdown", bringBackShare: 0.5 })), /Classic GPP/);
 }
 console.log("Winners shape (showdown): no kicker, 5-1 or 3-3 only, captains capped, user ranges still win.");

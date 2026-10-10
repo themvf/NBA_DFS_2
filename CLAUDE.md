@@ -7793,7 +7793,7 @@ analysis, exposure vs the field, and every lineup they entered). Pure layer
   it or giving others access to anything built on it is not. That fits this
   repo's private use. Nothing here is scheduled.
 
-## NFL DFS — Winners-shape build preset (`nfl-winners-shape-v2`, 2026-10-11; v1 2026-10-10)
+## NFL DFS — Winners-shape build preset (`nfl-winners-shape-v3`, 2026-10-11; v1 2026-10-10)
 
 A "Build shape" select on `/dfs/nfl` (GPP mode, Classic and Showdown):
 Standard, or Winners shape, which rearranges the same projections the way
@@ -7822,9 +7822,15 @@ every player the pool rules left out (`reasonCode` `WINNERS_SHAPE` /
   thin (RB 4, WR 6, TE 2, DST 2) is skipped and said; so is a position with
   no prior data. Locks always win.
 - **Showdown:** every lineup 5-1 or 3-3 (three binaries pin the first team's
-  count to 1, 3 or 5), no kicker, no captain above 30% of lineups unless the
+  count to 1, 3 or 5), no kicker, the captain a QB, RB or WR (`captainPositions`;
+  the player still plays flex), no captain above 30% of lineups unless the
   user set his CPT range, min salary $49,500. Works alongside the archetype
-  plan.
+  plan. v3's captain-position rule comes from the stored flagship builds: in
+  346 top-20 showdown lineups the captain was RB 163 / WR 98 / QB 85 and never
+  a DST, TE or K; the first v1 showdown build (PHI@JAX, `cb4b2dca`) captained
+  the Jaguars DST 3 times and a TE 5 times. The DST's 22-of-50 flex exposure
+  there was the candidate special-teams forecast (P90 18.6, boom 0.36 at
+  $5,200), not the preset; winners carried a DST in 31% of lineups.
 - **New optimizer settings** the preset sets, usable on their own:
   `bringBackShare` (Classic GPP; alternates lineups between a required and
   a forbidden bring-back so the run lands on the share, replacing the hard
