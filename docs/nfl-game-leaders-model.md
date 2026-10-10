@@ -88,9 +88,13 @@ later untouched evaluation period. No tuning to the latest missed game.
 - `research/nfl_game_leaders.py`: read-only capture, per-game evidence requests,
   forecast/batch, result grading, chronological evaluation and sensitivity.
 - `research/nfl_game_leaders_publish.py`: reviewed static page publication.
-- `/nfl/game-leaders`: per-game selector and all three outcome tables. The saved
+- `/nfl/game-leaders`: per-game selector and four outcome tables. The saved
   batch is manual, independent of DraftKings uploads, and never changes optimizer
-  points. Kickoff changes the page to a saved-estimate warning, not a live result.
+  points. The dynamic page checks current same-week availability on each request:
+  a confirmed-out GSIS identity still in a saved forecast hides that game's
+  probability tables until the full simulation is rerun. Missing or stale
+  Sleeper/FantasyPros snapshots hide pregame tables. This guard does not alter
+  the frozen forecast or assign an absent player's work to a replacement.
 
 ```powershell
 python -m research.nfl_game_leaders capture --output artifacts/nfl-game-leaders/new-capture.json.gz

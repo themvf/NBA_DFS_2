@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import saved from "@/data/game-leaders.json";
+import { getGameLeadersAvailability } from "@/db/nfl-game-leaders-availability";
+import { outPlayersInForecast } from "@/lib/nfl/game-leaders-availability";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "NFL Game Leaders" };
@@ -25,6 +27,17 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ g
   const params = await searchParams;
   const selected = saved.games.find(g => g.game.game_id === params.game) ?? saved.games[0];
   const started = selected && (await now()) >= Date.parse(selected.game.kickoff);
+  const availability = selected
+    ? await getGameLeadersAvailability(saved.season, saved.week, selected.game.away,
+      selected.game.home, selected.game.kickoff).catch((error) => {
+        console.error("Game Leaders availability check failed", error);
+        return null;
+      })
+    : null;
+  const newlyOut = selected && availability?.complete
+    ? outPlayersInForecast(selected.metrics, availability.confirmedOut)
+    : [];
+  const blockCurrentForecast = newlyOut.length > 0 || (!started && !availability?.complete);
   return <main className="mx-auto max-w-6xl space-y-6 px-4 py-8">
     <header className="space-y-3"><div className="flex flex-wrap items-center gap-3"><h1 className="text-3xl font-bold">Game leaders</h1><span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-900">Research model</span></div><p>Rushing yards, receptions, and receiving yards · {saved.season} Week {saved.week}</p><p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">This model has not consistently beaten a simple recent-average ranking. The probabilities are exploratory, and player availability remains unresolved. No sportsbook odds are used.</p></header>
     <form method="get" className="flex flex-wrap items-end gap-3"><label className="space-y-1 text-sm font-medium"><span className="block">Game</span><select name="game" defaultValue={selected?.game.game_id} className="rounded border bg-white px-3 py-2">{saved.games.map(g => <option key={g.game.game_id} value={g.game.game_id}>{g.game.away} at {g.game.home} · {date(g.game.kickoff)}</option>)}</select></label><button className="rounded bg-emerald-800 px-4 py-2 text-sm text-white" type="submit">Show game</button></form>
@@ -42,7 +55,15 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ g
         </tbody></table></div>
         <p className="text-sm"><Link href="/nfl/game-model" className="text-emerald-800 underline">View the separate joint outcome research replay</Link></p>
       </section>
-      {families.map(([metric, title]) => {
+      {blockCurrentForecast && <p className="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-950">
+        {newlyOut.length > 0
+          ? `This saved forecast still includes ${newlyOut.map((p) => `${p.name} (${p.team})`).join(", ")}, now ruled out. The player shares and projected averages are hidden until the full game is rerun.`
+          : "Current injury coverage could not be verified. Player shares and projected averages are hidden until availability can be checked."}
+      </p>}
+      {!blockCurrentForecast && availability?.complete && <p className="text-sm text-slate-600">
+        Injury sources checked {date(availability.checkedAt)}. Unresolved player roles remain in this exploratory forecast.
+      </p>}
+      {!blockCurrentForecast && families.map(([metric, title]) => {
         const family = selected.metrics[metric];
         if (!family) return <section key={metric} className="rounded-xl border bg-white p-4"><h2 className="text-xl font-semibold">{title}</h2><p className="mt-2 text-sm text-slate-600">Not calculated in this older snapshot. Run the updated model to add this category.</p></section>;
         const named = family.players.filter(p => !p.residual);

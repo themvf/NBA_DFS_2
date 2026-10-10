@@ -165,6 +165,13 @@ view, not an optimizer scoring path or a slate-upload dependency. Forecasts,
 requests, source digests, excluded games and evaluation reports belong under
 `artifacts/nfl-game-leaders/`; publication data lives in
 `web/src/data/game-leaders.json` (force-stage because the broad data ignore applies).
+The dynamic page also checks current availability through `ff_players.gsis_id`,
+the latest same-week FantasyPros injury observation, Sleeper injury status, and
+week-matched `nfl_official` observations. It compares exact GSIS identities to
+the saved forecast. Fresh confirmed-out players still present in that forecast
+block its entire probability table until a new model run is published; the page
+does not delete one row or renormalize saved probabilities. Missing or stale
+provider snapshots block pregame tables.
 
 
 ### Total yards from scrimmage (local v2)
