@@ -2784,6 +2784,120 @@ TABLES = [
         PRIMARY KEY (contest_id, version)
     )""",
 
+    # ── dfsdb.com contest archive (ingest/dfsdb_contest.py) ──────────────────
+    #
+    # One pasted contest link, imported on demand: the contest card, the
+    # athlete table (capped at 50 by dfsdb -- near-complete for a showdown,
+    # a fraction of a classic pool), the per-USER standings (one row per user,
+    # their best rank and their total winnings across every entry), and the
+    # profiles of the users who finished on top. Separate from nfl_dfs_field_*
+    # because the source is a third-party archive, not DraftKings' own export,
+    # and because dfsdb covers every sport. Rows are upserted by dfsdb id; the
+    # payload digest records what was seen.
+    """CREATE TABLE IF NOT EXISTS dfsdb_contests (
+        dfsdb_id UUID PRIMARY KEY,
+        platform TEXT,
+        sport TEXT NOT NULL,
+        contest_name TEXT NOT NULL,
+        contest_date DATE,
+        buy_in DOUBLE PRECISION,
+        prize_pool DOUBLE PRECISION,
+        total_entries INTEGER,
+        contest_series TEXT,
+        contest_type TEXT,
+        contest_category TEXT,
+        validation_status TEXT,
+        format TEXT NOT NULL,
+        stats JSONB NOT NULL DEFAULT '{}'::jsonb,
+        payout_curve JSONB,
+        standings_users INTEGER,
+        standings_fetched INTEGER NOT NULL DEFAULT 0,
+        standings_complete BOOLEAN NOT NULL DEFAULT FALSE,
+        source_url TEXT NOT NULL,
+        payload_digest TEXT NOT NULL,
+        import_version TEXT NOT NULL,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CHECK(format IN ('classic','showdown'))
+    )""",
+    """CREATE TABLE IF NOT EXISTS dfsdb_contest_athletes (
+        id BIGSERIAL PRIMARY KEY,
+        dfsdb_id UUID NOT NULL REFERENCES dfsdb_contests(dfsdb_id) ON DELETE CASCADE,
+        athlete_name TEXT NOT NULL,
+        normalized_name TEXT NOT NULL,
+        position TEXT,
+        team TEXT,
+        salary INTEGER,
+        fantasy_points DOUBLE PRECISION,
+        ownership_pct DOUBLE PRECISION,
+        UNIQUE(dfsdb_id, normalized_name, team)
+    )""",
+    """CREATE TABLE IF NOT EXISTS dfsdb_contest_standings (
+        entry_id UUID PRIMARY KEY,
+        dfsdb_id UUID NOT NULL REFERENCES dfsdb_contests(dfsdb_id) ON DELETE CASCADE,
+        rank INTEGER NOT NULL,
+        points DOUBLE PRECISION,
+        winnings DOUBLE PRECISION,
+        cash_winnings DOUBLE PRECISION,
+        entry_cost DOUBLE PRECISION,
+        entry_count INTEGER,
+        user_id UUID,
+        username TEXT,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )""",
+    """CREATE INDEX IF NOT EXISTS idx_dfsdb_contest_standings_rank
+        ON dfsdb_contest_standings (dfsdb_id, rank)""",
+    """CREATE TABLE IF NOT EXISTS dfsdb_users (
+        user_id UUID PRIMARY KEY,
+        display_name TEXT NOT NULL,
+        dfsdb_created_at TIMESTAMPTZ,
+        summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+        stats JSONB NOT NULL DEFAULT '[]'::jsonb,
+        splits JSONB NOT NULL DEFAULT '[]'::jsonb,
+        payload_digest TEXT NOT NULL,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )""",
+    """CREATE TABLE IF NOT EXISTS dfsdb_user_contest_history (
+        entry_id UUID PRIMARY KEY,
+        user_id UUID NOT NULL REFERENCES dfsdb_users(user_id) ON DELETE CASCADE,
+        dfsdb_contest_id UUID NOT NULL,
+        contest_name TEXT,
+        contest_date DATE,
+        sport TEXT,
+        buy_in DOUBLE PRECISION,
+        prize_pool DOUBLE PRECISION,
+        total_entries INTEGER,
+        rank INTEGER,
+        points DOUBLE PRECISION,
+        winnings DOUBLE PRECISION,
+        cash_winnings DOUBLE PRECISION,
+        entry_cost DOUBLE PRECISION,
+        entry_count INTEGER,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )""",
+    """CREATE INDEX IF NOT EXISTS idx_dfsdb_user_history_user
+        ON dfsdb_user_contest_history (user_id, contest_date)""",
+    # dfsdb's "top lineups" feed: full rosters (DraftKings player ids, salary,
+    # points) for the highest-scoring tracked lineups per sport and year. It is
+    # a global feed, not a per-contest one, so a row's contest may not be in
+    # dfsdb_contests; the contest card is carried inline.
+    """CREATE TABLE IF NOT EXISTS dfsdb_lineups (
+        lineup_id UUID PRIMARY KEY,
+        dfsdb_contest_id UUID NOT NULL,
+        sport TEXT NOT NULL,
+        contest_name TEXT,
+        contest_date DATE,
+        user_id UUID,
+        username TEXT,
+        rank INTEGER,
+        points DOUBLE PRECISION,
+        winnings DOUBLE PRECISION,
+        lineup_hash TEXT,
+        lineup_players JSONB NOT NULL,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )""",
+    """CREATE INDEX IF NOT EXISTS idx_dfsdb_lineups_contest
+        ON dfsdb_lineups (dfsdb_contest_id, rank)""",
+
     # ── DraftKings' own live player pool ─────────────────────────────────────
     #
     # The salary CSV is a photograph: it says what DraftKings listed at the
