@@ -7698,7 +7698,7 @@ layer is `model/dfsdb_contest.py` (`dfsdb-contest-import-v1`); tests in
   overlap as the CSV path does) so `calibrate:nfl-ownership` can grade it; it
   refuses classic contests because the 50-row cap would read most of the slate
   as 0% owned. dfsdb names a DST by nickname ("Cowboys"), same as the DK slate.
-- **Lineups by top finishers come from DraftKings' export, not dfsdb.**
+- **Lineups by top finishers come from stat-api (below) or DraftKings' export, not dfsdb.**
   `python -m ingest.nfl_dfs_field_audit --contest FILE --keep-top N` (also with
   `--structure-only`) stores every entry ranked in the top N, roster and all,
   in `nfl_dfs_field_top_entries`, each slot read at its own ownership (CPT at
@@ -7712,6 +7712,52 @@ layer is `model/dfsdb_contest.py` (`dfsdb-contest-import-v1`); tests in
   User-Agent, no schedule and a capped lineups scan. Do not put it on a cron
   or loop it over the contests list. The built-in browser gets "Access denied"
   from the site; plain requests do not.
+
+## stat-api.com — every lineup of every DraftKings contest (2026-10-10)
+
+`python -m ingest.statapi_contest --contest <stat-api id>` or
+`--date 2026-10-04 --sport nfl [--search "TB @ DAL"] [--format showdown]`
+pulls a contest's full standings and its top finishers' every lineup from
+`api.stat-api.com/api/v1/dfs` into the SAME tables the DraftKings export path
+fills, keyed by DraftKings' contest id (`external_id`): `nfl_dfs_field_contests`
+(with the web's `score_curve` when every entry is fetched, `--all-standings`),
+`nfl_dfs_field_ownership`, `nfl_dfs_field_top_entries`, and a new
+`nfl_dfs_field_user_builds` (each user's record, stat-api's stack/dispersion
+analysis, exposure vs the field, and every lineup they entered). Pure layer
+`model/statapi_contest.py` (`statapi-contest-import-v1`), tests in
+`tests/test_statapi_contest.py`. Measured 2026-10-10:
+
+- **Each week's flagship contests answer in full with no key** (`x-preview-
+  exempt: flagship`): the DraftKings Millionaire and the biggest Thursday and
+  Monday Showdown. Every other contest needs a key from a free stat-api
+  account (`STAT_API_KEY`, sent as `Authorization: Bearer`); the full lineup
+  file (`/download`) is Pro only (5-row preview). 600 requests/min per key.
+- `/contests/{id}/standings` pages 1,000 rows by `from_row`; a row is one
+  ENTRY (rank, username, points, payout, the user's entry count, stack shape).
+  `/contests/{id}/users/{username}/lineups` returns every lineup of that user
+  seat by seat with `field_pct` = the player's OVERALL ownership on any seat
+  except a CPT seat, which carries the captain share (Dak: flex seat 77.33,
+  captain seat 14.68; dfsdb's flex-only 62.53 is the difference). The importer
+  stores `drafted_pct` = overall and splits a showdown player into CPT and
+  FLEX = overall - CPT, which is DraftKings' own %Drafted convention; summing
+  seats instead double counts (the first run read 176% of the field).
+- Ownership is assembled from the fetched users' seats, so it covers the
+  players they used. The gate is ownership MASS (the share of roster slots x
+  100% the seen players account for), not a player count: 100 users of the
+  TB @ DAL showdown saw 77% of the players but ~99% of the mass, because the
+  unseen ones are punts nobody drafted. The contest is linked to a slate only
+  at `--ownership-min-coverage` (0.95) of the mass: `calibrate:nfl-ownership`
+  reads a slate player with no row as 0% owned, and an unlinked contest is
+  skipped there.
+- Discovery is `/slates?date&operator_id=1&sport=nfl` then `/contests?slate_id`
+  (100 per slate without a key; sorted by id, so the big fields are present).
+  In-Game slates are skipped. The `contest-analysis` tool page and the
+  `contest-analysis_<id>_preview.csv` it downloads are the same data; the CSV
+  is a 5-lineup preview without Pro.
+- Terms (Verum Technologies): Free/Starter/Pro are single-user personal
+  licences; downloading, storing and modelling on the data is allowed, publishing
+  it or giving others access to anything built on it is not. That fits this
+  repo's private use. Nothing here is scheduled.
 
 ## CFB Early-Season Pattern Watch — pre-registered, local only (2026-10-09)
 
