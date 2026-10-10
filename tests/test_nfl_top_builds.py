@@ -41,9 +41,9 @@ def test_analyze_portfolio_dispersion_exposure_and_edge():
     assert d["players_used"] == 13 and d["shared_avg"] == 5.0 and d["closest_twin_avg"] == 4.0
     assert d["most_used_pct"] == 100.0
     kyren = next(p for p in a["players"] if p["name"] == "Kyren Williams")
-    assert kyren["exposure_pct"] == 100.0 and kyren["leverage"] == pytest.approx(90.85)
+    assert kyren["exposure_pct"] == 100.0 and kyren["leverage"] == pytest.approx(90.85, abs=0.06)   # rounded to 0.1
     assert kyren["edge"] == pytest.approx(0.9085 * (36.7 - 13.17), abs=0.01)
-    assert a["ownership"]["min"] == pytest.approx(64.33, abs=0.01) and a["salary"]["avg"] == 49900
+    assert a["ownership"]["min"] == pytest.approx(64.33, abs=0.06) and a["salary"]["avg"] == 49900
 
 
 def test_estimate_rank_reads_the_curve():
