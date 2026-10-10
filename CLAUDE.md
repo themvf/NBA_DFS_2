@@ -7642,7 +7642,11 @@ before the first Saturday kickoff the next morning, in
 [`docs/cfb-early-season-patterns-study.md`](docs/cfb-early-season-patterns-study.md),
 implemented by `model/cfb_pattern_watch.py` with an append-only local ledger
 (`artifacts/cfb_pattern_watch/ledger.jsonl`) and a Tuesday Windows scheduled
-task (`refresh_cfb_pattern_watch.bat`). Primary metric is flat ROI at the
+task (`refresh_cfb_pattern_watch.bat`). A live board (`model/cfb_pattern_board.py`,
+Saturdays every 30 min) freezes each selection once on a fresh quote, refuses
+stale quotes (60 min inside 6 h of kickoff), marks late moves as watch because
+no college injury feed exists, and shows drift against the frozen line; rules
+in the study doc. Primary metric is flat ROI at the
 frozen closing price with a date-clustered bootstrap; verdict once, not before
 2026-12-07, only for triggers at their floor. Discovery ROI (+9% to +24%) is
 recorded there and cannot confirm anything: the moneyline triggers pay −300 to

@@ -131,3 +131,34 @@ No FBS-vs-FCS baseline exists in our data.
   from this study alone. A pass licenses shadow tracking at live prices.
 - The discovery table above is the only place the discovery sample appears in
   a summary. It is never added to the prospective counts.
+
+## Live board — `cfb-pattern-board-v1` (added 2026-10-10)
+
+The scan grades after the fact at the verified close. The board
+(`model/cfb_pattern_board.py`, output `artifacts/cfb_pattern_watch/board.md`)
+is what a reader sees before kickoff, and it follows rules frozen here so a
+stale or moved line is never shown as a current selection. These rules change
+the display only; the graded population and price basis above are untouched.
+
+| Rule | Constant | Meaning |
+|---|---|---|
+| Stale quote | 60 min inside 6 h of kickoff, 360 min outside | A stale quote cannot create or refresh a selection. The card reads "line unavailable, last seen N min ago". |
+| Frozen selection | first fresh sighting | Line, consensus price, best retail book and price, capture time, written once to `selections.jsonl` (append-only). Everything later is drift displayed beside it. |
+| Final | 90 min before kickoff | The selection is the publication record. Drift is still displayed. |
+| Watch (late move) | spread 1.5 pts, total 2 pts, or 4 pp of win probability, measured from the capture nearest 2 h before kickoff | No college injury feed exists in this repo (CFBD has none; FantasyPros returns NFL data). A late move is treated as news of unknown content and the card is downgraded to watch. |
+| Dropped | trigger no longer fires at the current line | The frozen selection stays in the file and on the card with the reason. |
+| Started | kickoff passed | Hidden from selection, still listed. |
+
+Why the first run needed it: on 2026-10-10 the Hawai'i @ Arizona State line
+was 45 hours old and fired T4, and James Madison moved from −7.5 to −7 and from
+−105 to −110 between the morning list and kickoff. Neither was wrong in the
+ledger. Both would have been wrong on a screen.
+
+Operations: `refresh_cfb_pattern_board.bat` runs every 30 minutes on Saturdays
+(Windows task "NBADFS CFB pattern board"), local only. Capture cadence is
+unchanged: the board can only be as fresh as the half-hour CFB odds tick, so
+inside the final hour the stale rule and the capture cadence are the same
+constraint. Tightening capture toward kickoff (the NFL dispatcher's
+quarter-hour pattern) and moving both jobs to a dispatched workflow with a
+`/health` row are the next two steps and are NOT done; the first is an Odds
+API budget decision, the second requires a push.
