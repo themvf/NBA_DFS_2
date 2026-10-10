@@ -7683,6 +7683,14 @@ layer is `model/dfsdb_contest.py` (`dfsdb-contest-import-v1`); tests in
   overlap as the CSV path does) so `calibrate:nfl-ownership` can grade it; it
   refuses classic contests because the 50-row cap would read most of the slate
   as 0% owned. dfsdb names a DST by nickname ("Cowboys"), same as the DK slate.
+- **Lineups by top finishers come from DraftKings' export, not dfsdb.**
+  `python -m ingest.nfl_dfs_field_audit --contest FILE --keep-top N` (also with
+  `--structure-only`) stores every entry ranked in the top N, roster and all,
+  in `nfl_dfs_field_top_entries`, each slot read at its own ownership (CPT at
+  the CPT share) so `ownership_sum` is what the field faced; a tie at the cut
+  is kept whole. Join `username` to `dfsdb_users.display_name` to put a
+  winner's lineup next to their dfsdb record. First run (week-4 showdown
+  195786073, top 20): 30 entries tied for first with one identical lineup.
 - **Terms:** dfsdb forbids automated tools that "systematically access or
   download data", and robots.txt disallows `/api/`. This importer is one
   contest per run on a human-pasted link, one request a second, an identifying
