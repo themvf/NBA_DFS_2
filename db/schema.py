@@ -2783,6 +2783,28 @@ TABLES = [
         computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         PRIMARY KEY (contest_id, version)
     )""",
+    # The top N entries of an export, roster and all (`--keep-top N` in
+    # ingest/nfl_dfs_field_audit.py). The structure table above deliberately
+    # keeps no lineups; this one keeps only the top of the standings, so the
+    # question "what did the people who won build" can be asked next to the
+    # dfsdb profiles of the same users (join dfsdb_users.display_name =
+    # username). Python owns writes.
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_field_top_entries (
+        contest_id TEXT NOT NULL REFERENCES nfl_dfs_field_contests(contest_id) ON DELETE CASCADE,
+        entry_id TEXT NOT NULL,
+        rank INTEGER NOT NULL,
+        entry_name TEXT NOT NULL,
+        username TEXT NOT NULL,
+        user_entries INTEGER,
+        points DOUBLE PRECISION,
+        lineup_text TEXT NOT NULL,
+        players JSONB NOT NULL,
+        ownership_sum DOUBLE PRECISION,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (contest_id, entry_id)
+    )""",
+    """CREATE INDEX IF NOT EXISTS idx_nfl_dfs_field_top_entries_user
+        ON nfl_dfs_field_top_entries (username)""",
 
     # ── dfsdb.com contest archive (ingest/dfsdb_contest.py) ──────────────────
     #
