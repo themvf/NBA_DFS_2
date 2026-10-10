@@ -252,6 +252,8 @@ export type NflOptimizerSettings = {
   excludeKickers?: boolean;
   /** Showdown: each lineup is 5-1 or 3-3 by team, never 4-2. */
   forbidFourTwoSplit?: boolean;
+  /** Showdown: only these positions may take the Captain slot (a user's CPT minimum on another position is reported as infeasible). */
+  captainPositions?: NflOptimizerPlayer["position"][];
   maxExposure: number;
   minUnique: number;
   stackPassCatchers: 0 | 1 | 2;
@@ -686,7 +688,8 @@ function validateSettings(settings: NflOptimizerSettings): void {
   share(settings.maxQbExposure, "Quarterback exposure cap", false);
   share(settings.maxCaptainExposure, "Captain exposure cap", false);
   if (settings.bringBackShare != null && (settings.format !== "classic" || settings.mode !== "gpp")) throw new Error("A bring-back share is only available in Classic GPP.");
-  if ((settings.excludeKickers || settings.forbidFourTwoSplit || settings.maxCaptainExposure != null) && settings.format !== "showdown") throw new Error("Kicker exclusion, the 4-2 ban and the captain cap are Showdown rules.");
+  if ((settings.excludeKickers || settings.forbidFourTwoSplit || settings.maxCaptainExposure != null || settings.captainPositions) && settings.format !== "showdown") throw new Error("Kicker exclusion, the 4-2 ban, the captain cap and captain positions are Showdown rules.");
+  if (settings.captainPositions && !settings.captainPositions.length) throw new Error("Captain positions must name at least one position.");
 }
 
 /**
@@ -1150,7 +1153,10 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
     }
     if (resolved.source === "dk_avg_fallback" || resolved.source === "our_fallback") coverage.fallback++; else coverage.direct++;
     eligibility.push({ ...named, eligible: true, salaryRelief, captainEligible, overridden, reason: null, reasonCode: null });
-    pool.push({ ...player, projectionAudit:resolveProjectionAudit(player,settings), projection: resolved.value, resolvedSource: resolved.source, salaryRelief, captainEligible });
+    // Winners shape (Showdown): the Captain slot is open only to the listed
+    // positions; the player still plays Flex, so this is not an exclusion.
+    const captainPositionAllowed = !settings.captainPositions || settings.captainPositions.includes(player.position);
+    pool.push({ ...player, projectionAudit:resolveProjectionAudit(player,settings), projection: resolved.value, resolvedSource: resolved.source, salaryRelief, captainEligible: captainEligible && captainPositionAllowed });
   }
 
   // A lock, or any minimum exposure, on a player outside the pool used to be

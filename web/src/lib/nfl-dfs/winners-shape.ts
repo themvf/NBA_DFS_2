@@ -15,6 +15,7 @@
  *   tight ends under $4,000 with 4+ targets a game, defenses under $3,000.
  * Showdown (248 Thursday/Monday winners):
  * - 5-1 or 3-3, almost never 4-2 (88%); no kicker (6% vs 36% lower down);
+ *   the captain a QB, RB or WR (346 of 346 top-20 lineups);
  *   winning captains sat at ~6% captain ownership, so no captain above 30%.
  *
  * Every rule below is applied through an ordinary optimizer setting, so a
@@ -30,7 +31,14 @@ import type { NflOptimizerPlayer, NflOptimizerSettings } from "@/app/dfs/nfl/nfl
  * bell-cow with a thin receiving role; the winners' backs were bell-cows
  * first (top-quartile touches) and pass catchers second.
  */
-export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v2";
+/**
+ * v3 (2026-10-11): Showdown captains are QB, RB or WR only. In 346 top-20
+ * showdown lineups from the stored flagship builds the captain was a running
+ * back 163 times, a receiver 98 and a quarterback 85; never a defense, tight
+ * end or kicker. The first v1 build captained the Jaguars DST three times and
+ * a tight end five times, which no winner did.
+ */
+export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v3";
 
 export type BuildShape = "standard" | "winners";
 export const BUILD_SHAPES: readonly BuildShape[] = ["standard", "winners"];
@@ -62,6 +70,7 @@ export const WINNERS_SHAPE = {
   teMinTargetsPerGame: 4,
   dstMaxSalary: 3_000,
   captainMaxExposure: 0.3,
+  captainPositions: ["QB", "RB", "WR"] as NflOptimizerPlayer["position"][],
 } as const;
 
 /**
@@ -129,8 +138,9 @@ export function applyWinnersShape(settings: NflOptimizerSettings, players: reado
       maxCaptainExposure: WINNERS_SHAPE.captainMaxExposure,
       excludeKickers: true,
       forbidFourTwoSplit: true,
+      captainPositions: [...WINNERS_SHAPE.captainPositions],
     });
-    notes.push(`Winners shape (${WINNERS_SHAPE_VERSION}, showdown): every lineup 5-1 or 3-3 (no 4-2), no kicker, `
+    notes.push(`Winners shape (${WINNERS_SHAPE_VERSION}, showdown): every lineup 5-1 or 3-3 (no 4-2), no kicker, the captain a ${WINNERS_SHAPE.captainPositions.join("/")}, `
       + `no captain in more than ${Math.round(WINNERS_SHAPE.captainMaxExposure * 100)}% of lineups, min salary ${money(shaped.minSalary)}. `
       + `Captain ranges you set are kept.`);
   }
