@@ -7694,10 +7694,13 @@ layer is `model/dfsdb_contest.py` (`dfsdb-contest-import-v1`); tests in
   rank among the year's top scores (showdown scores never do). The NFL 2026
   slice answered 503 on every try on 2026-10-10; 2025 and NBA answered.
 - `--mirror-field` writes an NFL **showdown** into `nfl_dfs_field_contests` /
-  `nfl_dfs_field_ownership` (contest id `dfsdb-<uuid>`, slate matched by name
-  overlap as the CSV path does) so `calibrate:nfl-ownership` can grade it; it
-  refuses classic contests because the 50-row cap would read most of the slate
-  as 0% owned. dfsdb names a DST by nickname ("Cowboys"), same as the DK slate.
+  `nfl_dfs_field_ownership` (contest id `dfsdb-<uuid>`); it refuses classic
+  contests because the 50-row cap would read most of the slate as 0% owned.
+  **Do not use it as a calibration target (2026-10-10):** dfsdb's showdown
+  ownership is FLEX-only while the prior is captain-plus-flex, so the eight
+  mirrored TB @ DAL contests graded at bias +1.95 where stat-api's row for the
+  same contest graded at 0.00. Their slate links were removed that day (the
+  rows stay); stat-api is the ownership source for calibration.
 - **Lineups by top finishers come from stat-api (below) or DraftKings' export, not dfsdb.**
   `python -m ingest.nfl_dfs_field_audit --contest FILE --keep-top N` (also with
   `--structure-only`) stores every entry ranked in the top N, roster and all,
@@ -7748,7 +7751,10 @@ analysis, exposure vs the field, and every lineup they entered). Pure layer
   unseen ones are punts nobody drafted. The contest is linked to a slate only
   at `--ownership-min-coverage` (0.95) of the mass: `calibrate:nfl-ownership`
   reads a slate player with no row as 0% owned, and an unlinked contest is
-  skipped there.
+  skipped there. First calibration on the two linked contests: week-4
+  Millionaire n=629 Spearman 0.80 MAE 1.06 bias 0.01 (in line with the three
+  export-based classic slates); TB @ DAL showdown n=52 Spearman 0.89 MAE 4.82
+  bias 0.00.
 - Discovery is `/slates?date&operator_id=1&sport=nfl` then `/contests?slate_id`
   (100 per slate without a key; sorted by id, so the big fields are present).
   In-Game slates are skipped. The `contest-analysis` tool page and the
