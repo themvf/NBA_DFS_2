@@ -35,7 +35,7 @@ function settings(over: Partial<NflOptimizerSettings> = {}): NflOptimizerSetting
     lockedPlayerIds: [], excludedPlayerIds: [], minExposureByPlayer: {}, maxExposureByPlayer: {}, ...over,
   };
 }
-const prior = (games: number, targets: number, targetShare: number | null = null) => ({ games, targets, carries: games * 10, targetShare });
+const prior = (games: number, targets: number, targetShare: number | null = null, carries = games * 10) => ({ games, targets, carries, targetShare });
 
 // --- The preset's pool rules name every player they leave out, and skip a rule that would leave a position too thin ---
 {
@@ -43,6 +43,7 @@ const prior = (games: number, targets: number, targetShare: number | null = null
     ...[0, 1, 2, 3, 4].map(i => player({ dkPlayerId: 10 + i, position: "RB", team: "AAA", priorOpportunity: prior(3, 15) })),   // 5.0 targets/g
     ...[0, 1, 2].map(i => player({ dkPlayerId: 20 + i, position: "RB", team: "BBB", priorOpportunity: prior(3, 6) })),          // 2.0 targets/g
     player({ dkPlayerId: 23, position: "RB", team: "BBB", priorOpportunity: null }),                                            // no record
+    player({ dkPlayerId: 24, position: "RB", team: "BBB", priorOpportunity: prior(3, 6, null, 60) }),                            // 2 targets but 22 touches/g: a bell-cow
     ...[0, 1, 2, 3, 4, 5].map(i => player({ dkPlayerId: 30 + i, position: "WR", team: "AAA", salary: 7000, priorOpportunity: prior(3, 30, 0.3) })),
     player({ dkPlayerId: 36, position: "WR", team: "BBB", salary: 4500, priorOpportunity: prior(3, 6, 0.08) }),                 // cheap: kept
     player({ dkPlayerId: 37, position: "WR", team: "BBB", salary: 6200, priorOpportunity: prior(3, 9, 0.12) }),                 // out
@@ -62,15 +63,17 @@ const prior = (games: number, targets: number, targetShare: number | null = null
   assert.equal(shaped.settings.buildShape, "winners", "the preset stays on the saved settings");
   const out = [...shaped.excluded.keys()].sort((a, b) => a - b);
   assert.deepEqual(out, [21, 22, 23, 37, 52], "two low-target backs, the back with no record, the thin receiver and the dear defense");
+  assert.ok(!shaped.excluded.has(24), "a bell-cow with 2 targets a game stays on top-quartile touches (v2)");
+  assert.match(shaped.excluded.get(21)!, /12\.0 touches and 2\.0 targets a game/);
   assert.ok(!shaped.excluded.has(20), "a locked back below the rule is kept: locks always win");
-  assert.match(shaped.excluded.get(21)!, /2\.0 targets a game over the prior 3 game\(s\)/);
+  assert.match(shaped.excluded.get(21)!, /over the prior 3 game\(s\)/);
   assert.match(shaped.excluded.get(23)!, /no prior-week opportunity record/);
   assert.match(shaped.excluded.get(37)!, /12% target share at \$6,200/);
   assert.match(shaped.excluded.get(52)!, /\$3,600; the preset keeps defenses under \$3,000/);
   assert.ok(shaped.notes.some(n => /only 1 TE\(s\) meet the rule/.test(n) && /TE rule was not applied/.test(n)), "a rule that leaves one tight end is skipped and said");
   assert.ok(!shaped.excluded.has(41) && !shaped.excluded.has(42), "the skipped TE rule leaves every tight end in");
   assert.ok(shaped.notes[0].startsWith(`Winners shape (${WINNERS_SHAPE_VERSION}, classic)`));
-  assert.ok(shaped.notes.some(n => /RB pool kept 6 of 9/.test(n)), `the locked back counts as kept: ${shaped.notes.join(" | ")}`);
+  assert.ok(shaped.notes.some(n => /RB pool kept 7 of 10/.test(n)), `the locked back and the bell-cow count as kept: ${shaped.notes.join(" | ")}`);
   assert.equal(settings().minUnique, 2, "the caller's settings object is not mutated");
 
   const noData = applyWinnersShape(settings(), pool.map(p => ({ ...p, priorOpportunity: null })));
@@ -165,7 +168,7 @@ console.log("Winners shape (classic): bring-back share alternates, quarterbacks 
   const captains = result.lineups.map(l => l.slots.find(s => s.slot === "CPT")!.player.dkPlayerId);
   assert.equal(new Set(captains).size, n, "30% of 6 lineups is one captain slot each: six different captains");
   assert.equal(result.eligibility!.filter(e => e.reasonCode === "KICKER_EXCLUDED").length, 2, "both kickers are named as left out");
-  assert.ok(result.warnings.some(w => /Winners shape \(nfl-winners-shape-v1, showdown\)/.test(w)));
+  assert.ok(result.warnings.some(w => /Winners shape \(nfl-winners-shape-v2, showdown\)/.test(w)));
 
   // A captain range the user set outranks the cap.
   const ranged = optimizeNflLineups(pool, settings({ format: "showdown", nLineups: n, minSalary: 0, stackPassCatchers: 0, buildShape: "winners", maxExposure: 1,

@@ -10,7 +10,7 @@
  * - min unique 4 (ours was 2), most-used player in no more than 55% of
  *   lineups, about 1.6 distinct quarterbacks per 10 lineups, bring-back in
  *   about half the lineups (ours: every one), median salary $49,874;
- * - running backs with 4+ targets a game, receivers with 25%+ of their
+ * - running backs with top-quartile touches or 4+ targets a game, receivers with 25%+ of their
  *   team's targets (the third receiver may be a cheap one under $5,000),
  *   tight ends under $4,000 with 4+ targets a game, defenses under $3,000.
  * Showdown (248 Thursday/Monday winners):
@@ -23,7 +23,14 @@
  */
 import type { NflOptimizerPlayer, NflOptimizerSettings } from "@/app/dfs/nfl/nfl-optimizer";
 
-export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v1";
+/**
+ * v2 (2026-10-11): the RB rule keeps a back on top-quartile touches OR 4+
+ * targets a game. v1's targets-only line kept 10 of 112 backs on the week-6
+ * Classic and left out Jonathan Taylor (3.7 targets a game) and every other
+ * bell-cow with a thin receiving role; the winners' backs were bell-cows
+ * first (top-quartile touches) and pass catchers second.
+ */
+export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v2";
 
 export type BuildShape = "standard" | "winners";
 export const BUILD_SHAPES: readonly BuildShape[] = ["standard", "winners"];
@@ -47,6 +54,8 @@ export const WINNERS_SHAPE = {
   distinctQbsPerTenLineups: 1.6,
   bringBackShare: 0.5,
   rbMinTargetsPerGame: 4,
+  /** A back whose touches a game rank in the slate's top quarter qualifies without the targets. */
+  rbTouchesTopShare: 0.25,
   wrMinTargetShare: 0.25,
   wrCheapSalary: 5_000,
   teMaxSalary: 4_000,
@@ -83,6 +92,7 @@ export type WinnersShapeResult = {
 };
 
 const perGame = (o: PriorOpportunity, key: "targets" | "carries") => (o.games > 0 ? o[key] / o.games : 0);
+const touches = (o: PriorOpportunity) => perGame(o, "carries") + perGame(o, "targets");
 const fmtShare = (share: number | null) => (share == null ? "an unknown" : `${Math.round(share * 100)}%`);
 const money = (n: number) => `$${n.toLocaleString()}`;
 
@@ -131,13 +141,19 @@ function applyPoolRules(settings: NflOptimizerSettings, players: readonly ShapeP
   const keep = new Set([...settings.lockedPlayerIds]);
   const manual = new Set(settings.excludedPlayerIds);
   const active = players.filter(p => !p.isOut && p.projectionStatus !== "out" && !manual.has(p.dkPlayerId));
+  // The slate's own touches-a-game quartile among backs with a record, so the
+  // rule reads the week's pool rather than a constant carried from another one.
+  const rbTouches = active.filter(p => p.position === "RB" && p.priorOpportunity && p.priorOpportunity.games > 0)
+    .map(p => touches(p.priorOpportunity!)).sort((a, b) => b - a);
+  const touchFloor = rbTouches.length ? rbTouches[Math.max(0, Math.ceil(rbTouches.length * WINNERS_SHAPE.rbTouchesTopShare) - 1)] : null;
   const rules: Array<{ position: "RB" | "WR" | "TE" | "DST"; label: string; needsPrior: boolean;
     qualifies: (p: ShapePlayer) => boolean; why: (p: ShapePlayer) => string }> = [
-    { position: "RB", label: `backs with ${WINNERS_SHAPE.rbMinTargetsPerGame}+ targets a game`, needsPrior: true,
-      qualifies: p => !!p.priorOpportunity && perGame(p.priorOpportunity, "targets") >= WINNERS_SHAPE.rbMinTargetsPerGame,
+    { position: "RB", label: `backs with touches a game in the slate's top quarter (${touchFloor == null ? "n/a" : touchFloor.toFixed(1)}+) or ${WINNERS_SHAPE.rbMinTargetsPerGame}+ targets a game`, needsPrior: true,
+      qualifies: p => !!p.priorOpportunity && (perGame(p.priorOpportunity, "targets") >= WINNERS_SHAPE.rbMinTargetsPerGame
+        || (touchFloor != null && touches(p.priorOpportunity) >= touchFloor)),
       why: p => p.priorOpportunity
-        ? `${perGame(p.priorOpportunity, "targets").toFixed(1)} targets a game over the prior ${p.priorOpportunity.games} game(s); the preset keeps backs at ${WINNERS_SHAPE.rbMinTargetsPerGame}+.`
-        : `no prior-week opportunity record; the preset keeps backs with ${WINNERS_SHAPE.rbMinTargetsPerGame}+ targets a game.` },
+        ? `${touches(p.priorOpportunity).toFixed(1)} touches and ${perGame(p.priorOpportunity, "targets").toFixed(1)} targets a game over the prior ${p.priorOpportunity.games} game(s); the preset keeps backs at ${touchFloor == null ? "n/a" : touchFloor.toFixed(1)}+ touches or ${WINNERS_SHAPE.rbMinTargetsPerGame}+ targets.`
+        : `no prior-week opportunity record; the preset keeps backs with top-quartile touches or ${WINNERS_SHAPE.rbMinTargetsPerGame}+ targets a game.` },
     { position: "WR", label: `receivers with ${Math.round(WINNERS_SHAPE.wrMinTargetShare * 100)}%+ of their team's targets, or under ${money(WINNERS_SHAPE.wrCheapSalary)}`, needsPrior: true,
       qualifies: p => p.salary < WINNERS_SHAPE.wrCheapSalary || (p.priorOpportunity?.targetShare ?? -1) >= WINNERS_SHAPE.wrMinTargetShare,
       why: p => `${fmtShare(p.priorOpportunity?.targetShare ?? null)} target share at ${money(p.salary)}; the preset keeps receivers at ${Math.round(WINNERS_SHAPE.wrMinTargetShare * 100)}%+ or under ${money(WINNERS_SHAPE.wrCheapSalary)}.` },
