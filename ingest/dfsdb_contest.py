@@ -23,6 +23,8 @@ requests are not, as of 2026-10-10.
 
 Usage:
     python -m ingest.dfsdb_contest https://www.dfsdb.com/contest/<uuid>
+    python -m ingest.dfsdb_contest --date 2026-10-08 --sport nfl             # the day's biggest contests
+    python -m ingest.dfsdb_contest --date 2026-10-08 --sport nfl --search "TB @ DAL" --mirror-field
     python -m ingest.dfsdb_contest <link> --standings-pages 20      # top 2,000 users
     python -m ingest.dfsdb_contest <link> --all-standings            # every user (88k entries ~ 270 calls)
     python -m ingest.dfsdb_contest <link> --top-users 10             # profiles + history of the top 10
@@ -34,6 +36,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 import time
 
@@ -106,6 +109,18 @@ class Client:
                         {"history": "1", "sport": sport, "page": page, "limit": HISTORY_PAGE_SIZE,
                          "sort": "date", "dir": "desc"})
 
+    def contests(self, sport: str, year: int, page: int, search: str | None = None,
+                 series: str | None = None, contest_type: str | None = None) -> dict:
+        params = {"sport": sport, "year": year, "sortBy": "contest_date", "sortOrder": "desc",
+                  "page": page, "limit": 100}
+        if search:
+            params["search"] = search
+        if series:
+            params["contestSeries"] = series
+        if contest_type:
+            params["contestType"] = contest_type
+        return self.get("/api/contests", params)
+
     def lineups(self, sport: str, year: int, page: int) -> dict:
         return self.get("/api/lineups", {"sport": sport, "year": year, "page": page, "limit": LINEUP_PAGE_SIZE})
 
@@ -176,6 +191,41 @@ def fetch_lineups(client: Client, sport: str, year: int, pages: int) -> tuple[li
         if not data or page >= int(pagination.get("totalPages") or 0):
             break
     return rows, None
+
+
+MAX_DISCOVERY_PAGES = 12
+
+
+def discover_contests(client: Client, sport: str, date: str, search: str | None = None,
+                      series: str | None = None, contest_type: str | None = None) -> dict:
+    """The contests dfsdb lists for `sport` on `date`, from its date-descending listing.
+
+    Pages until a page runs past the date or the cap is hit. The listing has no
+    date filter, and an NFL Sunday alone is several hundred contests, so an
+    unfiltered walk reaches only the last day or two: `search` (a matchup
+    string, which showdown names carry), `series` and `contest_type` are the
+    server-side filters that make an older day reachable. The result says
+    whether the date was reached, so "nothing listed" is never mistaken for
+    "nothing happened".
+    """
+    year = int(date[:4])
+    rows: list[dict] = []
+    reached, oldest, pages = False, None, 0
+    for page in range(1, MAX_DISCOVERY_PAGES + 1):
+        chunk = client.contests(sport, year, page, search, series, contest_type)
+        pages = page
+        data = chunk.get("data") or []
+        rows.extend(m.contest_listing_rows(data))
+        dates = [r["contest_date"] for r in m.contest_listing_rows(data)]
+        if dates:
+            oldest = min(dates) if oldest is None else min(oldest, min(dates))
+        pagination = chunk.get("pagination") or {}
+        last_page = page >= int(pagination.get("totalPages") or 0)
+        if not data or m.listing_is_past(data, date) or last_page:
+            reached = True
+            break
+    return {"rows": [r for r in rows if r["contest_date"] == date], "reached": reached,
+            "pages": pages, "oldest_date": oldest}
 
 
 # --------------------------------------------------------------------------
@@ -339,8 +389,9 @@ def mirror_field(db: DatabaseManager, contest: dict, athletes: list[dict], uploa
 # CLI
 # --------------------------------------------------------------------------
 
-def run(args, client: Client, db: DatabaseManager | None) -> str:
-    contest_id = m.contest_id_from_link(args.link)
+def import_contest(args, client: Client, db: DatabaseManager | None, contest_id: str,
+                   lineups: list[dict] | None = None) -> str:
+    """Fetch, store and report one contest. `lineups` is a pre-fetched feed slice (date mode)."""
     fetched = fetch_contest(client, contest_id, pages=args.standings_pages, all_pages=args.all_standings)
     payload = fetched["payload"]
     standings = m.standings_rows(contest_id, fetched["results"])
@@ -362,21 +413,24 @@ def run(args, client: Client, db: DatabaseManager | None) -> str:
         users = fetch_users(client, ids, sport, args.history_pages)
     profiles = [m.user_profile(u["payload"], sport) for u in users]
 
-    lineups, lineup_error, matched = [], None, []
-    if args.lineups_pages:
-        year = int(str(contest["contest_date"] or "")[:4] or 0) or None
-        if year:
-            raw, lineup_error = fetch_lineups(client, sport, year, args.lineups_pages)
-            lineups = m.lineup_rows(sport, raw)
-            matched = [m.annotate_lineup(l, athletes) for l in lineups if l["dfsdb_contest_id"] == contest_id]
+    lineup_error = None
+    if lineups is None:
+        lineups = []
+        if args.lineups_pages:
+            year = int(str(contest["contest_date"] or "")[:4] or 0) or None
+            if year:
+                raw, lineup_error = fetch_lineups(client, sport, year, args.lineups_pages)
+                lineups = m.lineup_rows(sport, raw)
+                if db is not None:
+                    persist_lineups(db, lineups)
+    matched = [m.annotate_lineup(l, athletes) for l in lineups if l["dfsdb_contest_id"] == contest_id]
 
     notes = []
     if db is not None:
         persist_contest(db, contest, athletes, standings)
         persist_users(db, users)
-        persist_lineups(db, lineups)
         notes.append(f"stored: contest, {len(athletes)} athletes, {len(standings):,} standings rows, "
-                     f"{len(users)} user profiles, {len(lineups)} lineups ({len(matched)} from this contest)")
+                     f"{len(users)} user profiles, {len(matched)} lineups from this contest")
         if args.mirror_field:
             try:
                 upload = mirror_field(db, contest, athletes, args.upload)
@@ -393,15 +447,78 @@ def run(args, client: Client, db: DatabaseManager | None) -> str:
     elif args.lineups_pages and not matched:
         notes.append("lineups feed: none of the scanned top lineups belong to this contest "
                      "(the feed is global by points, so a showdown score rarely ranks)")
-    notes.append(f"{client.calls} requests to dfsdb")
     return m.format_report(contest, athletes, standings, profiles, matched) + "\n  " + "\n  ".join(notes)
+
+
+def run(args, client: Client, db: DatabaseManager | None) -> str:
+    if args.link:
+        text = import_contest(args, client, db, m.contest_id_from_link(args.link))
+        return text + f"\n  {client.calls} requests to dfsdb"
+
+    # Date mode: the slate's finished contests, biggest fields first.
+    found = discover_contests(client, args.sport, args.date, args.search, args.series, args.type)
+    listed = found["rows"]
+    formats = {"showdown": ("showdown",), "classic": ("classic",)}.get(args.format, ("classic", "showdown"))
+    picked = m.select_day_contests(listed, args.date, min_entries=args.min_entries,
+                                   max_contests=args.max_contests, formats=formats)
+    filters = [f'"{args.search}"' if args.search else "", f"series {args.series}" if args.series else "",
+               f"type {args.type}" if args.type else ""]
+    lines = [f"{args.sport} contests on {args.date}" + (" matching " + ", ".join(f for f in filters if f)
+                                                       if any(filters) else "")
+             + f": {len(listed)} listed, {len(picked)} selected "
+             f"(>= {args.min_entries:,} entries, max {min(args.max_contests, m.MAX_DAY_CONTESTS)})"]
+    if not found["reached"]:
+        lines.append(f"  DATE NOT REACHED: {found['pages']} listing pages only got back to "
+                     f"{found['oldest_date']}. The listing has no date filter; narrow it with "
+                     f"--search (a matchup like \"TB @ DAL\"), --series or --type (see "
+                     f"https://www.dfsdb.com/api/contests/filters for the values).")
+    for r in picked:
+        lines.append(f"  {r['total_entries']:>8,}  ${_money(r['buy_in']):>7}  {r['format']:<8} {r['contest_name'][:70]}")
+    if not picked:
+        return "\n".join(lines) + f"\n  {client.calls} requests to dfsdb"
+
+    lineups: list[dict] = []
+    if args.lineups_pages:
+        raw, error = fetch_lineups(client, args.sport, int(args.date[:4]), args.lineups_pages)
+        lineups = m.lineup_rows(args.sport, raw)
+        if db is not None:
+            persist_lineups(db, lineups)
+        day_ids = {r["id"] for r in picked}
+        hits = sum(1 for l in lineups if l["dfsdb_contest_id"] in day_ids)
+        lines.append(f"  lineups feed: {len(lineups)} scanned, {hits} from the selected contests"
+                     + (f"; stopped: {error}" if error else ""))
+
+    for r in picked:
+        lines.append("")
+        try:
+            lines.append(import_contest(args, client, db, r["id"], lineups))
+        except DfsdbError as exc:
+            lines.append(f"{r['contest_name']}\n  FAILED: {exc}")
+    lines.append(f"\n{client.calls} requests to dfsdb")
+    return "\n".join(lines)
+
+
+def _money(value) -> str:
+    return "?" if value is None else f"{value:,.2f}".rstrip("0").rstrip(".")
 
 
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("link", help="a dfsdb contest link (or its uuid)")
+    parser.add_argument("link", nargs="?", help="a dfsdb contest link (or its uuid)")
+    parser.add_argument("--date", help="instead of a link: import a day's contests (YYYY-MM-DD)")
+    parser.add_argument("--sport", default="nfl", help="with --date: dfsdb sport key (default nfl)")
+    parser.add_argument("--search", help='with --date: narrow the listing by contest name, e.g. "TB @ DAL"')
+    parser.add_argument("--series", help='with --date: dfsdb contestSeries filter, e.g. "Play-Action"')
+    parser.add_argument("--type", help='with --date: dfsdb contestType filter, e.g. "Milly Maker"')
+    parser.add_argument("--format", choices=("classic", "showdown", "any"), default="any",
+                        help="with --date: keep only one format (default any)")
+    parser.add_argument("--min-entries", type=int, default=1000,
+                        help="with --date: skip contests with fewer entries (default 1000)")
+    parser.add_argument("--max-contests", type=int, default=15,
+                        help=f"with --date: import at most N contests, biggest fields first "
+                             f"(default 15, hard cap {m.MAX_DAY_CONTESTS})")
     parser.add_argument("--standings-pages", type=int, default=10,
-                        help="standings pages of 100 users to fetch, from the top (default 10)")
+                        help="standings pages of 100 users to fetch per contest, from the top (default 10)")
     parser.add_argument("--all-standings", action="store_true", help="fetch every standings page")
     parser.add_argument("--top-users", type=int, default=0,
                         help="also fetch dfsdb profiles and history for the top N finishers")
@@ -409,15 +526,19 @@ def main(argv=None) -> None:
                         help="pages of 50 history rows per user, in this contest's sport (default 1)")
     parser.add_argument("--lineups-pages", type=int, default=0,
                         help=f"scan up to N pages (max {MAX_LINEUP_PAGES}) of dfsdb's global top-lineups feed "
-                             "for this sport/year and keep lineups from this contest")
+                             "for this sport/year and keep lineups from the imported contest(s)")
     parser.add_argument("--mirror-field", action="store_true",
                         help="NFL showdown only: also write nfl_dfs_field_contests / nfl_dfs_field_ownership")
     parser.add_argument("--upload", help="slate upload id for --mirror-field when auto-matching cannot resolve it")
     parser.add_argument("--delay", type=float, default=1.0, help="seconds between requests (default 1)")
     parser.add_argument("--dry-run", action="store_true", help="fetch and report, write nothing")
     args = parser.parse_args(argv)
-    if args.standings_pages < 1:
-        parser.error("--standings-pages must be at least 1")
+    if bool(args.link) == bool(args.date):
+        parser.error("pass a contest link, or --date YYYY-MM-DD (not both)")
+    if args.date and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", args.date):
+        parser.error("--date must be YYYY-MM-DD")
+    if args.standings_pages < 1 or args.max_contests < 1:
+        parser.error("--standings-pages and --max-contests must be at least 1")
 
     db = None if args.dry_run else DatabaseManager(load_config().database_url)
     try:

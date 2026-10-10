@@ -278,3 +278,80 @@ def test_lineups_feed_failure_is_reported_not_raised():
     session = FakeSession([FakeResponse(503), FakeResponse(503)])
     rows, error = fetch_lineups(Client(delay=0, retries=1, session=session), "nfl", 2026, 3)
     assert rows == [] and "503" in error
+
+
+# --------------------------------------------------------------------------
+# Date mode: a slate's contests from the listing
+# --------------------------------------------------------------------------
+
+def listing(contest_id, date, entries, name="NFL Showdown $1 (TB @ DAL)", series="Showdown"):
+    return {"id": contest_id, "platform": "draftkings", "sport": "nfl", "contest_name": name,
+            "contest_date": date, "buy_in": 1, "prize_pool": 1000, "total_entries": entries,
+            "contest_type": "Large GPP", "contest_series": series}
+
+
+DAY = [
+    listing("a", "2026-10-08", 237812),
+    listing("b", "2026-10-08", 88235),
+    listing("c", "2026-10-08", 500),
+    listing("d", "2026-10-08", 147058, "NFL $2.5M Fantasy Football Millionaire", "Milly Maker"),
+    listing("e", "2026-10-07", 999999),
+    listing("b", "2026-10-08", 88235),          # duplicate id across pages
+]
+
+
+def test_select_day_contests_takes_the_biggest_fields_on_the_day_once_each():
+    rows = m.contest_listing_rows(DAY)
+    picked = m.select_day_contests(rows, "2026-10-08", min_entries=1000, max_contests=10)
+    assert [r["id"] for r in picked] == ["a", "d", "b"]
+    assert picked[1]["format"] == "classic"
+    only_showdown = m.select_day_contests(rows, "2026-10-08", min_entries=1000, max_contests=10,
+                                          formats=("showdown",))
+    assert [r["id"] for r in only_showdown] == ["a", "b"]
+    assert len(m.select_day_contests(rows, "2026-10-08", min_entries=1000, max_contests=1)) == 1
+    assert m.select_day_contests(rows, "2026-10-08", min_entries=1, max_contests=10**6)[-1]["id"] == "c"
+
+
+def test_the_day_cap_is_hard():
+    rows = m.contest_listing_rows([listing(str(i), "2026-10-08", 10**6 - i) for i in range(80)])
+    assert len(m.select_day_contests(rows, "2026-10-08", min_entries=1, max_contests=500)) == m.MAX_DAY_CONTESTS
+
+
+def test_listing_is_past_once_a_page_runs_before_the_date():
+    assert m.listing_is_past(DAY[:4], "2026-10-08") is False
+    assert m.listing_is_past(DAY, "2026-10-08") is True
+    assert m.listing_is_past([], "2026-10-08") is False
+
+
+def test_discover_contests_stops_paging_once_past_the_date():
+    from ingest.dfsdb_contest import Client, discover_contests
+    page1 = {"data": DAY[:3], "pagination": {"page": 1, "totalPages": 5}}
+    page2 = {"data": DAY[3:5], "pagination": {"page": 2, "totalPages": 5}}
+    session = FakeSession([FakeResponse(200, page1), FakeResponse(200, page2), FakeResponse(200, {"data": []})])
+    found = discover_contests(Client(delay=0, session=session), "nfl", "2026-10-08", search="TB @ DAL")
+    assert [r["id"] for r in found["rows"]] == ["a", "b", "c", "d"]
+    assert found["reached"] is True and found["pages"] == 2
+    assert len(session.calls) == 2                       # page 2 ran past the date; page 3 never asked
+    url, params = session.calls[0]
+    assert url.endswith("/api/contests") and params["search"] == "TB @ DAL"
+    assert params["sortBy"] == "contest_date" and params["sortOrder"] == "desc" and params["year"] == 2026
+
+
+def test_discover_contests_says_when_the_cap_stopped_it_before_the_date():
+    from ingest.dfsdb_contest import MAX_DISCOVERY_PAGES, Client, discover_contests
+    newer = {"data": [listing("z", "2026-10-09", 10)], "pagination": {"page": 1, "totalPages": 999}}
+    session = FakeSession([FakeResponse(200, newer)] * MAX_DISCOVERY_PAGES)
+    found = discover_contests(Client(delay=0, session=session), "nfl", "2026-10-04", contest_type="Milly Maker")
+    assert found["rows"] == [] and found["reached"] is False
+    assert found["pages"] == MAX_DISCOVERY_PAGES and found["oldest_date"] == "2026-10-09"
+    assert session.calls[0][1]["contestType"] == "Milly Maker"
+
+
+def test_cli_needs_exactly_one_of_link_or_date():
+    from ingest.dfsdb_contest import main
+    with pytest.raises(SystemExit):
+        main([])
+    with pytest.raises(SystemExit):
+        main([LINK, "--date", "2026-10-08", "--dry-run"])
+    with pytest.raises(SystemExit):
+        main(["--date", "10/08/2026", "--dry-run"])

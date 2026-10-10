@@ -185,6 +185,54 @@ def contest_row(contest_id: str, payload: dict, *, source_url: str, digest: str,
 
 
 # --------------------------------------------------------------------------
+# A slate's contests (dfsdb's /api/contests listing, date-descending)
+# --------------------------------------------------------------------------
+
+#: Hard ceiling on contests imported in one date run, whatever --max-contests says.
+MAX_DAY_CONTESTS = 50
+
+
+def contest_listing_rows(data: list[dict]) -> list[dict]:
+    out = []
+    for c in data or []:
+        if not c.get("id") or not c.get("contest_date"):
+            continue
+        out.append({"id": c["id"], "contest_date": str(c["contest_date"]), "sport": str(c.get("sport") or "").lower(),
+                    "contest_name": c.get("contest_name") or "(unnamed)", "buy_in": _float(c.get("buy_in")),
+                    "prize_pool": _float(c.get("prize_pool")), "total_entries": _int(c.get("total_entries")) or 0,
+                    "contest_type": c.get("contest_type"), "contest_series": c.get("contest_series"),
+                    "format": contest_format(c)})
+    return out
+
+
+def listing_is_past(data: list[dict], date: str) -> bool:
+    """True once a date-descending page has run past the wanted date (no more pages needed)."""
+    dates = [str(c.get("contest_date") or "") for c in data or [] if c.get("contest_date")]
+    return bool(dates) and min(dates) < date
+
+
+def select_day_contests(rows: list[dict], date: str, *, min_entries: int, max_contests: int,
+                        formats: tuple[str, ...] = ("classic", "showdown")) -> list[dict]:
+    """The day's contests worth importing: largest fields first, one row per id, capped.
+
+    Entries decide, not prize pool: ownership and the payout curve are only as
+    informative as the field is big, and a $0.10 contest with 47k entries says
+    more about what the public drafted than a $333 contest with 2k.
+    """
+    seen, picked = set(), []
+    for r in sorted(rows, key=lambda r: (-r["total_entries"], r["contest_name"])):
+        if r["contest_date"] != date or r["id"] in seen or r["format"] not in formats:
+            continue
+        if r["total_entries"] < min_entries:
+            continue
+        seen.add(r["id"])
+        picked.append(r)
+        if len(picked) >= min(max_contests, MAX_DAY_CONTESTS):
+            break
+    return picked
+
+
+# --------------------------------------------------------------------------
 # Users ("who beat this contest")
 # --------------------------------------------------------------------------
 
