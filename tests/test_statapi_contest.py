@@ -137,7 +137,9 @@ def test_top_entries_keep_rank_within_the_cut_once_each():
 def test_user_build_keeps_every_lineup_and_the_analysis():
     build = m.user_build(USER, "196438550")
     assert build["entries"] == 2 and build["best_rank"] == 1 and build["total_payout"] == 129809.16
-    assert len(build["lineups"]) == 2 and build["lineups"][0]["roster"][0] == ["CPT", "Dak Prescott"]
+    assert len(build["lineups"]) == 2
+    assert build["lineups"][0]["roster"][0] == ["CPT", "Dak Prescott", "DAL", "CPT", 23400, 26.46, 14.68]
+    assert build["analysis"]["field"]["players_owned"] == 4 and build["analysis"]["field"]["roster_slots"] == 6
     assert build["analysis"]["dispersion"]["most_used_pct"] == 100.0
     assert build["exposure"][0]["field_pct"] == 77.33 and build["source"] == "stat-api"
 

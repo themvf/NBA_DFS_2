@@ -7760,6 +7760,19 @@ analysis, exposure vs the field, and every lineup they entered). Pure layer
   Millionaire n=629 Spearman 0.80 MAE 1.06 bias 0.01 (in line with the three
   export-based classic slates); TB @ DAL showdown n=52 Spearman 0.89 MAE 4.82
   bias 0.00.
+- **`python -m research.nfl_top_builds --contest <DK id> --top 5`** prints, for
+  each top finisher, stat-api's three views from the stored builds (players:
+  exposure vs field, leverage, edge; every lineup seat by seat; stacks,
+  dispersion, ownership and salary) and then the IDENTICAL analysis for our
+  optimizer run on the linked slate, scored with the week's actual points and
+  placed in the contest's real score curve. Definitions match stat-api's
+  (edge = leverage/100 x (points - field average per seat); per-player edges
+  reproduce theirs exactly). First run, week-4 Millionaire: the winner used 10
+  different QBs in 10 lineups, QB+2 stacks in 7, ownership sum 64-115% per
+  lineup; our 107-lineup build used 6 QBs, QB+1 in 106 of 107, a bring-back
+  in all 107, ownership sum averaging 64%, and its lineups differed from their
+  closest twin by 2.1 players (the winners': 3.6-5.7). Our best lineup placed
+  about #28,000 of 161,764.
 - Discovery is `/slates?date&operator_id=1&sport=nfl` then `/contests?slate_id`
   (100 per slate without a key; sorted by id, so the big fields are present).
   In-Game slates are skipped. The `contest-analysis` tool page and the
