@@ -175,6 +175,15 @@ DATASET_REGISTRY: tuple[Dataset, ...] = (
     Dataset("nfl_replacement_upside_grade", "NFL replacement-upside weekly grade", "nfl_replacement_upside_grade_runs", "evaluated_at",
             192, "refresh_nfl_dfs_postweek.yml", _NFL,
             "One row per post-week run (Tuesday and Wednesday), blinded until its floors are met; shown on /dfs/nfl/results."),
+    Dataset("nfl_flagship_builds", "NFL flagship contest builds (stat-api)", "nfl_dfs_field_user_builds", "captured_at",
+            192, "refresh_nfl_dfs_postweek.yml", _NFL,
+            "Every lineup of the top 100 finishers of the week's free flagship contests (Millionaire, Thursday "
+            "and Monday showdown), imported Tuesday/Wednesday by ingest.nfl_dfs_flagship_review; captured_at "
+            "is stamped on every write. Eight days without a row means the import or stat-api is broken."),
+    Dataset("nfl_build_reviews", "NFL winners-vs-us build reviews", "nfl_dfs_field_build_reviews", "computed_at",
+            192, "refresh_nfl_dfs_postweek.yml", _NFL,
+            "One row per flagship contest and week from the same job: the top finishers' portfolio analysis "
+            "next to our saved build's; computed_at is rewritten on every run."),
     Dataset("nfl_shadow", "NFL shadow research forecasts", "nfl_dfs_shadow_predictions", "captured_at",
             240, "refresh_nfl_dfs_research.yml", _NFL,
             "Weekly pregame evidence; separate from production projection freshness."),

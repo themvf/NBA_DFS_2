@@ -114,6 +114,17 @@ jobs:
         if: ${{ !cancelled() }}
         run: python -m ingest.nfl_dfs_field_audit --report
 
+      # The week's free flagship contests from stat-api (the Millionaire, the
+      # biggest Thursday and Monday showdown: full standings and the top 100
+      # finishers' every lineup, no key needed), then the winners-versus-us
+      # review against the optimizer run saved for each slate, stored in
+      # nfl_dfs_field_build_reviews. A contest stat-api does not serve in full
+      # is named and skipped, never stored as a preview. Runs even if an
+      # earlier step failed: it reads only what is stored.
+      - name: Flagship contests and the winners-vs-us review
+        if: ${{ !cancelled() }}
+        run: python -m ingest.nfl_dfs_flagship_review ${SEASON:+--season "$SEASON"}
+
       # Keep storage bounded (ingest/nfl_dfs_storage.py): for weeks whose
       # games are all final and two days old, delete projection runs nothing
       # references (slates, optimizer runs, study pins, the forecasts report
