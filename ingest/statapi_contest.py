@@ -3,7 +3,9 @@
 The DraftKings export only exists for contests you entered. stat-api keeps
 every lineup of every DraftKings contest, serves each week's flagship contests
 (the Millionaire, the biggest Thursday and Monday Showdown) to anyone with no
-key, and opens every other contest to a free account's key (`STAT_API_KEY`).
+key. Every other contest is a 5-row preview on a free key (`STAT_API_KEY`,
+measured 2026-10-10) and opens in full only on Pro; a preview is refused, never
+stored.
 This pulls what the export path would have given, into the same tables, keyed
 by DraftKings' own contest id:
 
@@ -87,7 +89,7 @@ class Client:
             except ValueError:
                 body = response.text[:200]
             if response.status_code in (401, 402, 403):
-                hint = "" if self.keyed else " (no STAT_API_KEY set; a free account's key opens every contest)"
+                hint = "" if self.keyed else " (no STAT_API_KEY set; without one only flagship contests answer)"
                 raise StatApiError(f"{url}: {response.status_code} {body}{hint}")
             if response.status_code == 404:
                 raise StatApiError(f"{url}: not found")
@@ -123,6 +125,16 @@ def fetch_standings(client: Client, contest_id: int, *, rows: int, all_rows: boo
     contest = first.get("contest") or {}
     if not contest:
         raise StatApiError(f"contest {contest_id}: no contest card in the standings payload")
+    access = first.get("access") or {}
+    if access and not access.get("full"):
+        # A free key (or none) gets a 5-row courtesy preview on every contest
+        # that is not the week's flagship. Storing that as the contest would
+        # put a 5-entry field in the calibration, so it is refused outright.
+        raise StatApiError(
+            f"contest {contest_id} ({contest.get('name')}): stat-api serves only a "
+            f"{access.get('open_rows') or 5}-row preview on plan '{access.get('plan')}' "
+            f"({(first.get('_metadata') or {}).get('required_tier') or 'pro'} required); only the week's "
+            f"flagship contests are open in full. Nothing stored.")
     total = int(contest.get("total_entries") or 0)
     out = list(first.get("standings") or [])
     want = total if all_rows else min(rows, total or rows)
@@ -300,8 +312,7 @@ def run(args, client: Client, db: DatabaseManager | None) -> str:
     for r in picked:
         lines.append(f"  {r['entry_count']:>8,}  ${r['entry_fee'] or 0:>7g}  {r['format']:<8} {r['name'][:70]}")
     if not client.keyed:
-        lines.append("  (no STAT_API_KEY: only each week's flagship contests answer in full; "
-                     "others need a free account's key)")
+        lines.append("  (no STAT_API_KEY: only each week's flagship contests answer in full)")
     for r in picked:
         lines.append("")
         try:

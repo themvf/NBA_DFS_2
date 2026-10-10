@@ -220,3 +220,18 @@ def test_cli_needs_exactly_one_of_contest_or_date():
         main([])
     with pytest.raises(SystemExit):
         main(["--contest", "1", "--date", "2026-10-04", "--dry-run"])
+
+
+def test_fetch_standings_refuses_a_courtesy_preview():
+    from ingest.statapi_contest import Client, StatApiError, fetch_standings
+    preview = {"contest": {**CONTEST, "total_entries": 118906},
+               "standings": [{"row": i, "rank": i, "username": f"u{i}", "points": 1.0} for i in range(1, 6)],
+               "access": {"plan": "free", "full": False, "open_rows": 5},
+               "_metadata": {"required_tier": "pro", "total_actual_records": 118906}}
+    with pytest.raises(StatApiError, match="5-row preview"):
+        fetch_standings(Client(api_key="k", delay=0, session=FakeSession([FakeResponse(200, preview)])),
+                        29870426, rows=10, all_rows=False)
+    flagship = {**preview, "access": {"plan": "flagship", "full": True}}
+    _, rows = fetch_standings(Client(delay=0, session=FakeSession([FakeResponse(200, flagship)])),
+                              29870409, rows=5, all_rows=False)
+    assert len(rows) == 5

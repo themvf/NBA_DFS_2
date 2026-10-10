@@ -7732,9 +7732,14 @@ analysis, exposure vs the field, and every lineup they entered). Pure layer
 
 - **Each week's flagship contests answer in full with no key** (`x-preview-
   exempt: flagship`): the DraftKings Millionaire and the biggest Thursday and
-  Monday Showdown. Every other contest needs a key from a free stat-api
-  account (`STAT_API_KEY`, sent as `Authorization: Bearer`); the full lineup
-  file (`/download`) is Pro only (5-row preview). 600 requests/min per key.
+  Monday Showdown. **A free account's key adds nothing** (measured
+  2026-10-10 with a real key): every other contest is a 5-row courtesy
+  preview on standings AND per-user lineups (`access.full: false`,
+  `required_tier: pro`), which the importer refuses to store. The 401 text
+  "a free account opens every contest" means the preview. Full access to
+  other contests and the lineup file (`/download`) is Pro ($99/month, 10M
+  lineup rows). `STAT_API_KEY` is sent as `Authorization: Bearer`; 600
+  requests/min per key.
 - `/contests/{id}/standings` pages 1,000 rows by `from_row`; a row is one
   ENTRY (rank, username, points, payout, the user's entry count, stack shape).
   `/contests/{id}/users/{username}/lineups` returns every lineup of that user
