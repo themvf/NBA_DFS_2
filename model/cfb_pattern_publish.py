@@ -25,6 +25,30 @@ from db.database import DatabaseManager
 from model import cfb_pattern_board as board
 from model import cfb_pattern_watch as pw
 
+# Prose blocks. scripts/humanize_copy.py may rewrite these (numbers guarded) into
+# artifacts/cfb_pattern_watch/copy.json, which overrides them when present.
+COPY = {
+    "header_sub": "Six betting patterns found in the first six weeks of 2026 and frozen before week 7. Every pick below is graded at the verified closing line, written once, and never edited. The purpose is to find out whether any of them are real. So far none is proven, and the record is shown either way.",
+    "note": "A flat one unit on every qualifying game at the closing consensus price. Moneyline picks pay what the favorite pays, usually -250 to -400; spreads and totals are scored at -110. Nothing here is a recommendation. Each pattern needs 40 to 80 graded games before it gets a verdict, and the verdict is computed once.",
+    "upcoming_intro": "Each selection is frozen the first time its pattern fires on a fresh line. The frozen line is what gets graded against; the current line is shown beside it so you can see what moved. A line more than an hour old near kickoff is not shown as a pick. Watch means the market moved sharply in the last two hours and we do not know why; there is no injury feed for college football, so the line is the news.",
+    "howto_1": "A pattern is a fixed rule written down before the games it is tested on. Patterns 1 to 5 were frozen on October 9, pattern 6 on the morning of October 10. The rules do not change; a changed rule is a new study.",
+    "howto_2": "The discovery column is the record on the games that suggested each pattern. It is shown so you can see where the idea came from and it counts for nothing. The same market produced those numbers and will regress toward its long-run rates, which for spreads and totals is about 50%.",
+    "howto_3": "Grading uses the verified closing consensus line, so it is what a bettor could have gotten late, not the best price of the week. The upcoming table shows the best retail price at the moment the selection was frozen; that price is not what is graded.",
+    "howto_4": "Moneyline favorites in patterns 1 and 5 are expensive. Two upsets undo six or seven wins. The spread and total patterns risk one unit to win 0.91.",
+    "howto_5": "A verdict comes once, after the regular season, and only for patterns that reach their sample floor. Anything short of the floor is described as what it is: too few games.",
+    "footer": "Source: a private ledger of college football closing lines captured from retail and offshore books, graded against official final scores. Prices and lines are observations, not offers. This page is updated weekly and after each Saturday's games.",
+}
+COPY_OVERRIDES = Path("artifacts") / "cfb_pattern_watch" / "copy.json"
+
+
+def copy_text(key: str) -> str:
+    try:
+        if COPY_OVERRIDES.exists():
+            return json.loads(COPY_OVERRIDES.read_text(encoding="utf-8")).get(key, COPY[key])
+    except (OSError, ValueError):
+        pass
+    return COPY[key]
+
 DEFAULT_OUT = Path("artifacts") / "cfb_pattern_watch" / "report.html"
 
 TRIGGER_LABEL = {
@@ -132,7 +156,7 @@ footer{{margin-top:48px;color:var(--muted);font-size:14px;border-top:1px solid v
 <header>
 <div class="eyebrow">{esc(pw.STUDY_VERSION)} · pre-registered · generated {esc(now.strftime('%Y-%m-%d %H:%M UTC'))}</div>
 <h1>College Football Pattern Watch</h1>
-<p class="sub">Six betting patterns found in the first six weeks of 2026 and frozen before week 7. Every pick below is graded at the verified closing line, written once, and never edited. The purpose is to find out whether any of them are real. So far none is proven, and the record is shown either way.</p>
+<p class="sub">{esc(copy_text("header_sub"))}</p>
 </header>
 """)
     graded = [r for r in rows if r["result"] in ("won", "lost")]
@@ -144,7 +168,7 @@ footer{{margin-top:48px;color:var(--muted);font-size:14px;border-top:1px solid v
 <div class="tile"><div class="k">open selections</div><div class="v">{len(pending)}</div></div>
 <div class="tile"><div class="k">verdict</div><div class="v">none<small> not before Dec 7</small></div></div>
 </div>
-<div class="note">A flat one unit on every qualifying game at the closing consensus price. Moneyline picks pay what the favorite pays, usually −250 to −400; spreads and totals are scored at −110. Nothing here is a recommendation. Each pattern needs 40 to 80 graded games before it gets a verdict, and the verdict is computed once.</div>
+<div class="note">{esc(copy_text("note"))}</div>
 """)
     # per-trigger table
     parts.append("""<h2>The six patterns</h2>
@@ -157,7 +181,7 @@ footer{{margin-top:48px;color:var(--muted);font-size:14px;border-top:1px solid v
     parts.append("</table></div>")
     # upcoming board
     parts.append("""<h2>Upcoming</h2>
-<p class="muted">Each selection is frozen the first time its pattern fires on a fresh line. The frozen line is what gets graded against; the current line is shown beside it so you can see what moved. A line more than an hour old near kickoff is not shown as a pick. "Watch" means the market moved sharply in the last two hours and we do not know why; there is no injury feed for college football, so the line is the news.</p>""")
+<p class="muted">""" + esc(copy_text("upcoming_intro")) + "</p>")
     if upcoming:
         parts.append("""<div class="scroll"><table>
 <tr><th>kick</th><th>game</th><th>#</th><th>frozen selection</th><th>best retail at freeze</th><th>line now</th><th>moved</th><th>status</th></tr>""")
@@ -188,15 +212,11 @@ footer{{margin-top:48px;color:var(--muted);font-size:14px;border-top:1px solid v
             cls = "pos" if r["pnl_units"] > 0 else ("neg" if r["pnl_units"] < 0 else "")
             parts.append(f"<tr><td>{esc(r['away'])} @ {esc(r['home'])}</td><td class=\"num\">{code}</td><td>{esc(r['selection'])}</td><td class=\"num\">{esc(price)}</td><td class=\"num\">{r['away_score']}-{r['home_score']}</td><td>{pill(r['result'])}</td><td class=\"num {cls}\">{r['pnl_units']:+.2f}</td></tr>")
         parts.append("</table></div>")
+    bullets = "".join("<li>" + esc(copy_text(k)) + "</li>" for k in ("howto_1", "howto_2", "howto_3", "howto_4", "howto_5"))
     parts.append(f"""<h2>How to read this</h2>
 <ul>
-<li>A pattern is a fixed rule written down before the games it is tested on. Patterns 1 to 5 were frozen on October 9, pattern 6 on the morning of October 10. The rules do not change; a changed rule is a new study.</li>
-<li>The discovery column is the record on the games that suggested each pattern. It is shown so you can see where the idea came from and it counts for nothing. The same market produced those numbers and will regress toward its long-run rates, which for spreads and totals is about 50%.</li>
-<li>Grading uses the verified closing consensus line, so it is what a bettor could have gotten late, not the best price of the week. The upcoming table shows the best retail price at the moment the selection was frozen; that price is not what is graded.</li>
-<li>Moneyline favorites in patterns 1 and 5 are expensive. Two upsets undo six or seven wins. The spread and total patterns risk one unit to win 0.91.</li>
-<li>A verdict comes once, after the regular season, and only for patterns that reach their sample floor. Anything short of the floor is described as what it is: too few games.</li>
-</ul>
-<footer>Source: a private ledger of college football closing lines captured from retail and offshore books, graded against official final scores. Prices and lines are observations, not offers. This page is updated weekly and after each Saturday's games.</footer>
+{bullets}</ul>
+<footer>{esc(copy_text("footer"))}</footer>
 </div>""")
     return "".join(parts)
 
