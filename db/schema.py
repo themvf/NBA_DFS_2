@@ -2805,6 +2805,27 @@ TABLES = [
     )""",
     """CREATE INDEX IF NOT EXISTS idx_nfl_dfs_field_top_entries_user
         ON nfl_dfs_field_top_entries (username)""",
+    # A top finisher's whole portfolio in one contest, from stat-api's per-user
+    # lineups endpoint (ingest/statapi_contest.py): record, stat-api's own
+    # analysis (stacks, dispersion, chalk exposure), per-player exposure vs the
+    # field, and EVERY lineup they entered with its roster. The export path
+    # cannot see this (one row per entry, no per-user view). Python owns writes.
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_field_user_builds (
+        contest_id TEXT NOT NULL REFERENCES nfl_dfs_field_contests(contest_id) ON DELETE CASCADE,
+        username TEXT NOT NULL,
+        entries INTEGER,
+        best_rank INTEGER,
+        cashed INTEGER,
+        total_payout DOUBLE PRECISION,
+        avg_points DOUBLE PRECISION,
+        players_used INTEGER,
+        analysis JSONB NOT NULL DEFAULT '{}'::jsonb,
+        exposure JSONB NOT NULL DEFAULT '[]'::jsonb,
+        lineups JSONB NOT NULL DEFAULT '[]'::jsonb,
+        source TEXT NOT NULL,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (contest_id, username)
+    )""",
 
     # ── dfsdb.com contest archive (ingest/dfsdb_contest.py) ──────────────────
     #
