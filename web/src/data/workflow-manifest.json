@@ -360,6 +360,20 @@
       "pullRequest": false
     },
     {
+      "file": "refresh_nfl_longest_touchdown.yml",
+      "name": "Publish NFL Longest Touchdown weeks",
+      "crons": [
+        "0 16 * * 3",
+        "0 14 * * 4",
+        "0 14 * * 0",
+        "0 14 * * 1"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
       "file": "refresh_nfl_pbp_archetypes.yml",
       "name": "Refresh NFL PBP Archetypes",
       "crons": [

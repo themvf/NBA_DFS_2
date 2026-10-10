@@ -118,24 +118,41 @@ def evidence_request(snapshot, game_id):
             WHERE i.season=%s AND i.source='fantasypros' AND p.team_abbrev IN (%s,%s)
               AND s.request_params->>'week'=%s ORDER BY i.player_id,i.observed_at DESC,i.id DESC""",
             (game['season'],game['away'],game['home'],str(game['week'])))
+        injury_snapshots=db.execute("""SELECT id,fetched_at,status FROM ff_source_snapshots
+            WHERE source='fantasypros' AND season=%s AND dataset=%s AND status='success'
+            ORDER BY fetched_at DESC,id DESC LIMIT 1""",
+            (game['season'],f"game-week-injuries-v2-{game['season']}-{game['week']}"))
+        official_rows=db.execute("""SELECT DISTINCT ON (i.player_id) i.player_id,i.normalized_status,i.observed_at
+            FROM ff_player_injury_observations i
+            JOIN ff_players p ON p.id=i.player_id JOIN ff_source_snapshots s ON s.id=i.source_snapshot_id
+            WHERE i.season=%s AND i.source='nfl_official' AND p.team_abbrev IN (%s,%s)
+              AND s.week=%s AND i.observed_at < %s
+            ORDER BY i.player_id,i.observed_at DESC,i.id DESC""",
+            (game['season'],game['away'],game['home'],game['week'],game['kickoff']))
         inactives=db.execute("SELECT * FROM nfl_official_inactive_imports WHERE season=%s AND week=%s",
             (game['season'],game['week']))
     cutoff=datetime.now(timezone.utc).isoformat()
     if timestamp(cutoff)>=timestamp(game['kickoff']):
         raise ValueError('Current evidence capture is after kickoff; do not call it pregame')
     injury_by_id={r['player_id']:r for r in injuries}
+    official_by_id={r['player_id']:r for r in official_rows}
     candidates=[]
     for p in players:
         i=injury_by_id.get(p['id'])
         sleeper=(p['injury_status'] or p['sleeper_status'] or '').upper()
         fp=i['normalized_status'] if i else 'UNKNOWN'
-        out=sleeper in ('OUT','IR','PUP','NFI','SUSPENDED') and fp in ('OUT','IR','PUP','NFI','SUSPENDED')
+        official=official_by_id.get(p['id'])
+        official_status=official['normalized_status'] if official else 'UNKNOWN'
+        out=(sleeper in ('OUT','IR','PUP','NFI','SUSPENDED') and fp in ('OUT','IR','PUP','NFI','SUSPENDED')) or official_status in ('OUT','INACTIVE')
         candidates.append({'identity':p['identity'],'name':p['name'],'team':p['team'],'position':p['position'],
-            'status':'out' if out else 'unresolved','sleeper_status':sleeper,'fantasypros_injury_status':fp})
+            'status':'out' if out else 'unresolved','sleeper_status':sleeper,'fantasypros_injury_status':fp,
+            'official_status':official_status})
     return {'game':game,'decision_at':cutoff,'players':candidates,'availability_verified':False,
         'expected_prior_game_ids':expected_history(snapshot,game,cutoff),
         'roster_evidence':'Both providers inspected; no depth-to-workload conversion. Unresolved statuses are scenario candidates, not confirmed active players.',
         'dual_depth':depth,'week_injuries':json.loads(json.dumps(injuries,default=str)),
+        'week_injury_snapshot':json.loads(json.dumps(injury_snapshots[0],default=str)) if injury_snapshots else None,
+        'official_injuries':json.loads(json.dumps(official_rows,default=str)),
         'official_inactive_imports':json.loads(json.dumps(inactives,default=str)),
         'official_inactive_coverage':'No imported list for this week' if not inactives else 'Imports retained; inspect game/team before claiming confirmation'}
 
