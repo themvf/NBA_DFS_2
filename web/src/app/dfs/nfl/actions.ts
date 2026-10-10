@@ -757,6 +757,15 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
       }
     }
     for (const player of workspace.players) {
+      // Prior-week opportunity for the winners-shape pool rules: the same
+      // three-week play-by-play window the chips read, with the team's own
+      // target total for the share. Null means no record, never zero.
+      if (['RB', 'WR', 'TE'].includes(player.position)) {
+        const prior = signalEvidence.get(identityMap.get(player.ffPlayerId ?? -1) ?? '') ?? null;
+        const teamTargets = airTeamEvidence.get(canonicalNflTeam(player.team))?.targets ?? null;
+        player.priorOpportunity = prior ? { games: prior.games, targets: prior.targets, carries: prior.carries,
+          targetShare: teamTargets ? prior.targets / teamTargets : null } : null;
+      }
       if (player.position !== 'WR' && player.position !== 'TE') continue;
       const team = canonicalNflTeam(player.team), opponent = player.opponent ? canonicalNflTeam(player.opponent) : null;
       player.airMatchupEvidence = buildNflAirMatchupEvidence({ asOf: run.asOfAt.toISOString(), opponent,

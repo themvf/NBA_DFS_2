@@ -7793,6 +7793,40 @@ analysis, exposure vs the field, and every lineup they entered). Pure layer
   it or giving others access to anything built on it is not. That fits this
   repo's private use. Nothing here is scheduled.
 
+## NFL DFS — Winners-shape build preset (`nfl-winners-shape-v1`, 2026-10-10)
+
+A "Build shape" select on `/dfs/nfl` (GPP mode, Classic and Showdown):
+Standard, or Winners shape, which rearranges the same projections the way
+the week 1-5 flagship winners built (`research/nfl_top_builds.py` over the
+stat-api lineups). `web/src/lib/nfl-dfs/winners-shape.ts` resolves the
+preset into ordinary optimizer settings at the top of `optimizeNflLineups`,
+so the saved run records every number enforced and the build notes list
+every player the pool rules left out (`reasonCode` `WINNERS_SHAPE` /
+`KICKER_EXCLUDED`, shown in their own "left out" list on the page).
+
+- **Classic:** min unique 4, max exposure 55%, each QB in at most
+  `qbExposureCap(n)` of lineups (1.6 distinct QBs per 10 lineups, 15% floor:
+  20 lineups -> 35%), a bring-back in 50% of lineups, at least one stacked
+  pass catcher, min salary $49,500. Pool: RBs with 4+ targets a game, WRs with
+  25%+ of their team's targets or under $5,000, TEs under $4,000 with 4+
+  targets a game, DSTs under $3,000. A rule that would leave a position too
+  thin (RB 4, WR 6, TE 2, DST 2) is skipped and said; so is a position with
+  no prior data. Locks always win.
+- **Showdown:** every lineup 5-1 or 3-3 (three binaries pin the first team's
+  count to 1, 3 or 5), no kicker, no captain above 30% of lineups unless the
+  user set his CPT range, min salary $49,500. Works alongside the archetype
+  plan.
+- **New optimizer settings** the preset sets, usable on their own:
+  `bringBackShare` (Classic GPP; alternates lineups between a required and
+  a forbidden bring-back so the run lands on the share, replacing the hard
+  rule), `maxQbExposure`, `maxCaptainExposure`, `excludeKickers`,
+  `forbidFourTwoSplit`. `priorOpportunity` on the workspace player (three-
+  week play-by-play targets/carries plus team target share, RB/WR/TE) feeds
+  the pool rules; `targets` is still not in `stat_means`.
+- Not an edge: the shape is a second build for the weekly winners-vs-us
+  review to grade against the standard one. Change a constant and bump the
+  version; `npm run test:nfl-winners-shape` pins the current ones.
+
 ## CFB Early-Season Pattern Watch — pre-registered, local only (2026-10-09)
 
 A descriptive sweep of the first six weeks of 2026 (259 FBS-vs-FBS games with
