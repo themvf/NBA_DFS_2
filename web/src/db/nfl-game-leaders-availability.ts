@@ -72,7 +72,7 @@ export async function getGameLeadersAvailability(
       ORDER BY i.player_id, i.observed_at DESC, i.id DESC
     )
     SELECT p.gsis_id identity, p.canonical_name name, p.team_abbrev team,
-      p.metadata->'sleeper'->>'injury_status' sleeper_injury,
+      COALESCE(NULLIF(p.metadata->'sleeper'->>'injury_status', ''), p.metadata->'sleeper'->>'status') sleeper_injury,
       fp.normalized_status fp_status, fp.observed_at fp_observed_at,
       official.normalized_status official_status,
       official.observed_at official_observed_at

@@ -20,8 +20,13 @@ defense with their other games. Strict fitting gates kickoff/label time before
 the decision; retrospective walk-forward studies permit later labels and must
 remain explicitly exploratory. Participants/roster corrections have no immutable
 play-level pregame availability guarantee. Output is frozen local JSON with
-input/request/implementation digests, not a production projection or page metric.
-No market inputs or production writes are introduced by this consumer.
+input/request/implementation digests. The weekly publication is a separate,
+experimental page metric. It joins canonical game ID, season, week, kickoff and
+teams to week-matched Game Leaders requests. Those requests record Sleeper and
+FantasyPros depth and injury evidence. Dual-source Out players are excluded;
+unresolved candidates remain conditional. The saved publication includes roster
+IDs for a page-time Out check and does not change DFS projections. No market
+inputs or database writes are introduced by this consumer.
 
 The v2 research capture additionally requires PBP `quarter`, `out_of_bounds`,
 canonical schedule `completed`, final scores and schedule capture time. Local

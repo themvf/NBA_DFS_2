@@ -1,6 +1,6 @@
 # Local longest-touchdown research model
 
-Status: implemented locally, exploratory, no production/optimizer integration.
+Status: exploratory; weekly page publication, no optimizer integration.
 Owner: `model/nfl_longest_touchdown.py`; capture/forecast/evaluation CLI:
 `research/nfl_longest_touchdown.py`. Source joins are documented in
 `docs/nfl-team-identity-source-map.md`.
@@ -346,3 +346,45 @@ supersede the original Thursday v1 prediction. Source/request/implementation
 hashes are in the saved v2 forecast. This is an explicitly experimental release
 at the owner's request; no empirical calibration or profitable-edge gate is
 claimed passed and no optimizer weighting changes are introduced.
+
+## Weekly page expansion (2026 Week 5)
+
+The `/nfl/longest-touchdown` page now selects a week and game from
+`web/src/data/longest-touchdown-weeks.json`. Week 5 publishes all 15 canonical
+games. The original TB-DAL forecast remains frozen. Fourteen other games use
+separate pregame requests and forecasts. These are experimental regulation-only
+scrimmage TD estimates, separate from DFS points.
+
+The page compares saved forecast roster IDs with current week-matched Sleeper
+and FantasyPros injuries and official inactive observations when available.
+A newly confirmed Out player hides the whole game's saved probabilities.
+Missing or stale sources hide pregame probabilities. This check does not rerun
+the model or redistribute opportunities.
+
+For each new week, capture Longest TD play-by-play and Game Leaders source data.
+Generate `research.nfl_game_leaders week-requests` for the same season/week.
+Review source times, canonical identities, dual depth, week injuries, and
+inactive coverage. Run `research.nfl_longest_touchdown_weekly` with the Longest
+TD capture, the requests, season, week, and an exclusive output path. Use
+`--previous-index` and `--index-output` to carry earlier weeks forward.
+Use `--prior-game` for each already-started game with an original saved pregame
+publication. The publisher rejects a missing game or a request that disagrees
+with the canonical schedule. Unresolved roster candidates remain conditional
+participants, not confirmed game-day actives. Review the result before
+replacing the tracked index. A DraftKings upload does not refresh this page.
+
+## Automatic weekly publication
+
+The scheduled efresh_nfl_longest_touchdown.yml runs Wednesday, Thursday,
+Sunday and Monday before games. It captures the canonical schedule and PBP,
+then fresh Sleeper/FantasyPros depth and week-matched injury evidence for every
+upcoming game in the selected week. A full-week output is published only after
+canonical coverage, pregame capture times, dual-source Out exclusion and
+probability-field checks pass. A source failure withholds the entire update.
+Started games keep their prior frozen forecast. The workflow commits the tracked
+JSON index to main, which triggers the production build. Source captures and
+output are retained as workflow artifacts for 30 days. The model remains
+exploratory; the scheduled refresh is not empirical calibration.
+
+At a new NFL season, the index retains earlier seasons in `priorSeasons`;
+the page offers a season selector as well as week and game selection.
