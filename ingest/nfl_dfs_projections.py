@@ -16,7 +16,7 @@ import sys
 import uuid
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 
 from psycopg2.extras import Json, execute_values
 
@@ -292,20 +292,44 @@ def _players(db: DatabaseManager, season: int, teams: list[str]) -> list[dict[st
     )
 
 
-def _availability(db: DatabaseManager, season: int, week: int | None) -> dict[int, list[dict[str, Any]]]:
-    """Return raw candidate observations; the shared resolver qualifies them."""
+def _availability(
+    db: DatabaseManager,
+    season: int,
+    week: int | None,
+    *,
+    as_of_at: datetime,
+    kickoffs: Iterable[datetime] = (),
+) -> dict[int, list[dict[str, Any]]]:
+    """Return the candidate observations the shared resolver can act on.
+
+    Sleeper writes one observation per matched player per capture (about 29
+    captures a day in season), so the two weeks before the week's first kickoff
+    hold every observation a pregame decision can prefer. The bound is keyed to
+    the week's schedule, never to now(), so a replay of a past week reads the
+    same rows it did then. The week-keyed sources (FantasyPros, official
+    inactives) are small and are returned whole.
+
+    For Sleeper only the newest model-eligible observation before each decision
+    cutoff is returned. ``resolve_game_availability`` decides from the latest
+    qualifying row per source at the player's decision time, which is
+    ``as_of_at`` for a game not yet started and ``kickoff - 1us`` for one that
+    has; the cutoffs passed here are exactly those instants, so the decision
+    (state, status, chosen observation, staleness) is unchanged. What changes is
+    the audit trail: ``qualifying_observation_ids`` and
+    ``display_only_observation_ids`` list the observations loaded, not every
+    repeat capture of the same status. Returning every capture cost 231k rows
+    (about 30 MB) per run on 2026-10-11, the largest reader of the database.
+    """
     if week is None:
         return {}
-    # Sleeper writes one observation per matched player per capture (at least
-    # six captures a day in season), so the two weeks before the week's first
-    # kickoff hold every observation a pregame decision can prefer. Without that
-    # bound the loader read the whole season's observations with their JSON
-    # payloads on every run: 311k rows and 930 MB of pages per run by
-    # 2026-10-04. The bound is keyed to the week's schedule, never to now(), so a
-    # replay of a past week reads the same rows it did then. The week-keyed
-    # sources (FantasyPros, official inactives) keep their own filter.
+    cutoffs = sorted({k for k in kickoffs if isinstance(k, datetime) and k.tzinfo is not None})
+    cutoff_times = [*cutoffs, as_of_at]
+    inclusive = [False] * len(cutoffs) + [True]
     rows = db.execute(
-        """SELECT o.id observation_id, o.player_id, o.source,
+        """WITH cutoffs(cutoff, inclusive) AS (
+             SELECT * FROM unnest(%s::timestamptz[], %s::boolean[])
+           ), obs AS (
+             SELECT o.id observation_id, o.player_id, o.source,
                   CASE WHEN o.source='nfl_official'
                     THEN COALESCE(o.raw_payload->>'status',o.normalized_status)
                     ELSE o.normalized_status END status,
@@ -314,19 +338,31 @@ def _availability(db: DatabaseManager, season: int, week: int | None) -> dict[in
                   o.raw_payload->>'kickoff' observation_kickoff,
                   CASE WHEN o.source <> 'nfl_official' THEN TRUE
                     ELSE o.raw_payload->>'report_type'='inactive_list' END game_scope_valid
-           FROM ff_player_injury_observations o
-           JOIN ff_source_snapshots s ON s.id = o.source_snapshot_id
-           WHERE o.season = %s AND (
-             (o.source='sleeper'
-              AND o.observed_at >= COALESCE(
-                    (SELECT min(g.kickoff) - interval '14 days' FROM nfl_season_games g
-                     WHERE g.season = %s AND g.week = %s AND g.game_type = 'REG'),
-                    '-infinity'::timestamptz))
-             OR (o.source IN ('fantasypros','nfl_official')
-                 AND (s.week=%s OR s.request_params->>'week'=%s OR s.dataset LIKE %s))
+             FROM ff_player_injury_observations o
+             JOIN ff_source_snapshots s ON s.id = o.source_snapshot_id
+             WHERE o.season = %s AND (
+               (o.source='sleeper'
+                AND o.observed_at >= COALESCE(
+                      (SELECT min(g.kickoff) - interval '14 days' FROM nfl_season_games g
+                       WHERE g.season = %s AND g.week = %s AND g.game_type = 'REG'),
+                      '-infinity'::timestamptz))
+               OR (o.source IN ('fantasypros','nfl_official')
+                   AND (s.week=%s OR s.request_params->>'week'=%s OR s.dataset LIKE %s))
+             )
            )
-           ORDER BY o.player_id, available_at DESC, o.id DESC""",
-        (season, season, week, week, str(week), f"game-week-injuries-v2-{season}-{week}%"),
+           SELECT * FROM obs WHERE source <> 'sleeper'
+           UNION
+           SELECT * FROM (
+             SELECT DISTINCT ON (obs.player_id, c.cutoff) obs.*
+             FROM obs JOIN cutoffs c
+               ON obs.available_at < c.cutoff OR (c.inclusive AND obs.available_at = c.cutoff)
+             WHERE obs.source = 'sleeper' AND obs.model_eligible IS TRUE
+               AND COALESCE(lower(obs.snapshot_status), 'success') = 'success'
+             ORDER BY obs.player_id, c.cutoff, obs.available_at DESC, obs.observation_id DESC
+           ) latest
+           ORDER BY player_id, available_at DESC, observation_id DESC""",
+        (cutoff_times, inclusive, season, season, week, week, str(week),
+         f"game-week-injuries-v2-{season}-{week}%"),
     )
     observed: dict[int, list[dict[str, Any]]] = {}
     for row in rows:
@@ -516,7 +552,9 @@ def build_week(
     # early kickoff therefore still zeroes that game's ruled-out players (and
     # promotes their backups) exactly as the pregame run did, while the games
     # not yet started resolve normally at `as_of_at`.
-    observed = _availability(db, season, week)
+    observed = _availability(
+        db, season, week, as_of_at=as_of_at,
+        kickoffs=[p.get("commence_time") for p in projections])
     statuses: dict[int, str] = {}
     availability_decisions: dict[str, dict[str, Any]] = {}
     availability_migration_audit: list[dict[str, Any]] = []

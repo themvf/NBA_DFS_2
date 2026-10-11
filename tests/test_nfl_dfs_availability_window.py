@@ -4,7 +4,13 @@ Before 2026-10-04 it read every Sleeper observation of the season with its JSON
 payload on every run (311k rows, 930 MB of pages). The bound is keyed to the
 week's schedule, not to now(), so replays of a past week stay reproducible.
 """
+from datetime import datetime, timedelta, timezone
+
 import ingest.nfl_dfs_projections as proj
+
+AS_OF = datetime(2026, 10, 4, 15, 0, tzinfo=timezone.utc)
+EARLY = datetime(2026, 10, 4, 17, 0, tzinfo=timezone.utc)
+LATE = datetime(2026, 10, 5, 0, 20, tzinfo=timezone.utc)
 
 
 class RecordingDB:
@@ -17,16 +23,34 @@ class RecordingDB:
 
 def test_sleeper_rows_are_bounded_by_the_weeks_schedule_not_by_now():
     db = RecordingDB()
-    observed = proj._availability(db, 2026, 5)
+    observed = proj._availability(db, 2026, 5, as_of_at=AS_OF, kickoffs=[LATE, EARLY, EARLY, None])
     sql, params = db.calls[0]
     assert "o.source='sleeper' AND o.observed_at >= COALESCE( (SELECT min(g.kickoff) - interval '14 days' FROM nfl_season_games g WHERE g.season = %s AND g.week = %s AND g.game_type = 'REG'), '-infinity'::timestamptz)" in sql
     assert "now()" not in sql.lower()
-    assert params == (2026, 2026, 5, 5, "5", "game-week-injuries-v2-2026-5%")
+    assert params[2:] == (2026, 2026, 5, 5, "5", "game-week-injuries-v2-2026-5%")
     assert "o.source IN ('fantasypros','nfl_official')" in sql, "the week-keyed sources keep their own filter"
     assert {k: [r["observation_id"] for r in v] for k, v in observed.items()} == {1: [5, 4], 2: [9]}
 
 
+def test_sleeper_returns_only_the_latest_eligible_row_per_decision_cutoff():
+    """The resolver decides from the newest qualifying row per source at each
+    player's decision time: kickoff - 1us for a started game, as_of_at
+    otherwise. Those instants are the cutoffs, so the decision is unchanged
+    while every repeat capture of the same status stays in the database
+    (231k rows per run on 2026-10-11, about 1k after)."""
+    db = RecordingDB()
+    proj._availability(db, 2026, 5, as_of_at=AS_OF, kickoffs=[LATE, EARLY, EARLY, None, EARLY.replace(tzinfo=None)])
+    sql, params = db.calls[0]
+    assert params[0] == [EARLY, LATE, AS_OF], "each distinct aware kickoff, then the run time"
+    assert params[1] == [False, False, True], "strictly before a kickoff, at or before as_of_at"
+    assert "DISTINCT ON (obs.player_id, c.cutoff)" in sql
+    assert "obs.available_at < c.cutoff OR (c.inclusive AND obs.available_at = c.cutoff)" in sql
+    assert "obs.model_eligible IS TRUE AND COALESCE(lower(obs.snapshot_status), 'success') = 'success'" in sql
+    assert "ORDER BY obs.player_id, c.cutoff, obs.available_at DESC, obs.observation_id DESC" in sql
+    assert "SELECT * FROM obs WHERE source <> 'sleeper'" in sql, "FantasyPros and official rows are returned whole"
+
+
 def test_no_week_means_no_query():
     db = RecordingDB()
-    assert proj._availability(db, 2026, None) == {}
+    assert proj._availability(db, 2026, None, as_of_at=AS_OF) == {}
     assert db.calls == []
