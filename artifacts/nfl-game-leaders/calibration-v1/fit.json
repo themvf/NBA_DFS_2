@@ -1,0 +1,44 @@
+{
+ "study": "nfl-game-leaders-calibration-v1",
+ "development": "artifacts\\nfl-game-leaders\\calibration-v1\\development.jsonl",
+ "games": 689,
+ "skipped": 127,
+ "variant_choice": {
+  "chosen": "C2",
+  "summed_log_loss_2nd_season_on": {
+   "B": 8.346624650477933,
+   "C2": 8.225554813116151,
+   "C4": 8.325084535460691,
+   "C8": 8.341598972861147
+  },
+  "games_compared": 481
+ },
+ "temperature": {
+  "rushing_yards": 1.3,
+  "receiving_yards": 1.05,
+  "receptions": 1.15,
+  "total_yards": 1.25
+ },
+ "baseline": {
+  "rushing_yards": {
+   "scale": 16.0,
+   "residual_share": 0.05,
+   "development_log_loss": 1.8457841065410348
+  },
+  "receiving_yards": {
+   "scale": 22.0,
+   "residual_share": 0.03,
+   "development_log_loss": 2.3716015004656583
+  },
+  "receptions": {
+   "scale": 1.5,
+   "residual_share": 0.03,
+   "development_log_loss": 2.284496817547185
+  },
+  "total_yards": {
+   "scale": 26.0,
+   "residual_share": 0.03,
+   "development_log_loss": 2.403251559849937
+  }
+ }
+}
