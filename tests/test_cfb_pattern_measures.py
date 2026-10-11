@@ -89,3 +89,10 @@ def test_events_are_written_once_per_trigger_game_status_and_runs_record_zero():
     assert run["status_counts"]["watch"] == 0 and run["status_counts"]["stale"] == 0   # zero is recorded, not omitted
     assert m.event_summary(first, [run]) == {"runs": 1, "last_run": now.isoformat(), "events": 2,
                                              "by_status": {"stale": 1, "watch": 1}}
+
+
+def test_publish_module_imports():
+    # CI runs Python 3.11; importing catches syntax newer Pythons accept
+    # (a backslash inside an f-string expression broke the first live run).
+    import model.cfb_pattern_publish as publish
+    assert callable(publish.render)
