@@ -18,6 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ProjectionScatterRow } from "@/db/queries-fantasy-football";
 import {
   BASELINE_GAMES,
+  hasDraftMarket,
   POSITION_COLORS,
   VIEW_LABELS,
   VIEW_NOTES,
@@ -61,7 +62,7 @@ export default function ProjectionChart({
   view: ScatterView;
 }) {
   const [mode, setMode] = useState<Mode>("pg");
-  const [scope, setScope] = useState<Scope>("adp");
+  const [scope, setScope] = useState<Scope>(() => (hasDraftMarket(rows) ? "adp" : "all"));
   const [hover, setHover] = useState<Placed | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(900);
