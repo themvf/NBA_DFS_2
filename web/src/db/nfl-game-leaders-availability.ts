@@ -2,7 +2,7 @@ import "server-only";
 
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
-import type { ConfirmedOutPlayer } from "@/lib/nfl/game-leaders-availability";
+import { classifyRuledOut, type ConfirmedOutPlayer } from "@/lib/nfl/game-leaders-availability";
 
 type SnapshotRow = { source: unknown; fetched_at: unknown };
 type InjuryRow = {
@@ -82,18 +82,17 @@ export async function getGameLeadersAvailability(
     WHERE p.season = ${season} AND p.team_abbrev IN (${away}, ${home})
       AND p.gsis_id IS NOT NULL
   `);
-  const ruledOut = new Set(["OUT", "IR", "PUP", "NFI", "SUSPENDED", "INACTIVE"]);
+  const sleeperFetchedAt = (captures.rows as SnapshotRow[]).find((row) => String(row.source) === "sleeper")?.fetched_at;
   const confirmedOut: ConfirmedOutPlayer[] = [];
   for (const row of rows.rows as InjuryRow[]) {
-    const official = ruledOut.has(String(row.official_status ?? "").toUpperCase());
-    const dual = ruledOut.has(String(row.fp_status ?? "").toUpperCase())
-      && ruledOut.has(String(row.sleeper_injury ?? "").toUpperCase());
-    if (!official && !dual) continue;
-    const observed = official ? row.official_observed_at : row.fp_observed_at;
+    const source = classifyRuledOut(row.sleeper_injury, row.fp_status, row.official_status);
+    if (!source) continue;
+    const observed = source === "Official" ? row.official_observed_at
+      : source === "Sleeper reserve list" ? sleeperFetchedAt : row.fp_observed_at;
     confirmedOut.push({
       identity: String(row.identity), name: String(row.name), team: String(row.team),
       observedAt: new Date(String(observed)).toISOString(),
-      source: official ? "Official" : "Sleeper and FantasyPros",
+      source,
     });
   }
   return { checkedAt, complete: true, confirmedOut };
