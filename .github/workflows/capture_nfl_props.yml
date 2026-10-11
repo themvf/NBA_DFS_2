@@ -1,16 +1,26 @@
 name: Capture NFL prop evidence
 
+# Dispatched by /api/cron/dispatch (job nfl-prop-capture) about 1h45m before each
+# kickoff group, capturing the games that start within the next two hours. The
+# Sunday schedule below is a thin fallback in case the dispatcher bridge breaks;
+# GitHub runs it hours late, and select_events still skips started games.
 on:
+  schedule:
+    - cron: "37 14 * * 0"
   workflow_dispatch:
     inputs:
       event_limit:
-        description: Maximum upcoming events to capture
+        description: Maximum upcoming events to capture (0 = all inside the window)
         required: true
-        default: "5"
+        default: "0"
       max_credits:
         description: Hard Odds API credit ceiling for this run
         required: true
-        default: "0"
+        default: "140"
+      within_hours:
+        description: Only games starting within this many hours (0 = no window; never use with event_limit 0)
+        required: true
+        default: "2"
 
 jobs:
   capture:
@@ -29,6 +39,7 @@ jobs:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
         run: >-
           python -m ingest.nfl_prop_odds
-          --event-limit "${{ inputs.event_limit }}"
-          --max-credits "${{ inputs.max_credits }}"
+          --event-limit "${{ inputs.event_limit || '0' }}"
+          --max-credits "${{ inputs.max_credits || '140' }}"
+          --within-hours "${{ inputs.within_hours || '6' }}"
           --apply

@@ -77,6 +77,17 @@ export function cfbTerminalSlot(now: Date): "schedule" | "scores" | "events" {
     : "scores";                                     // was `7 1-5,7-11,13-17,19-23 * * *`
 }
 
+/** Lead time at which a kickoff group's prop capture fires: one quarter-hour tick per kickoff time. */
+export const PROP_CAPTURE_LEAD_MS = { min: 90 * 60 * 1000, max: 105 * 60 * 1000 };
+
+/** True on the one tick that falls 90-105 minutes before any NFL kickoff. */
+export function nflPropCaptureDue(now: Date, context: DispatchContext): boolean {
+  return (context.nflKickoffs ?? []).some((kickoff) => {
+    const lead = kickoff.getTime() - now.getTime();
+    return lead > PROP_CAPTURE_LEAD_MS.min && lead <= PROP_CAPTURE_LEAD_MS.max;
+  });
+}
+
 export const DISPATCH_JOBS: readonly DispatchJob[] = [
   {
     key: "mlb-odds-capture",
@@ -112,6 +123,13 @@ export const DISPATCH_JOBS: readonly DispatchJob[] = [
       return (m >= 9 || m <= 2) && (hourTick(now) || nearNflKickoff(now, context));
     },
     why: "Sleeper injury/depth capture, the projection rebuild and the pinned availability decisions the DFS slate reads.",
+  },
+  {
+    key: "nfl-prop-capture",
+    workflow: "capture_nfl_props.yml",
+    due: nflPropCaptureDue,
+    inputs: { event_limit: "0", max_credits: "140", within_hours: "2" },
+    why: "Pregame player over/unders (Odds API, ~7 credits a game) for the game-leader market benchmark, once per kickoff group.",
   },
   {
     key: "nfl-dfs-postweek",

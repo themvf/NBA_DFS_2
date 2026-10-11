@@ -1,6 +1,6 @@
 import pytest
 
-from ingest.nfl_prop_odds import normalize_prop_payload, require_credit_budget
+from ingest.nfl_prop_odds import normalize_prop_payload, require_credit_budget, select_events
 
 
 def test_normalizes_paired_and_yes_only_props_without_erasing_raw_shape() -> None:
@@ -57,3 +57,14 @@ def test_paid_capture_requires_budget_and_fails_before_overage() -> None:
     with pytest.raises(ValueError, match="exceeds"):
         require_credit_budget(estimated_credits=35, max_credits=34)
     require_credit_budget(estimated_credits=35, max_credits=35)
+
+
+def test_scheduled_selection_takes_only_pregame_events_inside_the_window() -> None:
+    from datetime import datetime, timezone
+    now = datetime(2026, 10, 11, 15, 15, tzinfo=timezone.utc)
+    events = [{"id": i, "commence_time": t} for i, t in (
+        ("started", "2026-10-11T13:30:00Z"), ("late", "2026-10-11T20:25:00Z"),
+        ("early", "2026-10-11T17:00:00Z"), ("next_week", "2026-10-18T17:00:00Z"))]
+    assert [e["id"] for e in select_events(events, now, 0, 2)] == ["early"]
+    assert [e["id"] for e in select_events(events, now, 0, 0)] == ["early", "late", "next_week"]
+    assert [e["id"] for e in select_events(events, now, 1, 0)] == ["early"]
