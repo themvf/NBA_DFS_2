@@ -7836,7 +7836,7 @@ analysis, exposure vs the field, and every lineup they entered). Pure layer
   it or giving others access to anything built on it is not. That fits this
   repo's private use. Nothing here is scheduled.
 
-## NFL DFS — Winners-shape build preset (`nfl-winners-shape-v3`, 2026-10-11; v1 2026-10-10)
+## NFL DFS — Winners-shape build preset (`nfl-winners-shape-v4`, 2026-10-11; v1 2026-10-10)
 
 A "Build shape" select on `/dfs/nfl` (GPP mode, Classic and Showdown):
 Standard, or Winners shape, which rearranges the same projections the way
@@ -7850,7 +7850,10 @@ every player the pool rules left out (`reasonCode` `WINNERS_SHAPE` /
 - **Classic:** min unique 4, max exposure 55%, each QB in at most
   `qbExposureCap(n)` of lineups (1.6 distinct QBs per 10 lineups, 15% floor:
   20 lineups -> 35%), a bring-back in 50% of lineups, at least one stacked
-  pass catcher, min salary $49,500. Pool: RBs whose touches a game (carries +
+  pass catcher, min salary $49,500, and (v4) a DST against the lineup's own
+  QB/RB/WR/TE in at most 5% of lineups (`maxDstVsOffenseShare`, rounded down:
+  16 of 392 Millionaire top-100 lineups did it in weeks 1-4, the first v3
+  build 40 of 100). Pool: RBs whose touches a game (carries +
   targets, three prior weeks) rank in the slate's top quarter OR who see 4+
   targets a game, WRs with 25%+ of their team's targets or under $5,000, TEs
   under $4,000 with 4+ targets a game, DSTs under $3,000.
@@ -7877,7 +7880,7 @@ every player the pool rules left out (`reasonCode` `WINNERS_SHAPE` /
 - **New optimizer settings** the preset sets, usable on their own:
   `bringBackShare` (Classic GPP; alternates lineups between a required and
   a forbidden bring-back so the run lands on the share, replacing the hard
-  rule), `maxQbExposure`, `maxCaptainExposure`, `excludeKickers`,
+  rule), `maxQbExposure`, `maxDstVsOffenseShare` (Classic), `maxCaptainExposure`, `excludeKickers`,
   `forbidFourTwoSplit`. `priorOpportunity` on the workspace player (three-
   week play-by-play targets/carries plus team target share, RB/WR/TE) feeds
   the pool rules; `targets` is still not in `stat_means`.

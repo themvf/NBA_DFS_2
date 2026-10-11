@@ -1,12 +1,12 @@
 /**
- * Winners shape (`nfl-winners-shape-v1`): the preset resolves into ordinary
+ * Winners shape (`nfl-winners-shape-v1`..`v4`): the preset resolves into ordinary
  * optimizer settings and pool exclusions, and the optimizer enforces each of
  * them: the bring-back SHARE alternates lineups, the quarterback cap binds,
  * kickers leave a showdown pool, a showdown lineup is 5-1 or 3-3 and never
  * 4-2, and the captain cap holds. Nothing here changes a projection.
  */
 import assert from "node:assert/strict";
-import { optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings } from "../src/app/dfs/nfl/nfl-optimizer";
+import { dstFacesOwnOffense, optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings } from "../src/app/dfs/nfl/nfl-optimizer";
 import { applyWinnersShape, qbExposureCap, WINNERS_SHAPE, WINNERS_SHAPE_VERSION } from "../src/lib/nfl-dfs/winners-shape";
 
 // --- Units: the quarterback cap follows the lineup count ---
@@ -173,7 +173,7 @@ console.log("Winners shape (classic): bring-back share alternates, quarterbacks 
   const captains = result.lineups.map(l => l.slots.find(s => s.slot === "CPT")!.player.dkPlayerId);
   assert.equal(new Set(captains).size, n, "30% of 6 lineups is one captain slot each: six different captains");
   assert.equal(result.eligibility!.filter(e => e.reasonCode === "KICKER_EXCLUDED").length, 2, "both kickers are named as left out");
-  assert.ok(result.warnings.some(w => /Winners shape \(nfl-winners-shape-v3, showdown\)/.test(w)));
+  assert.ok(result.warnings.some(w => w.startsWith(`Winners shape (${WINNERS_SHAPE_VERSION}, showdown)`)));
 
   // A captain range the user set outranks the cap.
   const ranged = optimizeNflLineups(pool, settings({ format: "showdown", nLineups: n, minSalary: 0, stackPassCatchers: 0, buildShape: "winners", maxExposure: 1,
@@ -183,5 +183,41 @@ console.log("Winners shape (classic): bring-back share alternates, quarterbacks 
   assert.throws(() => optimizeNflLineups(pool, settings({ format: "showdown", nLineups: 1, buildShape: "winners", lockedPlayerIds: [id - 1] })), /leaves kickers out/, "a locked kicker is refused by name");
   assert.throws(() => optimizeNflLineups(pool, settings({ format: "classic", captainPositions: ["QB"] })), /Showdown rules/, "showdown-only rules are rejected on a classic slate");
   assert.throws(() => optimizeNflLineups(pool, settings({ format: "showdown", bringBackShare: 0.5 })), /Classic GPP/);
+  assert.throws(() => optimizeNflLineups(pool, settings({ format: "showdown", maxDstVsOffenseShare: 0.05 })), /Classic rule/);
 }
 console.log("Winners shape (showdown): no kicker, 5-1 or 3-3 only, captains capped, user ranges still win.");
+
+// --- DST against own players (v4): capped at 5% of lineups, rounded down ---
+{
+  const pool: NflOptimizerPlayer[] = [];
+  let id = 300;
+  // The best defense (AAA) faces BBB, whose quarterback and top two receivers
+  // are the best values: unconstrained, lineups play AAA DST against them (the
+  // game-script rule still allows up to three opposing players).
+  for (const team of ["AAA", "BBB", "CCC", "DDD"]) {
+    const strong = team === "BBB";
+    pool.push(player({ dkPlayerId: id++, position: "QB", team, salary: 6000, ourProj: strong ? 28 : 18 }));
+    for (let i = 0; i < 4; i++) pool.push(player({ dkPlayerId: id++, position: "RB", team, salary: 5000 + 300 * i, ourProj: 11 + i }));
+    for (let i = 0; i < 5; i++) pool.push(player({ dkPlayerId: id++, position: "WR", team, salary: 5000 + 300 * i, ourProj: (strong && i >= 3 ? 22 : 11) + i }));
+    for (let i = 0; i < 2; i++) pool.push(player({ dkPlayerId: id++, position: "TE", team, salary: 3500 + 300 * i, ourProj: 7 + i }));
+    pool.push(player({ dkPlayerId: id++, position: "DST", team, salary: 3000, ourProj: team === "AAA" ? 16 : 5 }));
+  }
+  const n = 20;
+  const base = { nLineups: n, minSalary: 0, maxExposure: 1, minUnique: 1 };
+  const plain = optimizeNflLineups(pool, settings(base));
+  const plainCount = plain.lineups.filter(dstFacesOwnOffense).length;
+  assert.ok(plainCount > 1, `the rule needs something to bind on: ${plainCount} of ${n} unconstrained`);
+  const capped = optimizeNflLineups(pool, settings({ ...base, maxDstVsOffenseShare: 0.05 }));
+  assert.equal(capped.lineups.length, n, capped.warnings.join(" | "));
+  const cappedCount = capped.lineups.filter(dstFacesOwnOffense).length;
+  assert.ok(cappedCount <= 1, `5% of 20 is one lineup, built ${cappedCount}`);
+  assert.ok(capped.warnings.some(w => w.startsWith(`DST against own players: ${cappedCount} of ${n}`) && /cap 1, 5%/.test(w)), capped.warnings.join(" | "));
+  const none = optimizeNflLineups(pool, settings({ ...base, maxDstVsOffenseShare: 0 }));
+  assert.equal(none.lineups.filter(dstFacesOwnOffense).length, 0, "a 0% cap forbids it in every lineup");
+  const shaped = applyWinnersShape(settings({ nLineups: 100 }), pool);
+  assert.equal(shaped.settings.maxDstVsOffenseShare, WINNERS_SHAPE.dstVsOffenseMaxShare);
+  assert.ok(shaped.notes[0].includes("a DST against its own players in at most 5% of lineups (5 of 100)"), shaped.notes[0]);
+  assert.equal(applyWinnersShape(settings({ maxDstVsOffenseShare: 0 }), pool).settings.maxDstVsOffenseShare, 0, "a tighter cap you set is kept");
+  assert.throws(() => optimizeNflLineups(pool, settings({ maxDstVsOffenseShare: 1.5 })), /between 0 and 100%/);
+}
+console.log("Winners shape (classic): a DST against the lineup's own players is capped at 5% of lineups.");
