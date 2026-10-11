@@ -1,7 +1,9 @@
-"""A run built after a kickoff must not republish (or supersede) that game's contexts."""
+"""A run built after a kickoff must not republish (or supersede) that game's contexts,
+and a context whose meaning has not changed stays current instead of being re-inserted."""
 from datetime import datetime, timedelta, timezone
+import json
 
-from ingest.nfl_availability_context_publish import persist_availability_contexts
+from ingest.nfl_availability_context_publish import REASSERT_AFTER, persist_availability_contexts
 
 UTC = timezone.utc
 AS_OF = datetime(2026, 9, 27, 18, 0, tzinfo=UTC)
@@ -10,12 +12,21 @@ LATE_KICKOFF = datetime(2026, 9, 27, 20, 25, tzinfo=UTC)   # still pregame
 
 
 class RecordingCursor:
-    def __init__(self):
+    """Records every statement; the current-row lookup returns the rows it was given."""
+
+    def __init__(self, current=()):
         self.calls = []
         self.rowcount = 1
+        self.current = list(current)
+        self.result = []
 
     def execute(self, sql, params=None):
-        self.calls.append((" ".join(sql.split()), params))
+        text = " ".join(sql.split())
+        self.calls.append((text, params))
+        self.result = self.current if text.startswith("SELECT snapshot_id,definition_id") else []
+
+    def fetchall(self):
+        return list(self.result)
 
 
 def player(pid, game_id, team, kickoff, position="QB", depth=1):
@@ -105,3 +116,96 @@ def test_kickoff_as_iso_string_is_honoured():
                                            manifest=m, available_at=AS_OF)
     assert result["startedGamesSkipped"] == ["2026_03_EARLY"]
     assert game_ids_written(cursor) == {"2026_03_LATE"}
+
+
+# --- An unchanged context stays current -------------------------------------------
+
+PREGAME = LATE_KICKOFF - timedelta(hours=8)
+GAME = "2026_03_LATE"
+
+
+def team_projections():
+    return [player(1, GAME, "CCC", LATE_KICKOFF, "QB", 1), player(2, GAME, "CCC", LATE_KICKOFF, "QB", 2),
+            player(3, GAME, "CCC", LATE_KICKOFF, "WR", 1)]
+
+
+def run(as_of, current=(), observation_id=7, out_player=None):
+    projections = team_projections()
+    m = manifest(projections, as_of=as_of)
+    for pid, value in m["availability_decisions"].items():
+        value["state"] = "OUT_CONFIRMED" if int(pid) == out_player else "EXPECTED_ACTIVE"
+        value["qualifying_observation_ids"] = [observation_id]
+        value["qualifying_source_snapshot_ids"] = [observation_id * 10]
+    cursor = RecordingCursor(current)
+    result = persist_availability_contexts(cursor, run_id=f"run-{as_of.isoformat()}", projections=projections,
+                                           manifest=m, available_at=as_of)
+    return cursor, result
+
+
+def inserted(cursor):
+    return [{"snapshot_id": p[0], "definition_id": p[1], "subject_id": p[3], "target_id": p[4],
+             "as_of_at": p[5], "material_digest": p[-1], "payload": p[-2]}
+            for sql, p in cursor.calls if sql.startswith("INSERT INTO nfl_context_snapshots")]
+
+
+def superseded(cursor):
+    return [p for sql, p in cursor.calls if sql.startswith("UPDATE nfl_context_snapshots") and "'superseded'" in sql]
+
+
+def withdrawal_keeps(cursor):
+    return {snapshot_id for sql, p in cursor.calls
+            if sql.startswith("UPDATE nfl_context_snapshots") and "'withdrawn'" in sql for snapshot_id in p[2]}
+
+
+def test_a_run_whose_contexts_did_not_change_writes_none_and_withdraws_none():
+    first, _ = run(PREGAME)
+    current = inserted(first)
+    assert len(current) == 4, "three players and one team QB context"
+    second, result = run(PREGAME + timedelta(hours=1), current, observation_id=8)
+    assert inserted(second) == [] and superseded(second) == []
+    assert withdrawal_keeps(second) == {row["snapshot_id"] for row in current}
+    assert result["contextsPublished"] == 0 and result["contextsUnchanged"] == 4
+
+
+def test_a_changed_player_is_republished_and_the_qb_context_follows_it():
+    first, _ = run(PREGAME)
+    current = inserted(first)
+    second, result = run(PREGAME + timedelta(hours=1), current, observation_id=8, out_player=1)
+    written = {row["subject_id"] for row in inserted(second)}
+    assert written == {"1", "CCC"}, "the starter who is now out, and his team's QB context"
+    assert {p[2] for p in superseded(second)} == {"1", "CCC"}
+    kept = {row["snapshot_id"] for row in current if row["subject_id"] in {"2", "3"}}
+    assert kept <= withdrawal_keeps(second), "unchanged players stay current"
+    assert result["contextsPublished"] == 2 and result["contextsUnchanged"] == 2
+
+
+def test_the_qb_context_names_the_player_contexts_that_stay_current():
+    first, _ = run(PREGAME)
+    current = inserted(first)
+    current_by_player = {row["subject_id"]: row["snapshot_id"] for row in current if row["definition_id"].startswith("player")}
+    second, _ = run(PREGAME + timedelta(hours=1), current, observation_id=8, out_player=3)
+    [qb] = [row for row in current if row["subject_id"] == "CCC"]
+    named = json.loads(qb["payload"])["availability_evidence"]["playerContextIds"]
+    assert named == [current_by_player["1"], current_by_player["2"]]
+    assert "CCC" not in {row["subject_id"] for row in inserted(second)}, "a WR change leaves the QB context current"
+
+
+def test_an_unchanged_context_is_reasserted_once_it_is_six_hours_old():
+    first, _ = run(PREGAME)
+    current = inserted(first)
+    later, result = run(PREGAME + REASSERT_AFTER, current, observation_id=8)
+    assert len(inserted(later)) == 4 and result["contextsUnchanged"] == 0
+    assert len(superseded(later)) == 4
+
+
+def test_a_current_row_written_before_the_digest_existed_is_republished():
+    first, _ = run(PREGAME)
+    legacy = [dict(row, material_digest=None) for row in inserted(first)]
+    second, result = run(PREGAME + timedelta(hours=1), legacy, observation_id=8)
+    assert len(inserted(second)) == 4 and result["contextsUnchanged"] == 0
+
+
+def test_a_current_row_newer_than_the_run_is_never_reused():
+    first, _ = run(PREGAME + timedelta(hours=2))
+    _, result = run(PREGAME, inserted(first))
+    assert result["contextsUnchanged"] == 0
