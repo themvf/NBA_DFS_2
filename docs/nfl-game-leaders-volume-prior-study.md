@@ -109,4 +109,16 @@ unchanged. No claim of betting edge is made or tested.
 
 ## Amendments
 
-(none yet)
+**Amendment 1 (2026-10-11, tuned constants, committed before the holdout).**
+`python -m research.nfl_game_leaders_volume_prior tune` on 2024 weeks 2-18
+(output `artifacts/nfl-game-leaders/volume-prior-v1/tune-2024.json`):
+
+| action | C0 MAE | chosen K | chosen ρ | V1 MAE (tuning) |
+|---|---:|---:|---:|---:|
+| targets | 1.5835 | 2 | 0.6 | 1.5158 |
+| carries | 1.3194 | 1 | 1.0 | 1.2587 |
+
+Carries chose the smallest K in the grid (K = 1). The registered rule takes
+the grid minimum, so K = 1 stands; the true optimum may be below 1, and no
+finer grid is added. A strong prior is worse: at K = 16 target MAE is 1.5823,
+almost no better than C0. The exploratory K = 4 was too strong.
