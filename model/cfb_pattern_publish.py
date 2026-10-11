@@ -28,7 +28,7 @@ from model import cfb_pattern_watch as pw
 # Prose blocks. scripts/humanize_copy.py may rewrite these (numbers guarded) into
 # artifacts/cfb_pattern_watch/copy.json, which overrides them when present.
 COPY = {
-    "header_sub": "Six betting patterns found in the first six weeks of 2026 and frozen before week 7. Every pick below is graded at the verified closing line, written once, and never edited. The purpose is to find out whether any of them are real. So far none is proven, and the record is shown either way.",
+    "header_sub": "Six betting patterns found in the first five weeks of the 2026 season and frozen before most of week 6 was played. Every pick below is graded at the verified closing line, written once, and never edited. The purpose is to find out whether any of them are real. So far none is proven, and the record is shown either way.",
     "note": "A flat one unit on every qualifying game at the closing consensus price. Moneyline picks pay what the favorite pays, usually -250 to -400; spreads and totals are scored at -110. Nothing here is a recommendation. Each pattern needs 40 to 80 graded games before it gets a verdict, and the verdict is computed once.",
     "upcoming_intro": "Each selection is frozen the first time its pattern fires on a fresh line. The frozen line is what gets graded against; the current line is shown beside it so you can see what moved. A line more than an hour old near kickoff is not shown as a pick. Watch means the market moved sharply in the last two hours and we do not know why; there is no injury feed for college football, so the line is the news.",
     "howto_1": "A pattern is a fixed rule written down before the games it is tested on. Patterns 1 to 5 were frozen on October 9, pattern 6 on the morning of October 10. The rules do not change; a changed rule is a new study.",
@@ -97,7 +97,14 @@ def trigger_summary(rows: list[dict]) -> list[dict]:
     return out
 
 
-def render(rows: list[dict], selections: list[dict], cards: list[dict], now: datetime) -> str:
+def render(rows: list[dict], selections: list[dict], cards: list[dict], now: datetime,
+           base_rates: list[dict] | None = None, fvc: dict | None = None, ev: dict | None = None) -> str:
+    from model import cfb_pattern_measures as measures
+
+    base_rates = base_rates or []
+    fvc = fvc or {"summary": {"n": 0}, "items": []}
+    ev = ev or {"runs": 0, "events": 0, "by_status": {}, "last_run": None}
+    gc = measures.game_counts(rows)
     summ = trigger_summary(rows)
     total_units = sum(r["pnl_units"] for r in rows)
     graded_ids = {(r["trigger"], r["matchup_id"]) for r in rows}
@@ -162,7 +169,7 @@ footer{{margin-top:48px;color:var(--muted);font-size:14px;border-top:1px solid v
     graded = [r for r in rows if r["result"] in ("won", "lost")]
     wins = sum(r["result"] == "won" for r in graded)
     parts.append(f"""<div class="strip">
-<div class="tile"><div class="k">graded picks</div><div class="v">{len(rows)}</div></div>
+<div class="tile"><div class="k">graded picks</div><div class="v">{len(rows)}<small> from {gc['games']} games</small></div></div>
 <div class="tile"><div class="k">record</div><div class="v">{wins}-{len(graded) - wins}<small> {len(rows) - len(graded)} push</small></div></div>
 <div class="tile"><div class="k">units, flat 1 per pick</div><div class="v {'pos' if total_units >= 0 else 'neg'}">{total_units:+.2f}</div></div>
 <div class="tile"><div class="k">open selections</div><div class="v">{len(pending)}</div></div>
@@ -173,12 +180,28 @@ footer{{margin-top:48px;color:var(--muted);font-size:14px;border-top:1px solid v
     # per-trigger table
     parts.append("""<h2>The six patterns</h2>
 <div class="scroll"><table>
-<tr><th>#</th><th>pattern</th><th>bet</th><th class="num">graded</th><th class="num">record</th><th class="num">units</th><th class="num">roi</th><th class="num">floor</th><th class="num">discovery (frozen, cannot confirm)</th></tr>""")
+<tr><th>#</th><th>pattern</th><th>bet</th><th class="num">graded</th><th class="num">games</th><th class="num">record</th><th class="num">units</th><th class="num">roi</th><th class="num">floor</th><th class="num">discovery (frozen, cannot confirm)</th></tr>""")
+    trig_by_code = {v[0]: k for k, v in TRIGGER_LABEL.items()}
     for s in summ:
         roi = "—" if s["roi"] is None else f"{s['roi']:+.1%}"
         cls = "" if s["roi"] is None else ("pos" if s["roi"] >= 0 else "neg")
-        parts.append(f"<tr><td class=\"num\">{s['code']}</td><td>{esc(s['desc'])}</td><td>{esc(s['bet'])}</td><td class=\"num\">{s['n']}</td><td class=\"num\">{s['w']}-{s['l']}{('-' + str(s['p'])) if s['p'] else ''}</td><td class=\"num {cls}\">{s['units']:+.2f}</td><td class=\"num {cls}\">{roi}</td><td class=\"num\">{s['n']}/{s['floor']}</td><td class=\"num muted\">{s['disc'][0]} · {s['disc'][1]} · {s['disc'][2]} dates</td></tr>")
+        games = gc["per_trigger_games"].get(trig_by_code[s["code"]], 0)
+        parts.append(f"<tr><td class=\"num\">{s['code']}</td><td>{esc(s['desc'])}</td><td>{esc(s['bet'])}</td><td class=\"num\">{s['n']}</td><td class=\"num\">{games}</td><td class=\"num\">{s['w']}-{s['l']}{('-' + str(s['p'])) if s['p'] else ''}</td><td class=\"num {cls}\">{s['units']:+.2f}</td><td class=\"num {cls}\">{roi}</td><td class=\"num\">{s['n']}/{s['floor']}</td><td class=\"num muted\">{s['disc'][0]} · {s['disc'][1]} · {s['disc'][2]} dates</td></tr>")
     parts.append("</table></div>")
+    parts.append(f"<p class=\"muted\">The {gc['rows']} graded picks come from {gc['games']} different games. {gc['games_with_multiple_triggers']} of those games fed more than one pattern, so the patterns are not independent of each other and their records should not be added together as if they were.</p>")
+    # base rate: the effect three of the patterns rest on
+    if base_rates:
+        parts.append("""<h2>Is the favorite edge still there?</h2>
+<p class="muted">Patterns 1, 5 and 6 exist because favorites won more often than their prices implied early in the season. This table checks that effect across every FBS game with a closing line, not just the games a pattern picked. It does not grade anything; it shows whether the reason for those patterns is still present.</p>
+<div class="scroll"><table>
+<tr><th class="num">week</th><th class="num">games</th><th class="num">favorites won</th><th class="num">price implied</th><th class="num">difference</th><th class="num">favorites covered</th><th class="num">overs</th><th class="num">decided by 7 or less</th></tr>""")
+        for r in base_rates:
+            pct = lambda v: "—" if v is None else f"{v:.1%}"
+            ex = r["excess_pp"]
+            cls = "" if ex is None else ("pos" if ex >= 0 else "neg")
+            exs = "—" if ex is None else f"{ex:+.1f} pts"
+            parts.append(f"<tr><td class=\"num\">{r['week']}</td><td class=\"num\">{r['games']}</td><td class=\"num\">{pct(r['fav_su'])}</td><td class=\"num\">{pct(r['implied'])}</td><td class=\"num {cls}\">{exs}</td><td class=\"num\">{pct(r['fav_ats'])}</td><td class=\"num\">{pct(r['over'])}</td><td class=\"num\">{pct(r['within_7'])}</td></tr>")
+        parts.append("</table></div><p class=\"muted\">Weeks are CollegeFootballData's numbering. The difference column is favorites' win rate minus the win rate their closing moneylines implied after removing the bookmaker's margin.</p>")
     # upcoming board
     parts.append("""<h2>Upcoming</h2>
 <p class="muted">""" + esc(copy_text("upcoming_intro")) + "</p>")
@@ -198,6 +221,40 @@ footer{{margin-top:48px;color:var(--muted);font-size:14px;border-top:1px solid v
         parts.append("</table></div>")
     else:
         parts.append('<p class="muted">No games with lines in the next 36 hours.</p>')
+    by_status = ev.get("by_status", {})
+    parts.append(f"<p class=\"muted\">The board has run {ev['runs']} times. It has refused {by_status.get('stale', 0)} stale lines, flagged {by_status.get('watch', 0)} late moves, and recorded {by_status.get('dropped', 0)} picks that stopped qualifying before kickoff.</p>")
+    # published picks vs the close
+    fs = fvc["summary"]
+    parts.append("<h2>Published picks against the close</h2>")
+    if fs["n"]:
+        lead = fs["median_lead_minutes"]
+        lead_txt = "unknown" if lead is None else (f"{lead / 60:.1f} hours" if lead >= 90 else f"{lead:.0f} minutes")
+        pts = fs["mean_points_clv"]
+        pts_txt = "no spread or total picks yet" if pts is None else f"{pts:+.2f} points on average ({fs['points_better']} better, {fs['points_worse']} worse)"
+        parts.append(f"""<p class="muted">Each pick is published at the line it was frozen at, but the results above are graded at the closing line. This table compares the two. A positive number means the frozen line was better for the pick than the close. Picks were frozen a median of {esc(lead_txt)} before kickoff; picks frozen close to kickoff will show little movement by design.</p>
+<div class="strip">
+<div class="tile"><div class="k">published picks graded</div><div class="v">{fs['n']}</div></div>
+<div class="tile"><div class="k">result changed by the move</div><div class="v">{fs['result_changed']}</div></div>
+<div class="tile"><div class="k">line vs close</div><div class="v">{'—' if pts is None else f'{pts:+.2f}'}<small> pts</small></div></div>
+<div class="tile"><div class="k">units at frozen line</div><div class="v {'pos' if fs['freeze_units'] >= 0 else 'neg'}">{fs['freeze_units']:+.2f}</div></div>
+<div class="tile"><div class="k">units at best retail</div><div class="v {'pos' if fs['best_retail_units'] >= 0 else 'neg'}">{fs['best_retail_units']:+.2f}</div></div>
+</div>
+<p class="muted">Line vs close: {esc(pts_txt)}.</p>
+<div class="scroll"><table>
+<tr><th>game</th><th>#</th><th>published pick</th><th class="num">frozen</th><th class="num">close</th><th class="num">points vs close</th><th>graded at close</th><th>at frozen line</th><th class="num">best retail</th></tr>""")
+        for i in fvc["items"]:
+            code = TRIGGER_LABEL[i["trigger"]][0]
+            is_total = i["trigger"] == "T4_big_fav_over"
+            fz = i["freeze_total"] if is_total else i["freeze_spread"]
+            cl = i["close_total"] if is_total else i["close_spread"]
+            fmt = (lambda v: "—" if v is None else f"{v:g}") if is_total else (lambda v: "—" if v is None else f"{v:+g}")
+            pc = "—" if i["points_clv"] is None else f"{i['points_clv']:+g}"
+            pcls = "" if not i["points_clv"] else ("pos" if i["points_clv"] > 0 else "neg")
+            brp = "—" if i["best_retail_pnl"] is None else f"{i['best_retail_pnl']:+.2f}"
+            parts.append(f"<tr><td>{esc(i['away'])} @ {esc(i['home'])}</td><td class=\"num\">{code}</td><td>{esc(i['selection'])}</td><td class=\"num\">{fmt(fz)}</td><td class=\"num\">{fmt(cl)}</td><td class=\"num {pcls}\">{pc}</td><td>{pill(i['close_result'])}</td><td>{pill(i['freeze_result'])}</td><td class=\"num\">{esc(brp)}</td></tr>")
+        parts.append("</table></div>")
+    else:
+        parts.append('<p class="muted">No published pick has been graded yet.</p>')
     # results by date
     parts.append("<h2>Results</h2>")
     for d in sorted(by_date, reverse=True):
@@ -238,10 +295,16 @@ def main(argv: list[str] | None = None) -> int:
         for r in db.execute(board._HIST_SQL, ([int(g["matchup_id"]) for g in games],)):
             hist.setdefault(int(r["matchup_id"]), []).append(dict(r))
     cards, _ = board.build_board(games, hist, board.read_selections(Path(args.selections)), now)  # read-only: new rows discarded
+    from model import cfb_pattern_measures as measures
+
+    rates = measures.weekly_base_rates(measures.load_base_rate_games(db))
+    fvc = measures.freeze_vs_close(rows, selections)
+    ev = measures.event_summary(measures.read_jsonl(measures.EVENTS_PATH), measures.read_jsonl(measures.RUNS_PATH))
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(render(rows, selections, cards, now), encoding="utf-8")
-    print(f"wrote {out} ({out.stat().st_size} bytes): {len(rows)} graded rows, {len(selections)} selections, {len(cards)} board cards")
+    out.write_text(render(rows, selections, cards, now, rates, fvc, ev), encoding="utf-8")
+    print(f"wrote {out} ({out.stat().st_size} bytes): {len(rows)} graded rows, {len(selections)} selections, "
+          f"{len(cards)} board cards, {len(rates)} base-rate weeks, {fvc['summary']['n']} published picks vs close, {ev['events']} board events")
     return 0
 
 

@@ -268,9 +268,17 @@ def main(argv: list[str] | None = None) -> int:
     counts = {}
     for c in cards:
         counts[c["status"]] = counts.get(c["status"], 0) + 1
-    print(f"cards {len(cards)} {counts}; new selections frozen {len(new_rows)}")
+    from model import cfb_pattern_measures as measures  # local import: measures imports this module's sibling
+
+    events = measures.new_events(cards, measures.read_event_keys(), now)
+    run = measures.run_record(cards, len(new_rows), len(events), now)
+    print(f"cards {len(cards)} {counts}; new selections frozen {len(new_rows)}; new events {len(events)}")
+    for e in events:
+        print(f"  event {e['status']}: {e['trigger']} {e['away']} @ {e['home']} {('; '.join(e['late_reasons'])) or ''}")
     if not args.no_write:
         append_selections(Path(args.selections), new_rows)
+        measures.append_jsonl(measures.EVENTS_PATH, events)
+        measures.append_jsonl(measures.RUNS_PATH, [run])
         Path(args.board).parent.mkdir(parents=True, exist_ok=True)
         Path(args.board).write_text(text, encoding="utf-8")
     return 0

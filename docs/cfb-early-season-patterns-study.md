@@ -162,3 +162,39 @@ constraint. Tightening capture toward kickoff (the NFL dispatcher's
 quarter-hour pattern) and moving both jobs to a dispatched workflow with a
 `/health` row are the next two steps and are NOT done; the first is an Odds
 API budget decision, the second requires a push.
+
+## Instrument measurements — `cfb-pattern-measures-v1` (added 2026-10-11)
+
+Added after the first full Saturday. All four are descriptive: none gates a
+verdict, changes a trigger, or alters how a ledger row is graded.
+Implemented in `model/cfb_pattern_measures.py`, tested in
+`tests/test_cfb_pattern_measures.py`, printed by the grader and shown on the
+reader page.
+
+| Measurement | What it answers | Where it lives |
+|---|---|---|
+| Weekly base rate | Is the effect T1, T5 and T6 rest on still present? Favorites' straight-up rate minus the vig-free implied rate, across every FBS game with a closing line, per CFBD week; plus favorite ATS, overs, and games decided by 7 or fewer. | `base_rates.json`, grader output, page |
+| Independent games | How many games are behind the rows. One game can feed three triggers. | grader summary (`games=`), page tile and column |
+| Published pick vs close | For each frozen selection: points gained or given up relative to the close from the pick's side, price change, result at the frozen line vs at the close, and P&L at the best retail price recorded at freeze. | page section; computed from `ledger.jsonl` + `selections.jsonl` |
+| Board events | Stale refusals, late-move flags and dropped picks, written once per (trigger, game, status), plus one line per board run so a run that flagged nothing is a recorded zero. | `events.jsonl`, `board_runs.jsonl` |
+
+First readings (through 2026-10-10):
+
+- The favorite excess was +9.6 and +9.3 points in CFBD weeks 3 and 4, +1.6
+  in week 5 and −3.7 in week 6, while games decided by 7 or fewer rose to
+  44%. Two weeks do not decide anything, but this is the first evidence that
+  the motivating effect was early-season scheduling.
+- 51 graded rows came from 40 games; 10 games fed more than one trigger.
+- All 10 frozen selections graded identically at the frozen line and at the
+  close. That is uninformative: the board started at 7 pm, minutes before
+  kickoff. The first real reading comes from a full Saturday starting 8 am.
+- Saturday's 11 board runs and the Hawai'i @ Arizona State stale refusal
+  existed only in the board log. They were reconstructed into the new files
+  and each reconstructed row carries `reconstructed_from`.
+
+**Week-label correction.** CollegeFootballData numbers 2026-10-10 as week 6.
+Earlier versions of this document, `CLAUDE.md` and several commit messages
+called it week 7. The discovery sample is CFBD weeks 1-5 plus the first seven
+games of week 6 (through 2026-10-09 22:00 UTC). Registration is pinned to
+timestamps, so no graded row or trigger window is affected; only labels were
+wrong.

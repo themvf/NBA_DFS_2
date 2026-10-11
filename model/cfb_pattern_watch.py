@@ -1,8 +1,8 @@
 """CFB early-season pattern watch — pre-registered study (registered 2026-10-09).
 
-Six patterns found in a descriptive sweep of the first six weeks of the 2026
+Six patterns found in a descriptive sweep of CFBD weeks 1-5 of the 2026
 season (259 FBS-vs-FBS games, 70 FBS-vs-FCS games). Each is frozen here as a
-trigger, a bet, a price basis and a kill criterion BEFORE any week-7+ game is
+trigger, a bet, a price basis and a kill criterion BEFORE any later game is
 graded. The discovery sample can never confirm them; it is recorded only so
 drift is visible.
 
@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 # ── Frozen registration ──────────────────────────────────────────────────────
 STUDY_VERSION = "cfb-pattern-watch-v2"
 REGISTERED_AT = datetime(2026, 10, 9, 22, 0, tzinfo=timezone.utc)
-# T6 was added 2026-10-10 before any week-7 Saturday kickoff (first at 16:00 UTC).
+# T6 was added 2026-10-10 before the first CFBD week 6 Saturday kickoff (16:00 UTC).
 # T1-T5 definitions and their registration time are unchanged; the v1 ledger
 # held zero rows when v2 was registered, so nothing is mixed.
 T6_REGISTERED_AT = datetime(2026, 10, 10, 13, 30, tzinfo=timezone.utc)
@@ -284,17 +284,21 @@ def summarize(rows: list[dict], label: str, as_of: datetime | None = None) -> li
         roi = units / n
         exp = statistics.mean(r["implied_prob"] for r in tr)
         dates = len({r["game_date"] for r in tr})
+        games = len({r["matchup_id"] for r in tr})
         tag = "descriptive-only" if n < floor else ("floor reached" if as_of < VERDICT_NOT_BEFORE else "verdict eligible")
         lo, hi = _bootstrap_roi(tr) if dates >= 3 else (float("nan"), float("nan"))
         lines.append(
             f"  {trig:28s} {bet:20s} n={n:3d}/{floor} {w}-{l}-{p} win {w / max(1, w + l):.1%} (implied {exp:.1%}) "
-            f"units {units:+.2f} ROI {roi:+.1%} CI[{lo:+.1%},{hi:+.1%}] dates={dates} [{tag}]"
+            f"units {units:+.2f} ROI {roi:+.1%} CI[{lo:+.1%},{hi:+.1%}] games={games} dates={dates} [{tag}]"
         )
     overlap = len({r["matchup_id"] for r in rows if r["trigger"] == "T1_g5_mid_fav_ml"} &
                   {r["matchup_id"] for r in rows if r["trigger"] == "T5_sat_evening_g5_fav_ml"})
     overlap16 = len({r["matchup_id"] for r in rows if r["trigger"] == "T1_g5_mid_fav_ml"} &
                     {r["matchup_id"] for r in rows if r["trigger"] == "T6_mid_fav_spread"})
     lines.append(f"  T1/T5 overlapping games: {overlap}; T1/T6 overlapping games: {overlap16}  (family size {FAMILY_SIZE}; Bonferroni CI needs ~99.2% per test)")
+    all_games = len({r["matchup_id"] for r in rows})
+    multi = sum(1 for g in {r["matchup_id"] for r in rows} if len({x["trigger"] for x in rows if x["matchup_id"] == g}) > 1)
+    lines.append(f"  independent games behind {len(rows)} rows: {all_games} ({multi} games fed more than one trigger)")
     return lines
 
 
@@ -323,6 +327,13 @@ def main(argv: list[str] | None = None) -> int:
     rows = existing + new_rows
     print(f"scanned {len(games)} completed prospective games; appended {len(new_rows)} rows; ledger {path} now {len(rows)} rows")
     for line in summarize(rows, "PROSPECTIVE (commence >= registration)"):
+        print(line)
+    from model import cfb_pattern_measures as measures  # local import: measures imports this module
+
+    rates = measures.weekly_base_rates(measures.load_base_rate_games(db))
+    measures.write_base_rates(rates, now=datetime.now(timezone.utc))
+    print("== base rate across ALL FBS games (descriptive; T1/T5/T6 rest on the 'excess' column) ==")
+    for line in measures.format_base_rates(rates):
         print(line)
     summary_path = path.with_name("summary.md")
     summary_path.write_text(

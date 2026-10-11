@@ -7632,11 +7632,12 @@ treating either as more than a judgement.
 
 ## CFB Early-Season Pattern Watch — pre-registered, local only (2026-10-09)
 
-A descriptive sweep of the first six weeks of 2026 (259 FBS-vs-FBS games with
+A descriptive sweep of CFBD weeks 1-5 of 2026 plus the first games of week 6 (259 FBS-vs-FBS games with
 closing lines) found favorites 81.1% straight up against 75.3% implied with the
 spread market calibrated, concentrated in G5-vs-G5 and FBS-vs-FCS mismatches
 and the Saturday-evening window, plus fewer close games (overtime 2.7% vs
-5.8%). Five triggers were frozen BEFORE week 7, and a sixth (7–13.5 favorite
+5.8%). Five triggers were frozen BEFORE the bulk of CFBD week 6 (2026-10-09
+22:00 UTC; earlier notes and commits mislabel this "week 7"), and a sixth (7–13.5 favorite
 spread, the −110 form of the G5 moneyline pattern; historical cover rate 51.8%)
 before the first Saturday kickoff the next morning, in
 [`docs/cfb-early-season-patterns-study.md`](docs/cfb-early-season-patterns-study.md),
