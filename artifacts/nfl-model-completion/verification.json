@@ -1,0 +1,17 @@
+{
+  "branch": "codex/nfl-model-completion",
+  "base_commit": "fcdb196038462327c7ca1f01a6df360ab6aed96b",
+  "web_scripts": {"passed": 136, "failed": 0, "excluded": 1, "exclusion": "test:pickem-freeze-evidence; requires live database, excluded in CI"},
+  "python_full_suite": {"passed": 1705, "failed": 0, "skipped": 2, "skip_check": "passed existing CI allowlist"},
+  "registration_test_added_after_full_suite": {"passed": 1},
+  "python_final_affected_rerun": {"passed": 26, "failed": 0, "includes_registration_test": true},
+  "typescript": "clean",
+  "eslint": {"errors": 0, "warnings": 63},
+  "live_verification": "not performed; local-only work",
+  "database_writes": false,
+  "entries_changed": false,
+  "forecast_promotion": "withheld",
+  "push": false,
+  "merge": false,
+  "deployment": false
+}

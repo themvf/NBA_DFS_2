@@ -14,6 +14,7 @@ Usage:
     python -m ingest.nfl_dfs_field_audit --contest path/to/contest-standings-NNN.csv
     python -m ingest.nfl_dfs_field_audit --contest FILE --upload <slate-upload-id>
     python -m ingest.nfl_dfs_field_audit --contest FILE --structure-only   # lineups only
+    python -m ingest.nfl_dfs_field_audit --contest FILE --keep-top 50      # also store the top 50 rosters
     python -m ingest.nfl_dfs_field_audit --report          # every imported contest
     python -m ingest.nfl_dfs_field_audit --report --season 2026 --week 2
 """
@@ -68,6 +69,56 @@ def read_entries(path: Path) -> list[tuple[int, str, str]]:
             if len(row) > 5 and row[5].strip() and row[0].strip().isdigit():
                 out.append((int(row[0]), row[2], row[5]))
     return out
+
+
+def read_top_entries(path: Path, n: int) -> list[dict]:
+    """Entries ranked within the top N, with the export's EntryId and Points (columns 1 and 4)."""
+    out = []
+    with path.open(newline="", encoding="utf-8-sig") as handle:
+        reader = csv.reader(handle)
+        next(reader, None)
+        for row in reader:
+            if len(row) > 5 and row[5].strip() and row[0].strip().isdigit() and int(row[0]) <= n:
+                points = row[4].strip() if len(row) > 4 else ""
+                out.append({"rank": int(row[0]), "entry_id": row[1].strip() or f"rank-{row[0]}",
+                            "entry_name": row[2], "points": float(points) if points else None,
+                            "lineup_text": row[5]})
+    return out
+
+
+def persist_top_entries(db: PipelineDatabase, contest_id: str, rows: list[dict]) -> None:
+    if not rows:
+        return
+    with db.connect() as connection:
+        with connection.cursor() as cursor:
+            execute_values(
+                cursor,
+                """INSERT INTO nfl_dfs_field_top_entries
+                     (contest_id, entry_id, rank, entry_name, username, user_entries, points,
+                      lineup_text, players, ownership_sum)
+                   VALUES %s
+                   ON CONFLICT (contest_id, entry_id) DO UPDATE SET
+                     rank = EXCLUDED.rank, entry_name = EXCLUDED.entry_name,
+                     username = EXCLUDED.username, user_entries = EXCLUDED.user_entries,
+                     points = EXCLUDED.points, lineup_text = EXCLUDED.lineup_text,
+                     players = EXCLUDED.players, ownership_sum = EXCLUDED.ownership_sum,
+                     captured_at = NOW()""",
+                [(contest_id, r["entry_id"], r["rank"], r["entry_name"], r["username"], r["user_entries"],
+                  r["points"], r["lineup_text"], Json(r["players"]), r["ownership_sum"]) for r in rows],
+                page_size=500)
+
+
+def keep_top(db: PipelineDatabase, contest_id: str, path: Path, n: int, players: dict) -> list[dict]:
+    """Store the top-N rosters of an export and print them against the field's ownership."""
+    rows = structure.keep_top_entries(read_top_entries(path, n), n, players)
+    persist_top_entries(db, contest_id, rows)
+    print(f"  kept the top {n}: {len(rows)} entries stored (ties at the cut kept whole)")
+    for r in rows[:10]:
+        who = f"{r['username']} ({r['user_entries']} entries)" if r['user_entries'] else r['username']
+        print(f"    #{r['rank']:<4} {who[:30]:<30} {r['points'] if r['points'] is not None else 0:7.2f}  "
+              f"own sum {r['ownership_sum']:6.1f}%  "
+              + ", ".join(f"{p['slot']} {p['name']}" for p in r["players"]))
+    return rows
 
 
 def persist_structure(db: PipelineDatabase, contest_id: str, summary: dict) -> None:
@@ -250,12 +301,17 @@ def main() -> None:
     parser.add_argument("--structure-only", action="store_true",
                         help="with --contest: compute and store lineup structure for a contest "
                              "ALREADY imported, without re-upserting its ownership or slate link")
+    parser.add_argument("--keep-top", type=int, metavar="N",
+                        help="with --contest: also store the rosters of every entry ranked in the top N "
+                             "(nfl_dfs_field_top_entries), read against the export's ownership")
     parser.add_argument("--report", action="store_true", help="audit every imported contest")
     parser.add_argument("--season", type=int)
     parser.add_argument("--week", type=int)
     args = parser.parse_args()
     if not args.contest and not args.report:
         parser.error("pass --contest to import one, or --report to audit what is imported")
+    if args.keep_top is not None and (args.keep_top < 1 or not args.contest):
+        parser.error("--keep-top N needs --contest and N of at least 1")
 
     db = PipelineDatabase(load_config().database_url)
 
@@ -272,6 +328,9 @@ def main() -> None:
         persist_structure(db, contest_id, summary)
         print(f"structure stored for contest {contest_id} ({summary['entries']:,} lineups, "
               f"{summary['duplication']['unique_lineups']:,} unique)")
+        if args.keep_top:
+            parsed, _ = read_export(path)
+            keep_top(db, contest_id, path, args.keep_top, parsed["players"])
         return
 
     if args.contest:
@@ -283,6 +342,8 @@ def main() -> None:
         persist(db, contest_id, parsed, fmt, path, digest, upload)
         summary = structure.analyze(read_entries(path), fmt)
         persist_structure(db, contest_id, summary)
+        if args.keep_top:
+            keep_top(db, contest_id, path, args.keep_top, parsed["players"])
         dup, users = summary["duplication"], summary["users"]
         print(f"  structure: {summary['entries']:,} lineups, {dup['unique_lineups']:,} unique, "
               f"{dup['entry_share_in_duplicated_lineup']:.1%} of entries duplicated, "

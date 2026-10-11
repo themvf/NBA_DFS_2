@@ -43,12 +43,6 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements.txt
-      # The CFB line-alert scan (hundreds of runs a day) reconciles movements
-      # only for games with new snapshots. This pass re-derives every transition
-      # from all pregame history and fails on any disagreement, so a ledger
-      # defect is caught within six hours instead of on every run.
-      - name: Reconcile the full CFB movement ledger
-        run: python -m ingest.cfb_movements --full
       - name: Check every pipeline's freshness
         # Explicit bash = -eo pipefail: without it `| tee` reports tee's exit code
         # and a crashed check (or --fail-on-stale) would still turn the job green.
@@ -57,3 +51,12 @@ jobs:
           FLAGS="--record"
           if [ "${{ inputs.fail_on_stale }}" = "true" ]; then FLAGS="$FLAGS --fail-on-stale"; fi
           python -m model.pipeline_health $FLAGS | tee -a "$GITHUB_STEP_SUMMARY"
+      # The per-capture CFB jobs check only games that can still change. These
+      # passes re-check all CFB history and fail on any disagreement. They run
+      # after the freshness reading so a failure here cannot stop /health updating.
+      - name: Reconcile the full CFB movement ledger
+        if: ${{ !cancelled() }}
+        run: python -m ingest.cfb_movements --full
+      - name: Audit the full CFB capture history
+        if: ${{ !cancelled() }}
+        run: python -m ingest.cfb_capture_audit --full

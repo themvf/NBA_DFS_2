@@ -1,0 +1,59 @@
+{
+  "artifact_digest": "574b952fbfd031b421a6f05c7e2b5a4d15828112cbcdf023c78ee27c7c898def",
+  "excluded": [
+    {
+      "contestId": "195648006",
+      "reason": "no earlier same-format training slate",
+      "slateId": "f067c8b9-f920-4b26-b77c-36f43a2c9df0"
+    },
+    {
+      "contestId": "195786073",
+      "reason": "no earlier same-format training slate",
+      "slateId": "746487fd-2ebe-444a-b74c-214e6d8854e3"
+    }
+  ],
+  "folds": [],
+  "formats": {
+    "classic": {
+      "biasPp": null,
+      "duplicationValidated": false,
+      "format": "classic",
+      "heldOutSlateIds": [],
+      "labeledPlayers": 0,
+      "leverageEnabled": false,
+      "maePp": null,
+      "modelVersion": "nfl-ownership-v1",
+      "reasons": [
+        "Only 0 independent trained holdout slates; Classic needs four.",
+        "Pooled accuracy does not meet Spearman >=0.70, MAE <=2.0pp and absolute bias <=0.5pp."
+      ],
+      "registration": "nfl-ownership-classic-phase2",
+      "sourceDigest": "1bd5f2f070c51b7bbf3642de539d14db896831797ee72f1734412d97f8f8c0f7",
+      "spearman": null,
+      "status": "withheld"
+    },
+    "showdown": {
+      "biasPp": null,
+      "duplicationValidated": false,
+      "format": "showdown",
+      "heldOutSlateIds": [],
+      "labeledPlayers": 0,
+      "leverageEnabled": false,
+      "maePp": null,
+      "modelVersion": "nfl-ownership-v1",
+      "reasons": [
+        "Showdown needs its own registered accuracy gate; Classic qualification cannot authorize Captain/Flex leverage.",
+        "Only 0 independent trained holdout slates; Classic needs four.",
+        "Pooled accuracy does not meet Spearman >=0.70, MAE <=2.0pp and absolute bias <=0.5pp."
+      ],
+      "registration": "nfl-ownership-classic-phase2",
+      "sourceDigest": "1bd5f2f070c51b7bbf3642de539d14db896831797ee72f1734412d97f8f8c0f7",
+      "spearman": null,
+      "status": "withheld"
+    }
+  },
+  "kind": "qualification",
+  "policy": "Frozen chronological fit; all contests on a slate stay together. Null labels are not zero.",
+  "productionChanged": false,
+  "version": "nfl-ownership-qualification-v1"
+}

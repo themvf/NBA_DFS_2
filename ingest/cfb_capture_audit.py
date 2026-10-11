@@ -33,14 +33,21 @@ def quote_issues(books: dict, captured_at: datetime) -> list[str]:
     return issues
 
 
-def audit(connection) -> dict:
+# A capture after kickoff is already an error (capture_identity_or_boundary), so
+# only these games can gain history. pipeline_health.yml runs the full audit.
+LIVE_GAMES = "SELECT id FROM cfb_matchups WHERE commence_time > NOW() - INTERVAL '1 day'"
+
+
+def audit(connection, *, full: bool = False) -> dict:
     from collections import defaultdict
     from model.line_alerts import _cfb_market_signals, _nfl_line_outcome
     from psycopg2.extras import RealDictCursor
     cursor = connection.cursor(cursor_factory=RealDictCursor)
-    def rows(sql):
-        cursor.execute(sql)
+    def rows(sql, params=None):
+        cursor.execute(sql, params)
         return [dict(row) for row in cursor.fetchall()]
+    live_games = None if full else [row["id"] for row in rows(LIVE_GAMES)]
+    scope, scope_params = ("", None) if full else (" AND h.matchup_id=ANY(%s)", (live_games,))
     checks = {
         "capture_identity_or_boundary": """SELECT h.id FROM game_odds_history h
             LEFT JOIN cfb_matchups m ON m.id=h.matchup_id WHERE h.sport='cfb'
@@ -72,7 +79,7 @@ def audit(connection) -> dict:
     }
     errors = {name: found for name, sql in checks.items() if (found := rows(sql))}
     bad_quotes = []
-    for row in rows("SELECT id,books,captured_at FROM game_odds_history WHERE sport='cfb'"):
+    for row in rows("SELECT h.id,h.books,h.captured_at FROM game_odds_history h WHERE h.sport='cfb'" + scope, scope_params):
         issues = quote_issues(row["books"] or {}, row["captured_at"])
         if issues:
             bad_quotes.append({"history_id": row["id"], "issues": issues})
@@ -96,7 +103,7 @@ def audit(connection) -> dict:
     histories = defaultdict(list)
     for row in rows("""SELECT h.id AS history_id,h.matchup_id,h.books,h.captured_at,h.capture_key
         FROM game_odds_history h JOIN cfb_matchups m ON m.id=h.matchup_id
-        WHERE h.sport='cfb' AND h.captured_at<m.commence_time ORDER BY h.captured_at,h.id"""):
+        WHERE h.sport='cfb' AND h.captured_at<m.commence_time""" + scope + " ORDER BY h.captured_at,h.id", scope_params):
         histories[row["matchup_id"]].append(row)
     recorded = {(a["matchup_id"], a["alert_type"], a["side"]): a for a in alerts}
     gaps = []
@@ -123,6 +130,7 @@ def audit(connection) -> dict:
         WHERE sport='cfb' AND scheduled_start_at>NOW() AND target_at<=NOW() GROUP BY status""")
     closes = rows("SELECT quality,COUNT(*)::int AS n FROM event_closing_lines WHERE sport='cfb' GROUP BY quality")
     return {"integrity_status": "fail" if errors else "pass", "errors": errors,
+            "history_scope": {"mode": "full"} if full else {"mode": "live", "games": len(live_games)},
             "first_breach_replay_gaps": gaps,
             "upcoming": coverage, "due_or_elapsed_checkpoints": checkpoints, "close_quality": closes,
             "limitations": ["Passed integrity checks do not prove uninterrupted capture coverage.",
@@ -131,9 +139,14 @@ def audit(connection) -> dict:
 
 
 if __name__ == "__main__":
+    import argparse
     import psycopg2
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--full", action="store_true",
+                        help="Re-check every saved CFB quote and replay every game, not only games still taking captures")
+    args = parser.parse_args()
     with psycopg2.connect(load_config().database_url) as connection:
         connection.set_session(readonly=True, isolation_level="REPEATABLE READ")
-        result = audit(connection)
+        result = audit(connection, full=args.full)
     print(json.dumps(result, indent=2, default=str))
     raise SystemExit(1 if result["errors"] else 0)

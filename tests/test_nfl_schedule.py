@@ -415,3 +415,46 @@ def test_polymarket_is_not_folded_into_retail_consensus() -> None:
     }
 
     assert _retail_fair_side(books, "home") == pytest.approx(0.5)
+
+
+class _BackfillDatabase:
+    def __init__(self, returned) -> None:
+        self.returned = returned
+        self.calls: list[tuple[str, tuple]] = []
+
+    def execute(self, sql, params=None):
+        self.calls.append((sql, params))
+        return self.returned
+
+
+def test_schedule_backfill_fills_only_missing_finals() -> None:
+    db = _BackfillDatabase([{"id": 18}])
+    assert nfl_schedule.backfill_finals_from_schedule(db) == 1
+    sql, params = db.calls[0]
+    # Gap-fill only: a stored score is never overwritten from the schedule.
+    assert "m.home_score IS NULL OR m.away_score IS NULL" in sql
+    # Both teams must match, so a mislinked schedule row cannot score the wrong game.
+    assert "g.home_team_id = m.home_team_id" in sql
+    assert "g.away_team_id = m.away_team_id" in sql
+    # Only official, completed schedule finals are copied, after a grace period.
+    assert "g.completed" in sql
+    assert "g.home_score IS NOT NULL AND g.away_score IS NOT NULL" in sql
+    assert params == (nfl_schedule.SCHEDULE_FINAL_GRACE_HOURS,)
+
+
+def test_schedule_backfill_reports_zero_when_nothing_is_missing() -> None:
+    assert nfl_schedule.backfill_finals_from_schedule(_BackfillDatabase([])) == 0
+
+
+def test_scores_only_run_also_backfills_from_schedule(monkeypatch) -> None:
+    calls = []
+    monkeypatch.setattr(nfl_schedule, "load_config", lambda: type("C", (), {
+        "database_url": "postgres://unused",
+        "odds_api": type("O", (), {"api_key": "key"})(),
+    })())
+    monkeypatch.setattr(nfl_schedule, "DatabaseManager", lambda url: object())
+    monkeypatch.setattr(nfl_schedule, "fetch_scores", lambda db, key, days: calls.append("odds") or 0)
+    monkeypatch.setattr(nfl_schedule, "backfill_finals_from_schedule", lambda db: calls.append("schedule") or 0)
+    monkeypatch.setattr("sys.argv", ["nfl_schedule", "--scores-only"])
+    assert nfl_schedule.main() == 0
+    assert calls == ["odds", "schedule"]

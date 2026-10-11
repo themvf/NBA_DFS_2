@@ -106,4 +106,15 @@ const asked = formFromSettings({ ...sent, defensiveAdjustments: { mode: "off", p
   requestedDefensiveAdjustments: { mode: "approved", profile: "pfr-efficiency" } } as never, defensiveDefaults);
 assert.deepEqual(asked.settings.defensiveAdjustments, { mode: "approved", profile: "pfr-efficiency" });
 
+// The build shape is form state: it round-trips, a run saved before it existed
+// reads as standard, and "standard" versus absent is not a settings change.
+const shapeDefaults = { ...defaults, buildShape: "standard" as "standard" | "winners" };
+const winners = settingsFromForm({ ...form, settings: { ...shapeDefaults, buildShape: "winners" } }, "classic", teams);
+assert.equal(winners.buildShape, "winners");
+assert.equal(formFromSettings(winners, shapeDefaults).settings.buildShape, "winners");
+assert.equal(formFromSettings(sent, shapeDefaults).settings.buildShape, "standard", "a run with no shape was a standard build");
+assert.ok(sameGenerationSettings({ ...sent, buildShape: undefined }, { ...sent, buildShape: "standard" }), "absent and standard are the same build");
+assert.ok(!sameGenerationSettings({ ...sent, buildShape: "winners" }, { ...sent, buildShape: "standard" }), "winners is a different build");
+assert.equal(formFromDraft({ settings: { ...shapeDefaults, buildShape: "winners" }, locked: [], excluded: [], targets: {}, captainTargets: {}, planMode: "balanced", fades: [], quotas: [] }, shapeDefaults)!.settings.buildShape, "winners");
+
 console.log("Build form: saved runs load back into the form and rebuild the same run.");

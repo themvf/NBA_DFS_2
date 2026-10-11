@@ -1,0 +1,33 @@
+{
+  "study_id": "nfl-joint-outcomes-v1-development",
+  "registered_at": "2026-10-09T00:00:00Z",
+  "status": "development",
+  "variants": ["baseline", "role-gains"],
+  "primary_metric": "exact_set_log_loss",
+  "metrics": ["receptions", "receiving_yards", "rushing_yards", "total_yards"],
+  "populations": ["complete_canonical_game_field"],
+  "development_games": [],
+  "selection_games": [],
+  "locked_games": [],
+  "exposed_games": [],
+  "exposure_registry_status": "incomplete_must_audit_prior_reports_before_registering_locked_games",
+  "draws": 5000,
+  "seeds": [20261009],
+  "tie_rule": "uniform_random_boundary_tiebreak",
+  "source_policy": "retrospective_reconstruction_explicit",
+  "multiplicity": "hierarchical_primary_then_secondary_no_promotion_from_development",
+  "gates": {
+    "primary_loss_difference_upper_ci95": 0,
+    "maximum_relative_crps_degradation": 0.02,
+    "p90_absolute_exceedance_error": 0.03,
+    "minimum_reweight_ess_fraction": 0.10,
+    "warning_reweight_ess_fraction": 0.25,
+    "minimum_locked_games": null,
+    "precision_plan_status": "required_before_lock"
+  },
+  "limits": [
+    "This is a development protocol template, not an untouched evaluation registration.",
+    "Game populations and power/precision plan must be frozen before locked evaluation.",
+    "Already examined 2025 and 2026 weeks are ineligible as an untouched holdout."
+  ]
+}

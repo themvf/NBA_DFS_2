@@ -25,11 +25,12 @@ function main() {
   assert.equal(unavailable.features.leverage, false);
   assert.equal(objectiveLabel("unavailable"), "Projection-only GPP");
 
-  // --- validated feed enables leverage ---
+  // Structure/coverage do not prove accuracy on independent games.
   const validated = assessOwnership(pool, validatedFeed(12));
-  assert.equal(validated.capability, "validated", `expected validated, got ${validated.capability}: ${validated.errors.join("; ")}`);
-  assert.equal(validated.features.leverage, true);
-  assert.equal(validated.features.duplicationModel, true);
+  assert.equal(validated.capability, "unavailable");
+  assert.equal(validated.features.leverage, false);
+  assert.equal(validated.features.duplicationModel, false);
+  assert.ok(validated.warnings.some(w => /accuracy/.test(w)));
   assert.equal(objectiveLabel("validated"), "GPP leverage");
 
   // --- P2-AC2: a malformed upload with Captain ownership totaling 35% fails validation ---
@@ -81,7 +82,19 @@ function main() {
   // --- classic format expects ~900% across 9 roster slots, no captain check ---
   const classicFeed: NflOwnershipInput[] = Array.from({ length: 12 }, (_, i) => ({ playerId: i + 1, flexPct: 9 / 12, captainPct: null, source: "slot-feed", asOf: null }));
   const classic = assessOwnership(pool, classicFeed, { format: "classic" });
-  assert.equal(classic.capability, "validated", `classic slot feed validates: ${classic.errors.join("; ")}`);
+  assert.equal(classic.capability, "unavailable", 'Coverage alone cannot validate a Classic feed');
+  const calibration = {format:'classic' as const,modelVersion:'slot-feed',registration:'nfl-ownership-classic-phase2',
+    sourceDigest:'a'.repeat(64),heldOutSlateIds:['s1','s2','s3','s4'],spearman:.8,maePp:1.5,biasPp:.1};
+  const qualified = assessOwnership(pool,classicFeed,{format:'classic',calibration});
+  assert.equal(qualified.capability,'validated');
+  assert.equal(qualified.features.leverage,true);
+  assert.equal(qualified.features.duplicationModel,false,'Marginal ownership accuracy does not qualify a joint contest field');
+  for (const bad of [{...calibration,heldOutSlateIds:['s1','s1','s1','s1']},
+    {...calibration,maePp:2.01},{...calibration,biasPp:.51},{...calibration,spearman:NaN},
+    {...calibration,modelVersion:'other-model'},{...calibration,sourceDigest:'missing'}]) {
+    assert.equal(assessOwnership(pool,classicFeed,{format:'classic',calibration:bad}).features.leverage,false);
+  }
+  assert.equal(assessOwnership(pool,validatedFeed(12),{calibration}).features.leverage,false,'Classic cannot qualify Showdown');
 
   console.log("NFL GPP Phase 2 (ownership capability): P2-AC1..AC5 and validation units passed.");
 }

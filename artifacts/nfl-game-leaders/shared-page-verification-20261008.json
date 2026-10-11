@@ -1,0 +1,7 @@
+{
+  "status": 200,
+  "shared_model": true,
+  "partial_scope": true,
+  "full_example_limit": true,
+  "correlations": true
+}

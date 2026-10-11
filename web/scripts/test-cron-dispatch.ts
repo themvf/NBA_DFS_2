@@ -184,6 +184,23 @@ assert.ok(!keys("2026-10-03T15:22:00Z").includes("nfl-defensive-capture"), "no c
   assert.equal(grade?.inputs?.job, "grade", "grade dispatch names its job");
   assert.equal(board?.workflow, "cfb_pattern_watch.yml");
 }
+// NFL props: exactly one capture tick per kickoff time, on the quarter-hour ticks 90-105 minutes ahead.
+for (const kickoff of ["2026-10-11T17:00:00Z", "2026-10-11T20:05:00Z", "2026-10-11T20:25:00Z", "2026-10-12T00:20:00Z", "2026-10-11T13:30:00Z"]) {
+  const k = new Date(kickoff);
+  const context: DispatchContext = { nflKickoffs: [k] };
+  let fired = 0;
+  for (let h = 0; h < 4; h++) for (const m of TICKS) {
+    const tick = new Date(k.getTime() - (4 - h) * 3600_000);
+    tick.setUTCMinutes(Number(m), 0, 0);
+    const lead = k.getTime() - tick.getTime();
+    if (lead > 0 && lead <= 2 * 3600_000 && keys(tick.toISOString(), context).includes("nfl-prop-capture")) fired++;
+  }
+  assert.equal(fired, 1, `${kickoff}: one prop capture`);
+}
+assert.ok(keys("2026-10-11T15:22:00Z", { nflKickoffs: [new Date("2026-10-11T17:00:00Z")] }).includes("nfl-prop-capture"));
+assert.ok(!keys("2026-10-11T15:22:00Z", { nflKickoffs: [] }).includes("nfl-prop-capture"), "no game near, no paid capture");
+assert.ok(!keys("2026-10-11T15:22:00Z", { nflKickoffs: null }).includes("nfl-prop-capture"), "unreadable schedule: no blind paid capture");
+assert.deepEqual(DISPATCH_JOBS.find((j) => j.key === "nfl-prop-capture")?.inputs?.within_hours, "2", "never an unbounded season-wide capture");
 
 console.log(`Cron dispatch: ${DISPATCH_JOBS.length} bridged workflows on a 15-minute tick; half-hour cadences unchanged, NFL availability every 15 minutes before a kickoff.`);
 }).catch((e) => { console.error(e); process.exit(1); });

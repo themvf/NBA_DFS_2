@@ -56,6 +56,7 @@ import {
 import { nflOverlapCap } from '@/lib/nfl-dfs/pre-export-qa';
 import { isNflGppSignalPlayer, type NflPlayerSignal, type NflPlayerSignalCode } from '@/lib/nfl-dfs/player-signals';
 import type { NflAirMatchupEvidence } from '@/lib/nfl-dfs/air-matchup-evidence';
+import { applyWinnersShape, BUILD_SHAPES, type BuildShape, type PriorOpportunity } from '@/lib/nfl-dfs/winners-shape';
 import type { SpecialTeamsProjection } from '@/lib/nfl-dfs/special-teams-projection';
 
 // Record the strict Showdown purchase and completed-roster validation.
@@ -70,6 +71,8 @@ export type NflSlateFormat = "classic" | "showdown";
 export type NflOptimizerPlayer = {
   playerSignals?: NflPlayerSignal[];
   airMatchupEvidence?: NflAirMatchupEvidence | null;
+  /** Prior-week targets/carries (three weeks of play-by-play) for the winners-shape pool rules; null = no record. */
+  priorOpportunity?: PriorOpportunity | null;
   id: number;
   dkPlayerId: number;
   captainDkPlayerId: number | null;
@@ -180,6 +183,8 @@ export type NflOptimizerSettings = {
   puntOverrides?: PuntOverride[];
   /** Phase 2: resolved ownership capability. When not "validated", leverage is disabled. */
   ownershipCapability?: OwnershipCapability;
+  /** Calibrated marginal ownership alone does not qualify a joint field/duplication model. */
+  duplicationModelValidated?: boolean;
   /**
    * Phase 2: whether the ownership penalty may be applied, resolved by the
    * SERVER from the assessment's features (validated feeds, or a declared
@@ -226,6 +231,29 @@ export type NflOptimizerSettings = {
   salaryPolicy?: SalaryConstructionPolicy;
   /** Phase 5: maximum shared players allowed between any two lineups (0..rosterSize). */
   maxPairwiseOverlap?: number;
+  /**
+   * "winners": the winners-shape preset (`lib/nfl-dfs/winners-shape.ts`)
+   * tightens the settings below and filters the pool before generation; the
+   * run's notes list every number it enforced. Absent/"standard": no preset.
+   */
+  buildShape?: BuildShape;
+  /**
+   * Classic GPP: the share of lineups that carry an opposing bring-back,
+   * 0..1. When set it replaces `bringBack`: lineups are built alternately
+   * with the bring-back required and with it forbidden so the run lands on
+   * the share, instead of every lineup carrying one.
+   */
+  bringBackShare?: number;
+  /** Classic: no quarterback in more than this share of lineups (never below one lineup). A per-player range you set wins. */
+  maxQbExposure?: number;
+  /** Showdown: no player captains more than this share of lineups unless his own CPT range says otherwise. */
+  maxCaptainExposure?: number;
+  /** Showdown: leave every kicker out of the pool (locks still throw, by name). */
+  excludeKickers?: boolean;
+  /** Showdown: each lineup is 5-1 or 3-3 by team, never 4-2. */
+  forbidFourTwoSplit?: boolean;
+  /** Showdown: only these positions may take the Captain slot (a user's CPT minimum on another position is reported as infeasible). */
+  captainPositions?: NflOptimizerPlayer["position"][];
   maxExposure: number;
   minUnique: number;
   stackPassCatchers: 0 | 1 | 2;
@@ -269,6 +297,8 @@ export type NflLineupSlot = {
 
 export type NflGeneratedLineup = {
   lineupNumber: number;
+  /** Concrete construction rules, frozen for constraint-preserving research replay. */
+  constructionContract?: CompiledArchetype | null;
   slots: NflLineupSlot[];
   playerIds: number[];
   totalSalary: number;
@@ -302,6 +332,8 @@ export type NflEligibilityDecision = {
 
 export type NflOptimizerResult = {
   lineups: NflGeneratedLineup[];
+  /** Frozen leader identities: reselection must preserve their automatic coverage. */
+  topProjectedPlayerIds?: number[];
   warnings: string[];
   sourceCoverage: { requested: number; direct: number; fallback: number; excluded: number };
   /** Phase 1: eligibility decisions for every input player (present when a punt policy is applied). */
@@ -647,7 +679,27 @@ function validateSettings(settings: NflOptimizerSettings): void {
   if (settings.puntPolicy) validateNflPuntPolicy(settings.puntPolicy);
   const rosterSize = settings.format === "classic" ? 9 : 6;
   if (settings.minUnique < 1 || settings.minUnique > rosterSize) throw new Error(`Minimum unique players must be 1-${rosterSize}.`);
+  if (settings.buildShape != null && !BUILD_SHAPES.includes(settings.buildShape)) throw new Error("Unknown build shape.");
+  const share = (value: number | undefined, label: string, allowZero: boolean) => {
+    if (value == null) return;
+    if (!Number.isFinite(value) || value > 1 || value < 0 || (!allowZero && value === 0)) throw new Error(`${label} must be ${allowZero ? "between 0 and 100%" : "above 0 and at most 100%"}.`);
+  };
+  share(settings.bringBackShare, "Bring-back share", true);
+  share(settings.maxQbExposure, "Quarterback exposure cap", false);
+  share(settings.maxCaptainExposure, "Captain exposure cap", false);
+  if (settings.bringBackShare != null && (settings.format !== "classic" || settings.mode !== "gpp")) throw new Error("A bring-back share is only available in Classic GPP.");
+  if ((settings.excludeKickers || settings.forbidFourTwoSplit || settings.maxCaptainExposure != null || settings.captainPositions) && settings.format !== "showdown") throw new Error("Kicker exclusion, the 4-2 ban, the captain cap and captain positions are Showdown rules.");
+  if (settings.captainPositions && !settings.captainPositions.length) throw new Error("Captain positions must name at least one position.");
 }
+
+/**
+ * How this lineup treats the opposing bring-back: `default` follows
+ * `settings.bringBack`; `require`/`forbid` come from a bring-back SHARE, which
+ * alternates them so the run lands on the share rather than on every lineup.
+ */
+type BringBackRule = "default" | "require" | "forbid";
+/** Flex slots a lineup can give one quarterback's opponents; the big-M of the forbid constraint. */
+const BRING_BACK_BIG_M = 7;
 
 function buildOne(
   pool: ResolvedPlayer[],
@@ -664,6 +716,7 @@ function buildOne(
   enforceSlotMinimums = true,
   requireAirMatchup = false,
   requireGoalLine = false,
+  bringBackRule: BringBackRule = "default",
 ): NflGeneratedLineup | null {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const solver = require("javascript-lp-solver") as { Solve: (model: SolverModel) => SolverResult };
@@ -757,12 +810,25 @@ function buildOne(
   const overlapCap = nflOverlapCap(settings.format, settings.minUnique, settings.maxPairwiseOverlap);
   previous.forEach((lineup, index) => { constraints[`prior_${index}`] = { max: overlapCap }; });
 
+  const bringRequired = bringBackRule === "require" || (bringBackRule === "default" && settings.bringBack);
+  const bringForbidden = bringBackRule === "forbid";
   if (settings.format === "classic" && settings.mode === "gpp" && settings.stackPassCatchers > 0) {
     for (const quarterback of available.filter((player) => player.position === "QB")) {
       constraints[`stack_${quarterback.dkPlayerId}`] = { min: 0 };
-      if (settings.bringBack) constraints[`bring_${quarterback.dkPlayerId}`] = { min: 0 };
+      if (bringRequired) constraints[`bring_${quarterback.dkPlayerId}`] = { min: 0 };
+      // opponents + M*qb <= M: with the quarterback rostered, no opposing RB/WR/TE.
+      if (bringForbidden) constraints[`nobring_${quarterback.dkPlayerId}`] = { max: BRING_BACK_BIG_M };
       constraints[`anti_${quarterback.dkPlayerId}`] = { max: 1 };
     }
+  }
+  // Winners shape (Showdown): the lineup is 5-1 or 3-3 by team, never 4-2.
+  // One binary per allowed count of the first team (the other team is 6 minus
+  // it); exactly one is on and the team's roster count must equal it.
+  const splitTeam = settings.format === "showdown" && settings.forbidFourTwoSplit
+    ? [...new Set(available.map((player) => player.team))].sort()[0] ?? null : null;
+  if (splitTeam) {
+    constraints.split_pick = { equal: 1 };
+    constraints.split_match = { equal: 0 };
   }
 
   const variables: SolverModel["variables"] = {};
@@ -817,6 +883,7 @@ function buildOne(
         variable[slot === "CPT" ? "cpt" : "flex"] = 1;
       }
       if (settings.format === "showdown") variable[`team_${safe(player.team)}`] = 1;
+      if (splitTeam && player.team === splitTeam) variable.split_match = 1;
       for (const [defenseId, opponent] of defenseOpponents) {
         const key = `dst_script_${defenseId}`;
         if (player.dkPlayerId === defenseId) variable[key] = settings.format === "showdown" ? 4 : 6;
@@ -863,11 +930,13 @@ function buildOne(
         for (const quarterback of available.filter((candidate) => candidate.position === "QB")) {
           if (player.dkPlayerId === quarterback.dkPlayerId) {
             variable[`stack_${quarterback.dkPlayerId}`] = -settings.stackPassCatchers;
-            if (settings.bringBack) variable[`bring_${quarterback.dkPlayerId}`] = -1;
+            if (bringRequired) variable[`bring_${quarterback.dkPlayerId}`] = -1;
+            if (bringForbidden) variable[`nobring_${quarterback.dkPlayerId}`] = BRING_BACK_BIG_M;
             variable[`anti_${quarterback.dkPlayerId}`] = 1;
           }
           if (["WR", "TE"].includes(player.position) && player.team === quarterback.team) variable[`stack_${quarterback.dkPlayerId}`] = 1;
-          if (settings.bringBack && ["RB", "WR", "TE"].includes(player.position) && player.team === quarterback.opponent) variable[`bring_${quarterback.dkPlayerId}`] = 1;
+          if (bringRequired && ["RB", "WR", "TE"].includes(player.position) && player.team === quarterback.opponent) variable[`bring_${quarterback.dkPlayerId}`] = 1;
+          if (bringForbidden && ["RB", "WR", "TE"].includes(player.position) && player.team === quarterback.opponent) variable[`nobring_${quarterback.dkPlayerId}`] = 1;
           if (player.position === "DST" && player.team === quarterback.opponent) variable[`anti_${quarterback.dkPlayerId}`] = 1;
         }
       }
@@ -875,12 +944,18 @@ function buildOne(
       binaries[key] = 1;
     }
   }
+  if (splitTeam) {
+    for (const count of [1, 3, 5]) {
+      variables[`split_${count}`] = { score: 0, split_pick: 1, split_match: -count };
+      binaries[`split_${count}`] = 1;
+    }
+  }
   const solved = solver.Solve({ optimize: "score", opType: "max", constraints, variables, binaries });
   if (solved.feasible === false) {
     // Forcing slot minimums made this lineup impossible (salary, team caps,
     // overlap). Build it without them rather than ending the run early; the
     // exposure report still flags the missed minimum honestly.
-    if (slotForced) return buildOne(pool, settings, lineupNumber, previous, exposureCounts, forcedIds, countsById, captainCounts, flexCounts, compiled, remaining, false, requireAirMatchup, requireGoalLine);
+    if (slotForced) return buildOne(pool, settings, lineupNumber, previous, exposureCounts, forcedIds, countsById, captainCounts, flexCounts, compiled, remaining, false, requireAirMatchup, requireGoalLine, bringBackRule);
     return null;
   }
   const purchases: { player: ResolvedPlayer; slot: "CPT" | "FLEX" | "CLASSIC" }[] = [];
@@ -921,6 +996,7 @@ function buildOne(
   const bringBack = qb ? chosen.find((entry) => ["RB", "WR", "TE"].includes(entry.player.position) && entry.player.team === qb.opponent)?.player.name ?? null : null;
   return {
     lineupNumber,
+    constructionContract: compiled,
     slots: chosen,
     playerIds: chosen.map((entry) => entry.player.dkPlayerId),
     totalSalary: chosen.reduce((sum, entry) => sum + entry.salary, 0),
@@ -947,8 +1023,14 @@ function buildOne(
   };
 }
 
-export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflOptimizerSettings): NflOptimizerResult {
-  validateSettings(settings);
+export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: NflOptimizerSettings): NflOptimizerResult {
+  validateSettings(requested);
+  // The winners-shape preset is resolved into ordinary settings here, so the
+  // rest of the build (and the saved run) sees only numbers it can report.
+  const shape = requested.buildShape === "winners" ? applyWinnersShape(requested, players) : null;
+  const settings = shape ? shape.settings : requested;
+  if (shape) validateSettings(settings);
+  const shapeExcluded = shape?.excluded ?? new Map<number, string>();
   const excluded = new Set(settings.excludedPlayerIds);
   const locked = new Set(settings.lockedPlayerIds);
   const policy = settings.puntPolicy;
@@ -963,7 +1045,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   const coverage = { requested: players.length, direct: 0, fallback: 0, excluded: 0 };
   const pool: ResolvedPlayer[] = [];
   const eligibility: NflEligibilityDecision[] = [];
-  const warnings: string[] = [];
+  const warnings: string[] = [...(shape?.notes ?? [])];
   const receiverRoleChanges = deriveReceiverRoleChanges(players);
   let belowSalaryFloor = 0;
   let withoutHistory = 0;
@@ -971,6 +1053,12 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
 
   for (const player of players) {
     const named = { dkPlayerId: player.dkPlayerId, name: player.name, salary: player.salary };
+    if (settings.excludeKickers && player.position === "K") {
+      const reason = "Kickers are left out of this build (winners shape: 6% of winning showdown lineups carried one).";
+      eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden: false, reason, reasonCode: "KICKER_EXCLUDED" });
+      if (locked.has(player.dkPlayerId)) throw new Error(`${player.name} is locked, but this build leaves kickers out. Remove the lock or choose the standard build shape.`);
+      coverage.excluded++; continue;
+    }
     const kickerBlock = kickerRoleBlockedReason(player);
     if (kickerBlock) {
       eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden: false,
@@ -995,6 +1083,13 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     }
     if (excluded.has(player.dkPlayerId)) {
       eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden: false, reason: "Manually excluded for this run.", reasonCode: "MANUAL_EXCLUSION" });
+      coverage.excluded++; continue;
+    }
+    // Winners-shape pool rules never apply to a locked player (the preset
+    // computes its exclusions without him), so this cannot reach a lock.
+    const shapeReason = shapeExcluded.get(player.dkPlayerId);
+    if (shapeReason) {
+      eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden: false, reason: shapeReason, reasonCode: "WINNERS_SHAPE" });
       coverage.excluded++; continue;
     }
     // A lock is the user's own instruction and outranks a default about risk.
@@ -1058,7 +1153,10 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     }
     if (resolved.source === "dk_avg_fallback" || resolved.source === "our_fallback") coverage.fallback++; else coverage.direct++;
     eligibility.push({ ...named, eligible: true, salaryRelief, captainEligible, overridden, reason: null, reasonCode: null });
-    pool.push({ ...player, projectionAudit:resolveProjectionAudit(player,settings), projection: resolved.value, resolvedSource: resolved.source, salaryRelief, captainEligible });
+    // Winners shape (Showdown): the Captain slot is open only to the listed
+    // positions; the player still plays Flex, so this is not an exclusion.
+    const captainPositionAllowed = !settings.captainPositions || settings.captainPositions.includes(player.position);
+    pool.push({ ...player, projectionAudit:resolveProjectionAudit(player,settings), projection: resolved.value, resolvedSource: resolved.source, salaryRelief, captainEligible: captainEligible && captainPositionAllowed });
   }
 
   // A lock, or any minimum exposure, on a player outside the pool used to be
@@ -1203,6 +1301,14 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
     // is the user's own instruction and is honored exactly.
     const hasExplicit = policyById.has(p.dkPlayerId) || settings.maxExposureByPlayer[String(p.dkPlayerId)] != null;
     if (!hasExplicit) counts.overallMax = Math.max(1, counts.overallMax);
+    // Winners shape: a quarterback cap below the flat default, and a captain
+    // cap, both yielding to a range the user set on that player himself.
+    if (!hasExplicit && settings.format === "classic" && p.position === "QB" && settings.maxQbExposure != null) {
+      counts.overallMax = Math.max(1, Math.min(counts.overallMax, Math.floor(settings.maxQbExposure * settings.nLineups)));
+    }
+    if (settings.format === "showdown" && settings.maxCaptainExposure != null && policyById.get(p.dkPlayerId)?.captain.maxPct == null) {
+      counts.captainMax = Math.max(1, counts.captainMin, Math.min(counts.captainMax, Math.floor(settings.maxCaptainExposure * settings.nLineups)));
+    }
     return [p.dkPlayerId, counts];
   }));
 
@@ -1290,8 +1396,14 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   const lineups: NflGeneratedLineup[] = [];
   let airMatchupLineups = 0;
   let goalLineLineups = 0;
+  let bringBackLineups = 0;
+  const bringBackShare = settings.format === "classic" && settings.mode === "gpp" && settings.stackPassCatchers > 0 ? settings.bringBackShare ?? null : null;
   for (let lineupNumber = 1; lineupNumber <= plan.length; lineupNumber++) {
     const remaining = plan.length - lineupNumber + 1;
+    // A bring-back share alternates: required while the run is behind the
+    // share, forbidden once it is level, so 50% lands on every other lineup.
+    const bringBackRule: BringBackRule = bringBackShare == null ? "default"
+      : Math.round(bringBackShare * lineupNumber) - bringBackLineups > 0 ? "require" : "forbid";
     const forced = new Set(locked);
     for (const player of pool) {
       // Force a player in when his remaining overall-minimum need equals the
@@ -1307,10 +1419,10 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
       if ((exposureCounts.get(candidate.dkPlayerId) ?? 0) > 0) continue;
       lineup = buildOne(pool, settings, lineupNumber, lineups, exposureCounts,
         new Set([...forced, candidate.dkPlayerId]), countsById, captainCounts, flexCounts,
-        plan[lineupNumber - 1].compiled, remaining, true, requireAirMatchup, requireGoalLine);
+        plan[lineupNumber - 1].compiled, remaining, true, requireAirMatchup, requireGoalLine, bringBackRule);
       if (lineup) break;
     }
-    lineup ??= buildOne(pool, settings, lineupNumber, lineups, exposureCounts, forced, countsById, captainCounts, flexCounts, plan[lineupNumber - 1].compiled, remaining, true, requireAirMatchup, requireGoalLine);
+    lineup ??= buildOne(pool, settings, lineupNumber, lineups, exposureCounts, forced, countsById, captainCounts, flexCounts, plan[lineupNumber - 1].compiled, remaining, true, requireAirMatchup, requireGoalLine, bringBackRule);
     if (!lineup) {
       if (requireAirMatchup && requireGoalLine) throw new Error(`Could not meet the air-yard matchup and goal-line RB minimums together with the remaining exposure, salary, and roster constraints. Lower a percentage or adjust player limits.`);
       if (requireAirMatchup) throw new Error(`Could not meet the air-yard matchup minimum of ${airMatchupTarget}/${settings.nLineups} lineups with the remaining exposure, salary, and roster constraints. Lower the percentage or adjust player limits.`);
@@ -1319,6 +1431,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
       break;
     }
     lineups.push(lineup);
+    if (lineup.stackSummary.bringBack) bringBackLineups++;
     if (lineup.slots.some(({ player }) => isNflGppSignalPlayer(player.playerSignals, ["AIR_MATCHUP"]))) airMatchupLineups++;
     if (lineup.slots.some(({ player }) => player.position === "RB" && isNflGppSignalPlayer(player.playerSignals, ["INSIDE_FIVE"]))) goalLineLineups++;
     // Track overall and slot-specific appearances. Captain and Flex are counted
@@ -1329,6 +1442,9 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
       if (slot.slot === "CPT") captainCounts.set(id, (captainCounts.get(id) ?? 0) + 1);
       else flexCounts.set(id, (flexCounts.get(id) ?? 0) + 1);
     }
+  }
+  if (bringBackShare != null && lineups.length) {
+    warnings.push(`Bring-back share: ${bringBackLineups} of ${lineups.length} lineups carry an opposing bring-back (target ${Math.round(bringBackShare * 100)}%).`);
   }
   if (airMatchupTarget) {
     if (airMatchupLineups < airMatchupTarget) throw new Error(`Air-yard matchup minimum missed: ${airMatchupLineups}/${airMatchupTarget} required lineups. Adjust the percentage or player limits.`);
@@ -1377,7 +1493,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   const exactDuplicates = findExactDuplicates(lineups);
   if (exactDuplicates.length) warnings.push(`${exactDuplicates.length} exact-duplicate lineup pair(s) detected — this should not happen; report the run.`);
   const overlap = computeMaxOverlap(lineups);
-  const ownershipValidated = (settings.ownershipCapability ?? "unavailable") === "validated";
+  const ownershipValidated = settings.duplicationModelValidated === true && settings.ownershipCapability === "validated";
   const ownershipByPlayer = new Map(pool.filter((p) => ownershipPct(p) != null).map((p) => [p.dkPlayerId, (ownershipPct(p) as number) / 100]));
   const duplication = ownershipByPlayer.size
     ? estimateDuplication(lineups.map((l) => ({ lineupNumber: l.lineupNumber, playerIds: l.playerIds, totalSalary: l.totalSalary })), { ownershipValidated, ownershipByPlayer })
@@ -1392,5 +1508,5 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], settings: NflO
   const archetypePlan = planned.length ? [...requestedById].map(([archetypeId, requested]) => ({ archetypeId, label: ARCHETYPE_LABELS[archetypeId], requested,
     realized: lineups.filter((lineup) => lineup.archetype?.id === archetypeId).length })) : undefined;
 
-  return { lineups, warnings, sourceCoverage: coverage, eligibility, exposureReport, salaryBandReport, duplication, maxPairwiseOverlap: overlap, archetypePlan };
+  return { lineups, warnings, sourceCoverage: coverage, eligibility, exposureReport, salaryBandReport, duplication, maxPairwiseOverlap: overlap, archetypePlan, topProjectedPlayerIds: topProjectedTargets.map(player => player.dkPlayerId) };
 }

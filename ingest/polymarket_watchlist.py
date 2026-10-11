@@ -423,7 +423,7 @@ def score_forward(db: DatabaseManager, cohort: str, sport: str, max_markets: int
               "This is the expected state immediately after freezing.", file=sys.stderr)
         return 0
 
-    aggregated, counts = accumulate(forward)
+    aggregated, counts, _dev = accumulate(forward)
     scored_at = datetime.now(timezone.utc)
     groups = {w["wallet"]: w["cohort_group"] for w in wallets}
     totals: Dict[str, List[float]] = {"selected": [0.0, 0.0], "control": [0.0, 0.0]}

@@ -60,11 +60,12 @@ class Settings:
     role_prior_opportunities: float = 20.
     half_life_weeks: float = 6.
     max_snaps: int = 220
-    # v1 hands every team opportunity to a named supported player, so a scorer
-    # outside that list (newcomer, depth player, unsupported roster name) has a
-    # structural zero. When on, OTHER:TEAM receives the share of opportunities
-    # that historically went to players absent from the team's prior three games.
-    newcomer_reserve: bool = False
+    # OTHER:TEAM receives the share of opportunities that historically went to
+    # players absent from the team's prior three games. False reproduces v1, which
+    # gave a structural zero to every scorer outside the named roster. Promoted to
+    # the default on 2026-10-09 after the 2025 confirmation (claude/proactive-
+    # decision-validation); `--no-newcomer-reserve` reproduces v1.
+    newcomer_reserve: bool = True
 
     def __post_init__(self):
         if self.draws < 1 or self.max_snaps < 1:

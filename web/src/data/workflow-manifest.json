@@ -62,6 +62,17 @@
       "pullRequest": false
     },
     {
+      "file": "capture_nfl_props.yml",
+      "name": "Capture NFL prop evidence",
+      "crons": [
+        "37 14 * * 0"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
       "file": "capture_odds_history.yml",
       "name": "Capture Odds History",
       "crons": [
@@ -356,6 +367,20 @@
       "name": "Refresh NFL DraftKings Pool Status",
       "crons": [
         "22 3,15 * * *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "refresh_nfl_longest_touchdown.yml",
+      "name": "Publish NFL Longest Touchdown weeks",
+      "crons": [
+        "0 16 * * 3",
+        "0 14 * * 4",
+        "0 14 * * 0",
+        "0 14 * * 1"
       ],
       "dispatch": true,
       "afterWorkflows": [],

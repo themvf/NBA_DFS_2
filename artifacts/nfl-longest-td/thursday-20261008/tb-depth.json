@@ -1,0 +1,447 @@
+{
+  "schema_version": "nfl-dual-depth-audit-v1",
+  "season": 2026,
+  "team": "TB",
+  "captured_at": "2026-10-06T13:43:26.771763+00:00",
+  "sources": {
+    "sleeper": {
+      "basis": "ff_players.metadata.sleeper",
+      "snapshot_id": 5856,
+      "snapshot_fetched_at": "2026-10-06T07:36:19.035514+00:00",
+      "response_hash": "a71d1e6d0a10d63987bf79e7a44d28cc1a2b5179a1cbe480c5d64df7a594d502",
+      "latest_player_row_updated_at": "2026-10-06T12:07:38.922751+00:00"
+    },
+    "fantasypros": {
+      "url": "https://www.fantasypros.com/nfl/depth-chart/tampa-bay-buccaneers.php",
+      "retrieved_at": "2026-10-06T13:43:27.122614+00:00",
+      "provider_updated_at": null,
+      "response_sha256": "48e8175e8615cd9bbb826fd04fc542d66c084538115231a73dc909e2705674d6"
+    }
+  },
+  "role_policy": "A depth rank is evidence, not a snap or target forecast. Conflicts require review; neither source silently wins.",
+  "comparisons": [
+    {
+      "player_id": 262,
+      "name": "Chase McLaughlin",
+      "position": "K",
+      "identity_method": "fantasypros_player_id",
+      "sleeper": {
+        "rank": 1,
+        "alignment": "K",
+        "status": "Active",
+        "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+      },
+      "fantasypros": {
+        "rank": 1,
+        "player_id": 19058
+      },
+      "decision": "agree"
+    },
+    {
+      "player_id": 985,
+      "name": "Jalon Daniels",
+      "position": "QB",
+      "identity_method": "fantasypros_player_id",
+      "sleeper": {
+        "rank": 1,
+        "alignment": "QB",
+        "status": "Active",
+        "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+      },
+      "fantasypros": {
+        "rank": 1,
+        "player_id": 26060
+      },
+      "decision": "agree"
+    },
+    {
+      "player_id": 237,
+      "name": "Baker Mayfield",
+      "position": "QB",
+      "identity_method": "fantasypros_player_id",
+      "sleeper": {
+        "rank": 2,
+        "alignment": "QB",
+        "status": "Out",
+        "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+      },
+      "fantasypros": {
+        "rank": 2,
+        "player_id": 17237
+      },
+      "decision": "agree"
+    },
+    {
+      "player_id": 587,
+      "name": "Bucky Irving",
+      "position": "RB",
+      "identity_method": "fantasypros_player_id",
+      "sleeper": {
+        "rank": 1,
+        "alignment": "RB",
+        "status": "Active",
+        "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+      },
+      "fantasypros": {
+        "rank": 1,
+        "player_id": 25981
+      },
+      "decision": "agree"
+    },
+    {
+      "player_id": 358,
+      "name": "Kenny Gainwell",
+      "position": "RB",
+      "identity_method": "fantasypros_player_id",
+      "sleeper": {
+        "rank": 2,
+        "alignment": "RB",
+        "status": "Active",
+        "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+      },
+      "fantasypros": {
+        "rank": 2,
+        "player_id": 23310
+      },
+      "decision": "agree"
+    },
+    {
+      "player_id": 540,
+      "name": "Sean Tucker",
+      "position": "RB",
+      "identity_method": "fantasypros_player_id",
+      "sleeper": {
+        "rank": 3,
+        "alignment": "RB",
+        "status": "Active",
+        "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+      },
+      "fantasypros": {
+        "rank": 3,
+        "player_id": 23679
+      },
+      "decision": "agree"
+    },
+    {
+      "player_id": 459,
+      "name": "Cade Otton",
+      "position": "TE",
+      "identity_method": "fantasypros_player_id",
+      "sleeper": {
+        "rank": 1,
+        "alignment": "TE",
+        "status": "Active",
+        "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+      },
+      "fantasypros": {
+        "rank": 1,
+        "player_id": 23181
+      },
+      "decision": "agree"
+    },
+    {
+      "player_id": 700,
+      "name": "Emeka Egbuka",
+      "position": "WR",
+      "identity_method": "fantasypros_player_id",
+      "sleeper": {
+        "rank": 1,
+        "alignment": "LWR",
+        "status": "Active",
+        "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+      },
+      "fantasypros": {
+        "rank": 1,
+        "player_id": 23062
+      },
+      "decision": "agree"
+    },
+    {
+      "player_id": 213,
+      "name": "Chris Godwin Jr.",
+      "position": "WR",
+      "identity_method": "fantasypros_player_id",
+      "sleeper": {
+        "rank": 2,
+        "alignment": "SWR",
+        "status": "Active",
+        "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+      },
+      "fantasypros": {
+        "rank": 2,
+        "player_id": 16406
+      },
+      "decision": "agree"
+    },
+    {
+      "player_id": 914,
+      "name": "Ted Hurst III",
+      "position": "WR",
+      "identity_method": "fantasypros_player_id",
+      "sleeper": {
+        "rank": 3,
+        "alignment": "RWR",
+        "status": "Active",
+        "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+      },
+      "fantasypros": {
+        "rank": 3,
+        "player_id": 28130
+      },
+      "decision": "agree"
+    },
+    {
+      "player_id": 658,
+      "name": "Jalen McMillan",
+      "position": "WR",
+      "identity_method": "fantasypros_player_id",
+      "sleeper": {
+        "rank": 7,
+        "alignment": "LWR",
+        "status": "IR",
+        "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+      },
+      "fantasypros": {
+        "rank": 4,
+        "player_id": 23179
+      },
+      "decision": "conflict"
+    },
+    {
+      "player_id": 731,
+      "name": "Tez Johnson",
+      "position": "WR",
+      "identity_method": "fantasypros_player_id",
+      "sleeper": {
+        "rank": 4,
+        "alignment": "SWR",
+        "status": "Active",
+        "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+      },
+      "fantasypros": {
+        "rank": 5,
+        "player_id": 27147
+      },
+      "decision": "conflict"
+    }
+  ],
+  "sleeper_only": [
+    {
+      "id": 522,
+      "name": "B.T. Potter",
+      "position": "K",
+      "fantasypros_player_id": 25554,
+      "depth_chart_position": null,
+      "depth_order": null,
+      "status": "Active",
+      "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+    },
+    {
+      "id": 1393,
+      "name": "Brett Rypien",
+      "position": "QB",
+      "fantasypros_player_id": 18323,
+      "depth_chart_position": null,
+      "depth_order": null,
+      "status": "Active",
+      "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+    },
+    {
+      "id": 766,
+      "name": "Connor Bazelak",
+      "position": "QB",
+      "fantasypros_player_id": 27585,
+      "depth_chart_position": null,
+      "depth_order": null,
+      "status": "Active",
+      "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+    },
+    {
+      "id": 259,
+      "name": "Easton Stick",
+      "position": "QB",
+      "fantasypros_player_id": 18446,
+      "depth_chart_position": null,
+      "depth_order": null,
+      "status": "Active",
+      "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+    },
+    {
+      "id": 246,
+      "name": "Jake Browning",
+      "position": "QB",
+      "fantasypros_player_id": 18557,
+      "depth_chart_position": null,
+      "depth_order": null,
+      "status": "Active",
+      "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+    },
+    {
+      "id": 1466,
+      "name": "Barika Kpeenu",
+      "position": "RB",
+      "fantasypros_player_id": 28430,
+      "depth_chart_position": null,
+      "depth_order": null,
+      "status": null,
+      "fetched_at": "2026-10-06T07:36:19.038327+00:00"
+    },
+    {
+      "id": 768,
+      "name": "Josh Williams",
+      "position": "RB",
+      "fantasypros_player_id": 27444,
+      "depth_chart_position": null,
+      "depth_order": null,
+      "status": "Active",
+      "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+    },
+    {
+      "id": 1039,
+      "name": "Kadarius Calloway",
+      "position": "RB",
+      "fantasypros_player_id": 28872,
+      "depth_chart_position": null,
+      "depth_order": null,
+      "status": "Questionable",
+      "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+    },
+    {
+      "id": 926,
+      "name": "Bauer Sharp",
+      "position": "TE",
+      "fantasypros_player_id": 28165,
+      "depth_chart_position": "TE",
+      "depth_order": 3,
+      "status": "Active",
+      "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+    },
+    {
+      "id": 792,
+      "name": "CJ Dippre",
+      "position": "TE",
+      "fantasypros_player_id": 27251,
+      "depth_chart_position": null,
+      "depth_order": null,
+      "status": "Active",
+      "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+    },
+    {
+      "id": 644,
+      "name": "Devin Culp",
+      "position": "TE",
+      "fantasypros_player_id": 26440,
+      "depth_chart_position": null,
+      "depth_order": null,
+      "status": "Active",
+      "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+    },
+    {
+      "id": 408,
+      "name": "Ko Kieft",
+      "position": "TE",
+      "fantasypros_player_id": 24568,
+      "depth_chart_position": "TE",
+      "depth_order": 4,
+      "status": "Out",
+      "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+    },
+    {
+      "id": 552,
+      "name": "Payne Durham",
+      "position": "TE",
+      "fantasypros_player_id": 25346,
+      "depth_chart_position": "TE",
+      "depth_order": 2,
+      "status": "Active",
+      "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+    },
+    {
+      "id": 263,
+      "name": "David Sills",
+      "position": "WR",
+      "fantasypros_player_id": null,
+      "depth_chart_position": "RWR",
+      "depth_order": 6,
+      "status": "IR",
+      "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+    },
+    {
+      "id": 1040,
+      "name": "Dean Patterson IV",
+      "position": "WR",
+      "fantasypros_player_id": 28871,
+      "depth_chart_position": null,
+      "depth_order": null,
+      "status": "Active",
+      "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+    },
+    {
+      "id": 424,
+      "name": "Dennis Houston",
+      "position": "WR",
+      "fantasypros_player_id": 24857,
+      "depth_chart_position": null,
+      "depth_order": null,
+      "status": "Questionable",
+      "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+    },
+    {
+      "id": 987,
+      "name": "Eric Rivers Jr.",
+      "position": "WR",
+      "fantasypros_player_id": 28128,
+      "depth_chart_position": null,
+      "depth_order": null,
+      "status": "Active",
+      "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+    },
+    {
+      "id": 767,
+      "name": "Garrett Greene",
+      "position": "WR",
+      "fantasypros_player_id": 27461,
+      "depth_chart_position": null,
+      "depth_order": null,
+      "status": "Active",
+      "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+    },
+    {
+      "id": 597,
+      "name": "Jha'Quan Jackson",
+      "position": "WR",
+      "fantasypros_player_id": 26377,
+      "depth_chart_position": null,
+      "depth_order": null,
+      "status": "Active",
+      "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+    },
+    {
+      "id": 623,
+      "name": "Kameron Johnson",
+      "position": "WR",
+      "fantasypros_player_id": 26626,
+      "depth_chart_position": "SWR",
+      "depth_order": 5,
+      "status": "Active",
+      "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+    },
+    {
+      "id": 1468,
+      "name": "Matthew Henry",
+      "position": "WR",
+      "fantasypros_player_id": 29432,
+      "depth_chart_position": null,
+      "depth_order": null,
+      "status": "Active",
+      "fetched_at": "2026-10-06T12:07:38.922751+00:00"
+    }
+  ],
+  "fantasypros_only": [],
+  "counts": {
+    "matched": 12,
+    "conflicts": 2,
+    "sleeper_only": 21,
+    "fantasypros_only": 0
+  }
+}

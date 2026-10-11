@@ -2844,6 +2844,180 @@ TABLES = [
         computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         PRIMARY KEY (contest_id, version)
     )""",
+    # The top N entries of an export, roster and all (`--keep-top N` in
+    # ingest/nfl_dfs_field_audit.py). The structure table above deliberately
+    # keeps no lineups; this one keeps only the top of the standings, so the
+    # question "what did the people who won build" can be asked next to the
+    # dfsdb profiles of the same users (join dfsdb_users.display_name =
+    # username). Python owns writes.
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_field_top_entries (
+        contest_id TEXT NOT NULL REFERENCES nfl_dfs_field_contests(contest_id) ON DELETE CASCADE,
+        entry_id TEXT NOT NULL,
+        rank INTEGER NOT NULL,
+        entry_name TEXT NOT NULL,
+        username TEXT NOT NULL,
+        user_entries INTEGER,
+        points DOUBLE PRECISION,
+        lineup_text TEXT NOT NULL,
+        players JSONB NOT NULL,
+        ownership_sum DOUBLE PRECISION,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (contest_id, entry_id)
+    )""",
+    """CREATE INDEX IF NOT EXISTS idx_nfl_dfs_field_top_entries_user
+        ON nfl_dfs_field_top_entries (username)""",
+    # A top finisher's whole portfolio in one contest, from stat-api's per-user
+    # lineups endpoint (ingest/statapi_contest.py): record, stat-api's own
+    # analysis (stacks, dispersion, chalk exposure), per-player exposure vs the
+    # field, and EVERY lineup they entered with its roster. The export path
+    # cannot see this (one row per entry, no per-user view). Python owns writes.
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_field_user_builds (
+        contest_id TEXT NOT NULL REFERENCES nfl_dfs_field_contests(contest_id) ON DELETE CASCADE,
+        username TEXT NOT NULL,
+        entries INTEGER,
+        best_rank INTEGER,
+        cashed INTEGER,
+        total_payout DOUBLE PRECISION,
+        avg_points DOUBLE PRECISION,
+        players_used INTEGER,
+        analysis JSONB NOT NULL DEFAULT '{}'::jsonb,
+        exposure JSONB NOT NULL DEFAULT '[]'::jsonb,
+        lineups JSONB NOT NULL DEFAULT '[]'::jsonb,
+        source TEXT NOT NULL,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (contest_id, username)
+    )""",
+
+    # The weekly winners-versus-us review (ingest/nfl_dfs_flagship_review.py):
+    # one row per contest and review version holding the top finishers'
+    # portfolio analysis and the same analysis of our saved build, so the
+    # comparison accumulates week by week. Python owns writes.
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_field_build_reviews (
+        contest_id TEXT NOT NULL REFERENCES nfl_dfs_field_contests(contest_id) ON DELETE CASCADE,
+        review_version TEXT NOT NULL,
+        season INTEGER,
+        week INTEGER,
+        run_id UUID,
+        top_n INTEGER NOT NULL,
+        winners JSONB NOT NULL,
+        ours JSONB,
+        computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (contest_id, review_version)
+    )""",
+
+    # ── dfsdb.com contest archive (ingest/dfsdb_contest.py) ──────────────────
+    #
+    # One pasted contest link, imported on demand: the contest card, the
+    # athlete table (capped at 50 by dfsdb -- near-complete for a showdown,
+    # a fraction of a classic pool), the per-USER standings (one row per user,
+    # their best rank and their total winnings across every entry), and the
+    # profiles of the users who finished on top. Separate from nfl_dfs_field_*
+    # because the source is a third-party archive, not DraftKings' own export,
+    # and because dfsdb covers every sport. Rows are upserted by dfsdb id; the
+    # payload digest records what was seen.
+    """CREATE TABLE IF NOT EXISTS dfsdb_contests (
+        dfsdb_id UUID PRIMARY KEY,
+        platform TEXT,
+        sport TEXT NOT NULL,
+        contest_name TEXT NOT NULL,
+        contest_date DATE,
+        buy_in DOUBLE PRECISION,
+        prize_pool DOUBLE PRECISION,
+        total_entries INTEGER,
+        contest_series TEXT,
+        contest_type TEXT,
+        contest_category TEXT,
+        validation_status TEXT,
+        format TEXT NOT NULL,
+        stats JSONB NOT NULL DEFAULT '{}'::jsonb,
+        payout_curve JSONB,
+        standings_users INTEGER,
+        standings_fetched INTEGER NOT NULL DEFAULT 0,
+        standings_complete BOOLEAN NOT NULL DEFAULT FALSE,
+        source_url TEXT NOT NULL,
+        payload_digest TEXT NOT NULL,
+        import_version TEXT NOT NULL,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CHECK(format IN ('classic','showdown'))
+    )""",
+    """CREATE TABLE IF NOT EXISTS dfsdb_contest_athletes (
+        id BIGSERIAL PRIMARY KEY,
+        dfsdb_id UUID NOT NULL REFERENCES dfsdb_contests(dfsdb_id) ON DELETE CASCADE,
+        athlete_name TEXT NOT NULL,
+        normalized_name TEXT NOT NULL,
+        position TEXT,
+        team TEXT,
+        salary INTEGER,
+        fantasy_points DOUBLE PRECISION,
+        ownership_pct DOUBLE PRECISION,
+        UNIQUE(dfsdb_id, normalized_name, team)
+    )""",
+    """CREATE TABLE IF NOT EXISTS dfsdb_contest_standings (
+        entry_id UUID PRIMARY KEY,
+        dfsdb_id UUID NOT NULL REFERENCES dfsdb_contests(dfsdb_id) ON DELETE CASCADE,
+        rank INTEGER NOT NULL,
+        points DOUBLE PRECISION,
+        winnings DOUBLE PRECISION,
+        cash_winnings DOUBLE PRECISION,
+        entry_cost DOUBLE PRECISION,
+        entry_count INTEGER,
+        user_id UUID,
+        username TEXT,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )""",
+    """CREATE INDEX IF NOT EXISTS idx_dfsdb_contest_standings_rank
+        ON dfsdb_contest_standings (dfsdb_id, rank)""",
+    """CREATE TABLE IF NOT EXISTS dfsdb_users (
+        user_id UUID PRIMARY KEY,
+        display_name TEXT NOT NULL,
+        dfsdb_created_at TIMESTAMPTZ,
+        summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+        stats JSONB NOT NULL DEFAULT '[]'::jsonb,
+        splits JSONB NOT NULL DEFAULT '[]'::jsonb,
+        payload_digest TEXT NOT NULL,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )""",
+    """CREATE TABLE IF NOT EXISTS dfsdb_user_contest_history (
+        entry_id UUID PRIMARY KEY,
+        user_id UUID NOT NULL REFERENCES dfsdb_users(user_id) ON DELETE CASCADE,
+        dfsdb_contest_id UUID NOT NULL,
+        contest_name TEXT,
+        contest_date DATE,
+        sport TEXT,
+        buy_in DOUBLE PRECISION,
+        prize_pool DOUBLE PRECISION,
+        total_entries INTEGER,
+        rank INTEGER,
+        points DOUBLE PRECISION,
+        winnings DOUBLE PRECISION,
+        cash_winnings DOUBLE PRECISION,
+        entry_cost DOUBLE PRECISION,
+        entry_count INTEGER,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )""",
+    """CREATE INDEX IF NOT EXISTS idx_dfsdb_user_history_user
+        ON dfsdb_user_contest_history (user_id, contest_date)""",
+    # dfsdb's "top lineups" feed: full rosters (DraftKings player ids, salary,
+    # points) for the highest-scoring tracked lineups per sport and year. It is
+    # a global feed, not a per-contest one, so a row's contest may not be in
+    # dfsdb_contests; the contest card is carried inline.
+    """CREATE TABLE IF NOT EXISTS dfsdb_lineups (
+        lineup_id UUID PRIMARY KEY,
+        dfsdb_contest_id UUID NOT NULL,
+        sport TEXT NOT NULL,
+        contest_name TEXT,
+        contest_date DATE,
+        user_id UUID,
+        username TEXT,
+        rank INTEGER,
+        points DOUBLE PRECISION,
+        winnings DOUBLE PRECISION,
+        lineup_hash TEXT,
+        lineup_players JSONB NOT NULL,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )""",
+    """CREATE INDEX IF NOT EXISTS idx_dfsdb_lineups_contest
+        ON dfsdb_lineups (dfsdb_contest_id, rank)""",
 
     # ── DraftKings' own live player pool ─────────────────────────────────────
     #
@@ -5462,6 +5636,9 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_ff_players_season_name ON ff_players(season, normalized_name, position)",
     "CREATE INDEX IF NOT EXISTS idx_ff_injury_observations_player ON ff_player_injury_observations(player_id, observed_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_ff_injury_observations_source ON ff_player_injury_observations(source, season, observed_at DESC)",
+    # The DFS page's per-player 'newest Sleeper depth row at the slate's cutoff' read: without it the
+    # read sorted the whole season (378k rows, 188 MB on disk) to return ~1,000 (2026-10-10).
+    "CREATE INDEX IF NOT EXISTS idx_ff_injury_observations_sleeper_depth ON ff_player_injury_observations(season, player_id, observed_at DESC, id DESC) WHERE source='sleeper' AND raw_payload ? 'depth_chart_order'",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_ff_player_injuries_one_active ON ff_player_injuries(player_id) WHERE active",
     "CREATE INDEX IF NOT EXISTS idx_ff_player_injuries_active ON ff_player_injuries(season, active, status)",
     "CREATE INDEX IF NOT EXISTS idx_ff_injury_events_recent ON ff_injury_events(player_id, occurred_at DESC)",
@@ -5850,6 +6027,32 @@ INDEXES = [
         UNIQUE (sport, event_id, market, player, capture_key)
     )""",
     "CREATE INDEX IF NOT EXISTS idx_prop_odds_latest ON prop_odds_history(sport, event_id, market, player, captured_at DESC)",
+    # 2026-10-11: game-leader page DK pricing. One row per (game, market, player)
+    # each time a pregame prop capture re-prices the saved leader forecast
+    # (research.nfl_game_leaders_market refresh). Append-only; the page reads the
+    # latest computed_at per game. line/prices are NULL for players DK does not list.
+    """CREATE TABLE IF NOT EXISTS nfl_game_leader_market (
+        id BIGSERIAL PRIMARY KEY,
+        game_id TEXT NOT NULL,
+        metric TEXT NOT NULL,
+        identity TEXT NOT NULL,
+        player TEXT NOT NULL,
+        team TEXT,
+        book TEXT,
+        line DOUBLE PRECISION,
+        over_price INTEGER,
+        under_price INTEGER,
+        fair_over DOUBLE PRECISION,
+        model_p_over DOUBLE PRECISION,
+        model_leader_share DOUBLE PRECISION NOT NULL,
+        market_leader_share DOUBLE PRECISION NOT NULL,
+        prop_captured_at TIMESTAMPTZ,
+        forecast_decision_at TIMESTAMPTZ NOT NULL,
+        computed_at TIMESTAMPTZ NOT NULL,
+        version TEXT NOT NULL,
+        UNIQUE (game_id, metric, identity, computed_at)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_game_leader_market_latest ON nfl_game_leader_market(game_id, computed_at DESC)",
     # 2026-07-02: execution-book CLV. clv_pp measures the REFERENCE market
     # (did the sharp consensus move toward the flagged side — informational
     # content); dk_clv_pct measures the EXECUTION book (did DK's own price on

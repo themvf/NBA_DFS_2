@@ -12,15 +12,37 @@ import { calibratedSnapshotsQuery } from "@/lib/nfl-dfs/source-queries";
  * one captured after its decision time, which the reader then refused, so every
  * saved slate lost its candidates at the next daily freeze.
  */
+type Recipe={features:string[];center:number[];scale:number[];coefficients:number[]};
+type Recipes=Record<string,{recipe:Recipe}>;
+// A research run's report is immutable and ~570 KB; the page read fetched it
+// on every open just for the explanation recipes. Cached per server instance,
+// keyed by the pinned study and digest. Only a matched report is cached: a
+// failed read, a missing row or a digest mismatch rejects (uncached, logged by
+// the caller), so a one-off miss cannot blank explanations for the instance.
+const recipesByStudy=new Map<string,Promise<Recipes>>();
+function studyRecipes(studyId:string,digest:string):Promise<Recipes> {
+  const key=`${studyId}:${digest}`;
+  let pending=recipesByStudy.get(key);
+  if(!pending) {
+    pending=db.execute(sql`SELECT report FROM nfl_dfs_research_runs WHERE run_id=${studyId}`).then(study=>{
+      const report=study.rows[0]?.report as {output_digest?:string;candidates?:Recipes}|undefined;
+      if(!report)throw new Error(`study ${studyId.slice(0,8)} has no stored report`);
+      if(report.output_digest!==digest)throw new Error(`study ${studyId.slice(0,8)} report digest does not match the pinned release`);
+      return report.candidates??{};
+    });
+    pending.catch(()=>recipesByStudy.delete(key));
+    recipesByStudy.set(key,pending);
+  }
+  return pending;
+}
+
 export async function getCalibratedSnapshots(season: number, week: number, asOf: Date): Promise<CalibrationSnapshot[]> {
-  const result = await db.execute(calibratedSnapshotsQuery(calibratedRelease.studyId, season, week, asOf));
-  type Recipe={features:string[];center:number[];scale:number[];coefficients:number[]};
-  let recipes:Record<string,{recipe:Recipe}>={};
-  try {
-    const study=await db.execute(sql`SELECT report FROM nfl_dfs_research_runs WHERE run_id=${calibratedRelease.studyId}`);
-    const report=study.rows[0]?.report as {output_digest?:string;candidates?:typeof recipes}|undefined;
-    if(report?.output_digest===calibratedRelease.studyDigest)recipes=report.candidates??{};
-  }catch {/* Explanations degrade independently; the pinned forecast remains usable. */}
+  const [result,recipes]=await Promise.all([
+    db.execute(calibratedSnapshotsQuery(calibratedRelease.studyId, season, week, asOf)),
+    studyRecipes(calibratedRelease.studyId,calibratedRelease.studyDigest)
+      // Explanations degrade independently; the pinned forecast remains usable. Said in the server log, not dropped.
+      .catch((error:unknown):Recipes=>{console.error('Calibrated explanation recipes unavailable:',error instanceof Error?error.message:error);return {};}),
+  ]);
   return result.rows.map(r => {
     const p=r.payload as Record<string,unknown>,recipe=recipes[`${p.position}:opportunity`]?.recipe;
     let explanationTerms:CalibrationSnapshot['explanationTerms'];

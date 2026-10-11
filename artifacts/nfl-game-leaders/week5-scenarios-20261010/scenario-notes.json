@@ -1,0 +1,669 @@
+{
+ "2026_05_PHI_JAX": {
+  "PHI": {
+   "out": [
+    "Saquon Barkley (RB: 9.0 car, 1.8 tgt /g)",
+    "Marquise Brown (WR: 2.0 car, 0.0 tgt /g)",
+    "DeVonta Smith (WR: 0.0 car, 9.0 tgt /g)",
+    "Tank Bigsby (RB: 7.0 car, 1.0 tgt /g)",
+    "Johnny Wilson (WR: 0.0 car, 0.0 tgt /g)",
+    "Eli Stowers (TE: 0.0 car, 0.0 tgt /g)"
+   ],
+   "vacated_rb_carries_per_game": 16.0,
+   "departed_zeroed": [],
+   "carries_to": {
+    "Will Shipley": 0.55,
+    "Dameon Pierce": 0.35,
+    "Jaydon Blue": 0.1
+   },
+   "top_target_shares": {
+    "Dontayvion Wicks": 0.198,
+    "Darius Cooper": 0.198,
+    "Makai Lemon": 0.148,
+    "Dallas Goedert": 0.139,
+    "Zach Ertz": 0.119,
+    "Johnny Mundt": 0.079
+   }
+  },
+  "JAX": {
+   "out": [],
+   "vacated_rb_carries_per_game": 0,
+   "departed_zeroed": [],
+   "carries_to": {
+    "Bhayshul Tuten": 0.55,
+    "Chris Rodriguez Jr.": 0.35,
+    "LeQuint Allen Jr.": 0.1
+   },
+   "top_target_shares": {
+    "Parker Washington": 0.224,
+    "Brenton Strange": 0.155,
+    "Jakobi Meyers": 0.129,
+    "Brian Thomas Jr.": 0.121,
+    "Josh Cameron": 0.069,
+    "Bhayshul Tuten": 0.06
+   }
+  }
+ },
+ "2026_05_CIN_MIA": {
+  "CIN": {
+   "out": [
+    "Andrei Iosivas (WR: 0.0 car, 2.0 tgt /g)"
+   ],
+   "vacated_rb_carries_per_game": 0,
+   "departed_zeroed": [],
+   "carries_to": {
+    "Chase Brown": 0.55,
+    "Samaje Perine": 0.35,
+    "Tahj Brooks": 0.1
+   },
+   "top_target_shares": {
+    "Tee Higgins": 0.193,
+    "Ja'Marr Chase": 0.138,
+    "Mitchell Tinsley": 0.138,
+    "Chase Brown": 0.119,
+    "Mike Gesicki": 0.099,
+    "Dohnte Meyers": 0.079
+   }
+  },
+  "MIA": {
+   "out": [
+    "De'Von Achane (RB: 11.3 car, 4.0 tgt /g)",
+    "Cole Turner (TE: 0.0 car, 0.0 tgt /g)",
+    "Justin Joly (TE: 0.0 car, 0.0 tgt /g)",
+    "Caleb Douglas (WR: 0.0 car, 5.0 tgt /g)"
+   ],
+   "vacated_rb_carries_per_game": 11.3,
+   "departed_zeroed": [
+    "Bradley Pinion"
+   ],
+   "carries_to": {
+    "Ollie Gordon II": 0.55,
+    "Jaylen Wright": 0.35,
+    "Kaytron Allen": 0.1
+   },
+   "top_target_shares": {
+    "Malik Washington": 0.248,
+    "Greg Dulcich": 0.142,
+    "Kevin Coleman Jr.": 0.118,
+    "Chris Bell": 0.115,
+    "DJ Herman": 0.106,
+    "Ryan Miller": 0.071
+   }
+  }
+ },
+ "2026_05_LV_NE": {
+  "LV": {
+   "out": [
+    "Jalen Nailor (WR: 0.0 car, 3.7 tgt /g)",
+    "Chris Collier (RB: 0.0 car, 0.0 tgt /g)",
+    "Dont'e Thornton Jr. (WR: 0.0 car, 0.0 tgt /g)",
+    "Jack Bech (WR: 0.0 car, 3.0 tgt /g)",
+    "Corey Rucker (WR: 0.0 car, 0.0 tgt /g)"
+   ],
+   "vacated_rb_carries_per_game": 0.0,
+   "departed_zeroed": [],
+   "carries_to": {
+    "Ashton Jeanty": 0.55,
+    "Mike Washington Jr.": 0.35,
+    "Connor Heyward": 0.1
+   },
+   "top_target_shares": {
+    "Brock Bowers": 0.306,
+    "Ashton Jeanty": 0.153,
+    "Michael Mayer": 0.153,
+    "Tre Tucker": 0.147,
+    "Cody White": 0.064,
+    "Ian Thomas": 0.038
+   }
+  },
+  "NE": {
+   "out": [
+    "Mack Hollins (WR: 0.0 car, 5.0 tgt /g)",
+    "A.J. Brown (WR: 0.0 car, 4.0 tgt /g)",
+    "Reggie Gilliam (RB: 0.0 car, 2.0 tgt /g)",
+    "Julian Hill (TE: 0.0 car, 0.0 tgt /g)",
+    "Jeremiah Webb (WR: 0.0 car, 0.0 tgt /g)",
+    "Myles Montgomery (RB: 0.0 car, 0.0 tgt /g)"
+   ],
+   "vacated_rb_carries_per_game": 0.0,
+   "departed_zeroed": [],
+   "carries_to": {
+    "Rhamondre Stevenson": 0.55,
+    "TreVeyon Henderson": 0.35,
+    "Corey Kiner": 0.1
+   },
+   "top_target_shares": {
+    "Romeo Doubs": 0.179,
+    "DeMario Douglas": 0.152,
+    "Rhamondre Stevenson": 0.143,
+    "Hunter Henry": 0.134,
+    "Kyle Williams": 0.083,
+    "Efton Chism III": 0.083
+   }
+  }
+ },
+ "2026_05_MIN_NO": {
+  "MIN": {
+   "out": [
+    "Josh Oliver (TE: 0.0 car, 2.5 tgt /g)",
+    "Jordan Mason (RB: 15.0 car, 0.0 tgt /g)"
+   ],
+   "vacated_rb_carries_per_game": 15.0,
+   "departed_zeroed": [],
+   "carries_to": {
+    "Aaron Jones": 0.55,
+    "Demond Claiborne": 0.35,
+    "DeeJay Dallas": 0.1
+   },
+   "top_target_shares": {
+    "T.J. Hockenson": 0.22,
+    "Justin Jefferson": 0.192,
+    "Jordan Addison": 0.186,
+    "Aaron Jones": 0.127,
+    "Tai Felton": 0.051,
+    "Myles Price": 0.051
+   }
+  },
+  "NO": {
+   "out": [
+    "Travis Etienne (RB: 10.0 car, 4.3 tgt /g)",
+    "Ty Chandler (RB: 0.0 car, 0.0 tgt /g)",
+    "Mason Tipton (WR: 0.0 car, 0.0 tgt /g)",
+    "Moliki Matavao (TE: 0.0 car, 0.0 tgt /g)",
+    "Jordyn Tyson (WR: 0.0 car, 0.0 tgt /g)"
+   ],
+   "vacated_rb_carries_per_game": 10.0,
+   "departed_zeroed": [],
+   "carries_to": {
+    "Alvin Kamara": 0.55,
+    "Kendre Miller": 0.35,
+    "CJ Donaldson": 0.1
+   },
+   "top_target_shares": {
+    "Chris Olave": 0.248,
+    "Devaughn Vele": 0.16,
+    "Juwan Johnson": 0.14,
+    "Noah Fant": 0.124,
+    "Alvin Kamara": 0.097,
+    "Bryce Lance": 0.067
+   }
+  }
+ },
+ "2026_05_BAL_ATL": {
+  "BAL": {
+   "out": [
+    "Lamar Jackson (QB: 4.8 car, 0.0 tgt /g)",
+    "Durham Smythe (TE: 0.0 car, 1.0 tgt /g)",
+    "Skylar Thompson (QB: 0.0 car, 0.0 tgt /g)",
+    "Ja'Kobi Lane (WR: 0.0 car, 3.0 tgt /g)"
+   ],
+   "vacated_rb_carries_per_game": 0,
+   "departed_zeroed": [],
+   "carries_to": {
+    "Derrick Henry": 0.55,
+    "Justice Hill": 0.35,
+    "Rasheen Ali": 0.1
+   },
+   "top_target_shares": {
+    "Zay Flowers": 0.23,
+    "Mark Andrews": 0.188,
+    "Rashod Bateman": 0.117,
+    "LaJohntay Wester": 0.063,
+    "Elijah Sarratt": 0.063,
+    "Chris Moore": 0.063
+   }
+  },
+  "ATL": {
+   "out": [
+    "Trey Sermon (RB: 0.0 car, 0.0 tgt /g)"
+   ],
+   "vacated_rb_carries_per_game": 0.0,
+   "departed_zeroed": [],
+   "carries_to": {
+    "Bijan Robinson": 0.55,
+    "Brian Robinson": 0.35,
+    "Jam Miller": 0.1
+   },
+   "top_target_shares": {
+    "Drake London": 0.222,
+    "Bijan Robinson": 0.16,
+    "Jahan Dotson": 0.115,
+    "Chris Blair": 0.106,
+    "Austin Hooper": 0.083,
+    "Kyle Pitts": 0.08
+   }
+  }
+ },
+ "2026_05_BUF_LA": {
+  "BUF": {
+   "out": [
+    "Tyrell Shavers (WR: 0.0 car, 0.0 tgt /g)"
+   ],
+   "vacated_rb_carries_per_game": 0,
+   "departed_zeroed": [],
+   "carries_to": {
+    "James Cook": 0.55,
+    "Ty Johnson": 0.35,
+    "Ray Davis": 0.1
+   },
+   "top_target_shares": {
+    "Khalil Shakir": 0.177,
+    "DJ Moore": 0.154,
+    "Dalton Kincaid": 0.146,
+    "Keon Coleman": 0.123,
+    "Ty Johnson": 0.092,
+    "Josh Palmer": 0.092
+   }
+  },
+  "LAR": {
+   "out": [
+    "Ronnie Rivers (RB: 5.0 car, 1.0 tgt /g)",
+    "Terrance Ferguson (TE: 0.0 car, 4.0 tgt /g)",
+    "Matthew Caldwell (QB: 0.0 car, 0.0 tgt /g)"
+   ],
+   "vacated_rb_carries_per_game": 5.0,
+   "departed_zeroed": [
+    "Xavier Smith"
+   ],
+   "carries_to": {
+    "Kyren Williams": 0.55,
+    "Blake Corum": 0.35,
+    "Dean Connors": 0.1
+   },
+   "top_target_shares": {
+    "Puka Nacua": 0.228,
+    "Davante Adams": 0.206,
+    "Tyler Higbee": 0.137,
+    "Kyren Williams": 0.136,
+    "Konata Mumpfield": 0.076,
+    "Davis Allen": 0.038
+   }
+  }
+ },
+ "2026_05_CHI_GB": {
+  "CHI": {
+   "out": [
+    "Nikola Kalinic (TE: 0.0 car, 0.0 tgt /g)",
+    "Brittain Brown (RB: 0.0 car, 0.0 tgt /g)",
+    "Kyle Monangai (RB: 15.0 car, 1.2 tgt /g)",
+    "Hayden Large (TE: 0.0 car, 0.0 tgt /g)"
+   ],
+   "vacated_rb_carries_per_game": 15.0,
+   "departed_zeroed": [],
+   "carries_to": {
+    "D'Andre Swift": 0.55,
+    "Roschon Johnson": 0.35,
+    "Salvon Ahmed": 0.1
+   },
+   "top_target_shares": {
+    "Luther Burden III": 0.22,
+    "Kalif Raymond": 0.174,
+    "Rome Odunze": 0.152,
+    "Colston Loveland": 0.136,
+    "D'Andre Swift": 0.083,
+    "Cole Kmet": 0.053
+   }
+  },
+  "GB": {
+   "out": [
+    "Chris Brooks (RB: 3.8 car, 1.2 tgt /g)",
+    "Luke Musgrave (TE: 0.0 car, 0.0 tgt /g)",
+    "Jayden Reed (WR: 0.0 car, 4.0 tgt /g)",
+    "Savion Williams (WR: 0.0 car, 0.0 tgt /g)",
+    "Thomas Yassmin (TE: 0.0 car, 0.0 tgt /g)"
+   ],
+   "vacated_rb_carries_per_game": 3.8,
+   "departed_zeroed": [],
+   "carries_to": {
+    "MarShawn Lloyd": 0.55,
+    "Kaleb Johnson": 0.35,
+    "Pierre Strong": 0.1
+   },
+   "top_target_shares": {
+    "Matthew Golden": 0.236,
+    "Christian Watson": 0.204,
+    "Tucker Kraft": 0.153,
+    "Skyy Moore": 0.083,
+    "MarShawn Lloyd": 0.07,
+    "Jonnu Smith": 0.06
+   }
+  }
+ },
+ "2026_05_CLE_NYJ": {
+  "CLE": {
+   "out": [
+    "Tylan Wallace (WR: 0.0 car, 0.0 tgt /g)",
+    "Dylan Sampson (RB: 0.0 car, 0.0 tgt /g)",
+    "Dillon Gabriel (QB: 0.0 car, 0.0 tgt /g)",
+    "Joe Royer (TE: 0.0 car, 0.0 tgt /g)",
+    "Carsen Ryan (TE: 0.0 car, 0.0 tgt /g)"
+   ],
+   "vacated_rb_carries_per_game": 0.0,
+   "departed_zeroed": [],
+   "carries_to": {
+    "Quinshon Judkins": 0.55,
+    "Raheim Sanders": 0.35,
+    "Jaleel McLaughlin": 0.1
+   },
+   "top_target_shares": {
+    "KC Concepcion": 0.212,
+    "Harold Fannin Jr.": 0.174,
+    "Denzel Boston": 0.167,
+    "Quinshon Judkins": 0.121,
+    "Raheim Sanders": 0.083,
+    "Jerry Jeudy": 0.081
+   }
+  },
+  "NYJ": {
+   "out": [
+    "Breece Hall (RB: 17.0 car, 3.3 tgt /g)",
+    "Adonai Mitchell (WR: 0.0 car, 7.5 tgt /g)",
+    "Arian Smith (WR: 0.0 car, 1.0 tgt /g)",
+    "Omar Cooper Jr. (WR: 0.0 car, 1.0 tgt /g)"
+   ],
+   "vacated_rb_carries_per_game": 17.0,
+   "departed_zeroed": [],
+   "carries_to": {
+    "Braelon Allen": 0.55,
+    "Isaiah Davis": 0.35,
+    "Kene Nwangwu": 0.1
+   },
+   "top_target_shares": {
+    "Garrett Wilson": 0.296,
+    "Kenyon Sadiq": 0.172,
+    "Isaiah Williams": 0.114,
+    "Mason Taylor": 0.114,
+    "Jeremy Ruckert": 0.102,
+    "Braelon Allen": 0.067
+   }
+  }
+ },
+ "2026_05_IND_PIT": {
+  "IND": {
+   "out": [
+    "Ashton Dulin (WR: 0.0 car, 3.5 tgt /g)",
+    "Alec Pierce (WR: 0.0 car, 3.5 tgt /g)",
+    "Will Mallory (TE: 0.0 car, 0.0 tgt /g)",
+    "Carson Towt (TE: 0.0 car, 0.0 tgt /g)",
+    "D.J. Montgomery (WR: 0.0 car, 0.0 tgt /g)"
+   ],
+   "vacated_rb_carries_per_game": 0,
+   "departed_zeroed": [],
+   "carries_to": {
+    "Jonathan Taylor": 0.55,
+    "Seth McGowan": 0.35,
+    "DJ Giddens": 0.1
+   },
+   "top_target_shares": {
+    "Josh Downs": 0.219,
+    "Tyler Warren": 0.211,
+    "Keenan Allen": 0.209,
+    "Jonathan Taylor": 0.117,
+    "Laquon Treadwell": 0.086,
+    "Mo Alie-Cox": 0.031
+   }
+  },
+  "PIT": {
+   "out": [
+    "Michael Pittman (WR: 0.0 car, 4.0 tgt /g)"
+   ],
+   "vacated_rb_carries_per_game": 0,
+   "departed_zeroed": [],
+   "carries_to": {
+    "Jaylen Warren": 0.55,
+    "Rico Dowdle": 0.35,
+    "Travis Homer": 0.1
+   },
+   "top_target_shares": {
+    "DK Metcalf": 0.216,
+    "Roman Wilson": 0.157,
+    "Jaylen Warren": 0.131,
+    "Pat Freiermuth": 0.124,
+    "Germie Bernard": 0.096,
+    "Rico Dowdle": 0.091
+   }
+  }
+ },
+ "2026_05_DEN_LAC": {
+  "DEN": {
+   "out": [
+    "Pat Bryant (WR: 0.2 car, 3.0 tgt /g)",
+    "Jonah Coleman (RB: 10.0 car, 3.0 tgt /g)"
+   ],
+   "vacated_rb_carries_per_game": 10.0,
+   "departed_zeroed": [],
+   "carries_to": {
+    "RJ Harvey": 0.55,
+    "J.K. Dobbins": 0.35,
+    "Tyler Badie": 0.1
+   },
+   "top_target_shares": {
+    "RJ Harvey": 0.186,
+    "Jaylen Waddle": 0.173,
+    "Courtland Sutton": 0.146,
+    "Evan Engram": 0.086,
+    "Marvin Mims Jr.": 0.08,
+    "Nate Adkins": 0.067
+   }
+  },
+  "LAC": {
+   "out": [
+    "David Njoku (TE: 0.0 car, 4.0 tgt /g)",
+    "Quentin Johnston (WR: 0.5 car, 4.8 tgt /g)",
+    "KeAndre Lambert-Smith (WR: 0.0 car, 0.0 tgt /g)",
+    "Brenen Thompson (WR: 0.0 car, 3.0 tgt /g)"
+   ],
+   "vacated_rb_carries_per_game": 0,
+   "departed_zeroed": [],
+   "carries_to": {
+    "Omarion Hampton": 0.55,
+    "Keaton Mitchell": 0.35,
+    "Kimani Vidal": 0.1
+   },
+   "top_target_shares": {
+    "Tre Harris": 0.169,
+    "Ladd McConkey": 0.137,
+    "Alec Ingold": 0.129,
+    "Oronde Gadsden II": 0.121,
+    "Charlie Kolar": 0.097,
+    "Kimani Vidal": 0.097
+   }
+  }
+ },
+ "2026_05_DET_ARI": {
+  "DET": {
+   "out": [
+    "Isiah Pacheco (RB: 0.0 car, 0.0 tgt /g)",
+    "Kendrick Law (WR: 0.0 car, 0.0 tgt /g)"
+   ],
+   "vacated_rb_carries_per_game": 0.0,
+   "departed_zeroed": [],
+   "carries_to": {
+    "Jahmyr Gibbs": 0.55,
+    "Sione Vaki": 0.35,
+    "Jacob Saylors": 0.1
+   },
+   "top_target_shares": {
+    "Amon-Ra St. Brown": 0.267,
+    "Sam LaPorta": 0.185,
+    "Jahmyr Gibbs": 0.162,
+    "Jameson Williams": 0.145,
+    "Isaac TeSlaa": 0.099,
+    "Brock Wright": 0.039
+   }
+  },
+  "ARI": {
+   "out": [
+    "Hunter Long (TE: 0.0 car, 1.0 tgt /g)",
+    "Tip Reiman (TE: 0.0 car, 0.0 tgt /g)",
+    "Trey Benson (RB: 0.0 car, 0.0 tgt /g)",
+    "Jameson Geers (TE: 0.0 car, 0.0 tgt /g)"
+   ],
+   "vacated_rb_carries_per_game": 0.0,
+   "departed_zeroed": [],
+   "carries_to": {
+    "Jeremiyah Love": 0.55,
+    "Tyler Allgeier": 0.35,
+    "Bam Knight": 0.1
+   },
+   "top_target_shares": {
+    "Trey McBride": 0.275,
+    "Michael Wilson": 0.263,
+    "Kendrick Bourne": 0.112,
+    "Marvin Harrison Jr.": 0.078,
+    "Jeremiyah Love": 0.078,
+    "Tyler Allgeier": 0.06
+   }
+  }
+ },
+ "2026_05_SF_SEA": {
+  "SF": {
+   "out": [
+    "Kyle Juszczyk (RB: 0.0 car, 2.0 tgt /g)",
+    "Demarcus Robinson (WR: 0.0 car, 3.0 tgt /g)",
+    "Christian Kirk (WR: 0.0 car, 0.0 tgt /g)",
+    "Jake Tonges (TE: 0.0 car, 0.0 tgt /g)",
+    "Isaac Guerendo (RB: 0.0 car, 0.0 tgt /g)",
+    "Ricky Pearsall (WR: 0.0 car, 0.0 tgt /g)",
+    "De'Zhaun Stribling (WR: 0.0 car, 0.0 tgt /g)"
+   ],
+   "vacated_rb_carries_per_game": 0.0,
+   "departed_zeroed": [
+    "Jake Brendel"
+   ],
+   "carries_to": {
+    "Christian McCaffrey": 0.55,
+    "Kaelon Black": 0.35,
+    "Jordan James": 0.1
+   },
+   "top_target_shares": {
+    "Mike Evans": 0.197,
+    "Christian McCaffrey": 0.181,
+    "George Kittle": 0.181,
+    "Deebo Samuel Sr.": 0.139,
+    "Jordan Watkins": 0.066,
+    "Luke Farrell": 0.049
+   }
+  },
+  "SEA": {
+   "out": [
+    "Jake Bobo (WR: 0.0 car, 0.0 tgt /g)",
+    "Zach Charbonnet (RB: 0.0 car, 0.0 tgt /g)",
+    "Jacardia Wright (RB: 0.0 car, 0.0 tgt /g)",
+    "Jadarian Price (RB: 9.3 car, 2.3 tgt /g)"
+   ],
+   "vacated_rb_carries_per_game": 9.3,
+   "departed_zeroed": [],
+   "carries_to": {
+    "Emanuel Wilson": 0.55,
+    "George Holani": 0.35,
+    "Brady Russell": 0.1
+   },
+   "top_target_shares": {
+    "Jaxon Smith-Njigba": 0.333,
+    "Rashid Shaheed": 0.119,
+    "AJ Barner": 0.119,
+    "Cooper Kupp": 0.095,
+    "George Holani": 0.063,
+    "Tory Horton": 0.063
+   }
+  }
+ },
+ "2026_05_HOU_TEN": {
+  "HOU": {
+   "out": [
+    "Tank Dell (WR: 0.0 car, 0.0 tgt /g)",
+    "British Brooks (RB: 0.0 car, 0.0 tgt /g)",
+    "Jayden Higgins (WR: 0.0 car, 0.0 tgt /g)",
+    "Graham Mertz (QB: 0.0 car, 0.0 tgt /g)"
+   ],
+   "vacated_rb_carries_per_game": 0.0,
+   "departed_zeroed": [],
+   "carries_to": {
+    "David Montgomery": 0.55,
+    "Woody Marks": 0.35,
+    "Dare Ogunbowale": 0.1
+   },
+   "top_target_shares": {
+    "Nico Collins": 0.202,
+    "Dalton Schultz": 0.152,
+    "Xavier Hutchinson": 0.146,
+    "Jared Wayne": 0.09,
+    "Kayshon Boutte": 0.073,
+    "Jaylin Noel": 0.067
+   }
+  },
+  "TEN": {
+   "out": [
+    "Jaren Kanak (TE: 0.0 car, 0.0 tgt /g)"
+   ],
+   "vacated_rb_carries_per_game": 0,
+   "departed_zeroed": [],
+   "carries_to": {
+    "Tony Pollard": 0.55,
+    "Tyjae Spears": 0.35,
+    "Nicholas Singleton": 0.1
+   },
+   "top_target_shares": {
+    "Carnell Tate": 0.273,
+    "Wan'Dale Robinson": 0.196,
+    "Gunnar Helm": 0.102,
+    "Tony Pollard": 0.094,
+    "Elic Ayomanor": 0.085,
+    "Tyjae Spears": 0.06
+   }
+  }
+ },
+ "2026_05_NYG_WAS": {
+  "NYG": {
+   "out": [
+    "Jaxson Dart (QB: 11.0 car, 0.0 tgt /g)",
+    "Braxton Berrios (WR: 0.0 car, 1.0 tgt /g)",
+    "Gunner Olszewski (WR: 0.0 car, 0.0 tgt /g)",
+    "Calvin Austin III (WR: 0.0 car, 0.0 tgt /g)"
+   ],
+   "vacated_rb_carries_per_game": 0,
+   "departed_zeroed": [
+    "Odell Beckham Jr."
+   ],
+   "carries_to": {
+    "Cam Skattebo": 0.55,
+    "Najee Harris": 0.35,
+    "Tyrone Tracy Jr.": 0.1
+   },
+   "top_target_shares": {
+    "Isaiah Likely": 0.278,
+    "Malik Nabers": 0.206,
+    "Malachi Fields": 0.119,
+    "Devin Singletary": 0.079,
+    "Darnell Mooney": 0.079,
+    "Cam Skattebo": 0.071
+   }
+  },
+  "WSH": {
+   "out": [
+    "Marcus Mariota (QB: 2.3 car, 0.0 tgt /g)",
+    "Jaylin Lane (WR: 0.0 car, 1.0 tgt /g)",
+    "Stefon Diggs (WR: 0.0 car, 7.8 tgt /g)"
+   ],
+   "vacated_rb_carries_per_game": 0,
+   "departed_zeroed": [
+    "Brandon Coleman",
+    "Kaytron Allen"
+   ],
+   "carries_to": {
+    "Jacory Croskey-Merritt": 0.55,
+    "Rachaad White": 0.35,
+    "Austin Ekeler": 0.1
+   },
+   "top_target_shares": {
+    "Terry McLaurin": 0.221,
+    "Antonio Williams": 0.143,
+    "Chig Okonkwo": 0.105,
+    "Dyami Brown": 0.098,
+    "Rachaad White": 0.09,
+    "John Bates": 0.06
+   }
+  }
+ }
+}

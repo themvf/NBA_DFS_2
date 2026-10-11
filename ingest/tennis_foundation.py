@@ -39,6 +39,8 @@ from psycopg2.extras import execute_values
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+from ingest.tennis_data_source import workbook_url
+
 from config import load_config
 from db.database import DatabaseManager
 
@@ -49,10 +51,7 @@ PARSER_VERSION = "tennis-foundation-v2"
 ATP_PROVIDER = "tml_database"
 TENNIS_DATA_PROVIDER = "tennis_data"
 TML_URL = "https://raw.githubusercontent.com/Tennismylife/TML-Database/master/{year}.csv"
-TENNIS_DATA_URL = {
-    "ATP": "http://www.tennis-data.co.uk/{year}/{year}.xlsx",
-    "WTA": "http://www.tennis-data.co.uk/{year}w/{year}.xlsx",
-}
+
 CACHE_DIR = Path("data/tennis/raw")
 _SUFFIXES = {"jr", "sr", "ii", "iii", "iv"}
 
@@ -986,7 +985,7 @@ def run(db: DatabaseManager, *, from_year: int = 2023, to_year: int | None = Non
         for year in years:
             if tour == "ATP":
                 enrichment_index = None
-                enrichment_url = TENNIS_DATA_URL["ATP"].format(year=year)
+                enrichment_url = workbook_url("ATP", year)
                 started = datetime.now(timezone.utc)
                 try:
                     enrichment_download = download_partition(
@@ -1093,7 +1092,7 @@ def run(db: DatabaseManager, *, from_year: int = 2023, to_year: int | None = Non
                 })
             else:
                 provider, dataset = TENNIS_DATA_PROVIDER, "historical_matches_odds_rank"
-                url = TENNIS_DATA_URL["WTA"].format(year=year)
+                url = workbook_url("WTA", year)
                 started = datetime.now(timezone.utc)
                 try:
                     download = download_partition(provider, dataset, tour, year, url, refresh=refresh)

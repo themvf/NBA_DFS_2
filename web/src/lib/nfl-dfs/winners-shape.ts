@@ -1,0 +1,197 @@
+/**
+ * Winners shape (`nfl-winners-shape-v1`): a build preset that reproduces how
+ * the top finishers of the 2026 week 1-5 flagship contests built, measured
+ * from stat-api's full lineups (`nfl_dfs_field_user_builds`, reviewed in
+ * `research/nfl_top_builds.py`). It is a SHAPE, not a validated edge: the
+ * same projections, rearranged. The weekly review grades it against the
+ * standard build; nothing here changes a projection or an ownership number.
+ *
+ * Classic (Millionaire top-5, n=20 lineups; the 300-odd below them agree):
+ * - min unique 4 (ours was 2), most-used player in no more than 55% of
+ *   lineups, about 1.6 distinct quarterbacks per 10 lineups, bring-back in
+ *   about half the lineups (ours: every one), median salary $49,874;
+ * - running backs with top-quartile touches or 4+ targets a game, receivers with 25%+ of their
+ *   team's targets (the third receiver may be a cheap one under $5,000),
+ *   tight ends under $4,000 with 4+ targets a game, defenses under $3,000.
+ * Showdown (248 Thursday/Monday winners):
+ * - 5-1 or 3-3, almost never 4-2 (88%); no kicker (6% vs 36% lower down);
+ *   the captain a QB, RB or WR (346 of 346 top-20 lineups);
+ *   winning captains sat at ~6% captain ownership, so no captain above 30%.
+ *
+ * Every rule below is applied through an ordinary optimizer setting, so a
+ * saved run records exactly what was enforced, and every player the pool
+ * rules leave out is named with the number that left him out.
+ */
+import type { NflOptimizerPlayer, NflOptimizerSettings } from "@/app/dfs/nfl/nfl-optimizer";
+
+/**
+ * v2 (2026-10-11): the RB rule keeps a back on top-quartile touches OR 4+
+ * targets a game. v1's targets-only line kept 10 of 112 backs on the week-6
+ * Classic and left out Jonathan Taylor (3.7 targets a game) and every other
+ * bell-cow with a thin receiving role; the winners' backs were bell-cows
+ * first (top-quartile touches) and pass catchers second.
+ */
+/**
+ * v3 (2026-10-11): Showdown captains are QB, RB or WR only. In 346 top-20
+ * showdown lineups from the stored flagship builds the captain was a running
+ * back 163 times, a receiver 98 and a quarterback 85; never a defense, tight
+ * end or kicker. The first v1 build captained the Jaguars DST three times and
+ * a tight end five times, which no winner did.
+ */
+export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v3";
+
+export type BuildShape = "standard" | "winners";
+export const BUILD_SHAPES: readonly BuildShape[] = ["standard", "winners"];
+
+/** Prior-week opportunity (play-by-play, the three weeks before the slate), per player. */
+export type PriorOpportunity = {
+  games: number;
+  targets: number;
+  carries: number;
+  /** Player targets over team targets in the same window; null when the team total is unknown. */
+  targetShare: number | null;
+};
+
+export const WINNERS_SHAPE = {
+  minUnique: 4,
+  maxExposure: 0.55,
+  minSalary: 49_500,
+  /** A quarterback never above this share of lineups, whatever the lineup count. */
+  qbExposureFloor: 0.15,
+  /** Distinct quarterbacks the winners used per ten lineups. */
+  distinctQbsPerTenLineups: 1.6,
+  bringBackShare: 0.5,
+  rbMinTargetsPerGame: 4,
+  /** A back whose touches a game rank in the slate's top quarter qualifies without the targets. */
+  rbTouchesTopShare: 0.25,
+  wrMinTargetShare: 0.25,
+  wrCheapSalary: 5_000,
+  teMaxSalary: 4_000,
+  teMinTargetsPerGame: 4,
+  dstMaxSalary: 3_000,
+  captainMaxExposure: 0.3,
+  captainPositions: ["QB", "RB", "WR"] as NflOptimizerPlayer["position"][],
+} as const;
+
+/**
+ * The fewest eligible players a position needs once the 55% cap applies:
+ * each slot wants at least two names, and a filter that leaves fewer is not
+ * applied for that position (said in the notes), never silently loosened.
+ */
+const MIN_KEPT: Record<"RB" | "WR" | "TE" | "DST", number> = { RB: 4, WR: 6, TE: 2, DST: 2 };
+
+/**
+ * Per-quarterback exposure cap for a build of `nLineups`: 1.6 distinct
+ * quarterbacks per 10 lineups (at least two), never below 15%. 20 lineups
+ * -> 3 quarterbacks -> 35%; 100 lineups -> 16 -> 15% floor.
+ */
+export function qbExposureCap(nLineups: number): number {
+  const n = Math.max(1, Math.floor(nLineups));
+  const distinct = Math.max(2, Math.round(WINNERS_SHAPE.distinctQbsPerTenLineups * n / 10));
+  return Math.min(1, Math.max(WINNERS_SHAPE.qbExposureFloor, Math.ceil(n / distinct) / n));
+}
+
+type ShapePlayer = Pick<NflOptimizerPlayer, "dkPlayerId" | "name" | "position" | "salary" | "isOut" | "projectionStatus" | "priorOpportunity">;
+
+export type WinnersShapeResult = {
+  settings: NflOptimizerSettings;
+  /** dkPlayerId -> why the pool rules left him out. Locked and manually excluded players are never here. */
+  excluded: Map<number, string>;
+  notes: string[];
+};
+
+const perGame = (o: PriorOpportunity, key: "targets" | "carries") => (o.games > 0 ? o[key] / o.games : 0);
+const touches = (o: PriorOpportunity) => perGame(o, "carries") + perGame(o, "targets");
+const fmtShare = (share: number | null) => (share == null ? "an unknown" : `${Math.round(share * 100)}%`);
+const money = (n: number) => `$${n.toLocaleString()}`;
+
+/**
+ * The settings the preset enforces plus the pool rules, applied to one slate.
+ * GPP only: a cash build is returned unchanged with a note saying so.
+ */
+export function applyWinnersShape(settings: NflOptimizerSettings, players: readonly ShapePlayer[]): WinnersShapeResult {
+  const notes: string[] = [];
+  const excluded = new Map<number, string>();
+  if (settings.mode !== "gpp") {
+    notes.push(`Winners shape (${WINNERS_SHAPE_VERSION}) applies to GPP builds only; this cash build is unchanged.`);
+    return { settings, excluded, notes };
+  }
+  const n = settings.nLineups;
+  const shaped: NflOptimizerSettings = { ...settings,
+    minSalary: Math.max(settings.minSalary, WINNERS_SHAPE.minSalary) };
+  if (settings.format === "classic") {
+    const qbCap = qbExposureCap(n);
+    Object.assign(shaped, {
+      minUnique: Math.max(settings.minUnique, WINNERS_SHAPE.minUnique),
+      maxExposure: Math.min(settings.maxExposure, WINNERS_SHAPE.maxExposure),
+      stackPassCatchers: Math.max(1, settings.stackPassCatchers) as 1 | 2,
+      bringBack: true,
+      bringBackShare: WINNERS_SHAPE.bringBackShare,
+      maxQbExposure: qbCap,
+    });
+    notes.push(`Winners shape (${WINNERS_SHAPE_VERSION}, classic): min unique ${shaped.minUnique}, max exposure ${Math.round(shaped.maxExposure * 100)}%, `
+      + `each quarterback in at most ${Math.round(qbCap * 100)}% of lineups (${Math.max(1, Math.floor(qbCap * n))} of ${n}), `
+      + `a bring-back in ${Math.round(WINNERS_SHAPE.bringBackShare * 100)}% of lineups, at least one stacked pass catcher, min salary ${money(shaped.minSalary)}.`);
+    applyPoolRules(settings, players, excluded, notes);
+  } else {
+    Object.assign(shaped, {
+      maxCaptainExposure: WINNERS_SHAPE.captainMaxExposure,
+      excludeKickers: true,
+      forbidFourTwoSplit: true,
+      captainPositions: [...WINNERS_SHAPE.captainPositions],
+    });
+    notes.push(`Winners shape (${WINNERS_SHAPE_VERSION}, showdown): every lineup 5-1 or 3-3 (no 4-2), no kicker, the captain a ${WINNERS_SHAPE.captainPositions.join("/")}, `
+      + `no captain in more than ${Math.round(WINNERS_SHAPE.captainMaxExposure * 100)}% of lineups, min salary ${money(shaped.minSalary)}. `
+      + `Captain ranges you set are kept.`);
+  }
+  return { settings: shaped, excluded, notes };
+}
+
+function applyPoolRules(settings: NflOptimizerSettings, players: readonly ShapePlayer[], excluded: Map<number, string>, notes: string[]): void {
+  const keep = new Set([...settings.lockedPlayerIds]);
+  const manual = new Set(settings.excludedPlayerIds);
+  const active = players.filter(p => !p.isOut && p.projectionStatus !== "out" && !manual.has(p.dkPlayerId));
+  // The slate's own touches-a-game quartile among backs with a record, so the
+  // rule reads the week's pool rather than a constant carried from another one.
+  const rbTouches = active.filter(p => p.position === "RB" && p.priorOpportunity && p.priorOpportunity.games > 0)
+    .map(p => touches(p.priorOpportunity!)).sort((a, b) => b - a);
+  const touchFloor = rbTouches.length ? rbTouches[Math.max(0, Math.ceil(rbTouches.length * WINNERS_SHAPE.rbTouchesTopShare) - 1)] : null;
+  const rules: Array<{ position: "RB" | "WR" | "TE" | "DST"; label: string; needsPrior: boolean;
+    qualifies: (p: ShapePlayer) => boolean; why: (p: ShapePlayer) => string }> = [
+    { position: "RB", label: `backs with touches a game in the slate's top quarter (${touchFloor == null ? "n/a" : touchFloor.toFixed(1)}+) or ${WINNERS_SHAPE.rbMinTargetsPerGame}+ targets a game`, needsPrior: true,
+      qualifies: p => !!p.priorOpportunity && (perGame(p.priorOpportunity, "targets") >= WINNERS_SHAPE.rbMinTargetsPerGame
+        || (touchFloor != null && touches(p.priorOpportunity) >= touchFloor)),
+      why: p => p.priorOpportunity
+        ? `${touches(p.priorOpportunity).toFixed(1)} touches and ${perGame(p.priorOpportunity, "targets").toFixed(1)} targets a game over the prior ${p.priorOpportunity.games} game(s); the preset keeps backs at ${touchFloor == null ? "n/a" : touchFloor.toFixed(1)}+ touches or ${WINNERS_SHAPE.rbMinTargetsPerGame}+ targets.`
+        : `no prior-week opportunity record; the preset keeps backs with top-quartile touches or ${WINNERS_SHAPE.rbMinTargetsPerGame}+ targets a game.` },
+    { position: "WR", label: `receivers with ${Math.round(WINNERS_SHAPE.wrMinTargetShare * 100)}%+ of their team's targets, or under ${money(WINNERS_SHAPE.wrCheapSalary)}`, needsPrior: true,
+      qualifies: p => p.salary < WINNERS_SHAPE.wrCheapSalary || (p.priorOpportunity?.targetShare ?? -1) >= WINNERS_SHAPE.wrMinTargetShare,
+      why: p => `${fmtShare(p.priorOpportunity?.targetShare ?? null)} target share at ${money(p.salary)}; the preset keeps receivers at ${Math.round(WINNERS_SHAPE.wrMinTargetShare * 100)}%+ or under ${money(WINNERS_SHAPE.wrCheapSalary)}.` },
+    { position: "TE", label: `tight ends under ${money(WINNERS_SHAPE.teMaxSalary)} with ${WINNERS_SHAPE.teMinTargetsPerGame}+ targets a game`, needsPrior: true,
+      qualifies: p => p.salary < WINNERS_SHAPE.teMaxSalary && !!p.priorOpportunity && perGame(p.priorOpportunity, "targets") >= WINNERS_SHAPE.teMinTargetsPerGame,
+      why: p => `${money(p.salary)}${p.priorOpportunity ? ` with ${perGame(p.priorOpportunity, "targets").toFixed(1)} targets a game` : ", no prior-week opportunity record"}; the preset keeps tight ends under ${money(WINNERS_SHAPE.teMaxSalary)} with ${WINNERS_SHAPE.teMinTargetsPerGame}+ targets a game.` },
+    { position: "DST", label: `defenses under ${money(WINNERS_SHAPE.dstMaxSalary)}`, needsPrior: false,
+      qualifies: p => p.salary < WINNERS_SHAPE.dstMaxSalary,
+      why: p => `${money(p.salary)}; the preset keeps defenses under ${money(WINNERS_SHAPE.dstMaxSalary)}.` },
+  ];
+  for (const rule of rules) {
+    const candidates = active.filter(p => p.position === rule.position);
+    if (!candidates.length) continue;
+    if (rule.needsPrior && !candidates.some(p => p.priorOpportunity)) {
+      notes.push(`Winners shape: no prior-week opportunity data for any ${rule.position}, so the ${rule.position} rule (${rule.label}) was not applied.`);
+      continue;
+    }
+    const kept = candidates.filter(p => keep.has(p.dkPlayerId) || rule.qualifies(p));
+    if (kept.length < MIN_KEPT[rule.position]) {
+      notes.push(`Winners shape: only ${kept.length} ${rule.position}(s) meet the rule (${rule.label}); at least ${MIN_KEPT[rule.position]} are needed under the exposure cap, so the ${rule.position} rule was not applied.`);
+      continue;
+    }
+    let dropped = 0;
+    for (const p of candidates) {
+      if (keep.has(p.dkPlayerId) || rule.qualifies(p)) continue;
+      excluded.set(p.dkPlayerId, `Winners shape: ${rule.why(p)}`);
+      dropped++;
+    }
+    notes.push(`Winners shape: ${rule.position} pool kept ${kept.length} of ${candidates.length} (${rule.label}); ${dropped} left out, each named in the build's eligibility list.`);
+  }
+}

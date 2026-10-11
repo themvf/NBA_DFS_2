@@ -1,0 +1,2181 @@
+{
+  "version": "nfl-shared-game-analysis-v1",
+  "authority": "exploratory",
+  "game": {
+    "game_id": "2026_05_TB_DAL",
+    "season": 2026,
+    "week": 5,
+    "kickoff": "2026-10-09 00:15:00+00:00",
+    "away": "TB",
+    "home": "DAL",
+    "completed": false,
+    "home_score": null,
+    "away_score": null,
+    "source_captured_at": "2026-10-07 21:37:53.023321+00:00"
+  },
+  "decisionAt": "2026-10-08T23:14:08.554700+00:00",
+  "implementationSha256": "f7ca596713fee27379e750f2371234a482064ecaf73cf8f604f9b7cfd5170d2f",
+  "draws": 5000,
+  "scoringScope": "Receptions + rushing/receiving yards + their separate DraftKings bonuses",
+  "modeledFields": [
+    "rushYds",
+    "recYds",
+    "receptions",
+    "carries",
+    "targets"
+  ],
+  "missingFields": [
+    "passYds",
+    "passTds",
+    "rushTds",
+    "recTds",
+    "interceptions",
+    "fumblesLost",
+    "twoPointConversions",
+    "returnTds",
+    "offensiveFumbleRecoveryTds"
+  ],
+  "players": [
+    {
+      "identity": "00-0036358",
+      "name": "CeeDee Lamb",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 18.613280000001463,
+        "p10": 6.7,
+        "p50": 16.4,
+        "p90": 32.6,
+        "target": 20,
+        "targetProbability": 0.40920000000004086,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0.0004,
+      "receivingBonusProbability": 0.413,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0039361",
+      "name": "Bucky Irving",
+      "team": "TB",
+      "productionPoints": {
+        "mean": 11.966780000000908,
+        "p10": 4.800000000000001,
+        "p50": 10.7,
+        "p90": 20.6,
+        "target": 20,
+        "targetProbability": 0.11320000000000945,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0.2066,
+      "receivingBonusProbability": 0.0102,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0036997",
+      "name": "Javonte Williams",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 11.953200000000898,
+        "p10": 5.300000000000001,
+        "p50": 11,
+        "p90": 19.900000000000002,
+        "target": 20,
+        "targetProbability": 0.10000000000000815,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0.193,
+      "receivingBonusProbability": 0.0028,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0037247",
+      "name": "George Pickens",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 9.304760000000735,
+        "p10": 1.9,
+        "p50": 7.7,
+        "p90": 20.200000000000003,
+        "target": 20,
+        "targetProbability": 0.1036000000000085,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0.1276,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0038129",
+      "name": "Cade Otton",
+      "team": "TB",
+      "productionPoints": {
+        "mean": 8.43244000000071,
+        "p10": 1.8,
+        "p50": 7.4,
+        "p90": 15.8,
+        "target": 20,
+        "targetProbability": 0.05540000000000402,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0.0546,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0040129",
+      "name": "Emeka Egbuka",
+      "team": "TB",
+      "productionPoints": {
+        "mean": 8.160560000000645,
+        "p10": 1.5,
+        "p50": 6.800000000000001,
+        "p90": 16.3,
+        "target": 20,
+        "targetProbability": 0.0688000000000051,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0.0006,
+      "receivingBonusProbability": 0.0836,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0033921",
+      "name": "Chris Godwin Jr.",
+      "team": "TB",
+      "productionPoints": {
+        "mean": 7.639460000000617,
+        "p10": 1.4,
+        "p50": 6.4,
+        "p90": 15.200000000000001,
+        "target": 20,
+        "targetProbability": 0.05320000000000388,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0.0004,
+      "receivingBonusProbability": 0.06,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0039410",
+      "name": "Ryan Flournoy",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 6.977600000000588,
+        "p10": 1.2,
+        "p50": 5.9,
+        "p90": 14,
+        "target": 20,
+        "targetProbability": 0.03860000000000296,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0.044,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0036919",
+      "name": "Kenny Gainwell",
+      "team": "TB",
+      "productionPoints": {
+        "mean": 5.594100000000466,
+        "p10": 0.9,
+        "p50": 4.7,
+        "p90": 11.200000000000001,
+        "target": 20,
+        "targetProbability": 0.007400000000000572,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0.007,
+      "receivingBonusProbability": 0.0028,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0041048",
+      "name": "Ted Hurst III",
+      "team": "TB",
+      "productionPoints": {
+        "mean": 5.41768000000043,
+        "p10": 0,
+        "p50": 4.2,
+        "p90": 11.700000000000001,
+        "target": 20,
+        "targetProbability": 0.023800000000001893,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0.0374,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0038041",
+      "name": "Jake Ferguson",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 4.617180000000402,
+        "p10": 0,
+        "p50": 3.7,
+        "p90": 10,
+        "target": 20,
+        "targetProbability": 0.007000000000000541,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0.0064,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0040237",
+      "name": "Tez Johnson",
+      "team": "TB",
+      "productionPoints": {
+        "mean": 3.404900000000277,
+        "p10": 0,
+        "p50": 2.2,
+        "p90": 8.4,
+        "target": 20,
+        "targetProbability": 0.007200000000000557,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0.0008,
+      "receivingBonusProbability": 0.0118,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0037120",
+      "name": "Tyler Goodson",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 1.8005400000001637,
+        "p10": 0,
+        "p50": 1,
+        "p90": 4.800000000000001,
+        "target": 20,
+        "targetProbability": 0.00040000000000003103,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0.0046,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0041251",
+      "name": "Jalon Daniels",
+      "team": "TB",
+      "productionPoints": {
+        "mean": 1.798160000000164,
+        "p10": 0,
+        "p50": 0.9,
+        "p90": 4.800000000000001,
+        "target": 20,
+        "targetProbability": 0.0012000000000000931,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0.0132,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0033077",
+      "name": "Dak Prescott",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 1.3060800000001227,
+        "p10": 0,
+        "p50": 0.7000000000000001,
+        "p90": 3.6,
+        "target": 20,
+        "targetProbability": 0.00040000000000003103,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0.0014,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0037801",
+      "name": "KaVontae Turpin",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 1.1962800000000993,
+        "p10": 0,
+        "p50": 0,
+        "p90": 3.9000000000000004,
+        "target": 20,
+        "targetProbability": 0.0012000000000000931,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0.0014,
+      "receivingBonusProbability": 0.002,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0039530",
+      "name": "Brevyn Spann-Ford",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 1.141300000000093,
+        "p10": 0,
+        "p50": 0,
+        "p90": 3.7,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0.0002,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0039589",
+      "name": "Kameron Johnson",
+      "team": "TB",
+      "productionPoints": {
+        "mean": 0.9546000000000777,
+        "p10": 0,
+        "p50": 0,
+        "p90": 3.4000000000000004,
+        "target": 20,
+        "targetProbability": 0.0006000000000000466,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0.001,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0039062",
+      "name": "Jonathan Mingo",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 0.9108800000000744,
+        "p10": 0,
+        "p50": 0,
+        "p90": 3.2,
+        "target": 20,
+        "targetProbability": 0.00040000000000003103,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0.001,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0038738",
+      "name": "Hunter Luepke",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 0.5861200000000462,
+        "p10": 0,
+        "p50": 0,
+        "p90": 2.1,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0.0002,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0038705",
+      "name": "Emari Demercado",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 0.5547400000000443,
+        "p10": 0,
+        "p50": 0,
+        "p90": 1.6,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0.0034,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0038547",
+      "name": "Luke Schoonmaker",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 0.5375800000000408,
+        "p10": 0,
+        "p50": 0,
+        "p90": 2.1,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0038951",
+      "name": "Sean Tucker",
+      "team": "TB",
+      "productionPoints": {
+        "mean": 0.5054800000000391,
+        "p10": 0,
+        "p50": 0,
+        "p90": 1.7000000000000002,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0.0014,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0039050",
+      "name": "Payne Durham",
+      "team": "TB",
+      "productionPoints": {
+        "mean": 0.3814600000000286,
+        "p10": 0,
+        "p50": 0,
+        "p90": 1.6,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0035100",
+      "name": "Jake Browning",
+      "team": "TB",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0035282",
+      "name": "Easton Stick",
+      "team": "TB",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0037311",
+      "name": "Ko Kieft",
+      "team": "TB",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0037570",
+      "name": "Dennis Houston",
+      "team": "TB",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0039392",
+      "name": "Jha'Quan Jackson",
+      "team": "TB",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0039754",
+      "name": "Devin Culp",
+      "team": "TB",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0040415",
+      "name": "Connor Bazelak",
+      "team": "TB",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0040419",
+      "name": "Garrett Greene",
+      "team": "TB",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0040429",
+      "name": "Josh Williams",
+      "team": "TB",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0040566",
+      "name": "CJ Dippre",
+      "team": "TB",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0041094",
+      "name": "Bauer Sharp",
+      "team": "TB",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0041257",
+      "name": "Eric Rivers Jr.",
+      "team": "TB",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0041433",
+      "name": "Kadarius Calloway",
+      "team": "TB",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0041435",
+      "name": "Dean Patterson IV",
+      "team": "TB",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0034955",
+      "name": "Brett Rypien",
+      "team": "TB",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0041595",
+      "name": "Barika Kpeenu",
+      "team": "TB",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0041599",
+      "name": "Matthew Henry",
+      "team": "TB",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0035639",
+      "name": "Parris Campbell",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0037077",
+      "name": "Sam Howell",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0037282",
+      "name": "James Mitchell",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0038389",
+      "name": "Israel Abanikanda",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0039398",
+      "name": "Joe Milton III",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0040048",
+      "name": "Traeshon Holden",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0040769",
+      "name": "Jaden Smith",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0040900",
+      "name": "Anthony Smith",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0040930",
+      "name": "Camden Brown",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0040934",
+      "name": "Jordan Hudson",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0040939",
+      "name": "Michael Trigg",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0041516",
+      "name": "Romello Brinson",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0036255",
+      "name": "Denzel Mims",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0037410",
+      "name": "Jashaun Corbin",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0038406",
+      "name": "Zack Kuntz",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    },
+    {
+      "identity": "00-0040702",
+      "name": "Mitch Van Vooren",
+      "team": "DAL",
+      "productionPoints": {
+        "mean": 0,
+        "p10": 0,
+        "p50": 0,
+        "p90": 0,
+        "target": 20,
+        "targetProbability": 0,
+        "monteCarlo95": null
+      },
+      "rushBonusProbability": 0,
+      "receivingBonusProbability": 0,
+      "fullDfsPoints": null
+    }
+  ],
+  "correlations": [
+    {
+      "first": "CeeDee Lamb",
+      "second": "Bucky Irving",
+      "sameTeam": false,
+      "correlation": -0.037148522904034295
+    },
+    {
+      "first": "CeeDee Lamb",
+      "second": "Javonte Williams",
+      "sameTeam": true,
+      "correlation": -0.05358423231628045
+    },
+    {
+      "first": "CeeDee Lamb",
+      "second": "George Pickens",
+      "sameTeam": true,
+      "correlation": 0.01118482405477015
+    },
+    {
+      "first": "CeeDee Lamb",
+      "second": "Cade Otton",
+      "sameTeam": false,
+      "correlation": -0.02135808318892864
+    },
+    {
+      "first": "CeeDee Lamb",
+      "second": "Emeka Egbuka",
+      "sameTeam": false,
+      "correlation": -0.016704520229505332
+    },
+    {
+      "first": "CeeDee Lamb",
+      "second": "Chris Godwin Jr.",
+      "sameTeam": false,
+      "correlation": -0.013311658934353534
+    },
+    {
+      "first": "CeeDee Lamb",
+      "second": "Ryan Flournoy",
+      "sameTeam": true,
+      "correlation": 0.025480316935925396
+    },
+    {
+      "first": "CeeDee Lamb",
+      "second": "Kenny Gainwell",
+      "sameTeam": false,
+      "correlation": -0.005545911872429287
+    },
+    {
+      "first": "CeeDee Lamb",
+      "second": "Ted Hurst III",
+      "sameTeam": false,
+      "correlation": -0.002276428325903886
+    },
+    {
+      "first": "CeeDee Lamb",
+      "second": "Jake Ferguson",
+      "sameTeam": true,
+      "correlation": -0.0027257327927243764
+    },
+    {
+      "first": "CeeDee Lamb",
+      "second": "Tez Johnson",
+      "sameTeam": false,
+      "correlation": -0.020046488141051932
+    },
+    {
+      "first": "Bucky Irving",
+      "second": "Javonte Williams",
+      "sameTeam": false,
+      "correlation": -0.09042741993241953
+    },
+    {
+      "first": "Bucky Irving",
+      "second": "George Pickens",
+      "sameTeam": false,
+      "correlation": -0.006931349716200372
+    },
+    {
+      "first": "Bucky Irving",
+      "second": "Cade Otton",
+      "sameTeam": true,
+      "correlation": -0.055670068588962056
+    },
+    {
+      "first": "Bucky Irving",
+      "second": "Emeka Egbuka",
+      "sameTeam": true,
+      "correlation": -0.028801947197955414
+    },
+    {
+      "first": "Bucky Irving",
+      "second": "Chris Godwin Jr.",
+      "sameTeam": true,
+      "correlation": -0.037845417730116605
+    },
+    {
+      "first": "Bucky Irving",
+      "second": "Ryan Flournoy",
+      "sameTeam": false,
+      "correlation": -0.013385372512934965
+    },
+    {
+      "first": "Bucky Irving",
+      "second": "Kenny Gainwell",
+      "sameTeam": true,
+      "correlation": -0.07582358032394808
+    },
+    {
+      "first": "Bucky Irving",
+      "second": "Ted Hurst III",
+      "sameTeam": true,
+      "correlation": -0.023300968565491267
+    },
+    {
+      "first": "Bucky Irving",
+      "second": "Jake Ferguson",
+      "sameTeam": false,
+      "correlation": -0.029392105578937334
+    },
+    {
+      "first": "Bucky Irving",
+      "second": "Tez Johnson",
+      "sameTeam": true,
+      "correlation": -0.031093350746569267
+    },
+    {
+      "first": "Javonte Williams",
+      "second": "George Pickens",
+      "sameTeam": true,
+      "correlation": -0.003594133613032047
+    },
+    {
+      "first": "Javonte Williams",
+      "second": "Cade Otton",
+      "sameTeam": false,
+      "correlation": -0.007739955032517295
+    },
+    {
+      "first": "Javonte Williams",
+      "second": "Emeka Egbuka",
+      "sameTeam": false,
+      "correlation": -0.029739521386231014
+    },
+    {
+      "first": "Javonte Williams",
+      "second": "Chris Godwin Jr.",
+      "sameTeam": false,
+      "correlation": -0.009553101712788812
+    },
+    {
+      "first": "Javonte Williams",
+      "second": "Ryan Flournoy",
+      "sameTeam": true,
+      "correlation": -0.03789418231202629
+    },
+    {
+      "first": "Javonte Williams",
+      "second": "Kenny Gainwell",
+      "sameTeam": false,
+      "correlation": -0.031961261728774934
+    },
+    {
+      "first": "Javonte Williams",
+      "second": "Ted Hurst III",
+      "sameTeam": false,
+      "correlation": -0.015209646732284353
+    },
+    {
+      "first": "Javonte Williams",
+      "second": "Jake Ferguson",
+      "sameTeam": true,
+      "correlation": -0.026548687241845274
+    },
+    {
+      "first": "Javonte Williams",
+      "second": "Tez Johnson",
+      "sameTeam": false,
+      "correlation": -0.04674808683750158
+    },
+    {
+      "first": "George Pickens",
+      "second": "Cade Otton",
+      "sameTeam": false,
+      "correlation": 0.0035558518762522115
+    },
+    {
+      "first": "George Pickens",
+      "second": "Emeka Egbuka",
+      "sameTeam": false,
+      "correlation": 0.00871968097254844
+    },
+    {
+      "first": "George Pickens",
+      "second": "Chris Godwin Jr.",
+      "sameTeam": false,
+      "correlation": 0.01379032448969941
+    },
+    {
+      "first": "George Pickens",
+      "second": "Ryan Flournoy",
+      "sameTeam": true,
+      "correlation": 0.014119160446894536
+    },
+    {
+      "first": "George Pickens",
+      "second": "Kenny Gainwell",
+      "sameTeam": false,
+      "correlation": -0.026725544696275295
+    },
+    {
+      "first": "George Pickens",
+      "second": "Ted Hurst III",
+      "sameTeam": false,
+      "correlation": -0.021678208197983863
+    },
+    {
+      "first": "George Pickens",
+      "second": "Jake Ferguson",
+      "sameTeam": true,
+      "correlation": 0.00476501905383837
+    },
+    {
+      "first": "George Pickens",
+      "second": "Tez Johnson",
+      "sameTeam": false,
+      "correlation": -0.031098865895021897
+    },
+    {
+      "first": "Cade Otton",
+      "second": "Emeka Egbuka",
+      "sameTeam": true,
+      "correlation": -0.008761715076938969
+    },
+    {
+      "first": "Cade Otton",
+      "second": "Chris Godwin Jr.",
+      "sameTeam": true,
+      "correlation": -0.009519580035875082
+    },
+    {
+      "first": "Cade Otton",
+      "second": "Ryan Flournoy",
+      "sameTeam": false,
+      "correlation": -0.01398728459219819
+    },
+    {
+      "first": "Cade Otton",
+      "second": "Kenny Gainwell",
+      "sameTeam": true,
+      "correlation": -0.009284932444653065
+    },
+    {
+      "first": "Cade Otton",
+      "second": "Ted Hurst III",
+      "sameTeam": true,
+      "correlation": 0.01281699518618654
+    },
+    {
+      "first": "Cade Otton",
+      "second": "Jake Ferguson",
+      "sameTeam": false,
+      "correlation": 0.008313236654613863
+    },
+    {
+      "first": "Cade Otton",
+      "second": "Tez Johnson",
+      "sameTeam": true,
+      "correlation": -0.005888985962711606
+    },
+    {
+      "first": "Emeka Egbuka",
+      "second": "Chris Godwin Jr.",
+      "sameTeam": true,
+      "correlation": -0.025295607918567758
+    },
+    {
+      "first": "Emeka Egbuka",
+      "second": "Ryan Flournoy",
+      "sameTeam": false,
+      "correlation": -0.02039728020488724
+    },
+    {
+      "first": "Emeka Egbuka",
+      "second": "Kenny Gainwell",
+      "sameTeam": true,
+      "correlation": -0.01889924833671234
+    },
+    {
+      "first": "Emeka Egbuka",
+      "second": "Ted Hurst III",
+      "sameTeam": true,
+      "correlation": -0.004251768018518473
+    },
+    {
+      "first": "Emeka Egbuka",
+      "second": "Jake Ferguson",
+      "sameTeam": false,
+      "correlation": -0.017807173915024628
+    },
+    {
+      "first": "Emeka Egbuka",
+      "second": "Tez Johnson",
+      "sameTeam": true,
+      "correlation": -0.00022541758116945935
+    },
+    {
+      "first": "Chris Godwin Jr.",
+      "second": "Ryan Flournoy",
+      "sameTeam": false,
+      "correlation": 0.0037050420179378075
+    },
+    {
+      "first": "Chris Godwin Jr.",
+      "second": "Kenny Gainwell",
+      "sameTeam": true,
+      "correlation": -0.021057988871088097
+    },
+    {
+      "first": "Chris Godwin Jr.",
+      "second": "Ted Hurst III",
+      "sameTeam": true,
+      "correlation": -0.006839963589749124
+    },
+    {
+      "first": "Chris Godwin Jr.",
+      "second": "Jake Ferguson",
+      "sameTeam": false,
+      "correlation": -0.012203675732826231
+    },
+    {
+      "first": "Chris Godwin Jr.",
+      "second": "Tez Johnson",
+      "sameTeam": true,
+      "correlation": -0.0043876249023274754
+    },
+    {
+      "first": "Ryan Flournoy",
+      "second": "Kenny Gainwell",
+      "sameTeam": false,
+      "correlation": 0.0028034444498344206
+    },
+    {
+      "first": "Ryan Flournoy",
+      "second": "Ted Hurst III",
+      "sameTeam": false,
+      "correlation": -0.017823053817967813
+    },
+    {
+      "first": "Ryan Flournoy",
+      "second": "Jake Ferguson",
+      "sameTeam": true,
+      "correlation": 0.018901795241734295
+    },
+    {
+      "first": "Ryan Flournoy",
+      "second": "Tez Johnson",
+      "sameTeam": false,
+      "correlation": -0.005162793328180276
+    },
+    {
+      "first": "Kenny Gainwell",
+      "second": "Ted Hurst III",
+      "sameTeam": true,
+      "correlation": -0.007025026926692986
+    },
+    {
+      "first": "Kenny Gainwell",
+      "second": "Jake Ferguson",
+      "sameTeam": false,
+      "correlation": 0.011327696333110048
+    },
+    {
+      "first": "Kenny Gainwell",
+      "second": "Tez Johnson",
+      "sameTeam": true,
+      "correlation": -0.025161382611141363
+    },
+    {
+      "first": "Ted Hurst III",
+      "second": "Jake Ferguson",
+      "sameTeam": false,
+      "correlation": 0.016397781817838027
+    },
+    {
+      "first": "Ted Hurst III",
+      "second": "Tez Johnson",
+      "sameTeam": true,
+      "correlation": -0.01679061203567019
+    },
+    {
+      "first": "Jake Ferguson",
+      "second": "Tez Johnson",
+      "sameTeam": false,
+      "correlation": -0.01155274145366963
+    }
+  ],
+  "fullDfsReady": false,
+  "optimizerEnabled": false,
+  "limits": [
+    "These are partial production points, not full fantasy projections or a lower bound.",
+    "Passing, touchdowns, turnovers and other missing fields are excluded, not modeled as zero.",
+    "Correlations describe this simulator; they have not been validated against real games."
+  ],
+  "sourceSha256": "aeaffa5a71c14eb04bcb51c11469df51681fb7813efb2dbb8cd9c59005230ea4",
+  "workloadDiagnostics": {
+    "TB": {
+      "prior_game_ids": [
+        "2026_01_TB_CIN",
+        "2026_02_CLE_TB",
+        "2026_03_MIN_TB",
+        "2026_04_GB_TB"
+      ],
+      "actions": {
+        "carries": {
+          "mean_budget": 28.3109551193099,
+          "newcomer_reserve": 0.04953351669093459,
+          "opponent_volume": {
+            "adjustment": 2.3809523809523805,
+            "exposure": 4,
+            "comparisons": [
+              {
+                "game_id": "2026_01_DAL_NYG",
+                "offense": "NYG",
+                "other_games": [
+                  "2026_02_NYG_LA",
+                  "2026_03_TEN_NYG",
+                  "2026_04_ARI_NYG"
+                ]
+              },
+              {
+                "game_id": "2026_02_WAS_DAL",
+                "offense": "WSH",
+                "other_games": [
+                  "2026_01_WAS_PHI",
+                  "2026_03_SEA_WAS",
+                  "2026_04_IND_WAS"
+                ]
+              },
+              {
+                "game_id": "2026_03_BAL_DAL",
+                "offense": "BAL",
+                "other_games": [
+                  "2026_01_BAL_IND",
+                  "2026_02_NO_BAL",
+                  "2026_04_TEN_BAL"
+                ]
+              },
+              {
+                "game_id": "2026_04_DAL_HOU",
+                "offense": "HOU",
+                "other_games": [
+                  "2026_01_BUF_HOU",
+                  "2026_02_CIN_HOU",
+                  "2026_03_HOU_IND"
+                ]
+              }
+            ]
+          },
+          "concentration_assumption": 7.065422230912416,
+          "dispersion_evidence": {
+            "method": "pooled_team_season_moments",
+            "groups": 128,
+            "game_team_observations": 1760,
+            "fallback": false,
+            "limits": [
+              "Role changes and injuries contribute to observed variance.",
+              "Concentration bounds 2 to 1000 are numerical safeguards, not calibration."
+            ],
+            "concentration": 7.065422230912416,
+            "intraclass_variation": 0.12398606934269243
+          },
+          "opponent_yards": {
+            "adjustment": 0.40225862156815684,
+            "exposure": 126,
+            "comparisons": [
+              {
+                "game_id": "2026_01_DAL_NYG",
+                "offense": "NYG",
+                "other_games": [
+                  "2026_02_NYG_LA",
+                  "2026_03_TEN_NYG",
+                  "2026_04_ARI_NYG"
+                ]
+              },
+              {
+                "game_id": "2026_02_WAS_DAL",
+                "offense": "WSH",
+                "other_games": [
+                  "2026_01_WAS_PHI",
+                  "2026_03_SEA_WAS",
+                  "2026_04_IND_WAS"
+                ]
+              },
+              {
+                "game_id": "2026_03_BAL_DAL",
+                "offense": "BAL",
+                "other_games": [
+                  "2026_01_BAL_IND",
+                  "2026_02_NO_BAL",
+                  "2026_04_TEN_BAL"
+                ]
+              },
+              {
+                "game_id": "2026_04_DAL_HOU",
+                "offense": "HOU",
+                "other_games": [
+                  "2026_01_BUF_HOU",
+                  "2026_02_CIN_HOU",
+                  "2026_03_HOU_IND"
+                ]
+              }
+            ]
+          },
+          "opponent_catch": {
+            "adjustment": 0.055811437436231126,
+            "exposure": 109,
+            "comparisons": [
+              {
+                "game_id": "2026_01_DAL_NYG",
+                "offense": "NYG",
+                "other_games": [
+                  "2026_02_NYG_LA",
+                  "2026_03_TEN_NYG",
+                  "2026_04_ARI_NYG"
+                ]
+              },
+              {
+                "game_id": "2026_02_WAS_DAL",
+                "offense": "WSH",
+                "other_games": [
+                  "2026_01_WAS_PHI",
+                  "2026_03_SEA_WAS",
+                  "2026_04_IND_WAS"
+                ]
+              },
+              {
+                "game_id": "2026_03_BAL_DAL",
+                "offense": "BAL",
+                "other_games": [
+                  "2026_01_BAL_IND",
+                  "2026_02_NO_BAL",
+                  "2026_04_TEN_BAL"
+                ]
+              },
+              {
+                "game_id": "2026_04_DAL_HOU",
+                "offense": "HOU",
+                "other_games": [
+                  "2026_01_BUF_HOU",
+                  "2026_02_CIN_HOU",
+                  "2026_03_HOU_IND"
+                ]
+              }
+            ]
+          },
+          "max_budget_mismatch": 0,
+          "roles": {
+            "00-0033921": 0.014628677846582472,
+            "00-0035100": 0,
+            "00-0035282": 0,
+            "00-0036919": 0.118341368798983,
+            "00-0037311": 0,
+            "00-0037570": 0,
+            "00-0038129": 0,
+            "00-0038951": 0.038838554596222645,
+            "00-0039050": 0,
+            "00-0039361": 0.5516995554015092,
+            "00-0039392": 0,
+            "00-0039589": 0,
+            "00-0039754": 0,
+            "00-0040129": 0.008155585413878699,
+            "00-0040237": 0.019419277298111322,
+            "00-0040415": 0,
+            "00-0040419": 0,
+            "00-0040429": 0,
+            "00-0040566": 0,
+            "00-0041048": 0,
+            "00-0041094": 0,
+            "00-0041251": 0.11384487266042174,
+            "00-0041257": 0,
+            "00-0041433": 0,
+            "00-0041435": 0,
+            "00-0034955": 0,
+            "00-0041595": 0,
+            "00-0041599": 0,
+            "NEW:TB:0": 0.04502403599476364,
+            "NEW:TB:1": 0.04502403599476364,
+            "NEW:TB:2": 0.04502403599476364
+          }
+        },
+        "targets": {
+          "mean_budget": 28.668655887564647,
+          "newcomer_reserve": 0.04026097657247672,
+          "opponent_volume": {
+            "adjustment": -2.0952380952380953,
+            "exposure": 4,
+            "comparisons": [
+              {
+                "game_id": "2026_01_DAL_NYG",
+                "offense": "NYG",
+                "other_games": [
+                  "2026_02_NYG_LA",
+                  "2026_03_TEN_NYG",
+                  "2026_04_ARI_NYG"
+                ]
+              },
+              {
+                "game_id": "2026_02_WAS_DAL",
+                "offense": "WSH",
+                "other_games": [
+                  "2026_01_WAS_PHI",
+                  "2026_03_SEA_WAS",
+                  "2026_04_IND_WAS"
+                ]
+              },
+              {
+                "game_id": "2026_03_BAL_DAL",
+                "offense": "BAL",
+                "other_games": [
+                  "2026_01_BAL_IND",
+                  "2026_02_NO_BAL",
+                  "2026_04_TEN_BAL"
+                ]
+              },
+              {
+                "game_id": "2026_04_DAL_HOU",
+                "offense": "HOU",
+                "other_games": [
+                  "2026_01_BUF_HOU",
+                  "2026_02_CIN_HOU",
+                  "2026_03_HOU_IND"
+                ]
+              }
+            ]
+          },
+          "concentration_assumption": 29.154287738775768,
+          "dispersion_evidence": {
+            "method": "pooled_team_season_moments",
+            "groups": 128,
+            "game_team_observations": 1760,
+            "fallback": false,
+            "limits": [
+              "Role changes and injuries contribute to observed variance.",
+              "Concentration bounds 2 to 1000 are numerical safeguards, not calibration."
+            ],
+            "concentration": 29.154287738775768,
+            "intraclass_variation": 0.03316277965717253
+          },
+          "opponent_yards": {
+            "adjustment": 0.16917418246912325,
+            "exposure": 82,
+            "comparisons": [
+              {
+                "game_id": "2026_01_DAL_NYG",
+                "offense": "NYG",
+                "other_games": [
+                  "2026_02_NYG_LA",
+                  "2026_03_TEN_NYG",
+                  "2026_04_ARI_NYG"
+                ]
+              },
+              {
+                "game_id": "2026_02_WAS_DAL",
+                "offense": "WSH",
+                "other_games": [
+                  "2026_01_WAS_PHI",
+                  "2026_03_SEA_WAS",
+                  "2026_04_IND_WAS"
+                ]
+              },
+              {
+                "game_id": "2026_03_BAL_DAL",
+                "offense": "BAL",
+                "other_games": [
+                  "2026_01_BAL_IND",
+                  "2026_02_NO_BAL",
+                  "2026_04_TEN_BAL"
+                ]
+              },
+              {
+                "game_id": "2026_04_DAL_HOU",
+                "offense": "HOU",
+                "other_games": [
+                  "2026_01_BUF_HOU",
+                  "2026_02_CIN_HOU",
+                  "2026_03_HOU_IND"
+                ]
+              }
+            ]
+          },
+          "opponent_catch": {
+            "adjustment": 0.055811437436231126,
+            "exposure": 109,
+            "comparisons": [
+              {
+                "game_id": "2026_01_DAL_NYG",
+                "offense": "NYG",
+                "other_games": [
+                  "2026_02_NYG_LA",
+                  "2026_03_TEN_NYG",
+                  "2026_04_ARI_NYG"
+                ]
+              },
+              {
+                "game_id": "2026_02_WAS_DAL",
+                "offense": "WSH",
+                "other_games": [
+                  "2026_01_WAS_PHI",
+                  "2026_03_SEA_WAS",
+                  "2026_04_IND_WAS"
+                ]
+              },
+              {
+                "game_id": "2026_03_BAL_DAL",
+                "offense": "BAL",
+                "other_games": [
+                  "2026_01_BAL_IND",
+                  "2026_02_NO_BAL",
+                  "2026_04_TEN_BAL"
+                ]
+              },
+              {
+                "game_id": "2026_04_DAL_HOU",
+                "offense": "HOU",
+                "other_games": [
+                  "2026_01_BUF_HOU",
+                  "2026_02_CIN_HOU",
+                  "2026_03_HOU_IND"
+                ]
+              }
+            ]
+          },
+          "max_budget_mismatch": 0,
+          "roles": {
+            "00-0033921": 0.15327238852728034,
+            "00-0035100": 0,
+            "00-0035282": 0,
+            "00-0036919": 0.09795208318178894,
+            "00-0037311": 0,
+            "00-0037570": 0,
+            "00-0038129": 0.18571785477125688,
+            "00-0038951": 0,
+            "00-0039050": 0.008649492457231378,
+            "00-0039361": 0.10020026834233031,
+            "00-0039392": 0,
+            "00-0039589": 0.021795355235545485,
+            "00-0039754": 0,
+            "00-0040129": 0.18845470900349184,
+            "00-0040237": 0.07200360581009481,
+            "00-0040415": 0,
+            "00-0040419": 0,
+            "00-0040429": 0,
+            "00-0040566": 0,
+            "00-0041048": 0.12304377364127181,
+            "00-0041094": 0,
+            "00-0041251": 0,
+            "00-0041257": 0,
+            "00-0041433": 0,
+            "00-0041435": 0,
+            "00-0034955": 0,
+            "00-0041595": 0,
+            "00-0041599": 0,
+            "NEW:TB:0": 0.0163034896765694,
+            "NEW:TB:1": 0.0163034896765694,
+            "NEW:TB:2": 0.0163034896765694
+          }
+        }
+      }
+    },
+    "DAL": {
+      "prior_game_ids": [
+        "2026_01_DAL_NYG",
+        "2026_02_WAS_DAL",
+        "2026_03_BAL_DAL",
+        "2026_04_DAL_HOU"
+      ],
+      "actions": {
+        "carries": {
+          "mean_budget": 26.422665663019046,
+          "newcomer_reserve": 0.04953351669093459,
+          "opponent_volume": {
+            "adjustment": 0.8571428571428571,
+            "exposure": 4,
+            "comparisons": [
+              {
+                "game_id": "2026_01_TB_CIN",
+                "offense": "CIN",
+                "other_games": [
+                  "2026_02_CIN_HOU",
+                  "2026_03_CIN_PIT",
+                  "2026_04_JAX_CIN"
+                ]
+              },
+              {
+                "game_id": "2026_02_CLE_TB",
+                "offense": "CLE",
+                "other_games": [
+                  "2026_01_CLE_JAX",
+                  "2026_03_CAR_CLE",
+                  "2026_04_PIT_CLE"
+                ]
+              },
+              {
+                "game_id": "2026_03_MIN_TB",
+                "offense": "MIN",
+                "other_games": [
+                  "2026_01_GB_MIN",
+                  "2026_02_MIN_CHI",
+                  "2026_04_MIA_MIN"
+                ]
+              },
+              {
+                "game_id": "2026_04_GB_TB",
+                "offense": "GB",
+                "other_games": [
+                  "2026_01_GB_MIN",
+                  "2026_02_GB_NYJ",
+                  "2026_03_ATL_GB"
+                ]
+              }
+            ]
+          },
+          "concentration_assumption": 7.065422230912416,
+          "dispersion_evidence": {
+            "method": "pooled_team_season_moments",
+            "groups": 128,
+            "game_team_observations": 1760,
+            "fallback": false,
+            "limits": [
+              "Role changes and injuries contribute to observed variance.",
+              "Concentration bounds 2 to 1000 are numerical safeguards, not calibration."
+            ],
+            "concentration": 7.065422230912416,
+            "intraclass_variation": 0.12398606934269243
+          },
+          "opponent_yards": {
+            "adjustment": -0.14842689090942163,
+            "exposure": 98,
+            "comparisons": [
+              {
+                "game_id": "2026_01_TB_CIN",
+                "offense": "CIN",
+                "other_games": [
+                  "2026_02_CIN_HOU",
+                  "2026_03_CIN_PIT",
+                  "2026_04_JAX_CIN"
+                ]
+              },
+              {
+                "game_id": "2026_02_CLE_TB",
+                "offense": "CLE",
+                "other_games": [
+                  "2026_01_CLE_JAX",
+                  "2026_03_CAR_CLE",
+                  "2026_04_PIT_CLE"
+                ]
+              },
+              {
+                "game_id": "2026_03_MIN_TB",
+                "offense": "MIN",
+                "other_games": [
+                  "2026_01_GB_MIN",
+                  "2026_02_MIN_CHI",
+                  "2026_04_MIA_MIN"
+                ]
+              },
+              {
+                "game_id": "2026_04_GB_TB",
+                "offense": "GB",
+                "other_games": [
+                  "2026_01_GB_MIN",
+                  "2026_02_GB_NYJ",
+                  "2026_03_ATL_GB"
+                ]
+              }
+            ]
+          },
+          "opponent_catch": {
+            "adjustment": 0.027953179489867173,
+            "exposure": 119,
+            "comparisons": [
+              {
+                "game_id": "2026_01_TB_CIN",
+                "offense": "CIN",
+                "other_games": [
+                  "2026_02_CIN_HOU",
+                  "2026_03_CIN_PIT",
+                  "2026_04_JAX_CIN"
+                ]
+              },
+              {
+                "game_id": "2026_02_CLE_TB",
+                "offense": "CLE",
+                "other_games": [
+                  "2026_01_CLE_JAX",
+                  "2026_03_CAR_CLE",
+                  "2026_04_PIT_CLE"
+                ]
+              },
+              {
+                "game_id": "2026_03_MIN_TB",
+                "offense": "MIN",
+                "other_games": [
+                  "2026_01_GB_MIN",
+                  "2026_02_MIN_CHI",
+                  "2026_04_MIA_MIN"
+                ]
+              },
+              {
+                "game_id": "2026_04_GB_TB",
+                "offense": "GB",
+                "other_games": [
+                  "2026_01_GB_MIN",
+                  "2026_02_GB_NYJ",
+                  "2026_03_ATL_GB"
+                ]
+              }
+            ]
+          },
+          "max_budget_mismatch": 0,
+          "roles": {
+            "00-0033077": 0.11632807107907824,
+            "00-0036358": 0.020068918581376525,
+            "00-0035639": 0,
+            "00-0036997": 0.6373866638637805,
+            "00-0037077": 0,
+            "00-0037120": 0.10385268209863555,
+            "00-0037247": 0,
+            "00-0037282": 0,
+            "00-0037801": 0.019047558479081295,
+            "00-0038041": 0,
+            "00-0038389": 0,
+            "00-0038547": 0,
+            "00-0038705": 0.038664532023553654,
+            "00-0038738": 0.015118057183559724,
+            "00-0039062": 0,
+            "00-0039398": 0,
+            "00-0039410": 0,
+            "00-0039530": 0,
+            "00-0040048": 0,
+            "00-0040769": 0,
+            "00-0040900": 0,
+            "00-0040930": 0,
+            "00-0040934": 0,
+            "00-0040939": 0,
+            "00-0041516": 0,
+            "00-0036255": 0,
+            "00-0037410": 0,
+            "00-0038406": 0,
+            "00-0040702": 0,
+            "NEW:DAL:0": 0.01651117223031151,
+            "NEW:DAL:1": 0.01651117223031151,
+            "NEW:DAL:2": 0.01651117223031151
+          }
+        },
+        "targets": {
+          "mean_budget": 32.00939116944077,
+          "newcomer_reserve": 0.04026097657247672,
+          "opponent_volume": {
+            "adjustment": -2.0952380952380953,
+            "exposure": 4,
+            "comparisons": [
+              {
+                "game_id": "2026_01_TB_CIN",
+                "offense": "CIN",
+                "other_games": [
+                  "2026_02_CIN_HOU",
+                  "2026_03_CIN_PIT",
+                  "2026_04_JAX_CIN"
+                ]
+              },
+              {
+                "game_id": "2026_02_CLE_TB",
+                "offense": "CLE",
+                "other_games": [
+                  "2026_01_CLE_JAX",
+                  "2026_03_CAR_CLE",
+                  "2026_04_PIT_CLE"
+                ]
+              },
+              {
+                "game_id": "2026_03_MIN_TB",
+                "offense": "MIN",
+                "other_games": [
+                  "2026_01_GB_MIN",
+                  "2026_02_MIN_CHI",
+                  "2026_04_MIA_MIN"
+                ]
+              },
+              {
+                "game_id": "2026_04_GB_TB",
+                "offense": "GB",
+                "other_games": [
+                  "2026_01_GB_MIN",
+                  "2026_02_GB_NYJ",
+                  "2026_03_ATL_GB"
+                ]
+              }
+            ]
+          },
+          "concentration_assumption": 29.154287738775768,
+          "dispersion_evidence": {
+            "method": "pooled_team_season_moments",
+            "groups": 128,
+            "game_team_observations": 1760,
+            "fallback": false,
+            "limits": [
+              "Role changes and injuries contribute to observed variance.",
+              "Concentration bounds 2 to 1000 are numerical safeguards, not calibration."
+            ],
+            "concentration": 29.154287738775768,
+            "intraclass_variation": 0.03316277965717253
+          },
+          "opponent_yards": {
+            "adjustment": -0.44521172381082874,
+            "exposure": 86,
+            "comparisons": [
+              {
+                "game_id": "2026_01_TB_CIN",
+                "offense": "CIN",
+                "other_games": [
+                  "2026_02_CIN_HOU",
+                  "2026_03_CIN_PIT",
+                  "2026_04_JAX_CIN"
+                ]
+              },
+              {
+                "game_id": "2026_02_CLE_TB",
+                "offense": "CLE",
+                "other_games": [
+                  "2026_01_CLE_JAX",
+                  "2026_03_CAR_CLE",
+                  "2026_04_PIT_CLE"
+                ]
+              },
+              {
+                "game_id": "2026_03_MIN_TB",
+                "offense": "MIN",
+                "other_games": [
+                  "2026_01_GB_MIN",
+                  "2026_02_MIN_CHI",
+                  "2026_04_MIA_MIN"
+                ]
+              },
+              {
+                "game_id": "2026_04_GB_TB",
+                "offense": "GB",
+                "other_games": [
+                  "2026_01_GB_MIN",
+                  "2026_02_GB_NYJ",
+                  "2026_03_ATL_GB"
+                ]
+              }
+            ]
+          },
+          "opponent_catch": {
+            "adjustment": 0.027953179489867173,
+            "exposure": 119,
+            "comparisons": [
+              {
+                "game_id": "2026_01_TB_CIN",
+                "offense": "CIN",
+                "other_games": [
+                  "2026_02_CIN_HOU",
+                  "2026_03_CIN_PIT",
+                  "2026_04_JAX_CIN"
+                ]
+              },
+              {
+                "game_id": "2026_02_CLE_TB",
+                "offense": "CLE",
+                "other_games": [
+                  "2026_01_CLE_JAX",
+                  "2026_03_CAR_CLE",
+                  "2026_04_PIT_CLE"
+                ]
+              },
+              {
+                "game_id": "2026_03_MIN_TB",
+                "offense": "MIN",
+                "other_games": [
+                  "2026_01_GB_MIN",
+                  "2026_02_MIN_CHI",
+                  "2026_04_MIA_MIN"
+                ]
+              },
+              {
+                "game_id": "2026_04_GB_TB",
+                "offense": "GB",
+                "other_games": [
+                  "2026_01_GB_MIN",
+                  "2026_02_GB_NYJ",
+                  "2026_03_ATL_GB"
+                ]
+              }
+            ]
+          },
+          "max_budget_mismatch": 0,
+          "roles": {
+            "00-0033077": 0,
+            "00-0036358": 0.3251268219064228,
+            "00-0035639": 0,
+            "00-0036997": 0.10891305261074771,
+            "00-0037077": 0,
+            "00-0037120": 0.015753430128472495,
+            "00-0037247": 0.17363626354340742,
+            "00-0037282": 0,
+            "00-0037801": 0.018332896794039585,
+            "00-0038041": 0.10089802247897649,
+            "00-0038389": 0,
+            "00-0038547": 0.011362108974170695,
+            "00-0038705": 0,
+            "00-0038738": 0.008782642308603608,
+            "00-0039062": 0.021956605771509017,
+            "00-0039398": 0,
+            "00-0039410": 0.15044110647409734,
+            "00-0039530": 0.024536072437076104,
+            "00-0040048": 0,
+            "00-0040769": 0,
+            "00-0040900": 0,
+            "00-0040930": 0,
+            "00-0040934": 0,
+            "00-0040939": 0,
+            "00-0041516": 0,
+            "00-0036255": 0,
+            "00-0037410": 0,
+            "00-0038406": 0,
+            "00-0040702": 0,
+            "NEW:DAL:0": 0.01342032552415895,
+            "NEW:DAL:1": 0.01342032552415895,
+            "NEW:DAL:2": 0.01342032552415895
+          }
+        }
+      }
+    }
+  },
+  "historyCoverage": {
+    "TB": {
+      "expected": [
+        "2026_01_TB_CIN",
+        "2026_02_CLE_TB",
+        "2026_03_MIN_TB",
+        "2026_04_GB_TB"
+      ],
+      "included": [
+        "2026_01_TB_CIN",
+        "2026_02_CLE_TB",
+        "2026_03_MIN_TB",
+        "2026_04_GB_TB"
+      ],
+      "excluded": [],
+      "excluded_event_games": []
+    },
+    "DAL": {
+      "expected": [
+        "2026_01_DAL_NYG",
+        "2026_02_WAS_DAL",
+        "2026_03_BAL_DAL",
+        "2026_04_DAL_HOU"
+      ],
+      "included": [
+        "2026_01_DAL_NYG",
+        "2026_02_WAS_DAL",
+        "2026_03_BAL_DAL",
+        "2026_04_DAL_HOU"
+      ],
+      "excluded": [],
+      "excluded_event_games": []
+    }
+  }
+}

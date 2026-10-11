@@ -1,0 +1,305 @@
+{"graded": "2025_01_DAL_PHI", "seconds": 42.7, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_01_KC_LAC", "seconds": 39.9, "total_yards_loss": {"baseline": 5.776, "v1": 5.878, "v2": 5.497}}
+{"graded": "2025_01_ARI_NO", "seconds": 39.3, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_01_CAR_JAX", "seconds": 37.0, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_01_CIN_CLE", "seconds": 36.7, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_01_LV_NE", "seconds": 36.1, "total_yards_loss": {"baseline": 3.985, "v1": 3.781, "v2": 3.974}}
+{"skipped": "2025_01_MIA_IND", "reason": "Unresolved recent yardage events for MIA: ['2024_15_MIA_HOU']"}
+{"graded": "2025_01_NYG_WAS", "seconds": 34.8, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_01_PIT_NYJ", "seconds": 36.0, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_01_TB_ATL", "seconds": 33.0, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_01_SF_SEA", "seconds": 40.5, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 8.517}}
+{"graded": "2025_01_TEN_DEN", "seconds": 40.0, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_01_DET_GB", "seconds": 38.3, "total_yards_loss": {"baseline": 6.725, "v1": 7.131, "v2": 7.824}}
+{"skipped": "2025_01_HOU_LA", "reason": "Unresolved recent yardage events for HOU: ['2024_15_MIA_HOU']"}
+{"graded": "2025_01_BAL_BUF", "seconds": 40.6, "total_yards_loss": {"baseline": 3.99, "v1": 3.937, "v2": 4.098}}
+{"graded": "2025_01_MIN_CHI", "seconds": 34.5, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_02_WAS_GB", "seconds": 38.6, "total_yards_loss": {"baseline": 5.855, "v1": 6.166, "v2": 6.438}}
+{"graded": "2025_02_BUF_NYJ", "seconds": 37.1, "total_yards_loss": {"baseline": 4.193, "v1": 4.247, "v2": 3.673}}
+{"graded": "2025_02_CHI_DET", "seconds": 31.9, "total_yards_loss": {"baseline": 6.725, "v1": 7.131, "v2": 6.502}}
+{"graded": "2025_02_CLE_BAL", "seconds": 38.7, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_02_JAX_CIN", "seconds": 35.7, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_02_LA_TEN", "seconds": 38.9, "total_yards_loss": {"baseline": 2.842, "v1": 3.222, "v2": 3.01}}
+{"graded": "2025_02_NE_MIA", "seconds": 41.2, "total_yards_loss": {"baseline": 4.234, "v1": 4.193, "v2": 4.014}}
+{"graded": "2025_02_NYG_DAL", "seconds": 37.2, "total_yards_loss": {"baseline": 3.929, "v1": 3.772, "v2": 3.7}}
+{"graded": "2025_02_SEA_PIT", "seconds": 35.1, "total_yards_loss": {"baseline": 2.717, "v1": 2.657, "v2": 2.726}}
+{"graded": "2025_02_SF_NO", "seconds": 39.2, "total_yards_loss": {"baseline": 4.62, "v1": 4.722, "v2": 4.656}}
+{"graded": "2025_02_CAR_ARI", "seconds": 37.2, "total_yards_loss": {"baseline": 3.224, "v1": 3.507, "v2": 3.361}}
+{"graded": "2025_02_DEN_IND", "seconds": 41.1, "total_yards_loss": {"baseline": 5.099, "v1": 5.167, "v2": 5.221}}
+{"graded": "2025_02_PHI_KC", "seconds": 37.6, "total_yards_loss": {"baseline": 5.809, "v1": 6.266, "v2": 5.776}}
+{"graded": "2025_02_ATL_MIN", "seconds": 32.8, "total_yards_loss": {"baseline": 4.841, "v1": 4.934, "v2": 4.768}}
+{"graded": "2025_02_TB_HOU", "seconds": 40.2, "total_yards_loss": {"baseline": 7.013, "v1": 7.131, "v2": 6.32}}
+{"graded": "2025_02_LAC_LV", "seconds": 39.1, "total_yards_loss": {"baseline": 4.406, "v1": 4.465, "v2": 4.605}}
+{"graded": "2025_03_MIA_BUF", "seconds": 42.0, "total_yards_loss": {"baseline": 4.167, "v1": 3.953, "v2": 3.944}}
+{"graded": "2025_03_ATL_CAR", "seconds": 34.7, "total_yards_loss": {"baseline": 2.604, "v1": 2.689, "v2": 2.812}}
+{"graded": "2025_03_CIN_MIN", "seconds": 33.9, "total_yards_loss": {"baseline": 3.459, "v1": 3.342, "v2": 3.165}}
+{"graded": "2025_03_GB_CLE", "seconds": 41.7, "total_yards_loss": {"baseline": 6.377, "v1": 7.131, "v2": 6.725}}
+{"graded": "2025_03_HOU_JAX", "seconds": 42.5, "total_yards_loss": {"baseline": 5.259, "v1": 4.976, "v2": 4.906}}
+{"graded": "2025_03_IND_TEN", "seconds": 39.7, "total_yards_loss": {"baseline": 4.737, "v1": 5.036, "v2": 4.768}}
+{"graded": "2025_03_LA_PHI", "seconds": 39.1, "total_yards_loss": {"baseline": 3.547, "v1": 3.274, "v2": 3.527}}
+{"graded": "2025_03_LV_WAS", "seconds": 39.7, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 8.517}}
+{"graded": "2025_03_NYJ_TB", "seconds": 38.4, "total_yards_loss": {"baseline": 3.154, "v1": 3.062, "v2": 3.055}}
+{"graded": "2025_03_PIT_NE", "seconds": 41.5, "total_yards_loss": {"baseline": 4.678, "v1": 4.733, "v2": 4.689}}
+{"graded": "2025_03_DEN_LAC", "seconds": 41.8, "total_yards_loss": {"baseline": 5.36, "v1": 4.867, "v2": 5.099}}
+{"graded": "2025_03_NO_SEA", "seconds": 37.1, "total_yards_loss": {"baseline": 2.45, "v1": 2.371, "v2": 2.593}}
+{"graded": "2025_03_ARI_SF", "seconds": 41.0, "total_yards_loss": {"baseline": 3.874, "v1": 3.747, "v2": 3.884}}
+{"graded": "2025_03_DAL_CHI", "seconds": 35.2, "total_yards_loss": {"baseline": 7.824, "v1": 8.517, "v2": 27.631}}
+{"graded": "2025_03_KC_NYG", "seconds": 39.7, "total_yards_loss": {"baseline": 7.419, "v1": 7.131, "v2": 7.601}}
+{"graded": "2025_03_DET_BAL", "seconds": 36.0, "total_yards_loss": {"baseline": 8.517, "v1": 6.908, "v2": 7.131}}
+{"graded": "2025_04_SEA_ARI", "seconds": 36.0, "total_yards_loss": {"baseline": 4.56, "v1": 4.492, "v2": 4.519}}
+{"graded": "2025_04_MIN_PIT", "seconds": 35.3, "total_yards_loss": {"baseline": 5.755, "v1": 6.438, "v2": 5.809}}
+{"graded": "2025_04_CAR_NE", "seconds": 37.9, "total_yards_loss": {"baseline": 4.531, "v1": 4.51, "v2": 4.572}}
+{"graded": "2025_04_CLE_DET", "seconds": 35.0, "total_yards_loss": {"baseline": 2.859, "v1": 2.998, "v2": 3.075}}
+{"graded": "2025_04_LAC_NYG", "seconds": 34.4, "total_yards_loss": {"baseline": 3.826, "v1": 4.051, "v2": 3.889}}
+{"graded": "2025_04_NO_BUF", "seconds": 36.3, "total_yards_loss": {"baseline": 3.414, "v1": 3.417, "v2": 3.759}}
+{"graded": "2025_04_PHI_TB", "seconds": 35.4, "total_yards_loss": {"baseline": 3.255, "v1": 3.265, "v2": 3.302}}
+{"graded": "2025_04_TEN_HOU", "seconds": 36.4, "total_yards_loss": {"baseline": 4.044, "v1": 4.338, "v2": 4.492}}
+{"graded": "2025_04_WAS_ATL", "seconds": 37.6, "total_yards_loss": {"baseline": 2.995, "v1": 2.886, "v2": 3.002}}
+{"graded": "2025_04_IND_LA", "seconds": 35.0, "total_yards_loss": {"baseline": 5.573, "v1": 5.298, "v2": 5.915}}
+{"graded": "2025_04_JAX_SF", "seconds": 38.7, "total_yards_loss": {"baseline": 4.576, "v1": 4.88, "v2": 4.667}}
+{"graded": "2025_04_BAL_KC", "seconds": 37.0, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_04_CHI_LV", "seconds": 32.5, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_04_GB_DAL", "seconds": 35.3, "total_yards_loss": {"baseline": 3.636, "v1": 3.471, "v2": 3.781}}
+{"graded": "2025_04_NYJ_MIA", "seconds": 36.4, "total_yards_loss": {"baseline": 2.098, "v1": 2.097, "v2": 2.027}}
+{"graded": "2025_04_CIN_DEN", "seconds": 37.6, "total_yards_loss": {"baseline": 7.419, "v1": 7.013, "v2": 6.119}}
+{"graded": "2025_05_SF_LA", "seconds": 38.4, "total_yards_loss": {"baseline": 4.44, "v1": 4.636, "v2": 4.519}}
+{"graded": "2025_05_MIN_CLE", "seconds": 39.6, "total_yards_loss": {"baseline": 4.646, "v1": 4.646, "v2": 4.417}}
+{"graded": "2025_05_DAL_NYJ", "seconds": 36.8, "total_yards_loss": {"baseline": 6.032, "v1": 6.502, "v2": 6.908}}
+{"graded": "2025_05_DEN_PHI", "seconds": 39.1, "total_yards_loss": {"baseline": 4.328, "v1": 4.213, "v2": 4.22}}
+{"graded": "2025_05_HOU_BAL", "seconds": 39.8, "total_yards_loss": {"baseline": 5.036, "v1": 5.133, "v2": 5.599}}
+{"graded": "2025_05_LV_IND", "seconds": 37.9, "total_yards_loss": {"baseline": 3.391, "v1": 3.474, "v2": 3.39}}
+{"graded": "2025_05_MIA_CAR", "seconds": 38.8, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 8.517}}
+{"graded": "2025_05_NYG_NO", "seconds": 33.4, "total_yards_loss": {"baseline": 3.812, "v1": 3.985, "v2": 3.84}}
+{"graded": "2025_05_TB_SEA", "seconds": 39.7, "total_yards_loss": {"baseline": 4.229, "v1": 4.148, "v2": 4.123}}
+{"graded": "2025_05_TEN_ARI", "seconds": 37.5, "total_yards_loss": {"baseline": 7.824, "v1": 7.824, "v2": 7.476}}
+{"graded": "2025_05_DET_CIN", "seconds": 38.2, "total_yards_loss": {"baseline": 4.791, "v1": 5.627, "v2": 5.133}}
+{"graded": "2025_05_WAS_LAC", "seconds": 44.2, "total_yards_loss": {"baseline": 3.849, "v1": 3.937, "v2": 4.069}}
+{"graded": "2025_05_NE_BUF", "seconds": 39.1, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 7.131}}
+{"graded": "2025_05_KC_JAX", "seconds": 40.1, "total_yards_loss": {"baseline": 6.438, "v1": 6.266, "v2": 6.215}}
+{"graded": "2025_06_PHI_NYG", "seconds": 37.4, "total_yards_loss": {"baseline": 6.119, "v1": 5.878, "v2": 6.215}}
+{"graded": "2025_06_DEN_NYJ", "seconds": 42.5, "total_yards_loss": {"baseline": 5.006, "v1": 4.808, "v2": 4.938}}
+{"graded": "2025_06_ARI_IND", "seconds": 43.8, "total_yards_loss": {"baseline": 6.725, "v1": 7.824, "v2": 6.725}}
+{"graded": "2025_06_CLE_PIT", "seconds": 42.9, "total_yards_loss": {"baseline": 5.547, "v1": 6.571, "v2": 5.449}}
+{"graded": "2025_06_DAL_CAR", "seconds": 40.6, "total_yards_loss": {"baseline": 7.824, "v1": 8.112, "v2": 8.517}}
+{"graded": "2025_06_LAC_MIA", "seconds": 42.4, "total_yards_loss": {"baseline": 7.131, "v1": 27.631, "v2": 6.908}}
+{"graded": "2025_06_LA_BAL", "seconds": 39.4, "total_yards_loss": {"baseline": 3.405, "v1": 3.52, "v2": 3.341}}
+{"graded": "2025_06_NE_NO", "seconds": 37.5, "total_yards_loss": {"baseline": 4.711, "v1": 4.595, "v2": 4.501}}
+{"graded": "2025_06_SEA_JAX", "seconds": 41.5, "total_yards_loss": {"baseline": 4.744, "v1": 5.051, "v2": 4.991}}
+{"graded": "2025_06_TEN_LV", "seconds": 39.2, "total_yards_loss": {"baseline": 27.631, "v1": 8.517, "v2": 7.824}}
+{"graded": "2025_06_CIN_GB", "seconds": 38.6, "total_yards_loss": {"baseline": 3.158, "v1": 3.106, "v2": 3.14}}
+{"graded": "2025_06_SF_TB", "seconds": 42.9, "total_yards_loss": {"baseline": 4.374, "v1": 4.457, "v2": 4.423}}
+{"graded": "2025_06_DET_KC", "seconds": 40.3, "total_yards_loss": {"baseline": 4.906, "v1": 4.92, "v2": 4.991}}
+{"graded": "2025_06_BUF_ATL", "seconds": 40.2, "total_yards_loss": {"baseline": 2.389, "v1": 2.395, "v2": 2.284}}
+{"graded": "2025_06_CHI_WAS", "seconds": 38.4, "total_yards_loss": {"baseline": 4.701, "v1": 4.581, "v2": 4.391}}
+{"graded": "2025_07_PIT_CIN", "seconds": 40.9, "total_yards_loss": {"baseline": 6.908, "v1": 7.131, "v2": 6.595}}
+{"graded": "2025_07_LA_JAX", "seconds": 38.6, "total_yards_loss": {"baseline": 6.32, "v1": 7.264, "v2": 6.502}}
+{"graded": "2025_07_CAR_NYJ", "seconds": 43.9, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_07_LV_KC", "seconds": 42.0, "total_yards_loss": {"baseline": 8.517, "v1": 7.131, "v2": 7.131}}
+{"graded": "2025_07_MIA_CLE", "seconds": 43.7, "total_yards_loss": {"baseline": 6.502, "v1": 7.131, "v2": 6.725}}
+{"graded": "2025_07_NE_TEN", "seconds": 38.7, "total_yards_loss": {"baseline": 6.032, "v1": 6.231, "v2": 7.131}}
+{"graded": "2025_07_NO_CHI", "seconds": 35.7, "total_yards_loss": {"baseline": 5.878, "v1": 6.215, "v2": 5.083}}
+{"graded": "2025_07_PHI_MIN", "seconds": 38.9, "total_yards_loss": {"baseline": 7.419, "v1": 6.215, "v2": 8.517}}
+{"graded": "2025_07_IND_LAC", "seconds": 46.3, "total_yards_loss": {"baseline": 4.791, "v1": 5.073, "v2": 4.92}}
+{"graded": "2025_07_NYG_DEN", "seconds": 45.0, "total_yards_loss": {"baseline": 4.991, "v1": 4.948, "v2": 5.133}}
+{"graded": "2025_07_GB_ARI", "seconds": 42.6, "total_yards_loss": {"baseline": 6.377, "v1": 6.571, "v2": 9.21}}
+{"graded": "2025_07_WAS_DAL", "seconds": 43.1, "total_yards_loss": {"baseline": 5.952, "v1": 5.573, "v2": 6.502}}
+{"graded": "2025_07_ATL_SF", "seconds": 43.1, "total_yards_loss": {"baseline": 3.99, "v1": 4.148, "v2": 4.262}}
+{"graded": "2025_07_TB_DET", "seconds": 39.5, "total_yards_loss": {"baseline": 5.122, "v1": 4.756, "v2": 4.867}}
+{"graded": "2025_07_HOU_SEA", "seconds": 46.1, "total_yards_loss": {"baseline": 7.824, "v1": 6.438, "v2": 6.908}}
+{"graded": "2025_08_MIN_LAC", "seconds": 46.8, "total_yards_loss": {"baseline": 5.745, "v1": 6.032, "v2": 5.684}}
+{"graded": "2025_08_BUF_CAR", "seconds": 45.9, "total_yards_loss": {"baseline": 4.44, "v1": 4.538, "v2": 4.206}}
+{"graded": "2025_08_CHI_BAL", "seconds": 41.0, "total_yards_loss": {"baseline": 4.669, "v1": 4.497, "v2": 4.617}}
+{"graded": "2025_08_CLE_NE", "seconds": 42.5, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_08_MIA_ATL", "seconds": 39.7, "total_yards_loss": {"baseline": 7.264, "v1": 7.824, "v2": 7.131}}
+{"graded": "2025_08_NYG_PHI", "seconds": 42.0, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_08_NYJ_CIN", "seconds": 41.2, "total_yards_loss": {"baseline": 4.962, "v1": 5.279, "v2": 4.893}}
+{"graded": "2025_08_SF_HOU", "seconds": 51.8, "total_yards_loss": {"baseline": 8.517, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_08_TB_NO", "seconds": 42.5, "total_yards_loss": {"baseline": 3.477, "v1": 3.451, "v2": 3.37}}
+{"graded": "2025_08_DAL_DEN", "seconds": 45.8, "total_yards_loss": {"baseline": 4.335, "v1": 4.22, "v2": 4.406}}
+{"graded": "2025_08_TEN_IND", "seconds": 42.9, "total_yards_loss": {"baseline": 4.897, "v1": 4.576, "v2": 4.841}}
+{"graded": "2025_08_GB_PIT", "seconds": 42.6, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_08_WAS_KC", "seconds": 45.8, "total_yards_loss": {"baseline": 8.517, "v1": 8.517, "v2": 27.631}}
+{"graded": "2025_09_BAL_MIA", "seconds": 45.0, "total_yards_loss": {"baseline": 2.054, "v1": 2.069, "v2": 2.011}}
+{"graded": "2025_09_ATL_NE", "seconds": 42.4, "total_yards_loss": {"baseline": 5.382, "v1": 5.608, "v2": 5.573}}
+{"graded": "2025_09_CAR_GB", "seconds": 45.7, "total_yards_loss": {"baseline": 3.423, "v1": 3.494, "v2": 3.759}}
+{"graded": "2025_09_CHI_CIN", "seconds": 42.0, "total_yards_loss": {"baseline": 8.517, "v1": 27.631, "v2": 7.824}}
+{"graded": "2025_09_DEN_HOU", "seconds": 55.5, "total_yards_loss": {"baseline": 4.78, "v1": 4.828, "v2": 4.841}}
+{"graded": "2025_09_IND_PIT", "seconds": 50.6, "total_yards_loss": {"baseline": 4.701, "v1": 4.657, "v2": 4.923}}
+{"graded": "2025_09_LAC_TEN", "seconds": 47.4, "total_yards_loss": {"baseline": 5.809, "v1": 5.809, "v2": 6.166}}
+{"graded": "2025_09_MIN_DET", "seconds": 43.2, "total_yards_loss": {"baseline": 7.824, "v1": 9.21, "v2": 27.631}}
+{"graded": "2025_09_SF_NYG", "seconds": 48.6, "total_yards_loss": {"baseline": 5.627, "v1": 5.404, "v2": 5.083}}
+{"graded": "2025_09_JAX_LV", "seconds": 47.2, "total_yards_loss": {"baseline": 6.645, "v1": 6.645, "v2": 6.032}}
+{"graded": "2025_09_NO_LA", "seconds": 44.3, "total_yards_loss": {"baseline": 3.467, "v1": 3.31, "v2": 3.362}}
+{"graded": "2025_09_KC_BUF", "seconds": 43.1, "total_yards_loss": {"baseline": 6.215, "v1": 5.573, "v2": 5.809}}
+{"graded": "2025_09_SEA_WAS", "seconds": 46.8, "total_yards_loss": {"baseline": 5.915, "v1": 6.119, "v2": 5.878}}
+{"graded": "2025_09_ARI_DAL", "seconds": 49.5, "total_yards_loss": {"baseline": 5.24, "v1": 5.952, "v2": 5.608}}
+{"graded": "2025_10_LV_DEN", "seconds": 58.3, "total_yards_loss": {"baseline": 8.517, "v1": 8.517, "v2": 7.824}}
+{"graded": "2025_10_ATL_IND", "seconds": 52.7, "total_yards_loss": {"baseline": 4.483, "v1": 4.656, "v2": 4.457}}
+{"graded": "2025_10_BAL_MIN", "seconds": 49.8, "total_yards_loss": {"baseline": 5.259, "v1": 5.473, "v2": 5.167}}
+{"graded": "2025_10_BUF_MIA", "seconds": 48.5, "total_yards_loss": {"baseline": 1.933, "v1": 1.823, "v2": 1.87}}
+{"graded": "2025_10_CLE_NYJ", "seconds": 50.0, "total_yards_loss": {"baseline": 2.892, "v1": 2.892, "v2": 2.817}}
+{"graded": "2025_10_JAX_HOU", "seconds": 49.6, "total_yards_loss": {"baseline": 3.345, "v1": 3.334, "v2": 3.538}}
+{"graded": "2025_10_NE_TB", "seconds": 43.7, "total_yards_loss": {"baseline": 5.809, "v1": 6.032, "v2": 5.319}}
+{"graded": "2025_10_NO_CAR", "seconds": 45.2, "total_yards_loss": {"baseline": 5.627, "v1": 5.573, "v2": 6.32}}
+{"graded": "2025_10_NYG_CHI", "seconds": 43.0, "total_yards_loss": {"baseline": 5.878, "v1": 6.032, "v2": 6.377}}
+{"graded": "2025_10_ARI_SEA", "seconds": 48.4, "total_yards_loss": {"baseline": 4.148, "v1": 4.234, "v2": 4.2}}
+{"graded": "2025_10_DET_WAS", "seconds": 41.9, "total_yards_loss": {"baseline": 4.154, "v1": 3.897, "v2": 3.922}}
+{"graded": "2025_10_LA_SF", "seconds": 49.7, "total_yards_loss": {"baseline": 3.458, "v1": 3.654, "v2": 3.739}}
+{"graded": "2025_10_PIT_LAC", "seconds": 52.1, "total_yards_loss": {"baseline": 3.015, "v1": 3.467, "v2": 3.124}}
+{"graded": "2025_10_PHI_GB", "seconds": 45.5, "total_yards_loss": {"baseline": 2.537, "v1": 2.368, "v2": 2.61}}
+{"graded": "2025_11_NYJ_NE", "seconds": 49.9, "total_yards_loss": {"baseline": 5.067, "v1": 5.655, "v2": 6.166}}
+{"graded": "2025_11_WAS_MIA", "seconds": 49.6, "total_yards_loss": {"baseline": 4.625, "v1": 4.646, "v2": 4.796}}
+{"graded": "2025_11_CAR_ATL", "seconds": 45.7, "total_yards_loss": {"baseline": 3.606, "v1": 3.697, "v2": 3.274}}
+{"graded": "2025_11_CHI_MIN", "seconds": 43.8, "total_yards_loss": {"baseline": 4.358, "v1": 4.241, "v2": 4.345}}
+{"graded": "2025_11_CIN_PIT", "seconds": 46.2, "total_yards_loss": {"baseline": 6.111, "v1": 6.869, "v2": 6.363}}
+{"graded": "2025_11_GB_NYG", "seconds": 44.6, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_11_HOU_TEN", "seconds": 46.6, "total_yards_loss": {"baseline": 7.419, "v1": 8.112, "v2": 7.601}}
+{"graded": "2025_11_LAC_JAX", "seconds": 53.1, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_11_TB_BUF", "seconds": 46.0, "total_yards_loss": {"baseline": 6.725, "v1": 7.131, "v2": 7.419}}
+{"graded": "2025_11_SEA_LA", "seconds": 45.2, "total_yards_loss": {"baseline": 3.004, "v1": 2.804, "v2": 3.112}}
+{"graded": "2025_11_SF_ARI", "seconds": 51.0, "total_yards_loss": {"baseline": 3.355, "v1": 3.204, "v2": 3.08}}
+{"graded": "2025_11_BAL_CLE", "seconds": 45.9, "total_yards_loss": {"baseline": 4.501, "v1": 5.203, "v2": 4.605}}
+{"graded": "2025_11_KC_DEN", "seconds": 49.3, "total_yards_loss": {"baseline": 6.725, "v1": 6.571, "v2": 6.671}}
+{"graded": "2025_11_DET_PHI", "seconds": 43.4, "total_yards_loss": {"baseline": 3.899, "v1": 4.241, "v2": 3.803}}
+{"graded": "2025_11_DAL_LV", "seconds": 48.5, "total_yards_loss": {"baseline": 4.531, "v1": 4.351, "v2": 4.51}}
+{"graded": "2025_12_BUF_HOU", "seconds": 52.5, "total_yards_loss": {"baseline": 3.249, "v1": 3.214, "v2": 3.338}}
+{"graded": "2025_12_IND_KC", "seconds": 50.6, "total_yards_loss": {"baseline": 4.576, "v1": 4.366, "v2": 4.585}}
+{"graded": "2025_12_MIN_GB", "seconds": 47.3, "total_yards_loss": {"baseline": 6.502, "v1": 7.013, "v2": 6.725}}
+{"graded": "2025_12_NE_CIN", "seconds": 44.4, "total_yards_loss": {"baseline": 5.006, "v1": 4.678, "v2": 5.133}}
+{"graded": "2025_12_NYG_DET", "seconds": 47.7, "total_yards_loss": {"baseline": 2.93, "v1": 3.028, "v2": 2.799}}
+{"graded": "2025_12_NYJ_BAL", "seconds": 51.0, "total_yards_loss": {"baseline": 2.387, "v1": 2.22, "v2": 2.457}}
+{"graded": "2025_12_PIT_CHI", "seconds": 60.5, "total_yards_loss": {"baseline": 5.411, "v1": 5.133, "v2": 5.24}}
+{"graded": "2025_12_SEA_TEN", "seconds": 54.4, "total_yards_loss": {"baseline": 4.756, "v1": 4.841, "v2": 5.279}}
+{"graded": "2025_12_CLE_LV", "seconds": 57.0, "total_yards_loss": {"baseline": 27.631, "v1": 8.517, "v2": 8.517}}
+{"graded": "2025_12_JAX_ARI", "seconds": 59.7, "total_yards_loss": {"baseline": 7.824, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_12_ATL_NO", "seconds": 52.5, "total_yards_loss": {"baseline": 4.154, "v1": 4.063, "v2": 4.086}}
+{"graded": "2025_12_PHI_DAL", "seconds": 49.6, "total_yards_loss": {"baseline": 4.092, "v1": 3.701, "v2": 4.063}}
+{"graded": "2025_12_TB_LA", "seconds": 54.0, "total_yards_loss": {"baseline": 3.865, "v1": 4.195, "v2": 3.912}}
+{"graded": "2025_12_CAR_SF", "seconds": 56.1, "total_yards_loss": {"baseline": 2.251, "v1": 2.15, "v2": 2.409}}
+{"graded": "2025_13_GB_DET", "seconds": 47.4, "total_yards_loss": {"baseline": 7.824, "v1": 8.517, "v2": 7.419}}
+{"graded": "2025_13_KC_DAL", "seconds": 47.4, "total_yards_loss": {"baseline": 3.093, "v1": 2.487, "v2": 3.068}}
+{"graded": "2025_13_CIN_BAL", "seconds": 52.0, "total_yards_loss": {"baseline": 2.313, "v1": 2.416, "v2": 2.286}}
+{"graded": "2025_13_CHI_PHI", "seconds": 50.3, "total_yards_loss": {"baseline": 5.426, "v1": 6.266, "v2": 5.497}}
+{"graded": "2025_13_ARI_TB", "seconds": 52.6, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_13_ATL_NYJ", "seconds": 53.4, "total_yards_loss": {"baseline": 5.684, "v1": 6.119, "v2": 5.809}}
+{"graded": "2025_13_HOU_IND", "seconds": 51.6, "total_yards_loss": {"baseline": 3.289, "v1": 3.4, "v2": 3.257}}
+{"graded": "2025_13_JAX_TEN", "seconds": 51.4, "total_yards_loss": {"baseline": 8.517, "v1": 8.517, "v2": 7.824}}
+{"graded": "2025_13_LA_CAR", "seconds": 42.4, "total_yards_loss": {"baseline": 27.631, "v1": 8.517, "v2": 8.517}}
+{"graded": "2025_13_NO_MIA", "seconds": 50.9, "total_yards_loss": {"baseline": 6.119, "v1": 6.645, "v2": 5.724}}
+{"graded": "2025_13_SF_CLE", "seconds": 49.5, "total_yards_loss": {"baseline": 2.368, "v1": 2.161, "v2": 2.338}}
+{"graded": "2025_13_MIN_SEA", "seconds": 45.5, "total_yards_loss": {"baseline": 7.419, "v1": 7.264, "v2": 6.166}}
+{"graded": "2025_13_BUF_PIT", "seconds": 54.9, "total_yards_loss": {"baseline": 7.824, "v1": 17.871, "v2": 7.765}}
+{"graded": "2025_13_LV_LAC", "seconds": 55.8, "total_yards_loss": {"baseline": 3.391, "v1": 3.305, "v2": 3.286}}
+{"graded": "2025_13_DEN_WAS", "seconds": 53.9, "total_yards_loss": {"baseline": 8.517, "v1": 8.517, "v2": 27.631}}
+{"graded": "2025_13_NYG_NE", "seconds": 48.3, "total_yards_loss": {"baseline": 6.645, "v1": 6.725, "v2": 7.131}}
+{"graded": "2025_14_DAL_DET", "seconds": 46.6, "total_yards_loss": {"baseline": 7.131, "v1": 6.119, "v2": 7.013}}
+{"graded": "2025_14_CIN_BUF", "seconds": 52.8, "total_yards_loss": {"baseline": 7.419, "v1": 6.119, "v2": 6.725}}
+{"graded": "2025_14_IND_JAX", "seconds": 53.0, "total_yards_loss": {"baseline": 6.32, "v1": 5.547, "v2": 6.502}}
+{"graded": "2025_14_MIA_NYJ", "seconds": 51.6, "total_yards_loss": {"baseline": 5.573, "v1": 5.745, "v2": 5.714}}
+{"graded": "2025_14_NO_TB", "seconds": 56.4, "total_yards_loss": {"baseline": 8.016, "v1": 8.382, "v2": 20.798}}
+{"graded": "2025_14_PIT_BAL", "seconds": 48.1, "total_yards_loss": {"baseline": 3.159, "v1": 3.247, "v2": 3.126}}
+{"graded": "2025_14_SEA_ATL", "seconds": 48.1, "total_yards_loss": {"baseline": 3.09, "v1": 3.258, "v2": 3.296}}
+{"graded": "2025_14_TEN_CLE", "seconds": 46.6, "total_yards_loss": {"baseline": 2.913, "v1": 2.788, "v2": 3.048}}
+{"graded": "2025_14_WAS_MIN", "seconds": 47.8, "total_yards_loss": {"baseline": 4.683, "v1": 4.804, "v2": 4.611}}
+{"graded": "2025_14_DEN_LV", "seconds": 52.8, "total_yards_loss": {"baseline": 7.824, "v1": 7.264, "v2": 8.517}}
+{"graded": "2025_14_CHI_GB", "seconds": 48.4, "total_yards_loss": {"baseline": 4.158, "v1": 4.474, "v2": 4.328}}
+{"graded": "2025_14_LA_ARI", "seconds": 44.6, "total_yards_loss": {"baseline": 4.51, "v1": 4.595, "v2": 4.377}}
+{"graded": "2025_14_HOU_KC", "seconds": 53.3, "total_yards_loss": {"baseline": 4.528, "v1": 4.625, "v2": 4.924}}
+{"graded": "2025_14_PHI_LAC", "seconds": 52.8, "total_yards_loss": {"baseline": 2.776, "v1": 2.707, "v2": 2.715}}
+{"graded": "2025_15_ATL_TB", "seconds": 48.7, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_15_ARI_HOU", "seconds": 53.3, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_15_BAL_CIN", "seconds": 53.8, "total_yards_loss": {"baseline": 2.714, "v1": 2.817, "v2": 2.686}}
+{"graded": "2025_15_BUF_NE", "seconds": 60.3, "total_yards_loss": {"baseline": 3.799, "v1": 3.953, "v2": 3.963}}
+{"graded": "2025_15_CLE_CHI", "seconds": 50.9, "total_yards_loss": {"baseline": 8.517, "v1": 7.824, "v2": 7.419}}
+{"graded": "2025_15_LAC_KC", "seconds": 59.8, "total_yards_loss": {"baseline": 7.824, "v1": 27.631, "v2": 7.131}}
+{"graded": "2025_15_LV_PHI", "seconds": 46.3, "total_yards_loss": {"baseline": 27.631, "v1": 7.824, "v2": 27.631}}
+{"graded": "2025_15_NYJ_JAX", "seconds": 57.1, "total_yards_loss": {"baseline": 4.906, "v1": 4.82, "v2": 5.021}}
+{"graded": "2025_15_WAS_NYG", "seconds": 64.4, "total_yards_loss": {"baseline": 5.24, "v1": 5.133, "v2": 5.426}}
+{"graded": "2025_15_CAR_NO", "seconds": 58.7, "total_yards_loss": {"baseline": 6.571, "v1": 6.32, "v2": 7.264}}
+{"graded": "2025_15_DET_LA", "seconds": 55.3, "total_yards_loss": {"baseline": 3.605, "v1": 3.086, "v2": 3.537}}
+{"graded": "2025_15_GB_DEN", "seconds": 68.7, "total_yards_loss": {"baseline": 4.948, "v1": 4.579, "v2": 4.733}}
+{"graded": "2025_15_IND_SEA", "seconds": 58.5, "total_yards_loss": {"baseline": 3.759, "v1": 3.817, "v2": 4.351}}
+{"graded": "2025_15_TEN_SF", "seconds": 53.7, "total_yards_loss": {"baseline": 6.571, "v1": 6.645, "v2": 7.419}}
+{"graded": "2025_15_MIN_DAL", "seconds": 48.7, "total_yards_loss": {"baseline": 4.947, "v1": 4.773, "v2": 4.576}}
+{"graded": "2025_15_MIA_PIT", "seconds": 56.6, "total_yards_loss": {"baseline": 7.131, "v1": 6.725, "v2": 7.419}}
+{"graded": "2025_16_LA_SEA", "seconds": 53.0, "total_yards_loss": {"baseline": 2.966, "v1": 3.175, "v2": 2.984}}
+{"graded": "2025_16_PHI_WAS", "seconds": 55.2, "total_yards_loss": {"baseline": 3.611, "v1": 4.167, "v2": 3.922}}
+{"skipped": "2025_16_GB_CHI", "reason": "Unresolved recent yardage events for CHI: ['2025_15_CLE_CHI']"}
+{"skipped": "2025_16_BUF_CLE", "reason": "Unresolved recent yardage events for CLE: ['2025_15_CLE_CHI']"}
+{"graded": "2025_16_CIN_MIA", "seconds": 57.6, "total_yards_loss": {"baseline": 1.928, "v1": 1.819, "v2": 1.94}}
+{"graded": "2025_16_KC_TEN", "seconds": 57.6, "total_yards_loss": {"baseline": 6.075, "v1": 6.571, "v2": 6.725}}
+{"graded": "2025_16_LAC_DAL", "seconds": 61.3, "total_yards_loss": {"baseline": 6.908, "v1": 6.725, "v2": 7.013}}
+{"graded": "2025_16_MIN_NYG", "seconds": 54.4, "total_yards_loss": {"baseline": 3.073, "v1": 3.154, "v2": 3.091}}
+{"graded": "2025_16_NYJ_NO", "seconds": 63.1, "total_yards_loss": {"baseline": 6.908, "v1": 6.266, "v2": 6.571}}
+{"graded": "2025_16_TB_CAR", "seconds": 56.4, "total_yards_loss": {"baseline": 5.952, "v1": 5.203, "v2": 5.714}}
+{"graded": "2025_16_ATL_ARI", "seconds": 54.3, "total_yards_loss": {"baseline": 7.824, "v1": 9.616, "v2": 8.112}}
+{"graded": "2025_16_JAX_DEN", "seconds": 56.5, "total_yards_loss": {"baseline": 5.203, "v1": 5.221, "v2": 5.259}}
+{"graded": "2025_16_LV_HOU", "seconds": 50.3, "total_yards_loss": {"baseline": 4.29, "v1": 4.465, "v2": 4.599}}
+{"graded": "2025_16_PIT_DET", "seconds": 56.7, "total_yards_loss": {"baseline": 4.841, "v1": 5.15, "v2": 4.962}}
+{"graded": "2025_16_NE_BAL", "seconds": 53.9, "total_yards_loss": {"baseline": 4.241, "v1": 4.678, "v2": 4.148}}
+{"graded": "2025_16_SF_IND", "seconds": 56.5, "total_yards_loss": {"baseline": 3.609, "v1": 3.693, "v2": 3.469}}
+{"graded": "2025_17_DAL_WAS", "seconds": 59.6, "total_yards_loss": {"baseline": 6.215, "v1": 6.075, "v2": 6.215}}
+{"graded": "2025_17_DET_MIN", "seconds": 53.6, "total_yards_loss": {"baseline": 3.892, "v1": 3.942, "v2": 3.849}}
+{"graded": "2025_17_DEN_KC", "seconds": 62.6, "total_yards_loss": {"baseline": 7.136, "v1": 16.704, "v2": 16.602}}
+{"graded": "2025_17_HOU_LAC", "seconds": 67.5, "total_yards_loss": {"baseline": 7.419, "v1": 8.517, "v2": 7.419}}
+{"graded": "2025_17_BAL_GB", "seconds": 57.7, "total_yards_loss": {"baseline": 4.699, "v1": 4.51, "v2": 4.636}}
+{"graded": "2025_17_ARI_CIN", "seconds": 61.5, "total_yards_loss": {"baseline": 2.807, "v1": 2.553, "v2": 2.69}}
+{"graded": "2025_17_JAX_IND", "seconds": 54.4, "total_yards_loss": {"baseline": 3.83, "v1": 3.846, "v2": 3.814}}
+{"graded": "2025_17_NE_NYJ", "seconds": 58.3, "total_yards_loss": {"baseline": 5.221, "v1": 5.15, "v2": 5.521}}
+{"graded": "2025_17_NO_TEN", "seconds": 63.2, "total_yards_loss": {"baseline": 5.573, "v1": 5.479, "v2": 5.501}}
+{"skipped": "2025_17_PIT_CLE", "reason": "Unresolved recent yardage events for CLE: ['2025_15_CLE_CHI']"}
+{"graded": "2025_17_SEA_CAR", "seconds": 53.4, "total_yards_loss": {"baseline": 3.483, "v1": 3.799, "v2": 3.634}}
+{"graded": "2025_17_TB_MIA", "seconds": 63.4, "total_yards_loss": {"baseline": 7.419, "v1": 6.571, "v2": 6.645}}
+{"graded": "2025_17_NYG_LV", "seconds": 52.8, "total_yards_loss": {"baseline": 7.131, "v1": 7.601, "v2": 7.419}}
+{"graded": "2025_17_PHI_BUF", "seconds": 59.3, "total_yards_loss": {"baseline": 6.79, "v1": 7.544, "v2": 7.318}}
+{"skipped": "2025_17_CHI_SF", "reason": "Unresolved recent yardage events for CHI: ['2025_15_CLE_CHI']"}
+{"graded": "2025_17_LA_ATL", "seconds": 57.7, "total_yards_loss": {"baseline": 5.94, "v1": 6.32, "v2": 5.878}}
+{"graded": "2025_18_CAR_TB", "seconds": 60.0, "total_yards_loss": {"baseline": 6.725, "v1": 6.725, "v2": 6.438}}
+{"graded": "2025_18_SEA_SF", "seconds": 54.4, "total_yards_loss": {"baseline": 4.492, "v1": 4.2, "v2": 4.343}}
+{"skipped": "2025_18_CLE_CIN", "reason": "Unresolved recent yardage events for CLE: ['2025_15_CLE_CHI']"}
+{"graded": "2025_18_DAL_NYG", "seconds": 54.2, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_18_GB_MIN", "seconds": 62.3, "total_yards_loss": {"baseline": 7.419, "v1": 8.112, "v2": 27.631}}
+{"graded": "2025_18_IND_HOU", "seconds": 57.2, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_18_NO_ATL", "seconds": 55.1, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_18_TEN_JAX", "seconds": 60.4, "total_yards_loss": {"baseline": 5.083, "v1": 5.745, "v2": 5.521}}
+{"graded": "2025_18_ARI_LA", "seconds": 59.0, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 27.631}}
+{"skipped": "2025_18_DET_CHI", "reason": "Unresolved recent yardage events for CHI: ['2025_15_CLE_CHI']"}
+{"graded": "2025_18_KC_LV", "seconds": 68.1, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 7.419}}
+{"graded": "2025_18_LAC_DEN", "seconds": 68.7, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_18_MIA_NE", "seconds": 59.3, "total_yards_loss": {"baseline": 5.382, "v1": 5.684, "v2": 5.259}}
+{"graded": "2025_18_NYJ_BUF", "seconds": 68.8, "total_yards_loss": {"baseline": 27.631, "v1": 27.631, "v2": 27.631}}
+{"graded": "2025_18_WAS_PHI", "seconds": 56.7, "total_yards_loss": {"baseline": 27.631, "v1": 8.517, "v2": 8.517}}
+{"graded": "2025_18_BAL_PIT", "seconds": 58.8, "total_yards_loss": {"baseline": 2.943, "v1": 2.965, "v2": 3.083}}
+{
+ "gates": {
+  "v1": {
+   "games": 264,
+   "floor": true,
+   "primary_all_families_ci_upper_below_zero": false,
+   "crps_guard": true,
+   "p90_guard": true,
+   "families_passing_primary": [],
+   "verdict": "NOT_PROMOTED"
+  },
+  "v2": {
+   "games": 264,
+   "floor": true,
+   "primary_all_families_ci_upper_below_zero": false,
+   "crps_guard": true,
+   "p90_guard": true,
+   "families_passing_primary": [],
+   "verdict": "NOT_PROMOTED"
+  }
+ },
+ "graded": 264,
+ "skipped": 8
+}
+v1 receptions n 264 mean diff -0.0356 ci [-0.318, 0.2553] crps 0.0055 p90err -0.0002
+v1 receiving_yards n 264 mean diff 0.4655 ci [-0.011, 0.9732] crps 0.0036 p90err -0.0
+v1 rushing_yards n 264 mean diff -0.034 ci [-0.1804, 0.0669] crps 0.0022 p90err -0.001
+v1 total_yards n 264 mean diff 0.1239 ci [-0.3594, 0.6109] crps 0.0028 p90err -0.0005
+v2 receptions n 264 mean diff 0.1327 ci [-0.1456, 0.4173] crps 0.0021 p90err 0.0007
+v2 receiving_yards n 264 mean diff 0.1865 ci [-0.2443, 0.6443] crps 0.0018 p90err 0.0027
+v2 rushing_yards n 264 mean diff -0.0848 ci [-0.3567, 0.1471] crps 0.0021 p90err -0.0009
+v2 total_yards n 264 mean diff -0.0441 ci [-0.6332, 0.577] crps 0.0019 p90err 0.001
+DONE

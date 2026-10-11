@@ -1063,14 +1063,21 @@ def _notify(alerts: list[dict]) -> None:
                     f"{d.get('player')} to score @ DK {d.get('dk_odds', '?'):+}  "
                     f"+{d.get('edge_vs_median_pct')}% vs market median")
         elif a["alert_type"] == "dk_value":
-            text = (f"💰 {a['sport'].upper()} DK VALUE: {a['matchup']}\n"
-                    f"Bet {a['side']} @ DK {d.get('dk_odds', '?'):+}  "
-                    f"EV {d.get('ev_pct', '?')}% vs Pinnacle fair "
-                    f"{a['sharp_prob']*100:.1f}%")
+            if a["sport"] == "cfb":
+                text = (f"🔬 CFB PRICE OBSERVATION: {a['matchup']}\n"
+                        f"Selection {a['side']} @ DK {d.get('dk_odds', '?'):+}  "
+                        f"screened EV {d.get('ev_pct', '?')}% vs Pinnacle no-vig reference "
+                        f"{a['sharp_prob']*100:.1f}% · research only")
+            else:
+                text = (f"💰 {a['sport'].upper()} DK VALUE: {a['matchup']}\n"
+                        f"Bet {a['side']} @ DK {d.get('dk_odds', '?'):+}  "
+                        f"EV {d.get('ev_pct', '?')}% vs Pinnacle fair "
+                        f"{a['sharp_prob']*100:.1f}%")
         elif a.get("sharp_prob") is not None:
+            reference_label = "reference" if a["sport"] == "cfb" else "sharp"
             text = (f"🚨 {a['sport'].upper()} {a['alert_type']}: {a['matchup']}\n"
                     f"side={a['side']}  retail={a['alert_prob']*100:.1f}%  "
-                    f"sharp={a['sharp_prob']*100:.1f}%")
+                    f"{reference_label}={a['sharp_prob']*100:.1f}%")
         else:
             text = f"🚨 {a['sport'].upper()} {a['alert_type']}: {a['matchup']} side={a['side']}"
         if token and chat_id:
@@ -1229,7 +1236,7 @@ def scan(db: DatabaseManager, sport: str) -> int:
         )
         if prev and sport in ("mlb", "tennis", "cfb", "nfl", "nhl"):
             prev["books"] = selected_books(prev["books"])
-        if prev and prev["books"]:
+        if prev and prev["books"] and sport != "cfb":
             pb = prev["books"]
             for side in _sides(books):
                 moves = []
@@ -1284,7 +1291,7 @@ def scan(db: DatabaseManager, sport: str) -> int:
         )
         if first and sport in ("mlb", "tennis", "cfb", "nfl", "nhl"):
             first["books"] = selected_books(first["books"])
-        if first and first["books"]:
+        if first and first["books"] and sport != "cfb":
             fb = first["books"]
             for side in _sides(books):
                 p_open, p_now, overlap_books = _comparable_retail_probabilities(
@@ -1345,6 +1352,22 @@ def scan(db: DatabaseManager, sport: str) -> int:
                 (sport, r["matchup_id"], r["commence_time"], r["captured_at"]),
             )
             structure_history = [{**row, "books": selected_books(row["books"])} for row in structure_history]
+            if sport == "cfb":
+                from model.cfb_moneyline_movement import candidates as cfb_moneyline_candidates
+                for signal in cfb_moneyline_candidates(structure_history):
+                    side = signal["side"]
+                    details = {
+                        **signal["details"],
+                        **freeze_execution_price(books, market="moneyline", side=side),
+                    }
+                    new_alerts.extend(_insert(
+                        db, sport=sport, r=r, label=label,
+                        alert_type=signal["alert_type"], side=side,
+                        alert_prob=_retail_fair_side(books, side),
+                        sharp_prob=(_book_fair_side(books["pinnacle"], side)
+                                    if "pinnacle" in books else None),
+                        details=details,
+                    ))
             allowed = ({"reversal", "reference_led", "price_pressure", "book_disagreement",
                         "market_convergence", "late_move", "favorite_flip"}
                        if sport == "tennis"
@@ -2670,13 +2693,10 @@ def settle(db: DatabaseManager, sport: str) -> int:
             close = _verified_close(db, sport, a["matchup_id"], include_id=(sport == "cfb"))
         else:
             close = None
-        # Historical alerts and the short interval before the close worker
-        # freezes a new event retain the explicitly-labelled legacy fallback.
-        if close is None and (sport in ("nfl", "nhl") or (sport == "cfb" and not is_cfb_moneyline)):
-            # Keep other prospective CLV cohorts on verified closes. A final
-            # CFB moneyline result can settle without a comparable close.
+        settles_without_close = close is None and (sport in ("nfl", "nhl") or is_cfb_moneyline)
+        if close is None and sport == "cfb" and not is_cfb_moneyline:
             continue
-        if close is None and sport != "cfb":
+        if close is None and sport not in ("cfb", "nfl", "nhl"):
             close = db.execute_one(
                 f"""
                 SELECT books FROM game_odds_history
@@ -2755,7 +2775,9 @@ def settle(db: DatabaseManager, sport: str) -> int:
         # and is filled in the same pass on a later run if still NULL then.
         if clv_pp is None and outcome is None:
             continue
-        if is_cfb_moneyline and close is None:
+        if settles_without_close:
+            if outcome is None:
+                continue
             # Price CLV requires a verified close. The final score does not.
             g = {
                 "dk_close_decimal": None, "dk_clv_pct": None,
@@ -3276,8 +3298,9 @@ def dk_board(db: DatabaseManager) -> None:
         board.sort(reverse=True)
         print(f"\n  {sport.upper()}")
         for ev, game, pick, odds, fair in board[:12]:
-            flag = " <-- BET-GRADE VALUE" if ev >= _DK_VALUE_MIN_EV else ""
-            print(f"    {game:<40} {pick:<22} DK {odds:>+5}  pin-fair {fair*100:5.1f}%  EV {ev*100:+5.1f}%{flag}")
+            flag = " <-- OBSERVATION THRESHOLD" if ev >= _DK_VALUE_MIN_EV else ""
+            reference_label = "pin-reference" if sport == "cfb" else "pin-fair"
+            print(f"    {game:<40} {pick:<22} DK {odds:>+5}  {reference_label} {fair*100:5.1f}%  EV {ev*100:+5.1f}%{flag}")
     print()
 
 

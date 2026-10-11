@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+import inspect
+import re
 
 from ingest import event_closing_lines as closes
 from ingest import mlb_schedule, tennis_schedule
@@ -574,3 +576,25 @@ def test_nhl_freeze_failure_does_not_stop_other_sports(monkeypatch) -> None:
         return True
     monkeypatch.setattr(closes, "_freeze_one", freeze)
     assert closes.freeze_due_closes(Db(), now=datetime(2026, 9, 29, 21, 5, tzinfo=timezone.utc))["frozen"] == 1
+
+
+def test_a_kickoff_moving_back_revives_the_checkpoints_its_reschedule_superseded(monkeypatch) -> None:
+    statements: list[str] = []
+
+    class Db:
+        def execute(self, sql, params=None):
+            if "INSERT INTO odds_capture_checkpoints" in sql:
+                statements.append(sql)
+            if "SELECT id AS matchup_id" in sql:
+                return [dict(matchup_id=1, event_id="e", has_capture=True,
+                             scheduled_start_at=datetime(2026, 10, 11, 2, 30, tzinfo=timezone.utc))]
+            return []
+    closes.seed_checkpoints(Db(), datetime(2026, 10, 10, tzinfo=timezone.utc))
+    assert len(statements) == 5
+    for sql in statements:
+        assert "DO NOTHING" not in sql
+        assert "SET status='pending', failure_reason=NULL" in sql
+        assert "failure_reason LIKE 'superseded by %%reschedule'" in sql
+    reasons = set(re.findall(r"failure_reason='(superseded by [^']*)'", inspect.getsource(closes.reconcile_checkpoints)))
+    assert len(reasons) == 3
+    assert all(re.fullmatch(r"superseded by .*reschedule", reason) for reason in reasons)

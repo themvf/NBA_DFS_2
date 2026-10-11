@@ -1,0 +1,32 @@
+{
+  "source_ref": "aeaffa5a71c14eb04bcb51c11469df51681fb7813efb2dbb8cd9c59005230ea4",
+  "training_decision_at": "2026-10-08T23:14:08.554700+00:00",
+  "implementation_sha256": "f7ca596713fee27379e750f2371234a482064ecaf73cf8f604f9b7cfd5170d2f",
+  "authority": "development_prior_only_fit_not_calibrated",
+  "actions": {
+    "carries": {
+      "method": "pooled_team_season_moments",
+      "groups": 128,
+      "game_team_observations": 1760,
+      "fallback": false,
+      "limits": [
+        "Role changes and injuries contribute to observed variance.",
+        "Concentration bounds 2 to 1000 are numerical safeguards, not calibration."
+      ],
+      "concentration": 7.065422230912416,
+      "intraclass_variation": 0.12398606934269243
+    },
+    "targets": {
+      "method": "pooled_team_season_moments",
+      "groups": 128,
+      "game_team_observations": 1760,
+      "fallback": false,
+      "limits": [
+        "Role changes and injuries contribute to observed variance.",
+        "Concentration bounds 2 to 1000 are numerical safeguards, not calibration."
+      ],
+      "concentration": 29.154287738775768,
+      "intraclass_variation": 0.03316277965717253
+    }
+  }
+}

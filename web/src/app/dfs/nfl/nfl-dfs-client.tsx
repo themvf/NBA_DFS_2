@@ -20,18 +20,21 @@ import CaptainSuggestionPanel from './captain-suggestion-panel';
 import SlateCheckCard from './slate-check-card';
 import DataUpdatePanel, { type DataUpdateHandle } from './data-update-panel';
 import SpecialTeamsStatusCard from './special-teams-status-card';
+import BuildModelSummary from './build-model-summary';
 import { specialTeamsStatus } from '@/lib/nfl-dfs/special-teams-status';
 import { describeDataAsOf } from '@/lib/nfl-dfs/data-update';
+import { shouldReviewLiveSlate, canApplyLiveReview, LIVE_REVIEW_INTERVAL_MS } from '@/lib/nfl-dfs/live-review';
 import type { DataUpdateOutcome } from '@/lib/nfl-dfs/data-update';
 import { exposureRange, type CaptainTarget, type ExposureTarget } from '@/lib/nfl-dfs/generation-settings';
 import { availabilityCoverage } from '@/lib/nfl-dfs/availability-coverage';
 import { AlertTriangle, BarChart3, CheckCircle2, Download, FileUp, HelpCircle, Lock, Play, Search, ShieldCheck, Unlock, XCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { checkNflSlateFreshness, readNflDefensiveCaptureStatus, retryNflDefensiveCapture, refreshNflSlateProjections, listSavedNflSlates, loadSavedNflWorkspace, loadSavedNflLineups, readNflOptimizerAudit, exportSavedNflEntries, applyNflComparison, loadNflSalaryCsv, generateNflLineups, searchNflStarterNews, saveNflBuildDraft, readNflBuildDraft, type NflComparisonSource, type NflWorkspaceSlate } from "./client-actions";
+import { checkNflSlateFreshness, readNflDefensiveCaptureStatus, retryNflDefensiveCapture, refreshNflSlateProjections, listSavedNflSlates, listSavedNflRuns, loadSavedNflWorkspace, loadSavedNflLineups, readNflOptimizerAudit, exportSavedNflEntries, exportSavedNflLineups, applyNflComparison, loadNflSalaryCsv, generateNflLineups, searchNflStarterNews, saveNflBuildDraft, readNflBuildDraft, type NflComparisonSource, type NflWorkspaceSlate } from "./client-actions";
 import type { NflGeneratedLineup, NflOptimizerSettings, NflProjectionSource } from "./nfl-optimizer";
 import { DEFAULT_NFL_PUNT_POLICY } from "@/lib/nfl-dfs/punt-policy";
 import { deriveReceiverRoleChanges, receiverChartRank, type ReceiverRoleChange } from "@/lib/nfl-dfs/receiver-role";
 import { PUNT_PRESETS, resolvePuntPreset, describePuntPolicy, type PuntPresetKey } from "@/lib/nfl-dfs/punt-presets";
+import { WINNERS_SHAPE, WINNERS_SHAPE_VERSION, qbExposureCap, type BuildShape } from "@/lib/nfl-dfs/winners-shape";
 import { objectiveLabel } from "@/lib/nfl-dfs/ownership-capability";
 import { ARCHETYPE_LABELS, type ArchetypeId, type ArchetypeQuota } from "@/lib/nfl-dfs/archetypes";
 import { currentPoolForQa, nflOverlapCap, runNflPreExportQa, savedRunQaEvidence, NFL_QA_RULESET_VERSION, type QaInput, type QaReport, type QaOverride } from "@/lib/nfl-dfs/pre-export-qa";
@@ -141,6 +144,8 @@ export default function NflDfsClient() {
   const [showBuilder, setShowBuilder] = useState(false);
   const dataUpdateRef = useRef<DataUpdateHandle | null>(null);
   const [dataUpdating, setDataUpdating] = useState(false);
+  const liveSlateId = useRef<string | undefined>(undefined);
+  useEffect(() => { liveSlateId.current = slate?.uploadId; }, [slate?.uploadId]);
   const [explainPlayer, setExplainPlayer] = useState<NflWorkspacePlayer | null>(null);
   const [eligibility, setEligibility] = useState<import("./nfl-optimizer").NflEligibilityDecision[]>([]);
   const [ownership, setOwnership] = useState<import("@/lib/nfl-dfs/ownership-capability").OwnershipAssessment | null>(null);
@@ -173,10 +178,40 @@ export default function NflDfsClient() {
   // gate) are kept alongside the punt policy — the policy owns cheap-player
   // roles, while requireObservedHistory still removes any-priced players whose
   // projection is a position average, not theirs.
-  const [settings, setSettings] = useState({ mode: "gpp" as "cash" | "gpp", projectionSource: "our" as NflProjectionSource, defensiveAdjustments:{...DEFAULT_DFS_DEFENSIVE_SETTINGS}, confirmedStartingQbs: {} as Record<string, number>, allowDkFallback: false, workloadPositions:{...DEFAULT_WORKLOAD_POSITIONS}, situations:DEFAULT_SITUATIONS, nLineups: 20, minSalary: 45000, minPlayerSalary: 1000, requireObservedHistory: true, maxExposure: .6, minUnique: 2, stackPassCatchers: 1 as 0 | 1 | 2, topProjectedCoverage: true, gppSignalMinPerLineup: 0 as 0 | 1, gppAirMatchupMinPct: 0, gppGoalLineMinPct: 0, gppSignalCodes: SIGNAL_OPTIONS.filter(option => option.code !== "AIR_MATCHUP").map(option => option.code), bringBack: true, randomness: .08, useHeuristicOwnershipLeverage: false, puntPolicy: {...DEFAULT_NFL_PUNT_POLICY} as import("@/lib/nfl-dfs/punt-policy").NflPuntPolicy, puntOverrides: [] as import("@/lib/nfl-dfs/punt-policy").PuntOverride[] });
+  const [settings, setSettings] = useState({ mode: "gpp" as "cash" | "gpp", projectionSource: "our" as NflProjectionSource, defensiveAdjustments:{...DEFAULT_DFS_DEFENSIVE_SETTINGS}, confirmedStartingQbs: {} as Record<string, number>, allowDkFallback: false, workloadPositions:{...DEFAULT_WORKLOAD_POSITIONS}, situations:DEFAULT_SITUATIONS, nLineups: 20, minSalary: 45000, minPlayerSalary: 1000, requireObservedHistory: true, maxExposure: .6, minUnique: 2, stackPassCatchers: 1 as 0 | 1 | 2, topProjectedCoverage: true, gppSignalMinPerLineup: 0 as 0 | 1, gppAirMatchupMinPct: 0, gppGoalLineMinPct: 0, gppSignalCodes: SIGNAL_OPTIONS.filter(option => option.code !== "AIR_MATCHUP").map(option => option.code), bringBack: true, buildShape: "standard" as BuildShape, randomness: .08, useHeuristicOwnershipLeverage: false, puntPolicy: {...DEFAULT_NFL_PUNT_POLICY} as import("@/lib/nfl-dfs/punt-policy").NflPuntPolicy, puntOverrides: [] as import("@/lib/nfl-dfs/punt-policy").PuntOverride[] });
   // Latest settings for async callbacks (the capture poll) without restarting them on every edit.
   const settingsRef = useRef(settings);
   useEffect(() => { settingsRef.current = settings; }, [settings]);
+
+  // Built entries still need late inactives/role checks. Saved entries,
+  // settings and run scores stay intact; ignore responses after slate/lock changes.
+  const reviewUploadId = slate?.uploadId;
+  const reviewKickoff = slate?.firstKickoff;
+  const reviewDue = shouldReviewLiveSlate(reviewKickoff, now, lineups.length > 0);
+  useEffect(() => {
+    if (!reviewUploadId || !reviewDue) return;
+    let stopped = false, inFlight = false;
+    const review = async () => {
+      if (stopped || inFlight || document.visibilityState === 'hidden') return;
+      if (!shouldReviewLiveSlate(reviewKickoff, Date.now(), true)) return;
+      inFlight = true;
+      try {
+        const next = await loadSavedNflWorkspace(reviewUploadId, settingsRef.current.confirmedStartingQbs);
+        if (!stopped && canApplyLiveReview({requestedUploadId:reviewUploadId,currentUploadId:liveSlateId.current,
+          responseUploadId:next.slate.uploadId,firstKickoff:reviewKickoff,now:Date.now()})) {
+          setSlate(next.slate);
+          setError(current => current?.startsWith('The latest availability check failed.') ? null : current);
+        }
+      } catch {
+        if (!stopped && liveSlateId.current === reviewUploadId && shouldReviewLiveSlate(reviewKickoff,Date.now(),true))
+          setError('The latest availability check failed. Saved lineups remain visible; refresh data before export.');
+      } finally { inFlight = false; }
+    };
+    void review();
+    const timer = setInterval(() => { void review(); }, LIVE_REVIEW_INTERVAL_MS);
+    document.addEventListener('visibilitychange', review);
+    return () => { stopped = true; clearInterval(timer); document.removeEventListener('visibilitychange', review); };
+  }, [reviewUploadId, reviewKickoff, reviewDue]);
 
   function restoreRunEvidence(saved:Awaited<ReturnType<typeof loadSavedNflLineups>>) {
     const evidence = saved.evidence;
@@ -358,7 +393,7 @@ export default function NflDfsClient() {
     if (draftReadyFor.current === uploadId) draftReadyFor.current = next.uploadId;
     setSlate(next); setLibraryId(next.uploadId); setLineups([]); setRunId(null); setCompletedSettings(null);
     setShowVisuals(false); selectEntryFile(null); setExplainPlayer(null);
-    setSavedRuns((await loadSavedNflWorkspace(next.uploadId)).runs);
+    setSavedRuns(await listSavedNflRuns(next.uploadId));
     await refreshLibrary();
     try { localStorage.setItem('nfl-saved-slate', next.uploadId); } catch {}
     return next;
@@ -450,7 +485,7 @@ export default function NflDfsClient() {
   function loadSalary(file: File | null) {
     if (!file) return; setError(null); setMessage(null); setLineups([]); setShowVisuals(false); setTargetExposure({}); setCaptainTargets({}); setCaptainSuggestion(null); setLocked([]); setExcluded([]); setRunId(null); clearRunReports();
     const form = new FormData(); form.set("file", file);
-    startTransition(async () => { try { const result = await loadNflSalaryCsv(form); setSlate(result); setLibraryId(result.uploadId); setCompletedSettings(null); setSettings(current=>({...current,defensiveAdjustments:defensiveSettingsFor(current.projectionSource),confirmedStartingQbs:{}})); selectEntryFile(null); setSavedRuns((await loadSavedNflWorkspace(result.uploadId)).runs); draftReadyFor.current = null; await restoreDraft(result.uploadId); await refreshLibrary(); try { localStorage.setItem("nfl-saved-slate", result.uploadId); } catch {} setMessage(`${file.name} saved with ${result.players.length} players and linked to the latest projection run.`); } catch (reason) { setError(reason instanceof Error ? reason.message : "Salary upload failed."); } });
+    startTransition(async () => { try { const result = await loadNflSalaryCsv(form); setSlate(result); setLibraryId(result.uploadId); setCompletedSettings(null); setSettings(current=>({...current,defensiveAdjustments:defensiveSettingsFor(current.projectionSource),confirmedStartingQbs:{}})); selectEntryFile(null); setSavedRuns(await listSavedNflRuns(result.uploadId)); draftReadyFor.current = null; await restoreDraft(result.uploadId); await refreshLibrary(); try { localStorage.setItem("nfl-saved-slate", result.uploadId); } catch {} setMessage(`${file.name} saved with ${result.players.length} players and linked to the latest projection run.`); } catch (reason) { setError(reason instanceof Error ? reason.message : "Salary upload failed."); } });
   }
   async function afterDataUpdate(outcome: DataUpdateOutcome) {
     if (!slate) return;
@@ -576,7 +611,7 @@ export default function NflDfsClient() {
         const response = await generateNflLineups(uploadId, payload); if (!response.ok) { setError(response.error); return; } setLineups(response.result.lineups); setEligibility(response.result.eligibility ?? []); setOwnership(response.ownership ?? null); setExposureReport(response.result.exposureReport ?? []); setSalaryBands(response.result.salaryBandReport ?? []); setDuplication(response.result.duplication ?? []); setQaOverrides([]); setSavedQaEvidenceAvailable(true);
         setQaEvidence({ eligibility: response.result.eligibility ?? [], exposureReport: response.result.exposureReport ?? [], archetypePlan: response.result.archetypePlan });
         setRunProjection({ runId: response.slate.projectionRunId, asOf: response.slate.modelAsOf }); setRunWarnings(response.result.warnings);
-        setSlate(response.slate); setCompletedSettings({ ...response.effectiveSettings, requestedDefensiveAdjustments: payload.defensiveAdjustments } as NflOptimizerSettings); setRunId(response.runId); setRunBuild(response.build ?? null); chooseStage("review"); setSavedRuns((await loadSavedNflWorkspace(uploadId)).runs); setMessage(`${freshness}Saved optimizer run ${response.runId.slice(0, 8)} with ${response.result.lineups.length}/${settings.nLineups} lineups. ${response.result.warnings.join(" ")}`); } catch (reason) { setError(reason instanceof Error ? reason.message : "Optimizer failed."); } });
+        setSlate(response.slate); setCompletedSettings({ ...response.effectiveSettings, requestedDefensiveAdjustments: payload.defensiveAdjustments } as NflOptimizerSettings); setRunId(response.runId); setRunBuild(response.build ?? null); chooseStage("review"); setSavedRuns(await listSavedNflRuns(uploadId)); setMessage(`${freshness}Saved optimizer run ${response.runId.slice(0, 8)} with ${response.result.lineups.length}/${settings.nLineups} lineups. ${response.result.warnings.join(" ")}`); } catch (reason) { setError(reason instanceof Error ? reason.message : "Optimizer failed."); } });
   }
   function allowCheapPlayer(dkPlayerId: number, name: string) {
     // Salary is never a valid reason — the spec requires a role reason (§8.1).
@@ -621,9 +656,31 @@ export default function NflDfsClient() {
     });
   }
 
+  // The lineups-only file: same saved-run and QA gates, no entry template.
+  function exportLineups() {
+    if (!lineups.length) return;
+    const defensiveRun = completedSettings?.defensiveAdjustments?.mode==='experimental'||completedSettings?.defensiveAdjustments?.mode==='approved';
+    if(defensiveRun&&!savedQaEvidenceAvailable) { setError('Saved export QA evidence is missing. Regenerate before exporting.'); return; }
+    if (!runId) { setError("These lineups aren't saved, so they can't be exported. Build them again."); return; }
+    if (qaReport && qaReport.decision === "blocked") {
+      // The entry-row count is about the entry file, which this export does not use.
+      const open = qaReport.checks.filter((c) => qaReport.openBlockers.includes(c.id) && c.id !== "entry_rows");
+      if (open.length) { setError(`Export blocked: ${open.map((c) => c.title).join("; ")}. Resolve or override each one first.`); return; }
+    }
+    setError(null);
+    startTransition(async () => {
+      try {
+        const csv = await exportSavedNflLineups(runId, defensiveRun ? [] : qaOverrides);
+        downloadText(`nfl-lineups-${runId.slice(0, 8)}-rosters.csv`, csv);
+      } catch (reason) { setError(reason instanceof Error ? reason.message : "Lineup export failed."); }
+    });
+  }
+
   const workspaceView = stage === "review" ? "lineups" : "players";
   const PLAN_LABELS = { balanced: "Balanced mix", chalk_leverage: "Chalk captain, rotating leverage", standard: "Standard ceiling", custom: "Custom plan" } as const;
-  const buildSummary = [`${settings.nLineups} ${settings.mode === "gpp" ? "GPP" : "cash"} lineups`, SOURCE_LABELS[settings.projectionSource], slate?.format === "showdown" ? PLAN_LABELS[archetypePlanMode] : null].filter(Boolean).join(" · ");
+  const winnersShape = settings.mode === "gpp" && settings.buildShape === "winners";
+  const buildSummary = [`${settings.nLineups} ${settings.mode === "gpp" ? "GPP" : "cash"} lineups`, SOURCE_LABELS[settings.projectionSource], winnersShape ? "Winners shape" : null, slate?.format === "showdown" ? PLAN_LABELS[archetypePlanMode] : null].filter(Boolean).join(" · ");
+  const shapeOut = (e: { reasonCode: string | null }) => e.reasonCode === "WINNERS_SHAPE" || e.reasonCode === "KICKER_EXCLUDED";
   const specialTeams = specialTeamsStatus({ players: slate?.players ?? [], firstKickoff: slate?.firstKickoff ?? null,
     now, refreshAvailable: Boolean(slate?.refreshAvailable) });
   const updateAsOf = { roster: slate?.rosterCapturedAt ?? null, dkStatuses: slate?.liveDkStatus?.capturedAt ?? null, projections: slate?.modelAsOf ?? null };
@@ -735,6 +792,8 @@ export default function NflDfsClient() {
         <section hidden={stage === "review"} className="rounded-xl border bg-white p-4 shadow-sm"><h2 className="font-bold">{slateLocked ? 'Saved build settings' : 'Build lineups'}</h2>
           {slateLocked ? <div className="mt-2 text-xs text-slate-600"><p>Games have started. These settings are for review; saved forecasts and lineups stay unchanged.</p><div className="mt-2 flex flex-wrap gap-2"><button type="button" onClick={() => chooseStage('results')} className="min-h-11 rounded-lg border bg-white px-3 font-semibold">View results</button><button type="button" onClick={() => chooseStage('review')} className="min-h-11 rounded-lg border bg-white px-3 font-semibold">View saved lineups</button></div></div> : null}
           {settings.projectionSource === 'our' ? <div className="mt-3"><SpecialTeamsStatusCard status={specialTeams} pending={pending || dataUpdating} onAction={recoverForecast} /></div> : null}
+          <BuildModelSummary mode={settings.mode} historical={settings.projectionSource==='our'} heuristicLeverage={settings.useHeuristicOwnershipLeverage}
+            absenceTeams={(slate.redistribution?.withheld??[]).map(pool=>pool.team)} />
           <details open={!slateLocked} className="mt-3"><summary hidden={!slateLocked} className="min-h-11 cursor-pointer content-center text-xs font-semibold">View saved build settings</summary>
           <fieldset disabled={slateLocked} className="min-w-0">
           <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-950">
@@ -743,6 +802,7 @@ export default function NflDfsClient() {
               <li><b>Forecast:</b> {SOURCE_LABELS[settings.projectionSource]}. {settings.projectionSource === "our" ? "Offense uses recent games, Vegas team totals and saved QB/RB opponent adjustments when their checks pass. Missing adjustments retain the baseline. DST uses opponent scoring context; eligible starting kickers use team scoring context when a saved forecast is available." : "A build with mixed objective sources will stop and name the mismatch."}</li>
               <li><b>Rank:</b> {settings.mode === "gpp" ? "Player ceiling (P90) and available boom rate; ownership leverage off" : "Player floor (P10)"}.</li>
               <li><b>Build:</b> DraftKings salary and roster rules{slate.format === "classic" && settings.mode === "gpp" && settings.topProjectedCoverage ? "; top projected players get portfolio coverage" : ""}. Opportunity tags and matchup minimums only require lineup appearances; they do not raise projections.</li>
+              {winnersShape ? <li><b>Shape:</b> Winners shape ({WINNERS_SHAPE_VERSION}) rearranges the same projections the way the 2026 flagship winners built. The run&apos;s notes list every rule it enforced and every player it left out. A shape, not a tested edge.</li> : null}
             </ul>
           </div>
           <p className="mt-1 text-xs text-slate-600">{buildSummary}</p>
@@ -764,6 +824,17 @@ export default function NflDfsClient() {
               <p className="mt-1">At least {Math.ceil(settings.nLineups * settings.gppGoalLineMinPct / 100)} of {settings.nLineups} lineups will include an RB with the Inside-5 work chip. 0% turns the rule off; more qualifying lineups may be selected naturally. This uses prior carries to choose lineups and does not raise TD projections.</p>
             </div>
           </div></details> : null}
+          {settings.mode === "gpp" ? <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px]">
+            <h3 className="text-sm font-bold text-slate-800">Build shape</h3>
+            <Field label="Shape"><select className="control" value={settings.buildShape} onChange={(e) => setSettings({ ...settings, buildShape: e.target.value as BuildShape })}>
+              <option value="standard">Standard (current model)</option>
+              <option value="winners">Winners shape (how the flagship winners built)</option>
+            </select></Field>
+            {settings.buildShape === "winners" ? (slate.format === "classic"
+              ? <p className="mt-1 text-slate-500">Measured on the week 1&ndash;5 Millionaire top finishers. Lineups differ by at least {WINNERS_SHAPE.minUnique} players, no player is in more than {Math.round(WINNERS_SHAPE.maxExposure * 100)}% of them, each quarterback in at most {Math.round(qbExposureCap(settings.nLineups) * 100)}% of {settings.nLineups} lineups, an opposing bring-back in half the lineups, and at least {dollars(WINNERS_SHAPE.minSalary)} spent. The pool keeps backs whose touches a game are in the slate&apos;s top quarter or who see {WINNERS_SHAPE.rbMinTargetsPerGame}+ targets a game, receivers with {Math.round(WINNERS_SHAPE.wrMinTargetShare * 100)}%+ of their team&apos;s targets (or under {dollars(WINNERS_SHAPE.wrCheapSalary)}), tight ends under {dollars(WINNERS_SHAPE.teMaxSalary)} with {WINNERS_SHAPE.teMinTargetsPerGame}+ targets a game and defenses under {dollars(WINNERS_SHAPE.dstMaxSalary)}; a rule that leaves a position too thin is skipped and the build notes say so. Locks always win. Projections and ownership are unchanged.</p>
+              : <p className="mt-1 text-slate-500">Measured on 248 Thursday and Monday showdown winners. Every lineup is 5-1 or 3-3 by team (never 4-2), no kicker, the captain a QB, RB or WR, no captain in more than {Math.round(WINNERS_SHAPE.captainMaxExposure * 100)}% of lineups unless you set his CPT range, and at least {dollars(WINNERS_SHAPE.minSalary)} spent. Works with the plan below; projections and ownership are unchanged.</p>)
+              : <p className="mt-1 text-slate-500">The current model&apos;s own construction rules. Choose Winners shape to build a second run with the winners&apos; portfolio rules for the weekly comparison.</p>}
+          </div> : null}
           {slate.format === "showdown" ? <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px]">
             <h3 className="text-sm font-bold text-slate-800">Portfolio plan (archetypes)</h3>
             <Field label="Plan"><select className="control" value={archetypePlanMode} onChange={(e) => setArchetypePlanMode(e.target.value as "balanced" | "standard" | "custom" | "chalk_leverage")}>
@@ -800,7 +871,8 @@ export default function NflDfsClient() {
           <Field label={`Randomness (${Math.round(settings.randomness * 100)}%)`}><input type="range" min={0} max={.25} step={.01} value={settings.randomness} onChange={(e) => setSettings({ ...settings, randomness: Number(e.target.value) })} className="w-full" /></Field><label className="check"><input type="checkbox" checked={settings.requireObservedHistory} onChange={(e) => setSettings({ ...settings, requireObservedHistory: e.target.checked })} />Require observed games (drops players projected purely from position averages)</label><label className="check"><input type="checkbox" checked={settings.allowDkFallback} onChange={(e) => setSettings({ ...settings, allowDkFallback: e.target.checked })} />Fall back to DK&apos;s season average when we have no projection (off: the player is excluded instead)</label></div></details>
           {eligibility.some((e) => !e.eligible && e.reasonCode !== "INACTIVE" && e.reasonCode !== "MANUAL_EXCLUSION") ? <div className="rounded-lg border border-slate-200 bg-slate-50 p-3"><h3 className="text-sm font-bold text-slate-800">Left out of the last build</h3>
           {eligibility.some((e) => !e.eligible && e.reasonCode === "DOUBTFUL") ? <div className="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-[11px]"><p className="font-bold text-amber-900">{eligibility.filter((e) => !e.eligible && e.reasonCode === "DOUBTFUL").length} player(s) left out &mdash; DraftKings lists them Doubtful</p><p className="mt-0.5 text-amber-800">Every Doubtful player on a 2026 slate so far has scored 0.0. Lock one to use him anyway.</p><div className="mt-1 max-h-40 space-y-1 overflow-auto">{eligibility.filter((e) => !e.eligible && e.reasonCode === "DOUBTFUL").map((e) => <div key={e.dkPlayerId} className="flex items-center justify-between gap-2 rounded border bg-white p-1.5"><span><b>{e.name}</b> <span className="text-slate-400">{dollars(e.salary)}</span></span><button type="button" className="shrink-0 rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800" onClick={() => { setLocked((v) => v.includes(e.dkPlayerId) ? v : [...v, e.dkPlayerId]); setExcluded((v) => v.filter((id) => id !== e.dkPlayerId)); }}>Lock him</button></div>)}</div></div> : null}
-          {eligibility.some((e) => !e.eligible && e.reasonCode !== "INACTIVE" && e.reasonCode !== "MANUAL_EXCLUSION" && e.reasonCode !== "DOUBTFUL") ? <details className="mt-2"><summary className="cursor-pointer text-[11px] font-bold text-amber-800">{eligibility.filter((e) => !e.eligible && e.reasonCode !== "INACTIVE" && e.reasonCode !== "MANUAL_EXCLUSION" && e.reasonCode !== "DOUBTFUL").length} cheap player(s) blocked — review</summary><div className="mt-1 max-h-40 space-y-1 overflow-auto">{eligibility.filter((e) => !e.eligible && e.reasonCode !== "INACTIVE" && e.reasonCode !== "MANUAL_EXCLUSION" && e.reasonCode !== "DOUBTFUL").map((e) => <div key={e.dkPlayerId} className="flex items-start justify-between gap-2 rounded border bg-white p-1.5 text-[11px]"><span><b>{e.name}</b> <span className="text-slate-400">{dollars(e.salary)}</span><span className="block text-slate-500">{e.reason}</span></span><button type="button" className="shrink-0 rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800" onClick={() => allowCheapPlayer(e.dkPlayerId, e.name)}>Allow for run</button></div>)}</div></details> : null}
+          {eligibility.some((e) => !e.eligible && shapeOut(e)) ? <details className="mt-2"><summary className="cursor-pointer text-[11px] font-bold text-slate-700">{eligibility.filter((e) => !e.eligible && shapeOut(e)).length} player(s) left out by the winners-shape rules</summary><div className="mt-1 max-h-40 space-y-1 overflow-auto">{eligibility.filter((e) => !e.eligible && shapeOut(e)).map((e) => <div key={e.dkPlayerId} className="rounded border bg-white p-1.5 text-[11px]"><b>{e.name}</b> <span className="text-slate-400">{dollars(e.salary)}</span><span className="block text-slate-500">{e.reason}</span></div>)}</div></details> : null}
+          {eligibility.some((e) => !e.eligible && e.reasonCode !== "INACTIVE" && e.reasonCode !== "MANUAL_EXCLUSION" && e.reasonCode !== "DOUBTFUL" && !shapeOut(e)) ? <details className="mt-2"><summary className="cursor-pointer text-[11px] font-bold text-amber-800">{eligibility.filter((e) => !e.eligible && e.reasonCode !== "INACTIVE" && e.reasonCode !== "MANUAL_EXCLUSION" && e.reasonCode !== "DOUBTFUL" && !shapeOut(e)).length} cheap player(s) blocked — review</summary><div className="mt-1 max-h-40 space-y-1 overflow-auto">{eligibility.filter((e) => !e.eligible && e.reasonCode !== "INACTIVE" && e.reasonCode !== "MANUAL_EXCLUSION" && e.reasonCode !== "DOUBTFUL" && !shapeOut(e)).map((e) => <div key={e.dkPlayerId} className="flex items-start justify-between gap-2 rounded border bg-white p-1.5 text-[11px]"><span><b>{e.name}</b> <span className="text-slate-400">{dollars(e.salary)}</span><span className="block text-slate-500">{e.reason}</span></span><button type="button" className="shrink-0 rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800" onClick={() => allowCheapPlayer(e.dkPlayerId, e.name)}>Allow for run</button></div>)}</div></details> : null}
           </div> : null}
           <button type="button" onClick={() => chooseStage(workspaceView === "lineups" ? "build" : "review")} className="min-h-10 w-full rounded-lg border text-sm font-semibold">{workspaceView === "lineups" ? "Back to player pool" : `Review ${lineups.length} lineups →`}</button></div></fieldset></details></section>
         <div hidden={workspaceView !== "lineups"} className="space-y-4"><button type="button" onClick={() => chooseStage("build")} className="min-h-10 w-full rounded-lg border bg-white text-sm font-semibold">← Back to Build</button>        {lineups.length ? <>{defensiveDowngrade ? <Notice>{defensiveDowngrade}</Notice> : null}{!slateLocked && completedSettings && settingsChanged && <Notice>Settings changed. Displayed lineups still use {SOURCE_LABELS[completedSettings.projectionSource]} / {completedSettings.mode}. Generate again to apply changes to settings, locks, exclusions, or exposure.</Notice>}<RunRiskSummary lineups={lineups} uncalibratedLeverage={ownership?.capability === "heuristic_uncalibrated" && ownership.features.leverage} requestedLineups={completedSettings?.nLineups} exposureReport={exposureReport} currentPlayers={slate.players} withheld={slate.redistribution?.withheld} /><Exposure rows={exposures} total={lineups.length} report={exposureReport} format={completedSettings?.format ?? slate.format} />{ownership ? <div className={`rounded-lg border p-3 text-[11px] ${ownership.capability === "validated" ? "border-emerald-200 bg-emerald-50" : ownership.capability === "heuristic_uncalibrated" ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50"}`}>
@@ -810,7 +882,7 @@ export default function NflDfsClient() {
             <p className="mt-1 text-slate-600">Leverage {ownership.features.leverage ? "on" : "off"} · Ownership fade {ownership.features.ownershipFade ? "on" : "off"} · Duplication model {ownership.features.duplicationModel ? "on" : "off"}</p>
             {ownership.errors.length ? <ul className="mt-1 list-disc pl-4 text-red-700">{ownership.errors.map((e) => <li key={e}>{e}</li>)}</ul> : null}
             {ownership.warnings.length ? <ul className="mt-1 list-disc pl-4 text-amber-800">{ownership.warnings.map((w) => <li key={w}>{w}</li>)}</ul> : null}
-          </div> : null}{salaryBands.length ? <section className="rounded-xl border bg-white p-4 shadow-sm"><h2 className="font-bold">Salary-left distribution</h2><div className="mt-2 space-y-1 text-[11px]">{salaryBands.map((b) => <div key={`${b.band.min}-${b.band.max}`} className={`flex justify-between ${b.withinPlan ? "" : "text-red-700"}`}><span>${b.band.min.toLocaleString()}–${b.band.max.toLocaleString()}</span><span>{b.count} lineup(s) · plan {b.minCount}–{b.maxCount}{b.withinPlan ? "" : " ⚠"}</span></div>)}</div>{duplication.length ? <p className="mt-2 text-[11px] text-slate-500">Duplication: {duplication[0].basis === "model" ? "field-model expected counts" : duplication[0].basis === "heuristic" ? "uncalibrated concentration estimate (not a duplicate count)" : "unavailable"}.</p> : null}</section> : null}{slateLocked ? <section className="rounded-xl border bg-white p-4"><h2 className="font-bold">Saved lineup record</h2><p className="mt-2 text-xs text-slate-600">Entry changes closed at kickoff. View these lineups and their results using the original saved forecasts.</p><button type="button" onClick={() => chooseStage("results")} className="mt-2 min-h-11 rounded-lg border px-3 text-sm font-semibold">View results</button></section> : <section className="rounded-xl border bg-white p-4 shadow-sm"><h2 className="font-bold">DraftKings export</h2><p className="mt-1 text-xs text-slate-500">Your DK entries template supplies the entry IDs; generated rosters fill its slot columns.</p><input ref={entryRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => selectEntryFile(e.target.files?.[0] ?? null)} /><button onClick={() => entryRef.current?.click()} className="mt-3 min-h-10 w-full rounded-lg border text-sm font-bold">{entryFile?.name ?? "Select entry template"}</button>{qaReport ? <div className={`mt-3 rounded-lg border p-2 text-[11px] ${qaReport.decision === "blocked" ? "border-red-300 bg-red-50" : qaReport.decision === "ready_with_warnings" ? "border-amber-300 bg-amber-50" : "border-emerald-300 bg-emerald-50"}`}><div className="flex items-center justify-between font-bold"><span>Pre-export QA: {qaReport.decision === "blocked" ? "Blocked" : qaReport.decision === "ready_with_warnings" ? "Ready with warnings" : "Ready"}</span><span className="text-slate-500">{qaReport.counts.blocker}B · {qaReport.counts.warning}W · {qaReport.counts.info}i</span></div><div className="mt-1 max-h-40 space-y-1 overflow-auto">{qaReport.checks.filter((c) => !c.passed).map((c) => <div key={c.id} className={`flex items-start justify-between gap-2 rounded border bg-white p-1 ${c.severity === "blocker" && qaReport.openBlockers.includes(c.id) ? "border-red-200" : "border-slate-200"}`}><span><b>{c.title}</b><span className="block text-slate-500">{c.detail}</span></span>{c.overridable && qaReport.openBlockers.includes(c.id) ? <button type="button" className="shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-bold" onClick={() => overrideQaCheck(c.id)}>Override</button> : null}</div>)}</div></div> : null}<button disabled={pending || slateLocked || !entryFile || (qaReport?.decision === "blocked")} title={slateLocked ? "Games have started, so export is closed for this slate." : undefined} onClick={exportEntries} className="mt-2 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 text-sm font-bold text-white disabled:opacity-40"><Download className="h-4 w-4" />{slateLocked ? "Games have started" : qaReport?.decision === "blocked" ? "Export blocked" : "Export lineups"}</button></section>}</> : null}
+          </div> : null}{salaryBands.length ? <section className="rounded-xl border bg-white p-4 shadow-sm"><h2 className="font-bold">Salary-left distribution</h2><div className="mt-2 space-y-1 text-[11px]">{salaryBands.map((b) => <div key={`${b.band.min}-${b.band.max}`} className={`flex justify-between ${b.withinPlan ? "" : "text-red-700"}`}><span>${b.band.min.toLocaleString()}–${b.band.max.toLocaleString()}</span><span>{b.count} lineup(s) · plan {b.minCount}–{b.maxCount}{b.withinPlan ? "" : " ⚠"}</span></div>)}</div>{duplication.length ? <p className="mt-2 text-[11px] text-slate-500">Duplication: {duplication[0].basis === "model" ? "field-model expected counts" : duplication[0].basis === "heuristic" ? "uncalibrated concentration estimate (not a duplicate count)" : "unavailable"}.</p> : null}</section> : null}{slateLocked ? <section className="rounded-xl border bg-white p-4"><h2 className="font-bold">Saved lineup record</h2><p className="mt-2 text-xs text-slate-600">Entry changes closed at kickoff. View these lineups and their results using the original saved forecasts.</p><button type="button" onClick={() => chooseStage("results")} className="mt-2 min-h-11 rounded-lg border px-3 text-sm font-semibold">View results</button></section> : <section className="rounded-xl border bg-white p-4 shadow-sm"><h2 className="font-bold">DraftKings export</h2><p className="mt-1 text-xs text-slate-500">Two files. The entry-template export fills your DraftKings entries file: its entry IDs, these rosters in the slot columns. The lineups CSV is the rosters alone under DraftKings&apos; slot headers, for the Upload Lineups box or as a record of the run.</p><input ref={entryRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => selectEntryFile(e.target.files?.[0] ?? null)} /><button onClick={() => entryRef.current?.click()} className="mt-3 min-h-10 w-full rounded-lg border text-sm font-bold">{entryFile?.name ?? "Select entry template"}</button>{qaReport ? <div className={`mt-3 rounded-lg border p-2 text-[11px] ${qaReport.decision === "blocked" ? "border-red-300 bg-red-50" : qaReport.decision === "ready_with_warnings" ? "border-amber-300 bg-amber-50" : "border-emerald-300 bg-emerald-50"}`}><div className="flex items-center justify-between font-bold"><span>Pre-export QA: {qaReport.decision === "blocked" ? "Blocked" : qaReport.decision === "ready_with_warnings" ? "Ready with warnings" : "Ready"}</span><span className="text-slate-500">{qaReport.counts.blocker}B · {qaReport.counts.warning}W · {qaReport.counts.info}i</span></div><div className="mt-1 max-h-40 space-y-1 overflow-auto">{qaReport.checks.filter((c) => !c.passed).map((c) => <div key={c.id} className={`flex items-start justify-between gap-2 rounded border bg-white p-1 ${c.severity === "blocker" && qaReport.openBlockers.includes(c.id) ? "border-red-200" : "border-slate-200"}`}><span><b>{c.title}</b><span className="block text-slate-500">{c.detail}</span></span>{c.overridable && qaReport.openBlockers.includes(c.id) ? <button type="button" className="shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-bold" onClick={() => overrideQaCheck(c.id)}>Override</button> : null}</div>)}</div></div> : null}<button disabled={pending || slateLocked || !entryFile || (qaReport?.decision === "blocked")} title={slateLocked ? "Games have started, so export is closed for this slate." : undefined} onClick={exportEntries} className="mt-2 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 text-sm font-bold text-white disabled:opacity-40"><Download className="h-4 w-4" />{slateLocked ? "Games have started" : qaReport?.decision === "blocked" ? "Export blocked" : "Export into entry template"}</button><button disabled={pending || slateLocked || !lineups.length || !runId} title={slateLocked ? "Games have started, so export is closed for this slate." : "The rosters alone under DraftKings slot headers, no entry IDs: for the Upload Lineups box, or as the run record."} onClick={exportLineups} className="mt-2 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-blue-600 bg-white text-sm font-bold text-blue-700 disabled:opacity-40"><Download className="h-4 w-4" />{slateLocked ? "Games have started" : "Export lineups CSV (no entry file)"}</button></section>}</> : null}
 </div>
       </aside></section>
           {stage === "build" ? <a href="/dfs/nfl/model" className="block text-center text-xs text-slate-600 underline">Model details and diagnostics</a> : null}

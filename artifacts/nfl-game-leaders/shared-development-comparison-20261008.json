@@ -1,0 +1,95 @@
+{
+  "games": 8,
+  "scope": "Previously examined Week 4 games; development only",
+  "metrics": {
+    "rushing_yards": {
+      "fixed": {
+        "intervals": {
+          "player_games": 205,
+          "coverage_80pct": 0.8682926829268293,
+          "mean_interval_score": 24.89121951219512
+        },
+        "brier": 0.399212375,
+        "log_loss": 0.6917916240719231,
+        "top_choice_credit": 0.625
+      },
+      "empirical": {
+        "intervals": {
+          "player_games": 205,
+          "coverage_80pct": 0.9024390243902439,
+          "mean_interval_score": 24.594146341463414
+        },
+        "brier": 0.43344097916666663,
+        "log_loss": 0.813615557323659,
+        "top_choice_credit": 0.625
+      }
+    },
+    "receptions": {
+      "fixed": {
+        "intervals": {
+          "player_games": 205,
+          "coverage_80pct": 0.8731707317073171,
+          "mean_interval_score": 5.791707317073172
+        },
+        "brier": 0.651679927281746,
+        "log_loss": 2.5202175224521026,
+        "top_choice_credit": 0.08333333333333333
+      },
+      "empirical": {
+        "intervals": {
+          "player_games": 205,
+          "coverage_80pct": 0.8731707317073171,
+          "mean_interval_score": 5.982439024390243
+        },
+        "brier": 0.6448590781944443,
+        "log_loss": 2.4625296544289377,
+        "top_choice_credit": 0.08333333333333333
+      }
+    },
+    "receiving_yards": {
+      "fixed": {
+        "intervals": {
+          "player_games": 205,
+          "coverage_80pct": 0.8195121951219512,
+          "mean_interval_score": 70.57121951219511
+        },
+        "brier": 0.8893211875,
+        "log_loss": 2.4430545409594364,
+        "top_choice_credit": 0.375
+      },
+      "empirical": {
+        "intervals": {
+          "player_games": 205,
+          "coverage_80pct": 0.8146341463414634,
+          "mean_interval_score": 70.92390243902439
+        },
+        "brier": 0.8825640625,
+        "log_loss": 2.4021912587477914,
+        "top_choice_credit": 0.375
+      }
+    },
+    "total_yards": {
+      "fixed": {
+        "intervals": {
+          "player_games": 205,
+          "coverage_80pct": 0.775609756097561,
+          "mean_interval_score": 84.63365853658537
+        },
+        "brier": 0.7428952291666666,
+        "log_loss": 1.8764702839796445,
+        "top_choice_credit": 0.5
+      },
+      "empirical": {
+        "intervals": {
+          "player_games": 205,
+          "coverage_80pct": 0.7951219512195122,
+          "mean_interval_score": 84.52
+        },
+        "brier": 0.7500209583333334,
+        "log_loss": 1.9539790566183406,
+        "top_choice_credit": 0.625
+      }
+    }
+  },
+  "conclusion": "Mixed diagnostics; no promotion or calibrated probability claim."
+}

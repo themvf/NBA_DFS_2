@@ -21,6 +21,7 @@ export type DefensiveForecastBundle = {
 
 export type FrozenDefensiveCandidate = {
   player_id: number; dk_player_id: number; game_id: string; kickoff: string;
+  /** Present in the stored row; the capture read leaves it (and `sources`) out, since the resolver reads only `shadow` and the identity fields. */
   baseline?: { model_proj_fpts?: number; floor_fpts?: number; median_fpts?: number; ceiling_fpts?: number; boom_rate?: number; stat_means?: Record<string, number> };
   shadow?: { status?: string; reason?: string; reproduction?: { passed?: boolean };
     baseline?: ForecastSummary; candidate?: ForecastSummary; ledger?: Array<{ component?: string; factor?: number; points_delta?: number }>;

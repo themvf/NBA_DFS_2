@@ -62,14 +62,11 @@ from pathlib import Path
 
 import requests
 
+from ingest.tennis_data_source import workbook_url
+
 from ingest.tennis_history import _BASE_ELO, _K, _expected, _surname_initial_key
 
 logger = logging.getLogger(__name__)
-
-_TOUR_URLS = {
-    "ATP": "http://www.tennis-data.co.uk/{year}/{year}.xlsx",
-    "WTA": "http://www.tennis-data.co.uk/{year}w/{year}.xlsx",
-}
 _HEADERS = {"User-Agent": "Mozilla/5.0"}
 _DEFAULT_FROM = 2011
 _CACHE_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -125,7 +122,7 @@ def _fetch(tour: str, year: int):
     """Return a list of row-dicts for one tour-year, or [] on failure."""
     import pandas as pd
 
-    url = _TOUR_URLS[tour].format(year=year)
+    url = workbook_url(tour, year)
     try:
         r = requests.get(url, headers=_HEADERS, timeout=40)
         if not r.ok:

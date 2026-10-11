@@ -338,11 +338,13 @@ def main():
     predict.add_argument("--as-of", required=True)
     evaluate = sub.add_parser("evaluate", help="Chronological slate-grouped evaluation")
     evaluate.add_argument("--history", nargs="+", required=True)
+    qualify = sub.add_parser("qualify", help="Grade the frozen accuracy gate on independent chronological slates")
+    qualify.add_argument("--history", nargs="+", required=True)
     grade = sub.add_parser("grade", help="Score a frozen forecast after results import")
     grade.add_argument("--forecast", required=True)
     grade.add_argument("--history", nargs="+", required=True)
     grade.add_argument("--contest-id", required=True)
-    for command in (archive, imp, snap, train, predict, evaluate, grade):
+    for command in (archive, imp, snap, train, predict, evaluate, qualify, grade):
         command.add_argument("--output-dir", required=True)
     args = parser.parse_args()
     if getattr(args, "as_of", None) and stamp(args.as_of) > datetime.now(timezone.utc):
@@ -371,6 +373,9 @@ def main():
             raise ValueError("Slate locked during forecast; no prospective output saved")
     elif args.command == "evaluate":
         output = walk_forward(load_history(args.history))
+    elif args.command == "qualify":
+        from model.nfl_ownership_qualification import qualify as grade_qualification
+        output = grade_qualification(load_history(args.history))
     else:
         prediction = verify(read(args.forecast))
         candidates = [c for c in load_history(args.history) if c["contest_id"] == args.contest_id]

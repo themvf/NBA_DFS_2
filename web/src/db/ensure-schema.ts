@@ -120,6 +120,7 @@ const FANTASY_FOOTBALL_DDLS = [
   `CREATE INDEX IF NOT EXISTS idx_ff_yahoo_predraft_snapshot ON ff_yahoo_predraft_rankings(source_snapshot_id, source_order)`,
   `CREATE INDEX IF NOT EXISTS idx_ff_injury_observations_player ON ff_player_injury_observations(player_id, observed_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_ff_injury_observations_source ON ff_player_injury_observations(source, season, observed_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_ff_injury_observations_sleeper_depth ON ff_player_injury_observations(season, player_id, observed_at DESC, id DESC) WHERE source='sleeper' AND raw_payload ? 'depth_chart_order'`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_ff_player_injuries_one_active ON ff_player_injuries(player_id) WHERE active`,
   `CREATE INDEX IF NOT EXISTS idx_ff_player_injuries_active ON ff_player_injuries(season, active, status)`,
   `CREATE INDEX IF NOT EXISTS idx_ff_injury_events_recent ON ff_injury_events(player_id, occurred_at DESC)`,

@@ -29,6 +29,8 @@ from datetime import date, datetime, timedelta
 
 import requests
 
+from ingest.tennis_data_source import workbook_url
+
 from config import load_config
 from db.database import DatabaseManager
 from ingest.tennis_result_semantics import classify_completion
@@ -44,11 +46,6 @@ logger = logging.getLogger(__name__)
 
 _HEADERS = {"User-Agent": "Mozilla/5.0"}
 _PARSER_VERSION = "tennis-data-v2"
-# (tour, url-template). WTA lives under /{year}w/.
-_TOURS = {
-    "ATP": "http://www.tennis-data.co.uk/{year}/{year}.xlsx",
-    "WTA": "http://www.tennis-data.co.uk/{year}w/{year}.xlsx",
-}
 
 
 def _norm(text: str) -> str:
@@ -129,8 +126,8 @@ def _settle_tour(
         finish_provider_run(db, run_id, status="empty")
         return 0, 0
 
-    url = _TOURS[tour].format(year=year)
     try:
+        url = workbook_url(tour, year)
         response = requests.get(url, headers=_HEADERS, timeout=90)
         response.raise_for_status()
         frame = pd.read_excel(io.BytesIO(response.content))
@@ -220,7 +217,7 @@ def _settle_tour(
 
 def settle(db: DatabaseManager, year: int) -> None:
     total_m = total_b = 0
-    for tour in _TOURS:
+    for tour in ("ATP", "WTA"):
         m, b = settle_tour(db, tour, year)
         total_m += m
         total_b += b

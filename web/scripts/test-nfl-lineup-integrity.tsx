@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import BuildModelSummary from '../src/app/dfs/nfl/build-model-summary';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { kickerRoleBlockedReason, presentPinnedGameAvailability, resolveAvailability, type PinnedGameAvailabilityDecision } from '../src/lib/nfl-dfs/availability';
@@ -62,4 +63,12 @@ assert.match(html,/Travis Etienne.*baseline projections/);
 const oldRun = { ...invalid, playerIds: invalid.slots.map(s => s.player.dkPlayerId) };
 const oldHtml = renderToStaticMarkup(<RunRiskSummary lineups={[oldRun]} uncalibratedLeverage={false} currentPlayers={[smyth]} />);
 assert.match(oldHtml,/Rebuild required.*Charlie Smyth.*cannot be exported/);
+const inactiveHtml=renderToStaticMarkup(<RunRiskSummary lineups={result.lineups} uncalibratedLeverage={false}
+  currentPlayers={[{dkPlayerId:result.lineups[0].playerIds[0],name:'Noah Fant',isOut:true,availability:{status:'OUT'}}]} />);
+assert.match(inactiveHtml,/Rebuild required.*Noah Fant.*unavailable.*Export is blocked/);
+const modelSummary=renderToStaticMarkup(<BuildModelSummary mode="gpp" historical heuristicLeverage={false} absenceTeams={['NO','NO']} />);
+assert.match(modelSummary,/individual player ceilings.*not joint ceiling/);
+assert.match(modelSummary,/No ownership penalty requested/);
+assert.match(modelSummary,/NO teammates retain baseline workloads/);
+assert.doesNotMatch(modelSummary,/<select|<input|experimental/i);
 console.log('NFL lineup integrity: kicker role, pinned health, solver, lock, saved export, completion and review notices passed.');

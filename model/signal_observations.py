@@ -11,7 +11,7 @@ from statistics import median
 
 from db.market_signal_schema import SCHEMA, INDEX
 
-TYPES = {"steam", "walking", "spread_steam", "total_steam", "spread_walking",
+TYPES = {"steam", "walking", "gap_repricing", "spread_steam", "total_steam", "spread_walking",
          "total_walking", "reversal", "reference_led", "price_pressure",
          "key_cross", "late_move", "favorite_flip"}
 

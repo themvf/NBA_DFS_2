@@ -41,18 +41,17 @@ def movements(history):
         previous = current
 
 
-PREGAME_HISTORY = """SELECT h.id AS history_id,h.matchup_id,h.books,h.captured_at
-            FROM game_odds_history h JOIN cfb_matchups m ON m.id=h.matchup_id
+PREGAME_SNAPSHOTS = """ FROM game_odds_history h JOIN cfb_matchups m ON m.id=h.matchup_id
             WHERE h.sport='cfb' AND h.captured_at<m.commence_time"""
 
-# Games with a pregame snapshot this ledger has not processed yet. Every
-# processed snapshot is recorded in cfb_quote_movement_coverage whether or not
-# it produced a transition, so a game whose latest snapshot changed nothing is
-# not reprocessed on every run.
-UNCOVERED_GAMES = """ AND h.matchup_id IN (
-              SELECT h2.matchup_id FROM game_odds_history h2 JOIN cfb_matchups m2 ON m2.id=h2.matchup_id
-              WHERE h2.sport='cfb' AND h2.captured_at<m2.commence_time
-                AND NOT EXISTS (SELECT 1 FROM cfb_quote_movement_coverage c WHERE c.history_id=h2.id))"""
+PREGAME_HISTORY = "SELECT h.id AS history_id,h.matchup_id,h.books,h.captured_at" + PREGAME_SNAPSHOTS
+
+HISTORY_ORDER = " ORDER BY h.matchup_id,h.captured_at,h.id"
+
+# Kept a separate query: as an IN subquery of the history read the planner chose
+# a nested-loop semi join over the coverage check (1.77M buffers a run).
+PENDING_GAMES = ("SELECT DISTINCT h.matchup_id" + PREGAME_SNAPSHOTS
+                 + " AND NOT EXISTS (SELECT 1 FROM cfb_quote_movement_coverage c WHERE c.history_id=h.id)")
 
 
 def record_movements(db, *, full=False):
@@ -64,7 +63,7 @@ def record_movements(db, *, full=False):
     history and re-sent them all as no-op inserts: 7.7 GB of pages touched in 23
     minutes for zero new rows, which alone kept the database compute above its
     minimum size. ``full=True`` is the old whole-ledger reconciliation and runs
-    from pipeline_health.yml every six hours.
+    from pipeline_health.yml every three hours.
 
     Replay-derived rows retain source capture IDs; recorded_at is processing time,
     not a claim that a historical observation was detected prospectively.
@@ -74,10 +73,18 @@ def record_movements(db, *, full=False):
     with db.connect() as connection:
         cursor = connection.cursor()
         cursor.execute("SELECT pg_advisory_xact_lock(73402191)")
-        cursor.execute(PREGAME_HISTORY + ("" if full else UNCOVERED_GAMES)
-                       + " ORDER BY h.matchup_id,h.captured_at,h.id")
+        if full:
+            cursor.execute(PREGAME_HISTORY + HISTORY_ORDER)
+            history_rows = cursor.fetchall()
+        else:
+            cursor.execute(PENDING_GAMES)
+            pending = [row["matchup_id"] for row in cursor.fetchall()]
+            history_rows = []
+            if pending:
+                cursor.execute(PREGAME_HISTORY + " AND h.matchup_id=ANY(%s)" + HISTORY_ORDER, (pending,))
+                history_rows = cursor.fetchall()
         histories = defaultdict(list)
-        for row in cursor.fetchall():
+        for row in history_rows:
             histories[row["matchup_id"]].append(dict(row))
         expected = []
         for matchup_id, history in histories.items():

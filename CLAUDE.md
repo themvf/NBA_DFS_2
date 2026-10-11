@@ -97,18 +97,21 @@ NOT the endpoint to use.
 Live use is one thing only: `ingest/polymarket_tennis.py` captures tennis
 match prices into `game_odds_history`, feeding the Pin/Poly delta detector.
 
-**Wallet tracking was closed 2026-08-26 and REOPENED 2026-08-27.** v1's
-ranking metric (`Wilson floor - entry price`) measured trading style, not
-skill: 52% of its top-50 leaderboard was automated. v2
-(`ingest/polymarket_wallet_clv.py`) re-asks the question with **closing-line
-value**, which a market maker cannot systematically win, scored against the
-last PRE-MATCH price (Gamma's `gameStartTime`) rather than the last trade
-before resolution. Result: **MLB shows a walk-forward selection gap of
-+0.0084 CLV, 95% CI [+0.0046, +0.0127]**, surviving concentration,
-favourite-longshot-drift and self-impact checks; **tennis fails** on
-concentration. That is one sport of two from an exploratory scan — a
-hypothesis for a pre-registered forward test, **not a confirmed edge**, and
-the fill-latency problem that would block acting on it is untouched. Read
+**Wallet tracking: v1 closed 2026-08-26, v2 reopened it 2026-08-27, and the
+v2 positive result was WITHDRAWN 2026-08-28 after review.** v1's metric
+measured trading style, not skill. v2 re-asked the question with
+closing-line value and appeared to find an MLB selection gap of +0.0084 —
+but an independent statistical review found the CLV metric was **weighting a
+price move by dollars instead of by shares**, which drops the 1/p converting
+dollars to shares and destroys the antisymmetry that makes CLV zero-sum.
+Two perfectly offsetting share positions scored +0.0400 instead of 0.0000,
+handing free CLV to whoever's dollars sat on favourites — a persistent
+style, so it survived the walk-forward looking like skill. Four further
+defects (gates leaking the holdout, market-clustered intervals blind to the
+per-wallet effect they test, leave-one-out on the level not the gap, and a
+powerless favourite-longshot check) were each independently capable of
+producing the same result. **Do not quote the +0.0084 figure.** All six are
+fixed and both sports are being re-measured. Read
 [`docs/polymarket-wallet-tracker.md`](docs/polymarket-wallet-tracker.md)
 before proposing wallet tracking again — it records the method, the five
 ranking bugs found in sequence, the negative result and why it is a real
@@ -491,6 +494,24 @@ skip freezes whose content did not change, sort plays deterministically) needs
 a new implementation pin, which makes the grader reject every earlier forecast.
 Do that only at a study version boundary. The table file shrinks only after
 `VACUUM FULL`, which is the owner's call (it locks reads).
+
+**October (2026-10-09): transfer is now the line to watch.** Launch includes
+10 branches per project (the September invoice equals branch-hours above 10
+per hour), so RegIntel's remaining branches cost nothing. NBADFS sends ~46 GB
+a day against a 500 GB monthly allowance, then $0.10/GB. `pg_stat_statements`
+put over half of it on pick'em grading re-reading every ~850 KB frozen
+forecast each run (the fix, grading from a stored input digest, is on branch
+`claude/research-oom-and-failures`, merged to main 2026-10-09). Rank readers by rows x row width, not by
+execution time: the transfer leaders were cheap queries. The per-capture CFB
+capture audit now reads only games that can still gain captures (the full
+audit runs in pipeline_health.yml, after the freshness reading so a failing
+integrity pass cannot stop /health updating), and `record_movements` looks up
+pending games in a separate query. `ingest/nfl_pickem_refresh.py`'s
+`DISTINCT ON` quote lookup costs ~6 s a call, but that file is hash-pinned by
+the registered pick'em studies: changing it needs a new implementation pin,
+and the grader accepts only captures after the latest pin, so a re-pin
+restarts the pick'em sample. Fold such fixes into the next re-pin that is
+needed anyway.
 
 ## Parallel agents: commit locally, one session pushes (2026-10-04)
 
@@ -7629,6 +7650,221 @@ Neither constant has been fitted; grade them on imported contests before
 treating either as more than a judgement.
 
 ---
+
+## dfsdb.com contest import — one pasted link at a time (2026-10-10)
+
+`python -m ingest.dfsdb_contest <link>` pulls a public DraftKings contest from
+dfsdb ("The DFS Record Book") into `dfsdb_contests` / `dfsdb_contest_athletes`
+/ `dfsdb_contest_standings`, plus `dfsdb_users` + `dfsdb_user_contest_history`
+with `--top-users N` and `dfsdb_lineups` with `--lineups-pages N`.
+`--date 2026-10-08 --sport nfl [--search "TB @ DAL" | --series X | --type "Milly Maker"]
+[--format showdown]` instead lists that day's finished contests from
+`/api/contests` and imports the biggest fields first (`--min-entries 1000`,
+`--max-contests 15`, hard cap 50). The listing is date-descending with no date
+filter and an NFL Sunday is several hundred contests, so an unfiltered walk
+(12 pages) reaches only the last day or two; the report says "DATE NOT
+REACHED" rather than listing zero, and the server-side filters (showdown
+names carry the matchup; `/api/contests/filters` lists series and types) make
+an older day one or two requests. This
+exists because the DraftKings export only exists for contests you entered;
+dfsdb covers the ones you only projected. The pure
+layer is `model/dfsdb_contest.py` (`dfsdb-contest-import-v1`); tests in
+`tests/test_dfsdb_contest.py`. What the payload is, measured 2026-10-10:
+
+- The page is a Next.js shell; `/api/contest/{uuid}?page&limit&sortBy&sortOrder`
+  carries everything, no login, `limit` max 100 (200 is a 400). Older contests
+  can have an empty standings list while the card and athletes still answer.
+- **`athletes` is capped at 50 rows, and they are the top SCORERS, not the
+  chalk.** Near-complete for a showdown; for a classic contest it is the
+  ownership of the 50 players who scored most (the 2026-10-04 Milly Maker's
+  highest-owned athlete among its 50 was 11.8%, Saquon Barkley was absent from
+  a 2025 one), so classic ownership from dfsdb cannot calibrate the ownership
+  prior. Showdown ownership is FLEX-only (sums to ~500%); captain share is
+  not broken out.
+- **`results` is one row per USER**: best rank, best points, and `winnings`
+  summed across every entry that user had. The stored `payout_curve` therefore
+  takes rank → payout from single-entry users only and records its coverage;
+  `cash_line_points` is set only when the fetch reaches the last cashing rank.
+- `/api/player/{uuid}?summary=1` and `?history=1&sport=&page=` give a user's
+  per-sport record (contests, entries, ROI, cash rate, buy-in / contest-type /
+  slate-size splits) and per-contest results, but **no lineups**.
+- Lineups exist only in the global `/api/lineups?sport=&year=&page=&limit=50`
+  top-scoring feed (full rosters with DK player ids, salary, points); it
+  ignores contest/user filters, so a contest's lineups surface only if they
+  rank among the year's top scores (showdown scores never do). The NFL 2026
+  slice answered 503 on every try on 2026-10-10; 2025 and NBA answered.
+- `--mirror-field` writes an NFL **showdown** into `nfl_dfs_field_contests` /
+  `nfl_dfs_field_ownership` (contest id `dfsdb-<uuid>`); it refuses classic
+  contests because the 50-row cap would read most of the slate as 0% owned.
+  **Do not use it as a calibration target (2026-10-10):** dfsdb's showdown
+  ownership is FLEX-only while the prior is captain-plus-flex, so the eight
+  mirrored TB @ DAL contests graded at bias +1.95 where stat-api's row for the
+  same contest graded at 0.00. Their slate links were removed that day (the
+  rows stay); stat-api is the ownership source for calibration.
+- **Lineups by top finishers come from stat-api (below) or DraftKings' export, not dfsdb.**
+  `python -m ingest.nfl_dfs_field_audit --contest FILE --keep-top N` (also with
+  `--structure-only`) stores every entry ranked in the top N, roster and all,
+  in `nfl_dfs_field_top_entries`, each slot read at its own ownership (CPT at
+  the CPT share) so `ownership_sum` is what the field faced; a tie at the cut
+  is kept whole. Join `username` to `dfsdb_users.display_name` to put a
+  winner's lineup next to their dfsdb record. First run (week-4 showdown
+  195786073, top 20): 30 entries tied for first with one identical lineup.
+- **Terms:** dfsdb forbids automated tools that "systematically access or
+  download data", and robots.txt disallows `/api/`. This importer is one
+  contest per run on a human-pasted link, one request a second, an identifying
+  User-Agent, no schedule and a capped lineups scan. Do not put it on a cron
+  or loop it over the contests list. The built-in browser gets "Access denied"
+  from the site; plain requests do not.
+
+## stat-api.com — every lineup of every DraftKings contest (2026-10-10)
+
+`python -m ingest.statapi_contest --contest <stat-api id>` or
+`--date 2026-10-04 --sport nfl [--search "TB @ DAL"] [--format showdown]`
+pulls a contest's full standings and its top finishers' every lineup from
+`api.stat-api.com/api/v1/dfs` into the SAME tables the DraftKings export path
+fills, keyed by DraftKings' contest id (`external_id`): `nfl_dfs_field_contests`
+(with the web's `score_curve` when every entry is fetched, `--all-standings`),
+`nfl_dfs_field_ownership`, `nfl_dfs_field_top_entries`, and a new
+`nfl_dfs_field_user_builds` (each user's record, stat-api's stack/dispersion
+analysis, exposure vs the field, and every lineup they entered). Pure layer
+`model/statapi_contest.py` (`statapi-contest-import-v1`), tests in
+`tests/test_statapi_contest.py`. Measured 2026-10-10:
+
+- **Each week's flagship contests answer in full with no key** (`x-preview-
+  exempt: flagship`): the DraftKings Millionaire and the biggest Thursday and
+  Monday Showdown. **A free account's key adds nothing** (measured
+  2026-10-10 with a real key): every other contest is a 5-row courtesy
+  preview on standings AND per-user lineups (`access.full: false`,
+  `required_tier: pro`), which the importer refuses to store. The 401 text
+  "a free account opens every contest" means the preview. Full access to
+  other contests and the lineup file (`/download`) is Pro ($99/month, 10M
+  lineup rows). `STAT_API_KEY` is sent as `Authorization: Bearer`; 600
+  requests/min per key.
+- `/contests/{id}/standings` pages 1,000 rows by `from_row`; a row is one
+  ENTRY (rank, username, points, payout, the user's entry count, stack shape).
+  `/contests/{id}/users/{username}/lineups` returns every lineup of that user
+  seat by seat with `field_pct` = the player's OVERALL ownership on any seat
+  except a CPT seat, which carries the captain share (Dak: flex seat 77.33,
+  captain seat 14.68; dfsdb's flex-only 62.53 is the difference). The importer
+  stores `drafted_pct` = overall and splits a showdown player into CPT and
+  FLEX = overall - CPT, which is DraftKings' own %Drafted convention; summing
+  seats instead double counts (the first run read 176% of the field).
+- Ownership is assembled from the fetched users' seats, so it covers the
+  players they used. The gate is ownership MASS (the share of roster slots x
+  100% the seen players account for), not a player count: 100 users of the
+  TB @ DAL showdown saw 77% of the players but ~99% of the mass, because the
+  unseen ones are punts nobody drafted. The contest is linked to a slate only
+  at `--ownership-min-coverage` (0.95) of the mass: `calibrate:nfl-ownership`
+  reads a slate player with no row as 0% owned, and an unlinked contest is
+  skipped there. First calibration on the two linked contests: week-4
+  Millionaire n=629 Spearman 0.80 MAE 1.06 bias 0.01 (in line with the three
+  export-based classic slates); TB @ DAL showdown n=52 Spearman 0.89 MAE 4.82
+  bias 0.00.
+- **`python -m research.nfl_top_builds --contest <DK id> --top 5`** prints, for
+  each top finisher, stat-api's three views from the stored builds (players:
+  exposure vs field, leverage, edge; every lineup seat by seat; stacks,
+  dispersion, ownership and salary) and then the IDENTICAL analysis for our
+  optimizer run on the linked slate, scored with the week's actual points and
+  placed in the contest's real score curve. Definitions match stat-api's
+  (edge = leverage/100 x (points - field average per seat); per-player edges
+  reproduce theirs exactly). First run, week-4 Millionaire: the winner used 10
+  different QBs in 10 lineups, QB+2 stacks in 7, ownership sum 64-115% per
+  lineup; our 107-lineup build used 6 QBs, QB+1 in 106 of 107, a bring-back
+  in all 107, ownership sum averaging 64%, and its lineups differed from their
+  closest twin by 2.1 players (the winners': 3.6-5.7). Our best lineup placed
+  about #28,000 of 161,764.
+- **Weekly, automated (2026-10-10):** `ingest/nfl_dfs_flagship_review.py` runs in
+  `refresh_nfl_dfs_postweek.yml` (Tuesday and Wednesday). For the latest
+  completed week it probes the biggest-prize contest of every DraftKings slate
+  on each game day, imports the ones stat-api serves in full (the flagships),
+  and stores the winners-versus-us review in `nfl_dfs_field_build_reviews`
+  (one row per contest and review version; `nfl-dfs-flagship-review-v1`).
+  Both tables are on the health checklist (`nfl_flagship_builds`,
+  `nfl_build_reviews`, 192 h). A slate with no saved optimizer run reviews
+  the winners only and says so; save a build for every slate you project.
+  The contests listing quotes entry fee and prize pool in CENTS.
+- Discovery is `/slates?date&operator_id=1&sport=nfl` then `/contests?slate_id`
+  (100 per slate without a key; sorted by id, so the big fields are present).
+  In-Game slates are skipped. The `contest-analysis` tool page and the
+  `contest-analysis_<id>_preview.csv` it downloads are the same data; the CSV
+  is a 5-lineup preview without Pro.
+- Terms (Verum Technologies): Free/Starter/Pro are single-user personal
+  licences; downloading, storing and modelling on the data is allowed, publishing
+  it or giving others access to anything built on it is not. That fits this
+  repo's private use. Nothing here is scheduled.
+
+## NFL DFS — Winners-shape build preset (`nfl-winners-shape-v3`, 2026-10-11; v1 2026-10-10)
+
+A "Build shape" select on `/dfs/nfl` (GPP mode, Classic and Showdown):
+Standard, or Winners shape, which rearranges the same projections the way
+the week 1-5 flagship winners built (`research/nfl_top_builds.py` over the
+stat-api lineups). `web/src/lib/nfl-dfs/winners-shape.ts` resolves the
+preset into ordinary optimizer settings at the top of `optimizeNflLineups`,
+so the saved run records every number enforced and the build notes list
+every player the pool rules left out (`reasonCode` `WINNERS_SHAPE` /
+`KICKER_EXCLUDED`, shown in their own "left out" list on the page).
+
+- **Classic:** min unique 4, max exposure 55%, each QB in at most
+  `qbExposureCap(n)` of lineups (1.6 distinct QBs per 10 lineups, 15% floor:
+  20 lineups -> 35%), a bring-back in 50% of lineups, at least one stacked
+  pass catcher, min salary $49,500. Pool: RBs whose touches a game (carries +
+  targets, three prior weeks) rank in the slate's top quarter OR who see 4+
+  targets a game, WRs with 25%+ of their team's targets or under $5,000, TEs
+  under $4,000 with 4+ targets a game, DSTs under $3,000.
+  **v1's RB rule was targets-only and is why v2 exists:** on the week-5
+  Classic (2026-10-11) it kept 10 of 112 backs, leaving out Jonathan Taylor
+  (26 touches, 3.7 targets a game), Swift, Love, Skattebo and every other
+  bell-cow with a thin receiving role; v2 keeps 19 on the same slate. The
+  48-lineup v1 run on that slate (`0b216409`, 22:57 UTC 2026-10-10) is a
+  TEST, not the week's shadow build: it met every portfolio rule exactly
+  (10 QBs, 24/48 bring-backs, min unique 4, max 54%, $49,600+), but from an
+  8-back pool. Rebuild Standard and Winners shape on v2 before kickoff. A rule that would leave a position too
+  thin (RB 4, WR 6, TE 2, DST 2) is skipped and said; so is a position with
+  no prior data. Locks always win.
+- **Showdown:** every lineup 5-1 or 3-3 (three binaries pin the first team's
+  count to 1, 3 or 5), no kicker, the captain a QB, RB or WR (`captainPositions`;
+  the player still plays flex), no captain above 30% of lineups unless the
+  user set his CPT range, min salary $49,500. Works alongside the archetype
+  plan. v3's captain-position rule comes from the stored flagship builds: in
+  346 top-20 showdown lineups the captain was RB 163 / WR 98 / QB 85 and never
+  a DST, TE or K; the first v1 showdown build (PHI@JAX, `cb4b2dca`) captained
+  the Jaguars DST 3 times and a TE 5 times. The DST's 22-of-50 flex exposure
+  there was the candidate special-teams forecast (P90 18.6, boom 0.36 at
+  $5,200), not the preset; winners carried a DST in 31% of lineups.
+- **New optimizer settings** the preset sets, usable on their own:
+  `bringBackShare` (Classic GPP; alternates lineups between a required and
+  a forbidden bring-back so the run lands on the share, replacing the hard
+  rule), `maxQbExposure`, `maxCaptainExposure`, `excludeKickers`,
+  `forbidFourTwoSplit`. `priorOpportunity` on the workspace player (three-
+  week play-by-play targets/carries plus team target share, RB/WR/TE) feeds
+  the pool rules; `targets` is still not in `stat_means`.
+- Not an edge: the shape is a second build for the weekly winners-vs-us
+  review to grade against the standard one. Change a constant and bump the
+  version; `npm run test:nfl-winners-shape` pins the current ones.
+
+## NFL DFS — the page read, measured and cut (2026-10-10)
+
+Opening a saved slate on `/dfs/nfl` took 12-26 s, all of it in one server
+action, the workspace read (`workspaceSlate` in `web/src/app/dfs/nfl/actions.ts`).
+Measured with lap timers on the PHI@JAX slate (two samples, 14.6 s and 24.7 s):
+
+| step | cost | cause | fix |
+|---|---|---|---|
+| Sleeper depth archive in `getNflRosterEvidence` | 8.8-11.4 s | `DISTINCT ON (player_id)` over the whole season of `ff_player_injury_observations` (490k rows, 742 MB): parallel seq scan plus a 188 MB on-disk sort of 378k rows to return 1,035, every one of them under a day old | partial index `idx_ff_injury_observations_sleeper_depth` (season, player_id, observed_at DESC, id DESC; Sleeper rows with a depth order; built CONCURRENTLY on the live DB, declared in `db/schema.py` and the web mirror) plus a per-player LATERAL read on it: 0.2-0.3 s, same rows |
+| per-run projection read | 2.6-3.1 s | `stat_means` + `feature_snapshot` + `source_evidence` for 1,023 players is 8.2 MB a run, 5 MB of it `availability_decision` observation-id lists the page never reads | select only `stat_means`, `feature_snapshot->special_teams_candidate`, `source_evidence->availability` and the decision minus its two `*_source_snapshot_ids` lists |
+| study report in `getCalibratedSnapshots` | ~1 s | the 570 KB research-run report fetched on every open for the explanation recipes | cached per server instance, keyed by study id and digest |
+| ~20 sequential round trips | a few s | one HTTP request each on neon-http | reads that need only the upload or run row run in `Promise.all` (two groups), both defensive-capture profiles together, the five roster-evidence reads together, the GitHub pipeline status started first and awaited last |
+| defensive capture read (`readDefensiveCaptures`), Classic only | 4-5 s | each forecast row's `projection` JSON is ~25 KB, and an 11-game slate read 13 MB + 6 MB for the two profiles to count applied players | select the row minus its `sources` and top-level `baseline` keys, which nothing on the web reads: 0.5 s |
+| the page re-reading the workspace for the runs dropdown | a full read each | after Generate, an upload or a projection move the client called the workspace loader for `.runs` | `listSavedNflRuns` (runs only) |
+
+Result from the same machine: PHI@JAX 3.5-4.3 s; the 11-game week-5 Classic 4.8 s (it was 10-11 s after the first four fixes and was not measured before them). Opening a slate whose saved run has confirmed starters still reads twice (plain, then with the starters). Numbers are from a
+home connection to Neon us-east-1; Vercel sits closer, so the round-trip items
+shrink there and the index item does not. Two traps worth keeping: in Postgres
+`-` binds tighter than `->`, so `col->'k' - 'x'` is `col->('k' - 'x')` and fails
+as "invalid input syntax for type json"; parenthesise the arrow. And under the
+neon-http driver a bare string literal next to a jsonb operand is typed
+`unknown` and `jsonb_build_object` keys need `::text`. Both failed loudly on the
+page (the action guard showed the query), which is the behaviour to keep.
 
 ## CFB Early-Season Pattern Watch — pre-registered, local only (2026-10-09)
 

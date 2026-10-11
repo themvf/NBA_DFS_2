@@ -1,0 +1,52 @@
+name: Publish NFL Longest Touchdown weeks
+
+on:
+  schedule:
+    - cron: "0 16 * * 3"
+    - cron: "0 14 * * 4"
+    - cron: "0 14 * * 0"
+    - cron: "0 14 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-nfl-longest-touchdown
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Capture sources and publish the complete upcoming week
+        run: python -m research.nfl_longest_touchdown_auto --draws 500
+      - name: Commit only a changed, validated publication
+        run: |
+          git add -f web/src/data/longest-touchdown-weeks.json
+          if git diff --cached --quiet; then
+            echo "No publication change"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update weekly NFL longest touchdown forecasts"
+          git push origin HEAD:main
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: longest-touchdown-source-evidence
+          path: artifacts/nfl-longest-td/auto/
+          if-no-files-found: ignore
+          retention-days: 30
