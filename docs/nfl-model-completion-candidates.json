@@ -83,9 +83,27 @@
     "research/nfl_workload_risk.py": "e8d67cb4945446fdc4ab857b69729a61e3c65dae2c1a17ed364bef49d637f344",
     "web/src/lib/nfl-dfs/joint-portfolio.ts": "87588d7fb2782f347ea6bfe35e522da15a62063e4c2d287a0c703064430ebf9f",
     "web/scripts/compare-nfl-joint-portfolios.ts": "05bf97642caba1b96d6d4420acf51502faa4468fcf40dc4e1607f51790298515",
-    "web/src/app/dfs/nfl/nfl-optimizer.ts": "aeff601263e2a6d0555e1d6fe731c5af9b4bbd37a851277b6f8881311d8cf024",
+    "web/src/app/dfs/nfl/nfl-optimizer.ts": "bcd13862b459347b0e20b7fb14a229fc090b0d9e59f9a5c1213cc6e89ae2123d",
     "model/nfl_matchup_scenarios.py": "9d133718c360a03a445965508061807c49644c3ac329ae220c4f68069a19e913",
     "web/src/lib/nfl-dfs/scoring.ts": "83e8b8c293519e7605f4d5be76a302bd442835fa4dc43a6d02744922a5729e3c",
     "web/src/lib/nfl-dfs/scenarios.ts": "98ed595731bc69ee1fcde4d9c42109880382cff3dbf480ce0f0043fdf46e2fd9"
-  }
+  },
+  "amendments": [
+    {
+      "amended_at": "2026-10-11T13:07:22Z",
+      "reason": "Owner kept the Winners-shape optimizer changes (classic GPP and showdown build presets; showdown captains QB/RB/WR only). Re-pinned the optimizer only; every other pinned file is unchanged.",
+      "file": "web/src/app/dfs/nfl/nfl-optimizer.ts",
+      "previous_sha256": "aeff601263e2a6d0555e1d6fe731c5af9b4bbd37a851277b6f8881311d8cf024",
+      "new_sha256": "bcd13862b459347b0e20b7fb14a229fc090b0d9e59f9a5c1213cc6e89ae2123d",
+      "changed_by": [
+        "4c1ffbd4 Winners shape v3: showdown captains are QB, RB or WR only",
+        "c3bf0b8a Winners-shape build preset: a page selection for Classic GPP and Showdown",
+        "acbaadb4 Integration: restore web files the main-checkout snapshot re-touched to their pre-snapshot state",
+        "4fae076e Merge branch 'claude/main-checkout-sept-work' into claude/integrate-2026-10-09",
+        "bb51af61 Main checkout: uncommitted Sept 20-27 work (CFB market context engine, NFL prop odds, pbp script bank, tennis data source, DFS and pick'em edits)",
+        "b5900aa0 fix(nfl-dfs): recheck late availability and explain build authority"
+      ],
+      "evidence_rule": "Forward decisions captured before amended_at ran under previous_sha256 and are graded as a separate cohort or excluded; they are never pooled with decisions captured after it."
+    }
+  ]
 }
