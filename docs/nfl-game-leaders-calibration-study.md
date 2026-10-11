@@ -107,3 +107,42 @@ evaluated separately:
 - Rosters are reconstructed from usage; a newly signed player is a newcomer slot.
 - Reconciled box scores include later stat corrections.
 - Player-game rows inside a game are dependent; uncertainty is resampled by game.
+
+## Result (2026-10-11): two of four markets pass
+
+Development (2023–2025, 689 graded games, 127 skipped for registered reasons)
+chose **C2** (prior-season usage as two pseudo-games; summed log loss 8.226
+against B 8.347, C4 8.325, C8 8.342 on the 481 games with a prior season).
+Every fitted temperature is above 1 (rushing 1.30, receiving 1.05, receptions
+1.15, total 1.25): the model is overconfident in all four markets. The fit
+(`calibration-v1/fit.json`) was committed before the 2022 records were opened.
+
+**2022, single look** (245 graded games, 26 skipped). Log loss of the calibrated
+C2 model minus the fitted recent-average baseline, game-clustered 95% interval:
+
+| Market | Model | Baseline | Difference | 95% interval | Gate |
+| --- | ---: | ---: | ---: | --- | --- |
+| Rushing yards | 1.729 | 2.054 | −0.325 | −0.540 to −0.070 | **Pass** |
+| Total yards | 2.275 | 2.456 | −0.181 | −0.285 to −0.082 | **Pass** |
+| Receiving yards | 2.356 | 2.459 | −0.103 | −0.271 to +0.113 | Fail |
+| Receptions | 2.497 | 2.417 | +0.080 | −0.151 to +0.357 | Fail |
+
+Reported, not gating:
+
+- **What the roles fix bought** (uncalibrated log loss, 2022): rushing
+  A 2.165 → B 1.893 → C2 1.803; total yards 2.512 → 2.387 → 2.275. For the
+  pass-catching markets the gains do not hold: receiving yards A 2.347,
+  B 2.262, C2 2.363; receptions A 2.508, B 2.625, C2 2.534.
+- **Picking the leader**: the model's top choice is no better than the naive
+  recent-average leader in any market; every interval includes zero
+  (for example rushing +0.012, −0.045 to +0.065).
+- **Calibration**: expected calibration error after the temperature is 0.004–0.009
+  in every market.
+
+Reading: for rushing and total yards the probabilities are measurably better
+than a recent-average baseline on a season no game-leader study had touched.
+For receiving yards and receptions they are not, and the role changes do not
+reliably help those markets. In no market does the model pick the leader
+better than the simple rule. Per the registration, receiving and receptions get
+no claim and no re-slicing; adopting C2 and the temperatures in production is a
+separate decision.
