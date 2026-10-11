@@ -7475,6 +7475,27 @@ Do not re-run this study.
 
 ---
 
+## NFL availability job — Sleeper capture batched (2026-10-11)
+
+The "Update data" job took 9-11 minutes on game day; the Sleeper capture
+alone took up to 5 minutes because it wrote 1,066 players one at a time, about
+four round trips each (~4,300 sequential trips from a GitHub runner).
+`persist_injury_observations_batch` (`ingest/ff_injuries.py`) makes the same
+decisions in a handful of statements: one observation insert, one
+active-episode read, one episode update, one player update; new and cleared
+episodes keep their per-row statements. `persist_injury_observation` is
+unchanged and still serves the FantasyPros path.
+
+Proved on a Neon branch of production before release (2026-10-11, branch
+`capture-batch-verify-20261011`): old and new captures on the same Sleeper
+payload, each in a rolled-back transaction, with three players forced through
+each rare path (cleared, status change, new injury). Every player row,
+observation, episode and the 9 events matched; the only differences were the
+two transaction-clock timestamps. Duplicate path (second capture in the same
+hour) matched too. 80 s -> 1.6 s from a home connection. The manual "Update
+data" press always forces a capture (scheduled runs skip it when not due),
+so this is the path the button pays for.
+
 ## NFL DFS — Absence commit: the optimizer builds from starter-aware projections (`nfl-absence-commit-v1`, 2026-10-11)
 
 **Owner's decision, 2026-10-11:** commit to a projection and learn from the
