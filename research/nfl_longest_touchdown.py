@@ -20,7 +20,7 @@ from pathlib import Path
 
 import numpy as np
 
-from model.nfl_longest_touchdown import IMPLEMENTATION_SHA256, Settings, VERSION, evaluate, newcomer_share, prepare, simulate, timestamp
+from model.nfl_longest_touchdown import IMPLEMENTATION_SHA256, Settings, VERSION, canonical, evaluate, newcomer_share, prepare, simulate, timestamp
 
 RESEARCH_SHA256 = sha256(Path(__file__).read_bytes()).hexdigest()
 
@@ -46,10 +46,71 @@ def regulation_finished(plays: list[dict]) -> bool:
         and any((r.get('quarter') or 0) > 4 and 'END GAME' in (r.get('description') or '').upper() for r in plays))
 
 
-def capture(db, minimum_season: int, maximum_season: int) -> dict:
-    # DISTINCT role/GSIS before aggregation prevents defensive participant
-    # multiplicity. Resolve positions by season/GSIS only when unambiguous.
-    rows = db.execute("""WITH identities AS (
+NFLVERSE_GAMES_URL = "https://github.com/nflverse/nflverse-data/releases/download/schedules/games.csv"
+CANONICAL_TEAMS = frozenset(('ARI', 'ATL', 'BAL', 'BUF', 'CAR', 'CHI', 'CIN', 'CLE', 'DAL', 'DEN', 'DET', 'GB', 'HOU',
+    'IND', 'JAX', 'KC', 'LAC', 'LAR', 'LV', 'MIA', 'MIN', 'NE', 'NO', 'NYG', 'NYJ', 'PHI', 'PIT', 'SEA', 'SF', 'TB',
+    'TEN', 'WSH'))
+
+
+def schedule_team(code) -> str:
+    """nflverse schedule code -> the nfl_teams abbreviation the 2023+ capture emits.
+
+    Only the LA/WAS aliases are translated (model.nfl_longest_touchdown.canonical,
+    which the box and PBP checks also use). Relocated-franchise codes (OAK, SD,
+    STL) are refused rather than mapped: the PBP and box feeds carry them raw, so
+    translating them here alone would desynchronise the three sources.
+    """
+    team = canonical(str(code).strip())
+    if team not in CANONICAL_TEAMS:
+        raise ValueError(f"Unsupported schedule team code {code!r}")
+    return team
+
+
+def schedule_kickoff(gameday, gametime) -> str:
+    """gameday + gametime (US Eastern, the nflverse convention) as UTC, in the same
+    str(datetime) form the nfl_season_games capture serialises."""
+    from zoneinfo import ZoneInfo
+    if not isinstance(gameday, str) or not isinstance(gametime, str) or not gametime.strip():
+        raise ValueError(f"Schedule row lacks gameday/gametime ({gameday!r}, {gametime!r})")
+    local = datetime.strptime(f"{gameday.strip()} {gametime.strip()}", "%Y-%m-%d %H:%M")
+    return str(local.replace(tzinfo=ZoneInfo("America/New_York")).astimezone(timezone.utc))
+
+
+def schedule_games(records, seasons, captured_at: str) -> list[dict]:
+    """Regular-season game identity from nflverse games.csv rows, in capture format."""
+    def score(value):
+        return None if value is None or value != value else int(value)
+    games = []
+    for r in records:
+        if r.get('game_type') != 'REG' or int(r['season']) not in seasons:
+            continue
+        home, away = score(r.get('home_score')), score(r.get('away_score'))
+        games.append({'game_id': r['game_id'], 'season': int(r['season']), 'week': int(r['week']),
+            'kickoff': schedule_kickoff(r.get('gameday'), r.get('gametime')),
+            'away': schedule_team(r['away_team']), 'home': schedule_team(r['home_team']),
+            'completed': home is not None and away is not None, 'home_score': home, 'away_score': away,
+            'source_captured_at': captured_at})
+    if len({g['game_id'] for g in games}) != len(games):
+        raise ValueError("Duplicate game_id in schedule file")
+    return games
+
+
+def fetch_schedule_games(seasons) -> tuple[list[dict], dict]:
+    import io
+    import pandas as pd
+    import requests
+    response = requests.get(NFLVERSE_GAMES_URL, timeout=60)
+    response.raise_for_status()
+    captured_at = str(datetime.now(timezone.utc))
+    frame = pd.read_csv(io.BytesIO(response.content), low_memory=False)
+    records = json.loads(frame[['game_id', 'season', 'game_type', 'week', 'gameday', 'gametime',
+        'away_team', 'away_score', 'home_team', 'home_score']].to_json(orient='records'))
+    games = schedule_games(records, set(seasons), captured_at)
+    return games, {'url': NFLVERSE_GAMES_URL, 'sha256': sha256(response.content).hexdigest(),
+        'captured_at': captured_at, 'seasons': sorted(seasons), 'games': len(games)}
+
+
+_PLAYS_SQL = """WITH identities AS (
         SELECT season,gsis_id,MIN(position) position FROM ff_players
         WHERE gsis_id IS NOT NULL GROUP BY season,gsis_id HAVING COUNT(DISTINCT position)=1
       ), historical_positions AS (
@@ -73,32 +134,89 @@ def capture(db, minimum_season: int, maximum_season: int) -> dict:
         p.drive_plays,p.play_labeller_version,p.drive_labeller_version,p.labelled_at,
         CASE WHEN p.game_seconds_remaining-p.next_clock BETWEEN 1 AND 60
           THEN p.game_seconds_remaining-p.next_clock ELSE NULL END elapsed_seconds,
-        g.kickoff,g.game_type,g.season canonical_season,g.week canonical_week,
-        h.abbreviation canonical_home,a.abbreviation canonical_away,COALESCE(q.actors,'[]'::jsonb) actors
-      FROM timed p JOIN nfl_season_games g ON g.nflverse_game_id=p.game_id AND g.season=p.season AND g.week=p.week
-      JOIN nfl_teams h ON h.team_id=g.home_team_id JOIN nfl_teams a ON a.team_id=g.away_team_id
+        {schedule_columns}COALESCE(q.actors,'[]'::jsonb) actors
+      FROM timed p {schedule_join}
       LEFT JOIN attribution q ON q.game_id=p.game_id AND q.play_id=p.play_id
-      WHERE g.game_type='REG' ORDER BY g.kickoff,p.game_id,p.play_id""", (minimum_season, maximum_season))
-    plays = json.loads(json.dumps([dict(r) for r in rows], default=str))
-    if len({(r['game_id'],r['play_id']) for r in plays}) != len(plays):
-        raise ValueError("Schedule/participant join duplicated a source play")
-    games = db.execute("""SELECT g.nflverse_game_id game_id,g.season,g.week,g.kickoff,
+      {where} ORDER BY {order}"""
+
+
+def _json_rows(rows) -> list[dict]:
+    return json.loads(json.dumps([dict(r) for r in rows], default=str))
+
+
+def capture(db, minimum_season: int, maximum_season: int) -> dict:
+    # DISTINCT role/GSIS before aggregation prevents defensive participant
+    # multiplicity. Resolve positions by season/GSIS only when unambiguous.
+    # Game identity comes from nfl_season_games (2023+). A season with no REG
+    # rows there falls back, for that season only, to the nflverse schedule
+    # file; a season in neither source raises instead of freezing an empty
+    # snapshot that looks successful.
+    rows = db.execute(_PLAYS_SQL.format(
+        schedule_columns="g.kickoff,g.game_type,g.season canonical_season,g.week canonical_week,\n"
+                         "        h.abbreviation canonical_home,a.abbreviation canonical_away,",
+        schedule_join="JOIN nfl_season_games g ON g.nflverse_game_id=p.game_id AND g.season=p.season AND g.week=p.week\n"
+                      "      JOIN nfl_teams h ON h.team_id=g.home_team_id JOIN nfl_teams a ON a.team_id=g.away_team_id",
+        where="WHERE g.game_type='REG'", order="g.kickoff,p.game_id,p.play_id"), (minimum_season, maximum_season))
+    plays = _json_rows(rows)
+    games = _json_rows(db.execute("""SELECT g.nflverse_game_id game_id,g.season,g.week,g.kickoff,
                          a.abbreviation away,h.abbreviation home,g.completed,g.home_score,g.away_score,g.source_captured_at FROM nfl_season_games g
                          JOIN nfl_teams a ON a.team_id=g.away_team_id JOIN nfl_teams h ON h.team_id=g.home_team_id
                          WHERE g.season BETWEEN %s AND %s AND g.game_type='REG' AND g.nflverse_game_id IS NOT NULL""",
-                       (minimum_season, maximum_season))
+                       (minimum_season, maximum_season)))
+    fallback_seasons = sorted(set(range(minimum_season, maximum_season + 1)) - {int(g['season']) for g in games})
+    fallback = None
+    if fallback_seasons:
+        schedule, fallback = fetch_schedule_games(fallback_seasons)
+        missing = sorted(set(fallback_seasons) - {g['season'] for g in schedule})
+        if missing:
+            raise ValueError(f"No game identity for seasons {missing}: neither nfl_season_games "
+                             "nor the nflverse schedule file has regular-season rows")
+        by_id = {g['game_id']: g for g in schedule}
+        extra = _json_rows(db.execute(_PLAYS_SQL.format(schedule_columns="", schedule_join="", where="",
+            order="p.game_id,p.play_id"), (min(fallback_seasons), max(fallback_seasons))))
+        unmatched = set()
+        for r in extra:
+            if r['season'] not in fallback_seasons:
+                continue
+            g = by_id.get(r['game_id'])
+            if g is None:
+                unmatched.add(r['game_id'])
+                continue
+            if (int(r['season']), int(r['week'])) != (g['season'], g['week']) or (
+                    canonical(r['home_team']), canonical(r['away_team'])) != (g['home'], g['away']):
+                raise ValueError(f"PBP disagrees with schedule-file identity for {r['game_id']}")
+            actors = r.pop('actors')
+            plays.append({**r, 'kickoff': g['kickoff'], 'game_type': 'REG', 'canonical_season': g['season'],
+                'canonical_week': g['week'], 'canonical_home': g['home'], 'canonical_away': g['away'],
+                'actors': actors})
+        if unmatched:
+            raise ValueError(f"PBP games absent from the schedule file: {sorted(unmatched)[:10]}")
+        fallback['pbp_games'] = len({r['game_id'] for r in plays if r['season'] in fallback_seasons})
+        games += schedule
+        plays.sort(key=lambda r: (timestamp(r['kickoff']), r['game_id'], r['play_id']))
+    if len({(r['game_id'],r['play_id']) for r in plays}) != len(plays):
+        raise ValueError("Schedule/participant join duplicated a source play")
+    if not plays or not games:
+        raise ValueError(f"Empty capture for seasons {minimum_season}-{maximum_season}")
+    by_game = defaultdict(list)
+    for r in plays:
+        by_game[r['game_id']].append(r)
     coverage = {}
     for game in games:
-        target = [r for r in plays if r['game_id'] == game['game_id']]
+        target = by_game.get(game['game_id'], [])
         coverage[game['game_id']] = {'play_count': len(target),
             'regulation_end_observed': regulation_finished(target)}
-    return {"version": VERSION, "captured_at": datetime.now(timezone.utc).isoformat(),
+    result = {"version": VERSION, "captured_at": datetime.now(timezone.utc).isoformat(),
         "game_coverage": coverage,
         "source": "nfl_pbp_archetypes + deduplicated nfl_pbp_play_participants + canonical nfl_season_games",
         "participant_as_of_available": False, "plays": plays,
-        "games":json.loads(json.dumps([dict(g) for g in games],default=str)),
+        "games": games,
         "coverage": {"games": len({r['game_id'] for r in plays}), "plays": len(plays),
                      "seasons": dict(Counter(r['season'] for r in plays))}}
+    if fallback:
+        result["source"] += f"; seasons {fallback_seasons} identified from the nflverse games.csv schedule"
+        result["schedule_fallback"] = fallback
+    return result
 
 
 def inferred_roster(history: list[dict], teams: tuple[str,str], season: int) -> list[dict]:

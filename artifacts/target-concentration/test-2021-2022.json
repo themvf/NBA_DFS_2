@@ -1,0 +1,133 @@
+{
+ "study": "nfl-target-concentration-v1",
+ "stage": "test",
+ "seasons": [
+  2021,
+  2022
+ ],
+ "team_games": 990,
+ "h1": {
+  "team_seasons": 64,
+  "split_half_r": 0.5872806149907989,
+  "ci95": [
+   0.44027555008861363,
+   0.7065697895032899
+  ],
+  "passes": true,
+  "icc": 0.09906881182879171,
+  "year_over_year_r": 0.1892348943080749,
+  "year_pairs": 32,
+  "league_mean_hhi": 0.18886884784152877,
+  "most_concentrated": [
+   [
+    "PHI",
+    2022,
+    0.2286
+   ],
+   [
+    "LAR",
+    2021,
+    0.2228
+   ],
+   [
+    "ATL",
+    2022,
+    0.2221
+   ],
+   [
+    "LV",
+    2022,
+    0.2189
+   ],
+   [
+    "SEA",
+    2021,
+    0.2115
+   ]
+  ],
+  "most_spread": [
+   [
+    "CLE",
+    2021,
+    0.1683
+   ],
+   [
+    "TEN",
+    2022,
+    0.167
+   ],
+   [
+    "NYG",
+    2021,
+    0.166
+   ],
+   [
+    "KC",
+    2022,
+    0.1647
+   ],
+   [
+    "HOU",
+    2022,
+    0.1631
+   ]
+  ]
+ },
+ "h2": {
+  "m1_vs_m0_all_games": {
+   "team_games": 990,
+   "games": 495,
+   "mean_difference": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ]
+  },
+  "m2_vs_m1": {
+   "team_games": 446,
+   "games": 223,
+   "mean_difference": -0.00015813986084385343,
+   "ci95": [
+    -0.0006191281566381133,
+    0.0002964821669575646
+   ]
+  },
+  "mean_loglik_per_target": {
+   "M0": -2.2288687464094,
+   "M1": -2.2288687464094,
+   "M2": -2.2290268862702436
+  },
+  "receptions_m1_vs_m0": {
+   "team_games": 990,
+   "games": 495,
+   "mean_difference": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ]
+  },
+  "passes": false
+ },
+ "team_k_spread": {
+  "min": 0.95,
+  "max": 1.07,
+  "sd": 0.02467912276244346
+ },
+ "h3": {
+  "events": 78,
+  "by_prior_concentration": {
+   "spread": {
+    "events": 33,
+    "next_man_actual_minus_proportional": 0.012837259266010773
+   },
+   "middle": {
+    "events": 27,
+    "next_man_actual_minus_proportional": -0.01758841297456584
+   },
+   "concentrated": {
+    "events": 18,
+    "next_man_actual_minus_proportional": 0.0075127712094285
+   }
+  }
+ }
+}

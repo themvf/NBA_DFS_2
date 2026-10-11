@@ -60,6 +60,8 @@ jobs:
         run: python -m model.cfb_pattern_watch
       - name: Render and store the reader page
         run: python -m model.cfb_pattern_publish
+      - name: Export tables as CSV for Datawrapper
+        run: python -m model.cfb_pattern_csv
       - name: Upload page and board
         if: always()
         uses: actions/upload-artifact@v4
@@ -69,5 +71,6 @@ jobs:
             artifacts/cfb_pattern_watch/report.html
             artifacts/cfb_pattern_watch/board.md
             artifacts/cfb_pattern_watch/summary.md
+            artifacts/cfb_pattern_watch/datawrapper/
           if-no-files-found: ignore
           retention-days: 14

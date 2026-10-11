@@ -7477,6 +7477,27 @@ Do not re-run this study.
 
 ---
 
+## NFL availability job — Sleeper capture batched (2026-10-11)
+
+The "Update data" job took 9-11 minutes on game day; the Sleeper capture
+alone took up to 5 minutes because it wrote 1,066 players one at a time, about
+four round trips each (~4,300 sequential trips from a GitHub runner).
+`persist_injury_observations_batch` (`ingest/ff_injuries.py`) makes the same
+decisions in a handful of statements: one observation insert, one
+active-episode read, one episode update, one player update; new and cleared
+episodes keep their per-row statements. `persist_injury_observation` is
+unchanged and still serves the FantasyPros path.
+
+Proved on a Neon branch of production before release (2026-10-11, branch
+`capture-batch-verify-20261011`): old and new captures on the same Sleeper
+payload, each in a rolled-back transaction, with three players forced through
+each rare path (cleared, status change, new injury). Every player row,
+observation, episode and the 9 events matched; the only differences were the
+two transaction-clock timestamps. Duplicate path (second capture in the same
+hour) matched too. 80 s -> 1.6 s from a home connection. The manual "Update
+data" press always forces a capture (scheduled runs skip it when not due),
+so this is the path the button pays for.
+
 ## NFL DFS — Absence commit: the optimizer builds from starter-aware projections (`nfl-absence-commit-v1`, 2026-10-11)
 
 **Owner's decision, 2026-10-11:** commit to a projection and learn from the
@@ -7838,7 +7859,7 @@ analysis, exposure vs the field, and every lineup they entered). Pure layer
   it or giving others access to anything built on it is not. That fits this
   repo's private use. Nothing here is scheduled.
 
-## NFL DFS — Winners-shape build preset (`nfl-winners-shape-v3`, 2026-10-11; v1 2026-10-10)
+## NFL DFS — Winners-shape build preset (`nfl-winners-shape-v4`, 2026-10-11; v1 2026-10-10)
 
 A "Build shape" select on `/dfs/nfl` (GPP mode, Classic and Showdown):
 Standard, or Winners shape, which rearranges the same projections the way
@@ -7852,7 +7873,10 @@ every player the pool rules left out (`reasonCode` `WINNERS_SHAPE` /
 - **Classic:** min unique 4, max exposure 55%, each QB in at most
   `qbExposureCap(n)` of lineups (1.6 distinct QBs per 10 lineups, 15% floor:
   20 lineups -> 35%), a bring-back in 50% of lineups, at least one stacked
-  pass catcher, min salary $49,500. Pool: RBs whose touches a game (carries +
+  pass catcher, min salary $49,500, and (v4) a DST against the lineup's own
+  QB/RB/WR/TE in at most 5% of lineups (`maxDstVsOffenseShare`, rounded down:
+  16 of 392 Millionaire top-100 lineups did it in weeks 1-4, the first v3
+  build 40 of 100). Pool: RBs whose touches a game (carries +
   targets, three prior weeks) rank in the slate's top quarter OR who see 4+
   targets a game, WRs with 25%+ of their team's targets or under $5,000, TEs
   under $4,000 with 4+ targets a game, DSTs under $3,000.
@@ -7879,7 +7903,7 @@ every player the pool rules left out (`reasonCode` `WINNERS_SHAPE` /
 - **New optimizer settings** the preset sets, usable on their own:
   `bringBackShare` (Classic GPP; alternates lineups between a required and
   a forbidden bring-back so the run lands on the share, replacing the hard
-  rule), `maxQbExposure`, `maxCaptainExposure`, `excludeKickers`,
+  rule), `maxQbExposure`, `maxDstVsOffenseShare` (Classic), `maxCaptainExposure`, `excludeKickers`,
   `forbidFourTwoSplit`. `priorOpportunity` on the workspace player (three-
   week play-by-play targets/carries plus team target share, RB/WR/TE) feeds
   the pool rules; `targets` is still not in `stat_means`.

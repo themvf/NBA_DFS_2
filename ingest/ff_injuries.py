@@ -446,6 +446,189 @@ def persist_injury_observation(
     return {"observation_id": observation_id, "event": event_type, "duplicate": False}
 
 
+def persist_injury_observations_batch(
+    db: Any,
+    *,
+    season: int,
+    source: str,
+    source_snapshot_id: int,
+    rows: list[tuple[int, dict[str, Any]]],
+) -> dict[int, dict[str, Any]]:
+    """`persist_injury_observation` for many players in a few round trips.
+
+    Same decisions, row for row: insert the observation (a conflict on
+    snapshot/player/source is a duplicate and does nothing else), read the
+    player's active episode, then clear it (HEALTHY), open one (no active
+    episode) or update it, with the same events. The common writes go out as
+    single statements: every observation insert, every active-episode read,
+    every active-episode update. New and cleared episodes are rare and keep
+    the per-row statements verbatim.
+
+    Returns, per player, `{"duplicate", "event", "status"}` where `status` is
+    the value `persist_injury_observation` would leave in
+    `ff_players.injury_status` (None for HEALTHY); the caller writes it with
+    its own player update. Why it exists: the per-row version made ~4 round
+    trips per player, ~4,300 for a Sleeper capture, which took up to five
+    minutes from a GitHub runner on game day (2026-10-11).
+    """
+    from psycopg2.extras import execute_values
+
+    results: dict[int, dict[str, Any]] = {}
+    prepared: list[tuple[int, dict[str, Any], NormalizedInjuryObservation, str]] = []
+    seen: set[int] = set()
+    for player_id, row in rows:
+        if player_id in seen:  # a second row for one player conflicts with the first: a duplicate
+            results.setdefault(player_id, {"duplicate": True, "event": None, "status": None})
+            continue
+        seen.add(player_id)
+        prepared.append((player_id, row, normalize_injury_observation(source, row), _payload_hash(source, row)))
+    if not prepared:
+        return results
+
+    cursor = db.conn.cursor()
+    inserted = execute_values(
+        cursor,
+        """INSERT INTO ff_player_injury_observations
+           (player_id,season,source,source_snapshot_id,source_status,normalized_status,
+            body_part,injury_type,description,practice_status,injury_started_at,
+            provider_updated_at,expected_return_min,expected_return_max,weeks_out_min,
+            weeks_out_max,availability_probability,raw_payload,response_hash)
+           VALUES %s
+           ON CONFLICT(source_snapshot_id,player_id,source) DO NOTHING
+           RETURNING player_id,id,observed_at""",
+        [(
+            player_id, season, source, source_snapshot_id, n.source_status, n.normalized_status,
+            n.body_part, n.injury_type, n.description, n.practice_status, n.injury_started_at,
+            n.provider_updated_at, n.expected_return_min, n.expected_return_max, n.weeks_out_min,
+            n.weeks_out_max, n.availability_probability, _json(row), response_hash,
+        ) for player_id, row, n, response_hash in prepared],
+        page_size=500,
+        fetch=True,
+    )
+    observations = {int(r["player_id"]): r for r in inserted}
+    fresh = [item for item in prepared if item[0] in observations]
+    for player_id, *_ in prepared:
+        if player_id not in observations:
+            results[player_id] = {"duplicate": True, "event": None, "status": None}
+    if not fresh:
+        return results
+
+    active_rows = db.execute(
+        """SELECT DISTINCT ON (player_id) * FROM ff_player_injuries
+           WHERE player_id = ANY(%s) AND active ORDER BY player_id, first_seen_at DESC""",
+        ([player_id for player_id, *_ in fresh],),
+    )
+    active_by_player = {int(r["player_id"]): r for r in active_rows}
+
+    updates: list[tuple[Any, ...]] = []
+    for player_id, row, normalized, response_hash in fresh:
+        observation_id = int(observations[player_id]["id"])
+        observed_at = observations[player_id].get("observed_at") or datetime.now(timezone.utc)
+        active = active_by_player.get(player_id)
+        previous_state = _state(active)
+
+        if normalized.normalized_status == "HEALTHY":
+            results[player_id] = {"duplicate": False, "event": None, "status": None}
+            if not active:
+                continue
+            db.execute(
+                """UPDATE ff_player_injuries SET active=FALSE,status=%s,last_confirmed_at=%s,
+                   cleared_at=%s,primary_source=%s WHERE id=%s""",
+                (active["status"], observed_at, observed_at, source, int(active["id"])),
+            )
+            new_state = {**previous_state, "active": False, "cleared_at": observed_at, "primary_source": source}
+            _insert_event(
+                db, injury_id=int(active["id"]), player_id=player_id, observation_id=observation_id,
+                event_type="CLEARED", previous_state=previous_state, new_state=new_state,
+                source=source, observation_hash=response_hash,
+            )
+            results[player_id]["event"] = "CLEARED"
+            continue
+
+        canonical_status = normalized.normalized_status
+        new_values = {
+            "status": canonical_status,
+            "body_part": normalized.body_part,
+            "injury_type": normalized.injury_type,
+            "expected_return_min": normalized.expected_return_min,
+            "expected_return_max": normalized.expected_return_max,
+            "weeks_out_min": normalized.weeks_out_min,
+            "weeks_out_max": normalized.weeks_out_max,
+            "estimate_basis": normalized.estimate_basis,
+            "primary_source": source,
+            "source_conflict": False,
+            "active": True,
+        }
+        if not active:
+            injury = db.execute_one(
+                """INSERT INTO ff_player_injuries
+                   (player_id,season,status,body_part,injury_type,first_seen_at,last_confirmed_at,
+                    expected_return_min,expected_return_max,weeks_out_min,weeks_out_max,
+                    estimate_basis,confidence,primary_source,source_conflict,active)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,FALSE,TRUE)
+                   RETURNING id""",
+                (
+                    player_id, season, canonical_status, normalized.body_part, normalized.injury_type,
+                    observed_at, observed_at, normalized.expected_return_min, normalized.expected_return_max,
+                    normalized.weeks_out_min, normalized.weeks_out_max, normalized.estimate_basis,
+                    normalized.availability_probability, source,
+                ),
+            )
+            _insert_event(
+                db, injury_id=int(injury["id"]), player_id=player_id, observation_id=observation_id,
+                event_type="NEW_INJURY", previous_state={}, new_state=new_values,
+                source=source, observation_hash=response_hash,
+            )
+            results[player_id] = {"duplicate": False, "event": "NEW_INJURY", "status": canonical_status}
+            continue
+
+        injury_id = int(active["id"])
+        timeline_keys = ("expected_return_min", "expected_return_max", "weeks_out_min", "weeks_out_max")
+        event_type = None
+        if active.get("status") != canonical_status:
+            event_type = "STATUS_CHANGED"
+        elif any(active.get(key) != new_values[key] and new_values[key] is not None for key in timeline_keys):
+            event_type = "TIMELINE_CHANGED"
+        updates.append((
+            injury_id, canonical_status, normalized.body_part, normalized.injury_type, observed_at,
+            normalized.expected_return_min, normalized.expected_return_max,
+            normalized.weeks_out_min, normalized.weeks_out_max, normalized.estimate_basis,
+            normalized.availability_probability, source,
+        ))
+        if event_type:
+            _insert_event(
+                db, injury_id=injury_id, player_id=player_id, observation_id=observation_id,
+                event_type=event_type, previous_state=previous_state,
+                new_state={**previous_state, **{key: value for key, value in new_values.items() if value is not None}},
+                source=source, observation_hash=response_hash,
+            )
+        results[player_id] = {"duplicate": False, "event": event_type, "status": canonical_status}
+
+    if updates:
+        # Each episode id appears once (one active episode per player), so one statement is
+        # the same as the per-row UPDATEs. Expressions mirror `persist_injury_observation`.
+        execute_values(
+            cursor,
+            """UPDATE ff_player_injuries AS i SET status=v.status,
+                 body_part=COALESCE(v.body_part,i.body_part),injury_type=COALESCE(v.injury_type,i.injury_type),
+                 last_confirmed_at=v.observed_at,
+                 expected_return_min=COALESCE(v.expected_return_min,i.expected_return_min),
+                 expected_return_max=COALESCE(v.expected_return_max,i.expected_return_max),
+                 weeks_out_min=COALESCE(v.weeks_out_min,i.weeks_out_min),
+                 weeks_out_max=COALESCE(v.weeks_out_max,i.weeks_out_max),
+                 estimate_basis=CASE WHEN v.estimate_basis<>'unknown' THEN v.estimate_basis ELSE i.estimate_basis END,
+                 confidence=COALESCE(v.confidence,i.confidence),primary_source=v.primary_source
+               FROM (VALUES %s) AS v(id,status,body_part,injury_type,observed_at,expected_return_min,
+                 expected_return_max,weeks_out_min,weeks_out_max,estimate_basis,confidence,primary_source)
+               WHERE i.id=v.id""",
+            updates,
+            template="(%s::bigint,%s::text,%s::text,%s::text,%s::timestamptz,%s::date,%s::date,"
+                     "%s::double precision,%s::double precision,%s::text,%s::double precision,%s::text)",
+            page_size=500,
+        )
+    return results
+
+
 def persist_sleeper_injury_observations(
     db: Any,
     *,
