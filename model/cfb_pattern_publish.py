@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import argparse
 import html
-import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -25,8 +24,7 @@ from db.database import DatabaseManager
 from model import cfb_pattern_board as board
 from model import cfb_pattern_watch as pw
 
-# Prose blocks. scripts/humanize_copy.py may rewrite these (numbers guarded) into
-# artifacts/cfb_pattern_watch/copy.json, which overrides them when present.
+# Prose blocks for the reader page. Edit them here; there is no override file.
 COPY = {
     "header_sub": "Six betting patterns found in the first five weeks of the 2026 season and frozen before most of week 6 was played. Every pick below is graded at the verified closing line, written once, and never edited. The purpose is to find out whether any of them are real. So far none is proven, and the record is shown either way.",
     "note": "A flat one unit on every qualifying game at the closing consensus price. Moneyline picks pay what the favorite pays, usually -250 to -400; spreads and totals are scored at -110. Nothing here is a recommendation. Each pattern needs 40 to 80 graded games before it gets a verdict, and the verdict is computed once.",
@@ -38,15 +36,7 @@ COPY = {
     "howto_5": "A verdict comes once, after the regular season, and only for patterns that reach their sample floor. Anything short of the floor is described as what it is: too few games.",
     "footer": "Source: a private ledger of college football closing lines captured from retail and offshore books, graded against official final scores. Prices and lines are observations, not offers. This page is updated weekly and after each Saturday's games.",
 }
-COPY_OVERRIDES = Path("artifacts") / "cfb_pattern_watch" / "copy.json"
-
-
 def copy_text(key: str) -> str:
-    try:
-        if COPY_OVERRIDES.exists():
-            return json.loads(COPY_OVERRIDES.read_text(encoding="utf-8")).get(key, COPY[key])
-    except (OSError, ValueError):
-        pass
     return COPY[key]
 
 DEFAULT_OUT = Path("artifacts") / "cfb_pattern_watch" / "report.html"

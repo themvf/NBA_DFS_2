@@ -233,5 +233,6 @@ reaches the daily failure sweep.
 **Not automated.** The claude.ai reader page cannot be published from a
 runner. Each run stores the page in `cfb_pattern_reports` and attaches it to
 the run as an artifact; republishing the link is a step taken from a Claude
-session. The local humanizer rewrite (`scripts/humanize_copy.py`) also stays
-local: its accepted copy is committed in `copy.json`, which CI reads.
+session. The page's prose lives in `COPY` in `model/cfb_pattern_publish.py`.
+A local-model rewrite pass was tried on 2026-10-10 and removed on 2026-10-11:
+it added nothing, and one accepted rewrite read worse than the original.
