@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS cfb_engine_schedule_revisions (
   observed_at timestamptz NOT NULL, revision_digest text NOT NULL,
   UNIQUE(event_key,revision_digest), UNIQUE(schedule_revision_id,event_key)
 );
+CREATE INDEX IF NOT EXISTS idx_cfb_schedule_revisions_latest ON cfb_engine_schedule_revisions(event_key, observed_at DESC);
 CREATE TABLE IF NOT EXISTS cfb_engine_settlement_rules (
   rule_id uuid PRIMARY KEY, book text NOT NULL, market text NOT NULL CHECK(market IN ('spread','total','moneyline')),
   rule_version text NOT NULL, rules_artifact_id uuid NOT NULL REFERENCES cfb_engine_artifacts(artifact_id),

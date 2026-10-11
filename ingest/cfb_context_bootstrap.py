@@ -215,23 +215,36 @@ def bootstrap(database_url: str, *, apply: bool, new_origin: str = "legacy") -> 
           VALUES %s ON CONFLICT DO NOTHING""", pointers)
 
         schedule_schema = _id("artifact", "legacy-cfb-schedule-projection-v1")
-        source_rows, revision_rows = [], []
+        cursor.execute("""SELECT e.event_key, r.schedule_revision_id, r.scheduled_kickoff, r.revision_digest, s.provider_record_key
+          FROM unnest(%s::text[]) e(event_key)
+          CROSS JOIN LATERAL (SELECT * FROM cfb_engine_schedule_revisions r
+            WHERE r.event_key=e.event_key ORDER BY r.observed_at DESC, r.schedule_revision_id LIMIT 1) r
+          JOIN cfb_engine_sources s ON s.source_id=r.source_id""", ([f"cfb:event:{game['id']}" for game in games],))
+        latest = {row["event_key"]: row for row in cursor.fetchall()}
+        source_rows, revision_rows, revisions_by_game = [], [], {}
         for game in games:
-            payload = {key: game.get(key) for key in ("id", "cfbd_game_id", "commence_time", "fetched_at", "odds_event_id")}
-            revision = _digest(payload)
+            event_key = f"cfb:event:{game['id']}"
+            current = latest.get(event_key)
+            if (current is not None and current["scheduled_kickoff"] == game.get("commence_time")
+                    and current["provider_record_key"] == str(game["cfbd_game_id"])):
+                revisions_by_game[game["id"]] = current["schedule_revision_id"]
+                continue
+            # Chained to the previous revision so a kickoff returning to an earlier value is a new revision.
+            revision = _digest({"id": game["id"], "cfbd_game_id": game["cfbd_game_id"], "commence_time": game.get("commence_time"),
+                                "previous": current["revision_digest"] if current else None})
+            observed_at = game.get("fetched_at") or datetime.now().astimezone()
             source_id = _id("schedule-source", f"{game['id']}:{revision}")
             source_rows.append((source_id, "legacy-cfbd", str(game["cfbd_game_id"]), revision, schedule_schema,
-                                "legacy_unverified", game.get("commence_time"), None, game.get("fetched_at") or datetime.now().astimezone(),
-                                "legacy", schedule_schema))
-            revision_rows.append((_id("schedule-revision", f"{game['id']}:{revision}"), f"cfb:event:{game['id']}", source_id,
-                                  game.get("commence_time"), game.get("fetched_at") or datetime.now().astimezone(), revision))
+                                "legacy_unverified", game.get("commence_time"), None, observed_at, "legacy", schedule_schema))
+            revision_rows.append((_id("schedule-revision", f"{game['id']}:{revision}"), event_key, source_id,
+                                  game.get("commence_time"), observed_at, revision))
+            revisions_by_game[game["id"]] = revision_rows[-1][0]
         insert_missing(source_rows, "cfb_engine_sources", "source_id", """INSERT INTO cfb_engine_sources
           (source_id,provider,provider_record_key,revision_key,artifact_id,representation,event_at,published_at,observed_at,origin,projection_schema_id)
           VALUES %s ON CONFLICT(provider,provider_record_key,revision_key) DO NOTHING""", page_size=1000)
         new_revisions = insert_missing(revision_rows, "cfb_engine_schedule_revisions", "schedule_revision_id", """INSERT INTO cfb_engine_schedule_revisions
           (schedule_revision_id,event_key,source_id,scheduled_kickoff,observed_at,revision_digest) VALUES %s
           ON CONFLICT(event_key,revision_digest) DO NOTHING""", page_size=1000)
-        revisions_by_game = {game["id"]: revision_rows[index][0] for index, game in enumerate(games)}
         games_by_id = {game["id"]: game for game in games}
 
         quote_schema = _id("artifact", "legacy-cfb-quote-projection-v1")
