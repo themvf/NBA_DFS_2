@@ -49,26 +49,27 @@ export async function getNflInjuryCoverage(season: number, week: number | null, 
  * current row, which the resolver still rejects as future-dated.
  */
 export async function getNflRosterEvidence(season: number, week?: number | null, asOf?: Date | null): Promise<Map<number, RosterEvidence>> {
-  const result = await db.execute(sql`SELECT id, team_abbrev, position, fetched_at,
-    metadata->'sleeper' AS sleeper FROM ff_players WHERE season=${season}`);
-  const roster = new Map<number, RosterEvidence>(result.rows.map(r => [Number(r.id), { team: String(r.team_abbrev ?? ""), position: String(r.position), fetchedAt: new Date(r.fetched_at as string).toISOString(), sleeper: r.sleeper }]));
-  if (asOf && Number.isFinite(asOf.getTime())) {
-    const archived = await db.execute(sql`SELECT DISTINCT ON (o.player_id) o.player_id, o.observed_at, o.raw_payload
-      FROM ff_player_injury_observations o
-      WHERE o.source='sleeper' AND o.season=${season} AND o.observed_at <= ${asOf.toISOString()}::timestamptz
-        AND o.raw_payload ? 'depth_chart_order'
-      ORDER BY o.player_id, o.observed_at DESC, o.id DESC`);
-    for (const row of archived.rows) {
-      const player = roster.get(Number(row.player_id));
-      if (!player) continue;
-      roster.set(Number(row.player_id), { ...player, fetchedAt: new Date(row.observed_at as string).toISOString(), sleeper: row.raw_payload, archived: true });
-    }
-  }
-  if (!week) return roster;
-  try {
-    const identityRoster=await getNflIdentityRoster(season);
-    const identityLinks=nflIdentityLocalLinks(identityRoster.candidates);
-    const observations = await db.execute(sql`SELECT DISTINCT ON (o.player_id, o.source)
+  const archivedAt = asOf && Number.isFinite(asOf.getTime()) ? asOf.toISOString() : null;
+  // The five reads are independent (each is one round trip on neon-http), so
+  // they are issued together and merged in the original order below.
+  const [result, archived, injuryRead, games] = await Promise.all([
+    db.execute(sql`SELECT id, team_abbrev, position, fetched_at,
+    metadata->'sleeper' AS sleeper FROM ff_players WHERE season=${season}`),
+    // One index probe per player on idx_ff_injury_observations_sleeper_depth
+    // (season, player_id, observed_at DESC, id DESC; Sleeper rows with a depth
+    // order). The DISTINCT ON form this replaced sorted every Sleeper row of the
+    // season on disk to return one per player: 9-11 s of a 15 s page read.
+    archivedAt ? db.execute(sql`SELECT p.id AS player_id, o.observed_at, o.raw_payload
+      FROM ff_players p
+      CROSS JOIN LATERAL (
+        SELECT o.observed_at, o.raw_payload FROM ff_player_injury_observations o
+        WHERE o.season=${season} AND o.player_id=p.id AND o.observed_at <= ${archivedAt}::timestamptz
+          AND o.source='sleeper' AND o.raw_payload ? 'depth_chart_order'
+        ORDER BY o.observed_at DESC, o.id DESC LIMIT 1) o
+      WHERE p.season=${season}`) : Promise.resolve(null),
+    week ? Promise.all([
+      getNflIdentityRoster(season),
+      db.execute(sql`SELECT DISTINCT ON (o.player_id, o.source)
       o.id, o.player_id, o.source, CASE WHEN o.source='nfl_official' THEN o.raw_payload->>'status' WHEN NULLIF(TRIM(o.source_status),'') IS NULL THEN 'UNKNOWN' ELSE o.normalized_status END normalized_status, o.practice_status, o.observed_at,
       o.provider_updated_at, o.response_hash,
       o.raw_payload->>'report_type' report_type, o.raw_payload->>'kickoff' kickoff, o.raw_payload->>'url' url,
@@ -78,7 +79,23 @@ export async function getNflRosterEvidence(season: number, week?: number | null,
       FROM ff_player_injury_observations o JOIN ff_source_snapshots s ON s.id=o.source_snapshot_id
       WHERE o.season=${season} AND o.source IN ('fantasypros','nfl_official')
         AND s.request_params->>'week'=${String(week)} AND o.observed_at<=NOW()
-      ORDER BY o.player_id, o.source, o.observed_at DESC, o.id DESC`);
+      ORDER BY o.player_id, o.source, o.observed_at DESC, o.id DESC`),
+    ]).then((value) => ({ value, failed: false }), () => ({ value: null, failed: true })) : Promise.resolve(null),
+    week ? db.execute(sql`SELECT g.kickoff, h.abbreviation home, a.abbreviation away
+    FROM nfl_season_games g JOIN nfl_teams h ON h.team_id=g.home_team_id JOIN nfl_teams a ON a.team_id=g.away_team_id
+    WHERE g.season=${season} AND g.week=${week} AND g.game_type='REG'`) : Promise.resolve(null),
+  ]);
+  const roster = new Map<number, RosterEvidence>(result.rows.map(r => [Number(r.id), { team: String(r.team_abbrev ?? ""), position: String(r.position), fetchedAt: new Date(r.fetched_at as string).toISOString(), sleeper: r.sleeper }]));
+  for (const row of archived?.rows ?? []) {
+    const player = roster.get(Number(row.player_id));
+    if (!player) continue;
+    roster.set(Number(row.player_id), { ...player, fetchedAt: new Date(row.observed_at as string).toISOString(), sleeper: row.raw_payload, archived: true });
+  }
+  if (!week || !games) return roster;
+  if (!injuryRead || injuryRead.failed || !injuryRead.value) { for (const player of roster.values()) player.injuryReadFailed = true; }
+  else {
+    const [identityRoster, observations] = injuryRead.value;
+    const identityLinks=nflIdentityLocalLinks(identityRoster.candidates);
     for (const row of observations.rows) {
       for(const localId of identityLinks.get(Number(row.player_id))??[Number(row.player_id)]) {
       const player = roster.get(localId);
@@ -89,10 +106,7 @@ export async function getNflRosterEvidence(season: number, week?: number | null,
         hash: String(row.response_hash), unverifiedUpdate: row.unverified_update ? String(row.unverified_update) : undefined, reportType: row.report_type ? String(row.report_type) : undefined, kickoff: row.kickoff ? String(row.kickoff) : undefined, url: row.url ? String(row.url) : undefined}];
       }
     }
-  } catch { for (const player of roster.values()) player.injuryReadFailed = true; }
-  const games = await db.execute(sql`SELECT g.kickoff, h.abbreviation home, a.abbreviation away
-    FROM nfl_season_games g JOIN nfl_teams h ON h.team_id=g.home_team_id JOIN nfl_teams a ON a.team_id=g.away_team_id
-    WHERE g.season=${season} AND g.week=${week} AND g.game_type='REG'`);
+  }
   for (const player of roster.values()) {
     const matches = games.rows.filter(g => g.home === player.team || g.away === player.team);
     player.kickoff = matches.length === 1 && matches[0].kickoff ? new Date(matches[0].kickoff as string).toISOString() : null;

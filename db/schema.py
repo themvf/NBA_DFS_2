@@ -5549,6 +5549,9 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_ff_players_season_name ON ff_players(season, normalized_name, position)",
     "CREATE INDEX IF NOT EXISTS idx_ff_injury_observations_player ON ff_player_injury_observations(player_id, observed_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_ff_injury_observations_source ON ff_player_injury_observations(source, season, observed_at DESC)",
+    # The DFS page's per-player 'newest Sleeper depth row at the slate's cutoff' read: without it the
+    # read sorted the whole season (378k rows, 188 MB on disk) to return ~1,000 (2026-10-10).
+    "CREATE INDEX IF NOT EXISTS idx_ff_injury_observations_sleeper_depth ON ff_player_injury_observations(season, player_id, observed_at DESC, id DESC) WHERE source='sleeper' AND raw_payload ? 'depth_chart_order'",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_ff_player_injuries_one_active ON ff_player_injuries(player_id) WHERE active",
     "CREATE INDEX IF NOT EXISTS idx_ff_player_injuries_active ON ff_player_injuries(season, active, status)",
     "CREATE INDEX IF NOT EXISTS idx_ff_injury_events_recent ON ff_injury_events(player_id, occurred_at DESC)",
