@@ -93,6 +93,18 @@
       "pullRequest": false
     },
     {
+      "file": "cfb_pattern_watch.yml",
+      "name": "CFB Pattern Watch",
+      "crons": [
+        "41 16,22 * * 6",
+        "45 10 * * *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
       "file": "cfb_player_games.yml",
       "name": "CFB Player Game Stats",
       "crons": [

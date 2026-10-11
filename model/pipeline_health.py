@@ -331,6 +331,18 @@ DATASET_REGISTRY: tuple[Dataset, ...] = (
     Dataset("cfb_team_features", "CFB team features (weekly research)", "cfb_team_game_features", "as_of_at",
             240, "refresh_cfb_research.yml", (8, 9, 10, 11, 12),
             "Thursday point-in-time features for upcoming games; new rows every run while games remain."),
+    Dataset("cfb_pattern_board", "CFB pattern study: board runs", "cfb_pattern_runs", "run_at",
+            2, "cfb_pattern_watch.yml", _CFB,
+            "Heartbeat written by every board run, games or not; dispatched every half hour August-January, "
+            "so two hours without one means the board stopped. The ledger and selection tables are "
+            "write-once (ON CONFLICT DO NOTHING) and cannot tell refreshed from untouched, so they are not "
+            "registered; this heartbeat is the honest signal.",
+            filter="job = 'board'"),
+    Dataset("cfb_pattern_grade", "CFB pattern study: grading runs", "cfb_pattern_runs", "run_at",
+            30, "cfb_pattern_watch.yml", _CFB,
+            "Heartbeat written by every daily grading run (10:07 UTC dispatch), whether or not any game "
+            "finished. Thirty hours allows one late run.",
+            filter="job = 'grade'"),
     # ---- YouTube (left as it was: another owner) --------------------------------
     Dataset("youtube_picks", "YouTube picks videos", "youtube_pick_videos", "scraped_at",
             12, "refresh_youtube_picks.yml"),

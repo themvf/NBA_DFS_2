@@ -1,8 +1,8 @@
 """CFB early-season pattern watch — pre-registered study (registered 2026-10-09).
 
-Five patterns found in a descriptive sweep of the first six weeks of the 2026
+Six patterns found in a descriptive sweep of CFBD weeks 1-5 of the 2026
 season (259 FBS-vs-FBS games, 70 FBS-vs-FCS games). Each is frozen here as a
-trigger, a bet, a price basis and a kill criterion BEFORE any week-7+ game is
+trigger, a bet, a price basis and a kill criterion BEFORE any later game is
 graded. The discovery sample can never confirm them; it is recorded only so
 drift is visible.
 
@@ -36,8 +36,12 @@ from db.database import DatabaseManager
 logger = logging.getLogger(__name__)
 
 # ── Frozen registration ──────────────────────────────────────────────────────
-STUDY_VERSION = "cfb-pattern-watch-v1"
+STUDY_VERSION = "cfb-pattern-watch-v2"
 REGISTERED_AT = datetime(2026, 10, 9, 22, 0, tzinfo=timezone.utc)
+# T6 was added 2026-10-10 before the first CFBD week 6 Saturday kickoff (16:00 UTC).
+# T1-T5 definitions and their registration time are unchanged; the v1 ledger
+# held zero rows when v2 was registered, so nothing is mixed.
+T6_REGISTERED_AT = datetime(2026, 10, 10, 13, 30, tzinfo=timezone.utc)
 DISCOVERY_START = datetime(2026, 8, 1, tzinfo=timezone.utc)
 SEASON = 2026
 VERDICT_NOT_BEFORE = datetime(2026, 12, 7, tzinfo=timezone.utc)  # after conference title games
@@ -55,7 +59,12 @@ TRIGGERS = {
     "T3_small_fav_dog_spread": ("underdog spread", 80),
     "T4_big_fav_over": ("over", 50),
     "T5_sat_evening_g5_fav_ml": ("favorite moneyline", 60),
+    "T6_mid_fav_spread": ("favorite spread", 80),
 }
+
+
+def trigger_registered_at(trigger: str) -> datetime:
+    return T6_REGISTERED_AT if trigger == "T6_mid_fav_spread" else REGISTERED_AT
 FAMILY_SIZE = len(TRIGGERS)
 
 DEFAULT_LEDGER = Path("artifacts") / "cfb_pattern_watch" / "ledger.jsonl"
@@ -112,6 +121,8 @@ def classify(game: dict) -> list[str]:
         et = _eastern(game["commence_time"])
         if et.strftime("%a") == "Sat" and 17 * 60 <= et.hour * 60 + et.minute < 20 * 60 + 30:
             out.append("T5_sat_evening_g5_fav_ml")
+    if fbs_both and 7 <= fav_sp <= 13.5:
+        out.append("T6_mid_fav_spread")
     return out
 
 
@@ -140,6 +151,12 @@ def grade(trigger: str, game: dict) -> dict:
         sel = f"{fav_name} ML {fav_ml:+d}"
         implied = fav_p
     elif trigger == "T2_fcs_fav_spread":
+        price = decimal_odds(SPREAD_TOTAL_PRICE)
+        c = fav_margin - fav_sp
+        result = "won" if c > 0 else "lost" if c < 0 else "push"
+        sel = f"{fav_name} -{fav_sp:g}"
+        implied = 0.5
+    elif trigger == "T6_mid_fav_spread":
         price = decimal_odds(SPREAD_TOTAL_PRICE)
         c = fav_margin - fav_sp
         result = "won" if c > 0 else "lost" if c < 0 else "push"
@@ -208,10 +225,18 @@ def append_rows(path: Path, rows: list[dict]) -> None:
 
 
 def build_rows(games: list[dict], origin: str, existing_keys: set[tuple[str, int]]) -> list[dict]:
+    """origin="prospective" keeps only games at/after the trigger's own registration;
+    origin="discovery" keeps only games before it. A trigger added later therefore
+    never counts a game that kicked off before it was frozen."""
     now = datetime.now(timezone.utc).isoformat()
     out = []
     for g in games:
         for trig in classify(g):
+            reg = trigger_registered_at(trig)
+            if origin == "prospective" and g["commence_time"] < reg:
+                continue
+            if origin == "discovery" and g["commence_time"] >= reg:
+                continue
             key = (trig, int(g["matchup_id"]))
             if key in existing_keys:
                 continue
@@ -259,48 +284,69 @@ def summarize(rows: list[dict], label: str, as_of: datetime | None = None) -> li
         roi = units / n
         exp = statistics.mean(r["implied_prob"] for r in tr)
         dates = len({r["game_date"] for r in tr})
+        games = len({r["matchup_id"] for r in tr})
         tag = "descriptive-only" if n < floor else ("floor reached" if as_of < VERDICT_NOT_BEFORE else "verdict eligible")
         lo, hi = _bootstrap_roi(tr) if dates >= 3 else (float("nan"), float("nan"))
         lines.append(
             f"  {trig:28s} {bet:20s} n={n:3d}/{floor} {w}-{l}-{p} win {w / max(1, w + l):.1%} (implied {exp:.1%}) "
-            f"units {units:+.2f} ROI {roi:+.1%} CI[{lo:+.1%},{hi:+.1%}] dates={dates} [{tag}]"
+            f"units {units:+.2f} ROI {roi:+.1%} CI[{lo:+.1%},{hi:+.1%}] games={games} dates={dates} [{tag}]"
         )
     overlap = len({r["matchup_id"] for r in rows if r["trigger"] == "T1_g5_mid_fav_ml"} &
                   {r["matchup_id"] for r in rows if r["trigger"] == "T5_sat_evening_g5_fav_ml"})
-    lines.append(f"  T1/T5 overlapping games: {overlap}  (family size {FAMILY_SIZE}; Bonferroni CI needs ~99% per test)")
+    overlap16 = len({r["matchup_id"] for r in rows if r["trigger"] == "T1_g5_mid_fav_ml"} &
+                    {r["matchup_id"] for r in rows if r["trigger"] == "T6_mid_fav_spread"})
+    lines.append(f"  T1/T5 overlapping games: {overlap}; T1/T6 overlapping games: {overlap16}  (family size {FAMILY_SIZE}; Bonferroni CI needs ~99.2% per test)")
+    all_games = len({r["matchup_id"] for r in rows})
+    multi = sum(1 for g in {r["matchup_id"] for r in rows} if len({x["trigger"] for x in rows if x["matchup_id"] == g}) > 1)
+    lines.append(f"  independent games behind {len(rows)} rows: {all_games} ({multi} games fed more than one trigger)")
     return lines
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--discovery", action="store_true", help="replay the frozen discovery window, no ledger write")
-    ap.add_argument("--ledger", default=str(DEFAULT_LEDGER))
+    ap.add_argument("--import-files", action="store_true",
+                    help="one-time: copy the pre-migration artifacts/cfb_pattern_watch/*.jsonl into the database")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     cfg = load_config()
-    db = DatabaseManager(cfg.database_url, initialize_schema=False)
+    db = DatabaseManager(cfg.database_url)  # applies db/schema.py if it changed (the pattern tables)
+    from model import cfb_pattern_store as store
+
+    if args.import_files:
+        print(f"imported from files: {store.import_files(db)}")
 
     if args.discovery:
-        games = load_games(db, DISCOVERY_START, REGISTERED_AT)
+        games = load_games(db, DISCOVERY_START, T6_REGISTERED_AT)
         rows = build_rows(games, "discovery", set())
-        for line in summarize(rows, f"DISCOVERY {DISCOVERY_START.date()} -> {REGISTERED_AT.isoformat()} ({len(games)} games) — cannot confirm anything"):
+        for line in summarize(rows, f"DISCOVERY {DISCOVERY_START.date()} -> each trigger's registration ({len(games)} games) — cannot confirm anything"):
             print(line)
         return 0
 
-    path = Path(args.ledger)
-    existing = read_ledger(path)
+    existing = store.read_ledger(db)
     keys = {(r["trigger"], int(r["matchup_id"])) for r in existing}
     games = load_games(db, REGISTERED_AT, datetime(SEASON + 1, 2, 1, tzinfo=timezone.utc))
     new_rows = build_rows(games, "prospective", keys)
-    append_rows(path, new_rows)
-    rows = existing + new_rows
-    print(f"scanned {len(games)} completed prospective games; appended {len(new_rows)} rows; ledger {path} now {len(rows)} rows")
+    added = store.append_ledger(db, new_rows)
+    rows = store.read_ledger(db)
+    print(f"scanned {len(games)} completed prospective games; graded {len(new_rows)} new rows ({added} written); ledger now {len(rows)} rows")
     for line in summarize(rows, "PROSPECTIVE (commence >= registration)"):
         print(line)
-    summary_path = path.with_name("summary.md")
+    from model import cfb_pattern_measures as measures  # local import: measures imports this module
+
+    rates = measures.weekly_base_rates(measures.load_base_rate_games(db))
+    measures.write_base_rates(rates, now=datetime.now(timezone.utc))
+    print("== base rate across ALL FBS games (descriptive; T1/T5/T6 rest on the 'excess' column) ==")
+    for line in measures.format_base_rates(rates):
+        print(line)
+    summary_path = DEFAULT_LEDGER.with_name("summary.md")
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary_path.write_text(
         f"# {STUDY_VERSION} — generated {datetime.now(timezone.utc).isoformat()}\n\n```\n"
         + "\n".join(summarize(rows, "PROSPECTIVE")) + "\n```\n", encoding="utf-8")
+    store.append_run(db, "grade", {"study_version": STUDY_VERSION, "games_scanned": len(games),
+                                   "rows_graded": len(new_rows), "rows_written": added, "ledger_rows": len(rows),
+                                   "base_rate_weeks": len(rates)})
     return 0
 
 

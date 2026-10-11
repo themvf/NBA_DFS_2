@@ -7868,17 +7868,24 @@ page (the action guard showed the query), which is the behaviour to keep.
 
 ## CFB Early-Season Pattern Watch — pre-registered, local only (2026-10-09)
 
-A descriptive sweep of the first six weeks of 2026 (259 FBS-vs-FBS games with
+A descriptive sweep of CFBD weeks 1-5 of 2026 plus the first games of week 6 (259 FBS-vs-FBS games with
 closing lines) found favorites 81.1% straight up against 75.3% implied with the
 spread market calibrated, concentrated in G5-vs-G5 and FBS-vs-FCS mismatches
 and the Saturday-evening window, plus fewer close games (overtime 2.7% vs
-5.8%). Five triggers were frozen BEFORE week 7 in
+5.8%). Five triggers were frozen BEFORE the bulk of CFBD week 6 (2026-10-09
+22:00 UTC; earlier notes and commits mislabel this "week 7"), and a sixth (7–13.5 favorite
+spread, the −110 form of the G5 moneyline pattern; historical cover rate 51.8%)
+before the first Saturday kickoff the next morning, in
 [`docs/cfb-early-season-patterns-study.md`](docs/cfb-early-season-patterns-study.md),
-implemented by `model/cfb_pattern_watch.py` with an append-only local ledger
-(`artifacts/cfb_pattern_watch/ledger.jsonl`) and a Tuesday Windows scheduled
-task (`refresh_cfb_pattern_watch.bat`). Primary metric is flat ROI at the
+implemented by `model/cfb_pattern_watch.py` (grader), `model/cfb_pattern_board.py`
+(frozen selections, stale refusals, late moves) and `model/cfb_pattern_publish.py`
+(reader page). Since 2026-10-11 both jobs run in `.github/workflows/cfb_pattern_watch.yml`,
+dispatched by `/api/cron/dispatch` (board every half hour, grade 10:07 UTC daily,
+August-January), with all state in append-only `cfb_pattern_*` tables
+(`model/cfb_pattern_store.py`) and both heartbeats on `/health`. The claude.ai page
+is stored in `cfb_pattern_reports` per run but republished from a session. Primary metric is flat ROI at the
 frozen closing price with a date-clustered bootstrap; verdict once, not before
-2026-12-07, only for triggers at their floor. Discovery ROI (+9% to +19%) is
+2026-12-07, only for triggers at their floor. Discovery ROI (+9% to +24%) is
 recorded there and cannot confirm anything: the moneyline triggers pay −300 to
 −500 and their narrow discovery intervals come from five to nine dates, not
 from precision. Not an edge, not on `/vegas`, not on `/health`, not pushed.

@@ -1,0 +1,91 @@
+"""Descriptive measurements for the CFB pattern watch (cfb-pattern-measures-v1)."""
+
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from model import cfb_pattern_measures as m
+
+KICK = datetime(2026, 10, 17, 23, 30, tzinfo=timezone.utc)
+
+
+def _g(week, home_score, away_score, spread=-7.0, hml=-300, aml=240, total=50.0, hclass="fbs", aclass="fbs"):
+    return {"week": week, "season_type": "regular", "home_score": home_score, "away_score": away_score,
+            "home_spread": spread, "home_ml": hml, "away_ml": aml, "vegas_total": total, "hclass": hclass, "aclass": aclass}
+
+
+def test_weekly_base_rates_counts_only_fbs_games_with_lines_and_measures_excess():
+    games = [_g(1, 30, 10), _g(1, 10, 30), _g(1, 28, 24), _g(2, 35, 0),
+             _g(1, 40, 0, aclass="fcs"),            # excluded: not FBS vs FBS
+             dict(_g(1, 20, 10), home_ml=None)]      # excluded: no moneyline
+    rates = {r["week"]: r for r in m.weekly_base_rates(games)}
+    w1 = rates[1]
+    assert w1["games"] == 3
+    assert w1["fav_su"] == pytest.approx(2 / 3)
+    assert w1["excess_pp"] == pytest.approx((2 / 3 - w1["implied"]) * 100)
+    assert w1["fav_ats"] == pytest.approx(1 / 3)         # vs -7: 30-10 covers, 10-30 and 28-24 do not
+    assert w1["within_7"] == pytest.approx(1 / 3)        # only the 28-24 game
+    assert rates[2]["games"] == 1
+
+
+def test_game_counts_reports_games_behind_rows():
+    rows = [{"matchup_id": 1, "trigger": "T1_g5_mid_fav_ml"}, {"matchup_id": 1, "trigger": "T6_mid_fav_spread"},
+            {"matchup_id": 1, "trigger": "T5_sat_evening_g5_fav_ml"}, {"matchup_id": 2, "trigger": "T6_mid_fav_spread"}]
+    gc = m.game_counts(rows)
+    assert gc == {"rows": 4, "games": 2, "games_with_multiple_triggers": 1, "max_triggers_per_game": 3,
+                  "per_trigger_games": {"T1_g5_mid_fav_ml": 1, "T6_mid_fav_spread": 2, "T5_sat_evening_g5_fav_ml": 1}}
+
+
+def _row(trigger, home_spread, total, home_score, away_score, result, pnl, price=1.9091):
+    return {"trigger": trigger, "matchup_id": 9, "home": "Home U", "away": "Away St", "home_spread": home_spread,
+            "vegas_total": total, "home_ml": -400, "away_ml": 320, "home_score": home_score, "away_score": away_score,
+            "result": result, "pnl_units": pnl, "price": price}
+
+
+def _sel(trigger, home_spread, total, selection, best=None):
+    return {"trigger": trigger, "matchup_id": 9, "home": "Home U", "away": "Away St", "home_spread": home_spread,
+            "vegas_total": total, "home_ml": -400, "away_ml": 320, "selection": selection, "consensus_decimal": 1.9091,
+            "best_retail": best, "commence_time": KICK.isoformat(), "frozen_at": (KICK - timedelta(hours=6)).isoformat()}
+
+
+def test_freeze_vs_close_signs_points_from_the_picks_side_and_regrades_at_the_frozen_line():
+    # favorite spread frozen at -9, closed -8.5, favorite won by 9: close-grade WIN, frozen-grade PUSH
+    rows = [_row("T6_mid_fav_spread", -8.5, 50.0, 30, 21, "won", 0.9091)]
+    sels = [_sel("T6_mid_fav_spread", -9.0, 50.0, "Home U -9", {"book": "fanduel", "line": -9.0, "price": -105, "decimal": 1.952})]
+    out = m.freeze_vs_close(rows, sels)
+    i = out["items"][0]
+    assert i["points_clv"] == pytest.approx(-0.5)          # laid half a point more than the close
+    assert (i["close_result"], i["freeze_result"]) == ("won", "push")
+    assert out["summary"]["result_changed"] == 1 and out["summary"]["median_lead_minutes"] == 360
+    assert i["best_retail_pnl"] == 0.0                      # push at the frozen line returns the stake
+
+    # dog spread frozen +3.5, closed +3: took half a point more than the close
+    dog = m.freeze_vs_close([_row("T3_small_fav_dog_spread", -3.0, 50.0, 24, 21, "push", 0.0)],
+                            [_sel("T3_small_fav_dog_spread", -3.5, 50.0, "Away St +3.5")])
+    assert dog["items"][0]["points_clv"] == pytest.approx(0.5) and dog["items"][0]["freeze_result"] == "won"
+
+    # over frozen at 49.5, closed 50.5: bought the over a point low
+    ov = m.freeze_vs_close([_row("T4_big_fav_over", -15.0, 50.5, 30, 20, "lost", -1.0)],
+                           [_sel("T4_big_fav_over", -15.0, 49.5, "Over 49.5")])
+    assert ov["items"][0]["points_clv"] == pytest.approx(1.0) and ov["items"][0]["freeze_result"] == "won"
+
+
+def test_freeze_vs_close_skips_ungraded_selections():
+    assert m.freeze_vs_close([], [_sel("T6_mid_fav_spread", -9.0, 50.0, "Home U -9")])["summary"]["n"] == 0
+
+
+def _card(status, trigger="T4_big_fav_over", mid=5):
+    return {"status": status, "trigger": trigger, "matchup_id": mid, "away": "A", "home": "H", "commence_time": KICK,
+            "minutes_since_capture": 2749, "late_reasons": [], "frozen": None}
+
+
+def test_events_are_written_once_per_trigger_game_status_and_runs_record_zero():
+    now = KICK - timedelta(hours=3)
+    keys: set = set()
+    first = m.new_events([_card("stale"), _card("current"), _card("watch", mid=6)], keys, now)
+    assert [(e["status"], e["matchup_id"]) for e in first] == [("stale", 5), ("watch", 6)]
+    assert m.new_events([_card("stale")], keys, now) == []          # same event is not written twice
+    run = m.run_record([_card("current")], 0, 0, now)
+    assert run["status_counts"]["watch"] == 0 and run["status_counts"]["stale"] == 0   # zero is recorded, not omitted
+    assert m.event_summary(first, [run]) == {"runs": 1, "last_run": now.isoformat(), "events": 2,
+                                             "by_status": {"stale": 1, "watch": 1}}
