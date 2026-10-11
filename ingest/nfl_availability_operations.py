@@ -19,7 +19,7 @@ from psycopg2.extras import Json
 
 from config import load_config
 from ingest.ff_fantasypros import RefreshDatabase
-from ingest.ff_injuries import persist_injury_observation
+from ingest.ff_injuries import persist_injury_observations_batch
 from ingest.ff_independent import normalize_team
 from ingest.ff_source_contracts import SnapshotProvenance, persist_source_snapshot
 from ingest.nfl_dfs_weekly import target_season
@@ -80,24 +80,40 @@ def capture_sleeper(db: Any, *, season: int, week: int, now: datetime) -> dict[s
         missingness={}, fallback_tier="A",
         model_eligible=True, eligibility_reason="complete live Sleeper roster/injury/depth capture",
     ))
-    observations = events = 0
+    db.lock_ff_players_writes()
+    # Batched (2026-10-11): the per-player loop made ~4 round trips per player
+    # and took up to five minutes on game day. Same writes, same order of
+    # decisions; see persist_injury_observations_batch.
+    rows = [(player_id, {**raw, "player_id": sleeper_id}) for player_id, sleeper_id, raw in matched]
+    outcome = persist_injury_observations_batch(
+        db, season=season, source="sleeper", source_snapshot_id=snapshot_id, rows=rows,
+    )
+    # One player update carries what the two per-row updates left behind: the
+    # Sleeper metadata, team and fetch time, and the injury status the
+    # observation step settled on (a duplicate keeps Sleeper's raw status, as before).
+    from psycopg2.extras import execute_values
+    player_rows = []
     for player_id, sleeper_id, raw in matched:
-        canonical_team = normalize_team(raw.get("team")) or None
-        db.execute(
-            """UPDATE ff_players SET
-                 team_abbrev=COALESCE(%s,team_abbrev),
-                 injury_status=%s,
-                 metadata=jsonb_set(metadata,'{sleeper}',%s::jsonb,TRUE),
-                 fetched_at=%s
-               WHERE id=%s""",
-            (canonical_team, raw.get("injury_status"), json.dumps({**raw, "player_id": sleeper_id}), now, player_id),
+        result = outcome.get(player_id) or {"duplicate": True, "status": None}
+        status = raw.get("injury_status") if result["duplicate"] else result["status"]
+        player_rows.append((player_id, normalize_team(raw.get("team")) or None, status,
+                            json.dumps({**raw, "player_id": sleeper_id}), now))
+    if player_rows:
+        execute_values(
+            db.conn.cursor(),
+            """UPDATE ff_players AS p SET
+                 team_abbrev=COALESCE(v.team,p.team_abbrev),
+                 injury_status=v.status,
+                 metadata=jsonb_set(p.metadata,'{sleeper}',v.meta,TRUE),
+                 fetched_at=v.fetched_at
+               FROM (VALUES %s) AS v(id,team,status,meta,fetched_at)
+               WHERE p.id=v.id""",
+            player_rows,
+            template="(%s::bigint,%s::text,%s::text,%s::jsonb,%s::timestamptz)",
+            page_size=500,
         )
-        result = persist_injury_observation(
-            db, player_id=player_id, season=season, source="sleeper",
-            source_snapshot_id=snapshot_id, row={**raw, "player_id": sleeper_id},
-        )
-        observations += int(not result["duplicate"])
-        events += int(result["event"] is not None)
+    observations = sum(1 for r in outcome.values() if not r["duplicate"])
+    events = sum(1 for r in outcome.values() if r.get("event") is not None)
     return {
         "snapshotId": snapshot_id, "rowCount": len(payload), "matched": len(matched),
         "unmatched": len(payload) - len(matched), "observations": observations,

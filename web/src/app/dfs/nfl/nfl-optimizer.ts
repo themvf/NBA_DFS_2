@@ -246,6 +246,12 @@ export type NflOptimizerSettings = {
   bringBackShare?: number;
   /** Classic: no quarterback in more than this share of lineups (never below one lineup). A per-player range you set wins. */
   maxQbExposure?: number;
+  /**
+   * Classic: at most this share of lineups may play a DST against one of the
+   * lineup's own QB/RB/WR/TE (rounded down, so 5% of 19 lineups is none).
+   * Once the run reaches the cap, every later lineup forbids it.
+   */
+  maxDstVsOffenseShare?: number;
   /** Showdown: no player captains more than this share of lineups unless his own CPT range says otherwise. */
   maxCaptainExposure?: number;
   /** Showdown: leave every kicker out of the pool (locks still throw, by name). */
@@ -687,6 +693,8 @@ function validateSettings(settings: NflOptimizerSettings): void {
   share(settings.bringBackShare, "Bring-back share", true);
   share(settings.maxQbExposure, "Quarterback exposure cap", false);
   share(settings.maxCaptainExposure, "Captain exposure cap", false);
+  share(settings.maxDstVsOffenseShare, "DST-against-own-players cap", true);
+  if (settings.maxDstVsOffenseShare != null && settings.format !== "classic") throw new Error("The DST-against-own-players cap is a Classic rule.");
   if (settings.bringBackShare != null && (settings.format !== "classic" || settings.mode !== "gpp")) throw new Error("A bring-back share is only available in Classic GPP.");
   if ((settings.excludeKickers || settings.forbidFourTwoSplit || settings.maxCaptainExposure != null || settings.captainPositions) && settings.format !== "showdown") throw new Error("Kicker exclusion, the 4-2 ban, the captain cap and captain positions are Showdown rules.");
   if (settings.captainPositions && !settings.captainPositions.length) throw new Error("Captain positions must name at least one position.");
@@ -698,6 +706,14 @@ function validateSettings(settings: NflOptimizerSettings): void {
  * alternates them so the run lands on the share rather than on every lineup.
  */
 type BringBackRule = "default" | "require" | "forbid";
+/** Whether a lineup plays a DST against one of its own QB/RB/WR/TE. */
+export function dstFacesOwnOffense(lineup: Pick<NflGeneratedLineup, "slots">): boolean {
+  return lineup.slots.some(({ player: defense }) => {
+    if (defense.position !== "DST") return false;
+    const opponent = defense.gameKey?.split("@").find(team => team !== defense.team);
+    return lineup.slots.some(({ player }) => player.team === opponent && ["QB", "RB", "WR", "TE"].includes(player.position));
+  });
+}
 /** Flex slots a lineup can give one quarterback's opponents; the big-M of the forbid constraint. */
 const BRING_BACK_BIG_M = 7;
 
@@ -717,6 +733,7 @@ function buildOne(
   requireAirMatchup = false,
   requireGoalLine = false,
   bringBackRule: BringBackRule = "default",
+  forbidDstVsOffense = false,
 ): NflGeneratedLineup | null {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const solver = require("javascript-lp-solver") as { Solve: (model: SolverModel) => SolverResult };
@@ -773,6 +790,9 @@ function buildOne(
     // Nine roster slots: 6*DST + opposing offense <= 9 permits at most three
     // opposing offensive players when the DST is present.
     for (const id of defenseOpponents.keys()) constraints[`dst_script_${id}`] = { max: 9 };
+    // DST cap: 9*DST + opposing offense <= 9 allows no opposing QB/RB/WR/TE
+    // when the DST is present and leaves lineups without it unrestricted.
+    if (forbidDstVsOffense) for (const id of defenseOpponents.keys()) constraints[`dst_block_${id}`] = { max: 9 };
   }
   // Phase 1 (P1-AC4): the salary-relief cap is a lineup CONSTRAINT, not a
   // post-generation filter. At most this many cheap salary-relief players may
@@ -889,6 +909,11 @@ function buildOne(
         if (player.dkPlayerId === defenseId) variable[key] = settings.format === "showdown" ? 4 : 6;
         else if (player.team === opponent && ["QB", "RB", "WR", "TE"].includes(player.position))
           variable[key] = slot === "CPT" ? 2 : 1;
+        const block = `dst_block_${defenseId}`;
+        if (constraints[block]) {
+          if (player.dkPlayerId === defenseId) variable[block] = 9;
+          else if (player.team === opponent && ["QB", "RB", "WR", "TE"].includes(player.position)) variable[block] = 1;
+        }
       }
       if (player.gameKey) variable[`game_${safe(player.gameKey)}`] = 1;
       // Phase 4: archetype constraint coefficients.
@@ -955,7 +980,7 @@ function buildOne(
     // Forcing slot minimums made this lineup impossible (salary, team caps,
     // overlap). Build it without them rather than ending the run early; the
     // exposure report still flags the missed minimum honestly.
-    if (slotForced) return buildOne(pool, settings, lineupNumber, previous, exposureCounts, forcedIds, countsById, captainCounts, flexCounts, compiled, remaining, false, requireAirMatchup, requireGoalLine, bringBackRule);
+    if (slotForced) return buildOne(pool, settings, lineupNumber, previous, exposureCounts, forcedIds, countsById, captainCounts, flexCounts, compiled, remaining, false, requireAirMatchup, requireGoalLine, bringBackRule, forbidDstVsOffense);
     return null;
   }
   const purchases: { player: ResolvedPlayer; slot: "CPT" | "FLEX" | "CLASSIC" }[] = [];
@@ -1398,7 +1423,11 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   let goalLineLineups = 0;
   let bringBackLineups = 0;
   const bringBackShare = settings.format === "classic" && settings.mode === "gpp" && settings.stackPassCatchers > 0 ? settings.bringBackShare ?? null : null;
+  const dstVsOffenseCap = settings.format === "classic" && settings.maxDstVsOffenseShare != null
+    ? Math.floor(settings.maxDstVsOffenseShare * plan.length + 1e-9) : null;
+  let dstVsOffenseLineups = 0;
   for (let lineupNumber = 1; lineupNumber <= plan.length; lineupNumber++) {
+    const forbidDstVsOffense = dstVsOffenseCap != null && dstVsOffenseLineups >= dstVsOffenseCap;
     const remaining = plan.length - lineupNumber + 1;
     // A bring-back share alternates: required while the run is behind the
     // share, forbidden once it is level, so 50% lands on every other lineup.
@@ -1419,10 +1448,10 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
       if ((exposureCounts.get(candidate.dkPlayerId) ?? 0) > 0) continue;
       lineup = buildOne(pool, settings, lineupNumber, lineups, exposureCounts,
         new Set([...forced, candidate.dkPlayerId]), countsById, captainCounts, flexCounts,
-        plan[lineupNumber - 1].compiled, remaining, true, requireAirMatchup, requireGoalLine, bringBackRule);
+        plan[lineupNumber - 1].compiled, remaining, true, requireAirMatchup, requireGoalLine, bringBackRule, forbidDstVsOffense);
       if (lineup) break;
     }
-    lineup ??= buildOne(pool, settings, lineupNumber, lineups, exposureCounts, forced, countsById, captainCounts, flexCounts, plan[lineupNumber - 1].compiled, remaining, true, requireAirMatchup, requireGoalLine, bringBackRule);
+    lineup ??= buildOne(pool, settings, lineupNumber, lineups, exposureCounts, forced, countsById, captainCounts, flexCounts, plan[lineupNumber - 1].compiled, remaining, true, requireAirMatchup, requireGoalLine, bringBackRule, forbidDstVsOffense);
     if (!lineup) {
       if (requireAirMatchup && requireGoalLine) throw new Error(`Could not meet the air-yard matchup and goal-line RB minimums together with the remaining exposure, salary, and roster constraints. Lower a percentage or adjust player limits.`);
       if (requireAirMatchup) throw new Error(`Could not meet the air-yard matchup minimum of ${airMatchupTarget}/${settings.nLineups} lineups with the remaining exposure, salary, and roster constraints. Lower the percentage or adjust player limits.`);
@@ -1432,6 +1461,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
     }
     lineups.push(lineup);
     if (lineup.stackSummary.bringBack) bringBackLineups++;
+    if (dstFacesOwnOffense(lineup)) dstVsOffenseLineups++;
     if (lineup.slots.some(({ player }) => isNflGppSignalPlayer(player.playerSignals, ["AIR_MATCHUP"]))) airMatchupLineups++;
     if (lineup.slots.some(({ player }) => player.position === "RB" && isNflGppSignalPlayer(player.playerSignals, ["INSIDE_FIVE"]))) goalLineLineups++;
     // Track overall and slot-specific appearances. Captain and Flex are counted
@@ -1445,6 +1475,9 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   }
   if (bringBackShare != null && lineups.length) {
     warnings.push(`Bring-back share: ${bringBackLineups} of ${lineups.length} lineups carry an opposing bring-back (target ${Math.round(bringBackShare * 100)}%).`);
+  }
+  if (dstVsOffenseCap != null && lineups.length) {
+    warnings.push(`DST against own players: ${dstVsOffenseLineups} of ${lineups.length} lineups play a defense against one of their own QB/RB/WR/TE (cap ${dstVsOffenseCap}, ${Math.round(settings.maxDstVsOffenseShare! * 100)}%).`);
   }
   if (airMatchupTarget) {
     if (airMatchupLineups < airMatchupTarget) throw new Error(`Air-yard matchup minimum missed: ${airMatchupLineups}/${airMatchupTarget} required lineups. Adjust the percentage or player limits.`);

@@ -725,6 +725,9 @@ def snapshot_fantasypros_contracts(
     return {"season": season, "identity": identity, "snapshots": saved}
 
 
+FF_PLAYERS_WRITE_LOCK = "ff-players-write"
+
+
 class RefreshDatabase:
     """One connection/transaction for an entire refresh.
 
@@ -747,6 +750,10 @@ class RefreshDatabase:
         cursor = self.conn.cursor()
         cursor.execute(statement, params or ())
         return cursor.fetchone()
+
+    def lock_ff_players_writes(self) -> None:
+        """Held until commit. Writers update many ff_players rows in different orders in one transaction; taking turns prevents deadlock."""
+        self.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (FF_PLAYERS_WRITE_LOCK,))
 
     def checkpoint(self) -> None:
         """Commit what is written so far and keep the connection open.

@@ -408,3 +408,14 @@ def test_roster_is_committed_before_any_market_feed_is_fetched() -> None:
         assert source.index(market) > checkpoint_at, f"{market} is fetched before the roster is durable"
     # And the roster itself must be written before the checkpoint.
     assert source.index("build_player_universe") < checkpoint_at
+
+
+def test_both_ff_players_writers_take_the_shared_write_lock_before_writing():
+    """2026-10-11 14:07: the draft refresh and the availability capture deadlocked on ff_players."""
+    import inspect
+    from ingest import ff_independent, nfl_availability_operations
+
+    refresh = inspect.getsource(ff_independent._run)
+    assert refresh.index("db.lock_ff_players_writes()") < refresh.index("build_player_universe(")
+    capture = inspect.getsource(nfl_availability_operations.capture_sleeper)
+    assert capture.index("db.lock_ff_players_writes()") < capture.index("UPDATE ff_players SET")
