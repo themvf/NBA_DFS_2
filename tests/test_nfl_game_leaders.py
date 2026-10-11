@@ -289,13 +289,19 @@ def test_batch_supports_each_game_and_preserves_capture_failure():
         publish(result,[])
 
 
-def test_publisher_preserves_scope_provenance_and_rejects_odds():
+def test_publisher_preserves_scope_provenance_and_rejects_odds(monkeypatch):
+    import research.nfl_game_leaders_publish as publisher
     h,_=prepare(fixture(),'2025-10-02T00:00:00Z')
     req=request(); req['expected_prior_game_ids']={t:[r['game']['game_id'] for r in h] for t in ('A','B')}
     p=forecast(h,req,Settings(draws=30))
     payload={'version':p['version'],'authority':p['authority'],'market_inputs_used':False,
         'season':2025,'week':5,'decision_at':p['decision_at'],'source_sha256':'frozen-source',
         'forecasts':[p],'skipped':[],'reconciliation_rejections':[]}
+    # The synthetic fixture has no role scenario, so most leader mass is unassigned:
+    # the default gate refuses it. Provenance checks below run with the gate relaxed.
+    with pytest.raises(ValueError,match='unassigned leader share'):
+        publish(payload,[])
+    monkeypatch.setattr(publisher,'MAX_UNASSIGNED_SHARE',1.)
     result=publish(payload,[])
     assert result['games'][0]['metrics']==p['metrics']
     assert result['games'][0]['source_sha256']=='frozen-source'

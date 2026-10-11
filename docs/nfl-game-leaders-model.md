@@ -146,6 +146,27 @@ never compete against a named individual. Confirmed out-player opportunities sta
 in unresolved slots until an explicitly documented full-field role scenario is
 supplied. Neither a depth rank nor an injury label establishes replacement usage.
 
+**Default role scenario and publish gate (2026-10-11, `nfl-game-leaders-roles-v1`).**
+Week 5's first published batch carried no scenario for any game, so out players'
+workload sat in unnamed slots: 30% of PHI@JAX total-yards leader probability and
+over 5% of at least one market in 7 of 14 games. Two changes close that:
+
+- `research.nfl_game_leaders week-requests` now attaches a default scenario from
+  `model/nfl_game_leaders_roles.py` to every captured request (`attach-roles`
+  does the same for an existing requests file). Usage is a per-game rate over
+  games actually played, shrunk by games played (a missed week is an absence, not
+  zero use); carries vacated by out backs follow the depth chart 55/35/10, an out
+  quarterback's carries go to the top active quarterback, other vacated volume is
+  shared proportionally. These are stated priors, not fitted roles. An explicit
+  reviewed scenario in the request always takes precedence.
+- `research/nfl_game_leaders_publish.py` refuses a batch when more than 5% of any
+  market's leader probability is unassigned (`MAX_UNASSIGNED_SHARE`) and records
+  each game's `unassigned_share` on the page.
+
+The scenario is graded with everything else after each week; the 2026-10-10
+review artifacts (`artifacts/nfl-game-leaders/week5-scenarios-20261010/`) and the
+published week-5 batch (`week5-final-20261010/`) are the first comparison.
+
 An availability-verified request must include both depth sources and week-matched
 FantasyPros injuries, with source references and captures at/before cutoff, no
 older than 48 hours, no conflicts, and no unresolved statuses. This freshness
