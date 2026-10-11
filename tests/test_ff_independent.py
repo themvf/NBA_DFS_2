@@ -418,4 +418,4 @@ def test_both_ff_players_writers_take_the_shared_write_lock_before_writing():
     refresh = inspect.getsource(ff_independent._run)
     assert refresh.index("db.lock_ff_players_writes()") < refresh.index("build_player_universe(")
     capture = inspect.getsource(nfl_availability_operations.capture_sleeper)
-    assert capture.index("db.lock_ff_players_writes()") < capture.index("UPDATE ff_players SET")
+    assert capture.index("db.lock_ff_players_writes()") < capture.index("UPDATE ff_players")
