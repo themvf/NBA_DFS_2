@@ -250,18 +250,19 @@ def render(cards: list[dict], now: datetime) -> str:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--no-write", action="store_true")
-    ap.add_argument("--selections", default=str(DEFAULT_SELECTIONS))
     ap.add_argument("--board", default=str(DEFAULT_BOARD))
     args = ap.parse_args(argv)
     now = datetime.now(timezone.utc)
     cfg = load_config()
-    db = DatabaseManager(cfg.database_url, initialize_schema=False)
+    db = DatabaseManager(cfg.database_url)  # applies db/schema.py if it changed (the pattern tables)
+    from model import cfb_pattern_store as store
+
     games = [dict(r) for r in db.execute(_GAMES_SQL, (pw.SEASON, now - timedelta(hours=1), now + timedelta(hours=LOOKAHEAD_HOURS)))]
     hist: dict[int, list[dict]] = {}
     if games:
         for r in db.execute(_HIST_SQL, ([int(g["matchup_id"]) for g in games],)):
             hist.setdefault(int(r["matchup_id"]), []).append(dict(r))
-    frozen = read_selections(Path(args.selections))
+    frozen = store.read_selections(db)
     cards, new_rows = build_board(games, hist, frozen, now)
     text = render(cards, now)
     print(text)
@@ -270,15 +271,15 @@ def main(argv: list[str] | None = None) -> int:
         counts[c["status"]] = counts.get(c["status"], 0) + 1
     from model import cfb_pattern_measures as measures  # local import: measures imports this module's sibling
 
-    events = measures.new_events(cards, measures.read_event_keys(), now)
+    events = measures.new_events(cards, store.read_event_keys(db), now)
     run = measures.run_record(cards, len(new_rows), len(events), now)
     print(f"cards {len(cards)} {counts}; new selections frozen {len(new_rows)}; new events {len(events)}")
     for e in events:
         print(f"  event {e['status']}: {e['trigger']} {e['away']} @ {e['home']} {('; '.join(e['late_reasons'])) or ''}")
     if not args.no_write:
-        append_selections(Path(args.selections), new_rows)
-        measures.append_jsonl(measures.EVENTS_PATH, events)
-        measures.append_jsonl(measures.RUNS_PATH, [run])
+        store.append_selections(db, new_rows)
+        store.append_events(db, events)
+        store.append_run(db, "board", run)
         Path(args.board).parent.mkdir(parents=True, exist_ok=True)
         Path(args.board).write_text(text, encoding="utf-8")
     return 0

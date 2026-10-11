@@ -167,6 +167,27 @@ export const DISPATCH_JOBS: readonly DispatchJob[] = [
     why: "CFB line terminal: event mappings every 15 minutes, scores hourly, full schedule every 6 hours.",
   },
   {
+    key: "cfb-pattern-board",
+    workflow: "cfb_pattern_watch.yml",
+    // Every half hour, August-January. The board freezes a pre-registered
+    // selection the first time its pattern fires on a fresh line, so it has to
+    // see every capture window: Saturday slates, weeknight MACtion and bowls.
+    // A run with no game in the next 36 hours still writes its heartbeat. No
+    // Odds API credits: it reads the stored captures.
+    due: (now) => { const m = now.getUTCMonth() + 1; return (m >= 8 || m <= 1) && halfHourTick(now); },
+    inputs: { job: "board" },
+    why: "CFB pattern study: frozen selections, stale-line refusals and late-move flags before kickoff.",
+  },
+  {
+    key: "cfb-pattern-grade",
+    workflow: "cfb_pattern_watch.yml",
+    // 10:07 UTC daily, August-January: after the last West Coast finals and
+    // the overnight close capture. Idempotent; a re-run grades nothing twice.
+    due: (now) => { const m = now.getUTCMonth() + 1; return (m >= 8 || m <= 1) && now.getUTCHours() === 10 && hourTick(now); },
+    inputs: { job: "grade" },
+    why: "CFB pattern study: grades finished games at the verified close and refreshes the reader page.",
+  },
+  {
     key: "nfl-defensive-capture",
     workflow: "capture_nfl_defensive_on_upload.yml",
     // Only when the database says a request is waiting. The upload itself

@@ -305,11 +305,16 @@ def summarize(rows: list[dict], label: str, as_of: datetime | None = None) -> li
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--discovery", action="store_true", help="replay the frozen discovery window, no ledger write")
-    ap.add_argument("--ledger", default=str(DEFAULT_LEDGER))
+    ap.add_argument("--import-files", action="store_true",
+                    help="one-time: copy the pre-migration artifacts/cfb_pattern_watch/*.jsonl into the database")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     cfg = load_config()
-    db = DatabaseManager(cfg.database_url, initialize_schema=False)
+    db = DatabaseManager(cfg.database_url)  # applies db/schema.py if it changed (the pattern tables)
+    from model import cfb_pattern_store as store
+
+    if args.import_files:
+        print(f"imported from files: {store.import_files(db)}")
 
     if args.discovery:
         games = load_games(db, DISCOVERY_START, T6_REGISTERED_AT)
@@ -318,14 +323,13 @@ def main(argv: list[str] | None = None) -> int:
             print(line)
         return 0
 
-    path = Path(args.ledger)
-    existing = read_ledger(path)
+    existing = store.read_ledger(db)
     keys = {(r["trigger"], int(r["matchup_id"])) for r in existing}
     games = load_games(db, REGISTERED_AT, datetime(SEASON + 1, 2, 1, tzinfo=timezone.utc))
     new_rows = build_rows(games, "prospective", keys)
-    append_rows(path, new_rows)
-    rows = existing + new_rows
-    print(f"scanned {len(games)} completed prospective games; appended {len(new_rows)} rows; ledger {path} now {len(rows)} rows")
+    added = store.append_ledger(db, new_rows)
+    rows = store.read_ledger(db)
+    print(f"scanned {len(games)} completed prospective games; graded {len(new_rows)} new rows ({added} written); ledger now {len(rows)} rows")
     for line in summarize(rows, "PROSPECTIVE (commence >= registration)"):
         print(line)
     from model import cfb_pattern_measures as measures  # local import: measures imports this module
@@ -335,10 +339,14 @@ def main(argv: list[str] | None = None) -> int:
     print("== base rate across ALL FBS games (descriptive; T1/T5/T6 rest on the 'excess' column) ==")
     for line in measures.format_base_rates(rates):
         print(line)
-    summary_path = path.with_name("summary.md")
+    summary_path = DEFAULT_LEDGER.with_name("summary.md")
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary_path.write_text(
         f"# {STUDY_VERSION} — generated {datetime.now(timezone.utc).isoformat()}\n\n```\n"
         + "\n".join(summarize(rows, "PROSPECTIVE")) + "\n```\n", encoding="utf-8")
+    store.append_run(db, "grade", {"study_version": STUDY_VERSION, "games_scanned": len(games),
+                                   "rows_graded": len(new_rows), "rows_written": added, "ledger_rows": len(rows),
+                                   "base_rate_weeks": len(rates)})
     return 0
 
 

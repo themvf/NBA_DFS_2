@@ -1,0 +1,73 @@
+name: CFB Pattern Watch
+
+# The pre-registered CFB pattern study (docs/cfb-early-season-patterns-study.md).
+# Two jobs share this file, chosen by the `job` input:
+#
+#   board  freezes selections on fresh lines, records stale refusals and late
+#          moves, writes a run heartbeat. Dispatched every half hour in season.
+#   grade  grades finished games at the verified close into the ledger and
+#          writes a run heartbeat. Dispatched daily after the overnight finals.
+#
+# Both then render the reader page and store it in cfb_pattern_reports (only
+# when its content changed). All state is in append-only tables
+# (model/cfb_pattern_store.py); the runner keeps nothing between runs.
+# Vercel's /api/cron/dispatch is the clock; the schedules below are a thin
+# fallback for a broken bridge. Reads stored odds only: no Odds API credits.
+on:
+  schedule:
+    - cron: "41 16,22 * * 6"   # fallback: board on Saturdays
+    - cron: "45 10 * * *"      # fallback: daily grade
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "Which job to run"
+        required: true
+        default: board
+        type: choice
+        options: [board, grade]
+
+concurrency:
+  group: cfb-pattern-watch-${{ inputs.job || github.event.schedule }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Resolve job
+        id: job
+        run: |
+          job="${{ inputs.job }}"
+          if [ -z "$job" ]; then
+            if [ "${{ github.event.schedule }}" = "45 10 * * *" ]; then job=grade; else job=board; fi
+          fi
+          echo "job=$job" >> "$GITHUB_OUTPUT"
+          echo "Running the $job job"
+      - name: Board (freeze selections, record events)
+        if: steps.job.outputs.job == 'board'
+        run: python -m model.cfb_pattern_board
+      - name: Grade finished games
+        if: steps.job.outputs.job == 'grade'
+        run: python -m model.cfb_pattern_watch
+      - name: Render and store the reader page
+        run: python -m model.cfb_pattern_publish
+      - name: Upload page and board
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfb-pattern-watch-${{ steps.job.outputs.job }}
+          path: |
+            artifacts/cfb_pattern_watch/report.html
+            artifacts/cfb_pattern_watch/board.md
+            artifacts/cfb_pattern_watch/summary.md
+          if-no-files-found: ignore
+          retention-days: 14

@@ -163,5 +163,27 @@ assert.ok(!keys("2026-10-03T15:22:00Z", { nflKickoffs: [], nflDefensiveCapturesP
 assert.ok(!keys("2026-10-03T15:22:00Z", { nflKickoffs: [], nflDefensiveCapturesPending: null }).includes("nfl-defensive-capture"), "unreadable: no blind dispatch");
 assert.ok(!keys("2026-10-03T15:22:00Z").includes("nfl-defensive-capture"), "no context, no dispatch");
 
+// CFB pattern study: board every half hour August-January, grade once a day at 10:07 UTC.
+{
+  let boardTicks = 0, gradeTicks = 0;
+  for (let h = 0; h < 24; h += 1) for (const m of TICKS) {
+    const k = keys(`2026-10-10T${hh(h)}:${m}:00Z`);
+    if (k.includes("cfb-pattern-board")) boardTicks += 1;
+    if (k.includes("cfb-pattern-grade")) gradeTicks += 1;
+  }
+  assert.equal(boardTicks, 48, "CFB pattern board every half hour (:07 and :37)");
+  assert.equal(gradeTicks, 1, "CFB pattern grade once a day");
+  assert.ok(keys("2026-10-10T10:07:00Z").includes("cfb-pattern-grade"), "grade at 10:07 UTC, after the overnight finals");
+  assert.ok(!keys("2026-10-10T16:22:00Z").includes("cfb-pattern-board"), "no board on the quarter-hour ticks");
+  assert.ok(keys("2027-01-02T16:07:00Z").includes("cfb-pattern-board"), "bowls in January");
+  assert.ok(!keys("2026-06-13T16:07:00Z").includes("cfb-pattern-board"), "no board in June");
+  assert.ok(!keys("2026-06-13T10:07:00Z").includes("cfb-pattern-grade"), "no grade in June");
+  const board = dueJobs(new Date("2026-10-10T16:07:00Z")).find((j) => j.key === "cfb-pattern-board");
+  const grade = dueJobs(new Date("2026-10-10T10:07:00Z")).find((j) => j.key === "cfb-pattern-grade");
+  assert.equal(board?.inputs?.job, "board", "board dispatch names its job");
+  assert.equal(grade?.inputs?.job, "grade", "grade dispatch names its job");
+  assert.equal(board?.workflow, "cfb_pattern_watch.yml");
+}
+
 console.log(`Cron dispatch: ${DISPATCH_JOBS.length} bridged workflows on a 15-minute tick; half-hour cadences unchanged, NFL availability every 15 minutes before a kickoff.`);
 }).catch((e) => { console.error(e); process.exit(1); });

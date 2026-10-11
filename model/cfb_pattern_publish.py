@@ -281,30 +281,39 @@ footer{{margin-top:48px;color:var(--muted);font-size:14px;border-top:1px solid v
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=str(DEFAULT_OUT))
-    ap.add_argument("--ledger", default=str(pw.DEFAULT_LEDGER))
-    ap.add_argument("--selections", default=str(board.DEFAULT_SELECTIONS))
+    ap.add_argument("--no-store", action="store_true", help="write the HTML file only; do not save it to cfb_pattern_reports")
     args = ap.parse_args(argv)
     now = datetime.now(timezone.utc)
-    rows = pw.read_ledger(Path(args.ledger))
-    selections = list(board.read_selections(Path(args.selections)).values())
     cfg = load_config()
-    db = DatabaseManager(cfg.database_url, initialize_schema=False)
+    db = DatabaseManager(cfg.database_url)  # applies db/schema.py if it changed (the pattern tables)
+    from model import cfb_pattern_measures as measures
+    from model import cfb_pattern_store as store
+
+    rows = store.read_ledger(db)
+    frozen = store.read_selections(db)
+    selections = list(frozen.values())
     games = [dict(r) for r in db.execute(board._GAMES_SQL, (pw.SEASON, now - timedelta(hours=1), now + timedelta(hours=board.LOOKAHEAD_HOURS)))]
     hist: dict[int, list[dict]] = {}
     if games:
         for r in db.execute(board._HIST_SQL, ([int(g["matchup_id"]) for g in games],)):
             hist.setdefault(int(r["matchup_id"]), []).append(dict(r))
-    cards, _ = board.build_board(games, hist, board.read_selections(Path(args.selections)), now)  # read-only: new rows discarded
-    from model import cfb_pattern_measures as measures
-
+    cards, _ = board.build_board(games, hist, dict(frozen), now)  # read-only: new rows discarded
     rates = measures.weekly_base_rates(measures.load_base_rate_games(db))
     fvc = measures.freeze_vs_close(rows, selections)
-    ev = measures.event_summary(measures.read_jsonl(measures.EVENTS_PATH), measures.read_jsonl(measures.RUNS_PATH))
+    ev = measures.event_summary(store.read_events(db), store.read_runs(db, "board"))
+    html_text = render(rows, selections, cards, now, rates, fvc, ev)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(render(rows, selections, cards, now, rates, fvc, ev), encoding="utf-8")
+    out.write_text(html_text, encoding="utf-8")
+    stored = False
+    if not args.no_store:
+        stored = store.save_report(db, html_text, {
+            "study_version": pw.STUDY_VERSION, "graded_rows": len(rows), "units": round(sum(r["pnl_units"] for r in rows), 4),
+            "selections": len(selections), "board_cards": len(cards), "published_vs_close": fvc["summary"]["n"],
+            "board_events": ev["events"], "base_rate_weeks": len(rates)})
     print(f"wrote {out} ({out.stat().st_size} bytes): {len(rows)} graded rows, {len(selections)} selections, "
-          f"{len(cards)} board cards, {len(rates)} base-rate weeks, {fvc['summary']['n']} published picks vs close, {ev['events']} board events")
+          f"{len(cards)} board cards, {len(rates)} base-rate weeks, {fvc['summary']['n']} published picks vs close, "
+          f"{ev['events']} board events; {'saved new page version' if stored else 'page unchanged, not stored again' if not args.no_store else 'not stored'}")
     return 0
 
 

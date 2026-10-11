@@ -528,6 +528,67 @@ TABLES = [
 
     *NHL_TABLES,
 
+    # CFB pattern watch (docs/cfb-early-season-patterns-study.md). Append-only:
+    # a graded row, a frozen selection or a board event is written once and
+    # never edited (see the reject-mutation triggers in MIGRATIONS). `payload`
+    # holds the full record the Python modules produce; the scalar columns
+    # exist for uniqueness, ordering and the /health freshness readings.
+    """
+    CREATE TABLE IF NOT EXISTS cfb_pattern_ledger (
+        id BIGSERIAL PRIMARY KEY,
+        study_version TEXT NOT NULL,
+        trigger TEXT NOT NULL,
+        matchup_id INTEGER NOT NULL,
+        game_date DATE NOT NULL,
+        commence_time TIMESTAMPTZ NOT NULL,
+        result TEXT NOT NULL,
+        pnl_units DOUBLE PRECISION NOT NULL,
+        payload JSONB NOT NULL,
+        graded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (trigger, matchup_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS cfb_pattern_selections (
+        id BIGSERIAL PRIMARY KEY,
+        trigger TEXT NOT NULL,
+        matchup_id INTEGER NOT NULL,
+        frozen_at TIMESTAMPTZ NOT NULL,
+        commence_time TIMESTAMPTZ NOT NULL,
+        payload JSONB NOT NULL,
+        recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (trigger, matchup_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS cfb_pattern_board_events (
+        id BIGSERIAL PRIMARY KEY,
+        trigger TEXT NOT NULL,
+        matchup_id INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        payload JSONB NOT NULL,
+        recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (trigger, matchup_id, status)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS cfb_pattern_runs (
+        id BIGSERIAL PRIMARY KEY,
+        job TEXT NOT NULL CHECK (job IN ('board', 'grade')),
+        run_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        payload JSONB NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS cfb_pattern_reports (
+        id BIGSERIAL PRIMARY KEY,
+        content_digest TEXT NOT NULL UNIQUE,
+        html TEXT NOT NULL,
+        summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+        generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+
     # Historical CFBD lines are intentionally separate from the prospective,
     # exact-book game_odds_history ledger.  CFBD exposes source-reported opens
     # and historical references, but does not provide observation timestamps
@@ -4286,6 +4347,32 @@ TABLES = [
 ]
 
 MIGRATIONS = [
+    # CFB pattern watch: graded rows, frozen selections, board events and run
+    # heartbeats are append-only. A correction is a new study version, never
+    # an edit (docs/cfb-early-season-patterns-study.md).
+    """CREATE OR REPLACE FUNCTION reject_cfb_pattern_mutation()
+       RETURNS trigger LANGUAGE plpgsql AS $$
+       BEGIN
+         RAISE EXCEPTION 'CFB pattern watch records are append-only';
+       END $$""",
+    """DO $$ BEGIN
+       IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'cfb_pattern_ledger_immutable') THEN
+         CREATE TRIGGER cfb_pattern_ledger_immutable BEFORE UPDATE OR DELETE
+         ON cfb_pattern_ledger FOR EACH ROW EXECUTE FUNCTION reject_cfb_pattern_mutation();
+       END IF;
+       IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'cfb_pattern_selections_immutable') THEN
+         CREATE TRIGGER cfb_pattern_selections_immutable BEFORE UPDATE OR DELETE
+         ON cfb_pattern_selections FOR EACH ROW EXECUTE FUNCTION reject_cfb_pattern_mutation();
+       END IF;
+       IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'cfb_pattern_board_events_immutable') THEN
+         CREATE TRIGGER cfb_pattern_board_events_immutable BEFORE UPDATE OR DELETE
+         ON cfb_pattern_board_events FOR EACH ROW EXECUTE FUNCTION reject_cfb_pattern_mutation();
+       END IF;
+       IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'cfb_pattern_runs_immutable') THEN
+         CREATE TRIGGER cfb_pattern_runs_immutable BEFORE UPDATE OR DELETE
+         ON cfb_pattern_runs FOR EACH ROW EXECUTE FUNCTION reject_cfb_pattern_mutation();
+       END IF;
+    END $$""",
     # Preserve every point-in-time feature snapshot.  The initial research
     # schema keyed only by game/team/version and would overwrite a prior week.
     "ALTER TABLE cfb_team_game_features DROP CONSTRAINT IF EXISTS cfb_team_game_features_game_id_team_id_feature_version_key",
@@ -5472,6 +5559,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_survivor_recs_entry ON survivor_recommendations(entry_id, week, frozen_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_survivor_recs_open ON survivor_recommendations(season, week) WHERE superseded_by IS NULL",
     *NHL_INDEXES,
+    "CREATE INDEX IF NOT EXISTS idx_cfb_pattern_runs_job ON cfb_pattern_runs(job, run_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_cfb_pattern_reports_generated ON cfb_pattern_reports(generated_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_cfb_matchups_date ON cfb_matchups(game_date, commence_time)",
     "CREATE INDEX IF NOT EXISTS idx_cfb_matchups_upcoming ON cfb_matchups(commence_time) WHERE completed = FALSE",
     "CREATE INDEX IF NOT EXISTS idx_cfb_alias_lookup ON cfb_team_aliases(provider, alias)",

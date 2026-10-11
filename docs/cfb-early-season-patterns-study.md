@@ -198,3 +198,40 @@ called it week 7. The discovery sample is CFBD weeks 1-5 plus the first seven
 games of week 6 (through 2026-10-09 22:00 UTC). Registration is pinned to
 timestamps, so no graded row or trigger window is affected; only labels were
 wrong.
+
+## Operations moved to GitHub Actions (2026-10-11)
+
+Both jobs left the laptop. `.github/workflows/cfb_pattern_watch.yml` runs them,
+selected by its `job` input, and Vercel's `/api/cron/dispatch` is the clock
+(`web/src/lib/cron-dispatch.ts`):
+
+| Job | Dispatch | What it does |
+|---|---|---|
+| `cfb-pattern-board` | every half hour (:07, :37), August-January | freezes selections on fresh lines, records stale/watch/dropped events, writes a heartbeat, renders the page |
+| `cfb-pattern-grade` | 10:07 UTC daily, August-January | grades finished games at the verified close, prints the base-rate table, writes a heartbeat, renders the page |
+
+The workflow keeps a thin GitHub fallback schedule (Saturday 16:41/22:41 UTC
+board, daily 10:45 UTC grade). It reads stored odds only and spends no Odds
+API credits.
+
+**State is in the database.** A runner starts empty, so the files are gone as
+a source of truth. `model/cfb_pattern_store.py` reads and writes five tables:
+`cfb_pattern_ledger`, `cfb_pattern_selections`, `cfb_pattern_board_events`,
+`cfb_pattern_runs` (one heartbeat per run, `job` = board or grade) and
+`cfb_pattern_reports` (the rendered page, stored only when its content changes,
+ignoring the clock and the board-run counter). The first four reject UPDATE and
+DELETE with a trigger. The pre-migration files were imported once
+(51 ledger rows, 10 selections, 1 event, 12 runs) and a second import added
+nothing; the `artifacts/cfb_pattern_watch/*.jsonl` files in the repository are
+that frozen export, not live state.
+
+**Health.** Both heartbeats are registered in `model/pipeline_health.py`
+(`cfb_pattern_board`, 2 h budget; `cfb_pattern_grade`, 30 h) and the workflow
+appears on `/health` through the manifest, so a missed run is a FAIL row and
+reaches the daily failure sweep.
+
+**Not automated.** The claude.ai reader page cannot be published from a
+runner. Each run stores the page in `cfb_pattern_reports` and attaches it to
+the run as an artifact; republishing the link is a step taken from a Claude
+session. The local humanizer rewrite (`scripts/humanize_copy.py`) also stays
+local: its accepted copy is committed in `copy.json`, which CI reads.
