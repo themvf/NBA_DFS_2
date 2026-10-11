@@ -76,3 +76,31 @@ once three prior games exist).
   own recent rates, which already encode it. No model change.
 - **H1 fails**: concentration is week-to-week noise. No model change.
 No re-slicing by team, position or season after the result.
+
+## Result (2026-10-11): the habit is real, and the current rule already captures it
+
+| | Development 2023–2025 | Test 2021–2022 |
+| --- | --- | --- |
+| H1 split-half r (team-seasons) | 0.71 [0.59, 0.81] (96) | 0.59 [0.44, 0.71] (64) |
+| Share of game-level variance between team-seasons | 19% | 10% |
+| Same team, next season r | 0.49 | 0.19 |
+| H2 team k minus league k, log-lik per target | +0.0001 [−0.0002, +0.0005] | −0.0002 [−0.0006, +0.0003] |
+
+- **H1 passes on both.** Within a season, a team that concentrates targets in
+  odd weeks does so in even weeks too. Across seasons the habit carries over
+  only partly (r 0.49, then 0.19), so it belongs to the roster more than the
+  franchise. Most concentrated, 2023–2025: NYG 2024, PHI 2023–2025, SEA 2025.
+  Most spread: GB 2023, DEN 2023 and 2025, KC 2023, BUF 2025. Baltimore sits at
+  the league median every season (ranks 13–20 of 32).
+- **H2 fails.** The best single league exponent is exactly 1.00, which is the
+  proportional rule the model uses today; team-specific exponents (fitted range
+  0.92–1.09 after shrinkage) add nothing on either set.
+- **H3 (descriptive)**: when a team's target leader is inactive, the next man's
+  share is within ±4 points of the proportional prediction in every
+  concentration tertile, with signs that differ between development and test.
+
+Reading: concentration is a stable team trait, but it is already contained in
+the players' own recent target rates. A concentrated team simply has one
+player with a much larger rate. No model change. The receiving and receptions
+weakness found in `nfl-game-leaders-calibration-v1` is not about the shape of
+the split and must be looked for elsewhere.
