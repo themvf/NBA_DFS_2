@@ -376,9 +376,11 @@ def test_dfs_studies_grade_the_current_realized_version_with_its_pinned_scorer()
         assert resolved["scoring_version"] == entry["scoring_version"] == SCORING_VERSION
         assert outcome_implementation_errors(resolved) == []
         assert validate_manifest(resolved) == []
-        # The outcome amendment restarts the holdout; the pin gates captures.
+        # The outcome amendment restarts the holdout. Captures also count only
+        # after the latest implementation pin, which may fall inside the holdout:
+        # a forward re-pin restarts the sample (2026-10-11), and
+        # test_implementation_change_requires_new_forward_pin covers the gate.
         assert resolved["holdout_start_at"] == resolved["registered_at"]
-        assert resolved["implementation_pinned_at"] <= resolved["holdout_start_at"]
 
 
 def test_pickem_freezes_pass_their_latest_implementation_pin():

@@ -529,13 +529,16 @@ in six sports, identical Sleeper evidence. Tests fail if a consumer reads a
 field outside its list, since a missing field would otherwise be read as
 zero or "no quote". Availability contexts are also re-inserted only when
 their meaning changes (`material_digest`, reasserted after `REASSERT_AFTER`,
-6 h); every hourly run had re-inserted every context. Left for the owner: the
-hash-pinned `ingest/nfl_matchup_context.py` reads full participant-evidence
-and week-stat rows on every projection run (the largest remaining reader,
-1.3 GB a day on average and ~6 GB on a Sunday), research `raw_history` in
-`nfl_dfs_workload`/`nfl_dfs_efficiency` needs full rows only to hash them
-into `source_hash`, and the matchup-study grader reads every shadow
-prediction's payload each run.
+6 h); every hourly run had re-inserted every context. The matchup loader
+(`ingest/nfl_matchup_context.py`, the largest remaining reader at ~1.3 GB a
+day and ~6 GB on a Sunday) reads stat rows slim and refetches whole rows only
+for participants, whose manifests digest them: identical matchups for weeks
+4-6, 19-27 MB to 7-10 MB a run. That file is hash-pinned, so all six matchup
+studies were re-pinned and their forward samples restart, which the owner
+accepted (see `docs/nfl-matchup-study-operations.md`). Still open: research
+`raw_history` in `nfl_dfs_workload`/`nfl_dfs_efficiency` needs full rows only
+to hash them into `source_hash`, and the matchup-study grader reads every
+shadow prediction's payload each run.
 
 ## Parallel agents: commit locally, one session pushes (2026-10-04)
 
