@@ -86,3 +86,18 @@ export function ReplacementUpsideTable({ upside }: { upside: ReplacementUpside }
     </div>
   );
 }
+
+/**
+ * Name-cell chip for a player whose projection was replaced by the
+ * starter-aware number (`nfl-absence-commit-v1`). The optimizer builds from
+ * the new number; the chip keeps the old one in view.
+ */
+export function AbsenceCommitChip({ commit }: { commit: import("@/lib/nfl-dfs/absence-commit").AbsenceCommit }) {
+  const up = commit.after.mean >= commit.before.mean;
+  return (
+    <span title={`${commit.note} Model's own projection was ${commit.before.mean.toFixed(1)} (ceiling ${commit.before.p90.toFixed(1)}); the build uses ${commit.after.mean.toFixed(1)} (ceiling ${commit.after.p90.toFixed(1)}).`}
+      className={`ml-2 inline-flex items-center rounded-full border px-2 py-0.5 align-middle text-[10px] font-bold ${up ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-amber-300 bg-amber-50 text-amber-900"}`}>
+      {commit.rule === "first_game" ? "Starter out" : "Starter role"} · {commit.before.mean.toFixed(1)} → {commit.after.mean.toFixed(1)}
+    </span>
+  );
+}

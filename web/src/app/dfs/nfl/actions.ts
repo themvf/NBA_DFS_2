@@ -78,6 +78,7 @@ import { NFL_TRUSTED_ACCOUNTS, isXHandle } from "@/lib/x-news-accounts";
 import { NFL_TEAM_NICKNAMES } from "@/lib/nfl-dfs/x-news-teams";
 import { projectOwnershipPrior } from "@/lib/nfl-dfs/ownership-prior";
 import { computeReplacementUpside, REPLACEMENT_UPSIDE_VERSION, type ReplacementUpside, type ReplacementUpsideReport, type UpsidePlayer } from "@/lib/nfl-dfs/replacement-upside";
+import { ABSENCE_COMMIT_VERSION, computeAbsenceCommits, type AbsenceCommit, type AbsenceCommitReport } from '@/lib/nfl-dfs/absence-commit';
 import { readLastGamePassingLeaders, readTeamUsageWindows } from "@/db/nfl-dfs-usage-window";
 import { readNflDfsPlayerSignalEvidence, readNflAirDefenseEvidence, readNflAirTeamEvidence, readNflAirMarketEvidence } from "@/db/nfl-dfs-player-signals";
 import { airMatchupSignals, classifyNflPlayerSignals, NFL_PLAYER_SIGNAL_VERSION, type NflAirDefenseEvidence, type NflPlayerSignalEvidence } from "@/lib/nfl-dfs/player-signals";
@@ -125,6 +126,12 @@ export type NflWorkspacePlayer = NflOptimizerPlayer & {
   replacementUpside?: ReplacementUpside | null;
   /** Behind a ruled-out starter but deliberately not adjusted, and why. */
   replacementUpsideUnchanged?: { from: string; reason: string } | null;
+  /**
+   * `nfl-absence-commit-v1`: a starter is out, so `ourProj`/floor/median/
+   * ceiling/boom on this row are the starter-aware projection the optimizer
+   * builds from. `before` is the model's own number, kept for weekly grading.
+   */
+  absenceCommit?: AbsenceCommit | null;
   platformEligibility?: PlatformEligibilityDecision;
   availabilityEvidence?: {gameDecisionId:string|null;platformManifestDigest:string|null;
     platformDecisionState:'ELIGIBLE'|'INELIGIBLE'|null;decisionAt:string|null};
@@ -204,6 +211,7 @@ export type NflWorkspaceSlate = {
   };
   /** Display-only replacement upside for this slate: who was flagged, and which absences were not. */
   replacementUpside?: { version: string; flagged: number; skipped: ReplacementUpsideReport['skipped']; error?: string };
+  absenceCommit?: { version: string; applied: number; skipped: AbsenceCommitReport['skipped']; error?: string };
   /** Starting QBs the user confirmed for this read, and any that could not be applied. */
   confirmedStartingQbs?: ConfirmedStarterReport;
   /** Players each defensive profile would actually adjust on this slate (captures that pass every check). */
@@ -1015,6 +1023,7 @@ async function attachReplacementUpside(
 ): Promise<void> {
   if (!run?.week) {
     workspace.replacementUpside = { version: REPLACEMENT_UPSIDE_VERSION, flagged: 0, skipped: [], error: 'No projection run week, so no usage history to read.' };
+    workspace.absenceCommit = { version: ABSENCE_COMMIT_VERSION, applied: 0, skipped: [], error: 'No projection run week, so no usage history to read.' };
     return;
   }
   try {
@@ -1045,9 +1054,29 @@ async function attachReplacementUpside(
       upside.has(player.dkPlayerId) ? { ...player, replacementUpside: upside.get(player.dkPlayerId)! }
         : unchanged.has(player.dkPlayerId) ? { ...player, replacementUpsideUnchanged: unchanged.get(player.dkPlayerId)! } : player);
     workspace.replacementUpside = { version: report.version, flagged: report.upside.length, skipped: report.skipped };
+    // Commit: the optimizer builds from the starter-aware number (owner's
+    // decision 2026-10-11, see absence-commit.ts); `before` keeps the old one.
+    try {
+      const commitReport = computeAbsenceCommits(players.map((p) => {
+        const player = workspace.players.find((x) => x.dkPlayerId === p.key);
+        return { ...p, statMeans: player?.statMeans ?? null, upside: upside.get(p.key) ?? null };
+      }), windows, run.season);
+      const commits = new Map(commitReport.commits.map((c) => [c.key, c]));
+      workspace.players = workspace.players.map((player) => {
+        const commit = commits.get(player.dkPlayerId);
+        return commit ? { ...player, absenceCommit: commit, ourProj: commit.after.mean, floorFpts: commit.after.p10,
+          medianFpts: commit.after.median, ceilingFpts: commit.after.p90, boomRate: commit.after.boom ?? player.boomRate } : player;
+      });
+      workspace.absenceCommit = { version: commitReport.version, applied: commitReport.commits.length, skipped: commitReport.skipped };
+    } catch (error) {
+      workspace.absenceCommit = { version: ABSENCE_COMMIT_VERSION, applied: 0, skipped: [],
+        error: error instanceof Error ? error.message : 'Absence commit could not be computed.' };
+    }
   } catch (error) {
     workspace.replacementUpside = { version: REPLACEMENT_UPSIDE_VERSION, flagged: 0, skipped: [],
       error: error instanceof Error ? error.message : 'Usage history could not be read.' };
+    workspace.absenceCommit = { version: ABSENCE_COMMIT_VERSION, applied: 0, skipped: [],
+      error: `Usage history could not be read, so no starter-aware projections were applied: ${error instanceof Error ? error.message : 'unknown error'}` };
   }
 }
 
@@ -1708,6 +1737,8 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
     playerSignals:player.playerSignals??[], playerSignalVersion:NFL_PLAYER_SIGNAL_VERSION,
     airMatchupEvidence:player.airMatchupEvidence??null,
     projectionScenario: player.projectionScenario, redistributionVersion: slate.redistribution?.version,
+    // Starter-aware projection the build used, with the model's own number in `before` (nfl-absence-commit-v1).
+    absenceCommit: player.absenceCommit ?? null,
     statMeans: player.statMeans,
     dkAvg: player.avgFptsDk, fantasypros: player.fantasyprosProj,
     linestar: player.linestarProj, custom: player.customProj,

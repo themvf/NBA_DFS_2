@@ -32,15 +32,16 @@ export async function readTeamUsageWindows(
       AND t.abbreviation IN (${sql.join(teams.map((t) => sql`${t}`), sql`, `)})
     ORDER BY g.season DESC, g.week DESC`);
   const stats = await db.execute(sql`SELECT p.gsis_id AS gsis, w.season, w.week, w.team,
-      (w.source_row->>'targets')::float AS targets, (w.source_row->>'carries')::float AS carries
+      (w.source_row->>'targets')::float AS targets, (w.source_row->>'carries')::float AS carries,
+      (w.source_row->>'receptions')::float AS receptions
     FROM ff_player_week_stats w JOIN ff_players p ON p.id = w.player_id
     WHERE w.season_type='REG' AND w.source='nflverse' AND w.season BETWEEN ${season - 1} AND ${season}
       AND p.gsis_id IN (${sql.join(gsisIds.map((g) => sql`${g}`), sql`, `)})`);
-  const usage = new Map<string, { targets: number; carries: number }>();
+  const usage = new Map<string, { targets: number; carries: number; receptions: number }>();
   for (const row of stats.rows as { gsis: string; season: number; week: number; team: string | null;
-    targets: number | null; carries: number | null }[]) {
+    targets: number | null; carries: number | null; receptions: number | null }[]) {
     const key = `${row.gsis}|${Number(row.season)}|${Number(row.week)}|${row.team ?? ""}`;
-    if (!usage.has(key)) usage.set(key, { targets: Number(row.targets) || 0, carries: Number(row.carries) || 0 });
+    if (!usage.has(key)) usage.set(key, { targets: Number(row.targets) || 0, carries: Number(row.carries) || 0, receptions: Number(row.receptions) || 0 });
   }
   const byTeam = new Map<string, { season: number; week: number }[]>();
   for (const row of games.rows as { team: string; season: number; week: number }[]) {
