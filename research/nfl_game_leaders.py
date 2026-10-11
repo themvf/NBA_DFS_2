@@ -217,6 +217,20 @@ def backtest(snapshot, season, start_week, end_week, cfg, limit=None):
             'This is development evaluation, not a passed promotion gate.']}
 
 
+def attach_roles(snapshot, requests):
+    """Attach the default role scenario to every captured request (model.nfl_game_leaders_roles)."""
+    from model.nfl_game_leaders_roles import attach, boxes_index
+    index = boxes_index(snapshot)
+    out = {}
+    for game_id, request in requests.items():
+        if request.get('capture_error') or 'players' not in request:
+            out[game_id] = request
+            continue
+        prior = expected_history(snapshot, request['game'], request['decision_at'])
+        out[game_id] = attach(request, index, prior)
+    return out
+
+
 def batch(snapshot, season, week, decision_at, cfg, requests=None):
     history,rejected=prepare(snapshot,decision_at)
     games=sorted((g for g in snapshot['games'] if g['season']==season and g['week']==week
@@ -253,14 +267,16 @@ def main():
     c.add_argument('--minimum-season',type=int,default=2023)
     c.add_argument('--maximum-season',type=int,default=2026)
     c.add_argument('--pbp-input',type=Path,help='Reuse frozen read-only PBP capture; refresh full box feeds')
-    for name in ('forecast','backtest','grade','request','batch','evidence-request','week-requests'):
+    for name in ('forecast','backtest','grade','request','batch','evidence-request','week-requests','attach-roles'):
         p=subs.add_parser(name)
         p.add_argument('--input',type=Path,required=True)
         if name in ('forecast','backtest','batch'):
             p.add_argument('--draws',type=int,default=5000)
             p.add_argument('--seed',type=int,default=20261008)
             p.add_argument('--role-dispersion',choices=('fixed','empirical'),default='fixed')
-        if name=='week-requests':
+        if name=='attach-roles':
+            p.add_argument('--requests',type=Path,required=True)
+        elif name=='week-requests':
             p.add_argument('--season',type=int,required=True)
             p.add_argument('--week',type=int,required=True)
         elif name=='batch':
@@ -311,10 +327,12 @@ def main():
             result={}
             for g in upcoming:
                 try:
-                    result[g['game_id']]=evidence_request(snapshot,g['game_id'])
+                    result[g['game_id']]=attach_roles(snapshot,{g['game_id']:evidence_request(snapshot,g['game_id'])})[g['game_id']]
                     print(json.dumps({'captured':g['game_id']}),flush=True)
                 except (ValueError,RuntimeError,http.RequestException,psycopg2.Error) as exc:
                     result[g['game_id']]={'capture_error':str(exc)}
+        elif args.command=='attach-roles':
+            result=attach_roles(snapshot,read(args.requests))
         elif args.command=='evidence-request':
             result=evidence_request(snapshot,args.game)
         elif args.command=='batch':

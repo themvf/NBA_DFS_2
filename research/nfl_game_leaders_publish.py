@@ -5,6 +5,15 @@ from pathlib import Path
 from model.nfl_game_leaders import METRICS, VERSION
 from research.nfl_longest_touchdown import read, write
 
+# Leader probability left on unnamed slots (OTHER:<team>, newcomers). Above this the
+# page cannot name a leader for that market, so the batch is refused, not published.
+# The default role scenario (model.nfl_game_leaders_roles) keeps it near 1%.
+MAX_UNASSIGNED_SHARE = .05
+
+
+def unassigned_shares(forecast):
+    return {m: sum(r['win_share'] for r in forecast['metrics'][m]['players'] if r.get('residual')) for m in METRICS}
+
 
 def publish(batch, evaluations):
     if batch['version']!=VERSION or batch['authority']!='exploratory_not_calibrated' or batch.get('market_inputs_used') is not False:
@@ -19,13 +28,19 @@ def publish(batch, evaluations):
             rows=p['metrics'][metric]['players']
             if any(not 0<=r['win_share']<=1 for r in rows) or abs(sum(r['win_share'] for r in rows)-1)>1e-8:
                 raise ValueError('Invalid probability accounting')
+        unassigned = unassigned_shares(p)
+        over = {m: round(v, 3) for m, v in unassigned.items() if v > MAX_UNASSIGNED_SHARE}
+        if over:
+            raise ValueError(f"{p['game']['game_id']}: unassigned leader share above {MAX_UNASSIGNED_SHARE:.0%} {over}; "
+                             'attach a role scenario (research.nfl_game_leaders attach-roles) before publishing')
         games.append({'game':p['game'],'decision_at':p['decision_at'],
             'availability_verified':p['availability_verified'],'metrics':p['metrics'],
             'history_coverage':p['history_coverage'],
             'workload_only_training_games':len(p.get('workload_only_game_ids',[])),
             'training_games':len(p['training_game_ids']),'draws':p['settings']['draws'],
             'limits':p['limits'],'source_sha256':batch['source_sha256'],
-            'role_scenarios':'See frozen request and diagnostics'})
+            'role_scenarios':'See frozen request and diagnostics',
+            'unassigned_share':{m:round(v,4) for m,v in unassigned.items()}})
     return {'version':VERSION,'authority':'exploratory_not_calibrated',
         'season':batch['season'],'week':batch['week'],'decision_at':batch['decision_at'],
         'games':games,'skipped':batch['skipped'],'rejected_training_games':len(batch['reconciliation_rejections']),
