@@ -13,9 +13,12 @@
  * The mean moves a little; the ceiling and boom rate move a lot, which is
  * where a GPP is won.
  *
- * DISPLAY ONLY. The optimizer, the ownership prior and the projection column
- * keep the baseline. Both numbers are shown side by side until the mixture is
- * tuned and graded on 2026 slates.
+ * This module stays display-only: the record it returns keeps `baseline` and
+ * `ifStarterRole` side by side, and the pre-registered grade reads them from
+ * here. Since 2026-10-11 the optimizer builds from `ifStarterRole` for a
+ * first-game absence when it raises the projection, by owner's decision,
+ * through `absence-commit.ts` (`nfl-absence-commit-v1`), which applies it
+ * after this record is computed.
  *
  * Evidence (docs/nfl-replacement-upside.md): in the first game a starter
  * misses, the lead remaining player beat his own 90th-percentile score in
@@ -91,7 +94,7 @@ export interface TeamUsageWindow {
   team: string;
   games: { season: number; week: number }[];
   /** Aligned to `games`; null = no stat row that game (treated as not active). */
-  usage: Record<number, ({ targets: number; carries: number } | null)[]>;
+  usage: Record<number, ({ targets: number; carries: number; receptions?: number } | null)[]>;
 }
 
 export interface ReplacementUpside {

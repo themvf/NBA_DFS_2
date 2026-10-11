@@ -7475,6 +7475,49 @@ Do not re-run this study.
 
 ---
 
+## NFL DFS — Absence commit: the optimizer builds from starter-aware projections (`nfl-absence-commit-v1`, 2026-10-11)
+
+**Owner's decision, 2026-10-11:** commit to a projection and learn from the
+result, rather than keep a number known to be wrong while a study runs. This
+reverses, for the two cases below, the earlier rule that absence adjustments
+are display-only until graded. Asked for week 5, before the 1 PM ET lock.
+
+Why it was needed: the historical model resamples a player's own last 34
+games with a 3-game half-life, so a backup who took over last week (Braelon
+Allen, 14 of 14 Jets RB carries in week 4 with Breece Hall out) is still
+projected from his backup games (5.4 points, 6.8 carries). The first-game
+upside range only fires when the starter played the previous game, so the
+second and later games of an absence had no starter-aware number at all.
+
+`web/src/lib/nfl-dfs/absence-commit.ts`, applied in the workspace read right
+after the replacement-upside record:
+
+1. **own_role_games** (starter out and already missed the last game; this
+   season the player has games without him AND at least one with him):
+   `target = w*volume_without + (1-w)*projected_volume`, `w = n/(n+1)`,
+   `scale = clamp(target/projected, 0.5, 3)`, whole range scaled. Volume =
+   carries + receptions (RB) or receptions (WR/TE), from game rows and from
+   the projection's own stat means, so the units match. Scale below 1 is
+   allowed (a committee back who did not get the work goes down).
+2. **first_game** (starter played last game, out now): the replacement-upside
+   `ifStarterRole` mixture becomes the projection, only when it raises it.
+
+Rule 1 wins when both apply. Every changed row carries `absenceCommit` with
+`before` (the model's own number), and the saved run snapshot keeps it, so
+each week can be graded adjusted-versus-old. The replacement-upside grade is
+unaffected: it reads `baseline`/`ifStarterRole` from the upside record, which
+is computed before the commit.
+
+Two drafts were rejected on real slates before release, worth not repeating:
+comparing against targets converted from projected receptions (understated
+high-catch-rate TEs: Kittle 16.0 -> 12.9) and using last season's games as
+the "with" contrast (blamed a season-level role change on an absence that
+had lasted all year). First live result, week 5 Classic: 15 players changed
+(Allen 5.4 -> 8.0, Garrett Wilson 14.1 -> 16.5, Aaron Jones 12.7 -> 14.9,
+Isaiah Davis 2.8 -> 1.4); PHI@JAX showdown: 4 (Cooper 5.2 -> 8.1). Stated
+priors, not fitted: the n/(n+1) weight, the 0.5-3 clamp. Change one and bump
+the version. Review after six weeks against `before`.
+
 ## NFL DFS — Two forward accuracy streams, never pooled (2026-09-22)
 
 | stream | module / table | population | missing stat row means |
