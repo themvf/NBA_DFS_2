@@ -38,7 +38,13 @@ import type { NflOptimizerPlayer, NflOptimizerSettings } from "@/app/dfs/nfl/nfl
  * end or kicker. The first v1 build captained the Jaguars DST three times and
  * a tight end five times, which no winner did.
  */
-export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v3";
+/**
+ * v4 (2026-10-11): Classic plays a DST against the lineup's own QB/RB/WR/TE
+ * in at most 5% of lineups. Across the week 1-4 Millionaires, 16 of 392
+ * checkable top-100 lineups did (4%), and 1 of 40 top-10 lineups; the first
+ * v3 build on the week-5 Classic did it in 40 of 100.
+ */
+export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v4";
 
 export type BuildShape = "standard" | "winners";
 export const BUILD_SHAPES: readonly BuildShape[] = ["standard", "winners"];
@@ -61,6 +67,8 @@ export const WINNERS_SHAPE = {
   /** Distinct quarterbacks the winners used per ten lineups. */
   distinctQbsPerTenLineups: 1.6,
   bringBackShare: 0.5,
+  /** Classic: share of lineups that may play a DST against their own offense. */
+  dstVsOffenseMaxShare: 0.05,
   rbMinTargetsPerGame: 4,
   /** A back whose touches a game rank in the slate's top quarter qualifies without the targets. */
   rbTouchesTopShare: 0.25,
@@ -128,10 +136,12 @@ export function applyWinnersShape(settings: NflOptimizerSettings, players: reado
       bringBack: true,
       bringBackShare: WINNERS_SHAPE.bringBackShare,
       maxQbExposure: qbCap,
+      maxDstVsOffenseShare: Math.min(settings.maxDstVsOffenseShare ?? 1, WINNERS_SHAPE.dstVsOffenseMaxShare),
     });
     notes.push(`Winners shape (${WINNERS_SHAPE_VERSION}, classic): min unique ${shaped.minUnique}, max exposure ${Math.round(shaped.maxExposure * 100)}%, `
       + `each quarterback in at most ${Math.round(qbCap * 100)}% of lineups (${Math.max(1, Math.floor(qbCap * n))} of ${n}), `
-      + `a bring-back in ${Math.round(WINNERS_SHAPE.bringBackShare * 100)}% of lineups, at least one stacked pass catcher, min salary ${money(shaped.minSalary)}.`);
+      + `a bring-back in ${Math.round(WINNERS_SHAPE.bringBackShare * 100)}% of lineups, at least one stacked pass catcher, `
+      + `a DST against its own players in at most ${Math.round(shaped.maxDstVsOffenseShare! * 100)}% of lineups (${Math.floor(shaped.maxDstVsOffenseShare! * n + 1e-9)} of ${n}), min salary ${money(shaped.minSalary)}.`);
     applyPoolRules(settings, players, excluded, notes);
   } else {
     Object.assign(shaped, {
