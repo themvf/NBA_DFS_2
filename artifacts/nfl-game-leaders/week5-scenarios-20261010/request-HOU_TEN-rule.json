@@ -1,0 +1,2076 @@
+{
+ "game": {
+  "game_id": "2026_05_HOU_TEN",
+  "season": 2026,
+  "week": 5,
+  "kickoff": "2026-10-11 17:00:00+00:00",
+  "away": "HOU",
+  "home": "TEN",
+  "completed": false,
+  "home_score": null,
+  "away_score": null,
+  "source_captured_at": "2026-10-07 21:37:53.023321+00:00"
+ },
+ "decision_at": "2026-10-10T11:55:05.827911+00:00",
+ "players": [
+  {
+   "identity": "00-0034383",
+   "name": "Dalton Schultz",
+   "team": "HOU",
+   "position": "TE",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0034386",
+   "name": "Justin Watson",
+   "team": "HOU",
+   "position": "WR",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0034981",
+   "name": "Foster Moreau",
+   "team": "HOU",
+   "position": "TE",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0035685",
+   "name": "David Montgomery",
+   "team": "HOU",
+   "position": "RB",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0036554",
+   "name": "Nico Collins",
+   "team": "HOU",
+   "position": "WR",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "HEALTHY"
+  },
+  {
+   "identity": "00-0036556",
+   "name": "Brevin Jordan",
+   "team": "HOU",
+   "position": "TE",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0036898",
+   "name": "Davis Mills",
+   "team": "HOU",
+   "position": "QB",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0037340",
+   "name": "Zaire Mitchell-Paden",
+   "team": "HOU",
+   "position": "TE",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0038608",
+   "name": "Kayshon Boutte",
+   "team": "HOU",
+   "position": "WR",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0038618",
+   "name": "Xavier Hutchinson",
+   "team": "HOU",
+   "position": "WR",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0038728",
+   "name": "Jared Wayne",
+   "team": "HOU",
+   "position": "WR",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0038977",
+   "name": "Tank Dell",
+   "team": "HOU",
+   "position": "WR",
+   "status": "out",
+   "sleeper_status": "IR",
+   "fantasypros_injury_status": "OUT"
+  },
+  {
+   "identity": "00-0039163",
+   "name": "C.J. Stroud",
+   "team": "HOU",
+   "position": "QB",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0039359",
+   "name": "Cade Stover",
+   "team": "HOU",
+   "position": "TE",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0039405",
+   "name": "Jawhar Jordan",
+   "team": "HOU",
+   "position": "RB",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0039603",
+   "name": "British Brooks",
+   "team": "HOU",
+   "position": "RB",
+   "status": "out",
+   "sleeper_status": "IR",
+   "fantasypros_injury_status": "IR"
+  },
+  {
+   "identity": "00-0039650",
+   "name": "Bryce Oliver",
+   "team": "HOU",
+   "position": "WR",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0040049",
+   "name": "Josh Kelly",
+   "team": "HOU",
+   "position": "WR",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0040130",
+   "name": "Jayden Higgins",
+   "team": "HOU",
+   "position": "WR",
+   "status": "out",
+   "sleeper_status": "IR",
+   "fantasypros_injury_status": "IR"
+  },
+  {
+   "identity": "00-0040138",
+   "name": "Jaylin Noel",
+   "team": "HOU",
+   "position": "WR",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0040211",
+   "name": "Graham Mertz",
+   "team": "HOU",
+   "position": "QB",
+   "status": "out",
+   "sleeper_status": "IR",
+   "fantasypros_injury_status": "IR"
+  },
+  {
+   "identity": "00-0040583",
+   "name": "Woody Marks",
+   "team": "HOU",
+   "position": "RB",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0040792",
+   "name": "Layne Pryor",
+   "team": "HOU",
+   "position": "TE",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0041156",
+   "name": "Mark Gronowski",
+   "team": "HOU",
+   "position": "QB",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0041307",
+   "name": "Josh Pitsenberger",
+   "team": "HOU",
+   "position": "RB",
+   "status": "unresolved",
+   "sleeper_status": "",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0041308",
+   "name": "Treyvhon Saunders",
+   "team": "HOU",
+   "position": "WR",
+   "status": "unresolved",
+   "sleeper_status": "QUESTIONABLE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0041309",
+   "name": "Daniel Sobkowicz",
+   "team": "HOU",
+   "position": "WR",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0041312",
+   "name": "Noah Whittington",
+   "team": "HOU",
+   "position": "RB",
+   "status": "unresolved",
+   "sleeper_status": "OUT",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0041467",
+   "name": "Lewis Bond",
+   "team": "HOU",
+   "position": "WR",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0041472",
+   "name": "Marlin Klein",
+   "team": "HOU",
+   "position": "TE",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0041535",
+   "name": "Louis Hansen",
+   "team": "HOU",
+   "position": "TE",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0033854",
+   "name": "Dare Ogunbowale",
+   "team": "HOU",
+   "position": "RB",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0033891",
+   "name": "Zay Jones",
+   "team": "HOU",
+   "position": "WR",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0038622",
+   "name": "Deuce Vaughn",
+   "team": "HOU",
+   "position": "RB",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0033869",
+   "name": "Mitchell Trubisky",
+   "team": "TEN",
+   "position": "QB",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0034837",
+   "name": "Calvin Ridley",
+   "team": "TEN",
+   "position": "WR",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0035261",
+   "name": "Tony Pollard",
+   "team": "TEN",
+   "position": "RB",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "HEALTHY"
+  },
+  {
+   "identity": "00-0036176",
+   "name": "Mason Kinsey",
+   "team": "TEN",
+   "position": "WR",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0036345",
+   "name": "K.J. Osborn",
+   "team": "TEN",
+   "position": "WR",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0036876",
+   "name": "Kylen Granson",
+   "team": "TEN",
+   "position": "TE",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0036924",
+   "name": "Michael Carter",
+   "team": "TEN",
+   "position": "RB",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0037055",
+   "name": "Lance McCutcheon",
+   "team": "TEN",
+   "position": "WR",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0037594",
+   "name": "Julius Chestnut",
+   "team": "TEN",
+   "position": "RB",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0038115",
+   "name": "Daniel Bellinger",
+   "team": "TEN",
+   "position": "TE",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0038117",
+   "name": "Wan'Dale Robinson",
+   "team": "TEN",
+   "position": "WR",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0038550",
+   "name": "Hendon Hooker",
+   "team": "TEN",
+   "position": "QB",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0039023",
+   "name": "Joel Wilson",
+   "team": "TEN",
+   "position": "TE",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0039032",
+   "name": "Tyjae Spears",
+   "team": "TEN",
+   "position": "RB",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0039648",
+   "name": "David Martin-Robinson",
+   "team": "TEN",
+   "position": "TE",
+   "status": "unresolved",
+   "sleeper_status": "QUESTIONABLE",
+   "fantasypros_injury_status": "QUESTIONABLE"
+  },
+  {
+   "identity": "00-0040170",
+   "name": "Elic Ayomanor",
+   "team": "TEN",
+   "position": "WR",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0040205",
+   "name": "Kalel Mullings",
+   "team": "TEN",
+   "position": "RB",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0040445",
+   "name": "Courtney Jackson",
+   "team": "TEN",
+   "position": "WR",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0040522",
+   "name": "Xavier Restrepo",
+   "team": "TEN",
+   "position": "WR",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0040584",
+   "name": "Gunnar Helm",
+   "team": "TEN",
+   "position": "TE",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "HEALTHY"
+  },
+  {
+   "identity": "00-0040676",
+   "name": "Cam Ward",
+   "team": "TEN",
+   "position": "QB",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0040705",
+   "name": "Chimere Dike",
+   "team": "TEN",
+   "position": "WR",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0040886",
+   "name": "Nicholas Singleton",
+   "team": "TEN",
+   "position": "RB",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0040901",
+   "name": "Jaren Kanak",
+   "team": "TEN",
+   "position": "TE",
+   "status": "out",
+   "sleeper_status": "IR",
+   "fantasypros_injury_status": "IR"
+  },
+  {
+   "identity": "00-0040912",
+   "name": "Hank Beatty",
+   "team": "TEN",
+   "position": "WR",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0040919",
+   "name": "Tyren Montgomery",
+   "team": "TEN",
+   "position": "WR",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  },
+  {
+   "identity": "00-0041438",
+   "name": "Carnell Tate",
+   "team": "TEN",
+   "position": "WR",
+   "status": "unresolved",
+   "sleeper_status": "QUESTIONABLE",
+   "fantasypros_injury_status": "QUESTIONABLE"
+  },
+  {
+   "identity": "00-0035628",
+   "name": "D'Ernest Johnson",
+   "team": "TEN",
+   "position": "RB",
+   "status": "unresolved",
+   "sleeper_status": "ACTIVE",
+   "fantasypros_injury_status": "UNKNOWN"
+  }
+ ],
+ "availability_verified": false,
+ "expected_prior_game_ids": {
+  "HOU": [
+   "2026_01_BUF_HOU",
+   "2026_02_CIN_HOU",
+   "2026_03_HOU_IND",
+   "2026_04_DAL_HOU"
+  ],
+  "TEN": [
+   "2026_01_NYJ_TEN",
+   "2026_02_PHI_TEN",
+   "2026_03_TEN_NYG",
+   "2026_04_TEN_BAL"
+  ]
+ },
+ "roster_evidence": "Both providers inspected; no depth-to-workload conversion. Unresolved statuses are scenario candidates, not confirmed active players. | rule-based review scenario 2026-10-10",
+ "dual_depth": {
+  "HOU": {
+   "schema_version": "nfl-dual-depth-audit-v1",
+   "season": 2026,
+   "team": "HOU",
+   "captured_at": "2026-10-10T11:55:03.563513+00:00",
+   "sources": {
+    "sleeper": {
+     "basis": "ff_players.metadata.sleeper",
+     "snapshot_id": 6185,
+     "snapshot_fetched_at": "2026-10-10T07:11:02.691145+00:00",
+     "response_hash": "cdaad0ae4eecd332b163244e2ee477acb79eb422753b40f169d3ae9dfbe45e1b",
+     "latest_player_row_updated_at": "2026-10-10T10:07:37.816518+00:00"
+    },
+    "fantasypros": {
+     "url": "https://www.fantasypros.com/nfl/depth-chart/houston-texans.php",
+     "retrieved_at": "2026-10-10T11:55:04.542163+00:00",
+     "provider_updated_at": null,
+     "response_sha256": "46417db3f5f69fdee52a225f141f384c093db0754366ac5c3c3cd16c1a7494db"
+    }
+   },
+   "role_policy": "A depth rank is evidence, not a snap or target forecast. Conflicts require review; neither source silently wins.",
+   "comparisons": [
+    {
+     "player_id": 177,
+     "name": "Ka'imi Fairbairn",
+     "position": "K",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 1,
+      "alignment": "K",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 1,
+      "player_id": 15756
+     },
+     "decision": "agree"
+    },
+    {
+     "player_id": 566,
+     "name": "C.J. Stroud",
+     "position": "QB",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 1,
+      "alignment": "QB",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 1,
+      "player_id": 23071
+     },
+     "decision": "agree"
+    },
+    {
+     "player_id": 356,
+     "name": "Davis Mills",
+     "position": "QB",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 2,
+      "alignment": "QB",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 2,
+      "player_id": 22799
+     },
+     "decision": "agree"
+    },
+    {
+     "player_id": 278,
+     "name": "David Montgomery",
+     "position": "RB",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 1,
+      "alignment": "RB",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 1,
+      "player_id": 18239
+     },
+     "decision": "agree"
+    },
+    {
+     "player_id": 799,
+     "name": "Woody Marks",
+     "position": "RB",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 2,
+      "alignment": "RB",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 2,
+      "player_id": 27520
+     },
+     "decision": "agree"
+    },
+    {
+     "player_id": 1386,
+     "name": "Dare Ogunbowale",
+     "position": "RB",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 3,
+      "alignment": "RB",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 3,
+      "player_id": 16879
+     },
+     "decision": "agree"
+    },
+    {
+     "player_id": 602,
+     "name": "Jawhar Jordan",
+     "position": "RB",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": null,
+      "alignment": null,
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 4,
+      "player_id": 26329
+     },
+     "decision": "sleeper_depth_missing"
+    },
+    {
+     "player_id": 221,
+     "name": "Dalton Schultz",
+     "position": "TE",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 1,
+      "alignment": "TE",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 1,
+      "player_id": 17349
+     },
+     "decision": "agree"
+    },
+    {
+     "player_id": 243,
+     "name": "Foster Moreau",
+     "position": "TE",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 2,
+      "alignment": "TE",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 2,
+      "player_id": 18397
+     },
+     "decision": "agree"
+    },
+    {
+     "player_id": 586,
+     "name": "Cade Stover",
+     "position": "TE",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 4,
+      "alignment": "TE",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 3,
+      "player_id": 25269
+     },
+     "decision": "conflict"
+    },
+    {
+     "player_id": 327,
+     "name": "Brevin Jordan",
+     "position": "TE",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 5,
+      "alignment": "TE",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 4,
+      "player_id": 20162
+     },
+     "decision": "conflict"
+    },
+    {
+     "player_id": 1050,
+     "name": "Marlin Klein",
+     "position": "TE",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 3,
+      "alignment": "TE",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 5,
+      "player_id": 28157
+     },
+     "decision": "conflict"
+    },
+    {
+     "player_id": 325,
+     "name": "Nico Collins",
+     "position": "WR",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 1,
+      "alignment": "LWR",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 1,
+      "player_id": 20130
+     },
+     "decision": "agree"
+    },
+    {
+     "player_id": 500,
+     "name": "Kayshon Boutte",
+     "position": "WR",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 4,
+      "alignment": "RWR",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 2,
+      "player_id": 22989
+     },
+     "decision": "conflict"
+    },
+    {
+     "player_id": 504,
+     "name": "Xavier Hutchinson",
+     "position": "WR",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 2,
+      "alignment": "LWR",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 3,
+      "player_id": 25332
+     },
+     "decision": "conflict"
+    },
+    {
+     "player_id": 704,
+     "name": "Jaylin Noel",
+     "position": "WR",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 3,
+      "alignment": "SWR",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 4,
+      "player_id": 27122
+     },
+     "decision": "conflict"
+    },
+    {
+     "player_id": 519,
+     "name": "Jared Wayne",
+     "position": "WR",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": null,
+      "alignment": null,
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 5,
+      "player_id": 25495
+     },
+     "decision": "sleeper_depth_missing"
+    },
+    {
+     "player_id": 1049,
+     "name": "Lewis Bond",
+     "position": "WR",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": null,
+      "alignment": null,
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 6,
+      "player_id": 28144
+     },
+     "decision": "sleeper_depth_missing"
+    },
+    {
+     "player_id": 543,
+     "name": "Tank Dell",
+     "position": "WR",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 6,
+      "alignment": "SWR",
+      "status": "IR",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 7,
+      "player_id": 25361
+     },
+     "decision": "conflict"
+    }
+   ],
+   "sleeper_only": [
+    {
+     "id": 724,
+     "name": "Graham Mertz",
+     "position": "QB",
+     "fantasypros_player_id": 23186,
+     "depth_chart_position": "QB",
+     "depth_order": 3,
+     "status": "IR",
+     "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+    },
+    {
+     "id": 943,
+     "name": "Mark Gronowski",
+     "position": "QB",
+     "fantasypros_player_id": 28100,
+     "depth_chart_position": "QB",
+     "depth_order": 4,
+     "status": "Active",
+     "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+    },
+    {
+     "id": 624,
+     "name": "British Brooks",
+     "position": "RB",
+     "fantasypros_player_id": 26748,
+     "depth_chart_position": "RB",
+     "depth_order": 6,
+     "status": "IR",
+     "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+    },
+    {
+     "id": 1427,
+     "name": "Deuce Vaughn",
+     "position": "RB",
+     "fantasypros_player_id": 22984,
+     "depth_chart_position": null,
+     "depth_order": null,
+     "status": "Active",
+     "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+    },
+    {
+     "id": 1002,
+     "name": "Josh Pitsenberger",
+     "position": "RB",
+     "fantasypros_player_id": null,
+     "depth_chart_position": null,
+     "depth_order": null,
+     "status": null,
+     "fetched_at": "2026-09-01T06:15:41.575955+00:00"
+    },
+    {
+     "id": 1006,
+     "name": "Noah Whittington",
+     "position": "RB",
+     "fantasypros_player_id": 28115,
+     "depth_chart_position": "RB",
+     "depth_order": 7,
+     "status": "Out",
+     "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+    },
+    {
+     "id": 850,
+     "name": "Layne Pryor",
+     "position": "TE",
+     "fantasypros_player_id": 28070,
+     "depth_chart_position": null,
+     "depth_order": null,
+     "status": "Active",
+     "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+    },
+    {
+     "id": 1071,
+     "name": "Louis Hansen",
+     "position": "TE",
+     "fantasypros_player_id": 23015,
+     "depth_chart_position": null,
+     "depth_order": null,
+     "status": "Active",
+     "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+    },
+    {
+     "id": 412,
+     "name": "Zaire Mitchell-Paden",
+     "position": "TE",
+     "fantasypros_player_id": 24853,
+     "depth_chart_position": null,
+     "depth_order": null,
+     "status": "Active",
+     "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+    },
+    {
+     "id": 629,
+     "name": "Bryce Oliver",
+     "position": "WR",
+     "fantasypros_player_id": 26588,
+     "depth_chart_position": "SWR",
+     "depth_order": 7,
+     "status": "Active",
+     "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+    },
+    {
+     "id": 1004,
+     "name": "Daniel Sobkowicz",
+     "position": "WR",
+     "fantasypros_player_id": 28711,
+     "depth_chart_position": null,
+     "depth_order": null,
+     "status": "Active",
+     "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+    },
+    {
+     "id": 701,
+     "name": "Jayden Higgins",
+     "position": "WR",
+     "fantasypros_player_id": 27077,
+     "depth_chart_position": null,
+     "depth_order": 9,
+     "status": "IR",
+     "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+    },
+    {
+     "id": 685,
+     "name": "Josh Kelly",
+     "position": "WR",
+     "fantasypros_player_id": 27485,
+     "depth_chart_position": null,
+     "depth_order": null,
+     "status": "Active",
+     "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+    },
+    {
+     "id": 222,
+     "name": "Justin Watson",
+     "position": "WR",
+     "fantasypros_player_id": 17603,
+     "depth_chart_position": null,
+     "depth_order": null,
+     "status": "Active",
+     "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+    },
+    {
+     "id": 1003,
+     "name": "Treyvhon Saunders",
+     "position": "WR",
+     "fantasypros_player_id": 28715,
+     "depth_chart_position": null,
+     "depth_order": null,
+     "status": "Questionable",
+     "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+    },
+    {
+     "id": 1388,
+     "name": "Zay Jones",
+     "position": "WR",
+     "fantasypros_player_id": 16431,
+     "depth_chart_position": null,
+     "depth_order": null,
+     "status": "Active",
+     "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+    }
+   ],
+   "fantasypros_only": [],
+   "counts": {
+    "matched": 19,
+    "conflicts": 7,
+    "sleeper_only": 16,
+    "fantasypros_only": 0
+   }
+  },
+  "TEN": {
+   "schema_version": "nfl-dual-depth-audit-v1",
+   "season": 2026,
+   "team": "TEN",
+   "captured_at": "2026-10-10T11:55:04.542883+00:00",
+   "sources": {
+    "sleeper": {
+     "basis": "ff_players.metadata.sleeper",
+     "snapshot_id": 6185,
+     "snapshot_fetched_at": "2026-10-10T07:11:02.691145+00:00",
+     "response_hash": "cdaad0ae4eecd332b163244e2ee477acb79eb422753b40f169d3ae9dfbe45e1b",
+     "latest_player_row_updated_at": "2026-10-10T10:07:37.816518+00:00"
+    },
+    "fantasypros": {
+     "url": "https://www.fantasypros.com/nfl/depth-chart/tennessee-titans.php",
+     "retrieved_at": "2026-10-10T11:55:05.385551+00:00",
+     "provider_updated_at": null,
+     "response_sha256": "581f86a4d030a0a813dd040107c2925f3b1add5924d87cfe0c5cbeb381109f3e"
+    }
+   },
+   "role_policy": "A depth rank is evidence, not a snap or target forecast. Conflicts require review; neither source silently wins.",
+   "comparisons": [
+    {
+     "player_id": 249,
+     "name": "Joey Slye",
+     "position": "K",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 1,
+      "alignment": "K",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 1,
+      "player_id": 19028
+     },
+     "decision": "agree"
+    },
+    {
+     "player_id": 827,
+     "name": "Cam Ward",
+     "position": "QB",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 1,
+      "alignment": "QB",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 1,
+      "player_id": 24755
+     },
+     "decision": "agree"
+    },
+    {
+     "player_id": 207,
+     "name": "Mitchell Trubisky",
+     "position": "QB",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 2,
+      "alignment": "QB",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 2,
+      "player_id": 16381
+     },
+     "decision": "agree"
+    },
+    {
+     "player_id": 256,
+     "name": "Tony Pollard",
+     "position": "RB",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 1,
+      "alignment": "RB",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 1,
+      "player_id": 18705
+     },
+     "decision": "agree"
+    },
+    {
+     "player_id": 550,
+     "name": "Tyjae Spears",
+     "position": "RB",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 2,
+      "alignment": "RB",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 2,
+      "player_id": 25323
+     },
+     "decision": "agree"
+    },
+    {
+     "player_id": 857,
+     "name": "Nicholas Singleton",
+     "position": "RB",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 3,
+      "alignment": "RB",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 3,
+      "player_id": 24343
+     },
+     "decision": "agree"
+    },
+    {
+     "player_id": 425,
+     "name": "Julius Chestnut",
+     "position": "RB",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 4,
+      "alignment": "RB",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 4,
+      "player_id": 24689
+     },
+     "decision": "agree"
+    },
+    {
+     "player_id": 800,
+     "name": "Gunnar Helm",
+     "position": "TE",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 1,
+      "alignment": "TE",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 1,
+      "player_id": 27109
+     },
+     "decision": "agree"
+    },
+    {
+     "player_id": 454,
+     "name": "Daniel Bellinger",
+     "position": "TE",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 2,
+      "alignment": "TE",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 2,
+      "player_id": 24238
+     },
+     "decision": "agree"
+    },
+    {
+     "player_id": 628,
+     "name": "David Martin-Robinson",
+     "position": "TE",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 5,
+      "alignment": "TE",
+      "status": "Questionable",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 3,
+      "player_id": 26922
+     },
+     "decision": "conflict"
+    },
+    {
+     "player_id": 352,
+     "name": "Kylen Granson",
+     "position": "TE",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 3,
+      "alignment": "TE",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 4,
+      "player_id": 22841
+     },
+     "decision": "conflict"
+    },
+    {
+     "player_id": 1042,
+     "name": "Carnell Tate",
+     "position": "WR",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 1,
+      "alignment": "LWR",
+      "status": "Questionable",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 1,
+      "player_id": 26009
+     },
+     "decision": "agree"
+    },
+    {
+     "player_id": 455,
+     "name": "Wan'Dale Robinson",
+     "position": "WR",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 2,
+      "alignment": "SWR",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 2,
+      "player_id": 22985
+     },
+     "decision": "agree"
+    },
+    {
+     "player_id": 709,
+     "name": "Elic Ayomanor",
+     "position": "WR",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 3,
+      "alignment": "LWR",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 3,
+      "player_id": 27059
+     },
+     "decision": "agree"
+    },
+    {
+     "player_id": 235,
+     "name": "Calvin Ridley",
+     "position": "WR",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 4,
+      "alignment": "RWR",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 4,
+      "player_id": 17258
+     },
+     "decision": "agree"
+    },
+    {
+     "player_id": 831,
+     "name": "Chimere Dike",
+     "position": "WR",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": 5,
+      "alignment": "SWR",
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 5,
+      "player_id": 27315
+     },
+     "decision": "agree"
+    },
+    {
+     "player_id": 782,
+     "name": "Xavier Restrepo",
+     "position": "WR",
+     "identity_method": "fantasypros_player_id",
+     "sleeper": {
+      "rank": null,
+      "alignment": null,
+      "status": "Active",
+      "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+     },
+     "fantasypros": {
+      "rank": 6,
+      "player_id": 27066
+     },
+     "decision": "sleeper_depth_missing"
+    }
+   ],
+   "sleeper_only": [
+    {
+     "id": 484,
+     "name": "Hendon Hooker",
+     "position": "QB",
+     "fantasypros_player_id": 24332,
+     "depth_chart_position": null,
+     "depth_order": null,
+     "status": "Active",
+     "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+    },
+    {
+     "id": 1401,
+     "name": "D'Ernest Johnson",
+     "position": "RB",
+     "fantasypros_player_id": 19111,
+     "depth_chart_position": null,
+     "depth_order": null,
+     "status": "Active",
+     "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+    },
+    {
+     "id": 721,
+     "name": "Kalel Mullings",
+     "position": "RB",
+     "fantasypros_player_id": 27045,
+     "depth_chart_position": null,
+     "depth_order": null,
+     "status": "Active",
+     "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+    },
+    {
+     "id": 359,
+     "name": "Michael Carter",
+     "position": "RB",
+     "fantasypros_player_id": 22728,
+     "depth_chart_position": "RB",
+     "depth_order": 5,
+     "status": "Active",
+     "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+    },
+    {
+     "id": 866,
+     "name": "Jaren Kanak",
+     "position": "TE",
+     "fantasypros_player_id": 28160,
+     "depth_chart_position": "TE",
+     "depth_order": 6,
+     "status": "IR",
+     "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+    },
+    {
+     "id": 549,
+     "name": "Joel Wilson",
+     "position": "TE",
+     "fantasypros_player_id": 25541,
+     "depth_chart_position": null,
+     "depth_order": null,
+     "status": "Active",
+     "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+    },
+    {
+     "id": 771,
+     "name": "Courtney Jackson",
+     "position": "WR",
+     "fantasypros_player_id": 27583,
+     "depth_chart_position": null,
+     "depth_order": null,
+     "status": "Active",
+     "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+    },
+    {
+     "id": 868,
+     "name": "Hank Beatty",
+     "position": "WR",
+     "fantasypros_player_id": 28142,
+     "depth_chart_position": null,
+     "depth_order": null,
+     "status": "Active",
+     "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+    },
+    {
+     "id": 310,
+     "name": "K.J. Osborn",
+     "position": "WR",
+     "fantasypros_player_id": 19708,
+     "depth_chart_position": null,
+     "depth_order": null,
+     "status": "Active",
+     "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+    },
+    {
+     "id": 375,
+     "name": "Lance McCutcheon",
+     "position": "WR",
+     "fantasypros_player_id": 24812,
+     "depth_chart_position": null,
+     "depth_order": null,
+     "status": "Active",
+     "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+    },
+    {
+     "id": 295,
+     "name": "Mason Kinsey",
+     "position": "WR",
+     "fantasypros_player_id": 19704,
+     "depth_chart_position": null,
+     "depth_order": null,
+     "status": "Active",
+     "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+    },
+    {
+     "id": 869,
+     "name": "Tyren Montgomery",
+     "position": "WR",
+     "fantasypros_player_id": 28423,
+     "depth_chart_position": null,
+     "depth_order": null,
+     "status": "Active",
+     "fetched_at": "2026-10-10T10:07:37.816518+00:00"
+    }
+   ],
+   "fantasypros_only": [],
+   "counts": {
+    "matched": 17,
+    "conflicts": 2,
+    "sleeper_only": 12,
+    "fantasypros_only": 0
+   }
+  }
+ },
+ "week_injuries": [
+  {
+   "player_id": 256,
+   "normalized_status": "HEALTHY",
+   "observed_at": "2026-10-10 11:07:45.828396+00:00",
+   "source_snapshot_id": 6203,
+   "raw_payload": {
+    "name": "Tony Pollard",
+    "rank": 93,
+    "status": "",
+    "comment": "",
+    "team_id": "TEN",
+    "filename": "tony-pollard.php",
+    "ir_weeks": [],
+    "yahoo_id": "31960",
+    "player_id": 18705,
+    "practice_1": "DNP",
+    "practice_2": "Full",
+    "practice_3": "Full",
+    "injury_type": "",
+    "position_id": "RB",
+    "status_short": "",
+    "identity_method": "fantasypros_id",
+    "injury_update_date": null,
+    "probability_of_playing": "1",
+    "team_practice_1_submitted": true,
+    "team_practice_2_submitted": true,
+    "team_practice_3_submitted": true,
+    "practice_report_injury_type": "foot"
+   },
+   "request_params": {
+    "week": 5,
+    "year": 2026,
+    "include_probabilities": "true"
+   }
+  },
+  {
+   "player_id": 325,
+   "normalized_status": "HEALTHY",
+   "observed_at": "2026-10-10 11:07:45.828396+00:00",
+   "source_snapshot_id": 6203,
+   "raw_payload": {
+    "name": "Nico Collins",
+    "rank": 19,
+    "status": "",
+    "comment": "",
+    "team_id": "HOU",
+    "filename": "nico-collins.php",
+    "ir_weeks": [],
+    "yahoo_id": "33477",
+    "player_id": 20130,
+    "practice_1": "Limit",
+    "practice_2": "--",
+    "practice_3": "--",
+    "injury_type": "",
+    "position_id": "WR",
+    "status_short": "",
+    "identity_method": "fantasypros_id",
+    "injury_update_date": null,
+    "probability_of_playing": null,
+    "team_practice_1_submitted": true,
+    "team_practice_2_submitted": true,
+    "team_practice_3_submitted": true,
+    "practice_report_injury_type": "NIR"
+   },
+   "request_params": {
+    "week": 5,
+    "year": 2026,
+    "include_probabilities": "true"
+   }
+  },
+  {
+   "player_id": 543,
+   "normalized_status": "OUT",
+   "observed_at": "2026-10-10 11:07:45.828396+00:00",
+   "source_snapshot_id": 6203,
+   "raw_payload": {
+    "name": "Tank Dell",
+    "rank": 289,
+    "status": "OUT",
+    "comment": "",
+    "team_id": "HOU",
+    "filename": "nathaniel-dell.php",
+    "ir_weeks": [
+     0
+    ],
+    "yahoo_id": "40097",
+    "player_id": 25361,
+    "practice_1": "Limit",
+    "practice_2": "Limit",
+    "practice_3": "DNP",
+    "injury_type": "Knee",
+    "position_id": "WR",
+    "status_short": "O",
+    "identity_method": "fantasypros_id",
+    "injury_update_date": "2026-10-09 00:00:00",
+    "probability_of_playing": "0",
+    "team_practice_1_submitted": true,
+    "team_practice_2_submitted": true,
+    "team_practice_3_submitted": true,
+    "practice_report_injury_type": "knee"
+   },
+   "request_params": {
+    "week": 5,
+    "year": 2026,
+    "include_probabilities": "true"
+   }
+  },
+  {
+   "player_id": 624,
+   "normalized_status": "IR",
+   "observed_at": "2026-10-10 11:07:45.828396+00:00",
+   "source_snapshot_id": 6203,
+   "raw_payload": {
+    "name": "British Brooks",
+    "rank": null,
+    "status": "IR",
+    "comment": "",
+    "team_id": "HOU",
+    "filename": "british-brooks.php",
+    "ir_weeks": [
+     4,
+     5
+    ],
+    "yahoo_id": "41480",
+    "player_id": 26748,
+    "practice_1": "--",
+    "practice_2": "--",
+    "practice_3": "--",
+    "injury_type": "hamstring",
+    "position_id": "RB",
+    "status_short": "IR",
+    "identity_method": "fantasypros_id",
+    "injury_update_date": "2026-10-10 11:00:01",
+    "probability_of_playing": null,
+    "team_practice_1_submitted": true,
+    "team_practice_2_submitted": true,
+    "team_practice_3_submitted": true,
+    "practice_report_injury_type": "hamstring"
+   },
+   "request_params": {
+    "week": 5,
+    "year": 2026,
+    "include_probabilities": "true"
+   }
+  },
+  {
+   "player_id": 628,
+   "normalized_status": "QUESTIONABLE",
+   "observed_at": "2026-10-10 11:07:45.828396+00:00",
+   "source_snapshot_id": 6203,
+   "raw_payload": {
+    "name": "David Martin-Robinson",
+    "rank": null,
+    "status": "Questionable",
+    "comment": "",
+    "team_id": "TEN",
+    "filename": "david-martin-robinson.php",
+    "ir_weeks": [],
+    "yahoo_id": "41662",
+    "player_id": 26922,
+    "practice_1": "Full",
+    "practice_2": "DNP",
+    "practice_3": "DNP",
+    "injury_type": "Hamstring",
+    "position_id": "TE",
+    "status_short": "Q",
+    "identity_method": "fantasypros_id",
+    "injury_update_date": "2026-10-09 00:00:00",
+    "probability_of_playing": "0.17633",
+    "team_practice_1_submitted": true,
+    "team_practice_2_submitted": true,
+    "team_practice_3_submitted": true,
+    "practice_report_injury_type": "hamstring"
+   },
+   "request_params": {
+    "week": 5,
+    "year": 2026,
+    "include_probabilities": "true"
+   }
+  },
+  {
+   "player_id": 701,
+   "normalized_status": "IR",
+   "observed_at": "2026-10-10 11:07:45.828396+00:00",
+   "source_snapshot_id": 6203,
+   "raw_payload": {
+    "name": "Jayden Higgins",
+    "rank": null,
+    "status": "IR",
+    "comment": "",
+    "team_id": "HOU",
+    "filename": "jayden-higgins.php",
+    "ir_weeks": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "yahoo_id": "41819",
+    "player_id": 27077,
+    "practice_1": null,
+    "practice_2": null,
+    "practice_3": null,
+    "injury_type": "",
+    "position_id": "WR",
+    "status_short": "IR",
+    "identity_method": "fantasypros_id",
+    "injury_update_date": "2026-10-10 11:00:01",
+    "probability_of_playing": null,
+    "team_practice_1_submitted": true,
+    "team_practice_2_submitted": true,
+    "team_practice_3_submitted": true,
+    "practice_report_injury_type": null
+   },
+   "request_params": {
+    "week": 5,
+    "year": 2026,
+    "include_probabilities": "true"
+   }
+  },
+  {
+   "player_id": 724,
+   "normalized_status": "IR",
+   "observed_at": "2026-10-10 11:07:45.828396+00:00",
+   "source_snapshot_id": 6203,
+   "raw_payload": {
+    "name": "Graham Mertz",
+    "rank": null,
+    "status": "IR",
+    "comment": "",
+    "team_id": "HOU",
+    "filename": "graham-mertz.php",
+    "ir_weeks": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "yahoo_id": "41975",
+    "player_id": 23186,
+    "practice_1": null,
+    "practice_2": null,
+    "practice_3": null,
+    "injury_type": "",
+    "position_id": "QB",
+    "status_short": "IR",
+    "identity_method": "fantasypros_id",
+    "injury_update_date": "2026-10-10 11:00:01",
+    "probability_of_playing": null,
+    "team_practice_1_submitted": true,
+    "team_practice_2_submitted": true,
+    "team_practice_3_submitted": true,
+    "practice_report_injury_type": null
+   },
+   "request_params": {
+    "week": 5,
+    "year": 2026,
+    "include_probabilities": "true"
+   }
+  },
+  {
+   "player_id": 800,
+   "normalized_status": "HEALTHY",
+   "observed_at": "2026-10-10 11:07:45.828396+00:00",
+   "source_snapshot_id": 6203,
+   "raw_payload": {
+    "name": "Gunnar Helm",
+    "rank": 220,
+    "status": "",
+    "comment": "",
+    "team_id": "TEN",
+    "filename": "gunnar-helm.php",
+    "ir_weeks": [],
+    "yahoo_id": "41905",
+    "player_id": 27109,
+    "practice_1": "--",
+    "practice_2": "Limit",
+    "practice_3": "Full",
+    "injury_type": "",
+    "position_id": "TE",
+    "status_short": "",
+    "identity_method": "fantasypros_id",
+    "injury_update_date": null,
+    "probability_of_playing": "1",
+    "team_practice_1_submitted": true,
+    "team_practice_2_submitted": true,
+    "team_practice_3_submitted": true,
+    "practice_report_injury_type": "knee"
+   },
+   "request_params": {
+    "week": 5,
+    "year": 2026,
+    "include_probabilities": "true"
+   }
+  },
+  {
+   "player_id": 866,
+   "normalized_status": "IR",
+   "observed_at": "2026-10-10 11:07:45.828396+00:00",
+   "source_snapshot_id": 6203,
+   "raw_payload": {
+    "name": "Jaren Kanak",
+    "rank": null,
+    "status": "IR",
+    "comment": "",
+    "team_id": "TEN",
+    "filename": "jaren-kanak.php",
+    "ir_weeks": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "yahoo_id": "42847",
+    "player_id": 28160,
+    "practice_1": null,
+    "practice_2": null,
+    "practice_3": null,
+    "injury_type": "",
+    "position_id": "TE",
+    "status_short": "IR",
+    "identity_method": "fantasypros_id",
+    "injury_update_date": "2026-10-10 11:00:02",
+    "probability_of_playing": null,
+    "team_practice_1_submitted": true,
+    "team_practice_2_submitted": true,
+    "team_practice_3_submitted": true,
+    "practice_report_injury_type": null
+   },
+   "request_params": {
+    "week": 5,
+    "year": 2026,
+    "include_probabilities": "true"
+   }
+  },
+  {
+   "player_id": 1042,
+   "normalized_status": "QUESTIONABLE",
+   "observed_at": "2026-10-10 11:07:45.828396+00:00",
+   "source_snapshot_id": 6203,
+   "raw_payload": {
+    "name": "Carnell Tate",
+    "rank": 67,
+    "status": "Questionable",
+    "comment": "",
+    "team_id": "TEN",
+    "filename": "carnell-tate.php",
+    "ir_weeks": [],
+    "yahoo_id": "42626",
+    "player_id": 26009,
+    "practice_1": "--",
+    "practice_2": "Limit",
+    "practice_3": "Limit",
+    "injury_type": "Back",
+    "position_id": "WR",
+    "status_short": "Q",
+    "identity_method": "fantasypros_id",
+    "injury_update_date": "2026-10-09 00:00:00",
+    "probability_of_playing": "0.90854",
+    "team_practice_1_submitted": true,
+    "team_practice_2_submitted": true,
+    "team_practice_3_submitted": true,
+    "practice_report_injury_type": "back"
+   },
+   "request_params": {
+    "week": 5,
+    "year": 2026,
+    "include_probabilities": "true"
+   }
+  }
+ ],
+ "official_inactive_imports": [],
+ "official_inactive_coverage": "No imported list for this week",
+ "role_scenarios": {
+  "HOU": {
+   "carries": {
+    "00-0034383": 0.0,
+    "00-0034386": 0.0,
+    "00-0034981": 0.0,
+    "00-0035685": 0.4906593406593407,
+    "00-0036554": 0.02087912087912088,
+    "00-0036556": 0.0,
+    "00-0036898": 0.0,
+    "00-0037340": 0.0,
+    "00-0038608": 0.0,
+    "00-0038618": 0.02087912087912088,
+    "00-0038728": 0.0,
+    "00-0039163": 0.09395604395604394,
+    "00-0039359": 0.0,
+    "00-0039405": 0.0,
+    "00-0039650": 0.0,
+    "00-0040049": 0.0,
+    "00-0040138": 0.03131868131868132,
+    "00-0040583": 0.2923076923076923,
+    "00-0040792": 0.0,
+    "00-0041156": 0.0,
+    "00-0041307": 0.0,
+    "00-0041308": 0.0,
+    "00-0041309": 0.0,
+    "00-0041312": 0.0,
+    "00-0041467": 0.0,
+    "00-0041472": 0.0,
+    "00-0041535": 0.0,
+    "00-0033854": 0.0,
+    "00-0033891": 0.0,
+    "00-0038622": 0.0,
+    "NEW:HOU:0": 0.016666666666666666,
+    "NEW:HOU:1": 0.016666666666666666,
+    "NEW:HOU:2": 0.016666666666666666
+   },
+   "targets": {
+    "00-0034383": 0.15157894736842104,
+    "00-0034386": 0.0,
+    "00-0034981": 0.050526315789473676,
+    "00-0035685": 0.03929824561403508,
+    "00-0036554": 0.2021052631578947,
+    "00-0036556": 0.02245614035087719,
+    "00-0036898": 0.0,
+    "00-0037340": 0.0,
+    "00-0038608": 0.07298245614035087,
+    "00-0038618": 0.14596491228070174,
+    "00-0038728": 0.08982456140350877,
+    "00-0039163": 0.0,
+    "00-0039359": 0.02245614035087719,
+    "00-0039405": 0.0,
+    "00-0039650": 0.0,
+    "00-0040049": 0.0,
+    "00-0040138": 0.06736842105263158,
+    "00-0040583": 0.050526315789473676,
+    "00-0040792": 0.0,
+    "00-0041156": 0.0,
+    "00-0041307": 0.0,
+    "00-0041308": 0.0,
+    "00-0041309": 0.0,
+    "00-0041312": 0.0,
+    "00-0041467": 0.02245614035087719,
+    "00-0041472": 0.02245614035087719,
+    "00-0041535": 0.0,
+    "00-0033854": 0.0,
+    "00-0033891": 0.0,
+    "00-0038622": 0.0,
+    "NEW:HOU:0": 0.013333333333333334,
+    "NEW:HOU:1": 0.013333333333333334,
+    "NEW:HOU:2": 0.013333333333333334
+   }
+  },
+  "TEN": {
+   "carries": {
+    "00-0033869": 0.0,
+    "00-0034837": 0.0,
+    "00-0035261": 0.5288659793814433,
+    "00-0036176": 0.0,
+    "00-0036345": 0.0,
+    "00-0036876": 0.0,
+    "00-0036924": 0.0,
+    "00-0037055": 0.0,
+    "00-0037594": 0.0,
+    "00-0038115": 0.0,
+    "00-0038117": 0.00979381443298969,
+    "00-0038550": 0.0,
+    "00-0039023": 0.0,
+    "00-0039032": 0.14690721649484537,
+    "00-0039648": 0.0,
+    "00-0040170": 0.0,
+    "00-0040205": 0.0,
+    "00-0040445": 0.0,
+    "00-0040522": 0.0,
+    "00-0040584": 0.0,
+    "00-0040676": 0.12731958762886597,
+    "00-0040705": 0.0,
+    "00-0040886": 0.13711340206185565,
+    "00-0040912": 0.0,
+    "00-0040919": 0.0,
+    "00-0041438": 0.0,
+    "00-0035628": 0.0,
+    "NEW:TEN:0": 0.016666666666666666,
+    "NEW:TEN:1": 0.016666666666666666,
+    "NEW:TEN:2": 0.016666666666666666
+   },
+   "targets": {
+    "00-0033869": 0.0,
+    "00-0034837": 0.05680473372781065,
+    "00-0035261": 0.09372781065088757,
+    "00-0036176": 0.0,
+    "00-0036345": 0.0,
+    "00-0036876": 0.0,
+    "00-0036924": 0.0,
+    "00-0037055": 0.0,
+    "00-0037594": 0.0,
+    "00-0038115": 0.04260355029585798,
+    "00-0038117": 0.19597633136094672,
+    "00-0038550": 0.0,
+    "00-0039023": 0.0,
+    "00-0039032": 0.05964497041420118,
+    "00-0039648": 0.017041420118343194,
+    "00-0040170": 0.08520710059171596,
+    "00-0040205": 0.0,
+    "00-0040445": 0.0,
+    "00-0040522": 0.0,
+    "00-0040584": 0.10224852071005916,
+    "00-0040676": 0.0,
+    "00-0040705": 0.03408284023668639,
+    "00-0040886": 0.0,
+    "00-0040912": 0.0,
+    "00-0040919": 0.0,
+    "00-0041438": 0.2726627218934911,
+    "00-0035628": 0.0,
+    "NEW:TEN:0": 0.013333333333333334,
+    "NEW:TEN:1": 0.013333333333333334,
+    "NEW:TEN:2": 0.013333333333333334
+   }
+  }
+ },
+ "scenario_evidence": {
+  "source_ref": "request.dual_depth (Sleeper + FantasyPros) and 2026 box scores in final-repaired-capture-20261008.json.gz",
+  "captured_at": "2026-10-10T11:55:04.542883+00:00",
+  "description": "Rule-based review scenarios for every week-5 game (2026-10-10). Review tool, not a calibrated role model.\nCarries: vacated RB carries (out players' per-game rate) go to active backs 55/35/10 by FantasyPros depth\n(Sleeper fallback); everyone else keeps their per-game rate in games played. Targets: per-game rate in games\nplayed for every active player (missed weeks are absences, not zero usage); depth-chart newcomers with no\n2026 usage get a small placeholder. Reserve 5% (carries) / 4% (targets) stays in the newcomer slots. Notes: {\"HOU\": {\"out\": [\"Tank Dell (WR: 0.0 car, 0.0 tgt /g)\", \"British Brooks (RB: 0.0 car, 0.0 tgt /g)\", \"Jayden Higgins (WR: 0.0 car, 0.0 tgt /g)\", \"Graham Mertz (QB: 0.0 car, 0.0 tgt /g)\"], \"vacated_rb_carries_per_game\": 0.0, \"departed_zeroed\": [], \"carries_to\": {\"David Montgomery\": 0.55, \"Woody Marks\": 0.35, \"Dare Ogunbowale\": 0.1}, \"top_target_shares\": {\"Nico Collins\": 0.202, \"Dalton Schultz\": 0.152, \"Xavier Hutchinson\": 0.146, \"Jared Wayne\": 0.09, \"Kayshon Boutte\": 0.073, \"Jaylin Noel\": 0.067}}, \"TEN\": {\"out\": [\"Jaren Kanak (TE: 0.0 car, 0.0 tgt /g)\"], \"vacated_rb_carries_per_game\": 0, \"departed_zeroed\": [], \"carries_to\": {\"Tony Pollard\": 0.55, \"Tyjae Spears\": 0.35, \"Nicholas Singleton\": 0.1}, \"top_target_shares\": {\"Carnell Tate\": 0.273, \"Wan'Dale Robinson\": 0.196, \"Gunnar Helm\": 0.102, \"Tony Pollard\": 0.094, \"Elic Ayomanor\": 0.085, \"Tyjae Spears\": 0.06}}}"
+ }
+}
