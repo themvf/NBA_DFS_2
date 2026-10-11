@@ -5938,6 +5938,32 @@ INDEXES = [
         UNIQUE (sport, event_id, market, player, capture_key)
     )""",
     "CREATE INDEX IF NOT EXISTS idx_prop_odds_latest ON prop_odds_history(sport, event_id, market, player, captured_at DESC)",
+    # 2026-10-11: game-leader page DK pricing. One row per (game, market, player)
+    # each time a pregame prop capture re-prices the saved leader forecast
+    # (research.nfl_game_leaders_market refresh). Append-only; the page reads the
+    # latest computed_at per game. line/prices are NULL for players DK does not list.
+    """CREATE TABLE IF NOT EXISTS nfl_game_leader_market (
+        id BIGSERIAL PRIMARY KEY,
+        game_id TEXT NOT NULL,
+        metric TEXT NOT NULL,
+        identity TEXT NOT NULL,
+        player TEXT NOT NULL,
+        team TEXT,
+        book TEXT,
+        line DOUBLE PRECISION,
+        over_price INTEGER,
+        under_price INTEGER,
+        fair_over DOUBLE PRECISION,
+        model_p_over DOUBLE PRECISION,
+        model_leader_share DOUBLE PRECISION NOT NULL,
+        market_leader_share DOUBLE PRECISION NOT NULL,
+        prop_captured_at TIMESTAMPTZ,
+        forecast_decision_at TIMESTAMPTZ NOT NULL,
+        computed_at TIMESTAMPTZ NOT NULL,
+        version TEXT NOT NULL,
+        UNIQUE (game_id, metric, identity, computed_at)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_game_leader_market_latest ON nfl_game_leader_market(game_id, computed_at DESC)",
     # 2026-07-02: execution-book CLV. clv_pp measures the REFERENCE market
     # (did the sharp consensus move toward the flagged side — informational
     # content); dk_clv_pct measures the EXECUTION book (did DK's own price on

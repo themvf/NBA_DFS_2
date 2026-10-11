@@ -2,6 +2,7 @@ import Link from "next/link";
 import { connection } from "next/server";
 import saved from "@/data/game-leaders.json";
 import { getGameLeadersAvailability } from "@/db/nfl-game-leaders-availability";
+import { getGameLeaderMarket, type GameLeaderMarketRow } from "@/db/nfl-game-leaders-market";
 import { outPlayersInForecast } from "@/lib/nfl/game-leaders-availability";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,13 @@ const numberFormat = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 }
 function number(value: number | null | undefined) { return value == null ? "Unavailable" : numberFormat.format(value); }
 function date(value: string) { return new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }).format(new Date(value)); }
 async function now() { await connection(); return Date.now(); }
+function american(price: number | null) { return price == null ? "" : price > 0 ? `+${price}` : `${price}`.replace("-", "−"); }
+const BOOK_NAMES: Record<string, string> = { draftkings: "DK", fanduel: "FanDuel", betmgm: "BetMGM", caesars: "Caesars", williamhill_us: "Caesars", espnbet: "ESPN BET", betrivers: "BetRivers", fanatics: "Fanatics" };
+function lineLabel(row: GameLeaderMarketRow | undefined) {
+  if (!row || row.line == null) return "Not listed";
+  const book = row.book && row.book !== "draftkings" ? ` (${BOOK_NAMES[row.book] ?? row.book})` : "";
+  return `${numberFormat.format(row.line)} · ${american(row.overPrice)}/${american(row.underPrice)}${book}`;
+}
 function coverageSummary(game: unknown) {
   const coverage = (game as { history_coverage?: Record<string, { expected: string[] | null; included: string[]; excluded: string[]; excluded_event_games?: string[] }> }).history_coverage;
   if (!coverage) return "Recent-game coverage was not recorded for this older snapshot. Refresh it before using the estimates for a decision.";
@@ -34,12 +42,23 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ g
         return null;
       })
     : null;
+  const market = selected
+    ? await getGameLeaderMarket(selected.game.game_id, selected.decision_at).catch((error) => {
+        console.error("Game Leaders DK pricing read failed", error);
+        return null;
+      })
+    : null;
+  const marketRows = new Map<string, Map<string, GameLeaderMarketRow>>();
+  for (const row of market?.rows ?? []) {
+    if (!marketRows.has(row.metric)) marketRows.set(row.metric, new Map());
+    marketRows.get(row.metric)!.set(row.identity, row);
+  }
   const newlyOut = selected && availability?.complete
     ? outPlayersInForecast(selected.metrics, availability.confirmedOut)
     : [];
   const blockCurrentForecast = newlyOut.length > 0 || (!started && !availability?.complete);
   return <main className="mx-auto max-w-6xl space-y-6 px-4 py-8">
-    <header className="space-y-3"><div className="flex flex-wrap items-center gap-3"><h1 className="text-3xl font-bold">Game leaders</h1><span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-900">Research model</span></div><p>Rushing yards, receptions, and receiving yards · {saved.season} Week {saved.week}</p><p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">This model has not consistently beaten a simple recent-average ranking. The probabilities are exploratory, and player availability remains unresolved. No sportsbook odds are used.</p></header>
+    <header className="space-y-3"><div className="flex flex-wrap items-center gap-3"><h1 className="text-3xl font-bold">Game leaders</h1><span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-900">Research model</span></div><p>Rushing yards, receptions, and receiving yards · {saved.season} Week {saved.week}</p><p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">This model has not consistently beaten a simple recent-average ranking. The probabilities are exploratory, and player availability remains unresolved. The model itself uses no sportsbook odds; DraftKings over/under lines are shown beside it for comparison.</p></header>
     <form method="get" className="flex flex-wrap items-end gap-3"><label className="space-y-1 text-sm font-medium"><span className="block">Game</span><select name="game" defaultValue={selected?.game.game_id} className="rounded border bg-white px-3 py-2">{saved.games.map(g => <option key={g.game.game_id} value={g.game.game_id}>{g.game.away} at {g.game.home} · {date(g.game.kickoff)}</option>)}</select></label><button className="rounded bg-emerald-800 px-4 py-2 text-sm text-white" type="submit">Show game</button></form>
     {selected ? <>
       <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">{coverageSummary(selected)}</p>
@@ -51,7 +70,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ g
           <tr className="border-t"><td className="p-2">Defensive style</td><td className="p-2">No</td><td className="p-2">Man/zone coverage, blitzes, pressure and player-role matchups are not inputs to these estimates.</td></tr>
           <tr className="border-t"><td className="p-2">Game script</td><td className="p-2">Historical approximation</td><td className="p-2">Both teams borrow workload patterns from the same historical game. This does not simulate the score, remaining clock or changes in play calling while leading or trailing.</td></tr>
           <tr className="border-t"><td className="p-2">Mid-game exits and replacement work</td><td className="p-2">No</td><td className="p-2">The separate research candidate has exit and redistribution logic that needs historical exit labels; it is not enabled here.</td></tr>
-          <tr className="border-t"><td className="p-2">Market lines and availability</td><td className="p-2">No odds; availability unresolved</td><td className="p-2">This is an independent saved forecast, with no final game-day participation confirmation.</td></tr>
+          <tr className="border-t"><td className="p-2">Market lines and availability</td><td className="p-2">Shown, not used; availability unresolved</td><td className="p-2">This is an independent saved forecast, with no final game-day participation confirmation. DraftKings lines appear in the tables for comparison only.</td></tr>
         </tbody></table></div>
         <p className="text-sm"><Link href="/nfl/game-model" className="text-emerald-800 underline">View the separate joint outcome research replay</Link></p>
       </section>
@@ -63,13 +82,18 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ g
       {!blockCurrentForecast && availability?.complete && <p className="text-sm text-slate-600">
         Injury sources checked {date(availability.checkedAt)}. Unresolved player roles remain in this exploratory forecast.
       </p>}
+      {!blockCurrentForecast && <p className="rounded-xl border bg-white p-4 text-sm text-slate-600">{market
+        ? <>DraftKings over/under lines captured {date(market.propCapturedAt)}. <strong>DK chance over</strong> is the line&apos;s over price with the bookmaker margin removed. <strong>DK-implied leader</strong> turns every listed player&apos;s DraftKings line into a chance of leading the game, using this model&apos;s simulation for players DraftKings does not list. It is a comparison, not DraftKings&apos; own leader price, which our odds feed does not carry. DraftKings has no total-yards market.</>
+        : <>DraftKings lines are not available for this game yet. They are captured about 1¾ hours before kickoff.</>}</p>}
       {!blockCurrentForecast && families.map(([metric, title]) => {
         const family = selected.metrics[metric];
         if (!family) return <section key={metric} className="rounded-xl border bg-white p-4"><h2 className="text-xl font-semibold">{title}</h2><p className="mt-2 text-sm text-slate-600">Not calculated in this older snapshot. Run the updated model to add this category.</p></section>;
         const named = family.players.filter(p => !p.residual);
         const baseline = [...named].sort((a, b) => (b.baseline_mean ?? 0) - (a.baseline_mean ?? 0))[0];
-        const display = named.filter(p => p.win_share > 0 || (p.mean ?? 0) > 0);
-        return <section key={metric} className="overflow-hidden rounded-xl border bg-white"><div className="border-b p-4"><h2 className="text-xl font-semibold">{title}</h2><p className="mt-1 text-sm text-slate-600">Recent-average baseline leader: <strong>{baseline?.name ?? "Unavailable"}</strong>. Model tie frequency: {pct(family.tie_probability)}.</p></div><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-50"><tr><th className="p-3">Player</th><th className="p-3">Leader share</th><th className="p-3">First or tied</th><th className="p-3">Projected average</th><th className="p-3">Middle 80% range</th><th className="p-3">Recent average</th></tr></thead><tbody>{display.map(p => <tr className="border-t" key={p.identity}><td className="p-3 font-medium">{p.name}<span className="ml-2 font-normal text-slate-500">{p.team}</span></td><td className="p-3 font-semibold">{pct(p.win_share)}</td><td className="p-3">{pct(p.first_or_tied)}</td><td className="p-3">{number(p.mean)}</td><td className="p-3">{number(p.p10)}–{number(p.p90)}</td><td className="p-3">{number(p.baseline_mean)}</td></tr>)}</tbody></table></div><div className="space-y-2 border-t bg-slate-50 p-4 text-sm text-slate-600"><p>Other or unresolved contributors: {pct(family.players.filter(p => p.residual).reduce((sum, p) => sum + p.win_share, 0))} combined leader share.</p><p>Leader share splits ties equally between individuals. First-or-tied counts each tied player in full, so that column can add to more than 100%. Percentages are rounded independently, so displayed shares may not total exactly 100%. A displayed 0.0% means no wins occurred in the saved simulations, not that the outcome is impossible. Ranges describe simulated outcomes; they are not evidence that the model is accurate.</p></div></section>;
+        const priced = marketRows.get(metric);
+        const display = named.filter(p => p.win_share > 0 || (p.mean ?? 0) > 0 || (priced?.get(p.identity)?.line != null));
+        const otherMarket = priced ? [...priced.values()].filter(r => r.identity.startsWith("OTHER:")).reduce((sum, r) => sum + r.marketLeaderShare, 0) : null;
+        return <section key={metric} className="overflow-hidden rounded-xl border bg-white"><div className="border-b p-4"><h2 className="text-xl font-semibold">{title}</h2><p className="mt-1 text-sm text-slate-600">Recent-average baseline leader: <strong>{baseline?.name ?? "Unavailable"}</strong>. Model tie frequency: {pct(family.tie_probability)}.</p></div><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-50"><tr><th className="p-3">Player</th><th className="p-3">Leader share</th>{priced && <><th className="p-3">DK line (over/under)</th><th className="p-3">DK chance over</th><th className="p-3">Model chance over</th><th className="p-3">DK-implied leader</th></>}<th className="p-3">First or tied</th><th className="p-3">Projected average</th><th className="p-3">Middle 80% range</th><th className="p-3">Recent average</th></tr></thead><tbody>{display.map(p => <tr className="border-t" key={p.identity}><td className="p-3 font-medium">{p.name}<span className="ml-2 font-normal text-slate-500">{p.team}</span></td><td className="p-3 font-semibold">{pct(p.win_share)}</td>{priced && (() => { const m = priced.get(p.identity); return <><td className="p-3 whitespace-nowrap">{lineLabel(m)}</td><td className="p-3">{m?.fairOver == null ? "" : pct(m.fairOver)}</td><td className="p-3">{m?.modelPOver == null ? "" : pct(m.modelPOver)}</td><td className="p-3 font-semibold">{m ? pct(m.marketLeaderShare) : ""}</td></>; })()}<td className="p-3">{pct(p.first_or_tied)}</td><td className="p-3">{number(p.mean)}</td><td className="p-3">{number(p.p10)}–{number(p.p90)}</td><td className="p-3">{number(p.baseline_mean)}</td></tr>)}</tbody></table></div><div className="space-y-2 border-t bg-slate-50 p-4 text-sm text-slate-600"><p>Other or unresolved contributors: {pct(family.players.filter(p => p.residual).reduce((sum, p) => sum + p.win_share, 0))} combined leader share{otherMarket != null ? `; ${pct(otherMarket)} DK-implied` : ""}.</p><p>Leader share splits ties equally between individuals. First-or-tied counts each tied player in full, so that column can add to more than 100%. Percentages are rounded independently, so displayed shares may not total exactly 100%. A displayed 0.0% means no wins occurred in the saved simulations, not that the outcome is impossible. Ranges describe simulated outcomes; they are not evidence that the model is accurate.</p></div></section>;
       })}
       <details className="rounded-xl border bg-white p-4"><summary className="cursor-pointer font-semibold">Assumptions and missing factors</summary><ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-600">{selected.limits.map(l => <li key={l}>{l}</li>)}</ul><p className="mt-3 text-sm text-slate-600">This is a saved weekly batch. A fresh source capture, roster review and model run are required to update it. A DraftKings upload is not required.</p></details>
     </> : <p>No eligible saved games.</p>}
