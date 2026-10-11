@@ -30,3 +30,4 @@ refresh_cfb_pattern_board.log
 # Study 1 reproducible inputs (rebuilt by research.nfl_joint_score_state build-games; digest recorded in each fit)
 artifacts/nfl-joint-score-state/games-*.json
 artifacts/nfl-joint-score-state/cache/
+artifacts/cfb_pattern_watch/datawrapper/
