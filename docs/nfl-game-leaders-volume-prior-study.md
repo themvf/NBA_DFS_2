@@ -122,3 +122,27 @@ Carries chose the smallest K in the grid (K = 1). The registered rule takes
 the grid minimum, so K = 1 stands; the true optimum may be below 1, and no
 finer grid is added. A strong prior is worse: at K = 16 target MAE is 1.5823,
 almost no better than C0. The exploratory K = 4 was too strong.
+
+## Result: holdout, 2025 weeks 9-18 (run once, 2026-10-11)
+
+Output `artifacts/nfl-game-leaders/volume-prior-v1/holdout-2025-w9-18.json`;
+151 games, 2,953 player-games.
+
+| | C0 MAE | V1 MAE | V1 − C0 (95% CI) | decision |
+|---|---:|---:|---|---|
+| **targets** (primary) | 1.518 | 1.465 | **−0.053 [−0.073, −0.033]** | **PASS** |
+| carries | 1.278 | 1.262 | −0.016 [−0.036, +0.003] | not adopted |
+
+- Gap slope (error on last-season − current rate), targets: +0.345 under C0,
+  **+0.046** under V1. Carries: +0.171 → +0.062. The prior removes most of the
+  bias it was built for.
+- Targets by week: 9-12 1.527 → 1.460; 13-18 1.514 → 1.469.
+- Returners (no current-season games, prior-season usage), n = 69: actual 1.39
+  targets, C0 projected 0.00, V1 1.39. Carries: actual 1.17, C0 0.00, V1 1.36.
+- The holdout gain (−3.5%) is smaller than tuning (−4.3%) and the exploratory
+  weeks 2-8 (−6.6%), as expected: the prior matters most early in the season.
+
+**Verdict: PASS for targets; carries keep roles-v1** (the interval reaches
++0.003). Per the decision rules this licenses building `nfl-game-leaders-roles-v2`
+with the target prior only. The page does not change until the leader-level
+gate above is graded.
