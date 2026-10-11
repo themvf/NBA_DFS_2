@@ -1659,6 +1659,7 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
         row_count=len(schedule), params={"url": NFLVERSE_SCHEDULE_URL, "use": "schedule-derived bye weeks"},
         contract_key="schedule",
     )
+    db.lock_ff_players_writes()
     universe = build_player_universe(db, season, roster, sleeper_payload, bye_weeks)
     injury_ingestion = persist_sleeper_injury_observations(
         db,

@@ -80,6 +80,7 @@ def capture_sleeper(db: Any, *, season: int, week: int, now: datetime) -> dict[s
         missingness={}, fallback_tier="A",
         model_eligible=True, eligibility_reason="complete live Sleeper roster/injury/depth capture",
     ))
+    db.lock_ff_players_writes()
     observations = events = 0
     for player_id, sleeper_id, raw in matched:
         canonical_team = normalize_team(raw.get("team")) or None
