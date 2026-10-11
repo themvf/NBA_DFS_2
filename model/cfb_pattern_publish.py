@@ -217,7 +217,8 @@ footer{{margin-top:48px;color:var(--muted);font-size:14px;border-top:1px solid v
             d = c["drift"]
             moved = "—" if not d else f"spread {d['spread']:+g}, total {d['total'] if d['total'] is None else format(d['total'], '+g')}"
             note = "; ".join(c["late_reasons"]) if c["late_reasons"] else ""
-            parts.append(f"<tr><td>{esc(_et(c['commence_time']))}</td><td>{esc(c['away'])} @ {esc(c['home'])}</td><td class=\"num\">{code}</td><td>{sel}</td><td>{brs}</td><td class=\"num\">{cur['home_spread']:+g} / {cur['vegas_total']}</td><td class=\"num\">{esc(moved)}</td><td>{pill(c['status'])}{(' <span class=\"muted\">' + esc(note) + '</span>') if note else ''}</td></tr>")
+            note_html = (' <span class="muted">' + esc(note) + '</span>') if note else ''
+            parts.append(f"<tr><td>{esc(_et(c['commence_time']))}</td><td>{esc(c['away'])} @ {esc(c['home'])}</td><td class=\"num\">{code}</td><td>{sel}</td><td>{brs}</td><td class=\"num\">{cur['home_spread']:+g} / {cur['vegas_total']}</td><td class=\"num\">{esc(moved)}</td><td>{pill(c['status'])}{note_html}</td></tr>")
         parts.append("</table></div>")
     else:
         parts.append('<p class="muted">No games with lines in the next 36 hours.</p>')
