@@ -81,11 +81,31 @@ def _field(weights, roster, team, reserve):
     return field
 
 
-def team_scenario(team, players, dual_depth, team_boxes, games):
+def blend_prior(rates, prior_rates, prior_weight):
+    """Blend each player's current per-game rates with his prior-season rates as `prior_weight` pseudo-games.
+
+    A player with no current usage but a prior season gets his prior rate. Off when prior_weight is 0.
+    Evaluated in nfl-game-leaders-calibration-v1 (docs/nfl-game-leaders-calibration-study.md).
+    """
+    if not prior_weight or not prior_rates:
+        return rates
+    out = {}
+    for identity in set(rates) | set(prior_rates):
+        cur, prior = rates.get(identity), prior_rates.get(identity)
+        n = cur['games_played'] if cur else 0
+        if prior is None:
+            out[identity] = cur
+            continue
+        out[identity] = {'games_played': n, **{a: ((n * cur[a] if cur else 0.) + prior_weight * prior[a]) / (n + prior_weight)
+                                               for a in ('carries', 'targets')}}
+    return out
+
+
+def team_scenario(team, players, dual_depth, team_boxes, games, prior_rates=None, prior_weight=0.):
     """Full-field carries/targets shares for one team plus a plain-language note."""
     active = [p for p in players if p['status'] != 'out']
     outs = [p for p in players if p['status'] == 'out']
-    rates = usage_rates(team_boxes, games)
+    rates = blend_prior(usage_rates(team_boxes, games), prior_rates, prior_weight)
     ranks = depth_ranks(dual_depth)
 
     def rank(p):
@@ -130,7 +150,7 @@ def team_scenario(team, players, dual_depth, team_boxes, games):
     return scenario, note
 
 
-def attach(request, boxes_by_game_team, prior_games):
+def attach(request, boxes_by_game_team, prior_games, prior_rates=None, prior_weight=0.):
     """Return a copy of `request` with role scenarios and evidence. Never edits an existing scenario."""
     if request.get('role_scenarios'):
         return request
@@ -140,13 +160,13 @@ def attach(request, boxes_by_game_team, prior_games):
         team_boxes = {g: boxes_by_game_team.get((g, team), []) for g in prior_games[team]}
         players = [p for p in request['players'] if p['team'] == team]
         scenarios[team], notes[team] = team_scenario(team, players, request['dual_depth'][team],
-                                                     team_boxes, prior_games[team])
+                                                     team_boxes, prior_games[team], prior_rates, prior_weight)
     captured = max(request['dual_depth'][t]['captured_at'] for t in scenarios)
     if captured > request['decision_at']:
         raise ValueError('Depth evidence captured after the decision time')
     games = sorted({g for v in prior_games.values() for g in v})
     evidence = {'source_ref': f'{VERSION}: request.dual_depth + recent box scores {games}',
-                'captured_at': captured, 'method': VERSION,
+                'captured_at': captured, 'method': VERSION, 'prior_weight': prior_weight,
                 'description': 'Default role scenario (stated priors, not fitted). See model/nfl_game_leaders_roles.py.',
                 'notes': notes}
     return {**request, 'role_scenarios': scenarios, 'scenario_evidence': evidence}

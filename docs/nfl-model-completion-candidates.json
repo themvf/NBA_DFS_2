@@ -106,8 +106,8 @@
       "evidence_rule": "Forward decisions captured before amended_at ran under previous_sha256 and are graded as a separate cohort or excluded; they are never pooled with decisions captured after it."
     },
     {
-      "amended_at": "2026-10-11T21:10:50Z",
-      "reason": "Owner kept the Winners-shape v4 optimizer change (a DST capped at 5% against the lineup's own players). Re-pinned the optimizer only; every other pinned file is unchanged.",
+      "amended_at": "2026-10-11T21:08:26Z",
+      "reason": "Owner keeps the current optimizer as is (starter-aware projections and top-5 lineups). Re-pinned the optimizer only; every other pinned file is unchanged.",
       "file": "web/src/app/dfs/nfl/nfl-optimizer.ts",
       "previous_sha256": "bcd13862b459347b0e20b7fb14a229fc090b0d9e59f9a5c1213cc6e89ae2123d",
       "new_sha256": "52d327935ea4af58eae98a22448c11642655adfddfa1c02608e6024566956012",
