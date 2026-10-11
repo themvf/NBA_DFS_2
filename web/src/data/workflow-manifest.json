@@ -64,7 +64,9 @@
     {
       "file": "capture_nfl_props.yml",
       "name": "Capture NFL prop evidence",
-      "crons": [],
+      "crons": [
+        "37 14 * * 0"
+      ],
       "dispatch": true,
       "afterWorkflows": [],
       "push": false,

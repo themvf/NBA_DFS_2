@@ -281,6 +281,13 @@ DATASET_REGISTRY: tuple[Dataset, ...] = (
     # write 2026-08-23 13:47 UTC. Reported as a pause, not an outage.
     Dataset("mlb_props", "MLB player-prop odds", "prop_odds_history", "captured_at",
             24, "refresh_mlb_vegas.yml", _MLB, schedule_step="Capture MLB player-prop odds"),
+    # Captured once per kickoff group (Thu, Sun, Mon, sometimes Sat); the longest
+    # normal gap is Monday night to Thursday evening, about 3.9 days.
+    Dataset("nfl_props", "NFL player-prop odds (game-leader benchmark)", "prop_odds_history", "captured_at",
+            120, "capture_nfl_props.yml", _NFL,
+            "Pregame over/unders written by ingest.nfl_prop_odds, dispatched 90-105 minutes before each kickoff. "
+            "Append-only per capture_key, so captured_at moves only when a run writes.",
+            filter="sport = 'nfl'"),
     Dataset("mlb_team_stats_history", "MLB team stats (daily snapshot)", "mlb_team_stats_history", "available_at",
             72, "refresh_mlb_stats.yml", _MLB,
             "Append-only, one row per team per run. The current-state table mlb_team_stats is NOT watched: "

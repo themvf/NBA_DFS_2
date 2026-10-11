@@ -13,7 +13,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import math
 from typing import Any
@@ -161,6 +161,20 @@ def require_credit_budget(*, estimated_credits: int, max_credits: int) -> None:
         )
 
 
+def select_events(events, now, event_limit=0, within_hours=0):
+    """Pregame events only, earliest first; optionally only those starting within `within_hours`.
+
+    The provider lists the whole season, so a scheduled run must use a window:
+    `event_limit=0` without one would buy every remaining game of the year.
+    """
+    def start(event):
+        return datetime.fromisoformat(str(event["commence_time"]).replace("Z", "+00:00"))
+    future = sorted((e for e in events if start(e) > now), key=start)
+    if within_hours > 0:
+        future = [e for e in future if start(e) <= now + timedelta(hours=within_hours)]
+    return future[:event_limit] if event_limit > 0 else future
+
+
 def capture(
     *,
     db: DatabaseManager | None,
@@ -168,17 +182,14 @@ def capture(
     event_limit: int,
     apply: bool,
     max_credits: int = 0,
+    within_hours: float = 0,
+    now: datetime | None = None,
 ) -> dict[str, int]:
     if not api_key:
         raise ValueError("ODDS_API_KEY is required")
     events = fetch_events(api_key)
-    now = datetime.now(timezone.utc)
-    future = [
-        event
-        for event in events
-        if datetime.fromisoformat(str(event["commence_time"]).replace("Z", "+00:00")) > now
-    ]
-    selected = future[:event_limit] if event_limit > 0 else future
+    now = now or datetime.now(timezone.utc)
+    selected = select_events(events, now, event_limit, within_hours)
     estimated_credits = len(selected) * len(MARKETS) * math.ceil(len(BOOKMAKER_KEYS) / 10)
     if not apply:
         return {"events": len(selected), "estimatedCredits": estimated_credits, "rows": 0}
@@ -217,6 +228,10 @@ def main() -> int:
         "--max-credits", type=int, default=0,
         help="required hard ceiling for an applied capture; paid calls abort before execution if exceeded",
     )
+    parser.add_argument(
+        "--within-hours", type=float, default=0,
+        help="only events starting within this many hours (scheduled runs); 0 means no window",
+    )
     args = parser.parse_args()
     config = load_config()
     db = DatabaseManager(config.database_url) if args.apply else None
@@ -226,6 +241,7 @@ def main() -> int:
         event_limit=max(0, args.event_limit),
         apply=args.apply,
         max_credits=max(0, args.max_credits),
+        within_hours=max(0., args.within_hours),
     )
     print(json.dumps({**result, "applied": args.apply}, indent=2))
     return 0
