@@ -3,7 +3,7 @@
 import { resolveSlateWeek, type SlateGame, type ScheduledGame } from "@/lib/nfl-dfs/slate-week";
 import { createHash, randomUUID } from "node:crypto";
 import { restoreSavedLineups, savedSlateLabel } from '@/lib/nfl-dfs/saved-workspace';
-import { countNflDkEntryRows, exportNflDkEntries } from '@/lib/nfl-dfs/entry-export';
+import { countNflDkEntryRows, exportNflDkEntries, exportNflDkLineups } from '@/lib/nfl-dfs/entry-export';
 import { currentPoolForQa, isDeployedBuild, nflOverlapCap, runNflPreExportQa, savedRunQaEvidence, type QaOverride } from '@/lib/nfl-dfs/pre-export-qa';
 import { buildSlateCheck, withRecordFailure, PROJECTION_STALE_HOURS, type SlateCheck, type SlateCheckInput } from '@/lib/nfl-dfs/slate-check';
 import { nextNflProjectionSlot } from '@/lib/nfl-dfs/projection-cadence';
@@ -1474,6 +1474,22 @@ async function currentSlateForRun(uploadId:string,startingQbs:ConfirmedStartingQ
  * user recorded on the page; a defensive run accepts none (clean pass only).
  */
 export async function exportSavedNflEntries(runId:string,entryTemplate:string,overrides:QaOverride[]=[]):Promise<string> {
+  const saved=await exportableSavedNflLineups(runId,entryTemplate,overrides);
+  return exportNflDkEntries(entryTemplate,saved.lineups);
+}
+
+/**
+ * The lineups-only CSV (DraftKings slot headers, no entry IDs). The same
+ * saved-run, kickoff and QA gates as the entry export, minus the entry-row
+ * count, which has no file to come from.
+ */
+export async function exportSavedNflLineups(runId:string,overrides:QaOverride[]=[]):Promise<string> {
+  const {run}=await readNflOptimizerAudit(runId);
+  const saved=await exportableSavedNflLineups(runId,null,overrides);
+  return exportNflDkLineups((run.settings as NflSavedRunSettings).format,saved.lineups);
+}
+
+async function exportableSavedNflLineups(runId:string,entryTemplate:string|null,overrides:QaOverride[]) {
   const {run}=await readNflOptimizerAudit(runId);
   const settings=run.settings as NflSavedRunSettings;
   const defensive=['experimental','approved'].includes(settings.defensiveAdjustments?.mode??'');
@@ -1509,7 +1525,7 @@ export async function exportSavedNflEntries(runId:string,entryTemplate:string,ov
       features:{leverage:evidence.ownership.features.leverage}}:undefined,
     overlapCap:nflOverlapCap(settings.format,settings.minUnique,settings.maxPairwiseOverlap),
     currentPool:currentPoolForQa(slate.players),
-    entryRows:countNflDkEntryRows(entryTemplate),
+    entryRows:entryTemplate==null?null:countNflDkEntryRows(entryTemplate),
     newerRunAvailable:Boolean(slate.refreshAvailable)||(saved.projection.runId!=null&&slate.projectionRunId!=null&&saved.projection.runId!==slate.projectionRunId),
     projectionAgeHours,projectionStale:projectionAgeHours!=null&&projectionAgeHours>PROJECTION_STALE_HOURS,
     build:{commitSha:(run.buildInfo as {commitSha?:string}|null)?.commitSha??null}},overrides);
@@ -1519,7 +1535,7 @@ export async function exportSavedNflEntries(runId:string,entryTemplate:string,ov
   }
   assertSlateOpen(slate,'export lineups'); // Close the check/export kickoff race.
   if(defensive)await assertSlatePregame(slate);
-  return exportNflDkEntries(entryTemplate,saved.lineups);
+  return saved;
 }
 
 /** Building and export close at the slate's first kickoff, the same moment the page and Slate Check say so. */
