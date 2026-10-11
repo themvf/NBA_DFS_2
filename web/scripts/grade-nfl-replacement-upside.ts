@@ -22,6 +22,8 @@ import { appendFileSync, writeFileSync } from 'node:fs';
 
 config({ path: '.env.local', quiet: true });
 
+const PAYLOAD_BATCH = 15;
+
 (async () => {
   const outFlag = process.argv.indexOf('--out');
   const outPath = outFlag >= 0 ? process.argv[outFlag + 1] : null;
@@ -46,20 +48,27 @@ config({ path: '.env.local', quiet: true });
       games.push(...await auditGames(season, wk));
       // Last live pregame capture per (upload, game); the grader then picks per player across uploads.
       const found = rowsOf(await db.execute(sql`SELECT DISTINCT ON (c.upload_id, c.game_id)
-          c.digest, c.upload_id, u.created_at AS upload_created_at, c.observed_at, c.captured_at, c.payload
+          c.digest, c.upload_id, u.created_at AS upload_created_at, c.observed_at, c.captured_at
         FROM nfl_dfs_pool_captures c
         JOIN nfl_dfs_slate_uploads u ON u.upload_id = c.upload_id
         JOIN nfl_season_games sg ON sg.id = c.game_id
         WHERE sg.season=${season} AND sg.week=${wk} AND sg.game_type='REG'
           AND c.observed_at < c.kickoff AND c.payload->>'origin' = 'live_pool'
         ORDER BY c.upload_id, c.game_id, c.observed_at DESC, c.digest`));
-      for (const r of found) {
-        const digest = String(r.digest);
-        if (digest.split(':')[0] !== createHash('sha256').update(canonicalAuditJson(r.payload)).digest('hex')) {
-          throw new Error(`Pool capture digest mismatch: ${digest}. Grade refused.`);
+      // Payloads reach ~1.9 MB each; one week's set exceeded neon-http's 64 MB response limit (2026-10-06).
+      for (let start = 0; start < found.length; start += PAYLOAD_BATCH) {
+        const batch = found.slice(start, start + PAYLOAD_BATCH);
+        const payloads = new Map(rowsOf(await db.execute(sql`SELECT digest, payload FROM nfl_dfs_pool_captures
+          WHERE digest IN (${sql.join(batch.map((r) => sql`${String(r.digest)}`), sql`, `)})`)).map((r) => [String(r.digest), r.payload]));
+        for (const r of batch) {
+          const digest = String(r.digest);
+          const payload = payloads.get(digest);
+          if (digest.split(':')[0] !== createHash('sha256').update(canonicalAuditJson(payload)).digest('hex')) {
+            throw new Error(`Pool capture digest mismatch: ${digest}. Grade refused.`);
+          }
+          captures.push(g.captureFromRow({ digest, uploadId: String(r.upload_id), uploadCreatedAt: iso(r.upload_created_at),
+            observedAt: iso(r.observed_at), capturedAt: iso(r.captured_at), payload }));
         }
-        captures.push(g.captureFromRow({ digest, uploadId: String(r.upload_id), uploadCreatedAt: iso(r.upload_created_at),
-          observedAt: iso(r.observed_at), capturedAt: iso(r.captured_at), payload: r.payload }));
       }
       for (const r of rowsOf(await db.execute(sql`SELECT id, player_id, game_id, team, position, actual_dk_fpts, scoring_status, computed_at
           FROM nfl_dfs_player_week_results WHERE season=${season} AND week=${wk} AND computed_at<=clock_timestamp()`))) {
