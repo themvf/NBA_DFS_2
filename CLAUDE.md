@@ -513,6 +513,30 @@ and the grader accepts only captures after the latest pin, so a re-pin
 restarts the pick'em sample. Fold such fixes into the next re-pin that is
 needed anyway.
 
+**Readers trimmed to the fields they use (2026-10-11).** After the pick'em
+and CFB fixes NBADFS still sent ~21 GB a day (a ~630 GB month against 500 GB
+free). Four readers fetched whole JSON records to use a few keys: the weekly
+projection history (`_history`, ~19k nflverse lines of ~115 fields on every
+projection run; `build_week` now asks for `OFFENSE_FIELDS` on QB/RB/WR/TE,
+58 to 11 MB a run), the alert price trail (every capture's full book map,
+~13,700 reads a day, mostly ~110 tennis alerts that cannot settle while
+tennis results are paused; now the selection book, Pinnacle and DraftKings),
+the CFB bootstrap (`SELECT *` on ~9k games and existence probes that returned
+every present key, ~230 runs a day), and the NFL DFS page's Sleeper evidence
+(`SLEEPER_EVIDENCE_FIELDS`). Verified on live data: identical week-5
+projections and manifest for 1,023 players, identical grades for 360 alerts
+in six sports, identical Sleeper evidence. Tests fail if a consumer reads a
+field outside its list, since a missing field would otherwise be read as
+zero or "no quote". Availability contexts are also re-inserted only when
+their meaning changes (`material_digest`, reasserted after `REASSERT_AFTER`,
+6 h); every hourly run had re-inserted every context. Left for the owner: the
+hash-pinned `ingest/nfl_matchup_context.py` reads full participant-evidence
+and week-stat rows on every projection run (the largest remaining reader,
+1.3 GB a day on average and ~6 GB on a Sunday), research `raw_history` in
+`nfl_dfs_workload`/`nfl_dfs_efficiency` needs full rows only to hash them
+into `source_hash`, and the matchup-study grader reads every shadow
+prediction's payload each run.
+
 ## Parallel agents: commit locally, one session pushes (2026-10-04)
 
 Every push to GitHub starts a Vercel build (a branch push builds Preview, a

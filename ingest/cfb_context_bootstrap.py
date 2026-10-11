@@ -105,7 +105,7 @@ def bootstrap(database_url: str, *, apply: bool, new_origin: str = "legacy") -> 
         cursor.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", ("cfb-context-bootstrap-v1",))
         cursor.execute("SELECT team_id FROM cfb_teams ORDER BY team_id")
         teams = list(cursor.fetchall())
-        cursor.execute("SELECT * FROM cfb_matchups ORDER BY id")
+        cursor.execute("SELECT id,cfbd_game_id,commence_time,fetched_at FROM cfb_matchups ORDER BY id")
         games = list(cursor.fetchall())
         cursor.execute("""SELECT h.id,h.matchup_id,h.capture_key,h.books,h.captured_at
           FROM game_odds_history h WHERE h.sport='cfb' AND NOT EXISTS (
@@ -137,12 +137,16 @@ def bootstrap(database_url: str, *, apply: bool, new_origin: str = "legacy") -> 
         # A no-op insert still probes the unique index, the heap and every
         # foreign key per row: 650-850 MB of pages touched per statement, and
         # the largest single reason the compute never sat at its minimum size.
+        # The probe returns only the absent keys; returning the present ones
+        # sent every key back on every run.
         def missing(rows: list[tuple], table: str, column: str) -> list[tuple]:
             if not rows:
                 return rows
-            cursor.execute(f"SELECT {column} AS k FROM {table} WHERE {column}=ANY(%s)", ([row[0] for row in rows],))
-            present = {row["k"] for row in cursor.fetchall()}
-            return [row for row in rows if row[0] not in present]
+            cursor.execute(f"""SELECT candidate.key AS k FROM unnest(%s) AS candidate(key)
+                               WHERE NOT EXISTS (SELECT 1 FROM {table} WHERE {column}=candidate.key)""",
+                           ([row[0] for row in rows],))
+            absent = {row["k"] for row in cursor.fetchall()}
+            return [row for row in rows if row[0] in absent]
 
         def insert_missing(rows: list[tuple], table: str, column: str, sql: str, **kwargs) -> int:
             new_rows = missing(rows, table, column)

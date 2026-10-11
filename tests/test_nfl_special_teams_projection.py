@@ -144,7 +144,7 @@ def test_weekly_build_freezes_both_candidates_without_changing_live_baseline(mon
         {"id": 20, "gsis_id": "kicker-20", "canonical_name": "Kicker", "normalized_name": "kicker",
          "position": "K", "team_abbrev": "BUF", "depth_order": None, "roster_fetched_at": None},
     ]
-    monkeypatch.setattr(ingest, "_history", lambda *_: history)
+    monkeypatch.setattr(ingest, "_history", lambda *_, **__: history)
     monkeypatch.setattr(ingest, "_slate_environment", lambda *_: environment)
     monkeypatch.setattr(ingest, "_players", lambda *_: players)
 

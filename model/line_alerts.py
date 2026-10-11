@@ -2239,6 +2239,21 @@ def settle_props(db: DatabaseManager) -> int:
     return graded
 
 
+def _selection_book(a) -> str:
+    d = a["details_json"] or {}
+    return d.get("clv_book") or d.get("exec_book") or _DK_BOOK
+
+
+# A capture carries every book (1.3-2.9 KB); grading reads the selection
+# book, Pinnacle and DraftKings, so only those leave the database.
+_GRADED_BOOKS = """(SELECT jsonb_object_agg(book.key, book.value) FROM jsonb_each(books) book
+                     WHERE book.key = ANY(%s)) AS books"""
+
+
+def _graded_books(a) -> list[str]:
+    return sorted({_selection_book(a), "pinnacle", _DK_BOOK})
+
+
 def _selection_prices(a, books: dict) -> tuple[float | None, float | None]:
     """(execution_decimal, pinnacle_fair_prob) for THIS alert's exact selection
     from one capture snapshot. Same-line only for props — a moved line is a
@@ -2253,7 +2268,7 @@ def _selection_prices(a, books: dict) -> tuple[float | None, float | None]:
     Reading the wrong one compares an entry at one book to a close at another.
     """
     d = a["details_json"] or {}
-    dk = books.get(d.get("clv_book") or d.get("exec_book") or _DK_BOOK)
+    dk = books.get(_selection_book(a))
     pin = books.get("pinnacle")
     dk_dec = None
     pin_fair = None
@@ -2375,20 +2390,20 @@ def _grade_alert_prices(db, a) -> dict:
     close_cutoff = (frozen_close["captured_at"] if frozen_close else a["commence_time"])
     if is_prop_src:
         caps = db.execute(
-            """SELECT captured_at, books FROM prop_odds_history
+            f"""SELECT captured_at, {_GRADED_BOOKS} FROM prop_odds_history
                WHERE sport = %s AND matchup_id = %s AND market = %s AND player = %s
                  AND captured_at <= %s
                ORDER BY captured_at ASC""",
-            (a["sport"], a["matchup_id"], d.get("market"), d.get("player"),
+            (_graded_books(a), a["sport"], a["matchup_id"], d.get("market"), d.get("player"),
              a["commence_time"]),
         )
     else:
         caps = db.execute(
-            """SELECT captured_at, books FROM game_odds_history
+            f"""SELECT captured_at, {_GRADED_BOOKS} FROM game_odds_history
                WHERE sport = %s AND matchup_id = %s AND books IS NOT NULL
                  AND captured_at <= %s
                ORDER BY captured_at ASC""",
-            (a["sport"], a["matchup_id"], close_cutoff),
+            (_graded_books(a), a["sport"], a["matchup_id"], close_cutoff),
         )
 
     series = [(c["captured_at"], *_selection_prices(a, c["books"] or {})) for c in caps]

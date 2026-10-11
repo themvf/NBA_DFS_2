@@ -2,7 +2,9 @@
 
 2026-10-04: the full team, game, schedule-revision and schedule-source sets
 (~9,000 rows each) were re-sent on every one of ~370 runs a day as no-op
-inserts, 650-850 MB of pages touched per statement.
+inserts, 650-850 MB of pages touched per statement. 2026-10-11: the existence
+probe then returned every PRESENT key, so the same ~36,000 keys came back on
+every run; it now returns only the absent ones.
 """
 from datetime import datetime, timezone
 
@@ -32,15 +34,15 @@ class FakeCursor:
         s = self.last
         if s.startswith("SELECT team_id FROM cfb_teams"):
             return [dict(r) for r in self.teams]
-        if s.startswith("SELECT * FROM cfb_matchups"):
+        if s.startswith("SELECT id,cfbd_game_id,commence_time,fetched_at FROM cfb_matchups"):
             return [dict(r) for r in self.games]
         if "CROSS JOIN LATERAL (SELECT * FROM cfb_engine_schedule_revisions" in s:
             return [dict(r) for r in self.latest]
         if "FROM game_odds_history h WHERE h.sport='cfb'" in s:
             return [dict(r) for r in self.histories]
-        if s.startswith("SELECT ") and " AS k FROM cfb_engine_" in s:
-            # The existence probe: echo every asked-for key back as present (or none).
-            return [{"k": key} for key in self.last_params[0]] if self.present_everything else []
+        if s.startswith("SELECT candidate.key AS k FROM unnest(") and "NOT EXISTS (SELECT 1 FROM cfb_engine_" in s:
+            # The existence probe returns the keys the table lacks.
+            return [] if self.present_everything else [{"k": key} for key in self.last_params[0]]
         return []
 
 

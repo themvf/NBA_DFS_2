@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 import ingest.nfl_dfs_projections as proj
-from model.nfl_dfs_historical import HistoricalWeek
+from model.nfl_dfs_historical import OFFENSE_FIELDS, HistoricalWeek
 
 KICKOFF = datetime(2026, 9, 20, 17, 0, tzinfo=timezone.utc)
 TUESDAY = KICKOFF - timedelta(days=5)
@@ -19,6 +19,7 @@ def week(pid, name, wk, attempts, yards, tds):
 
 HISTORY = ([week(1, "Starter", w, 34, 272, 1.8) for w in range(1, 9)] +
            [week(2, "Backup", w, 9, 54, 0.3) for w in range(1, 9)])
+HISTORY_REQUESTS = []
 
 class StubDB:
     """Answers build_week's four queries by matching on SQL text."""
@@ -36,7 +37,7 @@ class StubDB:
 
 def run(captured_at, config=None, *, as_of_at=TUESDAY, kickoff=KICKOFF):
     monkey = {
-        "_history": lambda db, season, wk: HISTORY,
+        "_history": lambda db, season, wk, **kwargs: HISTORY_REQUESTS.append(kwargs) or HISTORY,
         "_slate_environment": lambda db, season, wk: {
             "LAR": {"opponent": "SEA", "event_id": "e1", "commence_time": kickoff,
                     "team_implied_total": 24.0}},
@@ -58,6 +59,11 @@ def run(captured_at, config=None, *, as_of_at=TUESDAY, kickoff=KICKOFF):
 
 def by_name(projections):
     return {p["player_name"]: p for p in projections}
+
+def test_the_build_fetches_only_the_skill_stat_fields_it_reads():
+    HISTORY_REQUESTS.clear()
+    run(TUESDAY)
+    assert HISTORY_REQUESTS == [{"skill_stat_fields": OFFENSE_FIELDS}]
 
 def test_a_tuesday_out_zeroes_the_starter_and_promotes_the_backup():
     projections, manifest = run(TUESDAY)
