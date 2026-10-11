@@ -20,7 +20,6 @@ import {
   VIEW_LABELS,
   VIEW_ORDER,
   VIEW_POSITIONS,
-  WEEKLY_SEASONS,
   type ScatterView,
 } from "@/lib/fantasy-football/projection-scatter";
 import ProjectionChart from "./projection-chart";
@@ -29,20 +28,39 @@ import WeeklyTable from "./weekly-table";
 
 export default function ProjectionsClient({
   rows,
-  weekly,
-  weeklySeason,
+  weeklyCurrent,
+  weeklyPrior,
+  currentSeason,
+  priorSeason,
+  currentThroughWeek,
+  priorThroughWeek,
+  upsideSeasons,
   upsideRecent,
   upsideAll,
   scoring,
 }: {
   rows: ProjectionScatterRow[];
-  weekly: WeeklyPointsRow[];
-  weeklySeason: number;
+  weeklyCurrent: WeeklyPointsRow[];
+  weeklyPrior: WeeklyPointsRow[];
+  currentSeason: number;
+  priorSeason: number;
+  currentThroughWeek: number | null;
+  priorThroughWeek: number | null;
+  upsideSeasons: number[];
   upsideRecent: WeeklyUpsideRow[];
   upsideAll: WeeklyUpsideRow[];
   scoring: string;
 }) {
   const [view, setView] = useState<ScatterView>("QB");
+  // The season in progress is what an in-season reader wants first. Before
+  // week 1 has been played there is nothing in it, so the opening choice
+  // falls back to the completed season rather than an empty grid.
+  const [weeklyChoice, setWeeklyChoice] = useState<"current" | "prior">(
+    weeklyCurrent.length > 0 ? "current" : "prior",
+  );
+  const weekly = weeklyChoice === "current" ? weeklyCurrent : weeklyPrior;
+  const weeklySeason = weeklyChoice === "current" ? currentSeason : priorSeason;
+  const weeklyThroughWeek = weeklyChoice === "current" ? currentThroughWeek : priorThroughWeek;
   // Both season windows are fetched up front so the toggle is instant; a
   // 3-season window is the better base for a variance estimate, but the most
   // recent season is what people reach for first.
@@ -80,15 +98,46 @@ export default function ProjectionsClient({
 
       <ProjectionChart rows={rows} view={view} />
 
-      <div id="weekly" className="scroll-mt-20">
-        <WeeklyTable rows={weekly} season={weeklySeason} scoring={scoring} view={view} />
+      <div id="weekly" className="scroll-mt-20 space-y-2">
+        <div className="flex items-center justify-end gap-2">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+            Weekly season
+          </span>
+          <div className="flex overflow-hidden rounded-lg border">
+            {(
+              [
+                ["current", currentSeason],
+                ["prior", priorSeason],
+              ] as const
+            ).map(([value, year]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={weeklyChoice === value}
+                onClick={() => setWeeklyChoice(value)}
+                className={`px-2.5 py-1 text-xs ${
+                  weeklyChoice === value ? "bg-slate-900 font-bold text-white" : "hover:bg-muted"
+                }`}
+              >
+                {year}
+              </button>
+            ))}
+          </div>
+        </div>
+        <WeeklyTable
+          rows={weekly}
+          season={weeklySeason}
+          throughWeek={weeklyThroughWeek}
+          scoring={scoring}
+          view={view}
+        />
       </div>
 
       <div id="upside" className="scroll-mt-20">
         <UpsideTable
           rows={seasonMode === "all" ? upsideAll : upsideRecent}
           view={view}
-          seasons={seasonMode === "all" ? WEEKLY_SEASONS : [WEEKLY_SEASONS[0]]}
+          seasons={seasonMode === "all" ? upsideSeasons : [upsideSeasons[0]]}
           seasonMode={seasonMode}
           onSeasonModeChange={setSeasonMode}
         />

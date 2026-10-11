@@ -2710,6 +2710,26 @@ TABLES = [
         fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE(player_id, season, week, season_type, source)
     )""",
+    # The one authoritative bye week per team per season, derived from the
+    # nflverse schedule by compute_bye_weeks() (which fails closed unless all
+    # 32 teams resolve to exactly one missing regular-season week).
+    #
+    # This table exists because a bye is a property of a TEAM, and the two
+    # places that used to answer "when is this player off" were both wrong:
+    # ff_players.bye_week is a per-player COPY that three separate writers
+    # update, only one of which knows the bye, so a trade moved a player's
+    # team and left the old team's bye behind; and the weekly grid INFERRED a
+    # bye from the first week a team put no stat line on the board, which is
+    # unambiguous only once a season is complete -- mid-season it resolves to
+    # the first unplayed week for all 32 teams at once.
+    """CREATE TABLE IF NOT EXISTS ff_team_byes (
+        season INTEGER NOT NULL,
+        team_abbrev TEXT NOT NULL,
+        bye_week INTEGER NOT NULL,
+        source_snapshot_id BIGINT REFERENCES ff_source_snapshots(id) ON DELETE SET NULL,
+        fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(season, team_abbrev)
+    )""",
     # NFL DFS projections are kept outside the NBA/MLB dk_slates lifecycle.
     # A run records exactly what the model knew at projection time; player
     # rows are immutable children so later prop overlays can cite (rather

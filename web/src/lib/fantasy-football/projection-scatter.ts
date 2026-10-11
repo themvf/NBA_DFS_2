@@ -189,7 +189,28 @@ export const SPIKE_THRESHOLDS: Record<string, number> = {
 };
 
 /** Seasons with weekly stat lines stored. Newest first. */
-export const WEEKLY_SEASONS = [2025, 2024, 2023];
+/**
+ * Whether this board carries a draft market at all.
+ *
+ * Every panel here defaults to "drafted only", which is the right default
+ * while a draft is being prepared. The Fantasy Football Calculator ADP feed
+ * deliberately stops after week 1, so in-season no player has an ADP and that
+ * default renders an empty table. Gate the default on the data instead of
+ * assuming a draft is still ahead.
+ */
+export function hasDraftMarket(rows: { adp: number | null }[]): boolean {
+  return rows.some((row) => row.adp != null);
+}
+
+/**
+ * The completed seasons a variance estimate may draw on, newest first.
+ *
+ * Relative to the board's own season rather than a literal year list, which
+ * silently points at the wrong seasons the moment the board rolls over.
+ */
+export function weeklyUpsideSeasons(boardSeason: number, count = 3): number[] {
+  return Array.from({ length: count }, (_, index) => boardSeason - 1 - index);
+}
 
 /**
  * What a year-over-year screen of these metrics actually found (2023->2024 and
