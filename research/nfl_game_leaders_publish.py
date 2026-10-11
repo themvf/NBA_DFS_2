@@ -40,7 +40,8 @@ def publish(batch, evaluations, sources=None):
             'training_games':len(p['training_game_ids']),'draws':p['settings']['draws'],
             'limits':p['limits'],'source_sha256':batch['source_sha256'],
             'role_scenarios':'See frozen request and diagnostics',
-            'unassigned_share':{m:round(v,4) for m,v in unassigned.items()}})
+            'unassigned_share':{m:round(v,4) for m,v in unassigned.items()},
+            **({'sources':sources} if sources else {})})
     return {'version':VERSION,'authority':'exploratory_not_calibrated',
         'season':batch['season'],'week':batch['week'],'decision_at':batch['decision_at'],
         'games':games,'skipped':batch['skipped'],'rejected_training_games':len(batch['reconciliation_rejections']),

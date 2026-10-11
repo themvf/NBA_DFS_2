@@ -179,9 +179,12 @@ def refresh(published_path=PUBLISHED, within_hours=0., write_db=False, now=None,
     from model.nfl_longest_touchdown import timestamp
     now = now or datetime.now(timezone.utc)
     published = json.loads(Path(published_path).read_text())
-    sources = published.get('sources')
-    if not sources:
-        raise SystemExit('Published page has no sources (snapshot/requests paths); republish with --snapshot and --requests')
+    # A page can mix runs (a game re-run before kickoff, one frozen after it): each game names its own inputs.
+    def sources_for(game):
+        src = game.get('sources') or published.get('sources')
+        if not src:
+            raise SystemExit('Published page has no sources (snapshot/requests paths); republish with --snapshot and --requests')
+        return src
     # Started games are priced only on request: their lines must still be pregame captures (load_props).
     games = [g for g in published['games'] if (include_started or timestamp(g['game']['kickoff']) > now) and (
         not within_hours or timestamp(g['game']['kickoff']) <= now + timedelta(hours=within_hours))
@@ -189,7 +192,15 @@ def refresh(published_path=PUBLISHED, within_hours=0., write_db=False, now=None,
     if not games:
         log(json.dumps({'priced': 0, 'reason': 'no upcoming published game in the window'}))
         return []
-    snapshot, requests = read(Path(sources['snapshot'])), read(Path(sources['requests']))
+    loaded = {}
+
+    def inputs(game):
+        src = sources_for(game)
+        key = (src['snapshot'], src['requests'])
+        if key not in loaded:
+            loaded[key] = (read(Path(src['snapshot'])), read(Path(src['requests'])))
+        return loaded[key]
+
     conn = _connect()
     cur = conn.cursor()
     props = load_props(cur)
@@ -197,21 +208,24 @@ def refresh(published_path=PUBLISHED, within_hours=0., write_db=False, now=None,
     histories, written = {}, []
     for g in games:
         gid = g['game']['game_id']
+        snapshot, requests = inputs(g)
         request = requests[gid]
-        if request['decision_at'] not in histories:
-            histories[request['decision_at']] = prepare(snapshot, request['decision_at'])[0]
-        players, shares, decision_at = forecast_bank(histories[request['decision_at']], snapshot, request)
+        if (id(snapshot), request['decision_at']) not in histories:
+            histories[id(snapshot), request['decision_at']] = prepare(snapshot, request['decision_at'])[0]
+        players, shares, decision_at = forecast_bank(histories[id(snapshot), request['decision_at']], snapshot, request)
         check_matches_published(gid, shares, g)
         event_id, game_props = match_event(players, props)
         if not event_id:
             log(json.dumps({'skipped': gid, 'reason': 'no captured sportsbook event matched this game'}), flush=True)
             continue
         captured = max(r['captured_at'] for r in game_props)
-        cur.execute('SELECT max(prop_captured_at) FROM nfl_game_leader_market WHERE game_id=%s', (gid,))
+        # Unchanged only when both the lines and the saved forecast are the ones already priced.
+        cur.execute('SELECT max(prop_captured_at) FROM nfl_game_leader_market WHERE game_id=%s AND forecast_decision_at=%s',
+                    (gid, decision_at))
         previous = cur.fetchone()[0]
         conn.rollback()
         if previous is not None and previous >= captured:
-            log(json.dumps({'skipped': gid, 'reason': 'no new capture since the last pricing'}), flush=True)
+            log(json.dumps({'skipped': gid, 'reason': 'no new capture or forecast since the last pricing'}), flush=True)
             continue
         priced = price_game(players, game_props)
         computed = datetime.now(timezone.utc)

@@ -94,3 +94,14 @@ def test_publish_refuses_unassigned_mass_above_the_limit():
         publish(batch, [])
     batch['forecasts'] = [_forecast(.01)]
     assert publish(batch, [])['games'][0]['unassigned_share']['rushing_yards'] == pytest.approx(.01)
+
+
+def test_sleeper_reserve_list_alone_counts_as_out_but_a_weekly_out_needs_agreement():
+    from research.nfl_game_leaders import availability_status
+    for reserve in ('IR', 'PUP', 'NFI', 'SUSPENDED'):
+        assert availability_status(reserve, 'UNKNOWN', 'UNKNOWN') == 'out'
+    assert availability_status('OUT', 'UNKNOWN', 'UNKNOWN') == 'unresolved'
+    assert availability_status('OUT', 'OUT', 'UNKNOWN') == 'out'
+    assert availability_status('QUESTIONABLE', 'IR', 'UNKNOWN') == 'unresolved'
+    assert availability_status('', 'UNKNOWN', 'INACTIVE') == 'out'
+    assert availability_status('ACTIVE', 'HEALTHY', 'UNKNOWN') == 'unresolved'

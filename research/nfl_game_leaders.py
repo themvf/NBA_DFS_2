@@ -91,6 +91,29 @@ def expected_history(snapshot, game, decision_at, recent_games=6):
     return result
 
 
+RESERVE_DESIGNATIONS = ('IR', 'PUP', 'NFI', 'SUSPENDED')
+RULED_OUT = ('OUT',) + RESERVE_DESIGNATIONS
+
+
+def availability_status(sleeper, fantasypros, official):
+    """'out' or 'unresolved' for one player this week.
+
+    An official OUT/INACTIVE settles it. A Sleeper reserve-list designation
+    (IR, PUP, NFI, suspended) settles it on its own: a player on a reserve list
+    cannot play this week, and FantasyPros often reports such players as
+    unknown (Grant Calcaterra, week 5 2026). A plain weekly OUT tag still needs
+    FantasyPros to agree, because weekly tags change during the week.
+    Mirrored in web/src/lib/nfl/game-leaders-availability.ts (classifyRuledOut).
+    """
+    if official in ('OUT', 'INACTIVE'):
+        return 'out'
+    if sleeper in RESERVE_DESIGNATIONS:
+        return 'out'
+    if sleeper in RULED_OUT and fantasypros in RULED_OUT:
+        return 'out'
+    return 'unresolved'
+
+
 def evidence_request(snapshot, game_id):
     """Freeze current dual depth, week injuries and official coverage, read only.
 
@@ -143,9 +166,8 @@ def evidence_request(snapshot, game_id):
         fp=i['normalized_status'] if i else 'UNKNOWN'
         official=official_by_id.get(p['id'])
         official_status=official['normalized_status'] if official else 'UNKNOWN'
-        out=(sleeper in ('OUT','IR','PUP','NFI','SUSPENDED') and fp in ('OUT','IR','PUP','NFI','SUSPENDED')) or official_status in ('OUT','INACTIVE')
         candidates.append({'identity':p['identity'],'name':p['name'],'team':p['team'],'position':p['position'],
-            'status':'out' if out else 'unresolved','sleeper_status':sleeper,'fantasypros_injury_status':fp,
+            'status':availability_status(sleeper,fp,official_status),'sleeper_status':sleeper,'fantasypros_injury_status':fp,
             'official_status':official_status})
     return {'game':game,'decision_at':cutoff,'players':candidates,'availability_verified':False,
         'expected_prior_game_ids':expected_history(snapshot,game,cutoff),
