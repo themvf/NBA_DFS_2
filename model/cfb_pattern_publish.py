@@ -26,15 +26,15 @@ from model import cfb_pattern_watch as pw
 
 # Prose blocks for the reader page. Edit them here; there is no override file.
 COPY = {
-    "header_sub": "Six betting patterns found in the first five weeks of the 2026 season and frozen before most of week 6 was played. Every pick below is graded at the verified closing line, written once, and never edited. The purpose is to find out whether any of them are real. So far none is proven, and the record is shown either way.",
-    "note": "A flat one unit on every qualifying game at the closing consensus price. Moneyline picks pay what the favorite pays, usually -250 to -400; spreads and totals are scored at -110. Nothing here is a recommendation. Each pattern needs 40 to 80 graded games before it gets a verdict, and the verdict is computed once.",
-    "upcoming_intro": "Each selection is frozen the first time its pattern fires on a fresh line. The frozen line is what gets graded against; the current line is shown beside it so you can see what moved. A line more than an hour old near kickoff is not shown as a pick. Watch means the market moved sharply in the last two hours and we do not know why; there is no injury feed for college football, so the line is the news.",
-    "howto_1": "A pattern is a fixed rule written down before the games it is tested on. Patterns 1 to 5 were frozen on October 9, pattern 6 on the morning of October 10. The rules do not change; a changed rule is a new study.",
-    "howto_2": "The discovery column is the record on the games that suggested each pattern. It is shown so you can see where the idea came from and it counts for nothing. The same market produced those numbers and will regress toward its long-run rates, which for spreads and totals is about 50%.",
-    "howto_3": "Grading uses the verified closing consensus line, so it is what a bettor could have gotten late, not the best price of the week. The upcoming table shows the best retail price at the moment the selection was frozen; that price is not what is graded.",
-    "howto_4": "Moneyline favorites in patterns 1 and 5 are expensive. Two upsets undo six or seven wins. The spread and total patterns risk one unit to win 0.91.",
-    "howto_5": "A verdict comes once, after the regular season, and only for patterns that reach their sample floor. Anything short of the floor is described as what it is: too few games.",
-    "footer": "Source: a private ledger of college football closing lines captured from retail and offshore books, graded against official final scores. Prices and lines are observations, not offers. This page is updated weekly and after each Saturday's games.",
+    "header_sub": "In the first five weeks of the 2026 college football season, a few things in the betting market looked off. Favorites were winning more than their prices said they should, and certain spreads and totals kept landing the same way. Before most of week 6 kicked off, I wrote six of those observations down as fixed rules. From here on, every game that fits one gets graded at the closing line. No edits, and no quietly deleted losers. If a pattern is real, the results will show it. If it isn't, you'll watch it fall apart right here.",
+    "note": "How the scoring works: one unit on every game that fits a pattern, at the closing consensus price. Moneyline favorites cost what they cost, usually -250 to -400. Spreads and totals are scored at -110. These aren't picks I'm telling you to bet. Each pattern needs 40 to 80 graded games before I'll say anything about it, and I only get one look.",
+    "upcoming_intro": "When a game fits a pattern, its line gets frozen the first time it shows up fresh, and that frozen number is what it's graded against. The current line sits beside it so you can see what moved. If a line goes more than an hour stale close to kickoff, it doesn't count as a pick. \"Watch\" means the market jumped in the last two hours and I don't know why. There's no reliable injury feed for college football, so a sudden move is often the only news you get.",
+    "howto_1": "Each pattern is a fixed rule, written down before the games it's tested on. Patterns 1 through 5 were locked on October 9, and pattern 6 on the morning of October 10. I don't get to tweak them. A changed rule would be a brand-new experiment.",
+    "howto_2": "The discovery column shows how each pattern did on the games that gave me the idea. It's there so you can see where the idea came from, and it proves nothing. Patterns found by looking backward almost always cool off, and for spreads and totals the long-run rate is about 50%.",
+    "howto_3": "Grading uses the verified closing consensus line, which is roughly what you could have gotten late in the week. It isn't the best number available. The upcoming table shows the best retail price at the moment a pick was frozen, but that price isn't what gets graded.",
+    "howto_4": "The moneyline favorites in patterns 1 and 5 are pricey. Two upsets can wipe out six or seven wins. The spread and total patterns risk one unit to win 0.91.",
+    "howto_5": "The verdict comes once, after the regular season, and only for patterns that reach their minimum number of games. Anything short of that gets called what it is: not enough games to tell.",
+    "footer": "Data: my own ledger of college football closing lines from retail and offshore sportsbooks, graded against official final scores. Prices and lines are records of what was posted, not offers. I update this weekly and after every Saturday slate. Nothing here is betting advice.",
 }
 def copy_text(key: str) -> str:
     return COPY[key]
@@ -151,7 +151,7 @@ footer{{margin-top:48px;color:var(--muted);font-size:14px;border-top:1px solid v
 </style>
 <div class="wrap">
 <header>
-<div class="eyebrow">{esc(pw.STUDY_VERSION)} · pre-registered · generated {esc(now.strftime('%Y-%m-%d %H:%M UTC'))}</div>
+<div class="eyebrow">Pre-registered · updated {esc(now.strftime('%B ') + str(now.day) + now.strftime(', %H:%M UTC'))}</div>
 <h1>College Football Pattern Watch</h1>
 <p class="sub">{esc(copy_text("header_sub"))}</p>
 </header>
@@ -178,11 +178,11 @@ footer{{margin-top:48px;color:var(--muted);font-size:14px;border-top:1px solid v
         games = gc["per_trigger_games"].get(trig_by_code[s["code"]], 0)
         parts.append(f"<tr><td class=\"num\">{s['code']}</td><td>{esc(s['desc'])}</td><td>{esc(s['bet'])}</td><td class=\"num\">{s['n']}</td><td class=\"num\">{games}</td><td class=\"num\">{s['w']}-{s['l']}{('-' + str(s['p'])) if s['p'] else ''}</td><td class=\"num {cls}\">{s['units']:+.2f}</td><td class=\"num {cls}\">{roi}</td><td class=\"num\">{s['n']}/{s['floor']}</td><td class=\"num muted\">{s['disc'][0]} · {s['disc'][1]} · {s['disc'][2]} dates</td></tr>")
     parts.append("</table></div>")
-    parts.append(f"<p class=\"muted\">The {gc['rows']} graded picks come from {gc['games']} different games. {gc['games_with_multiple_triggers']} of those games fed more than one pattern, so the patterns are not independent of each other and their records should not be added together as if they were.</p>")
+    parts.append(f"<p class=\"muted\">The {gc['rows']} graded picks come from {gc['games']} different games. {gc['games_with_multiple_triggers']} of those games fed more than one pattern, so the patterns overlap. Don't add their records together as if they were separate bets.</p>")
     # base rate: the effect three of the patterns rest on
     if base_rates:
         parts.append("""<h2>Is the favorite edge still there?</h2>
-<p class="muted">Patterns 1, 5 and 6 exist because favorites won more often than their prices implied early in the season. This table checks that effect across every FBS game with a closing line, not just the games a pattern picked. It does not grade anything; it shows whether the reason for those patterns is still present.</p>
+<p class="muted">Patterns 1, 5 and 6 all exist because favorites kept winning more often than their prices implied early in the season. This table checks whether that's still happening, across every FBS game with a closing line rather than just the ones a pattern picked. It doesn't grade anything. It tells me whether the reason behind those three patterns is still around.</p>
 <div class="scroll"><table>
 <tr><th class="num">week</th><th class="num">games</th><th class="num">favorites won</th><th class="num">price implied</th><th class="num">difference</th><th class="num">favorites covered</th><th class="num">overs</th><th class="num">decided by 7 or less</th></tr>""")
         for r in base_rates:
@@ -191,9 +191,9 @@ footer{{margin-top:48px;color:var(--muted);font-size:14px;border-top:1px solid v
             cls = "" if ex is None else ("pos" if ex >= 0 else "neg")
             exs = "—" if ex is None else f"{ex:+.1f} pts"
             parts.append(f"<tr><td class=\"num\">{r['week']}</td><td class=\"num\">{r['games']}</td><td class=\"num\">{pct(r['fav_su'])}</td><td class=\"num\">{pct(r['implied'])}</td><td class=\"num {cls}\">{exs}</td><td class=\"num\">{pct(r['fav_ats'])}</td><td class=\"num\">{pct(r['over'])}</td><td class=\"num\">{pct(r['within_7'])}</td></tr>")
-        parts.append("</table></div><p class=\"muted\">Weeks are CollegeFootballData's numbering. The difference column is favorites' win rate minus the win rate their closing moneylines implied after removing the bookmaker's margin.</p>")
+        parts.append("</table></div><p class=\"muted\">Weeks follow CollegeFootballData's numbering. The difference column is how often favorites actually won, minus how often their closing moneylines said they would once the sportsbook's cut is removed.</p>")
     # upcoming board
-    parts.append("""<h2>Upcoming</h2>
+    parts.append("""<h2>On deck</h2>
 <p class="muted">""" + esc(copy_text("upcoming_intro")) + "</p>")
     if upcoming:
         parts.append("""<div class="scroll"><table>
@@ -211,18 +211,18 @@ footer{{margin-top:48px;color:var(--muted);font-size:14px;border-top:1px solid v
             parts.append(f"<tr><td>{esc(_et(c['commence_time']))}</td><td>{esc(c['away'])} @ {esc(c['home'])}</td><td class=\"num\">{code}</td><td>{sel}</td><td>{brs}</td><td class=\"num\">{cur['home_spread']:+g} / {cur['vegas_total']}</td><td class=\"num\">{esc(moved)}</td><td>{pill(c['status'])}{note_html}</td></tr>")
         parts.append("</table></div>")
     else:
-        parts.append('<p class="muted">No games with lines in the next 36 hours.</p>')
+        parts.append('<p class="muted">Nothing on the board in the next 36 hours. Check back closer to Saturday.</p>')
     by_status = ev.get("by_status", {})
-    parts.append(f"<p class=\"muted\">The board has run {ev['runs']} times. It has refused {by_status.get('stale', 0)} stale lines, flagged {by_status.get('watch', 0)} late moves, and recorded {by_status.get('dropped', 0)} picks that stopped qualifying before kickoff.</p>")
+    parts.append(f"<p class=\"muted\">So far the board has run {ev['runs']} times. It refused {by_status.get('stale', 0)} stale lines, flagged {by_status.get('watch', 0)} late moves, and logged {by_status.get('dropped', 0)} picks that stopped fitting before kickoff.</p>")
     # published picks vs the close
     fs = fvc["summary"]
-    parts.append("<h2>Published picks against the close</h2>")
+    parts.append("<h2>Did the published line hold up?</h2>")
     if fs["n"]:
         lead = fs["median_lead_minutes"]
         lead_txt = "unknown" if lead is None else (f"{lead / 60:.1f} hours" if lead >= 90 else f"{lead:.0f} minutes")
         pts = fs["mean_points_clv"]
         pts_txt = "no spread or total picks yet" if pts is None else f"{pts:+.2f} points on average ({fs['points_better']} better, {fs['points_worse']} worse)"
-        parts.append(f"""<p class="muted">Each pick is published at the line it was frozen at, but the results above are graded at the closing line. This table compares the two. A positive number means the frozen line was better for the pick than the close. Picks were frozen a median of {esc(lead_txt)} before kickoff; picks frozen close to kickoff will show little movement by design.</p>
+        parts.append(f"""<p class="muted">Each pick goes out at the line it was frozen at, but the results above are graded at the close. This table compares the two. A positive number means the frozen line was better for the pick than the closing one. So far picks have been frozen a median of {esc(lead_txt)} before kickoff, and picks frozen that late shouldn't move much.</p>
 <div class="strip">
 <div class="tile"><div class="k">published picks graded</div><div class="v">{fs['n']}</div></div>
 <div class="tile"><div class="k">result changed by the move</div><div class="v">{fs['result_changed']}</div></div>
@@ -247,7 +247,7 @@ footer{{margin-top:48px;color:var(--muted);font-size:14px;border-top:1px solid v
     else:
         parts.append('<p class="muted">No published pick has been graded yet.</p>')
     # results by date
-    parts.append("<h2>Results</h2>")
+    parts.append("<h2>The receipts</h2>")
     for d in sorted(by_date, reverse=True):
         rs = sorted(by_date[d], key=lambda r: (r["commence_time"], r["trigger"]))
         du = sum(r["pnl_units"] for r in rs); dw = sum(r["result"] == "won" for r in rs); dl = sum(r["result"] == "lost" for r in rs)
@@ -261,7 +261,7 @@ footer{{margin-top:48px;color:var(--muted);font-size:14px;border-top:1px solid v
             parts.append(f"<tr><td>{esc(r['away'])} @ {esc(r['home'])}</td><td class=\"num\">{code}</td><td>{esc(r['selection'])}</td><td class=\"num\">{esc(price)}</td><td class=\"num\">{r['away_score']}-{r['home_score']}</td><td>{pill(r['result'])}</td><td class=\"num {cls}\">{r['pnl_units']:+.2f}</td></tr>")
         parts.append("</table></div>")
     bullets = "".join("<li>" + esc(copy_text(k)) + "</li>" for k in ("howto_1", "howto_2", "howto_3", "howto_4", "howto_5"))
-    parts.append(f"""<h2>How to read this</h2>
+    parts.append(f"""<h2>The fine print</h2>
 <ul>
 {bullets}</ul>
 <footer>{esc(copy_text("footer"))}</footer>
