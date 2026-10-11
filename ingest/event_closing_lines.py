@@ -37,6 +37,13 @@ VERIFIED_CLV_START_AT = datetime(2026, 8, 31, 4, 0, tzinfo=timezone.utc)
 CLV_METHODOLOGY_VERSION = "event-close-v1"
 VERIFIED_CLV_COHORT = "verified_clv_v1"
 EASTERN = ZoneInfo("America/New_York")
+# A kickoff that moves back to a time it had before conflicts with the rows that
+# reschedule superseded; without reviving them no checkpoint is due and the game
+# is never captured again (Hawai'i at Arizona State, 2026-10-10).
+REVIVE_ON_CONFLICT = """ON CONFLICT (sport, matchup_id, checkpoint, scheduled_start_at) DO UPDATE
+        SET status='pending', failure_reason=NULL
+        WHERE odds_capture_checkpoints.status='missed'
+          AND odds_capture_checkpoints.failure_reason LIKE 'superseded by %%reschedule'"""
 # Two future CFB slates, including their Thursday/Friday games. The pilot
 # expires after the October 17 slate without changing the established cadence.
 CFB_EARLY_PILOT_FIRST_GAME = date(2026, 10, 8)
@@ -188,7 +195,7 @@ def _seed_nfl_checkpoints(db: DatabaseManager, now: datetime) -> int:
         INSERT INTO odds_capture_checkpoints (
             sport, matchup_id, event_id, checkpoint, scheduled_start_at, target_at, due_until
         ) VALUES {placeholders}
-        ON CONFLICT (sport, matchup_id, checkpoint, scheduled_start_at) DO NOTHING
+        {REVIVE_ON_CONFLICT}
         RETURNING id
         """,
         params,
@@ -329,7 +336,7 @@ def seed_checkpoints(db: DatabaseManager, now: datetime | None = None) -> int:
                 FROM ({source_sql}) e
                 CROSS JOIN (VALUES {values_sql}) AS w(checkpoint, target_lead, due_lead)
                 {pilot_filter}
-                ON CONFLICT (sport, matchup_id, checkpoint, scheduled_start_at) DO NOTHING
+                {REVIVE_ON_CONFLICT}
                 RETURNING id
                 """,
                 params,
