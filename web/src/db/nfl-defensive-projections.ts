@@ -16,7 +16,11 @@ export async function readDefensiveCaptures(uploadId: string, baselineRunId: str
     ORDER BY as_of_at DESC,created_at DESC,run_id DESC LIMIT 1`);
   const selected = run.rows[0];
   if (!selected) return new Map();
-  const rows = await db.execute(sql`SELECT p.player_id,p.game_id,p.kickoff,p.projection
+  // The frozen candidate minus its `sources` and top-level `baseline` keys,
+  // which nothing on the web reads (`resolveDefensiveForecast` uses the identity
+  // fields and `shadow`): with them an 11-game Classic read 13 MB + 6 MB for
+  // the two profiles on every page open (2026-10-10).
+  const rows = await db.execute(sql`SELECT p.player_id,p.game_id,p.kickoff,(p.projection - 'sources'::text - 'baseline'::text) AS projection
     FROM nfl_matchup_player_forecasts p
     WHERE p.run_id=${String(selected.run_id)} AND p.kickoff>${decisionAt.toISOString()}::timestamptz
     ORDER BY p.player_id LIMIT 2000`);

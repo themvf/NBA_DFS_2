@@ -32,6 +32,7 @@ export async function safeCheckNflSlateFreshness(...args: Args<typeof actions.ch
 export async function safeRefreshNflSlateProjections(...args: Args<typeof actions.refreshNflSlateProjections>) { return run("Projection refresh", () => actions.refreshNflSlateProjections(...args)); }
 export async function safeListSavedNflSlates(...args: Args<typeof actions.listSavedNflSlates>) { return run("Listing saved slates", () => actions.listSavedNflSlates(...args)); }
 export async function safeLoadSavedNflWorkspace(...args: Args<typeof actions.loadSavedNflWorkspace>) { return run("Loading the slate", () => actions.loadSavedNflWorkspace(...args)); }
+export async function safeListSavedNflRuns(...args: Args<typeof actions.listSavedNflRuns>) { return run("Listing saved lineup sets", () => actions.listSavedNflRuns(...args)); }
 export async function safeLoadSavedNflLineups(...args: Args<typeof actions.loadSavedNflLineups>) { return run("Loading saved lineups", () => actions.loadSavedNflLineups(...args)); }
 export async function safeReadNflOptimizerAudit(...args: Args<typeof actions.readNflOptimizerAudit>) { return run("Reading the lineup audit", () => actions.readNflOptimizerAudit(...args)); }
 export async function safeExportSavedNflDefensiveEntries(...args: Args<typeof actions.exportSavedNflDefensiveEntries>) { return run("Exporting entries", () => actions.exportSavedNflDefensiveEntries(...args)); }

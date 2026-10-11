@@ -7842,6 +7842,30 @@ every player the pool rules left out (`reasonCode` `WINNERS_SHAPE` /
   review to grade against the standard one. Change a constant and bump the
   version; `npm run test:nfl-winners-shape` pins the current ones.
 
+## NFL DFS — the page read, measured and cut (2026-10-10)
+
+Opening a saved slate on `/dfs/nfl` took 12-26 s, all of it in one server
+action, the workspace read (`workspaceSlate` in `web/src/app/dfs/nfl/actions.ts`).
+Measured with lap timers on the PHI@JAX slate (two samples, 14.6 s and 24.7 s):
+
+| step | cost | cause | fix |
+|---|---|---|---|
+| Sleeper depth archive in `getNflRosterEvidence` | 8.8-11.4 s | `DISTINCT ON (player_id)` over the whole season of `ff_player_injury_observations` (490k rows, 742 MB): parallel seq scan plus a 188 MB on-disk sort of 378k rows to return 1,035, every one of them under a day old | partial index `idx_ff_injury_observations_sleeper_depth` (season, player_id, observed_at DESC, id DESC; Sleeper rows with a depth order; built CONCURRENTLY on the live DB, declared in `db/schema.py` and the web mirror) plus a per-player LATERAL read on it: 0.2-0.3 s, same rows |
+| per-run projection read | 2.6-3.1 s | `stat_means` + `feature_snapshot` + `source_evidence` for 1,023 players is 8.2 MB a run, 5 MB of it `availability_decision` observation-id lists the page never reads | select only `stat_means`, `feature_snapshot->special_teams_candidate`, `source_evidence->availability` and the decision minus its two `*_source_snapshot_ids` lists |
+| study report in `getCalibratedSnapshots` | ~1 s | the 570 KB research-run report fetched on every open for the explanation recipes | cached per server instance, keyed by study id and digest |
+| ~20 sequential round trips | a few s | one HTTP request each on neon-http | reads that need only the upload or run row run in `Promise.all` (two groups), both defensive-capture profiles together, the five roster-evidence reads together, the GitHub pipeline status started first and awaited last |
+| defensive capture read (`readDefensiveCaptures`), Classic only | 4-5 s | each forecast row's `projection` JSON is ~25 KB, and an 11-game slate read 13 MB + 6 MB for the two profiles to count applied players | select the row minus its `sources` and top-level `baseline` keys, which nothing on the web reads: 0.5 s |
+| the page re-reading the workspace for the runs dropdown | a full read each | after Generate, an upload or a projection move the client called the workspace loader for `.runs` | `listSavedNflRuns` (runs only) |
+
+Result from the same machine: PHI@JAX 3.5-4.3 s; the 11-game week-5 Classic 4.8 s (it was 10-11 s after the first four fixes and was not measured before them). Opening a slate whose saved run has confirmed starters still reads twice (plain, then with the starters). Numbers are from a
+home connection to Neon us-east-1; Vercel sits closer, so the round-trip items
+shrink there and the index item does not. Two traps worth keeping: in Postgres
+`-` binds tighter than `->`, so `col->'k' - 'x'` is `col->('k' - 'x')` and fails
+as "invalid input syntax for type json"; parenthesise the arrow. And under the
+neon-http driver a bare string literal next to a jsonb operand is typed
+`unknown` and `jsonb_build_object` keys need `::text`. Both failed loudly on the
+page (the action guard showed the query), which is the behaviour to keep.
+
 ## CFB Early-Season Pattern Watch — pre-registered, local only (2026-10-09)
 
 A descriptive sweep of the first six weeks of 2026 (259 FBS-vs-FBS games with
