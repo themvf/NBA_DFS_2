@@ -15,7 +15,7 @@ def unassigned_shares(forecast):
     return {m: sum(r['win_share'] for r in forecast['metrics'][m]['players'] if r.get('residual')) for m in METRICS}
 
 
-def publish(batch, evaluations):
+def publish(batch, evaluations, sources=None):
     if batch['version']!=VERSION or batch['authority']!='exploratory_not_calibrated' or batch.get('market_inputs_used') is not False:
         raise ValueError('Require exploratory market-free batch')
     games=[]
@@ -47,7 +47,9 @@ def publish(batch, evaluations):
         'evaluation':[{'season':e['season'],'weeks':e['weeks'],'games':e['graded_games'],
             'skipped':len(e['skipped']),'summary':{m:{k:v for k,v in e['summary'][m].items() if k!='calibration'} for m in METRICS if m in e['summary']}}
             for e in evaluations],
-        'evaluation_limit':'Corrected historical records and reconstructed prior-usage rosters; not archived game-day availability or validated betting probabilities.'}
+        'evaluation_limit':'Corrected historical records and reconstructed prior-usage rosters; not archived game-day availability or validated betting probabilities.',
+        # Repo-relative inputs that re-create these forecasts exactly; the DK pricing refresh needs them.
+        **({'sources':sources} if sources else {})}
 
 
 def main():
@@ -55,8 +57,13 @@ def main():
     p.add_argument('--batch',type=Path,required=True)
     p.add_argument('--evaluation',type=Path,action='append',default=[])
     p.add_argument('--output',type=Path,required=True)
+    p.add_argument('--snapshot',type=Path,help='capture the batch was run on (repo-relative)')
+    p.add_argument('--requests',type=Path,help='requests the batch was run on (repo-relative)')
     a=p.parse_args()
-    write(a.output,publish(read(a.batch),[read(e) for e in a.evaluation]))
+    if bool(a.snapshot)!=bool(a.requests):
+        raise SystemExit('--snapshot and --requests go together')
+    sources={'snapshot':a.snapshot.as_posix(),'requests':a.requests.as_posix()} if a.snapshot else None
+    write(a.output,publish(read(a.batch),[read(e) for e in a.evaluation],sources))
 
 
 if __name__=='__main__':

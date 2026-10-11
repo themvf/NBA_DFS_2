@@ -25,7 +25,7 @@ on:
 jobs:
   capture:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -43,3 +43,12 @@ jobs:
           --max-credits "${{ inputs.max_credits || '140' }}"
           --within-hours "${{ inputs.within_hours || '6' }}"
           --apply
+      # Re-price the saved game-leader forecasts against the lines just captured;
+      # the game-leaders page reads the result (nfl_game_leader_market).
+      - name: Price game leaders against DraftKings lines
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: >-
+          python -m research.nfl_game_leaders_market refresh
+          --within-hours "${{ inputs.within_hours || '6' }}"
+          --write-db

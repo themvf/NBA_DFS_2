@@ -288,6 +288,10 @@ DATASET_REGISTRY: tuple[Dataset, ...] = (
             "Pregame over/unders written by ingest.nfl_prop_odds, dispatched 90-105 minutes before each kickoff. "
             "Append-only per capture_key, so captured_at moves only when a run writes.",
             filter="sport = 'nfl'"),
+    Dataset("nfl_game_leader_market", "NFL game leaders: DraftKings pricing", "nfl_game_leader_market", "computed_at",
+            120, "capture_nfl_props.yml", _NFL,
+            "Written after each pregame prop capture by research.nfl_game_leaders_market refresh; append-only, "
+            "stamped per run. Skips a game whose lines have not changed since its last pricing."),
     Dataset("mlb_team_stats_history", "MLB team stats (daily snapshot)", "mlb_team_stats_history", "available_at",
             72, "refresh_mlb_stats.yml", _MLB,
             "Append-only, one row per team per run. The current-state table mlb_team_stats is NOT watched: "
