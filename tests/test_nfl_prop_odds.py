@@ -143,8 +143,15 @@ def test_multi_touchdown_market_keeps_its_over_only_line() -> None:
 def test_backfill_requests_only_markets_a_game_is_missing() -> None:
     from ingest.nfl_prop_backfill import missing_markets
     from ingest.nfl_prop_odds import CAPTURE_MARKETS, MARKETS, VOLUME_MARKETS
-    assert len(CAPTURE_MARKETS) == 21 and len(set(CAPTURE_MARKETS)) == 21
+    assert len(CAPTURE_MARKETS) == 22 and len(set(CAPTURE_MARKETS)) == 22
     have = set(MARKETS)
     missing = missing_markets(have)
     assert not set(missing) & have and set(VOLUME_MARKETS) <= set(missing)
     assert missing_markets(set(CAPTURE_MARKETS)) == []
+
+
+def test_first_td_is_a_yes_only_market() -> None:
+    payload = {"bookmakers": [{"key": "draftkings", "markets": [{"key": "player_1st_td", "outcomes": [
+        {"name": "Kyren Williams", "price": 550}, {"name": "No Touchdown", "price": 2500}]}]}]}
+    rows = {r["player"]: r for r in normalize_prop_payload(payload)}
+    assert rows["Kyren Williams"]["books"]["draftkings"]["yes"] == 550
