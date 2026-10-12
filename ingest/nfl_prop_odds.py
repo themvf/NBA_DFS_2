@@ -51,7 +51,10 @@ VOLUME_MARKETS: tuple[str, ...] = (
     "player_rush_reception_yds",
     "player_tds_over",
 )
-CAPTURE_MARKETS: tuple[str, ...] = MARKETS + VOLUME_MARKETS + ALTERNATE_MARKETS
+# Added 2026-10-12: first-touchdown scorer (yes-only, one price per player).
+# DraftKings, Caesars, BetMGM and Fanatics posted it for BUF@LAR in the test call.
+TD_ORDER_MARKETS: tuple[str, ...] = ("player_1st_td",)
+CAPTURE_MARKETS: tuple[str, ...] = MARKETS + VOLUME_MARKETS + ALTERNATE_MARKETS + TD_ORDER_MARKETS
 
 
 def normalize_prop_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:

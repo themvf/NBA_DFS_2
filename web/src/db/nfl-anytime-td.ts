@@ -16,9 +16,12 @@ export type AnytimeTdRow = {
   bestPrice: number | null;
   /** DraftKings' price for two or more touchdowns. */
   twoPlusPrice: number | null;
+  /** DraftKings' first-touchdown-scorer price, and its chance with every outcome of the game (including no touchdown) normalized to 100%. */
+  firstTdPrice: number | null;
+  firstTdFair: number | null;
 };
 
-export type AnytimeTdMarket = { capturedAt: string; rows: AnytimeTdRow[] };
+export type AnytimeTdMarket = { capturedAt: string; rows: AnytimeTdRow[]; firstTdListed: boolean };
 
 const BOOKS = ["draftkings", "fanduel", "betmgm", "williamhill_us", "fanatics", "pinnacle"];
 type Quote = { yes?: number | null; outcomes?: { point?: number | null; price?: number | null }[] } | null;
@@ -35,7 +38,7 @@ export async function getAnytimeTouchdowns(home: string, away: string, kickoff: 
              (SELECT COALESCE(odds_api_name, name) FROM nfl_teams WHERE abbreviation = ${away} LIMIT 1) AS away_name)
     SELECT DISTINCT ON (p.player, p.market) p.player, p.market, p.captured_at, p.books
     FROM prop_odds_history p, teams t
-    WHERE p.sport = 'nfl' AND p.market IN ('player_anytime_td', 'player_tds_over')
+    WHERE p.sport = 'nfl' AND p.market IN ('player_anytime_td', 'player_tds_over', 'player_1st_td')
       AND p.home_team_name = t.home_name AND p.away_team_name = t.away_name
       AND ABS(EXTRACT(EPOCH FROM (p.commence_time - ${kickoff}::timestamptz))) < 7200
       AND p.captured_at < p.commence_time
@@ -46,7 +49,7 @@ export async function getAnytimeTouchdowns(home: string, away: string, kickoff: 
   for (const r of result.rows as { player: string; market: string; captured_at: unknown; books: Record<string, Quote> | null }[]) {
     const at = r.captured_at instanceof Date ? r.captured_at.toISOString() : String(r.captured_at);
     if (at > captured) captured = at;
-    const row = byPlayer.get(r.player) ?? { player: r.player, dkPrice: null, dkImplied: null, fairProb: null, bestBook: null, bestPrice: null, twoPlusPrice: null };
+    const row = byPlayer.get(r.player) ?? { player: r.player, dkPrice: null, dkImplied: null, fairProb: null, bestBook: null, bestPrice: null, twoPlusPrice: null, firstTdPrice: null, firstTdFair: null };
     const books = r.books ?? {};
     if (r.market === "player_anytime_td") {
       const dk = books.draftkings?.yes ?? null;
@@ -57,12 +60,19 @@ export async function getAnytimeTouchdowns(home: string, away: string, kickoff: 
         const price = books[book]?.yes;
         if (price != null && (row.bestPrice == null || price > row.bestPrice)) { row.bestPrice = price; row.bestBook = book; }
       }
+    } else if (r.market === "player_1st_td") {
+      row.firstTdPrice = books.draftkings?.yes ?? null;
     } else {
       row.twoPlusPrice = books.draftkings?.outcomes?.find((o) => o.point === 1.5)?.price ?? null;
     }
     byPlayer.set(r.player, row);
   }
+  // First-TD outcomes are mutually exclusive (one first scorer, or none), so
+  // DraftKings' implied chances across the whole game are scaled to sum to 1.
+  const firstTd = [...byPlayer.values()].filter((r) => r.firstTdPrice != null);
+  const total = firstTd.reduce((sum, r) => sum + impliedProb(r.firstTdPrice!), 0);
+  for (const r of firstTd) r.firstTdFair = total > 0 ? impliedProb(r.firstTdPrice!) / total : null;
   const rows = [...byPlayer.values()].filter((r) => r.dkPrice != null || r.bestPrice != null)
     .sort((a, b) => (b.fairProb ?? -1) - (a.fairProb ?? -1) || a.player.localeCompare(b.player));
-  return { capturedAt: captured, rows };
+  return { capturedAt: captured, rows, firstTdListed: firstTd.length > 0 };
 }
