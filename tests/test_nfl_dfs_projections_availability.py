@@ -50,8 +50,9 @@ def run(captured_at, config=None, *, as_of_at=TUESDAY, kickoff=KICKOFF):
     for name, fn in monkey.items():
         setattr(proj, name, fn)
     try:
+        # The production configuration unless a test overrides it, as the writers run it.
         return proj.build_week(StubDB(captured_at), season=2026, week=3,
-                               as_of_at=as_of_at, seed=7, config=config)
+                               as_of_at=as_of_at, seed=7, config=proj.production_config() if config is None else config)
     finally:
         for name, fn in originals.items():
             setattr(proj, name, fn)
@@ -64,16 +65,19 @@ def test_a_tuesday_out_zeroes_the_starter_and_promotes_the_backup():
     players = by_name(projections)
     assert players["Starter"]["model_proj_fpts"] == 0.0
     assert players["Starter"]["projection_status"] == "out"
-    assert players["Backup"]["availability"]["applied"] is True
-    # The invariant: he ends up at exactly the volume the starter was projected
-    # for. (Not the starter's RAW 34 — the starter's own projection is blended
-    # with the peer pool, which in a two-quarterback fixture is the backup.)
-    note = players["Backup"]["availability"]
-    assert players["Backup"]["stat_means"]["attempts"] == pytest.approx(
-        note["target_opportunity"], rel=1e-3)
-    assert note["target_opportunity"] > note["current_opportunity"], "volume went up"
+    # nfl-qb-spot-start-v2: the backup is named the expected starter before
+    # projecting (the chart's next man once the starter is out) and projected
+    # at the TEAM's pass volume; the later transfer declines (his row now counts
+    # starter-quality lines as history, and a mop-up backup has none).
+    named = manifest["availability"]["expected_qb_starters"]
+    assert named == {"2": {"team": "LAR", "reason": "depth_chart", "depth_order": 2, "mode": "on"}}
+    construction = players["Backup"]["feature_snapshot"]["qb_starter_construction"]
+    assert players["Backup"]["stat_means"]["attempts"] == pytest.approx(construction["team_pass_attempts"], rel=1e-3)
+    assert construction["team_pass_attempts"] > 9, "volume went up from his own mop-up history"
     assert manifest["availability"]["zeroed"][0]["player"] == "Starter"
-    assert manifest["availability"]["transfers"][0]["to"] == "Backup"
+    transfer = manifest["availability"]["transfers"][0]
+    assert transfer["to"] == "Backup" and transfer["applied"] is False
+    assert transfer["reason"] == "fewer than two observed games; position priors cannot transfer workload"
 
 def test_the_backup_gains_but_does_not_become_the_starter():
     projections, _ = run(TUESDAY)
@@ -81,7 +85,9 @@ def test_the_backup_gains_but_does_not_become_the_starter():
     baseline, _ = run(AFTER)   # same seed, rule not applied
     untouched = by_name(baseline)["Backup"]
     assert backup["model_proj_fpts"] > untouched["model_proj_fpts"]
-    assert backup["model_proj_fpts"] < by_name(baseline)["Starter"]["model_proj_fpts"]
+    # He is projected at the team's volume, not handed the starter's own line.
+    assert "qb_starter_construction" in backup["feature_snapshot"]
+    assert "qb_starter_construction" not in untouched["feature_snapshot"]
 
 def test_a_status_published_after_kickoff_is_ignored():
     """The guard that keeps this from becoming a leak."""
@@ -113,15 +119,16 @@ def test_the_manifest_records_what_was_done():
     _, manifest = run(TUESDAY)
     report = manifest["availability"]
     assert report["version"] and report["transfers"][0]["opportunity_key"] == "attempts"
-    assert "multiplier" in report["transfers"][0]
+    assert report["transfers"][0]["applied"] is False      # the named starter already carries the volume
+    assert report["expected_qb_starters"]["2"]["reason"] == "depth_chart"
     assert manifest["availability_health"]["state_counts"] == {"OUT_CONFIRMED": 1, "UNKNOWN": 1}
     assert "direct ineligible FantasyPros reads remain disabled" in manifest["availability_health"]["rollback_policy"]
 
 def test_safety_rollback_preserves_out_zero_but_disables_transfer():
-    projections, manifest = run(TUESDAY, {"availability_qb_transfer_enabled": False})
+    projections, manifest = run(TUESDAY, proj.production_config(safety_rollback=True))
     players = by_name(projections)
     assert players["Starter"]["model_proj_fpts"] == 0
-    untouched, _ = run(AFTER, {"availability_qb_transfer_enabled": False})
+    untouched, _ = run(AFTER, proj.production_config(safety_rollback=True))
     assert players["Backup"]["model_proj_fpts"] == by_name(untouched)["Backup"]["model_proj_fpts"]
     assert manifest["availability"]["policy_mode"] == "safety_rollback_v1"
     assert manifest["availability"]["transfers"] == []
@@ -179,7 +186,7 @@ def test_a_rebuild_after_kickoff_keeps_the_pregame_out_and_promotion():
     projections, manifest = run(TUESDAY, as_of_at=EARLY + timedelta(hours=1), kickoff=EARLY)
     players = by_name(projections)
     assert players["Starter"]["model_proj_fpts"] == 0.0, "a post-kickoff UNKNOWN must not un-zero him"
-    assert players["Backup"]["availability"]["applied"] is True
+    assert "qb_starter_construction" in players["Backup"]["feature_snapshot"]
     decision = manifest["availability_decisions"]["1"]
     assert decision["state"] == "OUT_CONFIRMED"
     assert decision["as_of_at"] == (EARLY - timedelta(microseconds=1)).isoformat()
@@ -243,7 +250,7 @@ def test_an_unresolved_starter_is_persisted_on_the_run():
     assert stored["unresolved_count"] == 2
     assert stored["unresolved_starters"] == 1
     assert stored["unresolved"][0]["player"] == "Starter"
-    assert stored["zeroed_count"] == 1 and stored["transfers_applied"] == 1
+    assert stored["zeroed_count"] == 1 and stored["transfers_applied"] == 0 and stored["expected_starters_named"] == 1
 
 
 def test_pregame_decision_time():

@@ -26,6 +26,7 @@ from ingest.nfl_availability_context_publish import persist_availability_context
 from ingest.nfl_target_week import SeasonComplete, target_week
 from model.nfl_dfs_availability import apply as apply_availability, expected_qb_starters, last_game_passing_leaders, player_identity
 from model.nfl_game_availability import game_has_started, pregame_decision_time, resolve_game_availability
+from model.nfl_qb_starter import project_expected_starter, team_pass_attempts
 from model.nfl_dfs_historical import (
     MODEL_CONFIG,
     MODEL_VERSION,
@@ -34,8 +35,7 @@ from model.nfl_dfs_historical import (
     ProjectionContext,
     artifact_digest,
     opponent_factors,
-    project_player,
-    team_pass_attempts,
+    project_player
 )
 from model.nfl_special_teams_projection import (
     VERSION as SPECIAL_TEAMS_VERSION,
@@ -160,7 +160,9 @@ def production_config(*, safety_rollback: bool = False) -> dict[str, Any]:
     rejected every slate bound to a run from the first. One definition keeps
     the writers from drifting apart again.
     """
-    return {"availability_qb_transfer_enabled": not safety_rollback}
+    return {"availability_qb_transfer_enabled": not safety_rollback,
+            # nfl-qb-spot-start-v2 (model v6): thin-history expected starters get team volume.
+            "qb_starter_mode": "off" if safety_rollback else "on"}
 
 
 def infer_target_week(db: DatabaseManager, season: int, now: datetime | None = None) -> int:
@@ -473,7 +475,7 @@ def build_week(
                       "led_last_team_game": passing_leaders.get(normalize_team(p["team_abbrev"])) == player_identity(p["gsis_id"], p["id"])}
                      for p in players if p["position"] == "QB"]
     named_starters = expected_qb_starters(qb_candidates, out_ids, passing_leaders)
-    team_volume = {team: team_pass_attempts(history, team, model_config) for team in environment}
+    team_volume = {team: team_pass_attempts(history, team) for team in environment}
     projections: list[dict[str, Any]] = []
     for player in players:
         env = environment[player["team_abbrev"]]
@@ -488,12 +490,22 @@ def build_week(
             context=ProjectionContext(
                 team_implied_total=env["team_implied_total"],
                 opponent_factor=defenses.get((player["position"], normalize_team(env["opponent"]))),
-                expected_qb_starter=(int(player["id"]) in named_starters) if player["position"] == "QB" else None,
-                team_pass_attempts=team_volume.get(player["team_abbrev"]) if player["position"] == "QB" else None,
             ),
             seed=seed,
             config=model_config,
         )
+        if player["position"] == "QB" and int(player["id"]) in named_starters and model_config.get("qb_starter_mode") == "on":
+            # nfl-qb-spot-start-v2: a named starter with thin starting history is
+            # projected at his team's pass volume. None means the construction does
+            # not apply to him and the base projection stands.
+            starter = project_expected_starter(
+                player_id=int(player["id"]), player_gsis_id=player["gsis_id"], player_name=player["canonical_name"],
+                historical_rows=history, cutoff_season=season, cutoff_week=week,
+                context=ProjectionContext(team_implied_total=env["team_implied_total"],
+                                          opponent_factor=defenses.get(("QB", normalize_team(env["opponent"])))),
+                team_pass_attempts=team_volume.get(player["team_abbrev"]), seed=seed, config=model_config)
+            if starter is not None:
+                projection = starter
         projection_row = projection.as_dict()
         if player["position"] in {"DST", "K"}:
             opponent_env = environment.get(env["opponent"], {})
@@ -676,6 +688,7 @@ def availability_resolution_summary(report: dict[str, Any]) -> dict[str, Any]:
     return {
         "zeroed_count": len(report.get("zeroed") or []),
         "transfers_applied": sum(1 for row in report.get("transfers") or [] if row.get("applied")),
+        "expected_starters_named": len(report.get("expected_qb_starters") or {}),
         "unresolved": unresolved,
         "unresolved_count": len(unresolved),
         "unresolved_starters": sum(1 for row in unresolved if row.get("starter_evidence")),

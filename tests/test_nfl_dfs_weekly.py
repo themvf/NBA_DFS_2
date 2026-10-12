@@ -85,5 +85,5 @@ def test_both_production_writers_record_the_same_configuration(monkeypatch):
     monkeypatch.setattr(projections, "persist_week", lambda db, rows, manifest: "run")
     assert refresh_projections(None, 2026, 3)["run_id"] == "run"
     assert seen["config"] == projections.production_config()
-    assert projections.production_config() == {"availability_qb_transfer_enabled": True}
-    assert projections.production_config(safety_rollback=True) == {"availability_qb_transfer_enabled": False}
+    assert projections.production_config() == {"availability_qb_transfer_enabled": True, "qb_starter_mode": "on"}
+    assert projections.production_config(safety_rollback=True) == {"availability_qb_transfer_enabled": False, "qb_starter_mode": "off"}

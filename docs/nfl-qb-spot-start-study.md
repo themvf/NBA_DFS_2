@@ -103,7 +103,9 @@ yards MAE DraftKings 49, current 80, construction 53.
 
 ## v2 (registered 2026-10-12, after the v1 result): apply only where it helped
 
-`nfl-qb-spot-start-v2` keeps the v1 construction and constants unchanged and
+`nfl-qb-spot-start-v2` (`model/nfl_qb_starter.py`, an overlay applied by the
+production writer after the base projection; the base model file and version
+are untouched) keeps the v1 construction and constants unchanged and
 applies it only to an expected starter whose mean attempts over his previous
 six games is below 15, or who has fewer than two prior games: the spot-start
 definition above, computed from pregame history. Every other quarterback is

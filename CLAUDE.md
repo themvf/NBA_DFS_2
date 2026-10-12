@@ -7958,3 +7958,45 @@ frozen closing price with a date-clustered bootstrap; verdict once, not before
 recorded there and cannot confirm anything: the moneyline triggers pay −300 to
 −500 and their narrow discovery intervals come from five to nine dates, not
 from precision. Not an edge, not on `/vegas`, not on `/health`, not pushed.
+
+## Game Leaders calibration and the expected-starter quarterback (2026-10-12)
+
+Two model changes shipped together after pre-registered studies; both keep our
+own projections, with DraftKings lines captured as a yardstick, never as an input.
+
+- **Game Leaders `nfl-game-leaders-v4`** applies `nfl-game-leaders-calibration-v1`
+  (`docs/nfl-game-leaders-calibration-study.md`, constants in
+  `model/nfl_game_leaders_calibration.py`, held to the frozen fit by a test):
+  roles blend last season's per-game usage as 2 pseudo-games, and each market's
+  leader shares are tempered (rushing 1.30, receiving 1.05, receptions 1.15,
+  total 1.25; the raw share is kept as `win_share_raw`). On the untouched 2022
+  season the calibrated model beat the recent-average baseline for rushing and
+  total yards only; receiving yards and receptions carry no claim. Research
+  code uses `Settings()` (raw); production uses `production_settings()`.
+- **DFS: the expected-starter quarterback overlay**, `nfl-qb-spot-start-v2`
+  (`model/nfl_qb_starter.py`, `docs/nfl-qb-spot-start-study.md`), applied by
+  `build_week` after the base projection the way the availability transfer is.
+  The base model file and `nfl-dfs-historical-v5` are untouched, so every
+  registration that pins them still holds; the writer records the overlay in
+  `production_config()` (`qb_starter_mode`) and each replaced row carries
+  `qb_starter_construction`. Under it,
+  a named starter with thin starting history (mean attempts over his previous
+  six games under 15, or fewer than two games) is projected at his TEAM's
+  pass volume, with efficiency from his own starter-quality lines blended with
+  other quarterbacks' first starts. Everyone else is identical to v5. v1
+  (every expected starter) passed its spot-start gate on the blind 2016-2019
+  look (DK points MAE 7.38 -> 5.79) but failed the established-starter gate by
+  0.10 points, so v2 restricts it; that restriction was chosen after the
+  result and is recorded as such. `build_week` names the expected starter
+  before projecting (fresh depth chart, else last game's passing leader,
+  skipping ruled-out players) and records the naming in the availability
+  report. Because `production_config()` gains a key, the research cohorts
+  that pin `baseline_config_hash` (the coherent scenario study) treat runs
+  from here on as a new configuration, as they did when the transfer flag
+  was added; re-register them at their next study boundary.
+- **What the DraftKings comparison found (weeks 1-5):** for established
+  starters our DFS volume matches DraftKings (Burrow 34.1 vs 35.5 attempts,
+  Henry 21.0 vs 21.5 carries) and receiving matches in every tier; the star
+  gap lived in the Game Leaders roles, and the backup-QB gap in the DFS
+  model's own-history volume. Zero attempts/carries in week 1-2 stored
+  projections are older model versions that did not record volume.

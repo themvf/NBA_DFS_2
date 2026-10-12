@@ -21,7 +21,8 @@ from pathlib import Path
 import numpy as np
 
 from model.nfl_dfs_historical import (MODEL_CONFIG, HistoricalWeek, ProjectionContext, artifact_digest,
-                                      draftkings_points, project_player, team_pass_attempts)
+                                      draftkings_points, project_player)
+from model.nfl_qb_starter import CONFIG as OVERLAY, project_expected_starter, team_pass_attempts
 
 STUDY = 'nfl-qb-spot-start-v1'
 CACHE = Path('data/nflverse_cache')
@@ -97,6 +98,11 @@ def old_model_rows(target, prior_qb, config):
     return own + selected[:int(config['max_prior_games'])]
 
 
+def overlay_keys(cfg):
+    """Grid / fit keys carry the historical 'qb_' prefix; the overlay's do not."""
+    return {k[3:] if k.startswith('qb_') else k: v for k, v in cfg.items()}
+
+
 def summarize(projection, target):
     actual = target.stats
     return {'proj_points': projection.model_proj_fpts, 'proj_attempts': projection.stat_means.get('attempts'),
@@ -141,12 +147,16 @@ def run(seasons, output, grid=False, fitted=None, limit=None, log=print):
             record['current'] = summarize(current, t)
             record['variants'] = {}
             for name, cfg in configs.items():
-                config = {**base, **cfg, 'qb_starter_mode': 'on'}
-                volume = team_pass_attempts(prior, t.team, config)
-                new = project_player(player_id=t.player_id, player_gsis_id=t.player_gsis_id, player_name=t.player_name, position='QB',
-                                     historical_rows=prior_qb, cutoff_season=t.season, cutoff_week=t.week,
-                                     context=ProjectionContext(expected_qb_starter=True, team_pass_attempts=volume), seed=SEED, config=config)
-                record['variants'][name] = {**summarize(new, t), 'team_pass_attempts': volume}
+                overlay = {**OVERLAY, **overlay_keys(cfg)}
+                volume = team_pass_attempts(prior, t.team, overlay)
+                # The starter is taken as given (named); the overlay's own thin-history
+                # gate decides whether the construction applies, exactly as in production.
+                new = project_expected_starter(player_id=t.player_id, player_gsis_id=t.player_gsis_id, player_name=t.player_name,
+                                               historical_rows=prior_qb, cutoff_season=t.season, cutoff_week=t.week,
+                                               context=ProjectionContext(), team_pass_attempts=volume, seed=SEED, config=base,
+                                               overlay=overlay)
+                record['variants'][name] = ({**summarize(new, t), 'team_pass_attempts': volume, 'construction_applied': True} if new is not None
+                                            else {**record['current'], 'team_pass_attempts': volume, 'construction_applied': False})
             out.write(json.dumps(record) + '\n')
             out.flush()
             n += 1
