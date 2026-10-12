@@ -9,8 +9,8 @@ before that time) for the same markets and books as the live capture, and
 stores it through the live writer with the snapshot's own timestamp as
 captured_at, so it is pregame data on the same footing as a live capture.
 Historical calls cost 10x: 10 credits per market per game, plus 1 per
-kickoff time for the event list. Games that already have pregame rows are
-skipped, so a rerun spends nothing twice.
+kickoff time for the event list. Each game requests only the markets it has no
+pregame rows for, so a rerun never pays twice for data it already holds.
 """
 from __future__ import annotations
 
@@ -39,11 +39,26 @@ def plan(db, season, weeks):
         SELECT g.nflverse_game_id game_id, g.week, g.kickoff, h.odds_api_name home, a.odds_api_name away
         FROM nfl_season_games g JOIN nfl_teams h ON h.team_id=g.home_team_id JOIN nfl_teams a ON a.team_id=g.away_team_id
         WHERE g.season=%s AND g.week = ANY(%s) AND g.game_type='REG' ORDER BY g.kickoff""", (season, list(weeks)))
-    done = {r['home'] + '|' + r['away'] + '|' + str(r['commence']) for r in db.execute("""
-        SELECT DISTINCT home_team_name home, away_team_name away, commence_time commence FROM prop_odds_history
-        WHERE sport='nfl' AND captured_at < commence_time""")}
-    todo = [r for r in rows if f"{r['home']}|{r['away']}|{r['kickoff']}" not in done]
+    have = defaultdict(set)
+    for r in db.execute("""
+        SELECT DISTINCT home_team_name home, away_team_name away, commence_time commence, market FROM prop_odds_history
+        WHERE sport='nfl' AND captured_at < commence_time"""):
+        have[r['home'], r['away'], r['commence']].add(r['market'])
+    todo = []
+    for r in rows:
+        if r['kickoff'] >= datetime.now(timezone.utc):
+            continue  # not in the archive yet; the live capture covers it
+        missing = missing_markets(have.get((r['home'], r['away'], r['kickoff']), set()))
+        if missing:
+            todo.append({**r, 'markets': missing})
     return rows, todo
+
+
+def missing_markets(present):
+    """Markets the live capture takes that a game has no pregame rows for. Markets
+    DraftKings did not post leave no rows and are requested again; that costs credits
+    only when the archive returns them."""
+    return [m for m in CAPTURE_MARKETS if m not in present]
 
 
 def match_event(events, game):
@@ -60,8 +75,9 @@ def backfill(db, api_key, season, weeks, apply, max_credits, log=print):
     by_time = defaultdict(list)
     for g in todo:
         by_time[g['kickoff']].append(g)
-    estimate = len(todo) * len(CAPTURE_MARKETS) * HISTORICAL_MULTIPLIER + len(by_time)
-    summary = {'games': len(rows), 'to_fetch': len(todo), 'kickoff_times': len(by_time), 'estimated_credits': estimate}
+    estimate = sum(len(g['markets']) for g in todo) * HISTORICAL_MULTIPLIER + len(by_time)
+    summary = {'games': len(rows), 'to_fetch': len(todo), 'kickoff_times': len(by_time),
+               'markets_requested': sum(len(g['markets']) for g in todo), 'estimated_credits': estimate}
     if not apply:
         return summary
     require_credit_budget(estimated_credits=estimate, max_credits=max_credits)
@@ -76,11 +92,11 @@ def backfill(db, api_key, season, weeks, apply, max_credits, log=print):
             try:
                 event = match_event(listing.json()['data'], g)
                 response = requests.get(f"{base}/events/{event['id']}/odds", params={
-                    'apiKey': api_key, 'date': at, 'markets': ','.join(CAPTURE_MARKETS),
+                    'apiKey': api_key, 'date': at, 'markets': ','.join(g['markets']),
                     'bookmakers': ','.join(BOOKMAKER_KEYS), 'oddsFormat': 'american', 'dateFormat': 'iso'}, timeout=60)
                 response.raise_for_status()
                 spent += int(response.headers.get('x-requests-last') or 0)
-                record_usage(db, response, 'nfl_props_backfill', f'{base}/events/{{id}}/odds', 1, [event['id']])
+                record_usage(db, response, 'nfl_props_backfill', f'{base}/events/{{id}}/odds', 1, [event['id']], g['markets'])
                 body = response.json()
                 snapshot = datetime.fromisoformat(body['timestamp'].replace('Z', '+00:00'))
                 if snapshot >= kickoff:

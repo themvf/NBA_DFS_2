@@ -128,8 +128,8 @@ export const DISPATCH_JOBS: readonly DispatchJob[] = [
     key: "nfl-prop-capture",
     workflow: "capture_nfl_props.yml",
     due: nflPropCaptureDue,
-    inputs: { event_limit: "0", max_credits: "220", within_hours: "2" },
-    why: "Pregame player over/unders and DraftKings ladders (Odds API, ~11 credits a game) for the game-leader market benchmark, once per kickoff group.",
+    inputs: { event_limit: "0", max_credits: "420", within_hours: "2" },
+    why: "Pregame player over/unders and DraftKings ladders (Odds API, ~21 credits a game) for the game-leader market benchmark, once per kickoff group.",
   },
   {
     key: "nfl-dfs-postweek",

@@ -33,8 +33,24 @@ ALTERNATE_MARKETS: tuple[str, ...] = (
     "player_rush_yds_alternate",
     "player_reception_yds_alternate",
     "player_receptions_alternate",
+    # Added 2026-10-12: volume ladders and the interception ladder.
+    "player_pass_attempts_alternate",
+    "player_pass_completions_alternate",
+    "player_rush_attempts_alternate",
+    "player_rush_reception_yds_alternate",
+    "player_pass_interceptions_alternate",
 )
-CAPTURE_MARKETS: tuple[str, ...] = MARKETS + ALTERNATE_MARKETS
+# Added 2026-10-12: the market's expected volume (attempts, completions,
+# carries), rushing plus receiving yards, and multi-touchdown counts
+# (player_tds_over is over-only: 1.5 = two or more touchdowns).
+VOLUME_MARKETS: tuple[str, ...] = (
+    "player_pass_attempts",
+    "player_pass_completions",
+    "player_rush_attempts",
+    "player_rush_reception_yds",
+    "player_tds_over",
+)
+CAPTURE_MARKETS: tuple[str, ...] = MARKETS + VOLUME_MARKETS + ALTERNATE_MARKETS
 
 
 def normalize_prop_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:

@@ -99,3 +99,20 @@ def test_backfill_matches_the_archived_event_by_teams_and_kickoff() -> None:
     assert match_event(events, game)["id"] == "x"
     with pytest.raises(ValueError, match="0 archived events"):
         match_event(events[1:], game)
+
+
+def test_multi_touchdown_market_keeps_its_over_only_line() -> None:
+    payload = {"bookmakers": [{"key": "draftkings", "markets": [{"key": "player_tds_over", "outcomes": [
+        {"name": "Over", "description": "Kyren Williams", "price": 320, "point": 1.5}]}]}]}
+    book = normalize_prop_payload(payload)[0]["books"]["draftkings"]
+    assert book["line"] == 1.5 and book["over"] == 320 and "under" not in book
+
+
+def test_backfill_requests_only_markets_a_game_is_missing() -> None:
+    from ingest.nfl_prop_backfill import missing_markets
+    from ingest.nfl_prop_odds import CAPTURE_MARKETS, MARKETS, VOLUME_MARKETS
+    assert len(CAPTURE_MARKETS) == 21 and len(set(CAPTURE_MARKETS)) == 21
+    have = set(MARKETS)
+    missing = missing_markets(have)
+    assert not set(missing) & have and set(VOLUME_MARKETS) <= set(missing)
+    assert missing_markets(set(CAPTURE_MARKETS)) == []
