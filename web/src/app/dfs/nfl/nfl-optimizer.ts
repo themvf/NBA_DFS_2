@@ -1426,6 +1426,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   const dstVsOffenseCap = settings.format === "classic" && settings.maxDstVsOffenseShare != null
     ? Math.floor(settings.maxDstVsOffenseShare * plan.length + 1e-9) : null;
   let dstVsOffenseLineups = 0;
+  const foldedToStandard = new Map<ArchetypeId, number>();
   for (let lineupNumber = 1; lineupNumber <= plan.length; lineupNumber++) {
     const forbidDstVsOffense = dstVsOffenseCap != null && dstVsOffenseLineups >= dstVsOffenseCap;
     const remaining = plan.length - lineupNumber + 1;
@@ -1452,6 +1453,13 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
       if (lineup) break;
     }
     lineup ??= buildOne(pool, settings, lineupNumber, lineups, exposureCounts, forced, countsById, captainCounts, flexCounts, plan[lineupNumber - 1].compiled, remaining, true, requireAirMatchup, requireGoalLine, bringBackRule, forbidDstVsOffense);
+    // A plan strategy the remaining rules cannot satisfy folds this lineup into
+    // Standard ceiling instead of ending the run, as the plan promises; later
+    // strategies still get their turn. The fold is named in the run's notes.
+    if (!lineup && plan[lineupNumber - 1].compiled) {
+      lineup = buildOne(pool, settings, lineupNumber, lineups, exposureCounts, forced, countsById, captainCounts, flexCounts, null, remaining, true, requireAirMatchup, requireGoalLine, bringBackRule, forbidDstVsOffense);
+      if (lineup) foldedToStandard.set(plan[lineupNumber - 1].archetypeId, (foldedToStandard.get(plan[lineupNumber - 1].archetypeId) ?? 0) + 1);
+    }
     if (!lineup) {
       if (requireAirMatchup && requireGoalLine) throw new Error(`Could not meet the air-yard matchup and goal-line RB minimums together with the remaining exposure, salary, and roster constraints. Lower a percentage or adjust player limits.`);
       if (requireAirMatchup) throw new Error(`Could not meet the air-yard matchup minimum of ${airMatchupTarget}/${settings.nLineups} lineups with the remaining exposure, salary, and roster constraints. Lower the percentage or adjust player limits.`);
@@ -1535,6 +1543,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   // The plan's quotas against what was built, so QA checks them instead of
   // showing "Archetype quotas met" unevaluated. Only when a plan shaped the
   // portfolio; plain Standard ceiling has no quota to miss.
+  for (const [archetypeId, count] of foldedToStandard) warnings.push(`${count} ${ARCHETYPE_LABELS[archetypeId]} lineup(s) could not be built under the remaining exposure, uniqueness, salary and roster rules, so they were built as Standard ceiling instead.`);
   const planned = chalkPlan || archetypeQuotas?.length ? plan : [];
   const requestedById = new Map<ArchetypeId, number>();
   for (const slot of planned) requestedById.set(slot.archetypeId, (requestedById.get(slot.archetypeId) ?? 0) + 1);
