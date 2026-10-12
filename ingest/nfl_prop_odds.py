@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import math
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -215,17 +216,27 @@ def record_usage(db, response, purpose, endpoint, event_count, event_ids, market
     )
 
 
-def select_events(events, now, event_limit=0, within_hours=0):
-    """Pregame events only, earliest first; optionally only those starting within `within_hours`.
+EASTERN = ZoneInfo("America/New_York")
 
+
+def select_events(events, now, event_limit=0, within_hours=0, min_hours=0, day_ahead=False):
+    """Pregame events only, earliest first, inside a window.
+
+    `within_hours`/`min_hours`: only games starting in (now + min_hours, now + within_hours].
+    The lower bound keeps a T-75 run from re-buying an earlier kickoff group it already priced.
+    `day_ahead`: only games on tomorrow's Eastern date (Wednesday's run takes Thursday's game,
+    Saturday's takes Sunday's, Sunday's takes Monday's).
     The provider lists the whole season, so a scheduled run must use a window:
     `event_limit=0` without one would buy every remaining game of the year.
     """
     def start(event):
         return datetime.fromisoformat(str(event["commence_time"]).replace("Z", "+00:00"))
-    future = sorted((e for e in events if start(e) > now), key=start)
+    future = sorted((e for e in events if start(e) > now + timedelta(hours=min_hours)), key=start)
     if within_hours > 0:
         future = [e for e in future if start(e) <= now + timedelta(hours=within_hours)]
+    if day_ahead:
+        tomorrow = (now.astimezone(EASTERN) + timedelta(days=1)).date()
+        future = [e for e in future if start(e).astimezone(EASTERN).date() == tomorrow]
     return future[:event_limit] if event_limit > 0 else future
 
 
@@ -237,13 +248,17 @@ def capture(
     apply: bool,
     max_credits: int = 0,
     within_hours: float = 0,
+    min_hours: float = 0,
+    day_ahead: bool = False,
     now: datetime | None = None,
 ) -> dict[str, int]:
     if not api_key:
         raise ValueError("ODDS_API_KEY is required")
     events = fetch_events(api_key)
     now = now or datetime.now(timezone.utc)
-    selected = select_events(events, now, event_limit, within_hours)
+    if event_limit == 0 and within_hours <= 0 and not day_ahead:
+        raise ValueError("refusing an unbounded capture: set --within-hours, --day-ahead or --event-limit")
+    selected = select_events(events, now, event_limit, within_hours, min_hours, day_ahead)
     estimated_credits = len(selected) * len(CAPTURE_MARKETS) * math.ceil(len(BOOKMAKER_KEYS) / 10)
     if not apply:
         return {"events": len(selected), "estimatedCredits": estimated_credits, "rows": 0}
@@ -287,6 +302,9 @@ def main() -> int:
         "--within-hours", type=float, default=0,
         help="only events starting within this many hours (scheduled runs); 0 means no window",
     )
+    parser.add_argument("--min-hours", type=float, default=0,
+                        help="skip events starting sooner than this (a T-75 run leaves earlier groups alone)")
+    parser.add_argument("--day-ahead", action="store_true", help="only games on tomorrow's Eastern date")
     args = parser.parse_args()
     config = load_config()
     db = DatabaseManager(config.database_url) if args.apply else None
@@ -297,6 +315,8 @@ def main() -> int:
         apply=args.apply,
         max_credits=max(0, args.max_credits),
         within_hours=max(0., args.within_hours),
+        min_hours=max(0., args.min_hours),
+        day_ahead=args.day_ahead,
     )
     print(json.dumps({**result, "applied": args.apply}, indent=2))
     return 0

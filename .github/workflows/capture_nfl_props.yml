@@ -1,9 +1,11 @@
 name: Capture NFL prop evidence
 
-# Dispatched by /api/cron/dispatch (job nfl-prop-capture) about 1h45m before each
-# kickoff group, capturing the games that start within the next two hours. The
-# Sunday schedule below is a thin fallback in case the dispatcher bridge breaks;
-# GitHub runs it hours late, and select_events still skips started games.
+# Dispatched by /api/cron/dispatch twice per game: the day before (job
+# nfl-prop-capture-day-ahead, 22:07 UTC, tomorrow's Eastern-date games) and 60-75
+# minutes before kickoff (job nfl-prop-capture, only the group kicking off then,
+# after the inactives). The Sunday schedule below is a thin fallback in case the
+# dispatcher bridge breaks; GitHub runs it hours late, and select_events still
+# skips started games.
 on:
   schedule:
     - cron: "37 14 * * 0"
@@ -21,6 +23,14 @@ on:
         description: Only games starting within this many hours (0 = no window; never use with event_limit 0)
         required: true
         default: "2"
+      min_hours:
+        description: Skip games starting sooner than this many hours (a T-75 run leaves earlier groups alone)
+        required: false
+        default: "0"
+      day_ahead:
+        description: Only games on tomorrow's Eastern date
+        required: false
+        default: "false"
 
 jobs:
   capture:
@@ -42,6 +52,8 @@ jobs:
           --event-limit "${{ inputs.event_limit || '0' }}"
           --max-credits "${{ inputs.max_credits || '420' }}"
           --within-hours "${{ inputs.within_hours || '6' }}"
+          --min-hours "${{ inputs.min_hours || '0' }}"
+          ${{ inputs.day_ahead == 'true' && '--day-ahead' || '' }}
           --apply
       # Re-price the saved game-leader forecasts against the lines just captured;
       # the game-leaders page reads the result (nfl_game_leader_market).
