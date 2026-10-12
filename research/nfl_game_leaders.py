@@ -19,6 +19,7 @@ import numpy as np
 
 from model.nfl_game_leaders import METRICS, SOURCE_METRICS, VERSION, Settings, forecast, grade, prepare
 from model.nfl_longest_touchdown import canonical, timestamp
+from model.nfl_game_leaders_calibration import production_settings
 from research.nfl_longest_touchdown import capture as capture_pbp, read, write
 
 
@@ -239,17 +240,27 @@ def backtest(snapshot, season, start_week, end_week, cfg, limit=None):
             'This is development evaluation, not a passed promotion gate.']}
 
 
-def attach_roles(snapshot, requests):
-    """Attach the default role scenario to every captured request (model.nfl_game_leaders_roles)."""
+def attach_roles(snapshot, requests, prior_weight=None):
+    """Attach the default role scenario to every captured request (model.nfl_game_leaders_roles).
+
+    Last season's per-game usage enters as `prior_weight` pseudo-games (the
+    calibration study's variant C2 unless overridden)."""
+    from model.nfl_game_leaders_calibration import PRIOR_WEIGHT
     from model.nfl_game_leaders_roles import attach, boxes_index
+    from research.nfl_game_leaders_calibration import prior_season_rates
     index = boxes_index(snapshot)
+    by_season = defaultdict(list)
+    for b in snapshot['boxes']:
+        by_season[int(b['game_id'][:4])].append(b)
+    weight = PRIOR_WEIGHT if prior_weight is None else prior_weight
     out = {}
     for game_id, request in requests.items():
         if request.get('capture_error') or 'players' not in request:
             out[game_id] = request
             continue
         prior = expected_history(snapshot, request['game'], request['decision_at'])
-        out[game_id] = attach(request, index, prior)
+        rates = prior_season_rates(by_season, request['game']['season']) if weight else None
+        out[game_id] = attach(request, index, prior, rates, weight)
     return out
 
 
@@ -358,7 +369,7 @@ def main():
         elif args.command=='evidence-request':
             result=evidence_request(snapshot,args.game)
         elif args.command=='batch':
-            result=batch(snapshot,args.season,args.week,args.decision_at,Settings(draws=args.draws,seed=args.seed,role_dispersion=args.role_dispersion),
+            result=batch(snapshot,args.season,args.week,args.decision_at,production_settings(draws=args.draws,seed=args.seed,role_dispersion=args.role_dispersion),
                 read(args.requests) if args.requests else None)
         elif args.command=='backtest':
             result=backtest(snapshot,args.season,args.start_week,args.end_week,
@@ -388,9 +399,9 @@ def main():
                     raise ValueError('Forecast request must match the canonical game')
                 history,rejected=prepare(snapshot,request['decision_at'],args.retrospective)
                 request={**request,'expected_prior_game_ids':expected_history(snapshot,request['game'],request['decision_at'])}
-                result=forecast(history,request,Settings(draws=args.draws,seed=args.seed,role_dispersion=args.role_dispersion),include_draws=args.export_draws)
+                result=forecast(history,request,production_settings(draws=args.draws,seed=args.seed,role_dispersion=args.role_dispersion),include_draws=args.export_draws)
                 if args.sensitivity:
-                    cfg=Settings(draws=args.draws,seed=args.seed)
+                    cfg=production_settings(draws=args.draws,seed=args.seed)
                     result['sensitivity']=[forecast(history,request,variant) for variant in (
                         replace(cfg,surprise_slots=1),replace(cfg,surprise_slots=6),
                         replace(cfg,half_life_games=6.,efficiency_prior_events=60.))]
