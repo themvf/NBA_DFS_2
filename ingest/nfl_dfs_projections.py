@@ -24,7 +24,7 @@ from config import load_config
 from db.database import DatabaseManager
 from ingest.nfl_availability_context_publish import persist_availability_contexts
 from ingest.nfl_target_week import SeasonComplete, target_week
-from model.nfl_dfs_availability import apply as apply_availability, last_game_passing_leaders, player_identity
+from model.nfl_dfs_availability import apply as apply_availability, expected_qb_starters, last_game_passing_leaders, player_identity
 from model.nfl_game_availability import game_has_started, pregame_decision_time, resolve_game_availability
 from model.nfl_dfs_historical import (
     MODEL_CONFIG,
@@ -35,6 +35,7 @@ from model.nfl_dfs_historical import (
     artifact_digest,
     opponent_factors,
     project_player,
+    team_pass_attempts,
 )
 from model.nfl_special_teams_projection import (
     VERSION as SPECIAL_TEAMS_VERSION,
@@ -454,6 +455,25 @@ def build_week(
     # Who actually started each team's last game; survives a depth chart that
     # has already moved an injured starter down (see model/nfl_dfs_availability).
     passing_leaders = last_game_passing_leaders(history)
+    # Expected starting quarterbacks are named BEFORE projecting (docs/nfl-qb-spot-start-study.md):
+    # the construction needs the name and the team's pass volume as inputs. Ruled-out
+    # players are resolved here once and reused by the availability step below.
+    observed = _availability(db, season, week)
+    decisions_by_id: dict[int, Any] = {}
+    for player in players:
+        env = environment[player["team_abbrev"]]
+        decisions_by_id[int(player["id"])] = resolve_game_availability(
+            observed.get(int(player["id"])),
+            as_of_at=pregame_decision_time(as_of_at, env["commence_time"]),
+            kickoff=env["commence_time"],
+        )
+    out_ids = {pid for pid, d in decisions_by_id.items() if d.projection_status}
+    qb_candidates = [{"player_id": int(p["id"]), "player_name": p["canonical_name"], "position": p["position"],
+                      "team": p["team_abbrev"], "depth_order": qualified_depth(p, as_of_at),
+                      "led_last_team_game": passing_leaders.get(normalize_team(p["team_abbrev"])) == player_identity(p["gsis_id"], p["id"])}
+                     for p in players if p["position"] == "QB"]
+    named_starters = expected_qb_starters(qb_candidates, out_ids, passing_leaders)
+    team_volume = {team: team_pass_attempts(history, team, model_config) for team in environment}
     projections: list[dict[str, Any]] = []
     for player in players:
         env = environment[player["team_abbrev"]]
@@ -468,6 +488,8 @@ def build_week(
             context=ProjectionContext(
                 team_implied_total=env["team_implied_total"],
                 opponent_factor=defenses.get((player["position"], normalize_team(env["opponent"]))),
+                expected_qb_starter=(int(player["id"]) in named_starters) if player["position"] == "QB" else None,
+                team_pass_attempts=team_volume.get(player["team_abbrev"]) if player["position"] == "QB" else None,
             ),
             seed=seed,
             config=model_config,
@@ -516,7 +538,6 @@ def build_week(
     # early kickoff therefore still zeroes that game's ruled-out players (and
     # promotes their backups) exactly as the pregame run did, while the games
     # not yet started resolve normally at `as_of_at`.
-    observed = _availability(db, season, week)
     statuses: dict[int, str] = {}
     availability_decisions: dict[str, dict[str, Any]] = {}
     availability_migration_audit: list[dict[str, Any]] = []
@@ -527,11 +548,7 @@ def build_week(
         kickoff = player.get("commence_time")
         if game_has_started(kickoff, as_of_at):
             started_games.add(str(player.get("game_id") or player.get("event_id") or ""))
-        decision = resolve_game_availability(
-            observed.get(int(player["player_id"])),
-            as_of_at=pregame_decision_time(as_of_at, kickoff),
-            kickoff=kickoff,
-        )
+        decision = decisions_by_id[int(player["player_id"])]
         availability_decisions[str(player["player_id"])] = decision.as_dict()
         legacy_status = _legacy_fantasypros_status(
             observed.get(int(player["player_id"])), player.get("commence_time"))
@@ -553,6 +570,8 @@ def build_week(
     projections, availability_report = apply_availability(
         projections, statuses, positions=("QB",) if transfer_enabled else ())
     availability_report["policy_mode"] = "shared_v1" if transfer_enabled else "safety_rollback_v1"
+    availability_report["expected_qb_starters"] = {
+        str(pid): {**note, "mode": model_config.get("qb_starter_mode", "off")} for pid, note in named_starters.items()}
     # Games resolved at their last pregame instant (kicked off before as_of_at).
     availability_report["pregame_frozen_games"] = sorted(started_games)
 
