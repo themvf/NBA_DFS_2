@@ -133,9 +133,10 @@ def price_game(players, game_props):
 
 def forecast_bank(history, snapshot, request):
     """Re-create the saved forecast with draws; returns (players, published-style win shares by metric)."""
-    from model.nfl_game_leaders import Settings, forecast
+    from model.nfl_game_leaders import forecast
+    from model.nfl_game_leaders_calibration import production_settings
     from research.nfl_game_leaders import expected_history
-    cfg = Settings()
+    cfg = production_settings()
     request = {**request, 'expected_prior_game_ids': expected_history(snapshot, request['game'], request['decision_at'], cfg.recent_games)}
     result = forecast(history, request, cfg, include_draws=True)
     players = [{'identity': p['identity'], 'name': p['name'], 'team': p['team'], 'residual': p.get('residual', False),

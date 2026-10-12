@@ -11,7 +11,9 @@ import numpy as np
 
 from model.nfl_longest_touchdown import canonical, timestamp
 
-VERSION = 'nfl-game-leaders-v3'
+# v4 (2026-10-12): optional per-market tempering of leader shares (Settings.temperatures),
+# applied by production through model.nfl_game_leaders_calibration. Raw shares are kept.
+VERSION = 'nfl-game-leaders-v4'
 SOURCE_METRICS = ('rushing_yards', 'receptions', 'receiving_yards')
 METRICS = (*SOURCE_METRICS, 'total_yards')
 IMPLEMENTATION_SHA256 = sha256(Path(__file__).read_bytes() +
@@ -44,10 +46,14 @@ class Settings:
     opponent_prior_events: float = 150.
     surprise_slots: int = 3
     role_dispersion: str = 'fixed'
+    # Per-market temperature for the published leader shares (None = raw).
+    temperatures: dict | None = None
 
     def __post_init__(self):
         if self.role_dispersion not in ('fixed', 'empirical'):
             raise ValueError('Unsupported role dispersion mode')
+        if self.temperatures is not None and any(not (0 < t <= 5) for t in self.temperatures.values()):
+            raise ValueError('Temperatures must lie in (0, 5]')
         if min(self.draws, self.recent_games, self.surprise_slots) < 1:
             raise ValueError('Positive simulation, window and surprise slot counts required')
         if any(not np.isfinite(v) or v <= 0 for v in (self.half_life_games,
@@ -524,8 +530,18 @@ def forecast(history, request, cfg=Settings(), outcomes=METRICS, include_draws=F
             rows_out.append(row)
         if abs(sum(r['win_share'] for r in rows_out)-1)>1e-8:
             raise AssertionError('Leader share does not sum to one')
+        temperature = (cfg.temperatures or {}).get(metric)
+        if temperature is not None:
+            # Calibrated share: the simulation's share is kept as win_share_raw.
+            # first_or_tied and sole_first describe the raw simulation only.
+            from model.nfl_game_leaders_calibration import temper
+            tempered = temper({r['identity']: r['win_share'] for r in rows_out}, temperature)
+            for r in rows_out:
+                r['win_share_raw'] = r['win_share']
+                r['win_share'] = tempered[r['identity']]
         output[metric]={'players':sorted(rows_out,key=lambda r:-r['win_share']),
-            'tie_probability':float(np.mean(tie_count>1)), 'all_zero_probability':float(np.mean(np.all(matrix==0,axis=1)))}
+            'tie_probability':float(np.mean(tie_count>1)), 'all_zero_probability':float(np.mean(np.all(matrix==0,axis=1))),
+            **({'temperature': temperature} if temperature is not None else {})}
     result = {'version':VERSION,'authority':'exploratory_not_calibrated','game':game,'decision_at':request['decision_at'],
         'settings':asdict(cfg),'implementation_sha256':IMPLEMENTATION_SHA256,'training_game_ids':[h['game']['game_id'] for h in history],
         'request_sha256':sha256(json.dumps(request,sort_keys=True).encode()).hexdigest(),

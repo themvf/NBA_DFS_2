@@ -1,0 +1,109 @@
+{
+ "study": "nfl-qb-spot-start-v1",
+ "fit": {
+  "study": "nfl-qb-spot-start-v1",
+  "spot_records": 180,
+  "chosen": "qb_team_volume_half_life=8.0|qb_team_volume_prior_games=2.0|qb_spot_start_prior_games=16|qb_min_line_attempts=10.0",
+  "config": {
+   "qb_team_volume_half_life": 8.0,
+   "qb_team_volume_prior_games": 2.0,
+   "qb_spot_start_prior_games": 16,
+   "qb_min_line_attempts": 10.0
+  },
+  "spot_points_mae_by_grid_point": {
+   "qb_team_volume_half_life=8.0|qb_team_volume_prior_games=2.0|qb_spot_start_prior_games=16|qb_min_line_attempts=10.0": 6.109762777777778,
+   "qb_team_volume_half_life=4.0|qb_team_volume_prior_games=2.0|qb_spot_start_prior_games=16|qb_min_line_attempts=10.0": 6.122287777777777,
+   "qb_team_volume_half_life=8.0|qb_team_volume_prior_games=2.0|qb_spot_start_prior_games=8|qb_min_line_attempts=10.0": 6.125215000000001,
+   "qb_team_volume_half_life=8.0|qb_team_volume_prior_games=4.0|qb_spot_start_prior_games=16|qb_min_line_attempts=10.0": 6.125362777777779,
+   "qb_team_volume_half_life=2.0|qb_team_volume_prior_games=2.0|qb_spot_start_prior_games=16|qb_min_line_attempts=10.0": 6.133376666666666,
+   "qb_team_volume_half_life=8.0|qb_team_volume_prior_games=4.0|qb_spot_start_prior_games=8|qb_min_line_attempts=10.0": 6.1361300000000005,
+   "qb_team_volume_half_life=4.0|qb_team_volume_prior_games=2.0|qb_spot_start_prior_games=8|qb_min_line_attempts=10.0": 6.139025,
+   "qb_team_volume_half_life=4.0|qb_team_volume_prior_games=4.0|qb_spot_start_prior_games=16|qb_min_line_attempts=10.0": 6.140048333333334,
+   "qb_team_volume_half_life=2.0|qb_team_volume_prior_games=2.0|qb_spot_start_prior_games=8|qb_min_line_attempts=10.0": 6.140757777777779,
+   "qb_team_volume_half_life=8.0|qb_team_volume_prior_games=2.0|qb_spot_start_prior_games=4|qb_min_line_attempts=10.0": 6.142008333333333
+  },
+  "current_spot_points_mae": 7.969727777777777
+ },
+ "variant": "fitted",
+ "spot": {
+  "points": {
+   "n": 219,
+   "weeks": 95,
+   "current_mae": 8.171027853881279,
+   "variant_mae": 6.51184794520548,
+   "mean_change": -1.6591799086757992,
+   "ci95": [
+    -2.422170374574865,
+    -0.8176630244403837
+   ]
+  },
+  "pass_yds": {
+   "n": 219,
+   "weeks": 95,
+   "current_mae": 99.59996575342467,
+   "variant_mae": 63.98999680365297,
+   "mean_change": -35.609968949771684,
+   "ci95": [
+    -45.8670814143377,
+    -24.856319858371318
+   ]
+  },
+  "bias": {
+   "attempts": {
+    "current": -14.10574200913242,
+    "variant": 2.244601369863014
+   },
+   "pass_yds": {
+    "current": -83.30585616438356,
+    "variant": 27.271289954337902
+   },
+   "points": {
+    "current": -5.667569406392694,
+    "variant": 2.302659817351598
+   }
+  }
+ },
+ "established": {
+  "points": {
+   "n": 741,
+   "weeks": 107,
+   "current_mae": 6.42278987854251,
+   "variant_mae": 6.4225666666666665,
+   "mean_change": -0.00022321187584346076,
+   "ci95": [
+    -0.006375370935292193,
+    0.00583007899146806
+   ]
+  },
+  "pass_yds": {
+   "n": 741,
+   "weeks": 107,
+   "current_mae": 58.87310391363023,
+   "variant_mae": 58.84862348178138,
+   "mean_change": -0.024480431848852846,
+   "ci95": [
+    -0.09885496745520715,
+    0.05364973769373634
+   ]
+  },
+  "bias": {
+   "attempts": {
+    "current": -1.2479183535762484,
+    "variant": -1.2507388663967611
+   },
+   "pass_yds": {
+    "current": -7.780479082321188,
+    "variant": -7.8062955465587045
+   },
+   "points": {
+    "current": -0.8007253711201079,
+    "variant": -0.8019523616734142
+   }
+  }
+ },
+ "gates": {
+  "spot_ci_upper_below_zero": true,
+  "established_ci_upper_at_most_0.10": true
+ },
+ "passes": true
+}
