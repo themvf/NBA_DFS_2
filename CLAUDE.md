@@ -7868,6 +7868,29 @@ analysis, exposure vs the field, and every lineup they entered). Pure layer
   it or giving others access to anything built on it is not. That fits this
   repo's private use. Nothing here is scheduled.
 
+## NFL DFS — Reading the books' player lines (`nfl-prop-implied-v1`, 2026-10-12)
+
+`model/nfl_prop_implied.py` turns pregame prop lines (`prop_odds_history`,
+DraftKings first) into an expected stat line and DK points;
+`python -m research.nfl_prop_implied build|study --weeks 1-4` stores opening
+and closing lines in `nfl_prop_implied_lines` and reports. Exploratory, weeks
+1-4, not pre-registered. What it found:
+
+- **A yardage line is a median, so read straight it runs low**: receiving yards
+  by 5.3 (mean/line 1.175), passing 5.2 (1.023), rushing 1.8 (1.057),
+  receptions 0.23 (1.078); TD and interception lines are already unbiased. The
+  study corrects each with a factor fitted on the other weeks. An earlier
+  same-day comparison skipped this and overstated how far we ran above Vegas.
+- **Calibrated, the book still beats our projection**: MAE 5.61 vs 5.83 DK
+  points (+0.22, game-clustered CI [+0.04, +0.41]), every position, TE nearly
+  tied. When we were 2+ above the book (n=113) it was closer 65% of the time;
+  when we were 2+ below (n=152) only 45%: our low calls are not reliably wrong.
+- **Where it differs**: we under-project QB passing yards by 12 (book 0);
+  WR receptions 3.29 vs book 3.53 vs actual 3.50. TE volume and efficiency
+  match the book; TE TDs we are closer than the book (0.289 vs 0.246 vs 0.312).
+- **The team pie is coherent**: receivers with a yards line carry 92% of
+  their QB's implied passing yards; they actually caught 90%.
+
 ## NFL DFS — Winners-shape build preset (`nfl-winners-shape-v4`, 2026-10-11; v1 2026-10-10)
 
 A "Build shape" select on `/dfs/nfl` (GPP mode, Classic and Showdown):
