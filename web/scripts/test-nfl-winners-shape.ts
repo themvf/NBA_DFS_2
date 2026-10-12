@@ -7,7 +7,7 @@
  */
 import assert from "node:assert/strict";
 import { dstFacesOwnOffense, optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings } from "../src/app/dfs/nfl/nfl-optimizer";
-import { applyWinnersShape, qbExposureCap, WINNERS_SHAPE, WINNERS_SHAPE_VERSION } from "../src/lib/nfl-dfs/winners-shape";
+import { applyWinnersShape, qbExposureCap, winnersShapeLimits, WINNERS_SHAPE, WINNERS_SHAPE_VERSION } from "../src/lib/nfl-dfs/winners-shape";
 
 // --- Units: the quarterback cap follows the lineup count ---
 assert.equal(qbExposureCap(20), 0.35, "20 lineups -> 3 quarterbacks -> 7 lineups each -> 35%");
@@ -35,6 +35,18 @@ function settings(over: Partial<NflOptimizerSettings> = {}): NflOptimizerSetting
     lockedPlayerIds: [], excludedPlayerIds: [], minExposureByPlayer: {}, maxExposureByPlayer: {}, ...over,
   };
 }
+// --- The page's Lineup rules summary reads the same limits the build enforces ---
+for (const over of [{}, { format: "showdown" as const }, { minSalary: 49_800, maxExposure: 0.4, minUnique: 5 }, { nLineups: 100 }]) {
+  const s = settings(over);
+  const built = applyWinnersShape(s, []).settings;
+  const shown = winnersShapeLimits(s);
+  assert.equal(shown.minSalary, built.minSalary, "summary min salary = enforced");
+  assert.equal(shown.maxExposure, built.maxExposure, "summary max exposure = enforced");
+  assert.equal(shown.minUnique, built.minUnique, "summary min unique = enforced");
+  assert.equal(shown.maxQbExposure ?? undefined, built.maxQbExposure, "summary QB cap = enforced");
+  assert.equal(shown.maxCaptainExposure ?? undefined, built.maxCaptainExposure, "summary captain cap = enforced");
+}
+
 const prior = (games: number, targets: number, targetShare: number | null = null, carries = games * 10) => ({ games, targets, carries, targetShare });
 
 // --- The preset's pool rules name every player they leave out, and skip a rule that would leave a position too thin ---

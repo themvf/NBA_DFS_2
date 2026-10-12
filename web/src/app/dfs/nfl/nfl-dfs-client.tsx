@@ -34,7 +34,7 @@ import type { NflGeneratedLineup, NflOptimizerSettings, NflProjectionSource } fr
 import { DEFAULT_NFL_PUNT_POLICY } from "@/lib/nfl-dfs/punt-policy";
 import { deriveReceiverRoleChanges, receiverChartRank, type ReceiverRoleChange } from "@/lib/nfl-dfs/receiver-role";
 import { PUNT_PRESETS, resolvePuntPreset, describePuntPolicy, type PuntPresetKey } from "@/lib/nfl-dfs/punt-presets";
-import { WINNERS_SHAPE, WINNERS_SHAPE_VERSION, qbExposureCap, type BuildShape } from "@/lib/nfl-dfs/winners-shape";
+import { WINNERS_SHAPE, WINNERS_SHAPE_VERSION, qbExposureCap, winnersShapeLimits, type BuildShape } from "@/lib/nfl-dfs/winners-shape";
 import { objectiveLabel } from "@/lib/nfl-dfs/ownership-capability";
 import { ARCHETYPE_LABELS, type ArchetypeId, type ArchetypeQuota } from "@/lib/nfl-dfs/archetypes";
 import { currentPoolForQa, nflOverlapCap, runNflPreExportQa, savedRunQaEvidence, NFL_QA_RULESET_VERSION, type QaInput, type QaReport, type QaOverride } from "@/lib/nfl-dfs/pre-export-qa";
@@ -689,7 +689,17 @@ export default function NflDfsClient() {
     else { setShowBuilder(true); void dataUpdateRef.current?.start(); document.getElementById('nfl-data-update')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
   }
   const playerRulesSummary = [`${locked.length} locked`, `${excluded.length} excluded`, `${Object.keys(targetExposure).length} exposure targets`, slate?.format === "showdown" ? `${Object.keys(captainTargets).length} captain ranges` : null].filter(Boolean).join(" · ");
-  const rulesSummary = `Min ${dollars(settings.minSalary)} · max exposure ${Math.round(settings.maxExposure * 100)}% · min unique ${settings.minUnique} · cheap players: ${PUNT_PRESETS.find((preset) => preset.key === settings.puntPolicy.mode)?.label ?? "custom"}`;
+  // With Winners shape on, show the limits the build will actually enforce, not the raw inputs.
+  const shapeLimits = winnersShape && slate ? winnersShapeLimits({ format: slate.format, nLineups: settings.nLineups, minSalary: settings.minSalary, maxExposure: settings.maxExposure, minUnique: settings.minUnique }) : null;
+  const shapeTag = (changed: boolean) => (changed ? " (Winners shape)" : "");
+  const rulesSummary = [
+    `Min ${dollars(shapeLimits?.minSalary ?? settings.minSalary)}${shapeTag(!!shapeLimits && shapeLimits.minSalary !== settings.minSalary)}`,
+    `max exposure ${Math.round((shapeLimits?.maxExposure ?? settings.maxExposure) * 100)}%${shapeTag(!!shapeLimits && shapeLimits.maxExposure !== settings.maxExposure)}`,
+    `min unique ${shapeLimits?.minUnique ?? settings.minUnique}${shapeTag(!!shapeLimits && shapeLimits.minUnique !== settings.minUnique)}`,
+    shapeLimits?.maxQbExposure != null ? `each QB in at most ${Math.round(shapeLimits.maxQbExposure * 100)}% (Winners shape)` : null,
+    shapeLimits?.maxCaptainExposure != null ? `no captain above ${Math.round(shapeLimits.maxCaptainExposure * 100)}% unless you set his range (Winners shape)` : null,
+    `cheap players: ${PUNT_PRESETS.find((preset) => preset.key === settings.puntPolicy.mode)?.label ?? "custom"}`,
+  ].filter(Boolean).join(" · ");
   const slateLocked = isLocked(slate?.firstKickoff ?? null, now);
   const kickoffText = slate?.firstKickoff
     ? `${new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(slate.firstKickoff))} ET`
@@ -844,6 +854,7 @@ export default function NflDfsClient() {
               <option value="custom">Custom…</option>
             </select></Field>
             {archetypePlanMode === "balanced" ? <p className="mt-1 text-slate-500">Automatically spreads lineups across ceiling, fade, game-script and K/DST strategies. Fade targets are the chalkiest players (by projected ownership, or projection when no ownership feed exists); the Vegas favorite comes from this game&apos;s moneyline. Anything the slate can&apos;t support folds into Standard ceiling — each run&apos;s notes say exactly what was chosen. Names describe strategy, not expected profit.</p> : null}
+            {winnersShape && archetypePlanMode !== "standard" ? <p className="mt-1 text-sky-900">Winners shape removes kickers, so any low-scoring K/DST lineups are built around the defense alone, and a K/DST leverage turn uses the defense.</p> : null}
             {archetypePlanMode === "standard" ? <p className="mt-1 text-slate-500">Strongest evaluated lineups only — no forced fades or game scripts.</p> : null}
             {archetypePlanMode === "chalk_leverage" ? <p className="mt-1 text-slate-500">Captains come from the obvious plays — the top three by projected ownership, or by projection when there is no ownership feed — plus anyone you give a CPT minimum. Every lineup must also carry one leverage player from outside the six chalkiest names, and the leverage position rotates lineup to lineup (WR → TE → RB → K/DST → QB). Week 2&apos;s winners were chalkier than us, so this takes differentiation in the flex, not at captain. A portfolio shape, not a validated edge.</p> : null}
             {archetypePlanMode === "custom" ? <><p className="mt-0.5 text-slate-500">Assign lineup quotas by strategy. Leave all off for Standard ceiling only. Names describe strategy, not expected profit.</p>
@@ -865,6 +876,7 @@ export default function NflDfsClient() {
             </div> : null}</> : null}
           </div> : null}
           <details className="rounded-lg border p-3"><summary className="cursor-pointer text-sm font-semibold">Lineup rules <span className="block text-[11px] font-normal text-slate-500">{rulesSummary}</span></summary><div className="mt-3 space-y-3">
+          {shapeLimits ? <p className="rounded bg-sky-50 p-2 text-[11px] text-sky-900">Winners shape is on, so these are floors and caps the shape can tighten but never loosen. The line above shows what this build will actually use.</p> : null}
           <div className="grid grid-cols-2 gap-2"><Field label="Min lineup salary"><input type="number" step={100} value={settings.minSalary} onChange={(e) => setSettings({ ...settings, minSalary: Number(e.target.value) })} className="control" /></Field><Field label="Max exposure %"><input type="number" min={1} max={100} value={Math.round(settings.maxExposure * 100)} onChange={(e) => setSettings({ ...settings, maxExposure: Number(e.target.value) / 100 })} className="control" /></Field><Field label="Min unique"><input type="number" min={1} max={9} value={settings.minUnique} onChange={(e) => setSettings({ ...settings, minUnique: Number(e.target.value) })} className="control" /></Field></div>
           <div><h3 className="text-xs font-bold uppercase text-slate-500">Cheap players</h3><Field label="Preset"><select className="control" value={settings.puntPolicy.mode} onChange={(e) => setSettings({ ...settings, puntPolicy: resolvePuntPreset(e.target.value as PuntPresetKey, settings.puntPolicy) })}>{PUNT_PRESETS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}</select></Field><ul className="mt-2 list-disc space-y-1 pl-4 text-[11px] text-slate-600">{describePuntPolicy(settings.puntPolicy).map((line) => <li key={line}>{line}</li>)}</ul></div>
                     {settings.mode === "gpp" && slate.format === "classic" ? <><Field label="QB pass catchers"><select value={settings.stackPassCatchers} onChange={(e) => setSettings({ ...settings, stackPassCatchers: Number(e.target.value) as 0 | 1 | 2 })} className="control"><option value={0}>No requirement</option><option value={1}>At least 1</option><option value={2}>At least 2</option></select></Field><label className="check"><input type="checkbox" checked={settings.bringBack} onChange={(e) => setSettings({ ...settings, bringBack: e.target.checked })} />Require opposing bring-back</label></> : null}
