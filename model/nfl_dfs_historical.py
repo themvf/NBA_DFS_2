@@ -46,16 +46,6 @@ MODEL_CONFIG = {
     "max_environment_factor": 1.20,
     "minimum_historical_games": 2,
     "draws": 2000,
-    # Expected-starter quarterback construction (docs/nfl-qb-spot-start-study.md).
-    # "off" keeps v5 behaviour; "on" is used only when the caller names the
-    # expected starter in ProjectionContext. Constants are the study's fitted
-    # values once it has run; until then they are the registration's defaults.
-    "qb_starter_mode": "off",
-    "qb_team_volume_half_life": 4.0,
-    "qb_team_volume_prior_games": 4.0,
-    "qb_spot_start_prior_games": 8,
-    "qb_min_line_attempts": 10,
-    "qb_volume_scale_clip": (0.5, 2.0),
 }
 
 SKILL_POSITIONS = ("QB", "RB", "WR", "TE")
@@ -153,11 +143,6 @@ class HistoricalWeek:
 class ProjectionContext:
     team_implied_total: float | None = None
     opponent_factor: float | None = None
-    # Set by the caller for quarterbacks only: is he the expected starter, and
-    # what is his team's expected pass volume (team_pass_attempts()). Both
-    # must be present for the starter construction to apply.
-    expected_qb_starter: bool | None = None
-    team_pass_attempts: float | None = None
 
 
 @dataclass(frozen=True)
@@ -311,69 +296,6 @@ def _peer_rows(
     return peers[:limit]
 
 
-def team_pass_attempts(
-    rows: Iterable[HistoricalWeek],
-    team: str | None,
-    config: Mapping[str, Any] = MODEL_CONFIG,
-) -> float | None:
-    """A team's expected pass attempts: its per-game attempts over prior games,
-    recency-weighted (half-life in games) and shrunk toward the league mean.
-    `rows` must already be restricted to games before the cutoff."""
-    from model.nfl_team_aliases import normalize_team
-    if not team:
-        return None
-    wanted = normalize_team(team)
-    per_game: dict[tuple[str, int, int], float] = {}
-    for row in rows:
-        if row.position != "QB" or not row.team:
-            continue
-        key = (normalize_team(row.team), row.season, row.week)
-        per_game[key] = per_game.get(key, 0.0) + _number(row.stats, "attempts")
-    if not per_game:
-        return None
-    league = float(np.mean(list(per_game.values())))
-    own = sorted(((s, w), v) for (t, s, w), v in per_game.items() if t == wanted)
-    if not own:
-        return league
-    values = np.asarray([v for _, v in own], dtype=float)
-    half_life = float(config["qb_team_volume_half_life"])
-    weights = 0.5 ** (np.arange(len(values))[::-1] / half_life)
-    prior = float(config["qb_team_volume_prior_games"])
-    return float((np.dot(weights, values) + prior * league) / (weights.sum() + prior))
-
-
-def spot_start_prior_rows(rows: Iterable[HistoricalWeek], config: Mapping[str, Any] = MODEL_CONFIG) -> list[HistoricalWeek]:
-    """Every quarterback's first S games with 15+ attempts: what a thin starting
-    history looks like, pooled. `rows` must be pre-cutoff."""
-    limit = int(config["qb_spot_start_prior_games"])
-    by_player: dict[int, list[HistoricalWeek]] = {}
-    for row in rows:
-        if row.position == "QB" and _number(row.stats, "attempts") >= 15:
-            by_player.setdefault(row.player_id, []).append(row)
-    out: list[HistoricalWeek] = []
-    for lines in by_player.values():
-        out.extend(sorted(lines, key=lambda r: r.chronological_key)[:limit])
-    return out
-
-
-PASS_VOLUME_FIELDS = ("passing_yards", "passing_tds", "passing_interceptions", "passing_2pt_conversions")
-
-
-def rescale_to_team_volume(stats: Mapping[str, Any], target_attempts: float, config: Mapping[str, Any]) -> dict[str, float]:
-    """Scale one drawn line so its attempts equal the team volume; passing stats
-    move with it, rushing stays the quarterback's own."""
-    line = {key: _number(stats, key) for key in OFFENSE_FIELDS}
-    attempts = line["attempts"]
-    if attempts <= 0:
-        return line
-    lo, hi = config["qb_volume_scale_clip"]
-    scale = float(np.clip(target_attempts / attempts, lo, hi))
-    for key in PASS_VOLUME_FIELDS:
-        line[key] *= scale
-    line["attempts"] = attempts * scale
-    return line
-
-
 def project_player(
     *,
     player_id: int | None,
@@ -397,14 +319,7 @@ def project_player(
     if not own and player_gsis_id:
         own = [row for row in prior if row.player_gsis_id == player_gsis_id]
     own = own[-int(config["max_player_games"]):]
-    starter_branch = (position == "QB" and config.get("qb_starter_mode") == "on"
-                      and context.expected_qb_starter is True and context.team_pass_attempts is not None)
-    if starter_branch:
-        # Starter-quality own lines only; the prior is other quarterbacks' first starts.
-        own = [row for row in own if _number(row.stats, "attempts") >= float(config["qb_min_line_attempts"])]
-        peers = spot_start_prior_rows(prior, config)[-int(config["max_prior_games"]):]
-    else:
-        peers = _peer_rows(position, own, prior, int(config["max_prior_games"]))
+    peers = _peer_rows(position, own, prior, int(config["max_prior_games"]))
 
     status = "historical" if len(own) >= int(config["minimum_historical_games"]) else ("position_prior" if peers else "unavailable")
     if status == "unavailable":
@@ -431,8 +346,7 @@ def project_player(
     stat_totals: dict[str, float] = {}
     for index in range(draw_count):
         row = own[int(own_indices[index])] if own and (choose_player[index] or not peers) else peers[int(peer_indices[index])]
-        line = rescale_to_team_volume(row.stats, float(context.team_pass_attempts), config) if starter_branch else row.stats
-        stats = adjust_stat_line(position, line, context, config)
+        stats = adjust_stat_line(position, row.stats, context, config)
         scores.append(draftkings_points(position, stats))
         for key, value in stats.items():
             stat_totals[key] = stat_totals.get(key, 0.0) + float(value)
@@ -471,10 +385,6 @@ def project_player(
             "draws": draw_count,
             "seed": seed,
             "prop_inputs": [],
-            **({"qb_starter_construction": {
-                "study": "nfl-qb-spot-start-v1", "team_pass_attempts": round(float(context.team_pass_attempts), 3),
-                "own_starter_lines": len(own), "spot_start_prior_rows": len(peers),
-                "min_line_attempts": config["qb_min_line_attempts"]}} if starter_branch else {}),
         },
     )
 
