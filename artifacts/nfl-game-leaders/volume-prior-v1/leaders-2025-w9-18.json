@@ -1,0 +1,6492 @@
+{
+ "version": "nfl-leaders-volume-prior-v1",
+ "gate": "leader-level log loss, V1 - C0 pooled over three metrics",
+ "window": {
+  "season": 2025,
+  "weeks": [
+   9,
+   18
+  ]
+ },
+ "selected_games": 151,
+ "graded_games": 145,
+ "skipped": [
+  {
+   "game_id": "2025_16_BUF_CLE",
+   "skipped": "Unresolved recent yardage events for CLE: ['2025_15_CLE_CHI']"
+  },
+  {
+   "game_id": "2025_16_GB_CHI",
+   "skipped": "Unresolved recent yardage events for CHI: ['2025_15_CLE_CHI']"
+  },
+  {
+   "game_id": "2025_17_CHI_SF",
+   "skipped": "Unresolved recent yardage events for CHI: ['2025_15_CLE_CHI']"
+  },
+  {
+   "game_id": "2025_17_PIT_CLE",
+   "skipped": "Unresolved recent yardage events for CLE: ['2025_15_CLE_CHI']"
+  },
+  {
+   "game_id": "2025_18_CLE_CIN",
+   "skipped": "Unresolved recent yardage events for CLE: ['2025_15_CLE_CHI']"
+  },
+  {
+   "game_id": "2025_18_DET_CHI",
+   "skipped": "Unresolved recent yardage events for CHI: ['2025_15_CLE_CHI']"
+  }
+ ],
+ "summary": {
+  "c0": {
+   "rushing_yards": {
+    "log_loss": 1.7678808542423738,
+    "brier": 0.725763570445977,
+    "top_choice_credit": 0.4241379310344828,
+    "mean_baseline_credit": 0.4379310344827586
+   },
+   "receptions": {
+    "log_loss": 2.345396076494905,
+    "brier": 0.7151900528542928,
+    "top_choice_credit": 0.31091954022988505,
+    "mean_baseline_credit": 0.27586206896551724
+   },
+   "receiving_yards": {
+    "log_loss": 2.3060995363802808,
+    "brier": 0.8322748717287356,
+    "top_choice_credit": 0.3275862068965517,
+    "mean_baseline_credit": 0.296551724137931
+   }
+  },
+  "v1": {
+   "rushing_yards": {
+    "log_loss": 1.7714966291623226,
+    "brier": 0.7242804703065133,
+    "top_choice_credit": 0.43103448275862066,
+    "mean_baseline_credit": 0.4379310344827586
+   },
+   "receptions": {
+    "log_loss": 2.3060549374738213,
+    "brier": 0.7154233522383764,
+    "top_choice_credit": 0.3454022988505748,
+    "mean_baseline_credit": 0.2827586206896552
+   },
+   "receiving_yards": {
+    "log_loss": 2.2621833742884023,
+    "brier": 0.8309670262528736,
+    "top_choice_credit": 0.3275862068965517,
+    "mean_baseline_credit": 0.296551724137931
+   }
+  }
+ },
+ "pooled_log_loss_diff": -0.02654717539767097,
+ "ci95": [
+  -0.07143160124388415,
+  0.00830424987109342
+ ],
+ "by_metric": {
+  "rushing_yards": {
+   "diff": 0.003615774919948881,
+   "ci95": [
+    -0.007805543039789159,
+    0.016940541826566933
+   ]
+  },
+  "receptions": {
+   "diff": -0.03934113902108343,
+   "ci95": [
+    -0.11068990444852936,
+    0.021364879499758398
+   ]
+  },
+  "receiving_yards": {
+   "diff": -0.04391616209187835,
+   "ci95": [
+    -0.10749988158638472,
+    0.0123680149252314
+   ]
+  }
+ },
+ "verdict": "FAIL",
+ "games": [
+  {
+   "game_id": "2025_09_ARI_DAL",
+   "week": 9,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.6157541339861728,
+     "brier": 0.2554873022222222,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.6402225323920554,
+     "brier": 0.5826407419818593,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.025205913538162,
+     "brier": 0.9051966466666667,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.6006287729154168,
+     "brier": 0.24769600666666666,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.326577833688285,
+     "brier": 0.5127919680523809,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.996449341884018,
+     "brier": 0.8948024166666666,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_09_ATL_NE",
+   "week": 9,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.9766443084251744,
+     "brier": 0.9565257622222222,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.267439307687357,
+     "brier": 0.605634489388889,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.1681231514322388,
+     "brier": 0.5340237344444444,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 2.014403145500614,
+     "brier": 0.9724478466666667,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.1310941589133634,
+     "brier": 0.532942068311111,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.0925308183522418,
+     "brier": 0.4960560200000001,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_09_BAL_MIA",
+   "week": 9,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.6045870035804651,
+     "brier": 0.3382219,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.5823409216056548,
+     "brier": 0.24867044175555555,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.2879584603990286,
+     "brier": 0.6260476955555555,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.6067860149119018,
+     "brier": 0.34258494,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.6087075156179167,
+     "brier": 0.2456384423111111,
+     "top_choice_credit": 0.5,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.355700496035257,
+     "brier": 0.6387227755555555,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_09_CAR_GB",
+   "week": 9,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.001213382680977,
+     "brier": 0.6056881488888889,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.1843555961697225,
+     "brier": 0.9122568488310657,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.9630223986652757,
+     "brier": 0.8658996133333332,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.0153746900980543,
+     "brier": 0.6130696755555556,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.2138571346180784,
+     "brier": 0.8919532185619047,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.0189110419398038,
+     "brier": 0.8566098466666666,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_09_CHI_CIN",
+   "week": 9,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 2.573519308144604,
+     "brier": 1.1825473333333334,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 3.1837500228928266,
+     "brier": 1.2680940699900227,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.7181005369557116,
+     "brier": 1.1344708066666667,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 2.540842282118304,
+     "brier": 1.17579712,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 3.3175917978073586,
+     "brier": 1.2157337943555553,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.405725851913559,
+     "brier": 1.0506423088888888,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_09_DEN_HOU",
+   "week": 9,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.5479507564049197,
+     "brier": 0.21422066666666673,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.802455034842537,
+     "brier": 0.7839465675789116,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.7598699498320065,
+     "brier": 0.9994108599999999,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.5558229896967265,
+     "brier": 0.21893975999999998,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.8137786942199183,
+     "brier": 0.7895292962659863,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.829088529479266,
+     "brier": 1.01165204,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_09_IND_PIT",
+   "week": 9,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.3078847797693004,
+     "brier": 0.11727468,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.4726638662312788,
+     "brier": 0.6549070744217688,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.7485542309855158,
+     "brier": 0.27456610000000004,
+     "top_choice_credit": 0.5,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.3028633944474449,
+     "brier": 0.11289487999999999,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.5756163639585896,
+     "brier": 0.6962844167642858,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.8427706271650746,
+     "brier": 0.30351828000000003,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_09_JAX_LV",
+   "week": 9,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.8372485245342022,
+     "brier": 0.51267486,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 7.938708919176432,
+     "brier": 1.1062310518222223,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 5.44914025628262,
+     "brier": 1.1192300666666668,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.8171243603796563,
+     "brier": 0.5003742,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 6.570716309560264,
+     "brier": 1.1111510570196523,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 5.115995809754082,
+     "brier": 1.12144588,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_09_KC_BUF",
+   "week": 9,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.4769611098132345,
+     "brier": 0.1883712044444445,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.8087327030357658,
+     "brier": 0.7913092419333333,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.615926912226404,
+     "brier": 0.9528534288888889,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.4809432492841212,
+     "brier": 0.19044992000000002,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.9391298539620112,
+     "brier": 0.8344284660991687,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.670754416358513,
+     "brier": 0.95875852,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_09_LAC_TEN",
+   "week": 9,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 3.0200249661230356,
+     "brier": 1.2827498666666666,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.2810519377816263,
+     "brier": 0.9508622875414966,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.1821389399181785,
+     "brier": 0.9183185577777778,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 2.9759296462578115,
+     "brier": 1.28216448,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.150591840781841,
+     "brier": 0.9132145510888888,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.1012782362890103,
+     "brier": 0.8917734822222223,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_09_MIN_DET",
+   "week": 9,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 4.815891217303744,
+     "brier": 1.4537869666666667,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 0.9979754118466968,
+     "brier": 0.48610734778888887,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 2.2220037879378736,
+     "brier": 0.39083972,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 4.919880930827792,
+     "brier": 1.45099068,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 0.9888793460165296,
+     "brier": 0.46844463550793647,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 2.1354000787293743,
+     "brier": 0.3596530466666667,
+     "top_choice_credit": 0.5,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_09_NO_LA",
+   "week": 9,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.4729412732330784,
+     "brier": 0.18431519333333332,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.2784449453451932,
+     "brier": 0.6405526951555556,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.2801341652915,
+     "brier": 0.6309845599999999,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.4739581045534647,
+     "brier": 0.18418489777777772,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.2303037423658232,
+     "brier": 0.5804494398099773,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.2818142328893716,
+     "brier": 0.5991326555555555,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_09_SEA_WAS",
+   "week": 9,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 3.638186339798418,
+     "brier": 1.25480786,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 0.7706691790032083,
+     "brier": 0.33582246300000007,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 0.6786527344094928,
+     "brier": 0.27289394000000006,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 3.3200783303773633,
+     "brier": 1.2293918311111112,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 0.969132844108699,
+     "brier": 0.44048085637142853,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 0.8455993037516221,
+     "brier": 0.36823878,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_09_SF_NYG",
+   "week": 9,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.42622919746089216,
+     "brier": 0.1814411133333334,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.104144154320208,
+     "brier": 0.9659695878,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.5301647315395925,
+     "brier": 0.6779671133333334,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.4309367740818338,
+     "brier": 0.18320221999999997,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.8228374247989165,
+     "brier": 0.8234803190645125,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.871668852456357,
+     "brier": 0.7828362466666666,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_10_ARI_SEA",
+   "week": 10,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.9488812250002676,
+     "brier": 0.9422770644444446,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 0.9436533641300531,
+     "brier": 0.5227293518888889,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.608438412101017,
+     "brier": 0.8751891377777778,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.9533376648841099,
+     "brier": 0.9415146911111111,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 0.9312351792599776,
+     "brier": 0.47810999475555555,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.594385109807808,
+     "brier": 0.8280918422222223,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_10_ATL_IND",
+   "week": 10,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.3289671371354395,
+     "brier": 0.13854876000000008,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 3.118163595774881,
+     "brier": 1.1203125346,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 0.9974104081591425,
+     "brier": 0.45003955333333334,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.3429599027567673,
+     "brier": 0.14926084,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.9630069689412872,
+     "brier": 1.1180367461619047,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 0.9100601821235189,
+     "brier": 0.39983911999999994,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_10_BAL_MIN",
+   "week": 10,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.5332416630503228,
+     "brier": 0.22200816,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 3.972126929497852,
+     "brier": 1.172062226604535,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.503230107227307,
+     "brier": 1.1771764466666665,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.5313118179741398,
+     "brier": 0.2204482088888888,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 4.14384998212594,
+     "brier": 1.1510215423683672,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.7241612682585763,
+     "brier": 1.1577766288888889,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_10_BUF_MIA",
+   "week": 10,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.1913856888204646,
+     "brier": 0.9241473399999999,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.3736514460489517,
+     "brier": 0.6480389940708994,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.358549500811332,
+     "brier": 0.6300271733333336,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.1797138901051512,
+     "brier": 0.9097414333333333,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.5478915866657463,
+     "brier": 0.7098962240750566,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.4411025976148857,
+     "brier": 0.6473926,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_10_CLE_NYJ",
+   "week": 10,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.2444476368916542,
+     "brier": 0.88760768,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.5898608987769576,
+     "brier": 0.9821984449582766,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.9460768296124122,
+     "brier": 0.8285784688888889,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.2389093742068322,
+     "brier": 0.8888404599999998,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.4539119856857767,
+     "brier": 0.9567901808571428,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.8904754421672127,
+     "brier": 0.8130336888888888,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_10_DET_WAS",
+   "week": 10,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.6204544951665047,
+     "brier": 0.2737569,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 3.219709505616778,
+     "brier": 1.2402357574444445,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.0917840648782224,
+     "brier": 1.0015567422222222,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.6208265189803193,
+     "brier": 0.27442642,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.88163007795941,
+     "brier": 1.1752795352444443,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.9423498278605562,
+     "brier": 0.9337823466666666,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_10_JAX_HOU",
+   "week": 10,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.9779685727492022,
+     "brier": 1.0651206100000001,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.6405444839075858,
+     "brier": 0.22473297748925994,
+     "top_choice_credit": 0.5,
+     "mean_baseline_credit": 0.5
+    },
+    "receiving_yards": {
+     "log_loss": 1.297551151285502,
+     "brier": 0.58420266,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.8877198603739662,
+     "brier": 1.0330035733333334,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.617894585183259,
+     "brier": 0.21937928145789873,
+     "top_choice_credit": 0.5,
+     "mean_baseline_credit": 0.5
+    },
+    "receiving_yards": {
+     "log_loss": 1.2792951887935557,
+     "brier": 0.5783470755555555,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_10_LA_SF",
+   "week": 10,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.775297663587623,
+     "brier": 0.49648782000000014,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 3.994576799750387,
+     "brier": 1.1916407980603176,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.3755296349135775,
+     "brier": 1.1345015,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.764499977338521,
+     "brier": 0.4864157866666666,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 3.105579027824725,
+     "brier": 1.1097841859015871,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.706800981701778,
+     "brier": 1.0479063544444445,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_10_LV_DEN",
+   "week": 10,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.5728783481690007,
+     "brier": 0.29011546000000005,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 5.6999259571240515,
+     "brier": 0.45101096802312923,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 6.725433722188183,
+     "brier": 1.1175131866666668,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.5973522697718202,
+     "brier": 0.3116745466666667,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 3.4782009517269423,
+     "brier": 0.5016421220868481,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.989984546897858,
+     "brier": 1.0870508155555556,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_10_NE_TB",
+   "week": 10,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 2.1303138720535926,
+     "brier": 0.9466566755555555,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.149847656222445,
+     "brier": 0.9264108249428573,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.2134621303470519,
+     "brier": 0.5679506200000002,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 2.134249778174831,
+     "brier": 0.9470288933333334,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.176892678364301,
+     "brier": 0.9148478853555555,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.342851803277054,
+     "brier": 0.6210711933333333,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_10_NO_CAR",
+   "week": 10,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 2.6649907116417633,
+     "brier": 1.4345406266666667,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.5702627541344736,
+     "brier": 0.19876578769285713,
+     "top_choice_credit": 0.3333333333333333,
+     "mean_baseline_credit": 0.3333333333333333
+    },
+    "receiving_yards": {
+     "log_loss": 1.4731602941415527,
+     "brier": 0.7072154111111112,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 2.6526154942141096,
+     "brier": 1.4211194555555555,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.531823131328151,
+     "brier": 0.20251438812063488,
+     "top_choice_credit": 0.3333333333333333,
+     "mean_baseline_credit": 0.3333333333333333
+    },
+    "receiving_yards": {
+     "log_loss": 1.7216738616613672,
+     "brier": 0.7719801999999999,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_10_NYG_CHI",
+   "week": 10,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.100514095957706,
+     "brier": 0.58292056,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.4684232505296464,
+     "brier": 0.9414621497299319,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.3035855933276292,
+     "brier": 0.8989199800000001,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.1115962162264046,
+     "brier": 0.5898755644444444,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.817753466194173,
+     "brier": 0.9884205717562358,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.5182566294695543,
+     "brier": 0.9386671,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_10_PHI_GB",
+   "week": 10,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.6309238373798134,
+     "brier": 0.33460502,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.971885547079711,
+     "brier": 1.084305574688889,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.2667942819083453,
+     "brier": 0.6155755755555556,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.6460727731740165,
+     "brier": 0.34307031999999993,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 3.1912953999617963,
+     "brier": 1.103420264526984,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.3071135632454494,
+     "brier": 0.6299145977777779,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_10_PIT_LAC",
+   "week": 10,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.0574703453369345,
+     "brier": 0.6053029677777778,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.070997294897173,
+     "brier": 0.9174201161936508,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.2339739265987864,
+     "brier": 0.5787637377777779,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.042799223848897,
+     "brier": 0.59561768,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.10275111111546,
+     "brier": 0.9161450094333333,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.3451524177887153,
+     "brier": 0.629300808888889,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_11_BAL_CLE",
+   "week": 11,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.9297137522062956,
+     "brier": 0.6233721866666667,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.616653796073437,
+     "brier": 0.15593439397936507,
+     "top_choice_credit": 0.25,
+     "mean_baseline_credit": 0.25
+    },
+    "receiving_yards": {
+     "log_loss": 1.2401758529898967,
+     "brier": 0.5746778577777779,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.9482975280092415,
+     "brier": 0.6426612,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.401998372134459,
+     "brier": 0.14745868914648527,
+     "top_choice_credit": 0.25,
+     "mean_baseline_credit": 0.25
+    },
+    "receiving_yards": {
+     "log_loss": 1.3823023398503531,
+     "brier": 0.6285925777777778,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_11_CAR_ATL",
+   "week": 11,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.231344001122068,
+     "brier": 0.91854072,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.8960982847770147,
+     "brier": 0.9209983894222221,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.7422076903988073,
+     "brier": 0.8746577288888888,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.2510644118597865,
+     "brier": 0.934704,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.1143307730688092,
+     "brier": 0.9840617297512473,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.9141531174421218,
+     "brier": 0.9248403488888889,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_11_CHI_MIN",
+   "week": 11,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.1150465951315345,
+     "brier": 0.5689112599999999,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.426974264182676,
+     "brier": 0.2866824740702948,
+     "top_choice_credit": 0.5,
+     "mean_baseline_credit": 0.5
+    },
+    "receiving_yards": {
+     "log_loss": 0.8981234279187061,
+     "brier": 0.40460706888888887,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.1165726140451024,
+     "brier": 0.5711337999999999,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.474530034504109,
+     "brier": 0.3016616331111111,
+     "top_choice_credit": 0.5,
+     "mean_baseline_credit": 0.5
+    },
+    "receiving_yards": {
+     "log_loss": 0.9749797282228346,
+     "brier": 0.44327646000000004,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_11_CIN_PIT",
+   "week": 11,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.393117586468016,
+     "brier": 0.93141576,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 3.5605448748962885,
+     "brier": 1.3831288445333332,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 5.403677882205863,
+     "brier": 1.3479286600000002,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.3884299732503123,
+     "brier": 0.9332591555555556,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 4.0496443833041935,
+     "brier": 1.3681493845936508,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 5.744604469176456,
+     "brier": 1.3160075000000002,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_11_DAL_LV",
+   "week": 11,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.8610925714093928,
+     "brier": 0.5926906266666666,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.7466477174586765,
+     "brier": 0.7807913406751323,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.3649243353836982,
+     "brier": 0.6396645799999998,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.862986959851844,
+     "brier": 0.5946934200000001,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.926171249279885,
+     "brier": 0.8475891566920636,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.4766568012002819,
+     "brier": 0.6960014200000001,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_11_DET_PHI",
+   "week": 11,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.0812636503334967,
+     "brier": 0.6607267866666667,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.3118613177744423,
+     "brier": 1.0259161968222221,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 4.866534950122499,
+     "brier": 1.1698847333333333,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.0968139067267302,
+     "brier": 0.6733565844444444,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.209702098847332,
+     "brier": 0.9923587987492063,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 4.414549826379441,
+     "brier": 1.1551736333333333,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_11_GB_NYG",
+   "week": 11,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 3.106291464121055,
+     "brier": 1.4469459755555556,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 6.830794237846009,
+     "brier": 1.1611739955777778,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 6.119297918617867,
+     "brier": 1.1179809,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 3.0661547378505367,
+     "brier": 1.4398251733333334,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 6.815480002872967,
+     "brier": 1.1394070877274378,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 5.809142990314028,
+     "brier": 1.10233952,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_11_HOU_TEN",
+   "week": 11,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.1306190848031963,
+     "brier": 0.6082017222222222,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.3926392090689836,
+     "brier": 0.6276130389378685,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.1129140733789693,
+     "brier": 0.48905423111111107,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.1320656649273293,
+     "brier": 0.6064560266666666,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.42633094986631,
+     "brier": 0.6307211844004535,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.1777637269735473,
+     "brier": 0.51702164,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_11_KC_DEN",
+   "week": 11,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 2.843869924244745,
+     "brier": 1.3497895333333332,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.2112959738419358,
+     "brier": 0.9028145389142858,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 2.269150316907808,
+     "brier": 0.91205942,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 2.8473122684357177,
+     "brier": 1.3341592733333332,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.957301450942083,
+     "brier": 0.8352183703714285,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 2.037404285888778,
+     "brier": 0.8609124933333332,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_11_LAC_JAX",
+   "week": 11,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 4.141436169755951,
+     "brier": 1.3200520599999999,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 5.546778725846536,
+     "brier": 1.159591347802721,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 5.132802928070463,
+     "brier": 1.15414344,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 4.290359446148058,
+     "brier": 1.3274204066666666,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.7027393287836334,
+     "brier": 1.0092441226063493,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.8513433709286864,
+     "brier": 1.0247244822222223,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_11_NYJ_NE",
+   "week": 11,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 2.743159378215778,
+     "brier": 1.11845998,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.3821961037937358,
+     "brier": 0.6377124170380953,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.5133704436878668,
+     "brier": 0.6711425617777779,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 2.754094139603617,
+     "brier": 1.1159402200000001,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.45046689632843,
+     "brier": 0.6584115439368102,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.5616005830199404,
+     "brier": 0.6839927755555556,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_11_SEA_LA",
+   "week": 11,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.7128738107439786,
+     "brier": 0.34664269111111107,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 3.4023981022386742,
+     "brier": 1.1912409593555557,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 0.8337127791135728,
+     "brier": 0.4041645600000001,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.7431781141655103,
+     "brier": 0.3667349933333333,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 3.9140011511451123,
+     "brier": 1.1710252631455784,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.221797389238488,
+     "brier": 0.61148148,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_11_SF_ARI",
+   "week": 11,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.45287123050543465,
+     "brier": 0.16507996666666663,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 3.233397421387221,
+     "brier": 1.1640424247333332,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.843869924244745,
+     "brier": 1.0367052399999999,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.44207722660489646,
+     "brier": 0.15837193999999996,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 3.3483609927433093,
+     "brier": 1.1661680457034012,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.8206591454848646,
+     "brier": 1.0247553777777778,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_11_TB_BUF",
+   "week": 11,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 2.6036901857779675,
+     "brier": 1.2807654600000002,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.885147497549728,
+     "brier": 0.8858029470380953,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 4.04175211210293,
+     "brier": 1.1368987155555557,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 2.6186666399675245,
+     "brier": 1.2816685333333335,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.124472115308119,
+     "brier": 0.9256813843984882,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.8873303928377747,
+     "brier": 1.0988768666666668,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_11_WAS_MIA",
+   "week": 11,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.49675836655455513,
+     "brier": 0.20487665999999996,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.6563897673298926,
+     "brier": 0.790923924311111,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.8669141428288156,
+     "brier": 0.8531466000000001,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.4951163300608108,
+     "brier": 0.20227521999999995,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.891027470886724,
+     "brier": 0.8429703092873018,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.0907047339585465,
+     "brier": 0.8977156399999999,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_12_ATL_NO",
+   "week": 12,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.4143545019540814,
+     "brier": 0.17370033999999995,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.8056352947637029,
+     "brier": 0.8574784383555555,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.0959210008094233,
+     "brier": 1.1047403966666667,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.40391630811831397,
+     "brier": 0.1682374,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.1548118487046124,
+     "brier": 0.958601963526984,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.699090459730738,
+     "brier": 1.0553950977777777,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_12_BUF_HOU",
+   "week": 12,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.6609381715379293,
+     "brier": 0.32491409333333326,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.8326022972986604,
+     "brier": 0.8406837213496597,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.0826466726287842,
+     "brier": 0.9015392577777778,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.649130295143171,
+     "brier": 0.31901442,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.0558515111580515,
+     "brier": 0.8938951180297052,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.332357251327716,
+     "brier": 0.9484053333333334,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_12_CAR_SF",
+   "week": 12,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.0241543777500999,
+     "brier": 0.7469567,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.3479256591767481,
+     "brier": 0.6519943033723355,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 2.10537492370634,
+     "brier": 0.9179097666666667,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.0498221244986778,
+     "brier": 0.76600618,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.7065149299551066,
+     "brier": 0.7838662272296297,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 2.077842820316139,
+     "brier": 0.89555514,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_12_CLE_LV",
+   "week": 12,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.9763061642841417,
+     "brier": 0.67277466,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.505440801725957,
+     "brier": 0.9694037307331821,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.7186516124476063,
+     "brier": 1.0706173466666666,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.9662691016803965,
+     "brier": 0.6607042,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.5917794194368238,
+     "brier": 0.9742135813777778,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.5098967985854963,
+     "brier": 1.056051402222222,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_12_IND_KC",
+   "week": 12,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 3.0754972420228537,
+     "brier": 1.5345013666666667,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.4108603150651404,
+     "brier": 0.6562798044,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.5755196942306398,
+     "brier": 0.7305351200000001,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 2.993734270891318,
+     "brier": 1.52413648,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.399014925529271,
+     "brier": 0.6547045621111112,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.5025285967864235,
+     "brier": 0.6867601,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_12_JAX_ARI",
+   "week": 12,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.516173230092586,
+     "brier": 0.1932076,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.1463590172710956,
+     "brier": 1.0229597644884354,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.9477117710019414,
+     "brier": 0.8806196599999999,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.5182699306552271,
+     "brier": 0.19500397888888887,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.3311217511362345,
+     "brier": 1.057324769888889,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.079174910562405,
+     "brier": 0.9100205533333334,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_12_MIN_GB",
+   "week": 12,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 2.703560295829358,
+     "brier": 1.19352674,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 4.2122276028788175,
+     "brier": 1.1984744713555555,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.8421531856256905,
+     "brier": 1.09466866,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 2.58229899579665,
+     "brier": 1.173244831111111,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 4.05512384906882,
+     "brier": 1.1711869066666667,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.8490378944031876,
+     "brier": 1.0788799066666668,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_12_NE_CIN",
+   "week": 12,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.7261590121441062,
+     "brier": 1.00544112,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 3.5249481890983305,
+     "brier": 1.2485353869333333,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.5076696261726723,
+     "brier": 1.18883904,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.7149836304260055,
+     "brier": 1.0004763755555557,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 3.382670077048272,
+     "brier": 1.216119140488889,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.3932292120129786,
+     "brier": 1.1682273600000002,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_12_NYG_DET",
+   "week": 12,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.6418205533946046,
+     "brier": 0.2983724377777778,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 3.180937985527809,
+     "brier": 1.2035416565555557,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.955220018381091,
+     "brier": 0.9367452222222223,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.6502792803327695,
+     "brier": 0.30337023999999996,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.9037609950151806,
+     "brier": 1.1534699019555557,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.0754495204102983,
+     "brier": 0.9469008600000001,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_12_NYJ_BAL",
+   "week": 12,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.5577425435537423,
+     "brier": 0.28492120666666665,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 4.784467748237305,
+     "brier": 1.128974991864399,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 4.3428059215206005,
+     "brier": 1.1270663,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.5507221207653029,
+     "brier": 0.28152728,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 3.83204623399429,
+     "brier": 1.0881371526185941,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.952844999948401,
+     "brier": 1.09593332,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_12_PHI_DAL",
+   "week": 12,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.9250792379072343,
+     "brier": 0.6407742399999999,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.0955573735660207,
+     "brier": 0.9251685325428571,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.6414447085691868,
+     "brier": 0.79900106,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.9163740686799035,
+     "brier": 0.6315304733333332,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.219102155855537,
+     "brier": 0.9440999999111112,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.7355681895783124,
+     "brier": 0.8260615866666667,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_12_PIT_CHI",
+   "week": 12,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 3.83970234384852,
+     "brier": 1.29117686,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.4445711735985975,
+     "brier": 0.9157204692444445,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 2.2681836662767134,
+     "brier": 0.9050565933333332,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 3.9220733412816475,
+     "brier": 1.30099316,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.898787067497512,
+     "brier": 0.9790855618689343,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.9870446924138683,
+     "brier": 0.8375518266666666,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_12_SEA_TEN",
+   "week": 12,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.8475423347130611,
+     "brier": 0.42831438000000016,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 0.6886970968863338,
+     "brier": 0.27114070688888886,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 0.6163713417578957,
+     "brier": 0.23089794888888884,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.8516740887881827,
+     "brier": 0.42981914666666654,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 0.9140866151061029,
+     "brier": 0.38810301741859415,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 0.8413378786377542,
+     "brier": 0.3543636422222222,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_12_TB_LA",
+   "week": 12,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.7052872404541141,
+     "brier": 0.33254772,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.6421160748246828,
+     "brier": 0.7640472130444443,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.5620773410742628,
+     "brier": 0.75641896,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.6936473056016276,
+     "brier": 0.32496887999999996,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.5304419062076025,
+     "brier": 0.7190468026888889,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.5029780013329732,
+     "brier": 0.7316460111111113,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_13_ARI_TB",
+   "week": 13,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 2.294286290179351,
+     "brier": 1.0236114,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 0.9858819966483777,
+     "brier": 0.45132494271111107,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.3987718826310032,
+     "brier": 0.6637980400000001,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 2.288024941662716,
+     "brier": 1.023425268888889,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 0.8914146285698731,
+     "brier": 0.38936601639999996,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.3306704573718937,
+     "brier": 0.62064854,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_13_ATL_NYJ",
+   "week": 13,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.6646245136267441,
+     "brier": 0.37910594000000003,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 3.124431820951725,
+     "brier": 1.0792771830380952,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.4418471603275536,
+     "brier": 0.9871744400000001,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.6812186096946715,
+     "brier": 0.39230278,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 3.98818436639371,
+     "brier": 1.1351313498822373,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.031014087698631,
+     "brier": 1.0644325622222222,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_13_BUF_PIT",
+   "week": 13,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.6941476808935289,
+     "brier": 0.4489178199999999,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 3.5365925323434855,
+     "brier": 0.2915704031070295,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.3853240325058653,
+     "brier": 1.04183564,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.6947484619269192,
+     "brier": 0.45021060000000007,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 3.608179062751694,
+     "brier": 0.26494268194920634,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.6419958682150857,
+     "brier": 1.0433374866666667,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_13_CHI_PHI",
+   "week": 13,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.7796332894302145,
+     "brier": 1.07028074,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.5249042055101134,
+     "brier": 0.7386675224539684,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.4317102246503732,
+     "brier": 0.6983535399999999,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.742398039690331,
+     "brier": 1.05041758,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.6032144612002293,
+     "brier": 0.7469109833573695,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.5170106721881733,
+     "brier": 0.7162509666666665,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_13_CIN_BAL",
+   "week": 13,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.7608423665933335,
+     "brier": 1.22739512,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.6832245440826847,
+     "brier": 0.22577868738004536,
+     "top_choice_credit": 0.5,
+     "mean_baseline_credit": 0.5
+    },
+    "receiving_yards": {
+     "log_loss": 0.8964881045779755,
+     "brier": 0.43301936000000013,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.7492748576218997,
+     "brier": 1.21749568,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.8077105086535386,
+     "brier": 0.2376959186031746,
+     "top_choice_credit": 0.5,
+     "mean_baseline_credit": 0.5
+    },
+    "receiving_yards": {
+     "log_loss": 1.0169401400240847,
+     "brier": 0.48462368,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_13_DEN_WAS",
+   "week": 13,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 3.255366933450616,
+     "brier": 1.308350608888889,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.8924420545940877,
+     "brier": 0.8308692184793651,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.5929373940017055,
+     "brier": 0.9791463600000001,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 3.2675409968494815,
+     "brier": 1.3132315311111111,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.903606053389765,
+     "brier": 0.8224326015079365,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.544019914280507,
+     "brier": 0.9619758300000001,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_13_GB_DET",
+   "week": 13,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.5091401911187365,
+     "brier": 0.9136649600000001,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 3.1064403955384123,
+     "brier": 1.211746386911111,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.0343407144347396,
+     "brier": 0.9359850066666666,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.5154922995915725,
+     "brier": 0.91384376,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.8762913536881602,
+     "brier": 1.1595056027333335,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.9456101940463153,
+     "brier": 0.89914008,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_13_HOU_IND",
+   "week": 13,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.4246988972234636,
+     "brier": 0.18947304666666664,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.7551639938698191,
+     "brier": 0.8042422537925925,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.0958162013661084,
+     "brier": 0.50358308,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.4386600129658053,
+     "brier": 0.19954671999999998,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.8233209039715617,
+     "brier": 0.8204030780321995,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.0927296255099543,
+     "brier": 0.49307963333333343,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_13_JAX_TEN",
+   "week": 13,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.9749614134493172,
+     "brier": 1.21361926,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.434705875775423,
+     "brier": 0.23849926880453515,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.3299562897901778,
+     "brier": 0.8911771133333335,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.955220018381091,
+     "brier": 1.1975690222222224,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.3160893967277154,
+     "brier": 0.20251481648892666,
+     "top_choice_credit": 0.3333333333333333,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.8013048820715862,
+     "brier": 0.7507335222222222,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_13_KC_DAL",
+   "week": 13,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.5902897951202375,
+     "brier": 0.32283184666666664,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.1351666169300418,
+     "brier": 0.5494391704126984,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.7721529395891367,
+     "brier": 0.8601942933333333,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.5934225165207485,
+     "brier": 0.3280174533333333,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.160019716797473,
+     "brier": 0.5592345082444445,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.7579379207525443,
+     "brier": 0.8443029200000001,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_13_LA_CAR",
+   "week": 13,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 3.506557897319982,
+     "brier": 1.3220975733333333,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.5873328490771352,
+     "brier": 0.7508527528056689,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 4.11659017116942,
+     "brier": 1.1452291822222223,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 3.506557897319982,
+     "brier": 1.32144532,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.4421574797632035,
+     "brier": 0.6834553471808389,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 4.312500572025272,
+     "brier": 1.1500621533333333,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_13_LV_LAC",
+   "week": 13,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.0741148170677222,
+     "brier": 0.71801424,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.3557724104879245,
+     "brier": 0.9626669898095238,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.5603303383270726,
+     "brier": 0.7255686555555556,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.0691505785184907,
+     "brier": 0.7154718,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.240296869735767,
+     "brier": 0.9537488170095239,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.4166161210062798,
+     "brier": 0.6571677222222223,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_13_MIN_SEA",
+   "week": 13,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.043934727377414,
+     "brier": 0.5260423000000001,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.9655911166420044,
+     "brier": 1.2132006427555555,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 4.098352583619639,
+     "brier": 1.3078400933333334,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.0333865037504022,
+     "brier": 0.5198648422222222,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.696665256235647,
+     "brier": 1.1041077024603174,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.6928874755114753,
+     "brier": 1.21623734,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_13_NO_MIA",
+   "week": 13,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.36475511986037773,
+     "brier": 0.14065919333333338,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 3.417733350302255,
+     "brier": 1.0889465592222223,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.0661547378505367,
+     "brier": 1.0644860222222223,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.36614824573121396,
+     "brier": 0.14155584,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 3.417835022815179,
+     "brier": 1.05340914935,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.0576076772720784,
+     "brier": 1.0302520355555556,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_13_NYG_NE",
+   "week": 13,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 2.9792029716027804,
+     "brier": 1.1269946177777779,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 0.9880284384050987,
+     "brier": 0.4573217194444445,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 2.6050424510279813,
+     "brier": 1.00054818,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 2.9399822584494992,
+     "brier": 1.1213177222222224,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 0.998414074791009,
+     "brier": 0.4571158761777777,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 2.6872676619196816,
+     "brier": 1.0019850644444444,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_13_SF_CLE",
+   "week": 13,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.8178793053045357,
+     "brier": 0.5209377044444445,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.7457308771540485,
+     "brier": 0.13686462454444445,
+     "top_choice_credit": 0.3333333333333333,
+     "mean_baseline_credit": 0.3333333333333333
+    },
+    "receiving_yards": {
+     "log_loss": 1.6732655751802659,
+     "brier": 0.7496668711111112,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.8105802774520409,
+     "brier": 0.51452234,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.825022342464943,
+     "brier": 0.1458623925380952,
+     "top_choice_credit": 0.3333333333333333,
+     "mean_baseline_credit": 0.3333333333333333
+    },
+    "receiving_yards": {
+     "log_loss": 1.7087059140927694,
+     "brier": 0.74798172,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_14_CHI_GB",
+   "week": 14,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.083526651250069,
+     "brier": 0.57603822,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 3.4249208279094545,
+     "brier": 0.19765478076689344,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0.25
+    },
+    "receiving_yards": {
+     "log_loss": 1.6691879168398742,
+     "brier": 0.7315516288888888,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.0589109218165575,
+     "brier": 0.5607798711111112,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 3.588367846940491,
+     "brier": 0.20824017708594106,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0.25
+    },
+    "receiving_yards": {
+     "log_loss": 1.7808195291897206,
+     "brier": 0.7637679355555556,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_14_CIN_BUF",
+   "week": 14,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.31608154697347896,
+     "brier": 0.11723662,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 3.7372513013324804,
+     "brier": 0.5122217537238094,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.6969116258112007,
+     "brier": 1.1398308866666667,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.31841623182164214,
+     "brier": 0.12036386000000003,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 3.442707889955148,
+     "brier": 0.44042478367256227,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 4.017383521085972,
+     "brier": 1.1101822266666665,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_14_DAL_DET",
+   "week": 14,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.8830977645183911,
+     "brier": 0.5786738,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 6.433593639587738,
+     "brier": 1.2026467274,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.619993426373617,
+     "brier": 0.8152578200000001,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.8620393170422391,
+     "brier": 0.564248,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 6.310751958975094,
+     "brier": 1.2076760721777777,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.67825222843446,
+     "brier": 0.8271837800000001,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_14_DEN_LV",
+   "week": 14,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 2.7447141854738013,
+     "brier": 1.2392926133333333,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 3.797136846552438,
+     "brier": 0.3983399609555555,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.7477425838112808,
+     "brier": 0.7961900088888889,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 2.70805020110221,
+     "brier": 1.2296886466666666,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 3.8220868259510996,
+     "brier": 0.3964958377301587,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.6843410724607848,
+     "brier": 0.77703536,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_14_HOU_KC",
+   "week": 14,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.9548583250234135,
+     "brier": 0.47651021999999993,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.375110865417805,
+     "brier": 0.1643305626,
+     "top_choice_credit": 0.5,
+     "mean_baseline_credit": 0.5
+    },
+    "receiving_yards": {
+     "log_loss": 1.248273063222516,
+     "brier": 0.6056209200000001,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.9547717186924366,
+     "brier": 0.4762696644444444,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.4264625773305113,
+     "brier": 0.18258251697777775,
+     "top_choice_credit": 0.5,
+     "mean_baseline_credit": 0.5
+    },
+    "receiving_yards": {
+     "log_loss": 1.2560851474926735,
+     "brier": 0.6020327822222221,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_14_IND_JAX",
+   "week": 14,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.8499376363100091,
+     "brier": 0.07038945333333332,
+     "top_choice_credit": 0.5,
+     "mean_baseline_credit": 0.5
+    },
+    "receptions": {
+     "log_loss": 1.4157624055752858,
+     "brier": 0.6518056340616781,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 2.700082031453033,
+     "brier": 1.01552372,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.8366266912217798,
+     "brier": 0.059678119999999994,
+     "top_choice_credit": 0.5,
+     "mean_baseline_credit": 0.5
+    },
+    "receptions": {
+     "log_loss": 1.5173667387850727,
+     "brier": 0.6878714156888889,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 2.277892480403674,
+     "brier": 0.9223799088888889,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_14_LA_ARI",
+   "week": 14,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.7762798983796686,
+     "brier": 0.9874572777777778,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.8586260314849996,
+     "brier": 0.8931331677111112,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.4335257408253295,
+     "brier": 0.6873455755555556,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.75061752589688,
+     "brier": 0.9760890844444444,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.0676052016816637,
+     "brier": 0.9665013299,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.3873615970803135,
+     "brier": 0.6651806488888888,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_14_MIA_NYJ",
+   "week": 14,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 5.318520073865556,
+     "brier": 1.4813828599999999,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.9361779243668091,
+     "brier": 0.3357797526,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.750435917598648,
+     "brier": 1.0301682844444446,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 5.2030071867437115,
+     "brier": 1.47891918,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.8876787432573898,
+     "brier": 0.3091968223543084,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.650725134482941,
+     "brier": 0.98513782,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_14_NO_TB",
+   "week": 14,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 3.3452897497238596,
+     "brier": 1.089204321111111,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 4.493032686051241,
+     "brier": 1.1639866880444445,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.7422802308410517,
+     "brier": 1.1396657399999999,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 3.3004474785620124,
+     "brier": 1.0862164133333332,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.997829709731441,
+     "brier": 1.0326819973755101,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.6246285929631377,
+     "brier": 0.9976599066666667,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_14_PHI_LAC",
+   "week": 14,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.6991652528855083,
+     "brier": 0.39091071555555557,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 3.2818409812189384,
+     "brier": 1.1010090798058956,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.5150372370126162,
+     "brier": 0.7352712466666667,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.7149838751691198,
+     "brier": 0.39773417999999994,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.8949823704538478,
+     "brier": 1.0436024542666666,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.5756808156359667,
+     "brier": 0.7408984266666665,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_14_PIT_BAL",
+   "week": 14,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.536029478129281,
+     "brier": 0.26111112000000003,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.2720375352400655,
+     "brier": 0.5798201419274377,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.6286207318508743,
+     "brier": 0.75550022,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.5278022479731075,
+     "brier": 0.25722244,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.2857132486353904,
+     "brier": 0.5800915333111112,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.6225231519827559,
+     "brier": 0.7501042822222221,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_14_SEA_ATL",
+   "week": 14,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.5786287271173535,
+     "brier": 0.28774626000000003,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 0.7729513452585481,
+     "brier": 0.34645205216507935,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 0.6715814026453847,
+     "brier": 0.28104838,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.605258410814159,
+     "brier": 0.3045980577777778,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 0.9962994123488454,
+     "brier": 0.47352900231111106,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 0.8673418501422918,
+     "brier": 0.39635501555555563,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_14_TEN_CLE",
+   "week": 14,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.6962674877688344,
+     "brier": 1.1664932066666667,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.3918737062836004,
+     "brier": 0.6182135568519276,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.66812690878278,
+     "brier": 0.71924067,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.6884811197745533,
+     "brier": 1.1692196400000001,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.6058048375106824,
+     "brier": 0.6923506386627362,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.973281345851445,
+     "brier": 0.8065372533333334,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_14_WAS_MIN",
+   "week": 14,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.5806075307662233,
+     "brier": 0.76068239,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.2850647015511973,
+     "brier": 0.4656535053011338,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.793961892783255,
+     "brier": 0.8672220622222222,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.521732332014995,
+     "brier": 0.7394503155555556,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.2985615700045345,
+     "brier": 0.45069484412063493,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.9585226871061572,
+     "brier": 0.8841282899999999,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_15_ARI_HOU",
+   "week": 15,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 5.44914025628262,
+     "brier": 1.4928905177777778,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.5298634462366274,
+     "brier": 0.7299342923269841,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 2.0757151599390222,
+     "brier": 0.9306257377777779,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 5.472670753692815,
+     "brier": 1.49247174,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.4422860303554552,
+     "brier": 0.6858648936735932,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 2.004705195565819,
+     "brier": 0.90864116,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_15_ATL_TB",
+   "week": 15,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.4681387026362232,
+     "brier": 0.17542251333333334,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.2048890970097608,
+     "brier": 0.5663784941785714,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.491654876777717,
+     "brier": 0.69599856,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.45860220652129313,
+     "brier": 0.1694154866666667,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.3185164496202315,
+     "brier": 0.6121710392476192,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.5976740455138585,
+     "brier": 0.7264081622222224,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_15_BAL_CIN",
+   "week": 15,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.363268059408376,
+     "brier": 0.13095997999999998,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.0988023067203965,
+     "brier": 0.5164409383777778,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.2259912179979402,
+     "brier": 0.5926181133333334,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.36068296533627114,
+     "brier": 0.12864895999999998,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.1329242693858548,
+     "brier": 0.5252914673174603,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.2917117186339429,
+     "brier": 0.6151689000000001,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_15_BUF_NE",
+   "week": 15,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.2359222396327165,
+     "brier": 0.8296930733333332,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.7220144362410557,
+     "brier": 0.7431726969085412,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.8893722980950556,
+     "brier": 0.7856726222222222,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.212789333730509,
+     "brier": 0.8171925399999999,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.9068897764816863,
+     "brier": 0.7931089694,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 2.016654553581071,
+     "brier": 0.81318298,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_15_CAR_NO",
+   "week": 15,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 2.451145666669987,
+     "brier": 0.29656588,
+     "top_choice_credit": 0.5,
+     "mean_baseline_credit": 0.5
+    },
+    "receptions": {
+     "log_loss": 1.2634507128377106,
+     "brier": 0.5960324256002268,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.3576421185467284,
+     "brier": 0.6544841177777778,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 2.3782958522387614,
+     "brier": 0.2922907977777777,
+     "top_choice_credit": 0.5,
+     "mean_baseline_credit": 0.5
+    },
+    "receptions": {
+     "log_loss": 1.5501134819053772,
+     "brier": 0.6988954369666667,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.5839326220257386,
+     "brier": 0.7323652066666666,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_15_CLE_CHI",
+   "week": 15,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.6577531893803212,
+     "brier": 0.9833434399999998,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.0976748710384838,
+     "brier": 0.48741083944739244,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 3.803168600516064,
+     "brier": 1.0724198822222222,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.662487133523916,
+     "brier": 0.9827517266666665,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.3332104803132698,
+     "brier": 0.5911493641133786,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 3.9954046143671973,
+     "brier": 1.06516702,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_15_DET_LA",
+   "week": 15,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.4111336511335362,
+     "brier": 0.8618886888888888,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.2167128747382894,
+     "brier": 0.6286838470444444,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.0634382136604557,
+     "brier": 0.5292442866666668,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.4078585390357312,
+     "brier": 0.8626370533333334,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.1427836360135135,
+     "brier": 0.5777669733555556,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.14329589629475,
+     "brier": 0.57625782,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_15_GB_DEN",
+   "week": 15,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.953646518417924,
+     "brier": 0.4987731977777778,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.6627478587810283,
+     "brier": 0.7346649557185185,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.5975093415688266,
+     "brier": 0.7144375999999999,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.9266778247606421,
+     "brier": 0.4824874311111112,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.5289074116630517,
+     "brier": 0.6744807827603301,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.4850103340590484,
+     "brier": 0.6578615533333333,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_15_IND_SEA",
+   "week": 15,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.2903968652804898,
+     "brier": 0.09345528666666672,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 0.9425405980213583,
+     "brier": 0.43841298962222225,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 0.7842396009632843,
+     "brier": 0.34799250666666676,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.285462315713468,
+     "brier": 0.08972627999999998,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.094719873952766,
+     "brier": 0.5092345227111111,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 0.8973054319630743,
+     "brier": 0.40454468666666676,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_15_LAC_KC",
+   "week": 15,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 2.734907655272093,
+     "brier": 1.137326388888889,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.4100225053514017,
+     "brier": 0.1709350271623583,
+     "top_choice_credit": 0.5,
+     "mean_baseline_credit": 0.5
+    },
+    "receiving_yards": {
+     "log_loss": 1.9768849533547437,
+     "brier": 0.8766706777777777,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 2.7447141854738013,
+     "brier": 1.1365795133333332,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.3899971566715452,
+     "brier": 0.16076371395600908,
+     "top_choice_credit": 0.5,
+     "mean_baseline_credit": 0.5
+    },
+    "receiving_yards": {
+     "log_loss": 1.8788435761351685,
+     "brier": 0.8430162955555555,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_15_LV_PHI",
+   "week": 15,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.6415672605867659,
+     "brier": 0.3852953666666666,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.196808334642288,
+     "brier": 0.45458411779999996,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0.5
+    },
+    "receiving_yards": {
+     "log_loss": 2.8594546552614433,
+     "brier": 1.1041254200000001,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.6391010121428584,
+     "brier": 0.3833162066666667,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.085782066818171,
+     "brier": 0.4121603054761905,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0.5
+    },
+    "receiving_yards": {
+     "log_loss": 2.856550209420654,
+     "brier": 1.08838996,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_15_MIA_PIT",
+   "week": 15,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 3.2675409968494815,
+     "brier": 1.4028431399999999,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.9373023802251765,
+     "brier": 0.5143283935555556,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.0533613863906273,
+     "brier": 1.13939982,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 3.2941383093687477,
+     "brier": 1.40408752,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 3.294682016590012,
+     "brier": 0.5854714919972789,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.8949823704538478,
+     "brier": 1.0923902533333334,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_15_MIN_DAL",
+   "week": 15,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.40077611862203294,
+     "brier": 0.15125738888888893,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.5706018886489022,
+     "brier": 0.7477755242,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.5639866495301828,
+     "brier": 0.7836998199999999,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.3943768111227438,
+     "brier": 0.14575481999999998,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.5350264149202901,
+     "brier": 0.7209152564666667,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.5260163042950279,
+     "brier": 0.7489806,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_15_NYJ_JAX",
+   "week": 15,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 3.947650183071297,
+     "brier": 1.36592786,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.7301756453353656,
+     "brier": 0.42308271442766443,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 4.866534950122499,
+     "brier": 1.10191622,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 3.947650183071297,
+     "brier": 1.3710246533333332,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.9826922645520844,
+     "brier": 0.4727969535751323,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 4.759876575749073,
+     "brier": 1.0784978244444445,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_15_TEN_SF",
+   "week": 15,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.1235199243742946,
+     "brier": 0.7726766777777778,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.5477706970523677,
+     "brier": 0.7087415640000001,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 3.2869762375721328,
+     "brier": 1.0563186644444444,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.126189056438344,
+     "brier": 0.77122492,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.5964887821478904,
+     "brier": 0.7110144327333334,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 2.7757938531887296,
+     "brier": 0.99404582,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_15_WAS_NYG",
+   "week": 15,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.950755200718513,
+     "brier": 0.8953514688888888,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 0.972111805058768,
+     "brier": 0.4438417819619048,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 2.2531602096665226,
+     "brier": 0.9428370888888888,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.9902104079518934,
+     "brier": 0.9059525822222221,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 0.9561143410184204,
+     "brier": 0.42743006817619056,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 2.385966701933097,
+     "brier": 0.9636637533333334,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_16_ATL_ARI",
+   "week": 16,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 3.2213789550863194,
+     "brier": 1.6156437000000001,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.9915408709157076,
+     "brier": 0.25928904214920634,
+     "top_choice_credit": 0.3333333333333333,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.6809215337139576,
+     "brier": 1.015294808888889,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 3.2314546070750607,
+     "brier": 1.6165730800000002,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 3.078117112036849,
+     "brier": 0.2655612240444444,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.584948003968227,
+     "brier": 0.9826703066666665,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_16_CIN_MIA",
+   "week": 16,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.45056708202058454,
+     "brier": 0.21034092666666668,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.2136453589476792,
+     "brier": 0.5687703076074074,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.2573735810530513,
+     "brier": 0.6112796533333333,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.4673405118262518,
+     "brier": 0.22151011333333331,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.226451342012318,
+     "brier": 0.564372871352381,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.2909841813155656,
+     "brier": 0.61364954,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_16_JAX_DEN",
+   "week": 16,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.9367566366628979,
+     "brier": 0.03368550666666667,
+     "top_choice_credit": 0.5,
+     "mean_baseline_credit": 0.5
+    },
+    "receptions": {
+     "log_loss": 2.400803577056436,
+     "brier": 0.36233864975555563,
+     "top_choice_credit": 0.5,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.9494850223886715,
+     "brier": 1.01785844,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.9502395881061552,
+     "brier": 0.036612475555555565,
+     "top_choice_credit": 0.5,
+     "mean_baseline_credit": 0.5
+    },
+    "receptions": {
+     "log_loss": 2.4537894804699505,
+     "brier": 0.3653223753852608,
+     "top_choice_credit": 0.5,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.009831197933493,
+     "brier": 1.02598028,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_16_KC_TEN",
+   "week": 16,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.8825336350760214,
+     "brier": 0.55070298,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 5.383993102853077,
+     "brier": 0.6689452838464852,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.470547459796949,
+     "brier": 1.13664056,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.8783528925337631,
+     "brier": 0.5404812933333334,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 4.570704728982056,
+     "brier": 0.6458155375759637,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.3765047690717838,
+     "brier": 1.1146303533333333,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_16_LAC_DAL",
+   "week": 16,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 2.222234740340387,
+     "brier": 1.1962794466666666,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.5017201772025959,
+     "brier": 0.7005030640888888,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.2960880932337415,
+     "brier": 0.6205611999999999,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 2.212744388994256,
+     "brier": 1.1835113600000002,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.7076713289886543,
+     "brier": 0.7720774878296296,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.4866304831725534,
+     "brier": 0.7043494866666666,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_16_LA_SEA",
+   "week": 16,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.4092218657635953,
+     "brier": 0.7450095844444445,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.0708512178827194,
+     "brier": 0.5580905041333333,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.1071486196903961,
+     "brier": 0.6079185777777778,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.4260058613561186,
+     "brier": 0.7532724266666667,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.1429195162300858,
+     "brier": 0.5740607285333333,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.2358075278459544,
+     "brier": 0.64560432,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_16_LV_HOU",
+   "week": 16,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.1944626143249437,
+     "brier": 0.6928888377777778,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.980965969132111,
+     "brier": 0.22474640586031744,
+     "top_choice_credit": 0.3333333333333333,
+     "mean_baseline_credit": 0.3333333333333333
+    },
+    "receiving_yards": {
+     "log_loss": 3.277211401881164,
+     "brier": 1.0924959377777779,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.1844970278252793,
+     "brier": 0.68287544,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 3.109037720165462,
+     "brier": 0.22738366812380947,
+     "top_choice_credit": 0.3333333333333333,
+     "mean_baseline_credit": 0.3333333333333333
+    },
+    "receiving_yards": {
+     "log_loss": 3.396209840151116,
+     "brier": 1.1014828022222223,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_16_MIN_NYG",
+   "week": 16,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.0357313906289087,
+     "brier": 0.5300362644444444,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.5851832586837609,
+     "brier": 0.7770926185952383,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.3466891065275313,
+     "brier": 0.64703662,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.0511563475118142,
+     "brier": 0.5377515644444444,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.6656203321230925,
+     "brier": 0.8105906330666667,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.4093583007184423,
+     "brier": 0.6691314133333335,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_16_NE_BAL",
+   "week": 16,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.818483671871243,
+     "brier": 0.46907363999999996,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.7952140006854105,
+     "brier": 0.8007507016793651,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.9931415287607521,
+     "brier": 0.8665788488888889,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.8183325459830909,
+     "brier": 0.4681064400000001,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.674207571393071,
+     "brier": 0.748470101273016,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.8253162527568978,
+     "brier": 0.8036502,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_16_NYJ_NO",
+   "week": 16,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.639227338570515,
+     "brier": 0.28234941777777783,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.4222867670594619,
+     "brier": 0.6525462924984126,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.4493051609292946,
+     "brier": 0.6717338533333332,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.6264235485170372,
+     "brier": 0.27168784,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.411343584907525,
+     "brier": 0.6353386766511339,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.4230966676439953,
+     "brier": 0.6442161355555556,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_16_PHI_WAS",
+   "week": 16,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.4378075310294188,
+     "brier": 0.15047122000000002,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.1843927352518278,
+     "brier": 0.5692792489587303,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.0356374895067213,
+     "brier": 0.5023407466666667,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.43448205717865707,
+     "brier": 0.14870862000000004,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.2094321237733534,
+     "brier": 0.5828771183833333,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.0755795895575369,
+     "brier": 0.52187514,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_16_PIT_DET",
+   "week": 16,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.5573199581719936,
+     "brier": 0.9954356,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.495104205120063,
+     "brier": 0.8036745067111111,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.8971343929343956,
+     "brier": 1.20755428,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.5347943694383346,
+     "brier": 0.9878558199999999,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.6013705413563417,
+     "brier": 0.8762230303999998,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 4.699480865459333,
+     "brier": 1.22949628,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_16_SF_IND",
+   "week": 16,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.3788554320228925,
+     "brier": 1.0705999599999998,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.2777987649665916,
+     "brier": 0.6023163845777777,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.2751108321592757,
+     "brier": 0.59807578,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.3907040696085906,
+     "brier": 1.07618732,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.3863067421489164,
+     "brier": 0.6459233884047619,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.3789877859374526,
+     "brier": 0.6361772422222222,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_16_TB_CAR",
+   "week": 16,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.4811912929895732,
+     "brier": 0.9365221666666665,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.4729265892163261,
+     "brier": 0.6504673491147392,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.2979172505024776,
+     "brier": 0.5937782,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.5082360319251331,
+     "brier": 0.95633742,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.5149404726258788,
+     "brier": 0.661005455501285,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.309580264052186,
+     "brier": 0.5916127888888888,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_17_ARI_CIN",
+   "week": 17,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.7377262239579127,
+     "brier": 0.33460944000000004,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.4545446512457831,
+     "brier": 0.7307886610253969,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.1866787675365604,
+     "brier": 0.5900103933333335,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.7216152445394707,
+     "brier": 0.32466698000000005,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.2897174514891339,
+     "brier": 0.6306817085841269,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.5177707239082765,
+     "brier": 0.7267956599999998,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_17_BAL_GB",
+   "week": 17,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.5688667800496082,
+     "brier": 0.23882128000000005,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.8278634444589366,
+     "brier": 0.8292845850444445,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.3498981459286,
+     "brier": 0.6469221,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.5716377631627482,
+     "brier": 0.24089280000000002,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.9762216011333655,
+     "brier": 0.8543064732349206,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.4891395244120669,
+     "brier": 0.6907637733333333,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_17_DAL_WAS",
+   "week": 17,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 2.3573933294890406,
+     "brier": 1.2484883933333333,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.8966547497917827,
+     "brier": 0.34701239184444443,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 4.12893600699172,
+     "brier": 1.1691372066666665,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 2.3925098005220327,
+     "brier": 1.2552382133333333,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.7622906160703593,
+     "brier": 0.29465066884444446,
+     "top_choice_credit": 0.5,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 4.137252063233377,
+     "brier": 1.1530702266666666,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_17_DEN_KC",
+   "week": 17,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.8169734397636139,
+     "brier": 0.4010836866666667,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.403744010703717,
+     "brier": 0.4728263866333334,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.4940280609232728,
+     "brier": 0.7170872266666668,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.819466547238615,
+     "brier": 0.4029109422222221,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.398171754981618,
+     "brier": 0.45909631803703704,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.5301647315395925,
+     "brier": 0.7299415666666667,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_17_DET_MIN",
+   "week": 17,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 27.631021115928547,
+     "brier": 1.41247392,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.269737897501345,
+     "brier": 0.6284042353904762,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.3985019042276357,
+     "brier": 0.68319646,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 27.631021115928547,
+     "brier": 1.41334046,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.1815809394078753,
+     "brier": 0.569493156,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.3729175640782518,
+     "brier": 0.6731372333333332,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_17_HOU_LAC",
+   "week": 17,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.5103470097898697,
+     "brier": 0.7698886577777778,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 4.544702439221002,
+     "brier": 1.090329326719728,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.3371765377636646,
+     "brier": 0.9317648333333333,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.520664200380673,
+     "brier": 0.7763476955555555,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 4.807461241143285,
+     "brier": 1.093883728802721,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.3351082846996056,
+     "brier": 0.9374886888888889,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_17_JAX_IND",
+   "week": 17,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.2979172505024776,
+     "brier": 0.9731749533333331,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.8544642195577463,
+     "brier": 1.0203559680444445,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.339249077365637,
+     "brier": 0.9266321399999999,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.2848213921892568,
+     "brier": 0.96208804,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 3.111442459049444,
+     "brier": 1.0437252862444444,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.4869086524586734,
+     "brier": 0.9521876288888887,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_17_LA_ATL",
+   "week": 17,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.6158158376236218,
+     "brier": 0.3145503,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 3.4572740278825607,
+     "brier": 1.1885265687555557,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 4.247495741716276,
+     "brier": 1.2510831333333334,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.5982007032509918,
+     "brier": 0.3023056,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 3.5364445310701815,
+     "brier": 1.1510786331079366,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 4.2063940660307235,
+     "brier": 1.1951039866666666,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_17_NE_NYJ",
+   "week": 17,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.9670578489278083,
+     "brier": 0.61623324,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.5979270365457932,
+     "brier": 0.7118129862058957,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.684880107600959,
+     "brier": 0.7503466400000001,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.9687250278336874,
+     "brier": 0.6144260533333334,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.4335956342379037,
+     "brier": 0.6341416606385487,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.5751975292793996,
+     "brier": 0.6903499866666667,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_17_NO_TEN",
+   "week": 17,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 4.559559674736039,
+     "brier": 1.4252237933333334,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.263062493643101,
+     "brier": 0.5747814172380951,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.1719359530869533,
+     "brier": 0.5271035088888889,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 4.456750180869818,
+     "brier": 1.4383331266666666,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.3965313425772274,
+     "brier": 0.626459146818821,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.271657008681855,
+     "brier": 0.5674910466666667,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_17_NYG_LV",
+   "week": 17,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.1185089203825662,
+     "brier": 0.7397948066666666,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.1185293225084685,
+     "brier": 0.5461092795111112,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.3262659954602054,
+     "brier": 0.6181038666666666,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.1056369036050742,
+     "brier": 0.7338978977777778,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.135338515640632,
+     "brier": 0.5579827236888889,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 1.4032370818502027,
+     "brier": 0.6532681133333333,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_17_PHI_BUF",
+   "week": 17,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.7482371468779053,
+     "brier": 0.4960753399999999,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.3071095988654915,
+     "brier": 1.013164986473016,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 5.155661066146513,
+     "brier": 1.2006192177777777,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.7444404749474959,
+     "brier": 0.491894,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.459901890798434,
+     "brier": 1.0255106891835601,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 4.268697949366879,
+     "brier": 1.16309828,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_17_SEA_CAR",
+   "week": 17,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 2.1286317858706076,
+     "brier": 1.0892684,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 0.951213741020528,
+     "brier": 0.4321661469079365,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 0.8122310619493768,
+     "brier": 0.3648651933333334,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 2.0837173365426245,
+     "brier": 1.0685411800000002,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.1240326660150208,
+     "brier": 0.5132006670888889,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receiving_yards": {
+     "log_loss": 0.952177010438564,
+     "brier": 0.4419401311111111,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_17_TB_MIA",
+   "week": 17,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.7158018711247515,
+     "brier": 0.38202349999999996,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 3.8221883889446393,
+     "brier": 0.5480829232079365,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 4.677740878822926,
+     "brier": 1.1419010733333335,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.7208610191274611,
+     "brier": 0.3857184111111111,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 3.195832782492543,
+     "brier": 0.4872787111267574,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.6743193027826067,
+     "brier": 1.0739507511111113,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_18_ARI_LA",
+   "week": 18,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.515112577412695,
+     "brier": 0.21546330666666663,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 0.9702932065632873,
+     "brier": 0.49576302774603187,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.7159101569446171,
+     "brier": 0.9154444533333334,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.5175705418924724,
+     "brier": 0.21539736666666667,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.0862391526049684,
+     "brier": 0.5630699312999999,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.8656213178265104,
+     "brier": 0.9138577133333332,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_18_BAL_PIT",
+   "week": 18,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.48759749764678356,
+     "brier": 0.2028801,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 1.7962581445393637,
+     "brier": 0.8399503383968255,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.0186003506987251,
+     "brier": 0.47380602,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.4920583906932599,
+     "brier": 0.20636927333333338,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.2216636506418204,
+     "brier": 0.9415054819555555,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.1020180818029426,
+     "brier": 0.5109339955555555,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_18_CAR_TB",
+   "week": 18,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.8868937550233674,
+     "brier": 0.5041191488888889,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 3.17777386954063,
+     "brier": 1.0212799801698411,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.9954046143671973,
+     "brier": 1.09113564,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.9203824247774114,
+     "brier": 0.5250690933333333,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.87418349769964,
+     "brier": 0.9828432445114135,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.523365015636363,
+     "brier": 1.0611953,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_18_DAL_NYG",
+   "week": 18,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.243406873571343,
+     "brier": 0.76994222,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 6.145307173703378,
+     "brier": 0.7242478314222222,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 6.2659013928097425,
+     "brier": 1.1841635377777777,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.2344320118106447,
+     "brier": 0.7559919733333335,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 5.888823872734429,
+     "brier": 0.7098628295804988,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 6.571283042360924,
+     "brier": 1.17826472,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_18_GB_MIN",
+   "week": 18,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 2.2330590303454354,
+     "brier": 0.9955214733333334,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.2948537073462485,
+     "brier": 0.5887519434896447,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.449873342762762,
+     "brier": 0.68251792,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 2.248096907709976,
+     "brier": 0.99998656,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.3226809701642648,
+     "brier": 0.597200521109335,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.4050015885855864,
+     "brier": 0.6502939466666666,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_18_IND_HOU",
+   "week": 18,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 6.134565390748655,
+     "brier": 1.5439560288888887,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 3.2453528823089663,
+     "brier": 0.4704609194511715,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.226241526406712,
+     "brier": 0.9097333088888888,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 6.725433722188183,
+     "brier": 1.5476472200000002,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 3.4250929761749465,
+     "brier": 0.49482609607528344,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.409428188612095,
+     "brier": 0.9613269066666666,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_18_KC_LV",
+   "week": 18,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.6314878001732175,
+     "brier": 0.30333646666666664,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 3.934312149417437,
+     "brier": 0.2835781268952381,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 4.057048777478403,
+     "brier": 1.1401604177777778,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.6253016336648781,
+     "brier": 0.29931764,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 3.828277856891664,
+     "brier": 0.26972939436190474,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 4.247495741716276,
+     "brier": 1.1366556755555557,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_18_LAC_DEN",
+   "week": 18,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 5.240048458424061,
+     "brier": 1.2536489702222222,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.2558560083065196,
+     "brier": 0.8932444783623583,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.661264287080963,
+     "brier": 1.0712138622222223,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 5.521460917862246,
+     "brier": 1.26352322,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.134869688589453,
+     "brier": 0.864340717840136,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.3932292120129786,
+     "brier": 1.0501715,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_18_MIA_NE",
+   "week": 18,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 2.913231052042247,
+     "brier": 1.260581031111111,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.0394823954966403,
+     "brier": 0.8577072946228268,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.2550655770260692,
+     "brier": 0.9083279644444444,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 2.8577109756566164,
+     "brier": 1.25098266,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 2.0647349771890804,
+     "brier": 0.8649365052920636,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.231195096907373,
+     "brier": 0.8940749866666667,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_18_NO_ATL",
+   "week": 18,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 3.421400088979675,
+     "brier": 1.507546097777778,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.3680933892720113,
+     "brier": 0.6721319890126984,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 3.035166342799398,
+     "brier": 1.0563813199999998,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 3.372609924810243,
+     "brier": 1.5042195999999999,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.6065587279332578,
+     "brier": 0.7422121973555555,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.9479455524173839,
+     "brier": 0.8440581066666667,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_18_NYJ_BUF",
+   "week": 18,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 6.725433722188183,
+     "brier": 1.49826672,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 4.023071941765153,
+     "brier": 0.5602905115468253,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 4.866534950122499,
+     "brier": 1.0865354288888889,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 7.1308988302963465,
+     "brier": 1.49772092,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 3.36905132125127,
+     "brier": 0.5181338607156463,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 4.803621124711929,
+     "brier": 1.0686441466666667,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  },
+  {
+   "game_id": "2025_18_SEA_SF",
+   "week": 18,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 1.317514845725065,
+     "brier": 0.8198536866666665,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.6878435658837132,
+     "brier": 0.2263568201079365,
+     "top_choice_credit": 0.5,
+     "mean_baseline_credit": 0.5
+    },
+    "receiving_yards": {
+     "log_loss": 0.6399856324457129,
+     "brier": 0.26114784,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 1.3028114239813815,
+     "brier": 0.8062722666666666,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 1.7410472603791394,
+     "brier": 0.23343861957777778,
+     "top_choice_credit": 0.5,
+     "mean_baseline_credit": 0.5
+    },
+    "receiving_yards": {
+     "log_loss": 0.7771811761699547,
+     "brier": 0.33334743555555557,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_18_TEN_JAX",
+   "week": 18,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 0.7887040574581629,
+     "brier": 0.4931726977777779,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.2530174533592273,
+     "brier": 0.9044189798555556,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.6809339141391704,
+     "brier": 0.7491429422222221,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 0.7713249616239694,
+     "brier": 0.4750633000000001,
+     "top_choice_credit": 1.0,
+     "mean_baseline_credit": 1.0
+    },
+    "receptions": {
+     "log_loss": 2.3107180762242345,
+     "brier": 0.9141779884,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 2.000507140258532,
+     "brier": 0.8433730355555557,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 1.0
+    }
+   }
+  },
+  {
+   "game_id": "2025_18_WAS_PHI",
+   "week": 18,
+   "c0": {
+    "rushing_yards": {
+     "log_loss": 3.3696987146027846,
+     "brier": 1.408075131111111,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 4.708711313505809,
+     "brier": 0.5820810685777779,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.8030226615067657,
+     "brier": 0.9054363999999999,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   },
+   "v1": {
+    "rushing_yards": {
+     "log_loss": 3.531306067009176,
+     "brier": 1.4268372,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receptions": {
+     "log_loss": 4.527571451501651,
+     "brier": 0.5535130079984127,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    },
+    "receiving_yards": {
+     "log_loss": 1.8313322443478781,
+     "brier": 0.89607006,
+     "top_choice_credit": 0,
+     "mean_baseline_credit": 0
+    }
+   }
+  }
+ ]
+}

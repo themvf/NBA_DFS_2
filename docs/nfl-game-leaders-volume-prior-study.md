@@ -146,3 +146,27 @@ Output `artifacts/nfl-game-leaders/volume-prior-v1/holdout-2025-w9-18.json`;
 +0.003). Per the decision rules this licenses building `nfl-game-leaders-roles-v2`
 with the target prior only. The page does not change until the leader-level
 gate above is graded.
+
+## Result: leader-level gate, 2025 weeks 9-18 (run once, 2026-10-11)
+
+`python -m research.nfl_game_leaders_volume_prior leaders`; output
+`artifacts/nfl-game-leaders/volume-prior-v1/leaders-2025-w9-18.json`. Both
+variants ran through `model/nfl_game_leaders_roles.py` (roles-v1 vs opt-in
+roles-v2) on the backtest's reconstructed roster (previous three team games,
+empty depth chart). 151 games selected, 145 graded; 6 skipped by the model's own
+guard (unresolved yardage events in 2025_15_CLE_CHI), identically for both.
+
+| metric | C0 log loss | V1 log loss | V1 − C0 (95% CI) | C0 / V1 / baseline top-choice credit |
+|---|---:|---:|---|---|
+| rushing yards | 1.768 | 1.771 | +0.004 [−0.008, +0.017] | 0.424 / 0.431 / 0.438 |
+| receptions | 2.345 | 2.306 | −0.039 [−0.111, +0.021] | 0.311 / 0.345 / 0.283 |
+| receiving yards | 2.306 | 2.262 | −0.044 [−0.107, +0.012] | 0.328 / 0.328 / 0.297 |
+| **pooled** | | | **−0.027 [−0.071, +0.008]** | |
+
+**Verdict: FAIL** under the registered rule (point estimate below 0 and 95% upper
+bound below +0.005). The point estimate favors V1 on both receiving markets and
+rushing is unchanged, as expected for a targets-only change, but the upper bound
+(+0.008) does not clear the +0.005 non-inferiority margin. V1 is **not
+published**; roles-v1 stays the default and roles-v2 stays opt-in. No re-tuning,
+re-slicing or margin change on these games. Any further test is a new
+registration on new data (2026 forward games).
