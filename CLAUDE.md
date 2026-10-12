@@ -7923,15 +7923,19 @@ and closing lines in `nfl_prop_implied_lines` and reports. Exploratory, weeks
   own pre-registered forward test before anything is bet. About 6% of listed
   receivers have no stat row (inactive, or active with zero), so their over
   rates could be up to ~3 points lower. **Game leaders from the lines**
-  (`research/nfl_leader_lines.py`, weeks 1-5, 75 final games): the player
-  with the biggest line led the game in rushing yards 46.7%, receiving yards
-  38.7%, receptions 29.3% (ties split). Same weeks 1-4 on the game-leaders
-  page: the books 48.4/35.5/28.2 against our model's first choice
-  44.6/23.2/20.2 and the recent-average baseline 51.8/26.8/24.7. So the lines
-  pick receiving and catch leaders clearly better than we do, and rushing
-  about as well as a plain recent average. The script's leader chances
-  (independent normals around each line) are overconfident, worst for
-  receptions; that is the conversion's narrow spread, not the market. Layers 2 (market-derived game script and opponent
+  (`research/nfl_leader_lines.py`, weeks 1-4, 64 final games, ties split):
+  the biggest line led its game in rushing yards 48.4%, receiving yards
+  34.4%, receptions 27.3% (our model's first choice 44.6/23.2/20.2, the
+  recent-average baseline 51.8/26.8/24.7). The second-biggest line led
+  40.6/18.8/20.3%, so the leader was one of the books' top two in 89% of
+  games for rushing (when the favourite missed, second place won 79% of
+  those) but only 53% for receiving yards and receptions. Rushing is a
+  two-back question the books frame well and order poorly; receiving
+  leaders come from deep in the list. A line's team is the game's own team
+  (`resolve_team`): the roster feed can carry a stale team (Marvin Harrison
+  Jr. read HOU in DET @ ARI), which had dropped 4 games from the study. The
+  script's leader chances are overconfident, worst for receptions; that is
+  the conversion's narrow spread, not the market. Layers 2 (market-derived game script and opponent
   effects for players without lines) and 3 (predicted lines early in the
   week) are not built.
 

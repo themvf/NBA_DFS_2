@@ -104,7 +104,8 @@ def study(db, season: int, weeks: list[int]) -> dict:
             if top <= 0:
                 continue
             leaders = {k for k, v in actual.items() if v == top}
-            fav = max(listed, key=listed.get)
+            order = sorted(listed, key=lambda k: -listed[k])
+            fav, second = order[0], order[1]
             keys = list(listed)
             means = np.array([listed[k] for k in keys])
             sds = np.array([spread(market, m) for m in means])
@@ -116,6 +117,8 @@ def study(db, season: int, weeks: list[int]) -> dict:
             results[metric].append({
                 "week": w, "event": event, "n_listed": len(keys),
                 "credit": (1 / len(leaders)) if fav in leaders else 0.0,
+                "second_credit": (1 / len(leaders)) if second in leaders else 0.0,
+                "top2": bool({fav, second} & leaders),
                 "fav_chance": float(chance[fav]),
                 "leader_listed": bool(listed_leaders),
                 "leader_chance": float(sum(chance[k] for k in listed_leaders) / len(leaders)) if listed_leaders else None,
@@ -135,8 +138,13 @@ def report(results: dict, weeks: list[int], evaluation: dict | None) -> None:
         ll = -st.mean(math.log(max(g["leader_chance"], 1e-4)) for g in listed) if listed else float("nan")
         uniform = -st.mean(math.log(1 / g["n_listed"]) for g in listed) if listed else float("nan")
         print(f"== {LABEL[metric]}: {n} games, {st.mean(g['n_listed'] for g in games):.1f} players listed a game")
-        print(f"   books' top choice led: {credit:.1%} (weeks 1-4: {st.mean(g['credit'] for g in w14):.1%} over {len(w14)} games)")
-        if evaluation and metric in evaluation:
+        w14_text = f" (weeks 1-4: {st.mean(g['credit'] for g in w14):.1%} over {len(w14)} games)" if w14 else ""
+        print(f"   books' top choice led: {credit:.1%}{w14_text}")
+        miss = [g for g in games if g["credit"] == 0]
+        print(f"   second-biggest line led: {st.mean(g['second_credit'] for g in games):.1%}; "
+              f"when the favourite missed outright it was {(st.mean(g['second_credit'] for g in miss) if miss else 0):.1%} of {len(miss)}; "
+              f"leader was one of the top two in {st.mean(g['top2'] for g in games):.1%}")
+        if evaluation and metric in evaluation and set(weeks) <= {1, 2, 3, 4}:
             e = evaluation[metric]
             print(f"   same weeks, game-leaders page: model first choice {e['top_choice_credit']:.1%}, recent-average baseline {e['mean_baseline_credit']:.1%}")
         print(f"   leader was a listed player in {len(listed)}/{n} games; favourite's average chance {st.mean(g['fav_chance'] for g in games):.1%}")

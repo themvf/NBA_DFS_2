@@ -46,3 +46,18 @@ def test_quarterback_without_an_interception_line_uses_the_prior():
              "player_pass_tds": {"line": 1.5, "over": -110, "under": -110}}
     s = pim.stat_line("QB", lines)
     assert s["passing_interceptions"] == 0.8 and s["rushing_yards"] == 0.0
+
+
+def test_team_must_be_one_of_the_two_teams_in_the_game():
+    from research.nfl_prop_implied import resolve_team
+    games = {"ARI", "DET"}
+    # Roster says HOU (stale), but he played for ARI weeks 1-4: the line belongs to ARI.
+    assert resolve_team("HOU", [(1, "ARI"), (4, "ARI")], 5, games) == "ARI"
+    # Already on one of the game's teams: unchanged.
+    assert resolve_team("DET", [], 5, games) == "DET"
+    # No evidence for either team: unknown, never a third team.
+    assert resolve_team("HOU", [(3, "HOU")], 5, games) is None
+    # Nearest week wins when he played for both (a trade between the two teams).
+    assert resolve_team("MIN", [(1, "ARI"), (4, "DET")], 5, games) == "DET"
+    # Alias codes are normalized before comparing.
+    assert resolve_team("LA", [], 2, {"LAR", "NYG"}) == "LAR"
