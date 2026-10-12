@@ -58,6 +58,9 @@ const hourTick = (now: Date) => now.getUTCMinutes() < 15;
 /** How long before a kickoff the NFL availability jobs run on every tick. */
 export const NEAR_KICKOFF_MS = 2 * 60 * 60 * 1000;
 
+/** How far ahead the route reads kickoffs: the day-before prop capture looks a day out. Every rule checks its own lead. */
+export const KICKOFF_LOOKAHEAD_MS = 48 * 60 * 60 * 1000;
+
 /**
  * True within the two hours before any NFL kickoff: inactives, late scratches
  * and DraftKings status flips land here, so the quarter-hour ticks run too.
@@ -77,10 +80,30 @@ export function cfbTerminalSlot(now: Date): "schedule" | "scores" | "events" {
     : "scores";                                     // was `7 1-5,7-11,13-17,19-23 * * *`
 }
 
-/** Lead time at which a kickoff group's prop capture fires: one quarter-hour tick per kickoff time. */
-export const PROP_CAPTURE_LEAD_MS = { min: 90 * 60 * 1000, max: 105 * 60 * 1000 };
+/**
+ * Lead time at which a kickoff group's prop capture fires: one quarter-hour tick
+ * per kickoff time, 60-75 minutes out, after the inactives are posted (owner's
+ * schedule, 2026-10-12; was 90-105 minutes).
+ */
+export const PROP_CAPTURE_LEAD_MS = { min: 60 * 60 * 1000, max: 75 * 60 * 1000 };
 
-/** True on the one tick that falls 90-105 minutes before any NFL kickoff. */
+/** Eastern calendar date of an instant, as YYYY-MM-DD. */
+function easternDate(at: Date): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(at);
+}
+
+/**
+ * The day-before prop capture: the 22:07 UTC tick (6:07 PM ET) on any day with
+ * an NFL game tomorrow (Eastern date). Wednesday takes Thursday, Saturday takes
+ * Sunday, Sunday takes Monday.
+ */
+export function nflPropDayAheadDue(now: Date, context: DispatchContext): boolean {
+  if (now.getUTCHours() !== 22 || !hourTick(now)) return false;
+  const tomorrow = easternDate(new Date(now.getTime() + 24 * 3600_000));
+  return (context.nflKickoffs ?? []).some((kickoff) => easternDate(kickoff) === tomorrow);
+}
+
+/** True on the one tick that falls 60-75 minutes before any NFL kickoff. */
 export function nflPropCaptureDue(now: Date, context: DispatchContext): boolean {
   return (context.nflKickoffs ?? []).some((kickoff) => {
     const lead = kickoff.getTime() - now.getTime();
@@ -128,8 +151,17 @@ export const DISPATCH_JOBS: readonly DispatchJob[] = [
     key: "nfl-prop-capture",
     workflow: "capture_nfl_props.yml",
     due: nflPropCaptureDue,
-    inputs: { event_limit: "0", max_credits: "420", within_hours: "2" },
-    why: "Pregame player over/unders and DraftKings ladders (Odds API, ~21 credits a game) for the game-leader market benchmark, once per kickoff group.",
+    // Only the group kicking off 60-75 minutes from now: min 1h keeps an earlier
+    // group (already priced at its own T-75) from being bought twice.
+    inputs: { event_limit: "0", max_credits: "420", within_hours: "1.25", min_hours: "1" },
+    why: "Pregame player over/unders and DraftKings ladders (Odds API, ~21 credits a game), 60-75 minutes before each kickoff group: the closing read the DFS projection anchors on.",
+  },
+  {
+    key: "nfl-prop-capture-day-ahead",
+    workflow: "capture_nfl_props.yml",
+    due: nflPropDayAheadDue,
+    inputs: { event_limit: "0", max_credits: "420", within_hours: "36", day_ahead: "true" },
+    why: "The same prop lines the day before (Wednesday for Thursday, Saturday for Sunday, Sunday for Monday), so an early build has real lines.",
   },
   {
     key: "nfl-dfs-postweek",

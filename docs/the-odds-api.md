@@ -122,7 +122,7 @@ alone.
 | NFL scores | `ingest.nfl_schedule` | `daysFrom=3` × 2 keys | 4 | 1×/day | 4 |
 | CFB game lines | `ingest.event_closing_lines` | 10 named books × 3 markets | expected 3/bulk call | T−48h, T−24h, T−6h, T−90m, T−15m, T−2m/game cluster | quota guarded |
 | NHL game lines | `ingest.event_closing_lines` (via `ingest.nhl_schedule.fetch_odds`) | 6 named books × 3 markets (bulk) | 3/bulk call | T−24h, T−6h, T−3h, T−2h, T−90m, T−45m, T−30m, T−15m, close; one call records every mapped game ≤72h out | ~86 simulated (36–180), ~2,600/30d |
-| NFL props (game-leader benchmark) | `ingest.nfl_prop_odds --within-hours 2` | 21 markets × 1 (≤10 books): 7 main + 5 volume/multi-TD (2026-10-12) + 9 DraftKings ladders | 21/event | Vercel dispatch 90–105 min before each kickoff group (added 2026-10-11); GH Sunday fallback, 6h window | ~300 credits per week base (~14 games), ~1,300/30d, more with per-kickoff-group refreshes |
+| NFL props (game-leader benchmark) | `ingest.nfl_prop_odds --within-hours 2` | 21 markets × 1 (≤10 books): 7 main + 5 volume/multi-TD (2026-10-12) + 9 DraftKings ladders | 21/event | Two per game since 2026-10-12 (owner's schedule): the day before (Vercel 22:07 UTC, tomorrow's Eastern-date games: Wed for Thu, Sat for Sun, Sun for Mon) and 60–75 min before each kickoff group (only that group: `--min-hours 1 --within-hours 1.25`); GH Sunday fallback, 6h window | ~630 credits per week (~15 games x 2 x 21), ~2,700/30d |
 | MLB props | `ingest.mlb_prop_odds` | 4 markets × 1 (10 books) | 4/event | **PAUSED 2026-08-24** | 0 |
 | Soccer | `refresh_soccer.yml` | — | — | **disabled 2026-08-01** | 0 |
 
