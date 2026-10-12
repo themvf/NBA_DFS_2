@@ -105,3 +105,40 @@ def test_sleeper_reserve_list_alone_counts_as_out_but_a_weekly_out_needs_agreeme
     assert availability_status('QUESTIONABLE', 'IR', 'UNKNOWN') == 'unresolved'
     assert availability_status('', 'UNKNOWN', 'INACTIVE') == 'out'
     assert availability_status('ACTIVE', 'HEALTHY', 'UNKNOWN') == 'unresolved'
+
+
+def test_roles_v2_blends_prior_targets_and_keeps_carries():
+    from model.nfl_game_leaders_roles import PRIOR_TARGET_GAMES
+    boxes = {'g1': [box('wr', carries=1, targets=3)], 'g2': [box('wr', carries=1, targets=3)], 'g3': [], 'g4': []}
+    v1 = usage_rates(boxes, GAMES)['wr']
+    v2 = usage_rates(boxes, GAMES, {'wr': 10.})['wr']
+    assert v2['targets'] == pytest.approx((2 * v1['targets'] + PRIOR_TARGET_GAMES * 10.) / (2 + PRIOR_TARGET_GAMES))
+    assert v2['carries'] == v1['carries']
+
+
+def test_roles_v2_returner_gets_fraction_of_prior_and_v1_is_unchanged_without_prior():
+    from model.nfl_game_leaders_roles import RETURNER_TARGET_FRACTION, VERSION, VERSION_V2
+    boxes = {g: [box('wr1', carries=1, targets=8)] for g in GAMES}
+    players = [player('wr1', 'WR'), player('back', 'WR')]
+    v1, _ = team_scenario('T', players, depth(), boxes, GAMES)
+    v2, _ = team_scenario('T', players, depth(), boxes, GAMES, {'back': 10.})
+    assert v1['targets']['back'] == 0.
+    expected_ratio = RETURNER_TARGET_FRACTION * 10. / usage_rates(boxes, GAMES)['wr1']['targets']
+    assert v2['targets']['back'] / v2['targets']['wr1'] == pytest.approx(expected_ratio)
+    req = {'game': {'away': 'T', 'home': 'U'}, 'decision_at': '2026-10-11T12:00:00+00:00',
+           'players': players + [{'identity': 'u1', 'name': 'u1', 'team': 'U', 'position': 'WR', 'status': 'unresolved'}],
+           'dual_depth': {'T': depth(), 'U': depth()}}
+    index = {(g, 'T'): boxes[g] for g in GAMES} | {(g, 'U'): [box('u1', carries=1, targets=5)] for g in GAMES}
+    assert attach(req, index, {'T': GAMES, 'U': GAMES})['scenario_evidence']['method'] == VERSION
+    assert attach(req, index, {'T': GAMES, 'U': GAMES}, {})['scenario_evidence']['method'] == VERSION_V2
+
+
+def test_prior_season_targets_requires_four_games_in_previous_season():
+    from model.nfl_game_leaders_roles import prior_season_targets
+    games = [{'game_id': f'p{i}', 'season': 2024, 'completed': True} for i in range(5)] + [
+        {'game_id': 'c1', 'season': 2025, 'completed': True}]
+    snap = {'games': games, 'box_verified_game_ids': [g['game_id'] for g in games],
+            'boxes': [box('a', targets=6) | {'game_id': f'p{i}'} for i in range(4)]
+                     + [box('b', targets=9) | {'game_id': f'p{i}'} for i in range(3)]
+                     + [box('a', targets=20) | {'game_id': 'c1'}]}
+    assert prior_season_targets(snap, 2025) == {'a': 6.}

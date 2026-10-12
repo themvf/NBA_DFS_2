@@ -14,6 +14,12 @@ The active list is the players with a box score in the game being projected.
 
     python -m research.nfl_game_leaders_volume_prior tune    [--snapshot PATH]
     python -m research.nfl_game_leaders_volume_prior holdout --k-targets K --rho-targets R --k-carries K --rho-carries R
+    python -m research.nfl_game_leaders_volume_prior leaders [--workers 6] --output PATH
+
+`leaders` is the leader-level gate: the full forecast for every holdout game with
+roles-v1 (C0) and roles-v2 (V1, targets prior) scenarios on the same
+reconstructed roster (previous three team games, as research.nfl_game_leaders
+backtest), graded on rushing yards, receptions and receiving yards.
 """
 from __future__ import annotations
 
@@ -207,14 +213,103 @@ def holdout(team_rows, params):
     return report
 
 
+LEADER_METRICS = ('rushing_yards', 'receptions', 'receiving_yards')
+_W = {}
+
+
+def _leader_init(snapshot_path):
+    from datetime import timedelta
+    from research.nfl_game_leaders import read
+    from model.nfl_game_leaders import prepare
+    from model.nfl_longest_touchdown import timestamp
+    from model.nfl_game_leaders_roles import boxes_index, prior_season_targets
+    snap = read(Path(snapshot_path))
+    end = max(timestamp(g['kickoff']) for g in snap['games']) + timedelta(days=3)
+    history, _ = prepare(snap, end.isoformat(), retrospective=True)
+    _W.update(snap=snap, history=history, accepted={h['game']['game_id']: h for h in history},
+              index=boxes_index(snap), prior=prior_season_targets(snap, HOLDOUT['season']))
+
+
+def _leader_game(game_id):
+    from datetime import timedelta
+    from model.nfl_game_leaders import Settings, forecast, grade
+    from model.nfl_game_leaders_roles import attach
+    from model.nfl_longest_touchdown import timestamp
+    from research.nfl_game_leaders import expected_history, roster
+    snap, history, accepted = _W['snap'], _W['history'], _W['accepted']
+    game = next(g for g in snap['games'] if g['game_id'] == game_id)
+    if game_id not in accepted:
+        return {'game_id': game_id, 'skipped': 'target PBP/box coverage unresolved'}
+    cfg = Settings()
+    cutoff = timestamp(game['kickoff']) - timedelta(minutes=1)
+    training = [h for h in history if timestamp(h['game']['kickoff']) < cutoff]
+    depth = {'captured_at': cutoff.isoformat(), 'comparisons': [], 'sleeper_only': []}
+    base = {'game': game, 'decision_at': cutoff.isoformat(), 'players': roster(training, game),
+            'expected_prior_game_ids': expected_history(snap, game, cutoff.isoformat(), cfg.recent_games),
+            'availability_verified': False, 'roster_evidence': 'reconstructed previous-three-game usage only',
+            'dual_depth': {game['away']: depth, game['home']: depth}}
+    prior_games = expected_history(snap, game, cutoff.isoformat())
+    out = {'game_id': game_id, 'week': game['week']}
+    try:
+        for name, prior in (('c0', None), ('v1', _W['prior'])):
+            request = attach(base, _W['index'], prior_games, prior)
+            graded = grade(forecast(training, request, cfg), {**snap, 'boxes': accepted[game_id]['boxes']})
+            out[name] = {m: {k: graded['metrics'][m][k] for k in ('log_loss', 'brier', 'top_choice_credit', 'mean_baseline_credit')}
+                         for m in LEADER_METRICS}
+    except ValueError as exc:
+        return {'game_id': game_id, 'skipped': str(exc)}
+    return out
+
+
+def leaders(snapshot_path, workers):
+    from concurrent.futures import ProcessPoolExecutor
+    from research.nfl_game_leaders import read
+    snap = read(Path(snapshot_path))
+    ids = sorted(g['game_id'] for g in snap['games']
+                 if g['season'] == HOLDOUT['season'] and HOLDOUT['weeks'][0] <= g['week'] <= HOLDOUT['weeks'][1])
+    del snap
+    with ProcessPoolExecutor(workers, initializer=_leader_init, initargs=(snapshot_path,)) as pool:
+        rows = []
+        for r in pool.map(_leader_game, ids):
+            rows.append(r)
+            print(json.dumps({'done': r['game_id'], 'skipped': r.get('skipped')}), flush=True)
+    graded = [r for r in rows if 'skipped' not in r]
+    summary = {}
+    for variant in ('c0', 'v1'):
+        summary[variant] = {m: {k: float(np.mean([r[variant][m][k] for r in graded]))
+                                for k in ('log_loss', 'brier', 'top_choice_credit', 'mean_baseline_credit')}
+                            for m in LEADER_METRICS}
+    per_game = np.array([np.mean([r['v1'][m]['log_loss'] - r['c0'][m]['log_loss'] for m in LEADER_METRICS]) for r in graded])
+    rng = np.random.default_rng(SEED)
+    draws = rng.choice(per_game, (BOOT, len(per_game))).mean(axis=1)
+    ci = [float(x) for x in np.percentile(draws, [2.5, 97.5])]
+    by_metric = {}
+    for m in LEADER_METRICS:
+        d = np.array([r['v1'][m]['log_loss'] - r['c0'][m]['log_loss'] for r in graded])
+        by_metric[m] = {'diff': float(d.mean()),
+                        'ci95': [float(x) for x in np.percentile(rng.choice(d, (BOOT, len(d))).mean(axis=1), [2.5, 97.5])]}
+    passed = bool(per_game.mean() < 0 and ci[1] < .005)
+    return {'version': VERSION, 'gate': 'leader-level log loss, V1 - C0 pooled over three metrics',
+            'window': HOLDOUT, 'selected_games': len(ids), 'graded_games': len(graded),
+            'skipped': [r for r in rows if 'skipped' in r], 'summary': summary,
+            'pooled_log_loss_diff': float(per_game.mean()), 'ci95': ci, 'by_metric': by_metric,
+            'verdict': 'PASS' if passed else 'FAIL', 'games': graded}
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('command', choices=('tune', 'holdout'))
+    ap.add_argument('command', choices=('tune', 'holdout', 'leaders'))
+    ap.add_argument('--workers', type=int, default=6)
     ap.add_argument('--snapshot', default=str(SNAPSHOT))
     for a in ACTIONS:
         ap.add_argument(f'--k-{a}', type=float); ap.add_argument(f'--rho-{a}', type=float)
     ap.add_argument('--output')
     args = ap.parse_args()
+    if args.command == 'leaders':
+        result = leaders(args.snapshot, args.workers)
+        Path(args.output).write_text(json.dumps(result, indent=1))
+        print(json.dumps({k: v for k, v in result.items() if k not in ('games',)}, indent=1))
+        return
     games, order, boxes = load(args.snapshot)
     if args.command == 'tune':
         result = {'version': VERSION, 'window': TUNE, **tune(build_records(games, order, boxes, TUNE['season'], TUNE['weeks']))}

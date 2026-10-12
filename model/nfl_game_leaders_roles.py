@@ -22,12 +22,24 @@ Rules (stated priors, not fitted; graded only by `research.nfl_game_leaders grad
 * A fixed reserve stays in the model's three newcomer slots.
 * Players in the recent box scores who are no longer on the roster are named
   at zero, which the model requires for a full field.
+
+Opt-in `nfl-game-leaders-roles-v2` (pass `prior_targets`): the player's
+previous-season targets per game played (any team, at least 4 games) count as
+PRIOR_TARGET_GAMES games beside his current-season games, and a player with no
+current-season games gets RETURNER_TARGET_FRACTION of that rate. Carries are
+unchanged. Tuned on 2024 and passed the 2025 weeks 9-18 volume holdout in
+docs/nfl-game-leaders-volume-prior-study.md; NOT the default until the
+leader-level gate in that study passes.
 """
 from __future__ import annotations
 
 from collections import defaultdict
 
 VERSION = 'nfl-game-leaders-roles-v1'
+VERSION_V2 = 'nfl-game-leaders-roles-v2'
+PRIOR_TARGET_GAMES = 2.0
+RETURNER_TARGET_FRACTION = 0.6
+PRIOR_MIN_GAMES = 4
 SHRINK_GAMES = 1.0
 RB_DEPTH_SPLIT = (.55, .35, .10)
 RESERVE = {'carries': .05, 'targets': .04}
@@ -48,8 +60,11 @@ def depth_ranks(dual_depth):
     return ranks
 
 
-def usage_rates(team_boxes, games):
-    """identity -> {'games_played', 'carries', 'targets'} with shrunk per-game rates."""
+def usage_rates(team_boxes, games, prior_targets=None):
+    """identity -> {'games_played', 'carries', 'targets'} with shrunk per-game rates.
+
+    `prior_targets` (identity -> previous-season targets per game played) blends
+    the target rate as PRIOR_TARGET_GAMES extra games (roles-v2)."""
     played = defaultdict(lambda: {'n': 0, 'carries': 0., 'targets': 0.})
     for game_id in games:
         for b in team_boxes.get(game_id, []):
@@ -65,6 +80,9 @@ def usage_rates(team_boxes, games):
             on = v[action] / v['n']
             overall = v[action] / total
             out[action] = (v['n'] * on + SHRINK_GAMES * overall) / (v['n'] + SHRINK_GAMES)
+        if prior_targets and identity in prior_targets:
+            out['targets'] = ((v['n'] * out['targets'] + PRIOR_TARGET_GAMES * prior_targets[identity])
+                              / (v['n'] + PRIOR_TARGET_GAMES))
         rates[identity] = out
     return rates
 
@@ -81,11 +99,11 @@ def _field(weights, roster, team, reserve):
     return field
 
 
-def team_scenario(team, players, dual_depth, team_boxes, games):
+def team_scenario(team, players, dual_depth, team_boxes, games, prior_targets=None):
     """Full-field carries/targets shares for one team plus a plain-language note."""
     active = [p for p in players if p['status'] != 'out']
     outs = [p for p in players if p['status'] == 'out']
-    rates = usage_rates(team_boxes, games)
+    rates = usage_rates(team_boxes, games, prior_targets)
     ranks = depth_ranks(dual_depth)
 
     def rank(p):
@@ -110,6 +128,8 @@ def team_scenario(team, players, dual_depth, team_boxes, games):
     targets = {}
     for p in active:
         rate = rates.get(p['identity'], {}).get('targets')
+        if rate is None and prior_targets and p['identity'] in prior_targets:
+            rate = RETURNER_TARGET_FRACTION * prior_targets[p['identity']]
         if rate is None:
             high = (p['position'] in ('WR', 'TE') and rank(p) <= 3) or (p['position'] == 'RB' and rank(p) <= 2)
             rate = NEWCOMER_TARGETS if high else 0.
@@ -130,8 +150,10 @@ def team_scenario(team, players, dual_depth, team_boxes, games):
     return scenario, note
 
 
-def attach(request, boxes_by_game_team, prior_games):
-    """Return a copy of `request` with role scenarios and evidence. Never edits an existing scenario."""
+def attach(request, boxes_by_game_team, prior_games, prior_targets=None):
+    """Return a copy of `request` with role scenarios and evidence. Never edits an existing scenario.
+
+    `prior_targets` (from `prior_season_targets`) selects roles-v2."""
     if request.get('role_scenarios'):
         return request
     game = request['game']
@@ -140,13 +162,14 @@ def attach(request, boxes_by_game_team, prior_games):
         team_boxes = {g: boxes_by_game_team.get((g, team), []) for g in prior_games[team]}
         players = [p for p in request['players'] if p['team'] == team]
         scenarios[team], notes[team] = team_scenario(team, players, request['dual_depth'][team],
-                                                     team_boxes, prior_games[team])
+                                                     team_boxes, prior_games[team], prior_targets)
     captured = max(request['dual_depth'][t]['captured_at'] for t in scenarios)
     if captured > request['decision_at']:
         raise ValueError('Depth evidence captured after the decision time')
     games = sorted({g for v in prior_games.values() for g in v})
-    evidence = {'source_ref': f'{VERSION}: request.dual_depth + recent box scores {games}',
-                'captured_at': captured, 'method': VERSION,
+    version = VERSION_V2 if prior_targets is not None else VERSION
+    evidence = {'source_ref': f'{version}: request.dual_depth + recent box scores {games}',
+                'captured_at': captured, 'method': version,
                 'description': 'Default role scenario (stated priors, not fitted). See model/nfl_game_leaders_roles.py.',
                 'notes': notes}
     return {**request, 'role_scenarios': scenarios, 'scenario_evidence': evidence}
@@ -157,3 +180,18 @@ def boxes_index(snapshot):
     for b in snapshot['boxes']:
         index[(b['game_id'], b['team'])].append(b)
     return index
+
+
+def prior_season_targets(snapshot, season):
+    """identity -> targets per game played in `season - 1` (any team), players with >= PRIOR_MIN_GAMES games.
+
+    Uses completed, box-verified games only; a previous season is always before the forecast."""
+    verified = set(snapshot.get('box_verified_game_ids', []))
+    previous = {g['game_id'] for g in snapshot['games']
+                if g['season'] == season - 1 and g.get('completed') and g['game_id'] in verified}
+    played = defaultdict(lambda: [0, 0])
+    for b in snapshot['boxes']:
+        if b['game_id'] in previous and b['carries'] + b['targets'] > 0:
+            played[b['identity']][0] += 1
+            played[b['identity']][1] += b['targets']
+    return {i: t / n for i, (n, t) in played.items() if n >= PRIOR_MIN_GAMES}
