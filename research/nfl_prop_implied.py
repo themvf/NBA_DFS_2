@@ -84,10 +84,46 @@ def player_meta(db, season: int, week: int) -> dict[str, dict]:
     return out
 
 
+TEAM_ALIAS = {"LA": "LAR", "WAS": "WSH", "JAC": "JAX", "AZ": "ARI"}
+
+
+def _team(t):
+    return TEAM_ALIAS.get(t, t) if t else t
+
+
+def team_history(db, season: int) -> dict[str, list[tuple[int, str]]]:
+    """normalized name -> [(week, team)] from every weekly stat row this season."""
+    out = collections.defaultdict(list)
+    for r in db.execute(
+            """SELECT f.canonical_name, s.week, s.team FROM ff_player_week_stats s JOIN ff_players f ON f.id = s.player_id
+               WHERE s.season = %s""", (season,)):
+        out[normalize_name(r["canonical_name"])].append((r["week"], _team(r["team"])))
+    return out
+
+
+def resolve_team(meta_team, history: list[tuple[int, str]], week: int, event_teams: set[str]) -> str | None:
+    """The player's team in THIS game, which must be one of the game's two teams.
+
+    The name lookup can return a stale roster team (a trade the roster feed
+    has recorded, a player with no stat row that week) or another player who
+    shares the name. A line listed in a game belongs to one of its two teams,
+    so: the week's own team if it is one of them, else the nearest week this
+    season he played for one of them, else unknown (None), never a third team.
+    """
+    t = _team(meta_team)
+    if not event_teams or t in event_teams:
+        return t
+    on_event = sorted((abs(w - week), w, tm) for w, tm in history if tm in event_teams)
+    return on_event[0][2] if on_event else None
+
+
 def build(db, season: int, weeks: list[int]) -> int:
     find_week = week_of(db, season)
+    abbrev = {r["name"]: r["abbreviation"] for r in db.execute(
+        "SELECT abbreviation, COALESCE(odds_api_name, name) AS name FROM nfl_teams")}
     rows = db.execute(
-        """SELECT event_id, player, market, commence_time, captured_at, books FROM prop_odds_history
+        """SELECT event_id, player, market, commence_time, captured_at, books, home_team_name, away_team_name
+           FROM prop_odds_history
            WHERE sport = 'nfl' AND captured_at < commence_time AND market = ANY(%s)
            ORDER BY event_id, player, market, captured_at""", (list(ALL_MARKETS),))
     grouped = collections.defaultdict(list)
@@ -96,10 +132,13 @@ def build(db, season: int, weeks: list[int]) -> int:
         if w in weeks:
             grouped[(w, r["event_id"], r["player"], r["market"])].append(r)
     metas = {w: player_meta(db, season, w) for w in weeks}
+    history = team_history(db, season)
     out = []
     for (w, event, player, market), caps in grouped.items():
         key = normalize_name(player)
         meta = metas[w].get(key, {})
+        event_teams = {abbrev.get(caps[0]["home_team_name"]), abbrev.get(caps[0]["away_team_name"])} - {None}
+        team = resolve_team(meta.get("team"), history.get(key, []), w, event_teams)
         for role, cap in (("open", caps[0]), ("close", caps[-1])):
             picked = _pick_book(cap["books"])
             if not picked:
@@ -108,7 +147,7 @@ def build(db, season: int, weeks: list[int]) -> int:
             line, over, under, yes = q.get("line"), q.get("over"), q.get("under"), q.get("yes")
             mean = (pim.anytime_td_rate(yes) if market == "player_anytime_td"
                     else pim.market_mean(market, line, over, under))
-            out.append((season, w, key, player, meta.get("team"), meta.get("position"), market, role, book,
+            out.append((season, w, key, player, team, meta.get("position"), market, role, book,
                         line, over, under, yes, mean, event, cap["commence_time"], cap["captured_at"], pim.VERSION))
     count_sql = "SELECT COUNT(*) AS n FROM nfl_prop_implied_lines WHERE season = %s AND conversion_version = %s"
     before = db.execute(count_sql, (season, pim.VERSION))[0]["n"]
@@ -116,10 +155,13 @@ def build(db, season: int, weeks: list[int]) -> int:
         execute_values(cur, """INSERT INTO nfl_prop_implied_lines (season, week, player_key, player_name, team, position,
             market, capture_role, book, line, over_price, under_price, yes_price, implied_mean, event_id, commence_time,
             captured_at, conversion_version) VALUES %s
-            ON CONFLICT (season, week, player_key, market, capture_role, conversion_version) DO NOTHING""", out)
+            ON CONFLICT (season, week, player_key, market, capture_role, conversion_version)
+            DO UPDATE SET team = EXCLUDED.team
+            WHERE nfl_prop_implied_lines.team IS DISTINCT FROM EXCLUDED.team""", out)
         conn.commit()
     written = db.execute(count_sql, (season, pim.VERSION))[0]["n"] - before
-    print(f"{len(out)} line rows prepared for weeks {weeks[0]}-{weeks[-1]}, {written} new")
+    print(f"{len(out)} line rows prepared for weeks {weeks[0]}-{weeks[-1]}, {written} new "
+          f"(an existing row's team is corrected in place; prices are never rewritten)")
     return written
 
 
