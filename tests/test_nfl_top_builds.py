@@ -54,3 +54,48 @@ def test_estimate_rank_reads_the_curve():
     assert estimate_rank(175.0, curve) == 501                 # midway between the 100th and 900th: ~500 above it
     assert estimate_rank(-1.0, curve) == 161765               # below every entry
     assert estimate_rank(100.0, []) is None
+
+
+class _FakeDb:
+    """Answers load_ours's queries from fixed rows, keyed on the table each one reads."""
+
+    def __init__(self, week_results, seats, lineup):
+        self.week_results, self.seats, self.lineup = week_results, seats, lineup
+
+    def execute(self, sql, params=None):
+        from datetime import datetime, timezone
+        if "FROM nfl_dfs_optimizer_runs" in sql:
+            return [{"run_id": "run-1", "created_at": datetime(2026, 10, 11, tzinfo=timezone.utc), "generated_lineups": 1, "mode": "gpp"}]
+        if "FROM nfl_dfs_slate_players" in sql:
+            return [{"dk_player_id": i, "name": n, "position": p, "team": t, "opponent": None, "salary": 5000}
+                    for i, (n, p, t) in enumerate(self.lineup)]
+        if "FROM nfl_dfs_field_user_builds" in sql:
+            return [{"lineups": [{"roster": [[p, n, t, p, 5000, f, 1.0] for n, p, t, f in self.seats]}]}]
+        if "FROM nfl_dfs_field_ownership" in sql:
+            return []
+        if "FROM nfl_dfs_player_week_results" in sql:
+            return [{"name": n, "position": p, "team": t, "pts": f} for n, p, t, f in self.week_results]
+        if "FROM nfl_dfs_lineups" in sql:
+            return [{"lineup_number": 1, "total_salary": 50000,
+                     "slots": [{"slot": p, "name": n, "dkPlayerId": i, "team": t} for i, (n, p, t) in enumerate(self.lineup)]}]
+        raise AssertionError(sql)
+
+
+def test_late_game_without_a_results_row_uses_the_contest_points_not_zero():
+    # 2026-10-11: the results table had no Detroit rows yet, so Gibbs's 40.7 read as 0.
+    from research.nfl_top_builds import load_ours
+    db = _FakeDb(week_results=[("Chase Brown", "RB", "CIN", 8.0)],
+                 seats=[("Jahmyr Gibbs", "RB", "DET", 40.7)],
+                 lineup=[("Jahmyr Gibbs", "RB", "DET"), ("Chase Brown", "RB", "CIN")])
+    _, lineups = load_ours(db, {"slate_upload_id": "u", "contest_id": "c", "season": 2026, "week": 5}, "run-1")
+    assert lineups[0]["points"] == 48.7
+    assert lineups[0]["missing"] == []
+
+
+def test_a_player_with_no_points_anywhere_leaves_the_lineup_unscored():
+    from research.nfl_top_builds import load_ours
+    db = _FakeDb(week_results=[("Chase Brown", "RB", "CIN", 8.0)], seats=[],
+                 lineup=[("Jerry Jeudy", "WR", "CLE"), ("Chase Brown", "RB", "CIN")])
+    _, lineups = load_ours(db, {"slate_upload_id": "u", "contest_id": "c", "season": 2026, "week": 5}, "run-1")
+    assert lineups[0]["points"] is None
+    assert lineups[0]["missing"] == ["Jerry Jeudy"]

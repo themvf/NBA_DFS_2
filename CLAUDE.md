@@ -7846,7 +7846,11 @@ analysis, exposure vs the field, and every lineup they entered). Pure layer
   and stores the winners-versus-us review in `nfl_dfs_field_build_reviews`
   (one row per contest and review version; `nfl-dfs-flagship-review-v1`).
   Both tables are on the health checklist (`nfl_flagship_builds`,
-  `nfl_build_reviews`, 192 h). A slate with no saved optimizer run reviews
+  `nfl_build_reviews`, 192 h). Our lineups are scored with the contest's own
+  per-player points (stored seats and ownership rows) first, then the weekly
+  results table; a lineup with a player found in neither is left unscored and
+  named, never summed as 0 (2026-10-12: late-game players read 0 and the
+  week-5 review put a 161-point build at ~#81,000). A slate with no saved optimizer run reviews
   the winners only and says so; save a build for every slate you project.
   The contests listing quotes entry fee and prize pool in CENTS.
 - Discovery is `/slates?date&operator_id=1&sport=nfl` then `/contests?slate_id`

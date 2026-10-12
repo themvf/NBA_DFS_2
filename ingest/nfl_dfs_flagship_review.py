@@ -136,9 +136,16 @@ def run(db: DatabaseManager | None, client: Client, season: int, week: int, days
         review.update({"season": season, "week": week})
         persist_review(db, review)
         ours = review["ours"]
-        print(f"  review stored for DK {contest_id}: winners {len(review['winners'])}, "
-              + (f"ours run {ours['run_id'][:8]} best {ours['best_points']} (~#{ours['best_rank_estimate']:,})"
-                 if ours else "ours: no saved build for this slate"))
+        if not ours:
+            detail = "ours: no saved build for this slate"
+        elif ours["best_points"] is None:
+            detail = f"ours run {ours['run_id'][:8]}: no lineup scored (no points for {', '.join(ours['players_without_points'])})"
+        else:
+            detail = f"ours run {ours['run_id'][:8]} best {ours['best_points']} (~#{ours['best_rank_estimate']:,})"
+            if ours["lineups_unscored"]:
+                detail += (f"; {ours['lineups_unscored']} lineup(s) not scored, no points for "
+                           f"{', '.join(ours['players_without_points'])}")
+        print(f"  review stored for DK {contest_id}: winners {len(review['winners'])}, {detail}")
     print(f"{client.calls} requests to stat-api")
     return 0
 
