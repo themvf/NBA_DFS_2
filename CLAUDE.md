@@ -7900,6 +7900,22 @@ and closing lines in `nfl_prop_implied_lines` and reports. Exploratory, weeks
   -4.3; favourites' backs rush more, +2.2 vs -0.7); and it uses a little
   opponent effect where we use none. Collinear inputs, four weeks: hypotheses
   for a pre-registered projection change, not findings to ship.
+- **Layer 1 shipped: the market anchor (`nfl-market-anchor-v1`,
+  `web/src/lib/nfl-dfs/market-anchor.ts`, owner's decision 2026-10-12).** Every
+  active QB/RB/WR/TE with a full set of pregame lines is projected from the
+  books' calibrated number in the workspace read (after the absence commit,
+  which it overrides, and before ownership); the model's P10/median/P90 are
+  rescaled to that mean, `before` keeps the model's own number, and an
+  anchored player gets no defensive adjustment (the line carries the
+  opponent). The port is pinned to `model/nfl_prop_implied.py`
+  (`CALIBRATION_V1`) by `test:nfl-market-anchor`. On the week-5 Classic it
+  anchored 144 of 407 (mean +0.76, |change| 1.97). Known: the calibrated book
+  ran +0.34 points high in weeks 1-4. Lines come from two captures per game
+  (the day before at 22:07 UTC and 60-75 minutes before kickoff, see
+  docs/the-odds-api.md); without either, every player stays on the model and
+  the page says so. Layers 2 (market-derived game script and opponent
+  effects for players without lines) and 3 (predicted lines early in the
+  week) are not built.
 
 ## NFL DFS — Winners-shape build preset (`nfl-winners-shape-v4`, 2026-10-11; v1 2026-10-10)
 

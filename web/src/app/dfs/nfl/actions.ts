@@ -79,6 +79,7 @@ import { NFL_TEAM_NICKNAMES } from "@/lib/nfl-dfs/x-news-teams";
 import { projectOwnershipPrior } from "@/lib/nfl-dfs/ownership-prior";
 import { computeReplacementUpside, REPLACEMENT_UPSIDE_VERSION, type ReplacementUpside, type ReplacementUpsideReport, type UpsidePlayer } from "@/lib/nfl-dfs/replacement-upside";
 import { ABSENCE_COMMIT_VERSION, computeAbsenceCommits, type AbsenceCommit, type AbsenceCommitReport } from '@/lib/nfl-dfs/absence-commit';
+import { ANCHOR_MARKETS, MARKET_ANCHOR_VERSION, anchorPlayer, type MarketAnchor, type PropQuote } from '@/lib/nfl-dfs/market-anchor';
 import { readLastGamePassingLeaders, readTeamUsageWindows } from "@/db/nfl-dfs-usage-window";
 import { readNflDfsPlayerSignalEvidence, readNflAirDefenseEvidence, readNflAirTeamEvidence, readNflAirMarketEvidence } from "@/db/nfl-dfs-player-signals";
 import { airMatchupSignals, classifyNflPlayerSignals, NFL_PLAYER_SIGNAL_VERSION, type NflAirDefenseEvidence, type NflPlayerSignalEvidence } from "@/lib/nfl-dfs/player-signals";
@@ -132,6 +133,13 @@ export type NflWorkspacePlayer = NflOptimizerPlayer & {
    * builds from. `before` is the model's own number, kept for weekly grading.
    */
   absenceCommit?: AbsenceCommit | null;
+  /**
+   * `nfl-market-anchor-v1`: this player's ourProj/floor/median/ceiling are the
+   * sportsbooks' calibrated number (his full pregame prop lines). `before` is
+   * the model's own number. Overrides the absence commit: the line already
+   * carries the news.
+   */
+  marketAnchor?: MarketAnchor | null;
   platformEligibility?: PlatformEligibilityDecision;
   availabilityEvidence?: {gameDecisionId:string|null;platformManifestDigest:string|null;
     platformDecisionState:'ELIGIBLE'|'INELIGIBLE'|null;decisionAt:string|null};
@@ -212,6 +220,8 @@ export type NflWorkspaceSlate = {
   /** Display-only replacement upside for this slate: who was flagged, and which absences were not. */
   replacementUpside?: { version: string; flagged: number; skipped: ReplacementUpsideReport['skipped']; error?: string };
   absenceCommit?: { version: string; applied: number; skipped: AbsenceCommitReport['skipped']; error?: string };
+  /** Players projected from the sportsbooks' lines, and the newest line capture used. */
+  marketAnchor?: { version: string; applied: number; eligible: number; newestCapture: string | null; oldestCapture: string | null; error?: string };
   /** Starting QBs the user confirmed for this read, and any that could not be applied. */
   confirmedStartingQbs?: ConfirmedStarterReport;
   /** Players each defensive profile would actually adjust on this slate (captures that pass every check). */
@@ -833,6 +843,7 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
           p90: numeric(row.ceilingFpts), boom: numeric(row.boomRate) };
     return { dkPlayerId: row.dkPlayerId, ffPlayerId: row.ffPlayerId, team: row.team, out: outFlag(row), stored };
   }), run, identityMap);
+  await attachMarketAnchor(workspace);
   const owned = attachOwnership(workspace);
   owned.opponentAdjustments = await opponentAdjustmentCoverage(owned);
   owned.defensiveCaptures = await defensiveCaptureStatuses(owned, { backfill: options.recordCheck !== false });
@@ -1077,6 +1088,73 @@ async function attachReplacementUpside(
       error: error instanceof Error ? error.message : 'Usage history could not be read.' };
     workspace.absenceCommit = { version: ABSENCE_COMMIT_VERSION, applied: 0, skipped: [],
       error: `Usage history could not be read, so no starter-aware projections were applied: ${error instanceof Error ? error.message : 'unknown error'}` };
+  }
+}
+
+/**
+ * Market anchor (`nfl-market-anchor-v1`, see market-anchor.ts): every active
+ * QB/RB/WR/TE with a full set of pregame prop lines is projected from the
+ * books' calibrated number. Lines are the latest capture before kickoff, per
+ * market, DraftKings first; a player is matched by name AND by his game's
+ * kickoff (within 30 minutes), and two candidates for one name leave him on
+ * the model. A failed read never takes the slate down; it is reported.
+ */
+const ANCHOR_BOOKS = ['draftkings', 'fanduel', 'betmgm', 'williamhill_us', 'fanatics', 'pinnacle'];
+async function attachMarketAnchor(workspace: NflWorkspaceSlate): Promise<void> {
+  const eligible = workspace.players.filter((p) => ['QB', 'RB', 'WR', 'TE'].includes(p.position) && !p.isOut && p.projectionStatus !== 'out');
+  const kickoffs = eligible.map((p) => Date.parse(parseDkGameInfoKickoff(p.gameInfo) ?? '')).filter(Number.isFinite);
+  if (!eligible.length || !kickoffs.length) {
+    workspace.marketAnchor = { version: MARKET_ANCHOR_VERSION, applied: 0, eligible: eligible.length, newestCapture: null, oldestCapture: null };
+    return;
+  }
+  try {
+    const from = new Date(Math.min(...kickoffs) - 3600_000).toISOString(), to = new Date(Math.max(...kickoffs) + 3600_000).toISOString();
+    const rows = await db.execute(sql`SELECT DISTINCT ON (event_id, player, market) event_id, player, market, commence_time, captured_at, books
+      FROM prop_odds_history WHERE sport = 'nfl' AND market IN (${sql.join(ANCHOR_MARKETS.map((m) => sql`${m}`), sql`, `)})
+        AND commence_time BETWEEN ${from}::timestamptz AND ${to}::timestamptz
+        AND captured_at < commence_time AND captured_at <= NOW()
+      ORDER BY event_id, player, market, captured_at DESC`);
+    type Group = { kickoff: number; lines: Record<string, PropQuote>; books: Record<string, string>; captured: string[] };
+    const groups = new Map<string, Group[]>();
+    const byEvent = new Map<string, Group>();
+    for (const r of rows.rows as { event_id: string; player: string; market: string; commence_time: string; captured_at: string; books: Record<string, PropQuote> | null }[]) {
+      const book = ANCHOR_BOOKS.find((b) => r.books?.[b]);
+      if (!book) continue;
+      const id = `${r.event_id}|${r.player}`;
+      let g = byEvent.get(id);
+      if (!g) {
+        g = { kickoff: Date.parse(String(r.commence_time)), lines: {}, books: {}, captured: [] };
+        byEvent.set(id, g);
+        const key = normalizeName(r.player);
+        groups.set(key, [...(groups.get(key) ?? []), g]);
+      }
+      const q = r.books![book];
+      g.lines[r.market] = { line: q.line ?? null, over: q.over ?? null, under: q.under ?? null, yes: q.yes ?? null };
+      g.books[r.market] = book;
+      g.captured.push(new Date(String(r.captured_at)).toISOString());
+    }
+    const used: string[] = [];
+    workspace.players = workspace.players.map((player) => {
+      if (!eligible.includes(player)) return player;
+      const kickoff = Date.parse(parseDkGameInfoKickoff(player.gameInfo) ?? '');
+      const candidates = (groups.get(normalizeName(player.name)) ?? []).filter((g) => Math.abs(g.kickoff - kickoff) <= 30 * 60_000);
+      if (candidates.length !== 1) return player;
+      const g = candidates[0];
+      const capturedAt = g.captured.sort().at(-1)!;
+      const anchor = anchorPlayer({ position: player.position, ourProj: player.ourProj, floorFpts: player.floorFpts,
+        medianFpts: player.medianFpts ?? null, ceilingFpts: player.ceilingFpts, lines: g.lines,
+        book: g.books.player_reception_yds ?? g.books.player_rush_yds ?? g.books.player_pass_yds ?? Object.values(g.books)[0], capturedAt });
+      if (!anchor) return player;
+      used.push(capturedAt);
+      return { ...player, marketAnchor: anchor, absenceCommit: null, ourProj: anchor.after.mean, floorFpts: anchor.after.p10,
+        medianFpts: anchor.after.median, ceilingFpts: anchor.after.p90 };
+    });
+    used.sort();
+    workspace.marketAnchor = { version: MARKET_ANCHOR_VERSION, applied: used.length, eligible: eligible.length,
+      newestCapture: used.at(-1) ?? null, oldestCapture: used[0] ?? null };
+  } catch (error) {
+    workspace.marketAnchor = { version: MARKET_ANCHOR_VERSION, applied: 0, eligible: eligible.length, newestCapture: null, oldestCapture: null,
+      error: `Prop lines could not be read, so every player keeps the model's projection: ${error instanceof Error ? error.message : 'unknown error'}` };
   }
 }
 
@@ -1678,7 +1756,8 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
     const profile=captureProfileFor(defensive.profile,player.position);
     // The integrated build uses QB efficiency and RB rushing volume. WR/TE
     // matchup chips remain construction evidence; no unvalidated point boost.
-    const capture=defensive.profile==='gpp-integrated' && player.position!=='QB' && player.position!=='RB'
+    // A market-anchored player's line already carries the opponent: no second adjustment.
+    const capture=player.marketAnchor || (defensive.profile==='gpp-integrated' && player.position!=='QB' && player.position!=='RB')
       ? null : candidateCaptures.get(profile)?.get(player.ffPlayerId??-1)??null;
     return {...player,defensiveForecast:resolveDefensiveForecast(player,slate.projectionRunId!,{...defensive,profile},capture)};
   }):slate.players;
@@ -1739,6 +1818,8 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
     projectionScenario: player.projectionScenario, redistributionVersion: slate.redistribution?.version,
     // Starter-aware projection the build used, with the model's own number in `before` (nfl-absence-commit-v1).
     absenceCommit: player.absenceCommit ?? null,
+    // The books' number the build used, with the model's own in `before` (nfl-market-anchor-v1).
+    marketAnchor: player.marketAnchor ?? null,
     statMeans: player.statMeans,
     dkAvg: player.avgFptsDk, fantasypros: player.fantasyprosProj,
     linestar: player.linestarProj, custom: player.customProj,
