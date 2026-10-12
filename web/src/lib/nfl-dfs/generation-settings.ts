@@ -213,7 +213,13 @@ export function formFromDraft<S extends object>(raw: unknown, defaults: S): NflB
   }
   // Existing drafts predate the combined default. Upgrade their experimental
   // single-profile selection once; versioned drafts retain deliberate edits.
-  if (draft.schemaVersion !== 2 && 'defensiveAdjustments' in settings) {
+  const draftVersion = typeof draft.schemaVersion === 'number' ? draft.schemaVersion : 1;
+  // Drafts before v3 always stored ownership leverage as false: the page forced
+  // it off from 2026-10-04 to 2026-10-12, with no control to choose it. That
+  // false was never a choice, so it upgrades to the new default (on).
+  if (draftVersion < 3 && 'useHeuristicOwnershipLeverage' in settings)
+    (settings as Record<string, unknown>).useHeuristicOwnershipLeverage = (defaults as Record<string, unknown>).useHeuristicOwnershipLeverage;
+  if (draftVersion < 2 && 'defensiveAdjustments' in settings) {
     const defensive = (settings as { defensiveAdjustments: { mode: string; profile: string } }).defensiveAdjustments;
     if (defensive?.mode === 'experimental' && ['pfr-efficiency', 'allowed-rushing-volume'].includes(defensive.profile))
       (settings as { defensiveAdjustments: { mode: string; profile: string } }).defensiveAdjustments = { ...defensive, profile: 'gpp-integrated' };

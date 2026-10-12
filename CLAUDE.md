@@ -7649,7 +7649,12 @@ when its feed is present. The optimizer, duplication estimate and Own column
 read `ownPct`, never `linestarOwnPct` directly.
 
 It declares itself heuristic, so `assessOwnership` caps it at
-`heuristic_uncalibrated` and leverage runs only through the opt-in. The
+`heuristic_uncalibrated` and leverage runs only through the opt-in. **The
+opt-in is ON by default for GPP builds (owner's decision 2026-10-12).** From
+2026-10-04 (commit d0a0e787) to 2026-10-12 the page had no checkbox and
+forced it `false` on every build, so every Sunday build in that window
+optimized projection and ceiling only; build drafts before `schemaVersion` 3
+stored that forced false and upgrade to on. The
 fitted replacement (port of `mlb_ownership_v1`) and its frozen promotion gate
 (Spearman >= 0.70, MAE <= 2.0 pts, |bias| <= 0.5, >= 4 held-out Classic
 slates, holdout by slate) are registered in `docs/nfl-ownership-model.md`.
