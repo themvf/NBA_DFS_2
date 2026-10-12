@@ -7890,6 +7890,16 @@ and closing lines in `nfl_prop_implied_lines` and reports. Exploratory, weeks
   match the book; TE TDs we are closer than the book (0.289 vs 0.246 vs 0.312).
 - **The team pie is coherent**: receivers with a yards line carry 92% of
   their QB's implied passing yards; they actually caught 90%.
+- **Step 2, `research/nfl_prop_line_model.py`** (the line regressed on public
+  pre-game inputs, out of sample by week): the same inputs explain our
+  projection better (R^2 0.83-0.94) than the book's line (0.69-0.86), so the
+  book uses information we do not. Weighting differs consistently: the book
+  leans on THIS season's average and much less on last season and the last
+  three games (QB passing yards: last season +6.9 per SD for the book vs +22.3
+  for us); it weights game script about twice as much (spread: passing -8.2 vs
+  -4.3; favourites' backs rush more, +2.2 vs -0.7); and it uses a little
+  opponent effect where we use none. Collinear inputs, four weeks: hypotheses
+  for a pre-registered projection change, not findings to ship.
 
 ## NFL DFS — Winners-shape build preset (`nfl-winners-shape-v4`, 2026-10-11; v1 2026-10-10)
 
