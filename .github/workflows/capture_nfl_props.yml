@@ -16,7 +16,7 @@ on:
       max_credits:
         description: Hard Odds API credit ceiling for this run
         required: true
-        default: "220"
+        default: "420"
       within_hours:
         description: Only games starting within this many hours (0 = no window; never use with event_limit 0)
         required: true
@@ -40,7 +40,7 @@ jobs:
         run: >-
           python -m ingest.nfl_prop_odds
           --event-limit "${{ inputs.event_limit || '0' }}"
-          --max-credits "${{ inputs.max_credits || '220' }}"
+          --max-credits "${{ inputs.max_credits || '420' }}"
           --within-hours "${{ inputs.within_hours || '6' }}"
           --apply
       # Re-price the saved game-leader forecasts against the lines just captured;
