@@ -170,6 +170,36 @@ def starter_evidence(absent: Mapping[str, Any], teammates: Iterable[Mapping[str,
     return None
 
 
+def expected_qb_starters(
+    players: Iterable[Mapping[str, Any]],
+    out_ids: set,
+    passing_leaders: Mapping[str, str],
+) -> dict[int, dict[str, Any]]:
+    """Name each team's expected starting quarterback before projecting (nfl-qb-spot-start-v1).
+
+    Per team, among quarterbacks not ruled out: the shallowest qualified depth
+    order when the chart is fresh (``depth_order``), else the quarterback who led
+    the team's last game in attempts (``led_last_team_game``). One name per team
+    or none; the reason is returned so the run can record it.
+    """
+    from model.nfl_team_aliases import normalize_team
+    by_team: dict[str, list[Mapping[str, Any]]] = {}
+    for p in players:
+        if p.get("position") == "QB" and p.get("player_id") not in out_ids:
+            by_team.setdefault(normalize_team(p.get("team")), []).append(p)
+    named: dict[int, dict[str, Any]] = {}
+    for team, qbs in by_team.items():
+        charted = [p for p in qbs if isinstance(p.get("depth_order"), int) and not isinstance(p.get("depth_order"), bool)]
+        if charted:
+            pick = min(charted, key=lambda p: (int(p["depth_order"]), str(p.get("player_name") or "")))
+            named[int(pick["player_id"])] = {"team": team, "reason": "depth_chart", "depth_order": int(pick["depth_order"])}
+            continue
+        leaders = [p for p in qbs if p.get("led_last_team_game") is True]
+        if len(leaders) == 1:
+            named[int(leaders[0]["player_id"])] = {"team": team, "reason": "last_game_starter"}
+    return named
+
+
 def _promotable(absent: Mapping[str, Any], player: Mapping[str, Any]) -> bool:
     """A listed backup, or the chart's QB1 when the starter was moved below him."""
     depth = player.get("depth_order")

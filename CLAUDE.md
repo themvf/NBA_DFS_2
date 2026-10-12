@@ -6788,6 +6788,8 @@ issues may not claim the empty snapshot/cadence state as verified functionality.
 - **Board membership is guaranteed by MARKET price, not only by our own depth chart — `ff-independent-v1.16` (2026-08-31).** A five-layer coverage audit (roster→`ff_players`→Yahoo match→board→draft pool→team/bye) found three players the market drafts inside the first 132 picks absent from a 440-deep board: **Jordyn Tyson** (our #738 vs Yahoo ADP 95.3), **Jonah Coleman** (130.0), **Keaton Mitchell** (131.8). Same class as the Tuten hole, one layer deeper: `buildDraftPool` unions market-priced players into the rooms, but it can only union from the board, so a player missing at board-build time is unreachable no matter how generous the pool gate is. `_must_include_ids()` now also force-includes anyone whose **earliest price across every market we hold** falls inside `MARKET_GUARANTEE_PICKS = 300` — Best Ball's 240 picks times the same 1.25 ADP-spread headroom `draft-pool.ts` uses, so the two layers agree by construction and the pool gate can only ever narrow what the board already carries. Neither guarantee touches rank or projections (ADP stays comparison-only); they decide only whether a row is *written*. Board 440 → 498; redraft pool 260 → 317, Best Ball 260 → 358, and **0 market-priced players are now excluded from either pool**. Yahoo ADP is a manual paste, so `refresh()` reads the latest capture rather than fetching it, and folds that capture's response hash into `board_digest` — without that the `create_ranking_set` idempotency guard would keep serving a board built against stale prices.
 - **Yahoo name aliases are unordered PAIRS, not one-way rewrites (2026-08-31).** `YAHOO_NAME_ALIASES` mapped `kennygainwell → kennethgainwell` because nflverse listed him as Kenneth. nflverse now calls him Kenny, so the rewrite pointed at a spelling that no longer existed and **silently dropped a back the market drafts at pick 118**. Aliases are now declared as `YAHOO_NAME_ALIAS_PAIRS` and expanded into equivalence sets, so a match is attempted under *every* known spelling and a future upstream rename cannot break it again. Standing rule: a name-normalization alias is a claim about two sources disagreeing, never about which one is right — encode it symmetrically.
 - **`ff_injuries` crashed the entire scheduled refresh for 5 days (2026-08-31).** `_insert_event` passed `psycopg2.extras.Json()` a state dict read straight from the DB, carrying `expected_return_min`/`expected_return_max` **date** columns; plain `Json()` has no `default=`, so it raised `TypeError: Object of type datetime is not JSON serializable`. `.github/workflows/fantasy_football_refresh.yml` had then failed **13 consecutive scheduled runs** (last success 2026-08-26 14:03) — the board silently froze while the workflow kept reporting a normal failure nobody was reading. Fixed with a `_json()` helper (`dumps=lambda o: json.dumps(o, default=str)`). Two lessons worth keeping: a serializer that works on freshly-parsed source rows can still fail on *round-tripped DB rows*, because the driver hands back real `date`/`datetime` objects where the source had strings; and an ingest step that is incidental to the board (injury enrichment) must not be able to take the whole board build down — the failure had nothing to do with projections.
+- **A bye week belongs to a TEAM — `ff_team_byes`, and `ff-independent-v1.17` (2026-10-11).** Asked whether the projections page was fixed; it was not, and underneath it were two live defects. **10 player rows carried another team's bye.** `ingest/nfl_availability_operations.py` updates `team_abbrev` from Sleeper and never touches `bye_week`, so a trade moved the player and left the old team's bye behind: J.J. McCarthy read NYG with bye 6 (Minnesota's), Odell Beckham Jr. MIN with bye 8 (the Giants'), each row's bye matching the team still recorded in its own `metadata.nflverse_roster`. `_upsert_player` writes team and bye together from one source row and cannot produce that mismatch; only a writer that moves one without the other can, and three modules write this column (`ff_independent`, `ff_fantasypros`, `nfl_availability_operations`). **Separately, a traded player became two players.** `build_player_universe` deduped the weekly roster — one row per player per WEEK — on a key containing `team`, so he survived once per team (34 players, 68 entries on the live 2026 feed); both entries upsert to the same `ff_players` row and whichever iterated last silently won his team and bye, and `keep="last"` ran on a frame never sorted by week. Two players were left on a team they had already left. Fix: `ff_team_byes` (season, team) is the one authoritative bye, written by the refresh from `compute_bye_weeks()` (which already fails closed below 32 teams) and backfilled for earlier seasons by `ingest/ff_backfill_team_byes.py`; every read path joins it. `latest_roster_rows()` sorts by week and dedupes on league id, falling back to name+position. **Standing rule: do not copy a team fact onto every player row, and do not infer one from an absence.** Both failures here are the same error from opposite directions — the grid separately inferred a bye as the first week a team put no stat line on the board, which is unambiguous only once a season is COMPLETE and mid-season resolves to the first unplayed week for all 32 teams at once.
+- **The projections page reads the season it is rendering, not a literal year (2026-10-11).** `WEEKLY_SEASON = 2025` was hardcoded, so five weeks into 2026 the week-by-week grid still showed last season while the current one was ingested daily by `ingest/nfl_dfs_weekly.py` and never displayed. Seasons now derive from the board's own season; the grid defaults to the season in progress with a toggle back. Two things that are not obvious: **the clamp is the last COMPLETE week, not the last week with data** — the Thursday game alone puts a week in the table, so on a Sunday "latest week present" would render 30 teams' worth of fabricated zeros (week 5 had 2 of 30 expected teams when this shipped); `getWeeklyCompleteThroughWeek()` counts teams not on bye and takes the unbroken run from week 1. And **"drafted only" is the wrong default in-season** — the Fantasy Football Calculator ADP feed deliberately stops after week 1 (#309), so 0 of 496 board players had an ADP and every panel rendered empty; `hasDraftMarket()` now takes the default from the data.
 - **Skill-position history constants fitted — `ff-independent-v1.14` (2026-08-23).** `SEASON_WEIGHTS` (0.05/0.20/0.75) and `REGRESSION_PRIOR_GAMES` (4.0) had been set by judgment and never fitted — the same situation `model/ff_kicker_projection_backtest.py` found for kickers, where the default shrinkage turned out far too weak. `model/ff_skill_constant_screen.py` grades them walk-forward: tune on 2022–24 targets, grade **once** on a held-out 2025, PPR points per game, with `role_factor` pinned to 1.0 (it depends on the CURRENT depth chart, which is not reconstructible for past seasons) and a `MIN_TARGET_GAMES=6` floor so a two-game actual cannot masquerade as a per-game rate.
 
   | pos | fitted weights | prior games | held-out MAE | 95% CI on delta | shipped |
@@ -7475,6 +7477,27 @@ Do not re-run this study.
 
 ---
 
+## NFL availability job — Sleeper capture batched (2026-10-11)
+
+The "Update data" job took 9-11 minutes on game day; the Sleeper capture
+alone took up to 5 minutes because it wrote 1,066 players one at a time, about
+four round trips each (~4,300 sequential trips from a GitHub runner).
+`persist_injury_observations_batch` (`ingest/ff_injuries.py`) makes the same
+decisions in a handful of statements: one observation insert, one
+active-episode read, one episode update, one player update; new and cleared
+episodes keep their per-row statements. `persist_injury_observation` is
+unchanged and still serves the FantasyPros path.
+
+Proved on a Neon branch of production before release (2026-10-11, branch
+`capture-batch-verify-20261011`): old and new captures on the same Sleeper
+payload, each in a rolled-back transaction, with three players forced through
+each rare path (cleared, status change, new injury). Every player row,
+observation, episode and the 9 events matched; the only differences were the
+two transaction-clock timestamps. Duplicate path (second capture in the same
+hour) matched too. 80 s -> 1.6 s from a home connection. The manual "Update
+data" press always forces a capture (scheduled runs skip it when not due),
+so this is the path the button pays for.
+
 ## NFL DFS — Absence commit: the optimizer builds from starter-aware projections (`nfl-absence-commit-v1`, 2026-10-11)
 
 **Owner's decision, 2026-10-11:** commit to a projection and learn from the
@@ -7944,3 +7967,45 @@ frozen closing price with a date-clustered bootstrap; verdict once, not before
 recorded there and cannot confirm anything: the moneyline triggers pay −300 to
 −500 and their narrow discovery intervals come from five to nine dates, not
 from precision. Not an edge, not on `/vegas`, not on `/health`, not pushed.
+
+## Game Leaders calibration and the expected-starter quarterback (2026-10-12)
+
+Two model changes shipped together after pre-registered studies; both keep our
+own projections, with DraftKings lines captured as a yardstick, never as an input.
+
+- **Game Leaders `nfl-game-leaders-v4`** applies `nfl-game-leaders-calibration-v1`
+  (`docs/nfl-game-leaders-calibration-study.md`, constants in
+  `model/nfl_game_leaders_calibration.py`, held to the frozen fit by a test):
+  roles blend last season's per-game usage as 2 pseudo-games, and each market's
+  leader shares are tempered (rushing 1.30, receiving 1.05, receptions 1.15,
+  total 1.25; the raw share is kept as `win_share_raw`). On the untouched 2022
+  season the calibrated model beat the recent-average baseline for rushing and
+  total yards only; receiving yards and receptions carry no claim. Research
+  code uses `Settings()` (raw); production uses `production_settings()`.
+- **DFS: the expected-starter quarterback overlay**, `nfl-qb-spot-start-v2`
+  (`model/nfl_qb_starter.py`, `docs/nfl-qb-spot-start-study.md`), applied by
+  `build_week` after the base projection the way the availability transfer is.
+  The base model file and `nfl-dfs-historical-v5` are untouched, so every
+  registration that pins them still holds; the writer records the overlay in
+  `production_config()` (`qb_starter_mode`) and each replaced row carries
+  `qb_starter_construction`. Under it,
+  a named starter with thin starting history (mean attempts over his previous
+  six games under 15, or fewer than two games) is projected at his TEAM's
+  pass volume, with efficiency from his own starter-quality lines blended with
+  other quarterbacks' first starts. Everyone else is identical to v5. v1
+  (every expected starter) passed its spot-start gate on the blind 2016-2019
+  look (DK points MAE 7.38 -> 5.79) but failed the established-starter gate by
+  0.10 points, so v2 restricts it; that restriction was chosen after the
+  result and is recorded as such. `build_week` names the expected starter
+  before projecting (fresh depth chart, else last game's passing leader,
+  skipping ruled-out players) and records the naming in the availability
+  report. Because `production_config()` gains a key, the research cohorts
+  that pin `baseline_config_hash` (the coherent scenario study) treat runs
+  from here on as a new configuration, as they did when the transfer flag
+  was added; re-register them at their next study boundary.
+- **What the DraftKings comparison found (weeks 1-5):** for established
+  starters our DFS volume matches DraftKings (Burrow 34.1 vs 35.5 attempts,
+  Henry 21.0 vs 21.5 carries) and receiving matches in every tier; the star
+  gap lived in the Game Leaders roles, and the backup-QB gap in the DFS
+  model's own-history volume. Zero attempts/carries in week 1-2 stored
+  projections are older model versions that did not record volume.

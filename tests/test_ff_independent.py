@@ -2,6 +2,8 @@ import pandas as pd
 
 from ingest.ff_independent import (
     yahoo_kicker_points,
+    latest_roster_rows,
+    save_team_byes,
     MARKET_GUARANTEE_PICKS,
     _must_include_ids,
     DST_CARRY_FORWARD_WEIGHT,
@@ -418,4 +420,81 @@ def test_both_ff_players_writers_take_the_shared_write_lock_before_writing():
     refresh = inspect.getsource(ff_independent._run)
     assert refresh.index("db.lock_ff_players_writes()") < refresh.index("build_player_universe(")
     capture = inspect.getsource(nfl_availability_operations.capture_sleeper)
-    assert capture.index("db.lock_ff_players_writes()") < capture.index("UPDATE ff_players SET")
+    lock = capture.index("db.lock_ff_players_writes()")
+    # Batched since 2026-10-11 (#397): the observation batch and one bulk player update.
+    assert lock < capture.index("persist_injury_observations_batch(")
+    assert lock < capture.index("UPDATE ff_players AS p SET")
+
+
+def _roster_row(week, name, position, team, gsis_id=None, **extra):
+    row = {"week": week, "full_name": name, "position": position, "team": team}
+    if gsis_id is not None:
+        row["gsis_id"] = gsis_id
+    row.update(extra)
+    return row
+
+
+def test_traded_player_is_one_entry_on_his_latest_team() -> None:
+    """A trade used to produce one universe entry per TEAM, because the dedup
+    key contained `team`. Both entries upsert to the same ff_players row, so
+    the last one iterated decided the player's team -- and the bye week written
+    beside it. On the live 2026 feed this hit 34 players."""
+    roster = pd.DataFrame([
+        _roster_row(1, "Traded Back", "RB", "MIN", gsis_id="00-0000001"),
+        _roster_row(5, "Traded Back", "RB", "NYG", gsis_id="00-0000001"),
+        _roster_row(3, "Settled Back", "RB", "KC", gsis_id="00-0000002"),
+    ])
+    rows = latest_roster_rows(roster)
+    assert len(rows) == 2
+    traded = rows[rows["gsis_id"] == "00-0000001"]
+    assert len(traded) == 1
+    assert traded["team"].iloc[0] == "NYG"
+
+
+def test_latest_roster_row_wins_regardless_of_feed_order() -> None:
+    """`keep="last"` only means "most recent" because of the explicit sort."""
+    ordered = pd.DataFrame([
+        _roster_row(1, "Traded Back", "RB", "MIN", gsis_id="00-0000001"),
+        _roster_row(5, "Traded Back", "RB", "NYG", gsis_id="00-0000001"),
+    ])
+    shuffled = ordered.iloc[::-1].reset_index(drop=True)
+    assert latest_roster_rows(ordered)["team"].iloc[0] == "NYG"
+    assert latest_roster_rows(shuffled)["team"].iloc[0] == "NYG"
+
+
+def test_identity_prefers_the_league_id_over_the_name() -> None:
+    """Two players can share a name; one player can be spelled two ways."""
+    same_name = pd.DataFrame([
+        _roster_row(1, "Mike Williams", "WR", "NYJ", gsis_id="00-0000001"),
+        _roster_row(1, "Mike Williams", "WR", "LAC", gsis_id="00-0000002"),
+    ])
+    assert len(latest_roster_rows(same_name)) == 2
+
+
+def test_player_without_a_league_id_still_dedupes_by_name() -> None:
+    no_id = pd.DataFrame([
+        _roster_row(1, "Practice Squad", "WR", "CHI"),
+        _roster_row(4, "Practice Squad", "WR", "GB"),
+    ])
+    rows = latest_roster_rows(no_id)
+    assert len(rows) == 1
+    assert rows["team"].iloc[0] == "GB"
+
+
+def test_save_team_byes_writes_one_row_per_team() -> None:
+    """The bye belongs to the team. Readers join this table instead of trusting
+    a per-player copy that three separate writers update."""
+    class _Db:
+        def __init__(self):
+            self.writes = []
+
+        def execute(self, statement, params=None):
+            self.writes.append((statement, params))
+
+    db = _Db()
+    byes = {"MIN": 6, "NYG": 8}
+    assert save_team_byes(db, 2026, byes, source_snapshot_id=7) == 2
+    assert len(db.writes) == 2
+    assert all("ff_team_byes" in statement for statement, _ in db.writes)
+    assert {(params[1], params[2]) for _, params in db.writes} == {("MIN", 6), ("NYG", 8)}
+    assert all(params[0] == 2026 and params[3] == 7 for _, params in db.writes)

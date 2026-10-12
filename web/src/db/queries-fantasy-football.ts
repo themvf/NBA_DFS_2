@@ -238,7 +238,7 @@ export async function getFantasyRankings(rankingSetId: number): Promise<FantasyR
       FROM prior_points WHERE fantasy_points IS NOT NULL
     )
     SELECT p.id::int AS "playerId",p.canonical_name AS name,
-    p.position,p.team_abbrev AS team,p.rookie,p.bye_week AS "byeWeek",
+    p.position,p.team_abbrev AS team,p.rookie,bye.bye_week AS "byeWeek",
     p.injury_status AS "injuryStatus",injury.details AS "injuryDetails",
     r.overall_rank AS ecr,r.position_rank AS "positionRank",
     r.our_rank AS "ourRank",r.tier,r.adp,
@@ -273,6 +273,7 @@ export async function getFantasyRankings(rankingSetId: number): Promise<FantasyR
         WHEN i.indicator_class='model' THEN 5 ELSE 6 END)
       FILTER (WHERE i.id IS NOT NULL),'[]'::jsonb) AS indicators
     FROM ff_player_rankings r JOIN ff_players p ON p.id=r.player_id
+    LEFT JOIN ff_team_byes bye ON bye.season=rs.season AND bye.team_abbrev=p.team_abbrev
     JOIN ff_ranking_sets rs ON rs.id=r.ranking_set_id
     LEFT JOIN ff_player_season_features f ON f.player_id=p.id AND f.season=rs.season-1 AND f.source='nflverse'
     LEFT JOIN prior_position_finishes prior ON prior.player_id=p.id
@@ -724,19 +725,15 @@ export async function getFantasyDraftState(draftId: string): Promise<FantasyDraf
       WHERE s.draft_id=${draftId}::uuid ORDER BY s.overall_pick`);
   const all = await getFantasyRankings(draft.rankingSetId);
   const drafted = new Set(queryRows<DraftBoardSlot>(boardResult).flatMap((slot) => slot.playerId ? [slot.playerId] : []));
-  
-  // Apply roster-aware ADP adjustments to available players
-  const rosterConfig = draft.rosterConfig as any;
-  const leagueSize = draft.teamCount;
-  const availableWithAdjustedAdp = all
+
+  // `baseAdp` preserves the unmodified market ADP so a consumer that reorders
+  // the board can still show what the market actually said. No adjustment is
+  // applied here; the roster-aware weighting is the caller's decision.
+  const available = all
     .filter((player) => !drafted.has(player.playerId))
-    .map((player) => ({
-      ...player,
-      // Store original ADP and add adjusted version (computed client-side for now, could be server-side)
-      baseAdp: player.adp,
-    }));
-  
-  return { draft, board: queryRows<DraftBoardSlot>(boardResult), available: availableWithAdjustedAdp };
+    .map((player) => ({ ...player, baseAdp: player.adp }));
+
+  return { draft, board: queryRows<DraftBoardSlot>(boardResult), available };
 }
 
 export type NoteEditorPlayer = {
@@ -808,7 +805,7 @@ export async function getProjectionScatter(rankingSetId: number): Promise<Projec
   await ensureFantasyFootballTables();
   const result = await db.execute(sql`
     SELECT p.id::int AS "playerId", p.canonical_name AS name, p.position,
-      p.team_abbrev AS team, p.rookie, p.bye_week AS "byeWeek",
+      p.team_abbrev AS team, p.rookie, bye.bye_week AS "byeWeek",
       r.position_rank AS "positionRank", r.our_rank AS "ourRank", r.adp,
       r.our_projected_points AS "ourProjectedPoints",
       f.games AS "games2025",
@@ -822,6 +819,7 @@ export async function getProjectionScatter(rankingSetId: number): Promise<Projec
     JOIN ff_ranking_sets rs ON rs.id=r.ranking_set_id
     LEFT JOIN ff_player_season_features f
       ON f.player_id=p.id AND f.season=rs.season-1 AND f.source='nflverse'
+    LEFT JOIN ff_team_byes bye ON bye.season=rs.season AND bye.team_abbrev=p.team_abbrev
     WHERE r.ranking_set_id=${rankingSetId}
       AND r.our_projected_points IS NOT NULL
     ORDER BY r.our_projected_points DESC`);
@@ -834,10 +832,18 @@ export type WeeklyPointsRow = {
   position: string;
   team: string | null;
   /**
-   * The bye in THE SEASON BEING SHOWN, derived from the weekly data itself.
-   * Deliberately not `ff_players.bye_week`, which is the *target* season's bye
-   * (2026) and therefore marks the wrong cell on a 2025 grid -- it differs for
-   * most teams (New England: 2025 bye week 14, 2026 bye week 11).
+   * The bye in THE SEASON BEING SHOWN, read from `ff_team_byes`.
+   *
+   * Not `ff_players.bye_week`: that is a per-player copy of the *target*
+   * season's bye, so it marks the wrong cell on a past-season grid (New
+   * England: 2025 bye week 14, 2026 bye week 11), and three separate writers
+   * update it while only one knows the bye, so a trade leaves the old team's
+   * value behind.
+   *
+   * Nor inferred from the weekly data, which this query used to do by taking
+   * the first week a team put no stat line on the board. That is unambiguous
+   * only once a season is COMPLETE; mid-season the first blank week is simply
+   * the next unplayed one, so it resolved to the same week for all 32 teams.
    */
   seasonByeWeek: number | null;
   adp: number | null;
@@ -864,19 +870,6 @@ export async function getWeeklyFantasyPoints(
 ): Promise<WeeklyPointsRow[]> {
   await ensureFantasyFootballTables();
   const result = await db.execute(sql`
-    WITH team_byes AS (
-      -- A bye is the week in which a team put NO stat line on the board at
-      -- all. Verified against the live 2025 data: all 32 teams resolve to
-      -- exactly one such week, so this is unambiguous rather than a guess.
-      SELECT s.team, MIN(w.week) AS bye_week
-      FROM (SELECT DISTINCT team FROM ff_player_week_stats
-            WHERE season=${season} AND team IS NOT NULL) s
-      CROSS JOIN generate_series(1, 18) AS w(week)
-      LEFT JOIN (SELECT DISTINCT team, week FROM ff_player_week_stats
-                 WHERE season=${season}) p ON p.team=s.team AND p.week=w.week
-      WHERE p.team IS NULL
-      GROUP BY s.team
-    )
     SELECT p.id::int AS "playerId", p.canonical_name AS name, p.position,
       p.team_abbrev AS team, tb.bye_week AS "seasonByeWeek",
       r.adp, r.position_rank AS "positionRank",
@@ -898,13 +891,51 @@ export async function getWeeklyFantasyPoints(
     JOIN ff_ranking_sets rs ON rs.id=r.ranking_set_id
     LEFT JOIN ff_player_week_stats w
       ON w.player_id=p.id AND w.season=${season} AND w.source='nflverse' AND w.season_type='REG'
-    LEFT JOIN team_byes tb ON tb.team=p.team_abbrev
+    LEFT JOIN ff_team_byes tb ON tb.season=${season} AND tb.team_abbrev=p.team_abbrev
     WHERE r.ranking_set_id=${rankingSetId}
     GROUP BY p.id, p.canonical_name, p.position, p.team_abbrev, tb.bye_week,
              r.adp, r.position_rank
     HAVING COUNT(w.id) > 0
     ORDER BY "seasonPoints" DESC`);
   return queryRows<WeeklyPointsRow>(result);
+}
+
+/**
+ * The last week of `season` every team has finished playing.
+ *
+ * The grid renders an absent week as 0, which is honest for a bye or an
+ * inactive but a lie for a week that has not kicked off. "Latest week with
+ * any data" is not good enough: the Thursday game alone puts a week in the
+ * table, so on a Sunday the week in progress would show 30 teams' worth of
+ * fabricated zeros. A week counts as complete only once every team not on bye
+ * that week has a stat line, and the answer is the unbroken run from week 1,
+ * so a later complete week cannot hide an earlier partial one.
+ *
+ * Returns null when the season's byes are unknown, leaving the caller to fall
+ * back rather than silently reporting a full season.
+ */
+export async function getWeeklyCompleteThroughWeek(season: number): Promise<number | null> {
+  await ensureFantasyFootballTables();
+  const result = await db.execute(sql`
+    WITH league AS (
+      SELECT COUNT(*)::int AS teams FROM ff_team_byes WHERE season=${season}
+    ), expected AS (
+      SELECT w.week, (SELECT teams FROM league) - COUNT(b.team_abbrev)::int AS teams
+      FROM generate_series(1, 18) AS w(week)
+      LEFT JOIN ff_team_byes b ON b.season=${season} AND b.bye_week=w.week
+      GROUP BY w.week
+    ), played AS (
+      SELECT week, COUNT(DISTINCT team)::int AS teams
+      FROM ff_player_week_stats
+      WHERE season=${season} AND source='nflverse' AND season_type='REG' AND team IS NOT NULL
+      GROUP BY week
+    )
+    SELECT (SELECT teams FROM league) AS "leagueTeams",
+      (COALESCE(MIN(e.week) FILTER (WHERE COALESCE(p.teams,0) < e.teams), 19) - 1)::int AS "throughWeek"
+    FROM expected e LEFT JOIN played p ON p.week=e.week`);
+  const row = queryRows<{ leagueTeams: number; throughWeek: number }>(result)[0];
+  if (!row || !row.leagueTeams) return null;
+  return row.throughWeek;
 }
 
 export type WeeklyUpsideRow = {

@@ -76,10 +76,5 @@
     "@typescript-eslint/no-explicit-any": {
       "count": 2
     }
-  },
-  "src/db/queries-fantasy-football.ts": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 1
-    }
   }
 }

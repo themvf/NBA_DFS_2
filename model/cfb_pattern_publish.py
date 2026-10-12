@@ -24,20 +24,8 @@ from db.database import DatabaseManager
 from model import cfb_pattern_board as board
 from model import cfb_pattern_watch as pw
 
-# Prose blocks for the reader page. Edit them here; there is no override file.
-COPY = {
-    "header_sub": "Six betting patterns found in the first five weeks of the 2026 season and frozen before most of week 6 was played. Every pick below is graded at the verified closing line, written once, and never edited. The purpose is to find out whether any of them are real. So far none is proven, and the record is shown either way.",
-    "note": "A flat one unit on every qualifying game at the closing consensus price. Moneyline picks pay what the favorite pays, usually -250 to -400; spreads and totals are scored at -110. Nothing here is a recommendation. Each pattern needs 40 to 80 graded games before it gets a verdict, and the verdict is computed once.",
-    "upcoming_intro": "Each selection is frozen the first time its pattern fires on a fresh line. The frozen line is what gets graded against; the current line is shown beside it so you can see what moved. A line more than an hour old near kickoff is not shown as a pick. Watch means the market moved sharply in the last two hours and we do not know why; there is no injury feed for college football, so the line is the news.",
-    "howto_1": "A pattern is a fixed rule written down before the games it is tested on. Patterns 1 to 5 were frozen on October 9, pattern 6 on the morning of October 10. The rules do not change; a changed rule is a new study.",
-    "howto_2": "The discovery column is the record on the games that suggested each pattern. It is shown so you can see where the idea came from and it counts for nothing. The same market produced those numbers and will regress toward its long-run rates, which for spreads and totals is about 50%.",
-    "howto_3": "Grading uses the verified closing consensus line, so it is what a bettor could have gotten late, not the best price of the week. The upcoming table shows the best retail price at the moment the selection was frozen; that price is not what is graded.",
-    "howto_4": "Moneyline favorites in patterns 1 and 5 are expensive. Two upsets undo six or seven wins. The spread and total patterns risk one unit to win 0.91.",
-    "howto_5": "A verdict comes once, after the regular season, and only for patterns that reach their sample floor. Anything short of the floor is described as what it is: too few games.",
-    "footer": "Source: a private ledger of college football closing lines captured from retail and offshore books, graded against official final scores. Prices and lines are observations, not offers. This page is updated weekly and after each Saturday's games.",
-}
-def copy_text(key: str) -> str:
-    return COPY[key]
+FOOTER = ("Source: closing lines captured from retail and offshore sportsbooks, graded against official final scores. "
+          "One unit per pick at the verified closing consensus: moneylines at the closing price, spreads and totals at -110.")
 
 DEFAULT_OUT = Path("artifacts") / "cfb_pattern_watch" / "report.html"
 
@@ -144,6 +132,11 @@ td.num,th.num{{text-align:right;font-family:var(--mono);font-variant-numeric:tab
 .pill.won{{background:var(--won-bg);color:var(--won)}}.pill.lost{{background:var(--lost-bg);color:var(--lost)}}.pill.push{{background:var(--push-bg);color:var(--push)}}
 .pill.cur{{background:var(--accent);color:var(--accent-ink)}}.pill.watch{{background:var(--watch-bg);color:var(--watch)}}.pill.drop,.pill.stale,.pill.pend{{background:var(--stale-bg);color:var(--stale)}}
 .note{{border-left:3px solid var(--accent);padding:10px 14px;background:var(--panel);margin:18px 0}}
+.tldr{{background:var(--panel);border:1px solid var(--rule);border-top:3px solid var(--accent);padding:14px 18px 6px;margin:26px 0 8px}}
+.tldr .k{{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}}
+.tldr ul{{margin:8px 0 8px;padding-left:20px}}.tldr li{{margin:6px 0}}
+.lede p{{font-size:17px}}
+.signoff{{font-style:italic;margin-top:28px}}
 .muted{{color:var(--muted)}}
 .date-h{{font-family:var(--display);font-size:20px;font-weight:600;margin:22px 0 8px}}
 footer{{margin-top:48px;color:var(--muted);font-size:14px;border-top:1px solid var(--rule);padding-top:16px}}
@@ -151,9 +144,8 @@ footer{{margin-top:48px;color:var(--muted);font-size:14px;border-top:1px solid v
 </style>
 <div class="wrap">
 <header>
-<div class="eyebrow">{esc(pw.STUDY_VERSION)} · pre-registered · generated {esc(now.strftime('%Y-%m-%d %H:%M UTC'))}</div>
+<div class="eyebrow">Updated {esc(now.strftime('%B ') + str(now.day) + now.strftime(', %H:%M UTC'))}</div>
 <h1>College Football Pattern Watch</h1>
-<p class="sub">{esc(copy_text("header_sub"))}</p>
 </header>
 """)
     graded = [r for r in rows if r["result"] in ("won", "lost")]
@@ -165,12 +157,11 @@ footer{{margin-top:48px;color:var(--muted);font-size:14px;border-top:1px solid v
 <div class="tile"><div class="k">open selections</div><div class="v">{len(pending)}</div></div>
 <div class="tile"><div class="k">verdict</div><div class="v">none<small> not before Dec 7</small></div></div>
 </div>
-<div class="note">{esc(copy_text("note"))}</div>
 """)
     # per-trigger table
-    parts.append("""<h2>The six patterns</h2>
-<div class="scroll"><table>
-<tr><th>#</th><th>pattern</th><th>bet</th><th class="num">graded</th><th class="num">games</th><th class="num">record</th><th class="num">units</th><th class="num">roi</th><th class="num">floor</th><th class="num">discovery (frozen, cannot confirm)</th></tr>""")
+    parts.append("<h2>Patterns</h2>")
+    parts.append("""<div class="scroll"><table>
+<tr><th>#</th><th>pattern</th><th>bet</th><th class="num">graded</th><th class="num">games</th><th class="num">record</th><th class="num">units</th><th class="num">roi</th><th class="num">floor</th><th class="num">discovery sample</th></tr>""")
     trig_by_code = {v[0]: k for k, v in TRIGGER_LABEL.items()}
     for s in summ:
         roi = "—" if s["roi"] is None else f"{s['roi']:+.1%}"
@@ -178,11 +169,10 @@ footer{{margin-top:48px;color:var(--muted);font-size:14px;border-top:1px solid v
         games = gc["per_trigger_games"].get(trig_by_code[s["code"]], 0)
         parts.append(f"<tr><td class=\"num\">{s['code']}</td><td>{esc(s['desc'])}</td><td>{esc(s['bet'])}</td><td class=\"num\">{s['n']}</td><td class=\"num\">{games}</td><td class=\"num\">{s['w']}-{s['l']}{('-' + str(s['p'])) if s['p'] else ''}</td><td class=\"num {cls}\">{s['units']:+.2f}</td><td class=\"num {cls}\">{roi}</td><td class=\"num\">{s['n']}/{s['floor']}</td><td class=\"num muted\">{s['disc'][0]} · {s['disc'][1]} · {s['disc'][2]} dates</td></tr>")
     parts.append("</table></div>")
-    parts.append(f"<p class=\"muted\">The {gc['rows']} graded picks come from {gc['games']} different games. {gc['games_with_multiple_triggers']} of those games fed more than one pattern, so the patterns are not independent of each other and their records should not be added together as if they were.</p>")
+    parts.append(f"<p class=\"muted\">{gc['rows']} graded picks from {gc['games']} games. {gc['games_with_multiple_triggers']} games counted in more than one pattern.</p>")
     # base rate: the effect three of the patterns rest on
     if base_rates:
-        parts.append("""<h2>Is the favorite edge still there?</h2>
-<p class="muted">Patterns 1, 5 and 6 exist because favorites won more often than their prices implied early in the season. This table checks that effect across every FBS game with a closing line, not just the games a pattern picked. It does not grade anything; it shows whether the reason for those patterns is still present.</p>
+        parts.append("""<h2>All FBS games with a closing line, by week</h2>
 <div class="scroll"><table>
 <tr><th class="num">week</th><th class="num">games</th><th class="num">favorites won</th><th class="num">price implied</th><th class="num">difference</th><th class="num">favorites covered</th><th class="num">overs</th><th class="num">decided by 7 or less</th></tr>""")
         for r in base_rates:
@@ -191,10 +181,9 @@ footer{{margin-top:48px;color:var(--muted);font-size:14px;border-top:1px solid v
             cls = "" if ex is None else ("pos" if ex >= 0 else "neg")
             exs = "—" if ex is None else f"{ex:+.1f} pts"
             parts.append(f"<tr><td class=\"num\">{r['week']}</td><td class=\"num\">{r['games']}</td><td class=\"num\">{pct(r['fav_su'])}</td><td class=\"num\">{pct(r['implied'])}</td><td class=\"num {cls}\">{exs}</td><td class=\"num\">{pct(r['fav_ats'])}</td><td class=\"num\">{pct(r['over'])}</td><td class=\"num\">{pct(r['within_7'])}</td></tr>")
-        parts.append("</table></div><p class=\"muted\">Weeks are CollegeFootballData's numbering. The difference column is favorites' win rate minus the win rate their closing moneylines implied after removing the bookmaker's margin.</p>")
+        parts.append("</table></div><p class=\"muted\">CFBD week numbering. Difference = favorites' straight-up win rate minus the win rate implied by vig-free closing moneylines.</p>")
     # upcoming board
-    parts.append("""<h2>Upcoming</h2>
-<p class="muted">""" + esc(copy_text("upcoming_intro")) + "</p>")
+    parts.append("<h2>Upcoming</h2>")
     if upcoming:
         parts.append("""<div class="scroll"><table>
 <tr><th>kick</th><th>game</th><th>#</th><th>frozen selection</th><th>best retail at freeze</th><th>line now</th><th>moved</th><th>status</th></tr>""")
@@ -213,24 +202,23 @@ footer{{margin-top:48px;color:var(--muted);font-size:14px;border-top:1px solid v
     else:
         parts.append('<p class="muted">No games with lines in the next 36 hours.</p>')
     by_status = ev.get("by_status", {})
-    parts.append(f"<p class=\"muted\">The board has run {ev['runs']} times. It has refused {by_status.get('stale', 0)} stale lines, flagged {by_status.get('watch', 0)} late moves, and recorded {by_status.get('dropped', 0)} picks that stopped qualifying before kickoff.</p>")
+    parts.append(f"<p class=\"muted\">Board runs {ev['runs']} · stale lines refused {by_status.get('stale', 0)} · late moves flagged {by_status.get('watch', 0)} · dropped before kickoff {by_status.get('dropped', 0)}</p>")
     # published picks vs the close
     fs = fvc["summary"]
-    parts.append("<h2>Published picks against the close</h2>")
+    parts.append("<h2>Frozen line vs close</h2>")
     if fs["n"]:
         lead = fs["median_lead_minutes"]
         lead_txt = "unknown" if lead is None else (f"{lead / 60:.1f} hours" if lead >= 90 else f"{lead:.0f} minutes")
         pts = fs["mean_points_clv"]
         pts_txt = "no spread or total picks yet" if pts is None else f"{pts:+.2f} points on average ({fs['points_better']} better, {fs['points_worse']} worse)"
-        parts.append(f"""<p class="muted">Each pick is published at the line it was frozen at, but the results above are graded at the closing line. This table compares the two. A positive number means the frozen line was better for the pick than the close. Picks were frozen a median of {esc(lead_txt)} before kickoff; picks frozen close to kickoff will show little movement by design.</p>
-<div class="strip">
+        parts.append(f"""<div class="strip">
 <div class="tile"><div class="k">published picks graded</div><div class="v">{fs['n']}</div></div>
 <div class="tile"><div class="k">result changed by the move</div><div class="v">{fs['result_changed']}</div></div>
 <div class="tile"><div class="k">line vs close</div><div class="v">{'—' if pts is None else f'{pts:+.2f}'}<small> pts</small></div></div>
 <div class="tile"><div class="k">units at frozen line</div><div class="v {'pos' if fs['freeze_units'] >= 0 else 'neg'}">{fs['freeze_units']:+.2f}</div></div>
 <div class="tile"><div class="k">units at best retail</div><div class="v {'pos' if fs['best_retail_units'] >= 0 else 'neg'}">{fs['best_retail_units']:+.2f}</div></div>
 </div>
-<p class="muted">Line vs close: {esc(pts_txt)}.</p>
+<p class="muted">Line vs close: {esc(pts_txt)}. Positive = frozen line better than close. Median freeze before kickoff: {esc(lead_txt)}.</p>
 <div class="scroll"><table>
 <tr><th>game</th><th>#</th><th>published pick</th><th class="num">frozen</th><th class="num">close</th><th class="num">points vs close</th><th>graded at close</th><th>at frozen line</th><th class="num">best retail</th></tr>""")
         for i in fvc["items"]:
@@ -260,11 +248,7 @@ footer{{margin-top:48px;color:var(--muted);font-size:14px;border-top:1px solid v
             cls = "pos" if r["pnl_units"] > 0 else ("neg" if r["pnl_units"] < 0 else "")
             parts.append(f"<tr><td>{esc(r['away'])} @ {esc(r['home'])}</td><td class=\"num\">{code}</td><td>{esc(r['selection'])}</td><td class=\"num\">{esc(price)}</td><td class=\"num\">{r['away_score']}-{r['home_score']}</td><td>{pill(r['result'])}</td><td class=\"num {cls}\">{r['pnl_units']:+.2f}</td></tr>")
         parts.append("</table></div>")
-    bullets = "".join("<li>" + esc(copy_text(k)) + "</li>" for k in ("howto_1", "howto_2", "howto_3", "howto_4", "howto_5"))
-    parts.append(f"""<h2>How to read this</h2>
-<ul>
-{bullets}</ul>
-<footer>{esc(copy_text("footer"))}</footer>
+    parts.append(f"""<footer>{esc(FOOTER)}</footer>
 </div>""")
     return "".join(parts)
 

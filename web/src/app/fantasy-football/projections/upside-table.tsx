@@ -13,11 +13,11 @@
 import { useMemo, useState } from "react";
 import type { WeeklyUpsideRow } from "@/db/queries-fantasy-football";
 import {
+  hasDraftMarket,
   POSITION_COLORS,
   SPIKE_THRESHOLDS,
   VIEW_LABELS,
   VIEW_POSITIONS,
-  WEEKLY_SEASONS,
   type ScatterView,
 } from "@/lib/fantasy-football/projection-scatter";
 
@@ -62,7 +62,7 @@ export default function UpsideTable({
   onSeasonModeChange: (mode: "recent" | "all") => void;
 }) {
   const [sort, setSort] = useState<Sort>("top3");
-  const [draftedOnly, setDraftedOnly] = useState(true);
+  const [draftedOnly, setDraftedOnly] = useState(() => hasDraftMarket(rows));
   const [minGames, setMinGames] = useState(8);
   const [adpWindow, setAdpWindow] = useState("all");
 
@@ -133,7 +133,7 @@ export default function UpsideTable({
           <div className="flex overflow-hidden rounded-lg border">
             {(
               [
-                ["recent", `${WEEKLY_SEASONS[0]}`],
+                ["recent", `${Math.max(...seasons)}`],
                 ["all", "3 seasons"],
               ] as const
             ).map(([value, text]) => (

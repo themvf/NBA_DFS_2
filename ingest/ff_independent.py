@@ -55,7 +55,13 @@ from ingest.ff_source_contracts import SnapshotProvenance, persist_source_snapsh
 # starter guarantee reached them. That is the same class of hole as Bhayshul
 # Tuten: the draft rooms build their pool FROM the board, so a player missing
 # here can never be drafted no matter how generous buildDraftPool is.
-MODEL_VERSION = "ff-independent-v1.16"
+# v1.17 (2026-10-11): one universe entry per PLAYER, not per player-team.
+# roster_weekly carries a row per player per week, and the dedup key included
+# `team`, so a traded player survived once per team -- 34 players, 68 entries
+# -- and both entries resolved to the same ff_players row, leaving whichever
+# iterated last to decide his team and bye. Board membership changes, so the
+# version moves: board_digest hashes MODEL_VERSION, forcing a fresh build.
+MODEL_VERSION = "ff-independent-v1.17"
 SCORING_TYPES = ("STD", "HALF", "PPR")
 POSITIONS = {"QB", "RB", "WR", "TE", "K", "DST"}
 OFFENSIVE_POSITIONS = {"QB", "RB", "WR", "TE", "K"}
@@ -557,6 +563,58 @@ def _upsert_player(db: RefreshDatabase, season: int, row: dict[str, Any], team_i
     return int(saved["id"])
 
 
+def _roster_identity(frame: pd.DataFrame) -> pd.Series:
+    """One stable key per player across every weekly row and every team."""
+    identity = pd.Series("", index=frame.index, dtype="object")
+    for column in ("gsis_id", "sleeper_id"):
+        if column in frame:
+            values = frame[column].astype("string").str.strip()
+            identity = identity.mask(identity.eq(""), values.fillna(""))
+    fallback = (
+        frame["full_name"].astype("string").fillna("").map(normalize_name)
+        + "|" + frame["position"].astype("string").fillna("")
+    )
+    return identity.mask(identity.eq(""), fallback)
+
+
+def latest_roster_rows(roster: pd.DataFrame) -> pd.DataFrame:
+    """One row per player: their most recent weekly roster entry.
+
+    The feed carries a row per player per WEEK, so a traded player appears
+    under both teams. The dedup key used to include `team`, which kept him
+    once per team -- 34 players, 68 entries, on the live 2026 feed. Every copy
+    upserts to the same ff_players row, so whichever iterated last silently
+    decided his team and his bye week.
+
+    The explicit sort is what makes `keep="last"` mean "most recent week"
+    rather than "whatever order the CSV happened to arrive in".
+    """
+    current = roster[roster["position"].isin(OFFENSIVE_POSITIONS)].copy()
+    current = current.sort_values("week", kind="mergesort")
+    current = current.assign(_identity=_roster_identity(current))
+    return current.drop_duplicates(subset=["_identity"], keep="last").drop(columns="_identity")
+
+
+def save_team_byes(db: RefreshDatabase, season: int, bye_weeks: dict[str, int],
+                   source_snapshot_id: int | None = None) -> int:
+    """Persist the schedule-derived bye for every team.
+
+    The single source every reader should use. Callers must have already
+    checked that all 32 teams resolved, so this never writes a partial slate.
+    """
+    for team, bye_week in sorted(bye_weeks.items()):
+        db.execute(
+            """INSERT INTO ff_team_byes (season,team_abbrev,bye_week,source_snapshot_id,fetched_at)
+               VALUES (%s,%s,%s,%s,NOW())
+               ON CONFLICT(season,team_abbrev) DO UPDATE SET
+                 bye_week=EXCLUDED.bye_week,
+                 source_snapshot_id=EXCLUDED.source_snapshot_id,
+                 fetched_at=NOW()""",
+            (season, team, int(bye_week), source_snapshot_id),
+        )
+    return len(bye_weeks)
+
+
 def build_player_universe(
     db: RefreshDatabase,
     season: int,
@@ -569,8 +627,7 @@ def build_player_universe(
     team_ids = {str(row["abbreviation"]): int(row["team_id"]) for row in teams}
     team_names = {str(row["abbreviation"]): str(row["name"]) for row in teams}
 
-    current = roster[roster["position"].isin(OFFENSIVE_POSITIONS)].copy()
-    current = current.drop_duplicates(subset=["team", "full_name", "position"], keep="last")
+    current = latest_roster_rows(roster)
     universe: list[dict[str, Any]] = []
     for _, series in current.iterrows():
         raw = _clean(series.to_dict())
@@ -1645,6 +1702,7 @@ def _run(season: int, db: RefreshDatabase) -> dict[str, Any]:
     bye_weeks = compute_bye_weeks(schedule, season)
     if len(bye_weeks) != 32:
         raise RuntimeError(f"Expected 32 schedule-derived bye weeks for {season}; found {len(bye_weeks)}")
+    save_team_byes(db, season, bye_weeks)
     sleeper_snapshot_id = _snapshot(
         db, source="sleeper", dataset="players", season=season, digest=sleeper_digest,
         row_count=len(sleeper_payload), params={"url": SLEEPER_URL, "canonical": False},

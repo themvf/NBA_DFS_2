@@ -1,0 +1,24 @@
+{
+ "study": "nfl-qb-spot-start-v1",
+ "spot_records": 180,
+ "chosen": "qb_team_volume_half_life=8.0|qb_team_volume_prior_games=2.0|qb_spot_start_prior_games=16|qb_min_line_attempts=10.0",
+ "config": {
+  "qb_team_volume_half_life": 8.0,
+  "qb_team_volume_prior_games": 2.0,
+  "qb_spot_start_prior_games": 16,
+  "qb_min_line_attempts": 10.0
+ },
+ "spot_points_mae_by_grid_point": {
+  "qb_team_volume_half_life=8.0|qb_team_volume_prior_games=2.0|qb_spot_start_prior_games=16|qb_min_line_attempts=10.0": 6.109762777777778,
+  "qb_team_volume_half_life=4.0|qb_team_volume_prior_games=2.0|qb_spot_start_prior_games=16|qb_min_line_attempts=10.0": 6.122287777777777,
+  "qb_team_volume_half_life=8.0|qb_team_volume_prior_games=2.0|qb_spot_start_prior_games=8|qb_min_line_attempts=10.0": 6.125215000000001,
+  "qb_team_volume_half_life=8.0|qb_team_volume_prior_games=4.0|qb_spot_start_prior_games=16|qb_min_line_attempts=10.0": 6.125362777777779,
+  "qb_team_volume_half_life=2.0|qb_team_volume_prior_games=2.0|qb_spot_start_prior_games=16|qb_min_line_attempts=10.0": 6.133376666666666,
+  "qb_team_volume_half_life=8.0|qb_team_volume_prior_games=4.0|qb_spot_start_prior_games=8|qb_min_line_attempts=10.0": 6.1361300000000005,
+  "qb_team_volume_half_life=4.0|qb_team_volume_prior_games=2.0|qb_spot_start_prior_games=8|qb_min_line_attempts=10.0": 6.139025,
+  "qb_team_volume_half_life=4.0|qb_team_volume_prior_games=4.0|qb_spot_start_prior_games=16|qb_min_line_attempts=10.0": 6.140048333333334,
+  "qb_team_volume_half_life=2.0|qb_team_volume_prior_games=2.0|qb_spot_start_prior_games=8|qb_min_line_attempts=10.0": 6.140757777777779,
+  "qb_team_volume_half_life=8.0|qb_team_volume_prior_games=2.0|qb_spot_start_prior_games=4|qb_min_line_attempts=10.0": 6.142008333333333
+ },
+ "current_spot_points_mae": 7.969727777777777
+}

@@ -26,6 +26,32 @@ from ingest.nfl_prop_probe import MARKETS, ODDS_BASE, SPORT
 from ingest.sportsbook_policy import BOOKMAKER_KEYS
 from model.nfl_context_engine import stable_digest
 
+# DraftKings-style ladders: several over-only thresholds per player. They give the
+# market's whole outcome curve (boom/bust, the 100-yard bonus) rather than one line.
+ALTERNATE_MARKETS: tuple[str, ...] = (
+    "player_pass_yds_alternate",
+    "player_rush_yds_alternate",
+    "player_reception_yds_alternate",
+    "player_receptions_alternate",
+    # Added 2026-10-12: volume ladders and the interception ladder.
+    "player_pass_attempts_alternate",
+    "player_pass_completions_alternate",
+    "player_rush_attempts_alternate",
+    "player_rush_reception_yds_alternate",
+    "player_pass_interceptions_alternate",
+)
+# Added 2026-10-12: the market's expected volume (attempts, completions,
+# carries), rushing plus receiving yards, and multi-touchdown counts
+# (player_tds_over is over-only: 1.5 = two or more touchdowns).
+VOLUME_MARKETS: tuple[str, ...] = (
+    "player_pass_attempts",
+    "player_pass_completions",
+    "player_rush_attempts",
+    "player_rush_reception_yds",
+    "player_tds_over",
+)
+CAPTURE_MARKETS: tuple[str, ...] = MARKETS + VOLUME_MARKETS + ALTERNATE_MARKETS
+
 
 def normalize_prop_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
     """Preserve market shapes while providing a player/book convenience view."""
@@ -72,10 +98,21 @@ def normalize_prop_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
                     "side": side,
                 }
                 book["outcomes"].append(preserved)
+                if market_key.endswith("_alternate"):
+                    # A ladder has many points: a single line/over field would be its last rung.
+                    continue
                 if side in {"over", "under", "yes", "no"}:
                     book[side] = outcome.get("price")
                 if outcome.get("point") is not None:
                     book["line"] = outcome.get("point")
+    for row in grouped.values():
+        if row["market"].endswith("_alternate"):
+            for book in row["books"].values():
+                book["ladder"] = sorted(
+                    ({"point": o["point"], "side": o["side"], "price": o["price"]} for o in book["outcomes"]
+                     if o.get("point") is not None),
+                    key=lambda rung: (rung["side"], rung["point"]),
+                )
     return sorted(grouped.values(), key=lambda row: (row["market"], row["player"]))
 
 
@@ -161,6 +198,23 @@ def require_credit_budget(*, estimated_credits: int, max_credits: int) -> None:
         )
 
 
+def record_usage(db, response, purpose, endpoint, event_count, event_ids, markets=None):
+    """One odds_api_usage row per paid call, so /health's credit reading includes props."""
+    def number(name):
+        try:
+            return int(response.headers.get(name))
+        except (TypeError, ValueError):
+            return None
+    db.execute(
+        """INSERT INTO odds_api_usage (sport, purpose, endpoint, event_count, markets, bookmakers,
+               requests_last, requests_used, requests_remaining, response_status, metadata)
+           VALUES ('nfl', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)""",
+        (purpose, endpoint, event_count, ",".join(markets or CAPTURE_MARKETS), ",".join(BOOKMAKER_KEYS),
+         number("x-requests-last"), number("x-requests-used"), number("x-requests-remaining"),
+         response.status_code, json.dumps({"event_ids": event_ids})),
+    )
+
+
 def select_events(events, now, event_limit=0, within_hours=0):
     """Pregame events only, earliest first; optionally only those starting within `within_hours`.
 
@@ -190,7 +244,7 @@ def capture(
     events = fetch_events(api_key)
     now = now or datetime.now(timezone.utc)
     selected = select_events(events, now, event_limit, within_hours)
-    estimated_credits = len(selected) * len(MARKETS) * math.ceil(len(BOOKMAKER_KEYS) / 10)
+    estimated_credits = len(selected) * len(CAPTURE_MARKETS) * math.ceil(len(BOOKMAKER_KEYS) / 10)
     if not apply:
         return {"events": len(selected), "estimatedCredits": estimated_credits, "rows": 0}
     require_credit_budget(estimated_credits=estimated_credits, max_credits=max_credits)
@@ -203,7 +257,7 @@ def capture(
             f"{ODDS_BASE}/sports/{SPORT}/events/{event['id']}/odds",
             params={
                 "apiKey": api_key,
-                "markets": ",".join(MARKETS),
+                "markets": ",".join(CAPTURE_MARKETS),
                 "bookmakers": ",".join(BOOKMAKER_KEYS),
                 "oddsFormat": "american",
                 "dateFormat": "iso",
@@ -211,6 +265,7 @@ def capture(
             timeout=30,
         )
         response.raise_for_status()
+        record_usage(db, response, "nfl_props", f"{ODDS_BASE}/sports/{SPORT}/events/{{id}}/odds", 1, [event["id"]])
         written += persist_event_payload(
             db,
             event=event,

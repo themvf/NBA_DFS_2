@@ -1,0 +1,410 @@
+{
+ "authority": "registered_single_look_test",
+ "fit": {
+  "study": "nfl-game-leaders-calibration-v1",
+  "development": "artifacts\\nfl-game-leaders\\calibration-v1\\development.jsonl",
+  "games": 689,
+  "skipped": 127,
+  "variant_choice": {
+   "chosen": "C2",
+   "summed_log_loss_2nd_season_on": {
+    "B": 8.346624650477933,
+    "C2": 8.225554813116151,
+    "C4": 8.325084535460691,
+    "C8": 8.341598972861147
+   },
+   "games_compared": 481
+  },
+  "temperature": {
+   "rushing_yards": 1.3,
+   "receiving_yards": 1.05,
+   "receptions": 1.15,
+   "total_yards": 1.25
+  },
+  "baseline": {
+   "rushing_yards": {
+    "scale": 16.0,
+    "residual_share": 0.05,
+    "development_log_loss": 1.8457841065410348
+   },
+   "receiving_yards": {
+    "scale": 22.0,
+    "residual_share": 0.03,
+    "development_log_loss": 2.3716015004656583
+   },
+   "receptions": {
+    "scale": 1.5,
+    "residual_share": 0.03,
+    "development_log_loss": 2.284496817547185
+   },
+   "total_yards": {
+    "scale": 26.0,
+    "residual_share": 0.03,
+    "development_log_loss": 2.403251559849937
+   }
+  }
+ },
+ "games": 245,
+ "skipped": 26,
+ "markets": {
+  "rushing_yards": {
+   "primary": {
+    "final_log_loss": 1.729442662403088,
+    "baseline_log_loss": 2.054068557007894,
+    "mean_difference": -0.32462589460480634,
+    "ci95": [
+     -0.5402887006723684,
+     -0.0701704921245704
+    ],
+    "passes": true
+   },
+   "variant_log_loss": {
+    "A": 2.164530130668006,
+    "B": 1.8932660893222553,
+    "C2": 1.8031047427197926
+   },
+   "top_choice_minus_naive": {
+    "mean": 0.012244897959183673,
+    "ci95": [
+     -0.044897959183673466,
+     0.06540816326530557
+    ]
+   },
+   "calibration": {
+    "bins": [
+     {
+      "range": [
+       0.0,
+       0.1
+      ],
+      "rows": 5138,
+      "mean_probability": 0.008422576097923726,
+      "observed": 0.004671078240560529
+     },
+     {
+      "range": [
+       0.1,
+       0.2
+      ],
+      "rows": 294,
+      "mean_probability": 0.14838026023776849,
+      "observed": 0.1717687074829932
+     },
+     {
+      "range": [
+       0.2,
+       0.3
+      ],
+      "rows": 185,
+      "mean_probability": 0.24768108393499505,
+      "observed": 0.34324324324324323
+     },
+     {
+      "range": [
+       0.3,
+       0.4
+      ],
+      "rows": 127,
+      "mean_probability": 0.3467512266624016,
+      "observed": 0.32677165354330706
+     },
+     {
+      "range": [
+       0.4,
+       0.5
+      ],
+      "rows": 69,
+      "mean_probability": 0.4409854353247266,
+      "observed": 0.41304347826086957
+     },
+     {
+      "range": [
+       0.5,
+       0.6
+      ],
+      "rows": 32,
+      "mean_probability": 0.5385152046643605,
+      "observed": 0.4375
+     },
+     {
+      "range": [
+       0.6,
+       0.7
+      ],
+      "rows": 22,
+      "mean_probability": 0.6347818177839462,
+      "observed": 0.5
+     },
+     {
+      "range": [
+       0.7,
+       0.8
+      ],
+      "rows": 4,
+      "mean_probability": 0.727738886279355,
+      "observed": 0.75
+     },
+     {
+      "range": [
+       0.8,
+       0.9
+      ],
+      "rows": 1,
+      "mean_probability": 0.8110158722661566,
+      "observed": 1.0
+     }
+    ],
+    "expected_calibration_error": 0.009327574063335831
+   }
+  },
+  "receiving_yards": {
+   "primary": {
+    "final_log_loss": 2.3561188326822937,
+    "baseline_log_loss": 2.4593205878525235,
+    "mean_difference": -0.10320175517023066,
+    "ci95": [
+     -0.27092336279395973,
+     0.11272697166861421
+    ],
+    "passes": false
+   },
+   "variant_log_loss": {
+    "A": 2.3468135776145056,
+    "B": 2.2619923534282727,
+    "C2": 2.3634993270969322
+   },
+   "top_choice_minus_naive": {
+    "mean": 0.014285714285714285,
+    "ci95": [
+     -0.03469387755102041,
+     0.0653061224489796
+    ]
+   },
+   "calibration": {
+    "bins": [
+     {
+      "range": [
+       0.0,
+       0.1
+      ],
+      "rows": 5109,
+      "mean_probability": 0.018202527834764053,
+      "observed": 0.015462908592679585
+     },
+     {
+      "range": [
+       0.1,
+       0.2
+      ],
+      "rows": 464,
+      "mean_probability": 0.14329464810703643,
+      "observed": 0.14547413793103448
+     },
+     {
+      "range": [
+       0.2,
+       0.3
+      ],
+      "rows": 206,
+      "mean_probability": 0.24280697414427746,
+      "observed": 0.2354368932038835
+     },
+     {
+      "range": [
+       0.3,
+       0.4
+      ],
+      "rows": 79,
+      "mean_probability": 0.34345535255984055,
+      "observed": 0.4240506329113924
+     },
+     {
+      "range": [
+       0.4,
+       0.5
+      ],
+      "rows": 13,
+      "mean_probability": 0.45014788976737985,
+      "observed": 0.46153846153846156
+     },
+     {
+      "range": [
+       0.5,
+       0.6
+      ],
+      "rows": 1,
+      "mean_probability": 0.5304014690176609,
+      "observed": 0.0
+     }
+    ],
+    "expected_calibration_error": 0.00401426102004089
+   }
+  },
+  "receptions": {
+   "primary": {
+    "final_log_loss": 2.4968905563953765,
+    "baseline_log_loss": 2.4166126953154587,
+    "mean_difference": 0.08027786107991775,
+    "ci95": [
+     -0.15127641015077,
+     0.3573942853445436
+    ],
+    "passes": false
+   },
+   "variant_log_loss": {
+    "A": 2.508147046335212,
+    "B": 2.625123746966301,
+    "C2": 2.534330545808027
+   },
+   "top_choice_minus_naive": {
+    "mean": 0.011224489795918367,
+    "ci95": [
+     -0.03471938775510204,
+     0.05818877551020394
+    ]
+   },
+   "calibration": {
+    "bins": [
+     {
+      "range": [
+       0.0,
+       0.1
+      ],
+      "rows": 5084,
+      "mean_probability": 0.019754256405391805,
+      "observed": 0.01645030159979019
+     },
+     {
+      "range": [
+       0.1,
+       0.2
+      ],
+      "rows": 537,
+      "mean_probability": 0.14022448007548524,
+      "observed": 0.13609559279950337
+     },
+     {
+      "range": [
+       0.2,
+       0.3
+      ],
+      "rows": 190,
+      "mean_probability": 0.24539345781071625,
+      "observed": 0.268859649122807
+     },
+     {
+      "range": [
+       0.3,
+       0.4
+      ],
+      "rows": 49,
+      "mean_probability": 0.3364833531444491,
+      "observed": 0.43265306122448977
+     },
+     {
+      "range": [
+       0.4,
+       0.5
+      ],
+      "rows": 12,
+      "mean_probability": 0.433232276255334,
+      "observed": 0.2916666666666667
+     }
+    ],
+    "expected_calibration_error": 0.005089270786642391
+   }
+  },
+  "total_yards": {
+   "primary": {
+    "final_log_loss": 2.2751186083012103,
+    "baseline_log_loss": 2.4561234364039897,
+    "mean_difference": -0.18100482810277985,
+    "ci95": [
+     -0.28462541546965686,
+     -0.08157763532602001
+    ],
+    "passes": true
+   },
+   "variant_log_loss": {
+    "A": 2.5121484069492976,
+    "B": 2.386904815492422,
+    "C2": 2.275209154257697
+   },
+   "top_choice_minus_naive": {
+    "mean": -0.0020408163265306124,
+    "ci95": [
+     -0.053061224489795916,
+     0.04897959183673469
+    ]
+   },
+   "calibration": {
+    "bins": [
+     {
+      "range": [
+       0.0,
+       0.1
+      ],
+      "rows": 5080,
+      "mean_probability": 0.020793166563010876,
+      "observed": 0.016929133858267716
+     },
+     {
+      "range": [
+       0.1,
+       0.2
+      ],
+      "rows": 577,
+      "mean_probability": 0.139480820190785,
+      "observed": 0.1655112651646447
+     },
+     {
+      "range": [
+       0.2,
+       0.3
+      ],
+      "rows": 166,
+      "mean_probability": 0.23470620409747464,
+      "observed": 0.23795180722891565
+     },
+     {
+      "range": [
+       0.3,
+       0.4
+      ],
+      "rows": 36,
+      "mean_probability": 0.343443792059029,
+      "observed": 0.3333333333333333
+     },
+     {
+      "range": [
+       0.4,
+       0.5
+      ],
+      "rows": 11,
+      "mean_probability": 0.445379153128504,
+      "observed": 0.36363636363636365
+     },
+     {
+      "range": [
+       0.5,
+       0.6
+      ],
+      "rows": 1,
+      "mean_probability": 0.5010537204990531,
+      "observed": 1.0
+     },
+     {
+      "range": [
+       0.6,
+       0.7
+      ],
+      "rows": 1,
+      "mean_probability": 0.6299110397639466,
+      "observed": 1.0
+     }
+    ],
+    "expected_calibration_error": 0.006355552698928318
+   }
+  }
+ }
+}

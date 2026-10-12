@@ -1,0 +1,144 @@
+{
+ "study": "nfl-target-concentration-v1",
+ "stage": "development",
+ "seasons": [
+  2023,
+  2024,
+  2025
+ ],
+ "team_games": 1536,
+ "h1": {
+  "team_seasons": 96,
+  "split_half_r": 0.7139045448867027,
+  "ci95": [
+   0.5909861518009317,
+   0.809193535942416
+  ],
+  "passes": true,
+  "icc": 0.18993027908418,
+  "year_over_year_r": 0.49051254235732705,
+  "year_pairs": 64,
+  "league_mean_hhi": 0.19303786483788002,
+  "most_concentrated": [
+   [
+    "NYG",
+    2024,
+    0.252
+   ],
+   [
+    "PHI",
+    2025,
+    0.2396
+   ],
+   [
+    "SEA",
+    2025,
+    0.2365
+   ],
+   [
+    "PHI",
+    2024,
+    0.2345
+   ],
+   [
+    "PHI",
+    2023,
+    0.2336
+   ]
+  ],
+  "most_spread": [
+   [
+    "GB",
+    2023,
+    0.1611
+   ],
+   [
+    "DEN",
+    2023,
+    0.1609
+   ],
+   [
+    "DEN",
+    2025,
+    0.1605
+   ],
+   [
+    "KC",
+    2023,
+    0.1553
+   ],
+   [
+    "BUF",
+    2025,
+    0.1545
+   ]
+  ]
+ },
+ "fit": {
+  "k_league": 1.0,
+  "lambda": 68,
+  "lambda_dev_mean_loglik": {
+   "8": -2.200518866090152,
+   "17": -2.199973917010501,
+   "34": -2.1996854025803527,
+   "68": -2.199607134128347
+  }
+ },
+ "h2": {
+  "m1_vs_m0_all_games": {
+   "team_games": 1536,
+   "games": 768,
+   "mean_difference": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ]
+  },
+  "m2_vs_m1": {
+   "team_games": 992,
+   "games": 496,
+   "mean_difference": 0.00014219224098787928,
+   "ci95": [
+    -0.00017167432865702095,
+    0.00045915353474684057
+   ]
+  },
+  "mean_loglik_per_target": {
+   "M0": -2.199749326369335,
+   "M1": -2.199749326369335,
+   "M2": -2.199607134128347
+  },
+  "receptions_m1_vs_m0": {
+   "team_games": 1536,
+   "games": 768,
+   "mean_difference": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ]
+  },
+  "passes": false
+ },
+ "team_k_spread": {
+  "min": 0.92,
+  "max": 1.09,
+  "sd": 0.025328968528587268
+ },
+ "h3": {
+  "events": 121,
+  "by_prior_concentration": {
+   "spread": {
+    "events": 42,
+    "next_man_actual_minus_proportional": -0.024173543121951437
+   },
+   "middle": {
+    "events": 43,
+    "next_man_actual_minus_proportional": -0.002629724466722227
+   },
+   "concentrated": {
+    "events": 36,
+    "next_man_actual_minus_proportional": -0.035198054228330965
+   }
+  }
+ }
+}

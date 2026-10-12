@@ -18,6 +18,7 @@ import {
   SEASON_WEEKS,
   VIEW_LABELS,
   VIEW_POSITIONS,
+  hasDraftMarket,
   heatLegendValues,
   heatScaleLabel,
   weekHeat,
@@ -26,21 +27,49 @@ import {
 
 type Sort = "season" | "playoff" | "total" | "avg";
 
-const ALL_WEEKS = [...SEASON_WEEKS, ...PLAYOFF_WEEKS];
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+
+/**
+ * The last week any player on the board recorded a stat line.
+ *
+ * Mid-season this is what stops the grid drawing empty columns. An absent
+ * week renders as 0, which reads as "scored nothing" -- true for a bye, a
+ * lie for a week that has not been played yet. For a completed season every
+ * week is present, so the column set is unchanged.
+ */
+function lastPlayedWeek(rows: WeeklyPointsRow[]): number {
+  let latest = 0;
+  for (const row of rows) {
+    for (const week of Object.keys(row.weeks)) {
+      const parsed = Number(week);
+      if (Number.isFinite(parsed) && parsed > latest) latest = parsed;
+    }
+  }
+  return latest;
+}
 
 export default function WeeklyTable({
   rows,
   season,
+  throughWeek: completeThroughWeek,
   scoring,
   view,
 }: {
   rows: WeeklyPointsRow[];
   season: number;
+  /** Last week every team has finished. Null when the season's byes are unknown. */
+  throughWeek: number | null;
   scoring: string;
   view: ScatterView;
 }) {
-  const [draftedOnly, setDraftedOnly] = useState(true);
+  const throughWeek = useMemo(
+    () => completeThroughWeek ?? lastPlayedWeek(rows),
+    [completeThroughWeek, rows],
+  );
+  const seasonWeeks = useMemo(() => SEASON_WEEKS.filter((w) => w <= throughWeek), [throughWeek]);
+  const playoffWeeks = useMemo(() => PLAYOFF_WEEKS.filter((w) => w <= throughWeek), [throughWeek]);
+  const allWeeks = useMemo(() => [...seasonWeeks, ...playoffWeeks], [seasonWeeks, playoffWeeks]);
+  const [draftedOnly, setDraftedOnly] = useState(() => hasDraftMarket(rows));
   const [sort, setSort] = useState<Sort>("total");
 
   const label = VIEW_LABELS[view];
@@ -55,9 +84,9 @@ export default function WeeklyTable({
     return scoped
       .map((row) => {
         const points = (week: number) => row.weeks[String(week)] ?? 0;
-        const played = ALL_WEEKS.filter((w) => row.weeks[String(w)] != null).length;
-        const seasonTotal = SEASON_WEEKS.reduce((sum, w) => sum + points(w), 0);
-        const playoffTotal = PLAYOFF_WEEKS.reduce((sum, w) => sum + points(w), 0);
+        const played = allWeeks.filter((w) => row.weeks[String(w)] != null).length;
+        const seasonTotal = seasonWeeks.reduce((sum, w) => sum + points(w), 0);
+        const playoffTotal = playoffWeeks.reduce((sum, w) => sum + points(w), 0);
         // Week 18 is not a fantasy week and gets no column of its own, but it
         // is shown in the totals so a row reconciles against the season total
         // on the chart above instead of silently disagreeing with it.
@@ -82,7 +111,7 @@ export default function WeeklyTable({
               ? b.avg - a.avg
               : b.total - a.total,
       );
-  }, [rows, view, draftedOnly, sort]);
+  }, [rows, view, draftedOnly, sort, allWeeks, seasonWeeks, playoffWeeks]);
 
   const sortButton = (key: Sort, label: string) => (
     <button
@@ -143,18 +172,22 @@ export default function WeeklyTable({
               >
                 {label}
               </th>
-              <th
-                colSpan={SEASON_WEEKS.length}
-                className="sticky top-0 z-20 border-b border-r bg-card p-1.5 text-center text-[10px] font-bold uppercase tracking-widest text-muted-foreground"
-              >
-                Season weeks
-              </th>
-              <th
-                colSpan={PLAYOFF_WEEKS.length}
-                className="sticky top-0 z-20 border-b border-r bg-amber-50 p-1.5 text-center text-[10px] font-bold uppercase tracking-widest text-amber-900"
-              >
-                Playoff weeks
-              </th>
+              {seasonWeeks.length > 0 && (
+                <th
+                  colSpan={seasonWeeks.length}
+                  className="sticky top-0 z-20 border-b border-r bg-card p-1.5 text-center text-[10px] font-bold uppercase tracking-widest text-muted-foreground"
+                >
+                  Season weeks
+                </th>
+              )}
+              {playoffWeeks.length > 0 && (
+                <th
+                  colSpan={playoffWeeks.length}
+                  className="sticky top-0 z-20 border-b border-r bg-amber-50 p-1.5 text-center text-[10px] font-bold uppercase tracking-widest text-amber-900"
+                >
+                  Playoff weeks
+                </th>
+              )}
               <th
                 colSpan={5}
                 className="sticky top-0 z-20 border-b bg-card p-1.5 text-center text-[10px] font-bold uppercase tracking-widest text-muted-foreground"
@@ -163,7 +196,7 @@ export default function WeeklyTable({
               </th>
             </tr>
             <tr>
-              {SEASON_WEEKS.map((week) => (
+              {seasonWeeks.map((week) => (
                 <th
                   key={week}
                   className="sticky top-[26px] z-20 w-9 border-b bg-card p-1 text-center text-[10px] font-semibold text-muted-foreground"
@@ -171,7 +204,7 @@ export default function WeeklyTable({
                   {week}
                 </th>
               ))}
-              {PLAYOFF_WEEKS.map((week) => (
+              {playoffWeeks.map((week) => (
                 <th
                   key={week}
                   className="sticky top-[26px] z-20 w-9 border-b bg-amber-50 p-1 text-center text-[10px] font-semibold text-amber-900"
@@ -193,7 +226,7 @@ export default function WeeklyTable({
             {prepared.length === 0 && (
               <tr>
                 <td
-                  colSpan={ALL_WEEKS.length + 6}
+                  colSpan={allWeeks.length + 6}
                   className="p-6 text-center text-muted-foreground"
                 >
                   No {label} carries a {season} stat line under this filter.
@@ -220,13 +253,13 @@ export default function WeeklyTable({
                     {row.adp == null && " · undrafted"}
                   </span>
                 </th>
-                {ALL_WEEKS.map((week) => {
+                {allWeeks.map((week) => {
                   const value = points(week);
                   const didPlay = row.weeks[String(week)] != null;
                   const isBye = row.seasonByeWeek === week;
                   const heat = didPlay ? weekHeat(value, row.position) : null;
-                  const lastSeasonWeek = week === SEASON_WEEKS[SEASON_WEEKS.length - 1];
-                  const lastPlayoffWeek = week === PLAYOFF_WEEKS[PLAYOFF_WEEKS.length - 1];
+                  const lastSeasonWeek = week === seasonWeeks[seasonWeeks.length - 1];
+                  const lastPlayoffWeek = week === playoffWeeks[playoffWeeks.length - 1];
                   return (
                     <td
                       key={week}

@@ -23,6 +23,10 @@ let ensureNflDfsTablesPromise: Promise<void> | null = null;
 let ensureNflContextTablesPromise: Promise<void> | null = null;
 
 const FANTASY_FOOTBALL_DDLS = [
+  // A bye belongs to a TEAM, so it is stored once per team per season rather
+  // than copied onto every player row. Python (ingest/ff_independent.py) owns
+  // the writes, deriving it from the nflverse schedule; the web only reads.
+  `CREATE TABLE IF NOT EXISTS ff_team_byes (season INTEGER NOT NULL, team_abbrev TEXT NOT NULL, bye_week INTEGER NOT NULL, source_snapshot_id BIGINT, fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(season, team_abbrev))`,
   `CREATE TABLE IF NOT EXISTS ff_source_snapshots (id BIGSERIAL PRIMARY KEY, source TEXT NOT NULL, dataset TEXT NOT NULL, season INTEGER NOT NULL, scoring TEXT, ranking_type TEXT, request_params JSONB NOT NULL DEFAULT '{}'::jsonb, source_updated_at TIMESTAMPTZ, fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), response_hash TEXT NOT NULL, row_count INTEGER NOT NULL, matched_count INTEGER NOT NULL DEFAULT 0, unmatched_count INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, error_summary TEXT, UNIQUE(source, dataset, response_hash))`,
   `ALTER TABLE ff_source_snapshots ADD COLUMN IF NOT EXISTS week INTEGER`,
   `ALTER TABLE ff_source_snapshots ADD COLUMN IF NOT EXISTS contract_key TEXT`,
