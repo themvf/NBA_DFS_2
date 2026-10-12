@@ -7913,7 +7913,16 @@ and closing lines in `nfl_prop_implied_lines` and reports. Exploratory, weeks
   ran +0.34 points high in weeks 1-4. Lines come from two captures per game
   (the day before at 22:07 UTC and 60-75 minutes before kickoff, see
   docs/the-odds-api.md); without either, every player stays on the model and
-  the page says so. Layers 2 (market-derived game script and opponent
+  the page says so. **Lines against results** (`research/nfl_prop_outcomes.py`,
+  weeks 1-5, final games, closing DK line): receptions and receiving yards are
+  calibrated (over hit 48.9%/49.5% against 49.3%/50.0% implied; every-over and
+  every-under bets lose about the vig). Rushing yards is not: overs hit 44.6%
+  against 49.8% implied (gap -5.2%, game-clustered CI [-8.8, -1.6], 453 lines,
+  78 games), every under +4.6% with CI [-2.3, +11.3]; weeks swing 38-53%.
+  Discovery only (several cells read at once): a rushing-under rule needs its
+  own pre-registered forward test before anything is bet. About 6% of listed
+  receivers have no stat row (inactive, or active with zero), so their over
+  rates could be up to ~3 points lower. Layers 2 (market-derived game script and opponent
   effects for players without lines) and 3 (predicted lines early in the
   week) are not built.
 
