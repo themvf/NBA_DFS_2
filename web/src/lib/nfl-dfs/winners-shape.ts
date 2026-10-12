@@ -114,6 +114,23 @@ const fmtShare = (share: number | null) => (share == null ? "an unknown" : `${Ma
 const money = (n: number) => `$${n.toLocaleString()}`;
 
 /**
+ * The portfolio limits the preset actually enforces, given the user's own
+ * Lineup rules. `applyWinnersShape` uses this, and so does the page's
+ * Lineup rules summary, so the summary can never show a rule the build will
+ * not apply.
+ */
+export function winnersShapeLimits(base: { format: "classic" | "showdown"; nLineups: number; minSalary: number; maxExposure: number; minUnique: number }) {
+  const classic = base.format === "classic";
+  return {
+    minSalary: Math.max(base.minSalary, WINNERS_SHAPE.minSalary),
+    maxExposure: classic ? Math.min(base.maxExposure, WINNERS_SHAPE.maxExposure) : base.maxExposure,
+    minUnique: classic ? Math.max(base.minUnique, WINNERS_SHAPE.minUnique) : base.minUnique,
+    maxQbExposure: classic ? qbExposureCap(base.nLineups) : null,
+    maxCaptainExposure: classic ? null : WINNERS_SHAPE.captainMaxExposure,
+  };
+}
+
+/**
  * The settings the preset enforces plus the pool rules, applied to one slate.
  * GPP only: a cash build is returned unchanged with a note saying so.
  */
@@ -125,13 +142,13 @@ export function applyWinnersShape(settings: NflOptimizerSettings, players: reado
     return { settings, excluded, notes };
   }
   const n = settings.nLineups;
-  const shaped: NflOptimizerSettings = { ...settings,
-    minSalary: Math.max(settings.minSalary, WINNERS_SHAPE.minSalary) };
+  const limits = winnersShapeLimits(settings);
+  const shaped: NflOptimizerSettings = { ...settings, minSalary: limits.minSalary };
   if (settings.format === "classic") {
-    const qbCap = qbExposureCap(n);
+    const qbCap = limits.maxQbExposure!;
     Object.assign(shaped, {
-      minUnique: Math.max(settings.minUnique, WINNERS_SHAPE.minUnique),
-      maxExposure: Math.min(settings.maxExposure, WINNERS_SHAPE.maxExposure),
+      minUnique: limits.minUnique,
+      maxExposure: limits.maxExposure,
       stackPassCatchers: Math.max(1, settings.stackPassCatchers) as 1 | 2,
       bringBack: true,
       bringBackShare: WINNERS_SHAPE.bringBackShare,
@@ -145,7 +162,7 @@ export function applyWinnersShape(settings: NflOptimizerSettings, players: reado
     applyPoolRules(settings, players, excluded, notes);
   } else {
     Object.assign(shaped, {
-      maxCaptainExposure: WINNERS_SHAPE.captainMaxExposure,
+      maxCaptainExposure: limits.maxCaptainExposure!,
       excludeKickers: true,
       forbidFourTwoSplit: true,
       captainPositions: [...WINNERS_SHAPE.captainPositions],
