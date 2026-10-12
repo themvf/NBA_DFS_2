@@ -55,6 +55,14 @@ REQUIRED = {
     "TE": ("player_receptions", "player_reception_yds", "player_anytime_td"),
 }
 
+# Mean actual / implied over 2026 weeks 1-4 (research/nfl_prop_implied.py, full
+# sample): the median-to-mean correction the web's market anchor applies
+# (web/src/lib/nfl-dfs/market-anchor.ts mirrors these; its test pins the two).
+CALIBRATION_V1 = {
+    "player_pass_yds": 1.023, "player_pass_tds": 1.020, "player_pass_interceptions": 0.985,
+    "player_rush_yds": 1.057, "player_receptions": 1.078, "player_reception_yds": 1.175, "player_anytime_td": 0.998,
+}
+
 # Yards a reception is worth when a back has a receptions line but no
 # receiving-yards line (most backs). League RB yards per catch, a stated prior.
 RB_YARDS_PER_RECEPTION = 7.5
@@ -104,7 +112,8 @@ def _normal_tail(mean: float, spread: float, threshold: float) -> float:
     return 1 - _N.cdf((threshold - mean) / spread) if spread > 0 else float(mean >= threshold)
 
 
-def stat_line(position: str, lines: dict[str, dict], markets: dict[str, Market] | None = None) -> dict | None:
+def stat_line(position: str, lines: dict[str, dict], markets: dict[str, Market] | None = None,
+              calibration: dict[str, float] | None = None) -> dict | None:
     """Expected stats for one player from his lines.
 
     ``lines`` maps a market key to ``{"line", "over", "under"}`` (two-way) or
@@ -114,11 +123,15 @@ def stat_line(position: str, lines: dict[str, dict], markets: dict[str, Market] 
     if position not in REQUIRED or any(_missing(m, lines.get(m)) for m in REQUIRED[position]):
         return None
 
+    cal = calibration or {}
+
     def mean(m: str) -> float | None:
         q = lines.get(m) or {}
-        return market_mean(m, q.get("line"), q.get("over"), q.get("under"), defs.get(m))
+        v = market_mean(m, q.get("line"), q.get("over"), q.get("under"), defs.get(m))
+        return None if v is None else v * cal.get(m, 1.0)
 
     td = anytime_td_rate((lines.get("player_anytime_td") or {}).get("yes"))
+    td = None if td is None else td * cal.get("player_anytime_td", 1.0)
     out = {"passing_yards": 0.0, "passing_tds": 0.0, "passing_interceptions": 0.0, "rushing_yards": 0.0,
            "receptions": 0.0, "receiving_yards": 0.0, "scrimmage_tds": td or 0.0}
     if position == "QB":
