@@ -80,3 +80,36 @@ naming rule would have named the actual starter.
   is a wrong projection for two quarterbacks; the naming check above sizes it.
 - Team pass volume ignores the opponent and the game's expected script.
 - Lines are rescaled proportionally; a backup's rushing stays his own.
+
+## v1 result (2026-10-12): spot starts pass, established starters do not
+
+Development fit (180 spot starts, 2020-2025): H = 8, P = 2, S = 16, M = 10.
+
+| Cohort | Window | n | DK points MAE, current → new | Change, 95% interval | Gate |
+| --- | --- | ---: | --- | --- | --- |
+| Spot start | Development 2020-25 | 219 | 8.17 → 6.51 | −1.66 [−2.42, −0.82] | pass |
+| Established | Development 2020-25 | 741 | 6.42 → 6.37 | −0.05 [−0.19, +0.10] | pass |
+| Spot start | **Test 2016-19** | 131 | 7.38 → 5.79 | **−1.59 [−2.76, −0.53]** | **pass** |
+| Established | **Test 2016-19** | 477 | 6.26 → 6.29 | +0.03 [−0.14, +0.20] | **fail** (limit +0.10) |
+
+Passing-yard error on blind spot starts fell from 93 to 64 yards; the attempts
+bias went from −11.2 to +3.5. On established starters the construction added
+nothing and the interval does not rule out a small cost, so v1 as registered
+(apply to every expected starter) is not promoted.
+
+2026 weeks 1-5, descriptive (9 spot starts with DraftKings lines): attempts
+DraftKings 28.4, current model 16.7, construction 30.1, actual 28.9; passing
+yards MAE DraftKings 49, current 80, construction 53.
+
+## v2 (registered 2026-10-12, after the v1 result): apply only where it helped
+
+`nfl-qb-spot-start-v2` keeps the v1 construction and constants unchanged and
+applies it only to an expected starter whose mean attempts over his previous
+six games is below 15, or who has fewer than two prior games: the spot-start
+definition above, computed from pregame history. Every other quarterback is
+projected exactly as today, so the established cohort is unchanged by
+construction and the spot-cohort numbers above are v2's numbers. This is a
+restriction chosen after seeing v1's result, stated as such; it introduces no
+new fitted quantity. The production naming rule's hit rate cannot be replayed
+for 2026 weeks 1-5 (depth order was not stored with past projections); it is
+recorded in every run's availability report from week 6 on.
