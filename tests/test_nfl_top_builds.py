@@ -99,3 +99,14 @@ def test_a_player_with_no_points_anywhere_leaves_the_lineup_unscored():
     _, lineups = load_ours(db, {"slate_upload_id": "u", "contest_id": "c", "season": 2026, "week": 5}, "run-1")
     assert lineups[0]["points"] is None
     assert lineups[0]["missing"] == ["Jerry Jeudy"]
+
+
+def test_captain_points_belong_to_the_captain_slot_only():
+    # 2026-10-13 BUF@LAR: a field captain seat (Nacua 61.05 = 1.5 x 40.7) was
+    # credited to our FLEX Nacua, and our CPT Allen got only his base 34.5.
+    from research.nfl_top_builds import load_ours
+    db = _FakeDb(week_results=[("Josh Allen", "QB", "BUF", 34.5)],
+                 seats=[("Puka Nacua", "CPT", "LAR", 61.05)],
+                 lineup=[("Josh Allen", "CPT", "BUF"), ("Puka Nacua", "FLEX", "LAR")])
+    _, lineups = load_ours(db, {"slate_upload_id": "u", "contest_id": "c", "season": 2026, "week": 5}, "run-1")
+    assert lineups[0]["points"] == round(1.5 * 34.5 + 40.7, 2)
