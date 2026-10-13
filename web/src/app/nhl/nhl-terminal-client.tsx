@@ -11,7 +11,7 @@ import { buildMovementInsights, cfbIntelligenceEvents, comparableTrail } from "@
 import { selectedSportsbooks } from "@/lib/sportsbook-policy";
 import {
   NHL_MARKET_LABELS, bookFairProbability, buildNhlMarket, marketSnapshot, nhlFreshnessTargetMinutes, pct, sidesFor,
-  signed, tapeSeries, type NhlMarketKey, type NhlMetric, type NhlSide,
+  signed, tapeSeries, quoteFresh, type NhlMarketKey, type NhlMetric, type NhlSide,
 } from "@/lib/nhl-market";
 import styles from "../cfb/cfb-terminal.module.css";
 import n from "./nhl-terminal.module.css";
@@ -35,6 +35,14 @@ function signalMetric(signal: LineAlertRow): string | null {
   const pp = (key: string) => typeof d[key] === "number" ? `${Number(d[key]) > 0 ? "+" : ""}${Number(d[key]).toFixed(1)}pp` : null;
   if (signal.alertType === "dk_value") return typeof d.ev_pct === "number" ? `EV ${Number(d.ev_pct) > 0 ? "+" : ""}${Number(d.ev_pct).toFixed(1)}%` : null;
   return pp(signal.alertType === "steam" ? "avg_move_pp" : signal.alertType === "walking" ? "drift_pp" : "gap_pp");
+}
+
+function signalTiming(signal: LineAlertRow): string {
+  const d=signal.details??{};
+  const interval=signal.alertType==="steam" ? ` · interval ${typeof d.interval_minutes==="number"?`${d.interval_minutes.toFixed(1)}m`:"unknown"}` : "";
+  const captured=typeof d.trigger_capture_at==="string"?` · captured ${fmtEt(d.trigger_capture_at,true)}`:" · capture time unknown";
+  const updated=typeof d.book_updated_at==="string"?` · book updated ${fmtEt(d.book_updated_at,true)}`:" · book update unknown";
+  return `${String(d.quote_status??"unknown").toUpperCase()} AT ALERT${interval}${captured}${updated} · paper observation`;
 }
 
 function fmtEt(value: string | number, compact = false): string {
@@ -167,7 +175,7 @@ export default function NhlTerminalClient({ board, captureHealth, signals, score
   const [positions, setPositions] = useState<PaperPosition[]>([]); const [lockMessage, setLockMessage] = useState<string | null>(null);
   useEffect(() => { const timer = window.setInterval(() => { setObservedNow(Date.now()); router.refresh(); }, 60_000); return () => window.clearInterval(timer); }, [router]);
   const game = board.games.find((item) => item.matchupId === gameId) ?? board.games[0] ?? null;
-  const view = useMemo(() => game ? buildNhlMarket(game, marketKey, side, metric, board.asOf) : null, [game, marketKey, side, metric, board.asOf]);
+  const view = useMemo(() => game ? buildNhlMarket(game, marketKey, side, metric, new Date(Math.max(observedNow, Date.parse(board.asOf))).toISOString()) : null, [game, marketKey, side, metric, board.asOf, observedNow]);
   const quote = view?.books.find((item) => item.key === selectedBook) ?? view?.books[0] ?? null;
   const filteredGames = useMemo(() => { const normalized = query.trim().toLowerCase(); return board.games.filter((item) => `${item.awayTeam} ${item.homeTeam} ${item.awayAbbrev} ${item.homeAbbrev} ${item.networks ?? ""}`.toLowerCase().includes(normalized)); }, [board.games, query]);
   const gameSignals = useMemo(() => signals.filter((item) => item.matchupId === game?.matchupId), [signals, game?.matchupId]);
@@ -177,7 +185,12 @@ export default function NhlTerminalClient({ board, captureHealth, signals, score
   function chooseMarket(next: NhlMarketKey) { setMarketKey(next); setSide(sidesFor(next)[0]); setMetric("price"); setSelectedBook(""); setLockMessage(null); }
   function chooseSide(next: NhlSide) { setSide(next); setSelectedBook(""); setLockMessage(null); }
   function addPaperPosition() {
-    if (!game || !quote || !quote.fresh) return;
+    const now = Date.now();
+    if (!game || !quote || !game.commenceTime || now >= Date.parse(game.commenceTime)
+      || !quoteFresh(quote.updatedAt, game.latestCapturedAt, new Date(now).toISOString())) {
+      setLockMessage("Paper entry unavailable: refresh for a fresh pregame quote.");
+      return;
+    }
     setPositions((current) => [{ id: `${game.matchupId}-${marketKey}-${quote.key}-${Date.now()}`, game: `${game.awayAbbrev} @ ${game.homeAbbrev}`, market: `${NHL_MARKET_LABELS[marketKey]} · ${side.toUpperCase()}`, book: quote.book, entry: `${quote.line} ${quote.price}`, observedAt: quote.updatedAt ?? board.asOf }, ...current]);
     setLockMessage(`Recorded paper position at ${quote.book}; this did not place a wager.`);
   }
@@ -244,7 +257,7 @@ export default function NhlTerminalClient({ board, captureHealth, signals, score
           <div className={styles.sectionTitle}><span>CROSS-MARKET</span><span>RELATED</span></div>
           {(Object.keys(NHL_MARKET_LABELS) as NhlMarketKey[]).map((key) => { const related = buildNhlMarket(game, key, sidesFor(key)[0], "price", board.asOf); return <div key={key} className={styles.relatedRow}><span>{NHL_MARKET_LABELS[key]}</span><strong>{related.currentLabel}</strong><small>{related.move}</small></div>; })}
           <div className={styles.sectionTitle}><span>SIGNAL TAPE</span><span>{gameSignals.length} RECORDED</span></div>
-          {gameSignals.length ? gameSignals.slice(0, 8).map((signal) => <article key={`${signal.alertType}-${signal.side}`} className={styles.signalRow} data-tone="market"><div><strong>{SIGNAL_LABELS[signal.alertType] ?? signal.alertType.toUpperCase()}</strong><span>{fmtEt(signal.createdAt, true)}</span></div><p>MONEYLINE · {signal.side.toUpperCase()}{signalMetric(signal) ? ` · ${signalMetric(signal)}` : ""} · retail {pct(signal.alertProb)}{signal.sharpProb != null ? ` · Pinnacle ${pct(signal.sharpProb)}` : ""}</p><small>{signal.outcome ? `${signal.outcome.toUpperCase()}${signal.clvPp != null ? ` · CLV ${signed(signal.clvPp)}pp` : ""}` : "result pending"}</small></article>) : <div className={styles.signalEmpty}>{auditError ? "Signal ledger could not be read for this game." : "No qualifying moneyline signal for this game."}</div>}</> : null}
+          {gameSignals.length ? gameSignals.slice(0, 8).map((signal) => <article key={`${signal.alertType}-${signal.side}`} className={styles.signalRow} data-tone="market"><div><strong>{SIGNAL_LABELS[signal.alertType] ?? signal.alertType.toUpperCase()}</strong><span>{fmtEt(signal.createdAt, true)}</span></div><p>MONEYLINE · {signal.side.toUpperCase()}{signalMetric(signal) ? ` · ${signalMetric(signal)}` : ""} · retail {pct(signal.alertProb)}{signal.sharpProb != null ? ` · Pinnacle ${pct(signal.sharpProb)}` : ""}</p><small>{signalTiming(signal)}</small><small>{signal.outcome ? `${signal.outcome.toUpperCase()}${signal.clvPp != null ? ` · probability CLV ${signed(signal.clvPp)}pp` : ""}${typeof signal.details?.price_clv_pct==="number"?` · price CLV ${signed(signal.details.price_clv_pct)}%`:" · price CLV unavailable"}` : "result pending"}</small></article>) : <div className={styles.signalEmpty}>{auditError ? "Signal ledger could not be read for this game." : "No qualifying moneyline signal for this game."}</div>}</> : null}
         <div className={styles.disclosure}><BellRing aria-hidden="true" /><div><strong>Research terminal</strong><p>Quotes are observations, not recommendations. No predictive edge or real-money execution is represented.</p></div></div>
       </aside>
     </div>

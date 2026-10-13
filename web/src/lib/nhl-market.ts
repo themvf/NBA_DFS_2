@@ -140,7 +140,9 @@ export type NhlMarketView = {
 export function quoteFresh(updatedAt: string | null, capturedAt: string | null, asOf: string): boolean {
   if (!updatedAt || !capturedAt) return false;
   const now = Date.parse(asOf);
-  return now - Date.parse(updatedAt) <= 5 * 60_000 && now - Date.parse(capturedAt) <= 5 * 60_000;
+  const updated = Date.parse(updatedAt), captured = Date.parse(capturedAt);
+  return [now, updated, captured].every(Number.isFinite) && updated <= captured && captured <= now
+    && now - updated <= 5 * 60_000 && now - captured <= 5 * 60_000;
 }
 
 function bookTitle(key: string, quote?: CfbBookQuote): string {
@@ -170,7 +172,8 @@ export function buildNhlMarket(game: NhlGameTape, market: NhlMarketKey, side: Nh
     const label = market === "moneyline" ? `${sideName(game, side)} ML`
       : market === "puckline" ? `${sideName(game, side)} ${signed(line!)}` : `${side.toUpperCase()} ${line!.toFixed(1)}`;
     return [{ key, book: bookTitle(key, quote), line: label, price: american(price), fair: pct(bookFairProbability(quote, market, side)),
-      updatedAt, fresh: quoteFresh(updatedAt, game.latestCapturedAt, asOf), atConsensus: market === "moneyline" || line === current.line }];
+      updatedAt, fresh: !!game.commenceTime && Date.parse(asOf) < Date.parse(game.commenceTime)
+        && quoteFresh(updatedAt, game.latestCapturedAt, asOf), atConsensus: market === "moneyline" || line === current.line }];
   }).sort((a, b) => {
     const ai = SPORTSBOOK_KEYS.indexOf(a.key), bi = SPORTSBOOK_KEYS.indexOf(b.key);
     return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi) || a.book.localeCompare(b.book);
