@@ -1640,6 +1640,8 @@ export async function exportSavedNflLineups(runId:string,overrides:QaOverride[]=
 async function exportableSavedNflLineups(runId:string,entryTemplate:string|null,overrides:QaOverride[]) {
   const {run}=await readNflOptimizerAudit(runId);
   const settings=run.settings as NflSavedRunSettings;
+  if (run.status.startsWith('research_') || 'researchStudy' in settings)
+    throw new Error('Research portfolios cannot be exported as contest entries.');
   const defensive=['experimental','approved'].includes(settings.defensiveAdjustments?.mode??'');
   if(defensive) {
     if(overrides.length)throw new Error('Experimental defensive exports require a clean saved QA pass. Build again after resolving each check.');

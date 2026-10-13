@@ -1370,6 +1370,18 @@ END $$;`,
   // Nullable + idempotent so it applies cleanly to existing deployments; legacy
   // rows keep NULL rather than claiming a build they were not produced under.
   `ALTER TABLE nfl_dfs_optimizer_runs ADD COLUMN IF NOT EXISTS build_info JSONB`,
+  // Same conditional migration as db/schema.py; normal saved-run lists already
+  // select only complete/partial, so research arms cannot become the active build.
+  `DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'nfl_dfs_optimizer_runs'::regclass
+      AND conname = 'nfl_dfs_optimizer_runs_status_check'
+      AND pg_get_constraintdef(oid) LIKE '%research_complete%') THEN
+      ALTER TABLE nfl_dfs_optimizer_runs
+        DROP CONSTRAINT IF EXISTS nfl_dfs_optimizer_runs_status_check,
+        ADD CONSTRAINT nfl_dfs_optimizer_runs_status_check
+        CHECK (status IN ('complete','partial','failed','research_complete','research_partial','research_failed'));
+    END IF;
+  END $$`,
 ];
 
 export async function ensureNflDfsTables(): Promise<void> {
