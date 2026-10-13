@@ -1,19 +1,19 @@
 # Classic attribution study (read-only)
 
-Generated 2026-10-13T22:01:54.026Z. Inputs: `research/nfl_classic_attribution_export.py`; exclusions and report: `web/scripts/research-nfl-classic-attribution.ts`; independent oracle: `research/nfl_classic_attribution_cbc.py` (CBC via pulp). No setting, optimizer code or stored record was changed.
+Generated 2026-10-13T22:32:06.578Z. Inputs: `research/nfl_classic_attribution_export.py`; exclusions and report: `web/scripts/research-nfl-classic-attribution.ts`; independent oracle: `research/nfl_classic_attribution_cbc.py` (CBC via pulp). No setting, optimizer code or stored record was changed.
 
 ## 1. Coverage and input completeness
 
-| Week | Slate | Contest | Entries | Score curve | Top-100 entries | Build used (lineups) | Shape | Model | Optimizer then | Eligibility report | Eligible pool | Eligible with a recorded score | Prior-window plays labelled before the run | Pool-rule inputs |
+| Week | Slate | Contest | Entries | Score curve | Top-100 entries | Selected saved build (lineups) | Shape | Model | Optimizer then | Eligibility report | Eligible pool | Eligible with a recorded score | Prior-window plays labelled before the run | Pool-rule inputs |
 |---:|---|---|---:|---|---:|---|---|---|---|---|---:|---:|---|---|
-| 1 | 12 games | 193028206 | 832,342 | yes | 100 | 4875c71f (20) | standard | nfl-dfs-historical-v2 | nfl-dfs-ilp-v1 | no | 719 | 289 | - (no prior weeks) | none: RB/WR/TE rules skipped by the product |
-| 2 | 13 games | 195648007 | 172,761 | yes | 100 | 79839671 (20) | standard | nfl-dfs-historical-v3 | nfl-dfs-ilp-v5-audited-situations | no | 593 | 481 | 0 / 2,616 | **unavailable**: RB/WR/TE rules skipped |
-| 3 | 13 games | 195905122 | 161,764 | yes | 100 | 45346d1b (25) | standard | nfl-dfs-historical-v5 | nfl-dfs-ilp-v7-showdown-legality | no | 586 | 353 | 0 / 5,192 | **unavailable**: RB/WR/TE rules skipped |
+| 1 | 12 games | 193028206 | 832,342 | yes | 100 | 4875c71f (20) | standard | nfl-dfs-historical-v2 | nfl-dfs-ilp-v1 | no | 719 | 289 | - (no prior weeks) | none (no prior weeks): RB/WR/TE rules skipped |
+| 2 | 13 games | 195648007 | 172,761 | yes | 100 | 79839671 (20) | standard | nfl-dfs-historical-v3 | nfl-dfs-ilp-v5-audited-situations | no | 593 | 481 | 0 / 2,616 | **historical inputs unrecoverable**: reconstruction skips RB/WR/TE rules |
+| 3 | 13 games | 195905122 | 161,764 | yes | 100 | 45346d1b (25) | standard | nfl-dfs-historical-v5 | nfl-dfs-ilp-v7-showdown-legality | no | 586 | 353 | 0 / 5,192 | **historical inputs unrecoverable**: reconstruction skips RB/WR/TE rules |
 | 4 | 12 games | 196151357 | 161,764 | yes | 100 | af17aac3 (107) | standard | nfl-dfs-historical-v5 | nfl-dfs-ilp-v8-defensive-dk-fallback | yes | 475 | 292 | 7,045 / 7,856 | **partial** reconstruction |
 | 5 | 11 games | 196403752 | 161,557 | yes | 100 | 4c50a8d6 (100) | winners | nfl-dfs-historical-v5 | nfl-dfs-ilp-v12-lineup-integrity | yes | 442 | 270 | 7,934 / 7,934 | complete reconstruction |
 
-- **Build used** is the largest optimizer run created before the slate's first kickoff (latest on ties), i.e. the entered build rather than a test run.
-- **Prior opportunity** (the input to the RB/WR/TE pool rules) was not stored in any of these frozen pools. It is **reconstructed** with the workspace's own query: play-by-play weeks w-3..w-1 labelled no later than the run, team targets for the share. Plays relabelled after a run carry the later label time, so the gate drops them rather than use later information: weeks 2-3 have none left (the product would have skipped the three rules, and so does this study), week 4 keeps 90%. Week 1 has no prior weeks.
+- **Selected saved build** is the largest optimizer run saved before the slate's first kickoff (latest on ties). Without a DraftKings entry export or contest-entry mapping it is not established that this is the portfolio that was entered.
+- **Prior opportunity** (the input to the RB/WR/TE pool rules) was not stored in any of these frozen pools. It is **reconstructed** with the workspace's own query: play-by-play weeks w-3..w-1 labelled no later than the run, team targets for the share. Plays relabelled after a run carry the later label time, so the gate drops them rather than use later information. That makes their earlier state unrecoverable from the current rows; it does not show the product lacked those plays at the time. Weeks 2-3 have none left, so the reconstruction skips the three rules there; week 4 keeps 90%. Week 1 has no prior weeks.
 - **Reconstruction check (week 5):** that week's Winners run recorded 217 pool exclusions. Today's rules on the reconstructed inputs exclude 217: 217 in common, 0 only in the run's record, 0 only in the reconstruction.
 - Players with no recorded score are excluded from every pool and counted (eligible minus scored, above); they are mostly depth players who did not play. Defence scores where DraftKings' contest number and the results table differ: Buccaneers 9 vs 8; Seahawks 9 vs 8 (DraftKings' number is used).
 
@@ -31,9 +31,21 @@ Generated 2026-10-13T22:01:54.026Z. Inputs: `research/nfl_classic_attribution_ex
 
 Both solvers maximize actual DraftKings points under DraftKings' Classic rules plus the optimizer's always-on invariants (at most 8 players from one game; a defence with at most 3 opposing offensive players), except 'DraftKings rules only', which CBC alone solves without the second invariant. The defence-against-own-offense limit (5%) and the bring-back share (50%) are portfolio rules: a single Winners lineup may have either, so full Winners leaves both open; strict single-lineup versions appear only as labelled diagnostics. CBC's certificate (status, objective, bound, gap, time) is required before its number is used.
 
-**CBC certificates:** 180 of 180 solves proved optimal with zero gap; max solve time 0.2 s.
+**CBC certificates:** 360 of 360 solves (primary and sensitivity) proved optimal with zero gap (CBC "Result - Optimal solution found" at gapRel 0; node counts in results); max solve time 0.25 s.
 
 **Optimizer vs CBC:** 170 of 170 solves agree on the optimum and legality.
+
+**Scope of the certificate.** CBC proves optimality over the candidate pool it is given: eligible players with a recorded score. Players with no recorded score were resolved against nflverse (roster_weekly_2026.csv, sha256 b7483d5fff4b; snap_counts_2026.csv, sha256 e4d877bf670c):
+
+| Week | Verified not on the active roster (DraftKings 0) | Verified active, no offensive snaps (DraftKings 0) | Unresolved: offensive snaps, no stat row |
+|---:|---:|---:|---:|
+| 1 | 355 | 38 | 37 |
+| 2 | 90 | 14 | 8 |
+| 3 | 172 | 33 | 28 |
+| 4 | 138 | 18 | 27 |
+| 5 | 133 | 12 | 27 |
+
+Adding every verified non-participant to the pool at 0 changes 0 of 180 optima (each re-proven optimal). The certificate therefore covers the scored pool plus every verified non-participant. The unresolved players (mostly fullbacks and blocking tight ends) remain excluded: DraftKings scores only recorded statistics, so they scored 0 unless the stats feed missed them, which this study cannot rule out.
 
 ### Cost of each restriction (points below Unrestricted, CBC, No punts)
 
@@ -55,7 +67,7 @@ Both solvers maximize actual DraftKings points under DraftKings' Classic rules p
 | 4 | 264.16 | +5.12 | +8.36 | +0 | +9.5 | +5.22 | +10.44 | 0 | 0 |
 | 5 | 244.56 | +5.9 | +19.98 | +22.8 | +4.6 | +7.6 | +0 | 0 | -4.4 |
 
-Weeks 1-3 have no usable prior opportunity, so their RB/WR/TE rules exclude nothing (the product skips them) and only the DST pool rule binds; week 4 rests on a partial reconstruction, week 5 on a complete one. Punts-allowed results are in results.json. Hindsight optima are not achievable; they bound what a restriction can cost.
+Weeks 1-3 have no recoverable prior opportunity, so the reconstruction applies none of the RB/WR/TE rules there and only the DST pool rule binds; week 4 rests on a partial reconstruction, week 5 on a complete one. Punts-allowed results are in results.json. Hindsight optima are not achievable; they bound what a restriction can cost.
 
 ## 3. Rule premise: what the verified top-100 entries did
 
@@ -79,7 +91,7 @@ Per-position columns are entry-weighted. Entries are those ranked 1-100 (ties ke
 | 4 | 106 (1) | 141.82 | 28,235 | 93.02 | 0 | 8 | Standard (min $45,000) | 278.78 | 136.96 | 141.82 (28,235) | Troy Franklin |
 | 5 | 100 (0) | 161.4 | 20,942 | 116.98 | 0 | 22 | Winners shape | 244.56 | 83.16 | 161.4 (20,942) | - |
 
-Regret mixes forecast uncertainty with the selection objective; it is not projection error. For a Winners build the comparison optimum is the single-lineup Winners optimum. The sensitivity column scores players with no recorded score as 0, which is what DraftKings pays a player who did not play; it is labelled, not used elsewhere.
+Regret is descriptive. Any pregame selection trails an optimizer that knows every outcome, so its size does not measure a forecasting problem; that needs comparison with simple pregame baselines and with the errors of the players the optimizer actually favours. It mixes forecast uncertainty with the selection objective. For a Winners build the comparison optimum is the single-lineup Winners optimum. The sensitivity column scores players with no recorded score as 0, which is what DraftKings pays a player who did not play; it is labelled, not used elsewhere.
 
 ## 5. Paired replays: 20 lineups from each frozen pool, today's code
 
@@ -125,5 +137,5 @@ Coverage is description only; players in one game move together, and pooled play
 ## 7. What this can and cannot say
 
 - 5 slates identify mechanical exclusions, solver shortfalls and retrospective selection regret. They cannot say which strategy has better future returns, nor set an exposure level.
-- The RB/WR/TE pool rules are measurable on week 5 (complete, and exact against that week's recorded exclusions) and week 4 (partial); weeks 1-3 cannot test them.
+- The RB/WR/TE pool rules are measurable on week 5 (complete, and exact against that week's recorded exclusions) and week 4 (partial); weeks 1-3 cannot test them because their historical inputs are unrecoverable.
 - Hindsight optima bound what a restriction can cost, not what removing it would have won.

@@ -204,14 +204,14 @@ say(`Generated ${results.generatedAt}. Inputs: \`research/nfl_showdown_attributi
 say("");
 say("## 1. Coverage");
 say("");
-say("| Week | Game | Contest | Entries | Score curve | Top-100 entries | Saved run (lineups) | Model | Optimizer then | Eligibility report | Pool | No recorded score |");
+say("| Week | Game | Contest | Entries | Score curve | Top-100 entries | Selected saved build (lineups) | Model | Optimizer then | Eligibility report | Pool | No recorded score |");
 say("|---:|---|---|---:|---|---:|---|---|---|---|---:|---:|");
 for (const g of games) {
   const a = g.audit;
   say(`| ${g.week} | ${g.game} | ${g.contest.id} | ${g.contest.entries?.toLocaleString()} | ${g.contest.curve?.length ? "yes" : "**no**"} | ${g.contest.topEntries.length} | ${g.run ? `yes (${g.run.lineups})` : "**none**"} | ${g.run?.modelVersion ?? "-"} | ${g.run?.optimizerVersion ?? "-"} | ${g.run ? (g.run.eligibilityReport ? "yes" : "no (salary-only punt rule)") : "-"} | ${a.pool} | ${a.missingActual.length} |`);
 }
 say("");
-say("Players with no recorded score (no DraftKings contest number and no stat row) are excluded from every pool and counted above; they are almost all $200 depth players and inactive starters, who scored 0 on DraftKings. Source disagreements between the contest's DraftKings points and the results table: " +
+say("Players with no recorded score (no DraftKings contest number and no stat row) are excluded from every pool and counted above; most are $200 depth players. This study did not verify their participation, so the oracle's optimum is over the scored pool only. Source disagreements between the contest's DraftKings points and the results table: " +
   games.reduce((a, g) => a + g.audit.sourceDisagreements.length, 0) + ".");
 say("");
 say("**Declared eligibility** (shared by both solvers): the frozen run's pool, minus pregame availability exclusions (inactive, doubtful, backup-kicker role), which are never relaxed. The cheap-player rule (absolute $1,000 block and the role checks below $3,000) is applied in the *No punts* column and lifted in *punts allowed*. Kicker bans, the Winners-shape pool rule and manual exclusions are not part of declared eligibility; the study switches the kicker ban itself. Runs without an eligibility report (weeks 1-3) get only the $1,000 salary block as their cheap-player rule. TB@DAL has no saved run: its pool is the uploaded salary file and it is hindsight-only. Every recorded score enters the oracle pool, zeros and negatives included: under the split and salary-floor rules a $200 player who scored 0 can be what makes a lineup legal (column 'zero-point gain' in results.json).");

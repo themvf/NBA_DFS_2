@@ -1,10 +1,10 @@
 # Showdown attribution study (read-only)
 
-Generated 2026-10-13T19:20:00.614Z. Inputs: `research/nfl_showdown_attribution_export.py` files in this folder; analysis: `web/scripts/research-nfl-showdown-attribution.ts`. No setting or optimizer code was changed.
+Generated 2026-10-13T22:41:39.213Z. Inputs: `research/nfl_showdown_attribution_export.py` files in this folder; analysis: `web/scripts/research-nfl-showdown-attribution.ts`. No setting or optimizer code was changed.
 
 ## 1. Coverage
 
-| Week | Game | Contest | Entries | Score curve | Top-100 entries | Saved run (lineups) | Model | Optimizer then | Eligibility report | Pool | No recorded score |
+| Week | Game | Contest | Entries | Score curve | Top-100 entries | Selected saved build (lineups) | Model | Optimizer then | Eligibility report | Pool | No recorded score |
 |---:|---|---|---:|---|---:|---|---|---|---|---:|---:|
 | 1 | NE@SEA | 193391013 | 126,020 | yes | 108 | yes (18) | nfl-dfs-historical-v2 | nfl-dfs-ilp-v5-audited-situations | no (salary-only punt rule) | 68 | 11 |
 | 2 | NYG@LAR | 195786068 | 88,235 | yes | 109 | yes (40) | nfl-dfs-historical-v3 | nfl-dfs-ilp-v6-punt-policy | no (salary-only punt rule) | 53 | 3 |
@@ -17,7 +17,7 @@ Generated 2026-10-13T19:20:00.614Z. Inputs: `research/nfl_showdown_attribution_e
 | 5 | BUF@LAR | 196480476 | 500 | yes | 100 | yes (26) | nfl-dfs-historical-v5 | nfl-dfs-ilp-v12-lineup-integrity | yes | 49 | 7 |
 | 5 | TB@DAL | 196438550 | 88,235 | yes | 113 | **none** | - | - | - | 52 | 14 |
 
-Players with no recorded score (no DraftKings contest number and no stat row) are excluded from every pool and counted above; they are almost all $200 depth players and inactive starters, who scored 0 on DraftKings. Source disagreements between the contest's DraftKings points and the results table: 0.
+Players with no recorded score (no DraftKings contest number and no stat row) are excluded from every pool and counted above; most are $200 depth players. This study did not verify their participation, so the oracle's optimum is over the scored pool only. Source disagreements between the contest's DraftKings points and the results table: 0.
 
 **Declared eligibility** (shared by both solvers): the frozen run's pool, minus pregame availability exclusions (inactive, doubtful, backup-kicker role), which are never relaxed. The cheap-player rule (absolute $1,000 block and the role checks below $3,000) is applied in the *No punts* column and lifted in *punts allowed*. Kicker bans, the Winners-shape pool rule and manual exclusions are not part of declared eligibility; the study switches the kicker ban itself. Runs without an eligibility report (weeks 1-3) get only the $1,000 salary block as their cheap-player rule. TB@DAL has no saved run: its pool is the uploaded salary file and it is hindsight-only. Every recorded score enters the oracle pool, zeros and negatives included: under the split and salary-floor rules a $200 player who scored 0 can be what makes a lineup legal (column 'zero-point gain' in results.json).
 

@@ -1,0 +1,47 @@
+{
+ "note": "Frozen inputs of this study as of 2026-10-13. sha256 is of the uncompressed file. Regenerating from the database may not reproduce them (play-by-play is relabelled in place).",
+ "files": {
+  "2026-w1-classic.json": {
+   "sha256": "b67ff470f5d7c416938d6556164aeaf3056a760b0d5ae61d9ed588c2d58e38fc",
+   "bytes": 472629,
+   "gz": "2026-w1-classic.json.gz",
+   "gzBytes": 37920
+  },
+  "2026-w2-classic.json": {
+   "sha256": "976e864c3ac60f34a78403c0e38ccd98cd83b23eb3765fc5785c3417edb270b1",
+   "bytes": 4458765,
+   "gz": "2026-w2-classic.json.gz",
+   "gzBytes": 707742
+  },
+  "2026-w3-classic.json": {
+   "sha256": "16cdb64776c76fe906a5aa5060b7f2433d1c769cc3ebbd675f26ead93408a5cf",
+   "bytes": 5372778,
+   "gz": "2026-w3-classic.json.gz",
+   "gzBytes": 762083
+  },
+  "2026-w4-classic.json": {
+   "sha256": "5860cc345edd140fe99571d0b31036dce4d27141777d436f304e095917e6bcb8",
+   "bytes": 6752751,
+   "gz": "2026-w4-classic.json.gz",
+   "gzBytes": 1366885
+  },
+  "2026-w5-classic.json": {
+   "sha256": "7201b9c1c68b0c24474ee8e95956c268c8547f10a9d4a5992d84d643bb024db0",
+   "bytes": 8708795,
+   "gz": "2026-w5-classic.json.gz",
+   "gzBytes": 1786740
+  },
+  "roster_weekly_2026.csv": {
+   "sha256": "b7483d5fff4bd439ad981eabac2208714f95c8ffb8a4b03b53ceee2a9e371699",
+   "bytes": 4981566,
+   "gz": "roster_weekly_2026.csv.gz",
+   "gzBytes": 496914
+  },
+  "snap_counts_2026.csv": {
+   "sha256": "e4d877bf670c5bc47a1ac863cc3a28a0f4b2f926872cc03666b27b31d6ea332b",
+   "bytes": 661381,
+   "gz": "snap_counts_2026.csv.gz",
+   "gzBytes": 138592
+  }
+ }
+}

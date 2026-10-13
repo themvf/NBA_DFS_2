@@ -39,13 +39,15 @@ def opponent(p: dict) -> str | None:
     return next((t for t in gk.split("@") if t != p["team"]), None) if "@" in gk else None
 
 
-def solve(slate: dict, excl: dict, cfg: dict, punts: bool) -> dict:
+def solve(slate: dict, excl: dict, cfg: dict, punts: bool, zeros: set | None = None) -> dict:
     r = cfg["rules"]
     banned = set()
     for k in ("rbPool", "wrPool", "tePool", "dstPool"):
         if r[k]:
             banned |= set(excl["byRule"][k])
-    pool = [p for p in slate["players"] if p.get("actual") is not None and p["dkPlayerId"] not in banned
+    zeros = zeros or set()
+    pool = [dict(p, actual=0.0) if p.get("actual") is None and str(p["dkPlayerId"]) in zeros else p for p in slate["players"]]
+    pool = [p for p in pool if p.get("actual") is not None and p["dkPlayerId"] not in banned
             and (p["eligibilityClass"] == "available" or (punts and p["eligibilityClass"] == "punt"))]
     prob = pulp.LpProblem("lineup", pulp.LpMaximize)
     x = {p["dkPlayerId"]: pulp.LpVariable(f"x_{p['dkPlayerId']}", cat="Binary") for p in pool}
@@ -111,14 +113,21 @@ def solve(slate: dict, excl: dict, cfg: dict, punts: bool) -> dict:
 def main() -> None:
     d = Path(sys.argv[1])
     excl = json.loads((d / "exclusions.json").read_text(encoding="utf-8"))
+    resolution = json.loads((d / "resolution.json").read_text(encoding="utf-8")) if (d / "resolution.json").exists() else None
     out = {}
     for f in sorted(d.glob("*-classic.json")):
         slate = json.loads(f.read_text(encoding="utf-8"))
         e = excl["slates"][str(slate["week"])]
+        verified = set()
+        if resolution:
+            verified = {k for k, v in resolution["weeks"][f.stem]["players"].items() if v["class"].startswith("verified_zero")}
         for punts in (False, True):
             for cfg in excl["configs"]:
                 res = solve(slate, e, cfg, punts)
                 out[f"{slate['week']}|{'punts' if punts else 'noPunts'}|{cfg['key']}"] = res
+                # Sensitivity: verified non-participants (nflverse) enter the pool at DraftKings' 0.
+                if resolution:
+                    out[f"{slate['week']}|{'punts' if punts else 'noPunts'}|{cfg['key']}|verifiedZeros"] = solve(slate, e, cfg, punts, verified)
                 print(slate["week"], "punts" if punts else "noPunts", cfg["key"], res["status"], res["objective"], res["gap"], res["seconds"])
     (d / "cbc.json").write_text(json.dumps(out, indent=1), encoding="utf-8")
 
