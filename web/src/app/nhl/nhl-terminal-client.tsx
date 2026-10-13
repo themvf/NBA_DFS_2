@@ -243,7 +243,7 @@ export default function NhlTerminalClient({ board, captureHealth, signals, score
             <div><span>{game.awayAbbrev} REST</span><strong className={game.awayRestDays === 0 ? n.b2b : undefined}>{restLabel(game.awayRestDays)}</strong><small>Days off since the previous game on record</small></div>
             <div><span>{game.homeAbbrev} REST</span><strong className={game.homeRestDays === 0 ? n.b2b : undefined}>{restLabel(game.homeRestDays)}</strong><small>Preseason games are not loaded</small></div>
             <div><span>STATUS</span><strong className={game.completed ? n.final : undefined}>{gameStatus(game)}</strong><small>Finals credit a shootout win as one goal, as books settle</small></div>
-            <div><span>NOT CAPTURED YET</span><strong>Starting goalies · injuries</strong><small>The biggest hockey line movers; no approved feed yet</small></div>
+            <div><span>NOT CAPTURED YET</span><strong>Starting goalies · injuries</strong><small>Not integrated into these market-only observations</small></div>
           </div>
         </section>
         <section className={styles.blotter}><div className={styles.sectionTitle}><span>SESSION PAPER BLOTTER</span><span>{positions.length} OPEN</span></div>{!positions.length ? <div className={styles.blotterEmpty}>A paper position can be recorded only from an observation no more than five minutes old.</div> : <div className={styles.blotterTableWrap}><table><thead><tr><th>Game</th><th>Market</th><th>Book</th><th>Entry</th><th>Observed</th></tr></thead><tbody>{positions.map((position) => <tr key={position.id}><td>{position.game}</td><td>{position.market}</td><td>{position.book}</td><td>{position.entry}</td><td>{fmtEt(position.observedAt)}</td></tr>)}</tbody></table></div>}</section>

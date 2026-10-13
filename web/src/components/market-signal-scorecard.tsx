@@ -29,7 +29,7 @@ export default function MarketSignalScorecard({ rows, sport }: { rows: MarketSig
           <td>{row.freshRoi==null?"—":number(row.freshRoi*100,"%")} (n={row.freshPricedSettled??0})</td>
           <td>{interval(row.roiInterval,true)}</td><td>{interval(row.priceClvInterval)}</td>
         </tr>)}</tbody></table></div>
-      <footer>ROI divides by priced settled alerts. Repeated and opposing observations are retained; the all-alert row is not a portfolio. Steam interval rows are subsets of STEAM. Freshness means a quote was observed within five minutes, not a verified fill. Ranges resample whole games (2,000 fixed-seed samples); they describe this sample and do not establish predictive accuracy or profitability.</footer>
+      <footer>ROI divides by priced settled alerts at their selected books. Price CLV compares each entry with that same book in the frozen scheduled-start close; probability CLV measures the retail probability comparison. Repeated and opposing observations are retained; the all-alert row is not a portfolio. Steam interval rows are subsets of STEAM. Freshness means a quote was observed within five minutes, not a verified fill. Ranges resample whole games (2,000 fixed-seed samples); they describe this sample and do not establish predictive accuracy or profitability.</footer>
     </section>;
   }
   return <section className={styles.scorecard} aria-label={`${sport} prospective signal scorecard`}>

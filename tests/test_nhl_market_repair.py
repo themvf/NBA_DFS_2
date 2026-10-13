@@ -36,6 +36,28 @@ def test_forward_cohort_keeps_no_signal_games_and_excludes_development():
     assert result['game_coverage'][0]['close_history_id'] is None
     assert all(g['status']=='collecting' for g in result['families'].values())
 
+def test_forward_primary_population_and_matched_benchmark_use_first_alert():
+    now=datetime(2026,10,14,20,tzinfo=timezone.utc)
+    alert={'id':1,'matchup_id':7,'alert_type':'walking','side':'home','origin':'prospective','created_at':now,
+           'signal_version':'nhl-moneyline-v1','grading_version':'nhl-moneyline-audit-v2','trigger_history_id':12,
+           'close_history_id':18,'dk_clv_pct':2.0,'details_json':{'exec_book':'fanduel','exec_decimal':2.0},
+           'grading_json':{'entry_verified':True,'entry_decimal':2.0,'close_history_id':18,'timing':{'quote_status':'fresh'}}}
+    second=deepcopy(alert);second.update(id=2,side='away',created_at=now+timedelta(minutes=1))
+    game={'id':7,'nhl_game_id':100,'commence_time':now+timedelta(hours=1),'game_date':'2026-10-14',
+          'game_type':2,'schedule_state':'OK','completed':True,'home_score':2,'away_score':1}
+    class Db:
+        def execute(self,*_):
+            return [{'id':12,'books':{'fanduel':{'ml_home':100,'ml_away':-120}}}]
+    snap={'games':[game],'alerts':[alert,second],'closes':[{'matchup_id':7,'history_id':18,'primary_clv_eligible':True,'quality':'A'}]}
+    report=forward_report(Db(),snap); family=report['families']['walking']
+    assert report['all_forward_alerts']==2 and family['unique_games']==1
+    assert family['primary_fresh_settled_games']==1 and family['primary_paper_roi']==1
+    assert family['rows'][0]['favorite_benchmark_units']==-1
+    assert family['status']=='collecting' and family['primary_roi_interval'] is None
+    alert['grading_json']['timing']['quote_status']='stale'
+    family=forward_report(Db(),snap)['families']['walking']
+    assert family['primary_fresh_settled_games']==0  # no cherry-picking the later fresh alert
+
 def test_nhl_insert_freezes_timing_and_never_alters_other_sport_defaults():
     now=datetime.now(timezone.utc)
     class Db:

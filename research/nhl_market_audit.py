@@ -75,12 +75,20 @@ def forward_report(db, snap, protocol_path=PROTOCOL_PATH):
             'eligible_games':len(eligible),'completed_eligible_games':sum(g['completed'] for g in eligible),
             'all_forward_alerts':len(alerts),'families':{},'forecast_basis':'market reference; no signal probability model',
             'goalies':'not_captured','injuries':'not_captured','promotion':'manual review required; no recommendations enabled'}
+    trigger_ids=sorted({a['trigger_history_id'] for a in selected.values() if a.get('trigger_history_id') is not None})
+    triggers={h['id']:h for h in db.execute("SELECT * FROM game_odds_history WHERE sport='nhl' AND id=ANY(%s)",(trigger_ids,))} if trigger_ids else {}
+    closeids={c['matchup_id']:c['history_id'] for c in snap['closes'] if c['primary_clv_eligible'] and c['quality'] in ('A','B','C')}
     for kind in protocol['signal_types']:
         rows=[]
         for (family,gid),a in selected.items():
             if family!=kind:continue
-            g=games[gid]; grade=load_grade(db,a); meta=grade['grading_json']
-            trigger=db.execute_one("SELECT * FROM game_odds_history WHERE id=%s AND sport='nhl'",(a['trigger_history_id'],))
+            g=games[gid]
+            if a.get('grading_version')==GRADING_VERSION and a.get('close_history_id') is not None and a['close_history_id']==closeids.get(gid):
+                grade={'grading_json':a['grading_json'],'dk_clv_pct':a['dk_clv_pct']}
+            else:
+                grade=load_grade(db,a)
+            meta=grade['grading_json']
+            trigger=triggers.get(a.get('trigger_history_id'))
             b=((trigger or {}).get('books') or {}).get((a['details_json'] or {}).get('exec_book')) or {}
             item={'alert_id':a['id'],'matchup_id':gid,'side':a['side'],'created_at':str(a['created_at']),
                   'quote_status':meta['timing']['quote_status'],'entry_verified':meta['entry_verified'],
@@ -131,20 +139,19 @@ def forward_report(db, snap, protocol_path=PROTOCOL_PATH):
                                     for label in protocol['steam_intervals']} if kind=='steam' else None,
                                  'rows':rows}
     # All eligible games are listed, including those with no alert or no close.
-    closeids={c['matchup_id']:c['history_id'] for c in snap['closes']}
     result['game_coverage']=[{'matchup_id':g['id'],'nhl_game_id':g['nhl_game_id'],'commence_time':str(g['commence_time']),
                             'completed':g['completed'],'close_history_id':closeids.get(g['id']),
                             'pre_registration_alert_count':sum(a['matchup_id']==g['id'] and utc(a['created_at'])<start for a in snap['alerts']),
                             'alert_count':sum(a['matchup_id']==g['id'] for a in alerts)} for g in eligible]
     return result
 
-def run(db, output, *, repair=False):
+def run(db, output, *, repair=False, forward_only=False):
     output=Path(output);output.parent.mkdir(parents=True,exist_ok=True)
     before=snapshot(db)
     report={'as_of':before['captured_at'],'grading_version':GRADING_VERSION,'mode':'repair' if repair else 'read_only',
             'dry_run':[]}
     for a in before['alerts']:
-        if utc(a['commence_time'])<=utc(before['captured_at']):
+        if not forward_only and utc(a['commence_time'])<=utc(before['captured_at']):
             g=load_grade(db,a);report['dry_run'].append({'id':a['id'],'old_price_clv':a['dk_clv_pct'],
                 'new_price_clv':g['dk_clv_pct'],'grade':g})
     if repair:
@@ -170,11 +177,12 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--repair',action='store_true')
+    parser.add_argument('--forward-only',action='store_true',help='Evaluate the registered cohort without rescanning development grades')
     args=parser.parse_args()
     db=DatabaseManager(load_config().database_url,initialize_schema=False)
     with db.reuse_connection():
         if not args.repair: db._shared_connection.set_session(readonly=True)
-        result=run(db,args.output,repair=args.repair)
+        result=run(db,args.output,repair=args.repair,forward_only=args.forward_only)
     print(json.dumps({k:v for k,v in result.items() if k not in ('dry_run','after','forward')},default=str))
     print('NHL forward protocol:',result['forward']['status'],'eligible games:',result['forward']['eligible_games'])
 

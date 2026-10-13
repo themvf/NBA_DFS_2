@@ -50,7 +50,7 @@ jobs:
       - name: Detect and settle NHL moneyline signals
         run: python -m model.line_alerts --sport nhl
       - name: Evaluate registered NHL forward cohort (read only)
-        run: python -m research.nhl_market_audit --output artifacts/nhl-forward-audit.json
+        run: python -m research.nhl_market_audit --forward-only --output artifacts/nhl-forward-audit.json
       - uses: actions/upload-artifact@v4
         with:
           name: nhl-forward-audit-${{ github.run_id }}

@@ -53,6 +53,7 @@ def test_incomplete_pair_or_future_update_cannot_grade_price():
 
 def test_trigger_not_inferred_from_alert_creation_when_newer_capture_exists():
     a,t,c=fixture();t['captured_at']=NOW-timedelta(minutes=10)
+    t['books']['fanduel']['last_update']=(NOW-timedelta(minutes=11)).isoformat()
     changed={**t,'id':13,'captured_at':NOW-timedelta(minutes=2),
              'books':{'fanduel':{'ml_home':-120,'ml_away':100}}}
     g=grade_prices(a,t,c,[changed])
