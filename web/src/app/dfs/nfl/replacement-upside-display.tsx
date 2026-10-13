@@ -101,3 +101,25 @@ export function AbsenceCommitChip({ commit }: { commit: import("@/lib/nfl-dfs/ab
     </span>
   );
 }
+
+/**
+ * Name-cell chip for a player projected from the sportsbooks' lines
+ * (`nfl-market-anchor-v1`). The optimizer builds from the books' number; the
+ * chip keeps the model's in view, with the stat line the books imply.
+ */
+export function MarketAnchorChip({ anchor }: { anchor: import("@/lib/nfl-dfs/market-anchor").MarketAnchor }) {
+  const s = anchor.statLine;
+  const parts = [
+    s.passing_yards ? `${s.passing_yards.toFixed(0)} pass yds, ${s.passing_tds.toFixed(1)} pass TD` : null,
+    s.rushing_yards ? `${s.rushing_yards.toFixed(0)} rush yds` : null,
+    s.receptions ? `${s.receptions.toFixed(1)} catches, ${s.receiving_yards.toFixed(0)} rec yds` : null,
+    s.scrimmage_tds ? `${s.scrimmage_tds.toFixed(2)} TDs` : null,
+  ].filter(Boolean).join(", ");
+  const at = new Date(anchor.capturedAt).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" });
+  return (
+    <span title={`Projected from ${anchor.book} lines captured ${at} ET: ${parts}. The model's own projection was ${anchor.before.mean.toFixed(1)}.`}
+      className="ml-2 inline-flex items-center rounded-full border border-indigo-300 bg-indigo-50 px-2 py-0.5 align-middle text-[10px] font-bold text-indigo-800">
+      Vegas · {anchor.before.mean.toFixed(1)} → {anchor.after.mean.toFixed(1)}
+    </span>
+  );
+}

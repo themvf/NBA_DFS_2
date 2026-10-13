@@ -70,6 +70,38 @@ def test_scheduled_selection_takes_only_pregame_events_inside_the_window() -> No
     assert [e["id"] for e in select_events(events, now, 1, 0)] == ["early"]
 
 
+def test_t75_run_skips_the_group_it_already_priced() -> None:
+    from datetime import datetime, timezone
+    # 15:22 UTC tick: the 16:25 group is 63 minutes out; the 16:05 group (43 min) was priced at 14:52.
+    now = datetime(2026, 10, 11, 15, 22, tzinfo=timezone.utc)
+    events = [{"id": i, "commence_time": t} for i, t in (("g1605", "2026-10-11T16:05:00Z"), ("g1625", "2026-10-11T16:25:00Z"))]
+    assert [e["id"] for e in select_events(events, now, 0, 1.25, 1.0)] == ["g1625"]
+
+
+def test_day_ahead_takes_tomorrows_eastern_games_only() -> None:
+    from datetime import datetime, timezone
+    # Sunday 18:07 ET: tomorrow is Monday; tonight's 8:20 PM game and next Thursday's are not taken.
+    now = datetime(2026, 10, 11, 22, 7, tzinfo=timezone.utc)
+    events = [{"id": i, "commence_time": t} for i, t in (
+        ("snf", "2026-10-12T00:20:00Z"), ("mnf", "2026-10-13T00:15:00Z"), ("tnf", "2026-10-16T00:15:00Z"))]
+    assert [e["id"] for e in select_events(events, now, 0, 0, 0, True)] == ["mnf"]
+    # Saturday 18:07 ET takes every Sunday game, the 8:20 PM one included (00:20 UTC Monday).
+    sat = datetime(2026, 10, 10, 22, 7, tzinfo=timezone.utc)
+    sunday = [{"id": i, "commence_time": t} for i, t in (("early", "2026-10-11T17:00:00Z"), ("snf", "2026-10-12T00:20:00Z"))]
+    assert [e["id"] for e in select_events(sunday, sat, 0, 0, 0, True)] == ["early", "snf"]
+
+
+def test_unbounded_capture_is_refused() -> None:
+    from ingest import nfl_prop_odds as m
+    m_fetch = m.fetch_events
+    m.fetch_events = lambda key: []
+    try:
+        with pytest.raises(ValueError, match="unbounded"):
+            m.capture(db=None, api_key="k", event_limit=0, apply=False)
+    finally:
+        m.fetch_events = m_fetch
+
+
 def test_alternate_ladders_keep_every_rung_and_no_misleading_single_line() -> None:
     payload = {"bookmakers": [{"key": "draftkings", "markets": [
         {"key": "player_reception_yds_alternate", "outcomes": [
@@ -111,8 +143,15 @@ def test_multi_touchdown_market_keeps_its_over_only_line() -> None:
 def test_backfill_requests_only_markets_a_game_is_missing() -> None:
     from ingest.nfl_prop_backfill import missing_markets
     from ingest.nfl_prop_odds import CAPTURE_MARKETS, MARKETS, VOLUME_MARKETS
-    assert len(CAPTURE_MARKETS) == 21 and len(set(CAPTURE_MARKETS)) == 21
+    assert len(CAPTURE_MARKETS) == 22 and len(set(CAPTURE_MARKETS)) == 22
     have = set(MARKETS)
     missing = missing_markets(have)
     assert not set(missing) & have and set(VOLUME_MARKETS) <= set(missing)
     assert missing_markets(set(CAPTURE_MARKETS)) == []
+
+
+def test_first_td_is_a_yes_only_market() -> None:
+    payload = {"bookmakers": [{"key": "draftkings", "markets": [{"key": "player_1st_td", "outcomes": [
+        {"name": "Kyren Williams", "price": 550}, {"name": "No Touchdown", "price": 2500}]}]}]}
+    rows = {r["player"]: r for r in normalize_prop_payload(payload)}
+    assert rows["Kyren Williams"]["books"]["draftkings"]["yes"] == 550

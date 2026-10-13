@@ -117,4 +117,14 @@ assert.ok(sameGenerationSettings({ ...sent, buildShape: undefined }, { ...sent, 
 assert.ok(!sameGenerationSettings({ ...sent, buildShape: "winners" }, { ...sent, buildShape: "standard" }), "winners is a different build");
 assert.equal(formFromDraft({ settings: { ...shapeDefaults, buildShape: "winners" }, locked: [], excluded: [], targets: {}, captainTargets: {}, planMode: "balanced", fades: [], quotas: [] }, shapeDefaults)!.settings.buildShape, "winners");
 
+// Drafts saved while the page forced ownership leverage off (before v3) take
+// the new default; a v3 draft keeps the choice the user made.
+const levDefaults = { ...defaults, useHeuristicOwnershipLeverage: true };
+const levDraft = (schemaVersion: number | undefined, on: boolean) => formFromDraft({ schemaVersion, settings: { ...levDefaults, useHeuristicOwnershipLeverage: on },
+  locked: [], excluded: [], targets: {}, captainTargets: {}, planMode: "balanced", fades: [], quotas: [] }, levDefaults)!.settings.useHeuristicOwnershipLeverage;
+assert.equal(levDraft(2, false), true, "a v2 draft's forced false upgrades to on");
+assert.equal(levDraft(undefined, false), true, "an unversioned draft upgrades too");
+assert.equal(levDraft(3, false), false, "a v3 draft keeps leverage off when the user turned it off");
+assert.equal(levDraft(3, true), true);
+
 console.log("Build form: saved runs load back into the form and rebuild the same run.");

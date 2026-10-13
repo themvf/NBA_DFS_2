@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import saved from "@/data/game-leaders.json";
 import { getGameLeadersAvailability } from "@/db/nfl-game-leaders-availability";
 import { getGameLeaderMarket, type GameLeaderMarketRow } from "@/db/nfl-game-leaders-market";
+import { getAnytimeTouchdowns } from "@/db/nfl-anytime-td";
 import { outPlayersInForecast } from "@/lib/nfl/game-leaders-availability";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +20,7 @@ function number(value: number | null | undefined) { return value == null ? "Unav
 function date(value: string) { return new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }).format(new Date(value)); }
 async function now() { await connection(); return Date.now(); }
 function american(price: number | null) { return price == null ? "" : price > 0 ? `+${price}` : `${price}`.replace("-", "−"); }
-const BOOK_NAMES: Record<string, string> = { draftkings: "DK", fanduel: "FanDuel", betmgm: "BetMGM", caesars: "Caesars", williamhill_us: "Caesars", espnbet: "ESPN BET", betrivers: "BetRivers", fanatics: "Fanatics" };
+const BOOK_NAMES: Record<string, string> = { pinnacle: "Pinnacle", draftkings: "DK", fanduel: "FanDuel", betmgm: "BetMGM", caesars: "Caesars", williamhill_us: "Caesars", espnbet: "ESPN BET", betrivers: "BetRivers", fanatics: "Fanatics" };
 function lineLabel(row: GameLeaderMarketRow | undefined) {
   if (!row || row.line == null) return "Not listed";
   const book = row.book && row.book !== "draftkings" ? ` (${BOOK_NAMES[row.book] ?? row.book})` : "";
@@ -48,6 +49,16 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ g
         return null;
       })
     : null;
+  const anytime = selected
+    ? await getAnytimeTouchdowns(selected.game.home, selected.game.away, selected.game.kickoff).catch((error) => {
+        console.error("Game Leaders anytime-TD read failed", error);
+        return undefined;
+      })
+    : null;
+  const teamOf = new Map<string, string>();
+  for (const family of Object.values(selected?.metrics ?? {}))
+    for (const p of (family as { players: { name: string; team: string; residual?: boolean }[] }).players)
+      if (!p.residual && p.team) teamOf.set(p.name.toLowerCase(), p.team);
   const marketRows = new Map<string, Map<string, GameLeaderMarketRow>>();
   for (const row of market?.rows ?? []) {
     if (!marketRows.has(row.metric)) marketRows.set(row.metric, new Map());
@@ -95,6 +106,13 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ g
         const otherMarket = priced ? [...priced.values()].filter(r => r.identity.startsWith("OTHER:")).reduce((sum, r) => sum + r.marketLeaderShare, 0) : null;
         return <section key={metric} className="overflow-hidden rounded-xl border bg-white"><div className="border-b p-4"><h2 className="text-xl font-semibold">{title}</h2><p className="mt-1 text-sm text-slate-600">Recent-average baseline leader: <strong>{baseline?.name ?? "Unavailable"}</strong>. Model tie frequency: {pct(family.tie_probability)}.</p></div><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-50"><tr><th className="p-3">Player</th><th className="p-3">Leader share</th>{priced && <><th className="p-3">DK line (over/under)</th><th className="p-3">DK chance over</th><th className="p-3">Model chance over</th><th className="p-3">DK-implied leader</th></>}<th className="p-3">First or tied</th><th className="p-3">Projected average</th><th className="p-3">Middle 80% range</th><th className="p-3">Recent average</th></tr></thead><tbody>{display.map(p => <tr className="border-t" key={p.identity}><td className="p-3 font-medium">{p.name}<span className="ml-2 font-normal text-slate-500">{p.team}</span></td><td className="p-3 font-semibold">{pct(p.win_share)}</td>{priced && (() => { const m = priced.get(p.identity); return <><td className="p-3 whitespace-nowrap">{lineLabel(m)}</td><td className="p-3">{m?.fairOver == null ? "" : pct(m.fairOver)}</td><td className="p-3">{m?.modelPOver == null ? "" : pct(m.modelPOver)}</td><td className="p-3 font-semibold">{m ? pct(m.marketLeaderShare) : ""}</td></>; })()}<td className="p-3">{pct(p.first_or_tied)}</td><td className="p-3">{number(p.mean)}</td><td className="p-3">{number(p.p10)}–{number(p.p90)}</td><td className="p-3">{number(p.baseline_mean)}</td></tr>)}</tbody></table></div><div className="space-y-2 border-t bg-slate-50 p-4 text-sm text-slate-600"><p>Other or unresolved contributors: {pct(family.players.filter(p => p.residual).reduce((sum, p) => sum + p.win_share, 0))} combined leader share{otherMarket != null ? `; ${pct(otherMarket)} DK-implied` : ""}.</p><p>Leader share splits ties equally between individuals. First-or-tied counts each tied player in full, so that column can add to more than 100%. Percentages are rounded independently, so displayed shares may not total exactly 100%. A displayed 0.0% means no wins occurred in the saved simulations, not that the outcome is impossible. Ranges describe simulated outcomes; they are not evidence that the model is accurate.</p></div></section>;
       })}
+      <section className="overflow-hidden rounded-xl border bg-white"><div className="border-b p-4"><h2 className="text-xl font-semibold">Anytime touchdown</h2><p className="mt-1 text-sm text-slate-600">{anytime === undefined
+          ? "The touchdown lines could not be read right now."
+          : anytime
+            ? <>Sportsbook market, not this model: DraftKings&apos; price to score a rushing or receiving touchdown (passing touchdowns do not count), captured {date(anytime.capturedAt)}. <strong>Fair chance</strong> removes an assumed 8% bookmaker margin from DraftKings&apos; price. <strong>Best price</strong> is the longest price across the books we capture. <strong>1st TD</strong> is DraftKings&apos; first-touchdown-scorer price; its chance scales every outcome of the game, including no touchdown, to 100%.{anytime.firstTdListed ? "" : " First-touchdown prices were not in this capture; they arrive with the next one."}</>
+            : "No touchdown lines captured for this game yet. They are captured the day before and 60-75 minutes before kickoff."}</p></div>
+        {anytime?.rows.length ? <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-50"><tr><th className="p-3">Player</th><th className="p-3">DK price</th><th className="p-3">DK implied</th><th className="p-3">Fair chance</th><th className="p-3">Best price</th><th className="p-3">2+ TDs (DK)</th><th className="p-3">1st TD (DK)</th><th className="p-3">1st TD chance</th></tr></thead><tbody>{anytime.rows.map(r => <tr className="border-t" key={r.player}><td className="p-3 font-medium">{r.player}<span className="ml-2 font-normal text-slate-500">{teamOf.get(r.player.toLowerCase()) ?? ""}</span></td><td className="p-3">{r.dkPrice == null ? "Not listed" : american(r.dkPrice)}</td><td className="p-3">{r.dkImplied == null ? "" : pct(r.dkImplied)}</td><td className="p-3 font-semibold">{r.fairProb == null ? "" : pct(r.fairProb)}</td><td className="p-3 whitespace-nowrap">{r.bestPrice == null ? "" : `${american(r.bestPrice)} (${BOOK_NAMES[r.bestBook ?? ""] ?? r.bestBook})`}</td><td className="p-3">{r.twoPlusPrice == null ? "" : american(r.twoPlusPrice)}</td><td className="p-3">{r.firstTdPrice == null ? "" : american(r.firstTdPrice)}</td><td className="p-3">{r.firstTdFair == null ? "" : pct(r.firstTdFair)}</td></tr>)}</tbody></table></div> : null}
+      </section>
       <details className="rounded-xl border bg-white p-4"><summary className="cursor-pointer font-semibold">Assumptions and missing factors</summary><ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-600">{selected.limits.map(l => <li key={l}>{l}</li>)}</ul><p className="mt-3 text-sm text-slate-600">This is a saved weekly batch. A fresh source capture, roster review and model run are required to update it. A DraftKings upload is not required.</p></details>
     </> : <p>No eligible saved games.</p>}
     <section className="overflow-hidden rounded-xl border bg-white"><h2 className="p-4 text-xl font-semibold">Historical check: model versus recent average</h2><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-50"><tr><th className="p-3">Season</th><th className="p-3">Games</th><th className="p-3">Category</th><th className="p-3">Model first choice</th><th className="p-3">Average baseline</th></tr></thead><tbody>{saved.evaluation.flatMap(e => families.map(([metric, title]) => { const result = (e.summary as Record<string, { top_choice_credit: number | null; mean_baseline_credit: number | null }>)[metric]; return <tr className="border-t" key={`${e.season}-${metric}`}><td className="p-3">{e.season} · Weeks {e.weeks.join("–")}</td><td className="p-3">{e.games} ({e.skipped} skipped)</td><td className="p-3">{title}</td><td className="p-3">{result?.top_choice_credit != null ? pct(result.top_choice_credit) : "Not evaluated"}</td><td className="p-3">{result?.mean_baseline_credit != null ? pct(result.mean_baseline_credit) : "Not evaluated"}</td></tr>; }))}</tbody></table></div><p className="border-t p-4 text-sm text-slate-600">Ties receive fractional credit. {saved.evaluation_limit} {saved.rejected_training_games} event histories remain quarantined; independently verified workload can still be used.</p></section>

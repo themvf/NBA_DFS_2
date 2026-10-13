@@ -7672,7 +7672,12 @@ when its feed is present. The optimizer, duplication estimate and Own column
 read `ownPct`, never `linestarOwnPct` directly.
 
 It declares itself heuristic, so `assessOwnership` caps it at
-`heuristic_uncalibrated` and leverage runs only through the opt-in. The
+`heuristic_uncalibrated` and leverage runs only through the opt-in. **The
+opt-in is ON by default for GPP builds (owner's decision 2026-10-12).** From
+2026-10-04 (commit d0a0e787) to 2026-10-12 the page had no checkbox and
+forced it `false` on every build, so every Sunday build in that window
+optimized projection and ceiling only; build drafts before `schemaVersion` 3
+stored that forced false and upgrade to on. The
 fitted replacement (port of `mlb_ownership_v1`) and its frozen promotion gate
 (Spearman >= 0.70, MAE <= 2.0 pts, |bias| <= 0.5, >= 4 held-out Classic
 slates, holdout by slate) are registered in `docs/nfl-ownership-model.md`.
@@ -7846,7 +7851,11 @@ analysis, exposure vs the field, and every lineup they entered). Pure layer
   and stores the winners-versus-us review in `nfl_dfs_field_build_reviews`
   (one row per contest and review version; `nfl-dfs-flagship-review-v1`).
   Both tables are on the health checklist (`nfl_flagship_builds`,
-  `nfl_build_reviews`, 192 h). A slate with no saved optimizer run reviews
+  `nfl_build_reviews`, 192 h). Our lineups are scored with the contest's own
+  per-player points (stored seats and ownership rows) first, then the weekly
+  results table; a lineup with a player found in neither is left unscored and
+  named, never summed as 0 (2026-10-12: late-game players read 0 and the
+  week-5 review put a 161-point build at ~#81,000). A slate with no saved optimizer run reviews
   the winners only and says so; save a build for every slate you project.
   The contests listing quotes entry fee and prize pool in CENTS.
 - Discovery is `/slates?date&operator_id=1&sport=nfl` then `/contests?slate_id`
@@ -7858,6 +7867,77 @@ analysis, exposure vs the field, and every lineup they entered). Pure layer
   licences; downloading, storing and modelling on the data is allowed, publishing
   it or giving others access to anything built on it is not. That fits this
   repo's private use. Nothing here is scheduled.
+
+## NFL DFS — Reading the books' player lines (`nfl-prop-implied-v1`, 2026-10-12)
+
+`model/nfl_prop_implied.py` turns pregame prop lines (`prop_odds_history`,
+DraftKings first) into an expected stat line and DK points;
+`python -m research.nfl_prop_implied build|study --weeks 1-4` stores opening
+and closing lines in `nfl_prop_implied_lines` and reports. Exploratory, weeks
+1-4, not pre-registered. What it found:
+
+- **A yardage line is a median, so read straight it runs low**: receiving yards
+  by 5.3 (mean/line 1.175), passing 5.2 (1.023), rushing 1.8 (1.057),
+  receptions 0.23 (1.078); TD and interception lines are already unbiased. The
+  study corrects each with a factor fitted on the other weeks. An earlier
+  same-day comparison skipped this and overstated how far we ran above Vegas.
+- **Calibrated, the book still beats our projection**: MAE 5.61 vs 5.83 DK
+  points (+0.22, game-clustered CI [+0.04, +0.41]), every position, TE nearly
+  tied. When we were 2+ above the book (n=113) it was closer 65% of the time;
+  when we were 2+ below (n=152) only 45%: our low calls are not reliably wrong.
+- **Where it differs**: we under-project QB passing yards by 12 (book 0);
+  WR receptions 3.29 vs book 3.53 vs actual 3.50. TE volume and efficiency
+  match the book; TE TDs we are closer than the book (0.289 vs 0.246 vs 0.312).
+- **The team pie is coherent**: receivers with a yards line carry 92% of
+  their QB's implied passing yards; they actually caught 90%.
+- **Step 2, `research/nfl_prop_line_model.py`** (the line regressed on public
+  pre-game inputs, out of sample by week): the same inputs explain our
+  projection better (R^2 0.83-0.94) than the book's line (0.69-0.86), so the
+  book uses information we do not. Weighting differs consistently: the book
+  leans on THIS season's average and much less on last season and the last
+  three games (QB passing yards: last season +6.9 per SD for the book vs +22.3
+  for us); it weights game script about twice as much (spread: passing -8.2 vs
+  -4.3; favourites' backs rush more, +2.2 vs -0.7); and it uses a little
+  opponent effect where we use none. Collinear inputs, four weeks: hypotheses
+  for a pre-registered projection change, not findings to ship.
+- **Layer 1 shipped: the market anchor (`nfl-market-anchor-v1`,
+  `web/src/lib/nfl-dfs/market-anchor.ts`, owner's decision 2026-10-12).** Every
+  active QB/RB/WR/TE with a full set of pregame lines is projected from the
+  books' calibrated number in the workspace read (after the absence commit,
+  which it overrides, and before ownership); the model's P10/median/P90 are
+  rescaled to that mean, `before` keeps the model's own number, and an
+  anchored player gets no defensive adjustment (the line carries the
+  opponent). The port is pinned to `model/nfl_prop_implied.py`
+  (`CALIBRATION_V1`) by `test:nfl-market-anchor`. On the week-5 Classic it
+  anchored 144 of 407 (mean +0.76, |change| 1.97). Known: the calibrated book
+  ran +0.34 points high in weeks 1-4. Lines come from two captures per game
+  (the day before at 22:07 UTC and 60-75 minutes before kickoff, see
+  docs/the-odds-api.md); without either, every player stays on the model and
+  the page says so. **Lines against results** (`research/nfl_prop_outcomes.py`,
+  weeks 1-5, final games, closing DK line): receptions and receiving yards are
+  calibrated (over hit 48.9%/49.5% against 49.3%/50.0% implied; every-over and
+  every-under bets lose about the vig). Rushing yards is not: overs hit 44.6%
+  against 49.8% implied (gap -5.2%, game-clustered CI [-8.8, -1.6], 453 lines,
+  78 games), every under +4.6% with CI [-2.3, +11.3]; weeks swing 38-53%.
+  Discovery only (several cells read at once): a rushing-under rule needs its
+  own pre-registered forward test before anything is bet. About 6% of listed
+  receivers have no stat row (inactive, or active with zero), so their over
+  rates could be up to ~3 points lower. **Game leaders from the lines**
+  (`research/nfl_leader_lines.py`, weeks 1-4, 64 final games, ties split):
+  the biggest line led its game in rushing yards 48.4%, receiving yards
+  34.4%, receptions 27.3% (our model's first choice 44.6/23.2/20.2, the
+  recent-average baseline 51.8/26.8/24.7). The second-biggest line led
+  40.6/18.8/20.3%, so the leader was one of the books' top two in 89% of
+  games for rushing (when the favourite missed, second place won 79% of
+  those) but only 53% for receiving yards and receptions. Rushing is a
+  two-back question the books frame well and order poorly; receiving
+  leaders come from deep in the list. A line's team is the game's own team
+  (`resolve_team`): the roster feed can carry a stale team (Marvin Harrison
+  Jr. read HOU in DET @ ARI), which had dropped 4 games from the study. The
+  script's leader chances are overconfident, worst for receptions; that is
+  the conversion's narrow spread, not the market. Layers 2 (market-derived game script and opponent
+  effects for players without lines) and 3 (predicted lines early in the
+  week) are not built.
 
 ## NFL DFS — Winners-shape build preset (`nfl-winners-shape-v4`, 2026-10-11; v1 2026-10-10)
 
@@ -7958,3 +8038,45 @@ frozen closing price with a date-clustered bootstrap; verdict once, not before
 recorded there and cannot confirm anything: the moneyline triggers pay −300 to
 −500 and their narrow discovery intervals come from five to nine dates, not
 from precision. Not an edge, not on `/vegas`, not on `/health`, not pushed.
+
+## Game Leaders calibration and the expected-starter quarterback (2026-10-12)
+
+Two model changes shipped together after pre-registered studies; both keep our
+own projections, with DraftKings lines captured as a yardstick, never as an input.
+
+- **Game Leaders `nfl-game-leaders-v4`** applies `nfl-game-leaders-calibration-v1`
+  (`docs/nfl-game-leaders-calibration-study.md`, constants in
+  `model/nfl_game_leaders_calibration.py`, held to the frozen fit by a test):
+  roles blend last season's per-game usage as 2 pseudo-games, and each market's
+  leader shares are tempered (rushing 1.30, receiving 1.05, receptions 1.15,
+  total 1.25; the raw share is kept as `win_share_raw`). On the untouched 2022
+  season the calibrated model beat the recent-average baseline for rushing and
+  total yards only; receiving yards and receptions carry no claim. Research
+  code uses `Settings()` (raw); production uses `production_settings()`.
+- **DFS: the expected-starter quarterback overlay**, `nfl-qb-spot-start-v2`
+  (`model/nfl_qb_starter.py`, `docs/nfl-qb-spot-start-study.md`), applied by
+  `build_week` after the base projection the way the availability transfer is.
+  The base model file and `nfl-dfs-historical-v5` are untouched, so every
+  registration that pins them still holds; the writer records the overlay in
+  `production_config()` (`qb_starter_mode`) and each replaced row carries
+  `qb_starter_construction`. Under it,
+  a named starter with thin starting history (mean attempts over his previous
+  six games under 15, or fewer than two games) is projected at his TEAM's
+  pass volume, with efficiency from his own starter-quality lines blended with
+  other quarterbacks' first starts. Everyone else is identical to v5. v1
+  (every expected starter) passed its spot-start gate on the blind 2016-2019
+  look (DK points MAE 7.38 -> 5.79) but failed the established-starter gate by
+  0.10 points, so v2 restricts it; that restriction was chosen after the
+  result and is recorded as such. `build_week` names the expected starter
+  before projecting (fresh depth chart, else last game's passing leader,
+  skipping ruled-out players) and records the naming in the availability
+  report. Because `production_config()` gains a key, the research cohorts
+  that pin `baseline_config_hash` (the coherent scenario study) treat runs
+  from here on as a new configuration, as they did when the transfer flag
+  was added; re-register them at their next study boundary.
+- **What the DraftKings comparison found (weeks 1-5):** for established
+  starters our DFS volume matches DraftKings (Burrow 34.1 vs 35.5 attempts,
+  Henry 21.0 vs 21.5 carries) and receiving matches in every tier; the star
+  gap lived in the Game Leaders roles, and the backup-QB gap in the DFS
+  model's own-history volume. Zero attempts/carries in week 1-2 stored
+  projections are older model versions that did not record volume.

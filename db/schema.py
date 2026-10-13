@@ -2925,6 +2925,36 @@ TABLES = [
         PRIMARY KEY (contest_id, review_version)
     )""",
 
+    # ── Prop-implied stat lines (research/nfl_prop_implied.py) ────────────────
+    # Each player's opening and closing pregame line per market and week, read
+    # back as an expected stat (model/nfl_prop_implied.py). Research data:
+    # written by a manual command, never read by the web. One row per
+    # (week, player, market, capture role, conversion version); a rerun with the
+    # same conversion writes nothing new.
+    """CREATE TABLE IF NOT EXISTS nfl_prop_implied_lines (
+        id BIGSERIAL PRIMARY KEY,
+        season INTEGER NOT NULL,
+        week INTEGER NOT NULL,
+        player_key TEXT NOT NULL,
+        player_name TEXT NOT NULL,
+        team TEXT,
+        position TEXT,
+        market TEXT NOT NULL,
+        capture_role TEXT NOT NULL CHECK (capture_role IN ('open', 'close')),
+        book TEXT NOT NULL,
+        line DOUBLE PRECISION,
+        over_price DOUBLE PRECISION,
+        under_price DOUBLE PRECISION,
+        yes_price DOUBLE PRECISION,
+        implied_mean DOUBLE PRECISION,
+        event_id TEXT NOT NULL,
+        commence_time TIMESTAMPTZ NOT NULL,
+        captured_at TIMESTAMPTZ NOT NULL,
+        conversion_version TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (season, week, player_key, market, capture_role, conversion_version)
+    )""",
+
     # ── dfsdb.com contest archive (ingest/dfsdb_contest.py) ──────────────────
     #
     # One pasted contest link, imported on demand: the contest card, the

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { recordObservation, withHeartbeat } from "@/lib/cron-heartbeat";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
-import { dispatchWorkflow, dueJobs, NEAR_KICKOFF_MS, type DispatchContext } from "@/lib/cron-dispatch";
+import { dispatchWorkflow, dueJobs, KICKOFF_LOOKAHEAD_MS, type DispatchContext } from "@/lib/cron-dispatch";
 
 // The one Vercel Cron -> GitHub Actions bridge. Vercel calls this every 15
 // minutes (see vercel.json); src/lib/cron-dispatch.ts decides which workflows
@@ -74,7 +74,7 @@ async function dispatchContext(now: Date): Promise<DispatchContext> {
 async function nflKickoffs(now: Date): Promise<Date[] | null> {
   try {
     const rows = await db.execute(sql`SELECT kickoff FROM nfl_season_games
-      WHERE kickoff > ${now.toISOString()}::timestamptz AND kickoff <= ${new Date(now.getTime() + NEAR_KICKOFF_MS).toISOString()}::timestamptz`);
+      WHERE kickoff > ${now.toISOString()}::timestamptz AND kickoff <= ${new Date(now.getTime() + KICKOFF_LOOKAHEAD_MS).toISOString()}::timestamptz`);
     return rows.rows.map((row) => new Date(String(row.kickoff))).filter((d) => Number.isFinite(d.getTime()));
   } catch (error) {
     console.error("cron dispatch: could not read NFL kickoffs; near-kickoff ticks skipped", error);

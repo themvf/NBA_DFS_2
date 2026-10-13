@@ -240,10 +240,12 @@ def load_ours(db, contest: dict, run_id: str | None) -> tuple[dict | None, list[
     players = {str(r["dk_player_id"]): dict(r) for r in db.execute(
         "SELECT dk_player_id, name, position, team, opponent, salary FROM nfl_dfs_slate_players WHERE upload_id = %s",
         (contest["slate_upload_id"],))}
-    actual = {}
+    actual = contest_points(db, contest["contest_id"])
     for r in db.execute(
         """SELECT f.canonical_name AS name, r.position, r.team, r.actual_dk_fpts AS pts FROM nfl_dfs_player_week_results r
            JOIN ff_players f ON f.id = r.player_id WHERE r.season = %s AND r.week = %s""", (contest["season"], contest["week"])):
+        if r["pts"] is None:
+            continue
         actual.setdefault(normalize_name(r["name"]), r["pts"])
         if r["position"] == "DST":
             actual.setdefault(normalize_name(r["team"]), r["pts"])
@@ -268,10 +270,33 @@ def load_ours(db, contest: dict, run_id: str | None) -> tuple[dict | None, list[
                 pct = by.get("CPT") if slot == "CPT" and "CPT" in by else fo["drafted_pct"]
             roster.append({"slot": slot, "name": name, "team": p.get("team") or s.get("team"), "position": p.get("position"),
                            "salary": p.get("salary") or s.get("salary"), "fpts": pts, "field_pct": pct, "opponent": p.get("opponent")})
-        points = sum((r["fpts"] or 0) for r in roster)
-        lineups.append({"rank": None, "points": round(points, 2), "salary": l["total_salary"], "roster": roster,
-                        "lineup_number": l["lineup_number"]})
+        missing = [r["name"] for r in roster if r["fpts"] is None]
+        points = None if missing else round(sum(r["fpts"] for r in roster), 2)
+        lineups.append({"rank": None, "points": points, "salary": l["total_salary"], "roster": roster,
+                        "lineup_number": l["lineup_number"], "missing": missing})
     return run, lineups
+
+
+def contest_points(db, contest_id: str) -> dict:
+    """Each player's DK points as this contest scored them, keyed by normalized name.
+
+    Read from the stored seats of every fetched user build and the contest's
+    ownership rows. These are DraftKings' own final numbers for the contest, so
+    they come first: the weekly results table fills in game by game, and a late
+    game with no row yet must not read as 0 (2026-10-11 week 5: Gibbs's 40.7
+    was scored 0 and the review placed the build ~60,000 places too low).
+    """
+    points: dict[str, float] = {}
+    for r in db.execute("SELECT lineups FROM nfl_dfs_field_user_builds WHERE contest_id = %s", (contest_id,)):
+        lineups = r["lineups"] if isinstance(r["lineups"], list) else json.loads(r["lineups"] or "[]")
+        for l in lineups:
+            for seat in l.get("roster") or []:
+                if len(seat) > 5 and seat[5] is not None:
+                    points.setdefault(normalize_name(seat[1]), seat[5])
+    for r in db.execute("SELECT player_name, fpts FROM nfl_dfs_field_ownership WHERE contest_id = %s AND fpts IS NOT NULL",
+                        (contest_id,)):
+        points.setdefault(normalize_name(r["player_name"]), r["fpts"])
+    return points
 
 
 # --------------------------------------------------------------------------
@@ -332,24 +357,33 @@ def review_contest(db, contest_id: str, *, top: int = 5, run_id: str | None = No
         out += ["", "== OURS: no optimizer run with lineups on this contest's slate"
                 + ("" if contest["slate_upload_id"] else " (contest not linked to a slate)")]
     else:
-        for l in ours:
+        # A lineup with any player whose points are unknown is not scored at
+        # all: a partial sum would rank it as if that player had scored 0.
+        scored = [l for l in ours if l["points"] is not None]
+        missing_players = sorted({name for l in ours for name in l["missing"]})
+        for l in scored:
             l["rank"] = estimate_rank(l["points"], curve)
         a = analyze_portfolio(ours, avg_slot)
-        scores = sorted((l["points"] for l in ours), reverse=True)
-        best_rank = estimate_rank(scores[0], curve)
+        scores = sorted((l["points"] for l in scored), reverse=True)
+        best_rank = estimate_rank(scores[0], curve) if scores else None
         ours_summary = {"run_id": str(run["run_id"]), "mode": run["mode"], "created_at": run["created_at"].isoformat(),
-                        "best_points": scores[0], "best_rank_estimate": best_rank,
-                        "median_points": statistics.median(scores), "field_median": contest["median_score"],
+                        "best_points": scores[0] if scores else None, "best_rank_estimate": best_rank,
+                        "median_points": statistics.median(scores) if scores else None, "field_median": contest["median_score"],
                         "lineups_above_field_median": sum(1 for s_ in scores if contest["median_score"] is not None and s_ > contest["median_score"]),
+                        "lineups_scored": len(scored), "lineups_unscored": len(ours) - len(scored),
+                        "players_without_points": missing_players,
                         **summary(a)}
+        unscored = (f"; {len(ours) - len(scored)} lineup(s) NOT scored, no points for {', '.join(missing_players)}"
+                    if missing_players else "")
+        head = (f"best {scores[0]:.2f} (~#{best_rank:,} of {contest['entry_count']:,}), median {statistics.median(scores):.2f}"
+                if scores else "no lineup has points for every player")
         out += ["", f"== OURS: run {str(run['run_id'])[:8]} ({run['mode']}, {run['created_at']:%Y-%m-%d %H:%M} UTC), {len(ours)} lineups, "
-                    f"scored with actual points: best {scores[0]:.2f} (~#{best_rank:,} of {contest['entry_count']:,}), "
-                    f"median {statistics.median(scores):.2f}, field median {contest['median_score']}; edge total {a['edge_total']:+.2f}"]
+                    f"scored with actual points: {head}, field median {contest['median_score']}; edge total {a['edge_total']:+.2f}{unscored}"]
         out += fmt_analysis(a)
         out.append("    PLAYERS (by exposure):")
         out += fmt_players(a["players"], players, indent="      ")
-        out.append(f"    LINEUPS (best {min(lineups_shown, len(ours))} of {len(ours)}, rank estimated from the contest's score curve):")
-        for l in sorted(ours, key=lambda l: -l["points"])[:lineups_shown]:
+        out.append(f"    LINEUPS (best {min(lineups_shown, len(scored))} of {len(scored)} scored, rank estimated from the contest's score curve):")
+        for l in sorted(scored, key=lambda l: -l["points"])[:lineups_shown]:
             out += fmt_lineup({**l, "note": f"(our #{l['lineup_number']})"}, indent="      ")
     return {"contest_id": contest["contest_id"], "run_id": ours_summary["run_id"] if ours_summary else None,
             "top_n": top, "winners": winners, "ours": ours_summary, "text": "\n".join(out)}
