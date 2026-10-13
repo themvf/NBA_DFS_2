@@ -264,6 +264,8 @@ def load_ours(db, contest: dict, run_id: str | None) -> tuple[dict | None, list[
                 pts = actual.get(normalize_name(p.get("team")))
             fo = field.get(key)
             slot = re.sub(r"\d+$", "", str(s.get("slot")))
+            if pts is not None and slot == "CPT":
+                pts = round(pts * CAPTAIN_MULTIPLIER, 2)
             pct = None
             if fo:
                 by = fo["drafted_by_slot"] if isinstance(fo["drafted_by_slot"], dict) else json.loads(fo["drafted_by_slot"] or "{}")
@@ -277,8 +279,11 @@ def load_ours(db, contest: dict, run_id: str | None) -> tuple[dict | None, list[
     return run, lineups
 
 
+CAPTAIN_MULTIPLIER = 1.5
+
+
 def contest_points(db, contest_id: str) -> dict:
-    """Each player's DK points as this contest scored them, keyed by normalized name.
+    """Each player's base DK points (no captain multiplier) as this contest scored them, keyed by normalized name.
 
     Read from the stored seats of every fetched user build and the contest's
     ownership rows. These are DraftKings' own final numbers for the contest, so
@@ -292,7 +297,13 @@ def contest_points(db, contest_id: str) -> dict:
         for l in lineups:
             for seat in l.get("roster") or []:
                 if len(seat) > 5 and seat[5] is not None:
-                    points.setdefault(normalize_name(seat[1]), seat[5])
+                    # A seat's points are what that SLOT scored: a showdown
+                    # captain seat carries 1.5x. Store the player's base points;
+                    # the caller applies the multiplier for its own slot
+                    # (2026-10-13: Nacua's 61.05 captain score was credited to
+                    # our flex Nacua, overstating every lineup that had him).
+                    base = round(seat[5] / CAPTAIN_MULTIPLIER, 2) if seat[0] == "CPT" else seat[5]
+                    points.setdefault(normalize_name(seat[1]), base)
     for r in db.execute("SELECT player_name, fpts FROM nfl_dfs_field_ownership WHERE contest_id = %s AND fpts IS NOT NULL",
                         (contest_id,)):
         points.setdefault(normalize_name(r["player_name"]), r["fpts"])
