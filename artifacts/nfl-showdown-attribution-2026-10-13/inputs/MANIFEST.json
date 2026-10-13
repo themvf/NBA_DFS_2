@@ -1,0 +1,65 @@
+{
+ "note": "Frozen inputs of this study as of 2026-10-13. sha256 is of the uncompressed file. Regenerating from the database may not reproduce them (play-by-play is relabelled in place).",
+ "files": {
+  "2026-w1-NE_at_SEA.json": {
+   "sha256": "5df805655897ad8a77e3b86a3afd7c9083854792697bc4458fdf8dada7237cd8",
+   "bytes": 807638,
+   "gz": "2026-w1-NE_at_SEA.json.gz",
+   "gzBytes": 90039
+  },
+  "2026-w2-NYG_at_LAR.json": {
+   "sha256": "2ec9a006da9c23fe1c3cd9fdfe03f80868476733e8eaee72eced38b1d22ba7c9",
+   "bytes": 470939,
+   "gz": "2026-w2-NYG_at_LAR.json.gz",
+   "gzBytes": 66647
+  },
+  "2026-w3-ATL_at_GB.json": {
+   "sha256": "1fa16c74884f83f1b1e106e92de96448c08580ca59fc6fb84d3153506972b44b",
+   "bytes": 460168,
+   "gz": "2026-w3-ATL_at_GB.json.gz",
+   "gzBytes": 66577
+  },
+  "2026-w3-PHI_at_CHI.json": {
+   "sha256": "53379c3b3106546a50d8d1b047d56b81c4b385399391bf62ca954ff57d5ce0f6",
+   "bytes": 544914,
+   "gz": "2026-w3-PHI_at_CHI.json.gz",
+   "gzBytes": 86950
+  },
+  "2026-w4-ATL_at_NO.json": {
+   "sha256": "bf07aad49acc480ecda66d43f41228d71117004eddab8c5821a0f88849aad0d0",
+   "bytes": 703225,
+   "gz": "2026-w4-ATL_at_NO.json.gz",
+   "gzBytes": 144322
+  },
+  "2026-w4-DET_at_CAR.json": {
+   "sha256": "98409ea5348120f3aa2bf91933042f9d38e415390d1fa52a9a315f2dc1f3d799",
+   "bytes": 762652,
+   "gz": "2026-w4-DET_at_CAR.json.gz",
+   "gzBytes": 131292
+  },
+  "2026-w4-IND_at_WAS.json": {
+   "sha256": "8451e1f76c451bb11f40d297fcae87f1d71e20e3c13074ef9b841590699c34fd",
+   "bytes": 763506,
+   "gz": "2026-w4-IND_at_WAS.json.gz",
+   "gzBytes": 132786
+  },
+  "2026-w4-PIT_at_CLE.json": {
+   "sha256": "596e159f7ac973325aa06347ec0eb3dc78145240382c31107a3c930219a14425",
+   "bytes": 731307,
+   "gz": "2026-w4-PIT_at_CLE.json.gz",
+   "gzBytes": 113398
+  },
+  "2026-w5-BUF_at_LAR.json": {
+   "sha256": "806900fd4b428e163cc8cefde0546a8dc7334a1706d40e9456e64c2827d81217",
+   "bytes": 866224,
+   "gz": "2026-w5-BUF_at_LAR.json.gz",
+   "gzBytes": 174388
+  },
+  "2026-w5-TB_at_DAL.json": {
+   "sha256": "1f14ca81b1b15a2a157e10aee16ca1ef4bc283571ddfa7fb42222d448f6ac9f0",
+   "bytes": 96266,
+   "gz": "2026-w5-TB_at_DAL.json.gz",
+   "gzBytes": 6200
+  }
+ }
+}

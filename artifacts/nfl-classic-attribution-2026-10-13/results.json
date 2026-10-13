@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-10-13T22:01:54.026Z",
+ "generatedAt": "2026-10-13T22:32:06.578Z",
  "hindsight": [
   {
    "week": 1,
@@ -15,7 +15,7 @@
     "objective": 292.14,
     "bound": 292.14,
     "gap": 0,
-    "seconds": 0.05,
+    "seconds": 0.06,
     "poolSize": 289,
     "lineup": [
      {
@@ -186,7 +186,7 @@
    },
    "optimizer": {
     "points": 292.14,
-    "ms": 102,
+    "ms": 99,
     "illegal": [],
     "error": null
    }
@@ -205,7 +205,7 @@
     "objective": 292.14,
     "bound": 292.14,
     "gap": 0,
-    "seconds": 0.05,
+    "seconds": 0.06,
     "poolSize": 289,
     "lineup": [
      {
@@ -284,7 +284,7 @@
    },
    "optimizer": {
     "points": 292.14,
-    "ms": 26,
+    "ms": 30,
     "illegal": [],
     "error": null
    }
@@ -382,7 +382,7 @@
    },
    "optimizer": {
     "points": 292.14,
-    "ms": 19,
+    "ms": 14,
     "illegal": [],
     "error": null
    }
@@ -480,7 +480,7 @@
    },
    "optimizer": {
     "points": 292.14,
-    "ms": 17,
+    "ms": 16,
     "illegal": [],
     "error": null
    }
@@ -695,7 +695,7 @@
     "objective": 292.14,
     "bound": 292.14,
     "gap": 0,
-    "seconds": 0.06,
+    "seconds": 0.07,
     "poolSize": 289,
     "lineup": [
      {
@@ -774,7 +774,7 @@
    },
    "optimizer": {
     "points": 292.14,
-    "ms": 45,
+    "ms": 40,
     "illegal": [],
     "error": null
    }
@@ -883,2352 +883,6 @@
    "key": "winners",
    "label": "Full Winners shape (single-lineup rules)",
    "group": "full",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 292.14,
-    "bound": 292.14,
-    "gap": 0,
-    "seconds": 0.05,
-    "poolSize": 280,
-    "lineup": [
-     {
-      "dkPlayerId": 43728538,
-      "name": "Bengals",
-      "position": "DST",
-      "team": "CIN",
-      "salary": 2700,
-      "actual": 18
-     },
-     {
-      "dkPlayerId": 43727251,
-      "name": "Bryce Young",
-      "position": "QB",
-      "team": "CAR",
-      "salary": 5200,
-      "actual": 35.44
-     },
-     {
-      "dkPlayerId": 43727325,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8000,
-      "actual": 37.6
-     },
-     {
-      "dkPlayerId": 43727341,
-      "name": "Derrick Henry",
-      "position": "RB",
-      "team": "BAL",
-      "salary": 6700,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 43727351,
-      "name": "D'Andre Swift",
-      "position": "RB",
-      "team": "CHI",
-      "salary": 6100,
-      "actual": 35.4
-     },
-     {
-      "dkPlayerId": 43728233,
-      "name": "Dallas Goedert",
-      "position": "TE",
-      "team": "PHI",
-      "salary": 4100,
-      "actual": 23.7
-     },
-     {
-      "dkPlayerId": 43727639,
-      "name": "Chris Olave",
-      "position": "WR",
-      "team": "NO",
-      "salary": 6700,
-      "actual": 31.2
-     },
-     {
-      "dkPlayerId": 43727655,
-      "name": "Christian Watson",
-      "position": "WR",
-      "team": "GB",
-      "salary": 5900,
-      "actual": 35.7
-     },
-     {
-      "dkPlayerId": 43727707,
-      "name": "Jalen Coker",
-      "position": "WR",
-      "team": "CAR",
-      "salary": 4600,
-      "actual": 36.8
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 292.14,
-    "ms": 18,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 1,
-   "punts": false,
-   "key": "winners_minus_rbPool",
-   "label": "Winners without RB pool rule",
-   "group": "leave_one_out",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 292.14,
-    "bound": 292.14,
-    "gap": 0,
-    "seconds": 0.05,
-    "poolSize": 280,
-    "lineup": [
-     {
-      "dkPlayerId": 43728538,
-      "name": "Bengals",
-      "position": "DST",
-      "team": "CIN",
-      "salary": 2700,
-      "actual": 18
-     },
-     {
-      "dkPlayerId": 43727251,
-      "name": "Bryce Young",
-      "position": "QB",
-      "team": "CAR",
-      "salary": 5200,
-      "actual": 35.44
-     },
-     {
-      "dkPlayerId": 43727325,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8000,
-      "actual": 37.6
-     },
-     {
-      "dkPlayerId": 43727341,
-      "name": "Derrick Henry",
-      "position": "RB",
-      "team": "BAL",
-      "salary": 6700,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 43727351,
-      "name": "D'Andre Swift",
-      "position": "RB",
-      "team": "CHI",
-      "salary": 6100,
-      "actual": 35.4
-     },
-     {
-      "dkPlayerId": 43728233,
-      "name": "Dallas Goedert",
-      "position": "TE",
-      "team": "PHI",
-      "salary": 4100,
-      "actual": 23.7
-     },
-     {
-      "dkPlayerId": 43727639,
-      "name": "Chris Olave",
-      "position": "WR",
-      "team": "NO",
-      "salary": 6700,
-      "actual": 31.2
-     },
-     {
-      "dkPlayerId": 43727655,
-      "name": "Christian Watson",
-      "position": "WR",
-      "team": "GB",
-      "salary": 5900,
-      "actual": 35.7
-     },
-     {
-      "dkPlayerId": 43727707,
-      "name": "Jalen Coker",
-      "position": "WR",
-      "team": "CAR",
-      "salary": 4600,
-      "actual": 36.8
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 292.14,
-    "ms": 13,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 1,
-   "punts": false,
-   "key": "winners_minus_wrPool",
-   "label": "Winners without WR pool rule",
-   "group": "leave_one_out",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 292.14,
-    "bound": 292.14,
-    "gap": 0,
-    "seconds": 0.05,
-    "poolSize": 280,
-    "lineup": [
-     {
-      "dkPlayerId": 43728538,
-      "name": "Bengals",
-      "position": "DST",
-      "team": "CIN",
-      "salary": 2700,
-      "actual": 18
-     },
-     {
-      "dkPlayerId": 43727251,
-      "name": "Bryce Young",
-      "position": "QB",
-      "team": "CAR",
-      "salary": 5200,
-      "actual": 35.44
-     },
-     {
-      "dkPlayerId": 43727325,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8000,
-      "actual": 37.6
-     },
-     {
-      "dkPlayerId": 43727341,
-      "name": "Derrick Henry",
-      "position": "RB",
-      "team": "BAL",
-      "salary": 6700,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 43727351,
-      "name": "D'Andre Swift",
-      "position": "RB",
-      "team": "CHI",
-      "salary": 6100,
-      "actual": 35.4
-     },
-     {
-      "dkPlayerId": 43728233,
-      "name": "Dallas Goedert",
-      "position": "TE",
-      "team": "PHI",
-      "salary": 4100,
-      "actual": 23.7
-     },
-     {
-      "dkPlayerId": 43727639,
-      "name": "Chris Olave",
-      "position": "WR",
-      "team": "NO",
-      "salary": 6700,
-      "actual": 31.2
-     },
-     {
-      "dkPlayerId": 43727655,
-      "name": "Christian Watson",
-      "position": "WR",
-      "team": "GB",
-      "salary": 5900,
-      "actual": 35.7
-     },
-     {
-      "dkPlayerId": 43727707,
-      "name": "Jalen Coker",
-      "position": "WR",
-      "team": "CAR",
-      "salary": 4600,
-      "actual": 36.8
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 292.14,
-    "ms": 14,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 1,
-   "punts": false,
-   "key": "winners_minus_tePool",
-   "label": "Winners without TE pool rule",
-   "group": "leave_one_out",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 292.14,
-    "bound": 292.14,
-    "gap": 0,
-    "seconds": 0.05,
-    "poolSize": 280,
-    "lineup": [
-     {
-      "dkPlayerId": 43728538,
-      "name": "Bengals",
-      "position": "DST",
-      "team": "CIN",
-      "salary": 2700,
-      "actual": 18
-     },
-     {
-      "dkPlayerId": 43727251,
-      "name": "Bryce Young",
-      "position": "QB",
-      "team": "CAR",
-      "salary": 5200,
-      "actual": 35.44
-     },
-     {
-      "dkPlayerId": 43727325,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8000,
-      "actual": 37.6
-     },
-     {
-      "dkPlayerId": 43727341,
-      "name": "Derrick Henry",
-      "position": "RB",
-      "team": "BAL",
-      "salary": 6700,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 43727351,
-      "name": "D'Andre Swift",
-      "position": "RB",
-      "team": "CHI",
-      "salary": 6100,
-      "actual": 35.4
-     },
-     {
-      "dkPlayerId": 43728233,
-      "name": "Dallas Goedert",
-      "position": "TE",
-      "team": "PHI",
-      "salary": 4100,
-      "actual": 23.7
-     },
-     {
-      "dkPlayerId": 43727639,
-      "name": "Chris Olave",
-      "position": "WR",
-      "team": "NO",
-      "salary": 6700,
-      "actual": 31.2
-     },
-     {
-      "dkPlayerId": 43727655,
-      "name": "Christian Watson",
-      "position": "WR",
-      "team": "GB",
-      "salary": 5900,
-      "actual": 35.7
-     },
-     {
-      "dkPlayerId": 43727707,
-      "name": "Jalen Coker",
-      "position": "WR",
-      "team": "CAR",
-      "salary": 4600,
-      "actual": 36.8
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 292.14,
-    "ms": 17,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 1,
-   "punts": false,
-   "key": "winners_minus_dstPool",
-   "label": "Winners without DST pool rule",
-   "group": "leave_one_out",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 292.14,
-    "bound": 292.14,
-    "gap": 0,
-    "seconds": 0.05,
-    "poolSize": 289,
-    "lineup": [
-     {
-      "dkPlayerId": 43728538,
-      "name": "Bengals",
-      "position": "DST",
-      "team": "CIN",
-      "salary": 2700,
-      "actual": 18
-     },
-     {
-      "dkPlayerId": 43727251,
-      "name": "Bryce Young",
-      "position": "QB",
-      "team": "CAR",
-      "salary": 5200,
-      "actual": 35.44
-     },
-     {
-      "dkPlayerId": 43727325,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8000,
-      "actual": 37.6
-     },
-     {
-      "dkPlayerId": 43727341,
-      "name": "Derrick Henry",
-      "position": "RB",
-      "team": "BAL",
-      "salary": 6700,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 43727351,
-      "name": "D'Andre Swift",
-      "position": "RB",
-      "team": "CHI",
-      "salary": 6100,
-      "actual": 35.4
-     },
-     {
-      "dkPlayerId": 43728233,
-      "name": "Dallas Goedert",
-      "position": "TE",
-      "team": "PHI",
-      "salary": 4100,
-      "actual": 23.7
-     },
-     {
-      "dkPlayerId": 43727639,
-      "name": "Chris Olave",
-      "position": "WR",
-      "team": "NO",
-      "salary": 6700,
-      "actual": 31.2
-     },
-     {
-      "dkPlayerId": 43727655,
-      "name": "Christian Watson",
-      "position": "WR",
-      "team": "GB",
-      "salary": 5900,
-      "actual": 35.7
-     },
-     {
-      "dkPlayerId": 43727707,
-      "name": "Jalen Coker",
-      "position": "WR",
-      "team": "CAR",
-      "salary": 4600,
-      "actual": 36.8
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 292.14,
-    "ms": 12,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 1,
-   "punts": false,
-   "key": "winners_minus_floor",
-   "label": "Winners without $49.5k floor",
-   "group": "leave_one_out",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 292.14,
-    "bound": 292.14,
-    "gap": 0,
-    "seconds": 0.05,
-    "poolSize": 280,
-    "lineup": [
-     {
-      "dkPlayerId": 43728538,
-      "name": "Bengals",
-      "position": "DST",
-      "team": "CIN",
-      "salary": 2700,
-      "actual": 18
-     },
-     {
-      "dkPlayerId": 43727251,
-      "name": "Bryce Young",
-      "position": "QB",
-      "team": "CAR",
-      "salary": 5200,
-      "actual": 35.44
-     },
-     {
-      "dkPlayerId": 43727325,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8000,
-      "actual": 37.6
-     },
-     {
-      "dkPlayerId": 43727341,
-      "name": "Derrick Henry",
-      "position": "RB",
-      "team": "BAL",
-      "salary": 6700,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 43727351,
-      "name": "D'Andre Swift",
-      "position": "RB",
-      "team": "CHI",
-      "salary": 6100,
-      "actual": 35.4
-     },
-     {
-      "dkPlayerId": 43728233,
-      "name": "Dallas Goedert",
-      "position": "TE",
-      "team": "PHI",
-      "salary": 4100,
-      "actual": 23.7
-     },
-     {
-      "dkPlayerId": 43727639,
-      "name": "Chris Olave",
-      "position": "WR",
-      "team": "NO",
-      "salary": 6700,
-      "actual": 31.2
-     },
-     {
-      "dkPlayerId": 43727655,
-      "name": "Christian Watson",
-      "position": "WR",
-      "team": "GB",
-      "salary": 5900,
-      "actual": 35.7
-     },
-     {
-      "dkPlayerId": 43727707,
-      "name": "Jalen Coker",
-      "position": "WR",
-      "team": "CAR",
-      "salary": 4600,
-      "actual": 36.8
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 292.14,
-    "ms": 15,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 1,
-   "punts": false,
-   "key": "winners_minus_stack",
-   "label": "Winners without QB + WR/TE stack",
-   "group": "leave_one_out",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 292.14,
-    "bound": 292.14,
-    "gap": 0,
-    "seconds": 0.06,
-    "poolSize": 280,
-    "lineup": [
-     {
-      "dkPlayerId": 43728538,
-      "name": "Bengals",
-      "position": "DST",
-      "team": "CIN",
-      "salary": 2700,
-      "actual": 18
-     },
-     {
-      "dkPlayerId": 43727251,
-      "name": "Bryce Young",
-      "position": "QB",
-      "team": "CAR",
-      "salary": 5200,
-      "actual": 35.44
-     },
-     {
-      "dkPlayerId": 43727325,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8000,
-      "actual": 37.6
-     },
-     {
-      "dkPlayerId": 43727341,
-      "name": "Derrick Henry",
-      "position": "RB",
-      "team": "BAL",
-      "salary": 6700,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 43727351,
-      "name": "D'Andre Swift",
-      "position": "RB",
-      "team": "CHI",
-      "salary": 6100,
-      "actual": 35.4
-     },
-     {
-      "dkPlayerId": 43728233,
-      "name": "Dallas Goedert",
-      "position": "TE",
-      "team": "PHI",
-      "salary": 4100,
-      "actual": 23.7
-     },
-     {
-      "dkPlayerId": 43727639,
-      "name": "Chris Olave",
-      "position": "WR",
-      "team": "NO",
-      "salary": 6700,
-      "actual": 31.2
-     },
-     {
-      "dkPlayerId": 43727655,
-      "name": "Christian Watson",
-      "position": "WR",
-      "team": "GB",
-      "salary": 5900,
-      "actual": 35.7
-     },
-     {
-      "dkPlayerId": 43727707,
-      "name": "Jalen Coker",
-      "position": "WR",
-      "team": "CAR",
-      "salary": 4600,
-      "actual": 36.8
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 292.14,
-    "ms": 12,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 1,
-   "punts": false,
-   "key": "winners_strict_dst",
-   "label": "Diagnostic: Winners + no DST against own offense in this lineup",
-   "group": "diagnostic",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 292.14,
-    "bound": 292.14,
-    "gap": 0,
-    "seconds": 0.05,
-    "poolSize": 280,
-    "lineup": [
-     {
-      "dkPlayerId": 43728538,
-      "name": "Bengals",
-      "position": "DST",
-      "team": "CIN",
-      "salary": 2700,
-      "actual": 18
-     },
-     {
-      "dkPlayerId": 43727251,
-      "name": "Bryce Young",
-      "position": "QB",
-      "team": "CAR",
-      "salary": 5200,
-      "actual": 35.44
-     },
-     {
-      "dkPlayerId": 43727325,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8000,
-      "actual": 37.6
-     },
-     {
-      "dkPlayerId": 43727341,
-      "name": "Derrick Henry",
-      "position": "RB",
-      "team": "BAL",
-      "salary": 6700,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 43727351,
-      "name": "D'Andre Swift",
-      "position": "RB",
-      "team": "CHI",
-      "salary": 6100,
-      "actual": 35.4
-     },
-     {
-      "dkPlayerId": 43728233,
-      "name": "Dallas Goedert",
-      "position": "TE",
-      "team": "PHI",
-      "salary": 4100,
-      "actual": 23.7
-     },
-     {
-      "dkPlayerId": 43727639,
-      "name": "Chris Olave",
-      "position": "WR",
-      "team": "NO",
-      "salary": 6700,
-      "actual": 31.2
-     },
-     {
-      "dkPlayerId": 43727655,
-      "name": "Christian Watson",
-      "position": "WR",
-      "team": "GB",
-      "salary": 5900,
-      "actual": 35.7
-     },
-     {
-      "dkPlayerId": 43727707,
-      "name": "Jalen Coker",
-      "position": "WR",
-      "team": "CAR",
-      "salary": 4600,
-      "actual": 36.8
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 292.14,
-    "ms": 13,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 1,
-   "punts": false,
-   "key": "winners_strict_bringback",
-   "label": "Diagnostic: Winners + bring-back required in this lineup",
-   "group": "diagnostic",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 292.14,
-    "bound": 292.14,
-    "gap": 0,
-    "seconds": 0.05,
-    "poolSize": 280,
-    "lineup": [
-     {
-      "dkPlayerId": 43728538,
-      "name": "Bengals",
-      "position": "DST",
-      "team": "CIN",
-      "salary": 2700,
-      "actual": 18
-     },
-     {
-      "dkPlayerId": 43727251,
-      "name": "Bryce Young",
-      "position": "QB",
-      "team": "CAR",
-      "salary": 5200,
-      "actual": 35.44
-     },
-     {
-      "dkPlayerId": 43727325,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8000,
-      "actual": 37.6
-     },
-     {
-      "dkPlayerId": 43727341,
-      "name": "Derrick Henry",
-      "position": "RB",
-      "team": "BAL",
-      "salary": 6700,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 43727351,
-      "name": "D'Andre Swift",
-      "position": "RB",
-      "team": "CHI",
-      "salary": 6100,
-      "actual": 35.4
-     },
-     {
-      "dkPlayerId": 43728233,
-      "name": "Dallas Goedert",
-      "position": "TE",
-      "team": "PHI",
-      "salary": 4100,
-      "actual": 23.7
-     },
-     {
-      "dkPlayerId": 43727639,
-      "name": "Chris Olave",
-      "position": "WR",
-      "team": "NO",
-      "salary": 6700,
-      "actual": 31.2
-     },
-     {
-      "dkPlayerId": 43727655,
-      "name": "Christian Watson",
-      "position": "WR",
-      "team": "GB",
-      "salary": 5900,
-      "actual": 35.7
-     },
-     {
-      "dkPlayerId": 43727707,
-      "name": "Jalen Coker",
-      "position": "WR",
-      "team": "CAR",
-      "salary": 4600,
-      "actual": 36.8
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 292.14,
-    "ms": 17,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 1,
-   "punts": true,
-   "key": "dk_only",
-   "label": "DraftKings rules only (CBC only)",
-   "group": "baseline",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 292.14,
-    "bound": 292.14,
-    "gap": 0,
-    "seconds": 0.07,
-    "poolSize": 289,
-    "lineup": [
-     {
-      "dkPlayerId": 43728538,
-      "name": "Bengals",
-      "position": "DST",
-      "team": "CIN",
-      "salary": 2700,
-      "actual": 18
-     },
-     {
-      "dkPlayerId": 43727251,
-      "name": "Bryce Young",
-      "position": "QB",
-      "team": "CAR",
-      "salary": 5200,
-      "actual": 35.44
-     },
-     {
-      "dkPlayerId": 43727325,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8000,
-      "actual": 37.6
-     },
-     {
-      "dkPlayerId": 43727341,
-      "name": "Derrick Henry",
-      "position": "RB",
-      "team": "BAL",
-      "salary": 6700,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 43727351,
-      "name": "D'Andre Swift",
-      "position": "RB",
-      "team": "CHI",
-      "salary": 6100,
-      "actual": 35.4
-     },
-     {
-      "dkPlayerId": 43728233,
-      "name": "Dallas Goedert",
-      "position": "TE",
-      "team": "PHI",
-      "salary": 4100,
-      "actual": 23.7
-     },
-     {
-      "dkPlayerId": 43727639,
-      "name": "Chris Olave",
-      "position": "WR",
-      "team": "NO",
-      "salary": 6700,
-      "actual": 31.2
-     },
-     {
-      "dkPlayerId": 43727655,
-      "name": "Christian Watson",
-      "position": "WR",
-      "team": "GB",
-      "salary": 5900,
-      "actual": 35.7
-     },
-     {
-      "dkPlayerId": 43727707,
-      "name": "Jalen Coker",
-      "position": "WR",
-      "team": "CAR",
-      "salary": 4600,
-      "actual": 36.8
-     }
-    ]
-   }
-  },
-  {
-   "week": 1,
-   "punts": true,
-   "key": "unrestricted",
-   "label": "Unrestricted (DraftKings rules + product invariants)",
-   "group": "baseline",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 292.14,
-    "bound": 292.14,
-    "gap": 0,
-    "seconds": 0.06,
-    "poolSize": 289,
-    "lineup": [
-     {
-      "dkPlayerId": 43728538,
-      "name": "Bengals",
-      "position": "DST",
-      "team": "CIN",
-      "salary": 2700,
-      "actual": 18
-     },
-     {
-      "dkPlayerId": 43727251,
-      "name": "Bryce Young",
-      "position": "QB",
-      "team": "CAR",
-      "salary": 5200,
-      "actual": 35.44
-     },
-     {
-      "dkPlayerId": 43727325,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8000,
-      "actual": 37.6
-     },
-     {
-      "dkPlayerId": 43727341,
-      "name": "Derrick Henry",
-      "position": "RB",
-      "team": "BAL",
-      "salary": 6700,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 43727351,
-      "name": "D'Andre Swift",
-      "position": "RB",
-      "team": "CHI",
-      "salary": 6100,
-      "actual": 35.4
-     },
-     {
-      "dkPlayerId": 43728233,
-      "name": "Dallas Goedert",
-      "position": "TE",
-      "team": "PHI",
-      "salary": 4100,
-      "actual": 23.7
-     },
-     {
-      "dkPlayerId": 43727639,
-      "name": "Chris Olave",
-      "position": "WR",
-      "team": "NO",
-      "salary": 6700,
-      "actual": 31.2
-     },
-     {
-      "dkPlayerId": 43727655,
-      "name": "Christian Watson",
-      "position": "WR",
-      "team": "GB",
-      "salary": 5900,
-      "actual": 35.7
-     },
-     {
-      "dkPlayerId": 43727707,
-      "name": "Jalen Coker",
-      "position": "WR",
-      "team": "CAR",
-      "salary": 4600,
-      "actual": 36.8
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 292.14,
-    "ms": 16,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 1,
-   "punts": true,
-   "key": "standard",
-   "label": "Standard defaults (stack + bring-back, run's salary floor)",
-   "group": "baseline",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 292.14,
-    "bound": 292.14,
-    "gap": 0,
-    "seconds": 0.05,
-    "poolSize": 289,
-    "lineup": [
-     {
-      "dkPlayerId": 43728538,
-      "name": "Bengals",
-      "position": "DST",
-      "team": "CIN",
-      "salary": 2700,
-      "actual": 18
-     },
-     {
-      "dkPlayerId": 43727251,
-      "name": "Bryce Young",
-      "position": "QB",
-      "team": "CAR",
-      "salary": 5200,
-      "actual": 35.44
-     },
-     {
-      "dkPlayerId": 43727325,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8000,
-      "actual": 37.6
-     },
-     {
-      "dkPlayerId": 43727341,
-      "name": "Derrick Henry",
-      "position": "RB",
-      "team": "BAL",
-      "salary": 6700,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 43727351,
-      "name": "D'Andre Swift",
-      "position": "RB",
-      "team": "CHI",
-      "salary": 6100,
-      "actual": 35.4
-     },
-     {
-      "dkPlayerId": 43728233,
-      "name": "Dallas Goedert",
-      "position": "TE",
-      "team": "PHI",
-      "salary": 4100,
-      "actual": 23.7
-     },
-     {
-      "dkPlayerId": 43727639,
-      "name": "Chris Olave",
-      "position": "WR",
-      "team": "NO",
-      "salary": 6700,
-      "actual": 31.2
-     },
-     {
-      "dkPlayerId": 43727655,
-      "name": "Christian Watson",
-      "position": "WR",
-      "team": "GB",
-      "salary": 5900,
-      "actual": 35.7
-     },
-     {
-      "dkPlayerId": 43727707,
-      "name": "Jalen Coker",
-      "position": "WR",
-      "team": "CAR",
-      "salary": 4600,
-      "actual": 36.8
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 292.14,
-    "ms": 27,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 1,
-   "punts": true,
-   "key": "only_rbPool",
-   "label": "RB pool rule only",
-   "group": "single",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 292.14,
-    "bound": 292.14,
-    "gap": 0,
-    "seconds": 0.06,
-    "poolSize": 289,
-    "lineup": [
-     {
-      "dkPlayerId": 43728538,
-      "name": "Bengals",
-      "position": "DST",
-      "team": "CIN",
-      "salary": 2700,
-      "actual": 18
-     },
-     {
-      "dkPlayerId": 43727251,
-      "name": "Bryce Young",
-      "position": "QB",
-      "team": "CAR",
-      "salary": 5200,
-      "actual": 35.44
-     },
-     {
-      "dkPlayerId": 43727325,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8000,
-      "actual": 37.6
-     },
-     {
-      "dkPlayerId": 43727341,
-      "name": "Derrick Henry",
-      "position": "RB",
-      "team": "BAL",
-      "salary": 6700,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 43727351,
-      "name": "D'Andre Swift",
-      "position": "RB",
-      "team": "CHI",
-      "salary": 6100,
-      "actual": 35.4
-     },
-     {
-      "dkPlayerId": 43728233,
-      "name": "Dallas Goedert",
-      "position": "TE",
-      "team": "PHI",
-      "salary": 4100,
-      "actual": 23.7
-     },
-     {
-      "dkPlayerId": 43727639,
-      "name": "Chris Olave",
-      "position": "WR",
-      "team": "NO",
-      "salary": 6700,
-      "actual": 31.2
-     },
-     {
-      "dkPlayerId": 43727655,
-      "name": "Christian Watson",
-      "position": "WR",
-      "team": "GB",
-      "salary": 5900,
-      "actual": 35.7
-     },
-     {
-      "dkPlayerId": 43727707,
-      "name": "Jalen Coker",
-      "position": "WR",
-      "team": "CAR",
-      "salary": 4600,
-      "actual": 36.8
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 292.14,
-    "ms": 18,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 1,
-   "punts": true,
-   "key": "only_wrPool",
-   "label": "WR pool rule only",
-   "group": "single",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 292.14,
-    "bound": 292.14,
-    "gap": 0,
-    "seconds": 0.07,
-    "poolSize": 289,
-    "lineup": [
-     {
-      "dkPlayerId": 43728538,
-      "name": "Bengals",
-      "position": "DST",
-      "team": "CIN",
-      "salary": 2700,
-      "actual": 18
-     },
-     {
-      "dkPlayerId": 43727251,
-      "name": "Bryce Young",
-      "position": "QB",
-      "team": "CAR",
-      "salary": 5200,
-      "actual": 35.44
-     },
-     {
-      "dkPlayerId": 43727325,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8000,
-      "actual": 37.6
-     },
-     {
-      "dkPlayerId": 43727341,
-      "name": "Derrick Henry",
-      "position": "RB",
-      "team": "BAL",
-      "salary": 6700,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 43727351,
-      "name": "D'Andre Swift",
-      "position": "RB",
-      "team": "CHI",
-      "salary": 6100,
-      "actual": 35.4
-     },
-     {
-      "dkPlayerId": 43728233,
-      "name": "Dallas Goedert",
-      "position": "TE",
-      "team": "PHI",
-      "salary": 4100,
-      "actual": 23.7
-     },
-     {
-      "dkPlayerId": 43727639,
-      "name": "Chris Olave",
-      "position": "WR",
-      "team": "NO",
-      "salary": 6700,
-      "actual": 31.2
-     },
-     {
-      "dkPlayerId": 43727655,
-      "name": "Christian Watson",
-      "position": "WR",
-      "team": "GB",
-      "salary": 5900,
-      "actual": 35.7
-     },
-     {
-      "dkPlayerId": 43727707,
-      "name": "Jalen Coker",
-      "position": "WR",
-      "team": "CAR",
-      "salary": 4600,
-      "actual": 36.8
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 292.14,
-    "ms": 24,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 1,
-   "punts": true,
-   "key": "only_tePool",
-   "label": "TE pool rule only",
-   "group": "single",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 292.14,
-    "bound": 292.14,
-    "gap": 0,
-    "seconds": 0.06,
-    "poolSize": 289,
-    "lineup": [
-     {
-      "dkPlayerId": 43728538,
-      "name": "Bengals",
-      "position": "DST",
-      "team": "CIN",
-      "salary": 2700,
-      "actual": 18
-     },
-     {
-      "dkPlayerId": 43727251,
-      "name": "Bryce Young",
-      "position": "QB",
-      "team": "CAR",
-      "salary": 5200,
-      "actual": 35.44
-     },
-     {
-      "dkPlayerId": 43727325,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8000,
-      "actual": 37.6
-     },
-     {
-      "dkPlayerId": 43727341,
-      "name": "Derrick Henry",
-      "position": "RB",
-      "team": "BAL",
-      "salary": 6700,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 43727351,
-      "name": "D'Andre Swift",
-      "position": "RB",
-      "team": "CHI",
-      "salary": 6100,
-      "actual": 35.4
-     },
-     {
-      "dkPlayerId": 43728233,
-      "name": "Dallas Goedert",
-      "position": "TE",
-      "team": "PHI",
-      "salary": 4100,
-      "actual": 23.7
-     },
-     {
-      "dkPlayerId": 43727639,
-      "name": "Chris Olave",
-      "position": "WR",
-      "team": "NO",
-      "salary": 6700,
-      "actual": 31.2
-     },
-     {
-      "dkPlayerId": 43727655,
-      "name": "Christian Watson",
-      "position": "WR",
-      "team": "GB",
-      "salary": 5900,
-      "actual": 35.7
-     },
-     {
-      "dkPlayerId": 43727707,
-      "name": "Jalen Coker",
-      "position": "WR",
-      "team": "CAR",
-      "salary": 4600,
-      "actual": 36.8
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 292.14,
-    "ms": 16,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 1,
-   "punts": true,
-   "key": "only_dstPool",
-   "label": "DST pool rule only",
-   "group": "single",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 292.14,
-    "bound": 292.14,
-    "gap": 0,
-    "seconds": 0.07,
-    "poolSize": 280,
-    "lineup": [
-     {
-      "dkPlayerId": 43728538,
-      "name": "Bengals",
-      "position": "DST",
-      "team": "CIN",
-      "salary": 2700,
-      "actual": 18
-     },
-     {
-      "dkPlayerId": 43727251,
-      "name": "Bryce Young",
-      "position": "QB",
-      "team": "CAR",
-      "salary": 5200,
-      "actual": 35.44
-     },
-     {
-      "dkPlayerId": 43727325,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8000,
-      "actual": 37.6
-     },
-     {
-      "dkPlayerId": 43727341,
-      "name": "Derrick Henry",
-      "position": "RB",
-      "team": "BAL",
-      "salary": 6700,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 43727351,
-      "name": "D'Andre Swift",
-      "position": "RB",
-      "team": "CHI",
-      "salary": 6100,
-      "actual": 35.4
-     },
-     {
-      "dkPlayerId": 43728233,
-      "name": "Dallas Goedert",
-      "position": "TE",
-      "team": "PHI",
-      "salary": 4100,
-      "actual": 23.7
-     },
-     {
-      "dkPlayerId": 43727639,
-      "name": "Chris Olave",
-      "position": "WR",
-      "team": "NO",
-      "salary": 6700,
-      "actual": 31.2
-     },
-     {
-      "dkPlayerId": 43727655,
-      "name": "Christian Watson",
-      "position": "WR",
-      "team": "GB",
-      "salary": 5900,
-      "actual": 35.7
-     },
-     {
-      "dkPlayerId": 43727707,
-      "name": "Jalen Coker",
-      "position": "WR",
-      "team": "CAR",
-      "salary": 4600,
-      "actual": 36.8
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 292.14,
-    "ms": 13,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 1,
-   "punts": true,
-   "key": "only_floor",
-   "label": "$49.5k floor only",
-   "group": "single",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 292.14,
-    "bound": 292.14,
-    "gap": 0,
-    "seconds": 0.07,
-    "poolSize": 289,
-    "lineup": [
-     {
-      "dkPlayerId": 43728538,
-      "name": "Bengals",
-      "position": "DST",
-      "team": "CIN",
-      "salary": 2700,
-      "actual": 18
-     },
-     {
-      "dkPlayerId": 43727251,
-      "name": "Bryce Young",
-      "position": "QB",
-      "team": "CAR",
-      "salary": 5200,
-      "actual": 35.44
-     },
-     {
-      "dkPlayerId": 43727325,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8000,
-      "actual": 37.6
-     },
-     {
-      "dkPlayerId": 43727341,
-      "name": "Derrick Henry",
-      "position": "RB",
-      "team": "BAL",
-      "salary": 6700,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 43727351,
-      "name": "D'Andre Swift",
-      "position": "RB",
-      "team": "CHI",
-      "salary": 6100,
-      "actual": 35.4
-     },
-     {
-      "dkPlayerId": 43728233,
-      "name": "Dallas Goedert",
-      "position": "TE",
-      "team": "PHI",
-      "salary": 4100,
-      "actual": 23.7
-     },
-     {
-      "dkPlayerId": 43727639,
-      "name": "Chris Olave",
-      "position": "WR",
-      "team": "NO",
-      "salary": 6700,
-      "actual": 31.2
-     },
-     {
-      "dkPlayerId": 43727655,
-      "name": "Christian Watson",
-      "position": "WR",
-      "team": "GB",
-      "salary": 5900,
-      "actual": 35.7
-     },
-     {
-      "dkPlayerId": 43727707,
-      "name": "Jalen Coker",
-      "position": "WR",
-      "team": "CAR",
-      "salary": 4600,
-      "actual": 36.8
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 292.14,
-    "ms": 12,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 1,
-   "punts": true,
-   "key": "only_stack",
-   "label": "QB + WR/TE stack only",
-   "group": "single",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 292.14,
-    "bound": 292.14,
-    "gap": 0,
-    "seconds": 0.05,
-    "poolSize": 289,
-    "lineup": [
-     {
-      "dkPlayerId": 43728538,
-      "name": "Bengals",
-      "position": "DST",
-      "team": "CIN",
-      "salary": 2700,
-      "actual": 18
-     },
-     {
-      "dkPlayerId": 43727251,
-      "name": "Bryce Young",
-      "position": "QB",
-      "team": "CAR",
-      "salary": 5200,
-      "actual": 35.44
-     },
-     {
-      "dkPlayerId": 43727325,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8000,
-      "actual": 37.6
-     },
-     {
-      "dkPlayerId": 43727341,
-      "name": "Derrick Henry",
-      "position": "RB",
-      "team": "BAL",
-      "salary": 6700,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 43727351,
-      "name": "D'Andre Swift",
-      "position": "RB",
-      "team": "CHI",
-      "salary": 6100,
-      "actual": 35.4
-     },
-     {
-      "dkPlayerId": 43728233,
-      "name": "Dallas Goedert",
-      "position": "TE",
-      "team": "PHI",
-      "salary": 4100,
-      "actual": 23.7
-     },
-     {
-      "dkPlayerId": 43727639,
-      "name": "Chris Olave",
-      "position": "WR",
-      "team": "NO",
-      "salary": 6700,
-      "actual": 31.2
-     },
-     {
-      "dkPlayerId": 43727655,
-      "name": "Christian Watson",
-      "position": "WR",
-      "team": "GB",
-      "salary": 5900,
-      "actual": 35.7
-     },
-     {
-      "dkPlayerId": 43727707,
-      "name": "Jalen Coker",
-      "position": "WR",
-      "team": "CAR",
-      "salary": 4600,
-      "actual": 36.8
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 292.14,
-    "ms": 15,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 1,
-   "punts": true,
-   "key": "winners",
-   "label": "Full Winners shape (single-lineup rules)",
-   "group": "full",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 292.14,
-    "bound": 292.14,
-    "gap": 0,
-    "seconds": 0.05,
-    "poolSize": 280,
-    "lineup": [
-     {
-      "dkPlayerId": 43728538,
-      "name": "Bengals",
-      "position": "DST",
-      "team": "CIN",
-      "salary": 2700,
-      "actual": 18
-     },
-     {
-      "dkPlayerId": 43727251,
-      "name": "Bryce Young",
-      "position": "QB",
-      "team": "CAR",
-      "salary": 5200,
-      "actual": 35.44
-     },
-     {
-      "dkPlayerId": 43727325,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8000,
-      "actual": 37.6
-     },
-     {
-      "dkPlayerId": 43727341,
-      "name": "Derrick Henry",
-      "position": "RB",
-      "team": "BAL",
-      "salary": 6700,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 43727351,
-      "name": "D'Andre Swift",
-      "position": "RB",
-      "team": "CHI",
-      "salary": 6100,
-      "actual": 35.4
-     },
-     {
-      "dkPlayerId": 43728233,
-      "name": "Dallas Goedert",
-      "position": "TE",
-      "team": "PHI",
-      "salary": 4100,
-      "actual": 23.7
-     },
-     {
-      "dkPlayerId": 43727639,
-      "name": "Chris Olave",
-      "position": "WR",
-      "team": "NO",
-      "salary": 6700,
-      "actual": 31.2
-     },
-     {
-      "dkPlayerId": 43727655,
-      "name": "Christian Watson",
-      "position": "WR",
-      "team": "GB",
-      "salary": 5900,
-      "actual": 35.7
-     },
-     {
-      "dkPlayerId": 43727707,
-      "name": "Jalen Coker",
-      "position": "WR",
-      "team": "CAR",
-      "salary": 4600,
-      "actual": 36.8
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 292.14,
-    "ms": 14,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 1,
-   "punts": true,
-   "key": "winners_minus_rbPool",
-   "label": "Winners without RB pool rule",
-   "group": "leave_one_out",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 292.14,
-    "bound": 292.14,
-    "gap": 0,
-    "seconds": 0.05,
-    "poolSize": 280,
-    "lineup": [
-     {
-      "dkPlayerId": 43728538,
-      "name": "Bengals",
-      "position": "DST",
-      "team": "CIN",
-      "salary": 2700,
-      "actual": 18
-     },
-     {
-      "dkPlayerId": 43727251,
-      "name": "Bryce Young",
-      "position": "QB",
-      "team": "CAR",
-      "salary": 5200,
-      "actual": 35.44
-     },
-     {
-      "dkPlayerId": 43727325,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8000,
-      "actual": 37.6
-     },
-     {
-      "dkPlayerId": 43727341,
-      "name": "Derrick Henry",
-      "position": "RB",
-      "team": "BAL",
-      "salary": 6700,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 43727351,
-      "name": "D'Andre Swift",
-      "position": "RB",
-      "team": "CHI",
-      "salary": 6100,
-      "actual": 35.4
-     },
-     {
-      "dkPlayerId": 43728233,
-      "name": "Dallas Goedert",
-      "position": "TE",
-      "team": "PHI",
-      "salary": 4100,
-      "actual": 23.7
-     },
-     {
-      "dkPlayerId": 43727639,
-      "name": "Chris Olave",
-      "position": "WR",
-      "team": "NO",
-      "salary": 6700,
-      "actual": 31.2
-     },
-     {
-      "dkPlayerId": 43727655,
-      "name": "Christian Watson",
-      "position": "WR",
-      "team": "GB",
-      "salary": 5900,
-      "actual": 35.7
-     },
-     {
-      "dkPlayerId": 43727707,
-      "name": "Jalen Coker",
-      "position": "WR",
-      "team": "CAR",
-      "salary": 4600,
-      "actual": 36.8
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 292.14,
-    "ms": 11,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 1,
-   "punts": true,
-   "key": "winners_minus_wrPool",
-   "label": "Winners without WR pool rule",
-   "group": "leave_one_out",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 292.14,
-    "bound": 292.14,
-    "gap": 0,
-    "seconds": 0.05,
-    "poolSize": 280,
-    "lineup": [
-     {
-      "dkPlayerId": 43728538,
-      "name": "Bengals",
-      "position": "DST",
-      "team": "CIN",
-      "salary": 2700,
-      "actual": 18
-     },
-     {
-      "dkPlayerId": 43727251,
-      "name": "Bryce Young",
-      "position": "QB",
-      "team": "CAR",
-      "salary": 5200,
-      "actual": 35.44
-     },
-     {
-      "dkPlayerId": 43727325,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8000,
-      "actual": 37.6
-     },
-     {
-      "dkPlayerId": 43727341,
-      "name": "Derrick Henry",
-      "position": "RB",
-      "team": "BAL",
-      "salary": 6700,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 43727351,
-      "name": "D'Andre Swift",
-      "position": "RB",
-      "team": "CHI",
-      "salary": 6100,
-      "actual": 35.4
-     },
-     {
-      "dkPlayerId": 43728233,
-      "name": "Dallas Goedert",
-      "position": "TE",
-      "team": "PHI",
-      "salary": 4100,
-      "actual": 23.7
-     },
-     {
-      "dkPlayerId": 43727639,
-      "name": "Chris Olave",
-      "position": "WR",
-      "team": "NO",
-      "salary": 6700,
-      "actual": 31.2
-     },
-     {
-      "dkPlayerId": 43727655,
-      "name": "Christian Watson",
-      "position": "WR",
-      "team": "GB",
-      "salary": 5900,
-      "actual": 35.7
-     },
-     {
-      "dkPlayerId": 43727707,
-      "name": "Jalen Coker",
-      "position": "WR",
-      "team": "CAR",
-      "salary": 4600,
-      "actual": 36.8
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 292.14,
-    "ms": 15,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 1,
-   "punts": true,
-   "key": "winners_minus_tePool",
-   "label": "Winners without TE pool rule",
-   "group": "leave_one_out",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 292.14,
-    "bound": 292.14,
-    "gap": 0,
-    "seconds": 0.05,
-    "poolSize": 280,
-    "lineup": [
-     {
-      "dkPlayerId": 43728538,
-      "name": "Bengals",
-      "position": "DST",
-      "team": "CIN",
-      "salary": 2700,
-      "actual": 18
-     },
-     {
-      "dkPlayerId": 43727251,
-      "name": "Bryce Young",
-      "position": "QB",
-      "team": "CAR",
-      "salary": 5200,
-      "actual": 35.44
-     },
-     {
-      "dkPlayerId": 43727325,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8000,
-      "actual": 37.6
-     },
-     {
-      "dkPlayerId": 43727341,
-      "name": "Derrick Henry",
-      "position": "RB",
-      "team": "BAL",
-      "salary": 6700,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 43727351,
-      "name": "D'Andre Swift",
-      "position": "RB",
-      "team": "CHI",
-      "salary": 6100,
-      "actual": 35.4
-     },
-     {
-      "dkPlayerId": 43728233,
-      "name": "Dallas Goedert",
-      "position": "TE",
-      "team": "PHI",
-      "salary": 4100,
-      "actual": 23.7
-     },
-     {
-      "dkPlayerId": 43727639,
-      "name": "Chris Olave",
-      "position": "WR",
-      "team": "NO",
-      "salary": 6700,
-      "actual": 31.2
-     },
-     {
-      "dkPlayerId": 43727655,
-      "name": "Christian Watson",
-      "position": "WR",
-      "team": "GB",
-      "salary": 5900,
-      "actual": 35.7
-     },
-     {
-      "dkPlayerId": 43727707,
-      "name": "Jalen Coker",
-      "position": "WR",
-      "team": "CAR",
-      "salary": 4600,
-      "actual": 36.8
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 292.14,
-    "ms": 11,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 1,
-   "punts": true,
-   "key": "winners_minus_dstPool",
-   "label": "Winners without DST pool rule",
-   "group": "leave_one_out",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 292.14,
-    "bound": 292.14,
-    "gap": 0,
-    "seconds": 0.05,
-    "poolSize": 289,
-    "lineup": [
-     {
-      "dkPlayerId": 43728538,
-      "name": "Bengals",
-      "position": "DST",
-      "team": "CIN",
-      "salary": 2700,
-      "actual": 18
-     },
-     {
-      "dkPlayerId": 43727251,
-      "name": "Bryce Young",
-      "position": "QB",
-      "team": "CAR",
-      "salary": 5200,
-      "actual": 35.44
-     },
-     {
-      "dkPlayerId": 43727325,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8000,
-      "actual": 37.6
-     },
-     {
-      "dkPlayerId": 43727341,
-      "name": "Derrick Henry",
-      "position": "RB",
-      "team": "BAL",
-      "salary": 6700,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 43727351,
-      "name": "D'Andre Swift",
-      "position": "RB",
-      "team": "CHI",
-      "salary": 6100,
-      "actual": 35.4
-     },
-     {
-      "dkPlayerId": 43728233,
-      "name": "Dallas Goedert",
-      "position": "TE",
-      "team": "PHI",
-      "salary": 4100,
-      "actual": 23.7
-     },
-     {
-      "dkPlayerId": 43727639,
-      "name": "Chris Olave",
-      "position": "WR",
-      "team": "NO",
-      "salary": 6700,
-      "actual": 31.2
-     },
-     {
-      "dkPlayerId": 43727655,
-      "name": "Christian Watson",
-      "position": "WR",
-      "team": "GB",
-      "salary": 5900,
-      "actual": 35.7
-     },
-     {
-      "dkPlayerId": 43727707,
-      "name": "Jalen Coker",
-      "position": "WR",
-      "team": "CAR",
-      "salary": 4600,
-      "actual": 36.8
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 292.14,
-    "ms": 11,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 1,
-   "punts": true,
-   "key": "winners_minus_floor",
-   "label": "Winners without $49.5k floor",
-   "group": "leave_one_out",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 292.14,
-    "bound": 292.14,
-    "gap": 0,
-    "seconds": 0.05,
-    "poolSize": 280,
-    "lineup": [
-     {
-      "dkPlayerId": 43728538,
-      "name": "Bengals",
-      "position": "DST",
-      "team": "CIN",
-      "salary": 2700,
-      "actual": 18
-     },
-     {
-      "dkPlayerId": 43727251,
-      "name": "Bryce Young",
-      "position": "QB",
-      "team": "CAR",
-      "salary": 5200,
-      "actual": 35.44
-     },
-     {
-      "dkPlayerId": 43727325,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8000,
-      "actual": 37.6
-     },
-     {
-      "dkPlayerId": 43727341,
-      "name": "Derrick Henry",
-      "position": "RB",
-      "team": "BAL",
-      "salary": 6700,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 43727351,
-      "name": "D'Andre Swift",
-      "position": "RB",
-      "team": "CHI",
-      "salary": 6100,
-      "actual": 35.4
-     },
-     {
-      "dkPlayerId": 43728233,
-      "name": "Dallas Goedert",
-      "position": "TE",
-      "team": "PHI",
-      "salary": 4100,
-      "actual": 23.7
-     },
-     {
-      "dkPlayerId": 43727639,
-      "name": "Chris Olave",
-      "position": "WR",
-      "team": "NO",
-      "salary": 6700,
-      "actual": 31.2
-     },
-     {
-      "dkPlayerId": 43727655,
-      "name": "Christian Watson",
-      "position": "WR",
-      "team": "GB",
-      "salary": 5900,
-      "actual": 35.7
-     },
-     {
-      "dkPlayerId": 43727707,
-      "name": "Jalen Coker",
-      "position": "WR",
-      "team": "CAR",
-      "salary": 4600,
-      "actual": 36.8
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 292.14,
-    "ms": 16,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 1,
-   "punts": true,
-   "key": "winners_minus_stack",
-   "label": "Winners without QB + WR/TE stack",
-   "group": "leave_one_out",
    "cbc": {
     "status": "Optimal",
     "cbcResult": "Optimal solution found",
@@ -3323,6 +977,2352 @@
   },
   {
    "week": 1,
+   "punts": false,
+   "key": "winners_minus_rbPool",
+   "label": "Winners without RB pool rule",
+   "group": "leave_one_out",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 292.14,
+    "bound": 292.14,
+    "gap": 0,
+    "seconds": 0.06,
+    "poolSize": 280,
+    "lineup": [
+     {
+      "dkPlayerId": 43728538,
+      "name": "Bengals",
+      "position": "DST",
+      "team": "CIN",
+      "salary": 2700,
+      "actual": 18
+     },
+     {
+      "dkPlayerId": 43727251,
+      "name": "Bryce Young",
+      "position": "QB",
+      "team": "CAR",
+      "salary": 5200,
+      "actual": 35.44
+     },
+     {
+      "dkPlayerId": 43727325,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8000,
+      "actual": 37.6
+     },
+     {
+      "dkPlayerId": 43727341,
+      "name": "Derrick Henry",
+      "position": "RB",
+      "team": "BAL",
+      "salary": 6700,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 43727351,
+      "name": "D'Andre Swift",
+      "position": "RB",
+      "team": "CHI",
+      "salary": 6100,
+      "actual": 35.4
+     },
+     {
+      "dkPlayerId": 43728233,
+      "name": "Dallas Goedert",
+      "position": "TE",
+      "team": "PHI",
+      "salary": 4100,
+      "actual": 23.7
+     },
+     {
+      "dkPlayerId": 43727639,
+      "name": "Chris Olave",
+      "position": "WR",
+      "team": "NO",
+      "salary": 6700,
+      "actual": 31.2
+     },
+     {
+      "dkPlayerId": 43727655,
+      "name": "Christian Watson",
+      "position": "WR",
+      "team": "GB",
+      "salary": 5900,
+      "actual": 35.7
+     },
+     {
+      "dkPlayerId": 43727707,
+      "name": "Jalen Coker",
+      "position": "WR",
+      "team": "CAR",
+      "salary": 4600,
+      "actual": 36.8
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 292.14,
+    "ms": 25,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 1,
+   "punts": false,
+   "key": "winners_minus_wrPool",
+   "label": "Winners without WR pool rule",
+   "group": "leave_one_out",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 292.14,
+    "bound": 292.14,
+    "gap": 0,
+    "seconds": 0.06,
+    "poolSize": 280,
+    "lineup": [
+     {
+      "dkPlayerId": 43728538,
+      "name": "Bengals",
+      "position": "DST",
+      "team": "CIN",
+      "salary": 2700,
+      "actual": 18
+     },
+     {
+      "dkPlayerId": 43727251,
+      "name": "Bryce Young",
+      "position": "QB",
+      "team": "CAR",
+      "salary": 5200,
+      "actual": 35.44
+     },
+     {
+      "dkPlayerId": 43727325,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8000,
+      "actual": 37.6
+     },
+     {
+      "dkPlayerId": 43727341,
+      "name": "Derrick Henry",
+      "position": "RB",
+      "team": "BAL",
+      "salary": 6700,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 43727351,
+      "name": "D'Andre Swift",
+      "position": "RB",
+      "team": "CHI",
+      "salary": 6100,
+      "actual": 35.4
+     },
+     {
+      "dkPlayerId": 43728233,
+      "name": "Dallas Goedert",
+      "position": "TE",
+      "team": "PHI",
+      "salary": 4100,
+      "actual": 23.7
+     },
+     {
+      "dkPlayerId": 43727639,
+      "name": "Chris Olave",
+      "position": "WR",
+      "team": "NO",
+      "salary": 6700,
+      "actual": 31.2
+     },
+     {
+      "dkPlayerId": 43727655,
+      "name": "Christian Watson",
+      "position": "WR",
+      "team": "GB",
+      "salary": 5900,
+      "actual": 35.7
+     },
+     {
+      "dkPlayerId": 43727707,
+      "name": "Jalen Coker",
+      "position": "WR",
+      "team": "CAR",
+      "salary": 4600,
+      "actual": 36.8
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 292.14,
+    "ms": 32,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 1,
+   "punts": false,
+   "key": "winners_minus_tePool",
+   "label": "Winners without TE pool rule",
+   "group": "leave_one_out",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 292.14,
+    "bound": 292.14,
+    "gap": 0,
+    "seconds": 0.06,
+    "poolSize": 280,
+    "lineup": [
+     {
+      "dkPlayerId": 43728538,
+      "name": "Bengals",
+      "position": "DST",
+      "team": "CIN",
+      "salary": 2700,
+      "actual": 18
+     },
+     {
+      "dkPlayerId": 43727251,
+      "name": "Bryce Young",
+      "position": "QB",
+      "team": "CAR",
+      "salary": 5200,
+      "actual": 35.44
+     },
+     {
+      "dkPlayerId": 43727325,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8000,
+      "actual": 37.6
+     },
+     {
+      "dkPlayerId": 43727341,
+      "name": "Derrick Henry",
+      "position": "RB",
+      "team": "BAL",
+      "salary": 6700,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 43727351,
+      "name": "D'Andre Swift",
+      "position": "RB",
+      "team": "CHI",
+      "salary": 6100,
+      "actual": 35.4
+     },
+     {
+      "dkPlayerId": 43728233,
+      "name": "Dallas Goedert",
+      "position": "TE",
+      "team": "PHI",
+      "salary": 4100,
+      "actual": 23.7
+     },
+     {
+      "dkPlayerId": 43727639,
+      "name": "Chris Olave",
+      "position": "WR",
+      "team": "NO",
+      "salary": 6700,
+      "actual": 31.2
+     },
+     {
+      "dkPlayerId": 43727655,
+      "name": "Christian Watson",
+      "position": "WR",
+      "team": "GB",
+      "salary": 5900,
+      "actual": 35.7
+     },
+     {
+      "dkPlayerId": 43727707,
+      "name": "Jalen Coker",
+      "position": "WR",
+      "team": "CAR",
+      "salary": 4600,
+      "actual": 36.8
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 292.14,
+    "ms": 27,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 1,
+   "punts": false,
+   "key": "winners_minus_dstPool",
+   "label": "Winners without DST pool rule",
+   "group": "leave_one_out",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 292.14,
+    "bound": 292.14,
+    "gap": 0,
+    "seconds": 0.05,
+    "poolSize": 289,
+    "lineup": [
+     {
+      "dkPlayerId": 43728538,
+      "name": "Bengals",
+      "position": "DST",
+      "team": "CIN",
+      "salary": 2700,
+      "actual": 18
+     },
+     {
+      "dkPlayerId": 43727251,
+      "name": "Bryce Young",
+      "position": "QB",
+      "team": "CAR",
+      "salary": 5200,
+      "actual": 35.44
+     },
+     {
+      "dkPlayerId": 43727325,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8000,
+      "actual": 37.6
+     },
+     {
+      "dkPlayerId": 43727341,
+      "name": "Derrick Henry",
+      "position": "RB",
+      "team": "BAL",
+      "salary": 6700,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 43727351,
+      "name": "D'Andre Swift",
+      "position": "RB",
+      "team": "CHI",
+      "salary": 6100,
+      "actual": 35.4
+     },
+     {
+      "dkPlayerId": 43728233,
+      "name": "Dallas Goedert",
+      "position": "TE",
+      "team": "PHI",
+      "salary": 4100,
+      "actual": 23.7
+     },
+     {
+      "dkPlayerId": 43727639,
+      "name": "Chris Olave",
+      "position": "WR",
+      "team": "NO",
+      "salary": 6700,
+      "actual": 31.2
+     },
+     {
+      "dkPlayerId": 43727655,
+      "name": "Christian Watson",
+      "position": "WR",
+      "team": "GB",
+      "salary": 5900,
+      "actual": 35.7
+     },
+     {
+      "dkPlayerId": 43727707,
+      "name": "Jalen Coker",
+      "position": "WR",
+      "team": "CAR",
+      "salary": 4600,
+      "actual": 36.8
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 292.14,
+    "ms": 14,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 1,
+   "punts": false,
+   "key": "winners_minus_floor",
+   "label": "Winners without $49.5k floor",
+   "group": "leave_one_out",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 292.14,
+    "bound": 292.14,
+    "gap": 0,
+    "seconds": 0.05,
+    "poolSize": 280,
+    "lineup": [
+     {
+      "dkPlayerId": 43728538,
+      "name": "Bengals",
+      "position": "DST",
+      "team": "CIN",
+      "salary": 2700,
+      "actual": 18
+     },
+     {
+      "dkPlayerId": 43727251,
+      "name": "Bryce Young",
+      "position": "QB",
+      "team": "CAR",
+      "salary": 5200,
+      "actual": 35.44
+     },
+     {
+      "dkPlayerId": 43727325,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8000,
+      "actual": 37.6
+     },
+     {
+      "dkPlayerId": 43727341,
+      "name": "Derrick Henry",
+      "position": "RB",
+      "team": "BAL",
+      "salary": 6700,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 43727351,
+      "name": "D'Andre Swift",
+      "position": "RB",
+      "team": "CHI",
+      "salary": 6100,
+      "actual": 35.4
+     },
+     {
+      "dkPlayerId": 43728233,
+      "name": "Dallas Goedert",
+      "position": "TE",
+      "team": "PHI",
+      "salary": 4100,
+      "actual": 23.7
+     },
+     {
+      "dkPlayerId": 43727639,
+      "name": "Chris Olave",
+      "position": "WR",
+      "team": "NO",
+      "salary": 6700,
+      "actual": 31.2
+     },
+     {
+      "dkPlayerId": 43727655,
+      "name": "Christian Watson",
+      "position": "WR",
+      "team": "GB",
+      "salary": 5900,
+      "actual": 35.7
+     },
+     {
+      "dkPlayerId": 43727707,
+      "name": "Jalen Coker",
+      "position": "WR",
+      "team": "CAR",
+      "salary": 4600,
+      "actual": 36.8
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 292.14,
+    "ms": 17,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 1,
+   "punts": false,
+   "key": "winners_minus_stack",
+   "label": "Winners without QB + WR/TE stack",
+   "group": "leave_one_out",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 292.14,
+    "bound": 292.14,
+    "gap": 0,
+    "seconds": 0.06,
+    "poolSize": 280,
+    "lineup": [
+     {
+      "dkPlayerId": 43728538,
+      "name": "Bengals",
+      "position": "DST",
+      "team": "CIN",
+      "salary": 2700,
+      "actual": 18
+     },
+     {
+      "dkPlayerId": 43727251,
+      "name": "Bryce Young",
+      "position": "QB",
+      "team": "CAR",
+      "salary": 5200,
+      "actual": 35.44
+     },
+     {
+      "dkPlayerId": 43727325,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8000,
+      "actual": 37.6
+     },
+     {
+      "dkPlayerId": 43727341,
+      "name": "Derrick Henry",
+      "position": "RB",
+      "team": "BAL",
+      "salary": 6700,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 43727351,
+      "name": "D'Andre Swift",
+      "position": "RB",
+      "team": "CHI",
+      "salary": 6100,
+      "actual": 35.4
+     },
+     {
+      "dkPlayerId": 43728233,
+      "name": "Dallas Goedert",
+      "position": "TE",
+      "team": "PHI",
+      "salary": 4100,
+      "actual": 23.7
+     },
+     {
+      "dkPlayerId": 43727639,
+      "name": "Chris Olave",
+      "position": "WR",
+      "team": "NO",
+      "salary": 6700,
+      "actual": 31.2
+     },
+     {
+      "dkPlayerId": 43727655,
+      "name": "Christian Watson",
+      "position": "WR",
+      "team": "GB",
+      "salary": 5900,
+      "actual": 35.7
+     },
+     {
+      "dkPlayerId": 43727707,
+      "name": "Jalen Coker",
+      "position": "WR",
+      "team": "CAR",
+      "salary": 4600,
+      "actual": 36.8
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 292.14,
+    "ms": 17,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 1,
+   "punts": false,
+   "key": "winners_strict_dst",
+   "label": "Diagnostic: Winners + no DST against own offense in this lineup",
+   "group": "diagnostic",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 292.14,
+    "bound": 292.14,
+    "gap": 0,
+    "seconds": 0.05,
+    "poolSize": 280,
+    "lineup": [
+     {
+      "dkPlayerId": 43728538,
+      "name": "Bengals",
+      "position": "DST",
+      "team": "CIN",
+      "salary": 2700,
+      "actual": 18
+     },
+     {
+      "dkPlayerId": 43727251,
+      "name": "Bryce Young",
+      "position": "QB",
+      "team": "CAR",
+      "salary": 5200,
+      "actual": 35.44
+     },
+     {
+      "dkPlayerId": 43727325,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8000,
+      "actual": 37.6
+     },
+     {
+      "dkPlayerId": 43727341,
+      "name": "Derrick Henry",
+      "position": "RB",
+      "team": "BAL",
+      "salary": 6700,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 43727351,
+      "name": "D'Andre Swift",
+      "position": "RB",
+      "team": "CHI",
+      "salary": 6100,
+      "actual": 35.4
+     },
+     {
+      "dkPlayerId": 43728233,
+      "name": "Dallas Goedert",
+      "position": "TE",
+      "team": "PHI",
+      "salary": 4100,
+      "actual": 23.7
+     },
+     {
+      "dkPlayerId": 43727639,
+      "name": "Chris Olave",
+      "position": "WR",
+      "team": "NO",
+      "salary": 6700,
+      "actual": 31.2
+     },
+     {
+      "dkPlayerId": 43727655,
+      "name": "Christian Watson",
+      "position": "WR",
+      "team": "GB",
+      "salary": 5900,
+      "actual": 35.7
+     },
+     {
+      "dkPlayerId": 43727707,
+      "name": "Jalen Coker",
+      "position": "WR",
+      "team": "CAR",
+      "salary": 4600,
+      "actual": 36.8
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 292.14,
+    "ms": 16,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 1,
+   "punts": false,
+   "key": "winners_strict_bringback",
+   "label": "Diagnostic: Winners + bring-back required in this lineup",
+   "group": "diagnostic",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 292.14,
+    "bound": 292.14,
+    "gap": 0,
+    "seconds": 0.05,
+    "poolSize": 280,
+    "lineup": [
+     {
+      "dkPlayerId": 43728538,
+      "name": "Bengals",
+      "position": "DST",
+      "team": "CIN",
+      "salary": 2700,
+      "actual": 18
+     },
+     {
+      "dkPlayerId": 43727251,
+      "name": "Bryce Young",
+      "position": "QB",
+      "team": "CAR",
+      "salary": 5200,
+      "actual": 35.44
+     },
+     {
+      "dkPlayerId": 43727325,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8000,
+      "actual": 37.6
+     },
+     {
+      "dkPlayerId": 43727341,
+      "name": "Derrick Henry",
+      "position": "RB",
+      "team": "BAL",
+      "salary": 6700,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 43727351,
+      "name": "D'Andre Swift",
+      "position": "RB",
+      "team": "CHI",
+      "salary": 6100,
+      "actual": 35.4
+     },
+     {
+      "dkPlayerId": 43728233,
+      "name": "Dallas Goedert",
+      "position": "TE",
+      "team": "PHI",
+      "salary": 4100,
+      "actual": 23.7
+     },
+     {
+      "dkPlayerId": 43727639,
+      "name": "Chris Olave",
+      "position": "WR",
+      "team": "NO",
+      "salary": 6700,
+      "actual": 31.2
+     },
+     {
+      "dkPlayerId": 43727655,
+      "name": "Christian Watson",
+      "position": "WR",
+      "team": "GB",
+      "salary": 5900,
+      "actual": 35.7
+     },
+     {
+      "dkPlayerId": 43727707,
+      "name": "Jalen Coker",
+      "position": "WR",
+      "team": "CAR",
+      "salary": 4600,
+      "actual": 36.8
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 292.14,
+    "ms": 21,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 1,
+   "punts": true,
+   "key": "dk_only",
+   "label": "DraftKings rules only (CBC only)",
+   "group": "baseline",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 292.14,
+    "bound": 292.14,
+    "gap": 0,
+    "seconds": 0.06,
+    "poolSize": 289,
+    "lineup": [
+     {
+      "dkPlayerId": 43728538,
+      "name": "Bengals",
+      "position": "DST",
+      "team": "CIN",
+      "salary": 2700,
+      "actual": 18
+     },
+     {
+      "dkPlayerId": 43727251,
+      "name": "Bryce Young",
+      "position": "QB",
+      "team": "CAR",
+      "salary": 5200,
+      "actual": 35.44
+     },
+     {
+      "dkPlayerId": 43727325,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8000,
+      "actual": 37.6
+     },
+     {
+      "dkPlayerId": 43727341,
+      "name": "Derrick Henry",
+      "position": "RB",
+      "team": "BAL",
+      "salary": 6700,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 43727351,
+      "name": "D'Andre Swift",
+      "position": "RB",
+      "team": "CHI",
+      "salary": 6100,
+      "actual": 35.4
+     },
+     {
+      "dkPlayerId": 43728233,
+      "name": "Dallas Goedert",
+      "position": "TE",
+      "team": "PHI",
+      "salary": 4100,
+      "actual": 23.7
+     },
+     {
+      "dkPlayerId": 43727639,
+      "name": "Chris Olave",
+      "position": "WR",
+      "team": "NO",
+      "salary": 6700,
+      "actual": 31.2
+     },
+     {
+      "dkPlayerId": 43727655,
+      "name": "Christian Watson",
+      "position": "WR",
+      "team": "GB",
+      "salary": 5900,
+      "actual": 35.7
+     },
+     {
+      "dkPlayerId": 43727707,
+      "name": "Jalen Coker",
+      "position": "WR",
+      "team": "CAR",
+      "salary": 4600,
+      "actual": 36.8
+     }
+    ]
+   }
+  },
+  {
+   "week": 1,
+   "punts": true,
+   "key": "unrestricted",
+   "label": "Unrestricted (DraftKings rules + product invariants)",
+   "group": "baseline",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 292.14,
+    "bound": 292.14,
+    "gap": 0,
+    "seconds": 0.06,
+    "poolSize": 289,
+    "lineup": [
+     {
+      "dkPlayerId": 43728538,
+      "name": "Bengals",
+      "position": "DST",
+      "team": "CIN",
+      "salary": 2700,
+      "actual": 18
+     },
+     {
+      "dkPlayerId": 43727251,
+      "name": "Bryce Young",
+      "position": "QB",
+      "team": "CAR",
+      "salary": 5200,
+      "actual": 35.44
+     },
+     {
+      "dkPlayerId": 43727325,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8000,
+      "actual": 37.6
+     },
+     {
+      "dkPlayerId": 43727341,
+      "name": "Derrick Henry",
+      "position": "RB",
+      "team": "BAL",
+      "salary": 6700,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 43727351,
+      "name": "D'Andre Swift",
+      "position": "RB",
+      "team": "CHI",
+      "salary": 6100,
+      "actual": 35.4
+     },
+     {
+      "dkPlayerId": 43728233,
+      "name": "Dallas Goedert",
+      "position": "TE",
+      "team": "PHI",
+      "salary": 4100,
+      "actual": 23.7
+     },
+     {
+      "dkPlayerId": 43727639,
+      "name": "Chris Olave",
+      "position": "WR",
+      "team": "NO",
+      "salary": 6700,
+      "actual": 31.2
+     },
+     {
+      "dkPlayerId": 43727655,
+      "name": "Christian Watson",
+      "position": "WR",
+      "team": "GB",
+      "salary": 5900,
+      "actual": 35.7
+     },
+     {
+      "dkPlayerId": 43727707,
+      "name": "Jalen Coker",
+      "position": "WR",
+      "team": "CAR",
+      "salary": 4600,
+      "actual": 36.8
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 292.14,
+    "ms": 22,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 1,
+   "punts": true,
+   "key": "standard",
+   "label": "Standard defaults (stack + bring-back, run's salary floor)",
+   "group": "baseline",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 292.14,
+    "bound": 292.14,
+    "gap": 0,
+    "seconds": 0.06,
+    "poolSize": 289,
+    "lineup": [
+     {
+      "dkPlayerId": 43728538,
+      "name": "Bengals",
+      "position": "DST",
+      "team": "CIN",
+      "salary": 2700,
+      "actual": 18
+     },
+     {
+      "dkPlayerId": 43727251,
+      "name": "Bryce Young",
+      "position": "QB",
+      "team": "CAR",
+      "salary": 5200,
+      "actual": 35.44
+     },
+     {
+      "dkPlayerId": 43727325,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8000,
+      "actual": 37.6
+     },
+     {
+      "dkPlayerId": 43727341,
+      "name": "Derrick Henry",
+      "position": "RB",
+      "team": "BAL",
+      "salary": 6700,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 43727351,
+      "name": "D'Andre Swift",
+      "position": "RB",
+      "team": "CHI",
+      "salary": 6100,
+      "actual": 35.4
+     },
+     {
+      "dkPlayerId": 43728233,
+      "name": "Dallas Goedert",
+      "position": "TE",
+      "team": "PHI",
+      "salary": 4100,
+      "actual": 23.7
+     },
+     {
+      "dkPlayerId": 43727639,
+      "name": "Chris Olave",
+      "position": "WR",
+      "team": "NO",
+      "salary": 6700,
+      "actual": 31.2
+     },
+     {
+      "dkPlayerId": 43727655,
+      "name": "Christian Watson",
+      "position": "WR",
+      "team": "GB",
+      "salary": 5900,
+      "actual": 35.7
+     },
+     {
+      "dkPlayerId": 43727707,
+      "name": "Jalen Coker",
+      "position": "WR",
+      "team": "CAR",
+      "salary": 4600,
+      "actual": 36.8
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 292.14,
+    "ms": 23,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 1,
+   "punts": true,
+   "key": "only_rbPool",
+   "label": "RB pool rule only",
+   "group": "single",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 292.14,
+    "bound": 292.14,
+    "gap": 0,
+    "seconds": 0.06,
+    "poolSize": 289,
+    "lineup": [
+     {
+      "dkPlayerId": 43728538,
+      "name": "Bengals",
+      "position": "DST",
+      "team": "CIN",
+      "salary": 2700,
+      "actual": 18
+     },
+     {
+      "dkPlayerId": 43727251,
+      "name": "Bryce Young",
+      "position": "QB",
+      "team": "CAR",
+      "salary": 5200,
+      "actual": 35.44
+     },
+     {
+      "dkPlayerId": 43727325,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8000,
+      "actual": 37.6
+     },
+     {
+      "dkPlayerId": 43727341,
+      "name": "Derrick Henry",
+      "position": "RB",
+      "team": "BAL",
+      "salary": 6700,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 43727351,
+      "name": "D'Andre Swift",
+      "position": "RB",
+      "team": "CHI",
+      "salary": 6100,
+      "actual": 35.4
+     },
+     {
+      "dkPlayerId": 43728233,
+      "name": "Dallas Goedert",
+      "position": "TE",
+      "team": "PHI",
+      "salary": 4100,
+      "actual": 23.7
+     },
+     {
+      "dkPlayerId": 43727639,
+      "name": "Chris Olave",
+      "position": "WR",
+      "team": "NO",
+      "salary": 6700,
+      "actual": 31.2
+     },
+     {
+      "dkPlayerId": 43727655,
+      "name": "Christian Watson",
+      "position": "WR",
+      "team": "GB",
+      "salary": 5900,
+      "actual": 35.7
+     },
+     {
+      "dkPlayerId": 43727707,
+      "name": "Jalen Coker",
+      "position": "WR",
+      "team": "CAR",
+      "salary": 4600,
+      "actual": 36.8
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 292.14,
+    "ms": 14,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 1,
+   "punts": true,
+   "key": "only_wrPool",
+   "label": "WR pool rule only",
+   "group": "single",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 292.14,
+    "bound": 292.14,
+    "gap": 0,
+    "seconds": 0.06,
+    "poolSize": 289,
+    "lineup": [
+     {
+      "dkPlayerId": 43728538,
+      "name": "Bengals",
+      "position": "DST",
+      "team": "CIN",
+      "salary": 2700,
+      "actual": 18
+     },
+     {
+      "dkPlayerId": 43727251,
+      "name": "Bryce Young",
+      "position": "QB",
+      "team": "CAR",
+      "salary": 5200,
+      "actual": 35.44
+     },
+     {
+      "dkPlayerId": 43727325,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8000,
+      "actual": 37.6
+     },
+     {
+      "dkPlayerId": 43727341,
+      "name": "Derrick Henry",
+      "position": "RB",
+      "team": "BAL",
+      "salary": 6700,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 43727351,
+      "name": "D'Andre Swift",
+      "position": "RB",
+      "team": "CHI",
+      "salary": 6100,
+      "actual": 35.4
+     },
+     {
+      "dkPlayerId": 43728233,
+      "name": "Dallas Goedert",
+      "position": "TE",
+      "team": "PHI",
+      "salary": 4100,
+      "actual": 23.7
+     },
+     {
+      "dkPlayerId": 43727639,
+      "name": "Chris Olave",
+      "position": "WR",
+      "team": "NO",
+      "salary": 6700,
+      "actual": 31.2
+     },
+     {
+      "dkPlayerId": 43727655,
+      "name": "Christian Watson",
+      "position": "WR",
+      "team": "GB",
+      "salary": 5900,
+      "actual": 35.7
+     },
+     {
+      "dkPlayerId": 43727707,
+      "name": "Jalen Coker",
+      "position": "WR",
+      "team": "CAR",
+      "salary": 4600,
+      "actual": 36.8
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 292.14,
+    "ms": 25,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 1,
+   "punts": true,
+   "key": "only_tePool",
+   "label": "TE pool rule only",
+   "group": "single",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 292.14,
+    "bound": 292.14,
+    "gap": 0,
+    "seconds": 0.08,
+    "poolSize": 289,
+    "lineup": [
+     {
+      "dkPlayerId": 43728538,
+      "name": "Bengals",
+      "position": "DST",
+      "team": "CIN",
+      "salary": 2700,
+      "actual": 18
+     },
+     {
+      "dkPlayerId": 43727251,
+      "name": "Bryce Young",
+      "position": "QB",
+      "team": "CAR",
+      "salary": 5200,
+      "actual": 35.44
+     },
+     {
+      "dkPlayerId": 43727325,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8000,
+      "actual": 37.6
+     },
+     {
+      "dkPlayerId": 43727341,
+      "name": "Derrick Henry",
+      "position": "RB",
+      "team": "BAL",
+      "salary": 6700,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 43727351,
+      "name": "D'Andre Swift",
+      "position": "RB",
+      "team": "CHI",
+      "salary": 6100,
+      "actual": 35.4
+     },
+     {
+      "dkPlayerId": 43728233,
+      "name": "Dallas Goedert",
+      "position": "TE",
+      "team": "PHI",
+      "salary": 4100,
+      "actual": 23.7
+     },
+     {
+      "dkPlayerId": 43727639,
+      "name": "Chris Olave",
+      "position": "WR",
+      "team": "NO",
+      "salary": 6700,
+      "actual": 31.2
+     },
+     {
+      "dkPlayerId": 43727655,
+      "name": "Christian Watson",
+      "position": "WR",
+      "team": "GB",
+      "salary": 5900,
+      "actual": 35.7
+     },
+     {
+      "dkPlayerId": 43727707,
+      "name": "Jalen Coker",
+      "position": "WR",
+      "team": "CAR",
+      "salary": 4600,
+      "actual": 36.8
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 292.14,
+    "ms": 18,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 1,
+   "punts": true,
+   "key": "only_dstPool",
+   "label": "DST pool rule only",
+   "group": "single",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 292.14,
+    "bound": 292.14,
+    "gap": 0,
+    "seconds": 0.06,
+    "poolSize": 280,
+    "lineup": [
+     {
+      "dkPlayerId": 43728538,
+      "name": "Bengals",
+      "position": "DST",
+      "team": "CIN",
+      "salary": 2700,
+      "actual": 18
+     },
+     {
+      "dkPlayerId": 43727251,
+      "name": "Bryce Young",
+      "position": "QB",
+      "team": "CAR",
+      "salary": 5200,
+      "actual": 35.44
+     },
+     {
+      "dkPlayerId": 43727325,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8000,
+      "actual": 37.6
+     },
+     {
+      "dkPlayerId": 43727341,
+      "name": "Derrick Henry",
+      "position": "RB",
+      "team": "BAL",
+      "salary": 6700,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 43727351,
+      "name": "D'Andre Swift",
+      "position": "RB",
+      "team": "CHI",
+      "salary": 6100,
+      "actual": 35.4
+     },
+     {
+      "dkPlayerId": 43728233,
+      "name": "Dallas Goedert",
+      "position": "TE",
+      "team": "PHI",
+      "salary": 4100,
+      "actual": 23.7
+     },
+     {
+      "dkPlayerId": 43727639,
+      "name": "Chris Olave",
+      "position": "WR",
+      "team": "NO",
+      "salary": 6700,
+      "actual": 31.2
+     },
+     {
+      "dkPlayerId": 43727655,
+      "name": "Christian Watson",
+      "position": "WR",
+      "team": "GB",
+      "salary": 5900,
+      "actual": 35.7
+     },
+     {
+      "dkPlayerId": 43727707,
+      "name": "Jalen Coker",
+      "position": "WR",
+      "team": "CAR",
+      "salary": 4600,
+      "actual": 36.8
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 292.14,
+    "ms": 17,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 1,
+   "punts": true,
+   "key": "only_floor",
+   "label": "$49.5k floor only",
+   "group": "single",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 292.14,
+    "bound": 292.14,
+    "gap": 0,
+    "seconds": 0.06,
+    "poolSize": 289,
+    "lineup": [
+     {
+      "dkPlayerId": 43728538,
+      "name": "Bengals",
+      "position": "DST",
+      "team": "CIN",
+      "salary": 2700,
+      "actual": 18
+     },
+     {
+      "dkPlayerId": 43727251,
+      "name": "Bryce Young",
+      "position": "QB",
+      "team": "CAR",
+      "salary": 5200,
+      "actual": 35.44
+     },
+     {
+      "dkPlayerId": 43727325,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8000,
+      "actual": 37.6
+     },
+     {
+      "dkPlayerId": 43727341,
+      "name": "Derrick Henry",
+      "position": "RB",
+      "team": "BAL",
+      "salary": 6700,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 43727351,
+      "name": "D'Andre Swift",
+      "position": "RB",
+      "team": "CHI",
+      "salary": 6100,
+      "actual": 35.4
+     },
+     {
+      "dkPlayerId": 43728233,
+      "name": "Dallas Goedert",
+      "position": "TE",
+      "team": "PHI",
+      "salary": 4100,
+      "actual": 23.7
+     },
+     {
+      "dkPlayerId": 43727639,
+      "name": "Chris Olave",
+      "position": "WR",
+      "team": "NO",
+      "salary": 6700,
+      "actual": 31.2
+     },
+     {
+      "dkPlayerId": 43727655,
+      "name": "Christian Watson",
+      "position": "WR",
+      "team": "GB",
+      "salary": 5900,
+      "actual": 35.7
+     },
+     {
+      "dkPlayerId": 43727707,
+      "name": "Jalen Coker",
+      "position": "WR",
+      "team": "CAR",
+      "salary": 4600,
+      "actual": 36.8
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 292.14,
+    "ms": 15,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 1,
+   "punts": true,
+   "key": "only_stack",
+   "label": "QB + WR/TE stack only",
+   "group": "single",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 292.14,
+    "bound": 292.14,
+    "gap": 0,
+    "seconds": 0.05,
+    "poolSize": 289,
+    "lineup": [
+     {
+      "dkPlayerId": 43728538,
+      "name": "Bengals",
+      "position": "DST",
+      "team": "CIN",
+      "salary": 2700,
+      "actual": 18
+     },
+     {
+      "dkPlayerId": 43727251,
+      "name": "Bryce Young",
+      "position": "QB",
+      "team": "CAR",
+      "salary": 5200,
+      "actual": 35.44
+     },
+     {
+      "dkPlayerId": 43727325,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8000,
+      "actual": 37.6
+     },
+     {
+      "dkPlayerId": 43727341,
+      "name": "Derrick Henry",
+      "position": "RB",
+      "team": "BAL",
+      "salary": 6700,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 43727351,
+      "name": "D'Andre Swift",
+      "position": "RB",
+      "team": "CHI",
+      "salary": 6100,
+      "actual": 35.4
+     },
+     {
+      "dkPlayerId": 43728233,
+      "name": "Dallas Goedert",
+      "position": "TE",
+      "team": "PHI",
+      "salary": 4100,
+      "actual": 23.7
+     },
+     {
+      "dkPlayerId": 43727639,
+      "name": "Chris Olave",
+      "position": "WR",
+      "team": "NO",
+      "salary": 6700,
+      "actual": 31.2
+     },
+     {
+      "dkPlayerId": 43727655,
+      "name": "Christian Watson",
+      "position": "WR",
+      "team": "GB",
+      "salary": 5900,
+      "actual": 35.7
+     },
+     {
+      "dkPlayerId": 43727707,
+      "name": "Jalen Coker",
+      "position": "WR",
+      "team": "CAR",
+      "salary": 4600,
+      "actual": 36.8
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 292.14,
+    "ms": 17,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 1,
+   "punts": true,
+   "key": "winners",
+   "label": "Full Winners shape (single-lineup rules)",
+   "group": "full",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 292.14,
+    "bound": 292.14,
+    "gap": 0,
+    "seconds": 0.06,
+    "poolSize": 280,
+    "lineup": [
+     {
+      "dkPlayerId": 43728538,
+      "name": "Bengals",
+      "position": "DST",
+      "team": "CIN",
+      "salary": 2700,
+      "actual": 18
+     },
+     {
+      "dkPlayerId": 43727251,
+      "name": "Bryce Young",
+      "position": "QB",
+      "team": "CAR",
+      "salary": 5200,
+      "actual": 35.44
+     },
+     {
+      "dkPlayerId": 43727325,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8000,
+      "actual": 37.6
+     },
+     {
+      "dkPlayerId": 43727341,
+      "name": "Derrick Henry",
+      "position": "RB",
+      "team": "BAL",
+      "salary": 6700,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 43727351,
+      "name": "D'Andre Swift",
+      "position": "RB",
+      "team": "CHI",
+      "salary": 6100,
+      "actual": 35.4
+     },
+     {
+      "dkPlayerId": 43728233,
+      "name": "Dallas Goedert",
+      "position": "TE",
+      "team": "PHI",
+      "salary": 4100,
+      "actual": 23.7
+     },
+     {
+      "dkPlayerId": 43727639,
+      "name": "Chris Olave",
+      "position": "WR",
+      "team": "NO",
+      "salary": 6700,
+      "actual": 31.2
+     },
+     {
+      "dkPlayerId": 43727655,
+      "name": "Christian Watson",
+      "position": "WR",
+      "team": "GB",
+      "salary": 5900,
+      "actual": 35.7
+     },
+     {
+      "dkPlayerId": 43727707,
+      "name": "Jalen Coker",
+      "position": "WR",
+      "team": "CAR",
+      "salary": 4600,
+      "actual": 36.8
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 292.14,
+    "ms": 16,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 1,
+   "punts": true,
+   "key": "winners_minus_rbPool",
+   "label": "Winners without RB pool rule",
+   "group": "leave_one_out",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 292.14,
+    "bound": 292.14,
+    "gap": 0,
+    "seconds": 0.06,
+    "poolSize": 280,
+    "lineup": [
+     {
+      "dkPlayerId": 43728538,
+      "name": "Bengals",
+      "position": "DST",
+      "team": "CIN",
+      "salary": 2700,
+      "actual": 18
+     },
+     {
+      "dkPlayerId": 43727251,
+      "name": "Bryce Young",
+      "position": "QB",
+      "team": "CAR",
+      "salary": 5200,
+      "actual": 35.44
+     },
+     {
+      "dkPlayerId": 43727325,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8000,
+      "actual": 37.6
+     },
+     {
+      "dkPlayerId": 43727341,
+      "name": "Derrick Henry",
+      "position": "RB",
+      "team": "BAL",
+      "salary": 6700,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 43727351,
+      "name": "D'Andre Swift",
+      "position": "RB",
+      "team": "CHI",
+      "salary": 6100,
+      "actual": 35.4
+     },
+     {
+      "dkPlayerId": 43728233,
+      "name": "Dallas Goedert",
+      "position": "TE",
+      "team": "PHI",
+      "salary": 4100,
+      "actual": 23.7
+     },
+     {
+      "dkPlayerId": 43727639,
+      "name": "Chris Olave",
+      "position": "WR",
+      "team": "NO",
+      "salary": 6700,
+      "actual": 31.2
+     },
+     {
+      "dkPlayerId": 43727655,
+      "name": "Christian Watson",
+      "position": "WR",
+      "team": "GB",
+      "salary": 5900,
+      "actual": 35.7
+     },
+     {
+      "dkPlayerId": 43727707,
+      "name": "Jalen Coker",
+      "position": "WR",
+      "team": "CAR",
+      "salary": 4600,
+      "actual": 36.8
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 292.14,
+    "ms": 13,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 1,
+   "punts": true,
+   "key": "winners_minus_wrPool",
+   "label": "Winners without WR pool rule",
+   "group": "leave_one_out",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 292.14,
+    "bound": 292.14,
+    "gap": 0,
+    "seconds": 0.06,
+    "poolSize": 280,
+    "lineup": [
+     {
+      "dkPlayerId": 43728538,
+      "name": "Bengals",
+      "position": "DST",
+      "team": "CIN",
+      "salary": 2700,
+      "actual": 18
+     },
+     {
+      "dkPlayerId": 43727251,
+      "name": "Bryce Young",
+      "position": "QB",
+      "team": "CAR",
+      "salary": 5200,
+      "actual": 35.44
+     },
+     {
+      "dkPlayerId": 43727325,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8000,
+      "actual": 37.6
+     },
+     {
+      "dkPlayerId": 43727341,
+      "name": "Derrick Henry",
+      "position": "RB",
+      "team": "BAL",
+      "salary": 6700,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 43727351,
+      "name": "D'Andre Swift",
+      "position": "RB",
+      "team": "CHI",
+      "salary": 6100,
+      "actual": 35.4
+     },
+     {
+      "dkPlayerId": 43728233,
+      "name": "Dallas Goedert",
+      "position": "TE",
+      "team": "PHI",
+      "salary": 4100,
+      "actual": 23.7
+     },
+     {
+      "dkPlayerId": 43727639,
+      "name": "Chris Olave",
+      "position": "WR",
+      "team": "NO",
+      "salary": 6700,
+      "actual": 31.2
+     },
+     {
+      "dkPlayerId": 43727655,
+      "name": "Christian Watson",
+      "position": "WR",
+      "team": "GB",
+      "salary": 5900,
+      "actual": 35.7
+     },
+     {
+      "dkPlayerId": 43727707,
+      "name": "Jalen Coker",
+      "position": "WR",
+      "team": "CAR",
+      "salary": 4600,
+      "actual": 36.8
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 292.14,
+    "ms": 23,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 1,
+   "punts": true,
+   "key": "winners_minus_tePool",
+   "label": "Winners without TE pool rule",
+   "group": "leave_one_out",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 292.14,
+    "bound": 292.14,
+    "gap": 0,
+    "seconds": 0.07,
+    "poolSize": 280,
+    "lineup": [
+     {
+      "dkPlayerId": 43728538,
+      "name": "Bengals",
+      "position": "DST",
+      "team": "CIN",
+      "salary": 2700,
+      "actual": 18
+     },
+     {
+      "dkPlayerId": 43727251,
+      "name": "Bryce Young",
+      "position": "QB",
+      "team": "CAR",
+      "salary": 5200,
+      "actual": 35.44
+     },
+     {
+      "dkPlayerId": 43727325,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8000,
+      "actual": 37.6
+     },
+     {
+      "dkPlayerId": 43727341,
+      "name": "Derrick Henry",
+      "position": "RB",
+      "team": "BAL",
+      "salary": 6700,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 43727351,
+      "name": "D'Andre Swift",
+      "position": "RB",
+      "team": "CHI",
+      "salary": 6100,
+      "actual": 35.4
+     },
+     {
+      "dkPlayerId": 43728233,
+      "name": "Dallas Goedert",
+      "position": "TE",
+      "team": "PHI",
+      "salary": 4100,
+      "actual": 23.7
+     },
+     {
+      "dkPlayerId": 43727639,
+      "name": "Chris Olave",
+      "position": "WR",
+      "team": "NO",
+      "salary": 6700,
+      "actual": 31.2
+     },
+     {
+      "dkPlayerId": 43727655,
+      "name": "Christian Watson",
+      "position": "WR",
+      "team": "GB",
+      "salary": 5900,
+      "actual": 35.7
+     },
+     {
+      "dkPlayerId": 43727707,
+      "name": "Jalen Coker",
+      "position": "WR",
+      "team": "CAR",
+      "salary": 4600,
+      "actual": 36.8
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 292.14,
+    "ms": 12,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 1,
+   "punts": true,
+   "key": "winners_minus_dstPool",
+   "label": "Winners without DST pool rule",
+   "group": "leave_one_out",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 292.14,
+    "bound": 292.14,
+    "gap": 0,
+    "seconds": 0.06,
+    "poolSize": 289,
+    "lineup": [
+     {
+      "dkPlayerId": 43728538,
+      "name": "Bengals",
+      "position": "DST",
+      "team": "CIN",
+      "salary": 2700,
+      "actual": 18
+     },
+     {
+      "dkPlayerId": 43727251,
+      "name": "Bryce Young",
+      "position": "QB",
+      "team": "CAR",
+      "salary": 5200,
+      "actual": 35.44
+     },
+     {
+      "dkPlayerId": 43727325,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8000,
+      "actual": 37.6
+     },
+     {
+      "dkPlayerId": 43727341,
+      "name": "Derrick Henry",
+      "position": "RB",
+      "team": "BAL",
+      "salary": 6700,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 43727351,
+      "name": "D'Andre Swift",
+      "position": "RB",
+      "team": "CHI",
+      "salary": 6100,
+      "actual": 35.4
+     },
+     {
+      "dkPlayerId": 43728233,
+      "name": "Dallas Goedert",
+      "position": "TE",
+      "team": "PHI",
+      "salary": 4100,
+      "actual": 23.7
+     },
+     {
+      "dkPlayerId": 43727639,
+      "name": "Chris Olave",
+      "position": "WR",
+      "team": "NO",
+      "salary": 6700,
+      "actual": 31.2
+     },
+     {
+      "dkPlayerId": 43727655,
+      "name": "Christian Watson",
+      "position": "WR",
+      "team": "GB",
+      "salary": 5900,
+      "actual": 35.7
+     },
+     {
+      "dkPlayerId": 43727707,
+      "name": "Jalen Coker",
+      "position": "WR",
+      "team": "CAR",
+      "salary": 4600,
+      "actual": 36.8
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 292.14,
+    "ms": 16,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 1,
+   "punts": true,
+   "key": "winners_minus_floor",
+   "label": "Winners without $49.5k floor",
+   "group": "leave_one_out",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 292.14,
+    "bound": 292.14,
+    "gap": 0,
+    "seconds": 0.05,
+    "poolSize": 280,
+    "lineup": [
+     {
+      "dkPlayerId": 43728538,
+      "name": "Bengals",
+      "position": "DST",
+      "team": "CIN",
+      "salary": 2700,
+      "actual": 18
+     },
+     {
+      "dkPlayerId": 43727251,
+      "name": "Bryce Young",
+      "position": "QB",
+      "team": "CAR",
+      "salary": 5200,
+      "actual": 35.44
+     },
+     {
+      "dkPlayerId": 43727325,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8000,
+      "actual": 37.6
+     },
+     {
+      "dkPlayerId": 43727341,
+      "name": "Derrick Henry",
+      "position": "RB",
+      "team": "BAL",
+      "salary": 6700,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 43727351,
+      "name": "D'Andre Swift",
+      "position": "RB",
+      "team": "CHI",
+      "salary": 6100,
+      "actual": 35.4
+     },
+     {
+      "dkPlayerId": 43728233,
+      "name": "Dallas Goedert",
+      "position": "TE",
+      "team": "PHI",
+      "salary": 4100,
+      "actual": 23.7
+     },
+     {
+      "dkPlayerId": 43727639,
+      "name": "Chris Olave",
+      "position": "WR",
+      "team": "NO",
+      "salary": 6700,
+      "actual": 31.2
+     },
+     {
+      "dkPlayerId": 43727655,
+      "name": "Christian Watson",
+      "position": "WR",
+      "team": "GB",
+      "salary": 5900,
+      "actual": 35.7
+     },
+     {
+      "dkPlayerId": 43727707,
+      "name": "Jalen Coker",
+      "position": "WR",
+      "team": "CAR",
+      "salary": 4600,
+      "actual": 36.8
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 292.14,
+    "ms": 36,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 1,
+   "punts": true,
+   "key": "winners_minus_stack",
+   "label": "Winners without QB + WR/TE stack",
+   "group": "leave_one_out",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 292.14,
+    "bound": 292.14,
+    "gap": 0,
+    "seconds": 0.07,
+    "poolSize": 280,
+    "lineup": [
+     {
+      "dkPlayerId": 43728538,
+      "name": "Bengals",
+      "position": "DST",
+      "team": "CIN",
+      "salary": 2700,
+      "actual": 18
+     },
+     {
+      "dkPlayerId": 43727251,
+      "name": "Bryce Young",
+      "position": "QB",
+      "team": "CAR",
+      "salary": 5200,
+      "actual": 35.44
+     },
+     {
+      "dkPlayerId": 43727325,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8000,
+      "actual": 37.6
+     },
+     {
+      "dkPlayerId": 43727341,
+      "name": "Derrick Henry",
+      "position": "RB",
+      "team": "BAL",
+      "salary": 6700,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 43727351,
+      "name": "D'Andre Swift",
+      "position": "RB",
+      "team": "CHI",
+      "salary": 6100,
+      "actual": 35.4
+     },
+     {
+      "dkPlayerId": 43728233,
+      "name": "Dallas Goedert",
+      "position": "TE",
+      "team": "PHI",
+      "salary": 4100,
+      "actual": 23.7
+     },
+     {
+      "dkPlayerId": 43727639,
+      "name": "Chris Olave",
+      "position": "WR",
+      "team": "NO",
+      "salary": 6700,
+      "actual": 31.2
+     },
+     {
+      "dkPlayerId": 43727655,
+      "name": "Christian Watson",
+      "position": "WR",
+      "team": "GB",
+      "salary": 5900,
+      "actual": 35.7
+     },
+     {
+      "dkPlayerId": 43727707,
+      "name": "Jalen Coker",
+      "position": "WR",
+      "team": "CAR",
+      "salary": 4600,
+      "actual": 36.8
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 292.14,
+    "ms": 20,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 1,
    "punts": true,
    "key": "winners_strict_dst",
    "label": "Diagnostic: Winners + no DST against own offense in this lineup",
@@ -3414,7 +3414,7 @@
    },
    "optimizer": {
     "points": 292.14,
-    "ms": 17,
+    "ms": 16,
     "illegal": [],
     "error": null
    }
@@ -3512,7 +3512,7 @@
    },
    "optimizer": {
     "points": 292.14,
-    "ms": 13,
+    "ms": 16,
     "illegal": [],
     "error": null
    }
@@ -3531,7 +3531,7 @@
     "objective": 258.46,
     "bound": 258.46,
     "gap": 0,
-    "seconds": 0.09,
+    "seconds": 0.08,
     "poolSize": 481,
     "lineup": [
      {
@@ -3623,6 +3623,202 @@
     "objective": 258.46,
     "bound": 258.46,
     "gap": 0,
+    "seconds": 0.09,
+    "poolSize": 481,
+    "lineup": [
+     {
+      "dkPlayerId": 44132571,
+      "name": "Dak Prescott",
+      "position": "QB",
+      "team": "DAL",
+      "salary": 6400,
+      "actual": 29.76
+     },
+     {
+      "dkPlayerId": 44132962,
+      "name": "Jaxon Smith-Njigba",
+      "position": "WR",
+      "team": "SEA",
+      "salary": 8100,
+      "actual": 45.5
+     },
+     {
+      "dkPlayerId": 44132968,
+      "name": "CeeDee Lamb",
+      "position": "WR",
+      "team": "DAL",
+      "salary": 7300,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 44132974,
+      "name": "DeVonta Smith",
+      "position": "WR",
+      "team": "PHI",
+      "salary": 6800,
+      "actual": 30.7
+     },
+     {
+      "dkPlayerId": 44132670,
+      "name": "Omarion Hampton",
+      "position": "RB",
+      "team": "LAC",
+      "salary": 6600,
+      "actual": 18.5
+     },
+     {
+      "dkPlayerId": 44133044,
+      "name": "Tre Tucker",
+      "position": "WR",
+      "team": "LV",
+      "salary": 4500,
+      "actual": 25.9
+     },
+     {
+      "dkPlayerId": 44132772,
+      "name": "Jonah Coleman",
+      "position": "RB",
+      "team": "DEN",
+      "salary": 4200,
+      "actual": 14.8
+     },
+     {
+      "dkPlayerId": 44133490,
+      "name": "Dalton Schultz",
+      "position": "TE",
+      "team": "HOU",
+      "salary": 3200,
+      "actual": 29
+     },
+     {
+      "dkPlayerId": 44133757,
+      "name": "Panthers",
+      "position": "DST",
+      "team": "CAR",
+      "salary": 2700,
+      "actual": 26
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 258.46,
+    "ms": 54,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 2,
+   "punts": false,
+   "key": "standard",
+   "label": "Standard defaults (stack + bring-back, run's salary floor)",
+   "group": "baseline",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 253.86,
+    "bound": 253.86,
+    "gap": 0,
+    "seconds": 0.11,
+    "poolSize": 481,
+    "lineup": [
+     {
+      "dkPlayerId": 44132571,
+      "name": "Dak Prescott",
+      "position": "QB",
+      "team": "DAL",
+      "salary": 6400,
+      "actual": 29.76
+     },
+     {
+      "dkPlayerId": 44132962,
+      "name": "Jaxon Smith-Njigba",
+      "position": "WR",
+      "team": "SEA",
+      "salary": 8100,
+      "actual": 45.5
+     },
+     {
+      "dkPlayerId": 44132968,
+      "name": "CeeDee Lamb",
+      "position": "WR",
+      "team": "DAL",
+      "salary": 7300,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 44132974,
+      "name": "DeVonta Smith",
+      "position": "WR",
+      "team": "PHI",
+      "salary": 6800,
+      "actual": 30.7
+     },
+     {
+      "dkPlayerId": 44132688,
+      "name": "Chuba Hubbard",
+      "position": "RB",
+      "team": "CAR",
+      "salary": 5800,
+      "actual": 14.4
+     },
+     {
+      "dkPlayerId": 44132722,
+      "name": "Rachaad White",
+      "position": "RB",
+      "team": "WAS",
+      "salary": 5000,
+      "actual": 14.3
+     },
+     {
+      "dkPlayerId": 44133044,
+      "name": "Tre Tucker",
+      "position": "WR",
+      "team": "LV",
+      "salary": 4500,
+      "actual": 25.9
+     },
+     {
+      "dkPlayerId": 44133490,
+      "name": "Dalton Schultz",
+      "position": "TE",
+      "team": "HOU",
+      "salary": 3200,
+      "actual": 29
+     },
+     {
+      "dkPlayerId": 44133757,
+      "name": "Panthers",
+      "position": "DST",
+      "team": "CAR",
+      "salary": 2700,
+      "actual": 26
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 253.86,
+    "ms": 338,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 2,
+   "punts": false,
+   "key": "only_rbPool",
+   "label": "RB pool rule only",
+   "group": "single",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 258.46,
+    "bound": 258.46,
+    "gap": 0,
     "seconds": 0.08,
     "poolSize": 481,
     "lineup": [
@@ -3702,203 +3898,7 @@
    },
    "optimizer": {
     "points": 258.46,
-    "ms": 52,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 2,
-   "punts": false,
-   "key": "standard",
-   "label": "Standard defaults (stack + bring-back, run's salary floor)",
-   "group": "baseline",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 253.86,
-    "bound": 253.86,
-    "gap": 0,
-    "seconds": 0.1,
-    "poolSize": 481,
-    "lineup": [
-     {
-      "dkPlayerId": 44132571,
-      "name": "Dak Prescott",
-      "position": "QB",
-      "team": "DAL",
-      "salary": 6400,
-      "actual": 29.76
-     },
-     {
-      "dkPlayerId": 44132962,
-      "name": "Jaxon Smith-Njigba",
-      "position": "WR",
-      "team": "SEA",
-      "salary": 8100,
-      "actual": 45.5
-     },
-     {
-      "dkPlayerId": 44132968,
-      "name": "CeeDee Lamb",
-      "position": "WR",
-      "team": "DAL",
-      "salary": 7300,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 44132974,
-      "name": "DeVonta Smith",
-      "position": "WR",
-      "team": "PHI",
-      "salary": 6800,
-      "actual": 30.7
-     },
-     {
-      "dkPlayerId": 44132688,
-      "name": "Chuba Hubbard",
-      "position": "RB",
-      "team": "CAR",
-      "salary": 5800,
-      "actual": 14.4
-     },
-     {
-      "dkPlayerId": 44132722,
-      "name": "Rachaad White",
-      "position": "RB",
-      "team": "WAS",
-      "salary": 5000,
-      "actual": 14.3
-     },
-     {
-      "dkPlayerId": 44133044,
-      "name": "Tre Tucker",
-      "position": "WR",
-      "team": "LV",
-      "salary": 4500,
-      "actual": 25.9
-     },
-     {
-      "dkPlayerId": 44133490,
-      "name": "Dalton Schultz",
-      "position": "TE",
-      "team": "HOU",
-      "salary": 3200,
-      "actual": 29
-     },
-     {
-      "dkPlayerId": 44133757,
-      "name": "Panthers",
-      "position": "DST",
-      "team": "CAR",
-      "salary": 2700,
-      "actual": 26
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 253.86,
-    "ms": 365,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 2,
-   "punts": false,
-   "key": "only_rbPool",
-   "label": "RB pool rule only",
-   "group": "single",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 258.46,
-    "bound": 258.46,
-    "gap": 0,
-    "seconds": 0.07,
-    "poolSize": 481,
-    "lineup": [
-     {
-      "dkPlayerId": 44132571,
-      "name": "Dak Prescott",
-      "position": "QB",
-      "team": "DAL",
-      "salary": 6400,
-      "actual": 29.76
-     },
-     {
-      "dkPlayerId": 44132962,
-      "name": "Jaxon Smith-Njigba",
-      "position": "WR",
-      "team": "SEA",
-      "salary": 8100,
-      "actual": 45.5
-     },
-     {
-      "dkPlayerId": 44132968,
-      "name": "CeeDee Lamb",
-      "position": "WR",
-      "team": "DAL",
-      "salary": 7300,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 44132974,
-      "name": "DeVonta Smith",
-      "position": "WR",
-      "team": "PHI",
-      "salary": 6800,
-      "actual": 30.7
-     },
-     {
-      "dkPlayerId": 44132670,
-      "name": "Omarion Hampton",
-      "position": "RB",
-      "team": "LAC",
-      "salary": 6600,
-      "actual": 18.5
-     },
-     {
-      "dkPlayerId": 44133044,
-      "name": "Tre Tucker",
-      "position": "WR",
-      "team": "LV",
-      "salary": 4500,
-      "actual": 25.9
-     },
-     {
-      "dkPlayerId": 44132772,
-      "name": "Jonah Coleman",
-      "position": "RB",
-      "team": "DEN",
-      "salary": 4200,
-      "actual": 14.8
-     },
-     {
-      "dkPlayerId": 44133490,
-      "name": "Dalton Schultz",
-      "position": "TE",
-      "team": "HOU",
-      "salary": 3200,
-      "actual": 29
-     },
-     {
-      "dkPlayerId": 44133757,
-      "name": "Panthers",
-      "position": "DST",
-      "team": "CAR",
-      "salary": 2700,
-      "actual": 26
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 258.46,
-    "ms": 39,
+    "ms": 44,
     "illegal": [],
     "error": null
    }
@@ -4094,7 +4094,7 @@
    },
    "optimizer": {
     "points": 258.46,
-    "ms": 43,
+    "ms": 50,
     "illegal": [],
     "error": null
    }
@@ -4192,7 +4192,7 @@
    },
    "optimizer": {
     "points": 258.46,
-    "ms": 42,
+    "ms": 43,
     "illegal": [],
     "error": null
    }
@@ -4211,7 +4211,7 @@
     "objective": 258.46,
     "bound": 258.46,
     "gap": 0,
-    "seconds": 0.1,
+    "seconds": 0.08,
     "poolSize": 481,
     "lineup": [
      {
@@ -4290,7 +4290,7 @@
    },
    "optimizer": {
     "points": 258.46,
-    "ms": 43,
+    "ms": 47,
     "illegal": [],
     "error": null
    }
@@ -4309,7 +4309,7 @@
     "objective": 258.46,
     "bound": 258.46,
     "gap": 0,
-    "seconds": 0.1,
+    "seconds": 0.09,
     "poolSize": 481,
     "lineup": [
      {
@@ -4388,7 +4388,7 @@
    },
    "optimizer": {
     "points": 258.46,
-    "ms": 43,
+    "ms": 48,
     "illegal": [],
     "error": null
    }
@@ -4486,7 +4486,7 @@
    },
    "optimizer": {
     "points": 258.46,
-    "ms": 54,
+    "ms": 62,
     "illegal": [],
     "error": null
    }
@@ -4496,202 +4496,6 @@
    "punts": false,
    "key": "winners_minus_rbPool",
    "label": "Winners without RB pool rule",
-   "group": "leave_one_out",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 258.46,
-    "bound": 258.46,
-    "gap": 0,
-    "seconds": 0.11,
-    "poolSize": 471,
-    "lineup": [
-     {
-      "dkPlayerId": 44132571,
-      "name": "Dak Prescott",
-      "position": "QB",
-      "team": "DAL",
-      "salary": 6400,
-      "actual": 29.76
-     },
-     {
-      "dkPlayerId": 44132962,
-      "name": "Jaxon Smith-Njigba",
-      "position": "WR",
-      "team": "SEA",
-      "salary": 8100,
-      "actual": 45.5
-     },
-     {
-      "dkPlayerId": 44132968,
-      "name": "CeeDee Lamb",
-      "position": "WR",
-      "team": "DAL",
-      "salary": 7300,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 44132974,
-      "name": "DeVonta Smith",
-      "position": "WR",
-      "team": "PHI",
-      "salary": 6800,
-      "actual": 30.7
-     },
-     {
-      "dkPlayerId": 44132670,
-      "name": "Omarion Hampton",
-      "position": "RB",
-      "team": "LAC",
-      "salary": 6600,
-      "actual": 18.5
-     },
-     {
-      "dkPlayerId": 44133044,
-      "name": "Tre Tucker",
-      "position": "WR",
-      "team": "LV",
-      "salary": 4500,
-      "actual": 25.9
-     },
-     {
-      "dkPlayerId": 44132772,
-      "name": "Jonah Coleman",
-      "position": "RB",
-      "team": "DEN",
-      "salary": 4200,
-      "actual": 14.8
-     },
-     {
-      "dkPlayerId": 44133490,
-      "name": "Dalton Schultz",
-      "position": "TE",
-      "team": "HOU",
-      "salary": 3200,
-      "actual": 29
-     },
-     {
-      "dkPlayerId": 44133757,
-      "name": "Panthers",
-      "position": "DST",
-      "team": "CAR",
-      "salary": 2700,
-      "actual": 26
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 258.46,
-    "ms": 55,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 2,
-   "punts": false,
-   "key": "winners_minus_wrPool",
-   "label": "Winners without WR pool rule",
-   "group": "leave_one_out",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 258.46,
-    "bound": 258.46,
-    "gap": 0,
-    "seconds": 0.11,
-    "poolSize": 471,
-    "lineup": [
-     {
-      "dkPlayerId": 44132571,
-      "name": "Dak Prescott",
-      "position": "QB",
-      "team": "DAL",
-      "salary": 6400,
-      "actual": 29.76
-     },
-     {
-      "dkPlayerId": 44132962,
-      "name": "Jaxon Smith-Njigba",
-      "position": "WR",
-      "team": "SEA",
-      "salary": 8100,
-      "actual": 45.5
-     },
-     {
-      "dkPlayerId": 44132968,
-      "name": "CeeDee Lamb",
-      "position": "WR",
-      "team": "DAL",
-      "salary": 7300,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 44132974,
-      "name": "DeVonta Smith",
-      "position": "WR",
-      "team": "PHI",
-      "salary": 6800,
-      "actual": 30.7
-     },
-     {
-      "dkPlayerId": 44132670,
-      "name": "Omarion Hampton",
-      "position": "RB",
-      "team": "LAC",
-      "salary": 6600,
-      "actual": 18.5
-     },
-     {
-      "dkPlayerId": 44133044,
-      "name": "Tre Tucker",
-      "position": "WR",
-      "team": "LV",
-      "salary": 4500,
-      "actual": 25.9
-     },
-     {
-      "dkPlayerId": 44132772,
-      "name": "Jonah Coleman",
-      "position": "RB",
-      "team": "DEN",
-      "salary": 4200,
-      "actual": 14.8
-     },
-     {
-      "dkPlayerId": 44133490,
-      "name": "Dalton Schultz",
-      "position": "TE",
-      "team": "HOU",
-      "salary": 3200,
-      "actual": 29
-     },
-     {
-      "dkPlayerId": 44133757,
-      "name": "Panthers",
-      "position": "DST",
-      "team": "CAR",
-      "salary": 2700,
-      "actual": 26
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 258.46,
-    "ms": 41,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 2,
-   "punts": false,
-   "key": "winners_minus_tePool",
-   "label": "Winners without TE pool rule",
    "group": "leave_one_out",
    "cbc": {
     "status": "Optimal",
@@ -4788,6 +4592,202 @@
   {
    "week": 2,
    "punts": false,
+   "key": "winners_minus_wrPool",
+   "label": "Winners without WR pool rule",
+   "group": "leave_one_out",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 258.46,
+    "bound": 258.46,
+    "gap": 0,
+    "seconds": 0.1,
+    "poolSize": 471,
+    "lineup": [
+     {
+      "dkPlayerId": 44132571,
+      "name": "Dak Prescott",
+      "position": "QB",
+      "team": "DAL",
+      "salary": 6400,
+      "actual": 29.76
+     },
+     {
+      "dkPlayerId": 44132962,
+      "name": "Jaxon Smith-Njigba",
+      "position": "WR",
+      "team": "SEA",
+      "salary": 8100,
+      "actual": 45.5
+     },
+     {
+      "dkPlayerId": 44132968,
+      "name": "CeeDee Lamb",
+      "position": "WR",
+      "team": "DAL",
+      "salary": 7300,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 44132974,
+      "name": "DeVonta Smith",
+      "position": "WR",
+      "team": "PHI",
+      "salary": 6800,
+      "actual": 30.7
+     },
+     {
+      "dkPlayerId": 44132670,
+      "name": "Omarion Hampton",
+      "position": "RB",
+      "team": "LAC",
+      "salary": 6600,
+      "actual": 18.5
+     },
+     {
+      "dkPlayerId": 44133044,
+      "name": "Tre Tucker",
+      "position": "WR",
+      "team": "LV",
+      "salary": 4500,
+      "actual": 25.9
+     },
+     {
+      "dkPlayerId": 44132772,
+      "name": "Jonah Coleman",
+      "position": "RB",
+      "team": "DEN",
+      "salary": 4200,
+      "actual": 14.8
+     },
+     {
+      "dkPlayerId": 44133490,
+      "name": "Dalton Schultz",
+      "position": "TE",
+      "team": "HOU",
+      "salary": 3200,
+      "actual": 29
+     },
+     {
+      "dkPlayerId": 44133757,
+      "name": "Panthers",
+      "position": "DST",
+      "team": "CAR",
+      "salary": 2700,
+      "actual": 26
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 258.46,
+    "ms": 50,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 2,
+   "punts": false,
+   "key": "winners_minus_tePool",
+   "label": "Winners without TE pool rule",
+   "group": "leave_one_out",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 258.46,
+    "bound": 258.46,
+    "gap": 0,
+    "seconds": 0.09,
+    "poolSize": 471,
+    "lineup": [
+     {
+      "dkPlayerId": 44132571,
+      "name": "Dak Prescott",
+      "position": "QB",
+      "team": "DAL",
+      "salary": 6400,
+      "actual": 29.76
+     },
+     {
+      "dkPlayerId": 44132962,
+      "name": "Jaxon Smith-Njigba",
+      "position": "WR",
+      "team": "SEA",
+      "salary": 8100,
+      "actual": 45.5
+     },
+     {
+      "dkPlayerId": 44132968,
+      "name": "CeeDee Lamb",
+      "position": "WR",
+      "team": "DAL",
+      "salary": 7300,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 44132974,
+      "name": "DeVonta Smith",
+      "position": "WR",
+      "team": "PHI",
+      "salary": 6800,
+      "actual": 30.7
+     },
+     {
+      "dkPlayerId": 44132670,
+      "name": "Omarion Hampton",
+      "position": "RB",
+      "team": "LAC",
+      "salary": 6600,
+      "actual": 18.5
+     },
+     {
+      "dkPlayerId": 44133044,
+      "name": "Tre Tucker",
+      "position": "WR",
+      "team": "LV",
+      "salary": 4500,
+      "actual": 25.9
+     },
+     {
+      "dkPlayerId": 44132772,
+      "name": "Jonah Coleman",
+      "position": "RB",
+      "team": "DEN",
+      "salary": 4200,
+      "actual": 14.8
+     },
+     {
+      "dkPlayerId": 44133490,
+      "name": "Dalton Schultz",
+      "position": "TE",
+      "team": "HOU",
+      "salary": 3200,
+      "actual": 29
+     },
+     {
+      "dkPlayerId": 44133757,
+      "name": "Panthers",
+      "position": "DST",
+      "team": "CAR",
+      "salary": 2700,
+      "actual": 26
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 258.46,
+    "ms": 52,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 2,
+   "punts": false,
    "key": "winners_minus_dstPool",
    "label": "Winners without DST pool rule",
    "group": "leave_one_out",
@@ -4878,7 +4878,7 @@
    },
    "optimizer": {
     "points": 258.46,
-    "ms": 42,
+    "ms": 44,
     "illegal": [],
     "error": null
    }
@@ -4888,6 +4888,104 @@
    "punts": false,
    "key": "winners_minus_floor",
    "label": "Winners without $49.5k floor",
+   "group": "leave_one_out",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 258.46,
+    "bound": 258.46,
+    "gap": 0,
+    "seconds": 0.19,
+    "poolSize": 471,
+    "lineup": [
+     {
+      "dkPlayerId": 44132571,
+      "name": "Dak Prescott",
+      "position": "QB",
+      "team": "DAL",
+      "salary": 6400,
+      "actual": 29.76
+     },
+     {
+      "dkPlayerId": 44132962,
+      "name": "Jaxon Smith-Njigba",
+      "position": "WR",
+      "team": "SEA",
+      "salary": 8100,
+      "actual": 45.5
+     },
+     {
+      "dkPlayerId": 44132968,
+      "name": "CeeDee Lamb",
+      "position": "WR",
+      "team": "DAL",
+      "salary": 7300,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 44132974,
+      "name": "DeVonta Smith",
+      "position": "WR",
+      "team": "PHI",
+      "salary": 6800,
+      "actual": 30.7
+     },
+     {
+      "dkPlayerId": 44132670,
+      "name": "Omarion Hampton",
+      "position": "RB",
+      "team": "LAC",
+      "salary": 6600,
+      "actual": 18.5
+     },
+     {
+      "dkPlayerId": 44133044,
+      "name": "Tre Tucker",
+      "position": "WR",
+      "team": "LV",
+      "salary": 4500,
+      "actual": 25.9
+     },
+     {
+      "dkPlayerId": 44132772,
+      "name": "Jonah Coleman",
+      "position": "RB",
+      "team": "DEN",
+      "salary": 4200,
+      "actual": 14.8
+     },
+     {
+      "dkPlayerId": 44133490,
+      "name": "Dalton Schultz",
+      "position": "TE",
+      "team": "HOU",
+      "salary": 3200,
+      "actual": 29
+     },
+     {
+      "dkPlayerId": 44133757,
+      "name": "Panthers",
+      "position": "DST",
+      "team": "CAR",
+      "salary": 2700,
+      "actual": 26
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 258.46,
+    "ms": 43,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 2,
+   "punts": false,
+   "key": "winners_minus_stack",
+   "label": "Winners without QB + WR/TE stack",
    "group": "leave_one_out",
    "cbc": {
     "status": "Optimal",
@@ -4976,105 +5074,7 @@
    },
    "optimizer": {
     "points": 258.46,
-    "ms": 39,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 2,
-   "punts": false,
-   "key": "winners_minus_stack",
-   "label": "Winners without QB + WR/TE stack",
-   "group": "leave_one_out",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 258.46,
-    "bound": 258.46,
-    "gap": 0,
-    "seconds": 0.07,
-    "poolSize": 471,
-    "lineup": [
-     {
-      "dkPlayerId": 44132571,
-      "name": "Dak Prescott",
-      "position": "QB",
-      "team": "DAL",
-      "salary": 6400,
-      "actual": 29.76
-     },
-     {
-      "dkPlayerId": 44132962,
-      "name": "Jaxon Smith-Njigba",
-      "position": "WR",
-      "team": "SEA",
-      "salary": 8100,
-      "actual": 45.5
-     },
-     {
-      "dkPlayerId": 44132968,
-      "name": "CeeDee Lamb",
-      "position": "WR",
-      "team": "DAL",
-      "salary": 7300,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 44132974,
-      "name": "DeVonta Smith",
-      "position": "WR",
-      "team": "PHI",
-      "salary": 6800,
-      "actual": 30.7
-     },
-     {
-      "dkPlayerId": 44132670,
-      "name": "Omarion Hampton",
-      "position": "RB",
-      "team": "LAC",
-      "salary": 6600,
-      "actual": 18.5
-     },
-     {
-      "dkPlayerId": 44133044,
-      "name": "Tre Tucker",
-      "position": "WR",
-      "team": "LV",
-      "salary": 4500,
-      "actual": 25.9
-     },
-     {
-      "dkPlayerId": 44132772,
-      "name": "Jonah Coleman",
-      "position": "RB",
-      "team": "DEN",
-      "salary": 4200,
-      "actual": 14.8
-     },
-     {
-      "dkPlayerId": 44133490,
-      "name": "Dalton Schultz",
-      "position": "TE",
-      "team": "HOU",
-      "salary": 3200,
-      "actual": 29
-     },
-     {
-      "dkPlayerId": 44133757,
-      "name": "Panthers",
-      "position": "DST",
-      "team": "CAR",
-      "salary": 2700,
-      "actual": 26
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 258.46,
-    "ms": 37,
+    "ms": 36,
     "illegal": [],
     "error": null
    }
@@ -5093,7 +5093,7 @@
     "objective": 258.46,
     "bound": 258.46,
     "gap": 0,
-    "seconds": 0.08,
+    "seconds": 0.13,
     "poolSize": 471,
     "lineup": [
      {
@@ -5172,7 +5172,7 @@
    },
    "optimizer": {
     "points": 258.46,
-    "ms": 41,
+    "ms": 39,
     "illegal": [],
     "error": null
    }
@@ -5191,7 +5191,7 @@
     "objective": 253.86,
     "bound": 253.86,
     "gap": 0,
-    "seconds": 0.11,
+    "seconds": 0.13,
     "poolSize": 471,
     "lineup": [
      {
@@ -5270,7 +5270,7 @@
    },
    "optimizer": {
     "points": 253.86,
-    "ms": 342,
+    "ms": 363,
     "illegal": [],
     "error": null
    }
@@ -5289,7 +5289,7 @@
     "objective": 258.46,
     "bound": 258.46,
     "gap": 0,
-    "seconds": 0.08,
+    "seconds": 0.1,
     "poolSize": 481,
     "lineup": [
      {
@@ -5381,7 +5381,7 @@
     "objective": 258.46,
     "bound": 258.46,
     "gap": 0,
-    "seconds": 0.08,
+    "seconds": 0.09,
     "poolSize": 481,
     "lineup": [
      {
@@ -5460,7 +5460,7 @@
    },
    "optimizer": {
     "points": 258.46,
-    "ms": 38,
+    "ms": 42,
     "illegal": [],
     "error": null
    }
@@ -5479,7 +5479,7 @@
     "objective": 253.86,
     "bound": 253.86,
     "gap": 0,
-    "seconds": 0.09,
+    "seconds": 0.11,
     "poolSize": 481,
     "lineup": [
      {
@@ -5558,7 +5558,7 @@
    },
    "optimizer": {
     "points": 253.86,
-    "ms": 321,
+    "ms": 372,
     "illegal": [],
     "error": null
    }
@@ -5568,6 +5568,104 @@
    "punts": true,
    "key": "only_rbPool",
    "label": "RB pool rule only",
+   "group": "single",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 258.46,
+    "bound": 258.46,
+    "gap": 0,
+    "seconds": 0.09,
+    "poolSize": 481,
+    "lineup": [
+     {
+      "dkPlayerId": 44132571,
+      "name": "Dak Prescott",
+      "position": "QB",
+      "team": "DAL",
+      "salary": 6400,
+      "actual": 29.76
+     },
+     {
+      "dkPlayerId": 44132962,
+      "name": "Jaxon Smith-Njigba",
+      "position": "WR",
+      "team": "SEA",
+      "salary": 8100,
+      "actual": 45.5
+     },
+     {
+      "dkPlayerId": 44132968,
+      "name": "CeeDee Lamb",
+      "position": "WR",
+      "team": "DAL",
+      "salary": 7300,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 44132974,
+      "name": "DeVonta Smith",
+      "position": "WR",
+      "team": "PHI",
+      "salary": 6800,
+      "actual": 30.7
+     },
+     {
+      "dkPlayerId": 44132670,
+      "name": "Omarion Hampton",
+      "position": "RB",
+      "team": "LAC",
+      "salary": 6600,
+      "actual": 18.5
+     },
+     {
+      "dkPlayerId": 44133044,
+      "name": "Tre Tucker",
+      "position": "WR",
+      "team": "LV",
+      "salary": 4500,
+      "actual": 25.9
+     },
+     {
+      "dkPlayerId": 44132772,
+      "name": "Jonah Coleman",
+      "position": "RB",
+      "team": "DEN",
+      "salary": 4200,
+      "actual": 14.8
+     },
+     {
+      "dkPlayerId": 44133490,
+      "name": "Dalton Schultz",
+      "position": "TE",
+      "team": "HOU",
+      "salary": 3200,
+      "actual": 29
+     },
+     {
+      "dkPlayerId": 44133757,
+      "name": "Panthers",
+      "position": "DST",
+      "team": "CAR",
+      "salary": 2700,
+      "actual": 26
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 258.46,
+    "ms": 42,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 2,
+   "punts": true,
+   "key": "only_wrPool",
+   "label": "WR pool rule only",
    "group": "single",
    "cbc": {
     "status": "Optimal",
@@ -5656,105 +5754,7 @@
    },
    "optimizer": {
     "points": 258.46,
-    "ms": 34,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 2,
-   "punts": true,
-   "key": "only_wrPool",
-   "label": "WR pool rule only",
-   "group": "single",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 258.46,
-    "bound": 258.46,
-    "gap": 0,
-    "seconds": 0.07,
-    "poolSize": 481,
-    "lineup": [
-     {
-      "dkPlayerId": 44132571,
-      "name": "Dak Prescott",
-      "position": "QB",
-      "team": "DAL",
-      "salary": 6400,
-      "actual": 29.76
-     },
-     {
-      "dkPlayerId": 44132962,
-      "name": "Jaxon Smith-Njigba",
-      "position": "WR",
-      "team": "SEA",
-      "salary": 8100,
-      "actual": 45.5
-     },
-     {
-      "dkPlayerId": 44132968,
-      "name": "CeeDee Lamb",
-      "position": "WR",
-      "team": "DAL",
-      "salary": 7300,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 44132974,
-      "name": "DeVonta Smith",
-      "position": "WR",
-      "team": "PHI",
-      "salary": 6800,
-      "actual": 30.7
-     },
-     {
-      "dkPlayerId": 44132670,
-      "name": "Omarion Hampton",
-      "position": "RB",
-      "team": "LAC",
-      "salary": 6600,
-      "actual": 18.5
-     },
-     {
-      "dkPlayerId": 44133044,
-      "name": "Tre Tucker",
-      "position": "WR",
-      "team": "LV",
-      "salary": 4500,
-      "actual": 25.9
-     },
-     {
-      "dkPlayerId": 44132772,
-      "name": "Jonah Coleman",
-      "position": "RB",
-      "team": "DEN",
-      "salary": 4200,
-      "actual": 14.8
-     },
-     {
-      "dkPlayerId": 44133490,
-      "name": "Dalton Schultz",
-      "position": "TE",
-      "team": "HOU",
-      "salary": 3200,
-      "actual": 29
-     },
-     {
-      "dkPlayerId": 44133757,
-      "name": "Panthers",
-      "position": "DST",
-      "team": "CAR",
-      "salary": 2700,
-      "actual": 26
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 258.46,
-    "ms": 34,
+    "ms": 43,
     "illegal": [],
     "error": null
    }
@@ -5773,7 +5773,7 @@
     "objective": 258.46,
     "bound": 258.46,
     "gap": 0,
-    "seconds": 0.07,
+    "seconds": 0.08,
     "poolSize": 481,
     "lineup": [
      {
@@ -5852,7 +5852,7 @@
    },
    "optimizer": {
     "points": 258.46,
-    "ms": 34,
+    "ms": 39,
     "illegal": [],
     "error": null
    }
@@ -5950,7 +5950,7 @@
    },
    "optimizer": {
     "points": 258.46,
-    "ms": 58,
+    "ms": 33,
     "illegal": [],
     "error": null
    }
@@ -5969,7 +5969,7 @@
     "objective": 258.46,
     "bound": 258.46,
     "gap": 0,
-    "seconds": 0.09,
+    "seconds": 0.08,
     "poolSize": 481,
     "lineup": [
      {
@@ -6048,7 +6048,7 @@
    },
    "optimizer": {
     "points": 258.46,
-    "ms": 42,
+    "ms": 36,
     "illegal": [],
     "error": null
    }
@@ -6146,7 +6146,7 @@
    },
    "optimizer": {
     "points": 258.46,
-    "ms": 46,
+    "ms": 44,
     "illegal": [],
     "error": null
    }
@@ -6244,7 +6244,7 @@
    },
    "optimizer": {
     "points": 258.46,
-    "ms": 55,
+    "ms": 40,
     "illegal": [],
     "error": null
    }
@@ -6254,104 +6254,6 @@
    "punts": true,
    "key": "winners_minus_rbPool",
    "label": "Winners without RB pool rule",
-   "group": "leave_one_out",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 258.46,
-    "bound": 258.46,
-    "gap": 0,
-    "seconds": 0.11,
-    "poolSize": 471,
-    "lineup": [
-     {
-      "dkPlayerId": 44132571,
-      "name": "Dak Prescott",
-      "position": "QB",
-      "team": "DAL",
-      "salary": 6400,
-      "actual": 29.76
-     },
-     {
-      "dkPlayerId": 44132962,
-      "name": "Jaxon Smith-Njigba",
-      "position": "WR",
-      "team": "SEA",
-      "salary": 8100,
-      "actual": 45.5
-     },
-     {
-      "dkPlayerId": 44132968,
-      "name": "CeeDee Lamb",
-      "position": "WR",
-      "team": "DAL",
-      "salary": 7300,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 44132974,
-      "name": "DeVonta Smith",
-      "position": "WR",
-      "team": "PHI",
-      "salary": 6800,
-      "actual": 30.7
-     },
-     {
-      "dkPlayerId": 44132670,
-      "name": "Omarion Hampton",
-      "position": "RB",
-      "team": "LAC",
-      "salary": 6600,
-      "actual": 18.5
-     },
-     {
-      "dkPlayerId": 44133044,
-      "name": "Tre Tucker",
-      "position": "WR",
-      "team": "LV",
-      "salary": 4500,
-      "actual": 25.9
-     },
-     {
-      "dkPlayerId": 44132772,
-      "name": "Jonah Coleman",
-      "position": "RB",
-      "team": "DEN",
-      "salary": 4200,
-      "actual": 14.8
-     },
-     {
-      "dkPlayerId": 44133490,
-      "name": "Dalton Schultz",
-      "position": "TE",
-      "team": "HOU",
-      "salary": 3200,
-      "actual": 29
-     },
-     {
-      "dkPlayerId": 44133757,
-      "name": "Panthers",
-      "position": "DST",
-      "team": "CAR",
-      "salary": 2700,
-      "actual": 26
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 258.46,
-    "ms": 43,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 2,
-   "punts": true,
-   "key": "winners_minus_wrPool",
-   "label": "Winners without WR pool rule",
    "group": "leave_one_out",
    "cbc": {
     "status": "Optimal",
@@ -6440,7 +6342,105 @@
    },
    "optimizer": {
     "points": 258.46,
-    "ms": 41,
+    "ms": 40,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 2,
+   "punts": true,
+   "key": "winners_minus_wrPool",
+   "label": "Winners without WR pool rule",
+   "group": "leave_one_out",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 258.46,
+    "bound": 258.46,
+    "gap": 0,
+    "seconds": 0.1,
+    "poolSize": 471,
+    "lineup": [
+     {
+      "dkPlayerId": 44132571,
+      "name": "Dak Prescott",
+      "position": "QB",
+      "team": "DAL",
+      "salary": 6400,
+      "actual": 29.76
+     },
+     {
+      "dkPlayerId": 44132962,
+      "name": "Jaxon Smith-Njigba",
+      "position": "WR",
+      "team": "SEA",
+      "salary": 8100,
+      "actual": 45.5
+     },
+     {
+      "dkPlayerId": 44132968,
+      "name": "CeeDee Lamb",
+      "position": "WR",
+      "team": "DAL",
+      "salary": 7300,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 44132974,
+      "name": "DeVonta Smith",
+      "position": "WR",
+      "team": "PHI",
+      "salary": 6800,
+      "actual": 30.7
+     },
+     {
+      "dkPlayerId": 44132670,
+      "name": "Omarion Hampton",
+      "position": "RB",
+      "team": "LAC",
+      "salary": 6600,
+      "actual": 18.5
+     },
+     {
+      "dkPlayerId": 44133044,
+      "name": "Tre Tucker",
+      "position": "WR",
+      "team": "LV",
+      "salary": 4500,
+      "actual": 25.9
+     },
+     {
+      "dkPlayerId": 44132772,
+      "name": "Jonah Coleman",
+      "position": "RB",
+      "team": "DEN",
+      "salary": 4200,
+      "actual": 14.8
+     },
+     {
+      "dkPlayerId": 44133490,
+      "name": "Dalton Schultz",
+      "position": "TE",
+      "team": "HOU",
+      "salary": 3200,
+      "actual": 29
+     },
+     {
+      "dkPlayerId": 44133757,
+      "name": "Panthers",
+      "position": "DST",
+      "team": "CAR",
+      "salary": 2700,
+      "actual": 26
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 258.46,
+    "ms": 40,
     "illegal": [],
     "error": null
    }
@@ -6538,7 +6538,7 @@
    },
    "optimizer": {
     "points": 258.46,
-    "ms": 40,
+    "ms": 39,
     "illegal": [],
     "error": null
    }
@@ -6557,7 +6557,7 @@
     "objective": 258.46,
     "bound": 258.46,
     "gap": 0,
-    "seconds": 0.12,
+    "seconds": 0.11,
     "poolSize": 481,
     "lineup": [
      {
@@ -6636,7 +6636,7 @@
    },
    "optimizer": {
     "points": 258.46,
-    "ms": 42,
+    "ms": 43,
     "illegal": [],
     "error": null
    }
@@ -6646,6 +6646,104 @@
    "punts": true,
    "key": "winners_minus_floor",
    "label": "Winners without $49.5k floor",
+   "group": "leave_one_out",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 258.46,
+    "bound": 258.46,
+    "gap": 0,
+    "seconds": 0.09,
+    "poolSize": 471,
+    "lineup": [
+     {
+      "dkPlayerId": 44132571,
+      "name": "Dak Prescott",
+      "position": "QB",
+      "team": "DAL",
+      "salary": 6400,
+      "actual": 29.76
+     },
+     {
+      "dkPlayerId": 44132962,
+      "name": "Jaxon Smith-Njigba",
+      "position": "WR",
+      "team": "SEA",
+      "salary": 8100,
+      "actual": 45.5
+     },
+     {
+      "dkPlayerId": 44132968,
+      "name": "CeeDee Lamb",
+      "position": "WR",
+      "team": "DAL",
+      "salary": 7300,
+      "actual": 38.3
+     },
+     {
+      "dkPlayerId": 44132974,
+      "name": "DeVonta Smith",
+      "position": "WR",
+      "team": "PHI",
+      "salary": 6800,
+      "actual": 30.7
+     },
+     {
+      "dkPlayerId": 44132670,
+      "name": "Omarion Hampton",
+      "position": "RB",
+      "team": "LAC",
+      "salary": 6600,
+      "actual": 18.5
+     },
+     {
+      "dkPlayerId": 44133044,
+      "name": "Tre Tucker",
+      "position": "WR",
+      "team": "LV",
+      "salary": 4500,
+      "actual": 25.9
+     },
+     {
+      "dkPlayerId": 44132772,
+      "name": "Jonah Coleman",
+      "position": "RB",
+      "team": "DEN",
+      "salary": 4200,
+      "actual": 14.8
+     },
+     {
+      "dkPlayerId": 44133490,
+      "name": "Dalton Schultz",
+      "position": "TE",
+      "team": "HOU",
+      "salary": 3200,
+      "actual": 29
+     },
+     {
+      "dkPlayerId": 44133757,
+      "name": "Panthers",
+      "position": "DST",
+      "team": "CAR",
+      "salary": 2700,
+      "actual": 26
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 258.46,
+    "ms": 39,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 2,
+   "punts": true,
+   "key": "winners_minus_stack",
+   "label": "Winners without QB + WR/TE stack",
    "group": "leave_one_out",
    "cbc": {
     "status": "Optimal",
@@ -6735,104 +6833,6 @@
    "optimizer": {
     "points": 258.46,
     "ms": 40,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 2,
-   "punts": true,
-   "key": "winners_minus_stack",
-   "label": "Winners without QB + WR/TE stack",
-   "group": "leave_one_out",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 258.46,
-    "bound": 258.46,
-    "gap": 0,
-    "seconds": 0.07,
-    "poolSize": 471,
-    "lineup": [
-     {
-      "dkPlayerId": 44132571,
-      "name": "Dak Prescott",
-      "position": "QB",
-      "team": "DAL",
-      "salary": 6400,
-      "actual": 29.76
-     },
-     {
-      "dkPlayerId": 44132962,
-      "name": "Jaxon Smith-Njigba",
-      "position": "WR",
-      "team": "SEA",
-      "salary": 8100,
-      "actual": 45.5
-     },
-     {
-      "dkPlayerId": 44132968,
-      "name": "CeeDee Lamb",
-      "position": "WR",
-      "team": "DAL",
-      "salary": 7300,
-      "actual": 38.3
-     },
-     {
-      "dkPlayerId": 44132974,
-      "name": "DeVonta Smith",
-      "position": "WR",
-      "team": "PHI",
-      "salary": 6800,
-      "actual": 30.7
-     },
-     {
-      "dkPlayerId": 44132670,
-      "name": "Omarion Hampton",
-      "position": "RB",
-      "team": "LAC",
-      "salary": 6600,
-      "actual": 18.5
-     },
-     {
-      "dkPlayerId": 44133044,
-      "name": "Tre Tucker",
-      "position": "WR",
-      "team": "LV",
-      "salary": 4500,
-      "actual": 25.9
-     },
-     {
-      "dkPlayerId": 44132772,
-      "name": "Jonah Coleman",
-      "position": "RB",
-      "team": "DEN",
-      "salary": 4200,
-      "actual": 14.8
-     },
-     {
-      "dkPlayerId": 44133490,
-      "name": "Dalton Schultz",
-      "position": "TE",
-      "team": "HOU",
-      "salary": 3200,
-      "actual": 29
-     },
-     {
-      "dkPlayerId": 44133757,
-      "name": "Panthers",
-      "position": "DST",
-      "team": "CAR",
-      "salary": 2700,
-      "actual": 26
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 258.46,
-    "ms": 36,
     "illegal": [],
     "error": null
    }
@@ -6930,7 +6930,7 @@
    },
    "optimizer": {
     "points": 258.46,
-    "ms": 43,
+    "ms": 64,
     "illegal": [],
     "error": null
    }
@@ -6949,7 +6949,7 @@
     "objective": 253.86,
     "bound": 253.86,
     "gap": 0,
-    "seconds": 0.12,
+    "seconds": 0.1,
     "poolSize": 471,
     "lineup": [
      {
@@ -7028,7 +7028,7 @@
    },
    "optimizer": {
     "points": 253.86,
-    "ms": 347,
+    "ms": 339,
     "illegal": [],
     "error": null
    }
@@ -7047,7 +7047,7 @@
     "objective": 256.8,
     "bound": 256.8,
     "gap": 0,
-    "seconds": 0.09,
+    "seconds": 0.08,
     "poolSize": 353,
     "lineup": [
      {
@@ -7139,7 +7139,7 @@
     "objective": 256.8,
     "bound": 256.8,
     "gap": 0,
-    "seconds": 0.08,
+    "seconds": 0.07,
     "poolSize": 353,
     "lineup": [
      {
@@ -7218,7 +7218,7 @@
    },
    "optimizer": {
     "points": 256.8,
-    "ms": 1988,
+    "ms": 2774,
     "illegal": [],
     "error": null
    }
@@ -7237,7 +7237,7 @@
     "objective": 256.8,
     "bound": 256.8,
     "gap": 0,
-    "seconds": 0.08,
+    "seconds": 0.07,
     "poolSize": 353,
     "lineup": [
      {
@@ -7316,7 +7316,7 @@
    },
    "optimizer": {
     "points": 256.8,
-    "ms": 33,
+    "ms": 30,
     "illegal": [],
     "error": null
    }
@@ -7414,7 +7414,7 @@
    },
    "optimizer": {
     "points": 256.8,
-    "ms": 2340,
+    "ms": 1950,
     "illegal": [],
     "error": null
    }
@@ -7512,7 +7512,7 @@
    },
    "optimizer": {
     "points": 256.8,
-    "ms": 2118,
+    "ms": 1918,
     "illegal": [],
     "error": null
    }
@@ -7610,7 +7610,7 @@
    },
    "optimizer": {
     "points": 256.8,
-    "ms": 1972,
+    "ms": 2091,
     "illegal": [],
     "error": null
    }
@@ -7629,7 +7629,7 @@
     "objective": 256.72,
     "bound": 256.72,
     "gap": 0,
-    "seconds": 0.08,
+    "seconds": 0.06,
     "poolSize": 344,
     "lineup": [
      {
@@ -7806,7 +7806,7 @@
    },
    "optimizer": {
     "points": 256.8,
-    "ms": 735,
+    "ms": 802,
     "illegal": [],
     "error": null
    }
@@ -7904,7 +7904,7 @@
    },
    "optimizer": {
     "points": 256.8,
-    "ms": 87,
+    "ms": 86,
     "illegal": [],
     "error": null
    }
@@ -7923,7 +7923,7 @@
     "objective": 256.72,
     "bound": 256.72,
     "gap": 0,
-    "seconds": 0.09,
+    "seconds": 0.11,
     "poolSize": 344,
     "lineup": [
      {
@@ -8002,7 +8002,7 @@
    },
    "optimizer": {
     "points": 256.72,
-    "ms": 52,
+    "ms": 50,
     "illegal": [],
     "error": null
    }
@@ -8012,202 +8012,6 @@
    "punts": false,
    "key": "winners_minus_rbPool",
    "label": "Winners without RB pool rule",
-   "group": "leave_one_out",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 256.72,
-    "bound": 256.72,
-    "gap": 0,
-    "seconds": 0.12,
-    "poolSize": 344,
-    "lineup": [
-     {
-      "dkPlayerId": 44220302,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8800,
-      "actual": 41.4
-     },
-     {
-      "dkPlayerId": 44220610,
-      "name": "Jaxon Smith-Njigba",
-      "position": "WR",
-      "team": "SEA",
-      "salary": 8600,
-      "actual": 38.36
-     },
-     {
-      "dkPlayerId": 44220634,
-      "name": "Garrett Wilson",
-      "position": "WR",
-      "team": "NYJ",
-      "salary": 6300,
-      "actual": 29.7
-     },
-     {
-      "dkPlayerId": 44220342,
-      "name": "Jeremiyah Love",
-      "position": "RB",
-      "team": "ARI",
-      "salary": 5500,
-      "actual": 21.9
-     },
-     {
-      "dkPlayerId": 44220231,
-      "name": "Sam Darnold",
-      "position": "QB",
-      "team": "SEA",
-      "salary": 5400,
-      "actual": 32.66
-     },
-     {
-      "dkPlayerId": 44220664,
-      "name": "Michael Wilson",
-      "position": "WR",
-      "team": "ARI",
-      "salary": 5200,
-      "actual": 25.9
-     },
-     {
-      "dkPlayerId": 44221132,
-      "name": "Juwan Johnson",
-      "position": "TE",
-      "team": "NO",
-      "salary": 3700,
-      "actual": 24.3
-     },
-     {
-      "dkPlayerId": 44221138,
-      "name": "Kenyon Sadiq",
-      "position": "TE",
-      "team": "NYJ",
-      "salary": 3500,
-      "actual": 26.5
-     },
-     {
-      "dkPlayerId": 44221408,
-      "name": "Jaguars",
-      "position": "DST",
-      "team": "JAX",
-      "salary": 2900,
-      "actual": 16
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 256.72,
-    "ms": 51,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 3,
-   "punts": false,
-   "key": "winners_minus_wrPool",
-   "label": "Winners without WR pool rule",
-   "group": "leave_one_out",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 256.72,
-    "bound": 256.72,
-    "gap": 0,
-    "seconds": 0.14,
-    "poolSize": 344,
-    "lineup": [
-     {
-      "dkPlayerId": 44220302,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8800,
-      "actual": 41.4
-     },
-     {
-      "dkPlayerId": 44220610,
-      "name": "Jaxon Smith-Njigba",
-      "position": "WR",
-      "team": "SEA",
-      "salary": 8600,
-      "actual": 38.36
-     },
-     {
-      "dkPlayerId": 44220634,
-      "name": "Garrett Wilson",
-      "position": "WR",
-      "team": "NYJ",
-      "salary": 6300,
-      "actual": 29.7
-     },
-     {
-      "dkPlayerId": 44220342,
-      "name": "Jeremiyah Love",
-      "position": "RB",
-      "team": "ARI",
-      "salary": 5500,
-      "actual": 21.9
-     },
-     {
-      "dkPlayerId": 44220231,
-      "name": "Sam Darnold",
-      "position": "QB",
-      "team": "SEA",
-      "salary": 5400,
-      "actual": 32.66
-     },
-     {
-      "dkPlayerId": 44220664,
-      "name": "Michael Wilson",
-      "position": "WR",
-      "team": "ARI",
-      "salary": 5200,
-      "actual": 25.9
-     },
-     {
-      "dkPlayerId": 44221132,
-      "name": "Juwan Johnson",
-      "position": "TE",
-      "team": "NO",
-      "salary": 3700,
-      "actual": 24.3
-     },
-     {
-      "dkPlayerId": 44221138,
-      "name": "Kenyon Sadiq",
-      "position": "TE",
-      "team": "NYJ",
-      "salary": 3500,
-      "actual": 26.5
-     },
-     {
-      "dkPlayerId": 44221408,
-      "name": "Jaguars",
-      "position": "DST",
-      "team": "JAX",
-      "salary": 2900,
-      "actual": 16
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 256.72,
-    "ms": 64,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 3,
-   "punts": false,
-   "key": "winners_minus_tePool",
-   "label": "Winners without TE pool rule",
    "group": "leave_one_out",
    "cbc": {
     "status": "Optimal",
@@ -8296,7 +8100,203 @@
    },
    "optimizer": {
     "points": 256.72,
-    "ms": 48,
+    "ms": 47,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 3,
+   "punts": false,
+   "key": "winners_minus_wrPool",
+   "label": "Winners without WR pool rule",
+   "group": "leave_one_out",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 256.72,
+    "bound": 256.72,
+    "gap": 0,
+    "seconds": 0.11,
+    "poolSize": 344,
+    "lineup": [
+     {
+      "dkPlayerId": 44220302,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8800,
+      "actual": 41.4
+     },
+     {
+      "dkPlayerId": 44220610,
+      "name": "Jaxon Smith-Njigba",
+      "position": "WR",
+      "team": "SEA",
+      "salary": 8600,
+      "actual": 38.36
+     },
+     {
+      "dkPlayerId": 44220634,
+      "name": "Garrett Wilson",
+      "position": "WR",
+      "team": "NYJ",
+      "salary": 6300,
+      "actual": 29.7
+     },
+     {
+      "dkPlayerId": 44220342,
+      "name": "Jeremiyah Love",
+      "position": "RB",
+      "team": "ARI",
+      "salary": 5500,
+      "actual": 21.9
+     },
+     {
+      "dkPlayerId": 44220231,
+      "name": "Sam Darnold",
+      "position": "QB",
+      "team": "SEA",
+      "salary": 5400,
+      "actual": 32.66
+     },
+     {
+      "dkPlayerId": 44220664,
+      "name": "Michael Wilson",
+      "position": "WR",
+      "team": "ARI",
+      "salary": 5200,
+      "actual": 25.9
+     },
+     {
+      "dkPlayerId": 44221132,
+      "name": "Juwan Johnson",
+      "position": "TE",
+      "team": "NO",
+      "salary": 3700,
+      "actual": 24.3
+     },
+     {
+      "dkPlayerId": 44221138,
+      "name": "Kenyon Sadiq",
+      "position": "TE",
+      "team": "NYJ",
+      "salary": 3500,
+      "actual": 26.5
+     },
+     {
+      "dkPlayerId": 44221408,
+      "name": "Jaguars",
+      "position": "DST",
+      "team": "JAX",
+      "salary": 2900,
+      "actual": 16
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 256.72,
+    "ms": 60,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 3,
+   "punts": false,
+   "key": "winners_minus_tePool",
+   "label": "Winners without TE pool rule",
+   "group": "leave_one_out",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 256.72,
+    "bound": 256.72,
+    "gap": 0,
+    "seconds": 0.12,
+    "poolSize": 344,
+    "lineup": [
+     {
+      "dkPlayerId": 44220302,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8800,
+      "actual": 41.4
+     },
+     {
+      "dkPlayerId": 44220610,
+      "name": "Jaxon Smith-Njigba",
+      "position": "WR",
+      "team": "SEA",
+      "salary": 8600,
+      "actual": 38.36
+     },
+     {
+      "dkPlayerId": 44220634,
+      "name": "Garrett Wilson",
+      "position": "WR",
+      "team": "NYJ",
+      "salary": 6300,
+      "actual": 29.7
+     },
+     {
+      "dkPlayerId": 44220342,
+      "name": "Jeremiyah Love",
+      "position": "RB",
+      "team": "ARI",
+      "salary": 5500,
+      "actual": 21.9
+     },
+     {
+      "dkPlayerId": 44220231,
+      "name": "Sam Darnold",
+      "position": "QB",
+      "team": "SEA",
+      "salary": 5400,
+      "actual": 32.66
+     },
+     {
+      "dkPlayerId": 44220664,
+      "name": "Michael Wilson",
+      "position": "WR",
+      "team": "ARI",
+      "salary": 5200,
+      "actual": 25.9
+     },
+     {
+      "dkPlayerId": 44221132,
+      "name": "Juwan Johnson",
+      "position": "TE",
+      "team": "NO",
+      "salary": 3700,
+      "actual": 24.3
+     },
+     {
+      "dkPlayerId": 44221138,
+      "name": "Kenyon Sadiq",
+      "position": "TE",
+      "team": "NYJ",
+      "salary": 3500,
+      "actual": 26.5
+     },
+     {
+      "dkPlayerId": 44221408,
+      "name": "Jaguars",
+      "position": "DST",
+      "team": "JAX",
+      "salary": 2900,
+      "actual": 16
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 256.72,
+    "ms": 54,
     "illegal": [],
     "error": null
    }
@@ -8315,7 +8315,7 @@
     "objective": 256.8,
     "bound": 256.8,
     "gap": 0,
-    "seconds": 0.12,
+    "seconds": 0.09,
     "poolSize": 353,
     "lineup": [
      {
@@ -8394,7 +8394,7 @@
    },
    "optimizer": {
     "points": 256.8,
-    "ms": 243,
+    "ms": 228,
     "illegal": [],
     "error": null
    }
@@ -8404,104 +8404,6 @@
    "punts": false,
    "key": "winners_minus_floor",
    "label": "Winners without $49.5k floor",
-   "group": "leave_one_out",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 256.72,
-    "bound": 256.72,
-    "gap": 0,
-    "seconds": 0.11,
-    "poolSize": 344,
-    "lineup": [
-     {
-      "dkPlayerId": 44220302,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8800,
-      "actual": 41.4
-     },
-     {
-      "dkPlayerId": 44220610,
-      "name": "Jaxon Smith-Njigba",
-      "position": "WR",
-      "team": "SEA",
-      "salary": 8600,
-      "actual": 38.36
-     },
-     {
-      "dkPlayerId": 44220634,
-      "name": "Garrett Wilson",
-      "position": "WR",
-      "team": "NYJ",
-      "salary": 6300,
-      "actual": 29.7
-     },
-     {
-      "dkPlayerId": 44220342,
-      "name": "Jeremiyah Love",
-      "position": "RB",
-      "team": "ARI",
-      "salary": 5500,
-      "actual": 21.9
-     },
-     {
-      "dkPlayerId": 44220231,
-      "name": "Sam Darnold",
-      "position": "QB",
-      "team": "SEA",
-      "salary": 5400,
-      "actual": 32.66
-     },
-     {
-      "dkPlayerId": 44220664,
-      "name": "Michael Wilson",
-      "position": "WR",
-      "team": "ARI",
-      "salary": 5200,
-      "actual": 25.9
-     },
-     {
-      "dkPlayerId": 44221132,
-      "name": "Juwan Johnson",
-      "position": "TE",
-      "team": "NO",
-      "salary": 3700,
-      "actual": 24.3
-     },
-     {
-      "dkPlayerId": 44221138,
-      "name": "Kenyon Sadiq",
-      "position": "TE",
-      "team": "NYJ",
-      "salary": 3500,
-      "actual": 26.5
-     },
-     {
-      "dkPlayerId": 44221408,
-      "name": "Jaguars",
-      "position": "DST",
-      "team": "JAX",
-      "salary": 2900,
-      "actual": 16
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 256.72,
-    "ms": 314,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 3,
-   "punts": false,
-   "key": "winners_minus_stack",
-   "label": "Winners without QB + WR/TE stack",
    "group": "leave_one_out",
    "cbc": {
     "status": "Optimal",
@@ -8590,7 +8492,105 @@
    },
    "optimizer": {
     "points": 256.72,
-    "ms": 71,
+    "ms": 288,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 3,
+   "punts": false,
+   "key": "winners_minus_stack",
+   "label": "Winners without QB + WR/TE stack",
+   "group": "leave_one_out",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 256.72,
+    "bound": 256.72,
+    "gap": 0,
+    "seconds": 0.08,
+    "poolSize": 344,
+    "lineup": [
+     {
+      "dkPlayerId": 44220302,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8800,
+      "actual": 41.4
+     },
+     {
+      "dkPlayerId": 44220610,
+      "name": "Jaxon Smith-Njigba",
+      "position": "WR",
+      "team": "SEA",
+      "salary": 8600,
+      "actual": 38.36
+     },
+     {
+      "dkPlayerId": 44220634,
+      "name": "Garrett Wilson",
+      "position": "WR",
+      "team": "NYJ",
+      "salary": 6300,
+      "actual": 29.7
+     },
+     {
+      "dkPlayerId": 44220342,
+      "name": "Jeremiyah Love",
+      "position": "RB",
+      "team": "ARI",
+      "salary": 5500,
+      "actual": 21.9
+     },
+     {
+      "dkPlayerId": 44220231,
+      "name": "Sam Darnold",
+      "position": "QB",
+      "team": "SEA",
+      "salary": 5400,
+      "actual": 32.66
+     },
+     {
+      "dkPlayerId": 44220664,
+      "name": "Michael Wilson",
+      "position": "WR",
+      "team": "ARI",
+      "salary": 5200,
+      "actual": 25.9
+     },
+     {
+      "dkPlayerId": 44221132,
+      "name": "Juwan Johnson",
+      "position": "TE",
+      "team": "NO",
+      "salary": 3700,
+      "actual": 24.3
+     },
+     {
+      "dkPlayerId": 44221138,
+      "name": "Kenyon Sadiq",
+      "position": "TE",
+      "team": "NYJ",
+      "salary": 3500,
+      "actual": 26.5
+     },
+     {
+      "dkPlayerId": 44221408,
+      "name": "Jaguars",
+      "position": "DST",
+      "team": "JAX",
+      "salary": 2900,
+      "actual": 16
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 256.72,
+    "ms": 63,
     "illegal": [],
     "error": null
    }
@@ -8688,7 +8688,7 @@
    },
    "optimizer": {
     "points": 256.72,
-    "ms": 469,
+    "ms": 435,
     "illegal": [],
     "error": null
    }
@@ -8707,7 +8707,7 @@
     "objective": 255.8,
     "bound": 255.8,
     "gap": 0,
-    "seconds": 0.07,
+    "seconds": 0.08,
     "poolSize": 344,
     "lineup": [
      {
@@ -8786,7 +8786,7 @@
    },
    "optimizer": {
     "points": 255.8,
-    "ms": 32,
+    "ms": 33,
     "illegal": [],
     "error": null
    }
@@ -8805,7 +8805,7 @@
     "objective": 256.8,
     "bound": 256.8,
     "gap": 0,
-    "seconds": 0.09,
+    "seconds": 0.07,
     "poolSize": 353,
     "lineup": [
      {
@@ -8897,7 +8897,7 @@
     "objective": 256.8,
     "bound": 256.8,
     "gap": 0,
-    "seconds": 0.08,
+    "seconds": 0.07,
     "poolSize": 353,
     "lineup": [
      {
@@ -8976,7 +8976,7 @@
    },
    "optimizer": {
     "points": 256.8,
-    "ms": 1998,
+    "ms": 1957,
     "illegal": [],
     "error": null
    }
@@ -8995,7 +8995,7 @@
     "objective": 256.8,
     "bound": 256.8,
     "gap": 0,
-    "seconds": 0.07,
+    "seconds": 0.08,
     "poolSize": 353,
     "lineup": [
      {
@@ -9093,7 +9093,7 @@
     "objective": 256.8,
     "bound": 256.8,
     "gap": 0,
-    "seconds": 0.08,
+    "seconds": 0.07,
     "poolSize": 353,
     "lineup": [
      {
@@ -9172,7 +9172,7 @@
    },
    "optimizer": {
     "points": 256.8,
-    "ms": 2056,
+    "ms": 1942,
     "illegal": [],
     "error": null
    }
@@ -9270,7 +9270,7 @@
    },
    "optimizer": {
     "points": 256.8,
-    "ms": 2049,
+    "ms": 1957,
     "illegal": [],
     "error": null
    }
@@ -9289,7 +9289,7 @@
     "objective": 256.8,
     "bound": 256.8,
     "gap": 0,
-    "seconds": 0.08,
+    "seconds": 0.07,
     "poolSize": 353,
     "lineup": [
      {
@@ -9368,7 +9368,7 @@
    },
    "optimizer": {
     "points": 256.8,
-    "ms": 2003,
+    "ms": 2034,
     "illegal": [],
     "error": null
    }
@@ -9387,7 +9387,7 @@
     "objective": 256.72,
     "bound": 256.72,
     "gap": 0,
-    "seconds": 0.08,
+    "seconds": 0.06,
     "poolSize": 344,
     "lineup": [
      {
@@ -9466,7 +9466,7 @@
    },
    "optimizer": {
     "points": 256.72,
-    "ms": 68,
+    "ms": 78,
     "illegal": [],
     "error": null
    }
@@ -9564,7 +9564,7 @@
    },
    "optimizer": {
     "points": 256.8,
-    "ms": 723,
+    "ms": 759,
     "illegal": [],
     "error": null
    }
@@ -9583,7 +9583,7 @@
     "objective": 256.8,
     "bound": 256.8,
     "gap": 0,
-    "seconds": 0.08,
+    "seconds": 0.09,
     "poolSize": 353,
     "lineup": [
      {
@@ -9662,7 +9662,7 @@
    },
    "optimizer": {
     "points": 256.8,
-    "ms": 78,
+    "ms": 77,
     "illegal": [],
     "error": null
    }
@@ -9681,7 +9681,7 @@
     "objective": 256.72,
     "bound": 256.72,
     "gap": 0,
-    "seconds": 0.1,
+    "seconds": 0.12,
     "poolSize": 344,
     "lineup": [
      {
@@ -9760,7 +9760,7 @@
    },
    "optimizer": {
     "points": 256.72,
-    "ms": 47,
+    "ms": 58,
     "illegal": [],
     "error": null
    }
@@ -9858,7 +9858,7 @@
    },
    "optimizer": {
     "points": 256.72,
-    "ms": 54,
+    "ms": 53,
     "illegal": [],
     "error": null
    }
@@ -9868,300 +9868,6 @@
    "punts": true,
    "key": "winners_minus_wrPool",
    "label": "Winners without WR pool rule",
-   "group": "leave_one_out",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 256.72,
-    "bound": 256.72,
-    "gap": 0,
-    "seconds": 0.1,
-    "poolSize": 344,
-    "lineup": [
-     {
-      "dkPlayerId": 44220302,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8800,
-      "actual": 41.4
-     },
-     {
-      "dkPlayerId": 44220610,
-      "name": "Jaxon Smith-Njigba",
-      "position": "WR",
-      "team": "SEA",
-      "salary": 8600,
-      "actual": 38.36
-     },
-     {
-      "dkPlayerId": 44220634,
-      "name": "Garrett Wilson",
-      "position": "WR",
-      "team": "NYJ",
-      "salary": 6300,
-      "actual": 29.7
-     },
-     {
-      "dkPlayerId": 44220342,
-      "name": "Jeremiyah Love",
-      "position": "RB",
-      "team": "ARI",
-      "salary": 5500,
-      "actual": 21.9
-     },
-     {
-      "dkPlayerId": 44220231,
-      "name": "Sam Darnold",
-      "position": "QB",
-      "team": "SEA",
-      "salary": 5400,
-      "actual": 32.66
-     },
-     {
-      "dkPlayerId": 44220664,
-      "name": "Michael Wilson",
-      "position": "WR",
-      "team": "ARI",
-      "salary": 5200,
-      "actual": 25.9
-     },
-     {
-      "dkPlayerId": 44221132,
-      "name": "Juwan Johnson",
-      "position": "TE",
-      "team": "NO",
-      "salary": 3700,
-      "actual": 24.3
-     },
-     {
-      "dkPlayerId": 44221138,
-      "name": "Kenyon Sadiq",
-      "position": "TE",
-      "team": "NYJ",
-      "salary": 3500,
-      "actual": 26.5
-     },
-     {
-      "dkPlayerId": 44221408,
-      "name": "Jaguars",
-      "position": "DST",
-      "team": "JAX",
-      "salary": 2900,
-      "actual": 16
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 256.72,
-    "ms": 59,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 3,
-   "punts": true,
-   "key": "winners_minus_tePool",
-   "label": "Winners without TE pool rule",
-   "group": "leave_one_out",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 256.72,
-    "bound": 256.72,
-    "gap": 0,
-    "seconds": 0.1,
-    "poolSize": 344,
-    "lineup": [
-     {
-      "dkPlayerId": 44220302,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8800,
-      "actual": 41.4
-     },
-     {
-      "dkPlayerId": 44220610,
-      "name": "Jaxon Smith-Njigba",
-      "position": "WR",
-      "team": "SEA",
-      "salary": 8600,
-      "actual": 38.36
-     },
-     {
-      "dkPlayerId": 44220634,
-      "name": "Garrett Wilson",
-      "position": "WR",
-      "team": "NYJ",
-      "salary": 6300,
-      "actual": 29.7
-     },
-     {
-      "dkPlayerId": 44220342,
-      "name": "Jeremiyah Love",
-      "position": "RB",
-      "team": "ARI",
-      "salary": 5500,
-      "actual": 21.9
-     },
-     {
-      "dkPlayerId": 44220231,
-      "name": "Sam Darnold",
-      "position": "QB",
-      "team": "SEA",
-      "salary": 5400,
-      "actual": 32.66
-     },
-     {
-      "dkPlayerId": 44220664,
-      "name": "Michael Wilson",
-      "position": "WR",
-      "team": "ARI",
-      "salary": 5200,
-      "actual": 25.9
-     },
-     {
-      "dkPlayerId": 44221132,
-      "name": "Juwan Johnson",
-      "position": "TE",
-      "team": "NO",
-      "salary": 3700,
-      "actual": 24.3
-     },
-     {
-      "dkPlayerId": 44221138,
-      "name": "Kenyon Sadiq",
-      "position": "TE",
-      "team": "NYJ",
-      "salary": 3500,
-      "actual": 26.5
-     },
-     {
-      "dkPlayerId": 44221408,
-      "name": "Jaguars",
-      "position": "DST",
-      "team": "JAX",
-      "salary": 2900,
-      "actual": 16
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 256.72,
-    "ms": 42,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 3,
-   "punts": true,
-   "key": "winners_minus_dstPool",
-   "label": "Winners without DST pool rule",
-   "group": "leave_one_out",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 0,
-    "rootBound": null,
-    "objective": 256.8,
-    "bound": 256.8,
-    "gap": 0,
-    "seconds": 0.09,
-    "poolSize": 353,
-    "lineup": [
-     {
-      "dkPlayerId": 44220302,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 8800,
-      "actual": 41.4
-     },
-     {
-      "dkPlayerId": 44220610,
-      "name": "Jaxon Smith-Njigba",
-      "position": "WR",
-      "team": "SEA",
-      "salary": 8600,
-      "actual": 38.36
-     },
-     {
-      "dkPlayerId": 44220634,
-      "name": "Garrett Wilson",
-      "position": "WR",
-      "team": "NYJ",
-      "salary": 6300,
-      "actual": 29.7
-     },
-     {
-      "dkPlayerId": 44220338,
-      "name": "Jaylen Warren",
-      "position": "RB",
-      "team": "PIT",
-      "salary": 5700,
-      "actual": 23.6
-     },
-     {
-      "dkPlayerId": 44220664,
-      "name": "Michael Wilson",
-      "position": "WR",
-      "team": "ARI",
-      "salary": 5200,
-      "actual": 25.9
-     },
-     {
-      "dkPlayerId": 44220240,
-      "name": "Geno Smith",
-      "position": "QB",
-      "team": "NYJ",
-      "salary": 4900,
-      "actual": 30.04
-     },
-     {
-      "dkPlayerId": 44221132,
-      "name": "Juwan Johnson",
-      "position": "TE",
-      "team": "NO",
-      "salary": 3700,
-      "actual": 24.3
-     },
-     {
-      "dkPlayerId": 44221138,
-      "name": "Kenyon Sadiq",
-      "position": "TE",
-      "team": "NYJ",
-      "salary": 3500,
-      "actual": 26.5
-     },
-     {
-      "dkPlayerId": 44221405,
-      "name": "Vikings",
-      "position": "DST",
-      "team": "MIN",
-      "salary": 3100,
-      "actual": 17
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 256.8,
-    "ms": 255,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 3,
-   "punts": true,
-   "key": "winners_minus_floor",
-   "label": "Winners without $49.5k floor",
    "group": "leave_one_out",
    "cbc": {
     "status": "Optimal",
@@ -10250,7 +9956,7 @@
    },
    "optimizer": {
     "points": 256.72,
-    "ms": 314,
+    "ms": 76,
     "illegal": [],
     "error": null
    }
@@ -10258,8 +9964,204 @@
   {
    "week": 3,
    "punts": true,
-   "key": "winners_minus_stack",
-   "label": "Winners without QB + WR/TE stack",
+   "key": "winners_minus_tePool",
+   "label": "Winners without TE pool rule",
+   "group": "leave_one_out",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 256.72,
+    "bound": 256.72,
+    "gap": 0,
+    "seconds": 0.11,
+    "poolSize": 344,
+    "lineup": [
+     {
+      "dkPlayerId": 44220302,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8800,
+      "actual": 41.4
+     },
+     {
+      "dkPlayerId": 44220610,
+      "name": "Jaxon Smith-Njigba",
+      "position": "WR",
+      "team": "SEA",
+      "salary": 8600,
+      "actual": 38.36
+     },
+     {
+      "dkPlayerId": 44220634,
+      "name": "Garrett Wilson",
+      "position": "WR",
+      "team": "NYJ",
+      "salary": 6300,
+      "actual": 29.7
+     },
+     {
+      "dkPlayerId": 44220342,
+      "name": "Jeremiyah Love",
+      "position": "RB",
+      "team": "ARI",
+      "salary": 5500,
+      "actual": 21.9
+     },
+     {
+      "dkPlayerId": 44220231,
+      "name": "Sam Darnold",
+      "position": "QB",
+      "team": "SEA",
+      "salary": 5400,
+      "actual": 32.66
+     },
+     {
+      "dkPlayerId": 44220664,
+      "name": "Michael Wilson",
+      "position": "WR",
+      "team": "ARI",
+      "salary": 5200,
+      "actual": 25.9
+     },
+     {
+      "dkPlayerId": 44221132,
+      "name": "Juwan Johnson",
+      "position": "TE",
+      "team": "NO",
+      "salary": 3700,
+      "actual": 24.3
+     },
+     {
+      "dkPlayerId": 44221138,
+      "name": "Kenyon Sadiq",
+      "position": "TE",
+      "team": "NYJ",
+      "salary": 3500,
+      "actual": 26.5
+     },
+     {
+      "dkPlayerId": 44221408,
+      "name": "Jaguars",
+      "position": "DST",
+      "team": "JAX",
+      "salary": 2900,
+      "actual": 16
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 256.72,
+    "ms": 43,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 3,
+   "punts": true,
+   "key": "winners_minus_dstPool",
+   "label": "Winners without DST pool rule",
+   "group": "leave_one_out",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 256.8,
+    "bound": 256.8,
+    "gap": 0,
+    "seconds": 0.08,
+    "poolSize": 353,
+    "lineup": [
+     {
+      "dkPlayerId": 44220302,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8800,
+      "actual": 41.4
+     },
+     {
+      "dkPlayerId": 44220610,
+      "name": "Jaxon Smith-Njigba",
+      "position": "WR",
+      "team": "SEA",
+      "salary": 8600,
+      "actual": 38.36
+     },
+     {
+      "dkPlayerId": 44220634,
+      "name": "Garrett Wilson",
+      "position": "WR",
+      "team": "NYJ",
+      "salary": 6300,
+      "actual": 29.7
+     },
+     {
+      "dkPlayerId": 44220338,
+      "name": "Jaylen Warren",
+      "position": "RB",
+      "team": "PIT",
+      "salary": 5700,
+      "actual": 23.6
+     },
+     {
+      "dkPlayerId": 44220664,
+      "name": "Michael Wilson",
+      "position": "WR",
+      "team": "ARI",
+      "salary": 5200,
+      "actual": 25.9
+     },
+     {
+      "dkPlayerId": 44220240,
+      "name": "Geno Smith",
+      "position": "QB",
+      "team": "NYJ",
+      "salary": 4900,
+      "actual": 30.04
+     },
+     {
+      "dkPlayerId": 44221132,
+      "name": "Juwan Johnson",
+      "position": "TE",
+      "team": "NO",
+      "salary": 3700,
+      "actual": 24.3
+     },
+     {
+      "dkPlayerId": 44221138,
+      "name": "Kenyon Sadiq",
+      "position": "TE",
+      "team": "NYJ",
+      "salary": 3500,
+      "actual": 26.5
+     },
+     {
+      "dkPlayerId": 44221405,
+      "name": "Vikings",
+      "position": "DST",
+      "team": "MIN",
+      "salary": 3100,
+      "actual": 17
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 256.8,
+    "ms": 253,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 3,
+   "punts": true,
+   "key": "winners_minus_floor",
+   "label": "Winners without $49.5k floor",
    "group": "leave_one_out",
    "cbc": {
     "status": "Optimal",
@@ -10348,7 +10250,7 @@
    },
    "optimizer": {
     "points": 256.72,
-    "ms": 68,
+    "ms": 308,
     "illegal": [],
     "error": null
    }
@@ -10356,9 +10258,9 @@
   {
    "week": 3,
    "punts": true,
-   "key": "winners_strict_dst",
-   "label": "Diagnostic: Winners + no DST against own offense in this lineup",
-   "group": "diagnostic",
+   "key": "winners_minus_stack",
+   "label": "Winners without QB + WR/TE stack",
+   "group": "leave_one_out",
    "cbc": {
     "status": "Optimal",
     "cbcResult": "Optimal solution found",
@@ -10367,7 +10269,7 @@
     "objective": 256.72,
     "bound": 256.72,
     "gap": 0,
-    "seconds": 0.09,
+    "seconds": 0.08,
     "poolSize": 344,
     "lineup": [
      {
@@ -10446,7 +10348,105 @@
    },
    "optimizer": {
     "points": 256.72,
-    "ms": 479,
+    "ms": 74,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 3,
+   "punts": true,
+   "key": "winners_strict_dst",
+   "label": "Diagnostic: Winners + no DST against own offense in this lineup",
+   "group": "diagnostic",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 0,
+    "rootBound": null,
+    "objective": 256.72,
+    "bound": 256.72,
+    "gap": 0,
+    "seconds": 0.1,
+    "poolSize": 344,
+    "lineup": [
+     {
+      "dkPlayerId": 44220302,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 8800,
+      "actual": 41.4
+     },
+     {
+      "dkPlayerId": 44220610,
+      "name": "Jaxon Smith-Njigba",
+      "position": "WR",
+      "team": "SEA",
+      "salary": 8600,
+      "actual": 38.36
+     },
+     {
+      "dkPlayerId": 44220634,
+      "name": "Garrett Wilson",
+      "position": "WR",
+      "team": "NYJ",
+      "salary": 6300,
+      "actual": 29.7
+     },
+     {
+      "dkPlayerId": 44220342,
+      "name": "Jeremiyah Love",
+      "position": "RB",
+      "team": "ARI",
+      "salary": 5500,
+      "actual": 21.9
+     },
+     {
+      "dkPlayerId": 44220231,
+      "name": "Sam Darnold",
+      "position": "QB",
+      "team": "SEA",
+      "salary": 5400,
+      "actual": 32.66
+     },
+     {
+      "dkPlayerId": 44220664,
+      "name": "Michael Wilson",
+      "position": "WR",
+      "team": "ARI",
+      "salary": 5200,
+      "actual": 25.9
+     },
+     {
+      "dkPlayerId": 44221132,
+      "name": "Juwan Johnson",
+      "position": "TE",
+      "team": "NO",
+      "salary": 3700,
+      "actual": 24.3
+     },
+     {
+      "dkPlayerId": 44221138,
+      "name": "Kenyon Sadiq",
+      "position": "TE",
+      "team": "NYJ",
+      "salary": 3500,
+      "actual": 26.5
+     },
+     {
+      "dkPlayerId": 44221408,
+      "name": "Jaguars",
+      "position": "DST",
+      "team": "JAX",
+      "salary": 2900,
+      "actual": 16
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 256.72,
+    "ms": 453,
     "illegal": [],
     "error": null
    }
@@ -10465,7 +10465,7 @@
     "objective": 255.8,
     "bound": 255.8,
     "gap": 0,
-    "seconds": 0.07,
+    "seconds": 0.08,
     "poolSize": 344,
     "lineup": [
      {
@@ -10544,7 +10544,7 @@
    },
    "optimizer": {
     "points": 255.8,
-    "ms": 28,
+    "ms": 29,
     "illegal": [],
     "error": null
    }
@@ -10563,7 +10563,7 @@
     "objective": 280.86,
     "bound": 280.86,
     "gap": 0,
-    "seconds": 0.06,
+    "seconds": 0.05,
     "poolSize": 249,
     "lineup": [
      {
@@ -10734,7 +10734,7 @@
    },
    "optimizer": {
     "points": 280.86,
-    "ms": 20,
+    "ms": 22,
     "illegal": [],
     "error": null
    }
@@ -10753,7 +10753,7 @@
     "objective": 278.78,
     "bound": 278.78,
     "gap": 0,
-    "seconds": 0.09,
+    "seconds": 0.07,
     "poolSize": 249,
     "lineup": [
      {
@@ -10930,7 +10930,7 @@
    },
    "optimizer": {
     "points": 277.02,
-    "ms": 23,
+    "ms": 21,
     "illegal": [],
     "error": null
    }
@@ -10949,7 +10949,7 @@
     "objective": 280.86,
     "bound": 280.86,
     "gap": 0,
-    "seconds": 0.07,
+    "seconds": 0.06,
     "poolSize": 231,
     "lineup": [
      {
@@ -11028,7 +11028,7 @@
    },
    "optimizer": {
     "points": 280.86,
-    "ms": 16,
+    "ms": 17,
     "illegal": [],
     "error": null
    }
@@ -11126,7 +11126,7 @@
    },
    "optimizer": {
     "points": 280.86,
-    "ms": 13,
+    "ms": 15,
     "illegal": [],
     "error": null
    }
@@ -11145,7 +11145,7 @@
     "objective": 276.42,
     "bound": 276.42,
     "gap": 0,
-    "seconds": 0.05,
+    "seconds": 0.06,
     "poolSize": 241,
     "lineup": [
      {
@@ -11224,7 +11224,7 @@
    },
    "optimizer": {
     "points": 276.42,
-    "ms": 15,
+    "ms": 14,
     "illegal": [],
     "error": null
    }
@@ -11243,7 +11243,7 @@
     "objective": 280.86,
     "bound": 280.86,
     "gap": 0,
-    "seconds": 0.09,
+    "seconds": 0.06,
     "poolSize": 249,
     "lineup": [
      {
@@ -11322,7 +11322,7 @@
    },
    "optimizer": {
     "points": 280.86,
-    "ms": 16,
+    "ms": 17,
     "illegal": [],
     "error": null
    }
@@ -11420,7 +11420,7 @@
    },
    "optimizer": {
     "points": 278.78,
-    "ms": 22,
+    "ms": 21,
     "illegal": [],
     "error": null
    }
@@ -11439,7 +11439,7 @@
     "objective": 264.16,
     "bound": 264.16,
     "gap": 0,
-    "seconds": 0.08,
+    "seconds": 0.11,
     "poolSize": 124,
     "lineup": [
      {
@@ -11518,7 +11518,7 @@
    },
    "optimizer": {
     "points": 264.16,
-    "ms": 20,
+    "ms": 28,
     "illegal": [],
     "error": null
    }
@@ -11616,7 +11616,7 @@
    },
    "optimizer": {
     "points": 269.28,
-    "ms": 25,
+    "ms": 24,
     "illegal": [],
     "error": null
    }
@@ -11635,7 +11635,7 @@
     "objective": 272.52,
     "bound": 272.52,
     "gap": 0,
-    "seconds": 0.1,
+    "seconds": 0.07,
     "poolSize": 142,
     "lineup": [
      {
@@ -11714,7 +11714,7 @@
    },
    "optimizer": {
     "points": 272.52,
-    "ms": 15,
+    "ms": 13,
     "illegal": [],
     "error": null
    }
@@ -11733,7 +11733,7 @@
     "objective": 264.16,
     "bound": 264.16,
     "gap": 0,
-    "seconds": 0.2,
+    "seconds": 0.09,
     "poolSize": 176,
     "lineup": [
      {
@@ -11812,7 +11812,7 @@
    },
    "optimizer": {
     "points": 264.16,
-    "ms": 51,
+    "ms": 40,
     "illegal": [],
     "error": null
    }
@@ -11831,7 +11831,7 @@
     "objective": 273.66,
     "bound": 273.66,
     "gap": 0,
-    "seconds": 0.13,
+    "seconds": 0.09,
     "poolSize": 132,
     "lineup": [
      {
@@ -11910,7 +11910,7 @@
    },
    "optimizer": {
     "points": 273.66,
-    "ms": 22,
+    "ms": 13,
     "illegal": [],
     "error": null
    }
@@ -11929,7 +11929,7 @@
     "objective": 269.38,
     "bound": 269.38,
     "gap": 0,
-    "seconds": 0.08,
+    "seconds": 0.07,
     "poolSize": 124,
     "lineup": [
      {
@@ -12008,7 +12008,7 @@
    },
    "optimizer": {
     "points": 269.38,
-    "ms": 24,
+    "ms": 25,
     "illegal": [],
     "error": null
    }
@@ -12027,7 +12027,7 @@
     "objective": 274.6,
     "bound": 274.6,
     "gap": 0,
-    "seconds": 0.06,
+    "seconds": 0.05,
     "poolSize": 124,
     "lineup": [
      {
@@ -12106,7 +12106,7 @@
    },
    "optimizer": {
     "points": 274.6,
-    "ms": 9,
+    "ms": 7,
     "illegal": [],
     "error": null
    }
@@ -12125,7 +12125,7 @@
     "objective": 264.16,
     "bound": 264.16,
     "gap": 0,
-    "seconds": 0.09,
+    "seconds": 0.1,
     "poolSize": 124,
     "lineup": [
      {
@@ -12204,7 +12204,7 @@
    },
    "optimizer": {
     "points": 264.16,
-    "ms": 24,
+    "ms": 20,
     "illegal": [],
     "error": null
    }
@@ -12302,7 +12302,7 @@
    },
    "optimizer": {
     "points": 264.16,
-    "ms": 22,
+    "ms": 17,
     "illegal": [],
     "error": null
    }
@@ -12492,7 +12492,7 @@
    },
    "optimizer": {
     "points": 280.86,
-    "ms": 27,
+    "ms": 17,
     "illegal": [],
     "error": null
    }
@@ -12511,7 +12511,7 @@
     "objective": 278.78,
     "bound": 278.78,
     "gap": 0,
-    "seconds": 0.06,
+    "seconds": 0.09,
     "poolSize": 292,
     "lineup": [
      {
@@ -12590,7 +12590,7 @@
    },
    "optimizer": {
     "points": 278.78,
-    "ms": 26,
+    "ms": 23,
     "illegal": [],
     "error": null
    }
@@ -12609,7 +12609,7 @@
     "objective": 277.02,
     "bound": 277.02,
     "gap": 0,
-    "seconds": 0.08,
+    "seconds": 0.09,
     "poolSize": 243,
     "lineup": [
      {
@@ -12688,7 +12688,7 @@
    },
    "optimizer": {
     "points": 277.02,
-    "ms": 28,
+    "ms": 25,
     "illegal": [],
     "error": null
    }
@@ -12707,7 +12707,7 @@
     "objective": 280.86,
     "bound": 280.86,
     "gap": 0,
-    "seconds": 0.08,
+    "seconds": 0.1,
     "poolSize": 274,
     "lineup": [
      {
@@ -12786,7 +12786,7 @@
    },
    "optimizer": {
     "points": 280.86,
-    "ms": 33,
+    "ms": 19,
     "illegal": [],
     "error": null
    }
@@ -12805,7 +12805,7 @@
     "objective": 280.86,
     "bound": 280.86,
     "gap": 0,
-    "seconds": 0.1,
+    "seconds": 0.06,
     "poolSize": 235,
     "lineup": [
      {
@@ -12884,7 +12884,7 @@
    },
    "optimizer": {
     "points": 280.86,
-    "ms": 17,
+    "ms": 32,
     "illegal": [],
     "error": null
    }
@@ -12903,7 +12903,7 @@
     "objective": 276.42,
     "bound": 276.42,
     "gap": 0,
-    "seconds": 0.07,
+    "seconds": 0.05,
     "poolSize": 284,
     "lineup": [
      {
@@ -12982,7 +12982,7 @@
    },
    "optimizer": {
     "points": 276.42,
-    "ms": 23,
+    "ms": 21,
     "illegal": [],
     "error": null
    }
@@ -13001,7 +13001,7 @@
     "objective": 280.86,
     "bound": 280.86,
     "gap": 0,
-    "seconds": 0.06,
+    "seconds": 0.07,
     "poolSize": 292,
     "lineup": [
      {
@@ -13178,7 +13178,7 @@
    },
    "optimizer": {
     "points": 278.78,
-    "ms": 20,
+    "ms": 28,
     "illegal": [],
     "error": null
    }
@@ -13197,7 +13197,7 @@
     "objective": 264.16,
     "bound": 264.16,
     "gap": 0,
-    "seconds": 0.09,
+    "seconds": 0.08,
     "poolSize": 160,
     "lineup": [
      {
@@ -13276,7 +13276,7 @@
    },
    "optimizer": {
     "points": 264.16,
-    "ms": 41,
+    "ms": 40,
     "illegal": [],
     "error": null
    }
@@ -13374,7 +13374,7 @@
    },
    "optimizer": {
     "points": 269.28,
-    "ms": 32,
+    "ms": 37,
     "illegal": [],
     "error": null
    }
@@ -13472,7 +13472,7 @@
    },
    "optimizer": {
     "points": 272.52,
-    "ms": 12,
+    "ms": 13,
     "illegal": [],
     "error": null
    }
@@ -13491,7 +13491,7 @@
     "objective": 264.16,
     "bound": 264.16,
     "gap": 0,
-    "seconds": 0.11,
+    "seconds": 0.09,
     "poolSize": 217,
     "lineup": [
      {
@@ -13570,7 +13570,7 @@
    },
    "optimizer": {
     "points": 264.16,
-    "ms": 59,
+    "ms": 52,
     "illegal": [],
     "error": null
    }
@@ -13589,7 +13589,7 @@
     "objective": 273.66,
     "bound": 273.66,
     "gap": 0,
-    "seconds": 0.08,
+    "seconds": 0.1,
     "poolSize": 168,
     "lineup": [
      {
@@ -13668,7 +13668,7 @@
    },
    "optimizer": {
     "points": 273.66,
-    "ms": 16,
+    "ms": 13,
     "illegal": [],
     "error": null
    }
@@ -13687,7 +13687,7 @@
     "objective": 269.38,
     "bound": 269.38,
     "gap": 0,
-    "seconds": 0.1,
+    "seconds": 0.07,
     "poolSize": 160,
     "lineup": [
      {
@@ -13785,7 +13785,7 @@
     "objective": 274.6,
     "bound": 274.6,
     "gap": 0,
-    "seconds": 0.06,
+    "seconds": 0.05,
     "poolSize": 160,
     "lineup": [
      {
@@ -13883,7 +13883,7 @@
     "objective": 264.16,
     "bound": 264.16,
     "gap": 0,
-    "seconds": 0.11,
+    "seconds": 0.1,
     "poolSize": 160,
     "lineup": [
      {
@@ -13962,7 +13962,7 @@
    },
    "optimizer": {
     "points": 264.16,
-    "ms": 145,
+    "ms": 135,
     "illegal": [],
     "error": null
    }
@@ -14060,7 +14060,7 @@
    },
    "optimizer": {
     "points": 264.16,
-    "ms": 21,
+    "ms": 22,
     "illegal": [],
     "error": null
    }
@@ -14079,7 +14079,7 @@
     "objective": 284.76,
     "bound": 284.76,
     "gap": 0,
-    "seconds": 0.05,
+    "seconds": 0.06,
     "poolSize": 240,
     "lineup": [
      {
@@ -14171,7 +14171,7 @@
     "objective": 284.76,
     "bound": 284.76,
     "gap": 0,
-    "seconds": 0.09,
+    "seconds": 0.06,
     "poolSize": 240,
     "lineup": [
      {
@@ -14250,7 +14250,7 @@
    },
    "optimizer": {
     "points": 284.76,
-    "ms": 18,
+    "ms": 20,
     "illegal": [],
     "error": null
    }
@@ -14269,7 +14269,7 @@
     "objective": 276.26,
     "bound": 276.26,
     "gap": 0,
-    "seconds": 0.08,
+    "seconds": 0.12,
     "poolSize": 240,
     "lineup": [
      {
@@ -14348,7 +14348,7 @@
    },
    "optimizer": {
     "points": 276.26,
-    "ms": 23,
+    "ms": 19,
     "illegal": [],
     "error": null
    }
@@ -14367,7 +14367,7 @@
     "objective": 284.76,
     "bound": 284.76,
     "gap": 0,
-    "seconds": 0.1,
+    "seconds": 0.09,
     "poolSize": 195,
     "lineup": [
      {
@@ -14446,7 +14446,7 @@
    },
    "optimizer": {
     "points": 284.76,
-    "ms": 15,
+    "ms": 17,
     "illegal": [],
     "error": null
    }
@@ -14563,7 +14563,7 @@
     "objective": 270.46,
     "bound": 270.46,
     "gap": 0,
-    "seconds": 0.08,
+    "seconds": 0.09,
     "poolSize": 188,
     "lineup": [
      {
@@ -14642,7 +14642,7 @@
    },
    "optimizer": {
     "points": 270.46,
-    "ms": 18,
+    "ms": 17,
     "illegal": [],
     "error": null
    }
@@ -14661,7 +14661,7 @@
     "objective": 284.76,
     "bound": 284.76,
     "gap": 0,
-    "seconds": 0.09,
+    "seconds": 0.06,
     "poolSize": 233,
     "lineup": [
      {
@@ -14740,7 +14740,7 @@
    },
    "optimizer": {
     "points": 284.76,
-    "ms": 18,
+    "ms": 16,
     "illegal": [],
     "error": null
    }
@@ -14936,7 +14936,7 @@
    },
    "optimizer": {
     "points": 284.76,
-    "ms": 22,
+    "ms": 20,
     "illegal": [],
     "error": null
    }
@@ -14955,7 +14955,7 @@
     "objective": 244.56,
     "bound": 244.56,
     "gap": 0,
-    "seconds": 0.1,
+    "seconds": 0.11,
     "poolSize": 120,
     "lineup": [
      {
@@ -15034,7 +15034,7 @@
    },
    "optimizer": {
     "points": 244.56,
-    "ms": 32,
+    "ms": 33,
     "illegal": [],
     "error": null
    }
@@ -15132,7 +15132,7 @@
    },
    "optimizer": {
     "points": 250.46,
-    "ms": 14,
+    "ms": 13,
     "illegal": [],
     "error": null
    }
@@ -15151,7 +15151,7 @@
     "objective": 264.54,
     "bound": 264.54,
     "gap": 0,
-    "seconds": 0.11,
+    "seconds": 0.13,
     "poolSize": 136,
     "lineup": [
      {
@@ -15230,7 +15230,7 @@
    },
    "optimizer": {
     "points": 264.54,
-    "ms": 61,
+    "ms": 53,
     "illegal": [],
     "error": null
    }
@@ -15249,7 +15249,7 @@
     "objective": 267.36,
     "bound": 267.36,
     "gap": 0,
-    "seconds": 0.1,
+    "seconds": 0.11,
     "poolSize": 172,
     "lineup": [
      {
@@ -15328,7 +15328,7 @@
    },
    "optimizer": {
     "points": 267.36,
-    "ms": 20,
+    "ms": 13,
     "illegal": [],
     "error": null
    }
@@ -15347,7 +15347,7 @@
     "objective": 249.16,
     "bound": 249.16,
     "gap": 0,
-    "seconds": 0.07,
+    "seconds": 0.08,
     "poolSize": 127,
     "lineup": [
      {
@@ -15445,7 +15445,7 @@
     "objective": 252.16,
     "bound": 252.16,
     "gap": 0,
-    "seconds": 0.06,
+    "seconds": 0.07,
     "poolSize": 120,
     "lineup": [
      {
@@ -15622,7 +15622,7 @@
    },
    "optimizer": {
     "points": 244.56,
-    "ms": 31,
+    "ms": 30,
     "illegal": [],
     "error": null
    }
@@ -15720,7 +15720,7 @@
    },
    "optimizer": {
     "points": 244.56,
-    "ms": 44,
+    "ms": 54,
     "illegal": [],
     "error": null
    }
@@ -15818,7 +15818,7 @@
    },
    "optimizer": {
     "points": 240.16,
-    "ms": 11,
+    "ms": 12,
     "illegal": [],
     "error": null
    }
@@ -15837,7 +15837,7 @@
     "objective": 284.76,
     "bound": 284.76,
     "gap": 0,
-    "seconds": 0.07,
+    "seconds": 0.05,
     "poolSize": 270,
     "lineup": [
      {
@@ -16008,7 +16008,7 @@
    },
    "optimizer": {
     "points": 284.76,
-    "ms": 19,
+    "ms": 20,
     "illegal": [],
     "error": null
    }
@@ -16027,7 +16027,7 @@
     "objective": 276.26,
     "bound": 276.26,
     "gap": 0,
-    "seconds": 0.08,
+    "seconds": 0.13,
     "poolSize": 270,
     "lineup": [
      {
@@ -16106,7 +16106,7 @@
    },
    "optimizer": {
     "points": 276.26,
-    "ms": 25,
+    "ms": 26,
     "illegal": [],
     "error": null
    }
@@ -16204,7 +16204,7 @@
    },
    "optimizer": {
     "points": 284.76,
-    "ms": 17,
+    "ms": 20,
     "illegal": [],
     "error": null
    }
@@ -16302,7 +16302,7 @@
    },
    "optimizer": {
     "points": 267.36,
-    "ms": 15,
+    "ms": 22,
     "illegal": [],
     "error": null
    }
@@ -16400,7 +16400,7 @@
    },
    "optimizer": {
     "points": 270.46,
-    "ms": 24,
+    "ms": 25,
     "illegal": [],
     "error": null
    }
@@ -16419,7 +16419,7 @@
     "objective": 284.76,
     "bound": 284.76,
     "gap": 0,
-    "seconds": 0.05,
+    "seconds": 0.06,
     "poolSize": 263,
     "lineup": [
      {
@@ -16498,7 +16498,7 @@
    },
    "optimizer": {
     "points": 284.76,
-    "ms": 17,
+    "ms": 18,
     "illegal": [],
     "error": null
    }
@@ -16596,7 +16596,7 @@
    },
    "optimizer": {
     "points": 284.76,
-    "ms": 20,
+    "ms": 24,
     "illegal": [],
     "error": null
    }
@@ -16615,7 +16615,7 @@
     "objective": 284.76,
     "bound": 284.76,
     "gap": 0,
-    "seconds": 0.06,
+    "seconds": 0.08,
     "poolSize": 270,
     "lineup": [
      {
@@ -16694,7 +16694,7 @@
    },
    "optimizer": {
     "points": 284.76,
-    "ms": 22,
+    "ms": 19,
     "illegal": [],
     "error": null
    }
@@ -16713,7 +16713,7 @@
     "objective": 244.56,
     "bound": 244.56,
     "gap": 0,
-    "seconds": 0.14,
+    "seconds": 0.16,
     "poolSize": 150,
     "lineup": [
      {
@@ -16792,7 +16792,7 @@
    },
    "optimizer": {
     "points": 244.56,
-    "ms": 39,
+    "ms": 57,
     "illegal": [],
     "error": null
    }
@@ -16811,7 +16811,7 @@
     "objective": 250.46,
     "bound": 250.46,
     "gap": 0,
-    "seconds": 0.07,
+    "seconds": 0.09,
     "poolSize": 195,
     "lineup": [
      {
@@ -16890,7 +16890,7 @@
    },
    "optimizer": {
     "points": 250.46,
-    "ms": 16,
+    "ms": 42,
     "illegal": [],
     "error": null
    }
@@ -16904,12 +16904,12 @@
    "cbc": {
     "status": "Optimal",
     "cbcResult": "Optimal solution found",
-    "nodes": 4,
-    "rootBound": 265.77776,
+    "nodes": 2,
+    "rootBound": 266.09117,
     "objective": 264.54,
     "bound": 264.54,
     "gap": 0,
-    "seconds": 0.1,
+    "seconds": 0.13,
     "poolSize": 166,
     "lineup": [
      {
@@ -16988,7 +16988,7 @@
    },
    "optimizer": {
     "points": 264.54,
-    "ms": 88,
+    "ms": 200,
     "illegal": [],
     "error": null
    }
@@ -17007,7 +17007,7 @@
     "objective": 267.36,
     "bound": 267.36,
     "gap": 0,
-    "seconds": 0.07,
+    "seconds": 0.09,
     "poolSize": 202,
     "lineup": [
      {
@@ -17086,7 +17086,7 @@
    },
    "optimizer": {
     "points": 267.36,
-    "ms": 13,
+    "ms": 25,
     "illegal": [],
     "error": null
    }
@@ -17105,7 +17105,7 @@
     "objective": 249.16,
     "bound": 249.16,
     "gap": 0,
-    "seconds": 0.08,
+    "seconds": 0.09,
     "poolSize": 157,
     "lineup": [
      {
@@ -17184,7 +17184,7 @@
    },
    "optimizer": {
     "points": 249.16,
-    "ms": 16,
+    "ms": 31,
     "illegal": [],
     "error": null
    }
@@ -17282,7 +17282,7 @@
    },
    "optimizer": {
     "points": 252.16,
-    "ms": 10,
+    "ms": 21,
     "illegal": [],
     "error": null
    }
@@ -17296,110 +17296,12 @@
    "cbc": {
     "status": "Optimal",
     "cbcResult": "Optimal solution found",
-    "nodes": 4,
-    "rootBound": 246.90794,
+    "nodes": 8,
+    "rootBound": 246.88228,
     "objective": 244.56,
     "bound": 244.56,
     "gap": 0,
-    "seconds": 0.1,
-    "poolSize": 150,
-    "lineup": [
-     {
-      "dkPlayerId": 44392869,
-      "name": "49ers",
-      "position": "DST",
-      "team": "SF",
-      "salary": 2400,
-      "actual": 18
-     },
-     {
-      "dkPlayerId": 44391827,
-      "name": "Drake Maye",
-      "position": "QB",
-      "team": "NE",
-      "salary": 6300,
-      "actual": 42.46
-     },
-     {
-      "dkPlayerId": 44391896,
-      "name": "Jahmyr Gibbs",
-      "position": "RB",
-      "team": "DET",
-      "salary": 9800,
-      "actual": 40.7
-     },
-     {
-      "dkPlayerId": 44391906,
-      "name": "Jaylen Warren",
-      "position": "RB",
-      "team": "PIT",
-      "salary": 6700,
-      "actual": 39.8
-     },
-     {
-      "dkPlayerId": 44391908,
-      "name": "Aaron Jones Sr.",
-      "position": "RB",
-      "team": "MIN",
-      "salary": 6500,
-      "actual": 22.7
-     },
-     {
-      "dkPlayerId": 44392614,
-      "name": "Pat Freiermuth",
-      "position": "TE",
-      "team": "PIT",
-      "salary": 3900,
-      "actual": 21.5
-     },
-     {
-      "dkPlayerId": 44392180,
-      "name": "Garrett Wilson",
-      "position": "WR",
-      "team": "NYJ",
-      "salary": 6600,
-      "actual": 26.4
-     },
-     {
-      "dkPlayerId": 44392254,
-      "name": "Xavier Hutchinson",
-      "position": "WR",
-      "team": "HOU",
-      "salary": 4000,
-      "actual": 10.5
-     },
-     {
-      "dkPlayerId": 44392290,
-      "name": "DeMario Douglas",
-      "position": "WR",
-      "team": "NE",
-      "salary": 3500,
-      "actual": 22.5
-     }
-    ]
-   },
-   "optimizer": {
-    "points": 244.56,
-    "ms": 38,
-    "illegal": [],
-    "error": null
-   }
-  },
-  {
-   "week": 5,
-   "punts": true,
-   "key": "winners_strict_dst",
-   "label": "Diagnostic: Winners + no DST against own offense in this lineup",
-   "group": "diagnostic",
-   "cbc": {
-    "status": "Optimal",
-    "cbcResult": "Optimal solution found",
-    "nodes": 2,
-    "rootBound": 246.42981,
-    "objective": 244.56,
-    "bound": 244.56,
-    "gap": 0,
-    "seconds": 0.11,
+    "seconds": 0.12,
     "poolSize": 150,
     "lineup": [
      {
@@ -17478,7 +17380,105 @@
    },
    "optimizer": {
     "points": 244.56,
-    "ms": 85,
+    "ms": 78,
+    "illegal": [],
+    "error": null
+   }
+  },
+  {
+   "week": 5,
+   "punts": true,
+   "key": "winners_strict_dst",
+   "label": "Diagnostic: Winners + no DST against own offense in this lineup",
+   "group": "diagnostic",
+   "cbc": {
+    "status": "Optimal",
+    "cbcResult": "Optimal solution found",
+    "nodes": 2,
+    "rootBound": 246.42981,
+    "objective": 244.56,
+    "bound": 244.56,
+    "gap": 0,
+    "seconds": 0.12,
+    "poolSize": 150,
+    "lineup": [
+     {
+      "dkPlayerId": 44392863,
+      "name": "Packers",
+      "position": "DST",
+      "team": "GB",
+      "salary": 2700,
+      "actual": 18
+     },
+     {
+      "dkPlayerId": 44391827,
+      "name": "Drake Maye",
+      "position": "QB",
+      "team": "NE",
+      "salary": 6300,
+      "actual": 42.46
+     },
+     {
+      "dkPlayerId": 44391896,
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "salary": 9800,
+      "actual": 40.7
+     },
+     {
+      "dkPlayerId": 44391906,
+      "name": "Jaylen Warren",
+      "position": "RB",
+      "team": "PIT",
+      "salary": 6700,
+      "actual": 39.8
+     },
+     {
+      "dkPlayerId": 44391908,
+      "name": "Aaron Jones Sr.",
+      "position": "RB",
+      "team": "MIN",
+      "salary": 6500,
+      "actual": 22.7
+     },
+     {
+      "dkPlayerId": 44392614,
+      "name": "Pat Freiermuth",
+      "position": "TE",
+      "team": "PIT",
+      "salary": 3900,
+      "actual": 21.5
+     },
+     {
+      "dkPlayerId": 44392180,
+      "name": "Garrett Wilson",
+      "position": "WR",
+      "team": "NYJ",
+      "salary": 6600,
+      "actual": 26.4
+     },
+     {
+      "dkPlayerId": 44392254,
+      "name": "Xavier Hutchinson",
+      "position": "WR",
+      "team": "HOU",
+      "salary": 4000,
+      "actual": 10.5
+     },
+     {
+      "dkPlayerId": 44392290,
+      "name": "DeMario Douglas",
+      "position": "WR",
+      "team": "NE",
+      "salary": 3500,
+      "actual": 22.5
+     }
+    ]
+   },
+   "optimizer": {
+    "points": 244.56,
+    "ms": 161,
     "illegal": [],
     "error": null
    }
@@ -17576,7 +17576,7 @@
    },
    "optimizer": {
     "points": 240.16,
-    "ms": 13,
+    "ms": 22,
     "illegal": [],
     "error": null
    }

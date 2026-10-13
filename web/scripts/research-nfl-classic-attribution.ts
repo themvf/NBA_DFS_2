@@ -193,15 +193,15 @@ say(`Generated ${results.generatedAt}. Inputs: \`research/nfl_classic_attributio
 say("");
 say("## 1. Coverage and input completeness");
 say("");
-say("| Week | Slate | Contest | Entries | Score curve | Top-100 entries | Build used (lineups) | Shape | Model | Optimizer then | Eligibility report | Eligible pool | Eligible with a recorded score | Prior-window plays labelled before the run | Pool-rule inputs |");
+say("| Week | Slate | Contest | Entries | Score curve | Top-100 entries | Selected saved build (lineups) | Shape | Model | Optimizer then | Eligibility report | Eligible pool | Eligible with a recorded score | Prior-window plays labelled before the run | Pool-rule inputs |");
 say("|---:|---|---|---:|---|---:|---|---|---|---|---|---:|---:|---|---|");
 for (const s of slates) {
   const elig = s.players.filter((p: Raw) => p.eligibilityClass !== "availability");
-  say(`| ${s.week} | ${s.games.length} games | ${s.contest.id} | ${s.contest.entries.toLocaleString()} | ${s.contest.curve.length ? "yes" : "no"} | ${s.contest.topEntries.length} | ${s.run.runId.slice(0, 8)} (${s.run.lineups}) | ${s.run.settings.buildShape ?? "standard"} | ${s.run.modelVersion} | ${s.run.optimizerVersion} | ${s.run.eligibilityReport ? "yes" : "no"} | ${elig.length} | ${elig.filter((p: Raw) => p.actual != null).length} | ${s.week === 1 ? "- (no prior weeks)" : `${s.audit.priorWindowPlaysLabelledBeforeRun[0].toLocaleString()} / ${s.audit.priorWindowPlaysLabelledBeforeRun[1].toLocaleString()}`} | ${s.week === 1 ? "none: RB/WR/TE rules skipped by the product" : s.audit.priorWindowPlaysLabelledBeforeRun[0] === 0 ? "**unavailable**: RB/WR/TE rules skipped" : s.audit.priorWindowPlaysLabelledBeforeRun[0] < s.audit.priorWindowPlaysLabelledBeforeRun[1] ? "**partial** reconstruction" : "complete reconstruction"} |`);
+  say(`| ${s.week} | ${s.games.length} games | ${s.contest.id} | ${s.contest.entries.toLocaleString()} | ${s.contest.curve.length ? "yes" : "no"} | ${s.contest.topEntries.length} | ${s.run.runId.slice(0, 8)} (${s.run.lineups}) | ${s.run.settings.buildShape ?? "standard"} | ${s.run.modelVersion} | ${s.run.optimizerVersion} | ${s.run.eligibilityReport ? "yes" : "no"} | ${elig.length} | ${elig.filter((p: Raw) => p.actual != null).length} | ${s.week === 1 ? "- (no prior weeks)" : `${s.audit.priorWindowPlaysLabelledBeforeRun[0].toLocaleString()} / ${s.audit.priorWindowPlaysLabelledBeforeRun[1].toLocaleString()}`} | ${s.week === 1 ? "none (no prior weeks): RB/WR/TE rules skipped" : s.audit.priorWindowPlaysLabelledBeforeRun[0] === 0 ? "**historical inputs unrecoverable**: reconstruction skips RB/WR/TE rules" : s.audit.priorWindowPlaysLabelledBeforeRun[0] < s.audit.priorWindowPlaysLabelledBeforeRun[1] ? "**partial** reconstruction" : "complete reconstruction"} |`);
 }
 say("");
-say("- **Build used** is the largest optimizer run created before the slate's first kickoff (latest on ties), i.e. the entered build rather than a test run.");
-say("- **Prior opportunity** (the input to the RB/WR/TE pool rules) was not stored in any of these frozen pools. It is **reconstructed** with the workspace's own query: play-by-play weeks w-3..w-1 labelled no later than the run, team targets for the share. Plays relabelled after a run carry the later label time, so the gate drops them rather than use later information: weeks 2-3 have none left (the product would have skipped the three rules, and so does this study), week 4 keeps 90%. Week 1 has no prior weeks.");
+say("- **Selected saved build** is the largest optimizer run saved before the slate's first kickoff (latest on ties). Without a DraftKings entry export or contest-entry mapping it is not established that this is the portfolio that was entered.");
+say("- **Prior opportunity** (the input to the RB/WR/TE pool rules) was not stored in any of these frozen pools. It is **reconstructed** with the workspace's own query: play-by-play weeks w-3..w-1 labelled no later than the run, team targets for the share. Plays relabelled after a run carry the later label time, so the gate drops them rather than use later information. That makes their earlier state unrecoverable from the current rows; it does not show the product lacked those plays at the time. Weeks 2-3 have none left, so the reconstruction skips the three rules there; week 4 keeps 90%. Week 1 has no prior weeks.");
 const fw = Object.entries(ex.slates as Record<string, Raw>).find(([, v]) => v.fidelity);
 if (fw) {
   const f = (fw[1] as Raw).fidelity;
@@ -243,9 +243,22 @@ for (const s of slates) {
   }
 }
 results.hindsight = hindsight;
-say(`**CBC certificates:** ${Object.values(cbc).filter((x) => x.status === "Optimal" && x.gap != null && x.gap <= 1e-6).length} of ${Object.keys(cbc).length} solves proved optimal with zero gap; max solve time ${r2(Math.max(...Object.values(cbc).map((x) => x.seconds)))} s.`);
+say(`**CBC certificates:** ${Object.values(cbc).filter((x) => x.status === "Optimal" && x.gap != null && x.gap <= 1e-6).length} of ${Object.keys(cbc).length} solves (primary and sensitivity) proved optimal with zero gap (CBC "Result - Optimal solution found" at gapRel 0; node counts in results); max solve time ${r2(Math.max(...Object.values(cbc).map((x) => x.seconds)))} s.`);
 say("");
 say(`**Optimizer vs CBC:** ${agree} of ${total} solves agree on the optimum and legality.`);
+const resolution = (() => { try { return JSON.parse(readFileSync(join(dir, "resolution.json"), "utf8")) as Raw; } catch { return null; } })();
+if (resolution) {
+  const zeroKeys = Object.keys(cbc).filter((k) => k.endsWith("|verifiedZeros"));
+  const changed = zeroKeys.filter((k) => cbc[k].objective !== cbc[k.replace("|verifiedZeros", "")]?.objective).length;
+  say("");
+  say("**Scope of the certificate.** CBC proves optimality over the candidate pool it is given: eligible players with a recorded score. Players with no recorded score were resolved against nflverse (" + Object.entries(resolution.sources as Record<string, string>).map(([k, v]) => `${k}, sha256 ${v.slice(0, 12)}`).join("; ") + "):");
+  say("");
+  say("| Week | Verified not on the active roster (DraftKings 0) | Verified active, no offensive snaps (DraftKings 0) | Unresolved: offensive snaps, no stat row |");
+  say("|---:|---:|---:|---:|");
+  for (const v of Object.values(resolution.weeks) as Raw[]) say(`| ${v.week} | ${v.counts.verified_zero_not_active ?? 0} | ${v.counts.verified_zero_no_snaps ?? 0} | ${v.counts.unresolved_played_without_stat_row ?? 0} |`);
+  say("");
+  say(`Adding every verified non-participant to the pool at 0 changes ${changed} of ${zeroKeys.length} optima (each re-proven optimal). The certificate therefore covers the scored pool plus every verified non-participant. The unresolved players (mostly fullbacks and blocking tight ends) remain excluded: DraftKings scores only recorded statistics, so they scored 0 unless the stats feed missed them, which this study cannot rule out.`);
+}
 if (disagree.length) {
   say("");
   say("| Week | Cheap players | Configuration | CBC | Optimizer | Optimizer lineup legal? | Note |");
@@ -275,7 +288,7 @@ for (const s of slates) {
   say(`| ${s.week} | ${w} | ${WINNERS_KEYS.map((k) => `+${r2(val(s.week, `winners_minus_${k}`) - w)}`).join(" | ")} | ${r2(val(s.week, "winners_strict_dst") - w)} | ${r2(val(s.week, "winners_strict_bringback") - w)} |`);
 }
 say("");
-say("Weeks 1-3 have no usable prior opportunity, so their RB/WR/TE rules exclude nothing (the product skips them) and only the DST pool rule binds; week 4 rests on a partial reconstruction, week 5 on a complete one. Punts-allowed results are in results.json. Hindsight optima are not achievable; they bound what a restriction can cost.");
+say("Weeks 1-3 have no recoverable prior opportunity, so the reconstruction applies none of the RB/WR/TE rules there and only the DST pool rule binds; week 4 rests on a partial reconstruction, week 5 on a complete one. Punts-allowed results are in results.json. Hindsight optima are not achievable; they bound what a restriction can cost.");
 
 // ---- premise
 say("");
@@ -339,7 +352,7 @@ for (const s of slates) {
 }
 results.originals = originals;
 say("");
-say("Regret mixes forecast uncertainty with the selection objective; it is not projection error. For a Winners build the comparison optimum is the single-lineup Winners optimum. The sensitivity column scores players with no recorded score as 0, which is what DraftKings pays a player who did not play; it is labelled, not used elsewhere.");
+say("Regret is descriptive. Any pregame selection trails an optimizer that knows every outcome, so its size does not measure a forecasting problem; that needs comparison with simple pregame baselines and with the errors of the players the optimizer actually favours. It mixes forecast uncertainty with the selection objective. For a Winners build the comparison optimum is the single-lineup Winners optimum. The sensitivity column scores players with no recorded score as 0, which is what DraftKings pays a player who did not play; it is labelled, not used elsewhere.");
 
 say("");
 say("## 5. Paired replays: 20 lineups from each frozen pool, today's code");
@@ -408,7 +421,7 @@ say("");
 say("## 7. What this can and cannot say");
 say("");
 say(`- ${slates.length} slates identify mechanical exclusions, solver shortfalls and retrospective selection regret. They cannot say which strategy has better future returns, nor set an exposure level.`);
-say("- The RB/WR/TE pool rules are measurable on week 5 (complete, and exact against that week's recorded exclusions) and week 4 (partial); weeks 1-3 cannot test them.");
+say("- The RB/WR/TE pool rules are measurable on week 5 (complete, and exact against that week's recorded exclusions) and week 4 (partial); weeks 1-3 cannot test them because their historical inputs are unrecoverable.");
 say("- Hindsight optima bound what a restriction can cost, not what removing it would have won.");
 writeFileSync(join(dir, "report.md"), report.join("\n"));
 writeFileSync(join(dir, "results.json"), JSON.stringify(results, null, 1));

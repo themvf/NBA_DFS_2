@@ -7991,6 +7991,26 @@ every player the pool rules left out (`reasonCode` `WINNERS_SHAPE` /
   review to grade against the standard one. Change a constant and bump the
   version; `npm run test:nfl-winners-shape` pins the current ones.
 
+## NFL DFS — Showdown and Classic attribution studies (read-only, 2026-10-13)
+
+`artifacts/nfl-showdown-attribution-2026-10-13/` and `artifacts/nfl-classic-attribution-2026-10-13/`
+(PRs #427, #428 and their correction): two agreeing oracles (exhaustive /
+CBC with optimality certificates, and the optimizer with a neutralized
+objective), each Winners rule switched alone, together and left out, the
+verified top-100 entries, selection regret and paired replays. Inputs are
+frozen in each `inputs/` folder (gzip + SHA-256 MANIFEST); regenerating them
+from the database may not reproduce them, because play-by-play is relabelled in
+place (a run's prior-week opportunity is recoverable only from plays whose
+`labelled_at` precedes it: weeks 2-3 are unrecoverable, week 4 partial, week 5
+exact against its recorded exclusions). Findings to carry: the Classic TE and WR
+pool rules cost 14-17 points each in week-5 hindsight and every week-5 top-100
+entry used a player they exclude; the rules compound; regret is descriptive and
+does not size a forecasting problem; the "selected saved build" is the largest
+pregame run, not a verified entered portfolio. The follow-up test is
+pre-registered in `docs/nfl-classic-te-wr-pool-rule-study.md` (Winners vs
+Winners without the TE/WR rules, week 6 on, no verdict before 8 slates). No
+optimizer or setting change follows from these studies.
+
 ## NFL DFS — the page read, measured and cut (2026-10-10)
 
 Opening a saved slate on `/dfs/nfl` took 12-26 s, all of it in one server

@@ -7,8 +7,8 @@ contest. One file per slate:
 * contest: entries, winning/median score, rank->score curve, verified top-100
   entries;
 * pool: the frozen pregame run (`input_snapshot` of the largest optimizer run
-  created before the slate's first kickoff, the latest on ties: the build that
-  was entered, not a one-lineup test), with each player's pregame
+  created before the slate's first kickoff, the latest on ties): the selected
+  saved build; without an entry export it is not established that it was entered, with each player's pregame
   eligibility class and actual DraftKings base points (DraftKings' own contest
   numbers from every stored contest of the slate first, then the results
   table; no recorded score stays null);
