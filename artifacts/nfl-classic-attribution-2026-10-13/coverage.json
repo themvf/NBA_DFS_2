@@ -1,0 +1,122 @@
+[
+ {
+  "week": 1,
+  "games": 12,
+  "contest": "193028206",
+  "entries": 832342,
+  "curve": true,
+  "topEntries": 100,
+  "run": true,
+  "runLineups": 20,
+  "shape": null,
+  "modelVersion": "nfl-dfs-historical-v2",
+  "optimizerVersion": "nfl-dfs-ilp-v1",
+  "eligibilityReport": false,
+  "pool": 719,
+  "missingActual": 430,
+  "sourceDisagreements": 1,
+  "prior": {
+   "none (week 1)": 604
+  },
+  "priorCheck": [
+   0,
+   0
+  ]
+ },
+ {
+  "week": 2,
+  "games": 13,
+  "contest": "195648007",
+  "entries": 172761,
+  "curve": true,
+  "topEntries": 100,
+  "run": true,
+  "runLineups": 20,
+  "shape": null,
+  "modelVersion": "nfl-dfs-historical-v3",
+  "optimizerVersion": "nfl-dfs-ilp-v5-audited-situations",
+  "eligibilityReport": false,
+  "pool": 670,
+  "missingActual": 112,
+  "sourceDisagreements": 0,
+  "prior": {
+   "reconstructed": 555
+  },
+  "priorCheck": [
+   0,
+   0
+  ]
+ },
+ {
+  "week": 3,
+  "games": 13,
+  "contest": "195905122",
+  "entries": 161764,
+  "curve": true,
+  "topEntries": 100,
+  "run": true,
+  "runLineups": 25,
+  "shape": null,
+  "modelVersion": "nfl-dfs-historical-v5",
+  "optimizerVersion": "nfl-dfs-ilp-v7-showdown-legality",
+  "eligibilityReport": false,
+  "pool": 671,
+  "missingActual": 233,
+  "sourceDisagreements": 0,
+  "prior": {
+   "reconstructed": 559
+  },
+  "priorCheck": [
+   0,
+   0
+  ]
+ },
+ {
+  "week": 4,
+  "games": 12,
+  "contest": "196151357",
+  "entries": 161764,
+  "curve": true,
+  "topEntries": 100,
+  "run": true,
+  "runLineups": 107,
+  "shape": null,
+  "modelVersion": "nfl-dfs-historical-v5",
+  "optimizerVersion": "nfl-dfs-ilp-v8-defensive-dk-fallback",
+  "eligibilityReport": true,
+  "pool": 629,
+  "missingActual": 183,
+  "sourceDisagreements": 0,
+  "prior": {
+   "reconstructed": 525
+  },
+  "priorCheck": [
+   0,
+   0
+  ]
+ },
+ {
+  "week": 5,
+  "games": 11,
+  "contest": "196403752",
+  "entries": 161557,
+  "curve": true,
+  "topEntries": 100,
+  "run": true,
+  "runLineups": 100,
+  "shape": "winners",
+  "modelVersion": "nfl-dfs-historical-v5",
+  "optimizerVersion": "nfl-dfs-ilp-v12-lineup-integrity",
+  "eligibilityReport": true,
+  "pool": 587,
+  "missingActual": 172,
+  "sourceDisagreements": 1,
+  "prior": {
+   "reconstructed": 492
+  },
+  "priorCheck": [
+   0,
+   0
+  ]
+ }
+]
