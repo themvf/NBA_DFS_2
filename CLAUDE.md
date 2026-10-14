@@ -8062,6 +8062,35 @@ arms as `research_*` optimizer runs before kickoff. Every reader that picks
 "our build" must exclude those (`NOT (settings ? 'researchStudy')`); key on
 `researchStudy`, never `buildShape` (arm A is stored as `standard`).
 
+## NFL DFS — Portfolio objective challenger: registered, gate failed, not enrolled (2026-10-14)
+
+`docs/nfl-portfolio-objective-study.md` registers `nfl-portfolio-objective-v1`
+(`web/src/lib/nfl-dfs/portfolio-objective.ts`, `--study portfolio` on the same
+runner): arm B picks the owner's lineup count from the production optimizer's
+own candidate pool by P(any lineup >= the field's within-draw top-1%), on a
+Gaussian-copula joint bank (the captain simulation's loadings) with opponents
+sampled from the ownership prior and scored on the same draws, so the
+lineup-field covariance Haugh & Singal approximate comes out by construction.
+**Its freeze gate (`research/nfl_portfolio_freeze.py`,
+`artifacts/nfl-portfolio-objective-v1/freeze.json`) failed both formats**: the
+sampled field is too compressed (implied top-1% 24-28 points under realized on
+two of five discovery slates; medians about right), the no-stacking limit the
+registration names. The runner refuses `--save` for a format without a passing
+freeze; the rule is not to tune the field against realized thresholds, so v2
+needs a measured field-wide stacking rate (full stat-api standings carry every
+entry's stack shape; only top entries are stored) and is a new version. Two
+sampler defects were fixed before the result (calibration acceptance collapse;
+cheapest-fill salary reservation that starved the DST slot). Robustness
+(`web/scripts/research-nfl-portfolio-robustness.ts`) on the week-5 BUF@LAR dry
+run: selection invariant to projection scale, 0.86 Jaccard under ownership
+x0.8, but only 0.44 under a different selection seed at 4,000 draws, so a v2
+should select on more draws. Also shipped: `research/nfl_pool_rule_grade.py`
+(the shared grader for all three studies; verdicts only at the registered
+milestones) and `research/nfl_field_baseline.py` (realized thresholds, observed
+payout brackets, roster coverage and selection-bias notes for every stored
+flagship). `backtest.ts` payouts now split ties and rank our entries against
+each other (research only; nothing shipped read it).
+
 ## NFL DFS — the page read, measured and cut (2026-10-10)
 
 Opening a saved slate on `/dfs/nfl` took 12-26 s, all of it in one server

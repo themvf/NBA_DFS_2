@@ -9,7 +9,7 @@ import os
 import pytest
 
 from research.nfl_pool_rule_study import (STUDIES, STUDY, archive, assert_forward, enrollment_key, existing_pairs,
-                                          match_games, save_pair)
+                                          freeze_gate, match_games, save_pair)
 
 NOW = datetime(2026, 10, 18, 16, tzinfo=timezone.utc)
 
@@ -49,6 +49,33 @@ def test_enrollment_scope_week_for_classic_game_for_showdown():
     assert enrollment_key(classic, 2026, 6, [3, 1]) == enrollment_key(classic, 2026, 6, [7])
     assert enrollment_key(showdown, 2026, 6, [3]) != enrollment_key(showdown, 2026, 6, [7])
     assert classic["version"] != showdown["version"]
+
+
+def test_portfolio_study_is_registered_with_its_own_version_and_freeze():
+    spec = STUDIES["portfolio"]
+    assert spec["version"] == "nfl-portfolio-objective-v1" and spec["format"] == "any" and spec["uniquePerGames"]
+    assert spec["freeze"].endswith("freeze.json")
+    assert len({s["version"] for s in STUDIES.values()}) == len(STUDIES)
+
+
+def test_freeze_gate_refuses_missing_failed_and_stale(tmp_path, monkeypatch):
+    import research.nfl_pool_rule_study as m
+    spec = {**STUDIES["portfolio"], "freeze": "freeze.json"}
+    monkeypatch.setattr(m, "ROOT", tmp_path)
+    with pytest.raises(ValueError, match="No freeze"):
+        freeze_gate(spec, "classic")
+    module = tmp_path / "mod.ts"
+    module.write_text("x", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    good = hashlib.sha256(b"x").hexdigest()
+    (tmp_path / "freeze.json").write_text(json.dumps({"frozenAt": "t", "formats": {"classic": {"status": "fail"}, "showdown": {"status": "pass"}},
+                                                      "moduleHashes": {"mod.ts": good}}), encoding="utf-8")
+    with pytest.raises(ValueError, match="not 'pass'"):
+        freeze_gate(spec, "classic")
+    assert freeze_gate(spec, "showdown")["status"] == "pass"
+    module.write_text("changed", encoding="utf-8")
+    with pytest.raises(ValueError, match="predates a change"):
+        freeze_gate(spec, "showdown")
 
 
 class RowsReader:
@@ -229,3 +256,21 @@ def test_postgres_migration_and_persistence_in_rolled_back_temp_tables():
     finally:
         conn.rollback()
         conn.close()
+
+
+def test_grader_curve_rank_and_verdict_rules():
+    from research.nfl_pool_rule_grade import curve_at, rank_of, verdict, paired_summary
+    curve = [[1, 100.0], [2, 99.0], [10, 90.0], [100, 50.0]]
+    assert curve_at(curve, 0.01, 1000) == 90.0 and curve_at(curve, 0.001, 1000) == 100.0
+    assert rank_of(curve, 120) == 1 and rank_of(curve, 95) == 3 and rank_of(curve, 10) == 101
+    assert verdict("showdown", [])["status"] == "no verdict"
+    same = [{"pairId": str(i), "A": {"median": 100, "top1Pct": 1}, "B": {"median": 100, "top1Pct": 1}} for i in range(8)]
+    assert verdict("showdown", same)["status"] == "inconclusive"
+    better = [{"pairId": str(i), "A": {"median": 100, "top1Pct": 0}, "B": {"median": 103 + i % 2, "top1Pct": 1}} for i in range(8)]
+    assert verdict("showdown", better)["status"] == "B supported"
+    assert verdict("portfolio", better)["status"] == "B supported"
+    worse = [{"pairId": str(i), "A": {"median": 100, "top1Pct": 1}, "B": {"median": 95 - i % 2, "top1Pct": 0}} for i in range(8)]
+    assert verdict("showdown", worse)["status"] == "B rejected"
+    assert paired_summary(better, "median")["positive"] == 8
+    # Only the milestone's slates are looked at, in order; the ninth does not move an 8-slate verdict.
+    assert verdict("showdown", better + [{"pairId": "9", "A": {"median": 100, "top1Pct": 0}, "B": {"median": 50, "top1Pct": 0}}])["milestone"] == 8

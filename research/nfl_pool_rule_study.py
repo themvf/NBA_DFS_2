@@ -3,9 +3,12 @@
 python -m research.nfl_pool_rule_study --study classic --source-run UUID --main-slate --out PATH [--save]
 python -m research.nfl_pool_rule_study --study showdown --source-run UUID --flagship-showdown --out PATH [--save]
 
-Two pre-registered studies share this runner:
-  classic   nfl-classic-te-wr-pool-v1   docs/nfl-classic-te-wr-pool-rule-study.md
-  showdown  nfl-showdown-kicker-rule-v1 docs/nfl-showdown-kicker-rule-study.md
+Three pre-registered studies share this runner:
+  classic    nfl-classic-te-wr-pool-v1   docs/nfl-classic-te-wr-pool-rule-study.md
+  showdown   nfl-showdown-kicker-rule-v1 docs/nfl-showdown-kicker-rule-study.md
+  portfolio  nfl-portfolio-objective-v1  docs/nfl-portfolio-objective-study.md
+             (either format; --main-slate for Classic, --flagship-showdown for Showdown;
+              --save needs a passing freeze for that format in artifacts/nfl-portfolio-objective-v1/freeze.json)
 
 Explicit source selection and population attestation avoid guessing which build
 was entered. Saves only new research_* optimizer runs, atomically, before lock,
@@ -40,7 +43,30 @@ STUDIES = {
                  "doc": "docs/nfl-showdown-kicker-rule-study.md", "priorOpportunity": False,
                  # Several Showdowns a week: enrollment is unique per game.
                  "uniquePerGames": True},
+    "portfolio": {"version": "nfl-portfolio-objective-v1", "format": "any", "games": "any",
+                  "doc": "docs/nfl-portfolio-objective-study.md",
+                  # Pool rules only matter when the source build was Winners.
+                  "priorOpportunity": "winners", "uniquePerGames": True,
+                  "freeze": "artifacts/nfl-portfolio-objective-v1/freeze.json"},
 }
+FREEZE_MODULES = ["web/src/lib/nfl-dfs/portfolio-objective.ts", "web/src/lib/nfl-dfs/captain-simulation.ts",
+                  "web/scripts/nfl-pool-rule-study-core.ts"]
+
+
+def freeze_gate(spec, fmt):
+    """The portfolio challenger may be saved only under a passing, current freeze for the slate's format."""
+    path = ROOT / spec["freeze"]
+    if not path.exists():
+        raise ValueError(f"No freeze at {spec['freeze']}; run python -m research.nfl_portfolio_freeze first")
+    freeze = json.loads(path.read_text(encoding="utf-8"))
+    status = (freeze.get("formats") or {}).get(fmt, {}).get("status")
+    if status != "pass":
+        raise ValueError(f"Freeze gate for {fmt} is '{status}', not 'pass'; the challenger is not enrolled in this format")
+    for rel, expected in (freeze.get("moduleHashes") or {}).items():
+        current = hashlib.sha256(Path(rel).read_bytes()).hexdigest() if Path(rel).exists() else None
+        if current != expected:
+            raise ValueError(f"Freeze predates a change to {Path(rel).name}; re-run the freeze gate (a changed challenger is a new version)")
+    return {"frozenAt": freeze.get("frozenAt"), "status": status}
 STUDY = STUDIES["classic"]["version"]  # backwards-compatible name
 
 
@@ -146,9 +172,11 @@ def capture(db, source_id, study="classic"):
         if len(rows) != 1:
             raise ValueError("Source run missing or has no linked projection run")
         row = dict(rows[0])
-        if (row["slate_format"] != spec["format"] or row["settings"].get("format") != spec["format"]
-                or row["settings"].get("mode") != "gpp"):
+        fmt = row["slate_format"]
+        wanted = (fmt,) if spec["format"] == "any" and fmt in ("classic", "showdown") else (spec["format"],)
+        if fmt not in wanted or row["settings"].get("format") != fmt or row["settings"].get("mode") != "gpp":
             raise ValueError(f"Explicit saved {spec['format'].title()} GPP build required")
+        games_shape = spec["games"] if spec["games"] != "any" else ("multi" if fmt == "classic" else "single")
         if row["status"] not in ("complete", "partial") or row["generated_lineups"] < 1 or row["settings"].get("researchStudy"):
             raise ValueError("Source must be an ordinary saved build with lineups")
         now = reader.execute("SELECT clock_timestamp() AS now")[0]["now"]
@@ -157,7 +185,7 @@ def capture(db, source_id, study="classic"):
                FROM nfl_season_games g JOIN nfl_teams h ON h.team_id=g.home_team_id
                JOIN nfl_teams a ON a.team_id=g.away_team_id WHERE g.season=%s AND g.week=%s""",
             (row["season"], row["week"]))
-        matches = match_games(row["games"], schedule, spec["games"])
+        matches = match_games(row["games"], schedule, games_shape)
         kickoff = min(g["kickoff"] for g in matches)
         assert_forward(row["season"], row["week"], row["created_at"], now, kickoff)
         game_ids = [g["id"] for g in matches]
@@ -171,10 +199,17 @@ def capture(db, source_id, study="classic"):
         players = copy.deepcopy(snapshot)
         source = {k: row[k] for k in ("run_id", "upload_id", "projection_run_id", "created_at", "optimizer_version",
                                       "settings", "input_snapshot", "input_digest", "build_info")}
-        common = {"version": spec["version"], "study": study, "pairId": str(uuid4()), "source": source,
+        # The source's own lineups, so an arm that claims to rebuild it can be checked against it.
+        source_lineups = [{"lineupNumber": l["lineup_number"], "playerIds": l["player_ids"],
+                           "captainDkPlayerId": next((s.get("dkPlayerId") for s in (l["slots"] or []) if s.get("slot") == "CPT"), None)}
+                          for l in reader.execute("SELECT lineup_number, player_ids, slots FROM nfl_dfs_lineups WHERE run_id=%s ORDER BY lineup_number", (source_id,))]
+        common = {"version": spec["version"], "study": study, "pairId": str(uuid4()), "source": source, "format": fmt,
+                  "sourceLineups": source_lineups,
                   "season": row["season"], "week": row["week"], "slateSignature": row["slate_signature"],
                   "gameIds": game_ids, "firstKickoff": kickoff, "capturedAt": now}
-        if not spec["priorOpportunity"]:
+        needs_prior = spec["priorOpportunity"] is True or (
+            spec["priorOpportunity"] == "winners" and fmt == "classic" and row["settings"].get("buildShape") == "winners")
+        if not needs_prior:
             # The Showdown shape has no pool rules, so nothing reads prior opportunity.
             return json.loads(encoded({**common, "players": players, "priorOpportunityCapture": None,
                                        "implementation": implementation()}))
@@ -293,10 +328,23 @@ def main(argv=None):
         ap.error("--flagship-showdown is required for the Showdown study; the script never guesses the study population")
     if (args.study == "classic" and args.flagship_showdown) or (args.study == "showdown" and args.main_slate):
         ap.error("Attestation flag does not match --study")
+    if args.study == "portfolio" and args.main_slate == args.flagship_showdown:
+        ap.error("The portfolio study needs exactly one attestation: --main-slate (Classic) or --flagship-showdown (Showdown)")
     if args.out.exists():
         ap.error("--out must be a new directory; prior captures are never overwritten")
     db = DatabaseManager(load_config().database_url, initialize_schema=False)
     captured = capture(db, args.source_run, args.study)
+    if args.study == "portfolio":
+        fmt = captured["format"]
+        if (fmt == "classic") != bool(args.main_slate):
+            ap.error(f"Attestation flag does not match the source build's format ({fmt})")
+        if args.save:
+            freeze_gate(STUDIES["portfolio"], fmt)
+        else:
+            try:
+                freeze_gate(STUDIES["portfolio"], fmt)
+            except ValueError as exc:
+                print(f"NOTE: --save would be refused: {exc}")
     if args.save and captured["implementation"]["dirty"]:
         ap.error("Tracked files have uncommitted changes; commit them (or run without --save): "
                  + ", ".join(captured["implementation"]["dirtyFiles"][:5]))
