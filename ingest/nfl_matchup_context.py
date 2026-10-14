@@ -5,7 +5,13 @@ import json
 from datetime import datetime, timezone
 
 from model.nfl_context_engine import stable_digest
-from model.nfl_matchup_features import DEFINITIONS, build_matchup, contexts, participant_manifests
+from model.nfl_matchup_features import DEFINITIONS, PARTICIPANT_FIELDS, build_matchup, contexts, participant_manifests
+
+# Stat rows are ~3.3 KB of JSON and a season holds ~6,000 of them; reading every
+# one whole on each projection run was the largest remaining database transfer
+# (2026-10-11). Rows arrive with only the fields participant_manifests decides on.
+SLIM_SOURCE_ROW = """COALESCE((SELECT jsonb_object_agg(field.key, field.value) FROM jsonb_each(source_row) field
+    WHERE field.key = ANY(%s)), '{}'::jsonb) AS source_row"""
 
 
 def load_matchups(db, season, week, as_of):
@@ -24,22 +30,47 @@ def load_matchups(db, season, week, as_of):
         FROM nfl_pbp_archetypes WHERE season=%s AND (qb_dropback=TRUE OR play_type='qb_spike')
           AND play_type <> 'no_play' AND COALESCE(two_point_result,'')=''
           AND labelled_at<=%s ORDER BY game_id,play_id""", (season, as_of))]
-    weekly = [dict(r) for r in db.execute("""SELECT id,team,source,source_row,fetched_at
+    fields = list(PARTICIPANT_FIELDS)
+    weekly = [dict(r) for r in db.execute(f"""SELECT id,team,source,{SLIM_SOURCE_ROW},fetched_at
         FROM ff_player_week_stats WHERE season=%s AND season_type='REG' AND source='nflverse'
-          AND fetched_at<=%s ORDER BY id""", (season, as_of))]
+          AND fetched_at<=%s ORDER BY id""", (fields, season, as_of))]
+    tables = [("ff_player_week_stats", weekly)]
     exists = db.execute_one("SELECT to_regclass('nfl_weekly_participant_evidence') present")
     if exists and exists["present"]:
-        full = [dict(r) for r in db.execute("""SELECT DISTINCT ON(game_id,gsis_id)
-            id,team,source,source_row,fetched_at FROM nfl_weekly_participant_evidence
+        evidence = [dict(r) for r in db.execute(f"""SELECT DISTINCT ON(game_id,gsis_id)
+            id,team,source,{SLIM_SOURCE_ROW},fetched_at FROM nfl_weekly_participant_evidence
             WHERE season=%s AND fetched_at<=%s
-            ORDER BY game_id,gsis_id,fetched_at DESC,id DESC""", (season, as_of))]
-        keys = {(r["source_row"]["game_id"], r["source_row"]["player_id"]) for r in full}
-        weekly = full + [r for r in weekly if (r["source_row"].get("game_id"), r["source_row"].get("player_id")) not in keys]
-    participants = participant_manifests(weekly, games, as_of, passing_plays)
+            ORDER BY game_id,gsis_id,fetched_at DESC,id DESC""", (fields, season, as_of))]
+        keys = {(r["source_row"]["game_id"], r["source_row"]["player_id"]) for r in evidence}
+        weekly = [r for r in weekly if (r["source_row"].get("game_id"), r["source_row"].get("player_id")) not in keys]
+        tables = [("nfl_weekly_participant_evidence", evidence), ("ff_player_week_stats", weekly)]
+    participants = participant_manifests(with_participant_source_rows(db, tables, games, as_of, passing_plays),
+                                         games, as_of, passing_plays)
     for snapshot in snapshots:
         snapshot["participant_manifest"] = participants.get(snapshot["game_id"])
     return {g["game_id"]: build_matchup(game=g, prior_games=games, snapshots=snapshots, as_of=as_of)
             for g in games if g["week"] == week and g["kickoff"] > as_of}
+
+
+def with_participant_source_rows(db, tables, games, as_of, passing_plays):
+    """Swap in the whole source row for every participant: its manifest records the row's digest."""
+    rows = [row for _, table_rows in tables for row in table_rows]
+    chosen = {participant["source_row_id"] for manifest in participant_manifests(rows, games, as_of, passing_plays).values()
+              for participant in manifest["rows"]}
+    result = []
+    for table, table_rows in tables:
+        ids = [row["id"] for row in table_rows if str(row["id"]) in chosen]
+        full = {row["id"]: row for row in db.execute(
+            f"SELECT id,source_row,fetched_at FROM {table} WHERE id=ANY(%s)", (ids,))} if ids else {}
+        for row in table_rows:
+            if str(row["id"]) not in chosen:
+                result.append(row)
+                continue
+            source = full.get(row["id"])
+            if source is None or source["fetched_at"] != row["fetched_at"]:
+                raise ValueError(f"{table} row {row['id']} changed between the participant read and its full read")
+            result.append({**row, "source_row": source["source_row"]})
+    return result
 
 
 def persist_matchups(db, matchups):

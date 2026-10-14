@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { presentPinnedGameAvailability, resolveAvailability, type RosterEvidence } from '../src/lib/nfl-dfs/availability';
+import { presentPinnedGameAvailability, resolveAvailability, SLEEPER_EVIDENCE_FIELDS, type RosterEvidence } from '../src/lib/nfl-dfs/availability';
 const now = Date.parse('2026-09-06T12:00:00Z');
 const e: RosterEvidence = {team:'NO',position:'QB',fetchedAt:'2026-09-06T10:00:00Z',sleeper:{team:'NO',position:'QB',status:'Active',depth_chart_order:1}};
 assert.equal(resolveAvailability(e,'NO','QB',now).role,'Expected starter · QB1');
@@ -12,6 +12,12 @@ for (const bad of [undefined,{...e,team:'BUF'},{...e,fetchedAt:'2025-01-01'},{..
  assert.equal(resolveAvailability(bad,'NO','QB',now).blockedReason,null);
 }
 assert.equal(resolveAvailability({...e,sleeper:{team:'NO',position:'QB',status:'Active'}},'NO','QB',now).role,'QB role unresolved');
+// The database returns only SLEEPER_EVIDENCE_FIELDS; a field read outside that list would always be missing.
+const read = new Set<string>();
+const recording = new Proxy({team:'NO',position:'QB',status:'Active',injury_status:'Out',depth_chart_order:2,years_exp:4} as Record<string, unknown>,
+ {get: (target, key) => { read.add(String(key)); return target[String(key)]; }});
+resolveAvailability({...e,sleeper:recording},'NO','QB',now);
+assert.deepEqual([...read].filter(key => !(SLEEPER_EVIDENCE_FIELDS as readonly string[]).includes(key)), []);
 console.log('NFL availability: starter, backup, unavailable, questionable, stale, future and identity checks passed');
 for (const [alias, canonical] of [['WAS','WSH'],['LA','LAR'],['AZ','ARI'],['JAC','JAX']]) {
  const aliased = {...e,team:canonical,sleeper:{team:alias,position:'QB',status:'Active',injury_status:'Out'}};

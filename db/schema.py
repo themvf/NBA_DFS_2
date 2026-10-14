@@ -4711,6 +4711,7 @@ MIGRATIONS = [
     "ALTER TABLE nfl_context_snapshots ADD COLUMN IF NOT EXISTS superseded_by TEXT REFERENCES nfl_context_snapshots(snapshot_id)",
     "ALTER TABLE nfl_context_snapshots ADD COLUMN IF NOT EXISTS available_at TIMESTAMPTZ NOT NULL DEFAULT NOW()",
     "ALTER TABLE nfl_context_snapshots ADD COLUMN IF NOT EXISTS payload JSONB NOT NULL DEFAULT '{}'::jsonb",
+    "ALTER TABLE nfl_context_snapshots ADD COLUMN IF NOT EXISTS material_digest TEXT",
     "ALTER TABLE ff_source_snapshots ADD COLUMN IF NOT EXISTS week INTEGER",
     "ALTER TABLE ff_source_snapshots ADD COLUMN IF NOT EXISTS contract_key TEXT",
     "ALTER TABLE ff_source_snapshots ADD COLUMN IF NOT EXISTS source_published_at TIMESTAMPTZ",

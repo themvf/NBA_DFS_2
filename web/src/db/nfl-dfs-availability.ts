@@ -1,9 +1,12 @@
 import "server-only";
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import type { RosterEvidence } from "@/lib/nfl-dfs/availability";
+import { SLEEPER_EVIDENCE_FIELDS, type RosterEvidence } from "@/lib/nfl-dfs/availability";
 import {getNflIdentityRoster} from '@/db/nfl-identity';
 import {nflIdentityLocalLinks} from '@/lib/nfl-dfs/identity';
+
+const sleeperEvidence = (record: SQL) => sql`(SELECT jsonb_object_agg(field.key, field.value) FROM jsonb_each(${record}) field
+  WHERE field.key = ANY(ARRAY[${sql.join(SLEEPER_EVIDENCE_FIELDS.map((key) => sql`${key}`), sql`, `)}]::text[]))`;
 
 export type InjuryCoverage = { snapshotId: string; capturedAt: string; counts: Record<string,number>; limited: boolean | null;
   unresolved: {name: string; team: string; position: string; category: string}[] };
@@ -54,12 +57,12 @@ export async function getNflRosterEvidence(season: number, week?: number | null,
   // they are issued together and merged in the original order below.
   const [result, archived, injuryRead, games] = await Promise.all([
     db.execute(sql`SELECT id, team_abbrev, position, fetched_at,
-    metadata->'sleeper' AS sleeper FROM ff_players WHERE season=${season}`),
+    ${sleeperEvidence(sql`metadata->'sleeper'`)} AS sleeper FROM ff_players WHERE season=${season}`),
     // One index probe per player on idx_ff_injury_observations_sleeper_depth
     // (season, player_id, observed_at DESC, id DESC; Sleeper rows with a depth
     // order). The DISTINCT ON form this replaced sorted every Sleeper row of the
     // season on disk to return one per player: 9-11 s of a 15 s page read.
-    archivedAt ? db.execute(sql`SELECT p.id AS player_id, o.observed_at, o.raw_payload
+    archivedAt ? db.execute(sql`SELECT p.id AS player_id, o.observed_at, ${sleeperEvidence(sql`o.raw_payload`)} AS raw_payload
       FROM ff_players p
       CROSS JOIN LATERAL (
         SELECT o.observed_at, o.raw_payload FROM ff_player_injury_observations o

@@ -16,7 +16,7 @@ import sys
 import uuid
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from psycopg2.extras import Json, execute_values
 
@@ -30,6 +30,8 @@ from model.nfl_qb_starter import project_expected_starter, team_pass_attempts
 from model.nfl_dfs_historical import (
     MODEL_CONFIG,
     MODEL_VERSION,
+    OFFENSE_FIELDS,
+    SKILL_POSITIONS,
     HistoricalProjection,
     HistoricalWeek,
     ProjectionContext,
@@ -175,7 +177,21 @@ def infer_target_week(db: DatabaseManager, season: int, now: datetime | None = N
     return target_week(db, season, now or datetime.now(timezone.utc))
 
 
-def _history(db: DatabaseManager, season: int, week: int | None) -> list[HistoricalWeek]:
+def _history(
+    db: DatabaseManager,
+    season: int,
+    week: int | None,
+    *,
+    skill_stat_fields: Sequence[str] | None = None,
+) -> list[HistoricalWeek]:
+    """Every pre-cutoff stat line.
+
+    With ``skill_stat_fields``, QB/RB/WR/TE lines carry only those keys (a key
+    the source never recorded stays absent). The full nflverse line is ~115
+    fields; the projection reads 16 of them, and fetching the rest cost about
+    55 MB of transfer per run.
+    """
+    restricted_positions = list(SKILL_POSITIONS) if skill_stat_fields is not None else []
     rows = db.execute(
         """SELECT w.player_id, p.gsis_id, p.canonical_name, p.position,
                   w.season, w.week, w.team, w.opponent,
@@ -184,6 +200,10 @@ def _history(db: DatabaseManager, season: int, week: int | None) -> list[Histori
                       'fantasy_points', result.actual_dk_fpts,
                       'scoring_components', result.scoring_evidence->'scoring_components'
                     )
+                    WHEN p.position = ANY(%s::text[])
+                    THEN (SELECT jsonb_object_agg(field.key, field.value)
+                          FROM jsonb_each(w.source_row) field
+                          WHERE field.key = ANY(%s::text[]))
                     ELSE w.source_row
                   END source_row
            FROM ff_player_week_stats w
@@ -198,7 +218,7 @@ def _history(db: DatabaseManager, season: int, week: int | None) -> list[Histori
              AND (w.season < %s OR (w.season=%s AND %s IS NOT NULL AND w.week < %s))
              AND (p.position <> 'DST' OR result.actual_dk_fpts IS NOT NULL)
            ORDER BY w.season,w.week,w.player_id""",
-        (season, season, week, week),
+        (restricted_positions, list(skill_stat_fields or ()), season, season, week, week),
     )
     return [HistoricalWeek(
         player_id=int(row["player_id"]),
@@ -447,7 +467,7 @@ def build_week(
     config: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     model_config = {**MODEL_CONFIG, **(config or {})}
-    history = _history(db, season, week)
+    history = _history(db, season, week, skill_stat_fields=OFFENSE_FIELDS)
     environment = _slate_environment(db, season, week)
     # Built once per week from the same pre-cutoff history the projections use.
     # Empty when opponent_mode is "off", which leaves every factor at 1.0.
