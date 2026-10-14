@@ -95,6 +95,7 @@ def export(db, season: int, out: Path) -> dict:
             """SELECT o.run_id, o.created_at, o.generated_lineups, o.optimizer_version, o.projection_run_id, o.settings, o.input_snapshot
                FROM nfl_dfs_optimizer_runs o JOIN nfl_dfs_slate_uploads u ON u.upload_id = o.upload_id
                WHERE u.slate_signature = %s AND o.generated_lineups > 0 AND (%s::timestamptz IS NULL OR o.created_at < %s)
+                 AND o.status IN ('complete','partial') AND NOT (o.settings ? 'researchStudy')
                ORDER BY o.generated_lineups DESC, o.created_at DESC LIMIT 1""", (sig, first, first))
         if not runs:
             coverage.append({"week": week, "games": len(games), "contest": c["contest_id"], "run": False})
@@ -170,6 +171,7 @@ def export(db, season: int, out: Path) -> dict:
                 """SELECT o.run_id, o.created_at, o.settings->'runEvidence'->'eligibility' AS el FROM nfl_dfs_optimizer_runs o
                    JOIN nfl_dfs_slate_uploads u ON u.upload_id = o.upload_id
                    WHERE u.slate_signature = %s AND o.settings->>'buildShape' = 'winners' AND o.created_at < %s
+                     AND o.status IN ('complete','partial') AND NOT (o.settings ? 'researchStudy')
                    ORDER BY o.created_at DESC LIMIT 1""", (sig, first)):
             recorded = {"runId": str(wr["run_id"]), "createdAt": wr["created_at"].isoformat(),
                         "excluded": [e["dkPlayerId"] for e in (_json(wr["el"]) or []) if e.get("reasonCode") == "WINNERS_SHAPE"]}

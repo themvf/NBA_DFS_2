@@ -8009,7 +8009,13 @@ does not size a forecasting problem; the "selected saved build" is the largest
 pregame run, not a verified entered portfolio. The follow-up test is
 pre-registered in `docs/nfl-classic-te-wr-pool-rule-study.md` (Winners vs
 Winners without the TE/WR rules, week 6 on, no verdict before 8 slates). No
-optimizer or setting change follows from these studies.
+optimizer or setting change follows from these studies. Its Showdown sibling,
+`docs/nfl-showdown-kicker-rule-study.md` (Winners vs Winners with kickers
+allowed, flagship Showdowns from week 6, same bars), shares one runner:
+`research/nfl_pool_rule_study.py --study classic|showdown`, which saves both
+arms as `research_*` optimizer runs before kickoff. Every reader that picks
+"our build" must exclude those (`NOT (settings ? 'researchStudy')`); key on
+`researchStudy`, never `buildShape` (arm A is stored as `standard`).
 
 ## NFL DFS — the page read, measured and cut (2026-10-10)
 

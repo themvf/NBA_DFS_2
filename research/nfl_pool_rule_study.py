@@ -1,10 +1,16 @@
-"""Capture/build Classic TE/WR research arms; default is a database-read-only dry run.
+"""Capture/build paired pool-rule research arms; default is a database-read-only dry run.
 
-python -m research.nfl_classic_pool_study --source-run UUID --main-slate --out PATH [--save]
+python -m research.nfl_pool_rule_study --study classic --source-run UUID --main-slate --out PATH [--save]
+python -m research.nfl_pool_rule_study --study showdown --source-run UUID --flagship-showdown --out PATH [--save]
 
-Explicit source selection and main-slate attestation avoid guessing which build
-was entered. Saves only new research_* optimizer runs, atomically, before lock.
-No defaults, slate rows, source runs, or production optimizer code are modified.
+Two pre-registered studies share this runner:
+  classic   nfl-classic-te-wr-pool-v1   docs/nfl-classic-te-wr-pool-rule-study.md
+  showdown  nfl-showdown-kicker-rule-v1 docs/nfl-showdown-kicker-rule-study.md
+
+Explicit source selection and population attestation avoid guessing which build
+was entered. Saves only new research_* optimizer runs, atomically, before lock,
+and only from a clean tracked working tree. No defaults, slate rows, source
+runs, or production optimizer code are modified.
 """
 from __future__ import annotations
 
@@ -22,8 +28,27 @@ from config import load_config
 from db.database import DatabaseManager
 from research.nfl_classic_attribution_export import prior_opportunity, team
 
-STUDY = "nfl-classic-te-wr-pool-v1"
 ROOT = Path(__file__).resolve().parents[1]
+
+# One entry per pre-registered study. Changing an entry is a new study version.
+STUDIES = {
+    "classic": {"version": "nfl-classic-te-wr-pool-v1", "format": "classic", "games": "multi",
+                "doc": "docs/nfl-classic-te-wr-pool-rule-study.md", "priorOpportunity": True,
+                # One Classic main slate per week: enrollment is unique per week.
+                "uniquePerGames": False},
+    "showdown": {"version": "nfl-showdown-kicker-rule-v1", "format": "showdown", "games": "single",
+                 "doc": "docs/nfl-showdown-kicker-rule-study.md", "priorOpportunity": False,
+                 # Several Showdowns a week: enrollment is unique per game.
+                 "uniquePerGames": True},
+}
+STUDY = STUDIES["classic"]["version"]  # backwards-compatible name
+
+
+def study_by_version(version):
+    for key, spec in STUDIES.items():
+        if spec["version"] == version:
+            return key, spec
+    raise ValueError(f"Unknown study version {version}")
 
 
 def encoded(value):
@@ -42,19 +67,35 @@ class Reader:
             return cur.fetchall()
 
 
-def existing_pairs(reader, season, week):
-    return reader.execute(
-        """SELECT run_id, settings->'researchStudy'->>'arm' AS arm, status
+def enrollment_key(spec, season, week, game_ids):
+    """Advisory-lock and uniqueness scope: per week (Classic), per game (Showdown)."""
+    games = ",".join(str(g) for g in sorted(game_ids)) if spec["uniquePerGames"] else "*"
+    return f"{spec['version']}:{season}:{week}:{games}"
+
+
+def existing_pairs(reader, season, week, version=STUDY, game_ids=None):
+    rows = reader.execute(
+        """SELECT run_id, settings->'researchStudy'->>'arm' AS arm, status,
+                  settings->'researchStudy'->'gameIds' AS game_ids
            FROM nfl_dfs_optimizer_runs
            WHERE settings->'researchStudy'->>'version' = %s
              AND settings->'researchStudy'->>'season' = %s
-             AND settings->'researchStudy'->>'week' = %s""", (STUDY, str(season), str(week)))
+             AND settings->'researchStudy'->>'week' = %s""", (version, str(season), str(week)))
+    if game_ids is None:
+        return rows
+    wanted = sorted(game_ids)
+    # A row without recorded games cannot prove it is a different game: count it.
+    return [r for r in rows if r.get("game_ids") is None or sorted(r["game_ids"]) == wanted]
 
 
-def match_games(games, schedule):
+def match_games(games, schedule, shape="multi"):
     matches = []
-    if not isinstance(games, list) or len(set(games)) != len(games) or len(games) < 2:
+    if not isinstance(games, list) or len(set(games)) != len(games):
+        raise ValueError("Salary slate games must be a list of unique games")
+    if shape == "multi" and len(games) < 2:
         raise ValueError("A multi-game Classic slate with unique games is required")
+    if shape == "single" and len(games) != 1:
+        raise ValueError("A single-game Showdown slate is required")
     for game in games:
         parts = game.split("@")
         if len(parts) != 2:
@@ -76,18 +117,23 @@ def assert_forward(season, week, source_at, now, kickoff):
 
 def implementation():
     files = sorted((ROOT / "web/src").rglob("*.ts")) + sorted((ROOT / "web/src").rglob("*.tsx"))
-    files += [ROOT / "web/scripts/nfl-classic-pool-study-core.ts",
-              ROOT / "web/scripts/research-nfl-classic-pool-study.ts", Path(__file__),
+    files += [ROOT / "web/scripts/nfl-pool-rule-study-core.ts",
+              ROOT / "web/scripts/research-nfl-pool-rule-study.ts", Path(__file__),
               ROOT / "research/nfl_classic_attribution_export.py",
-              ROOT / "docs/nfl-classic-te-wr-pool-rule-study.md", ROOT / "web/package-lock.json"]
+              *(ROOT / spec["doc"] for spec in STUDIES.values()), ROOT / "web/package-lock.json"]
     hashes = {p.relative_to(ROOT).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest() for p in files if p.exists()}
-    revision = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, check=True, capture_output=True, text=True).stdout.strip()
-    return {"commit": revision, "files": hashes,
+
+    def git(*args):
+        return subprocess.run(["git", *args], cwd=ROOT, check=True, capture_output=True, text=True).stdout.strip()
+    # Tracked changes only: the hashes above already pin every untracked web/src file.
+    dirty = git("status", "--porcelain", "--untracked-files=no")
+    return {"commit": git("rev-parse", "HEAD"), "dirty": bool(dirty), "dirtyFiles": dirty.splitlines(), "files": hashes,
             "digest": hashlib.sha256(json.dumps(hashes, sort_keys=True).encode()).hexdigest()}
 
 
-def capture(db, source_id):
+def capture(db, source_id, study="classic"):
     UUID(source_id)
+    spec = STUDIES[study]
     with db.connect() as conn:
         conn.set_session(readonly=True, isolation_level="REPEATABLE READ")
         reader = Reader(conn)
@@ -100,8 +146,9 @@ def capture(db, source_id):
         if len(rows) != 1:
             raise ValueError("Source run missing or has no linked projection run")
         row = dict(rows[0])
-        if row["slate_format"] != "classic" or row["settings"].get("mode") != "gpp":
-            raise ValueError("Explicit saved Classic GPP build required")
+        if (row["slate_format"] != spec["format"] or row["settings"].get("format") != spec["format"]
+                or row["settings"].get("mode") != "gpp"):
+            raise ValueError(f"Explicit saved {spec['format'].title()} GPP build required")
         if row["status"] not in ("complete", "partial") or row["generated_lineups"] < 1 or row["settings"].get("researchStudy"):
             raise ValueError("Source must be an ordinary saved build with lineups")
         now = reader.execute("SELECT clock_timestamp() AS now")[0]["now"]
@@ -110,17 +157,27 @@ def capture(db, source_id):
                FROM nfl_season_games g JOIN nfl_teams h ON h.team_id=g.home_team_id
                JOIN nfl_teams a ON a.team_id=g.away_team_id WHERE g.season=%s AND g.week=%s""",
             (row["season"], row["week"]))
-        matches = match_games(row["games"], schedule)
+        matches = match_games(row["games"], schedule, spec["games"])
         kickoff = min(g["kickoff"] for g in matches)
         assert_forward(row["season"], row["week"], row["created_at"], now, kickoff)
-        if existing_pairs(reader, row["season"], row["week"]):
-            raise ValueError("This study week already has saved arms; refusing a reroll")
+        game_ids = [g["id"] for g in matches]
+        if existing_pairs(reader, row["season"], row["week"], spec["version"], game_ids if spec["uniquePerGames"] else None):
+            raise ValueError("This study slate already has saved arms; refusing a reroll")
         snapshot = row["input_snapshot"]
         if not isinstance(snapshot, list) or len(snapshot) != row["player_count"]:
             raise ValueError("Source snapshot does not contain the full salary pool")
         if {p.get("gameKey") for p in snapshot} != set(row["games"]):
             raise ValueError("Frozen player games do not match the salary slate")
         players = copy.deepcopy(snapshot)
+        source = {k: row[k] for k in ("run_id", "upload_id", "projection_run_id", "created_at", "optimizer_version",
+                                      "settings", "input_snapshot", "input_digest", "build_info")}
+        common = {"version": spec["version"], "study": study, "pairId": str(uuid4()), "source": source,
+                  "season": row["season"], "week": row["week"], "slateSignature": row["slate_signature"],
+                  "gameIds": game_ids, "firstKickoff": kickoff, "capturedAt": now}
+        if not spec["priorOpportunity"]:
+            # The Showdown shape has no pool rules, so nothing reads prior opportunity.
+            return json.loads(encoded({**common, "players": players, "priorOpportunityCapture": None,
+                                       "implementation": implementation()}))
         # Use the same historical cutoff as the product's signal/target readers.
         # This is a NEW pregame capture, never a reconstruction claimed to have
         # been frozen with the source run. Participant rows lack version history.
@@ -138,11 +195,7 @@ def capture(db, source_id):
             total = totals.get(team(p["team"]))
             p["priorOpportunity"] = {**rec, "targetShare": rec["targets"] / total if total else None} if rec else None
             supplemented.append(p["dkPlayerId"])
-        source = {k: row[k] for k in ("run_id", "upload_id", "projection_run_id", "created_at", "optimizer_version",
-                                      "settings", "input_snapshot", "input_digest", "build_info")}
-        return json.loads(encoded({"version": STUDY, "pairId": str(uuid4()), "source": source,
-            "season": row["season"], "week": row["week"], "slateSignature": row["slate_signature"],
-            "gameIds": [g["id"] for g in matches], "firstKickoff": kickoff, "capturedAt": now,
+        return json.loads(encoded({**common,
             "players": players, "priorOpportunityCapture": {"capturedAt": now, "labelCutoff": cutoff,
                 "supplementedPlayerIds": supplemented, "source": "product prior-three-week participant queries",
                 "limitation": "New pregame capture; participant rows have no historical versions. Missing records remain null.",
@@ -151,13 +204,21 @@ def capture(db, source_id):
 
 def save_pair(db, captured, pair):
     """One transaction: enroll once, insert both arms, recheck lock, commit."""
-    if pair.get("version") != STUDY or pair.get("pairId") != captured["pairId"] or [a["arm"] for a in pair["arms"]] != ["A", "B"]:
+    version = captured.get("version", STUDY)
+    _, spec = study_by_version(version)
+    if pair.get("version") != version or pair.get("pairId") != captured["pairId"] or [a["arm"] for a in pair["arms"]] != ["A", "B"]:
         raise ValueError("Invalid pair identity")
+    impl = captured.get("implementation") or {}
+    if impl.get("dirty"):
+        raise ValueError("Working tree has uncommitted tracked changes; commit before saving study arms ("
+                         + ", ".join(impl.get("dirtyFiles", [])[:5]) + ")")
     source = captured["source"]
+    scoped = captured["gameIds"] if spec["uniquePerGames"] else None
     with db.connect() as conn:
         with conn.cursor() as cur:
             # Serializes repeated attempts, even from another process/source run.
-            cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"{STUDY}:{captured['season']}:{captured['week']}",))
+            cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))",
+                        (enrollment_key(spec, captured["season"], captured["week"], captured["gameIds"]),))
             reader = Reader(conn)
             supported = reader.execute(
                 """SELECT EXISTS (SELECT 1 FROM pg_constraint
@@ -166,8 +227,8 @@ def save_pair(db, captured, pair):
                      AND pg_get_constraintdef(oid) LIKE '%%research_complete%%') AS ready""")[0]["ready"]
             if not supported:
                 raise ValueError("Research run status migration is not installed; apply the repository schema migration first")
-            if existing_pairs(reader, captured["season"], captured["week"]):
-                raise ValueError("This study week already has saved arms; refusing a reroll")
+            if existing_pairs(reader, captured["season"], captured["week"], version, scoped):
+                raise ValueError("This study slate already has saved arms; refusing a reroll")
             current = reader.execute("SELECT input_digest FROM nfl_dfs_optimizer_runs WHERE run_id=%s", (source["run_id"],))
             if len(current) != 1 or current[0]["input_digest"] != source["input_digest"]:
                 raise ValueError("Source run changed during capture")
@@ -218,25 +279,35 @@ def archive(directory, name, value):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--study", choices=sorted(STUDIES), default="classic")
     ap.add_argument("--source-run", required=True)
     ap.add_argument("--main-slate", action="store_true", help="Attest this is the weekly Classic main slate")
+    ap.add_argument("--flagship-showdown", action="store_true",
+                    help="Attest this is the game day's biggest DraftKings Showdown (the stat-api flagship)")
     ap.add_argument("--out", required=True, type=Path, help="New directory for immutable input/output artifacts")
     ap.add_argument("--save", action="store_true", help="Persist both research arms; omitted = database read-only")
     args = ap.parse_args(argv)
-    if not args.main_slate:
-        ap.error("--main-slate is required; the script never guesses the study population")
+    if args.study == "classic" and not args.main_slate:
+        ap.error("--main-slate is required for the Classic study; the script never guesses the study population")
+    if args.study == "showdown" and not args.flagship_showdown:
+        ap.error("--flagship-showdown is required for the Showdown study; the script never guesses the study population")
+    if (args.study == "classic" and args.flagship_showdown) or (args.study == "showdown" and args.main_slate):
+        ap.error("Attestation flag does not match --study")
     if args.out.exists():
         ap.error("--out must be a new directory; prior captures are never overwritten")
     db = DatabaseManager(load_config().database_url, initialize_schema=False)
-    captured = capture(db, args.source_run)
+    captured = capture(db, args.source_run, args.study)
+    if args.save and captured["implementation"]["dirty"]:
+        ap.error("Tracked files have uncommitted changes; commit them (or run without --save): "
+                 + ", ".join(captured["implementation"]["dirtyFiles"][:5]))
     args.out.mkdir(parents=True)
     input_path, output_path = args.out / "worker-input.json", args.out / "worker-output.json"
     input_path.write_bytes(encoded(captured))
     command = ["node", "-r", "./scripts/server-only-stub.cjs", "--import", "tsx",
-               "scripts/research-nfl-classic-pool-study.ts", str(input_path.resolve()), str(output_path.resolve())]
+               "scripts/research-nfl-pool-rule-study.ts", str(input_path.resolve()), str(output_path.resolve())]
     subprocess.run(command, cwd=ROOT / "web", check=True)
     pair = json.loads(output_path.read_text(encoding="utf-8"))
-    manifest = {"study": STUDY, "pairId": captured["pairId"], "databaseSaved": False,
+    manifest = {"study": captured["version"], "pairId": captured["pairId"], "databaseSaved": False,
                 "files": [archive(args.out, "input", captured), archive(args.out, "pair", pair)]}
     manifest_path = args.out / "manifest.json"
     manifest_path.write_bytes(encoded(manifest))

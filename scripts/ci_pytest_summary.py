@@ -36,6 +36,9 @@ EXPECTED_SKIPS = {
     "tests/test_nfl_score_comps.py::test_backtest_calibrated_and_accurate":
         "Opt-in back-test (NFL_SCORE_COMPS_RUN=1): reads the production "
         "database and downloads nflverse seasons.",
+    "tests/test_nfl_pool_rule_study.py::test_postgres_migration_and_persistence_in_rolled_back_temp_tables":
+        "Opt-in PostgreSQL integration (NFL_STUDY_TEST_DATABASE_URL): exercises the "
+        "status migration and pair save in rolled-back TEMP tables. CI has no database.",
 }
 
 

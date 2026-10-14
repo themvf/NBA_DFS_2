@@ -88,15 +88,17 @@ detect only a large, consistent effect.
 ## Required before the first slate
 
 A research runner now implements this capture:
-`research/nfl_classic_pool_study.py`, with the unchanged production optimizer
-called by `web/scripts/research-nfl-classic-pool-study.ts`.
+`research/nfl_pool_rule_study.py --study classic`, with the unchanged
+production optimizer called by `web/scripts/research-nfl-pool-rule-study.ts`.
+The same runner serves the Showdown kicker study
+(`docs/nfl-showdown-kicker-rule-study.md`); the two never share a cohort.
 
 From the repository root, with Python dependencies, `web/node_modules`, Node,
 and `DATABASE_URL` configured:
 
 ```powershell
-python -m research.nfl_classic_pool_study --source-run <UUID> --main-slate --out artifacts/classic-pool-week6-dry
-python -m research.nfl_classic_pool_study --source-run <UUID> --main-slate --out artifacts/classic-pool-week6-saved --save
+python -m research.nfl_pool_rule_study --study classic --source-run <UUID> --main-slate --out artifacts/classic-pool-week6-dry
+python -m research.nfl_pool_rule_study --study classic --source-run <UUID> --main-slate --out artifacts/classic-pool-week6-saved --save
 ```
 
 Choose the source run explicitly; the runner does not infer that the largest
@@ -116,7 +118,20 @@ The repository schema migration must be installed before `--save`. It adds
 `research_complete`, `research_partial`, and `research_failed` to the existing
 optimizer run status constraint. Ordinary saved-build lists already exclude
 these statuses, and export rejects research runs. Neither source runs nor
-default settings are updated. The runner never installs schema automatically.
+default settings are updated. The runner itself never runs DDL, but the
+migration lives in `db/schema.py` MIGRATIONS and `web/src/db/ensure-schema.ts`,
+so merging it installs it on the next Python job or web cold start; `--save`
+refuses until the widened constraint is present.
+
+Every reader that picks "our build" from the optimizer ledger excludes research
+arms explicitly (`status IN ('complete','partial') AND NOT (settings ?
+'researchStudy')`): the saved-runs list, `research/nfl_top_builds.py` (and so
+the weekly flagship review), both attribution exporters and
+`research/nfl_archived_contests.py`. Key on `researchStudy`, never on
+`buildShape`: arm A is a Winners build stored as `standard`.
+
+`--save` refuses a working tree with uncommitted tracked changes; the dry run
+records the dirty state and file list in the captured implementation.
 
 The source run's input digest is checked before generation. Snapshot aliases
 for projections, ownership, DK status and forecast adjustments are restored

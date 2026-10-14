@@ -8,7 +8,8 @@ import os
 
 import pytest
 
-from research.nfl_classic_pool_study import STUDY, archive, assert_forward, match_games, save_pair
+from research.nfl_pool_rule_study import (STUDIES, STUDY, archive, assert_forward, enrollment_key, existing_pairs,
+                                          match_games, save_pair)
 
 NOW = datetime(2026, 10, 18, 16, tzinfo=timezone.utc)
 
@@ -32,6 +33,38 @@ def test_canonical_games_require_unique_complete_match():
         match_games(["BUF@LAR", "NYJ@WAS"], rows + [rows[0]])
     with pytest.raises(ValueError, match="ambiguous"):
         match_games(["BUF@LAR", "NYJ@WAS"], rows[:1])
+
+
+def test_showdown_slate_must_be_one_game():
+    rows = [{"id": 9, "away": "SEA", "home": "DEN", "kickoff": NOW}]
+    assert [g["id"] for g in match_games(["SEA@DEN"], rows, "single")] == [9]
+    with pytest.raises(ValueError, match="single-game"):
+        match_games(["SEA@DEN", "BUF@LAR"], rows, "single")
+    with pytest.raises(ValueError, match="multi-game"):
+        match_games(["SEA@DEN"], rows, "multi")
+
+
+def test_enrollment_scope_week_for_classic_game_for_showdown():
+    classic, showdown = STUDIES["classic"], STUDIES["showdown"]
+    assert enrollment_key(classic, 2026, 6, [3, 1]) == enrollment_key(classic, 2026, 6, [7])
+    assert enrollment_key(showdown, 2026, 6, [3]) != enrollment_key(showdown, 2026, 6, [7])
+    assert classic["version"] != showdown["version"]
+
+
+class RowsReader:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def execute(self, query, params=()):
+        return self.rows
+
+
+def test_showdown_reroll_is_per_game_and_unscoped_rows_count():
+    rows = [{"run_id": "a", "arm": "A", "status": "research_complete", "game_ids": [9]}]
+    assert existing_pairs(RowsReader(rows), 2026, 6, STUDIES["showdown"]["version"], [9])
+    assert not existing_pairs(RowsReader(rows), 2026, 6, STUDIES["showdown"]["version"], [12])
+    legacy = [{"run_id": "b", "arm": "A", "status": "research_complete", "game_ids": None}]
+    assert existing_pairs(RowsReader(legacy), 2026, 6, STUDIES["showdown"]["version"], [12])
 
 
 class FakeDb:
@@ -87,6 +120,23 @@ def pair_fixture():
          "inputDigest": "digest", "buildInfo": {}, "requestedLineups": 20, "lineups": [],
          "status": "research_failed", "failureReason": "infeasible"} for arm in ("A", "B")]}
     return captured, pair
+
+
+def test_dirty_tree_never_saves():
+    db = FakeDb()
+    captured, pair = pair_fixture()
+    captured["implementation"] = {"dirty": True, "dirtyFiles": [" M web/src/app/dfs/nfl/nfl-optimizer.ts"]}
+    with pytest.raises(ValueError, match="uncommitted"):
+        save_pair(db, captured, pair)
+    assert not db.committed
+
+
+def test_showdown_pair_saves_both_arms():
+    db = FakeDb()
+    captured, pair = pair_fixture()
+    captured["version"] = pair["version"] = STUDIES["showdown"]["version"]
+    receipt = save_pair(db, captured, pair)
+    assert len(db.committed) == 2 and len(receipt["saved"]) == 2
 
 
 def test_atomic_pair_preserves_failed_arms():

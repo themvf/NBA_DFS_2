@@ -8,7 +8,16 @@ import { buildCompletion } from '../src/lib/nfl-dfs/build-completion';
 // Frozen database JSON uses aliases, and preserves fields beyond the optimizer type.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Raw = Record<string, any>;
-export const STUDY = 'nfl-classic-te-wr-pool-v1';
+/** One entry per pre-registered study; the runner's STUDIES registry must match. */
+export const STUDIES = { classic: 'nfl-classic-te-wr-pool-v1', showdown: 'nfl-showdown-kicker-rule-v1' } as const;
+export const STUDY = STUDIES.classic;
+type StudyKey = keyof typeof STUDIES;
+function studyOf(input: Raw): StudyKey {
+  if (input.version == null) return 'classic';
+  const key = (Object.keys(STUDIES) as StudyKey[]).find(k => STUDIES[k] === input.version);
+  if (!key) throw new Error(`Unknown study version ${input.version}`);
+  return key;
+}
 export const digest = (value: unknown) => createHash('sha256').update(canonicalAuditJson(value)).digest('hex');
 
 export function restorePlayers(snapshot: Raw[]): NflOptimizerPlayer[] {
@@ -38,7 +47,11 @@ export function buildPair(input: Raw) {
   if (source.build_info != null) signed.buildInfo = source.build_info;
   if (digest(signed) !== source.input_digest) throw new Error('Source run input digest mismatch');
   if (source.settings.researchStudy) throw new Error('A research arm cannot be the source build');
-  if (source.settings.format !== 'classic' || source.settings.mode !== 'gpp') throw new Error('Classic GPP source required');
+  const study = studyOf(input);
+  const version = STUDIES[study];
+  if (source.settings.format !== study || source.settings.mode !== 'gpp') {
+    throw new Error(`${study === 'classic' ? 'Classic' : 'Showdown'} GPP source required`);
+  }
   if (!Number.isInteger(source.settings.nLineups) || source.settings.nLineups < 1) throw new Error('Invalid source lineup count');
   const settings = structuredClone(source.settings) as NflOptimizerSettings & Raw;
   delete settings.runEvidence;
@@ -62,10 +75,16 @@ export function buildPair(input: Raw) {
     sourceShapeVerified = true;
   }
   const byId = new Map(players.map(p => [p.dkPlayerId, p]));
-  const removed = [...shape.excluded.keys()].filter(id => ['TE', 'WR'].includes(byId.get(id)!.position));
+  const manual = new Set<number>(settings.excludedPlayerIds);
+  // Classic: arm B admits the players the TE and WR pool rules exclude.
+  // Showdown: the shape has no pool rules; arm B admits the kickers it bans.
+  const removed = study === 'classic'
+    ? [...shape.excluded.keys()].filter(id => ['TE', 'WR'].includes(byId.get(id)!.position))
+    : eligible.filter(p => p.position === 'K' && !manual.has(p.dkPlayerId)).map(p => p.dkPlayerId);
+  if (study === 'showdown' && shape.settings.excludeKickers !== true) throw new Error('Winners shape no longer bans kickers; the registered contrast is undefined');
   const sharedSettings = { ...shape.settings, buildShape: 'standard' as const };
-  const common = { version: STUDY, pairId: input.pairId, sourceRunId: source.run_id,
-    season: input.season, week: input.week, slateSignature: input.slateSignature,
+  const common = { version, pairId: input.pairId, sourceRunId: source.run_id,
+    season: input.season, week: input.week, slateSignature: input.slateSignature, gameIds: input.gameIds ?? null,
     firstKickoff: input.firstKickoff, capturedAt: input.capturedAt,
     inputPoolDigest: digest(input.players), sourceInputDigest: source.input_digest,
     implementation: input.implementation, winnersShapeVersion: WINNERS_SHAPE_VERSION,
@@ -74,17 +93,23 @@ export function buildPair(input: Raw) {
     commonSettings: sharedSettings, shapeNotes: shape.notes };
   const before = digest(input);
   const arms = (['A', 'B'] as const).map(arm => {
-    const exclusions = [...shape.excluded.keys()].filter(id => arm === 'A' || !removed.includes(id));
-    const effective = { ...sharedSettings, excludedPlayerIds: [...new Set([...settings.excludedPlayerIds, ...exclusions])] };
+    const exclusions = study === 'classic'
+      ? [...shape.excluded.keys()].filter(id => arm === 'A' || !removed.includes(id))
+      : [...shape.excluded.keys()];
+    const effective = { ...sharedSettings, excludedPlayerIds: [...new Set([...settings.excludedPlayerIds, ...exclusions])],
+      ...(study === 'showdown' ? { excludeKickers: arm === 'A' } : {}) };
+    const ruleExcluded = study === 'classic' ? exclusions : (arm === 'A' ? removed : []);
     let result: ReturnType<typeof optimizeNflLineups> | null = null;
     let error: string | null = null;
     try { result = optimizeNflLineups(structuredClone(eligible), structuredClone(effective)); }
     catch (e) { error = e instanceof Error ? e.message : String(e); }
     const lineups = result?.lineups ?? [];
     const completion = buildCompletion({ ...result, requestedLineups: settings.nLineups, generatedLineups: lineups.length });
-    const researchStudy = { ...common, arm, label: arm === 'A' ? 'Current Winners' : 'Winners without TE/WR pool exclusions',
-      completion: completion.status, issues: completion.issues, error, ruleExclusions: exclusions.map(id => ({
-        dkPlayerId: id, position: byId.get(id)!.position, reason: shape.excluded.get(id),
+    const researchStudy = { ...common, arm,
+      label: arm === 'A' ? 'Current Winners' : study === 'classic' ? 'Winners without TE/WR pool exclusions' : 'Winners with kickers allowed',
+      completion: completion.status, issues: completion.issues, error, ruleExclusions: ruleExcluded.map(id => ({
+        dkPlayerId: id, position: byId.get(id)!.position,
+        reason: shape.excluded.get(id) ?? 'Winners shape: no kicker in Showdown lineups (excludeKickers)',
       })) };
     const persistedSettings = { ...effective, researchStudy, runEvidence: {
       eligibility: result?.eligibility ?? [], exposureReport: result?.exposureReport ?? [],
@@ -92,7 +117,7 @@ export function buildPair(input: Raw) {
       warnings: [...(result?.warnings ?? []), ...(error ? [error] : [])], archetypePlan: result?.archetypePlan ?? [],
     } };
     const buildInfo = { commitSha: input.implementation.commit, implementationDigest: input.implementation.digest,
-      buildTime: input.capturedAt, settingsSchemaVersion: STUDY, optimizerVersion: NFL_OPTIMIZER_VERSION };
+      buildTime: input.capturedAt, settingsSchemaVersion: version, optimizerVersion: NFL_OPTIMIZER_VERSION };
     return { arm, settings: persistedSettings, inputSnapshot: input.players, buildInfo,
       optimizerVersion: NFL_OPTIMIZER_VERSION,
       inputDigest: digest({ settings: persistedSettings, inputSnapshot: input.players, optimizerVersion: NFL_OPTIMIZER_VERSION, buildInfo }),
@@ -105,5 +130,5 @@ export function buildPair(input: Raw) {
     };
   });
   if (digest(input) !== before) throw new Error('Research adapter mutated frozen inputs');
-  return { version: STUDY, pairId: input.pairId, sourceRunId: source.run_id, arms };
+  return { version, pairId: input.pairId, sourceRunId: source.run_id, arms };
 }

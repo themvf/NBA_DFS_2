@@ -146,7 +146,7 @@
     "test:nfl-captain-minimum": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-captain-minimum.ts",
     "test:nfl-gpp-leverage": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-leverage.ts",
     "test:nfl-winners-shape": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-winners-shape.ts",
-    "test:nfl-classic-pool-study": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-classic-pool-study.ts",
+    "test:nfl-pool-rule-study": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-pool-rule-study.ts",
     "test:nfl-lineup-export": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-lineup-export.ts",
     "test:pickem-contest": "node --import tsx ./scripts/test-pickem-contest.ts",
     "test:pickem-pfr": "node --import tsx ./scripts/test-pickem-pfr.ts",
