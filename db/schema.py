@@ -3208,7 +3208,7 @@ TABLES = [
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         CHECK(mode IN ('cash','gpp')),
         CHECK(projection_source IN ('our','calibrated','workload','dk_avg','fantasypros','linestar','custom')),
-        CHECK(status IN ('complete','partial','failed'))
+        CHECK(status IN ('complete','partial','failed','research_complete','research_partial','research_failed'))
     )""",
     """CREATE TABLE IF NOT EXISTS nfl_dfs_lineups (
         id BIGSERIAL PRIMARY KEY,
@@ -4571,6 +4571,18 @@ TABLES = [
 ]
 
 MIGRATIONS = [
+    # Research arms are persisted in the optimizer ledger but are never ordinary
+    # selectable/exportable builds. Only replace the legacy check when needed.
+    """DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'nfl_dfs_optimizer_runs'::regclass
+          AND conname = 'nfl_dfs_optimizer_runs_status_check'
+          AND pg_get_constraintdef(oid) LIKE '%research_complete%') THEN
+          ALTER TABLE nfl_dfs_optimizer_runs
+            DROP CONSTRAINT IF EXISTS nfl_dfs_optimizer_runs_status_check,
+            ADD CONSTRAINT nfl_dfs_optimizer_runs_status_check
+            CHECK (status IN ('complete','partial','failed','research_complete','research_partial','research_failed'));
+        END IF;
+      END $$""",
     # CFB pattern watch: graded rows, frozen selections, board events and run
     # heartbeats are append-only. A correction is a new study version, never
     # an edit (docs/cfb-early-season-patterns-study.md).
@@ -4699,6 +4711,7 @@ MIGRATIONS = [
     "ALTER TABLE nfl_context_snapshots ADD COLUMN IF NOT EXISTS superseded_by TEXT REFERENCES nfl_context_snapshots(snapshot_id)",
     "ALTER TABLE nfl_context_snapshots ADD COLUMN IF NOT EXISTS available_at TIMESTAMPTZ NOT NULL DEFAULT NOW()",
     "ALTER TABLE nfl_context_snapshots ADD COLUMN IF NOT EXISTS payload JSONB NOT NULL DEFAULT '{}'::jsonb",
+    "ALTER TABLE nfl_context_snapshots ADD COLUMN IF NOT EXISTS material_digest TEXT",
     "ALTER TABLE ff_source_snapshots ADD COLUMN IF NOT EXISTS week INTEGER",
     "ALTER TABLE ff_source_snapshots ADD COLUMN IF NOT EXISTS contract_key TEXT",
     "ALTER TABLE ff_source_snapshots ADD COLUMN IF NOT EXISTS source_published_at TIMESTAMPTZ",

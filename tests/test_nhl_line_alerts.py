@@ -113,7 +113,7 @@ def _settle(monkeypatch, matchup: dict):
     monkeypatch.setattr(line_alerts, "_verified_close", lambda *_a, **_k: {"books": {"fanduel": _book(-160, 140)}})
     monkeypatch.setattr(line_alerts, "_grade_alert_prices", lambda *_: {
         "dk_close_decimal": None, "dk_clv_pct": None, "pin_close_prob": None, "convergence": None,
-        "dk_survival_min": None, "grading_json": {}, "comparison_status": "NO_REFERENCE",
+        "dk_survival_min": None, "grading_json": {"close_prob": 0.6, "clv_pp": 5.0}, "comparison_status": "NO_REFERENCE",
         "grading_version": "convergence_v2"})
     monkeypatch.setattr(line_alerts, "_append_grade_history_cur", lambda *_a, **_k: None)
     db = Db()

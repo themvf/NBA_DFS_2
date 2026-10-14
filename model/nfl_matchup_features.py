@@ -89,6 +89,13 @@ def latest_eligible(snapshots: list[dict], prior_games: list[dict], cutoff: date
     return [value[1] for _, value in sorted(selected.items())]
 
 
+# The source-row fields participant_manifests decides on. Every other field
+# reaches a manifest only through a participant's raw_digest, so a loader may
+# fetch the whole row for participants alone.
+PARTICIPANT_FIELDS = ("game_id", "player_id", "player_name", "team", "position",
+                      "attempts", "carries", "sacks_suffered")
+
+
 def participant_manifests(weekly_rows: list[dict], games: list[dict], cutoff: datetime,
                           passing_plays: list[dict] | None = None) -> dict:
     """Freeze expected participants from retained weekly stats, not mutable names.

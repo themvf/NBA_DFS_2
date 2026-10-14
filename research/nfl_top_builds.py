@@ -233,7 +233,10 @@ def load_ours(db, contest: dict, run_id: str | None) -> tuple[dict | None, list[
     else:
         runs = db.execute(
             """SELECT run_id, created_at, generated_lineups, mode FROM nfl_dfs_optimizer_runs
-               WHERE upload_id = %s AND generated_lineups > 0 ORDER BY created_at DESC LIMIT 1""", (contest["slate_upload_id"],))
+               WHERE upload_id = %s AND generated_lineups > 0
+                 -- Ordinary saved builds only: research arms (pool-rule studies) are never "ours".
+                 AND status IN ('complete','partial') AND NOT (settings ? 'researchStudy')
+               ORDER BY created_at DESC LIMIT 1""", (contest["slate_upload_id"],))
     if not runs:
         return None, []
     run = dict(runs[0])

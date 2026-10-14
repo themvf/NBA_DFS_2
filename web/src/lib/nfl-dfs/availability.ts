@@ -1,6 +1,8 @@
 import type { EvidenceState } from "./punt-policy";
 
 export type InjuryEvidence = { identityBridge?: {sourceLocalId:number;targetLocalId:number;method:string}; id: string; source: string; status: string; practice: string | null; observedAt: string; updatedAt: string | null; team: string; week: number | null; hash: string; reportType?: string; kickoff?: string; url?: string; unverifiedUpdate?: string };
+/** The Sleeper fields availability reads; the database returns only these (the full record is ~1.3 KB a player). */
+export const SLEEPER_EVIDENCE_FIELDS = ["team", "position", "depth_chart_order", "injury_status", "status"] as const;
 /** `archived`: the Sleeper evidence is the archived capture at or before the evaluation time, not the latest row. */
 export type RosterEvidence = { team: string; position: string; fetchedAt: string; sleeper: unknown; injuries?: InjuryEvidence[]; injuryReadFailed?: boolean; kickoff?: string | null; archived?: boolean };
 export type Availability = { role: string; status: string; source: string; capturedAt: string | null; blockedReason: string | null; fresh: boolean;

@@ -1,7 +1,8 @@
 """Persist Phase 2 NFL availability contexts through the shared context engine."""
 from __future__ import annotations
 
-from datetime import datetime
+from dataclasses import replace
+from datetime import datetime, timedelta
 import json
 from typing import Any, Iterable, Mapping
 
@@ -14,6 +15,15 @@ from model.nfl_availability_context import (
 from model.nfl_context_engine import ContextMeasurement, stable_digest
 from model.nfl_game_availability import game_has_started
 
+
+# A context whose meaning has not changed stays current instead of being
+# re-inserted on every projection run, until it is this old. Readers accept
+# these definitions for 72 hours (freshness_seconds); six hours matches the
+# projection-run reuse cap in ingest/nfl_dfs_projections.py.
+REASSERT_AFTER = timedelta(hours=6)
+
+PROVENANCE_FIELDS = frozenset({"asOfAt", "availableAt", "factReleaseId", "sourceSnapshotIds"})
+PROVENANCE_PAYLOAD_FIELDS = frozenset({"as_of_at", "observation_ids", "source_snapshot_ids", "evidence_digest"})
 
 CONSUMERS = (
     ("nfl_availability_vercel", "availability_display"),
@@ -100,16 +110,33 @@ def persist_availability_contexts(
             ),
         )
 
+    current = _current_snapshots(cursor, contexts)
+    reused: dict[str, str] = {}
+    current_ids_by_definition: dict[str, list[str]] = {}
+    to_insert: list[tuple[ContextMeasurement, str]] = []
+    players_first = sorted(contexts, key=lambda value: value.definition_id != PLAYER_GAME_AVAILABILITY.definition_id)
+    for context in players_first:
+        context = _with_player_context_ids(context, reused)
+        digest = material_digest(context)
+        row = current.get((context.definition_id, context.subject_id, context.target_id))
+        if _still_current(row, context, digest):
+            reused[context.snapshot_id] = row["snapshot_id"]
+            snapshot_id = row["snapshot_id"]
+        else:
+            to_insert.append((context, digest))
+            snapshot_id = context.snapshot_id
+        current_ids_by_definition.setdefault(context.definition_id, []).append(snapshot_id)
+
     inserted = 0
-    for context in contexts:
+    for context, digest in to_insert:
         cursor.execute(
             """INSERT INTO nfl_context_snapshots
                  (snapshot_id,definition_id,subject_type,subject_id,target_id,
                   as_of_at,available_at,measurement_window,numerator,denominator,value,
                   value_state,coverage,uncertainty,estimation,source_snapshot_ids,
-                  fact_release_id,payload)
+                  fact_release_id,payload,material_digest)
                VALUES (%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s::jsonb,
-                       %s::jsonb,%s::jsonb,%s::jsonb,%s,%s::jsonb)
+                       %s::jsonb,%s::jsonb,%s::jsonb,%s,%s::jsonb,%s)
                ON CONFLICT (snapshot_id) DO NOTHING""",
             (
                 context.snapshot_id, context.definition_id, context.subject_type,
@@ -120,7 +147,7 @@ def persist_availability_contexts(
                 json.dumps(context.uncertainty) if context.uncertainty else None,
                 json.dumps(context.estimation) if context.estimation else None,
                 json.dumps(list(context.source_snapshot_ids)), context.fact_release_id,
-                json.dumps(context.payload),
+                json.dumps(context.payload), digest,
             ),
         )
         inserted += int(cursor.rowcount > 0)
@@ -142,9 +169,8 @@ def persist_availability_contexts(
     # older current row in the published game cohort that is absent from this
     # complete release.
     for definition in (PLAYER_GAME_AVAILABILITY, TEAM_QB_STATE):
-        definition_contexts = [value for value in contexts if value.definition_id == definition.definition_id]
-        target_ids = sorted({value.target_id for value in definition_contexts})
-        current_ids = sorted(value.snapshot_id for value in definition_contexts)
+        target_ids = sorted({value.target_id for value in contexts if value.definition_id == definition.definition_id})
+        current_ids = sorted(current_ids_by_definition.get(definition.definition_id, []))
         if target_ids and current_ids:
             cursor.execute(
                 """UPDATE nfl_context_snapshots
@@ -180,9 +206,10 @@ def persist_availability_contexts(
     return {
         "releaseId": release_id,
         "contextsPublished": inserted,
+        "contextsUnchanged": len(contexts) - len(to_insert),
         "snapshotCount": len(contexts),
         "snapshotManifestDigest": stable_digest(
-            sorted(context.snapshot_id for context in contexts)
+            sorted(value for ids in current_ids_by_definition.values() for value in ids)
         ),
         "definitions": [
             PLAYER_GAME_AVAILABILITY.definition_id,
@@ -192,6 +219,52 @@ def persist_availability_contexts(
         "policyVersion": POLICY_VERSION,
         "startedGamesSkipped": started_games,
     }
+
+
+def material_digest(context: ContextMeasurement) -> str:
+    """What a reader acts on: the run stamp, release and observation provenance excluded."""
+    body = {k: v for k, v in context.as_dict(include_snapshot=False).items() if k not in PROVENANCE_FIELDS}
+    payload = {k: v for k, v in body["payload"].items() if k not in PROVENANCE_PAYLOAD_FIELDS}
+    evidence = payload.get("availability_evidence")
+    if isinstance(evidence, Mapping):
+        payload["availability_evidence"] = {k: v for k, v in evidence.items() if k not in PROVENANCE_FIELDS}
+    return stable_digest({**body, "payload": payload})
+
+
+def _current_snapshots(cursor: Any, contexts: list[ContextMeasurement]) -> dict[tuple[str, str, str], Mapping[str, Any]]:
+    """The current row per subject; a subject with two current rows is never reused."""
+    cursor.execute(
+        """SELECT snapshot_id,definition_id,subject_id,target_id,as_of_at,material_digest
+           FROM nfl_context_snapshots
+           WHERE publication_status='current' AND definition_id=ANY(%s) AND target_id=ANY(%s)""",
+        (sorted({value.definition_id for value in contexts}), sorted({value.target_id for value in contexts})),
+    )
+    rows: dict[tuple[str, str, str], Mapping[str, Any] | None] = {}
+    for row in cursor.fetchall():
+        key = (row["definition_id"], row["subject_id"], row["target_id"])
+        rows[key] = None if key in rows else row
+    return {key: row for key, row in rows.items() if row is not None}
+
+
+def _still_current(row: Mapping[str, Any] | None, context: ContextMeasurement, digest: str) -> bool:
+    return (
+        row is not None
+        and row["material_digest"] == digest
+        and context.as_of_at - REASSERT_AFTER < row["as_of_at"] <= context.as_of_at
+    )
+
+
+def _with_player_context_ids(context: ContextMeasurement, reused: Mapping[str, str]) -> ContextMeasurement:
+    """A team QB context names the player contexts that stay current, not copies that were never written."""
+    evidence = context.payload.get("availability_evidence")
+    if not isinstance(evidence, Mapping):
+        return context
+    ids = list(evidence.get("playerContextIds") or [])
+    current_ids = [reused.get(value, value) for value in ids]
+    if current_ids == ids:
+        return context
+    payload = {**context.payload, "availability_evidence": {**evidence, "playerContextIds": current_ids}}
+    return replace(context, payload=payload, snapshot_id="")
 
 
 def _game_id(row: Mapping[str, Any]) -> str:

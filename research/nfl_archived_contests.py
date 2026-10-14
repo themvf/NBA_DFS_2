@@ -18,6 +18,9 @@ from zoneinfo import ZoneInfo
 from config import load_config
 from db.database import DatabaseManager
 
+# Ordinary saved builds only; research arms (pool-rule studies) are not our builds.
+ORDINARY_RUN = "AND o.status IN ('complete','partial') AND NOT (o.settings ? 'researchStudy')"
+
 
 def normalized(value):
     return re.sub(r"[^a-z0-9]", "", value.lower())
@@ -109,7 +112,8 @@ def main():
                 raise ValueError("Archive differs from imported field record")
             salary = db.execute("SELECT * FROM nfl_dfs_slate_players WHERE upload_id=%s", (record["slate_upload_id"],))
             lock = lock_at(salary)
-            runs = db.execute("SELECT * FROM nfl_dfs_optimizer_runs WHERE upload_id=%s ORDER BY created_at", (record["slate_upload_id"],))
+            runs = db.execute("SELECT * FROM nfl_dfs_optimizer_runs o WHERE upload_id=%s " + ORDINARY_RUN
+                              + " ORDER BY created_at", (record["slate_upload_id"],))
             grades = []
             for run in runs:
                 saved = db.execute("SELECT lineup_number,slots,projected_fpts FROM nfl_dfs_lineups WHERE run_id=%s ORDER BY lineup_number", (run["run_id"],))
@@ -137,7 +141,8 @@ def main():
         # Freeze three genuinely distinct saved pregame input pools for regression.
         for upload_id in ("f067c8b9-f920-4b26-b77c-36f43a2c9df0", "746487fd-2ebe-444a-b74c-214e6d8854e3", "81996971-0d2c-4d65-b5fc-a2109d18e755"):
             upload = db.execute("SELECT * FROM nfl_dfs_slate_uploads WHERE upload_id=%s", (upload_id,))[0]
-            run = db.execute("SELECT * FROM nfl_dfs_optimizer_runs WHERE upload_id=%s ORDER BY created_at LIMIT 1", (upload_id,))[0]
+            run = db.execute("SELECT * FROM nfl_dfs_optimizer_runs o WHERE upload_id=%s " + ORDINARY_RUN
+                             + " ORDER BY created_at LIMIT 1", (upload_id,))[0]
             salary = db.execute("SELECT * FROM nfl_dfs_slate_players WHERE upload_id=%s ORDER BY dk_player_id", (upload_id,))
             if run["created_at"] >= lock_at(salary):
                 raise ValueError("Regression input was not frozen before lock")

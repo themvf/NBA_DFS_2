@@ -1046,7 +1046,18 @@ def _notify(alerts: list[dict]) -> None:
         return
     for a in alerts:
         d = a.get("details") or {}
-        if a["alert_type"] in ("dk_prop_value", "prop_line_gap"):
+        if a["sport"] == "nhl":
+            from model.nhl_signal_audit import timing_evidence
+            timing = timing_evidence(d.get("trigger_capture_at"), d.get("book_updated_at"),
+                                     datetime.now(timezone.utc), d.get("scheduled_start_at"))
+            if not timing["quote_fresh"]:
+                continue  # Research ledger retains stale observations; no live-price message.
+            text = (f"NHL MARKET OBSERVATION: {a['matchup']}\n"
+                    f"{a['alert_type']} · {a['side']} · {d.get('exec_book', 'book unknown')} "
+                    f"{d.get('exec_odds', 'price unknown')}\n"
+                    f"Captured {d.get('trigger_capture_at')} · book updated {d.get('book_updated_at')}\n"
+                    "Research only; observed quote, execution not verified")
+        elif a["alert_type"] in ("dk_prop_value", "prop_line_gap"):
             label = {"pitcher_strikeouts": "Strikeouts",
                      "batter_total_bases": "Total Bases",
                      "pitcher_hits_allowed": "Hits Allowed",
@@ -1549,6 +1560,10 @@ def _insert(db, *, sport, r, label, alert_type, side, alert_prob, sharp_prob, de
             "trigger_history_id": r.get("history_id"),
             **details,
         }
+    if sport == "nhl":
+        from model.nhl_signal_audit import insert_evidence
+        nhl_decision_at = datetime.now(timezone.utc)
+        details = {**details, **insert_evidence(r, details, nhl_decision_at)}
     # ── Polymarket-confirmed flag ──────────────────────────────────────────
     # When Polymarket is present in the same capture AND its price for the
     # alert's side agrees with the sharp reference (i.e., Poly already moved
@@ -1576,9 +1591,9 @@ def _insert(db, *, sport, r, label, alert_type, side, alert_prob, sharp_prob, de
         INSERT INTO line_alerts (sport, matchup_id, game_date, matchup, commence_time,
                                  alert_type, side, capture_key, alert_prob, sharp_prob, details_json,
                                  signal_version, origin, trigger_history_id, previous_history_id,
-                                 opening_history_id, dedupe_key)
+                                 opening_history_id, dedupe_key, created_at)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s, %s)
+                %s, %s, %s, %s, %s, %s, COALESCE(%s, NOW()))
         ON CONFLICT (sport, matchup_id, alert_type, side) DO NOTHING
         RETURNING id
         """,
@@ -1587,7 +1602,7 @@ def _insert(db, *, sport, r, label, alert_type, side, alert_prob, sharp_prob, de
          details.get("signal_version"), details.get("origin", "prospective"),
          details.get("trigger_history_id") or r.get("history_id"),
          details.get("previous_history_id"), details.get("opening_history_id"),
-         f"{alert_type}:{side}"),
+         f"{alert_type}:{side}", nhl_decision_at if sport == "nhl" else None),
     )
     if sport == "cfb" and r.get("cfb_funnel") is not None:
         r["cfb_funnel"].match(r, alert_type, side, inserted=bool(rows))
@@ -2239,6 +2254,21 @@ def settle_props(db: DatabaseManager) -> int:
     return graded
 
 
+def _selection_book(a) -> str:
+    d = a["details_json"] or {}
+    return d.get("clv_book") or d.get("exec_book") or _DK_BOOK
+
+
+# A capture carries every book (1.3-2.9 KB); grading reads the selection
+# book, Pinnacle and DraftKings, so only those leave the database.
+_GRADED_BOOKS = """(SELECT jsonb_object_agg(book.key, book.value) FROM jsonb_each(books) book
+                     WHERE book.key = ANY(%s)) AS books"""
+
+
+def _graded_books(a) -> list[str]:
+    return sorted({_selection_book(a), "pinnacle", _DK_BOOK})
+
+
 def _selection_prices(a, books: dict) -> tuple[float | None, float | None]:
     """(execution_decimal, pinnacle_fair_prob) for THIS alert's exact selection
     from one capture snapshot. Same-line only for props — a moved line is a
@@ -2253,7 +2283,7 @@ def _selection_prices(a, books: dict) -> tuple[float | None, float | None]:
     Reading the wrong one compares an entry at one book to a close at another.
     """
     d = a["details_json"] or {}
-    dk = books.get(d.get("clv_book") or d.get("exec_book") or _DK_BOOK)
+    dk = books.get(_selection_book(a))
     pin = books.get("pinnacle")
     dk_dec = None
     pin_fair = None
@@ -2335,6 +2365,9 @@ def _grade_alert_prices(db, a) -> dict:
                          PERSISTENCE, not verified execution availability.
       * dk_survival_min — the survival UPPER bound (back-compat scalar).
     """
+    if a["sport"] == "nhl":
+        from model.nhl_signal_audit import load_grade
+        return load_grade(db, a)
     out = {"dk_close_decimal": None, "dk_clv_pct": None, "pin_close_prob": None,
            "convergence": None, "dk_survival_min": None, "grading_json": None,
            "comparison_status": "NO_REFERENCE", "grading_version": _GRADING_VERSION}
@@ -2375,20 +2408,20 @@ def _grade_alert_prices(db, a) -> dict:
     close_cutoff = (frozen_close["captured_at"] if frozen_close else a["commence_time"])
     if is_prop_src:
         caps = db.execute(
-            """SELECT captured_at, books FROM prop_odds_history
+            f"""SELECT captured_at, {_GRADED_BOOKS} FROM prop_odds_history
                WHERE sport = %s AND matchup_id = %s AND market = %s AND player = %s
                  AND captured_at <= %s
                ORDER BY captured_at ASC""",
-            (a["sport"], a["matchup_id"], d.get("market"), d.get("player"),
+            (_graded_books(a), a["sport"], a["matchup_id"], d.get("market"), d.get("player"),
              a["commence_time"]),
         )
     else:
         caps = db.execute(
-            """SELECT captured_at, books FROM game_odds_history
+            f"""SELECT captured_at, {_GRADED_BOOKS} FROM game_odds_history
                WHERE sport = %s AND matchup_id = %s AND books IS NOT NULL
                  AND captured_at <= %s
                ORDER BY captured_at ASC""",
-            (a["sport"], a["matchup_id"], close_cutoff),
+            (_graded_books(a), a["sport"], a["matchup_id"], close_cutoff),
         )
 
     series = [(c["captured_at"], *_selection_prices(a, c["books"] or {})) for c in caps]
@@ -2655,7 +2688,7 @@ def _cfb_moneyline_close_grade(a: dict, close: dict | None) -> dict:
     return result
 
 
-def settle(db: DatabaseManager, sport: str) -> int:
+def settle(db: DatabaseManager, sport: str, *, regrade_nhl: bool = False) -> int:
     """Grade alerts whose games have started: CLV always, outcome when scored."""
     matchup_tbl = _MATCHUP_TBL[sport]
     # Game-side alert types ONLY: prop alerts (dk_prop_value / prop_line_gap /
@@ -2665,7 +2698,9 @@ def settle(db: DatabaseManager, sport: str) -> int:
     # (settle_props / settle_props_soccer / settle_tennis_totals).
     open_alerts = db.execute(
         "SELECT * FROM line_alerts WHERE sport = %s AND origin = 'prospective' "
-        "AND (settled_at IS NULL OR (%s = 'cfb' AND created_at >= '2026-09-25' "
+        "AND (settled_at IS NULL OR (%s = 'nhl' AND (%s OR grading_version IS DISTINCT FROM 'nhl-moneyline-audit-v2' "
+        "OR (close_history_id IS NULL AND EXISTS (SELECT 1 FROM verified_clv_closes v WHERE v.sport='nhl' AND v.matchup_id=line_alerts.matchup_id)))) "
+        "OR (%s = 'cfb' AND created_at >= '2026-09-25' "
         "AND close_history_id IS NULL AND COALESCE(details_json->>'market', 'moneyline') = 'moneyline' "
         "AND details_json ? 'exec_decimal' "
         "AND EXISTS (SELECT 1 FROM verified_clv_closes v "
@@ -2674,7 +2709,7 @@ def settle(db: DatabaseManager, sport: str) -> int:
         "'book_disagreement', 'market_convergence', 'late_move') "
         "OR (%s = 'tennis' AND alert_type IN ('favorite_flip', 'reversal', 'reference_led', 'price_pressure'))) "
         "AND commence_time IS NOT NULL AND commence_time <= NOW()",
-        (sport, sport, sport),
+        (sport, sport, regrade_nhl, sport, sport),
     )
     graded = 0
     for a in open_alerts:
@@ -2749,10 +2784,12 @@ def settle(db: DatabaseManager, sport: str) -> int:
             # Only a final settles: the schedule refresh sees live games, and a
             # shootout win is already credited as one goal in the final score.
             m = db.execute_one(
-                "SELECT home_score, away_score, completed FROM nhl_matchups WHERE id=%s",
+                "SELECT home_score, away_score, completed, commence_time FROM nhl_matchups WHERE id=%s",
                 (a["matchup_id"],),
             )
-            if m and m["completed"] and m["home_score"] is not None and m["away_score"] is not None:
+            if (m and m["completed"] and m["home_score"] is not None and m["away_score"] is not None
+                    and m["home_score"] != m["away_score"]
+                    and (m.get("commence_time") is None or m["commence_time"] == a["commence_time"])):
                 outcome = _game_side_outcome(sport, int(m["home_score"]), int(m["away_score"]), a["side"])
         elif sport == "cfb":
             m = db.execute_one(
@@ -2787,6 +2824,11 @@ def settle(db: DatabaseManager, sport: str) -> int:
             }
         else:
             g = _grade_alert_prices(db, a)
+        if sport == "nhl":
+            # Grade timing even when no close exists. No legacy quote fallback.
+            g = _grade_alert_prices(db, a) if settles_without_close else g
+            close_prob = g["grading_json"].get("close_prob")
+            clv_pp = g["grading_json"].get("clv_pp")
         close_history_id = None
         pnl_units = None
         if is_cfb_moneyline:
@@ -2812,6 +2854,9 @@ def settle(db: DatabaseManager, sport: str) -> int:
                 pnl_units = (entry_decimal - 1 if outcome == "won"
                              else -1.0 if outcome == "lost" else 0.0)
                 g["grading_json"] = {**(g["grading_json"] or {}), "pnl_units": round(pnl_units, 4)}
+        if sport == "nhl":
+            close_history_id = g["grading_json"].get("close_history_id")
+            g["grading_json"].update(close_prob=close_prob, clv_pp=clv_pp, outcome=outcome)
         if sport == "mlb" and m:
             g["grading_json"] = {**(g["grading_json"] or {}), "settlement_reason": mlb_reason}
         if sport == "tennis" and m:

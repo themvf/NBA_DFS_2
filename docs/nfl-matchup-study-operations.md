@@ -177,3 +177,9 @@ Main's realized scorer moved to `nfl-dk-realized-v4` (reliability B6): play-by-p
 - **Pick'em studies.** `ingest/nfl_dfs_weekly.py` changed after the latest pick'em pins (6a07cc0, 44fd1cd). As a result, `freeze-pickem` refused every freeze with "Registration model/code pin mismatch" from the #292 merge onward. New pins (combined pin 6, pressure-v2 and contact-v2 pin 3) re-bind the same file set at current hashes. No feature, coefficient or gate changed.
 
 `tests/test_nfl_matchup_study.py` and `tests/test_nfl_coherent_study.py` now fail if any pinned file drifts from its latest pin, if the capture file list and the DFS pin disagree, or if a Showdown capture could enter a Classic-scoped study.
+
+## October 11: slimmer matchup loader, all six studies re-pinned
+
+`ingest/nfl_matchup_context.py` read every 2026 stat row whole (~6,000 rows of ~3.3 KB) on each projection run, the largest remaining database transfer. It now reads only the fields `participant_manifests` decides on (`PARTICIPANT_FIELDS`, declared in `model/nfl_matchup_features.py`) and fetches the whole row only for participants, whose manifests record each row's digest. A row that changes between the two reads raises instead of mixing versions. Old and new loaders returned identical matchups (equal `stable_digest`) for 2026 weeks 4, 5 and 6 on live data; transfer per run fell from 19-27 MB to 7-10 MB.
+
+Both files are pinned, so each registered study gets a forward-only pin recorded together: DFS pressure, contact and combined pin 6, pick'em combined pin 7, pick'em pressure-v2 and contact-v2 pin 4. They re-bind the same file sets; nothing else changed. The owner accepted on 2026-10-11 that the forward samples restart: captures before these pins stay under their earlier pins and no longer count toward the current evaluation. The pins fall inside the DFS holdout, so evidence now counts from the later of the holdout start and the latest pin.

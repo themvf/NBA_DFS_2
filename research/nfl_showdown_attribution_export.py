@@ -126,6 +126,7 @@ def export(db, season: int, out: Path) -> dict:
             """SELECT o.run_id, o.created_at, o.generated_lineups, o.optimizer_version, o.projection_run_id, o.settings, o.input_snapshot
                FROM nfl_dfs_optimizer_runs o JOIN nfl_dfs_slate_uploads u ON u.upload_id = o.upload_id
                WHERE u.slate_signature = %s AND o.generated_lineups > 0 AND (%s::timestamptz IS NULL OR o.created_at < %s)
+                 AND o.status IN ('complete','partial') AND NOT (o.settings ? 'researchStudy')
                ORDER BY o.created_at DESC LIMIT 1""", (c["slate_signature"], kickoff, kickoff))
         run = dict(runs[0]) if runs else None
         if run:

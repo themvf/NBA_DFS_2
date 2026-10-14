@@ -513,6 +513,51 @@ and the grader accepts only captures after the latest pin, so a re-pin
 restarts the pick'em sample. Fold such fixes into the next re-pin that is
 needed anyway.
 
+**Readers trimmed to the fields they use (2026-10-11).** After the pick'em
+and CFB fixes NBADFS still sent ~21 GB a day (a ~630 GB month against 500 GB
+free). Four readers fetched whole JSON records to use a few keys: the weekly
+projection history (`_history`, ~19k nflverse lines of ~115 fields on every
+projection run; `build_week` now asks for `OFFENSE_FIELDS` on QB/RB/WR/TE,
+58 to 11 MB a run), the alert price trail (every capture's full book map,
+~13,700 reads a day, mostly ~110 tennis alerts that cannot settle while
+tennis results are paused; now the selection book, Pinnacle and DraftKings),
+the CFB bootstrap (`SELECT *` on ~9k games and existence probes that returned
+every present key, ~230 runs a day), and the NFL DFS page's Sleeper evidence
+(`SLEEPER_EVIDENCE_FIELDS`). Verified on live data: identical week-5
+projections and manifest for 1,023 players, identical grades for 360 alerts
+in six sports, identical Sleeper evidence. Tests fail if a consumer reads a
+field outside its list, since a missing field would otherwise be read as
+zero or "no quote". Availability contexts are also re-inserted only when
+their meaning changes (`material_digest`, reasserted after `REASSERT_AFTER`,
+6 h); every hourly run had re-inserted every context. The matchup loader
+(`ingest/nfl_matchup_context.py`, the largest remaining reader at ~1.3 GB a
+day and ~6 GB on a Sunday) reads stat rows slim and refetches whole rows only
+for participants, whose manifests digest them: identical matchups for weeks
+4-6, 19-27 MB to 7-10 MB a run. That file is hash-pinned, so all six matchup
+studies were re-pinned and their forward samples restart, which the owner
+accepted (see `docs/nfl-matchup-study-operations.md`). Still open: research
+`raw_history` in `nfl_dfs_workload`/`nfl_dfs_efficiency` needs full rows only
+to hash them into `source_hash`, and the matchup-study grader reads every
+shadow prediction's payload each run.
+
+**Availability loader returns decision rows only (2026-10-11).** After the
+two-week bound, the NFL availability loader (`_availability` in
+`ingest/nfl_dfs_projections.py`) was still the largest reader in
+`pg_stat_statements`: 231k Sleeper rows per run (65M rows over Oct 4-11), one
+per player per capture, almost all repeats of the same status. The resolver
+only uses the newest qualifying row per source at each player's decision time
+(`as_of_at`, or `kickoff - 1us` once the game has started), so the query now
+returns, for Sleeper, the newest model-eligible row per player before each
+kickoff in the run and at `as_of_at`. FantasyPros and official rows are
+unchanged. Checked against the old loader on live data: 0 decision
+differences across 4,931 player decisions (week 6 now, after kickoff, after
+the week; week 5 replays before and after), rows 231k to about 1k (week 5
+replay 378k to 34k). The audit lists `qualifying_observation_ids` and
+`display_only_observation_ids` now name the loaded rows rather than every
+repeat capture; they are in `DECISION_VOLATILE_KEYS`, so reuse is unaffected.
+Rank egress readers by rows x width, and expect jsonb to be 1-4.5x larger on
+the wire than the planner's width says (it is the compressed size).
+
 ## Parallel agents: commit locally, one session pushes (2026-10-04)
 
 Every push to GitHub starts a Vercel build (a branch push builds Preview, a
@@ -8009,7 +8054,13 @@ does not size a forecasting problem; the "selected saved build" is the largest
 pregame run, not a verified entered portfolio. The follow-up test is
 pre-registered in `docs/nfl-classic-te-wr-pool-rule-study.md` (Winners vs
 Winners without the TE/WR rules, week 6 on, no verdict before 8 slates). No
-optimizer or setting change follows from these studies.
+optimizer or setting change follows from these studies. Its Showdown sibling,
+`docs/nfl-showdown-kicker-rule-study.md` (Winners vs Winners with kickers
+allowed, flagship Showdowns from week 6, same bars), shares one runner:
+`research/nfl_pool_rule_study.py --study classic|showdown`, which saves both
+arms as `research_*` optimizer runs before kickoff. Every reader that picks
+"our build" must exclude those (`NOT (settings ? 'researchStudy')`); key on
+`researchStudy`, never `buildShape` (arm A is stored as `standard`).
 
 ## NFL DFS — the page read, measured and cut (2026-10-10)
 
