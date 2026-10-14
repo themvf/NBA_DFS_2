@@ -100,8 +100,9 @@ function main() {
   // Two of ours tied with each other for 2nd and 3rd split those two places; nothing from the field changes.
   assert.equal(contestPayout([110, 110], [120, 100], table), 200_000, "our entries occupy ranks 2-3 together");
   assert.equal(contestPayout([110], [120, 110, 100], table), 100_000, "tied with one field entry for 2nd-3rd: half of 200,000");
-  // No tie: plain bracket lookup, and an entry outside the brackets earns nothing.
-  assert.equal(contestPayout([130, 50], [120, 100], table), 1_000_000);
+  // No tie: plain bracket lookup (first place plus the 4th-place bracket); outside the brackets earns nothing.
+  assert.equal(contestPayout([130, 50], [120, 100], table), 1_001_000);
+  assert.equal(contestPayout([10], [120, 100, 90, 80, 70, 60, 55, 54, 53, 52], table), 0);
   const tiedPkg = pkg({ contest: { ...pkg().contest!, payoutTable: table,
     fieldLineups: [{ playerIds: [9, 9, 9, 9, 9, 9], score: 95 }, { playerIds: [8, 8, 8, 8, 8, 8], score: 95 }] } });
   // Our first lineup scores 95 (players 1..6 = 30+20+15+12+10+8) and ties the two field entries for first;
