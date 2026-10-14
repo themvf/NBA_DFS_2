@@ -106,10 +106,10 @@ function main() {
   const tiedPkg = pkg({ contest: { ...pkg().contest!, payoutTable: table,
     fieldLineups: [{ playerIds: [9, 9, 9, 9, 9, 9], score: 95 }, { playerIds: [8, 8, 8, 8, 8, 8], score: 95 }] } });
   // Our first lineup scores 95 (players 1..6 = 30+20+15+12+10+8) and ties the two field entries for first;
-  // the second has an unscored player (7) and stays unscored, never a 0.
+  // the second (player 7 has no score and counts 0 in this module) scores 87 and takes 4th.
   const tiedRow = evaluateBacktestRow(tiedPkg, portfolio);
-  assert.equal(tiedRow.field!.netPayout, Math.round((1_000_000 + 2 * 100_000) / 3 * 100) / 100 - 2 * 5,
-    "row payout uses the shared tie rule: a third of ranks 1-3, minus two entry fees");
+  assert.equal(tiedRow.field!.netPayout, Math.round((1_000_000 + 2 * 100_000) / 3 * 100) / 100 + 1_000 - 2 * 5,
+    "row payout uses the shared tie rule: a third of ranks 1-3, plus 4th place, minus two entry fees");
 
   console.log("NFL GPP Phase 8 (point-in-time backtest): P8-AC1..AC5 and tie-split payout passed.");
 }
