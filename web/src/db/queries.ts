@@ -1,5 +1,6 @@
 import { selectedSportsbooks } from "@/lib/sportsbook-policy";
 import { NHL_FIRST_CAPTURE_DUE_MINUTES, nhlFreshnessTargetMinutes } from "@/lib/nhl-market";
+import { summarizeNhlSignals, NHL_AUDIT_VERSION, type NhlAuditFields } from "@/lib/nhl-signal-audit";
 import { getPickemEvidence } from "./pickem-evidence";
 import { usablePickemQuote, type PickemEvidence } from "@/lib/nfl/pickem-evidence";
 import { db } from ".";
@@ -11382,7 +11383,7 @@ export type MarketSignalScorecardRow = {
   roiPerBet: number | null;
   lastTriggeredAt: string | null;
   stage: "collecting" | "initial_review" | "validation_ready";
-};
+} & Partial<NhlAuditFields>;
 
 export type MarketCaptureHealth = {
   sport: "cfb" | "tennis" | "nhl";
@@ -11439,7 +11440,9 @@ export async function getLineAlerts(
            commence_time::text AS "commenceTime",
            alert_type AS "alertType", side,
            alert_prob AS "alertProb", sharp_prob AS "sharpProb",
-           details_json AS details, clv_pp AS "clvPp", outcome, origin
+           CASE WHEN sport='nhl' THEN details_json || COALESCE(grading_json->'timing','{}'::jsonb)
+             || jsonb_build_object('price_clv_pct',dk_clv_pct,'close_history_id',close_history_id)
+             ELSE details_json END AS details, clv_pp AS "clvPp", outcome, origin
     FROM line_alerts WHERE sport = ${sport}
     ${matchupIds ? (matchupIds.length ? sql`AND matchup_id IN (${sql.join(matchupIds.map((id) => sql`${id}`), sql`, `)})` : sql`AND FALSE`) : sql``}
     ${alertTypes && alertTypes.length > 0
@@ -11490,10 +11493,29 @@ export async function getMovementSignalObservations(sport: string, matchupIds: n
  * visible so silence cannot be mistaken for a missing UI row. CFB market
  * variants are rolled into the common STEAM and WALKING families. */
 export async function getMarketSignalScorecard(sport: "cfb" | "tennis" | "nhl"): Promise<MarketSignalScorecardRow[]> {
+  if (sport === "nhl") {
+    const result = await db.execute(sql`
+      SELECT a.id, a.matchup_id, a.alert_type, a.side, a.created_at::text, a.outcome,
+        a.details_json, a.grading_json, a.grading_version, a.clv_pp, a.dk_clv_pct,
+        h.captured_at::text, h.books -> (a.details_json->>'exec_book') ->> 'last_update' AS updated_at,
+        m.commence_time::text AS start_at, v.history_id AS verified_close_id, a.close_history_id
+      FROM line_alerts a LEFT JOIN game_odds_history h ON h.id=a.trigger_history_id AND h.sport='nhl' AND h.matchup_id=a.matchup_id
+      JOIN nhl_matchups m ON m.id=a.matchup_id
+      LEFT JOIN verified_clv_closes v ON v.sport='nhl' AND v.matchup_id=a.matchup_id
+      WHERE a.sport='nhl' AND a.origin='prospective' ORDER BY a.id`);
+    const num = (v: unknown) => v == null || !Number.isFinite(Number(v)) ? null : Number(v);
+    return summarizeNhlSignals(result.rows.map(r => {
+      const d=(r.details_json ?? {}) as Record<string, unknown>, g=(r.grading_json ?? {}) as Record<string, unknown>;
+      const verified=r.grading_version===NHL_AUDIT_VERSION && r.verified_close_id!=null && r.close_history_id===r.verified_close_id;
+      return {id:Number(r.id),matchupId:Number(r.matchup_id),alertType:String(r.alert_type),side:String(r.side),
+        createdAt:String(r.created_at),outcome:r.outcome==null?null:String(r.outcome),entryDecimal:num(d.exec_decimal),
+        entryVerified:g.entry_verified===true,clvPp:verified?num(r.clv_pp):null,priceClvPct:verified?num(r.dk_clv_pct):null,
+        intervalMinutes:num(d.interval_minutes),capturedAt:r.captured_at==null?null:String(r.captured_at),
+        updatedAt:r.updated_at==null?null:String(r.updated_at),startAt:r.start_at==null?null:String(r.start_at)};
+    }));
+  }
   // NHL runs only the four generic moneyline detectors (model/line_alerts.py).
-  const signalTypes = sport === "nhl"
-    ? ["pinnacle_divergence", "dk_value", "steam", "walking"]
-    : sport === "cfb"
+  const signalTypes = sport === "cfb"
     ? ["steam", "walking", "reversal", "reference_led", "price_pressure", "pinnacle_divergence", "book_disagreement", "market_convergence", "late_move", "key_cross"]
     : ["steam", "walking", "reversal", "reference_led", "price_pressure", "pinnacle_divergence", "book_disagreement", "market_convergence", "late_move", "favorite_flip"];
   const rows = await db.execute(sql`

@@ -128,6 +128,45 @@ hourly NHL refresh.
   Polymarket book. The Python and web detector registries are parity-tested
   for NHL.
 
+### Audit repair (2026-10-12)
+
+`model/nhl_signal_audit.py` grades NHL under `nhl-moneyline-audit-v2`.
+Execution-price CLV and retail-mean probability CLV use the same immutable,
+verified close. The selected book's complete moneyline pair must be in that
+exact row; missing or invalid quotes remain ungraded. Quote persistence starts
+at `trigger_history_id`, not the last capture before alert creation.
+
+New alerts freeze the capture time, sportsbook update time, decision time and
+scheduled start. Capture and book must precede the decision and be no more
+than five minutes old for a fresh observation. Stale observations stay in the
+research ledger; NHL live-price notifications skip them. No quote is a verified
+fill. Paper entries recheck time on click and stop at scheduled start.
+
+The NHL scorecard shows both CLV definitions, priced denominators, distinct
+games, repeated/opposing alerts, timing coverage, fresh-only paper returns and
+steam interval subsets. Its 95% intervals resample entire games with a fixed
+seed and 2,000 replicates; they describe this sample, not calibration or an
+independent-bet sample. The all-alert row is not a portfolio.
+
+Run `python -m research.nhl_market_audit --output PATH` for a read-only audit.
+`--repair` saves a before snapshot, regrades in the existing append-only grade
+ledger, verifies immutable entry/prior-grade preservation, and repeats the
+pass to check settled-grade idempotency. It never scans, notifies, buys odds
+or initializes the global schema. The October 12 repair processed 69 begun-game
+alerts, retained 74 original entries and 136 prior grades, and appended 69
+corrected grades. Original outcome and paper profit totals reconciled.
+
+[Acceptance criteria](nhl-market-audit-v2.md) and the separately frozen
+[forward protocol](nhl-forward-validation-v1.json) register the unchanged four
+detectors starting `2026-10-13T02:09:58Z`. Historical results remain development
+evidence. The hourly refresh saves a read-only forward report as a GitHub
+Actions artifact for 90 days. The primary population uses the first fresh,
+verified priced alert per family/game, compares it with the favorite at the
+same book and trigger capture, lists null/missing observations, and requires
+100 settled independent games and 30 game dates before manual review. Reaching
+the floor never promotes a detector automatically. Goalie and injury inputs
+remain explicitly unavailable in this market-only experiment.
+
 ## Deferred (decided 2026-09-29: ship on Vegas odds only)
 
 The launch deliberately uses only the odds pipeline above. Everything below is

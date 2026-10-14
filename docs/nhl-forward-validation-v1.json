@@ -1,0 +1,20 @@
+{
+  "protocol_version": "nhl-forward-validation-v1",
+  "registered_at": "2026-10-13T02:09:58Z",
+  "starts_at": "2026-10-13T02:09:58Z",
+  "signal_version": "nhl-moneyline-v1",
+  "grading_version": "nhl-moneyline-audit-v2",
+  "signal_types": ["pinnacle_divergence", "dk_value", "steam", "walking"],
+  "thresholds": {"pinnacle_gap_pp": 2.0, "dk_ev": 0.02, "steam_books": 3, "steam_move_pp": 1.5, "walking_pp": 2.0, "dk_max_decimal": 11.0},
+  "selection": "First recorded alert per signal family and canonical game, ordered by created_at then id; retain repeats and opposing sides in the audit ledger",
+  "primary_population": "Fresh, verified, priced, pregame first alerts; show all stale, unknown, unpriced and missing-close observations separately",
+  "benchmark": "Same-game, same-trigger-capture, same-execution-book moneyline favorite; market probability is a reference, not a signal forecast",
+  "steam_intervals": ["<=30m", ">30-180m", ">180m", "unknown"],
+  "uncertainty": "95% game-cluster percentile bootstrap, 2000 replicates, seed 20261012; no independence assumption between same-game alerts",
+  "review_floor": {"settled_independent_games_per_family": 100, "distinct_game_dates": 30},
+  "promotion": "Manual review only after floor; positive same-book prospective CLV and its lower game-cluster bound, stable fresh-quote returns against the matched market benchmark, coverage review, and further untouched out-of-sample confirmation; never automatic from count alone",
+  "context_scope": "market_only",
+  "starting_goalies": "not_captured",
+  "injuries": "not_captured",
+  "rule_changes": "New protocol version and future start boundary; never retrofit development results into this forward cohort"
+}
