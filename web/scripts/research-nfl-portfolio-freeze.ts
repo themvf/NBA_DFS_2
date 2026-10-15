@@ -1,5 +1,5 @@
 /**
- * Freeze gate for nfl-portfolio-objective-v1 (docs/nfl-portfolio-objective-study.md).
+ * Freeze gate for nfl-portfolio-objective-v2 (docs/nfl-portfolio-objective-study.md).
  *
  * Runs the challenger's joint draws and field model on frozen discovery
  * inputs (the attribution studies' week-4/5 snapshots, the only ones carrying
@@ -17,7 +17,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { drawJointBank, sampleField, fieldSummary, slateFromSnapshot, PORTFOLIO_OBJECTIVE, PORTFOLIO_OBJECTIVE_VERSION,
-  JOINT_COPULA_VERSION, FIELD_MODEL_VERSION } from "../src/lib/nfl-dfs/portfolio-objective";
+  JOINT_COPULA_VERSION, FIELD_MODEL_VERSION, FIELD_STACKING } from "../src/lib/nfl-dfs/portfolio-objective";
 
 type Spec = {
   slates: Array<{ file: string; format: "classic" | "showdown"; label: string; contestId: string; entries: number;
@@ -40,7 +40,7 @@ const rows = spec.slates.map(s => {
   const miss = s.realized.top1Pct - implied.top1Pct.p50;
   return { label: s.label, format: s.format, contestId: s.contestId, entries: s.entries, players: d.players.length,
     fallbackPlayers: bank.fallbackPlayerIds.length, meanNotMatched: bank.meanNotMatchedIds.length,
-    fieldCalibration: field.calibration, implied, realized: s.realized,
+    fieldCalibration: field.calibration, fieldShapes: field.shapes, implied, realized: s.realized,
     top1PctMiss: Math.round(miss * 100) / 100, allowedMiss: Math.round(sd * 100) / 100,
     pass: Math.abs(miss) <= sd,
     inside90: s.realized.top1Pct >= implied.top1Pct.p5 && s.realized.top1Pct <= implied.top1Pct.p95 };
@@ -52,9 +52,9 @@ const formats = Object.fromEntries((["classic", "showdown"] as const).map(f => {
     spread: spec.spreads[f] }];
 }));
 const out = { version: PORTFOLIO_OBJECTIVE_VERSION, jointVersion: JOINT_COPULA_VERSION, fieldVersion: FIELD_MODEL_VERSION,
-  constants: PORTFOLIO_OBJECTIVE, frozenAt: new Date().toISOString(),
+  constants: PORTFOLIO_OBJECTIVE, fieldStacking: FIELD_STACKING, frozenAt: new Date().toISOString(),
   rule: "Per format: frozen only if on every checked slate |realized top-1% - implied median top-1%| <= the format's week-to-week SD of realized top-1% across stored flagships. Realized values are never used to tune anything.",
   moduleHashes: Object.fromEntries(spec.moduleFiles.map(f => [f, sha(f)])), formats, slates: rows };
 writeFileSync(outPath, JSON.stringify(out, null, 1), { flag: "wx" });
-for (const r of rows) console.log(`${r.pass ? "PASS" : "FAIL"} ${r.label}: realized top1% ${r.realized.top1Pct} vs implied ${r.implied.top1Pct.p50} (p5-p95 ${r.implied.top1Pct.p5}-${r.implied.top1Pct.p95}); miss ${r.top1PctMiss} allowed ${r.allowedMiss}; field calibration max dev ${r.fieldCalibration.maxAbsDeviationPct}pp`);
+for (const r of rows) console.log(`${r.pass ? "PASS" : "FAIL"} ${r.label}: realized top1% ${r.realized.top1Pct} vs implied ${r.implied.top1Pct.p50} (p5-p95 ${r.implied.top1Pct.p5}-${r.implied.top1Pct.p95}); miss ${r.top1PctMiss} allowed ${r.allowedMiss}; field calibration max dev ${r.fieldCalibration.maxAbsDeviationPct}pp; shapes ${JSON.stringify(r.fieldShapes[r.format])}`);
 console.log(JSON.stringify(formats));

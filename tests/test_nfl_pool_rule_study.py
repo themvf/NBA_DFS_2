@@ -53,7 +53,7 @@ def test_enrollment_scope_week_for_classic_game_for_showdown():
 
 def test_portfolio_study_is_registered_with_its_own_version_and_freeze():
     spec = STUDIES["portfolio"]
-    assert spec["version"] == "nfl-portfolio-objective-v1" and spec["format"] == "any" and spec["uniquePerGames"]
+    assert spec["version"] == "nfl-portfolio-objective-v2" and spec["format"] == "any" and spec["uniquePerGames"]
     assert spec["freeze"].endswith("freeze.json")
     assert len({s["version"] for s in STUDIES.values()}) == len(STUDIES)
 

@@ -13,7 +13,7 @@ import { validateNflLineup } from '../src/lib/nfl-dfs/lineups';
 export type Raw = Record<string, any>;
 /** One entry per pre-registered study; the runner's STUDIES registry must match. */
 export const STUDIES = { classic: 'nfl-classic-te-wr-pool-v1', showdown: 'nfl-showdown-kicker-rule-v1',
-  portfolio: 'nfl-portfolio-objective-v1' } as const;
+  portfolio: 'nfl-portfolio-objective-v2' } as const;
 export const STUDY = STUDIES.classic;
 type StudyKey = keyof typeof STUDIES;
 function studyOf(input: Raw): StudyKey {
@@ -151,7 +151,7 @@ function persistLineup(l: ReturnType<typeof optimizeNflLineups>['lineups'][numbe
 }
 
 /**
- * nfl-portfolio-objective-v1 (docs/nfl-portfolio-objective-study.md).
+ * nfl-portfolio-objective-v2 (docs/nfl-portfolio-objective-study.md).
  * Arm A rebuilds the source build from its own frozen settings (Winners
  * resolved if it was Winners). Arm B keeps every setting and picks the same
  * number of lineups from a candidate pool the production optimizer generated
@@ -224,7 +224,7 @@ export function buildPortfolioPair(input: Raw, version: string): PairResult {
   const thresholdEval01 = fieldThresholds(field, evaluation, PORTFOLIO_OBJECTIVE.secondaryFraction);
   const modelRecord = { draws: selection.draws, seeds: { selection: selection.seed, evaluation: evaluation.seed, field: field.seed },
     fallbackPlayerIds: selection.fallbackPlayerIds, meanNotMatchedIds: selection.meanNotMatchedIds,
-    fieldLineups: field.lineups.length, fieldAttempts: field.attempts, fieldCalibration: field.calibration,
+    fieldLineups: field.lineups.length, fieldAttempts: field.attempts, fieldCalibration: field.calibration, fieldShapes: field.shapes,
     impliedField: fieldSummary(field, evaluation) };
   const forecast = (lineups: ReturnType<typeof optimizeNflLineups>['lineups']) => ({
     successTop1Pct: forecastSuccess(lineups.map(rosterOf), evaluation, thresholdEval),

@@ -6,9 +6,9 @@ python -m research.nfl_pool_rule_study --study showdown --source-run UUID --flag
 Three pre-registered studies share this runner:
   classic    nfl-classic-te-wr-pool-v1   docs/nfl-classic-te-wr-pool-rule-study.md
   showdown   nfl-showdown-kicker-rule-v1 docs/nfl-showdown-kicker-rule-study.md
-  portfolio  nfl-portfolio-objective-v1  docs/nfl-portfolio-objective-study.md
+  portfolio  nfl-portfolio-objective-v2  docs/nfl-portfolio-objective-study.md
              (either format; --main-slate for Classic, --flagship-showdown for Showdown;
-              --save needs a passing freeze for that format in artifacts/nfl-portfolio-objective-v1/freeze.json)
+              --save needs a passing freeze for that format in artifacts/nfl-portfolio-objective-v2/freeze.json)
 
 Explicit source selection and population attestation avoid guessing which build
 was entered. Saves only new research_* optimizer runs, atomically, before lock,
@@ -43,11 +43,11 @@ STUDIES = {
                  "doc": "docs/nfl-showdown-kicker-rule-study.md", "priorOpportunity": False,
                  # Several Showdowns a week: enrollment is unique per game.
                  "uniquePerGames": True},
-    "portfolio": {"version": "nfl-portfolio-objective-v1", "format": "any", "games": "any",
+    "portfolio": {"version": "nfl-portfolio-objective-v2", "format": "any", "games": "any",
                   "doc": "docs/nfl-portfolio-objective-study.md",
                   # Pool rules only matter when the source build was Winners.
                   "priorOpportunity": "winners", "uniquePerGames": True,
-                  "freeze": "artifacts/nfl-portfolio-objective-v1/freeze.json"},
+                  "freeze": "artifacts/nfl-portfolio-objective-v2/freeze.json"},
 }
 FREEZE_MODULES = ["web/src/lib/nfl-dfs/portfolio-objective.ts", "web/src/lib/nfl-dfs/captain-simulation.ts",
                   "web/scripts/nfl-pool-rule-study-core.ts"]

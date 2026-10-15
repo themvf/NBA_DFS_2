@@ -8102,8 +8102,22 @@ contests and prints pooled rates. Five Millionaires, 1.49M entries: 90.2% of
 the field stacks its QB with a teammate (top 1%: 95.3%), one / two / three-plus
 pass catchers 52.5 / 28.3 / 1.9%, QB+TE 28.3%, bring-back 45.2% (top 1%:
 61.5%). Showdown top users: 3-3 / 4-2 / 5-1 = 32 / 46 / 21%, kicker in 41%,
-two QBs in 36%. The table is in the study doc. A v2 sampler reads these as
-stated parameters and re-runs the freeze gate under a new version.
+two QBs in 36%. The table is in the study doc.
+
+**v2 (`nfl-portfolio-objective-v2`, field `nfl-field-stacked-v2`, 2026-10-15)
+draws each opponent's shape from those rates (`FIELD_STACKING`, frozen in the
+module) before the ownership fill, records the sampled lineups' realized
+shapes, and FAILED the same gate on the same two slates**
+(`artifacts/nfl-portfolio-objective-v2/freeze.json`): w5 Classic miss 24.5
+(v1 28.5), PIT@CLE 24.1 (v1 24.2). Stacking is worth about 4 points of
+Classic tail and nothing in Showdown, so it was a real limit and not the
+cause. The Showdown misses are LEVEL (PIT@CLE realized median 89.6 vs implied
+69.2), i.e. the projections under the game played, not the field; and the
+registered rule (one realized outcome within the week-to-week SD of the
+implied median, every slate) is harder than it reads: every realized top 1%
+sits inside the model's own p5-p95. Both observations are post hoc and change
+nothing; a different rule is a v3 the owner registers before new data. The
+runner still refuses `--save` for both formats.
 
 **Balanced Showdown plan: the low-scoring K/DST share is 3%, not 10%, and a
 kicker-less pool skips it (2026-10-15).** On the week-6 SEA@DEN Winners-shape
