@@ -8091,6 +8091,27 @@ payout brackets, roster coverage and selection-bias notes for every stored
 flagship). `backtest.ts` payouts now split ties and rank our entries against
 each other (research only; nothing shipped read it).
 
+**The stacking rate is measured (2026-10-15).** `model/nfl_dfs_field_stacks.py`
+(`nfl-dfs-field-stacks-v1`) reads every stat-api standings row's stack label
+for Classic (the whole field; stat-api labels NO showdown row, checked live)
+and the stored top-100 users' lineups for Showdown (`population: top_users`,
+outcome-selected, never the field). The weekly flagship import stores one row
+per contest in `nfl_dfs_field_structure`; `python -m
+research.nfl_field_stack_rates --season 2026 [--backfill]` fills older
+contests and prints pooled rates. Five Millionaires, 1.49M entries: 90.2% of
+the field stacks its QB with a teammate (top 1%: 95.3%), one / two / three-plus
+pass catchers 52.5 / 28.3 / 1.9%, QB+TE 28.3%, bring-back 45.2% (top 1%:
+61.5%). Showdown top users: 3-3 / 4-2 / 5-1 = 32 / 46 / 21%, kicker in 41%,
+two QBs in 36%. The table is in the study doc. A v2 sampler reads these as
+stated parameters and re-runs the freeze gate under a new version.
+
+**Balanced Showdown plan: the low-scoring K/DST share is 3%, not 10%, and a
+kicker-less pool skips it (2026-10-15).** On the week-6 SEA@DEN Winners-shape
+build the quota could only be met with defenses and stalled the owner's 100 at
+93 (1 of 10 built); with kickers allowed the challenger arm filled 5 of 10.
+`balancedArchetypePlan` now folds the share into Standard ceiling, with a
+note, whenever the pool has no kicker.
+
 ## NFL DFS — the page read, measured and cut (2026-10-10)
 
 Opening a saved slate on `/dfs/nfl` took 12-26 s, all of it in one server

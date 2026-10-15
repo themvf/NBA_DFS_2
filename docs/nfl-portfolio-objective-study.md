@@ -181,3 +181,37 @@ lineups it kept.
 
 The grader (`research/nfl_pool_rule_grade.py`, shared with the pool-rule
 studies) must be committed before the first 8-slate look.
+
+## Field stacking rate, measured (2026-10-15; the input v2 needs)
+
+The freeze gate failed on a field that does not stack. The stacking rate is
+now measured, not assumed: `model/nfl_dfs_field_stacks.py`
+(`nfl-dfs-field-stacks-v1`) reads every stat-api standings row's stack label
+(Classic) and the stored top finishers' lineups (Showdown, because stat-api
+labels no showdown row: checked live on three flagships at rank 1 and rank
+50,000), and the weekly flagship import stores one row per contest in
+`nfl_dfs_field_structure`. `python -m research.nfl_field_stack_rates --season
+2026 [--backfill]` fills older contests and prints the pooled rates.
+
+Classic, the whole field, five Millionaires (weeks 1-5, 1,490,188 entries):
+
+| | all entries | top 1% | top 100 |
+|---|---:|---:|---:|
+| QB stacked with a teammate | 90.2% | 95.3% | 97.0% |
+| QB + 1 / 2 / 3+ pass catchers | 52.5 / 28.3 / 1.9% | 45.2 / 40.7 / 5.3% | 48.2 / 40.6 / 5.4% |
+| QB + TE | 28.3% | 36.2% | 41.4% |
+| QB + RB | 18.5% | 12.1% | 6.8% |
+| bring-back (any) | 45.2% | 61.5% | 57.2% |
+
+Showdown, the held top-100 users' every lineup (eight flagships, 40,891
+lineups; outcome-selected, NOT the field): team split 3-3 32% / 4-2 46% / 5-1
+21%; a QB in 94.5% of lineups, two QBs in 35.6%; the QB with 2 / 3+ teammates
+42% / 34%; a kicker in 41.3%, a DST in 33.9%; captain WR 36% / RB 30% / QB 22%.
+Within that population the top 100 ranks lean 3-3 (57%) and use fewer kickers
+(29%), which is where the Winners shape's 5-1 / 3-3 rule came from.
+
+What this licenses: a v2 field sampler that draws a QB stack for ~90% of
+Classic opponents with the catcher and bring-back mix above (and the Showdown
+split, flagged as a top-user estimate), then re-runs the freeze gate as a new
+version. What it does not license: tuning any of these against realized
+thresholds, or reading the Showdown numbers as the field's.
