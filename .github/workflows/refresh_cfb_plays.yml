@@ -2,9 +2,9 @@ name: Refresh Current CFB Plays and Drives
 
 on:
   schedule:
-    # Friday catches Thursday, Saturday freezes the main slate, Sunday grades it.
-    - cron: "17 10 * 8-12 0,5,6"
-    - cron: "17 10 * 1-2 0,5,6"
+    # Dispatcher owns daily and pregame cadence; daily GitHub fallback covers every playing day.
+    - cron: "17 10 * 8-12 *"
+    - cron: "17 10 * 1-2 *"
   workflow_dispatch:
     inputs:
       bootstrap:
@@ -32,6 +32,12 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements.txt
+      - name: Record refresh boundary
+        run: echo "CFB_REFRESH_STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+      - name: Refresh canonical schedule and scores
+        run: |
+          season=$(python -c "from ingest.cfb_plays import football_season_year; print(football_season_year())")
+          python -m ingest.cfb_schedule --year "$season" --refresh-schedule
       - name: Refresh completed games
         shell: bash
         env:
@@ -42,12 +48,16 @@ jobs:
           else
             python -m ingest.cfb_plays --current-season --recent-completed-weeks 2
           fi
+      - name: Check eligible teams have complete current-season inputs
+        run: python -m research.cfb_forecast_health --output artifacts/cfb/forecast-input-health.json
       - name: Freeze research forecasts and validation
         run: python -m research.cfb_forecast_v1 --publish --output artifacts/cfb/forecast-validation.json
       - name: Freeze possession challenger and validation
         run: python -m research.cfb_forecast_v2 --publish --output artifacts/cfb/challenger-validation.json
       - name: Freeze opponent-adjusted play challenger
         run: python -m research.cfb_forecast_v3 --publish --output artifacts/cfb/opponent-ppa-validation.json
+      - name: Verify all three models published for upcoming eligible games
+        run: python -m research.cfb_forecast_health --since "$CFB_REFRESH_STARTED" --output artifacts/cfb/forecast-publication-health.json
       - name: Grade frozen forecasts and market anchor
         run: python -m research.cfb_prospective_evaluation --publish --output artifacts/cfb/prospective-evaluation.json
       - uses: actions/upload-artifact@v4
@@ -55,6 +65,7 @@ jobs:
         with:
           name: current-cfb-play-coverage
           path: |
+            artifacts/cfb/forecast-*-health.json
             artifacts/cfb/play-audits
             artifacts/cfb/forecast-validation.json
             artifacts/cfb/challenger-validation.json

@@ -28,6 +28,8 @@ export const WORKFLOW_REF = "main";
 export interface DispatchContext {
   /** NFL kickoffs in the next few hours; null when the schedule could not be read. */
   nflKickoffs: Date[] | null;
+  /** Upcoming CFB kickoffs; null when the schedule read fails. */
+  cfbKickoffs?: Date[] | null;
   /**
    * Opponent-capture requests waiting for a worker (pending past the dispatch
    * grace, or with an expired lease). Null or absent when it could not be read.
@@ -108,6 +110,17 @@ export function nflPropCaptureDue(now: Date, context: DispatchContext): boolean 
   return (context.nflKickoffs ?? []).some((kickoff) => {
     const lead = kickoff.getTime() - now.getTime();
     return lead > PROP_CAPTURE_LEAD_MS.min && lead <= PROP_CAPTURE_LEAD_MS.max;
+  });
+}
+
+/** Daily 10:07 UTC, plus one tick 3–3.25 hours before each kickoff group. */
+export function cfbForecastDue(now: Date, context: DispatchContext): boolean {
+  const month = now.getUTCMonth() + 1;
+  if (month > 2 && month < 8) return false;
+  if (now.getUTCHours() === 10 && hourTick(now)) return true;
+  return (context.cfbKickoffs ?? []).some((kickoff) => {
+    const lead = kickoff.getTime() - now.getTime();
+    return lead > 3 * 3600_000 && lead <= 3.25 * 3600_000;
   });
 }
 
@@ -200,6 +213,12 @@ export const DISPATCH_JOBS: readonly DispatchJob[] = [
     // started it only every 4-6 hours (2026-09-23..29). Free scores + stored quotes, no credits.
     due: (now) => { const m = now.getUTCMonth() + 1; return m >= 3 && m <= 11 && hourTick(now); },
     why: "Grades recorded MLB terminal signals once games are final.",
+  },
+  {
+    key: "cfb-forecasts",
+    workflow: "refresh_cfb_plays.yml",
+    due: cfbForecastDue,
+    why: "Daily CFB forecasts and a pregame refresh about three hours before each kickoff group, with input and publication checks.",
   },
   {
     key: "cfb-terminal",

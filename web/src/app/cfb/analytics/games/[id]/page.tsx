@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCfbAnalyticsGame } from "@/db/cfb-analytics";
-import { AnalyticsShell, formatEt, signed, TeamFeaturePanel } from "../../_components";
+import { AnalyticsShell, ForecastFreshness, formatEt, signed, TeamFeaturePanel } from "../../_components";
 import styles from "../../analytics.module.css";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +39,7 @@ export default async function CfbAnalyticsGamePage({ params }: { params: Promise
       </div>
       {quoteAgeHours != null && quoteAgeHours > 6 && <p className={styles.empty}>Quote age: {quoteAgeHours.toFixed(1)} hours. Check the Line Terminal for a newer price before comparing it with a forecast.</p>}
     </section>
+    <ForecastFreshness game={game} />
     <section className={styles.section}>
       <div className={styles.sectionHead}><h2>Research score forecast</h2><p>{game.forecast ? `${game.forecast.version} · frozen ${formatEt(game.forecast.generatedAt, true)}` : "Awaiting a pregame play and drive snapshot"}</p></div>
       {game.forecast ? <>

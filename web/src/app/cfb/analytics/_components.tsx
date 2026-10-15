@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { CfbAnalyticsFeature, CfbAnalyticsGame, CfbAnalyticsTeam } from "@/db/cfb-analytics";
+import { cfbForecastFreshness } from "@/lib/cfb-forecast-freshness";
 import styles from "./analytics.module.css";
 
 export function AnalyticsShell({ eyebrow, title, description, children }: {
@@ -86,6 +87,20 @@ export function TeamFeaturePanel({ team }: { team: CfbAnalyticsTeam }) {
   </article>;
 }
 
+export function ForecastFreshness({ game }: { game: CfbAnalyticsGame }) {
+  return <div className={styles.provenance}>
+    {([['Score model', game.forecast], ['Possession model', game.challenger]] as const).map(([name, forecast]) => {
+      const freshness = cfbForecastFreshness(forecast?.generatedAt ?? null, game.kickoff, game.observedAt);
+      return <p key={name} className={freshness.stale ? styles.freshnessWarning : undefined}>
+        <strong>{name}: {freshness.label}</strong>{forecast && ` · generated ${formatEt(forecast.generatedAt, true)}`}
+        {forecast && ` · FBS games: ${game.away.name} ${forecast.awayCurrentGames}, ${game.home.name} ${forecast.homeCurrentGames}`}
+      </p>;
+    })}
+    <p>Odds captured: {game.capturedAt ? formatEt(game.capturedAt, true) : "unavailable"}. Forecast age is separate from input completeness.</p>
+    <p>Injuries and weather are not included in these research forecasts.</p>
+  </div>;
+}
+
 export function GameCard({ game }: { game: CfbAnalyticsGame }) {
   const state = game.completed ? "Final" : game.kickoffTbd ? "Time TBD" : formatEt(game.kickoff, true);
   return <article className={styles.gameCard}>
@@ -96,6 +111,7 @@ export function GameCard({ game }: { game: CfbAnalyticsGame }) {
       <span>Total <strong>{game.total == null ? "—" : game.total.toFixed(1)}</strong></span>
       <span>Home ML <strong>{game.homeMoneyline == null ? "—" : signed(game.homeMoneyline, 0)}</strong></span>
     </div>
+    <ForecastFreshness game={game} />
     <Link className={styles.textLink} href={`/cfb/analytics/games/${game.id}`}>Open game analysis →</Link>
   </article>;
 }

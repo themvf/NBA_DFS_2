@@ -40,6 +40,7 @@ async function handle(request: NextRequest) {
   // A fallback that only logs is invisible: the response (and so the heartbeat
   // detail on /health) says when this tick ran without the kickoff schedule.
   const warnings = context.nflKickoffs === null ? ["NFL kickoffs could not be read; near-kickoff quarter-hour ticks were skipped on this tick"] : [];
+  if (context.cfbKickoffs === null) warnings.push("CFB kickoffs could not be read; pregame forecast refresh skipped, daily refresh remains scheduled");
   const warned = warnings.length ? { warnings } : {};
   const jobs = dueJobs(now, context);
   if (!jobs.length) return NextResponse.json({ ok: true, at: now.toISOString(), ...warned, dispatched: [], skipped: "no job due on this tick" });
@@ -68,7 +69,21 @@ async function handle(request: NextRequest) {
 }
 
 async function dispatchContext(now: Date): Promise<DispatchContext> {
-  return { nflKickoffs: await nflKickoffs(now), nflDefensiveCapturesPending: await nflDefensiveCapturesPending(now) };
+  const [nfl, cfb, pending] = await Promise.all([nflKickoffs(now), cfbKickoffs(now), nflDefensiveCapturesPending(now)]);
+  return { nflKickoffs: nfl, cfbKickoffs: cfb, nflDefensiveCapturesPending: pending };
+}
+
+async function cfbKickoffs(now: Date): Promise<Date[] | null> {
+  try {
+    const rows = await db.execute(sql`SELECT DISTINCT commence_time FROM cfb_matchups
+      WHERE completed = FALSE AND start_time_tbd = FALSE
+        AND commence_time > ${now.toISOString()}::timestamptz
+        AND commence_time <= ${new Date(now.getTime() + KICKOFF_LOOKAHEAD_MS).toISOString()}::timestamptz`);
+    return rows.rows.map((row) => new Date(String(row.commence_time))).filter((d) => Number.isFinite(d.getTime()));
+  } catch (error) {
+    console.error("cron dispatch: could not read CFB kickoffs", error);
+    return null;
+  }
 }
 
 async function nflKickoffs(now: Date): Promise<Date[] | null> {

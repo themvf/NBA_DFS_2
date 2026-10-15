@@ -16,3 +16,5 @@
 .breadcrumb{font-size:13px;color:var(--muted);margin:0 0 14px}.breadcrumb a{color:var(--accent);text-decoration:none}.breadcrumb a:hover{text-decoration:underline}
 @media(max-width:850px){.threeGrid,.teamList{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:650px){.hero{padding:24px 18px}.grid,.threeGrid,.teamList{grid-template-columns:1fr}.sectionHead{display:block}.sectionHead p{margin-top:6px}}
+
+.freshnessWarning{color:#ffd18a;border-left:3px solid #ffd18a;padding-left:10px}
