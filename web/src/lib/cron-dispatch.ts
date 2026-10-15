@@ -124,6 +124,25 @@ export function cfbForecastDue(now: Date, context: DispatchContext): boolean {
   });
 }
 
+/**
+ * Game Leaders republish lead: one tick 150-165 minutes before each kickoff
+ * group. The run takes ~10 minutes and Vercel then deploys the page file, so
+ * the new forecast is live before that group's T-75 prop capture prices it.
+ */
+export const GAME_LEADERS_LEAD_MS = { min: 150 * 60 * 1000, max: 165 * 60 * 1000 };
+
+/**
+ * Game Leaders: the weekly build on Wednesday 14:07 UTC (last week's stats are
+ * in by then), then a fresh-availability republish before every kickoff group.
+ */
+export function nflGameLeadersDue(now: Date, context: DispatchContext): boolean {
+  if (now.getUTCDay() === 3 && now.getUTCHours() === 14 && hourTick(now)) return true;
+  return (context.nflKickoffs ?? []).some((kickoff) => {
+    const lead = kickoff.getTime() - now.getTime();
+    return lead > GAME_LEADERS_LEAD_MS.min && lead <= GAME_LEADERS_LEAD_MS.max;
+  });
+}
+
 export const DISPATCH_JOBS: readonly DispatchJob[] = [
   {
     key: "mlb-odds-capture",
@@ -175,6 +194,12 @@ export const DISPATCH_JOBS: readonly DispatchJob[] = [
     due: nflPropDayAheadDue,
     inputs: { event_limit: "0", max_credits: "420", within_hours: "36", day_ahead: "true" },
     why: "The same prop lines the day before (Wednesday for Thursday, Saturday for Sunday, Sunday for Monday), so an early build has real lines.",
+  },
+  {
+    key: "nfl-game-leaders",
+    workflow: "refresh_nfl_game_leaders.yml",
+    due: nflGameLeadersDue,
+    why: "Game Leaders page: the weekly build Wednesday, then fresh availability before each kickoff group; commits web/src/data/game-leaders.json.",
   },
   {
     key: "nfl-dfs-postweek",

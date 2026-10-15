@@ -8184,7 +8184,11 @@ own projections, with DraftKings lines captured as a yardstick, never as an inpu
   `model/nfl_game_leaders_calibration.py`, held to the frozen fit by a test):
   roles blend last season's per-game usage as 2 pseudo-games, and each market's
   leader shares are tempered (rushing 1.30, receiving 1.05, receptions 1.15,
-  total 1.25; the raw share is kept as `win_share_raw`). On the untouched 2022
+  total 1.25; the raw share is kept as `win_share_raw`). The page
+  (`web/src/data/game-leaders.json`) republishes itself since 2026-10-15:
+  `research/nfl_game_leaders_auto.py` via `refresh_nfl_game_leaders.yml`, job
+  `nfl-game-leaders` (Wednesday 14:07 UTC, then 150-165 min before each kickoff
+  group); see `docs/nfl-game-leaders-model.md`. On the untouched 2022
   season the calibrated model beat the recent-average baseline for rushing and
   total yards only; receiving yards and receptions carry no claim. Research
   code uses `Settings()` (raw); production uses `production_settings()`.
