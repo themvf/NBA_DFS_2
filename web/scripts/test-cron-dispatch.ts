@@ -211,6 +211,15 @@ assert.ok(!keys("2026-10-14T21:52:00Z", { nflKickoffs: [thu] }).includes("nfl-pr
 assert.ok(keys("2026-10-11T22:07:00Z", { nflKickoffs: [new Date("2026-10-13T00:15:00Z")] }).includes("nfl-prop-capture-day-ahead"), "Sunday evening for Monday night");
 assert.ok(!keys("2026-10-14T22:07:00Z", { nflKickoffs: null }).includes("nfl-prop-capture-day-ahead"), "unreadable schedule: no blind paid capture");
 assert.equal(DISPATCH_JOBS.find((j) => j.key === "nfl-prop-capture-day-ahead")?.inputs?.day_ahead, "true");
+// Game Leaders: Wednesday's weekly build, then once per kickoff group 150-165 minutes out.
+assert.ok(keys("2026-10-14T14:07:00Z").includes("nfl-game-leaders"), "Wednesday 14:07 UTC weekly build");
+assert.ok(!keys("2026-10-14T14:22:00Z").includes("nfl-game-leaders"), "the weekly build fires once");
+const sunEarly = { nflKickoffs: [new Date("2026-10-18T17:00:00Z")] };
+const leaderTicks = Array.from({ length: 96 }, (_, i) => new Date(Date.parse("2026-10-18T00:07:00Z") + i * 900_000))
+  .filter((at) => dueJobs(at, sunEarly).some((j) => j.key === "nfl-game-leaders")).map((at) => at.toISOString());
+assert.deepEqual(leaderTicks, ["2026-10-18T14:22:00.000Z"], "one republish per kickoff group, 2h38m before the 1 PM ET games");
+assert.ok(keys("2026-10-15T21:37:00Z", { nflKickoffs: [thu] }).includes("nfl-game-leaders"), "Thursday night: 2h38m before kickoff");
+assert.ok(!keys("2026-10-18T14:22:00Z", { nflKickoffs: null }).includes("nfl-game-leaders"), "unreadable schedule: weekly build only");
 
 console.log(`Cron dispatch: ${DISPATCH_JOBS.length} bridged workflows on a 15-minute tick; half-hour cadences unchanged, NFL availability every 15 minutes before a kickoff.`);
 }).catch((e) => { console.error(e); process.exit(1); });

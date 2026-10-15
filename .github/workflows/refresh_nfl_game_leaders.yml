@@ -1,0 +1,58 @@
+name: Publish NFL Game Leaders week
+
+# Dispatched by /api/cron/dispatch (job nfl-game-leaders): Wednesday 14:07 UTC
+# for the weekly build, then 150-165 minutes before each kickoff group with
+# fresh availability. The schedule below is a thin fallback for a broken bridge.
+# research.nfl_game_leaders_auto reuses the week's capture, keeps started games
+# frozen, gates each game and lists anything it could not refresh.
+on:
+  schedule:
+    - cron: "41 15 * * 3"
+    - cron: "41 14 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-nfl-game-leaders
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Capture availability and publish the upcoming week
+        run: python -m research.nfl_game_leaders_auto
+      - name: Commit only a changed, validated publication
+        run: |
+          git add -f web/src/data/game-leaders.json
+          # Every capture/requests file a game's sources name: the DK pricing
+          # refresh re-creates each forecast from these, so all must be in the repo.
+          python -c "import json; d=json.load(open('web/src/data/game-leaders.json')); print('\n'.join(sorted({p for g in d['games'] for p in g['sources'].values()})))" > /tmp/sources.txt
+          cat /tmp/sources.txt
+          xargs -a /tmp/sources.txt git add -f
+          if git diff --cached --quiet; then
+            echo "No publication change"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update NFL Game Leaders forecasts"
+          for attempt in 1 2 3; do
+            git pull --rebase origin main && git push origin HEAD:main && exit 0
+            sleep 10
+          done
+          echo "::error::Push to main failed after three attempts"
+          exit 1

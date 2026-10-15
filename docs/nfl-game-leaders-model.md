@@ -103,6 +103,18 @@ python -m research.nfl_game_leaders batch --input artifacts/nfl-game-leaders/new
 python -m research.nfl_game_leaders_publish --batch artifacts/nfl-game-leaders/new-batch.json --evaluation artifacts/nfl-game-leaders/final-evaluation-2025.json --evaluation artifacts/nfl-game-leaders/final-evaluation-2026.json --output web/src/data/game-leaders.json
 ```
 
+**Automated since 2026-10-15.** `python -m research.nfl_game_leaders_auto` runs the
+same four steps unattended for the next week with a game inside seven days, in
+`.github/workflows/refresh_nfl_game_leaders.yml`, dispatched by `/api/cron/dispatch`
+(job `nfl-game-leaders`): Wednesday 14:07 UTC, then the one tick 150-165 minutes
+before each kickoff group, ahead of the T-75 DraftKings pricing. It reuses the
+capture the live page already points to while that is still the target week (one
+~11 MB capture per week, under `artifacts/nfl-game-leaders/auto/<season>-wNN-<stamp>/`),
+captures fresh requests every run, gates each game separately, keeps started games
+frozen, keeps the previous forecast for a game whose new one fails a gate, and lists
+every such game in the page's `skipped`. It commits the page file and the week's
+capture/requests to main; the manual commands below remain for one-off reruns.
+
 Outputs use exclusive creation. Preserve the previous page snapshot before
 refreshing it; never overwrite frozen requests, forecasts or evaluation reports.
 Single-game commands are `evidence-request --game ID`, `forecast --request PATH

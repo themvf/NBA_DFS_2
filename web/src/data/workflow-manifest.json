@@ -374,6 +374,18 @@
       "pullRequest": false
     },
     {
+      "file": "refresh_nfl_game_leaders.yml",
+      "name": "Publish NFL Game Leaders week",
+      "crons": [
+        "41 15 * * 3",
+        "41 14 * * 0"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
       "file": "refresh_nfl_longest_touchdown.yml",
       "name": "Publish NFL Longest Touchdown weeks",
       "crons": [
