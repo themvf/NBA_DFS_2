@@ -1,0 +1,101 @@
+{
+ "slates": [
+  {
+   "file": "C:\\Docs\\_AI Python Projects\\NBADFS_v2\\.claude\\worktrees\\quirky-swanson-185a61\\artifacts\\nfl-classic-attribution-2026-10-13\\inputs\\2026-w4-classic.json.gz",
+   "format": "classic",
+   "label": "2026 w4 Classic",
+   "contestId": "196151357",
+   "entries": 161764,
+   "realized": {
+    "winning": 234.2,
+    "top01Pct": 209.2,
+    "top1Pct": 189.14,
+    "median": 116.88
+   }
+  },
+  {
+   "file": "C:\\Docs\\_AI Python Projects\\NBADFS_v2\\.claude\\worktrees\\quirky-swanson-185a61\\artifacts\\nfl-classic-attribution-2026-10-13\\inputs\\2026-w5-classic.json.gz",
+   "format": "classic",
+   "label": "2026 w5 Classic",
+   "contestId": "196403752",
+   "entries": 161557,
+   "realized": {
+    "winning": 250.06,
+    "top01Pct": 218.34,
+    "top1Pct": 199.14,
+    "median": 131.82
+   }
+  },
+  {
+   "file": "C:\\Docs\\_AI Python Projects\\NBADFS_v2\\.claude\\worktrees\\quirky-swanson-185a61\\artifacts\\nfl-showdown-attribution-2026-10-13\\inputs\\2026-w4-ATL_at_NO.json.gz",
+   "format": "showdown",
+   "label": "2026 w4 ATL@NO",
+   "contestId": "196285155",
+   "entries": 88235,
+   "realized": {
+    "winning": 143.9,
+    "top01Pct": 142.45,
+    "top1Pct": 133.0,
+    "median": 97.64
+   }
+  },
+  {
+   "file": "C:\\Docs\\_AI Python Projects\\NBADFS_v2\\.claude\\worktrees\\quirky-swanson-185a61\\artifacts\\nfl-showdown-attribution-2026-10-13\\inputs\\2026-w4-PIT_at_CLE.json.gz",
+   "format": "showdown",
+   "label": "2026 w4 PIT@CLE",
+   "contestId": "196187074",
+   "entries": 88235,
+   "realized": {
+    "winning": 120.74,
+    "top01Pct": 118.51,
+    "top1Pct": 113.43,
+    "median": 89.62
+   }
+  },
+  {
+   "file": "C:\\Docs\\_AI Python Projects\\NBADFS_v2\\.claude\\worktrees\\quirky-swanson-185a61\\artifacts\\nfl-showdown-attribution-2026-10-13\\inputs\\2026-w4-IND_at_WAS.json.gz",
+   "format": "showdown",
+   "label": "2026 w4 IND@WAS",
+   "contestId": "196204783",
+   "entries": 22136,
+   "realized": {
+    "winning": 88.770004,
+    "top01Pct": 85.97,
+    "top1Pct": 82.51,
+    "median": 62.760002
+   }
+  }
+ ],
+ "spreads": {
+  "classic": {
+   "top1PctSd": 11.82,
+   "contests": 5,
+   "values": [
+    215.7,
+    185.66,
+    189.14,
+    193.14,
+    199.14
+   ]
+  },
+  "showdown": {
+   "top1PctSd": 20.04,
+   "contests": 7,
+   "values": [
+    91.52,
+    130.0,
+    133.0,
+    139.83,
+    145.23,
+    102.9,
+    113.43
+   ]
+  }
+ },
+ "moduleFiles": [
+  "C:\\Docs\\_AI Python Projects\\NBADFS_v2\\.claude\\worktrees\\quirky-swanson-185a61\\web\\src\\lib\\nfl-dfs\\portfolio-objective.ts",
+  "C:\\Docs\\_AI Python Projects\\NBADFS_v2\\.claude\\worktrees\\quirky-swanson-185a61\\web\\src\\lib\\nfl-dfs\\captain-simulation.ts",
+  "C:\\Docs\\_AI Python Projects\\NBADFS_v2\\.claude\\worktrees\\quirky-swanson-185a61\\web\\scripts\\nfl-pool-rule-study-core.ts",
+  "C:\\Docs\\_AI Python Projects\\NBADFS_v2\\.claude\\worktrees\\quirky-swanson-185a61\\web\\scripts\\research-nfl-portfolio-freeze.ts"
+ ]
+}

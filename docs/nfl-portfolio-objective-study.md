@@ -1,7 +1,8 @@
 # NFL DFS: does a field-relative joint objective pick better portfolios than the ceiling heuristic? (pre-registered 2026-10-14)
 
 Status: **registered before any 2026 week-6 slate was captured; freeze gate
-FAILED for both formats on 2026-10-14, so no week-6 slate enrolls.** Nothing
+FAILED for both formats on 2026-10-14 (v1) and again on 2026-10-15 (v2, the
+stacked field; see "v2" at the end), so no week-6 slate enrolls.** Nothing
 here changes the live optimizer, its presets or its defaults. The challenger is
 a research arm saved beside the owner's real build; it never exports and is
 never "our build" to any reader (every reader excludes `researchStudy` runs).
@@ -215,3 +216,59 @@ Classic opponents with the catcher and bring-back mix above (and the Showdown
 split, flagged as a top-user estimate), then re-runs the freeze gate as a new
 version. What it does not license: tuning any of these against realized
 thresholds, or reading the Showdown numbers as the field's.
+
+## v2: the stacked field (`nfl-portfolio-objective-v2`, `nfl-field-stacked-v2`, 2026-10-15), gate FAILED again
+
+What changed, and only this: the field sampler draws each opponent's SHAPE
+from the measured rates above (`FIELD_STACKING` in the module, the pooled
+"all entries" Classic rates and the top-user Showdown split, converted to
+conditional shares by dividing by the QB-stack share), seats the stack, then
+fills the open slots from the ownership prior exactly as v1 did. The joint
+copula, the draws, the seeds, the selection and every other constant are v1's.
+The sampled lineups' realized shapes are recorded per slate (`fieldShapes`)
+and sit within a few points of the stated rates (Classic QB stack 88-90%,
+bring-back 62%, TE-with-QB 40% because the ownership-weighted fill adds
+teammates the shape did not ask for; Showdown split 32 / 47 / 21).
+
+Re-run on the same frozen inputs and the same rule
+(`artifacts/nfl-portfolio-objective-v2/freeze.json`):
+
+| slate | realized top 1% | implied v1 | implied v2 | miss v2 | allowed | |
+|---|---:|---:|---:|---:|---:|---|
+| w4 Classic | 189.1 | 187.7 | 191.4 | -2.3 | 11.8 | pass |
+| w5 Classic | 199.1 | 170.6 | 174.7 | 24.5 | 11.8 | FAIL |
+| w4 ATL@NO | 133.0 | 121.8 | 120.9 | 12.1 | 20.0 | pass |
+| w4 PIT@CLE | 113.4 | 89.2 | 89.4 | 24.1 | 20.0 | FAIL |
+| w4 IND@WAS | 82.5 | 96.8 | 97.6 | -15.1 | 20.0 | pass |
+
+Read: stacking the field is worth about 4 points of Classic tail (170.6 to
+174.7 on w5, 187.7 to 191.4 on w4) and nothing in Showdown, where the split
+constraint changes which players sit together but not how the scores spread.
+The stacking limit the v1 registration named was real and is now measured
+in, and it is not the main cause of the misses. Two things the comparison
+shows instead, recorded for whoever registers a v3, not acted on here:
+
+1. **The Showdown misses are level, not dispersion.** On PIT@CLE the
+   realized MEDIAN entry scored 89.6 against an implied median of 69.2, and
+   the top 1% missed by the same 24 points; on ATL@NO the median missed by 9
+   and the top 1% by 12. The whole sampled field scores low on those games,
+   which is the projections (the joint bank's marginals) running under the
+   game that was played, not the field model. A single game's outcome
+   cannot say whether that is bias or one draw; the Classic medians (w4
+   133.6 vs 116.9 realized, w5 124.6 vs 131.8) go both ways.
+2. **The gate rule is harder than it reads.** It asks every checked slate's
+   one realized outcome to land within the format's week-to-week SD of the
+   model's implied median. For a perfectly calibrated model whose implied
+   top-1% band is as wide as the recorded p5-p95 (Classic ~50 points,
+   Showdown ~70), a single slate passes well under 100% of the time, and
+   three Showdown slates all passing is roughly a coin flip. Every realized
+   top 1% here does sit inside the model's own p5-p95 band (`inside90` is
+   true on all five slates). This is a comment on the registered rule, made
+   after seeing it fail twice, so it changes nothing: a different rule (for
+   instance, realized inside the implied p5-p95 on every slate AND the
+   pooled signed miss within SD/sqrt(n)) is a v3 registration the owner
+   makes before any new slate, not a re-reading of v2.
+
+The runner still refuses `--save` for both formats. Nothing in v2 was tuned
+against a realized threshold: the stacking rates came from the standings,
+and the gate was run once on the frozen inputs and written once.

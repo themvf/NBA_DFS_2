@@ -13,13 +13,21 @@
  *                negatively on its opponent's team factor; marginals are the
  *                model's own P10/median/P90 bent to the projection. Loadings
  *                are the same stated priors (0.40 same team, 0.15 same game).
- *   field        `nfl-field-ownership-v1`: opponent lineups drawn slot by
- *                slot from the ownership prior (captain share for CPT, flex
- *                share for FLEX), rejected when they break DraftKings' rules.
- *                Scored on the SAME joint draws as our candidates, so the
- *                covariance between a lineup and the field's top scores comes
- *                out by construction rather than being estimated separately
- *                (the Cov(X_i, F) term in Haugh & Singal, 2019).
+ *   field        `nfl-field-stacked-v2`: each opponent lineup first draws its
+ *                SHAPE from the measured field stacking rates
+ *                (`FIELD_STACKING`, model/nfl_dfs_field_stacks.py over the
+ *                stored flagships: a QB stack in 90% of Classic entries, with
+ *                how many pass catchers, a running back and a bring-back;
+ *                the 3-3 / 4-2 / 5-1 team split in Showdown), then fills the
+ *                stack and the remaining slots from the ownership prior
+ *                (captain share for CPT, flex share for FLEX), rejected when
+ *                it breaks DraftKings' rules. v1 drew slot by slot with no
+ *                shape, and its field failed the freeze gate because nobody
+ *                in it stacked. Scored on the SAME joint draws as our
+ *                candidates, so the covariance between a lineup and the
+ *                field's top scores comes out by construction rather than
+ *                being estimated separately (the Cov(X_i, F) term in Haugh &
+ *                Singal, 2019).
  *   selection    greedy marginal coverage of P(any lineup >= the field's
  *                within-draw top-1% score), under the source build's own
  *                exposure cap and uniqueness, from a candidate pool the
@@ -42,9 +50,39 @@ import { nflRandom } from "./random";
 import { fitQuantileShape, quantile, GAME_LOADING, TEAM_LOADING, DST_OPPONENT_LOADING } from "./captain-simulation";
 import type { NflGeneratedLineup } from "@/app/dfs/nfl/nfl-optimizer";
 
-export const PORTFOLIO_OBJECTIVE_VERSION = "nfl-portfolio-objective-v1";
+export const PORTFOLIO_OBJECTIVE_VERSION = "nfl-portfolio-objective-v2";
 export const JOINT_COPULA_VERSION = "nfl-joint-copula-v1";
-export const FIELD_MODEL_VERSION = "nfl-field-ownership-v1";
+export const FIELD_MODEL_VERSION = "nfl-field-stacked-v2";
+
+/**
+ * How the field stacks: MEASURED, not fitted, and frozen with the version.
+ * Source: `nfl-dfs-field-stacks-v1` (model/nfl_dfs_field_stacks.py) pooled
+ * over the stored 2026 flagships on 2026-10-15. Classic is the whole field
+ * (five Millionaires, weeks 1-5, 1,490,188 entries; stat-api labels every
+ * standings row). Showdown is the top-100 users' every lineup of eight
+ * flagships (40,891 lineups): stat-api labels no showdown row, so this is an
+ * outcome-selected population, named as such. Conditional rates below are
+ * the pooled "all entries" shares divided by the QB-stack share. None of
+ * these numbers were chosen by looking at realized score thresholds.
+ */
+export const FIELD_STACKING = {
+  source: "nfl-dfs-field-stacks-v1 pooled 2026-10-15: classic = field of 5 Millionaires w1-5 (1,490,188 entries); showdown = top-100 users of 8 flagships (40,891 lineups, outcome-selected)",
+  classic: {
+    /** Share of entries whose QB has at least one skill-position teammate. */
+    qbStack: 0.9016,
+    /** Given a stack: pass catchers (WR/TE) with the QB, 0 / 1 / 2 / 3+. */
+    catchersGivenStack: [0.083, 0.582, 0.314, 0.021],
+    /** Given a stack: a running back from the QB's team is in the lineup. */
+    rbGivenStack: 0.205,
+    /** Given a stack: skill players from the opponent (bring-back), 0 / 1 / 2+. */
+    bringBackGivenStack: [0.499, 0.410, 0.091],
+  },
+  showdown: {
+    population: "top_users",
+    /** Majority-team count 3 / 4 / 5 (the 3-3, 4-2 and 5-1 splits; no 6-0 was observed). */
+    split: { 3: 0.3231, 4: 0.4636, 5: 0.2133 },
+  },
+} as const;
 
 /** Stated, frozen with the registration. Change one and bump the version. */
 export const PORTFOLIO_OBJECTIVE = {
@@ -173,48 +211,206 @@ export type FieldSample = {
   realizedOwnPct: Map<number, number>;
   /** How well the sampled field reproduces the prior it was drawn from, over players the prior puts at 5%+. */
   calibration: { rounds: number; maxAbsDeviationPct: number; meanAbsDeviationPct: number; players: number };
+  /** The stack shapes the sampled lineups actually have, to set beside FIELD_STACKING. */
+  shapes: FieldShapeStats;
 };
+
+export type FieldShapeStats = {
+  lineups: number;
+  classic?: { qbStack: number; catchersWithQb: Record<string, number>; rbWithQb: number; teWithQb: number; bringBack: Record<string, number> };
+  showdown?: { split: Record<string, number>; anyQb: number; twoQbs: number; qbPlusTeammates: Record<string, number> };
+};
+
+const SKILL = new Set<string>(["WR", "TE", "RB"]);
+
+/** Realized stack shapes of sampled lineups, read off the lineups themselves (never the draw's intent). */
+export function fieldShapeStats(slate: NflDkSlate, lineups: NflLineup[]): FieldShapeStats {
+  const byId = new Map(slate.players.map(p => [p.dkPlayerId, p]));
+  const n = lineups.length;
+  const rate = (c: number) => Math.round((10000 * c) / Math.max(1, n)) / 10000;
+  const rates = (o: Record<string, number>) => Object.fromEntries(Object.entries(o).map(([a, b]) => [a, rate(b)]));
+  if (slate.format === "classic") {
+    let stacked = 0, rb = 0, te = 0;
+    const catchers: Record<string, number> = { "0": 0, "1": 0, "2": 0, "3+": 0 }, bring: Record<string, number> = { "0": 0, "1": 0, "2+": 0 };
+    for (const l of lineups) {
+      const ps = l.map(e => byId.get(e.playerId)!);
+      const qb = ps.find(p => p.position === "QB");
+      if (!qb) continue;
+      const mates = ps.filter(p => p !== qb && p.teamAbbrev === qb.teamAbbrev && SKILL.has(p.position));
+      if (!mates.length) continue;
+      stacked++;
+      const c = mates.filter(p => p.position !== "RB").length;
+      catchers[c >= 3 ? "3+" : String(c)]++;
+      if (mates.some(p => p.position === "RB")) rb++;
+      if (mates.some(p => p.position === "TE")) te++;
+      const bb = ps.filter(p => p.teamAbbrev === qb.opponent && SKILL.has(p.position)).length;
+      bring[bb >= 2 ? "2+" : String(bb)]++;
+    }
+    return { lineups: n, classic: { qbStack: rate(stacked), catchersWithQb: rates(catchers), rbWithQb: rate(rb), teWithQb: rate(te), bringBack: rates(bring) } };
+  }
+  const split: Record<string, number> = {};
+  const mates: Record<string, number> = { "0": 0, "1": 0, "2": 0, "3+": 0 };
+  let anyQb = 0, twoQbs = 0;
+  for (const l of lineups) {
+    const ps = l.map(e => byId.get(e.playerId)!);
+    const teams = new Map<string, number>();
+    for (const p of ps) teams.set(p.teamAbbrev, (teams.get(p.teamAbbrev) ?? 0) + 1);
+    const key = [...teams.values()].sort((a, b) => b - a).join("-");
+    split[key] = (split[key] ?? 0) + 1;
+    const qbs = ps.filter(p => p.position === "QB");
+    if (!qbs.length) continue;
+    anyQb++;
+    if (qbs.length >= 2) twoQbs++;
+    const m = ps.filter(p => p !== qbs[0] && p.teamAbbrev === qbs[0].teamAbbrev && SKILL.has(p.position)).length;
+    mates[m >= 3 ? "3+" : String(m)]++;
+  }
+  return { lineups: n, showdown: { split: rates(Object.fromEntries(Object.entries(split).sort())), anyQb: rate(anyQb), twoQbs: rate(twoQbs), qbPlusTeammates: rates(mates) } };
+}
 
 /** Slot-wise sampling weights after calibration: dkPlayerId -> multiplier applied to the prior. */
 type Multipliers = Map<number, { base: number; captain: number }>;
 
-function drawLineups(slate: NflDkSlate, pools: Array<Array<{ p: NflDkPlayer; w: number; cpt: boolean }>>, mult: Multipliers,
+type PoolEntry = { p: NflDkPlayer; w: number; cpt: boolean };
+
+/** Draw an index from `weights` (all non-negative); -1 when they sum to zero. */
+function pickWeighted(weights: number[], random: () => number): number {
+  const total = weights.reduce((s, w) => s + w, 0);
+  if (!total) return -1;
+  let r = random() * total;
+  for (let j = 0; j < weights.length; j++) { r -= weights[j]; if (r <= 0) return j; }
+  return weights.length - 1;
+}
+
+/** Draw a category index from a stated distribution (the last category absorbs any rounding). */
+const drawCategory = (shares: readonly number[], random: () => number) => {
+  const i = pickWeighted([...shares], random);
+  return i < 0 ? shares.length - 1 : i;
+};
+
+/**
+ * Opponent lineups, one at a time: draw the lineup's SHAPE from
+ * `FIELD_STACKING`, place the stack, then fill the open slots from the
+ * ownership prior (with the calibration multipliers), without replacement,
+ * under the salary reservation. A lineup that cannot seat its stack, breaks
+ * the roster rules or the cap is thrown away, never repaired.
+ *
+ * Classic: with probability `qbStack` the lineup is built around a QB; it then
+ * takes 0-3 pass catchers and maybe a running back from his team and 0-2
+ * skill players from his opponent, each drawn ownership-weighted within that
+ * team. Everything else is the v1 slot-wise fill, so a lineup can still end up
+ * with more teammates than its shape asked for (the fill is not told to avoid
+ * them), and the realized shape is what `fieldShapeStats` reports.
+ *
+ * Showdown: the majority-team count is drawn from `split` (3, 4 or 5), the
+ * majority team by its ownership mass, and the fill is confined to those
+ * counts. The pairing of a QB with his receivers is not drawn; it is whatever
+ * the ownership weights produce.
+ */
+function drawLineups(slate: NflDkSlate, pools: PoolEntry[][], mult: Multipliers,
   random: () => number, count: number, maxAttempts: number): { lineups: NflLineup[]; attempts: number } {
   const slots = nflSlots(slate.format);
   const cost = (x: { p: NflDkPlayer; cpt: boolean }) => x.cpt ? x.p.captain!.salary : x.p.salary;
-  // Salary to keep for the slots after slot i: their ownership-weighted expected
-  // cost (not the cheapest fill, which let early slots spend the whole cap and
-  // left the DST slot with only the minimum-priced defence on the week-5 Classic),
-  // floored at the cheapest fill so the cap always stays reachable.
-  const expected = (pool: Array<{ p: NflDkPlayer; w: number; cpt: boolean }>) => {
+  const weightOf = (x: PoolEntry) => x.w * (x.cpt ? mult.get(x.p.dkPlayerId)!.captain : mult.get(x.p.dkPlayerId)!.base);
+  // Salary to keep for the slots still open after slot i: their ownership-weighted
+  // expected cost (not the cheapest fill, which let early slots spend the whole cap
+  // and left the DST slot with only the minimum-priced defence on the week-5
+  // Classic), floored at the cheapest fill so the cap always stays reachable.
+  const expected = (pool: PoolEntry[]) => {
     const total = pool.reduce((s, x) => s + x.w, 0);
     return total ? pool.reduce((s, x) => s + x.w * cost(x), 0) / total : Math.min(...pool.map(cost));
   };
-  const reserveAfter = slots.map((_, i) => pools.slice(i + 1).reduce((sum, pool) => sum + expected(pool), 0));
-  const cheapestAfter = slots.map((_, i) => pools.slice(i + 1).reduce((sum, pool) => sum + Math.min(...pool.map(cost)), 0));
+  const expectedBySlot = pools.map(expected), cheapestBySlot = pools.map(pool => Math.min(...pool.map(cost)));
+  // Classic stack pools: the ownership-weighted skill players of each team, by position group.
+  const classic = slate.format === "classic";
+  const byTeam = new Map<string, { catchers: PoolEntry[]; rbs: PoolEntry[] }>();
+  if (classic) {
+    const seen = new Set<number>();
+    for (const pool of pools) for (const x of pool) {
+      if (seen.has(x.p.dkPlayerId) || !SKILL.has(x.p.position)) continue;
+      seen.add(x.p.dkPlayerId);
+      const t = byTeam.get(x.p.teamAbbrev) ?? { catchers: [], rbs: [] };
+      (x.p.position === "RB" ? t.rbs : t.catchers).push(x);
+      byTeam.set(x.p.teamAbbrev, t);
+    }
+  }
+  const byId = new Map(slate.players.map(p => [p.dkPlayerId, p]));
+  const teamMass = new Map<string, number>();
+  for (const x of pools[pools.length - 1]) teamMass.set(x.p.teamAbbrev, (teamMass.get(x.p.teamAbbrev) ?? 0) + x.w);
+  const showdownTeams = [...teamMass.keys()];
+  const splitShares = Object.entries(FIELD_STACKING.showdown.split).map(([k, v]) => [Number(k), v] as const);
+
+  // Draw `k` entries without replacement from `pool`, ownership-weighted, skipping used ids.
+  const drawFrom = (pool: PoolEntry[], k: number, used: Set<number>): PoolEntry[] => {
+    const out: PoolEntry[] = [];
+    let candidates = pool.filter(x => !used.has(x.p.dkPlayerId));
+    while (out.length < k && candidates.length) {
+      const i = pickWeighted(candidates.map(weightOf), random);
+      if (i < 0) break;
+      out.push(candidates[i]);
+      candidates = candidates.filter((_, j) => j !== i);
+    }
+    return out;
+  };
+
   const lineups: NflLineup[] = [];
   let attempts = 0;
   while (lineups.length < count && attempts < maxAttempts) {
     attempts++;
     const used = new Set<number>();
-    const lineup: NflLineup = [];
+    const filled: Array<{ slot: NflSlot; playerId: number } | null> = slots.map(() => null);
     let spent = 0;
-    for (let i = 0; i < slots.length; i++) {
-      // Prefer the expected reservation; if it leaves no one, fall back to the hard (cheapest) one.
-      const soft = DK_SALARY_CAP - spent - reserveAfter[i], hard = DK_SALARY_CAP - spent - cheapestAfter[i];
-      let pool = pools[i].filter(x => !used.has(x.p.dkPlayerId) && cost(x) <= soft);
-      if (!pool.length) pool = pools[i].filter(x => !used.has(x.p.dkPlayerId) && cost(x) <= hard);
-      const weights = pool.map(x => x.w * (x.cpt ? mult.get(x.p.dkPlayerId)!.captain : mult.get(x.p.dkPlayerId)!.base));
-      const total = weights.reduce((s, w) => s + w, 0);
-      if (!total) break;
-      let r = random() * total;
-      let pick = pool.length - 1;
-      for (let j = 0; j < pool.length; j++) { r -= weights[j]; if (r <= 0) { pick = j; break; } }
-      used.add(pool[pick].p.dkPlayerId);
-      spent += cost(pool[pick]);
-      lineup.push({ slot: slots[i], playerId: pool[pick].p.dkPlayerId });
+    let quota: Map<string, number> | null = null;
+    let seatFailed = false;
+    const teamCount = new Map<string, number>();
+    const seat = (x: PoolEntry) => {
+      // The player's own slot first, then FLEX; a player with no open seat fails the attempt.
+      let i = slots.findIndex((s, j) => filled[j] === null && s === x.p.position);
+      if (i < 0 && SKILL.has(x.p.position)) i = slots.findIndex((s, j) => filled[j] === null && s === "FLEX");
+      if (i < 0) { seatFailed = true; return; }
+      filled[i] = { slot: slots[i], playerId: x.p.dkPlayerId };
+      used.add(x.p.dkPlayerId);
+      spent += cost(x);
+      teamCount.set(x.p.teamAbbrev, (teamCount.get(x.p.teamAbbrev) ?? 0) + 1);
+    };
+    if (classic) {
+      if (random() < FIELD_STACKING.classic.qbStack) {
+        const [qb] = drawFrom(pools[0], 1, used);
+        if (!qb) continue;
+        seat(qb);
+        const team = byTeam.get(qb.p.teamAbbrev), opp = qb.p.opponent ? byTeam.get(qb.p.opponent) : undefined;
+        const c = drawCategory(FIELD_STACKING.classic.catchersGivenStack, random);
+        for (const x of drawFrom(team?.catchers ?? [], c, used)) seat(x);
+        if (random() < FIELD_STACKING.classic.rbGivenStack) for (const x of drawFrom(team?.rbs ?? [], 1, used)) seat(x);
+        const b = drawCategory(FIELD_STACKING.classic.bringBackGivenStack, random);
+        for (const x of drawFrom([...(opp?.catchers ?? []), ...(opp?.rbs ?? [])], b, used)) seat(x);
+      }
+    } else if (showdownTeams.length === 2) {
+      const majority = splitShares[drawCategory(splitShares.map(([, v]) => v), random)][0];
+      const major = showdownTeams[pickWeighted(showdownTeams.map(t => teamMass.get(t) ?? 0), random)];
+      quota = new Map(showdownTeams.map(t => [t, t === major ? majority : slots.length - majority]));
     }
-    if (lineup.length !== slots.length) continue;
+    if (seatFailed) continue;
+    let broke = false;
+    for (let i = 0; i < slots.length; i++) {
+      if (filled[i]) continue;
+      const open = slots.map((_, j) => j).filter(j => j > i && !filled[j]);
+      const reserve = open.reduce((s, j) => s + expectedBySlot[j], 0), cheapest = open.reduce((s, j) => s + cheapestBySlot[j], 0);
+      const allowed = (x: PoolEntry) => !used.has(x.p.dkPlayerId)
+        && (!quota || (teamCount.get(x.p.teamAbbrev) ?? 0) < (quota.get(x.p.teamAbbrev) ?? 0));
+      // Prefer the expected reservation; if it leaves no one, fall back to the hard (cheapest) one.
+      let pool = pools[i].filter(x => allowed(x) && cost(x) <= DK_SALARY_CAP - spent - reserve);
+      if (!pool.length) pool = pools[i].filter(x => allowed(x) && cost(x) <= DK_SALARY_CAP - spent - cheapest);
+      const pick = pickWeighted(pool.map(weightOf), random);
+      if (pick < 0) { broke = true; break; }
+      const x = pool[pick];
+      used.add(x.p.dkPlayerId);
+      spent += cost(x);
+      teamCount.set(x.p.teamAbbrev, (teamCount.get(x.p.teamAbbrev) ?? 0) + 1);
+      filled[i] = { slot: slots[i], playerId: x.p.dkPlayerId };
+    }
+    if (broke || filled.some(f => f === null)) continue;
+    const lineup = filled.map(f => f!) as NflLineup;
+    if (lineup.some(e => !byId.has(e.playerId))) continue;
     try { validateNflLineup(slate, lineup); } catch { continue; }
     lineups.push(lineup);
   }
@@ -286,6 +482,7 @@ export function sampleField(slate: NflDkSlate, players: readonly SnapshotPlayer[
   for (const l of final.lineups) for (const e of l) totals.set(e.playerId, (totals.get(e.playerId) ?? 0) + 1);
   return { version: FIELD_MODEL_VERSION, seed, lineups: final.lineups, attempts: spent + final.attempts,
     realizedOwnPct: new Map([...totals].map(([id, c]) => [id, Math.round((10000 * c) / count) / 100])),
+    shapes: fieldShapeStats(slate, final.lineups),
     calibration: { rounds, players: checked.length,
       maxAbsDeviationPct: Math.round(100 * Math.max(0, ...deviations)) / 100,
       meanAbsDeviationPct: Math.round((100 * deviations.reduce((a, b) => a + b, 0)) / Math.max(1, deviations.length)) / 100 } };

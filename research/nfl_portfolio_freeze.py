@@ -1,12 +1,12 @@
-"""Freeze gate for nfl-portfolio-objective-v1: realized thresholds from stored contests, implied ones from the challenger.
+"""Freeze gate for nfl-portfolio-objective-v2: realized thresholds from stored contests, implied ones from the challenger.
 
 Reads the stored flagship score curves (nfl_dfs_field_contests), the frozen
 discovery inputs that carry an ownership prior (the 2026-10-13 attribution
 artifacts, weeks 4-5), and runs web/scripts/research-nfl-portfolio-freeze.ts.
-Writes artifacts/nfl-portfolio-objective-v1/freeze.json, which the study runner
+Writes artifacts/nfl-portfolio-objective-v2/freeze.json, which the study runner
 requires before saving a portfolio arm. Read-only against the database.
 
-    python -m research.nfl_portfolio_freeze [--out artifacts/nfl-portfolio-objective-v1/freeze.json]
+    python -m research.nfl_portfolio_freeze [--out artifacts/nfl-portfolio-objective-v2/freeze.json]
 """
 from __future__ import annotations
 
@@ -66,7 +66,7 @@ def spreads(db) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--out", type=Path, default=ROOT / "artifacts/nfl-portfolio-objective-v1/freeze.json")
+    ap.add_argument("--out", type=Path, default=ROOT / "artifacts/nfl-portfolio-objective-v2/freeze.json")
     args = ap.parse_args()
     if args.out.exists():
         ap.error(f"{args.out} exists; a freeze is written once (delete it deliberately to re-run)")

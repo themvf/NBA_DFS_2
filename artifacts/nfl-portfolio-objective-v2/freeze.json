@@ -1,0 +1,488 @@
+{
+ "version": "nfl-portfolio-objective-v2",
+ "jointVersion": "nfl-joint-copula-v1",
+ "fieldVersion": "nfl-field-stacked-v2",
+ "constants": {
+  "draws": 4000,
+  "selectionSeed": 20261016,
+  "evaluationSeed": 20261017,
+  "fieldSeed": 20261018,
+  "fieldLineups": 2000,
+  "successFraction": 0.01,
+  "secondaryFraction": 0.001,
+  "candidateMultiple": 5,
+  "candidateMin": 60,
+  "candidateMax": 200,
+  "maxFieldAttempts": 600000,
+  "fieldCalibration": {
+   "rounds": 8,
+   "pilot": 800,
+   "step": 0.6,
+   "floor": 0.02,
+   "cap": 100
+  },
+  "fallbackBand": {
+   "p10": 0.74,
+   "p90": 1.28
+  }
+ },
+ "fieldStacking": {
+  "source": "nfl-dfs-field-stacks-v1 pooled 2026-10-15: classic = field of 5 Millionaires w1-5 (1,490,188 entries); showdown = top-100 users of 8 flagships (40,891 lineups, outcome-selected)",
+  "classic": {
+   "qbStack": 0.9016,
+   "catchersGivenStack": [
+    0.083,
+    0.582,
+    0.314,
+    0.021
+   ],
+   "rbGivenStack": 0.205,
+   "bringBackGivenStack": [
+    0.499,
+    0.41,
+    0.091
+   ]
+  },
+  "showdown": {
+   "population": "top_users",
+   "split": {
+    "3": 0.3231,
+    "4": 0.4636,
+    "5": 0.2133
+   }
+  }
+ },
+ "frozenAt": "2026-10-15T22:00:12.526Z",
+ "rule": "Per format: frozen only if on every checked slate |realized top-1% - implied median top-1%| <= the format's week-to-week SD of realized top-1% across stored flagships. Realized values are never used to tune anything.",
+ "moduleHashes": {
+  "C:\\Docs\\_AI Python Projects\\NBADFS_v2\\.claude\\worktrees\\quirky-swanson-185a61\\web\\src\\lib\\nfl-dfs\\portfolio-objective.ts": "835130f4d8b97ce672a82f58ef8d24d83a9e99314ae5bc2b6feee82daafd58b6",
+  "C:\\Docs\\_AI Python Projects\\NBADFS_v2\\.claude\\worktrees\\quirky-swanson-185a61\\web\\src\\lib\\nfl-dfs\\captain-simulation.ts": "b853990c2da0c3561210203f9916cc1a12fb9bbb43808cf439adb168215993ba",
+  "C:\\Docs\\_AI Python Projects\\NBADFS_v2\\.claude\\worktrees\\quirky-swanson-185a61\\web\\scripts\\nfl-pool-rule-study-core.ts": "2890c43fd168f1dd059f14fc04f97bc1bc23d99b27fa15e629d7654df1caf179",
+  "C:\\Docs\\_AI Python Projects\\NBADFS_v2\\.claude\\worktrees\\quirky-swanson-185a61\\web\\scripts\\research-nfl-portfolio-freeze.ts": "dcda8d416f39969e65c831905c81ff90eb549ab20ba852935eae5e5cac51db7d"
+ },
+ "formats": {
+  "classic": {
+   "checked": 2,
+   "passed": 1,
+   "status": "fail",
+   "spread": {
+    "top1PctSd": 11.82,
+    "contests": 5,
+    "values": [
+     215.7,
+     185.66,
+     189.14,
+     193.14,
+     199.14
+    ]
+   }
+  },
+  "showdown": {
+   "checked": 3,
+   "passed": 2,
+   "status": "fail",
+   "spread": {
+    "top1PctSd": 20.04,
+    "contests": 7,
+    "values": [
+     91.52,
+     130,
+     133,
+     139.83,
+     145.23,
+     102.9,
+     113.43
+    ]
+   }
+  }
+ },
+ "slates": [
+  {
+   "label": "2026 w4 Classic",
+   "format": "classic",
+   "contestId": "196151357",
+   "entries": 161764,
+   "players": 629,
+   "fallbackPlayers": 1,
+   "meanNotMatched": 28,
+   "fieldCalibration": {
+    "rounds": 8,
+    "players": 49,
+    "maxAbsDeviationPct": 16.05,
+    "meanAbsDeviationPct": 3.27
+   },
+   "fieldShapes": {
+    "lineups": 2000,
+    "classic": {
+     "qbStack": 0.879,
+     "catchersWithQb": {
+      "0": 0.0275,
+      "1": 0.49,
+      "2": 0.333,
+      "3+": 0.0285
+     },
+     "rbWithQb": 0.2695,
+     "teWithQb": 0.4005,
+     "bringBack": {
+      "0": 0.382,
+      "1": 0.386,
+      "2+": 0.111
+     }
+    }
+   },
+   "implied": {
+    "top1Pct": {
+     "p5": 166.78,
+     "p25": 181.51,
+     "p50": 191.39,
+     "p75": 201.17,
+     "p95": 215.03,
+     "mean": 191.20104749999953
+    },
+    "top01Pct": {
+     "p5": 182.06,
+     "p25": 197.94,
+     "p50": 208.43,
+     "p75": 219.12,
+     "p95": 234.04,
+     "mean": 208.32574999999974
+    },
+    "sampledBest": {
+     "p5": 186.36,
+     "p25": 202.63,
+     "p50": 213.57,
+     "p75": 224.62,
+     "p95": 241.02,
+     "mean": 213.5157924999999
+    },
+    "median": {
+     "p5": 112.36,
+     "p25": 124.85,
+     "p50": 133.55,
+     "p75": 142.29,
+     "p95": 155.93,
+     "mean": 133.63913
+    }
+   },
+   "realized": {
+    "winning": 234.2,
+    "top01Pct": 209.2,
+    "top1Pct": 189.14,
+    "median": 116.88
+   },
+   "top1PctMiss": -2.25,
+   "allowedMiss": 11.82,
+   "pass": true,
+   "inside90": true
+  },
+  {
+   "label": "2026 w5 Classic",
+   "format": "classic",
+   "contestId": "196403752",
+   "entries": 161557,
+   "players": 587,
+   "fallbackPlayers": 0,
+   "meanNotMatched": 33,
+   "fieldCalibration": {
+    "rounds": 8,
+    "players": 55,
+    "maxAbsDeviationPct": 15.15,
+    "meanAbsDeviationPct": 2.76
+   },
+   "fieldShapes": {
+    "lineups": 2000,
+    "classic": {
+     "qbStack": 0.897,
+     "catchersWithQb": {
+      "0": 0.0295,
+      "1": 0.5035,
+      "2": 0.3265,
+      "3+": 0.0375
+     },
+     "rbWithQb": 0.289,
+     "teWithQb": 0.4,
+     "bringBack": {
+      "0": 0.371,
+      "1": 0.402,
+      "2+": 0.124
+     }
+    }
+   },
+   "implied": {
+    "top1Pct": {
+     "p5": 150.05,
+     "p25": 164.33,
+     "p50": 174.68,
+     "p75": 186.65,
+     "p95": 206.1,
+     "mean": 175.92987749999978
+    },
+    "top01Pct": {
+     "p5": 164.67,
+     "p25": 179.66,
+     "p50": 190.7,
+     "p75": 202.71,
+     "p95": 220.96,
+     "mean": 191.48107749999974
+    },
+    "sampledBest": {
+     "p5": 168.23,
+     "p25": 183.79,
+     "p50": 195.44,
+     "p75": 207.3,
+     "p95": 226.19,
+     "mean": 195.9551750000004
+    },
+    "median": {
+     "p5": 102.89,
+     "p25": 115.18,
+     "p50": 124.57,
+     "p75": 134.1,
+     "p95": 149.08,
+     "mean": 124.94580499999961
+    }
+   },
+   "realized": {
+    "winning": 250.06,
+    "top01Pct": 218.34,
+    "top1Pct": 199.14,
+    "median": 131.82
+   },
+   "top1PctMiss": 24.46,
+   "allowedMiss": 11.82,
+   "pass": false,
+   "inside90": true
+  },
+  {
+   "label": "2026 w4 ATL@NO",
+   "format": "showdown",
+   "contestId": "196285155",
+   "entries": 88235,
+   "players": 56,
+   "fallbackPlayers": 0,
+   "meanNotMatched": 3,
+   "fieldCalibration": {
+    "rounds": 8,
+    "players": 22,
+    "maxAbsDeviationPct": 27.9,
+    "meanAbsDeviationPct": 7.71
+   },
+   "fieldShapes": {
+    "lineups": 2000,
+    "showdown": {
+     "split": {
+      "3-3": 0.317,
+      "4-2": 0.4695,
+      "5-1": 0.2135
+     },
+     "anyQb": 0.8885,
+     "twoQbs": 0.295,
+     "qbPlusTeammates": {
+      "0": 0.0365,
+      "1": 0.1655,
+      "2": 0.3345,
+      "3+": 0.352
+     }
+    }
+   },
+   "implied": {
+    "top1Pct": {
+     "p5": 74.31,
+     "p25": 101.75,
+     "p50": 120.9,
+     "p75": 137.26,
+     "p95": 156.51,
+     "mean": 118.77324749999998
+    },
+    "top01Pct": {
+     "p5": 79.66,
+     "p25": 107.66,
+     "p50": 127.91,
+     "p75": 145.04,
+     "p95": 166.04,
+     "mean": 125.66481750000007
+    },
+    "sampledBest": {
+     "p5": 80.33,
+     "p25": 108.76,
+     "p50": 128.76,
+     "p75": 146.42,
+     "p95": 166.71,
+     "mean": 126.73709250000017
+    },
+    "median": {
+     "p5": 51.04,
+     "p25": 72.86,
+     "p50": 89.16,
+     "p75": 104.39,
+     "p95": 124.94,
+     "mean": 88.55420499999994
+    }
+   },
+   "realized": {
+    "winning": 143.9,
+    "top01Pct": 142.45,
+    "top1Pct": 133,
+    "median": 97.64
+   },
+   "top1PctMiss": 12.1,
+   "allowedMiss": 20.04,
+   "pass": true,
+   "inside90": true
+  },
+  {
+   "label": "2026 w4 PIT@CLE",
+   "format": "showdown",
+   "contestId": "196187074",
+   "entries": 88235,
+   "players": 51,
+   "fallbackPlayers": 0,
+   "meanNotMatched": 2,
+   "fieldCalibration": {
+    "rounds": 8,
+    "players": 22,
+    "maxAbsDeviationPct": 21.39,
+    "meanAbsDeviationPct": 4.61
+   },
+   "fieldShapes": {
+    "lineups": 2000,
+    "showdown": {
+     "split": {
+      "3-3": 0.317,
+      "4-2": 0.4695,
+      "5-1": 0.2135
+     },
+     "anyQb": 0.908,
+     "twoQbs": 0.246,
+     "qbPlusTeammates": {
+      "0": 0.051,
+      "1": 0.212,
+      "2": 0.3925,
+      "3+": 0.2525
+     }
+    }
+   },
+   "implied": {
+    "top1Pct": {
+     "p5": 56.42,
+     "p25": 75.92,
+     "p50": 89.35,
+     "p75": 101.58,
+     "p95": 114.96,
+     "mean": 88.13046750000026
+    },
+    "top01Pct": {
+     "p5": 60.95,
+     "p25": 80.6,
+     "p50": 94.17,
+     "p75": 106.26,
+     "p95": 118.82,
+     "mean": 92.63361999999992
+    },
+    "sampledBest": {
+     "p5": 62.02,
+     "p25": 81.71,
+     "p50": 95.21,
+     "p75": 107.16,
+     "p95": 119.72,
+     "mean": 93.63829500000041
+    },
+    "median": {
+     "p5": 40.61,
+     "p25": 56.83,
+     "p50": 69.19,
+     "p75": 80.84,
+     "p95": 95.06,
+     "mean": 68.8013975000001
+    }
+   },
+   "realized": {
+    "winning": 120.74,
+    "top01Pct": 118.51,
+    "top1Pct": 113.43,
+    "median": 89.62
+   },
+   "top1PctMiss": 24.08,
+   "allowedMiss": 20.04,
+   "pass": false,
+   "inside90": true
+  },
+  {
+   "label": "2026 w4 IND@WAS",
+   "format": "showdown",
+   "contestId": "196204783",
+   "entries": 22136,
+   "players": 56,
+   "fallbackPlayers": 1,
+   "meanNotMatched": 1,
+   "fieldCalibration": {
+    "rounds": 8,
+    "players": 19,
+    "maxAbsDeviationPct": 43.34,
+    "meanAbsDeviationPct": 9.74
+   },
+   "fieldShapes": {
+    "lineups": 2000,
+    "showdown": {
+     "split": {
+      "3-3": 0.317,
+      "4-2": 0.4695,
+      "5-1": 0.2135
+     },
+     "anyQb": 0.9085,
+     "twoQbs": 0.2135,
+     "qbPlusTeammates": {
+      "0": 0.087,
+      "1": 0.253,
+      "2": 0.36,
+      "3+": 0.2085
+     }
+    }
+   },
+   "implied": {
+    "top1Pct": {
+     "p5": 58.14,
+     "p25": 81.01,
+     "p50": 97.64,
+     "p75": 112.07,
+     "p95": 126.83,
+     "mean": 95.62222499999991
+    },
+    "top01Pct": {
+     "p5": 61.75,
+     "p25": 84.83,
+     "p50": 101.33,
+     "p75": 115.75,
+     "p95": 130.34,
+     "mean": 99.36103999999975
+    },
+    "sampledBest": {
+     "p5": 62.55,
+     "p25": 85.43,
+     "p50": 102.28,
+     "p75": 116.44,
+     "p95": 130.58,
+     "mean": 100.04357749999969
+    },
+    "median": {
+     "p5": 43.3,
+     "p25": 61.65,
+     "p50": 76.67,
+     "p75": 90.26,
+     "p95": 106.05,
+     "mean": 75.72652999999973
+    }
+   },
+   "realized": {
+    "winning": 88.770004,
+    "top01Pct": 85.97,
+    "top1Pct": 82.51,
+    "median": 62.760002
+   },
+   "top1PctMiss": -15.13,
+   "allowedMiss": 20.04,
+   "pass": true,
+   "inside90": true
+  }
+ ]
+}
