@@ -1,0 +1,2691 @@
+{
+ "version": "nfl-field-baseline-v1",
+ "computedAt": "2026-10-14",
+ "contests": [
+  {
+   "contestId": "193028206",
+   "name": "NFL $3.5M Fantasy Football Millionaire [$1M to 1st]",
+   "season": 2026,
+   "week": 1,
+   "format": "classic",
+   "entries": 832342,
+   "linkedSlate": true,
+   "realized": {
+    "winning": 273.98,
+    "top01Pct": 244.84,
+    "top1Pct": 215.7,
+    "top20Pct": 166.84,
+    "median": 141.66
+   },
+   "coverage": {
+    "scoreCurvePoints": 300,
+    "topEntriesWithRosters": 100,
+    "topUsersWithBuilds": 100,
+    "topUserLineups": 4990,
+    "rosterShareOfField": 0.006
+   },
+   "payoutTable": {
+    "brackets": [
+     {
+      "rankFrom": 1,
+      "rankTo": 1,
+      "payout": 1000000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 2,
+      "rankTo": 2,
+      "payout": 100000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 3,
+      "rankTo": 3,
+      "payout": 60000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 4,
+      "rankTo": 4,
+      "payout": 40000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 5,
+      "rankTo": 5,
+      "payout": 20000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 7,
+      "rankTo": 7,
+      "payout": 15000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 8,
+      "rankTo": 10,
+      "payout": 10000.0,
+      "observedRanks": 3
+     },
+     {
+      "rankFrom": 11,
+      "rankTo": 13,
+      "payout": 7500.0,
+      "observedRanks": 3
+     },
+     {
+      "rankFrom": 14,
+      "rankTo": 14,
+      "payout": 5833.33,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 17,
+      "rankTo": 19,
+      "payout": 5000.0,
+      "observedRanks": 3
+     },
+     {
+      "rankFrom": 20,
+      "rankTo": 20,
+      "payout": 4500.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 22,
+      "rankTo": 30,
+      "payout": 4000.0,
+      "observedRanks": 8
+     },
+     {
+      "rankFrom": 31,
+      "rankTo": 40,
+      "payout": 3000.0,
+      "observedRanks": 8
+     },
+     {
+      "rankFrom": 41,
+      "rankTo": 50,
+      "payout": 2500.0,
+      "observedRanks": 10
+     },
+     {
+      "rankFrom": 51,
+      "rankTo": 65,
+      "payout": 2000.0,
+      "observedRanks": 13
+     },
+     {
+      "rankFrom": 66,
+      "rankTo": 80,
+      "payout": 1500.0,
+      "observedRanks": 9
+     },
+     {
+      "rankFrom": 81,
+      "rankTo": 99,
+      "payout": 1000.0,
+      "observedRanks": 17
+     },
+     {
+      "rankFrom": 101,
+      "rankTo": 147,
+      "payout": 750.0,
+      "observedRanks": 9
+     },
+     {
+      "rankFrom": 159,
+      "rankTo": 169,
+      "payout": 600.0,
+      "observedRanks": 3
+     },
+     {
+      "rankFrom": 216,
+      "rankTo": 243,
+      "payout": 500.0,
+      "observedRanks": 3
+     },
+     {
+      "rankFrom": 287,
+      "rankTo": 337,
+      "payout": 400.0,
+      "observedRanks": 4
+     },
+     {
+      "rankFrom": 350,
+      "rankTo": 350,
+      "payout": 350.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 356,
+      "rankTo": 447,
+      "payout": 300.0,
+      "observedRanks": 5
+     },
+     {
+      "rankFrom": 502,
+      "rankTo": 547,
+      "payout": 250.0,
+      "observedRanks": 3
+     },
+     {
+      "rankFrom": 622,
+      "rankTo": 726,
+      "payout": 200.0,
+      "observedRanks": 4
+     },
+     {
+      "rankFrom": 745,
+      "rankTo": 745,
+      "payout": 192.85,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 759,
+      "rankTo": 988,
+      "payout": 150.0,
+      "observedRanks": 7
+     },
+     {
+      "rankFrom": 1014,
+      "rankTo": 1171,
+      "payout": 100.0,
+      "observedRanks": 6
+     },
+     {
+      "rankFrom": 1251,
+      "rankTo": 1424,
+      "payout": 75.0,
+      "observedRanks": 7
+     },
+     {
+      "rankFrom": 1596,
+      "rankTo": 1984,
+      "payout": 60.0,
+      "observedRanks": 11
+     },
+     {
+      "rankFrom": 2025,
+      "rankTo": 2415,
+      "payout": 50.0,
+      "observedRanks": 14
+     },
+     {
+      "rankFrom": 2507,
+      "rankTo": 2955,
+      "payout": 40.0,
+      "observedRanks": 10
+     },
+     {
+      "rankFrom": 2993,
+      "rankTo": 2993,
+      "payout": 36.15,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 3105,
+      "rankTo": 4380,
+      "payout": 30.0,
+      "observedRanks": 32
+     },
+     {
+      "rankFrom": 4489,
+      "rankTo": 4489,
+      "payout": 27.72,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 4589,
+      "rankTo": 6455,
+      "payout": 25.0,
+      "observedRanks": 34
+     },
+     {
+      "rankFrom": 6519,
+      "rankTo": 9940,
+      "payout": 20.0,
+      "observedRanks": 47
+     },
+     {
+      "rankFrom": 10036,
+      "rankTo": 19958,
+      "payout": 15.0,
+      "observedRanks": 109
+     },
+     {
+      "rankFrom": 20142,
+      "rankTo": 49923,
+      "payout": 10.0,
+      "observedRanks": 216
+     },
+     {
+      "rankFrom": 50005,
+      "rankTo": 50005,
+      "payout": 8.48,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 50127,
+      "rankTo": 172825,
+      "payout": 8.0,
+      "observedRanks": 599
+     },
+     {
+      "rankFrom": 173072,
+      "rankTo": 173072,
+      "payout": 5.76,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 173480,
+      "rankTo": 830077,
+      "payout": 0.0,
+      "observedRanks": 1891
+     }
+    ],
+    "observedRanks": 3102,
+    "lastPaidObservedRank": 173072,
+    "minObservedPayout": 5.76,
+    "note": "Brackets are observed only at ranks the top users' entries occupied; a payout between two observed ranks with the same amount is exact (DraftKings brackets are constant), an unobserved bracket edge is not."
+   }
+  },
+  {
+   "contestId": "193391013",
+   "name": "NFL Showdown $2.25M Wednesday Kickoff Millionaire [$1M to 1st, TD Throne Eligible] (NE @ SEA)",
+   "season": 2026,
+   "week": 1,
+   "format": "showdown",
+   "entries": 126020,
+   "linkedSlate": true,
+   "realized": {
+    "winning": 101.02,
+    "top01Pct": 97.92,
+    "top1Pct": 91.52,
+    "top20Pct": 76.35,
+    "median": 65.62
+   },
+   "coverage": {
+    "scoreCurvePoints": 300,
+    "topEntriesWithRosters": 108,
+    "topUsersWithBuilds": 100,
+    "topUserLineups": 4776,
+    "rosterShareOfField": 0.0379
+   },
+   "payoutTable": {
+    "brackets": [
+     {
+      "rankFrom": 1,
+      "rankTo": 1,
+      "payout": 54065.21,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 24,
+      "rankTo": 24,
+      "payout": 1200.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 29,
+      "rankTo": 29,
+      "payout": 1000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 31,
+      "rankTo": 31,
+      "payout": 717.39,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 54,
+      "rankTo": 55,
+      "payout": 500.0,
+      "observedRanks": 2
+     },
+     {
+      "rankFrom": 63,
+      "rankTo": 63,
+      "payout": 242.37,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 122,
+      "rankTo": 122,
+      "payout": 175.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 155,
+      "rankTo": 155,
+      "payout": 155.23,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 198,
+      "rankTo": 322,
+      "payout": 125.0,
+      "observedRanks": 9
+     },
+     {
+      "rankFrom": 328,
+      "rankTo": 328,
+      "payout": 101.56,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 377,
+      "rankTo": 591,
+      "payout": 100.0,
+      "observedRanks": 9
+     },
+     {
+      "rankFrom": 623,
+      "rankTo": 623,
+      "payout": 80.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 688,
+      "rankTo": 1128,
+      "payout": 75.0,
+      "observedRanks": 11
+     },
+     {
+      "rankFrom": 1195,
+      "rankTo": 1195,
+      "payout": 69.17,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 1267,
+      "rankTo": 2106,
+      "payout": 60.0,
+      "observedRanks": 33
+     },
+     {
+      "rankFrom": 2110,
+      "rankTo": 2110,
+      "payout": 53.28,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 2509,
+      "rankTo": 3706,
+      "payout": 50.0,
+      "observedRanks": 27
+     },
+     {
+      "rankFrom": 3740,
+      "rankTo": 3740,
+      "payout": 49.28,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 3772,
+      "rankTo": 7780,
+      "payout": 40.0,
+      "observedRanks": 75
+     },
+     {
+      "rankFrom": 7798,
+      "rankTo": 7798,
+      "payout": 30.36,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 7880,
+      "rankTo": 26485,
+      "payout": 30.0,
+      "observedRanks": 231
+     },
+     {
+      "rankFrom": 26496,
+      "rankTo": 125749,
+      "payout": 0.0,
+      "observedRanks": 1385
+     }
+    ],
+    "observedRanks": 1795,
+    "lastPaidObservedRank": 26485,
+    "minObservedPayout": 30.0,
+    "note": "Brackets are observed only at ranks the top users' entries occupied; a payout between two observed ranks with the same amount is exact (DraftKings brackets are constant), an unobserved bracket edge is not."
+   }
+  },
+  {
+   "contestId": "195648007",
+   "name": "NFL $3M Fantasy Football Millionaire [$1M to 1st]",
+   "season": 2026,
+   "week": 2,
+   "format": "classic",
+   "entries": 172761,
+   "linkedSlate": true,
+   "realized": {
+    "winning": 232.38,
+    "top01Pct": 203.5,
+    "top1Pct": 185.66,
+    "top20Pct": 138.42,
+    "median": 113.8
+   },
+   "coverage": {
+    "scoreCurvePoints": 300,
+    "topEntriesWithRosters": 100,
+    "topUsersWithBuilds": 100,
+    "topUserLineups": 6722,
+    "rosterShareOfField": 0.0389
+   },
+   "payoutTable": {
+    "brackets": [
+     {
+      "rankFrom": 1,
+      "rankTo": 1,
+      "payout": 1000000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 2,
+      "rankTo": 2,
+      "payout": 100000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 3,
+      "rankTo": 3,
+      "payout": 40000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 4,
+      "rankTo": 4,
+      "payout": 25000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 5,
+      "rankTo": 5,
+      "payout": 20000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 6,
+      "rankTo": 6,
+      "payout": 12500.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 8,
+      "rankTo": 8,
+      "payout": 10000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 9,
+      "rankTo": 10,
+      "payout": 7000.0,
+      "observedRanks": 2
+     },
+     {
+      "rankFrom": 11,
+      "rankTo": 14,
+      "payout": 5000.0,
+      "observedRanks": 4
+     },
+     {
+      "rankFrom": 15,
+      "rankTo": 15,
+      "payout": 4000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 17,
+      "rankTo": 20,
+      "payout": 3000.0,
+      "observedRanks": 4
+     },
+     {
+      "rankFrom": 21,
+      "rankTo": 29,
+      "payout": 2000.0,
+      "observedRanks": 9
+     },
+     {
+      "rankFrom": 31,
+      "rankTo": 40,
+      "payout": 1500.0,
+      "observedRanks": 8
+     },
+     {
+      "rankFrom": 41,
+      "rankTo": 55,
+      "payout": 1000.0,
+      "observedRanks": 13
+     },
+     {
+      "rankFrom": 56,
+      "rankTo": 70,
+      "payout": 750.0,
+      "observedRanks": 15
+     },
+     {
+      "rankFrom": 71,
+      "rankTo": 100,
+      "payout": 500.0,
+      "observedRanks": 27
+     },
+     {
+      "rankFrom": 101,
+      "rankTo": 145,
+      "payout": 400.0,
+      "observedRanks": 14
+     },
+     {
+      "rankFrom": 163,
+      "rankTo": 239,
+      "payout": 300.0,
+      "observedRanks": 8
+     },
+     {
+      "rankFrom": 254,
+      "rankTo": 494,
+      "payout": 200.0,
+      "observedRanks": 41
+     },
+     {
+      "rankFrom": 501,
+      "rankTo": 993,
+      "payout": 150.0,
+      "observedRanks": 46
+     },
+     {
+      "rankFrom": 1015,
+      "rankTo": 1966,
+      "payout": 100.0,
+      "observedRanks": 63
+     },
+     {
+      "rankFrom": 1998,
+      "rankTo": 1998,
+      "payout": 80.35,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 2013,
+      "rankTo": 3968,
+      "payout": 75.0,
+      "observedRanks": 133
+     },
+     {
+      "rankFrom": 3996,
+      "rankTo": 3996,
+      "payout": 70.83,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 4014,
+      "rankTo": 7975,
+      "payout": 50.0,
+      "observedRanks": 199
+     },
+     {
+      "rankFrom": 8004,
+      "rankTo": 17944,
+      "payout": 40.0,
+      "observedRanks": 364
+     },
+     {
+      "rankFrom": 17973,
+      "rankTo": 17973,
+      "payout": 37.17,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 18032,
+      "rankTo": 38791,
+      "payout": 30.0,
+      "observedRanks": 536
+     },
+     {
+      "rankFrom": 38817,
+      "rankTo": 38817,
+      "payout": 14.21,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 38903,
+      "rankTo": 172641,
+      "payout": 0.0,
+      "observedRanks": 2155
+     }
+    ],
+    "observedRanks": 3653,
+    "lastPaidObservedRank": 38817,
+    "minObservedPayout": 14.21,
+    "note": "Brackets are observed only at ranks the top users' entries occupied; a payout between two observed ranks with the same amount is exact (DraftKings brackets are constant), an unobserved bracket edge is not."
+   }
+  },
+  {
+   "contestId": "195786068",
+   "name": "NFL Showdown $1.5M Monday Night Showdown [$500K to 1st] (NYG @ LAR)",
+   "season": 2026,
+   "week": 2,
+   "format": "showdown",
+   "entries": 88235,
+   "linkedSlate": true,
+   "realized": {
+    "winning": 149.33,
+    "top01Pct": 143.57,
+    "top1Pct": 139.83,
+    "top20Pct": 112.28,
+    "median": 84.28
+   },
+   "coverage": {
+    "scoreCurvePoints": 300,
+    "topEntriesWithRosters": 109,
+    "topUsersWithBuilds": 100,
+    "topUserLineups": 7704,
+    "rosterShareOfField": 0.0873
+   },
+   "payoutTable": {
+    "brackets": [
+     {
+      "rankFrom": 1,
+      "rankTo": 1,
+      "payout": 38952.38,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 22,
+      "rankTo": 22,
+      "payout": 680.55,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 40,
+      "rankTo": 40,
+      "payout": 314.28,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 54,
+      "rankTo": 57,
+      "payout": 300.0,
+      "observedRanks": 2
+     },
+     {
+      "rankFrom": 59,
+      "rankTo": 59,
+      "payout": 212.5,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 75,
+      "rankTo": 88,
+      "payout": 200.0,
+      "observedRanks": 3
+     },
+     {
+      "rankFrom": 99,
+      "rankTo": 99,
+      "payout": 159.09,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 110,
+      "rankTo": 168,
+      "payout": 150.0,
+      "observedRanks": 6
+     },
+     {
+      "rankFrom": 171,
+      "rankTo": 171,
+      "payout": 116.66,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 186,
+      "rankTo": 306,
+      "payout": 100.0,
+      "observedRanks": 5
+     },
+     {
+      "rankFrom": 312,
+      "rankTo": 312,
+      "payout": 76.36,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 378,
+      "rankTo": 587,
+      "payout": 70.0,
+      "observedRanks": 8
+     },
+     {
+      "rankFrom": 620,
+      "rankTo": 620,
+      "payout": 51.6,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 704,
+      "rankTo": 1161,
+      "payout": 50.0,
+      "observedRanks": 19
+     },
+     {
+      "rankFrom": 1234,
+      "rankTo": 1234,
+      "payout": 49.43,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 1411,
+      "rankTo": 3149,
+      "payout": 40.0,
+      "observedRanks": 57
+     },
+     {
+      "rankFrom": 3157,
+      "rankTo": 3157,
+      "payout": 39.4,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 3208,
+      "rankTo": 7059,
+      "payout": 35.0,
+      "observedRanks": 90
+     },
+     {
+      "rankFrom": 7068,
+      "rankTo": 7068,
+      "payout": 32.14,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 7075,
+      "rankTo": 19120,
+      "payout": 30.0,
+      "observedRanks": 259
+     },
+     {
+      "rankFrom": 19128,
+      "rankTo": 19128,
+      "payout": 6.92,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 19141,
+      "rankTo": 88078,
+      "payout": 0.0,
+      "observedRanks": 1814
+     }
+    ],
+    "observedRanks": 2275,
+    "lastPaidObservedRank": 19128,
+    "minObservedPayout": 6.92,
+    "note": "Brackets are observed only at ranks the top users' entries occupied; a payout between two observed ranks with the same amount is exact (DraftKings brackets are constant), an unobserved bracket edge is not."
+   }
+  },
+  {
+   "contestId": "195905122",
+   "name": "NFL $2.75M Fantasy Football Millionaire [$1M to 1st]",
+   "season": 2026,
+   "week": 3,
+   "format": "classic",
+   "entries": 161764,
+   "linkedSlate": true,
+   "realized": {
+    "winning": 239.8,
+    "top01Pct": 208.3,
+    "top1Pct": 193.14,
+    "top20Pct": 149.74,
+    "median": 127.0
+   },
+   "coverage": {
+    "scoreCurvePoints": 300,
+    "topEntriesWithRosters": 100,
+    "topUsersWithBuilds": 100,
+    "topUserLineups": 4898,
+    "rosterShareOfField": 0.0303
+   },
+   "payoutTable": {
+    "brackets": [
+     {
+      "rankFrom": 1,
+      "rankTo": 1,
+      "payout": 1000000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 2,
+      "rankTo": 2,
+      "payout": 100000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 3,
+      "rankTo": 3,
+      "payout": 50000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 4,
+      "rankTo": 4,
+      "payout": 25000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 5,
+      "rankTo": 5,
+      "payout": 12500.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 7,
+      "rankTo": 8,
+      "payout": 7000.0,
+      "observedRanks": 2
+     },
+     {
+      "rankFrom": 9,
+      "rankTo": 10,
+      "payout": 5000.0,
+      "observedRanks": 2
+     },
+     {
+      "rankFrom": 11,
+      "rankTo": 15,
+      "payout": 3000.0,
+      "observedRanks": 5
+     },
+     {
+      "rankFrom": 16,
+      "rankTo": 20,
+      "payout": 2000.0,
+      "observedRanks": 5
+     },
+     {
+      "rankFrom": 21,
+      "rankTo": 30,
+      "payout": 1500.0,
+      "observedRanks": 8
+     },
+     {
+      "rankFrom": 31,
+      "rankTo": 44,
+      "payout": 1000.0,
+      "observedRanks": 14
+     },
+     {
+      "rankFrom": 45,
+      "rankTo": 45,
+      "payout": 850.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 47,
+      "rankTo": 65,
+      "payout": 700.0,
+      "observedRanks": 17
+     },
+     {
+      "rankFrom": 66,
+      "rankTo": 94,
+      "payout": 500.0,
+      "observedRanks": 22
+     },
+     {
+      "rankFrom": 96,
+      "rankTo": 133,
+      "payout": 400.0,
+      "observedRanks": 13
+     },
+     {
+      "rankFrom": 153,
+      "rankTo": 171,
+      "payout": 300.0,
+      "observedRanks": 7
+     },
+     {
+      "rankFrom": 197,
+      "rankTo": 315,
+      "payout": 200.0,
+      "observedRanks": 7
+     },
+     {
+      "rankFrom": 324,
+      "rankTo": 510,
+      "payout": 150.0,
+      "observedRanks": 23
+     },
+     {
+      "rankFrom": 534,
+      "rankTo": 1018,
+      "payout": 100.0,
+      "observedRanks": 45
+     },
+     {
+      "rankFrom": 1019,
+      "rankTo": 1019,
+      "payout": 93.33,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 1051,
+      "rankTo": 2406,
+      "payout": 70.0,
+      "observedRanks": 78
+     },
+     {
+      "rankFrom": 2417,
+      "rankTo": 2417,
+      "payout": 59.47,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 2436,
+      "rankTo": 5904,
+      "payout": 50.0,
+      "observedRanks": 176
+     },
+     {
+      "rankFrom": 5926,
+      "rankTo": 14382,
+      "payout": 40.0,
+      "observedRanks": 298
+     },
+     {
+      "rankFrom": 14416,
+      "rankTo": 14416,
+      "payout": 36.25,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 14444,
+      "rankTo": 37339,
+      "payout": 30.0,
+      "observedRanks": 548
+     },
+     {
+      "rankFrom": 37411,
+      "rankTo": 37411,
+      "payout": 8.65,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 37463,
+      "rankTo": 161571,
+      "payout": 0.0,
+      "observedRanks": 1699
+     }
+    ],
+    "observedRanks": 2979,
+    "lastPaidObservedRank": 37411,
+    "minObservedPayout": 8.65,
+    "note": "Brackets are observed only at ranks the top users' entries occupied; a payout between two observed ranks with the same amount is exact (DraftKings brackets are constant), an unobserved bracket edge is not."
+   }
+  },
+  {
+   "contestId": "196128919",
+   "name": "contest-standings-196128919.csv",
+   "season": 2026,
+   "week": 3,
+   "format": "classic",
+   "entries": 7134,
+   "linkedSlate": true,
+   "realized": {
+    "winning": 228.31999,
+    "top01Pct": 206.36,
+    "top1Pct": 189.07999,
+    "top20Pct": 152.96,
+    "median": 129.79999
+   },
+   "coverage": {
+    "scoreCurvePoints": 296,
+    "topEntriesWithRosters": 0,
+    "topUsersWithBuilds": 0,
+    "topUserLineups": 0,
+    "rosterShareOfField": 0.0
+   },
+   "payoutTable": {
+    "brackets": [],
+    "observedRanks": 0,
+    "lastPaidObservedRank": null,
+    "minObservedPayout": null,
+    "note": "Brackets are observed only at ranks the top users' entries occupied; a payout between two observed ranks with the same amount is exact (DraftKings brackets are constant), an unobserved bracket edge is not."
+   }
+  },
+  {
+   "contestId": "195943234",
+   "name": "NFL Showdown $1.5M Thursday Night Showdown [$500K to 1st] (ATL @ GB)",
+   "season": 2026,
+   "week": 3,
+   "format": "showdown",
+   "entries": 88235,
+   "linkedSlate": true,
+   "realized": {
+    "winning": 151.53,
+    "top01Pct": 147.98,
+    "top1Pct": 145.23,
+    "top20Pct": 125.33,
+    "median": 109.73
+   },
+   "coverage": {
+    "scoreCurvePoints": 300,
+    "topEntriesWithRosters": 116,
+    "topUsersWithBuilds": 100,
+    "topUserLineups": 6493,
+    "rosterShareOfField": 0.0736
+   },
+   "payoutTable": {
+    "brackets": [
+     {
+      "rankFrom": 1,
+      "rankTo": 1,
+      "payout": 500000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 2,
+      "rankTo": 2,
+      "payout": 54000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 7,
+      "rankTo": 7,
+      "payout": 8750.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 9,
+      "rankTo": 9,
+      "payout": 3600.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 14,
+      "rankTo": 14,
+      "payout": 1034.09,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 36,
+      "rankTo": 36,
+      "payout": 425.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 44,
+      "rankTo": 55,
+      "payout": 300.0,
+      "observedRanks": 8
+     },
+     {
+      "rankFrom": 57,
+      "rankTo": 57,
+      "payout": 225.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 73,
+      "rankTo": 80,
+      "payout": 200.0,
+      "observedRanks": 2
+     },
+     {
+      "rankFrom": 84,
+      "rankTo": 84,
+      "payout": 161.33,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 160,
+      "rankTo": 160,
+      "payout": 118.6,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 203,
+      "rankTo": 289,
+      "payout": 100.0,
+      "observedRanks": 5
+     },
+     {
+      "rankFrom": 325,
+      "rankTo": 325,
+      "payout": 76.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 350,
+      "rankTo": 566,
+      "payout": 70.0,
+      "observedRanks": 13
+     },
+     {
+      "rankFrom": 627,
+      "rankTo": 1362,
+      "payout": 50.0,
+      "observedRanks": 34
+     },
+     {
+      "rankFrom": 1366,
+      "rankTo": 1366,
+      "payout": 49.21,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 1404,
+      "rankTo": 3156,
+      "payout": 40.0,
+      "observedRanks": 54
+     },
+     {
+      "rankFrom": 3201,
+      "rankTo": 7066,
+      "payout": 35.0,
+      "observedRanks": 115
+     },
+     {
+      "rankFrom": 7069,
+      "rankTo": 7069,
+      "payout": 30.07,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 7201,
+      "rankTo": 19055,
+      "payout": 30.0,
+      "observedRanks": 314
+     },
+     {
+      "rankFrom": 19066,
+      "rankTo": 19066,
+      "payout": 19.89,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 19164,
+      "rankTo": 87975,
+      "payout": 0.0,
+      "observedRanks": 1893
+     }
+    ],
+    "observedRanks": 2451,
+    "lastPaidObservedRank": 19066,
+    "minObservedPayout": 19.89,
+    "note": "Brackets are observed only at ranks the top users' entries occupied; a payout between two observed ranks with the same amount is exact (DraftKings brackets are constant), an unobserved bracket edge is not."
+   }
+  },
+  {
+   "contestId": "195943238",
+   "name": "contest-standings-195943238.csv",
+   "season": 2026,
+   "week": 3,
+   "format": "showdown",
+   "entries": 83234,
+   "linkedSlate": true,
+   "realized": {
+    "winning": 151.65,
+    "top01Pct": 147.98,
+    "top1Pct": 145.33,
+    "top20Pct": 125.93,
+    "median": 109.94
+   },
+   "coverage": {
+    "scoreCurvePoints": 300,
+    "topEntriesWithRosters": 0,
+    "topUsersWithBuilds": 0,
+    "topUserLineups": 0,
+    "rosterShareOfField": 0.0
+   },
+   "payoutTable": {
+    "brackets": [],
+    "observedRanks": 0,
+    "lastPaidObservedRank": null,
+    "minObservedPayout": null,
+    "note": "Brackets are observed only at ranks the top users' entries occupied; a payout between two observed ranks with the same amount is exact (DraftKings brackets are constant), an unobserved bracket edge is not."
+   }
+  },
+  {
+   "contestId": "196036238",
+   "name": "NFL Showdown $1.5M Monday Night Showdown [$500K to 1st] (PHI @ CHI)",
+   "season": 2026,
+   "week": 3,
+   "format": "showdown",
+   "entries": 88235,
+   "linkedSlate": true,
+   "realized": {
+    "winning": 115.64,
+    "top01Pct": 108.84,
+    "top1Pct": 102.9,
+    "top20Pct": 75.0,
+    "median": 62.21
+   },
+   "coverage": {
+    "scoreCurvePoints": 300,
+    "topEntriesWithRosters": 109,
+    "topUsersWithBuilds": 100,
+    "topUserLineups": 6690,
+    "rosterShareOfField": 0.0758
+   },
+   "payoutTable": {
+    "brackets": [
+     {
+      "rankFrom": 1,
+      "rankTo": 1,
+      "payout": 181250.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 5,
+      "rankTo": 5,
+      "payout": 30000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 6,
+      "rankTo": 6,
+      "payout": 5450.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 16,
+      "rankTo": 16,
+      "payout": 1500.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 18,
+      "rankTo": 18,
+      "payout": 1300.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 23,
+      "rankTo": 24,
+      "payout": 1000.0,
+      "observedRanks": 2
+     },
+     {
+      "rankFrom": 26,
+      "rankTo": 30,
+      "payout": 750.0,
+      "observedRanks": 2
+     },
+     {
+      "rankFrom": 31,
+      "rankTo": 31,
+      "payout": 500.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 32,
+      "rankTo": 32,
+      "payout": 463.63,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 43,
+      "rankTo": 56,
+      "payout": 300.0,
+      "observedRanks": 9
+     },
+     {
+      "rankFrom": 57,
+      "rankTo": 57,
+      "payout": 266.66,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 63,
+      "rankTo": 66,
+      "payout": 200.0,
+      "observedRanks": 2
+     },
+     {
+      "rankFrom": 67,
+      "rankTo": 67,
+      "payout": 179.31,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 126,
+      "rankTo": 153,
+      "payout": 150.0,
+      "observedRanks": 7
+     },
+     {
+      "rankFrom": 161,
+      "rankTo": 161,
+      "payout": 132.6,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 184,
+      "rankTo": 305,
+      "payout": 100.0,
+      "observedRanks": 9
+     },
+     {
+      "rankFrom": 326,
+      "rankTo": 572,
+      "payout": 70.0,
+      "observedRanks": 27
+     },
+     {
+      "rankFrom": 596,
+      "rankTo": 596,
+      "payout": 65.78,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 634,
+      "rankTo": 1332,
+      "payout": 50.0,
+      "observedRanks": 60
+     },
+     {
+      "rankFrom": 1353,
+      "rankTo": 1353,
+      "payout": 45.21,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 1445,
+      "rankTo": 3194,
+      "payout": 40.0,
+      "observedRanks": 117
+     },
+     {
+      "rankFrom": 3198,
+      "rankTo": 3198,
+      "payout": 35.29,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 3249,
+      "rankTo": 7048,
+      "payout": 35.0,
+      "observedRanks": 204
+     },
+     {
+      "rankFrom": 7063,
+      "rankTo": 7063,
+      "payout": 32.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 7083,
+      "rankTo": 18986,
+      "payout": 30.0,
+      "observedRanks": 524
+     },
+     {
+      "rankFrom": 19000,
+      "rankTo": 19000,
+      "payout": 23.53,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 19167,
+      "rankTo": 87943,
+      "payout": 0.0,
+      "observedRanks": 1383
+     }
+    ],
+    "observedRanks": 2361,
+    "lastPaidObservedRank": 19000,
+    "minObservedPayout": 23.53,
+    "note": "Brackets are observed only at ranks the top users' entries occupied; a payout between two observed ranks with the same amount is exact (DraftKings brackets are constant), an unobserved bracket edge is not."
+   }
+  },
+  {
+   "contestId": "196151357",
+   "name": "NFL $2.75M Fantasy Football Millionaire [$1M to 1st]",
+   "season": 2026,
+   "week": 4,
+   "format": "classic",
+   "entries": 161764,
+   "linkedSlate": true,
+   "realized": {
+    "winning": 234.2,
+    "top01Pct": 209.2,
+    "top1Pct": 189.14,
+    "top20Pct": 139.6,
+    "median": 116.88
+   },
+   "coverage": {
+    "scoreCurvePoints": 300,
+    "topEntriesWithRosters": 100,
+    "topUsersWithBuilds": 100,
+    "topUserLineups": 4924,
+    "rosterShareOfField": 0.0304
+   },
+   "payoutTable": {
+    "brackets": [
+     {
+      "rankFrom": 1,
+      "rankTo": 1,
+      "payout": 1000000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 2,
+      "rankTo": 2,
+      "payout": 100000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 3,
+      "rankTo": 3,
+      "payout": 50000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 4,
+      "rankTo": 4,
+      "payout": 25000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 5,
+      "rankTo": 5,
+      "payout": 15000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 6,
+      "rankTo": 6,
+      "payout": 10000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 7,
+      "rankTo": 8,
+      "payout": 7000.0,
+      "observedRanks": 2
+     },
+     {
+      "rankFrom": 9,
+      "rankTo": 10,
+      "payout": 5000.0,
+      "observedRanks": 2
+     },
+     {
+      "rankFrom": 11,
+      "rankTo": 15,
+      "payout": 3000.0,
+      "observedRanks": 5
+     },
+     {
+      "rankFrom": 16,
+      "rankTo": 20,
+      "payout": 2000.0,
+      "observedRanks": 5
+     },
+     {
+      "rankFrom": 21,
+      "rankTo": 30,
+      "payout": 1500.0,
+      "observedRanks": 8
+     },
+     {
+      "rankFrom": 31,
+      "rankTo": 45,
+      "payout": 1000.0,
+      "observedRanks": 12
+     },
+     {
+      "rankFrom": 46,
+      "rankTo": 64,
+      "payout": 700.0,
+      "observedRanks": 19
+     },
+     {
+      "rankFrom": 65,
+      "rankTo": 65,
+      "payout": 600.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 67,
+      "rankTo": 95,
+      "payout": 500.0,
+      "observedRanks": 17
+     },
+     {
+      "rankFrom": 96,
+      "rankTo": 128,
+      "payout": 400.0,
+      "observedRanks": 10
+     },
+     {
+      "rankFrom": 141,
+      "rankTo": 185,
+      "payout": 300.0,
+      "observedRanks": 8
+     },
+     {
+      "rankFrom": 196,
+      "rankTo": 312,
+      "payout": 200.0,
+      "observedRanks": 11
+     },
+     {
+      "rankFrom": 319,
+      "rankTo": 494,
+      "payout": 150.0,
+      "observedRanks": 21
+     },
+     {
+      "rankFrom": 518,
+      "rankTo": 987,
+      "payout": 100.0,
+      "observedRanks": 30
+     },
+     {
+      "rankFrom": 1066,
+      "rankTo": 2417,
+      "payout": 70.0,
+      "observedRanks": 71
+     },
+     {
+      "rankFrom": 2437,
+      "rankTo": 5904,
+      "payout": 50.0,
+      "observedRanks": 144
+     },
+     {
+      "rankFrom": 5912,
+      "rankTo": 5912,
+      "payout": 48.23,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 5929,
+      "rankTo": 14363,
+      "payout": 40.0,
+      "observedRanks": 268
+     },
+     {
+      "rankFrom": 14398,
+      "rankTo": 14398,
+      "payout": 37.17,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 14437,
+      "rankTo": 37394,
+      "payout": 30.0,
+      "observedRanks": 508
+     },
+     {
+      "rankFrom": 37409,
+      "rankTo": 37409,
+      "payout": 8.64,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 37468,
+      "rankTo": 161441,
+      "payout": 0.0,
+      "observedRanks": 1767
+     }
+    ],
+    "observedRanks": 2918,
+    "lastPaidObservedRank": 37409,
+    "minObservedPayout": 8.64,
+    "note": "Brackets are observed only at ranks the top users' entries occupied; a payout between two observed ranks with the same amount is exact (DraftKings brackets are constant), an unobserved bracket edge is not."
+   }
+  },
+  {
+   "contestId": "196187074",
+   "name": "NFL $1.5M Thursday Night Showdown [$500K to 1st] (PIT @ CLE)",
+   "season": 2026,
+   "week": 4,
+   "format": "showdown",
+   "entries": 88235,
+   "linkedSlate": true,
+   "realized": {
+    "winning": 120.74,
+    "top01Pct": 118.51,
+    "top1Pct": 113.43,
+    "top20Pct": 98.21,
+    "median": 89.62
+   },
+   "coverage": {
+    "scoreCurvePoints": 300,
+    "topEntriesWithRosters": 104,
+    "topUsersWithBuilds": 100,
+    "topUserLineups": 5714,
+    "rosterShareOfField": 0.0648
+   },
+   "payoutTable": {
+    "brackets": [
+     {
+      "rankFrom": 1,
+      "rankTo": 1,
+      "payout": 21288.46,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 40,
+      "rankTo": 40,
+      "payout": 328.57,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 47,
+      "rankTo": 47,
+      "payout": 282.35,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 64,
+      "rankTo": 86,
+      "payout": 200.0,
+      "observedRanks": 2
+     },
+     {
+      "rankFrom": 89,
+      "rankTo": 89,
+      "payout": 187.5,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 113,
+      "rankTo": 113,
+      "payout": 150.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 154,
+      "rankTo": 154,
+      "payout": 139.28,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 185,
+      "rankTo": 276,
+      "payout": 100.0,
+      "observedRanks": 5
+     },
+     {
+      "rankFrom": 295,
+      "rankTo": 295,
+      "payout": 86.9,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 377,
+      "rankTo": 601,
+      "payout": 70.0,
+      "observedRanks": 11
+     },
+     {
+      "rankFrom": 619,
+      "rankTo": 619,
+      "payout": 61.66,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 634,
+      "rankTo": 1379,
+      "payout": 50.0,
+      "observedRanks": 19
+     },
+     {
+      "rankFrom": 1400,
+      "rankTo": 1400,
+      "payout": 40.29,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 1443,
+      "rankTo": 3035,
+      "payout": 40.0,
+      "observedRanks": 65
+     },
+     {
+      "rankFrom": 3200,
+      "rankTo": 3200,
+      "payout": 35.31,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 3222,
+      "rankTo": 6977,
+      "payout": 35.0,
+      "observedRanks": 113
+     },
+     {
+      "rankFrom": 7062,
+      "rankTo": 7062,
+      "payout": 33.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 7077,
+      "rankTo": 18999,
+      "payout": 30.0,
+      "observedRanks": 256
+     },
+     {
+      "rankFrom": 19051,
+      "rankTo": 19051,
+      "payout": 23.76,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 19152,
+      "rankTo": 87957,
+      "payout": 0.0,
+      "observedRanks": 1388
+     }
+    ],
+    "observedRanks": 1871,
+    "lastPaidObservedRank": 19051,
+    "minObservedPayout": 23.76,
+    "note": "Brackets are observed only at ranks the top users' entries occupied; a payout between two observed ranks with the same amount is exact (DraftKings brackets are constant), an unobserved bracket edge is not."
+   }
+  },
+  {
+   "contestId": "196204783",
+   "name": "contest-standings-196204783.csv",
+   "season": 2026,
+   "week": 4,
+   "format": "showdown",
+   "entries": 22136,
+   "linkedSlate": true,
+   "realized": {
+    "winning": 88.770004,
+    "top01Pct": 85.97,
+    "top1Pct": 82.51,
+    "top20Pct": 72.01,
+    "median": 62.760002
+   },
+   "coverage": {
+    "scoreCurvePoints": 299,
+    "topEntriesWithRosters": 0,
+    "topUsersWithBuilds": 0,
+    "topUserLineups": 0,
+    "rosterShareOfField": 0.0
+   },
+   "payoutTable": {
+    "brackets": [],
+    "observedRanks": 0,
+    "lastPaidObservedRank": null,
+    "minObservedPayout": null,
+    "note": "Brackets are observed only at ranks the top users' entries occupied; a payout between two observed ranks with the same amount is exact (DraftKings brackets are constant), an unobserved bracket edge is not."
+   }
+  },
+  {
+   "contestId": "196280117",
+   "name": "contest-standings-196280117.csv",
+   "season": 2026,
+   "week": 4,
+   "format": "showdown",
+   "entries": 8917,
+   "linkedSlate": true,
+   "realized": {
+    "winning": 120.73999,
+    "top01Pct": 119.18,
+    "top1Pct": 112.079994,
+    "top20Pct": 97.92,
+    "median": 89.68
+   },
+   "coverage": {
+    "scoreCurvePoints": 296,
+    "topEntriesWithRosters": 0,
+    "topUsersWithBuilds": 0,
+    "topUserLineups": 0,
+    "rosterShareOfField": 0.0
+   },
+   "payoutTable": {
+    "brackets": [],
+    "observedRanks": 0,
+    "lastPaidObservedRank": null,
+    "minObservedPayout": null,
+    "note": "Brackets are observed only at ranks the top users' entries occupied; a payout between two observed ranks with the same amount is exact (DraftKings brackets are constant), an unobserved bracket edge is not."
+   }
+  },
+  {
+   "contestId": "196285155",
+   "name": "NFL Showdown $1.5M Monday Night Showdown [$500K to 1st] (ATL @ NO)",
+   "season": 2026,
+   "week": 4,
+   "format": "showdown",
+   "entries": 88235,
+   "linkedSlate": true,
+   "realized": {
+    "winning": 143.9,
+    "top01Pct": 142.45,
+    "top1Pct": 133.0,
+    "top20Pct": 112.44,
+    "median": 97.64
+   },
+   "coverage": {
+    "scoreCurvePoints": 300,
+    "topEntriesWithRosters": 101,
+    "topUsersWithBuilds": 100,
+    "topUserLineups": 3040,
+    "rosterShareOfField": 0.0345
+   },
+   "payoutTable": {
+    "brackets": [
+     {
+      "rankFrom": 1,
+      "rankTo": 1,
+      "payout": 225000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 4,
+      "rankTo": 4,
+      "payout": 2079.37,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 84,
+      "rankTo": 84,
+      "payout": 171.79,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 123,
+      "rankTo": 123,
+      "payout": 150.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 194,
+      "rankTo": 244,
+      "payout": 100.0,
+      "observedRanks": 3
+     },
+     {
+      "rankFrom": 316,
+      "rankTo": 316,
+      "payout": 81.11,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 355,
+      "rankTo": 588,
+      "payout": 70.0,
+      "observedRanks": 4
+     },
+     {
+      "rankFrom": 618,
+      "rankTo": 618,
+      "payout": 57.27,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 696,
+      "rankTo": 1353,
+      "payout": 50.0,
+      "observedRanks": 13
+     },
+     {
+      "rankFrom": 1403,
+      "rankTo": 3050,
+      "payout": 40.0,
+      "observedRanks": 36
+     },
+     {
+      "rankFrom": 3063,
+      "rankTo": 3063,
+      "payout": 38.87,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 3241,
+      "rankTo": 6949,
+      "payout": 35.0,
+      "observedRanks": 58
+     },
+     {
+      "rankFrom": 7039,
+      "rankTo": 7039,
+      "payout": 32.8,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 7099,
+      "rankTo": 19083,
+      "payout": 30.0,
+      "observedRanks": 170
+     },
+     {
+      "rankFrom": 19132,
+      "rankTo": 87837,
+      "payout": 0.0,
+      "observedRanks": 1098
+     }
+    ],
+    "observedRanks": 1390,
+    "lastPaidObservedRank": 19083,
+    "minObservedPayout": 30.0,
+    "note": "Brackets are observed only at ranks the top users' entries occupied; a payout between two observed ranks with the same amount is exact (DraftKings brackets are constant), an unobserved bracket edge is not."
+   }
+  },
+  {
+   "contestId": "196285178",
+   "name": "contest-standings-196285178.csv",
+   "season": 2026,
+   "week": 4,
+   "format": "showdown",
+   "entries": 8917,
+   "linkedSlate": true,
+   "realized": {
+    "winning": 143.99,
+    "top01Pct": 142.45,
+    "top1Pct": 132.15001,
+    "top20Pct": 114.920006,
+    "median": 99.490005
+   },
+   "coverage": {
+    "scoreCurvePoints": 296,
+    "topEntriesWithRosters": 0,
+    "topUsersWithBuilds": 0,
+    "topUserLineups": 0,
+    "rosterShareOfField": 0.0
+   },
+   "payoutTable": {
+    "brackets": [],
+    "observedRanks": 0,
+    "lastPaidObservedRank": null,
+    "minObservedPayout": null,
+    "note": "Brackets are observed only at ranks the top users' entries occupied; a payout between two observed ranks with the same amount is exact (DraftKings brackets are constant), an unobserved bracket edge is not."
+   }
+  },
+  {
+   "contestId": "196403752",
+   "name": "NFL $2.75M Fantasy Football Millionaire [$1M to 1st, $100K Leaderboard Eligible]",
+   "season": 2026,
+   "week": 5,
+   "format": "classic",
+   "entries": 161557,
+   "linkedSlate": true,
+   "realized": {
+    "winning": 250.06,
+    "top01Pct": 218.34,
+    "top1Pct": 199.14,
+    "top20Pct": 154.16,
+    "median": 131.82
+   },
+   "coverage": {
+    "scoreCurvePoints": 300,
+    "topEntriesWithRosters": 100,
+    "topUsersWithBuilds": 100,
+    "topUserLineups": 6072,
+    "rosterShareOfField": 0.0376
+   },
+   "payoutTable": {
+    "brackets": [
+     {
+      "rankFrom": 1,
+      "rankTo": 1,
+      "payout": 1000000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 2,
+      "rankTo": 2,
+      "payout": 100000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 3,
+      "rankTo": 3,
+      "payout": 50000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 4,
+      "rankTo": 4,
+      "payout": 25000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 5,
+      "rankTo": 5,
+      "payout": 15000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 6,
+      "rankTo": 6,
+      "payout": 10000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 7,
+      "rankTo": 8,
+      "payout": 7000.0,
+      "observedRanks": 2
+     },
+     {
+      "rankFrom": 9,
+      "rankTo": 10,
+      "payout": 5000.0,
+      "observedRanks": 2
+     },
+     {
+      "rankFrom": 11,
+      "rankTo": 15,
+      "payout": 3000.0,
+      "observedRanks": 5
+     },
+     {
+      "rankFrom": 16,
+      "rankTo": 20,
+      "payout": 2000.0,
+      "observedRanks": 5
+     },
+     {
+      "rankFrom": 21,
+      "rankTo": 29,
+      "payout": 1500.0,
+      "observedRanks": 9
+     },
+     {
+      "rankFrom": 30,
+      "rankTo": 30,
+      "payout": 1250.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 32,
+      "rankTo": 45,
+      "payout": 1000.0,
+      "observedRanks": 11
+     },
+     {
+      "rankFrom": 46,
+      "rankTo": 65,
+      "payout": 700.0,
+      "observedRanks": 16
+     },
+     {
+      "rankFrom": 66,
+      "rankTo": 95,
+      "payout": 500.0,
+      "observedRanks": 23
+     },
+     {
+      "rankFrom": 96,
+      "rankTo": 133,
+      "payout": 400.0,
+      "observedRanks": 18
+     },
+     {
+      "rankFrom": 147,
+      "rankTo": 180,
+      "payout": 300.0,
+      "observedRanks": 7
+     },
+     {
+      "rankFrom": 199,
+      "rankTo": 314,
+      "payout": 200.0,
+      "observedRanks": 16
+     },
+     {
+      "rankFrom": 324,
+      "rankTo": 510,
+      "payout": 150.0,
+      "observedRanks": 20
+     },
+     {
+      "rankFrom": 521,
+      "rankTo": 990,
+      "payout": 100.0,
+      "observedRanks": 35
+     },
+     {
+      "rankFrom": 1036,
+      "rankTo": 2420,
+      "payout": 70.0,
+      "observedRanks": 94
+     },
+     {
+      "rankFrom": 2436,
+      "rankTo": 5887,
+      "payout": 50.0,
+      "observedRanks": 172
+     },
+     {
+      "rankFrom": 5910,
+      "rankTo": 5910,
+      "payout": 47.61,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 5943,
+      "rankTo": 14393,
+      "payout": 40.0,
+      "observedRanks": 307
+     },
+     {
+      "rankFrom": 14421,
+      "rankTo": 14421,
+      "payout": 31.08,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 14467,
+      "rankTo": 37343,
+      "payout": 30.0,
+      "observedRanks": 559
+     },
+     {
+      "rankFrom": 37406,
+      "rankTo": 37406,
+      "payout": 15.38,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 37445,
+      "rankTo": 161451,
+      "payout": 0.0,
+      "observedRanks": 2057
+     }
+    ],
+    "observedRanks": 3368,
+    "lastPaidObservedRank": 37406,
+    "minObservedPayout": 15.38,
+    "note": "Brackets are observed only at ranks the top users' entries occupied; a payout between two observed ranks with the same amount is exact (DraftKings brackets are constant), an unobserved bracket edge is not."
+   }
+  },
+  {
+   "contestId": "196438550",
+   "name": "NFL Showdown $1.5M Thursday Night Showdown [$500K to 1st] (TB @ DAL)",
+   "season": 2026,
+   "week": 5,
+   "format": "showdown",
+   "entries": 88235,
+   "linkedSlate": true,
+   "realized": {
+    "winning": 136.59,
+    "top01Pct": 133.34,
+    "top1Pct": 130.0,
+    "top20Pct": 95.3,
+    "median": 75.29
+   },
+   "coverage": {
+    "scoreCurvePoints": 300,
+    "topEntriesWithRosters": 113,
+    "topUsersWithBuilds": 100,
+    "topUserLineups": 6095,
+    "rosterShareOfField": 0.0691
+   },
+   "payoutTable": {
+    "brackets": [
+     {
+      "rankFrom": 1,
+      "rankTo": 1,
+      "payout": 128333.33,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 7,
+      "rankTo": 7,
+      "payout": 8750.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 9,
+      "rankTo": 9,
+      "payout": 5000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 10,
+      "rankTo": 10,
+      "payout": 1375.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 36,
+      "rankTo": 36,
+      "payout": 383.33,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 48,
+      "rankTo": 55,
+      "payout": 300.0,
+      "observedRanks": 3
+     },
+     {
+      "rankFrom": 60,
+      "rankTo": 60,
+      "payout": 206.66,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 75,
+      "rankTo": 78,
+      "payout": 200.0,
+      "observedRanks": 2
+     },
+     {
+      "rankFrom": 92,
+      "rankTo": 92,
+      "payout": 158.33,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 146,
+      "rankTo": 146,
+      "payout": 150.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 161,
+      "rankTo": 161,
+      "payout": 120.83,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 221,
+      "rankTo": 302,
+      "payout": 100.0,
+      "observedRanks": 3
+     },
+     {
+      "rankFrom": 313,
+      "rankTo": 313,
+      "payout": 80.83,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 355,
+      "rankTo": 622,
+      "payout": 70.0,
+      "observedRanks": 7
+     },
+     {
+      "rankFrom": 630,
+      "rankTo": 1356,
+      "payout": 50.0,
+      "observedRanks": 37
+     },
+     {
+      "rankFrom": 1421,
+      "rankTo": 3170,
+      "payout": 40.0,
+      "observedRanks": 92
+     },
+     {
+      "rankFrom": 3176,
+      "rankTo": 3176,
+      "payout": 37.77,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 3221,
+      "rankTo": 7012,
+      "payout": 35.0,
+      "observedRanks": 162
+     },
+     {
+      "rankFrom": 7067,
+      "rankTo": 7067,
+      "payout": 30.74,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 7094,
+      "rankTo": 19098,
+      "payout": 30.0,
+      "observedRanks": 413
+     },
+     {
+      "rankFrom": 19129,
+      "rankTo": 19129,
+      "payout": 3.33,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 19147,
+      "rankTo": 88040,
+      "payout": 0.0,
+      "observedRanks": 1732
+     }
+    ],
+    "observedRanks": 2464,
+    "lastPaidObservedRank": 19129,
+    "minObservedPayout": 3.33,
+    "note": "Brackets are observed only at ranks the top users' entries occupied; a payout between two observed ranks with the same amount is exact (DraftKings brackets are constant), an unobserved bracket edge is not."
+   }
+  },
+  {
+   "contestId": "196480476",
+   "name": "NFL Showdown $2M MEGA Millionaire [$1M to 1st] (BUF @ LAR)",
+   "season": 2026,
+   "week": 5,
+   "format": "showdown",
+   "entries": 500,
+   "linkedSlate": true,
+   "realized": {
+    "winning": 166.27,
+    "top01Pct": 166.27,
+    "top1Pct": 153.98,
+    "top20Pct": 142.57,
+    "median": 130.87
+   },
+   "coverage": {
+    "scoreCurvePoints": 300,
+    "topEntriesWithRosters": 100,
+    "topUsersWithBuilds": 100,
+    "topUserLineups": 379,
+    "rosterShareOfField": 0.758
+   },
+   "payoutTable": {
+    "brackets": [
+     {
+      "rankFrom": 1,
+      "rankTo": 1,
+      "payout": 1000000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 2,
+      "rankTo": 2,
+      "payout": 100000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 3,
+      "rankTo": 3,
+      "payout": 60000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 5,
+      "rankTo": 5,
+      "payout": 26000.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 10,
+      "rankTo": 10,
+      "payout": 17500.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 12,
+      "rankTo": 14,
+      "payout": 15000.0,
+      "observedRanks": 2
+     },
+     {
+      "rankFrom": 15,
+      "rankTo": 15,
+      "payout": 12500.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 17,
+      "rankTo": 25,
+      "payout": 10000.0,
+      "observedRanks": 5
+     },
+     {
+      "rankFrom": 26,
+      "rankTo": 90,
+      "payout": 7000.0,
+      "observedRanks": 33
+     },
+     {
+      "rankFrom": 91,
+      "rankTo": 500,
+      "payout": 0.0,
+      "observedRanks": 199
+     }
+    ],
+    "observedRanks": 245,
+    "lastPaidObservedRank": 90,
+    "minObservedPayout": 7000.0,
+    "note": "Brackets are observed only at ranks the top users' entries occupied; a payout between two observed ranks with the same amount is exact (DraftKings brackets are constant), an unobserved bracket edge is not."
+   }
+  },
+  {
+   "contestId": "195677825",
+   "name": "NFL Showdown $1.5M Thursday Night Showdown [$500K to 1st] (DET @ BUF)",
+   "season": null,
+   "week": null,
+   "format": "showdown",
+   "entries": 88235,
+   "linkedSlate": false,
+   "realized": {
+    "winning": 174.51,
+    "top01Pct": 171.91,
+    "top1Pct": 166.4,
+    "top20Pct": 137.67,
+    "median": 121.23
+   },
+   "coverage": {
+    "scoreCurvePoints": 300,
+    "topEntriesWithRosters": 108,
+    "topUsersWithBuilds": 100,
+    "topUserLineups": 4151,
+    "rosterShareOfField": 0.047
+   },
+   "payoutTable": {
+    "brackets": [
+     {
+      "rankFrom": 1,
+      "rankTo": 1,
+      "payout": 47794.11,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 18,
+      "rankTo": 18,
+      "payout": 1068.18,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 29,
+      "rankTo": 29,
+      "payout": 452.63,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 48,
+      "rankTo": 48,
+      "payout": 185.26,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 160,
+      "rankTo": 160,
+      "payout": 150.0,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 176,
+      "rankTo": 221,
+      "payout": 100.0,
+      "observedRanks": 2
+     },
+     {
+      "rankFrom": 270,
+      "rankTo": 270,
+      "payout": 89.76,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 355,
+      "rankTo": 593,
+      "payout": 70.0,
+      "observedRanks": 11
+     },
+     {
+      "rankFrom": 626,
+      "rankTo": 1279,
+      "payout": 50.0,
+      "observedRanks": 26
+     },
+     {
+      "rankFrom": 1324,
+      "rankTo": 1324,
+      "payout": 48.65,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 1423,
+      "rankTo": 3191,
+      "payout": 40.0,
+      "observedRanks": 43
+     },
+     {
+      "rankFrom": 3210,
+      "rankTo": 7019,
+      "payout": 35.0,
+      "observedRanks": 76
+     },
+     {
+      "rankFrom": 7096,
+      "rankTo": 19086,
+      "payout": 30.0,
+      "observedRanks": 253
+     },
+     {
+      "rankFrom": 19113,
+      "rankTo": 19113,
+      "payout": 10.38,
+      "observedRanks": 1
+     },
+     {
+      "rankFrom": 19165,
+      "rankTo": 88024,
+      "payout": 0.0,
+      "observedRanks": 1183
+     }
+    ],
+    "observedRanks": 1602,
+    "lastPaidObservedRank": 19113,
+    "minObservedPayout": 10.38,
+    "note": "Brackets are observed only at ranks the top users' entries occupied; a payout between two observed ranks with the same amount is exact (DraftKings brackets are constant), an unobserved bracket edge is not."
+   }
+  }
+ ],
+ "byFormat": {
+  "classic": {
+   "flagships": 5,
+   "winning": {
+    "values": [
+     273.98,
+     232.38,
+     239.8,
+     234.2,
+     250.06
+    ],
+    "mean": 246.08,
+    "sd": 17.05
+   },
+   "top01Pct": {
+    "values": [
+     244.84,
+     203.5,
+     208.3,
+     209.2,
+     218.34
+    ],
+    "mean": 216.84,
+    "sd": 16.55
+   },
+   "top1Pct": {
+    "values": [
+     215.7,
+     185.66,
+     193.14,
+     189.14,
+     199.14
+    ],
+    "mean": 196.56,
+    "sd": 11.82
+   },
+   "median": {
+    "values": [
+     141.66,
+     113.8,
+     127.0,
+     116.88,
+     131.82
+    ],
+    "mean": 126.23,
+    "sd": 11.31
+   }
+  },
+  "showdown": {
+   "flagships": 7,
+   "winning": {
+    "values": [
+     101.02,
+     149.33,
+     151.53,
+     115.64,
+     120.74,
+     143.9,
+     136.59
+    ],
+    "mean": 131.25,
+    "sd": 19.13
+   },
+   "top01Pct": {
+    "values": [
+     97.92,
+     143.57,
+     147.98,
+     108.84,
+     118.51,
+     142.45,
+     133.34
+    ],
+    "mean": 127.52,
+    "sd": 19.32
+   },
+   "top1Pct": {
+    "values": [
+     91.52,
+     139.83,
+     145.23,
+     102.9,
+     113.43,
+     133.0,
+     130.0
+    ],
+    "mean": 122.27,
+    "sd": 20.04
+   },
+   "median": {
+    "values": [
+     65.62,
+     84.28,
+     109.73,
+     62.21,
+     89.62,
+     97.64,
+     75.29
+    ],
+    "mean": 83.48,
+    "sd": 17.16
+   }
+  }
+ },
+ "limits": [
+  "Score curves are complete; payout tables are observed only at ranks the top users' entries occupied.",
+  "Rosters exist for top finishers only and are outcome-selected; they are not used to fit a field model.",
+  "Flagship spreads use contests with >= 10,000 entries and stored top entries (the stat-api flagships)."
+ ]
+}

@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import {
   detectLeakage, backtestCapability, evaluateBacktestRow, summarizeBacktest,
-  promotionDecision, assertDisjointWindow, type PointInTimeSlatePackage,
+  promotionDecision, assertDisjointWindow, contestPayout, type PointInTimeSlatePackage,
 } from "../src/lib/nfl-dfs/backtest";
 
 function pkg(over: Partial<PointInTimeSlatePackage> = {}): PointInTimeSlatePackage {
@@ -92,7 +92,26 @@ function main() {
   assert.equal(fieldSummary.fieldRelativeRows, 2);
   assert.equal(typeof fieldSummary.meanRoi, "number");
 
-  console.log("NFL GPP Phase 8 (point-in-time backtest): P8-AC1..AC5 passed.");
+  // --- Payout accounting: ties split the positions they occupy, and our own entries compete with each other ---
+  const table = [{ rankFrom: 1, rankTo: 1, payout: 1_000_000 }, { rankFrom: 2, rankTo: 3, payout: 100_000 }, { rankFrom: 4, rankTo: 10, payout: 1_000 }];
+  // The week-4 PIT@CLE flagship: 30 entries tied for first with one identical lineup. One of them is ours.
+  assert.equal(contestPayout([120.74], Array(29).fill(120.74).concat([100, 90]), table),
+    Math.round((1_000_000 + 2 * 100_000 + 7 * 1_000) / 30 * 100) / 100, "a 30-way tie for first shares ranks 1-30, not 30 first prizes");
+  // Two of ours tied with each other for 2nd and 3rd split those two places; nothing from the field changes.
+  assert.equal(contestPayout([110, 110], [120, 100], table), 200_000, "our entries occupy ranks 2-3 together");
+  assert.equal(contestPayout([110], [120, 110, 100], table), 100_000, "tied with one field entry for 2nd-3rd: half of 200,000");
+  // No tie: plain bracket lookup (first place plus the 4th-place bracket); outside the brackets earns nothing.
+  assert.equal(contestPayout([130, 50], [120, 100], table), 1_001_000);
+  assert.equal(contestPayout([10], [120, 100, 90, 80, 70, 60, 55, 54, 53, 52], table), 0);
+  const tiedPkg = pkg({ contest: { ...pkg().contest!, payoutTable: table,
+    fieldLineups: [{ playerIds: [9, 9, 9, 9, 9, 9], score: 95 }, { playerIds: [8, 8, 8, 8, 8, 8], score: 95 }] } });
+  // Our first lineup scores 95 (players 1..6 = 30+20+15+12+10+8) and ties the two field entries for first;
+  // the second (player 7 has no score and counts 0 in this module) scores 87 and takes 4th.
+  const tiedRow = evaluateBacktestRow(tiedPkg, portfolio);
+  assert.equal(tiedRow.field!.netPayout, Math.round((1_000_000 + 2 * 100_000) / 3 * 100) / 100 + 1_000 - 2 * 5,
+    "row payout uses the shared tie rule: a third of ranks 1-3, plus 4th place, minus two entry fees");
+
+  console.log("NFL GPP Phase 8 (point-in-time backtest): P8-AC1..AC5 and tie-split payout passed.");
 }
 
 main();

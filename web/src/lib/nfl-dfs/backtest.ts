@@ -141,19 +141,40 @@ export function evaluateBacktestRow(
     const field_ = pkg.contest.fieldLineups!;
     const beaten = field_.filter((f) => f.score < bestLineupScore).length;
     const bestLineupPercentile = field_.length ? 1 - beaten / field_.length : null;
-    // Net payout across the portfolio: rank each generated lineup against the field.
-    let gross = 0;
-    for (const s of generatedScores) {
-      const rank = field_.filter((f) => f.score > s).length + 1;
-      const bracket = pkg.contest.payoutTable.find((p) => rank >= p.rankFrom && rank <= p.rankTo);
-      gross += bracket?.payout ?? 0;
-    }
+    // Net payout across the portfolio. Our entries stand in the SAME standings
+    // as the field and as each other: a tie group occupying ranks r..r+k-1
+    // shares the sum of those ranks' payouts equally (DraftKings' rule), so a
+    // 30-way tie for first pays each entry a thirtieth of first place, and two
+    // of our lineups tied with each other split the places they occupy.
+    const gross = contestPayout(generatedScores, field_.map((f) => f.score), pkg.contest.payoutTable);
     const cost = portfolio.length * pkg.contest.entryFee;
     field = { capability: "field_relative", entryFee: pkg.contest.entryFee, fieldSize: pkg.contest.fieldSize,
       bestLineupPercentile, netPayout: gross - cost, roi: cost > 0 ? (gross - cost) / cost : null };
   }
 
   return { season: pkg.season, week: pkg.week, contestId: pkg.contestId, capability, codeVersion: pkg.codeVersion, modelVersion: pkg.modelVersion, leakage, construction, field };
+}
+
+/**
+ * Total payout to `ours` when they are entered alongside `field` (scores),
+ * under rank brackets and DraftKings' tie rule: a tie group spanning ranks
+ * r..r+k-1 shares the payouts of those k positions equally. Exact to the cent.
+ */
+export function contestPayout(ours: number[], field: number[], payoutTable: Array<{ rankFrom: number; rankTo: number; payout: number }>): number {
+  const payoutAt = (rank: number) => payoutTable.find((p) => rank >= p.rankFrom && rank <= p.rankTo)?.payout ?? 0;
+  const entries = [...ours.map((score) => ({ score, ours: true })), ...field.map((score) => ({ score, ours: false }))]
+    .sort((a, b) => b.score - a.score);
+  let cents = 0;
+  for (let i = 0; i < entries.length;) {
+    let j = i + 1;
+    while (j < entries.length && entries[j].score === entries[i].score) j++;
+    let pool = 0;
+    for (let rank = i + 1; rank <= j; rank++) pool += Math.round(payoutAt(rank) * 100);
+    const mine = entries.slice(i, j).filter((e) => e.ours).length;
+    if (mine) cents += Math.round((pool * mine) / (j - i));
+    i = j;
+  }
+  return cents / 100;
 }
 
 // --- Walk-forward evaluation --------------------------------------------
