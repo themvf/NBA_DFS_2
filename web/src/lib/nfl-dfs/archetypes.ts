@@ -344,7 +344,14 @@ const BALANCED_WEIGHTS: Array<{ id: ArchetypeId; weight: number }> = [
   { id: "favorite_onslaught", weight: 0.15 },
   { id: "double_fade", weight: 0.10 },
   { id: "underdog_comeback", weight: 0.10 },
-  { id: "low_scoring_k_dst", weight: 0.10 },
+  // 0.03, not 0.10 (2026-10-15): week-6 SEA@DEN showed the quota is mostly
+  // dead weight. Under the Winners shape (no kickers) it can only be met with
+  // defenses and stalled the owner's build at 93 of 100; even with kickers the
+  // challenger arm filled 5 of its 10. A kicker-less pool skips it entirely
+  // (a "low-scoring" lineup built around the defense alone is just a DST
+  // lineup, which uniqueness already produces) and the share folds into
+  // Standard ceiling, disclosed in the notes.
+  { id: "low_scoring_k_dst", weight: 0.03 },
 ];
 
 export interface BalancedArchetypePlan {
@@ -369,9 +376,16 @@ export function balancedArchetypePlan(ctx: ArchetypeSlateContext, n: number): Ba
   const notes: string[] = [];
   const fades = autoFadeCandidates(ctx, 2);
   const hasGameScript = Boolean(ctx.favoriteTeam && ctx.underdogTeam);
-  const hasKdst = ctx.players.some((p) => p.position === "K" || p.position === "DST");
+  // The low-scoring archetype needs a KICKER in the pool. A pool with only
+  // defenses (the Winners shape leaves kickers out) cannot express it: the
+  // quota would be met by lineups uniqueness already builds, and on the
+  // week-6 SEA@DEN build it stalled the owner's 100 at 93.
+  const hasKicker = ctx.players.some((p) => p.position === "K");
+  const hasDst = ctx.players.some((p) => p.position === "DST");
   if (!hasGameScript) notes.push("Vegas favorite unknown — favorite-onslaught and underdog-comeback lineups were folded into Standard ceiling.");
-  if (!hasKdst) notes.push("No kicker or defense in the pool — low-scoring K/DST lineups were folded into Standard ceiling.");
+  if (!hasKicker) notes.push(hasDst
+    ? "No kicker in the pool (winners shape leaves kickers out) — the low-scoring K/DST share was folded into Standard ceiling rather than forced onto the defense."
+    : "No kicker or defense in the pool — low-scoring K/DST lineups were folded into Standard ceiling.");
   if (fades.length) {
     const basis = ctx.players.some((p) => p.ownership != null) ? "projected ownership" : "projection (chalk proxy — no ownership feed)";
     notes.push(`Fade targets auto-selected by ${basis}.`);
@@ -381,7 +395,7 @@ export function balancedArchetypePlan(ctx: ArchetypeSlateContext, n: number): Ba
     if (id === "single_chalk_fade") return fades.length >= 1;
     if (id === "double_fade") return fades.length >= 2;
     if (id === "favorite_onslaught" || id === "underdog_comeback") return hasGameScript;
-    if (id === "low_scoring_k_dst") return hasKdst;
+    if (id === "low_scoring_k_dst") return hasKicker;
     return true;
   });
   // Largest-remainder allocation over the eligible weights so counts sum to n

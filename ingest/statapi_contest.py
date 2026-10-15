@@ -43,6 +43,7 @@ from psycopg2.extras import Json, execute_values
 
 from config import load_config
 from db.database import DatabaseManager
+from model import nfl_dfs_field_stacks as stacks
 from model import statapi_contest as m
 
 BASE = "https://api.stat-api.com/api/v1/dfs"
@@ -250,6 +251,22 @@ def persist(db: DatabaseManager, contest: dict, summary: dict, ownership: dict, 
 # One contest
 # --------------------------------------------------------------------------
 
+def stack_summary(fmt: str, standings: list[dict], total_entries: int, lineups_per_user: list[list[dict]]) -> dict | None:
+    """The contest's stack-shape rates (model/nfl_dfs_field_stacks.py), or None when nothing supports one.
+
+    Classic reads every standings row's label (the whole field once all rows
+    are fetched). stat-api labels no showdown row, so showdown reads the held
+    top users' lineups and the summary says `population: top_users`.
+    """
+    if fmt == "classic" and standings:
+        return stacks.classic_field_stacks(standings, total_entries)
+    if fmt == "showdown":
+        lineups = [l for per_user in lineups_per_user for l in per_user]
+        if lineups:
+            return stacks.showdown_build_stacks(lineups)
+    return None
+
+
 def import_contest(args, client: Client, db: DatabaseManager | None, statapi_id: int) -> str:
     raw_contest, raw_rows = fetch_standings(client, statapi_id, rows=args.standings_rows, all_rows=args.all_standings)
     contest = m.contest_row(raw_contest)
@@ -269,6 +286,7 @@ def import_contest(args, client: Client, db: DatabaseManager | None, statapi_id:
     entries = m.top_entries(lineups_per_user, args.keep_top)
     ownership = m.field_ownership(payloads, contest["contest_id"])
     covered = ownership["mass"] is not None and ownership["mass"] >= args.ownership_min_coverage
+    stacks = stack_summary(contest["format"], standings, contest["entry_count"], lineups_per_user)
 
     notes = []
     upload = None
@@ -281,6 +299,11 @@ def import_contest(args, client: Client, db: DatabaseManager | None, statapi_id:
                 upload = resolve_upload(db, {"players": ownership["players"]}, contest["format"], args.upload)
             persist(db, contest, summary, ownership, builds, entries, upload,
                     m.payload_digest(raw_rows), write_ownership=covered)
+            if stacks is not None:
+                from ingest.nfl_dfs_field_audit import persist_structure
+                persist_structure(db, contest["contest_id"], stacks)
+                notes.append(f"stack shapes ({stacks['version']}): {stacks['entries']:,} {stacks['population'].replace('_', ' ')} "
+                             f"lineups" + ("" if stacks.get("complete", True) else " (partial standings: NOT the field)"))
             notes.append(f"stored: contest {contest['contest_id']}, {len(standings):,} standings rows"
                          + (f" (complete: median/min/score curve written)" if summary["complete"] else "")
                          + f", {len(builds)} user builds, {len(entries)} lineups within the top {args.keep_top}, "
