@@ -2886,6 +2886,26 @@ TABLES = [
     )""",
     """CREATE INDEX IF NOT EXISTS idx_nfl_dfs_field_top_entries_user
         ON nfl_dfs_field_top_entries (username)""",
+    # Winning lineups PUBLISHED by a third party (ingest/hellorookie_winners.py):
+    # one rank-1 Classic lineup per week with the page's own draft %, salary
+    # and points. No contest id, no standings, no score curve; it is the free
+    # record of past seasons' winners, not a field. Python owns writes.
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_published_winners (
+        source TEXT NOT NULL,
+        season INTEGER NOT NULL,
+        week INTEGER NOT NULL,
+        contest TEXT NOT NULL,
+        rank INTEGER NOT NULL DEFAULT 1,
+        version TEXT NOT NULL,
+        players JSONB NOT NULL,
+        total_salary INTEGER,
+        total_points DOUBLE PRECISION,
+        flags JSONB NOT NULL DEFAULT '[]'::jsonb,
+        source_url TEXT NOT NULL,
+        page_digest TEXT NOT NULL,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (source, season, week, contest, rank)
+    )""",
     # A top finisher's whole portfolio in one contest, from stat-api's per-user
     # lineups endpoint (ingest/statapi_contest.py): record, stat-api's own
     # analysis (stacks, dispersion, chalk exposure), per-player exposure vs the

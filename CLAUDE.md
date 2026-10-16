@@ -7767,6 +7767,29 @@ treating either as more than a judgement.
 
 ---
 
+## Published Millionaire winners, 2023-2025 (Hello Rookie, 2026-10-15)
+
+`python -m ingest.hellorookie_winners` stores the rank-1 lineup of each week's
+DraftKings NFL Millionaire from Hello Rookie's winners page (position, player,
+draft %, salary, points) in `nfl_dfs_published_winners`, parsed by
+`model/hellorookie_winners.py` (`hellorookie-winners-v1`). One page, one
+request, on request only, robots.txt allows it. Stored: 2025 weeks 1-11, 2024
+weeks 1-18, 2023 weeks 1-17 (46 lineups; the page stopped at 2025 week 11).
+It is the only free record of past seasons' winners found: stat-api serves
+past seasons only on Pro, dfsdb now blocks our client, DraftKings' full-
+standings export redirects to sign-in logged out (whether a logged-in
+account can export a contest it did not enter is unverified). What it is not:
+standings, a score curve, Showdown, or anyone's ownership beyond the nine
+players; one outcome-selected lineup a week, so it can describe how winners
+were built and cannot calibrate ownership or grade the pool-rule studies.
+Most headings carry no year; the season is inferred from where the week
+number jumps up going down the page and checked against the explicit 2024
+and 2023 headings and DraftKings Network's own week-1 and week-5 2025 totals.
+The page's arithmetic is kept, not corrected: five lineups sum above the
+$50,000 cap, 2024 week 1 has an N/A salary, and 2024 weeks 7 and 9 carry the
+same table (`flags`). Names are abbreviated from 2024 on ("J. Fields"), so
+joining to players needs the slate's salary and position, not the name.
+
 ## dfsdb.com contest import — one pasted link at a time (2026-10-10)
 
 `python -m ingest.dfsdb_contest <link>` pulls a public DraftKings contest from
