@@ -60,6 +60,8 @@ REFERENCE_COLUMNS = (
     ("nfl_matchup_forecast_runs", "baseline_run_id"),
     ("nfl_matchup_research_reports", "baseline_run_id"),
     ("nfl_specials_runs", "projection_run_id"),
+    # The ghost-lineup freeze names the run its frozen inputs came from.
+    ("nfl_dfs_ghost_freezes", "projection_run_id"),
 )
 
 

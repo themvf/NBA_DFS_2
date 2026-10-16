@@ -237,3 +237,16 @@ def test_fetch_standings_refuses_a_courtesy_preview():
     _, rows = fetch_standings(Client(delay=0, session=FakeSession([FakeResponse(200, flagship)])),
                               29870409, rows=5, all_rows=False)
     assert len(rows) == 5
+
+
+def test_payout_curve_pays_by_score_with_ties_as_split():
+    rows = [{"points": 120.0, "payout": 1000.0}, {"points": 110.0, "payout": 100.0}, {"points": 110.0, "payout": 100.0},
+            {"points": 95.5, "payout": 40.0}, {"points": 81.0, "payout": 18.91}, {"points": 80.9, "payout": 0.0}]
+    curve = m.payout_curve(rows, 20.0)
+    assert curve["entry_fee"] == 20.0 and curve["min_cash_score"] == 81.0 and curve["paid_entries"] == 5
+    assert m.payout_for(curve, 125.0) == 1000.0
+    assert m.payout_for(curve, 112.0) == 100.0
+    assert m.payout_for(curve, 81.0) == 18.91
+    assert m.payout_for(curve, 80.95) == 0.0
+    assert m.payout_for(None, 100.0) is None and m.payout_for(curve, None) is None
+    assert m.payout_curve([{"points": 50.0, "payout": 0.0}], 20.0) is None

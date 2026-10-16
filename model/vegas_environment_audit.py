@@ -364,7 +364,8 @@ def _player_audit(db: ReadOnlyDb) -> dict[str, Any]:
                       0::int evaluable_slates
                FROM nfl_dfs_slate_uploads u
                JOIN nfl_dfs_slate_players sp ON sp.upload_id=u.upload_id
-               LEFT JOIN nfl_dfs_projection_runs r ON r.run_id=u.projection_run_id"""
+               LEFT JOIN nfl_dfs_projection_runs r ON r.run_id=u.projection_run_id
+               WHERE u.origin = 'upload'"""
         )[0]
         complete = db.query(
             """SELECT COUNT(*)::int evaluable_slates FROM (
@@ -377,6 +378,7 @@ def _player_audit(db: ReadOnlyDb) -> dict[str, Any]:
                  FROM nfl_dfs_slate_uploads u
                  JOIN nfl_dfs_slate_players sp ON sp.upload_id=u.upload_id
                  LEFT JOIN nfl_dfs_projection_runs r ON r.run_id=u.projection_run_id
+                 WHERE u.origin = 'upload'
                  GROUP BY u.upload_id,u.format
                ) samples WHERE result_rows >= CASE WHEN format='showdown' THEN 6 ELSE 9 END"""
         )[0]

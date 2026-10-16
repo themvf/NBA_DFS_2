@@ -180,8 +180,8 @@ def persist(db: DatabaseManager, contest: dict, summary: dict, ownership: dict, 
             cursor.execute(
                 """INSERT INTO nfl_dfs_field_contests
                      (contest_id, contest_name, format, season, week, slate_upload_id, entry_count,
-                      winning_score, median_score, min_score, file_name, file_digest, score_curve)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                      winning_score, median_score, min_score, file_name, file_digest, score_curve, payout_curve, entry_fee)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                    ON CONFLICT (contest_id) DO UPDATE SET
                      contest_name = EXCLUDED.contest_name,
                      slate_upload_id = COALESCE(EXCLUDED.slate_upload_id, nfl_dfs_field_contests.slate_upload_id),
@@ -192,12 +192,15 @@ def persist(db: DatabaseManager, contest: dict, summary: dict, ownership: dict, 
                      median_score = COALESCE(EXCLUDED.median_score, nfl_dfs_field_contests.median_score),
                      min_score = COALESCE(EXCLUDED.min_score, nfl_dfs_field_contests.min_score),
                      file_name = EXCLUDED.file_name, file_digest = EXCLUDED.file_digest,
-                     score_curve = COALESCE(EXCLUDED.score_curve, nfl_dfs_field_contests.score_curve)""",
+                     score_curve = COALESCE(EXCLUDED.score_curve, nfl_dfs_field_contests.score_curve),
+                     payout_curve = COALESCE(EXCLUDED.payout_curve, nfl_dfs_field_contests.payout_curve),
+                     entry_fee = COALESCE(EXCLUDED.entry_fee, nfl_dfs_field_contests.entry_fee)""",
                 (contest["contest_id"], contest["contest_name"], contest["format"],
                  (upload or {}).get("season"), (upload or {}).get("week"), (upload or {}).get("upload_id"),
                  contest["entry_count"], summary["winning_score"], summary["median_score"], summary["min_score"],
                  f"{m.SOURCE}:{contest['statapi_id']}", digest,
-                 Json(summary["score_curve"]) if summary["score_curve"] else None))
+                 Json(summary["score_curve"]) if summary["score_curve"] else None,
+                 Json(summary["payout_curve"]) if summary.get("payout_curve") else None, contest.get("entry_fee")))
             if write_ownership and ownership["players"]:
                 execute_values(
                     cursor,
@@ -272,6 +275,8 @@ def import_contest(args, client: Client, db: DatabaseManager | None, statapi_id:
     contest = m.contest_row(raw_contest)
     standings = m.standings_rows(raw_rows)
     summary = m.standings_summary(standings, contest["entry_count"])
+    # The payout table only from complete standings: a partial pull would read unpaid ranks as unknown.
+    summary["payout_curve"] = m.payout_curve(standings, contest["entry_fee"]) if summary["complete"] else None
 
     # Top finishers: the first N distinct usernames in rank order.
     usernames: list[str] = []

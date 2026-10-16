@@ -37,10 +37,14 @@ ROOT = Path(__file__).resolve().parents[1]
 STUDIES = {
     "classic": {"version": "nfl-classic-te-wr-pool-v1", "format": "classic", "games": "multi",
                 "doc": "docs/nfl-classic-te-wr-pool-rule-study.md", "priorOpportunity": True,
+                # Folded into the ghost factorial as the teWrRules factor from 2026-10-18.
+                "superseded_by": "nfl-ghost-factorial-v1",
                 # One Classic main slate per week: enrollment is unique per week.
                 "uniquePerGames": False},
     "showdown": {"version": "nfl-showdown-kicker-rule-v1", "format": "showdown", "games": "single",
                  "doc": "docs/nfl-showdown-kicker-rule-study.md", "priorOpportunity": False,
+                 # Folded into the ghost factorial as the kickers factor from 2026-10-18.
+                 "superseded_by": "nfl-ghost-factorial-v1",
                  # Several Showdowns a week: enrollment is unique per game.
                  "uniquePerGames": True},
     "portfolio": {"version": "nfl-portfolio-objective-v2", "format": "any", "games": "any",
@@ -332,6 +336,10 @@ def main(argv=None):
         ap.error("The portfolio study needs exactly one attestation: --main-slate (Classic) or --flagship-showdown (Showdown)")
     if args.out.exists():
         ap.error("--out must be a new directory; prior captures are never overwritten")
+    if args.save and STUDIES[args.study].get("superseded_by"):
+        ap.error(f"{STUDIES[args.study]['version']} is superseded by {STUDIES[args.study]['superseded_by']} "
+                 "(docs/nfl-ghost-factorial-study.md), which tests the same rule as a factor on every gradable slate "
+                 "with no owner build needed; dry runs still work, --save is refused")
     db = DatabaseManager(load_config().database_url, initialize_schema=False)
     captured = capture(db, args.source_run, args.study)
     if args.study == "portfolio":

@@ -8149,6 +8149,45 @@ build the quota could only be met with defenses and stalled the owner's 100 at
 `balancedArchetypePlan` now folds the share into Standard ceiling, with a
 note, whenever the pool has no kicker.
 
+## NFL DFS — Ghost-lineup factorial: automatic house + 32 arms every gradable slate (2026-10-16)
+
+`docs/nfl-ghost-factorial-study.md` registers `nfl-ghost-factorial-v1`. For
+the Sunday main Classic and every primetime Showdown (the contests stat-api
+serves in full), `/api/cron/nfl-ghost` on Vercel (every 5 min) freezes one
+input 105-20 minutes before first kickoff and builds a HOUSE portfolio
+(`web/src/lib/nfl-dfs/ghost/house.ts`) plus 32 design arms
+(`ghost/design.ts`: resolution-IV Hadamard columns for the two-level factors,
+exchange-searched three-level columns, worst correlation 0.108, digests
+pinned by `npm run test:nfl-ghost`). Each arm fans out to `/api/nfl-ghost/arm`
+and is saved as a research run before lock. No owner build is needed; owner
+builds are graded beside the arms. Tuesday's post-week job runs
+`python -m research.nfl_ghost_grade` (`model/nfl_ghost_grade.py`):
+- **scoring:** contest points, then weekly results by player id; an unknown
+  player leaves a lineup unscored, never 0;
+- **payouts:** from each flagship's score-to-payout table (`payout_curve`,
+  new on `nfl_dfs_field_contests`);
+- **effects:** within-slate OLS with a slate bootstrap, withheld until 8
+  graded slates per format, then Benjamini-Hochberg candidates that must
+  confirm on 8 fresh slates.
+
+The TE/WR and kicker pair studies are folded in as factors (their runner
+refuses `--save`). Things not to undo:
+- **System slates are invisible by construction.** A system slate is an
+  upload with `origin='system'`, NO projection-run link and a salted
+  signature, so every reader that picks uploads, including the hash-pinned
+  matchup selectors (which join to projection runs), never sees it. Owner
+  readers also filter `origin='upload'`. Any new reader that lists uploads
+  must do the same.
+- **The pool snapshot is the slate.** It matched the owner's SEA@DEN CSV on
+  all 56 players. Captain salary is derived as 1.5x flex, and
+  `nfl_dfs_dk_pool_player_status.ppg` (DraftKings' average, stored from
+  2026-10-16) feeds the ownership prior.
+- **The input is frozen once per slate.** A Classic snapshot is about 5 MB
+  compressed, so it lives once on `nfl_dfs_ghost_freezes`, and each arm's
+  run stores `[]` plus a digest.
+- **Anchored players keep `supersededAbsenceCommit`,** so the
+  model-projection and no-commit arms can revert both adjustments exactly.
+
 ## NFL DFS — the page read, measured and cut (2026-10-10)
 
 Opening a saved slate on `/dfs/nfl` took 12-26 s, all of it in one server

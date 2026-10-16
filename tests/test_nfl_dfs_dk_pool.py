@@ -344,3 +344,13 @@ def test_run_status_red_only_for_failed_reads():
     assert dk.summarize([benign, ok], hours=120, explicit=False, games_soon=5)[1] == 0
     lines, status = dk.summarize([benign, ok, failed], hours=120, explicit=False, games_soon=5)
     assert status == 1 and any("FAILED  403" in line for line in lines)
+
+
+def test_ppg_is_stored_as_a_number_or_null_and_is_part_of_the_digest():
+    base = [{"pid": 1, "pdkid": 2, "tsid": 3, "fn": "A", "ln": "B", "pn": "WR", "tid": 1, "htid": 1, "htabbr": "SEA",
+             "atabbr": "DEN", "s": 5000, "i": "", "swp": True, "news": 0, "IsDisabledFromDrafting": False, "ppg": "12.4"}]
+    rows = normalize_players(base)
+    assert rows[0]["ppg"] == 12.4
+    assert normalize_players([{**base[0], "ppg": ""}])[0]["ppg"] is None
+    assert normalize_players([{**base[0], "ppg": None}])[0]["ppg"] is None
+    assert payload_digest(rows) != payload_digest(normalize_players([{**base[0], "ppg": "13.0"}]))

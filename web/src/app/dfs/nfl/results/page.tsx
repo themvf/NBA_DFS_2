@@ -4,6 +4,7 @@ import { readNflResultsHistory } from "../actions";
 import { builtAfterStart, CHALK_CAPTAIN_PCT, CONTRARIAN_CAPTAIN_PCT, distinctSets, summarizeHistory, type Tally } from "@/lib/nfl-dfs/results-history";
 import { summarizeSet } from "@/lib/nfl-dfs/slate-results";
 import { UpsideGradeCard } from "./upside-grade-card";
+import { GhostStudyCard } from "./ghost-study-card";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +44,8 @@ export default async function ResultsHistoryPage() {
     </header>
 
     <UpsideGradeCard />
+
+    <GhostStudyCard />
 
     {!slates.length ? <section className="rounded-xl border border-dashed bg-white p-8 text-sm text-slate-600">
       No contest results yet. Upload a DraftKings contest standings file in a slate&apos;s Results step.

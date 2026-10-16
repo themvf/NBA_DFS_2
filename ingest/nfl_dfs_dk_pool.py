@@ -178,12 +178,25 @@ def normalize_players(players: list[dict]) -> list[dict]:
             # and "no tag" are the same fact; NULL says so without inviting a
             # caller to compare against "".
             "status": (player.get("i") or "").strip().upper() or None,
+            # DraftKings' printed season average, the "AvgPointsPerGame" column of
+            # the salary CSV. Stored since 2026-10-16 so a slate can be built from
+            # the pool alone (the ghost-lineup house build): the ownership prior
+            # anchors on it. A blank or non-number is NULL, never 0.
+            "ppg": _ppg(player.get("ppg")),
             "is_disabled": bool(player.get("IsDisabledFromDrafting")),
             "swappable": player.get("swp"),
             "news": player.get("news"),
         })
     rows.sort(key=lambda row: row["dk_pid"])
     return rows
+
+
+def _ppg(value) -> float | None:
+    try:
+        number = float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return number if number == number else None
 
 
 def payload_digest(rows: list[dict]) -> str:
@@ -195,7 +208,7 @@ def payload_digest(rows: list[dict]) -> str:
     the moment its content stops mattering.
     """
     material = [
-        [row["dk_pid"], row["status"], row["is_disabled"], row["salary"], row["team"]]
+        [row["dk_pid"], row["status"], row["is_disabled"], row["salary"], row["team"], row.get("ppg")]
         for row in rows
     ]
     return hashlib.sha256(
@@ -259,11 +272,11 @@ def capture(db: PipelineDatabase, group: dict, *, session=None) -> dict:
                 cursor,
                 """INSERT INTO nfl_dfs_dk_pool_player_status
                    (snapshot_id, dk_pid, pdkid, tsid, name, normalized_name, position, team,
-                    opponent, salary, status, is_disabled, swappable, news)
+                    opponent, salary, status, is_disabled, swappable, news, ppg)
                    VALUES %s""",
                 [(snapshot_id, r["dk_pid"], r["pdkid"], r["tsid"], r["name"], r["normalized_name"],
                   r["position"], r["team"], r["opponent"], r["salary"], r["status"],
-                  r["is_disabled"], r["swappable"], r["news"]) for r in rows],
+                  r["is_disabled"], r["swappable"], r["news"], r.get("ppg")) for r in rows],
             )
     _record_poll(db, gid, ok=True, changed=True, snapshot_id=snapshot_id, detail=None)
     return {"draft_group_id": gid, "ok": True, "changed": True, "fatal": False, "state": "captured",

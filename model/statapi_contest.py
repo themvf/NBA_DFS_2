@@ -112,6 +112,43 @@ def build_score_curve(scores: list[float]) -> list[list[float]]:
     return [[r, sorted_scores[r - 1]] for r in sorted(ranks)]
 
 
+def payout_curve(rows: list[dict], entry_fee: float) -> dict | None:
+    """Score -> payout as the contest actually paid it, from complete standings.
+
+    Breakpoints are [min score, payout] pairs, best payout first: an entry
+    scoring s earns the payout of the highest breakpoint whose min score is
+    <= s (ties were already split by DraftKings, so the tied amount is what a
+    tied entry earns). The grader pays a ghost lineup from this without
+    inserting it into the field, the standard approximation. None when no
+    row carries a payout.
+    """
+    paid = [(r["points"], r["payout"]) for r in rows if r.get("points") is not None and (r.get("payout") or 0) > 0]
+    if not paid:
+        return None
+    best: dict[float, float] = {}
+    for points, payout in paid:
+        best[payout] = min(points, best.get(payout, points))
+    breakpoints = sorted(([round(score, 2), round(payout, 2)] for payout, score in best.items()), key=lambda b: (-b[1], -b[0]))
+    # Monotone: a lower payout never needs a higher score than a better one.
+    clean, floor = [], float("inf")
+    for score, payout in breakpoints:
+        if score <= floor:
+            clean.append([score, payout])
+            floor = score
+    return {"version": 1, "entry_fee": entry_fee, "paid_entries": len(paid), "min_cash_score": min(p for p, _ in paid),
+            "breakpoints": clean}
+
+
+def payout_for(curve: dict | None, score: float | None) -> float | None:
+    """What a lineup scoring `score` would have been paid; None when the curve or score is missing."""
+    if curve is None or score is None:
+        return None
+    for min_score, payout in curve["breakpoints"]:
+        if score >= min_score:
+            return payout
+    return 0.0
+
+
 def standings_summary(rows: list[dict], total_entries: int) -> dict:
     """Winning / median / min score and the curve, filled only when every entry was fetched."""
     scores = sorted((r["points"] for r in rows if r["points"] is not None), reverse=True)

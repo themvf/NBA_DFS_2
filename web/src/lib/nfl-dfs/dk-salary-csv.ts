@@ -40,7 +40,7 @@ export const NFL_CLASSIC_POSITIONS: readonly NflPosition[] = ["QB", "RB", "WR", 
  * judgement (a GPP lineup may want a cheap doubtful player others fade),
  * so that call belongs to the optimizer, not the parser.
  */
-const DK_OUT_STATUSES = new Set(["OUT", "O", "IR", "PUP", "SUSP", "NA"]);
+export const DK_OUT_STATUSES: ReadonlySet<string> = new Set(["OUT", "O", "IR", "PUP", "SUSP", "NA"]);
 
 /** Positions eligible for the Classic FLEX slot. */
 export const NFL_FLEX_POSITIONS: readonly NflPosition[] = ["RB", "WR", "TE"];
