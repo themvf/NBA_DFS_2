@@ -154,7 +154,8 @@
     "test:pickem-defensive": "node --import tsx ./scripts/test-pickem-defensive.ts",
     "test:nfl-forecast-experience": "node --import tsx ./scripts/test-nfl-forecast-experience.tsx",
     "test:nfl-lineup-integrity": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-lineup-integrity.tsx",
-    "test:nfl-absence-commit": "node --import tsx ./scripts/test-nfl-absence-commit.ts"
+    "test:nfl-absence-commit": "node --import tsx ./scripts/test-nfl-absence-commit.ts",
+    "test:nfl-ghost": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-ghost.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",

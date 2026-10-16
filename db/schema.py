@@ -3230,6 +3230,104 @@ TABLES = [
         CHECK(projection_source IN ('our','calibrated','workload','dk_avg','fantasypros','linestar','custom')),
         CHECK(status IN ('complete','partial','failed','research_complete','research_partial','research_failed'))
     )""",
+    # Ghost-lineup factorial (docs/nfl-ghost-factorial-study.md). A system
+    # slate is an ordinary upload built from DraftKings' own pool snapshot,
+    # tagged origin='system' so no owner-facing reader ever picks it.
+    """DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'nfl_dfs_slate_uploads' AND column_name = 'origin') THEN
+            ALTER TABLE nfl_dfs_slate_uploads ADD COLUMN origin TEXT NOT NULL DEFAULT 'upload';
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'nfl_dfs_dk_pool_player_status' AND column_name = 'ppg') THEN
+            ALTER TABLE nfl_dfs_dk_pool_player_status ADD COLUMN ppg DOUBLE PRECISION;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'nfl_dfs_field_contests' AND column_name = 'payout_curve') THEN
+            ALTER TABLE nfl_dfs_field_contests ADD COLUMN payout_curve JSONB, ADD COLUMN entry_fee DOUBLE PRECISION;
+        END IF;
+    END $$""",
+    # One frozen input per (design version, draft group): the house and every
+    # arm build from exactly this snapshot. Web owns writes.
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_ghost_freezes (
+        freeze_id UUID PRIMARY KEY,
+        design_version TEXT NOT NULL,
+        draft_group_id BIGINT NOT NULL,
+        pool_snapshot_id UUID NOT NULL,
+        upload_id UUID NOT NULL REFERENCES nfl_dfs_slate_uploads(upload_id),
+        projection_run_id UUID NOT NULL REFERENCES nfl_dfs_projection_runs(run_id),
+        format TEXT NOT NULL,
+        season INTEGER NOT NULL,
+        week INTEGER NOT NULL,
+        game_ids JSONB NOT NULL,
+        teams JSONB NOT NULL,
+        owner_signature TEXT NOT NULL,
+        first_kickoff TIMESTAMPTZ NOT NULL,
+        frozen_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        deployed_sha TEXT,
+        input_snapshot JSONB NOT NULL,
+        house_settings JSONB NOT NULL,
+        input_digest TEXT NOT NULL,
+        notes JSONB NOT NULL DEFAULT '[]'::jsonb,
+        UNIQUE(design_version, draft_group_id),
+        CHECK(format IN ('classic','showdown'))
+    )""",
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_ghost_arms (
+        freeze_id UUID NOT NULL REFERENCES nfl_dfs_ghost_freezes(freeze_id),
+        arm INTEGER NOT NULL,
+        run_id UUID NOT NULL UNIQUE REFERENCES nfl_dfs_optimizer_runs(run_id),
+        levels JSONB NOT NULL,
+        status TEXT NOT NULL,
+        requested INTEGER NOT NULL,
+        built INTEGER NOT NULL,
+        build_ms INTEGER,
+        saved_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        PRIMARY KEY(freeze_id, arm)
+    )""",
+    # Every stage's outcome, including the ones that found nothing to do for a
+    # reason worth seeing (no snapshot, projections stale, lock passed).
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_ghost_events (
+        id BIGSERIAL PRIMARY KEY,
+        at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        design_version TEXT NOT NULL,
+        draft_group_id BIGINT,
+        freeze_id UUID,
+        arm INTEGER,
+        stage TEXT NOT NULL,
+        ok BOOLEAN NOT NULL,
+        detail TEXT
+    )""",
+    """CREATE INDEX IF NOT EXISTS idx_nfl_dfs_ghost_events_at ON nfl_dfs_ghost_events (at DESC)""",
+    # Tuesday grading (research/nfl_ghost_grade.py). subject = 'arm:<n>' or
+    # 'owner:<run_id>' (an owner build on the same slate, graded the same way).
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_ghost_results (
+        freeze_id UUID NOT NULL REFERENCES nfl_dfs_ghost_freezes(freeze_id),
+        subject TEXT NOT NULL,
+        contest_id TEXT NOT NULL,
+        grader_version TEXT NOT NULL,
+        lineups INTEGER NOT NULL,
+        scored INTEGER NOT NULL,
+        top1_hits INTEGER,
+        top01_hits INTEGER,
+        cashes INTEGER,
+        payout DOUBLE PRECISION,
+        entry_fee DOUBLE PRECISION,
+        best_score DOUBLE PRECISION,
+        mean_score DOUBLE PRECISION,
+        detail JSONB NOT NULL DEFAULT '{}'::jsonb,
+        graded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY(freeze_id, subject, contest_id, grader_version)
+    )""",
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_ghost_reports (
+        id BIGSERIAL PRIMARY KEY,
+        design_version TEXT NOT NULL,
+        format TEXT NOT NULL,
+        grader_version TEXT NOT NULL,
+        slates INTEGER NOT NULL,
+        milestone TEXT,
+        report JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )""",
     """CREATE TABLE IF NOT EXISTS nfl_dfs_lineups (
         id BIGSERIAL PRIMARY KEY,
         run_id UUID NOT NULL REFERENCES nfl_dfs_optimizer_runs(run_id) ON DELETE CASCADE,

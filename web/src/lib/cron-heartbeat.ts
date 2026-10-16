@@ -30,6 +30,7 @@ export const CRON_ROUTES: Record<string, CronRouteSpec> = {
   "nfl-pool-capture": { label: "NFL DraftKings pool capture", everyMinutes: 1 },
   "event-closing-lines": { label: "Closing-line capture trigger", everyMinutes: 1 },
   "health-check": { label: "Health checklist (this page)", everyMinutes: 30 },
+  "nfl-ghost": { label: "NFL ghost-lineup study (house + factorial arms)", everyMinutes: 5 },
   "daily-failure-sweep": { label: "Daily failure sweep (email)", everyMinutes: 1440, source: "github", lateAfterMinutes: 26 * 60 },
 };
 

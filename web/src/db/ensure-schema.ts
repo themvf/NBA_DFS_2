@@ -1305,6 +1305,9 @@ const NFL_DFS_DDLS = [
   `CREATE TABLE IF NOT EXISTS nfl_dfs_player_projections (id BIGSERIAL PRIMARY KEY, run_id UUID NOT NULL REFERENCES nfl_dfs_projection_runs(run_id) ON DELETE CASCADE, dk_player_id BIGINT, player_id BIGINT REFERENCES ff_players(id), player_gsis_id TEXT, player_name TEXT NOT NULL, normalized_name TEXT NOT NULL, team TEXT, opponent TEXT, position TEXT NOT NULL, salary INTEGER, identity_method TEXT NOT NULL, projection_status TEXT NOT NULL, history_games INTEGER NOT NULL, prior_games INTEGER NOT NULL, model_proj_fpts DOUBLE PRECISION, baseline_fpts DOUBLE PRECISION, floor_fpts DOUBLE PRECISION, median_fpts DOUBLE PRECISION, ceiling_fpts DOUBLE PRECISION, boom_rate DOUBLE PRECISION, confidence DOUBLE PRECISION NOT NULL, stat_means JSONB NOT NULL DEFAULT '{}'::jsonb, feature_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb, source_evidence JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(run_id,player_id))`,
   `CREATE TABLE IF NOT EXISTS nfl_dfs_slate_uploads (upload_id UUID PRIMARY KEY, slate_signature TEXT NOT NULL, file_name TEXT NOT NULL, file_digest TEXT NOT NULL, format TEXT NOT NULL, games JSONB NOT NULL DEFAULT '[]'::jsonb, teams JSONB NOT NULL DEFAULT '[]'::jsonb, warnings JSONB NOT NULL DEFAULT '[]'::jsonb, player_count INTEGER NOT NULL, projection_run_id UUID REFERENCES nfl_dfs_projection_runs(run_id), eligibility_manifest_digest TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(file_digest,projection_run_id))`,
   `CREATE TABLE IF NOT EXISTS nfl_dfs_slate_players (id BIGSERIAL PRIMARY KEY, upload_id UUID NOT NULL REFERENCES nfl_dfs_slate_uploads(upload_id) ON DELETE CASCADE, dk_player_id BIGINT NOT NULL, captain_dk_player_id BIGINT, ff_player_id BIGINT REFERENCES ff_players(id), name TEXT NOT NULL, normalized_name TEXT NOT NULL, position TEXT NOT NULL, roster_positions JSONB NOT NULL, team TEXT NOT NULL, opponent TEXT, game_key TEXT, game_info TEXT, salary INTEGER NOT NULL, captain_salary INTEGER, avg_fpts_dk DOUBLE PRECISION, dk_status TEXT, is_out BOOLEAN NOT NULL DEFAULT FALSE, identity_method TEXT NOT NULL, platform_eligibility JSONB NOT NULL DEFAULT '{}'::jsonb, projection_status TEXT NOT NULL, our_proj DOUBLE PRECISION, floor_fpts DOUBLE PRECISION, median_fpts DOUBLE PRECISION, ceiling_fpts DOUBLE PRECISION, boom_rate DOUBLE PRECISION, model_confidence DOUBLE PRECISION, history_games INTEGER, fantasypros_proj DOUBLE PRECISION, linestar_proj DOUBLE PRECISION, linestar_own_pct DOUBLE PRECISION, custom_proj DOUBLE PRECISION, comparison_evidence JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(upload_id,dk_player_id))`,
+  // origin = 'system' marks a slate built from the DraftKings pool for the
+  // ghost-lineup study (db/schema.py carries the same guarded block).
+  `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='nfl_dfs_slate_uploads' AND column_name='origin') THEN ALTER TABLE nfl_dfs_slate_uploads ADD COLUMN origin TEXT NOT NULL DEFAULT 'upload'; END IF; END $$`,
   // Opponent-capture requests written on upload, drained by
   // ingest/nfl_defensive_capture_requests.py. Mirror of db/schema.py
   // NFL_DEFENSIVE_CAPTURE_REQUESTS_DDL (tests/test_nfl_defensive_capture_requests.py pins it).
@@ -1383,6 +1386,26 @@ END $$;`,
     END IF;
   END $$`,
 ];
+
+/** Ghost-lineup study tables (docs/nfl-ghost-factorial-study.md); mirror of db/schema.py. */
+const NFL_GHOST_DDLS = [
+  `CREATE TABLE IF NOT EXISTS nfl_dfs_ghost_freezes ( freeze_id UUID PRIMARY KEY, design_version TEXT NOT NULL, draft_group_id BIGINT NOT NULL, pool_snapshot_id UUID NOT NULL, upload_id UUID NOT NULL REFERENCES nfl_dfs_slate_uploads(upload_id), projection_run_id UUID NOT NULL REFERENCES nfl_dfs_projection_runs(run_id), format TEXT NOT NULL, season INTEGER NOT NULL, week INTEGER NOT NULL, game_ids JSONB NOT NULL, teams JSONB NOT NULL, owner_signature TEXT NOT NULL, first_kickoff TIMESTAMPTZ NOT NULL, frozen_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(), deployed_sha TEXT, input_snapshot JSONB NOT NULL, house_settings JSONB NOT NULL, input_digest TEXT NOT NULL, notes JSONB NOT NULL DEFAULT '[]'::jsonb, UNIQUE(design_version, draft_group_id), CHECK(format IN ('classic','showdown')) )`,
+  `CREATE TABLE IF NOT EXISTS nfl_dfs_ghost_arms ( freeze_id UUID NOT NULL REFERENCES nfl_dfs_ghost_freezes(freeze_id), arm INTEGER NOT NULL, run_id UUID NOT NULL UNIQUE REFERENCES nfl_dfs_optimizer_runs(run_id), levels JSONB NOT NULL, status TEXT NOT NULL, requested INTEGER NOT NULL, built INTEGER NOT NULL, build_ms INTEGER, saved_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(), PRIMARY KEY(freeze_id, arm) )`,
+  `CREATE TABLE IF NOT EXISTS nfl_dfs_ghost_events ( id BIGSERIAL PRIMARY KEY, at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(), design_version TEXT NOT NULL, draft_group_id BIGINT, freeze_id UUID, arm INTEGER, stage TEXT NOT NULL, ok BOOLEAN NOT NULL, detail TEXT )`,
+  `CREATE INDEX IF NOT EXISTS idx_nfl_dfs_ghost_events_at ON nfl_dfs_ghost_events (at DESC)`,
+  `CREATE TABLE IF NOT EXISTS nfl_dfs_ghost_results ( freeze_id UUID NOT NULL REFERENCES nfl_dfs_ghost_freezes(freeze_id), subject TEXT NOT NULL, contest_id TEXT NOT NULL, grader_version TEXT NOT NULL, lineups INTEGER NOT NULL, scored INTEGER NOT NULL, top1_hits INTEGER, top01_hits INTEGER, cashes INTEGER, payout DOUBLE PRECISION, entry_fee DOUBLE PRECISION, best_score DOUBLE PRECISION, mean_score DOUBLE PRECISION, detail JSONB NOT NULL DEFAULT '{}'::jsonb, graded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY(freeze_id, subject, contest_id, grader_version) )`,
+  `CREATE TABLE IF NOT EXISTS nfl_dfs_ghost_reports ( id BIGSERIAL PRIMARY KEY, design_version TEXT NOT NULL, format TEXT NOT NULL, grader_version TEXT NOT NULL, slates INTEGER NOT NULL, milestone TEXT, report JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW() )`,
+];
+let ensureNflGhostTablesPromise: Promise<void> | null = null;
+export async function ensureNflGhostTables(): Promise<void> {
+  if (!ensureNflGhostTablesPromise) {
+    ensureNflGhostTablesPromise = (async () => {
+      await ensureNflDfsTables();
+      for (const ddl of NFL_GHOST_DDLS) await db.execute(sql.raw(ddl));
+    })().catch((error) => { ensureNflGhostTablesPromise = null; throw error; });
+  }
+  return ensureNflGhostTablesPromise;
+}
 
 export async function ensureNflDfsTables(): Promise<void> {
   if (!ensureNflDfsTablesPromise) {

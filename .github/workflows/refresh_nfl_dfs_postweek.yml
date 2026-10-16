@@ -125,6 +125,15 @@ jobs:
         if: ${{ !cancelled() }}
         run: python -m ingest.nfl_dfs_flagship_review ${SEASON:+--season "$SEASON"}
 
+      # The ghost-lineup factorial (docs/nfl-ghost-factorial-study.md): grade
+      # the house, every arm and any owner build of each frozen slate against
+      # the flagship just imported, then write the weekly report (factor
+      # effects only at the registered 8-slate milestone). After the import,
+      # because it reads the contest's score curve and payout table.
+      - name: Grade the ghost-lineup factorial
+        if: ${{ !cancelled() }}
+        run: python -m research.nfl_ghost_grade
+
       # Keep storage bounded (ingest/nfl_dfs_storage.py): for weeks whose
       # games are all final and two days old, delete projection runs nothing
       # references (slates, optimizer runs, study pins, the forecasts report

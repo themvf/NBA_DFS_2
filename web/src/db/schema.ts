@@ -846,6 +846,8 @@ export const nflDfsSlateUploads = pgTable(
     playerCount: integer("player_count").notNull(),
     projectionRunId: uuid("projection_run_id").references(() => nflDfsProjectionRuns.runId),
     eligibilityManifestDigest: text("eligibility_manifest_digest"),
+    /** 'upload' (an owner's salary CSV) or 'system' (built from the DraftKings pool for the ghost study). */
+    origin: text("origin").notNull().default("upload"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

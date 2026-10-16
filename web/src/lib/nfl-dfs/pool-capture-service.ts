@@ -100,7 +100,7 @@ export async function captureDuePools() {
     // Latest complete revision of each salary file; no player-table display filters.
     const uploads=await db.execute(sql`SELECT DISTINCT ON(u.file_digest) u.upload_id FROM nfl_dfs_slate_uploads u
       JOIN nfl_dfs_projection_runs r ON r.run_id=u.projection_run_id
-      WHERE u.player_count=(SELECT count(*) FROM nfl_dfs_slate_players p WHERE p.upload_id=u.upload_id)
+      WHERE u.origin='upload' AND u.player_count=(SELECT count(*) FROM nfl_dfs_slate_players p WHERE p.upload_id=u.upload_id)
       AND EXISTS(SELECT 1 FROM nfl_season_games g WHERE g.season=r.season AND g.week=r.week
         AND g.kickoff BETWEEN clock_timestamp()-INTERVAL '15 minutes' AND clock_timestamp()+INTERVAL '24 hours')
       ORDER BY u.file_digest,u.created_at DESC,u.upload_id`);

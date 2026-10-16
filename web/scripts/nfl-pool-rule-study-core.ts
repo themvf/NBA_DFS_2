@@ -25,26 +25,8 @@ function studyOf(input: Raw): StudyKey {
 export const digest = (value: unknown) => createHash('sha256').update(canonicalAuditJson(value)).digest('hex');
 export type PairResult = { version: string; pairId: string; sourceRunId: string; arms: Raw[] };
 
-export function restorePlayers(snapshot: Raw[]): NflOptimizerPlayer[] {
-  return snapshot.map(p => {
-    const own = typeof p.ownership === 'object' && p.ownership !== null ? p.ownership : null;
-    for (const key of ['dkPlayerId', 'salary', 'ourProj']) {
-      if (!(key in p)) throw new Error(`Incomplete frozen player ${p.name}: missing ${key}`);
-    }
-    if (!p.gameKey || !p.position || !p.projectionStatus || typeof p.isOut !== 'boolean') {
-      throw new Error(`Incomplete identity/eligibility for ${p.name}`);
-    }
-    return { ...p, id: p.id ?? p.dkPlayerId, captainDkPlayerId: p.captainDkPlayerId ?? null,
-      captainSalary: p.captainSalary ?? null, dkStatus: p.status ?? null,
-      floorFpts: p.floor ?? null, ceilingFpts: p.ceiling ?? null,
-      avgFptsDk: p.dkAvg ?? null, fantasyprosProj: p.fantasypros ?? null,
-      linestarProj: p.linestar ?? null, customProj: p.custom ?? null,
-      linestarOwnPct: own?.linestar ?? (typeof p.ownership === 'number' ? p.ownership : null),
-      ownPct: own?.total ?? (typeof p.ownership === 'number' ? p.ownership : null),
-      ownSource: own?.source ?? null, captainOwnPct: own?.captain ?? null, flexOwnPct: own?.flex ?? null,
-    } as NflOptimizerPlayer;
-  });
-}
+export { restorePlayers } from '../src/lib/nfl-dfs/frozen-players';
+import { restorePlayers } from '../src/lib/nfl-dfs/frozen-players';
 
 export function buildPair(input: Raw): PairResult {
   const source = input.source;
