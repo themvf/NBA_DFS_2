@@ -267,6 +267,19 @@ export type NflOptimizerSettings = {
    * lineup, and a QB captain at least one of his own WR/TE.
    */
   captainStack?: boolean;
+  /** Showdown: share of lineups that roster both quarterbacks (scheduled like the bring-back share). */
+  twoQbShare?: number;
+  /** Showdown: at most this share of lineups may captain a quarterback with no second quarterback. */
+  maxLoneQbCaptainShare?: number;
+  /** Showdown: share of lineups with a running-back captain. */
+  rbCaptainShare?: number;
+  /** Showdown: each quarterback may appear in at least this share of lineups unless his own overall range says otherwise. */
+  showdownQbMinCap?: number;
+  /** Internal, per lineup: exact quarterback count, captain restrictions. Set by the run loop, never by callers. */
+  lineupQbExact?: 1 | 2;
+  lineupForbidQbCaptain?: boolean;
+  lineupRequireRbCaptain?: boolean;
+  lineupForbidRbCaptain?: boolean;
   maxExposure: number;
   minUnique: number;
   stackPassCatchers: 0 | 1 | 2;
@@ -710,6 +723,12 @@ function validateSettings(settings: NflOptimizerSettings): void {
     if (!Number.isInteger(settings.minQbPerLineup) || settings.minQbPerLineup < 0 || settings.minQbPerLineup > 2) throw new Error("The quarterback minimum must be 0, 1 or 2.");
   }
   if (settings.captainStack && settings.format !== "showdown") throw new Error("The captain stack is a Showdown rule.");
+  share(settings.twoQbShare, "Two-QB share", true);
+  share(settings.maxLoneQbCaptainShare, "Lone-QB captain share", true);
+  share(settings.rbCaptainShare, "RB captain share", true);
+  share(settings.showdownQbMinCap, "Showdown QB exposure floor", false);
+  if ((settings.twoQbShare != null || settings.maxLoneQbCaptainShare != null || settings.rbCaptainShare != null || settings.showdownQbMinCap != null) && settings.format !== "showdown")
+    throw new Error("The two-QB share, lone-QB captain share, RB captain share and QB exposure floor are Showdown rules.");
 }
 
 /**
@@ -886,7 +905,10 @@ function buildOne(
     const qbSlotsLeft = pool.filter((player) => player.position === "QB")
       .reduce((sum, qb) => sum + Math.max(0, maxCount(qb) - (exposureCounts.get(qb.dkPlayerId) ?? 0)), 0);
     const playableQbs = available.filter((player) => player.position === "QB").length;
-    if (playableQbs >= minQb) {
+    if (settings.lineupQbExact != null) {
+      if (playableQbs < settings.lineupQbExact) return null;
+      constraints.min_qb = { equal: settings.lineupQbExact };
+    } else if (playableQbs >= minQb) {
       // Two spare appearances are kept back so the last lineups still have a
       // choice of quarterback; with exactly one left, uniqueness and salary can
       // leave the final lineup unbuildable.
@@ -927,6 +949,11 @@ function buildOne(
       // sets, forbidden chalk captains).
       if (purchaseType === "CPT" && compiled?.eligibleCaptainIds && !compiled.eligibleCaptainIds.includes(player.dkPlayerId)) continue;
       if (purchaseType === "CPT" && compiled?.forbiddenCaptainIds.includes(player.dkPlayerId)) continue;
+      // A captain minimum the user set on this quarterback outranks the lone-QB cap.
+      if (purchaseType === "CPT" && settings.lineupForbidQbCaptain && player.position === "QB"
+        && (captainCounts.get(player.dkPlayerId) ?? 0) >= (countsById.get(player.dkPlayerId)?.captainMin ?? 0)) continue;
+      if (purchaseType === "CPT" && settings.lineupRequireRbCaptain && player.position !== "RB") continue;
+      if (purchaseType === "CPT" && settings.lineupForbidRbCaptain && player.position === "RB") continue;
       const key = `${purchaseType === "CLASSIC" ? "x" : purchaseType === "CPT" ? "c" : "f"}_${player.dkPlayerId}`;
       const slot = purchaseType === "CPT" ? "CPT" : purchaseType === "FLEX" ? "FLEX" : "CLASSIC";
       const multiplier = slot === "CPT" ? 1.5 : 1;
@@ -1034,6 +1061,11 @@ function buildOne(
     // Forcing slot minimums made this lineup impossible (salary, team caps,
     // overlap). Build it without them rather than ending the run early; the
     // exposure report still flags the missed minimum honestly.
+    // A Showdown distribution directive yields first: return null so the run
+    // retries this lineup with the directive relaxed and the user's slot
+    // minimums still forced. Only the plain build drops the minimums.
+    const directed = settings.lineupQbExact != null || settings.lineupForbidQbCaptain || settings.lineupRequireRbCaptain || settings.lineupForbidRbCaptain;
+    if (slotForced && directed) return null;
     if (slotForced) return buildOne(pool, settings, lineupNumber, previous, exposureCounts, forcedIds, countsById, captainCounts, flexCounts, compiled, remaining, false, requireAirMatchup, requireGoalLine, bringBackRule, forbidDstVsOffense);
     return null;
   }
@@ -1388,6 +1420,10 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
     if (!hasExplicit && settings.format === "classic" && p.position === "QB" && settings.maxQbExposure != null) {
       counts.overallMax = Math.max(1, Math.min(counts.overallMax, Math.floor(settings.maxQbExposure * settings.nLineups)));
     }
+    if (settings.format === "showdown" && p.position === "QB" && settings.showdownQbMinCap != null
+      && policyById.get(p.dkPlayerId)?.overallFromUser !== true && settings.maxExposureByPlayer[String(p.dkPlayerId)] == null) {
+      counts.overallMax = Math.max(counts.overallMax, Math.floor(settings.showdownQbMinCap * settings.nLineups + 1e-9));
+    }
     if (settings.format === "showdown" && settings.maxCaptainExposure != null && policyById.get(p.dkPlayerId)?.captain.maxPct == null) {
       counts.captainMax = Math.max(1, counts.captainMin, Math.min(counts.captainMax, Math.floor(settings.maxCaptainExposure * settings.nLineups)));
     }
@@ -1483,6 +1519,12 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   const dstVsOffenseCap = settings.format === "classic" && settings.maxDstVsOffenseShare != null
     ? Math.floor(settings.maxDstVsOffenseShare * plan.length + 1e-9) : null;
   let dstVsOffenseLineups = 0;
+  const showdown = settings.format === "showdown" && settings.mode === "gpp";
+  const twoQbShare = showdown ? settings.twoQbShare ?? null : null;
+  const rbCaptainShare = showdown ? settings.rbCaptainShare ?? null : null;
+  const loneQbCaptainCap = showdown && settings.maxLoneQbCaptainShare != null ? Math.floor(settings.maxLoneQbCaptainShare * plan.length + 1e-9) : null;
+  const showdownShares = twoQbShare != null || rbCaptainShare != null || loneQbCaptainCap != null;
+  let twoQbLineups = 0, loneQbCaptainLineups = 0, rbCaptainLineups = 0, distributionRelaxed = 0;
   const foldedToStandard = new Map<ArchetypeId, number>();
   for (let lineupNumber = 1; lineupNumber <= plan.length; lineupNumber++) {
     const forbidDstVsOffense = dstVsOffenseCap != null && dstVsOffenseLineups >= dstVsOffenseCap;
@@ -1501,21 +1543,46 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
     }
     const requireAirMatchup = airMatchupTarget > 0 && airMatchupTarget - airMatchupLineups >= remaining;
     const requireGoalLine = goalLineTarget > 0 && goalLineTarget - goalLineLineups >= remaining;
-    let lineup: NflGeneratedLineup | null = null;
-    for (const candidate of topProjectedTargets) {
-      if ((exposureCounts.get(candidate.dkPlayerId) ?? 0) > 0) continue;
-      lineup = buildOne(pool, settings, lineupNumber, lineups, exposureCounts,
-        new Set([...forced, candidate.dkPlayerId]), countsById, captainCounts, flexCounts,
-        plan[lineupNumber - 1].compiled, remaining, true, requireAirMatchup, requireGoalLine, bringBackRule, forbidDstVsOffense);
-      if (lineup) break;
+    // Showdown winner distributions: this lineup's quarterback count and
+    // captain restrictions, scheduled like the bring-back share (required while
+    // the run is behind the share). A lineup that cannot meet them is retried
+    // with them relaxed, never dropped; relaxations are counted in the notes.
+    const wantTwoQb = twoQbShare != null && Math.round(twoQbShare * lineupNumber) - twoQbLineups > 0;
+    const directives: Partial<NflOptimizerSettings>[] = [];
+    if (showdownShares) {
+      const full: Partial<NflOptimizerSettings> = {
+        ...(twoQbShare != null && (settings.minQbPerLineup ?? 0) >= 1 ? { lineupQbExact: (wantTwoQb ? 2 : 1) as 1 | 2 } : {}),
+        ...(loneQbCaptainCap != null && !wantTwoQb && loneQbCaptainLineups >= loneQbCaptainCap ? { lineupForbidQbCaptain: true } : {}),
+        ...(rbCaptainShare != null ? (Math.round(rbCaptainShare * lineupNumber) - rbCaptainLineups > 0
+          ? { lineupRequireRbCaptain: true } : { lineupForbidRbCaptain: true }) : {}),
+      };
+      directives.push(full);
+      if (full.lineupRequireRbCaptain || full.lineupForbidRbCaptain) directives.push({ ...full, lineupRequireRbCaptain: undefined, lineupForbidRbCaptain: undefined });
+      if (full.lineupQbExact != null) directives.push({ lineupForbidQbCaptain: full.lineupForbidQbCaptain });
     }
-    lineup ??= buildOne(pool, settings, lineupNumber, lineups, exposureCounts, forced, countsById, captainCounts, flexCounts, plan[lineupNumber - 1].compiled, remaining, true, requireAirMatchup, requireGoalLine, bringBackRule, forbidDstVsOffense);
-    // A plan strategy the remaining rules cannot satisfy folds this lineup into
-    // Standard ceiling instead of ending the run, as the plan promises; later
-    // strategies still get their turn. The fold is named in the run's notes.
-    if (!lineup && plan[lineupNumber - 1].compiled) {
-      lineup = buildOne(pool, settings, lineupNumber, lineups, exposureCounts, forced, countsById, captainCounts, flexCounts, null, remaining, true, requireAirMatchup, requireGoalLine, bringBackRule, forbidDstVsOffense);
-      if (lineup) foldedToStandard.set(plan[lineupNumber - 1].archetypeId, (foldedToStandard.get(plan[lineupNumber - 1].archetypeId) ?? 0) + 1);
+    directives.push({});
+    let lineup: NflGeneratedLineup | null = null;
+    for (const [attempt, directive] of directives.entries()) {
+      const ls: NflOptimizerSettings = { ...settings, ...directive };
+      for (const candidate of topProjectedTargets) {
+        if ((exposureCounts.get(candidate.dkPlayerId) ?? 0) > 0) continue;
+        lineup = buildOne(pool, ls, lineupNumber, lineups, exposureCounts,
+          new Set([...forced, candidate.dkPlayerId]), countsById, captainCounts, flexCounts,
+          plan[lineupNumber - 1].compiled, remaining, true, requireAirMatchup, requireGoalLine, bringBackRule, forbidDstVsOffense);
+        if (lineup) break;
+      }
+      lineup ??= buildOne(pool, ls, lineupNumber, lineups, exposureCounts, forced, countsById, captainCounts, flexCounts, plan[lineupNumber - 1].compiled, remaining, true, requireAirMatchup, requireGoalLine, bringBackRule, forbidDstVsOffense);
+      // A plan strategy the remaining rules cannot satisfy folds this lineup into
+      // Standard ceiling instead of ending the run, as the plan promises; later
+      // strategies still get their turn. The fold is named in the run's notes.
+      if (!lineup && plan[lineupNumber - 1].compiled) {
+        lineup = buildOne(pool, ls, lineupNumber, lineups, exposureCounts, forced, countsById, captainCounts, flexCounts, null, remaining, true, requireAirMatchup, requireGoalLine, bringBackRule, forbidDstVsOffense);
+        if (lineup) foldedToStandard.set(plan[lineupNumber - 1].archetypeId, (foldedToStandard.get(plan[lineupNumber - 1].archetypeId) ?? 0) + 1);
+      }
+      if (lineup) {
+        if (attempt > 0) distributionRelaxed++;
+        break;
+      }
     }
     if (!lineup) {
       if (requireAirMatchup && requireGoalLine) throw new Error(`Could not meet the air-yard matchup and goal-line RB minimums together with the remaining exposure, salary, and roster constraints. Lower a percentage or adjust player limits.`);
@@ -1526,6 +1593,13 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
     }
     lineups.push(lineup);
     if (lineup.stackSummary.bringBack) bringBackLineups++;
+    if (showdown) {
+      const qbCount = lineup.slots.filter(({ player }) => player.position === "QB").length;
+      const captain = lineup.slots.find(({ slot }) => slot === "CPT")?.player;
+      if (qbCount >= 2) twoQbLineups++;
+      if (captain?.position === "QB" && qbCount === 1) loneQbCaptainLineups++;
+      if (captain?.position === "RB") rbCaptainLineups++;
+    }
     if (dstFacesOwnOffense(lineup)) dstVsOffenseLineups++;
     if (lineup.slots.some(({ player }) => isNflGppSignalPlayer(player.playerSignals, ["AIR_MATCHUP"]))) airMatchupLineups++;
     if (lineup.slots.some(({ player }) => player.position === "RB" && isNflGppSignalPlayer(player.playerSignals, ["INSIDE_FIVE"]))) goalLineLineups++;
@@ -1537,6 +1611,12 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
       if (slot.slot === "CPT") captainCounts.set(id, (captainCounts.get(id) ?? 0) + 1);
       else flexCounts.set(id, (flexCounts.get(id) ?? 0) + 1);
     }
+  }
+  if (showdownShares && lineups.length) {
+    warnings.push(`Showdown distributions: ${twoQbLineups} of ${lineups.length} lineups have both quarterbacks${twoQbShare != null ? ` (target ${Math.round(twoQbShare * 100)}%)` : ""}, `
+      + `${loneQbCaptainLineups} captain a quarterback with no second quarterback${loneQbCaptainCap != null ? ` (cap ${loneQbCaptainCap})` : ""}, `
+      + `${rbCaptainLineups} captain a running back${rbCaptainShare != null ? ` (target ${Math.round(rbCaptainShare * 100)}%)` : ""}`
+      + (distributionRelaxed ? `; ${distributionRelaxed} lineup(s) could not meet their target under the other rules and were built with it relaxed.` : "."));
   }
   if (bringBackShare != null && lineups.length) {
     warnings.push(`Bring-back share: ${bringBackLineups} of ${lineups.length} lineups carry an opposing bring-back (target ${Math.round(bringBackShare * 100)}%).`);

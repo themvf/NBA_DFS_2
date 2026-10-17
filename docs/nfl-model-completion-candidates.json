@@ -83,7 +83,7 @@
     "research/nfl_workload_risk.py": "e8d67cb4945446fdc4ab857b69729a61e3c65dae2c1a17ed364bef49d637f344",
     "web/src/lib/nfl-dfs/joint-portfolio.ts": "87588d7fb2782f347ea6bfe35e522da15a62063e4c2d287a0c703064430ebf9f",
     "web/scripts/compare-nfl-joint-portfolios.ts": "05bf97642caba1b96d6d4420acf51502faa4468fcf40dc4e1607f51790298515",
-    "web/src/app/dfs/nfl/nfl-optimizer.ts": "7d63b94c6edfc7cb7c2d9ccaa00890605cecb3ca0eea4e07f12a5ea0fe5fb61b",
+    "web/src/app/dfs/nfl/nfl-optimizer.ts": "51da17bc8bd9250ec9cdc43a0112e454feea488479660257c484bfae264df723",
     "model/nfl_matchup_scenarios.py": "9d133718c360a03a445965508061807c49644c3ac329ae220c4f68069a19e913",
     "web/src/lib/nfl-dfs/scoring.ts": "83e8b8c293519e7605f4d5be76a302bd442835fa4dc43a6d02744922a5729e3c",
     "web/src/lib/nfl-dfs/scenarios.ts": "98ed595731bc69ee1fcde4d9c42109880382cff3dbf480ce0f0043fdf46e2fd9"
@@ -135,6 +135,17 @@
       "new_sha256": "7d63b94c6edfc7cb7c2d9ccaa00890605cecb3ca0eea4e07f12a5ea0fe5fb61b",
       "changed_by": [
         "687372f5 Winners shape v5+v6: Showdown QB minimum, captain stack, $48,100 salary floor (#449)"
+      ],
+      "evidence_rule": "Forward decisions captured before amended_at ran under previous_sha256 and are graded as a separate cohort or excluded; they are never pooled with decisions captured after it."
+    },
+    {
+      "amended_at": "2026-10-17T23:21:34Z",
+      "reason": "Owner kept Winners shape v7 (2026-10-17): Showdown builds target the winners' two-QB, lone-QB-captain and RB-captain distributions (twoQbShare, maxLoneQbCaptainShare, rbCaptainShare, showdownQbMinCap). Re-pinned the optimizer only; every other pinned file is unchanged.",
+      "file": "web/src/app/dfs/nfl/nfl-optimizer.ts",
+      "previous_sha256": "7d63b94c6edfc7cb7c2d9ccaa00890605cecb3ca0eea4e07f12a5ea0fe5fb61b",
+      "new_sha256": "51da17bc8bd9250ec9cdc43a0112e454feea488479660257c484bfae264df723",
+      "changed_by": [
+        "Winners shape v7: Showdown builds match the winners' QB and captain distributions"
       ],
       "evidence_rule": "Forward decisions captured before amended_at ran under previous_sha256 and are graded as a separate cohort or excluded; they are never pooled with decisions captured after it."
     }

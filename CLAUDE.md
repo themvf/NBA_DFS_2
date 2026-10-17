@@ -8075,6 +8075,14 @@ every player the pool rules left out (`reasonCode` `WINNERS_SHAPE` /
   captains an own pass catcher. The salary floor drops $49,500 -> $48,100 in
   both formats (51% of top-100 Showdown winners spent under $49,500, 17%
   under $48,100). Also before the first factorial slate.
+- **v7 (same evening, owner: "we need to match the winners"): Showdown
+  distributions.** Across the run: both QBs in 40% of lineups (winners 41-44%),
+  a QB captain with no second QB in at most 7% (5-7%), an RB captain in 20%
+  (20-24%), each scheduled like the bring-back share (RB two-sided); each QB
+  may reach 75% of lineups unless the user set his own overall range. A lineup
+  that cannot meet a target is retried with it relaxed (counted in the notes),
+  and the user's captain minimums outrank every target. HOU@JAX dry run: 40% /
+  8% / 20%, median projection 82.1.
 - Not an edge: the shape is a second build for the weekly winners-vs-us
   review to grade against the standard one. Change a constant and bump the
   version; `npm run test:nfl-winners-shape` pins the current ones.
