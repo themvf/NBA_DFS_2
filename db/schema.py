@@ -6234,6 +6234,61 @@ INDEXES = [
         UNIQUE (game_id, metric, identity, computed_at)
     )""",
     "CREATE INDEX IF NOT EXISTS idx_nfl_game_leader_market_latest ON nfl_game_leader_market(game_id, computed_at DESC)",
+    # nfl-leaders-anchored-test-v1 (docs/nfl-leaders-anchored-test.md): our share, the
+    # DK-implied share and the market-anchored share per player, written after each
+    # pregame prop capture; plus the weekly grade and one verdict per market. Append-only.
+    """CREATE TABLE IF NOT EXISTS nfl_game_leader_anchored (
+        id BIGSERIAL PRIMARY KEY,
+        game_id TEXT NOT NULL,
+        metric TEXT NOT NULL,
+        identity TEXT NOT NULL,
+        player TEXT NOT NULL,
+        team TEXT,
+        our_share DOUBLE PRECISION NOT NULL,
+        dk_implied_share DOUBLE PRECISION,
+        anchored_share DOUBLE PRECISION NOT NULL,
+        anchors JSONB,
+        prop_captured_at TIMESTAMPTZ NOT NULL,
+        forecast_decision_at TIMESTAMPTZ NOT NULL,
+        computed_at TIMESTAMPTZ NOT NULL,
+        origin TEXT NOT NULL CHECK (origin IN ('prospective','discovery')),
+        version TEXT NOT NULL,
+        UNIQUE (game_id, metric, identity, computed_at, origin)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_game_leader_anchored_latest ON nfl_game_leader_anchored(game_id, computed_at DESC)",
+    """CREATE TABLE IF NOT EXISTS nfl_leaders_anchored_test_runs (
+        id BIGSERIAL PRIMARY KEY,
+        test TEXT NOT NULL,
+        evaluated_at TIMESTAMPTZ NOT NULL,
+        report JSONB NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS nfl_leaders_anchored_test_verdicts (
+        test TEXT NOT NULL,
+        metric TEXT NOT NULL,
+        verdict TEXT NOT NULL CHECK (verdict IN ('PASS','FAIL')),
+        run_id BIGINT NOT NULL REFERENCES nfl_leaders_anchored_test_runs(id),
+        decided_at TIMESTAMPTZ NOT NULL,
+        PRIMARY KEY (test, metric)
+    )""",
+    """CREATE OR REPLACE FUNCTION reject_nfl_leaders_anchored_mutation()
+       RETURNS trigger LANGUAGE plpgsql AS $$
+       BEGIN
+         RAISE EXCEPTION 'nfl-leaders-anchored records are append-only';
+       END $$""",
+    """DO $$ BEGIN
+       IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'nfl_game_leader_anchored_immutable') THEN
+         CREATE TRIGGER nfl_game_leader_anchored_immutable BEFORE UPDATE OR DELETE
+         ON nfl_game_leader_anchored FOR EACH ROW EXECUTE FUNCTION reject_nfl_leaders_anchored_mutation();
+       END IF;
+       IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'nfl_leaders_anchored_test_runs_immutable') THEN
+         CREATE TRIGGER nfl_leaders_anchored_test_runs_immutable BEFORE UPDATE OR DELETE
+         ON nfl_leaders_anchored_test_runs FOR EACH ROW EXECUTE FUNCTION reject_nfl_leaders_anchored_mutation();
+       END IF;
+       IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'nfl_leaders_anchored_test_verdicts_immutable') THEN
+         CREATE TRIGGER nfl_leaders_anchored_test_verdicts_immutable BEFORE UPDATE OR DELETE
+         ON nfl_leaders_anchored_test_verdicts FOR EACH ROW EXECUTE FUNCTION reject_nfl_leaders_anchored_mutation();
+       END IF;
+    END $$""",
     # nfl-prop-under-v1 (docs/nfl-prop-under-study.md): one row per weekly grade,
     # and at most one verdict per study version. Both append-only.
     """CREATE TABLE IF NOT EXISTS nfl_prop_under_study_runs (
