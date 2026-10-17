@@ -593,7 +593,8 @@ def main() -> int:
     parser.add_argument("--health", action="store_true")
     args = parser.parse_args()
     config = load_config()
-    db = DatabaseManager(config.database_url)
+    db = DatabaseManager(config.database_url, initialize_schema=False)
+    db.require_tables(["cfb_matchups", "cfb_teams", "cfb_team_aliases", "cfb_unmapped_events", "game_odds_history"])
     cfbd_key = getattr(config, "cfbd_api_key", None) or __import__("os").getenv("CFBD_API_KEY", "")
     odds_key = config.odds_api.api_key
     ran = False

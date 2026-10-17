@@ -51,6 +51,9 @@ function main() {
   const quotaQa = runNflPreExportQa(baseInput({ archetypePlan: [{ archetypeId: "single_chalk_fade", label: "Single-chalk fade", requested: 2, realized: 1 }] }));
   const quotaCheck = quotaQa.checks.find((c) => c.id === "archetype_quotas")!;
   assert.ok(/Single-chalk fade 1\/2/.test(quotaCheck.detail));
+  assert.equal(quotaCheck.severity, "warning", "a plan shortfall warns, it does not block");
+  assert.ok(!quotaQa.openBlockers.includes("archetype_quotas"));
+  assert.notEqual(quotaQa.decision, "blocked");
 
   // --- Fade without a beneficiary is blocked ---
   const fadeInput = baseInput();
@@ -140,11 +143,13 @@ function main() {
   assert.equal(note("exposure_ranges", noEvidence)!.passed, false);
   assert.equal(runNflPreExportQa(baseInput({ eligibility: undefined })).checks.some((c) => c.id === "no_inactive"), false);
 
-  // --- A partial run blocks until the shortfall is a stated choice ---
+  // --- A partial run warns (never silent) but still exports ---
   const partial = runNflPreExportQa(baseInput({ requestedLineups: 20 }));
-  assert.ok(partial.openBlockers.includes("lineup_count"));
+  assert.ok(!partial.openBlockers.includes("lineup_count"));
+  assert.equal(note("lineup_count", partial)!.severity, "warning");
+  assert.equal(note("lineup_count", partial)!.passed, false);
+  assert.equal(partial.decision, "ready_with_warnings");
   assert.match(note("lineup_count", partial)!.detail, /Only 2 of the 20 lineups you asked for were built/);
-  assert.ok(!runNflPreExportQa(baseInput({ requestedLineups: 20 }), overrideOf("lineup_count")).openBlockers.includes("lineup_count"), "overridable with a reason");
   assert.equal(note("lineup_count", clean)!.passed, true);
 
   // --- Entry file: too few rows can't export; spare rows are a choice ---
@@ -153,6 +158,7 @@ function main() {
   assert.equal(note("entry_rows", tooFew)!.overridable, false);
   const spare = runNflPreExportQa(baseInput({ entryRows: 21 }));
   assert.match(note("entry_rows", spare)!.detail, /19 entries would keep whatever lineup DraftKings already has/);
+  assert.ok(!spare.openBlockers.includes("entry_rows"), "spare entry rows warn, they do not block");
   assert.ok(!runNflPreExportQa(baseInput({ entryRows: 21 }), overrideOf("entry_rows")).openBlockers.includes("entry_rows"));
   assert.equal(note("entry_rows", runNflPreExportQa(baseInput({ entryRows: 2 })))!.passed, true);
   assert.equal(clean.checks.some((c) => c.id === "entry_rows"), false, "no file chosen yet, nothing to check");

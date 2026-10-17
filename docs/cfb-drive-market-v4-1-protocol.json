@@ -1,0 +1,107 @@
+{
+  "version": "cfb-drive-market-v4.1",
+  "purpose": "Prospective research; no betting clearance",
+  "development_cutoff": "2026-10-17T16:00:00Z",
+  "registration": "Database server time on first insert; immutable protocol digest and git SHA",
+  "primary_entry": {
+    "minimum_lead_minutes": 60,
+    "maximum_lead_minutes": 195,
+    "selection": "first eligible frozen decision per game and exact book/market after registration",
+    "book": "draftkings",
+    "quote_max_age_minutes": 15,
+    "book_update_max_age_minutes": 5,
+    "side_selection": "Within each market select the side with largest strictly positive estimated exact-price EV; ties home/over first; no selection without calibrated probability. Report markets separately, never sum correlated bets as independent games.",
+    "input_coverage": "All prior current-season eligible FBS games for both teams must pass scoring/drive/PPA audit; missing histories excluded from primary, shown in research diagnostics."
+  },
+  "sources": {
+    "history": "CFBD canonical FBS games, stored drives and linked plays",
+    "market": "immutable game_odds_history exact paired book quote",
+    "context": "timestamped sourced availability, QB, OL, staff/continuity and forecast weather observations; unknown is explicit"
+  },
+  "drive_definition": {
+    "offensive_scoring": "Verified offensive TD/FG drive score delta; if TD delta is unusable, recover only from explicit linked scoring-play conversion text (successful kick=7, explicit two-point=8, explicit failed try=6); never assume a PAT. Preserve nonoffensive/OT/remainder separately. A linked Field Goal Good event confirms three points when the drive scoreboard delta is stale. Scoring-flagged Rush or Pass Reception with explicit non-nullified touchdown text is an offensive TD; explicit kick attempt good confirms seven. Known blocked-punt/return TD types with zero offensive score delta credit zero offensive points.",
+    "meaningful": "regulation drive containing a non-kneel scrimmage snap; exclude kickoff-only and terminal kneel-only possessions",
+    "garbage": "fourth-quarter snaps with pre-play absolute margin >=28 excluded from efficiency; retained in full-score audit",
+    "unknown": "unclassified scoring drive or missing score delta excludes that game from feature training"
+  },
+  "prior_candidates": [
+    0,
+    1,
+    2,
+    4
+  ],
+  "recency_half_life_games_candidates": [
+    3,
+    6,
+    1000
+  ],
+  "football_features": [
+    "offensive points per meaningful regulation drive",
+    "opponent defense PPD",
+    "PPA",
+    "success rate",
+    "explosive rate",
+    "starting field position",
+    "seconds per scrimmage snap",
+    "opponent-adjusted rates",
+    "home field"
+  ],
+  "fitting": {
+    "football": "Ridge standardized features; alpha=100; chronological training seasons 2022-2024, development 2025, inspected 2026 never confirmation",
+    "market": "separate margin/total nonnegative ridge-shrunk residual weight; 0 allowed; fit only earlier development observations at same 3-hour horizon",
+    "distribution": "paired empirical held-out rounded margin/total residuals; discrete push mass; separate regularized logistic moneyline fit on earlier out-of-fold predictions",
+    "context": "no learned QB/injury/weather coefficient without historical timestamped coverage; missing/unmodeled material context blocks action; no invented point adjustment",
+    "prior_selection": "Lowest 2025 margin MAE among the frozen 12 candidates; deterministic grid order breaks ties; final football coefficients refit through 2025 only.",
+    "market_split": "Complete 2026 development game dates: first half training, next quarter calibration, final quarter diagnostic evaluation; exclude kickoff+6h at/after development cutoff; at least 20 training/calibration games for fitting/distributions.",
+    "pace": "Separate standardized Ridge alpha100 trained on meaningful regulation drive counts using own/opponent drives, both snap tempos and both success rates; predicted drives constrained to [6,18] as an explicit research guard.",
+    "physical_guards": "Mean total is at least absolute mean margin and zero; total distribution is floored at zero; rates constrained [0,8] offensive PPD. Discrete marginals are exploratory, not a validated joint score generator."
+  },
+  "evaluation": {
+    "benchmarks": [
+      "market only",
+      "v1/v2/v3 on same frozen captures when available",
+      "fixed75/25 baseline",
+      "v4 challenger"
+    ],
+    "metrics": [
+      "margin/total MAE",
+      "Brier and log loss",
+      "calibration intercept/slope and probability bins",
+      "exact-price spread/total/ML paper returns with pushes",
+      "same-book close line and price comparison with denominators"
+    ],
+    "uncertainty": "game-date block bootstrap; withhold intervals below 30 distinct dates; no simulation-count validation",
+    "promotion": "never automatic; at least 200 settled unique primary games across 30 game dates, positive held-out improvement after price/slippage and subsequent untouched confirmation required"
+  },
+  "immutability": "Old forecasts remain unchanged; first eligible decision frozen separately; exact rules, source IDs and coefficients stored per run",
+  "evaluation_windows": {
+    "forward": "after actual registration through 2026-12-31",
+    "confirmation": "2027 season; never absorb forward/development games"
+  },
+  "implementation_limits": [
+    "Nonoffensive_or_unattributed is an explicit remainder, not certified defense/special-teams scoring; contradictory drives excluded.",
+    "Historical provider timestamps are not reconstructed; all inspected current-year splits are development only.",
+    "Fresh context capture does not license an untrained numerical adjustment."
+  ],
+  "context_shadow": {
+    "minimum_games": 200,
+    "minimum_game_dates": 30,
+    "split": "first 70% complete game dates fit, later30% diagnostic; at least100 training and30 evaluation games",
+    "model": "StandardScaler and multi-output Ridge alpha100 fit residual margin/total beyond base; feature order in code frozen",
+    "primary_effect": "never applied to base decisions; separate development shadow, requires new protocol and untouched confirmation for promotion",
+    "features": [
+      "home/away confirmed QB changed",
+      "home/away unavailable OL counts",
+      "home/away unavailable player counts",
+      "home/away sourced roster continuity",
+      "home/away coach changed",
+      "forecast temperature C",
+      "forecast wind km/h",
+      "forecast precipitation mm"
+    ]
+  },
+  "amendment": {
+    "supersedes": "cfb-drive-market-v4",
+    "reason": "Live source audit discovered alternate offensive touchdown labels and explicit kick-attempt-good conversion text, plus blocked-punt return TDs labeled as TD drives. Classification repair only; no final-score-driven parameter selection. Original registration and snapshots retained."
+  }
+}

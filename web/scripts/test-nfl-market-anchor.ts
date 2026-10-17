@@ -1,5 +1,5 @@
 /**
- * Market anchor (`nfl-market-anchor-v1`): the TypeScript port reproduces
+ * Market anchor (`nfl-market-anchor-v2`): the TypeScript port reproduces
  * model/nfl_prop_implied.py (CALIBRATION_V1) on four real-shaped players, and
  * the anchor rescales the model's range around the books' mean.
  */
@@ -46,5 +46,28 @@ near(a.after.p90!, 28 * 17.4756 / 15, 0.02, "range scaled");
 assert.equal(a.before.mean, 15, "model's own number kept");
 assert.equal(anchorPlayer({ position: "RB", ourProj: 0, floorFpts: 0, medianFpts: 0, ceilingFpts: 0, lines: FIXTURES.RB.lines,
   book: "draftkings", capturedAt: "x" }), null, "no positive model mean to rescale: left alone");
+
+// v2: a QB without anytime-TD / rushing-yards lines takes the model's own
+// rushing means for the missing ones (v1 read them as 0). Values from Python:
+// stat_line("QB", ..., calibration=CALIBRATION_V1, qb_rush_fallback=...).
+const QB_PASS_ONLY: Record<string, PropQuote> = { player_pass_yds: FIXTURES.QB.lines.player_pass_yds,
+  player_pass_tds: FIXTURES.QB.lines.player_pass_tds, player_pass_interceptions: FIXTURES.QB.lines.player_pass_interceptions };
+const model = { rushing_yards: 38.2, rushing_tds: 0.31 };
+const filled: string[] = [];
+const qb = statLine("QB", QB_PASS_ONLY, model, filled)!;
+near(qb.rushing_yards, 38.2, 1e-9, "QB rush yards from model"); near(qb.scrimmage_tds, 0.31, 1e-9, "QB rush TDs from model");
+near(dkPoints("QB", qb), 22.9387, 0.01, "QB fallback points");
+assert.deepEqual(filled, ["player_anytime_td", "player_rush_yds"]);
+near(dkPoints("QB", statLine("QB", QB_PASS_ONLY)!), 17.2568, 0.01, "no fallback: research behaviour unchanged");
+const partial: string[] = [];
+const qb2 = statLine("QB", { ...QB_PASS_ONLY, player_rush_yds: FIXTURES.QB.lines.player_rush_yds }, model, partial)!;
+near(qb2.rushing_yards, 19.5036, 0.002, "a posted line wins over the model"); near(dkPoints("QB", qb2), 21.0672, 0.01);
+assert.deepEqual(partial, ["player_anytime_td"]);
+near(statLine("QB", FIXTURES.QB.lines, model)!.scrimmage_tds, 0.184, 0.002, "full line set ignores the fallback");
+assert.equal(statLine("WR", FIXTURES.WR.lines, model)!.rushing_yards, 0, "fallback is QB-only");
+const qa = anchorPlayer({ position: "QB", ourProj: 21, floorFpts: 12, medianFpts: 20, ceilingFpts: 31, lines: QB_PASS_ONLY,
+  book: "draftkings", capturedAt: "x", qbRushFallback: model })!;
+near(qa.after.mean, 22.9387, 0.01, "QB anchor uses the fallback"); assert.deepEqual(qa.modelFilled, ["player_anytime_td", "player_rush_yds"]);
+assert.equal(a.modelFilled.length, 0, "RB anchor fills nothing");
 
 console.log("Market anchor: the TypeScript port matches model/nfl_prop_implied.py and rescales ranges around the books' mean.");

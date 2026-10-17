@@ -16,6 +16,7 @@ export function AnalyticsShell({ eyebrow, title, description, children }: {
         <Link href="/cfb/analytics">Overview</Link>
         <Link href="/cfb/analytics/teams">Teams</Link>
         <Link href="/cfb/analytics/evaluation">Evaluation</Link>
+        <Link href="/cfb/analytics/research">Registered research</Link>
         <Link href="/cfb/analytics/methods">Methods & coverage</Link>
         <Link href="/cfb">Line Terminal</Link>
       </nav>

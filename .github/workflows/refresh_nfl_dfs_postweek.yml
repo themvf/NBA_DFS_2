@@ -157,6 +157,73 @@ jobs:
           if-no-files-found: ignore
           retention-days: 90
 
+  # The weekly player-prop under grade (nfl-prop-under-v1, docs/nfl-prop-under-study.md).
+  # Independent of the review job's report cards for the same reason as the
+  # upside grade below: it reads only the nflverse file and the stored pricing.
+  grade-prop-under:
+    needs: review
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest
+      # Refuse to grade if the frozen constants or the model pins are broken.
+      - name: Verify the registered study
+        run: python -m pytest -q tests/test_nfl_prop_under_study.py
+      - name: Grade
+        run: |
+          mkdir -p artifacts
+          python -m research.nfl_prop_under_study grade --write-db --out artifacts/nfl_prop_under_grade_latest.json
+      - name: Save the grade report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nfl-prop-under-grade
+          path: artifacts/nfl_prop_under_grade_latest.json
+          if-no-files-found: ignore
+          retention-days: 90
+
+  # The weekly market-anchored game-leaders grade (nfl-leaders-anchored-test-v1).
+  grade-leaders-anchored:
+    needs: review
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest
+      - name: Verify the registered test
+        run: python -m pytest -q tests/test_nfl_game_leaders_anchored.py
+      - name: Grade
+        run: |
+          mkdir -p artifacts
+          python -m research.nfl_game_leaders_anchored grade --write-db --out artifacts/nfl_leaders_anchored_grade_latest.json
+      - name: Save the grade report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nfl-leaders-anchored-grade
+          path: artifacts/nfl_leaders_anchored_grade_latest.json
+          if-no-files-found: ignore
+          retention-days: 90
+
   # The weekly replacement-upside grade (nfl-replacement-upside-grade-v1).
   # Runs after the review even if one of its steps failed: the grade reads only
   # results that exist, and blocking it on an unrelated report-card failure is

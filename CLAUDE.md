@@ -8003,7 +8003,11 @@ and closing lines in `nfl_prop_implied_lines` and reports. Exploratory, weeks
   (`resolve_team`): the roster feed can carry a stale team (Marvin Harrison
   Jr. read HOU in DET @ ARI), which had dropped 4 games from the study. The
   script's leader chances are overconfident, worst for receptions; that is
-  the conversion's narrow spread, not the market. Layers 2 (market-derived game script and opponent
+  the conversion's narrow spread, not the market. **v2 (2026-10-17):** a QB's anytime-TD and rushing-yards lines are optional,
+  and v1 read a missing one as 0, cutting a running QB without them by up to
+  ~6 points; v2 fills a missing one from the model's own rushing mean and
+  records it in `modelFilled` (Python: `stat_line(..., qb_rush_fallback=)`;
+  without it the research reading is unchanged). Layers 2 (market-derived game script and opponent
   effects for players without lines) and 3 (predicted lines early in the
   week) are not built.
 
@@ -8281,3 +8285,38 @@ own projections, with DraftKings lines captured as a yardstick, never as an inpu
   gap lived in the Game Leaders roles, and the backup-QB gap in the DFS
   model's own-history volume. Zero attempts/carries in week 1-2 stored
   projections are older model versions that did not record volume.
+
+## NFL player-prop unders — pre-registered (`nfl-prop-under-v1`, 2026-10-17)
+
+[`docs/nfl-prop-under-study.md`](docs/nfl-prop-under-study.md), constants in
+`docs/nfl-prop-under-study.json`, grader `research/nfl_prop_under_study.py`.
+Take the DraftKings under on a player rushing-yards, receiving-yards or
+receptions line when the game-leaders model's P(over) is 10+ points below DK's
+de-vigged P(over), priced from the last pregame row of `nfl_game_leader_market`.
+Discovery (15 games before registration, 13 of them on v3) was 113-78, +11.7%,
+while every under on the same lines broke even; that cannot confirm anything.
+Graded Tuesday/Wednesday by `refresh_nfl_dfs_postweek.yml` into the append-only
+`nfl_prop_under_study_runs`; one verdict, written when 300 bets over 10 game
+weeks are graded, PASS only if the week-clustered interval's lower bound is
+above zero. **The game-leaders model and pricing files are pinned by hash**:
+`tests/test_nfl_prop_under_study.py` fails if they change, and a change needs
+a dated amendment in the JSON. Rows priced after the first model amendment
+leave v1, so a model change before the verdict effectively ends this study.
+
+## NFL game leaders — market-anchored test (`nfl-leaders-anchored-test-v1`, 2026-10-17)
+
+[`docs/nfl-leaders-anchored-test.md`](docs/nfl-leaders-anchored-test.md). A third
+number on `/nfl/game-leaders` ("Market-anchored (test)"), beside our own share
+and the DK-implied share; it never replaces ours. `model/nfl_game_leaders_anchored.py`
+reshapes our simulated games so each listed player matches DraftKings' main
+line and whole alternate ladder (rushing, receiving, receptions, and rush plus
+receiving for total yards), keeping the simulation's joint pattern; unlisted
+players keep our draws; no temperature. Written after each pregame prop
+capture into append-only `nfl_game_leader_anchored` by
+`research.nfl_game_leaders_anchored refresh` (a step in `capture_nfl_props.yml`),
+graded weekly in `refresh_nfl_dfs_postweek.yml`: per market, anchored minus our
+leader log loss, PASS at 60 games only if the game-bootstrap interval is wholly
+below zero. It imports the pinned game-leaders files and changes none of them,
+so `nfl-prop-under-v1` is unaffected. Discovery (15 games re-created after the
+fact, `origin = 'discovery'`): anchored beat ours in all four markets, better in
+10-12 of 15 games each; that cannot confirm anything.
