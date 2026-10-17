@@ -1,0 +1,11 @@
+{
+  "test": "nfl-leaders-anchored-test-v1",
+  "model_version": "nfl-leaders-market-anchored-v1",
+  "registered_at": "2026-10-17T19:00:00+00:00",
+  "season": 2026,
+  "metrics": ["rushing_yards", "receiving_yards", "receptions", "total_yards"],
+  "primary": "mean per-game leader log loss, anchored minus ours (published v4 shares re-created from the same draws)",
+  "floors": {"games_per_market": 60},
+  "bootstrap": {"resamples": 2000, "seed": 20261018, "unit": "game", "interval": 0.95},
+  "pass_rule": "upper bound of the 95% interval of the mean difference below zero, per market, once"
+}

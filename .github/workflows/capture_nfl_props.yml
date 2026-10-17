@@ -64,3 +64,14 @@ jobs:
           python -m research.nfl_game_leaders_market refresh
           --within-hours "${{ inputs.within_hours || '6' }}"
           --write-db
+      # nfl-leaders-anchored-test-v1: the same saved forecasts reshaped to DraftKings'
+      # main lines and ladders (docs/nfl-leaders-anchored-test.md). Runs even if the
+      # DK pricing step failed: it reads only the forecast and the captured lines.
+      - name: Price market-anchored game leaders
+        if: ${{ !cancelled() }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: >-
+          python -m research.nfl_game_leaders_anchored refresh
+          --within-hours "${{ inputs.within_hours || '6' }}"
+          --write-db
