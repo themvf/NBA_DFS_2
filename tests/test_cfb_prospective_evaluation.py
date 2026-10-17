@@ -60,3 +60,16 @@ def test_missing_final_or_mismatched_capture_stays_out_of_strict_cohort():
     report = evaluate(rows, 2026, NOW)
     assert report["market_comparison"][FORECAST_VERSIONS[2]]["spread"]["n"] == 0
     assert report["coverage"][FORECAST_VERSIONS[2]]["awaiting_final"] == 1
+
+
+def test_current_anchor_is_counted_not_graded():
+    rows = [_row(version) for version in FORECAST_VERSIONS]
+    rows[2]["evidence_json"]["anchor"] = {
+        "version": "cfb-market-anchor-v2",
+        "markets": {"spread": 3.0, "total": 48.0, "moneyline": 0.6},
+    }
+    v3 = evaluate(rows, 2026, NOW)["market_comparison"][FORECAST_VERSIONS[2]]
+    assert v3["spread"]["anchor_n"] == 0
+    assert "anchor_error" not in v3["spread"]
+    assert v3["spread"]["anchor_current_n"] == 1
+    assert v3["spread"]["anchor_current_version"] == "cfb-market-anchor-v2"

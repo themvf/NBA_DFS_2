@@ -42,7 +42,7 @@ export default async function CfbEvaluationPage() {
               <div className={styles.panel}><p className={styles.eyebrow}>OFFICIAL FINALS</p><strong>{adjusted?.final ?? 0}</strong><p className={styles.provenance}>Ready for outcome grading</p></div>
               <div className={styles.panel}><p className={styles.eyebrow}>VERIFIED CLOSES</p><strong>{adjusted?.verified_close ?? 0}</strong><p className={styles.provenance}>Scheduled-boundary close records</p></div>
             </div>
-            <p className={styles.empty}>Research only. A missing final or verified close stays missing. The market-anchored challenger blends 75% observed market with 25% opponent-adjusted football context using a fixed rule.</p>
+            <p className={styles.empty}>Research only. A missing final or verified close stays missing. Since 2026-10-17 the market anchor (cfb-market-anchor-v2) gives the football model a weight of 0, so the anchored number is the frozen market quote. A pre-registered fit on 2023–2025 found no skill beyond the closing line (cfb-market-weight-v1).</p>
           </section>
           <section className={styles.section}>
             <div className={styles.sectionHead}><h2>Each model against its frozen market</h2><p>Lower error is better · paired at that model&apos;s forecast time</p></div>
@@ -59,7 +59,7 @@ export default async function CfbEvaluationPage() {
             <p className={styles.empty}>Differences are model error minus market error; negative favors the model. Intervals resample by game date and appear after 20 settled games across four dates. Moneyline error is Brier score; spread and total use mean absolute error in points.</p>
           </section>
           <section className={styles.section}>
-            <div className={styles.sectionHead}><h2>Market-anchored challenger</h2><p>Fixed 25% football adjustment · no betting signal</p></div>
+            <div className={styles.sectionHead}><h2>Retired 25% anchor (cfb-market-anchor-v1)</h2><p>Frozen record of the fixed 25% football adjustment · retired 2026-10-17 · no betting signal</p></div>
             <div className={styles.tableWrap}><table className={styles.table}>
               <thead><tr><th>Market</th><th>Settled pairs</th><th>Anchored error</th><th>Market error</th><th>Difference</th><th>95% interval</th></tr></thead>
               <tbody>{markets.map((market) => {
@@ -70,7 +70,7 @@ export default async function CfbEvaluationPage() {
                   <td>{interval(value?.anchor_minus_market_ci95, market)}</td></tr>;
               })}</tbody>
             </table></div>
-            <p className={styles.empty}>The anchored forecast is frozen with its pregame quote. Moneyline calibration bias and log loss are retained in the versioned report; these summary rows use Brier score.</p>
+            <p className={styles.empty}>These rows grade only comparisons frozen under v1, before it was retired; they are never rewritten. The current anchor has weight 0, so it equals the market and adds no rows here ({markets.reduce((sum, market) => sum + (report.market_comparison["cfb-score-opponent-ppa-v3"]?.[market]?.anchor_current_n ?? 0), 0)} settled market pairs frozen under v2 so far). Moneyline calibration bias and log loss are retained in the versioned report; these summary rows use Brier score.</p>
           </section>
           <section className={styles.section}>
             <div className={styles.sectionHead}><h2>Strict head-to-head</h2><p>Same game and odds capture ID · forecasts within 15 minutes</p></div>

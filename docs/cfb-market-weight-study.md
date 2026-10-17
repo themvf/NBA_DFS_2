@@ -306,7 +306,10 @@ information the close lacks, in any of the three markets. v1 alone misses the
 margin by about 1.0 point more than the close, which matches what 2026's
 prospective grades showed. Under the registered rules the recommendation is
 **anchor weight 0**. Whether to change `research/cfb_market_anchor.py` (a new
-`cfb-market-anchor-v2`) is the owner's decision. The 2026 confirmation still
+`cfb-market-anchor-v2`) is the owner's decision. **Done 2026-10-17 at the
+owner's request:** `cfb-market-anchor-v2` has football weight 0, so new v3
+comparisons freeze the market quote as the anchored value. v1-stamped
+comparisons stay graded as the retired 25% anchor. The 2026 confirmation still
 runs after 2026-12-07 with the frozen pooled weights.
 
 **Not a finding.** The intercept sensitivity fits put the margin's intercept

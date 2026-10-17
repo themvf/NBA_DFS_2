@@ -24,6 +24,11 @@ from ingest.cfb_plays import football_season_year
 from research.cfb_forecast_v1 import american_probability
 from research.cfb_market_anchor import VERSION as ANCHOR_VERSION
 
+# The flat anchor_* fields grade the retired 25% challenger: comparisons frozen
+# under it keep their v1 stamp. The current anchor (weight 0) equals the frozen
+# market quote by construction, so it is only counted (anchor_current_n).
+RETIRED_ANCHOR_VERSION = "cfb-market-anchor-v1"
+
 VERSION = "cfb-prospective-evaluation-v1"
 FORECAST_VERSIONS = (
     "cfb-score-context-v1", "cfb-score-possession-v2",
@@ -120,7 +125,8 @@ def _summary(pairs: list[dict], market: str, seed: int) -> dict:
     if not pairs:
         return {"n": 0, "game_dates": 0, "model_error": None,
                 "market_error": None, "model_minus_market": None,
-                "model_minus_market_ci95": None, "anchor_n": 0}
+                "model_minus_market_ci95": None, "anchor_n": 0,
+                "anchor_current_n": 0, "anchor_current_version": ANCHOR_VERSION}
     deltas = [{**pair, "delta": pair["model_error"] - pair["market_error"]}
               for pair in pairs]
     anchored = [{**pair, "anchor_delta": pair["anchor_error"] - pair["market_error"]}
@@ -132,6 +138,8 @@ def _summary(pairs: list[dict], market: str, seed: int) -> dict:
         "model_minus_market": round(mean(pair["delta"] for pair in deltas), 5),
         "model_minus_market_ci95": _cluster_interval(deltas, "delta", seed=seed),
         "anchor_n": len(anchored),
+        "anchor_current_n": sum(1 for pair in pairs if pair.get("current_anchor")),
+        "anchor_current_version": ANCHOR_VERSION,
     }
     if anchored:
         result["anchor_error"] = round(mean(pair["anchor_error"] for pair in anchored), 5)
@@ -196,7 +204,9 @@ def evaluate(rows: list[dict], season: int, as_of: datetime) -> dict:
             model = _forecast_value(evidence, market)
             observed = float(quote["value"])
             anchor = evidence.get("anchor", {})
-            anchored = anchor.get("markets", {}).get(market) if anchor.get("version") == ANCHOR_VERSION else None
+            anchored = anchor.get("markets", {}).get(market) if anchor.get("version") == RETIRED_ANCHOR_VERSION else None
+            current_anchor = (anchor.get("version") == ANCHOR_VERSION
+                              and anchor.get("markets", {}).get(market) is not None)
             directional_close_move = None
             if (close[market] is not None and row["close_at"] is not None
                     and row["close_at"] > row["forecast_at"] and model != observed):
@@ -207,6 +217,7 @@ def evaluate(rows: list[dict], season: int, as_of: datetime) -> dict:
                 "actual": actual, "model_error": _error(model, actual, market),
                 "market_error": _error(observed, actual, market),
                 "anchor_error": _error(float(anchored), actual, market) if anchored is not None else None,
+                "current_anchor": current_anchor,
                 "directional_close_move": directional_close_move,
             }
             if market == "moneyline":
