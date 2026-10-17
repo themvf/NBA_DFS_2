@@ -1,0 +1,34 @@
+{
+  "study": "nfl-prop-under-v1",
+  "registered_at": "2026-10-17T16:30:00+00:00",
+  "season": 2026,
+  "last_week": 18,
+  "markets": [
+    "rushing_yards",
+    "receiving_yards",
+    "receptions"
+  ],
+  "market_version": "nfl-leaders-market-implied-v1",
+  "book": "draftkings",
+  "side": "under",
+  "edge_threshold": -0.1,
+  "stake": 1.0,
+  "floors": {
+    "graded_bets": 300,
+    "game_weeks": 10
+  },
+  "bootstrap": {
+    "resamples": 2000,
+    "seed": 20261017,
+    "cluster": "game_week",
+    "interval": 0.95
+  },
+  "model_pins": {
+    "model/nfl_game_leaders.py": "0ed21a220cd17608a37ae1032e897eefa95f76aa953956278eb0080b8051d017",
+    "model/nfl_game_leaders_calibration.py": "b4230d505bcfe87187ab122d11e23fa5deb12d3b6edd6dfd1f41557171f01dd6",
+    "model/nfl_game_leaders_roles.py": "050e405559c84361ab208061c4f7e16500bdf7f185bf71b2a92ffa06581b110c",
+    "research/nfl_game_leaders.py": "70597ba2f1bc1b99807950d29133507a5baf06f7171d11157c64172ff1f57583",
+    "research/nfl_game_leaders_market.py": "9d45a602c0cff177da1d4a41f13bd6a5fddf9521d51ef9cfa0052387ee727972"
+  },
+  "amendments": []
+}

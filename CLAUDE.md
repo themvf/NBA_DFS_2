@@ -8285,3 +8285,20 @@ own projections, with DraftKings lines captured as a yardstick, never as an inpu
   gap lived in the Game Leaders roles, and the backup-QB gap in the DFS
   model's own-history volume. Zero attempts/carries in week 1-2 stored
   projections are older model versions that did not record volume.
+
+## NFL player-prop unders — pre-registered (`nfl-prop-under-v1`, 2026-10-17)
+
+[`docs/nfl-prop-under-study.md`](docs/nfl-prop-under-study.md), constants in
+`docs/nfl-prop-under-study.json`, grader `research/nfl_prop_under_study.py`.
+Take the DraftKings under on a player rushing-yards, receiving-yards or
+receptions line when the game-leaders model's P(over) is 10+ points below DK's
+de-vigged P(over), priced from the last pregame row of `nfl_game_leader_market`.
+Discovery (15 games before registration, 13 of them on v3) was 113-78, +11.7%,
+while every under on the same lines broke even; that cannot confirm anything.
+Graded Tuesday/Wednesday by `refresh_nfl_dfs_postweek.yml` into the append-only
+`nfl_prop_under_study_runs`; one verdict, written when 300 bets over 10 game
+weeks are graded, PASS only if the week-clustered interval's lower bound is
+above zero. **The game-leaders model and pricing files are pinned by hash**:
+`tests/test_nfl_prop_under_study.py` fails if they change, and a change needs
+a dated amendment in the JSON. Rows priced after the first model amendment
+leave v1, so a model change before the verdict effectively ends this study.
