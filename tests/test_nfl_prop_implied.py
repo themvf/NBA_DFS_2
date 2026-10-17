@@ -61,3 +61,23 @@ def test_team_must_be_one_of_the_two_teams_in_the_game():
     assert resolve_team("MIN", [(1, "ARI"), (4, "DET")], 5, games) == "DET"
     # Alias codes are normalized before comparing.
     assert resolve_team("LA", [], 2, {"LAR", "NYG"}) == "LAR"
+
+
+def test_qb_rush_fallback_fills_only_missing_markets():
+    """nfl-market-anchor-v2: a QB with no anytime-TD / rushing-yards line takes
+    the model's own rushing means; without the fallback the research reading
+    (missing = 0) is unchanged."""
+    from model.nfl_prop_implied import CALIBRATION_V1, dk_points, stat_line
+    lines = {"player_pass_yds": {"line": 245.5, "over": -118, "under": -108},
+             "player_pass_tds": {"line": 1.5, "over": -130, "under": 102}}
+    model = {"rushing_yards": 38.2, "rushing_tds": 0.31}
+    used: list[str] = []
+    s = stat_line("QB", lines, calibration=CALIBRATION_V1, qb_rush_fallback=model, used=used)
+    assert s["rushing_yards"] == 38.2 and s["scrimmage_tds"] == 0.31
+    assert used == ["player_anytime_td", "player_rush_yds"]
+    plain = stat_line("QB", lines, calibration=CALIBRATION_V1)
+    assert plain["rushing_yards"] == 0.0 and plain["scrimmage_tds"] == 0.0
+    assert dk_points("QB", s) > dk_points("QB", plain) + 5
+    wr = {"player_receptions": {"line": 5.5, "over": -129, "under": 104},
+          "player_reception_yds": {"line": 65.5, "over": -111, "under": -115}, "player_anytime_td": {"yes": 155}}
+    assert stat_line("WR", wr, qb_rush_fallback=model)["rushing_yards"] == 0.0

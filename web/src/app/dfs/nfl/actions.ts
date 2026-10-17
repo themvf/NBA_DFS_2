@@ -1100,7 +1100,7 @@ async function attachReplacementUpside(
 }
 
 /**
- * Market anchor (`nfl-market-anchor-v1`, see market-anchor.ts): every active
+ * Market anchor (`nfl-market-anchor-v2`, see market-anchor.ts): every active
  * QB/RB/WR/TE with a full set of pregame prop lines is projected from the
  * books' calibrated number. Lines are the latest capture before kickoff, per
  * market, DraftKings first; a player is matched by name AND by his game's
@@ -1151,7 +1151,9 @@ async function attachMarketAnchor(workspace: NflWorkspaceSlate): Promise<void> {
       const capturedAt = g.captured.sort().at(-1)!;
       const anchor = anchorPlayer({ position: player.position, ourProj: player.ourProj, floorFpts: player.floorFpts,
         medianFpts: player.medianFpts ?? null, ceilingFpts: player.ceilingFpts, lines: g.lines,
-        book: g.books.player_reception_yds ?? g.books.player_rush_yds ?? g.books.player_pass_yds ?? Object.values(g.books)[0], capturedAt });
+        book: g.books.player_reception_yds ?? g.books.player_rush_yds ?? g.books.player_pass_yds ?? Object.values(g.books)[0], capturedAt,
+        qbRushFallback: player.position === 'QB'
+          ? { rushing_yards: player.statMeans?.rushing_yards ?? null, rushing_tds: player.statMeans?.rushing_tds ?? null } : null });
       if (!anchor) return player;
       used.push(capturedAt);
       // The anchor overrides the absence commit, so the commit is cleared; it is

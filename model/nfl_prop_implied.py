@@ -113,11 +113,18 @@ def _normal_tail(mean: float, spread: float, threshold: float) -> float:
 
 
 def stat_line(position: str, lines: dict[str, dict], markets: dict[str, Market] | None = None,
-              calibration: dict[str, float] | None = None) -> dict | None:
+              calibration: dict[str, float] | None = None, qb_rush_fallback: dict | None = None,
+              used: list[str] | None = None) -> dict | None:
     """Expected stats for one player from his lines.
 
     ``lines`` maps a market key to ``{"line", "over", "under"}`` (two-way) or
     ``{"yes"}`` (anytime TD). Returns None when a required market is missing.
+
+    A QB's anytime-TD and rushing-yards lines are optional. Without
+    ``qb_rush_fallback`` a missing one reads as 0 (research behaviour, what the
+    calibration was fitted on); with it (``{"rushing_yards", "rushing_tds"}``,
+    the model's own means) a missing one takes the model's value and its market
+    is appended to ``used``. This is ``nfl-market-anchor-v2``.
     """
     defs = markets or MARKETS
     if position not in REQUIRED or any(_missing(m, lines.get(m)) for m in REQUIRED[position]):
@@ -130,15 +137,26 @@ def stat_line(position: str, lines: dict[str, dict], markets: dict[str, Market] 
         v = market_mean(m, q.get("line"), q.get("over"), q.get("under"), defs.get(m))
         return None if v is None else v * cal.get(m, 1.0)
 
+    def fill(value: float | None, market: str, key: str) -> float:
+        if value is not None:
+            return value
+        model = (qb_rush_fallback or {}).get(key) if position == "QB" else None
+        if model is not None and math.isfinite(model) and model > 0:
+            if used is not None:
+                used.append(market)
+            return float(model)
+        return 0.0
+
     td = anytime_td_rate((lines.get("player_anytime_td") or {}).get("yes"))
     td = None if td is None else td * cal.get("player_anytime_td", 1.0)
+    td = fill(td, "player_anytime_td", "rushing_tds")
     out = {"passing_yards": 0.0, "passing_tds": 0.0, "passing_interceptions": 0.0, "rushing_yards": 0.0,
            "receptions": 0.0, "receiving_yards": 0.0, "scrimmage_tds": td or 0.0}
     if position == "QB":
         out["passing_yards"] = mean("player_pass_yds")
         out["passing_tds"] = mean("player_pass_tds")
         out["passing_interceptions"] = mean("player_pass_interceptions") if mean("player_pass_interceptions") is not None else 0.8
-        out["rushing_yards"] = mean("player_rush_yds") or 0.0
+        out["rushing_yards"] = fill(mean("player_rush_yds"), "player_rush_yds", "rushing_yards")
     elif position == "RB":
         out["rushing_yards"] = mean("player_rush_yds")
         out["receptions"] = mean("player_receptions")

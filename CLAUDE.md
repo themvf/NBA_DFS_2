@@ -8003,7 +8003,11 @@ and closing lines in `nfl_prop_implied_lines` and reports. Exploratory, weeks
   (`resolve_team`): the roster feed can carry a stale team (Marvin Harrison
   Jr. read HOU in DET @ ARI), which had dropped 4 games from the study. The
   script's leader chances are overconfident, worst for receptions; that is
-  the conversion's narrow spread, not the market. Layers 2 (market-derived game script and opponent
+  the conversion's narrow spread, not the market. **v2 (2026-10-17):** a QB's anytime-TD and rushing-yards lines are optional,
+  and v1 read a missing one as 0, cutting a running QB without them by up to
+  ~6 points; v2 fills a missing one from the model's own rushing mean and
+  records it in `modelFilled` (Python: `stat_line(..., qb_rush_fallback=)`;
+  without it the research reading is unchanged). Layers 2 (market-derived game script and opponent
   effects for players without lines) and 3 (predicted lines early in the
   week) are not built.
 

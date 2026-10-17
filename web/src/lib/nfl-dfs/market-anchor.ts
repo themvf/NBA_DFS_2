@@ -18,9 +18,14 @@
  * weeks 1-4) and score with DraftKings rules, the yardage bonuses as
  * probabilities. The model's P10/median/P90 are rescaled to the new mean (same
  * shape); its boom rate is kept. Change a constant here and bump the version.
+ *
+ * v2 (2026-10-17): a QB's anytime-TD and rushing-yards lines are optional, and
+ * v1 read a missing one as 0 rushing TDs / 0 rushing yards, which cut every
+ * running quarterback without those lines. v2 fills a missing one from the
+ * model's own mean for that stat (`QbRushFallback`) and records which it used.
  */
 
-export const MARKET_ANCHOR_VERSION = 'nfl-market-anchor-v1';
+export const MARKET_ANCHOR_VERSION = 'nfl-market-anchor-v2';
 export const ANYTIME_TD_MARGIN = 1.08;
 export const RB_YARDS_PER_RECEPTION = 7.5;
 /** Mean actual / implied over weeks 1-4 (research/nfl_prop_implied.py). */
@@ -49,6 +54,8 @@ const REQUIRED: Record<string, string[]> = {
 type StatKey = 'passing_yards' | 'passing_tds' | 'passing_interceptions' | 'rushing_yards' | 'receptions' | 'receiving_yards' | 'scrimmage_tds';
 export type StatLine = Record<StatKey, number>;
 export interface PropQuote { line?: number | null; over?: number | null; under?: number | null; yes?: number | null }
+/** The model's own QB rushing means, used only where the books posted no line. */
+export interface QbRushFallback { rushing_yards?: number | null; rushing_tds?: number | null }
 
 export function impliedProb(american: number): number {
   return american < 0 ? -american / (-american + 100) : 100 / (american + 100);
@@ -110,19 +117,25 @@ function present(market: string, q: PropQuote | undefined): boolean {
 }
 
 /** The calibrated expected stat line, or null when a required market is missing. */
-export function statLine(position: string, lines: Record<string, PropQuote>): StatLine | null {
+export function statLine(position: string, lines: Record<string, PropQuote>, fallback?: QbRushFallback | null,
+  used?: string[]): StatLine | null {
   const required = REQUIRED[position];
   if (!required || required.some((m) => !present(m, lines[m]))) return null;
   const cal = (market: string, value: number | null) => value == null ? null : value * (CALIBRATION[market] ?? 1);
   const mean = (market: string) => cal(market, marketMean(market, lines[market]));
-  const td = cal('player_anytime_td', anytimeTdRate(lines.player_anytime_td?.yes)) ?? 0;
+  const fill = (value: number | null, market: string, model: number | null | undefined): number => {
+    if (value != null) return value;
+    if (position === 'QB' && model != null && Number.isFinite(model) && model > 0) { used?.push(market); return model; }
+    return 0;
+  };
+  const td = fill(cal('player_anytime_td', anytimeTdRate(lines.player_anytime_td?.yes)), 'player_anytime_td', fallback?.rushing_tds);
   const s: StatLine = { passing_yards: 0, passing_tds: 0, passing_interceptions: 0, rushing_yards: 0, receptions: 0, receiving_yards: 0, scrimmage_tds: td };
   if (position === 'QB') {
     const py = mean('player_pass_yds'), ptd = mean('player_pass_tds');
     if (py == null || ptd == null) return null;
     s.passing_yards = py; s.passing_tds = ptd;
     s.passing_interceptions = mean('player_pass_interceptions') ?? 0.8;
-    s.rushing_yards = mean('player_rush_yds') ?? 0;
+    s.rushing_yards = fill(mean('player_rush_yds'), 'player_rush_yds', fallback?.rushing_yards);
   } else if (position === 'RB') {
     const ry = mean('player_rush_yds'), rec = mean('player_receptions');
     if (ry == null || rec == null) return null;
@@ -156,6 +169,8 @@ export interface MarketAnchor {
   before: { mean: number; p10: number | null; median: number | null; p90: number | null };
   after: { mean: number; p10: number | null; median: number | null; p90: number | null };
   statLine: StatLine;
+  /** QB markets filled from the model's own rushing means because the books posted none. */
+  modelFilled: string[];
   book: string;
   capturedAt: string;
   lines: Record<string, PropQuote>;
@@ -167,9 +182,10 @@ export interface MarketAnchor {
  */
 export function anchorPlayer(input: {
   position: string; ourProj: number | null; floorFpts: number | null; medianFpts: number | null; ceilingFpts: number | null;
-  lines: Record<string, PropQuote>; book: string; capturedAt: string;
+  lines: Record<string, PropQuote>; book: string; capturedAt: string; qbRushFallback?: QbRushFallback | null;
 }): MarketAnchor | null {
-  const s = statLine(input.position, input.lines);
+  const modelFilled: string[] = [];
+  const s = statLine(input.position, input.lines, input.qbRushFallback, modelFilled);
   if (!s || input.ourProj == null || !(input.ourProj > 0.5)) return null;
   const mean = dkPoints(input.position, s);
   const k = mean / input.ourProj;
@@ -178,6 +194,6 @@ export function anchorPlayer(input: {
     version: MARKET_ANCHOR_VERSION,
     before: { mean: input.ourProj, p10: input.floorFpts, median: input.medianFpts, p90: input.ceilingFpts },
     after: { mean, p10: scale(input.floorFpts), median: scale(input.medianFpts), p90: scale(input.ceilingFpts) },
-    statLine: s, book: input.book, capturedAt: input.capturedAt, lines: input.lines,
+    statLine: s, modelFilled, book: input.book, capturedAt: input.capturedAt, lines: input.lines,
   };
 }
