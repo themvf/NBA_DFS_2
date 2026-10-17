@@ -1,5 +1,5 @@
 /**
- * Winners shape (`nfl-winners-shape-v1`..`v5`): the preset resolves into ordinary
+ * Winners shape (`nfl-winners-shape-v1`..`v7`): the preset resolves into ordinary
  * optimizer settings and pool exclusions, and the optimizer enforces each of
  * them: the bring-back SHARE alternates lineups, the quarterback cap binds,
  * kickers leave a showdown pool, a showdown lineup is 5-1 or 3-3 and never
@@ -239,6 +239,23 @@ console.log("Winners shape (classic): bring-back share alternates, quarterbacks 
     if (c.position === "QB") assert.ok(l.slots.some(s => s.slot !== "CPT" && ["WR", "TE"].includes(s.player.position) && s.player.team === c.team), "captainStack: QB captain brings a pass catcher");
   }
   assert.throws(() => optimizeNflLineups(pool, settings({ format: "classic", captainStack: true })), /Showdown rule/);
+
+  // v7 distributions: scheduled across the run, two-sided for the RB captain.
+  const dist = optimizeNflLineups(pool, settings({ format: "showdown", nLineups: 10, minSalary: 0, stackPassCatchers: 0, maxExposure: 1,
+    minQbPerLineup: 1, twoQbShare: 0.4, maxLoneQbCaptainShare: 0.1, rbCaptainShare: 0.2 }));
+  assert.equal(dist.lineups.length, 10, dist.warnings.join(" | "));
+  const qbsIn = (l: { slots: { player: NflOptimizerPlayer }[] }) => l.slots.filter(s => s.player.position === "QB").length;
+  const cptOf = (l: { slots: { slot: string; player: NflOptimizerPlayer }[] }) => l.slots.find(s => s.slot === "CPT")!.player;
+  assert.equal(dist.lineups.filter(l => qbsIn(l) === 2).length, 4, "twoQbShare 0.4 of 10: four two-QB lineups");
+  assert.ok(dist.lineups.every(l => qbsIn(l) >= 1), "the QB minimum still holds");
+  assert.ok(dist.lineups.filter(l => cptOf(l).position === "QB" && qbsIn(l) === 1).length <= 1, "lone-QB captains capped at 10% of 10");
+  assert.equal(dist.lineups.filter(l => cptOf(l).position === "RB").length, 2, "rbCaptainShare 0.2 of 10: exactly two RB captains");
+  assert.ok(dist.warnings.some(w => w.startsWith("Showdown distributions: 4 of 10")), "the run reports what it built");
+  assert.throws(() => optimizeNflLineups(pool, settings({ format: "classic", twoQbShare: 0.4 })), /Showdown rules/);
+  // The preset raises a QB's overall cap to 75% unless he has his own overall range.
+  const shapedSd = applyWinnersShape(settings({ format: "showdown", nLineups: 20 }), pool);
+  assert.equal(shapedSd.settings.twoQbShare, WINNERS_SHAPE.showdownTwoQbShare);
+  assert.equal(shapedSd.settings.showdownQbMinCap, 0.75);
   assert.throws(() => optimizeNflLineups(pool, settings({ format: "classic", minQbPerLineup: 1 })), /Showdown rule/);
   assert.throws(() => optimizeNflLineups(pool, settings({ format: "showdown", minQbPerLineup: 3 })), /0, 1 or 2/);
 }

@@ -61,7 +61,18 @@ import type { NflOptimizerPlayer, NflOptimizerSettings } from "@/app/dfs/nfl/nfl
  * 29. (b) Salary floor $49,500 -> $48,100 (both formats): 51% of distinct
  * top-100 Showdown winners spent under $49,500; 17% under $48,100 (2% of top-20).
  */
-export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v6";
+/**
+ * v7 (2026-10-17, owner's decision: "we need to match the winners"): Showdown
+ * builds target the winners' distributions across the run, from the distinct
+ * top-20 / top-100 lineups of the 11 stored 2026 flagship Showdowns:
+ * both quarterbacks in 40% of lineups (41% / 44%), a quarterback captain with
+ * no second quarterback in at most 7% (5% / 7%), a running-back captain in
+ * 20% (24% / 20%). Each quarterback may appear in up to 75% of lineups unless
+ * the user set his own overall range, since 40% two-QB lineups need ~70%
+ * apiece. A lineup that cannot meet a target is built with it relaxed and
+ * counted in the notes.
+ */
+export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v7";
 
 export type BuildShape = "standard" | "winners";
 export const BUILD_SHAPES: readonly BuildShape[] = ["standard", "winners"];
@@ -98,6 +109,10 @@ export const WINNERS_SHAPE = {
   captainPositions: ["QB", "RB", "WR"] as NflOptimizerPlayer["position"][],
   /** Showdown: quarterbacks every lineup rosters, Captain or Flex. */
   showdownMinQb: 1,
+  showdownTwoQbShare: 0.4,
+  showdownMaxLoneQbCaptainShare: 0.07,
+  showdownRbCaptainShare: 0.2,
+  showdownQbMinCap: 0.75,
 } as const;
 
 /**
@@ -187,8 +202,12 @@ export function applyWinnersShape(settings: NflOptimizerSettings, players: reado
       captainPositions: [...WINNERS_SHAPE.captainPositions],
       minQbPerLineup: Math.max(settings.minQbPerLineup ?? 0, WINNERS_SHAPE.showdownMinQb),
       captainStack: true,
+      twoQbShare: settings.twoQbShare ?? WINNERS_SHAPE.showdownTwoQbShare,
+      maxLoneQbCaptainShare: settings.maxLoneQbCaptainShare ?? WINNERS_SHAPE.showdownMaxLoneQbCaptainShare,
+      rbCaptainShare: settings.rbCaptainShare ?? WINNERS_SHAPE.showdownRbCaptainShare,
+      showdownQbMinCap: Math.max(settings.showdownQbMinCap ?? 0, WINNERS_SHAPE.showdownQbMinCap),
     });
-    notes.push(`Winners shape (${WINNERS_SHAPE_VERSION}, showdown): every lineup 5-1 or 3-3 (no 4-2), at least ${WINNERS_SHAPE.showdownMinQb} quarterback, a WR/TE captain with his own QB and a QB captain with his own WR/TE, no kicker, the captain a ${WINNERS_SHAPE.captainPositions.join("/")}, `
+    notes.push(`Winners shape (${WINNERS_SHAPE_VERSION}, showdown): every lineup 5-1 or 3-3 (no 4-2), at least ${WINNERS_SHAPE.showdownMinQb} quarterback, a WR/TE captain with his own QB and a QB captain with his own WR/TE, both QBs in ${Math.round(WINNERS_SHAPE.showdownTwoQbShare * 100)}% of lineups, a lone-QB captain in at most ${Math.round(WINNERS_SHAPE.showdownMaxLoneQbCaptainShare * 100)}%, an RB captain in ${Math.round(WINNERS_SHAPE.showdownRbCaptainShare * 100)}%, each QB in up to ${Math.round(WINNERS_SHAPE.showdownQbMinCap * 100)}% of lineups, no kicker, the captain a ${WINNERS_SHAPE.captainPositions.join("/")}, `
       + `no captain in more than ${Math.round(WINNERS_SHAPE.captainMaxExposure * 100)}% of lineups, min salary ${money(shaped.minSalary)}. `
       + `Captain ranges you set are kept.`);
   }
