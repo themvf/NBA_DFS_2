@@ -124,11 +124,17 @@ market error; negative favors the model. Confidence intervals resample game
 dates and are withheld until 20 settled games span at least four dates.
 Directional movement toward a verified close is descriptive only.
 
-The fixed `cfb-market-anchor-v1` challenger blends 75% of each eligible
-observed market value with 25% of the v3 football estimate. Its rule was fixed
-before prospective outcomes and is frozen with new v3 comparisons. Historical
-comparisons are not rewritten to add it. It remains research-only regardless
-of an early favorable sample; no betting action is generated.
+The market anchor is `cfb-market-anchor-v2` (2026-10-17): the football
+weight is 0, so the anchored value frozen with each new v3 comparison is the
+observed market quote itself. The pre-registered `cfb-market-weight-v1` study
+(`docs/cfb-market-weight-study.md`) fitted the weight out of sample on
+2023-2025 against CFBD closing lines and found no residual skill in spread,
+total or moneyline. The evaluation grades it as `anchor_current_n` (a count;
+its error equals the market's by construction). The retired
+`cfb-market-anchor-v1` blended 75% market with 25% of the v3 estimate under a
+fixed rule. Comparisons frozen under v1 keep their v1 stamp and stay graded in
+the flat `anchor_*` fields as the retired challenger; they are never
+rewritten. Both remain research-only; no betting action is generated.
 
 The refresh workflow publishes evaluation after new forecasts. A separate
 Sunday/Monday workflow regrades official finals and verified closes without

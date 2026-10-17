@@ -7,6 +7,8 @@ export type CfbEvaluatedMarket = {
   model_minus_market: number | null; model_minus_market_ci95: number[] | null;
   anchor_n: number; anchor_error?: number; anchor_market_error?: number;
   anchor_minus_market?: number; anchor_minus_market_ci95?: number[] | null;
+  /** Comparisons frozen under the current anchor (weight 0: equal to the market). */
+  anchor_current_n?: number; anchor_current_version?: string;
   verified_close_n?: number; directional_close_move?: number | null;
   model_logloss?: number; market_logloss?: number; anchor_logloss?: number;
   model_calibration_bias?: number; market_calibration_bias?: number;
