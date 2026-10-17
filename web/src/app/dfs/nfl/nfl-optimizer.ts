@@ -260,6 +260,13 @@ export type NflOptimizerSettings = {
   forbidFourTwoSplit?: boolean;
   /** Showdown: only these positions may take the Captain slot (a user's CPT minimum on another position is reported as infeasible). */
   captainPositions?: NflOptimizerPlayer["position"][];
+  /** Showdown: every lineup rosters at least this many quarterbacks (Captain or Flex). Ignored when the pool has fewer. */
+  minQbPerLineup?: number;
+  /**
+   * Showdown: a WR or TE captain needs his own team's quarterback in the
+   * lineup, and a QB captain at least one of his own WR/TE.
+   */
+  captainStack?: boolean;
   maxExposure: number;
   minUnique: number;
   stackPassCatchers: 0 | 1 | 2;
@@ -698,6 +705,11 @@ function validateSettings(settings: NflOptimizerSettings): void {
   if (settings.bringBackShare != null && (settings.format !== "classic" || settings.mode !== "gpp")) throw new Error("A bring-back share is only available in Classic GPP.");
   if ((settings.excludeKickers || settings.forbidFourTwoSplit || settings.maxCaptainExposure != null || settings.captainPositions) && settings.format !== "showdown") throw new Error("Kicker exclusion, the 4-2 ban, the captain cap and captain positions are Showdown rules.");
   if (settings.captainPositions && !settings.captainPositions.length) throw new Error("Captain positions must name at least one position.");
+  if (settings.minQbPerLineup != null) {
+    if (settings.format !== "showdown") throw new Error("A per-lineup quarterback minimum is a Showdown rule (Classic always has one QB).");
+    if (!Number.isInteger(settings.minQbPerLineup) || settings.minQbPerLineup < 0 || settings.minQbPerLineup > 2) throw new Error("The quarterback minimum must be 0, 1 or 2.");
+  }
+  if (settings.captainStack && settings.format !== "showdown") throw new Error("The captain stack is a Showdown rule.");
 }
 
 /**
@@ -850,6 +862,40 @@ function buildOne(
     constraints.split_pick = { equal: 1 };
     constraints.split_match = { equal: 0 };
   }
+  // Showdown: at least N quarterbacks per lineup, Captain or Flex. A lineup
+  // may carry an extra quarterback only while enough quarterback appearances
+  // remain under the exposure caps for every later lineup to have its
+  // minimum (otherwise early two-QB lineups spend the caps and the last
+  // lineups have none). An archetype that fades the quarterbacks away is
+  // refused (null), so the run falls back to a standard lineup; if the caps
+  // themselves leave too few appearances the rule is skipped here and the
+  // run's warnings count the short lineups.
+  // Showdown captain stack, one pair of rows per team: own QBs rostered minus
+  // that team's WR/TE captain >= 0, and own WR/TE in Flex minus that team's
+  // QB captain >= 0 (only one captain exists, so each row binds only when
+  // its captain is chosen).
+  const captainStack = settings.format === "showdown" && settings.captainStack === true;
+  if (captainStack) {
+    for (const team of new Set(available.map((player) => player.team))) {
+      constraints[`cstack_qb_${team}`] = { min: 0 };
+      constraints[`cstack_pc_${team}`] = { min: 0 };
+    }
+  }
+  const minQb = settings.format === "showdown" ? settings.minQbPerLineup ?? 0 : 0;
+  if (minQb > 0) {
+    const qbSlotsLeft = pool.filter((player) => player.position === "QB")
+      .reduce((sum, qb) => sum + Math.max(0, maxCount(qb) - (exposureCounts.get(qb.dkPlayerId) ?? 0)), 0);
+    const playableQbs = available.filter((player) => player.position === "QB").length;
+    if (playableQbs >= minQb) {
+      // Two spare appearances are kept back so the last lineups still have a
+      // choice of quarterback; with exactly one left, uniqueness and salary can
+      // leave the final lineup unbuildable.
+      const extraAllowed = qbSlotsLeft - (minQb + 1) >= (remaining - 1) * minQb + QB_RESERVE_SLACK;
+      constraints.min_qb = extraAllowed ? { min: minQb } : { min: minQb, max: minQb };
+    } else if (qbSlotsLeft >= remaining * minQb) {
+      return null;
+    }
+  }
 
   const variables: SolverModel["variables"] = {};
   const binaries: SolverModel["binaries"] = {};
@@ -895,6 +941,14 @@ function buildOne(
       if (constraints.gpp_opportunity_signal && isNflGppSignalPlayer(player.playerSignals, settings.gppSignalCodes)) variable.gpp_opportunity_signal = 1;
       if (constraints.air_matchup && isNflGppSignalPlayer(player.playerSignals, ["AIR_MATCHUP"])) variable.air_matchup = 1;
       if (constraints.goal_line_rb && player.position === "RB" && isNflGppSignalPlayer(player.playerSignals, ["INSIDE_FIVE"])) variable.goal_line_rb = 1;
+      if (constraints.min_qb && player.position === "QB") variable.min_qb = 1;
+      if (captainStack) {
+        const passCatcher = player.position === "WR" || player.position === "TE";
+        if (player.position === "QB") variable[`cstack_qb_${player.team}`] = 1;
+        if (slot === "CPT" && passCatcher) variable[`cstack_qb_${player.team}`] = -1;
+        if (slot === "FLEX" && passCatcher) variable[`cstack_pc_${player.team}`] = 1;
+        if (slot === "CPT" && player.position === "QB") variable[`cstack_pc_${player.team}`] = -1;
+      }
       if (settings.format === "classic") {
         variable.roster = 1;
         variable[player.position.toLowerCase()] = 1;
@@ -1047,6 +1101,9 @@ function buildOne(
     } : { id: "standard_ceiling", label: ARCHETYPE_LABELS.standard_ceiling, fadedPlayerIds: [], fadedPlayerNames: [], beneficiariesSatisfied: [] },
   };
 }
+
+/** Spare quarterback appearances held back for the last lineups under a Showdown QB minimum. */
+const QB_RESERVE_SLACK = 2;
 
 export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: NflOptimizerSettings): NflOptimizerResult {
   validateSettings(requested);
@@ -1532,6 +1589,10 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
     }
   }
   const exactDuplicates = findExactDuplicates(lineups);
+  if (settings.format === "showdown" && (settings.minQbPerLineup ?? 0) > 0) {
+    const short = lineups.filter((l) => l.slots.filter((slot) => slot.player.position === "QB").length < settings.minQbPerLineup!).length;
+    if (short) warnings.push(`${short} lineup(s) have fewer than ${settings.minQbPerLineup} quarterback(s): the quarterbacks' exposure caps ran out. Raise their maximum exposure to keep the minimum in every lineup.`);
+  }
   if (exactDuplicates.length) warnings.push(`${exactDuplicates.length} exact-duplicate lineup pair(s) detected — this should not happen; report the run.`);
   const overlap = computeMaxOverlap(lineups);
   const ownershipValidated = settings.duplicationModelValidated === true && settings.ownershipCapability === "validated";

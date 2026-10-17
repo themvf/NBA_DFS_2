@@ -1,5 +1,5 @@
 /**
- * Winners shape (`nfl-winners-shape-v1`..`v4`): the preset resolves into ordinary
+ * Winners shape (`nfl-winners-shape-v1`..`v5`): the preset resolves into ordinary
  * optimizer settings and pool exclusions, and the optimizer enforces each of
  * them: the bring-back SHARE alternates lineups, the quarterback cap binds,
  * kickers leave a showdown pool, a showdown lineup is 5-1 or 3-3 and never
@@ -68,7 +68,7 @@ const prior = (games: number, targets: number, targetShare: number | null = null
   const shaped = applyWinnersShape(settings({ lockedPlayerIds: [20], buildShape: "winners" }), pool);
   assert.equal(shaped.settings.minUnique, WINNERS_SHAPE.minUnique);
   assert.equal(shaped.settings.maxExposure, WINNERS_SHAPE.maxExposure, "the flat cap tightens to 55%");
-  assert.equal(shaped.settings.minSalary, WINNERS_SHAPE.minSalary, "$45,000 rises to $49,500");
+  assert.equal(shaped.settings.minSalary, WINNERS_SHAPE.minSalary, "$45,000 rises to the preset floor");
   assert.equal(shaped.settings.stackPassCatchers, 1, "a build with no stack rule gets one stacked pass catcher");
   assert.equal(shaped.settings.bringBackShare, 0.5);
   assert.equal(shaped.settings.maxQbExposure, qbExposureCap(4));
@@ -161,7 +161,7 @@ console.log("Winners shape (classic): bring-back share alternates, quarterbacks 
   // AAA has four strong players, BBB two: the natural best lineup is 4-2.
   const positions: NflOptimizerPlayer["position"][] = ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "TE", "RB", "WR"];
   // Strong players are priced low so the best lineup fits the cap; the dear
-  // filler lets six distinct lineups reach the preset's $49,500 floor.
+  // filler lets six distinct lineups reach the preset's salary floor.
   // AAA's strongest player is a tight end: the natural captain without the preset.
   for (let i = 0; i < 10; i++) pool.push(player({ dkPlayerId: id++, position: positions[i], team: "AAA", salary: 6000 + 450 * i, ourProj: i < 3 ? 22 - i : i === 6 ? 26 : 6 - i * 0.2 }));
   for (let i = 0; i < 10; i++) pool.push(player({ dkPlayerId: id++, position: positions[i], team: "BBB", salary: 6050 + 450 * i, ourProj: i < 2 ? 20 - i : 5 - i * 0.2 }));
@@ -179,6 +179,10 @@ console.log("Winners shape (classic): bring-back share alternates, quarterbacks 
     assert.ok([1, 3, 5].includes(teamSplit(lineup)), `split ${teamSplit(lineup)}-${6 - teamSplit(lineup)} is 4-2`);
     assert.ok(!lineup.slots.some(s => s.player.position === "K"), "no kicker");
     assert.ok(lineup.totalSalary >= WINNERS_SHAPE.minSalary, `salary ${lineup.totalSalary}`);
+    assert.ok(lineup.slots.some(s => s.player.position === "QB"), "v5: every lineup has a quarterback");
+    const cpt = lineup.slots.find(s => s.slot === "CPT")!.player;
+    if (cpt.position === "WR" || cpt.position === "TE") assert.ok(lineup.slots.some(s => s.player.position === "QB" && s.player.team === cpt.team), "v6: a WR/TE captain has his own QB");
+    if (cpt.position === "QB") assert.ok(lineup.slots.some(s => s.slot !== "CPT" && ["WR", "TE"].includes(s.player.position) && s.player.team === cpt.team), "v6: a QB captain has his own WR/TE");
   }
   for (const lineup of result.lineups) assert.ok(["QB", "RB", "WR"].includes(lineup.slots.find(s => s.slot === "CPT")!.player.position), "the captain is a QB, RB or WR");
   assert.ok(result.lineups.some(l => l.slots.some(s => s.slot !== "CPT" && s.player.position === "TE" && s.player.ourProj === 26)), "the strong tight end still plays flex");
@@ -196,6 +200,47 @@ console.log("Winners shape (classic): bring-back share alternates, quarterbacks 
   assert.throws(() => optimizeNflLineups(pool, settings({ format: "classic", captainPositions: ["QB"] })), /Showdown rules/, "showdown-only rules are rejected on a classic slate");
   assert.throws(() => optimizeNflLineups(pool, settings({ format: "showdown", bringBackShare: 0.5 })), /Classic GPP/);
   assert.throws(() => optimizeNflLineups(pool, settings({ format: "showdown", maxDstVsOffenseShare: 0.05 })), /Classic rule/);
+
+  // v5 quarterback minimum, on a pool whose quarterbacks are weak enough that
+  // the plain build leaves them out.
+  const weakQb = pool.map(p => p.position === "QB" ? { ...p, ourProj: 2, ceilingFpts: 3 } : p);
+  const noQb = optimizeNflLineups(weakQb, settings({ format: "showdown", nLineups: 4, minSalary: 0, stackPassCatchers: 0, maxExposure: 1 }));
+  assert.ok(noQb.lineups.every(l => !l.slots.some(s => s.player.position === "QB")), "without the minimum the weak quarterbacks sit (the rule has something to bind on)");
+  const oneQb = optimizeNflLineups(weakQb, settings({ format: "showdown", nLineups: 4, minSalary: 0, stackPassCatchers: 0, maxExposure: 1, minQbPerLineup: 1 }));
+  assert.equal(oneQb.lineups.length, 4);
+  assert.ok(oneQb.lineups.every(l => l.slots.filter(s => s.player.position === "QB").length >= 1), "minQbPerLineup 1: a quarterback in every lineup");
+  const twoQb = optimizeNflLineups(weakQb, settings({ format: "showdown", nLineups: 2, minSalary: 0, stackPassCatchers: 0, maxExposure: 1, minQbPerLineup: 2 }));
+  assert.ok(twoQb.lineups.every(l => l.slots.filter(s => s.player.position === "QB").length === 2), "minQbPerLineup 2: both quarterbacks");
+  const shapedQb = optimizeNflLineups(weakQb, settings({ format: "showdown", nLineups: 4, minSalary: 0, stackPassCatchers: 0, buildShape: "winners", maxExposure: 1 }));
+  assert.ok(shapedQb.lineups.every(l => l.slots.some(s => s.player.position === "QB")), "winners shape v5 forces the quarterback even when he projects poorly");
+  // Two strong quarterbacks capped at 50% of 6 lineups = 6 appearances: an
+  // early two-QB lineup would leave a later one with none, so each lineup
+  // gets exactly one (the reservation), never a quarterback-less lineup.
+  const strongQb = pool.map(p => p.position === "QB" ? { ...p, ourProj: 30, ceilingFpts: 45 } : p);
+  const qbIds = strongQb.filter(p => p.position === "QB").map(p => p.dkPlayerId);
+  const reserve = optimizeNflLineups(strongQb, settings({ format: "showdown", nLineups: 6, minSalary: 0, stackPassCatchers: 0, maxExposure: 1, minQbPerLineup: 1,
+    exposurePolicies: qbIds.map(playerId => ({ playerId, overall: { minPct: null, maxPct: 0.5 }, captain: { minPct: null, maxPct: null }, flex: { minPct: null, maxPct: null }, exactTargetMode: false })) }));
+  assert.equal(reserve.lineups.length, 6, reserve.warnings.join(" | "));
+  assert.ok(reserve.lineups.every(l => l.slots.filter(s => s.player.position === "QB").length === 1), "reserved: one quarterback in each lineup, none left without");
+  const uncapped = optimizeNflLineups(strongQb, settings({ format: "showdown", nLineups: 6, minSalary: 0, stackPassCatchers: 0, maxExposure: 1, minQbPerLineup: 1 }));
+  assert.ok(uncapped.lineups.some(l => l.slots.filter(s => s.player.position === "QB").length === 2), "with room to spare, two-QB lineups are still allowed");
+  // v6 captain stack, on a pool where the best captain is BBB's receiver and
+  // BBB's quarterback is too weak to roster on his own merits.
+  const stackPool = pool.map(p => p.team === "BBB" && p.position === "QB" ? { ...p, ourProj: 1, ceilingFpts: 2 }
+    : p.team === "BBB" && p.position === "WR" && p.dkPlayerId === pool.find(q => q.team === "BBB" && q.position === "WR")!.dkPlayerId ? { ...p, ourProj: 40, ceilingFpts: 60 } : p);
+  const loneWr = optimizeNflLineups(stackPool, settings({ format: "showdown", nLineups: 1, minSalary: 0, stackPassCatchers: 0, maxExposure: 1 }));
+  const loneCpt = loneWr.lineups[0].slots.find(s => s.slot === "CPT")!.player;
+  assert.ok(loneCpt.position === "WR" && loneCpt.team === "BBB" && !loneWr.lineups[0].slots.some(s => s.player.position === "QB" && s.player.team === "BBB"),
+    "without the stack the BBB receiver captains with no BBB quarterback (the rule has something to bind on)");
+  const stacked = optimizeNflLineups(stackPool, settings({ format: "showdown", nLineups: 3, minSalary: 0, stackPassCatchers: 0, maxExposure: 1, captainStack: true }));
+  for (const l of stacked.lineups) {
+    const c = l.slots.find(s => s.slot === "CPT")!.player;
+    if (c.position === "WR" || c.position === "TE") assert.ok(l.slots.some(s => s.player.position === "QB" && s.player.team === c.team), "captainStack: receiver captain brings his QB");
+    if (c.position === "QB") assert.ok(l.slots.some(s => s.slot !== "CPT" && ["WR", "TE"].includes(s.player.position) && s.player.team === c.team), "captainStack: QB captain brings a pass catcher");
+  }
+  assert.throws(() => optimizeNflLineups(pool, settings({ format: "classic", captainStack: true })), /Showdown rule/);
+  assert.throws(() => optimizeNflLineups(pool, settings({ format: "classic", minQbPerLineup: 1 })), /Showdown rule/);
+  assert.throws(() => optimizeNflLineups(pool, settings({ format: "showdown", minQbPerLineup: 3 })), /0, 1 or 2/);
 }
 console.log("Winners shape (showdown): no kicker, 5-1 or 3-3 only, captains capped, user ranges still win.");
 

@@ -88,7 +88,7 @@ const h = buildArm("classic", frozen, house, d.arms[0].levels);
 assert.equal(h.settings.buildShape, "standard", "the preset is resolved once, never reapplied");
 assert.equal(h.settings.maxExposure, 0.55); assert.equal(h.settings.minUnique, 4); assert.equal(h.settings.bringBackShare, 0.5);
 assert.ok(h.settings.maxQbExposure != null && h.settings.maxDstVsOffenseShare === 0.05);
-assert.equal(h.settings.minSalary, 49_500);
+assert.equal(h.settings.minSalary, 48_100);
 const offArm = d.arms.find(a => a.levels.teWrRules === false && a.levels.rbDstRules === false && a.levels.qbCap === false)!;
 const off = buildArm("classic", frozen, house, offArm.levels);
 assert.equal(off.ruleExcludedIds.length, 0, "rules off: no pool exclusions");
