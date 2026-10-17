@@ -8069,6 +8069,12 @@ every player the pool rules left out (`reasonCode` `WINNERS_SHAPE` /
   standard, and lineups still short are counted in the warnings. With two
   QBs at a 60% cap a 50-lineup build can stop at 49: raise the QB caps to
   ~70%. Shipped before the factorial's first slate, so every slate is v5.
+- **v6 (same evening): Showdown captain stack and a $48,100 floor.** A WR/TE
+  captain needs his own QB, a QB captain one of his own WR/TE (`captainStack`):
+  ~80% of distinct top-100 winning WR captains had their own QB, 40 of 42 QB
+  captains an own pass catcher. The salary floor drops $49,500 -> $48,100 in
+  both formats (51% of top-100 Showdown winners spent under $49,500, 17%
+  under $48,100). Also before the first factorial slate.
 - Not an edge: the shape is a second build for the weekly winners-vs-us
   review to grade against the standard one. Change a constant and bump the
   version; `npm run test:nfl-winners-shape` pins the current ones.

@@ -90,7 +90,7 @@ The house level is marked with *.
 | captain positions | QB/RB/WR* / any | Showdown |
 
 **Fixed in every arm:**
-- The Winners salary floor ($49,500).
+- The Winners salary floor ($48,100 from nfl-winners-shape-v6, set 2026-10-17 before the first slate).
 - At least one stacked pass catcher (Classic).
 - Randomness 0.08.
 - The observed-history rule.

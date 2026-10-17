@@ -52,7 +52,16 @@ import type { NflOptimizerPlayer, NflOptimizerSettings } from "@/app/dfs/nfl/nfl
  * because the ceiling objective and the ownership fade both cut the two
  * chalk quarterbacks. Owner's decision, before the first factorial slate.
  */
-export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v5";
+/**
+ * v6 (2026-10-17, owner's decision, same evening as v5): (a) Showdown
+ * captain stack: a WR/TE captain has his own QB, a QB captain one of his own
+ * WR/TE. Distinct top-100 lineups of the 11 Showdowns: about 80% of WR
+ * captains had their own QB (72 of 89) and 40 of 42 QB captains had an own
+ * pass catcher; the v4 HOU@JAX build paired a WR captain with his QB in 6 of
+ * 29. (b) Salary floor $49,500 -> $48,100 (both formats): 51% of distinct
+ * top-100 Showdown winners spent under $49,500; 17% under $48,100 (2% of top-20).
+ */
+export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v6";
 
 export type BuildShape = "standard" | "winners";
 export const BUILD_SHAPES: readonly BuildShape[] = ["standard", "winners"];
@@ -69,7 +78,7 @@ export type PriorOpportunity = {
 export const WINNERS_SHAPE = {
   minUnique: 4,
   maxExposure: 0.55,
-  minSalary: 49_500,
+  minSalary: 48_100,
   /** A quarterback never above this share of lineups, whatever the lineup count. */
   qbExposureFloor: 0.15,
   /** Distinct quarterbacks the winners used per ten lineups. */
@@ -177,8 +186,9 @@ export function applyWinnersShape(settings: NflOptimizerSettings, players: reado
       forbidFourTwoSplit: true,
       captainPositions: [...WINNERS_SHAPE.captainPositions],
       minQbPerLineup: Math.max(settings.minQbPerLineup ?? 0, WINNERS_SHAPE.showdownMinQb),
+      captainStack: true,
     });
-    notes.push(`Winners shape (${WINNERS_SHAPE_VERSION}, showdown): every lineup 5-1 or 3-3 (no 4-2), at least ${WINNERS_SHAPE.showdownMinQb} quarterback, no kicker, the captain a ${WINNERS_SHAPE.captainPositions.join("/")}, `
+    notes.push(`Winners shape (${WINNERS_SHAPE_VERSION}, showdown): every lineup 5-1 or 3-3 (no 4-2), at least ${WINNERS_SHAPE.showdownMinQb} quarterback, a WR/TE captain with his own QB and a QB captain with his own WR/TE, no kicker, the captain a ${WINNERS_SHAPE.captainPositions.join("/")}, `
       + `no captain in more than ${Math.round(WINNERS_SHAPE.captainMaxExposure * 100)}% of lineups, min salary ${money(shaped.minSalary)}. `
       + `Captain ranges you set are kept.`);
   }

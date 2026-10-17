@@ -262,6 +262,11 @@ export type NflOptimizerSettings = {
   captainPositions?: NflOptimizerPlayer["position"][];
   /** Showdown: every lineup rosters at least this many quarterbacks (Captain or Flex). Ignored when the pool has fewer. */
   minQbPerLineup?: number;
+  /**
+   * Showdown: a WR or TE captain needs his own team's quarterback in the
+   * lineup, and a QB captain at least one of his own WR/TE.
+   */
+  captainStack?: boolean;
   maxExposure: number;
   minUnique: number;
   stackPassCatchers: 0 | 1 | 2;
@@ -704,6 +709,7 @@ function validateSettings(settings: NflOptimizerSettings): void {
     if (settings.format !== "showdown") throw new Error("A per-lineup quarterback minimum is a Showdown rule (Classic always has one QB).");
     if (!Number.isInteger(settings.minQbPerLineup) || settings.minQbPerLineup < 0 || settings.minQbPerLineup > 2) throw new Error("The quarterback minimum must be 0, 1 or 2.");
   }
+  if (settings.captainStack && settings.format !== "showdown") throw new Error("The captain stack is a Showdown rule.");
 }
 
 /**
@@ -864,6 +870,17 @@ function buildOne(
   // refused (null), so the run falls back to a standard lineup; if the caps
   // themselves leave too few appearances the rule is skipped here and the
   // run's warnings count the short lineups.
+  // Showdown captain stack, one pair of rows per team: own QBs rostered minus
+  // that team's WR/TE captain >= 0, and own WR/TE in Flex minus that team's
+  // QB captain >= 0 (only one captain exists, so each row binds only when
+  // its captain is chosen).
+  const captainStack = settings.format === "showdown" && settings.captainStack === true;
+  if (captainStack) {
+    for (const team of new Set(available.map((player) => player.team))) {
+      constraints[`cstack_qb_${team}`] = { min: 0 };
+      constraints[`cstack_pc_${team}`] = { min: 0 };
+    }
+  }
   const minQb = settings.format === "showdown" ? settings.minQbPerLineup ?? 0 : 0;
   if (minQb > 0) {
     const qbSlotsLeft = pool.filter((player) => player.position === "QB")
@@ -925,6 +942,13 @@ function buildOne(
       if (constraints.air_matchup && isNflGppSignalPlayer(player.playerSignals, ["AIR_MATCHUP"])) variable.air_matchup = 1;
       if (constraints.goal_line_rb && player.position === "RB" && isNflGppSignalPlayer(player.playerSignals, ["INSIDE_FIVE"])) variable.goal_line_rb = 1;
       if (constraints.min_qb && player.position === "QB") variable.min_qb = 1;
+      if (captainStack) {
+        const passCatcher = player.position === "WR" || player.position === "TE";
+        if (player.position === "QB") variable[`cstack_qb_${player.team}`] = 1;
+        if (slot === "CPT" && passCatcher) variable[`cstack_qb_${player.team}`] = -1;
+        if (slot === "FLEX" && passCatcher) variable[`cstack_pc_${player.team}`] = 1;
+        if (slot === "CPT" && player.position === "QB") variable[`cstack_pc_${player.team}`] = -1;
+      }
       if (settings.format === "classic") {
         variable.roster = 1;
         variable[player.position.toLowerCase()] = 1;
