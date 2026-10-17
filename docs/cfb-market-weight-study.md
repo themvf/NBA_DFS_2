@@ -260,7 +260,7 @@ directly. They are read as close-like by analogy, and that is an assumption.
 
 ### Step 2: NO_RESIDUAL_SKILL for margin, total and moneyline (2026-10-17)
 
-The runner was committed before it ran: `3a641589`. Output is in
+The runner was committed before it ran: `e593e5e7`. Output is in
 `artifacts/cfb-market-weight-v1/fit.json`. The spread sign check passed
 (`corr = 0.624`). Lines are DraftKings in 99% of games; Bovada is the
 fallback in the rest.
