@@ -1,0 +1,279 @@
+{
+  "version": "cfb-market-weight-v1",
+  "football_model": "cfb-score-context-v1",
+  "run_at": "2026-10-17T22:44:13.379249+00:00",
+  "seasons_loaded": [
+    2022,
+    2025
+  ],
+  "spread_sign_corr": 0.6242,
+  "counts": {
+    "2023": {
+      "completed_games": 796,
+      "v1_forecasts": 643,
+      "trained_games": 627,
+      "with_spread": 643,
+      "with_total": 643,
+      "with_moneyline_pair": 629,
+      "neutral_site": 55,
+      "not_forecast_by_v1": 153,
+      "spread_providers": {
+        "draftkings": 621,
+        "bovada": 22
+      },
+      "residual_sd": 11.4834
+    },
+    "2024": {
+      "completed_games": 802,
+      "v1_forecasts": 648,
+      "trained_games": 1270,
+      "with_spread": 648,
+      "with_total": 648,
+      "with_moneyline_pair": 644,
+      "neutral_site": 67,
+      "not_forecast_by_v1": 154,
+      "spread_providers": {
+        "draftkings": 638,
+        "bovada": 10
+      },
+      "residual_sd": 11.598
+    },
+    "2025": {
+      "completed_games": 809,
+      "v1_forecasts": 653,
+      "trained_games": 1918,
+      "with_spread": 653,
+      "with_total": 653,
+      "with_moneyline_pair": 641,
+      "neutral_site": 57,
+      "not_forecast_by_v1": 156,
+      "spread_providers": {
+        "bovada": 1,
+        "draftkings": 652
+      },
+      "residual_sd": 11.5748
+    }
+  },
+  "pooled": {
+    "margin": {
+      "n": 1944,
+      "dates": 201,
+      "w": -0.008,
+      "ci95": [
+        -0.1172,
+        0.1065
+      ],
+      "sensitivity_with_intercept": {
+        "slope": 0.0018268991265456447,
+        "intercept": 0.5928557318320385
+      }
+    },
+    "total": {
+      "n": 1944,
+      "dates": 201,
+      "w": 0.1018,
+      "ci95": [
+        -0.0593,
+        0.263
+      ],
+      "sensitivity_with_intercept": {
+        "slope": -0.05006945122403269,
+        "intercept": 1.4167197842587964
+      }
+    },
+    "moneyline": {
+      "n": 1914,
+      "dates": 197,
+      "theta": 0.0071,
+      "ci95": [
+        -0.2,
+        0.2065
+      ],
+      "sensitivity_with_intercept": {
+        "intercept": 0.10072960713529139,
+        "theta": 0.011665289998784011
+      }
+    }
+  },
+  "folds": {
+    "A": {
+      "fit_seasons": [
+        2023
+      ],
+      "graded_season": 2024,
+      "margin": {
+        "n": 648,
+        "dates": 70,
+        "w": -0.0041,
+        "mae": {
+          "line": 11.7454,
+          "anchored": 11.7454,
+          "fixed_0.25": 11.8727,
+          "v1_alone": 12.7893
+        },
+        "rmse": {
+          "line": 15.0479,
+          "anchored": 15.0479,
+          "fixed_0.25": 15.1252,
+          "v1_alone": 16.189
+        },
+        "anchored_minus_line_mae": {
+          "mean": 0.0,
+          "ci95": [
+            -0.0024,
+            0.002
+          ]
+        },
+        "fixed_minus_line_mae": {
+          "mean": 0.1273,
+          "ci95": [
+            0.0067,
+            0.2659
+          ]
+        }
+      },
+      "total": {
+        "n": 648,
+        "dates": 70,
+        "w": 0.0463,
+        "mae": {
+          "line": 12.9205,
+          "anchored": 12.9104,
+          "fixed_0.25": 12.8728,
+          "v1_alone": 13.1353
+        },
+        "rmse": {
+          "line": 16.3252,
+          "anchored": 16.3125,
+          "fixed_0.25": 16.2812,
+          "v1_alone": 16.5141
+        },
+        "anchored_minus_line_mae": {
+          "mean": -0.0101,
+          "ci95": [
+            -0.025,
+            0.0051
+          ]
+        },
+        "fixed_minus_line_mae": {
+          "mean": -0.0477,
+          "ci95": [
+            -0.1317,
+            0.0381
+          ]
+        }
+      },
+      "moneyline": {
+        "n": 644,
+        "theta": -0.0996,
+        "brier": {
+          "market": 0.18655,
+          "anchored": 0.18671,
+          "v1_alone": 0.20213
+        },
+        "log_loss": {
+          "market": 0.54997,
+          "anchored": 0.55014
+        },
+        "anchored_minus_market_brier": {
+          "mean": 0.0002,
+          "ci95": [
+            -0.0007,
+            0.0011
+          ]
+        }
+      }
+    },
+    "B": {
+      "fit_seasons": [
+        2023,
+        2024
+      ],
+      "graded_season": 2025,
+      "margin": {
+        "n": 653,
+        "dates": 70,
+        "w": -0.006,
+        "mae": {
+          "line": 11.7718,
+          "anchored": 11.7724,
+          "fixed_0.25": 11.8406,
+          "v1_alone": 12.7682
+        },
+        "rmse": {
+          "line": 14.9162,
+          "anchored": 14.9161,
+          "fixed_0.25": 14.9948,
+          "v1_alone": 16.0532
+        },
+        "anchored_minus_line_mae": {
+          "mean": 0.0006,
+          "ci95": [
+            -0.0023,
+            0.0031
+          ]
+        },
+        "fixed_minus_line_mae": {
+          "mean": 0.0687,
+          "ci95": [
+            -0.0371,
+            0.1964
+          ]
+        }
+      },
+      "total": {
+        "n": 653,
+        "dates": 70,
+        "w": 0.1176,
+        "mae": {
+          "line": 12.3821,
+          "anchored": 12.3929,
+          "fixed_0.25": 12.418,
+          "v1_alone": 12.7962
+        },
+        "rmse": {
+          "line": 15.4473,
+          "anchored": 15.4491,
+          "fixed_0.25": 15.4677,
+          "v1_alone": 15.8967
+        },
+        "anchored_minus_line_mae": {
+          "mean": 0.0109,
+          "ci95": [
+            -0.0292,
+            0.0496
+          ]
+        },
+        "fixed_minus_line_mae": {
+          "mean": 0.0359,
+          "ci95": [
+            -0.0501,
+            0.1189
+          ]
+        }
+      },
+      "moneyline": {
+        "n": 641,
+        "theta": -0.0631,
+        "brier": {
+          "market": 0.18379,
+          "anchored": 0.18416,
+          "v1_alone": 0.19319
+        },
+        "log_loss": {
+          "market": 0.54445,
+          "anchored": 0.54519
+        },
+        "anchored_minus_market_brier": {
+          "mean": 0.0004,
+          "ci95": [
+            -0.0002,
+            0.0009
+          ]
+        }
+      }
+    }
+  },
+  "decision_margin": "NO_RESIDUAL_SKILL",
+  "decision_total": "NO_RESIDUAL_SKILL"
+}
