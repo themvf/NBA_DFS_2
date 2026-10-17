@@ -265,11 +265,13 @@ export function runNflPreExportQa(input: QaInput, overrides: QaOverride[] = []):
     affected: illegal.map((l) => l.lineupNumber) });
 
   // --- Every requested lineup built, and every entry filled ---
-  // A partial run exports fine and leaves the rest of the entry file as it was,
-  // so a short set reached DraftKings unnoticed. Overridable: entering fewer
-  // lineups than asked for is a legitimate choice, as long as it is a choice.
+  // A partial run exports what was built and leaves the rest of the entry file
+  // as it was. A warning, not a blocker (2026-10-17): on a one-game slate the
+  // rules often allow fewer lineups than asked for, and an experimental-defense
+  // run cannot be overridden, so a blocker left the owner with nothing to export.
+  // The warning still shows in the QA box, so a short set is never silent.
   const built = input.lineups.length;
-  add({ id: "lineup_count", title: "Every requested lineup was built", severity: "blocker", passed: built >= input.requestedLineups, overridable: true,
+  add({ id: "lineup_count", title: "Every requested lineup was built", severity: "warning", passed: built >= input.requestedLineups, overridable: true,
     detail: built >= input.requestedLineups ? `All ${input.requestedLineups} requested lineups were built.`
       : `Only ${built} of the ${input.requestedLineups} lineups you asked for were built; the build notes say why. Export would enter ${built}.`,
     affected: [] });
@@ -279,7 +281,7 @@ export function runNflPreExportQa(input: QaInput, overrides: QaOverride[] = []):
         detail: `The entry file has ${input.entryRows} entr${input.entryRows === 1 ? "y" : "ies"} for ${built} lineups. Download an entry file with at least ${built} entries, or build fewer lineups.`,
         affected: [] });
     } else {
-      add({ id: "entry_rows", title: "Every entry gets a lineup", severity: "blocker", passed: input.entryRows === built, overridable: true,
+      add({ id: "entry_rows", title: "Every entry gets a lineup", severity: "warning", passed: input.entryRows === built, overridable: true,
         detail: input.entryRows === built ? `All ${built} entries in the file get a lineup.`
           : `The entry file has ${input.entryRows} entries but there are ${built} lineups, so ${input.entryRows - built} entr${input.entryRows - built === 1 ? "y" : "ies"} would keep whatever lineup DraftKings already has.`,
         affected: [] });
@@ -377,14 +379,16 @@ export function runNflPreExportQa(input: QaInput, overrides: QaOverride[] = []):
       affected: exposureMisses.map((r) => r.name) });
   }
 
-  // --- Archetype quota violations (blocker) ---
+  // --- Archetype quota shortfalls (warning) ---
+  // The optimizer builds Standard ceiling in place of a plan lineup it cannot
+  // build, and says so in the build notes; the lineups are still legal.
   if (input.archetypePlan === null) {
     add({ id: "archetype_quotas", title: "Archetype quotas met", severity: "warning", passed: false, overridable: true,
       detail: "This run used a portfolio plan but was saved before the plan's quotas were recorded, so they can't be checked.", affected: [] });
   } else if (input.archetypePlan !== undefined) {
     const quotaMisses = input.archetypePlan.filter((a) => a.realized !== a.requested);
-    add({ id: "archetype_quotas", title: "Archetype quotas met", severity: "blocker", passed: quotaMisses.length === 0, overridable: true,
-      detail: quotaMisses.length ? `Quota shortfall: ${quotaMisses.map((a) => `${a.label} ${a.realized}/${a.requested}`).join("; ")}.` : "Archetype quotas met.",
+    add({ id: "archetype_quotas", title: "Archetype quotas met", severity: "warning", passed: quotaMisses.length === 0, overridable: true,
+      detail: quotaMisses.length ? `Plan not fully built: ${quotaMisses.map((a) => `${a.label} ${a.realized}/${a.requested}`).join("; ")}. Lineups that couldn't be built that way were built as Standard ceiling or left out.` : "Archetype quotas met.",
       affected: quotaMisses.map((a) => a.label) });
   }
 
