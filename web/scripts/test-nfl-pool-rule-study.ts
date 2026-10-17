@@ -82,7 +82,13 @@ const sdInput = sdFixture(), sdBefore = digest(sdInput), sdPair = buildPair(sdIn
 assert.equal(digest(sdInput), sdBefore, 'showdown inputs immutable');
 assert.equal(sdPair.version, STUDIES.showdown);
 const [sa, sb] = sdPair.arms;
-assert.equal(sa.status, 'research_complete'); assert.equal(sb.status, 'research_complete');
+// Winners shape v6 requires a quarterback in every Showdown lineup. On BUF@LAR
+// the Double fade fades the two most-owned players, Allen and Stafford, so arm
+// A's two Double fade lineups fold into Standard ceiling: still 20 lineups,
+// reported partial for the fold and nothing else. Arm B allows kickers and
+// builds its plan in full.
+assert.equal(sa.status, 'research_partial'); assert.equal(sb.status, 'research_complete');
+assert.deepEqual(sa.settings.researchStudy.issues, ['Standard ceiling: 11 of 9 requested lineups.', 'Double fade: 0 of 2 requested lineups.']);
 assert.equal(sa.lineups.length, 20); assert.equal(sb.lineups.length, 20);
 assert.equal(sa.settings.excludeKickers, true); assert.equal(sb.settings.excludeKickers, false);
 const sdStrip = (s: Raw) => { const q = strip(s); delete q.excludeKickers; return q; };
@@ -120,9 +126,17 @@ for (const [label, base] of [['showdown', sdFixture()], ['classic', fixture()]] 
   assert.equal(digest(pin), pBefore, `${label}: portfolio inputs immutable`);
   assert.equal(pp.version, STUDIES.portfolio);
   const [pa, pb] = pp.arms;
-  assert.equal(pa.status, 'research_complete', `${label}: arm A built`);
-  assert.equal(pb.status, 'research_complete', `${label}: arm B built (${pb.failureReason})`);
-  assert.equal(pa.lineups.length, 20); assert.equal(pb.lineups.length, 20);
+  // Showdown arm A is the production build; under Winners v6 its two Double
+  // fade lineups fold into Standard ceiling (see the kicker study above).
+  if (label === 'showdown') assert.equal(pa.status, 'research_partial', `${label}: arm A built with the v6 Double fade fold`);
+  else assert.equal(pa.status, 'research_complete', `${label}: arm A built`);
+  // Showdown arm B (the portfolio challenger, unenrolled: its freeze gate
+  // failed) selects 18 of 20 under v6: the QB minimum and captain stack leave
+  // fewer distinct candidates that also meet the exposure cap. Classic is
+  // unchanged.
+  const expectB = label === 'showdown' ? 18 : 20;
+  assert.equal(pb.status, expectB === 20 ? 'research_complete' : 'research_partial', `${label}: arm B built (${pb.failureReason})`);
+  assert.equal(pa.lineups.length, 20); assert.equal(pb.lineups.length, expectB);
   const nativeP = optimizeNflLineups(restorePlayers(pin.players), { ...pin.source.settings, buildShape: 'winners' } as NflOptimizerSettings);
   assert.deepEqual(pa.lineups.map((l: Raw) => [l.playerIds, l.projectedFpts, l.totalSalary]),
     nativeP.lineups.map((l: Raw) => [l.playerIds, l.projectedFpts, l.totalSalary]), `${label}: arm A is the production build`);
@@ -131,7 +145,7 @@ for (const [label, base] of [['showdown', sdFixture()], ['classic', fixture()]] 
   assert.deepEqual(sA.commonSettings, sB.commonSettings);
   assert.ok(sB.candidatePool.distinct >= 20 && sB.candidatePool.distinct <= 200 + 20, `${label}: candidate pool ${sB.candidatePool.distinct}`);
   assert.ok(sB.candidatePool.fromArmA === 20);
-  assert.equal(sB.selection.shortfall, 0);
+  assert.equal(sB.selection.shortfall, 20 - expectB);
   assert.ok(sB.selection.selectionSuccess > 0 && sB.selection.selectionSuccess <= 1);
   for (const arm of [sA, sB]) {
     assert.ok(arm.forecast.successTop1Pct >= 0 && arm.forecast.successTop1Pct <= 1, `${label}: forecast in [0,1]`);
@@ -145,7 +159,8 @@ for (const [label, base] of [['showdown', sdFixture()], ['classic', fixture()]] 
     assert.ok(arm.impliedField.top1Pct.p50 > arm.impliedField.median.p50);
   }
   // Selection honours the source's exposure cap and uniqueness on the chosen set.
-  const n = pb.lineups.length, cap = Math.floor(pin.source.settings.maxExposure * n + 1e-9);
+  // The cap is a share of the requested lineups (20), which is what selection enforces, even when it selects fewer.
+  const n = pb.lineups.length, cap = Math.floor(pin.source.settings.maxExposure * 20 + 1e-9);
   const counts = new Map<number, number>();
   for (const l of pb.lineups) for (const id of l.playerIds) counts.set(id, (counts.get(id) ?? 0) + 1);
   assert.ok([...counts.values()].every(c => c <= cap), `${label}: exposure cap ${cap} respected`);
