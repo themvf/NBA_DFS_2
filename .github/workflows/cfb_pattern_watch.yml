@@ -24,7 +24,7 @@ on:
         required: true
         default: board
         type: choice
-        options: [board, grade, backtest]
+        options: [board, grade]
 
 concurrency:
   group: cfb-pattern-watch-${{ inputs.job || github.event.schedule }}
@@ -58,17 +58,12 @@ jobs:
       - name: Grade finished games
         if: steps.job.outputs.job == 'grade'
         run: python -m model.cfb_pattern_watch
-      - name: Backtest frozen triggers on past seasons (read-only)
-        if: steps.job.outputs.job == 'backtest'
-        run: python -m research.cfb_pattern_backtest --seasons 2023 2024 2025
       - name: Render and store the reader page
-        if: steps.job.outputs.job != 'backtest'
         run: python -m model.cfb_pattern_publish
       - name: Export tables as CSV for Datawrapper
-        if: steps.job.outputs.job != 'backtest'
         run: python -m model.cfb_pattern_csv
       - name: Upload page and board
-        if: always() && steps.job.outputs.job != 'backtest'
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: cfb-pattern-watch-${{ steps.job.outputs.job }}
