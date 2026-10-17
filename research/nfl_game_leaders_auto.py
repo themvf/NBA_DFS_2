@@ -67,10 +67,15 @@ def capture_requests(snapshot: dict, games: list[dict]) -> dict:
     import psycopg2
     import requests as http
     from research.nfl_game_leaders import attach_roles, evidence_request
+    from research.nfl_game_leaders_reviewed import apply_reviewed, load_reviewed
+    reviewed = load_reviewed()
     out = {}
     for g in games:
         try:
-            out[g["game_id"]] = attach_roles(snapshot, {g["game_id"]: evidence_request(snapshot, g["game_id"])})[g["game_id"]]
+            gid = g["game_id"]
+            # A reviewed depth override (research/nfl_game_leaders_reviewed.py) survives every rebuild.
+            out[gid] = apply_reviewed(gid, evidence_request(snapshot, gid),
+                                      lambda r, gid=gid: attach_roles(snapshot, {gid: r})[gid], reviewed)
             print(json.dumps({"captured": g["game_id"]}), flush=True)
         except (ValueError, RuntimeError, http.RequestException, psycopg2.Error) as exc:
             out[g["game_id"]] = {"capture_error": str(exc)}
