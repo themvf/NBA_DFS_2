@@ -232,4 +232,32 @@ not refitted.
 
 ## Results
 
-*Empty until run. Step 1 is recorded before step 2 is run.*
+### Step 1: CLOSE_LIKE (2026-10-17, recorded before step 2 was run)
+
+[Run 39075581818](https://github.com/themvf/NBA_DFS_2/actions/runs/39075581818),
+452 settled 2026 games. The decision basis is DraftKings: 285 games moved,
+against the rule's minimum of 50.
+
+| CFBD field (DraftKings) | moved | matches our close | matches our open | neither | label |
+|---|---:|---:|---:|---:|---|
+| `spread` (the fit's line) | 285 | 268 (94.0%) | 9 (3.2%) | 8 | CLOSE_LIKE |
+| `overUnder` | 286 | 255 (89.2%) | 8 (2.8%) | 23 | CLOSE_LIKE |
+| `spreadOpen` | 283 | 24 (8.5%) | 118 (41.7%) | 141 | INDETERMINATE |
+| `overUnderOpen` | 254 | 28 (11.0%) | 100 (39.4%) | 126 | INDETERMINATE |
+
+The latest capture matching CFBD's `spread` sits a median 0.03 hours (about
+2 minutes) before kickoff. CFBD's `spread` and `overUnder` are therefore
+closing lines. `spreadOpen` is mostly earlier than our first capture, which
+fits our captures starting 2-5 days out.
+
+Sign check: CFBD's spread had the same sign as our close in 404 games, a
+different value in 36, and a flipped sign in none.
+
+**Reading for step 2:** the fitted weights measure residual skill against the
+close. The 2026 payload carries only DraftKings and Bovada, so the 2022
+`consensus` rows (the canonical provider that season) cannot be checked
+directly. They are read as close-like by analogy, and that is an assumption.
+
+### Step 2
+
+*Not yet run.*

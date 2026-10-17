@@ -1,0 +1,105 @@
+{
+  "version": "cfb-line-timing-check-v1",
+  "season": 2026,
+  "run_at": "2026-10-17T22:34:32.929075+00:00",
+  "settle_days": 2,
+  "cfbd_games": 1241,
+  "cfbd_games_unmapped": 789,
+  "settled_matchups": 452,
+  "providers_seen": {
+    "draftkings": 452,
+    "bovada": 443
+  },
+  "spread_sign_check_vs_close": {
+    "same": 404,
+    "other": 36
+  },
+  "rule": {
+    "min_moved_games": 50,
+    "close_share": 0.7,
+    "open_share_max": 0.15
+  },
+  "decision_basis": "draftkings",
+  "decision": "CLOSE_LIKE",
+  "decision_detail": {
+    "counts": {
+      "no_move": 155,
+      "close_only": 268,
+      "open_only": 9,
+      "no_series_or_value": 12,
+      "neither": 8
+    },
+    "moved": 285,
+    "close_share": 0.9404,
+    "open_share": 0.0316,
+    "label": "CLOSE_LIKE",
+    "latest_match_hours_median": 0.03,
+    "games_with_a_matching_capture": 424
+  },
+  "table": {
+    "draftkings|spread_open": {
+      "counts": {
+        "no_move": 151,
+        "neither": 141,
+        "open_only": 118,
+        "close_only": 24,
+        "no_series_or_value": 18
+      },
+      "moved": 283,
+      "close_share": 0.0848,
+      "open_share": 0.417,
+      "label": "INDETERMINATE",
+      "latest_match_hours_median": 2.1,
+      "games_with_a_matching_capture": 214
+    },
+    "draftkings|spread_reference": {
+      "counts": {
+        "no_move": 155,
+        "close_only": 268,
+        "open_only": 9,
+        "no_series_or_value": 12,
+        "neither": 8
+      },
+      "moved": 285,
+      "close_share": 0.9404,
+      "open_share": 0.0316,
+      "label": "CLOSE_LIKE",
+      "latest_match_hours_median": 0.03,
+      "games_with_a_matching_capture": 424
+    },
+    "draftkings|total_open": {
+      "counts": {
+        "no_move": 128,
+        "neither": 126,
+        "no_series_or_value": 70,
+        "close_only": 28,
+        "open_only": 100
+      },
+      "moved": 254,
+      "close_share": 0.1102,
+      "open_share": 0.3937,
+      "label": "INDETERMINATE",
+      "latest_match_hours_median": 1.25,
+      "games_with_a_matching_capture": 190
+    },
+    "draftkings|total_reference": {
+      "counts": {
+        "no_move": 154,
+        "close_only": 255,
+        "neither": 23,
+        "no_series_or_value": 12,
+        "open_only": 8
+      },
+      "moved": 286,
+      "close_share": 0.8916,
+      "open_share": 0.028,
+      "label": "CLOSE_LIKE",
+      "latest_match_hours_median": 0.03,
+      "games_with_a_matching_capture": 423
+    }
+  },
+  "limits": [
+    "Our first capture is not the true market open; The Odds API lists most CFB games 2-5 days ahead.",
+    "2026 provider behaviour may differ from the 2022 consensus feed and 2023-2025 DraftKings rows."
+  ]
+}
