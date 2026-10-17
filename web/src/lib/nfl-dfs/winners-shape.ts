@@ -44,7 +44,15 @@ import type { NflOptimizerPlayer, NflOptimizerSettings } from "@/app/dfs/nfl/nfl
  * checkable top-100 lineups did (4%), and 1 of 40 top-10 lineups; the first
  * v3 build on the week-5 Classic did it in 40 of 100.
  */
-export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v4";
+/**
+ * v5 (2026-10-17): every Showdown lineup rosters at least one quarterback.
+ * Across the 11 stored 2026 flagship Showdowns (weeks 1-6, distinct lineups),
+ * 11 of 12 first-place, 38 of 41 top-20 and 157 of 167 top-100 lineups had one
+ * (92-94%); the v4 HOU@JAX build left the quarterback out of 17 of 50,
+ * because the ceiling objective and the ownership fade both cut the two
+ * chalk quarterbacks. Owner's decision, before the first factorial slate.
+ */
+export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v5";
 
 export type BuildShape = "standard" | "winners";
 export const BUILD_SHAPES: readonly BuildShape[] = ["standard", "winners"];
@@ -79,6 +87,8 @@ export const WINNERS_SHAPE = {
   dstMaxSalary: 3_000,
   captainMaxExposure: 0.3,
   captainPositions: ["QB", "RB", "WR"] as NflOptimizerPlayer["position"][],
+  /** Showdown: quarterbacks every lineup rosters, Captain or Flex. */
+  showdownMinQb: 1,
 } as const;
 
 /**
@@ -166,8 +176,9 @@ export function applyWinnersShape(settings: NflOptimizerSettings, players: reado
       excludeKickers: true,
       forbidFourTwoSplit: true,
       captainPositions: [...WINNERS_SHAPE.captainPositions],
+      minQbPerLineup: Math.max(settings.minQbPerLineup ?? 0, WINNERS_SHAPE.showdownMinQb),
     });
-    notes.push(`Winners shape (${WINNERS_SHAPE_VERSION}, showdown): every lineup 5-1 or 3-3 (no 4-2), no kicker, the captain a ${WINNERS_SHAPE.captainPositions.join("/")}, `
+    notes.push(`Winners shape (${WINNERS_SHAPE_VERSION}, showdown): every lineup 5-1 or 3-3 (no 4-2), at least ${WINNERS_SHAPE.showdownMinQb} quarterback, no kicker, the captain a ${WINNERS_SHAPE.captainPositions.join("/")}, `
       + `no captain in more than ${Math.round(WINNERS_SHAPE.captainMaxExposure * 100)}% of lineups, min salary ${money(shaped.minSalary)}. `
       + `Captain ranges you set are kept.`);
   }

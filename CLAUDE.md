@@ -8059,6 +8059,16 @@ every player the pool rules left out (`reasonCode` `WINNERS_SHAPE` /
   `forbidFourTwoSplit`. `priorOpportunity` on the workspace player (three-
   week play-by-play targets/carries plus team target share, RB/WR/TE) feeds
   the pool rules; `targets` is still not in `stat_means`.
+- **v5 (2026-10-17): every Showdown lineup rosters at least one quarterback**
+  (`minQbPerLineup`, also an ordinary optimizer setting, 0-2). 92-94% of the
+  distinct 2026 flagship Showdown winners had one; the v4 HOU@JAX build left
+  him out of 17 of 50, because the ceiling objective and the ownership fade
+  both cut the chalk quarterbacks. An extra quarterback is allowed only while
+  enough QB appearances remain under the caps for every later lineup (two
+  spare kept back); a fade archetype that would leave none falls back to
+  standard, and lineups still short are counted in the warnings. With two
+  QBs at a 60% cap a 50-lineup build can stop at 49: raise the QB caps to
+  ~70%. Shipped before the factorial's first slate, so every slate is v5.
 - Not an edge: the shape is a second build for the weekly winners-vs-us
   review to grade against the standard one. Change a constant and bump the
   version; `npm run test:nfl-winners-shape` pins the current ones.
