@@ -1,0 +1,32 @@
+name: CFB Line Timing Check
+
+# Manual only. Step 1 of the pre-registered cfb-market-weight-v1 study
+# (docs/cfb-market-weight-study.md): compares CFBD's untimed 2026 lines with
+# our own timestamped captures to find what time a CFBD line represents.
+# Reads 2026 line values only, never scores. One CFBD request, no Odds API
+# credits, no database writes.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Compare CFBD lines with our captures
+        run: python -m research.cfb_line_timing_check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cfb-line-timing-check
+          path: artifacts/cfb-market-weight-v1/line-timing-check.json
