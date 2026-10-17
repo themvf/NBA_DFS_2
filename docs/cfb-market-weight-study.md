@@ -2,7 +2,7 @@
 
 **Registered:** 2026-10-17, before the line-timing check was run and before
 any model-versus-line residual was computed.
-**Status:** pre-registered. The timing check and the fit have not been run.
+**Status:** steps 1 and 2 run 2026-10-17 (results below). The 2026 confirmation is pending until after 2026-12-07.
 **Scope:** research only. Nothing in this study changes a page, a forecast,
 a star rating or a bet.
 
@@ -258,6 +258,57 @@ close. The 2026 payload carries only DraftKings and Bovada, so the 2022
 `consensus` rows (the canonical provider that season) cannot be checked
 directly. They are read as close-like by analogy, and that is an assumption.
 
-### Step 2
+### Step 2: NO_RESIDUAL_SKILL for margin, total and moneyline (2026-10-17)
 
-*Not yet run.*
+The runner was committed before it ran: `3a641589`. Output is in
+`artifacts/cfb-market-weight-v1/fit.json`. The spread sign check passed
+(`corr = 0.624`). Lines are DraftKings in 99% of games; Bovada is the
+fallback in the rest.
+
+| season | completed FBS games | v1 forecasts | not forecast by v1 | spread / total / moneyline pair | neutral site |
+|---|---:|---:|---:|---|---:|
+| 2023 | 796 | 643 | 153 | 643 / 643 / 629 | 55 |
+| 2024 | 802 | 648 | 154 | 648 / 648 / 644 | 67 |
+| 2025 | 809 | 653 | 156 | 653 / 653 / 641 | 57 |
+
+**Pooled 2023-2025** (1,944 games, 201 dates; moneyline 1,914 games):
+
+| market | fitted weight | 95% interval | expected | decision |
+|---|---:|---|---|---|
+| margin `w` | -0.008 | [-0.117, +0.107] | 0.00 to 0.15 | NO_RESIDUAL_SKILL |
+| total `w` | +0.102 | [-0.059, +0.263] | 0.00 to 0.10 | NO_RESIDUAL_SKILL |
+| moneyline `theta` | +0.007 | [-0.200, +0.207] | 0.00 to 0.15 | NO_RESIDUAL_SKILL |
+
+**Walk-forward**, MAE in points; deltas are paired against the line, with
+game-date clustered intervals:
+
+| fold | market | line | anchored | fixed 0.25 | v1 alone | anchored - line | fixed 0.25 - line |
+|---|---|---:|---:|---:|---:|---|---|
+| A (graded 2024) | margin | 11.745 | 11.745 | 11.873 | 12.789 | 0.000 [-0.002, +0.002] | **+0.127 [+0.007, +0.266]** |
+| B (graded 2025) | margin | 11.772 | 11.772 | 11.841 | 12.768 | +0.001 [-0.002, +0.003] | +0.069 [-0.037, +0.196] |
+| A | total | 12.921 | 12.910 | 12.873 | 13.135 | -0.010 [-0.025, +0.005] | -0.048 [-0.132, +0.038] |
+| B | total | 12.382 | 12.393 | 12.418 | 12.796 | +0.011 [-0.029, +0.050] | +0.036 [-0.050, +0.119] |
+
+Moneyline Brier scores (market / anchored / v1 alone) were 0.1866 / 0.1867 /
+0.2021 in fold A and 0.1838 / 0.1842 / 0.1932 in fold B. The anchored-minus-
+market interval includes zero in both folds.
+
+**Against the expected result.** Margin, moneyline, the fold deltas and the
+timing check all landed where expected. The margin weight sits 0.008 below
+the expected range, with an interval centred on zero. The total weight sits at
+the top of its range, and its interval includes zero. One expectation missed:
+"fixed 0.25 worse than the line in both folds" held for the margin, where it
+was significant in fold A only, but not for totals in fold A (-0.048, interval
+includes zero).
+
+**Reading.** Against CFBD's closing line, v1's forecast carries no
+information the close lacks, in any of the three markets. v1 alone misses the
+margin by about 1.0 point more than the close, which matches what 2026's
+prospective grades showed. Under the registered rules the recommendation is
+**anchor weight 0**. Whether to change `research/cfb_market_anchor.py` (a new
+`cfb-market-anchor-v2`) is the owner's decision. The 2026 confirmation still
+runs after 2026-12-07 with the frozen pooled weights.
+
+**Not a finding.** The intercept sensitivity fits put the margin's intercept
+at +0.59 points toward the listed home team. That was not a registered
+quantity and licenses nothing; testing it would be a new registration.
