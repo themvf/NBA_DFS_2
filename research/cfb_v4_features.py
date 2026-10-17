@@ -9,6 +9,9 @@ import numpy as np
 
 KNEEL = re.compile(r"kneel|kneels|kneeling|takes? a knee", re.I)
 OFFENSIVE_TD = {"Rushing Touchdown", "Passing Touchdown", "Fumble Recovery (Own)"}
+RETURN_TD = {"Fumble Return Touchdown", "Interception Return Touchdown", "Blocked Punt Touchdown",
+             "Blocked Field Goal Touchdown", "Kickoff Return Touchdown", "Punt Return Touchdown",
+             "Missed Field Goal Return Touchdown"}
 SCRIMMAGE = {"Rush", "Pass Reception", "Pass Incompletion", "Sack", "Rushing Touchdown",
              "Passing Touchdown", "Interception", "Pass Interception Return", "Interception Return Touchdown",
              "Fumble", "Fumble Recovery (Own)", "Fumble Recovery (Opponent)", "Fumble Return Touchdown", "Safety"}
@@ -33,9 +36,12 @@ def offensive_points(drive, plays):
     if result == "FG":
         return 3 if delta == 3 or any(p.get("play_type")=="Field Goal Good" for p in plays) else None
     if result in {"TD", "FUMBLE TD", "END OF HALF TD"}:
-        offensive=[p for p in plays if p.get("play_type") in OFFENSIVE_TD]
+        offensive=[p for p in plays if p.get("play_type") in OFFENSIVE_TD or (
+            p.get("play_type") in {"Rush","Pass Reception"} and p.get("scoring") is True
+            and re.search(r"\btouchdown\b",p.get("play_text") or "",re.I)
+            and not re.search(r"no play|overturned|reversed|nullif",p.get("play_text") or "",re.I))]
         if not offensive:
-            if delta==0 and any(p.get("play_type") in {"Fumble Return Touchdown","Interception Return Touchdown"} for p in plays):
+            if delta==0 and any(p.get("play_type") in RETURN_TD for p in plays):
                 return 0
             return None
         if 6<=delta<=8:
@@ -47,6 +53,8 @@ def offensive_points(drive, plays):
             return 6
         if re.search(r"(?:two|2)[ -]?point.*(?:good|success)|conversion.*(?:good|success)",text):
             return 8
+        if re.search(r"(?:kick|pat|extra point)(?: attempt)?\s+(?:is\s+)?good\b",text):
+            return 7
         if re.search(r"\([^)]*\bkick\)|\([^)]*\bkick good\)|\([^)]*\bkick\s*\)",text):
             return 7
         return None

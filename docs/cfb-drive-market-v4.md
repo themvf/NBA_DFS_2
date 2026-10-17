@@ -22,7 +22,12 @@ Acceptance contract, fixed before first publication:
   comparisons, coverage, calibration, price-based returns and date-clustered
   uncertainty. Passing code checks never grants betting permission.
 
-The machine-readable protocol is `cfb-drive-market-v4-protocol.json`.
+The current machine-readable protocol is `cfb-drive-market-v4-1-protocol.json`.
+The original v4 protocol and registration remain immutable. Version v4.1 repairs
+verified alternate source labels (scoring-flagged Rush/Pass Reception TDs, explicit
+kick-attempt-good text, and blocked-punt return TDs) discovered during live QA.
+It receives its own server registration before further primary decisions.
+No final-score-based tuning or model hyperparameter changes accompany this repair.
 
 
 ## Operations and source map

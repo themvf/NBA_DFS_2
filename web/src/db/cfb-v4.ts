@@ -24,7 +24,7 @@ export async function getCfbV4Snapshot(gameId: number): Promise<{ frozenAt: stri
       FROM cfb_v4_snapshots s JOIN cfb_matchups m ON m.id=s.game_id
       JOIN cfb_v4_runs r ON r.id=s.run_id
       WHERE s.game_id=${gameId} AND s.kickoff=m.commence_time AND s.frozen_at<m.commence_time
-        AND r.protocol_version='cfb-drive-market-v4'
+        AND r.protocol_version='cfb-drive-market-v4.1'
       ORDER BY s.frozen_at DESC,s.id DESC LIMIT 1`);
     return result.rows[0] as { frozenAt: string; evidence: CfbV4Evidence } | undefined ?? null;
   } catch (error) { if (missingSchema(error)) return null; throw error; }
@@ -36,7 +36,7 @@ export async function getCfbV4Study(): Promise<{ registeredAt: string; digest: s
       r.report_json AS report,e.report_json AS evaluation FROM cfb_v4_protocols p
       LEFT JOIN LATERAL(SELECT report_json FROM cfb_v4_runs WHERE protocol_version=p.version ORDER BY id DESC LIMIT 1) r ON TRUE
       LEFT JOIN LATERAL(SELECT report_json FROM cfb_prospective_evaluation_runs WHERE version=p.version ORDER BY id DESC LIMIT 1) e ON TRUE
-      WHERE p.version='cfb-drive-market-v4'`);
+      WHERE p.version='cfb-drive-market-v4.1'`);
     return result.rows[0] as { registeredAt: string; digest: string; gitSha: string; report: Record<string, unknown> | null; evaluation: Record<string, unknown> | null } | undefined ?? null;
   } catch (error) { if (missingSchema(error)) return null; throw error; }
 }

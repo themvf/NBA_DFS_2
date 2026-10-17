@@ -30,8 +30,8 @@ def load_data(db):
         AND m.commence_time IS NOT NULL ORDER BY m.commence_time,m.id""")]
     drives=[dict(r) for r in db.execute("SELECT * FROM cfb_drives WHERE season>=2022")]
     plays=[dict(r) for r in db.execute("""SELECT game_id,cfbd_drive_id,play_type,
-        CASE WHEN play_text ~* 'kneel|takes? a knee' OR play_type IN ('Rushing Touchdown','Passing Touchdown','Fumble Recovery (Own)') THEN LEFT(play_text,2000) ELSE '' END play_text,
-        period,offense_score,defense_score,ppa,yards_gained FROM cfb_plays WHERE season>=2022""")]
+        CASE WHEN scoring OR play_text ~* 'kneel|takes? a knee' OR play_type IN ('Rushing Touchdown','Passing Touchdown','Fumble Recovery (Own)') THEN LEFT(play_text,2000) ELSE '' END play_text,
+        scoring,period,offense_score,defense_score,ppa,yards_gained FROM cfb_plays WHERE season>=2022""")]
     stats,audits=audit_games(games,drives,plays)
     manifest={"games":len(games),"drives":len(drives),"plays":len(plays),
               "stats_digest":digest({str(k):v for k,v in stats.items()}),

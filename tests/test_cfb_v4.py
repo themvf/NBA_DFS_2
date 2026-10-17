@@ -270,3 +270,14 @@ def test_weather_venue_coordinates_join_provider_identity_and_reject_invalid_val
     assert calls[0][1]==[(40.,-75.,50)] and "WHERE cfbd_venue_id=%s" in calls[0][0]
     assert reference["valid_source_venues"]==1 and reference["response_sha256"]
     assert refresh_venue_coordinates(db,"")["status"]=="unavailable"
+
+
+def test_real_source_alternate_touchdown_labels_and_explicit_kick_attempts():
+    stale={"drive_result":"TD","start_offense_score":7,"end_offense_score":7}
+    p={"play_type":"Pass Reception","scoring":True,"play_text":"Pass complete for 45 yards TOUCHDOWN, clock 09:32. Kicker kick attempt good (H: Holder)"}
+    assert offensive_points(stale,[p])==7
+    assert offensive_points(stale,[{**p,"scoring":False}]) is None
+    assert offensive_points(stale,[{**p,"play_text":p["play_text"]+" overturned, no play"}]) is None
+    assert offensive_points(stale,[{**p,"play_type":"Rush"}])==7
+    assert offensive_points(stale,[{"play_type":"Blocked Punt Touchdown","scoring":True}])==0
+    assert offensive_points(stale,[{**p,"play_type":"Passing Touchdown","play_text":"pass TOUCHDOWN; kick attempt failed"}])==6

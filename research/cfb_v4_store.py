@@ -7,8 +7,8 @@ from pathlib import Path
 from psycopg2.extras import Json
 
 ROOT=Path(__file__).resolve().parents[1]
-PROTOCOL=ROOT/"docs/cfb-drive-market-v4-protocol.json"
-VERSION="cfb-drive-market-v4"
+PROTOCOL=ROOT/"docs/cfb-drive-market-v4-1-protocol.json"
+VERSION="cfb-drive-market-v4.1"
 
 
 def digest(value):
