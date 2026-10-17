@@ -137,6 +137,19 @@ def save_report(db, html: str, summary: dict) -> bool:
     return bool(res)
 
 
+def dataset_digest(payload: dict) -> str:
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+
+
+def save_dataset(db, payload: dict) -> bool:
+    """Store the page tables once per distinct content (the site reads the newest row)."""
+    res = db.execute(
+        """INSERT INTO cfb_pattern_datasets (content_digest, payload) VALUES (%s, %s)
+           ON CONFLICT (content_digest) DO NOTHING RETURNING id""",
+        (dataset_digest(payload), _j(payload)))
+    return bool(res)
+
+
 def latest_report(db) -> dict | None:
     rows = db.execute("SELECT html, summary, generated_at FROM cfb_pattern_reports ORDER BY generated_at DESC, id DESC LIMIT 1")
     return dict(rows[0]) if rows else None

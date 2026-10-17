@@ -137,6 +137,7 @@
     "test:x-news": "tsx scripts/test-x-news.ts",
     "test:nfl-projection-cadence": "node --import tsx ./scripts/test-nfl-projection-cadence.ts",
     "test:cron-dispatch": "node --import tsx ./scripts/test-cron-dispatch.ts",
+    "test:cfb-pattern-watch-access": "node --import tsx ./scripts/test-cfb-pattern-watch-access.ts",
     "test:nfl-ownership-prior": "node --import tsx ./scripts/test-nfl-ownership-prior.ts",
     "test:nfl-live-review": "node --import tsx ./scripts/test-nfl-live-review.ts",
     "test:nfl-latest-eligibility": "node --import tsx ./scripts/test-nfl-latest-eligibility.ts",

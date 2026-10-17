@@ -113,11 +113,14 @@ def write_csv(path: Path, rows: list[dict]) -> int:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out-dir", default=str(DEFAULT_DIR))
+    ap.add_argument("--store", action="store_true",
+                    help="also save the tables to cfb_pattern_datasets (read by the site's /cfb/pattern-watch page)")
     args = ap.parse_args(argv)
     from model import cfb_pattern_measures as measures
     from model import cfb_pattern_store as store
 
-    db = DatabaseManager(load_config().database_url, initialize_schema=False)
+    # Storing needs the table to exist, so let the schema digest check run then.
+    db = DatabaseManager(load_config().database_url, initialize_schema=args.store)
     rows = store.read_ledger(db)
     selections = list(store.read_selections(db).values())
     rates = measures.weekly_base_rates(measures.load_base_rate_games(db))
@@ -132,6 +135,11 @@ def main(argv: list[str] | None = None) -> int:
     }
     for name, t in tables.items():
         print(f"{out / name}: {write_csv(out / name, t)} rows")
+    if args.store:
+        from model import cfb_pattern_watch as pw
+        payload = {"study_version": pw.STUDY_VERSION, **{n.removesuffix(".csv"): t for n, t in tables.items()}}
+        saved = store.save_dataset(db, payload)
+        print("dataset: saved new version" if saved else "dataset: unchanged, not stored again")
     print(f"exported {datetime.now(timezone.utc):%Y-%m-%d %H:%M UTC}")
     return 0
 
