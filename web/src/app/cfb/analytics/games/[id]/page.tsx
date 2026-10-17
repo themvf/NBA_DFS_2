@@ -3,6 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCfbAnalyticsGame } from "@/db/cfb-analytics";
 import { AnalyticsShell, ForecastFreshness, formatEt, signed, TeamFeaturePanel } from "../../_components";
+import { getCfbV4Snapshot } from "@/db/cfb-v4";
+import { V4Panel } from "../../v4-panel";
 import styles from "../../analytics.module.css";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +17,7 @@ export default async function CfbAnalyticsGamePage({ params }: { params: Promise
   const { id } = await params;
   const gameId = Number(id);
   if (!Number.isSafeInteger(gameId) || gameId <= 0) notFound();
-  const game = await getCfbAnalyticsGame(gameId);
+  const [game, v4] = await Promise.all([getCfbAnalyticsGame(gameId), getCfbV4Snapshot(gameId)]);
   if (!game) notFound();
   const terminalHref = `/cfb?date=${encodeURIComponent(game.gameDate)}&game=${game.id}`;
   const explanation = game.forecast?.explanation ?? {};
@@ -69,6 +71,7 @@ export default async function CfbAnalyticsGamePage({ params }: { params: Promise
       </div>
       <p className={styles.empty}>Adjusted offense: {game.away.name} {field(v2Explanation.away_adjusted_off_ppd)}, {game.home.name} {field(v2Explanation.home_adjusted_off_ppd)} points per drive. Predicted scoring rates: {field(v2Explanation.away_predicted_ppd)} / {field(v2Explanation.home_predicted_ppd)}. Opponent adjustment and possession assumptions are research estimates.</p>
     </section>}
+    <V4Panel snapshot={v4} />
     <section className={styles.section}>
       <div className={styles.sectionHead}><h2>Football context</h2><p>CFBD scores, opponent adjustment, and prospective roster snapshots</p></div>
       <div className={styles.grid}><TeamFeaturePanel team={game.away} /><TeamFeaturePanel team={game.home} /></div>

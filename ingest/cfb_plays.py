@@ -322,7 +322,31 @@ _DRIVE_INSERT = """
         yards = EXCLUDED.yards,
         offense_team_id = COALESCE(EXCLUDED.offense_team_id, cfb_drives.offense_team_id),
         defense_team_id = COALESCE(EXCLUDED.defense_team_id, cfb_drives.defense_team_id),
+        start_period = EXCLUDED.start_period,
+        end_period = EXCLUDED.end_period,
+        start_yards_to_goal = EXCLUDED.start_yards_to_goal,
+        start_seconds_remaining = EXCLUDED.start_seconds_remaining,
+        end_yards_to_goal = EXCLUDED.end_yards_to_goal,
+        end_seconds_remaining = EXCLUDED.end_seconds_remaining,
+        start_offense_score = EXCLUDED.start_offense_score,
+        start_defense_score = EXCLUDED.start_defense_score,
+        end_offense_score = EXCLUDED.end_offense_score,
+        end_defense_score = EXCLUDED.end_defense_score,
+        scoring = EXCLUDED.scoring,
+        ingested_at = NOW(),
         source_payload_hash = EXCLUDED.source_payload_hash
+    WHERE cfb_drives.source_payload_hash IS DISTINCT FROM EXCLUDED.source_payload_hash
+       OR cfb_drives.start_period IS DISTINCT FROM EXCLUDED.start_period
+       OR cfb_drives.end_period IS DISTINCT FROM EXCLUDED.end_period
+       OR cfb_drives.start_yards_to_goal IS DISTINCT FROM EXCLUDED.start_yards_to_goal
+       OR cfb_drives.start_seconds_remaining IS DISTINCT FROM EXCLUDED.start_seconds_remaining
+       OR cfb_drives.end_yards_to_goal IS DISTINCT FROM EXCLUDED.end_yards_to_goal
+       OR cfb_drives.end_seconds_remaining IS DISTINCT FROM EXCLUDED.end_seconds_remaining
+       OR cfb_drives.start_offense_score IS DISTINCT FROM EXCLUDED.start_offense_score
+       OR cfb_drives.start_defense_score IS DISTINCT FROM EXCLUDED.start_defense_score
+       OR cfb_drives.end_offense_score IS DISTINCT FROM EXCLUDED.end_offense_score
+       OR cfb_drives.end_defense_score IS DISTINCT FROM EXCLUDED.end_defense_score
+       OR cfb_drives.scoring IS DISTINCT FROM EXCLUDED.scoring
 """
 
 _PLAY_INSERT = """
@@ -343,7 +367,31 @@ _PLAY_INSERT = """
         yards_gained = EXCLUDED.yards_gained,
         offense_team_id = COALESCE(EXCLUDED.offense_team_id, cfb_plays.offense_team_id),
         defense_team_id = COALESCE(EXCLUDED.defense_team_id, cfb_plays.defense_team_id),
+        offense_score = EXCLUDED.offense_score,
+        defense_score = EXCLUDED.defense_score,
+        period = EXCLUDED.period,
+        clock_seconds_remaining = EXCLUDED.clock_seconds_remaining,
+        game_seconds_remaining = EXCLUDED.game_seconds_remaining,
+        yardline = EXCLUDED.yardline,
+        yards_to_goal = EXCLUDED.yards_to_goal,
+        down = EXCLUDED.down,
+        distance = EXCLUDED.distance,
+        scoring = EXCLUDED.scoring,
+        wallclock = EXCLUDED.wallclock,
+        ingested_at = NOW(),
         source_payload_hash = EXCLUDED.source_payload_hash
+    WHERE cfb_plays.source_payload_hash IS DISTINCT FROM EXCLUDED.source_payload_hash
+       OR cfb_plays.offense_score IS DISTINCT FROM EXCLUDED.offense_score
+       OR cfb_plays.defense_score IS DISTINCT FROM EXCLUDED.defense_score
+       OR cfb_plays.period IS DISTINCT FROM EXCLUDED.period
+       OR cfb_plays.clock_seconds_remaining IS DISTINCT FROM EXCLUDED.clock_seconds_remaining
+       OR cfb_plays.game_seconds_remaining IS DISTINCT FROM EXCLUDED.game_seconds_remaining
+       OR cfb_plays.yardline IS DISTINCT FROM EXCLUDED.yardline
+       OR cfb_plays.yards_to_goal IS DISTINCT FROM EXCLUDED.yards_to_goal
+       OR cfb_plays.down IS DISTINCT FROM EXCLUDED.down
+       OR cfb_plays.distance IS DISTINCT FROM EXCLUDED.distance
+       OR cfb_plays.scoring IS DISTINCT FROM EXCLUDED.scoring
+       OR cfb_plays.wallclock IS DISTINCT FROM EXCLUDED.wallclock
 """
 
 
@@ -543,7 +591,9 @@ def main() -> None:
     api_key = os.getenv("CFBD_API_KEY", "")
     seasons = ([football_season_year()] if args.current_season else
                [args.season] if args.season else list(range(args.start_season, args.end_season + 1)))
-    db = None if args.audit_only else DatabaseManager(load_config().database_url or "")
+    db = None if args.audit_only else DatabaseManager(load_config().database_url or "", initialize_schema=False)
+    if db is not None:
+        db.require_tables(["cfb_teams", "cfb_matchups", "cfb_drives", "cfb_plays"])
 
     for season in seasons:
         current = args.current_season or season == football_season_year()

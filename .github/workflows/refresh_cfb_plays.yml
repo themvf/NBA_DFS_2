@@ -13,6 +13,12 @@ on:
         required: false
         default: false
 
+      repair_historical:
+        description: "Repair historical drive/play score and clock fields from provider payloads (one-off)"
+        type: boolean
+        required: false
+        default: false
+
 concurrency:
   group: refresh-current-cfb-plays
   cancel-in-progress: false
@@ -32,6 +38,8 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements.txt
+      - name: Register immutable drive and market research protocol
+        run: python -m research.cfb_forecast_v4 --register
       - name: Record refresh boundary
         run: echo "CFB_REFRESH_STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
       - name: Refresh canonical schedule and scores
@@ -48,6 +56,15 @@ jobs:
           else
             python -m ingest.cfb_plays --current-season --recent-completed-weeks 2
           fi
+      - name: Repair historical scoring evidence when explicitly requested
+        if: github.event_name == 'workflow_dispatch' && inputs.repair_historical == true
+        run: python -m ingest.cfb_plays --start-season 2022 --end-season 2025 --no-cache
+      - name: Capture forecast weather with explicit missing coverage
+        run: python -m ingest.cfb_v4_context --weather --refresh-venues --within-hours 48
+      - name: Freeze audited drive and market research challenger
+        run: python -m research.cfb_forecast_v4 --publish --output artifacts/cfb/v4-report.json
+      - name: Grade first registered research decisions
+        run: python -m research.cfb_v4_evaluation --publish --output artifacts/cfb/v4-forward.json
       - name: Check eligible teams have complete current-season inputs
         run: python -m research.cfb_forecast_health --output artifacts/cfb/forecast-input-health.json
       - name: Freeze research forecasts and validation
@@ -65,6 +82,7 @@ jobs:
         with:
           name: current-cfb-play-coverage
           path: |
+            artifacts/cfb/v4-*
             artifacts/cfb/forecast-*-health.json
             artifacts/cfb/play-audits
             artifacts/cfb/forecast-validation.json

@@ -512,7 +512,9 @@ def main():
     parser.add_argument("--output", type=Path)
     parser.add_argument("--publish", action="store_true")
     args = parser.parse_args()
-    db = DatabaseManager(load_config().database_url or "", initialize_schema=args.publish)
+    # Scheduled publication must not re-run unrelated application migrations.
+    db = DatabaseManager(load_config().database_url or "", initialize_schema=False)
+    db.require_tables(['cfb_matchups', 'cfb_teams', 'cfb_plays', 'cfb_drives', 'cfb_forecast_runs', 'cfb_game_forecasts', 'cfb_market_comparisons', 'game_odds_history'])
     report = run(db)
     if args.publish:
         report["published_run_id"] = publish(db, report)

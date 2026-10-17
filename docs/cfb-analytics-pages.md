@@ -166,3 +166,21 @@ prospective evidence or an approved betting signal. The methods page displays
 the current frozen comparison after publication, including settled prospective
 games once any exist. The Friday, Saturday, and Sunday refreshes publish both
 versions; Saturday captures the main slate before kickoff.
+
+
+## Registered drive and market challenger (v4)
+
+The additive `/cfb/analytics/research` page and per-game v4 panel show the
+registered `cfb-drive-market-v4` research study. Its canonical source map,
+acceptance contract, refresh operations and material limits are recorded in
+[cfb-drive-market-v4.md](cfb-drive-market-v4.md); the exact frozen rules are in
+[cfb-drive-market-v4-protocol.json](cfb-drive-market-v4-protocol.json).
+Registration, source observations, runs, snapshots and first eligible decisions
+are append-only. Old model forecasts are preserved. The current importer also
+repairs score and clock fields that older conflict updates left stale.
+
+The daily and pregame refresh captures Open-Meteo forecast weather separately,
+publishes audited offensive-drive and fitted pace estimates, and grades only
+registered pregame decisions. Missing context is explicit. Numerical context
+effects and all betting probabilities require historical and prospective evidence;
+registration alone does not validate an edge.
