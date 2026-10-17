@@ -236,3 +236,22 @@ the run as an artifact; republishing the link is a step taken from a Claude
 session. The page's prose lives in `COPY` in `model/cfb_pattern_publish.py`.
 A local-model rewrite pass was tried on 2026-10-10 and removed on 2026-10-11:
 it added nothing, and one accepted rewrite read worse than the original.
+
+## Private site page and chart images (2026-10-17)
+
+Every run now also stores the five data tables in `cfb_pattern_datasets`
+(`model/cfb_pattern_csv.py --store`, one row per distinct content) and renders
+three PNG charts for the newsletter (`model/cfb_pattern_charts.py`: running
+units, units by pattern, weekly favorite win rate against implied). The PNGs and
+CSVs are attached to each run as the `cfb-pattern-watch-<job>` artifact.
+
+The site page `/cfb/pattern-watch` reads the newest dataset row and draws the
+same tables with live charts. The web app never recomputes a grade, so the page,
+the CSVs and the PNGs cannot disagree. The site has no login, so the page opens
+only with `?key=` equal to the `CFB_PATTERN_PAGE_KEY` environment variable
+(16+ characters) and answers 404 otherwise, including when the variable is not
+set. It is also marked noindex. Sharing it later means removing the key check.
+
+`cfb_pattern_datasets` is not on the health dataset registry: a digest-keyed
+insert cannot tell "refreshed" from "unchanged". The run heartbeats already
+cover whether the job ran.

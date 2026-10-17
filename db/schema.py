@@ -589,6 +589,17 @@ TABLES = [
     )
     """,
 
+    # Tables behind the site's private /cfb/pattern-watch page, written by
+    # model/cfb_pattern_csv.py --store once per distinct content.
+    """
+    CREATE TABLE IF NOT EXISTS cfb_pattern_datasets (
+        id BIGSERIAL PRIMARY KEY,
+        content_digest TEXT NOT NULL UNIQUE,
+        payload JSONB NOT NULL,
+        generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+
     # Historical CFBD lines are intentionally separate from the prospective,
     # exact-book game_odds_history ledger.  CFBD exposes source-reported opens
     # and historical references, but does not provide observation timestamps
@@ -5919,6 +5930,7 @@ INDEXES = [
     *NHL_INDEXES,
     "CREATE INDEX IF NOT EXISTS idx_cfb_pattern_runs_job ON cfb_pattern_runs(job, run_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_cfb_pattern_reports_generated ON cfb_pattern_reports(generated_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_cfb_pattern_datasets_generated ON cfb_pattern_datasets(generated_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_cfb_matchups_date ON cfb_matchups(game_date, commence_time)",
     "CREATE INDEX IF NOT EXISTS idx_cfb_matchups_upcoming ON cfb_matchups(commence_time) WHERE completed = FALSE",
     "CREATE INDEX IF NOT EXISTS idx_cfb_alias_lookup ON cfb_team_aliases(provider, alias)",

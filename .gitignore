@@ -31,3 +31,4 @@ refresh_cfb_pattern_board.log
 artifacts/nfl-joint-score-state/games-*.json
 artifacts/nfl-joint-score-state/cache/
 artifacts/cfb_pattern_watch/datawrapper/
+artifacts/cfb_pattern_watch/charts/
