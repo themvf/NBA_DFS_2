@@ -8293,7 +8293,17 @@ own projections, with DraftKings lines captured as a yardstick, never as an inpu
   `model/nfl_game_leaders_calibration.py`, held to the frozen fit by a test):
   roles blend last season's per-game usage as 2 pseudo-games, and each market's
   leader shares are tempered (rushing 1.30, receiving 1.05, receptions 1.15,
-  total 1.25; the raw share is kept as `win_share_raw`). The page
+  total 1.25; the raw share is kept as `win_share_raw`). **Roles v2
+  (2026-10-18):** a player the five-game window never saw touch the ball keeps
+  that prior only at a role-giving depth rank (QB 1, RB 1-2, WR/TE 1-3) and
+  never when Sleeper lists him NA/inactive; v1 gave Josh Jacobs 34% of GB's
+  carries while away from the team, and a median 14% of each team's carries
+  (17% of targets) sat on zero-touch players, all taken from the real
+  starters. Measured 2024-25: such players touch the ball next game 32% of
+  the time for 1.7% of team touches. That change amended the
+  `nfl-prop-under-v1` pins (its cohort ends 2026-10-18 19:45 UTC, one game
+  week, descriptive) and `nfl-prop-under-v2` continues the same rules
+  (`docs/nfl-prop-under-study-v2.json`, graded beside v1). The page
   (`web/src/data/game-leaders.json`) republishes itself since 2026-10-15:
   `research/nfl_game_leaders_auto.py` via `refresh_nfl_game_leaders.yml`, job
   `nfl-game-leaders` (Wednesday 14:07 UTC, then 150-165 min before each kickoff

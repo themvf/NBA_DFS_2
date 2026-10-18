@@ -9,6 +9,8 @@ UTC = timezone.utc
 REG = study.REGISTRATION
 START = datetime.fromisoformat(REG["registered_at"])
 KICK = START + timedelta(days=1)
+# The synthetic cohorts below run for weeks; grade them under v1 as registered, before its amendment.
+UNAMENDED = {**REG, "amendments": []}
 
 
 def test_registration_constants_are_the_frozen_ones():
@@ -82,16 +84,16 @@ def _lines(n_weeks, per_week, win_every):
 
 def test_no_verdict_before_both_floors():
     rows, kicks, weeks, stats, covered = _lines(n_weeks=5, per_week=70, win_every=2)   # 350 bets, 5 weeks
-    report = study.grade(rows, kicks, weeks, stats, covered)
+    report = study.grade(rows, kicks, weeks, stats, covered, registration=UNAMENDED)
     assert report["primary"]["bets"] == 350 and not report["floors_met"] and report["verdict_if_first"] is None
 
 
 def test_verdict_pass_and_fail_at_the_floors():
     rows, kicks, weeks, stats, covered = _lines(n_weeks=10, per_week=30, win_every=4)   # 75% under wins at -110
-    report = study.grade(rows, kicks, weeks, stats, covered)
+    report = study.grade(rows, kicks, weeks, stats, covered, registration=UNAMENDED)
     assert report["floors_met"] and report["verdict_if_first"] == "PASS"
     rows, kicks, weeks, stats, covered = _lines(n_weeks=10, per_week=30, win_every=2)   # 50% at -110 loses
-    report = study.grade(rows, kicks, weeks, stats, covered)
+    report = study.grade(rows, kicks, weeks, stats, covered, registration=UNAMENDED)
     assert report["floors_met"] and report["verdict_if_first"] == "FAIL"
 
 
@@ -102,14 +104,39 @@ def test_unflagged_lines_are_controls_not_bets_and_unfinished_games_wait():
                     computed_at=kicks["2026_07_AAA_BBB"] - timedelta(minutes=89)))
     stats[(7, "00-x")] = {"receptions": 2.0}
     covered.discard("2026_08_AAA_BBB")
-    report = study.grade(rows, kicks, weeks, stats, covered)
+    report = study.grade(rows, kicks, weeks, stats, covered, registration=UNAMENDED)
     assert report["primary"]["bets"] == 4 and report["controls"]["every_under"]["bets"] == 5
     assert report["pending_lines"] == 4
 
 
 def test_a_model_amendment_ends_the_cohort():
-    amended = {**REG, "amendments": [{"effective_at": (KICK + timedelta(days=1)).isoformat(),
+    amended = {**UNAMENDED, "amendments": [{"effective_at": (KICK + timedelta(days=1)).isoformat(),
                                       "model_pins": {"model/nfl_game_leaders.py": "x"}, "reason": "test"}]}
     rows, kicks, weeks, stats, covered = _lines(n_weeks=3, per_week=2, win_every=2)
     report = study.grade(rows, kicks, weeks, stats, covered, registration=amended)
     assert report["primary"]["game_weeks"] == 1
+
+
+# --- v2 (2026-10-18): the same rules re-registered on the roles-v2 model -------------------------
+
+V2_PATH = study.REGISTRATION_PATH.with_name("nfl-prop-under-study-v2.json")
+V2 = __import__("json").loads(V2_PATH.read_text())
+
+
+def test_v1_ended_by_one_dated_model_amendment():
+    amendments = REG["amendments"]
+    assert len(amendments) == 1 and amendments[0]["effective_at"] == "2026-10-18T19:45:00+00:00"
+    assert set(amendments[0]["model_pins"]) == {"model/nfl_game_leaders_roles.py"}
+    assert study.cohort_window(REG) == (START, datetime.fromisoformat("2026-10-18T19:45:00+00:00"))
+    assert all(study.pins_hold(REG).values())
+
+
+def test_v2_keeps_v1_rules_and_its_pins_hold():
+    assert V2["study"] == "nfl-prop-under-v2" and V2["registered_at"] == REG["amendments"][0]["effective_at"]
+    assert V2["supersedes"]["study"] == "nfl-prop-under-v1" and V2["amendments"] == []
+    for key in ("season", "last_week", "markets", "market_version", "book", "side", "edge_threshold", "stake",
+                "floors", "bootstrap"):
+        assert V2[key] == REG[key], key
+    assert set(V2["model_pins"]) == set(REG["model_pins"])
+    assert all(study.pins_hold(V2).values()), "v2 pins must match the files as shipped"
+    assert study.cohort_window(V2) == (datetime.fromisoformat(V2["registered_at"]), None)

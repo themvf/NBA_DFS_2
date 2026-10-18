@@ -90,3 +90,29 @@ A fail ends this line of work: the model's low lean on player lines is noise.
   the study is then about DK's lines, not about our model.
 - Execution is assumed at the captured price; lines can move between capture
   and a real bet.
+
+## Amendment 1 and `nfl-prop-under-v2` (2026-10-18)
+
+The game-leaders role rule changed before any v1 bet was graded
+(`model/nfl_game_leaders_roles.py`, `nfl-game-leaders-roles-v2`): a player the
+team's five-game window never saw touch the ball now keeps his prior-season
+rate only at a role-giving depth rank (QB 1, RB 1-2, WR/TE 1-3) and never when
+Sleeper lists him NA or inactive. Under v1 Josh Jacobs carried 34% of Green
+Bay's carries while away from the team with no 2026 game, and across the week-6
+Sunday slate a median 14% of each team's carries and 17% of its targets went to
+players with zero 2026 touches (PHI 59%, GB 37%, CLE 36%, TEN 35%, KC 32%).
+Measured on 2024-25 active rosters, such players touched the ball in the next
+game 32% of the time for a mean 1.7% of team touches. The owner chose to amend
+and ship before the 4 PM ET games rather than leave the page wrong until the
+verdict.
+
+- `docs/nfl-prop-under-study.json` carries the dated amendment with the new
+  pin. Rows priced from **2026-10-18 19:45 UTC** leave v1; v1 therefore holds
+  the week-6 games priced before that time (the London and 1 PM ET games, plus
+  any 4 PM game not republished in time) and can never reach its floors. It is
+  reported as descriptive, not failed.
+- `docs/nfl-prop-under-study-v2.json` registers `nfl-prop-under-v2` at that
+  same time with identical markets, threshold, book, side, floors and
+  bootstrap, pinned to the files as shipped. The grader takes
+  `--registration`; the post-week workflow grades both. Neither cohort pools
+  with the other.

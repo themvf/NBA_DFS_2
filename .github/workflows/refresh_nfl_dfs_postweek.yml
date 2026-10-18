@@ -183,6 +183,12 @@ jobs:
         run: |
           mkdir -p artifacts
           python -m research.nfl_prop_under_study grade --write-db --out artifacts/nfl_prop_under_grade_latest.json
+      # v2 (2026-10-18): the same rules re-registered on the roles-v2 game-leaders
+      # model; v1 ended at the model amendment with one game week.
+      - name: Grade v2
+        if: ${{ !cancelled() }}
+        run: |
+          python -m research.nfl_prop_under_study grade --write-db --registration docs/nfl-prop-under-study-v2.json --out artifacts/nfl_prop_under_v2_grade_latest.json
       - name: Save the grade report
         if: always()
         uses: actions/upload-artifact@v4
