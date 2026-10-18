@@ -165,6 +165,15 @@ console.log("Winners shape: the preset resolves to named settings and named excl
   assert.equal(shapedCl.settings.maxFourWrShare, WINNERS_SHAPE.maxFourWrShare);
   assert.equal(shapedCl.settings.maxOtherGameStackShare, WINNERS_SHAPE.maxOtherGameStackShare);
   assert.equal(shapedCl.settings.twoTeShare, WINNERS_SHAPE.twoTeShare);
+  // Several QB minimums: they cannot share a lineup, so forcing each only at
+  // the end made two come due in one lineup and the run stopped (2026-10-18,
+  // Stafford/Mahomes/Rodgers). Two weak QBs whose minimums fill all 6 lineups.
+  const weakQbs = [114, 128];
+  const minRun = optimizeNflLineups(pool.map(p => weakQbs.includes(p.dkPlayerId) ? { ...p, ourProj: 5, ceilingFpts: 7 } : p),
+    settings({ nLineups: 6, minUnique: 2, maxExposure: 1, minSalary: 0, stackPassCatchers: 1, minExposureByPlayer: { "114": 0.5, "128": 0.5 } }));
+  assert.equal(minRun.lineups.length, 6, minRun.warnings.join(" | "));
+  for (const id of weakQbs) assert.equal(minRun.lineups.filter(l => l.playerIds.includes(id)).length, 3, `QB ${id} meets his 50% minimum`);
+  assert.ok(!minRun.warnings.some(w => /min missed|Stopped/.test(w)), minRun.warnings.join(" | "));
   // v9 2nd TE target, two-sided: exactly 3 of 10 lineups carry two tight ends.
   const teRun = optimizeNflLineups(pool, settings({ nLineups: 10, minUnique: 2, maxExposure: 1, minSalary: 0, stackPassCatchers: 1, twoTeShare: 0.3 }));
   assert.equal(teRun.lineups.length, 10, teRun.warnings.join(" | "));
