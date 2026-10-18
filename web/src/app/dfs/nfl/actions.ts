@@ -2044,7 +2044,7 @@ export async function explainNflPlayerProjection(
     version: slate.redistribution?.version ?? "",
     applied: slate.players.flatMap(p => p.inherited && p.inherited.length > 0
       ? [{ key: p.dkPlayerId, name: p.name, ourProj: p.ourProj ?? 0, floorFpts: null,
-           ceilingFpts: null, statMeans: {}, inherited: p.inherited,
+           ceilingFpts: null, rangeScale: null, statMeans: {}, inherited: p.inherited,
            pointsBefore: p.projectionBeforeInheritance ?? 0, pointsAfter: p.ourProj ?? 0 }]
       : []),
     pools: slate.redistribution?.pools as never ?? [],

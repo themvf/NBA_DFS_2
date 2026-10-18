@@ -281,6 +281,8 @@ export type RedistributionResult = {
   ourProj: number;
   floorFpts: number | null;
   ceilingFpts: number | null;
+  /** newProj / oldProj, applied to his own range; null when it could not be scaled. */
+  rangeScale: number | null;
   statMeans: Record<string, number>;
   inherited: InheritedFrom[];
   pointsBefore: number;
@@ -500,13 +502,21 @@ export function redistributeOutOpportunity(rows: readonly RedistributionRow[]): 
       const delta = linearPoints(stats) - linearPoints(before);
       const oldProj = num(player.ourProj);
       const newProj = oldProj + delta;
+      // The range is his own simulated range scaled by the same ratio as the
+      // projection (owner's decision 2026-10-18, the market anchor's rule).
+      // Leaving it blank made the optimizer fall back to 1.28x the projection,
+      // so a promoted backup QB looked like a low-ceiling play exactly when he
+      // became the starter (Jalon Daniels, TB, 2026-10-18).
+      const ratio = oldProj > 0 && newProj > 0 ? newProj / oldProj : null;
+      const scaled = (value: number | null) => ratio === null || value === null || !Number.isFinite(value) ? null : round(value * ratio);
 
       report.applied.push({
         key: player.key,
         name: player.name,
         ourProj: round(newProj),
-        floorFpts: null,
-        ceilingFpts: null,
+        floorFpts: scaled(player.floorFpts),
+        ceilingFpts: scaled(player.ceilingFpts),
+        rangeScale: ratio === null ? null : round(ratio),
         statMeans: Object.fromEntries(Object.entries(stats).map(([k, v]) => [k, round(v)])),
         inherited,
         pointsBefore: round(oldProj),
@@ -555,5 +565,5 @@ export function inheritanceNote(inherited: readonly InheritedFrom[]): string {
       ` -- ${item.multiplier.toFixed(2)}x his own ${item.own.toFixed(1)}${capped}`;
   });
   return `Inherits opportunity from a ruled-out teammate: ${parts.join("; ")}. ` +
-    `His own efficiency is unchanged. This is an adjusted estimate, not a new simulation; outcome range and boom rate are unavailable for this scenario.`;
+    `His own efficiency is unchanged. This is an adjusted estimate, not a new simulation: his own outcome range is scaled by the same ratio as the projection, and boom rate is unavailable.`;
 }

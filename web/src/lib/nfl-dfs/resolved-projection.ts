@@ -19,9 +19,11 @@ export function resolveOpportunityProjection(
     statMeans: adjustment.statMeans } : base;
   return {
     ...zeroOutProjection(current, isOut),
-    floorFpts: isOut ? 0 : estimated ? null : current.floorFpts,
-    medianFpts: isOut ? 0 : estimated ? null : base.medianFpts,
-    ceilingFpts: isOut ? 0 : estimated ? null : current.ceilingFpts,
+    // A slate-layer transfer carries his own range rescaled (see
+    // opportunity-redistribution); an upstream transfer carries none.
+    floorFpts: isOut ? 0 : adjustment ? current.floorFpts : estimated ? null : current.floorFpts,
+    medianFpts: isOut ? 0 : adjustment ? (adjustment.rangeScale != null && base.medianFpts != null ? base.medianFpts * adjustment.rangeScale : null) : estimated ? null : base.medianFpts,
+    ceilingFpts: isOut ? 0 : adjustment ? current.ceilingFpts : estimated ? null : current.ceilingFpts,
     boomRate: isOut ? 0 : estimated ? null : base.boomRate,
     statMeans: isOut ? {} : Object.fromEntries(Object.entries(current.statMeans)
       .filter(([, value]) => typeof value === 'number' && Number.isFinite(value))),
