@@ -1,5 +1,5 @@
 /**
- * Winners shape (`nfl-winners-shape-v1`..`v7`): the preset resolves into ordinary
+ * Winners shape (`nfl-winners-shape-v1`..`v8`): the preset resolves into ordinary
  * optimizer settings and pool exclusions, and the optimizer enforces each of
  * them: the bring-back SHARE alternates lineups, the quarterback cap binds,
  * kickers leave a showdown pool, a showdown lineup is 5-1 or 3-3 and never
@@ -142,6 +142,27 @@ console.log("Winners shape: the preset resolves to named settings and named excl
   assert.ok(result.eligibility!.some(e => e.reasonCode === "WINNERS_SHAPE" && /\$3,400/.test(e.reason ?? "")), "the dear defense is named in eligibility");
   assert.ok(result.warnings.some(w => /Bring-back share: 2 of 4 lineups/.test(w)), result.warnings.join(" | "));
   assert.ok(result.warnings.some(w => /no prior-week opportunity data for any RB/.test(w)), "a pool without prior data says the RB rule was skipped");
+
+  // v8 Classic distributions, on a 10-lineup run of the same pool.
+  const dist = optimizeNflLineups(pool, settings({ nLineups: 10, minUnique: 2, maxExposure: 1, minSalary: 0, stackPassCatchers: 1,
+    qbDoubleStackShare: 0.4, maxFourWrShare: 0.2, maxOtherGameStackShare: 0.3 }));
+  assert.equal(dist.lineups.length, 10, dist.warnings.join(" | "));
+  const stackOf = (l: typeof dist.lineups[number]) => { const qb = l.slots.find(s => s.player.position === "QB")!.player;
+    return { qb, mates: l.slots.filter(s => ["WR", "TE"].includes(s.player.position) && s.player.team === qb.team).length }; };
+  assert.equal(dist.lineups.filter(l => stackOf(l).mates >= 2).length, 4, "qbDoubleStackShare 0.4 of 10: four double stacks");
+  assert.ok(dist.lineups.every(l => stackOf(l).mates >= 1), "every lineup still stacks one");
+  assert.equal(dist.lineups.filter(l => stackOf(l).mates === 1).length, 6, "the rest stack exactly one");
+  assert.ok(dist.lineups.filter(l => l.slots.filter(s => s.player.position === "WR").length === 4).length <= 2, "4th WR capped at 20% of 10");
+  const otherGame = (l: typeof dist.lineups[number]) => { const { qb } = stackOf(l); const c = new Map<string, number>();
+    for (const s of l.slots) if (["RB", "WR", "TE"].includes(s.player.position)) c.set(s.player.team, (c.get(s.player.team) ?? 0) + 1);
+    return [...c].some(([t, k]) => k >= 2 && t !== qb.team && t !== qb.opponent); };
+  assert.ok(dist.lineups.filter(otherGame).length <= 3, "other-game 2-stacks capped at 30% of 10");
+  assert.ok(dist.warnings.some(w => w.startsWith("Classic distributions: 4 of 10")), dist.warnings.join(" | "));
+  assert.throws(() => optimizeNflLineups(pool, settings({ format: "showdown", qbDoubleStackShare: 0.4 })), /Classic GPP rule/);
+  const shapedCl = applyWinnersShape(settings({ nLineups: 20 }), pool);
+  assert.equal(shapedCl.settings.qbDoubleStackShare, WINNERS_SHAPE.qbDoubleStackShare);
+  assert.equal(shapedCl.settings.maxFourWrShare, WINNERS_SHAPE.maxFourWrShare);
+  assert.equal(shapedCl.settings.maxOtherGameStackShare, WINNERS_SHAPE.maxOtherGameStackShare);
 
   const plain = optimizeNflLineups(pool, settings({ nLineups: n, stackPassCatchers: 1 }));
   assert.ok(plain.lineups.every(l => l.stackSummary.bringBack != null), "without the preset, the hard bring-back rule is every lineup");

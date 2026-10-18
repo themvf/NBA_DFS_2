@@ -72,7 +72,17 @@ import type { NflOptimizerPlayer, NflOptimizerSettings } from "@/app/dfs/nfl/nfl
  * apiece. A lineup that cannot meet a target is built with it relaxed and
  * counted in the notes.
  */
-export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v7";
+/**
+ * v8 (2026-10-18, owner's decision: Classic "as close to the winners' shape"
+ * as Showdown). From the 484 distinct top-100 lineups of the 2026 week 1-5
+ * Millionaires: the QB stacked with 2+ of his own WR/TE in 40% of lineups
+ * (winners 45%, weekly 12-79%; the whole field 30%; our week-5 build 10%), the
+ * rest with exactly one; a 4th WR in at most 25% (winners 24%, weekly 9-35%;
+ * ours 82%); 2+ RB/WR/TE from a team outside the QB's game in at most 35%
+ * (winners 30%, weekly 22-48%; ours 68%). All scheduled across the run like
+ * the bring-back share.
+ */
+export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v8";
 
 export type BuildShape = "standard" | "winners";
 export const BUILD_SHAPES: readonly BuildShape[] = ["standard", "winners"];
@@ -95,6 +105,12 @@ export const WINNERS_SHAPE = {
   /** Distinct quarterbacks the winners used per ten lineups. */
   distinctQbsPerTenLineups: 1.6,
   bringBackShare: 0.5,
+  /** Classic: share of lineups stacking the QB with 2+ of his own pass catchers. */
+  qbDoubleStackShare: 0.4,
+  /** Classic: at most this share of lineups roster a 4th WR. */
+  maxFourWrShare: 0.25,
+  /** Classic: at most this share of lineups carry a 2-player stack from another game. */
+  maxOtherGameStackShare: 0.35,
   /** Classic: share of lineups that may play a DST against their own offense. */
   dstVsOffenseMaxShare: 0.05,
   rbMinTargetsPerGame: 4,
@@ -188,10 +204,13 @@ export function applyWinnersShape(settings: NflOptimizerSettings, players: reado
       bringBackShare: WINNERS_SHAPE.bringBackShare,
       maxQbExposure: qbCap,
       maxDstVsOffenseShare: Math.min(settings.maxDstVsOffenseShare ?? 1, WINNERS_SHAPE.dstVsOffenseMaxShare),
+      qbDoubleStackShare: settings.qbDoubleStackShare ?? WINNERS_SHAPE.qbDoubleStackShare,
+      maxFourWrShare: Math.min(settings.maxFourWrShare ?? 1, WINNERS_SHAPE.maxFourWrShare),
+      maxOtherGameStackShare: Math.min(settings.maxOtherGameStackShare ?? 1, WINNERS_SHAPE.maxOtherGameStackShare),
     });
     notes.push(`Winners shape (${WINNERS_SHAPE_VERSION}, classic): min unique ${shaped.minUnique}, max exposure ${Math.round(shaped.maxExposure * 100)}%, `
       + `each quarterback in at most ${Math.round(qbCap * 100)}% of lineups (${Math.max(1, Math.floor(qbCap * n))} of ${n}), `
-      + `a bring-back in ${Math.round(WINNERS_SHAPE.bringBackShare * 100)}% of lineups, at least one stacked pass catcher, `
+      + `a bring-back in ${Math.round(WINNERS_SHAPE.bringBackShare * 100)}% of lineups, at least one stacked pass catcher (two in ${Math.round(WINNERS_SHAPE.qbDoubleStackShare * 100)}% of lineups), a 4th WR in at most ${Math.round(WINNERS_SHAPE.maxFourWrShare * 100)}%, a 2-player stack from another game in at most ${Math.round(WINNERS_SHAPE.maxOtherGameStackShare * 100)}%, `
       + `a DST against its own players in at most ${Math.round(shaped.maxDstVsOffenseShare! * 100)}% of lineups (${Math.floor(shaped.maxDstVsOffenseShare! * n + 1e-9)} of ${n}), min salary ${money(shaped.minSalary)}.`);
     applyPoolRules(settings, players, excluded, notes);
   } else {

@@ -8083,6 +8083,15 @@ every player the pool rules left out (`reasonCode` `WINNERS_SHAPE` /
   that cannot meet a target is retried with it relaxed (counted in the notes),
   and the user's captain minimums outrank every target. HOU@JAX dry run: 40% /
   8% / 20%, median projection 82.1.
+- **v8 (2026-10-18): Classic distributions.** From 484 distinct top-100
+  lineups of the week 1-5 Millionaires: QB + 2+ own WR/TE in 40% of lineups
+  (winners 45%, whole field 30%, our week-5 build 10%), the rest exactly one;
+  a 4th WR in at most 25% (winners 24%, ours 82%); 2+ RB/WR/TE from a team
+  outside the QB's game in at most 35% (winners 30%, ours 68%). The extra
+  slot then lands on a 2nd TE ~40% / 3rd RB ~35% without its own rule. Week-5
+  replay (frozen attribution input, which keeps prior-week opportunity; a
+  saved run's input_snapshot does not, and must go through restorePlayers):
+  40 / 25 / 35%, median projection 131.4 vs 132.1.
 - Not an edge: the shape is a second build for the weekly winners-vs-us
   review to grade against the standard one. Change a constant and bump the
   version; `npm run test:nfl-winners-shape` pins the current ones.
