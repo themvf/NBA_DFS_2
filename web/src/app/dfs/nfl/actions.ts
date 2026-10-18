@@ -1014,6 +1014,11 @@ function slateCheckFor(slate: NflWorkspaceSlate, context: { incompleteWarning: s
     upside: slate.replacementUpside ? { flagged: slate.replacementUpside.flagged, error: slate.replacementUpside.error,
       skipped: slate.replacementUpside.skipped.map((s) => ({ name: s.name, reason: s.reason })) } : null,
     unmatched: slate.players.filter((p) => p.ffPlayerId == null).map((p) => p.name),
+    missingRange: slate.players.filter((p) => !p.isOut && (p.ourProj ?? 0) > 0
+        && (p.ceilingFpts == null || !Number.isFinite(p.ceilingFpts) || p.floorFpts == null || !Number.isFinite(p.floorFpts))
+        && (p.projectionScenario === 'availability_estimate' || (p.position === 'QB' && (p.availability?.confirmedStarter === true || p.availability?.role === 'Expected starter · QB1'))))
+      .map((p) => ({ name: p.name, team: p.team,
+        why: p.projectionScenario === 'availability_estimate' ? "took over a ruled-out teammate's work" : p.availability?.confirmedStarter ? 'confirmed starter' : 'starting QB' })),
     pipeline: context.pipeline ?? null,
     specialTeams: specialTeamsStatus({ players: slate.players, firstKickoff: slate.firstKickoff ?? null,
       now: Date.now(), refreshAvailable: Boolean(slate.refreshAvailable) }),
