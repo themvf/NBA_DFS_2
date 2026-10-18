@@ -18,7 +18,8 @@ import type { MarketBreakdownRow } from "@/db/cfb-pattern-watch";
 
 /**
  * Moneyline favorites and underdogs, from the simplest cut to the most detailed:
- *   1. every game   2. by spread   3. by total   4. spread and total together.
+ *   every game; then one cut at a time (home or away, spread, total);
+ *   then two cuts together (home/away x spread, home/away x total, spread x total).
  * Rows come pre-computed from model/cfb_pattern_csv.py (market_breakdown); this
  * file only arranges them. Descriptive season-to-date numbers, not study patterns.
  */
@@ -38,7 +39,8 @@ const PADDED: [(m: number) => number, (m: number) => number] = [
   (m) => Math.floor(Math.min(0, m) * 1.25 - 1),
   (m) => Math.ceil(Math.max(0, m) * 1.25 + 1),
 ];
-const shortBand = (s: string | null) => (s ?? "").replace(/^Spread /, "").replace(/^Total /, "");
+type Axis = "Venue" | "Spread" | "Total";
+const shortBand = (s: string | null | undefined) => (s ?? "").replace(/^Spread /, "").replace(/^Total /, "");
 
 function Step({ n, title, note, children }: { n: number; title: string; note: string; children: React.ReactNode }) {
   return (
@@ -181,11 +183,13 @@ function heat(v: number | null | undefined, games: number): React.CSSProperties 
   return { background: v >= 0 ? `rgba(27,175,122,${alpha})` : `rgba(227,73,72,${alpha})` };
 }
 
-function Grid({ rows }: { rows: MarketBreakdownRow[] }) {
+function Grid({ rows, rowKey, colKey }: { rows: MarketBreakdownRow[]; rowKey: Axis; colKey: Axis }) {
   const [side, setSide] = useState<"fav" | "dog">("fav");
-  const spreads = [...new Set(rows.map((r) => r.Spread ?? ""))];
-  const totals = [...new Set(rows.map((r) => r.Total ?? ""))];
-  const cell = (s: string, t: string) => rows.find((r) => r.Spread === s && r.Total === t);
+  const [showTable, setShowTable] = useState(false);
+  const rowVals = [...new Set(rows.map((r) => r[rowKey] ?? ""))];
+  const colVals = [...new Set(rows.map((r) => r[colKey] ?? ""))];
+  const cell = (a: string, b: string) => rows.find((r) => r[rowKey] === a && r[colKey] === b);
+  const rowName = rowKey === "Venue" ? "Favorite" : rowKey;
   return (
     <div className="space-y-2">
       <div className="flex gap-1 text-xs">
@@ -203,21 +207,21 @@ function Grid({ rows }: { rows: MarketBreakdownRow[] }) {
         <table className="w-full min-w-[520px] border-separate border-spacing-1 text-xs">
           <thead>
             <tr>
-              <th className="p-1 text-left font-normal text-gray-500">Spread ↓ · Total →</th>
-              {totals.map((t) => <th key={t} className="p-1 text-center font-medium">{shortBand(t)}</th>)}
+              <th className="p-1 text-left font-normal text-gray-500">{rowName} ↓ · {colKey} →</th>
+              {colVals.map((c) => <th key={c} className="p-1 text-center font-medium">{shortBand(c)}</th>)}
             </tr>
           </thead>
           <tbody>
-            {spreads.map((s) => (
-              <tr key={s}>
-                <th className="p-1 text-left font-medium">{shortBand(s)}</th>
-                {totals.map((t) => {
-                  const c = cell(s, t);
+            {rowVals.map((a) => (
+              <tr key={a}>
+                <th className="p-1 text-left font-medium">{shortBand(a)}</th>
+                {colVals.map((b) => {
+                  const c = cell(a, b);
                   const games = c?.Games ?? 0;
                   const v = side === "fav" ? c?.["ROI (%)"] : c?.["Underdog ROI (%)"];
                   const rec = side === "fav" ? c?.Record : c?.["Underdog record"];
                   return (
-                    <td key={t} className="rounded p-2 text-center tabular-nums" style={heat(v, games)}>
+                    <td key={b} className="rounded p-2 text-center tabular-nums" style={heat(v, games)}>
                       {games === 0 ? (
                         <span className="text-gray-400">no games</span>
                       ) : (
@@ -238,18 +242,42 @@ function Grid({ rows }: { rows: MarketBreakdownRow[] }) {
         Each cell is one unit per game on the {side === "fav" ? "favorite" : "underdog"} at its closing moneyline. Faded cells
         have fewer than {THIN} games.
       </p>
+      <button className="text-xs text-blue-700 underline" onClick={() => setShowTable((v) => !v)}>
+        {showTable ? "Hide" : "Show"} all {rows.length} cells as a table
+      </button>
+      {showTable && <BandTable rows={rows} first={`${rowName} and ${colKey.toLowerCase()}`} />}
     </div>
   );
 }
 
+function OneCut({ rows, axis, first }: { rows: MarketBreakdownRow[]; axis: Axis; first: string }) {
+  const label = (r: MarketBreakdownRow) => shortBand(r[axis]);
+  return (
+    <Fragment>
+      <RoiBars rows={rows} label={label} />
+      <div>
+        <div className="mb-1 text-xs font-medium text-gray-600">Favorites&apos; win rate minus price-implied, percentage points</div>
+        <WinVsImplied rows={rows} label={label} />
+      </div>
+      <BandTable rows={rows} first={first} />
+    </Fragment>
+  );
+}
+
 export default function MarketBreakdown({ rows }: { rows: MarketBreakdownRow[] }) {
-  const [showCells, setShowCells] = useState(false);
-  const overall = rows.find((r) => r.Level === 1);
-  const bySpread = rows.filter((r) => r.Level === 2);
-  const byTotal = rows.filter((r) => r.Level === 3);
-  const cross = rows.filter((r) => r.Level === 4);
+  const level = (name: string) => rows.filter((r) => r["Level name"] === name);
+  const overall = level("All games")[0];
+  const byVenue = level("By venue");
+  const bySpread = level("By spread");
+  const byTotal = level("By total");
+  const venueSpread = level("Venue and spread");
+  const venueTotal = level("Venue and total");
+  const spreadTotal = level("Spread and total");
   if (!overall) return null;
   const noTotal = overall.Games - byTotal.reduce((s, r) => s + r.Games, 0);
+  const totalNote = noTotal > 0 ? ` ${noTotal} game${noTotal === 1 ? "" : "s"} without a total ${noTotal === 1 ? "is" : "are"} left out.` : "";
+  // Steps number themselves, so an older dataset without the venue cuts still reads 1, 2, 3.
+  let n = 0;
 
   return (
     <section className="space-y-4 rounded-lg border bg-card p-4">
@@ -257,11 +285,12 @@ export default function MarketBreakdown({ rows }: { rows: MarketBreakdownRow[] }
         <h2 className="text-sm font-semibold">Moneyline favorites and underdogs, season to date</h2>
         <p className="text-xs text-gray-500">
           All FBS-vs-FBS regular-season games with a closing spread and moneylines. One unit on each side at its closing moneyline.
-          From the whole slate down to spread and total together. Descriptive only: not study patterns and not graded for a verdict.
+          The whole slate first, then one cut at a time, then two cuts together. Descriptive only: not study patterns and not
+          graded for a verdict.
         </p>
       </div>
 
-      <Step n={1} title="Every game" note={`${overall.Games} games. The starting point every cut below adds up to.`}>
+      <Step n={++n} title="Every game" note={`${overall.Games} games. The starting point every cut below adds up to.`}>
         <div className="grid gap-3 sm:grid-cols-2">
           <SideCard label="Favorites" color={FAV} record={overall.Record} units={overall.Units} roiPct={overall["ROI (%)"]}
             price={overall["Median price"]}
@@ -272,30 +301,34 @@ export default function MarketBreakdown({ rows }: { rows: MarketBreakdownRow[] }
         </div>
       </Step>
 
-      <Step n={2} title="By spread" note="Split by the size of the closing spread. Every game falls in exactly one band.">
-        <RoiBars rows={bySpread} label={(r) => shortBand(r.Spread)} />
-        <div>
-          <div className="mb-1 text-xs font-medium text-gray-600">Favorites&apos; win rate minus price-implied, percentage points</div>
-          <WinVsImplied rows={bySpread} label={(r) => shortBand(r.Spread)} />
-        </div>
-        <BandTable rows={bySpread} first="Spread" />
+      {byVenue.length > 0 && (
+        <Step n={++n} title="Home or away favorite" note="Where the favorite played. Neutral-site games are kept apart so home and away mean what they say.">
+          <OneCut rows={byVenue} axis="Venue" first="Favorite" />
+        </Step>
+      )}
+
+      <Step n={++n} title="By spread" note="Split by the size of the closing spread. Every game falls in exactly one band.">
+        <OneCut rows={bySpread} axis="Spread" first="Spread" />
       </Step>
 
-      <Step n={3} title="By total" note={`Split by the closing over/under.${noTotal > 0 ? ` ${noTotal} game${noTotal === 1 ? "" : "s"} without a total ${noTotal === 1 ? "is" : "are"} left out.` : ""}`}>
-        <RoiBars rows={byTotal} label={(r) => shortBand(r.Total)} />
-        <div>
-          <div className="mb-1 text-xs font-medium text-gray-600">Favorites&apos; win rate minus price-implied, percentage points</div>
-          <WinVsImplied rows={byTotal} label={(r) => shortBand(r.Total)} />
-        </div>
-        <BandTable rows={byTotal} first="Total" />
+      <Step n={++n} title="By total" note={`Split by the closing over/under.${totalNote}`}>
+        <OneCut rows={byTotal} axis="Total" first="Total" />
       </Step>
 
-      <Step n={4} title="Spread and total together" note="Every spread band crossed with every total band. The most detailed view, and the smallest samples.">
-        <Grid rows={cross} />
-        <button className="text-xs text-blue-700 underline" onClick={() => setShowCells((v) => !v)}>
-          {showCells ? "Hide" : "Show"} all {cross.length} cells as a table
-        </button>
-        {showCells && <BandTable rows={cross} first="Spread and total" />}
+      {venueSpread.length > 0 && (
+        <Step n={++n} title="Home or away, by spread" note="Home, away and neutral-site favorites in each spread band.">
+          <Grid rows={venueSpread} rowKey="Venue" colKey="Spread" />
+        </Step>
+      )}
+
+      {venueTotal.length > 0 && (
+        <Step n={++n} title="Home or away, by total" note={`Home, away and neutral-site favorites in each total band.${totalNote}`}>
+          <Grid rows={venueTotal} rowKey="Venue" colKey="Total" />
+        </Step>
+      )}
+
+      <Step n={++n} title="Spread and total together" note="Every spread band crossed with every total band. The most detailed view, and the smallest samples.">
+        <Grid rows={spreadTotal} rowKey="Spread" colKey="Total" />
       </Step>
     </section>
   );

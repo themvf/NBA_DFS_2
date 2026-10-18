@@ -144,5 +144,21 @@ def test_market_breakdown_bands_partition_the_games():
     # Overall units equal the sum over spread bands: the bands add up to the whole.
     assert round(sum(r["units"] for r in b["by_spread"]), 6) == round(b["overall"]["units"], 6)
     table = cc.market_breakdown_table(b)
-    assert [r["Level"] for r in table] == [1] + [2] * 4 + [3] * 3 + [4] * 12
-    assert table[0]["Split"] == "All games" and table[1]["Spread"] == "Spread 0 to 2.5"
+    assert [r["Level"] for r in table] == [1] + [2] * 3 + [3] * 4 + [4] * 3 + [5] * 12 + [6] * 9 + [7] * 12
+    assert table[0]["Split"] == "All games" and table[4]["Spread"] == "Spread 0 to 2.5"
+
+
+def test_market_breakdown_venue_groups():
+    from model import cfb_pattern_measures as m
+    neutral = {**_split_game(-300, 250, 35, 10, spread=-9.5), "neutral_site": True}
+    games = [
+        _split_game(-200, 170, 30, 20, spread=-5.5),   # home favorite wins
+        _split_game(150, -180, 28, 21, spread=3.5),    # away favorite loses
+        neutral,                                        # neutral site, listed home team favored
+    ]
+    v = {r["venue"]: r for r in m.market_breakdown(games)["by_venue"]}
+    assert (v["Home favorite"]["games"], v["Home favorite"]["wins"]) == (1, 1)
+    assert (v["Away favorite"]["games"], v["Away favorite"]["losses"]) == (1, 1)
+    assert v["Neutral site"]["games"] == 1
+    vs = m.market_breakdown(games)["by_venue_spread"]
+    assert len(vs) == 12 and sum(r["games"] for r in vs) == 3

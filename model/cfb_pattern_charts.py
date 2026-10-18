@@ -187,6 +187,7 @@ def main(argv: list[str] | None = None) -> int:
         "cumulative_units.png": cumulative_chart(cc.cumulative_table(rows), out / "cumulative_units.png"),
         "pattern_units.png": pattern_chart(cc.patterns_table(rows), out / "pattern_units.png"),
         "weekly_favorites.png": weekly_chart(cc.weekly_table(rates), out / "weekly_favorites.png"),
+        "roi_by_venue.png": roi_band_chart(breakdown, "By venue", "Moneyline ROI, home or away favorite", out / "roi_by_venue.png"),
         "roi_by_spread.png": roi_band_chart(breakdown, "By spread", "Moneyline ROI by spread", out / "roi_by_spread.png"),
         "roi_by_total.png": roi_band_chart(breakdown, "By total", "Moneyline ROI by total", out / "roi_by_total.png"),
     }
