@@ -65,8 +65,12 @@ const adjusted = promoted.applied[0];
 assert.equal(adjusted.statMeans.attempts,34);
 assert(Math.abs(adjusted.statMeans.carries-2*34/12)<.0001);
 assert.equal(adjusted.inherited[0].pool,'pass');
-assert.equal(adjusted.floorFpts,null);
-assert.equal(adjusted.ceilingFpts,null);
+// His own range is scaled by the projection's ratio, never blanked (2026-10-18).
+const ratio = adjusted.pointsAfter/adjusted.pointsBefore;
+assert(ratio > 1);
+assert(Math.abs(adjusted.rangeScale!-ratio)<.001);
+assert(Math.abs(adjusted.floorFpts!-5*ratio)<.01);
+assert(Math.abs(adjusted.ceilingFpts!-30*ratio)<.01);
 assert.match(inheritanceNote(adjusted.inherited),/adjusted estimate/);
 assert.deepEqual(promoted.pools,[{team:'MIN',pool:'pass',offered:22,assigned:22,unassigned:0}]);
 const capped = redistributeOutOpportunity([player({statMeans:{attempts:40}}), {...backup,statMeans:{attempts:2}}]);
@@ -82,9 +86,12 @@ const resolved = resolveOpportunityProjection(base,adjusted,null,false);
 assert.equal(resolved.ourProj,adjusted.ourProj);
 assert.deepEqual(resolved.statMeans,adjusted.statMeans);
 assert.equal(resolved.projectionScenario,'availability_estimate');
-for(const p of [resolved,resolveOpportunityProjection(base,undefined,{rule:'inherits',applied:true},false)]) {
-  for(const key of ['floorFpts','medianFpts','ceilingFpts','boomRate'] as const) assert.equal(p[key],null);
-}
+assert.equal(resolved.floorFpts,adjusted.floorFpts);
+assert.equal(resolved.ceilingFpts,adjusted.ceilingFpts);
+assert(Math.abs(resolved.medianFpts!-12*ratio)<.01);
+assert.equal(resolved.boomRate,null,'boom rate is not rescaled');
+const upstream = resolveOpportunityProjection(base,undefined,{rule:'inherits',applied:true},false);
+for(const key of ['floorFpts','medianFpts','ceilingFpts','boomRate'] as const) assert.equal(upstream[key],null);
 assert.throws(() => resolveOpportunityProjection(base,adjusted,{rule:'inherits',applied:true},false),
   /already applied upstream/, 'drawer, pool and optimizer must never apply the same transfer twice');
 const unchanged = resolveOpportunityProjection(base,undefined,null,false);
