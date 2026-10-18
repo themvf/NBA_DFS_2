@@ -280,6 +280,8 @@ def move_summary(moves: list[dict]) -> list[dict]:
 
 
 # ── loader ───────────────────────────────────────────────────────────────────
+# Only games that have kicked off: before kickoff the latest capture is not yet
+# the close, and the tables would change on every capture.
 # books is only shipped for each game's last pre-kickoff capture (the only one
 # book_gaps reads); every other row carries the consensus columns alone.
 _CAPTURES_SQL = """
@@ -289,7 +291,7 @@ SELECT h.matchup_id, h.captured_at, h.home_spread, h.vegas_total, h.vegas_total_
             THEN h.books END AS books
 FROM game_odds_history h
 JOIN cfb_matchups m ON m.id = h.matchup_id
-WHERE h.sport = 'cfb' AND m.season = %s AND h.captured_at < m.commence_time
+WHERE h.sport = 'cfb' AND m.season = %s AND h.captured_at < m.commence_time AND m.commence_time <= now()
 ORDER BY h.matchup_id, h.captured_at
 """
 _GAMES_SQL = """
@@ -298,7 +300,7 @@ SELECT m.id AS matchup_id, m.week, m.commence_time, m.completed, m.home_score, m
 FROM cfb_matchups m
 JOIN cfb_teams ht ON ht.team_id = m.home_team_id
 JOIN cfb_teams at ON at.team_id = m.away_team_id
-WHERE m.season = %s AND m.commence_time IS NOT NULL
+WHERE m.season = %s AND m.commence_time IS NOT NULL AND m.commence_time <= now()
 """
 
 

@@ -179,6 +179,15 @@ def main(argv: list[str] | None = None) -> int:
         "cumulative_units.csv": cumulative_table(rows),
         "frozen_vs_close.csv": frozen_vs_close_table(fvc),
     }
+    # Reader-facing extras, each owned by its own module.
+    from model import (cfb_book_disagreement, cfb_drive_stories, cfb_key_numbers, cfb_pattern_history, cfb_team_ats,
+                       cfb_weekly_recap)
+
+    tables["market_breakdown_prior.csv"] = cfb_pattern_history.prior_breakdown_table(db, per_season=True)
+    tables["season_summary.csv"] = cfb_pattern_history.season_summary_table(db)
+    for module in (cfb_team_ats, cfb_weekly_recap, cfb_book_disagreement, cfb_key_numbers, cfb_drive_stories):
+        for key, rows in module.build_tables(db).items():
+            tables[f"{key}.csv"] = rows
     for name, t in tables.items():
         print(f"{out / name}: {write_csv(out / name, t)} rows")
     if args.store:

@@ -13,7 +13,13 @@ import {
   YAxis,
 } from "recharts";
 import type { PatternWatchDataset } from "@/db/cfb-pattern-watch";
+import BookDisagreement from "./book-disagreement";
+import DriveStories from "./drive-stories";
+import KeyNumbers from "./key-numbers";
 import MarketBreakdown from "./market-breakdown";
+import SeasonSummary from "./season-summary";
+import TeamAts from "./team-ats";
+import WeeklyRecap from "./weekly-recap";
 
 // dataviz reference palette, categorical slots in fixed order (never cycled).
 const SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"];
@@ -47,16 +53,21 @@ function Pill({ result }: { result: string }) {
 // One page, several reader-facing views. The selected tab is kept in the URL hash
 // so a link (and the browser back button) lands on the same view.
 const TABS = [
-  { id: "patterns", label: "Patterns" },
+  { id: "recap", label: "Weekly recap" },
   { id: "breakdown", label: "Breakdown" },
+  { id: "teams", label: "Teams" },
+  { id: "books", label: "Line moves" },
+  { id: "keys", label: "Key numbers" },
+  { id: "drives", label: "Drives" },
   { id: "weeks", label: "By week" },
+  { id: "patterns", label: "Patterns" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 const isTab = (v: string): v is TabId => TABS.some((t) => t.id === v);
 
 export default function PatternWatchClient({ dataset, error }: { dataset: PatternWatchDataset | null; error: string | null }) {
   const [patternFilter, setPatternFilter] = useState("all");
-  const [tab, setTab] = useState<TabId>("patterns");
+  const [tab, setTab] = useState<TabId>("recap");
   useEffect(() => {
     const read = () => {
       const h = window.location.hash.replace(/^#/, "").split("-")[0];
@@ -248,9 +259,32 @@ export default function PatternWatchClient({ dataset, error }: { dataset: Patter
         </div>
       )}
 
+      {tab === "recap" && (
+        <WeeklyRecap weeks={dataset.recapWeeks} upsets={dataset.recapUpsets} hooks={dataset.recapHooks} totalMisses={dataset.recapTotalMisses} />
+      )}
+
+      {tab === "teams" && <TeamAts teams={dataset.teamAts} conferences={dataset.conferenceReport} />}
+
+      {tab === "books" && <BookDisagreement gaps={dataset.bookGaps} moves={dataset.lineMoves} summary={dataset.moveSummary} />}
+
+      {tab === "keys" && (
+        <KeyNumbers margins={dataset.keyMargins} keyNumbers={dataset.keyNumbers} spreadLanding={dataset.spreadLanding} totalLanding={dataset.totalLanding} />
+      )}
+
+      {tab === "drives" && (
+        <DriveStories
+          fieldPosition={dataset.driveFieldPosition}
+          redZone={dataset.redZone}
+          fourthDown={dataset.fourthDown}
+          fourthDownTrend={dataset.fourthDownTrend}
+          comebacks={dataset.comebacks}
+        />
+      )}
+
       {tab === "breakdown" && (
         <div className="space-y-6">
-        {dataset.marketBreakdown.length > 0 && <MarketBreakdown rows={dataset.marketBreakdown} />}
+          {dataset.seasonSummary.length > 0 && <SeasonSummary rows={dataset.seasonSummary} />}
+        {dataset.marketBreakdown.length > 0 && <MarketBreakdown rows={dataset.marketBreakdown} prior={dataset.marketBreakdownPrior} />}
 
         {/* Older datasets carry only the overlapping splits; newer ones render the ordered breakdown above. */}
         {dataset.marketBreakdown.length === 0 && dataset.marketSplits.length > 0 && (

@@ -200,6 +200,31 @@ def home_ladder_chart(rows: list[dict], path: Path) -> bool:
     return True
 
 
+def _feature_charts(db, out: Path) -> dict[str, bool]:
+    """Chart images for the reader-facing feature modules, one PNG per story."""
+    from model import (cfb_book_disagreement as books, cfb_drive_stories as drives, cfb_key_numbers as keys,
+                       cfb_pattern_history as history, cfb_team_ats as teams, cfb_weekly_recap as recap)
+
+    made: dict[str, bool] = {}
+    made["season_summary.png"] = history.season_summary_chart(history.season_summary_table(db), out / "season_summary.png")
+    t = teams.build_tables(db)
+    made["team_ats.png"] = teams.team_ats_chart(t["team_ats"], out / "team_ats.png")
+    made["conference_ats.png"] = teams.conference_chart(t["conference_report"], out / "conference_ats.png")
+    r = recap.build_tables(db)
+    made["recap_upsets_per_week.png"] = recap.week_summary_chart(r["recap_weeks"], out / "recap_upsets_per_week.png")
+    if r["recap_weeks"]:
+        week = max(w["Week"] for w in r["recap_weeks"])
+        made[f"recap_upsets_week_{week}.png"] = recap.upset_chart(r["recap_upsets"], week, out / f"recap_upsets_week_{week}.png")
+    b = books.build_tables(db)
+    made["biggest_line_moves.png"] = books.biggest_moves_chart(b["line_moves"], out / "biggest_line_moves.png")
+    made["close_vs_open.png"] = books.close_vs_open_chart(b["move_summary"], out / "close_vs_open.png")
+    games = keys.load_games(db)
+    made["key_margins.png"] = keys.margin_chart(keys.margin_distribution(games), out / "key_margins.png", keys.chart_subtitle(games))
+    for path in drives.write_charts(drives.build_tables(db), out):
+        made[path.name] = True
+    return made
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out-dir", default=str(DEFAULT_DIR))
@@ -222,6 +247,7 @@ def main(argv: list[str] | None = None) -> int:
         "roi_by_spread.png": roi_band_chart(breakdown, "By spread", "Moneyline ROI by spread", out / "roi_by_spread.png"),
         "roi_by_total.png": roi_band_chart(breakdown, "By total", "Moneyline ROI by total", out / "roi_by_total.png"),
     }
+    made.update(_feature_charts(db, out))
     for name, ok in made.items():
         print(f"{out / name}: {'written' if ok else 'skipped, no data'}")
     return 0

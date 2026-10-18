@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { createContext, Fragment, useContext, useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -269,7 +269,13 @@ function RateBars({ rows, view }: { rows: MarketBreakdownRow[]; view: View }) {
   );
 }
 
+// The same rows for 2023-25 (model/cfb_pattern_history.py), keyed by level and row
+// label, so every table can show last three seasons beside this one.
+const PriorContext = createContext<{ label: string; rows: Map<string, MarketBreakdownRow> } | null>(null);
+const priorKey = (r: MarketBreakdownRow) => `${r["Level name"]}|${r.Split}`;
+
 function BandTable({ rows, view, first }: { rows: MarketBreakdownRow[]; view: View; first: string }) {
+  const prior = useContext(PriorContext);
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full text-xs">
@@ -283,6 +289,8 @@ function BandTable({ rows, view, first }: { rows: MarketBreakdownRow[]; view: Vi
             <th className="py-1 pr-3 text-right">Gap</th>
             <th className="py-1 pr-3 text-right">{view.aName} units</th>
             <th className="py-1 pr-3 text-right">{view.aName} ROI</th>
+            {prior && <th className="border-l py-1 pl-3 pr-3 text-right text-slate-500">{view.rateLabel} {prior.label}</th>}
+            {prior && <th className="py-1 pr-3 text-right text-slate-500">{view.aName} ROI {prior.label}</th>}
             {view.aMedian && <th className="py-1 pr-3 text-right">{view.aName} median</th>}
             <th className="border-l py-1 pl-3 pr-3 text-right">{view.bName} units</th>
             <th className="py-1 pr-3 text-right">{view.bName} ROI</th>
@@ -291,6 +299,7 @@ function BandTable({ rows, view, first }: { rows: MarketBreakdownRow[]; view: Vi
         </thead>
         <tbody>
           {rows.map((m) => {
+            const before = prior?.rows.get(priorKey(m));
             const games = view.games(m);
             const gap = view.rateGap(m);
             return (
@@ -303,6 +312,12 @@ function BandTable({ rows, view, first }: { rows: MarketBreakdownRow[]; view: Vi
                 <td className={`py-1 pr-3 text-right ${tone(gap)}`}>{gap == null ? "—" : `${signed(gap)} pts`}</td>
                 <td className={`py-1 pr-3 text-right ${tone(view.aUnits(m))}`}>{signed(view.aUnits(m), 2)}</td>
                 <td className={`py-1 pr-3 text-right ${tone(view.aRoi(m))}`}>{roi(view.aRoi(m))}</td>
+                {prior && (
+                  <td className="border-l py-1 pl-3 pr-3 text-right text-slate-500" title={before ? `${view.games(before)} games` : undefined}>
+                    {before ? pct(view.rate(before)) : "—"}
+                  </td>
+                )}
+                {prior && <td className={`py-1 pr-3 text-right ${tone(before ? view.aRoi(before) : null)}`}>{before ? roi(view.aRoi(before)) : "—"}</td>}
                 {view.aMedian && <td className="py-1 pr-3 text-right">{view.aMedian(m) ?? "—"}</td>}
                 <td className={`border-l py-1 pl-3 pr-3 text-right ${tone(view.bUnits(m))}`}>{signed(view.bUnits(m), 2)}</td>
                 <td className={`py-1 pr-3 text-right ${tone(view.bRoi(m))}`}>{roi(view.bRoi(m))}</td>
@@ -435,7 +450,12 @@ const GRIDS = [
   { id: "kickoff-tier", level: "Kickoff and tier", title: "Kickoff window, by matchup tier", row: "Kickoff", col: "Matchup" },
 ];
 
-export default function MarketBreakdown({ rows }: { rows: MarketBreakdownRow[] }) {
+export default function MarketBreakdown({ rows, prior = [] }: { rows: MarketBreakdownRow[]; prior?: (MarketBreakdownRow & { Seasons?: string })[] }) {
+  // Pooled prior seasons only; per-season blocks are in the CSV export.
+  const priorCtx = useMemo(() => {
+    const pooled = prior.filter((r) => r.Seasons && String(r.Seasons).includes("-"));
+    return pooled.length ? { label: String(pooled[0].Seasons), rows: new Map(pooled.map((r) => [priorKey(r), r])) } : null;
+  }, [prior]);
   const [market, setMarket] = useState<Market>("ml");
   const view = VIEWS[market];
   const level = (name: string) => rows.filter((r) => r["Level name"] === name);
@@ -462,77 +482,79 @@ export default function MarketBreakdown({ rows }: { rows: MarketBreakdownRow[] }
   const nav = [...WHERE_WHEN, ...THE_LINE, ...HOME_TEAMS, ...FORM_REST].filter((c) => level(c.level).length > 0);
 
   return (
-    <section className="space-y-4 rounded-lg border bg-card p-4">
-      <div className="space-y-3">
-        <div>
-          <h2 className="text-sm font-semibold">Favorites and underdogs, season to date</h2>
-          <p className="text-xs text-gray-500">
-            All FBS-vs-FBS regular-season games with a closing spread and moneylines. The whole slate first, then one cut at a time,
-            then two cuts together. Descriptive only: not study patterns and not graded for a verdict. With this many cuts of the same
-            games, some groups will look striking by chance.
-          </p>
+    <PriorContext.Provider value={priorCtx}>
+      <section className="space-y-4 rounded-lg border bg-card p-4">
+        <div className="space-y-3">
+          <div>
+            <h2 className="text-sm font-semibold">Favorites and underdogs, season to date</h2>
+            <p className="text-xs text-gray-500">
+              All FBS-vs-FBS regular-season games with a closing spread and moneylines. The whole slate first, then one cut at a time,
+              then two cuts together. Grey columns show the same group over the 2023-25 seasons for comparison. Descriptive only:
+              with this many cuts of the same games, some groups will look striking by chance.
+            </p>
+          </div>
+          <nav className="flex flex-wrap gap-1 text-[11px]">
+            {[...nav.map((c) => ({ id: c.id, title: c.title })), ...(half.length ? [{ id: "half", title: "Halftime" }] : []),
+              ...GRIDS.filter((g) => level(g.level).length > 0).map((g) => ({ id: g.id, title: g.title }))].map((c) => (
+              <a key={c.id} href={`#breakdown-${c.id}`} className="rounded-full border px-2 py-0.5 text-gray-600 hover:bg-slate-50">{c.title}</a>
+            ))}
+          </nav>
         </div>
-        <nav className="flex flex-wrap gap-1 text-[11px]">
-          {[...nav.map((c) => ({ id: c.id, title: c.title })), ...(half.length ? [{ id: "half", title: "Halftime" }] : []),
-            ...GRIDS.filter((g) => level(g.level).length > 0).map((g) => ({ id: g.id, title: g.title }))].map((c) => (
-            <a key={c.id} href={`#breakdown-${c.id}`} className="rounded-full border px-2 py-0.5 text-gray-600 hover:bg-slate-50">{c.title}</a>
+        <div className="sticky top-[57px] z-10 -mx-4 flex flex-wrap items-center gap-2 border-y bg-card px-4 py-2">
+          <span className="text-xs text-gray-500">Bet</span>
+          {(Object.keys(VIEWS) as Market[]).map((k) => (
+            <button
+              key={k}
+              onClick={() => setMarket(k)}
+              className={`rounded border px-3 py-1 text-xs ${market === k ? "border-slate-800 bg-slate-800 text-white" : "bg-white text-gray-700"}`}
+            >
+              {VIEWS[k].name}
+            </button>
           ))}
-        </nav>
-      </div>
-      <div className="sticky top-[57px] z-10 -mx-4 flex flex-wrap items-center gap-2 border-y bg-card px-4 py-2">
-        <span className="text-xs text-gray-500">Bet</span>
-        {(Object.keys(VIEWS) as Market[]).map((k) => (
-          <button
-            key={k}
-            onClick={() => setMarket(k)}
-            className={`rounded border px-3 py-1 text-xs ${market === k ? "border-slate-800 bg-slate-800 text-white" : "bg-white text-gray-700"}`}
-          >
-            {VIEWS[k].name}
-          </button>
-        ))}
-        <span className="text-[11px] text-gray-500">{view.note}</span>
-      </div>
-
-      <Step id="breakdown-all" n={1} title="Every game" note={`${view.games(overall)} games. The starting point every cut below adds up to.`}>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <SideCard label={view.aName} color={A_COLOR} record={view.aRecord(overall)} units={view.aUnits(overall)}
-            roiPct={view.aRoi(overall)} sub={view.rateText(overall)} />
-          <SideCard label={view.bName} color={B_COLOR} record={view.bRecord(overall)} units={view.bUnits(overall)}
-            roiPct={view.bRoi(overall)} sub={market === "ml" ? `median price ${overall["Underdog median price"] ?? "—"}` : "same games, other side"} />
+          <span className="text-[11px] text-gray-500">{view.note}</span>
         </div>
-      </Step>
 
-      <GroupHeading title="Where and when" note="Who is home, what kind of game, and when it kicks off." />
-      {steps(WHERE_WHEN)}
+        <Step id="breakdown-all" n={1} title="Every game" note={`${view.games(overall)} games. The starting point every cut below adds up to.`}>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <SideCard label={view.aName} color={A_COLOR} record={view.aRecord(overall)} units={view.aUnits(overall)}
+              roiPct={view.aRoi(overall)} sub={view.rateText(overall)} />
+            <SideCard label={view.bName} color={B_COLOR} record={view.bRecord(overall)} units={view.bUnits(overall)}
+              roiPct={view.bRoi(overall)} sub={market === "ml" ? `median price ${overall["Underdog median price"] ?? "—"}` : "same games, other side"} />
+          </div>
+        </Step>
 
-      <GroupHeading title="The line" note="What the closing market said, and how it got there." />
-      {steps(THE_LINE)}
+        <GroupHeading title="Where and when" note="Who is home, what kind of game, and when it kicks off." />
+        {steps(WHERE_WHEN)}
 
-      <GroupHeading title="Home teams" note="The same games told from the home team's side: its record and return, favorite or underdog." />
-      {steps(HOME_TEAMS, homeView(view, market))}
+        <GroupHeading title="The line" note="What the closing market said, and how it got there." />
+        {steps(THE_LINE)}
 
-      <GroupHeading title="Form and rest" note="What each team did last week and how long it has had since." />
-      {steps(FORM_REST)}
+        <GroupHeading title="Home teams" note="The same games told from the home team's side: its record and return, favorite or underdog." />
+        {steps(HOME_TEAMS, homeView(view, market))}
 
-      {half.length > 0 && (
-        <Fragment>
-          <GroupHeading title="In the game" note="Not a pregame bet: the halftime score is only known at halftime. Results are still graded at the closing price." />
-          <Step id="breakdown-half" n={++n} title="Halftime score" note={withUnplaced("How often favorites finished the job from each halftime position. Context for live betting.", half)}>
-            <OneCut rows={half} view={view} first="At half" />
-          </Step>
-        </Fragment>
-      )}
+        <GroupHeading title="Form and rest" note="What each team did last week and how long it has had since." />
+        {steps(FORM_REST)}
 
-      <GroupHeading title="Two cuts together" note="The most detailed views and the smallest samples." />
-      {GRIDS.map((g) => {
-        const cut = level(g.level);
-        if (cut.length === 0) return null;
-        return (
-          <Step key={g.id} id={`breakdown-${g.id}`} n={++n} title={g.title} note={`Every ${g.row.toLowerCase()} group crossed with every ${g.col.toLowerCase()} group.`}>
-            <Grid rows={cut} view={view} rowName={g.row} colName={g.col} />
-          </Step>
-        );
-      })}
-    </section>
+        {half.length > 0 && (
+          <Fragment>
+            <GroupHeading title="In the game" note="Not a pregame bet: the halftime score is only known at halftime. Results are still graded at the closing price." />
+            <Step id="breakdown-half" n={++n} title="Halftime score" note={withUnplaced("How often favorites finished the job from each halftime position. Context for live betting.", half)}>
+              <OneCut rows={half} view={view} first="At half" />
+            </Step>
+          </Fragment>
+        )}
+
+        <GroupHeading title="Two cuts together" note="The most detailed views and the smallest samples." />
+        {GRIDS.map((g) => {
+          const cut = level(g.level);
+          if (cut.length === 0) return null;
+          return (
+            <Step key={g.id} id={`breakdown-${g.id}`} n={++n} title={g.title} note={`Every ${g.row.toLowerCase()} group crossed with every ${g.col.toLowerCase()} group.`}>
+              <Grid rows={cut} view={view} rowName={g.row} colName={g.col} />
+            </Step>
+          );
+        })}
+      </section>
+    </PriorContext.Provider>
   );
 }
