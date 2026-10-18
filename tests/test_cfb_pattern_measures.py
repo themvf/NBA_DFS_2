@@ -236,3 +236,12 @@ def test_home_ladder_and_home_dog_prices():
     prices = _rows(b, "by_home_dog_price")
     assert prices["Home underdog +151 to +300"]["games"] == 1 and prices["Home underdog +100 to +150"]["games"] == 1
     assert sum(r["games"] for r in b["by_home_dog_price"]) == 2
+
+
+def test_tier_counts_the_old_pac12_as_power_through_2023():
+    from model import cfb_pattern_measures as m
+    g = {**_split_game(-200, 170, 30, 20), "hconf": "Pac-12", "aconf": "Mountain West", "hname": "Oregon", "aname": "Boise State"}
+    r23 = m._ml_eligible([{**g, "season": 2023}])[0]
+    r24 = m._ml_eligible([{**g, "season": 2024}])[0]
+    assert m._tier(r23) == "Power vs Group of Five"
+    assert m._tier(r24) == "Group of Five vs Group of Five"
