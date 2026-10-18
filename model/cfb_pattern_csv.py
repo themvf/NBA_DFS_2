@@ -69,29 +69,31 @@ def market_splits_table(splits: list[dict]) -> list[dict]:
         "Underdog record": f"{s['losses']}-{s['wins']}",
         "Underdog units": round(s["dog_units"], 2), "Underdog ROI (%)": _pct(s["dog_roi"]),
         "Underdog median price": american(s["dog_median_price"]),
+        **({} if "fav_covers" not in s else {
+            "Fav ATS record": f"{s['fav_covers']}-{s['dog_covers']}-{s['ats_pushes']}",
+            "Fav covered (%)": _pct(s["cover_rate"]),
+            "Fav ATS units": round(s["fav_ats_units"], 2), "Fav ATS ROI (%)": _pct(s["fav_ats_roi"]),
+            "Dog ATS units": round(s["dog_ats_units"], 2), "Dog ATS ROI (%)": _pct(s["dog_ats_roi"]),
+            "Games with total": s["total_games"],
+            "Over-under record": f"{s['overs']}-{s['unders']}-{s['total_pushes']}",
+            "Overs (%)": _pct(s["over_rate"]),
+            "Over units": round(s["over_units"], 2), "Over ROI (%)": _pct(s["over_roi"]),
+            "Under units": round(s["under_units"], 2), "Under ROI (%)": _pct(s["under_roi"]),
+        }),
     } for s in splits]
 
 
-BREAKDOWN_LEVELS = (
-    ("overall", 1, "All games"),
-    ("by_venue", 2, "By venue"),
-    ("by_spread", 3, "By spread"),
-    ("by_total", 4, "By total"),
-    ("by_venue_spread", 5, "Venue and spread"),
-    ("by_venue_total", 6, "Venue and total"),
-    ("by_spread_total", 7, "Spread and total"),
-)
-
-
 def market_breakdown_table(breakdown: dict) -> list[dict]:
-    """One flat table, simplest cut first: level 1 is every game, then single cuts, then two-way grids."""
+    """One flat table, simplest cut first: every game, then single cuts, then two-way grids."""
+    from model import cfb_pattern_measures as measures
+
     out = []
-    for key, level, name in BREAKDOWN_LEVELS:
+    for level, (key, name, _a, b) in enumerate(measures.BREAKDOWN_ORDER, start=1):
         rows = breakdown.get(key) or []
         rows = [rows] if isinstance(rows, dict) else rows
         for r, t in zip(rows, market_splits_table(rows)):
-            out.append({"Level": level, "Level name": name, "Venue": r.get("venue"),
-                        "Spread": r.get("spread_band"), "Total": r.get("total_band"), **t})
+            out.append({"Level": level, "Level name": name, "Grid": b is not None,
+                        "Group": r.get("group"), "Column": r.get("column"), **t})
     return out
 
 

@@ -125,6 +125,10 @@ def test_market_splits_grade_the_moneyline_favorite():
     assert seven["Spread 7 to 13.5"]["dog_units"] == 3.0 and seven["Spread 14 or more"]["games"] == 0
 
 
+def _rows(b, key):
+    return {r["group"] if r["column"] is None else (r["group"], r["column"]): r for r in b[key]}
+
+
 def test_market_breakdown_bands_partition_the_games():
     from model import cfb_pattern_measures as m
     from model import cfb_pattern_csv as cc
@@ -137,15 +141,17 @@ def test_market_breakdown_bands_partition_the_games():
     b = m.market_breakdown(games)
     assert b["overall"]["games"] == 4
     assert [r["games"] for r in b["by_spread"]] == [1, 1, 1, 1]
-    assert [r["games"] for r in b["by_total"]] == [1, 1, 1] and b["missing_total"] == 1
-    assert sum(r["games"] for r in b["by_spread_total"]) == 3 and len(b["by_spread_total"]) == 12
-    cell = next(r for r in b["by_spread_total"] if r["spread_band"] == "Spread 7 to 13.5" and r["total_band"] == "Total 55 or more")
+    assert [r["games"] for r in b["by_total"]] == [1, 1, 1]
+    assert sum(r["games"] for r in b["x_spread_total"]) == 3 and len(b["x_spread_total"]) == 12
+    cell = _rows(b, "x_spread_total")[("Spread 7 to 13.5", "Total 55 or more")]
     assert (cell["wins"], cell["losses"]) == (0, 1) and round(cell["dog_units"], 4) == 1.5
-    # Overall units equal the sum over spread bands: the bands add up to the whole.
+    # The bands add up to the whole.
     assert round(sum(r["units"] for r in b["by_spread"]), 6) == round(b["overall"]["units"], 6)
     table = cc.market_breakdown_table(b)
-    assert [r["Level"] for r in table] == [1] + [2] * 3 + [3] * 4 + [4] * 3 + [5] * 12 + [6] * 9 + [7] * 12
-    assert table[0]["Split"] == "All games" and table[4]["Spread"] == "Spread 0 to 2.5"
+    assert table[0]["Split"] == "All games" and table[0]["Level"] == 1
+    assert [r["Level name"] for r in table if r["Level"] == 2] == ["By venue"] * 3
+    assert all(r["Grid"] for r in table if r["Level name"] == "Spread and total")
+    assert "Fav ATS record" in table[0] and "Over-under record" in table[0]
 
 
 def test_market_breakdown_venue_groups():
@@ -154,11 +160,59 @@ def test_market_breakdown_venue_groups():
     games = [
         _split_game(-200, 170, 30, 20, spread=-5.5),   # home favorite wins
         _split_game(150, -180, 28, 21, spread=3.5),    # away favorite loses
-        neutral,                                        # neutral site, listed home team favored
+        neutral,
     ]
-    v = {r["venue"]: r for r in m.market_breakdown(games)["by_venue"]}
+    b = m.market_breakdown(games)
+    v = _rows(b, "by_venue")
     assert (v["Home favorite"]["games"], v["Home favorite"]["wins"]) == (1, 1)
     assert (v["Away favorite"]["games"], v["Away favorite"]["losses"]) == (1, 1)
     assert v["Neutral site"]["games"] == 1
-    vs = m.market_breakdown(games)["by_venue_spread"]
-    assert len(vs) == 12 and sum(r["games"] for r in vs) == 3
+    assert len(b["x_venue_spread"]) == 12 and sum(r["games"] for r in b["x_venue_spread"]) == 3
+
+
+def test_market_breakdown_grades_spread_and_total():
+    from model import cfb_pattern_measures as m
+    games = [
+        _split_game(-200, 170, 30, 20, spread=-7.0, total=50.0),   # fav by 10 covers -7; 50 total -> push
+        _split_game(-200, 170, 27, 20, spread=-7.0, total=40.0),   # fav by 7: push; 47 > 40 over
+        _split_game(150, -180, 20, 24, spread=6.5, total=50.0),    # away fav by 4 misses -6.5; 44 under
+    ]
+    r = m.market_breakdown(games)["overall"]
+    assert (r["fav_covers"], r["dog_covers"], r["ats_pushes"]) == (1, 1, 1)
+    assert r["cover_rate"] == 0.5
+    assert round(r["fav_ats_units"], 4) == round(100 / 110 - 1, 4)
+    assert (r["overs"], r["unders"], r["total_pushes"], r["total_games"]) == (1, 1, 1, 3)
+
+
+def test_market_breakdown_context_cuts():
+    from datetime import datetime, timezone
+    from model import cfb_pattern_measures as m
+
+    def g(mid, home, away, hs, as_, when, home_ml=-200, away_ml=170, **kw):
+        return {**_split_game(home_ml, away_ml, hs, as_), "matchup_id": mid, "home_team_id": home,
+                "away_team_id": away, "commence_time": when, **kw}
+
+    sat = lambda d, h: datetime(2026, 9, d, h, 0, tzinfo=timezone.utc)
+    games = [
+        g(1, 10, 20, 14, 21, sat(5, 16)),                       # team 10 loses week 1 (noon ET)
+        g(2, 30, 40, 28, 3, sat(5, 23)),                        # team 30 wins week 1 (7 pm ET)
+        # Week 3: team 10 (off a loss, 14 days rest) hosts team 30 (7 days rest, off its week-2 game).
+        g(3, 30, 50, 21, 20, sat(12, 20)),
+        g(4, 10, 30, 31, 14, sat(19, 20), conference_game=True, hconf="Sun Belt", aconf="SEC",
+          hname="Troy", aname="Alabama", home_line_scores=[0, 3, 14, 14], away_line_scores=[7, 7, 0, 0]),
+    ]
+    m.attach_context(games, {4: (-150, 130)})
+    b = m.market_breakdown(games)
+    r4 = [r for r in m._ml_eligible(games) if r["g"]["matchup_id"] == 4][0]
+    assert m._last_result(r4) == "Favorite lost last game"
+    assert m._rest(r4) == "Favorite had more rest"          # 14 days vs 7
+    assert m._half(r4) == "Favorite trailed at half"         # 3 vs 14
+    assert m._tier(r4) == "Power vs Group of Five"
+    assert m._conference(r4) == "Conference game"
+    assert m._kickoff(r4) == "Saturday 2 to 5 pm"            # 20:00 UTC = 4 pm ET
+    assert m._move(r4) == "Moved toward favorite"            # -150 open to -200 close
+    assert m._price_band(r4) == "-151 to -250"
+    # The favorite's first game has no previous result: left out of that cut, not guessed.
+    r1 = [r for r in m._ml_eligible(games) if r["g"]["matchup_id"] == 1][0]
+    assert m._last_result(r1) is None and m._rest(r1) is None and m._move(r1) is None
+    assert sum(r["games"] for r in b["by_last"]) == 2
