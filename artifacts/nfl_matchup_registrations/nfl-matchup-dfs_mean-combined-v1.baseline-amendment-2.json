@@ -1,0 +1,14 @@
+{
+  "study_id": "nfl-matchup-dfs_mean-combined-v1",
+  "registration_manifest_hash": "2e4a486c10075e00cc9da08b2a586a1ad1d05971b89052e660052969b9b43545",
+  "registered_at": "2026-10-18T14:05:42.702647+00:00",
+  "previous_baseline_config_hash": "0a4b14b66998e7aeaa89f7dc6aaefab8a016759c277db53bc11109a65a14bb5a",
+  "baseline_config_hash": "4104d1a30d637ff9c6f22a48d444128aeb222a09646a15cfb921d83a5603330a",
+  "holdout_end_at": "2027-01-12T00:00:00+00:00",
+  "change": {
+    "qb_starter_mode": "on"
+  },
+  "reason": "production_config() gained qb_starter_mode='on' on 2026-10-12 (nfl-qb-spot-start-v2 expected-starter overlay), so every production run since 2026-10-12 10:09 UTC hashes to 4104d1a3 and no capture after that could match this cohort's 0a4b14b6 pin. Re-pin to the current production configuration; the holdout restarts at this amendment and the endpoint moves to 2027-01-12 so the 8-week gate is reachable. Candidate constants, fitted artifacts, implementation pins, scorer, gates and scope unchanged. Owner decision 2026-10-18.",
+  "outcomes_consulted": false,
+  "prior_freezes": "excluded from this amended cohort, never relabeled"
+}

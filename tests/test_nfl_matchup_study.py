@@ -12,7 +12,7 @@ def manifest(kind="dfs_mean"):
     source = json.loads(Path("docs/nfl-matchup-studies.json").read_text())["studies"]
     m = deepcopy(next(s for s in source if s["kind"] == kind and s["components"] == ["pressure"]))
     m.update(status="registered", registered_at="2026-09-27T15:00:00+00:00",
-             holdout_start_at="2026-10-01T00:00:00+00:00",
+             holdout_start_at="2026-10-01T00:00:00+00:00", holdout_end_at="2026-12-01T00:00:00+00:00",
              baseline_config_hash="a"*64, candidate_config_hash="b"*64, bootstrap_draws=2000)
     return m
 
@@ -409,3 +409,48 @@ def test_context_compatibility_declares_the_current_realized_version():
         compat["equivalence_proof"]["ingest/nfl_dfs_results.py:score_source_row"]["ast_sha256"]
     for earlier in ("nfl-dk-realized-v2", "nfl-dk-realized-v3"):
         assert earlier in compat["versions"], "earlier declarations are kept"
+
+
+def test_dfs_studies_pin_the_current_production_config_after_amendment_2():
+    """2026-10-18: qb_starter_mode joined production_config() on 10-12; the
+    re-pin restarts the holdout and extends the endpoint to reach 8 weeks."""
+    from research.nfl_matchup_study import resolve_registration
+    for entry in (s for s in _registry() if s.get("status") == "registered" and s["kind"] == "dfs_mean"):
+        resolved = resolve_registration(entry)
+        assert resolved["baseline_config_hash"] == entry["baseline_config_hash"] == \
+            "4104d1a30d637ff9c6f22a48d444128aeb222a09646a15cfb921d83a5603330a"
+        assert resolved["holdout_end_at"] == entry["holdout_end_at"] == "2027-01-12T00:00:00+00:00"
+        amendment = json.loads(Path(entry["amendment_files"][-1]).read_text())
+        assert resolved["registered_at"] == resolved["holdout_start_at"] == amendment["registered_at"]
+        assert amendment["registered_at"] < "2026-10-22T00:15:00+00:00"
+        assert amendment["outcomes_consulted"] is False
+
+
+def test_a_baseline_amendment_after_an_outcome_amendment_restarts_and_cannot_shorten(tmp_path):
+    import pytest
+    from model.nfl_matchup_study import digest, implementation_digest
+    from research.nfl_matchup_study import resolve_registration
+    original = manifest()
+    original.update(scoring_version="v1", holdout_end_at="2026-12-01T00:00:00+00:00")
+    registration = tmp_path / "registered.json"
+    registration.write_text(json.dumps(original))
+    source = tmp_path / "scorer.py"
+    source.write_bytes(b"x=1\n")
+    outcome = {"registration_manifest_hash": digest(original), "registered_at": "2026-09-29T00:00:00+00:00",
+               "previous_scoring_version": "v1", "scoring_version": "v2", "previous_amendment_hash": None,
+               "hash_algorithm": "sha256_lf_normalized", "implementation_hashes": {str(source): implementation_digest(source.read_bytes())}}
+    baseline = {"registration_manifest_hash": digest(original), "registered_at": "2026-10-18T00:00:00+00:00",
+                "previous_baseline_config_hash": original["baseline_config_hash"], "baseline_config_hash": "c"*64,
+                "holdout_end_at": "2027-01-12T00:00:00+00:00"}
+    (tmp_path / "outcome.json").write_text(json.dumps(outcome))
+    (tmp_path / "baseline.json").write_text(json.dumps(baseline))
+    index = {"registration_file": str(registration), "outcome_amendment_files": [str(tmp_path / "outcome.json")],
+             "amendment_files": [str(tmp_path / "baseline.json")]}
+    resolved = resolve_registration(index)
+    assert resolved["registered_at"] == resolved["holdout_start_at"] == baseline["registered_at"]
+    assert resolved["baseline_config_hash"] == "c"*64 and resolved["scoring_version"] == "v2"
+    assert resolved["holdout_end_at"] == "2027-01-12T00:00:00+00:00"
+    baseline["holdout_end_at"] = "2026-11-01T00:00:00+00:00"
+    (tmp_path / "baseline.json").write_text(json.dumps(baseline))
+    with pytest.raises(ValueError, match="never shorten"):
+        resolve_registration(index)

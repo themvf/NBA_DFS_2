@@ -119,19 +119,28 @@ def test_current_coherent_registration_matches_code_and_preserves_prior_contract
     # The only contract key each re-registration may change, and to what. v5
     # declares main's realized-v4 outcome scorer (DST components v2); nothing
     # else in the contract moves, at v5 or at any earlier step of the chain.
-    declared = {5: {"outcome_scoring_version": "nfl-dk-realized-v4"}}
+    declared = {5: {"outcome_scoring_version": "nfl-dk-realized-v4"},
+                # v6 (2026-10-18): production_config() gained qb_starter_mode on
+                # 10-12, so the baseline pin moves, the forward start moves to the
+                # first week after registration, and the endpoint moves so the
+                # 8-week floor is reachable. Simulation and gates are unchanged.
+                6: {"baseline_config_hash": "4104d1a30d637ff9c6f22a48d444128aeb222a09646a15cfb921d83a5603330a",
+                    "forward_start": {"season": 2026, "first_full_week": 7},
+                    "evaluation_end_at": "2027-01-12T00:00:00+00:00"}}
 
     current_path = Path("research/nfl_coherent_scenario_study.json")
     current = json.loads(current_path.read_text())
+    # v6 keeps the v5 model_version: the simulation file is byte-identical.
+    assert current["study_id"] == "nfl-coherent-matchup-v6"
     assert current["model_version"] == VERSION == "nfl-coherent-matchup-research-v5"
-    assert current_path.read_bytes() == Path("research/nfl_coherent_scenario_study_v5.json").read_bytes()
+    assert current_path.read_bytes() == Path("research/nfl_coherent_scenario_study_v6.json").read_bytes()
     assert current["outcome_scoring_version"] == SCORING_VERSION
     for name, expected in current["implementation_hashes"].items():
         assert sha256(Path(name).read_bytes().replace(b"\r\n", b"\n")).hexdigest() == expected, name
 
-    chain = {n: Path(f"research/nfl_coherent_scenario_study_v{n}.json") for n in (3, 4, 5)}
+    chain = {n: Path(f"research/nfl_coherent_scenario_study_v{n}.json") for n in (3, 4, 5, 6)}
     manifests = registered_manifests()
-    for n in (4, 5):
+    for n in (4, 5, 6):
         previous, later = json.loads(chain[n - 1].read_text()), json.loads(chain[n].read_text())
         assert later["previous_registration_sha256_lf"] == lf_sha(chain[n - 1]), n
         assert later["supersedes_study_id"] == previous["study_id"], n
@@ -140,6 +149,7 @@ def test_current_coherent_registration_matches_code_and_preserves_prior_contract
             expected = declared.get(n, {}).get(key, previous[key])
             assert later[key] == expected, (n, key)
         assert any(digest(m) == digest(previous) for m in manifests), n
+        assert later["implementation_hashes"] == previous["implementation_hashes"] or n < 6, n
     assert any(digest(m) == digest(current) for m in manifests)
 
 
@@ -153,3 +163,19 @@ def test_forward_registration_never_inherits_previous_version_rows():
     assert result["rejected"]["different coherent registration/model"] == len(historical)
     assert result["verdict"] == "NO_VERDICT"
     assert grade(old, historical)["verdict"] == "PASS"
+
+
+def test_v5_rows_never_enter_v6_and_v6_rows_never_enter_v5():
+    """Same model_version, different registration: the registration digest and
+    the baseline pin each keep the two cohorts apart."""
+    import json
+    from pathlib import Path
+    v5 = json.loads(Path("research/nfl_coherent_scenario_study_v5.json").read_text())
+    v6 = json.loads(Path("research/nfl_coherent_scenario_study_v6.json").read_text())
+    assert v5["model_version"] == v6["model_version"] and digest(v5) != digest(v6)
+    assert v5["baseline_config_hash"] != v6["baseline_config_hash"]
+    assert v6["registered_at"] < "2026-10-22T00:15:00+00:00", "registered before the first week-7 kickoff"
+    rows_v5 = records(v5)
+    graded = grade(v6, rows_v5)
+    assert graded["frozen_rows"] == 0
+    assert graded["rejected"]["different coherent registration/model"] == len(rows_v5)
