@@ -187,3 +187,14 @@ assert.equal(unsaved.items.at(-1)!.text, "This check couldn't be saved, so the s
 assert.equal(unsaved.needs, clean.needs, "a note, not a new problem to fix");
 
 console.log("Slate Check: clean slate is quiet; the PHI@CHI failures each become one plain line with a fix; overrides and local builds are flagged; stale projections, depth charts and DraftKings statuses, unreadable captures, mixed ownership and unsaved checks are said.");
+
+// A starter or promoted player with no outcome range is named (2026-10-18, Jalon Daniels).
+{
+  const check = buildSlateCheck(base({ missingRange: [{ name: "Jalon Daniels", team: "TB", why: "confirmed starter" }] }));
+  const item = check.items.find((i) => i.id === "missing-range");
+  assert.ok(item && item.level === "attention", "missing range needs the user");
+  assert.match(item!.text, /Jalon Daniels \(TB, confirmed starter\)/);
+  assert.match(item!.text, /1\.28x/);
+  assert.equal(buildSlateCheck(base({ missingRange: [] })).items.some((i) => i.id === "missing-range"), false, "no warning without a gap");
+  console.log("Slate check: missing outcome range is named.");
+}

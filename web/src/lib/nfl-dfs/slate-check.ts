@@ -99,6 +99,13 @@ export interface SlateCheckInput {
   /** The experimental projection sources (workload, calibrated): usable now, or why not. */
   experimentalSources?: { label: string; usable: boolean; reason: string }[] | null;
   specialTeams?: { text: string; action?: 'refresh_projections' | 'update_data'; missing: readonly unknown[] } | null;
+  /**
+   * Starters and players who took over a ruled-out teammate's work, with no
+   * outcome range (P10 or P90). The optimizer then guesses a ceiling of 1.28x
+   * the projection, so it underplays exactly the players whose role just grew
+   * (Jalon Daniels, TB, 2026-10-18: P90 shown as 0.0, left out of lineups).
+   */
+  missingRange?: { name: string; team: string; why: string }[] | null;
 }
 
 const STARTER = "Expected starter · QB1";
@@ -298,6 +305,12 @@ export function buildSlateCheck(input: SlateCheckInput): SlateCheck {
       text: source.usable ? `${source.label} source ready. ${source.reason}` : `${source.label} source unavailable: ${source.reason}` });
   }
 
+  if (input.missingRange?.length) {
+    const named = input.missingRange.slice(0, 4).map((p) => `${p.name} (${p.team}, ${p.why})`).join(", ");
+    add({ id: "missing-range", level: "attention",
+      text: `${input.missingRange.length} player${input.missingRange.length === 1 ? " has" : "s have"} no outcome range: ${named}${input.missingRange.length > 4 ? ", …" : ""}. `
+        + `The optimizer guesses ${input.missingRange.length === 1 ? "his" : "their"} ceiling at 1.28x the projection, well under a real starter's, so ${input.missingRange.length === 1 ? "he" : "they"} will be underplayed in GPP lineups. Set a minimum exposure, or report it so the range can be fixed.` });
+  }
   if (input.unmatched.length) add({ id: "unmatched", level: "attention", text: `${input.unmatched.length} player${input.unmatched.length === 1 ? "" : "s"} couldn't be matched to our model and have no projection: ${input.unmatched.slice(0, 3).join(", ")}${input.unmatched.length > 3 ? ", …" : ""}.` });
 
   if (input.specialTeams) add({ id: 'special-teams', level: input.specialTeams.missing.length ? !started && input.specialTeams.action ? 'attention' : 'info' : 'ok',
