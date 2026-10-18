@@ -35,3 +35,12 @@ def test_dataset_digest_ignores_key_order():
     b = {"patterns": [{"Units": 1.0, "Pattern": "T1"}], "study_version": "v2"}
     assert store.dataset_digest(a) == store.dataset_digest(b)
     assert store.dataset_digest(a) != store.dataset_digest({**a, "study_version": "v3"})
+
+
+def test_roi_band_chart(tmp_path):
+    from model import cfb_pattern_measures as m
+    g = {"week": 1, "season_type": "regular", "home_score": 30, "away_score": 20, "home_spread": -5.5,
+         "home_ml": -200, "away_ml": 170, "vegas_total": 50.0, "hclass": "fbs", "aclass": "fbs"}
+    table = cc.market_breakdown_table(m.market_breakdown([g]))
+    assert ch.roi_band_chart(table, "By spread", "t", tmp_path / "s.png")
+    assert not ch.roi_band_chart([], "By spread", "t", tmp_path / "x.png")

@@ -13,6 +13,7 @@ import {
   YAxis,
 } from "recharts";
 import type { PatternWatchDataset } from "@/db/cfb-pattern-watch";
+import MarketBreakdown from "./market-breakdown";
 
 // dataviz reference palette, categorical slots in fixed order (never cycled).
 const SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"];
@@ -144,7 +145,10 @@ export default function PatternWatchClient({ dataset, error }: { dataset: Patter
         </div>
       </section>
 
-      {dataset.marketSplits.length > 0 && (
+      {dataset.marketBreakdown.length > 0 && <MarketBreakdown rows={dataset.marketBreakdown} />}
+
+      {/* Older datasets carry only the overlapping splits; newer ones render the ordered breakdown above. */}
+      {dataset.marketBreakdown.length === 0 && dataset.marketSplits.length > 0 && (
         <section className="rounded-lg border bg-card p-4">
           <h2 className="text-sm font-semibold">Moneyline favorites and underdogs, season to date</h2>
           <p className="mb-3 text-xs text-gray-500">

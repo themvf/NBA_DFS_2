@@ -143,6 +143,33 @@ def weekly_chart(weeks: list[dict], path: Path) -> bool:
     return True
 
 
+def roi_band_chart(rows: list[dict], key: str, title: str, path: Path) -> bool:
+    """Favorite and underdog ROI side by side for each band (rows from market_breakdown_table)."""
+    rows = [r for r in rows if r["Level name"] == key and r["Games"]]
+    if not rows:
+        return False
+    labels = [f"{r['Split'].replace('Spread ', '').replace('Total ', '')}\n{r['Games']} games" for r in rows]
+    fav = [r["ROI (%)"] or 0.0 for r in rows]
+    dog = [r["Underdog ROI (%)"] or 0.0 for r in rows]
+    xs = list(range(len(rows)))
+    fig, ax = _figure(3.8)
+    w = 0.38
+    ax.bar([x - w / 2 for x in xs], fav, width=w, color=SERIES[0], label="Favorites")
+    ax.bar([x + w / 2 for x in xs], dog, width=w, color=SERIES[1], label="Underdogs")
+    ax.axhline(0, color=INK_2, linewidth=0.8)
+    for x, f, d in zip(xs, fav, dog):
+        for xx, v in ((x - w / 2, f), (x + w / 2, d)):
+            ax.annotate(f"{v:+.1f}%", (xx, v), xytext=(0, 3 if v >= 0 else -10), textcoords="offset points",
+                        ha="center", fontsize=7, color=INK)
+    ax.set_xticks(xs, labels, fontsize=7.5, color=INK)
+    ax.margins(y=0.12)
+    ax.set_ylabel("ROI per unit, %", color=INK_2, fontsize=8)
+    ax.legend(loc="lower left", fontsize=7.5, frameon=False, labelcolor=INK)
+    _style(ax, title, "One unit on each side at its closing moneyline, all FBS games with a closing line.")
+    _save(fig, path)
+    return True
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out-dir", default=str(DEFAULT_DIR))
@@ -152,12 +179,16 @@ def main(argv: list[str] | None = None) -> int:
 
     db = DatabaseManager(load_config().database_url, initialize_schema=False)
     rows = store.read_ledger(db)
-    rates = measures.weekly_base_rates(measures.load_base_rate_games(db))
+    base_games = measures.load_base_rate_games(db)
+    rates = measures.weekly_base_rates(base_games)
+    breakdown = cc.market_breakdown_table(measures.market_breakdown(base_games))
     out = Path(args.out_dir)
     made = {
         "cumulative_units.png": cumulative_chart(cc.cumulative_table(rows), out / "cumulative_units.png"),
         "pattern_units.png": pattern_chart(cc.patterns_table(rows), out / "pattern_units.png"),
         "weekly_favorites.png": weekly_chart(cc.weekly_table(rates), out / "weekly_favorites.png"),
+        "roi_by_spread.png": roi_band_chart(breakdown, "By spread", "Moneyline ROI by spread", out / "roi_by_spread.png"),
+        "roi_by_total.png": roi_band_chart(breakdown, "By total", "Moneyline ROI by total", out / "roi_by_total.png"),
     }
     for name, ok in made.items():
         print(f"{out / name}: {'written' if ok else 'skipped, no data'}")

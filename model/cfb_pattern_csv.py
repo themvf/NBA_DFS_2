@@ -72,6 +72,26 @@ def market_splits_table(splits: list[dict]) -> list[dict]:
     } for s in splits]
 
 
+BREAKDOWN_LEVELS = (
+    ("overall", 1, "All games"),
+    ("by_spread", 2, "By spread"),
+    ("by_total", 3, "By total"),
+    ("by_spread_total", 4, "Spread and total"),
+)
+
+
+def market_breakdown_table(breakdown: dict) -> list[dict]:
+    """One flat table, simplest cut first: level 1 is every game, level 4 every spread x total cell."""
+    out = []
+    for key, level, name in BREAKDOWN_LEVELS:
+        rows = breakdown.get(key) or []
+        rows = [rows] if isinstance(rows, dict) else rows
+        for r, t in zip(rows, market_splits_table(rows)):
+            out.append({"Level": level, "Level name": name,
+                        "Spread": r.get("spread_band"), "Total": r.get("total_band"), **t})
+    return out
+
+
 def results_table(rows: list[dict]) -> list[dict]:
     label = {k: v[0] for k, v in pub.TRIGGER_LABEL.items()}
     ordered = sorted(rows, key=lambda r: (r["game_date"], r["commence_time"], r["trigger"]))
@@ -149,6 +169,7 @@ def main(argv: list[str] | None = None) -> int:
         "patterns.csv": patterns_table(rows),
         "weekly_favorites.csv": weekly_table(rates),
         "market_splits.csv": market_splits_table(measures.market_splits(base_games)),
+        "market_breakdown.csv": market_breakdown_table(measures.market_breakdown(base_games)),
         "results.csv": results_table(rows),
         "cumulative_units.csv": cumulative_table(rows),
         "frozen_vs_close.csv": frozen_vs_close_table(fvc),

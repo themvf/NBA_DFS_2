@@ -255,3 +255,16 @@ set. It is also marked noindex. Sharing it later means removing the key check.
 `cfb_pattern_datasets` is not on the health dataset registry: a digest-keyed
 insert cannot tell "refreshed" from "unchanged". The run heartbeats already
 cover whether the job ran.
+
+## Market breakdown on the private page (2026-10-18)
+
+The descriptive moneyline splits became one ordered section, simplest cut first:
+(1) every game, (2) by spread band (0-2.5, 3-6.5, 7-13.5, 14+), (3) by total band
+(under 45, 45-54.5, 55+), (4) every spread band crossed with every total band.
+Bands partition the games, so each level adds up to level 1 (games without a total
+are left out of 3 and 4 and counted). Each row shows the favorite and the underdog in
+the same games, one unit each at the closing moneyline. `market_breakdown()` in
+`model/cfb_pattern_measures.py` computes it; the CSV export writes
+`market_breakdown.csv` and the charts job writes `roi_by_spread.png` and
+`roi_by_total.png`. Still descriptive: not study patterns, not graded for a verdict,
+and the 12 crossed cells are mostly too small to read on their own.

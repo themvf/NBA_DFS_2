@@ -123,3 +123,26 @@ def test_market_splits_grade_the_moneyline_favorite():
     assert rows["Spread 14 or more"]["games"] == 0
     seven = {r["split"]: r for r in m.market_splits([_split_game(-400, 300, 17, 20, spread=-10.0)])}
     assert seven["Spread 7 to 13.5"]["dog_units"] == 3.0 and seven["Spread 14 or more"]["games"] == 0
+
+
+def test_market_breakdown_bands_partition_the_games():
+    from model import cfb_pattern_measures as m
+    from model import cfb_pattern_csv as cc
+    games = [
+        _split_game(-120, 100, 21, 20, spread=-1.5, total=44.5),   # spread 0-2.5, total under 45
+        _split_game(-250, 200, 31, 24, spread=-6.5, total=52.0),   # spread 3-6.5, 45-54.5
+        _split_game(150, -180, 28, 21, spread=7.0, total=55.0),    # away fav loses; 7-13.5, 55+
+        _split_game(-2000, 1100, 49, 7, spread=-24.0, total=None), # 14+, no total
+    ]
+    b = m.market_breakdown(games)
+    assert b["overall"]["games"] == 4
+    assert [r["games"] for r in b["by_spread"]] == [1, 1, 1, 1]
+    assert [r["games"] for r in b["by_total"]] == [1, 1, 1] and b["missing_total"] == 1
+    assert sum(r["games"] for r in b["by_spread_total"]) == 3 and len(b["by_spread_total"]) == 12
+    cell = next(r for r in b["by_spread_total"] if r["spread_band"] == "Spread 7 to 13.5" and r["total_band"] == "Total 55 or more")
+    assert (cell["wins"], cell["losses"]) == (0, 1) and round(cell["dog_units"], 4) == 1.5
+    # Overall units equal the sum over spread bands: the bands add up to the whole.
+    assert round(sum(r["units"] for r in b["by_spread"]), 6) == round(b["overall"]["units"], 6)
+    table = cc.market_breakdown_table(b)
+    assert [r["Level"] for r in table] == [1] + [2] * 4 + [3] * 3 + [4] * 12
+    assert table[0]["Split"] == "All games" and table[1]["Spread"] == "Spread 0 to 2.5"

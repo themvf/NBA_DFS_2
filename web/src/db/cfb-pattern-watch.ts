@@ -25,6 +25,9 @@ export type MarketSplitRow = {
   "Underdog record"?: string; "Underdog units"?: number; "Underdog ROI (%)"?: number | null;
   "Underdog median price"?: string | null;
 };
+export type MarketBreakdownRow = MarketSplitRow & {
+  Level: 1 | 2 | 3 | 4; "Level name": string; Spread: string | null; Total: string | null;
+};
 export type ResultRow = {
   Date: string; Game: string; Pattern: string; Pick: string; Price: string; Final: string; Result: string; Units: number;
 };
@@ -41,6 +44,7 @@ export type PatternWatchDataset = {
   patterns: PatternRow[];
   weekly: WeeklyRow[];
   marketSplits: MarketSplitRow[];
+  marketBreakdown: MarketBreakdownRow[];
   results: ResultRow[];
   cumulative: CumulativeRow[];
   frozenVsClose: FrozenRow[];
@@ -61,6 +65,7 @@ export async function getLatestPatternWatchDataset(): Promise<PatternWatchDatase
     patterns: (p.patterns ?? []) as PatternRow[],
     weekly: (p.weekly_favorites ?? []) as WeeklyRow[],
     marketSplits: (p.market_splits ?? []) as MarketSplitRow[],
+    marketBreakdown: (p.market_breakdown ?? []) as MarketBreakdownRow[],
     results: (p.results ?? []) as ResultRow[],
     cumulative: (p.cumulative_units ?? []) as CumulativeRow[],
     frozenVsClose: (p.frozen_vs_close ?? []) as FrozenRow[],
