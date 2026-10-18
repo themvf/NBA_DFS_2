@@ -40,6 +40,9 @@ BASE_RATES_PATH = BASE / "base_rates.json"
 
 _BASE_SQL = """
 SELECT m.id AS matchup_id, m.week, m.season_type, m.home_score, m.away_score,
+       m.commence_time, m.home_team_id, m.away_team_id, m.conference_game,
+       m.home_line_scores, m.away_line_scores,
+       ht.conference AS hconf, at.conference AS aconf, ht.name AS hname, at.name AS aname,
        COALESCE(h.home_spread, m.home_spread) AS home_spread,
        COALESCE(h.home_ml, m.home_ml) AS home_ml,
        COALESCE(h.away_ml, m.away_ml) AS away_ml,
@@ -112,12 +115,21 @@ MARKET_SPLITS = (
 )
 
 
-def _ml_eligible(games: list[dict]) -> list[tuple]:
-    """(game, favorite won, favorite decimal, favorite vig-free prob, underdog decimal).
+SPREAD_PRICE = 1 + 100 / 110   # spread and total bets graded at -110
 
-    FBS-vs-FBS regular season with a spread and both moneylines. The favorite
-    is the side with the shorter moneyline; a game priced level on both sides
-    has no favorite and is skipped, as is a tied final.
+
+def _sign(x: float) -> int:
+    return (x > 0) - (x < 0)
+
+
+def _ml_eligible(games: list[dict]) -> list[dict]:
+    """One record per FBS-vs-FBS regular-season game with a spread and both moneylines.
+
+    The favorite is the side with the shorter moneyline; a game priced level on
+    both sides has no favorite and is skipped, as is a tied final. Each record
+    carries the moneyline result plus the favorite's spread result (`cover`:
+    +1 covered, 0 push, -1 not) and the total result (`ou`: +1 over, 0 push,
+    -1 under, None without a total).
     """
     eligible = []
     for g in games:
@@ -135,29 +147,55 @@ def _ml_eligible(games: list[dict]) -> list[tuple]:
             continue
         home_fav = dh < da
         p_home = pw.vig_free_home(g["home_ml"], g["away_ml"])
-        won = (margin > 0) == home_fav
-        price = dh if home_fav else da
-        dog_price = da if home_fav else dh
-        eligible.append((g, won, price, p_home if home_fav else 1 - p_home, dog_price))
+        fav_margin = margin if home_fav else -margin
+        # The moneyline favorite's own spread (negative when it gives points).
+        fav_line = float(g["home_spread"]) if home_fav else -float(g["home_spread"])
+        total = g.get("vegas_total")
+        eligible.append({
+            "g": g, "home_fav": home_fav, "won": fav_margin > 0,
+            "price": dh if home_fav else da, "imp": p_home if home_fav else 1 - p_home,
+            "dog": da if home_fav else dh,
+            "cover": _sign(fav_margin + fav_line),
+            "ou": None if total is None else _sign(g["home_score"] + g["away_score"] - float(total)),
+        })
     return eligible
 
 
-def _ml_row(label: str, picked: list[tuple]) -> dict:
-    """One unit on the favorite and one on the underdog in the same games, at the close."""
+def _ml_row(label: str, picked: list[dict]) -> dict:
+    """Favorite and underdog in the same games: moneyline at the close, spread and total at -110."""
     n = len(picked)
-    wins = sum(1 for _, won, *_ in picked if won)
-    units = sum((price - 1) if won else -1.0 for _, won, price, _, _ in picked)
-    dog_units = sum(-1.0 if won else (dog - 1) for _, won, _, _, dog in picked)
-    imp = statistics.mean(i for *_, i, _ in picked) if picked else None
+    wins = sum(1 for r in picked if r["won"])
+    units = sum((r["price"] - 1) if r["won"] else -1.0 for r in picked)
+    dog_units = sum(-1.0 if r["won"] else (r["dog"] - 1) for r in picked)
+    imp = statistics.mean(r["imp"] for r in picked) if picked else None
     win_rate = wins / n if n else None
+    covers = sum(1 for r in picked if r["cover"] > 0)
+    no_covers = sum(1 for r in picked if r["cover"] < 0)
+    with_total = [r for r in picked if r["ou"] is not None]
+    overs = sum(1 for r in with_total if r["ou"] > 0)
+    unders = sum(1 for r in with_total if r["ou"] < 0)
+    nt = len(with_total)
+    win_u = SPREAD_PRICE - 1
     return {
         "split": label, "games": n, "wins": wins, "losses": n - wins,
         "win_rate": win_rate, "implied": imp,
         "excess_pp": None if win_rate is None else (win_rate - imp) * 100,
         "units": units, "roi": units / n if n else None,
-        "median_price": statistics.median(p for _, _, p, _, _ in picked) if picked else None,
+        "median_price": statistics.median(r["price"] for r in picked) if picked else None,
         "dog_units": dog_units, "dog_roi": dog_units / n if n else None,
-        "dog_median_price": statistics.median(d for *_, d in picked) if picked else None,
+        "dog_median_price": statistics.median(r["dog"] for r in picked) if picked else None,
+        # Spread: the moneyline favorite against its own line. Pushes return the stake.
+        "fav_covers": covers, "dog_covers": no_covers, "ats_pushes": n - covers - no_covers,
+        "cover_rate": covers / (covers + no_covers) if covers + no_covers else None,
+        "fav_ats_units": covers * win_u - no_covers, "dog_ats_units": no_covers * win_u - covers,
+        "fav_ats_roi": (covers * win_u - no_covers) / n if n else None,
+        "dog_ats_roi": (no_covers * win_u - covers) / n if n else None,
+        # Total: games without a total are left out of these columns.
+        "total_games": nt, "overs": overs, "unders": unders, "total_pushes": nt - overs - unders,
+        "over_rate": overs / (overs + unders) if overs + unders else None,
+        "over_units": overs * win_u - unders, "under_units": unders * win_u - overs,
+        "over_roi": (overs * win_u - unders) / nt if nt else None,
+        "under_roi": (unders * win_u - overs) / nt if nt else None,
     }
 
 
@@ -168,11 +206,12 @@ def market_splits(games: list[dict], splits=MARKET_SPLITS) -> list[dict]:
     its closing decimal price minus 1, a loss costs 1; the underdog the reverse.
     """
     eligible = _ml_eligible(games)
-    return [_ml_row(label, [e for e in eligible if rule(e[0])]) for label, rule in splits]
+    return [_ml_row(label, [r for r in eligible if rule(r["g"])]) for label, rule in splits]
 
 
-# Bands partition every eligible game: each one lands in exactly one spread band
-# and, when it has a total, exactly one total band. CFB lines are in half points.
+# ── market breakdown: every game, then single cuts, then two-way grids ───────
+# Each cut assigns a game at most one label. A game a cut cannot place (no total,
+# no early line, first game of the season) is left out of that cut only.
 SPREAD_BANDS = (
     ("Spread 0 to 2.5", lambda s: s <= 2.5),
     ("Spread 3 to 6.5", lambda s: 2.5 < s <= 6.5),
@@ -184,9 +223,27 @@ TOTAL_BANDS = (
     ("Total 45 to 54.5", lambda t: 45.0 <= t < 55.0),
     ("Total 55 or more", lambda t: t >= 55.0),
 )
-
-
-VENUE_BANDS = ("Home favorite", "Away favorite", "Neutral site")
+PRICE_BANDS = (   # the favorite's closing American price
+    ("-105 to -150", lambda a: a >= -150),
+    ("-151 to -250", lambda a: -250 <= a < -150),
+    ("-251 to -500", lambda a: -500 <= a < -250),
+    ("-501 to -1000", lambda a: -1000 <= a < -500),
+    ("Beyond -1000", lambda a: a < -1000),
+)
+VENUES = ("Home favorite", "Away favorite", "Neutral site")
+CONFERENCE = ("Conference game", "Non-conference game")
+TIERS = ("Power vs Power", "Power vs Group of Five", "Group of Five vs Group of Five")
+KICKOFFS = ("Saturday before 2 pm", "Saturday 2 to 5 pm", "Saturday 5 pm or later", "Not Saturday")
+RESTS = ("Same rest", "Favorite had more rest", "Underdog had more rest", "Short week")
+LAST_RESULTS = ("Favorite won last game", "Favorite lost last game")
+MOVES = ("Moved toward favorite", "Held within 2 points", "Moved toward underdog")
+HALVES = ("Favorite led at half", "Tied at half", "Favorite trailed at half")
+# Notre Dame is the one independent priced and scheduled like a Power team.
+POWER_INDEPENDENTS = frozenset({"Notre Dame"})
+MORE_REST_DAYS = 3        # a bye shows up as roughly a week more rest
+SHORT_WEEK_DAYS = 5
+MOVE_PP = 2.0             # favorite's vig-free probability, open to close
+OPEN_MIN_HOURS = 12       # an "open" must be at least this far before kickoff
 
 
 def _band(value: float | None, bands) -> str | None:
@@ -195,52 +252,197 @@ def _band(value: float | None, bands) -> str | None:
     return next((label for label, rule in bands if rule(float(value))), None)
 
 
-def _venue(g: dict) -> str:
+def _venue(r: dict) -> str:
     """Where the favorite played. Neutral-site games get their own group, so home and away stay literal."""
-    if g.get("neutral_site"):
+    if r["g"].get("neutral_site"):
         return "Neutral site"
-    return "Home favorite" if pw.decimal_odds(g["home_ml"]) < pw.decimal_odds(g["away_ml"]) else "Away favorite"
+    return "Home favorite" if r["home_fav"] else "Away favorite"
 
 
-def _cross(tagged, a_idx, a_bands, a_key, b_idx, b_bands, b_key) -> list[dict]:
-    out = []
-    for a in a_bands:
-        for b in b_bands:
-            row = _ml_row(f"{a}, {b.lower()}", [t[3] for t in tagged if t[a_idx] == a and t[b_idx] == b])
-            out.append({**row, a_key: a, b_key: b})
-    return out
+def _conference(r: dict) -> str | None:
+    c = r["g"].get("conference_game")
+    return None if c is None else ("Conference game" if c else "Non-conference game")
+
+
+def _is_power(conf: str | None, name: str | None) -> bool:
+    return conf in pw.P4 or name in POWER_INDEPENDENTS
+
+
+def _tier(r: dict) -> str | None:
+    g = r["g"]
+    if g.get("hconf") is None or g.get("aconf") is None:
+        return None
+    powers = _is_power(g["hconf"], g.get("hname")) + _is_power(g["aconf"], g.get("aname"))
+    return TIERS[2 - powers]
+
+
+def _kickoff(r: dict) -> str | None:
+    ts = r["g"].get("commence_time")
+    if ts is None:
+        return None
+    et = pw._eastern(ts)   # the study's own Eastern conversion
+    if et.strftime("%a") != "Sat":
+        return "Not Saturday"
+    minutes = et.hour * 60 + et.minute
+    return KICKOFFS[0] if minutes < 14 * 60 else KICKOFFS[1] if minutes < 17 * 60 else KICKOFFS[2]
+
+
+def _price_band(r: dict) -> str:
+    american = -100 / (r["price"] - 1)
+    return _band(american, PRICE_BANDS)
+
+
+def _fav_side(r: dict, key: str):
+    return r["g"].get(f"home_{key}" if r["home_fav"] else f"away_{key}")
+
+
+def _dog_side(r: dict, key: str):
+    return r["g"].get(f"away_{key}" if r["home_fav"] else f"home_{key}")
+
+
+def _rest(r: dict) -> str | None:
+    fav, dog = _fav_side(r, "rest_days"), _dog_side(r, "rest_days")
+    if fav is None or dog is None:
+        return None
+    if min(fav, dog) <= SHORT_WEEK_DAYS:
+        return "Short week"
+    if fav - dog >= MORE_REST_DAYS:
+        return "Favorite had more rest"
+    if dog - fav >= MORE_REST_DAYS:
+        return "Underdog had more rest"
+    return "Same rest"
+
+
+def _last_result(r: dict) -> str | None:
+    last = _fav_side(r, "last_margin")
+    if last is None or last == 0:
+        return None
+    return LAST_RESULTS[0] if last > 0 else LAST_RESULTS[1]
+
+
+def _move(r: dict) -> str | None:
+    g = r["g"]
+    if g.get("open_home_ml") is None or g.get("open_away_ml") is None:
+        return None
+    p_open = pw.vig_free_home(g["open_home_ml"], g["open_away_ml"])
+    p_open = p_open if r["home_fav"] else 1 - p_open
+    diff = (r["imp"] - p_open) * 100
+    return MOVES[0] if diff >= MOVE_PP else MOVES[2] if diff <= -MOVE_PP else MOVES[1]
+
+
+def _half(r: dict) -> str | None:
+    fav, dog = _fav_side(r, "line_scores"), _dog_side(r, "line_scores")
+    if not fav or not dog or len(fav) < 2 or len(dog) < 2:
+        return None
+    d = (fav[0] + fav[1]) - (dog[0] + dog[1])
+    return HALVES[0] if d > 0 else HALVES[1] if d == 0 else HALVES[2]
+
+
+# (key, labels in display order, labeller)
+CUTS = {
+    "venue": (VENUES, _venue),
+    "conference": (CONFERENCE, _conference),
+    "tier": (TIERS, _tier),
+    "kickoff": (KICKOFFS, _kickoff),
+    "spread": (tuple(l for l, _ in SPREAD_BANDS), lambda r: _band(abs(float(r["g"]["home_spread"])), SPREAD_BANDS)),
+    "total": (tuple(l for l, _ in TOTAL_BANDS), lambda r: _band(r["g"].get("vegas_total"), TOTAL_BANDS)),
+    "price": (tuple(l for l, _ in PRICE_BANDS), _price_band),
+    "move": (MOVES, _move),
+    "last": (LAST_RESULTS, _last_result),
+    "rest": (RESTS, _rest),
+    "half": (HALVES, _half),
+}
+# Display order, simplest first. Keys starting with "by_" are one cut; "x_" two.
+BREAKDOWN_ORDER = (
+    ("overall", "All games", None, None),
+    ("by_venue", "By venue", "venue", None),
+    ("by_conference", "By conference game", "conference", None),
+    ("by_tier", "By matchup tier", "tier", None),
+    ("by_kickoff", "By kickoff", "kickoff", None),
+    ("by_spread", "By spread", "spread", None),
+    ("by_total", "By total", "total", None),
+    ("by_price", "By price", "price", None),
+    ("by_move", "By line movement", "move", None),
+    ("by_last", "By last result", "last", None),
+    ("by_rest", "By rest", "rest", None),
+    ("by_half", "By halftime score", "half", None),
+    ("x_venue_spread", "Venue and spread", "venue", "spread"),
+    ("x_venue_total", "Venue and total", "venue", "total"),
+    ("x_spread_total", "Spread and total", "spread", "total"),
+    ("x_tier_spread", "Tier and spread", "tier", "spread"),
+    ("x_kickoff_tier", "Kickoff and tier", "kickoff", "tier"),
+)
 
 
 def market_breakdown(games: list[dict]) -> dict:
-    """Favorites and underdogs at the closing moneyline, from simplest cut to the most detailed.
+    """Favorites and underdogs (moneyline, spread, total), from simplest cut to the most detailed.
 
-    overall          every eligible game
-    by_venue         home favorite, away favorite, neutral site
-    by_spread        one row per spread band (the bands add up to overall)
-    by_total         one row per total band (games without a total are left out and counted)
-    by_venue_spread  venue crossed with spread band
-    by_venue_total   venue crossed with total band
-    by_spread_total  every spread band crossed with every total band
+    Returns {key: rows} in BREAKDOWN_ORDER; every row carries `group` (its first
+    label) and `column` (the second label, for two-way grids).
     """
     eligible = _ml_eligible(games)
-    tagged = [(_venue(e[0]), _band(abs(float(e[0]["home_spread"])), SPREAD_BANDS),
-               _band(e[0].get("vegas_total"), TOTAL_BANDS), e) for e in eligible]
-    spreads = [lbl for lbl, _ in SPREAD_BANDS]
-    totals = [lbl for lbl, _ in TOTAL_BANDS]
-    return {
-        "overall": _ml_row("All games", eligible),
-        "by_venue": [{**_ml_row(v, [t[3] for t in tagged if t[0] == v]), "venue": v} for v in VENUE_BANDS],
-        "by_spread": [{**_ml_row(lbl, [t[3] for t in tagged if t[1] == lbl]), "spread_band": lbl} for lbl in spreads],
-        "by_total": [{**_ml_row(lbl, [t[3] for t in tagged if t[2] == lbl]), "total_band": lbl} for lbl in totals],
-        "by_venue_spread": _cross(tagged, 0, VENUE_BANDS, "venue", 1, spreads, "spread_band"),
-        "by_venue_total": _cross(tagged, 0, VENUE_BANDS, "venue", 2, totals, "total_band"),
-        "by_spread_total": _cross(tagged, 1, spreads, "spread_band", 2, totals, "total_band"),
-        "missing_total": sum(1 for t in tagged if t[2] is None),
-    }
+    tags = [{k: fn(r) for k, (_, fn) in CUTS.items()} for r in eligible]
+    out: dict = {}
+    for key, _name, a, b in BREAKDOWN_ORDER:
+        if a is None:
+            out[key] = {**_ml_row("All games", eligible), "group": None, "column": None}
+        elif b is None:
+            out[key] = [{**_ml_row(la, [r for r, t in zip(eligible, tags) if t[a] == la]), "group": la, "column": None}
+                        for la in CUTS[a][0]]
+        else:
+            out[key] = [{**_ml_row(f"{la}, {lb[0].lower()}{lb[1:]}",
+                                   [r for r, t in zip(eligible, tags) if t[a] == la and t[b] == lb]),
+                         "group": la, "column": lb}
+                        for la in CUTS[a][0] for lb in CUTS[b][0]]
+    return out
+
+
+def attach_context(games: list[dict], open_lines: dict[int, tuple] | None = None) -> list[dict]:
+    """Add each side's rest days and previous margin (from the season's schedule) and the early line.
+
+    Rest and last result come from each team's previous completed game in
+    `games`, by kickoff time, against any opponent. A team's first game has none.
+    """
+    by_team: dict[int, list[dict]] = defaultdict(list)
+    for g in games:
+        if g.get("commence_time") is None:
+            continue
+        by_team[g.get("home_team_id")].append(g)
+        by_team[g.get("away_team_id")].append(g)
+    prev: dict[tuple[int, int], dict] = {}
+    for team, gs in by_team.items():
+        gs.sort(key=lambda x: x["commence_time"])
+        for before, g in zip(gs, gs[1:]):
+            prev[(id(g), team)] = before
+    for g in games:
+        for side in ("home", "away"):
+            team = g.get(f"{side}_team_id")
+            p = prev.get((id(g), team))
+            if p is None:
+                g[f"{side}_rest_days"] = g[f"{side}_last_margin"] = None
+                continue
+            g[f"{side}_rest_days"] = (pw._eastern(g["commence_time"]).date() - pw._eastern(p["commence_time"]).date()).days
+            m = p["home_score"] - p["away_score"]
+            g[f"{side}_last_margin"] = m if p.get("home_team_id") == team else -m
+        o = (open_lines or {}).get(g.get("matchup_id"))
+        g["open_home_ml"], g["open_away_ml"] = o if o else (None, None)
+    return games
+
+
+_OPEN_SQL = """
+SELECT DISTINCT ON (h.matchup_id) h.matchup_id, h.home_ml, h.away_ml
+FROM game_odds_history h
+JOIN cfb_matchups m ON m.id = h.matchup_id
+WHERE h.sport = 'cfb' AND m.season = %s AND h.home_ml IS NOT NULL AND h.away_ml IS NOT NULL
+  AND h.captured_at <= m.commence_time - make_interval(hours => %s)
+ORDER BY h.matchup_id, h.captured_at
+"""
 
 
 def load_base_rate_games(db) -> list[dict]:
-    return [dict(r) for r in db.execute(_BASE_SQL, (pw.SEASON,))]
+    games = [dict(r) for r in db.execute(_BASE_SQL, (pw.SEASON,))]
+    opens = {r["matchup_id"]: (r["home_ml"], r["away_ml"]) for r in db.execute(_OPEN_SQL, (pw.SEASON, OPEN_MIN_HOURS))}
+    return attach_context(games, opens)
 
 
 def write_base_rates(rates: list[dict], path: Path = BASE_RATES_PATH, now: datetime | None = None) -> None:

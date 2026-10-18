@@ -270,3 +270,7 @@ the same games, one unit each at the closing moneyline. `market_breakdown()` in
 and the 12 crossed cells are mostly too small to read on their own.
 
 Home or away favorite was added the same day as its own cut (neutral-site games kept apart, from `cfb_matchups.neutral_site`), plus home/away x spread and home/away x total grids. The page order is now: every game; home or away, spread, total; then the three two-way grids. Chart export adds `roi_by_venue.png`.
+
+### Ten more cuts (2026-10-18)
+
+The breakdown now grades all three bets per row (moneyline at the close, spread and total at -110, pushes apart) behind a Moneyline / Spread / Total switch, and adds: conference vs non-conference, matchup tier (Power = P4 plus Notre Dame), kickoff window (study Eastern conversion), favorite price band, line movement (favorite vig-free probability from the earliest capture at least 12 h before kickoff to the close, 2 points = held), favorite last result, rest (3+ extra days = more rest, 5 days or fewer = short week), halftime score (not a pregame bet), and tier x spread and kickoff x tier grids. A cut that cannot place a game (no early line, first game) leaves it out and the page counts it. Still descriptive; ~20 slices of the same games will produce chance standouts.

@@ -26,7 +26,11 @@ export type MarketSplitRow = {
   "Underdog median price"?: string | null;
 };
 export type MarketBreakdownRow = MarketSplitRow & {
-  Level: number; "Level name": string; Venue?: string | null; Spread: string | null; Total: string | null;
+  Level: number; "Level name": string; Grid: boolean; Group: string | null; Column: string | null;
+  "Fav ATS record"?: string; "Fav covered (%)"?: number | null; "Fav ATS units"?: number; "Fav ATS ROI (%)"?: number | null;
+  "Dog ATS units"?: number; "Dog ATS ROI (%)"?: number | null; "Games with total"?: number; "Over-under record"?: string;
+  "Overs (%)"?: number | null; "Over units"?: number; "Over ROI (%)"?: number | null; "Under units"?: number;
+  "Under ROI (%)"?: number | null;
 };
 export type ResultRow = {
   Date: string; Game: string; Pattern: string; Pick: string; Price: string; Final: string; Result: string; Units: number;
