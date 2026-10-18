@@ -115,3 +115,146 @@ restriction chosen after seeing v1's result, stated as such; it introduces no
 new fitted quantity. The production naming rule's hit rate cannot be replayed
 for 2026 weeks 1-5 (depth order was not stored with past projections); it is
 recorded in every run's availability report from week 6 on.
+
+## v3 (registered 2026-10-18, before any v3 projection is computed): fix the eligibility test
+
+`nfl-qb-spot-start-v3`. Draft registration; nothing is shipped and v2 stays
+in production until the gates below are graded.
+
+### Why
+
+v2's test of "thin history" is the mean of a quarterback's attempts over his
+previous six games. A backup in his second or third start mixes relief
+appearances with starts, so a couple of starts lift the mean over 15 and the
+construction switches off. Meanwhile the base model keeps drawing his relief
+lines, so his projected volume stays near backup level. Week 6, 2026 (projection
+run `33bb4d8d`):
+
+| Quarterback | Previous attempts (oldest first) | Mean | v2 eligible | Stored attempts | Construction, if applied | Actual |
+| --- | --- | ---: | --- | ---: | ---: | ---: |
+| Tyler Huntley (BAL) | 22, 0, 10, 20, 9, 32 | 15.5 | no | 19.2 | 26.0 | 31 |
+| Jalon Daniels (TB) | 3, 27, 25 | 18.3 | no | 21.6 | 31.7 | 43 |
+| Tanner McKee (PHI) | 4, 41, 0, 3, 0, 40 | 14.7 | yes | 30.8 | 30.5 | 45 |
+
+McKee was handled as designed. Philadelphia trailed all game, and the team's
+volume ignores game script (a known limit above). The two misses are the
+eligibility test.
+
+### Seen before registering (disclosure)
+
+- The 2026 week 6 results for these three quarterbacks, and the construction's
+  output for them (the table above).
+- One descriptive count over 2023-2026, which includes development seasons
+  2023-2025. It covers 95 starts (20+ attempts) by quarterbacks whose
+  trailing six-game mean was 15-22. They averaged 31.6 attempts against a
+  trailing mean of 19.1. This counted attempts only; no v3 projection or error
+  was computed.
+- **The test window is not blind for v3.** 2016-2019 was graded once for v1,
+  and v2's restriction was read off that result. v1's established gate failed
+  there: +0.03 [−0.14, +0.20] when the construction was applied to every
+  established starter. v3's newly eligible games are a subset of that
+  established cohort. Grading v3 on 2016-2019, as registered here, is a second
+  look at the window, and a pass is weaker evidence than v1's spot result. The
+  forward 2026 check below is the only untouched evidence. 2012-2015 has not
+  been used by this study and would be the clean window for any confirmation.
+
+### The rule
+
+A **starter game** is a prior game with at least 15 pass attempts, the same
+threshold `spot_start_prior_rows` uses. Over his previous min(6, n) games:
+
+```
+eligible_v3 = eligible_v2  OR  (starter games < K)
+gap cohort  = eligible_v3 AND NOT eligible_v2
+```
+
+K is fitted on development from {3, 4, 5}. Nothing else changes: the
+construction, its constants (H = 8, P = 2, S = 16, M = 10), and the naming rule
+are v2's. Because v3 is a superset of v2, v2's spot cohort is projected
+identically. That equality is asserted by the runner, not graded.
+
+Examples:
+
+| Case | Starter games | Eligible at K |
+| --- | --- | --- |
+| Huntley | 3 of 6 | 4 and 5 |
+| Daniels | 2 of 3 | 3, 4 and 5 |
+| An established starter who left one game early | 5 of 6 | none in the grid |
+
+### Population
+
+The qualifying team-games are v1's: the team's attempts leader had at least 15.
+One change: the established cohort is **not** sampled one in four. The gap
+cohort lives inside it, so sampling would quarter the sample.
+
+### Fit (development 2020-2025 only)
+
+K is chosen by DraftKings-points MAE over every qualifying game (spot plus
+every established game), v3 against the current model. A whole-population
+objective penalizes a K that pulls in starters the construction hurts. Ties go
+to the smallest K.
+
+### Gates (2016-2019, one look for v3)
+
+The comparison is v3 against v2 on the gap cohort, computed directly rather
+than assumed equal to the current model; v2's own test report shows a +0.01
+residual on established games. Bootstrap resamples weeks: 2,000 resamples,
+seed 20261018.
+
+1. **Gap gate:** the 95% interval of the DraftKings-points MAE change on the
+   gap cohort is wholly below zero.
+2. **Calibration guard:** the gap cohort's mean attempts bias under v3 is
+   within ±5.0. This stops an overshoot that MAE could hide; v1 overshot blind
+   spot starts by +3.5.
+3. **Sample floor:** at least 60 gap-cohort test games. Below the floor the
+   verdict is "insufficient" and v2 stays.
+
+All three must pass. Development metrics are reported but not gating, because
+K was fitted there.
+
+### Reported, not gating
+
+- Per-season test breakdown, passing-yards MAE and bias, and the gap cohort's
+  size at each K on development.
+- Forward 2026, from week 7: every game where v3's projection differs from
+  v2's, computed as an offline shadow (production stays v2). Each is shown
+  against DraftKings' attempts and passing-yard lines and the actual result,
+  until at least 20 games exist.
+- The three week 6 quarterbacks re-projected under the fitted K. These are
+  illustrative only, since they motivated the change.
+
+### Kill
+
+If any gate fails, v2 stays. Not allowed after a failure:
+
+- trying a K outside the grid;
+- changing the 15-attempt starter threshold;
+- changing the six-game window;
+- re-slicing the gap cohort.
+
+Another eligibility idea would be a new registration graded on a window this
+study has not used (2012-2015, or 2026 forward).
+
+### If it passes (not part of this registration's work)
+
+- The overlay version becomes `nfl-qb-spot-start-v3`, and
+  `thin_starting_history` gains the starter-game rule with the fitted K.
+- `production_config()` changes the `qb_starter_mode` value (for example
+  `"v3"`). This makes the configuration identity change with the output. Cohorts
+  that pin `baseline_config_hash` will see a new configuration at their next
+  study boundary, as they did when v2 shipped.
+- Tests pin K and the rule.
+
+### Runner
+
+`research/nfl_qb_spot_start_study.py` gains a v3 path:
+
+- `STUDY = nfl-qb-spot-start-v3` and `BOOT_SEED = 20261018`;
+- no established sampling;
+- the K grid applied as an eligibility override passed to
+  `project_expected_starter` (it calls `thin_starting_history` itself);
+- separate artifacts (`*-v3.jsonl`, `*-v3.json`), with the existing refusal to
+  overwrite.
+
+The nflverse weekly files for 2014-2025 must be re-cached in
+`data/nflverse_cache`; this checkout holds one file.
