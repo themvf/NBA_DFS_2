@@ -35,6 +35,12 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Capture availability and publish the upcoming week
         run: python -m research.nfl_game_leaders_auto
+      # nfl-leaders-regime-roles-v1 (docs/nfl-leaders-regime-roles-study.md): roles-v3
+      # shares and forecasts beside each published game's request, shadow only.
+      # A failure here is annotated on the run and never blocks the publication.
+      - name: Shadow roles-v3 beside the published requests (research only)
+        continue-on-error: true
+        run: python -m research.nfl_game_leaders_regime_roles shadow
       - name: Commit only a changed, validated publication
         run: |
           git add -f web/src/data/game-leaders.json web/src/data/game-leaders-weeks
@@ -43,6 +49,7 @@ jobs:
           python -c "import json; d=json.load(open('web/src/data/game-leaders.json')); print('\n'.join(sorted({p for g in d['games'] for p in g['sources'].values()})))" > /tmp/sources.txt
           cat /tmp/sources.txt
           xargs -a /tmp/sources.txt git add -f
+          git add -f artifacts/nfl-game-leaders/regime-roles-v1/shadow 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No publication change"
             exit 0
