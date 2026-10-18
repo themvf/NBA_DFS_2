@@ -120,4 +120,5 @@ def test_market_splits_grade_the_moneyline_favorite():
     assert rows["Total 45 or higher"]["games"] == 1 and rows["Total 45 or higher"]["wins"] == 1
     assert rows["Spread 2.5 or less"]["games"] == 1 and rows["Spread 2.5 or less"]["losses"] == 1
     assert rows["Spread 7 to 13.5"]["games"] == 0
+    assert rows["Spread 14 or more"]["games"] == 0
     assert m.market_splits([_split_game(-400, 300, 17, 20, spread=-10.0)])[-1]["dog_units"] == 3.0
