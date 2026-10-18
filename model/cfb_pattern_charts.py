@@ -170,6 +170,36 @@ def roi_band_chart(rows: list[dict], key: str, title: str, path: Path) -> bool:
     return True
 
 
+def home_ladder_chart(rows: list[dict], path: Path) -> bool:
+    """The home team's moneyline and spread return on each rung, big home favorite to big home underdog."""
+    rows = [r for r in rows if r["Level name"] == "Home team ladder" and r["Games"]]
+    if not rows:
+        return False
+    fav = [r["Split"].startswith("Home favored") for r in rows]
+    ml = [(r["ROI (%)"] if f else r["Underdog ROI (%)"]) or 0.0 for r, f in zip(rows, fav)]
+    ats = [(r["Fav ATS ROI (%)"] if f else r["Dog ATS ROI (%)"]) or 0.0 for r, f in zip(rows, fav)]
+    labels = [r["Split"].replace("Home favored by ", "Fav ").replace("Home underdog by ", "Dog ").replace(" or more", "+")
+              .replace(" to ", "-") + f"\n{r['Games']} g" for r in rows]
+    xs = list(range(len(rows)))
+    fig, ax = _figure(4.0)
+    w = 0.38
+    ax.bar([x - w / 2 for x in xs], ml, width=w, color=SERIES[0], label="Moneyline")
+    ax.bar([x + w / 2 for x in xs], ats, width=w, color=SERIES[2], label="Spread at -110")
+    ax.axhline(0, color=INK_2, linewidth=0.8)
+    for x, a, b in zip(xs, ml, ats):
+        for xx, v in ((x - w / 2, a), (x + w / 2, b)):
+            ax.annotate(f"{v:+.0f}%", (xx, v), xytext=(0, 3 if v >= 0 else -10), textcoords="offset points",
+                        ha="center", fontsize=6.5, color=INK)
+    ax.set_xticks(xs, labels, fontsize=7, color=INK)
+    ax.margins(y=0.12)
+    ax.set_ylabel("home team return per unit, %", color=INK_2, fontsize=8)
+    ax.legend(loc="lower left", fontsize=7.5, frameon=False, labelcolor=INK)
+    _style(ax, "The home team, from big favorite to big underdog",
+           "One unit on the home team at its closing line, season to date. Neutral-site games left out.")
+    _save(fig, path)
+    return True
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out-dir", default=str(DEFAULT_DIR))
@@ -188,6 +218,7 @@ def main(argv: list[str] | None = None) -> int:
         "pattern_units.png": pattern_chart(cc.patterns_table(rows), out / "pattern_units.png"),
         "weekly_favorites.png": weekly_chart(cc.weekly_table(rates), out / "weekly_favorites.png"),
         "roi_by_venue.png": roi_band_chart(breakdown, "By venue", "Moneyline ROI, home or away favorite", out / "roi_by_venue.png"),
+        "home_ladder.png": home_ladder_chart(breakdown, out / "home_ladder.png"),
         "roi_by_spread.png": roi_band_chart(breakdown, "By spread", "Moneyline ROI by spread", out / "roi_by_spread.png"),
         "roi_by_total.png": roi_band_chart(breakdown, "By total", "Moneyline ROI by total", out / "roi_by_total.png"),
     }

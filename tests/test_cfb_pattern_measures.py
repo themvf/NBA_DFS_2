@@ -216,3 +216,23 @@ def test_market_breakdown_context_cuts():
     r1 = [r for r in m._ml_eligible(games) if r["g"]["matchup_id"] == 1][0]
     assert m._last_result(r1) is None and m._rest(r1) is None and m._move(r1) is None
     assert sum(r["games"] for r in b["by_last"]) == 2
+
+
+def test_home_ladder_and_home_dog_prices():
+    from model import cfb_pattern_measures as m
+    games = [
+        _split_game(-2000, 1100, 49, 7, spread=-24.0),               # home favored by 14+
+        _split_game(250, -300, 21, 28, spread=8.5),                  # home underdog by 7-13.5 at +250
+        _split_game(130, -150, 24, 20, spread=3.0),                  # home dog by 3-6.5 at +130, wins
+        {**_split_game(-200, 170, 30, 20, spread=-5.5), "neutral_site": True},   # neutral: left out
+    ]
+    b = m.market_breakdown(games)
+    ladder = _rows(b, "by_home_ladder")
+    assert list(ladder) == list(m.HOME_LADDER)
+    assert ladder["Home favored by 14 or more"]["games"] == 1
+    assert ladder["Home underdog by 7 to 13.5"]["games"] == 1
+    assert ladder["Home underdog by 3 to 6.5"]["losses"] == 1        # the favorite (away) lost: home dog won
+    assert sum(r["games"] for r in b["by_home_ladder"]) == 3
+    prices = _rows(b, "by_home_dog_price")
+    assert prices["Home underdog +151 to +300"]["games"] == 1 and prices["Home underdog +100 to +150"]["games"] == 1
+    assert sum(r["games"] for r in b["by_home_dog_price"]) == 2

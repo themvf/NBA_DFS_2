@@ -39,7 +39,13 @@ const PADDED: [(m: number) => number, (m: number) => number] = [
   (m) => Math.floor(Math.min(0, m) * 1.25 - 1),
   (m) => Math.ceil(Math.max(0, m) * 1.25 + 1),
 ];
-const short = (s: string | null | undefined) => (s ?? "").replace(/^Spread /, "").replace(/^Total /, "");
+const short = (s: string | null | undefined) =>
+  (s ?? "")
+    .replace(/^Spread /, "")
+    .replace(/^Total /, "")
+    .replace(/^Home favored by /, "Fav ")
+    .replace(/^Home underdog by /, "Dog ")
+    .replace(/^Home underdog /, "");
 
 type Market = "ml" | "ats" | "ou";
 type View = {
@@ -56,6 +62,11 @@ type View = {
   rateTitle: string;
   rateGap: (r: MarketBreakdownRow) => number | null | undefined;   // percentage points
   rateText: (r: MarketBreakdownRow) => string;
+  rateLabel: string;                                               // table column: Won, Covered, Overs
+  rate: (r: MarketBreakdownRow) => number | null | undefined;      // percent
+  implied?: (r: MarketBreakdownRow) => number | null | undefined;  // moneyline only
+  aMedian?: (r: MarketBreakdownRow) => string | null | undefined;
+  bMedian?: (r: MarketBreakdownRow) => string | null | undefined;
   note: string;
 };
 
@@ -80,6 +91,11 @@ const VIEWS: Record<Market, View> = {
     rateTitle: "Favorites' win rate minus price-implied, percentage points",
     rateGap: (r) => r["Difference (pts)"],
     rateText: (r) => `won ${pct(r["Favorites won (%)"])} vs ${pct(r["Price implied (%)"])} implied`,
+    rateLabel: "Won",
+    rate: (r) => r["Favorites won (%)"],
+    implied: (r) => r["Price implied (%)"],
+    aMedian: (r) => r["Median price"],
+    bMedian: (r) => r["Underdog median price"],
     note: "One unit on each side at its closing moneyline.",
   },
   ats: {
@@ -96,6 +112,8 @@ const VIEWS: Record<Market, View> = {
     rateTitle: "Favorites' cover rate minus 50%, percentage points (pushes left out)",
     rateGap: (r) => (r["Fav covered (%)"] == null ? null : r["Fav covered (%)"]! - 50),
     rateText: (r) => `covered ${pct(r["Fav covered (%)"])}; 52.4% breaks even at -110`,
+    rateLabel: "Covered",
+    rate: (r) => r["Fav covered (%)"],
     note: "One unit on each side of the closing spread at -110; a push returns the stake. Records read win-loss-push.",
   },
   ou: {
@@ -112,9 +130,47 @@ const VIEWS: Record<Market, View> = {
     rateTitle: "Over rate minus 50%, percentage points (pushes left out)",
     rateGap: (r) => (r["Overs (%)"] == null ? null : r["Overs (%)"]! - 50),
     rateText: (r) => `overs ${pct(r["Overs (%)"])}; 52.4% breaks even at -110`,
+    rateLabel: "Overs",
+    rate: (r) => r["Overs (%)"],
     note: "One unit on the over and one on the under of the closing total at -110. Games without a total are left out.",
   },
 };
+
+const isHomeFav = (r: MarketBreakdownRow) => (r.Group ?? "").startsWith("Home favored");
+const less = (v: number | null | undefined) => (v == null ? v : 100 - v);
+
+/**
+ * The same rows seen from the home team's side. Rows are stored from the
+ * favorite's side; where the home team is the underdog the two sides swap.
+ * Totals do not depend on who is home, so that view is unchanged.
+ */
+function homeView(view: View, market: Market): View {
+  if (market === "ou") return view;
+  const pick = <T,>(fav: (r: MarketBreakdownRow) => T, dog: (r: MarketBreakdownRow) => T) =>
+    (r: MarketBreakdownRow) => (isHomeFav(r) ? fav(r) : dog(r));
+  return {
+    ...view,
+    aName: "Home team",
+    bName: "Road team",
+    aRoi: pick(view.aRoi, view.bRoi),
+    bRoi: pick(view.bRoi, view.aRoi),
+    aUnits: pick(view.aUnits, view.bUnits),
+    bUnits: pick(view.bUnits, view.aUnits),
+    aRecord: pick(view.aRecord, view.bRecord),
+    bRecord: pick(view.bRecord, view.aRecord),
+    rate: pick(view.rate, (r) => less(view.rate(r))),
+    implied: view.implied && pick(view.implied, (r) => less(view.implied!(r))),
+    rateGap: pick(view.rateGap, (r) => { const g = view.rateGap(r); return g == null ? g : -g; }),
+    rateTitle: market === "ml"
+      ? "Home team's win rate minus price-implied, percentage points"
+      : "Home team's cover rate minus 50%, percentage points (pushes left out)",
+    rateText: (r) => market === "ml"
+      ? `home won ${pct(isHomeFav(r) ? view.rate(r) : less(view.rate(r)))}`
+      : `home covered ${pct(isHomeFav(r) ? view.rate(r) : less(view.rate(r)))}`,
+    aMedian: view.aMedian && pick(view.aMedian, view.bMedian!),
+    bMedian: view.bMedian && pick(view.bMedian, view.aMedian!),
+  };
+}
 
 function Step({ id, n, title, note, children }: { id: string; n: number; title: string; note: string; children: React.ReactNode }) {
   return (
@@ -213,7 +269,7 @@ function RateBars({ rows, view }: { rows: MarketBreakdownRow[]; view: View }) {
   );
 }
 
-function BandTable({ rows, view, market, first }: { rows: MarketBreakdownRow[]; view: View; market: Market; first: string }) {
+function BandTable({ rows, view, first }: { rows: MarketBreakdownRow[]; view: View; first: string }) {
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full text-xs">
@@ -222,16 +278,15 @@ function BandTable({ rows, view, market, first }: { rows: MarketBreakdownRow[]; 
             <th className="py-1 pr-3 text-left">{first}</th>
             <th className="py-1 pr-3 text-right">Games</th>
             <th className="py-1 pr-3 text-right">{view.aName} record</th>
-            {market === "ml" && <><th className="py-1 pr-3 text-right">Won</th><th className="py-1 pr-3 text-right">Implied</th></>}
-            {market === "ats" && <th className="py-1 pr-3 text-right">Covered</th>}
-            {market === "ou" && <th className="py-1 pr-3 text-right">Overs</th>}
+            <th className="py-1 pr-3 text-right">{view.rateLabel}</th>
+            {view.implied && <th className="py-1 pr-3 text-right">Implied</th>}
             <th className="py-1 pr-3 text-right">Gap</th>
             <th className="py-1 pr-3 text-right">{view.aName} units</th>
             <th className="py-1 pr-3 text-right">{view.aName} ROI</th>
-            {market === "ml" && <th className="py-1 pr-3 text-right">Fav median</th>}
+            {view.aMedian && <th className="py-1 pr-3 text-right">{view.aName} median</th>}
             <th className="border-l py-1 pl-3 pr-3 text-right">{view.bName} units</th>
             <th className="py-1 pr-3 text-right">{view.bName} ROI</th>
-            {market === "ml" && <th className="py-1 text-right">Dog median</th>}
+            {view.bMedian && <th className="py-1 text-right">{view.bName} median</th>}
           </tr>
         </thead>
         <tbody>
@@ -243,16 +298,15 @@ function BandTable({ rows, view, market, first }: { rows: MarketBreakdownRow[]; 
                 <td className="py-1 pr-3">{m.Split}</td>
                 <td className="py-1 pr-3 text-right">{games}</td>
                 <td className="py-1 pr-3 text-right">{view.aRecord(m) ?? "—"}</td>
-                {market === "ml" && <><td className="py-1 pr-3 text-right">{pct(m["Favorites won (%)"])}</td><td className="py-1 pr-3 text-right">{pct(m["Price implied (%)"])}</td></>}
-                {market === "ats" && <td className="py-1 pr-3 text-right">{pct(m["Fav covered (%)"])}</td>}
-                {market === "ou" && <td className="py-1 pr-3 text-right">{pct(m["Overs (%)"])}</td>}
+                <td className="py-1 pr-3 text-right">{pct(view.rate(m))}</td>
+                {view.implied && <td className="py-1 pr-3 text-right">{pct(view.implied(m))}</td>}
                 <td className={`py-1 pr-3 text-right ${tone(gap)}`}>{gap == null ? "—" : `${signed(gap)} pts`}</td>
                 <td className={`py-1 pr-3 text-right ${tone(view.aUnits(m))}`}>{signed(view.aUnits(m), 2)}</td>
                 <td className={`py-1 pr-3 text-right ${tone(view.aRoi(m))}`}>{roi(view.aRoi(m))}</td>
-                {market === "ml" && <td className="py-1 pr-3 text-right">{m["Median price"] ?? "—"}</td>}
+                {view.aMedian && <td className="py-1 pr-3 text-right">{view.aMedian(m) ?? "—"}</td>}
                 <td className={`border-l py-1 pl-3 pr-3 text-right ${tone(view.bUnits(m))}`}>{signed(view.bUnits(m), 2)}</td>
                 <td className={`py-1 pr-3 text-right ${tone(view.bRoi(m))}`}>{roi(view.bRoi(m))}</td>
-                {market === "ml" && <td className="py-1 text-right">{m["Underdog median price"] ?? "—"}</td>}
+                {view.bMedian && <td className="py-1 text-right">{view.bMedian(m) ?? "—"}</td>}
               </tr>
             );
           })}
@@ -262,14 +316,14 @@ function BandTable({ rows, view, market, first }: { rows: MarketBreakdownRow[]; 
   );
 }
 
-function OneCut({ rows, view, market, first }: { rows: MarketBreakdownRow[]; view: View; market: Market; first: string }) {
+function OneCut({ rows, view, first }: { rows: MarketBreakdownRow[]; view: View; first: string }) {
   return (
     <Fragment>
       <div className="grid gap-4 lg:grid-cols-2">
         <RoiBars rows={rows} view={view} />
         <RateBars rows={rows} view={view} />
       </div>
-      <BandTable rows={rows} view={view} market={market} first={first} />
+      <BandTable rows={rows} view={view} first={first} />
     </Fragment>
   );
 }
@@ -282,8 +336,8 @@ function heat(v: number | null | undefined, games: number): React.CSSProperties 
   return { background: v >= 0 ? `rgba(27,175,122,${alpha})` : `rgba(227,73,72,${alpha})` };
 }
 
-function Grid({ rows, view, market, rowName, colName }: {
-  rows: MarketBreakdownRow[]; view: View; market: Market; rowName: string; colName: string;
+function Grid({ rows, view, rowName, colName }: {
+  rows: MarketBreakdownRow[]; view: View; rowName: string; colName: string;
 }) {
   const [side, setSide] = useState<"a" | "b">("a");
   const [showTable, setShowTable] = useState(false);
@@ -345,12 +399,13 @@ function Grid({ rows, view, market, rowName, colName }: {
       <button className="text-xs text-blue-700 underline" onClick={() => setShowTable((v) => !v)}>
         {showTable ? "Hide" : "Show"} all {rows.length} cells as a table
       </button>
-      {showTable && <BandTable rows={rows} view={view} market={market} first={`${rowName} and ${colName.toLowerCase()}`} />}
+      {showTable && <BandTable rows={rows} view={view} first={`${rowName} and ${colName.toLowerCase()}`} />}
     </div>
   );
 }
 
-type Cut = { level: string; title: string; first: string; note: string; id: string };
+// `subset` cuts cover only some games by design (home underdogs), so no "left out" count.
+type Cut = { level: string; title: string; first: string; note: string; id: string; subset?: boolean };
 
 const WHERE_WHEN: Cut[] = [
   { id: "venue", level: "By venue", title: "Home or away favorite", first: "Favorite", note: "Where the favorite played. Neutral-site games are kept apart so home and away mean what they say." },
@@ -367,6 +422,10 @@ const THE_LINE: Cut[] = [
 const FORM_REST: Cut[] = [
   { id: "last", level: "By last result", title: "Favorite's last result", first: "Last game", note: "Whether the favorite won or lost its previous game. A team's first game has none." },
   { id: "rest", level: "By rest", title: "Rest", first: "Rest", note: "Days since each team's previous game. More rest means 3 or more extra days (usually a bye); a short week is 5 days or fewer for either team." },
+];
+const HOME_TEAMS: Cut[] = [
+  { id: "home-ladder", level: "Home team ladder", title: "Home team spread ladder", first: "Home team", note: "Every game from the home team's side, from big home favorite to big home underdog. Neutral-site games are left out." },
+  { id: "home-dog-price", level: "Home underdog price", title: "Home underdogs by price", first: "Home underdog", subset: true, note: "Home teams getting points, by their closing moneyline price. Neutral-site games are left out." },
 ];
 const GRIDS = [
   { id: "venue-spread", level: "Venue and spread", title: "Home or away, by spread", row: "Favorite", col: "Spread" },
@@ -389,18 +448,18 @@ export default function MarketBreakdown({ rows }: { rows: MarketBreakdownRow[] }
     return n > 0 ? `${note} ${n} game${n === 1 ? "" : "s"} left out.` : note;
   };
   let n = 1;
-  const steps = (cuts: Cut[]) =>
+  const steps = (cuts: Cut[], v: View = view) =>
     cuts.map((c) => {
       const cut = level(c.level);
       if (cut.length === 0) return null;
       return (
-        <Step key={c.id} id={`breakdown-${c.id}`} n={++n} title={c.title} note={withUnplaced(c.note, cut)}>
-          <OneCut rows={cut} view={view} market={market} first={c.first} />
+        <Step key={c.id} id={`breakdown-${c.id}`} n={++n} title={c.title} note={c.subset ? c.note : withUnplaced(c.note, cut)}>
+          <OneCut rows={cut} view={v} first={c.first} />
         </Step>
       );
     });
   const half = level("By halftime score");
-  const nav = [...WHERE_WHEN, ...THE_LINE, ...FORM_REST].filter((c) => level(c.level).length > 0);
+  const nav = [...WHERE_WHEN, ...THE_LINE, ...HOME_TEAMS, ...FORM_REST].filter((c) => level(c.level).length > 0);
 
   return (
     <section className="space-y-4 rounded-lg border bg-card p-4">
@@ -449,6 +508,9 @@ export default function MarketBreakdown({ rows }: { rows: MarketBreakdownRow[] }
       <GroupHeading title="The line" note="What the closing market said, and how it got there." />
       {steps(THE_LINE)}
 
+      <GroupHeading title="Home teams" note="The same games told from the home team's side: its record and return, favorite or underdog." />
+      {steps(HOME_TEAMS, homeView(view, market))}
+
       <GroupHeading title="Form and rest" note="What each team did last week and how long it has had since." />
       {steps(FORM_REST)}
 
@@ -456,7 +518,7 @@ export default function MarketBreakdown({ rows }: { rows: MarketBreakdownRow[] }
         <Fragment>
           <GroupHeading title="In the game" note="Not a pregame bet: the halftime score is only known at halftime. Results are still graded at the closing price." />
           <Step id="breakdown-half" n={++n} title="Halftime score" note={withUnplaced("How often favorites finished the job from each halftime position. Context for live betting.", half)}>
-            <OneCut rows={half} view={view} market={market} first="At half" />
+            <OneCut rows={half} view={view} first="At half" />
           </Step>
         </Fragment>
       )}
@@ -467,7 +529,7 @@ export default function MarketBreakdown({ rows }: { rows: MarketBreakdownRow[] }
         if (cut.length === 0) return null;
         return (
           <Step key={g.id} id={`breakdown-${g.id}`} n={++n} title={g.title} note={`Every ${g.row.toLowerCase()} group crossed with every ${g.col.toLowerCase()} group.`}>
-            <Grid rows={cut} view={view} market={market} rowName={g.row} colName={g.col} />
+            <Grid rows={cut} view={view} rowName={g.row} colName={g.col} />
           </Step>
         );
       })}

@@ -238,6 +238,15 @@ RESTS = ("Same rest", "Favorite had more rest", "Underdog had more rest", "Short
 LAST_RESULTS = ("Favorite won last game", "Favorite lost last game")
 MOVES = ("Moved toward favorite", "Held within 2 points", "Moved toward underdog")
 HALVES = ("Favorite led at half", "Tied at half", "Favorite trailed at half")
+_LADDER_BANDS = ("0 to 2.5", "3 to 6.5", "7 to 13.5", "14 or more")
+# The home team's line, from big home favorite to big home underdog. Neutral sites are left out.
+HOME_LADDER = tuple(f"Home favored by {b}" for b in reversed(_LADDER_BANDS)) + tuple(f"Home underdog by {b}" for b in _LADDER_BANDS)
+HOME_DOG_PRICES = (   # the home underdog's closing American price
+    ("Home underdog +100 to +150", lambda a: a <= 150),
+    ("Home underdog +151 to +300", lambda a: 150 < a <= 300),
+    ("Home underdog +301 to +600", lambda a: 300 < a <= 600),
+    ("Home underdog +601 or more", lambda a: a > 600),
+)
 # Notre Dame is the one independent priced and scheduled like a Power team.
 POWER_INDEPENDENTS = frozenset({"Notre Dame"})
 MORE_REST_DAYS = 3        # a bye shows up as roughly a week more rest
@@ -338,6 +347,19 @@ def _half(r: dict) -> str | None:
     return HALVES[0] if d > 0 else HALVES[1] if d == 0 else HALVES[2]
 
 
+def _home_ladder(r: dict) -> str | None:
+    if r["g"].get("neutral_site"):
+        return None
+    band = _band(abs(float(r["g"]["home_spread"])), SPREAD_BANDS).removeprefix("Spread ")
+    return f"Home favored by {band}" if r["home_fav"] else f"Home underdog by {band}"
+
+
+def _home_dog_price(r: dict) -> str | None:
+    if r["g"].get("neutral_site") or r["home_fav"]:
+        return None
+    return _band((r["dog"] - 1) * 100, HOME_DOG_PRICES)
+
+
 # (key, labels in display order, labeller)
 CUTS = {
     "venue": (VENUES, _venue),
@@ -351,6 +373,8 @@ CUTS = {
     "last": (LAST_RESULTS, _last_result),
     "rest": (RESTS, _rest),
     "half": (HALVES, _half),
+    "home_ladder": (HOME_LADDER, _home_ladder),
+    "home_dog_price": (tuple(l for l, _ in HOME_DOG_PRICES), _home_dog_price),
 }
 # Display order, simplest first. Keys starting with "by_" are one cut; "x_" two.
 BREAKDOWN_ORDER = (
@@ -365,6 +389,8 @@ BREAKDOWN_ORDER = (
     ("by_move", "By line movement", "move", None),
     ("by_last", "By last result", "last", None),
     ("by_rest", "By rest", "rest", None),
+    ("by_home_ladder", "Home team ladder", "home_ladder", None),
+    ("by_home_dog_price", "Home underdog price", "home_dog_price", None),
     ("by_half", "By halftime score", "half", None),
     ("x_venue_spread", "Venue and spread", "venue", "spread"),
     ("x_venue_total", "Venue and total", "venue", "total"),
