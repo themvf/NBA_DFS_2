@@ -1,5 +1,5 @@
 /**
- * Winners shape (`nfl-winners-shape-v1`..`v8`): the preset resolves into ordinary
+ * Winners shape (`nfl-winners-shape-v1`..`v9`): the preset resolves into ordinary
  * optimizer settings and pool exclusions, and the optimizer enforces each of
  * them: the bring-back SHARE alternates lineups, the quarterback cap binds,
  * kickers leave a showdown pool, a showdown lineup is 5-1 or 3-3 and never
@@ -59,8 +59,8 @@ const prior = (games: number, targets: number, targetShare: number | null = null
     ...[0, 1, 2, 3, 4, 5].map(i => player({ dkPlayerId: 30 + i, position: "WR", team: "AAA", salary: 7000, priorOpportunity: prior(3, 30, 0.3) })),
     player({ dkPlayerId: 36, position: "WR", team: "BBB", salary: 4500, priorOpportunity: prior(3, 6, 0.08) }),                 // cheap: kept
     player({ dkPlayerId: 37, position: "WR", team: "BBB", salary: 6200, priorOpportunity: prior(3, 9, 0.12) }),                 // out
-    player({ dkPlayerId: 40, position: "TE", team: "AAA", salary: 3500, priorOpportunity: prior(3, 15, 0.2) }),                 // the only qualifying TE
-    player({ dkPlayerId: 41, position: "TE", team: "BBB", salary: 5500, priorOpportunity: prior(3, 18, 0.2) }),
+    player({ dkPlayerId: 40, position: "TE", team: "AAA", salary: 3500, priorOpportunity: prior(3, 15, 0.2) }),                 // qualifies: 5 targets a game
+    player({ dkPlayerId: 41, position: "TE", team: "BBB", salary: 5500, priorOpportunity: prior(3, 18, 0.2) }),                 // v9: qualifies at $5,500 (no salary ceiling)
     player({ dkPlayerId: 42, position: "TE", team: "BBB", salary: 3200, priorOpportunity: prior(3, 3, 0.05) }),
     player({ dkPlayerId: 50, position: "DST", team: "AAA", salary: 2500 }), player({ dkPlayerId: 51, position: "DST", team: "BBB", salary: 2900 }),
     player({ dkPlayerId: 52, position: "DST", team: "CCC", salary: 3600 }),
@@ -74,7 +74,7 @@ const prior = (games: number, targets: number, targetShare: number | null = null
   assert.equal(shaped.settings.maxQbExposure, qbExposureCap(4));
   assert.equal(shaped.settings.buildShape, "winners", "the preset stays on the saved settings");
   const out = [...shaped.excluded.keys()].sort((a, b) => a - b);
-  assert.deepEqual(out, [21, 22, 23, 37, 52], "two low-target backs, the back with no record, the thin receiver and the dear defense");
+  assert.deepEqual(out, [21, 22, 23, 37, 42, 52], "two low-target backs, the back with no record, the thin receiver, the 1-target tight end (v9) and the dear defense");
   assert.ok(!shaped.excluded.has(24), "a bell-cow with 2 targets a game stays on top-quartile touches (v2)");
   assert.match(shaped.excluded.get(21)!, /12\.0 touches and 2\.0 targets a game/);
   assert.ok(!shaped.excluded.has(20), "a locked back below the rule is kept: locks always win");
@@ -82,8 +82,9 @@ const prior = (games: number, targets: number, targetShare: number | null = null
   assert.match(shaped.excluded.get(23)!, /no prior-week opportunity record/);
   assert.match(shaped.excluded.get(37)!, /12% target share at \$6,200/);
   assert.match(shaped.excluded.get(52)!, /\$3,600; the preset keeps defenses under \$3,000/);
-  assert.ok(shaped.notes.some(n => /only 1 TE\(s\) meet the rule/.test(n) && /TE rule was not applied/.test(n)), "a rule that leaves one tight end is skipped and said");
-  assert.ok(!shaped.excluded.has(41) && !shaped.excluded.has(42), "the skipped TE rule leaves every tight end in");
+  // v9: the TE rule has no salary ceiling, so the $5,500 tight end with 6 targets a game qualifies.
+  assert.ok(!shaped.excluded.has(40) && !shaped.excluded.has(41), "both tight ends with 4+ targets a game are kept, whatever their salary");
+  assert.match(shaped.excluded.get(42) ?? "", /1\.0 targets a game/, "the 1-target tight end is left out, with his number");
   assert.ok(shaped.notes[0].startsWith(`Winners shape (${WINNERS_SHAPE_VERSION}, classic)`));
   assert.ok(shaped.notes.some(n => /RB pool kept 7 of 10/.test(n)), `the locked back and the bell-cow count as kept: ${shaped.notes.join(" | ")}`);
   assert.equal(settings().minUnique, 2, "the caller's settings object is not mutated");
@@ -163,6 +164,13 @@ console.log("Winners shape: the preset resolves to named settings and named excl
   assert.equal(shapedCl.settings.qbDoubleStackShare, WINNERS_SHAPE.qbDoubleStackShare);
   assert.equal(shapedCl.settings.maxFourWrShare, WINNERS_SHAPE.maxFourWrShare);
   assert.equal(shapedCl.settings.maxOtherGameStackShare, WINNERS_SHAPE.maxOtherGameStackShare);
+  assert.equal(shapedCl.settings.twoTeShare, WINNERS_SHAPE.twoTeShare);
+  // v9 2nd TE target, two-sided: exactly 3 of 10 lineups carry two tight ends.
+  const teRun = optimizeNflLineups(pool, settings({ nLineups: 10, minUnique: 2, maxExposure: 1, minSalary: 0, stackPassCatchers: 1, twoTeShare: 0.3 }));
+  assert.equal(teRun.lineups.length, 10, teRun.warnings.join(" | "));
+  assert.equal(teRun.lineups.filter(l => l.slots.filter(s => s.player.position === "TE").length === 2).length, 3, "twoTeShare 0.3 of 10: three two-TE lineups");
+  assert.ok(teRun.warnings.some(w => /3 roster a 2nd TE \(target 30%\)/.test(w)), teRun.warnings.join(" | "));
+  assert.throws(() => optimizeNflLineups(pool, settings({ format: "showdown", twoTeShare: 0.3 })), /Classic rule/);
 
   const plain = optimizeNflLineups(pool, settings({ nLineups: n, stackPassCatchers: 1 }));
   assert.ok(plain.lineups.every(l => l.stackSummary.bringBack != null), "without the preset, the hard bring-back rule is every lineup");
