@@ -291,6 +291,9 @@ export type NflOptimizerSettings = {
   /** Classic: at most this share of lineups may roster 2+ non-DST players from a team outside the QB's game. */
   maxOtherGameStackShare?: number;
   lineupForbidOtherGameStack?: boolean;
+  /** Classic: share of lineups rostering a 2nd TE (two-sided: the rest roster exactly one). */
+  twoTeShare?: number;
+  lineupTeExact?: 1 | 2;
   maxExposure: number;
   minUnique: number;
   stackPassCatchers: 0 | 1 | 2;
@@ -745,6 +748,8 @@ function validateSettings(settings: NflOptimizerSettings): void {
   if (settings.maxFourWrShare != null && settings.format !== "classic") throw new Error("The 4th-WR share is a Classic rule.");
   share(settings.maxOtherGameStackShare, "Other-game stack share", true);
   if (settings.maxOtherGameStackShare != null && settings.format !== "classic") throw new Error("The other-game stack share is a Classic rule.");
+  share(settings.twoTeShare, "Two-TE share", true);
+  if (settings.twoTeShare != null && settings.format !== "classic") throw new Error("The two-TE share is a Classic rule.");
   if ((settings.twoQbShare != null || settings.maxLoneQbCaptainShare != null || settings.rbCaptainShare != null || settings.showdownQbMinCap != null) && settings.format !== "showdown")
     throw new Error("The two-QB share, lone-QB captain share, RB captain share and QB exposure floor are Showdown rules.");
 }
@@ -819,7 +824,7 @@ function buildOne(
     // No two non-DST players from a team outside the QB's game: for each team,
     // its RB/WR/TE count minus M x (that team's or its opponent's QB rostered) <= 1.
     if (settings.lineupForbidOtherGameStack) for (const team of new Set(available.map((p) => p.team))) constraints[`og_${team}`] = { max: 1 };
-    constraints.te = { min: 1, max: 2 };
+    constraints.te = settings.lineupTeExact != null ? { equal: settings.lineupTeExact } : { min: 1, max: 2 };
     constraints.dst = { equal: 1 };
     constraints.flex = { equal: 7 };
   } else {
@@ -1099,7 +1104,8 @@ function buildOne(
     // retries this lineup with the directive relaxed and the user's slot
     // minimums still forced. Only the plain build drops the minimums.
     const directed = settings.lineupQbExact != null || settings.lineupForbidQbCaptain || settings.lineupRequireRbCaptain || settings.lineupForbidRbCaptain
-      || settings.lineupStackMin != null || settings.lineupStackMax != null || settings.lineupForbidFourWr || settings.lineupForbidOtherGameStack;
+      || settings.lineupStackMin != null || settings.lineupStackMax != null || settings.lineupForbidFourWr || settings.lineupForbidOtherGameStack
+      || settings.lineupTeExact != null;
     if (slotForced && directed) return null;
     if (slotForced) return buildOne(pool, settings, lineupNumber, previous, exposureCounts, forcedIds, countsById, captainCounts, flexCounts, compiled, remaining, false, requireAirMatchup, requireGoalLine, bringBackRule, forbidDstVsOffense);
     return null;
@@ -1568,8 +1574,9 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   const doubleStackShare = classicGpp ? settings.qbDoubleStackShare ?? null : null;
   const fourWrCap = settings.format === "classic" && settings.maxFourWrShare != null ? Math.floor(settings.maxFourWrShare * plan.length + 1e-9) : null;
   const otherGameCap = settings.format === "classic" && settings.maxOtherGameStackShare != null ? Math.floor(settings.maxOtherGameStackShare * plan.length + 1e-9) : null;
-  const classicShares = doubleStackShare != null || fourWrCap != null || otherGameCap != null;
-  let doubleStackLineups = 0, fourWrLineups = 0, otherGameLineups = 0;
+  const twoTeShare = settings.format === "classic" ? settings.twoTeShare ?? null : null;
+  const classicShares = doubleStackShare != null || fourWrCap != null || otherGameCap != null || twoTeShare != null;
+  let doubleStackLineups = 0, fourWrLineups = 0, otherGameLineups = 0, twoTeLineups = 0;
   const foldedToStandard = new Map<ArchetypeId, number>();
   for (let lineupNumber = 1; lineupNumber <= plan.length; lineupNumber++) {
     const forbidDstVsOffense = dstVsOffenseCap != null && dstVsOffenseLineups >= dstVsOffenseCap;
@@ -1600,11 +1607,20 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
         ...(doubleStackShare != null ? (wantDouble ? { lineupStackMin: 2 as const } : { lineupStackMin: 1 as const, lineupStackMax: 1 }) : {}),
         ...(fourWrCap != null && fourWrLineups >= fourWrCap ? { lineupForbidFourWr: true } : {}),
         ...(otherGameCap != null && otherGameLineups >= otherGameCap ? { lineupForbidOtherGameStack: true } : {}),
+        ...(twoTeShare != null ? { lineupTeExact: (Math.round(twoTeShare * lineupNumber) - twoTeLineups > 0 ? 2 : 1) as 1 | 2 } : {}),
       };
-      directives.push(full);
-      if (full.lineupStackMin != null && (full.lineupForbidFourWr || full.lineupForbidOtherGameStack))
-        directives.push({ lineupForbidFourWr: full.lineupForbidFourWr, lineupForbidOtherGameStack: full.lineupForbidOtherGameStack });
-      if (full.lineupForbidOtherGameStack) directives.push({ lineupForbidFourWr: full.lineupForbidFourWr });
+      // Relax in order: the TE count, then the stack size, then the other-game cap; the 4th-WR cap last.
+      const relaxations: Partial<NflOptimizerSettings>[] = [
+        full,
+        { ...full, lineupTeExact: undefined },
+        { lineupForbidFourWr: full.lineupForbidFourWr, lineupForbidOtherGameStack: full.lineupForbidOtherGameStack },
+        { lineupForbidFourWr: full.lineupForbidFourWr },
+      ];
+      const seen = new Set<string>();
+      for (const r of relaxations) {
+        const key = JSON.stringify(r, Object.keys(r).sort());
+        if (!seen.has(key)) { seen.add(key); directives.push(r); }
+      }
     }
     if (showdownShares) {
       const full: Partial<NflOptimizerSettings> = {
@@ -1654,6 +1670,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
       const qb = lineup.slots.find(({ player }) => player.position === "QB")?.player;
       if (qb && lineup.slots.filter(({ player }) => ["WR", "TE"].includes(player.position) && player.team === qb.team).length >= 2) doubleStackLineups++;
       if (lineup.slots.filter(({ player }) => player.position === "WR").length >= 4) fourWrLineups++;
+      if (lineup.slots.filter(({ player }) => player.position === "TE").length >= 2) twoTeLineups++;
       if (qb) {
         const counts = new Map<string, number>();
         for (const { player } of lineup.slots) if (["RB", "WR", "TE"].includes(player.position)) counts.set(player.team, (counts.get(player.team) ?? 0) + 1);
@@ -1682,7 +1699,8 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   if (classicShares && lineups.length) {
     warnings.push(`Classic distributions: ${doubleStackLineups} of ${lineups.length} lineups stack the QB with 2+ of his pass catchers${doubleStackShare != null ? ` (target ${Math.round(doubleStackShare * 100)}%)` : ""}, `
       + `${fourWrLineups} roster a 4th WR${fourWrCap != null ? ` (cap ${fourWrCap})` : ""}, `
-      + `${otherGameLineups} carry a 2-player stack from another game${otherGameCap != null ? ` (cap ${otherGameCap})` : ""}`
+      + `${otherGameLineups} carry a 2-player stack from another game${otherGameCap != null ? ` (cap ${otherGameCap})` : ""}, `
+      + `${twoTeLineups} roster a 2nd TE${twoTeShare != null ? ` (target ${Math.round(twoTeShare * 100)}%)` : ""}`
       + (distributionRelaxed ? `; ${distributionRelaxed} lineup(s) could not meet their target under the other rules and were built with it relaxed.` : "."));
   }
   if (showdownShares && lineups.length) {

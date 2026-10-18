@@ -12,7 +12,7 @@
  *   about half the lineups (ours: every one), median salary $49,874;
  * - running backs with top-quartile touches or 4+ targets a game, receivers with 25%+ of their
  *   team's targets (the third receiver may be a cheap one under $5,000),
- *   tight ends under $4,000 with 4+ targets a game, defenses under $3,000.
+ *   tight ends with 4+ targets a game (v9: no salary ceiling), defenses under $3,000.
  * Showdown (248 Thursday/Monday winners):
  * - 5-1 or 3-3, almost never 4-2 (88%); no kicker (6% vs 36% lower down);
  *   the captain a QB, RB or WR (346 of 346 top-20 lineups);
@@ -82,7 +82,15 @@ import type { NflOptimizerPlayer, NflOptimizerSettings } from "@/app/dfs/nfl/nfl
  * (winners 30%, weekly 22-48%; ours 68%). All scheduled across the run like
  * the bring-back share.
  */
-export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v8";
+/**
+ * v9 (2026-10-18, owner's decision: 50-lineup Classic builds must include the
+ * winners' 2nd TE). A 2nd TE in 30% of lineups, two-sided (2026 top-100
+ * winners 45%, 2023-25 first place 13%), and the TE pool rule drops its
+ * $4,000 ceiling: in the 220 winning two-TE lineups the pricier TE cost a
+ * median $4,600 and was $4,000+ in 75% of them, and 36% of one-TE winners used
+ * a $4,000+ TE. The 4+ targets a game requirement stays.
+ */
+export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v9";
 
 export type BuildShape = "standard" | "winners";
 export const BUILD_SHAPES: readonly BuildShape[] = ["standard", "winners"];
@@ -111,6 +119,8 @@ export const WINNERS_SHAPE = {
   maxFourWrShare: 0.35,
   /** Classic: at most this share of lineups carry a 2-player stack from another game. */
   maxOtherGameStackShare: 0.35,
+  /** Classic: share of lineups rostering a 2nd TE. */
+  twoTeShare: 0.3,
   /** Classic: share of lineups that may play a DST against their own offense. */
   dstVsOffenseMaxShare: 0.05,
   rbMinTargetsPerGame: 4,
@@ -118,7 +128,6 @@ export const WINNERS_SHAPE = {
   rbTouchesTopShare: 0.25,
   wrMinTargetShare: 0.25,
   wrCheapSalary: 5_000,
-  teMaxSalary: 4_000,
   teMinTargetsPerGame: 4,
   dstMaxSalary: 3_000,
   captainMaxExposure: 0.3,
@@ -207,10 +216,11 @@ export function applyWinnersShape(settings: NflOptimizerSettings, players: reado
       qbDoubleStackShare: settings.qbDoubleStackShare ?? WINNERS_SHAPE.qbDoubleStackShare,
       maxFourWrShare: Math.min(settings.maxFourWrShare ?? 1, WINNERS_SHAPE.maxFourWrShare),
       maxOtherGameStackShare: Math.min(settings.maxOtherGameStackShare ?? 1, WINNERS_SHAPE.maxOtherGameStackShare),
+      twoTeShare: settings.twoTeShare ?? WINNERS_SHAPE.twoTeShare,
     });
     notes.push(`Winners shape (${WINNERS_SHAPE_VERSION}, classic): min unique ${shaped.minUnique}, max exposure ${Math.round(shaped.maxExposure * 100)}%, `
       + `each quarterback in at most ${Math.round(qbCap * 100)}% of lineups (${Math.max(1, Math.floor(qbCap * n))} of ${n}), `
-      + `a bring-back in ${Math.round(WINNERS_SHAPE.bringBackShare * 100)}% of lineups, at least one stacked pass catcher (two in ${Math.round(WINNERS_SHAPE.qbDoubleStackShare * 100)}% of lineups), a 4th WR in at most ${Math.round(WINNERS_SHAPE.maxFourWrShare * 100)}%, a 2-player stack from another game in at most ${Math.round(WINNERS_SHAPE.maxOtherGameStackShare * 100)}%, `
+      + `a bring-back in ${Math.round(WINNERS_SHAPE.bringBackShare * 100)}% of lineups, at least one stacked pass catcher (two in ${Math.round(WINNERS_SHAPE.qbDoubleStackShare * 100)}% of lineups), a 4th WR in at most ${Math.round(WINNERS_SHAPE.maxFourWrShare * 100)}%, a 2-player stack from another game in at most ${Math.round(WINNERS_SHAPE.maxOtherGameStackShare * 100)}%, a 2nd TE in ${Math.round(WINNERS_SHAPE.twoTeShare * 100)}%, `
       + `a DST against its own players in at most ${Math.round(shaped.maxDstVsOffenseShare! * 100)}% of lineups (${Math.floor(shaped.maxDstVsOffenseShare! * n + 1e-9)} of ${n}), min salary ${money(shaped.minSalary)}.`);
     applyPoolRules(settings, players, excluded, notes);
   } else {
@@ -253,9 +263,9 @@ function applyPoolRules(settings: NflOptimizerSettings, players: readonly ShapeP
     { position: "WR", label: `receivers with ${Math.round(WINNERS_SHAPE.wrMinTargetShare * 100)}%+ of their team's targets, or under ${money(WINNERS_SHAPE.wrCheapSalary)}`, needsPrior: true,
       qualifies: p => p.salary < WINNERS_SHAPE.wrCheapSalary || (p.priorOpportunity?.targetShare ?? -1) >= WINNERS_SHAPE.wrMinTargetShare,
       why: p => `${fmtShare(p.priorOpportunity?.targetShare ?? null)} target share at ${money(p.salary)}; the preset keeps receivers at ${Math.round(WINNERS_SHAPE.wrMinTargetShare * 100)}%+ or under ${money(WINNERS_SHAPE.wrCheapSalary)}.` },
-    { position: "TE", label: `tight ends under ${money(WINNERS_SHAPE.teMaxSalary)} with ${WINNERS_SHAPE.teMinTargetsPerGame}+ targets a game`, needsPrior: true,
-      qualifies: p => p.salary < WINNERS_SHAPE.teMaxSalary && !!p.priorOpportunity && perGame(p.priorOpportunity, "targets") >= WINNERS_SHAPE.teMinTargetsPerGame,
-      why: p => `${money(p.salary)}${p.priorOpportunity ? ` with ${perGame(p.priorOpportunity, "targets").toFixed(1)} targets a game` : ", no prior-week opportunity record"}; the preset keeps tight ends under ${money(WINNERS_SHAPE.teMaxSalary)} with ${WINNERS_SHAPE.teMinTargetsPerGame}+ targets a game.` },
+    { position: "TE", label: `tight ends with ${WINNERS_SHAPE.teMinTargetsPerGame}+ targets a game`, needsPrior: true,
+      qualifies: p => !!p.priorOpportunity && perGame(p.priorOpportunity, "targets") >= WINNERS_SHAPE.teMinTargetsPerGame,
+      why: p => `${money(p.salary)}${p.priorOpportunity ? ` with ${perGame(p.priorOpportunity, "targets").toFixed(1)} targets a game` : ", no prior-week opportunity record"}; the preset keeps tight ends with ${WINNERS_SHAPE.teMinTargetsPerGame}+ targets a game.` },
     { position: "DST", label: `defenses under ${money(WINNERS_SHAPE.dstMaxSalary)}`, needsPrior: false,
       qualifies: p => p.salary < WINNERS_SHAPE.dstMaxSalary,
       why: p => `${money(p.salary)}; the preset keeps defenses under ${money(WINNERS_SHAPE.dstMaxSalary)}.` },

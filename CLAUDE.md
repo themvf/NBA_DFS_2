@@ -8095,6 +8095,13 @@ every player the pool rules left out (`reasonCode` `WINNERS_SHAPE` /
   Checked against 38 published 2023-25 first-place lineups (matched to nflverse
   by exact DK points): double stack 39%, other-game stack 32%, DST 5% agree;
   4th WR 39% / 2nd TE 13% differ from 2026, hence the 35% cap.
+- **v9 (2026-10-18): Classic 2nd TE.** A 2nd TE in 30% of lineups, two-sided
+  (2026 winners 45%, 2023-25 first place 13%), and the TE pool rule drops its
+  $4,000 ceiling (keeps 4+ targets a game): the pricier TE in winning two-TE
+  lineups cost a median $4,600 and was $4,000+ in 75%, so the old rule could
+  not build the winners' version. Main-slate dry run (week 7, 50 lineups):
+  QB+2 40%, 4th WR 34%, 2nd TE 30%, 3rd RB 36%, other-game 34%, median
+  projection 138.3 (v8: 136.7).
 - Not an edge: the shape is a second build for the weekly winners-vs-us
   review to grade against the standard one. Change a constant and bump the
   version; `npm run test:nfl-winners-shape` pins the current ones.
