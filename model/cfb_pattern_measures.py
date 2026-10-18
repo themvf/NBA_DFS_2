@@ -112,13 +112,12 @@ MARKET_SPLITS = (
 )
 
 
-def market_splits(games: list[dict], splits=MARKET_SPLITS) -> list[dict]:
-    """Moneyline favorites' record and flat-unit ROI at the closing moneyline.
+def _ml_eligible(games: list[dict]) -> list[tuple]:
+    """(game, favorite won, favorite decimal, favorite vig-free prob, underdog decimal).
 
-    Same population as weekly_base_rates (FBS-vs-FBS regular season, spread and
-    both moneylines). The favorite is the side with the shorter moneyline; a
-    game priced level on both sides has no favorite and is skipped. One unit on
-    the favorite: a win pays its closing decimal price minus 1, a loss costs 1.
+    FBS-vs-FBS regular season with a spread and both moneylines. The favorite
+    is the side with the shorter moneyline; a game priced level on both sides
+    has no favorite and is skipped, as is a tied final.
     """
     eligible = []
     for g in games:
@@ -140,27 +139,82 @@ def market_splits(games: list[dict], splits=MARKET_SPLITS) -> list[dict]:
         price = dh if home_fav else da
         dog_price = da if home_fav else dh
         eligible.append((g, won, price, p_home if home_fav else 1 - p_home, dog_price))
-    out = []
-    for label, rule in splits:
-        picked = [(won, price, imp, dog) for g, won, price, imp, dog in eligible if rule(g)]
-        rows = [(won, price, imp) for won, price, imp, _ in picked]
-        # The underdog side of the same games: one unit at its closing price.
-        dog_units = sum(-1.0 if won else (dog - 1) for won, _, _, dog in picked)
-        n = len(rows)
-        wins = sum(1 for won, _, _ in rows if won)
-        units = sum((price - 1) if won else -1.0 for won, price, _ in rows)
-        imp = statistics.mean(i for _, _, i in rows) if rows else None
-        win_rate = wins / n if n else None
-        out.append({
-            "split": label, "games": n, "wins": wins, "losses": n - wins,
-            "win_rate": win_rate, "implied": imp,
-            "excess_pp": None if win_rate is None else (win_rate - imp) * 100,
-            "units": units, "roi": units / n if n else None,
-            "median_price": statistics.median(p for _, p, _ in rows) if rows else None,
-            "dog_units": dog_units, "dog_roi": dog_units / n if n else None,
-            "dog_median_price": statistics.median(d for *_, d in picked) if picked else None,
-        })
-    return out
+    return eligible
+
+
+def _ml_row(label: str, picked: list[tuple]) -> dict:
+    """One unit on the favorite and one on the underdog in the same games, at the close."""
+    n = len(picked)
+    wins = sum(1 for _, won, *_ in picked if won)
+    units = sum((price - 1) if won else -1.0 for _, won, price, _, _ in picked)
+    dog_units = sum(-1.0 if won else (dog - 1) for _, won, _, _, dog in picked)
+    imp = statistics.mean(i for *_, i, _ in picked) if picked else None
+    win_rate = wins / n if n else None
+    return {
+        "split": label, "games": n, "wins": wins, "losses": n - wins,
+        "win_rate": win_rate, "implied": imp,
+        "excess_pp": None if win_rate is None else (win_rate - imp) * 100,
+        "units": units, "roi": units / n if n else None,
+        "median_price": statistics.median(p for _, _, p, _, _ in picked) if picked else None,
+        "dog_units": dog_units, "dog_roi": dog_units / n if n else None,
+        "dog_median_price": statistics.median(d for *_, d in picked) if picked else None,
+    }
+
+
+def market_splits(games: list[dict], splits=MARKET_SPLITS) -> list[dict]:
+    """Moneyline favorites' and underdogs' record and flat-unit ROI at the closing moneyline.
+
+    Same population as weekly_base_rates. One unit on the favorite: a win pays
+    its closing decimal price minus 1, a loss costs 1; the underdog the reverse.
+    """
+    eligible = _ml_eligible(games)
+    return [_ml_row(label, [e for e in eligible if rule(e[0])]) for label, rule in splits]
+
+
+# Bands partition every eligible game: each one lands in exactly one spread band
+# and, when it has a total, exactly one total band. CFB lines are in half points.
+SPREAD_BANDS = (
+    ("Spread 0 to 2.5", lambda s: s <= 2.5),
+    ("Spread 3 to 6.5", lambda s: 2.5 < s <= 6.5),
+    ("Spread 7 to 13.5", lambda s: 6.5 < s <= 13.5),
+    ("Spread 14 or more", lambda s: s > 13.5),
+)
+TOTAL_BANDS = (
+    ("Total under 45", lambda t: t < 45.0),
+    ("Total 45 to 54.5", lambda t: 45.0 <= t < 55.0),
+    ("Total 55 or more", lambda t: t >= 55.0),
+)
+
+
+def _band(value: float | None, bands) -> str | None:
+    if value is None:
+        return None
+    return next((label for label, rule in bands if rule(float(value))), None)
+
+
+def market_breakdown(games: list[dict]) -> dict:
+    """Favorites and underdogs at the closing moneyline, from simplest cut to the most detailed.
+
+    overall          every eligible game
+    by_spread        one row per spread band (the bands add up to overall)
+    by_total         one row per total band (games without a total are left out and counted)
+    by_spread_total  every spread band crossed with every total band
+    """
+    eligible = _ml_eligible(games)
+    tagged = [(_band(abs(float(e[0]["home_spread"])), SPREAD_BANDS), _band(e[0].get("vegas_total"), TOTAL_BANDS), e)
+              for e in eligible]
+    cross = []
+    for s_label, _ in SPREAD_BANDS:
+        for t_label, _ in TOTAL_BANDS:
+            row = _ml_row(f"{s_label}, {t_label.lower()}", [e for s, t, e in tagged if s == s_label and t == t_label])
+            cross.append({**row, "spread_band": s_label, "total_band": t_label})
+    return {
+        "overall": _ml_row("All games", eligible),
+        "by_spread": [{**_ml_row(lbl, [e for s, _, e in tagged if s == lbl]), "spread_band": lbl} for lbl, _ in SPREAD_BANDS],
+        "by_total": [{**_ml_row(lbl, [e for _, t, e in tagged if t == lbl]), "total_band": lbl} for lbl, _ in TOTAL_BANDS],
+        "by_spread_total": cross,
+        "missing_total": sum(1 for _, t, _ in tagged if t is None),
+    }
 
 
 def load_base_rate_games(db) -> list[dict]:
