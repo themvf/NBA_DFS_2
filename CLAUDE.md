@@ -8086,12 +8086,15 @@ every player the pool rules left out (`reasonCode` `WINNERS_SHAPE` /
 - **v8 (2026-10-18): Classic distributions.** From 484 distinct top-100
   lineups of the week 1-5 Millionaires: QB + 2+ own WR/TE in 40% of lineups
   (winners 45%, whole field 30%, our week-5 build 10%), the rest exactly one;
-  a 4th WR in at most 25% (winners 24%, ours 82%); 2+ RB/WR/TE from a team
+  a 4th WR in at most 35% (2026 winners 24%, 2023-25 first place 39%; ours 82%); 2+ RB/WR/TE from a team
   outside the QB's game in at most 35% (winners 30%, ours 68%). The extra
   slot then lands on a 2nd TE ~40% / 3rd RB ~35% without its own rule. Week-5
   replay (frozen attribution input, which keeps prior-week opportunity; a
   saved run's input_snapshot does not, and must go through restorePlayers):
   40 / 25 / 35%, median projection 131.4 vs 132.1.
+  Checked against 38 published 2023-25 first-place lineups (matched to nflverse
+  by exact DK points): double stack 39%, other-game stack 32%, DST 5% agree;
+  4th WR 39% / 2nd TE 13% differ from 2026, hence the 35% cap.
 - Not an edge: the shape is a second build for the weekly winners-vs-us
   review to grade against the standard one. Change a constant and bump the
   version; `npm run test:nfl-winners-shape` pins the current ones.

@@ -77,8 +77,8 @@ import type { NflOptimizerPlayer, NflOptimizerSettings } from "@/app/dfs/nfl/nfl
  * as Showdown). From the 484 distinct top-100 lineups of the 2026 week 1-5
  * Millionaires: the QB stacked with 2+ of his own WR/TE in 40% of lineups
  * (winners 45%, weekly 12-79%; the whole field 30%; our week-5 build 10%), the
- * rest with exactly one; a 4th WR in at most 25% (winners 24%, weekly 9-35%;
- * ours 82%); 2+ RB/WR/TE from a team outside the QB's game in at most 35%
+ * rest with exactly one; a 4th WR in at most 35% (2026 winners 24%, weekly
+ * 9-35%; 2023-25 first-place winners 39%, n=38; ours 82%); 2+ RB/WR/TE from a team outside the QB's game in at most 35%
  * (winners 30%, weekly 22-48%; ours 68%). All scheduled across the run like
  * the bring-back share.
  */
@@ -108,7 +108,7 @@ export const WINNERS_SHAPE = {
   /** Classic: share of lineups stacking the QB with 2+ of his own pass catchers. */
   qbDoubleStackShare: 0.4,
   /** Classic: at most this share of lineups roster a 4th WR. */
-  maxFourWrShare: 0.25,
+  maxFourWrShare: 0.35,
   /** Classic: at most this share of lineups carry a 2-player stack from another game. */
   maxOtherGameStackShare: 0.35,
   /** Classic: share of lineups that may play a DST against their own offense. */
