@@ -280,6 +280,17 @@ export type NflOptimizerSettings = {
   lineupForbidQbCaptain?: boolean;
   lineupRequireRbCaptain?: boolean;
   lineupForbidRbCaptain?: boolean;
+  /** Classic GPP: share of lineups stacking the QB with 2+ of his own WR/TE; the rest stack exactly one. */
+  qbDoubleStackShare?: number;
+  /** Classic: at most this share of lineups may roster a 4th WR. */
+  maxFourWrShare?: number;
+  /** Internal, per lineup (Classic): stack size bounds and the 4th-WR ban. Set by the run loop, never by callers. */
+  lineupStackMin?: 1 | 2;
+  lineupStackMax?: number;
+  lineupForbidFourWr?: boolean;
+  /** Classic: at most this share of lineups may roster 2+ non-DST players from a team outside the QB's game. */
+  maxOtherGameStackShare?: number;
+  lineupForbidOtherGameStack?: boolean;
   maxExposure: number;
   minUnique: number;
   stackPassCatchers: 0 | 1 | 2;
@@ -727,6 +738,13 @@ function validateSettings(settings: NflOptimizerSettings): void {
   share(settings.maxLoneQbCaptainShare, "Lone-QB captain share", true);
   share(settings.rbCaptainShare, "RB captain share", true);
   share(settings.showdownQbMinCap, "Showdown QB exposure floor", false);
+  share(settings.qbDoubleStackShare, "QB double-stack share", true);
+  share(settings.maxFourWrShare, "4th-WR share", true);
+  if (settings.qbDoubleStackShare != null && (settings.format !== "classic" || settings.mode !== "gpp" || settings.stackPassCatchers < 1))
+    throw new Error("A QB double-stack share is a Classic GPP rule and needs at least one stacked pass catcher.");
+  if (settings.maxFourWrShare != null && settings.format !== "classic") throw new Error("The 4th-WR share is a Classic rule.");
+  share(settings.maxOtherGameStackShare, "Other-game stack share", true);
+  if (settings.maxOtherGameStackShare != null && settings.format !== "classic") throw new Error("The other-game stack share is a Classic rule.");
   if ((settings.twoQbShare != null || settings.maxLoneQbCaptainShare != null || settings.rbCaptainShare != null || settings.showdownQbMinCap != null) && settings.format !== "showdown")
     throw new Error("The two-QB share, lone-QB captain share, RB captain share and QB exposure floor are Showdown rules.");
 }
@@ -797,7 +815,10 @@ function buildOne(
     constraints.roster = { equal: 9 };
     constraints.qb = { equal: 1 };
     constraints.rb = { min: 2, max: 3 };
-    constraints.wr = { min: 3, max: 4 };
+    constraints.wr = { min: 3, max: settings.lineupForbidFourWr ? 3 : 4 };
+    // No two non-DST players from a team outside the QB's game: for each team,
+    // its RB/WR/TE count minus M x (that team's or its opponent's QB rostered) <= 1.
+    if (settings.lineupForbidOtherGameStack) for (const team of new Set(available.map((p) => p.team))) constraints[`og_${team}`] = { max: 1 };
     constraints.te = { min: 1, max: 2 };
     constraints.dst = { equal: 1 };
     constraints.flex = { equal: 7 };
@@ -866,6 +887,8 @@ function buildOne(
   if (settings.format === "classic" && settings.mode === "gpp" && settings.stackPassCatchers > 0) {
     for (const quarterback of available.filter((player) => player.position === "QB")) {
       constraints[`stack_${quarterback.dkPlayerId}`] = { min: 0 };
+      // own WR/TE + M*qb <= cap + M: with this quarterback rostered, at most `cap` of his pass catchers.
+      if (settings.lineupStackMax != null) constraints[`stackmax_${quarterback.dkPlayerId}`] = { max: settings.lineupStackMax + STACK_MAX_BIG_M };
       if (bringRequired) constraints[`bring_${quarterback.dkPlayerId}`] = { min: 0 };
       // opponents + M*qb <= M: with the quarterback rostered, no opposing RB/WR/TE.
       if (bringForbidden) constraints[`nobring_${quarterback.dkPlayerId}`] = { max: BRING_BACK_BIG_M };
@@ -976,6 +999,13 @@ function buildOne(
         if (slot === "FLEX" && passCatcher) variable[`cstack_pc_${player.team}`] = 1;
         if (slot === "CPT" && player.position === "QB") variable[`cstack_pc_${player.team}`] = -1;
       }
+      if (settings.format === "classic" && settings.lineupForbidOtherGameStack) {
+        if (["RB", "WR", "TE"].includes(player.position)) variable[`og_${player.team}`] = 1;
+        if (player.position === "QB") {
+          variable[`og_${player.team}`] = -OTHER_GAME_BIG_M;
+          if (player.opponent) variable[`og_${player.opponent}`] = -OTHER_GAME_BIG_M;
+        }
+      }
       if (settings.format === "classic") {
         variable.roster = 1;
         variable[player.position.toLowerCase()] = 1;
@@ -1035,12 +1065,16 @@ function buildOne(
       if (settings.format === "classic" && settings.mode === "gpp" && settings.stackPassCatchers > 0) {
         for (const quarterback of available.filter((candidate) => candidate.position === "QB")) {
           if (player.dkPlayerId === quarterback.dkPlayerId) {
-            variable[`stack_${quarterback.dkPlayerId}`] = -settings.stackPassCatchers;
+            variable[`stack_${quarterback.dkPlayerId}`] = -(settings.lineupStackMin ?? settings.stackPassCatchers);
+            if (settings.lineupStackMax != null) variable[`stackmax_${quarterback.dkPlayerId}`] = STACK_MAX_BIG_M;
             if (bringRequired) variable[`bring_${quarterback.dkPlayerId}`] = -1;
             if (bringForbidden) variable[`nobring_${quarterback.dkPlayerId}`] = BRING_BACK_BIG_M;
             variable[`anti_${quarterback.dkPlayerId}`] = 1;
           }
-          if (["WR", "TE"].includes(player.position) && player.team === quarterback.team) variable[`stack_${quarterback.dkPlayerId}`] = 1;
+          if (["WR", "TE"].includes(player.position) && player.team === quarterback.team) {
+            variable[`stack_${quarterback.dkPlayerId}`] = 1;
+            if (settings.lineupStackMax != null) variable[`stackmax_${quarterback.dkPlayerId}`] = 1;
+          }
           if (bringRequired && ["RB", "WR", "TE"].includes(player.position) && player.team === quarterback.opponent) variable[`bring_${quarterback.dkPlayerId}`] = 1;
           if (bringForbidden && ["RB", "WR", "TE"].includes(player.position) && player.team === quarterback.opponent) variable[`nobring_${quarterback.dkPlayerId}`] = 1;
           if (player.position === "DST" && player.team === quarterback.opponent) variable[`anti_${quarterback.dkPlayerId}`] = 1;
@@ -1064,7 +1098,8 @@ function buildOne(
     // A Showdown distribution directive yields first: return null so the run
     // retries this lineup with the directive relaxed and the user's slot
     // minimums still forced. Only the plain build drops the minimums.
-    const directed = settings.lineupQbExact != null || settings.lineupForbidQbCaptain || settings.lineupRequireRbCaptain || settings.lineupForbidRbCaptain;
+    const directed = settings.lineupQbExact != null || settings.lineupForbidQbCaptain || settings.lineupRequireRbCaptain || settings.lineupForbidRbCaptain
+      || settings.lineupStackMin != null || settings.lineupStackMax != null || settings.lineupForbidFourWr || settings.lineupForbidOtherGameStack;
     if (slotForced && directed) return null;
     if (slotForced) return buildOne(pool, settings, lineupNumber, previous, exposureCounts, forcedIds, countsById, captainCounts, flexCounts, compiled, remaining, false, requireAirMatchup, requireGoalLine, bringBackRule, forbidDstVsOffense);
     return null;
@@ -1134,6 +1169,10 @@ function buildOne(
   };
 }
 
+/** Big-M for the per-lineup stack maximum: larger than any team's WR/TE count in one lineup. */
+const STACK_MAX_BIG_M = 9;
+/** Big-M for the other-game stack rule: larger than any team's RB/WR/TE count in one lineup. */
+const OTHER_GAME_BIG_M = 9;
 /** Spare quarterback appearances held back for the last lineups under a Showdown QB minimum. */
 const QB_RESERVE_SLACK = 2;
 
@@ -1525,6 +1564,12 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   const loneQbCaptainCap = showdown && settings.maxLoneQbCaptainShare != null ? Math.floor(settings.maxLoneQbCaptainShare * plan.length + 1e-9) : null;
   const showdownShares = twoQbShare != null || rbCaptainShare != null || loneQbCaptainCap != null;
   let twoQbLineups = 0, loneQbCaptainLineups = 0, rbCaptainLineups = 0, distributionRelaxed = 0;
+  const classicGpp = settings.format === "classic" && settings.mode === "gpp" && settings.stackPassCatchers > 0;
+  const doubleStackShare = classicGpp ? settings.qbDoubleStackShare ?? null : null;
+  const fourWrCap = settings.format === "classic" && settings.maxFourWrShare != null ? Math.floor(settings.maxFourWrShare * plan.length + 1e-9) : null;
+  const otherGameCap = settings.format === "classic" && settings.maxOtherGameStackShare != null ? Math.floor(settings.maxOtherGameStackShare * plan.length + 1e-9) : null;
+  const classicShares = doubleStackShare != null || fourWrCap != null || otherGameCap != null;
+  let doubleStackLineups = 0, fourWrLineups = 0, otherGameLineups = 0;
   const foldedToStandard = new Map<ArchetypeId, number>();
   for (let lineupNumber = 1; lineupNumber <= plan.length; lineupNumber++) {
     const forbidDstVsOffense = dstVsOffenseCap != null && dstVsOffenseLineups >= dstVsOffenseCap;
@@ -1549,6 +1594,18 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
     // with them relaxed, never dropped; relaxations are counted in the notes.
     const wantTwoQb = twoQbShare != null && Math.round(twoQbShare * lineupNumber) - twoQbLineups > 0;
     const directives: Partial<NflOptimizerSettings>[] = [];
+    if (classicShares) {
+      const wantDouble = doubleStackShare != null && Math.round(doubleStackShare * lineupNumber) - doubleStackLineups > 0;
+      const full: Partial<NflOptimizerSettings> = {
+        ...(doubleStackShare != null ? (wantDouble ? { lineupStackMin: 2 as const } : { lineupStackMin: 1 as const, lineupStackMax: 1 }) : {}),
+        ...(fourWrCap != null && fourWrLineups >= fourWrCap ? { lineupForbidFourWr: true } : {}),
+        ...(otherGameCap != null && otherGameLineups >= otherGameCap ? { lineupForbidOtherGameStack: true } : {}),
+      };
+      directives.push(full);
+      if (full.lineupStackMin != null && (full.lineupForbidFourWr || full.lineupForbidOtherGameStack))
+        directives.push({ lineupForbidFourWr: full.lineupForbidFourWr, lineupForbidOtherGameStack: full.lineupForbidOtherGameStack });
+      if (full.lineupForbidOtherGameStack) directives.push({ lineupForbidFourWr: full.lineupForbidFourWr });
+    }
     if (showdownShares) {
       const full: Partial<NflOptimizerSettings> = {
         ...(twoQbShare != null && (settings.minQbPerLineup ?? 0) >= 1 ? { lineupQbExact: (wantTwoQb ? 2 : 1) as 1 | 2 } : {}),
@@ -1593,6 +1650,16 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
     }
     lineups.push(lineup);
     if (lineup.stackSummary.bringBack) bringBackLineups++;
+    if (settings.format === "classic") {
+      const qb = lineup.slots.find(({ player }) => player.position === "QB")?.player;
+      if (qb && lineup.slots.filter(({ player }) => ["WR", "TE"].includes(player.position) && player.team === qb.team).length >= 2) doubleStackLineups++;
+      if (lineup.slots.filter(({ player }) => player.position === "WR").length >= 4) fourWrLineups++;
+      if (qb) {
+        const counts = new Map<string, number>();
+        for (const { player } of lineup.slots) if (["RB", "WR", "TE"].includes(player.position)) counts.set(player.team, (counts.get(player.team) ?? 0) + 1);
+        if ([...counts].some(([team, k]) => k >= 2 && team !== qb.team && team !== qb.opponent)) otherGameLineups++;
+      }
+    }
     if (showdown) {
       const qbCount = lineup.slots.filter(({ player }) => player.position === "QB").length;
       const captain = lineup.slots.find(({ slot }) => slot === "CPT")?.player;
@@ -1611,6 +1678,12 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
       if (slot.slot === "CPT") captainCounts.set(id, (captainCounts.get(id) ?? 0) + 1);
       else flexCounts.set(id, (flexCounts.get(id) ?? 0) + 1);
     }
+  }
+  if (classicShares && lineups.length) {
+    warnings.push(`Classic distributions: ${doubleStackLineups} of ${lineups.length} lineups stack the QB with 2+ of his pass catchers${doubleStackShare != null ? ` (target ${Math.round(doubleStackShare * 100)}%)` : ""}, `
+      + `${fourWrLineups} roster a 4th WR${fourWrCap != null ? ` (cap ${fourWrCap})` : ""}, `
+      + `${otherGameLineups} carry a 2-player stack from another game${otherGameCap != null ? ` (cap ${otherGameCap})` : ""}`
+      + (distributionRelaxed ? `; ${distributionRelaxed} lineup(s) could not meet their target under the other rules and were built with it relaxed.` : "."));
   }
   if (showdownShares && lineups.length) {
     warnings.push(`Showdown distributions: ${twoQbLineups} of ${lineups.length} lineups have both quarterbacks${twoQbShare != null ? ` (target ${Math.round(twoQbShare * 100)}%)` : ""}, `
