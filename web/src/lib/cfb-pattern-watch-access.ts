@@ -5,6 +5,10 @@ import { createHash, timingSafeEqual } from "node:crypto";
  * The site has no login, so the page opens only with ?key= matching the
  * CFB_PATTERN_PAGE_KEY environment variable. It fails closed: no variable, a
  * variable shorter than MIN_KEY_LENGTH, or a wrong key all answer "not found".
+ *
+ * Setting or changing the variable takes effect only after a NEW build. A
+ * Vercel "Redeploy" of the same commit is cancelled by vercel.json's
+ * ignoreCommand (nothing under web/ changed), so it never picks the key up.
  */
 export const MIN_KEY_LENGTH = 16;
 
