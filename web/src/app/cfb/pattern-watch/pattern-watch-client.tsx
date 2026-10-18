@@ -144,6 +144,45 @@ export default function PatternWatchClient({ dataset, error }: { dataset: Patter
         </div>
       </section>
 
+      {dataset.marketSplits.length > 0 && (
+        <section className="rounded-lg border bg-card p-4">
+          <h2 className="text-sm font-semibold">Moneyline favorites, season to date</h2>
+          <p className="mb-3 text-xs text-gray-500">
+            All FBS games with a closing line. One unit on the moneyline favorite at its closing price. Descriptive only: these
+            splits are not study patterns and are not graded for a verdict.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-xs">
+              <thead>
+                <tr className="border-b text-gray-500">
+                  <th className="py-1 pr-3 text-left">Split</th><th className="py-1 pr-3 text-right">Games</th>
+                  <th className="py-1 pr-3 text-right">Record</th><th className="py-1 pr-3 text-right">Won</th>
+                  <th className="py-1 pr-3 text-right">Implied</th><th className="py-1 pr-3 text-right">Difference</th>
+                  <th className="py-1 pr-3 text-right">Units</th><th className="py-1 pr-3 text-right">ROI</th>
+                  <th className="py-1 text-right">Median price</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dataset.marketSplits.map((m) => (
+                  <tr key={m.Split} className="border-b border-gray-50 tabular-nums">
+                    <td className="py-1 pr-3">{m.Split}</td>
+                    <td className="py-1 pr-3 text-right">{m.Games}</td>
+                    <td className="py-1 pr-3 text-right">{m.Record}</td>
+                    <td className="py-1 pr-3 text-right">{pct(m["Favorites won (%)"])}</td>
+                    <td className="py-1 pr-3 text-right">{pct(m["Price implied (%)"])}</td>
+                    <td className={`py-1 pr-3 text-right ${tone(m["Difference (pts)"])}`}>{m["Difference (pts)"] == null ? "—" : `${signed(m["Difference (pts)"], 1)} pts`}</td>
+                    <td className={`py-1 pr-3 text-right ${tone(m.Units)}`}>{signed(m.Units)}</td>
+                    <td className={`py-1 pr-3 text-right ${tone(m["ROI (%)"])}`}>{m["ROI (%)"] == null ? "—" : `${signed(m["ROI (%)"], 1)}%`}</td>
+                    <td className="py-1 text-right">{m["Median price"] ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-[11px] text-gray-500">Splits overlap: a game can appear in several rows. Small samples (a handful of games) mean very little.</p>
+        </section>
+      )}
+
       {weekly.length > 0 && (
         <section className="rounded-lg border bg-card p-4">
           <h2 className="text-sm font-semibold">Favorites&apos; win rate against price-implied, by week</h2>

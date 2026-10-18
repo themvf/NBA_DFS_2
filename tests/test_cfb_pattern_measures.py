@@ -96,3 +96,25 @@ def test_publish_module_imports():
     # (a backslash inside an f-string expression broke the first live run).
     import model.cfb_pattern_publish as publish
     assert callable(publish.render)
+
+
+def _split_game(home_ml, away_ml, hs, as_, spread=-7.0, total=50.0, week=1, cls=("fbs", "fbs")):
+    return {"week": week, "season_type": "regular", "home_score": hs, "away_score": as_, "home_spread": spread,
+            "home_ml": home_ml, "away_ml": away_ml, "vegas_total": total, "hclass": cls[0], "aclass": cls[1]}
+
+
+def test_market_splits_grade_the_moneyline_favorite():
+    from model import cfb_pattern_measures as m
+    games = [
+        _split_game(-200, 170, 30, 20, spread=-5.5, total=45.0),   # home fav wins: +0.5
+        _split_game(150, -180, 28, 21, spread=2.5, total=44.5),    # away fav loses: -1
+        _split_game(-110, -110, 24, 17),                           # level prices: no favorite, skipped
+        _split_game(-300, 250, 35, 10, cls=("fbs", "fcs")),        # FCS game: excluded
+    ]
+    rows = {r["split"]: r for r in m.market_splits(games)}
+    a = rows["All moneyline favorites"]
+    assert (a["games"], a["wins"], a["losses"]) == (2, 1, 1)
+    assert round(a["units"], 4) == -0.5 and round(a["roi"], 4) == -0.25
+    assert rows["Total exactly 45"]["games"] == 1 and rows["Total exactly 45"]["wins"] == 1
+    assert rows["Total 45 or lower"]["games"] == 2
+    assert rows["Spread 2.5 or less"]["games"] == 1 and rows["Spread 2.5 or less"]["losses"] == 1

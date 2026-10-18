@@ -18,6 +18,11 @@ export type WeeklyRow = {
   "Difference (pts)": number | null; "Favorites covered (%)": number | null; "Overs (%)": number | null;
   "Decided by 7 or less (%)": number | null;
 };
+export type MarketSplitRow = {
+  Split: string; Games: number; Wins: number; Losses: number; Record: string;
+  "Favorites won (%)": number | null; "Price implied (%)": number | null; "Difference (pts)": number | null;
+  Units: number; "ROI (%)": number | null; "Median price": string | null;
+};
 export type ResultRow = {
   Date: string; Game: string; Pattern: string; Pick: string; Price: string; Final: string; Result: string; Units: number;
 };
@@ -33,6 +38,7 @@ export type PatternWatchDataset = {
   studyVersion: string;
   patterns: PatternRow[];
   weekly: WeeklyRow[];
+  marketSplits: MarketSplitRow[];
   results: ResultRow[];
   cumulative: CumulativeRow[];
   frozenVsClose: FrozenRow[];
@@ -52,6 +58,7 @@ export async function getLatestPatternWatchDataset(): Promise<PatternWatchDatase
     studyVersion: String(p.study_version ?? ""),
     patterns: (p.patterns ?? []) as PatternRow[],
     weekly: (p.weekly_favorites ?? []) as WeeklyRow[],
+    marketSplits: (p.market_splits ?? []) as MarketSplitRow[],
     results: (p.results ?? []) as ResultRow[],
     cumulative: (p.cumulative_units ?? []) as CumulativeRow[],
     frozenVsClose: (p.frozen_vs_close ?? []) as FrozenRow[],
