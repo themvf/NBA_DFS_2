@@ -1,6 +1,6 @@
 import pytest
 
-from model.nfl_game_leaders_roles import RB_DEPTH_SPLIT, RESERVE, attach, team_scenario, usage_rates
+from model.nfl_game_leaders_roles import RB_DEPTH_SPLIT, RESERVE, attach, blend_prior, team_scenario, usage_rates
 from research.nfl_game_leaders_publish import MAX_UNASSIGNED_SHARE, publish
 
 GAMES = ['g1', 'g2', 'g3', 'g4']
@@ -10,8 +10,9 @@ def box(identity, carries=0, targets=0, name=None):
     return {'identity': identity, 'name': name or identity, 'carries': carries, 'targets': targets}
 
 
-def player(identity, position, status='unresolved', name=None):
-    return {'identity': identity, 'name': name or identity, 'team': 'T', 'position': position, 'status': status}
+def player(identity, position, status='unresolved', name=None, sleeper_status='ACTIVE'):
+    return {'identity': identity, 'name': name or identity, 'team': 'T', 'position': position, 'status': status,
+            'sleeper_status': sleeper_status}
 
 
 def depth(**ranks):
@@ -45,6 +46,32 @@ def test_vacated_rb_carries_follow_depth_and_field_is_complete():
     assert carries['rb2'] == pytest.approx(expected_rb2 / total * (1 - RESERVE['carries']))
     assert carries['rb3'] == pytest.approx(expected_rb3 / total * (1 - RESERVE['carries']))
     assert note['vacated_rb_carries'] == 16
+
+
+def test_prior_season_role_needs_a_current_role_on_the_depth_chart():
+    """v2: a prior-season rate is a prior for a current role, so a player with no usage in the
+    window carries it only at a role-giving depth rank and an active roster status."""
+    boxes = {g: [box('starter', carries=15), box('qb1', carries=4)] for g in GAMES}
+    prior = {'starter': {'games_played': 10, 'carries': 14., 'targets': 2.},
+             'rb_new1': {'games_played': 12, 'carries': 12., 'targets': 1.},      # rank 1 after a trade: keeps it
+             'rb_deep': {'games_played': 12, 'carries': 12., 'targets': 1.},      # rank 4: no current role
+             'rb_away': {'games_played': 12, 'carries': 12., 'targets': 1.},      # rank 2 but Sleeper NA: away
+             'qb2': {'games_played': 14, 'carries': 6., 'targets': 0.}}           # backup QB: no rushing role
+    players = [player('starter', 'RB'), player('rb_new1', 'RB'), player('rb_deep', 'RB'),
+               player('rb_away', 'RB', sleeper_status='NA'), player('qb1', 'QB'), player('qb2', 'QB')]
+    ranks = depth(starter=('RB', 1), rb_new1=('RB', 1), rb_away=('RB', 2), rb_deep=('RB', 4), qb1=('QB', 1), qb2=('QB', 2))
+    scen, note = team_scenario('T', players, ranks, boxes, GAMES, prior, prior_weight=2.)
+    carries = scen['carries']
+    assert carries['rb_new1'] > 0
+    assert carries['rb_deep'] == 0 and carries['rb_away'] == 0 and carries['qb2'] == 0
+    # The window player blends with his prior exactly as before: (4 * 15 + 2 * 14) / 6 a game.
+    v1 = {'starter': blend_prior({'starter': usage_rates(boxes, GAMES)['starter']}, prior, 2.)['starter']['carries']}
+    total = v1["starter"] + 12. + 4.  # starter, rb_new1 at his full prior, qb1 (window only)
+    assert carries['starter'] == pytest.approx(v1['starter'] / total * (1 - RESERVE['carries']))
+    assert sorted(note['prior_role_denied']) == ['qb2 (QB rank 2, ACTIVE)', 'rb_away (RB rank 2, NA)', 'rb_deep (RB rank 4, ACTIVE)']
+    # With no prior at all (prior_weight 0) nothing is denied and nothing changes.
+    scen0, note0 = team_scenario('T', players, ranks, boxes, GAMES, None, 0.)
+    assert note0['prior_role_denied'] == [] and scen0['carries']['rb_new1'] == 0
 
 
 def test_out_quarterback_carries_go_to_the_backup():

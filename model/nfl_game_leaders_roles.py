@@ -19,6 +19,11 @@ Rules (stated priors, not fitted; graded only by `research.nfl_game_leaders grad
   targets are shared in proportion to the remaining players' rates.
 * An active player with no recent touches who sits high on the depth chart
   (WR/TE rank <= 3, RB rank <= 2) gets NEWCOMER_TARGETS targets a game.
+* Last season's usage enters as pseudo-games (`prior_weight`), but a player the
+  window never saw touch the ball keeps that prior only while the depth chart
+  gives him a role (QB 1, RB 1-2, WR/TE 1-3) and Sleeper does not list him
+  NA or inactive (v2). v1 handed Josh Jacobs 34% of Green Bay's carries while
+  away from the team with no 2026 game.
 * A fixed reserve stays in the model's three newcomer slots.
 * Players in the recent box scores who are no longer on the roster are named
   at zero, which the model requires for a full field.
@@ -27,12 +32,28 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-VERSION = 'nfl-game-leaders-roles-v1'
+VERSION = 'nfl-game-leaders-roles-v2'
 SHRINK_GAMES = 1.0
+# v2 (2026-10-18): a player with no usage in the window keeps his prior-season
+# rate only at these depth ranks and never when Sleeper lists him NA/inactive.
+PRIOR_ROLE_DEPTH = {'QB': 1, 'RB': 2, 'WR': 3, 'TE': 3}
+NO_PRIOR_STATUSES = ('NA', 'INACTIVE')
 RB_DEPTH_SPLIT = (.55, .35, .10)
 RESERVE = {'carries': .05, 'targets': .04}
 NEWCOMER_TARGETS = .5
 SURPRISE_SLOTS = 3
+
+
+def prior_role_plausible(player, rank):
+    """May a player with no usage in the window carry his prior-season rate?
+
+    Only when the depth chart places him in a role (the same ranks the newcomer
+    rule reads: QB 1, RB 1-2, WR/TE 1-3) and Sleeper does not list him away
+    from the team (`NA`) or inactive. Status feeds are compared upper-case."""
+    status = (player.get('sleeper_status') or '').upper()
+    if status in NO_PRIOR_STATUSES:
+        return False
+    return rank <= PRIOR_ROLE_DEPTH.get(player['position'], 0)
 
 
 def depth_ranks(dual_depth):
@@ -105,11 +126,22 @@ def team_scenario(team, players, dual_depth, team_boxes, games, prior_rates=None
     """Full-field carries/targets shares for one team plus a plain-language note."""
     active = [p for p in players if p['status'] != 'out']
     outs = [p for p in players if p['status'] == 'out']
-    rates = blend_prior(usage_rates(team_boxes, games), prior_rates, prior_weight)
     ranks = depth_ranks(dual_depth)
 
     def rank(p):
         return ranks.get((p['name'], p['position']), 99)
+
+    current = usage_rates(team_boxes, games)
+    # v2: last season's rate is a prior for a player's CURRENT role, so a player
+    # the window never saw touch the ball carries it only when the depth chart
+    # and roster status say he has one now. Measured on 2024-25 active rosters
+    # (research/nfl_game_leaders_calibration.py capture): such players touched
+    # the ball in the next game 32% of the time for a mean 1.7% of team touches,
+    # while the v1 blend handed them their whole prior-season share.
+    denied = [p for p in players if p['identity'] not in current and p['identity'] in (prior_rates or {})
+              and not prior_role_plausible(p, rank(p))]
+    eligible_prior = {i: r for i, r in (prior_rates or {}).items() if i not in {p['identity'] for p in denied}}
+    rates = blend_prior(current, eligible_prior, prior_weight)
 
     request_ids = {p['identity'] for p in players}
     departed = sorted({b['identity'] for g in games for b in team_boxes.get(g, []) if b['identity'] not in request_ids})
@@ -145,6 +177,8 @@ def team_scenario(team, players, dual_depth, team_boxes, games, prior_rates=None
             'vacated_qb_carries': round(vacated_qb, 1),
             'qb_receiving_carries': quarterbacks[0]['name'] if vacated_qb and quarterbacks else None,
             'departed_named_at_zero': len(departed),
+            'prior_role_denied': [f"{p['name']} ({p['position']} rank {rank(p)}, {p.get('sleeper_status') or 'no status'})"
+                                  for p in denied],
             'top_carries': {name[i]: round(v, 3) for i, v in sorted(scenario['carries'].items(), key=lambda kv: -kv[1])[:3] if i in name},
             'top_targets': {name[i]: round(v, 3) for i, v in sorted(scenario['targets'].items(), key=lambda kv: -kv[1])[:4] if i in name}}
     return scenario, note

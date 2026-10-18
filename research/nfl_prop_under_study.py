@@ -256,20 +256,23 @@ def main() -> None:
     g.add_argument("--write-db", action="store_true")
     g.add_argument("--discovery", action="store_true", help="grade the pre-registration games instead (report only)")
     g.add_argument("--out", type=Path)
+    g.add_argument("--registration", type=Path, default=REGISTRATION_PATH,
+                   help="a later registration of the same study (docs/nfl-prop-under-study-v2.json)")
     args = parser.parse_args()
-    held = pins_hold()
+    registration = REGISTRATION if args.registration == REGISTRATION_PATH else json.loads(args.registration.read_text())
+    held = pins_hold(registration)
     if not all(held.values()) and not args.discovery:
-        raise SystemExit(f"Model pins changed without an amendment in {REGISTRATION_PATH.name}: "
+        raise SystemExit(f"Model pins changed without an amendment in {args.registration.name}: "
                          f"{[k for k, v in held.items() if not v]}")
     conn = _connect()
     cur = conn.cursor()
-    season = REGISTRATION["season"]
+    season = registration["season"]
     rows, kickoffs, weeks, completed = load_inputs(cur, season)
     conn.rollback()
     stats, covered, source = load_stats(season, weeks, completed)
-    report = grade(rows, kickoffs, weeks, stats, covered, discovery=args.discovery)
+    report = grade(rows, kickoffs, weeks, stats, covered, discovery=args.discovery, registration=registration)
     report.update(evaluated_at=datetime.now(timezone.utc).isoformat(), nflverse=source,
-                  registration_sha256=file_digest(REGISTRATION_PATH), pins_hold=held)
+                  registration_sha256=file_digest(args.registration), pins_hold=held)
     if args.write_db and not args.discovery:
         write_run(conn, report)
     conn.close()

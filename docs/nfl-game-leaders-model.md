@@ -349,3 +349,26 @@ exits, fitted replacements, calibrated ranges and ownership are not implemented
 by this first expansion. Original example inputs remain frozen; no newly captured
 availability is implied. Historical range checks include zero projections and
 correlated player-game rows, so their pooled coverage is only descriptive.
+
+**Prior-season role needs a current role (2026-10-18, `nfl-game-leaders-roles-v2`).**
+`blend_prior` counted last season's per-game usage as two pseudo-games for every
+player on the request roster, so a player with no usage in the window got his
+whole prior-season rate: Josh Jacobs 34% of Green Bay's carries while listed NA
+(away from the team), Justin Fields 17% of Kansas City's as QB3, Audric Estimé
+17% of Cleveland's with no 2026 touch. Shares sum to one, so every point handed
+to such a player came off the real starters, which is why the model under-leaned
+on every lead back against DraftKings' lines. Across the week-6 Sunday slate a
+median 14% of team carries and 17% of targets sat on zero-touch players.
+`team_scenario` now withholds the prior from a window-absent player unless the
+depth chart gives him a role (`PRIOR_ROLE_DEPTH`: QB 1, RB 1-2, WR/TE 1-3) and
+Sleeper does not list him NA or inactive (`NO_PRIOR_STATUSES`); players with
+window usage blend exactly as before, and the denied names are recorded in
+the scenario note (`prior_role_denied`). Evidence: on 2024-25 active rosters,
+QB/RB/WR/TE with zero touches in the team's prior five games and a prior-season
+role touched the ball in the next game 32% of the time for a mean 1.7% of team
+touches (RB 2.8%, WR 2.2%, TE 0.9%, QB 1.0%; n=816). The depth ranks are the
+same ones the newcomer-target rule already reads, a stated prior, not fitted.
+The 55/35/10 vacated-carry split and the equal-weight window are unchanged;
+their replacement (regime-conditioned window with a fitted prior strength K and
+half-life) is a separate registered study. This change amended the
+`nfl-prop-under-v1` pins and started `nfl-prop-under-v2`.
