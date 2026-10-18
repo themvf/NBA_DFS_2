@@ -44,7 +44,7 @@ SELECT m.id AS matchup_id, m.week, m.season_type, m.home_score, m.away_score,
        COALESCE(h.home_ml, m.home_ml) AS home_ml,
        COALESCE(h.away_ml, m.away_ml) AS away_ml,
        COALESCE(h.vegas_total, m.vegas_total) AS vegas_total,
-       ht.classification AS hclass, at.classification AS aclass
+       m.neutral_site, ht.classification AS hclass, at.classification AS aclass
 FROM cfb_matchups m
 JOIN cfb_teams ht ON ht.team_id = m.home_team_id
 JOIN cfb_teams at ON at.team_id = m.away_team_id
@@ -186,34 +186,56 @@ TOTAL_BANDS = (
 )
 
 
+VENUE_BANDS = ("Home favorite", "Away favorite", "Neutral site")
+
+
 def _band(value: float | None, bands) -> str | None:
     if value is None:
         return None
     return next((label for label, rule in bands if rule(float(value))), None)
 
 
+def _venue(g: dict) -> str:
+    """Where the favorite played. Neutral-site games get their own group, so home and away stay literal."""
+    if g.get("neutral_site"):
+        return "Neutral site"
+    return "Home favorite" if pw.decimal_odds(g["home_ml"]) < pw.decimal_odds(g["away_ml"]) else "Away favorite"
+
+
+def _cross(tagged, a_idx, a_bands, a_key, b_idx, b_bands, b_key) -> list[dict]:
+    out = []
+    for a in a_bands:
+        for b in b_bands:
+            row = _ml_row(f"{a}, {b.lower()}", [t[3] for t in tagged if t[a_idx] == a and t[b_idx] == b])
+            out.append({**row, a_key: a, b_key: b})
+    return out
+
+
 def market_breakdown(games: list[dict]) -> dict:
     """Favorites and underdogs at the closing moneyline, from simplest cut to the most detailed.
 
     overall          every eligible game
+    by_venue         home favorite, away favorite, neutral site
     by_spread        one row per spread band (the bands add up to overall)
     by_total         one row per total band (games without a total are left out and counted)
+    by_venue_spread  venue crossed with spread band
+    by_venue_total   venue crossed with total band
     by_spread_total  every spread band crossed with every total band
     """
     eligible = _ml_eligible(games)
-    tagged = [(_band(abs(float(e[0]["home_spread"])), SPREAD_BANDS), _band(e[0].get("vegas_total"), TOTAL_BANDS), e)
-              for e in eligible]
-    cross = []
-    for s_label, _ in SPREAD_BANDS:
-        for t_label, _ in TOTAL_BANDS:
-            row = _ml_row(f"{s_label}, {t_label.lower()}", [e for s, t, e in tagged if s == s_label and t == t_label])
-            cross.append({**row, "spread_band": s_label, "total_band": t_label})
+    tagged = [(_venue(e[0]), _band(abs(float(e[0]["home_spread"])), SPREAD_BANDS),
+               _band(e[0].get("vegas_total"), TOTAL_BANDS), e) for e in eligible]
+    spreads = [lbl for lbl, _ in SPREAD_BANDS]
+    totals = [lbl for lbl, _ in TOTAL_BANDS]
     return {
         "overall": _ml_row("All games", eligible),
-        "by_spread": [{**_ml_row(lbl, [e for s, _, e in tagged if s == lbl]), "spread_band": lbl} for lbl, _ in SPREAD_BANDS],
-        "by_total": [{**_ml_row(lbl, [e for _, t, e in tagged if t == lbl]), "total_band": lbl} for lbl, _ in TOTAL_BANDS],
-        "by_spread_total": cross,
-        "missing_total": sum(1 for _, t, _ in tagged if t is None),
+        "by_venue": [{**_ml_row(v, [t[3] for t in tagged if t[0] == v]), "venue": v} for v in VENUE_BANDS],
+        "by_spread": [{**_ml_row(lbl, [t[3] for t in tagged if t[1] == lbl]), "spread_band": lbl} for lbl in spreads],
+        "by_total": [{**_ml_row(lbl, [t[3] for t in tagged if t[2] == lbl]), "total_band": lbl} for lbl in totals],
+        "by_venue_spread": _cross(tagged, 0, VENUE_BANDS, "venue", 1, spreads, "spread_band"),
+        "by_venue_total": _cross(tagged, 0, VENUE_BANDS, "venue", 2, totals, "total_band"),
+        "by_spread_total": _cross(tagged, 1, spreads, "spread_band", 2, totals, "total_band"),
+        "missing_total": sum(1 for t in tagged if t[2] is None),
     }
 
 

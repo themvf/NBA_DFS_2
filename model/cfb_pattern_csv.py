@@ -74,20 +74,23 @@ def market_splits_table(splits: list[dict]) -> list[dict]:
 
 BREAKDOWN_LEVELS = (
     ("overall", 1, "All games"),
-    ("by_spread", 2, "By spread"),
-    ("by_total", 3, "By total"),
-    ("by_spread_total", 4, "Spread and total"),
+    ("by_venue", 2, "By venue"),
+    ("by_spread", 3, "By spread"),
+    ("by_total", 4, "By total"),
+    ("by_venue_spread", 5, "Venue and spread"),
+    ("by_venue_total", 6, "Venue and total"),
+    ("by_spread_total", 7, "Spread and total"),
 )
 
 
 def market_breakdown_table(breakdown: dict) -> list[dict]:
-    """One flat table, simplest cut first: level 1 is every game, level 4 every spread x total cell."""
+    """One flat table, simplest cut first: level 1 is every game, then single cuts, then two-way grids."""
     out = []
     for key, level, name in BREAKDOWN_LEVELS:
         rows = breakdown.get(key) or []
         rows = [rows] if isinstance(rows, dict) else rows
         for r, t in zip(rows, market_splits_table(rows)):
-            out.append({"Level": level, "Level name": name,
+            out.append({"Level": level, "Level name": name, "Venue": r.get("venue"),
                         "Spread": r.get("spread_band"), "Total": r.get("total_band"), **t})
     return out
 

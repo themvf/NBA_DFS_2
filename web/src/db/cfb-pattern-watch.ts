@@ -26,7 +26,7 @@ export type MarketSplitRow = {
   "Underdog median price"?: string | null;
 };
 export type MarketBreakdownRow = MarketSplitRow & {
-  Level: 1 | 2 | 3 | 4; "Level name": string; Spread: string | null; Total: string | null;
+  Level: number; "Level name": string; Venue?: string | null; Spread: string | null; Total: string | null;
 };
 export type ResultRow = {
   Date: string; Game: string; Pattern: string; Pick: string; Price: string; Final: string; Result: string; Units: number;

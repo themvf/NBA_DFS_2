@@ -268,3 +268,5 @@ the same games, one unit each at the closing moneyline. `market_breakdown()` in
 `market_breakdown.csv` and the charts job writes `roi_by_spread.png` and
 `roi_by_total.png`. Still descriptive: not study patterns, not graded for a verdict,
 and the 12 crossed cells are mostly too small to read on their own.
+
+Home or away favorite was added the same day as its own cut (neutral-site games kept apart, from `cfb_matchups.neutral_site`), plus home/away x spread and home/away x total grids. The page order is now: every game; home or away, spread, total; then the three two-way grids. Chart export adds `roi_by_venue.png`.
