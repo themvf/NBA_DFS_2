@@ -22,6 +22,8 @@ export type MarketSplitRow = {
   Split: string; Games: number; Wins: number; Losses: number; Record: string;
   "Favorites won (%)": number | null; "Price implied (%)": number | null; "Difference (pts)": number | null;
   Units: number; "ROI (%)": number | null; "Median price": string | null;
+  "Underdog record"?: string; "Underdog units"?: number; "Underdog ROI (%)"?: number | null;
+  "Underdog median price"?: string | null;
 };
 export type ResultRow = {
   Date: string; Game: string; Pattern: string; Pick: string; Price: string; Final: string; Result: string; Units: number;

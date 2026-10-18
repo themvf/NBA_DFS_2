@@ -115,6 +115,7 @@ def test_market_splits_grade_the_moneyline_favorite():
     a = rows["All moneyline favorites"]
     assert (a["games"], a["wins"], a["losses"]) == (2, 1, 1)
     assert round(a["units"], 4) == -0.5 and round(a["roi"], 4) == -0.25
-    assert rows["Total exactly 45"]["games"] == 1 and rows["Total exactly 45"]["wins"] == 1
-    assert rows["Total 45 or lower"]["games"] == 2
+    # The underdog side of the same two games: the home dog lost (-1), the away-favored game's dog won at +150 (+1.5).
+    assert round(a["dog_units"], 4) == 0.5 and round(a["dog_roi"], 4) == 0.25
+    assert rows["Total 45 or higher"]["games"] == 1 and rows["Total 45 or higher"]["wins"] == 1
     assert rows["Spread 2.5 or less"]["games"] == 1 and rows["Spread 2.5 or less"]["losses"] == 1
