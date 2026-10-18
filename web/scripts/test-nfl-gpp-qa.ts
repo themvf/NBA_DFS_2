@@ -37,10 +37,11 @@ function main() {
   const puntOverridden = runNflPreExportQa(puntInput, override);
   assert.ok(!puntOverridden.openBlockers.includes("no_unapproved_punt"), "override clears the punt blocker");
 
-  // --- Inactive is a blocker that is NEVER overridable ---
+  // --- Inactive is a blocker; since 2026-10-18 (owner) a recorded override clears it ---
   const inactiveInput = baseInput({ eligibility: [{ dkPlayerId: 6, name: "OUT guy", eligible: false, reasonCode: "INACTIVE", overridden: false }] });
   const inactiveQa = runNflPreExportQa(inactiveInput, [{ checkId: "no_inactive", reason: "nope", user: "t", at: "x", rulesetVersion: NFL_QA_RULESET_VERSION, runId: "r" }]);
-  assert.ok(inactiveQa.openBlockers.includes("no_inactive"), "inactive cannot be overridden");
+  assert.ok(!inactiveQa.openBlockers.includes("no_inactive"), "an inactive player can be overridden with a reason");
+  assert.ok(runNflPreExportQa(inactiveInput).openBlockers.includes("no_inactive"), "without an override it still blocks");
 
   // --- P6-AC2: exposure/archetype shortfalls name the exact unsatisfied constraint ---
   const exposureQa = runNflPreExportQa(baseInput({ exposureReport: [{ dkPlayerId: 3, name: "Player 3", binding: "captain min missed (0/2)" }] }));
@@ -94,10 +95,10 @@ function main() {
   const local = runNflPreExportQa(baseInput({ build: { commitSha: "local-uncommitted" } }));
   assert.equal(local.decision, "blocked");
   assert.ok(local.openBlockers.includes("live_build"));
-  assert.equal(local.checks.find((c) => c.id === "live_build")!.overridable, false, "a local build cannot be overridden into export");
+  assert.equal(local.checks.find((c) => c.id === "live_build")!.overridable, true, "a local build can be overridden with a reason (owner, 2026-10-18)");
   const stillLocal = runNflPreExportQa(baseInput({ build: { commitSha: "local-uncommitted" } }),
     [{ checkId: "live_build", reason: "trust me", user: "t", at: "2026-09-29T00:00:00Z", rulesetVersion: NFL_QA_RULESET_VERSION, runId: "r" }]);
-  assert.ok(stillLocal.openBlockers.includes("live_build"), "an override does not clear it");
+  assert.ok(!stillLocal.openBlockers.includes("live_build"), "an override clears it (owner, 2026-10-18)");
   assert.equal(runNflPreExportQa(baseInput({ build: { commitSha: null } })).decision, "blocked", "no recorded version is not the live site");
   assert.equal(runNflPreExportQa(baseInput({ build: { commitSha: "aad997934e7dabffd111312c3fff43226c2edca5" } })).decision, "ready");
   assert.equal(runNflPreExportQa(baseInput()).checks.some((c) => c.id === "live_build"), false, "not supplied is not checked");
@@ -110,7 +111,7 @@ function main() {
   const nowOut = runNflPreExportQa(baseInput({ currentPool: pool({ 3: "DraftKings lists him OUT" }) }));
   assert.ok(nowOut.openBlockers.includes("current_pool"));
   assert.match(note("current_pool", nowOut)!.detail, /^Player 3 \(DraftKings lists him OUT\) is in lineups 1, 2\. Build again/);
-  assert.ok(runNflPreExportQa(baseInput({ currentPool: pool({ 3: "DraftKings lists him OUT" }) }), overrideOf("current_pool")).openBlockers.includes("current_pool"), "a player who is out cannot be overridden into export");
+  assert.ok(!runNflPreExportQa(baseInput({ currentPool: pool({ 3: "DraftKings lists him OUT" }) }), overrideOf("current_pool")).openBlockers.includes("current_pool"), "a player who is out can be overridden with a reason (owner, 2026-10-18)");
   const gone = runNflPreExportQa(baseInput({ currentPool: { players: pool().players.filter((p) => p.dkPlayerId !== 7) } }));
   assert.match(note("current_pool", gone)!.detail, /Player 7 \(no longer on this slate's player pool\) is in lineup 2/);
   assert.equal(note("current_pool", runNflPreExportQa(baseInput({ currentPool: pool() })))!.passed, true);
