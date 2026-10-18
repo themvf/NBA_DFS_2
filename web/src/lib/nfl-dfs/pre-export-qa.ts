@@ -113,7 +113,7 @@ export interface QaCheck {
   passed: boolean;
   /** Human explanation shown in the report. */
   detail: string;
-  /** Whether a recorded override can clear this check. Inactive/illegal are never overridable. */
+  /** Whether a recorded override can clear this check. Only an illegal roster and a too-short entry file cannot be overridden. */
   overridable: boolean;
   /** Ids of affected lineups or players, for direct links. */
   affected: Array<string | number>;
@@ -200,7 +200,11 @@ const STALE_BLOCK_HOURS = 48;
 export function runNflPreExportQa(input: QaInput, overrides: QaOverride[] = []): QaReport {
   const overrideIds = new Set(overrides.map((o) => o.checkId));
   const checks: QaCheck[] = [];
-  const add = (c: Omit<QaCheck, "overridable"> & { overridable?: boolean }) => checks.push({ overridable: false, ...c });
+  // Owner's decision 2026-10-18: every check can be overridden with a recorded
+  // reason, except the two an override cannot fix (DraftKings rejects an
+  // illegal roster, and an entry file without enough rows has nowhere to put
+  // the extra lineups); those pass overridable: false explicitly.
+  const add = (c: Omit<QaCheck, "overridable"> & { overridable?: boolean }) => checks.push({ overridable: true, ...c });
 
   const rosterSize = input.format === "showdown" ? 6 : 9;
 
@@ -260,7 +264,7 @@ export function runNflPreExportQa(input: QaInput, overrides: QaOverride[] = []):
     }
     return false;
   });
-  add({ id: "legal_roster", title: "Roster, salary, and DST game script", severity: "blocker", passed: illegal.length === 0,
+  add({ id: "legal_roster", title: "Roster, salary, and DST game script", severity: "blocker", passed: illegal.length === 0, overridable: false,
     detail: illegal.length ? `${illegal.length} lineup(s) break a roster, salary, or DST game-script rule. Regenerate before exporting.` : "All lineups pass roster and game-script rules.",
     affected: illegal.map((l) => l.lineupNumber) });
 
@@ -313,7 +317,7 @@ export function runNflPreExportQa(input: QaInput, overrides: QaOverride[] = []):
         list.map((p) => `${p.name} (${p.reason}) is in ${p.lineups.length === 1 ? "lineup" : "lineups"} ${p.lineups.join(", ")}`).join("; ");
       const out = [...problems.values()].filter((p) => !p.roleOnly);
       const backups = [...problems.values()].filter((p) => p.roleOnly);
-      add({ id: "current_pool", title: "No player who is out now", severity: "blocker", passed: out.length === 0, overridable: false,
+      add({ id: "current_pool", title: "No player who is out now", severity: "blocker", passed: out.length === 0, overridable: true,
         detail: out.length ? `${describe(out)}. Build again so these lineups use players who are playing.`
           : "Every lineup player is still available on the current slate.",
         affected: out.map((p) => p.name) });
@@ -337,7 +341,7 @@ export function runNflPreExportQa(input: QaInput, overrides: QaOverride[] = []):
     const ineligibleById = new Map(input.eligibility.filter((e) => !e.eligible).map((e) => [e.dkPlayerId, e]));
     const usedIneligible = input.lineups.flatMap((l) => l.playerIds.filter((id) => ineligibleById.has(id)).map((id) => ({ lineup: l.lineupNumber, e: ineligibleById.get(id)! })));
     const usedInactive = usedIneligible.filter((x) => x.e.reasonCode === "INACTIVE");
-    add({ id: "no_inactive", title: "No inactive players", severity: "blocker", passed: usedInactive.length === 0, overridable: false,
+    add({ id: "no_inactive", title: "No inactive players", severity: "blocker", passed: usedInactive.length === 0, overridable: true,
       detail: usedInactive.length ? `${usedInactive.length} lineup slot(s) use an inactive player.` : "No inactive players used.",
       affected: usedInactive.map((x) => x.e.name) });
     const usedPunt = usedIneligible.filter((x) => x.e.reasonCode !== "INACTIVE" && !x.e.overridden);
@@ -359,7 +363,7 @@ export function runNflPreExportQa(input: QaInput, overrides: QaOverride[] = []):
   // --- Ownership state (info in projection-only; blocker if invalid + leverage on) ---
   if (input.ownership) {
     const invalidWithLeverage = input.ownership.errors.length > 0 && input.ownership.features.leverage;
-    add({ id: "ownership_leverage_valid", title: "Ownership validity for leverage", severity: "blocker", passed: !invalidWithLeverage, overridable: false,
+    add({ id: "ownership_leverage_valid", title: "Ownership validity for leverage", severity: "blocker", passed: !invalidWithLeverage, overridable: true,
       detail: invalidWithLeverage ? "Leverage is enabled but ownership failed validation. Disable the feature or repair the input." : input.ownership.capability === "unavailable" ? "Projection-only: no ownership leverage claimed." : "Ownership state is consistent with enabled features.",
       affected: [] });
     if (input.ownership.capability === "unavailable") {
@@ -409,7 +413,7 @@ export function runNflPreExportQa(input: QaInput, overrides: QaOverride[] = []):
   const overlapCap = input.overlapCap ?? rosterSize - 1;
   const overlap = Math.max(realizedMaxOverlap(input.lineups), input.maxPairwiseOverlap ?? 0);
   const overlapBad = overlap > overlapCap;
-  add({ id: "overlap", title: "Pairwise overlap within cap", severity: "blocker", passed: !overlapBad, overridable: false,
+  add({ id: "overlap", title: "Pairwise overlap within cap", severity: "blocker", passed: !overlapBad, overridable: true,
     detail: overlapBad ? `Two lineups share ${overlap} players; the cap is ${overlapCap}.` : `No two lineups share more than ${overlap} of ${rosterSize} players (cap ${overlapCap}).`, affected: [] });
 
   // --- Excess model-based duplication (warning; only meaningful with a field model) ---
@@ -422,7 +426,7 @@ export function runNflPreExportQa(input: QaInput, overrides: QaOverride[] = []):
   // --- Selection/evaluation bank collision (Phase 7 blocker) ---
   if (input.selectionDigest && input.evaluationDigest) {
     const collision = input.selectionDigest === input.evaluationDigest;
-    add({ id: "bank_collision", title: "Selection/evaluation banks differ", severity: "blocker", passed: !collision, overridable: false,
+    add({ id: "bank_collision", title: "Selection/evaluation banks differ", severity: "blocker", passed: !collision, overridable: true,
       detail: collision ? "Selection and evaluation scenario banks share a digest; evaluation would not be independent." : "Selection and evaluation banks are independent.", affected: [] });
   }
 

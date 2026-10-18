@@ -625,10 +625,6 @@ export default function NflDfsClient() {
     setMessage(`${name} allowed for this run (Flex-only). Regenerate to apply.`);
   }
   function overrideQaCheck(checkId: string) {
-    if(completedSettings?.defensiveAdjustments?.mode==='experimental'||completedSettings?.defensiveAdjustments?.mode==='approved') {
-      setError('Experimental defensive exports require a clean saved QA pass. Regenerate after resolving this check.');
-      return;
-    }
     const reason = window.prompt(`Override QA check "${checkId}". Record why:`)?.trim();
     if (!reason) return;
     setQaOverrides((cur) => [...cur.filter((o) => o.checkId !== checkId), { checkId, reason, user: "local", at: new Date().toISOString(), rulesetVersion: NFL_QA_RULESET_VERSION, runId: runId ?? "unsaved" }]);

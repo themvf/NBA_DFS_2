@@ -1674,7 +1674,6 @@ async function exportableSavedNflLineups(runId:string,entryTemplate:string|null,
     throw new Error('Research portfolios cannot be exported as contest entries.');
   const defensive=['experimental','approved'].includes(settings.defensiveAdjustments?.mode??'');
   if(defensive) {
-    if(overrides.length)throw new Error('Experimental defensive exports require a clean saved QA pass. Build again after resolving each check.');
     if(!settings.runEvidence || !Array.isArray(settings.runEvidence.eligibility)
       || !Array.isArray(settings.runEvidence.exposureReport) || !Array.isArray(settings.runEvidence.salaryBandReport)
       || !Array.isArray(settings.runEvidence.duplication) || !settings.runEvidence.ownership)
