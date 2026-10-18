@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CartesianGrid,
   Legend,
@@ -13,7 +13,13 @@ import {
   YAxis,
 } from "recharts";
 import type { PatternWatchDataset } from "@/db/cfb-pattern-watch";
+import BookDisagreement from "./book-disagreement";
+import DriveStories from "./drive-stories";
+import KeyNumbers from "./key-numbers";
 import MarketBreakdown from "./market-breakdown";
+import SeasonSummary from "./season-summary";
+import TeamAts from "./team-ats";
+import WeeklyRecap from "./weekly-recap";
 
 // dataviz reference palette, categorical slots in fixed order (never cycled).
 const SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"];
@@ -44,8 +50,37 @@ function Pill({ result }: { result: string }) {
   return <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium uppercase ${cls}`}>{result}</span>;
 }
 
+// One page, several reader-facing views. The selected tab is kept in the URL hash
+// so a link (and the browser back button) lands on the same view.
+const TABS = [
+  { id: "recap", label: "Weekly recap" },
+  { id: "breakdown", label: "Breakdown" },
+  { id: "teams", label: "Teams" },
+  { id: "books", label: "Line moves" },
+  { id: "keys", label: "Key numbers" },
+  { id: "drives", label: "Drives" },
+  { id: "weeks", label: "By week" },
+  { id: "patterns", label: "Patterns" },
+] as const;
+type TabId = (typeof TABS)[number]["id"];
+const isTab = (v: string): v is TabId => TABS.some((t) => t.id === v);
+
 export default function PatternWatchClient({ dataset, error }: { dataset: PatternWatchDataset | null; error: string | null }) {
   const [patternFilter, setPatternFilter] = useState("all");
+  const [tab, setTab] = useState<TabId>("recap");
+  useEffect(() => {
+    const read = () => {
+      const h = window.location.hash.replace(/^#/, "").split("-")[0];
+      if (isTab(h)) setTab(h);
+    };
+    read();
+    window.addEventListener("hashchange", read);
+    return () => window.removeEventListener("hashchange", read);
+  }, []);
+  const selectTab = (id: TabId) => {
+    setTab(id);
+    window.history.replaceState(null, "", `#${id}`);
+  };
 
   const codes = useMemo(() => (dataset?.patterns ?? []).map((p) => p.Pattern), [dataset]);
   const totals = useMemo(() => {
@@ -86,218 +121,264 @@ export default function PatternWatchClient({ dataset, error }: { dataset: Patter
         </div>
         <h1 className="text-3xl font-semibold">College Football Pattern Watch</h1>
       </header>
+      <nav className="flex flex-wrap gap-1 border-b pb-2">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => selectTab(t.id)}
+            className={`rounded-t px-3 py-1.5 text-sm ${tab === t.id ? "border-b-2 border-slate-800 font-semibold text-slate-900" : "text-gray-600 hover:text-slate-900"}`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
 
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Tile label="Graded picks" value={String(totals.graded)} />
-        <Tile label="Record" value={`${totals.wins}-${totals.losses}`} sub={`${totals.pushes} push`} />
-        <Tile label="Units, 1 per pick" value={signed(totals.units)} className={tone(totals.units)} />
-        <Tile label="Verdict" value="None" sub="not before Dec 7" />
-      </section>
-
-      <section className="rounded-lg border bg-card p-4">
-        <h2 className="text-sm font-semibold">Running units by pattern</h2>
-        <p className="mb-3 text-xs text-gray-500">One unit per qualifying game, graded at the closing line.</p>
-        <div className="h-72">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={cumulative} margin={{ top: 8, right: 16, bottom: 4, left: 0 }}>
-              <CartesianGrid stroke="#ecebe7" vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} />
-              <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={36} />
-              <ReferenceLine y={0} stroke="#52514e" />
-              <Tooltip formatter={(v) => signed(Number(v))} />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-              {codes.map((c, i) => (
-                <Line key={c} dataKey={c} name={c} stroke={SERIES[i]} strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </section>
-
-      <section className="rounded-lg border bg-card p-4">
-        <h2 className="mb-3 text-sm font-semibold">Patterns</h2>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-xs">
-            <thead>
-              <tr className="border-b text-left text-gray-500">
-                <th className="py-1 pr-3">#</th><th className="py-1 pr-3">Rule</th><th className="py-1 pr-3">Bet</th>
-                <th className="py-1 pr-3 text-right">Graded</th><th className="py-1 pr-3 text-right">Record</th>
-                <th className="py-1 pr-3 text-right">Units</th><th className="py-1 pr-3 text-right">ROI</th>
-                <th className="py-1 pr-3 text-right">To floor</th><th className="py-1 text-right">Discovery</th>
-              </tr>
-            </thead>
-            <tbody>
-              {dataset.patterns.map((p) => (
-                <tr key={p.Pattern} className="border-b border-gray-50">
-                  <td className="py-1 pr-3 font-semibold">{p.Pattern}</td>
-                  <td className="py-1 pr-3">{p.Rule}</td>
-                  <td className="py-1 pr-3">{p.Bet}</td>
-                  <td className="py-1 pr-3 text-right tabular-nums">{p.Graded}</td>
-                  <td className="py-1 pr-3 text-right tabular-nums">{p.Record}</td>
-                  <td className={`py-1 pr-3 text-right tabular-nums ${tone(p.Units)}`}>{signed(p.Units)}</td>
-                  <td className={`py-1 pr-3 text-right tabular-nums ${tone(p["ROI (%)"])}`}>{p["ROI (%)"] == null ? "—" : `${signed(p["ROI (%)"], 1)}%`}</td>
-                  <td className="py-1 pr-3 text-right tabular-nums">{p.Graded}/{p["Sample floor"]}</td>
-                  <td className="py-1 text-right tabular-nums text-gray-500">{p["Discovery record"]} · {p["Discovery ROI"]}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      {dataset.marketBreakdown.length > 0 && <MarketBreakdown rows={dataset.marketBreakdown} />}
-
-      {/* Older datasets carry only the overlapping splits; newer ones render the ordered breakdown above. */}
-      {dataset.marketBreakdown.length === 0 && dataset.marketSplits.length > 0 && (
-        <section className="rounded-lg border bg-card p-4">
-          <h2 className="text-sm font-semibold">Moneyline favorites and underdogs, season to date</h2>
-          <p className="mb-3 text-xs text-gray-500">
-            All FBS games with a closing line. One unit on each side at its closing moneyline: the favorite, then the underdog in the
-            same games. Descriptive only: these
-            splits are not study patterns and are not graded for a verdict.
-          </p>
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-xs">
-              <thead>
-                <tr className="border-b text-gray-500">
-                  <th className="py-1 pr-3 text-left">Split</th><th className="py-1 pr-3 text-right">Games</th>
-                  <th className="py-1 pr-3 text-right">Record</th><th className="py-1 pr-3 text-right">Won</th>
-                  <th className="py-1 pr-3 text-right">Implied</th><th className="py-1 pr-3 text-right">Difference</th>
-                  <th className="py-1 pr-3 text-right">Units</th><th className="py-1 pr-3 text-right">ROI</th>
-                  <th className="py-1 pr-3 text-right">Median price</th>
-                  <th className="border-l py-1 pl-3 pr-3 text-right">Dog record</th><th className="py-1 pr-3 text-right">Dog units</th>
-                  <th className="py-1 pr-3 text-right">Dog ROI</th><th className="py-1 text-right">Dog median price</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dataset.marketSplits.map((m) => (
-                  <tr key={m.Split} className="border-b border-gray-50 tabular-nums">
-                    <td className="py-1 pr-3">{m.Split}</td>
-                    <td className="py-1 pr-3 text-right">{m.Games}</td>
-                    <td className="py-1 pr-3 text-right">{m.Record}</td>
-                    <td className="py-1 pr-3 text-right">{pct(m["Favorites won (%)"])}</td>
-                    <td className="py-1 pr-3 text-right">{pct(m["Price implied (%)"])}</td>
-                    <td className={`py-1 pr-3 text-right ${tone(m["Difference (pts)"])}`}>{m["Difference (pts)"] == null ? "—" : `${signed(m["Difference (pts)"], 1)} pts`}</td>
-                    <td className={`py-1 pr-3 text-right ${tone(m.Units)}`}>{signed(m.Units)}</td>
-                    <td className={`py-1 pr-3 text-right ${tone(m["ROI (%)"])}`}>{m["ROI (%)"] == null ? "—" : `${signed(m["ROI (%)"], 1)}%`}</td>
-                    <td className="py-1 pr-3 text-right">{m["Median price"] ?? "—"}</td>
-                    <td className="border-l py-1 pl-3 pr-3 text-right">{m["Underdog record"] ?? "—"}</td>
-                    <td className={`py-1 pr-3 text-right ${tone(m["Underdog units"])}`}>{signed(m["Underdog units"])}</td>
-                    <td className={`py-1 pr-3 text-right ${tone(m["Underdog ROI (%)"])}`}>{m["Underdog ROI (%)"] == null ? "—" : `${signed(m["Underdog ROI (%)"], 1)}%`}</td>
-                    <td className="py-1 text-right">{m["Underdog median price"] ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="mt-2 text-[11px] text-gray-500">Splits overlap: a game can appear in several rows. Small samples (a handful of games) mean very little.</p>
+      {tab === "patterns" && (
+        <div className="space-y-6">
+        <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Tile label="Graded picks" value={String(totals.graded)} />
+          <Tile label="Record" value={`${totals.wins}-${totals.losses}`} sub={`${totals.pushes} push`} />
+          <Tile label="Units, 1 per pick" value={signed(totals.units)} className={tone(totals.units)} />
+          <Tile label="Verdict" value="None" sub="not before Dec 7" />
         </section>
-      )}
 
-      {weekly.length > 0 && (
         <section className="rounded-lg border bg-card p-4">
-          <h2 className="text-sm font-semibold">Favorites&apos; win rate against price-implied, by week</h2>
-          <p className="mb-3 text-xs text-gray-500">All FBS games with a closing line. Implied removes the bookmaker&apos;s margin. CFBD week numbering.</p>
-          <div className="h-64">
+          <h2 className="text-sm font-semibold">Running units by pattern</h2>
+          <p className="mb-3 text-xs text-gray-500">One unit per qualifying game, graded at the closing line.</p>
+          <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={weekly} margin={{ top: 8, right: 16, bottom: 4, left: 0 }}>
+              <LineChart data={cumulative} margin={{ top: 8, right: 16, bottom: 4, left: 0 }}>
                 <CartesianGrid stroke="#ecebe7" vertical={false} />
-                <XAxis dataKey="Week" tickFormatter={(w) => `Wk ${w}`} tick={{ fontSize: 11 }} tickLine={false} />
-                <YAxis domain={["dataMin - 3", "dataMax + 3"]} tickFormatter={(v) => `${Math.round(Number(v))}%`} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={40} />
-                <Tooltip formatter={(v) => pct(Number(v))} labelFormatter={(w) => `Week ${w}`} />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} />
+                <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={36} />
+                <ReferenceLine y={0} stroke="#52514e" />
+                <Tooltip formatter={(v) => signed(Number(v))} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Line dataKey="Favorites won (%)" name="Favorites won" stroke={SERIES[0]} strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} />
-                <Line dataKey="Price implied (%)" name="Price implied" stroke={SERIES[1]} strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} />
+                {codes.map((c, i) => (
+                  <Line key={c} dataKey={c} name={c} stroke={SERIES[i]} strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} />
+                ))}
               </LineChart>
             </ResponsiveContainer>
           </div>
-          <div className="mt-3 overflow-x-auto">
-            <table className="min-w-full text-xs">
-              <thead>
-                <tr className="border-b text-gray-500">
-                  <th className="py-1 text-left">Week</th><th className="py-1 text-right">Games</th><th className="py-1 text-right">Fav won</th>
-                  <th className="py-1 text-right">Implied</th><th className="py-1 text-right">Difference</th><th className="py-1 text-right">Fav covered</th>
-                  <th className="py-1 text-right">Overs</th><th className="py-1 text-right">By 7 or less</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dataset.weekly.map((w) => (
-                  <tr key={w.Week} className="border-b border-gray-50 tabular-nums">
-                    <td className="py-1">{w.Week}</td><td className="py-1 text-right">{w.Games}</td>
-                    <td className="py-1 text-right">{pct(w["Favorites won (%)"])}</td><td className="py-1 text-right">{pct(w["Price implied (%)"])}</td>
-                    <td className={`py-1 text-right ${tone(w["Difference (pts)"])}`}>{w["Difference (pts)"] == null ? "—" : `${signed(w["Difference (pts)"], 1)} pts`}</td>
-                    <td className="py-1 text-right">{pct(w["Favorites covered (%)"])}</td><td className="py-1 text-right">{pct(w["Overs (%)"])}</td>
-                    <td className="py-1 text-right">{pct(w["Decided by 7 or less (%)"])}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         </section>
-      )}
 
-      <section className="rounded-lg border bg-card p-4">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold">Results</h2>
-          <label className="text-xs text-gray-600">
-            Pattern{" "}
-            <select className="rounded border px-2 py-1 text-xs" value={patternFilter} onChange={(e) => setPatternFilter(e.target.value)}>
-              <option value="all">All</option>
-              {codes.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </label>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-xs">
-            <thead>
-              <tr className="border-b text-left text-gray-500">
-                <th className="py-1 pr-3">Date</th><th className="py-1 pr-3">Game</th><th className="py-1 pr-3">#</th><th className="py-1 pr-3">Pick</th>
-                <th className="py-1 pr-3 text-right">Price</th><th className="py-1 pr-3 text-right">Final</th><th className="py-1 pr-3">Result</th><th className="py-1 text-right">Units</th>
-              </tr>
-            </thead>
-            <tbody>
-              {results.map((r, i) => (
-                <tr key={`${r.Date}-${r.Game}-${r.Pattern}-${i}`} className="border-b border-gray-50">
-                  <td className="py-1 pr-3 whitespace-nowrap">{shortDay(r.Date)}</td><td className="py-1 pr-3">{r.Game}</td>
-                  <td className="py-1 pr-3">{r.Pattern}</td><td className="py-1 pr-3">{r.Pick}</td>
-                  <td className="py-1 pr-3 text-right tabular-nums">{r.Price}</td><td className="py-1 pr-3 text-right tabular-nums">{r.Final}</td>
-                  <td className="py-1 pr-3"><Pill result={r.Result} /></td>
-                  <td className={`py-1 text-right tabular-nums ${tone(r.Units)}`}>{signed(r.Units)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      {dataset.frozenVsClose.length > 0 && (
         <section className="rounded-lg border bg-card p-4">
-          <h2 className="text-sm font-semibold">Frozen line vs close</h2>
-          <p className="mb-3 text-xs text-gray-500">Lines are the home spread or the total. Positive points vs close means the frozen line was better for the pick.</p>
+          <h2 className="mb-3 text-sm font-semibold">Patterns</h2>
           <div className="overflow-x-auto">
             <table className="min-w-full text-xs">
               <thead>
                 <tr className="border-b text-left text-gray-500">
-                  <th className="py-1 pr-3">Game</th><th className="py-1 pr-3">#</th><th className="py-1 pr-3">Pick</th>
-                  <th className="py-1 pr-3 text-right">Frozen</th><th className="py-1 pr-3 text-right">Close</th><th className="py-1 pr-3 text-right">Pts vs close</th>
-                  <th className="py-1 pr-3">At close</th><th className="py-1 pr-3">At frozen</th><th className="py-1 text-right">Best retail units</th>
+                  <th className="py-1 pr-3">#</th><th className="py-1 pr-3">Rule</th><th className="py-1 pr-3">Bet</th>
+                  <th className="py-1 pr-3 text-right">Graded</th><th className="py-1 pr-3 text-right">Record</th>
+                  <th className="py-1 pr-3 text-right">Units</th><th className="py-1 pr-3 text-right">ROI</th>
+                  <th className="py-1 pr-3 text-right">To floor</th><th className="py-1 text-right">Discovery</th>
                 </tr>
               </thead>
               <tbody>
-                {dataset.frozenVsClose.map((r, i) => (
-                  <tr key={`${r.Game}-${r.Pattern}-${i}`} className="border-b border-gray-50">
-                    <td className="py-1 pr-3">{r.Game}</td><td className="py-1 pr-3">{r.Pattern}</td><td className="py-1 pr-3">{r.Pick}</td>
-                    <td className="py-1 pr-3 text-right tabular-nums">{r["Frozen home spread or total"] ?? "—"}</td>
-                    <td className="py-1 pr-3 text-right tabular-nums">{r["Closing home spread or total"] ?? "—"}</td>
-                    <td className={`py-1 pr-3 text-right tabular-nums ${tone(r["Points vs close"])}`}>{signed(r["Points vs close"], 1)}</td>
-                    <td className="py-1 pr-3"><Pill result={r["Result at close"]} /></td><td className="py-1 pr-3"><Pill result={r["Result at frozen line"]} /></td>
-                    <td className={`py-1 text-right tabular-nums ${tone(r["Units at best retail"])}`}>{signed(r["Units at best retail"])}</td>
+                {dataset.patterns.map((p) => (
+                  <tr key={p.Pattern} className="border-b border-gray-50">
+                    <td className="py-1 pr-3 font-semibold">{p.Pattern}</td>
+                    <td className="py-1 pr-3">{p.Rule}</td>
+                    <td className="py-1 pr-3">{p.Bet}</td>
+                    <td className="py-1 pr-3 text-right tabular-nums">{p.Graded}</td>
+                    <td className="py-1 pr-3 text-right tabular-nums">{p.Record}</td>
+                    <td className={`py-1 pr-3 text-right tabular-nums ${tone(p.Units)}`}>{signed(p.Units)}</td>
+                    <td className={`py-1 pr-3 text-right tabular-nums ${tone(p["ROI (%)"])}`}>{p["ROI (%)"] == null ? "—" : `${signed(p["ROI (%)"], 1)}%`}</td>
+                    <td className="py-1 pr-3 text-right tabular-nums">{p.Graded}/{p["Sample floor"]}</td>
+                    <td className="py-1 text-right tabular-nums text-gray-500">{p["Discovery record"]} · {p["Discovery ROI"]}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         </section>
+
+        <section className="rounded-lg border bg-card p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold">Results</h2>
+            <label className="text-xs text-gray-600">
+              Pattern{" "}
+              <select className="rounded border px-2 py-1 text-xs" value={patternFilter} onChange={(e) => setPatternFilter(e.target.value)}>
+                <option value="all">All</option>
+                {codes.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-xs">
+              <thead>
+                <tr className="border-b text-left text-gray-500">
+                  <th className="py-1 pr-3">Date</th><th className="py-1 pr-3">Game</th><th className="py-1 pr-3">#</th><th className="py-1 pr-3">Pick</th>
+                  <th className="py-1 pr-3 text-right">Price</th><th className="py-1 pr-3 text-right">Final</th><th className="py-1 pr-3">Result</th><th className="py-1 text-right">Units</th>
+                </tr>
+              </thead>
+              <tbody>
+                {results.map((r, i) => (
+                  <tr key={`${r.Date}-${r.Game}-${r.Pattern}-${i}`} className="border-b border-gray-50">
+                    <td className="py-1 pr-3 whitespace-nowrap">{shortDay(r.Date)}</td><td className="py-1 pr-3">{r.Game}</td>
+                    <td className="py-1 pr-3">{r.Pattern}</td><td className="py-1 pr-3">{r.Pick}</td>
+                    <td className="py-1 pr-3 text-right tabular-nums">{r.Price}</td><td className="py-1 pr-3 text-right tabular-nums">{r.Final}</td>
+                    <td className="py-1 pr-3"><Pill result={r.Result} /></td>
+                    <td className={`py-1 text-right tabular-nums ${tone(r.Units)}`}>{signed(r.Units)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {dataset.frozenVsClose.length > 0 && (
+          <section className="rounded-lg border bg-card p-4">
+            <h2 className="text-sm font-semibold">Frozen line vs close</h2>
+            <p className="mb-3 text-xs text-gray-500">Lines are the home spread or the total. Positive points vs close means the frozen line was better for the pick.</p>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-xs">
+                <thead>
+                  <tr className="border-b text-left text-gray-500">
+                    <th className="py-1 pr-3">Game</th><th className="py-1 pr-3">#</th><th className="py-1 pr-3">Pick</th>
+                    <th className="py-1 pr-3 text-right">Frozen</th><th className="py-1 pr-3 text-right">Close</th><th className="py-1 pr-3 text-right">Pts vs close</th>
+                    <th className="py-1 pr-3">At close</th><th className="py-1 pr-3">At frozen</th><th className="py-1 text-right">Best retail units</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dataset.frozenVsClose.map((r, i) => (
+                    <tr key={`${r.Game}-${r.Pattern}-${i}`} className="border-b border-gray-50">
+                      <td className="py-1 pr-3">{r.Game}</td><td className="py-1 pr-3">{r.Pattern}</td><td className="py-1 pr-3">{r.Pick}</td>
+                      <td className="py-1 pr-3 text-right tabular-nums">{r["Frozen home spread or total"] ?? "—"}</td>
+                      <td className="py-1 pr-3 text-right tabular-nums">{r["Closing home spread or total"] ?? "—"}</td>
+                      <td className={`py-1 pr-3 text-right tabular-nums ${tone(r["Points vs close"])}`}>{signed(r["Points vs close"], 1)}</td>
+                      <td className="py-1 pr-3"><Pill result={r["Result at close"]} /></td><td className="py-1 pr-3"><Pill result={r["Result at frozen line"]} /></td>
+                      <td className={`py-1 text-right tabular-nums ${tone(r["Units at best retail"])}`}>{signed(r["Units at best retail"])}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+        </div>
+      )}
+
+      {tab === "recap" && (
+        <WeeklyRecap weeks={dataset.recapWeeks} upsets={dataset.recapUpsets} hooks={dataset.recapHooks} totalMisses={dataset.recapTotalMisses} />
+      )}
+
+      {tab === "teams" && <TeamAts teams={dataset.teamAts} conferences={dataset.conferenceReport} />}
+
+      {tab === "books" && <BookDisagreement gaps={dataset.bookGaps} moves={dataset.lineMoves} summary={dataset.moveSummary} />}
+
+      {tab === "keys" && (
+        <KeyNumbers margins={dataset.keyMargins} keyNumbers={dataset.keyNumbers} spreadLanding={dataset.spreadLanding} totalLanding={dataset.totalLanding} />
+      )}
+
+      {tab === "drives" && (
+        <DriveStories
+          fieldPosition={dataset.driveFieldPosition}
+          redZone={dataset.redZone}
+          fourthDown={dataset.fourthDown}
+          fourthDownTrend={dataset.fourthDownTrend}
+          comebacks={dataset.comebacks}
+        />
+      )}
+
+      {tab === "breakdown" && (
+        <div className="space-y-6">
+          {dataset.seasonSummary.length > 0 && <SeasonSummary rows={dataset.seasonSummary} />}
+        {dataset.marketBreakdown.length > 0 && <MarketBreakdown rows={dataset.marketBreakdown} prior={dataset.marketBreakdownPrior} />}
+
+        {/* Older datasets carry only the overlapping splits; newer ones render the ordered breakdown above. */}
+        {dataset.marketBreakdown.length === 0 && dataset.marketSplits.length > 0 && (
+          <section className="rounded-lg border bg-card p-4">
+            <h2 className="text-sm font-semibold">Moneyline favorites and underdogs, season to date</h2>
+            <p className="mb-3 text-xs text-gray-500">
+              All FBS games with a closing line. One unit on each side at its closing moneyline: the favorite, then the underdog in the
+              same games. Descriptive only: these
+              splits are not study patterns and are not graded for a verdict.
+            </p>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-xs">
+                <thead>
+                  <tr className="border-b text-gray-500">
+                    <th className="py-1 pr-3 text-left">Split</th><th className="py-1 pr-3 text-right">Games</th>
+                    <th className="py-1 pr-3 text-right">Record</th><th className="py-1 pr-3 text-right">Won</th>
+                    <th className="py-1 pr-3 text-right">Implied</th><th className="py-1 pr-3 text-right">Difference</th>
+                    <th className="py-1 pr-3 text-right">Units</th><th className="py-1 pr-3 text-right">ROI</th>
+                    <th className="py-1 pr-3 text-right">Median price</th>
+                    <th className="border-l py-1 pl-3 pr-3 text-right">Dog record</th><th className="py-1 pr-3 text-right">Dog units</th>
+                    <th className="py-1 pr-3 text-right">Dog ROI</th><th className="py-1 text-right">Dog median price</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dataset.marketSplits.map((m) => (
+                    <tr key={m.Split} className="border-b border-gray-50 tabular-nums">
+                      <td className="py-1 pr-3">{m.Split}</td>
+                      <td className="py-1 pr-3 text-right">{m.Games}</td>
+                      <td className="py-1 pr-3 text-right">{m.Record}</td>
+                      <td className="py-1 pr-3 text-right">{pct(m["Favorites won (%)"])}</td>
+                      <td className="py-1 pr-3 text-right">{pct(m["Price implied (%)"])}</td>
+                      <td className={`py-1 pr-3 text-right ${tone(m["Difference (pts)"])}`}>{m["Difference (pts)"] == null ? "—" : `${signed(m["Difference (pts)"], 1)} pts`}</td>
+                      <td className={`py-1 pr-3 text-right ${tone(m.Units)}`}>{signed(m.Units)}</td>
+                      <td className={`py-1 pr-3 text-right ${tone(m["ROI (%)"])}`}>{m["ROI (%)"] == null ? "—" : `${signed(m["ROI (%)"], 1)}%`}</td>
+                      <td className="py-1 pr-3 text-right">{m["Median price"] ?? "—"}</td>
+                      <td className="border-l py-1 pl-3 pr-3 text-right">{m["Underdog record"] ?? "—"}</td>
+                      <td className={`py-1 pr-3 text-right ${tone(m["Underdog units"])}`}>{signed(m["Underdog units"])}</td>
+                      <td className={`py-1 pr-3 text-right ${tone(m["Underdog ROI (%)"])}`}>{m["Underdog ROI (%)"] == null ? "—" : `${signed(m["Underdog ROI (%)"], 1)}%`}</td>
+                      <td className="py-1 text-right">{m["Underdog median price"] ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-2 text-[11px] text-gray-500">Splits overlap: a game can appear in several rows. Small samples (a handful of games) mean very little.</p>
+          </section>
+        )}
+        </div>
+      )}
+
+      {tab === "weeks" && (
+        <div className="space-y-6">
+        {weekly.length > 0 && (
+          <section className="rounded-lg border bg-card p-4">
+            <h2 className="text-sm font-semibold">Favorites&apos; win rate against price-implied, by week</h2>
+            <p className="mb-3 text-xs text-gray-500">All FBS games with a closing line. Implied removes the bookmaker&apos;s margin. CFBD week numbering.</p>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={weekly} margin={{ top: 8, right: 16, bottom: 4, left: 0 }}>
+                  <CartesianGrid stroke="#ecebe7" vertical={false} />
+                  <XAxis dataKey="Week" tickFormatter={(w) => `Wk ${w}`} tick={{ fontSize: 11 }} tickLine={false} />
+                  <YAxis domain={["dataMin - 3", "dataMax + 3"]} tickFormatter={(v) => `${Math.round(Number(v))}%`} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={40} />
+                  <Tooltip formatter={(v) => pct(Number(v))} labelFormatter={(w) => `Week ${w}`} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Line dataKey="Favorites won (%)" name="Favorites won" stroke={SERIES[0]} strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} />
+                  <Line dataKey="Price implied (%)" name="Price implied" stroke={SERIES[1]} strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-3 overflow-x-auto">
+              <table className="min-w-full text-xs">
+                <thead>
+                  <tr className="border-b text-gray-500">
+                    <th className="py-1 text-left">Week</th><th className="py-1 text-right">Games</th><th className="py-1 text-right">Fav won</th>
+                    <th className="py-1 text-right">Implied</th><th className="py-1 text-right">Difference</th><th className="py-1 text-right">Fav covered</th>
+                    <th className="py-1 text-right">Overs</th><th className="py-1 text-right">By 7 or less</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dataset.weekly.map((w) => (
+                    <tr key={w.Week} className="border-b border-gray-50 tabular-nums">
+                      <td className="py-1">{w.Week}</td><td className="py-1 text-right">{w.Games}</td>
+                      <td className="py-1 text-right">{pct(w["Favorites won (%)"])}</td><td className="py-1 text-right">{pct(w["Price implied (%)"])}</td>
+                      <td className={`py-1 text-right ${tone(w["Difference (pts)"])}`}>{w["Difference (pts)"] == null ? "—" : `${signed(w["Difference (pts)"], 1)} pts`}</td>
+                      <td className="py-1 text-right">{pct(w["Favorites covered (%)"])}</td><td className="py-1 text-right">{pct(w["Overs (%)"])}</td>
+                      <td className="py-1 text-right">{pct(w["Decided by 7 or less (%)"])}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+        </div>
       )}
 
       <footer className="border-t pt-3 text-xs text-gray-500">

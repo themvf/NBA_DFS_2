@@ -273,7 +273,13 @@ def _conference(r: dict) -> str | None:
     return None if c is None else ("Conference game" if c else "Non-conference game")
 
 
-def _is_power(conf: str | None, name: str | None) -> bool:
+# The Pac-12 was a Power conference through 2023, before its members left.
+FORMER_POWER = {"Pac-12": 2023}
+
+
+def _is_power(conf: str | None, name: str | None, season: int | None = None) -> bool:
+    if season is not None and conf in FORMER_POWER and season <= FORMER_POWER[conf]:
+        return True
     return conf in pw.P4 or name in POWER_INDEPENDENTS
 
 
@@ -281,7 +287,8 @@ def _tier(r: dict) -> str | None:
     g = r["g"]
     if g.get("hconf") is None or g.get("aconf") is None:
         return None
-    powers = _is_power(g["hconf"], g.get("hname")) + _is_power(g["aconf"], g.get("aname"))
+    season = g.get("season")
+    powers = _is_power(g["hconf"], g.get("hname"), season) + _is_power(g["aconf"], g.get("aname"), season)
     return TIERS[2 - powers]
 
 

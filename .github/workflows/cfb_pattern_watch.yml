@@ -60,9 +60,13 @@ jobs:
         run: python -m model.cfb_pattern_watch
       - name: Render and store the reader page
         run: python -m model.cfb_pattern_publish
+      # The site dataset (~1.3 MB with the reader-facing extras) and the chart
+      # images change only when games finish, so they are built once a day.
       - name: Export tables as CSV and store them for the site page
+        if: steps.job.outputs.job == 'grade'
         run: python -m model.cfb_pattern_csv --store
       - name: Render chart images
+        if: steps.job.outputs.job == 'grade'
         run: python -m model.cfb_pattern_charts
       - name: Upload page and board
         if: always()

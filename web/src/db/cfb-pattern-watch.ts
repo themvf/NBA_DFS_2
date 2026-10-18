@@ -1,6 +1,13 @@
 import { sql } from "drizzle-orm";
 import { db } from "./index";
 import { queryRows } from "./query-result";
+import type { BookGapRow, LineMoveRow, MoveSummaryRow } from "@/app/cfb/pattern-watch/book-disagreement";
+import type {
+  ComebackRow, DriveFieldPositionRow, FourthDownRow, FourthDownTrendRow, RedZoneRow,
+} from "@/app/cfb/pattern-watch/drive-stories";
+import type { KeyMarginRow, KeyNumberRow, SpreadLandingRow, TotalLandingRow } from "@/app/cfb/pattern-watch/key-numbers";
+import type { ConferenceRow, TeamAtsRow } from "@/app/cfb/pattern-watch/team-ats";
+import type { RecapHookRow, RecapTotalMissRow, RecapUpsetRow, RecapWeekRow } from "@/app/cfb/pattern-watch/weekly-recap";
 
 /**
  * Tables behind /cfb/pattern-watch. Written by the Python job
@@ -32,6 +39,11 @@ export type MarketBreakdownRow = MarketSplitRow & {
   "Overs (%)"?: number | null; "Over units"?: number; "Over ROI (%)"?: number | null; "Under units"?: number;
   "Under ROI (%)"?: number | null;
 };
+export type SeasonSummaryRow = {
+  Season: string | number; "Games with lines": number; "Favorites won (%)": number | null; "Price implied (%)": number | null;
+  "Difference (pts)": number | null; "Favorite ROI (%)": number | null; "Favorites covered (%)": number | null;
+  "Overs (%)": number | null; "Games with total": number;
+};
 export type ResultRow = {
   Date: string; Game: string; Pattern: string; Pick: string; Price: string; Final: string; Result: string; Units: number;
 };
@@ -49,6 +61,26 @@ export type PatternWatchDataset = {
   weekly: WeeklyRow[];
   marketSplits: MarketSplitRow[];
   marketBreakdown: MarketBreakdownRow[];
+  marketBreakdownPrior: (MarketBreakdownRow & { Seasons: string })[];
+  seasonSummary: SeasonSummaryRow[];
+  teamAts: TeamAtsRow[];
+  conferenceReport: ConferenceRow[];
+  recapWeeks: RecapWeekRow[];
+  recapUpsets: RecapUpsetRow[];
+  recapHooks: RecapHookRow[];
+  recapTotalMisses: RecapTotalMissRow[];
+  bookGaps: BookGapRow[];
+  lineMoves: LineMoveRow[];
+  moveSummary: MoveSummaryRow[];
+  keyMargins: KeyMarginRow[];
+  keyNumbers: KeyNumberRow[];
+  spreadLanding: SpreadLandingRow[];
+  totalLanding: TotalLandingRow[];
+  driveFieldPosition: DriveFieldPositionRow[];
+  redZone: RedZoneRow[];
+  fourthDown: FourthDownRow[];
+  fourthDownTrend: FourthDownTrendRow[];
+  comebacks: ComebackRow[];
   results: ResultRow[];
   cumulative: CumulativeRow[];
   frozenVsClose: FrozenRow[];
@@ -70,6 +102,26 @@ export async function getLatestPatternWatchDataset(): Promise<PatternWatchDatase
     weekly: (p.weekly_favorites ?? []) as WeeklyRow[],
     marketSplits: (p.market_splits ?? []) as MarketSplitRow[],
     marketBreakdown: (p.market_breakdown ?? []) as MarketBreakdownRow[],
+    marketBreakdownPrior: (p.market_breakdown_prior ?? []) as PatternWatchDataset["marketBreakdownPrior"],
+    seasonSummary: (p.season_summary ?? []) as SeasonSummaryRow[],
+    teamAts: (p.team_ats ?? []) as TeamAtsRow[],
+    conferenceReport: (p.conference_report ?? []) as ConferenceRow[],
+    recapWeeks: (p.recap_weeks ?? []) as RecapWeekRow[],
+    recapUpsets: (p.recap_upsets ?? []) as RecapUpsetRow[],
+    recapHooks: (p.recap_hooks ?? []) as RecapHookRow[],
+    recapTotalMisses: (p.recap_total_misses ?? []) as RecapTotalMissRow[],
+    bookGaps: (p.book_gaps ?? []) as BookGapRow[],
+    lineMoves: (p.line_moves ?? []) as LineMoveRow[],
+    moveSummary: (p.move_summary ?? []) as MoveSummaryRow[],
+    keyMargins: (p.key_margins ?? []) as KeyMarginRow[],
+    keyNumbers: (p.key_numbers ?? []) as KeyNumberRow[],
+    spreadLanding: (p.spread_landing ?? []) as SpreadLandingRow[],
+    totalLanding: (p.total_landing ?? []) as TotalLandingRow[],
+    driveFieldPosition: (p.drive_field_position ?? []) as DriveFieldPositionRow[],
+    redZone: (p.red_zone ?? []) as RedZoneRow[],
+    fourthDown: (p.fourth_down ?? []) as FourthDownRow[],
+    fourthDownTrend: (p.fourth_down_trend ?? []) as FourthDownTrendRow[],
+    comebacks: (p.comebacks ?? []) as ComebackRow[],
     results: (p.results ?? []) as ResultRow[],
     cumulative: (p.cumulative_units ?? []) as CumulativeRow[],
     frozenVsClose: (p.frozen_vs_close ?? []) as FrozenRow[],
