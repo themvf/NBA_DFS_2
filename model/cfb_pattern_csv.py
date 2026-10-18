@@ -66,6 +66,9 @@ def market_splits_table(splits: list[dict]) -> list[dict]:
         "Difference (pts)": None if s["excess_pp"] is None else round(s["excess_pp"], 1),
         "Units": round(s["units"], 2), "ROI (%)": _pct(s["roi"]),
         "Median price": american(s["median_price"]),
+        "Underdog record": f"{s['losses']}-{s['wins']}",
+        "Underdog units": round(s["dog_units"], 2), "Underdog ROI (%)": _pct(s["dog_roi"]),
+        "Underdog median price": american(s["dog_median_price"]),
     } for s in splits]
 
 

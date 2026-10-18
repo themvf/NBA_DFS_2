@@ -146,9 +146,10 @@ export default function PatternWatchClient({ dataset, error }: { dataset: Patter
 
       {dataset.marketSplits.length > 0 && (
         <section className="rounded-lg border bg-card p-4">
-          <h2 className="text-sm font-semibold">Moneyline favorites, season to date</h2>
+          <h2 className="text-sm font-semibold">Moneyline favorites and underdogs, season to date</h2>
           <p className="mb-3 text-xs text-gray-500">
-            All FBS games with a closing line. One unit on the moneyline favorite at its closing price. Descriptive only: these
+            All FBS games with a closing line. One unit on each side at its closing moneyline: the favorite, then the underdog in the
+            same games. Descriptive only: these
             splits are not study patterns and are not graded for a verdict.
           </p>
           <div className="overflow-x-auto">
@@ -159,7 +160,9 @@ export default function PatternWatchClient({ dataset, error }: { dataset: Patter
                   <th className="py-1 pr-3 text-right">Record</th><th className="py-1 pr-3 text-right">Won</th>
                   <th className="py-1 pr-3 text-right">Implied</th><th className="py-1 pr-3 text-right">Difference</th>
                   <th className="py-1 pr-3 text-right">Units</th><th className="py-1 pr-3 text-right">ROI</th>
-                  <th className="py-1 text-right">Median price</th>
+                  <th className="py-1 pr-3 text-right">Median price</th>
+                  <th className="border-l py-1 pl-3 pr-3 text-right">Dog record</th><th className="py-1 pr-3 text-right">Dog units</th>
+                  <th className="py-1 pr-3 text-right">Dog ROI</th><th className="py-1 text-right">Dog median price</th>
                 </tr>
               </thead>
               <tbody>
@@ -173,7 +176,11 @@ export default function PatternWatchClient({ dataset, error }: { dataset: Patter
                     <td className={`py-1 pr-3 text-right ${tone(m["Difference (pts)"])}`}>{m["Difference (pts)"] == null ? "—" : `${signed(m["Difference (pts)"], 1)} pts`}</td>
                     <td className={`py-1 pr-3 text-right ${tone(m.Units)}`}>{signed(m.Units)}</td>
                     <td className={`py-1 pr-3 text-right ${tone(m["ROI (%)"])}`}>{m["ROI (%)"] == null ? "—" : `${signed(m["ROI (%)"], 1)}%`}</td>
-                    <td className="py-1 text-right">{m["Median price"] ?? "—"}</td>
+                    <td className="py-1 pr-3 text-right">{m["Median price"] ?? "—"}</td>
+                    <td className="border-l py-1 pl-3 pr-3 text-right">{m["Underdog record"] ?? "—"}</td>
+                    <td className={`py-1 pr-3 text-right ${tone(m["Underdog units"])}`}>{signed(m["Underdog units"])}</td>
+                    <td className={`py-1 pr-3 text-right ${tone(m["Underdog ROI (%)"])}`}>{m["Underdog ROI (%)"] == null ? "—" : `${signed(m["Underdog ROI (%)"], 1)}%`}</td>
+                    <td className="py-1 text-right">{m["Underdog median price"] ?? "—"}</td>
                   </tr>
                 ))}
               </tbody>

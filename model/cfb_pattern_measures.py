@@ -105,8 +105,7 @@ def weekly_base_rates(games: list[dict]) -> list[dict]:
 # Each split is (label, rule over a game dict). "Total" is the closing O/U.
 MARKET_SPLITS = (
     ("All moneyline favorites", lambda g: True),
-    ("Total exactly 45", lambda g: g.get("vegas_total") is not None and float(g["vegas_total"]) == 45.0),
-    ("Total 45 or lower", lambda g: g.get("vegas_total") is not None and float(g["vegas_total"]) <= 45.0),
+    ("Total 45 or higher", lambda g: g.get("vegas_total") is not None and float(g["vegas_total"]) >= 45.0),
     ("Spread 2.5 or less", lambda g: abs(float(g["home_spread"])) <= 2.5),
 )
 
@@ -137,10 +136,14 @@ def market_splits(games: list[dict], splits=MARKET_SPLITS) -> list[dict]:
         p_home = pw.vig_free_home(g["home_ml"], g["away_ml"])
         won = (margin > 0) == home_fav
         price = dh if home_fav else da
-        eligible.append((g, won, price, p_home if home_fav else 1 - p_home))
+        dog_price = da if home_fav else dh
+        eligible.append((g, won, price, p_home if home_fav else 1 - p_home, dog_price))
     out = []
     for label, rule in splits:
-        rows = [(won, price, imp) for g, won, price, imp in eligible if rule(g)]
+        picked = [(won, price, imp, dog) for g, won, price, imp, dog in eligible if rule(g)]
+        rows = [(won, price, imp) for won, price, imp, _ in picked]
+        # The underdog side of the same games: one unit at its closing price.
+        dog_units = sum(-1.0 if won else (dog - 1) for won, _, _, dog in picked)
         n = len(rows)
         wins = sum(1 for won, _, _ in rows if won)
         units = sum((price - 1) if won else -1.0 for won, price, _ in rows)
@@ -152,6 +155,8 @@ def market_splits(games: list[dict], splits=MARKET_SPLITS) -> list[dict]:
             "excess_pp": None if win_rate is None else (win_rate - imp) * 100,
             "units": units, "roi": units / n if n else None,
             "median_price": statistics.median(p for _, p, _ in rows) if rows else None,
+            "dog_units": dog_units, "dog_roi": dog_units / n if n else None,
+            "dog_median_price": statistics.median(d for *_, d in picked) if picked else None,
         })
     return out
 
