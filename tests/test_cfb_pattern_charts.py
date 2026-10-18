@@ -44,3 +44,12 @@ def test_roi_band_chart(tmp_path):
     table = cc.market_breakdown_table(m.market_breakdown([g]))
     assert ch.roi_band_chart(table, "By spread", "t", tmp_path / "s.png")
     assert not ch.roi_band_chart([], "By spread", "t", tmp_path / "x.png")
+
+
+def test_home_ladder_chart(tmp_path):
+    from model import cfb_pattern_measures as m
+    g = {"week": 1, "season_type": "regular", "home_score": 30, "away_score": 20, "home_spread": 5.5,
+         "home_ml": 180, "away_ml": -220, "vegas_total": 50.0, "hclass": "fbs", "aclass": "fbs"}
+    table = cc.market_breakdown_table(m.market_breakdown([g]))
+    assert ch.home_ladder_chart(table, tmp_path / "h.png")
+    assert not ch.home_ladder_chart([], tmp_path / "x.png")
