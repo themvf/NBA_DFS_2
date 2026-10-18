@@ -54,6 +54,21 @@ def weekly_table(rates: list[dict]) -> list[dict]:
     } for r in rates]
 
 
+def american(decimal: float | None) -> str | None:
+    return None if decimal is None else pub._am(decimal)
+
+
+def market_splits_table(splits: list[dict]) -> list[dict]:
+    return [{
+        "Split": s["split"], "Games": s["games"], "Wins": s["wins"], "Losses": s["losses"],
+        "Record": f"{s['wins']}-{s['losses']}",
+        "Favorites won (%)": _pct(s["win_rate"]), "Price implied (%)": _pct(s["implied"]),
+        "Difference (pts)": None if s["excess_pp"] is None else round(s["excess_pp"], 1),
+        "Units": round(s["units"], 2), "ROI (%)": _pct(s["roi"]),
+        "Median price": american(s["median_price"]),
+    } for s in splits]
+
+
 def results_table(rows: list[dict]) -> list[dict]:
     label = {k: v[0] for k, v in pub.TRIGGER_LABEL.items()}
     ordered = sorted(rows, key=lambda r: (r["game_date"], r["commence_time"], r["trigger"]))
@@ -123,12 +138,14 @@ def main(argv: list[str] | None = None) -> int:
     db = DatabaseManager(load_config().database_url, initialize_schema=args.store)
     rows = store.read_ledger(db)
     selections = list(store.read_selections(db).values())
-    rates = measures.weekly_base_rates(measures.load_base_rate_games(db))
+    base_games = measures.load_base_rate_games(db)
+    rates = measures.weekly_base_rates(base_games)
     fvc = measures.freeze_vs_close(rows, selections)
     out = Path(args.out_dir)
     tables = {
         "patterns.csv": patterns_table(rows),
         "weekly_favorites.csv": weekly_table(rates),
+        "market_splits.csv": market_splits_table(measures.market_splits(base_games)),
         "results.csv": results_table(rows),
         "cumulative_units.csv": cumulative_table(rows),
         "frozen_vs_close.csv": frozen_vs_close_table(fvc),

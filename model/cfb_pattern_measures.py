@@ -101,6 +101,61 @@ def weekly_base_rates(games: list[dict]) -> list[dict]:
     return out
 
 
+# Moneyline-favorite splits: descriptive, whole-market, not study triggers.
+# Each split is (label, rule over a game dict). "Total" is the closing O/U.
+MARKET_SPLITS = (
+    ("All moneyline favorites", lambda g: True),
+    ("Total exactly 45", lambda g: g.get("vegas_total") is not None and float(g["vegas_total"]) == 45.0),
+    ("Total 45 or lower", lambda g: g.get("vegas_total") is not None and float(g["vegas_total"]) <= 45.0),
+    ("Spread 2.5 or less", lambda g: abs(float(g["home_spread"])) <= 2.5),
+)
+
+
+def market_splits(games: list[dict], splits=MARKET_SPLITS) -> list[dict]:
+    """Moneyline favorites' record and flat-unit ROI at the closing moneyline.
+
+    Same population as weekly_base_rates (FBS-vs-FBS regular season, spread and
+    both moneylines). The favorite is the side with the shorter moneyline; a
+    game priced level on both sides has no favorite and is skipped. One unit on
+    the favorite: a win pays its closing decimal price minus 1, a loss costs 1.
+    """
+    eligible = []
+    for g in games:
+        if g.get("hclass") != "fbs" or g.get("aclass") != "fbs":
+            continue
+        if g.get("home_spread") is None or g.get("home_ml") is None or g.get("away_ml") is None:
+            continue
+        if (g.get("season_type") or "regular") != "regular":
+            continue
+        dh, da = pw.decimal_odds(g["home_ml"]), pw.decimal_odds(g["away_ml"])
+        if dh == da:
+            continue
+        margin = g["home_score"] - g["away_score"]
+        if margin == 0:
+            continue
+        home_fav = dh < da
+        p_home = pw.vig_free_home(g["home_ml"], g["away_ml"])
+        won = (margin > 0) == home_fav
+        price = dh if home_fav else da
+        eligible.append((g, won, price, p_home if home_fav else 1 - p_home))
+    out = []
+    for label, rule in splits:
+        rows = [(won, price, imp) for g, won, price, imp in eligible if rule(g)]
+        n = len(rows)
+        wins = sum(1 for won, _, _ in rows if won)
+        units = sum((price - 1) if won else -1.0 for won, price, _ in rows)
+        imp = statistics.mean(i for _, _, i in rows) if rows else None
+        win_rate = wins / n if n else None
+        out.append({
+            "split": label, "games": n, "wins": wins, "losses": n - wins,
+            "win_rate": win_rate, "implied": imp,
+            "excess_pp": None if win_rate is None else (win_rate - imp) * 100,
+            "units": units, "roi": units / n if n else None,
+            "median_price": statistics.median(p for _, p, _ in rows) if rows else None,
+        })
+    return out
+
+
 def load_base_rate_games(db) -> list[dict]:
     return [dict(r) for r in db.execute(_BASE_SQL, (pw.SEASON,))]
 
