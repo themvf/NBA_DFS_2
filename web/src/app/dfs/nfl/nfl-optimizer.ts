@@ -1593,6 +1593,23 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
       const current = exposureCounts.get(player.dkPlayerId) ?? 0;
       if (target - current >= remaining) forced.add(player.dkPlayerId);
     }
+    // Classic one-slot positions (QB, DST): players with unmet overall
+    // minimums cannot share a lineup, so forcing each only when his own need
+    // equals the lineups left makes several come due together and the run
+    // stops. Once their combined need fills the remaining lineups, force one
+    // per lineup (the furthest from his minimum) and none of the others.
+    if (settings.format === "classic") {
+      for (const position of ["QB", "DST"] as const) {
+        const owed = pool.filter((player) => player.position === position)
+          .map((player) => ({ id: player.dkPlayerId, need: countsById.get(player.dkPlayerId)!.overallMin - (exposureCounts.get(player.dkPlayerId) ?? 0) }))
+          .filter((row) => row.need > 0);
+        if (!owed.length || owed.reduce((sum, row) => sum + row.need, 0) < remaining) continue;
+        if (owed.some((row) => locked.has(row.id))) continue;
+        owed.sort((x, y) => y.need - x.need || x.id - y.id);
+        for (const row of owed) forced.delete(row.id);
+        forced.add(owed[0].id);
+      }
+    }
     const requireAirMatchup = airMatchupTarget > 0 && airMatchupTarget - airMatchupLineups >= remaining;
     const requireGoalLine = goalLineTarget > 0 && goalLineTarget - goalLineLineups >= remaining;
     // Showdown winner distributions: this lineup's quarterback count and
