@@ -108,6 +108,7 @@ MARKET_SPLITS = (
     ("Total 45 or higher", lambda g: g.get("vegas_total") is not None and float(g["vegas_total"]) >= 45.0),
     ("Spread 2.5 or less", lambda g: abs(float(g["home_spread"])) <= 2.5),
     ("Spread 7 to 13.5", lambda g: 7.0 <= abs(float(g["home_spread"])) <= 13.5),
+    ("Spread 14 or more", lambda g: abs(float(g["home_spread"])) >= 14.0),
 )
 
 
