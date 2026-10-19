@@ -646,7 +646,7 @@ export default function NflDfsClient() {
     // current-pool check can't be skipped by a page that was left open.
     startTransition(async () => {
       try {
-        const csv = await exportSavedNflEntries(runId, await entryFile.text(), defensiveRun ? [] : qaOverrides);
+        const csv = await exportSavedNflEntries(runId, await entryFile.text(), qaOverrides);
         downloadText(`nfl-lineups-${runId.slice(0, 8)}.csv`, csv);
       } catch (reason) { setError(reason instanceof Error ? reason.message : "Entry export failed."); }
     });
@@ -666,7 +666,7 @@ export default function NflDfsClient() {
     setError(null);
     startTransition(async () => {
       try {
-        const csv = await exportSavedNflLineups(runId, defensiveRun ? [] : qaOverrides);
+        const csv = await exportSavedNflLineups(runId, qaOverrides);
         downloadText(`nfl-lineups-${runId.slice(0, 8)}-rosters.csv`, csv);
       } catch (reason) { setError(reason instanceof Error ? reason.message : "Lineup export failed."); }
     });
