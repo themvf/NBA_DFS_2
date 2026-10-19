@@ -411,3 +411,32 @@ Week 6: every scheduled refresh from 2026-10-14 failed (an Out rule copied
 from Game Leaders had drifted, then a started game with no forecast blocked
 the whole week), so only Monday's WAS@SF was forecast before kickoff. Started
 games without a saved forecast are now listed as missed rather than blocking.
+
+## Automatic weekly grading (2026-10-19)
+
+`research.nfl_longest_touchdown_weekly_grade` (`nfl-longest-td-weekly-grade-v1`)
+replaces the hand grader in `artifacts/nfl-longest-td/grades/`. It reads the
+published index (never re-forecasts), grades every game that has kicked off
+with `research.nfl_longest_touchdown.grade`, and writes the tracked
+`web/src/data/longest-touchdown-grades.json` that the page reads for its
+"How Week N went" panel. It runs as a step in
+`refresh_nfl_longest_touchdown.yml` after the publish step, even when that
+step fails: the Monday run grades Sunday, the Wednesday run grades Monday night.
+
+- `records` is append-only. A `graded` record is final, and a started game
+  whose saved forecast hash changed raises instead of regrading.
+  `needs_review` is stored unscored, shown on the page with the quarantined
+  play text, and left out of every number; a later run appends a new record
+  only if corrected play-by-play changes the outcome. `outcome_unknown` writes
+  nothing and is retried.
+- `weeks` is rebuilt from the latest record per game: top-pick hits against
+  the sum of the top picks' own chances, mean log loss against a baseline
+  that splits the touchdown mass in proportion to each row's any-TD chance
+  (no-TD share kept) and against an even split, and named-player any-TD and
+  40+ yard TD counts against their expected totals.
+- Rerunning on the Week 5 capture reproduces the hand grade exactly (6 of 14,
+  2.36 vs 2.60, 57 vs 53.6, 6 vs 5.7, NYG@WAS needs review). The hand
+  resolution of NYG@WAS (Daniels, 38 yards) is not entered: the store has no
+  manual-resolution path, so that game stays `needs_review`.
+
+Tracking only. No gate reads this file, and one week says little.

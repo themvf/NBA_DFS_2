@@ -32,16 +32,24 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Capture sources and publish the complete upcoming week
         run: python -m research.nfl_longest_touchdown_auto --draws 500
+      # Grades every saved forecast whose game has kicked off. Runs even when
+      # the publish step fails, so a broken refresh never stops last week's
+      # grade. Unfinished games write nothing and are retried next run; the
+      # Monday run grades Sunday, the Wednesday run grades Monday night.
+      - name: Grade finished games against their saved pregame forecasts
+        if: always()
+        run: python -m research.nfl_longest_touchdown_weekly_grade
       - name: Commit only a changed, validated publication
+        if: always()
         run: |
-          git add -f web/src/data/longest-touchdown-weeks.json
+          git add -f web/src/data/longest-touchdown-weeks.json web/src/data/longest-touchdown-grades.json
           if git diff --cached --quiet; then
             echo "No publication change"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Update weekly NFL longest touchdown forecasts"
+          git commit -m "Update weekly NFL longest touchdown forecasts and grades"
           git push origin HEAD:main
       - uses: actions/upload-artifact@v4
         if: always()

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import index from "@/data/longest-touchdown-weeks.json";
+import grades from "@/data/longest-touchdown-grades.json";
 import { getGameLeadersAvailability } from "@/db/nfl-game-leaders-availability";
 
 export const dynamic = "force-dynamic";
@@ -20,8 +21,46 @@ type PublishedGame = {
   forecastRosterIds?: string[];
 };
 type PublishedSeason = { season: number; weeks: Array<{ week: number; games: PublishedGame[]; coverage?: { missedGames?: string[] } }> };
+type GradedGame = { gameId: string; away: string; home: string; longestYards: number; winners: string[]; winnerProbability: number;
+  winnerRank: number; outcomes: number; topPick: string; topProbability: number; topHit: boolean };
+type WeekGrade = { season: number; week: number; graded: number; topHits: number; topExpected: number;
+  logLoss: number | null; baselineLogLoss: number | null; uniformLogLoss: number | null;
+  anyTdExpected: number; anyTdScored: number; longTdExpected: number; longTdScored: number;
+  needsReview: Array<{ gameId: string; away: string; home: string; reason: string; plays: string[] }>; games: GradedGame[] };
+const weekGrades = (grades as { weeks: WeekGrade[] }).weeks;
 const saved = index as PublishedSeason & { priorSeasons?: PublishedSeason[] };
 const seasons = [...(saved.priorSeasons ?? []), saved].sort((a, b) => a.season - b.season);
+
+function GradePanel({ grade, awaiting }: { grade: WeekGrade; awaiting: string[] }) {
+  const n = grade.graded;
+  return <section className="space-y-3 rounded-xl border bg-white p-4">
+    <div><h2 className="text-xl font-semibold">How Week {grade.week} went</h2>
+      <p className="mt-1 text-sm text-slate-600">Saved pregame forecasts against final play-by-play. One week is a small sample; this is tracking, not proof of accuracy.</p></div>
+    {n > 0 ? <dl className="grid gap-3 sm:grid-cols-3">
+      <div className="rounded-lg bg-slate-50 p-3"><dt className="text-sm text-slate-600">Top pick had the longest TD</dt>
+        <dd className="text-2xl font-semibold">{grade.topHits} of {n}</dd>
+        <dd className="text-sm text-slate-600">Its own chances added up to {grade.topExpected.toFixed(1)}</dd></div>
+      <div className="rounded-lg bg-slate-50 p-3"><dt className="text-sm text-slate-600">Average log loss (lower is better)</dt>
+        <dd className="text-2xl font-semibold">{grade.logLoss?.toFixed(2)}</dd>
+        <dd className="text-sm text-slate-600">{grade.baselineLogLoss?.toFixed(2)} splitting by any-TD chance · {grade.uniformLogLoss?.toFixed(2)} even split</dd></div>
+      <div className="rounded-lg bg-slate-50 p-3"><dt className="text-sm text-slate-600">Named players who scored a TD</dt>
+        <dd className="text-2xl font-semibold">{grade.anyTdScored} <span className="text-base font-normal text-slate-600">vs {grade.anyTdExpected.toFixed(1)} expected</span></dd>
+        <dd className="text-sm text-slate-600">40+ yard TDs: {grade.longTdScored} vs {grade.longTdExpected.toFixed(1)} expected</dd></div>
+    </dl> : <p className="text-sm text-slate-700">No game from this week has been graded yet.</p>}
+    {grade.needsReview.length > 0 && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+      <p className="font-semibold">Needs review, not scored: {grade.needsReview.map((g) => `${g.away} @ ${g.home}`).join(", ")}</p>
+      <p className="mt-1">A touchdown play was reversed or could not be verified, so the longest TD is not certain. These games are left out of the numbers above.</p>
+      {grade.needsReview.flatMap((g) => g.plays).map((play) => <p key={play} className="mt-1 text-xs text-amber-900">{play}</p>)}</div>}
+    {awaiting.length > 0 && <p className="text-sm text-slate-600">Waiting for final play-by-play: {awaiting.join(", ")}.</p>}
+    {n > 0 && <details><summary className="cursor-pointer text-sm font-medium text-emerald-900">Game by game</summary>
+      <div className="mt-2 overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-slate-600"><tr><th className="p-2">Game</th><th className="p-2">Longest TD</th><th className="p-2">Its chance</th><th className="p-2">Top pick</th></tr></thead>
+        <tbody>{grade.games.map((g) => <tr key={g.gameId} className="border-t">
+          <td className="p-2">{g.away} @ {g.home}</td>
+          <td className="p-2">{g.winners.join(", ")}{g.longestYards > 0 ? ` (${g.longestYards} yd)` : ""}</td>
+          <td className="p-2">{percent(g.winnerProbability)} · {g.winnerRank} of {g.outcomes}</td>
+          <td className="p-2">{g.topPick} {percent(g.topProbability)} {g.topHit ? "✓" : ""}</td></tr>)}</tbody></table></div></details>}
+  </section>;
+}
 
 function percent(value: number) {
   return value > 0 && value < 0.01 ? "<1%" : `${Math.round(value * 100)}%`;
@@ -56,6 +95,17 @@ export default async function LongestTouchdownPage({ searchParams }: { searchPar
     ? availability.confirmedOut.filter((player) => rosterIds.has(player.identity))
     : [];
   const blocked = newlyOut.length > 0 || (!started && !availability?.complete);
+  const graded = (s: number, w: number) => weekGrades.find((g) => g.season === s && g.week === w);
+  const latestGraded = weekGrades.filter((g) => g.graded > 0).at(-1);
+  const gradeShown = (week && graded(season.season, week.week)) ?? latestGraded;
+  const gradeWeek = gradeShown && seasons.find((s) => s.season === gradeShown.season)?.weeks.find((w) => w.week === gradeShown.week);
+  const pending = (grade: WeekGrade | undefined, games: PublishedGame[]) => {
+    const done = new Set([...(grade?.games.map((g) => g.gameId) ?? []), ...(grade?.needsReview.map((g) => g.gameId) ?? [])]);
+    return games.filter((g) => Date.parse(g.game.kickoff) <= now && !done.has(g.game.game_id)).map((g) => `${g.game.away} @ ${g.game.home}`);
+  };
+  const awaiting = pending(gradeShown, gradeWeek?.games ?? []);
+  const selectedWeekPending = week && gradeShown && week.week !== gradeShown.week
+    ? pending(graded(season.season, week.week), week.games).map((game) => `${game} (Week ${week.week})`) : [];
 
   return <main className="mx-auto max-w-5xl space-y-6 px-4 py-8">
     <header className="space-y-3">
@@ -70,6 +120,7 @@ export default async function LongestTouchdownPage({ searchParams }: { searchPar
     <nav aria-label="Week" className="flex flex-wrap gap-2">{season.weeks.map((item) =>
       <Link key={item.week} href={`/nfl/longest-touchdown?season=${season.season}&week=${item.week}`}
         className={`rounded px-3 py-2 text-sm font-medium ${item.week === week?.week ? "bg-emerald-800 text-white" : "border bg-white text-emerald-900"}`}>Week {item.week}</Link>)}</nav>
+    {gradeShown && <GradePanel grade={gradeShown} awaiting={[...awaiting, ...selectedWeekPending]} />}
     {week && selected ? <>
       <form method="get" className="flex flex-wrap items-end gap-3">
         <input type="hidden" name="season" value={season.season} />
