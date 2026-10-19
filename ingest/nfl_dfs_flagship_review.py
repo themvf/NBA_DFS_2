@@ -1,7 +1,8 @@
 """Weekly: import the week's free flagship contests from stat-api and review our build against the winners.
 
-Runs from the post-week workflow (Tuesday and Wednesday). For the latest
-completed NFL week it finds, on each game day, the biggest-prize contest of
+Runs from the post-week workflow (Monday and Tuesday). For the latest NFL
+week with a finished game day it finds, on each FINISHED game day (every game
+final and six hours past its last kickoff), the biggest-prize contest of
 every DraftKings slate stat-api lists, asks stat-api whether that contest is a
 flagship (the Millionaire, the biggest Thursday and Monday showdown: those
 answer in full with no key), imports each flagship through
@@ -43,19 +44,28 @@ TOP_USERS = 100
 TOP_REVIEW = 5
 
 
+# A game day is finished when every game on it is final and its last kickoff
+# is six hours old. Monday's run then reviews Thursday and Sunday (Sunday night
+# included) while Monday night is still to play; Tuesday's adds Monday.
+_FINISHED_DAY = "bool_and(completed) AND max(kickoff) < NOW() - INTERVAL '6 hours'"
+
+
 def latest_completed_week(db: DatabaseManager, season: int | None) -> tuple[int, int] | None:
+    """The latest regular-season week with at least one finished game day."""
     rows = db.execute(
-        """SELECT season, week FROM nfl_season_games
-           WHERE game_type = 'REG' AND (%s IS NULL OR season = %s)
-           GROUP BY season, week
-           HAVING bool_and(completed) AND max(kickoff) < NOW() - INTERVAL '6 hours'
-           ORDER BY season DESC, week DESC LIMIT 1""", (season, season))
+        f"""SELECT season, week FROM (
+              SELECT season, week, gameday FROM nfl_season_games
+               WHERE game_type = 'REG' AND (%s IS NULL OR season = %s)
+               GROUP BY season, week, gameday HAVING {_FINISHED_DAY}) d
+            ORDER BY season DESC, week DESC LIMIT 1""", (season, season))
     return (int(rows[0]["season"]), int(rows[0]["week"])) if rows else None
 
 
-def game_days(db: DatabaseManager, season: int, week: int) -> list[str]:
+def game_days(db: DatabaseManager, season: int, week: int, *, finished_only: bool = False) -> list[str]:
+    having = f"HAVING {_FINISHED_DAY}" if finished_only else ""
     rows = db.execute(
-        "SELECT DISTINCT gameday FROM nfl_season_games WHERE season = %s AND week = %s AND game_type = 'REG' ORDER BY 1",
+        f"""SELECT gameday FROM nfl_season_games WHERE season = %s AND week = %s AND game_type = 'REG'
+            GROUP BY gameday {having} ORDER BY 1""",
         (season, week))
     return [str(r["gameday"]) for r in rows]
 
@@ -167,7 +177,8 @@ def main(argv=None) -> None:
             print("no completed regular-season week on the schedule; nothing to review")
             return
         season, week = found
-    days = game_days(db, season, week)
+    # An explicit --week reviews every day asked for; the default only finished ones.
+    days = game_days(db, season, week, finished_only=not (args.season and args.week))
     if not days:
         sys.exit(f"{season} week {week}: no game days on the schedule")
     import os

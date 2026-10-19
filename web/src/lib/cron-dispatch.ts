@@ -204,13 +204,14 @@ export const DISPATCH_JOBS: readonly DispatchJob[] = [
   {
     key: "nfl-dfs-postweek",
     workflow: "refresh_nfl_dfs_postweek.yml",
-    // Tuesday 14:07 UTC, after Monday night's stats are published (nflverse
-    // landed them at 11:34 UTC on 2026-09-29, so the old 10:07 slot always
-    // missed MNF) and an hour after the 13:07 pbp relabel, whose labels DST
-    // scoring reads (nfl_dfs_results.pbp_components). Then Wednesday 10:07 UTC
-    // for late corrections. Every step is idempotent, so the workflow's later
-    // GitHub fallback slot is harmless.
-    due: (now) => ((now.getUTCDay() === 2 && now.getUTCHours() === 14) || (now.getUTCDay() === 3 && now.getUTCHours() === 10)) && hourTick(now),
+    // Monday 13:07 UTC (owner's decision 2026-10-19): Thursday and Sunday,
+    // Sunday night included, are published by then (SNF was in nflverse by
+    // Monday morning on 2026-10-19), an hour after the Monday 12:07 pbp
+    // relabel whose labels DST scoring reads (nfl_dfs_results.pbp_components).
+    // Then Tuesday 14:07 UTC, after Monday night's stats land (~11:34 UTC on
+    // 2026-09-29) and the 13:07 relabel. Every step grades completed games
+    // only and is idempotent, so the GitHub fallback slot is harmless.
+    due: (now) => ((now.getUTCDay() === 1 && now.getUTCHours() === 13) || (now.getUTCDay() === 2 && now.getUTCHours() === 14)) && hourTick(now),
     why: "Realized DK points, slate report cards, and the weekly replacement-upside grade.",
   },
   {

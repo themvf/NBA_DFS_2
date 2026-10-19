@@ -342,7 +342,7 @@
       "file": "refresh_nfl_dfs_postweek.yml",
       "name": "Refresh NFL DFS Post-Week Review",
       "crons": [
-        "41 14 * * 2,3"
+        "41 14 * * 1,2"
       ],
       "dispatch": true,
       "afterWorkflows": [],
