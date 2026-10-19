@@ -237,9 +237,11 @@ def ratings_chart(ratings: list[dict], path: Path, teams=None, fits: list[dict] 
     fit_note = ""
     if fits:
         f = fits[-1]
-        fit_note = f" Fit through week {f['week']}: {f['games']} games, home edge {f['hfa']:.1f} pts;\nfitted spreads miss week {f['week']}'s closing lines by {f['mae_latest']:.1f} pts on average ({f['mae']:.1f} across all weeks)."
-    _style_lines(ax, "How the betting market rates the contenders, week by week",
-                 "Ratings fitted to every FBS-vs-FBS closing spread, recent weeks weighted most, season to date.\n"
+        fit_note = (f" Fit through week {f['week']}: {f['games']} games, home edge {f['hfa']:.1f} pts;\n"
+                    f"fitted spreads miss week {f['week']}'s closing lines by {f['mae_latest']:.1f} pts on average.")
+    _style_lines(ax, "How the betting market rated the contenders, week by week",
+                 "Ratings fitted to every FBS-vs-FBS closing spread, recent weeks weighted most.\n"
+                 "Each week is the view going into that week's games, so a result shows up a week later.\n"
                  f"Includes the three biggest risers since week {start}.{fit_note}")
     _save(fig, path)
     return True
@@ -273,9 +275,10 @@ def top_ratings_chart(ratings: list[dict], path: Path, week: int | None = None, 
     ax.set_yticks(ys, labels, fontsize=7.5, color=INK)
     ax.set_xlim(0, span * 1.32)
     ax.set_xlabel("points better than an average FBS team, neutral field", color=INK_2, fontsize=8)
-    _style_lines(ax, f"The market's top {len(now)} after week {week}",
-                 f"Fitted to FBS-vs-FBS closing spreads through week {week}, season to date.\n"
-                 f"Rank change since week {prev} in brackets; rating change in points beside each bar.", bars=True)
+    _style_lines(ax, f"The market's top {len(now)} going into week {week}",
+                 f"Fitted to FBS-vs-FBS closing spreads through week {week}, set before those games were played;\n"
+                 f"week {week}'s results show up once week {week + 1}'s lines post. "
+                 f"Rank change since week {prev} in brackets.", bars=True)
     _save(fig, path)
     return True
 
