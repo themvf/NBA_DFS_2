@@ -18,9 +18,20 @@ against stored 50,000+ entry contests. Where it contradicts this doc, it wins:
   with current code gave Spearman 0.663, MAE 0.99 over all 670 players but
   4.32 among the 135 players owned at least 1%. Frozen week 4 and 5 Classic
   forecasts graded 3.54 and 3.92 MAE (missing labels excluded, not zeroed).
-  Grade on the owned-at-least-1% population from now on.
-- The TE FLEX budget is measurably wrong: TE ownership sums in weeks 3-5 imply
-  34-38% TE FLEX usage against the prior's 5%.
+  Reconciled: the 1.06 and 3.54 figures are the SAME frozen week-4 forecast,
+  1.065 over all 629 salary-listed players with missing labels zeroed and
+  3.538 over the 183 observed players. Population, not missing-label error,
+  explains the gap (week 4's recorded mass is 895.44 of 900%, so zero-filling
+  can move full-pool MAE by at most ~0.007). The scorecard keeps the
+  full-pool metric with verified labels and reports a PREGAME-defined
+  relevant-player population, chalk errors and position/slot calibration
+  beside it; the retrospective owned-at-least-1% cut is a diagnostic.
+- The TE FLEX budget is measurably wrong. Recorded TE ownership totals:
+  week 3 137.71%, week 4 134.09%, week 5 137.12%, i.e. 34-38% TE FLEX usage
+  against the prior's 5%. These are training targets for next-slate
+  allocation (with shrinkage), never a per-slate budget fitted from that
+  slate's own ownership and then graded on it. PIT-CLE (196187074) and ATL-NO
+  (196285155) both recording 88,235 entries is verified, not a copy error.
 - Captain positional frequencies and "never K or DST" in section 2.2 and 3.4
   come from top-100 users and winners, an outcome-selected sample. Fit captain
   priors on full-field captain shares (`nfl_dfs_field_ownership` stores them),
@@ -113,7 +124,7 @@ than the prior is.
 | `nfl_dfs_field_structure` | duplication, multi-entry share, QB-stack / bring-back rates, pair lift (top 40 players) | 5 Millionaires wk1-5 (1,490,188 entries), 8 Showdown flagships (top-100 users only) |
 | `nfl_dfs_field_top_entries`, `nfl_dfs_field_user_builds` | top finishers' every lineup, exposure vs field | per flagship |
 | `nfl_dfs_published_winners` | the Millionaire rank-1 lineup each week, with draft % per player | 46 weeks, 2023 w1-17, 2024 w1-18, 2025 w1-11 |
-| `nfl_dfs_pool_captures`, DK pool status poll | pregame pool, status, DK ppg every 15 min in the two hours before kickoff | since late September |
+| `nfl_dfs_pool_captures`, DK pool status poll | pregame pool with resolved player evidence: one capture inside 24 h of kickoff, then on every tick in the final 20 minutes (`poolCaptureDue`); the 15-minute status poll is separate | since late September; historical coverage not yet audited |
 
 So the training corpus for Classic is roughly one labelled slate per week of
 2026 (six to seven so far), and Showdown two to three per week. There is no
@@ -318,7 +329,10 @@ captures and the status poll already exist. Change:
 
 - Compute the forecast from the capture nearest the decision time and record
   which capture, so a Wednesday number and a Sunday 12:45 number are
-  different forecasts with different expected error.
+  different forecasts with different expected error. First audit what the
+  pool captures actually hold per week (projections, availability,
+  timestamps); the Wilson and Lance misses are verified, "news chalk" is a
+  hypothesis until the news timeline is set beside the forecast's inputs.
 - Add a late-news redistribution for the field (not for our projection): when
   a starter is ruled out after the Friday capture, move his ownership to the
   backup and to same-salary pivots at a fitted rate, and in Showdown to the
