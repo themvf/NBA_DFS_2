@@ -333,6 +333,8 @@ captures and the status poll already exist. Change:
   pool captures actually hold per week (projections, availability,
   timestamps); the Wilson and Lance misses are verified, "news chalk" is a
   hypothesis until the news timeline is set beside the forecast's inputs.
+  Whether the captures add gradable SLATES (not just more captures of the
+  same slates) is unknown until they are inventoried.
 - Add a late-news redistribution for the field (not for our projection): when
   a starter is ruled out after the Friday capture, move his ownership to the
   backup and to same-salary pivots at a fitted rate, and in Showdown to the

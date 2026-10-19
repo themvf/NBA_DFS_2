@@ -37,9 +37,12 @@ written.
   (`model`, `market_anchor`, `absence_commit`), availability as of capture,
   DK status as of capture, salary file digest. A capture missing any of these
   is graded `provenance_incomplete` and excluded from gates.
-- The market anchor changed the prior's input on 2026-10-12. Grades are split
-  `pre_anchor` / `post_anchor` and the split is shown on every table that
-  spans it.
+- The market anchor changed the prior's input from 2026-10-12, but coverage
+  varies within a slate (144 of 407 Classic players on week 5). The split is
+  therefore by the anchor evidence STORED in each forecast (`marketAnchor`
+  per player), reported as anchored / unanchored player counts per slate,
+  alongside capture date and ownership version. The date alone does not
+  establish that a player was anchored.
 - A forecast is never backfilled with later news. If the needed capture does
   not exist, the slate has no graded forecast for that horizon; it is listed
   as `no_frozen_forecast`, not rebuilt.
@@ -95,8 +98,11 @@ Per contest, per horizon, per population:
 - MAE in percentage points; bias (predicted minus actual, positive = we
   over-project ownership); RMSE.
 - Spearman with AVERAGED tied ranks (the current calibration script does not
-  average ties; the 0.80 figures in the model doc are withdrawn as headlines
-  until recomputed). Also Pearson.
+  average ties; the 0.80 figures in the model doc are withdrawn as headlines).
+  Tie-correct results so far, each on its own population and not
+  interchangeable: week 2 full-pool retrospective replay 0.663; frozen week 4
+  and week 5 forecasts 0.661 and 0.710 on their observed-label populations.
+  None is a full-pool gate metric for a frozen forecast yet. Also Pearson.
 - Calibration by predicted-ownership bin (0-1, 1-5, 5-10, 10-20, 20-35, 35+;
   Showdown flex adds 50+): mean predicted vs mean actual and count.
 - Chalk: top-10 overlap by predicted vs actual; largest 10 absolute misses
@@ -160,9 +166,11 @@ row so silence is visible.
 
 1. Fix the calibration script: averaged tied ranks; missing labels classified
    by section 3, never a blanket zero.
-2. Audit `nfl_dfs_pool_captures` per week for what it holds (projections,
-   availability, timestamps, DK status) and list which slates have a
-   canonical-horizon capture.
+2. Inventory and deduplicate optimizer snapshots and pool captures: dates,
+   contents (projections, availability, DK status, ownership version, source
+   timestamps) and DISTINCT slates. More captures of one slate improve the
+   timing evidence; they do not add validation slates. Whether this enlarges
+   the gradable history is a hypothesis until the inventory says so.
 3. Regrade weeks 2-6 once under this spec, split at the anchor, and publish
    per-slate rows. That run is the baseline every later version is compared
    to.
