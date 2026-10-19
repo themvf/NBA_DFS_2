@@ -222,6 +222,10 @@ def _feature_charts(db, out: Path) -> dict[str, bool]:
     made["key_margins.png"] = keys.margin_chart(keys.margin_distribution(games), out / "key_margins.png", keys.chart_subtitle(games))
     for path in drives.write_charts(drives.build_tables(db), out):
         made[path.name] = True
+    from model import cfb_line_charts, cfb_team_charts
+
+    made.update(cfb_line_charts.build_charts(db, out))
+    made.update(cfb_team_charts.build_charts(db, out))
     return made
 
 
