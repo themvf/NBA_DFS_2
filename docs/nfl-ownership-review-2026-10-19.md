@@ -7,6 +7,34 @@ review from the repository; the live database was not reachable from this
 session, so every number below is one the repo already records. Nothing here
 changes code or capability.
 
+## 0. Corrections after the independent review (2026-10-19)
+
+An independent review with database access graded frozen pregame forecasts
+against stored 50,000+ entry contests. Where it contradicts this doc, it wins:
+
+- Classic rank order is weaker than the 0.80 Spearman quoted below. The
+  calibration script does not average tied ranks, and with ~500 near-zero
+  players that inflates Spearman; a full-export recount of the week-2 contest
+  with current code gave Spearman 0.663, MAE 0.99 over all 670 players but
+  4.32 among the 135 players owned at least 1%. Frozen week 4 and 5 Classic
+  forecasts graded 3.54 and 3.92 MAE (missing labels excluded, not zeroed).
+  Grade on the owned-at-least-1% population from now on.
+- The TE FLEX budget is measurably wrong: TE ownership sums in weeks 3-5 imply
+  34-38% TE FLEX usage against the prior's 5%.
+- Captain positional frequencies and "never K or DST" in section 2.2 and 3.4
+  come from top-100 users and winners, an outcome-selected sample. Fit captain
+  priors on full-field captain shares (`nfl_dfs_field_ownership` stores them),
+  not on winners.
+- The two Showdown "holdouts" cited for v3 had 8,917 and 22,136 entries; they
+  do not validate v3 for 50,000+ fields. The frozen ATL-NO forecast graded
+  9.27 FLEX MAE.
+- Section 1.2's claim that the accuracy gate is unwired was wrong; see the
+  corrected bullet.
+- "Simulation is the only route" to feasibility (3.3) is too strong:
+  constrained probabilistic and enumeration methods also enforce it. The
+  acceptance test for any field generator is agreement with complete fields
+  on exposures, stacks, salary spend and duplication, not seed count.
+
 ## 1. What runs today
 
 ### 1.1 Production: `nfl-ownership-prior-v3` (`web/src/lib/nfl-dfs/ownership-prior.ts`)
@@ -43,11 +71,14 @@ opponent, game time, any consensus projection, any prior-week ownership.
 - The leverage opt-in is ON by default since 2026-10-12. Between 2026-10-04
   and 2026-10-12 it was forced off, so the Sunday builds in that window did
   not use ownership at all.
-- `assessOwnership` caps the prior at `heuristic_uncalibrated`. The Phase 2
-  gate (Spearman >= 0.70, MAE <= 2.0 pts, |bias| <= 0.5, >= 4 held-out
-  Classic slates) is registered in `docs/nfl-ownership-model.md` but is NOT
-  wired into `assessOwnership`; promotion today would be by declaration. The
-  doc itself names this as a required governance fix.
+- `assessOwnership` caps the prior at `heuristic_uncalibrated`. The
+  non-heuristic path already requires a passing calibration record
+  (`ownershipAccuracyReason(options.calibration, ...)`) before it returns
+  `validated`, so the Phase 2 gate IS wired; what is missing is a source
+  that declares itself non-heuristic and carries qualifying evidence.
+  (Corrected 2026-10-19 after independent review; the first version of this
+  doc, and the "governance fix required" line in `docs/nfl-ownership-model.md`,
+  said the gate was unwired.)
 - The ghost factorial holds ownership fixed across its 32 arms and varies only
   the leverage exponent (0 / 0.5 / 1.0), so it measures how much to trust
   ownership, not how good the ownership is.
@@ -229,9 +260,11 @@ slot for Showdown. Features the prior lacks and the data already has:
   (item 3.1 is the prior's version of the same thing; the ridge learns the
   weights).
 
-Wire the gate: `assessOwnership` reads the latest calibration record and can
-only report `validated` when it passes. Keep the prior as the fallback and the
-offset. Retire `model/nfl_ownership_model.py` or fold it in; three code paths
+The gate is already enforced in `assessOwnership`; the fitted source must
+declare itself non-heuristic and supply the calibration record. Keep the prior
+as the fallback and the offset, and compare the residual fit against a direct
+fit and the prior under the same chronological test rather than assuming the
+residual form wins (it inherits the prior's position budgets). Retire `model/nfl_ownership_model.py` or fold it in; three code paths
 for one number is how the fitted one was forgotten.
 
 ### 3.3 Simulate the chalk: generate ownership from what public-input optimizers build
