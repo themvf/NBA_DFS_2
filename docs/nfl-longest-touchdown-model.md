@@ -388,3 +388,26 @@ exploratory; the scheduled refresh is not empirical calibration.
 
 At a new NFL season, the index retains earlier seasons in `priorSeasons`;
 the page offers a season selector as well as week and game selection.
+
+## Week 5 graded, Week 6 mostly missed (2026-10-19)
+
+Week 5's 15 saved pregame forecasts graded against final play-by-play
+(`artifacts/nfl-longest-td/grades/`, grader reads the published index and
+calls `research.nfl_longest_touchdown.grade`):
+
+- The top pick had the longest TD in 6 of 15 games; its own probabilities
+  summed to 2.2. One week; treat as luck until more weeks agree.
+- Mean log loss 2.36 on the 14 auto-graded games, against 2.60 for a
+  baseline that splits the win in proportion to each player's any-TD chance
+  and 3.25 for a uniform split.
+- Any-TD chance was calibrated: 53.6 named scorers predicted, 57 scored;
+  40+ yard TDs 5.7 predicted, 6 happened. The 45%+ bucket ran low (0.53
+  predicted, 0.65 actual, n=17).
+- NYG@WAS stopped at `needs_review` on a replay-reversed Likely TD (17 yards).
+  Resolved by hand: the longest was Jayden Daniels' 38-yard scramble, priced
+  at 1.1% (19th of 28). QB scrambles are the clearest miss.
+
+Week 6: every scheduled refresh from 2026-10-14 failed (an Out rule copied
+from Game Leaders had drifted, then a started game with no forecast blocked
+the whole week), so only Monday's WAS@SF was forecast before kickoff. Started
+games without a saved forecast are now listed as missed rather than blocking.
