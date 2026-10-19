@@ -41,8 +41,14 @@ def validate(week: dict, snapshot: dict, requests: dict, now: datetime) -> None:
     games = week["games"]
     canonical = {g["game_id"] for g in snapshot["games"]
         if (g["season"], g["week"]) == (week["season"], week["week"])}
-    if not canonical or {g["game"]["game_id"] for g in games} != canonical or len(games) != len(canonical):
+    missed = week.get("coverage", {}).get("missedGames", [])
+    published = [g["game"]["game_id"] for g in games]
+    if (not canonical or set(published) | set(missed) != canonical
+            or len(published) + len(missed) != len(canonical) or set(published) & set(missed)):
         raise ValueError("Publication does not cover every canonical game exactly once")
+    kickoffs = {g["game_id"]: timestamp(g["kickoff"]) for g in snapshot["games"]}
+    if any(kickoffs[gid] > now for gid in missed):
+        raise ValueError("Only a game that already kicked off may be missed")
     for game in games:
         gid = game["game"]["game_id"]
         kickoff = timestamp(game["game"]["kickoff"])
@@ -73,7 +79,7 @@ def refresh(snapshot: dict, prior_index: dict | None, now: datetime, season: int
             print(f"Capturing availability {game['game_id']}", flush=True)
             requests[game["game_id"]] = request_capture(snapshot, game["game_id"])
     publication = build_week(snapshot, requests, season, week,
-        Settings(draws=draws, newcomer_reserve=True), prior_started(prior_index, season, week, now))
+        Settings(draws=draws, newcomer_reserve=True), prior_started(prior_index, season, week, now), now)
     validate(publication, snapshot, requests, now)
     return season_index(publication, prior_index)
 

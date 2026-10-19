@@ -45,3 +45,20 @@ def test_validation_rejects_missing_game_or_out_player():
     publication["games"] = []
     with pytest.raises(ValueError, match="every canonical game"):
         auto.validate(publication, snapshot, requests, NOW)
+
+
+def test_validation_accepts_only_started_games_as_missed():
+    started = game("thursday", "2026-10-08T20:00:00+00:00")
+    upcoming = game("sunday", "2026-10-11T17:00:00+00:00")
+    snapshot = {"games": [started, upcoming]}
+    forecast = {"game": upcoming, "decisionAt": "2026-10-10T11:00:00+00:00",
+        "players": [{"identity": "P1", "longestShare": .6}], "residual": [],
+        "noTd": .4, "forecastRosterIds": ["P1"]}
+    requests = {"sunday": {"players": [{"identity": "P1", "status": "unresolved"}]}}
+    publication = {"season": 2026, "week": 5, "games": [forecast],
+        "coverage": {"missedGames": ["thursday"]}}
+    auto.validate(publication, snapshot, requests, NOW)
+    publication["games"] = []
+    publication["coverage"]["missedGames"] = ["thursday", "sunday"]
+    with pytest.raises(ValueError, match="already kicked off"):
+        auto.validate(publication, snapshot, requests, NOW)

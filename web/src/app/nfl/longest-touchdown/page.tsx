@@ -19,7 +19,7 @@ type PublishedGame = {
   modelVersion: string;
   forecastRosterIds?: string[];
 };
-type PublishedSeason = { season: number; weeks: Array<{ week: number; games: PublishedGame[] }> };
+type PublishedSeason = { season: number; weeks: Array<{ week: number; games: PublishedGame[]; coverage?: { missedGames?: string[] } }> };
 const saved = index as PublishedSeason & { priorSeasons?: PublishedSeason[] };
 const seasons = [...(saved.priorSeasons ?? []), saved].sort((a, b) => a.season - b.season);
 
@@ -61,6 +61,7 @@ export default async function LongestTouchdownPage({ searchParams }: { searchPar
     <header className="space-y-3">
       <div className="flex flex-wrap items-center gap-3"><h1 className="text-3xl font-bold">Longest touchdown</h1><span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-900">Experimental</span></div>
       <p className="text-lg text-slate-700">{season.season} · Week {week?.week ?? "unavailable"} · {week?.games.length ?? 0} games</p>
+      {(week?.coverage?.missedGames?.length ?? 0) > 0 && <p className="text-sm text-slate-600">Not forecast before kickoff, so not shown: {week?.coverage?.missedGames?.map((id) => id.split("_").slice(2).join(" @ ")).join(", ")}.</p>}
       <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">These saved estimates are not validated betting probabilities. Each game needs a new source capture and forecast to update. A DraftKings upload does not update this page.</p>
     </header>
     {seasons.length > 1 && <nav aria-label="Season" className="flex flex-wrap gap-2">{seasons.map((item) =>

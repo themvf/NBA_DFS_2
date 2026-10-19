@@ -39,6 +39,11 @@ def test_weekly_request_excludes_dual_out_but_keeps_unresolved_conditional():
     healthy["week_injuries"] = []
     healthy["week_injury_snapshot"] = {"fetched_at": "2026-10-10T11:30:00+00:00"}
     assert weekly.model_request(healthy, target)["players"]
+    reserve = request(target)
+    reserve["players"][1].update(status="out", sleeper_status="IR")
+    # Game Leaders counts a Sleeper reserve designation as out on its own;
+    # this check must agree or the whole week fails to publish (Week 6, 2026).
+    assert weekly.model_request(reserve, target)["players"][1]["status"] == "out"
     official = request(target)
     official["players"][1]["status"] = "out"
     official["players"][1]["official_status"] = "INACTIVE"
@@ -52,7 +57,7 @@ def test_weekly_publication_requires_every_game_and_preserves_prior(monkeypatch)
     requests = {sunday["game_id"]: request(sunday)}
     monkeypatch.setattr(weekly, "publish_game", lambda *args: {"game": sunday, "decisionAt": requests[sunday["game_id"]]["decision_at"]})
     result = weekly.build_week(snapshot, requests, 2026, 5, Settings(draws=100), [prior])
-    assert result["coverage"] == {"scheduledGames": 2, "publishedGames": 2}
+    assert result["coverage"] == {"scheduledGames": 2, "publishedGames": 2, "missedGames": []}
     assert result["games"][0] is prior
     with pytest.raises(ValueError, match="Missing pregame request"):
         weekly.build_week(snapshot, {}, 2026, 5, Settings(draws=100), [prior])
@@ -81,3 +86,18 @@ def test_only_modeled_contributors_trigger_a_stale_forecast():
         "residual": [{"identity": "OTHER:A", "anyTd": .2, "longestShare": .1},
             {"identity": "P3", "anyTd": .01, "longestShare": .005}]}
     assert weekly.modeled_roster_ids(publication) == ["P1", "P3"]
+
+
+def test_started_game_without_a_saved_forecast_is_missed_not_blocking(monkeypatch):
+    from datetime import datetime, timezone
+    thursday, sunday = game(9, "T", "D"), game(11, "A", "B")
+    snapshot = {"games": [thursday, sunday]}
+    requests = {sunday["game_id"]: request(sunday)}
+    monkeypatch.setattr(weekly, "publish_game", lambda *args: {"game": sunday})
+    now = datetime(2026, 10, 10, 12, tzinfo=timezone.utc)
+    result = weekly.build_week(snapshot, requests, 2026, 5, Settings(draws=100), [], now)
+    assert result["coverage"] == {"scheduledGames": 2, "publishedGames": 1,
+        "missedGames": [thursday["game_id"]]}
+    before_thursday = datetime(2026, 10, 8, tzinfo=timezone.utc)
+    with pytest.raises(ValueError, match="Missing pregame request"):
+        weekly.build_week(snapshot, requests, 2026, 5, Settings(draws=100), [], before_thursday)

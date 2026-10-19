@@ -13,11 +13,11 @@ from pathlib import Path
 
 from model.nfl_longest_touchdown import Settings, prepare, simulate, timestamp
 from research.nfl_longest_touchdown import read, write
+from research.nfl_game_leaders import availability_status
 from research.nfl_longest_touchdown_publish import publish
 
 
 GAME_KEYS = ("game_id", "season", "week", "kickoff", "away", "home")
-OUT = {"OUT", "IR", "PUP", "NFI", "SUSPENDED"}
 
 
 def canonical_game(game: dict) -> dict:
@@ -62,13 +62,18 @@ def model_request(evidence: dict, game: dict) -> dict:
     for player in evidence["players"]:
         if player["team"] not in (game["away"], game["home"]) or player["position"] not in ("QB", "RB", "WR", "TE"):
             raise ValueError(f"Invalid player in {game['game_id']}")
-        dual_out = (str(player.get("sleeper_status", "")).upper() in OUT
-            and str(player.get("fantasypros_injury_status", "")).upper() in OUT)
-        official_out = str(player.get("official_status", "")).upper() in OUT | {"INACTIVE"}
-        if (player["status"] == "out") != (dual_out or official_out):
+        # One rule for both pages: Game Leaders' availability_status decides
+        # "out". A separate copy here drifted when a Sleeper reserve
+        # designation became sufficient on its own, and every run from
+        # 2026-10-14 crashed on that player until Week 6 had started.
+        ruled_out = availability_status(
+            str(player.get("sleeper_status", "")).upper(),
+            str(player.get("fantasypros_injury_status", "")).upper(),
+            str(player.get("official_status", "")).upper()) == "out"
+        if (player["status"] == "out") != ruled_out:
             raise ValueError(f"Inconsistent Out evidence for {player['identity']}")
         players.append({key: player[key] for key in ("identity", "name", "team", "position")}
-            | {"status": "out" if dual_out or official_out else "active"})
+            | {"status": "out" if ruled_out else "active"})
     if len({p["identity"] for p in players}) != len(players):
         raise ValueError(f"Duplicate player in {game['game_id']}")
     return {"game": game, "decision_at": decision, "players": players,
@@ -99,7 +104,15 @@ def publish_game(snapshot: dict, evidence: dict, game: dict, settings: Settings)
 
 
 def build_week(snapshot: dict, requests: dict, season: int, week: int,
-               settings: Settings, prior_games: list[dict] | None = None) -> dict:
+               settings: Settings, prior_games: list[dict] | None = None,
+               now: datetime | None = None) -> dict:
+    """``now`` lets a started game with no saved forecast be listed as missed.
+
+    Without it every game must have a prior publication or a request. With it,
+    a game that kicked off before any forecast was saved is recorded under
+    ``coverage.missedGames`` instead of blocking the rest of the week; a
+    forecast made after kickoff would not be a pregame forecast.
+    """
     games = sorted((canonical_game(g) for g in snapshot["games"]
         if g["season"] == season and g["week"] == week),
         key=lambda g: (timestamp(g["kickoff"]), g["game_id"]))
@@ -110,7 +123,7 @@ def build_week(snapshot: dict, requests: dict, season: int, week: int,
         raise ValueError("Duplicate prior game")
     if set(prior) - {game["game_id"] for game in games}:
         raise ValueError("Prior publication is outside the selected week")
-    output = []
+    output, missed = [], []
     for game in games:
         old = prior.get(game["game_id"])
         if old is not None:
@@ -119,6 +132,9 @@ def build_week(snapshot: dict, requests: dict, season: int, week: int,
             output.append(old)
         else:
             if game["game_id"] not in requests:
+                if now is not None and timestamp(game["kickoff"]) <= now:
+                    missed.append(game["game_id"])
+                    continue
                 raise ValueError(f"Missing pregame request for {game['game_id']}")
             print(f"Forecasting {game['game_id']}", flush=True)
             output.append(publish_game(snapshot, requests[game["game_id"]], game, settings))
@@ -126,7 +142,8 @@ def build_week(snapshot: dict, requests: dict, season: int, week: int,
     return {"schemaVersion": 2, "season": season, "week": week,
         "publishedAt": datetime.now(timezone.utc).isoformat(),
         "games": output,
-        "coverage": {"scheduledGames": len(games), "publishedGames": len(output)},
+        "coverage": {"scheduledGames": len(games), "publishedGames": len(output),
+            "missedGames": missed},
         "limits": ["Saved, exploratory forecasts. No demonstrated calibration or betting edge.",
             "Unresolved players are conditional participants, not confirmed game-day actives.",
             "New injury evidence can hide a stale game until the whole forecast is rerun."]}
