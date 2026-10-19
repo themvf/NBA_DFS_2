@@ -490,5 +490,59 @@
   "Historical depth order is recent-usage rank; the live page uses the dual depth chart.",
   "Primary metric: Dirichlet-multinomial log score with the production concentration (55/40) as precision.",
   "alpha_i = K x the v2 per-game allocation (own blended rate plus the RB depth split of the ruled-out back)."
- ]
+ ],
+ "guard": {
+  "authority": "development_in_sample",
+  "computed_at": "2026-10-18T20:31:50.065784+00:00",
+  "draws": null,
+  "games": 689,
+  "skipped": 79,
+  "forecast_rerun": 657,
+  "identical_scenarios": 32,
+  "upper_bound": 0.005,
+  "markets": {
+   "rushing_yards": {
+    "mean": -0.019479250492811028,
+    "ci95": [
+     -0.08277623250363877,
+     0.019799044386411252
+    ],
+    "n": 689,
+    "clusters": 51,
+    "held": false
+   },
+   "receiving_yards": {
+    "mean": 0.0007321030869689057,
+    "ci95": [
+     -0.013968954860183454,
+     0.01597276718571854
+    ],
+    "n": 689,
+    "clusters": 51,
+    "held": false
+   },
+   "receptions": {
+    "mean": 0.03591001223085888,
+    "ci95": [
+     -0.08692162687332976,
+     0.1604761935041383
+    ],
+    "n": 689,
+    "clusters": 51,
+    "held": false
+   },
+   "total_yards": {
+    "mean": -0.039029695222281176,
+    "ci95": [
+     -0.15378108571827787,
+     0.06724318975625672
+    ],
+    "n": 689,
+    "clusters": 51,
+    "held": false
+   }
+  },
+  "held": false,
+  "reading": "Not held in development: every market upper bound exceeds +0.005. The intervals are wide (receptions +/-0.12 over 689 games, 51 weeks), partly 2,000-draw simulation noise that v2 and v3 do not share; a confirmation sample of ~8-12 weeks will be wider still, so the registered guard is close to unattainable at its floor. Recorded, not acted on: the bar is the registration's."
+ }
 }

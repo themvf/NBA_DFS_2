@@ -705,9 +705,12 @@ def shadow(page_path=PAGE, fit_path=FIT_PATH, draws=None, log=print):
     added = []
     for entry in page['games']:
         gid = entry['game']['game_id']
-        if gid in existing['games']:
-            continue
         src = entry['sources']
+        # Pair v3 with the request the page actually published: a later pregame republish
+        # (fresh availability) replaces the shadow; a started game's shadow is frozen.
+        held = existing['games'].get(gid)
+        if held and (held['sources'] == src or timestamp(entry['game']['kickoff']) <= now):
+            continue
         if src['snapshot'] not in loaded:
             snapshot = read(Path(src['snapshot']))
             by_season = defaultdict(list)
