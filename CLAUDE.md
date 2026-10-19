@@ -7296,7 +7296,7 @@ backups (pinball, event-clustered bootstrap), and boom must not be worse. The
 weekly run is blinded until 60 events / 130 flagged player-games / 8 weeks,
 and the first run past those floors freezes the verdict (one look). It is
 fully automated. It is the second job of `refresh_nfl_dfs_postweek.yml`,
-dispatched Tuesday 14:07 and Wednesday 10:07 UTC by `/api/cron/dispatch` (job
+dispatched Monday 13:07 and Tuesday 14:07 UTC (Tue/Wed before 2026-10-19) by `/api/cron/dispatch` (job
 `nfl-dfs-postweek`), with a GitHub fallback at 14:41 UTC. Runs are recorded in
 `nfl_replacement_upside_grade_runs` and the verdict in
 `nfl_replacement_upside_grade_verdicts`: one row per grade version,
@@ -7913,7 +7913,7 @@ analysis, exposure vs the field, and every lineup they entered). Pure layer
   closest twin by 2.1 players (the winners': 3.6-5.7). Our best lineup placed
   about #28,000 of 161,764.
 - **Weekly, automated (2026-10-10):** `ingest/nfl_dfs_flagship_review.py` runs in
-  `refresh_nfl_dfs_postweek.yml` (Tuesday and Wednesday). For the latest
+  `refresh_nfl_dfs_postweek.yml` (Monday and Tuesday; Monday takes only finished game days). For the latest
   completed week it probes the biggest-prize contest of every DraftKings slate
   on each game day, imports the ones stat-api serves in full (the flagships),
   and stores the winners-versus-us review in `nfl_dfs_field_build_reviews`
@@ -8348,7 +8348,7 @@ receptions line when the game-leaders model's P(over) is 10+ points below DK's
 de-vigged P(over), priced from the last pregame row of `nfl_game_leader_market`.
 Discovery (15 games before registration, 13 of them on v3) was 113-78, +11.7%,
 while every under on the same lines broke even; that cannot confirm anything.
-Graded Tuesday/Wednesday by `refresh_nfl_dfs_postweek.yml` into the append-only
+Graded Monday/Tuesday by `refresh_nfl_dfs_postweek.yml` into the append-only
 `nfl_prop_under_study_runs`; one verdict, written when 300 bets over 10 game
 weeks are graded, PASS only if the week-clustered interval's lower bound is
 above zero. **The game-leaders model and pricing files are pinned by hash**:

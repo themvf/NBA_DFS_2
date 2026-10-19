@@ -29,22 +29,21 @@ name: Refresh NFL DFS Post-Week Review
 #   job then keeps the audit current from that point on, and re-running it is
 #   free -- the audit is recomputed from stored ownership, never cached.
 #
-# Slots, against nflverse's publish cadence:
-#   Tuesday 10:07 UTC = Sunday's games are published by then. Monday night's
-#                       game usually is NOT: on 2026-09-29 nflverse's player-
-#                       and team-week stats for PHI@CHI landed at 11:34 UTC,
-#                       after this slot. The coverage check reports it as
-#                       pending (a warning, not a failure) and a later pass
-#                       scores it.
-#   Wednesday 10:07 UTC = a second pass: scores Monday night and picks up late
-#                         nflverse corrections. The results ledger is
-#                         append-only and keyed by input digest, so an
-#                         unchanged week inserts nothing.
+# Slots, against nflverse's publish cadence (owner's decision 2026-10-19):
+#   Monday 13:07 UTC  = Thursday and Sunday, Sunday night included, are
+#                       published by then (SNF was in nflverse by Monday
+#                       morning on 2026-10-19). Monday night is not played yet:
+#                       the coverage check reports it pending and the flagship
+#                       review takes only finished game days.
+#   Tuesday 14:07 UTC = a second pass: scores Monday night (nflverse landed
+#                       PHI@CHI at 11:34 UTC on 2026-09-29) and picks up late
+#                       corrections. The results ledger is append-only and
+#                       keyed by input digest, so an unchanged week inserts
+#                       nothing.
 # Those two slots are dispatched by Vercel Cron (/api/cron/dispatch, job
 # nfl-dfs-postweek): GitHub's own schedule has skipped slots on this repo.
-# The schedule below is the fallback, later the same days (14:41 UTC, after
-# nflverse's Monday-night publish); every step is idempotent, so a second pass
-# costs minutes and changes nothing.
+# The schedule below is the fallback, later the same days (14:41 UTC); every
+# step is idempotent, so a second pass costs minutes and changes nothing.
 
 on:
   workflow_dispatch:
@@ -54,7 +53,7 @@ on:
         required: false
         default: ""
   schedule:
-    - cron: "41 14 * * 2,3"   # fallback only; see the note above
+    - cron: "41 14 * * 1,2"   # fallback only; see the note above
 
 concurrency:
   group: nfl-dfs-postweek

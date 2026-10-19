@@ -96,17 +96,18 @@ assert.ok(keys("2026-11-30T20:07:00Z").includes("mlb-terminal-settlement"), "Nov
 assert.ok(!keys("2026-12-15T20:07:00Z").includes("mlb-terminal-settlement"), "no MLB in December");
 assert.ok(!keys("2027-02-15T20:07:00Z").includes("mlb-terminal-settlement"), "no MLB in February");
 
-// Post-week review + upside grade: Tuesday 14:07 (after the 13:07 pbp relabel DST scoring reads) and Wednesday 10:07 UTC only, once each.
+// Post-week review + upside grade: Monday 13:07 (after the 12:07 pbp relabel) and Tuesday 14:07 UTC (after the 13:07 relabel) only, once each.
 let postweekTicks = 0;
 for (let d = 27; d <= 30; d += 1) for (let h = 0; h < 24; h += 1) for (const m of TICKS) {
   if (keys(`2026-09-${d}T${hh(h)}:${m}:00Z`).includes("nfl-dfs-postweek")) postweekTicks += 1;
 }
-assert.equal(postweekTicks, 2, "one dispatch Tuesday, one Wednesday, across Sun 27 - Wed 30 Sep");
+assert.equal(postweekTicks, 2, "one dispatch Monday, one Tuesday, across Sun 27 - Wed 30 Sep");
+assert.ok(keys("2026-09-28T13:07:00Z").includes("nfl-dfs-postweek"), "Monday 13:07 UTC, Sunday's games are published");
+assert.ok(!keys("2026-09-28T12:07:00Z").includes("nfl-dfs-postweek"), "not alongside the Monday pbp relabel it depends on");
 assert.ok(keys("2026-09-29T14:07:00Z").includes("nfl-dfs-postweek"), "Tuesday 14:07 UTC, after Monday night's stats land (~11:34)");
-assert.ok(!keys("2026-09-29T13:07:00Z").includes("nfl-dfs-postweek"), "not alongside the pbp relabel it depends on");
-assert.ok(!keys("2026-09-29T10:07:00Z").includes("nfl-dfs-postweek"), "not Tuesday 10:07, before they land");
-assert.ok(keys("2026-09-30T10:07:00Z").includes("nfl-dfs-postweek"), "Wednesday 10:07 UTC");
-assert.ok(!keys("2026-09-29T10:37:00Z").includes("nfl-dfs-postweek"), "not the :37 tick");
+assert.ok(!keys("2026-09-29T13:07:00Z").includes("nfl-dfs-postweek"), "not alongside the Tuesday pbp relabel it depends on");
+assert.ok(!keys("2026-09-30T10:07:00Z").includes("nfl-dfs-postweek"), "no Wednesday pass any more");
+assert.ok(!keys("2026-09-28T13:37:00Z").includes("nfl-dfs-postweek"), "not the :37 tick");
 
 // CFB terminal: every tick August-January, with the slot that matches the
 // cron line it replaced, so the full CFBD schedule refresh stays six-hourly.
