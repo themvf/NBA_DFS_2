@@ -347,7 +347,7 @@ captures and the status poll already exist. Change:
 
 ## 4. Housekeeping that should happen before any of the five
 
-1. Re-run `npm run calibrate:nfl-ownership` now: weeks 5-6 Millionaires and
+1. Re-run `npm run calibrate:nfl-ownership` now: the week 5 Millionaire and Showdowns are imported, week 6 arrives with Tuesday's post-week job, and
    Showdowns are imported, and the market anchor changed the prior's input on
    2026-10-12, so every Classic figure in section 2 is out of date.
 2. Profile the 46 published 2023-25 Millionaire winners against the prior's
