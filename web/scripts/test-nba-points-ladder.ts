@@ -1,0 +1,64 @@
+import assert from "node:assert/strict";
+import { buildDistribution, exceedanceAt, nonIncreasing, quantileAt } from "../src/lib/nba-points-ladder";
+
+// Normal(25, 7) survival function via an erf approximation (Abramowitz-Stegun 7.1.26).
+function erf(x: number) {
+  const s = Math.sign(x); x = Math.abs(x);
+  const t = 1 / (1 + 0.3275911 * x);
+  const y = 1 - ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+  return s * y;
+}
+const S = (x: number) => 0.5 * (1 - erf((x - 25) / (7 * Math.SQRT2)));
+const toAmerican = (p: number) => Math.round(p >= 0.5 ? (-100 * p) / (1 - p) : (100 * (1 - p)) / p);
+
+// One book: a main line at 24.5 with 4.5% overround, and an over-only ladder
+// whose raw implied chances carry the same overround.
+const VIG = 1.045;
+const mainOver = S(24.5) * VIG;
+const mainUnder = (1 - S(24.5)) * VIG;
+const ladder = [9.5, 14.5, 19.5, 29.5, 34.5, 39.5, 44.5].map((pt) => ({ point: pt, side: "over", price: toAmerican(Math.min(0.99, S(pt) * VIG)) }));
+const dist = buildDistribution(
+  { draftkings: { line: 24.5, over: toAmerican(mainOver), under: toAmerican(mainUnder) } },
+  { draftkings: { ladder } },
+)!;
+assert.ok(dist, "distribution built");
+assert.equal(dist.ladderBooks, 1);
+// True P10 = 25 - 1.2816*7 = 16.03, P90 = 33.97; linear interpolation between rungs is close.
+assert.ok(Math.abs(dist.floor! - 16.03) < 0.6, `floor ${dist.floor}`);
+assert.ok(Math.abs(dist.ceiling! - 33.97) < 0.6, `ceiling ${dist.ceiling}`);
+assert.ok(Math.abs(dist.atLeast[30]! - S(29.5)) < 0.01, `30+ ${dist.atLeast[30]}`);
+assert.ok(Math.abs(dist.atLeast[20]! - S(19.5)) < 0.01, `20+ ${dist.atLeast[20]}`);
+// 45+ is past the top rung (44.5 is "45+"), 50+ is not on the ladder: no guess.
+assert.ok(dist.atLeast[40] != null);
+assert.equal(exceedanceAt(dist.curve, 60), null);
+
+// The curve is non-increasing even when books disagree out of order.
+const pooled = nonIncreasing([
+  { point: 10, p: 0.9, books: 1 },
+  { point: 20, p: 0.6, books: 1 },
+  { point: 25, p: 0.65, books: 1 },
+  { point: 30, p: 0.3, books: 1 },
+]);
+for (let i = 1; i < pooled.length; i++) assert.ok(pooled[i].p <= pooled[i - 1].p);
+assert.ok(Math.abs(pooled[1].p - 0.625) < 1e-9);
+
+// A ladder that never reaches 90% has no floor rather than an extrapolated one.
+assert.equal(quantileAt([{ point: 20, p: 0.8, books: 1 }, { point: 30, p: 0.2, books: 1 }], 0.9), null);
+
+// Rungs from a book with no main two-sided line cannot be de-vigged: skipped, and
+// with no usable ladder at all there is no distribution.
+const none = buildDistribution({}, { fanduel: { ladder } });
+assert.equal(none, null);
+
+// A rung quoted on both sides is de-vigged as a pair, no main line needed for it.
+const paired = buildDistribution(
+  { draftkings: { line: 24.5, over: -110, under: -110 } },
+  { fanduel: { ladder: [
+    { point: 19.5, side: "over", price: -300 }, { point: 19.5, side: "under", price: 240 },
+    { point: 29.5, side: "over", price: 200 }, { point: 29.5, side: "under", price: -250 },
+  ] } },
+)!;
+assert.equal(paired.skippedRungs, 0);
+assert.ok(paired.atLeast[20]! > 0.7 && paired.atLeast[30]! < 0.35);
+
+console.log("test-nba-points-ladder: all assertions passed");

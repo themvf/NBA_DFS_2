@@ -53,11 +53,13 @@ function positionStyle(pos: string | null) {
   return { badge: "border-slate-500! text-slate-400", stripe: "bg-slate-600" };
 }
 
-type SortKey = "line" | "pOver" | "ppg" | "delta" | "books" | "rank";
+type SortKey = "line" | "ceiling" | "p25" | "p30" | "ppg" | "delta" | "books" | "rank";
 
 const SORTERS: Record<SortKey, (r: ScorerRow) => number> = {
   line: (r) => r.line,
-  pOver: (r) => r.pOver ?? -1,
+  ceiling: (r) => r.distribution?.ceiling ?? -1,
+  p25: (r) => r.distribution?.atLeast[25] ?? -1,
+  p30: (r) => r.distribution?.atLeast[30] ?? -1,
   ppg: (r) => r.lastSeasonPpg ?? -1,
   delta: (r) => r.vsLastSeason ?? -999,
   books: (r) => r.books.length,
@@ -73,17 +75,28 @@ function MiniBar({ value, max, tone }: { value: number | null; max: number; tone
   );
 }
 
+/**
+ * Floor-ceiling from the alternate ladder (P10-P90) when one was captured; otherwise
+ * the spread of main lines across books, drawn hatched and labelled so it is not
+ * mistaken for a floor and ceiling. A side the ladder does not reach shows "<"/">".
+ */
 function RangeBar({ row, scaleMax }: { row: ScorerRow; scaleMax: number }) {
   const x = (v: number) => Math.max(0, Math.min(100, (v / scaleMax) * 100));
-  const lo = x(row.lineLow);
-  const hi = x(row.lineHigh);
+  const d = row.distribution;
+  const curve = d?.curve ?? [];
+  const low = d ? d.floor ?? curve[0]?.point ?? row.lineLow : row.lineLow;
+  const high = d ? d.ceiling ?? curve[curve.length - 1]?.point ?? row.lineHigh : row.lineHigh;
+  const lowLabel = d ? `${d.floor == null ? "<" : ""}${one(low)}` : one(low);
+  const highLabel = d ? `${d.ceiling == null ? ">" : ""}${one(high)}` : one(high);
+  const lo = x(low);
+  const hi = x(high);
   return (
-    <div className="flex items-center gap-3">
-      <span className="w-9 text-right font-mono text-xs text-slate-400">{one(row.lineLow)}</span>
+    <div className="flex items-center gap-3" title={d ? "Floor (P10) to ceiling (P90) from the alternate points ladder" : "No ladder captured: spread of main lines across books"}>
+      <span className="w-10 text-right font-mono text-xs text-slate-400">{lowLabel}</span>
       <div className="relative h-4 min-w-[10rem] flex-1">
         <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-slate-700/80" />
         <div
-          className="absolute top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-sky-500/80"
+          className={`absolute top-1/2 h-1.5 -translate-y-1/2 rounded-full ${d ? "bg-sky-500/80" : "bg-[repeating-linear-gradient(90deg,#64748b_0_3px,transparent_3px_6px)]"}`}
           style={{ left: `${lo}%`, width: `max(10px, ${hi - lo}%)`, marginLeft: hi === lo ? -5 : 0 }}
         />
         {row.lastSeasonPpg != null && (
@@ -98,7 +111,7 @@ function RangeBar({ row, scaleMax }: { row: ScorerRow; scaleMax: number }) {
           style={{ left: `${x(row.line)}%` }}
         />
       </div>
-      <span className="w-9 font-mono text-xs text-slate-400">{one(row.lineHigh)}</span>
+      <span className="w-10 font-mono text-xs text-slate-400">{highLabel}</span>
     </div>
   );
 }
@@ -127,13 +140,18 @@ export function TopScorersClient({
 
   const scaleMax = Math.max(
     40,
-    Math.ceil((Math.max(0, ...scorers.map((s) => Math.max(s.lineHigh, s.lastSeasonPpg ?? 0))) + 2) / 5) * 5,
+    Math.ceil(
+      (Math.max(0, ...scorers.map((s) => Math.max(s.lineHigh, s.lastSeasonPpg ?? 0, s.distribution?.ceiling ?? 0))) + 2) / 5,
+    ) * 5,
   );
+  const withLadder = scorers.filter((s) => s.distribution).length;
   const maxPpg = Math.max(1, ...scorers.map((s) => s.lastSeasonPpg ?? 0));
   const gameName = new Map(games.map((g) => [g.eventId, shortGame(g)]));
 
   const rise = [...scorers].filter((s) => s.vsLastSeason != null).sort((a, b) => b.vsLastSeason! - a.vsLastSeason!)[0];
-  const over25 = scorers.filter((s) => s.line >= 25);
+  const best30 = [...scorers]
+    .filter((s) => s.distribution?.atLeast[30] != null)
+    .sort((a, b) => b.distribution!.atLeast[30]! - a.distribution!.atLeast[30]!)[0];
 
   const header = (key: SortKey, label: string, align = "text-right") => (
     <th className={`px-3 py-3 font-medium ${align}`}>
@@ -172,10 +190,16 @@ export function TopScorersClient({
           </div>
         </div>
         <div className="px-4 py-3">
-          <div className="font-mono text-[11px] uppercase tracking-widest text-slate-500">Lines of 25+</div>
+          <div className="font-mono text-[11px] uppercase tracking-widest text-slate-500">Best chance of 30+</div>
           <div className="mt-1 text-lg">
-            <span className="font-mono font-semibold text-white">{over25.length}</span>{" "}
-            <span className="text-slate-400">{over25.slice(0, 3).map((s) => s.player.split(" ").slice(-1)[0]).join(", ")}</span>
+            {best30 ? (
+              <>
+                <span className="font-mono font-semibold text-white">{pct(best30.distribution!.atLeast[30])}</span>{" "}
+                <span className="text-slate-300">{best30.player}</span>
+              </>
+            ) : (
+              <span className="text-slate-500">No ladder captured yet</span>
+            )}
           </div>
         </div>
       </div>
@@ -204,7 +228,8 @@ export function TopScorersClient({
           <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-xs">
             <div className="flex flex-wrap items-center gap-4 font-mono uppercase tracking-wider text-slate-400">
               <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-white" />Line</span>
-              <span className="flex items-center gap-1.5"><span className="h-1.5 w-5 rounded-full bg-sky-500/80" />Book range</span>
+              <span className="flex items-center gap-1.5"><span className="h-1.5 w-5 rounded-full bg-sky-500/80" />Floor–ceiling (P10–P90)</span>
+              <span className="flex items-center gap-1.5"><span className="h-1.5 w-5 rounded-full bg-[repeating-linear-gradient(90deg,#64748b_0_3px,transparent_3px_6px)]" />Book range (no ladder)</span>
               <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full border-2 border-slate-300!" />{lastSeason} PPG</span>
             </div>
             <div className="flex items-center gap-3">
@@ -221,7 +246,9 @@ export function TopScorersClient({
                   </option>
                 ))}
               </select>
-              <span className="hidden text-slate-500 sm:inline">Click a column to sort</span>
+              <span className="hidden text-slate-500 sm:inline">
+                Ladder for {withLadder}/{scorers.length} · click a column to sort
+              </span>
             </div>
           </div>
           <div className="overflow-x-auto px-4 pb-4">
@@ -230,8 +257,9 @@ export function TopScorersClient({
                 <tr>
                   <th className="px-3 py-3 text-left font-medium uppercase tracking-wider">Player</th>
                   {header("line", "Line")}
-                  <th className="px-3 py-3 text-left font-medium uppercase tracking-wider">Low – High</th>
-                  {header("pOver", "P(over)")}
+                  {header("ceiling", "Floor – Ceiling", "text-left")}
+                  {header("p25", "25+")}
+                  {header("p30", "30+")}
                   {header("ppg", `${lastSeason} PPG`)}
                   {header("delta", "vs PPG")}
                   {header("books", "Books")}
@@ -244,7 +272,7 @@ export function TopScorersClient({
                   const pos = positionStyle(s.position);
                   const split = s.lineHigh > s.lineLow;
                   return (
-                    <FragmentRow key={key} expanded={open === key} books={s.books}>
+                    <FragmentRow key={key} expanded={open === key} row={s}>
                       <tr
                         className="cursor-pointer border-t border-slate-800 hover:bg-slate-800/40"
                         onClick={() => setOpen(open === key ? null : key)}
@@ -270,8 +298,12 @@ export function TopScorersClient({
                         <td className="border-t border-slate-800 px-3 text-right font-mono text-base font-semibold text-white">{one(s.line)}</td>
                         <td className="border-t border-slate-800 px-3"><RangeBar row={s} scaleMax={scaleMax} /></td>
                         <td className="border-t border-slate-800 px-3 text-right font-mono text-amber-300">
-                          {pct(s.pOver)}
-                          <MiniBar value={s.pOver} max={1} tone="bg-amber-400" />
+                          {pct(s.distribution?.atLeast[25] ?? null)}
+                          <MiniBar value={s.distribution?.atLeast[25] ?? null} max={1} tone="bg-amber-400" />
+                        </td>
+                        <td className="border-t border-slate-800 px-3 text-right font-mono text-orange-300">
+                          {pct(s.distribution?.atLeast[30] ?? null)}
+                          <MiniBar value={s.distribution?.atLeast[30] ?? null} max={1} tone="bg-orange-400" />
                         </td>
                         <td className="border-t border-slate-800 px-3 text-right font-mono text-sky-300">
                           {s.lastSeasonPpg == null ? <span className="text-slate-500">-</span> : one(s.lastSeasonPpg)}
@@ -290,7 +322,10 @@ export function TopScorersClient({
                 })}
               </tbody>
             </table>
-            <p className="mt-2 font-mono text-[11px] text-slate-500">Click a row for every book&apos;s line and price. Rank = slate / team.</p>
+            <p className="mt-2 font-mono text-[11px] text-slate-500">
+              Click a row for every book&apos;s line and price and the ladder&apos;s chances. Rank = slate / team. 25+ / 30+ and
+              floor–ceiling come from the alternate points ladder; &quot;-&quot; means no ladder or a threshold past its last rung.
+            </p>
           </div>
         </>
       )}
@@ -362,19 +397,37 @@ export function TopScorersClient({
 function FragmentRow({
   children,
   expanded,
-  books,
+  row,
 }: {
   children: React.ReactNode;
   expanded: boolean;
-  books: ScorerRow["books"];
+  row: ScorerRow;
 }) {
+  const d = row.distribution;
   return (
     <>
       {children}
       {expanded && (
         <tr className="bg-[#0b1220]">
-          <td colSpan={8} className="border-t border-slate-800 px-4 py-2 font-mono text-xs text-slate-300">
-            {books.map((b) => (
+          <td colSpan={9} className="border-t border-slate-800 px-4 py-2 font-mono text-xs text-slate-300">
+            <div className="mb-1">
+              {d ? (
+                <>
+                  <span className="text-slate-500">Ladder ({d.ladderBooks} book{d.ladderBooks === 1 ? "" : "s"})</span>{" "}
+                  {([20, 25, 30, 35, 40] as const).map((n) => (
+                    <span key={n} className="mr-4">
+                      {n}+ <span className="text-orange-300">{pct(d.atLeast[n])}</span>
+                    </span>
+                  ))}
+                  <span className="text-slate-500">
+                    floor {d.floor == null ? "below ladder" : one(d.floor)} · ceiling {d.ceiling == null ? "above ladder" : one(d.ceiling)}
+                  </span>
+                </>
+              ) : (
+                <span className="text-slate-500">No alternate ladder captured for this player.</span>
+              )}
+            </div>
+            {row.books.map((b) => (
               <span key={b.book} className="mr-5 inline-block">
                 <span className="text-slate-500">{BOOK_NAMES[b.book] ?? b.book}</span> {one(b.line)}{" "}
                 <span className="text-slate-400">

@@ -14,8 +14,12 @@
  * - `pOver` is the de-vigged chance of going over, taken only from books that
  *   quote the consensus line, because a probability at 24.5 and one at 25.5
  *   are different propositions and must not be averaged.
+ * - Floor, ceiling and P(N+) come from the alternate points ladder
+ *   (nba-points-ladder.ts); a player with no ladder has none.
  * - Nothing here is fitted or validated. It is the market's number, shown as is.
  */
+
+import { buildDistribution, type PointsDistribution, type Rung } from "./nba-points-ladder";
 
 export type BookQuote = {
   line?: number | null;
@@ -23,6 +27,8 @@ export type BookQuote = {
   under?: number | null;
   bookmakerTitle?: string | null;
   lastUpdate?: string | null;
+  /** Alternate-market rungs (player_points_alternate rows only). */
+  ladder?: Rung[] | null;
 };
 
 export type PropRow = {
@@ -76,6 +82,8 @@ export type ScorerRow = {
   lastSeasonGames: number | null;
   /** consensus line minus last season's points per game; null without a season row. */
   vsLastSeason: number | null;
+  /** From the alternate ladder; null when no ladder was captured for this player. */
+  distribution: PointsDistribution | null;
   capturedAt: string;
 };
 
@@ -173,7 +181,9 @@ export function buildBoard(
   rows: PropRow[],
   lastSeason: SeasonStat[],
   teams: TeamName[] = [],
+  ladderRows: PropRow[] = [],
 ): { scorers: ScorerRow[]; games: GameSummary[] } {
+  const ladderOf = new Map(ladderRows.map((r) => [`${r.eventId}|${nameKey(r.player)}`, r.books]));
   const abbrevOf = new Map(teams.map((t) => [teamKey(t.name), t.abbreviation]));
   const abbrev = (name: string | null) => (name ? abbrevOf.get(teamKey(name)) ?? null : null);
   const stats = new Map<string, SeasonStat | null>();
@@ -214,6 +224,10 @@ export function buildBoard(
       lastSeasonPpg: stat?.ppg ?? null,
       lastSeasonGames: stat?.games ?? null,
       vsLastSeason: stat?.ppg != null ? c.line - stat.ppg : null,
+      distribution: buildDistribution(
+        Object.fromEntries(lines.map((l) => [l.book, { line: l.line, over: l.over, under: l.under }])),
+        ladderOf.get(`${row.eventId}|${nameKey(row.player)}`) ?? {},
+      ),
       capturedAt: row.capturedAt,
     });
     const g = games.get(row.eventId) ?? {

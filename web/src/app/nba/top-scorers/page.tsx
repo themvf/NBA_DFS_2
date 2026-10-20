@@ -46,13 +46,14 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
   const requested = params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) ? params.date : null;
   const date = requested ?? (dates.includes(today) ? today : dates.find((d) => d > today) ?? dates[0] ?? today);
 
-  const [rows, pulled, lastSeason, teams] = await Promise.all([
+  const [rows, ladderRows, pulled, lastSeason, teams] = await Promise.all([
     getNbaPointsProps(date),
+    getNbaPointsProps(date, "player_points_alternate"),
     getNbaPulledLines(date),
     getNbaSeasonStats(LAST_SEASON),
     getNbaTeams(),
   ]);
-  const { scorers, games } = buildBoard(rows, lastSeason, teams);
+  const { scorers, games } = buildBoard(rows, lastSeason, teams, ladderRows);
   const lastCapture = games.reduce<string | null>((m, g) => (m == null || g.capturedAt > m ? g.capturedAt : m), null);
   const bookCount = new Set(scorers.flatMap((s) => s.books.map((b) => b.book))).size;
 
@@ -103,8 +104,10 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
       <section className="space-y-1 text-xs text-muted-foreground">
         <p>
           Line is the points line most books quote. A points line is the books&apos; median outcome, so a player scores above
-          it about half the time; P(over) is that chance with the vig removed, from the books quoting that line. Low – High is
-          the spread of lines across books, not a projected floor or ceiling.
+          it about half the time. Floor, ceiling, 25+ and 30+ come from the books&apos; alternate points ladder (&quot;20+ points&quot;
+          and so on): floor is the score he beats 90% of the time, ceiling the score he beats 10% of the time. Over-only rungs
+          are de-vigged with each book&apos;s main-line margin, which leaves a little margin on long shots, so high-end chances
+          read slightly high. Without a ladder the bar shows the spread of main lines across books instead.
         </p>
         <p>
           This is the market&apos;s number, not a model of ours, and it has not been checked against results here. Position,

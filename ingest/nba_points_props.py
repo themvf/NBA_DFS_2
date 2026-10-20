@@ -1,9 +1,14 @@
 """Capture NBA player-points prop lines for the top-scorers page.
 
 The event listing is free. Each event's prop call costs credits on the shared
-ODDS_API_KEY: with ``bookmakers=`` the price is markets x 1, so one market
-(``player_points``) over the six configured books is 1 credit per game. A full
-12-game night is about 12 credits a run.
+ODDS_API_KEY: with ``bookmakers=`` the price is markets x 1, so the two markets
+(``player_points`` and its ``player_points_alternate`` ladder) over the six
+configured books are 2 credits per game. A full 12-game night is about 24
+credits a run.
+
+The ladder (several over-only thresholds per player, "20+ points" and so on)
+is what lets the page show a floor, a ceiling and a chance of 30+ instead of
+one median line. normalize_prop_payload keeps every rung under ``ladder``.
 
 Rows go to ``prop_odds_history`` (sport='nba', market='player_points'), one row
 per (game, player, capture) with every book's line and over/under price, the
@@ -35,7 +40,7 @@ from ingest.sportsbook_policy import BOOKMAKER_KEYS
 
 ODDS_BASE = "https://api.the-odds-api.com/v4"
 SPORT = "basketball_nba"
-MARKETS: tuple[str, ...] = ("player_points",)
+MARKETS: tuple[str, ...] = ("player_points", "player_points_alternate")
 EASTERN = ZoneInfo("America/New_York")
 
 

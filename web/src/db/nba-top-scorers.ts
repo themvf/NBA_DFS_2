@@ -14,18 +14,21 @@ const day = (v: unknown) => (v instanceof Date ? v.toISOString().slice(0, 10) : 
  * line the books pulled since an earlier capture drops off, instead of a stale
  * line surviving from hours before.
  */
-export async function getNbaPointsProps(gameDate: string): Promise<PropRow[]> {
+export async function getNbaPointsProps(
+  gameDate: string,
+  market: "player_points" | "player_points_alternate" = "player_points",
+): Promise<PropRow[]> {
   const result = await db.execute(sql`
     WITH latest AS (
       SELECT event_id, max(captured_at) AS captured_at
       FROM prop_odds_history
-      WHERE sport = 'nba' AND market = 'player_points' AND game_date = ${gameDate}::date
+      WHERE sport = 'nba' AND market = ${market} AND game_date = ${gameDate}::date
       GROUP BY event_id
     )
     SELECT p.event_id, p.commence_time, p.home_team_name, p.away_team_name, p.player, p.books, p.captured_at
     FROM prop_odds_history p
     JOIN latest l ON l.event_id = p.event_id AND l.captured_at = p.captured_at
-    WHERE p.sport = 'nba' AND p.market = 'player_points'`);
+    WHERE p.sport = 'nba' AND p.market = ${market}`);
   return (result.rows as Record<string, unknown>[]).map((r) => ({
     eventId: String(r.event_id),
     commenceTime: iso(r.commence_time),
