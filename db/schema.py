@@ -6334,6 +6334,36 @@ INDEXES = [
          ON nfl_prop_under_study_verdicts FOR EACH ROW EXECUTE FUNCTION reject_nfl_prop_under_study_mutation();
        END IF;
     END $$""",
+    # nfl-prop-under-role-change-v1 (docs/nfl-prop-under-role-change-study.md):
+    # flagged unders after a teammate's fresh absence. One row per weekly grade
+    # and one verdict at the single look after week 18. Both append-only.
+    """CREATE TABLE IF NOT EXISTS nfl_prop_under_role_change_runs (
+        id BIGSERIAL PRIMARY KEY,
+        study TEXT NOT NULL,
+        evaluated_at TIMESTAMPTZ NOT NULL,
+        tagged_bets INTEGER NOT NULL,
+        untagged_bets INTEGER NOT NULL,
+        tagged_game_weeks INTEGER NOT NULL,
+        difference_roi DOUBLE PRECISION,
+        report JSONB NOT NULL
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_prop_under_role_change_runs ON nfl_prop_under_role_change_runs(study, evaluated_at DESC)",
+    """CREATE TABLE IF NOT EXISTS nfl_prop_under_role_change_verdicts (
+        study TEXT PRIMARY KEY,
+        verdict TEXT NOT NULL CHECK (verdict IN ('TAGGED_WORSE','TAGGED_BETTER','NO_DIFFERENCE','INCONCLUSIVE')),
+        run_id BIGINT NOT NULL REFERENCES nfl_prop_under_role_change_runs(id),
+        decided_at TIMESTAMPTZ NOT NULL
+    )""",
+    """DO $$ BEGIN
+       IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'nfl_prop_under_role_change_runs_immutable') THEN
+         CREATE TRIGGER nfl_prop_under_role_change_runs_immutable BEFORE UPDATE OR DELETE
+         ON nfl_prop_under_role_change_runs FOR EACH ROW EXECUTE FUNCTION reject_nfl_prop_under_study_mutation();
+       END IF;
+       IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'nfl_prop_under_role_change_verdicts_immutable') THEN
+         CREATE TRIGGER nfl_prop_under_role_change_verdicts_immutable BEFORE UPDATE OR DELETE
+         ON nfl_prop_under_role_change_verdicts FOR EACH ROW EXECUTE FUNCTION reject_nfl_prop_under_study_mutation();
+       END IF;
+    END $$""",
     # 2026-07-02: execution-book CLV. clv_pp measures the REFERENCE market
     # (did the sharp consensus move toward the flagged side — informational
     # content); dk_clv_pct measures the EXECUTION book (did DK's own price on

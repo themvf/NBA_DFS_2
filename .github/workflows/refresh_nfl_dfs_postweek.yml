@@ -188,12 +188,24 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           python -m research.nfl_prop_under_study grade --write-db --registration docs/nfl-prop-under-study-v2.json --out artifacts/nfl_prop_under_v2_grade_latest.json
+      # nfl-prop-under-role-change-v1 (docs/nfl-prop-under-role-change-study.md):
+      # v2's flagged unders split by a teammate's fresh absence. Read-only on v2.
+      - name: Verify the role-change study
+        if: ${{ !cancelled() }}
+        run: python -m pytest -q tests/test_nfl_prop_under_role_change.py
+      - name: Grade role-change split
+        if: ${{ !cancelled() }}
+        run: |
+          python -m research.nfl_prop_under_role_change grade --write-db --out artifacts/nfl_prop_under_role_change_latest.json
       - name: Save the grade report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: nfl-prop-under-grade
-          path: artifacts/nfl_prop_under_grade_latest.json
+          path: |
+            artifacts/nfl_prop_under_grade_latest.json
+            artifacts/nfl_prop_under_v2_grade_latest.json
+            artifacts/nfl_prop_under_role_change_latest.json
           if-no-files-found: ignore
           retention-days: 90
 
