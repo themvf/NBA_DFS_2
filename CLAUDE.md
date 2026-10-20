@@ -7882,9 +7882,16 @@ analysis, exposure vs the field, and every lineup they entered). Pure layer
 `model/statapi_contest.py` (`statapi-contest-import-v1`), tests in
 `tests/test_statapi_contest.py`. Measured 2026-10-10:
 
-- **Each week's flagship contests answer in full with no key** (`x-preview-
-  exempt: flagship`): the DraftKings Millionaire and the biggest Thursday and
-  Monday Showdown. **A free account's key adds nothing** (measured
+- **Each week's flagship contests answered in full with no key** (`x-preview-
+  exempt: flagship`) through week 5: the DraftKings Millionaire and the biggest
+  Thursday and Monday Showdown. **From 2026-10-19 they open only their top 100
+  standings rows** (`access: {plan: flagship, full: false, open_rows: 100}`,
+  listed at `GET /dfs/marquee?league=nfl`), plus every lineup those users
+  entered. The importer accepts that (`open_rows_only` in
+  `ingest/statapi_contest.py`): winners, builds and top-user ownership are
+  stored, but no median, score curve or payout table, so our build's rank in
+  the weekly review reads "rank unknown". A 5-row preview is still refused.
+  Week 6 was imported this way on 2026-10-20. **A free account's key adds nothing** (measured
   2026-10-10 with a real key): every other contest is a 5-row courtesy
   preview on standings AND per-user lineups (`access.full: false`,
   `required_tier: pro`), which the importer refuses to store. The 401 text

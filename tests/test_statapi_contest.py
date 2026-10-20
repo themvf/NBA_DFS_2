@@ -250,3 +250,16 @@ def test_payout_curve_pays_by_score_with_ties_as_split():
     assert m.payout_for(curve, 80.95) == 0.0
     assert m.payout_for(None, 100.0) is None and m.payout_for(curve, None) is None
     assert m.payout_curve([{"points": 50.0, "payout": 0.0}], 20.0) is None
+
+
+def test_flagship_opened_to_its_top_rows_is_usable_but_a_preview_is_not():
+    from ingest.statapi_contest import open_rows_only, usable
+
+    assert usable({"plan": "flagship", "full": True})
+    # 2026-10-19: marquee contests open their top 100 rows and those users' lineups.
+    assert open_rows_only({"plan": "flagship", "full": False, "open_rows": 100}) == 100
+    assert usable({"plan": "flagship", "full": False, "open_rows": 100})
+    # The 5-row courtesy preview, and any non-flagship partial, stay refused.
+    assert not usable({"plan": "flagship", "full": False, "open_rows": 5})
+    assert not usable({"plan": "free", "full": False, "open_rows": 100})
+    assert open_rows_only({}) is None

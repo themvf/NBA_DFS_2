@@ -120,6 +120,30 @@ class Client:
 # Fetch
 # --------------------------------------------------------------------------
 
+MIN_OPEN_ROWS = 100   # a flagship opened to its top rows: enough for the top users we read
+
+
+def open_rows_only(access: dict | None) -> int | None:
+    """Rows stat-api opens on a flagship it no longer serves in full, or None.
+
+    From 2026-10-19 stat-api opens each week's marquee contests (the Millionaire,
+    the biggest Thursday and Monday Showdown) to their top 100 standings rows and
+    those users' every lineup, instead of every row. That still carries the
+    winners, their builds and (through their seats) the field's ownership; it
+    does not carry the full score curve. A 5-row preview stays refused.
+    """
+    access = access or {}
+    if access.get("full") or access.get("plan") != "flagship":
+        return None
+    rows = int(access.get("open_rows") or 0)
+    return rows if rows >= MIN_OPEN_ROWS else None
+
+
+def usable(access: dict | None) -> bool:
+    access = access or {}
+    return bool(access.get("full")) or open_rows_only(access) is not None
+
+
 def fetch_standings(client: Client, contest_id: int, *, rows: int, all_rows: bool) -> tuple[dict, list[dict]]:
     """The contest card and standings rows: the first page, then more while asked for and available."""
     first = client.standings(contest_id, 1, min(STANDINGS_PAGE, rows))
@@ -127,7 +151,12 @@ def fetch_standings(client: Client, contest_id: int, *, rows: int, all_rows: boo
     if not contest:
         raise StatApiError(f"contest {contest_id}: no contest card in the standings payload")
     access = first.get("access") or {}
-    if access and not access.get("full"):
+    limited = open_rows_only(access)
+    if limited is not None:
+        # Only the open rows exist for us; standings_summary marks the pull incomplete,
+        # so no median, minimum or score curve is written from it.
+        rows, all_rows = min(rows, limited), False
+    elif access and not access.get("full"):
         # A free key (or none) gets a 5-row courtesy preview on every contest
         # that is not the week's flagship. Storing that as the contest would
         # put a 5-entry field in the calibration, so it is refused outright.
