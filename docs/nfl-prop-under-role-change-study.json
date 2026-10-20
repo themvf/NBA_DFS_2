@@ -1,7 +1,7 @@
 {
   "study": "nfl-prop-under-role-change-v1",
-  "status": "draft",
-  "registered_at": null,
+  "status": "registered",
+  "registered_at": "2026-10-20T11:21:02+00:00",
   "parent_registration": "docs/nfl-prop-under-study-v2.json",
   "tag": {
     "window_games": 5,

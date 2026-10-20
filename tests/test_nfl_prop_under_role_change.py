@@ -106,3 +106,17 @@ def test_parent_study_files_are_only_imported():
     assert all(under.pins_hold(parent).values())
     assert rc.REGISTRATION["parent_registration"] == "docs/nfl-prop-under-study-v2.json"
     assert rc._ts("2026-10-19T21:38:09Z") == datetime(2026, 10, 19, 21, 38, 9, tzinfo=timezone.utc)
+
+
+def test_registered_constants_are_frozen():
+    """Registered 2026-10-20: changing any of these is a new study version."""
+    r = rc.REGISTRATION
+    assert r["study"] == "nfl-prop-under-role-change-v1"
+    assert r["status"] == "registered"
+    assert r["registered_at"] == "2026-10-20T11:21:02+00:00"
+    assert r["parent_registration"] == "docs/nfl-prop-under-study-v2.json"
+    assert r["tag"] == {"window_games": 5, "material_targets": 3.0, "material_carries": 5.0,
+                        "positions": ["RB", "WR", "TE"], "fb_counts_as": "RB"}
+    assert r["floors"] == {"tagged_bets": 120, "tagged_game_weeks": 8}
+    assert r["bootstrap"] == {"resamples": 2000, "seed": 20261020, "cluster": "game_week", "interval": 0.95}
+    assert r["verdict"]["last_week"] == 18

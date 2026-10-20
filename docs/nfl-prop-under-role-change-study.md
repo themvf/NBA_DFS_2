@@ -1,11 +1,11 @@
 # Flagged prop unders after a teammate's fresh absence (`nfl-prop-under-role-change-v1`)
 
-**Status: DRAFT, not registered.** The study is registered when the owner approves
-it: `registered_at` in `docs/nfl-prop-under-role-change-study.json` is set to that
-time and committed. Every constant below is then frozen; a change after that point
-is a new version. The grader (`research/nfl_prop_under_role_change.py`) refuses to
-grade while `registered_at` is empty. Register before the first week-7 kickoff
-(Thursday 2026-10-22, 8:15 PM ET) or the study starts a week later.
+**Registered 2026-10-20 11:21 UTC**, before any week-7 game. Constants are frozen in
+`docs/nfl-prop-under-role-change-study.json` and pinned by
+`tests/test_nfl_prop_under_role_change.py`; a change after this point is a new
+version. Graded Monday and Tuesday by `refresh_nfl_dfs_postweek.yml` (job
+`grade-prop-under`) into the append-only `nfl_prop_under_role_change_runs`; the one
+verdict goes to `nfl_prop_under_role_change_verdicts`.
 
 ## Why
 
@@ -114,8 +114,6 @@ these flags has no support.
 ## Commands
 
     python -m research.nfl_prop_under_role_change sizes --week 6   # tag counts, no results
-    python -m research.nfl_prop_under_role_change grade [--out path]
+    python -m research.nfl_prop_under_role_change grade [--write-db] [--out path]
 
-The grader is read-only and is not yet in a scheduled workflow. Wiring it into the
-post-week job (`refresh_nfl_dfs_postweek.yml`) with an append-only run table is a
-follow-up once the study is registered. Tests: `tests/test_nfl_prop_under_role_change.py`.
+With `--write-db` it appends one run row and, at the final look only, the verdict. Tests: `tests/test_nfl_prop_under_role_change.py`.

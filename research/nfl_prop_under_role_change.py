@@ -4,10 +4,11 @@ Reads the same priced rows and bets as research/nfl_prop_under_study.py (importe
 changed), then tags each flagged under whose player lost a same-position teammate to a
 fresh absence: a teammate the forecast's own frozen availability request ruled out, who
 played his team's previous game with material usage. Reports tagged against untagged
-flagged unders. Read-only: it writes nothing to the database.
+flagged unders. With --write-db it appends one run row a week and, at the single
+look after week 18, the one verdict (both tables append-only).
 
     python -m research.nfl_prop_under_role_change sizes --season 2026 --week 6
-    python -m research.nfl_prop_under_role_change grade [--out path]
+    python -m research.nfl_prop_under_role_change grade [--write-db] [--out path]
 """
 from __future__ import annotations
 
@@ -231,6 +232,33 @@ def tag_rows(rows: Iterable[dict], index: Mapping, usage: Mapping, week_of: Mapp
     return tags
 
 
+def write_run(out: Mapping[str, Any], report: Mapping[str, Any]) -> tuple | None:
+    """Append this run; write the verdict only at the final look, once."""
+    import os
+    from db.database import DatabaseManager
+    DatabaseManager(os.environ["DATABASE_URL"])  # applies db/schema.py (no-op when unchanged)
+    conn = under._connect()
+    try:
+        cur = conn.cursor()
+        cur.execute("""INSERT INTO nfl_prop_under_role_change_runs (study, evaluated_at, tagged_bets, untagged_bets,
+                           tagged_game_weeks, difference_roi, report)
+                       VALUES (%s, now(), %s, %s, %s, %s, %s) RETURNING id""",
+                    (out["study"], out["tagged_fresh_absence"]["bets"], out["untagged"]["bets"],
+                     out["tagged_fresh_absence"]["game_weeks"], out["difference_roi"],
+                     json.dumps(report, default=str)))
+        run_id = cur.fetchone()[0]
+        if out["verdict_if_first"]:
+            cur.execute("""INSERT INTO nfl_prop_under_role_change_verdicts (study, verdict, run_id, decided_at)
+                           VALUES (%s, %s, %s, now()) ON CONFLICT (study) DO NOTHING""",
+                        (out["study"], out["verdict_if_first"], run_id))
+        conn.commit()
+        cur.execute("SELECT verdict, decided_at FROM nfl_prop_under_role_change_verdicts WHERE study = %s",
+                    (out["study"],))
+        return cur.fetchone()
+    finally:
+        conn.close()
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest="command", required=True)
@@ -238,6 +266,7 @@ def main() -> None:
     s.add_argument("--week", type=int, required=True)
     g = sub.add_parser("grade")
     g.add_argument("--out", type=Path)
+    g.add_argument("--write-db", action="store_true")
     a = p.parse_args()
     parent = under_registration()
     conn = under._connect()
@@ -277,9 +306,13 @@ def main() -> None:
     out = summarize(bets, final=final)
     out.update(evaluated_at=datetime.now(timezone.utc).isoformat(), nflverse_usage=source,
                nflverse_results=nfl_source, parent_study=parent["study"])
+    out["registration_sha256"] = under.file_digest(REGISTRATION_PATH)
+    full = {**out, "bets": bets}
+    if a.write_db:
+        out["frozen_verdict"] = write_run(out, full)
     if a.out:
         a.out.parent.mkdir(parents=True, exist_ok=True)
-        a.out.write_text(json.dumps({**out, "bets": bets}, indent=1, default=str))
+        a.out.write_text(json.dumps(full, indent=1, default=str))
     print(json.dumps(out, indent=1, default=str))
 
 
