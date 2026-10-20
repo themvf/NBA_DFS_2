@@ -169,7 +169,12 @@ def main() -> int:
     args = parser.parse_args()
     target = date.fromisoformat(args.date) if args.date else eastern_date(datetime.now(timezone.utc))
     config = load_config()
-    db = DatabaseManager(config.database_url) if args.apply else None
+    db = None
+    if args.apply:
+        # Skip the per-run DDL pass: it waits on other writers' table locks and
+        # times out (LockNotAvailable). This job only appends to existing tables.
+        db = DatabaseManager(config.database_url, initialize_schema=False)
+        db.require_tables(["prop_odds_history", "odds_api_usage"])
     result = capture(db=db, api_key=config.odds_api.api_key, target=target, apply=args.apply,
                      max_credits=max(0, args.max_credits))
     print(json.dumps({**result, "applied": args.apply}, indent=2))
