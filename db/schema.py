@@ -6538,3 +6538,8 @@ INDEXES = [
 # Shared observation DDL is dependency-free and also used by the targeted migration.
 from db.market_signal_schema import SCHEMA as MOVEMENT_OBSERVATION_SCHEMA, INDEX as MOVEMENT_OBSERVATION_INDEX
 MIGRATIONS.extend([MOVEMENT_OBSERVATION_SCHEMA, MOVEMENT_OBSERVATION_INDEX])
+
+# NFL DFS ownership label provenance (docs/nfl-ownership-scorecard-v1.md section 3):
+# append-only, one row per (contest, player, slot, classifier version).
+from db.nfl_ownership_provenance_schema import STATEMENTS as NFL_OWNERSHIP_PROVENANCE_STATEMENTS
+MIGRATIONS.extend(NFL_OWNERSHIP_PROVENANCE_STATEMENTS)

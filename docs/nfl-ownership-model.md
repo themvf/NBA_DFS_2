@@ -190,7 +190,7 @@ with no feature in this prior. Next candidates: a salary-tier or role feature,
 and a separate kicker treatment; judge each on the holdout contests, not the
 ones above.
 
-## `nfl-ownership-prior-v4` — committed before the week 7 Monday Showdown (2026-10-19)
+## `nfl-ownership-prior-v4` — committed before the week 6 Monday Showdown, WAS@SF (2026-10-19)
 
 Owner's decision: commit stated corrections now and grade them, rather than
 wait for a fitted model. Every constant is a judgement read off the misses in
