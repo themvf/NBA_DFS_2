@@ -69,9 +69,13 @@ MARKETS = (
     ("Spread at -110", "Favorites", "Underdogs", "Fav ATS ROI (%)", "Dog ATS ROI (%)", "Games"),
     ("Total at -110", "Overs", "Unders", "Over ROI (%)", "Under ROI (%)", "Games with total"),
 )
-SUBTITLE = ("Return per unit, season to date: moneyline at the closing price, spread and total at -110. "
-            "Black ticks: the same group in 2023-25.\nGame counts in brackets; faded rows have fewer than "
+def subtitle(prior_label: str = "2023-25") -> str:
+    return ("Return per unit, season to date: moneyline at the closing price, spread and total at -110. "
+            f"Black ticks: the same group in {prior_label}.\nGame counts in brackets; faded rows have fewer than "
             f"{THIN} games. Bars beyond ±{CLIP:.0f}% are cut off and labelled.")
+
+
+SUBTITLE = subtitle()
 
 
 def short(label: str | None) -> str:
@@ -115,13 +119,18 @@ def _heading(fig, title: str, subtitle: str) -> None:
     fig.text(0.01, 0.995 - 0.33 / fig.get_figheight(), subtitle, fontsize=7.5, color=INK_2, va="top")
 
 
-def scenario_chart(rows: list[dict], prior: dict, level: str, path: Path) -> bool:
-    """Three-panel grouped bars for one single cut; ``prior`` maps Split -> 2023-25 row."""
+def scenario_chart(rows: list[dict], prior: dict, level: str, path: Path, cuts: dict | None = None,
+                   home_lens: set | None = None, prior_label: str = "2023-25") -> bool:
+    """Three-panel grouped bars for one single cut; ``prior`` maps Split -> prior-season row.
+
+    ``cuts`` and ``home_lens`` default to the college tables; the NFL charts pass their own.
+    """
+    cuts = SINGLE_CUTS if cuts is None else cuts
     rows = [r for r in rows if r.get("Level name") == level]
-    if not rows or level not in SINGLE_CUTS:
+    if not rows or level not in cuts:
         return False
-    _, title, note = SINGLE_CUTS[level]
-    home = level in HOME_LENS
+    _, title, note = cuts[level]
+    home = level in (HOME_LENS if home_lens is None else home_lens)
     n = len(rows)
     height = 0.42 * n + 2.3
     fig, axes = plt.subplots(1, 3, figsize=(WIDTH_IN, height), dpi=DPI, sharey=True)
@@ -168,7 +177,7 @@ def scenario_chart(rows: list[dict], prior: dict, level: str, path: Path) -> boo
                 games = r.get("Games") or 0
                 labels.append(f"{short(r.get('Group') or r.get('Split'))} ({games})")
             ax.set_yticks(ys, labels, fontsize=7.5, color=INK)
-    _heading(fig, title, SUBTITLE + (f" {note}" if note else ""))
+    _heading(fig, title, subtitle(prior_label) + (f" {note}" if note else ""))
     _save(fig, path, top=1 - 0.72 / height)
     return True
 
@@ -176,12 +185,13 @@ def scenario_chart(rows: list[dict], prior: dict, level: str, path: Path) -> boo
 _CMAP = LinearSegmentedColormap.from_list("roi", ["#e34948", "#f6f6f4", "#1baf7a"])
 
 
-def grid_chart(rows: list[dict], level: str, path: Path) -> bool:
+def grid_chart(rows: list[dict], level: str, path: Path, grids: dict | None = None) -> bool:
     """Three heatmaps (favorite moneyline, favorite spread, over) for one two-way grid."""
+    grids = GRIDS if grids is None else grids
     rows = [r for r in rows if r.get("Level name") == level]
-    if not rows or level not in GRIDS:
+    if not rows or level not in grids:
         return False
-    _, title = GRIDS[level]
+    _, title = grids[level]
     row_vals = list(dict.fromkeys(r["Group"] for r in rows))
     col_vals = list(dict.fromkeys(r["Column"] for r in rows))
     cell = {(r["Group"], r["Column"]): r for r in rows}
