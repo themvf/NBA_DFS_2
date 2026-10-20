@@ -335,7 +335,7 @@ def test_the_prospective_adapter_carries_the_capture_format(monkeypatch):
         def execute(self, sql, params):
             self.calls += 1
             if self.calls == 1:
-                assert "'format',f.manifest->'format'" in sql
+                assert "'format',manifest->'format'" in sql, "the run manifest's format key reaches every record"
                 return [record("classic", "classic-run", row["captured_at"]),
                         record("showdown", "showdown-run", row["captured_at"] + timedelta(minutes=5))]
             return []

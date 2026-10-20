@@ -5831,6 +5831,12 @@ INDEXES = [
     # The DFS page's per-player 'newest Sleeper depth row at the slate's cutoff' read: without it the
     # read sorted the whole season (378k rows, 188 MB on disk) to return ~1,000 (2026-10-10).
     "CREATE INDEX IF NOT EXISTS idx_ff_injury_observations_sleeper_depth ON ff_player_injury_observations(season, player_id, observed_at DESC, id DESC) WHERE source='sleeper' AND raw_payload ? 'depth_chart_order'",
+    # The NFL availability loader's two-week Sleeper window, covering every column it reads so the
+    # JSON payload is never touched: it read ~1.1 GB from disk per run without it (2026-10-20).
+    "CREATE INDEX IF NOT EXISTS idx_ff_injury_observations_sleeper_window ON ff_player_injury_observations(season, observed_at DESC) INCLUDE (player_id, id, source_snapshot_id, normalized_status) WHERE source='sleeper'",
+    # Insert-only, so autovacuum's default trigger (20% growth, ~5 days of captures) left the newest
+    # two weeks unmarked and the index-only scan above went back to the table for every row.
+    "ALTER TABLE ff_player_injury_observations SET (autovacuum_vacuum_insert_scale_factor = 0.02)",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_ff_player_injuries_one_active ON ff_player_injuries(player_id) WHERE active",
     "CREATE INDEX IF NOT EXISTS idx_ff_player_injuries_active ON ff_player_injuries(season, active, status)",
     "CREATE INDEX IF NOT EXISTS idx_ff_injury_events_recent ON ff_injury_events(player_id, occurred_at DESC)",
@@ -5891,6 +5897,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_dk_lineups_slate ON dk_lineups(slate_id, strategy)",
     "CREATE INDEX IF NOT EXISTS idx_game_odds_history_lookup ON game_odds_history(sport, game_date, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_game_odds_history_matchup ON game_odds_history(sport, matchup_id, captured_at DESC)",
+    # CFB bootstrap's 'unprocessed captures' probe reads CFB ids without the table (2026-10-20).
+    "CREATE INDEX IF NOT EXISTS idx_game_odds_history_cfb_id ON game_odds_history(id) WHERE sport='cfb'",
     "CREATE INDEX IF NOT EXISTS idx_nfl_evidence_source_key ON nfl_evidence_observations(source, source_record_key, system_observed_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_nfl_play_fact_current ON nfl_play_fact_revisions(game_id, play_id) WHERE revision_status = 'current'",
     "CREATE INDEX IF NOT EXISTS idx_nfl_context_current ON nfl_context_snapshots(definition_id, subject_id, target_id, as_of_at DESC)",

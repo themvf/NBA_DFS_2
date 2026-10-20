@@ -348,10 +348,22 @@ def _availability(
     cutoffs = sorted({k for k in kickoffs if isinstance(k, datetime) and k.tzinfo is not None})
     cutoff_times = [*cutoffs, as_of_at]
     inclusive = [False] * len(cutoffs) + [True]
+    # Each Sleeper row is placed in a bucket: the number of cutoffs it is NOT
+    # yet eligible for (it is eligible for a cutoff when available before it,
+    # or at it for the inclusive as_of_at). Eligibility only grows with the
+    # cutoff, so the newest row per (player, bucket) includes the newest row
+    # per (player, cutoff), which is all the resolver reads. Sleeper rows are
+    # read through idx_ff_injury_observations_sleeper_window, which carries
+    # every column they need, so the JSON payload is never read for them; a
+    # Sleeper row's kickoff and report type are unused (only official rows
+    # are game-scoped). The week-keyed sources are found through their
+    # snapshots. Before this the query scanned the whole table from disk and
+    # sorted rows x cutoffs on disk: 18 s and ~1.1 GB read per run (week 7,
+    # 2026-10-20).
     rows = db.execute(
         """WITH cutoffs(cutoff, inclusive) AS (
              SELECT * FROM unnest(%s::timestamptz[], %s::boolean[])
-           ), obs AS (
+           ), weekly AS (
              SELECT o.id observation_id, o.player_id, o.source,
                   CASE WHEN o.source='nfl_official'
                     THEN COALESCE(o.raw_payload->>'status',o.normalized_status)
@@ -361,31 +373,47 @@ def _availability(
                   o.raw_payload->>'kickoff' observation_kickoff,
                   CASE WHEN o.source <> 'nfl_official' THEN TRUE
                     ELSE o.raw_payload->>'report_type'='inactive_list' END game_scope_valid
+             FROM ff_source_snapshots s
+             JOIN ff_player_injury_observations o ON o.source_snapshot_id = s.id
+             WHERE o.season = %s AND o.source IN ('fantasypros','nfl_official')
+               AND (s.week=%s OR s.request_params->>'week'=%s OR s.dataset LIKE %s)
+           ), window_rows AS MATERIALIZED (
+             SELECT o.id, o.player_id, o.source_snapshot_id, o.normalized_status, o.observed_at
              FROM ff_player_injury_observations o
+             WHERE o.season = %s AND o.source = 'sleeper'
+               AND o.observed_at >= COALESCE(
+                     (SELECT min(g.kickoff) - interval '14 days' FROM nfl_season_games g
+                      WHERE g.season = %s AND g.week = %s AND g.game_type = 'REG'),
+                     '-infinity'::timestamptz)
+           ), sleeper AS (
+             SELECT o.id observation_id, o.player_id, 'sleeper'::text source,
+                  o.normalized_status status,
+                  o.source_snapshot_id, s.model_eligible, s.status snapshot_status,
+                  GREATEST(s.fetched_at,o.observed_at) available_at,
+                  NULL::text observation_kickoff, TRUE game_scope_valid
+             FROM window_rows o
              JOIN ff_source_snapshots s ON s.id = o.source_snapshot_id
-             WHERE o.season = %s AND (
-               (o.source='sleeper'
-                AND o.observed_at >= COALESCE(
-                      (SELECT min(g.kickoff) - interval '14 days' FROM nfl_season_games g
-                       WHERE g.season = %s AND g.week = %s AND g.game_type = 'REG'),
-                      '-infinity'::timestamptz))
-               OR (o.source IN ('fantasypros','nfl_official')
-                   AND (s.week=%s OR s.request_params->>'week'=%s OR s.dataset LIKE %s))
-             )
+             WHERE s.model_eligible IS TRUE
+               AND COALESCE(lower(s.status), 'success') = 'success'
+           ), bucketed AS (
+             SELECT sleeper.*,
+                  (SELECT count(*) FROM cutoffs c
+                   WHERE NOT (sleeper.available_at < c.cutoff
+                              OR (c.inclusive AND sleeper.available_at = c.cutoff))) bucket
+             FROM sleeper
            )
-           SELECT * FROM obs WHERE source <> 'sleeper'
-           UNION
-           SELECT * FROM (
-             SELECT DISTINCT ON (obs.player_id, c.cutoff) obs.*
-             FROM obs JOIN cutoffs c
-               ON obs.available_at < c.cutoff OR (c.inclusive AND obs.available_at = c.cutoff)
-             WHERE obs.source = 'sleeper' AND obs.model_eligible IS TRUE
-               AND COALESCE(lower(obs.snapshot_status), 'success') = 'success'
-             ORDER BY obs.player_id, c.cutoff, obs.available_at DESC, obs.observation_id DESC
+           SELECT * FROM weekly
+           UNION ALL
+           SELECT observation_id, player_id, source, status, source_snapshot_id, model_eligible,
+                  snapshot_status, available_at, observation_kickoff, game_scope_valid
+           FROM (
+             SELECT DISTINCT ON (player_id, bucket) *
+             FROM bucketed WHERE bucket < (SELECT count(*) FROM cutoffs)
+             ORDER BY player_id, bucket, available_at DESC, observation_id DESC
            ) latest
            ORDER BY player_id, available_at DESC, observation_id DESC""",
-        (cutoff_times, inclusive, season, season, week, week, str(week),
-         f"game-week-injuries-v2-{season}-{week}%"),
+        (cutoff_times, inclusive, season, week, str(week),
+         f"game-week-injuries-v2-{season}-{week}%", season, season, week),
     )
     observed: dict[int, list[dict[str, Any]]] = {}
     for row in rows:

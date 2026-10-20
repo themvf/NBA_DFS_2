@@ -573,6 +573,26 @@ repeat capture; they are in `DECISION_VOLATILE_KEYS`, so reuse is unaffected.
 Rank egress readers by rows x width, and expect jsonb to be 1-4.5x larger on
 the wire than the planner's width says (it is the compressed size).
 
+**Disk reads, not pages touched, set the compute floor (2026-10-20).** NBADFS
+sat at ~0.41 CU against a 0.25 floor; quiet hours ~0.31, daytime 0.45-0.59,
+so the excess is job load, not the every-minute crons (removing them would
+not let the compute suspend: GitHub jobs run around the clock). Rank
+`pg_stat_statements` by `shared_blks_read` (pages pulled from storage, which
+grow the cache Neon sizes for), not by hit+read: 9,022 index probes into a
+46 MB cached table showed as 600 MB "touched" per run and cost nothing.
+Four readers fixed, each checked against the old query on live data
+(identical rows): the availability loader reads Sleeper rows from a covering
+index (`idx_ff_injury_observations_sleeper_window`, 18 s and ~1.1 GB from
+disk -> 1.5 s and ~11 MB; the table's insert-autovacuum threshold is lowered
+so the index-only scan stays off the heap); the CFB bootstrap finds pending
+captures by id on `idx_game_odds_history_cfb_id` (~65 MB -> 0 from disk,
+every 5 min); the NFL DFS page builds aliases from
+`nfl_identity_gsis_names` and no longer returns unused claim digests
+(~150 MB from disk -> 0 per open); the matchup-study grader reduces each
+run's ~210 KB manifest once instead of per player row (158 s -> 9.5 s).
+The indexes were built concurrently on the live database through the direct
+(non-pooler) endpoint. Re-measure the hourly CU after a few days.
+
 ## Parallel agents: commit locally, one session pushes (2026-10-04)
 
 Every push to GitHub starts a Vercel build (a branch push builds Preview, a
