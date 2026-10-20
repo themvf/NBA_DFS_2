@@ -214,6 +214,21 @@ jobs:
           pip install -r requirements.txt
       - name: Render the charts
         run: python -m model.nfl_market_scenarios --out-dir artifacts/nfl_market_scenarios
+      # Reader charts beyond the betting scenarios: play-by-play stories,
+      # schedule and market (line moves read our odds history), DFS and props.
+      - name: Render the play-by-play charts
+        if: ${{ !cancelled() }}
+        run: python -m model.nfl_play_charts --out-dir artifacts/nfl_market_scenarios
+      - name: Render the schedule and market charts
+        if: ${{ !cancelled() }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python -m model.nfl_schedule_market_charts --out-dir artifacts/nfl_market_scenarios
+      - name: Render the DFS and prop charts
+        if: ${{ !cancelled() }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python -m model.nfl_dfs_story_charts --out-dir artifacts/nfl_market_scenarios
       - name: Save the charts
         if: always()
         uses: actions/upload-artifact@v4

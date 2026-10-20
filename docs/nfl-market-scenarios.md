@@ -38,3 +38,24 @@ whose spread result changed after 5:00 left in the fourth quarter. The
 late-flip chart reads the score with 5:00 left from nflverse play-by-play for
 the NFL, and from CFBD scoring plays for college. A college game is kept only
 when its scoring plays add up to its box score.
+
+## More NFL reader charts (`nfl_take_*.png`, 2026-10-20)
+
+Three modules, rendered in the same post-week chart job:
+
+- `model/nfl_play_charts.py`, from nflverse play-by-play: luck vs skill (EPA
+  gap against point differential), the wildest win-probability comebacks,
+  one-score records, turnover and fumble-recovery luck, fourth-and-short
+  decisions by coach, pass rate over expected, red-zone and two-minute
+  scoring, and target and carry share shifts.
+- `model/nfl_schedule_market_charts.py`: season travel miles and time zones,
+  weather against the total (2023-26 pooled), referee crews (2023-26 pooled),
+  market power ratings by week, games whose line moved 1.5+ points (from our
+  odds history), and outright upsets.
+- `model/nfl_dfs_story_charts.py`: Millionaire ownership against points, a
+  chalk report, first-place lineups (and 2023-25 first-place ownership), and
+  prop overs against their prices.
+
+All three are descriptive. Small samples are flagged on the image. The DFS
+and prop charts cover only the weeks whose contests and prop lines have been
+imported.
