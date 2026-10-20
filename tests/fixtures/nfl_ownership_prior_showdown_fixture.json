@@ -1,0 +1,848 @@
+{
+  "description": "One-game Showdown pool shared by web/scripts/test-nfl-ownership-prior.ts and tests/test_nfl_showdown_ownership_eval.py. Both languages compute nfl-ownership-prior v3 and v4 on these players and must agree with `expected` to 0.02 on every row. Inputs are invented but shaped like a real WAS@SF slate: a punt tier (salary < $3,000) with a kicker in it, both kickers, both DSTs, two TEs, a questionable player, an OUT player, a zero projection and a DK-average-only player. `expected` was generated from the TypeScript (the authority) and is regenerated only when the TS prior changes.",
+  "players": [
+    {
+      "dkPlayerId": 1,
+      "name": "sf qb",
+      "position": "QB",
+      "team": "SF",
+      "salary": 11200,
+      "captainSalary": 16800,
+      "projection": 20.4,
+      "dkAvg": 19.1,
+      "dkStatus": "",
+      "isOut": false
+    },
+    {
+      "dkPlayerId": 2,
+      "name": "was qb",
+      "position": "QB",
+      "team": "WAS",
+      "salary": 10600,
+      "captainSalary": 15900,
+      "projection": 19.2,
+      "dkAvg": 21,
+      "dkStatus": "",
+      "isOut": false
+    },
+    {
+      "dkPlayerId": 3,
+      "name": "sf rb1",
+      "position": "RB",
+      "team": "SF",
+      "salary": 12000,
+      "captainSalary": 18000,
+      "projection": 21.5,
+      "dkAvg": 22.8,
+      "dkStatus": "",
+      "isOut": false
+    },
+    {
+      "dkPlayerId": 4,
+      "name": "was rb1",
+      "position": "RB",
+      "team": "WAS",
+      "salary": 7600,
+      "captainSalary": 11400,
+      "projection": 12.1,
+      "dkAvg": 11.4,
+      "dkStatus": "",
+      "isOut": false
+    },
+    {
+      "dkPlayerId": 5,
+      "name": "sf wr1",
+      "position": "WR",
+      "team": "SF",
+      "salary": 9400,
+      "captainSalary": 14100,
+      "projection": 15.3,
+      "dkAvg": 14,
+      "dkStatus": "",
+      "isOut": false
+    },
+    {
+      "dkPlayerId": 6,
+      "name": "was wr1",
+      "position": "WR",
+      "team": "WAS",
+      "salary": 9800,
+      "captainSalary": 14700,
+      "projection": 16.2,
+      "dkAvg": 17.5,
+      "dkStatus": "Q",
+      "isOut": false
+    },
+    {
+      "dkPlayerId": 7,
+      "name": "sf te1",
+      "position": "TE",
+      "team": "SF",
+      "salary": 8200,
+      "captainSalary": 12300,
+      "projection": 12.6,
+      "dkAvg": 11.9,
+      "dkStatus": "",
+      "isOut": false
+    },
+    {
+      "dkPlayerId": 8,
+      "name": "was te1",
+      "position": "TE",
+      "team": "WAS",
+      "salary": 5400,
+      "captainSalary": 8100,
+      "projection": 8.1,
+      "dkAvg": 7.2,
+      "dkStatus": "",
+      "isOut": false
+    },
+    {
+      "dkPlayerId": 9,
+      "name": "sf wr2",
+      "position": "WR",
+      "team": "SF",
+      "salary": 6200,
+      "captainSalary": 9300,
+      "projection": 9.4,
+      "dkAvg": 8.8,
+      "dkStatus": "",
+      "isOut": false
+    },
+    {
+      "dkPlayerId": 10,
+      "name": "was wr2",
+      "position": "WR",
+      "team": "WAS",
+      "salary": 5800,
+      "captainSalary": 8700,
+      "projection": 8.6,
+      "dkAvg": 9.9,
+      "dkStatus": "",
+      "isOut": false
+    },
+    {
+      "dkPlayerId": 11,
+      "name": "sf k",
+      "position": "K",
+      "team": "SF",
+      "salary": 4600,
+      "captainSalary": 6900,
+      "projection": 8.9,
+      "dkAvg": 9.3,
+      "dkStatus": "",
+      "isOut": false
+    },
+    {
+      "dkPlayerId": 12,
+      "name": "was k",
+      "position": "K",
+      "team": "WAS",
+      "salary": 4200,
+      "captainSalary": 6300,
+      "projection": 7.6,
+      "dkAvg": 8.1,
+      "dkStatus": "",
+      "isOut": false
+    },
+    {
+      "dkPlayerId": 13,
+      "name": "sf dst",
+      "position": "DST",
+      "team": "SF",
+      "salary": 4400,
+      "captainSalary": 6600,
+      "projection": 7.8,
+      "dkAvg": 7,
+      "dkStatus": "",
+      "isOut": false
+    },
+    {
+      "dkPlayerId": 14,
+      "name": "was dst",
+      "position": "DST",
+      "team": "WAS",
+      "salary": 3800,
+      "captainSalary": 5700,
+      "projection": 5.2,
+      "dkAvg": 6.1,
+      "dkStatus": "",
+      "isOut": false
+    },
+    {
+      "dkPlayerId": 15,
+      "name": "sf rb2",
+      "position": "RB",
+      "team": "SF",
+      "salary": 3400,
+      "captainSalary": 5100,
+      "projection": 4.9,
+      "dkAvg": 3.8,
+      "dkStatus": "",
+      "isOut": false
+    },
+    {
+      "dkPlayerId": 16,
+      "name": "was rb2",
+      "position": "RB",
+      "team": "WAS",
+      "salary": 2800,
+      "captainSalary": 4200,
+      "projection": 5.6,
+      "dkAvg": 4.4,
+      "dkStatus": "",
+      "isOut": false
+    },
+    {
+      "dkPlayerId": 17,
+      "name": "sf te2",
+      "position": "TE",
+      "team": "SF",
+      "salary": 1800,
+      "captainSalary": 2700,
+      "projection": 3.9,
+      "dkAvg": 2.1,
+      "dkStatus": "",
+      "isOut": false
+    },
+    {
+      "dkPlayerId": 18,
+      "name": "was wr3",
+      "position": "WR",
+      "team": "WAS",
+      "salary": 2400,
+      "captainSalary": 3600,
+      "projection": 4.4,
+      "dkAvg": 5,
+      "dkStatus": "",
+      "isOut": false
+    },
+    {
+      "dkPlayerId": 19,
+      "name": "sf wr3",
+      "position": "WR",
+      "team": "SF",
+      "salary": 1200,
+      "captainSalary": 1800,
+      "projection": 2.2,
+      "dkAvg": 1.6,
+      "dkStatus": "Q",
+      "isOut": false
+    },
+    {
+      "dkPlayerId": 20,
+      "name": "was k2",
+      "position": "K",
+      "team": "WAS",
+      "salary": 2600,
+      "captainSalary": 3900,
+      "projection": 3,
+      "dkAvg": null,
+      "dkStatus": "",
+      "isOut": false
+    },
+    {
+      "dkPlayerId": 21,
+      "name": "sf wr4",
+      "position": "WR",
+      "team": "SF",
+      "salary": 200,
+      "captainSalary": 300,
+      "projection": 0,
+      "dkAvg": 0,
+      "dkStatus": "",
+      "isOut": false
+    },
+    {
+      "dkPlayerId": 22,
+      "name": "was rb3",
+      "position": "RB",
+      "team": "WAS",
+      "salary": 1000,
+      "captainSalary": 1500,
+      "projection": null,
+      "dkAvg": 2.7,
+      "dkStatus": "",
+      "isOut": false
+    },
+    {
+      "dkPlayerId": 23,
+      "name": "sf rb3",
+      "position": "RB",
+      "team": "SF",
+      "salary": 2200,
+      "captainSalary": 3300,
+      "projection": 6,
+      "dkAvg": 5,
+      "dkStatus": "",
+      "isOut": true
+    },
+    {
+      "dkPlayerId": 24,
+      "name": "was te2",
+      "position": "TE",
+      "team": "WAS",
+      "salary": 3000,
+      "captainSalary": 4500,
+      "projection": 4.1,
+      "dkAvg": 3.3,
+      "dkStatus": "D",
+      "isOut": false
+    }
+  ],
+  "scenarios": [
+    {
+      "name": "favorite and underdog known",
+      "variant": "v4",
+      "favoriteTeam": "SF",
+      "underdogTeam": "WAS"
+    },
+    {
+      "name": "favorite known, underdog unknown",
+      "variant": "v4",
+      "favoriteTeam": "WAS",
+      "underdogTeam": null
+    },
+    {
+      "name": "game script unknown",
+      "variant": "v4",
+      "favoriteTeam": null,
+      "underdogTeam": null
+    },
+    {
+      "name": "v3 counterfactual",
+      "variant": "v3",
+      "favoriteTeam": "SF",
+      "underdogTeam": "WAS"
+    }
+  ],
+  "expected": [
+    {
+      "name": "favorite and underdog known",
+      "version": "nfl-ownership-prior-v4",
+      "unallocatedPct": 0,
+      "notes": {
+        "variant": "v4",
+        "puntTierPlayers": 7,
+        "puntTierPct": 60,
+        "gameScriptKnown": true
+      },
+      "players": [
+        {
+          "dkPlayerId": 1,
+          "captainPct": 21.1,
+          "flexPct": 73.9
+        },
+        {
+          "dkPlayerId": 2,
+          "captainPct": 22.15,
+          "flexPct": 72.85
+        },
+        {
+          "dkPlayerId": 3,
+          "captainPct": 29.39,
+          "flexPct": 65.61
+        },
+        {
+          "dkPlayerId": 4,
+          "captainPct": 4.02,
+          "flexPct": 28.37
+        },
+        {
+          "dkPlayerId": 5,
+          "captainPct": 7.92,
+          "flexPct": 44.6
+        },
+        {
+          "dkPlayerId": 6,
+          "captainPct": 5.66,
+          "flexPct": 35.68
+        },
+        {
+          "dkPlayerId": 7,
+          "captainPct": 3.1,
+          "flexPct": 30.29
+        },
+        {
+          "dkPlayerId": 8,
+          "captainPct": 0.74,
+          "flexPct": 11.68
+        },
+        {
+          "dkPlayerId": 9,
+          "captainPct": 1.8,
+          "flexPct": 16.61
+        },
+        {
+          "dkPlayerId": 10,
+          "captainPct": 1.86,
+          "flexPct": 16.98
+        },
+        {
+          "dkPlayerId": 11,
+          "captainPct": 0.54,
+          "flexPct": 11.25
+        },
+        {
+          "dkPlayerId": 12,
+          "captainPct": 0.33,
+          "flexPct": 8.1
+        },
+        {
+          "dkPlayerId": 13,
+          "captainPct": 0.35,
+          "flexPct": 15.44
+        },
+        {
+          "dkPlayerId": 14,
+          "captainPct": 0.07,
+          "flexPct": 4.26
+        },
+        {
+          "dkPlayerId": 15,
+          "captainPct": 0.19,
+          "flexPct": 3.71
+        },
+        {
+          "dkPlayerId": 16,
+          "captainPct": 0.37,
+          "flexPct": 16.5
+        },
+        {
+          "dkPlayerId": 17,
+          "captainPct": 0.06,
+          "flexPct": 10.25
+        },
+        {
+          "dkPlayerId": 18,
+          "captainPct": 0.29,
+          "flexPct": 14.95
+        },
+        {
+          "dkPlayerId": 19,
+          "captainPct": 0.01,
+          "flexPct": 3.79
+        },
+        {
+          "dkPlayerId": 20,
+          "captainPct": 0.01,
+          "flexPct": 5.8
+        },
+        {
+          "dkPlayerId": 21,
+          "captainPct": 0,
+          "flexPct": 0
+        },
+        {
+          "dkPlayerId": 22,
+          "captainPct": 0.04,
+          "flexPct": 8.7
+        },
+        {
+          "dkPlayerId": 23,
+          "captainPct": 0,
+          "flexPct": 0
+        },
+        {
+          "dkPlayerId": 24,
+          "captainPct": 0.01,
+          "flexPct": 0.65
+        }
+      ]
+    },
+    {
+      "name": "favorite known, underdog unknown",
+      "version": "nfl-ownership-prior-v4",
+      "unallocatedPct": 0,
+      "notes": {
+        "variant": "v4",
+        "puntTierPlayers": 7,
+        "puntTierPct": 60,
+        "gameScriptKnown": true
+      },
+      "players": [
+        {
+          "dkPlayerId": 1,
+          "captainPct": 21.12,
+          "flexPct": 73.88
+        },
+        {
+          "dkPlayerId": 2,
+          "captainPct": 22.17,
+          "flexPct": 72.83
+        },
+        {
+          "dkPlayerId": 3,
+          "captainPct": 29.42,
+          "flexPct": 65.58
+        },
+        {
+          "dkPlayerId": 4,
+          "captainPct": 4.02,
+          "flexPct": 28.82
+        },
+        {
+          "dkPlayerId": 5,
+          "captainPct": 7.92,
+          "flexPct": 45.31
+        },
+        {
+          "dkPlayerId": 6,
+          "captainPct": 5.67,
+          "flexPct": 36.24
+        },
+        {
+          "dkPlayerId": 7,
+          "captainPct": 3.1,
+          "flexPct": 30.77
+        },
+        {
+          "dkPlayerId": 8,
+          "captainPct": 0.74,
+          "flexPct": 11.86
+        },
+        {
+          "dkPlayerId": 9,
+          "captainPct": 1.8,
+          "flexPct": 16.87
+        },
+        {
+          "dkPlayerId": 10,
+          "captainPct": 1.86,
+          "flexPct": 17.25
+        },
+        {
+          "dkPlayerId": 11,
+          "captainPct": 0.54,
+          "flexPct": 11.43
+        },
+        {
+          "dkPlayerId": 12,
+          "captainPct": 0.33,
+          "flexPct": 8.23
+        },
+        {
+          "dkPlayerId": 13,
+          "captainPct": 0.19,
+          "flexPct": 8.45
+        },
+        {
+          "dkPlayerId": 14,
+          "captainPct": 0.13,
+          "flexPct": 8.04
+        },
+        {
+          "dkPlayerId": 15,
+          "captainPct": 0.19,
+          "flexPct": 3.77
+        },
+        {
+          "dkPlayerId": 16,
+          "captainPct": 0.37,
+          "flexPct": 16.5
+        },
+        {
+          "dkPlayerId": 17,
+          "captainPct": 0.06,
+          "flexPct": 10.25
+        },
+        {
+          "dkPlayerId": 18,
+          "captainPct": 0.29,
+          "flexPct": 14.95
+        },
+        {
+          "dkPlayerId": 19,
+          "captainPct": 0.01,
+          "flexPct": 3.79
+        },
+        {
+          "dkPlayerId": 20,
+          "captainPct": 0.01,
+          "flexPct": 5.8
+        },
+        {
+          "dkPlayerId": 21,
+          "captainPct": 0,
+          "flexPct": 0
+        },
+        {
+          "dkPlayerId": 22,
+          "captainPct": 0.04,
+          "flexPct": 8.7
+        },
+        {
+          "dkPlayerId": 23,
+          "captainPct": 0,
+          "flexPct": 0
+        },
+        {
+          "dkPlayerId": 24,
+          "captainPct": 0.01,
+          "flexPct": 0.66
+        }
+      ]
+    },
+    {
+      "name": "game script unknown",
+      "version": "nfl-ownership-prior-v4",
+      "unallocatedPct": 0,
+      "notes": {
+        "variant": "v4",
+        "puntTierPlayers": 7,
+        "puntTierPct": 60,
+        "gameScriptKnown": false
+      },
+      "players": [
+        {
+          "dkPlayerId": 1,
+          "captainPct": 21.11,
+          "flexPct": 73.89
+        },
+        {
+          "dkPlayerId": 2,
+          "captainPct": 22.16,
+          "flexPct": 72.84
+        },
+        {
+          "dkPlayerId": 3,
+          "captainPct": 29.41,
+          "flexPct": 65.59
+        },
+        {
+          "dkPlayerId": 4,
+          "captainPct": 4.02,
+          "flexPct": 28.59
+        },
+        {
+          "dkPlayerId": 5,
+          "captainPct": 7.92,
+          "flexPct": 44.95
+        },
+        {
+          "dkPlayerId": 6,
+          "captainPct": 5.67,
+          "flexPct": 35.96
+        },
+        {
+          "dkPlayerId": 7,
+          "captainPct": 3.1,
+          "flexPct": 30.53
+        },
+        {
+          "dkPlayerId": 8,
+          "captainPct": 0.74,
+          "flexPct": 11.77
+        },
+        {
+          "dkPlayerId": 9,
+          "captainPct": 1.8,
+          "flexPct": 16.74
+        },
+        {
+          "dkPlayerId": 10,
+          "captainPct": 1.86,
+          "flexPct": 17.12
+        },
+        {
+          "dkPlayerId": 11,
+          "captainPct": 0.54,
+          "flexPct": 11.34
+        },
+        {
+          "dkPlayerId": 12,
+          "captainPct": 0.33,
+          "flexPct": 8.16
+        },
+        {
+          "dkPlayerId": 13,
+          "captainPct": 0.27,
+          "flexPct": 11.97
+        },
+        {
+          "dkPlayerId": 14,
+          "captainPct": 0.1,
+          "flexPct": 6.14
+        },
+        {
+          "dkPlayerId": 15,
+          "captainPct": 0.19,
+          "flexPct": 3.74
+        },
+        {
+          "dkPlayerId": 16,
+          "captainPct": 0.37,
+          "flexPct": 16.5
+        },
+        {
+          "dkPlayerId": 17,
+          "captainPct": 0.06,
+          "flexPct": 10.25
+        },
+        {
+          "dkPlayerId": 18,
+          "captainPct": 0.29,
+          "flexPct": 14.95
+        },
+        {
+          "dkPlayerId": 19,
+          "captainPct": 0.01,
+          "flexPct": 3.79
+        },
+        {
+          "dkPlayerId": 20,
+          "captainPct": 0.01,
+          "flexPct": 5.8
+        },
+        {
+          "dkPlayerId": 21,
+          "captainPct": 0,
+          "flexPct": 0
+        },
+        {
+          "dkPlayerId": 22,
+          "captainPct": 0.04,
+          "flexPct": 8.7
+        },
+        {
+          "dkPlayerId": 23,
+          "captainPct": 0,
+          "flexPct": 0
+        },
+        {
+          "dkPlayerId": 24,
+          "captainPct": 0.01,
+          "flexPct": 0.66
+        }
+      ]
+    },
+    {
+      "name": "v3 counterfactual",
+      "version": "nfl-ownership-prior-v3",
+      "unallocatedPct": 0,
+      "notes": null,
+      "players": [
+        {
+          "dkPlayerId": 1,
+          "captainPct": 20.02,
+          "flexPct": 74.98
+        },
+        {
+          "dkPlayerId": 2,
+          "captainPct": 21.02,
+          "flexPct": 73.98
+        },
+        {
+          "dkPlayerId": 3,
+          "captainPct": 27.89,
+          "flexPct": 67.11
+        },
+        {
+          "dkPlayerId": 4,
+          "captainPct": 3.81,
+          "flexPct": 31.8
+        },
+        {
+          "dkPlayerId": 5,
+          "captainPct": 7.51,
+          "flexPct": 49.99
+        },
+        {
+          "dkPlayerId": 6,
+          "captainPct": 5.37,
+          "flexPct": 39.98
+        },
+        {
+          "dkPlayerId": 7,
+          "captainPct": 4.2,
+          "flexPct": 33.95
+        },
+        {
+          "dkPlayerId": 8,
+          "captainPct": 1.01,
+          "flexPct": 13.09
+        },
+        {
+          "dkPlayerId": 9,
+          "captainPct": 1.71,
+          "flexPct": 18.61
+        },
+        {
+          "dkPlayerId": 10,
+          "captainPct": 1.76,
+          "flexPct": 19.03
+        },
+        {
+          "dkPlayerId": 11,
+          "captainPct": 2.05,
+          "flexPct": 21.02
+        },
+        {
+          "dkPlayerId": 12,
+          "captainPct": 1.25,
+          "flexPct": 15.13
+        },
+        {
+          "dkPlayerId": 13,
+          "captainPct": 1.03,
+          "flexPct": 13.31
+        },
+        {
+          "dkPlayerId": 14,
+          "captainPct": 0.38,
+          "flexPct": 6.82
+        },
+        {
+          "dkPlayerId": 15,
+          "captainPct": 0.18,
+          "flexPct": 4.16
+        },
+        {
+          "dkPlayerId": 16,
+          "captainPct": 0.35,
+          "flexPct": 6.25
+        },
+        {
+          "dkPlayerId": 17,
+          "captainPct": 0.08,
+          "flexPct": 1.9
+        },
+        {
+          "dkPlayerId": 18,
+          "captainPct": 0.27,
+          "flexPct": 4.89
+        },
+        {
+          "dkPlayerId": 19,
+          "captainPct": 0.01,
+          "flexPct": 0.34
+        },
+        {
+          "dkPlayerId": 20,
+          "captainPct": 0.05,
+          "flexPct": 1.64
+        },
+        {
+          "dkPlayerId": 21,
+          "captainPct": 0,
+          "flexPct": 0
+        },
+        {
+          "dkPlayerId": 22,
+          "captainPct": 0.04,
+          "flexPct": 1.26
+        },
+        {
+          "dkPlayerId": 23,
+          "captainPct": 0,
+          "flexPct": 0
+        },
+        {
+          "dkPlayerId": 24,
+          "captainPct": 0.01,
+          "flexPct": 0.73
+        }
+      ]
+    }
+  ]
+}
