@@ -35,7 +35,7 @@ from psycopg2.extras import Json
 
 from config import load_config
 from db.database import DatabaseManager
-from ingest.statapi_contest import Client, StatApiError, import_contest
+from ingest.statapi_contest import Client, StatApiError, import_contest, open_rows_only, usable
 from model import statapi_contest as m
 from research.nfl_top_builds import review_contest
 
@@ -89,6 +89,7 @@ def flagship_candidates(client: Client, date: str) -> list[dict]:
             continue
         access = probe.get("access") or {}
         out.append({**best, "plan": access.get("plan"), "full": bool(access.get("full")),
+                    "usable": usable(access), "open_rows": open_rows_only(access),
                     "external_id": (probe.get("contest") or {}).get("external_id") or best.get("external_id")})
     return out
 
@@ -113,8 +114,9 @@ def run(db: DatabaseManager | None, client: Client, season: int, week: int, days
     for day in days:
         for c in flagship_candidates(client, day):
             label = f"{day} {c['name'][:60]} ({c['entry_count']:,} entries, ${c['prize_pool'] or 0:,.0f})"
-            if c.get("plan") == "flagship" and c.get("full"):
-                print(f"  FLAGSHIP {label}")
+            if c.get("plan") == "flagship" and c.get("usable"):
+                print(f"  FLAGSHIP {label}" + (f" (top {c['open_rows']} rows open, no score curve)"
+                                               if c.get("open_rows") else ""))
                 if dry_run:
                     imported.append(c)
                     continue
@@ -151,7 +153,9 @@ def run(db: DatabaseManager | None, client: Client, season: int, week: int, days
         elif ours["best_points"] is None:
             detail = f"ours run {ours['run_id'][:8]}: no lineup scored (no points for {', '.join(ours['players_without_points'])})"
         else:
-            detail = f"ours run {ours['run_id'][:8]} best {ours['best_points']} (~#{ours['best_rank_estimate']:,})"
+            rank = ours["best_rank_estimate"]
+            detail = (f"ours run {ours['run_id'][:8]} best {ours['best_points']} "
+                      + (f"(~#{rank:,})" if rank is not None else "(rank unknown: no score curve)"))
             if ours["lineups_unscored"]:
                 detail += (f"; {ours['lineups_unscored']} lineup(s) not scored, no points for "
                            f"{', '.join(ours['players_without_points'])}")

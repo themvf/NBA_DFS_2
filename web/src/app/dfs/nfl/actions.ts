@@ -1179,15 +1179,16 @@ async function attachMarketAnchor(workspace: NflWorkspaceSlate): Promise<void> {
 
 /**
  * Projected ownership for every player: LineStar when the feed carried it,
- * otherwise our stated prior (`nfl-ownership-prior-v1`, see
- * docs/nfl-ownership-model.md). The prior is computed from the SAME
+ * otherwise our stated prior (`nfl-ownership-prior-v4`, see
+ * docs/nfl-ownership-model.md and docs/nfl-ownership-review-2026-10-19.md). The prior is computed from the SAME
  * projections this workspace shows, after availability zeroing, so a ruled-out
  * player draws nothing. It is a heuristic: the optimizer applies it only
  * through the user's opt-in, labelled uncalibrated.
  */
 function attachOwnership(workspace: NflWorkspaceSlate): NflWorkspaceSlate {
   const prior = projectOwnershipPrior(workspace.players.map((p) => ({ dkPlayerId: p.dkPlayerId, position: p.position, salary: p.salary,
-    projection: p.ourProj, dkAvg: p.avgFptsDk, isOut: p.isOut, dkStatus: p.dkStatus, captainSalary: p.captainSalary })), workspace.format);
+    projection: p.ourProj, dkAvg: p.avgFptsDk, isOut: p.isOut, dkStatus: p.dkStatus, captainSalary: p.captainSalary, team: p.team })), workspace.format,
+    { favoriteTeam: workspace.favoriteTeam ?? null, underdogTeam: workspace.underdogTeam ?? null });
   const byId = new Map(prior.players.map((p) => [p.dkPlayerId, p]));
   return { ...workspace, players: workspace.players.map((p) => {
     const ours = byId.get(p.dkPlayerId);

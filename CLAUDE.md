@@ -221,6 +221,21 @@ LEAGUE_AVG_USAGE      = 20.0
 - stats.nba.com blocks Vercel/cloud IPs — run `refresh_stats.bat` locally (weekly).
   The Odds API has no IP restrictions — player props work from Vercel directly.
 
+### NBA Top Scorers (`/nba/top-scorers`, 2026-10-20)
+
+Ranks tonight's players by the sportsbooks' player-points line. `ingest/nba_points_props.py`
+captures `player_points` and its `player_points_alternate` ladder for the configured six books
+(`bookmakers=`, 2 credits per game) into
+`prop_odds_history` (sport='nba'), filed under the Eastern date of tip-off; the page
+(`web/src/lib/nba-top-scorers.ts`, pure) reads each game's latest capture, so a pulled line
+drops off and is listed separately. Line = the line most books quote (a median, not a mean);
+P(over) is de-vigged only from books at that line. Floor/ceiling (P10/P90) and 25+/30+ come from
+the ladder (`web/src/lib/nba-points-ladder.ts`): over-only rungs de-vigged by the same book's
+main-line overround (leaves longshot margin, so top-end chances read slightly high), median across
+books, forced non-increasing, never extrapolated past the first or last rung. It is the market's number, unvalidated, and
+independent of `dk_players` (no slate needed). Run manually via `capture_nba_points_props.yml`;
+not yet scheduled. Last season's PPG/team come from `nba_player_stats` 2025-26.
+
 ## Data Refresh Workflow
 
 ```
@@ -557,6 +572,26 @@ replay 378k to 34k). The audit lists `qualifying_observation_ids` and
 repeat capture; they are in `DECISION_VOLATILE_KEYS`, so reuse is unaffected.
 Rank egress readers by rows x width, and expect jsonb to be 1-4.5x larger on
 the wire than the planner's width says (it is the compressed size).
+
+**Disk reads, not pages touched, set the compute floor (2026-10-20).** NBADFS
+sat at ~0.41 CU against a 0.25 floor; quiet hours ~0.31, daytime 0.45-0.59,
+so the excess is job load, not the every-minute crons (removing them would
+not let the compute suspend: GitHub jobs run around the clock). Rank
+`pg_stat_statements` by `shared_blks_read` (pages pulled from storage, which
+grow the cache Neon sizes for), not by hit+read: 9,022 index probes into a
+46 MB cached table showed as 600 MB "touched" per run and cost nothing.
+Four readers fixed, each checked against the old query on live data
+(identical rows): the availability loader reads Sleeper rows from a covering
+index (`idx_ff_injury_observations_sleeper_window`, 18 s and ~1.1 GB from
+disk -> 1.5 s and ~11 MB; the table's insert-autovacuum threshold is lowered
+so the index-only scan stays off the heap); the CFB bootstrap finds pending
+captures by id on `idx_game_odds_history_cfb_id` (~65 MB -> 0 from disk,
+every 5 min); the NFL DFS page builds aliases from
+`nfl_identity_gsis_names` and no longer returns unused claim digests
+(~150 MB from disk -> 0 per open); the matchup-study grader reduces each
+run's ~210 KB manifest once instead of per player row (158 s -> 9.5 s).
+The indexes were built concurrently on the live database through the direct
+(non-pooler) endpoint. Re-measure the hourly CU after a few days.
 
 ## Parallel agents: commit locally, one session pushes (2026-10-04)
 
@@ -7741,6 +7776,19 @@ see the "Showdown: value exponent" section of `docs/nfl-ownership-model.md`.
 Contest standings lineups are summarized per contest in `nfl_dfs_field_structure`
 (`nfl-dfs-field-structure-v1`): duplication, heavy multi-entry share, pair lift.
 
+**v4 (2026-10-19, before the week 6 Monday Showdown, WAS@SF; owner: commit and
+grade).** Classic TE budget 105 -> 135 (recorded TE totals 134-138% on three
+full-field Millionaires, i.e. 34-38% TE FLEX vs the 5% implied; RB 230, WR
+335). Showdown: a reserved punt tier (players under $3,000 share 60 of the 500
+flex points on points^1, cap 30, unused slice returned), kicker flex x 0.6,
+DST x 1.3/0.7 by the slate's favorite, captain x TE 0.7 / K 0.25 / DST 0.25.
+All stated, none fitted; `variant: "v3"` reproduces v3 and the Python mirror
+still pins it. The calibration script now averages tied ranks (the 0.80
+Spearman figures were tie-inflated; week 2 tie-correct is 0.663) and marks a
+missing label unresolved unless the contest's recorded mass is >= 99.5%.
+Grade under `docs/nfl-ownership-scorecard-v1.md`, never against the slates the
+constants were read from (weeks 2-5).
+
 ### GPP objective: multiplicative leverage and the ceiling cap (2026-09-27)
 
 The first build with the ownership prior live produced the SAME three lineups
@@ -7869,9 +7917,16 @@ analysis, exposure vs the field, and every lineup they entered). Pure layer
 `model/statapi_contest.py` (`statapi-contest-import-v1`), tests in
 `tests/test_statapi_contest.py`. Measured 2026-10-10:
 
-- **Each week's flagship contests answer in full with no key** (`x-preview-
-  exempt: flagship`): the DraftKings Millionaire and the biggest Thursday and
-  Monday Showdown. **A free account's key adds nothing** (measured
+- **Each week's flagship contests answered in full with no key** (`x-preview-
+  exempt: flagship`) through week 5: the DraftKings Millionaire and the biggest
+  Thursday and Monday Showdown. **From 2026-10-19 they open only their top 100
+  standings rows** (`access: {plan: flagship, full: false, open_rows: 100}`,
+  listed at `GET /dfs/marquee?league=nfl`), plus every lineup those users
+  entered. The importer accepts that (`open_rows_only` in
+  `ingest/statapi_contest.py`): winners, builds and top-user ownership are
+  stored, but no median, score curve or payout table, so our build's rank in
+  the weekly review reads "rank unknown". A 5-row preview is still refused.
+  Week 6 was imported this way on 2026-10-20. **A free account's key adds nothing** (measured
   2026-10-10 with a real key): every other contest is a 5-row courtesy
   preview on standings AND per-user lineups (`access.full: false`,
   `required_tier: pro`), which the importer refuses to store. The 401 text

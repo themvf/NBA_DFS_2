@@ -60,10 +60,54 @@
  *     5.8 projected) at 93%.
  * Both are structural corrections, not fitted constants.
  */
-export const NFL_OWNERSHIP_PRIOR_VERSION = "nfl-ownership-prior-v3";
+/**
+ * v4 (2026-10-19, before the WAS@SF Monday night Showdown; owner's decision to
+ * commit and grade rather than wait for a fitted model). Every constant below is
+ * a STATED prior read off the graded misses recorded in
+ * docs/nfl-ownership-review-2026-10-19.md; none is fitted, and the scorecard
+ * (docs/nfl-ownership-scorecard-v1.md) grades v4 against v3 on frozen forecasts.
+ *   Classic
+ *   - Position budgets: TE 105 -> 135, RB 255 -> 230, WR 340 -> 335. The
+ *     recorded TE ownership total of three full-field Millionaires was 137.71 /
+ *     134.09 / 137.12% (weeks 3-5), i.e. a 34-38% TE FLEX share against the 5%
+ *     the v1 budgets implied. RB/WR split of the remaining FLEX is a judgement.
+ *   Showdown (flex)
+ *   - Punt tier: players under SHOWDOWN_PUNT_SALARY_MAX share a reserved
+ *     SHOWDOWN_PUNT_FLEX_BUDGET of the 500% flex budget in proportion to
+ *     points^1 (no value term, no squaring), capped at SHOWDOWN_PUNT_MAX_PCT.
+ *     The field drafts the two or three cheapest viable players at 15-30%
+ *     (Ferguson $1,800 19-21.7% actual vs 0.8-1.9% projected; Lance 23.87% vs
+ *     1.45%; Treadwell $3,200 19.3% vs 2.4%), and points^2 x value^0.5 cannot
+ *     reach that from a 4-point projection. Budget the tier cannot absorb
+ *     returns to the main pool, so a slate with no punts is unchanged.
+ *   - Kicker flex score x SHOWDOWN_KICKER_MULTIPLIER (Shrader projected 67%
+ *     against 33.3% actual after v3).
+ *   - DST flex and captain score x the game-script multiplier when the slate
+ *     knows the favorite (favorite 1.3, underdog 0.7); the field drafts the
+ *     favored defense.
+ *   Showdown (captain)
+ *   - Captain score x CAPTAIN_POSITION_MULTIPLIER: TE 0.7, K 0.25, DST 0.25.
+ *     Direction only; the magnitudes are judgements. Full-field captain shares
+ *     (`nfl_dfs_field_ownership` drafted_by_slot.CPT) are the data to fit these
+ *     on; winners' captain choices are outcome-selected and were NOT used.
+ *   The v3 algorithm stays callable (`variant: "v3"`) so the Python mirror
+ *   (model/nfl_showdown_ownership_eval.prior_showdown) and its pins still hold.
+ */
+export const NFL_OWNERSHIP_PRIOR_VERSION = "nfl-ownership-prior-v4";
+export const NFL_OWNERSHIP_PRIOR_V3_VERSION = "nfl-ownership-prior-v3";
+export type OwnershipPriorVariant = "v3" | "v4";
 
-/** Roster budget per position for a 9-slot Classic lineup, in percent. Sums to 900. */
+/** v1-v3 roster budget per position for a 9-slot Classic lineup, in percent. Sums to 900. */
 export const CLASSIC_POSITION_BUDGETS: Readonly<Record<string, number>> = { QB: 100, RB: 255, WR: 340, TE: 105, DST: 100 };
+/** v4: FLEX split 30/35/35 RB/WR/TE, from the recorded TE totals of weeks 3-5. Sums to 900. */
+export const CLASSIC_POSITION_BUDGETS_V4: Readonly<Record<string, number>> = { QB: 100, RB: 230, WR: 335, TE: 135, DST: 100 };
+/** v4 Showdown constants. All stated; see the v4 note. */
+export const SHOWDOWN_PUNT_SALARY_MAX = 3000;
+export const SHOWDOWN_PUNT_FLEX_BUDGET = 60;
+export const SHOWDOWN_PUNT_MAX_PCT = 30;
+export const SHOWDOWN_KICKER_MULTIPLIER = 0.6;
+export const CAPTAIN_POSITION_MULTIPLIER: Readonly<Record<string, number>> = { TE: 0.7, K: 0.25, DST: 0.25 };
+export const DST_GAME_SCRIPT_MULTIPLIER = { favorite: 1.3, underdog: 0.7 } as const;
 export const CLASSIC_MAX_PCT = 60;
 /** Showdown: one Captain slot (100%) and five Flex slots (500%). */
 export const SHOWDOWN_FLEX_BUDGET = 500;
@@ -99,6 +143,16 @@ export interface OwnershipPriorPlayer {
   /** DraftKings' Status column ("Q", "D", "" ...). */
   dkStatus?: string | null;
   captainSalary?: number | null;
+  /** DraftKings team abbreviation; v4 Showdown uses it for the DST game-script term. */
+  team?: string | null;
+}
+
+export interface OwnershipPriorOptions {
+  /** Defaults to v4. "v3" reproduces the previous algorithm exactly. */
+  variant?: OwnershipPriorVariant;
+  /** Showdown game script, when the slate resolved it (null = unknown, no DST adjustment). */
+  favoriteTeam?: string | null;
+  underdogTeam?: string | null;
 }
 
 export interface OwnershipPriorRow {
@@ -119,6 +173,15 @@ export interface OwnershipPriorResult {
   /** Budget the cap left unplaced (a pool too thin to hold it). 0 on any real slate. */
   unallocatedPct: number;
   players: OwnershipPriorRow[];
+  /** v4 provenance: what the stated terms did on this slate. Absent on v3. */
+  notes?: {
+    variant: OwnershipPriorVariant;
+    /** Showdown: players in the punt tier and the flex budget they actually took. */
+    puntTierPlayers?: number;
+    puntTierPct?: number;
+    /** Showdown: whether the DST game-script term had a favorite to read. */
+    gameScriptKnown?: boolean;
+  };
 }
 
 /** The number the field is drafting on. Null when neither source exists. */
@@ -170,7 +233,63 @@ export function allocateBudgetDetailed(scores: ReadonlyMap<number, number>, budg
   return { shares: out, unallocated: Math.max(0, remaining) };
 }
 
-export function projectOwnershipPrior(players: readonly OwnershipPriorPlayer[], format: "classic" | "showdown"): OwnershipPriorResult {
+export function projectOwnershipPrior(players: readonly OwnershipPriorPlayer[], format: "classic" | "showdown", options: OwnershipPriorOptions = {}): OwnershipPriorResult {
+  const variant = options.variant ?? "v4";
+  if (variant === "v3") return projectOwnershipPriorV3(players, format);
+  const round = (v: number) => Math.round(v * 100) / 100;
+  const pos = (p: OwnershipPriorPlayer) => (p.position ?? "").toUpperCase();
+  if (format === "showdown") {
+    const fav = options.favoriteTeam ?? null, dog = options.underdogTeam ?? null;
+    const gameScript = (p: OwnershipPriorPlayer) => {
+      if (pos(p) !== "DST" || !p.team || !fav) return 1;
+      if (p.team === fav) return DST_GAME_SCRIPT_MULTIPLIER.favorite;
+      if (dog == null || p.team === dog) return DST_GAME_SCRIPT_MULTIPLIER.underdog;
+      return 1;
+    };
+    const positional = (p: OwnershipPriorPlayer) => (pos(p) === "K" ? SHOWDOWN_KICKER_MULTIPLIER : 1) * gameScript(p);
+    const isPunt = (p: OwnershipPriorPlayer) => p.salary > 0 && p.salary < SHOWDOWN_PUNT_SALARY_MAX && !p.isOut;
+    // Captain first (v3 shape, plus the positional prior), so each player's flex
+    // cap is what his captain share leaves under the one-slot total.
+    const captainScores = new Map(players.map((p) => [p.dkPlayerId,
+      p.captainSalary == null ? 0
+        : Math.pow(ownershipScore(p, p.captainSalary, SHOWDOWN_VALUE_EXPONENT), CAPTAIN_EXPONENT)
+          * (CAPTAIN_POSITION_MULTIPLIER[pos(p)] ?? 1) * gameScript(p)]));
+    const captainAlloc = allocateBudgetDetailed(captainScores, SHOWDOWN_CAPTAIN_BUDGET, SHOWDOWN_CAPTAIN_MAX_PCT);
+    const captain = captainAlloc.shares;
+    const flexCap = (id: number) => Math.min(SHOWDOWN_FLEX_MAX_PCT, SHOWDOWN_TOTAL_MAX_PCT - (captain.get(id) ?? 0));
+    // Punt tier: a reserved slice of the flex budget, shared on points alone.
+    const puntScores = new Map(players.filter(isPunt).map((p) => {
+      const pts = fieldPoints(p);
+      const status = STATUS_MULTIPLIER[(p.dkStatus ?? "").trim().toUpperCase()] ?? 1;
+      return [p.dkPlayerId, pts == null || pts <= 0 ? 0 : Math.max(pts, 0.5) * status * positional(p)];
+    }));
+    const puntAlloc = allocateBudgetDetailed(puntScores, SHOWDOWN_PUNT_FLEX_BUDGET, (id) => Math.min(SHOWDOWN_PUNT_MAX_PCT, flexCap(id)));
+    const puntTaken = SHOWDOWN_PUNT_FLEX_BUDGET - puntAlloc.unallocated;
+    // Everyone else shares the rest, v3 shape plus the positional terms.
+    const mainScores = new Map(players.filter((p) => !isPunt(p)).map((p) => [p.dkPlayerId, ownershipScore(p, p.salary, SHOWDOWN_VALUE_EXPONENT) * positional(p)]));
+    const mainAlloc = allocateBudgetDetailed(mainScores, SHOWDOWN_FLEX_BUDGET - puntTaken, flexCap);
+    const flex = new Map<number, number>([...puntAlloc.shares, ...mainAlloc.shares]);
+    return { version: NFL_OWNERSHIP_PRIOR_VERSION, format, budgetPct: SHOWDOWN_FLEX_BUDGET + SHOWDOWN_CAPTAIN_BUDGET,
+      unallocatedPct: round(mainAlloc.unallocated + captainAlloc.unallocated),
+      notes: { variant, puntTierPlayers: puntScores.size, puntTierPct: round(puntTaken), gameScriptKnown: fav != null },
+      players: players.map((p) => { const f = flex.get(p.dkPlayerId) ?? 0, c = captain.get(p.dkPlayerId) ?? 0;
+        return { dkPlayerId: p.dkPlayerId, ownPct: round(f + c), captainPct: round(c), flexPct: round(f) }; }) };
+  }
+  const own = new Map<number, number>();
+  let unallocated = 0;
+  for (const [position, budget] of Object.entries(CLASSIC_POSITION_BUDGETS_V4)) {
+    const group = players.filter((p) => pos(p) === position);
+    const alloc = allocateBudgetDetailed(new Map(group.map((p) => [p.dkPlayerId, ownershipScore(p)])), budget, CLASSIC_MAX_PCT);
+    for (const [id, pct] of alloc.shares) own.set(id, pct);
+    unallocated += alloc.unallocated;
+  }
+  return { version: NFL_OWNERSHIP_PRIOR_VERSION, format, budgetPct: Object.values(CLASSIC_POSITION_BUDGETS_V4).reduce((a, b) => a + b, 0), unallocatedPct: round(unallocated),
+    notes: { variant },
+    players: players.map((p) => ({ dkPlayerId: p.dkPlayerId, ownPct: round(own.get(p.dkPlayerId) ?? 0), captainPct: null, flexPct: null })) };
+}
+
+/** The v3 algorithm, unchanged, mirrored by model/nfl_showdown_ownership_eval.prior_showdown. */
+export function projectOwnershipPriorV3(players: readonly OwnershipPriorPlayer[], format: "classic" | "showdown"): OwnershipPriorResult {
   const round = (v: number) => Math.round(v * 100) / 100;
   if (format === "showdown") {
     const flexScores = new Map(players.map((p) => [p.dkPlayerId, ownershipScore(p, p.salary, SHOWDOWN_VALUE_EXPONENT)]));
@@ -183,7 +302,7 @@ export function projectOwnershipPrior(players: readonly OwnershipPriorPlayer[], 
     const flexAlloc = allocateBudgetDetailed(flexScores, SHOWDOWN_FLEX_BUDGET,
       (id) => Math.min(SHOWDOWN_FLEX_MAX_PCT, SHOWDOWN_TOTAL_MAX_PCT - (captain.get(id) ?? 0)));
     const flex = flexAlloc.shares;
-    return { version: NFL_OWNERSHIP_PRIOR_VERSION, format, budgetPct: SHOWDOWN_FLEX_BUDGET + SHOWDOWN_CAPTAIN_BUDGET,
+    return { version: NFL_OWNERSHIP_PRIOR_V3_VERSION, format, budgetPct: SHOWDOWN_FLEX_BUDGET + SHOWDOWN_CAPTAIN_BUDGET,
       unallocatedPct: round(flexAlloc.unallocated + captainAlloc.unallocated),
       players: players.map((p) => { const f = flex.get(p.dkPlayerId) ?? 0, c = captain.get(p.dkPlayerId) ?? 0;
         return { dkPlayerId: p.dkPlayerId, ownPct: round(f + c), captainPct: round(c), flexPct: round(f) }; }) };
@@ -196,6 +315,6 @@ export function projectOwnershipPrior(players: readonly OwnershipPriorPlayer[], 
     for (const [id, pct] of alloc.shares) own.set(id, pct);
     unallocated += alloc.unallocated;
   }
-  return { version: NFL_OWNERSHIP_PRIOR_VERSION, format, budgetPct: Object.values(CLASSIC_POSITION_BUDGETS).reduce((a, b) => a + b, 0), unallocatedPct: round(unallocated),
+  return { version: NFL_OWNERSHIP_PRIOR_V3_VERSION, format, budgetPct: Object.values(CLASSIC_POSITION_BUDGETS).reduce((a, b) => a + b, 0), unallocatedPct: round(unallocated),
     players: players.map((p) => ({ dkPlayerId: p.dkPlayerId, ownPct: round(own.get(p.dkPlayerId) ?? 0), captainPct: null, flexPct: null })) };
 }

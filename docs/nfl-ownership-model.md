@@ -189,3 +189,30 @@ improvement, not a proven lineup improvement.
 with no feature in this prior. Next candidates: a salary-tier or role feature,
 and a separate kicker treatment; judge each on the holdout contests, not the
 ones above.
+
+## `nfl-ownership-prior-v4` — committed before the week 6 Monday Showdown, WAS@SF (2026-10-19)
+
+Owner's decision: commit stated corrections now and grade them, rather than
+wait for a fitted model. Every constant is a judgement read off the misses in
+`docs/nfl-ownership-review-2026-10-19.md`; none is fitted, and the scorecard
+(`docs/nfl-ownership-scorecard-v1.md`) grades v4 beside v3 on frozen forecasts.
+v3 stays callable (`variant: "v3"`) and the Python mirror still pins it.
+
+| change | evidence | constant |
+|---|---|---|
+| Classic TE budget 105 -> 135 (RB 230, WR 335) | recorded TE totals 137.71 / 134.09 / 137.12% on the weeks 3-5 Millionaires, i.e. 34-38% TE FLEX against the 5% implied | `CLASSIC_POSITION_BUDGETS_V4` |
+| Showdown punt tier: players under $3,000 share a reserved 60 of the 500 flex points on points^1, cap 30; unused slice returns to the main pool | Ferguson $1,800 19-21.7% actual vs 0.8-1.9%; Lance 23.87% vs 1.45%; Treadwell $3,200 19.3% vs 2.4% (Treadwell is above the tier) | `SHOWDOWN_PUNT_*` |
+| Kicker flex score x 0.6 | Shrader 67% projected vs 33.3% actual after v3 | `SHOWDOWN_KICKER_MULTIPLIER` |
+| DST x 1.3 favorite / 0.7 underdog when the slate resolved a favorite | DST ownership follows the line (Classic DST Spearman 0.33) | `DST_GAME_SCRIPT_MULTIPLIER` |
+| Captain score x TE 0.7 / K 0.25 / DST 0.25 | direction only; magnitudes are judgements. Fit on full-field captain shares (`drafted_by_slot.CPT`), not winners | `CAPTAIN_POSITION_MULTIPLIER` |
+
+Not changed: the 0.6/0.4 blend, the points^2 term, the 60% Classic cap, the
+Showdown value exponent. The field-points input is whatever the page shows,
+so anchored players already carry the market number; the scorecard splits
+grades by the anchor evidence stored per player.
+
+The calibration script now averages tied ranks and treats a missing label as
+a reconciled zero only when the contest's recorded mass is at least 99.5% of
+the roster slots; otherwise the row is unresolved and excluded. The 0.80
+Spearman figures above were computed without tie averaging and are withdrawn
+as headlines (tie-correct week 2 full pool: 0.663).

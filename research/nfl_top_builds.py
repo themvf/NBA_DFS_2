@@ -389,7 +389,10 @@ def review_contest(db, contest_id: str, *, top: int = 5, run_id: str | None = No
                         **summary(a)}
         unscored = (f"; {len(ours) - len(scored)} lineup(s) NOT scored, no points for {', '.join(missing_players)}"
                     if missing_players else "")
-        head = (f"best {scores[0]:.2f} (~#{best_rank:,} of {contest['entry_count']:,}), median {statistics.median(scores):.2f}"
+        # Without a score curve (stat-api opens only the top rows of some flagships) there is no rank to read.
+        place = (f"~#{best_rank:,} of {contest['entry_count']:,}" if best_rank is not None
+                 else f"rank unknown: no score curve for this contest, {contest['entry_count']:,} entries")
+        head = (f"best {scores[0]:.2f} ({place}), median {statistics.median(scores):.2f}"
                 if scores else "no lineup has points for every player")
         out += ["", f"== OURS: run {str(run['run_id'])[:8]} ({run['mode']}, {run['created_at']:%Y-%m-%d %H:%M} UTC), {len(ours)} lineups, "
                     f"scored with actual points: {head}, field median {contest['median_score']}; edge total {a['edge_total']:+.2f}{unscored}"]

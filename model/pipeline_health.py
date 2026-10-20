@@ -186,6 +186,10 @@ DATASET_REGISTRY: tuple[Dataset, ...] = (
             192, "refresh_nfl_dfs_postweek.yml", _NFL,
             "One row per post-week run (Tuesday and Wednesday) of nfl-prop-under-v1; the verdict is written "
             "once, when 300 bets and 10 game weeks are graded (docs/nfl-prop-under-study.md)."),
+    Dataset("nfl_prop_under_role_change_grade", "NFL prop-under role-change split weekly grade",
+            "nfl_prop_under_role_change_runs", "evaluated_at", 192, "refresh_nfl_dfs_postweek.yml", _NFL,
+            "One row per post-week run of nfl-prop-under-role-change-v1; one verdict at the single look after "
+            "week 18 (docs/nfl-prop-under-role-change-study.md)."),
     Dataset("nfl_flagship_builds", "NFL flagship contest builds (stat-api)", "nfl_dfs_field_user_builds", "captured_at",
             192, "refresh_nfl_dfs_postweek.yml", _NFL,
             "Every lineup of the top 100 finishers of the week's free flagship contests (Millionaire, Thursday "

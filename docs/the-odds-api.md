@@ -141,6 +141,7 @@ every requested market, including ones the book had not posted, so the estimate 
 | NBA "Fetch Player Props" | 5 markets × 1 region | 5/event |
 | `auditMlbPropCoverage` / `auditNbaPropCoverage` | 8 / 5 markets | per caller-supplied `gameKeys` |
 | NBA game lines | 1 region × 3 markets | 3 (manual only — no workflow) |
+| NBA Top Scorers (`ingest.nba_points_props`, `capture_nba_points_props.yml`, 2026-10-20) | `player_points` + `player_points_alternate` × 1 (6 named books) | 2/event (~24 on a 12-game night); manual until scheduled — at two runs a day ~50/day |
 
 Both prop buttons are deduped (10-minute window via
 `odds_api_prop_fetch_log`) and report live quota in their result message.

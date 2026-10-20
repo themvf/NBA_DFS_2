@@ -188,13 +188,77 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           python -m research.nfl_prop_under_study grade --write-db --registration docs/nfl-prop-under-study-v2.json --out artifacts/nfl_prop_under_v2_grade_latest.json
+      # nfl-prop-under-role-change-v1 (docs/nfl-prop-under-role-change-study.md):
+      # v2's flagged unders split by a teammate's fresh absence. Read-only on v2.
+      - name: Verify the role-change study
+        if: ${{ !cancelled() }}
+        run: python -m pytest -q tests/test_nfl_prop_under_role_change.py
+      - name: Grade role-change split
+        if: ${{ !cancelled() }}
+        run: |
+          python -m research.nfl_prop_under_role_change grade --write-db --out artifacts/nfl_prop_under_role_change_latest.json
       - name: Save the grade report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: nfl-prop-under-grade
-          path: artifacts/nfl_prop_under_grade_latest.json
+          path: |
+            artifacts/nfl_prop_under_grade_latest.json
+            artifacts/nfl_prop_under_v2_grade_latest.json
+            artifacts/nfl_prop_under_role_change_latest.json
           if-no-files-found: ignore
+          retention-days: 90
+
+  # Betting-scenario chart images (model/nfl_market_scenarios.py): moneyline,
+  # spread and total by situation, season to date vs 2023-25. Descriptive, for
+  # publishing; reads only the nflverse schedule file, so it has its own job.
+  market-scenario-charts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Render the charts
+        run: python -m model.nfl_market_scenarios --out-dir artifacts/nfl_market_scenarios
+      # Reader charts beyond the betting scenarios: play-by-play stories,
+      # schedule and market (line moves read our odds history), DFS and props.
+      - name: Render the play-by-play charts
+        if: ${{ !cancelled() }}
+        run: python -m model.nfl_play_charts --out-dir artifacts/nfl_market_scenarios
+      - name: Render the schedule and market charts
+        if: ${{ !cancelled() }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python -m model.nfl_schedule_market_charts --out-dir artifacts/nfl_market_scenarios
+      # The prop chart reads nfl_prop_implied_lines, which nothing else keeps current.
+      # Idempotent: only new rows are written, prices are never rewritten.
+      - name: Store the season's closing prop lines
+        if: ${{ !cancelled() }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python -m research.nfl_prop_implied build --weeks 1-18
+      - name: Render the DFS and prop charts
+        if: ${{ !cancelled() }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          python -m model.nfl_dfs_story_charts --out-dir artifacts/nfl_market_scenarios
+          python -m model.nfl_dfs_more_charts --out-dir artifacts/nfl_market_scenarios
+          python -m model.nfl_prop_player_charts --out-dir artifacts/nfl_market_scenarios
+          python -m model.nfl_ownership_charts --out-dir artifacts/nfl_market_scenarios
+      - name: Save the charts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nfl-market-scenario-charts
+          path: artifacts/nfl_market_scenarios/
+          if-no-files-found: error
           retention-days: 90
 
   # The weekly market-anchored game-leaders grade (nfl-leaders-anchored-test-v1).

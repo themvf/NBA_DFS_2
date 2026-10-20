@@ -16,7 +16,7 @@ export function nflIdentityPosition(value: string): string {
 
 type Identity = {name: string; team: string | null; position: string; gsisId?: string | null};
 export type NflRosterIdentity = Identity & {aliases:string[]; registryStatus:'resolved'|'conflict'|'unregistered';
-  localPlayerId?:number; fetchedAt?:string; claimDigests?:string[]; sourceGsisId?:string|null};
+  localPlayerId?:number; fetchedAt?:string; sourceGsisId?:string|null};
 export type IdentityMethod = 'gsis_id' | 'exact_name_position_team' | 'team_position_dst'
   | 'team_conflict' | 'position_conflict' | 'ambiguous' | 'unmatched' | 'missing_team' | 'identifier_conflict';
 

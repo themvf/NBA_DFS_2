@@ -5831,6 +5831,12 @@ INDEXES = [
     # The DFS page's per-player 'newest Sleeper depth row at the slate's cutoff' read: without it the
     # read sorted the whole season (378k rows, 188 MB on disk) to return ~1,000 (2026-10-10).
     "CREATE INDEX IF NOT EXISTS idx_ff_injury_observations_sleeper_depth ON ff_player_injury_observations(season, player_id, observed_at DESC, id DESC) WHERE source='sleeper' AND raw_payload ? 'depth_chart_order'",
+    # The NFL availability loader's two-week Sleeper window, covering every column it reads so the
+    # JSON payload is never touched: it read ~1.1 GB from disk per run without it (2026-10-20).
+    "CREATE INDEX IF NOT EXISTS idx_ff_injury_observations_sleeper_window ON ff_player_injury_observations(season, observed_at DESC) INCLUDE (player_id, id, source_snapshot_id, normalized_status) WHERE source='sleeper'",
+    # Insert-only, so autovacuum's default trigger (20% growth, ~5 days of captures) left the newest
+    # two weeks unmarked and the index-only scan above went back to the table for every row.
+    "ALTER TABLE ff_player_injury_observations SET (autovacuum_vacuum_insert_scale_factor = 0.02)",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_ff_player_injuries_one_active ON ff_player_injuries(player_id) WHERE active",
     "CREATE INDEX IF NOT EXISTS idx_ff_player_injuries_active ON ff_player_injuries(season, active, status)",
     "CREATE INDEX IF NOT EXISTS idx_ff_injury_events_recent ON ff_injury_events(player_id, occurred_at DESC)",
@@ -5891,6 +5897,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_dk_lineups_slate ON dk_lineups(slate_id, strategy)",
     "CREATE INDEX IF NOT EXISTS idx_game_odds_history_lookup ON game_odds_history(sport, game_date, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_game_odds_history_matchup ON game_odds_history(sport, matchup_id, captured_at DESC)",
+    # CFB bootstrap's 'unprocessed captures' probe reads CFB ids without the table (2026-10-20).
+    "CREATE INDEX IF NOT EXISTS idx_game_odds_history_cfb_id ON game_odds_history(id) WHERE sport='cfb'",
     "CREATE INDEX IF NOT EXISTS idx_nfl_evidence_source_key ON nfl_evidence_observations(source, source_record_key, system_observed_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_nfl_play_fact_current ON nfl_play_fact_revisions(game_id, play_id) WHERE revision_status = 'current'",
     "CREATE INDEX IF NOT EXISTS idx_nfl_context_current ON nfl_context_snapshots(definition_id, subject_id, target_id, as_of_at DESC)",
@@ -6334,6 +6342,36 @@ INDEXES = [
          ON nfl_prop_under_study_verdicts FOR EACH ROW EXECUTE FUNCTION reject_nfl_prop_under_study_mutation();
        END IF;
     END $$""",
+    # nfl-prop-under-role-change-v1 (docs/nfl-prop-under-role-change-study.md):
+    # flagged unders after a teammate's fresh absence. One row per weekly grade
+    # and one verdict at the single look after week 18. Both append-only.
+    """CREATE TABLE IF NOT EXISTS nfl_prop_under_role_change_runs (
+        id BIGSERIAL PRIMARY KEY,
+        study TEXT NOT NULL,
+        evaluated_at TIMESTAMPTZ NOT NULL,
+        tagged_bets INTEGER NOT NULL,
+        untagged_bets INTEGER NOT NULL,
+        tagged_game_weeks INTEGER NOT NULL,
+        difference_roi DOUBLE PRECISION,
+        report JSONB NOT NULL
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_prop_under_role_change_runs ON nfl_prop_under_role_change_runs(study, evaluated_at DESC)",
+    """CREATE TABLE IF NOT EXISTS nfl_prop_under_role_change_verdicts (
+        study TEXT PRIMARY KEY,
+        verdict TEXT NOT NULL CHECK (verdict IN ('TAGGED_WORSE','TAGGED_BETTER','NO_DIFFERENCE','INCONCLUSIVE')),
+        run_id BIGINT NOT NULL REFERENCES nfl_prop_under_role_change_runs(id),
+        decided_at TIMESTAMPTZ NOT NULL
+    )""",
+    """DO $$ BEGIN
+       IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'nfl_prop_under_role_change_runs_immutable') THEN
+         CREATE TRIGGER nfl_prop_under_role_change_runs_immutable BEFORE UPDATE OR DELETE
+         ON nfl_prop_under_role_change_runs FOR EACH ROW EXECUTE FUNCTION reject_nfl_prop_under_study_mutation();
+       END IF;
+       IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'nfl_prop_under_role_change_verdicts_immutable') THEN
+         CREATE TRIGGER nfl_prop_under_role_change_verdicts_immutable BEFORE UPDATE OR DELETE
+         ON nfl_prop_under_role_change_verdicts FOR EACH ROW EXECUTE FUNCTION reject_nfl_prop_under_study_mutation();
+       END IF;
+    END $$""",
     # 2026-07-02: execution-book CLV. clv_pp measures the REFERENCE market
     # (did the sharp consensus move toward the flagged side — informational
     # content); dk_clv_pct measures the EXECUTION book (did DK's own price on
@@ -6538,3 +6576,13 @@ INDEXES = [
 # Shared observation DDL is dependency-free and also used by the targeted migration.
 from db.market_signal_schema import SCHEMA as MOVEMENT_OBSERVATION_SCHEMA, INDEX as MOVEMENT_OBSERVATION_INDEX
 MIGRATIONS.extend([MOVEMENT_OBSERVATION_SCHEMA, MOVEMENT_OBSERVATION_INDEX])
+
+# NFL DFS ownership label provenance (docs/nfl-ownership-scorecard-v1.md section 3):
+# append-only, one row per (contest, player, slot, classifier version).
+from db.nfl_ownership_provenance_schema import STATEMENTS as NFL_OWNERSHIP_PROVENANCE_STATEMENTS
+MIGRATIONS.extend(NFL_OWNERSHIP_PROVENANCE_STATEMENTS)
+
+# NFL DFS ownership scorecard grades (docs/nfl-ownership-scorecard-v1.md section 7):
+# append-only, one row per (contest, horizon, capture, forecast version, population, slot).
+from db.nfl_ownership_scorecard_schema import STATEMENTS as NFL_OWNERSHIP_SCORECARD_STATEMENTS
+MIGRATIONS.extend(NFL_OWNERSHIP_SCORECARD_STATEMENTS)

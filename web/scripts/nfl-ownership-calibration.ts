@@ -25,7 +25,14 @@ const pearson = (x: number[], y: number[]) => {
   for (let i = 0; i < n; i += 1) { sxy += (x[i] - mx) * (y[i] - my); sxx += (x[i] - mx) ** 2; syy += (y[i] - my) ** 2; }
   return sxy / Math.sqrt(sxx * syy);
 };
-const ranks = (v: number[]) => { const idx = v.map((x, i) => [x, i] as const).sort((a, b) => a[0] - b[0]); const r = new Array(v.length); idx.forEach(([, i], k) => { r[i] = k + 1; }); return r as number[]; };
+/** Averaged tied ranks. Before 2026-10-19 ties took arbitrary consecutive ranks, which with ~500 near-zero players inflated Spearman (0.80 reported vs 0.66 tie-correct on week 2). */
+const ranks = (v: number[]) => {
+  const idx = v.map((x, i) => [x, i] as const).sort((a, b) => a[0] - b[0]); const r = new Array<number>(v.length);
+  for (let k = 0; k < idx.length;) { let j = k; while (j + 1 < idx.length && idx[j + 1][0] === idx[k][0]) j += 1; const avg = (k + j) / 2 + 1; for (let m = k; m <= j; m += 1) r[idx[m][1]] = avg; k = j + 1; }
+  return r;
+};
+/** A missing label is a reconciled zero only when the contest record is complete enough to say so (docs/nfl-ownership-scorecard-v1.md section 3). */
+const RECONCILED_ZERO_MIN_MASS = 0.995;
 const spearman = (x: number[], y: number[]) => pearson(ranks(x), ranks(y));
 const f1 = (v: number) => (Number.isFinite(v) ? v.toFixed(1) : "n/a");
 const f2 = (v: number) => (Number.isFinite(v) ? v.toFixed(2) : "n/a");
@@ -36,7 +43,7 @@ const f2 = (v: number) => (Number.isFinite(v) ? v.toFixed(2) : "n/a");
   const { normalizeName } = await import("../src/lib/nfl-dfs/field-audit");
   const { db } = await import("../src/db"); const { sql } = await import("drizzle-orm");
   const rowsOf = (r: unknown) => (r as { rows: Record<string, unknown>[] }).rows;
-  const contests = rowsOf(await db.execute(sql`SELECT contest_id, format, season, week, slate_upload_id, entry_count FROM nfl_dfs_field_contests ORDER BY season, week, format`));
+  const contests = rowsOf(await db.execute(sql`SELECT contest_id, format, season, week, slate_upload_id, entry_count, file_name, score_curve IS NOT NULL AS full_standings FROM nfl_dfs_field_contests ORDER BY season, week, format`));
   if (!contests.length) { console.log("No imported contests. Import a contest's standings on the Results step first."); return; }
   const summary: Array<{ label: string; n: number; r: number; rho: number; mae: number; bias: number }> = [];
   for (const c of contests) {
@@ -52,19 +59,32 @@ const f2 = (v: number) => (Number.isFinite(v) ? v.toFixed(2) : "n/a");
       .map((r) => [String(r.normalized_name), Number(r.drafted_pct)]));
     const seen = new Set<string>();
     const rows: Row[] = [];
+    const slots = format === "classic" ? 9 : 6;
+    const recordedMass = [...actual.values()].reduce((a, b) => a + b, 0) / (slots * 100);
+    // Scorecard section 3: a DraftKings export lists every drafted player, so it is
+    // complete whatever its printed mass (several Showdowns sit at 594-598 of 600).
+    // A stat-api import is complete only at the mass floor AND with full standings;
+    // dfsdb records (top-50 scorers only) never are.
+    const source = String(c.file_name ?? "").startsWith("stat-api") ? "stat-api" : String(c.contest_id).startsWith("dfsdb-") ? "dfsdb" : "draftkings";
+    const zerosReconciled = source === "draftkings" || (source === "stat-api" && Boolean(c.full_standings) && recordedMass >= RECONCILED_ZERO_MIN_MASS);
+    let unresolved = 0;
     for (const p of slate.players) {
       const key = normalizeName(p.name);
       if (seen.has(key)) continue; seen.add(key);
-      // A slate player the field never drafted is a real 0, not a missing row.
-      rows.push({ name: p.name, position: p.position, team: p.team, salary: p.salary, ours: ours.get(p.dkPlayerId) ?? 0, actual: actual.get(key) ?? 0 });
+      const label = actual.get(key);
+      // A slate player with no label is a reconciled 0 only when the contest record is
+      // near-complete; otherwise the row is unresolved and excluded, never zeroed.
+      if (label == null && !zerosReconciled) { unresolved += 1; continue; }
+      rows.push({ name: p.name, position: p.position, team: p.team, salary: p.salary, ours: ours.get(p.dkPlayerId) ?? 0, actual: label ?? 0 });
     }
     const matchedField = [...actual.keys()].filter((k) => seen.has(k)).length;
+    console.log(`\n== ${label}`);
+    console.log(`  recorded mass ${(recordedMass * 100).toFixed(1)}% of ${slots * 100}% · ${source} · missing labels ${zerosReconciled ? "counted as reconciled zeros" : `UNRESOLVED (${unresolved} excluded)`} · prior ${prior.version}`);
     const x = rows.map((r) => r.ours), y = rows.map((r) => r.actual);
     const err = rows.map((r) => r.ours - r.actual);
     const mae = err.reduce((t, e) => t + Math.abs(e), 0) / err.length, bias = err.reduce((t, e) => t + e, 0) / err.length;
     const r = pearson(x, y), rho = spearman(x, y);
     summary.push({ label, n: rows.length, r, rho, mae, bias });
-    console.log(`\n== ${label}`);
     console.log(`  players ${rows.length} · field rows matched ${matchedField}/${actual.size} · our sum ${f1(x.reduce((a, b) => a + b, 0))}% vs actual sum ${f1(y.reduce((a, b) => a + b, 0))}%`);
     console.log(`  Pearson ${f2(r)} · Spearman ${f2(rho)} · MAE ${f2(mae)} pts · bias ${f2(bias)} pts (positive = we over-project ownership)`);
     for (const pos of ["QB", "RB", "WR", "TE", "DST"]) {
@@ -72,6 +92,8 @@ const f2 = (v: number) => (Number.isFinite(v) ? v.toFixed(2) : "n/a");
       const gx = g.map((w) => w.ours), gy = g.map((w) => w.actual);
       console.log(`    ${pos.padEnd(3)} n=${String(g.length).padStart(3)} Spearman ${f2(spearman(gx, gy))} MAE ${f2(g.reduce((t, w) => t + Math.abs(w.ours - w.actual), 0) / g.length)} · top actual ${g.sort((p, q) => q.actual - p.actual).slice(0, 3).map((w) => `${w.name} ${f1(w.actual)}% (ours ${f1(w.ours)}%)`).join(", ")}`);
     }
+    const owned = rows.filter((w) => w.actual >= 1);
+    if (owned.length >= 5) console.log(`  diagnostic, actual >= 1% (outcome-selected, never a gate): n=${owned.length} MAE ${f2(owned.reduce((t, w) => t + Math.abs(w.ours - w.actual), 0) / owned.length)} Spearman ${f2(spearman(owned.map((w) => w.ours), owned.map((w) => w.actual)))}`);
     console.log("  biggest misses:");
     for (const w of [...rows].sort((p, q) => Math.abs(q.ours - q.actual) - Math.abs(p.ours - p.actual)).slice(0, 8))
       console.log(`    ${w.name.padEnd(24)} ${w.position.padEnd(3)} $${w.salary}  ours ${f1(w.ours).padStart(5)}%  actual ${f1(w.actual).padStart(5)}%`);

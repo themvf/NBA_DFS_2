@@ -5,7 +5,7 @@ import { db } from '@/db';
 import { loadSavedNflWorkspace, type NflWorkspacePlayer } from '@/app/dfs/nfl/actions';
 import { auditGames, installPoolAudit, poolAuditInstalled, savePoolCapture } from '@/db/nfl-dfs-pool-audit';
 import { canonicalAuditJson } from './audit-json';
-import { matchPoolGame, poolCaptureDue, POOL_AUDIT_VERSION, type AuditGame, type PoolAuditPayload, type PoolAuditPlayer } from './pool-audit';
+import { matchPoolGame, poolCaptureDue, PRE_LOCK_CAPTURE_MINUTES, POOL_AUDIT_VERSION, type AuditGame, type PoolAuditPayload, type PoolAuditPlayer } from './pool-audit';
 
 const number=(v:unknown):number|null=>typeof v==='number'&&Number.isFinite(v)?v:null;
 function livePlayer(p:NflWorkspacePlayer):PoolAuditPlayer {
@@ -36,11 +36,13 @@ export async function capturePool(uploadId:string, dueOnly=false) {
   const salaryGames=await db.execute(sql`SELECT DISTINCT team,game_key,game_info FROM nfl_dfs_slate_players WHERE upload_id=${uploadId}::uuid`);
   const gameIds=new Set(salaryGames.rows.map(p=>matchPoolGame({team:String(p.team),gameKey:p.game_key as string|null,gameInfo:p.game_info as string|null},weekGames).id));
   const games=weekGames.filter(g=>gameIds.has(g.id));
-  const existing=await db.execute(sql`SELECT game_id,bool_or(observed_at<kickoff) AS pregame
+  const existing=await db.execute(sql`SELECT game_id,bool_or(observed_at<kickoff) AS pregame,
+    bool_or(observed_at>kickoff-make_interval(mins=>${PRE_LOCK_CAPTURE_MINUTES.from}::int) AND observed_at<=kickoff-make_interval(mins=>${PRE_LOCK_CAPTURE_MINUTES.to}::int)) AS pre_lock
     FROM nfl_dfs_pool_captures WHERE upload_id=${uploadId}::uuid GROUP BY game_id`);
   const has=new Map(existing.rows.map(r=>[Number(r.game_id),Boolean(r.pregame)]));
+  const preLock=new Set(existing.rows.filter(r=>Boolean(r.pre_lock)).map(r=>Number(r.game_id)));
   const now=Date.now();
-  const due=(g:AuditGame)=>!dueOnly || poolCaptureDue(g.kickoff,now,has.has(g.id));
+  const due=(g:AuditGame)=>!dueOnly || poolCaptureDue(g.kickoff,now,has.has(g.id),preLock.has(g.id));
   if(dueOnly&&!games.some(due))return {uploadId,saved:0,players:0,skipped:true};
   const {slate}=await loadSavedNflWorkspace(uploadId);
   if(slate.players.length!==Number(info.player_count))throw new Error('Incomplete salary pool; capture refused');
