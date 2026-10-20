@@ -1,0 +1,39 @@
+name: Capture NBA points props
+
+# Feeds /nba/top-scorers. Manual for now; to be scheduled once the first
+# real captures have been checked. One credit per game on the shared
+# ODDS_API_KEY (one market, six books via bookmakers=).
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: Eastern date of the games, YYYY-MM-DD (blank = today ET)
+        required: false
+        default: ""
+      max_credits:
+        description: Hard Odds API credit ceiling for this run
+        required: true
+        default: "20"
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Capture player-points lines
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          GAME_DATE: ${{ inputs.date }}
+          MAX_CREDITS: ${{ inputs.max_credits || '20' }}
+        run: >-
+          python -m ingest.nba_points_props
+          ${GAME_DATE:+--date "$GAME_DATE"}
+          --max-credits "$MAX_CREDITS"
+          --apply

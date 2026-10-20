@@ -221,6 +221,17 @@ LEAGUE_AVG_USAGE      = 20.0
 - stats.nba.com blocks Vercel/cloud IPs — run `refresh_stats.bat` locally (weekly).
   The Odds API has no IP restrictions — player props work from Vercel directly.
 
+### NBA Top Scorers (`/nba/top-scorers`, 2026-10-20)
+
+Ranks tonight's players by the sportsbooks' player-points line. `ingest/nba_points_props.py`
+captures `player_points` for the configured six books (`bookmakers=`, 1 credit per game) into
+`prop_odds_history` (sport='nba'), filed under the Eastern date of tip-off; the page
+(`web/src/lib/nba-top-scorers.ts`, pure) reads each game's latest capture, so a pulled line
+drops off and is listed separately. Line = the line most books quote (a median, not a mean);
+P(over) is de-vigged only from books at that line. It is the market's number, unvalidated, and
+independent of `dk_players` (no slate needed). Run manually via `capture_nba_points_props.yml`;
+not yet scheduled. Last season's PPG/team come from `nba_player_stats` 2025-26.
+
 ## Data Refresh Workflow
 
 ```
