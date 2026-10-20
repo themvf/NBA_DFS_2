@@ -15,9 +15,11 @@ equal uniqueness (about 4-8 per lineup). So the measure here is the trade-off:
 the same files), so duplication is measured against the field that actually
 showed up, not a model of it.
 
-`prior_showdown` mirrors web/src/lib/nfl-dfs/ownership-prior.ts so a variant can
-be scored here before it is ported; tests/test_nfl_showdown_ownership_eval.py and
-web/scripts/test-nfl-ownership-prior.ts pin both to the same numbers.
+`prior_showdown` mirrors the v3 Showdown path of web/src/lib/nfl-dfs/ownership-prior.ts
+and `prior_showdown_v4` its v4 default, so a variant can be scored here before it is
+ported; tests/test_nfl_showdown_ownership_eval.py and web/scripts/test-nfl-ownership-
+prior.ts pin both languages to the same numbers (the v4 pins on the shared pool in
+tests/fixtures/nfl_ownership_prior_showdown_fixture.json).
 
 Pure: numpy/pandas/scipy, no database, no I/O. The seed is explicit; portfolios
 from one seed are noisy, so compare configurations over several.
@@ -84,6 +86,131 @@ def prior_showdown(slate: pd.DataFrame, points_exponent: float = 2.0, value_expo
     cap = _allocate(score(cap_salary) ** captain_exponent, captain_budget, np.full(n, captain_max))
     flex = _allocate(score(flex_salary), flex_budget, np.minimum(flex_max, total_max - cap))
     return flex, cap
+
+
+# nfl-ownership-prior-v4 Showdown constants, mirrored from
+# web/src/lib/nfl-dfs/ownership-prior.ts (the authority). All stated priors.
+V4_VERSION = "nfl-ownership-prior-v4"
+PUNT_SALARY_MAX = 3000
+PUNT_FLEX_BUDGET = 60.0
+PUNT_MAX_PCT = 30.0
+KICKER_MULTIPLIER = 0.6
+CAPTAIN_POSITION_MULTIPLIER = {"TE": 0.7, "K": 0.25, "DST": 0.25}
+DST_GAME_SCRIPT_MULTIPLIER = {"favorite": 1.3, "underdog": 0.7}
+PROJECTION_WEIGHT = 0.6
+
+
+def field_points(projection: float | None, dk_avg: float | None) -> float | None:
+    """The number the field drafts on (fieldPoints in the TS): 60/40 blend of our
+    projection and DraftKings' average, either alone when the other is missing."""
+    def ok(v):
+        return v is not None and not (isinstance(v, float) and np.isnan(v)) and np.isfinite(v)
+    proj = float(projection) if ok(projection) else None
+    avg = float(dk_avg) if ok(dk_avg) else None
+    if proj is None and avg is None:
+        return None
+    if proj is None:
+        return avg
+    if avg is None:
+        return proj
+    return PROJECTION_WEIGHT * proj + (1 - PROJECTION_WEIGHT) * avg
+
+
+def _allocate_detailed(ids: Sequence, scores: Mapping, budget: float, cap_for) -> tuple[dict, float]:
+    """Exact port of allocateBudgetDetailed, including its in-pass order: within a
+    pass `total` is fixed while `remaining` falls as players are capped, in key
+    order. Returns (shares by id, unallocated budget). `ids` fixes the order."""
+    out: dict = {}
+    open_ = {i: scores[i] for i in ids if scores[i] > 0}
+    remaining = float(budget)
+    for _ in range(16):
+        if not open_:
+            break
+        total = sum(open_.values())
+        if total <= 0:
+            break
+        capped = False
+        for i in list(open_):
+            share = remaining * (open_[i] / total)
+            cap = max(0.0, cap_for(i))
+            if share > cap:
+                out[i] = cap
+                del open_[i]
+                remaining -= cap
+                capped = True
+        if not capped:
+            for i, s in open_.items():
+                out[i] = remaining * (s / total)
+            remaining = 0.0
+            open_ = {}
+    for i in ids:
+        out.setdefault(i, 0.0)
+    return out, max(0.0, remaining)
+
+
+def prior_showdown_v4(slate: pd.DataFrame, favorite_team: str | None = None, underdog_team: str | None = None,
+                      ) -> tuple[np.ndarray, np.ndarray, dict]:
+    """nfl-ownership-prior-v4 Showdown: (flex %, captain %, notes) per row.
+
+    Needs columns pts (the field-drafted number, as for `prior_showdown`),
+    salary, captain_salary, dk_status, is_out, position, team. Mirrors
+    projectOwnershipPrior(..., "showdown") in the TS with `variant: "v4"`:
+    captain first (v3 shape x captain position x DST game script), then a punt
+    tier (salary < $3,000, not out) sharing 60 of the 500 flex points on points^1
+    capped at 30 (and under the one-slot total), then everyone else sharing what
+    the tier did not take on the v3 shape x kicker x DST game script. Values are
+    unrounded; the TS rounds each row to 0.01."""
+    n = len(slate)
+    pts = slate["pts"].to_numpy(float)
+    status = [str(s or "").strip().upper() for s in slate["dk_status"].fillna("")]
+    out = slate["is_out"].to_numpy(bool)
+    pos = [str(p or "").upper() for p in slate["position"].fillna("")]
+    teams = [None if (t is None or (isinstance(t, float) and np.isnan(t)) or t == "") else str(t)
+             for t in slate["team"]]
+    salary = slate["salary"].to_numpy(float)
+    cap_salary = np.nan_to_num(slate["captain_salary"].to_numpy(float), nan=0.0)
+    fav, dog = favorite_team, underdog_team                  # TS: fav truthiness, dog == null
+
+    def game_script(i: int) -> float:
+        if pos[i] != "DST" or not teams[i] or not fav:
+            return 1.0
+        if teams[i] == fav:
+            return DST_GAME_SCRIPT_MULTIPLIER["favorite"]
+        if dog is None or teams[i] == dog:
+            return DST_GAME_SCRIPT_MULTIPLIER["underdog"]
+        return 1.0
+
+    def positional(i: int) -> float:
+        return (KICKER_MULTIPLIER if pos[i] == "K" else 1.0) * game_script(i)
+
+    def score(i: int, sal: float) -> float:                     # ownershipScore, value exponent 0.5
+        if out[i] or not sal > 0 or not pts[i] > 0:
+            return 0.0
+        value = pts[i] / (max(sal, VALUE_SALARY_FLOOR) / 1000.0)
+        return (max(pts[i], 0.5) ** 2.0) * (max(value, 0.2) ** 0.5) * STATUS_MULTIPLIER.get(status[i], 1.0)
+
+    ids = list(range(n))
+    captain_scores = {i: (score(i, cap_salary[i]) ** 1.5) * CAPTAIN_POSITION_MULTIPLIER.get(pos[i], 1.0) * game_script(i)
+                      for i in ids}
+    captain, cap_unalloc = _allocate_detailed(ids, captain_scores, 100.0, lambda i: 50.0)
+
+    def flex_cap(i: int) -> float:
+        return min(90.0, 95.0 - captain.get(i, 0.0))
+
+    is_punt = [salary[i] > 0 and salary[i] < PUNT_SALARY_MAX and not out[i] for i in ids]
+    punt_ids = [i for i in ids if is_punt[i]]
+    punt_scores = {i: (0.0 if not pts[i] > 0 else max(pts[i], 0.5) * STATUS_MULTIPLIER.get(status[i], 1.0) * positional(i))
+                   for i in punt_ids}
+    punt, punt_unalloc = _allocate_detailed(punt_ids, punt_scores, PUNT_FLEX_BUDGET,
+                                            lambda i: min(PUNT_MAX_PCT, flex_cap(i)))
+    punt_taken = PUNT_FLEX_BUDGET - punt_unalloc
+    main_ids = [i for i in ids if not is_punt[i]]
+    main_scores = {i: score(i, salary[i]) * positional(i) for i in main_ids}
+    main, main_unalloc = _allocate_detailed(main_ids, main_scores, 500.0 - punt_taken, flex_cap)
+    flex = np.array([{**punt, **main}.get(i, 0.0) for i in ids])
+    notes = {"variant": "v4", "puntTierPlayers": len(punt_ids), "puntTierPct": punt_taken,
+             "gameScriptKnown": favorite_team is not None, "unallocatedPct": main_unalloc + cap_unalloc}
+    return flex, np.array([captain[i] for i in ids]), notes
 
 
 def fit_metrics(slate: pd.DataFrame, flex: np.ndarray, cap: np.ndarray) -> dict[str, float]:

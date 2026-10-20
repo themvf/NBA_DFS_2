@@ -1,4 +1,4 @@
-# NFL DFS ownership scorecard — `nfl-ownership-scorecard-v1` (draft registration, 2026-10-19)
+# NFL DFS ownership scorecard — `nfl-ownership-scorecard-v2` (v1 registered 2026-10-19; v2 2026-10-20)
 
 One fixed definition of "better ownership", so every forecast version (the
 production prior, a fitted model, a field simulation) is graded the same way
@@ -6,18 +6,34 @@ and the meaning of the gate cannot drift between evaluations. Companion to
 `docs/nfl-ownership-model.md` (the Phase 2 promotion gate, unchanged) and
 `docs/nfl-ownership-review-2026-10-19.md` (the evidence this answers).
 
-Status: DRAFT. Constants below are proposed; freeze them by bumping this doc's
-status to REGISTERED before the first grade is published. After that, any
-change to a target, population, label rule, metric or holdout is
-`scorecard-v2` with its own first-grade date, and v1 grades are kept as
-written.
+Status: REGISTERED 2026-10-19 (owner accepted the proposed constants as
+written, before any grade under this scorecard was computed). Frozen values:
+
+| constant | value |
+|---|---|
+| `N_RELEVANT` (population 2) | Classic QB 12 / RB 20 / WR 30 / TE 12 / DST 12; Showdown every player |
+| Predicted-chalk thresholds | Classic >= 15%; Showdown flex >= 25%; Showdown captain >= 10% |
+| Salary tiers | < $3,000 / 3-4 / 4-5 / 5-6 / 6-7 / 7-8 / 8+ ($ thousands); Showdown punt tier < $2,500 |
+| Reconciled-zero mass floor (stat-api) | recorded mass >= 0.995 of roster slots x 100, AND full standings fetched |
+| Calibration bins | 0-1, 1-5, 5-10, 10-20, 20-35, 35+; Showdown flex adds 50+ |
+
+Any change to a target, population, label rule, metric, holdout or one of
+these constants is a new scorecard version with its own first-grade date, and
+earlier grades are kept as written.
+
+**v2 (2026-10-20, owner):** the 50,000-entry field-size floor is removed. It
+was a forecasting heuristic, not a grading rule. The only grade read under v1
+(WAS@SF contest 196786695, 47,562 entries, `docs/nfl-ownership-pregrade-2026-10-19-was-sf.md`)
+was tagged `below_target`; under v2 it is an ordinary graded slate. No other
+constant changed, and no grade was written to `nfl_ownership_scorecard_rows`
+under v1.
 
 ## 1. Target contests
 
 | | rule |
 |---|---|
 | Format | Classic and Showdown graded separately; nothing is pooled across formats |
-| Field size | `entry_count >= 50,000` as recorded on `nfl_dfs_field_contests`; smaller contests are stored and graded but tagged `below_target` and never count toward a gate |
+| Field size | no minimum. Entry count is recorded with every grade but does not include or exclude a contest (v2; v1 required 50,000) |
 | Reference contest per slate | the largest-field GPP on that slate that passes label provenance (section 3); other same-slate contests are `secondary` and reported, not gated. The Bijan Robinson case (42.57% vs 47.26% on one slate) shows contests differ by audience, so a model is graded on its reference contest only |
 | Contest attributes recorded | contest id, entry count, entry fee, max entries per user, slate upload id, format, first kickoff (ET and UTC) |
 
@@ -33,6 +49,14 @@ written.
   kickoff) are inside the forecast's information. A second horizon, the
   first capture inside 24 h, is graded as `early` and reported beside it.
   Both horizons are stated per grade; they are never averaged.
+  Capture schedule note (2026-10-19, not a scorecard change): the task-1
+  inventory found every final-window pool capture falls after this cutoff,
+  so the canonical capture was often the 24-hour one (TB@DAL's was 1,439
+  minutes out). The owner kept the rule and added one pool capture in the
+  20-25 minute window (`PRE_LOCK_CAPTURE_MINUTES`, `pool-audit.ts`) from the
+  next slate on; earlier slates keep the captures they have. The owner also
+  kept the 0.995 mass floor after the inventory showed week 4's Millionaire
+  at 0.99493, so its 446 missing labels stay `unresolved`.
 - A forecast records: ownership version, projection source for each player
   (`model`, `market_anchor`, `absence_commit`), availability as of capture,
   DK status as of capture, salary file digest. A capture missing any of these
@@ -81,7 +105,7 @@ Three populations, each reported on every grade; the gate uses the first.
 2. **Relevant players (pregame-defined).** Defined only from information in
    the frozen forecast: the top `N_RELEVANT` by predicted ownership plus the
    top `N_RELEVANT` by salary-adjusted field points (DK average blend) per
-   position, union. Proposed `N_RELEVANT`: Classic QB 12 / RB 20 / WR 30 /
+   position, union. Registered `N_RELEVANT`: Classic QB 12 / RB 20 / WR 30 /
    TE 12 / DST 12; Showdown every player (the pool is one game). Fixed
    before grading; does not look at realized ownership.
 3. **Diagnostics (outcome-defined, never a gate).** Actual ownership >= 1%;
