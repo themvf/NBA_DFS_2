@@ -229,6 +229,9 @@ def _feature_charts(db, out: Path) -> dict[str, bool]:
     from model import cfb_scenario_charts
 
     made.update(cfb_scenario_charts.build_charts(db, out))
+    from model import cfb_story_charts
+
+    made.update(cfb_story_charts.build_charts(db, out))
     return made
 
 

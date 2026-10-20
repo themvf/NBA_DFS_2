@@ -341,7 +341,8 @@ def split_seasons(games: list[dict], season: int | None = None) -> tuple[int, li
     return current, by.get(current, []), prior
 
 
-def build_charts(games: list[dict], out_dir: Path, season: int | None = None) -> dict[str, bool]:
+def build_charts(games: list[dict], out_dir: Path, season: int | None = None,
+                 late_scores: dict | None = None) -> dict[str, bool]:
     from model import cfb_scenario_charts as charts
 
     current, now, prior_games = split_seasons(games, season)
@@ -357,7 +358,69 @@ def build_charts(games: list[dict], out_dir: Path, season: int | None = None) ->
     for level, (slug, _) in GRIDS.items():
         name = f"nfl_grid_{slug}.png"
         made[name] = charts.grid_chart(rows, level, out_dir / name, grids=GRIDS)
+    made.update(build_story_charts(now, prior_games, rows, prior_rows, out_dir, late_scores, label))
     return made
+
+
+def build_story_charts(now: list[dict], prior_games: list[dict], rows: list[dict], prior_rows: list[dict],
+                       out_dir: Path, late_scores: dict | None, label: str) -> dict[str, bool]:
+    """The nine reader charts (model/story_charts.py) for the season to date."""
+    from model import story_charts as sc
+
+    rec = eligible(now)
+    o = lambda n: out_dir / f"nfl_story_{n}.png"   # noqa: E731
+    made = {
+        "nfl_story_every_game_spread.png": sc.margin_chart(rec, o("every_game_spread"), "NFL"),
+        "nfl_story_every_game_total.png": sc.total_chart(rec, o("every_game_total"), "NFL"),
+        "nfl_story_line_miss.png": sc.line_miss_chart(rec, o("line_miss"), "NFL"),
+        "nfl_story_bankroll.png": sc.bankroll_chart(rec, o("bankroll"), "NFL"),
+        "nfl_story_what_changed.png": sc.slope_chart(rows, prior_rows, o("what_changed"), "NFL", label,
+                                                     exclude=HOME_LENS),
+        "nfl_story_calibration.png": sc.calibration_chart(rec, eligible(prior_games), o("calibration"), "NFL", label),
+        "nfl_story_team_calendar.png": sc.team_calendar_chart(rec, o("team_calendar"), "NFL"),
+        "nfl_story_team_quadrant.png": sc.team_quadrant_chart(rec, o("team_quadrant"), "NFL"),
+        "nfl_story_outcomes.png": sc.outcomes_chart(rec, SPREAD_BANDS, o("outcomes"), "NFL"),
+    }
+    flips = []
+    for g in now:
+        late = (late_scores or {}).get(g["game_id"])
+        if late:
+            flips.append({**g, "late_home": late[0], "late_away": late[1]})
+    made["nfl_story_late_flips.png"] = sc.late_flips_chart(flips, o("late_flips"), "NFL")
+    return made
+
+
+def pbp_url(season: int) -> str:
+    return f"https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_{season}.csv.gz"
+
+
+def late_scores_from_pbp(rows: list[dict]) -> dict[str, tuple[int, int]]:
+    """{game_id: (home, away)} after the last regulation play that ended with 5:00 or more left."""
+    best: dict[str, tuple] = {}
+    for r in rows:
+        q, left = _num(r.get("qtr")), _num(r.get("game_seconds_remaining"))
+        h, a, pid = _num(r.get("total_home_score")), _num(r.get("total_away_score")), _num(r.get("play_id"))
+        if None in (q, left, h, a, pid) or q > 4 or left < 300:
+            continue
+        gid = r["game_id"]
+        if gid not in best or pid > best[gid][0]:
+            best[gid] = (pid, int(h), int(a))
+    return {gid: (h, a) for gid, (_, h, a) in best.items()}
+
+
+def fetch_late_scores(season: int, attempts: int = 3) -> dict[str, tuple[int, int]]:
+    import pandas as pd
+
+    cols = ["game_id", "play_id", "qtr", "game_seconds_remaining", "total_home_score", "total_away_score"]
+    last = None
+    for attempt in range(attempts):
+        try:
+            frame = pd.read_csv(pbp_url(season), usecols=cols, compression="gzip", low_memory=False)
+            return late_scores_from_pbp(frame.to_dict("records"))
+        except Exception as exc:  # noqa: BLE001 - retried, then raised
+            last = exc
+            time.sleep(2 ** attempt)
+    raise RuntimeError(f"nflverse play-by-play {season} download failed: {last}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -372,8 +435,10 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(f"{current}: no completed games with closing lines; nothing to chart")
     print(f"{VERSION}: {current} {graded} games graded (through week {max(g['week'] for g in now)}), "
           f"{len(eligible(prior))} in {PRIOR_SEASONS[0]}-{PRIOR_SEASONS[-1]}")
+    late = fetch_late_scores(current)
+    print(f"play-by-play: score with 5:00 left found for {sum(g['game_id'] in late for g in now)} of {len(now)} games")
     out = Path(args.out_dir)
-    for name, ok in build_charts(games, out, args.season).items():
+    for name, ok in build_charts(games, out, args.season, late).items():
         print(f"{out / name}: {'written' if ok else 'skipped, no data'}")
     return 0
 

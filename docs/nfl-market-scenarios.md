@@ -22,3 +22,19 @@ Descriptive, for publishing. No edge is claimed.
   `python -m model.nfl_market_scenarios --out-dir artifacts/nfl_market_scenarios`.
 - **Chart code:** shared with `model/cfb_scenario_charts.py`, which takes the
   NFL titles as arguments.
+
+## Reader charts (`model/story_charts.py`, 2026-10-20)
+
+The same games, shown ten ways, for both sports. The NFL images are written
+as `nfl_story_*.png` in the same job; the college ones as `story_*.png` in
+the CFB daily export (`model/cfb_story_charts.py`). Charts:
+every game against the spread and against the total (one dot per game), how
+far off the line came plus final margins, a weekly bankroll race ($100 a game
+on each side), the groups that changed most since 2023-25 (slope chart),
+favorites' actual against price-implied win rate (with 95% intervals), every
+team's cover result by week, a team quadrant (cover rate against over rate),
+favorites won-and-covered / won-not-covered / lost by spread band, and games
+whose spread result changed after 5:00 left in the fourth quarter. The
+late-flip chart reads the score with 5:00 left from nflverse play-by-play for
+the NFL, and from CFBD scoring plays for college. A college game is kept only
+when its scoring plays add up to its box score.
