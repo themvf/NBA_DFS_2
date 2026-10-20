@@ -224,11 +224,20 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: python -m model.nfl_schedule_market_charts --out-dir artifacts/nfl_market_scenarios
+      # The prop chart reads nfl_prop_implied_lines, which nothing else keeps current.
+      # Idempotent: only new rows are written, prices are never rewritten.
+      - name: Store the season's closing prop lines
+        if: ${{ !cancelled() }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python -m research.nfl_prop_implied build --weeks 1-18
       - name: Render the DFS and prop charts
         if: ${{ !cancelled() }}
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: python -m model.nfl_dfs_story_charts --out-dir artifacts/nfl_market_scenarios
+        run: |
+          python -m model.nfl_dfs_story_charts --out-dir artifacts/nfl_market_scenarios
+          python -m model.nfl_dfs_more_charts --out-dir artifacts/nfl_market_scenarios
       - name: Save the charts
         if: always()
         uses: actions/upload-artifact@v4
