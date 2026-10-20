@@ -85,3 +85,25 @@ Named in advance so the read-back cannot be chosen after the result. The
   higher. A large miss here is a "value hype" signal neither version models.
 - Full-pool MAE, bias and tied-rank Spearman for flex and observed captain,
   v3 beside v4, plus allocation by position.
+
+## Result (appended 2026-10-20, after import)
+
+Graded on the owner's DraftKings export of contest 196786695 (47,562 entries,
+below the 50,000 target, so `below_target`: descriptive only; complete
+export, missing players are reconciled zeros). Pool 45 active players, 44
+labelled. The Tuesday flagship import is graded separately.
+
+| slot | version | MAE | bias | Spearman (tied) | top-10 overlap |
+|---|---|---|---|---|---|
+| flex | v3 | 5.11 | +0.08 | 0.895 | 7 |
+| flex | v4 | 5.05 | +0.08 | 0.860 | 7 |
+| captain | v3 | 1.11 | +0.01 | 0.916 | 9 |
+| captain | v4 | 1.27 | +0.01 | 0.898 | 8 |
+
+Read-back answers: Kittle captain 17.3% (v3 10.2 nearer; v4's TE cut went the
+wrong way). Kickers flex 16.3 / 23.4 (v3 nearer; v4's x0.6 went the wrong
+way). Punt tier: Juszczyk 11.9 and Cowing 10.7 (v4 nearer), Watkins 4.4
+(both close). Cooks 19.3 and Ekeler 19.4 flex against 5-6% in both
+versions: the largest misses, matching the outside view's value-chalk call.
+Allocation: QB captain 33.9% actual vs 54-57% predicted; WR and TE captain
+roughly double what both versions gave. One slate; no constant changes.
