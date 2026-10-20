@@ -8,7 +8,11 @@ const early=capture('2026-09-20T16:00:00Z'),last=capture('2026-09-20T16:59:00Z')
 const kickoff=Date.parse(game.kickoff);
 assert.equal(poolCaptureDue(game.kickoff,kickoff-86400001,false),false);
 assert.equal(poolCaptureDue(game.kickoff,kickoff-86400000,false),true);
-assert.equal(poolCaptureDue(game.kickoff,kickoff-21*60000,true),false);
+assert.equal(poolCaptureDue(game.kickoff,kickoff-26*60000,true),false,'before the pre-lock window');
+assert.equal(poolCaptureDue(game.kickoff,kickoff-25*60000,true),true,'pre-lock capture at T-25');
+assert.equal(poolCaptureDue(game.kickoff,kickoff-21*60000,true),true,'pre-lock window still open');
+assert.equal(poolCaptureDue(game.kickoff,kickoff-21*60000,true,true),false,'one pre-lock capture only');
+assert.equal(poolCaptureDue(game.kickoff,kickoff-20*60000,true,true),true,'final window unaffected');
 assert.equal(poolCaptureDue(game.kickoff,kickoff-20*60000,true),true);
 assert.equal(poolCaptureDue(game.kickoff,kickoff-1,true),true);
 assert.equal(poolCaptureDue(game.kickoff,kickoff,true),false);

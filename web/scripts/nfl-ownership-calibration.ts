@@ -43,7 +43,7 @@ const f2 = (v: number) => (Number.isFinite(v) ? v.toFixed(2) : "n/a");
   const { normalizeName } = await import("../src/lib/nfl-dfs/field-audit");
   const { db } = await import("../src/db"); const { sql } = await import("drizzle-orm");
   const rowsOf = (r: unknown) => (r as { rows: Record<string, unknown>[] }).rows;
-  const contests = rowsOf(await db.execute(sql`SELECT contest_id, format, season, week, slate_upload_id, entry_count FROM nfl_dfs_field_contests ORDER BY season, week, format`));
+  const contests = rowsOf(await db.execute(sql`SELECT contest_id, format, season, week, slate_upload_id, entry_count, file_name, score_curve IS NOT NULL AS full_standings FROM nfl_dfs_field_contests ORDER BY season, week, format`));
   if (!contests.length) { console.log("No imported contests. Import a contest's standings on the Results step first."); return; }
   const summary: Array<{ label: string; n: number; r: number; rho: number; mae: number; bias: number }> = [];
   for (const c of contests) {
@@ -61,7 +61,12 @@ const f2 = (v: number) => (Number.isFinite(v) ? v.toFixed(2) : "n/a");
     const rows: Row[] = [];
     const slots = format === "classic" ? 9 : 6;
     const recordedMass = [...actual.values()].reduce((a, b) => a + b, 0) / (slots * 100);
-    const zerosReconciled = recordedMass >= RECONCILED_ZERO_MIN_MASS;
+    // Scorecard section 3: a DraftKings export lists every drafted player, so it is
+    // complete whatever its printed mass (several Showdowns sit at 594-598 of 600).
+    // A stat-api import is complete only at the mass floor AND with full standings;
+    // dfsdb records (top-50 scorers only) never are.
+    const source = String(c.file_name ?? "").startsWith("stat-api") ? "stat-api" : String(c.contest_id).startsWith("dfsdb-") ? "dfsdb" : "draftkings";
+    const zerosReconciled = source === "draftkings" || (source === "stat-api" && Boolean(c.full_standings) && recordedMass >= RECONCILED_ZERO_MIN_MASS);
     let unresolved = 0;
     for (const p of slate.players) {
       const key = normalizeName(p.name);
@@ -74,7 +79,7 @@ const f2 = (v: number) => (Number.isFinite(v) ? v.toFixed(2) : "n/a");
     }
     const matchedField = [...actual.keys()].filter((k) => seen.has(k)).length;
     console.log(`\n== ${label}`);
-    console.log(`  recorded mass ${(recordedMass * 100).toFixed(1)}% of ${slots * 100}% · missing labels ${zerosReconciled ? "counted as reconciled zeros" : `UNRESOLVED (${unresolved} excluded)`} · prior ${prior.version}`);
+    console.log(`  recorded mass ${(recordedMass * 100).toFixed(1)}% of ${slots * 100}% · ${source} · missing labels ${zerosReconciled ? "counted as reconciled zeros" : `UNRESOLVED (${unresolved} excluded)`} · prior ${prior.version}`);
     const x = rows.map((r) => r.ours), y = rows.map((r) => r.actual);
     const err = rows.map((r) => r.ours - r.actual);
     const mae = err.reduce((t, e) => t + Math.abs(e), 0) / err.length, bias = err.reduce((t, e) => t + e, 0) / err.length;

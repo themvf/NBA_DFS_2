@@ -43,6 +43,14 @@ grades are kept as written.
   kickoff) are inside the forecast's information. A second horizon, the
   first capture inside 24 h, is graded as `early` and reported beside it.
   Both horizons are stated per grade; they are never averaged.
+  Capture schedule note (2026-10-19, not a scorecard change): the task-1
+  inventory found every final-window pool capture falls after this cutoff,
+  so the canonical capture was often the 24-hour one (TB@DAL's was 1,439
+  minutes out). The owner kept the rule and added one pool capture in the
+  20-25 minute window (`PRE_LOCK_CAPTURE_MINUTES`, `pool-audit.ts`) from the
+  next slate on; earlier slates keep the captures they have. The owner also
+  kept the 0.995 mass floor after the inventory showed week 4's Millionaire
+  at 0.99493, so its 446 missing labels stay `unresolved`.
 - A forecast records: ownership version, projection source for each player
   (`model`, `market_anchor`, `absence_commit`), availability as of capture,
   DK status as of capture, salary file digest. A capture missing any of these

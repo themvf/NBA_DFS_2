@@ -21,9 +21,18 @@ export type PoolOutcome = { id: string; playerId: number; gameId: number; team: 
   actual: number | null; status: string; digest: string; computedAt: string; scoringVersion: string;
   evidence: Record<string, unknown> };
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
-export function poolCaptureDue(kickoff:string,now:number,hasSnapshot:boolean) {
+/**
+ * The ownership scorecard grades the last capture at or before kickoff minus
+ * 20 minutes (docs/nfl-ownership-scorecard-v1.md); the final-window ticks all
+ * fall after that, so without this the graded forecast was often the 24-hour
+ * one (owner's decision 2026-10-19). One capture in the 20-25 minute window,
+ * taken once: `hasPreLock` says a capture already exists there.
+ */
+export const PRE_LOCK_CAPTURE_MINUTES = { from: 25, to: 20 } as const;
+export function poolCaptureDue(kickoff:string,now:number,hasSnapshot:boolean,hasPreLock=false) {
   const remaining=Date.parse(kickoff)-now;
-  return remaining>0 && remaining<=86400000 && (!hasSnapshot||remaining<=20*60000)
+  const preLock=remaining>PRE_LOCK_CAPTURE_MINUTES.to*60000 && remaining<=PRE_LOCK_CAPTURE_MINUTES.from*60000 && !hasPreLock;
+  return remaining>0 && remaining<=86400000 && (!hasSnapshot||remaining<=20*60000||preLock)
     || remaining<=0 && remaining> -15*60000 && !hasSnapshot;
 }
 
