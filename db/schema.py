@@ -5897,6 +5897,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_dk_lineups_slate ON dk_lineups(slate_id, strategy)",
     "CREATE INDEX IF NOT EXISTS idx_game_odds_history_lookup ON game_odds_history(sport, game_date, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_game_odds_history_matchup ON game_odds_history(sport, matchup_id, captured_at DESC)",
+    # CFB bootstrap's 'unprocessed captures' probe reads CFB ids without the table (2026-10-20).
+    "CREATE INDEX IF NOT EXISTS idx_game_odds_history_cfb_id ON game_odds_history(id) WHERE sport='cfb'",
     "CREATE INDEX IF NOT EXISTS idx_nfl_evidence_source_key ON nfl_evidence_observations(source, source_record_key, system_observed_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_nfl_play_fact_current ON nfl_play_fact_revisions(game_id, play_id) WHERE revision_status = 'current'",
     "CREATE INDEX IF NOT EXISTS idx_nfl_context_current ON nfl_context_snapshots(definition_id, subject_id, target_id, as_of_at DESC)",

@@ -107,12 +107,19 @@ def bootstrap(database_url: str, *, apply: bool, new_origin: str = "legacy") -> 
         teams = list(cursor.fetchall())
         cursor.execute("SELECT id,cfbd_game_id,commence_time,fetched_at FROM cfb_matchups ORDER BY id")
         games = list(cursor.fetchall())
-        cursor.execute("""SELECT h.id,h.matchup_id,h.capture_key,h.books,h.captured_at
-          FROM game_odds_history h WHERE h.sport='cfb' AND NOT EXISTS (
+        # Two steps: find unprocessed CFB captures by id on idx_game_odds_history_cfb_id (index-only),
+        # then read whole rows for those ids alone. One step walked every sport's rows through the
+        # table to filter sport and anti-join, ~65 MB from disk on each of ~230 runs a day while
+        # nearly every run found nothing new (2026-10-20).
+        cursor.execute("""SELECT h.id FROM game_odds_history h WHERE h.sport='cfb' AND NOT EXISTS (
             SELECT 1 FROM cfb_engine_captures c
-            WHERE c.history_id=h.id AND c.normalization_version=%s)
-          ORDER BY h.id""", (NORMALIZATION_VERSION,))
-        histories = list(cursor.fetchall())
+            WHERE c.history_id=h.id AND c.normalization_version=%s)""", (NORMALIZATION_VERSION,))
+        pending_ids = [row["id"] for row in cursor.fetchall()]
+        histories = []
+        if pending_ids:
+            cursor.execute("""SELECT h.id,h.matchup_id,h.capture_key,h.books,h.captured_at
+              FROM game_odds_history h WHERE h.id = ANY(%s) ORDER BY h.id""", (pending_ids,))
+            histories = list(cursor.fetchall())
         if not apply:
             connection.rollback()
             return {"mode": "plan", "teams": len(teams), "events": len(games), "captures": len(histories),
