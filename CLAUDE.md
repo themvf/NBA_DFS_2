@@ -7741,6 +7741,19 @@ see the "Showdown: value exponent" section of `docs/nfl-ownership-model.md`.
 Contest standings lineups are summarized per contest in `nfl_dfs_field_structure`
 (`nfl-dfs-field-structure-v1`): duplication, heavy multi-entry share, pair lift.
 
+**v4 (2026-10-19, before the week 7 Monday Showdown; owner: commit and
+grade).** Classic TE budget 105 -> 135 (recorded TE totals 134-138% on three
+full-field Millionaires, i.e. 34-38% TE FLEX vs the 5% implied; RB 230, WR
+335). Showdown: a reserved punt tier (players under $3,000 share 60 of the 500
+flex points on points^1, cap 30, unused slice returned), kicker flex x 0.6,
+DST x 1.3/0.7 by the slate's favorite, captain x TE 0.7 / K 0.25 / DST 0.25.
+All stated, none fitted; `variant: "v3"` reproduces v3 and the Python mirror
+still pins it. The calibration script now averages tied ranks (the 0.80
+Spearman figures were tie-inflated; week 2 tie-correct is 0.663) and marks a
+missing label unresolved unless the contest's recorded mass is >= 99.5%.
+Grade under `docs/nfl-ownership-scorecard-v1.md`, never against the slates the
+constants were read from (weeks 2-5).
+
 ### GPP objective: multiplicative leverage and the ceiling cap (2026-09-27)
 
 The first build with the ownership prior live produced the SAME three lineups
