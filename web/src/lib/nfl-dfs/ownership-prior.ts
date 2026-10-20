@@ -61,7 +61,7 @@
  * Both are structural corrections, not fitted constants.
  */
 /**
- * v4 (2026-10-19, before the HOU@SEA Monday night Showdown; owner's decision to
+ * v4 (2026-10-19, before the WAS@SF Monday night Showdown; owner's decision to
  * commit and grade rather than wait for a fitted model). Every constant below is
  * a STATED prior read off the graded misses recorded in
  * docs/nfl-ownership-review-2026-10-19.md; none is fitted, and the scorecard
