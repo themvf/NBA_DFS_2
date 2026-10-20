@@ -37,6 +37,7 @@ export type PropRow = {
 
 export type SeasonStat = {
   name: string;
+  position?: string | null;
   ppg: number | null;
   games: number | null;
   teamName: string | null;
@@ -61,6 +62,11 @@ export type ScorerRow = {
   team: string | null;
   teamAbbrev: string | null;
   opponent: string | null;
+  opponentAbbrev: string | null;
+  /** Last season's listed position (G/F/C style), when matched. */
+  position: string | null;
+  /** 1 = this player has the highest line on his team in this game. */
+  teamRank: number | null;
   line: number;
   lineLow: number;
   lineHigh: number;
@@ -161,10 +167,15 @@ export function consensus(lines: BookLine[]): { line: number; pOver: number | nu
   return { line, pOver: probs.length ? median(probs) : null };
 }
 
+export type TeamName = { name: string; abbreviation: string };
+
 export function buildBoard(
   rows: PropRow[],
   lastSeason: SeasonStat[],
+  teams: TeamName[] = [],
 ): { scorers: ScorerRow[]; games: GameSummary[] } {
+  const abbrevOf = new Map(teams.map((t) => [teamKey(t.name), t.abbreviation]));
+  const abbrev = (name: string | null) => (name ? abbrevOf.get(teamKey(name)) ?? null : null);
   const stats = new Map<string, SeasonStat | null>();
   for (const s of lastSeason) {
     const key = nameKey(s.name);
@@ -172,7 +183,7 @@ export function buildBoard(
     stats.set(key, stats.has(key) ? null : s);
   }
 
-  const scorers: Omit<ScorerRow, "rank">[] = [];
+  const scorers: Omit<ScorerRow, "rank" | "teamRank">[] = [];
   const games = new Map<string, GameSummary>();
   for (const row of rows) {
     const lines = bookLines(row.books);
@@ -183,14 +194,18 @@ export function buildBoard(
     const statTeam = stat?.teamName ? teamKey(stat.teamName) : null;
     const onHome = statTeam != null && statTeam === teamKey(row.homeTeam);
     const onAway = statTeam != null && statTeam === teamKey(row.awayTeam);
+    const team = onHome ? row.homeTeam : onAway ? row.awayTeam : null;
+    const opponent = onHome ? row.awayTeam : onAway ? row.homeTeam : null;
     scorers.push({
       player: row.player,
       eventId: row.eventId,
       game,
       commenceTime: row.commenceTime,
-      team: onHome ? row.homeTeam : onAway ? row.awayTeam : null,
-      teamAbbrev: onHome || onAway ? stat?.teamAbbrev ?? null : null,
-      opponent: onHome ? row.awayTeam : onAway ? row.homeTeam : null,
+      team,
+      teamAbbrev: team ? stat?.teamAbbrev ?? abbrev(team) : null,
+      opponent,
+      opponentAbbrev: abbrev(opponent),
+      position: stat?.position ?? null,
       line: c.line,
       lineLow: Math.min(...lines.map((l) => l.line)),
       lineHigh: Math.max(...lines.map((l) => l.line)),
@@ -220,8 +235,17 @@ export function buildBoard(
   scorers.sort(
     (a, b) => b.line - a.line || (b.pOver ?? 0) - (a.pOver ?? 0) || a.player.localeCompare(b.player),
   );
+  const seen = new Map<string, number>();
   return {
-    scorers: scorers.map((s, i) => ({ ...s, rank: i + 1 })),
+    scorers: scorers.map((s, i) => {
+      let teamRank: number | null = null;
+      if (s.team) {
+        const key = `${s.eventId}|${s.team}`;
+        teamRank = (seen.get(key) ?? 0) + 1;
+        seen.set(key, teamRank);
+      }
+      return { ...s, rank: i + 1, teamRank };
+    }),
     games: [...games.values()].sort((a, b) => a.commenceTime.localeCompare(b.commenceTime) || a.game.localeCompare(b.game)),
   };
 }

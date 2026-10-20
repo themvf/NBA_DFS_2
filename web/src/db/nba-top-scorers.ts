@@ -2,7 +2,7 @@ import "server-only";
 
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
-import type { PropRow, SeasonStat } from "@/lib/nba-top-scorers";
+import type { PropRow, SeasonStat, TeamName } from "@/lib/nba-top-scorers";
 
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : String(v));
 const num = (v: unknown) => (v == null ? null : Number(v));
@@ -71,15 +71,25 @@ export async function getNbaPointsPropDates(limit = 14): Promise<string[]> {
 /** Per-game averages for one season, with the player's team name for matching to a game. */
 export async function getNbaSeasonStats(season: string): Promise<SeasonStat[]> {
   const result = await db.execute(sql`
-    SELECT nps.name, nps.ppg, nps.games, t.name AS team_name, t.abbreviation
+    SELECT nps.name, nps.position, nps.ppg, nps.games, t.name AS team_name, t.abbreviation
     FROM nba_player_stats nps
     LEFT JOIN teams t ON t.team_id = nps.team_id
     WHERE nps.season = ${season}`);
   return (result.rows as Record<string, unknown>[]).map((r) => ({
     name: String(r.name),
+    position: r.position == null ? null : String(r.position),
     ppg: num(r.ppg),
     games: num(r.games),
     teamName: r.team_name == null ? null : String(r.team_name),
     teamAbbrev: r.abbreviation == null ? null : String(r.abbreviation),
+  }));
+}
+
+/** Every NBA team's name and abbreviation, for labelling opponents. */
+export async function getNbaTeams(): Promise<TeamName[]> {
+  const result = await db.execute(sql`SELECT name, abbreviation FROM teams`);
+  return (result.rows as Record<string, unknown>[]).map((r) => ({
+    name: String(r.name),
+    abbreviation: String(r.abbreviation),
   }));
 }

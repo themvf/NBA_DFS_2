@@ -34,12 +34,21 @@ const board = buildBoard(
     { ...base, eventId: "e2", homeTeam: "Boston Celtics", awayTeam: "New York Knicks", player: "No Lines", books: {} },
   ],
   [
-    { name: "Nikola Jokić", ppg: 29.6, games: 70, teamName: "Denver Nuggets", teamAbbrev: "DEN" },
+    { name: "Nikola Jokić", position: "C", ppg: 29.6, games: 70, teamName: "Denver Nuggets", teamAbbrev: "DEN" },
     { name: "James Harden", ppg: 22.8, games: 79, teamName: "LA Clippers", teamAbbrev: "LAC" },
     { name: "Traded Guy", ppg: 18, games: 60, teamName: "Utah Jazz", teamAbbrev: "UTA" },
   ],
+  [
+    { name: "Denver Nuggets", abbreviation: "DEN" },
+    { name: "LA Clippers", abbreviation: "LAC" },
+  ],
 );
 assert.deepEqual(board.scorers.map((s) => s.player), ["Traded Guy", "Nikola Jokic", "James Harden"]);
+// Team rank counts within one team in one game; an unmatched player has none.
+assert.deepEqual(board.scorers.map((s) => s.teamRank), [null, 1, 1]);
+assert.equal(board.scorers[1].position, "C");
+assert.equal(board.scorers[1].opponentAbbrev, "LAC");
+assert.equal(board.scorers[2].opponentAbbrev, "DEN");
 assert.deepEqual(board.scorers.map((s) => s.rank), [1, 2, 3]);
 const jokic = board.scorers[1];
 assert.equal(jokic.team, "Denver Nuggets");
