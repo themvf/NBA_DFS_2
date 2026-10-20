@@ -197,6 +197,32 @@ jobs:
           if-no-files-found: ignore
           retention-days: 90
 
+  # Betting-scenario chart images (model/nfl_market_scenarios.py): moneyline,
+  # spread and total by situation, season to date vs 2023-25. Descriptive, for
+  # publishing; reads only the nflverse schedule file, so it has its own job.
+  market-scenario-charts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Render the charts
+        run: python -m model.nfl_market_scenarios --out-dir artifacts/nfl_market_scenarios
+      - name: Save the charts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nfl-market-scenario-charts
+          path: artifacts/nfl_market_scenarios/
+          if-no-files-found: error
+          retention-days: 90
+
   # The weekly market-anchored game-leaders grade (nfl-leaders-anchored-test-v1).
   grade-leaders-anchored:
     needs: review
