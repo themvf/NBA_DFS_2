@@ -61,3 +61,8 @@ def test_no_stat_line_on_a_finished_team_is_a_zero():
     assert pending == [] and rows[0]["actual"] == 0.0 and rows[0]["dnp"]
     _, _, pending = m.review_rows({1: _p(1, 12)}, {}, set())
     assert pending == [{"name": "P1", "team": "NE"}]
+
+
+def test_name_list_caps_long_lists():
+    assert m._name_list(["a", "b"]) == "a, b"
+    assert m._name_list([str(i) for i in range(9)]) == "0, 1, 2, 3, 4, 5 and 3 more"

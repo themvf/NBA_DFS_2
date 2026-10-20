@@ -151,6 +151,13 @@ def projections_by_name(projections: dict) -> dict:
     return {(p.get("name"), p.get("team")): float(p.get("ourProj") or 0.0) for p in projections.values()}
 
 
+def _name_list(names: list[str], limit: int = 6) -> str:
+    """A subtitle line that fits the page: the first `limit` names, then a count."""
+    if len(names) <= limit:
+        return ", ".join(names)
+    return ", ".join(names[:limit]) + f" and {len(names) - limit} more"
+
+
 def review_chart(rows: list[dict], surprises: list[dict], week: int, position: str, path: Path,
                  pending: list[dict] | None = None, top: int | None = None) -> bool:
     if not rows:
@@ -206,9 +213,9 @@ def review_chart(rows: list[dict], surprises: list[dict], week: int, position: s
     dnp = [r for r in rows if r.get("dnp")]
     if dnp:
         sub += ("\nDid not play, counted at 0 as DraftKings scored him: "
-                + ", ".join(f"{r['name']} {r['team']}" for r in dnp))
+                + _name_list([f"{r['name']} {r['team']}" for r in dnp]))
     if pending:
-        sub += "\nNot scored yet (results not loaded), left out: " + ", ".join(f"{x['name']} {x['team']}" for x in pending)
+        sub += "\nNot scored yet (results not loaded), left out: " + _name_list([f"{x['name']} {x['team']}" for x in pending])
     group = POSITION_NAMES.get(position, f"{position}s")
     title = (f"Week {week} {group} (top {top} by our projection): projections against the results" if top
              else f"Week {week} {group}: our projections against the results")
