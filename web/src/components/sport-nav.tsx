@@ -34,6 +34,7 @@ const PAGE_LINKS: Array<{
   sports?: NavSport[];
 }> = [
   { href: "/dfs", label: "DFS", sports: ["nba", "mlb"] },
+  { href: "/nba/top-scorers", label: "Top Scorers", sports: ["nba"] },
   { href: "/nfl", label: "NFL Board", sports: ["nfl"] },
   { href: "/dfs/nfl", label: "NFL DFS", sports: ["nfl"] },
   { href: "/nfl/projections", label: "NFL Projections", sports: ["nfl"] },
