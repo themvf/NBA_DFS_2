@@ -1,4 +1,4 @@
-# NFL DFS ownership scorecard — `nfl-ownership-scorecard-v2` (v1 registered 2026-10-19; v2 2026-10-20)
+# NFL DFS ownership scorecard — `nfl-ownership-scorecard-v3` (v1 registered 2026-10-19; v2 and v3 2026-10-20)
 
 One fixed definition of "better ownership", so every forecast version (the
 production prior, a fitted model, a field simulation) is graded the same way
@@ -27,6 +27,33 @@ was a forecasting heuristic, not a grading rule. The only grade read under v1
 was tagged `below_target`; under v2 it is an ordinary graded slate. No other
 constant changed, and no grade was written to `nfl_ownership_scorecard_rows`
 under v1.
+
+**v3 (2026-10-20, owner):** the canonical forecast is the LATEST capture at or
+before first kickoff minus 20 minutes from ANY source (pool capture, owner
+optimizer run, ghost freeze). v1/v2 took the preferred source in the order pool
+capture, run, ghost, even when a later source existed inside the window; on
+WAS@SF that picked a 23:03 pool capture over the 23:13 owner run that carried
+Mike Evans' and Stefon Diggs' Q statuses (section 2). What changed: the source
+rule only. The early horizon takes the latest capture at that horizon by the
+same rule. Affected grades: every slate where the latest source differs from the
+preferred one; in the 2026 weeks 2-6 regrade the latest capture is the owner
+run on 14 of 16 slates, the pool capture on TB@DAL and the ghost freeze on week
+6 Classic (`artifacts/nfl-ownership-scorecard/scorecard-v3-2026-10-20.md`). The
+v2 grades are kept as written (2,826 rows under `nfl-ownership-scorecard-v2`);
+v3 grades append under `nfl-ownership-scorecard-v3`, and the old preference pick
+is still pooled beside them as `preferred`. Pooled baseline under the latest
+rule (reference contests with complete labels, canonical, full pool):
+
+| format | slot | slates | version | MAE | bias | mean Spearman |
+|---|---|---:|---|---:|---:|---:|
+| Classic | overall | 3 | v3 | 1.26 | +0.00 | 0.808 |
+| Classic | overall | 3 | v4 | 1.26 | +0.00 | 0.808 |
+| Showdown | CPT | 11 | v3 | 1.54 | +0.01 | 0.844 |
+| Showdown | CPT | 11 | v4 | 1.62 | +0.01 | 0.842 |
+| Showdown | FLEX | 11 | v3 | 5.47 | +0.07 | 0.845 |
+| Showdown | FLEX | 11 | v4 | 5.57 | +0.08 | 0.801 |
+
+Intervals and per-slate rows are in the artifact above.
 
 ## 1. Target contests
 

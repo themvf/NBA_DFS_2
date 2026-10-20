@@ -1,4 +1,4 @@
-"""Baseline regrade of NFL DFS ownership forecasts under `nfl-ownership-scorecard-v2`.
+"""Regrade of NFL DFS ownership forecasts under `nfl-ownership-scorecard-v3`.
 
 Task 4 of docs/nfl-ownership-handoff-2026-10-19.md; the grading contract is
 docs/nfl-ownership-scorecard-v1.md (now scorecard v2). Read-only except for the
@@ -10,10 +10,12 @@ Per slate with an imported contest (2026, weeks 2-6):
 1. Frozen inputs, per horizon (canonical = last capture at or before first
    kickoff minus 20 min; early = first capture inside 24 h), per source in the
    scorecard's order of preference: pool capture (every game of the slate in one
-   capture instant), owner optimizer run's `input_snapshot`, ghost freeze. The
-   preferred available source is `primary`; others are graded beside it.
-2. Forecast versions from that one frozen input: `nfl-ownership-prior-v3` and
-   `-v4` recomputed exactly (Classic: Python port of the TS; Showdown: the pinned
+   capture instant), owner optimizer run's `input_snapshot`, ghost freeze. Under
+   scorecard v3 (2026-10-20) `primary` is the LATEST of them at the horizon
+   (`sc.CANONICAL_SOURCE_RULE`); the v1/v2 preference-order pick is kept as
+   `preferred` and graded beside it.
+2. Forecast versions from that one frozen input: `nfl-ownership-prior-v3`,
+   `-v4` and the drafted `-v5` recomputed exactly (Classic: Python port of the TS; Showdown: the pinned
    mirrors), plus the STORED ownership when its version is neither (v1/v2).
    The recomputation is checked against the stored numbers when the stored
    version is the same algorithm.
@@ -51,7 +53,9 @@ from research.nfl_ownership_provenance import load_records
 SEASON = 2026
 WEEKS = range(2, 7)
 SOURCE_ORDER = ("pool_capture", "optimizer_run", "ghost_freeze")
-VERSION_NAMES = {"v3": "nfl-ownership-prior-v3", "v4": "nfl-ownership-prior-v4", "v2": "nfl-ownership-prior-v2"}
+VERSION_NAMES = {"v3": "nfl-ownership-prior-v3", "v4": "nfl-ownership-prior-v4", "v5": "nfl-ownership-prior-v5",
+                 "v2": "nfl-ownership-prior-v2"}
+RECOMPUTED = ("v3", "v4", "v5")
 
 
 # --------------------------------------------------------------------------
@@ -167,23 +171,24 @@ def forecasts(df: pd.DataFrame, fmt: str, favorite, underdog) -> tuple[dict, dic
     stored_versions = sorted(df["stored_source"].dropna().unique())
     stored = stored_versions[0] if len(stored_versions) == 1 else (",".join(stored_versions) or None)
     if fmt == "classic":
-        for v in ("v3", "v4"):
+        for v in RECOMPUTED:
             out[VERSION_NAMES[v]] = pd.DataFrame({"normalized_name": df["normalized_name"], "overall": sc.prior_classic(df, v)})
         stored_frame = pd.DataFrame({"normalized_name": df["normalized_name"], "overall": df["stored_total"]})
-        same = {"nfl-ownership-prior-v2": "v3", "nfl-ownership-prior-v3": "v3", "nfl-ownership-prior-v4": "v4"}.get(stored)
+        same = {"nfl-ownership-prior-v2": "v3", "nfl-ownership-prior-v3": "v3", "nfl-ownership-prior-v4": "v4",
+                "nfl-ownership-prior-v5": "v5"}.get(stored)
         if same and df["stored_total"].notna().any():
             d = (out[VERSION_NAMES[same]]["overall"] - df["stored_total"]).abs()
             repro = {"stored": stored, "compared_to": VERSION_NAMES[same], "max_abs_diff": round(float(d.max()), 4),
                      "players_over_0.01": int((d > 0.0101).sum())}
     else:
-        for v in ("v3", "v4"):
+        for v in RECOMPUTED:
             flex, cap, notes = sc.prior_showdown_version(df, v, favorite, underdog)
             out[VERSION_NAMES[v]] = pd.DataFrame({"normalized_name": df["normalized_name"], "CPT": cap, "FLEX": flex})
-            if v == "v4":
-                repro["v4_notes"] = {k: (round(float(x), 3) if isinstance(x, float) else x) for k, x in notes.items()}
+            if v in ("v4", "v5"):
+                repro[f"{v}_notes"] = {k: (round(float(x), 3) if isinstance(x, float) else x) for k, x in notes.items()}
         stored_frame = pd.DataFrame({"normalized_name": df["normalized_name"], "CPT": df["stored_captain"],
                                      "FLEX": df["stored_flex"]})
-        same = {"nfl-ownership-prior-v3": "v3", "nfl-ownership-prior-v4": "v4"}.get(stored)
+        same = {"nfl-ownership-prior-v3": "v3", "nfl-ownership-prior-v4": "v4", "nfl-ownership-prior-v5": "v5"}.get(stored)
         if stored == "nfl-ownership-prior-v2":
             f2, c2, _ = sc.prior_showdown_version(df, "v2")
             d = np.maximum(np.abs(f2 - df["stored_flex"].to_numpy(float)), np.abs(c2 - df["stored_captain"].to_numpy(float)))
@@ -195,7 +200,7 @@ def forecasts(df: pd.DataFrame, fmt: str, favorite, underdog) -> tuple[dict, dic
             repro.update({"stored": stored, "compared_to": VERSION_NAMES[same], "max_abs_diff": round(float(d.max()), 4),
                           "players_over_0.01": int((d > 0.0101).sum())})
     stored_has_values = (df["stored_total"].notna().any() if fmt == "classic" else df["stored_flex"].notna().any())
-    if stored and stored_has_values and stored not in (VERSION_NAMES["v3"], VERSION_NAMES["v4"]):
+    if stored and stored_has_values and stored not in tuple(VERSION_NAMES[v] for v in RECOMPUTED):
         out[f"stored:{stored}"] = stored_frame
     repro["stored_version"] = stored
     return out, repro
@@ -388,8 +393,10 @@ def run(conn) -> dict:
                 continue
             latest_rank = max(range(len(chosen)), key=lambda i: (chosen[i][1]["at"], -i))
             for rank, (source, cap, df, cmeta) in enumerate(chosen):
-                primary = rank == 0
+                preferred = rank == 0
                 latest = rank == latest_rank
+                # Scorecard v3: the canonical (primary) forecast is the latest capture.
+                primary = latest if sc.CANONICAL_SOURCE_RULE == "latest" else preferred
                 fc, repro = forecasts(df, fmt, fav, dog)
                 stored_pred = df["stored_total"] if df["stored_total"].notna().any() else (
                     fc[VERSION_NAMES["v3"]]["overall"] if fmt == "classic" else pd.Series(0.0, index=df.index))
@@ -401,8 +408,7 @@ def run(conn) -> dict:
                     is_ref = reference is not None and c["contest_id"] == reference["contest_id"]
                     for g in grade_contest(df, fc, p, fmt, diagnostics=is_ref and primary, relevant=relevant):
                         version = g["version"]
-                        vshort = "v3" if version.endswith("v3") and not version.startswith("stored") else (
-                            "v4" if version.endswith("v4") and not version.startswith("stored") else "stored")
+                        vshort = next((v for v in RECOMPUTED if version == VERSION_NAMES[v]), "stored")
                         row = base_row(s, c, horizon, source, cmeta["capture_id"], cap["at"], s.first_kickoff, version,
                                        repro.get("stored_version"), sc.design_tag(vshort, fmt, s.week) if vshort != "stored" else "stored_forecast",
                                        g["population"], g["slot"], reference, provs)
@@ -411,7 +417,7 @@ def run(conn) -> dict:
                                     "spearman": m["spearman"], "pearson": m["pearson"], "class_counts": g["class_counts"],
                                     "metrics": m, "details": g["details"] | {
                                         "source_rank": "primary" if primary else "secondary_source",
-                                        "latest_capture": latest,
+                                        "latest_capture": latest, "preferred_source": preferred,
                                         "reproduction": repro, "provenance_missing": cmeta.get("provenance_missing"),
                                         "duplicate_names": cmeta.get("duplicate_names"),
                                         "code_revision": cmeta.get("code_revision"),
@@ -421,7 +427,7 @@ def run(conn) -> dict:
                         if g["frame"] is not None and is_ref:
                             result["frames"].append({"slate": s.key, "week": s.week, "fmt": fmt, "label": s.label,
                                                      "horizon": horizon, "source": source, "primary": primary,
-                                                     "latest": latest,
+                                                     "latest": latest, "preferred": preferred,
                                                      "version": version, "slot": g["slot"], "contest": c["contest_id"],
                                                      "frame": g["frame"], "df": df, "design": row["design_tag"]})
     return result
@@ -449,26 +455,27 @@ def pooled_rows(result: dict) -> list[dict]:
     """Reference contest, primary source, gate population, per (format, horizon, version, slot);
     `all` slates and `not_design` slates; labels-complete reference contests only."""
     out = []
-    for selector in ("primary", "latest"):
+    for selector in ("latest", "preferred"):
         out += _pooled_for(result, selector)
     return out
 
 
 def _pooled_for(result: dict, selector: str) -> list[dict]:
-    """selector `primary`: the scorecard's source preference (pool capture first);
-    `latest`: the latest capture at the horizon across sources (shown beside it)."""
-    def chosen(flag_primary, flag_latest):
-        return flag_primary if selector == "primary" else flag_latest
+    """selector `latest`: the latest capture at the horizon across sources (the
+    canonical rule from scorecard v3); `preferred`: the v1/v2 source preference
+    (pool capture first), shown beside it."""
+    def chosen(flag_preferred, flag_latest):
+        return flag_latest if selector == "latest" else flag_preferred
 
     out = []
     groups = defaultdict(list)
     for r in result["rows"]:
         if (r["row_kind"] == "contest" and r["contest_role"] == "reference" and r["population"] == "full_pool"
-                and chosen(r["details"].get("source_rank") == "primary", r["details"].get("latest_capture"))
+                and chosen(r["details"].get("preferred_source"), r["details"].get("latest_capture"))
                 and r["labels_complete"]):
             groups[(r["format"], r["horizon"], r["forecast_version"], r["slot"])].append(r)
     frames = {(f["slate"], f["horizon"], f["version"], f["slot"]): f for f in result["frames"]
-              if chosen(f["primary"], f["latest"])}
+              if chosen(f["preferred"], f["latest"])}
     for (fmt, horizon, version, slot), rs in sorted(groups.items()):
         for subset in ("all", "not_design"):
             pick = [r for r in rs if subset == "all" or r["design_tag"] != "design"]

@@ -213,6 +213,76 @@ def prior_showdown_v4(slate: pd.DataFrame, favorite_team: str | None = None, und
     return flex, np.array([captain[i] for i in ids]), notes
 
 
+# nfl-ownership-prior-v5 Showdown constants (drafted 2026-10-20, not the default),
+# mirrored from web/src/lib/nfl-dfs/ownership-prior.ts. Chosen on the 2026 weeks
+# 2-6 design slates; see docs/nfl-ownership-prior-v5.md.
+V5_VERSION = "nfl-ownership-prior-v5"
+SHOWDOWN_FLATTEN_ALPHA_V5 = 0.45
+CAPTAIN_POSITION_SHARES_V5 = {"QB": 22.82, "RB": 28.82, "WR": 31.92, "TE": 11.39, "DST": 3.25, "K": 1.80}
+
+
+def prior_showdown_v5(slate: pd.DataFrame, alpha: float = SHOWDOWN_FLATTEN_ALPHA_V5,
+                      captain_shares: Mapping[str, float] | None = None, punt_tier: bool = True,
+                      ) -> tuple[np.ndarray, np.ndarray, dict]:
+    """nfl-ownership-prior-v5 Showdown: (flex %, captain %, notes) per row, unrounded.
+
+    Same columns as `prior_showdown_v4`. v3 shape (no kicker cut, no DST game
+    script) with every allocation weight raised to `alpha`; the captain budget is
+    split by position (`captain_shares`, renormalised over positions with an
+    eligible player) and within a position by the v3 captain score^alpha, capped at
+    50; the v4 punt tier is kept without its kicker term. `alpha`, `captain_shares`
+    and `punt_tier` are parameters only so the design grid can be re-run; the
+    defaults are v5."""
+    shares = dict(CAPTAIN_POSITION_SHARES_V5 if captain_shares is None else captain_shares)
+    n = len(slate)
+    pts = slate["pts"].to_numpy(float)
+    status = [str(s or "").strip().upper() for s in slate["dk_status"].fillna("")]
+    out = slate["is_out"].to_numpy(bool)
+    pos = [str(p or "").upper() for p in slate["position"].fillna("")]
+    salary = slate["salary"].to_numpy(float)
+    cap_salary = np.nan_to_num(slate["captain_salary"].to_numpy(float), nan=0.0)
+
+    def score(i: int, sal: float) -> float:                     # ownershipScore, value exponent 0.5
+        if out[i] or not sal > 0 or not pts[i] > 0:
+            return 0.0
+        value = pts[i] / (max(sal, VALUE_SALARY_FLOOR) / 1000.0)
+        return (max(pts[i], 0.5) ** 2.0) * (max(value, 0.2) ** 0.5) * STATUS_MULTIPLIER.get(status[i], 1.0)
+
+    def flatten(s: float) -> float:
+        return s ** alpha if s > 0 else 0.0
+
+    ids = list(range(n))
+    cap_w = {i: flatten(score(i, cap_salary[i]) ** 1.5) for i in ids}
+    present = [p for p in shares if any(pos[i] == p and cap_w[i] > 0 for i in ids)]
+    share_total = sum(shares[p] for p in present)
+    captain: dict = {}
+    cap_unalloc = 0.0 if present else 100.0
+    for p in present:
+        group = [i for i in ids if pos[i] == p]
+        alloc, u = _allocate_detailed(group, cap_w, 100.0 * shares[p] / share_total, lambda i: 50.0)
+        captain.update(alloc)
+        cap_unalloc += u
+    for i in ids:
+        captain.setdefault(i, 0.0)
+
+    def flex_cap(i: int) -> float:
+        return min(90.0, 95.0 - captain[i])
+
+    is_punt = [punt_tier and salary[i] > 0 and salary[i] < PUNT_SALARY_MAX and not out[i] for i in ids]
+    punt_ids = [i for i in ids if is_punt[i]]
+    punt_scores = {i: (0.0 if not pts[i] > 0 else max(pts[i], 0.5) * STATUS_MULTIPLIER.get(status[i], 1.0)) for i in punt_ids}
+    punt, punt_unalloc = _allocate_detailed(punt_ids, punt_scores, PUNT_FLEX_BUDGET, lambda i: min(PUNT_MAX_PCT, flex_cap(i)))
+    punt_taken = (PUNT_FLEX_BUDGET - punt_unalloc) if punt_tier else 0.0
+    main_ids = [i for i in ids if not is_punt[i]]
+    main, main_unalloc = _allocate_detailed(main_ids, {i: flatten(score(i, salary[i])) for i in main_ids},
+                                            500.0 - punt_taken, flex_cap)
+    flex = np.array([{**punt, **main}.get(i, 0.0) for i in ids])
+    notes = {"variant": "v5", "puntTierPlayers": len(punt_ids), "puntTierPct": punt_taken,
+             "captainPositionsMissing": [p for p in shares if p not in present],
+             "unallocatedPct": main_unalloc + cap_unalloc}
+    return flex, np.array([captain[i] for i in ids]), notes
+
+
 def fit_metrics(slate: pd.DataFrame, flex: np.ndarray, cap: np.ndarray) -> dict[str, float]:
     """Forecast accuracy against the contest's own flex/captain ownership
     (columns flex_act, cpt_act). `rho_chalk` ranks only players the field used."""

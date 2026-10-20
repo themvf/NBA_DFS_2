@@ -7789,6 +7789,15 @@ missing label unresolved unless the contest's recorded mass is >= 99.5%.
 Grade under `docs/nfl-ownership-scorecard-v1.md`, never against the slates the
 constants were read from (weeks 2-5).
 
+**v5 (drafted 2026-10-20, NOT the default; `docs/nfl-ownership-prior-v5.md`).**
+v3 shape with every allocation weight raised to alpha (Classic 0.75, Showdown
+0.45), Showdown captain budget split by position shares read off observed
+full-field captain labels, v4 punt tier kept, no kicker cut; callable as
+`variant: "v5"`, pinned to its Python mirrors on two shared fixtures. Every week
+2-6 slate is a v5 design slate; it is graded only on week 7+ beside v3/v4, and
+scorecard v3 (2026-10-20) grades the LATEST capture before the cutoff from any
+source.
+
 ### GPP objective: multiplicative leverage and the ceiling cap (2026-09-27)
 
 The first build with the ownership prior live produced the SAME three lineups

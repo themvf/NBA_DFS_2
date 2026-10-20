@@ -1,6 +1,8 @@
 """Metric functions and label gating of the ownership scorecard grader (model/nfl_ownership_scorecard.py)."""
 
+import json
 import math
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -127,3 +129,35 @@ def test_design_tags():
     assert sc.design_tag("v4", "showdown", 6) == "not_design"
     assert sc.design_tag("v3", "showdown", 3) == "design"
     assert sc.design_tag("v3", "classic", 3) == "not_design"
+    assert sc.design_tag("v5", "classic", 6) == "design" and sc.design_tag("v5", "showdown", 2) == "design"
+    assert sc.design_tag("v5", "showdown", 7) == "not_design"
+
+
+CLASSIC_FIXTURE = Path(__file__).parent / "fixtures" / "nfl_ownership_prior_classic_fixture.json"
+
+
+def _classic_fixture():
+    data = json.loads(CLASSIC_FIXTURE.read_text(encoding="utf-8"))
+    players = pd.DataFrame(data["players"]).rename(columns={"projection": "proj", "dkAvg": "dk_avg", "dkStatus": "dk_status",
+                                                            "isOut": "is_out"})
+    return data, players
+
+
+def test_classic_port_matches_the_typescript_on_the_shared_fixture():
+    data, players = _classic_fixture()
+    assert [s["variant"] for s in data["scenarios"]] == ["v3", "v4", "v5"] == [e["name"] for e in data["expected"]]
+    for scenario, expected in zip(data["scenarios"], data["expected"]):
+        got = sc.prior_classic(players, scenario["variant"])
+        want = {p["dkPlayerId"]: p["ownPct"] for p in expected["players"]}
+        gap = max(abs(g - want[i]) for g, i in zip(got, players["dkPlayerId"]))
+        assert gap < 0.02, f"{scenario['name']}: max |python - ts| = {gap:.4f}"
+
+
+def test_classic_v5_flattens_within_position_and_keeps_budgets():
+    _, players = _classic_fixture()
+    v4, v5 = sc.prior_classic(players, "v4"), sc.prior_classic(players, "v5")
+    for pos, budget in sc.CLASSIC_BUDGETS["v5"].items():
+        m = (players["position"] == pos).to_numpy()
+        assert v5[m].sum() == pytest.approx(budget, abs=0.05)
+        assert v5[m].max() <= v4[m].max() + 1e-9                  # the top of each position comes down
+        assert list(np.argsort(-v4[m], kind="stable")) == list(np.argsort(-v5[m], kind="stable"))

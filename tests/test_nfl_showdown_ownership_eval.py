@@ -6,7 +6,8 @@ import pandas as pd
 import pytest
 
 from model.nfl_showdown_ownership_eval import (
-    build_lineup, field_points, fit_metrics, portfolio, prior_showdown, prior_showdown_v4, score_portfolio,
+    CAPTAIN_POSITION_SHARES_V5, build_lineup, field_points, fit_metrics, portfolio, prior_showdown, prior_showdown_v4,
+    prior_showdown_v5, score_portfolio,
 )
 
 FIXTURE = Path(__file__).parent / "fixtures" / "nfl_ownership_prior_showdown_fixture.json"
@@ -112,11 +113,17 @@ def _max_gap(expected_players, ids, flex, cap):
 
 def test_v4_matches_the_typescript_on_the_shared_fixture():
     data, df = fixture_slate()
-    assert len(data["expected"]) == len(data["scenarios"]) == 4
+    assert len(data["expected"]) == len(data["scenarios"]) == 5
     for scenario, expected in zip(data["scenarios"], data["expected"]):
         assert expected["name"] == scenario["name"]
         if scenario["variant"] == "v3":
             flex, cap = prior_showdown(df, value_exponent=0.5)
+        elif scenario["variant"] == "v5":
+            flex, cap, notes = prior_showdown_v5(df)
+            assert notes["puntTierPlayers"] == expected["notes"]["puntTierPlayers"]
+            assert notes["captainPositionsMissing"] == expected["notes"]["captainPositionsMissing"]
+            assert notes["puntTierPct"] == pytest.approx(expected["notes"]["puntTierPct"], abs=0.02)
+            assert notes["unallocatedPct"] == pytest.approx(expected["unallocatedPct"], abs=0.02)
         else:
             flex, cap, notes = prior_showdown_v4(df, scenario["favoriteTeam"], scenario["underdogTeam"])
             for key in ("puntTierPlayers", "gameScriptKnown"):
@@ -148,3 +155,39 @@ def test_v4_without_punts_kickers_or_dst_equals_v3():
     flex4, cap4, notes = prior_showdown_v4(df)
     assert notes["puntTierPlayers"] == 0
     assert np.allclose(flex3, flex4, atol=1e-6) and np.allclose(cap3, cap4, atol=1e-6)
+
+
+def test_v5_structure_on_the_fixture():
+    _, df = fixture_slate()
+    flex, cap, notes = prior_showdown_v5(df)
+    assert flex.sum() == pytest.approx(500.0, abs=0.01) and cap.sum() == pytest.approx(100.0, abs=0.01)
+    assert (flex + cap).max() <= 95.0 + 1e-9
+    pos = df["position"].str.upper().to_numpy()
+    for p, share in CAPTAIN_POSITION_SHARES_V5.items():       # every position is present: shares hold exactly
+        assert cap[pos == p].sum() == pytest.approx(share, abs=0.01), p
+    row = dict(zip(df["name"], zip(flex, cap)))
+    assert row["sf rb3"] == (0.0, 0.0) and row["sf wr4"] == (0.0, 0.0)
+    assert notes["captainPositionsMissing"] == []
+
+
+def test_v5_renormalises_captain_shares_when_a_position_is_missing():
+    _, df = fixture_slate()
+    df = df[df["position"].str.upper() != "K"].reset_index(drop=True)
+    _, cap, notes = prior_showdown_v5(df)
+    assert notes["captainPositionsMissing"] == ["K"]
+    assert cap.sum() == pytest.approx(100.0, abs=0.01)
+    total = sum(v for k, v in CAPTAIN_POSITION_SHARES_V5.items() if k != "K")
+    qb = cap[df["position"].str.upper().to_numpy() == "QB"].sum()
+    assert qb == pytest.approx(100.0 * CAPTAIN_POSITION_SHARES_V5["QB"] / total, abs=0.01)
+
+
+def test_v5_flattening_keeps_order_within_the_main_flex_pool():
+    """score^alpha is monotone: with no punt tier and no cap binding, the flex
+    order equals v3's and only the spread shrinks. (The star rows are dropped:
+    their flex caps bind, and a binding cap may reorder.)"""
+    df = pool().iloc[4:].reset_index(drop=True)
+    df["team"] = ["A", "B"] * (len(df) // 2) + ["A"] * (len(df) % 2)
+    flex3, _ = prior_showdown(df, value_exponent=0.5)
+    flex5, _, _ = prior_showdown_v5(df)
+    assert list(np.argsort(-flex3, kind="stable")) == list(np.argsort(-flex5, kind="stable"))
+    assert flex5.max() < flex3.max() and flex5.min() > flex3.min()

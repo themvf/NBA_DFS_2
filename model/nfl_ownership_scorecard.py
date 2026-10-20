@@ -1,4 +1,4 @@
-"""Grading machinery for `nfl-ownership-scorecard-v2` (docs/nfl-ownership-scorecard-v1.md).
+"""Grading machinery for `nfl-ownership-scorecard-v3` (docs/nfl-ownership-scorecard-v1.md).
 
 Pure: numpy/pandas/scipy, no database, no I/O. The driver is
 research/nfl_ownership_scorecard.py.
@@ -6,10 +6,12 @@ research/nfl_ownership_scorecard.py.
 What is here:
 
 - The frozen scorecard constants (section "Status" of the scorecard).
-- A Python port of `projectOwnershipPrior` for CLASSIC, both variants
-  (web/src/lib/nfl-dfs/ownership-prior.ts is the authority). Showdown uses the
+- A Python port of `projectOwnershipPrior` for CLASSIC, variants v3, v4 and the
+  drafted v5 (web/src/lib/nfl-dfs/ownership-prior.ts is the authority; pinned by
+  tests/fixtures/nfl_ownership_prior_classic_fixture.json). Showdown uses the
   pinned mirrors in model/nfl_showdown_ownership_eval.py (`prior_showdown` with
-  value exponent 0.5 = v3, `prior_showdown_v4` = v4, value exponent 1.5 = v2).
+  value exponent 0.5 = v3, `prior_showdown_v4` = v4, `prior_showdown_v5` = v5,
+  value exponent 1.5 = v2).
 - Metric functions: MAE, bias (predicted minus actual), RMSE, Spearman with
   AVERAGED tied ranks, Pearson, calibration bins, top-10 overlap, largest
   misses, and a slate-clustered bootstrap for pooled values.
@@ -28,10 +30,14 @@ import numpy as np
 import pandas as pd
 from scipy.stats import rankdata
 
-from model.nfl_showdown_ownership_eval import field_points, prior_showdown, prior_showdown_v4
+from model.nfl_showdown_ownership_eval import field_points, prior_showdown, prior_showdown_v4, prior_showdown_v5
 
-SCORECARD_VERSION = "nfl-ownership-scorecard-v2"
+SCORECARD_VERSION = "nfl-ownership-scorecard-v3"
 GRADER_VERSION = "nfl-ownership-scorecard-grader-v1"
+# Scorecard v3 (2026-10-20, owner): the canonical forecast is the LATEST capture at or
+# before first kickoff minus 20 minutes from ANY source (pool capture, owner
+# optimizer run, ghost freeze). v1/v2 preferred the pool capture over later sources.
+CANONICAL_SOURCE_RULE = "latest"
 
 GATE_CLASSES = ("observed", "reconciled_zero")
 EXCLUDED_CLASSES = ("synthesized_zero", "unresolved")
@@ -49,6 +55,8 @@ CAPS = {"classic": 60.0, "CPT": 50.0, "FLEX": 90.0}
 # off weeks 2-5 (both formats); v3's Showdown exponent off weeks 2-3.
 V4_DESIGN_WEEKS = range(2, 6)
 V3_SHOWDOWN_DESIGN_WEEKS = range(2, 4)
+# v5's constants were chosen on every 2026 slate of weeks 2-6 (docs/nfl-ownership-prior-v5.md).
+V5_DESIGN_WEEKS = range(2, 7)
 
 # --------------------------------------------------------------------------
 # Classic prior port (ownership-prior.ts)
@@ -57,7 +65,11 @@ V3_SHOWDOWN_DESIGN_WEEKS = range(2, 4)
 CLASSIC_BUDGETS = {
     "v3": {"QB": 100, "RB": 255, "WR": 340, "TE": 105, "DST": 100},
     "v4": {"QB": 100, "RB": 230, "WR": 335, "TE": 135, "DST": 100},
+    "v5": {"QB": 100, "RB": 230, "WR": 335, "TE": 135, "DST": 100},
 }
+# v5 (drafted 2026-10-20): each Classic score is raised to this before allocation
+# (ownership-prior.ts CLASSIC_FLATTEN_ALPHA_V5; docs/nfl-ownership-prior-v5.md).
+CLASSIC_FLATTEN_ALPHA = {"v3": 1.0, "v4": 1.0, "v5": 0.75}
 STATUS_MULTIPLIER = {"Q": 0.6, "D": 0.25}
 VALUE_SALARY_FLOOR = 3000
 
@@ -99,15 +111,19 @@ def allocate_detailed(ids: Sequence, scores: Mapping, budget: float, cap: float)
     return out
 
 
-def prior_classic(players: pd.DataFrame, variant: str) -> np.ndarray:
+def prior_classic(players: pd.DataFrame, variant: str, alpha: float | None = None,
+                  budgets: Mapping[str, float] | None = None) -> np.ndarray:
     """Total ownership % per row (rounded to 0.01 like the TS). Needs columns
     position, salary, proj, dk_avg, dk_status, is_out. v3's TS filters positions
     case-sensitively and v4 upper-cases; stored positions are upper case either way."""
-    budgets = CLASSIC_BUDGETS[variant]
-    pts = [field_points(p, a) for p, a in zip(players["proj"], players["dk_avg"])]
+    budgets = CLASSIC_BUDGETS[variant] if budgets is None else budgets
+    a = CLASSIC_FLATTEN_ALPHA[variant] if alpha is None else alpha
+    pts = [field_points(p, a_) for p, a_ in zip(players["proj"], players["dk_avg"])]
     scores = {i: _score_classic(pts[i], float(players["salary"].iloc[i] or 0), players["dk_status"].iloc[i] or "",
                                 bool(players["is_out"].iloc[i]))
               for i in range(len(players))}
+    if a != 1.0:
+        scores = {i: (s ** a if s > 0 else 0.0) for i, s in scores.items()}
     own = np.zeros(len(players))
     pos = [str(p or "") if variant == "v3" else str(p or "").upper() for p in players["position"]]
     for position, budget in budgets.items():
@@ -136,7 +152,9 @@ def prior_showdown_version(players: pd.DataFrame, variant: str, favorite: str | 
     """(flex %, captain %, notes), rounded to 0.01 like the TS."""
     df = showdown_frame(players)
     notes: dict = {"variant": variant}
-    if variant == "v4":
+    if variant == "v5":
+        flex, cap, notes = prior_showdown_v5(df)
+    elif variant == "v4":
         flex, cap, notes = prior_showdown_v4(df, favorite, underdog)
     elif variant == "v3":
         flex, cap = prior_showdown(df, value_exponent=0.5)
@@ -308,6 +326,8 @@ def design_tag(version: str, fmt: str, week: int | None) -> str:
     if version == "v4" and week in V4_DESIGN_WEEKS:
         return "design"
     if version == "v3" and fmt == "showdown" and week in V3_SHOWDOWN_DESIGN_WEEKS:
+        return "design"
+    if version == "v5" and week in V5_DESIGN_WEEKS:
         return "design"
     return "not_design"
 

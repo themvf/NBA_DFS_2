@@ -216,3 +216,25 @@ a reconciled zero only when the contest's recorded mass is at least 99.5% of
 the roster slots; otherwise the row is unresolved and excluded. The 0.80
 Spearman figures above were computed without tie averaging and are withdrawn
 as headlines (tie-correct week 2 full pool: 0.663).
+
+## `nfl-ownership-prior-v5` — drafted 2026-10-20, not the default
+
+Registration: `docs/nfl-ownership-prior-v5.md`; design grade:
+`artifacts/nfl-ownership-scorecard/v5-design-2026-10-20.md`. Built on v3's
+shape (v4 was no better), callable as `variant: "v5"`; production stays on v4
+until the owner switches it.
+
+| change | constant | chosen on the weeks 2-6 design slates |
+|---|---|---|
+| Every allocation weight is score^alpha | Classic 0.75, Showdown 0.45 (flex and captain) | 0.05 grid, full-pool MAE per format |
+| Showdown captain budget split by position, then by v3 captain score^alpha within | QB 22.82 / RB 28.82 / WR 31.92 / TE 11.39 / DST 3.25 / K 1.80; missing positions renormalised | mean of observed full-field captain labels per slate, normalised |
+| v4 punt tier kept, no kicker term in it | $3,000 / 60 / cap 30 | flex MAE 4.30 and Spearman 0.855 with it vs 4.52 and 0.845 without |
+| No kicker cut, no DST game script | - | v4's x0.6 put kickers at 11.8% against 20.6% actual |
+| Classic budgets | v4's | v3's were 0.007 better pooled, all from week 2; v4's better on 4 of 5 slates |
+
+Design-slate result (in-sample, scorecard v3 latest rule): Showdown flex MAE
+5.47 (v3) / 5.57 (v4) -> 4.30, Spearman 0.845 / 0.801 -> 0.855; captain MAE 1.54
+/ 1.62 -> 1.32; Classic MAE 1.256 / 1.258 -> 1.205 with Spearman 0.808 -> 0.800.
+Graded for real only on week 7 onward beside v3 and v4 from the same frozen
+inputs; no constant changes before 8 Showdown and 4 Classic non-design slates.
+Not addressed: news- and value-hype chalk (no input carries it).
