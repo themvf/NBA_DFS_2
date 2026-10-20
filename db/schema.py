@@ -6543,3 +6543,8 @@ MIGRATIONS.extend([MOVEMENT_OBSERVATION_SCHEMA, MOVEMENT_OBSERVATION_INDEX])
 # append-only, one row per (contest, player, slot, classifier version).
 from db.nfl_ownership_provenance_schema import STATEMENTS as NFL_OWNERSHIP_PROVENANCE_STATEMENTS
 MIGRATIONS.extend(NFL_OWNERSHIP_PROVENANCE_STATEMENTS)
+
+# NFL DFS ownership scorecard grades (docs/nfl-ownership-scorecard-v1.md section 7):
+# append-only, one row per (contest, horizon, capture, forecast version, population, slot).
+from db.nfl_ownership_scorecard_schema import STATEMENTS as NFL_OWNERSHIP_SCORECARD_STATEMENTS
+MIGRATIONS.extend(NFL_OWNERSHIP_SCORECARD_STATEMENTS)
