@@ -45,3 +45,19 @@ def test_chart_writes_png(tmp_path):
     assert m.review_chart(rows, [], 6, "QB", tmp_path / "q.png")
     assert (tmp_path / "q.png").read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
     assert not m.review_chart([], [], 6, "QB", tmp_path / "x.png")
+
+
+def test_top_by_projection_counts_unscored_players():
+    rows = [{"name": "A", "team": "NE", "proj": 20.0}, {"name": "B", "team": "NE", "proj": 10.0}]
+    pending = [{"name": "C", "team": "NE"}]
+    proj = {3: {"name": "C", "team": "NE", "ourProj": 15.0}}
+    kept, left = m.top_by_projection(rows, pending, proj, 2)
+    assert [r["name"] for r in kept] == ["A"] and left == pending
+    assert m.top_by_projection(rows, pending, proj, None) == (rows, pending)
+
+
+def test_no_stat_line_on_a_finished_team_is_a_zero():
+    rows, _, pending = m.review_rows({1: _p(1, 12)}, {}, {"NE"})
+    assert pending == [] and rows[0]["actual"] == 0.0 and rows[0]["dnp"]
+    _, _, pending = m.review_rows({1: _p(1, 12)}, {}, set())
+    assert pending == [{"name": "P1", "team": "NE"}]
