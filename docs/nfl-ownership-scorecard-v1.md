@@ -1,4 +1,4 @@
-# NFL DFS ownership scorecard — `nfl-ownership-scorecard-v1` (registered 2026-10-19)
+# NFL DFS ownership scorecard — `nfl-ownership-scorecard-v2` (v1 registered 2026-10-19; v2 2026-10-20)
 
 One fixed definition of "better ownership", so every forecast version (the
 production prior, a fitted model, a field simulation) is graded the same way
@@ -16,18 +16,24 @@ written, before any grade under this scorecard was computed). Frozen values:
 | Salary tiers | < $3,000 / 3-4 / 4-5 / 5-6 / 6-7 / 7-8 / 8+ ($ thousands); Showdown punt tier < $2,500 |
 | Reconciled-zero mass floor (stat-api) | recorded mass >= 0.995 of roster slots x 100, AND full standings fetched |
 | Calibration bins | 0-1, 1-5, 5-10, 10-20, 20-35, 35+; Showdown flex adds 50+ |
-| Target field size | `entry_count >= 50,000` |
 
 Any change to a target, population, label rule, metric, holdout or one of
-these constants is `scorecard-v2` with its own first-grade date, and v1
-grades are kept as written.
+these constants is a new scorecard version with its own first-grade date, and
+earlier grades are kept as written.
+
+**v2 (2026-10-20, owner):** the 50,000-entry field-size floor is removed. It
+was a forecasting heuristic, not a grading rule. The only grade read under v1
+(WAS@SF contest 196786695, 47,562 entries, `docs/nfl-ownership-pregrade-2026-10-19-was-sf.md`)
+was tagged `below_target`; under v2 it is an ordinary graded slate. No other
+constant changed, and no grade was written to `nfl_ownership_scorecard_rows`
+under v1.
 
 ## 1. Target contests
 
 | | rule |
 |---|---|
 | Format | Classic and Showdown graded separately; nothing is pooled across formats |
-| Field size | `entry_count >= 50,000` as recorded on `nfl_dfs_field_contests`; smaller contests are stored and graded but tagged `below_target` and never count toward a gate |
+| Field size | no minimum. Entry count is recorded with every grade but does not include or exclude a contest (v2; v1 required 50,000) |
 | Reference contest per slate | the largest-field GPP on that slate that passes label provenance (section 3); other same-slate contests are `secondary` and reported, not gated. The Bijan Robinson case (42.57% vs 47.26% on one slate) shows contests differ by audience, so a model is graded on its reference contest only |
 | Contest attributes recorded | contest id, entry count, entry fee, max entries per user, slate upload id, format, first kickoff (ET and UTC) |
 

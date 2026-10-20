@@ -107,3 +107,7 @@ way). Punt tier: Juszczyk 11.9 and Cowing 10.7 (v4 nearer), Watkins 4.4
 versions: the largest misses, matching the outside view's value-chalk call.
 Allocation: QB captain 33.9% actual vs 54-57% predicted; WR and TE captain
 roughly double what both versions gave. One slate; no constant changes.
+
+Note (2026-10-20): scorecard v2 removed the 50,000-entry floor, so this
+contest is no longer `below_target`; it is the slate's graded result (the
+largest contest with labels so far). The numbers above are unchanged.
