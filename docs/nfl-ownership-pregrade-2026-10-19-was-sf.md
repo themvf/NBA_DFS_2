@@ -111,3 +111,12 @@ roughly double what both versions gave. One slate; no constant changes.
 Note (2026-10-20): scorecard v2 removed the 50,000-entry floor, so this
 contest is no longer `below_target`; it is the slate's graded result (the
 largest contest with labels so far). The numbers above are unchanged.
+
+Correction (2026-10-20): "Pool captures store no ownership and no DraftKings
+average" above is wrong. Each captured player carries the full workspace row
+in `evidence`, including `ownPct`, `captainOwnPct`, `flexOwnPct`, `ownSource`
+and `avgFptsDk`; only the top-level keys lack them. Pool captures are
+therefore a usable frozen ownership source (the scorecard's first
+preference). For this slate the canonical pool capture (at or before T-20)
+holds v3, as stated; captures from 00:05 UTC on hold v4. No code change is
+needed, and the graded numbers above are unaffected.
