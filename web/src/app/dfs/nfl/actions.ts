@@ -1179,7 +1179,7 @@ async function attachMarketAnchor(workspace: NflWorkspaceSlate): Promise<void> {
 
 /**
  * Projected ownership for every player: LineStar when the feed carried it,
- * otherwise our stated prior (`nfl-ownership-prior-v4`, see
+ * otherwise our stated prior (`nfl-ownership-prior-v5` since 2026-10-20, see
  * docs/nfl-ownership-model.md and docs/nfl-ownership-review-2026-10-19.md). The prior is computed from the SAME
  * projections this workspace shows, after availability zeroing, so a ruled-out
  * player draws nothing. It is a heuristic: the optimizer applies it only

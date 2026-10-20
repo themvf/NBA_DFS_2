@@ -7789,7 +7789,7 @@ missing label unresolved unless the contest's recorded mass is >= 99.5%.
 Grade under `docs/nfl-ownership-scorecard-v1.md`, never against the slates the
 constants were read from (weeks 2-5).
 
-**v5 (drafted 2026-10-20, NOT the default; `docs/nfl-ownership-prior-v5.md`).**
+**v5 (the default since 2026-10-20, owner's decision; `docs/nfl-ownership-prior-v5.md`).**
 v3 shape with every allocation weight raised to alpha (Classic 0.75, Showdown
 0.45), Showdown captain budget split by position shares read off observed
 full-field captain labels, v4 punt tier kept, no kicker cut; callable as

@@ -102,7 +102,7 @@ assert.match(broken.errors.join(" "), /exceeds 100%/);
 assert.match(broken.warnings.join(" "), /leverage and the chalk fade are off/);
 
 // v4 (2026-10-19). Default variant; v3 stays reproducible.
-const v4 = projectOwnershipPrior(game, "showdown");
+const v4 = projectOwnershipPrior(game, "showdown", { variant: "v4" });
 assert.equal(v4.version, "nfl-ownership-prior-v4");
 assert.deepEqual(projectOwnershipPrior(game, "showdown", { variant: "v3" }).players, sd2.players, "v3 variant reproduces v3 exactly");
 const v4cap = v4.players.reduce((t, p) => t + (p.captainPct ?? 0), 0), v4flex = v4.players.reduce((t, p) => t + (p.flexPct ?? 0), 0);
@@ -116,24 +116,24 @@ assert.ok(Math.abs((v4.notes?.puntTierPct ?? 0) - SHOWDOWN_PUNT_MAX_PCT) < 0.02,
 assert.ok(SHOWDOWN_PUNT_FLEX_BUDGET > SHOWDOWN_PUNT_MAX_PCT);
 // No punts on the slate: v4 flex equals v3 flex for a pool with no K/DST and no sub-$3,000 player.
 const noPunt = game.filter((p) => p.salary >= 3000);
-const v3np = projectOwnershipPrior(noPunt, "showdown", { variant: "v3" }), v4np = projectOwnershipPrior(noPunt, "showdown");
+const v3np = projectOwnershipPrior(noPunt, "showdown", { variant: "v3" }), v4np = projectOwnershipPrior(noPunt, "showdown", { variant: "v4" });
 assert.deepEqual(v4np.players, v3np.players, "without punts, kickers, DST or a favorite, v4 showdown equals v3");
 // Kicker is drafted less than an equal-points skill player; DST follows the favorite; captains avoid K/DST/TE.
 const k = mk("K", 4000, 9, { captainSalary: 6000, team: "A" }), wrk = mk("WR", 4000, 9, { captainSalary: 6000, team: "A" });
 const dA = mk("DST", 3800, 8, { captainSalary: 5700, team: "A" }), dB = mk("DST", 3800, 8, { captainSalary: 5700, team: "B" });
 const te = mk("TE", 4000, 9, { captainSalary: 6000, team: "B" });
 const mix = [...noPunt, k, wrk, dA, dB, te];
-const sdMix = projectOwnershipPrior(mix, "showdown", { favoriteTeam: "A", underdogTeam: "B" });
+const sdMix = projectOwnershipPrior(mix, "showdown", { variant: "v4", favoriteTeam: "A", underdogTeam: "B" });
 const row = (p: OwnershipPriorPlayer) => sdMix.players.find((r) => r.dkPlayerId === p.dkPlayerId)!;
 assert.ok(row(k).flexPct! < row(wrk).flexPct!, "kicker drafts less than an equal WR");
 assert.ok(row(dA).flexPct! > row(dB).flexPct!, "favored DST drafts more than the underdog DST");
 assert.ok(row(k).captainPct! < row(wrk).captainPct! && row(dA).captainPct! < row(wrk).captainPct! && row(te).captainPct! < row(wrk).captainPct!, "K, DST and TE captains below an equal WR");
 assert.equal(sdMix.notes?.gameScriptKnown, true);
-assert.equal(projectOwnershipPrior(mix, "showdown").notes?.gameScriptKnown, false);
-const unknownScript = projectOwnershipPrior(mix, "showdown");
+assert.equal(projectOwnershipPrior(mix, "showdown", { variant: "v4" }).notes?.gameScriptKnown, false);
+const unknownScript = projectOwnershipPrior(mix, "showdown", { variant: "v4" });
 assert.equal(unknownScript.players.find((r) => r.dkPlayerId === dA.dkPlayerId)!.flexPct, unknownScript.players.find((r) => r.dkPlayerId === dB.dkPlayerId)!.flexPct, "no favorite, no DST tilt");
 // Classic v4: TE budget 135, still 900 total, still capped.
-const c4 = projectOwnershipPrior(pool, "classic");
+const c4 = projectOwnershipPrior(pool, "classic", { variant: "v4" });
 assert.equal(c4.version, "nfl-ownership-prior-v4");
 assert.ok(Math.abs(c4.players.reduce((t, p) => t + p.ownPct, 0) - 900) < 0.5);
 assert.equal(Object.values(CLASSIC_POSITION_BUDGETS_V4).reduce((a, b) => a + b, 0), 900);
@@ -166,9 +166,9 @@ const sharedV4 = shared.expected[0].players, sharedRow = (n: string) => sharedV4
 assert.ok(sharedRow("sf dst").flexPct > sharedRow("was dst").flexPct, "fixture: favored DST drafts more");
 assert.ok(sharedRow("sf k").captainPct < sharedRow("sf wr2").captainPct, "fixture: kicker captain below a cheaper WR");
 
-// v5 (drafted, NOT the default; docs/nfl-ownership-prior-v5.md). Sums of rounded rows get 0.1.
+// v5 (the default since 2026-10-20; docs/nfl-ownership-prior-v5.md). Sums of rounded rows get 0.1.
 const nearSum = (actual: number, expected: number, label: string) => assert.ok(Math.abs(actual - expected) < 0.1, `${label}: ${actual} vs ${expected}`);
-assert.equal(projectOwnershipPrior(shared.players, "showdown").version, "nfl-ownership-prior-v4", "default stays v4");
+assert.equal(projectOwnershipPrior(shared.players, "showdown").version, "nfl-ownership-prior-v5", "default is v5 (owner, 2026-10-20)");
 const sd5 = projectOwnershipPrior(shared.players, "showdown", { variant: "v5" });
 assert.equal(sd5.version, NFL_OWNERSHIP_PRIOR_V5_VERSION);
 const sdPos = (n: number) => (shared.players.find((p) => p.dkPlayerId === n)!.position ?? "").toUpperCase();
@@ -210,4 +210,4 @@ classicFixture.scenarios.forEach((s, i) => {
   for (const w of want.players) near(got.players.find((p) => p.dkPlayerId === w.dkPlayerId)!.ownPct, w.ownPct, `classic ${s.name} #${w.dkPlayerId}`);
 });
 
-console.log("NFL ownership prior: v3 reproducible, v4 default (Classic TE 135; Showdown punt tier, kicker, DST script, captain position), sums hold, v5 drafted (not default, pinned on both fixtures), never validated by declaration.");
+console.log("NFL ownership prior: v3 and v4 reproducible, v5 default (flattened; Showdown captain shares by position), sums hold, pinned on both fixtures, never validated by declaration.");
