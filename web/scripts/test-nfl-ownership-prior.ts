@@ -4,6 +4,7 @@
  * the source can never be rated validated.
  */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { allocateBudget, CLASSIC_MAX_PCT, CLASSIC_POSITION_BUDGETS_V4, ownershipScore, projectOwnershipPrior, SHOWDOWN_PUNT_FLEX_BUDGET, SHOWDOWN_PUNT_MAX_PCT, SHOWDOWN_TOTAL_MAX_PCT, SHOWDOWN_VALUE_EXPONENT, VALUE_SALARY_FLOOR, type OwnershipPriorPlayer } from "../src/lib/nfl-dfs/ownership-prior";
 import { assessOwnership } from "../src/lib/nfl-dfs/ownership-capability";
 
@@ -138,5 +139,31 @@ assert.ok(Math.abs(c4.players.reduce((t, p) => t + p.ownPct, 0) - 900) < 0.5);
 assert.equal(Object.values(CLASSIC_POSITION_BUDGETS_V4).reduce((a, b) => a + b, 0), 900);
 const teSum = (r: typeof c4) => pool.filter((p) => p.position === "TE").reduce((t, p) => t + r.players.find((x) => x.dkPlayerId === p.dkPlayerId)!.ownPct, 0);
 assert.ok(Math.abs(teSum(c4) - 135) < 0.5 && Math.abs(teSum(projectOwnershipPrior(pool, "classic", { variant: "v3" })) - 105) < 0.5, "TE total moves 105 -> 135");
+
+// Cross-language pin: the shared one-game fixture (punt tier with a kicker in it,
+// both kickers, both DSTs, TEs, Q/D/OUT, a DK-average-only and a zero-points player)
+// is computed here and by the Python mirror (model/nfl_showdown_ownership_eval
+// prior_showdown_v4 / prior_showdown, tests/test_nfl_showdown_ownership_eval.py);
+// both must reproduce `expected` to 0.02 on every row. Regenerate `expected` only
+// when this prior changes on purpose (scripts/write-nfl-ownership-prior-fixture.ts).
+const shared = JSON.parse(readFileSync("../tests/fixtures/nfl_ownership_prior_showdown_fixture.json", "utf8")) as {
+  players: OwnershipPriorPlayer[];
+  scenarios: { name: string; variant: "v3" | "v4"; favoriteTeam: string | null; underdogTeam: string | null }[];
+  expected: { name: string; version: string; unallocatedPct: number; notes: Record<string, unknown> | null; players: { dkPlayerId: number; captainPct: number; flexPct: number }[] }[];
+};
+assert.equal(shared.expected.length, shared.scenarios.length);
+shared.scenarios.forEach((s, i) => {
+  const got = projectOwnershipPrior(shared.players, "showdown", { variant: s.variant, favoriteTeam: s.favoriteTeam, underdogTeam: s.underdogTeam });
+  const want = shared.expected[i];
+  assert.equal(want.name, s.name); assert.equal(got.version, want.version, s.name);
+  assert.deepEqual(got.notes ?? null, want.notes, `${s.name}: notes`);
+  for (const w of want.players) {
+    const r = got.players.find((p) => p.dkPlayerId === w.dkPlayerId)!;
+    near(r.flexPct, w.flexPct, `${s.name} flex #${w.dkPlayerId}`); near(r.captainPct, w.captainPct, `${s.name} captain #${w.dkPlayerId}`);
+  }
+});
+const sharedV4 = shared.expected[0].players, sharedRow = (n: string) => sharedV4.find((p) => p.dkPlayerId === shared.players.find((x) => (x as unknown as { name: string }).name === n)!.dkPlayerId)!;
+assert.ok(sharedRow("sf dst").flexPct > sharedRow("was dst").flexPct, "fixture: favored DST drafts more");
+assert.ok(sharedRow("sf k").captainPct < sharedRow("sf wr2").captainPct, "fixture: kicker captain below a cheaper WR");
 
 console.log("NFL ownership prior: v3 reproducible, v4 default (Classic TE 135; Showdown punt tier, kicker, DST script, captain position), sums hold, never validated by declaration.");

@@ -1,10 +1,15 @@
+import json
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from model.nfl_showdown_ownership_eval import (
-    build_lineup, fit_metrics, portfolio, prior_showdown, score_portfolio,
+    build_lineup, field_points, fit_metrics, portfolio, prior_showdown, prior_showdown_v4, score_portfolio,
 )
+
+FIXTURE = Path(__file__).parent / "fixtures" / "nfl_ownership_prior_showdown_fixture.json"
 
 
 def pool():
@@ -89,3 +94,57 @@ def test_fit_metrics():
     df["cpt_act"] = 0.0
     m = fit_metrics(df, df.flex_act.to_numpy(float), np.zeros(12))
     assert m["mae_flex"] == 0.0 and m["rho_chalk"] == pytest.approx(1.0)
+
+
+def fixture_slate():
+    """The shared one-game pool; `expected` in the file comes from the TS prior."""
+    data = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    df = pd.DataFrame(data["players"])
+    df["pts"] = [field_points(p, a) or 0.0 for p, a in zip(df["projection"], df["dkAvg"])]
+    df = df.rename(columns={"captainSalary": "captain_salary", "dkStatus": "dk_status", "isOut": "is_out"})
+    return data, df
+
+
+def _max_gap(expected_players, ids, flex, cap):
+    by_id = {p["dkPlayerId"]: p for p in expected_players}
+    return max(max(abs(f - by_id[i]["flexPct"]), abs(c - by_id[i]["captainPct"])) for i, f, c in zip(ids, flex, cap))
+
+
+def test_v4_matches_the_typescript_on_the_shared_fixture():
+    data, df = fixture_slate()
+    assert len(data["expected"]) == len(data["scenarios"]) == 4
+    for scenario, expected in zip(data["scenarios"], data["expected"]):
+        assert expected["name"] == scenario["name"]
+        if scenario["variant"] == "v3":
+            flex, cap = prior_showdown(df, value_exponent=0.5)
+        else:
+            flex, cap, notes = prior_showdown_v4(df, scenario["favoriteTeam"], scenario["underdogTeam"])
+            for key in ("puntTierPlayers", "gameScriptKnown"):
+                assert notes[key] == expected["notes"][key], (scenario["name"], key)
+            assert notes["puntTierPct"] == pytest.approx(expected["notes"]["puntTierPct"], abs=0.02)
+            assert notes["unallocatedPct"] == pytest.approx(expected["unallocatedPct"], abs=0.02)
+        gap = _max_gap(expected["players"], df["dkPlayerId"], flex, cap)
+        assert gap < 0.02, f"{scenario['name']}: max |python - ts| = {gap:.4f}"
+
+
+def test_v4_structure_on_the_fixture():
+    _, df = fixture_slate()
+    flex, cap, notes = prior_showdown_v4(df, "SF", "WAS")
+    assert flex.sum() == pytest.approx(500.0, abs=0.01) and cap.sum() == pytest.approx(100.0, abs=0.01)
+    assert (flex + cap).max() <= 95.0 + 1e-9
+    row = dict(zip(df["name"], zip(flex, cap)))
+    assert row["sf dst"][0] > row["was dst"][0]              # the favored defense drafts more
+    assert row["sf rb3"] == (0.0, 0.0) and row["sf wr4"] == (0.0, 0.0)   # out; zero points
+    assert notes["puntTierPct"] == pytest.approx(60.0)
+    _, _, unknown = prior_showdown_v4(df)
+    assert unknown["gameScriptKnown"] is False
+
+
+def test_v4_without_punts_kickers_or_dst_equals_v3():
+    df = pool()
+    df = df[df["salary"] >= 3000].reset_index(drop=True)
+    df["team"] = ["A", "B"] * (len(df) // 2) + ["A"] * (len(df) % 2)
+    flex3, cap3 = prior_showdown(df, value_exponent=0.5)
+    flex4, cap4, notes = prior_showdown_v4(df)
+    assert notes["puntTierPlayers"] == 0
+    assert np.allclose(flex3, flex4, atol=1e-6) and np.allclose(cap3, cap4, atol=1e-6)
