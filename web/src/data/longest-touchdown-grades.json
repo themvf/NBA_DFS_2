@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "version": "nfl-longest-td-weekly-grade-v1",
- "updatedAt": "2026-10-19T23:19:18.376648+00:00",
+ "updatedAt": "2026-10-20T14:16:23.330444+00:00",
  "authority": "tracking_only_not_calibration",
  "weeks": [
   {
@@ -23,10 +23,10 @@
    "topExpected": 2.136041666666667,
    "logLoss": 2.3557504825302673,
    "baselineLogLoss": 2.6038820660005264,
-   "uniformLogLoss": 3.253059262436468,
+   "uniformLogLoss": 3.253059262436467,
    "anyTdExpected": 53.586,
    "anyTdScored": 57,
-   "longTdExpected": 5.737,
+   "longTdExpected": 5.737000000000001,
    "longTdScored": 6,
    "games": [
     {
@@ -238,6 +238,38 @@
      "topPick": "James Cook",
      "topProbability": 0.158,
      "topHit": true
+    }
+   ]
+  },
+  {
+   "season": 2026,
+   "week": 6,
+   "graded": 1,
+   "needsReview": [],
+   "topHits": 0,
+   "topExpected": 0.152,
+   "logLoss": 2.5383074265151158,
+   "baselineLogLoss": 2.5791810967187927,
+   "uniformLogLoss": 3.367295829986474,
+   "anyTdExpected": 4.023999999999999,
+   "anyTdScored": 4,
+   "longTdExpected": 0.4460000000000001,
+   "longTdScored": 0,
+   "games": [
+    {
+     "gameId": "2026_06_WAS_SF",
+     "away": "WSH",
+     "home": "SF",
+     "longestYards": 11,
+     "winners": [
+      "George Kittle"
+     ],
+     "winnerProbability": 0.079,
+     "winnerRank": 5,
+     "outcomes": 29,
+     "topPick": "Mike Evans",
+     "topProbability": 0.152,
+     "topHit": false
     }
    ]
   }
@@ -768,6 +800,42 @@
    "long_td_expected": 0.416,
    "long_td_scored": 0,
    "named_players": 23
+  },
+  {
+   "version": "nfl-longest-td-weekly-grade-v1",
+   "game_id": "2026_06_WAS_SF",
+   "season": 2026,
+   "week": 6,
+   "away": "WSH",
+   "home": "SF",
+   "kickoff": "2026-10-20 00:15:00+00:00",
+   "decision_at": "2026-10-19T23:03:31.916436+00:00",
+   "model_version": "nfl-longest-scrimmage-td-research-v2",
+   "request_sha256": "cb9e80ef9c480fd906a56451f7fc04484e0a24d9ecabe2094374e8cabdf56f28",
+   "graded_at": "2026-10-20T14:16:23.330444+00:00",
+   "capture_at": "2026-10-20T14:16:23.300382+00:00",
+   "status": "graded",
+   "reason": null,
+   "longest_yards": 11,
+   "winners": [
+    "George Kittle"
+   ],
+   "winner_probability": 0.079,
+   "winner_rank": 5,
+   "outcomes": 29,
+   "unmodeled_winner": false,
+   "top_pick": "Mike Evans",
+   "top_probability": 0.152,
+   "top_hit": false,
+   "log_loss": 2.5383074265151158,
+   "baseline_log_loss": 2.5791810967187927,
+   "uniform_log_loss": 3.367295829986474,
+   "brier": 0.916754,
+   "any_td_expected": 4.023999999999999,
+   "any_td_scored": 4,
+   "long_td_expected": 0.4460000000000001,
+   "long_td_scored": 0,
+   "named_players": 26
   }
  ]
 }
