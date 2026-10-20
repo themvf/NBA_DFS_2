@@ -1,0 +1,50 @@
+{
+ "stats_player_week_2014.csv": {
+  "sha256": "a389b10d94eb8e6b9a153223d381aab821b0eff4cd73967835a21032192abc61",
+  "bytes": 7883194
+ },
+ "stats_player_week_2015.csv": {
+  "sha256": "21052baa3b3291a92faf3e6827891295010dca8cc5cefd5a909984b9d7b64664",
+  "bytes": 7881066
+ },
+ "stats_player_week_2016.csv": {
+  "sha256": "eb0264c65d1ef593196afcd4ba24e9f2e9b7942923bf6f4bb4639684e2c4d470",
+  "bytes": 7852359
+ },
+ "stats_player_week_2017.csv": {
+  "sha256": "592b0916065987b0b3afb0480162f03350d16b12250dc42b0f194e2ab1378563",
+  "bytes": 7821392
+ },
+ "stats_player_week_2018.csv": {
+  "sha256": "c53021bcfc9f89d30edd6f1fe145a1d7d6ce469efeec75974fe9f0adac568642",
+  "bytes": 7792665
+ },
+ "stats_player_week_2019.csv": {
+  "sha256": "a05558126b1209b80fe11a8f18938cb35816370bf9990975a87de49e9eed7376",
+  "bytes": 7767165
+ },
+ "stats_player_week_2020.csv": {
+  "sha256": "05b992676faccc8940efbf6242cb76358069372d31d7c2e02c1a4acdcd3cbe18",
+  "bytes": 7883270
+ },
+ "stats_player_week_2021.csv": {
+  "sha256": "41915fb49238902ad1f129ebf0405b11a1e710454ae0fe8f7b3e4f9145875f48",
+  "bytes": 8477784
+ },
+ "stats_player_week_2022.csv": {
+  "sha256": "ad426c3fe5bf1cc30c3f137fdfe96d054e19d400879ee4413129da49fa7b54be",
+  "bytes": 8408729
+ },
+ "stats_player_week_2023.csv": {
+  "sha256": "f19cb71a5de0dce7fd09376026237c9ee9d5a93fe13815a2ea3ec2d37204cb17",
+  "bytes": 8332874
+ },
+ "stats_player_week_2024.csv": {
+  "sha256": "3ddc45a84f759aa348ce465ae001752c530575455717657cdfe1f8abfcdb4759",
+  "bytes": 8470040
+ },
+ "stats_player_week_2025.csv": {
+  "sha256": "e5e0615b3d96a3eaebfaee91e55afb4a4e7fe0caf057454177bcd7d6ad4bcfc2",
+  "bytes": 8656387
+ }
+}

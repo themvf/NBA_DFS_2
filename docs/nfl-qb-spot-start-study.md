@@ -258,3 +258,35 @@ study has not used (2012-2015, or 2026 forward).
 
 The nflverse weekly files for 2014-2025 must be re-cached in
 `data/nflverse_cache`; this checkout holds one file.
+
+### v3 development fit (2026-10-20, frozen before the 2016-2019 look)
+
+Inputs: the nflverse weekly player files for 2014-2025, downloaded
+2026-10-20 (digests in `artifacts/nfl-qb-spot-start/nflverse-weekly-files-v3.json`).
+The records (`development-v3.jsonl`, 3,183 qualifying games 2020-2025)
+reproduce v2's development spot cohort exactly (219 games, 8.17 -> 6.51), so
+file revisions since v1 changed none of those games. The runner's check that
+the forced construction equals v2 wherever v2 applies never fired.
+
+Fit (`fit-v3.json`), DraftKings-points MAE over every qualifying game:
+
+| | Current | v2 | v3, K=3 | v3, K=4 | v3, K=5 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Population MAE | 6.538 | 6.424 | 6.411 | 6.377 | **6.336** |
+
+**K = 5 is fixed for the test**: a quarterback is newly eligible when at
+most 4 of his previous six games had 15+ attempts. K = 5 is the edge of the
+registered grid. Larger K is not allowed (see Kill). Its next step would
+reach starters with one short game, the cohort where v1 failed its
+established gate.
+
+Gap cohort on development (reported, not gating; K was fitted here):
+
+| K | Games | Weeks | DK MAE, v2 -> v3 | Change, 95% interval | Attempts bias, v2 -> v3 |
+| ---: | ---: | ---: | --- | --- | --- |
+| 3 | 63 | 48 | 6.87 -> 6.21 | −0.66 [−1.80, +0.39] | −7.2 -> +1.7 |
+| 4 | 154 | 82 | 6.99 -> 6.01 | −0.98 [−1.69, −0.27] | −8.0 -> +1.5 |
+| 5 | 324 | 105 | 6.71 -> 5.84 | −0.87 [−1.27, −0.41] | −7.3 -> +1.3 |
+
+Passing-yards MAE on the K = 5 gap cohort falls from 74 to 57. The test grade
+(`run-v3 --seasons 2016-2019`, then `grade-v3` with this fit) has not been run.
