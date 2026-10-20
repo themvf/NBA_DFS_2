@@ -1,0 +1,37 @@
+{
+  "study": "nfl-prop-under-role-change-v1",
+  "status": "draft",
+  "registered_at": null,
+  "parent_registration": "docs/nfl-prop-under-study-v2.json",
+  "tag": {
+    "window_games": 5,
+    "material_targets": 3.0,
+    "material_carries": 5.0,
+    "positions": [
+      "RB",
+      "WR",
+      "TE"
+    ],
+    "fb_counts_as": "RB"
+  },
+  "floors": {
+    "tagged_bets": 120,
+    "tagged_game_weeks": 8
+  },
+  "bootstrap": {
+    "resamples": 2000,
+    "seed": 20261020,
+    "cluster": "game_week",
+    "interval": 0.95
+  },
+  "verdict": {
+    "when": "first grade run after every regular-season game through last_week is graded",
+    "last_week": 18,
+    "outcomes": {
+      "TAGGED_WORSE": "interval wholly below zero",
+      "TAGGED_BETTER": "interval wholly above zero",
+      "NO_DIFFERENCE": "interval includes zero",
+      "INCONCLUSIVE": "floors not met at the final look"
+    }
+  }
+}
