@@ -288,5 +288,41 @@ Gap cohort on development (reported, not gating; K was fitted here):
 | 4 | 154 | 82 | 6.99 -> 6.01 | −0.98 [−1.69, −0.27] | −8.0 -> +1.5 |
 | 5 | 324 | 105 | 6.71 -> 5.84 | −0.87 [−1.27, −0.41] | −7.3 -> +1.3 |
 
-Passing-yards MAE on the K = 5 gap cohort falls from 74 to 57. The test grade
-(`run-v3 --seasons 2016-2019`, then `grade-v3` with this fit) has not been run.
+Passing-yards MAE on the K = 5 gap cohort falls from 74 to 57.
+
+### v3 result (2026-10-20): FAIL, v2 stays
+
+One look at 2016-2019 with the frozen K = 5 (`test-2016-2019-v3.jsonl`,
+`test-report-v3.json`). The test records reproduce v2's blind spot cohort
+exactly (131 games, 7.38 -> 5.79).
+
+| Gate | Result | Bar | |
+| --- | --- | --- | --- |
+| Sample floor | 142 gap games, 56 weeks | at least 60 | pass |
+| Gap gate: DK MAE change, v3 minus v2 | **+0.61 [−0.01, +1.30]** (5.94 -> 6.55) | interval wholly below zero | **fail** |
+| Calibration guard: attempts bias | +2.5 (v2: −5.1) | within ±5.0 | pass |
+
+On the newly eligible games the construction made DraftKings points worse,
+not better. It fixed the volume (attempts bias −5.1 -> +2.5) and over-shot
+the output: passing-yards bias −29 -> +25, points bias −2.2 -> +1.7.
+Passing-yards MAE moved 64 -> 60 (−4.4 [−14.2, +6.2]). By season, the change
+was +0.92 (2016, 28 games), −0.22 (2017, 44), +1.01 (2018, 33) and
++1.02 (2019, 37). Whole-population MAE: current 6.511, v2 6.409, v3 6.452.
+Development had the opposite sign (−0.87 [−1.27, −0.41]), so the development
+improvement did not replicate.
+
+Illustrative only (these games motivated the rule): week 6, 2026, the model's
+own projection moves from 10.8 to 14.4 points for Huntley (actual 13.4) and
+from 8.9 to 14.4 for Daniels (actual 13.2). McKee was already covered by v2.
+
+Under the kill rule v2 stays in production unchanged. Not allowed after this
+failure:
+
+- a K outside the grid;
+- a different starter threshold or window;
+- re-slicing the gap cohort.
+
+Thin-start backups with a sportsbook line are still covered by the market
+anchor: Huntley's and Daniels' final DFS projections were 14.7 and 15.5.
+Another eligibility idea would be a new registration graded on 2012-2015 or
+2026 forward.
