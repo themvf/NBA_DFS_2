@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS nfl_player_identity_claims (
 );
 CREATE INDEX IF NOT EXISTS nfl_identity_namespace_lookup ON nfl_player_identity_claims(namespace,external_id);
 CREATE INDEX IF NOT EXISTS nfl_identity_gsis_lookup ON nfl_player_identity_claims(gsis_id);
+CREATE INDEX IF NOT EXISTS nfl_identity_gsis_names ON nfl_player_identity_claims(gsis_id, player_name);
 CREATE OR REPLACE VIEW nfl_player_identity_crosswalk AS
  SELECT namespace, external_id,
    CASE WHEN COUNT(DISTINCT gsis_id)=1 THEN MIN(gsis_id) END AS gsis_id,
