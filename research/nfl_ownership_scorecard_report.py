@@ -53,22 +53,24 @@ def frames(result, horizon="canonical", selector="primary"):
 def render(result: dict, written: int | None, stored_total: int | None = None) -> str:
     L: list[str] = []
     now = datetime.now(timezone.utc)
-    L += [f"# NFL DFS ownership — scorecard baseline regrade ({sc.SCORECARD_VERSION})", "",
+    L += [f"# NFL DFS ownership — scorecard regrade ({sc.SCORECARD_VERSION})", "",
           f"Generated {now:%Y-%m-%d %H:%M} UTC by `python -m research.nfl_ownership_scorecard` "
           f"(grader `{sc.GRADER_VERSION}`). Read-only except the append-only `nfl_ownership_scorecard_rows` "
           f"({'dry run, nothing written' if written is None else f'{written} new rows written this run; {stored_total} rows under this scorecard and grader version in total, one grade per forecast (ON CONFLICT DO NOTHING)'}).", "",
           "Status: BUILT, TESTED (unit tests on the metric functions and label gating), BACKTESTED on frozen 2026 "
           "inputs. Descriptive only: no verdict, no constant changed. Showdown has no registered gate; the Classic "
-          "Phase 2 gate needs >= 4 held-out slates of a FITTED model and is not evaluated here.", ""]
+          "Phase 2 gate needs >= 4 held-out slates of a FITTED model and is not evaluated here. The drafted v5 is "
+          "graded beside v3 and v4; every slate here is a v5 `design` slate (its v5 design grade is "
+          "`python -m research.nfl_ownership_prior_v5_design`).", ""]
     L += ["## How to read this", "",
           "- **Frozen input.** Per slate and horizon (canonical = last capture at or before first kickoff minus "
           "20 min; early = first capture inside 24 h), each source's capture is loaded: pool capture (one capture "
           "instant covering every game; ownership and DK average read from each player's `evidence`), the owner "
-          "optimizer run's `input_snapshot`, the ghost freeze. `primary` follows the scorecard's preference order "
-          "(pool, run, ghost); `latest` is the latest of them, reported beside it because the two disagree on "
-          "WAS@SF (see section 3).",
-          "- **Versions.** v3 and v4 are recomputed from the same frozen input (Classic: Python port of "
-          "ownership-prior.ts; Showdown: the pinned mirrors in model/nfl_showdown_ownership_eval.py). Where the "
+          "optimizer run's `input_snapshot`, the ghost freeze. Scorecard v3 (owner, 2026-10-20): `primary` is the "
+          "LATEST of them, from any source; `preferred` is the v1/v2 preference order (pool, run, ghost), pooled "
+          "beside it in section 3 for comparison.",
+          "- **Versions.** v3, v4 and the drafted v5 are recomputed from the same frozen input (Classic: Python "
+          "port of ownership-prior.ts; Showdown: the pinned mirrors in model/nfl_showdown_ownership_eval.py). Where the "
           "input stored a v3 (or the identical Classic v2) forecast, the recomputation reproduced it to 0.00 on "
           "every player (section 7). A stored v1/v2 Showdown forecast is graded as `stored`.",
           "- **Four slates' inputs hold projections and DK averages but no stored ownership** (week 2 Classic and "
@@ -89,8 +91,9 @@ def render(result: dict, written: int | None, stored_total: int | None = None) -
           "- **Relevant (population 2).** Classic: per position, top N_RELEVANT by the frozen STORED forecast "
           "(v3 recomputation where nothing was stored) plus top N by field points per $1,000, union; the same set is "
           "used for every version so versions are compared on one population. Showdown: every active player.",
-          "- **Design tags.** v4: weeks 2-5 `design` (both formats). v3: Showdown weeks 2-3 `design`. Week 6 is "
-          "v4's first non-design data. `not_design` pooled rows exclude design slates.",
+          "- **Design tags.** v4: weeks 2-5 `design` (both formats). v3: Showdown weeks 2-3 `design`. v5: weeks "
+          "2-6 `design` (both formats; its constants were chosen on them). Week 6 is v4's first non-design data. "
+          "`not_design` pooled rows exclude design slates.",
           "- **Game script (v4 Showdown).** Favorite/underdog from the game's moneyline as the eval harness reads it "
           "(nfl_matchups, then nfl_season_games). These are CURRENT stored values, not as of the capture.",
           "- Spearman uses averaged tied ranks. Pooled MAE/bias/RMSE are player-weighted over concatenated slates; "
@@ -238,10 +241,9 @@ def render(result: dict, written: int | None, stored_total: int | None = None) -
           "- **Same contest, canonical POOL capture (23:03 UTC, the upload-instant capture, code 1963fcd7, v3):** "
           + _was(result, "pool_capture") + ". It differs because at 23:03 Mike Evans and Stefon Diggs carried no Q "
           "status (the run at 23:13 has Q for both) and Brandin Cooks / Jacob Cowing were not yet market-anchored; "
-          "v3 then put Evans at 67.3% flex (run: 43.9%, actual 26.8%). Under the scorecard's source preference the "
-          "pool capture is `primary`, although the run is the later frozen input inside the canonical window. "
-          "Owner decision: whether `canonical` means the preferred source's last capture or the last capture of any "
-          "source. Both are graded and pooled (`primary` and `latest`).",
+          "v3 then put Evans at 67.3% flex (run: 43.9%, actual 26.8%). The owner resolved the source question on "
+          "2026-10-20 (scorecard v3): the canonical forecast is the latest capture of any source, here the run. "
+          "The v1/v2 preference pick is still pooled as `preferred`.",
           "- **Week-4 Millionaire (196151357), frozen stored v2 forecast:** 183 observed-label players including 2 "
           "OUT in the input (Case Keenum 0.69%, DeVonta Smith 0.05% actual) give MAE 3.540 (the review's 3.538); "
           "the scorecard's active-player population is 181 at MAE " + _wk4(result) + ". The contest's labels are not "
