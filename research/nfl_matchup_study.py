@@ -103,21 +103,28 @@ def prospective_reports(db, season, now, registry):
     if not registered:
         return {"version": "nfl-matchup-forward-report-v1", "studies": [], "reason": "no registered DFS studies"}
     first_registered = min(timestamp(resolve_registration(m)["registered_at"]) for m in registered)
-    records = db.execute(f"""SELECT p.player_id,p.game_id,p.kickoff,
+    # The run manifest (~210 KB compressed) is reduced to its three graded keys once per run in a
+    # materialized CTE. Selected per player row, it was decompressed three times for each of
+    # ~43k rows: ~27 GB of pages and ~100 s of database CPU per grading run (2026-10-20).
+    records = db.execute(f"""WITH f AS MATERIALIZED (
+          SELECT run_id,season,week,created_at,as_of_at,model_version,baseline_run_id,
+            jsonb_build_object('model_hashes',manifest->'model_hashes',
+                              'implementation_hashes',manifest->'implementation_hashes',
+                              'format',manifest->'format') manifest
+          FROM nfl_matchup_forecast_runs
+          WHERE season=%s AND created_at<=%s AND created_at>=%s)
+        SELECT p.player_id,p.game_id,p.kickoff,
         CASE WHEN f.model_version='{SUPPORTED_FORECAST_VERSION}' THEN {GRADED_PROJECTION_SQL} END projection,
         f.run_id,f.season,f.week,f.created_at,f.as_of_at,f.model_version forecast_model_version,
-        jsonb_build_object('model_hashes',f.manifest->'model_hashes',
-                          'implementation_hashes',f.manifest->'implementation_hashes',
-                          'format',f.manifest->'format') manifest,
+        f.manifest,
         b.model_version baseline_version,b.model_config baseline_config,b.created_at baseline_created_at,
         r.id result_id,r.actual_dk_fpts,r.scoring_status,r.scoring_version,r.input_digest result_digest,r.computed_at result_at
-        FROM nfl_matchup_player_forecasts p JOIN nfl_matchup_forecast_runs f ON f.run_id=p.run_id
+        FROM nfl_matchup_player_forecasts p JOIN f ON f.run_id=p.run_id
         JOIN nfl_dfs_projection_runs b ON b.run_id=f.baseline_run_id
         JOIN nfl_season_games g ON g.nflverse_game_id=p.game_id
         LEFT JOIN LATERAL (SELECT r.* FROM nfl_dfs_player_week_results r
           WHERE r.player_id=p.player_id AND r.game_id=g.id AND r.computed_at<=%s AND g.completed
-          ORDER BY r.computed_at DESC,r.id DESC LIMIT 1) r ON TRUE
-        WHERE f.season=%s AND f.created_at<=%s AND f.created_at>=%s""", (now, season, now, first_registered))
+          ORDER BY r.computed_at DESC,r.id DESC LIMIT 1) r ON TRUE""", (season, now, first_registered, now))
     completed = db.execute("""SELECT season,week FROM nfl_season_games WHERE season=%s AND game_type='REG'
         GROUP BY season,week HAVING bool_and(completed) AND max(kickoff)<%s""", (season, now))
     complete = [(r["season"], r["week"]) for r in completed]
