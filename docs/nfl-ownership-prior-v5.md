@@ -1,10 +1,11 @@
-# `nfl-ownership-prior-v5` — registration (drafted 2026-10-20, not the default)
+# `nfl-ownership-prior-v5` — registration (drafted and made the default 2026-10-20)
 
 Status: BUILT (`variant: "v5"` in `web/src/lib/nfl-dfs/ownership-prior.ts`),
 TESTED (TypeScript and Python pinned to each other within 0.02 on two shared
 fixtures), BACKTESTED on the 2026 weeks 2-6 slates, which are all v5 DESIGN
-slates. Not validated. `NFL_OWNERSHIP_PRIOR_VERSION` stays on v4; the owner
-switches the default after reviewing this document.
+slates. Not validated. The owner reviewed this document and made v5 the
+default on 2026-10-20 (`NFL_OWNERSHIP_PRIOR_VERSION` = v5; v3 and v4 stay
+callable for the exact counterfactual). Week 7 is its first graded slate.
 
 Owner decisions this follows (2026-10-20): start from v3's shape (v4 was no
 better: Showdown flex Spearman 0.801 vs v3 0.845 under the latest rule); add one

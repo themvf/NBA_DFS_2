@@ -93,9 +93,11 @@
  *   The v3 algorithm stays callable (`variant: "v3"`) so the Python mirror
  *   (model/nfl_showdown_ownership_eval.prior_showdown) and its pins still hold.
  */
-export const NFL_OWNERSHIP_PRIOR_VERSION = "nfl-ownership-prior-v4";
+export const NFL_OWNERSHIP_PRIOR_V4_VERSION = "nfl-ownership-prior-v4";
 export const NFL_OWNERSHIP_PRIOR_V3_VERSION = "nfl-ownership-prior-v3";
 export const NFL_OWNERSHIP_PRIOR_V5_VERSION = "nfl-ownership-prior-v5";
+/** The version projectOwnershipPrior returns by default. */
+export const NFL_OWNERSHIP_PRIOR_VERSION = NFL_OWNERSHIP_PRIOR_V5_VERSION;
 export type OwnershipPriorVariant = "v3" | "v4" | "v5";
 
 /**
@@ -280,7 +282,8 @@ export function allocateBudgetDetailed(scores: ReadonlyMap<number, number>, budg
 }
 
 export function projectOwnershipPrior(players: readonly OwnershipPriorPlayer[], format: "classic" | "showdown", options: OwnershipPriorOptions = {}): OwnershipPriorResult {
-  const variant = options.variant ?? "v4";
+  // Default v5 from 2026-10-20 (owner): docs/nfl-ownership-prior-v5.md.
+  const variant = options.variant ?? "v5";
   if (variant === "v3") return projectOwnershipPriorV3(players, format);
   if (variant === "v5") return projectOwnershipPriorV5(players, format);
   const round = (v: number) => Math.round(v * 100) / 100;
@@ -316,7 +319,7 @@ export function projectOwnershipPrior(players: readonly OwnershipPriorPlayer[], 
     const mainScores = new Map(players.filter((p) => !isPunt(p)).map((p) => [p.dkPlayerId, ownershipScore(p, p.salary, SHOWDOWN_VALUE_EXPONENT) * positional(p)]));
     const mainAlloc = allocateBudgetDetailed(mainScores, SHOWDOWN_FLEX_BUDGET - puntTaken, flexCap);
     const flex = new Map<number, number>([...puntAlloc.shares, ...mainAlloc.shares]);
-    return { version: NFL_OWNERSHIP_PRIOR_VERSION, format, budgetPct: SHOWDOWN_FLEX_BUDGET + SHOWDOWN_CAPTAIN_BUDGET,
+    return { version: NFL_OWNERSHIP_PRIOR_V4_VERSION, format, budgetPct: SHOWDOWN_FLEX_BUDGET + SHOWDOWN_CAPTAIN_BUDGET,
       unallocatedPct: round(mainAlloc.unallocated + captainAlloc.unallocated),
       notes: { variant, puntTierPlayers: puntScores.size, puntTierPct: round(puntTaken), gameScriptKnown: fav != null },
       players: players.map((p) => { const f = flex.get(p.dkPlayerId) ?? 0, c = captain.get(p.dkPlayerId) ?? 0;
@@ -330,7 +333,7 @@ export function projectOwnershipPrior(players: readonly OwnershipPriorPlayer[], 
     for (const [id, pct] of alloc.shares) own.set(id, pct);
     unallocated += alloc.unallocated;
   }
-  return { version: NFL_OWNERSHIP_PRIOR_VERSION, format, budgetPct: Object.values(CLASSIC_POSITION_BUDGETS_V4).reduce((a, b) => a + b, 0), unallocatedPct: round(unallocated),
+  return { version: NFL_OWNERSHIP_PRIOR_V4_VERSION, format, budgetPct: Object.values(CLASSIC_POSITION_BUDGETS_V4).reduce((a, b) => a + b, 0), unallocatedPct: round(unallocated),
     notes: { variant },
     players: players.map((p) => ({ dkPlayerId: p.dkPlayerId, ownPct: round(own.get(p.dkPlayerId) ?? 0), captainPct: null, flexPct: null })) };
 }
