@@ -1,4 +1,4 @@
-# NFL DFS ownership scorecard — `nfl-ownership-scorecard-v1` (draft registration, 2026-10-19)
+# NFL DFS ownership scorecard — `nfl-ownership-scorecard-v1` (registered 2026-10-19)
 
 One fixed definition of "better ownership", so every forecast version (the
 production prior, a fitted model, a field simulation) is graded the same way
@@ -6,11 +6,21 @@ and the meaning of the gate cannot drift between evaluations. Companion to
 `docs/nfl-ownership-model.md` (the Phase 2 promotion gate, unchanged) and
 `docs/nfl-ownership-review-2026-10-19.md` (the evidence this answers).
 
-Status: DRAFT. Constants below are proposed; freeze them by bumping this doc's
-status to REGISTERED before the first grade is published. After that, any
-change to a target, population, label rule, metric or holdout is
-`scorecard-v2` with its own first-grade date, and v1 grades are kept as
-written.
+Status: REGISTERED 2026-10-19 (owner accepted the proposed constants as
+written, before any grade under this scorecard was computed). Frozen values:
+
+| constant | value |
+|---|---|
+| `N_RELEVANT` (population 2) | Classic QB 12 / RB 20 / WR 30 / TE 12 / DST 12; Showdown every player |
+| Predicted-chalk thresholds | Classic >= 15%; Showdown flex >= 25%; Showdown captain >= 10% |
+| Salary tiers | < $3,000 / 3-4 / 4-5 / 5-6 / 6-7 / 7-8 / 8+ ($ thousands); Showdown punt tier < $2,500 |
+| Reconciled-zero mass floor (stat-api) | recorded mass >= 0.995 of roster slots x 100, AND full standings fetched |
+| Calibration bins | 0-1, 1-5, 5-10, 10-20, 20-35, 35+; Showdown flex adds 50+ |
+| Target field size | `entry_count >= 50,000` |
+
+Any change to a target, population, label rule, metric, holdout or one of
+these constants is `scorecard-v2` with its own first-grade date, and v1
+grades are kept as written.
 
 ## 1. Target contests
 
@@ -81,7 +91,7 @@ Three populations, each reported on every grade; the gate uses the first.
 2. **Relevant players (pregame-defined).** Defined only from information in
    the frozen forecast: the top `N_RELEVANT` by predicted ownership plus the
    top `N_RELEVANT` by salary-adjusted field points (DK average blend) per
-   position, union. Proposed `N_RELEVANT`: Classic QB 12 / RB 20 / WR 30 /
+   position, union. Registered `N_RELEVANT`: Classic QB 12 / RB 20 / WR 30 /
    TE 12 / DST 12; Showdown every player (the pool is one game). Fixed
    before grading; does not look at realized ownership.
 3. **Diagnostics (outcome-defined, never a gate).** Actual ownership >= 1%;
