@@ -143,6 +143,22 @@ export function nflGameLeadersDue(now: Date, context: DispatchContext): boolean 
   });
 }
 
+/** NBA season as calendar months (preseason lines in early October, Finals in June). */
+const NBA_MONTHS = new Set([10, 11, 12, 1, 2, 3, 4, 5, 6]);
+
+/**
+ * NBA points-props capture for /nba/top-scorers: the 15:07 UTC tick (11:07 AM
+ * ET, after the books post the morning's player props) and the 22:07 UTC tick
+ * (6:07 PM ET, the closing read before the 7 PM ET tips), October through
+ * June. The page shows each game's latest capture, so the evening run replaces
+ * the morning one. Each run costs about 2 credits a game; a game that has
+ * already tipped is skipped by the script.
+ */
+export function nbaPointsPropsDue(now: Date): boolean {
+  if (!NBA_MONTHS.has(now.getUTCMonth() + 1) || !hourTick(now)) return false;
+  return now.getUTCHours() === 15 || now.getUTCHours() === 22;
+}
+
 export const DISPATCH_JOBS: readonly DispatchJob[] = [
   {
     key: "mlb-odds-capture",
@@ -194,6 +210,15 @@ export const DISPATCH_JOBS: readonly DispatchJob[] = [
     due: nflPropDayAheadDue,
     inputs: { event_limit: "0", max_credits: "420", within_hours: "36", day_ahead: "true" },
     why: "The same prop lines the day before (Wednesday for Thursday, Saturday for Sunday, Sunday for Monday), so an early build has real lines.",
+  },
+  {
+    key: "nba-points-props",
+    workflow: "capture_nba_points_props.yml",
+    due: nbaPointsPropsDue,
+    // Blank date = today ET inside the script. 40 credits covers a 15-game night
+    // (2 per game) plus a few; the script aborts before any paid call past it.
+    inputs: { date: "", max_credits: "40" },
+    why: "Tonight's player-points lines and alternate ladders for /nba/top-scorers (Odds API, ~2 credits a game), 11:07 AM and 6:07 PM ET, October-June.",
   },
   {
     key: "nfl-game-leaders",

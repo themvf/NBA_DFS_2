@@ -303,6 +303,14 @@ DATASET_REGISTRY: tuple[Dataset, ...] = (
             "Pregame over/unders written by ingest.nfl_prop_odds, dispatched 90-105 minutes before each kickoff. "
             "Append-only per capture_key, so captured_at moves only when a run writes.",
             filter="sport = 'nfl'"),
+    # Dispatched at 15:07 and 22:07 UTC every day of the season; 36 h allows one
+    # missed day (the All-Star break has no games for about five days and will
+    # read STALE for its last two; that is a known gap, not a defect).
+    Dataset("nba_points_props", "NBA player-points lines (/nba/top-scorers)", "prop_odds_history", "captured_at",
+            36, "capture_nba_points_props.yml", _NBA,
+            "Written by ingest.nba_points_props twice a day via the dispatcher (job nba-points-props). "
+            "Append-only per capture_key, so captured_at moves only when a run writes.",
+            filter="sport = 'nba'"),
     Dataset("nfl_game_leader_market", "NFL game leaders: DraftKings pricing", "nfl_game_leader_market", "computed_at",
             120, "capture_nfl_props.yml", _NFL,
             "Written after each pregame prop capture by research.nfl_game_leaders_market refresh; append-only, "
