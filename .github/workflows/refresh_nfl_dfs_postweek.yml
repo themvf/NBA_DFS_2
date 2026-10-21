@@ -256,6 +256,7 @@ jobs:
           python -m model.nfl_defense_qb_charts --out-dir artifacts/nfl_market_scenarios
           python -m model.nfl_defense_position_charts --out-dir artifacts/nfl_market_scenarios
           python -m model.nfl_defense_correlation_charts --out-dir artifacts/nfl_market_scenarios
+          python -m model.nfl_showdown_ownership_charts --out-dir artifacts/nfl_market_scenarios
       - name: Save the charts
         if: always()
         uses: actions/upload-artifact@v4
