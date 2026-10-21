@@ -106,6 +106,16 @@ def fetch_draft_group_id(contest_id: int) -> int:
     return dgid
 
 
+def fetch_contest_detail(contest_id: int | str) -> dict:
+    """A DK contest's public detail: entry fee, entries and the prize table by rank (payoutSummary)."""
+    # No browser User-Agent: DraftKings' edge answers 403 to a spoofed Chrome UA
+    # on this endpoint (measured 2026-10-21) and 200 to an honest client.
+    url  = f"https://api.draftkings.com/contests/v1/contests/{contest_id}"
+    resp = requests.get(url, headers={"Accept": "application/json"}, timeout=_TIMEOUT)
+    resp.raise_for_status()
+    return resp.json()["contestDetail"]
+
+
 def fetch_dk_players(draft_group_id: int) -> list[dict]:
     """Fetch the full NBA player pool from DK API for a given draftGroupId.
 
