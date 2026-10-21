@@ -233,8 +233,16 @@ P(over) is de-vigged only from books at that line. Floor/ceiling (P10/P90) and 2
 the ladder (`web/src/lib/nba-points-ladder.ts`): over-only rungs de-vigged by the same book's
 main-line overround (leaves longshot margin, so top-end chances read slightly high), median across
 books, forced non-increasing, never extrapolated past the first or last rung. It is the market's number, unvalidated, and
-independent of `dk_players` (no slate needed). Run manually via `capture_nba_points_props.yml`;
-not yet scheduled. Last season's PPG/team come from `nba_player_stats` 2025-26.
+independent of `dk_players` (no slate needed). Last season's PPG/team come from `nba_player_stats` 2025-26.
+**Scheduled since 2026-10-21:** `/api/cron/dispatch` job `nba-points-props` fires
+`capture_nba_points_props.yml` at 15:07 and 22:07 UTC (11:07 AM and 6:07 PM ET),
+October through June, blank date (today ET) and a 40-credit ceiling (2 per game, so a
+15-game night fits). The morning read is when the books post player props; the evening
+read, before the 7 PM ET tips, is the one the page shows, since it takes each game's
+latest capture. GitHub fallback cron 16:37 UTC. Dataset row `nba_points_props` on
+/health (36 h). The first two manual runs (2026-10-20) showed the one failure to expect:
+`DatabaseManager()` with the default DDL pass hit `LockNotAvailable` against another
+writer; the script now opens with `initialize_schema=False`.
 
 ## Data Refresh Workflow
 
