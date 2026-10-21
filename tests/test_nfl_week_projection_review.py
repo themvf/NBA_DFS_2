@@ -66,3 +66,12 @@ def test_no_stat_line_on_a_finished_team_is_a_zero():
 def test_name_list_caps_long_lists():
     assert m._name_list(["a", "b"]) == "a, b"
     assert m._name_list([str(i) for i in range(9)]) == "0, 1, 2, 3, 4, 5 and 3 more"
+
+
+def test_week_misses_and_bias_chart(tmp_path):
+    proj = {1: _p(1, 20), 2: _p(2, 10), 3: _p(3, 5)}
+    assert m.week_misses(proj, {1: {"points": 25.0}, 2: {"points": 4.0}}, {"NE"}, 2) == [5.0, -6.0]
+    misses = {"QB": {1: [5.0, -6.0], 2: [3.0]}, "RB": {1: [1.0, 2.0]}}
+    assert m.bias_chart(misses, 25, tmp_path / "b.png")
+    assert (tmp_path / "b.png").read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+    assert not m.bias_chart({"QB": {1: []}}, 25, tmp_path / "x.png")
