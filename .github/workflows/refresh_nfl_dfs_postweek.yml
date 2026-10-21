@@ -252,6 +252,7 @@ jobs:
           python -m model.nfl_dfs_more_charts --out-dir artifacts/nfl_market_scenarios
           python -m model.nfl_prop_player_charts --out-dir artifacts/nfl_market_scenarios
           python -m model.nfl_ownership_charts --out-dir artifacts/nfl_market_scenarios
+          python -m model.nfl_prop_history_charts --out-dir artifacts/nfl_market_scenarios
       - name: Save the charts
         if: always()
         uses: actions/upload-artifact@v4
