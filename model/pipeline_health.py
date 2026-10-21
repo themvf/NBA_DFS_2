@@ -195,6 +195,16 @@ DATASET_REGISTRY: tuple[Dataset, ...] = (
             "Every lineup of the top 100 finishers of the week's free flagship contests (Millionaire, Thursday "
             "and Monday showdown), imported Tuesday/Wednesday by ingest.nfl_dfs_flagship_review; captured_at "
             "is stamped on every write. Eight days without a row means the import or stat-api is broken."),
+    Dataset("nfl_expert_articles", "NFL DFS expert coverage articles", "nfl_expert_articles", "captured_at",
+            96, "capture_nfl_expert_coverage.yml", _NFL,
+            "Pregame expert DFS articles (docs/nfl-expert-coverage-study.md). A row is written only for a new "
+            "article or a changed revision, so a green capture run that found nothing leaves this stale. "
+            "Runs fire at T-48h/T-24h/T-6h/T-90m of every kickoff group; four days without a new article "
+            "in season means discovery or a source broke. Per-run counts are in nfl_expert_capture_runs."),
+    Dataset("nfl_expert_extractions", "NFL DFS expert coverage extractions (DeepSeek)", "nfl_expert_extractions",
+            "extracted_at", 96, "capture_nfl_expert_coverage.yml", _NFL,
+            "One row per extracted article revision. Stale while articles keep arriving means the DeepSeek step "
+            "is failing (a 402 'no credit' stops it cold; see model/deepseek_account.py)."),
     Dataset("nfl_build_reviews", "NFL winners-vs-us build reviews", "nfl_dfs_field_build_reviews", "computed_at",
             192, "refresh_nfl_dfs_postweek.yml", _NFL,
             "One row per flagship contest and week from the same job: the top finishers' portfolio analysis "

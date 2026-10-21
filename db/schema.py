@@ -6586,3 +6586,8 @@ MIGRATIONS.extend(NFL_OWNERSHIP_PROVENANCE_STATEMENTS)
 # append-only, one row per (contest, horizon, capture, forecast version, population, slot).
 from db.nfl_ownership_scorecard_schema import STATEMENTS as NFL_OWNERSHIP_SCORECARD_STATEMENTS
 MIGRATIONS.extend(NFL_OWNERSHIP_SCORECARD_STATEMENTS)
+
+# NFL DFS expert coverage (docs/nfl-expert-coverage-study.md): append-only
+# article revisions, robots decisions, extractions and grounded records.
+from db.nfl_expert_coverage_schema import STATEMENTS as NFL_EXPERT_COVERAGE_STATEMENTS
+MIGRATIONS.extend(NFL_EXPERT_COVERAGE_STATEMENTS)
