@@ -91,9 +91,18 @@ def review_rows(projections: dict[int, dict], results: dict[int, dict],
         anchor = p.get("marketAnchor") or {}
         rows.append({"name": p["name"], "team": p.get("team"), "opp": p.get("opponent"), "proj": proj,
                      "p10": _num(p.get("floor")), "p90": _num(p.get("ceiling")), "actual": r["points"],
-                     "salary": p.get("salary"), "anchored": bool(anchor), "model_proj": _num(anchor.get("before")),
+                     "salary": p.get("salary"), "anchored": bool(anchor), "model_proj": model_projection(p),
                      "dnp": bool(r.get("dnp"))})
     return rows, surprises, pending
+
+
+def model_projection(p: dict) -> float | None:
+    """Our model's own projection: the number before any betting-line anchor (stored as ``before.mean``)."""
+    anchor = p.get("marketAnchor") or {}
+    if not anchor:
+        return _num(p.get("ourProj"))
+    before = anchor.get("before")
+    return _num(before.get("mean") if isinstance(before, dict) else before)
 
 
 def _num(v):
@@ -339,6 +348,120 @@ def build_bias_chart(out_dir: Path, weeks: list[int], top: int = 25, season: int
     return bias_chart(misses, top, path), path
 
 
+def line_projections(db, season: int, week: int) -> dict[tuple[str, str], float]:
+    """(normalized name, position) -> DK points implied by the player's closing DraftKings-first prop lines.
+
+    Read exactly as the live market anchor reads them (``nfl-prop-implied-v1`` with
+    ``CALIBRATION_V1``); a player missing a required line has no line projection.
+    A QB with no rushing line reads as 0 rushing here (the research reading).
+    """
+    from model import nfl_prop_implied as pim
+    from research.nfl_prop_implied import load as load_lines
+
+    out = {}
+    for (_, key), d in load_lines(db, season, [week]).items():
+        s = pim.stat_line(d["position"], d["lines"], calibration=pim.CALIBRATION_V1)
+        if s is not None:
+            out[(key, d["position"])] = pim.dk_points(d["position"], s)
+    return out
+
+
+def paired_misses(projections: dict, results: dict, finished: set, lines: dict, position: str,
+                  top: int) -> list[tuple[float, float]]:
+    """(actual - line projection, actual - model projection) for the `top` highest MODEL projections
+    among players who have both a line projection and a result (0 if he did not play in a finished game)."""
+    from model.nfl_dfs_dk_pool_match import normalize_name
+
+    pairs = []
+    for pid, p in projections.items():
+        if p.get("isOut") or float(p.get("ourProj") or 0) <= 0:
+            continue
+        model = model_projection(p)
+        line = lines.get((normalize_name(p.get("name") or ""), position))
+        r = results.get(pid)
+        actual = r["points"] if r else (0.0 if p.get("team") in finished else None)
+        if model is None or line is None or actual is None:
+            continue
+        pairs.append((model, actual - line, actual - model))
+    pairs.sort(key=lambda t: -t[0])
+    return [(a, b) for _, a, b in pairs[:top]]
+
+
+def line_vs_model_chart(pairs: dict[str, dict[int, list[tuple[float, float]]]], top: int, path: Path) -> bool:
+    """One panel per position: average actual minus projection, betting lines beside our model, by week."""
+    positions = [p for p in pairs if any(pairs[p].values())]
+    if not positions:
+        return False
+    height = 7.8
+    colours = {"line": SERIES[0], "model": SERIES[1]}
+    fig, axes = plt.subplots(2, 2, figsize=(WIDTH_IN, height), dpi=DPI, sharey=True)
+    fig.patch.set_facecolor(SURFACE)
+    summary = []
+    weeks_seen = sorted({w for p in positions for w, xs in pairs[p].items() if xs})
+    for ax, pos in zip(axes.flat, positions):
+        _axes(ax, xgrid=False)
+        weeks = sorted(w for w, xs in pairs[pos].items() if xs)
+        pooled = [x for w in weeks for x in pairs[pos][w]]
+        series = [pairs[pos][w] for w in weeks] + [pooled]
+        for i, xs in enumerate(series):
+            for j, (key, idx) in enumerate((("line", 0), ("model", 1))):
+                vals = [x[idx] for x in xs]
+                m, ci = _mean_ci(vals)
+                x = i + (j - 0.5) * 0.36
+                ax.bar(x, m, width=0.34, color=colours[key], edgecolor=INK if i == len(weeks) else "none",
+                       linewidth=0.9)
+                ax.errorbar(x, m, yerr=ci, color=INK_2, linewidth=0.7, capsize=1.8)
+                ax.text(x, m + (0.3 if m >= 0 else -0.3), f"{m:+.1f}", ha="center",
+                        va="bottom" if m >= 0 else "top", fontsize=6.0, color=INK)
+            ax.text(i, -0.015, f"n={len(xs)}", ha="center", va="top", fontsize=6.0, color=INK_2,
+                    transform=ax.get_xaxis_transform())
+        ax.axhline(0, color=INK_2, linewidth=0.8)
+        ax.axvline(len(weeks) - 0.5, color=GRID, linewidth=0.8, linestyle="--")
+        ax.set_xticks(range(len(weeks) + 1), [f"Wk {w}" for w in weeks] + ["All"], fontsize=7.5)
+        ax.tick_params(axis="x", pad=13)
+        ax.set_title(POSITION_NAMES.get(pos, pos).capitalize(), fontsize=9.5, color=INK, loc="left",
+                     fontweight="bold")
+        lm = statistics.mean(x[0] for x in pooled)
+        mm = statistics.mean(x[1] for x in pooled)
+        lmae = statistics.mean(abs(x[0]) for x in pooled)
+        mmae = statistics.mean(abs(x[1]) for x in pooled)
+        summary.append(f"{pos} lines {lm:+.1f} / model {mm:+.1f} (average miss {lmae:.1f} vs {mmae:.1f})")
+    for ax in axes.flat[len(positions):]:
+        ax.set_visible(False)
+    for ax in axes[:, 0]:
+        ax.set_ylabel("Actual minus projection (DK pts)", fontsize=7.5, color=INK_2)
+    from matplotlib.patches import Patch
+
+    fig.legend(handles=[Patch(color=colours["line"], label="Betting-line projection"),
+                        Patch(color=colours["model"], label="Our model's projection")],
+               loc="lower center", ncol=2, fontsize=7.5, frameon=False, bbox_to_anchor=(0.5, -0.005))
+    fig.tight_layout(h_pad=2.2, rect=(0, 0.045, 1, 1))
+    sub = (f"Each week, the {top} players our model projected highest at each position among those with a full set "
+           f"of closing DraftKings prop lines, so both bars cover the same\nplayers. Line projection: the lines read "
+           f"as DK points the way our market anchor reads them. Model projection: our own number before any line "
+           f"anchor. Above zero = they beat it.\nA player who did not play counts as 0. All weeks: "
+           + "; ".join(summary[:2]) + ";\n" + "; ".join(summary[2:]) + ".")
+    return _finish(fig, path, f"Betting lines vs our model: did the top {top} beat each projection? "
+                   f"Weeks {weeks_seen[0]}-{weeks_seen[-1]}", sub, height)
+
+
+def build_line_vs_model_chart(out_dir: Path, weeks: list[int], top: int = 25, season: int = SEASON,
+                              positions: tuple[str, ...] = ("QB", "RB", "WR", "TE"), db=None) -> tuple[bool, Path]:
+    if db is None:
+        from config import load_config
+        from db.database import DatabaseManager
+
+        db = DatabaseManager(load_config().database_url, initialize_schema=False)
+    pairs: dict[str, dict[int, list[tuple[float, float]]]] = {p: {} for p in positions}
+    for w in weeks:
+        lines = line_projections(db, season, w)
+        for pos in positions:
+            projections, results, finished = load(db, season, w, pos)
+            pairs[pos][w] = paired_misses(projections, results, finished, lines, pos, top) if projections else []
+    path = Path(out_dir) / f"nfl_take_lines_vs_model_top{top}.png"
+    return line_vs_model_chart(pairs, top, path), path
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--week", type=int, help="one week's chart for --position")
@@ -347,11 +470,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--season", type=int, default=SEASON)
     ap.add_argument("--out-dir", default=str(DEFAULT_DIR))
     ap.add_argument("--top", type=int, default=None, help="keep only the N highest projections")
+    ap.add_argument("--lines-vs-model", action="store_true",
+                    help="with --bias-weeks: betting-line projections beside our model's")
     args = ap.parse_args(argv)
     if args.bias_weeks:
         lo, _, hi = args.bias_weeks.partition("-")
-        ok, path = build_bias_chart(Path(args.out_dir), list(range(int(lo), int(hi or lo) + 1)),
-                                    args.top or 25, args.season)
+        build = build_line_vs_model_chart if args.lines_vs_model else build_bias_chart
+        ok, path = build(Path(args.out_dir), list(range(int(lo), int(hi or lo) + 1)), args.top or 25, args.season)
         print(f"{path}: {'written' if ok else 'skipped, no data'}")
         return 0
     if args.week is None:

@@ -75,3 +75,20 @@ def test_week_misses_and_bias_chart(tmp_path):
     assert m.bias_chart(misses, 25, tmp_path / "b.png")
     assert (tmp_path / "b.png").read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
     assert not m.bias_chart({"QB": {1: []}}, 25, tmp_path / "x.png")
+
+
+def test_model_projection_reads_the_number_before_the_line_anchor():
+    assert m.model_projection({"ourProj": 12.0}) == 12.0
+    assert m.model_projection({"ourProj": 15.3, "marketAnchor": {"before": {"mean": 13.1}}}) == 13.1
+    assert m.model_projection({"ourProj": 15.3, "marketAnchor": {"before": 11.0}}) == 11.0
+
+
+def test_paired_misses_and_chart(tmp_path, monkeypatch):
+    from model import nfl_dfs_dk_pool_match as pm
+
+    monkeypatch.setattr(pm, "normalize_name", lambda s: s.lower())
+    proj = {1: _p(1, 20, marketAnchor={"before": {"mean": 18.0}}), 2: _p(2, 10), 3: _p(3, 9)}
+    lines = {("p1", "QB"): 21.0, ("p2", "QB"): 12.0}
+    got = m.paired_misses(proj, {1: {"points": 25.0}}, {"NE"}, lines, "QB", 25)
+    assert got == [(4.0, 7.0), (-12.0, -10.0)]
+    assert m.line_vs_model_chart({"QB": {1: got}}, 25, tmp_path / "l.png")
