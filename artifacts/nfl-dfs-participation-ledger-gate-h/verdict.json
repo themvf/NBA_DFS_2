@@ -1,0 +1,26 @@
+{
+ "verdict": "H_CLEARED",
+ "reason": "RB interval wholly below zero and every guard holds in both seasons; Gate F (2026 weeks 7-14) still required",
+ "readings": {
+  "2024": {
+   "evaluable": true,
+   "primary_ci_wholly_below_zero": true,
+   "below_p10_rate_closer_to_10pct": true,
+   "mae_upper_below_0_10": true,
+   "mae_played_upper_below_0_10": true,
+   "p90_point_at_most_0_01": true,
+   "all_guards_hold": true
+  },
+  "2025": {
+   "evaluable": true,
+   "primary_ci_wholly_below_zero": true,
+   "below_p10_rate_closer_to_10pct": true,
+   "mae_upper_below_0_10": true,
+   "mae_played_upper_below_0_10": true,
+   "p90_point_at_most_0_01": true,
+   "all_guards_hold": true
+  }
+ },
+ "decided_at": "2026-10-21T12:00:49.907094+00:00",
+ "study_id": "nfl-dfs-participation-ledger-v1"
+}
