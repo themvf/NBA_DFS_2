@@ -301,3 +301,70 @@ pool rules and ceiling cap were already keeping most of them out, so a pass
 here is a cleanup of the player table and its coverage statistics more than a
 lineup fix. Singletary's miss was an `INA` week, which the candidate leaves
 out by design.
+
+## Gate H result (2026-10-21): H_CLEARED
+
+Run by `model/nfl_dfs_participation_ledger_gate_h.py` (commit `e0f0c620`),
+2024 and 2025 regular seasons, weeks 4-18, against
+`model/nfl_dfs_historical.py` at the pinned hash. Artifacts, with every
+source file's SHA-256 and every graded row:
+`artifacts/nfl-dfs-participation-ledger-gate-h/{2024,2025,verdict}.json` and
+the two run logs. The verdict was computed once by `--verdict` after both
+seasons had finished; neither season was looked at before the other was run.
+
+**RB, the gated position.** Every registered bar and both Amendment 1 bars
+hold in both seasons.
+
+| | 2024 | 2025 |
+|---|---|---|
+| rows (games) | 1,220 (224) | 1,162 (224) |
+| P10 pinball, candidate minus baseline | -0.0152 [-0.0230, -0.0081] | -0.0446 [-0.0602, -0.0298] |
+| below-P10 rate, baseline -> candidate | 17.0% -> 13.7% | 18.9% -> 13.0% |
+| MAE delta, all rows (bound +0.10) | -2.36 [-2.50, -2.22] | -2.15 [-2.30, -2.01] |
+| MAE delta, played rows (Amendment 1, bound +0.10) | -0.12 [-0.19, -0.06] | -0.12 [-0.21, -0.04] |
+| P90 pinball delta, point (bound +0.01) | -0.55 | -0.48 |
+| mean projection, baseline -> candidate | 10.54 -> 8.07 | 10.64 -> 8.33 |
+| projections moved by more than 1 point | 433 | 384 |
+
+Where the gain sits, as predicted: rows whose player did not play (2024 rate
+20.8% -> 14.3%, 2025 25.1% -> 12.9%) and `DEV` rows in particular (below-P10
+rate 9.8% -> 0.4% and 14.9% -> 0.0%). Played rows barely move and are not the
+source of the pass: 2024 -0.0054 [-0.0146, +0.0029], 2025 -0.0164
+[-0.0331, -0.0010]. `INA` rows stay 56% and 48% below P10, which the
+candidate was registered not to address. The 10-15 and 15+ projection bands
+do not move (2024 10-15: +0.0019 [-0.0182, +0.0231]; 15+: -0.0010
+[-0.0147, +0.0110]), so established starters are untouched. The below-P10
+rate does not reach 10%, also as predicted.
+
+**TE and WR, reported, not gated.** Both improve on every metric in both
+seasons: TE P10 pinball -0.070 [-0.097, -0.045] (2024) and -0.038
+[-0.057, -0.022] (2025), rate 13.8% -> 8.1% and 12.5% -> 8.7%; WR -0.066
+[-0.081, -0.052] and -0.061 [-0.081, -0.044], rate 14.0% -> 9.5% and 17.1%
+-> 13.1%. **The prediction that TE would barely move was wrong.** It rested
+on the 2026 saved-build table, where almost every TE row played; in this
+population (every `ACT`/`INA`/`DEV` tight end with a baseline of 5+) 380 of
+819 and 491 of 999 TE rows did not play. The two populations differ, and the
+2026 table is the one that describes a DraftKings slate.
+
+**The mean moves, not only the floor.** The candidate lowers the average
+projection by about 2.4 points, and the pooled MAE improves by about 2.3
+points. Nearly all of that is fringe players whose baseline mean (5-10) was
+built from stale stat lines; the played-split MAE still improves by 0.12 with
+an interval below zero. A v6 built on this would change means as well as
+floors, as the registration said it would.
+
+**QB overlay disclosure (Amendment 1).** `thin_starting_history()` changes
+its verdict for 246 of 904 (2024) and 202 of 903 (2025) `ACT` quarterback-
+weeks under the ledger. That is a large interaction, not a side effect: a v6
+proposal has to decide whether the overlay reads the ledger or the stat-line
+history, and `nfl-qb-spot-start-v2` was fitted on the latter.
+
+**What this does and does not license.** H_CLEARED means Gate F still runs:
+2026 weeks 7-14 on the production population (saved builds, projected 5+,
+not ruled out), at least 150 RB rows over 6 of the 8 weeks, with the
+pre-anchor and anchored P10 both graded. Gate F is not implemented by this
+script; it needs the database history and the saved runs, and is separate
+work. A PASS after Gate F licenses a `nfl-dfs-historical-v6` proposal for the
+owner's decision, nothing more. Nothing in production changed. One observation that is context, not a gate: the phantom
+practice-squad backs this fixes reached 19 of 1,599 saved lineups between
+2026-09-17 and 2026-10-13, so the lineup effect of a v6 would be small.
