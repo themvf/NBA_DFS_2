@@ -24,8 +24,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
-from model.cfb_pattern_charts import GRID, INK, INK_2, SERIES  # noqa: E402
-from model.story_charts import BAD, GOOD, _axes, _fig, _finish  # noqa: E402
+from model.cfb_pattern_charts import DPI, GRID, INK, INK_2, SERIES, SURFACE  # noqa: E402
+from model.story_charts import BAD, GOOD, WIDTH_IN, _axes, _fig, _finish  # noqa: E402
 
 SEASON = 2026
 EASTERN = ZoneInfo("America/New_York")
@@ -262,14 +262,100 @@ def build_chart(out_dir: Path, week: int, position: str = "QB", season: int = SE
     return review_chart(rows, surprises, week, position, path, pending, top), path
 
 
+def week_misses(projections: dict, results: dict, finished: set, top: int) -> list[float]:
+    """Actual minus projection for the `top` highest projections that have a result."""
+    rows, _, pending = review_rows(projections, results, finished)
+    rows, _ = top_by_projection(rows, pending, projections, top)
+    return [r["actual"] - r["proj"] for r in rows]
+
+
+def _mean_ci(xs: list[float]) -> tuple[float, float]:
+    """Mean and the half-width of a normal 95% interval (0 below two values)."""
+    m = statistics.mean(xs)
+    return m, (1.96 * statistics.stdev(xs) / len(xs) ** 0.5) if len(xs) > 1 else 0.0
+
+
+def bias_chart(misses: dict[str, dict[int, list[float]]], top: int, path: Path) -> bool:
+    """One panel per position: average actual minus projection by week, plus all weeks pooled."""
+    positions = [p for p in misses if any(misses[p].values())]
+    if not positions:
+        return False
+    height = 7.6
+    fig, axes = plt.subplots(2, 2, figsize=(WIDTH_IN, height), dpi=DPI, sharey=True)
+    fig.patch.set_facecolor(SURFACE)
+    summary = []
+    for ax, pos in zip(axes.flat, positions):
+        _axes(ax, xgrid=False)
+        weeks = sorted(w for w, xs in misses[pos].items() if xs)
+        pooled = [x for w in weeks for x in misses[pos][w]]
+        labels = [f"Wk {w}" for w in weeks] + ["All"]
+        series = [misses[pos][w] for w in weeks] + [pooled]
+        for i, xs in enumerate(series):
+            m, ci = _mean_ci(xs)
+            colour = GOOD if m >= 0 else BAD
+            ax.bar(i, m, width=0.68, color=colour, alpha=1.0 if i == len(weeks) else 0.75,
+                   edgecolor=INK if i == len(weeks) else "none", linewidth=1.0)
+            ax.errorbar(i, m, yerr=ci, color=INK_2, linewidth=0.9, capsize=2.5)
+            over = sum(1 for x in xs if x > 0)
+            ax.text(i, m + (ci + 0.4 if m >= 0 else -ci - 0.4), f"{m:+.1f}", ha="center",
+                    va="bottom" if m >= 0 else "top", fontsize=7.5, color=INK, fontweight="bold")
+            ax.text(i, -0.03, f"{over}/{len(xs)}", ha="center", va="top", fontsize=6.3, color=INK_2,
+                    transform=ax.get_xaxis_transform())
+        ax.axhline(0, color=INK_2, linewidth=0.8)
+        ax.axvline(len(weeks) - 0.5, color=GRID, linewidth=0.8, linestyle="--")
+        ax.set_xticks(range(len(labels)), labels, fontsize=7.5)
+        ax.tick_params(axis="x", pad=12)
+        ax.set_title(POSITION_NAMES.get(pos, pos).capitalize(), fontsize=9.5, color=INK, loc="left",
+                     fontweight="bold")
+        m, _ = _mean_ci(pooled)
+        summary.append(f"{pos} {m:+.1f}")
+    for ax in axes.flat[len(positions):]:
+        ax.set_visible(False)
+    for ax in axes[:, 0]:
+        ax.set_ylabel("Actual minus projection (DK pts)", fontsize=7.5, color=INK_2)
+    fig.tight_layout(h_pad=2.2)
+    sub = (f"Each week, the {top} players we projected highest at each position, from our last saved build before "
+           f"his game's kickoff. Bar: their average DraftKings\nscore minus our projection (above zero = they beat "
+           f"it), with a 95% interval. Under each bar: how many of them beat their projection. A projected\nplayer "
+           f"who did not play counts as 0, as DraftKings scored him. All weeks pooled: " + ", ".join(summary) + ".")
+    return _finish(fig, path, f"Did the top {top} at each position beat our projections? Weeks "
+                   f"{min(w for p in positions for w, xs in misses[p].items() if xs)}-"
+                   f"{max(w for p in positions for w, xs in misses[p].items() if xs)}", sub, height)
+
+
+def build_bias_chart(out_dir: Path, weeks: list[int], top: int = 25, season: int = SEASON,
+                     positions: tuple[str, ...] = ("QB", "RB", "WR", "TE"), db=None) -> tuple[bool, Path]:
+    if db is None:
+        from config import load_config
+        from db.database import DatabaseManager
+
+        db = DatabaseManager(load_config().database_url, initialize_schema=False)
+    misses: dict[str, dict[int, list[float]]] = {p: {} for p in positions}
+    for w in weeks:
+        for pos in positions:
+            projections, results, finished = load(db, season, w, pos)
+            misses[pos][w] = week_misses(projections, results, finished, top) if projections else []
+    path = Path(out_dir) / f"nfl_take_projection_bias_top{top}.png"
+    return bias_chart(misses, top, path), path
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--week", type=int, required=True)
+    ap.add_argument("--week", type=int, help="one week's chart for --position")
+    ap.add_argument("--bias-weeks", help="e.g. 1-6: average actual minus projection by week, all positions")
     ap.add_argument("--position", default="QB")
     ap.add_argument("--season", type=int, default=SEASON)
     ap.add_argument("--out-dir", default=str(DEFAULT_DIR))
     ap.add_argument("--top", type=int, default=None, help="keep only the N highest projections")
     args = ap.parse_args(argv)
+    if args.bias_weeks:
+        lo, _, hi = args.bias_weeks.partition("-")
+        ok, path = build_bias_chart(Path(args.out_dir), list(range(int(lo), int(hi or lo) + 1)),
+                                    args.top or 25, args.season)
+        print(f"{path}: {'written' if ok else 'skipped, no data'}")
+        return 0
+    if args.week is None:
+        ap.error("--week or --bias-weeks is required")
     ok, path = build_chart(Path(args.out_dir), args.week, args.position, args.season, top=args.top)
     print(f"{path}: {'written' if ok else 'skipped, no data'}")
     return 0
