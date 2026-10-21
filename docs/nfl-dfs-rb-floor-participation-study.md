@@ -236,3 +236,68 @@ Scripts used for the table are in the session notes folder
 `model/nfl_week_projection_review.py` on branch `claude/nfl-week-skill-review`
 for each week 1-6 and position, then join each player's actual touches from
 `ff_player_week_stats`. Data read 2026-10-20; nothing was written.
+
+## Amendment 1 (2026-10-21, before any 2024 or 2025 row was scored)
+
+Recorded before `model/nfl_dfs_participation_ledger_gate_h.py` existed and
+before any Gate H row was projected. The hypothesis, candidate, primary
+metric, floors and kill rule are unchanged. Three things are added.
+
+**1. The MAE guard is also evaluated on the played split.** The candidate's
+pinball gain will sit almost entirely in rows whose player did not play, where
+a lower P10 is trivially right. A pooled MAE interval could therefore pass
+while the candidate makes starters worse. The guard now has to hold twice in
+each season: on all rows (as registered) and on rows whose player recorded a
+stat line in the target week, same bound (95% interval upper bound below
++0.10 DK points). Every other guard is unchanged.
+
+**2. The quarterback starter overlay is reported.** "The model code is
+unchanged" is true of `project_player` but not of
+`thin_starting_history()` in `model/nfl_qb_starter.py`, which averages
+attempts over a quarterback's recent history rows. Under the ledger a dressed
+backup's recent rows include zero-attempt games, so more quarterbacks will
+read as thin-history and be routed to the team-volume construction
+(`nfl-qb-spot-start-v2`). Gate H grades RB/TE/WR and does not run the overlay,
+but for every target week it reports how many `ACT` quarterbacks change
+`thin_starting_history` verdict between the two arms. This is a disclosure,
+not a gate; a decision about the overlay belongs to the v6 proposal.
+
+**3. Implementation choices the registration left open**, fixed here so they
+are not chosen after seeing a result:
+
+- History depth: the target season and the two seasons before it (the
+  production table holds 2023 onward, so a 2025 target in production sees two
+  prior seasons; the replay matches that).
+- Identity: nflverse `gsis_id`. `project_player` takes an integer
+  `player_id`, so each gsis id is given a stable integer (its rank in the
+  sorted set of ids seen), identical in both arms, and the registered seed
+  (20260902, the production default) is used. Draws therefore differ from any
+  production run but are paired exactly across arms.
+- Team codes go through `model/nfl_team_aliases.normalize_team`. A team's
+  game in a week is the row of nflverse `games.csv` (`game_type = REG`) that
+  names it; a bye week has no ledger row.
+- Team implied total: `(total_line + spread_line) / 2` for the home team and
+  `(total_line - spread_line) / 2` for the away team, nflverse sign convention
+  (positive `spread_line` = home favoured), the same formula production uses
+  for the nflverse fallback. Opponent factor is None (`opponent_mode` is
+  `off` in `MODEL_CONFIG`).
+- Only same-position rows are passed to `project_player`. Its own-row filter
+  and `_peer_rows` both restrict to the player's position, so the result is
+  identical and the run is faster.
+- Zero rows in the ledger take the player's position from his stat lines when
+  he has any, else from the weekly roster. A player with a target-week stat
+  line but no target-week roster row is outside the population (the
+  population is defined by roster status), and is counted in the artifact.
+- The bootstrap cluster is the nflverse `game_id`, both teams together.
+- Gate H alone cannot PASS. Its result is `KILL`, `INCONCLUSIVE`, or
+  `H_CLEARED` (both seasons wholly below zero, every guard holding in both),
+  with Gate F still to run on 2026 weeks 7-14 before a PASS can be stated.
+
+**Context recorded, not a gate.** The saved lineups from the 61 complete runs
+between 2026-09-17 and 2026-10-13 (1,599 lineups) contained the recurring
+practice-squad names in 19 lineups: Devin Singletary 10, Bam Knight 8,
+Michael Carter 1, and Ahmed, McCormick and Jordan in none. The optimizer's
+pool rules and ceiling cap were already keeping most of them out, so a pass
+here is a cleanup of the player table and its coverage statistics more than a
+lineup fix. Singletary's miss was an `INA` week, which the candidate leaves
+out by design.
