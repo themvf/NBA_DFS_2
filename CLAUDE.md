@@ -8445,3 +8445,17 @@ below zero. It imports the pinned game-leaders files and changes none of them,
 so `nfl-prop-under-v1` is unaffected. Discovery (15 games re-created after the
 fact, `origin = 'discovery'`): anchored beat ours in all four markets, better in
 10-12 of 15 games each; that cannot confirm anything.
+
+## NFL advice pick log (`research/nfl_advice_log.py`, 2026-10-21)
+
+Every betting pick suggested in a session goes in `nfl_advice_picks` (frozen when
+logged; one logged after kickoff is `late` and left out of the record), with
+results in `nfl_advice_pick_results` (append-only; a correction appends, the
+latest wins). `add` before kickoff, `settle` grades props and game-leader picks
+from nflverse weekly stats (a tie for the lead is a dead heat; a player with no
+stat row is settled by hand), `report` prints the record, units at the logged
+price and the logged fair chance against the implied one. Log the actual
+DraftKings price, including leader-market odds, which are captured nowhere else:
+`model/nfl_leader_favourite_charts.py` can only compare prop-implied leader
+shares (weeks 5-6: DK favourites led 44% against 43% implied; our model gave
+them 32%).
