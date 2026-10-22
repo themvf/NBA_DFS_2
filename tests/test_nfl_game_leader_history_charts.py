@@ -24,10 +24,26 @@ def test_leaders_split_ties_and_count_played():
     assert top[0]["id"] == "a"
 
 
+def test_defense_views():
+    rows = [_r("a", "KC", "LV", 1, rush=100), _r("b", "LV", "KC", 1, rush=40),
+            _r("a", "KC", "DEN", 2, rush=30), _r("c", "DEN", "KC", 2, rush=90)]
+    gs = g.games(rows)
+    allowed = g.defense_allowed(gs, "rushing_yards")
+    assert allowed["KC"]["per_game"] == 65.0 and allowed["LV"]["per_game"] == 100.0
+    assert allowed["DEN"]["rank"] == 1 and allowed["LV"]["rank"] == 3
+    dl = g.defense_leaders(gs, "rushing_yards")
+    assert dl["LV"]["against"] == 1.0 and dl["KC"]["against"] == 1.0 and dl["DEN"]["against"] == 0.0
+    pw = g.player_weeks(gs, "rushing_yards", "a")
+    assert pw[1] == {"opp": "LV", "yards": 100.0, "led": 1.0} and pw[2]["led"] == 0.0
+
+
 def test_charts_write_pngs(tmp_path):
     rows = [_r(f"p{i}", "KC", "LV", w, rush=float(i * w), rec=float(w)) for i in range(5) for w in range(1, 5)]
     rows += [_r("q", "LV", "KC", w, rush=1.0, rec=float(w * 10)) for w in range(1, 5)]
     tables = {stat: g.leaders(g.games(rows), stat) for stat, _ in g.METRICS}
     assert g.count_chart(tables, tmp_path / "a.png", "Weeks 1-4", 4)
     assert g.rate_chart(tables, tmp_path / "b.png", "Weeks 1-4")
+    gs = g.games(rows)
+    assert g.grid_chart(gs, tables, tmp_path / "c.png", [1, 2, 3, 4])
+    assert g.defense_chart(gs, tmp_path / "d.png", "Weeks 1-4")
     assert (tmp_path / "b.png").read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"

@@ -137,6 +137,140 @@ def rate_chart(tables: dict[str, dict], path: Path, weeks: str) -> bool:
     return _finish(fig, path, "Who leads his games most reliably?", sub, height)
 
 
+# ── defenses ─────────────────────────────────────────────────────────────────
+def defense_allowed(gs: dict[tuple, list[dict]], stat: str) -> dict[str, dict]:
+    """defense -> games and the stat allowed per game (every opposing player's total), with a rank (1 = fewest)."""
+    acc = defaultdict(list)
+    for key, rows in gs.items():
+        for team in key[1:]:
+            opp = next(t for t in key[1:] if t != team)
+            acc[opp].append(sum(_val(r, stat) for r in rows if r["team"] == team))
+    table = {d: {"games": len(v), "per_game": st.mean(v)} for d, v in acc.items()}
+    for rank, d in enumerate(sorted(table, key=lambda d: table[d]["per_game"]), start=1):
+        table[d]["rank"] = rank
+    return table
+
+
+def player_weeks(gs: dict[tuple, list[dict]], stat: str, pid: str) -> dict[int, dict]:
+    """week -> his opponent, his yards and his lead credit in that game."""
+    out = {}
+    for key, rows in gs.items():
+        mine = [r for r in rows if r["player_id"] == pid]
+        if not mine:
+            continue
+        best = max(_val(r, stat) for r in rows)
+        tops = [r for r in rows if _val(r, stat) == best] if best > 0 else []
+        me = mine[0]
+        out[key[0]] = {"opp": me["opponent_team"], "yards": _val(me, stat),
+                       "led": (1 / len(tops)) if me in tops else 0.0}
+    return out
+
+
+def defense_leaders(gs: dict[tuple, list[dict]], stat: str) -> dict[str, dict]:
+    """defense -> games, how often the game's leader came from the offense it faced (ties split), his yards."""
+    acc = defaultdict(lambda: {"games": 0, "against": 0.0, "yards": []})
+    for key, rows in gs.items():
+        best = max(_val(r, stat) for r in rows)
+        tops = [r for r in rows if _val(r, stat) == best] if best > 0 else []
+        for team in key[1:]:
+            defense = next(t for t in key[1:] if t != team)
+            a = acc[defense]
+            a["games"] += 1
+            for r in tops:
+                if r["team"] == team:
+                    a["against"] += 1 / len(tops)
+                    a["yards"].append(best)
+    return dict(acc)
+
+
+def grid_chart(gs: dict[tuple, list[dict]], tables: dict[str, dict], path: Path, weeks: list[int],
+               n: int = 12) -> bool:
+    if not any(tables.values()):
+        return False
+    from matplotlib.colors import LinearSegmentedColormap
+
+    cmap = LinearSegmentedColormap.from_list("defrank", ["#1baf7a", "#f4f2ec", "#e34948"])
+    height = 2 * (0.34 * n + 1.0) + 2.6
+    fig, axes = plt.subplots(2, 1, figsize=(WIDTH_IN, height), dpi=DPI)
+    fig.patch.set_facecolor(SURFACE)
+    for ax, (stat, label) in zip(axes, METRICS):
+        allowed = defense_allowed(gs, stat)
+        n_def = len(allowed)
+        players = ranked(tables[stat], n)
+        ax.set_facecolor(SURFACE)
+        for y, p in enumerate(players):
+            pw = player_weeks(gs, stat, p["id"])
+            for x, w in enumerate(weeks):
+                cell = pw.get(w)
+                if cell is None:
+                    ax.add_patch(plt.Rectangle((x, y), 1, 1, facecolor="#ebe8e1", edgecolor=SURFACE, linewidth=1.2))
+                    ax.text(x + 0.5, y + 0.5, "did not play", ha="center", va="center", fontsize=5.4, color=INK_2)
+                    continue
+                d = allowed.get(cell["opp"])
+                # Rank 1 = allowed the fewest: dark green is a tough defense for this stat, red a soft one.
+                colour = cmap((d["rank"] - 1) / max(n_def - 1, 1)) if d else "#ebe8e1"
+                ax.add_patch(plt.Rectangle((x, y), 1, 1, facecolor=colour, edgecolor=SURFACE, linewidth=1.2))
+                led = cell["led"] > 0
+                text = f"{'LED ' if led else ''}{cell['opp']}\n{cell['yards']:.0f} yds" + (f" (#{d['rank']})" if d else "")
+                ax.text(x + 0.5, y + 0.5, text, ha="center", va="center", fontsize=5.8, color=INK,
+                        fontweight="bold" if led else "normal")
+                if led:
+                    ax.add_patch(plt.Rectangle((x + 0.04, y + 0.06), 0.92, 0.88, fill=False, edgecolor=INK,
+                                               linewidth=1.3))
+        ax.set_xlim(0, len(weeks))
+        ax.set_ylim(len(players), 0)
+        ax.set_xticks([i + 0.5 for i in range(len(weeks))], [f"Week {w}" for w in weeks], fontsize=7)
+        ax.xaxis.tick_top()
+        ax.set_yticks([i + 0.5 for i in range(len(players))],
+                      [f"{p['name']} {p['team']} ({_fmt(p['led'])}/{p['played']})" for p in players], fontsize=6.8)
+        for side in ax.spines.values():
+            side.set_visible(False)
+        ax.tick_params(length=0, colors=INK_2)
+        ax.set_title(label, fontsize=9.5, color=INK, loc="left", fontweight="bold", pad=18)
+    fig.tight_layout(h_pad=2.0)
+    sub = (f"The top {n} game leaders in each stat, week by week. Cell: his opponent, his yards, and that defense's "
+           f"rank in the stat allowed per game this season (#1 allowed the fewest).\nColour: green is a tough "
+           f"defense for the stat, red a soft one. Boxed and 'LED': he led both teams that game. Ranks use the whole "
+           f"season to date, including\nthe game shown, and reflect the offenses each defense faced as much as the "
+           f"defense itself.")
+    return _finish(fig, path, "Game leaders, week by week, against the defenses they faced", sub, height)
+
+
+def defense_chart(gs: dict[tuple, list[dict]], path: Path, weeks: str) -> bool:
+    if not gs:
+        return False
+    height = 0.25 * 32 + 3.0
+    fig, axes = plt.subplots(1, 2, figsize=(WIDTH_IN, height), dpi=DPI)
+    fig.patch.set_facecolor(SURFACE)
+    for ax, (stat, label), colour in zip(axes, METRICS, (SERIES[0], SERIES[1])):
+        dl = defense_leaders(gs, stat)
+        allowed = defense_allowed(gs, stat)
+        rows = sorted(dl.items(), key=lambda kv: (kv[1]["against"] / kv[1]["games"], kv[1]["against"]))
+        _axes(ax, ygrid=False)
+        ys = range(len(rows))
+        shares = [v["against"] / v["games"] for _, v in rows]
+        ax.barh(list(ys), shares, color=colour, height=0.7)
+        ax.axvline(0.5, color=INK_2, linewidth=0.8, linestyle="--")
+        for y, (d, v), s in zip(ys, rows, shares):
+            yds = f", {st.mean(v['yards']):.0f} yds" if v["yards"] else ""
+            ax.text(s + 0.015, y, f"{_fmt(v['against'])}/{v['games']}{yds}  ({allowed[d]['per_game']:.0f}/g allowed, "
+                    f"#{allowed[d]['rank']})", va="center", fontsize=5.8, color=INK)
+        ax.set_yticks(list(ys), [d for d, _ in rows], fontsize=6.8)
+        ax.set_xlim(0, 1.6)
+        ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.0%}" if v <= 1 else ""))
+        ax.set_title(label, fontsize=9.5, color=INK, loc="left", fontweight="bold")
+        ax.tick_params(axis="x", labelsize=6.6)
+    fig.tight_layout(w_pad=2.0)
+    sub = (f"{weeks}. Bar: share of each defense's games in which the game's leader in the stat played for the "
+           f"offense it faced (dashed: half). Text: those games of all games, the leader's\naverage yards in them, "
+           f"and the defense's yards allowed per game and rank (#1 allowed the fewest). Ties split the credit. "
+           f"Top of each panel: the defenses whose\nopponent most often produced the game's top rusher or receiver. "
+           f"Each game has one leader, so a defense whose OWN offense has a dominant player\nrarely gives it up "
+           f"(Kansas City's rushing 0/5 is mostly Kenneth Walker leading KC's own games): this mixes the defense "
+           f"with its own offense.")
+    return _finish(fig, path, "Which defenses gave up the game's leading rusher and receiver?", sub, height)
+
+
 # ── data ─────────────────────────────────────────────────────────────────────
 def load(season: int = SEASON) -> list[dict]:
     import pandas as pd
@@ -157,7 +291,11 @@ def build_all(out_dir: Path, season: int = SEASON) -> list[tuple[str, bool]]:
     out_dir = Path(out_dir)
     return [("nfl_take_game_leaders_count.png",
              count_chart(tables, out_dir / "nfl_take_game_leaders_count.png", weeks, len(gs))),
-            ("nfl_take_game_leaders_rate.png", rate_chart(tables, out_dir / "nfl_take_game_leaders_rate.png", weeks))]
+            ("nfl_take_game_leaders_rate.png", rate_chart(tables, out_dir / "nfl_take_game_leaders_rate.png", weeks)),
+            ("nfl_take_game_leaders_vs_defense.png",
+             grid_chart(gs, tables, out_dir / "nfl_take_game_leaders_vs_defense.png", ws)),
+            ("nfl_take_defense_gave_leader.png",
+             defense_chart(gs, out_dir / "nfl_take_defense_gave_leader.png", weeks))]
 
 
 def main(argv: list[str] | None = None) -> int:
