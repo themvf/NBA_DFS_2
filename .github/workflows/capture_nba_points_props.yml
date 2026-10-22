@@ -1,13 +1,15 @@
 name: Capture NBA points props
 
 # Feeds /nba/top-scorers. Dispatched by /api/cron/dispatch (job
-# nba-points-props) at 15:07 and 22:07 UTC, October through June: the morning
-# read after the books post player props, and the closing read before the
-# 7 PM ET tips. The page shows each game's latest capture. Two credits per game
-# on the shared ODDS_API_KEY (two markets, six books via bookmakers=), about
-# 50 a day. The schedule below is a thin fallback for a broken dispatcher
-# bridge; GitHub runs it hours late, and the script skips games that have
-# already tipped.
+# nba-points-props) at 15:07, 22:07 and 01:07 UTC, October through June: the
+# morning read after the books post player props, the closing read before the
+# 7 PM ET tips, and the closing read for the 9:30-10:30 PM ET tips (only games
+# still to tip are fetched). The page shows each game's latest capture; the
+# nightly grade (grade_nba_points_props.yml) scores each game's last capture
+# before its tip. Two credits per game on the shared ODDS_API_KEY (two
+# markets, six books via bookmakers=), about 60 a day. The schedule below is a
+# thin fallback for a broken dispatcher bridge; GitHub runs it hours late, and
+# the script skips games that have already tipped.
 on:
   schedule:
     - cron: "37 16 * 1-6,10-12 *"

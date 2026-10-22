@@ -179,6 +179,17 @@
       "pullRequest": false
     },
     {
+      "file": "grade_nba_points_props.yml",
+      "name": "Grade NBA points props",
+      "crons": [
+        "37 12 * 1-6,10-12 *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
       "file": "load_mlb_slate.yml",
       "name": "Load MLB DFS Slate",
       "crons": [],

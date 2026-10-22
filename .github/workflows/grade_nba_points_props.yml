@@ -1,0 +1,59 @@
+name: Grade NBA points props
+
+# The nightly calibration of /nba/top-scorers: ESPN box scores for the last
+# three Eastern dates (ingest.nba_box_scores; free, no key), then each game's
+# last pre-tip capture graded against them (model.nba_points_calibration ->
+# nba_points_calibration). Dispatched by /api/cron/dispatch (job
+# nba-points-grade) at 11:07 UTC (7:07 AM ET), October through June, after
+# every West Coast game has gone final. Three dates each run so a missed
+# night or a late box score is picked up; both steps are idempotent upserts.
+# Costs no Odds API credits. The schedule below is the thin GitHub fallback.
+on:
+  schedule:
+    - cron: "37 12 * 1-6,10-12 *"
+  workflow_dispatch:
+    inputs:
+      date:
+        description: Last Eastern date to grade, YYYY-MM-DD (blank = yesterday ET)
+        required: false
+        default: ""
+      days_back:
+        description: How many dates ending on that one to process
+        required: true
+        default: "3"
+
+concurrency:
+  group: grade-nba-points-props
+  cancel-in-progress: false
+
+jobs:
+  grade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Fetch ESPN box scores
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GAME_DATE: ${{ inputs.date }}
+          DAYS_BACK: ${{ inputs.days_back || '3' }}
+        run: >-
+          python -m ingest.nba_box_scores
+          ${GAME_DATE:+--date "$GAME_DATE"}
+          --days-back "$DAYS_BACK"
+          --apply
+      - name: Grade the pre-tip lines
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GAME_DATE: ${{ inputs.date }}
+          DAYS_BACK: ${{ inputs.days_back || '3' }}
+        run: >-
+          python -m model.nba_points_calibration
+          ${GAME_DATE:+--date "$GAME_DATE"}
+          --days-back "$DAYS_BACK"
+          --apply

@@ -243,6 +243,25 @@ latest capture. GitHub fallback cron 16:37 UTC. Dataset row `nba_points_props` o
 /health (36 h). The first two manual runs (2026-10-20) showed the one failure to expect:
 `DatabaseManager()` with the default DDL pass hit `LockNotAvailable` against another
 writer; the script now opens with `initialize_schema=False`.
+**Third capture and the nightly grade (2026-10-22).** The dispatcher also fires the capture
+at 01:07 UTC (9:07 PM ET) for the 9:30-10:30 PM ET tips (only games still to tip, a few
+credits), so every game has a capture inside about 90 minutes of its tip. Each morning at
+11:07 UTC (job `nba-points-grade`, `grade_nba_points_props.yml`, GitHub fallback 12:37 UTC)
+`ingest/nba_box_scores.py` stores ESPN's box scores for the last three Eastern dates
+(`nba_box_score_games` / `nba_box_score_players`; a player who did not play is `played =
+false` with null stats, never a zero) and `model/nba_points_calibration.py` grades each game's
+LAST pre-tip capture into `nba_points_calibration` (`nba-points-grade-v1`): consensus line,
+P(over), floor, ceiling and P(20+)..P(40+) beside actual points, one row per player-game,
+status `graded` / `dnp` / `unmatched` / `ambiguous` / `no_box_score` / `push`. The reader is a
+Python port, `model/nba_points_ladder.py`, pinned to the TypeScript by
+`tests/fixtures/nba_points_ladder_fixture.json` (written by
+`web/scripts/write-nba-points-ladder-fixture.ts`; both sides' tests assert it). ESPN because
+stats.nba.com blocks runners and cdn.nba.com answered 403 even from home. Players are matched
+by accent-free name within their own game, never across games. The page shows the pooled grade
+(n, books said, happened, Brier per reading; floor and ceiling beat rates) and the viewed night
+beside it. Both tables are on /health (36 h). First two nights (Oct 20-21, 195 rows, 193
+graded): over-the-line hit 46.6% against 50.2% stated, floor beat 90.2%, ceiling beat 7.3%;
+far too few to read, which is why it runs nightly.
 
 ## Data Refresh Workflow
 

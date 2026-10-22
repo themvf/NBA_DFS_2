@@ -148,15 +148,26 @@ const NBA_MONTHS = new Set([10, 11, 12, 1, 2, 3, 4, 5, 6]);
 
 /**
  * NBA points-props capture for /nba/top-scorers: the 15:07 UTC tick (11:07 AM
- * ET, after the books post the morning's player props) and the 22:07 UTC tick
- * (6:07 PM ET, the closing read before the 7 PM ET tips), October through
- * June. The page shows each game's latest capture, so the evening run replaces
- * the morning one. Each run costs about 2 credits a game; a game that has
- * already tipped is skipped by the script.
+ * ET, after the books post the morning's player props), the 22:07 UTC tick
+ * (6:07 PM ET, the closing read before the 7 PM ET tips) and the 01:07 UTC
+ * tick (9:07 PM ET, the closing read for the 9:30-10:30 PM ET tips; only the
+ * games still to tip are fetched, so it is a few credits), October through
+ * June. The page shows each game's latest capture, and the nightly grade
+ * scores each game's last capture before its tip. Each run costs about 2
+ * credits a game; a game that has already tipped is skipped by the script.
  */
 export function nbaPointsPropsDue(now: Date): boolean {
   if (!NBA_MONTHS.has(now.getUTCMonth() + 1) || !hourTick(now)) return false;
-  return now.getUTCHours() === 15 || now.getUTCHours() === 22;
+  return now.getUTCHours() === 15 || now.getUTCHours() === 22 || now.getUTCHours() === 1;
+}
+
+/**
+ * Nightly grade of those lines against ESPN box scores (grade_nba_points_props.yml):
+ * 11:07 UTC (7:07 AM ET), after the last West Coast game has gone final. No
+ * Odds API credits; three Eastern dates each run, idempotent.
+ */
+export function nbaPointsGradeDue(now: Date): boolean {
+  return NBA_MONTHS.has(now.getUTCMonth() + 1) && hourTick(now) && now.getUTCHours() === 11;
 }
 
 export const DISPATCH_JOBS: readonly DispatchJob[] = [
@@ -218,7 +229,14 @@ export const DISPATCH_JOBS: readonly DispatchJob[] = [
     // Blank date = today ET inside the script. 40 credits covers a 15-game night
     // (2 per game) plus a few; the script aborts before any paid call past it.
     inputs: { date: "", max_credits: "40" },
-    why: "Tonight's player-points lines and alternate ladders for /nba/top-scorers (Odds API, ~2 credits a game), 11:07 AM and 6:07 PM ET, October-June.",
+    why: "Tonight's player-points lines and alternate ladders for /nba/top-scorers (Odds API, ~2 credits a game), 11:07 AM, 6:07 PM and 9:07 PM ET, October-June.",
+  },
+  {
+    key: "nba-points-grade",
+    workflow: "grade_nba_points_props.yml",
+    due: nbaPointsGradeDue,
+    inputs: { date: "", days_back: "3" },
+    why: "ESPN box scores and the calibration grade of last night's pre-tip points lines for /nba/top-scorers, 7:07 AM ET, October-June.",
   },
   {
     key: "nfl-game-leaders",
