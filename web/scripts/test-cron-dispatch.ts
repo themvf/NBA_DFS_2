@@ -244,8 +244,18 @@ assert.ok(!keys("2026-08-21T15:07:00Z").includes("nba-points-props"), "off-seaso
 assert.ok(keys("2027-06-10T22:07:00Z").includes("nba-points-props"), "Finals in June");
 let nbaTicks = 0;
 for (let h = 0; h < 24; h += 1) for (const m of TICKS) if (keys(`2026-10-21T${hh(h)}:${m}:00Z`).includes("nba-points-props")) nbaTicks += 1;
-assert.equal(nbaTicks, 2, "exactly two paid NBA captures a day");
+assert.equal(nbaTicks, 3, "exactly three paid NBA captures a day");
+assert.ok(keys("2026-10-22T01:07:00Z").includes("nba-points-props"), "9:07 PM ET closing read for the late tips");
 assert.equal(DISPATCH_JOBS.find((j) => j.key === "nba-points-props")?.inputs?.max_credits, "40");
+// Nightly grade: box scores + calibration, once a day, no credits.
+assert.ok(keys("2026-10-22T11:07:00Z").includes("nba-points-grade"), "7:07 AM ET grade");
+assert.ok(!keys("2026-10-22T11:22:00Z").includes("nba-points-grade"), "the :07 tick only");
+assert.ok(!keys("2026-08-22T11:07:00Z").includes("nba-points-grade"), "off-season: nothing to grade");
+let gradeTicks = 0;
+for (let h = 0; h < 24; h += 1) for (const m of TICKS) if (keys(`2026-10-22T${hh(h)}:${m}:00Z`).includes("nba-points-grade")) gradeTicks += 1;
+assert.equal(gradeTicks, 1, "one grade a day");
+assert.equal(DISPATCH_JOBS.find((j) => j.key === "nba-points-grade")?.workflow, "grade_nba_points_props.yml");
+assert.equal(DISPATCH_JOBS.find((j) => j.key === "nba-points-grade")?.inputs?.days_back, "3");
 
 console.log(`Cron dispatch: ${DISPATCH_JOBS.length} bridged workflows on a 15-minute tick; half-hour cadences unchanged, NFL availability every 15 minutes before a kickoff.`);
 }).catch((e) => { console.error(e); process.exit(1); });

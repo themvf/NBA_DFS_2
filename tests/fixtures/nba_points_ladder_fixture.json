@@ -1,0 +1,649 @@
+{
+  "generatedBy": "web/src/lib/nba-points-ladder.ts + nba-top-scorers.ts (gen-ladder-fixture.ts)",
+  "nameKeys": {
+    "Nikola Jokić": "nikolajokic",
+    "Jaren Jackson Jr.": "jarenjackson",
+    "O.G. Anunoby": "oganunoby",
+    "Luka Dončić": "lukadoncic",
+    "Shai Gilgeous-Alexander": "shaigilgeousalexander",
+    "Michael Porter Jr": "michaelporter",
+    "LA Clippers": "laclippers",
+    "Los Angeles Clippers": "losangelesclippers"
+  },
+  "teamKeys": {
+    "LA Clippers": "losangelesclippers",
+    "Los Angeles Clippers": "losangelesclippers",
+    "Oklahoma City Thunder": "oklahomacitythunder"
+  },
+  "cases": [
+    {
+      "name": "single book normal ladder",
+      "books": {
+        "draftkings": {
+          "line": 24.5,
+          "over": -123,
+          "under": 103
+        }
+      },
+      "ladders": {
+        "draftkings": {
+          "ladder": [
+            {
+              "point": 9.5,
+              "side": "over",
+              "price": -9900
+            },
+            {
+              "point": 14.5,
+              "side": "over",
+              "price": -3930
+            },
+            {
+              "point": 19.5,
+              "side": "over",
+              "price": -453
+            },
+            {
+              "point": 29.5,
+              "side": "over",
+              "price": 268
+            },
+            {
+              "point": 34.5,
+              "side": "over",
+              "price": 995
+            },
+            {
+              "point": 39.5,
+              "side": "over",
+              "price": 4895
+            },
+            {
+              "point": 44.5,
+              "side": "over",
+              "price": 35733
+            }
+          ]
+        }
+      },
+      "expected": {
+        "bookLines": [
+          {
+            "book": "draftkings",
+            "line": 24.5,
+            "over": -123,
+            "under": 103,
+            "pOver": 0.5282320336795786
+          }
+        ],
+        "consensus": {
+          "line": 24.5,
+          "pOver": 0.5282320336795786
+        },
+        "distribution": {
+          "curve": [
+            {
+              "point": 9.5,
+              "p": 0.9481120819141509,
+              "books": 1
+            },
+            {
+              "point": 14.5,
+              "p": 0.9339249772971935,
+              "books": 1
+            },
+            {
+              "point": 19.5,
+              "p": 0.7845083257659968,
+              "books": 1
+            },
+            {
+              "point": 24.5,
+              "p": 0.5282320336795786,
+              "books": 1
+            },
+            {
+              "point": 29.5,
+              "p": 0.2602415683778411,
+              "books": 1
+            },
+            {
+              "point": 34.5,
+              "p": 0.08746018005757583,
+              "books": 1
+            },
+            {
+              "point": 39.5,
+              "p": 0.019172952384994103,
+              "books": 1
+            },
+            {
+              "point": 44.5,
+              "p": 0.002672645247761715,
+              "books": 1
+            }
+          ],
+          "floor": 15.635247542678009,
+          "ceiling": 34.137118903131494,
+          "atLeast": {
+            "20": 0.7845083257659968,
+            "25": 0.5282320336795786,
+            "30": 0.2602415683778411,
+            "35": 0.08746018005757583,
+            "40": 0.019172952384994103
+          },
+          "ladderBooks": 1,
+          "skippedRungs": 0
+        }
+      }
+    },
+    {
+      "name": "three books, modal tie broken by median, one book without main line skipped, paired rungs",
+      "books": {
+        "draftkings": {
+          "line": 24.5,
+          "over": -115,
+          "under": -105
+        },
+        "fanduel": {
+          "line": 25.5,
+          "over": -110,
+          "under": -110
+        },
+        "betmgm": {
+          "line": 24.5,
+          "over": -120,
+          "under": 100
+        },
+        "caesars": {
+          "line": 25.5,
+          "over": 105,
+          "under": -125
+        },
+        "fanatics": {
+          "line": 26.5,
+          "over": 120,
+          "under": -140
+        }
+      },
+      "ladders": {
+        "draftkings": {
+          "ladder": [
+            {
+              "point": 14.5,
+              "side": "over",
+              "price": -900
+            },
+            {
+              "point": 19.5,
+              "side": "over",
+              "price": -330
+            },
+            {
+              "point": 29.5,
+              "side": "over",
+              "price": 190
+            },
+            {
+              "point": 34.5,
+              "side": "over",
+              "price": 500
+            },
+            {
+              "point": 39.5,
+              "side": "over",
+              "price": 1200
+            }
+          ]
+        },
+        "fanduel": {
+          "ladder": [
+            {
+              "point": 19.5,
+              "side": "over",
+              "price": -300
+            },
+            {
+              "point": 19.5,
+              "side": "under",
+              "price": 240
+            },
+            {
+              "point": 29.5,
+              "side": "over",
+              "price": 200
+            },
+            {
+              "point": 29.5,
+              "side": "under",
+              "price": -250
+            },
+            {
+              "point": 24.5,
+              "side": "over",
+              "price": -105
+            }
+          ]
+        },
+        "espnbet": {
+          "ladder": [
+            {
+              "point": 19.5,
+              "side": "over",
+              "price": -280
+            },
+            {
+              "point": 29.5,
+              "side": "over",
+              "price": 210
+            }
+          ]
+        },
+        "betmgm": {
+          "ladder": [
+            {
+              "point": 24.5,
+              "side": "under",
+              "price": -118
+            },
+            {
+              "point": 29.5,
+              "side": "over",
+              "price": 180
+            }
+          ]
+        }
+      },
+      "expected": {
+        "bookLines": [
+          {
+            "book": "betmgm",
+            "line": 24.5,
+            "over": -120,
+            "under": 100,
+            "pOver": 0.5217391304347826
+          },
+          {
+            "book": "caesars",
+            "line": 25.5,
+            "over": 105,
+            "under": -125,
+            "pOver": 0.4675324675324675
+          },
+          {
+            "book": "draftkings",
+            "line": 24.5,
+            "over": -115,
+            "under": -105,
+            "pOver": 0.5108342361863488
+          },
+          {
+            "book": "fanatics",
+            "line": 26.5,
+            "over": 120,
+            "under": -140,
+            "pOver": 0.43795620437956206
+          },
+          {
+            "book": "fanduel",
+            "line": 25.5,
+            "over": -110,
+            "under": -110,
+            "pOver": 0.5
+          }
+        ],
+        "consensus": {
+          "line": 25.5,
+          "pOver": 0.48376623376623373
+        },
+        "distribution": {
+          "curve": [
+            {
+              "point": 14.5,
+              "p": 0.859534127843987,
+              "books": 1
+            },
+            {
+              "point": 19.5,
+              "p": 0.725622968580715,
+              "books": 2
+            },
+            {
+              "point": 24.5,
+              "p": 0.4998738808426201,
+              "books": 4
+            },
+            {
+              "point": 25.5,
+              "p": 0.48376623376623373,
+              "books": 2
+            },
+            {
+              "point": 26.5,
+              "p": 0.43795620437956206,
+              "books": 1
+            },
+            {
+              "point": 29.5,
+              "p": 0.32932342062988007,
+              "books": 3
+            },
+            {
+              "point": 34.5,
+              "p": 0.15917298663777535,
+              "books": 1
+            },
+            {
+              "point": 39.5,
+              "p": 0.07346445537128093,
+              "books": 1
+            }
+          ],
+          "floor": null,
+          "ceiling": 37.95198930394619,
+          "atLeast": {
+            "20": 0.725622968580715,
+            "25": 0.4998738808426201,
+            "30": 0.32932342062988007,
+            "35": 0.15917298663777535,
+            "40": 0.07346445537128093
+          },
+          "ladderBooks": 3,
+          "skippedRungs": 2
+        }
+      }
+    },
+    {
+      "name": "out-of-order books pooled non-increasing",
+      "books": {
+        "draftkings": {
+          "line": 20.5,
+          "over": -110,
+          "under": -110
+        },
+        "fanduel": {
+          "line": 20.5,
+          "over": -108,
+          "under": -112
+        }
+      },
+      "ladders": {
+        "draftkings": {
+          "ladder": [
+            {
+              "point": 14.5,
+              "side": "over",
+              "price": -500
+            },
+            {
+              "point": 24.5,
+              "side": "over",
+              "price": 150
+            },
+            {
+              "point": 29.5,
+              "side": "over",
+              "price": 400
+            }
+          ]
+        },
+        "fanduel": {
+          "ladder": [
+            {
+              "point": 14.5,
+              "side": "over",
+              "price": -450
+            },
+            {
+              "point": 24.5,
+              "side": "over",
+              "price": 140
+            },
+            {
+              "point": 29.5,
+              "side": "over",
+              "price": 120
+            }
+          ]
+        }
+      },
+      "expected": {
+        "bookLines": [
+          {
+            "book": "draftkings",
+            "line": 20.5,
+            "over": -110,
+            "under": -110,
+            "pOver": 0.5
+          },
+          {
+            "book": "fanduel",
+            "line": 20.5,
+            "over": -108,
+            "under": -112,
+            "pOver": 0.4956702459300312
+          }
+        ],
+        "consensus": {
+          "line": 20.5,
+          "pOver": 0.4978351229650156
+        },
+        "distribution": {
+          "curve": [
+            {
+              "point": 14.5,
+              "p": 0.7882553452782064,
+              "books": 2
+            },
+            {
+              "point": 20.5,
+              "p": 0.4978351229650156,
+              "books": 2
+            },
+            {
+              "point": 24.5,
+              "p": 0.3897891278563257,
+              "books": 2
+            },
+            {
+              "point": 29.5,
+              "p": 0.3124145857606197,
+              "books": 2
+            }
+          ],
+          "floor": null,
+          "ceiling": null,
+          "atLeast": {
+            "20": 0.5462384933505474,
+            "25": 0.3897891278563257,
+            "30": 0.3124145857606197,
+            "35": null,
+            "40": null
+          },
+          "ladderBooks": 2,
+          "skippedRungs": 0
+        }
+      }
+    },
+    {
+      "name": "ladder without any main line: no distribution",
+      "books": {},
+      "ladders": {
+        "fanduel": {
+          "ladder": [
+            {
+              "point": 9.5,
+              "side": "over",
+              "price": -9900
+            },
+            {
+              "point": 14.5,
+              "side": "over",
+              "price": -3930
+            },
+            {
+              "point": 19.5,
+              "side": "over",
+              "price": -453
+            },
+            {
+              "point": 29.5,
+              "side": "over",
+              "price": 268
+            },
+            {
+              "point": 34.5,
+              "side": "over",
+              "price": 995
+            },
+            {
+              "point": 39.5,
+              "side": "over",
+              "price": 4895
+            },
+            {
+              "point": 44.5,
+              "side": "over",
+              "price": 35733
+            }
+          ]
+        }
+      },
+      "expected": {
+        "bookLines": [],
+        "consensus": null,
+        "distribution": null
+      }
+    },
+    {
+      "name": "two rungs only: too few curve points",
+      "books": {
+        "draftkings": {
+          "line": 10.5,
+          "over": -110,
+          "under": -110
+        }
+      },
+      "ladders": {
+        "draftkings": {
+          "ladder": [
+            {
+              "point": 14.5,
+              "side": "over",
+              "price": 150
+            }
+          ]
+        }
+      },
+      "expected": {
+        "bookLines": [
+          {
+            "book": "draftkings",
+            "line": 10.5,
+            "over": -110,
+            "under": -110,
+            "pOver": 0.5
+          }
+        ],
+        "consensus": {
+          "line": 10.5,
+          "pOver": 0.5
+        },
+        "distribution": null
+      }
+    },
+    {
+      "name": "invalid prices ignored",
+      "books": {
+        "draftkings": {
+          "line": 18.5,
+          "over": -50,
+          "under": -110
+        },
+        "fanduel": {
+          "line": 18.5,
+          "over": -112,
+          "under": -108
+        }
+      },
+      "ladders": {
+        "fanduel": {
+          "ladder": [
+            {
+              "point": 9.5,
+              "side": "over",
+              "price": -2000
+            },
+            {
+              "point": 14.5,
+              "side": "over",
+              "price": -400
+            },
+            {
+              "point": 24.5,
+              "side": "over",
+              "price": 230
+            }
+          ]
+        }
+      },
+      "expected": {
+        "bookLines": [
+          {
+            "book": "draftkings",
+            "line": 18.5,
+            "over": null,
+            "under": -110,
+            "pOver": null
+          },
+          {
+            "book": "fanduel",
+            "line": 18.5,
+            "over": -112,
+            "under": -108,
+            "pOver": 0.5043297540699688
+          }
+        ],
+        "consensus": {
+          "line": 18.5,
+          "pOver": 0.5043297540699688
+        },
+        "distribution": {
+          "curve": [
+            {
+              "point": 9.5,
+              "p": 0.9091658831873587,
+              "books": 1
+            },
+            {
+              "point": 14.5,
+              "p": 0.7636993418773814,
+              "books": 1
+            },
+            {
+              "point": 18.5,
+              "p": 0.5043297540699688,
+              "books": 1
+            },
+            {
+              "point": 24.5,
+              "p": 0.28928005374143234,
+              "books": 1
+            }
+          ],
+          "floor": 9.81505125181422,
+          "ceiling": null,
+          "atLeast": {
+            "20": 0.4684881373485461,
+            "25": 0.28928005374143234,
+            "30": null,
+            "35": null,
+            "40": null
+          },
+          "ladderBooks": 1,
+          "skippedRungs": 0
+        }
+      }
+    }
+  ]
+}

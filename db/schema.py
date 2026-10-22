@@ -6664,6 +6664,11 @@ MIGRATIONS.extend(NFL_OWNERSHIP_PROVENANCE_STATEMENTS)
 from db.nfl_ownership_scorecard_schema import STATEMENTS as NFL_OWNERSHIP_SCORECARD_STATEMENTS
 MIGRATIONS.extend(NFL_OWNERSHIP_SCORECARD_STATEMENTS)
 
+# NBA box scores (ESPN) and the nightly points-line calibration grade
+# (ingest/nba_box_scores.py, model/nba_points_calibration.py, 2026-10-22).
+from db.nba_points_calibration_schema import STATEMENTS as NBA_POINTS_CALIBRATION_STATEMENTS
+MIGRATIONS.extend(NBA_POINTS_CALIBRATION_STATEMENTS)
+
 # NFL DFS expert coverage (docs/nfl-expert-coverage-study.md): append-only
 # article revisions, robots decisions, extractions and grounded records.
 from db.nfl_expert_coverage_schema import STATEMENTS as NFL_EXPERT_COVERAGE_STATEMENTS

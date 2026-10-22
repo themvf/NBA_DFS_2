@@ -325,6 +325,17 @@ DATASET_REGISTRY: tuple[Dataset, ...] = (
             "Written by ingest.nba_points_props twice a day via the dispatcher (job nba-points-props). "
             "Append-only per capture_key, so captured_at moves only when a run writes.",
             filter="sport = 'nba'"),
+    # Nightly at 11:07 UTC via the dispatcher (job nba-points-grade); 36 h allows one
+    # missed morning. ESPN box scores restamp fetched_at on every write; the grade
+    # upserts its rows and restamps graded_at, so both move only when a run writes.
+    Dataset("nba_box_scores", "NBA box scores (ESPN, for grading points lines)", "nba_box_score_games", "fetched_at",
+            36, "grade_nba_points_props.yml", _NBA,
+            "Written by ingest.nba_box_scores for the last three Eastern dates each morning. Only final games are "
+            "written, so a date with no finished game writes nothing."),
+    Dataset("nba_points_calibration", "NBA points-line calibration grade (/nba/top-scorers)", "nba_points_calibration", "graded_at",
+            36, "grade_nba_points_props.yml", _NBA,
+            "Written by model.nba_points_calibration after the box scores: one row per player-game from each game's "
+            "last pre-tip capture. Empty for a date that had no pre-tip capture or no final box score."),
     Dataset("nfl_game_leader_market", "NFL game leaders: DraftKings pricing", "nfl_game_leader_market", "computed_at",
             120, "capture_nfl_props.yml", _NFL,
             "Written after each pregame prop capture by research.nfl_game_leaders_market refresh; append-only, "
