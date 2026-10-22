@@ -260,6 +260,7 @@ jobs:
           python -m model.nfl_leader_favourite_charts --out-dir artifacts/nfl_market_scenarios
           python -m model.nfl_game_leader_history_charts --out-dir artifacts/nfl_market_scenarios
           python -m model.nfl_yards_points_charts --out-dir artifacts/nfl_market_scenarios
+          python -m model.nfl_unders_chart --out-dir artifacts/nfl_market_scenarios
       - name: Save the charts
         if: always()
         uses: actions/upload-artifact@v4
