@@ -7851,6 +7851,30 @@ treating either as more than a judgement.
 
 ---
 
+## NFL DFS expert coverage — collected, not yet a signal (`nfl-expert-coverage-v1`, 2026-10-21)
+
+Pre-registered in [`docs/nfl-expert-coverage-study.md`](docs/nfl-expert-coverage-study.md)
+(committed before the first capture). Question: do pregame expert DFS articles
+explain the field ownership v5 misses ("value chalk": WAS@SF Cooks/Ekeler ~19%
+flex vs 5-6%)? `ingest/nfl_expert_coverage.py` reads robots.txt every run
+(own RFC 9309 parser: exact product-token groups, merged `*` groups, longest
+match, `*`/`$`; a 4xx robots file = no restrictions, 5xx = skip), discovers
+articles from each site's own sitemap/RSS/listing, fetches at most one page a
+second without logging in, and stores visible text append-only (changed text =
+new revision). `model/nfl_expert_extraction.py` (DeepSeek, extraction only)
+records players, the article's role for each, PRINTED ownership and printed
+lineups; quotes must be substrings of the stored text and a printed % must be
+in its quote. Slates use the scorecard's `slate_key`; timing binds on
+`captured_at` (eligible <= T-20 < late <= kickoff < retrospective). Runs at
+T-48h/T-24h/T-6h/T-90m per kickoff group via `/api/cron/dispatch` job
+`nfl-expert-coverage`. v1 sources: DK Network, RotoBaller (no `/premium/`),
+RotoWire, Footballguys (logged-out page; date-only `Published` so
+day-precision), DailyAmbush, Fantasy Life. Dropped: Lineups.com (Cloudflare
+challenge on every page) and DraftWithDoug (body is client-rendered from an
+API robots disallows). Nothing here changes v5; a coverage term would be v6.
+
+---
+
 ## Published Millionaire winners, 2023-2025 (Hello Rookie, 2026-10-15)
 
 `python -m ingest.hellorookie_winners` stores the rank-1 lineup of each week's
@@ -8446,6 +8470,16 @@ above zero. **The game-leaders model and pricing files are pinned by hash**:
 `tests/test_nfl_prop_under_study.py` fails if they change, and a change needs
 a dated amendment in the JSON. Rows priced after the first model amendment
 leave v1, so a model change before the verdict effectively ends this study.
+
+**Fringe-receiver split (`nfl-prop-under-fringe-v1`, registered 2026-10-22 11:45 UTC).**
+[`docs/nfl-prop-under-fringe-study.md`](docs/nfl-prop-under-fringe-study.md). Fading
+depth receivers on role alone loses: weeks 1-6, 1,419 DraftKings receiving lines at team
+rank 3+ went under 49.0% against 50.3% fair, ROI -7.7% [-13.8%, -1.5%]. The study asks
+only whether v2's FLAGGED receiving unders do better on fringe players (rank 3+ on
+DraftKings' own board, competition rank within game/team/market) than on the top two.
+One look after week 18; `research/nfl_prop_under_fringe.py`, tables
+`nfl_prop_under_fringe_runs`/`_verdicts`, graded in the post-week job beside
+`nfl-prop-under-role-change-v1` (same parent bets, not pooled).
 
 ## NFL game leaders — market-anchored test (`nfl-leaders-anchored-test-v1`, 2026-10-17)
 

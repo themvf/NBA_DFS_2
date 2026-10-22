@@ -64,6 +64,17 @@
       "pullRequest": false
     },
     {
+      "file": "capture_nfl_expert_coverage.yml",
+      "name": "Capture NFL DFS expert coverage",
+      "crons": [
+        "41 12 * 1,2,9-12 0,4"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
       "file": "capture_nfl_odds.yml",
       "name": "Capture NFL Odds",
       "crons": [],

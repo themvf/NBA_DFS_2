@@ -143,6 +143,21 @@ export function nflGameLeadersDue(now: Date, context: DispatchContext): boolean 
   });
 }
 
+/**
+ * Expert-coverage pass windows (docs/nfl-expert-coverage-study.md): for each
+ * kickoff group, the one 15-minute tick whose lead lands in (H - 15 min, H] for
+ * H in T-48h, T-24h, T-6h, T-90m. T-48h fits because the route reads kickoffs
+ * up to KICKOFF_LOOKAHEAD_MS (48 h, inclusive) ahead.
+ */
+export const EXPERT_COVERAGE_LEADS_MIN = [48 * 60, 24 * 60, 6 * 60, 90] as const;
+
+export function nflExpertCoverageDue(now: Date, context: DispatchContext): boolean {
+  return (context.nflKickoffs ?? []).some((kickoff) => {
+    const leadMin = (kickoff.getTime() - now.getTime()) / 60_000;
+    return EXPERT_COVERAGE_LEADS_MIN.some((h) => leadMin > h - 15 && leadMin <= h);
+  });
+}
+
 /** NBA season as calendar months (preseason lines in early October, Finals in June). */
 const NBA_MONTHS = new Set([10, 11, 12, 1, 2, 3, 4, 5, 6]);
 
@@ -243,6 +258,12 @@ export const DISPATCH_JOBS: readonly DispatchJob[] = [
     workflow: "refresh_nfl_game_leaders.yml",
     due: nflGameLeadersDue,
     why: "Game Leaders page: the weekly build Wednesday, then fresh availability before each kickoff group; commits web/src/data/game-leaders.json.",
+  },
+  {
+    key: "nfl-expert-coverage",
+    workflow: "capture_nfl_expert_coverage.yml",
+    due: nflExpertCoverageDue,
+    why: "Pregame expert DFS articles (robots-checked, append-only) and their DeepSeek extraction at T-48h, T-24h, T-6h and T-90m of every kickoff group: the ownership-signal study's inputs.",
   },
   {
     key: "nfl-dfs-postweek",

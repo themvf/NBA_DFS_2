@@ -1,0 +1,52 @@
+name: Capture NFL DFS expert coverage
+
+# docs/nfl-expert-coverage-study.md. Dispatched by /api/cron/dispatch (job
+# nfl-expert-coverage) once in each pass window before every NFL kickoff group:
+# T-48h, T-24h, T-6h and T-90m. The schedule below is a thin fallback for a
+# broken bridge (GitHub starts it hours late; the run labels itself 'adhoc').
+#
+# Step 1 reads each source's robots.txt, discovers NFL DFS slate articles from
+# the source's own sitemap/RSS/listing and stores changed text append-only (at
+# most one request per second, never logged in). Step 2 runs the DeepSeek
+# extraction (players, roles, printed ownership, sample lineups; verbatim-quote
+# grounding). A DeepSeek account error fails step 2 visibly after step 1 has
+# already stored the articles.
+on:
+  schedule:
+    - cron: "41 12 * 1,2,9-12 0,4"
+  workflow_dispatch:
+    inputs:
+      pass_label:
+        description: "Override the pass label (default: computed from the schedule)"
+        required: false
+        default: ""
+
+concurrency:
+  group: capture-nfl-expert-coverage
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Collect expert articles (robots-checked, append-only)
+        env:
+          PASS_LABEL: ${{ github.event.inputs.pass_label }}
+        run: |
+          if [ -n "$PASS_LABEL" ]; then
+            python -m ingest.nfl_expert_coverage --pass-label "$PASS_LABEL"
+          else
+            python -m ingest.nfl_expert_coverage
+          fi
+      - name: Extract player records with DeepSeek
+        run: python -m model.nfl_expert_extraction
