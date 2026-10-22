@@ -379,7 +379,8 @@ def outside_scoring_scope(row: dict) -> bool:
             or bool(row.get('turnover_type')))
 
 
-def grade(snapshot: dict, forecast: dict, baseline: dict | None = None) -> dict:
+def grade(snapshot: dict, forecast: dict, baseline: dict | None = None,
+          resolutions: dict | None = None) -> dict:
     """Grade a frozen forward forecast against post-game PBP, failing closed.
 
     Every run/pass play in the target game whose description mentions a
@@ -387,6 +388,11 @@ def grade(snapshot: dict, forecast: dict, baseline: dict | None = None) -> dict:
     quarantined (reversal text, lateral, fumble, unverified yardage), the real
     longest TD may be the excluded play, so the grade is `needs_review`, never
     a silent score. Missing target-game PBP is `outcome_unknown`.
+
+    `resolutions` maps play_id to a hand ruling on a quarantined play
+    (`ruling` 'touchdown' with scorer/team/yards, or 'no_touchdown'). A ruling
+    applies only while the play's description is unchanged, so a PBP
+    correction reopens the review; any unruled play still blocks scoring.
     """
     game_id = forecast['game']['game_id']
     target = [r for r in snapshot['plays'] if r['game_id']==game_id]
@@ -413,7 +419,22 @@ def grade(snapshot: dict, forecast: dict, baseline: dict | None = None) -> dict:
                    if r.get('quarter') in (1,2,3,4) and r.get('play_type') in ('run','pass') and 'TOUCHDOWN' in (r.get('description') or '').upper()
                    and not outside_scoring_scope(r)
                    and int(r['play_id']) not in verified]
+    resolved = []
+    for q in list(quarantined):
+        ruling = (resolutions or {}).get(q['play_id'])
+        if ruling is None or ruling.get('description') != q['description']:
+            continue
+        quarantined.remove(q)
+        resolved.append({**q,'ruling':ruling['ruling'],'note':ruling.get('note')})
+        if ruling['ruling'] == 'touchdown':
+            source = next(r for r in target if int(r['play_id']) == q['play_id'])
+            rows.append({'game_id':game_id,'play_id':q['play_id'],'quarter':source['quarter'],'td':True,
+                         'actor':ruling['scorer'],'team':ruling['team'],'field':float(ruling['yards'])})
+        elif ruling['ruling'] != 'no_touchdown':
+            raise ValueError(f"Unknown ruling for play {q['play_id']}: {ruling['ruling']}")
     result = {**base,'target_plays':len(target),'verified_scrimmage_tds':len(verified),'quarantined_td_plays':quarantined}
+    if resolved:
+        result['resolved_td_plays'] = resolved
     if quarantined:
         return {**result,'status':'needs_review',
                 'reason':'A touchdown-mentioning scrimmage play was excluded by verification; resolve it before scoring'}

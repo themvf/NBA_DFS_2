@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import json
 import math
 
 import pytest
@@ -100,3 +101,55 @@ def test_week_summary_counts_top_hits_against_their_own_probability():
     week = summarize(records)[0]
     assert week["topHits"] == 1 and week["topExpected"] == pytest.approx(0.4)
     assert week["logLoss"] == 2.0 and week["baselineLogLoss"] == 2.5 and week["anyTdScored"] == 10
+
+
+LATERAL = "Run for 70 yards TOUCHDOWN. LATERAL to wr"
+
+
+def test_hand_ruling_settles_a_review_and_is_recorded():
+    bad = settled_snapshot([play(1, field=20, td=True), play(2, field=70, td=True, description=LATERAL)])
+    store, _ = update(None, index(pub()), bad, NOW)
+    ruling = {2: {"play_id": 2, "description": LATERAL, "ruling": "touchdown", "scorer": "wr",
+                  "team": "ATL", "yards": 70, "note": "film"}}
+    store, report = update(store, index(pub()), bad, NOW, {"2025_01_ATL_NO": ruling})
+    assert [r["status"] for r in store["records"]] == ["needs_review", "graded"]
+    record = store["records"][-1]
+    assert record["winners"] == ["Wideout"] and record["longest_yards"] == 70
+    assert record["resolved_td_plays"][0]["ruling"] == "touchdown"
+    assert store["weeks"][0]["games"][0]["reviewed"] and store["weeks"][0]["needsReview"] == []
+    no_td = {2: {**ruling[2], "ruling": "no_touchdown"}}
+    store, _ = update(None, index(pub()), bad, NOW, {"2025_01_ATL_NO": no_td})
+    assert store["records"][0]["winners"] == ["Back"] and store["records"][0]["longest_yards"] == 20
+
+
+def test_ruling_on_a_changed_play_or_a_partial_ruling_does_not_score():
+    other = "Pass for 60 yards TOUCHDOWN. LATERAL to rb"
+    bad = settled_snapshot([play(1, field=20, td=True), play(2, field=70, td=True, description=LATERAL),
+                            play(3, field=60, td=True, description=other)])
+    stale = {2: {"play_id": 2, "description": "old text", "ruling": "no_touchdown", "note": "x"}}
+    store, report = update(None, index(pub()), bad, NOW, {"2025_01_ATL_NO": stale})
+    assert report["needs_review"] == ["2025_01_ATL_NO"] and len(store["records"][0]["quarantined_td_plays"]) == 2
+    partial = {2: {"play_id": 2, "description": LATERAL, "ruling": "no_touchdown", "note": "x"}}
+    store, report = update(None, index(pub()), bad, NOW, {"2025_01_ATL_NO": partial})
+    assert report["needs_review"] == ["2025_01_ATL_NO"]
+    assert [q["play_id"] for q in store["records"][0]["quarantined_td_plays"]] == [3]
+
+
+def test_review_file_rejects_incomplete_rulings(tmp_path):
+    from research.nfl_longest_touchdown_weekly_grade import load_reviews
+    path = tmp_path / "reviews.json"
+    base = {"game_id": "g", "play_id": 2, "description": "d", "note": "n"}
+    for bad in ({**base, "ruling": "touchdown", "team": "ATL", "yards": 10},
+                {**base, "ruling": "maybe"}, {**base, "ruling": "no_touchdown", "note": ""}):
+        path.write_text(json.dumps({"reviews": [bad]}))
+        with pytest.raises(ValueError):
+            load_reviews(path)
+    path.write_text(json.dumps({"reviews": [{**base, "ruling": "no_touchdown"}] * 2}))
+    with pytest.raises(ValueError, match="Two rulings"):
+        load_reviews(path)
+    assert load_reviews(tmp_path / "missing.json") == {}
+
+
+def test_checked_in_reviews_load():
+    from research.nfl_longest_touchdown_weekly_grade import REVIEWS, load_reviews
+    assert 3670 in load_reviews(REVIEWS)["2026_05_NYG_WAS"]
