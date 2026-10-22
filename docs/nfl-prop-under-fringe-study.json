@@ -1,0 +1,40 @@
+{
+  "study": "nfl-prop-under-fringe-v1",
+  "status": "registered",
+  "registered_at": "2026-10-22T11:45:00+00:00",
+  "parent_registration": "docs/nfl-prop-under-study-v2.json",
+  "tag": {
+    "markets": [
+      "receiving_yards",
+      "receptions"
+    ],
+    "rank_scope": "game, team, metric, among the parent's latest pregame DraftKings rows",
+    "rank_rule": "1 + number of teammates with a strictly higher line",
+    "fringe_min_rank": 3
+  },
+  "floors": {
+    "fringe_bets": 400,
+    "top_bets": 200,
+    "game_weeks": 8
+  },
+  "bootstrap": {
+    "resamples": 2000,
+    "seed": 20261022,
+    "cluster": "game_week",
+    "interval": 0.95
+  },
+  "verdict": {
+    "when": "first grade run after every regular-season game through last_week is graded",
+    "last_week": 18,
+    "outcomes": {
+      "FRINGE_BETTER": "difference interval wholly above zero",
+      "FRINGE_WORSE": "difference interval wholly below zero",
+      "NO_DIFFERENCE": "difference interval includes zero",
+      "INCONCLUSIVE": "floors not met at the final look"
+    }
+  },
+  "discovery": {
+    "role_only_unders_weeks_1_6": "1,419 DraftKings closing receiving-yards and receptions lines at team rank 3+, 93 games: every under 49.0% against 50.3% fair, ROI -7.7% [-13.8%, -1.5%]",
+    "trigger": "WAS at SF (2026-10-19): flagged fringe unders on Cooks, Cowing and Juszczyk won; seen before registration, never counted"
+  }
+}
