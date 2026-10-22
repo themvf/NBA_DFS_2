@@ -8,9 +8,11 @@ Descriptive, season to date; nothing here claims an edge.
                                   turnovers, red-zone touchdown rate and field goals per game
 
 Source: nflverse play-by-play, regular season. Yards are offensive scrimmage yards (``yards_gained`` on pass and
-run plays, sacks included as lost yards; penalties excluded). Points are the team's final score, so they include
-defensive and special-teams touchdowns, which the offense did not gain yards for. A red-zone trip is a drive
-with at least one snap inside the opponent's 20; it ends in a touchdown when that team scored one on the drive.
+run plays, sacks included as lost yards; penalties excluded). Points are offensive points only: touchdowns
+scored on the team's own pass or run plays, the extra point or two-point try after one, and field goals.
+Defensive and return touchdowns (and the tries after them) and safeties are left out, since the offense gained
+no yards for them. A red-zone trip is a drive with at least one snap inside the opponent's 20; it ends in a
+touchdown when the offense scored one on the drive.
 
     python -m model.nfl_yards_points_charts --out-dir DIR
 """
@@ -36,24 +38,46 @@ SEASON = 2026
 DEFAULT_DIR = Path("artifacts") / "nfl_market_scenarios"
 PBP_COLS = ("game_id", "week", "season_type", "posteam", "home_team", "away_team", "home_score", "away_score",
             "play_type", "yards_gained", "interception", "fumble_lost", "field_goal_attempt", "yardline_100",
-            "fixed_drive", "touchdown", "td_team")
+            "fixed_drive", "touchdown", "td_team", "play_id", "extra_point_result", "two_point_conv_result",
+            "field_goal_result")
+OFFENSE_PLAYS = ("pass", "run")
 
 
 # ── pure computations ────────────────────────────────────────────────────────
 def team_offense(pbp: list[dict]) -> dict[str, dict]:
     """team -> games, yards, points, turnovers, field goals and red-zone trips per game (regular season)."""
     yards, tos, fgs = collections.Counter(), collections.Counter(), collections.Counter()
-    finals: dict[str, tuple] = {}
+    points: collections.Counter = collections.Counter()
+    games_played: dict[str, set] = collections.defaultdict(set)
     drives: dict[tuple, dict] = {}
-    for p in pbp:
-        if p.get("season_type") != "REG":
-            continue
-        finals.setdefault(p["game_id"], (_team(p["home_team"]), _team(p["away_team"]),
-                                          _num(p.get("home_score")), _num(p.get("away_score"))))
+    pending: dict[str, str] = {}   # game -> team whose offensive touchdown is waiting for its try
+    plays = sorted((p for p in pbp if p.get("season_type") == "REG"),
+                   key=lambda p: (p["game_id"], _num(p.get("play_id")) or 0.0))
+    for p in plays:
+        games_played[_team(p["home_team"])].add(p["game_id"])
+        games_played[_team(p["away_team"])].add(p["game_id"])
         t = _team(p.get("posteam"))
         if not t:
             continue
-        if p.get("play_type") in ("pass", "run"):
+        g = p["game_id"]
+        # Offensive points: touchdowns on the team's own pass or run plays, the try after one of them,
+        # and field goals. Defensive and return touchdowns, their tries, and safeties are left out.
+        offensive_td = (_flag(p.get("touchdown")) and _team(p.get("td_team")) == t
+                        and p.get("play_type") in OFFENSE_PLAYS)
+        if offensive_td:
+            points[t] += 6
+            pending[g] = t
+        elif p.get("extra_point_result") == "good" or p.get("two_point_conv_result") == "success":
+            if pending.get(g) == t:
+                points[t] += 1 if p.get("extra_point_result") == "good" else 2
+            pending.pop(g, None)
+        elif isinstance(p.get("extra_point_result"), str) or isinstance(p.get("two_point_conv_result"), str):
+            # A failed or blocked try ends the wait. Missing values arrive as NaN, which is truthy, so test the
+            # type rather than the value.
+            pending.pop(g, None)
+        if p.get("field_goal_result") == "made":
+            points[t] += 3
+        if p.get("play_type") in OFFENSE_PLAYS:
             yards[t] += _num(p.get("yards_gained")) or 0.0
         tos[t] += _flag(p.get("interception")) + _flag(p.get("fumble_lost"))
         fgs[t] += _flag(p.get("field_goal_attempt"))
@@ -64,16 +88,9 @@ def team_offense(pbp: list[dict]) -> dict[str, dict]:
         yl = _num(p.get("yardline_100"))
         if yl is not None and yl <= 20:
             d["rz"] = True
-        if _flag(p.get("touchdown")) and _team(p.get("td_team")) == t:
+        if offensive_td:
             d["td"] = True
-    games, points = collections.Counter(), collections.Counter()
-    for home, away, hs, as_ in finals.values():
-        if hs is None or as_ is None:
-            continue
-        games[home] += 1
-        games[away] += 1
-        points[home] += hs
-        points[away] += as_
+    games = {t: len(gs) for t, gs in games_played.items() if t}
     trips, trip_tds = collections.Counter(), collections.Counter()
     for (_, _, t), d in drives.items():
         if d["rz"]:
@@ -123,22 +140,27 @@ def scatter_chart(teams: dict[str, dict], path: Path, weeks: str) -> bool:
         g = gap[t]
         colour = GOOD if g >= 2.5 else BAD if g <= -2.5 else NEUTRAL
         ax.scatter(v["yards"], v["points"], s=34, color=colour, edgecolor="white", linewidth=0.6, zorder=3)
-        ax.annotate(t, (v["yards"], v["points"]), fontsize=7, color=INK, xytext=(4, 2), textcoords="offset points",
+        # When a neighbour sits just to the right, put this label on the left so the two do not overlap.
+        crowded = any(0 < o["yards"] - v["yards"] < 8 and abs(o["points"] - v["points"]) < 0.8
+                      for o in teams.values())
+        ax.annotate(t, (v["yards"], v["points"]), fontsize=7, color=INK, xytext=(-4 if crowded else 4, 2),
+                    textcoords="offset points", ha="right" if crowded else "left",
                     fontweight="bold" if abs(g) >= 2.5 else "normal")
     ax.set_xlim(lo, hi)
     ax.set_xlabel("Offensive yards per game", fontsize=8.5, color=INK_2)
-    ax.set_ylabel("Points scored per game", fontsize=8.5, color=INK_2)
+    ax.set_ylabel("Offensive points per game", fontsize=8.5, color=INK_2)
     ax.tick_params(labelsize=7.5)
     fig.tight_layout()
     worst = sorted(gap, key=gap.get)[:3]
     best = sorted(gap, key=gap.get, reverse=True)[:3]
     w = ", ".join(f"{t} {gap[t]:+.1f}" for t in worst)
     bst = ", ".join(f"{t} {gap[t]:+.1f}" for t in best)
-    sub = (f"All 32 teams, {weeks}. Dashed line: the points per game a team's yards usually produce this season "
+    sub = (f"All 32 teams, {weeks}. Dashed line: the offensive points a team's yards usually produce this season "
            f"(about {b * 10:.1f} points for every 10 yards).\nRed: 2.5+ points a game below the line, yards that are "
-           f"not turning into points ({w}). Green: 2.5+ above ({bst}).\nPoints are the final score, so defensive and "
-           f"special-teams touchdowns count; yards are offensive scrimmage yards with sacks, penalties excluded.")
-    return _finish(fig, path, "Yards gained against points scored", sub, height)
+           f"not turning into points ({w}). Green: 2.5+ above ({bst}).\nOffensive points only: touchdowns on the team's own pass and run plays, the try after them, "
+           f"and field goals.\nDefensive and return touchdowns and safeties are left out. Yards include sacks, not "
+           f"penalties.")
+    return _finish(fig, path, "Yards gained against offensive points scored", sub, height)
 
 
 def ranked_chart(teams: dict[str, dict], path: Path, weeks: str, n: int = 32) -> bool:
@@ -161,7 +183,7 @@ def ranked_chart(teams: dict[str, dict], path: Path, weeks: str, n: int = 32) ->
     ax.set_yticks(ys, [f"{t}  {teams[t]['yards']:.0f} yds, {teams[t]['points']:.1f} pts" for t in rows], fontsize=6.8)
     ax.set_ylim(len(rows) - 0.4, -1.6)
     ax.set_xlim(0, max(vals) * 1.12)
-    ax.set_xlabel("Yards per point scored", fontsize=8, color=INK_2)
+    ax.set_xlabel("Yards per offensive point", fontsize=8, color=INK_2)
     ax.tick_params(axis="x", labelsize=7)
 
     # The usual reasons, per team: league averages give the reader a reference for each column.
@@ -186,11 +208,12 @@ def ranked_chart(teams: dict[str, dict], path: Path, weeks: str, n: int = 32) ->
             tbl.text(j + 0.5, y, fmt.format(v), ha="center", va="center", fontsize=6.8, color=colour,
                      fontweight="bold" if abs(z) >= 1 else "normal")
     fig.tight_layout(w_pad=0.5)
-    sub = (f"Offensive yards divided by points scored, {weeks}; top: the most yards needed for each point. Red bars: "
-           f"15%+ above the league rate; green: 13%+ below.\nRight: the usual reasons a team's yards do not become "
-           f"points. Red when a team is one standard deviation worse than average (more turnovers,\nfewer red-zone "
-           f"trips ending in a touchdown, more field-goal tries instead of touchdowns), green when one better. "
-           f"Five or six games each:\na single fluky game moves these numbers a lot.")
+    sub = (f"Offensive yards divided by offensive points (no defensive or return touchdowns), {weeks}. Top: the most "
+           f"yards needed for each point.\nRed bars: 15%+ above the league rate; green: 13%+ below. Right: the usual "
+           f"reasons a team's yards do not become points.\nRed when a team is one standard deviation worse than "
+           f"average (more turnovers, fewer red-zone trips ending in a touchdown, more field-goal tries\ninstead of "
+           f"touchdowns), green when one better. Five or six games each: a single fluky game moves these numbers "
+           f"a lot.")
     return _finish(fig, path, "Which offenses need the most yards for every point?", sub, height)
 
 
