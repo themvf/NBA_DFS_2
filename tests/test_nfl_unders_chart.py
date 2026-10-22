@@ -23,3 +23,11 @@ def test_chart_writes_png(tmp_path):
     assert u.unders_chart(games, tmp_path / "a.png")
     assert (tmp_path / "a.png").read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
     assert not u.unders_chart([g for g in games if g["result"] != "under"], tmp_path / "b.png")
+
+
+def test_overs_chart_writes_png(tmp_path):
+    rows = [_g(w, "A", "B", 44.5, 30 + i, 20) for w in (1, 2) for i in range(0, 20, 5)]
+    games = u.finished_games(rows)
+    assert all(g["result"] == "over" for g in games)
+    assert u.overs_chart(games, tmp_path / "o.png")
+    assert not u.unders_chart(games, tmp_path / "u.png")

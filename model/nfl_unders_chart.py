@@ -1,9 +1,10 @@
-"""Reader chart: every NFL game this season that finished under its betting total.
+"""Reader charts: every NFL game this season that finished under, or over, its betting total.
 
 Descriptive, season to date; nothing here claims an edge.
 
   nfl_take_unders.png   one row per game that went under, grouped by week: the betting total (open circle),
                         the points actually scored (filled dot) and the gap between them
+  nfl_take_overs.png    the same for every game that went over
 
 Source: the nflverse schedule (``games.csv``), regular season, finished games only. ``total_line`` is the
 schedule's recorded game total, a market consensus near kickoff, not one sportsbook's price. Final scores include
@@ -24,7 +25,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 from model.cfb_pattern_charts import DPI, INK, INK_2, SURFACE  # noqa: E402
-from model.story_charts import BAD, WIDTH_IN, _axes, _finish  # noqa: E402
+from model.story_charts import BAD, GOOD, WIDTH_IN, _axes, _finish  # noqa: E402
 
 SEASON = 2026
 DEFAULT_DIR = Path("artifacts") / "nfl_market_scenarios"
@@ -70,15 +71,18 @@ def week_summary(games: list[dict]) -> dict[int, dict]:
 
 
 # ── chart ────────────────────────────────────────────────────────────────────
-def unders_chart(games: list[dict], path: Path) -> bool:
-    unders = [g for g in games if g["result"] == "under"]
-    if not unders:
+def side_chart(games: list[dict], path: Path, side: str) -> bool:
+    """One row per game that finished on ``side`` ("under" or "over") of its total, grouped by week."""
+    over = side == "over"
+    picked = [g for g in games if g["result"] == side]
+    if not picked:
         return False
+    colour = GOOD if over else BAD
     weeks = week_summary(games)
-    # Rows grouped by week, biggest miss first within each week, with a gap row between weeks.
+    # Rows grouped by week, biggest gap first within each week, with a blank row between weeks.
     rows: list[dict | None] = []
     for w in weeks:
-        wk = sorted((g for g in unders if g["week"] == w), key=lambda g: g["gap"])
+        wk = sorted((g for g in picked if g["week"] == w), key=lambda g: -abs(g["gap"]))
         if not wk:
             continue
         if rows:
@@ -92,46 +96,56 @@ def unders_chart(games: list[dict], path: Path) -> bool:
     for y, g in enumerate(rows):
         if g is None:
             continue
-        ax.plot([g["total"], g["line"]], [y, y], color=BAD, alpha=0.35, linewidth=2.2, solid_capstyle="round")
+        ax.plot([g["total"], g["line"]], [y, y], color=colour, alpha=0.35, linewidth=2.2, solid_capstyle="round")
         ax.scatter(g["line"], y, s=26, facecolor=SURFACE, edgecolor=INK_2, linewidth=1.0, zorder=3)
-        ax.scatter(g["total"], y, s=26, color=BAD, zorder=4)
-        ax.text(g["line"] + 0.8, y, f"{g['gap']:+.1f}", va="center", fontsize=6.4, color=INK_2)
+        ax.scatter(g["total"], y, s=26, color=colour, zorder=4)
+        ax.text(max(g["line"], g["total"]) + 0.8, y, f"{g['gap']:+.1f}", va="center", fontsize=6.4, color=INK_2)
         ys.append(y)
         labels.append(f"W{g['week']}  {g['away']} @ {g['home']}  {g['line']:g} / {g['total']:.0f}")
     # Week headers in the blank rows (and above the first week).
     first = 0
     for w, s in weeks.items():
-        if not any(g["week"] == w for g in unders):
+        if not s[side]:
             continue
-        header_y = first - 0.75
-        ax.text(1.0, header_y, f"Week {w}: {s['under']} of {s['games']} under", transform=ax.get_yaxis_transform(),
-                ha="right", va="center", fontsize=7, color=INK, fontweight="bold")
-        first += s["under"] + 1
+        ax.text(1.0 if not over else 0.0, first - 0.75, f"Week {w}: {s[side]} of {s['games']} {side}",
+                transform=ax.get_yaxis_transform(), ha="right" if not over else "left", va="center", fontsize=7,
+                color=INK, fontweight="bold")
+        first += s[side] + 1
     ax.set_yticks(ys, labels, fontsize=6.6)
     ax.set_ylim(len(rows) - 0.4, -1.4)
-    lo = min(g["total"] for g in unders)
-    hi = max(g["line"] for g in unders)
+    lo = min(min(g["total"], g["line"]) for g in picked)
+    hi = max(max(g["total"], g["line"]) for g in picked)
     ax.set_xlim(lo - 3, hi + 6)
     ax.set_xlabel("Points in the game", fontsize=8, color=INK_2)
     ax.tick_params(axis="x", labelsize=7)
     ax.scatter([], [], s=26, facecolor=SURFACE, edgecolor=INK_2, label="Betting total")
-    ax.scatter([], [], s=26, color=BAD, label="Points scored")
+    ax.scatter([], [], s=26, color=colour, label="Points scored")
     ax.legend(loc="lower right", fontsize=7, frameon=False)
     fig.tight_layout()
     n = len(games)
-    nu = len(unders)
-    no = sum(g["result"] == "over" for g in games)
-    npush = n - nu - no
+    counts = {r: sum(g["result"] == r for g in games) for r in ("under", "over", "push")}
+    other = "under" if over else "over"
     span = f"weeks {min(weeks)}-{max(weeks)}"
-    avg = sum(g["gap"] for g in unders) / nu
-    big = min(unders, key=lambda g: g["gap"])
-    sub = (f"{nu} of {n} finished games went under the betting total, {span} ({no} over"
-           f"{'' if not npush else f', {npush} push'}). Each row: the total (open circle) and the points scored "
-           f"(red dot);\nthe number is how far under it finished. The average under missed by {abs(avg):.1f} points; "
-           f"the biggest was {big['away']} @ {big['home']} (W{big['week']}), {big['total']:.0f} against "
-           f"{big['line']:g}.\nTotal: the nflverse schedule's game total, a consensus near kickoff, not one book's "
-           f"number. Scores include overtime. Describes what happened; not a betting angle.")
-    return _finish(fig, path, "Every NFL game that went under the total this season", sub, height)
+    avg = sum(abs(g["gap"]) for g in picked) / len(picked)
+    big = max(picked, key=lambda g: abs(g["gap"]))
+    dot = "green" if over else "red"
+    push_note = f", {counts['push']} push" if counts["push"] else ""
+    sub = (f"{len(picked)} of {n} finished games went {side} the betting total, {span} ({counts[other]} {other}"
+           f"{push_note}). Each row: the total (open circle) and "
+           f"the points scored ({dot} dot);\nthe number is how far {side} it finished. The average {side} "
+           f"{'cleared' if over else 'missed'} by {avg:.1f} points; the biggest was {big['away']} @ {big['home']} "
+           f"(W{big['week']}), {big['total']:.0f} against {big['line']:g}.\nTotal: the nflverse schedule's game "
+           f"total, a consensus near kickoff, not one book's number. Scores include overtime. Describes what "
+           f"happened; not a betting angle.")
+    return _finish(fig, path, f"Every NFL game that went {side} the total this season", sub, height)
+
+
+def unders_chart(games: list[dict], path: Path) -> bool:
+    return side_chart(games, path, "under")
+
+
+def overs_chart(games: list[dict], path: Path) -> bool:
+    return side_chart(games, path, "over")
 
 
 # ── data ─────────────────────────────────────────────────────────────────────
@@ -152,8 +166,9 @@ def load_schedule() -> list[dict]:
 
 def build_all(out_dir: Path, season: int = SEASON) -> list[tuple[str, bool]]:
     games = finished_games(load_schedule(), season)
-    path = Path(out_dir) / "nfl_take_unders.png"
-    return [("nfl_take_unders.png", unders_chart(games, path))]
+    out_dir = Path(out_dir)
+    return [("nfl_take_unders.png", unders_chart(games, out_dir / "nfl_take_unders.png")),
+            ("nfl_take_overs.png", overs_chart(games, out_dir / "nfl_take_overs.png"))]
 
 
 def main(argv: list[str] | None = None) -> int:
