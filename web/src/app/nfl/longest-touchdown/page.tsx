@@ -21,7 +21,7 @@ type PublishedGame = {
   forecastRosterIds?: string[];
 };
 type PublishedSeason = { season: number; weeks: Array<{ week: number; games: PublishedGame[]; coverage?: { missedGames?: string[] } }> };
-type GradedGame = { gameId: string; away: string; home: string; longestYards: number; winners: string[]; winnerProbability: number;
+type GradedGame = { gameId: string; away: string; home: string; longestYards: number; winners: string[]; winnerProbability: number; reviewed?: boolean;
   winnerRank: number; outcomes: number; topPick: string; topProbability: number; topHit: boolean };
 type WeekGrade = { season: number; week: number; graded: number; topHits: number; topExpected: number;
   logLoss: number | null; baselineLogLoss: number | null; uniformLogLoss: number | null;
@@ -56,7 +56,7 @@ function GradePanel({ grade, awaiting }: { grade: WeekGrade; awaiting: string[] 
       <div className="mt-2 overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-slate-600"><tr><th className="p-2">Game</th><th className="p-2">Longest TD</th><th className="p-2">Its chance</th><th className="p-2">Top pick</th></tr></thead>
         <tbody>{grade.games.map((g) => <tr key={g.gameId} className="border-t">
           <td className="p-2">{g.away} @ {g.home}</td>
-          <td className="p-2">{g.winners.join(", ")}{g.longestYards > 0 ? ` (${g.longestYards} yd)` : ""}</td>
+          <td className="p-2">{g.winners.join(", ")}{g.longestYards > 0 ? ` (${g.longestYards} yd)` : ""}{g.reviewed && <span className="ml-1 text-xs text-slate-500" title="A reversed or unverified touchdown in this game was checked by hand before scoring.">· reviewed by hand</span>}</td>
           <td className="p-2">{percent(g.winnerProbability)} · {g.winnerRank} of {g.outcomes}</td>
           <td className="p-2">{g.topPick} {percent(g.topProbability)} {g.topHit ? "✓" : ""}</td></tr>)}</tbody></table></div></details>}
   </section>;

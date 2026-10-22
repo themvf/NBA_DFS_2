@@ -1,0 +1,16 @@
+{
+ "schemaVersion": 1,
+ "reviews": [
+  {
+   "game_id": "2026_05_NYG_WAS",
+   "play_id": 3670,
+   "description": "(7:24) (Shotgun) 19-J.Winston pass short middle to 9-I.Likely to WAS 1 for 16 yards (20-Q.Martin, 29-R.Douglas) [45-K.Chaisson]. FUMBLES (29-R.Douglas), RECOVERED by WAS-29-R.Douglas at WAS -5. Touchback. The Replay Official reviewed the short of the goal line ruling, and the play was REVERSED. (Shotgun) 19-J.Winston pass short middle to 9-I.Likely for 17 yards, TOUCHDOWN [45-K.Chaisson].",
+   "ruling": "touchdown",
+   "scorer": "00-0037838",
+   "team": "NYG",
+   "yards": 17,
+   "note": "Replay reversed the fumble ruling to a 17-yard Isaiah Likely touchdown (the PBP text's own final ruling). Not the game's longest: Jayden Daniels' verified 38-yard scramble is. Checked 2026-10-22 against nflverse PBP.",
+   "resolved_at": "2026-10-22"
+  }
+ ]
+}
