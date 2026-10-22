@@ -1,32 +1,22 @@
 {
  "schemaVersion": 1,
  "version": "nfl-longest-td-weekly-grade-v1",
- "updatedAt": "2026-10-20T14:16:23.330444+00:00",
+ "updatedAt": "2026-10-22T11:36:47.430724+00:00",
  "authority": "tracking_only_not_calibration",
  "weeks": [
   {
    "season": 2026,
    "week": 5,
-   "graded": 14,
-   "needsReview": [
-    {
-     "gameId": "2026_05_NYG_WAS",
-     "away": "NYG",
-     "home": "WSH",
-     "reason": "A touchdown-mentioning scrimmage play was excluded by verification; resolve it before scoring",
-     "plays": [
-      "(7:24) (Shotgun) 19-J.Winston pass short middle to 9-I.Likely to WAS 1 for 16 yards (20-Q.Martin, 29-R.Douglas) [45-K.Chaisson]. FUMBLES (29-R.Douglas), RECOVERED by WAS-29-R.Douglas at WAS -5. Touchback. The Replay Official reviewed the short of the goal line ruling, and the play was REVERSED. (Shotgun) 19-J.Winston pass short middle to 9-I.Likely for 17 yards, TOUCHDOWN [45-K.Chaisson]."
-     ]
-    }
-   ],
+   "graded": 15,
+   "needsReview": [],
    "topHits": 6,
-   "topExpected": 2.136041666666667,
-   "logLoss": 2.3557504825302673,
-   "baselineLogLoss": 2.6038820660005264,
-   "uniformLogLoss": 3.253059262436467,
-   "anyTdExpected": 53.586,
-   "anyTdScored": 57,
-   "longTdExpected": 5.737000000000001,
+   "topExpected": 2.2580416666666667,
+   "logLoss": 2.499357784107167,
+   "baselineLogLoss": 2.6831387822992374,
+   "uniformLogLoss": 3.258335612285717,
+   "anyTdExpected": 57.358,
+   "anyTdScored": 61,
+   "longTdExpected": 6.133,
    "longTdScored": 6,
    "games": [
     {
@@ -42,7 +32,8 @@
      "outcomes": 26,
      "topPick": "George Pickens",
      "topProbability": 0.11954166666666666,
-     "topHit": true
+     "topHit": true,
+     "reviewed": false
     },
     {
      "gameId": "2026_05_PHI_JAX",
@@ -57,7 +48,8 @@
      "outcomes": 24,
      "topPick": "Parker Washington",
      "topProbability": 0.118,
-     "topHit": false
+     "topHit": false,
+     "reviewed": false
     },
     {
      "gameId": "2026_05_CHI_GB",
@@ -72,7 +64,8 @@
      "outcomes": 27,
      "topPick": "Christian Watson",
      "topProbability": 0.131,
-     "topHit": true
+     "topHit": true,
+     "reviewed": false
     },
     {
      "gameId": "2026_05_CIN_MIA",
@@ -87,7 +80,8 @@
      "outcomes": 26,
      "topPick": "Malik Washington",
      "topProbability": 0.18,
-     "topHit": false
+     "topHit": false,
+     "reviewed": false
     },
     {
      "gameId": "2026_05_CLE_NYJ",
@@ -102,7 +96,8 @@
      "outcomes": 23,
      "topPick": "Garrett Wilson",
      "topProbability": 0.163,
-     "topHit": true
+     "topHit": true,
+     "reviewed": false
     },
     {
      "gameId": "2026_05_HOU_TEN",
@@ -117,7 +112,8 @@
      "outcomes": 28,
      "topPick": "Carnell Tate",
      "topProbability": 0.142,
-     "topHit": false
+     "topHit": false,
+     "reviewed": false
     },
     {
      "gameId": "2026_05_IND_PIT",
@@ -132,7 +128,8 @@
      "outcomes": 26,
      "topPick": "Jonathan Taylor",
      "topProbability": 0.194,
-     "topHit": false
+     "topHit": false,
+     "reviewed": false
     },
     {
      "gameId": "2026_05_LV_NE",
@@ -147,7 +144,8 @@
      "outcomes": 26,
      "topPick": "Ashton Jeanty",
      "topProbability": 0.134,
-     "topHit": false
+     "topHit": false,
+     "reviewed": false
     },
     {
      "gameId": "2026_05_MIN_NO",
@@ -162,7 +160,24 @@
      "outcomes": 28,
      "topPick": "Chris Olave",
      "topProbability": 0.1355,
-     "topHit": false
+     "topHit": false,
+     "reviewed": false
+    },
+    {
+     "gameId": "2026_05_NYG_WAS",
+     "away": "NYG",
+     "home": "WSH",
+     "longestYards": 38,
+     "winners": [
+      "Jayden Daniels"
+     ],
+     "winnerProbability": 0.011,
+     "winnerRank": 19,
+     "outcomes": 28,
+     "topPick": "Terry McLaurin",
+     "topProbability": 0.122,
+     "topHit": false,
+     "reviewed": true
     },
     {
      "gameId": "2026_05_DEN_LAC",
@@ -177,7 +192,8 @@
      "outcomes": 27,
      "topPick": "Tre Harris",
      "topProbability": 0.111,
-     "topHit": false
+     "topHit": false,
+     "reviewed": false
     },
     {
      "gameId": "2026_05_DET_ARI",
@@ -192,7 +208,8 @@
      "outcomes": 22,
      "topPick": "Jahmyr Gibbs",
      "topProbability": 0.169,
-     "topHit": false
+     "topHit": false,
+     "reviewed": false
     },
     {
      "gameId": "2026_05_SF_SEA",
@@ -207,7 +224,8 @@
      "outcomes": 27,
      "topPick": "Jaxon Smith-Njigba",
      "topProbability": 0.243,
-     "topHit": true
+     "topHit": true,
+     "reviewed": false
     },
     {
      "gameId": "2026_05_BAL_ATL",
@@ -222,7 +240,8 @@
      "outcomes": 27,
      "topPick": "Derrick Henry",
      "topProbability": 0.138,
-     "topHit": true
+     "topHit": true,
+     "reviewed": false
     },
     {
      "gameId": "2026_05_BUF_LA",
@@ -237,7 +256,8 @@
      "outcomes": 26,
      "topPick": "James Cook",
      "topProbability": 0.158,
-     "topHit": true
+     "topHit": true,
+     "reviewed": false
     }
    ]
   },
@@ -269,7 +289,8 @@
      "outcomes": 29,
      "topPick": "Mike Evans",
      "topProbability": 0.152,
-     "topHit": false
+     "topHit": false,
+     "reviewed": false
     }
    ]
   }
@@ -836,6 +857,50 @@
    "long_td_expected": 0.4460000000000001,
    "long_td_scored": 0,
    "named_players": 26
+  },
+  {
+   "version": "nfl-longest-td-weekly-grade-v1",
+   "game_id": "2026_05_NYG_WAS",
+   "season": 2026,
+   "week": 5,
+   "away": "NYG",
+   "home": "WSH",
+   "kickoff": "2026-10-11 17:00:00+00:00",
+   "decision_at": "2026-10-10T17:31:21.859000+00:00",
+   "model_version": "nfl-longest-scrimmage-td-research-v2",
+   "request_sha256": "63f28f406a458d0df99627aaceeb7c2c4830633ef3685696575961dfa5db48db",
+   "graded_at": "2026-10-22T11:36:47.430724+00:00",
+   "capture_at": "2026-10-20T13:03:05.446274+00:00",
+   "status": "graded",
+   "reason": null,
+   "resolved_td_plays": [
+    {
+     "play_id": 3670,
+     "description": "(7:24) (Shotgun) 19-J.Winston pass short middle to 9-I.Likely to WAS 1 for 16 yards (20-Q.Martin, 29-R.Douglas) [45-K.Chaisson]. FUMBLES (29-R.Douglas), RECOVERED by WAS-29-R.Douglas at WAS -5. Touchback. The Replay Official reviewed the short of the goal line ruling, and the play was REVERSED. (Shotgun) 19-J.Winston pass short middle to 9-I.Likely for 17 yards, TOUCHDOWN [45-K.Chaisson].",
+     "ruling": "touchdown",
+     "note": "Replay reversed the fumble ruling to a 17-yard Isaiah Likely touchdown (the PBP text's own final ruling). Not the game's longest: Jayden Daniels' verified 38-yard scramble is. Checked 2026-10-22 against nflverse PBP."
+    }
+   ],
+   "longest_yards": 38,
+   "winners": [
+    "Jayden Daniels"
+   ],
+   "winner_probability": 0.011,
+   "winner_rank": 19,
+   "outcomes": 28,
+   "unmodeled_winner": false,
+   "top_pick": "Terry McLaurin",
+   "top_probability": 0.122,
+   "top_hit": false,
+   "log_loss": 4.509860006183766,
+   "baseline_log_loss": 3.7927328104811915,
+   "uniform_log_loss": 3.332204510175204,
+   "brier": 1.050304,
+   "any_td_expected": 3.772,
+   "any_td_scored": 4,
+   "long_td_expected": 0.396,
+   "long_td_scored": 0,
+   "named_players": 25
   }
  ]
 }

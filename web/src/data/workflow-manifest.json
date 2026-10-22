@@ -35,7 +35,9 @@
     {
       "file": "capture_nba_points_props.yml",
       "name": "Capture NBA points props",
-      "crons": [],
+      "crons": [
+        "37 16 * 1-6,10-12 *"
+      ],
       "dispatch": true,
       "afterWorkflows": [],
       "push": false,

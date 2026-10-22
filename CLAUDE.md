@@ -233,8 +233,16 @@ P(over) is de-vigged only from books at that line. Floor/ceiling (P10/P90) and 2
 the ladder (`web/src/lib/nba-points-ladder.ts`): over-only rungs de-vigged by the same book's
 main-line overround (leaves longshot margin, so top-end chances read slightly high), median across
 books, forced non-increasing, never extrapolated past the first or last rung. It is the market's number, unvalidated, and
-independent of `dk_players` (no slate needed). Run manually via `capture_nba_points_props.yml`;
-not yet scheduled. Last season's PPG/team come from `nba_player_stats` 2025-26.
+independent of `dk_players` (no slate needed). Last season's PPG/team come from `nba_player_stats` 2025-26.
+**Scheduled since 2026-10-21:** `/api/cron/dispatch` job `nba-points-props` fires
+`capture_nba_points_props.yml` at 15:07 and 22:07 UTC (11:07 AM and 6:07 PM ET),
+October through June, blank date (today ET) and a 40-credit ceiling (2 per game, so a
+15-game night fits). The morning read is when the books post player props; the evening
+read, before the 7 PM ET tips, is the one the page shows, since it takes each game's
+latest capture. GitHub fallback cron 16:37 UTC. Dataset row `nba_points_props` on
+/health (36 h). The first two manual runs (2026-10-20) showed the one failure to expect:
+`DatabaseManager()` with the default DDL pass hit `LockNotAvailable` against another
+writer; the script now opens with `initialize_schema=False`.
 
 ## Data Refresh Workflow
 
@@ -8444,6 +8452,16 @@ above zero. **The game-leaders model and pricing files are pinned by hash**:
 a dated amendment in the JSON. Rows priced after the first model amendment
 leave v1, so a model change before the verdict effectively ends this study.
 
+**Fringe-receiver split (`nfl-prop-under-fringe-v1`, registered 2026-10-22 11:45 UTC).**
+[`docs/nfl-prop-under-fringe-study.md`](docs/nfl-prop-under-fringe-study.md). Fading
+depth receivers on role alone loses: weeks 1-6, 1,419 DraftKings receiving lines at team
+rank 3+ went under 49.0% against 50.3% fair, ROI -7.7% [-13.8%, -1.5%]. The study asks
+only whether v2's FLAGGED receiving unders do better on fringe players (rank 3+ on
+DraftKings' own board, competition rank within game/team/market) than on the top two.
+One look after week 18; `research/nfl_prop_under_fringe.py`, tables
+`nfl_prop_under_fringe_runs`/`_verdicts`, graded in the post-week job beside
+`nfl-prop-under-role-change-v1` (same parent bets, not pooled).
+
 ## NFL game leaders — market-anchored test (`nfl-leaders-anchored-test-v1`, 2026-10-17)
 
 [`docs/nfl-leaders-anchored-test.md`](docs/nfl-leaders-anchored-test.md). A third
@@ -8461,3 +8479,17 @@ below zero. It imports the pinned game-leaders files and changes none of them,
 so `nfl-prop-under-v1` is unaffected. Discovery (15 games re-created after the
 fact, `origin = 'discovery'`): anchored beat ours in all four markets, better in
 10-12 of 15 games each; that cannot confirm anything.
+
+## NFL advice pick log (`research/nfl_advice_log.py`, 2026-10-21)
+
+Every betting pick suggested in a session goes in `nfl_advice_picks` (frozen when
+logged; one logged after kickoff is `late` and left out of the record), with
+results in `nfl_advice_pick_results` (append-only; a correction appends, the
+latest wins). `add` before kickoff, `settle` grades props and game-leader picks
+from nflverse weekly stats (a tie for the lead is a dead heat; a player with no
+stat row is settled by hand), `report` prints the record, units at the logged
+price and the logged fair chance against the implied one. Log the actual
+DraftKings price, including leader-market odds, which are captured nowhere else:
+`model/nfl_leader_favourite_charts.py` can only compare prop-implied leader
+shares (weeks 5-6: DK favourites led 44% against 43% implied; our model gave
+them 32%).

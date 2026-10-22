@@ -440,3 +440,16 @@ step fails: the Monday run grades Sunday, the Wednesday run grades Monday night.
   manual-resolution path, so that game stays `needs_review`.
 
 Tracking only. No gate reads this file, and one week says little.
+
+## Settling a needs-review game by hand (2026-10-22)
+
+A game stays `needs_review` when a touchdown-mentioning play fails scoring
+verification (replay reversal, lateral, fumble). To settle it, add a ruling
+to `research/nfl_longest_touchdown_reviews.json`: game_id, play_id, the play's
+exact PBP description, `touchdown` (scorer GSIS id, team, yards from the goal
+line at the snap) or `no_touchdown`, and a note naming what was checked. The
+next grading run appends a `graded` record listing the resolved plays, and the
+page marks the game "reviewed by hand". A ruling stops applying if the PBP
+description changes, and a game with any unruled play stays unscored.
+First use: 2026 Week 5 NYG@WAS (Likely 17-yard reversal); Daniels' 38-yard
+scramble was the longest, at 1.1%. Week 5 now reads 15 of 15 graded.

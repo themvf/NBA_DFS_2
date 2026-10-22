@@ -1,0 +1,66 @@
+[2024] sources: {'roster_rows': 132039, 'stat_rows': 17473}; ledger: {'zero_rows_ACT': 5078, 'zero_rows': 14055, 'zero_rows_DEV': 8977, 'ledger_bye_or_no_game': 38}
+[2024] week 4: 298 rows, 67s
+[2024] week 5: 250 rows, 59s
+[2024] week 6: 251 rows, 53s
+[2024] week 7: 275 rows, 47s
+[2024] week 8: 299 rows, 51s
+[2024] week 9: 275 rows, 48s
+[2024] week 10: 262 rows, 44s
+[2024] week 11: 262 rows, 41s
+[2024] week 12: 235 rows, 38s
+[2024] week 13: 294 rows, 47s
+[2024] week 14: 234 rows, 39s
+[2024] week 15: 288 rows, 47s
+[2024] week 16: 287 rows, 48s
+[2024] week 17: 275 rows, 48s
+[2024] week 18: 271 rows, 48s
+Gate H 2024  (nfl-dfs-participation-ledger-v1, model 63d035309972)
+  excluded: {'baseline_under_5': 4127}  stat line w/o roster row: 0
+  RB: n=1220 games=224
+    P10 pinball delta (cand - base): -0.0152 [-0.0230, -0.0081] n=1220 games=224
+    below-P10 rate: base 0.170 -> cand 0.137
+    MAE delta all: -2.3619 [-2.5026, -2.2218] n=1220 games=224
+    MAE delta played: -0.1214 [-0.1893, -0.0563] n=758 games=224
+    P90 pinball delta point: -0.5527   moved >1pt: 433
+    mean proj base 10.54 cand 8.07; mean P10 base 2.90 cand 2.83
+      played: n=758 pinball -0.0054 [-0.0146, +0.0029] n=758 games=224 rate 0.146->0.133
+      did_not_play: n=462 pinball -0.0313 [-0.0456, -0.0180] n=462 games=209 rate 0.208->0.143
+      status_ACT: n=858 pinball -0.0057 [-0.0139, +0.0017] n=858 games=224 rate 0.139->0.124
+      status_INA: n=108 pinball -0.0061 [-0.0271, +0.0144] n=108 games=100 rate 0.583->0.556
+      status_DEV: n=254 pinball -0.0514 [-0.0756, -0.0310] n=254 games=171 rate 0.098->0.004
+      band_5-10: n=762 pinball -0.0246 [-0.0354, -0.0148] n=762 games=222 rate 0.147->0.094
+      band_10-15: n=217 pinball +0.0019 [-0.0182, +0.0231] n=217 games=153 rate 0.226->0.230
+      band_15+: n=241 pinball -0.0010 [-0.0147, +0.0110] n=241 games=173 rate 0.191->0.187
+  TE: n=819 games=223
+    P10 pinball delta (cand - base): -0.0700 [-0.0972, -0.0445] n=819 games=223
+    below-P10 rate: base 0.138 -> cand 0.081
+    MAE delta all: -2.3904 [-2.5267, -2.2461] n=819 games=223
+    MAE delta played: -0.1799 [-0.2744, -0.0884] n=439 games=214
+    P90 pinball delta point: -0.5556   moved >1pt: 388
+    mean proj base 7.84 cand 5.31; mean P10 base 1.52 cand 1.27
+      played: n=439 pinball -0.0285 [-0.0574, -0.0038] n=439 games=214 rate 0.128->0.084
+      did_not_play: n=380 pinball -0.1180 [-0.1627, -0.0777] n=380 games=187 rate 0.150->0.076
+      status_ACT: n=487 pinball -0.0373 [-0.0688, -0.0100] n=487 games=216 rate 0.133->0.086
+      status_INA: n=70 pinball -0.2279 [-0.4056, -0.0899] n=70 games=61 rate 0.457->0.343
+      status_DEV: n=262 pinball -0.0887 [-0.1296, -0.0498] n=262 games=169 rate 0.061->0.000
+      band_5-10: n=652 pinball -0.0759 [-0.1052, -0.0496] n=652 games=216 rate 0.127->0.063
+      band_10-15: n=139 pinball -0.0593 [-0.1500, +0.0086] n=139 games=117 rate 0.180->0.144
+      band_15+: n=28 pinball +0.0137 [-0.0225, +0.0502] n=28 games=26 rate 0.179->0.179
+  WR: n=2017 games=224
+    P10 pinball delta (cand - base): -0.0659 [-0.0808, -0.0515] n=2017 games=224
+    below-P10 rate: base 0.140 -> cand 0.095
+    MAE delta all: -2.5541 [-2.6623, -2.4436] n=2017 games=224
+    MAE delta played: -0.1389 [-0.1964, -0.0827] n=1208 games=224
+    P90 pinball delta point: -0.6139   moved >1pt: 833
+    mean proj base 9.92 cand 7.21; mean P10 base 2.10 cand 1.90
+      played: n=1208 pinball -0.0161 [-0.0296, -0.0036] n=1208 games=224 rate 0.122->0.099
+      did_not_play: n=809 pinball -0.1402 [-0.1741, -0.1075] n=809 games=224 rate 0.168->0.090
+      status_ACT: n=1286 pinball -0.0237 [-0.0382, -0.0103] n=1286 games=224 rate 0.126->0.100
+      status_INA: n=124 pinball -0.1725 [-0.2687, -0.0877] n=124 games=101 rate 0.597->0.508
+      status_DEV: n=607 pinball -0.1334 [-0.1713, -0.0953] n=607 games=218 rate 0.077->0.002
+      band_5-10: n=1320 pinball -0.0762 [-0.0952, -0.0576] n=1320 games=224 rate 0.099->0.042
+      band_10-15: n=440 pinball -0.0742 [-0.1176, -0.0338] n=440 games=209 rate 0.230->0.198
+      band_15+: n=257 pinball +0.0015 [-0.0127, +0.0160] n=257 games=162 rate 0.198->0.195
+  QB overlay: thin-history verdict changed for 246 of 904 ACT QB-weeks
+  RB guards: {'evaluable': True, 'primary_ci_wholly_below_zero': True, 'below_p10_rate_closer_to_10pct': True, 'mae_upper_below_0_10': True, 'mae_played_upper_below_0_10': True, 'p90_point_at_most_0_01': True, 'all_guards_hold': True}
+artifact: C:\Docs\_AI Python Projects\NBADFS_v2\.worktrees\gate-h\artifacts\nfl-dfs-participation-ledger-gate-h\2024.json
