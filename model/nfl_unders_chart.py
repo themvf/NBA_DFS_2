@@ -5,6 +5,7 @@ Descriptive, season to date; nothing here claims an edge.
   nfl_take_unders.png   one row per game that went under, grouped by week: the betting total (open circle),
                         the points actually scored (filled dot) and the gap between them
   nfl_take_overs.png    the same for every game that went over
+  nfl_take_team_overs.png  each team's over/under record across the games it played
 
 Source: the nflverse schedule (``games.csv``), regular season, finished games only. ``total_line`` is the
 schedule's recorded game total, a market consensus near kickoff, not one sportsbook's price. Final scores include
@@ -25,7 +26,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 from model.cfb_pattern_charts import DPI, INK, INK_2, SURFACE  # noqa: E402
-from model.story_charts import BAD, GOOD, WIDTH_IN, _axes, _finish  # noqa: E402
+from model.story_charts import BAD, GOOD, NEUTRAL, WIDTH_IN, _axes, _finish  # noqa: E402
 
 SEASON = 2026
 DEFAULT_DIR = Path("artifacts") / "nfl_market_scenarios"
@@ -68,6 +69,20 @@ def week_summary(games: list[dict]) -> dict[int, dict]:
         w["games"] += 1
         w[g["result"]] += 1
     return dict(sorted(out.items()))
+
+
+def team_records(games: list[dict]) -> dict[str, dict]:
+    """team -> games, overs, unders, pushes and average gap to the total, over every game it played in."""
+    out: dict[str, dict] = {}
+    for g in games:
+        for t in (g["away"], g["home"]):
+            r = out.setdefault(t, {"games": 0, "over": 0, "under": 0, "push": 0, "gap_sum": 0.0})
+            r["games"] += 1
+            r[g["result"]] += 1
+            r["gap_sum"] += g["gap"]
+    for r in out.values():
+        r["avg_gap"] = r["gap_sum"] / r["games"]
+    return out
 
 
 # ── chart ────────────────────────────────────────────────────────────────────
@@ -148,6 +163,54 @@ def overs_chart(games: list[dict], path: Path) -> bool:
     return side_chart(games, path, "over")
 
 
+def team_chart(games: list[dict], path: Path) -> bool:
+    recs = team_records(games)
+    if not recs:
+        return False
+    order = sorted(recs, key=lambda t: (-recs[t]["over"], recs[t]["under"], -recs[t]["avg_gap"], t))
+    height = 0.22 * len(order) + 2.4
+    fig, ax = plt.subplots(figsize=(WIDTH_IN, height), dpi=DPI)
+    fig.patch.set_facecolor(SURFACE)
+    _axes(ax, ygrid=False)
+    most = max(r["games"] for r in recs.values())
+    for y, t in enumerate(order):
+        r = recs[t]
+        ax.barh(y, r["over"], color=GOOD, height=0.7)
+        ax.barh(y, r["push"], left=r["over"], color=NEUTRAL, height=0.7)
+        ax.barh(y, r["under"], left=r["over"] + r["push"], color=BAD, height=0.7, alpha=0.75)
+        if r["over"]:
+            ax.text(r["over"] / 2, y, str(r["over"]), ha="center", va="center", fontsize=6.6, color="white",
+                    fontweight="bold")
+        if r["under"]:
+            ax.text(r["over"] + r["push"] + r["under"] / 2, y, str(r["under"]), ha="center", va="center",
+                    fontsize=6.6, color="white", fontweight="bold")
+        ax.text(most + 0.15, y, f"avg {r['avg_gap']:+.1f} pts vs total", va="center", fontsize=6.4, color=INK_2)
+    ax.set_yticks(range(len(order)), [f"{t}  {recs[t]['over']}-{recs[t]['under']}"
+                                      + (f"-{recs[t]['push']}" if recs[t]["push"] else "") for t in order],
+                  fontsize=6.8)
+    ax.set_ylim(len(order) - 0.4, -0.6)
+    ax.set_xlim(0, most + 2.2)
+    ax.set_xticks(range(0, most + 1))
+    ax.set_xlabel("Games", fontsize=8, color=INK_2)
+    ax.tick_params(axis="x", labelsize=7)
+    from matplotlib.patches import Patch
+
+    ax.legend(handles=[Patch(facecolor=GOOD, label="Went over"), Patch(facecolor=BAD, alpha=0.75, label="Went under")],
+              loc="lower right", fontsize=7, frameon=False)
+    fig.tight_layout()
+    weeks = week_summary(games)
+    span = f"weeks {min(weeks)}-{max(weeks)}"
+    top = [t for t in order if recs[t]["over"] == recs[order[0]]["over"]]
+    low = min(recs.values(), key=lambda r: r["over"])["over"]
+    bottom = [t for t in order if recs[t]["over"] == low]
+    sub = (f"How often each team's games finished over or under the betting total, {span}. Sorted by overs, "
+           f"then fewest unders.\nMost overs: {', '.join(top)} ({recs[order[0]]['over']}). Fewest: "
+           f"{', '.join(bottom)} ({low}). Right: how far each team's games finished from the total on average.\n"
+           f"A game counts for both teams, so a team's record reflects its opponents too. Five or six games each; "
+           f"describes what happened, not a betting angle.")
+    return _finish(fig, path, "Which teams' games keep going over?", sub, height)
+
+
 # ── data ─────────────────────────────────────────────────────────────────────
 def load_schedule() -> list[dict]:
     import pandas as pd
@@ -168,7 +231,8 @@ def build_all(out_dir: Path, season: int = SEASON) -> list[tuple[str, bool]]:
     games = finished_games(load_schedule(), season)
     out_dir = Path(out_dir)
     return [("nfl_take_unders.png", unders_chart(games, out_dir / "nfl_take_unders.png")),
-            ("nfl_take_overs.png", overs_chart(games, out_dir / "nfl_take_overs.png"))]
+            ("nfl_take_overs.png", overs_chart(games, out_dir / "nfl_take_overs.png")),
+            ("nfl_take_team_overs.png", team_chart(games, out_dir / "nfl_take_team_overs.png"))]
 
 
 def main(argv: list[str] | None = None) -> int:
