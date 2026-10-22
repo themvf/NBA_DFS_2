@@ -7832,6 +7832,30 @@ treating either as more than a judgement.
 
 ---
 
+## NFL DFS expert coverage — collected, not yet a signal (`nfl-expert-coverage-v1`, 2026-10-21)
+
+Pre-registered in [`docs/nfl-expert-coverage-study.md`](docs/nfl-expert-coverage-study.md)
+(committed before the first capture). Question: do pregame expert DFS articles
+explain the field ownership v5 misses ("value chalk": WAS@SF Cooks/Ekeler ~19%
+flex vs 5-6%)? `ingest/nfl_expert_coverage.py` reads robots.txt every run
+(own RFC 9309 parser: exact product-token groups, merged `*` groups, longest
+match, `*`/`$`; a 4xx robots file = no restrictions, 5xx = skip), discovers
+articles from each site's own sitemap/RSS/listing, fetches at most one page a
+second without logging in, and stores visible text append-only (changed text =
+new revision). `model/nfl_expert_extraction.py` (DeepSeek, extraction only)
+records players, the article's role for each, PRINTED ownership and printed
+lineups; quotes must be substrings of the stored text and a printed % must be
+in its quote. Slates use the scorecard's `slate_key`; timing binds on
+`captured_at` (eligible <= T-20 < late <= kickoff < retrospective). Runs at
+T-48h/T-24h/T-6h/T-90m per kickoff group via `/api/cron/dispatch` job
+`nfl-expert-coverage`. v1 sources: DK Network, RotoBaller (no `/premium/`),
+RotoWire, Footballguys (logged-out page; date-only `Published` so
+day-precision), DailyAmbush, Fantasy Life. Dropped: Lineups.com (Cloudflare
+challenge on every page) and DraftWithDoug (body is client-rendered from an
+API robots disallows). Nothing here changes v5; a coverage term would be v6.
+
+---
+
 ## Published Millionaire winners, 2023-2025 (Hello Rookie, 2026-10-15)
 
 `python -m ingest.hellorookie_winners` stores the rank-1 lineup of each week's

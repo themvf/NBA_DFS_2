@@ -222,6 +222,18 @@ assert.deepEqual(leaderTicks, ["2026-10-18T14:22:00.000Z"], "one republish per k
 assert.ok(keys("2026-10-15T21:37:00Z", { nflKickoffs: [thu] }).includes("nfl-game-leaders"), "Thursday night: 2h38m before kickoff");
 assert.ok(!keys("2026-10-18T14:22:00Z", { nflKickoffs: null }).includes("nfl-game-leaders"), "unreadable schedule: weekly build only");
 
+// Expert coverage: exactly four passes per kickoff group, at T-48h, T-24h, T-6h and T-90m.
+const tnf = { nflKickoffs: [new Date("2026-10-23T00:15:00Z")] };
+const expertTicks = Array.from({ length: 4 * 96 }, (_, i) => new Date(Date.parse("2026-10-20T00:07:00Z") + i * 900_000))
+  .filter((at) => dueJobs(at, tnf).some((j) => j.key === "nfl-expert-coverage")).map((at) => at.toISOString());
+assert.deepEqual(expertTicks, ["2026-10-21T00:22:00.000Z", "2026-10-22T00:22:00.000Z", "2026-10-22T18:22:00.000Z",
+  "2026-10-22T22:52:00.000Z"], "T-48h, T-24h, T-6h and T-90m before Thursday night's 00:15 UTC kickoff");
+const sunGroups = { nflKickoffs: [new Date("2026-10-25T17:00:00Z"), new Date("2026-10-25T20:25:00Z")] };
+assert.ok(keys("2026-10-25T15:37:00Z", sunGroups).includes("nfl-expert-coverage"), "T-90m of the 1 PM ET group");
+assert.ok(keys("2026-10-25T19:07:00Z", sunGroups).includes("nfl-expert-coverage"), "T-90m of the 4:25 PM ET group");
+assert.ok(!keys("2026-10-25T16:22:00Z", sunGroups).includes("nfl-expert-coverage"), "38 minutes out is no pass");
+assert.ok(!keys("2026-10-21T00:07:00Z", { nflKickoffs: null }).includes("nfl-expert-coverage"), "unreadable schedule: no blind pass");
+
 // NBA points props: 15:07 and 22:07 UTC, October-June, nothing else; no kickoff context needed.
 assert.ok(keys("2026-10-21T15:07:00Z").includes("nba-points-props"), "11:07 AM ET morning read");
 assert.ok(keys("2026-10-21T22:07:00Z").includes("nba-points-props"), "6:07 PM ET closing read");
