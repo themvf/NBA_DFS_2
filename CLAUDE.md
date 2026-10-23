@@ -8221,6 +8221,28 @@ every player the pool rules left out (`reasonCode` `WINNERS_SHAPE` /
   review to grade against the standard one. Change a constant and bump the
   version; `npm run test:nfl-winners-shape` pins the current ones.
 
+## NFL DFS — Joint portfolio selection (`nfl-joint-selection-v1`, 2026-10-23)
+
+Owner's decision after TNF NE@CHI: the sequential builder spends exposure lineup
+by lineup, so Loveland hit his 10-of-20 cap by lineup 12, before Burden's
+captain lineups (15, 16) were built; the winning lineup projected 95.9 on our
+own numbers, about second of the 20 we built. With `portfolioSelection: 'joint'`
+the optimizer keeps the sequential build, then builds extra candidates without
+spending exposure (anchored on each captain in Showdown, each QB in Classic,
+cycling the plan and the distribution directives), all pairwise min-unique, and
+chooses the final set in one integer program (`web/src/lib/nfl-dfs/joint-selection.ts`).
+Player exposure caps are hard; minimums, distribution shares and archetype
+quotas are targets penalised 1000 per missed lineup, so the first pass is always
+a valid answer and the result is never worse; every tally is recounted from the
+final lineups and the note names any target still missed. GPP builds from the
+page default to joint (`resolveRunContext` in `actions.ts`); the ghost factorial
+and research studies never pass the setting and keep the sequential builder they
+were registered with. Replay (`scripts/replay-nfl-joint-selection.ts`): both TNF
+builds +2-3 s, lone-QB captains 4 -> 1 against a cap of 1, rule misses 11 -> 4,
+model score -0.2 to -0.7% to pay for it; the week-7 65-lineup Classic +8 s
+(candidate budget 8 s hit), +55 model score, rules unchanged. Not validated on
+results: one slate in hindsight says nothing; grade it beside the ghost arms.
+
 ## NFL DFS — Showdown and Classic attribution studies (read-only, 2026-10-13)
 
 `artifacts/nfl-showdown-attribution-2026-10-13/` and `artifacts/nfl-classic-attribution-2026-10-13/`
