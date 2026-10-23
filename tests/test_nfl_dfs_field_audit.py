@@ -218,3 +218,12 @@ def test_pooling_counts_across_slates():
     assert pooled["market_knew"] == 20 and pooled["real_edge"] == 20
     assert pooled["market_knew_share"] == 0.5
     assert pooled["descriptive_only"] is False
+
+
+def test_print_audit_handles_a_contest_without_median(capsys):
+    """Top-100-only stat-api imports store no median; the report must not crash."""
+    from ingest.nfl_dfs_field_audit import print_audit
+    contest = {"season": 2026, "week": 6, "format": "classic", "contest_id": "196653900",
+               "entry_count": 158904, "winning_score": 210.5, "median_score": None}
+    print_audit(contest, {"summary": {"considered": 0, "flagged": 0, "real_edge": 0}, "flagged": []})
+    assert "median unknown" in capsys.readouterr().out

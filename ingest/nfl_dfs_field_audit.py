@@ -270,11 +270,17 @@ def contests(db: PipelineDatabase, season: int | None, week: int | None) -> list
            ORDER BY season, week, contest_id""", (season, season, week, week))]
 
 
+def _score(value) -> str:
+    """A contest imported from stat-api's top-100 rows has no median (2026-10-19 on)."""
+    return "unknown" if value is None else f"{value:.2f}"
+
+
 def print_audit(contest: dict, audit: dict) -> None:
     s = audit["summary"]
-    head = (f"{contest['season']}w{contest['week']} {contest['format']:<8} "
-            f"contest {contest['contest_id']}  {contest['entry_count']:,} entries  "
-            f"win {contest['winning_score']:.2f}  median {contest['median_score']:.2f}")
+    entries = "unknown" if contest["entry_count"] is None else f"{contest['entry_count']:,}"
+    head = (f"{contest['season']}w{contest['week']} {contest['format'] or '?':<8} "
+            f"contest {contest['contest_id']}  {entries} entries  "
+            f"win {_score(contest['winning_score'])}  median {_score(contest['median_score'])}")
     print("\n" + head)
     print("  considered %d  flagged %d  ->  did not play %d, played and failed %d, real edge %d"
           % (s["considered"], s["flagged"], s.get("did_not_play", 0),
