@@ -58,6 +58,7 @@ import { isNflGppSignalPlayer, type NflPlayerSignal, type NflPlayerSignalCode } 
 import type { NflAirMatchupEvidence } from '@/lib/nfl-dfs/air-matchup-evidence';
 import { applyWinnersShape, BUILD_SHAPES, type BuildShape, type PriorOpportunity } from '@/lib/nfl-dfs/winners-shape';
 import type { SpecialTeamsProjection } from '@/lib/nfl-dfs/special-teams-projection';
+import { featureTotals, JOINT_TARGET_PENALTY, NFL_JOINT_SELECTION_VERSION, selectJointPortfolio, type JointCandidate, type JointTarget } from '@/lib/nfl-dfs/joint-selection';
 
 // Record the strict Showdown purchase and completed-roster validation.
 // v8: DK-average fallback honoured in defensive mode; a lock or exposure
@@ -294,6 +295,14 @@ export type NflOptimizerSettings = {
   /** Classic: share of lineups rostering a 2nd TE (two-sided: the rest roster exactly one). */
   twoTeShare?: number;
   lineupTeExact?: 1 | 2;
+  /**
+   * How the portfolio is assembled. `sequential` (the default, and what the
+   * ghost factorial and research studies pin) builds lineup by lineup, spending
+   * exposure as it goes. `joint` (nfl-joint-selection-v1) then chooses the final
+   * set from that build plus extra candidates in one integer program, so an
+   * early lineup cannot use up a player a later captain combination needs.
+   */
+  portfolioSelection?: "sequential" | "joint";
   maxExposure: number;
   minUnique: number;
   stackPassCatchers: 0 | 1 | 2;
@@ -1182,6 +1191,183 @@ const OTHER_GAME_BIG_M = 9;
 /** Spare quarterback appearances held back for the last lineups under a Showdown QB minimum. */
 const QB_RESERVE_SLACK = 2;
 
+/**
+ * The portfolio-rule features of one lineup: each player's appearance (and, in
+ * Showdown, his slot), the distribution flags the run schedules, and the
+ * archetype label. The joint selector constrains their totals; the same
+ * definitions recount the final portfolio, so the two cannot disagree.
+ */
+export function portfolioFeatures(lineup: Pick<NflGeneratedLineup, "slots" | "archetype" | "stackSummary">, format: "classic" | "showdown"): Record<string, number> {
+  const f: Record<string, number> = {};
+  for (const { slot, player } of lineup.slots) {
+    f[`o_${player.dkPlayerId}`] = 1;
+    if (format === "showdown") f[`${slot === "CPT" ? "c" : "f"}_${player.dkPlayerId}`] = 1;
+  }
+  if (format === "showdown") {
+    const qbCount = lineup.slots.filter(({ player }) => player.position === "QB").length;
+    const captain = lineup.slots.find(({ slot }) => slot === "CPT")?.player;
+    if (qbCount >= 2) f.twoQb = 1;
+    if (captain?.position === "QB" && qbCount === 1) f.loneQbCpt = 1;
+    if (captain?.position === "RB") f.rbCpt = 1;
+  } else {
+    const qb = lineup.slots.find(({ player }) => player.position === "QB")?.player;
+    if (qb && lineup.slots.filter(({ player }) => ["WR", "TE"].includes(player.position) && player.team === qb.team).length >= 2) f.dbl = 1;
+    if (lineup.slots.filter(({ player }) => player.position === "WR").length >= 4) f.fourWr = 1;
+    if (lineup.slots.filter(({ player }) => player.position === "TE").length >= 2) f.twoTe = 1;
+    if (qb) {
+      const counts = new Map<string, number>();
+      for (const { player } of lineup.slots) if (["RB", "WR", "TE"].includes(player.position)) counts.set(player.team, (counts.get(player.team) ?? 0) + 1);
+      if ([...counts].some(([team, k]) => k >= 2 && team !== qb.team && team !== qb.opponent)) f.otherGame = 1;
+    }
+    if (lineup.stackSummary.bringBack) f.bringBack = 1;
+  }
+  if (dstFacesOwnOffense(lineup)) f.dstVsOff = 1;
+  if (lineup.slots.some(({ player }) => isNflGppSignalPlayer(player.playerSignals, ["AIR_MATCHUP"]))) f.air = 1;
+  if (lineup.slots.some(({ player }) => player.position === "RB" && isNflGppSignalPlayer(player.playerSignals, ["INSIDE_FIVE"]))) f.goal = 1;
+  if (lineup.archetype) f[`arch_${lineup.archetype.id}`] = 1;
+  return f;
+}
+
+/** Time spent building extra candidates, and the selection solve's limit. */
+const JOINT_CANDIDATE_BUDGET_MS = 8000;
+const JOINT_SOLVE_TIMEOUT_MS = 6000;
+
+type JointTargets = {
+  twoQbShare: number | null; rbCaptainShare: number | null; loneQbCaptainCap: number | null;
+  doubleStackShare: number | null; fourWrCap: number | null; otherGameCap: number | null; twoTeShare: number | null;
+  bringBackShare: number | null; dstVsOffenseCap: number | null; airMatchupTarget: number; goalLineTarget: number;
+};
+
+/**
+ * Build extra candidates without spending exposure, then choose the portfolio
+ * from them and the sequential build together. Returns null lineups when the
+ * sequential build is kept, with the reason in the note.
+ */
+function jointSelect(ctx: {
+  pool: ResolvedPlayer[]; settings: NflOptimizerSettings; plan: Array<{ archetypeId: ArchetypeId; compiled: CompiledArchetype | null }>;
+  lineups: NflGeneratedLineup[]; countsById: Map<number, ExposureCounts>; locked: Set<number>;
+  topProjectedTargets: ResolvedPlayer[]; targets: JointTargets;
+}): { lineups: NflGeneratedLineup[] | null; note: string } {
+  const { pool, settings, plan, lineups, countsById, locked, targets: t } = ctx;
+  const n = lineups.length;
+  const showdownFormat = settings.format === "showdown";
+  const started = Date.now();
+  const maxCandidates = Math.min(400, Math.max(60, n * 8));
+  const prior = [...lineups];
+  const candidates: NflGeneratedLineup[] = [];
+  const empty = new Map<number, number>();
+  // Each candidate is anchored on one captain (Showdown) or quarterback
+  // (Classic), cycling through all of them, so every combination the rules
+  // allow gets its own chance rather than whatever exposure is left over.
+  const anchors = pool.filter((p) => showdownFormat ? p.captainEligible : p.position === "QB")
+    .sort((a, b) => b.projection - a.projection || a.dkPlayerId - b.dkPlayerId);
+  let timedOut = false;
+  for (let k = 0; anchors.length && candidates.length < maxCandidates && k < maxCandidates * 3; k++) {
+    if (Date.now() - started > JOINT_CANDIDATE_BUDGET_MS) { timedOut = true; break; }
+    const anchor = anchors[k % anchors.length];
+    const step = plan[k % plan.length];
+    const bit = (d: number) => jitter(20261023, k, d) > 0;
+    const directive: Partial<NflOptimizerSettings> = {};
+    if (showdownFormat) {
+      if (t.twoQbShare != null && (settings.minQbPerLineup ?? 0) >= 1) directive.lineupQbExact = bit(0) ? 2 : 1;
+    } else {
+      if (t.doubleStackShare != null) Object.assign(directive, bit(0) ? { lineupStackMin: 2 } : { lineupStackMin: 1, lineupStackMax: 1 });
+      if (t.twoTeShare != null) directive.lineupTeExact = bit(1) ? 2 : 1;
+      if (t.fourWrCap != null && bit(2)) directive.lineupForbidFourWr = true;
+      if (t.otherGameCap != null && bit(3)) directive.lineupForbidOtherGameStack = true;
+    }
+    const bringRule: BringBackRule = t.bringBackShare == null ? "default" : bit(4) ? "require" : "forbid";
+    const forbidDst = t.dstVsOffenseCap != null && bit(5);
+    const ls: NflOptimizerSettings = { ...settings, ...directive };
+    // Showdown: every other captain's slot is marked full, so only the anchor can captain.
+    const captainCounts = showdownFormat
+      ? new Map(pool.filter((p) => p.dkPlayerId !== anchor.dkPlayerId).map((p) => [p.dkPlayerId, Number.MAX_SAFE_INTEGER]))
+      : empty;
+    const forced = showdownFormat ? new Set(locked) : new Set([...locked, anchor.dkPlayerId]);
+    const build = (compiled: CompiledArchetype | null) => buildOne(pool, ls, 1_000_000 + k, prior, empty, forced, countsById,
+      captainCounts, empty, compiled, 1, false, false, false, bringRule, forbidDst);
+    const built = build(step.compiled) ?? (step.compiled ? build(null) : null);
+    if (built) { candidates.push(built); prior.push(built); }
+  }
+  const considered = n + candidates.length;
+  if (!candidates.length) return { lineups: null, note: `Joint selection (${NFL_JOINT_SELECTION_VERSION}) kept the first-pass portfolio: no extra lineup could be built under the rules.` };
+
+  // One scale for every candidate: the build objective without per-lineup jitter.
+  const byId = new Map(pool.map((p) => [p.dkPlayerId, p]));
+  const scoreSettings = { ...settings, randomness: 0 };
+  const scoreOf = (lineup: NflGeneratedLineup) => lineup.slots.reduce((sum, { slot, player, multiplier }) =>
+    sum + objective(byId.get(player.dkPlayerId)!, scoreSettings, 0, showdownFormat ? (slot === "CPT" ? "CPT" : "FLEX") : "CLASSIC") * multiplier, 0);
+  const all = [...lineups.map((l, i) => ({ key: `b_${i}`, lineup: l })), ...candidates.map((l, i) => ({ key: `n_${i}`, lineup: l }))];
+  const jointCandidates: JointCandidate[] = all.map(({ key, lineup }) => ({ key, score: scoreOf(lineup), features: portfolioFeatures(lineup, settings.format) }));
+
+  // A player's exposure caps are hard, as in the sequential build, which never
+  // exceeds one (a lock or forced minimum can; the cap then widens to what the
+  // first pass used, so it stays a valid answer). Minimums are targets.
+  const targets: Record<string, JointTarget> = {};
+  const used = featureTotals(jointCandidates, jointCandidates.slice(0, n).map((c) => c.key));
+  const capAndFloor = (feature: string, min: number, max: number) => {
+    targets[feature] = { max: Math.max(max, used[feature] ?? 0), hard: true };
+    if (min > 0) targets[`min_${feature}`] = { feature, min };
+  };
+  for (const p of pool) {
+    const id = p.dkPlayerId;
+    const c = countsById.get(id)!;
+    if (locked.has(id)) { targets[`o_${id}`] = { min: n, max: n, hard: true }; continue; }
+    capAndFloor(`o_${id}`, c.overallMin, c.overallMax);
+    if (showdownFormat) { capAndFloor(`c_${id}`, c.captainMin, c.captainMax); capAndFloor(`f_${id}`, c.flexMin, c.flexMax); }
+  }
+  for (const p of ctx.topProjectedTargets) {
+    const id = p.dkPlayerId;
+    if (!locked.has(id)) targets[`min_o_${id}`] = { feature: `o_${id}`, min: Math.max(1, targets[`min_o_${id}`]?.min ?? 0) };
+  }
+  const exact = (name: string, share: number | null) => { if (share != null) { const r = Math.round(share * n); targets[name] = { min: r, max: r }; } };
+  exact("twoQb", t.twoQbShare); exact("rbCpt", t.rbCaptainShare); exact("dbl", t.doubleStackShare); exact("twoTe", t.twoTeShare); exact("bringBack", t.bringBackShare);
+  if (t.loneQbCaptainCap != null) targets.loneQbCpt = { max: t.loneQbCaptainCap };
+  if (t.fourWrCap != null) targets.fourWr = { max: t.fourWrCap };
+  if (t.otherGameCap != null) targets.otherGame = { max: t.otherGameCap };
+  if (t.dstVsOffenseCap != null) targets.dstVsOff = { max: t.dstVsOffenseCap };
+  if (t.airMatchupTarget) targets.air = { min: t.airMatchupTarget };
+  if (t.goalLineTarget) targets.goal = { min: t.goalLineTarget };
+  if (plan.some((step) => step.compiled)) {
+    const requested = new Map<string, number>();
+    for (const step of plan) requested.set(step.archetypeId, (requested.get(step.archetypeId) ?? 0) + 1);
+    for (const [id, count] of requested) targets[`arch_${id}`] = { min: count, max: count };
+  }
+
+  const result = selectJointPortfolio({ candidates: jointCandidates, count: n, targets,
+    incumbent: jointCandidates.slice(0, n).map((c) => c.key), timeoutMs: JOINT_SOLVE_TIMEOUT_MS });
+  const scoreByKey = new Map(jointCandidates.map((c) => [c.key, c.score]));
+  const scoreSum = (keys: string[]) => keys.reduce((sum, key) => sum + scoreByKey.get(key)!, 0);
+  const nameOf = (id: string) => byId.get(Number(id))?.name ?? `#${id}`;
+  const describe = (name: string): string => {
+    const [kind, id] = name.replace(/^min_/, "").split(/_(.+)/);
+    if (kind === "o") return `${nameOf(id)} exposure`;
+    if (kind === "c") return `${nameOf(id)} captain exposure`;
+    if (kind === "f") return `${nameOf(id)} flex exposure`;
+    if (kind === "arch") return `${ARCHETYPE_LABELS[id as ArchetypeId] ?? id} quota`;
+    return ({ twoQb: "both-QB share", loneQbCpt: "lone-QB captain cap", rbCpt: "RB captain share", dbl: "QB double-stack share",
+      fourWr: "4th-WR cap", otherGame: "other-game stack cap", twoTe: "2nd-TE share", bringBack: "bring-back share",
+      dstVsOff: "DST-against-own-players cap", air: "air-yard matchup minimum", goal: "goal-line RB minimum" } as Record<string, string>)[name] ?? name;
+  };
+  const misses = Object.entries(result.misses);
+  const missText = misses.length ? ` Still missed: ${misses.map(([name, miss]) => `${describe(name)} by ${miss} lineup${miss === 1 ? "" : "s"}`).join("; ")}.` : "";
+  const timeText = timedOut ? " The candidate search stopped at its time limit." : "";
+  if (result.solver === "incumbent") {
+    return { lineups: null, note: `Joint selection (${NFL_JOINT_SELECTION_VERSION}) kept the first-pass portfolio: ${result.reason}. ${considered} valid lineups considered.${timeText}${missText}` };
+  }
+  const chosen = result.selected
+    .map((key) => ({ key, lineup: all.find((entry) => entry.key === key)!.lineup, score: scoreByKey.get(key)! }))
+    .sort((a, b) => b.score - a.score || a.key.localeCompare(b.key));
+  const replaced = chosen.filter(({ key }) => key.startsWith("n_")).length;
+  const incumbentKeys = jointCandidates.slice(0, n).map((c) => c.key);
+  return {
+    lineups: chosen.map(({ lineup }, index) => ({ ...lineup, lineupNumber: index + 1 })),
+    note: `Joint selection (${NFL_JOINT_SELECTION_VERSION}): chose the ${n} lineups together from ${considered} valid lineups; ${replaced} replaced first-pass lineups. `
+      + `Model score ${scoreSum(incumbentKeys).toFixed(1)} -> ${scoreSum(result.selected).toFixed(1)}`
+      + `${result.incumbentValue < scoreSum(incumbentKeys) - 1e-6 ? `, and portfolio-rule misses fell from ${Math.round((scoreSum(incumbentKeys) - result.incumbentValue) / JOINT_TARGET_PENALTY)} to ${Math.round((scoreSum(result.selected) - result.value) / JOINT_TARGET_PENALTY)} lineups` : ""}.${timeText}${missText}`,
+  };
+}
+
 export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: NflOptimizerSettings): NflOptimizerResult {
   validateSettings(requested);
   // The winners-shape preset is resolved into ordinary settings here, so the
@@ -1711,6 +1897,41 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
       const id = slot.player.dkPlayerId;
       if (slot.slot === "CPT") captainCounts.set(id, (captainCounts.get(id) ?? 0) + 1);
       else flexCounts.set(id, (flexCounts.get(id) ?? 0) + 1);
+    }
+  }
+
+  // Joint selection (nfl-joint-selection-v1): choose the final set from the
+  // sequential build plus extra candidates in one integer program. The
+  // sequential build is always a feasible answer, so this can only keep it or
+  // improve on it; every tally below is recounted from the final lineups.
+  if (settings.portfolioSelection === "joint" && lineups.length) {
+    const joint = jointSelect({ pool, settings, plan, lineups, countsById, locked, topProjectedTargets,
+      targets: { twoQbShare, rbCaptainShare, loneQbCaptainCap, doubleStackShare, fourWrCap, otherGameCap, twoTeShare,
+        bringBackShare, dstVsOffenseCap, airMatchupTarget, goalLineTarget } });
+    warnings.push(joint.note);
+    if (joint.lineups) {
+      lineups.splice(0, lineups.length, ...joint.lineups);
+      // The sequential pass's relaxation and fold counts describe lineups that
+      // may no longer be in the portfolio; the joint note reports misses instead.
+      distributionRelaxed = 0;
+      foldedToStandard.clear();
+      exposureCounts.clear(); captainCounts.clear(); flexCounts.clear();
+      airMatchupLineups = goalLineLineups = bringBackLineups = dstVsOffenseLineups = 0;
+      twoQbLineups = loneQbCaptainLineups = rbCaptainLineups = 0;
+      doubleStackLineups = fourWrLineups = otherGameLineups = twoTeLineups = 0;
+      for (const lineup of lineups) {
+        const f = portfolioFeatures(lineup, settings.format);
+        if (lineup.stackSummary.bringBack) bringBackLineups++;
+        doubleStackLineups += f.dbl ?? 0; fourWrLineups += f.fourWr ?? 0; twoTeLineups += f.twoTe ?? 0; otherGameLineups += f.otherGame ?? 0;
+        if (showdown) { twoQbLineups += f.twoQb ?? 0; loneQbCaptainLineups += f.loneQbCpt ?? 0; rbCaptainLineups += f.rbCpt ?? 0; }
+        dstVsOffenseLineups += f.dstVsOff ?? 0; airMatchupLineups += f.air ?? 0; goalLineLineups += f.goal ?? 0;
+        lineup.playerIds.forEach((id) => exposureCounts.set(id, (exposureCounts.get(id) ?? 0) + 1));
+        for (const slot of lineup.slots) {
+          const id = slot.player.dkPlayerId;
+          if (slot.slot === "CPT") captainCounts.set(id, (captainCounts.get(id) ?? 0) + 1);
+          else flexCounts.set(id, (flexCounts.get(id) ?? 0) + 1);
+        }
+      }
     }
   }
   if (classicShares && lineups.length) {

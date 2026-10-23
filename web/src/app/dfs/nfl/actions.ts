@@ -1765,6 +1765,10 @@ function resolveRunContext(eligible: NflWorkspacePlayer[], slate: NflWorkspaceSl
     { heuristic: true, optIntoHeuristic: settings.useHeuristicOwnershipLeverage ?? false, format: slate.format },
   );
   const resolvedSettings: NflOptimizerSettings = { ...settings, defensiveAdjustments:defensive,
+    // Owner's decision 2026-10-23: GPP builds from the page choose the portfolio
+    // jointly. The ghost factorial and research studies never come through here
+    // and keep the sequential builder they were registered with.
+    portfolioSelection: settings.portfolioSelection ?? (settings.mode === 'gpp' ? 'joint' : 'sequential'),
     ownershipCapability: ownershipAssessment.capability,
     ownershipLeverageEnabled: ownershipAssessment.features.leverage,
     duplicationModelValidated: ownershipAssessment.features.duplicationModel,
