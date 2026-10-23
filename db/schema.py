@@ -6449,6 +6449,35 @@ INDEXES = [
          ON nfl_prop_under_fringe_verdicts FOR EACH ROW EXECUTE FUNCTION reject_nfl_prop_under_study_mutation();
        END IF;
     END $$""",
+    # nfl-rushing-under-v1 (docs/nfl-rushing-under-study.md): every DraftKings
+    # rushing-yards under, weeks 7-18. One row per weekly grade and one verdict at
+    # the single look after week 18. Both append-only.
+    """CREATE TABLE IF NOT EXISTS nfl_rushing_under_runs (
+        id BIGSERIAL PRIMARY KEY,
+        study TEXT NOT NULL,
+        evaluated_at TIMESTAMPTZ NOT NULL,
+        graded_bets INTEGER NOT NULL,
+        game_weeks INTEGER NOT NULL,
+        roi DOUBLE PRECISION,
+        report JSONB NOT NULL
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_rushing_under_runs ON nfl_rushing_under_runs(study, evaluated_at DESC)",
+    """CREATE TABLE IF NOT EXISTS nfl_rushing_under_verdicts (
+        study TEXT PRIMARY KEY,
+        verdict TEXT NOT NULL CHECK (verdict IN ('PASS','NO_EDGE','LOSES','INCONCLUSIVE')),
+        run_id BIGINT NOT NULL REFERENCES nfl_rushing_under_runs(id),
+        decided_at TIMESTAMPTZ NOT NULL
+    )""",
+    """DO $$ BEGIN
+       IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'nfl_rushing_under_runs_immutable') THEN
+         CREATE TRIGGER nfl_rushing_under_runs_immutable BEFORE UPDATE OR DELETE
+         ON nfl_rushing_under_runs FOR EACH ROW EXECUTE FUNCTION reject_nfl_prop_under_study_mutation();
+       END IF;
+       IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'nfl_rushing_under_verdicts_immutable') THEN
+         CREATE TRIGGER nfl_rushing_under_verdicts_immutable BEFORE UPDATE OR DELETE
+         ON nfl_rushing_under_verdicts FOR EACH ROW EXECUTE FUNCTION reject_nfl_prop_under_study_mutation();
+       END IF;
+    END $$""",
     # 2026-07-02: execution-book CLV. clv_pp measures the REFERENCE market
     # (did the sharp consensus move toward the flagged side — informational
     # content); dk_clv_pct measures the EXECUTION book (did DK's own price on

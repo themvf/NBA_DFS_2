@@ -1,0 +1,41 @@
+{
+  "study": "nfl-rushing-under-v1",
+  "status": "registered",
+  "registered_at": "2026-10-23T14:05:00+00:00",
+  "season": 2026,
+  "weeks": [7, 18],
+  "book": "draftkings",
+  "market": "player_rush_yds",
+  "stat": "rushing_yards",
+  "side": "under",
+  "stake": 1.0,
+  "close": "latest prop_odds_history capture before kickoff whose DraftKings quote has a line, an over price and an under price",
+  "event_match_window_minutes": 120,
+  "settlement": {
+    "source": "nflverse stats_player_week, regular season",
+    "match": "nflverse game_id plus normalized player_display_name",
+    "no_stat_row": "void",
+    "ambiguous_name": "void",
+    "push": 0.0
+  },
+  "floors": {
+    "graded_bets": 500,
+    "game_weeks": 8
+  },
+  "bootstrap": {
+    "resamples": 2000,
+    "seed": 20261023,
+    "cluster": "game_week",
+    "interval": 0.95
+  },
+  "verdict": {
+    "when": "first grade run after every cohort game through last_week is graded",
+    "last_week": 18,
+    "outcomes": {
+      "PASS": "ROI interval wholly above zero",
+      "NO_EDGE": "ROI interval includes zero",
+      "LOSES": "ROI interval wholly below zero",
+      "INCONCLUSIVE": "floors not met at the final look"
+    }
+  }
+}
