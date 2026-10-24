@@ -1,0 +1,74 @@
+{
+  "study": "nfl-ownership-news-v1",
+  "registered_at": "2026-10-24",
+  "control": "nfl-ownership-prior-v5",
+  "scorecard": "nfl-ownership-scorecard-v3",
+  "inputs": {
+    "frozen_forecast": "scorecard v3 canonical capture (latest at or before first kickoff minus 20 minutes)",
+    "frozen_fields": ["ffPlayerId", "team", "position", "salary", "isOut"],
+    "box_scores": {
+      "table": "ff_player_week_stats",
+      "source": "nflverse",
+      "season_type": "REG",
+      "seasons": [2025, 2026],
+      "weeks": "strictly before the slate week",
+      "select_by_fetched_at": false,
+      "missing_stat_key": 0,
+      "no_row_in_game": "did not appear"
+    },
+    "team_key": {"source": "web/src/lib/nfl-dfs/availability.ts", "aliases": {"LA": "LAR", "WAS": "WSH", "AZ": "ARI", "JAC": "JAX"}}
+  },
+  "baseline": {"stats": ["targets", "carries"], "appearances": 8, "half_life_appearances": 4, "min_appearances": 2, "same_team_only": true},
+  "vacancy": {
+    "must_be": "isOut in the frozen input",
+    "recency": "appeared for current team in at least one of the team's last 3 completed games",
+    "bars": {
+      "RB": {"stat": "carries", "min_per_game": 5},
+      "WR": {"stat": "targets", "min_per_game": 7},
+      "TE": {"stat": "targets", "min_per_game": 4},
+      "QB": {"rule": "team passing leader in its most recent completed game", "position_from": "ff_players.position", "min_attempts": 15, "tie_break": "smaller ff_players.id"}
+    }
+  },
+  "beneficiaries": {
+    "rooms": {"RB": ["RB"], "WR": ["WR", "TE"], "TE": ["TE"], "QB": ["QB"]},
+    "must_be": "same franchise, not isOut, has salary",
+    "multiple_vacancies": "one beneficiary"
+  },
+  "candidates": {
+    "C0": "v5 unchanged",
+    "C1": "beneficiary field points = our projection only",
+    "C2": {"base": "C1", "weight_multiplier_grid": [1.5, 2, 3, 4, 6, 8], "applied": "after v5 flattening, every allocation weight (Classic; Showdown flex main pool, punt tier, captain)", "one_per_format": true}
+  },
+  "metrics": {
+    "classic_slot": "overall",
+    "showdown_slot": "FLEX",
+    "captain": "reported, never gating",
+    "format_mae": "mean over slates of per-slate MAE",
+    "flagged_group": "beneficiaries with an observed or reconciled_zero label",
+    "observed_population": "every player with an observed or reconciled_zero label"
+  },
+  "design": {
+    "slates": "2026 slates with first kickoff before 2026-10-25T00:00:00Z, a canonical frozen forecast and a stored reference contest",
+    "step1_premise": "pool design slates; top 10 by (actual - v5); proceed only if beneficiary share among them > 2 x beneficiary share of the observed population, else NOT_BUILT",
+    "step3_admissible_observed_mae_tolerance": {"classic": 0.02, "showdown_flex": 0.10},
+    "step3_choose": "lowest flagged-group MAE among admissible C1 and C2 points; ties to C1 then smaller m; NOT_BUILT if none admissible or winner not below v5 flagged-group MAE",
+    "freeze_table": "nfl_ownership_news_freezes (append-only, one row per format, frozen_at set once)"
+  },
+  "grading": {
+    "gradable": "first kickoff >= 2026-10-25T00:00:00Z AND canonical frozen forecast on the reference contest AND nfl_dfs_field_contests.imported_at > frozen_at AND >= 1 labeled beneficiary",
+    "min_slates": 8,
+    "min_labeled_beneficiary_rows": 40,
+    "looks": 1,
+    "season_end_unmet": "INCONCLUSIVE",
+    "primary": "mean over slates of (challenger - v5) flagged-group MAE",
+    "interval": {"type": "t on per-slate differences", "df": "n - 1", "level": 0.95},
+    "unlabeled_beneficiaries": {"excluded": "rows left out", "worst_case": "each unresolved row adds |challenger - v5| to the challenger's error only"},
+    "report_uncovered_mass": true,
+    "guard_observed_mae_upper_bound": {"classic": 0.05, "showdown_flex": 0.20},
+    "verdict": {
+      "PASS": "primary upper bound < 0 under both treatments AND guard upper bound within its limit",
+      "FAIL": "primary point estimate >= 0 under either treatment OR guard point estimate above its limit",
+      "INCONCLUSIVE": "otherwise, or floors unmet at season end"
+    }
+  }
+}
