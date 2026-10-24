@@ -222,5 +222,40 @@ assert.deepEqual(leaderTicks, ["2026-10-18T14:22:00.000Z"], "one republish per k
 assert.ok(keys("2026-10-15T21:37:00Z", { nflKickoffs: [thu] }).includes("nfl-game-leaders"), "Thursday night: 2h38m before kickoff");
 assert.ok(!keys("2026-10-18T14:22:00Z", { nflKickoffs: null }).includes("nfl-game-leaders"), "unreadable schedule: weekly build only");
 
+// Expert coverage: exactly four passes per kickoff group, at T-48h, T-24h, T-6h and T-90m.
+const tnf = { nflKickoffs: [new Date("2026-10-23T00:15:00Z")] };
+const expertTicks = Array.from({ length: 4 * 96 }, (_, i) => new Date(Date.parse("2026-10-20T00:07:00Z") + i * 900_000))
+  .filter((at) => dueJobs(at, tnf).some((j) => j.key === "nfl-expert-coverage")).map((at) => at.toISOString());
+assert.deepEqual(expertTicks, ["2026-10-21T00:22:00.000Z", "2026-10-22T00:22:00.000Z", "2026-10-22T18:22:00.000Z",
+  "2026-10-22T22:52:00.000Z"], "T-48h, T-24h, T-6h and T-90m before Thursday night's 00:15 UTC kickoff");
+const sunGroups = { nflKickoffs: [new Date("2026-10-25T17:00:00Z"), new Date("2026-10-25T20:25:00Z")] };
+assert.ok(keys("2026-10-25T15:37:00Z", sunGroups).includes("nfl-expert-coverage"), "T-90m of the 1 PM ET group");
+assert.ok(keys("2026-10-25T19:07:00Z", sunGroups).includes("nfl-expert-coverage"), "T-90m of the 4:25 PM ET group");
+assert.ok(!keys("2026-10-25T16:22:00Z", sunGroups).includes("nfl-expert-coverage"), "38 minutes out is no pass");
+assert.ok(!keys("2026-10-21T00:07:00Z", { nflKickoffs: null }).includes("nfl-expert-coverage"), "unreadable schedule: no blind pass");
+
+// NBA points props: 15:07 and 22:07 UTC, October-June, nothing else; no kickoff context needed.
+assert.ok(keys("2026-10-21T15:07:00Z").includes("nba-points-props"), "11:07 AM ET morning read");
+assert.ok(keys("2026-10-21T22:07:00Z").includes("nba-points-props"), "6:07 PM ET closing read");
+assert.ok(keys("2026-10-21T22:07:00Z", { nflKickoffs: null }).includes("nba-points-props"), "no schedule read needed");
+assert.ok(!keys("2026-10-21T15:22:00Z").includes("nba-points-props"), "the :07 tick only");
+assert.ok(!keys("2026-10-21T15:37:00Z").includes("nba-points-props"), "not every half hour: each run spends credits");
+assert.ok(!keys("2026-08-21T15:07:00Z").includes("nba-points-props"), "off-season: nothing to capture");
+assert.ok(keys("2027-06-10T22:07:00Z").includes("nba-points-props"), "Finals in June");
+let nbaTicks = 0;
+for (let h = 0; h < 24; h += 1) for (const m of TICKS) if (keys(`2026-10-21T${hh(h)}:${m}:00Z`).includes("nba-points-props")) nbaTicks += 1;
+assert.equal(nbaTicks, 3, "exactly three paid NBA captures a day");
+assert.ok(keys("2026-10-22T01:07:00Z").includes("nba-points-props"), "9:07 PM ET closing read for the late tips");
+assert.equal(DISPATCH_JOBS.find((j) => j.key === "nba-points-props")?.inputs?.max_credits, "40");
+// Nightly grade: box scores + calibration, once a day, no credits.
+assert.ok(keys("2026-10-22T11:07:00Z").includes("nba-points-grade"), "7:07 AM ET grade");
+assert.ok(!keys("2026-10-22T11:22:00Z").includes("nba-points-grade"), "the :07 tick only");
+assert.ok(!keys("2026-08-22T11:07:00Z").includes("nba-points-grade"), "off-season: nothing to grade");
+let gradeTicks = 0;
+for (let h = 0; h < 24; h += 1) for (const m of TICKS) if (keys(`2026-10-22T${hh(h)}:${m}:00Z`).includes("nba-points-grade")) gradeTicks += 1;
+assert.equal(gradeTicks, 1, "one grade a day");
+assert.equal(DISPATCH_JOBS.find((j) => j.key === "nba-points-grade")?.workflow, "grade_nba_points_props.yml");
+assert.equal(DISPATCH_JOBS.find((j) => j.key === "nba-points-grade")?.inputs?.days_back, "3");
+
 console.log(`Cron dispatch: ${DISPATCH_JOBS.length} bridged workflows on a 15-minute tick; half-hour cadences unchanged, NFL availability every 15 minutes before a kickoff.`);
 }).catch((e) => { console.error(e); process.exit(1); });

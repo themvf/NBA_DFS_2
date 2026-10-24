@@ -124,6 +124,7 @@ alone.
 | NHL game lines | `ingest.event_closing_lines` (via `ingest.nhl_schedule.fetch_odds`) | 6 named books × 3 markets (bulk) | 3/bulk call | T−24h, T−6h, T−3h, T−2h, T−90m, T−45m, T−30m, T−15m, close; one call records every mapped game ≤72h out | ~86 simulated (36–180), ~2,600/30d |
 | NFL props (game-leader benchmark) | `ingest.nfl_prop_odds --within-hours 2` | 22 markets × 1 (≤10 books): 7 main + 5 volume/multi-TD (2026-10-12) + 9 DraftKings ladders + first-TD scorer (2026-10-12) | 22/event | Two per game since 2026-10-12 (owner's schedule): the day before (Vercel 22:07 UTC, tomorrow's Eastern-date games: Wed for Thu, Sat for Sun, Sun for Mon) and 60–75 min before each kickoff group (only that group: `--min-hours 1 --within-hours 1.25`); GH Sunday fallback, 6h window | ~660 credits per week (~15 games x 2 x 22), ~2,850/30d |
 | MLB props | `ingest.mlb_prop_odds` | 4 markets × 1 (10 books) | 4/event | **PAUSED 2026-08-24** | 0 |
+| NBA Top Scorers (`ingest.nba_points_props`, `capture_nba_points_props.yml`) | `player_points` + `player_points_alternate` × 1 (6 named books) | 2/event (~24 on a 12-game night) | Vercel 15:07 + 22:07 + 01:07 UTC, Oct–Jun (dispatch job `nba-points-props`, 40-credit ceiling per run; the 01:07 run fetches only games still to tip, ~3-5 of them); GH fallback 16:37 UTC. The nightly grade (`grade_nba_points_props.yml`) reads stored rows and ESPN, no credits | ~60 in season, ~1,800/30d |
 | Soccer | `refresh_soccer.yml` | — | — | **disabled 2026-08-01** | 0 |
 
 **One-off: NFL prop archive backfill (2026-10-12).** `ingest.nfl_prop_backfill` read the 2026 weeks 1–4
@@ -141,7 +142,6 @@ every requested market, including ones the book had not posted, so the estimate 
 | NBA "Fetch Player Props" | 5 markets × 1 region | 5/event |
 | `auditMlbPropCoverage` / `auditNbaPropCoverage` | 8 / 5 markets | per caller-supplied `gameKeys` |
 | NBA game lines | 1 region × 3 markets | 3 (manual only — no workflow) |
-| NBA Top Scorers (`ingest.nba_points_props`, `capture_nba_points_props.yml`, 2026-10-20) | `player_points` + `player_points_alternate` × 1 (6 named books) | 2/event (~24 on a 12-game night); manual until scheduled — at two runs a day ~50/day |
 
 Both prop buttons are deduped (10-minute window via
 `odds_api_prop_fetch_log`) and report live quota in their result message.

@@ -220,11 +220,10 @@ def test_pooling_counts_across_slates():
     assert pooled["descriptive_only"] is False
 
 
-def test_audit_header_survives_a_top_rows_only_import(capsys):
-    # stat-api opens flagships to their top 100 rows from 2026-10-19: no median.
+def test_print_audit_handles_a_contest_without_median(capsys):
+    """Top-100-only stat-api imports store no median; the report must not crash."""
     from ingest.nfl_dfs_field_audit import print_audit
-    contest = {"season": 2026, "week": 6, "format": "showdown", "contest_id": "196786690",
-               "entry_count": 87465, "winning_score": 125.8, "median_score": None}
-    audit = {"summary": {"considered": 0, "flagged": 0, "real_edge": 0}, "flagged": []}
-    print_audit(contest, audit)
-    assert "median n/a" in capsys.readouterr().out
+    contest = {"season": 2026, "week": 6, "format": "classic", "contest_id": "196653900",
+               "entry_count": 158904, "winning_score": 210.5, "median_score": None}
+    print_audit(contest, {"summary": {"considered": 0, "flagged": 0, "real_edge": 0}, "flagged": []})
+    assert "median unknown" in capsys.readouterr().out

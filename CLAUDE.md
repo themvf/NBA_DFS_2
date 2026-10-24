@@ -233,8 +233,35 @@ P(over) is de-vigged only from books at that line. Floor/ceiling (P10/P90) and 2
 the ladder (`web/src/lib/nba-points-ladder.ts`): over-only rungs de-vigged by the same book's
 main-line overround (leaves longshot margin, so top-end chances read slightly high), median across
 books, forced non-increasing, never extrapolated past the first or last rung. It is the market's number, unvalidated, and
-independent of `dk_players` (no slate needed). Run manually via `capture_nba_points_props.yml`;
-not yet scheduled. Last season's PPG/team come from `nba_player_stats` 2025-26.
+independent of `dk_players` (no slate needed). Last season's PPG/team come from `nba_player_stats` 2025-26.
+**Scheduled since 2026-10-21:** `/api/cron/dispatch` job `nba-points-props` fires
+`capture_nba_points_props.yml` at 15:07 and 22:07 UTC (11:07 AM and 6:07 PM ET),
+October through June, blank date (today ET) and a 40-credit ceiling (2 per game, so a
+15-game night fits). The morning read is when the books post player props; the evening
+read, before the 7 PM ET tips, is the one the page shows, since it takes each game's
+latest capture. GitHub fallback cron 16:37 UTC. Dataset row `nba_points_props` on
+/health (36 h). The first two manual runs (2026-10-20) showed the one failure to expect:
+`DatabaseManager()` with the default DDL pass hit `LockNotAvailable` against another
+writer; the script now opens with `initialize_schema=False`.
+**Third capture and the nightly grade (2026-10-22).** The dispatcher also fires the capture
+at 01:07 UTC (9:07 PM ET) for the 9:30-10:30 PM ET tips (only games still to tip, a few
+credits), so every game has a capture inside about 90 minutes of its tip. Each morning at
+11:07 UTC (job `nba-points-grade`, `grade_nba_points_props.yml`, GitHub fallback 12:37 UTC)
+`ingest/nba_box_scores.py` stores ESPN's box scores for the last three Eastern dates
+(`nba_box_score_games` / `nba_box_score_players`; a player who did not play is `played =
+false` with null stats, never a zero) and `model/nba_points_calibration.py` grades each game's
+LAST pre-tip capture into `nba_points_calibration` (`nba-points-grade-v1`): consensus line,
+P(over), floor, ceiling and P(20+)..P(40+) beside actual points, one row per player-game,
+status `graded` / `dnp` / `unmatched` / `ambiguous` / `no_box_score` / `push`. The reader is a
+Python port, `model/nba_points_ladder.py`, pinned to the TypeScript by
+`tests/fixtures/nba_points_ladder_fixture.json` (written by
+`web/scripts/write-nba-points-ladder-fixture.ts`; both sides' tests assert it). ESPN because
+stats.nba.com blocks runners and cdn.nba.com answered 403 even from home. Players are matched
+by accent-free name within their own game, never across games. The page shows the pooled grade
+(n, books said, happened, Brier per reading; floor and ceiling beat rates) and the viewed night
+beside it. Both tables are on /health (36 h). First two nights (Oct 20-21, 195 rows, 193
+graded): over-the-line hit 46.6% against 50.2% stated, floor beat 90.2%, ceiling beat 7.3%;
+far too few to read, which is why it runs nightly.
 
 ## Data Refresh Workflow
 
@@ -7798,6 +7825,16 @@ full-field captain labels, v4 punt tier kept, no kicker cut; callable as
 scorecard v3 (2026-10-20) grades the LATEST capture before the cutoff from any
 source.
 
+**News chalk (`nfl-ownership-news-v1`, registered 2026-10-24, not built;
+`docs/nfl-ownership-news-chalk-study.md` + `.json`).** When a material RB, WR,
+TE or QB is ruled out, his teammates in the same room get a candidate term:
+field points from our projection alone (no stale DK season average), plus at
+most one weight multiplier per format chosen on the pre-2026-10-25 design
+slates. Graded only on slates first kicking off from 2026-10-25 whose contest
+was imported after the freeze: 8 slates and 40 labeled beneficiaries per
+format, one look, t-interval, worst case for unlabeled players. No production
+change unless a format passes.
+
 ### GPP objective: multiplicative leverage and the ceiling cap (2026-09-27)
 
 The first build with the ownership prior live produced the SAME three lineups
@@ -7821,6 +7858,30 @@ with leverage on and off. Two mechanisms, both in `objective()` in
 that a 6× lottery ceiling loses to a real 12-point projection under the cap.
 Neither constant has been fitted; grade them on imported contests before
 treating either as more than a judgement.
+
+---
+
+## NFL DFS expert coverage — collected, not yet a signal (`nfl-expert-coverage-v1`, 2026-10-21)
+
+Pre-registered in [`docs/nfl-expert-coverage-study.md`](docs/nfl-expert-coverage-study.md)
+(committed before the first capture). Question: do pregame expert DFS articles
+explain the field ownership v5 misses ("value chalk": WAS@SF Cooks/Ekeler ~19%
+flex vs 5-6%)? `ingest/nfl_expert_coverage.py` reads robots.txt every run
+(own RFC 9309 parser: exact product-token groups, merged `*` groups, longest
+match, `*`/`$`; a 4xx robots file = no restrictions, 5xx = skip), discovers
+articles from each site's own sitemap/RSS/listing, fetches at most one page a
+second without logging in, and stores visible text append-only (changed text =
+new revision). `model/nfl_expert_extraction.py` (DeepSeek, extraction only)
+records players, the article's role for each, PRINTED ownership and printed
+lineups; quotes must be substrings of the stored text and a printed % must be
+in its quote. Slates use the scorecard's `slate_key`; timing binds on
+`captured_at` (eligible <= T-20 < late <= kickoff < retrospective). Runs at
+T-48h/T-24h/T-6h/T-90m per kickoff group via `/api/cron/dispatch` job
+`nfl-expert-coverage`. v1 sources: DK Network, RotoBaller (no `/premium/`),
+RotoWire, Footballguys (logged-out page; date-only `Published` so
+day-precision), DailyAmbush, Fantasy Life. Dropped: Lineups.com (Cloudflare
+challenge on every page) and DraftWithDoug (body is client-rendered from an
+API robots disallows). Nothing here changes v5; a coverage term would be v6.
 
 ---
 
@@ -8181,6 +8242,28 @@ every player the pool rules left out (`reasonCode` `WINNERS_SHAPE` /
   review to grade against the standard one. Change a constant and bump the
   version; `npm run test:nfl-winners-shape` pins the current ones.
 
+## NFL DFS — Joint portfolio selection (`nfl-joint-selection-v1`, 2026-10-23)
+
+Owner's decision after TNF NE@CHI: the sequential builder spends exposure lineup
+by lineup, so Loveland hit his 10-of-20 cap by lineup 12, before Burden's
+captain lineups (15, 16) were built; the winning lineup projected 95.9 on our
+own numbers, about second of the 20 we built. With `portfolioSelection: 'joint'`
+the optimizer keeps the sequential build, then builds extra candidates without
+spending exposure (anchored on each captain in Showdown, each QB in Classic,
+cycling the plan and the distribution directives), all pairwise min-unique, and
+chooses the final set in one integer program (`web/src/lib/nfl-dfs/joint-selection.ts`).
+Player exposure caps are hard; minimums, distribution shares and archetype
+quotas are targets penalised 1000 per missed lineup, so the first pass is always
+a valid answer and the result is never worse; every tally is recounted from the
+final lineups and the note names any target still missed. GPP builds from the
+page default to joint (`resolveRunContext` in `actions.ts`); the ghost factorial
+and research studies never pass the setting and keep the sequential builder they
+were registered with. Replay (`scripts/replay-nfl-joint-selection.ts`): both TNF
+builds +2-3 s, lone-QB captains 4 -> 1 against a cap of 1, rule misses 11 -> 4,
+model score -0.2 to -0.7% to pay for it; the week-7 65-lineup Classic +8 s
+(candidate budget 8 s hit), +55 model score, rules unchanged. Not validated on
+results: one slate in hindsight says nothing; grade it beside the ghost arms.
+
 ## NFL DFS — Showdown and Classic attribution studies (read-only, 2026-10-13)
 
 `artifacts/nfl-showdown-attribution-2026-10-13/` and `artifacts/nfl-classic-attribution-2026-10-13/`
@@ -8431,6 +8514,16 @@ above zero. **The game-leaders model and pricing files are pinned by hash**:
 a dated amendment in the JSON. Rows priced after the first model amendment
 leave v1, so a model change before the verdict effectively ends this study.
 
+**Fringe-receiver split (`nfl-prop-under-fringe-v1`, registered 2026-10-22 11:45 UTC).**
+[`docs/nfl-prop-under-fringe-study.md`](docs/nfl-prop-under-fringe-study.md). Fading
+depth receivers on role alone loses: weeks 1-6, 1,419 DraftKings receiving lines at team
+rank 3+ went under 49.0% against 50.3% fair, ROI -7.7% [-13.8%, -1.5%]. The study asks
+only whether v2's FLAGGED receiving unders do better on fringe players (rank 3+ on
+DraftKings' own board, competition rank within game/team/market) than on the top two.
+One look after week 18; `research/nfl_prop_under_fringe.py`, tables
+`nfl_prop_under_fringe_runs`/`_verdicts`, graded in the post-week job beside
+`nfl-prop-under-role-change-v1` (same parent bets, not pooled).
+
 ## NFL game leaders — market-anchored test (`nfl-leaders-anchored-test-v1`, 2026-10-17)
 
 [`docs/nfl-leaders-anchored-test.md`](docs/nfl-leaders-anchored-test.md). A third
@@ -8448,3 +8541,17 @@ below zero. It imports the pinned game-leaders files and changes none of them,
 so `nfl-prop-under-v1` is unaffected. Discovery (15 games re-created after the
 fact, `origin = 'discovery'`): anchored beat ours in all four markets, better in
 10-12 of 15 games each; that cannot confirm anything.
+
+## NFL advice pick log (`research/nfl_advice_log.py`, 2026-10-21)
+
+Every betting pick suggested in a session goes in `nfl_advice_picks` (frozen when
+logged; one logged after kickoff is `late` and left out of the record), with
+results in `nfl_advice_pick_results` (append-only; a correction appends, the
+latest wins). `add` before kickoff, `settle` grades props and game-leader picks
+from nflverse weekly stats (a tie for the lead is a dead heat; a player with no
+stat row is settled by hand), `report` prints the record, units at the logged
+price and the logged fair chance against the implied one. Log the actual
+DraftKings price, including leader-market odds, which are captured nowhere else:
+`model/nfl_leader_favourite_charts.py` can only compare prop-implied leader
+shares (weeks 5-6: DK favourites led 44% against 43% implied; our model gave
+them 32%).

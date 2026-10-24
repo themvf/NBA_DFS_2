@@ -197,6 +197,24 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           python -m research.nfl_prop_under_role_change grade --write-db --out artifacts/nfl_prop_under_role_change_latest.json
+      # nfl-prop-under-fringe-v1 (docs/nfl-prop-under-fringe-study.md): v2's flagged
+      # receiving unders split by board rank (fringe = third or lower). Read-only on v2.
+      - name: Verify the fringe study
+        if: ${{ !cancelled() }}
+        run: python -m pytest -q tests/test_nfl_prop_under_fringe.py
+      - name: Grade fringe split
+        if: ${{ !cancelled() }}
+        run: |
+          python -m research.nfl_prop_under_fringe grade --write-db --out artifacts/nfl_prop_under_fringe_latest.json
+      # nfl-rushing-under-v1 (docs/nfl-rushing-under-study.md): every DraftKings
+      # rushing-yards under at the close, weeks 7-18. No model; separate from v2.
+      - name: Verify the rushing-under study
+        if: ${{ !cancelled() }}
+        run: python -m pytest -q tests/test_nfl_rushing_under.py
+      - name: Grade every rushing under
+        if: ${{ !cancelled() }}
+        run: |
+          python -m research.nfl_rushing_under grade --write-db --out artifacts/nfl_rushing_under_latest.json
       - name: Save the grade report
         if: always()
         uses: actions/upload-artifact@v4
@@ -206,6 +224,8 @@ jobs:
             artifacts/nfl_prop_under_grade_latest.json
             artifacts/nfl_prop_under_v2_grade_latest.json
             artifacts/nfl_prop_under_role_change_latest.json
+            artifacts/nfl_prop_under_fringe_latest.json
+            artifacts/nfl_rushing_under_latest.json
           if-no-files-found: ignore
           retention-days: 90
 
@@ -252,6 +272,15 @@ jobs:
           python -m model.nfl_dfs_more_charts --out-dir artifacts/nfl_market_scenarios
           python -m model.nfl_prop_player_charts --out-dir artifacts/nfl_market_scenarios
           python -m model.nfl_ownership_charts --out-dir artifacts/nfl_market_scenarios
+          python -m model.nfl_prop_history_charts --out-dir artifacts/nfl_market_scenarios
+          python -m model.nfl_defense_qb_charts --out-dir artifacts/nfl_market_scenarios
+          python -m model.nfl_defense_position_charts --out-dir artifacts/nfl_market_scenarios
+          python -m model.nfl_defense_correlation_charts --out-dir artifacts/nfl_market_scenarios
+          python -m model.nfl_showdown_ownership_charts --out-dir artifacts/nfl_market_scenarios
+          python -m model.nfl_leader_favourite_charts --out-dir artifacts/nfl_market_scenarios
+          python -m model.nfl_game_leader_history_charts --out-dir artifacts/nfl_market_scenarios
+          python -m model.nfl_yards_points_charts --out-dir artifacts/nfl_market_scenarios
+          python -m model.nfl_unders_chart --out-dir artifacts/nfl_market_scenarios
       - name: Save the charts
         if: always()
         uses: actions/upload-artifact@v4

@@ -35,7 +35,9 @@
     {
       "file": "capture_nba_points_props.yml",
       "name": "Capture NBA points props",
-      "crons": [],
+      "crons": [
+        "37 16 * 1-6,10-12 *"
+      ],
       "dispatch": true,
       "afterWorkflows": [],
       "push": false,
@@ -55,6 +57,17 @@
       "name": "Capture NFL Opponent Adjustments On Upload",
       "crons": [
         "41 1,7,13,19 * * *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "capture_nfl_expert_coverage.yml",
+      "name": "Capture NFL DFS expert coverage",
+      "crons": [
+        "41 12 * 1,2,9-12 0,4"
       ],
       "dispatch": true,
       "afterWorkflows": [],
@@ -170,6 +183,17 @@
       "name": "Refresh Fantasy Football Draft Data",
       "crons": [
         "17 1,7,13,19 * * *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
+      "file": "grade_nba_points_props.yml",
+      "name": "Grade NBA points props",
+      "crons": [
+        "37 12 * 1-6,10-12 *"
       ],
       "dispatch": true,
       "afterWorkflows": [],

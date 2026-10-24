@@ -13,6 +13,12 @@ tracked JSON store the page reads:
   game is retried next run.
 - ``weeks`` is derived from the latest record per game and rebuilt every run.
 
+A ``needs_review`` game is settled by adding a ruling to ``REVIEWS``
+(research/nfl_longest_touchdown_reviews.json): the play_id, its exact PBP
+description, ``touchdown`` (scorer GSIS id, team, yards from the goal line at
+the snap) or ``no_touchdown``, and a note naming the source checked. The next
+run appends a ``graded`` record that lists the hand-resolved plays.
+
 Tracking only: one week of results is not calibration and no gate reads this.
 """
 from __future__ import annotations
@@ -31,6 +37,7 @@ from research.nfl_longest_touchdown import capture, grade, read
 
 INDEX = Path("web/src/data/longest-touchdown-weeks.json")
 STORE = Path("web/src/data/longest-touchdown-grades.json")
+REVIEWS = Path("research/nfl_longest_touchdown_reviews.json")
 VERSION = "nfl-longest-td-weekly-grade-v1"
 FINAL = "graded"
 
@@ -62,10 +69,30 @@ def proportional_baseline(forecast: dict) -> dict:
     return {**forecast, "players": players}
 
 
-def grade_game(snapshot: dict, pub: dict, graded_at: datetime) -> dict:
+def load_reviews(path: Path) -> dict[str, dict[int, dict]]:
+    """Hand rulings by game and play; malformed entries fail the run."""
+    if not path.exists():
+        return {}
+    by_game: dict[str, dict[int, dict]] = defaultdict(dict)
+    for review in json.loads(path.read_text(encoding="utf-8"))["reviews"]:
+        if not review.get("description") or not review.get("note"):
+            raise ValueError(f"Review for play {review.get('play_id')} needs the play description and a note")
+        if review["ruling"] == "touchdown":
+            if not (review.get("scorer") and review.get("team") and 1 <= int(review["yards"]) <= 99):
+                raise ValueError(f"Touchdown ruling for play {review['play_id']} needs scorer, team and yards 1-99")
+        elif review["ruling"] != "no_touchdown":
+            raise ValueError(f"Unknown ruling {review['ruling']!r} for play {review['play_id']}")
+        play_id = int(review["play_id"])
+        if play_id in by_game[review["game_id"]]:
+            raise ValueError(f"Two rulings for play {play_id} in {review['game_id']}")
+        by_game[review["game_id"]][play_id] = review
+    return dict(by_game)
+
+
+def grade_game(snapshot: dict, pub: dict, graded_at: datetime, reviews: dict[int, dict] | None = None) -> dict:
     forecast = as_forecast(pub)
     game = pub["game"]
-    result = grade(snapshot, forecast)
+    result = grade(snapshot, forecast, resolutions=reviews)
     record = {"version": VERSION, "game_id": game["game_id"], "season": game["season"], "week": game["week"],
               "away": game["away"], "home": game["home"], "kickoff": game["kickoff"],
               "decision_at": pub["decisionAt"], "model_version": pub["modelVersion"],
@@ -73,6 +100,8 @@ def grade_game(snapshot: dict, pub: dict, graded_at: datetime) -> dict:
               "capture_at": snapshot.get("captured_at"), "status": result["status"], "reason": result.get("reason")}
     if result["status"] == "needs_review":
         record["quarantined_td_plays"] = result["quarantined_td_plays"]
+    if result.get("resolved_td_plays"):
+        record["resolved_td_plays"] = result["resolved_td_plays"]
     if result["status"] != FINAL:
         return record
     model = result["model"]
@@ -117,7 +146,8 @@ def started_games(index: dict, now: datetime) -> list[dict]:
             if timestamp(pub["game"]["kickoff"]) <= now]
 
 
-def update(store: dict | None, index: dict, snapshot: dict, now: datetime) -> tuple[dict, dict]:
+def update(store: dict | None, index: dict, snapshot: dict, now: datetime,
+           reviews: dict[str, dict[int, dict]] | None = None) -> tuple[dict, dict]:
     """Return the next store and a report. Earlier records are never changed."""
     records = list((store or {}).get("records", []))
     latest = _latest(records)
@@ -130,7 +160,7 @@ def update(store: dict | None, index: dict, snapshot: dict, now: datetime) -> tu
         if prior and prior["status"] == FINAL:
             report["unchanged"].append(game_id)
             continue
-        record = grade_game(snapshot, pub, now)
+        record = grade_game(snapshot, pub, now, (reviews or {}).get(game_id))
         if record["status"] == "outcome_unknown":
             report["awaiting"].append(game_id)
             continue
@@ -171,7 +201,7 @@ def summarize(records: list[dict]) -> list[dict]:
                        "longestYards": r["longest_yards"], "winners": r["winners"],
                        "winnerProbability": r["winner_probability"], "winnerRank": r["winner_rank"],
                        "outcomes": r["outcomes"], "topPick": r["top_pick"], "topProbability": r["top_probability"],
-                       "topHit": r["top_hit"]} for r in graded]})
+                       "topHit": r["top_hit"], "reviewed": bool(r.get("resolved_td_plays"))} for r in graded]})
     return weeks
 
 
@@ -189,6 +219,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--index", type=Path, default=INDEX)
     parser.add_argument("--store", type=Path, default=STORE)
+    parser.add_argument("--reviews", type=Path, default=REVIEWS)
     parser.add_argument("--capture", type=Path, help="Saved capture; otherwise read the index season from the DB")
     args = parser.parse_args()
     index = read(args.index)
@@ -203,7 +234,7 @@ def main() -> None:
         with db.reuse_connection():
             snapshot = capture(db, min(seasons), max(seasons))
     now = datetime.now(timezone.utc)
-    next_store, report = update(store, index, snapshot, now)
+    next_store, report = update(store, index, snapshot, now, load_reviews(args.reviews))
     if store is not None and next_store["records"][:len(store["records"])] != store["records"]:
         raise AssertionError("Grade records are append-only")
     write_json(args.store, next_store)

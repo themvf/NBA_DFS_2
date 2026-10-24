@@ -11,6 +11,7 @@ import {
   getNbaSeasonStats,
   getNbaTeams,
 } from "@/db/nba-top-scorers";
+import { getNbaPointsCalibration, type CalibrationSummary } from "@/db/nba-points-calibration";
 import { TopScorersClient } from "./top-scorers-client";
 
 export const metadata: Metadata = {
@@ -46,12 +47,14 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
   const requested = params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) ? params.date : null;
   const date = requested ?? (dates.includes(today) ? today : dates.find((d) => d > today) ?? dates[0] ?? today);
 
-  const [rows, ladderRows, pulled, lastSeason, teams] = await Promise.all([
+  const [rows, ladderRows, pulled, lastSeason, teams, calibration, nightCalibration] = await Promise.all([
     getNbaPointsProps(date),
     getNbaPointsProps(date, "player_points_alternate"),
     getNbaPulledLines(date),
     getNbaSeasonStats(LAST_SEASON),
     getNbaTeams(),
+    getNbaPointsCalibration(),
+    getNbaPointsCalibration(date),
   ]);
   const { scorers, games } = buildBoard(rows, lastSeason, teams, ladderRows);
   const lastCapture = games.reduce<string | null>((m, g) => (m == null || g.capturedAt > m ? g.capturedAt : m), null);
@@ -101,6 +104,8 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
         <TopScorersClient scorers={scorers} games={games} pulled={pulled} lastSeason={LAST_SEASON} />
       )}
 
+      <CalibrationPanel all={calibration} night={nightCalibration} date={date} />
+
       <section className="space-y-1 text-xs text-muted-foreground">
         <p>
           Line is the points line most books quote. A points line is the books&apos; median outcome, so a player scores above
@@ -110,10 +115,124 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
           read slightly high. Without a ladder the bar shows the spread of main lines across books instead.
         </p>
         <p>
-          This is the market&apos;s number, not a model of ours, and it has not been checked against results here. Position,
-          team and {LAST_SEASON} PPG come from last season&apos;s stats and can be stale for a player who changed teams.
+          This is the market&apos;s number, not a model of ours; the calibration panel above is its record against results.
+          Position, team and {LAST_SEASON} PPG come from last season&apos;s stats and can be stale for a player who changed
+          teams.
         </p>
       </section>
     </main>
+  );
+}
+
+const pct = (v: number | null | undefined, digits = 0) => (v == null ? "n/a" : `${(v * 100).toFixed(digits)}%`);
+
+/**
+ * The nightly grade of these numbers against the box score: what the books'
+ * last pre-tip capture said, beside how often it happened. Pooled over every
+ * graded night, with the viewed night beside it when it has been graded.
+ */
+function CalibrationPanel({ all, night, date }: { all: CalibrationSummary | null; night: CalibrationSummary | null; date: string }) {
+  if (!all) {
+    return (
+      <section style={DARK_BORDER} className="rounded-xl border border-slate-800 bg-[#0f1726] px-5 py-4 text-sm text-slate-300">
+        <h2 className="font-semibold text-white">Calibration · not graded yet</h2>
+        <p className="mt-1 text-slate-400">
+          The nightly grade (<code className="text-slate-200">grade_nba_points_props.yml</code>, 7:07 AM ET) scores each
+          game&apos;s last pre-tip capture against the ESPN box score. Nothing has been graded so far.
+        </p>
+      </section>
+    );
+  }
+  const span = all.firstDate === all.lastDate ? all.lastDate : `${all.firstDate} to ${all.lastDate}`;
+  const nightCells = new Map((night?.cells ?? []).map((c) => [c.key, c]));
+  const nightLabel = date.slice(5);
+  const rows = [
+    ...all.cells.map((c) => {
+      const n = nightCells.get(c.key);
+      return {
+        key: c.key,
+        label: c.key === "over" ? "Over the line" : c.key,
+        n: c.n,
+        said: c.n ? pct(c.predicted, 1) : "n/a",
+        happened: c.n ? pct(c.observed, 1) : "n/a",
+        brier: c.n ? c.brier.toFixed(3) : "n/a",
+        nightN: n?.n ?? 0,
+        nightSaid: n?.n ? pct(n.predicted, 1) : "n/a",
+        nightHappened: n?.n ? pct(n.observed, 1) : "n/a",
+      };
+    }),
+    {
+      key: "floor",
+      label: "Beat the floor (target 90%)",
+      n: all.floorN,
+      said: "90%",
+      happened: all.floorN ? pct(all.floorBeatRate, 1) : "n/a",
+      brier: "n/a",
+      nightN: night?.floorN ?? 0,
+      nightSaid: "90%",
+      nightHappened: night?.floorN ? pct(night.floorBeatRate, 1) : "n/a",
+    },
+    {
+      key: "ceiling",
+      label: "Beat the ceiling (target 10%)",
+      n: all.ceilingN,
+      said: "10%",
+      happened: all.ceilingN ? pct(all.ceilingBeatRate, 1) : "n/a",
+      brier: "n/a",
+      nightN: night?.ceilingN ?? 0,
+      nightSaid: "10%",
+      nightHappened: night?.ceilingN ? pct(night.ceilingBeatRate, 1) : "n/a",
+    },
+  ];
+  return (
+    <section style={DARK_BORDER} className="rounded-xl border border-slate-800 bg-[#0f1726] px-5 py-4 text-slate-200">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="font-semibold text-white">Calibration · {all.nights} {all.nights === 1 ? "night" : "nights"} graded</h2>
+        <div className="font-mono text-xs text-slate-400">
+          {span} · {all.games} games · {all.graded} player-games graded
+          {all.dnp ? ` · ${all.dnp} did not play` : ""}
+          {all.unmatched ? ` · ${all.unmatched} unmatched` : ""}
+          {all.noBoxScore ? ` · ${all.noBoxScore} without a box score` : ""}
+          {all.meanMinutesBeforeTip != null ? ` · graded capture ${Math.round(all.meanMinutesBeforeTip)} min before tip` : ""}
+          {all.lastGradedAt ? ` · graded ${stamp(all.lastGradedAt)}` : ""}
+        </div>
+      </div>
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full font-mono text-xs">
+          <thead className="text-slate-400">
+            <tr className="text-left">
+              <th className="py-1 pr-3 font-normal">Reading</th>
+              <th className="py-1 pr-3 text-right font-normal">n</th>
+              <th className="py-1 pr-3 text-right font-normal">Books said</th>
+              <th className="py-1 pr-3 text-right font-normal">Happened</th>
+              <th className="py-1 pr-3 text-right font-normal">Brier</th>
+              <th className="py-1 pr-3 text-right font-normal">{nightLabel} n</th>
+              <th className="py-1 pr-3 text-right font-normal">{nightLabel} said</th>
+              <th className="py-1 text-right font-normal">{nightLabel} happened</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.key} className="border-t border-slate-800">
+                <td className="py-1 pr-3 text-slate-200">{r.label}</td>
+                <td className="py-1 pr-3 text-right">{r.n}</td>
+                <td className="py-1 pr-3 text-right">{r.said}</td>
+                <td className="py-1 pr-3 text-right text-white">{r.happened}</td>
+                <td className="py-1 pr-3 text-right">{r.brier}</td>
+                <td className="py-1 pr-3 text-right text-slate-400">{r.nightN}</td>
+                <td className="py-1 pr-3 text-right text-slate-400">{r.nightSaid}</td>
+                <td className="py-1 text-right text-slate-400">{r.nightHappened}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-2 text-xs text-slate-400">
+        Each row grades the books&apos; last capture before tip-off, read exactly as the table above reads it, against the
+        ESPN box score. A player who did not play is counted, not graded (the books void his line). Brier is the mean
+        squared gap between the stated chance and what happened; lower is better, and a coin flip on a 50% line scores
+        0.25. Under a few hundred player-games the night-to-night swing is noise; the pooled columns are the ones to read.
+      </p>
+    </section>
   );
 }

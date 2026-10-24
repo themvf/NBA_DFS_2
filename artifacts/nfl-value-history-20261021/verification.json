@@ -1,0 +1,24 @@
+{
+  "status": "passed",
+  "slates": 23,
+  "lineups": 789,
+  "cheap_player_slate_rows": 3930,
+  "non_dst_component_rescores": 1343,
+  "captain_row_checks": 641,
+  "previous_sunday_regression_players": 63,
+  "injury_boundary_checks": 219,
+  "unresolved_contest_ledger_disagreements": [
+    [
+      1,
+      "Buccaneers",
+      8.0,
+      9.0
+    ],
+    [
+      5,
+      "Seahawks",
+      8.0,
+      9.0
+    ]
+  ]
+}

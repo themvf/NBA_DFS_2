@@ -143,6 +143,48 @@ export function nflGameLeadersDue(now: Date, context: DispatchContext): boolean 
   });
 }
 
+/**
+ * Expert-coverage pass windows (docs/nfl-expert-coverage-study.md): for each
+ * kickoff group, the one 15-minute tick whose lead lands in (H - 15 min, H] for
+ * H in T-48h, T-24h, T-6h, T-90m. T-48h fits because the route reads kickoffs
+ * up to KICKOFF_LOOKAHEAD_MS (48 h, inclusive) ahead.
+ */
+export const EXPERT_COVERAGE_LEADS_MIN = [48 * 60, 24 * 60, 6 * 60, 90] as const;
+
+export function nflExpertCoverageDue(now: Date, context: DispatchContext): boolean {
+  return (context.nflKickoffs ?? []).some((kickoff) => {
+    const leadMin = (kickoff.getTime() - now.getTime()) / 60_000;
+    return EXPERT_COVERAGE_LEADS_MIN.some((h) => leadMin > h - 15 && leadMin <= h);
+  });
+}
+
+/** NBA season as calendar months (preseason lines in early October, Finals in June). */
+const NBA_MONTHS = new Set([10, 11, 12, 1, 2, 3, 4, 5, 6]);
+
+/**
+ * NBA points-props capture for /nba/top-scorers: the 15:07 UTC tick (11:07 AM
+ * ET, after the books post the morning's player props), the 22:07 UTC tick
+ * (6:07 PM ET, the closing read before the 7 PM ET tips) and the 01:07 UTC
+ * tick (9:07 PM ET, the closing read for the 9:30-10:30 PM ET tips; only the
+ * games still to tip are fetched, so it is a few credits), October through
+ * June. The page shows each game's latest capture, and the nightly grade
+ * scores each game's last capture before its tip. Each run costs about 2
+ * credits a game; a game that has already tipped is skipped by the script.
+ */
+export function nbaPointsPropsDue(now: Date): boolean {
+  if (!NBA_MONTHS.has(now.getUTCMonth() + 1) || !hourTick(now)) return false;
+  return now.getUTCHours() === 15 || now.getUTCHours() === 22 || now.getUTCHours() === 1;
+}
+
+/**
+ * Nightly grade of those lines against ESPN box scores (grade_nba_points_props.yml):
+ * 11:07 UTC (7:07 AM ET), after the last West Coast game has gone final. No
+ * Odds API credits; three Eastern dates each run, idempotent.
+ */
+export function nbaPointsGradeDue(now: Date): boolean {
+  return NBA_MONTHS.has(now.getUTCMonth() + 1) && hourTick(now) && now.getUTCHours() === 11;
+}
+
 export const DISPATCH_JOBS: readonly DispatchJob[] = [
   {
     key: "mlb-odds-capture",
@@ -196,10 +238,32 @@ export const DISPATCH_JOBS: readonly DispatchJob[] = [
     why: "The same prop lines the day before (Wednesday for Thursday, Saturday for Sunday, Sunday for Monday), so an early build has real lines.",
   },
   {
+    key: "nba-points-props",
+    workflow: "capture_nba_points_props.yml",
+    due: nbaPointsPropsDue,
+    // Blank date = today ET inside the script. 40 credits covers a 15-game night
+    // (2 per game) plus a few; the script aborts before any paid call past it.
+    inputs: { date: "", max_credits: "40" },
+    why: "Tonight's player-points lines and alternate ladders for /nba/top-scorers (Odds API, ~2 credits a game), 11:07 AM, 6:07 PM and 9:07 PM ET, October-June.",
+  },
+  {
+    key: "nba-points-grade",
+    workflow: "grade_nba_points_props.yml",
+    due: nbaPointsGradeDue,
+    inputs: { date: "", days_back: "3" },
+    why: "ESPN box scores and the calibration grade of last night's pre-tip points lines for /nba/top-scorers, 7:07 AM ET, October-June.",
+  },
+  {
     key: "nfl-game-leaders",
     workflow: "refresh_nfl_game_leaders.yml",
     due: nflGameLeadersDue,
     why: "Game Leaders page: the weekly build Wednesday, then fresh availability before each kickoff group; commits web/src/data/game-leaders.json.",
+  },
+  {
+    key: "nfl-expert-coverage",
+    workflow: "capture_nfl_expert_coverage.yml",
+    due: nflExpertCoverageDue,
+    why: "Pregame expert DFS articles (robots-checked, append-only) and their DeepSeek extraction at T-48h, T-24h, T-6h and T-90m of every kickoff group: the ownership-signal study's inputs.",
   },
   {
     key: "nfl-dfs-postweek",

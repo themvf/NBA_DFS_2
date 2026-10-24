@@ -6309,6 +6309,53 @@ INDEXES = [
          ON nfl_leaders_anchored_test_verdicts FOR EACH ROW EXECUTE FUNCTION reject_nfl_leaders_anchored_mutation();
        END IF;
     END $$""",
+    # Advice pick log (research/nfl_advice_log.py): every betting pick suggested in a
+    # session, frozen when logged, so the advice can be graded over a season instead of
+    # from memory. A result is a separate row; a correction appends, the latest wins.
+    """CREATE TABLE IF NOT EXISTS nfl_advice_picks (
+        id BIGSERIAL PRIMARY KEY,
+        season INTEGER NOT NULL,
+        week INTEGER NOT NULL,
+        game_id TEXT NOT NULL,
+        kickoff TIMESTAMPTZ,
+        player TEXT NOT NULL,
+        market TEXT NOT NULL,
+        selection TEXT NOT NULL CHECK (selection IN ('over','under','yes','no')),
+        line DOUBLE PRECISION,
+        price_american INTEGER NOT NULL,
+        book TEXT NOT NULL,
+        fair_prob DOUBLE PRECISION CHECK (fair_prob IS NULL OR (fair_prob > 0 AND fair_prob < 1)),
+        reason TEXT,
+        logged_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        late BOOLEAN NOT NULL
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_advice_picks_week ON nfl_advice_picks(season, week)",
+    """CREATE TABLE IF NOT EXISTS nfl_advice_pick_results (
+        id BIGSERIAL PRIMARY KEY,
+        pick_id BIGINT NOT NULL REFERENCES nfl_advice_picks(id),
+        result TEXT NOT NULL CHECK (result IN ('won','lost','push','void','dead_heat')),
+        share DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+        actual DOUBLE PRECISION,
+        method TEXT NOT NULL CHECK (method IN ('auto','manual')),
+        note TEXT,
+        settled_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_advice_pick_results_pick ON nfl_advice_pick_results(pick_id, settled_at DESC)",
+    """CREATE OR REPLACE FUNCTION reject_nfl_advice_log_mutation()
+       RETURNS trigger LANGUAGE plpgsql AS $$
+       BEGIN
+         RAISE EXCEPTION 'nfl advice log rows are append-only';
+       END $$""",
+    """DO $$ BEGIN
+       IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'nfl_advice_picks_immutable') THEN
+         CREATE TRIGGER nfl_advice_picks_immutable BEFORE UPDATE OR DELETE
+         ON nfl_advice_picks FOR EACH ROW EXECUTE FUNCTION reject_nfl_advice_log_mutation();
+       END IF;
+       IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'nfl_advice_pick_results_immutable') THEN
+         CREATE TRIGGER nfl_advice_pick_results_immutable BEFORE UPDATE OR DELETE
+         ON nfl_advice_pick_results FOR EACH ROW EXECUTE FUNCTION reject_nfl_advice_log_mutation();
+       END IF;
+    END $$""",
     # nfl-prop-under-v1 (docs/nfl-prop-under-study.md): one row per weekly grade,
     # and at most one verdict per study version. Both append-only.
     """CREATE TABLE IF NOT EXISTS nfl_prop_under_study_runs (
@@ -6370,6 +6417,65 @@ INDEXES = [
        IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'nfl_prop_under_role_change_verdicts_immutable') THEN
          CREATE TRIGGER nfl_prop_under_role_change_verdicts_immutable BEFORE UPDATE OR DELETE
          ON nfl_prop_under_role_change_verdicts FOR EACH ROW EXECUTE FUNCTION reject_nfl_prop_under_study_mutation();
+       END IF;
+    END $$""",
+    # nfl-prop-under-fringe-v1 (docs/nfl-prop-under-fringe-study.md): flagged
+    # receiving unders split by the player's rank on DraftKings' board. One row
+    # per weekly grade and one verdict at the single look after week 18.
+    """CREATE TABLE IF NOT EXISTS nfl_prop_under_fringe_runs (
+        id BIGSERIAL PRIMARY KEY,
+        study TEXT NOT NULL,
+        evaluated_at TIMESTAMPTZ NOT NULL,
+        fringe_bets INTEGER NOT NULL,
+        top_bets INTEGER NOT NULL,
+        fringe_game_weeks INTEGER NOT NULL,
+        difference_roi DOUBLE PRECISION,
+        report JSONB NOT NULL
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_prop_under_fringe_runs ON nfl_prop_under_fringe_runs(study, evaluated_at DESC)",
+    """CREATE TABLE IF NOT EXISTS nfl_prop_under_fringe_verdicts (
+        study TEXT PRIMARY KEY,
+        verdict TEXT NOT NULL CHECK (verdict IN ('FRINGE_BETTER','FRINGE_WORSE','NO_DIFFERENCE','INCONCLUSIVE')),
+        run_id BIGINT NOT NULL REFERENCES nfl_prop_under_fringe_runs(id),
+        decided_at TIMESTAMPTZ NOT NULL
+    )""",
+    """DO $$ BEGIN
+       IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'nfl_prop_under_fringe_runs_immutable') THEN
+         CREATE TRIGGER nfl_prop_under_fringe_runs_immutable BEFORE UPDATE OR DELETE
+         ON nfl_prop_under_fringe_runs FOR EACH ROW EXECUTE FUNCTION reject_nfl_prop_under_study_mutation();
+       END IF;
+       IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'nfl_prop_under_fringe_verdicts_immutable') THEN
+         CREATE TRIGGER nfl_prop_under_fringe_verdicts_immutable BEFORE UPDATE OR DELETE
+         ON nfl_prop_under_fringe_verdicts FOR EACH ROW EXECUTE FUNCTION reject_nfl_prop_under_study_mutation();
+       END IF;
+    END $$""",
+    # nfl-rushing-under-v1 (docs/nfl-rushing-under-study.md): every DraftKings
+    # rushing-yards under, weeks 7-18. One row per weekly grade and one verdict at
+    # the single look after week 18. Both append-only.
+    """CREATE TABLE IF NOT EXISTS nfl_rushing_under_runs (
+        id BIGSERIAL PRIMARY KEY,
+        study TEXT NOT NULL,
+        evaluated_at TIMESTAMPTZ NOT NULL,
+        graded_bets INTEGER NOT NULL,
+        game_weeks INTEGER NOT NULL,
+        roi DOUBLE PRECISION,
+        report JSONB NOT NULL
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_rushing_under_runs ON nfl_rushing_under_runs(study, evaluated_at DESC)",
+    """CREATE TABLE IF NOT EXISTS nfl_rushing_under_verdicts (
+        study TEXT PRIMARY KEY,
+        verdict TEXT NOT NULL CHECK (verdict IN ('PASS','NO_EDGE','LOSES','INCONCLUSIVE')),
+        run_id BIGINT NOT NULL REFERENCES nfl_rushing_under_runs(id),
+        decided_at TIMESTAMPTZ NOT NULL
+    )""",
+    """DO $$ BEGIN
+       IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'nfl_rushing_under_runs_immutable') THEN
+         CREATE TRIGGER nfl_rushing_under_runs_immutable BEFORE UPDATE OR DELETE
+         ON nfl_rushing_under_runs FOR EACH ROW EXECUTE FUNCTION reject_nfl_prop_under_study_mutation();
+       END IF;
+       IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'nfl_rushing_under_verdicts_immutable') THEN
+         CREATE TRIGGER nfl_rushing_under_verdicts_immutable BEFORE UPDATE OR DELETE
+         ON nfl_rushing_under_verdicts FOR EACH ROW EXECUTE FUNCTION reject_nfl_prop_under_study_mutation();
        END IF;
     END $$""",
     # 2026-07-02: execution-book CLV. clv_pp measures the REFERENCE market
@@ -6586,3 +6692,13 @@ MIGRATIONS.extend(NFL_OWNERSHIP_PROVENANCE_STATEMENTS)
 # append-only, one row per (contest, horizon, capture, forecast version, population, slot).
 from db.nfl_ownership_scorecard_schema import STATEMENTS as NFL_OWNERSHIP_SCORECARD_STATEMENTS
 MIGRATIONS.extend(NFL_OWNERSHIP_SCORECARD_STATEMENTS)
+
+# NBA box scores (ESPN) and the nightly points-line calibration grade
+# (ingest/nba_box_scores.py, model/nba_points_calibration.py, 2026-10-22).
+from db.nba_points_calibration_schema import STATEMENTS as NBA_POINTS_CALIBRATION_STATEMENTS
+MIGRATIONS.extend(NBA_POINTS_CALIBRATION_STATEMENTS)
+
+# NFL DFS expert coverage (docs/nfl-expert-coverage-study.md): append-only
+# article revisions, robots decisions, extractions and grounded records.
+from db.nfl_expert_coverage_schema import STATEMENTS as NFL_EXPERT_COVERAGE_STATEMENTS
+MIGRATIONS.extend(NFL_EXPERT_COVERAGE_STATEMENTS)

@@ -1,9 +1,18 @@
 name: Capture NBA points props
 
-# Feeds /nba/top-scorers. Manual for now; to be scheduled once the first
-# real captures have been checked. One credit per game on the shared
-# ODDS_API_KEY (one market, six books via bookmakers=).
+# Feeds /nba/top-scorers. Dispatched by /api/cron/dispatch (job
+# nba-points-props) at 15:07, 22:07 and 01:07 UTC, October through June: the
+# morning read after the books post player props, the closing read before the
+# 7 PM ET tips, and the closing read for the 9:30-10:30 PM ET tips (only games
+# still to tip are fetched). The page shows each game's latest capture; the
+# nightly grade (grade_nba_points_props.yml) scores each game's last capture
+# before its tip. Two credits per game on the shared ODDS_API_KEY (two
+# markets, six books via bookmakers=), about 60 a day. The schedule below is a
+# thin fallback for a broken dispatcher bridge; GitHub runs it hours late, and
+# the script skips games that have already tipped.
 on:
+  schedule:
+    - cron: "37 16 * 1-6,10-12 *"
   workflow_dispatch:
     inputs:
       date:
@@ -13,7 +22,7 @@ on:
       max_credits:
         description: Hard Odds API credit ceiling for this run
         required: true
-        default: "20"
+        default: "40"
 
 jobs:
   capture:
@@ -31,7 +40,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           GAME_DATE: ${{ inputs.date }}
-          MAX_CREDITS: ${{ inputs.max_credits || '20' }}
+          MAX_CREDITS: ${{ inputs.max_credits || '40' }}
         run: >-
           python -m ingest.nba_points_props
           ${GAME_DATE:+--date "$GAME_DATE"}

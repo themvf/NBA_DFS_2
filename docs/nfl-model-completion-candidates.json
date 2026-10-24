@@ -83,7 +83,7 @@
     "research/nfl_workload_risk.py": "e8d67cb4945446fdc4ab857b69729a61e3c65dae2c1a17ed364bef49d637f344",
     "web/src/lib/nfl-dfs/joint-portfolio.ts": "87588d7fb2782f347ea6bfe35e522da15a62063e4c2d287a0c703064430ebf9f",
     "web/scripts/compare-nfl-joint-portfolios.ts": "05bf97642caba1b96d6d4420acf51502faa4468fcf40dc4e1607f51790298515",
-    "web/src/app/dfs/nfl/nfl-optimizer.ts": "fce14f5b6fd5ec362ee908451af4fcf14cc6bb91d40e1f014ef7c66b9bc8cdb4",
+    "web/src/app/dfs/nfl/nfl-optimizer.ts": "a3c46b9d7cae0eb36831686eff1a05402a875916aa9e113f8e2f16acb0de2d46",
     "model/nfl_matchup_scenarios.py": "9d133718c360a03a445965508061807c49644c3ac329ae220c4f68069a19e913",
     "web/src/lib/nfl-dfs/scoring.ts": "83e8b8c293519e7605f4d5be76a302bd442835fa4dc43a6d02744922a5729e3c",
     "web/src/lib/nfl-dfs/scenarios.ts": "98ed595731bc69ee1fcde4d9c42109880382cff3dbf480ce0f0043fdf46e2fd9"
@@ -179,6 +179,17 @@
       "new_sha256": "fce14f5b6fd5ec362ee908451af4fcf14cc6bb91d40e1f014ef7c66b9bc8cdb4",
       "changed_by": [
         "NFL optimizer: schedule several QB/DST minimums one per lineup"
+      ],
+      "evidence_rule": "Forward decisions captured before amended_at ran under previous_sha256 and are graded as a separate cohort or excluded; they are never pooled with decisions captured after it."
+    },
+    {
+      "amended_at": "2026-10-23T13:17:56Z",
+      "reason": "Owner kept joint portfolio selection (2026-10-23, nfl-joint-selection-v1): with portfolioSelection 'joint' the optimizer chooses the final lineups from the sequential build plus extra candidates in one integer program; GPP builds from the page default to it, the sequential path is unchanged. Re-pinned the optimizer only; every other pinned file is unchanged.",
+      "file": "web/src/app/dfs/nfl/nfl-optimizer.ts",
+      "previous_sha256": "fce14f5b6fd5ec362ee908451af4fcf14cc6bb91d40e1f014ef7c66b9bc8cdb4",
+      "new_sha256": "a3c46b9d7cae0eb36831686eff1a05402a875916aa9e113f8e2f16acb0de2d46",
+      "changed_by": [
+        "NFL DFS: choose the portfolio jointly instead of lineup by lineup (#521)"
       ],
       "evidence_rule": "Forward decisions captured before amended_at ran under previous_sha256 and are graded as a separate cohort or excluded; they are never pooled with decisions captured after it."
     }

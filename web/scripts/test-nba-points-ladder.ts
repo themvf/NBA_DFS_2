@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { buildDistribution, exceedanceAt, nonIncreasing, quantileAt } from "../src/lib/nba-points-ladder";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { buildDistribution, exceedanceAt, nonIncreasing, quantileAt, type PointsDistribution } from "../src/lib/nba-points-ladder";
+import { bookLines, consensus, nameKey, teamKey, type BookLine } from "../src/lib/nba-top-scorers";
 
 // Normal(25, 7) survival function via an erf approximation (Abramowitz-Stegun 7.1.26).
 function erf(x: number) {
@@ -60,5 +63,24 @@ const paired = buildDistribution(
 )!;
 assert.equal(paired.skippedRungs, 0);
 assert.ok(paired.atLeast[20]! > 0.7 && paired.atLeast[30]! < 0.35);
+
+// The shared fixture pins model/nba_points_ladder.py (the nightly grader's port)
+// to this implementation: write-nba-points-ladder-fixture.ts regenerates it,
+// tests/test_nba_points_ladder.py asserts the Python side.
+const fixture = JSON.parse(readFileSync(resolve(__dirname, "../../tests/fixtures/nba_points_ladder_fixture.json"), "utf8")) as {
+  nameKeys: Record<string, string>;
+  teamKeys: Record<string, string>;
+  cases: { name: string; books: Record<string, never>; ladders: Record<string, never>; expected: { bookLines: BookLine[]; consensus: unknown; distribution: PointsDistribution | null } }[];
+};
+for (const [name, key] of Object.entries(fixture.nameKeys)) assert.equal(nameKey(name), key, name);
+for (const [name, key] of Object.entries(fixture.teamKeys)) assert.equal(teamKey(name), key, name);
+assert.equal(fixture.cases.length, 6, "fixture cases");
+for (const c of fixture.cases) {
+  const lines = bookLines(c.books);
+  assert.deepEqual(lines, c.expected.bookLines, `${c.name}: book lines`);
+  assert.deepEqual(consensus(lines), c.expected.consensus, `${c.name}: consensus`);
+  const dist = buildDistribution(Object.fromEntries(lines.map((l) => [l.book, { line: l.line, over: l.over, under: l.under }])), c.ladders);
+  assert.deepEqual(dist, c.expected.distribution, `${c.name}: distribution`);
+}
 
 console.log("test-nba-points-ladder: all assertions passed");

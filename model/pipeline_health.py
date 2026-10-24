@@ -190,11 +190,29 @@ DATASET_REGISTRY: tuple[Dataset, ...] = (
             "nfl_prop_under_role_change_runs", "evaluated_at", 192, "refresh_nfl_dfs_postweek.yml", _NFL,
             "One row per post-week run of nfl-prop-under-role-change-v1; one verdict at the single look after "
             "week 18 (docs/nfl-prop-under-role-change-study.md)."),
+    Dataset("nfl_prop_under_fringe_grade", "NFL prop-under fringe split weekly grade",
+            "nfl_prop_under_fringe_runs", "evaluated_at", 192, "refresh_nfl_dfs_postweek.yml", _NFL,
+            "One row per post-week run of nfl-prop-under-fringe-v1; one verdict at the single look after "
+            "week 18 (docs/nfl-prop-under-fringe-study.md)."),
+    Dataset("nfl_rushing_under_grade", "NFL every-rushing-under forward test weekly grade",
+            "nfl_rushing_under_runs", "evaluated_at", 192, "refresh_nfl_dfs_postweek.yml", _NFL,
+            "One row per post-week run of nfl-rushing-under-v1 (every DraftKings rushing-yards under, weeks 7-18); "
+            "one verdict at the single look after week 18 (docs/nfl-rushing-under-study.md)."),
     Dataset("nfl_flagship_builds", "NFL flagship contest builds (stat-api)", "nfl_dfs_field_user_builds", "captured_at",
             192, "refresh_nfl_dfs_postweek.yml", _NFL,
             "Every lineup of the top 100 finishers of the week's free flagship contests (Millionaire, Thursday "
             "and Monday showdown), imported Tuesday/Wednesday by ingest.nfl_dfs_flagship_review; captured_at "
             "is stamped on every write. Eight days without a row means the import or stat-api is broken."),
+    Dataset("nfl_expert_articles", "NFL DFS expert coverage articles", "nfl_expert_articles", "captured_at",
+            96, "capture_nfl_expert_coverage.yml", _NFL,
+            "Pregame expert DFS articles (docs/nfl-expert-coverage-study.md). A row is written only for a new "
+            "article or a changed revision, so a green capture run that found nothing leaves this stale. "
+            "Runs fire at T-48h/T-24h/T-6h/T-90m of every kickoff group; four days without a new article "
+            "in season means discovery or a source broke. Per-run counts are in nfl_expert_capture_runs."),
+    Dataset("nfl_expert_extractions", "NFL DFS expert coverage extractions (DeepSeek)", "nfl_expert_extractions",
+            "extracted_at", 96, "capture_nfl_expert_coverage.yml", _NFL,
+            "One row per extracted article revision. Stale while articles keep arriving means the DeepSeek step "
+            "is failing (a 402 'no credit' stops it cold; see model/deepseek_account.py)."),
     Dataset("nfl_build_reviews", "NFL winners-vs-us build reviews", "nfl_dfs_field_build_reviews", "computed_at",
             192, "refresh_nfl_dfs_postweek.yml", _NFL,
             "One row per flagship contest and week from the same job: the top finishers' portfolio analysis "
@@ -303,6 +321,25 @@ DATASET_REGISTRY: tuple[Dataset, ...] = (
             "Pregame over/unders written by ingest.nfl_prop_odds, dispatched 90-105 minutes before each kickoff. "
             "Append-only per capture_key, so captured_at moves only when a run writes.",
             filter="sport = 'nfl'"),
+    # Dispatched at 15:07 and 22:07 UTC every day of the season; 36 h allows one
+    # missed day (the All-Star break has no games for about five days and will
+    # read STALE for its last two; that is a known gap, not a defect).
+    Dataset("nba_points_props", "NBA player-points lines (/nba/top-scorers)", "prop_odds_history", "captured_at",
+            36, "capture_nba_points_props.yml", _NBA,
+            "Written by ingest.nba_points_props twice a day via the dispatcher (job nba-points-props). "
+            "Append-only per capture_key, so captured_at moves only when a run writes.",
+            filter="sport = 'nba'"),
+    # Nightly at 11:07 UTC via the dispatcher (job nba-points-grade); 36 h allows one
+    # missed morning. ESPN box scores restamp fetched_at on every write; the grade
+    # upserts its rows and restamps graded_at, so both move only when a run writes.
+    Dataset("nba_box_scores", "NBA box scores (ESPN, for grading points lines)", "nba_box_score_games", "fetched_at",
+            36, "grade_nba_points_props.yml", _NBA,
+            "Written by ingest.nba_box_scores for the last three Eastern dates each morning. Only final games are "
+            "written, so a date with no finished game writes nothing."),
+    Dataset("nba_points_calibration", "NBA points-line calibration grade (/nba/top-scorers)", "nba_points_calibration", "graded_at",
+            36, "grade_nba_points_props.yml", _NBA,
+            "Written by model.nba_points_calibration after the box scores: one row per player-game from each game's "
+            "last pre-tip capture. Empty for a date that had no pre-tip capture or no final box score."),
     Dataset("nfl_game_leader_market", "NFL game leaders: DraftKings pricing", "nfl_game_leader_market", "computed_at",
             120, "capture_nfl_props.yml", _NFL,
             "Written after each pregame prop capture by research.nfl_game_leaders_market refresh; append-only, "

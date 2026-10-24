@@ -1,0 +1,4 @@
+# Raw captures (13 MB each), reproducible with capture_nfl_value_history_20261021.py
+assessment.json
+inputs.json.gz
+inventory.json
