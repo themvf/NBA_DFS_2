@@ -223,6 +223,7 @@ CAPTAIN_POSITION_SHARES_V5 = {"QB": 22.82, "RB": 28.82, "WR": 31.92, "TE": 11.39
 
 def prior_showdown_v5(slate: pd.DataFrame, alpha: float = SHOWDOWN_FLATTEN_ALPHA_V5,
                       captain_shares: Mapping[str, float] | None = None, punt_tier: bool = True,
+                      weight_multiplier: Sequence[float] | None = None,
                       ) -> tuple[np.ndarray, np.ndarray, dict]:
     """nfl-ownership-prior-v5 Showdown: (flex %, captain %, notes) per row, unrounded.
 
@@ -232,7 +233,8 @@ def prior_showdown_v5(slate: pd.DataFrame, alpha: float = SHOWDOWN_FLATTEN_ALPHA
     eligible player) and within a position by the v3 captain score^alpha, capped at
     50; the v4 punt tier is kept without its kicker term. `alpha`, `captain_shares`
     and `punt_tier` are parameters only so the design grid can be re-run; the
-    defaults are v5."""
+    defaults are v5. `weight_multiplier` (per row, default none) multiplies every
+    allocation weight after flattening: nfl-ownership-news-v1 candidate C2."""
     shares = dict(CAPTAIN_POSITION_SHARES_V5 if captain_shares is None else captain_shares)
     n = len(slate)
     pts = slate["pts"].to_numpy(float)
@@ -252,7 +254,8 @@ def prior_showdown_v5(slate: pd.DataFrame, alpha: float = SHOWDOWN_FLATTEN_ALPHA
         return s ** alpha if s > 0 else 0.0
 
     ids = list(range(n))
-    cap_w = {i: flatten(score(i, cap_salary[i]) ** 1.5) for i in ids}
+    mult = [1.0] * n if weight_multiplier is None else [float(x) for x in weight_multiplier]
+    cap_w = {i: flatten(score(i, cap_salary[i]) ** 1.5) * mult[i] for i in ids}
     present = [p for p in shares if any(pos[i] == p and cap_w[i] > 0 for i in ids)]
     share_total = sum(shares[p] for p in present)
     captain: dict = {}
@@ -270,11 +273,12 @@ def prior_showdown_v5(slate: pd.DataFrame, alpha: float = SHOWDOWN_FLATTEN_ALPHA
 
     is_punt = [punt_tier and salary[i] > 0 and salary[i] < PUNT_SALARY_MAX and not out[i] for i in ids]
     punt_ids = [i for i in ids if is_punt[i]]
-    punt_scores = {i: (0.0 if not pts[i] > 0 else max(pts[i], 0.5) * STATUS_MULTIPLIER.get(status[i], 1.0)) for i in punt_ids}
+    punt_scores = {i: (0.0 if not pts[i] > 0 else max(pts[i], 0.5) * STATUS_MULTIPLIER.get(status[i], 1.0) * mult[i])
+                   for i in punt_ids}
     punt, punt_unalloc = _allocate_detailed(punt_ids, punt_scores, PUNT_FLEX_BUDGET, lambda i: min(PUNT_MAX_PCT, flex_cap(i)))
     punt_taken = (PUNT_FLEX_BUDGET - punt_unalloc) if punt_tier else 0.0
     main_ids = [i for i in ids if not is_punt[i]]
-    main, main_unalloc = _allocate_detailed(main_ids, {i: flatten(score(i, salary[i])) for i in main_ids},
+    main, main_unalloc = _allocate_detailed(main_ids, {i: flatten(score(i, salary[i])) * mult[i] for i in main_ids},
                                             500.0 - punt_taken, flex_cap)
     flex = np.array([{**punt, **main}.get(i, 0.0) for i in ids])
     notes = {"variant": "v5", "puntTierPlayers": len(punt_ids), "puntTierPct": punt_taken,

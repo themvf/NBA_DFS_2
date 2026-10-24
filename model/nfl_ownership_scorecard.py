@@ -112,7 +112,8 @@ def allocate_detailed(ids: Sequence, scores: Mapping, budget: float, cap: float)
 
 
 def prior_classic(players: pd.DataFrame, variant: str, alpha: float | None = None,
-                  budgets: Mapping[str, float] | None = None) -> np.ndarray:
+                  budgets: Mapping[str, float] | None = None,
+                  weight_multiplier: Sequence[float] | None = None) -> np.ndarray:
     """Total ownership % per row (rounded to 0.01 like the TS). Needs columns
     position, salary, proj, dk_avg, dk_status, is_out. v3's TS filters positions
     case-sensitively and v4 upper-cases; stored positions are upper case either way."""
@@ -124,6 +125,9 @@ def prior_classic(players: pd.DataFrame, variant: str, alpha: float | None = Non
               for i in range(len(players))}
     if a != 1.0:
         scores = {i: (s ** a if s > 0 else 0.0) for i, s in scores.items()}
+    if weight_multiplier is not None:
+        # nfl-ownership-news-v1 candidate C2: per-row multiplier after flattening.
+        scores = {i: s * float(weight_multiplier[i]) for i, s in scores.items()}
     own = np.zeros(len(players))
     pos = [str(p or "") if variant == "v3" else str(p or "").upper() for p in players["position"]]
     for position, budget in budgets.items():
@@ -148,12 +152,16 @@ def showdown_frame(players: pd.DataFrame) -> pd.DataFrame:
 
 
 def prior_showdown_version(players: pd.DataFrame, variant: str, favorite: str | None = None,
-                           underdog: str | None = None) -> tuple[np.ndarray, np.ndarray, dict]:
-    """(flex %, captain %, notes), rounded to 0.01 like the TS."""
+                           underdog: str | None = None,
+                           weight_multiplier: Sequence[float] | None = None) -> tuple[np.ndarray, np.ndarray, dict]:
+    """(flex %, captain %, notes), rounded to 0.01 like the TS. `weight_multiplier`
+    (v5 only) is the nfl-ownership-news-v1 C2 per-row multiplier."""
     df = showdown_frame(players)
     notes: dict = {"variant": variant}
+    if weight_multiplier is not None and variant != "v5":
+        raise ValueError("weight_multiplier applies to v5 only")
     if variant == "v5":
-        flex, cap, notes = prior_showdown_v5(df)
+        flex, cap, notes = prior_showdown_v5(df, weight_multiplier=weight_multiplier)
     elif variant == "v4":
         flex, cap, notes = prior_showdown_v4(df, favorite, underdog)
     elif variant == "v3":
