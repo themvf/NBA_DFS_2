@@ -1,0 +1,606 @@
+{
+  "study": "nfl-ownership-news-v1",
+  "mode": "design",
+  "ran_at": "2026-10-24T23:47:42.657233+00:00",
+  "formats": {
+    "classic": {
+      "slates": [
+        {
+          "slate": "classic|ARI@LAC+ATL@PIT+BAL@IND+BUF@HOU+CHI@CAR+CLE@JAX+GB@MIN+MIA@LV+NO@DET+NYJ@TEN+TB@CIN+WAS@PHI|2026-09-13T17:00:00+00:00",
+          "label": "classic 12 games",
+          "week": 1,
+          "contest": "193028206",
+          "first_kickoff": "2026-09-13T17:00:00+00:00",
+          "vacancies": 7,
+          "beneficiaries": 15,
+          "flagged_labeled": 15,
+          "unlabeled_beneficiaries": 0,
+          "observed_rows": 620,
+          "label_mass": 0.9962,
+          "v5_flagged_mae": 1.6426666666666667,
+          "v5_observed_mae": 1.211290322580645
+        },
+        {
+          "slate": "classic|CAR@ATL+CIN@HOU+CLE@TB+GB@NYJ+JAX@DEN+LV@LAC+MIA@SF+MIN@CHI+NO@BAL+PHI@TEN+PIT@NE+SEA@ARI+WAS@DAL|2026-09-20T17:00:00+00:00",
+          "label": "classic 13 games",
+          "week": 2,
+          "contest": "195648006",
+          "first_kickoff": "2026-09-20T17:00:00+00:00",
+          "vacancies": 7,
+          "beneficiaries": 45,
+          "flagged_labeled": 45,
+          "unlabeled_beneficiaries": 0,
+          "observed_rows": 593,
+          "label_mass": 0.99886,
+          "v5_flagged_mae": 1.1097777777777775,
+          "v5_observed_mae": 1.1208094435075884
+        },
+        {
+          "slate": "classic|ARI@SF+BAL@DAL+CAR@CLE+CIN@PIT+HOU@IND+KC@MIA+LAC@BUF+LV@NO+MIN@TB+NE@JAX+NYJ@DET+SEA@WAS+TEN@NYG|2026-09-27T17:00:00+00:00",
+          "label": "classic 13 games",
+          "week": 3,
+          "contest": "195905122",
+          "first_kickoff": "2026-09-27T17:00:00+00:00",
+          "vacancies": 6,
+          "beneficiaries": 39,
+          "flagged_labeled": 39,
+          "unlabeled_beneficiaries": 0,
+          "observed_rows": 586,
+          "label_mass": 0.99532,
+          "v5_flagged_mae": 1.0215384615384615,
+          "v5_observed_mae": 1.029027303754266
+        },
+        {
+          "slate": "classic|ARI@NYG+DAL@HOU+DEN@SF+GB@TB+JAX@CIN+KC@LV+LAC@SEA+LAR@PHI+MIA@MIN+NE@BUF+NYJ@CHI+TEN@BAL|2026-10-04T17:00:00+00:00",
+          "label": "classic 12 games",
+          "week": 4,
+          "contest": "196151357",
+          "first_kickoff": "2026-10-04T17:00:00+00:00",
+          "vacancies": 12,
+          "beneficiaries": 57,
+          "flagged_labeled": 20,
+          "unlabeled_beneficiaries": 37,
+          "observed_rows": 181,
+          "label_mass": 0.99493,
+          "v5_flagged_mae": 4.0545,
+          "v5_observed_mae": 3.177513812154696
+        },
+        {
+          "slate": "classic|CHI@GB+CIN@MIA+CLE@NYJ+DEN@LAC+DET@ARI+HOU@TEN+IND@PIT+LV@NE+MIN@NO+NYG@WAS+SF@SEA|2026-10-11T17:00:00+00:00",
+          "label": "classic 11 games",
+          "week": 5,
+          "contest": "196403752",
+          "first_kickoff": "2026-10-11T17:00:00+00:00",
+          "vacancies": 9,
+          "beneficiaries": 58,
+          "flagged_labeled": 58,
+          "unlabeled_beneficiaries": 0,
+          "observed_rows": 442,
+          "label_mass": 0.99759,
+          "v5_flagged_mae": 1.6244827586206898,
+          "v5_observed_mae": 1.550022624434389
+        },
+        {
+          "slate": "classic|ARI@LAR+BAL@CLE+BUF@LV+CAR@PHI+CHI@ATL+LAC@KC+NO@NYG+NYJ@NE+PIT@TB+TEN@IND|2026-10-18T17:00:00+00:00",
+          "label": "classic 10 games",
+          "week": 6,
+          "contest": "196653900",
+          "first_kickoff": "2026-10-18T17:00:00+00:00",
+          "vacancies": 9,
+          "beneficiaries": 37,
+          "flagged_labeled": 13,
+          "unlabeled_beneficiaries": 24,
+          "observed_rows": 162,
+          "label_mass": 0.99441,
+          "v5_flagged_mae": 3.993846153846154,
+          "v5_observed_mae": 2.8224074074074075
+        }
+      ],
+      "premise": {
+        "passed": false,
+        "top10_beneficiary_share": 0.1,
+        "observed_beneficiary_share": 0.07352941176470588,
+        "observed_rows": 2584,
+        "top10": [
+          {
+            "slate": "classic|CHI@GB+CIN@MIA+CLE@NYJ+DEN@LAC+DET@ARI+HOU@TEN+IND@PIT+LV@NE+MIN@NO+NYG@WAS+SF@SEA|2026-10-11T17:00:00+00:00",
+            "player": "michaelwilson",
+            "actual": 45.59,
+            "v5": 10.67,
+            "beneficiary": false
+          },
+          {
+            "slate": "classic|ARI@LAC+ATL@PIT+BAL@IND+BUF@HOU+CHI@CAR+CLE@JAX+GB@MIN+MIA@LV+NO@DET+NYJ@TEN+TB@CIN+WAS@PHI|2026-09-13T17:00:00+00:00",
+            "player": "jahmyrgibbs",
+            "actual": 42.82,
+            "v5": 14.02,
+            "beneficiary": false
+          },
+          {
+            "slate": "classic|CHI@GB+CIN@MIA+CLE@NYJ+DEN@LAC+DET@ARI+HOU@TEN+IND@PIT+LV@NE+MIN@NO+NYG@WAS+SF@SEA|2026-10-11T17:00:00+00:00",
+            "player": "dandreswift",
+            "actual": 41.35,
+            "v5": 12.83,
+            "beneficiary": true
+          },
+          {
+            "slate": "classic|ARI@LAC+ATL@PIT+BAL@IND+BUF@HOU+CHI@CAR+CLE@JAX+GB@MIN+MIA@LV+NO@DET+NYJ@TEN+TB@CIN+WAS@PHI|2026-09-13T17:00:00+00:00",
+            "player": "michaelmayer",
+            "actual": 27.51,
+            "v5": 1.17,
+            "beneficiary": false
+          },
+          {
+            "slate": "classic|CAR@ATL+CIN@HOU+CLE@TB+GB@NYJ+JAX@DEN+LV@LAC+MIA@SF+MIN@CHI+NO@BAL+PHI@TEN+PIT@NE+SEA@ARI+WAS@DAL|2026-09-20T17:00:00+00:00",
+            "player": "bijanrobinson",
+            "actual": 42.57,
+            "v5": 16.28,
+            "beneficiary": false
+          },
+          {
+            "slate": "classic|ARI@SF+BAL@DAL+CAR@CLE+CIN@PIT+HOU@IND+KC@MIA+LAC@BUF+LV@NO+MIN@TB+NE@JAX+NYJ@DET+SEA@WAS+TEN@NYG|2026-09-27T17:00:00+00:00",
+            "player": "titans",
+            "actual": 26.95,
+            "v5": 0.72,
+            "beneficiary": false
+          },
+          {
+            "slate": "classic|CHI@GB+CIN@MIA+CLE@NYJ+DEN@LAC+DET@ARI+HOU@TEN+IND@PIT+LV@NE+MIN@NO+NYG@WAS+SF@SEA|2026-10-11T17:00:00+00:00",
+            "player": "treymcbride",
+            "actual": 36.56,
+            "v5": 10.88,
+            "beneficiary": false
+          },
+          {
+            "slate": "classic|CHI@GB+CIN@MIA+CLE@NYJ+DEN@LAC+DET@ARI+HOU@TEN+IND@PIT+LV@NE+MIN@NO+NYG@WAS+SF@SEA|2026-10-11T17:00:00+00:00",
+            "player": "jacobybrissett",
+            "actual": 28.6,
+            "v5": 4.79,
+            "beneficiary": false
+          },
+          {
+            "slate": "classic|ARI@SF+BAL@DAL+CAR@CLE+CIN@PIT+HOU@IND+KC@MIA+LAC@BUF+LV@NO+MIN@TB+NE@JAX+NYJ@DET+SEA@WAS+TEN@NYG|2026-09-27T17:00:00+00:00",
+            "player": "kennethwalkeriii",
+            "actual": 44.35,
+            "v5": 21.99,
+            "beneficiary": false
+          },
+          {
+            "slate": "classic|ARI@LAR+BAL@CLE+BUF@LV+CAR@PHI+CHI@ATL+LAC@KC+NO@NYG+NYJ@NE+PIT@TB+TEN@IND|2026-10-18T17:00:00+00:00",
+            "player": "panthers",
+            "actual": 31.77,
+            "v5": 9.49,
+            "beneficiary": false
+          }
+        ]
+      },
+      "choice": {
+        "decision": "NOT_BUILT",
+        "reason": "premise check failed"
+      },
+      "not_used_after_stop": {
+        "v5_observed_mae": 1.8185118189731655,
+        "v5_flagged_mae": 2.2411353030749583,
+        "slates_observed": 6,
+        "slates_flagged": 6,
+        "table": [
+          {
+            "candidate": "C1",
+            "m": null,
+            "observed_mae": 1.8158533358911733,
+            "flagged_mae": 2.354559165929856,
+            "admissible": true
+          },
+          {
+            "candidate": "C2",
+            "m": 1.5,
+            "observed_mae": 1.8103879598361996,
+            "flagged_mae": 2.4423753561253565,
+            "admissible": true
+          },
+          {
+            "candidate": "C2",
+            "m": 2,
+            "observed_mae": 1.8228552334158834,
+            "flagged_mae": 2.685868454661558,
+            "admissible": true
+          },
+          {
+            "candidate": "C2",
+            "m": 3,
+            "observed_mae": 1.89408096270971,
+            "flagged_mae": 3.656957142155418,
+            "admissible": false
+          },
+          {
+            "candidate": "C2",
+            "m": 4,
+            "observed_mae": 1.9686750372682484,
+            "flagged_mae": 4.553222345024069,
+            "admissible": false
+          },
+          {
+            "candidate": "C2",
+            "m": 6,
+            "observed_mae": 2.1157459643947965,
+            "flagged_mae": 6.130494473916888,
+            "admissible": false
+          },
+          {
+            "candidate": "C2",
+            "m": 8,
+            "observed_mae": 2.237220289625427,
+            "flagged_mae": 7.352371573828471,
+            "admissible": false
+          }
+        ],
+        "chosen": null,
+        "decision": "NOT_BUILT"
+      },
+      "captain": null
+    },
+    "showdown": {
+      "slates": [
+        {
+          "slate": "showdown|NE@SEA|2026-09-10T00:20:00+00:00",
+          "label": "showdown NE@SEA",
+          "week": 1,
+          "contest": "193391013",
+          "first_kickoff": "2026-09-10T00:20:00+00:00",
+          "vacancies": 1,
+          "beneficiaries": 6,
+          "flagged_labeled": 6,
+          "unlabeled_beneficiaries": 0,
+          "observed_rows": 43,
+          "label_mass": 0.99902,
+          "v5_flagged_mae": 8.361666666666666,
+          "v5_observed_mae": 5.349534883720931
+        },
+        {
+          "slate": "showdown|NYG@LAR|2026-09-22T00:15:00+00:00",
+          "label": "showdown NYG@LAR",
+          "week": 2,
+          "contest": "195786068",
+          "first_kickoff": "2026-09-22T00:15:00+00:00",
+          "vacancies": 0,
+          "beneficiaries": 0,
+          "flagged_labeled": 0,
+          "unlabeled_beneficiaries": 0,
+          "observed_rows": 46,
+          "label_mass": 0.99882,
+          "v5_flagged_mae": null,
+          "v5_observed_mae": 5.638695652173914
+        },
+        {
+          "slate": "showdown|ATL@GB|2026-09-25T00:15:00+00:00",
+          "label": "showdown ATL@GB",
+          "week": 3,
+          "contest": "195943234",
+          "first_kickoff": "2026-09-25T00:15:00+00:00",
+          "vacancies": 1,
+          "beneficiaries": 1,
+          "flagged_labeled": 1,
+          "unlabeled_beneficiaries": 0,
+          "observed_rows": 41,
+          "label_mass": 0.99893,
+          "v5_flagged_mae": 10.149999999999999,
+          "v5_observed_mae": 4.384878048780487
+        },
+        {
+          "slate": "showdown|PHI@CHI|2026-09-29T00:15:00+00:00",
+          "label": "showdown PHI@CHI",
+          "week": 3,
+          "contest": "196036238",
+          "first_kickoff": "2026-09-29T00:15:00+00:00",
+          "vacancies": 2,
+          "beneficiaries": 6,
+          "flagged_labeled": 6,
+          "unlabeled_beneficiaries": 0,
+          "observed_rows": 42,
+          "label_mass": 0.99972,
+          "v5_flagged_mae": 6.5683333333333325,
+          "v5_observed_mae": 5.322619047619048
+        },
+        {
+          "slate": "showdown|PIT@CLE|2026-10-02T00:15:00+00:00",
+          "label": "showdown PIT@CLE",
+          "week": 4,
+          "contest": "196187074",
+          "first_kickoff": "2026-10-02T00:15:00+00:00",
+          "vacancies": 1,
+          "beneficiaries": 5,
+          "flagged_labeled": 5,
+          "unlabeled_beneficiaries": 0,
+          "observed_rows": 40,
+          "label_mass": 0.99987,
+          "v5_flagged_mae": 3.3820000000000006,
+          "v5_observed_mae": 4.5040000000000004
+        },
+        {
+          "slate": "showdown|IND@WAS|2026-10-04T13:30:00+00:00",
+          "label": "showdown IND@WAS",
+          "week": 4,
+          "contest": "196204783",
+          "first_kickoff": "2026-10-04T13:30:00+00:00",
+          "vacancies": 1,
+          "beneficiaries": 5,
+          "flagged_labeled": 5,
+          "unlabeled_beneficiaries": 0,
+          "observed_rows": 44,
+          "label_mass": 0.9914,
+          "v5_flagged_mae": 4.144,
+          "v5_observed_mae": 4.201136363636364
+        },
+        {
+          "slate": "showdown|DET@CAR|2026-10-05T00:20:00+00:00",
+          "label": "showdown DET@CAR",
+          "week": 4,
+          "contest": "196285055",
+          "first_kickoff": "2026-10-05T00:20:00+00:00",
+          "vacancies": 0,
+          "beneficiaries": 0,
+          "flagged_labeled": 0,
+          "unlabeled_beneficiaries": 0,
+          "observed_rows": 40,
+          "label_mass": 0.99483,
+          "v5_flagged_mae": null,
+          "v5_observed_mae": 4.58425
+        },
+        {
+          "slate": "showdown|ATL@NO|2026-10-06T00:15:00+00:00",
+          "label": "showdown ATL@NO",
+          "week": 4,
+          "contest": "196285155",
+          "first_kickoff": "2026-10-06T00:15:00+00:00",
+          "vacancies": 1,
+          "beneficiaries": 4,
+          "flagged_labeled": 4,
+          "unlabeled_beneficiaries": 0,
+          "observed_rows": 42,
+          "label_mass": 0.99778,
+          "v5_flagged_mae": 2.6925000000000003,
+          "v5_observed_mae": 3.336904761904763
+        },
+        {
+          "slate": "showdown|TB@DAL|2026-10-09T00:15:00+00:00",
+          "label": "showdown TB@DAL",
+          "week": 5,
+          "contest": "196438550",
+          "first_kickoff": "2026-10-09T00:15:00+00:00",
+          "vacancies": 0,
+          "beneficiaries": 0,
+          "flagged_labeled": 0,
+          "unlabeled_beneficiaries": 0,
+          "observed_rows": 39,
+          "label_mass": 0.99973,
+          "v5_flagged_mae": null,
+          "v5_observed_mae": 4.355897435897436
+        },
+        {
+          "slate": "showdown|BUF@LAR|2026-10-13T00:15:00+00:00",
+          "label": "showdown BUF@LAR",
+          "week": 5,
+          "contest": "196480476",
+          "first_kickoff": "2026-10-13T00:15:00+00:00",
+          "vacancies": 0,
+          "beneficiaries": 0,
+          "flagged_labeled": 0,
+          "unlabeled_beneficiaries": 0,
+          "observed_rows": 37,
+          "label_mass": 1.0,
+          "v5_flagged_mae": null,
+          "v5_observed_mae": 4.8672972972972985
+        },
+        {
+          "slate": "showdown|SEA@DEN|2026-10-16T00:15:00+00:00",
+          "label": "showdown SEA@DEN",
+          "week": 6,
+          "contest": "196689718",
+          "first_kickoff": "2026-10-16T00:15:00+00:00",
+          "vacancies": 1,
+          "beneficiaries": 6,
+          "flagged_labeled": 6,
+          "unlabeled_beneficiaries": 0,
+          "observed_rows": 45,
+          "label_mass": 0.99967,
+          "v5_flagged_mae": 3.138333333333334,
+          "v5_observed_mae": 3.404888888888889
+        },
+        {
+          "slate": "showdown|WAS@SF|2026-10-20T00:15:00+00:00",
+          "label": "showdown WAS@SF",
+          "week": 6,
+          "contest": "196786695",
+          "first_kickoff": "2026-10-20T00:15:00+00:00",
+          "vacancies": 1,
+          "beneficiaries": 5,
+          "flagged_labeled": 5,
+          "unlabeled_beneficiaries": 0,
+          "observed_rows": 45,
+          "label_mass": 0.99417,
+          "v5_flagged_mae": 5.532000000000001,
+          "v5_observed_mae": 2.8544444444444443
+        },
+        {
+          "slate": "showdown|NE@CHI|2026-10-23T00:15:00+00:00",
+          "label": "showdown NE@CHI",
+          "week": 7,
+          "contest": "196947078",
+          "first_kickoff": "2026-10-23T00:15:00+00:00",
+          "vacancies": 1,
+          "beneficiaries": 4,
+          "flagged_labeled": 4,
+          "unlabeled_beneficiaries": 0,
+          "observed_rows": 39,
+          "label_mass": 0.9945,
+          "v5_flagged_mae": 3.7574999999999994,
+          "v5_observed_mae": 3.051025641025641
+        }
+      ],
+      "premise": {
+        "passed": false,
+        "top10_beneficiary_share": 0.1,
+        "observed_beneficiary_share": 0.07734806629834254,
+        "observed_rows": 543,
+        "top10": [
+          {
+            "slate": "showdown|BUF@LAR|2026-10-13T00:15:00+00:00",
+            "player": "skylerbell",
+            "actual": 38.2,
+            "v5": 0.0,
+            "beneficiary": false
+          },
+          {
+            "slate": "showdown|DET@CAR|2026-10-05T00:20:00+00:00",
+            "player": "brycentremayne",
+            "actual": 34.52,
+            "v5": 7.88,
+            "beneficiary": false
+          },
+          {
+            "slate": "showdown|TB@DAL|2026-10-09T00:15:00+00:00",
+            "player": "jalondaniels",
+            "actual": 41.14,
+            "v5": 15.98,
+            "beneficiary": false
+          },
+          {
+            "slate": "showdown|NE@SEA|2026-09-10T00:20:00+00:00",
+            "player": "jadarianprice",
+            "actual": 33.59,
+            "v5": 9.37,
+            "beneficiary": true
+          },
+          {
+            "slate": "showdown|DET@CAR|2026-10-05T00:20:00+00:00",
+            "player": "darrenwaller",
+            "actual": 45.97,
+            "v5": 22.74,
+            "beneficiary": false
+          },
+          {
+            "slate": "showdown|BUF@LAR|2026-10-13T00:15:00+00:00",
+            "player": "matthewstafford",
+            "actual": 66.2,
+            "v5": 44.27,
+            "beneficiary": false
+          },
+          {
+            "slate": "showdown|NYG@LAR|2026-09-22T00:15:00+00:00",
+            "player": "davanteadams",
+            "actual": 47.55,
+            "v5": 27.24,
+            "beneficiary": false
+          },
+          {
+            "slate": "showdown|NE@SEA|2026-09-10T00:20:00+00:00",
+            "player": "drakemaye",
+            "actual": 61.28,
+            "v5": 41.74,
+            "beneficiary": false
+          },
+          {
+            "slate": "showdown|PHI@CHI|2026-09-29T00:15:00+00:00",
+            "player": "saquonbarkley",
+            "actual": 41.78,
+            "v5": 22.81,
+            "beneficiary": false
+          },
+          {
+            "slate": "showdown|ATL@NO|2026-10-06T00:15:00+00:00",
+            "player": "brycelance",
+            "actual": 23.87,
+            "v5": 5.77,
+            "beneficiary": false
+          }
+        ]
+      },
+      "choice": {
+        "decision": "NOT_BUILT",
+        "reason": "premise check failed"
+      },
+      "not_used_after_stop": {
+        "v5_observed_mae": 4.296582497337632,
+        "v5_flagged_mae": 5.302925925925926,
+        "slates_observed": 13,
+        "slates_flagged": 9,
+        "table": [
+          {
+            "candidate": "C1",
+            "m": null,
+            "observed_mae": 4.28501312499737,
+            "flagged_mae": 4.677462962962963,
+            "admissible": true
+          },
+          {
+            "candidate": "C2",
+            "m": 1.5,
+            "observed_mae": 4.359517889246943,
+            "flagged_mae": 6.802111111111112,
+            "admissible": true
+          },
+          {
+            "candidate": "C2",
+            "m": 2,
+            "observed_mae": 4.63483758759282,
+            "flagged_mae": 11.121111111111112,
+            "admissible": false
+          },
+          {
+            "candidate": "C2",
+            "m": 3,
+            "observed_mae": 5.1278175180763075,
+            "flagged_mae": 17.39177777777778,
+            "admissible": false
+          },
+          {
+            "candidate": "C2",
+            "m": 4,
+            "observed_mae": 5.435963614816659,
+            "flagged_mae": 20.099259259259256,
+            "admissible": false
+          },
+          {
+            "candidate": "C2",
+            "m": 6,
+            "observed_mae": 5.8339316912435795,
+            "flagged_mae": 23.46966666666667,
+            "admissible": false
+          },
+          {
+            "candidate": "C2",
+            "m": 8,
+            "observed_mae": 6.134602865681225,
+            "flagged_mae": 25.91853703703704,
+            "admissible": false
+          }
+        ],
+        "chosen": {
+          "candidate": "C1",
+          "m": null,
+          "observed_mae": 4.28501312499737,
+          "flagged_mae": 4.677462962962963,
+          "admissible": true
+        },
+        "decision": "CHALLENGER"
+      },
+      "captain": null
+    }
+  },
+  "frozen": [
+    {
+      "format": "classic",
+      "decision": "NOT_BUILT",
+      "candidate": null,
+      "m": null,
+      "frozen_at": "2026-10-24T23:45:54.036402+00:00"
+    },
+    {
+      "format": "showdown",
+      "decision": "NOT_BUILT",
+      "candidate": null,
+      "m": null,
+      "frozen_at": "2026-10-24T23:45:54.036402+00:00"
+    }
+  ]
+}

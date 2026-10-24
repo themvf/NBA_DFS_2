@@ -6692,6 +6692,8 @@ MIGRATIONS.extend(NFL_OWNERSHIP_PROVENANCE_STATEMENTS)
 # append-only, one row per (contest, horizon, capture, forecast version, population, slot).
 from db.nfl_ownership_scorecard_schema import STATEMENTS as NFL_OWNERSHIP_SCORECARD_STATEMENTS
 MIGRATIONS.extend(NFL_OWNERSHIP_SCORECARD_STATEMENTS)
+from db.nfl_ownership_news_schema import STATEMENTS as NFL_OWNERSHIP_NEWS_STATEMENTS
+MIGRATIONS.extend(NFL_OWNERSHIP_NEWS_STATEMENTS)
 
 # NBA box scores (ESPN) and the nightly points-line calibration grade
 # (ingest/nba_box_scores.py, model/nba_points_calibration.py, 2026-10-22).

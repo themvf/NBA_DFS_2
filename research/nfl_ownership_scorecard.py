@@ -90,6 +90,7 @@ def _player_row(p: dict, src: str) -> dict:
         dk_avg, status = _num(p.get("dkAvg")), p.get("status", p.get("dkStatus"))
     avail = base.get("availability") if isinstance(base.get("availability"), dict) else {}
     return {
+        "ff_player_id": base.get("ffPlayerId") if base.get("ffPlayerId") is not None else p.get("ffPlayerId"),
         "name": base.get("name") or p.get("name"), "position": str(base.get("position") or p.get("position") or "").upper(),
         "team": base.get("team") or p.get("team"), "salary": _num(base.get("salary") if base.get("salary") is not None else p.get("salary")),
         "captain_salary": _num(base.get("captainSalary")), "proj": _num(base.get("ourProj")), "dk_avg": dk_avg,

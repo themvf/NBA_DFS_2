@@ -1,9 +1,11 @@
 # NFL ownership: news-driven chalk — `nfl-ownership-news-v1` (registered 2026-10-24)
 
-Status: REGISTERED, NOT BUILT. Nothing in production changes. This document
-fixes the trigger, the candidate terms, how one is chosen, which slates grade
-it and what counts as a pass, before any code is written or any design number
-is computed. Every frozen value is also in `docs/nfl-ownership-news-chalk-study.json`;
+Status: **CLOSED AT DESIGN: `NOT_BUILT` in both formats (frozen 2026-10-24
+23:45 UTC, commit 898f6ae8; see section 8).** Nothing in production changes
+and there is nothing to grade. The registration below is kept as written; it
+fixed the trigger, the candidate terms, how one is chosen, which slates grade
+it and what counts as a pass before any code was written or any design number
+was computed. Every frozen value is also in `docs/nfl-ownership-news-chalk-study.json`;
 if the two disagree, the JSON wins and the disagreement is a defect to record.
 
 Companions: `docs/nfl-ownership-prior-v5.md` (the prior this would extend; its
@@ -224,3 +226,40 @@ teammates the field picks; it raises the whole room. A pass means the prior is
 less wrong about news chalk in aggregate, not that it can call the 77% player.
 It is also an ownership-accuracy result only: whether it improves built
 lineups belongs to the ghost factorial.
+
+## 8. Result (2026-10-24): stopped at the premise check
+
+Built as registered (`model/nfl_ownership_news.py`, `research/nfl_ownership_news.py`,
+14 tests), run on every pre-cutoff slate: 6 Classic (weeks 1-6) and 13 Showdown
+(weeks 1-7). Our v5 recomputation matched the scorecard's on every slate. Freeze
+rows: `nfl_ownership_news_freezes`, both `NOT_BUILT`, append-only. Full output:
+`artifacts/nfl-ownership-news-v1/design-2026-10-24.json`.
+
+**Step 1 failed in both formats.** Beneficiaries were 1 of the 10 biggest
+under-predictions in each format (10%) against 7.4% (Classic) and 7.7%
+(Showdown) of all labeled players; the bar was more than twice the base rate.
+The biggest misses were mostly not absence stories: Michael Wilson (45.6% vs
+10.7%; no 7-target Arizona receiver was out), Gibbs, Bijan, McBride, cheap
+defenses. Two that look like news are excluded by the registered rule:
+Jalon Daniels (41.1% vs 16.0%) was in his second start, so the vacated QB no
+longer led the last game, and Bryce Lance had no qualifying vacancy.
+
+**What step 3 would have shown (descriptive, `not_used_after_stop`; it cannot
+change the decision).** Mean over slates, percentage points:
+
+| format | v5 flagged MAE | C1 | C2 m=1.5 | C2 m=2 | C2 m=3 |
+|---|---:|---:|---:|---:|---:|
+| Classic (6 slates) | 2.24 | 2.36 | 2.44 | 2.69 | 3.66 |
+| Showdown FLEX (9 with beneficiaries) | 5.30 | 4.68 | 6.80 | 11.12 | 17.39 |
+
+Raising a whole room makes Classic worse at every setting: most teammates of a
+missing player are not drafted more, and the few that are cannot be told apart
+by this trigger. In Showdown, dropping the stale DraftKings average (C1)
+helped on 9 slates; that is one in-sample reading after a failed premise, not
+a finding, and a test of it alone would be a new registration on new slates.
+
+What this leaves for any successor: the misses are value and role stories
+(cheap starters, a backup in his second start) more than first-game absences,
+and the input that would separate the crowded teammate from the ignored one is
+what the field reads (published projections and news), which no frozen input
+carries yet.
