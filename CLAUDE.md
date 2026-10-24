@@ -7825,15 +7825,14 @@ full-field captain labels, v4 punt tier kept, no kicker cut; callable as
 scorecard v3 (2026-10-20) grades the LATEST capture before the cutoff from any
 source.
 
-**News chalk (`nfl-ownership-news-v1`, registered 2026-10-24, not built;
-`docs/nfl-ownership-news-chalk-study.md` + `.json`).** When a material RB, WR,
-TE or QB is ruled out, his teammates in the same room get a candidate term:
-field points from our projection alone (no stale DK season average), plus at
-most one weight multiplier per format chosen on the pre-2026-10-25 design
-slates. Graded only on slates first kicking off from 2026-10-25 whose contest
-was imported after the freeze: 8 slates and 40 labeled beneficiaries per
-format, one look, t-interval, worst case for unlabeled players. No production
-change unless a format passes.
+**News chalk (`nfl-ownership-news-v1`, registered and closed 2026-10-24;
+`docs/nfl-ownership-news-chalk-study.md`).** Stopped at its pre-registered
+premise check, `NOT_BUILT` in both formats (frozen in
+`nfl_ownership_news_freezes`): teammates of a ruled-out RB/WR/TE/QB were 1 of
+the 10 biggest ownership under-predictions per format, about their base rate.
+Raising the whole room's ownership made Classic worse at every setting. The
+misses are value and role stories; separating the crowded teammate needs what
+the field reads (published projections, news), which no frozen input carries.
 
 ### GPP objective: multiplicative leverage and the ceiling cap (2026-09-27)
 
