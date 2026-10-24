@@ -40,6 +40,8 @@ The October 24 verification ran the calculation without `--apply`. Production gr
 
 ## Freeze and grade research baselines
 
+The user confirmed on October 24 that selections must share one cutoff before the first game's tip-off. Use the earlier known scheduled start as the conservative deadline, rather than a later market start or each game's separate start. Actual tip time is not assumed. The exact contest pool remains unspecified; an all-day NBA market pool must retain its research-only label until eligibility is verified.
+
 `research.nba_points_forward` makes no database writes and requests no new sportsbook data. It freezes the observed all-day market pool, not a verified contest pool. It explicitly marks missing eligibility, availability and completeness. No automated schedule or new paid capture is introduced.
 
 Choose an explicit timezone-aware lock no later than the pool's earliest market start. A file created before lock uses only captures strictly before creation; `as_of` records that earlier time. A file created after lock uses captures strictly before lock and is labeled retrospective. An earlier known ESPN scheduled start further restricts selection. Main and alternate capture times are recorded separately.
