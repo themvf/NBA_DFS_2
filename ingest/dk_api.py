@@ -37,12 +37,10 @@ logger = logging.getLogger(__name__)
 _DEFAULT_PROJ_STAT_ID = 279
 _ET_ZONE      = ZoneInfo("America/New_York")  # handles EDT/EST automatically
 _TIMEOUT      = 15
+# No browser User-Agent. api.draftkings.com answers 403 "Access Denied" when a
+# Python client sends a Chrome UA (or a bare "Mozilla/5.0"), and 200 with
+# requests' own default UA (measured 2026-10-24 on /contests and /draftables).
 _HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/123.0.0.0 Safari/537.36"
-    ),
     "Accept": "application/json",
 }
 
