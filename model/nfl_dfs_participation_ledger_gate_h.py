@@ -58,7 +58,8 @@ from model.nfl_team_aliases import normalize_team
 
 STUDY_ID = "nfl-dfs-participation-ledger-v1"
 GATE = "H"
-# SHA-256 of model/nfl_dfs_historical.py recorded in the registration (2026-10-20).
+# SHA-256 of model/nfl_dfs_historical.py recorded in the registration (2026-10-20),
+# taken from a CRLF checkout; the LF form of the same file is e68c45b3...b5b55.
 MODEL_FILE_SHA256 = "63d0353099727a292ef2a1255baf312a6cadf74bc3da38bc507709e41e3afc30"
 MODEL_FILE = Path(__file__).resolve().parent / "nfl_dfs_historical.py"
 
@@ -83,9 +84,22 @@ def model_file_sha256() -> str:
     return hashlib.sha256(MODEL_FILE.read_bytes()).hexdigest()
 
 
+def model_file_matches_pin(content: bytes | None = None) -> bool:
+    """The registered pin was taken in a CRLF (Windows) checkout; CI checks out LF.
+
+    Same rule as ``ingest.nfl_dfs_shadow.matches_source_digest``: the file
+    matches if its bytes, or the same text with LF or CRLF line endings, hash to
+    the pin. Any change to the text itself still fails.
+    """
+    raw = MODEL_FILE.read_bytes() if content is None else content
+    lf = raw.replace(b"\r\n", b"\n")
+    return MODEL_FILE_SHA256 in {hashlib.sha256(value).hexdigest()
+                                 for value in (raw, lf, lf.replace(b"\n", b"\r\n"))}
+
+
 def require_pinned_model() -> None:
     actual = model_file_sha256()
-    if actual != MODEL_FILE_SHA256:
+    if not model_file_matches_pin():
         raise SystemExit(
             f"model/nfl_dfs_historical.py is {actual}, not the registered {MODEL_FILE_SHA256}; "
             "Gate H must run against the frozen model."

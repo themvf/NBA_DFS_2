@@ -23,7 +23,15 @@ def _games(season: int, weeks, team: str = "KC"):
 
 
 def test_pinned_model_hash_matches_the_registration():
-    assert gate.model_file_sha256() == gate.MODEL_FILE_SHA256
+    assert gate.model_file_matches_pin()
+
+
+def test_pin_check_survives_line_endings_but_rejects_code_changes():
+    raw = gate.MODEL_FILE.read_bytes()
+    lf = raw.replace(b"\r\n", b"\n")
+    crlf = lf.replace(b"\n", b"\r\n")
+    assert gate.model_file_matches_pin(lf) and gate.model_file_matches_pin(crlf)
+    assert not gate.model_file_matches_pin(lf + b"# changed\n")
 
 
 def test_ledger_adds_zero_rows_for_act_and_dev_only_and_keeps_stat_lines():
