@@ -1,0 +1,59 @@
+name: NBA ghost projections v2
+
+# No Odds API calls. Read existing lines, verify free ESPN game classifications,
+# and store new research snapshots/grade attempts without changing live forecasts.
+on:
+  schedule:
+    - cron: '35 15 * 1-6,10-12 *'
+    - cron: '50 16 * 1-6,10-12 *'
+    - cron: '35 11 * 1-6,10-12 *'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Research action
+        type: choice
+        options: [freeze, grade]
+        default: freeze
+      date:
+        description: Eastern slate date (blank = today for freeze, yesterday for grade)
+        required: false
+        default: ''
+
+concurrency:
+  group: nba-ghost-v2
+  cancel-in-progress: false
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      GAME_DATE: ${{ inputs.date }}
+      OMP_NUM_THREADS: '2'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Record a pre-first-tip ghost snapshot
+        if: github.event.schedule != '35 11 * 1-6,10-12 *' && inputs.action != 'grade'
+        run: >-
+          python -m research.nba_ghost_runner freeze
+          ${GAME_DATE:+--date "$GAME_DATE"}
+          --output artifacts/nba-ghost/ghost.json --apply
+      - name: Grade frozen research predictions
+        if: github.event.schedule == '35 11 * 1-6,10-12 *' || inputs.action == 'grade'
+        run: >-
+          python -m research.nba_ghost_runner grade
+          ${GAME_DATE:+--date "$GAME_DATE"}
+          --days-back 3 --apply
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nba-ghost-v2-${{ github.run_id }}
+          path: artifacts/nba-ghost/
+          if-no-files-found: ignore
+          retention-days: 90
