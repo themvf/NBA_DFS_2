@@ -47,15 +47,15 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
   const requested = params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) ? params.date : null;
   const date = requested ?? (dates.includes(today) ? today : dates.find((d) => d > today) ?? dates[0] ?? today);
 
-  const [rows, ladderRows, pulled, lastSeason, teams, calibration, nightCalibration] = await Promise.all([
+  const [rows, ladderRows, pulled, lastSeason, teams, calibration] = await Promise.all([
     getNbaPointsProps(date),
     getNbaPointsProps(date, "player_points_alternate"),
     getNbaPulledLines(date),
     getNbaSeasonStats(LAST_SEASON),
     getNbaTeams(),
     getNbaPointsCalibration(),
-    getNbaPointsCalibration(date),
   ]);
+  const nightCalibration = calibration ? await getNbaPointsCalibration(date, calibration.gradeVersion) : null;
   const { scorers, games } = buildBoard(rows, lastSeason, teams, ladderRows);
   const lastCapture = games.reduce<string | null>((m, g) => (m == null || g.capturedAt > m ? g.capturedAt : m), null);
   const bookCount = new Set(scorers.flatMap((s) => s.books.map((b) => b.book))).size;
@@ -111,13 +111,13 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
           Line is the points line most books quote. A points line is the books&apos; median outcome, so a player scores above
           it about half the time. Floor, ceiling, 25+ and 30+ come from the books&apos; alternate points ladder (&quot;20+ points&quot;
           and so on): floor is the score he beats 90% of the time, ceiling the score he beats 10% of the time. Over-only rungs
-          are de-vigged with each book&apos;s main-line margin, which leaves a little margin on long shots, so high-end chances
-          read slightly high. Without a ladder the bar shows the spread of main lines across books instead.
+          are de-vigged with each book&apos;s main-line margin, which does not establish fair long-shot probabilities. High-end chances may be overstated. Without a ladder the bar shows the spread of main lines across books instead.
         </p>
         <p>
           This is the market&apos;s number, not a model of ours; the calibration panel above is its record against results.
-          Position, team and {LAST_SEASON} PPG come from last season&apos;s stats and can be stale for a player who changed
-          teams.
+          {LAST_SEASON} PPG is the full regular-season arithmetic average across recorded appearances, excluding playoffs.
+          Team associations use the last recorded team in that season; current roster and availability are unverified.
+          Line minus historical PPG is a descriptive comparison, not a measured edge. Archived dates use today&apos;s reference data.
         </p>
       </section>
     </main>
@@ -137,8 +137,7 @@ function CalibrationPanel({ all, night, date }: { all: CalibrationSummary | null
       <section style={DARK_BORDER} className="rounded-xl border border-slate-800 bg-[#0f1726] px-5 py-4 text-sm text-slate-300">
         <h2 className="font-semibold text-white">Calibration · not graded yet</h2>
         <p className="mt-1 text-slate-400">
-          The nightly grade (<code className="text-slate-200">grade_nba_points_props.yml</code>, 7:07 AM ET) scores each
-          game&apos;s last pre-tip capture against the ESPN box score. Nothing has been graded so far.
+          The nightly grade (<code className="text-slate-200">grade_nba_points_props.yml</code>, 7:07 AM ET) compares the market readings with ESPN results. No grades are available for this view.
         </p>
       </section>
     );
@@ -193,10 +192,15 @@ function CalibrationPanel({ all, night, date }: { all: CalibrationSummary | null
           {all.dnp ? ` · ${all.dnp} did not play` : ""}
           {all.unmatched ? ` · ${all.unmatched} unmatched` : ""}
           {all.noBoxScore ? ` · ${all.noBoxScore} without a box score` : ""}
-          {all.meanMinutesBeforeTip != null ? ` · graded capture ${Math.round(all.meanMinutesBeforeTip)} min before tip` : ""}
+          {all.meanMinutesBeforeTip != null ? ` · graded capture ${Math.round(all.meanMinutesBeforeTip)} min before market start` : ""}
           {all.lastGradedAt ? ` · graded ${stamp(all.lastGradedAt)}` : ""}
         </div>
       </div>
+      <p className="mt-2 text-xs text-slate-400">
+        {all.gradeVersion === "nba-points-grade-v2"
+          ? "Revised grade: verified name aliases; captures precede the earlier known ESPN or market scheduled start. Original grades are retained separately."
+          : "Original grade: captures precede the market scheduled start only. Revised grades have not been populated yet."}
+      </p>
       <div className="mt-3 overflow-x-auto">
         <table className="w-full font-mono text-xs">
           <thead className="text-slate-400">
@@ -228,10 +232,12 @@ function CalibrationPanel({ all, night, date }: { all: CalibrationSummary | null
         </table>
       </div>
       <p className="mt-2 text-xs text-slate-400">
-        Each row grades the books&apos; last capture before tip-off, read exactly as the table above reads it, against the
+        Each row compares the last eligible capture for that game with the
         ESPN box score. A player who did not play is counted, not graded (the books void his line). Brier is the mean
         squared gap between the stated chance and what happened; lower is better, and a coin flip on a 50% line scores
-        0.25. Under a few hundred player-games the night-to-night swing is noise; the pooled columns are the ones to read.
+        0.25. Rare outcomes can have a low Brier score even with little predictive value. Thresholds have different coverage,
+        and players in a game share conditions. A few nights cannot establish reliable calibration or contest performance.
+        These per-game captures are not a single contest-lock snapshot; scheduled starts do not establish actual tip time.
       </p>
     </section>
   );

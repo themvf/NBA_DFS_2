@@ -103,7 +103,7 @@ function RangeBar({ row, scaleMax }: { row: ScorerRow; scaleMax: number }) {
           <span
             className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-slate-300! bg-transparent"
             style={{ left: `${x(row.lastSeasonPpg)}%` }}
-            title={`2025-26: ${one(row.lastSeasonPpg)} ppg`}
+            title={`2025-26 regular season: ${one(row.lastSeasonPpg)} PPG across ${row.lastSeasonGames ?? "?"} appearances`}
           />
         )}
         <span
@@ -177,7 +177,7 @@ export function TopScorersClient({
           </div>
         </div>
         <div className="border-b border-slate-800 px-4 py-3 sm:border-b-0 sm:border-r">
-          <div className="font-mono text-[11px] uppercase tracking-widest text-slate-500">Biggest rise vs {lastSeason}</div>
+          <div className="font-mono text-[11px] uppercase tracking-widest text-slate-500">Largest line–season gap</div>
           <div className="mt-1 text-lg">
             {rise ? (
               <>
@@ -230,7 +230,7 @@ export function TopScorersClient({
               <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-white" />Line</span>
               <span className="flex items-center gap-1.5"><span className="h-1.5 w-5 rounded-full bg-sky-500/80" />Floor–ceiling (P10–P90)</span>
               <span className="flex items-center gap-1.5"><span className="h-1.5 w-5 rounded-full bg-[repeating-linear-gradient(90deg,#64748b_0_3px,transparent_3px_6px)]" />Book range (no ladder)</span>
-              <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full border-2 border-slate-300!" />{lastSeason} PPG</span>
+              <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full border-2 border-slate-300!" />{lastSeason} reg. PPG</span>
             </div>
             <div className="flex items-center gap-3">
               <select
@@ -260,7 +260,7 @@ export function TopScorersClient({
                   {header("ceiling", "Floor – Ceiling", "text-left")}
                   {header("p25", "25+")}
                   {header("p30", "30+")}
-                  {header("ppg", `${lastSeason} PPG`)}
+                  {header("ppg", `${lastSeason} reg. PPG`)}
                   {header("delta", "vs PPG")}
                   {header("books", "Books")}
                   {header("rank", "Rank")}
@@ -292,7 +292,7 @@ export function TopScorersClient({
                             )}
                           </div>
                           <div className="mt-0.5 font-mono text-xs text-slate-400">
-                            {s.teamAbbrev ? `${s.teamAbbrev} · vs ${s.opponentAbbrev ?? s.opponent}` : `${gameName.get(s.eventId)} · team not matched`} · {tip(s.commenceTime)}
+                            {s.teamAbbrev ? `${s.teamAbbrev} (prior season) · vs ${s.opponentAbbrev ?? s.opponent}` : `${gameName.get(s.eventId)} · current team unverified`} · {tip(s.commenceTime)}
                           </div>
                         </td>
                         <td className="border-t border-slate-800 px-3 text-right font-mono text-base font-semibold text-white">{one(s.line)}</td>
@@ -313,7 +313,7 @@ export function TopScorersClient({
                           {s.vsLastSeason == null ? "-" : signed(s.vsLastSeason)}
                         </td>
                         <td className="border-t border-slate-800 px-3 text-right font-mono text-slate-300">{s.books.length}</td>
-                        <td className="border-t border-slate-800 px-3 text-right font-mono text-slate-300" title="Slate rank / rank on his team">
+                        <td className="border-t border-slate-800 px-3 text-right font-mono text-slate-300" title="Slate rank / rank among prior-season team matches; current roster unverified">
                           {s.rank} / {s.teamRank ?? "-"}
                         </td>
                       </tr>
@@ -323,7 +323,7 @@ export function TopScorersClient({
               </tbody>
             </table>
             <p className="mt-2 font-mono text-[11px] text-slate-500">
-              Click a row for every book&apos;s line and price and the ladder&apos;s chances. Rank = slate / team. 25+ / 30+ and
+              Click a row for every book&apos;s line and price and the ladder&apos;s chances. Rank = slate / prior-season team matches. Current team and availability are unverified. 25+ / 30+ and
               floor–ceiling come from the alternate points ladder; &quot;-&quot; means no ladder or a threshold past its last rung.
             </p>
           </div>
@@ -346,7 +346,7 @@ export function TopScorersClient({
                     <div key={team}>
                       <div className="mb-1 truncate font-mono text-[11px] uppercase tracking-wider text-slate-500">{team}</div>
                       {side(team).length === 0 ? (
-                        <div className="text-xs text-slate-500">No matched lines</div>
+                        <div className="text-xs text-slate-500">No prior-season matches</div>
                       ) : (
                         side(team).map((s) => (
                           <div key={s.player} className="flex justify-between gap-2 text-sm">

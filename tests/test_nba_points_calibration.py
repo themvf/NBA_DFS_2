@@ -1,4 +1,5 @@
 from datetime import date, datetime, timezone
+from datetime import timedelta
 
 from model import nba_points_calibration as m
 
@@ -82,3 +83,34 @@ def test_push_on_an_integer_line_is_not_graded():
     rows = m.grade_captures(date(2026, 10, 21), [_capture("A", books=_books(line=30))], {},
                             [_game([_player("A", "Atlanta Hawks", 30)])])
     assert rows[0].status == "push" and m.summarize(rows)["cells"]["over"]["n"] == 0
+
+
+def test_verified_alias_is_matched_but_collisions_still_fail_closed():
+    cap = _capture("Herb Jones")
+    game = _game([_player("Herbert Jones", "Atlanta Hawks", 5)])
+    row = m.grade_captures(date(2026, 10, 21), [cap], {}, [game])[0]
+    assert row.status == "graded" and row.actual_points == 5
+    game.players.append(_player("Herb Jones", "Orlando Magic", 10))
+    assert m.grade_captures(date(2026, 10, 21), [cap], {}, [game])[0].status == "ambiguous"
+
+
+def test_provider_start_disagreement_reselects_whole_snapshot_without_stale_players():
+    game = _game([])
+    game.start_time = TIP - timedelta(minutes=10)
+    def source(player, when):
+        return dict(event_id="evt1", market="player_points", player=player, books=_books(),
+                    commence_time=TIP, captured_at=when, home_team_name=game.home_team, away_team_name=game.away_team)
+    rows = [source("Removed", TIP-timedelta(hours=2)), source("A", TIP-timedelta(hours=1)),
+            source("A", TIP-timedelta(minutes=6)), source("B", TIP-timedelta(minutes=6)),
+            source("At boundary", game.start_time)]
+    selected = m.select_pretip_rows(rows,[game])
+    assert [(r["player"],r["captured_at"]) for r in selected] == [("A", TIP-timedelta(hours=1))]
+
+
+def test_direct_grading_rejects_capture_after_either_known_scheduled_start():
+    cap = _capture("A")
+    game = _game([_player("A","Atlanta Hawks",31)])
+    game.start_time = CAP
+    row = m.grade_captures(date(2026,10,21),[cap],{},[game])[0]
+    assert row.status == "after_start" and row.actual_points is None
+    assert m.summarize([row])["cells"]["over"]["n"] == 0

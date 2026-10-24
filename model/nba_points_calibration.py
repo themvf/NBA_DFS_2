@@ -1,7 +1,7 @@
 """Nightly grade of the books' NBA points lines against the box score.
 
 For each game on an Eastern date, take the LAST capture of the player-points
-market made before tip-off (``prop_odds_history``, sport='nba'), read it
+market made before the earlier known scheduled start (``prop_odds_history``, sport='nba'), read it
 exactly as the Top Scorers page does (``model/nba_points_ladder.py``: consensus
 line, de-vigged P(over), and from the alternate ladder the floor, ceiling and
 P(20+) ... P(40+)), and put each player's actual points beside it from the ESPN
@@ -16,9 +16,9 @@ record.
 Rules:
 
 - The graded snapshot is the latest capture whose ``captured_at`` is before
-  the game's ``commence_time``. A post-tip capture is never graded (in-play
-  prices are a different proposition). A game with no pre-tip capture has no
-  rows.
+  the earlier of the market and matched ESPN scheduled starts when available.
+  Scheduled times do not prove actual tip time. A game with no eligible capture
+  has no rows. Version 2 retains version 1 grades and adds the Herb/Herbert alias.
 - A player is matched to the box score by accent-free name within his own
   game (both teams). No match -> ``unmatched``; two players sharing a key in
   one game -> ``ambiguous``; a listed player who did not play -> ``dnp``
@@ -47,9 +47,9 @@ from typing import Any
 from config import load_config
 from db.database import DatabaseManager, fetch_rows
 from ingest.nba_box_scores import eastern_date
-from model.nba_points_ladder import LADDER_VERSION, THRESHOLDS, name_key, read_player, team_key
+from model.nba_points_ladder import LADDER_VERSION, THRESHOLDS, name_key, player_key, read_player, team_key
 
-GRADE_VERSION = "nba-points-grade-v1"
+GRADE_VERSION = "nba-points-grade-v2"
 MAIN_MARKET = "player_points"
 LADDER_MARKET = "player_points_alternate"
 
@@ -71,6 +71,7 @@ class BoxGame:
     home_team: str
     away_team: str
     players: list[BoxPlayer]
+    start_time: datetime | None = None
 
 
 @dataclass
@@ -108,25 +109,40 @@ class GradeRow:
     minutes: float | None
 
 
-def load_pretip_captures(db: DatabaseManager, target: date) -> tuple[list[Capture], dict[tuple[str, str], dict[str, Any]]]:
+def select_pretip_rows(rows: list[dict[str, Any]], games: list[BoxGame]) -> list[dict[str, Any]]:
+    """Last event/market snapshot before the earlier known scheduled start.
+
+    Re-select an earlier entire snapshot when providers disagree. Do not keep
+    a removed player's older quote or call scheduled time actual tip-off.
+    """
+    valid = []
+    latest: dict[tuple[str, str], datetime] = {}
+    for row in rows:
+        if row["commence_time"] is None:
+            continue
+        game = match_game(row["home_team_name"], row["away_team_name"], games)
+        boundary = min(row["commence_time"], game.start_time) if game and game.start_time else row["commence_time"]
+        if row["captured_at"] >= boundary:
+            continue
+        key = (str(row["event_id"]), row["market"])
+        latest[key] = max(latest.get(key, row["captured_at"]), row["captured_at"])
+        valid.append(row)
+    return [r for r in valid if r["captured_at"] == latest[(str(r["event_id"]), r["market"])]]
+
+
+def load_pretip_captures(db: DatabaseManager, target: date, games: list[BoxGame] | None = None) -> tuple[list[Capture], dict[tuple[str, str], dict[str, Any]]]:
     """Main-line rows and {(event, player_key): ladder books} from each game's last pre-tip capture."""
     sql = """
-        WITH latest AS (
-            SELECT event_id, market, max(captured_at) AS captured_at
-            FROM prop_odds_history
-            WHERE sport = 'nba' AND game_date = %s AND market IN (%s, %s)
-              AND commence_time IS NOT NULL AND captured_at < commence_time
-            GROUP BY event_id, market
-        )
         SELECT p.event_id, p.market, p.commence_time, p.captured_at, p.home_team_name, p.away_team_name, p.player, p.books
         FROM prop_odds_history p
-        JOIN latest l ON l.event_id = p.event_id AND l.market = p.market AND l.captured_at = p.captured_at
-        WHERE p.sport = 'nba' AND p.market IN (%s, %s)
+        WHERE p.sport = 'nba' AND p.game_date = %s AND p.market IN (%s, %s)
+          AND p.commence_time IS NOT NULL AND p.captured_at < p.commence_time
     """
     with db.connect() as conn:
         cur = conn.cursor()
-        cur.execute(sql, (target, MAIN_MARKET, LADDER_MARKET, MAIN_MARKET, LADDER_MARKET))
+        cur.execute(sql, (target, MAIN_MARKET, LADDER_MARKET))
         rows = fetch_rows(cur)
+    rows = select_pretip_rows(rows, games if games is not None else load_box_scores(db, target))
     mains: list[Capture] = []
     ladders: dict[tuple[str, str], dict[str, Any]] = {}
     for r in rows:
@@ -146,7 +162,7 @@ def load_box_scores(db: DatabaseManager, target: date) -> list[BoxGame]:
     with db.connect() as conn:
         cur = conn.cursor()
         cur.execute(
-            """SELECT g.espn_event_id, g.home_team, g.away_team, p.player, p.player_key, p.team, p.is_home, p.played, p.points, p.minutes
+            """SELECT g.espn_event_id, g.home_team, g.away_team, g.start_time, p.player, p.player_key, p.team, p.is_home, p.played, p.points, p.minutes
                FROM nba_box_score_games g
                JOIN nba_box_score_players p ON p.espn_event_id = g.espn_event_id
                WHERE g.game_date = %s AND g.completed""",
@@ -155,7 +171,7 @@ def load_box_scores(db: DatabaseManager, target: date) -> list[BoxGame]:
         rows = fetch_rows(cur)
     games: dict[str, BoxGame] = {}
     for r in rows:
-        game = games.setdefault(str(r["espn_event_id"]), BoxGame(str(r["espn_event_id"]), str(r["home_team"]), str(r["away_team"]), []))
+        game = games.setdefault(str(r["espn_event_id"]), BoxGame(str(r["espn_event_id"]), str(r["home_team"]), str(r["away_team"]), [], r["start_time"]))
         game.players.append(BoxPlayer(
             player=str(r["player"]), player_key=str(r["player_key"]), team=str(r["team"]), is_home=bool(r["is_home"]),
             played=bool(r["played"]), points=None if r["points"] is None else float(r["points"]),
@@ -185,8 +201,11 @@ def grade_captures(target: date, captures: list[Capture], ladders: dict[tuple[st
         game = box_by_event[cap.event_id]
         key = name_key(cap.player)
         status, actual, minutes, team = "no_box_score", None, None, None
-        if game is not None:
-            hits = [p for p in game.players if p.player_key == key]
+        boundary = min(cap.commence_time, game.start_time) if game and game.start_time else cap.commence_time
+        if cap.captured_at >= boundary:
+            status = "after_start"
+        elif game is not None:
+            hits = [p for p in game.players if player_key(p.player) == player_key(cap.player)]
             if len(hits) > 1:
                 status = "ambiguous"
             elif not hits:
@@ -281,8 +300,8 @@ def summarize(rows: list[GradeRow]) -> dict[str, Any]:
 
 
 def grade_date(db: DatabaseManager, target: date, *, apply: bool) -> dict[str, Any]:
-    captures, ladders = load_pretip_captures(db, target)
     games = load_box_scores(db, target)
+    captures, ladders = load_pretip_captures(db, target, games)
     rows = grade_captures(target, captures, ladders, games)
     summary = {"date": target.isoformat(), "preTipCaptureRows": len(captures), "boxScoreGames": len(games), **summarize(rows)}
     if apply and rows:
@@ -298,7 +317,7 @@ def main() -> int:
     args = parser.parse_args()
     last = date.fromisoformat(args.date) if args.date else eastern_date(datetime.now(timezone.utc)) - timedelta(days=1)
     config = load_config()
-    db = DatabaseManager(config.database_url)
+    db = DatabaseManager(config.database_url, initialize_schema=False)
     db.require_tables(["prop_odds_history", "nba_box_score_games", "nba_box_score_players", "nba_points_calibration"])
     results = []
     with db.reuse_connection():

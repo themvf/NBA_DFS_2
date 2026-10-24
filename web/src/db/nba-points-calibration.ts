@@ -9,7 +9,7 @@ import { db } from "@/db";
  * table is written by grade_nba_points_props.yml.
  */
 
-export const NBA_POINTS_GRADE_VERSION = "nba-points-grade-v1";
+export const NBA_POINTS_GRADE_VERSION = "nba-points-grade-v2";
 
 export type CalibrationCell = {
   /** "over" (the consensus line) or "20+" ... "40+" (the ladder). */
@@ -59,10 +59,17 @@ const CELLS: { key: string; p: string; hit: string }[] = [
  * Pooled over every graded night (or one night with `gameDate`). Null when the
  * table does not exist yet (the first grade creates it) or holds no rows.
  */
-export async function getNbaPointsCalibration(gameDate?: string): Promise<CalibrationSummary | null> {
+export async function getNbaPointsCalibration(gameDate?: string, gradeVersion?: string): Promise<CalibrationSummary | null> {
+  // One whole version at a time. Retain v1 until v2 has been populated; never
+  // pool revised and original grades or silently discard the original record.
+  const version = gradeVersion ? sql`${gradeVersion}` : sql`coalesce((
+    SELECT grade_version FROM nba_points_calibration
+    WHERE grade_version IN (${NBA_POINTS_GRADE_VERSION}, 'nba-points-grade-v1')
+    ORDER BY grade_version DESC LIMIT 1
+  ), ${NBA_POINTS_GRADE_VERSION})`;
   const where = gameDate
-    ? sql`grade_version = ${NBA_POINTS_GRADE_VERSION} AND game_date = ${gameDate}::date`
-    : sql`grade_version = ${NBA_POINTS_GRADE_VERSION}`;
+    ? sql`grade_version = ${version} AND game_date = ${gameDate}::date`
+    : sql`grade_version = ${version}`;
   const cellSql = CELLS.map(
     (c) => sql`
       count(*) FILTER (WHERE status = 'graded' AND ${sql.raw(c.p)} IS NOT NULL) AS ${sql.raw(`${c.p}_n`)},
@@ -74,6 +81,7 @@ export async function getNbaPointsCalibration(gameDate?: string): Promise<Calibr
   try {
     const result = await db.execute(sql`
       SELECT
+        min(grade_version) AS grade_version,
         min(game_date) AS first_date, max(game_date) AS last_date,
         count(DISTINCT game_date) AS nights, count(DISTINCT event_id) AS games, count(*) AS rows,
         count(*) FILTER (WHERE status = 'graded') AS graded,
@@ -98,7 +106,7 @@ export async function getNbaPointsCalibration(gameDate?: string): Promise<Calibr
   const r = rows[0];
   if (!r || Number(r.rows) === 0) return null;
   return {
-    gradeVersion: NBA_POINTS_GRADE_VERSION,
+    gradeVersion: String(r.grade_version),
     firstDate: day(r.first_date),
     lastDate: day(r.last_date),
     nights: Number(r.nights),
