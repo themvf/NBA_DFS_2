@@ -8005,9 +8005,10 @@ analysis, exposure vs the field, and every lineup they entered). Pure layer
   `dk-contest-payouts-v1`) from the export's points and DraftKings' public prize
   table (`fetch_contest_detail`), ties split over the places they occupy, and
   withholds the table if the export's entry count differs from DraftKings'.
-  That endpoint answers **403 to the spoofed Chrome User-Agent in
-  `dk_api._HEADERS`** and 200 to an honest client (measured 2026-10-21; the
-  draftables endpoint does the same). **A free account's key adds nothing** (measured
+  api.draftkings.com answers **403 to a browser User-Agent** from a Python
+  client and 200 to requests' default (measured 2026-10-21 and 10-24 on the
+  contest and draftables endpoints), so `dk_api._HEADERS` sends only
+  `Accept`; `tests/test_dk_api_headers.py` keeps it that way. **A free account's key adds nothing** (measured
   2026-10-10 with a real key): every other contest is a 5-row courtesy
   preview on standings AND per-user lineups (`access.full: false`,
   `required_tier: pro`), which the importer refuses to store. The 401 text
