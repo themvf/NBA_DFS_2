@@ -37,12 +37,10 @@ logger = logging.getLogger(__name__)
 _DEFAULT_PROJ_STAT_ID = 279
 _ET_ZONE      = ZoneInfo("America/New_York")  # handles EDT/EST automatically
 _TIMEOUT      = 15
+# No browser User-Agent. api.draftkings.com answers 403 "Access Denied" when a
+# Python client sends a Chrome UA (or a bare "Mozilla/5.0"), and 200 with
+# requests' own default UA (measured 2026-10-24 on /contests and /draftables).
 _HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/123.0.0.0 Safari/537.36"
-    ),
     "Accept": "application/json",
 }
 
@@ -104,6 +102,14 @@ def fetch_draft_group_id(contest_id: int) -> int:
     dgid: int = resp.json()["contestDetail"]["draftGroupId"]
     logger.info("Contest %d → draftGroupId %d", contest_id, dgid)
     return dgid
+
+
+def fetch_contest_detail(contest_id: int | str) -> dict:
+    """A DK contest's public detail: entry fee, entries and the prize table by rank (payoutSummary)."""
+    url  = f"https://api.draftkings.com/contests/v1/contests/{contest_id}"
+    resp = requests.get(url, headers=_HEADERS, timeout=_TIMEOUT)
+    resp.raise_for_status()
+    return resp.json()["contestDetail"]
 
 
 def fetch_dk_players(draft_group_id: int) -> list[dict]:

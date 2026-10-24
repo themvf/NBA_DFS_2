@@ -7996,7 +7996,19 @@ analysis, exposure vs the field, and every lineup they entered). Pure layer
   `ingest/statapi_contest.py`): winners, builds and top-user ownership are
   stored, but no median, score curve or payout table, so our build's rank in
   the weekly review reads "rank unknown". A 5-row preview is still refused.
-  Week 6 was imported this way on 2026-10-20. **A free account's key adds nothing** (measured
+  Week 6 was imported this way on 2026-10-20. **So no stat-api contest carries a
+  payout table any more** (none ever did: the older full imports predate the
+  column), and the ghost grader, which requires one, graded nothing in week 6.
+  The only full-standings source left is a DraftKings export of a contest you
+  entered: `ingest/nfl_dfs_field_audit.py --contest FILE` now writes its score
+  curve and a payout table (`model/dk_contest_payouts.py`,
+  `dk-contest-payouts-v1`) from the export's points and DraftKings' public prize
+  table (`fetch_contest_detail`), ties split over the places they occupy, and
+  withholds the table if the export's entry count differs from DraftKings'.
+  api.draftkings.com answers **403 to a browser User-Agent** from a Python
+  client and 200 to requests' default (measured 2026-10-21 and 10-24 on the
+  contest and draftables endpoints), so `dk_api._HEADERS` sends only
+  `Accept`; `tests/test_dk_api_headers.py` keeps it that way. **A free account's key adds nothing** (measured
   2026-10-10 with a real key): every other contest is a 5-row courtesy
   preview on standings AND per-user lineups (`access.full: false`,
   `required_tier: pro`), which the importer refuses to store. The 401 text

@@ -30,10 +30,12 @@ from pathlib import Path
 from psycopg2.extras import Json, execute_values
 
 from config import load_config
+from ingest.dk_api import fetch_contest_detail
 from ingest.nfl_dfs_weekly import PipelineDatabase
 from model.nfl_dfs_field_audit import (
     VERSION, audit_slate, is_showdown, normalize_name, parse_contest_export, pooled_summary,
 )
+from model import dk_contest_payouts as payouts
 from model import nfl_dfs_field_structure as structure
 
 # A standings lineup cell can be long; the default field limit rejects them.
@@ -68,6 +70,42 @@ def read_entries(path: Path) -> list[tuple[int, str, str]]:
         for row in reader:
             if len(row) > 5 and row[5].strip() and row[0].strip().isdigit():
                 out.append((int(row[0]), row[2], row[5]))
+    return out
+
+
+def read_points(path: Path) -> list[float]:
+    """Every entry's points (column 4). The export lists every entry, so this is the whole field."""
+    out = []
+    with path.open(newline="", encoding="utf-8-sig") as handle:
+        reader = csv.reader(handle)
+        next(reader, None)
+        for row in reader:
+            if len(row) > 4 and row[0].strip().isdigit() and row[4].strip():
+                out.append(float(row[4]))
+    return out
+
+
+def contest_curves(contest_id: str, path: Path) -> dict:
+    """Score curve and payout table from the export's points and DraftKings' prize table.
+
+    A DraftKings lookup that fails leaves the payout table empty and says why;
+    it never stops the import, which stands on the export alone.
+    """
+    points = read_points(path)
+    try:
+        detail = fetch_contest_detail(contest_id)
+    except Exception as exc:  # network, 404, changed schema
+        out = payouts.curves(points, None, None)
+        out["reason"] = f"DraftKings contest lookup failed: {exc}"
+        out["entry_fee"] = None
+        return out
+    out = payouts.curves(points, detail.get("payoutSummary"), detail.get("entryFee"))
+    out["entry_fee"] = detail.get("entryFee")
+    entries = detail.get("entries")
+    if entries and int(entries) != len(points):
+        out["reason"] = (f"export has {len(points):,} entries, DraftKings reports {int(entries):,}; "
+                         "payout table withheld")
+        out["payout_curve"] = None
     return out
 
 
@@ -176,26 +214,34 @@ def resolve_upload(db: PipelineDatabase, parsed: dict, fmt: str, upload_id: str 
 
 
 def persist(db: PipelineDatabase, contest_id: str, parsed: dict, fmt: str,
-            path: Path, digest: str, upload: dict | None) -> None:
+            path: Path, digest: str, upload: dict | None, curves: dict | None = None) -> None:
+    curves = curves or {}
     with db.connect() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """INSERT INTO nfl_dfs_field_contests
                      (contest_id, contest_name, format, season, week, slate_upload_id,
-                      entry_count, winning_score, median_score, min_score, file_name, file_digest)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                      entry_count, winning_score, median_score, min_score, file_name, file_digest,
+                      score_curve, payout_curve, entry_fee)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                    ON CONFLICT (contest_id) DO UPDATE SET
                      slate_upload_id = EXCLUDED.slate_upload_id,
                      season = EXCLUDED.season, week = EXCLUDED.week,
                      entry_count = EXCLUDED.entry_count,
                      winning_score = EXCLUDED.winning_score,
                      median_score = EXCLUDED.median_score,
-                     min_score = EXCLUDED.min_score""",
+                     min_score = EXCLUDED.min_score,
+                     score_curve = COALESCE(EXCLUDED.score_curve, nfl_dfs_field_contests.score_curve),
+                     payout_curve = COALESCE(EXCLUDED.payout_curve, nfl_dfs_field_contests.payout_curve),
+                     entry_fee = COALESCE(EXCLUDED.entry_fee, nfl_dfs_field_contests.entry_fee)""",
                 (contest_id, path.stem, fmt,
                  (upload or {}).get("season"), (upload or {}).get("week"),
                  (upload or {}).get("upload_id"), parsed["entry_count"],
                  parsed["winning_score"], parsed["median_score"], parsed["min_score"],
-                 path.name, digest))
+                 path.name, digest,
+                 Json(curves["score_curve"]) if curves.get("score_curve") else None,
+                 Json(curves["payout_curve"]) if curves.get("payout_curve") else None,
+                 curves.get("entry_fee")))
             execute_values(
                 cursor,
                 """INSERT INTO nfl_dfs_field_ownership
@@ -345,7 +391,8 @@ def main() -> None:
         fmt = "showdown" if is_showdown(parsed) else "classic"
         upload = resolve_upload(db, parsed, fmt, args.upload)
         contest_id = contest_id_from_path(path)
-        persist(db, contest_id, parsed, fmt, path, digest, upload)
+        curves = contest_curves(contest_id, path)
+        persist(db, contest_id, parsed, fmt, path, digest, upload, curves)
         summary = structure.analyze(read_entries(path), fmt)
         persist_structure(db, contest_id, summary)
         if args.keep_top:
@@ -357,6 +404,12 @@ def main() -> None:
               f"({users['entry_share_from_users_ge_20']:.0%} of entries)")
         print(f"imported contest {contest_id}: {parsed['entry_count']:,} entries, "
               f"{len(parsed['players'])} players with ownership, format={fmt}")
+        curve = curves.get("payout_curve")
+        if curve:
+            print(f"  payout table: {curve['paid_entries']:,} paid entries, "
+                  f"min cash {curve['min_cash_score']:.2f} pts, fee ${curves.get('entry_fee')}")
+        else:
+            print(f"  NO payout table: {curves.get('reason')}")
         if upload:
             print(f"  matched slate {upload['upload_id']} "
                   f"({upload['season']} week {upload['week']}"
