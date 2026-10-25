@@ -4,9 +4,11 @@ import {
   CLOSE_MINUTES,
   MIN_BIN_N,
   READINGS,
+  coverageData,
   reliabilityBins,
   reliabilitySeries,
   scatterData,
+  tailTrend,
   type GradedRow,
 } from "../src/lib/nba-points-calibration-charts";
 
@@ -14,6 +16,8 @@ const row = (over: Partial<GradedRow> & { line: number; actual: number }): Grade
   gameDate: "2026-10-21",
   player: "P",
   minutesBeforeTip: 50,
+  floor: null,
+  ceiling: null,
   pOver: null,
   p20: null,
   p25: null,
@@ -74,5 +78,34 @@ assert.equal(s.maxValue, 35);
 const empty = scatterData([]);
 assert.equal(empty.nights, 0);
 assert.equal(empty.bias, null);
+
+// Coverage: only rows with both floor and ceiling count; inside is inclusive.
+const cov = coverageData([
+  row({ line: 20.5, actual: 10, floor: 12, ceiling: 30 }), // below
+  row({ line: 20.5, actual: 12, floor: 12, ceiling: 30 }), // on the floor: inside
+  row({ line: 20.5, actual: 30, floor: 12, ceiling: 30 }), // on the ceiling: inside
+  row({ line: 20.5, actual: 31, floor: 12, ceiling: 30 }), // above
+  row({ line: 20.5, actual: 40, floor: null, ceiling: 30 }), // no floor: not counted
+]);
+assert.equal(cov.n, 4);
+assert.deepEqual([cov.below, cov.inside, cov.above], [0.25, 0.5, 0.25]);
+assert.deepEqual(cov.target, { below: 0.1, inside: 0.8, above: 0.1 });
+assert.equal(coverageData([]).n, 0);
+
+// Tail trend: one point per night that carried the reading, running means across nights.
+const trend = tailTrend([
+  row({ gameDate: "2026-10-01", line: 20.5, actual: 32, p30: 0.4 }),
+  row({ gameDate: "2026-10-01", line: 20.5, actual: 12, p30: 0.2 }),
+  row({ gameDate: "2026-10-02", line: 20.5, actual: 12, p30: null }), // no reading: night skipped for 30+
+  row({ gameDate: "2026-10-03", line: 20.5, actual: 35, p30: 0.6 }),
+]);
+const thirty = trend.find((s) => s.key === "30")!;
+assert.equal(thirty.n, 3);
+assert.deepEqual(thirty.points.map((p) => p.date), ["2026-10-01", "2026-10-03"]);
+assert.ok(Math.abs(thirty.points[0].statedNight - 0.3) < 1e-9 && thirty.points[0].observedNight === 0.5);
+assert.equal(thirty.points[1].nCum, 3);
+assert.ok(Math.abs(thirty.points[1].statedCum - 0.4) < 1e-9, `statedCum ${thirty.points[1].statedCum}`);
+assert.ok(Math.abs(thirty.points[1].observedCum - 2 / 3) < 1e-9, `observedCum ${thirty.points[1].observedCum}`);
+assert.equal(trend.find((s) => s.key === "40")!.points.length, 0);
 
 console.log("test-nba-points-calibration-charts: all assertions passed");

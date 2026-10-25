@@ -18,6 +18,9 @@ export type GradedRow = {
   line: number;
   actual: number;
   minutesBeforeTip: number;
+  /** The ladder's P10 and P90; null when the ladder did not reach them. */
+  floor: number | null;
+  ceiling: number | null;
   pOver: number | null;
   p20: number | null;
   p25: number | null;
@@ -137,4 +140,94 @@ export function scatterData(rows: GradedRow[], nights = SCATTER_NIGHTS): Scatter
     mae,
     maxValue: Math.ceil((maxValue + 1) / 5) * 5,
   };
+}
+
+/**
+ * Interval coverage: where the actual landed against the ladder's floor (P10)
+ * and ceiling (P90), over rows that carry both. The ladder claims 10% below,
+ * 80% inside, 10% above. "Inside" is floor <= actual <= ceiling.
+ */
+export type CoverageData = {
+  n: number;
+  below: number;
+  inside: number;
+  above: number;
+  target: { below: number; inside: number; above: number };
+};
+
+export const COVERAGE_TARGET = { below: 0.1, inside: 0.8, above: 0.1 };
+
+export function coverageData(rows: GradedRow[]): CoverageData {
+  let below = 0;
+  let inside = 0;
+  let above = 0;
+  for (const r of rows) {
+    if (r.floor == null || r.ceiling == null) continue;
+    if (r.actual < r.floor) below += 1;
+    else if (r.actual > r.ceiling) above += 1;
+    else inside += 1;
+  }
+  const n = below + inside + above;
+  return {
+    n,
+    below: n ? below / n : 0,
+    inside: n ? inside / n : 0,
+    above: n ? above / n : 0,
+    target: COVERAGE_TARGET,
+  };
+}
+
+/**
+ * Tail calibration over time: for each reading, one point per graded night
+ * with that night's mean stated chance and hit share (noisy, small n), plus the
+ * running means over every night so far (what the pooled table shows, as a
+ * line that should converge).
+ */
+export type TailPoint = {
+  date: string;
+  n: number;
+  statedNight: number;
+  observedNight: number;
+  nCum: number;
+  statedCum: number;
+  observedCum: number;
+};
+
+export type TailSeries = { key: string; label: string; n: number; points: TailPoint[] };
+
+export function tailTrend(rows: GradedRow[]): TailSeries[] {
+  const dates = [...new Set(rows.map((r) => r.gameDate))].sort();
+  return READINGS.map((reading) => {
+    const points: TailPoint[] = [];
+    let nCum = 0;
+    let statedSum = 0;
+    let hits = 0;
+    for (const date of dates) {
+      let n = 0;
+      let stated = 0;
+      let hit = 0;
+      for (const r of rows) {
+        if (r.gameDate !== date) continue;
+        const p = reading.stated(r);
+        if (p == null || !Number.isFinite(p)) continue;
+        n += 1;
+        stated += p;
+        if (reading.hit(r)) hit += 1;
+      }
+      if (n === 0) continue;
+      nCum += n;
+      statedSum += stated;
+      hits += hit;
+      points.push({
+        date,
+        n,
+        statedNight: stated / n,
+        observedNight: hit / n,
+        nCum,
+        statedCum: statedSum / nCum,
+        observedCum: hits / nCum,
+      });
+    }
+    return { key: reading.key, label: reading.label, n: nCum, points };
+  });
 }

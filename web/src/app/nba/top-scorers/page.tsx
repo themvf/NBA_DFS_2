@@ -12,7 +12,16 @@ import {
   getNbaTeams,
 } from "@/db/nba-top-scorers";
 import { getNbaPointsCalibration, getNbaPointsCalibrationRows, type CalibrationSummary } from "@/db/nba-points-calibration";
-import { reliabilitySeries, scatterData, type ReliabilitySeries, type ScatterData } from "@/lib/nba-points-calibration-charts";
+import {
+  coverageData,
+  reliabilitySeries,
+  scatterData,
+  tailTrend,
+  type CoverageData,
+  type ReliabilitySeries,
+  type ScatterData,
+  type TailSeries,
+} from "@/lib/nba-points-calibration-charts";
 import { CalibrationCharts } from "./calibration-charts";
 import { TopScorersClient } from "./top-scorers-client";
 
@@ -61,6 +70,8 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
   ]);
   const reliability = reliabilitySeries(gradedRows);
   const scatter = scatterData(gradedRows);
+  const coverage = coverageData(gradedRows);
+  const tails = tailTrend(gradedRows);
   const { scorers, games } = buildBoard(rows, lastSeason, teams, ladderRows);
   const lastCapture = games.reduce<string | null>((m, g) => (m == null || g.capturedAt > m ? g.capturedAt : m), null);
   const bookCount = new Set(scorers.flatMap((s) => s.books.map((b) => b.book))).size;
@@ -109,7 +120,15 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
         <TopScorersClient scorers={scorers} games={games} pulled={pulled} lastSeason={LAST_SEASON} />
       )}
 
-      <CalibrationPanel all={calibration} night={nightCalibration} date={date} reliability={reliability} scatter={scatter} />
+      <CalibrationPanel
+        all={calibration}
+        night={nightCalibration}
+        date={date}
+        reliability={reliability}
+        scatter={scatter}
+        coverage={coverage}
+        tails={tails}
+      />
 
       <section className="space-y-1 text-xs text-muted-foreground">
         <p>
@@ -142,12 +161,16 @@ function CalibrationPanel({
   date,
   reliability,
   scatter,
+  coverage,
+  tails,
 }: {
   all: CalibrationSummary | null;
   night: CalibrationSummary | null;
   date: string;
   reliability: ReliabilitySeries[];
   scatter: ScatterData;
+  coverage: CoverageData;
+  tails: TailSeries[];
 }) {
   if (!all) {
     return (
@@ -250,7 +273,7 @@ function CalibrationPanel({
         squared gap between the stated chance and what happened; lower is better, and a coin flip on a 50% line scores
         0.25. Under a few hundred player-games the night-to-night swing is noise; the pooled columns are the ones to read.
       </p>
-      <CalibrationCharts reliability={reliability} scatter={scatter} />
+      <CalibrationCharts reliability={reliability} scatter={scatter} coverage={coverage} tails={tails} />
     </section>
   );
 }

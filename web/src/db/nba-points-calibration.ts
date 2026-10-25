@@ -15,7 +15,8 @@ export async function getNbaPointsCalibrationRows(nights = 60): Promise<GradedRo
         SELECT DISTINCT game_date FROM nba_points_calibration
         WHERE grade_version = ${NBA_POINTS_GRADE_VERSION} ORDER BY game_date DESC LIMIT ${nights}
       )
-      SELECT c.game_date, c.player, c.line, c.actual_points, c.minutes_before_tip, c.p_over, c.p20, c.p25, c.p30, c.p35, c.p40
+      SELECT c.game_date, c.player, c.line, c.actual_points, c.minutes_before_tip, c.floor, c.ceiling,
+             c.p_over, c.p20, c.p25, c.p30, c.p35, c.p40
       FROM nba_points_calibration c
       JOIN recent r ON r.game_date = c.game_date
       WHERE c.grade_version = ${NBA_POINTS_GRADE_VERSION} AND c.status = 'graded' AND c.actual_points IS NOT NULL
@@ -26,6 +27,8 @@ export async function getNbaPointsCalibrationRows(nights = 60): Promise<GradedRo
       line: Number(r.line),
       actual: Number(r.actual_points),
       minutesBeforeTip: Number(r.minutes_before_tip),
+      floor: r.floor == null ? null : Number(r.floor),
+      ceiling: r.ceiling == null ? null : Number(r.ceiling),
       pOver: r.p_over == null ? null : Number(r.p_over),
       p20: r.p20 == null ? null : Number(r.p20),
       p25: r.p25 == null ? null : Number(r.p25),

@@ -268,7 +268,11 @@ graded night) and an actual-vs-line scatter of the newest 14 nights split by cap
 (within 2 h of tip, blue; earlier, orange), with the diagonal as the line. Bins and points
 are computed in `web/src/lib/nba-points-calibration-charts.ts` (pure, tested) from the slim
 graded rows of the last 60 nights; the hues were validated against the page's surface with the
-dataviz palette validator.
+dataviz palette validator. Also (same day): an interval-coverage bar (below the floor / inside /
+above the ceiling, "ladder claims" 10/80/10 against "happened", over rows that carry both ends;
+first 4 nights 11/83/6 on n=169) and a night-by-night panel per reading (running mean of the
+stated chance against the running hit share, with each night's own hit share as a hollow dot;
+the y-axis fits the reading so a 40+ chance under 15% is not a flat line on a 0-100 scale).
 
 ## Data Refresh Workflow
 
