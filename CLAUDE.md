@@ -7855,6 +7855,15 @@ a DST on its nickname) and leaves LineStar and unmatched players alone.
 `ourOwnPct` keeps the raw prior, `ownBand` the range; nothing is renormalised
 (week 7: 900% to 1043%, 131 raised, 11 lowered, 251 kept). A stated choice, not
 fitted; grade it against the week's imported contest before keeping it.
+The ranges can be pasted on the page (Slate step, "Ownership ranges"; the
+server action `importNflOwnershipRanges` refuses a Showdown slate and a page
+that matches under 50 players). **Manual ownership (`nfl-ownership-manual-v1`,
+2026-10-25):** the Own column is a box; a typed number replaces that player's
+ownership for the build (Showdown: the captain/flex split is scaled to it under
+the 95% cap), travels in the settings as `ownershipOverrides`, is saved with the
+build draft, and is recorded in the run snapshot with `ownership.source =
+"manual"`, so grading can separate typed numbers from the prior and the ranges.
+The leverage fade reads a typed number as fact.
 
 ### GPP objective: multiplicative leverage and the ceiling cap (2026-09-27)
 

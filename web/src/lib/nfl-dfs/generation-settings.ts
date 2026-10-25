@@ -3,6 +3,7 @@ import type { PlayerExposurePolicy } from './exposure-plan';
 import { canonicalAuditJson } from './audit-json';
 import type { ArchetypeQuota } from './archetypes';
 import { defensiveSettingsFor } from './defensive-display';
+import { sanitizeOwnershipOverrides } from './ownership-overrides';
 
 /** A Showdown captain range for one player, in PERCENT (0-100). Null = no bound. */
 export type CaptainTarget = { min: number | null; max: number | null };
@@ -104,6 +105,8 @@ export interface NflBuildForm<S extends object> {
   /** Overall exposure ranges, in PERCENT (a max alone is a cap; a bare number is an exact target). */
   targets: Record<string, ExposureTarget | number>;
   captainTargets: Record<string, CaptainTarget>;
+  /** DK id -> field ownership percent the owner typed; empty means none. */
+  ownership: Record<string, number>;
   planMode: ArchetypePlanMode;
   quotas: ArchetypeQuota[];
   favorite: string;
@@ -119,7 +122,9 @@ export function settingsFromForm<S extends FormBase>(form: NflBuildForm<S>, form
   const fades = form.fades;
   const defensive = form.settings.defensiveAdjustments;
   const settings = defensive ? { ...form.settings, defensiveAdjustments: defensiveSettingsFor(form.settings.projectionSource, defensive) } : form.settings;
+  const ownershipOverrides = sanitizeOwnershipOverrides(form.ownership);
   return { ...generationSettings(settings, format, form.locked, form.excluded, form.targets, form.captainTargets),
+    ownershipOverrides: Object.keys(ownershipOverrides).length ? ownershipOverrides : undefined,
     archetypeMode: form.planMode,
     archetypeQuotas: custom && form.quotas.length ? form.quotas : undefined,
     favoriteTeam: custom && form.favorite ? form.favorite : undefined,
@@ -185,7 +190,7 @@ export function formFromSettings<S extends object>(saved: NflOptimizerSettings, 
   const fades = custom ? [...new Set([...(configs.double_fade?.fadePlayerIds ?? []), ...(configs.single_chalk_fade?.fadePlayerIds ?? [])])] : [];
   return {
     settings, locked: [...(saved.lockedPlayerIds ?? [])], excluded: [...(saved.excludedPlayerIds ?? [])],
-    targets, captainTargets, planMode,
+    targets, captainTargets, ownership: sanitizeOwnershipOverrides(saved.ownershipOverrides), planMode,
     quotas: custom ? [...(saved.archetypeQuotas ?? [])] : [],
     favorite: custom ? saved.favoriteTeam ?? '' : '',
     fades,
@@ -240,7 +245,7 @@ export function formFromDraft<S extends object>(raw: unknown, defaults: S): NflB
   const planMode = PLAN_MODES.includes(draft.planMode as ArchetypePlanMode) ? draft.planMode as ArchetypePlanMode : 'balanced';
   return {
     settings, locked: ids(draft.locked), excluded: ids(draft.excluded),
-    targets: ranges(draft.targets), captainTargets: ranges(draft.captainTargets), planMode,
+    targets: ranges(draft.targets), captainTargets: ranges(draft.captainTargets), ownership: sanitizeOwnershipOverrides(draft.ownership), planMode,
     quotas: Array.isArray(draft.quotas) ? draft.quotas as ArchetypeQuota[] : [],
     favorite: typeof draft.favorite === 'string' ? draft.favorite : '',
     fades: ids(draft.fades),

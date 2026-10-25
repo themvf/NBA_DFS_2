@@ -27,7 +27,8 @@ import {
 import { matchNflIdentity, resolveNflRosterIdentity, assertUniqueNflSalaryIdentities } from "@/lib/nfl-dfs/identity";
 import { getNflIdentityRoster } from "@/db/nfl-identity";
 import { canonicalNflTeam, parseNflDkSalaryCsv, type NflDkSlate } from "@/lib/nfl-dfs/dk-salary-csv";
-import { bandReport, clampToBand, matchBands, NFL_OWNERSHIP_BANDS_VERSION, type BandReport, type OwnershipBand } from "@/lib/nfl-dfs/ownership-bands";
+import { bandReport, clampToBand, matchBands, parseFantasyProsOwnership, NFL_OWNERSHIP_BANDS_VERSION, type BandReport, type OwnershipBand } from "@/lib/nfl-dfs/ownership-bands";
+import { applyOwnershipOverrides } from "@/lib/nfl-dfs/ownership-overrides";
 import { readDefensiveCaptures } from '@/db/nfl-defensive-projections';
 import { resolveDefensiveForecast, type CaptureProfile } from '@/lib/nfl-dfs/defensive-projection';
 import { captureProfileFor } from '@/lib/nfl-dfs/defensive-display';
@@ -1919,7 +1920,12 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
       ? null : candidateCaptures.get(profile)?.get(player.ffPlayerId??-1)??null;
     return {...player,defensiveForecast:resolveDefensiveForecast(player,slate.projectionRunId!,{...defensive,profile},capture)};
   }):slate.players;
-  const prepared= settings.projectionSource==='workload'?prepareProjectionAudits(sourcePlayers,slate.situationTeams??[],settings.workloadPositions,settings.situations,clock(now)):sourcePlayers;
+  const audited= settings.projectionSource==='workload'?prepareProjectionAudits(sourcePlayers,slate.situationTeams??[],settings.workloadPositions,settings.situations,clock(now)):sourcePlayers;
+  // Manual ownership (nfl-ownership-manual-v1): the owner's typed numbers replace
+  // the prior for those players before capability is assessed, so the snapshot
+  // records what the build read and `ownership.source` says it was typed.
+  const manual=applyOwnershipOverrides(audited,settings.ownershipOverrides,slate.format);
+  const prepared=manual.players;
   const eligible= settings.projectionSource==='workload' ? prepared.filter(p=>workloadPoolEligible(p,clock(now))) : prepared;
   // Phase 2: the SERVER authoritatively resolves ownership capability from the
   // actual feed — the client can never claim "validated". Missing ownership
@@ -1930,6 +1936,7 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
   // features (duplication model, contrarian-captain thresholds) stay off.
   const { ownershipAssessment, resolvedSettings } = resolveRunContext(eligible, slate, settings, defensive);
   const result = optimizeNflLineups(eligible, resolvedSettings);
+  if(manual.applied)result.warnings.push(`Manual ownership: ${manual.applied} player${manual.applied===1?'':'s'} built from the ownership you typed, not the prior.`);
   if(policyDecision&&!policyDecision.active)result.warnings.push(`Approved defensive policy retained baseline: ${policyDecision.reason}.`);
   if(defensive?.mode && defensive.mode!=='off') {
     await assertSlatePregame(slate);
@@ -2512,6 +2519,38 @@ export async function saveNflBuildDraft(uploadId: string, form: unknown) {
     VALUES (${upload.signature}, ${uploadId}::uuid, ${json}::jsonb, NOW())
     ON CONFLICT (slate_signature) DO UPDATE SET form=EXCLUDED.form, upload_id=EXCLUDED.upload_id, updated_at=NOW()`);
   return { savedAt: new Date().toISOString() };
+}
+
+/**
+ * Import an outside ownership range page for a slate (`nfl-ownership-bands-v1`):
+ * FantasyPros' "DraftKings Projected Roster %" page copied as text. Stored
+ * under the slate's Eastern kickoff date; the next read of any Classic slate
+ * that day holds the prior inside these ranges. Reports what matched this
+ * slate so a page from the wrong week or format cannot pass silently.
+ */
+export async function importNflOwnershipRanges(uploadId: string, text: string) {
+  if (!/^[0-9a-f-]{36}$/.test(uploadId)) throw new Error('Invalid saved slate.');
+  if (typeof text !== 'string' || text.length > 2_000_000) throw new Error('Paste the page as plain text.');
+  await ensureNflDfsTables();
+  const [upload] = await db.select({ format: nflDfsSlateUploads.format }).from(nflDfsSlateUploads).where(eq(nflDfsSlateUploads.uploadId, uploadId)).limit(1);
+  if (!upload) throw new Error('Saved salary slate not found.');
+  if (upload.format !== 'classic') throw new Error('Ownership ranges are applied to Classic slates only; a Showdown page needs captain and flex columns, which are not supported yet.');
+  const { rows, warnings } = parseFantasyProsOwnership(text);
+  if (!rows.length) throw new Error('No ranges found. Copy the whole FantasyPros "DraftKings Projected Roster %" page, headings included, and paste it as text.');
+  const players = await db.select({ dkPlayerId: nflDfsSlatePlayers.dkPlayerId, name: nflDfsSlatePlayers.name, position: nflDfsSlatePlayers.position,
+    team: nflDfsSlatePlayers.team, salary: nflDfsSlatePlayers.salary, gameInfo: nflDfsSlatePlayers.gameInfo }).from(nflDfsSlatePlayers).where(eq(nflDfsSlatePlayers.uploadId, uploadId));
+  const kickoffs = players.map((p) => Date.parse(parseDkGameInfoKickoff(p.gameInfo) ?? '')).filter(Number.isFinite);
+  if (!kickoffs.length) throw new Error('This slate has no kickoff times, so its date is unknown.');
+  const slateDate = new Date(Math.min(...kickoffs)).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  const matches = matchBands(players.map((p) => ({ dkPlayerId: Number(p.dkPlayerId), name: p.name, position: p.position, team: p.team, salary: p.salary })), rows);
+  if (matches.size < Math.min(50, players.length / 4)) throw new Error(`Only ${matches.size} of ${players.length} players on this slate matched a range (${rows.length} parsed). This looks like a page for a different slate; nothing was saved.`);
+  const digest = createHash('sha256').update(text).digest('hex');
+  const inserted = await db.execute(sql`INSERT INTO nfl_dfs_ownership_bands (slate_date, format, source, text_digest, rows, warnings)
+    VALUES (${slateDate}::date, 'classic', 'fantasypros', ${digest}, ${JSON.stringify(rows)}::jsonb, ${JSON.stringify(warnings)}::jsonb)
+    ON CONFLICT (slate_date, format, source, text_digest) DO NOTHING RETURNING id`);
+  const covered = new Set(matches.values());
+  return { slateDate, parsed: rows.length, matched: matches.size, players: players.length, stored: inserted.rows.length > 0,
+    unmatched: rows.filter((r) => !covered.has(r)).map((r) => `${r.name} (${r.team} $${r.salary.toLocaleString()})`), warnings };
 }
 
 /** The build form last saved for this slate, or null. */

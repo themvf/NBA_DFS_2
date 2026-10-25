@@ -15,6 +15,7 @@ const form: Form = {
   locked: [11], excluded: [12, 13],
   targets: { "21": 35, "22": 10 },
   captainTargets: { "31": { min: 20, max: 40 }, "32": { min: null, max: 15 } },
+  ownership: { "21": 42, "33": 7.5 },
   planMode: "chalk_leverage", quotas: [], favorite: "", fades: [],
 };
 const sent = settingsFromForm(form, "showdown", teams);
@@ -26,6 +27,10 @@ const loaded = formFromSettings(saved, defaults);
 assert.deepEqual(loaded.settings, form.settings, "scalar settings come back");
 assert.deepEqual(loaded.locked, [11]); assert.deepEqual(loaded.excluded, [12, 13]);
 assert.deepEqual(loaded.captainTargets, form.captainTargets, "captain ranges come back exactly");
+assert.deepEqual(sent.ownershipOverrides, { "21": 42, "33": 7.5 }, "typed ownership travels with the run");
+assert.deepEqual(loaded.ownership, form.ownership, "typed ownership comes back exactly");
+assert.equal(settingsFromForm({ ...form, ownership: {} }, "classic", teams).ownershipOverrides, undefined, "no edits, no key");
+assert.deepEqual(formFromDraft({ schemaVersion: 3, settings: {}, ownership: { "5": "12", x: 3, "6": 250, "7": -4 } }, defaults)?.ownership, { "5": 12, "6": 100, "7": 0 }, "a draft's edits are cleaned, never trusted");
 assert.equal(loaded.planMode, "chalk_leverage");
 const goalLineForm: Form = { ...form, settings: { ...form.settings, gppGoalLineMinPct: 25 } };
 const goalLineSaved = settingsFromForm(goalLineForm, "classic", teams);
