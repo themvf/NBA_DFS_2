@@ -70,6 +70,29 @@ export function shouldAdoptNewestProjections(input: {
   return input.refreshAvailable && input.builtLineups === 0 && Number.isFinite(kickoff) && input.now < kickoff;
 }
 
+/** How often an open, visible slate asks whether a newer projection run has landed. */
+export const FRESHNESS_POLL_INTERVAL_MS = 5 * 60_000;
+
+/**
+ * What an open page does when a scheduled refresh publishes a newer run while
+ * it sits there. Same rule as opening the slate: move only pre-lock with
+ * nothing built. With lineups built it only raises the Slate Check prompt, so
+ * saved lineups are never hidden. "busy" (a build or move in flight) waits for
+ * the next check rather than swapping the pool under a running optimizer.
+ */
+export function freshnessPollAction(input: {
+  refreshAvailable: boolean;
+  firstKickoff: string | null;
+  now: number;
+  builtLineups: number;
+  busy: boolean;
+}): "move" | "prompt" | "none" {
+  const kickoff = Date.parse(input.firstKickoff ?? '');
+  if (!input.refreshAvailable || !Number.isFinite(kickoff) || input.now >= kickoff) return "none";
+  if (input.builtLineups > 0) return "prompt";
+  return input.busy ? "none" : "move";
+}
+
 /**
  * The step the workspace should open on. Before a slate exists, the Slate
  * step; once its games have started nothing can be built or entered, so

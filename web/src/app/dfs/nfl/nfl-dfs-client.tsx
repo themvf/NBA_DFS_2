@@ -10,7 +10,7 @@ import AvailabilityPanel from './availability-panel';
 import ResultsStep from './results-step';
 import WorkspaceStepper from './workspace-stepper';
 import StatusLine from './status-line';
-import { isLocked, prioritizeStatus, recommendedStage, shouldAdoptNewestProjections, type StatusItem, type WorkspaceStage } from '@/lib/nfl-dfs/workspace-stage';
+import { FRESHNESS_POLL_INTERVAL_MS, freshnessPollAction, isLocked, prioritizeStatus, recommendedStage, shouldAdoptNewestProjections, type StatusItem, type WorkspaceStage } from '@/lib/nfl-dfs/workspace-stage';
 import LiveStatusBanner from './live-status-banner';
 import XNewsPanel from '@/components/x-news-panel';
 import CaptainRangeInput, { ExposureRangeInput } from './captain-range-input';
@@ -398,6 +398,49 @@ export default function NflDfsClient() {
     try { localStorage.setItem('nfl-saved-slate', next.uploadId); } catch {}
     return next;
   }
+  // A scheduled refresh can publish a newer projection run while this page sits
+  // open. Ask every few minutes (and on returning to the tab), and act under the
+  // same rule as opening: move when nothing is built, otherwise raise the Slate
+  // Check prompt. Latest values reach the timer through refs so it never restarts
+  // on an edit.
+  const pollState = useRef({ busy: false, built: 0, adopt: adoptNewestProjections });
+  useEffect(() => { pollState.current = { busy: pending, built: savedRuns.length + lineups.length, adopt: adoptNewestProjections }; });
+  const freshnessUploadId = slate?.uploadId;
+  const freshnessKickoff = slate?.firstKickoff ?? null;
+  const freshnessKnown = Boolean(slate?.refreshAvailable);
+  useEffect(() => {
+    if (!freshnessUploadId || freshnessKnown || isLocked(freshnessKickoff, Date.now())) return;
+    let stopped = false, inFlight = false;
+    const check = async () => {
+      if (stopped || inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
+      try {
+        const fresh = await checkNflSlateFreshness(freshnessUploadId);
+        if (stopped || liveSlateId.current !== freshnessUploadId) return;
+        const { busy, built, adopt } = pollState.current;
+        const action = freshnessPollAction({ refreshAvailable: fresh.refreshAvailable, firstKickoff: freshnessKickoff, now: Date.now(), builtLineups: built, busy });
+        if (action === 'prompt') {
+          setSlate((current) => current && current.uploadId === freshnessUploadId ? { ...current, refreshAvailable: true } : current);
+        } else if (action === 'move') {
+          stopped = true;
+          startTransition(async () => {
+            try {
+              const moved = await adopt(freshnessUploadId);
+              setMessage(`Newer projections came in${moved.modelAsOf ? ` (${formatEt(moved.modelAsOf)})` : ''}, so this slate moved to them. Your build settings carried over.`);
+            } catch (reason) {
+              // Never silent: the slate stays on its run, and the Slate Check keeps offering the refresh.
+              setSlate((current) => current && current.uploadId === freshnessUploadId ? { ...current, refreshAvailable: true } : current);
+              setError(`Newer projections came in, but the slate couldn't move to them: ${reason instanceof Error ? reason.message : 'the refresh failed'}.`);
+            }
+          });
+        }
+      } catch { /* the next check tries again; the slate keeps its current projections */ } finally { inFlight = false; }
+    };
+    const timer = setInterval(() => { void check(); }, FRESHNESS_POLL_INTERVAL_MS);
+    const onVisible = () => { void check(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { stopped = true; clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
+  }, [freshnessUploadId, freshnessKickoff, freshnessKnown]);
   function openSaved(uploadId: string, restoreLineups = true) {
     // The chooser's placeholder option carries an empty value. Posting that to
     // the server just to be told it is not a slate turns a no-op into an error
