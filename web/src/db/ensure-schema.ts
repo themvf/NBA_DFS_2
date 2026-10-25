@@ -1385,6 +1385,20 @@ END $$;`,
         CHECK (status IN ('complete','partial','failed','research_complete','research_partial','research_failed'));
     END IF;
   END $$`,
+  // Outside ownership ranges (nfl-ownership-bands-v1): one row per imported
+  // copy of a range page, keyed by the slate's Eastern kickoff date. The
+  // newest capture for a date bounds the prior on Classic slates that day.
+  `CREATE TABLE IF NOT EXISTS nfl_dfs_ownership_bands (
+    id BIGSERIAL PRIMARY KEY,
+    slate_date DATE NOT NULL,
+    format TEXT NOT NULL CHECK (format IN ('classic','showdown')),
+    source TEXT NOT NULL,
+    captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    text_digest TEXT NOT NULL,
+    rows JSONB NOT NULL,
+    warnings JSONB NOT NULL DEFAULT '[]'::jsonb,
+    UNIQUE (slate_date, format, source, text_digest)
+  )`,
 ];
 
 /** Ghost-lineup study tables (docs/nfl-ghost-factorial-study.md); mirror of db/schema.py. */
