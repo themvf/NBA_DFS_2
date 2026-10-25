@@ -3,7 +3,7 @@
  */
 import assert from "node:assert/strict";
 import {
-  shouldAdoptNewestProjections,
+  shouldAdoptNewestProjections, freshnessPollAction,
   assertPregameProjectionRefresh, isLocked, parseDkGameInfoKickoff, prioritizeStatus, recommendedStage, type StatusItem,
 } from "../src/lib/nfl-dfs/workspace-stage";
 import { buildScoreCurve, estimateRank, projectionError, scoreLineups, summarizeSet } from "../src/lib/nfl-dfs/slate-results";
@@ -124,6 +124,21 @@ console.log("  - captain at 1.5x; unknown players leave a score unknown, not zer
   assert.equal(adopt({ firstKickoff: null }), false, "unknown kickoff cannot authorize a projection refresh");
   assert.equal(adopt({ firstKickoff: 'invalid' }), false);
   console.log("  - opening a slate adopts newer projections only pre-lock with no lineups built");
+
+  const poll = (over: Partial<Parameters<typeof freshnessPollAction>[0]>) =>
+    freshnessPollAction({ refreshAvailable: true, firstKickoff: kickoff, now: before, builtLineups: 0, busy: false, ...over });
+  assert.equal(poll({}), "move", "open page, newer run, nothing built: move");
+  assert.equal(poll({ refreshAvailable: false }), "none", "already newest");
+  assert.equal(poll({ builtLineups: 3 }), "prompt", "built lineups: raise the prompt, never hide them");
+  assert.equal(poll({ builtLineups: 3, busy: true }), "prompt", "a prompt is safe while busy");
+  assert.equal(poll({ busy: true }), "none", "never swap the pool under a running build");
+  assert.equal(poll({ now: Date.parse(kickoff) }), "none", "locked at kickoff");
+  assert.equal(poll({ builtLineups: 3, now: Date.parse(kickoff) + 1 }), "none", "no prompt after lock");
+  assert.equal(poll({ firstKickoff: null }), "none", "unknown kickoff fails closed");
+  // The open-page move must agree with the open-slate rule whenever not busy.
+  for (const over of [{}, { refreshAvailable: false }, { builtLineups: 1 }, { now: Date.parse(kickoff) }, { firstKickoff: null }])
+    assert.equal(poll(over) === "move", adopt(over), JSON.stringify(over));
+  console.log("  - an open page moves on the same rule as opening, and only prompts when lineups exist");
 }
 
 // Refresh decisions use all games, fail closed on missing/invalid times, and
