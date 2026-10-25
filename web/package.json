@@ -11,6 +11,7 @@
     "backtest:vegas-scores": "npx tsx ./scripts/backtest-vegas-page-scores.ts",
     "backtest:mlb-ceiling": "npx tsx ./scripts/backtest-mlb-hitter-ceiling.ts",
     "test:nba-points-ladder": "node --import tsx ./scripts/test-nba-points-ladder.ts",
+    "test:nba-points-calibration-charts": "node --import tsx ./scripts/test-nba-points-calibration-charts.ts",
     "test:nba-top-scorers": "node --import tsx ./scripts/test-nba-top-scorers.ts",
     "test:optimizer": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nba-optimizer.ts",
     "test:mlb-order": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-mlb-order-bonus.ts",

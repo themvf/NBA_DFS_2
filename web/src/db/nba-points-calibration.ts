@@ -2,6 +2,42 @@ import "server-only";
 
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
+import type { GradedRow } from "@/lib/nba-points-calibration-charts";
+
+/**
+ * Every graded row of the newest `nights` Eastern dates, slim, for the charts.
+ * Empty before the first grade (the table does not exist yet) or with no rows.
+ */
+export async function getNbaPointsCalibrationRows(nights = 60): Promise<GradedRow[]> {
+  try {
+    const result = await db.execute(sql`
+      WITH recent AS (
+        SELECT DISTINCT game_date FROM nba_points_calibration
+        WHERE grade_version = ${NBA_POINTS_GRADE_VERSION} ORDER BY game_date DESC LIMIT ${nights}
+      )
+      SELECT c.game_date, c.player, c.line, c.actual_points, c.minutes_before_tip, c.p_over, c.p20, c.p25, c.p30, c.p35, c.p40
+      FROM nba_points_calibration c
+      JOIN recent r ON r.game_date = c.game_date
+      WHERE c.grade_version = ${NBA_POINTS_GRADE_VERSION} AND c.status = 'graded' AND c.actual_points IS NOT NULL
+      ORDER BY c.game_date, c.player`);
+    return (result.rows as Record<string, unknown>[]).map((r) => ({
+      gameDate: String(r.game_date instanceof Date ? r.game_date.toISOString().slice(0, 10) : r.game_date).slice(0, 10),
+      player: String(r.player),
+      line: Number(r.line),
+      actual: Number(r.actual_points),
+      minutesBeforeTip: Number(r.minutes_before_tip),
+      pOver: r.p_over == null ? null : Number(r.p_over),
+      p20: r.p20 == null ? null : Number(r.p20),
+      p25: r.p25 == null ? null : Number(r.p25),
+      p30: r.p30 == null ? null : Number(r.p30),
+      p35: r.p35 == null ? null : Number(r.p35),
+      p40: r.p40 == null ? null : Number(r.p40),
+    }));
+  } catch (error) {
+    if (/relation .* does not exist/i.test(String(error))) return [];
+    throw error;
+  }
+}
 
 /**
  * The nightly grade of the books' points lines (model/nba_points_calibration.py):
