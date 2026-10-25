@@ -38,6 +38,7 @@ export async function safeReadNflOptimizerAudit(...args: Args<typeof actions.rea
 export async function safeExportSavedNflDefensiveEntries(...args: Args<typeof actions.exportSavedNflDefensiveEntries>) { return run("Exporting entries", () => actions.exportSavedNflDefensiveEntries(...args)); }
 export async function safeExportSavedNflEntries(...args: Args<typeof actions.exportSavedNflEntries>) { return run("Exporting entries", () => actions.exportSavedNflEntries(...args)); }
 export async function safeExportSavedNflLineups(...args: Args<typeof actions.exportSavedNflLineups>) { return run("Exporting lineups", () => actions.exportSavedNflLineups(...args)); }
+export async function safeImportNflOwnershipRanges(...args: Args<typeof actions.importNflOwnershipRanges>) { return run("Importing ownership ranges", () => actions.importNflOwnershipRanges(...args)); }
 export async function safeApplyNflComparison(...args: Args<typeof actions.applyNflComparison>) { return run("Importing comparison projections", () => actions.applyNflComparison(...args)); }
 export async function safeLoadNflSalaryCsv(...args: Args<typeof actions.loadNflSalaryCsv>) { return run("Uploading salaries", () => actions.loadNflSalaryCsv(...args)); }
 export async function safeSearchNflStarterNews(...args: Args<typeof actions.searchNflStarterNews>) { return run("Searching starter news", () => actions.searchNflStarterNews(...args)); }

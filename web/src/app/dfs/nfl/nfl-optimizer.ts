@@ -169,6 +169,8 @@ export type NflOptimizerSettings = {
   defensiveAdjustments?: DefensiveSettings;
   /** Team -> DK id of a user-confirmed starting QB; see `confirmed-starter.ts`. */
   confirmedStartingQbs?: Record<string, number>;
+  /** DK id -> field ownership percent typed by the owner (nfl-ownership-manual-v1); replaces the prior for that player. */
+  ownershipOverrides?: Record<string, number>;
   allowDkFallback: boolean;
   workloadPositions?: WorkloadPositions;
   situations?: SituationSettings;
