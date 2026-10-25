@@ -16,7 +16,7 @@ def test_player_ranges():
     a = ps[0]
     assert a["games"] == 4 and a["low"] == 0 and a["high"] == 70 and a["avg"] == pytest.approx(30.0)
     assert a["q1"] <= a["avg"] <= a["q3"]
-    assert a["catches"] == [1, 1, 1, 1]
+    assert a["counts"] == [1, 1, 1, 1]
 
 
 def test_chart_writes_png(tmp_path):
@@ -24,3 +24,13 @@ def test_chart_writes_png(tmp_path):
     data = {t: c.player_ranges(rows, t) for t in ("PIT", "NO")}
     assert c.range_chart(data, tmp_path / "a.png", {"PIT": "weeks 1-4", "NO": "weeks 1-4"})
     assert not c.range_chart({"PIT": []}, tmp_path / "b.png", {"PIT": ""})
+
+
+def test_rushing_includes_qbs_and_counts_carries(tmp_path):
+    rows = [{"player_id": "q", "player_display_name": "Q", "position": "QB", "team": "PIT", "week": w,
+             "rushing_yards": y, "carries": c} for w, y, c in ((1, 20, 4), (2, 35, 7))]
+    rows += [{"player_id": "w", "player_display_name": "W", "position": "WR", "team": "PIT", "week": 1,
+              "rushing_yards": 9, "carries": 1}]
+    ps = c.player_ranges(rows, "PIT", "rushing")
+    assert [p["name"] for p in ps] == ["Q"] and ps[0]["counts"] == [4, 7] and ps[0]["avg"] == 27.5
+    assert c.range_chart({"PIT": ps}, tmp_path / "r.png", {"PIT": "weeks 1-2"}, "rushing")
