@@ -32,7 +32,17 @@ from model.story_charts import WIDTH_IN, _axes, _finish  # noqa: E402
 SEASON = 2026
 DEFAULT_DIR = Path("artifacts") / "nfl_market_scenarios"
 MIN_RECEPTIONS = 3
-TEAM_NAMES = {"CHI": "Chicago Bears", "NE": "New England Patriots"}
+TEAM_NAMES = {
+    "ARI": "Arizona Cardinals", "ATL": "Atlanta Falcons", "BAL": "Baltimore Ravens", "BUF": "Buffalo Bills",
+    "CAR": "Carolina Panthers", "CHI": "Chicago Bears", "CIN": "Cincinnati Bengals", "CLE": "Cleveland Browns",
+    "DAL": "Dallas Cowboys", "DEN": "Denver Broncos", "DET": "Detroit Lions", "GB": "Green Bay Packers",
+    "HOU": "Houston Texans", "IND": "Indianapolis Colts", "JAX": "Jacksonville Jaguars", "KC": "Kansas City Chiefs",
+    "LA": "Los Angeles Rams", "LAC": "Los Angeles Chargers", "LV": "Las Vegas Raiders", "MIA": "Miami Dolphins",
+    "MIN": "Minnesota Vikings", "NE": "New England Patriots", "NO": "New Orleans Saints", "NYG": "New York Giants",
+    "NYJ": "New York Jets", "PHI": "Philadelphia Eagles", "PIT": "Pittsburgh Steelers", "SEA": "Seattle Seahawks",
+    "SF": "San Francisco 49ers", "TB": "Tampa Bay Buccaneers", "TEN": "Tennessee Titans",
+    "WAS": "Washington Commanders",
+}
 PARTS = (("rec", "Receptions (1 pt each)", "#2a78d6"),
          ("yds", "Receiving yards (1 pt per 10)", "#7fb2ec"),
          ("td", "Receiving touchdowns (6 each)", "#1baf7a"),
