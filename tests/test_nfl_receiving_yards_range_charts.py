@@ -16,6 +16,7 @@ def test_player_ranges():
     a = ps[0]
     assert a["games"] == 4 and a["low"] == 0 and a["high"] == 70 and a["avg"] == pytest.approx(30.0)
     assert a["q1"] <= a["avg"] <= a["q3"]
+    assert a["catches"] == [1, 1, 1, 1]
 
 
 def test_chart_writes_png(tmp_path):
