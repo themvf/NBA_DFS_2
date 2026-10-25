@@ -10,6 +10,13 @@ Win chance is the consensus moneyline from the latest pregame capture in ``game_
 the books we capture), with the bookmaker margin removed proportionally: p = r_home / (r_home + r_away), where r is
 each side's implied probability. Ties (about 0.2% in the NFL) are ignored.
 
+  nfl_take_model_win_prob_<date>.png   the same layout from our pick'em matchup model
+                                       (``pickem-matchup-residual-shadow-v1``): the market's no-vig chance plus a
+                                       small ridge adjustment from six matchup features (pass rush, yards before and
+                                       after contact). A black tick marks the market's split; the right column says
+                                       which team the model likes more than the market and by how much. It is a
+                                       shadow model anchored to the market, not an independent or validated forecast.
+
     python -m model.nfl_win_prob_chart --date 2026-10-25 --out-dir DIR
 """
 
@@ -112,6 +119,64 @@ def win_prob_chart(games: list[dict], path: Path, day_label: str, captured: str,
     return _finish(fig, path, "Who's favored to win tomorrow", sub, height)
 
 
+def model_rows(games: list[dict], forecasts: dict[str, dict]) -> list[dict]:
+    """Attach the model's and the market's home win chance (ties removed) to each game it covers."""
+    out = []
+    for g in games:
+        f = forecasts.get(f"{g['away']}@{g['home']}")
+        if not f:
+            continue
+        b, c = f["baseline"], f["candidate"]
+        pm = c.get("homeConditional") or c["home"] / (c["home"] + c["away"])
+        pk = b["home"] / (b["home"] + b["away"])
+        out.append({**g, "p_home": pm, "p_away": 1 - pm, "market_home": pk, "edge": pm - pk})
+    return out
+
+
+def model_chart(games: list[dict], path: Path, day_label: str, built: str) -> bool:
+    if not games:
+        return False
+    height = 0.5 * len(games) + 2.8
+    fig, ax = plt.subplots(figsize=(WIDTH_IN, height), dpi=DPI)
+    fig.patch.set_facecolor(SURFACE)
+    _axes(ax, xgrid=False, ygrid=False)
+    for y, g in enumerate(games):
+        pa, ph = g["p_away"], g["p_home"]
+        away_fav = pa > ph
+        ax.barh(y, pa, left=0, height=0.62, color=FAV_COLOUR if away_fav else DOG_COLOUR)
+        ax.barh(y, ph, left=pa, height=0.62, color=DOG_COLOUR if away_fav else FAV_COLOUR)
+        ax.text(0.015, y, f"{g['away']}  {pa:.0%}", ha="left", va="center", fontsize=8,
+                color="white" if away_fav else INK, fontweight="bold")
+        ax.text(0.985, y, f"{ph:.0%}  {g['home']}", ha="right", va="center", fontsize=8,
+                color=INK if away_fav else "white", fontweight="bold")
+        ax.text(-0.02, y, g["kickoff_label"], ha="right", va="center", fontsize=7, color=INK_2)
+        # Where the market splits the same game: the away team's market chance from the left.
+        ax.plot([1 - g["market_home"]] * 2, [y - 0.36, y + 0.36], color=INK, linewidth=1.6, zorder=4)
+        pts = round(g["edge"] * 100)
+        likes = g["home"] if pts > 0 else g["away"]
+        txt = f"model likes {likes} +{abs(pts)} pt{'s' if abs(pts) > 1 else ''}" if abs(pts) >= 1 else "same as market"
+        big = abs(pts) >= 4
+        ax.text(1.02, y, f"market {1 - g['market_home']:.0%} / {g['market_home']:.0%}   {txt}", ha="left",
+                va="center", fontsize=6.8, color=INK if big else INK_2, fontweight="bold" if big else "normal")
+    ax.axvline(0.5, color=SURFACE, linewidth=1.2, zorder=3)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(len(games) - 0.5, -0.5)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    for side in ax.spines.values():
+        side.set_visible(False)
+    fig.tight_layout(rect=(0.09, 0, 0.68, 1))
+    top = max(games, key=lambda g: abs(g["edge"]))
+    top_team = top["home"] if top["edge"] > 0 else top["away"]
+    sub = (f"{day_label}, {len(games)} games. Bars: our model's win chance. Away team left, home right; blue is the "
+           f"model's favorite.\nBlack tick: where the betting market splits the same game. Biggest disagreement: "
+           f"{top_team}, +{abs(top['edge']) * 100:.0f} points over the market.\nModel = our pick'em matchup model "
+           f"(shadow): the market's no-vig chance, nudged by pass rush and yards before and after contact.\nIt starts "
+           f"from the market, so it rarely moves more than a few points, and it has not been shown to beat the market. "
+           f"Built {built}.")
+    return _finish(fig, path, "Who our model favors tomorrow", sub, height)
+
+
 # ── data ─────────────────────────────────────────────────────────────────────
 def load_games(day: dt.date) -> list[dict]:
     import psycopg2
@@ -153,6 +218,34 @@ def load_games(day: dt.date) -> list[dict]:
     return out
 
 
+def load_forecasts(day: dt.date) -> tuple[dict[str, dict], str]:
+    """Latest shadow pick'em forecast per game for the NFL week containing ``day``, keyed 'AWAY@HOME'."""
+    import psycopg2
+    from dotenv import load_dotenv
+
+    load_dotenv(".env")
+    sql = """
+        SELECT DISTINCT ON (f.game_id) f.game_id, f.available_at, f.payload->'baseline', f.payload->'candidate'
+        FROM nfl_pickem_matchup_forecasts f
+        JOIN nfl_season_games s ON s.nflverse_game_id = f.game_id
+        WHERE f.model_version = 'pickem-matchup-residual-shadow-v1' AND (f.payload->>'covered')::boolean
+          AND (f.payload->>'selectedForDefault')::boolean
+          AND s.kickoff >= %s AND s.kickoff < %s AND f.available_at < s.kickoff
+        ORDER BY f.game_id, f.available_at DESC
+    """
+    start = dt.datetime.combine(day, dt.time(4), tzinfo=dt.timezone.utc)
+    with psycopg2.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
+        cur.execute(sql, (start, start + dt.timedelta(days=1)))
+        rows = cur.fetchall()
+    out, built = {}, []
+    for game_id, at, base, cand in rows:
+        _, _, away, home = game_id.split("_")
+        out[f"{TEAM_ALIAS.get(away, away)}@{TEAM_ALIAS.get(home, home)}"] = {"baseline": base, "candidate": cand}
+        built.append(at)
+    label = max(built).astimezone(ET).strftime("%b %d %I:%M %p ET").replace(" 0", " ") if built else "unknown"
+    return out, label
+
+
 def build_all(out_dir: Path, day: dt.date) -> list[tuple[str, bool]]:
     games = game_rows(load_games(day))
     caps = [g["captured_at"] for g in games if g.get("captured_at")]
@@ -162,7 +255,10 @@ def build_all(out_dir: Path, day: dt.date) -> list[tuple[str, bool]]:
     opened = "" if not opens else f" ({opens[0]})" if len(opens) == 1 else f" ({opens[0]}-{opens[-1].split()[-1]})"
     name = f"nfl_take_win_prob_{day.isoformat()}.png"
     label = day.strftime("%A, %B %d").replace(" 0", " ")
-    return [(name, win_prob_chart(games, Path(out_dir) / name, label, captured, opened))]
+    forecasts, built = load_forecasts(day)
+    mname = f"nfl_take_model_win_prob_{day.isoformat()}.png"
+    return [(name, win_prob_chart(games, Path(out_dir) / name, label, captured, opened)),
+            (mname, model_chart(model_rows(games, forecasts), Path(out_dir) / mname, label, built))]
 
 
 def main(argv: list[str] | None = None) -> int:
