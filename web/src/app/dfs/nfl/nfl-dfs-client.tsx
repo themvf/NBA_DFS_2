@@ -542,13 +542,17 @@ export default function NflDfsClient() {
         setMessage("The update started, but part of it can't be followed from here, so its data may not be in yet. Check back in a few minutes and use Refresh saved player pool.");
         return;
       }
-      if (shouldAdoptNewestProjections({ refreshAvailable: Boolean(next.slate.refreshAvailable), firstKickoff: next.slate.firstKickoff ?? null, now, builtLineups: lineups.length })) {
-        refreshProjections("Data updated. The slate now uses the newest projections, injuries and depth charts.");
+      // Pressing Update data asks for the newest numbers, so move even when lineups are
+      // built: earlier builds stay listed under Lineup set with the projections they used.
+      if (shouldAdoptNewestProjections({ refreshAvailable: Boolean(next.slate.refreshAvailable), firstKickoff: next.slate.firstKickoff ?? null, now, builtLineups: 0 })) {
+        refreshProjections(savedRuns.length || lineups.length
+          ? "Data updated. The slate now uses the newest projections, injuries and depth charts. Your earlier builds are still under Lineup set, with the projections they were built on."
+          : "Data updated. The slate now uses the newest projections, injuries and depth charts.");
         return;
       }
       setSlate(next.slate);
       setMessage(next.slate.refreshAvailable
-        ? "Data updated. Newer projections are ready; use Refresh projections in the Slate Check to move to them (your current lineups stay saved)."
+        ? "Data updated. Newer projections exist, but games have started, so this slate keeps the projections it has."
         : "Data updated. Nothing changed that affects this slate's projections; DraftKings statuses are current.");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "The slate could not be reloaded after the update."); }
   }
