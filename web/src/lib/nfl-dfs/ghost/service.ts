@@ -35,6 +35,7 @@ import { buildArm } from "./arm";
 import { ghostDesign, GHOST_DESIGN_VERSION, type GhostFormat } from "./design";
 import { GHOST_HOUSE_VERSION, houseSettings } from "./house";
 import { dkGameInfo, SYSTEM_SLATE_VERSION, type PoolRow, type ScheduledGame } from "./system-slate";
+import { freezeTiming, FRESH_LINES_DEADLINE_MINUTES, FRESH_LINES_MINUTES, type FreezeTiming } from "./freeze-timing";
 
 export const FREEZE_FROM_MINUTES = 105;
 export const FREEZE_UNTIL_MINUTES = 20;
@@ -101,12 +102,43 @@ export async function gradableSlates(now: Date, hours = 6): Promise<{ slates: Gr
   return { slates, skipped };
 }
 
-/** Freeze one slate's inputs once. Returns the freeze id, or null with an event saying why not. */
-export async function freezeSlate(slate: GradableSlate, secret: string, now = new Date()): Promise<string | null> {
+/** Prop lines for the slate's first kickoff group captured after the pregame capture opens. */
+async function freshLineCount(slate: GradableSlate, now: Date): Promise<number> {
+  const r = rows(await db.execute(sql`SELECT count(*)::int AS n FROM prop_odds_history WHERE sport = 'nfl'
+    AND commence_time BETWEEN ${slate.firstKickoff}::timestamptz - interval '5 minutes' AND ${slate.firstKickoff}::timestamptz + interval '5 minutes'
+    AND captured_at >= ${slate.firstKickoff}::timestamptz - make_interval(mins => ${FRESH_LINES_MINUTES})
+    AND captured_at <= ${now.toISOString()}::timestamptz`))[0];
+  return Number(r?.n ?? 0);
+}
+
+/**
+ * Freeze one slate's inputs once. Returns the freeze id, "waiting" while the
+ * pregame lines have not landed and the deadline has not passed, or null with
+ * an event saying why not.
+ */
+export async function freezeSlate(slate: GradableSlate, secret: string, now = new Date()): Promise<string | "waiting" | null> {
   const existing = rows(await db.execute(sql`SELECT freeze_id FROM nfl_dfs_ghost_freezes WHERE design_version = ${GHOST_DESIGN_VERSION} AND draft_group_id = ${slate.draftGroupId}`));
   if (existing.length) return String(existing[0].freeze_id);
   const minutes = (Date.parse(slate.firstKickoff) - now.getTime()) / 60_000;
   if (minutes > FREEZE_FROM_MINUTES || minutes < FREEZE_UNTIL_MINUTES) return null;
+  let timing: FreezeTiming;
+  let freshLines = 0;
+  try {
+    freshLines = await freshLineCount(slate, now);
+    timing = freezeTiming(minutes, freshLines > 0);
+  } catch (error) {
+    // A failed freshness read must not block the freeze past its deadline.
+    timing = minutes > FRESH_LINES_DEADLINE_MINUTES ? "wait" : "freeze_stale";
+    await event({ draftGroupId: slate.draftGroupId, stage: "freeze_lines", ok: false, detail: error instanceof Error ? error.message : String(error) });
+  }
+  if (timing === "wait") {
+    await event({ draftGroupId: slate.draftGroupId, stage: "freeze_wait", ok: true,
+      detail: `waiting for pregame prop lines (none captured since T-${FRESH_LINES_MINUTES}); freezes regardless at T-${FRESH_LINES_DEADLINE_MINUTES}, now T-${Math.round(minutes)}` });
+    return "waiting";
+  }
+  const linesNote = timing === "freeze"
+    ? `lines: pregame capture (${freshLines} prop rows since T-${FRESH_LINES_MINUTES})`
+    : `lines: STALE, no pregame prop capture by T-${FRESH_LINES_DEADLINE_MINUTES}; froze on older lines`;
   try {
     // Newest snapshot at freeze time (statuses change in the last hours).
     const snap = rows(await db.execute(sql`SELECT snapshot_id, captured_at FROM nfl_dfs_dk_pool_snapshots WHERE draft_group_id = ${slate.draftGroupId}
@@ -122,7 +154,7 @@ export async function freezeSlate(slate: GradableSlate, secret: string, now = ne
     const ownerSignature = sha256(`${slate.format}|${infos.join("|")}`);
     const inputDigest = sha256(canonicalAuditJson({ inputSnapshot: frozen.inputSnapshot, house: frozen.resolvedHouse }));
     const freezeId = randomUUID();
-    const notes = [...frozen.warnings, `projections ${frozen.modelVersion} as of ${frozen.modelAsOf}`, `ownership ${frozen.ownership.capability}, leverage ${frozen.ownership.leverage ? "on" : "off"}`,
+    const notes = [...frozen.warnings, linesNote, `projections ${frozen.modelVersion} as of ${frozen.modelAsOf}`, `ownership ${frozen.ownership.capability}, leverage ${frozen.ownership.leverage ? "on" : "off"}`,
       `design ${ghostDesign(slate.format).digest}`, `house ${GHOST_HOUSE_VERSION}`, `optimizer ${NFL_OPTIMIZER_VERSION}`];
     if (!frozen.projectionRunId) throw new Error("The system slate resolved no projection run");
     const inserted = rows(await db.execute(sql`INSERT INTO nfl_dfs_ghost_freezes (freeze_id, design_version, draft_group_id, pool_snapshot_id, upload_id, projection_run_id, format, season, week,
@@ -136,7 +168,7 @@ export async function freezeSlate(slate: GradableSlate, secret: string, now = ne
     const id = inserted[0]?.freeze_id ? String(inserted[0].freeze_id)
       : String(rows(await db.execute(sql`SELECT freeze_id FROM nfl_dfs_ghost_freezes WHERE design_version = ${GHOST_DESIGN_VERSION} AND draft_group_id = ${slate.draftGroupId}`))[0].freeze_id);
     await event({ draftGroupId: slate.draftGroupId, freezeId: id, stage: "freeze", ok: true,
-      detail: `${slate.format} ${slate.kind}, ${frozen.inputSnapshot.length} players, kickoff ${slate.firstKickoff}` });
+      detail: `${slate.format} ${slate.kind}, ${frozen.inputSnapshot.length} players, kickoff ${slate.firstKickoff}; ${linesNote}` });
     return id;
   } catch (error) {
     await event({ draftGroupId: slate.draftGroupId, stage: "freeze", ok: false, detail: error instanceof Error ? error.message : String(error) });
@@ -242,6 +274,7 @@ export async function runGhostTick(secret: string, budgetMs = 270_000): Promise<
   const freezeFailures: number[] = [];
   for (const s of slates) {
     const id = await freezeSlate(s, secret, now);
+    if (id === "waiting") continue;
     if (id) frozen.push(id);
     else {
       const minutes = (Date.parse(s.firstKickoff) - now.getTime()) / 60_000;

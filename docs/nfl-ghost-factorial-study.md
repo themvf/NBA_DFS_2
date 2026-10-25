@@ -42,6 +42,21 @@ never reads them, and nothing waits for them.
 | same tick and every tick after | one function call per missing arm (`/api/nfl-ghost/arm`) builds from the frozen input and saves a research run plus its `nfl_dfs_ghost_arms` row in one batch. No build starts within 4 minutes of first kickoff, and none saves within 60 seconds |
 | Tuesday and Wednesday | `refresh_nfl_dfs_postweek.yml` imports the flagships, then `python -m research.nfl_ghost_grade` grades every subject and writes the report |
 
+**Amendment, 2026-10-25 (owner's decision: ghosts build from the freshest
+lines).** The four freezes before this date ran at the first tick in the window
+(~T-105) and all used the day-before prop lines and pre-inactive availability:
+the pregame prop capture lands 60-75 minutes before kickoff (11:52 ET for the
+week-6 Sunday slate, which froze at 11:15 ET). From this date a slate in its
+window waits until prop lines for its first kickoff group have been captured
+within 80 minutes of kickoff, which is after inactives (~T-90), then freezes.
+If none have landed by T-40 it freezes anyway and its notes say `lines: STALE`
+(`web/src/lib/nfl-dfs/ghost/freeze-timing.ts`). Each tick it waits writes a
+`freeze_wait` event and is not a freeze failure. Every arm on a slate still
+reads the same frozen input, so the factor effects are unaffected; what
+changes is that the house and arms now see the projections a post-inactives
+owner build would. Late games on the Sunday main slate are still frozen at the
+first kickoff group's time. The design version is unchanged.
+
 **What the system slate is:** an ordinary upload tagged `origin = 'system'`,
 stored with no projection-run link and a salted slate signature. Every reader
 that lists or picks uploads therefore never sees it. That covers the slate
