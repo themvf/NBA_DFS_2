@@ -19,8 +19,8 @@ def test_team_table_counts_offense_defense_turnovers_and_red_zone():
     a, b = t["A"], t["B"]
     assert (a["wins"], a["losses"], b["losses"]) == (1, 0, 1)
     assert a["off_yds"] == 60 and a["def_yds"] == 25 and b["def_yds"] == 60
-    assert a["off_td"] == 1 and a["to_margin"] == 1 and b["to_margin"] == -1
-    assert a["rz_td"] == 1.0 and b["rz_td"] == 0.0
+    assert a["off_td"] == 1 and b["def_td"] == 1 and a["takeaways"] == 1 and b["giveaways"] == 1
+    assert a["rz_td"] == 1.0 and b["rz_td"] == 0.0 and b["def_rz_td"] == 1.0 and a["def_rz_td"] == 0.0
     assert abs(a["off_epa"] - 0.4) < 1e-9 and abs(a["def_epa"] + 0.15) < 1e-9
     r = m.ranks(t)
     assert r["A"]["pf"] == 1 and r["A"]["pa"] == 1 and r["B"]["def_yds"] == 2
