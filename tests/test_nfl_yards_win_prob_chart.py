@@ -41,3 +41,9 @@ def test_scores_skip_ties_and_chart_renders(tmp_path):
               "home_ypg": 333.0, "away_ypg": 416.0}]
     assert y.yards_chart(games, tmp_path / "c.png", "Sunday", 0.01, s, {**s, "weeks": "weeks 4-7"})
     assert not y.yards_chart([], tmp_path / "d.png", "", 0.01, s, s)
+
+
+def test_pick_names_the_favorite_and_calls_a_tie_even():
+    assert y._pick("KC", "SEA", 0.31) == ("KC", 0.69)
+    assert y._pick("KC", "SEA", 0.58) == ("SEA", 0.58)
+    assert y._pick("PIT", "NO", 0.5) == ("Even", 0.5)
