@@ -11,7 +11,9 @@ import {
   getNbaSeasonStats,
   getNbaTeams,
 } from "@/db/nba-top-scorers";
-import { getNbaPointsCalibration, type CalibrationSummary } from "@/db/nba-points-calibration";
+import { getNbaPointsCalibration, getNbaPointsCalibrationRows, type CalibrationSummary } from "@/db/nba-points-calibration";
+import { reliabilitySeries, scatterData, type ReliabilitySeries, type ScatterData } from "@/lib/nba-points-calibration-charts";
+import { CalibrationCharts } from "./calibration-charts";
 import { TopScorersClient } from "./top-scorers-client";
 
 export const metadata: Metadata = {
@@ -47,7 +49,7 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
   const requested = params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) ? params.date : null;
   const date = requested ?? (dates.includes(today) ? today : dates.find((d) => d > today) ?? dates[0] ?? today);
 
-  const [rows, ladderRows, pulled, lastSeason, teams, calibration, nightCalibration] = await Promise.all([
+  const [rows, ladderRows, pulled, lastSeason, teams, calibration, nightCalibration, gradedRows] = await Promise.all([
     getNbaPointsProps(date),
     getNbaPointsProps(date, "player_points_alternate"),
     getNbaPulledLines(date),
@@ -55,7 +57,10 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
     getNbaTeams(),
     getNbaPointsCalibration(),
     getNbaPointsCalibration(date),
+    getNbaPointsCalibrationRows(),
   ]);
+  const reliability = reliabilitySeries(gradedRows);
+  const scatter = scatterData(gradedRows);
   const { scorers, games } = buildBoard(rows, lastSeason, teams, ladderRows);
   const lastCapture = games.reduce<string | null>((m, g) => (m == null || g.capturedAt > m ? g.capturedAt : m), null);
   const bookCount = new Set(scorers.flatMap((s) => s.books.map((b) => b.book))).size;
@@ -104,7 +109,7 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
         <TopScorersClient scorers={scorers} games={games} pulled={pulled} lastSeason={LAST_SEASON} />
       )}
 
-      <CalibrationPanel all={calibration} night={nightCalibration} date={date} />
+      <CalibrationPanel all={calibration} night={nightCalibration} date={date} reliability={reliability} scatter={scatter} />
 
       <section className="space-y-1 text-xs text-muted-foreground">
         <p>
@@ -131,7 +136,19 @@ const pct = (v: number | null | undefined, digits = 0) => (v == null ? "n/a" : `
  * last pre-tip capture said, beside how often it happened. Pooled over every
  * graded night, with the viewed night beside it when it has been graded.
  */
-function CalibrationPanel({ all, night, date }: { all: CalibrationSummary | null; night: CalibrationSummary | null; date: string }) {
+function CalibrationPanel({
+  all,
+  night,
+  date,
+  reliability,
+  scatter,
+}: {
+  all: CalibrationSummary | null;
+  night: CalibrationSummary | null;
+  date: string;
+  reliability: ReliabilitySeries[];
+  scatter: ScatterData;
+}) {
   if (!all) {
     return (
       <section style={DARK_BORDER} className="rounded-xl border border-slate-800 bg-[#0f1726] px-5 py-4 text-sm text-slate-300">
@@ -233,6 +250,7 @@ function CalibrationPanel({ all, night, date }: { all: CalibrationSummary | null
         squared gap between the stated chance and what happened; lower is better, and a coin flip on a 50% line scores
         0.25. Under a few hundred player-games the night-to-night swing is noise; the pooled columns are the ones to read.
       </p>
+      <CalibrationCharts reliability={reliability} scatter={scatter} />
     </section>
   );
 }

@@ -261,7 +261,14 @@ by accent-free name within their own game, never across games. The page shows th
 (n, books said, happened, Brier per reading; floor and ceiling beat rates) and the viewed night
 beside it. Both tables are on /health (36 h). First two nights (Oct 20-21, 195 rows, 193
 graded): over-the-line hit 46.6% against 50.2% stated, floor beat 90.2%, ceiling beat 7.3%;
-far too few to read, which is why it runs nightly.
+far too few to read, which is why it runs nightly. **Charts (2026-10-24):** below the table,
+a reliability diagram per reading (six small multiples, one hue; each 10-point bin plotted at
+its MEAN stated chance against the hit share, dot size by n, hollow under 20 rows, every
+graded night) and an actual-vs-line scatter of the newest 14 nights split by capture age
+(within 2 h of tip, blue; earlier, orange), with the diagonal as the line. Bins and points
+are computed in `web/src/lib/nba-points-calibration-charts.ts` (pure, tested) from the slim
+graded rows of the last 60 nights; the hues were validated against the page's surface with the
+dataviz palette validator.
 
 ## Data Refresh Workflow
 
