@@ -10,6 +10,7 @@ import { optimizeNflLineups } from "../src/app/dfs/nfl/nfl-optimizer";
 import { buildDesign, ghostDesign, GHOST_ARMS, GHOST_FACTORS, GHOST_LINEUPS, houseLevels, maxCrossCorrelation } from "../src/lib/nfl-dfs/ghost/design";
 import { armProjection, buildArm, CEILING_CAP_OFF } from "../src/lib/nfl-dfs/ghost/arm";
 import { houseSettings } from "../src/lib/nfl-dfs/ghost/house";
+import { freezeTiming, FRESH_LINES_DEADLINE_MINUTES, FRESH_LINES_MINUTES } from "../src/lib/nfl-dfs/ghost/freeze-timing";
 import { CAPTAIN_ID_OFFSET, dkGameInfo, systemSlate, type PoolRow } from "../src/lib/nfl-dfs/ghost/system-slate";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -124,4 +125,13 @@ const sr = optimizeNflLineups(sh.players, sh.settings);
 if (!sr.lineups.length) console.log("showdown warnings:", sr.warnings.slice(0, 8));
 assert.ok(sr.lineups.length > 0);
 console.log(`Showdown house build (20 lineups): ${((Date.now() - st) / 1000).toFixed(1)}s, ${sr.lineups.length} built`);
+// The freeze waits for the pregame prop capture, then freezes regardless at the deadline.
+assert.equal(freezeTiming(100, false), "wait");
+assert.equal(freezeTiming(68, false), "wait");
+assert.equal(freezeTiming(68, true), "freeze");
+assert.equal(freezeTiming(100, true), "freeze");
+assert.equal(freezeTiming(FRESH_LINES_DEADLINE_MINUTES, false), "freeze_stale");
+assert.equal(freezeTiming(25, false), "freeze_stale");
+assert.ok(FRESH_LINES_MINUTES >= 75, "fresh-lines window must cover the 60-75 minute pregame capture");
+
 console.log("Ghost factorial: pinned designs, balance and orthogonality, projection reverts, system slate, arm settings and real builds passed.");
