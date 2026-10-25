@@ -7834,6 +7834,17 @@ Raising the whole room's ownership made Classic worse at every setting. The
 misses are value and role stories; separating the crowded teammate needs what
 the field reads (published projections, news), which no frozen input carries.
 
+**FantasyPros ranges bound the prior (`nfl-ownership-bands-v1`, owner's decision
+2026-10-24, week 7 main slate).** `web/scripts/import-nfl-ownership-bands.ts
+<file> <YYYY-MM-DD>` parses FantasyPros' "DraftKings Projected Roster %" page
+(copied as text) into `nfl_dfs_ownership_bands`; on Classic slates whose first
+kickoff is that Eastern date, the workspace read (`attachOwnershipBands`) holds
+each matched player's prior inside his range (team + position + salary + name;
+a DST on its nickname) and leaves LineStar and unmatched players alone.
+`ourOwnPct` keeps the raw prior, `ownBand` the range; nothing is renormalised
+(week 7: 900% to 1043%, 131 raised, 11 lowered, 251 kept). A stated choice, not
+fitted; grade it against the week's imported contest before keeping it.
+
 ### GPP objective: multiplicative leverage and the ceiling cap (2026-09-27)
 
 The first build with the ownership prior live produced the SAME three lineups

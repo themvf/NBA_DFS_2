@@ -27,6 +27,7 @@ import {
 import { matchNflIdentity, resolveNflRosterIdentity, assertUniqueNflSalaryIdentities } from "@/lib/nfl-dfs/identity";
 import { getNflIdentityRoster } from "@/db/nfl-identity";
 import { canonicalNflTeam, parseNflDkSalaryCsv, type NflDkSlate } from "@/lib/nfl-dfs/dk-salary-csv";
+import { bandReport, clampToBand, matchBands, NFL_OWNERSHIP_BANDS_VERSION, type BandReport, type OwnershipBand } from "@/lib/nfl-dfs/ownership-bands";
 import { readDefensiveCaptures } from '@/db/nfl-defensive-projections';
 import { resolveDefensiveForecast, type CaptureProfile } from '@/lib/nfl-dfs/defensive-projection';
 import { captureProfileFor } from '@/lib/nfl-dfs/defensive-display';
@@ -142,6 +143,8 @@ export type NflWorkspacePlayer = NflOptimizerPlayer & {
    * carries the news.
    */
   marketAnchor?: MarketAnchor | null;
+  /** `nfl-ownership-bands-v1`: the outside range that bounded `ownPct`; `prior` is our unbounded number. */
+  ownBand?: { low: number; high: number; prior: number; source: string; capturedAt: string } | null;
   platformEligibility?: PlatformEligibilityDecision;
   availabilityEvidence?: {gameDecisionId:string|null;platformManifestDigest:string|null;
     platformDecisionState:'ELIGIBLE'|'INELIGIBLE'|null;decisionAt:string|null};
@@ -224,6 +227,8 @@ export type NflWorkspaceSlate = {
   absenceCommit?: { version: string; applied: number; skipped: AbsenceCommitReport['skipped']; error?: string };
   /** Players projected from the sportsbooks' lines, and the newest line capture used. */
   marketAnchor?: { version: string; applied: number; eligible: number; newestCapture: string | null; oldestCapture: string | null; error?: string };
+  /** Outside ownership ranges applied to the prior, when a range list is imported for this slate's date. */
+  ownershipBands?: BandReport & { error?: string };
   /** Starting QBs the user confirmed for this read, and any that could not be applied. */
   confirmedStartingQbs?: ConfirmedStarterReport;
   /** Players each defensive profile would actually adjust on this slate (captures that pass every check). */
@@ -853,6 +858,7 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
   }), run, identityMap);
   await attachMarketAnchor(workspace);
   const owned = attachOwnership(workspace);
+  await attachOwnershipBands(owned);
   owned.opponentAdjustments = await opponentAdjustmentCoverage(owned);
   owned.defensiveCaptures = await defensiveCaptureStatuses(owned, { backfill: options.recordCheck !== false });
   owned.slateCheck = slateCheckFor(owned, { incompleteWarning, rosterStaleWarning, rosterCapturedAt, games: upload.games as string[],
@@ -1196,6 +1202,44 @@ function attachOwnership(workspace: NflWorkspaceSlate): NflWorkspaceSlate {
     return { ...p, ourOwnPct: ours?.ownPct ?? null, captainOwnPct: ours?.captainPct ?? null, flexOwnPct: ours?.flexPct ?? null,
       ownPct: linestar ?? ours?.ownPct ?? null, ownSource: linestar != null ? "linestar" : ours ? prior.version : null };
   }) };
+}
+
+/**
+ * Outside ownership ranges (`nfl-ownership-bands-v1`, owner's decision
+ * 2026-10-24): the newest imported range list for the slate's Eastern kickoff
+ * date holds each matched player's prior inside its range (below the low end
+ * is raised to it, above the high end is lowered to it). Classic only; a
+ * LineStar number is left alone. `ourOwnPct` keeps the raw prior, `ownBand`
+ * records the range, and everything that reads `ownPct` (leverage,
+ * duplication, the Own column) sees the bounded number. A failed read leaves
+ * the prior in place and says so.
+ */
+async function attachOwnershipBands(workspace: NflWorkspaceSlate): Promise<void> {
+  if (workspace.format !== 'classic' || !workspace.firstKickoff) return;
+  const slateDate = new Date(workspace.firstKickoff).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  try {
+    const found = await db.execute(sql`SELECT source, captured_at, rows FROM nfl_dfs_ownership_bands
+      WHERE slate_date = ${slateDate}::date AND format = 'classic' ORDER BY captured_at DESC, id DESC LIMIT 1`);
+    const latest = found.rows[0] as { source: string; captured_at: string; rows: OwnershipBand[] } | undefined;
+    if (!latest) return;
+    const eligible = workspace.players.filter((p) => p.ownSource !== 'linestar' && p.ownPct != null && !p.isOut);
+    const matches = matchBands(eligible.map((p) => ({ dkPlayerId: p.dkPlayerId, name: p.name, position: p.position, team: p.team, salary: p.salary })), latest.rows);
+    const before = new Map(eligible.map((p) => [p.dkPlayerId, p.ownPct as number]));
+    const after = new Map<number, number>();
+    const capturedAt = new Date(String(latest.captured_at)).toISOString();
+    workspace.players = workspace.players.map((p) => {
+      const band = matches.get(p.dkPlayerId);
+      if (!band || p.ownPct == null) return p;
+      const bounded = clampToBand(p.ownPct, band);
+      after.set(p.dkPlayerId, bounded);
+      return { ...p, ownPct: bounded, ownSource: `${p.ownSource ?? 'prior'}+${NFL_OWNERSHIP_BANDS_VERSION}`,
+        ownBand: { low: band.low, high: band.high, prior: p.ownPct, source: latest.source, capturedAt } };
+    });
+    workspace.ownershipBands = bandReport(latest.source, capturedAt, latest.rows, matches, before, after);
+  } catch (error) {
+    workspace.ownershipBands = { ...bandReport('fantasypros', null, [], new Map(), new Map(), new Map()),
+      error: `Ownership ranges could not be read, so the prior is used as is: ${error instanceof Error ? error.message : 'unknown error'}` };
+  }
 }
 
 export async function loadNflSalaryCsv(formData: FormData): Promise<NflWorkspaceSlate> {
