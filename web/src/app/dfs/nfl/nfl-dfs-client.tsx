@@ -473,7 +473,24 @@ export default function NflDfsClient() {
         try { localStorage.setItem('nfl-saved-slate', uploadId); } catch { /* Selection memory is optional. */ }
         setMessage(isLocked(next.slate.firstKickoff ?? null, Date.now()) ? 'Saved player pool loaded. Original forecasts retained.' : 'Saved player pool loaded. Availability refreshed.');
         draftReadyFor.current = null;
-        if (!restoreLineups) await restoreDraft(uploadId);
+        if (!restoreLineups) {
+          await restoreDraft(uploadId);
+          // Show the newest saved build for review. The build form keeps the
+          // settings last used here, so the next Generate starts from them.
+          const newest = next.runs[0];
+          if (newest) {
+            try {
+              const saved = await loadSavedNflLineups(uploadId, newest.runId);
+              setLineups(saved.lineups); setRunId(saved.runId); setRunBuild(saved.build ?? null); setCompletedSettings(saved.settings);
+              restoreRunEvidence(saved);
+              setSlate(current => current && current.uploadId === uploadId ? restoreSavedForecasts(current, saved.defensiveForecasts) : current);
+              const more = next.runs.length > 1 ? ` ${next.runs.length - 1} older build${next.runs.length === 2 ? " is" : "s are"} under Lineup set.` : "";
+              setMessage(`Loaded your newest saved build: ${saved.lineups.length} lineups from ${formatEt(newest.createdAt)}, with the scores they were built on.${more} The build form keeps the settings you last used. Review current availability before exporting.`);
+            } catch (reason) {
+              setError(`The slate loaded, but its newest saved build could not be: ${reason instanceof Error ? reason.message : 'the read failed'}. Pick it under Lineup set in Review.`);
+            }
+          }
+        }
         if (restoreLineups && next.runs[0]) {
           try {
             const saved = await loadSavedNflLineups(uploadId, next.runs[0].runId);
