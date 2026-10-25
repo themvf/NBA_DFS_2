@@ -28,11 +28,10 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
-from matplotlib.lines import Line2D  # noqa: E402
 
 from model.cfb_pattern_charts import DPI, INK, INK_2, SURFACE  # noqa: E402
 from model.nfl_win_prob_chart import ET, home_win  # noqa: E402
-from model.story_charts import WIDTH_IN, _axes, _finish  # noqa: E402
+from model.story_charts import WIDTH_IN, _finish  # noqa: E402
 
 DEFAULT_DIR = Path("artifacts") / "nfl_market_scenarios"
 FIT_SEASONS = (2023, 2024, 2025)
@@ -123,43 +122,68 @@ def scores(b: float, rows: list[dict]) -> dict:
 
 
 # ── chart ────────────────────────────────────────────────────────────────────
+def _pick(away: str, home: str, p_home: float) -> tuple[str, float]:
+    if abs(p_home - 0.5) < 0.005:
+        return ("Even", 0.5)   # a coin flip favors nobody, so it is never a different winner
+    return (home, p_home) if p_home >= 0.5 else (away, 1 - p_home)
+
+
 def yards_chart(games: list[dict], path: Path, day_label: str, b: float, fit: dict, oos: dict) -> bool:
+    """A grid: one row per game, one column per model, each cell the team that model favors and its chance."""
     if not games:
         return False
-    height = 0.5 * len(games) + 3.2
+    rows = []
+    for g in games:
+        mk = _pick(g["away"], g["home"], g["market_home"])
+        md = _pick(g["away"], g["home"], g["model_home"]) if g.get("model_home") is not None else None
+        yd = _pick(g["away"], g["home"], g["yards_home"])
+        rows.append({**g, "mk": mk, "md": md, "yd": yd, "flip": yd[0] not in (mk[0], "Even"),
+                     "gap": abs(g["yards_home"] - g["market_home"])})
+    rows.sort(key=lambda r: (not r["flip"], -r["gap"]))
+    n_flip = sum(r["flip"] for r in rows)
+
+    height = 0.42 * len(rows) + 2.9
     fig, ax = plt.subplots(figsize=(WIDTH_IN, height), dpi=DPI)
     fig.patch.set_facecolor(SURFACE)
-    _axes(ax, ygrid=False)
-    for y, g in enumerate(games):
-        vals = [v for v in (g["market_home"], g.get("model_home"), g["yards_home"]) if v is not None]
-        ax.plot([min(vals), max(vals)], [y, y], color=INK_2, linewidth=0.8, alpha=0.5, zorder=1)
-        ax.scatter(g["market_home"], y, s=46, color=MARKET_COLOUR, zorder=3)
-        if g.get("model_home") is not None:
-            ax.scatter(g["model_home"], y, s=46, color=MODEL_COLOUR, zorder=4)
-        ax.scatter(g["yards_home"], y, s=46, color=YARDS_COLOUR, marker="D", zorder=5)
-        ax.text(1.02, y, f"{g['away']} {g['away_ypg']:.0f}  ·  {g['home']} {g['home_ypg']:.0f}",
-                ha="left", va="center", fontsize=6.8, color=INK_2, transform=ax.get_yaxis_transform())
-    ax.axvline(0.5, color=INK_2, linewidth=0.7, linestyle=":", zorder=0)
-    ax.set_yticks(range(len(games)), [f"{g['away']} @ {g['home']}" for g in games], fontsize=7.4)
-    ax.set_ylim(len(games) - 0.5, -0.7)
-    ax.set_xlim(0, 1)
-    ax.set_xticks([0, 0.25, 0.5, 0.75, 1], ["0%", "25%", "50%", "75%", "100%"], fontsize=7)
-    ax.set_xlabel("Home team's chance to win", fontsize=8, color=INK_2)
-    ax.legend(handles=[Line2D([], [], marker="o", linestyle="", color=MARKET_COLOUR, label="Betting market"),
-                       Line2D([], [], marker="o", linestyle="", color=MODEL_COLOUR, label="Our pick'em model"),
-                       Line2D([], [], marker="D", linestyle="", color=YARDS_COLOUR, label="Yards only")],
-              loc="lower left", bbox_to_anchor=(0, 1.0), ncol=3, fontsize=7, frameon=False)
-    fig.tight_layout(rect=(0, 0, 0.8, 1))
+    ax.set_axis_off()
+    ax.set_xlim(0, 100)
+    ax.set_ylim(len(rows) - 0.4, -1.3)
+    cols = [("Betting market", 24, MARKET_COLOUR, "mk"), ("Our pick'em model", 46, MODEL_COLOUR, "md"),
+            ("Yards only", 68, YARDS_COLOUR, "yd")]
+    width = 19
+    for label, x, colour, _ in cols:
+        ax.text(x, -0.95, label, ha="left", va="center", fontsize=8.2, color=colour, fontweight="bold")
+    ax.text(0, -0.95, "Game", ha="left", va="center", fontsize=8.2, color=INK, fontweight="bold")
+    ax.text(90, -0.95, "Yards a game", ha="left", va="center", fontsize=8.2, color=INK, fontweight="bold")
+    for y, r in enumerate(rows):
+        if r["flip"]:
+            ax.add_patch(plt.Rectangle((-1, y - 0.46), 102, 0.92, color=YARDS_COLOUR, alpha=0.10, lw=0, zorder=0))
+        ax.text(0, y, f"{r['away']} @ {r['home']}", ha="left", va="center", fontsize=8, color=INK)
+        for _, x, colour, key in cols:
+            pick = r[key]
+            if pick is None:
+                ax.text(x, y, "n/a", ha="left", va="center", fontsize=7.5, color=INK_2)
+                continue
+            team, p = pick
+            ax.add_patch(plt.Rectangle((x, y - 0.3), width, 0.6, color="#e6e4df", lw=0, zorder=1))
+            ax.add_patch(plt.Rectangle((x, y - 0.3), width * (p - 0.5) / 0.5, 0.6, color=colour, alpha=0.85,
+                                       lw=0, zorder=2))
+            ax.text(x + 0.6, y, f"{team} {p:.0%}", ha="left", va="center", fontsize=7.8, color=INK,
+                    fontweight="bold", zorder=3)
+        ax.text(90, y, f"{r['away']} {r['away_ypg']:.0f} / {r['home']} {r['home_ypg']:.0f}", ha="left",
+                va="center", fontsize=7, color=INK_2)
+    if n_flip:
+        ax.text(0, len(rows) - 0.1, f"Shaded rows: yards alone picks a different winner than the market "
+                f"({n_flip} of {len(rows)} games).", ha="left", va="top", fontsize=7, color=INK_2)
+    fig.tight_layout()
     per100 = predict(b, 100, 0) - 0.5
-    sub = (f"{day_label}. One input: each team's offensive yards a game so far this season (right column, away then "
-           f"home).\nNo home field, defense or injuries. Every 100 yards a game of difference is worth "
-           f"{per100 * 100:+.0f} points of win chance (fitted on 2023-25).\n"
-           f"Accuracy, Brier score (lower is better, 0.250 = coin flip): 2023-25 yards only {fit['yards_brier']:.3f} vs "
-           f"market {fit['market_brier']:.3f} over {fit['n']} games; 2026 {oos.get('weeks', '')} "
-           f"{oos.get('yards_brier', float('nan')):.3f} vs {oos.get('market_brier', float('nan')):.3f} ({oos.get('n', 0)} games).\n"
-           f"Picked the winner: yards only {fit['yards_right']:.0%}, market {fit['market_right']:.0%} (2023-25). "
-           f"An experiment, not a forecast.")
-    return _finish(fig, path, "If yards were all that mattered", sub, height)
+    sub = (f"{day_label}. Each cell: the team that model favors and its chance to win (bar fills from 50% to 100%).\n"
+           f"Yards only = each team's offensive yards a game this season, nothing else. 100 more yards a game than "
+           f"the opponent is worth {per100 * 100:+.0f} points of win chance.\n"
+           f"Track record, 2023-25 ({fit['n']} games): yards alone picked the winner {fit['yards_right']:.0%} of the "
+           f"time, the market {fit['market_right']:.0%}. This season ({oos.get('n', 0)} games) it has been close to "
+           f"a coin flip.\nAn experiment, not a forecast.")
+    return _finish(fig, path, "Who wins? Market vs our model vs yards alone", sub, height)
 
 
 # ── data ─────────────────────────────────────────────────────────────────────
