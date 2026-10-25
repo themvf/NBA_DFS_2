@@ -4,9 +4,19 @@ from types import SimpleNamespace
 from pathlib import Path
 from hashlib import sha256
 
+import pytest
+
+import research.nfl_matchup_scenario_refresh as refresh
 from research.nfl_matchup_scenario_refresh import preflight, run_cycle
 
 NOW = datetime(2026,9,27,15,tzinfo=timezone.utc)
+REGISTERED = json.loads(refresh.REGISTRATION.read_text(encoding="utf-8"))["baseline_config_hash"]
+
+
+@pytest.fixture(autouse=True)
+def matching_production_config(monkeypatch):
+    """Tests never reach the database; the production run matches the pin unless a test says otherwise."""
+    monkeypatch.setattr(refresh, "production_baseline_config_hash", lambda run_id: REGISTERED)
 
 
 def comparison():
@@ -88,3 +98,28 @@ def test_no_showdown_capture_cannot_reuse_a_previous_saved_file(tmp_path):
     result,code=run_cycle(tmp_path,now=NOW,runner=no_slate)
     assert code==0 and result["status"]=="no_current_pregame_slate"
     assert len(calls)==1 and "research.nfl_showdown_matchup_capture" in calls[0]
+
+
+def test_production_config_outside_the_registered_cohort_closes_it_without_failing(tmp_path, capsys):
+    """2026-10-17 run 39072101044: qb_starter_mode joined production_config() on 10-12,
+    so every later Showdown failed red inside scenario-export. The refresh now stops
+    before any export, writes nothing into the closed cohort, and says why."""
+    (tmp_path/"slate-comparison.json").write_text(json.dumps(comparison()))
+    def unexpected(*args,**kwargs):
+        raise AssertionError("a closed cohort must not run the export")
+    observed = "4104d1a30d63" + "0"*52
+    result, code = run_cycle(tmp_path,now=NOW,persist=True,runner=unexpected,baseline_hash=lambda run_id: observed)
+    assert code == 0 and result["status"] == "registered_cohort_closed"
+    assert result["reason"] == "baseline_config_differs_from_registered_cohort"
+    assert result["registered_baseline_config_hash"] == REGISTERED
+    assert result["observed_baseline_config_hash"] == observed
+    assert result["steps"] == [] and result["baseline_run_id"] == "baseline"
+    assert "::warning title=Coherent research cohort closed::" in capsys.readouterr().out
+    saved = json.loads((tmp_path/"scenario-refresh-status.json").read_text())
+    assert saved["status"] == "registered_cohort_closed"
+
+
+def test_export_still_refuses_a_config_the_cohort_did_not_pin():
+    """The gate sits in front of the export; the export's own check is not loosened."""
+    source = (refresh.ROOT/"research"/"nfl_coherent_scenario_export.py").read_text(encoding="utf-8")
+    assert 'raise ValueError("Baseline configuration differs from the registered candidate cohort")' in source

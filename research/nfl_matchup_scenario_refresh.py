@@ -13,6 +13,34 @@ from uuid import uuid4
 from model.nfl_dfs_context_variant_study import timestamp
 
 ROOT = Path(__file__).resolve().parents[1]
+REGISTRATION = ROOT/"research"/"nfl_coherent_scenario_study.json"
+
+
+def production_baseline_config_hash(run_id):
+    """The export's own envelope: sha256 of model_version + model_config."""
+    from config import load_config
+    from db.database import DatabaseManager
+    from model.nfl_context_engine import stable_digest
+    db = DatabaseManager(load_config().database_url, initialize_schema=False)
+    rows = db.execute("SELECT model_version,model_config FROM nfl_dfs_projection_runs WHERE run_id=%s", (run_id,))
+    if not rows:
+        raise ValueError(f"baseline projection run {run_id} not found")
+    return stable_digest(dict(rows[0]))
+
+
+def cohort_gate(comparison, baseline_hash, registration):
+    """Derived from the real pin: a production config the registered cohort
+    did not pin cannot be frozen into it. That closes the cohort until a new
+    version is registered; it is not a pipeline failure, so it is reported
+    with both hashes rather than failing the job on every Showdown."""
+    registered = registration.get("baseline_config_hash")
+    if baseline_hash == registered:
+        return None
+    return {"reason": "baseline_config_differs_from_registered_cohort",
+            "study_id": registration.get("study_id"), "registered_baseline_config_hash": registered,
+            "observed_baseline_config_hash": baseline_hash, "baseline_run_id": comparison["baseline_run_id"],
+            "action": "Register a new coherent cohort version pinned to the current production config before new data; "
+                      "no freeze is written into the closed cohort."}
 
 
 def preflight(comparison, now, *, not_before=None, season=None, week=None):
@@ -37,7 +65,8 @@ def preflight(comparison, now, *, not_before=None, season=None, week=None):
 
 
 def run_cycle(output_dir, *, persist=False, dry_run=False, not_before=None,
-              season=None, week=None, draws=300, now=None, runner=subprocess.run):
+              season=None, week=None, draws=300, now=None, runner=subprocess.run,
+              baseline_hash=None, registration=None):
     clock = (lambda: now) if now is not None else (lambda: datetime.now(timezone.utc))
     now = clock()
     output_dir = Path(output_dir).resolve()
@@ -98,6 +127,16 @@ def run_cycle(output_dir, *, persist=False, dry_run=False, not_before=None,
         report.update(status="ready", season=comparison["season"], week=comparison["week"],
                       upload_id=comparison["upload_id"], baseline_run_id=comparison["baseline_run_id"],
                       comparison_as_of_at=comparison["as_of_at"])
+        registration = registration if registration is not None else json.loads(REGISTRATION.read_text(encoding="utf-8"))
+        lookup = baseline_hash or production_baseline_config_hash
+        closed = cohort_gate(comparison, lookup(comparison["baseline_run_id"]), registration)
+        if closed:
+            report.update(status="registered_cohort_closed", **closed)
+            print(f"::warning title=Coherent research cohort closed::{closed['study_id']} pins baseline config "
+                  f"{closed['registered_baseline_config_hash'][:12]} but production run {closed['baseline_run_id']} is "
+                  f"{closed['observed_baseline_config_hash'][:12]}; no scenario freeze written. {closed['action']}", flush=True)
+            save()
+            return report, 0
         bank = run_dir/"coherent-scenario-input.json"
         marginals = run_dir/"marginal-scenario-input.json"
         summary = run_dir/"coherent-scenario-summary.json"
