@@ -22,3 +22,18 @@ def test_game_rows_and_chart(tmp_path):
     assert games[1]["move"] is None
     assert w.win_prob_chart(games, tmp_path / "a.png", "Sunday", "now", " (Oct 18)")
     assert not w.win_prob_chart([], tmp_path / "b.png", "", "")
+
+
+def test_model_rows_use_tie_free_chances_and_skip_uncovered(tmp_path):
+    games = [{"home": "SEA", "away": "KC", "kickoff_label": "8:20 PM ET"},
+             {"home": "LV", "away": "LAR", "kickoff_label": "4:25 PM ET"}]
+    f = {"KC@SEA": {"baseline": {"home": 0.579, "away": 0.419, "tie": 0.002},
+                    "candidate": {"home": 0.633, "away": 0.365, "tie": 0.002, "homeConditional": 0.634}}}
+    rows = w.model_rows(games, f)
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["p_home"] == pytest.approx(0.634) and r["p_away"] == pytest.approx(0.366)
+    assert r["market_home"] == pytest.approx(0.579 / 0.998)
+    assert r["edge"] == pytest.approx(0.634 - 0.579 / 0.998)
+    assert w.model_chart(rows, tmp_path / "m.png", "Sunday", "now")
+    assert not w.model_chart([], tmp_path / "n.png", "", "")
