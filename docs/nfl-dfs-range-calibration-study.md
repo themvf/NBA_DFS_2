@@ -286,3 +286,64 @@ Frozen (`research/nfl_dfs_range_calibration_frozen.json`):
 
 Prediction revised only in its numbers, not its rules: B smaller than first
 expected (scales nearer 1); A larger, with its MAE guard the open question.
+
+## Held-out result (2026-10-25): A INCONCLUSIVE, B KILL
+
+`replay --season 2024` and `--season 2025` (2,911 and 2,937 rows with
+baseline 5+; 2,405 and 2,425 gated RB/TE/WR rows over 224 games each), then
+`grade`, run once (`verdict.json`, `grade.log`). Both seasons were replayed
+after the frozen constants were committed (`450087ce`).
+
+**Baseline coverage, played rows** (the 2024-25 half of task 1; read only
+now):
+
+| | RB below/above | TE below/above | WR below/above | QB below/above (reported) |
+|---|---|---|---|---|
+| 2024 | 14.6% / 11.7% | 12.8% / 13.0% | 12.2% / 13.0% | 13.6% / 17.0% |
+| 2025 | 15.6% / 12.5% | 14.4% / 13.2% | 15.5% / 10.8% | 13.9% / 10.2% |
+
+Pooled RB+TE+WR: 13.1% below / 12.6% above in 2024, 15.3% / 11.8% in 2025.
+Same as the tuning seasons and 2026: both tails a few points too narrow, the
+lower one more.
+
+**Primary metric**, range-loss delta (candidate minus baseline; baseline mean
+range loss 2.696 in 2024, 2.737 in 2025), 95% game-clustered interval:
+
+| | 2024 | 2025 |
+|---|---|---|
+| A (half-life 17) | -0.062 [-0.114, -0.011] | -0.100 [-0.153, -0.047] |
+| A, week-clustered (reported) | [-0.105, -0.022] | [-0.138, -0.063] |
+| B (tail scaling) | +0.0003 [-0.013, +0.013] | -0.019 [-0.032, -0.007] |
+
+**Candidate B: KILL.** Its 2024 interval contains zero. Its floor scaling
+worked (below-P10 13.1% -> 10.0% in 2024, 15.3% -> 11.2% in 2025), but its
+ceiling pull-in pushed above-P90 from 12.6% to 13.6% in 2024 and cost more P90
+loss than the floors saved for TE and WR. No rescue by keeping only its floor
+half: that would be a new registration.
+
+**Candidate A: INCONCLUSIVE.** Its range-loss interval is wholly below zero
+in both seasons (about 2-4% of the loss), under both clusterings, and its
+coverage moves to the target: below/above 13.1/12.6% -> 10.5/11.4% in 2024
+and 15.3/11.8% -> 11.5/10.8% in 2025. Every position's point estimate
+improves in both seasons (RB -0.035/-0.070, TE -0.038/-0.134, WR
+-0.087/-0.103). But the MAE guard fails in both seasons: MAE delta +0.044
+[-0.033, +0.119] in 2024 and +0.070 [+0.005, +0.131] in 2025 (bound: upper
+below +0.05). Baseline MAE 5.874 -> 5.919 and 5.821 -> 5.891. So the longer
+memory gives the right width and a slightly worse centre: a recent window
+predicts the mean better and the spread worse. Per the registration,
+production is unchanged and nothing is re-run on 2024-2025.
+
+**What this says about the question.** For players who play, the model's
+ranges are too narrow because half-life 3 sees about 8.7 effective games; a
+17-game memory spreads the draws to roughly the right width. The cost is
+centre, not width. This was not the prediction (B was expected to pass; A
+was expected to be dropped or marginal); recorded as wrong.
+
+**Follow-up, not tested here (a new registration if pursued):** take the
+centre from half-life 3 and the spread from a longer half-life, for example
+`P10 = m3 + (P10_17 - m17)` and the same for P90, which keeps MAE identical to
+v5 by construction. 2022-2025 have now all been seen for this question, so
+it needs fresh data: 2026 weeks 8+ forward, or 2020-2021 replays
+(nflverse back to 2018 for history) as a blind historical gate. Gate F of
+this study is not run for either candidate: B is killed, and A did not reach
+H_CLEARED.
