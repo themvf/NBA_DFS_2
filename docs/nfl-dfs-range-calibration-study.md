@@ -233,3 +233,56 @@ python -m research.nfl_dfs_range_calibration replay --season 2024
 python -m research.nfl_dfs_range_calibration replay --season 2025
 python -m research.nfl_dfs_range_calibration grade
 ```
+
+## Amendment 1: tuning result and frozen constants (2026-10-25, before any 2024 or 2025 row was replayed)
+
+`replay --season 2022` and `--season 2023` (artifacts `replay-2022.json`,
+`replay-2023.json`; 2,969 and 2,916 rows with baseline 5+; the logged
+runtimes include about ten hours of the machine sleeping), then `tune`, run
+once (`tune.json`). Nothing in the registration changed.
+
+Baseline coverage on the tuning seasons, played rows (targets 10 / 10 / 80):
+
+| pos | n | below P10 | above P90 | inside |
+|---|---|---|---|---|
+| RB | 1,571 | 15.3% | 12.1% | 72.6% |
+| TE | 861 | 13.1% | 12.7% | 74.2% |
+| WR | 2,451 | 14.0% | 11.5% | 74.4% |
+| QB (reported) | 1,002 | 15.2% | 14.0% | 70.9% |
+
+The same direction as 2026, a little larger: both tails too narrow, the lower
+one more.
+
+Half-life grid, RB+TE+WR pooled (range loss, MAE; per position below/above):
+
+| half-life | range loss | MAE | RB | TE | WR |
+|---|---|---|---|---|---|
+| 2 | 2.7866 | 5.9038 | .17/.14 | .16/.15 | .16/.13 |
+| **3 (v5)** | 2.6846 | **5.8553** | .15/.12 | .13/.13 | .14/.12 |
+| 4 | 2.6481 | 5.8434 | .14/.11 | .13/.12 | .13/.10 |
+| 6 | 2.6018 | 5.8388 | .14/.10 | .11/.12 | .12/.10 |
+| 8 | 2.5838 | 5.8491 | .14/.10 | .11/.12 | .12/.10 |
+| 12 | 2.5771 | 5.8661 | .13/.09 | .11/.12 | .12/.10 |
+| **17** | **2.5760** | 5.8837 | .13/.10 | .10/.12 | .12/.10 |
+| 34 | 2.5816 | 5.9037 | .14/.10 | .10/.12 | .12/.10 |
+
+Frozen (`research/nfl_dfs_range_calibration_frozen.json`):
+
+- **A: half-life 17.** Range loss 2.5760 against 2.6846 at half-life 3 (-4.0%),
+  at a tuning MAE cost of +0.028. The loss is nearly flat from 8 to 34, so
+  the exact value matters little; the registered rule picks the minimum.
+  The MAE guard (upper bound below +0.05) is the one most likely to bind.
+  Note the tuning MAE optimum is 6, not 3 as in the half-life screen (which
+  tuned on 2023-24 with a different population); recorded, not acted on.
+- **B: RB a 1.08, b 0.96; TE a 1.08, b 0.94; WR a 1.12, b 0.94.** Pinball
+  wants the floor about 10% further below the mean and the ceiling about 5%
+  closer to it, although the baseline's above-P90 rate is already 11.5-12.7%.
+  Pinball and the coverage count disagree here because the mean-relative
+  scale is one number for players of very different spreads: pulling in the
+  ceilings of high-variance players costs less than it saves on the rest.
+  B may therefore fail guard 2 (calibration closer to target) through its
+  upper tail even if its loss falls. That is a reading the registration
+  allows; the rule is not changed.
+
+Prediction revised only in its numbers, not its rules: B smaller than first
+expected (scales nearer 1); A larger, with its MAE guard the open question.
