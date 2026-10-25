@@ -8139,7 +8139,23 @@ and closing lines in `nfl_prop_implied_lines` and reports. Exploratory, weeks
   ran +0.34 points high in weeks 1-4. Lines come from two captures per game
   (the day before at 22:07 UTC and 60-75 minutes before kickoff, see
   docs/the-odds-api.md); without either, every player stays on the model and
-  the page says so. **Lines against results** (`research/nfl_prop_outcomes.py`,
+  the page says so. **v3 (2026-10-25, `nfl-market-anchor-v3`,
+  [docs](docs/nfl-market-anchor-v3.md)): partial anchoring on touchdowns.**
+  Most backups get only touchdown markets, so v2 left them on the model. An
+  RB/WR/TE without a full set but with an anytime-TD line now gets
+  `model + 6 x (calibrated line TD rate - model rushing + receiving TDs)`
+  (`mode: 'td_only'`; every other stat stays the model's; range rescaled;
+  `td_only_delta` in Python is the pinned twin). Graded on weeks 1-6 (665
+  newly anchored player-games, `research/nfl_market_anchor_v3_grade.py`): MAE
+  -0.20 vs the model [-0.25, -0.14], better at RB, WR and TE and in every
+  week, and better than shrinking every model TD by a constant (so the line
+  carries information); projected 5+: -0.65. The RB gain rests on weeks 1-4
+  (weeks 5-6 RB flat). A partial set of volume/yardage lines (61 RBs) graded
+  no better than the model, so it is not used without a full set. A TD-only
+  anchor yields to an absence commit (counted on the slate). Full-set players
+  are unchanged from v2. On the week-6 main Classic (projected 5+) it took RB
+  27 -> 34 of 36, WR 47 -> 55 of 58, TE 27 -> 28 of 28; everyone left has no
+  line at all. **Lines against results** (`research/nfl_prop_outcomes.py`,
   weeks 1-5, final games, closing DK line): receptions and receiving yards are
   calibrated (over hit 48.9%/49.5% against 49.3%/50.0% implied; every-over and
   every-under bets lose about the vig). Rushing yards is not: overs hit 44.6%
