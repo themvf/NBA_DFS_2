@@ -88,24 +88,34 @@ export interface ExposureInfeasibility {
  *   captain per lineup, so total captain appearances ≤ n);
  * - insufficient captain maximum capacity to fill n captain slots.
  */
+export interface ExposurePlayerLabel {
+  /** How the player is named in a problem, e.g. "Dallas Goedert (TE)". */
+  name: string;
+  /** Why he cannot be captain, completing "has a captain minimum, but ...". */
+  captainIneligibleReason?: string;
+}
+
 export function detectExposureInfeasibility(
   policies: PlayerExposurePolicy[],
   n: number,
   captainEligibleIds: Set<number>,
+  labels?: ReadonlyMap<number, ExposurePlayerLabel>,
 ): ExposureInfeasibility[] {
   const problems: ExposureInfeasibility[] = [];
   let captainMinTotal = 0;
   let captainMaxTotal = 0;
   let anyCaptainCapPolicy = false;
+  const who = (id: number) => labels?.get(id)?.name ?? `Player ${id}`;
 
   for (const policy of policies) {
     const c = deriveExposureCounts(policy, n);
     // Per-player: overall min cannot exceed captain-max + flex-max capacity.
     if (c.overallMin > c.captainMax + c.flexMax) {
-      problems.push({ reason: "PLAYER_OVERALL_UNREACHABLE", detail: `Player ${policy.playerId}: overall minimum ${c.overallMin} exceeds captain(${c.captainMax}) + flex(${c.flexMax}) capacity.` });
+      problems.push({ reason: "PLAYER_OVERALL_UNREACHABLE", detail: `${who(policy.playerId)}: overall minimum ${c.overallMin} exceeds captain(${c.captainMax}) + flex(${c.flexMax}) capacity.` });
     }
     if (c.captainMin > 0 && !captainEligibleIds.has(policy.playerId)) {
-      problems.push({ reason: "CAPTAIN_MIN_ON_INELIGIBLE", detail: `Player ${policy.playerId} has a captain minimum but is not captain-eligible.` });
+      const reason = labels?.get(policy.playerId)?.captainIneligibleReason ?? "he is not captain-eligible";
+      problems.push({ reason: "CAPTAIN_MIN_ON_INELIGIBLE", detail: `${who(policy.playerId)} has a captain minimum, but ${reason}.` });
     }
     captainMinTotal += c.captainMin;
     if (policy.captain.maxPct !== null || policy.exactTargetMode) { anyCaptainCapPolicy = true; captainMaxTotal += c.captainMax; }

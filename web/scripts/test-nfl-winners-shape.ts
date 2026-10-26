@@ -7,7 +7,7 @@
  */
 import assert from "node:assert/strict";
 import { dstFacesOwnOffense, optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings } from "../src/app/dfs/nfl/nfl-optimizer";
-import { applyWinnersShape, qbExposureCap, winnersShapeLimits, WINNERS_SHAPE, WINNERS_SHAPE_VERSION } from "../src/lib/nfl-dfs/winners-shape";
+import { applyWinnersShape, qbExposureCap, showdownCaptainPositions, winnersShapeLimits, WINNERS_SHAPE, WINNERS_SHAPE_VERSION } from "../src/lib/nfl-dfs/winners-shape";
 
 // --- Units: the quarterback cap follows the lineup count ---
 assert.equal(qbExposureCap(20), 0.35, "20 lineups -> 3 quarterbacks -> 7 lineups each -> 35%");
@@ -233,6 +233,23 @@ console.log("Winners shape (classic): bring-back share alternates, quarterbacks 
   const ranged = optimizeNflLineups(pool, settings({ format: "showdown", nLineups: n, minSalary: 0, stackPassCatchers: 0, buildShape: "winners", maxExposure: 1,
     exposurePolicies: [{ playerId: 200, overall: { minPct: null, maxPct: 1 }, captain: { minPct: 0.5, maxPct: 1 }, flex: { minPct: null, maxPct: null }, exactTargetMode: false }] }));
   assert.ok(ranged.lineups.filter(l => l.slots.find(s => s.slot === "CPT")!.player.dkPlayerId === 200).length >= 3, "a 50% captain minimum the user set is honoured over the 30% cap");
+
+  // A captain range on a tight end the shape cannot captain names him and the
+  // fix (2026-10-26: "Suggest CPT ranges" gave Dallas Goedert one and the build
+  // failed with only his DraftKings id).
+  const te = pool.find(p => p.position === "TE" && p.ourProj === 26)!;
+  assert.throws(() => optimizeNflLineups(pool, settings({ format: "showdown", nLineups: n, minSalary: 0, buildShape: "winners", maxExposure: 1,
+    exposurePolicies: [{ playerId: te.dkPlayerId, overall: { minPct: null, maxPct: 1 }, captain: { minPct: 0.05, maxPct: 0.2 }, flex: { minPct: null, maxPct: null }, exactTargetMode: false }] })),
+  (error: Error) => error.message.includes(`${te.name} (TE) has a captain minimum, but the Winners shape captains only QB/RB/WR. Clear his CPT range or switch the build shape to Standard.`)
+    && !error.message.includes(`Player ${te.dkPlayerId}`), "the error names the player and the reason, not his id");
+
+  // The page asks the same question before suggesting ranges.
+  assert.deepEqual(showdownCaptainPositions({ format: "showdown", mode: "gpp", buildShape: "winners" }), ["QB", "RB", "WR"]);
+  assert.equal(showdownCaptainPositions({ format: "showdown", mode: "gpp", buildShape: "standard" }), null, "Standard captains anyone");
+  assert.equal(showdownCaptainPositions({ format: "showdown", mode: "cash", buildShape: "winners" }), null, "the shape applies to GPP only");
+  assert.equal(showdownCaptainPositions({ format: "classic", mode: "gpp", buildShape: "winners" }), null, "Classic has no captain");
+  assert.deepEqual(showdownCaptainPositions({ format: "showdown", mode: "gpp", captainPositions: ["QB"] }), ["QB"], "an explicit rule is kept");
+  assert.equal(WINNERS_SHAPE.captainPositions.length, 3, "returning a copy leaves the preset untouched");
 
   assert.throws(() => optimizeNflLineups(pool, settings({ format: "showdown", nLineups: 1, buildShape: "winners", lockedPlayerIds: [id - 1] })), /leaves kickers out/, "a locked kicker is refused by name");
   assert.throws(() => optimizeNflLineups(pool, settings({ format: "classic", captainPositions: ["QB"] })), /Showdown rules/, "showdown-only rules are rejected on a classic slate");
