@@ -553,6 +553,21 @@ export function captainBlockedByAvailability(player: NflOptimizerPlayer): boolea
   return CAPTAIN_DOUBTFUL_STATES.has(status);
 }
 
+/**
+ * A captain minimum the user set on a Questionable player is his own
+ * instruction and outranks the default, as a lock outranks the Doubtful rule.
+ * Used after inactives post, when the availability feed still says Q for a
+ * player the team has listed active. Doubtful stays blocked.
+ */
+export function userCaptainOverridesAvailability(player: NflOptimizerPlayer, settings: Pick<NflOptimizerSettings, "exposurePolicies">): boolean {
+  if ((player.availabilityStatus ?? "").trim().toUpperCase() !== "QUESTIONABLE") return false;
+  return (settings.exposurePolicies ?? []).some((p) => p.playerId === player.dkPlayerId && (p.captain.minPct ?? 0) > 0);
+}
+
+function captainBlockedForRun(player: NflOptimizerPlayer, settings: Pick<NflOptimizerSettings, "exposurePolicies">): boolean {
+  return captainBlockedByAvailability(player) && !userCaptainOverridesAvailability(player, settings);
+}
+
 /** Why a pool player cannot be captain, completing "has a captain minimum, but ...". */
 function captainIneligibleReason(player: NflOptimizerPlayer, settings: NflOptimizerSettings): string {
   if (settings.captainPositions && !settings.captainPositions.includes(player.position)) {
@@ -561,7 +576,7 @@ function captainIneligibleReason(player: NflOptimizerPlayer, settings: NflOptimi
       ? `the Winners shape captains only ${positions}. Clear his CPT range or switch the build shape to Standard`
       : `this build captains only ${positions}. Clear his CPT range`;
   }
-  if (captainBlockedByAvailability(player)) return `his status (${player.availabilityStatus}) keeps him out of the captain slot. Clear his CPT range`;
+  if (captainBlockedForRun(player, settings)) return `his status (${player.availabilityStatus}) keeps him out of the captain slot. Clear his CPT range`;
   return "he cannot be captain in this build. Clear his CPT range";
 }
 
@@ -1461,7 +1476,10 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
     let salaryRelief = false;
     // Applies on both the policy path and the legacy path: the Captain rule is
     // about the 1.5x multiplier, not about how cheap players are screened.
-    let captainEligible = !captainBlockedByAvailability(player);
+    let captainEligible = !captainBlockedForRun(player, settings);
+    if (settings.format === "showdown" && userCaptainOverridesAvailability(player, settings)) {
+      warnings.push(`${player.name} is listed Questionable; his CPT range was applied anyway because you set a captain minimum.`);
+    }
     let overridden = false;
 
     if (policy) {
@@ -1483,7 +1501,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
       // A cheap player admitted only by override is Flex-only unless a CPT
       // override is recorded (spec §8.3).
       captainEligible = (!overridden || captainAdmissible(player.dkPlayerId, overrides))
-        && !captainBlockedByAvailability(player);
+        && !captainBlockedForRun(player, settings);
       // Main's observed-history gate (#217) still applies alongside the policy:
       // the policy scrutinizes CHEAP roles, while this removes any-priced
       // players whose projection is a position average, not theirs (the backup

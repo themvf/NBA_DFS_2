@@ -162,6 +162,24 @@ function main() {
   assert.equal(q.d.eligible, true);
   assert.equal(q.d.captainEligible, false);
 
+  // --- A captain minimum the user set outranks the Questionable default ----
+  // DAL @ PHI 2026-10-26: Barkley was on neither inactive list, DraftKings had
+  // cleared his tag, and the availability feed still said Questionable; the
+  // owner wanted him captain in 1 of 20 and the plan was refused.
+  const cptRange = (id: number, minPct: number) => ({ exposurePolicies: [{
+    playerId: id, overall: { minPct: null, maxPct: null }, captain: { minPct, maxPct: minPct },
+    flex: { minPct: null, maxPct: null }, exactTargetMode: false }] });
+  const qWr = { ...nacua, ourProj: 8, ceilingFpts: 12 };
+  const forced = optimizeNflLineups([...pool(), qWr], settings(cptRange(99, 0.2)));
+  assert.equal(forced.eligibility!.find((d) => d.dkPlayerId === 99)!.captainEligible, true,
+    "a captain minimum on a Questionable player makes him captain-eligible");
+  assert.equal(captainsOf(forced).filter((id) => id === 99).length, 1, "and the 20% minimum is met: 1 of 5");
+  assert.ok(forced.warnings.some((w) => /Questionable; his CPT range was applied anyway/.test(w)), "and says so");
+  assert.equal(optimizeNflLineups([...pool(), qWr], settings()).eligibility!.find((d) => d.dkPlayerId === 99)!.captainEligible, false,
+    "without a minimum the default still holds");
+  assert.throws(() => optimizeNflLineups([...pool(), { ...qWr, availabilityStatus: "DOUBTFUL" }], settings(cptRange(99, 0.2))),
+    /keeps him out of the captain slot/, "Doubtful is never overridden by a captain minimum");
+
   console.log("DraftKings Doubtful: excluded by default, a lock overrides it, Questionable is untouched.");
   console.log("Captain availability gate:");
   console.log("  - QUESTIONABLE/DOUBTFUL cannot take the 1.5x slot, but stay rosterable at FLEX");
