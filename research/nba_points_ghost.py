@@ -104,13 +104,16 @@ def grade(snapshot, games):
         rows.append({'event_id':c['event_id'],'player_key':c['player_key'],'player':c['player'],
                      'status':outcome.status,'actual_points':outcome.actual_points,'actual_minutes':outcome.minutes,
                      'predictions':c['predictions'],'history_status':c['history_status']})
+    from research.nba_leader_evaluation import evaluate
     return {'version':VERSION,'game_date':snapshot['game_date'],'snapshot_sha256':snapshot['sha256'],
             'snapshot_mode':snapshot['mode'],'graded_at':datetime.now(timezone.utc).isoformat(),
             'models':snapshot['models'],'rows':rows,'by_status':dict(Counter(r['status'] for r in rows)),
+            'leaderboards':evaluate(snapshot,rows),
             'all_players':metrics(rows),'market_line_at_least20':metrics([r for r in rows if r['predictions']['market_line']>=20])}
 
 
 def report(grades):
+    from research.nba_leader_evaluation import aggregate
     days=set(); rows=[]; excluded=[]
     for g in grades:
         if g.get('version')!=VERSION or g.get('models')!=MODELS:
@@ -121,6 +124,7 @@ def report(grades):
             raise ValueError('multiple snapshots for one date; choose one before comparing')
         days.add(g['game_date']); rows.extend(g['rows'])
     return {'dates':sorted(days),'retrospective_dates_excluded':excluded,'by_status':dict(Counter(r['status'] for r in rows)),
+            'leaderboards':aggregate(grades),
             'all_players':metrics(rows),'market_line_at_least20':metrics([r for r in rows if r['predictions']['market_line']>=20]),
             'interpretation':'Descriptive paired errors only; games and dates are clustered. No promotion or validated edge implied.'}
 

@@ -209,7 +209,8 @@ def freeze(market, merged, blocked, audit, created, model=None, classifications=
         f=history_features(history) if history else None
         hist=f['p20'] if f else None
         predictions={'market_line':c['line'],'history20':hist,'blend90_10':c['line']+max(-2,min(2,.1*(hist-c['line']))) if hist is not None else None,'opportunity_points':None}
-        forecasts={};watch={'status':'insufficient_history','flag':None,'score':None,'probability':None}
+        forecasts={};conversion_rates=None;components=None
+        watch={'status':'insufficient_history','flag':None,'score':None,'probability':None}
         prior90=f['reference_q90'] if f else None
         p90=None
         if f and model:
@@ -223,6 +224,9 @@ def freeze(market, merged, blocked, audit, created, model=None, classifications=
                 'three':(total('fg3m')+20*model['league_rates']['three'])/(total('fg3a')+20),
                 'free':(total('ftm')+20*model['league_rates']['free'])/(total('fta')+20)}
             predictions['opportunity_points']=2*(forecasts['fga']-forecasts['fg3a'])*rates['two']+3*forecasts['fg3a']*rates['three']+forecasts['fta']*rates['free']
+            conversion_rates=rates
+            components={'two_point':2*(forecasts['fga']-forecasts['fg3a'])*rates['two'],
+                        'three_point':3*forecasts['fg3a']*rates['three'],'free_throw':forecasts['fta']*rates['free']}
             primary=f['p10']>=20
             p90=max(0,linear_predict(model['p90_model'],f)+model['p90_offsets'][str(primary)])
             score=linear_predict(model['watch_model'],f)
@@ -248,13 +252,17 @@ def freeze(market, merged, blocked, audit, created, model=None, classifications=
         rows.append({**c,'history':history,'history_status':'blocked' if key in blocked else ('ready' if f else 'insufficient_history'),
                      'history_count':len(history),'current_season_history_count':current,'features':f,'predictions':predictions,
                      'opportunity_forecasts':forecasts,'historical_p90':prior90,'experimental_p90':p90,
+                     'opportunity_conversion_rates':conversion_rates,'opportunity_scoring_components':components,
                      'market_ceiling_approximation':c.get('ceiling'),'ceiling_watch':watch,'observed_workload_flags':facts,
                      'availability':evidence or {'status':'unverified'},'quality_flags':statuses})
+    from research.nba_leader_evaluation import freeze_selections
     result={'version':VERSION,'models':MODELS,'created_at':created.isoformat(),'game_date':market['game_date'],
             'lock_at':market['lock_at'],'as_of':cutoff.isoformat(),'market_as_of':market['as_of'],
             'mode':'prospective' if created<lock and market['mode']=='prospective' else 'retrospective_reconstruction',
             'market_snapshot_sha256':market['sha256'],'model_sha256':model['sha256'] if model else None,
             'source_audit':audit,'classification_evidence':classifications or [],'candidates':rows,
+            'slate_schedule':market.get('espn_scheduled_starts',[]),
+            'leader_selections':freeze_selections(rows,['market_line',*MODELS]),
             'limitations':['Experimental only; no validated improvement over market projections.',
                            'Historical P90 and conditional experimental P90 are separate; watch targets the historical threshold.',
                            'Watch scores are rankings, not calibrated probabilities. Workload flags are observations, not bonuses.',
@@ -300,13 +308,16 @@ def grade(snapshot,games):
         outcome=grade_captures(date.fromisoformat(snapshot['game_date']),[cap],{},games)[0]
         rows.append({k:c[k] for k in ['event_id','player_key','player','predictions','historical_p90','experimental_p90','market_ceiling_approximation','ceiling_watch','quality_flags']})
         rows[-1].update(status=outcome.status,actual_points=outcome.actual_points,actual_minutes=outcome.minutes)
+    from research.nba_leader_evaluation import evaluate
     return {'version':VERSION,'models':MODELS,'game_date':snapshot['game_date'],'snapshot_mode':snapshot['mode'],
             'snapshot_sha256':snapshot['sha256'],'model_sha256':snapshot['model_sha256'],
             'graded_at':datetime.now(timezone.utc).isoformat(),'rows':rows,'by_status':dict(Counter(r['status'] for r in rows)),
+            'leaderboards':evaluate(snapshot,rows),
             'all_players':summarize(rows),'market_line_at_least20':summarize([r for r in rows if r['predictions']['market_line']>=20])}
 
 
 def report(grades):
+    from research.nba_leader_evaluation import aggregate
     days=set();model_ids=set();rows=[];excluded=[]
     for g in grades:
         if g.get('version')!=VERSION or g.get('models')!=MODELS:raise ValueError('incompatible version')
@@ -315,6 +326,7 @@ def report(grades):
         days.add(g['game_date']);model_ids.add(g['model_sha256']);rows.extend(g['rows'])
     if len(model_ids)>1:raise ValueError('different fitted models must not be pooled')
     return {'version':VERSION,'dates':sorted(days),'retrospective_dates_excluded':excluded,
+            'leaderboards':aggregate(grades),
             'by_status':dict(Counter(r['status'] for r in rows)),'all_players':summarize(rows),
             'market_line_at_least20':summarize([r for r in rows if r['predictions']['market_line']>=20]),
             'interpretation':'Descriptive paired errors and frozen-threshold hits; no validated edge implied.'}

@@ -1,0 +1,188 @@
+<div id="nba-leader-daily">
+  <style>
+    #nba-leader-daily { position:relative;color:var(--foreground); }
+    #nba-leader-daily figure { margin:24px 0;min-width:0; }
+    #nba-leader-daily h3 { margin-bottom:6px; }
+    #nba-leader-daily .meta { color:var(--muted-foreground);margin:6px 0 12px; }
+    #nba-leader-daily .plot { width:100%;min-width:0; }
+    #nba-leader-daily .nba-chart { display:block;width:100%;overflow:visible; }
+    #nba-leader-daily .nba-chart text { fill:var(--foreground);font-size:12px;font-weight:400; }
+    #nba-leader-daily .nba-chart .domain,#nba-leader-daily .nba-chart .tick line { stroke:var(--border); }
+    #nba-leader-daily .axis-title { fill:var(--muted-foreground); }
+    #nba-leader-daily .facets { display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr));gap:24px; }
+    #nba-leader-daily .legend { display:flex;flex-wrap:wrap;gap:14px;margin:8px 0; }
+    #nba-leader-daily .legend button { display:inline-flex;align-items:center;gap:6px;padding:0;border:0;background:transparent;color:var(--foreground);font:inherit; }
+    #nba-leader-daily .legend button[aria-pressed="false"] { opacity:.4; }
+    #nba-leader-daily .swatch { width:9px;height:9px;display:inline-block; }
+    #nba-leader-daily .actual { background:var(--viz-series-1);border-radius:50%; }
+    #nba-leader-daily .forecast { background:var(--viz-series-2); }
+    #nba-leader-daily .p90 { background:var(--viz-series-3);width:3px;height:13px; }
+    #nba-leader-daily .two { background:var(--viz-series-1); }
+    #nba-leader-daily .three { background:var(--viz-series-2); }
+    #nba-leader-daily .free { background:var(--viz-series-3); }
+    #nba-leader-daily .tooltip { position:absolute;pointer-events:none;background:var(--popover);color:var(--popover-foreground);padding:8px;max-width:min(260px,calc(100% - 16px));box-sizing:border-box;z-index:2; }
+    #nba-leader-daily [hidden] { display:none!important; }
+  </style>
+  <h3 id="daily-title">NBA scoring review</h3>
+  <div class="meta text-small" id="daily-context"></div>
+  <div class="viz-controls">
+    <label class="form-label" for="daily-method">Frozen forecast <select class="form-select" id="daily-method"></select></label>
+    <label class="form-label" for="daily-view">Players <select class="form-select" id="daily-view"><option value="leaders">Top actual scorers</option><option value="misses">Largest forecast misses</option></select></label>
+  </div>
+  <figure>
+    <h3>Who reached the leaderboard?</h3>
+    <div class="legend" aria-label="Point chart series">
+      <button type="button" class="cursor-interaction" data-series="actual" aria-pressed="true"><span class="swatch actual" aria-hidden="true"></span>Actual points</button>
+      <button type="button" class="cursor-interaction" data-series="forecast" aria-pressed="true"><span class="swatch forecast" aria-hidden="true"></span>Frozen forecast</button>
+      <button type="button" class="cursor-interaction" data-series="p90" aria-pressed="true"><span class="swatch p90" aria-hidden="true"></span><span id="p90-label">High-end threshold</span></button>
+    </div>
+    <div class="plot" id="leader-plot"></div>
+    <div class="meta text-small" id="leader-coverage" aria-live="polite"></div>
+    <details><summary>Exact points and ranks</summary><div class="table-responsive"><table class="table table-sm"><thead><tr><th>Player</th><th>Forecast</th><th>Actual</th><th>Forecast rank → actual rank</th><th>Historical P90</th><th>Experimental P90</th><th>Market ceiling</th></tr></thead><tbody id="leader-table"></tbody></table></div></details>
+  </figure>
+  <figure>
+    <h3>How did the selected trios score?</h3>
+    <div class="meta text-small">● Actual total · ■ Forecast total · | Best verified actual trio, in hindsight</div>
+    <div class="plot" id="trio-plot"></div>
+    <div class="meta text-small" id="trio-context"></div>
+    <details><summary>Selections and top-three capture</summary><div class="table-responsive"><table class="table table-sm"><thead><tr><th>Strategy</th><th>Selected players</th><th>Actual</th><th>Best verified</th><th>Gap</th><th>Top-three slots</th><th>Unresolved</th></tr></thead><tbody id="trio-table"></tbody></table></div></details>
+  </figure>
+  <figure>
+    <h3>Is point accuracy improving?</h3>
+    <label class="form-label" for="daily-cohort">Paired cohort <select class="form-select" id="daily-cohort"><option value="high">Market line ≥20</option><option value="all">All paired players</option></select></label>
+    <div class="legend" id="accuracy-legend"><span>Market baseline and selected ghost · same player set</span></div>
+    <div class="plot" id="accuracy-plot"></div>
+    <div class="meta text-small" id="accuracy-context"></div>
+  </figure>
+  <div class="facets">
+    <figure><h3>Were the ceilings reached?</h3><div class="plot" id="ceiling-plot"></div><div class="meta text-small">Strict exceedance · counts over eligible outcomes · 10% is a nominal reference</div></figure>
+    <figure><h3>Did the watch flag help?</h3><div class="plot" id="watch-plot"></div><div class="meta text-small">Fixed historical ceiling · flagged and unflagged groups · no probability claim</div></figure>
+  </div>
+  <figure>
+    <h3>How were the points scored?</h3>
+    <div class="legend"><span><i class="swatch two" aria-hidden="true"></i> Twos</span><span><i class="swatch three" aria-hidden="true"></i> Threes</span><span><i class="swatch free" aria-hidden="true"></i> Free throws</span></div>
+    <div class="plot" id="mix-plot"></div>
+    <div class="meta text-small">Observed scoring mix · OT and personal fouls are separate notes, not additional scoring categories</div>
+    <details><summary>Minutes, attempts and postgame diagnostics</summary><div class="table-responsive"><table class="table table-sm"><thead><tr><th>Player</th><th>Minutes actual / forecast</th><th>FGA actual / forecast</th><th>3PA actual / forecast</th><th>FTA actual / forecast</th><th>Regulation</th><th>OT</th><th>PF</th><th>Attempt-mix / conversion residual</th></tr></thead><tbody id="mix-table"></tbody></table></div></details>
+  </figure>
+  <div class="meta text-small" id="trial-context"></div>
+  <div class="tooltip text-small" id="daily-tooltip" hidden></div>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+  <script>
+  (function(){
+    const root=document.getElementById('nba-leader-daily');
+    const data=__DAILY_DATA__;
+    const methodControl=root.querySelector('#daily-method'),viewControl=root.querySelector('#daily-view'),cohortControl=root.querySelector('#daily-cohort');
+    const saved=window.openai?.widgetState?.modelContent;
+    let method=data.methods.includes(saved?.method)?saved.method:(data.methods.includes('blend90_10')?'blend90_10':data.methods[0]);
+    let view=['leaders','misses'].includes(saved?.view)?saved.view:'leaders',cohort=['all','high'].includes(saved?.cohort)?saved.cohort:'high';
+    let visible={actual:true,forecast:true,p90:true},errorVisible={paired_market:true,ghost:true};
+    const fmt=v=>v===null||v===undefined?'—':d3.format('.1f')(v),compact=n=>n.replace('Giannis Antetokounmpo','G. Antetokounmpo').replace(/^([A-Za-z])[A-Za-z]+ /,'$1. ');
+    const id=r=>r.event_id+'|'+r.player_key,byId=new Map(data.rows.map(r=>[id(r),r]));
+    for(const m of data.methods){const option=document.createElement('option');option.value=m;option.textContent=data.labels[m]||m;methodControl.append(option);}
+    methodControl.value=method;viewControl.value=view;cohortControl.value=cohort;
+    const containers=[...root.querySelectorAll('.plot')];
+    function state(){window.openai?.setWidgetState?.({modelContent:{date:data.date,method,view,cohort},privateContent:{}})?.catch(()=>{});}
+    function chart(selector,height,label,left=64){const box=root.querySelector(selector);box.replaceChildren();const w=Math.floor(box.getBoundingClientRect().width),right=w-18,top=30,bottom=height-52;const svg=d3.select(box).append('svg').attr('class','nba-chart').attr('viewBox',`0 0 ${w} ${height}`).attr('role','img').attr('aria-label',label);return {svg,w,left,right,top,bottom,height};}
+    function frame(c){c.svg.append('rect').attr('data-chart-frame','').attr('x',c.left).attr('y',c.top).attr('width',Math.max(0,c.right-c.left)).attr('height',c.bottom-c.top).attr('fill','none').attr('stroke','var(--border)');}
+    function titles(c,x,y){c.svg.append('text').attr('class','axis-title').attr('data-axis','x').attr('x',(c.left+c.right)/2).attr('y',c.height-10).attr('text-anchor','middle').text(x);c.svg.append('text').attr('class','axis-title').attr('data-axis','y').attr('x',8).attr('y',16).text(y);}
+    function blank(selector,text){const c=chart(selector,150,text);c.svg.append('text').attr('x',12).attr('y',60).text(text);return c;}
+    function table(selector,rows){const body=root.querySelector(selector);body.replaceChildren();for(const values of rows){const tr=document.createElement('tr');for(const value of values){const td=document.createElement('td');td.textContent=String(value);tr.append(td);}body.append(tr);}}
+    function selectedRows(){const strategy=data.leaderboards.strategies[method];if(!strategy)return [];let rows=strategy.point_leaderboard.map(r=>({...r,detail:byId.get(id(r))}));if(view==='misses')rows.sort((a,b)=>Math.abs(b.actual_points-b.forecast)-Math.abs(a.actual_points-a.forecast));return rows.slice(0,10);}
+    function leaders(){
+      const rows=selectedRows();if(!rows.length){blank('#leader-plot','Awaiting resolved player outcomes');return;}
+      const step=matchMedia('(pointer:coarse)').matches?44:32,c=chart('#leader-plot',rows.length*step+88,'Frozen forecast and actual points for selected scoring leaders or largest misses.',140);c.right=c.w-50;c.bottom=c.top+rows.length*step;
+      if(c.w<400)c.left=124;
+      const threshold=r=>data.version==='nba-points-ghost-v1'?r.detail?.market_ceiling_approximation:r.detail?.experimental_p90;
+      const values=rows.flatMap(r=>[r.forecast,r.actual_points,threshold(r)]).filter(Number.isFinite),extent=d3.extent(values),x=d3.scaleLinear().domain([Math.min(0,extent[0]-2),extent[1]+3]).nice().range([c.left+8,c.right-10]);
+      const y=d3.scaleBand().domain(rows.map(r=>r.player)).range([c.top,c.bottom]);frame(c);
+      c.svg.append('g').attr('transform',`translate(0,${c.bottom})`).call(d3.axisBottom(x).ticks(c.w<400?3:6).tickSizeOuter(0));c.svg.append('g').attr('transform',`translate(${c.left},0)`).call(d3.axisLeft(y).tickFormat(compact).tickSize(0)).call(g=>g.select('.domain').remove());titles(c,'Points','Player');
+      c.svg.append('text').attr('x',c.w-3).attr('y',16).attr('text-anchor','end').text('Rank');
+      const g=c.svg.append('g').selectAll('g').data(rows).join('g').attr('transform',r=>`translate(0,${y(r.player)+y.bandwidth()/2})`);
+      if(visible.actual&&visible.forecast)g.append('line').attr('x1',r=>x(r.forecast)).attr('x2',r=>x(r.actual_points)).attr('stroke','var(--border)').attr('stroke-width',2);
+      if(visible.forecast)g.append('rect').attr('x',r=>x(r.forecast)-4).attr('y',-4).attr('width',8).attr('height',8).attr('fill','var(--viz-series-2)');
+      if(visible.p90)g.filter(r=>Number.isFinite(threshold(r))).append('line').attr('x1',r=>x(threshold(r))).attr('x2',r=>x(threshold(r))).attr('y1',-8).attr('y2',8).attr('stroke','var(--viz-series-3)').attr('stroke-width',2);
+      if(visible.actual){g.append('circle').attr('cx',r=>x(r.actual_points)).attr('r',4.5).attr('fill','var(--viz-series-1)');g.append('text').attr('x',r=>x(r.actual_points)).attr('y',-9).attr('text-anchor','middle').text(r=>r.actual_points);}
+      g.append('text').attr('x',c.w-3).attr('y',4).attr('text-anchor','end').text(r=>'#'+r.actual_rank);
+      g.append('rect').attr('data-chart-hit','').attr('x',c.left).attr('y',-step/2).attr('width',c.right-c.left).attr('height',step).attr('fill','transparent').attr('data-tooltip',r=>[r.player,visible.forecast?'forecast '+fmt(r.forecast):'',visible.actual?'actual '+r.actual_points:'',visible.p90?'high-end threshold '+fmt(threshold(r)):''].filter(Boolean).join(' · '));
+      root.querySelector('#p90-label').textContent=data.version==='nba-points-ghost-v1'?'Market ceiling approximation':'Experimental P90';
+      const s=data.leaderboards.strategies[method];root.querySelector('#leader-coverage').textContent=`${s.resolved_pool_count}/${s.pool_count} eligible outcomes resolved · ${s.unresolved_pool_count} unresolved · ranks within this model’s observed quoted pool`;
+      table('#leader-table',rows.map(r=>[r.player,fmt(r.forecast),fmt(r.actual_points),'#'+r.forecast_rank+' → #'+r.actual_rank,fmt(r.detail?.historical_p90),fmt(r.detail?.experimental_p90),fmt(r.detail?.market_ceiling_approximation)]));
+    }
+    function trios(){
+      const rows=Object.entries(data.leaderboards.strategies).map(([key,r])=>({key,label:key==='opportunity_points'?'Opportunity':(data.labels[key]||key),...r}));
+      const values=rows.flatMap(r=>[r.selected_actual_total,r.selected_forecast_total,r.best_verified_trio_points]).filter(Number.isFinite);if(!values.length){blank('#trio-plot','Awaiting complete trio forecasts');return;}
+      const c=chart('#trio-plot',rows.length*44+84,'Frozen trio forecasts, verified actual totals, hindsight best verified totals and fractional top-three capture.',106);c.right=c.w-55;c.bottom=c.top+rows.length*44;
+      const ext=d3.extent(values),x=d3.scaleLinear().domain([Math.min(0,ext[0]-3),ext[1]+12]).nice().range([c.left+8,c.right-10]),y=d3.scaleBand().domain(rows.map(r=>r.label)).range([c.top,c.bottom]);frame(c);
+      c.svg.append('g').attr('transform',`translate(0,${c.bottom})`).call(d3.axisBottom(x).ticks(c.w<400?3:6).tickSizeOuter(0));c.svg.append('g').attr('transform',`translate(${c.left},0)`).call(d3.axisLeft(y).tickSize(0)).call(g=>g.select('.domain').remove());titles(c,'Combined points','Strategy');
+      c.svg.append('text').attr('x',c.w-3).attr('y',16).attr('text-anchor','end').text('Capture');
+      const g=c.svg.append('g').selectAll('g').data(rows).join('g').attr('transform',r=>`translate(0,${y(r.label)+y.bandwidth()/2})`);
+      g.filter(r=>Number.isFinite(r.selected_forecast_total)).append('rect').attr('x',r=>x(r.selected_forecast_total)-4).attr('y',-4).attr('width',8).attr('height',8).attr('fill','var(--viz-series-2)');
+      g.filter(r=>Number.isFinite(r.selected_actual_total)).append('circle').attr('cx',r=>x(r.selected_actual_total)).attr('r',4.5).attr('fill','var(--viz-series-1)');
+      g.filter(r=>Number.isFinite(r.selected_actual_total)).append('text').attr('x',r=>x(r.selected_actual_total)).attr('y',-10).attr('text-anchor','middle').text(r=>fmt(r.selected_actual_total));
+      g.filter(r=>Number.isFinite(r.best_verified_trio_points)).append('line').attr('x1',r=>x(r.best_verified_trio_points)).attr('x2',r=>x(r.best_verified_trio_points)).attr('y1',-8).attr('y2',8).attr('stroke','var(--foreground)').attr('stroke-width',2);
+      g.append('text').attr('x',c.w-3).attr('y',4).attr('text-anchor','end').text(r=>r.captured_top3_slots===null?'—':fmt(r.captured_top3_slots)+'/3');
+      g.append('rect').attr('data-chart-hit','').attr('x',c.left).attr('y',-20).attr('width',c.right-c.left).attr('height',40).attr('fill','transparent').attr('data-tooltip',r=>r.label+': '+r.selected.map(p=>p.player).join(', ')+' · actual '+fmt(r.selected_actual_total)+' · verified gap '+fmt(r.gap_to_best_verified)+' · unresolved '+r.unresolved_pool_count);
+      root.querySelector('#trio-context').textContent='Three distinct quoted players · no salary or contest rules assumed · unresolved pool members make hindsight benchmarks provisional'+(data.leaderboards.selection_provenance==='reconstructed_from_frozen_predictions'?' · selection policy reconstructed from the original frozen predictions':' · selections recorded before lock');
+      table('#trio-table',rows.map(r=>[r.label,r.selected.map(p=>p.player).join(', '),fmt(r.selected_actual_total),fmt(r.best_verified_trio_points),fmt(r.gap_to_best_verified),fmt(r.captured_top3_slots)+'/3',r.unresolved_pool_count]));
+    }
+    function accuracy(){root.querySelector('#daily-tooltip').hidden=true;
+      const legend=root.querySelector('#accuracy-legend');legend.replaceChildren();
+      const current=data.errors[cohort]?.[method],history=data.trend.map(t=>({date:t.date,...t[cohort]?.[method]})).filter(t=>t.ghost?.n>0&&t.paired_market?.n>0);
+      if(!current?.ghost?.n){blank('#accuracy-plot','Awaiting paired forecast outcomes');root.querySelector('#accuracy-context').textContent='Pending outcomes are not zero errors.';return;}
+      if(history.length<2){
+        legend.textContent='Market baseline and selected ghost · same player set';
+        const rows=[{label:'Market',value:current.paired_market.mae},{label:method==='opportunity_points'?'Opportunity':(data.labels[method]||method),value:current.ghost.mae}],c=chart('#accuracy-plot',240,'Paired mean absolute error for one slate; no trend inferred.');
+        const x=d3.scaleBand().domain(rows.map(r=>r.label)).range([c.left+8,c.right-8]).padding(.45),ext=d3.extent(rows,r=>r.value),y=d3.scaleLinear().domain([0,ext[1]*1.25]).nice().range([c.bottom-1,c.top+8]);frame(c);
+        c.svg.append('g').attr('transform',`translate(${c.left},0)`).call(d3.axisLeft(y).ticks(4).tickSizeOuter(0));c.svg.append('g').attr('transform',`translate(0,${c.bottom})`).call(d3.axisBottom(x).tickSizeOuter(0));titles(c,'Forecast method','MAE (pts)');
+        c.svg.selectAll('rect.bar').data(rows).join('rect').attr('class','bar').attr('x',r=>x(r.label)).attr('y',r=>y(r.value)).attr('width',x.bandwidth()).attr('height',r=>c.bottom-1-y(r.value)).attr('fill','var(--viz-series-1)').attr('opacity',(r,i)=>i?1:.6);
+        c.svg.selectAll('text.value').data(rows).join('text').attr('class','value').attr('x',r=>x(r.label)+x.bandwidth()/2).attr('y',r=>y(r.value)-8).attr('text-anchor','middle').text(r=>d3.format('.2f')(r.value));
+      }else{
+        const c=chart('#accuracy-plot',250,'Daily paired forecast errors on genuine prospective dates only.');const allSeries=[{key:'paired_market',color:'var(--viz-series-2)',label:'Market'},{key:'ghost',color:'var(--viz-series-1)',label:data.labels[method]}];
+        for(const s of allSeries){const button=document.createElement('button'),swatch=document.createElement('i');button.type='button';button.className='cursor-interaction';button.setAttribute('aria-pressed',String(errorVisible[s.key]));swatch.className='swatch';swatch.style.background=s.color;button.append(swatch,document.createTextNode(s.label));button.addEventListener('click',()=>{errorVisible[s.key]=!errorVisible[s.key];accuracy();});legend.append(button);}
+        const series=allSeries.filter(s=>errorVisible[s.key]);
+        const points=history.map(r=>({...r,x:Date.parse(r.date+'T00:00:00Z')})),x=d3.scaleLinear().domain(d3.extent(points,r=>r.x)).range([c.left+8,c.right-8]),ext=d3.extent(points.flatMap(r=>allSeries.map(s=>r[s.key].mae))),y=d3.scaleLinear().domain([Math.max(0,ext[0]-1),ext[1]+1]).nice().range([c.bottom-8,c.top+8]);frame(c);
+        c.svg.append('g').attr('transform',`translate(${c.left},0)`).call(d3.axisLeft(y).ticks(4));c.svg.append('g').attr('transform',`translate(0,${c.bottom})`).call(d3.axisBottom(x).tickValues(points.filter((r,i)=>i===0||i===points.length-1||i%Math.ceil((points.length-1)/3)===0).map(r=>r.x)).tickFormat(v=>new Date(v).toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'UTC'})));titles(c,'Prospective slate date','MAE (pts)');
+        for(const s of series){c.svg.append('path').datum(points).attr('fill','none').attr('stroke',s.color).attr('stroke-width',2).attr('d',d3.line().x(r=>x(r.x)).y(r=>y(r[s.key].mae)));c.svg.append('g').selectAll('circle').data(points).join('circle').attr('cx',r=>x(r.x)).attr('cy',r=>y(r[s.key].mae)).attr('r',3).attr('fill',s.color);}
+        const guide=c.svg.append('line').attr('data-chart-hover-guide','').attr('stroke','var(--border)').attr('y1',c.top).attr('y2',c.bottom).attr('visibility','hidden'),marks=series.map(s=>c.svg.append('circle').attr('data-chart-hover-marker','').attr('r',4).attr('fill',s.color).attr('visibility','hidden')),tip=root.querySelector('#daily-tooltip');
+        let pinned=false;const overlay=c.svg.append('rect').attr('data-chart-hit','').attr('data-chart-hover-overlay','cross-series').attr('x',c.left).attr('y',c.top).attr('width',c.right-c.left).attr('height',c.bottom-c.top).attr('fill','transparent');
+        function hover(event){const px=Math.max(c.left+8,Math.min(c.right-8,d3.pointer(event,c.svg.node())[0])),at=x.invert(px);let i=d3.bisector(r=>r.x).left(points,at);i=Math.max(1,Math.min(points.length-1,i));const a=points[i-1],b=points[i],t=(at-a.x)/(b.x-a.x);guide.attr('x1',px).attr('x2',px).attr('visibility','visible');const labels=[];series.forEach((s,j)=>{const v=a[s.key].mae+t*(b[s.key].mae-a[s.key].mae);marks[j].attr('cx',px).attr('cy',y(v)).attr('visibility','visible');labels.push(s.label+': '+fmt(v));});tip.textContent='Between nightly observations · '+labels.join(' · ');tip.hidden=false;const rect=root.getBoundingClientRect();tip.style.left=Math.max(4,Math.min(rect.width-280,event.clientX-rect.left+8))+'px';tip.style.top=(event.clientY-rect.top+14)+'px';}
+        overlay.on('pointermove',event=>{if(!pinned)hover(event);}).on('pointerdown',event=>{pinned=!pinned;hover(event);}).on('pointerleave',()=>{if(pinned)return;guide.attr('visibility','hidden');marks.forEach(m=>m.attr('visibility','hidden'));tip.hidden=true;});
+      }
+      const appearances=d3.sum(history,r=>r.ghost.n),weighted=key=>appearances?d3.sum(history,r=>r[key].mae*r[key].n)/appearances:null;
+      root.querySelector('#accuracy-context').textContent=`${current.ghost.n} paired appearances on this slate · ${history.length} prospective dates · cumulative MAE: market ${fmt(weighted('paired_market'))}, ghost ${fmt(weighted('ghost'))} (${appearances} paired) · lower error is better`;
+    }
+    function rates(selector,rows,labels,title){
+      rows=rows.filter(r=>r.n>0);if(!rows.length){blank(selector,title);return;}
+      const c=chart(selector,235,title),values=rows.map(r=>100*r.hits/r.n),max=d3.max([10,...values]),x=d3.scaleBand().domain(rows.map(r=>r.key)).range([c.left+6,c.right-6]).padding(.45),y=d3.scaleLinear().domain([0,Math.min(100,max*1.4)]).nice().range([c.bottom-1,c.top+18]);frame(c);
+      c.svg.append('g').attr('transform',`translate(${c.left},0)`).call(d3.axisLeft(y).ticks(4).tickFormat(v=>v+'%'));c.svg.append('g').attr('transform',`translate(0,${c.bottom})`).call(d3.axisBottom(x).tickFormat(k=>labels[k]));titles(c,'Threshold / group','Hits (%)');
+      if(selector==='#ceiling-plot'){c.svg.append('line').attr('x1',c.left).attr('x2',c.right).attr('y1',y(10)).attr('y2',y(10)).attr('stroke','var(--foreground)').attr('stroke-dasharray','4 4');}
+      c.svg.selectAll('rect.bar').data(rows).join('rect').attr('class','bar').attr('x',r=>x(r.key)).attr('y',r=>y(100*r.hits/r.n)).attr('width',x.bandwidth()).attr('height',r=>c.bottom-1-y(100*r.hits/r.n)).attr('fill','var(--viz-series-3)');
+      c.svg.selectAll('text.value').data(rows).join('text').attr('class','value').attr('x',r=>x(r.key)+x.bandwidth()/2).attr('y',r=>y(100*r.hits/r.n)-8).attr('text-anchor','middle').text(r=>r.hits+'/'+r.n);
+      c.svg.selectAll('rect.hit').data(rows).join('rect').attr('data-chart-hit','').attr('x',r=>x(r.key)-6).attr('y',c.top).attr('width',x.bandwidth()+12).attr('height',c.bottom-c.top).attr('fill','transparent').attr('data-tooltip',r=>labels[r.key]+': '+r.hits+'/'+r.n+' ('+fmt(100*r.hits/r.n)+'%)');
+    }
+    function mixes(){
+      const available=data.rows.filter(r=>Number.isFinite(r.actual_points)&&r.diagnostic.status==='verified'&&r.diagnostic.actual.scoring_components),ranked=available.slice().sort((a,b)=>b.actual_points-a.actual_points),rows=ranked.slice(0,5),chosen=data.leaderboards.strategies[method]?.selected||[];
+      const selectedMiss=available.filter(r=>chosen.some(c=>id(c)===id(r))).sort((a,b)=>(a.actual_points-a.predictions[method])-(b.actual_points-b.predictions[method]))[0];if(selectedMiss&&!rows.some(r=>id(r)===id(selectedMiss)))rows.push(selectedMiss);
+      if(!rows.length){blank('#mix-plot','Awaiting verified final scoring profiles');return;}
+      const narrow=root.querySelector('#mix-plot').clientWidth<400,step=narrow?56:40,c=chart('#mix-plot',rows.length*step+84,'Observed points from twos, threes and free throws. Overtime and personal fouls are separate labels.',134);if(narrow)c.left=122;c.right=c.w-(narrow?25:107);c.bottom=c.top+rows.length*step;
+      const ext=d3.extent(rows,r=>r.actual_points),x=d3.scaleLinear().domain([0,ext[1]*1.18]).nice().range([c.left+3,c.right-20]),y=d3.scaleBand().domain(rows.map(r=>r.player)).range([c.top,c.bottom]);frame(c);
+      c.svg.append('g').attr('transform',`translate(${c.left},0)`).call(d3.axisLeft(y).tickFormat(compact).tickSize(0)).call(g=>g.select('.domain').remove());c.svg.append('g').attr('transform',`translate(0,${c.bottom})`).call(d3.axisBottom(x).ticks(c.w<400?3:6));titles(c,'Actual points','Player');
+      const colors=['var(--viz-series-1)','var(--viz-series-2)','var(--viz-series-3)'],keys=['two_point','three_point','free_throw'];
+      for(const r of rows){let start=0,cy=y(r.player)+y.bandwidth()/2;keys.forEach((key,i)=>{const value=r.diagnostic.actual.scoring_components[key];c.svg.append('rect').attr('x',x(start)).attr('y',cy-8).attr('width',x(start+value)-x(start)).attr('height',16).attr('fill',colors[i]);start+=value;});c.svg.append('text').attr('x',x(start)+4).attr('y',cy+4).text(start);const a=r.diagnostic.actual;c.svg.append('text').attr('x',c.w-3).attr('y',cy+(narrow?22:4)).attr('text-anchor','end').text('OT '+fmt(a.overtime_points)+' · PF '+fmt(a.fouls));c.svg.append('rect').attr('data-chart-hit','').attr('x',c.left).attr('y',cy-18).attr('width',c.right-c.left).attr('height',36).attr('fill','transparent').attr('data-tooltip',r.player+': twos '+a.scoring_components.two_point+', threes '+a.scoring_components.three_point+', free throws '+a.scoring_components.free_throw);}
+      table('#mix-table',available.sort((a,b)=>b.actual_points-a.actual_points).map(r=>{const d=r.diagnostic,a=d.actual,f=d.opportunity_forecasts||{},p=d.postgame_decomposition;return [r.player,fmt(a.minutes)+' / '+fmt(f.minutes),fmt(a.fga)+' / '+fmt(f.fga),fmt(a.fg3a)+' / '+fmt(f.fg3a),fmt(a.fta)+' / '+fmt(f.fta),fmt(a.regulation_points),fmt(a.overtime_points),fmt(a.fouls),p?fmt(p.attempt_mix_difference)+' / '+fmt(p.conversion_residual)+' (opportunity model)':'No frozen attempt model'];}));
+    }
+    function render(){
+      root.querySelector('#daily-title').textContent='NBA scoring review · '+data.date;
+      const time=value=>new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'}).format(new Date(value));
+      root.querySelector('#daily-context').textContent=data.version+' · '+data.mode+' · frozen '+time(data.created_at)+' ET · cutoff '+time(data.lock_at)+' ET';
+      leaders();trios();accuracy();rates('#ceiling-plot',data.ceilings,{historical_p90:'History',experimental_p90:'Model P90',market_ceiling_approximation:'Market'},'Awaiting frozen-ceiling outcomes');rates('#watch-plot',Object.entries(data.watch).map(([key,r])=>({key,...r})),{'True':'Flagged','False':'Others'},'No graded watch flags recorded');mixes();
+      root.querySelector('#trial-context').textContent=`${data.prospective_dates} prospective dates in this version · ${Object.entries(data.status_counts).map(([k,v])=>k+': '+v).join(' · ')} · postgame notes are descriptive; no new model adjustments applied`;
+    }
+    methodControl.addEventListener('change',()=>{method=methodControl.value;render();state();});viewControl.addEventListener('change',()=>{view=viewControl.value;render();state();});cohortControl.addEventListener('change',()=>{cohort=cohortControl.value;accuracy();state();});
+    root.querySelectorAll('[data-series]').forEach(button=>button.addEventListener('click',()=>{const key=button.dataset.series;visible[key]=!visible[key];button.setAttribute('aria-pressed',String(visible[key]));leaders();}));
+    window.addEventListener('openai:set_globals',event=>{const s=event.detail?.globals?.widgetState?.modelContent;if(data.methods.includes(s?.method)){method=s.method;methodControl.value=method;render();}});
+    const observer=new ResizeObserver(()=>render());containers.forEach(c=>observer.observe(c));render();
+  })();
+  </script>
+</div>
