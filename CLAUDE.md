@@ -7928,6 +7928,11 @@ field: raising 132 low players to a range's low end (mean 2.0 -> 3.3, field
 (field 20%+: predicted 16, actual 28; Golden 39%, CMC 38%, Gibbs 35%, Love
 28%) and over on priced-up players the field skipped (Taylor 1%, McBride
 2%, Bowers 3%, all active). Do not adopt the midpoint; keep grading weekly.
+**Clamp OFF from 2026-10-26 (owner's decision):** `OWNERSHIP_BANDS_APPLY =
+false` in `dfs/nfl/actions.ts`; the build uses the plain prior, the ranges
+are still imported (paste box) and shown as reference, and
+`python -m research.nfl_ownership_three_way --week N` grades prior, bounded
+and FantasyPros midpoint against the week's Millionaire each Monday.
 
 ### GPP objective: multiplicative leverage and the ceiling cap (2026-09-27)
 
