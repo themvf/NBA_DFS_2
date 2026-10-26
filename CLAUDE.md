@@ -273,6 +273,21 @@ above the ceiling, "ladder claims" 10/80/10 against "happened", over rows that c
 first 4 nights 11/83/6 on n=169) and a night-by-night panel per reading (running mean of the
 stated chance against the running hit share, with each night's own hit share as a hollow dot;
 the y-axis fits the reading so a 40+ chance under 15% is not a flat line on a 0-100 scale).
+**Reference Brier and short nights (2026-10-26).** A table above the charts scores each reading
+against two guesses: the pooled base rate (in-sample, the best constant) and a line-only guess
+(hit share of players in the same 3-point line band on OTHER nights, shrunk toward those nights'
+pooled share with 10 pseudo-rows), with skill = 1 - books' Brier / reference Brier. The ladder
+earns its keep only if it beats line only. A graded player who played under 15 minutes is a
+"short night": books settle him as played, so he stays graded, is counted, and is drawn hollow
+on the scatter; never dropped, because minutes are known only after the game. The nightly log
+carries base-rate Brier per cell and the short-night count.
+**Tail de-vig is pre-registered, not changed:** six discovery nights (Oct 20-25, 572 graded) had
+every rung from 25+ up stated above what happened. The candidate fix, a power de-vig for
+one-sided rungs only (`nba-points-ladder-v2`), is registered in
+[`docs/nba-points-ladder-v2-registration.md`](docs/nba-points-ladder-v2-registration.md):
+prospective nights from 2026-10-27, both readers recomputed from the same stored captures,
+paired tail Brier with a night-clustered bootstrap, at least 30 nights and 1,000 rows with a
+35+ value. Do not change the reader before that verdict.
 
 ## Data Refresh Workflow
 

@@ -50,6 +50,8 @@ from ingest.nba_box_scores import eastern_date
 from model.nba_points_ladder import LADDER_VERSION, THRESHOLDS, name_key, read_player, team_key
 
 GRADE_VERSION = "nba-points-grade-v1"
+# Same threshold as SHORT_MINUTES in web/src/lib/nba-points-calibration-charts.ts. A stated cut, not fitted.
+SHORT_MINUTES = 15
 MAIN_MARKET = "player_points"
 LADDER_MARKET = "player_points_alternate"
 
@@ -256,11 +258,15 @@ def summarize(rows: list[GradeRow]) -> dict[str, Any]:
             cells[name] = {"n": 0}
             return
         n = len(pairs)
+        observed = sum(1 for _, hit in pairs if hit) / n
         cells[name] = {
             "n": n,
             "predicted": sum(p for p, _ in pairs) / n,
-            "observed": sum(1 for _, hit in pairs if hit) / n,
+            "observed": observed,
             "brier": sum((p - (1.0 if hit else 0.0)) ** 2 for p, hit in pairs) / n,
+            # Brier of giving everyone this night's hit share: the best any constant does in-sample.
+            # The page adds a line-only reference across nights; one night cannot.
+            "baseBrier": observed * (1 - observed),
         }
 
     cell("over", [(r.p_over, r.actual_points > r.line) for r in graded if r.p_over is not None])  # type: ignore[operator]
@@ -274,6 +280,9 @@ def summarize(rows: list[GradeRow]) -> dict[str, Any]:
         "games": len({r.event_id for r in rows}),
         "gamesWithBoxScore": len({r.event_id for r in rows if r.espn_event_id}),
         "cells": cells,
+        # Graded players who played under SHORT_MINUTES: books settle them as played, so they stay
+        # graded; counted so an early exit is not mistaken for a pricing miss.
+        "shortMinutes": sum(1 for r in graded if r.minutes is not None and r.minutes < SHORT_MINUTES),
         # The floor is the score beaten 90% of the time; the ceiling the one beaten 10% of the time.
         "floorBeatRate": (sum(1 for f, a in floors if a > f) / len(floors)) if floors else None,  # type: ignore[operator]
         "ceilingBeatRate": (sum(1 for c, a in ceilings if a > c) / len(ceilings)) if ceilings else None,  # type: ignore[operator]

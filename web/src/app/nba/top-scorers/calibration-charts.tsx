@@ -18,12 +18,15 @@ import {
 } from "recharts";
 import {
   CLOSE_MINUTES,
+  LINE_BAND,
   MIN_BIN_N,
+  SHORT_MINUTES,
   type CoverageData,
   type ReliabilityBin,
   type ReliabilitySeries,
   type ScatterData,
   type ScatterPoint,
+  type SkillRow,
   type TailPoint,
   type TailSeries,
 } from "@/lib/nba-points-calibration-charts";
@@ -121,6 +124,18 @@ function ReliabilityPanel({ series }: { series: ReliabilitySeries }) {
   );
 }
 
+function pointShape(color: string) {
+  return function ScatterDot(props: { cx?: number; cy?: number; payload?: ScatterPoint }) {
+    const { cx = 0, cy = 0, payload } = props;
+    if (!payload) return null;
+    return payload.short ? (
+      <circle cx={cx} cy={cy} r={3.5} fill={SURFACE} stroke={color} strokeWidth={1.5} />
+    ) : (
+      <circle cx={cx} cy={cy} r={3.5} fill={color} fillOpacity={0.75} stroke={SURFACE} strokeWidth={1} />
+    );
+  };
+}
+
 function PointTooltip({ active, payload }: { active?: boolean; payload?: { payload: ScatterPoint }[] }) {
   if (!active || !payload?.length) return null;
   const p = payload[0].payload;
@@ -128,7 +143,10 @@ function PointTooltip({ active, payload }: { active?: boolean; payload?: { paylo
     <div style={tooltipStyle}>
       <div className="text-white">{p.player}</div>
       <div>{p.gameDate} · line {p.line} · scored {p.actual}</div>
-      <div style={{ color: AXIS }}>captured {Math.round(p.minutesBeforeTip)} min before tip</div>
+      <div style={{ color: AXIS }}>
+        {p.minutes != null ? `played ${Math.round(p.minutes)} min · ` : ""}captured {Math.round(p.minutesBeforeTip)} min before tip
+      </div>
+      {p.short ? <div style={{ color: AXIS }}>Short night: under {SHORT_MINUTES} minutes</div> : null}
     </div>
   );
 }
@@ -244,22 +262,84 @@ function TailPanel({ series }: { series: TailSeries }) {
   );
 }
 
+const signed = (v: number | null, digits = 3) => (v == null ? "n/a" : `${v >= 0 ? "+" : ""}${v.toFixed(digits)}`);
+const fixed = (v: number | null, digits = 3) => (v == null ? "n/a" : v.toFixed(digits));
+
+function SkillTable({ rows, shortNights }: { rows: SkillRow[]; shortNights: { n: number; short: number } }) {
+  const nights = rows.reduce((m, r) => Math.max(m, r.nights), 0);
+  return (
+    <div>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-sm font-semibold text-white">Does the books&apos; reading beat simple guesses?</h3>
+        <span className="font-mono text-xs text-slate-400">
+          {nights} {nights === 1 ? "night" : "nights"} · Brier, lower is better · skill above 0 means the books beat the guess
+          {shortNights.n ? ` · ${shortNights.short} of ${shortNights.n} graded played under ${SHORT_MINUTES} min` : ""}
+        </span>
+      </div>
+      <div className="mt-2 overflow-x-auto rounded-lg border p-2" style={{ borderColor: GRID }}>
+        <table className="w-full font-mono text-xs">
+          <thead className="text-slate-400">
+            <tr className="text-left">
+              <th className="py-1 pr-3 font-normal">Reading</th>
+              <th className="py-1 pr-3 text-right font-normal">n</th>
+              <th className="py-1 pr-3 text-right font-normal">Books</th>
+              <th className="py-1 pr-3 text-right font-normal">Base rate</th>
+              <th className="py-1 pr-3 text-right font-normal">Skill vs base</th>
+              <th className="py-1 pr-3 text-right font-normal">Paired n</th>
+              <th className="py-1 pr-3 text-right font-normal">Books (paired)</th>
+              <th className="py-1 pr-3 text-right font-normal">Line only</th>
+              <th className="py-1 text-right font-normal">Skill vs line only</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.key} className="border-t" style={{ borderColor: GRID }}>
+                <td className="py-1 pr-3 text-slate-200">{r.label}</td>
+                <td className="py-1 pr-3 text-right">{r.n}</td>
+                <td className="py-1 pr-3 text-right text-white">{fixed(r.brier)}</td>
+                <td className="py-1 pr-3 text-right">{fixed(r.brierBase)}</td>
+                <td className="py-1 pr-3 text-right text-white">{signed(r.skillVsBase)}</td>
+                <td className="py-1 pr-3 text-right">{r.lineN}</td>
+                <td className="py-1 pr-3 text-right">{fixed(r.brierPaired)}</td>
+                <td className="py-1 pr-3 text-right">{fixed(r.brierLine)}</td>
+                <td className="py-1 text-right text-white">{signed(r.skillVsLine)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-1 font-mono text-xs text-slate-500">
+        Base rate gives every player the pooled hit share; it knows these outcomes, so it is the best any constant can do.
+        Line only gives a player the hit share of players with a line in the same {LINE_BAND}-point band on other nights (shrunk
+        toward those nights&apos; pooled share), i.e. &quot;stars score more&quot; without the ladder; it never sees its own night, so the
+        first night has none. The books&apos; ladder earns its keep only if it beats line only.
+      </p>
+    </div>
+  );
+}
+
 export function CalibrationCharts({
   reliability,
   scatter,
   coverage,
   tails,
+  skill,
+  shortNights,
 }: {
   reliability: ReliabilitySeries[];
   scatter: ScatterData;
   coverage: CoverageData;
   tails: TailSeries[];
+  skill: SkillRow[];
+  shortNights: { n: number; short: number };
 }) {
   const close = scatter.points.filter((p) => p.group === "close");
   const early = scatter.points.filter((p) => p.group === "early");
   const span = scatter.firstDate === scatter.lastDate ? scatter.lastDate : `${scatter.firstDate} to ${scatter.lastDate}`;
   return (
     <div className="mt-4 space-y-4">
+      <SkillTable rows={skill} shortNights={shortNights} />
+
       <div>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h3 className="text-sm font-semibold text-white">Reliability: what the books said against what happened</h3>
@@ -327,18 +407,14 @@ export function CalibrationCharts({
                   name={`Captured within ${CLOSE_MINUTES / 60} h of tip (${close.length})`}
                   data={close}
                   fill={BLUE}
-                  fillOpacity={0.75}
-                  stroke={SURFACE}
-                  strokeWidth={1}
+                  shape={pointShape(BLUE)}
                   isAnimationActive={false}
                 />
                 <Scatter
                   name={`Captured earlier (${early.length})`}
                   data={early}
                   fill={ORANGE}
-                  fillOpacity={0.75}
-                  stroke={SURFACE}
-                  strokeWidth={1}
+                  shape={pointShape(ORANGE)}
                   isAnimationActive={false}
                 />
               </ScatterChart>
@@ -346,7 +422,8 @@ export function CalibrationCharts({
           </div>
         )}
         <p className="mt-1 font-mono text-xs text-slate-500">
-          The diagonal is the line itself: a point above it went over. A player who did not play is not shown.
+          The diagonal is the line itself: a point above it went over. A hollow point played under {SHORT_MINUTES} minutes (early
+          exit, foul trouble, blowout rest); books settle it as played, so it stays graded. A player who did not play is not shown.
         </p>
       </div>
 

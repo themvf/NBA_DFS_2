@@ -76,6 +76,23 @@ def test_summary_counts_and_brier():
     assert s["cells"]["30+"]["n"] == 1 and s["cells"]["30+"]["observed"] == 1.0
     assert s["cells"]["40+"]["n"] == 1 and s["cells"]["40+"]["observed"] == 0.0
     assert s["ceilingBeatRate"] in (0.0, 1.0)
+    # Base-rate Brier is observed * (1 - observed): 0.25 for a 50% night, 0 when every row went one way.
+    assert abs(over["baseBrier"] - 0.25) < 1e-12
+    assert s["cells"]["30+"]["baseBrier"] == 0.0
+    assert s["shortMinutes"] == 0
+
+
+def test_short_minutes_are_counted_but_stay_graded():
+    from model.nba_points_ladder import name_key
+    captures = [_capture("A"), _capture("B")]
+    early_exit = m.BoxPlayer(player="B", player_key=name_key("B"), team="Atlanta Hawks", is_home=False,
+                             played=True, points=2.0, minutes=7.0)
+    games = [_game([_player("A", "Atlanta Hawks", 31), early_exit])]
+    rows = {r.player: r for r in m.grade_captures(date(2026, 10, 21), captures, {}, games)}
+    assert rows["B"].status == "graded" and rows["B"].actual_points == 2.0 and rows["B"].minutes == 7.0
+    s = m.summarize(list(rows.values()))
+    assert s["shortMinutes"] == 1 and s["cells"]["over"]["n"] == 2
+    assert m.SHORT_MINUTES == 15
 
 
 def test_push_on_an_integer_line_is_not_graded():
