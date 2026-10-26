@@ -7,7 +7,7 @@
  */
 import assert from "node:assert/strict";
 import { dstFacesOwnOffense, optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings } from "../src/app/dfs/nfl/nfl-optimizer";
-import { applyWinnersShape, qbExposureCap, showdownCaptainPositions, winnersShapeLimits, WINNERS_SHAPE, WINNERS_SHAPE_VERSION } from "../src/lib/nfl-dfs/winners-shape";
+import { applyWinnersShape, qbExposureCap, showdownCaptainPositions, suggestedCaptainPositions, winnersShapeLimits, WINNERS_SHAPE, WINNERS_SHAPE_VERSION } from "../src/lib/nfl-dfs/winners-shape";
 
 // --- Units: the quarterback cap follows the lineup count ---
 assert.equal(qbExposureCap(20), 0.35, "20 lineups -> 3 quarterbacks -> 7 lineups each -> 35%");
@@ -250,6 +250,11 @@ console.log("Winners shape (classic): bring-back share alternates, quarterbacks 
   assert.equal(showdownCaptainPositions({ format: "classic", mode: "gpp", buildShape: "winners" }), null, "Classic has no captain");
   assert.deepEqual(showdownCaptainPositions({ format: "showdown", mode: "gpp", captainPositions: ["QB"] }), ["QB"], "an explicit rule is kept");
   assert.equal(WINNERS_SHAPE.captainPositions.length, 3, "returning a copy leaves the preset untouched");
+  // "Suggest CPT ranges" never proposes a TE, DST or kicker, in any shape (owner's rule, 2026-10-26).
+  assert.deepEqual(suggestedCaptainPositions({ format: "showdown", mode: "gpp", buildShape: "standard" }), ["QB", "RB", "WR"], "Standard still suggests QB/RB/WR only");
+  assert.deepEqual(suggestedCaptainPositions({ format: "showdown", mode: "cash" }), ["QB", "RB", "WR"]);
+  assert.deepEqual(suggestedCaptainPositions({ format: "showdown", mode: "gpp", buildShape: "winners" }), ["QB", "RB", "WR"]);
+  assert.deepEqual(suggestedCaptainPositions({ format: "showdown", mode: "gpp", captainPositions: ["QB", "TE"] }), ["QB"], "a narrower build rule narrows it further, never widens it");
 
   assert.throws(() => optimizeNflLineups(pool, settings({ format: "showdown", nLineups: 1, buildShape: "winners", lockedPlayerIds: [id - 1] })), /leaves kickers out/, "a locked kicker is refused by name");
   assert.throws(() => optimizeNflLineups(pool, settings({ format: "classic", captainPositions: ["QB"] })), /Showdown rules/, "showdown-only rules are rejected on a classic slate");
