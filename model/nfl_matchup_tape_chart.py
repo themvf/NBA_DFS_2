@@ -321,7 +321,7 @@ def _players_out(away: str, home: str) -> list[tuple[str, str, str]]:
     load_dotenv(".env")
     with psycopg2.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
         cur.execute("""SELECT team_abbrev, canonical_name, injury_status FROM ff_players
-                       WHERE season = %s AND team_abbrev IN (%s, %s) AND injury_status IN ('Out', 'IR', 'Doubtful')""",
+                       WHERE season = %s AND team_abbrev IN (%s, %s) AND upper(injury_status) IN ('OUT', 'IR', 'DOUBTFUL')""",
                     (SEASON, away, home))
         return cur.fetchall()
 
