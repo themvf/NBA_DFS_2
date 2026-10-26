@@ -53,6 +53,14 @@ jobs:
       - name: Capture authoritative Sleeper injury and depth state
         run: |
           python -c "import os,sys; sys.argv=['availability-ops','--mode','capture']; [(sys.argv.extend([flag,os.environ[key]])) for key,flag in [('NFL_SEASON','--season'),('NFL_WEEK','--week')] if os.environ.get(key)]; sys.argv.extend(['--force']) if os.environ.get('FORCE_CAPTURE') == 'true' else None; from ingest.nfl_availability_operations import main; sys.exit(main())"
+      # nflverse roster status (practice squad = DEV) for the DFS practice-squad
+      # rule. Optional like FantasyPros: when it fails the pool keeps the last
+      # captured status (or none), the page says so, and the report step names it.
+      - name: Capture nflverse practice-squad roster status
+        id: roster_status
+        continue-on-error: true
+        run: |
+          python -c "import os,sys; sys.argv=['roster-status']; [(sys.argv.extend([flag,os.environ[key]])) for key,flag in [('NFL_SEASON','--season')] if os.environ.get(key)]; from ingest.nfl_roster_status import main; sys.exit(main())"
       # Optional input: Sleeper stays authoritative when this fails, so the run
       # stays green -- but the failure is named by the report step below, not
       # left behind continue-on-error where nothing reads it.
@@ -96,6 +104,7 @@ jobs:
         if: ${{ always() }}
         env:
           FANTASYPROS_OUTCOME: ${{ steps.fantasypros.outcome }}
+          ROSTER_STATUS_OUTCOME: ${{ steps.roster_status.outcome }}
         run: |
           report() {
             echo "- $1: $2" >> "$GITHUB_STEP_SUMMARY"
@@ -103,6 +112,7 @@ jobs:
           }
           echo "## Optional steps" >> "$GITHUB_STEP_SUMMARY"
           report "FantasyPros corroboration (artifacts/nfl-availability-audit.json)" "$FANTASYPROS_OUTCOME"
+          report "nflverse practice-squad roster status" "$ROSTER_STATUS_OUTCOME"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

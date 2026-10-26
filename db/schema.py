@@ -2591,6 +2591,26 @@ TABLES = [
         UNIQUE(source_snapshot_id, player_id, source),
         CHECK(normalized_status IN ('HEALTHY','QUESTIONABLE','DOUBTFUL','OUT','IR','PUP','NFI','SUSPENDED','UNKNOWN'))
     )""",
+    # nflverse weekly-roster status (ACT / DEV practice squad / INA / RES ...) as
+    # each capture saw it. Append-only and change-only: a row is written when a
+    # player's (roster_week, team, status, description) differs from his newest
+    # row, so the status in force at any past decision time is the newest row
+    # at or before it. ff_players.metadata.nflverse_roster holds only the latest
+    # file and cannot answer that. Written by ingest/nfl_roster_status.py.
+    """CREATE TABLE IF NOT EXISTS nfl_roster_status_observations (
+        id BIGSERIAL PRIMARY KEY,
+        season INTEGER NOT NULL,
+        player_id BIGINT NOT NULL REFERENCES ff_players(id) ON DELETE CASCADE,
+        gsis_id TEXT NOT NULL,
+        roster_week INTEGER NOT NULL,
+        team TEXT,
+        status TEXT NOT NULL,
+        status_description TEXT,
+        source_snapshot_id BIGINT REFERENCES ff_source_snapshots(id) ON DELETE SET NULL,
+        provider_modified_at TIMESTAMPTZ,
+        observed_at TIMESTAMPTZ NOT NULL,
+        version TEXT NOT NULL
+    )""",
     """CREATE TABLE IF NOT EXISTS ff_player_injuries (
         id BIGSERIAL PRIMARY KEY,
         player_id BIGINT NOT NULL REFERENCES ff_players(id) ON DELETE CASCADE,
@@ -5837,6 +5857,7 @@ INDEXES = [
     # Insert-only, so autovacuum's default trigger (20% growth, ~5 days of captures) left the newest
     # two weeks unmarked and the index-only scan above went back to the table for every row.
     "ALTER TABLE ff_player_injury_observations SET (autovacuum_vacuum_insert_scale_factor = 0.02)",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_roster_status_player ON nfl_roster_status_observations(season, player_id, observed_at DESC, id DESC)",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_ff_player_injuries_one_active ON ff_player_injuries(player_id) WHERE active",
     "CREATE INDEX IF NOT EXISTS idx_ff_player_injuries_active ON ff_player_injuries(season, active, status)",
     "CREATE INDEX IF NOT EXISTS idx_ff_injury_events_recent ON ff_injury_events(player_id, occurred_at DESC)",

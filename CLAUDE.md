@@ -7616,6 +7616,60 @@ hour) matched too. 80 s -> 1.6 s from a home connection. The manual "Update
 data" press always forces a capture (scheduled runs skip it when not due),
 so this is the path the button pays for.
 
+## NFL DFS — Practice-squad players are out unless the depth chart confirms them (`nfl-practice-squad-v1`, 2026-10-25)
+
+Owner's decision, built rather than studied. Sleeper lists a practice-squad
+player `status: Active` with no depth number, so the availability layer called
+Salvon Ahmed, Sincere McCormick, Jawhar Jordan and others EXPECTED_ACTIVE and
+the history model projected them 6-8 points off stat lines years old (Easton
+Stick 14.0 as TB's QB in week 3). nflverse's weekly roster does know:
+`status = 'DEV'` is the practice squad, and a player elevated for a game is
+`ACT` for that week.
+
+- **Rule** (`practiceSquadBlock`, `web/src/lib/nfl-dfs/availability.ts`):
+  a QB/RB/WR/TE/K whose nflverse status for the SLATE'S OWN roster week is DEV,
+  with the same team, is out of the pool with the reason "Practice squad, not
+  on the depth chart (...)". Confirmation that keeps him in (shown as a source
+  disagreement, never silent): the official inactive list has him active for
+  this game, or a FRESH Sleeper depth chart lists him for the same team at QB1,
+  RB1-2, WR1-3, TE1-2 or K1 (stale depth may block but never clears). It is a
+  role block like a listed QB2: carried in `roleBlockedReason`, so pinned health
+  decisions keep it, and the player is excluded but not "ruled out" (his
+  history is not redistributed to teammates).
+- **Only the slate's own week counts, and this is measured, not assumed.**
+  Over every projected QB/RB/WR/TE in saved builds, 2026 weeks 1-7: 537
+  player-weeks were DEV in the slate week's final roster and none played; the
+  pregame copies of the file (Sunday morning weeks 5-6, Thursday morning week 7)
+  flagged 143 with a known outcome, of whom 2 were elevated later and played,
+  both for 0 points.
+  LAST week's DEV is not evidence: 27 of 416 such players played (Jawhar Jordan
+  12.0 in week 6, Teagan Quitoriano 15.5 in week 5). So before nflverse rolls
+  the file to the new week (it had by Thursday morning in week 7), nothing is
+  excluded. Sleeper depth never confirmed a DEV player (0 of 537; elevated
+  players were listed 3rd-10th), and Sleeper "no depth" alone flags 1,131 pool
+  players of whom 341 played, so it cannot be the signal.
+- **Data:** `ingest/nfl_roster_status.py` (`nfl-roster-status-v1`) reads the
+  file in `refresh_nfl_availability_context.yml` (optional step beside the
+  Sleeper capture, reported in the step summary) into append-only
+  `nfl_roster_status_observations`, writing a row only when a player's
+  (roster_week, team, status, description) changes; each run stamps an
+  `ff_source_snapshots` row (`roster-status-live-*`, dataset
+  `nfl_roster_status_capture` on /health). The DFS read takes the newest row at
+  or before the slate's decision time. `ff_players.metadata.nflverse_roster` is
+  only the latest copy and is not used. Slates evaluated before the first
+  capture have no status and are unchanged; a failed read warns on every player.
+- **Consumers:** every consumer of the workspace read (page, optimizer, Slate
+  Check, exports, and the ghost factorial, whose freeze goes through
+  `persistSalarySlate`) inherits the rule. The Python projection rows are not
+  changed, so research graders that read stored projections still see these
+  players.
+- **Replay, weeks 3-7** (weeks 3-4 on the final file, weeks 5-7 on the pregame
+  copies): 282 of 2,065 pool player-weeks dropped (71 RBs, 37 projected 5+),
+  2 of them played (0 points each). RBs projected 5+ finishing below P10:
+  60 of 248 (24.2%) before, 44 of 232 (19.0%) after; all 16 dropped backs had
+  finished below P10. The rest of the gap to 10% is the played-tail width and
+  Q players named in `docs/nfl-dfs-rb-floor-participation-study.md`.
+
 ## NFL DFS — Absence commit: the optimizer builds from starter-aware projections (`nfl-absence-commit-v1`, 2026-10-11)
 
 **Owner's decision, 2026-10-11:** commit to a projection and learn from the

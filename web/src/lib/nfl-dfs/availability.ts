@@ -3,13 +3,22 @@ import type { EvidenceState } from "./punt-policy";
 export type InjuryEvidence = { identityBridge?: {sourceLocalId:number;targetLocalId:number;method:string}; id: string; source: string; status: string; practice: string | null; observedAt: string; updatedAt: string | null; team: string; week: number | null; hash: string; reportType?: string; kickoff?: string; url?: string; unverifiedUpdate?: string };
 /** The Sleeper fields availability reads; the database returns only these (the full record is ~1.3 KB a player). */
 export const SLEEPER_EVIDENCE_FIELDS = ["team", "position", "depth_chart_order", "injury_status", "status"] as const;
-/** `archived`: the Sleeper evidence is the archived capture at or before the evaluation time, not the latest row. */
-export type RosterEvidence = { team: string; position: string; fetchedAt: string; sleeper: unknown; injuries?: InjuryEvidence[]; injuryReadFailed?: boolean; kickoff?: string | null; archived?: boolean };
+/** One nflverse weekly-roster status as captured (`nfl_roster_status_observations`); `DEV` is the practice squad. */
+export type RosterStatusEvidence = { rosterWeek: number; team: string | null; status: string; description: string | null; observedAt: string };
+/**
+ * `archived`: the Sleeper evidence is the archived capture at or before the evaluation time, not the latest row.
+ * `rosterStatus`: the newest nflverse roster status captured at or before the evaluation time (null: none
+ * captured for this player); `rosterStatusReadFailed`: the read itself failed, so the practice-squad rule could not run.
+ */
+export type RosterEvidence = { team: string; position: string; fetchedAt: string; sleeper: unknown; injuries?: InjuryEvidence[]; injuryReadFailed?: boolean; kickoff?: string | null; archived?: boolean;
+  rosterStatus?: RosterStatusEvidence | null; rosterStatusReadFailed?: boolean };
 export type Availability = { role: string; status: string; source: string; capturedAt: string | null; blockedReason: string | null; fresh: boolean;
   /** Depth-chart role block only (e.g. listed QB2), separate from health so a pinned health decision cannot drop it. */
   roleBlockedReason?: string | null;
   /** The depth chart's role when a build-form confirmation overrode it. */
   chartRole?: string;
+  /** The practice-squad rule's disagreement note (kept in the pool despite a practice-squad listing), for any presenter that rebuilds warnings. */
+  practiceSquadNote?: string | null;
   /** Set on the quarterback the user confirmed as the starter. */
   confirmedStarter?: boolean; evidence?: InjuryEvidence[]; warnings?: string[]; evaluatedAt?: string; officialConfirmed?: boolean; kickoff?: string | null; freshFantasyPros?: boolean; decisionId?: string; pinned?: boolean };
 export type PinnedGameAvailabilityDecision = { version:string; state:string; projection_status:string|null; source:string|null;
@@ -147,12 +156,13 @@ export function evaluationCurrent(a: Availability | undefined, clock: DecisionCl
  * the role evidence. Before 2026-09-28 this presenter dropped it, which left
  * every backup QB eligible on every pinned run from 2026-09-26 on.
  */
-export function presentPinnedGameAvailability(decision:PinnedGameAvailabilityDecision, role:string, roleBlockedReason:string|null=null):Availability {
+export function presentPinnedGameAvailability(decision:PinnedGameAvailabilityDecision, role:string, roleBlockedReason:string|null=null, practiceSquadNote:string|null=null):Availability {
   const out=decision.state==='OUT_CONFIRMED';
   const warnings=[decision.reason];
+  if(practiceSquadNote) warnings.push(practiceSquadNote);
   if(decision.display_only_observation_ids.length) warnings.push(`${decision.display_only_observation_ids.length} display-only observation(s) did not affect this decision.`);
   return {role,status:decision.projection_status??decision.state,source:decision.source??'Pinned availability resolver',
-    capturedAt:decision.available_at,blockedReason:out?`Unavailable: ${decision.projection_status??'OUT'}`:roleBlockedReason,roleBlockedReason,
+    capturedAt:decision.available_at,blockedReason:out?`Unavailable: ${decision.projection_status??'OUT'}`:roleBlockedReason,roleBlockedReason,practiceSquadNote,
     fresh:['OUT_CONFIRMED','EXPECTED_ACTIVE','QUESTIONABLE','DOUBTFUL'].includes(decision.state),warnings,
     evaluatedAt:decision.as_of_at,kickoff:decision.kickoff,officialConfirmed:decision.source==='nfl_official',pinned:true,
     decisionId:[decision.version,decision.source_snapshot_id??'none',decision.observation_id??'none',decision.as_of_at].join(':')};
@@ -194,6 +204,57 @@ export function resolveAvailability(evidence: RosterEvidence | undefined, team: 
   };
 }
 
+/**
+ * Practice-squad rule (`nfl-practice-squad-v1`, owner's decision 2026-10-25).
+ *
+ * A player nflverse's weekly roster lists on the practice squad (`DEV`) is
+ * out of the pool unless the depth chart confirms him. Sleeper cannot tell a
+ * practice-squad back from an active one (it lists both `status: Active`), so
+ * before this rule Salvon Ahmed, Sincere McCormick and Jawhar Jordan were
+ * projected 6-7 points every week and scored 0: a practice-squad player
+ * cannot play unless elevated, and an elevated player is `ACT` for that week.
+ *
+ * Confirmation, either of:
+ * - the official inactive list for this exact game lists him active;
+ * - Sleeper's depth chart, for the same team, lists him at a role-giving
+ *   rank (`PRACTICE_SQUAD_CONFIRMING_DEPTH`). The two sources then disagree;
+ *   he stays in the pool and the disagreement is shown, never resolved silently.
+ *
+ * Only the slate's own roster week counts. Measured on 2026 weeks 1-7 over
+ * every projected QB/RB/WR/TE in a saved build: 537 player-weeks were DEV in
+ * the slate week's final roster and none played; the pregame copies of the
+ * file (weeks 5-7) flagged 143, of whom 2 were elevated later and played, both
+ * for 0 points. LAST week's DEV is not evidence: 27 of 416 such players played
+ * (Jawhar Jordan 12.0 in week 6, Teagan Quitoriano 15.5 in week 5), because
+ * practice-squad players are elevated and signed between weeks. So a status
+ * from another week, or recorded under another team (he has since signed
+ * elsewhere), does not block; the latter is shown as a disagreement.
+ * Sleeper depth never confirmed a DEV player in those weeks (0 of 537 at a
+ * role-giving rank; elevated players were listed 3rd-10th), so the
+ * confirmation paths are a safety valve, not the common case.
+ */
+export const PRACTICE_SQUAD_RULE_VERSION = "nfl-practice-squad-v1";
+export const PRACTICE_SQUAD_CONFIRMING_DEPTH: Readonly<Record<string, number>> = { QB: 1, RB: 2, WR: 3, TE: 2, K: 1 };
+export type PracticeSquadInput = {
+  rosterStatus: RosterStatusEvidence | null | undefined; slateWeek: number | null; team: string; position: string;
+  sleeperDepth: number | null; sleeperTeam: string | null; officialActive: boolean;
+};
+export function practiceSquadBlock(input: PracticeSquadInput): { blockedReason: string | null; note: string | null } {
+  const s = input.rosterStatus;
+  if (!s || normalize(s.status) !== "DEV") return { blockedReason: null, note: null };
+  const listed = `nflverse week ${s.rosterWeek} roster lists him on the practice squad`;
+  if (input.slateWeek == null || s.rosterWeek !== input.slateWeek) return { blockedReason: null, note: null };
+  if (s.team && !sameNflTeam(s.team, input.team))
+    return { blockedReason: null, note: `Sources differ: ${listed} of ${s.team}, but he is listed for ${input.team}. Practice-squad rule not applied.` };
+  if (input.officialActive) return { blockedReason: null, note: `${listed}; the official inactive list has him active for this game.` };
+  const rank = PRACTICE_SQUAD_CONFIRMING_DEPTH[input.position];
+  const sameTeam = input.sleeperTeam != null && sameNflTeam(input.sleeperTeam, input.team);
+  if (rank != null && sameTeam && input.sleeperDepth != null && input.sleeperDepth <= rank)
+    return { blockedReason: null, note: `Sources differ: ${listed}; Sleeper's depth chart lists him ${input.position}${input.sleeperDepth}. Kept in the pool; check for an elevation.` };
+  const depth = sameTeam && input.sleeperDepth != null ? `${input.position}${input.sleeperDepth}` : "none";
+  return { blockedReason: `Practice squad, not on the depth chart (${listed}; Sleeper depth: ${depth})`, note: null };
+}
+
 /** Freeze the evidence used at decision time. Never infer health from an omitted row. */
 export function resolveGameAvailability(evidence: RosterEvidence | undefined, team: string, position: string, now: number, week: number | null, kickoff: string | null): Availability {
   const base = resolveAvailability(evidence, team, position, now);
@@ -219,9 +280,19 @@ export function resolveGameAvailability(evidence: RosterEvidence | undefined, te
   const equivalentStatus = (value: string) => ['ACTIVE','HEALTHY'].includes(normalize(value)) ? 'ACTIVE' : normalize(value);
   if (latest && equivalentStatus(latest.status) !== equivalentStatus(base.status)) warnings.push(`Sources differ: Sleeper ${base.status}; ${latest.source} ${latest.status}. Review before using this player.`);
   const fpOut = latest && unavailable.has(normalize(latest.status));
-  return { ...base, status: latest ? latest.status : base.status,
+  // Stale Sleeper evidence may block but never clear, so only a fresh depth chart can confirm a practice-squad player.
+  const sleeper = evidence?.sleeper as Record<string, unknown> | null | undefined;
+  const sleeperDepth = base.fresh && typeof sleeper?.depth_chart_order === "number" && Number.isInteger(sleeper.depth_chart_order) && sleeper.depth_chart_order > 0 ? sleeper.depth_chart_order : null;
+  const practiceSquad = practiceSquadBlock({ rosterStatus: evidence?.rosterStatus, slateWeek: week, team, position,
+    sleeperDepth, sleeperTeam: base.fresh && sleeper?.team != null ? String(sleeper.team) : null,
+    officialActive: Boolean(official) && normalize(official!.status) === "ACTIVE" });
+  if (practiceSquad.note) warnings.push(practiceSquad.note);
+  if (evidence?.rosterStatusReadFailed) warnings.push('Practice-squad status could not be loaded; the practice-squad rule did not run.');
+  // A role fact, like a listed QB2: carried in roleBlockedReason so a pinned health decision keeps it.
+  const roleBlockedReason = base.roleBlockedReason ?? practiceSquad.blockedReason;
+  return { ...base, status: latest ? latest.status : base.status, roleBlockedReason, practiceSquadNote: practiceSquad.note,
     source: latest ? `${base.source} + ${official ? 'official inactive list (manual review)' : 'FantasyPros injury observation'}` : base.source,
-    blockedReason: base.blockedReason ?? (fpOut ? `${official ? 'Official list' : 'FantasyPros'} reports unavailable: ${latest.status}` : null),
+    blockedReason: base.blockedReason ?? practiceSquad.blockedReason ?? (fpOut ? `${official ? 'Official list' : 'FantasyPros'} reports unavailable: ${latest.status}` : null),
     evidence: relevant, warnings, evaluatedAt: new Date(now).toISOString(), officialConfirmed: Boolean(official), kickoff,
     freshFantasyPros: usable.some(row => row.source === 'fantasypros') };
 }
