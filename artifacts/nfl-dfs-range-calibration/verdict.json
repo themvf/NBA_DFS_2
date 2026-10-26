@@ -1,0 +1,681 @@
+{
+ "study_id": "nfl-dfs-range-calibration-v1",
+ "decided_at": "2026-10-25T23:51:46.551162+00:00",
+ "frozen": {
+  "study_id": "nfl-dfs-range-calibration-v1",
+  "frozen_at": "2026-10-25T23:50:00.435672+00:00",
+  "tuning_seasons": [
+   2022,
+   2023
+  ],
+  "tuning_rows": 4883,
+  "candidate_a": {
+   "half_life": 17.0,
+   "dropped": false
+  },
+  "candidate_b": {
+   "RB": {
+    "a": 1.08,
+    "b": 0.96,
+    "n": 1571
+   },
+   "TE": {
+    "a": 1.08,
+    "b": 0.94,
+    "n": 861
+   },
+   "WR": {
+    "a": 1.12,
+    "b": 0.94,
+    "n": 2451
+   }
+  },
+  "model_file_sha256": "63d0353099727a292ef2a1255baf312a6cadf74bc3da38bc507709e41e3afc30"
+ },
+ "arms": {
+  "A": {
+   "per_season": {
+    "2024": {
+     "arm": "A",
+     "n": 2405,
+     "games": 224,
+     "range_loss_delta": {
+      "mean": -0.06168700207900207,
+      "lo": -0.11389271859061634,
+      "hi": -0.01069881233941846,
+      "n": 2405,
+      "games": 224
+     },
+     "range_loss_delta_week_clustered": {
+      "mean": -0.06168700207900207,
+      "lo": -0.10445443071168858,
+      "hi": -0.02151704757464228,
+      "n": 2405,
+      "games": 15
+     },
+     "p10_pinball_delta": {
+      "mean": -0.021023970893970883,
+      "lo": -0.04298142632215928,
+      "hi": -0.001635897673269554,
+      "n": 2405,
+      "games": 224
+     },
+     "p90_pinball_delta": {
+      "mean": -0.040663031185031194,
+      "lo": -0.09014462846969772,
+      "hi": 0.004556353038294235,
+      "n": 2405,
+      "games": 224
+     },
+     "mae_delta": {
+      "mean": 0.04401222453222456,
+      "lo": -0.03270860699805702,
+      "hi": 0.11941113152937823,
+      "n": 2405,
+      "games": 224
+     },
+     "coverage": {
+      "baseline": {
+       "n": 2405,
+       "below_p10": 0.13056133056133057,
+       "above_p90": 0.125987525987526,
+       "inside": 0.7434511434511435
+      },
+      "candidate": {
+       "n": 2405,
+       "below_p10": 0.1051975051975052,
+       "above_p90": 0.11392931392931394,
+       "inside": 0.7808731808731809
+      }
+     },
+     "by_position": {
+      "QB": {
+       "baseline_coverage": {
+        "n": 506,
+        "below_p10": 0.13636363636363635,
+        "above_p90": 0.16996047430830039,
+        "inside": 0.6936758893280632
+       }
+      },
+      "RB": {
+       "n": 758,
+       "range_loss_delta": {
+        "mean": -0.03500885224274406,
+        "lo": -0.12347209586800637,
+        "hi": 0.052659731502600164,
+        "n": 758,
+        "games": 224
+       },
+       "p10_pinball_delta_point": -0.009958153034300778,
+       "p90_pinball_delta_point": -0.025050699208443293,
+       "mae_delta_point": 0.08071306068601583,
+       "coverage": {
+        "baseline": {
+         "n": 758,
+         "below_p10": 0.14643799472295516,
+         "above_p90": 0.11741424802110818,
+         "inside": 0.7361477572559367
+        },
+        "candidate": {
+         "n": 758,
+         "below_p10": 0.11345646437994723,
+         "above_p90": 0.10158311345646438,
+         "inside": 0.7849604221635884
+        }
+       }
+      },
+      "TE": {
+       "n": 439,
+       "range_loss_delta": {
+        "mean": -0.03751756264236901,
+        "lo": -0.1488821419069362,
+        "hi": 0.07503063976359602,
+        "n": 439,
+        "games": 214
+       },
+       "p10_pinball_delta_point": -0.026607744874715258,
+       "p90_pinball_delta_point": -0.010909817767653759,
+       "mae_delta_point": -0.058999544419134374,
+       "coverage": {
+        "baseline": {
+         "n": 439,
+         "below_p10": 0.1275626423690205,
+         "above_p90": 0.12984054669703873,
+         "inside": 0.7425968109339408
+        },
+        "candidate": {
+         "n": 439,
+         "below_p10": 0.09339407744874716,
+         "above_p90": 0.11617312072892938,
+         "inside": 0.7904328018223234
+        }
+       }
+      },
+      "WR": {
+       "n": 1208,
+       "range_loss_delta": {
+        "mean": -0.08721052980132452,
+        "lo": -0.15935793790880004,
+        "hi": -0.014963911285272009,
+        "n": 1208,
+        "games": 224
+       },
+       "p10_pinball_delta_point": -0.025938385761589404,
+       "p90_pinball_delta_point": -0.0612721440397351,
+       "mae_delta_point": 0.058418625827814624,
+       "coverage": {
+        "baseline": {
+         "n": 1208,
+         "below_p10": 0.1216887417218543,
+         "above_p90": 0.12996688741721854,
+         "inside": 0.7483443708609272
+        },
+        "candidate": {
+         "n": 1208,
+         "below_p10": 0.10430463576158941,
+         "above_p90": 0.12086092715231789,
+         "inside": 0.7748344370860927
+        }
+       }
+      }
+     }
+    },
+    "2025": {
+     "arm": "A",
+     "n": 2425,
+     "games": 224,
+     "range_loss_delta": {
+      "mean": -0.09945585154639176,
+      "lo": -0.15259779683825672,
+      "hi": -0.04683288253772881,
+      "n": 2425,
+      "games": 224
+     },
+     "range_loss_delta_week_clustered": {
+      "mean": -0.09945585154639176,
+      "lo": -0.13745538763049342,
+      "hi": -0.06250018711172568,
+      "n": 2425,
+      "games": 15
+     },
+     "p10_pinball_delta": {
+      "mean": -0.05966514226804124,
+      "lo": -0.08436684616686906,
+      "hi": -0.037070713241248984,
+      "n": 2425,
+      "games": 224
+     },
+     "p90_pinball_delta": {
+      "mean": -0.03979070927835054,
+      "lo": -0.08640960450908515,
+      "hi": 0.006672961101450865,
+      "n": 2425,
+      "games": 224
+     },
+     "mae_delta": {
+      "mean": 0.06999995876288662,
+      "lo": 0.005261638635763803,
+      "hi": 0.13104732664920404,
+      "n": 2425,
+      "games": 224
+     },
+     "coverage": {
+      "baseline": {
+       "n": 2425,
+       "below_p10": 0.15257731958762888,
+       "above_p90": 0.11835051546391752,
+       "inside": 0.7290721649484536
+      },
+      "candidate": {
+       "n": 2425,
+       "below_p10": 0.1154639175257732,
+       "above_p90": 0.10845360824742269,
+       "inside": 0.7760824742268041
+      }
+     },
+     "by_position": {
+      "QB": {
+       "baseline_coverage": {
+        "n": 512,
+        "below_p10": 0.138671875,
+        "above_p90": 0.1015625,
+        "inside": 0.759765625
+       }
+      },
+      "RB": {
+       "n": 752,
+       "range_loss_delta": {
+        "mean": -0.07007115691489363,
+        "lo": -0.1633309952584157,
+        "hi": 0.024889381143449383,
+        "n": 752,
+        "games": 224
+       },
+       "p10_pinball_delta_point": -0.03722977393617021,
+       "p90_pinball_delta_point": -0.03284138297872341,
+       "mae_delta_point": 0.0448220744680851,
+       "coverage": {
+        "baseline": {
+         "n": 752,
+         "below_p10": 0.15558510638297873,
+         "above_p90": 0.125,
+         "inside": 0.7194148936170213
+        },
+        "candidate": {
+         "n": 752,
+         "below_p10": 0.11303191489361702,
+         "above_p90": 0.12632978723404256,
+         "inside": 0.7606382978723404
+        }
+       }
+      },
+      "TE": {
+       "n": 508,
+       "range_loss_delta": {
+        "mean": -0.13444881889763782,
+        "lo": -0.22878849602112672,
+        "hi": -0.0453272552349809,
+        "n": 508,
+        "games": 220
+       },
+       "p10_pinball_delta_point": -0.07157094488188975,
+       "p90_pinball_delta_point": -0.06287787401574803,
+       "mae_delta_point": 0.014410629921259854,
+       "coverage": {
+        "baseline": {
+         "n": 508,
+         "below_p10": 0.1437007874015748,
+         "above_p90": 0.13188976377952755,
+         "inside": 0.7244094488188977
+        },
+        "candidate": {
+         "n": 508,
+         "below_p10": 0.10433070866141732,
+         "above_p90": 0.12598425196850394,
+         "inside": 0.7696850393700787
+        }
+       }
+      },
+      "WR": {
+       "n": 1165,
+       "range_loss_delta": {
+        "mean": -0.10316474678111588,
+        "lo": -0.18111475024870588,
+        "hi": -0.02998644694040312,
+        "n": 1165,
+        "games": 224
+       },
+       "p10_pinball_delta_point": -0.06895548497854077,
+       "p90_pinball_delta_point": -0.03420926180257513,
+       "mae_delta_point": 0.11049193133047214,
+       "coverage": {
+        "baseline": {
+         "n": 1165,
+         "below_p10": 0.15450643776824036,
+         "above_p90": 0.10815450643776824,
+         "inside": 0.7373390557939914
+        },
+        "candidate": {
+         "n": 1165,
+         "below_p10": 0.12188841201716738,
+         "above_p90": 0.08927038626609442,
+         "inside": 0.7888412017167382
+        }
+       }
+      }
+     }
+    }
+   },
+   "verdict": "INCONCLUSIVE",
+   "reason": "interval below zero but a guard failed",
+   "readings": {
+    "2024": {
+     "primary_ci_wholly_below_zero": true,
+     "no_position_worse": true,
+     "position_readings": {
+      "RB": true,
+      "TE": true,
+      "WR": true
+     },
+     "calibration_closer_to_target": true,
+     "mae_upper_below_bound": false,
+     "all_guards_hold": false
+    },
+    "2025": {
+     "primary_ci_wholly_below_zero": true,
+     "no_position_worse": true,
+     "position_readings": {
+      "RB": true,
+      "TE": true,
+      "WR": true
+     },
+     "calibration_closer_to_target": true,
+     "mae_upper_below_bound": false,
+     "all_guards_hold": false
+    }
+   }
+  },
+  "B": {
+   "per_season": {
+    "2024": {
+     "arm": "B",
+     "n": 2405,
+     "games": 224,
+     "range_loss_delta": {
+      "mean": 0.0003237043659044101,
+      "lo": -0.012905159830417868,
+      "hi": 0.013200179867310346,
+      "n": 2405,
+      "games": 224
+     },
+     "range_loss_delta_week_clustered": {
+      "mean": 0.0003237043659044101,
+      "lo": -0.014971930583863594,
+      "hi": 0.014526554827143687,
+      "n": 2405,
+      "games": 15
+     },
+     "p10_pinball_delta": {
+      "mean": -0.0029008191268191123,
+      "lo": -0.012698302881443286,
+      "hi": 0.006363779612056241,
+      "n": 2405,
+      "games": 224
+     },
+     "p90_pinball_delta": {
+      "mean": 0.003224523492723516,
+      "lo": -0.0034716091043418334,
+      "hi": 0.0099620083720679,
+      "n": 2405,
+      "games": 224
+     },
+     "mae_delta": {
+      "mean": 0.0,
+      "lo": 0.0,
+      "hi": 0.0,
+      "n": 2405,
+      "games": 224
+     },
+     "coverage": {
+      "baseline": {
+       "n": 2405,
+       "below_p10": 0.13056133056133057,
+       "above_p90": 0.125987525987526,
+       "inside": 0.7434511434511435
+      },
+      "candidate": {
+       "n": 2405,
+       "below_p10": 0.0997920997920998,
+       "above_p90": 0.13596673596673597,
+       "inside": 0.7642411642411643
+      }
+     },
+     "by_position": {
+      "QB": {
+       "baseline_coverage": {
+        "n": 506,
+        "below_p10": 0.13636363636363635,
+        "above_p90": 0.16996047430830039,
+        "inside": 0.6936758893280632
+       }
+      },
+      "RB": {
+       "n": 758,
+       "range_loss_delta": {
+        "mean": -0.011564878100263841,
+        "lo": -0.027552245176325093,
+        "hi": 0.0041321239624311865,
+        "n": 758,
+        "games": 224
+       },
+       "p10_pinball_delta_point": -0.008989399472295514,
+       "p90_pinball_delta_point": -0.0025754786279683305,
+       "mae_delta_point": 0.0,
+       "coverage": {
+        "baseline": {
+         "n": 758,
+         "below_p10": 0.14643799472295516,
+         "above_p90": 0.11741424802110818,
+         "inside": 0.7361477572559367
+        },
+        "candidate": {
+         "n": 758,
+         "below_p10": 0.11081794195250659,
+         "above_p90": 0.12401055408970976,
+         "inside": 0.7651715039577837
+        }
+       }
+      },
+      "TE": {
+       "n": 439,
+       "range_loss_delta": {
+        "mean": 0.006743305694760866,
+        "lo": -0.01491529304964537,
+        "hi": 0.028741032408508966,
+        "n": 439,
+        "games": 214
+       },
+       "p10_pinball_delta_point": 0.00011945148063782742,
+       "p90_pinball_delta_point": 0.006623854214123026,
+       "mae_delta_point": 0.0,
+       "coverage": {
+        "baseline": {
+         "n": 439,
+         "below_p10": 0.1275626423690205,
+         "above_p90": 0.12984054669703873,
+         "inside": 0.7425968109339408
+        },
+        "candidate": {
+         "n": 439,
+         "below_p10": 0.0979498861047836,
+         "above_p90": 0.14350797266514806,
+         "inside": 0.7585421412300684
+        }
+       }
+      },
+      "WR": {
+       "n": 1208,
+       "range_loss_delta": {
+        "mean": 0.0054506418874172855,
+        "lo": -0.018472902355638424,
+        "hi": 0.029227603766376384,
+        "n": 1208,
+        "games": 224
+       },
+       "p10_pinball_delta_point": -0.00017793410596024013,
+       "p90_pinball_delta_point": 0.005628575993377517,
+       "mae_delta_point": 0.0,
+       "coverage": {
+        "baseline": {
+         "n": 1208,
+         "below_p10": 0.1216887417218543,
+         "above_p90": 0.12996688741721854,
+         "inside": 0.7483443708609272
+        },
+        "candidate": {
+         "n": 1208,
+         "below_p10": 0.0935430463576159,
+         "above_p90": 0.14072847682119205,
+         "inside": 0.765728476821192
+        }
+       }
+      }
+     }
+    },
+    "2025": {
+     "arm": "B",
+     "n": 2425,
+     "games": 224,
+     "range_loss_delta": {
+      "mean": -0.019400075876288645,
+      "lo": -0.032163234138227734,
+      "hi": -0.007048027641780267,
+      "n": 2425,
+      "games": 224
+     },
+     "range_loss_delta_week_clustered": {
+      "mean": -0.019400075876288645,
+      "lo": -0.03323018485596843,
+      "hi": -0.0051899684191155674,
+      "n": 2425,
+      "games": 15
+     },
+     "p10_pinball_delta": {
+      "mean": -0.014494915134020616,
+      "lo": -0.02389279916440393,
+      "hi": -0.0048225376134038945,
+      "n": 2425,
+      "games": 224
+     },
+     "p90_pinball_delta": {
+      "mean": -0.004905160742268034,
+      "lo": -0.010971073525468911,
+      "hi": 0.001504853491376532,
+      "n": 2425,
+      "games": 224
+     },
+     "mae_delta": {
+      "mean": 0.0,
+      "lo": 0.0,
+      "hi": 0.0,
+      "n": 2425,
+      "games": 224
+     },
+     "coverage": {
+      "baseline": {
+       "n": 2425,
+       "below_p10": 0.15257731958762888,
+       "above_p90": 0.11835051546391752,
+       "inside": 0.7290721649484536
+      },
+      "candidate": {
+       "n": 2425,
+       "below_p10": 0.11216494845360825,
+       "above_p90": 0.12329896907216495,
+       "inside": 0.7645360824742268
+      }
+     },
+     "by_position": {
+      "QB": {
+       "baseline_coverage": {
+        "n": 512,
+        "below_p10": 0.138671875,
+        "above_p90": 0.1015625,
+        "inside": 0.759765625
+       }
+      },
+      "RB": {
+       "n": 752,
+       "range_loss_delta": {
+        "mean": -0.014581988297872307,
+        "lo": -0.03341401125501899,
+        "hi": 0.0030945170771973815,
+        "n": 752,
+        "games": 224
+       },
+       "p10_pinball_delta_point": -0.01463943404255319,
+       "p90_pinball_delta_point": 5.7445744680884275e-05,
+       "mae_delta_point": 0.0,
+       "coverage": {
+        "baseline": {
+         "n": 752,
+         "below_p10": 0.15558510638297873,
+         "above_p90": 0.125,
+         "inside": 0.7194148936170213
+        },
+        "candidate": {
+         "n": 752,
+         "below_p10": 0.10904255319148937,
+         "above_p90": 0.13164893617021275,
+         "inside": 0.7593085106382979
+        }
+       }
+      },
+      "TE": {
+       "n": 508,
+       "range_loss_delta": {
+        "mean": -0.007438694488189021,
+        "lo": -0.02792555448898077,
+        "hi": 0.012648674859503118,
+        "n": 508,
+        "games": 220
+       },
+       "p10_pinball_delta_point": -0.009063362204724422,
+       "p90_pinball_delta_point": 0.0016246677165354124,
+       "mae_delta_point": 0.0,
+       "coverage": {
+        "baseline": {
+         "n": 508,
+         "below_p10": 0.1437007874015748,
+         "above_p90": 0.13188976377952755,
+         "inside": 0.7244094488188977
+        },
+        "candidate": {
+         "n": 508,
+         "below_p10": 0.1141732283464567,
+         "above_p90": 0.14173228346456693,
+         "inside": 0.7440944881889764
+        }
+       }
+      },
+      "WR": {
+       "n": 1165,
+       "range_loss_delta": {
+        "mean": -0.027725898712446326,
+        "lo": -0.048401886263854034,
+        "hi": -0.007935830121052267,
+        "n": 1165,
+        "games": 224
+       },
+       "p10_pinball_delta_point": -0.016770065922746772,
+       "p90_pinball_delta_point": -0.01095583278969957,
+       "mae_delta_point": 0.0,
+       "coverage": {
+        "baseline": {
+         "n": 1165,
+         "below_p10": 0.15450643776824036,
+         "above_p90": 0.10815450643776824,
+         "inside": 0.7373390557939914
+        },
+        "candidate": {
+         "n": 1165,
+         "below_p10": 0.11330472103004292,
+         "above_p90": 0.10987124463519313,
+         "inside": 0.776824034334764
+        }
+       }
+      }
+     }
+    }
+   },
+   "verdict": "KILL",
+   "reason": "pooled range-loss interval reaches zero in at least one held-out season",
+   "readings": {
+    "2024": {
+     "primary_ci_wholly_below_zero": false,
+     "no_position_worse": true,
+     "position_readings": {
+      "RB": true,
+      "TE": true,
+      "WR": true
+     },
+     "calibration_closer_to_target": true,
+     "mae_upper_below_bound": true,
+     "all_guards_hold": true
+    },
+    "2025": {
+     "primary_ci_wholly_below_zero": true,
+     "no_position_worse": true,
+     "position_readings": {
+      "RB": true,
+      "TE": true,
+      "WR": true
+     },
+     "calibration_closer_to_target": true,
+     "mae_upper_below_bound": true,
+     "all_guards_hold": true
+    }
+   }
+  }
+ }
+}

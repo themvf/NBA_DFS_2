@@ -1,0 +1,31 @@
+{
+ "study_id": "nfl-dfs-range-calibration-v1",
+ "frozen_at": "2026-10-25T23:50:00.435672+00:00",
+ "tuning_seasons": [
+  2022,
+  2023
+ ],
+ "tuning_rows": 4883,
+ "candidate_a": {
+  "half_life": 17.0,
+  "dropped": false
+ },
+ "candidate_b": {
+  "RB": {
+   "a": 1.08,
+   "b": 0.96,
+   "n": 1571
+  },
+  "TE": {
+   "a": 1.08,
+   "b": 0.94,
+   "n": 861
+  },
+  "WR": {
+   "a": 1.12,
+   "b": 0.94,
+   "n": 2451
+  }
+ },
+ "model_file_sha256": "63d0353099727a292ef2a1255baf312a6cadf74bc3da38bc507709e41e3afc30"
+}

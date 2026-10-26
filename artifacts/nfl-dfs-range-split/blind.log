@@ -1,0 +1,12 @@
+Gate B: B_CLEARED -- interval below zero and every guard holds in 2020 and 2021; Gate F still runs
+  2020: n=2588 clusters=208 baseline loss 2.7093  delta -0.0776 [-0.1143, -0.0405]  week-clustered -0.0776 [-0.1117, -0.0459]
+     below/above P10/P90: base 0.141/0.112  cand 0.102/0.094  (p10 -0.0404, p90 -0.0372)
+     RB: n=796 delta -0.0769 [-0.1403, -0.0089]  base 0.156/0.108 cand 0.122/0.093
+     TE: n=516 delta -0.0079 [-0.0729, +0.0562]  base 0.122/0.089 cand 0.083/0.064
+     WR: n=1276 delta -0.1063 [-0.1674, -0.0455]  base 0.139/0.125 cand 0.096/0.106
+  2021: n=2585 clusters=224 baseline loss 2.6784  delta -0.0619 [-0.1007, -0.0232]  week-clustered -0.0619 [-0.0916, -0.0324]
+     below/above P10/P90: base 0.137/0.117  cand 0.111/0.102  (p10 -0.0400, p90 -0.0218)
+     RB: n=838 delta -0.1244 [-0.1954, -0.0560]  base 0.147/0.129 cand 0.123/0.113
+     TE: n=486 delta -0.0239 [-0.1094, +0.0578]  base 0.130/0.117 cand 0.101/0.095
+     WR: n=1261 delta -0.0349 [-0.0963, +0.0246]  base 0.133/0.109 cand 0.107/0.097
+  fallbacks: {2020: {}, 2021: {}}
