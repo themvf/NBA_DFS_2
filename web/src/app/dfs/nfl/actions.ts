@@ -227,7 +227,9 @@ export type NflWorkspaceSlate = {
   replacementUpside?: { version: string; flagged: number; skipped: ReplacementUpsideReport['skipped']; error?: string };
   absenceCommit?: { version: string; applied: number; skipped: AbsenceCommitReport['skipped']; error?: string };
   /** Players projected from the sportsbooks' lines, and the newest line capture used. */
-  marketAnchor?: { version: string; applied: number; eligible: number; newestCapture: string | null; oldestCapture: string | null; error?: string };
+  marketAnchor?: { version: string; applied: number; eligible: number; newestCapture: string | null; oldestCapture: string | null; error?: string;
+    /** v3: of `applied`, how many were anchored on the anytime-TD line alone, and TD-only anchors left off for an absence commit. */
+    tdOnly?: number; tdOnlyYieldedToCommit?: number };
   /** Outside ownership ranges applied to the prior, when a range list is imported for this slate's date. */
   ownershipBands?: BandReport & { error?: string };
   /** Starting QBs the user confirmed for this read, and any that could not be applied. */
@@ -1112,9 +1114,10 @@ async function attachReplacementUpside(
 }
 
 /**
- * Market anchor (`nfl-market-anchor-v2`, see market-anchor.ts): every active
+ * Market anchor (`nfl-market-anchor-v3`, see market-anchor.ts): every active
  * QB/RB/WR/TE with a full set of pregame prop lines is projected from the
- * books' calibrated number. Lines are the latest capture before kickoff, per
+ * books' calibrated number; an RB/WR/TE without one but with an anytime-TD
+ * line takes the line's touchdowns in place of the model's (TD-only). Lines are the latest capture before kickoff, per
  * market, DraftKings first; a player is matched by name AND by his game's
  * kickoff (within 30 minutes), and two candidates for one name leave him on
  * the model. A failed read never takes the slate down; it is reported.
@@ -1154,6 +1157,7 @@ async function attachMarketAnchor(workspace: NflWorkspaceSlate): Promise<void> {
       g.captured.push(new Date(String(r.captured_at)).toISOString());
     }
     const used: string[] = [];
+    let tdOnly = 0, yielded = 0;
     workspace.players = workspace.players.map((player) => {
       if (!eligible.includes(player)) return player;
       const kickoff = Date.parse(parseDkGameInfoKickoff(player.gameInfo) ?? '');
@@ -1165,8 +1169,16 @@ async function attachMarketAnchor(workspace: NflWorkspaceSlate): Promise<void> {
         medianFpts: player.medianFpts ?? null, ceilingFpts: player.ceilingFpts, lines: g.lines,
         book: g.books.player_reception_yds ?? g.books.player_rush_yds ?? g.books.player_pass_yds ?? Object.values(g.books)[0], capturedAt,
         qbRushFallback: player.position === 'QB'
-          ? { rushing_yards: player.statMeans?.rushing_yards ?? null, rushing_tds: player.statMeans?.rushing_tds ?? null } : null });
+          ? { rushing_yards: player.statMeans?.rushing_yards ?? null, rushing_tds: player.statMeans?.rushing_tds ?? null } : null,
+        modelStatMeans: player.statMeans ?? null });
       if (!anchor) return player;
+      if (anchor.mode === 'td_only') {
+        // Graded against the model's own number, not the starter-aware one, so
+        // a TD-only anchor yields to an absence commit (counted, never silent).
+        if (player.absenceCommit) { yielded += 1; return player; }
+        anchor.book = g.books.player_anytime_td ?? anchor.book;
+        tdOnly += 1;
+      }
       used.push(capturedAt);
       // The anchor overrides the absence commit, so the commit is cleared; it is
       // kept as `supersededAbsenceCommit` so a research rebuild can still
@@ -1177,7 +1189,7 @@ async function attachMarketAnchor(workspace: NflWorkspaceSlate): Promise<void> {
     });
     used.sort();
     workspace.marketAnchor = { version: MARKET_ANCHOR_VERSION, applied: used.length, eligible: eligible.length,
-      newestCapture: used.at(-1) ?? null, oldestCapture: used[0] ?? null };
+      newestCapture: used.at(-1) ?? null, oldestCapture: used[0] ?? null, tdOnly, tdOnlyYieldedToCommit: yielded };
   } catch (error) {
     workspace.marketAnchor = { version: MARKET_ANCHOR_VERSION, applied: 0, eligible: eligible.length, newestCapture: null, oldestCapture: null,
       error: `Prop lines could not be read, so every player keeps the model's projection: ${error instanceof Error ? error.message : 'unknown error'}` };

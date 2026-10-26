@@ -116,10 +116,15 @@ export function MarketAnchorChip({ anchor }: { anchor: import("@/lib/nfl-dfs/mar
     s.scrimmage_tds ? `${s.scrimmage_tds.toFixed(2)} TDs` : null,
   ].filter(Boolean).join(", ");
   const at = new Date(anchor.capturedAt).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" });
+  // v3: a TD-only anchor moved only the touchdowns; older saved anchors have no mode and are full.
+  const tdOnly = anchor.mode === "td_only";
+  const title = tdOnly
+    ? `Touchdowns from ${anchor.book}'s anytime-TD line captured ${at} ET: ${s.scrimmage_tds.toFixed(2)} in place of the model's ${(anchor.modelTds ?? 0).toFixed(2)}. The books posted no full set of yardage lines, so every other stat is the model's. The model's own projection was ${anchor.before.mean.toFixed(1)}.`
+    : `Projected from ${anchor.book} lines captured ${at} ET: ${parts}. The model's own projection was ${anchor.before.mean.toFixed(1)}.`;
   return (
-    <span title={`Projected from ${anchor.book} lines captured ${at} ET: ${parts}. The model's own projection was ${anchor.before.mean.toFixed(1)}.`}
+    <span title={title}
       className="ml-2 inline-flex items-center rounded-full border border-indigo-300 bg-indigo-50 px-2 py-0.5 align-middle text-[10px] font-bold text-indigo-800">
-      Vegas · {anchor.before.mean.toFixed(1)} → {anchor.after.mean.toFixed(1)}
+      {tdOnly ? "Vegas TD" : "Vegas"} · {anchor.before.mean.toFixed(1)} → {anchor.after.mean.toFixed(1)}
     </span>
   );
 }
