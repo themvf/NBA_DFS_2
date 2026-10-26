@@ -397,7 +397,7 @@ def load_line(game_id: str) -> list[tuple]:
 
 
 def _norm(name: str) -> str:
-    return re.sub(r"[^a-z]", "", (name or "").lower())
+    return re.sub(r"[^a-z]", "", name.lower()) if isinstance(name, str) else ""
 
 
 def load_injuries(away: str, home: str, season: int) -> list[str]:
@@ -411,7 +411,9 @@ def load_injuries(away: str, home: str, season: int) -> list[str]:
         ca = collections.Counter()
         names = {}
         for r in rows:
-            k = _norm(r["player_display_name"])
+            k = _norm(r.get("player_display_name"))
+            if not k:
+                continue
             names[k] = r["player_display_name"]
             tg[k] += float(r.get("targets") or 0)
             ca[k] += float(r.get("carries") or 0)
