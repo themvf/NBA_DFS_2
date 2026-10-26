@@ -81,3 +81,17 @@ def test_qb_rush_fallback_fills_only_missing_markets():
     wr = {"player_receptions": {"line": 5.5, "over": -129, "under": 104},
           "player_reception_yds": {"line": 65.5, "over": -111, "under": -115}, "player_anytime_td": {"yes": 155}}
     assert stat_line("WR", wr, qb_rush_fallback=model)["rushing_yards"] == 0.0
+
+
+def test_td_only_delta_moves_only_touchdowns():
+    """nfl-market-anchor-v3: an RB/WR/TE with an anytime-TD line but no full set
+    takes the line's touchdowns in place of the model's. The web port
+    (scripts/test-nfl-market-anchor.ts) pins these same three values."""
+    from model.nfl_prop_implied import CALIBRATION_V1, anytime_td_rate, td_only_delta
+    for pos, yes, model_tds, delta in (("RB", 400, 0.25, -0.273691), ("WR", 650, 0.08, 0.309034), ("TE", 155, 0.30, 0.901519)):
+        assert abs(td_only_delta(pos, {"player_anytime_td": {"yes": yes}}, model_tds) - delta) < 1e-5
+    rate = anytime_td_rate(400) * CALIBRATION_V1["player_anytime_td"]
+    assert abs(td_only_delta("RB", {"player_anytime_td": {"yes": 400}}, rate)) < 1e-12
+    assert td_only_delta("QB", {"player_anytime_td": {"yes": 400}}, 0.25) is None
+    assert td_only_delta("RB", {}, 0.25) is None
+    assert td_only_delta("RB", {"player_anytime_td": {"yes": 400}}, None) is None

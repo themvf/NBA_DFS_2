@@ -23,9 +23,21 @@
  * v1 read a missing one as 0 rushing TDs / 0 rushing yards, which cut every
  * running quarterback without those lines. v2 fills a missing one from the
  * model's own mean for that stat (`QbRushFallback`) and records which it used.
+ *
+ * v3 (2026-10-25, owner's priority: lines on more players): an RB, WR or TE
+ * without a full set whose books post an anytime-TD line (most backups get only
+ * touchdown markets) is anchored on touchdowns alone (`mode: 'td_only'`): the
+ * model's projection plus 6 x (the line's calibrated TD rate - the model's own
+ * rushing + receiving TDs); every other stat stays the model's. Graded on 2026
+ * weeks 1-6 (docs/nfl-market-anchor-v3.md, 665 player-games): MAE 0.20 better
+ * than the model (game-clustered CI [-0.25, -0.14]), better at RB, WR and TE,
+ * in every week, and better than shrinking every model TD by a constant. A
+ * partial set of volume or yardage lines (mostly RBs) graded no better than the
+ * model, so those lines are still used only as part of a full set. Full-set
+ * players are unchanged from v2. Python twin: `td_only_delta`.
  */
 
-export const MARKET_ANCHOR_VERSION = 'nfl-market-anchor-v2';
+export const MARKET_ANCHOR_VERSION = 'nfl-market-anchor-v3';
 export const ANYTIME_TD_MARGIN = 1.08;
 export const RB_YARDS_PER_RECEPTION = 7.5;
 /** Mean actual / implied over weeks 1-4 (research/nfl_prop_implied.py). */
@@ -56,6 +68,12 @@ export type StatLine = Record<StatKey, number>;
 export interface PropQuote { line?: number | null; over?: number | null; under?: number | null; yes?: number | null }
 /** The model's own QB rushing means, used only where the books posted no line. */
 export interface QbRushFallback { rushing_yards?: number | null; rushing_tds?: number | null }
+/** The model's own stat means a TD-only anchor keeps (and whose TDs it replaces). */
+export interface ModelStatMeans {
+  rushing_yards?: number | null; receptions?: number | null; receiving_yards?: number | null;
+  rushing_tds?: number | null; receiving_tds?: number | null;
+}
+export const TD_ONLY_POSITIONS = ['RB', 'WR', 'TE'];
 
 export function impliedProb(american: number): number {
   return american < 0 ? -american / (-american + 100) : 100 / (american + 100);
@@ -149,6 +167,23 @@ export function statLine(position: string, lines: Record<string, PropQuote>, fal
   return s;
 }
 
+/** The model's rushing + receiving TDs, or null when it carries neither. */
+export function modelTouchdowns(m: ModelStatMeans | null | undefined): number | null {
+  if (!m || (m.rushing_tds == null && m.receiving_tds == null)) return null;
+  const tds = (Number(m.rushing_tds) || 0) + (Number(m.receiving_tds) || 0);
+  return Number.isFinite(tds) ? tds : null;
+}
+
+/**
+ * DK points a TD-only anchor adds to the model's projection, or null (v3). Only
+ * the touchdown term moves, so no yardage bonus changes.
+ */
+export function tdOnlyDelta(position: string, lines: Record<string, PropQuote>, modelTds: number | null): number | null {
+  if (!TD_ONLY_POSITIONS.includes(position) || modelTds == null || !Number.isFinite(modelTds)) return null;
+  const rate = anytimeTdRate(lines.player_anytime_td?.yes);
+  return rate == null ? null : 6 * (rate * CALIBRATION.player_anytime_td - modelTds);
+}
+
 function tail(mean: number, spread: number, threshold: number): number {
   return spread > 0 ? 1 - normalCdf((threshold - mean) / spread) : Number(mean >= threshold);
 }
@@ -165,35 +200,61 @@ export function dkPoints(position: string, s: StatLine): number {
 
 export interface MarketAnchor {
   version: string;
+  /** 'full': the whole stat line from the books (v1/v2). 'td_only': touchdowns from the anytime-TD line, the rest the model's (v3). */
+  mode: 'full' | 'td_only';
+  /** Markets whose calibrated value the projection used. */
+  fromMarket: string[];
+  /** td_only: the model's own rushing + receiving TDs the line replaced. */
+  modelTds?: number;
   /** The model's own range, kept for grading. */
   before: { mean: number; p10: number | null; median: number | null; p90: number | null };
   after: { mean: number; p10: number | null; median: number | null; p90: number | null };
   statLine: StatLine;
-  /** QB markets filled from the model's own rushing means because the books posted none. */
+  /** Markets whose stat came from the model's own mean: a QB's missing rushing lines (full), every non-TD stat (td_only). */
   modelFilled: string[];
   book: string;
   capturedAt: string;
   lines: Record<string, PropQuote>;
 }
 
+const PASS_MARKETS = ['player_pass_yds', 'player_pass_tds', 'player_pass_interceptions'];
+const RECEIVING_MARKETS = ['player_receptions', 'player_reception_yds'];
+
 /**
- * Anchor one player, or null when he lacks a full set of lines or the model has
- * no positive mean to rescale his range from.
+ * Anchor one player, or null when the model has no positive mean to rescale
+ * his range from, or he has neither a full set of lines nor (RB/WR/TE) an
+ * anytime-TD line plus the model's own TD means. Either way the model's range
+ * is rescaled to the new mean.
  */
 export function anchorPlayer(input: {
   position: string; ourProj: number | null; floorFpts: number | null; medianFpts: number | null; ceilingFpts: number | null;
   lines: Record<string, PropQuote>; book: string; capturedAt: string; qbRushFallback?: QbRushFallback | null;
+  /** The model's own stat means, for a TD-only anchor (v3). */
+  modelStatMeans?: ModelStatMeans | null;
 }): MarketAnchor | null {
+  if (input.ourProj == null || !(input.ourProj > 0.5)) return null;
+  const ourProj = input.ourProj;
+  const rescale = (mean: number) => {
+    const k = mean / ourProj;
+    const scale = (v: number | null) => v == null ? null : v * k;
+    return { before: { mean: ourProj, p10: input.floorFpts, median: input.medianFpts, p90: input.ceilingFpts },
+      after: { mean, p10: scale(input.floorFpts), median: scale(input.medianFpts), p90: scale(input.ceilingFpts) } };
+  };
+  const common = { version: MARKET_ANCHOR_VERSION, book: input.book, capturedAt: input.capturedAt, lines: input.lines };
   const modelFilled: string[] = [];
   const s = statLine(input.position, input.lines, input.qbRushFallback, modelFilled);
-  if (!s || input.ourProj == null || !(input.ourProj > 0.5)) return null;
-  const mean = dkPoints(input.position, s);
-  const k = mean / input.ourProj;
-  const scale = (v: number | null) => v == null ? null : v * k;
-  return {
-    version: MARKET_ANCHOR_VERSION,
-    before: { mean: input.ourProj, p10: input.floorFpts, median: input.medianFpts, p90: input.ceilingFpts },
-    after: { mean, p10: scale(input.floorFpts), median: scale(input.medianFpts), p90: scale(input.ceilingFpts) },
-    statLine: s, modelFilled, book: input.book, capturedAt: input.capturedAt, lines: input.lines,
-  };
+  if (s) {
+    const unread = input.position === 'QB' ? RECEIVING_MARKETS : PASS_MARKETS;
+    const fromMarket = (ANCHOR_MARKETS as readonly string[]).filter((m) => present(m, input.lines[m]) && !unread.includes(m));
+    return { ...common, mode: 'full', fromMarket, ...rescale(dkPoints(input.position, s)), statLine: s, modelFilled };
+  }
+  const modelTds = modelTouchdowns(input.modelStatMeans);
+  const delta = tdOnlyDelta(input.position, input.lines, modelTds);
+  if (delta == null || modelTds == null || !(ourProj + delta > 0)) return null;
+  const m = input.modelStatMeans!;
+  const num = (v: number | null | undefined) => (v != null && Number.isFinite(Number(v)) ? Number(v) : 0);
+  const tdLine: StatLine = { passing_yards: 0, passing_tds: 0, passing_interceptions: 0, rushing_yards: num(m.rushing_yards),
+    receptions: num(m.receptions), receiving_yards: num(m.receiving_yards), scrimmage_tds: modelTds + delta / 6 };
+  return { ...common, mode: 'td_only', fromMarket: ['player_anytime_td'], modelTds, ...rescale(ourProj + delta), statLine: tdLine,
+    modelFilled: ['player_rush_yds', ...RECEIVING_MARKETS] };
 }

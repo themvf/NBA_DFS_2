@@ -1,0 +1,257 @@
+{
+ "study_id": "nfl-dfs-range-split-v1",
+ "gate": "B",
+ "decided_at": "2026-10-26T11:36:04.167828+00:00",
+ "per_season": {
+  "2020": {
+   "n": 2588,
+   "clusters": 208,
+   "weeks": 14,
+   "range_loss_delta": {
+    "mean": -0.077622439286757,
+    "lo": -0.11434340663126855,
+    "hi": -0.04051586914314183,
+    "n": 2588,
+    "games": 208
+   },
+   "range_loss_delta_week_clustered": {
+    "mean": -0.077622439286757,
+    "lo": -0.11169762650973619,
+    "hi": -0.04590017385402928,
+    "n": 2588,
+    "games": 14
+   },
+   "p10_pinball_delta_point": -0.04042539319725697,
+   "p90_pinball_delta_point": -0.037197046089500016,
+   "baseline_range_loss": 2.7093279829984542,
+   "coverage": {
+    "baseline": {
+     "n": 2588,
+     "below_p10": 0.14064914992272023,
+     "above_p90": 0.11244204018547141,
+     "inside": 0.7469088098918083
+    },
+    "candidate": {
+     "n": 2588,
+     "below_p10": 0.10162287480680061,
+     "above_p90": 0.09350850077279753,
+     "inside": 0.8048686244204019
+    }
+   },
+   "by_position": {
+    "RB": {
+     "n": 796,
+     "range_loss_delta": {
+      "mean": -0.07687677718721118,
+      "lo": -0.14027429989818885,
+      "hi": -0.008873688864331162,
+      "n": 796,
+      "games": 208
+     },
+     "coverage": {
+      "baseline": {
+       "n": 796,
+       "below_p10": 0.15577889447236182,
+       "above_p90": 0.10804020100502512,
+       "inside": 0.7361809045226131
+      },
+      "candidate": {
+       "n": 796,
+       "below_p10": 0.12185929648241206,
+       "above_p90": 0.09296482412060302,
+       "inside": 0.785175879396985
+      }
+     }
+    },
+    "TE": {
+     "n": 516,
+     "range_loss_delta": {
+      "mean": -0.007917721892164597,
+      "lo": -0.07288101195931035,
+      "hi": 0.05623975074840821,
+      "n": 516,
+      "games": 202
+     },
+     "coverage": {
+      "baseline": {
+       "n": 516,
+       "below_p10": 0.12209302325581395,
+       "above_p90": 0.08914728682170543,
+       "inside": 0.7887596899224806
+      },
+      "candidate": {
+       "n": 516,
+       "below_p10": 0.08333333333333333,
+       "above_p90": 0.06395348837209303,
+       "inside": 0.8527131782945736
+      }
+     }
+    },
+    "WR": {
+     "n": 1276,
+     "range_loss_delta": {
+      "mean": -0.10627540261500788,
+      "lo": -0.1674072233063611,
+      "hi": -0.04547673791832444,
+      "n": 1276,
+      "games": 208
+     },
+     "coverage": {
+      "baseline": {
+       "n": 1276,
+       "below_p10": 0.13871473354231975,
+       "above_p90": 0.12460815047021943,
+       "inside": 0.7366771159874608
+      },
+      "candidate": {
+       "n": 1276,
+       "below_p10": 0.09639498432601881,
+       "above_p90": 0.10579937304075235,
+       "inside": 0.7978056426332288
+      }
+     }
+    }
+   }
+  },
+  "2021": {
+   "n": 2585,
+   "clusters": 224,
+   "weeks": 15,
+   "range_loss_delta": {
+    "mean": -0.0618600274684539,
+    "lo": -0.10067772407293071,
+    "hi": -0.023172479210968776,
+    "n": 2585,
+    "games": 224
+   },
+   "range_loss_delta_week_clustered": {
+    "mean": -0.0618600274684539,
+    "lo": -0.09155404767969991,
+    "hi": -0.0323673306565831,
+    "n": 2585,
+    "games": 15
+   },
+   "p10_pinball_delta_point": -0.04004263990028368,
+   "p90_pinball_delta_point": -0.021817387568170227,
+   "baseline_range_loss": 2.678385025145068,
+   "coverage": {
+    "baseline": {
+     "n": 2585,
+     "below_p10": 0.13694390715667312,
+     "above_p90": 0.11682785299806576,
+     "inside": 0.7462282398452611
+    },
+    "candidate": {
+     "n": 2585,
+     "below_p10": 0.11102514506769826,
+     "above_p90": 0.10174081237911026,
+     "inside": 0.7872340425531915
+    }
+   },
+   "by_position": {
+    "RB": {
+     "n": 838,
+     "range_loss_delta": {
+      "mean": -0.12444703181230035,
+      "lo": -0.19537951749345892,
+      "hi": -0.05603808747919129,
+      "n": 838,
+      "games": 224
+     },
+     "coverage": {
+      "baseline": {
+       "n": 838,
+       "below_p10": 0.1467780429594272,
+       "above_p90": 0.1288782816229117,
+       "inside": 0.7243436754176611
+      },
+      "candidate": {
+       "n": 838,
+       "below_p10": 0.12291169451073986,
+       "above_p90": 0.11336515513126491,
+       "inside": 0.7637231503579952
+      }
+     }
+    },
+    "TE": {
+     "n": 486,
+     "range_loss_delta": {
+      "mean": -0.023947877057619686,
+      "lo": -0.10940990833697918,
+      "hi": 0.05776156437085504,
+      "n": 486,
+      "games": 220
+     },
+     "coverage": {
+      "baseline": {
+       "n": 486,
+       "below_p10": 0.12962962962962962,
+       "above_p90": 0.11728395061728394,
+       "inside": 0.7530864197530864
+      },
+      "candidate": {
+       "n": 486,
+       "below_p10": 0.10082304526748971,
+       "above_p90": 0.09465020576131687,
+       "inside": 0.8045267489711934
+      }
+     }
+    },
+    "WR": {
+     "n": 1261,
+     "range_loss_delta": {
+      "mean": -0.034879373590200186,
+      "lo": -0.0963438036737739,
+      "hi": 0.024564254047272003,
+      "n": 1261,
+      "games": 224
+     },
+     "coverage": {
+      "baseline": {
+       "n": 1261,
+       "below_p10": 0.13322759714512292,
+       "above_p90": 0.10864393338620143,
+       "inside": 0.7581284694686756
+      },
+      "candidate": {
+       "n": 1261,
+       "below_p10": 0.1070578905630452,
+       "above_p90": 0.09674861221252974,
+       "inside": 0.796193497224425
+      }
+     }
+    }
+   }
+  }
+ },
+ "fallback_counts": {
+  "2020": {},
+  "2021": {}
+ },
+ "verdict": "B_CLEARED",
+ "reason": "interval below zero and every guard holds in 2020 and 2021; Gate F still runs",
+ "readings": {
+  "2020": {
+   "interval_wholly_below_zero": true,
+   "no_position_worse": true,
+   "position_readings": {
+    "RB": true,
+    "TE": true,
+    "WR": true
+   },
+   "calibration_closer_to_target": true,
+   "all_guards_hold": true
+  },
+  "2021": {
+   "interval_wholly_below_zero": true,
+   "no_position_worse": true,
+   "position_readings": {
+    "RB": true,
+    "TE": true,
+    "WR": true
+   },
+   "calibration_closer_to_target": true,
+   "all_guards_hold": true
+  }
+ }
+}

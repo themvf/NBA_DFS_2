@@ -1,10 +1,10 @@
 /**
- * Market anchor (`nfl-market-anchor-v2`): the TypeScript port reproduces
- * model/nfl_prop_implied.py (CALIBRATION_V1) on four real-shaped players, and
- * the anchor rescales the model's range around the books' mean.
+ * Market anchor (`nfl-market-anchor-v3`): the TypeScript port reproduces
+ * model/nfl_prop_implied.py (CALIBRATION_V1, td_only_delta) on real-shaped
+ * players, and the anchor rescales the model's range around the books' mean.
  */
 import assert from "node:assert/strict";
-import { anchorPlayer, dkPoints, inverseNormal, statLine, type PropQuote } from "../src/lib/nfl-dfs/market-anchor";
+import { anchorPlayer, dkPoints, inverseNormal, modelTouchdowns, statLine, tdOnlyDelta, type PropQuote } from "../src/lib/nfl-dfs/market-anchor";
 
 const near = (a: number, b: number, tol = 0.01, msg = "") => assert.ok(Math.abs(a - b) <= tol, `${msg} ${a} vs ${b}`);
 
@@ -69,5 +69,38 @@ const qa = anchorPlayer({ position: "QB", ourProj: 21, floorFpts: 12, medianFpts
   book: "draftkings", capturedAt: "x", qbRushFallback: model })!;
 near(qa.after.mean, 22.9387, 0.01, "QB anchor uses the fallback"); assert.deepEqual(qa.modelFilled, ["player_anytime_td", "player_rush_yds"]);
 assert.equal(a.modelFilled.length, 0, "RB anchor fills nothing");
+assert.equal(a.mode, "full");
+assert.deepEqual(a.fromMarket, ["player_rush_yds", "player_receptions", "player_anytime_td"], "full RB: the markets it read");
+assert.deepEqual(qa.fromMarket, ["player_pass_yds", "player_pass_tds", "player_pass_interceptions"], "QB fallback: model-filled markets are not from the market");
+
+// v3: an RB/WR/TE without a full set but with an anytime-TD line moves only the
+// touchdown term. Deltas from Python: td_only_delta(pos, lines, model_tds).
+for (const [pos, yes, modelTds, delta] of [["RB", 400, 0.25, -0.273691], ["WR", 650, 0.08, 0.309034], ["TE", 155, 0.30, 0.901519]] as const) {
+  near(tdOnlyDelta(pos, { player_anytime_td: { yes } }, modelTds)!, delta, 1e-4, `${pos} TD-only delta`);
+}
+assert.equal(tdOnlyDelta("QB", { player_anytime_td: { yes: 400 } }, 0.25), null, "QBs are never TD-only");
+assert.equal(tdOnlyDelta("RB", {}, 0.25), null, "no anytime-TD line: nothing");
+assert.equal(tdOnlyDelta("RB", { player_anytime_td: { yes: 400 } }, null), null, "no model TDs: nothing");
+assert.equal(modelTouchdowns({ rushing_yards: 30 }), null, "a model with no TD means is not anchored");
+const backupMeans = { rushing_yards: 22.0, receptions: 1.4, receiving_yards: 9.5, rushing_tds: 0.18, receiving_tds: 0.07 };
+const td = anchorPlayer({ position: "RB", ourProj: 6.2, floorFpts: 1.0, medianFpts: 5.1, ceilingFpts: 14.8,
+  lines: { player_anytime_td: { yes: 400 }, player_rush_yds: { line: 24.5, over: -115, under: -115 } },
+  book: "draftkings", capturedAt: "x", modelStatMeans: backupMeans })!;
+assert.equal(td.mode, "td_only", "partial set without receptions: TD-only, the rush-yards line is not used");
+near(td.after.mean, 6.2 - 0.273691, 1e-4, "TD-only mean = model + delta");
+near(td.after.p90!, 14.8 * td.after.mean / 6.2, 1e-9, "range rescaled as in v2");
+near(td.statLine.scrimmage_tds, 0.25 - 0.273691 / 6, 1e-5, "TDs from the line");
+near(td.statLine.rushing_yards, 22.0, 1e-9, "every other stat is the model's");
+assert.deepEqual(td.fromMarket, ["player_anytime_td"]);
+assert.equal(td.modelTds, 0.25);
+assert.equal(td.before.mean, 6.2, "model's own number kept");
+assert.equal(anchorPlayer({ position: "WR", ourProj: 6, floorFpts: 1, medianFpts: 5, ceilingFpts: 14,
+  lines: { player_anytime_td: { yes: 400 } }, book: "draftkings", capturedAt: "x" }), null, "no model stat means: not anchored");
+assert.equal(anchorPlayer({ position: "QB", ourProj: 6, floorFpts: 1, medianFpts: 5, ceilingFpts: 14,
+  lines: { player_anytime_td: { yes: 400 } }, book: "draftkings", capturedAt: "x", modelStatMeans: backupMeans }), null,
+  "a QB without passing lines stays on the model");
+const fullWithMeans = anchorPlayer({ position: "RB", ourProj: 15, floorFpts: 6, medianFpts: 14, ceilingFpts: 28, lines: FIXTURES.RB.lines,
+  book: "draftkings", capturedAt: "x", modelStatMeans: backupMeans })!;
+assert.equal(fullWithMeans.mode, "full"); near(fullWithMeans.after.mean, 17.4756, 0.01, "a full set is v2, whatever the model says");
 
 console.log("Market anchor: the TypeScript port matches model/nfl_prop_implied.py and rescales ranges around the books' mean.");

@@ -171,6 +171,33 @@ def stat_line(position: str, lines: dict[str, dict], markets: dict[str, Market] 
     return out
 
 
+# nfl-market-anchor-v3: an RB/WR/TE without a full line set whose books post an
+# anytime-TD line takes that line's touchdowns in place of the model's; every
+# other stat stays the model's. Graded on 2026 weeks 1-6 (docs/
+# nfl-market-anchor-v3.md): MAE better than the model at every position and
+# than a constant touchdown shrink; partial volume/yardage lines graded no
+# better, so they are not used.
+TD_ONLY_POSITIONS = ("RB", "WR", "TE")
+
+
+def td_only_delta(position: str, lines: dict[str, dict], model_tds: float | None,
+                  calibration: dict[str, float] | None = None) -> float | None:
+    """DK points to add to the model's projection for a TD-only anchor, or None.
+
+    ``model_tds`` is the model's own rushing + receiving touchdowns. None when
+    the position is not eligible, the anytime-TD price is missing, or the model
+    has no touchdown mean. Only the 6-point touchdown term moves, so no yardage
+    bonus changes.
+    """
+    if position not in TD_ONLY_POSITIONS or model_tds is None or not math.isfinite(model_tds):
+        return None
+    rate = anytime_td_rate((lines.get("player_anytime_td") or {}).get("yes"))
+    if rate is None:
+        return None
+    rate *= (calibration or CALIBRATION_V1).get("player_anytime_td", 1.0)
+    return 6.0 * (rate - model_tds)
+
+
 def _missing(market: str, q: dict | None) -> bool:
     if not q:
         return True

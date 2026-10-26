@@ -1,0 +1,16 @@
+[2022] week 4: 231 rows, 4s
+[2022] week 5: 223 rows, 4s
+[2022] week 6: 188 rows, 5s
+[2022] week 7: 191 rows, 4s
+[2022] week 8: 203 rows, 4s
+[2022] week 9: 176 rows, 4s
+[2022] week 10: 192 rows, 36636s
+[2022] week 11: 191 rows, 11s
+[2022] week 12: 196 rows, 9s
+[2022] week 13: 201 rows, 9s
+[2022] week 14: 173 rows, 8s
+[2022] week 15: 203 rows, 7s
+[2022] week 16: 201 rows, 6s
+[2022] week 17: 191 rows, 3s
+[2022] week 18: 209 rows, 5s
+2969 rows, excluded {'baseline_under_5': 1828}, 36726.0s -> C:\Docs\_AI Python Projects\NBADFS_v2\.claude\worktrees\nfl-range-calibration-study-48584a\artifacts\nfl-dfs-range-calibration\replay-2022.json
