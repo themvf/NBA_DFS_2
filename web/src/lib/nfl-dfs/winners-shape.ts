@@ -171,6 +171,15 @@ export function showdownCaptainPositions(s: { format: "classic" | "showdown"; mo
   return s.captainPositions?.length ? [...s.captainPositions] : null;
 }
 
+/** Positions "Suggest CPT ranges" proposes in any shape (owner's rule, 2026-10-26): never a TE, DST or kicker. */
+export const SUGGESTED_CAPTAIN_POSITIONS: readonly NflOptimizerPlayer["position"][] = ["QB", "RB", "WR"];
+
+/** The positions to suggest captain ranges for: QB/RB/WR, narrowed further by the build's own captain rule. */
+export function suggestedCaptainPositions(s: Parameters<typeof showdownCaptainPositions>[0]): NflOptimizerPlayer["position"][] {
+  const allowed = showdownCaptainPositions(s);
+  return SUGGESTED_CAPTAIN_POSITIONS.filter((position) => !allowed || allowed.includes(position));
+}
+
 type ShapePlayer = Pick<NflOptimizerPlayer, "dkPlayerId" | "name" | "position" | "salary" | "isOut" | "projectionStatus" | "priorOpportunity">;
 
 export type WinnersShapeResult = {
