@@ -22,7 +22,8 @@ Definitions (regular season, games before the matchup's week; pass and run plays
   explosive play      a gain of 20+ yards
   third down          third-down plays converted / third-down plays with a conversion result
   sack rate           sacks / dropbacks
-  quarterback         each team's leading passer by dropbacks; CPOE = completion percentage above expected (nflverse)
+  quarterback         the passer with most dropbacks in the team's latest game, his season numbers;
+                      CPOE = completion percentage above expected (nflverse)
 
     python -m model.nfl_matchup_deep_charts --away IND --home MIN --out-dir DIR
 """
@@ -31,7 +32,6 @@ from __future__ import annotations
 
 import argparse
 import collections
-import datetime as dt
 import math
 import re
 import textwrap
@@ -97,6 +97,7 @@ def team_stats(pbp: list[dict], schedule: list[dict], before_week: int) -> dict[
     c = collections.defaultdict(collections.Counter)            # team -> season counters
     by_game = collections.defaultdict(collections.Counter)      # (team, game) -> offense/defense EPA sums
     qb = collections.defaultdict(collections.Counter)           # (team, passer) -> passer counters
+    qb_game = collections.defaultdict(collections.Counter)      # (team, game) -> passer -> dropbacks
     for p in pbp:
         if p.get("season_type") != "REG" or p["game_id"] not in ids:
             continue
@@ -141,6 +142,7 @@ def team_stats(pbp: list[dict], schedule: list[dict], before_week: int) -> dict[
             c[d]["sacks"] += sack
             name = p.get("passer_player_name")
             if isinstance(name, str):
+                qb_game[(t, g)][name] += 1
                 q = qb[(t, name)]
                 q["dropbacks"] += 1
                 q["sacks"] += sack
@@ -173,8 +175,14 @@ def team_stats(pbp: list[dict], schedule: list[dict], before_week: int) -> dict[
         ct = len(close) - cw - cl
         last = lg[-LAST_N:]
         lo = [by_game[(t, x["game_id"])] for x in last]
-        passers = [(name, q) for (team, name), q in qb.items() if team == t]
-        name, q = max(passers, key=lambda nq: nq[1]["dropbacks"]) if passers else (None, collections.Counter())
+        # The quarterback is whoever took the most dropbacks in the team's latest game (so an injured
+        # starter's replacement is the one shown); his numbers are his whole season with this team.
+        latest = qb_game.get((t, lg[-1]["game_id"])) if lg else None
+        name = max(latest, key=latest.get) if latest else None
+        if name is None:
+            passers = [(nm, q) for (team, nm), q in qb.items() if team == t]
+            name = max(passers, key=lambda nq: nq[1]["dropbacks"])[0] if passers else None
+        q = qb[(t, name)] if name else collections.Counter()
         out[t] = {
             "games": n, "wins": wins, "losses": n - wins - ties, "ties": ties, "log": lg,
             "pf": pf, "pa": pa, "win_pct": (wins + 0.5 * ties) / n,
@@ -191,7 +199,7 @@ def team_stats(pbp: list[dict], schedule: list[dict], before_week: int) -> dict[
             "third_off": _ratio(k["third_conv"], k["third_n"]),
             "third_def": _ratio(k["third_def_conv"], k["third_def_n"]),
             "sack_off": _ratio(k["sacked"], k["dropbacks"]), "sack_def": _ratio(k["sacks"], k["opp_dropbacks"]),
-            "qb_name": name, "qb_epa": _ratio(q["epa"], q["epa_n"]), "qb_cpoe": _ratio(q["cpoe"], q["cpoe_n"]),
+            "qb_name": name, "qb_dropbacks": q["dropbacks"], "qb_epa": _ratio(q["epa"], q["epa_n"]), "qb_cpoe": _ratio(q["cpoe"], q["cpoe_n"]),
             "qb_int": _ratio(q["ints"], q["dropbacks"]), "qb_sack": _ratio(q["sacks"], q["dropbacks"]),
         }
     for t, row in out.items():
@@ -279,7 +287,7 @@ def luck_chart(away: str, home: str, table: dict, rk: dict, path: Path) -> bool:
         ("Win rate: actual vs expected from points", [("Actual", "", pair("win_pct")),
                                                        ("Expected", "from points for and against", pair("pyth_pct"))]),
         ("One-score games (8 points or fewer)",
-         [(f"Win rate", f"{_name(away)} {rec(a['one_score'])}, {_name(home)} {rec(h['one_score'])}",
+         [("Win rate", f"{_name(away)} {rec(a['one_score'])}, {_name(home)} {rec(h['one_score'])}",
            pair("one_score_pct"))]),
         ("Fumbles recovered (about half is normal)",
          [("Share recovered", f"{_name(away)} {a['fumbles'][0]} of {a['fumbles'][1]}, "
@@ -356,9 +364,10 @@ def edge_chart(away: str, home: str, table: dict, rk: dict, path: Path, line: li
              fontsize=8.4, color=INK, fontweight="bold")
     fig.text(0.04, 0.12, "\n".join(lines[:8]), fontsize=7.2, color=INK, va="top", linespacing=1.6)
     sub = _wrap(
-        f"Each panel pairs one team's offense with the other team's defense on the same play type. The darker bar is "
-        f"the better-ranked side, rank among 32 (1st = best for that side). Each row has its own scale. "
-        f"Quarterback = each team's leading passer by dropbacks. Descriptive only: none of this beats the betting line.")
+        "Each panel pairs one team's offense with the other team's defense on the same play type. The darker bar is "
+        "the better-ranked side, rank among 32 (1st = best for that side). Each row has its own scale. "
+        "Quarterback = the passer with most dropbacks in each team's latest game. "
+        "Descriptive only: none of this beats the betting line.")
     return _finish(fig, path, f"{_name(away)} at {_name(home)}: where the edge is", sub, height)
 
 
