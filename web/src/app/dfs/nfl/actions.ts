@@ -144,7 +144,7 @@ export type NflWorkspacePlayer = NflOptimizerPlayer & {
    * carries the news.
    */
   marketAnchor?: MarketAnchor | null;
-  /** `nfl-ownership-bands-v1`: the outside range that bounded `ownPct`; `prior` is our unbounded number. */
+  /** `nfl-ownership-bands-v1`: the outside range for this player (`prior` is our number); it bounds `ownPct` only while the clamp is on. */
   ownBand?: { low: number; high: number; prior: number; source: string; capturedAt: string } | null;
   platformEligibility?: PlatformEligibilityDecision;
   availabilityEvidence?: {gameDecisionId:string|null;platformManifestDigest:string|null;
@@ -230,8 +230,8 @@ export type NflWorkspaceSlate = {
   marketAnchor?: { version: string; applied: number; eligible: number; newestCapture: string | null; oldestCapture: string | null; error?: string;
     /** v3: of `applied`, how many were anchored on the anytime-TD line alone, and TD-only anchors left off for an absence commit. */
     tdOnly?: number; tdOnlyYieldedToCommit?: number };
-  /** Outside ownership ranges applied to the prior, when a range list is imported for this slate's date. */
-  ownershipBands?: BandReport & { error?: string };
+  /** Outside ownership ranges for this slate's date; `applied` says whether they bound the prior or are shown only. */
+  ownershipBands?: BandReport & { applied: boolean; error?: string };
   /** Starting QBs the user confirmed for this read, and any that could not be applied. */
   confirmedStartingQbs?: ConfirmedStarterReport;
   /** Players each defensive profile would actually adjust on this slate (captures that pass every check). */
@@ -1218,15 +1218,18 @@ function attachOwnership(workspace: NflWorkspaceSlate): NflWorkspaceSlate {
 }
 
 /**
- * Outside ownership ranges (`nfl-ownership-bands-v1`, owner's decision
- * 2026-10-24): the newest imported range list for the slate's Eastern kickoff
- * date holds each matched player's prior inside its range (below the low end
- * is raised to it, above the high end is lowered to it). Classic only; a
- * LineStar number is left alone. `ourOwnPct` keeps the raw prior, `ownBand`
- * records the range, and everything that reads `ownPct` (leverage,
- * duplication, the Own column) sees the bounded number. A failed read leaves
- * the prior in place and says so.
+ * Outside ownership ranges (`nfl-ownership-bands-v1`): the newest imported
+ * range list for the slate's Eastern kickoff date is matched to the pool and
+ * recorded on each player as `ownBand`. Whether it also BOUNDS the prior is
+ * `OWNERSHIP_BANDS_APPLY`: on 2026-10-24 the owner turned it on for week 7;
+ * on 2026-10-26, after the week 7 grade (the clamp moved 113 of 143 players
+ * away from the field, mostly cheap players lifted to a range's low end),
+ * the owner turned it off. The ranges stay imported and shown so the weekly
+ * three-way grade (prior, bounded, midpoint) keeps accumulating. When off,
+ * `ownPct` is the plain prior and the report counts what the clamp WOULD
+ * have done. A failed read leaves the prior in place and says so.
  */
+const OWNERSHIP_BANDS_APPLY = false;
 async function attachOwnershipBands(workspace: NflWorkspaceSlate): Promise<void> {
   if (workspace.format !== 'classic' || !workspace.firstKickoff) return;
   const slateDate = new Date(workspace.firstKickoff).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
@@ -1245,12 +1248,13 @@ async function attachOwnershipBands(workspace: NflWorkspaceSlate): Promise<void>
       if (!band || p.ownPct == null) return p;
       const bounded = clampToBand(p.ownPct, band);
       after.set(p.dkPlayerId, bounded);
-      return { ...p, ownPct: bounded, ownSource: `${p.ownSource ?? 'prior'}+${NFL_OWNERSHIP_BANDS_VERSION}`,
-        ownBand: { low: band.low, high: band.high, prior: p.ownPct, source: latest.source, capturedAt } };
+      const ownBand = { low: band.low, high: band.high, prior: p.ownPct, source: latest.source, capturedAt };
+      if (!OWNERSHIP_BANDS_APPLY) return { ...p, ownBand };
+      return { ...p, ownPct: bounded, ownSource: `${p.ownSource ?? 'prior'}+${NFL_OWNERSHIP_BANDS_VERSION}`, ownBand };
     });
-    workspace.ownershipBands = bandReport(latest.source, capturedAt, latest.rows, matches, before, after);
+    workspace.ownershipBands = { ...bandReport(latest.source, capturedAt, latest.rows, matches, before, after), applied: OWNERSHIP_BANDS_APPLY };
   } catch (error) {
-    workspace.ownershipBands = { ...bandReport('fantasypros', null, [], new Map(), new Map(), new Map()),
+    workspace.ownershipBands = { ...bandReport('fantasypros', null, [], new Map(), new Map(), new Map()), applied: OWNERSHIP_BANDS_APPLY,
       error: `Ownership ranges could not be read, so the prior is used as is: ${error instanceof Error ? error.message : 'unknown error'}` };
   }
 }
