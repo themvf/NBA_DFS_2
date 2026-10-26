@@ -194,6 +194,29 @@ def _panel(ax, title: str, fmt: str, rows, away: str, home: str, table: dict, rk
     ax.set_title(title, loc="left", fontsize=8.4, color=INK, fontweight="bold")
 
 
+def margin_panel(ax, lg: list[dict], team_name: str, colour: str) -> None:
+    """One bar per game: final margin, score above or below, week and opponent underneath."""
+    ax.set_facecolor(SURFACE)
+    margins = [g["for"] - g["against"] for g in lg]
+    xs = range(len(lg))
+    ax.bar(xs, margins, color=[GOOD if m > 0 else BAD if m < 0 else INK_2 for m in margins], width=0.62)
+    for x, g, m in zip(xs, lg, margins):
+        ax.text(x, m + (1.2 if m >= 0 else -1.2), f"{g['for']:.0f}-{g['against']:.0f}", ha="center",
+                va="bottom" if m >= 0 else "top", fontsize=6.4, color=INK)
+    ax.set_xticks(list(xs), [f"W{g['week']}\n{'vs' if g['home'] else '@'} {g['opp']}" for g in lg],
+                  fontsize=6.4, color=INK_2)
+    ax.axhline(0, color=INK_2, linewidth=0.6)
+    lim = max(10, max((abs(m) for m in margins), default=0) + 7)
+    ax.set_ylim(-lim, lim)
+    ax.tick_params(axis="y", labelsize=6.4, colors=INK_2)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    for side in ("left", "bottom"):
+        ax.spines[side].set_color("#d8d6d0")
+    ax.set_title(f"{team_name}: each game's final margin", loc="left", fontsize=8.4, color=colour,
+                 fontweight="bold")
+
+
 def tape_chart(away: str, home: str, table: dict, rk: dict, path: Path, context: str) -> bool:
     if away not in table or home not in table:
         return False
@@ -212,27 +235,7 @@ def tape_chart(away: str, home: str, table: dict, rk: dict, path: Path, context:
         _panel(ax, title, fmt, rows, away, home, table, rk)
 
     for i, (team, colour) in enumerate(((away, AWAY_COLOUR), (home, HOME_COLOUR))):
-        ax = fig.add_axes((0.07 + i * 0.48, 0.05, 0.42, 0.24))
-        ax.set_facecolor(SURFACE)
-        lg = table[team]["log"]
-        margins = [g["for"] - g["against"] for g in lg]
-        xs = range(len(lg))
-        ax.bar(xs, margins, color=[GOOD if m > 0 else BAD if m < 0 else INK_2 for m in margins], width=0.62)
-        for x, g, m in zip(xs, lg, margins):
-            ax.text(x, m + (1.2 if m >= 0 else -1.2), f"{g['for']:.0f}-{g['against']:.0f}", ha="center",
-                    va="bottom" if m >= 0 else "top", fontsize=6.4, color=INK)
-        ax.set_xticks(list(xs), [f"W{g['week']}\n{'vs' if g['home'] else '@'} {g['opp']}" for g in lg],
-                      fontsize=6.4, color=INK_2)
-        ax.axhline(0, color=INK_2, linewidth=0.6)
-        lim = max(10, max(abs(m) for m in margins) + 7)
-        ax.set_ylim(-lim, lim)
-        ax.tick_params(axis="y", labelsize=6.4, colors=INK_2)
-        for side in ("top", "right"):
-            ax.spines[side].set_visible(False)
-        for side in ("left", "bottom"):
-            ax.spines[side].set_color("#d8d6d0")
-        ax.set_title(f"{_name(team)}: each game's final margin", loc="left", fontsize=8.4, color=colour,
-                     fontweight="bold")
+        margin_panel(fig.add_axes((0.07 + i * 0.48, 0.05, 0.42, 0.24)), table[team]["log"], _name(team), colour)
     sub = "\n".join(textwrap.wrap(
         f"Season to date, {a['games']} and {h['games']} games. Bars show the actual numbers; the rank beside each is "
         f"among {teams_n} teams (1st = best), and the darker bar is the better of the two. {context}", 125))
@@ -290,8 +293,11 @@ def context_line(away: str, home: str, game: dict, schedule: list[dict], season:
                 text += f", {fav} -{abs(g['spread']):g}"
             if g.get("move") is not None and g.get("opened_at") is not None:
                 opened = g["opened_at"].astimezone(ET).strftime("%b %d").replace(" 0", " ")
-                text += f" ({fav} {'up' if (g['move'] > 0) == (fav == g['home']) else 'down'} " \
-                        f"{abs(g['move']) * 100:.0f} points of win chance since {opened})"
+                if round(abs(g["move"]) * 100) == 0:
+                    text += f" (unchanged since {opened})"
+                else:
+                    text += f" ({fav} {'up' if (g['move'] > 0) == (fav == g['home']) else 'down'} " \
+                            f"{abs(g['move']) * 100:.0f} points of win chance since {opened})"
             parts.append(text + ".")
     for team in (away, home):
         weeks = sorted(g["week"] for g in schedule if team in (g["home_team"], g["away_team"]))
