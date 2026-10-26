@@ -89,6 +89,14 @@ function main() {
     "the optimizer rejects the plan up front",
   );
 
+  // A captain minimum on a player who cannot captain names him and the reason
+  // when labels are given, and falls back to the id when they are not.
+  const ineligible = [policy(7, { captain: range(0.05, 0.2) })];
+  const named = detectExposureInfeasibility(ineligible, 20, new Set([1]), new Map([[7, { name: "Dallas Goedert (TE)", captainIneligibleReason: "the Winners shape captains only QB/RB/WR" }]]));
+  assert.equal(named.find((x) => x.reason === "CAPTAIN_MIN_ON_INELIGIBLE")?.detail, "Dallas Goedert (TE) has a captain minimum, but the Winners shape captains only QB/RB/WR.");
+  const unnamed = detectExposureInfeasibility(ineligible, 20, new Set([1]));
+  assert.equal(unnamed.find((x) => x.reason === "CAPTAIN_MIN_ON_INELIGIBLE")?.detail, "Player 7 has a captain minimum, but he is not captain-eligible.");
+
   // A per-player overall min that exceeds captain+flex capacity is caught.
   const unreachable = detectExposureInfeasibility([policy(1, { overall: range(1, null), captain: range(null, 0), flex: range(null, 0) })], 20, new Set([1]));
   assert.ok(unreachable.some((x) => x.reason === "PLAYER_OVERALL_UNREACHABLE"));

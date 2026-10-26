@@ -553,6 +553,18 @@ export function captainBlockedByAvailability(player: NflOptimizerPlayer): boolea
   return CAPTAIN_DOUBTFUL_STATES.has(status);
 }
 
+/** Why a pool player cannot be captain, completing "has a captain minimum, but ...". */
+function captainIneligibleReason(player: NflOptimizerPlayer, settings: NflOptimizerSettings): string {
+  if (settings.captainPositions && !settings.captainPositions.includes(player.position)) {
+    const positions = settings.captainPositions.join("/");
+    return settings.buildShape === "winners"
+      ? `the Winners shape captains only ${positions}. Clear his CPT range or switch the build shape to Standard`
+      : `this build captains only ${positions}. Clear his CPT range`;
+  }
+  if (captainBlockedByAvailability(player)) return `his status (${player.availabilityStatus}) keeps him out of the captain slot. Clear his CPT range`;
+  return "he cannot be captain in this build. Clear his CPT range";
+}
+
 function projectionFor(player: NflOptimizerPlayer, settings: NflOptimizerSettings): { value: number; source: ResolvedPlayer["resolvedSource"] } | null {
   // Fail closed before any source is consulted: no projection exists for a
   // player we have decided is not playing, in any source.
@@ -1673,6 +1685,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
       pool.map((p) => effectivePolicy(p)),
       settings.nLineups,
       settings.format === "showdown" ? captainEligibleIds : new Set(),
+      new Map(pool.map((p) => [p.dkPlayerId, { name: `${p.name} (${p.position})`, captainIneligibleReason: captainIneligibleReason(p, settings) }])),
     );
     if (problems.length) {
       throw new Error(`Exposure plan is infeasible before generation:\n${problems.map((x) => `• ${x.detail}`).join("\n")}`);

@@ -158,6 +158,19 @@ export function qbExposureCap(nLineups: number): number {
   return Math.min(1, Math.max(WINNERS_SHAPE.qbExposureFloor, Math.ceil(n / distinct) / n));
 }
 
+/**
+ * The positions a Showdown build may put at Captain, or null when any may.
+ * Mirrors what applyWinnersShape enforces, so the page can respect it before
+ * a build (the "Suggest CPT ranges" button gave a TE a captain minimum the
+ * Winners shape then rejected, 2026-10-26).
+ */
+export function showdownCaptainPositions(s: { format: "classic" | "showdown"; mode: string; buildShape?: BuildShape;
+  captainPositions?: readonly NflOptimizerPlayer["position"][] }): NflOptimizerPlayer["position"][] | null {
+  if (s.format !== "showdown") return null;
+  if (s.mode === "gpp" && s.buildShape === "winners") return [...WINNERS_SHAPE.captainPositions];
+  return s.captainPositions?.length ? [...s.captainPositions] : null;
+}
+
 type ShapePlayer = Pick<NflOptimizerPlayer, "dkPlayerId" | "name" | "position" | "salary" | "isOut" | "projectionStatus" | "priorOpportunity">;
 
 export type WinnersShapeResult = {
