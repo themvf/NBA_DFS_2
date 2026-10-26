@@ -53,9 +53,9 @@ export async function getNflInjuryCoverage(season: number, week: number | null, 
  */
 export async function getNflRosterEvidence(season: number, week?: number | null, asOf?: Date | null): Promise<Map<number, RosterEvidence>> {
   const archivedAt = asOf && Number.isFinite(asOf.getTime()) ? asOf.toISOString() : null;
-  // The five reads are independent (each is one round trip on neon-http), so
+  // The six reads are independent (each is one round trip on neon-http), so
   // they are issued together and merged in the original order below.
-  const [result, archived, injuryRead, games] = await Promise.all([
+  const [result, archived, injuryRead, games, rosterStatus] = await Promise.all([
     db.execute(sql`SELECT id, team_abbrev, position, fetched_at,
     ${sleeperEvidence(sql`metadata->'sleeper'`)} AS sleeper FROM ff_players WHERE season=${season}`),
     // One index probe per player on idx_ff_injury_observations_sleeper_depth
@@ -87,12 +87,29 @@ export async function getNflRosterEvidence(season: number, week?: number | null,
     week ? db.execute(sql`SELECT g.kickoff, h.abbreviation home, a.abbreviation away
     FROM nfl_season_games g JOIN nfl_teams h ON h.team_id=g.home_team_id JOIN nfl_teams a ON a.team_id=g.away_team_id
     WHERE g.season=${season} AND g.week=${week} AND g.game_type='REG'`) : Promise.resolve(null),
+    // nflverse roster status (practice squad = DEV) as captured at or before the
+    // decision time; see ingest/nfl_roster_status.py and `practiceSquadBlock`.
+    // A failed read is reported on every player, never read as "not on a practice squad".
+    db.execute(sql`SELECT p.id AS player_id, o.roster_week, o.team, o.status, o.status_description, o.observed_at
+      FROM ff_players p
+      CROSS JOIN LATERAL (
+        SELECT o.roster_week, o.team, o.status, o.status_description, o.observed_at FROM nfl_roster_status_observations o
+        WHERE o.season=${season} AND o.player_id=p.id AND o.observed_at <= COALESCE(${archivedAt}::timestamptz, NOW())
+        ORDER BY o.observed_at DESC, o.id DESC LIMIT 1) o
+      WHERE p.season=${season}`).then((value) => ({ value, failed: false }), () => ({ value: null, failed: true })),
   ]);
   const roster = new Map<number, RosterEvidence>(result.rows.map(r => [Number(r.id), { team: String(r.team_abbrev ?? ""), position: String(r.position), fetchedAt: new Date(r.fetched_at as string).toISOString(), sleeper: r.sleeper }]));
   for (const row of archived?.rows ?? []) {
     const player = roster.get(Number(row.player_id));
     if (!player) continue;
     roster.set(Number(row.player_id), { ...player, fetchedAt: new Date(row.observed_at as string).toISOString(), sleeper: row.raw_payload, archived: true });
+  }
+  if (rosterStatus.failed || !rosterStatus.value) { for (const player of roster.values()) player.rosterStatusReadFailed = true; }
+  else for (const row of rosterStatus.value.rows) {
+    const player = roster.get(Number(row.player_id));
+    if (player) player.rosterStatus = { rosterWeek: Number(row.roster_week), team: row.team == null ? null : String(row.team),
+      status: String(row.status), description: row.status_description == null ? null : String(row.status_description),
+      observedAt: new Date(row.observed_at as string).toISOString() };
   }
   if (!week || !games) return roster;
   if (!injuryRead || injuryRead.failed || !injuryRead.value) { for (const player of roster.values()) player.injuryReadFailed = true; }

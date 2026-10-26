@@ -27,7 +27,7 @@ export function applyLatestEligibility<T extends ReviewPlayer>(players:T[], rows
       || !Array.isArray(decision.qualifying_observation_ids) || !decision.qualifying_observation_ids.length || decision.source_snapshot_id==null)return player;
     if(!['OUT_CONFIRMED','QUESTIONABLE','DOUBTFUL'].includes(decision.state)||player.isOut
       || player.availability?.blockedReason?.startsWith('Unavailable'))return player;
-    const availability=presentPinnedGameAvailability(decision,player.availability?.role??'Role unresolved',player.availability?.roleBlockedReason??null);
+    const availability=presentPinnedGameAvailability(decision,player.availability?.role??'Role unresolved',player.availability?.roleBlockedReason??null,player.availability?.practiceSquadNote??null);
     const review={runId:input.reviewRunId,asOf:input.reviewAt,decision};
     return {...player,availability,availabilityStatus:availability.status,latestEligibilityReview:review,
       ...(decision.state==='OUT_CONFIRMED'?{isOut:true,ruledOut:true,ourProj:0,floorFpts:0,medianFpts:0,ceilingFpts:0,boomRate:0}: {})};

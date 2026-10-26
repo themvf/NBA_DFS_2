@@ -604,7 +604,7 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
     const evidence=roster.get(row.ffPlayerId ?? -1);
     const legacy=resolveGameAvailability(evidence,row.team,row.position,now,run?.week??null,evidence?.kickoff??null);
     const pinned=decisionsByPlayer.get(row.ffPlayerId??-1);
-    return pinned?presentPinnedGameAvailability(pinned,legacy.role,legacy.roleBlockedReason??null):legacy;
+    return pinned?presentPinnedGameAvailability(pinned,legacy.role,legacy.roleBlockedReason??null,legacy.practiceSquadNote??null):legacy;
   };
   // Current participation is a separate overlay on the frozen forecast. Use
   // only a newer immutable, game-matched decision; never infer it from today's
