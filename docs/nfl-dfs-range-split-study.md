@@ -146,3 +146,36 @@ only (`artifacts/nfl-dfs-range-split/forward-smoke-counts.json`) and computes
 no loss: 1,066 played RB/TE/WR rows over weeks 1-7, 218 of them anchored,
 every row given a candidate range (no identity or history fallback). That
 rate (~150 rows a week) clears the 400-row floor by about week 10. Tests: `tests/test_nfl_dfs_range_split.py`.
+
+## Gate B result (2026-10-26): B_CLEARED
+
+`replay --season 2020` and `--season 2021` (3,069 and 3,104 rows with
+baseline 5+; history from 2018), run after the registration commit
+`e948ecfd`, then `blind`, run once (`blind-verdict.json`, `blind.log`). No
+row fell back to the baseline range (`m17` was positive everywhere).
+
+| | 2020 | 2021 |
+|---|---|---|
+| gated rows (games) | 2,588 (208) | 2,585 (224) |
+| baseline range loss | 2.709 | 2.678 |
+| range-loss delta, game-clustered | -0.078 [-0.114, -0.041] | -0.062 [-0.101, -0.023] |
+| week-clustered (reported) | [-0.112, -0.046] | [-0.092, -0.032] |
+| below / above, baseline | 14.1% / 11.2% | 13.7% / 11.7% |
+| below / above, candidate | 10.2% / 9.4% | 11.1% / 10.2% |
+| RB delta | -0.077 [-0.140, -0.009] | -0.124 [-0.195, -0.056] |
+| TE delta | -0.008 [-0.073, +0.056] | -0.024 [-0.109, +0.058] |
+| WR delta | -0.106 [-0.167, -0.046] | -0.035 [-0.096, +0.025] |
+
+The interval is wholly below zero in both seasons under both clusterings,
+every position's point estimate improves, and pooled coverage moves to the
+target. MAE is unchanged by construction. The gain is about 2.3-2.9% of the
+range loss, the same size as half-life 17's in the earlier study, now without
+its MAE cost. TE is the weakest: its intervals cross zero, and in 2020 its
+ceiling over-widened (above-P90 8.9% -> 6.4%). That does not break a guard
+(each position's point estimate only has to be at most +0.01), and it is the
+cell to watch forward.
+
+Gate F (2026 weeks 8-15, saved builds) still decides. It is graded once after
+week 15's results are scored, about 2026-12-22, or after week 18 if the
+400-row floor is not met. Production is unchanged until then and after it
+unless the owner decides otherwise on a PASS.
