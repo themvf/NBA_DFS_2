@@ -179,3 +179,24 @@ Gate F (2026 weeks 8-15, saved builds) still decides. It is graded once after
 week 15's results are scored, about 2026-12-22, or after week 18 if the
 400-row floor is not met. Production is unchanged until then and after it
 unless the owner decides otherwise on a PASS.
+
+## Amendment 1 (2026-10-26, before any weeks 1-7 loss was computed): Gate Q
+
+The owner decided the ranges should change before week 8 rather than wait for
+Gate F (an 8-week forward test ends with the season nearly over). Gate Q is a
+one-time check on data that already exists, written down before it was run.
+
+- Rows: exactly Gate F's construction (`forward_rows`) on 2026 weeks 1-7. The
+  plumbing check above counted 1,066 such rows and computed no loss. These
+  weeks were seen for baseline width by `nfl-dfs-range-calibration-v1`; the
+  candidate's loss on them has never been computed.
+- Graded once (`quick` subcommand, `artifacts/nfl-dfs-range-split/quick-verdict.json`,
+  refuses to run twice).
+- **SHIP_OK** only if the pooled range-loss delta point estimate is below 0
+  and calibration error is smaller than the saved builds'. Otherwise
+  **DO_NOT_SHIP**; production keeps the saved ranges and Gate F proceeds as
+  registered.
+- SHIP_OK licenses the owner's decision to ship the candidate as a range
+  overlay for week 8 onward. It is not a Gate F verdict. Gate F still grades
+  weeks 8-15 against the range each build would have had without the overlay,
+  so a shipped overlay must record that range.
