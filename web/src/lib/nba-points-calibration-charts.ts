@@ -18,6 +18,8 @@ export type GradedRow = {
   line: number;
   actual: number;
   minutesBeforeTip: number;
+  /** Minutes played (box score); null if the box score did not carry it. */
+  minutes: number | null;
   /** The ladder's P10 and P90; null when the ladder did not reach them. */
   floor: number | null;
   ceiling: number | null;
@@ -47,6 +49,17 @@ export const MIN_BIN_N = 20;
 export const SCATTER_NIGHTS = 14;
 /** A capture inside this many minutes of tip counts as a closing read. */
 export const CLOSE_MINUTES = 120;
+/**
+ * A graded player who played fewer minutes than this is a "short night"
+ * (early exit, foul trouble, blowout rest). Books settle his line as played,
+ * so he stays graded; he is counted and drawn hollow, never removed, because
+ * minutes are known only after the game. A stated threshold, not fitted.
+ */
+export const SHORT_MINUTES = 15;
+
+export function isShortMinutes(row: Pick<GradedRow, "minutes">): boolean {
+  return row.minutes != null && row.minutes < SHORT_MINUTES;
+}
 
 export type ReliabilityBin = {
   lo: number;
@@ -98,6 +111,9 @@ export type ScatterPoint = {
   player: string;
   gameDate: string;
   minutesBeforeTip: number;
+  minutes: number | null;
+  /** Played under SHORT_MINUTES; drawn hollow. */
+  short: boolean;
   /** "close": captured within CLOSE_MINUTES of tip; "early": before that. */
   group: "close" | "early";
 };
@@ -125,6 +141,8 @@ export function scatterData(rows: GradedRow[], nights = SCATTER_NIGHTS): Scatter
       player: r.player,
       gameDate: r.gameDate,
       minutesBeforeTip: r.minutesBeforeTip,
+      minutes: r.minutes,
+      short: isShortMinutes(r),
       group: (r.minutesBeforeTip <= CLOSE_MINUTES ? "close" : "early") as ScatterPoint["group"],
     }));
   const n = points.length;
@@ -230,4 +248,119 @@ export function tailTrend(rows: GradedRow[]): TailSeries[] {
     }
     return { key: reading.key, label: reading.label, n: nCum, points };
   });
+}
+
+/**
+ * Does the books' reading beat simple guesses? Brier of each reading against
+ * two references, over the same rows:
+ *
+ * - Base rate: everyone gets the pooled hit share of these rows. It is
+ *   computed in-sample (it knows the outcomes it is graded on), so it is the
+ *   best any constant can do; beating it is a low bar.
+ * - Line only: a player gets the hit share of players whose consensus line
+ *   sat in the same LINE_BAND-point band on OTHER nights, shrunk toward the
+ *   other nights' pooled share with BASELINE_PRIOR_ROWS pseudo-rows. This is
+ *   "stars score more" without the ladder; it never sees its own night, so a
+ *   row on the only graded night has no line-only guess.
+ *
+ * Skill = 1 - ladder Brier / reference Brier: positive means the books'
+ * reading beat the reference, 0 means no better, negative means worse.
+ * Line-only skill is paired: the ladder is scored on exactly the rows that
+ * have a line-only guess.
+ */
+export const LINE_BAND = 3;
+export const BASELINE_PRIOR_ROWS = 10;
+
+export type SkillRow = {
+  key: string;
+  label: string;
+  n: number;
+  nights: number;
+  brier: number | null;
+  baseRate: number | null;
+  brierBase: number | null;
+  skillVsBase: number | null;
+  /** Rows that have a line-only guess (graded on a night with at least one other night). */
+  lineN: number;
+  brierPaired: number | null;
+  brierLine: number | null;
+  skillVsLine: number | null;
+};
+
+const band = (line: number) => Math.floor(line / LINE_BAND);
+
+export function skillRow(rows: GradedRow[], reading: Reading): SkillRow {
+  const scored = rows
+    .map((r) => ({ r, p: reading.stated(r), y: reading.hit(r) ? 1 : 0 }))
+    .filter((x): x is { r: GradedRow; p: number; y: 0 | 1 } => x.p != null && Number.isFinite(x.p));
+  const n = scored.length;
+  const nights = new Set(scored.map((x) => x.r.gameDate)).size;
+  const empty: SkillRow = {
+    key: reading.key, label: reading.label, n, nights, brier: null, baseRate: null, brierBase: null,
+    skillVsBase: null, lineN: 0, brierPaired: null, brierLine: null, skillVsLine: null,
+  };
+  if (n === 0) return empty;
+
+  const brier = scored.reduce((s, x) => s + (x.p - x.y) ** 2, 0) / n;
+  const baseRate = scored.reduce((s, x) => s + x.y, 0) / n;
+  const brierBase = baseRate * (1 - baseRate);
+
+  // Counts for leave-one-night-out: totals, per band, per night, per (night, band).
+  let hitsAll = 0;
+  const bandAll = new Map<number, { n: number; h: number }>();
+  const nightAll = new Map<string, { n: number; h: number }>();
+  const nightBand = new Map<string, { n: number; h: number }>();
+  const bump = <K,>(m: Map<K, { n: number; h: number }>, k: K, y: number) => {
+    const c = m.get(k) ?? { n: 0, h: 0 };
+    c.n += 1;
+    c.h += y;
+    m.set(k, c);
+  };
+  for (const x of scored) {
+    hitsAll += x.y;
+    bump(bandAll, band(x.r.line), x.y);
+    bump(nightAll, x.r.gameDate, x.y);
+    bump(nightBand, `${x.r.gameDate}|${band(x.r.line)}`, x.y);
+  }
+  let lineN = 0;
+  let sumPaired = 0;
+  let sumLine = 0;
+  for (const x of scored) {
+    const night = nightAll.get(x.r.gameDate)!;
+    const nOther = n - night.n;
+    if (nOther === 0) continue;
+    const pool = (hitsAll - night.h) / nOther;
+    const b = band(x.r.line);
+    const all = bandAll.get(b)!;
+    const own = nightBand.get(`${x.r.gameDate}|${b}`)!;
+    const nb = all.n - own.n;
+    const hb = all.h - own.h;
+    const guess = (hb + BASELINE_PRIOR_ROWS * pool) / (nb + BASELINE_PRIOR_ROWS);
+    lineN += 1;
+    sumPaired += (x.p - x.y) ** 2;
+    sumLine += (guess - x.y) ** 2;
+  }
+  const brierPaired = lineN ? sumPaired / lineN : null;
+  const brierLine = lineN ? sumLine / lineN : null;
+  return {
+    ...empty,
+    brier,
+    baseRate,
+    brierBase,
+    skillVsBase: brierBase > 0 ? 1 - brier / brierBase : null,
+    lineN,
+    brierPaired,
+    brierLine,
+    skillVsLine: brierPaired != null && brierLine != null && brierLine > 0 ? 1 - brierPaired / brierLine : null,
+  };
+}
+
+export function skillTable(rows: GradedRow[]): SkillRow[] {
+  return READINGS.map((reading) => skillRow(rows, reading));
+}
+
+/** How many graded rows were short nights, for the panel header. */
+export function shortMinutesSummary(rows: GradedRow[]): { n: number; short: number; withMinutes: number } {
+  const withMinutes = rows.filter((r) => r.minutes != null).length;
+  return { n: rows.length, short: rows.filter(isShortMinutes).length, withMinutes };
 }

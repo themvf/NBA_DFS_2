@@ -2,12 +2,17 @@ import assert from "node:assert/strict";
 import {
   BIN_WIDTH,
   CLOSE_MINUTES,
+  BASELINE_PRIOR_ROWS,
   MIN_BIN_N,
   READINGS,
+  SHORT_MINUTES,
   coverageData,
   reliabilityBins,
   reliabilitySeries,
   scatterData,
+  shortMinutesSummary,
+  skillRow,
+  skillTable,
   tailTrend,
   type GradedRow,
 } from "../src/lib/nba-points-calibration-charts";
@@ -16,6 +21,7 @@ const row = (over: Partial<GradedRow> & { line: number; actual: number }): Grade
   gameDate: "2026-10-21",
   player: "P",
   minutesBeforeTip: 50,
+  minutes: 30,
   floor: null,
   ceiling: null,
   pOver: null,
@@ -107,5 +113,52 @@ assert.equal(thirty.points[1].nCum, 3);
 assert.ok(Math.abs(thirty.points[1].statedCum - 0.4) < 1e-9, `statedCum ${thirty.points[1].statedCum}`);
 assert.ok(Math.abs(thirty.points[1].observedCum - 2 / 3) < 1e-9, `observedCum ${thirty.points[1].observedCum}`);
 assert.equal(trend.find((s) => s.key === "40")!.points.length, 0);
+
+// Skill: base rate in-sample, line-only leave-one-night-out with BASELINE_PRIOR_ROWS shrinkage.
+assert.equal(BASELINE_PRIOR_ROWS, 10, "the hand-computed example below assumes K = 10");
+const thirtyReading = READINGS.find((r) => r.key === "30")!;
+const skillRows = [
+  row({ gameDate: "2026-10-01", line: 27, actual: 32, p30: 0.5 }), // band 9, hit
+  row({ gameDate: "2026-10-01", line: 27, actual: 20, p30: 0.3 }), // band 9, miss
+  row({ gameDate: "2026-10-02", line: 27, actual: 35, p30: 0.6 }), // band 9, hit
+  row({ gameDate: "2026-10-02", line: 15, actual: 10, p30: 0.05 }), // band 5, miss
+  row({ gameDate: "2026-10-02", line: 15, actual: 10, p30: null }), // no reading: not scored
+];
+const sk = skillRow(skillRows, thirtyReading);
+assert.equal(sk.n, 4);
+assert.equal(sk.nights, 2);
+assert.ok(Math.abs((sk.brier ?? 0) - 0.5025 / 4) < 1e-12, `brier ${sk.brier}`);
+assert.equal(sk.baseRate, 0.5);
+assert.equal(sk.brierBase, 0.25);
+assert.ok(Math.abs((sk.skillVsBase ?? 0) - (1 - 0.5025 / 4 / 0.25)) < 1e-12);
+// Night 1 rows: other night has 1 of 2 hits (pool 0.5) and band 9 there is 1 of 1 -> (1 + 5) / 11.
+// Night 2 band 9: other night band 9 is 1 of 2 -> (1 + 5) / 12 = 0.5; band 5: empty -> 5 / 10 = 0.5.
+const expectedLine = ((5 / 11) ** 2 + (6 / 11) ** 2 + 0.25 + 0.25) / 4;
+assert.equal(sk.lineN, 4);
+assert.ok(Math.abs((sk.brierLine ?? 0) - expectedLine) < 1e-12, `line ${sk.brierLine} vs ${expectedLine}`);
+assert.ok(Math.abs((sk.brierPaired ?? 0) - (sk.brier ?? 0)) < 1e-12, "every row paired here");
+assert.ok(Math.abs((sk.skillVsLine ?? 0) - (1 - (sk.brierPaired ?? 0) / expectedLine)) < 1e-12);
+// One night only: no line-only guess, base rate still defined.
+const oneNight = skillRow(skillRows.filter((r) => r.gameDate === "2026-10-01"), thirtyReading);
+assert.equal(oneNight.lineN, 0);
+assert.equal(oneNight.brierLine, null);
+assert.equal(oneNight.skillVsLine, null);
+assert.equal(oneNight.brierBase, 0.25);
+// No rows carry the reading: everything null, n 0.
+const none = skillRow(skillRows, READINGS.find((r) => r.key === "40")!);
+assert.equal(none.n, 0);
+assert.equal(none.brier, null);
+assert.equal(skillTable(skillRows).length, READINGS.length);
+
+// Short nights: under SHORT_MINUTES, counted and drawn hollow, never dropped.
+assert.equal(SHORT_MINUTES, 15);
+const shortRows = [
+  row({ line: 14.5, actual: 2, minutes: 7 }),
+  row({ line: 14.5, actual: 16, minutes: 15 }), // exactly 15 is not short
+  row({ line: 14.5, actual: 16, minutes: null }), // unknown minutes is not short
+];
+assert.deepEqual(shortMinutesSummary(shortRows), { n: 3, short: 1, withMinutes: 2 });
+assert.deepEqual(scatterData(shortRows).points.map((p) => p.short), [true, false, false]);
+assert.equal(scatterData(shortRows).points.length, 3, "short nights stay on the scatter");
 
 console.log("test-nba-points-calibration-charts: all assertions passed");

@@ -16,10 +16,13 @@ import {
   coverageData,
   reliabilitySeries,
   scatterData,
+  shortMinutesSummary,
+  skillTable,
   tailTrend,
   type CoverageData,
   type ReliabilitySeries,
   type ScatterData,
+  type SkillRow,
   type TailSeries,
 } from "@/lib/nba-points-calibration-charts";
 import { CalibrationCharts } from "./calibration-charts";
@@ -72,6 +75,8 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
   const scatter = scatterData(gradedRows);
   const coverage = coverageData(gradedRows);
   const tails = tailTrend(gradedRows);
+  const skill = skillTable(gradedRows);
+  const shortNights = shortMinutesSummary(gradedRows);
   const { scorers, games } = buildBoard(rows, lastSeason, teams, ladderRows);
   const lastCapture = games.reduce<string | null>((m, g) => (m == null || g.capturedAt > m ? g.capturedAt : m), null);
   const bookCount = new Set(scorers.flatMap((s) => s.books.map((b) => b.book))).size;
@@ -128,6 +133,8 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
         scatter={scatter}
         coverage={coverage}
         tails={tails}
+        skill={skill}
+        shortNights={shortNights}
       />
 
       <section className="space-y-1 text-xs text-muted-foreground">
@@ -163,6 +170,8 @@ function CalibrationPanel({
   scatter,
   coverage,
   tails,
+  skill,
+  shortNights,
 }: {
   all: CalibrationSummary | null;
   night: CalibrationSummary | null;
@@ -171,6 +180,8 @@ function CalibrationPanel({
   scatter: ScatterData;
   coverage: CoverageData;
   tails: TailSeries[];
+  skill: SkillRow[];
+  shortNights: { n: number; short: number };
 }) {
   if (!all) {
     return (
@@ -273,7 +284,14 @@ function CalibrationPanel({
         squared gap between the stated chance and what happened; lower is better, and a coin flip on a 50% line scores
         0.25. Under a few hundred player-games the night-to-night swing is noise; the pooled columns are the ones to read.
       </p>
-      <CalibrationCharts reliability={reliability} scatter={scatter} coverage={coverage} tails={tails} />
+      <CalibrationCharts
+        reliability={reliability}
+        scatter={scatter}
+        coverage={coverage}
+        tails={tails}
+        skill={skill}
+        shortNights={shortNights}
+      />
     </section>
   );
 }
