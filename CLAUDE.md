@@ -7918,6 +7918,16 @@ the 95% cap), travels in the settings as `ownershipOverrides`, is saved with the
 build draft, and is recorded in the run snapshot with `ownership.source =
 "manual"`, so grading can separate typed numbers from the prior and the ranges.
 The leverage fade reads a typed number as fact.
+**Week 7 grade (2026-10-26, Millionaire 196905290, 402 graded players, one
+slate, descriptive):** raw v5 prior Spearman 0.857, MAE 1.45, bias +0.01;
+the bounded build 0.849 / 1.66 / +0.38; FP midpoint 0.831 / 2.59 / +1.56
+(total 1,524%). The clamp moved 143 players and 113 moved away from the
+field: raising 132 low players to a range's low end (mean 2.0 -> 3.3, field
+2.5) cost more than lowering 11 did; it helped only in the 10-20% tier (MAE
+6.5 -> 5.5). Every version missed the same way, under on the real chalk
+(field 20%+: predicted 16, actual 28; Golden 39%, CMC 38%, Gibbs 35%, Love
+28%) and over on priced-up players the field skipped (Taylor 1%, McBride
+2%, Bowers 3%, all active). Do not adopt the midpoint; keep grading weekly.
 
 ### GPP objective: multiplicative leverage and the ceiling cap (2026-09-27)
 
