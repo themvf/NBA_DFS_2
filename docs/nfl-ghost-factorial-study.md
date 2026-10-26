@@ -214,3 +214,13 @@ exactly the main Classic (154941), DAL @ GB (154959) and WAS @ SF (154960).
 Offline on the week-5 Classic fixture, Classic arms took 1.7 to 13.9 seconds.
 Both dry-run system uploads were invisible to every run-joined reader and
 were deleted afterwards.
+
+## Amendment (2026-10-26): long-memory ranges from week 8
+
+`nfl-dfs-range-split-v1` (owner's decision, docs/nfl-dfs-range-split-study.md)
+changes every RB/WR/TE's floor and ceiling from week 8 on; projections are
+unchanged. It reaches every arm equally: the frozen input carries the new
+ranges, and `armProjection` re-applies the same ratios when an arm reverts to
+the model's or the pre-commit projection. Arm effects are estimated within a
+slate, so the change does not bias them, but weeks 1-7 and 8+ differ in the
+house's ranges: report effects by that boundary as well as pooled.

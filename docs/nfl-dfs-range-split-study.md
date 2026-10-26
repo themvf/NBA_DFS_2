@@ -179,3 +179,49 @@ Gate F (2026 weeks 8-15, saved builds) still decides. It is graded once after
 week 15's results are scored, about 2026-12-22, or after week 18 if the
 400-row floor is not met. Production is unchanged until then and after it
 unless the owner decides otherwise on a PASS.
+
+## Amendment 1 (2026-10-26, before any weeks 1-7 loss was computed): Gate Q
+
+The owner decided the ranges should change before week 8 rather than wait for
+Gate F (an 8-week forward test ends with the season nearly over). Gate Q is a
+one-time check on data that already exists, written down before it was run.
+
+- Rows: exactly Gate F's construction (`forward_rows`) on 2026 weeks 1-7. The
+  plumbing check above counted 1,066 such rows and computed no loss. These
+  weeks were seen for baseline width by `nfl-dfs-range-calibration-v1`; the
+  candidate's loss on them has never been computed.
+- Graded once (`quick` subcommand, `artifacts/nfl-dfs-range-split/quick-verdict.json`,
+  refuses to run twice).
+- **SHIP_OK** only if the pooled range-loss delta point estimate is below 0
+  and calibration error is smaller than the saved builds'. Otherwise
+  **DO_NOT_SHIP**; production keeps the saved ranges and Gate F proceeds as
+  registered.
+- SHIP_OK licenses the owner's decision to ship the candidate as a range
+  overlay for week 8 onward. It is not a Gate F verdict. Gate F still grades
+  weeks 8-15 against the range each build would have had without the overlay,
+  so a shipped overlay must record that range.
+
+## Gate Q result (2026-10-26): SHIP_OK, and shipped
+
+Run once (`quick-verdict.json`): 1,107 rows over weeks 1-7, every row given a
+candidate. Range-loss delta -0.076 [-0.124, -0.028] (game-clustered; week-
+clustered [-0.129, -0.019]); below P10 / above P90 11.4% / 12.1% -> 11.1% /
+10.5%. WR -0.107 [-0.178, -0.034]; RB -0.031 and TE -0.069, both intervals
+crossing zero. The owner shipped it the same day as `nfl-dfs-range-split-v1`:
+
+- `ingest/nfl_dfs_range_ratios.py` writes each RB/WR/TE's (P10_17/m17,
+  P90_17/m17) for the upcoming week into `nfl_dfs_range_ratios`, computed
+  with `forward_rows`' exact construction, in the production projection
+  workflow (an optional step; every run stamps `nfl_dfs_range_ratio_runs`).
+- The DFS read (`web/src/lib/nfl-dfs/range-split.ts`, applied after the market
+  anchor) sets floor = projection x ratio_p10 and ceiling = projection x
+  ratio_p90, clamps the median inside them, and keeps the replaced range in
+  `rangeSplit.before`, saved in every run snapshot.
+- Gate F is unchanged in rule and window. Its baseline is now the saved
+  `rangeSplit.before` where a build carries the overlay (the range the build
+  would otherwise have had), the saved range otherwise; its candidate is
+  recomputed exactly as registered.
+- The matchup (defensive) capture's reproduction check reads `before`, and an
+  applied candidate's range takes the same ratios, so defensive adjustments
+  stay on. Ghost arms re-apply the ratios to whichever projection an arm uses,
+  so every arm carries them.

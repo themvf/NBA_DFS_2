@@ -7685,6 +7685,21 @@ Stick 14.0 as TB's QB in week 3). nflverse's weekly roster does know:
   finished below P10. The rest of the gap to 10% is the played-tail width and
   Q players named in `docs/nfl-dfs-rb-floor-participation-study.md`.
 
+## NFL DFS — Long-memory ranges (`nfl-dfs-range-split-v1`, owner's decision 2026-10-26)
+
+Every RB/WR/TE keeps his projection and takes floor = projection x P10/mean
+and ceiling = projection x P90/mean of his half-life-17 distribution
+(`web/src/lib/nfl-dfs/range-split.ts`, applied after the market anchor;
+ratios written weekly by `ingest/nfl_dfs_range_ratios.py` into
+`nfl_dfs_range_ratios`, an optional step in `refresh_nfl_dfs_projections.yml`,
+health row `nfl_range_ratios`). Shipped before the registered forward test on
+the owner's call, after it cleared a blind test (2020-21) and a one-time
+2026 weeks 1-7 check (range loss -0.076 [-0.124, -0.028]; WR clearly better,
+RB/TE intervals cross zero). The replaced range is kept in `rangeSplit.before`
+on every saved player; Gate F (weeks 8-15, graded ~2026-12-22) grades against
+it. The defensive capture check reads `before`; ghost arms re-apply the ratios.
+QB, K and DST keep the model's range. See `docs/nfl-dfs-range-split-study.md`.
+
 ## NFL DFS — Absence commit: the optimizer builds from starter-aware projections (`nfl-absence-commit-v1`, 2026-10-11)
 
 **Owner's decision, 2026-10-11:** commit to a projection and learn from the

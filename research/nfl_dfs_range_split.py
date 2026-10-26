@@ -22,6 +22,7 @@ Usage::
     python -m research.nfl_dfs_range_split blind            # Gate B verdict, once
     python -m research.nfl_dfs_range_split forward --weeks 8-15   # Gate F, once, after week 15
     python -m research.nfl_dfs_range_split forward --weeks 1-7 --smoke   # plumbing check: counts only
+    python -m research.nfl_dfs_range_split quick            # Gate Q (Amendment 1), weeks 1-7, once
 """
 
 from __future__ import annotations
@@ -63,6 +64,7 @@ GATED = ("RB", "TE", "WR")
 BLIND_SEASONS = (2020, 2021)
 FORWARD_WEEKS = tuple(range(8, 16))
 FORWARD_FALLBACK_WEEKS = tuple(range(8, 19))
+QUICK_WEEKS = tuple(range(1, 8))          # Gate Q, Amendment 1 (2026-10-26)
 FORWARD_MIN_ROWS = 400
 FORWARD_MIN_WEEKS = 6
 FORWARD_HISTORY_BACK = 3         # production's table holds 2023 onward
@@ -152,6 +154,17 @@ def forward_verdict(blind: str, g: Mapping[str, Any], weeks_with_rows: int, fina
     return {"verdict": "INCONCLUSIVE", "reason": "Gate B cleared but the forward gate did not hold", "point_below_zero": point_ok, "calibration_closer": cov_ok}
 
 
+def quick_verdict(g: Mapping[str, Any]) -> dict[str, Any]:
+    """Gate Q (Amendment 1): ship only if the point estimate is below 0 and calibration is closer."""
+    point_ok = g["range_loss_delta"]["mean"] < 0.0
+    cov_ok = calibration_error(g["coverage"]["candidate"]) < calibration_error(g["coverage"]["baseline"])
+    if point_ok and cov_ok:
+        return {"verdict": "SHIP_OK", "reason": "weeks 1-7: point estimate below zero and calibration closer to target",
+                "point_below_zero": True, "calibration_closer": True}
+    return {"verdict": "DO_NOT_SHIP", "reason": "weeks 1-7 did not hold", "point_below_zero": point_ok,
+            "calibration_closer": cov_ok}
+
+
 # ---------------------------------------------------------------------------
 # Gate B: blind historical replays
 # ---------------------------------------------------------------------------
@@ -186,9 +199,16 @@ def forward_rows(weeks: Sequence[int], cache: Path) -> tuple[list[dict[str, Any]
     from research.nfl_dfs_range_coverage_2026 import collect
 
     db = DatabaseManager(load_config().database_url, initialize_schema=False)
-    saved = [r for r in collect(db, weeks)
-             if r["pos"] in GATED and not r["dnp"] and r["proj"] >= MIN_PROJECTION
-             and r["p10"] is not None and r["p90"] is not None]
+    saved = []
+    for r in collect(db, weeks):
+        # A build made after the overlay shipped (2026-10-26) carries the candidate
+        # range; the baseline is the range it replaced, recorded in `before`.
+        before = r.get("split_before")
+        if before:
+            r = {**r, "p10": before.get("p10"), "p90": before.get("p90"), "shipped_split": True}
+        if (r["pos"] in GATED and not r["dnp"] and r["proj"] >= MIN_PROJECTION
+                and r["p10"] is not None and r["p90"] is not None):
+            saved.append(r)
     gsis_of = {int(r["id"]): r["gsis_id"] for r in db.execute(
         "SELECT id, gsis_id FROM ff_players WHERE id = ANY(%s)", ([r["pid"] for r in saved],))}
     sources = load_sources(2026, cache, FORWARD_HISTORY_BACK)
@@ -261,6 +281,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     sub.add_parser("blind")
     f = sub.add_parser("forward"); f.add_argument("--weeks", default="8-15"); f.add_argument("--smoke", action="store_true")
     f.add_argument("--cache", type=Path, default=DEFAULT_CACHE)
+    q = sub.add_parser("quick"); q.add_argument("--cache", type=Path, default=DEFAULT_CACHE)
     args = parser.parse_args(argv)
     if not model_file_matches_pin():
         raise SystemExit(f"model/nfl_dfs_historical.py is {model_file_sha256()}, not the pinned {MODEL_FILE_SHA256}")
@@ -290,6 +311,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         for s, g in per.items():
             _print_grade(str(s), g)
         print("  fallbacks:", counts)
+        return 0
+
+    if args.cmd == "quick":
+        out_path = ARTIFACT_DIR / "quick-verdict.json"
+        if out_path.exists():
+            raise SystemExit("Gate Q verdict already written; it is computed once")
+        refresh_2026_cache(args.cache)
+        rows, counts, digests = forward_rows(QUICK_WEEKS, args.cache)
+        g = grade_rows(rows, "game")
+        res = {"study_id": STUDY_ID, "gate": "Q", "decided_at": datetime.now(timezone.utc).isoformat(),
+               "weeks": list(QUICK_WEEKS), "counts": dict(counts), "source_digests": digests, "grade": g,
+               **quick_verdict(g), "rows": rows}
+        out_path.write_text(json.dumps(res, indent=1, default=str), encoding="utf-8")
+        print(f"Gate Q: {res['verdict']} -- {res['reason']} ({len(rows)} rows, counts {dict(counts)})")
+        _print_grade("2026 w1-7", g)
         return 0
 
     lo, hi = (int(x) for x in args.weeks.split("-"))

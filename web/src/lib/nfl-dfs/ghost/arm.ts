@@ -18,6 +18,7 @@
 import type { NflOptimizerPlayer, NflOptimizerSettings } from "@/app/dfs/nfl/nfl-optimizer";
 import { applyWinnersShape, WINNERS_SHAPE } from "../winners-shape";
 import { restorePlayers, type FrozenPlayer } from "../frozen-players";
+import { rangeFromRatio } from "../range-split";
 import type { ArmLevels, GhostFormat } from "./design";
 
 /** "Off" for the ceiling cap: a multiple no real projection reaches. */
@@ -39,6 +40,17 @@ function withDist(p: FrozenPlayer, d: Dist): FrozenPlayer {
  *   model + commit off     the model's own number, before both
  */
 export function armProjection(p: FrozenPlayer, projections: "anchored" | "model", absenceCommit: boolean): FrozenPlayer {
+  const chosen = armProjectionBeforeRanges(p, projections, absenceCommit);
+  // Long-memory ranges (nfl-dfs-range-split-v1) are re-applied to whichever
+  // projection the arm uses, so every arm carries them and the projection
+  // factors stay comparable. A reverted overlay's `before` range predates them.
+  const split = p.rangeSplit ?? null;
+  if (!split || chosen === p) return chosen;
+  const range = rangeFromRatio(chosen.ourProj, chosen.median, split);
+  return range ? { ...chosen, floor: range.p10, median: range.median ?? chosen.median, ceiling: range.p90 } : chosen;
+}
+
+function armProjectionBeforeRanges(p: FrozenPlayer, projections: "anchored" | "model", absenceCommit: boolean): FrozenPlayer {
   const anchor = p.marketAnchor ?? null;
   const commit = p.absenceCommit ?? p.supersededAbsenceCommit ?? null;
   if (projections === "anchored") {
