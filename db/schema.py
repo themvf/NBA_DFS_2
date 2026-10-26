@@ -2611,6 +2611,41 @@ TABLES = [
         observed_at TIMESTAMPTZ NOT NULL,
         version TEXT NOT NULL
     )""",
+    # nfl-dfs-range-split-v1 (owner's decision 2026-10-26): per RB/WR/TE and
+    # week, the shape of his half-life-17 distribution; the DFS page sets
+    # floor = projection x ratio_p10 and ceiling = projection x ratio_p90.
+    # Change-only: a row is written when its inputs digest is new. Written by
+    # ingest/nfl_dfs_range_ratios.py; every run stamps nfl_dfs_range_ratio_runs.
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_range_ratios (
+        id BIGSERIAL PRIMARY KEY,
+        season INTEGER NOT NULL,
+        week INTEGER NOT NULL,
+        ff_player_id BIGINT NOT NULL REFERENCES ff_players(id) ON DELETE CASCADE,
+        gsis_id TEXT NOT NULL,
+        position TEXT NOT NULL,
+        m17 DOUBLE PRECISION NOT NULL,
+        p10_17 DOUBLE PRECISION NOT NULL,
+        p90_17 DOUBLE PRECISION NOT NULL,
+        ratio_p10 DOUBLE PRECISION NOT NULL,
+        ratio_p90 DOUBLE PRECISION NOT NULL,
+        history_games INTEGER NOT NULL,
+        inputs_digest TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        computed_at TIMESTAMPTZ NOT NULL,
+        version TEXT NOT NULL,
+        UNIQUE (season, week, ff_player_id, inputs_digest)
+    )""",
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_range_ratio_runs (
+        run_id TEXT PRIMARY KEY,
+        season INTEGER NOT NULL,
+        week INTEGER NOT NULL,
+        computed_at TIMESTAMPTZ NOT NULL,
+        players INTEGER NOT NULL,
+        written INTEGER NOT NULL,
+        counts JSONB NOT NULL,
+        source_digests JSONB NOT NULL,
+        version TEXT NOT NULL
+    )""",
     """CREATE TABLE IF NOT EXISTS ff_player_injuries (
         id BIGSERIAL PRIMARY KEY,
         player_id BIGINT NOT NULL REFERENCES ff_players(id) ON DELETE CASCADE,
@@ -5857,6 +5892,7 @@ INDEXES = [
     # Insert-only, so autovacuum's default trigger (20% growth, ~5 days of captures) left the newest
     # two weeks unmarked and the index-only scan above went back to the table for every row.
     "ALTER TABLE ff_player_injury_observations SET (autovacuum_vacuum_insert_scale_factor = 0.02)",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_dfs_range_ratios_week ON nfl_dfs_range_ratios(season, week, ff_player_id, computed_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_nfl_roster_status_player ON nfl_roster_status_observations(season, player_id, observed_at DESC, id DESC)",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_ff_player_injuries_one_active ON ff_player_injuries(player_id) WHERE active",
     "CREATE INDEX IF NOT EXISTS idx_ff_player_injuries_active ON ff_player_injuries(season, active, status)",

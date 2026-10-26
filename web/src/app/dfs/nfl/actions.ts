@@ -82,6 +82,7 @@ import { projectOwnershipPrior } from "@/lib/nfl-dfs/ownership-prior";
 import { computeReplacementUpside, REPLACEMENT_UPSIDE_VERSION, type ReplacementUpside, type ReplacementUpsideReport, type UpsidePlayer } from "@/lib/nfl-dfs/replacement-upside";
 import { ABSENCE_COMMIT_VERSION, computeAbsenceCommits, type AbsenceCommit, type AbsenceCommitReport } from '@/lib/nfl-dfs/absence-commit';
 import { ANCHOR_MARKETS, MARKET_ANCHOR_VERSION, anchorPlayer, type MarketAnchor, type PropQuote } from '@/lib/nfl-dfs/market-anchor';
+import { RANGE_SPLIT_POSITIONS, RANGE_SPLIT_VERSION, rangeSplitFor, type RangeRatio, type RangeSplit } from '@/lib/nfl-dfs/range-split';
 import { readLastGamePassingLeaders, readTeamUsageWindows } from "@/db/nfl-dfs-usage-window";
 import { readNflDfsPlayerSignalEvidence, readNflAirDefenseEvidence, readNflAirTeamEvidence, readNflAirMarketEvidence } from "@/db/nfl-dfs-player-signals";
 import { airMatchupSignals, classifyNflPlayerSignals, NFL_PLAYER_SIGNAL_VERSION, type NflAirDefenseEvidence, type NflPlayerSignalEvidence } from "@/lib/nfl-dfs/player-signals";
@@ -144,6 +145,11 @@ export type NflWorkspacePlayer = NflOptimizerPlayer & {
    * carries the news.
    */
   marketAnchor?: MarketAnchor | null;
+  /**
+   * `nfl-dfs-range-split-v1`: floor/ceiling rescaled to the shape of his
+   * 17-game history; `before` is the range the build would otherwise use.
+   */
+  rangeSplit?: RangeSplit | null;
   /** `nfl-ownership-bands-v1`: the outside range for this player (`prior` is our number); it bounds `ownPct` only while the clamp is on. */
   ownBand?: { low: number; high: number; prior: number; source: string; capturedAt: string } | null;
   platformEligibility?: PlatformEligibilityDecision;
@@ -230,6 +236,8 @@ export type NflWorkspaceSlate = {
   marketAnchor?: { version: string; applied: number; eligible: number; newestCapture: string | null; oldestCapture: string | null; error?: string;
     /** v3: of `applied`, how many were anchored on the anytime-TD line alone, and TD-only anchors left off for an absence commit. */
     tdOnly?: number; tdOnlyYieldedToCommit?: number };
+  /** Long-memory ranges (RB/WR/TE): how many players got them, and how many had no weekly ratio. */
+  rangeSplit?: { version: string; applied: number; eligible: number; missing: number; computedAt: string | null; error?: string };
   /** Outside ownership ranges for this slate's date; `applied` says whether they bound the prior or are shown only. */
   ownershipBands?: BandReport & { applied: boolean; error?: string };
   /** Starting QBs the user confirmed for this read, and any that could not be applied. */
@@ -860,6 +868,7 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
     return { dkPlayerId: row.dkPlayerId, ffPlayerId: row.ffPlayerId, team: row.team, out: outFlag(row), stored };
   }), run, identityMap);
   await attachMarketAnchor(workspace);
+  await attachRangeSplit(workspace, run ? { season: run.season, week: run.week ?? null } : null);
   const owned = attachOwnership(workspace);
   await attachOwnershipBands(owned);
   owned.opponentAdjustments = await opponentAdjustmentCoverage(owned);
@@ -1193,6 +1202,52 @@ async function attachMarketAnchor(workspace: NflWorkspaceSlate): Promise<void> {
   } catch (error) {
     workspace.marketAnchor = { version: MARKET_ANCHOR_VERSION, applied: 0, eligible: eligible.length, newestCapture: null, oldestCapture: null,
       error: `Prop lines could not be read, so every player keeps the model's projection: ${error instanceof Error ? error.message : 'unknown error'}` };
+  }
+}
+
+/**
+ * Long-memory ranges (`nfl-dfs-range-split-v1`, see range-split.ts): every
+ * active RB/WR/TE with this week's ratio keeps his projection and takes
+ * floor = projection x P10/mean and ceiling = projection x P90/mean of his
+ * 17-game distribution. Applied after the anchor. A player without a ratio
+ * keeps the model's range and is counted; a failed read never takes the slate
+ * down, it is reported.
+ */
+async function attachRangeSplit(workspace: NflWorkspaceSlate, run: { season: number; week: number | null } | null): Promise<void> {
+  const eligible = workspace.players.filter((p) => RANGE_SPLIT_POSITIONS.includes(p.position) && !p.isOut
+    && p.projectionStatus !== 'out' && (p.ourProj ?? 0) > 0);
+  if (!run?.week) {
+    workspace.rangeSplit = { version: RANGE_SPLIT_VERSION, applied: 0, eligible: eligible.length, missing: eligible.length, computedAt: null,
+      error: "No projection run week, so every player keeps the model's range." };
+    return;
+  }
+  try {
+    const rows = await db.execute(sql`SELECT DISTINCT ON (ff_player_id) ff_player_id, ratio_p10, ratio_p90, m17, history_games, computed_at
+      FROM nfl_dfs_range_ratios WHERE season = ${run.season} AND week = ${run.week}
+      ORDER BY ff_player_id, computed_at DESC, id DESC`);
+    const ratios = new Map<number, RangeRatio>();
+    for (const r of rows.rows as Record<string, unknown>[]) {
+      ratios.set(Number(r.ff_player_id), { ratioP10: Number(r.ratio_p10), ratioP90: Number(r.ratio_p90), m17: Number(r.m17),
+        historyGames: Number(r.history_games), computedAt: new Date(String(r.computed_at)).toISOString() });
+    }
+    let applied = 0, missing = 0;
+    const computed: string[] = [];
+    workspace.players = workspace.players.map((player) => {
+      if (!eligible.includes(player)) return player;
+      const ratio = player.ffPlayerId != null ? ratios.get(player.ffPlayerId) : undefined;
+      const out = rangeSplitFor(player, ratio);
+      if (!out) { missing += 1; return player; }
+      applied += 1;
+      computed.push(out.split.computedAt);
+      return { ...player, rangeSplit: out.split, floorFpts: out.p10, ceilingFpts: out.p90,
+        medianFpts: out.median ?? player.medianFpts };
+    });
+    computed.sort();
+    workspace.rangeSplit = { version: RANGE_SPLIT_VERSION, applied, eligible: eligible.length, missing, computedAt: computed.at(-1) ?? null,
+      ...(applied === 0 && eligible.length ? { error: `No long-memory ranges were found for ${run.season} week ${run.week}, so every player keeps the model's range.` } : {}) };
+  } catch (error) {
+    workspace.rangeSplit = { version: RANGE_SPLIT_VERSION, applied: 0, eligible: eligible.length, missing: eligible.length, computedAt: null,
+      error: `Long-memory ranges could not be read, so every player keeps the model's range: ${error instanceof Error ? error.message : 'unknown error'}` };
   }
 }
 
@@ -1860,6 +1915,8 @@ function snapshotPlayer(player: NflWorkspacePlayer, slate: NflWorkspaceSlate, re
     absenceCommit: player.absenceCommit ?? null,
     // The books' number the build used, with the model's own in `before` (nfl-market-anchor-v1).
     marketAnchor: player.marketAnchor ?? null,
+    // The long-memory range the build used, with the range it replaced in `before` (nfl-dfs-range-split-v1).
+    rangeSplit: player.rangeSplit ?? null,
     statMeans: player.statMeans,
     dkAvg: player.avgFptsDk, fantasypros: player.fantasyprosProj,
     linestar: player.linestarProj, custom: player.customProj,

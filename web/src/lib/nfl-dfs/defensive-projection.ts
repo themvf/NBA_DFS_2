@@ -31,6 +31,12 @@ export type DefensivePlayerInput = {
   dkPlayerId: number; ffPlayerId: number | null; gameKey: string | null; isOut: boolean;
   ourProj: number | null; floorFpts: number | null; medianFpts?: number | null;
   ceilingFpts: number | null; boomRate: number | null; statMeans?: Record<string, number>;
+  /**
+   * Long-memory ranges (nfl-dfs-range-split-v1): the capture's baseline is the
+   * range before them, so the reproduction check reads `before`, and an applied
+   * candidate's range is rescaled by the same ratios.
+   */
+  rangeSplit?: { ratioP10: number; ratioP90: number; before: { p10: number | null; median: number | null; p90: number | null } } | null;
 };
 export type DefensiveCapture = {
   runId: string; baselineRunId: string; capturedAt: string; artifactDigest: string;
@@ -81,9 +87,9 @@ export function resolveDefensiveForecast(input: DefensivePlayerInput, baselineRu
       : !complete(row.shadow.baseline) || !complete(row.shadow.candidate) ? 'incomplete_distribution'
       : ![input.ourProj, input.floorFpts, input.medianFpts, input.ceilingFpts, input.boomRate].every(numeric)
         || !close(row.shadow.baseline.mean, input.ourProj!)
-        || !close(row.shadow.baseline.p10, input.floorFpts!)
-        || !close(row.shadow.baseline.p50, input.medianFpts!)
-        || !close(row.shadow.baseline.p90, input.ceilingFpts!)
+        || !close(row.shadow.baseline.p10, input.rangeSplit ? input.rangeSplit.before.p10 ?? NaN : input.floorFpts!)
+        || !close(row.shadow.baseline.p50, input.rangeSplit ? input.rangeSplit.before.median ?? NaN : input.medianFpts!)
+        || !close(row.shadow.baseline.p90, input.rangeSplit ? input.rangeSplit.before.p90 ?? NaN : input.ceilingFpts!)
         || !close(row.shadow.baseline.boom, input.boomRate!) ? 'saved_baseline_distribution_mismatch'
       : Object.keys(input.statMeans ?? {}).length === 0
         || Object.keys(input.statMeans ?? {}).length !== Object.keys(row.shadow.baseline.stat_means).length
@@ -92,6 +98,11 @@ export function resolveDefensiveForecast(input: DefensivePlayerInput, baselineRu
       : 'applied';
     if (reason === 'applied') {
       selected = row!.shadow!.candidate!;
+      const split = input.rangeSplit;
+      if (split && selected.mean > 0) {
+        const p10 = selected.mean * split.ratioP10, p90 = selected.mean * split.ratioP90;
+        selected = { ...selected, p10, p90, p50: Math.min(p90, Math.max(p10, selected.p50)) };
+      }
       ledger = (row!.shadow!.ledger ?? []).map(step => ({ component: step.component ?? 'unknown', factor: step.factor ?? 1, points_delta: step.points_delta ?? 0 }));
     }
   }

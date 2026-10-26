@@ -160,6 +160,10 @@ DATASET_REGISTRY: tuple[Dataset, ...] = (
             "Optional step beside the Sleeper capture; one snapshot row per run (statuses themselves are "
             "written only when they change). Stale means the DFS practice-squad rule is reading an old roster.",
             filter="source = 'nflverse' AND dataset LIKE 'roster-status-live-%'"),
+    Dataset("nfl_range_ratios", "NFL DFS long-memory range ratios (RB/WR/TE)", "nfl_dfs_range_ratio_runs", "computed_at",
+            36, "refresh_nfl_dfs_projections.yml", _NFL,
+            "Optional step after the projection snapshot (nfl-dfs-range-split-v1); one run row every run, ratio rows "
+            "only when a player's inputs change. Stale means the DFS page is on an old week's ranges or the model's."),
     Dataset("nfl_dk_pool", "NFL DraftKings pool status polls", "nfl_dfs_dk_pool_polls", "polled_at",
             36, "refresh_nfl_dk_pool.yml", _NFL,
             "One heartbeat row per draft group per poll that read DraftKings (ok = true). Tuesday and "

@@ -59,6 +59,9 @@ def collect(db, weeks) -> list[dict]:
                     "game": p.get("gameKey") or p.get("gameInfo"),
                     "proj": ourp, "p10": _num(p.get("floor")), "p50": _num(p.get("median")), "p90": _num(p.get("ceiling")),
                     "actual": float(r["points"]), "dnp": dnp, "anchored": bool(p.get("marketAnchor")),
+                    # nfl-dfs-range-split-v1 shipped 2026-10-26: a build that carries the
+                    # long-memory range keeps the range it replaced in `before`.
+                    "split_before": ((p.get("rangeSplit") or {}).get("before") or None),
                     "q": p.get("status") in ("Q", "D") or av.get("status") in ("QUESTIONABLE", "DOUBTFUL"),
                     "pstatus": p.get("projectionStatus"),
                     "proj_touches": float(sm.get("carries") or 0) + float(sm.get("receptions") or 0),

@@ -199,9 +199,16 @@ def forward_rows(weeks: Sequence[int], cache: Path) -> tuple[list[dict[str, Any]
     from research.nfl_dfs_range_coverage_2026 import collect
 
     db = DatabaseManager(load_config().database_url, initialize_schema=False)
-    saved = [r for r in collect(db, weeks)
-             if r["pos"] in GATED and not r["dnp"] and r["proj"] >= MIN_PROJECTION
-             and r["p10"] is not None and r["p90"] is not None]
+    saved = []
+    for r in collect(db, weeks):
+        # A build made after the overlay shipped (2026-10-26) carries the candidate
+        # range; the baseline is the range it replaced, recorded in `before`.
+        before = r.get("split_before")
+        if before:
+            r = {**r, "p10": before.get("p10"), "p90": before.get("p90"), "shipped_split": True}
+        if (r["pos"] in GATED and not r["dnp"] and r["proj"] >= MIN_PROJECTION
+                and r["p10"] is not None and r["p90"] is not None):
+            saved.append(r)
     gsis_of = {int(r["id"]): r["gsis_id"] for r in db.execute(
         "SELECT id, gsis_id FROM ff_players WHERE id = ANY(%s)", ([r["pid"] for r in saved],))}
     sources = load_sources(2026, cache, FORWARD_HISTORY_BACK)

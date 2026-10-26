@@ -120,6 +120,15 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           python -c "import os,sys; sys.argv=['weekly','--phase','projections']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_weekly import main; sys.exit(main())"
+      # nfl-dfs-range-split-v1 (owner's decision 2026-10-26): each RB/WR/TE's
+      # floor/ceiling shape from his 17-game history, read by the DFS page.
+      # Optional: on failure the page keeps the model's ranges and says so.
+      - name: Write long-memory range ratios
+        id: ranges
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: |
+          python -c "import os,sys; sys.argv=['ranges']; [(sys.argv.extend([flag,str(int(os.environ[key]))])) for key,flag in [('NFL_RESEARCH_SEASON','--season'),('NFL_RESEARCH_WEEK','--week')] if os.environ.get(key)]; from ingest.nfl_dfs_range_ratios import main; sys.exit(main())"
       # The comparison window and output directory are fixed here, once, so the
       # research workflow grades exactly the comparison this run persisted --
       # even when it starts after midnight UTC.
@@ -156,6 +165,7 @@ jobs:
         if: ${{ !cancelled() }}
         env:
           INJURY_OUTCOME: ${{ steps.injury.outcome }}
+          RANGES_OUTCOME: ${{ steps.ranges.outcome }}
           PFR_OUTCOME: ${{ steps.pfr.outcome }}
           PFR_STATUS_FILE: data/pfr/nflverse-output/run-status.json
         run: |
@@ -170,6 +180,7 @@ jobs:
           }
           echo "## Optional production inputs" >> "$GITHUB_STEP_SUMMARY"
           if [ "$INJURY_OUTCOME" != success ]; then report "FantasyPros injury evidence did not refresh ($INJURY_OUTCOME); the build used the last stored capture."; fi
+          if [ "$RANGES_OUTCOME" != success ]; then report "Long-memory range ratios did not refresh ($RANGES_OUTCOME); the DFS page uses the last stored week's ratios or the model's ranges."; fi
           pfr_status=$(pfr_field status)
           if [ "$PFR_OUTCOME" != success ]; then
             if [ -n "$pfr_status" ]; then
