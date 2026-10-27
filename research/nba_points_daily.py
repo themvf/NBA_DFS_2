@@ -11,6 +11,7 @@ from research.nba_points_forward import write_new
 from research.nba_leader_evaluation import identity,finite
 from research.nba_points_diagnostics import assemble
 from research.nba_points_market_benchmarks import build as market_benchmarks,markdown as market_markdown
+from research.nba_points_injury_evidence import build as injury_evidence,load_archive,markdown as injury_markdown
 
 LABELS={'market_line':'Market line','blend90_10':'Blend','history20':'History mean','opportunity_points':'Opportunity model'}
 
@@ -45,7 +46,8 @@ def chart_data(snapshot,graded,diagnostics,history=None):
             'errors':{'all':graded['all_players'],'high':graded['market_line_at_least20']},
             'ceilings':ceilings,'watch':watch,'trend':trend,'prospective_dates':len(trend),
             'status_counts':graded['by_status'],'diagnostic_coverage':diagnostics['coverage'],
-            'market_benchmarks':{k:graded['market_benchmarks'][k] for k in ['summary','paired_same_players','interpretation']} if graded.get('market_benchmarks') else None}
+            'market_benchmarks':{k:graded['market_benchmarks'][k] for k in ['summary','paired_same_players','interpretation']} if graded.get('market_benchmarks') else None,
+            'injury_evidence_summary':graded.get('injury_market_evidence',{}).get('summary')}
 
 
 def render_fragment(data):
@@ -74,6 +76,7 @@ def markdown(data):
             'Any opportunity/conversion decomposition uses actual attempts after the game with frozen conversion rates. It is diagnostic only and overlaps with overtime/minute effects.','',
             'Point/ceiling accuracy, coverage and model-specific paired baselines are in grade.json. Fixed reference ceilings, conditional P90 and market approximations remain distinct.','']
     if data.get('market_benchmarks'):lines+=['',market_markdown(data['market_benchmarks'])]
+    if data.get('injury_evidence_summary'):lines+=['','Injury/line timelines, observation-time coverage and final opportunities: see injury-market-review.md and injury-market-evidence.json.']
     return '\n'.join(lines)
 
 
@@ -83,6 +86,7 @@ def main():
     group.add_argument('--snapshot',type=Path);group.add_argument('--date',type=date.fromisoformat)
     parser.add_argument('--output-dir',required=True,type=Path);parser.add_argument('--summaries-dir',type=Path)
     parser.add_argument('--no-fetch',action='store_true');parser.add_argument('--apply',action='store_true')
+    parser.add_argument('--injury-archive',type=Path,default=Path('artifacts/nba-injury-evidence'))
     args=parser.parse_args();args.output_dir.mkdir(parents=True,exist_ok=False)
     import psycopg2
     from psycopg2.extras import RealDictCursor,Json
@@ -132,6 +136,20 @@ def main():
     raw_dir=args.output_dir/'summaries';raw_dir.mkdir()
     for event,payload in summaries.items():write_new(raw_dir/('summary-'+event+'.json'),payload)
     diagnostics=assemble(snapshot,graded,summaries)
+    injury_reports=[r for r in load_archive(args.injury_archive) if any(x['game_date']==snapshot['game_date'] for x in r['team_submissions'])]
+    graded['injury_market_evidence']=injury_evidence(snapshot,graded,graded['market_benchmarks'],diagnostics,injury_reports,market_history)
+    write_new(args.output_dir/'injury-observations.json',injury_reports)
+    write_new(args.output_dir/'injury-market-evidence.json',graded['injury_market_evidence'])
+    with (args.output_dir/'injury-market-review.md').open('x',encoding='utf-8') as f:f.write(injury_markdown(graded['injury_market_evidence']))
+    if injury_reports:
+        raw_injuries=args.output_dir/'injury-sources';raw_injuries.mkdir()
+        required={r['source_sha256'] for r in injury_reports}
+        for p in args.injury_archive.rglob('observation.json'):
+            meta=json.loads(p.read_text(encoding='utf-8'));sha=meta['source_sha256']
+            if sha in required:
+                with (raw_injuries/(sha+'.pdf')).open('xb') as f:f.write(p.with_name('report.pdf').read_bytes())
+                required.remove(sha)
+        if required:raise ValueError('missing raw injury report sources')
     write_new(args.output_dir/'market-history.json',market_history)
     write_new(args.output_dir/'market-benchmarks.json',graded['market_benchmarks'])
     data=chart_data(snapshot,graded,diagnostics,history)
