@@ -10,6 +10,7 @@ from model.nba_points_ladder import team_key
 from research.nba_points_forward import write_new
 from research.nba_leader_evaluation import identity,finite
 from research.nba_points_diagnostics import assemble
+from research.nba_points_market_benchmarks import build as market_benchmarks,markdown as market_markdown
 
 LABELS={'market_line':'Market line','blend90_10':'Blend','history20':'History mean','opportunity_points':'Opportunity model'}
 
@@ -43,7 +44,8 @@ def chart_data(snapshot,graded,diagnostics,history=None):
             'methods':methods,'labels':LABELS,'rows':rows,'leaderboards':graded['leaderboards'],
             'errors':{'all':graded['all_players'],'high':graded['market_line_at_least20']},
             'ceilings':ceilings,'watch':watch,'trend':trend,'prospective_dates':len(trend),
-            'status_counts':graded['by_status'],'diagnostic_coverage':diagnostics['coverage']}
+            'status_counts':graded['by_status'],'diagnostic_coverage':diagnostics['coverage'],
+            'market_benchmarks':{k:graded['market_benchmarks'][k] for k in ['summary','paired_same_players','interpretation']} if graded.get('market_benchmarks') else None}
 
 
 def render_fragment(data):
@@ -71,6 +73,7 @@ def markdown(data):
     lines+=['','Overtime and foul-limit notes describe observed results. They do not establish causality or a new predictive adjustment. Full-game points, including overtime, remain the grading target.','',
             'Any opportunity/conversion decomposition uses actual attempts after the game with frozen conversion rates. It is diagnostic only and overlaps with overtime/minute effects.','',
             'Point/ceiling accuracy, coverage and model-specific paired baselines are in grade.json. Fixed reference ceilings, conditional P90 and market approximations remain distinct.','']
+    if data.get('market_benchmarks'):lines+=['',market_markdown(data['market_benchmarks'])]
     return '\n'.join(lines)
 
 
@@ -103,6 +106,10 @@ def main():
             if args.apply and module is v1:raise ValueError('v1 results stay in separate local files; --apply supports existing v2 snapshots only')
             games=load_box_scores(db,date.fromisoformat(snapshot['game_date']))
             graded=module.grade(snapshot,games)
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM prop_odds_history WHERE sport='nba' AND game_date=%s AND market='player_points' ORDER BY captured_at,id",(snapshot['game_date'],))
+                market_history=[dict(r) for r in cur.fetchall()]
+            graded['market_benchmarks']=market_benchmarks(snapshot,graded,market_history,games)
             if module is v2:
                 with conn.cursor() as cur:
                     cur.execute('''SELECT DISTINCT ON (g.snapshot_sha256) g.grade FROM nba_ghost_grades g JOIN nba_ghost_snapshots s USING(snapshot_sha256)
@@ -125,6 +132,8 @@ def main():
     raw_dir=args.output_dir/'summaries';raw_dir.mkdir()
     for event,payload in summaries.items():write_new(raw_dir/('summary-'+event+'.json'),payload)
     diagnostics=assemble(snapshot,graded,summaries)
+    write_new(args.output_dir/'market-history.json',market_history)
+    write_new(args.output_dir/'market-benchmarks.json',graded['market_benchmarks'])
     data=chart_data(snapshot,graded,diagnostics,history)
     for name,value in [('snapshot.json',snapshot),('grade.json',graded),('diagnostics.json',diagnostics),('daily.json',data)]:write_new(args.output_dir/name,value)
     with (args.output_dir/'review.html').open('x',encoding='utf-8') as f:f.write(render_fragment(data))
