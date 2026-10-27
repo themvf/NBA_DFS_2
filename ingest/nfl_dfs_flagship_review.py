@@ -14,8 +14,11 @@ comparison accumulates week by week instead of living in a terminal.
 
 A week with no saved build for a slate still imports and reviews the winners;
 the row says `ours: null` and why. A contest stat-api does not serve in full
-is skipped and named, never stored as a preview. Nothing here needs
-`STAT_API_KEY`; with one set, the contest listing is simply deeper.
+is skipped and named, never stored as a preview. A slate whose biggest
+contest stat-api has not processed yet (Monday night, on Tuesday morning) is
+named as waiting and picked up by a later run. Nothing here needs
+`STAT_API_KEY`; with one set, every contest on a slate is listed (paged), and
+without one the listing stops at the first 100 and says so.
 
 Usage:
     python -m ingest.nfl_dfs_flagship_review                      # latest completed week
@@ -70,25 +73,43 @@ def game_days(db: DatabaseManager, season: int, week: int, *, finished_only: boo
     return [str(r["gameday"]) for r in rows]
 
 
+def _prize(c: dict) -> tuple:
+    return (c["prize_pool"] or 0), c["entry_count"]
+
+
 def flagship_candidates(client: Client, date: str) -> list[dict]:
-    """The biggest-prize contest of each DraftKings NFL slate that day, with stat-api's access plan for it."""
+    """The biggest-prize contest of each DraftKings NFL slate that day, with stat-api's access plan for it.
+
+    Every contest on the slate is listed (paged), not just the first page.
+    stat-api marks a contest's lineups `available` some hours after the slate
+    ends; until then the slate's biggest contest comes back with plan
+    `waiting`, so the run names it rather than dropping the slate, and a
+    later run imports it. The biggest contest that IS ready is still probed.
+    """
     out = []
     slates = client.slates(date, "nfl").get("slates") or []
     for slate in slates:
         if "In-Game" in str(slate.get("name") or ""):
             continue
-        listing = m.listing_contests(client.contests(int(slate["id"])).get("contests") or [], slate)
-        listing = [c for c in listing if c.get("lineups_status") in (None, "available")]
+        listed = client.slate_contests(int(slate["id"]))
+        listing = m.listing_contests(listed["contests"], slate)
         if not listing:
             continue
-        best = max(listing, key=lambda c: ((c["prize_pool"] or 0), c["entry_count"]))
+        note = {"listing_note": listed["note"]}
+        ready = [c for c in listing if c.get("lineups_status") in (None, "available")]
+        biggest = max(listing, key=_prize)
+        best = max(ready, key=_prize) if ready else None
+        if best is None or _prize(biggest) > _prize(best):
+            out.append({**biggest, **note, "plan": "waiting", "full": False, "usable": False})
+        if best is None:
+            continue
         try:
             probe = client.standings(best["statapi_id"], 1, 1)
         except StatApiError as exc:
-            out.append({**best, "plan": f"error: {exc}"})
+            out.append({**best, **note, "plan": f"error: {exc}"})
             continue
         access = probe.get("access") or {}
-        out.append({**best, "plan": access.get("plan"), "full": bool(access.get("full")),
+        out.append({**best, **note, "plan": access.get("plan"), "full": bool(access.get("full")),
                     "usable": usable(access), "open_rows": open_rows_only(access),
                     "external_id": (probe.get("contest") or {}).get("external_id") or best.get("external_id")})
     return out
@@ -114,6 +135,12 @@ def run(db: DatabaseManager | None, client: Client, season: int, week: int, days
     for day in days:
         for c in flagship_candidates(client, day):
             label = f"{day} {c['name'][:60]} ({c['entry_count']:,} entries, ${c['prize_pool'] or 0:,.0f})"
+            if c.get("listing_note"):
+                label += f" [listing: {c['listing_note']}]"
+            if c.get("plan") == "waiting":
+                skipped.append((label, f"stat-api has not processed its lineups yet (status "
+                                       f"{c.get('lineups_status')}); a later run imports it"))
+                continue
             if c.get("plan") == "flagship" and c.get("usable"):
                 print(f"  FLAGSHIP {label}" + (f" (top {c['open_rows']} rows open, no score curve)"
                                                if c.get("open_rows") else ""))
