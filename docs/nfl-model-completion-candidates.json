@@ -83,7 +83,7 @@
     "research/nfl_workload_risk.py": "e8d67cb4945446fdc4ab857b69729a61e3c65dae2c1a17ed364bef49d637f344",
     "web/src/lib/nfl-dfs/joint-portfolio.ts": "87588d7fb2782f347ea6bfe35e522da15a62063e4c2d287a0c703064430ebf9f",
     "web/scripts/compare-nfl-joint-portfolios.ts": "05bf97642caba1b96d6d4420acf51502faa4468fcf40dc4e1607f51790298515",
-    "web/src/app/dfs/nfl/nfl-optimizer.ts": "95708402acf768b53601ba959b41a67d8c0413f0d28a92b1c6102456f193bae2",
+    "web/src/app/dfs/nfl/nfl-optimizer.ts": "b1b56f7c1c61f7f7cf7a5985319964a76d1480035a65730a5f8c9adc049f512a",
     "model/nfl_matchup_scenarios.py": "9d133718c360a03a445965508061807c49644c3ac329ae220c4f68069a19e913",
     "web/src/lib/nfl-dfs/scoring.ts": "83e8b8c293519e7605f4d5be76a302bd442835fa4dc43a6d02744922a5729e3c",
     "web/src/lib/nfl-dfs/scenarios.ts": "98ed595731bc69ee1fcde4d9c42109880382cff3dbf480ce0f0043fdf46e2fd9"
@@ -212,6 +212,17 @@
       "new_sha256": "95708402acf768b53601ba959b41a67d8c0413f0d28a92b1c6102456f193bae2",
       "changed_by": [
         "NFL DFS: Suggest CPT ranges respects the build shape's captain positions (#557)"
+      ],
+      "evidence_rule": "Forward decisions captured before amended_at ran under previous_sha256 and are graded as a separate cohort or excluded; they are never pooled with decisions captured after it."
+    },
+    {
+      "amended_at": "2026-10-26T23:31:00Z",
+      "reason": "PR #560 changed optimizer behavior in one narrow case: a Showdown player listed Questionable, who was previously blocked from the captain slot, is now captain-eligible when the user sets a captain minimum above 0 on him (new userCaptainOverridesAvailability/captainBlockedForRun helpers; the run notes record it as '... is listed Questionable; his CPT range was applied anyway because you set a captain minimum.'). Doubtful players stay blocked, and with no user captain minimum on a Questionable player every eligibility decision, the solver, the objective and every other constraint are unchanged. The joint-constrained shadow portfolio reads the optimizer's captainEligible decisions, so builds that set such a minimum differ from before. Re-pinned the optimizer only; every other pinned file is unchanged.",
+      "file": "web/src/app/dfs/nfl/nfl-optimizer.ts",
+      "previous_sha256": "95708402acf768b53601ba959b41a67d8c0413f0d28a92b1c6102456f193bae2",
+      "new_sha256": "b1b56f7c1c61f7f7cf7a5985319964a76d1480035a65730a5f8c9adc049f512a",
+      "changed_by": [
+        "NFL optimizer: a captain minimum the user sets on a Questionable player outranks the Q captain block (#560)"
       ],
       "evidence_rule": "Forward decisions captured before amended_at ran under previous_sha256 and are graded as a separate cohort or excluded; they are never pooled with decisions captured after it."
     }
