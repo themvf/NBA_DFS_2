@@ -49,7 +49,8 @@ from model import statapi_contest as m
 BASE = "https://api.stat-api.com/api/v1/dfs"
 USER_AGENT = "Mozilla/5.0 NBADFS-v2 statapi-contest-import/1.0"
 STANDINGS_PAGE = 1000
-MAX_LIST = 100          # contests per slate without a key; a key lifts it
+MAX_LIST = 100          # contests per page; a slate can list over a thousand
+MAX_LIST_PAGES = 30     # 3,000 contests: a deep Sunday main slate with room to spare
 
 
 class StatApiError(RuntimeError):
@@ -114,6 +115,36 @@ class Client:
 
     def contests(self, slate_id: int) -> dict:
         return self.get("/contests", {"slate_id": slate_id, "limit": MAX_LIST})
+
+    def slate_contests(self, slate_id: int, max_pages: int = MAX_LIST_PAGES) -> dict:
+        """Every contest stat-api lists on a slate, paging by `from_id`.
+
+        A page is not sorted by id; the next page starts above the page's
+        largest id (stat-api's `next_from_id` when it gives one, else that
+        id). Paging needs a key: without one a slate deeper than one page
+        returns its first page and says it is incomplete, never silently.
+        """
+        contests: dict[int, dict] = {}
+        from_id, pages, note = None, 0, None
+        while True:
+            params = {"slate_id": slate_id, "limit": MAX_LIST}
+            if from_id is not None:
+                params["from_id"] = from_id
+            page = self.get("/contests", params)
+            pages += 1
+            rows = [c for c in page.get("contests") or [] if c.get("id") is not None]
+            new = [c for c in rows if int(c["id"]) not in contests]
+            contests.update((int(c["id"]), c) for c in new)
+            if not page.get("has_more") or not new:
+                break
+            if not self.keyed:
+                note = f"first {len(contests)} contests only: paging needs STAT_API_KEY"
+                break
+            if pages >= max_pages:
+                note = f"first {len(contests)} contests only: stopped at {max_pages} pages"
+                break
+            from_id = page.get("next_from_id") or max(int(c["id"]) for c in rows)
+        return {"contests": list(contests.values()), "pages": pages, "complete": note is None, "note": note}
 
 
 # --------------------------------------------------------------------------
@@ -188,12 +219,14 @@ def fetch_user_payloads(client: Client, contest_id: int, usernames: list[str]) -
 
 
 def discover(client: Client, date: str, sport: str, *, formats: tuple[str, ...]) -> list[dict]:
-    """Every contest stat-api lists for the operator's slates that day (100 per slate without a key)."""
+    """Every contest stat-api lists for the operator's slates that day (one page per slate without a key)."""
     slates = [s for s in (client.slates(date, sport).get("slates") or [])
               if str(s.get("game_type") or "").lower() in formats and "In-Game" not in str(s.get("name") or "")]
     rows: list[dict] = []
     for slate in slates:
-        listing = client.contests(int(slate["id"]))
+        listing = client.slate_contests(int(slate["id"]))
+        if listing["note"]:
+            print(f"  {slate.get('name')}: {listing['note']}")
         rows.extend(m.listing_contests(listing.get("contests") or [], slate))
     return rows
 
