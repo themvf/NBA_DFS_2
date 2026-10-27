@@ -3,7 +3,7 @@
 Descriptive; a few dozen games say nothing reliable about whether the model beats the market.
 
   nfl_take_three_ways_<season>.png   top: three half-circle cards, one dot per game, coloured by whom each side
-                                     favoured (home / toss-up / away; for results, who won), strong leans darker;
+                                     favoured (home / toss-up / away; for results, who won), one colour each;
                                      bottom: one row per slice (all games, betting-total bands, spread bands, which
                                      side the model leaned to) with a strip of the market's and the model's Brier
                                      score and columns for games, both scores, the gap and how the model's leans did
@@ -36,8 +36,9 @@ DEFAULT_DIR = Path("artifacts") / "nfl_market_scenarios"
 TOSS_UP = 0.05    # within 45-55% is a toss-up
 STRONG = 0.65     # 65%+ is a strong lean
 BIG_WIN = 8       # a win by 8+ is a clear result
-COLOURS = {"home_strong": "#24438f", "home": "#7d9bd6", "toss": "#2f7d5b", "toss_lite": "#86c4a6",
-           "away": "#e0957f", "away_strong": "#9e2a33", "tie": "#2f7d5b"}
+# One colour per side: strong and lean seats share it, so each card reads as three blocs.
+COLOURS = {"home_strong": "#2c4f9e", "home": "#2c4f9e", "toss": "#2f7d5b",
+           "away": "#a12d3a", "away_strong": "#a12d3a", "tie": "#2f7d5b"}
 BLUE, GREEN, RED = COLOURS["home_strong"], COLOURS["toss"], COLOURS["away_strong"]
 CARD = "#fbfaf7"
 MODEL_DOT = "#2a78d6"
@@ -181,7 +182,7 @@ def chart(rows: list[dict], path: Path, season: int, weeks: str) -> bool:
         fig.text(x, ly, "●", color=COLOURS[key], fontsize=11, va="center")
         fig.text(x + 0.013, ly, lab, color=INK_2, fontsize=8.5, va="center")
         x += 0.16
-    fig.text(x + 0.02, ly, "Each dot is one game. Darker = 65%+ chance, or a win by 8+.", color=INK_2,
+    fig.text(x + 0.02, ly, "Each dot is one game.", color=INK_2,
              fontsize=8.2, va="center")
 
     # ── slice table ─────────────────────────────────────────────────────────
