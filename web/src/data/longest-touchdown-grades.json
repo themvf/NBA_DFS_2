@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "version": "nfl-longest-td-weekly-grade-v1",
- "updatedAt": "2026-10-26T19:41:25.415177+00:00",
+ "updatedAt": "2026-10-28T21:01:36.260465+00:00",
  "authority": "tracking_only_not_calibration",
  "weeks": [
   {
@@ -297,7 +297,7 @@
   {
    "season": 2026,
    "week": 7,
-   "graded": 10,
+   "graded": 11,
    "needsReview": [
     {
      "gameId": "2026_07_NE_CHI",
@@ -327,14 +327,14 @@
      ]
     }
    ],
-   "topHits": 1,
-   "topExpected": 1.3826666666666665,
-   "logLoss": 3.3674071001887143,
-   "baselineLogLoss": 3.0769766513622137,
-   "uniformLogLoss": 3.3436527349500436,
-   "anyTdExpected": 37.93199999999999,
-   "anyTdScored": 41,
-   "longTdExpected": 3.852000000000001,
+   "topHits": 2,
+   "topExpected": 1.5226666666666664,
+   "logLoss": 3.2400167143872705,
+   "baselineLogLoss": 3.0229970616094533,
+   "uniformLogLoss": 3.332309379488058,
+   "anyTdExpected": 41.61199999999999,
+   "anyTdScored": 47,
+   "longTdExpected": 4.252000000000002,
    "longTdScored": 6,
    "games": [
     {
@@ -495,6 +495,22 @@
      "topPick": "Puka Nacua",
      "topProbability": 0.15,
      "topHit": false,
+     "reviewed": false
+    },
+    {
+     "gameId": "2026_07_DAL_PHI",
+     "away": "DAL",
+     "home": "PHI",
+     "longestYards": 21,
+     "winners": [
+      "George Pickens"
+     ],
+     "winnerProbability": 0.14,
+     "winnerRank": 1,
+     "outcomes": 25,
+     "topPick": "George Pickens",
+     "topProbability": 0.14,
+     "topHit": true,
      "reviewed": false
     }
    ]
@@ -1532,6 +1548,42 @@
      "description": "(1:49) (Shotgun) 14-S.Darnold pass deep left to 11-J.Smith-Njigba pushed ob at KC 1 for 27 yards (5-M.Delane). The Replay Official reviewed the runner was out of bounds ruling, and the play was REVERSED. (Shotgun) 14-S.Darnold pass deep left to 11-J.Smith-Njigba for 28 yards, TOUCHDOWN."
     }
    ]
+  },
+  {
+   "version": "nfl-longest-td-weekly-grade-v1",
+   "game_id": "2026_07_DAL_PHI",
+   "season": 2026,
+   "week": 7,
+   "away": "DAL",
+   "home": "PHI",
+   "kickoff": "2026-10-27 00:15:00+00:00",
+   "decision_at": "2026-10-26T19:40:53.704908+00:00",
+   "model_version": "nfl-longest-scrimmage-td-research-v2",
+   "request_sha256": "eedc0e83f4e71151eee04f2cea2a231531f44387929e4303e775a8e6a0fc984d",
+   "graded_at": "2026-10-28T21:01:36.260465+00:00",
+   "capture_at": "2026-10-28T21:01:36.229275+00:00",
+   "status": "graded",
+   "reason": null,
+   "longest_yards": 21,
+   "winners": [
+    "George Pickens"
+   ],
+   "winner_probability": 0.14,
+   "winner_rank": 1,
+   "outcomes": 25,
+   "unmodeled_winner": false,
+   "top_pick": "George Pickens",
+   "top_probability": 0.14,
+   "top_hit": true,
+   "log_loss": 1.9661128563728327,
+   "baseline_log_loss": 2.483201164081849,
+   "uniform_log_loss": 3.2188758248682006,
+   "brier": 0.8008919999999999,
+   "any_td_expected": 3.679999999999999,
+   "any_td_scored": 6,
+   "long_td_expected": 0.4,
+   "long_td_scored": 0,
+   "named_players": 22
   }
  ]
 }
