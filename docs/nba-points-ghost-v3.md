@@ -33,6 +33,8 @@ Use a new output directory for every command. `train` records input hash, fixed 
 
 Promotion requires future prospective evidence against v2 and same-time market baselines. This implementation is not evidence of improvement.
 
+The separately registered disagreement, opportunity-alert and conditional-ceiling tests are defined in `docs/nba-points-experiments.md`. Successful new v3 recordings attach their fixed experiment snapshot without changing the original v3 forecast. The 9 AM morning review grades them; the existing 11:35 AM recording schedule remains intact.
+
 ## Fixed local artifact and daily procedure
 
 `research/artifacts/nba_ghost_v3_manifest.json` pins the local model file and digest. The 8 MB model is retained under the separate research artifact directory, rather than added to Git. It contains coefficients and January residuals, not executable serialization. Do not train again in the daily follow-up. Verify its digest before every record. Future specification changes need a new model pin and a separate trial.

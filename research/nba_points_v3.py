@@ -298,6 +298,14 @@ def record_day(args, raw, raw_sha):
     registry.mkdir(parents=True,exist_ok=True)
     write_new(marker,{'date':str(args.date),'version':VERSION,'model_sha256':model['sha256'],
         'forecast_sha256':result['sha256'],'forecast_path':str((args.output_dir/'forecast.json').resolve())})
+    from research.nba_points_experiments import DEFAULT_PROTOCOL, read as read_experiment, save_registration
+    if DEFAULT_PROTOCOL.exists():
+        try:
+            receipt['experiments']=save_registration(result,snapshot,read_experiment(DEFAULT_PROTOCOL),
+                args.output_dir,args.output_dir.parent,datetime.now(timezone.utc).isoformat())
+        except Exception as exc:
+            # Preserve the successful v3 original if the additional test fails.
+            receipt['experiments']={'status':'failed','reason':str(exc),'type':type(exc).__name__}
     return receipt
 
 
