@@ -238,3 +238,67 @@ Design-slate result (in-sample, scorecard v3 latest rule): Showdown flex MAE
 Graded for real only on week 7 onward beside v3 and v4 from the same frozen
 inputs; no constant changes before 8 Showdown and 4 Classic non-design slates.
 Not addressed: news- and value-hype chalk (no input carries it).
+
+## Phase 2 fit — `nfl-ownership-fit-v1` (registered 2026-10-28, before any fit was run)
+
+Owner's decision ("build and test"). Everything in this section was written
+before the first fit; the result is appended below it, never edited into it.
+
+**Data.** For each 2026 week with a linked Classic contest whose recorded
+ownership mass is at least 890 of 900, the REFERENCE contest is the largest
+field (the stat-api Millionaire); any other Classic contest on the same slate
+(the owner's exports, weeks 2 and 3) is extra evaluation only, never pooled into
+the gate. The forecast population is the newest owner optimizer run on that
+slate created BEFORE its first kickoff (`origin='upload'`, not a research study,
+status complete or partial), the same population the Monday three-way grade
+reads; players marked out in that snapshot are excluded. Labels are the
+contest's `drafted_pct` matched by normalized name; an unmatched active player
+is 0 (the mass rule above makes that a reconciled zero, not a guess). Seven
+reference slates exist today (weeks 1-7).
+
+**Features**, all from the pregame snapshot, one model per position (QB, RB,
+WR, TE, DST), standardized on the training rows:
+
+| feature | definition |
+|---|---|
+| `log_salary` | log(salary / 1000) |
+| `proj`, `proj_missing` | our projection as the run saw it (anchor, absence commit included), 0 and a flag when absent |
+| `dk_avg`, `dk_missing` | DraftKings' printed season average, 0 and a flag when absent |
+| `value` | proj / (max(salary, 3000) / 1000) |
+| `rank_proj`, `rank_value`, `rank_dk`, `rank_salary` | tie-averaged percentile rank (0-1) within the position's active pool on the slate |
+| `team_share` | the team's summed projection over the slate's summed projection (active players) |
+| `game_rank` | percentile rank of the game's summed projection among the slate's games |
+| `team_pos_rank` | the player's rank within his team at his position by projection, 1 = top, clipped at 4 |
+| `status_q`, `status_d` | DraftKings status flags |
+| `log_pool` | log(active players at the position on the slate) |
+
+`team_share`, `game_rank` and `team_pos_rank` are the concentration features the
+seven-week grade said the v5 prior lacks (the most-owned team under-predicted
+every week; QB/TE/DST tops too flat).
+
+**Model.** Ridge regression on `log(drafted_pct + 0.1)` (the MLB model's
+target offset), closed form, intercept unpenalised, `alpha = 1.0` on
+standardized features. Alpha is fixed here and is not tuned on any held-out
+slate. Rows are weighted so each training slate counts equally.
+
+**Allocation (primary).** `exp(prediction) - 0.1`, floored at 0, scaled within
+each position to that position's mean recorded total over the training slates,
+with the v5 cap of 60% and the excess redistributed (`allocate_detailed`).
+Secondary, reported but not gating: the raw predictions rescaled to 900 with no
+position budgets.
+
+**Folds.** (a) Leave-one-slate-out over the reference slates: the gate. (b)
+Walk-forward, train on earlier weeks only, held out weeks 4-7: reported beside
+it as the stricter check, not gating. In both, the v5 prior is graded on the
+identical held-out rows.
+
+**Gate** (unchanged from Phase 2 above, judged on the primary allocation,
+pooled over the leave-one-out held-out rows): at least 4 held-out slates,
+Spearman (tie-averaged) >= 0.70, MAE <= 2.0 points, |bias| <= 0.5. PASS also
+requires the pooled MAE to beat the v5 prior's on the same rows; a model that
+clears the bar but is no better than the formula replaces nothing. On FAIL
+the prior stays and the next variant is a new registration; features and
+alpha are not changed after seeing the result.
+
+Code: `model/nfl_ownership_fit.py` (pure), `research/nfl_ownership_fit.py`
+(runner; prints and writes `artifacts/nfl-ownership-fit-v1/`).
