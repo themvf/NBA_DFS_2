@@ -8354,8 +8354,10 @@ every player the pool rules left out (`reasonCode` `WINNERS_SHAPE` /
   8-back pool. Rebuild Standard and Winners shape on v2 before kickoff. A rule that would leave a position too
   thin (RB 4, WR 6, TE 2, DST 2) is skipped and said; so is a position with
   no prior data. Locks always win.
-- **Showdown:** every lineup 5-1 or 3-3 (three binaries pin the first team's
-  count to 1, 3 or 5), no kicker, the captain a QB, RB or WR (`captainPositions`;
+- **Showdown:** any team split since v10 (2026-10-28; v1-v9 forbade 4-2 with
+  three binaries pinning the first team's count to 1, 3 or 5, and the
+  `forbidFourTwoSplit` setting still does that when asked, which the ghost
+  house's frozen level does), no kicker, the captain a QB, RB or WR (`captainPositions`;
   the player still plays flex), no captain above 30% of lineups unless the
   user set his CPT range, min salary $49,500. Works alongside the archetype
   plan. v3's captain-position rule comes from the stored flagship builds: in

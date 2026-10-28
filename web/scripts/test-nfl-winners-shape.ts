@@ -1,5 +1,5 @@
 /**
- * Winners shape (`nfl-winners-shape-v1`..`v9`): the preset resolves into ordinary
+ * Winners shape (`nfl-winners-shape-v1`..`v10`): the preset resolves into ordinary
  * optimizer settings and pool exclusions, and the optimizer enforces each of
  * them: the bring-back SHARE alternates lineups, the quarterback cap binds,
  * kickers leave a showdown pool, a showdown lineup is 5-1 or 3-3 and never
@@ -99,7 +99,8 @@ const prior = (games: number, targets: number, targetShare: number | null = null
   assert.match(cash.notes[0], /GPP builds only/);
 
   const showdown = applyWinnersShape(settings({ format: "showdown" }), pool);
-  assert.equal(showdown.settings.excludeKickers, true); assert.equal(showdown.settings.forbidFourTwoSplit, true);
+  assert.equal(showdown.settings.excludeKickers, true);
+  assert.equal(showdown.settings.forbidFourTwoSplit, undefined, "v10: the preset no longer bans the 4-2 split");
   assert.equal(showdown.settings.maxCaptainExposure, WINNERS_SHAPE.captainMaxExposure);
   assert.deepEqual(showdown.settings.captainPositions, ["QB", "RB", "WR"]);
   assert.equal(showdown.settings.minUnique, 2, "showdown keeps the user's min unique");
@@ -192,7 +193,7 @@ console.log("Winners shape: the preset resolves to named settings and named excl
 }
 console.log("Winners shape (classic): bring-back share alternates, quarterbacks are capped, pool rules are enforced and named.");
 
-// --- Showdown integration: no kicker, 5-1 or 3-3 only, captain cap ---
+// --- Showdown integration: no kicker, any team split (v10), captain cap ---
 {
   const pool: NflOptimizerPlayer[] = [];
   let id = 200;
@@ -207,14 +208,14 @@ console.log("Winners shape (classic): bring-back share alternates, quarterbacks 
   const teamSplit = (l: { slots: { player: NflOptimizerPlayer }[] }) => l.slots.filter(s => s.player.team === "AAA").length;
 
   const plain = optimizeNflLineups(pool, settings({ format: "showdown", nLineups: 1, minSalary: 0, stackPassCatchers: 0 }));
-  assert.equal(teamSplit(plain.lineups[0]), 4, "without the preset the best lineup is 4-2 (the ban has something to bind on)");
+  assert.equal(teamSplit(plain.lineups[0]), 4, "without the preset the best lineup is 4-2");
   assert.equal(plain.lineups[0].slots.find(s => s.slot === "CPT")!.player.position, "TE", "without the preset the tight end is the captain (the position rule has something to bind on)");
 
   const n = 6;
   const result = optimizeNflLineups(pool, settings({ format: "showdown", nLineups: n, minSalary: 0, stackPassCatchers: 0, buildShape: "winners", maxExposure: 1 }));
   assert.equal(result.lineups.length, n, `built ${result.lineups.length}: ${result.warnings.join(" | ")}`);
   for (const lineup of result.lineups) {
-    assert.ok([1, 3, 5].includes(teamSplit(lineup)), `split ${teamSplit(lineup)}-${6 - teamSplit(lineup)} is 4-2`);
+    assert.ok([1, 2, 3, 4, 5].includes(teamSplit(lineup)), `split ${teamSplit(lineup)}-${6 - teamSplit(lineup)} is one-sided`);
     assert.ok(!lineup.slots.some(s => s.player.position === "K"), "no kicker");
     assert.ok(lineup.totalSalary >= WINNERS_SHAPE.minSalary, `salary ${lineup.totalSalary}`);
     assert.ok(lineup.slots.some(s => s.player.position === "QB"), "v5: every lineup has a quarterback");
@@ -223,6 +224,9 @@ console.log("Winners shape (classic): bring-back share alternates, quarterbacks 
     if (cpt.position === "QB") assert.ok(lineup.slots.some(s => s.slot !== "CPT" && ["WR", "TE"].includes(s.player.position) && s.player.team === cpt.team), "v6: a QB captain has his own WR/TE");
   }
   for (const lineup of result.lineups) assert.ok(["QB", "RB", "WR"].includes(lineup.slots.find(s => s.slot === "CPT")!.player.position), "the captain is a QB, RB or WR");
+  assert.ok(result.lineups.some(l => teamSplit(l) === 4), "v10: the preset builds the natural 4-2 lineup");
+  const banned = optimizeNflLineups(pool, settings({ format: "showdown", nLineups: n, minSalary: 0, stackPassCatchers: 0, buildShape: "winners", maxExposure: 1, forbidFourTwoSplit: true }));
+  for (const lineup of banned.lineups) assert.ok([1, 3, 5].includes(teamSplit(lineup)), "the optimizer setting still bans 4-2 when asked (the ghost house uses it)");
   assert.ok(result.lineups.some(l => l.slots.some(s => s.slot !== "CPT" && s.player.position === "TE" && s.player.ourProj === 26)), "the strong tight end still plays flex");
   const captains = result.lineups.map(l => l.slots.find(s => s.slot === "CPT")!.player.dkPlayerId);
   assert.equal(new Set(captains).size, n, "30% of 6 lineups is one captain slot each: six different captains");
@@ -319,7 +323,7 @@ console.log("Winners shape (classic): bring-back share alternates, quarterbacks 
   assert.throws(() => optimizeNflLineups(pool, settings({ format: "classic", minQbPerLineup: 1 })), /Showdown rule/);
   assert.throws(() => optimizeNflLineups(pool, settings({ format: "showdown", minQbPerLineup: 3 })), /0, 1 or 2/);
 }
-console.log("Winners shape (showdown): no kicker, 5-1 or 3-3 only, captains capped, user ranges still win.");
+console.log("Winners shape (showdown): no kicker, any team split since v10 (the setting still bans 4-2 when asked), captains capped, user ranges still win.");
 
 // --- DST against own players (v4): capped at 5% of lineups, rounded down ---
 {
