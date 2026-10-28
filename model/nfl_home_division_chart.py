@@ -34,6 +34,7 @@ from model.story_charts import BAD, NEUTRAL, WIDTH_IN, _axes, _finish  # noqa: E
 
 DEFAULT_DIR = Path("artifacts") / "nfl_market_scenarios"
 HIGHLIGHT = {"NFC South", "AFC South"}
+DIVISIONS = tuple(f"{c} {d}" for c in ("AFC", "NFC") for d in ("East", "North", "South", "West"))
 # nflverse lists no venue flag; these 2026 games were played at a neutral site (London, Dublin, Berlin, ...).
 NEUTRAL_SITES = {"2026_01_SF_LA", "2026_03_BAL_DAL", "2026_04_IND_WAS", "2026_05_PHI_JAX",
                  "2026_06_HOU_JAX", "2026_07_PIT_NO"}
@@ -219,7 +220,8 @@ def team_chart(rows: list[dict], path: Path, season: int, weeks: str) -> bool:
     return _finish(fig, path, f"The South, team by team: {winless} of {len(rows)} teams have not won at home", sub, height)
 
 
-def missing_wins_chart(rows: list[dict], path: Path, season: int, weeks: str) -> bool:
+def missing_wins_chart(rows: list[dict], path: Path, season: int, weeks: str, label: str = "The South",
+                       scope: str = "AFC South and NFC South") -> bool:
     """Expected home wins (grey) to actual home wins (red), per team, with the total on top."""
     rows = [r for r in rows if r["home"]["expected_wins"] is not None]
     if not rows:
@@ -228,8 +230,9 @@ def missing_wins_chart(rows: list[dict], path: Path, season: int, weeks: str) ->
     exp_total = sum(r["home"]["expected_wins"] for r in rows)
     won_total = sum(r["home"]["w"] for r in rows)
     games_total = sum(r["home"]["w"] + r["home"]["l"] for r in rows)
-    items = [("All eight", exp_total, won_total, games_total, True)] + [
-        (r["team"], r["home"]["expected_wins"], r["home"]["w"], r["home"]["w"] + r["home"]["l"], False)
+    n_words = {4: "four", 8: "eight"}
+    items = [(f"All {n_words.get(len(rows), len(rows))}", exp_total, won_total, games_total, sum(r["home"]["t"] for r in rows))] + [
+        (r["team"], r["home"]["expected_wins"], r["home"]["w"], r["home"]["w"] + r["home"]["l"], r["home"]["t"])
         for r in rows]
     height = 0.5 * len(items) + 2.6
     fig, (top, ax) = plt.subplots(2, 1, figsize=(WIDTH_IN, height), dpi=DPI,
@@ -238,12 +241,12 @@ def missing_wins_chart(rows: list[dict], path: Path, season: int, weeks: str) ->
     for a, chunk, xmax in ((top, items[:1], max(exp_total, won_total) + 1.5),
                            (ax, items[1:], max(max(e, w) for _, e, w, _, _ in items[1:]) + 0.8)):
         _axes(a, ygrid=False)
-        for y, (name, exp, won, n, _) in enumerate(chunk):
+        for y, (name, exp, won, n, ties) in enumerate(chunk):
             a.plot([won, exp], [y, y], color=BAD, linewidth=3, alpha=0.25, zorder=1, solid_capstyle="round")
             a.scatter(exp, y, s=110, color=NEUTRAL, edgecolor=INK_2, linewidth=0.6, zorder=2)
             a.scatter(won, y, s=130, color=BAD, edgecolor=INK, linewidth=0.6, zorder=3)
             gap = won - exp
-            a.text(1.02, y, f"won {won} of {n} at home, expected {exp:.1f}   ({gap:+.1f})", ha="left",
+            a.text(1.02, y, f"won {won} of {n} at home{f' (+{ties} tie)' if ties else ''}, expected {exp:.1f}   ({gap:+.1f})", ha="left",
                    va="center", fontsize=7.6, color=INK, fontweight="bold" if gap <= -1.5 else "normal",
                    transform=a.get_yaxis_transform(), clip_on=False)
         a.set_yticks(range(len(chunk)), [c[0] for c in chunk], fontsize=9, fontweight="bold")
@@ -257,10 +260,11 @@ def missing_wins_chart(rows: list[dict], path: Path, season: int, weeks: str) ->
                                    markersize=8, label="Home wins they actually got")],
                loc="lower left", bbox_to_anchor=(0.0, 1.05), ncol=2, fontsize=7.4, frameon=False)
     fig.subplots_adjust(left=0.13, right=0.66, bottom=0.6 / height, top=1 - 1.35 / height)
-    sub = (f"{season} season, {weeks}, AFC South and NFC South, neutral sites left out. Expected = the sum of the "
-           f"market's pregame chance for each home game\n(moneyline, margin removed). Three or four home games a team: "
+    sub = (f"{season} season, {weeks}, {scope}, neutral sites left out. Expected = the sum of the "
+           f"market's pregame chance for each home game\n(moneyline, margin removed). One to four home games a team, ties left out: "
            f"this describes the season so far, it does not predict the rest of it.")
-    return _finish(fig, path, f"The South's missing home wins: expected {exp_total:.0f}, won {won_total}", sub,
+    return _finish(fig, path, (f"{label}'s missing home wins: expected {exp_total:.0f}, won {won_total}" if won_total < exp_total - 0.5
+                   else f"{label} at home: expected {exp_total:.0f} wins, won {won_total}"), sub,
                    height)
 
 
@@ -299,7 +303,12 @@ def build_all(out_dir: Path, season: int) -> list[tuple[str, bool]]:
     south_rows = team_rows(games, ("AFC South", "NFC South"))
     return [(name, chart(division_rows(games), Path(out_dir) / name, season, weeks)),
             (south, team_chart(south_rows, Path(out_dir) / south, season, weeks)),
-            (missing, missing_wins_chart(south_rows, Path(out_dir) / missing, season, weeks))]
+            (missing, missing_wins_chart(south_rows, Path(out_dir) / missing, season, weeks))] + [
+        (f"nfl_take_home_wins_{div.lower().replace(' ', '_')}_{season}.png",
+         missing_wins_chart(team_rows(games, (div,)),
+                            Path(out_dir) / f"nfl_take_home_wins_{div.lower().replace(' ', '_')}_{season}.png",
+                            season, weeks, label=f"The {div}", scope=f"{div} teams"))
+        for div in DIVISIONS]
 
 
 def main(argv: list[str] | None = None) -> int:
