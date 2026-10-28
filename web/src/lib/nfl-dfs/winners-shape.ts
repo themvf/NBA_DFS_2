@@ -14,7 +14,8 @@
  *   team's targets (the third receiver may be a cheap one under $5,000),
  *   tight ends with 4+ targets a game (v9: no salary ceiling), defenses under $3,000.
  * Showdown (248 Thursday/Monday winners):
- * - 5-1 or 3-3, almost never 4-2 (88%); no kicker (6% vs 36% lower down);
+ * - no kicker (6% vs 36% lower down); the team split is free since v10 (the
+ *   4-2 ban of v1-v9 was measured wrong, see the v10 note);
  *   the captain a QB, RB or WR (346 of 346 top-20 lineups);
  *   winning captains sat at ~6% captain ownership, so no captain above 30%.
  *
@@ -90,7 +91,19 @@ import type { NflOptimizerPlayer, NflOptimizerSettings } from "@/app/dfs/nfl/nfl
  * median $4,600 and was $4,000+ in 75% of them, and 36% of one-TE winners used
  * a $4,000+ TE. The 4+ targets a game requirement stays.
  */
-export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v9";
+/**
+ * v10 (2026-10-28, owner's decision): the Showdown 4-2 ban is lifted. Across
+ * the 12 stored 2026 flagship Showdowns the top-100 split 3-3 / 4-2 / 5-1 as
+ * 50% / 35% / 15% against a field of 33 / 47 / 19: 4-2 and 5-1 have the same
+ * lift (0.74 and 0.79) and 3-3 is the shape that wins above its share (1.5),
+ * so banning 4-2 while allowing 5-1 removed a third of the winning lineups
+ * for nothing. It cost most in lopsided scripts: the week-6 and week-7
+ * Monday top-100s were 91% and 93% 4-2, which the preset could not build at
+ * all. No target mix replaces it (12 slates cannot fit shares); the
+ * projections and the spread decide. The ghost factorial's house keeps its
+ * own frozen "banned" level (`ghost/design.ts`), so its cohort is unchanged.
+ */
+export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v10";
 
 export type BuildShape = "standard" | "winners";
 export const BUILD_SHAPES: readonly BuildShape[] = ["standard", "winners"];
@@ -249,7 +262,6 @@ export function applyWinnersShape(settings: NflOptimizerSettings, players: reado
     Object.assign(shaped, {
       maxCaptainExposure: limits.maxCaptainExposure!,
       excludeKickers: true,
-      forbidFourTwoSplit: true,
       captainPositions: [...WINNERS_SHAPE.captainPositions],
       minQbPerLineup: Math.max(settings.minQbPerLineup ?? 0, WINNERS_SHAPE.showdownMinQb),
       captainStack: true,
@@ -258,7 +270,7 @@ export function applyWinnersShape(settings: NflOptimizerSettings, players: reado
       rbCaptainShare: settings.rbCaptainShare ?? WINNERS_SHAPE.showdownRbCaptainShare,
       showdownQbMinCap: Math.max(settings.showdownQbMinCap ?? 0, WINNERS_SHAPE.showdownQbMinCap),
     });
-    notes.push(`Winners shape (${WINNERS_SHAPE_VERSION}, showdown): every lineup 5-1 or 3-3 (no 4-2), at least ${WINNERS_SHAPE.showdownMinQb} quarterback, a WR/TE captain with his own QB and a QB captain with his own WR/TE, both QBs in ${Math.round(WINNERS_SHAPE.showdownTwoQbShare * 100)}% of lineups, a lone-QB captain in at most ${Math.round(WINNERS_SHAPE.showdownMaxLoneQbCaptainShare * 100)}%, an RB captain in ${Math.round(WINNERS_SHAPE.showdownRbCaptainShare * 100)}%, each QB in up to ${Math.round(WINNERS_SHAPE.showdownQbMinCap * 100)}% of lineups, no kicker, the captain a ${WINNERS_SHAPE.captainPositions.join("/")}, `
+    notes.push(`Winners shape (${WINNERS_SHAPE_VERSION}, showdown): any team split (v10 lifted the 4-2 ban), at least ${WINNERS_SHAPE.showdownMinQb} quarterback, a WR/TE captain with his own QB and a QB captain with his own WR/TE, both QBs in ${Math.round(WINNERS_SHAPE.showdownTwoQbShare * 100)}% of lineups, a lone-QB captain in at most ${Math.round(WINNERS_SHAPE.showdownMaxLoneQbCaptainShare * 100)}%, an RB captain in ${Math.round(WINNERS_SHAPE.showdownRbCaptainShare * 100)}%, each QB in up to ${Math.round(WINNERS_SHAPE.showdownQbMinCap * 100)}% of lineups, no kicker, the captain a ${WINNERS_SHAPE.captainPositions.join("/")}, `
       + `no captain in more than ${Math.round(WINNERS_SHAPE.captainMaxExposure * 100)}% of lineups, min salary ${money(shaped.minSalary)}. `
       + `Captain ranges you set are kept.`);
   }
