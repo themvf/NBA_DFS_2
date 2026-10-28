@@ -1,8 +1,8 @@
 """Weekly three-way ownership grade (`nfl-ownership-three-way-v1`, 2026-10-26).
 
-For one week's Classic Millionaire (the stat-api import in `nfl_dfs_field_*`,
-linked to the owner's slate), grades three ownership forecasts against the
-field's actual ownership:
+For EVERY linked Classic contest of one week (the stat-api Millionaire import
+and the owner's own DraftKings exports in `nfl_dfs_field_*`, each linked to its
+slate), grades three ownership forecasts against that field's actual ownership:
 
   prior     the stated v5 prior, recomputed from the frozen run snapshot
   bounded   that prior held inside the FantasyPros range imported for the
@@ -10,11 +10,15 @@ field's actual ownership:
   midpoint  the middle of the FantasyPros range, the prior where no range
 
 The forecast population is the newest owner optimizer run on the linked
-slate before its first kickoff (what the build actually read). Descriptive,
-one slate per run: it prints, it writes nothing. Run it Monday after the
-flagship review has imported the contest:
+slate before its first kickoff (what the build actually read). When two or
+more contests share a slate, their fields are compared with each other
+(rank agreement, and the players one room owned far more than the other).
+Descriptive: it prints, it writes nothing. Run it Monday after the flagship
+review has imported the Millionaire and the owner's export is imported
+(`python -m ingest.nfl_dfs_field_audit --contest FILE --keep-all`):
 
     python -m research.nfl_ownership_three_way --week 7
+    python -m research.nfl_ownership_three_way --week 7 --contest 196905290   # one contest
 """
 from __future__ import annotations
 
@@ -41,6 +45,36 @@ def norm(name: str) -> str:
 
 def band_key(team: str, position: str, salary: int, name: str) -> tuple:
     return (team, position, salary, norm(name.split()[-1]) if position == "DST" else norm(name))
+
+
+def list_contests(conn, week: int) -> list[dict]:
+    """Every linked Classic contest of the week, largest field first."""
+    with conn.cursor() as cur:
+        cur.execute("""SELECT contest_id, contest_name, entry_count, slate_upload_id FROM nfl_dfs_field_contests
+            WHERE format = 'classic' AND season = %s AND week = %s AND slate_upload_id IS NOT NULL
+            ORDER BY entry_count DESC""", (SEASON, week))
+        return list(cur.fetchall())
+
+
+def compare_fields(reference: pd.DataFrame, other: pd.DataFrame, top: int = 8) -> dict:
+    """How two fields on the same slate differ. Both frames are `grade` outputs
+    (name, position, salary, actual). Returns rank agreement of the two fields'
+    ownership, the mean absolute gap, and the players each room owned most
+    more than the other (other minus reference, percentage points)."""
+    a = reference[["name", "position", "salary", "actual"]].rename(columns={"actual": "ref"})
+    b = other[["name", "actual"]].rename(columns={"actual": "other"})
+    m = a.merge(b, on="name", how="inner")
+    m["gap"] = m["other"] - m["ref"]
+    both = m[(m.ref > 0) | (m.other > 0)]
+    sp = spearman_avg(both.ref.to_numpy(float), both.other.to_numpy(float)) if len(both) > 2 else float("nan")
+
+    def rows(d):
+        return [{"name": r.name, "position": r.position, "salary": int(r.salary), "ref": round(float(r.ref), 1),
+                 "other": round(float(r.other), 1), "gap": round(float(r.gap), 1)} for r in d.itertuples()]
+    return {"n": int(len(both)), "spearman": round(float(sp), 3), "mae": round(float(both.gap.abs().mean()), 2),
+            "chalk_ref": round(float(m.ref.max()), 1), "chalk_other": round(float(m.other.max()), 1),
+            "more_in_other": rows(m.sort_values("gap", ascending=False).head(top)),
+            "more_in_reference": rows(m.sort_values("gap").head(top))}
 
 
 def load(conn, week: int, contest_id: str | None):
@@ -110,21 +144,17 @@ def grade(snapshot: list, field: dict, bands: dict | None) -> tuple[pd.DataFrame
     return g, out
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--week", type=int, required=True)
-    ap.add_argument("--contest", default=None, help="DraftKings contest id (default: the week's largest linked Classic)")
-    ap.add_argument("--misses", type=int, default=12)
-    args = ap.parse_args()
-    conn = connect()
+def grade_one(conn, week: int, contest_id: str, misses: int) -> pd.DataFrame | None:
     try:
-        contest, field, run, snapshot, bands = load(conn, args.week, args.contest)
-    finally:
-        conn.close()
+        contest, field, run, snapshot, bands = load(conn, week, contest_id)
+    except SystemExit as exc:
+        print(f"\n== contest {contest_id}: {exc}")
+        return None
     mass = sum(field.values())
-    print(f"week {args.week}: {contest['contest_name']} ({contest['entry_count']:,} entries), field rows {len(field)}, "
-          f"ownership mass {mass:.0f}/900; run {str(run['run_id'])[:8]} at {run['created_at']:%Y-%m-%d %H:%M} UTC, "
-          f"{len(snapshot)} players; FantasyPros ranges {'imported ' + bands['captured_at'].strftime('%Y-%m-%d %H:%M') + ' UTC' if bands else 'NOT imported (bounded and midpoint = prior)'}")
+    print(f"\n== {contest['contest_name']} ({contest['entry_count']:,} entries, contest {contest['contest_id']}): "
+          f"field rows {len(field)}, ownership mass {mass:.0f}/900; run {str(run['run_id'])[:8]} at "
+          f"{run['created_at']:%Y-%m-%d %H:%M} UTC, {len(snapshot)} players; FantasyPros ranges "
+          f"{'imported ' + bands['captured_at'].strftime('%Y-%m-%d %H:%M') + ' UTC' if bands else 'NOT imported (bounded and midpoint = prior)'}")
     g, out = grade(snapshot, field, bands)
     print(f"graded players {len(g)}")
     for col, label in (("prior", "our prior v5"), ("bounded", "prior held in FP range"), ("midpoint", "FP midpoint"), ("build", "what the build used")):
@@ -134,9 +164,47 @@ def main() -> None:
             print(f"   field {t['tier']:>6}% n={t['n']:3d}  pred {t['pred']:5.1f}  actual {t['actual']:5.1f}  MAE {t['mae']:5.2f}")
     g["err"] = g["build"].fillna(0) - g["actual"]
     print(f"\nBiggest misses of the build's number:")
-    for r in g.reindex(g["err"].abs().sort_values(ascending=False).index).head(args.misses).itertuples():
+    for r in g.reindex(g["err"].abs().sort_values(ascending=False).index).head(misses).itertuples():
         fpr = f"FP {r.fp_low:.0f}-{r.fp_high:.0f}" if not np.isnan(r.fp_low) else "no FP row"
         print(f"  {r.name:24s} {r.position:3s} ${r.salary:5d}  field {r.actual:5.1f}  build {float(r.build or 0):5.1f}  prior {r.prior:5.1f}  {fpr}")
+    return g
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--week", type=int, required=True)
+    ap.add_argument("--contest", default=None, help="DraftKings contest id (default: every linked Classic contest of the week)")
+    ap.add_argument("--misses", type=int, default=12)
+    args = ap.parse_args()
+    conn = connect()
+    try:
+        contests = ([{"contest_id": args.contest, "slate_upload_id": None}] if args.contest else list_contests(conn, args.week))
+        if not contests:
+            raise SystemExit(f"no linked Classic contest for week {args.week}; run the flagship import first")
+        graded = []
+        for c in contests:
+            g = grade_one(conn, args.week, c["contest_id"], args.misses)
+            if g is not None:
+                graded.append((c, g))
+    finally:
+        conn.close()
+    if len(graded) < 2:
+        return
+    ref_c, ref_g = graded[0]
+    for c, g in graded[1:]:
+        if c["slate_upload_id"] != ref_c["slate_upload_id"]:
+            print(f"\n== contest {c['contest_id']} is on a different slate than {ref_c['contest_id']}; fields not compared")
+            continue
+        cmp = compare_fields(ref_g, g)
+        print(f"\n== Field vs field: contest {c['contest_id']} against {ref_c['contest_id']} (reference): "
+              f"n={cmp['n']} rank agreement {cmp['spearman']:.3f}, mean gap {cmp['mae']:.2f} pts, "
+              f"top chalk {cmp['chalk_other']:.1f}% vs {cmp['chalk_ref']:.1f}%")
+        print("  owned more in this contest:")
+        for r in cmp["more_in_other"]:
+            print(f"    {r['name']:24s} {r['position']:3s} ${r['salary']:5d}  {r['other']:5.1f} vs {r['ref']:5.1f}  ({r['gap']:+.1f})")
+        print("  owned more in the reference:")
+        for r in cmp["more_in_reference"]:
+            print(f"    {r['name']:24s} {r['position']:3s} ${r['salary']:5d}  {r['other']:5.1f} vs {r['ref']:5.1f}  ({r['gap']:+.1f})")
 
 
 if __name__ == "__main__":

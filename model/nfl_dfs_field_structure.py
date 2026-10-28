@@ -66,43 +66,50 @@ def parse_entry_name(name: str) -> tuple[str, int | None]:
     return match.group(1), int(match.group(3))
 
 
-def keep_top_entries(entries: list[dict], n: int, players: dict[str, dict] | None = None) -> list[dict]:
-    """The entries ranked within the top N, each with its roster read against the field.
+def lineup_ownership(lineup_text: str, players: dict[str, dict] | None) -> tuple[list[dict], float]:
+    """A lineup's roster read against the field: each slot at ITS ownership (a
+    showdown captain at the CPT share, a flex at the FLEX share) and the sum the
+    field actually faced. Unknown players carry None and add nothing."""
+    players = players or {}
+    roster, total = [], 0.0
+    for slot, name in parse_lineup(lineup_text):
+        key = re.sub(r"[^a-z]", "", name.lower())
+        field = players.get(key)
+        pct = None
+        if field:
+            by_slot = field.get("drafted_by_slot") or {}
+            pct = by_slot.get(slot) if slot in by_slot else field.get("drafted_pct")
+        if pct is not None:
+            total += pct
+        roster.append({"slot": slot, "name": name, "normalized_name": key, "drafted_pct": pct})
+    return roster, round(total, 2)
+
+
+def keep_top_entries(entries: list[dict], n: int | None, players: dict[str, dict] | None = None) -> list[dict]:
+    """The entries ranked within the top N (every entry when N is None), each
+    with its roster read against the field.
 
     `entries` rows carry rank, entry_id, entry_name, points and lineup_text (the
     export's columns 0, 1, 2, 4, 5). Every entry whose RANK is <= N is kept, so
     a tie at the cut is kept whole rather than broken by file order. `players`
     is the export's ownership table keyed by normalized name (what
-    `parse_contest_export` returns); each slot is read at ITS ownership --
-    a showdown captain at the CPT share, a flex at the FLEX share -- so the
-    lineup's ownership sum is the number the field actually faced.
+    `parse_contest_export` returns); see `lineup_ownership` for the read.
     """
-    if n < 1:
+    if n is not None and n < 1:
         raise ValueError("keep-top must be at least 1")
-    players = players or {}
     out = []
     for entry in sorted(entries, key=lambda e: (e["rank"], e.get("entry_id") or "")):
-        if entry["rank"] > n:
+        if n is not None and entry["rank"] > n:
             break
         username, user_entries = parse_entry_name(entry["entry_name"])
-        roster, total = [], 0.0
-        for slot, name in parse_lineup(entry["lineup_text"]):
-            key = re.sub(r"[^a-z]", "", name.lower())
-            field = players.get(key)
-            pct = None
-            if field:
-                by_slot = field.get("drafted_by_slot") or {}
-                pct = by_slot.get(slot) if slot in by_slot else field.get("drafted_pct")
-            if pct is not None:
-                total += pct
-            roster.append({"slot": slot, "name": name, "normalized_name": key, "drafted_pct": pct})
+        roster, total = lineup_ownership(entry["lineup_text"], players)
         if not roster:
             raise ValueError(f"entry {entry.get('entry_id')} at rank {entry['rank']} has no parseable lineup")
         out.append({
             "entry_id": str(entry["entry_id"]), "rank": int(entry["rank"]),
             "entry_name": entry["entry_name"], "username": username, "user_entries": user_entries,
             "points": entry.get("points"), "lineup_text": entry["lineup_text"],
-            "players": roster, "ownership_sum": round(total, 2),
+            "players": roster, "ownership_sum": total,
         })
     return out
 
