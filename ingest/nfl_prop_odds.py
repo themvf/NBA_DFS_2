@@ -55,6 +55,11 @@ VOLUME_MARKETS: tuple[str, ...] = (
 # DraftKings, Caesars, BetMGM and Fanatics posted it for BUF@LAR in the test call.
 TD_ORDER_MARKETS: tuple[str, ...] = ("player_1st_td",)
 CAPTURE_MARKETS: tuple[str, ...] = MARKETS + VOLUME_MARKETS + ALTERNATE_MARKETS + TD_ORDER_MARKETS
+# The midweek captures (Wednesday and Friday evenings, nfl-prop-field-lag-v1)
+# take the main lines and volume only: the study reads the median line, and the
+# ladders double the cost of a round that happens twice more a week.
+MAIN_MARKETS: tuple[str, ...] = MARKETS + VOLUME_MARKETS
+MARKET_SETS: dict[str, tuple[str, ...]] = {"all": CAPTURE_MARKETS, "main": MAIN_MARKETS}
 
 
 def normalize_prop_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -254,17 +259,20 @@ def capture(
     min_hours: float = 0,
     day_ahead: bool = False,
     now: datetime | None = None,
+    markets: tuple[str, ...] = CAPTURE_MARKETS,
 ) -> dict[str, int]:
     if not api_key:
         raise ValueError("ODDS_API_KEY is required")
+    if not markets:
+        raise ValueError("a capture needs at least one market")
     events = fetch_events(api_key)
     now = now or datetime.now(timezone.utc)
     if event_limit == 0 and within_hours <= 0 and not day_ahead:
         raise ValueError("refusing an unbounded capture: set --within-hours, --day-ahead or --event-limit")
     selected = select_events(events, now, event_limit, within_hours, min_hours, day_ahead)
-    estimated_credits = len(selected) * len(CAPTURE_MARKETS) * math.ceil(len(BOOKMAKER_KEYS) / 10)
+    estimated_credits = len(selected) * len(markets) * math.ceil(len(BOOKMAKER_KEYS) / 10)
     if not apply:
-        return {"events": len(selected), "estimatedCredits": estimated_credits, "rows": 0}
+        return {"events": len(selected), "estimatedCredits": estimated_credits, "rows": 0, "markets": len(markets)}
     require_credit_budget(estimated_credits=estimated_credits, max_credits=max_credits)
     if db is None:
         raise ValueError("database connection is required with --apply")
@@ -275,7 +283,7 @@ def capture(
             f"{ODDS_BASE}/sports/{SPORT}/events/{event['id']}/odds",
             params={
                 "apiKey": api_key,
-                "markets": ",".join(CAPTURE_MARKETS),
+                "markets": ",".join(markets),
                 "bookmakers": ",".join(BOOKMAKER_KEYS),
                 "oddsFormat": "american",
                 "dateFormat": "iso",
@@ -283,14 +291,15 @@ def capture(
             timeout=30,
         )
         response.raise_for_status()
-        record_usage(db, response, "nfl_props", f"{ODDS_BASE}/sports/{SPORT}/events/{{id}}/odds", 1, [event["id"]])
+        record_usage(db, response, "nfl_props", f"{ODDS_BASE}/sports/{SPORT}/events/{{id}}/odds", 1, [event["id"]],
+                     markets=markets)
         written += persist_event_payload(
             db,
             event=event,
             payload=response.json(),
             captured_at=datetime.now(timezone.utc),
         )
-    return {"events": len(selected), "estimatedCredits": estimated_credits, "rows": written}
+    return {"events": len(selected), "estimatedCredits": estimated_credits, "rows": written, "markets": len(markets)}
 
 
 def main() -> int:
@@ -308,6 +317,8 @@ def main() -> int:
     parser.add_argument("--min-hours", type=float, default=0,
                         help="skip events starting sooner than this (a T-75 run leaves earlier groups alone)")
     parser.add_argument("--day-ahead", action="store_true", help="only games on tomorrow's Eastern date")
+    parser.add_argument("--markets", choices=sorted(MARKET_SETS), default="all",
+                        help="'main' = the 12 main and volume lines (midweek captures); 'all' adds the ladders")
     args = parser.parse_args()
     config = load_config()
     db = DatabaseManager(config.database_url) if args.apply else None
@@ -320,8 +331,9 @@ def main() -> int:
         within_hours=max(0., args.within_hours),
         min_hours=max(0., args.min_hours),
         day_ahead=args.day_ahead,
+        markets=MARKET_SETS[args.markets],
     )
-    print(json.dumps({**result, "applied": args.apply}, indent=2))
+    print(json.dumps({**result, "applied": args.apply, "marketSet": args.markets}, indent=2))
     return 0
 
 

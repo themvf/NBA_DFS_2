@@ -3030,10 +3030,13 @@ TABLES = [
 
     # ── Prop-implied stat lines (research/nfl_prop_implied.py) ────────────────
     # Each player's opening and closing pregame line per market and week, read
-    # back as an expected stat (model/nfl_prop_implied.py). Research data:
-    # written by a manual command, never read by the web. One row per
-    # (week, player, market, capture role, conversion version); a rerun with the
-    # same conversion writes nothing new.
+    # back as an expected stat (model/nfl_prop_implied.py), plus the last
+    # pregame line captured on each Eastern Wednesday, Friday and Saturday
+    # (roles wed/fri/sat, since 2026-10-28: the field-lag study's early-week
+    # reads, docs/nfl-prop-field-lag-study.md). Research data: written by a
+    # manual command, never read by the web. One row per (week, player,
+    # market, capture role, conversion version); a rerun with the same
+    # conversion writes nothing new.
     """CREATE TABLE IF NOT EXISTS nfl_prop_implied_lines (
         id BIGSERIAL PRIMARY KEY,
         season INTEGER NOT NULL,
@@ -3043,7 +3046,7 @@ TABLES = [
         team TEXT,
         position TEXT,
         market TEXT NOT NULL,
-        capture_role TEXT NOT NULL CHECK (capture_role IN ('open', 'close')),
+        capture_role TEXT NOT NULL CHECK (capture_role IN ('open', 'close', 'wed', 'fri', 'sat')),
         book TEXT NOT NULL,
         line DOUBLE PRECISION,
         over_price DOUBLE PRECISION,
@@ -3057,6 +3060,10 @@ TABLES = [
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE (season, week, player_key, market, capture_role, conversion_version)
     )""",
+    # The table was created with ('open', 'close') only; widen the check in place.
+    "ALTER TABLE nfl_prop_implied_lines DROP CONSTRAINT IF EXISTS nfl_prop_implied_lines_capture_role_check",
+    """ALTER TABLE nfl_prop_implied_lines ADD CONSTRAINT nfl_prop_implied_lines_capture_role_check
+       CHECK (capture_role IN ('open', 'close', 'wed', 'fri', 'sat'))""",
 
     # ── dfsdb.com contest archive (ingest/dfsdb_contest.py) ──────────────────
     #

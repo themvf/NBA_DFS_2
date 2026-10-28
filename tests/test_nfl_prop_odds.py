@@ -155,3 +155,37 @@ def test_first_td_is_a_yes_only_market() -> None:
         {"name": "Kyren Williams", "price": 550}, {"name": "No Touchdown", "price": 2500}]}]}]}
     rows = {r["player"]: r for r in normalize_prop_payload(payload)}
     assert rows["Kyren Williams"]["books"]["draftkings"]["yes"] == 550
+
+
+def test_midweek_capture_takes_main_lines_only_and_prices_them() -> None:
+    """nfl-prop-field-lag-v1: the Wednesday/Friday rounds buy 12 markets a game, not 22."""
+    from ingest import nfl_prop_odds as m
+    assert m.MARKET_SETS["main"] == m.MARKETS + m.VOLUME_MARKETS
+    assert len(m.MARKET_SETS["main"]) == 12 and len(m.MARKET_SETS["all"]) == 22
+    assert not any(k.endswith("_alternate") for k in m.MARKET_SETS["main"])
+    m_fetch = m.fetch_events
+    m.fetch_events = lambda key: [{"id": "g1", "commence_time": "2026-11-08T18:00:00Z"},
+                                  {"id": "g2", "commence_time": "2026-11-10T01:15:00Z"}]
+    try:
+        from datetime import datetime, timezone
+        now = datetime(2026, 11, 4, 22, 7, tzinfo=timezone.utc)
+        full = m.capture(db=None, api_key="k", event_limit=0, apply=False, within_hours=130, min_hours=30, now=now)
+        main = m.capture(db=None, api_key="k", event_limit=0, apply=False, within_hours=130, min_hours=30, now=now,
+                         markets=m.MARKET_SETS["main"])
+        assert full["estimatedCredits"] == 2 * 22 and main["estimatedCredits"] == 2 * 12
+        with pytest.raises(ValueError, match="at least one market"):
+            m.capture(db=None, api_key="k", event_limit=0, apply=False, within_hours=130, now=now, markets=())
+    finally:
+        m.fetch_events = m_fetch
+
+
+def test_midweek_window_leaves_tomorrows_game_to_the_day_ahead_run() -> None:
+    """Wednesday 22:07 UTC: Thursday night (26 h) is the day-ahead run's; Sunday and Monday are taken; next Thursday is not."""
+    from datetime import datetime, timezone
+    wed = datetime(2026, 11, 4, 22, 7, tzinfo=timezone.utc)
+    events = [{"id": i, "commence_time": t} for i, t in (
+        ("tnf", "2026-11-06T01:15:00Z"), ("sun_early", "2026-11-08T18:00:00Z"), ("snf", "2026-11-09T01:20:00Z"),
+        ("mnf", "2026-11-10T01:15:00Z"), ("next_tnf", "2026-11-13T01:15:00Z"))]
+    assert [e["id"] for e in select_events(events, wed, 0, 130, 30)] == ["sun_early", "snf", "mnf"]
+    fri = datetime(2026, 11, 6, 22, 7, tzinfo=timezone.utc)
+    assert [e["id"] for e in select_events(events, fri, 0, 100, 30)] == ["sun_early", "snf", "mnf"]

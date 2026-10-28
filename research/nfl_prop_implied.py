@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+from zoneinfo import ZoneInfo
 import json
 import statistics as st
 
@@ -117,6 +118,31 @@ def resolve_team(meta_team, history: list[tuple[int, str]], week: int, event_tea
     return on_event[0][2] if on_event else None
 
 
+EASTERN = ZoneInfo("America/New_York")
+WEEKDAY_ROLES = {2: "wed", 4: "fri", 5: "sat"}
+
+
+def capture_roles(caps) -> list[tuple[str, dict]]:
+    """Which stored roles a player-market's pregame captures fill.
+
+    `open` is the first capture and `close` the last (both unchanged since the
+    table was created). `wed`, `fri` and `sat` are the LAST capture made on that
+    Eastern weekday (nfl-prop-field-lag-v1): the Wednesday and Friday 22:07 UTC
+    runs and the Saturday day-ahead run for Sunday games. For a Thursday game the
+    Wednesday day-ahead capture is also the `wed` row; for a Monday game the
+    Saturday row is a midweek read and the Sunday day-ahead capture has no
+    weekday role. Captures are already pregame and ordered by time.
+    """
+    roles = [("open", caps[0]), ("close", caps[-1])]
+    by_day = {}
+    for cap in caps:
+        day = cap["captured_at"].astimezone(EASTERN).weekday()
+        if day in WEEKDAY_ROLES:
+            by_day[WEEKDAY_ROLES[day]] = cap
+    roles.extend(sorted(by_day.items()))
+    return roles
+
+
 def build(db, season: int, weeks: list[int]) -> int:
     find_week = week_of(db, season)
     abbrev = {r["name"]: r["abbreviation"] for r in db.execute(
@@ -139,7 +165,7 @@ def build(db, season: int, weeks: list[int]) -> int:
         meta = metas[w].get(key, {})
         event_teams = {abbrev.get(caps[0]["home_team_name"]), abbrev.get(caps[0]["away_team_name"])} - {None}
         team = resolve_team(meta.get("team"), history.get(key, []), w, event_teams)
-        for role, cap in (("open", caps[0]), ("close", caps[-1])):
+        for role, cap in capture_roles(caps):
             picked = _pick_book(cap["books"])
             if not picked:
                 continue

@@ -8262,8 +8262,9 @@ and closing lines in `nfl_prop_implied_lines` and reports. Exploratory, weeks
   anchored 144 of 407 (mean +0.76, |change| 1.97). Known: the calibrated book
   ran +0.34 points high in weeks 1-4. Lines come from two captures per game
   (the day before at 22:07 UTC and 60-75 minutes before kickoff, see
-  docs/the-odds-api.md); without either, every player stays on the model and
-  the page says so. **v3 (2026-10-25, `nfl-market-anchor-v3`,
+  docs/the-odds-api.md), plus Wednesday and Friday main-line reads since
+  2026-10-28 that exist for the field-lag study (the anchor takes the latest
+  capture); without any, every player stays on the model and the page says so. **v3 (2026-10-25, `nfl-market-anchor-v3`,
   [docs](docs/nfl-market-anchor-v3.md)): partial anchoring on touchdowns.**
   Most backups get only touchdown markets, so v2 left them on the model. An
   RB/WR/TE without a full set but with an anytime-TD line now gets
@@ -8717,3 +8718,22 @@ DraftKings price, including leader-market odds, which are captured nowhere else:
 `model/nfl_leader_favourite_charts.py` can only compare prop-implied leader
 shares (weeks 5-6: DK favourites led 44% against 43% implied; our model gave
 them 32%).
+
+## NFL DFS — Prop field-lag study (`nfl-prop-field-lag-v1`, registered 2026-10-28)
+
+Does the field set its ownership against the Wednesday prop lines while the
+points are scored against the close? Line movement is not a projection input
+(the close is efficient on the mean, and we late-swap), so this is a question
+about the ownership model only. Registered in
+[`docs/nfl-prop-field-lag-study.md`](docs/nfl-prop-field-lag-study.md) before
+any Wednesday line existed; `model/nfl_prop_field_lag_study.py` grades it.
+Capture: two new dispatcher jobs, `nfl-prop-capture-wed` and
+`nfl-prop-capture-fri` (22:07 UTC, main lines only via `--markets main`,
+games 30 h or more out, ~180 credits a round); `nfl_prop_implied_lines` gained
+roles `wed`/`fri`/`sat` (the last pregame capture on that Eastern weekday;
+`open`/`close` unchanged). Primary metric: a Wednesday-fed ownership model
+versus a close-fed one, leave-one-week-out, CI below zero to pass; floors 8
+Classic flagships and 700 player-slates, verdict once. A pass licenses a new
+ownership-prior version, never a projection change. Stored weeks 1-4 have one
+capture per game and weeks 6-7 only an 18-hour Saturday read (lines moved a
+median 1-2 yards in it), which is why the test is forward.
