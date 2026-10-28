@@ -1,7 +1,15 @@
 # NFL DFS Classic: do the Winners-shape TE and WR pool rules cost us? (pre-registered 2026-10-13)
 
-Status: **registered; capture runner implemented, no forward slate enrolled by this change.** No optimizer or setting change follows
-from this document; it fixes the test before any outcome is seen.
+Status: **registered; capture runner implemented; 0 slates enrolled as of 2026-10-28.**
+Enrollment needs a stored contest with a score curve, and stat-api has served
+flagships to their top 100 rows only since 2026-10-19 (no score curve), so no
+week 6+ Classic slate qualified. On 2026-10-28 the owner dropped every Classic
+pool rule from user builds (`nfl-winners-shape-v11`) on discovery evidence from
+the week 5-7 top-100 entries; the runner still constructs arm A with the rules
+(`applyWinnersShape(..., { poolRules: true })`), so A/B keep their registered
+meaning, and the ghost factorial's `teWrRules` / `rbDstRules` factors grade
+the same question once score curves exist again. No optimizer or setting change
+followed from this document itself; it fixed the test before any outcome was seen.
 
 ## Why this exists
 

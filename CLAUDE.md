@@ -8344,6 +8344,23 @@ every player the pool rules left out (`reasonCode` `WINNERS_SHAPE` /
   targets, three prior weeks) rank in the slate's top quarter OR who see 4+
   targets a game, WRs with 25%+ of their team's targets or under $5,000, TEs
   under $4,000 with 4+ targets a game, DSTs under $3,000.
+  **v11 (2026-10-28, owner's decision): no pool rules on a user's build.**
+  Measured on the week 5-7 Millionaire top-100 entries against the saved
+  Winners builds: 613 of 2,700 winning roster slots (23%) were players a
+  pool rule had left out, 47 points per winning lineup (week 5: 93, with
+  Likely in 81 of 100 lineups and Nabers, Watson, Golden excluded), and
+  the best lineup reachable from the kept pool trailed the slate's optimum
+  by 38 points that week. The WR target-share rule did most of it (315
+  slots: Chase and Higgins both fail it because Cincinnati splits targets).
+  The rules described the winners' most-used players and were never tested
+  as exclusions. The registered test (`docs/nfl-classic-te-wr-pool-rule-study.md`)
+  enrolled no slate: it needs a score curve, and stat-api serves flagships
+  to 100 rows since 2026-10-19 (so the ghost factorial has graded 0 Classic
+  slates too). The rules remain behind `applyWinnersShape(..., { poolRules:
+  true })`, which the ghost house (`ghost/arm.ts`, its frozen teWrRules /
+  rbDstRules levels) and the pool-rule study runner call, so neither cohort
+  changed. Pool-rule evidence is discovery-class (top-100 hindsight), not a
+  graded result; the ghost factorial is the instrument that grades it.
   **v1's RB rule was targets-only and is why v2 exists:** on the week-5
   Classic (2026-10-11) it kept 10 of 112 backs, leaving out Jonathan Taylor
   (26 touches, 3.7 targets a game), Swift, Love, Skattebo and every other

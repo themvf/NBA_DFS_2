@@ -2,8 +2,20 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { buildPair, digest, restorePlayers, STUDIES, type Raw } from './nfl-pool-rule-study-core';
-import { optimizeNflLineups, type NflOptimizerSettings } from '../src/app/dfs/nfl/nfl-optimizer';
+import { optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings } from '../src/app/dfs/nfl/nfl-optimizer';
+import { applyWinnersShape } from '../src/lib/nfl-dfs/winners-shape';
 import { FIELD_STACKING } from '../src/lib/nfl-dfs/portfolio-objective';
+
+/**
+ * The production Winners build with the v1-v10 pool rules reinstated as
+ * exclusions: since winners-shape v11 a user's build runs no pool rule, while
+ * the studies' arm A keeps the registered "Winners with its rules" construction.
+ */
+function nativeWithRules(players: NflOptimizerPlayer[], settings: Raw) {
+  const winners = { ...settings, buildShape: 'winners' } as NflOptimizerSettings;
+  const rules = applyWinnersShape(winners, players, { poolRules: true }).excluded.keys();
+  return optimizeNflLineups(players, { ...winners, excludedPlayerIds: [...new Set([...winners.excludedPlayerIds, ...rules])] });
+}
 
 // Discovery fixture is ONLY an offline regression test. No database enrollment.
 const archived = JSON.parse(gunzipSync(readFileSync('../artifacts/nfl-classic-attribution-2026-10-13/inputs/2026-w5-classic.json.gz')).toString());
@@ -38,9 +50,9 @@ const admitted = a.settings.excludedPlayerIds.filter((id: number) => !b.settings
 assert.ok(admitted.length > 0);
 assert.ok(admitted.every((id: number) => ['TE', 'WR'].includes(String(positions.get(id)))));
 assert.deepEqual(admitted, a.settings.researchStudy.removedRulePlayerIds);
-const native = optimizeNflLineups(restorePlayers(input.players), { ...input.source.settings, buildShape: 'winners' } as NflOptimizerSettings);
+const native = nativeWithRules(restorePlayers(input.players), input.source.settings);
 assert.deepEqual(a.lineups.map((l: Raw) => [l.playerIds, l.projectedFpts, l.totalSalary]),
-  native.lineups.map((l: Raw) => [l.playerIds, l.projectedFpts, l.totalSalary]), 'arm A exactly matches native Winners generation');
+  native.lineups.map((l: Raw) => [l.playerIds, l.projectedFpts, l.totalSalary]), 'arm A exactly matches native Winners generation with its pool rules');
 assert.deepEqual(buildPair(input), pair, 'fixed-seed paired build is reproducible');
 for (const arm of pair.arms) {
   assert.equal(arm.inputDigest, digest({ settings: arm.settings, inputSnapshot: arm.inputSnapshot,
@@ -141,7 +153,9 @@ for (const [label, base] of [['showdown', sdFixture()], ['classic', fixture()]] 
   else assert.equal(expectB, 20);
   assert.equal(pb.status, expectB === 20 ? 'research_complete' : 'research_partial', `${label}: arm B built (${pb.failureReason})`);
   assert.equal(pa.lineups.length, 20);
-  const nativeP = optimizeNflLineups(restorePlayers(pin.players), { ...pin.source.settings, buildShape: 'winners' } as NflOptimizerSettings);
+  const nativeP = pin.source.settings.buildShape === 'winners'
+    ? nativeWithRules(restorePlayers(pin.players), pin.source.settings)
+    : optimizeNflLineups(restorePlayers(pin.players), { ...pin.source.settings, buildShape: 'winners' } as NflOptimizerSettings);
   assert.deepEqual(pa.lineups.map((l: Raw) => [l.playerIds, l.projectedFpts, l.totalSalary]),
     nativeP.lineups.map((l: Raw) => [l.playerIds, l.projectedFpts, l.totalSalary]), `${label}: arm A is the production build`);
   const sA = pa.settings.researchStudy, sB = pb.settings.researchStudy;
