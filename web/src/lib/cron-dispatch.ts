@@ -105,6 +105,27 @@ export function nflPropDayAheadDue(now: Date, context: DispatchContext): boolean
   return (context.nflKickoffs ?? []).some((kickoff) => easternDate(kickoff) === tomorrow);
 }
 
+/**
+ * Midweek prop reads for the field-lag study (docs/nfl-prop-field-lag-study.md):
+ * the 22:07 UTC tick (6:07 PM ET) on Wednesday and Friday when an NFL game
+ * kicks off 30 hours or more out and inside the window. The window stops short
+ * of the following Thursday, and the 30-hour floor leaves tomorrow's game to the
+ * day-ahead capture. Main lines only (12 markets), so about 180 credits a round.
+ */
+export const PROP_MIDWEEK_WINDOW_HOURS = { wed: 130, fri: 100 } as const;
+export const PROP_MIDWEEK_MIN_HOURS = 30;
+
+function nflPropMidweekDue(day: 3 | 5, now: Date, context: DispatchContext): boolean {
+  if (now.getUTCDay() !== day || now.getUTCHours() !== 22 || !hourTick(now)) return false;
+  const within = day === 3 ? PROP_MIDWEEK_WINDOW_HOURS.wed : PROP_MIDWEEK_WINDOW_HOURS.fri;
+  return (context.nflKickoffs ?? []).some((kickoff) => {
+    const lead = kickoff.getTime() - now.getTime();
+    return lead > PROP_MIDWEEK_MIN_HOURS * 3600_000 && lead <= within * 3600_000;
+  });
+}
+export const nflPropWednesdayDue = (now: Date, context: DispatchContext) => nflPropMidweekDue(3, now, context);
+export const nflPropFridayDue = (now: Date, context: DispatchContext) => nflPropMidweekDue(5, now, context);
+
 /** True on the one tick that falls 60-75 minutes before any NFL kickoff. */
 export function nflPropCaptureDue(now: Date, context: DispatchContext): boolean {
   return (context.nflKickoffs ?? []).some((kickoff) => {
@@ -236,6 +257,20 @@ export const DISPATCH_JOBS: readonly DispatchJob[] = [
     due: nflPropDayAheadDue,
     inputs: { event_limit: "0", max_credits: "420", within_hours: "36", day_ahead: "true" },
     why: "The same prop lines the day before (Wednesday for Thursday, Saturday for Sunday, Sunday for Monday), so an early build has real lines.",
+  },
+  {
+    key: "nfl-prop-capture-wed",
+    workflow: "capture_nfl_props.yml",
+    due: nflPropWednesdayDue,
+    inputs: { event_limit: "0", max_credits: "420", within_hours: String(PROP_MIDWEEK_WINDOW_HOURS.wed), min_hours: String(PROP_MIDWEEK_MIN_HOURS), markets: "main" },
+    why: "Wednesday-evening main lines for Sunday and Monday (12 markets, ~180 credits): what the field saw when it started building, for the field-lag study.",
+  },
+  {
+    key: "nfl-prop-capture-fri",
+    workflow: "capture_nfl_props.yml",
+    due: nflPropFridayDue,
+    inputs: { event_limit: "0", max_credits: "420", within_hours: String(PROP_MIDWEEK_WINDOW_HOURS.fri), min_hours: String(PROP_MIDWEEK_MIN_HOURS), markets: "main" },
+    why: "Friday-evening main lines for Sunday and Monday, after the week's practice reports, for the field-lag study.",
   },
   {
     key: "nba-points-props",

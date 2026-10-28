@@ -212,6 +212,23 @@ assert.ok(!keys("2026-10-14T21:52:00Z", { nflKickoffs: [thu] }).includes("nfl-pr
 assert.ok(keys("2026-10-11T22:07:00Z", { nflKickoffs: [new Date("2026-10-13T00:15:00Z")] }).includes("nfl-prop-capture-day-ahead"), "Sunday evening for Monday night");
 assert.ok(!keys("2026-10-14T22:07:00Z", { nflKickoffs: null }).includes("nfl-prop-capture-day-ahead"), "unreadable schedule: no blind paid capture");
 assert.equal(DISPATCH_JOBS.find((j) => j.key === "nfl-prop-capture-day-ahead")?.inputs?.day_ahead, "true");
+// Midweek reads for the field-lag study: Wednesday and Friday 22:07 UTC, main lines only,
+// games 30 h or more out. Sunday 1 PM ET on 2026-11-08 is 90.9 h from Wednesday's tick.
+const sun = new Date("2026-11-08T18:00:00Z"), mon = new Date("2026-11-10T01:15:00Z"), tnfNov = new Date("2026-11-06T01:15:00Z");
+assert.ok(keys("2026-11-04T22:07:00Z", { nflKickoffs: [tnfNov, sun, mon] }).includes("nfl-prop-capture-wed"), "Wednesday evening for Sunday");
+assert.ok(!keys("2026-11-04T22:07:00Z", { nflKickoffs: [tnfNov] }).includes("nfl-prop-capture-wed"), "Thursday's game alone is the day-ahead run's, not a midweek read");
+assert.ok(keys("2026-11-04T22:07:00Z", { nflKickoffs: [tnfNov] }).includes("nfl-prop-capture-day-ahead"), "and the day-ahead run still fires for it");
+assert.ok(!keys("2026-11-04T22:22:00Z", { nflKickoffs: [sun] }).includes("nfl-prop-capture-wed"), "only the :07 tick");
+assert.ok(!keys("2026-11-05T22:07:00Z", { nflKickoffs: [sun] }).includes("nfl-prop-capture-wed"), "not on Thursday");
+assert.ok(keys("2026-11-06T22:07:00Z", { nflKickoffs: [sun, mon] }).includes("nfl-prop-capture-fri"), "Friday evening for Sunday and Monday");
+assert.ok(!keys("2026-11-06T22:07:00Z", { nflKickoffs: [new Date("2026-11-13T01:15:00Z")] }).includes("nfl-prop-capture-fri"), "next Thursday is outside Friday's window");
+assert.ok(!keys("2026-11-04T22:07:00Z", { nflKickoffs: null }).includes("nfl-prop-capture-wed"), "unreadable schedule: no blind paid capture");
+for (const key of ["nfl-prop-capture-wed", "nfl-prop-capture-fri"]) {
+  const inputs = DISPATCH_JOBS.find((j) => j.key === key)?.inputs;
+  assert.equal(inputs?.markets, "main", `${key}: main lines only`);
+  assert.equal(inputs?.min_hours, "30", `${key}: leaves tomorrow's game to the day-ahead run`);
+  assert.ok(Number(inputs?.within_hours) > 30 && Number(inputs?.within_hours) <= 130, `${key}: bounded window`);
+}
 // Game Leaders: Wednesday's weekly build, then once per kickoff group 150-165 minutes out.
 assert.ok(keys("2026-10-14T14:07:00Z").includes("nfl-game-leaders"), "Wednesday 14:07 UTC weekly build");
 assert.ok(!keys("2026-10-14T14:22:00Z").includes("nfl-game-leaders"), "the weekly build fires once");

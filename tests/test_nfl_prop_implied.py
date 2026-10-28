@@ -95,3 +95,23 @@ def test_td_only_delta_moves_only_touchdowns():
     assert td_only_delta("QB", {"player_anytime_td": {"yes": 400}}, 0.25) is None
     assert td_only_delta("RB", {}, 0.25) is None
     assert td_only_delta("RB", {"player_anytime_td": {"yes": 400}}, None) is None
+
+
+def test_capture_roles_name_the_last_capture_of_each_eastern_weekday() -> None:
+    """nfl-prop-field-lag-v1: open/close unchanged; wed/fri/sat are that weekday's last pregame read."""
+    from datetime import datetime, timezone
+    from research.nfl_prop_implied import capture_roles
+    def cap(iso):
+        return {"captured_at": datetime.fromisoformat(iso).replace(tzinfo=timezone.utc), "line": iso}
+    # Sunday 1 PM ET game: Wednesday 22:07 UTC, Friday 22:07 UTC, Saturday 22:07 UTC, Sunday 16:52 UTC.
+    caps = [cap("2026-11-04T22:07:00"), cap("2026-11-06T22:07:00"), cap("2026-11-07T22:07:00"), cap("2026-11-08T16:52:00")]
+    roles = dict(capture_roles(caps))
+    assert roles["open"] is caps[0] and roles["close"] is caps[-1]
+    assert roles["wed"] is caps[0] and roles["fri"] is caps[1] and roles["sat"] is caps[2]
+    assert "sun" not in roles
+    # Two Wednesday captures: the later one is the Wednesday read. A Friday 02:00 UTC capture is Thursday evening ET.
+    caps2 = [cap("2026-11-04T15:00:00"), cap("2026-11-04T22:07:00"), cap("2026-11-06T02:00:00"), cap("2026-11-08T16:52:00")]
+    roles2 = dict(capture_roles(caps2))
+    assert roles2["wed"] is caps2[1] and "fri" not in roles2 and "sat" not in roles2
+    # Weeks with one capture (weeks 1-4 of 2026): open and close are the same row and no weekday role is invented.
+    assert [r for r, _ in capture_roles([cap("2026-09-13T15:25:00")])] == ["open", "close"]

@@ -1,10 +1,13 @@
 name: Capture NFL prop evidence
 
-# Dispatched by /api/cron/dispatch twice per game: the day before (job
-# nfl-prop-capture-day-ahead, 22:07 UTC, tomorrow's Eastern-date games) and 60-75
-# minutes before kickoff (job nfl-prop-capture, only the group kicking off then,
-# after the inactives). The Sunday schedule below is a thin fallback in case the
-# dispatcher bridge breaks; GitHub runs it hours late, and select_events still
+# Dispatched by /api/cron/dispatch four times per Sunday/Monday game and twice
+# per Thursday game: Wednesday and Friday 22:07 UTC (jobs nfl-prop-capture-wed /
+# nfl-prop-capture-fri, main lines only, games 30 hours or more out: the field-lag
+# study's early-week reads, docs/nfl-prop-field-lag-study.md), the day before
+# (job nfl-prop-capture-day-ahead, 22:07 UTC, tomorrow's Eastern-date games) and
+# 60-75 minutes before kickoff (job nfl-prop-capture, only the group kicking off
+# then, after the inactives). The Sunday schedule below is a thin fallback in case
+# the dispatcher bridge breaks; GitHub runs it hours late, and select_events still
 # skips started games.
 on:
   schedule:
@@ -31,6 +34,10 @@ on:
         description: Only games on tomorrow's Eastern date
         required: false
         default: "false"
+      markets:
+        description: "all = main lines, volume, ladders and first TD (22 credits a game); main = main lines and volume only (12), the midweek reads"
+        required: false
+        default: "all"
 
 jobs:
   capture:
@@ -53,11 +60,15 @@ jobs:
           --max-credits "${{ inputs.max_credits || '420' }}"
           --within-hours "${{ inputs.within_hours || '6' }}"
           --min-hours "${{ inputs.min_hours || '0' }}"
+          --markets "${{ inputs.markets || 'all' }}"
           ${{ inputs.day_ahead == 'true' && '--day-ahead' || '' }}
           --apply
       # Re-price the saved game-leader forecasts against the lines just captured;
-      # the game-leaders page reads the result (nfl_game_leader_market).
+      # the game-leaders page reads the result (nfl_game_leader_market). A midweek
+      # main-lines capture is a study input, not a pricing read, so it is skipped:
+      # the next full capture (day-ahead or T-75) prices the leaders.
       - name: Price game leaders against DraftKings lines
+        if: ${{ inputs.markets != 'main' }}
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: >-
@@ -68,7 +79,7 @@ jobs:
       # main lines and ladders (docs/nfl-leaders-anchored-test.md). Runs even if the
       # DK pricing step failed: it reads only the forecast and the captured lines.
       - name: Price market-anchored game leaders
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.markets != 'main' }}
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: >-
