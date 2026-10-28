@@ -1,9 +1,9 @@
 /**
- * Winners shape (`nfl-winners-shape-v1`..`v10`): the preset resolves into ordinary
- * optimizer settings and pool exclusions, and the optimizer enforces each of
- * them: the bring-back SHARE alternates lineups, the quarterback cap binds,
- * kickers leave a showdown pool, a showdown lineup is 5-1 or 3-3 and never
- * 4-2, and the captain cap holds. Nothing here changes a projection.
+ * Winners shape (`nfl-winners-shape-v1`..`v11`): the preset resolves into ordinary
+ * optimizer settings (and, only when asked, the v1-v10 pool exclusions the
+ * research cohorts still use), and the optimizer enforces each of them: the
+ * bring-back SHARE alternates lineups, the quarterback cap binds, kickers
+ * leave a showdown pool, and the captain cap holds. Nothing here changes a projection.
  */
 import assert from "node:assert/strict";
 import { dstFacesOwnOffense, optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings } from "../src/app/dfs/nfl/nfl-optimizer";
@@ -49,7 +49,7 @@ for (const over of [{}, { format: "showdown" as const }, { minSalary: 49_800, ma
 
 const prior = (games: number, targets: number, targetShare: number | null = null, carries = games * 10) => ({ games, targets, carries, targetShare });
 
-// --- The preset's pool rules name every player they leave out, and skip a rule that would leave a position too thin ---
+// --- v11: a user's build has no pool rules; asked for (research cohorts), the rules name every player they leave out and skip a rule that would leave a position too thin ---
 {
   const pool = [
     ...[0, 1, 2, 3, 4].map(i => player({ dkPlayerId: 10 + i, position: "RB", team: "AAA", priorOpportunity: prior(3, 15) })),   // 5.0 targets/g
@@ -73,23 +73,27 @@ const prior = (games: number, targets: number, targetShare: number | null = null
   assert.equal(shaped.settings.bringBackShare, 0.5);
   assert.equal(shaped.settings.maxQbExposure, qbExposureCap(4));
   assert.equal(shaped.settings.buildShape, "winners", "the preset stays on the saved settings");
-  const out = [...shaped.excluded.keys()].sort((a, b) => a - b);
+  assert.equal(shaped.excluded.size, 0, "v11: the preset leaves every active player in a user's pool");
+  assert.ok(!shaped.notes.some(n => /pool kept/.test(n)), "and says nothing about a pool");
+  assert.match(shaped.notes[0], /no pool rules \(v11\)/);
+  const ruled = applyWinnersShape(settings({ lockedPlayerIds: [20], buildShape: "winners" }), pool, { poolRules: true });
+  const out = [...ruled.excluded.keys()].sort((a, b) => a - b);
   assert.deepEqual(out, [21, 22, 23, 37, 42, 52], "two low-target backs, the back with no record, the thin receiver, the 1-target tight end (v9) and the dear defense");
-  assert.ok(!shaped.excluded.has(24), "a bell-cow with 2 targets a game stays on top-quartile touches (v2)");
-  assert.match(shaped.excluded.get(21)!, /12\.0 touches and 2\.0 targets a game/);
-  assert.ok(!shaped.excluded.has(20), "a locked back below the rule is kept: locks always win");
-  assert.match(shaped.excluded.get(21)!, /over the prior 3 game\(s\)/);
-  assert.match(shaped.excluded.get(23)!, /no prior-week opportunity record/);
-  assert.match(shaped.excluded.get(37)!, /12% target share at \$6,200/);
-  assert.match(shaped.excluded.get(52)!, /\$3,600; the preset keeps defenses under \$3,000/);
+  assert.ok(!ruled.excluded.has(24), "a bell-cow with 2 targets a game stays on top-quartile touches (v2)");
+  assert.match(ruled.excluded.get(21)!, /12\.0 touches and 2\.0 targets a game/);
+  assert.ok(!ruled.excluded.has(20), "a locked back below the rule is kept: locks always win");
+  assert.match(ruled.excluded.get(21)!, /over the prior 3 game\(s\)/);
+  assert.match(ruled.excluded.get(23)!, /no prior-week opportunity record/);
+  assert.match(ruled.excluded.get(37)!, /12% target share at \$6,200/);
+  assert.match(ruled.excluded.get(52)!, /\$3,600; the preset keeps defenses under \$3,000/);
   // v9: the TE rule has no salary ceiling, so the $5,500 tight end with 6 targets a game qualifies.
-  assert.ok(!shaped.excluded.has(40) && !shaped.excluded.has(41), "both tight ends with 4+ targets a game are kept, whatever their salary");
-  assert.match(shaped.excluded.get(42) ?? "", /1\.0 targets a game/, "the 1-target tight end is left out, with his number");
+  assert.ok(!ruled.excluded.has(40) && !ruled.excluded.has(41), "both tight ends with 4+ targets a game are kept, whatever their salary");
+  assert.match(ruled.excluded.get(42) ?? "", /1\.0 targets a game/, "the 1-target tight end is left out, with his number");
   assert.ok(shaped.notes[0].startsWith(`Winners shape (${WINNERS_SHAPE_VERSION}, classic)`));
-  assert.ok(shaped.notes.some(n => /RB pool kept 7 of 10/.test(n)), `the locked back and the bell-cow count as kept: ${shaped.notes.join(" | ")}`);
+  assert.ok(ruled.notes.some(n => /RB pool kept 7 of 10/.test(n)), `the locked back and the bell-cow count as kept: ${ruled.notes.join(" | ")}`);
   assert.equal(settings().minUnique, 2, "the caller's settings object is not mutated");
 
-  const noData = applyWinnersShape(settings(), pool.map(p => ({ ...p, priorOpportunity: null })));
+  const noData = applyWinnersShape(settings(), pool.map(p => ({ ...p, priorOpportunity: null })), { poolRules: true });
   assert.ok(noData.notes.some(n => /no prior-week opportunity data for any RB/.test(n)), "no data at all: the rule is not applied, and that is said");
   assert.ok(!noData.excluded.has(21));
   assert.ok(noData.excluded.has(52), "the salary-only DST rule still applies");
@@ -108,7 +112,7 @@ const prior = (games: number, targets: number, targetShare: number | null = null
 }
 console.log("Winners shape: the preset resolves to named settings and named exclusions.");
 
-// --- Classic integration: half the lineups carry a bring-back, each quarterback is capped, every DST over $3,000 is out ---
+// --- Classic integration: half the lineups carry a bring-back, each quarterback is capped, no player is left out (v11) ---
 {
   const pool: NflOptimizerPlayer[] = [];
   let id = 100;
@@ -131,7 +135,6 @@ console.log("Winners shape: the preset resolves to named settings and named excl
     assert.ok(lineup.slots.some(s => ["WR", "TE"].includes(s.player.position) && s.player.team === qb.team), "every lineup stacks the quarterback");
     if (!lineup.stackSummary.bringBack) assert.ok(!lineup.slots.some(s => ["RB", "WR", "TE"].includes(s.player.position) && s.player.team === qb.opponent), "a forbidden lineup has no opposing skill player");
     assert.ok(lineup.totalSalary >= WINNERS_SHAPE.minSalary, `salary ${lineup.totalSalary} under the preset's floor`);
-    assert.ok(!lineup.slots.some(s => s.player.position === "DST" && s.player.salary > WINNERS_SHAPE.dstMaxSalary), "no dear defense");
   }
   for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
     const shared = result.lineups[i].playerIds.filter(p => result.lineups[j].playerIds.includes(p)).length;
@@ -141,9 +144,9 @@ console.log("Winners shape: the preset resolves to named settings and named excl
   for (const l of result.lineups) { const qb = l.slots.find(s => s.player.position === "QB")!.player.dkPlayerId; qbUse.set(qb, (qbUse.get(qb) ?? 0) + 1); }
   assert.ok([...qbUse.values()].every(c => c <= Math.floor(qbExposureCap(n) * n)), `quarterback use ${[...qbUse.values()]} exceeds ${qbExposureCap(n)}`);
   assert.ok(qbUse.size >= 2, "the cap spreads the quarterbacks");
-  assert.ok(result.eligibility!.some(e => e.reasonCode === "WINNERS_SHAPE" && /\$3,400/.test(e.reason ?? "")), "the dear defense is named in eligibility");
+  assert.ok(!result.eligibility!.some(e => e.reasonCode === "WINNERS_SHAPE"), "v11: no player is left out by a pool rule");
+  assert.ok(result.warnings.some(w => /no pool rules \(v11\)/.test(w)), "the run's notes say so");
   assert.ok(result.warnings.some(w => /Bring-back share: 2 of 4 lineups/.test(w)), result.warnings.join(" | "));
-  assert.ok(result.warnings.some(w => /no prior-week opportunity data for any RB/.test(w)), "a pool without prior data says the RB rule was skipped");
 
   // v8 Classic distributions, on a 10-lineup run of the same pool.
   const dist = optimizeNflLineups(pool, settings({ nLineups: 10, minUnique: 2, maxExposure: 1, minSalary: 0, stackPassCatchers: 1,
@@ -188,10 +191,10 @@ console.log("Winners shape: the preset resolves to named settings and named excl
 
   const dearDst = id - 1;
   const lockedRun = optimizeNflLineups(pool, settings({ buildShape: "winners", lockedPlayerIds: [dearDst], nLineups: 1 }));
-  assert.ok(lockedRun.lineups[0].playerIds.includes(dearDst), "a locked defense over $3,000 is kept: the lock outranks the pool rule");
+  assert.ok(lockedRun.lineups[0].playerIds.includes(dearDst), "a locked defense is kept");
   assert.ok(!lockedRun.eligibility!.some(e => e.dkPlayerId === dearDst && !e.eligible));
 }
-console.log("Winners shape (classic): bring-back share alternates, quarterbacks are capped, pool rules are enforced and named.");
+console.log("Winners shape (classic): bring-back share alternates, quarterbacks are capped, no pool rule runs on a user's build (v11).");
 
 // --- Showdown integration: no kicker, any team split (v10), captain cap ---
 {

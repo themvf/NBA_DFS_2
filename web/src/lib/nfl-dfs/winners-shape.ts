@@ -10,9 +10,10 @@
  * - min unique 4 (ours was 2), most-used player in no more than 55% of
  *   lineups, about 1.6 distinct quarterbacks per 10 lineups, bring-back in
  *   about half the lineups (ours: every one), median salary $49,874;
- * - running backs with top-quartile touches or 4+ targets a game, receivers with 25%+ of their
- *   team's targets (the third receiver may be a cheap one under $5,000),
- *   tight ends with 4+ targets a game (v9: no salary ceiling), defenses under $3,000.
+ * - no pool rules since v11 (v1-v10 kept backs with top-quartile touches or
+ *   4+ targets a game, receivers with 25%+ of their team's targets or under
+ *   $5,000, tight ends with 4+ targets a game, defenses under $3,000; the
+ *   rules remain behind `poolRules: true` for the frozen research cohorts).
  * Showdown (248 Thursday/Monday winners):
  * - no kicker (6% vs 36% lower down); the team split is free since v10 (the
  *   4-2 ban of v1-v9 was measured wrong, see the v10 note);
@@ -20,8 +21,9 @@
  *   winning captains sat at ~6% captain ownership, so no captain above 30%.
  *
  * Every rule below is applied through an ordinary optimizer setting, so a
- * saved run records exactly what was enforced, and every player the pool
- * rules leave out is named with the number that left him out.
+ * saved run records exactly what was enforced; when the pool rules run (research
+ * only since v11) every player they leave out is named with the number that
+ * left him out.
  */
 import type { NflOptimizerPlayer, NflOptimizerSettings } from "@/app/dfs/nfl/nfl-optimizer";
 
@@ -103,7 +105,24 @@ import type { NflOptimizerPlayer, NflOptimizerSettings } from "@/app/dfs/nfl/nfl
  * projections and the spread decide. The ghost factorial's house keeps its
  * own frozen "banned" level (`ghost/design.ts`), so its cohort is unchanged.
  */
-export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v10";
+/**
+ * v11 (2026-10-28, owner's decision: "fix classic builds"): the Classic pool
+ * rules no longer apply to a user's build. Measured on the week 5-7
+ * Millionaire top-100 entries against the saved Winners builds (the preset
+ * was live on all three): 613 of 2,700 winning roster slots (23%) were
+ * players a pool rule had left out, worth 47 points per winning lineup (week
+ * 5: 93), and the best lineup reachable from the kept pool trailed the slate's
+ * by 38 points in week 5. The WR target-share rule did most of it (315 slots:
+ * Chase, Higgins, Nabers, Watson, Golden), the TE rule the rest of week 5
+ * (Likely, 81 of 100 lineups). The rules described the winners' MOST USED
+ * players; as exclusions they removed the ones who won. The registered test
+ * (docs/nfl-classic-te-wr-pool-rule-study.md) has enrolled no slate because
+ * stat-api stopped serving score curves on 2026-10-19, so this is an owner's
+ * decision on discovery evidence, recorded as such. The rules still exist
+ * behind `poolRules: true`: the ghost factorial's house (`ghost/arm.ts`) and
+ * the pool-rule study runner call them so their frozen cohorts are unchanged.
+ */
+export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v11";
 
 export type BuildShape = "standard" | "winners";
 export const BUILD_SHAPES: readonly BuildShape[] = ["standard", "winners"];
@@ -197,7 +216,7 @@ type ShapePlayer = Pick<NflOptimizerPlayer, "dkPlayerId" | "name" | "position" |
 
 export type WinnersShapeResult = {
   settings: NflOptimizerSettings;
-  /** dkPlayerId -> why the pool rules left him out. Locked and manually excluded players are never here. */
+  /** dkPlayerId -> why a pool rule left him out. Empty unless `poolRules` was asked for (v11). Locked and manually excluded players are never here. */
   excluded: Map<number, string>;
   notes: string[];
 };
@@ -225,10 +244,12 @@ export function winnersShapeLimits(base: { format: "classic" | "showdown"; nLine
 }
 
 /**
- * The settings the preset enforces plus the pool rules, applied to one slate.
- * GPP only: a cash build is returned unchanged with a note saying so.
+ * The settings the preset enforces, applied to one slate. GPP only: a cash
+ * build is returned unchanged with a note saying so. `poolRules: true` also
+ * runs the v1-v10 Classic pool rules; no user build asks for that since v11,
+ * the ghost house and the pool-rule study runner do.
  */
-export function applyWinnersShape(settings: NflOptimizerSettings, players: readonly ShapePlayer[]): WinnersShapeResult {
+export function applyWinnersShape(settings: NflOptimizerSettings, players: readonly ShapePlayer[], options: { poolRules?: boolean } = {}): WinnersShapeResult {
   const notes: string[] = [];
   const excluded = new Map<number, string>();
   if (settings.mode !== "gpp") {
@@ -256,8 +277,8 @@ export function applyWinnersShape(settings: NflOptimizerSettings, players: reado
     notes.push(`Winners shape (${WINNERS_SHAPE_VERSION}, classic): min unique ${shaped.minUnique}, max exposure ${Math.round(shaped.maxExposure * 100)}%, `
       + `each quarterback in at most ${Math.round(qbCap * 100)}% of lineups (${Math.max(1, Math.floor(qbCap * n))} of ${n}), `
       + `a bring-back in ${Math.round(WINNERS_SHAPE.bringBackShare * 100)}% of lineups, at least one stacked pass catcher (two in ${Math.round(WINNERS_SHAPE.qbDoubleStackShare * 100)}% of lineups), a 4th WR in at most ${Math.round(WINNERS_SHAPE.maxFourWrShare * 100)}%, a 2-player stack from another game in at most ${Math.round(WINNERS_SHAPE.maxOtherGameStackShare * 100)}%, a 2nd TE in ${Math.round(WINNERS_SHAPE.twoTeShare * 100)}%, `
-      + `a DST against its own players in at most ${Math.round(shaped.maxDstVsOffenseShare! * 100)}% of lineups (${Math.floor(shaped.maxDstVsOffenseShare! * n + 1e-9)} of ${n}), min salary ${money(shaped.minSalary)}.`);
-    applyPoolRules(settings, players, excluded, notes);
+      + `a DST against its own players in at most ${Math.round(shaped.maxDstVsOffenseShare! * 100)}% of lineups (${Math.floor(shaped.maxDstVsOffenseShare! * n + 1e-9)} of ${n}), min salary ${money(shaped.minSalary)}` + (options.poolRules ? "." : ", no pool rules (v11)."));
+    if (options.poolRules) applyPoolRules(settings, players, excluded, notes);
   } else {
     Object.assign(shaped, {
       maxCaptainExposure: limits.maxCaptainExposure!,

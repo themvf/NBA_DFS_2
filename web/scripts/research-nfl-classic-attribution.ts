@@ -61,7 +61,8 @@ function shapeExclusions(s: Raw) {
     stackPassCatchers: 1, bringBack: true, lockedPlayerIds: [], excludedPlayerIds: [], buildShape: "winners", projectionSource: "our",
     allowDkFallback: false, randomness: 0, minExposureByPlayer: {}, maxExposureByPlayer: {} } as unknown as NflOptimizerSettings;
   const shape = applyWinnersShape(settings, s.players.map((p: Raw) => ({ dkPlayerId: p.dkPlayerId, name: p.name, position: p.position,
-    salary: p.salary, isOut: !!p.isOut, projectionStatus: p.projectionStatus ?? "historical", priorOpportunity: p.priorOpportunity ?? null })));
+    salary: p.salary, isOut: !!p.isOut, projectionStatus: p.projectionStatus ?? "historical", priorOpportunity: p.priorOpportunity ?? null })),
+    { poolRules: true });  // the attribution reconstructs the v1-v10 rules; user builds dropped them in v11
   const pos = new Map(s.players.map((p: Raw) => [p.dkPlayerId, p.position]));
   const byRule: Record<string, number[]> = { rbPool: [], wrPool: [], tePool: [], dstPool: [] };
   for (const id of shape.excluded.keys()) byRule[{ RB: "rbPool", WR: "wrPool", TE: "tePool", DST: "dstPool" }[pos.get(id) as string] as string].push(id);

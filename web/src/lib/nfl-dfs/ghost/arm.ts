@@ -75,7 +75,9 @@ export function buildArm(format: GhostFormat, frozen: FrozenPlayer[], house: Nfl
     maxCeilingMultiple: levels.ceilingCap === "off" ? CEILING_CAP_OFF : Number(levels.ceilingCap),
     puntPolicy: { ...house.puntPolicy!, mode: levels.puntPolicy as "no_punts" | "role_qualified" },
   };
-  const shape = applyWinnersShape({ ...base, buildShape: "winners" }, players);
+  // The house is frozen with the v1-v10 pool rules on (teWrRules / rbDstRules
+  // levels); user builds dropped them in winners-shape v11, so they are asked for here.
+  const shape = applyWinnersShape({ ...base, buildShape: "winners" }, players, { poolRules: true });
   const byId = new Map(players.map(p => [p.dkPlayerId, p]));
   const keepRule = (position: string) => format === "classic"
     && ((["TE", "WR"].includes(position) && levels.teWrRules === true) || (["RB", "DST"].includes(position) && levels.rbDstRules === true));

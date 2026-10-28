@@ -53,7 +53,9 @@ export function buildPair(input: Raw): PairResult {
   const eligible = settings.projectionSource === 'workload'
     ? players.filter(p => input.players.find((r: Raw) => r.dkPlayerId === p.dkPlayerId)?.workloadEligible === true) : players;
   const nativeSettings = { ...settings, buildShape: 'winners' as const };
-  const shape = applyWinnersShape(nativeSettings, eligible);
+  // The study's arm A is Winners WITH its pool rules (the v1-v10 construction);
+  // user builds dropped them in winners-shape v11, so the rules are asked for here.
+  const shape = applyWinnersShape(nativeSettings, eligible, { poolRules: true });
   const recordedEligibility = source.settings.runEvidence?.eligibility;
   let sourceShapeVerified = false;
   if (source.settings.buildShape === 'winners' && Array.isArray(recordedEligibility)) {
@@ -151,7 +153,7 @@ export function buildPortfolioPair(input: Raw, version: string): PairResult {
     ? players.filter(p => input.players.find((r: Raw) => r.dkPlayerId === p.dkPlayerId)?.workloadEligible === true) : players;
   // The source's own shape, resolved exactly as the product resolves it.
   const shape = settings.buildShape === 'winners'
-    ? applyWinnersShape({ ...settings, buildShape: 'winners' as const }, eligible)
+    ? applyWinnersShape({ ...settings, buildShape: 'winners' as const }, eligible, { poolRules: true })
     : { settings, excluded: new Map<number, string>(), notes: [] as string[] };
   const effective: NflOptimizerSettings & Raw = { ...shape.settings, buildShape: 'standard' as const,
     excludedPlayerIds: [...new Set([...settings.excludedPlayerIds, ...shape.excluded.keys()])] };
