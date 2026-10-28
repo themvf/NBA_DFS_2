@@ -49,3 +49,16 @@ def test_team_rows_split_home_and_road_for_chosen_divisions(tmp_path):
     assert (tb["road"]["w"], tb["road"]["l"]) == (1, 0)
     assert tb["road"]["expected"] == pytest.approx(0.5) and by["NO"]["road"]["share"] is None
     assert c.team_chart(rows, tmp_path / "s.png", 2026, "weeks 1-7")
+
+
+def test_game_cells_mark_side_neutral_and_upsets(tmp_path):
+    def g(gid, home, away, hs, as_, hd, ad, hm, am):
+        return {**_g(gid, hs, as_, hd, ad, hm=hm, am=am), "home": home, "away": away}
+    cells = c.game_cells([g("a", "TB", "NYJ", 10, 20, "NFC South", "AFC East", -200, 170),   # TB fav, lost
+                          g("2026_07_PIT_NO", "NO", "PIT", 3, 30, "NFC South", "AFC North", 150, -170)],
+                         ("NFC South",))
+    tb, no = cells["TB"][0], cells["NO"][0]
+    assert tb["at_home"] and tb["upset"] and tb["result"] == "lost"
+    assert no["neutral"] and not no["at_home"] and not no["upset"]
+    assert "NYJ" not in cells
+    assert c.ledger_chart(cells, ("NFC South",), tmp_path / "l.png", 2026, "weeks 1-7")
