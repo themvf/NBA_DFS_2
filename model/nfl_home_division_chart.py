@@ -6,6 +6,8 @@ Descriptive, season to date; eight divisions of a few games each, chosen for dis
                                            at the market's expected share (no-vig moneyline, averaged over the same
                                            games), and the division's road record beside it. The two South divisions
                                            are highlighted.
+  nfl_take_south_teams_<season>.png        the eight South teams one by one: home and road win share side by side,
+                                           each with the market's expected share, grouped by division.
 
 Games from ``nfl_season_games`` (regular season, finished). Neutral-site games are left out: the listed home team
 had no home crowd. A tie counts as neither a win nor a loss.
@@ -76,6 +78,40 @@ def division_rows(games: list[dict]) -> list[dict]:
     return sorted(out, key=lambda r: (-r["share"], r["division"]))
 
 
+def team_rows(games: list[dict], divisions: tuple[str, ...]) -> list[dict]:
+    """Per team in ``divisions``: home and road W-L-T, win share (ties left out) and market-expected wins."""
+    acc: dict[str, dict] = {}
+    blank = lambda div: {"division": div, "home": [0, 0, 0, 0.0, 0], "road": [0, 0, 0, 0.0, 0]}
+    for g in games:
+        if g["game_id"] in NEUTRAL_SITES:
+            continue
+        p = market_home(g.get("home_ml"), g.get("away_ml"))
+        for side, team, div, pts, opp, chance in (
+                ("home", g["home"], g["home_div"], g["home_score"], g["away_score"], p),
+                ("road", g["away"], g["away_div"], g["away_score"], g["home_score"],
+                 None if p is None else 1 - p)):
+            if div not in divisions:
+                continue
+            rec = acc.setdefault(team, blank(div))[side]   # [w, l, t, expected wins, games priced]
+            if pts == opp:
+                rec[2] += 1
+                continue
+            rec[0 if pts > opp else 1] += 1
+            if chance is not None:
+                rec[3] += chance
+                rec[4] += 1
+    out = []
+    for team, a in acc.items():
+        row = {"team": team, "division": a["division"]}
+        for side in ("home", "road"):
+            w, l, t, exp, priced = a[side]
+            row[side] = {"w": w, "l": l, "t": t, "share": w / (w + l) if w + l else None,
+                         "expected": exp / priced if priced else None, "expected_wins": exp if priced else None}
+        out.append(row)
+    order = {d: i for i, d in enumerate(divisions)}
+    return sorted(out, key=lambda r: (order[r["division"]], -(r["home"]["share"] or 0), r["team"]))
+
+
 # ── chart ────────────────────────────────────────────────────────────────────
 def chart(rows: list[dict], path: Path, season: int, weeks: str) -> bool:
     if not rows:
@@ -120,6 +156,66 @@ def chart(rows: list[dict], path: Path, season: int, weeks: str) -> bool:
     return _finish(fig, path, "Home field has vanished in the South", sub, height)
 
 
+def team_chart(rows: list[dict], path: Path, season: int, weeks: str) -> bool:
+    if not rows:
+        return False
+    # Layout: a header slot per division, then two bars (home, road) per team.
+    slots, y = [], 0.0
+    for div in dict.fromkeys(r["division"] for r in rows):
+        slots.append(("head", div, y))
+        y += 0.9
+        for r in (r for r in rows if r["division"] == div):
+            slots.append(("team", r, y))
+            y += 1.6
+        y += 0.4
+    height = 0.33 * y + 2.9
+    fig, ax = plt.subplots(figsize=(WIDTH_IN, height), dpi=DPI)
+    fig.patch.set_facecolor(SURFACE)
+    _axes(ax, ygrid=False)
+    colour = {"home": BAD, "road": NEUTRAL}
+    for kind, item, y0 in slots:
+        if kind == "head":
+            ax.text(-0.01, y0, item, ha="right", va="center", fontsize=9, color=INK, fontweight="bold",
+                    transform=ax.get_yaxis_transform(), clip_on=False)
+            continue
+        r = item
+        ax.text(-0.01, y0 + 0.35, r["team"], ha="right", va="center", fontsize=9, color=INK,
+                fontweight="bold", transform=ax.get_yaxis_transform(), clip_on=False)
+        for k, side in enumerate(("home", "road")):
+            rec, yy = r[side], y0 + 0.7 * k
+            share = rec["share"] or 0.0
+            ax.barh(yy, share, height=0.58, color=colour[side], zorder=2)
+            if rec["expected"] is not None:
+                ax.plot([rec["expected"]] * 2, [yy - 0.36, yy + 0.36], color=INK, linewidth=1.8, zorder=3)
+            ax.text(0.012, yy, side, ha="left", va="center", fontsize=6.6, zorder=4,
+                    color="white" if side == "home" and share > 0.1 else INK)
+            tie = f"-{rec['t']}" if rec["t"] else ""
+            exp = (f"   market expected {rec['expected_wins']:.1f} wins"
+                   if rec["expected_wins"] is not None else "")
+            ax.text(1.02, yy, f"{side} {rec['w']}-{rec['l']}{tie}{exp}", ha="left", va="center", fontsize=7,
+                    color=INK if side == "home" else INK_2, fontweight="bold" if side == "home" else "normal",
+                    transform=ax.get_yaxis_transform(), clip_on=False)
+    ax.axvline(0.5, color=INK_2, linewidth=0.6, linestyle=":", zorder=1)
+    ax.set_yticks([])
+    ax.set_ylim(y - 0.2, -0.7)
+    ax.set_xlim(0, 1)
+    ax.xaxis.set_major_formatter(matplotlib.ticker.PercentFormatter(1.0, decimals=0))
+    ax.tick_params(axis="x", labelsize=7)
+    ax.set_xlabel("Share of games won (ties left out)", fontsize=8, color=INK_2)
+    fig.subplots_adjust(left=0.13, right=0.68, bottom=0.6 / height, top=1 - 1.25 / height)
+    hw = sum(r["home"]["w"] for r in rows)
+    hl = sum(r["home"]["l"] for r in rows)
+    rw = sum(r["road"]["w"] for r in rows)
+    rl = sum(r["road"]["l"] for r in rows)
+    winless = sum(1 for r in rows if r["home"]["w"] == 0 and r["home"]["l"])
+    sub = (f"{season} season, {weeks}, neutral sites left out. Red bar: share of home games won; grey bar: share of "
+           f"road games won. Black tick: what the betting market\nexpected (moneyline, margin removed). The eight South "
+           f"teams went {hw}-{hl} at home and {rw}-{rl} on the road, including the games they played against each other.\n"
+           f"Three or four home games a team: one result moves a bar by 25 points. This describes the season so far, "
+           f"it does not predict the rest of it.")
+    return _finish(fig, path, f"The South, team by team: {winless} of {len(rows)} teams have not won at home", sub, height)
+
+
 # ── data ─────────────────────────────────────────────────────────────────────
 def load_games(season: int) -> list[dict]:
     import psycopg2
@@ -128,7 +224,8 @@ def load_games(season: int) -> list[dict]:
     load_dotenv(".env")
     sql = """
         SELECT g.nflverse_game_id, g.week, g.home_score, g.away_score, g.market_home_ml, g.market_away_ml,
-               h.conference || ' ' || h.division, a.conference || ' ' || a.division
+               h.conference || ' ' || h.division, a.conference || ' ' || a.division,
+               h.abbreviation, a.abbreviation
         FROM nfl_season_games g
         JOIN nfl_teams h ON h.team_id = g.home_team_id
         JOIN nfl_teams a ON a.team_id = g.away_team_id
@@ -140,8 +237,8 @@ def load_games(season: int) -> list[dict]:
         rows = cur.fetchall()
     return [{"game_id": gid, "week": int(wk), "home_score": int(hs), "away_score": int(as_),
              "home_ml": float(hm) if hm is not None else None, "away_ml": float(am) if am is not None else None,
-             "home_div": hd, "away_div": ad}
-            for gid, wk, hs, as_, hm, am, hd, ad in rows]
+             "home_div": hd, "away_div": ad, "home": ha, "away": aa}
+            for gid, wk, hs, as_, hm, am, hd, ad, ha, aa in rows]
 
 
 def build_all(out_dir: Path, season: int) -> list[tuple[str, bool]]:
@@ -149,7 +246,9 @@ def build_all(out_dir: Path, season: int) -> list[tuple[str, bool]]:
     ws = sorted({g["week"] for g in games})
     weeks = f"weeks {ws[0]}-{ws[-1]}" if ws else "no weeks"
     name = f"nfl_take_home_by_division_{season}.png"
-    return [(name, chart(division_rows(games), Path(out_dir) / name, season, weeks))]
+    south = f"nfl_take_south_teams_{season}.png"
+    return [(name, chart(division_rows(games), Path(out_dir) / name, season, weeks)),
+            (south, team_chart(team_rows(games, ("AFC South", "NFC South")), Path(out_dir) / south, season, weeks))]
 
 
 def main(argv: list[str] | None = None) -> int:
