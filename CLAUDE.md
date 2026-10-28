@@ -7979,6 +7979,19 @@ points, DraftKings lineup string and faced ownership sum compactly in
 generator's input; `nfl_dfs_field_top_entries` keeps the per-slot JSON for
 the top N. Weekly routine: export the contest you entered, import it with
 `--keep-all` and the FantasyPros paste, then run the three-way grade.
+**Fitted model `nfl-ownership-fit-v1` (registered and run 2026-10-28; "Phase
+2 fit" and its result in `docs/nfl-ownership-model.md`).** One Ridge per
+position on log(ownership + 0.1) over pregame snapshot features (salary,
+projection, DK average, value, within-position ranks, team share, game rank,
+team position rank, status), allocated to the mean recorded position totals,
+cap 60 (`model/nfl_ownership_fit.py`; runner `research/nfl_ownership_fit.py`).
+Leave-one-slate-out on the seven Millionaires: Spearman 0.826 vs the v5
+prior's 0.797 (better on every slate and position), MAE 1.243 vs 1.256, bias
+0.000. The registered gate PASSED, narrowly on MAE: walk-forward is better on
+rank and worse on points, and the 20%+ chalk is still predicted at 16.5 (prior
+14.4) against 28.9 actual. Not wired into the page; whether it replaces the
+prior is the owner's decision. Features and alpha are frozen; a news or
+published-ownership input is a v2 registration.
 
 ### GPP objective: multiplicative leverage and the ceiling cap (2026-09-27)
 
