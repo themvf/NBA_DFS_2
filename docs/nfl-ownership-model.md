@@ -302,3 +302,50 @@ alpha are not changed after seeing the result.
 
 Code: `model/nfl_ownership_fit.py` (pure), `research/nfl_ownership_fit.py`
 (runner; prints and writes `artifacts/nfl-ownership-fit-v1/`).
+
+### Result — first run, 2026-10-28 (`artifacts/nfl-ownership-fit-v1/result-20261028.json`)
+
+Seven reference slates (weeks 1-7, 3,512 held-out active players, leave-one-
+slate-out), the v5 prior graded on the identical rows:
+
+| | Spearman | MAE | bias |
+|---|---:|---:|---:|
+| fitted, primary allocation | **0.826** | **1.243** | 0.000 |
+| fitted, raw rescaled to 900 (secondary) | 0.826 | 1.287 | +0.007 |
+| v5 prior | 0.797 | 1.256 | +0.006 |
+
+**Gate: PASS** on every registered bar (slates 7 >= 4, Spearman 0.826 >=
+0.70, MAE 1.243 <= 2.0, |bias| 0.000 <= 0.5, MAE below the prior's 1.256).
+
+Read it plainly, because the pass is narrow on one axis and clear on another:
+
+- **Rank order improves on every slate** (0.761/0.823/0.814/0.843/0.855/0.853/
+  0.861 against the prior's 0.694/0.756/0.805/0.811/0.840/0.847/0.857) and at
+  every position; DST most (0.518 vs 0.316), WR next (0.823 vs 0.782).
+- **Point error improves by 0.013 overall, and only on weeks 1-4.** Weeks 6-7
+  are WORSE on MAE (1.46 vs 1.27, 1.62 vs 1.45). The walk-forward check (train
+  on earlier weeks only, held out weeks 4-7) has the fit better on rank (0.848
+  vs 0.838) and worse on MAE (1.504 vs 1.394). Weeks 2-6 are the prior's
+  design slates, so the prior's point error there is not a clean comparison
+  either; week 1 and week 7 are the only slates neither saw, and they split
+  (week 1 fit better on both, week 7 fit better on rank, worse on points).
+- **The chalk is still missed.** Players the field owned 20%+ (n=47, mean
+  28.9%) are predicted at 16.5% by the fit and 14.4% by the prior. The team
+  and game concentration features moved this by two points, not fifteen. The
+  cheap-starter chalk (Golden 39%, Marks 23%, Hurst 19% in week 7) is a role
+  and news story that no pregame snapshot feature carries.
+- The two extra contests (owner's exports, weeks 2 and 3) agree with the
+  reference slates: 0.804/1.05 vs 0.756/1.22 and 0.829/1.07 vs 0.830/1.05.
+
+Budgets fitted on all seven slates: QB 100, RB 233, WR 332, TE 132, DST 100
+(the v4/v5 budgets were QB 100 / RB 230 / WR 335 / TE 135 / DST 100, so the
+recorded totals confirm them). The all-slate model's coefficients are in the
+artifact (`model_all_slates`) for a web port.
+
+**What follows from a pass this size is the owner's call**, recorded here
+rather than decided by the script: the registered gate is met, so the fit may
+replace the prior as the ownership source; the honest expectation is a better
+ORDERING of the field (which is what the leverage fade and the duplication
+estimate consume) at about the same point error, not fewer chalk misses.
+Features and alpha are frozen; the next variant (a news or published-ownership
+input for the chalk) is `nfl-ownership-fit-v2` with its own registration.
