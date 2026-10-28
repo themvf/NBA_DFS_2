@@ -1,0 +1,12 @@
+{
+  "version": "nba-points-v3-local-pin-v1",
+  "model_path": "C:/Docs/_AI Python Projects/NBADFS_v2/artifacts/nba-ghost-v3/20261028-fitted-model/model.json",
+  "model_sha256": "651441d2dcfbe40aa1bd2c320ef8327056e02bc2c06257995c1cb3c40254bec4",
+  "training_input_sha256": "44a1cada860c650fb0ecad5dc34a392cc0388558818466c147132936c281724b",
+  "research_root": "C:/Docs/_AI Python Projects/NBADFS_v2/artifacts/nba-ghost-v3",
+  "automatic_retraining": false,
+  "promotion_status": "research_only",
+  "historical_evaluation": "Previously inspected 2025-26 season, late-ingested data; retrospective only",
+  "current_season_calibration": "unvalidated",
+  "lineup_stint_model": "unavailable"
+}
