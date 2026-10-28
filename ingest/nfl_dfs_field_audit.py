@@ -15,6 +15,7 @@ Usage:
     python -m ingest.nfl_dfs_field_audit --contest FILE --upload <slate-upload-id>
     python -m ingest.nfl_dfs_field_audit --contest FILE --structure-only   # lineups only
     python -m ingest.nfl_dfs_field_audit --contest FILE --keep-top 50      # also store the top 50 rosters
+    python -m ingest.nfl_dfs_field_audit --contest FILE --keep-all         # every entry, compact (nfl_dfs_field_entries)
     python -m ingest.nfl_dfs_field_audit --report          # every imported contest
     python -m ingest.nfl_dfs_field_audit --report --season 2026 --week 2
 """
@@ -109,19 +110,75 @@ def contest_curves(contest_id: str, path: Path) -> dict:
     return out
 
 
-def read_top_entries(path: Path, n: int) -> list[dict]:
-    """Entries ranked within the top N, with the export's EntryId and Points (columns 1 and 4)."""
-    out = []
+def iter_entries(path: Path):
+    """Every entry of the export in file order: rank, EntryId, EntryName, Points and
+    Lineup (columns 0, 1, 2, 4, 5). A generator, so a 300k-entry file is never
+    held in memory twice."""
     with path.open(newline="", encoding="utf-8-sig") as handle:
         reader = csv.reader(handle)
         next(reader, None)
         for row in reader:
-            if len(row) > 5 and row[5].strip() and row[0].strip().isdigit() and int(row[0]) <= n:
+            if len(row) > 5 and row[5].strip() and row[0].strip().isdigit():
                 points = row[4].strip() if len(row) > 4 else ""
-                out.append({"rank": int(row[0]), "entry_id": row[1].strip() or f"rank-{row[0]}",
-                            "entry_name": row[2], "points": float(points) if points else None,
-                            "lineup_text": row[5]})
-    return out
+                yield {"rank": int(row[0]), "entry_id": row[1].strip() or f"rank-{row[0]}",
+                       "entry_name": row[2], "points": float(points) if points else None,
+                       "lineup_text": row[5]}
+
+
+def read_top_entries(path: Path, n: int | None) -> list[dict]:
+    """Entries ranked within the top N (every entry when N is None)."""
+    return [e for e in iter_entries(path) if n is None or e["rank"] <= n]
+
+
+def persist_all_entries(db: PipelineDatabase, contest_id: str, path: Path, players: dict,
+                        chunk: int = 5000) -> int:
+    """Store EVERY entry of the export, compactly, in nfl_dfs_field_entries.
+
+    The roster is kept as the export's own lineup string plus the ownership sum
+    the field faced (each slot at its own share); per-slot JSON is what
+    nfl_dfs_field_top_entries carries for the top N. Written in chunks so one
+    statement never carries the whole field. Returns the rows written.
+    """
+    written = 0
+    batch: list[tuple] = []
+
+    def flush(cursor) -> None:
+        nonlocal written
+        if not batch:
+            return
+        execute_values(
+            cursor,
+            """INSERT INTO nfl_dfs_field_entries
+                 (contest_id, entry_id, rank, username, user_entries, points, lineup_text, ownership_sum)
+               VALUES %s
+               ON CONFLICT (contest_id, entry_id) DO UPDATE SET
+                 rank = EXCLUDED.rank, username = EXCLUDED.username,
+                 user_entries = EXCLUDED.user_entries, points = EXCLUDED.points,
+                 lineup_text = EXCLUDED.lineup_text, ownership_sum = EXCLUDED.ownership_sum,
+                 captured_at = NOW()""",
+            batch, page_size=1000)
+        written += len(batch)
+        batch.clear()
+
+    with db.connect() as connection:
+        with connection.cursor() as cursor:
+            for entry in iter_entries(path):
+                username, user_entries = structure.parse_entry_name(entry["entry_name"])
+                roster, total = structure.lineup_ownership(entry["lineup_text"], players)
+                if not roster:
+                    raise ValueError(f"entry {entry['entry_id']} at rank {entry['rank']} has no parseable lineup")
+                batch.append((contest_id, entry["entry_id"], entry["rank"], username, user_entries,
+                              entry["points"], entry["lineup_text"], total))
+                if len(batch) >= chunk:
+                    flush(cursor)
+            flush(cursor)
+    return written
+
+
+def keep_all(db: PipelineDatabase, contest_id: str, path: Path, players: dict) -> int:
+    n = persist_all_entries(db, contest_id, path, players)
+    print(f"  kept every entry: {n:,} rows in nfl_dfs_field_entries (about {n * 220 / 1e6:.0f} MB)")
+    return n
 
 
 def persist_top_entries(db: PipelineDatabase, contest_id: str, rows: list[dict]) -> None:
@@ -356,6 +413,9 @@ def main() -> None:
     parser.add_argument("--keep-top", type=int, metavar="N",
                         help="with --contest: also store the rosters of every entry ranked in the top N "
                              "(nfl_dfs_field_top_entries), read against the export's ownership")
+    parser.add_argument("--keep-all", action="store_true",
+                        help="with --contest: store EVERY entry's lineup string, rank, points and "
+                             "ownership sum in nfl_dfs_field_entries (compact; the field generator's input)")
     parser.add_argument("--report", action="store_true", help="audit every imported contest")
     parser.add_argument("--season", type=int)
     parser.add_argument("--week", type=int)
@@ -364,6 +424,8 @@ def main() -> None:
         parser.error("pass --contest to import one, or --report to audit what is imported")
     if args.keep_top is not None and (args.keep_top < 1 or not args.contest):
         parser.error("--keep-top N needs --contest and N of at least 1")
+    if args.keep_all and not args.contest:
+        parser.error("--keep-all needs --contest")
 
     db = PipelineDatabase(load_config().database_url)
 
@@ -380,9 +442,12 @@ def main() -> None:
         persist_structure(db, contest_id, summary)
         print(f"structure stored for contest {contest_id} ({summary['entries']:,} lineups, "
               f"{summary['duplication']['unique_lineups']:,} unique)")
-        if args.keep_top:
+        if args.keep_top or args.keep_all:
             parsed, _ = read_export(path)
-            keep_top(db, contest_id, path, args.keep_top, parsed["players"])
+            if args.keep_top:
+                keep_top(db, contest_id, path, args.keep_top, parsed["players"])
+            if args.keep_all:
+                keep_all(db, contest_id, path, parsed["players"])
         return
 
     if args.contest:
@@ -397,6 +462,8 @@ def main() -> None:
         persist_structure(db, contest_id, summary)
         if args.keep_top:
             keep_top(db, contest_id, path, args.keep_top, parsed["players"])
+        if args.keep_all:
+            keep_all(db, contest_id, path, parsed["players"])
         dup, users = summary["duplication"], summary["users"]
         print(f"  structure: {summary['entries']:,} lineups, {dup['unique_lineups']:,} unique, "
               f"{dup['entry_share_in_duplicated_lineup']:.1%} of entries duplicated, "

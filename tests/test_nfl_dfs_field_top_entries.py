@@ -72,3 +72,28 @@ def test_read_top_entries_reads_entry_id_and_points_from_the_export(tmp_path):
     rows = read_top_entries(path, 2)
     assert [(r["rank"], r["entry_id"], r["points"]) for r in rows] == [(1, "111", 136.59), (2, "222", 135.0)]
     assert rows[0]["entry_name"] == "grinder (13/150)"
+
+
+def test_keep_all_keeps_every_entry_in_rank_order():
+    rows = keep_top_entries(ENTRIES, None, PLAYERS)
+    assert [r["entry_id"] for r in rows] == ["a", "b", "c", "d"]
+    assert rows[-1]["ownership_sum"] == 15.0   # CPT Dak alone
+
+
+def test_lineup_ownership_reads_each_slot_at_its_own_share():
+    from model.nfl_dfs_field_structure import lineup_ownership
+    roster, total = lineup_ownership("CPT Dak Prescott FLEX CeeDee Lamb FLEX Unknown Guy", PLAYERS)
+    assert [p["drafted_pct"] for p in roster] == [15.0, 30.0, None]
+    assert total == 45.0
+
+
+def test_read_top_entries_none_reads_the_whole_export(tmp_path):
+    from ingest.nfl_dfs_field_audit import read_top_entries
+    path = tmp_path / "contest-standings-2.csv"
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["Rank", "EntryId", "EntryName", "TimeRemaining", "Points", "Lineup"])
+        for rank in range(1, 8):
+            writer.writerow([rank, str(100 + rank), f"u{rank}", 0, str(200 - rank), "CPT Dak Prescott FLEX CeeDee Lamb"])
+    assert len(read_top_entries(path, None)) == 7
+    assert len(read_top_entries(path, 3)) == 3

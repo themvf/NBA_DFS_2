@@ -7963,6 +7963,22 @@ false` in `dfs/nfl/actions.ts`; the build uses the plain prior, the ranges
 are still imported (paste box) and shown as reference, and
 `python -m research.nfl_ownership_three_way --week N` grades prior, bounded
 and FantasyPros midpoint against the week's Millionaire each Monday.
+**Both fields, every Monday (owner's decision 2026-10-28).** The Monday grade
+now runs over EVERY linked Classic contest of the week (the stat-api
+Millionaire and the owner's own DraftKings export, each against the run on
+its own slate) and, when two share a slate, compares the two fields with each
+other. First comparison, week 3 (7,134-entry $-fee contest vs the 161,764-entry
+Millionaire): rank agreement 0.970, mean gap 0.41 points, top chalk 42.5% vs
+44.4%; the small room leaned a little more to Warren, Gibbs and LaPorta. The
+two rooms are the same crowd shape, so the Millionaire is a fair proxy for
+the field the owner enters, and the export is the one that also carries
+EVERY entry's lineup: `python -m ingest.nfl_dfs_field_audit --contest FILE
+--keep-all` (also with `--structure-only`) stores each entry's rank, user,
+points, DraftKings lineup string and faced ownership sum compactly in
+`nfl_dfs_field_entries` (~220 bytes a row; 47k entries in 9 s), the field
+generator's input; `nfl_dfs_field_top_entries` keeps the per-slot JSON for
+the top N. Weekly routine: export the contest you entered, import it with
+`--keep-all` and the FantasyPros paste, then run the three-way grade.
 
 ### GPP objective: multiplicative leverage and the ceiling cap (2026-09-27)
 

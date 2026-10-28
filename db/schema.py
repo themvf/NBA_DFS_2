@@ -2952,6 +2952,23 @@ TABLES = [
     )""",
     """CREATE INDEX IF NOT EXISTS idx_nfl_dfs_field_top_entries_user
         ON nfl_dfs_field_top_entries (username)""",
+    # EVERY entry of a DraftKings standings export (`--keep-all`), compact: the
+    # export's own lineup string plus rank, points and the ownership the field
+    # faced. No per-slot JSON (that is nfl_dfs_field_top_entries, for the top
+    # N); a roster is re-parsed from lineup_text with parse_lineup. About 220
+    # bytes a row, so a 300k-entry contest is ~70 MB. Python owns writes.
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_field_entries (
+        contest_id TEXT NOT NULL REFERENCES nfl_dfs_field_contests(contest_id) ON DELETE CASCADE,
+        entry_id TEXT NOT NULL,
+        rank INTEGER NOT NULL,
+        username TEXT NOT NULL,
+        user_entries INTEGER,
+        points DOUBLE PRECISION,
+        lineup_text TEXT NOT NULL,
+        ownership_sum DOUBLE PRECISION,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (contest_id, entry_id)
+    )""",
     # Winning lineups PUBLISHED by a third party (ingest/hellorookie_winners.py):
     # one rank-1 Classic lineup per week with the page's own draft %, salary
     # and points. No contest id, no standings, no score curve; it is the free
