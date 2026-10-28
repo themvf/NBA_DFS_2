@@ -8,11 +8,9 @@ Descriptive, season to date; eight divisions of a few games each, chosen for dis
                                            are highlighted.
   nfl_take_south_teams_<season>.png        the eight South teams one by one: home and road win share side by side,
                                            each with the market's expected share, grouped by division.
-  nfl_take_south_ledger_<season>.png       the same eight teams game by game: one row per team, one column per week,
-                                           a house for a home game and a circle for a road game (a diamond at a
-                                           neutral site), green for a win and red for a loss, the opponent inside and
-                                           the market's pregame chance below. A thick outline marks a result that went
-                                           against the market's favourite.
+  nfl_take_south_missing_wins_<season>.png  the eight South teams: home wins the market expected (sum of each
+                                            home game's no-vig chance) against home wins they got, one row each,
+                                            biggest shortfall first, with the total on top.
 
 Games from ``nfl_season_games`` (regular season, finished). Neutral-site games are left out: the listed home team
 had no home crowd. A tie counts as neither a win nor a loss.
@@ -32,9 +30,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 from model.cfb_pattern_charts import DPI, INK, INK_2, SURFACE  # noqa: E402
-from matplotlib.path import Path as MPath  # noqa: E402
-
-from model.story_charts import BAD, GOOD, NEUTRAL, WIDTH_IN, _axes, _finish  # noqa: E402
+from model.story_charts import BAD, NEUTRAL, WIDTH_IN, _axes, _finish  # noqa: E402
 
 DEFAULT_DIR = Path("artifacts") / "nfl_market_scenarios"
 HIGHLIGHT = {"NFC South", "AFC South"}
@@ -117,105 +113,6 @@ def team_rows(games: list[dict], divisions: tuple[str, ...]) -> list[dict]:
         out.append(row)
     order = {d: i for i, d in enumerate(divisions)}
     return sorted(out, key=lambda r: (order[r["division"]], -(r["home"]["share"] or 0), r["team"]))
-
-
-def game_cells(games: list[dict], divisions: tuple[str, ...]) -> dict[str, list[dict]]:
-    """Every game of each team in ``divisions``, from that team's side, in week order. Neutral sites are kept
-    and marked; the team's chance is the no-vig moneyline (None without a price)."""
-    out: dict[str, list[dict]] = {}
-    for g in games:
-        p = market_home(g.get("home_ml"), g.get("away_ml"))
-        neutral = g["game_id"] in NEUTRAL_SITES
-        for at_home, team, div, opp, pts, opp_pts, chance in (
-                (True, g["home"], g["home_div"], g["away"], g["home_score"], g["away_score"], p),
-                (False, g["away"], g["away_div"], g["home"], g["away_score"], g["home_score"],
-                 None if p is None else 1 - p)):
-            if div not in divisions:
-                continue
-            result = "tie" if pts == opp_pts else ("won" if pts > opp_pts else "lost")
-            upset = chance is not None and result != "tie" and ((chance >= 0.5) != (result == "won"))
-            out.setdefault(team, []).append({
-                "week": g["week"], "at_home": at_home and not neutral, "neutral": neutral, "opp": opp,
-                "result": result, "chance": chance, "upset": upset, "division": div,
-                "score": f"{pts}-{opp_pts}"})
-    for cells in out.values():
-        cells.sort(key=lambda c: c["week"])
-    return out
-
-
-_HOUSE = MPath([(-1, -1), (1, -1), (1, 0.25), (0, 1.15), (-1, 0.25), (-1, -1)],
-               [MPath.MOVETO, MPath.LINETO, MPath.LINETO, MPath.LINETO, MPath.LINETO, MPath.CLOSEPOLY])
-
-
-def ledger_chart(cells: dict[str, list[dict]], divisions: tuple[str, ...], path: Path, season: int,
-                 weeks: str) -> bool:
-    if not cells:
-        return False
-    max_week = max(c["week"] for cs in cells.values() for c in cs)
-    order = []
-    for div in divisions:
-        members = [t for t, cs in cells.items() if cs[0]["division"] == div]
-        home_won = lambda t: sum(c["result"] == "won" for c in cells[t] if c["at_home"])
-        order.append(("head", div))
-        order.extend(("team", t) for t in sorted(members, key=lambda t: (-home_won(t), t)))
-    height = 0.62 * len(order) + 2.9
-    fig, ax = plt.subplots(figsize=(WIDTH_IN, height), dpi=DPI)
-    fig.patch.set_facecolor(SURFACE)
-    ax.set_facecolor(SURFACE)
-    fill = {"won": GOOD, "lost": BAD, "tie": NEUTRAL}
-    for y, (kind, item) in enumerate(order):
-        if kind == "head":
-            ax.text(0.35, y + 0.15, item, ha="left", va="center", fontsize=9, color=INK, fontweight="bold")
-            continue
-        ax.text(0.35, y, item, ha="left", va="center", fontsize=9, color=INK, fontweight="bold")
-        played = {c["week"]: c for c in cells[item]}
-        for wk in range(1, max_week + 1):
-            c = played.get(wk)
-            if c is None:
-                ax.text(wk + 1, y, "bye", ha="center", va="center", fontsize=6.4, color=NEUTRAL)
-                continue
-            marker = _HOUSE if c["at_home"] else ("D" if c["neutral"] else "o")
-            ax.scatter(wk + 1, y, s=560 if c["at_home"] else 470, marker=marker, color=fill[c["result"]],
-                       edgecolor=INK if c["upset"] else SURFACE, linewidth=2.2 if c["upset"] else 0.8, zorder=3)
-            ax.text(wk + 1, y + (0.06 if c["at_home"] else 0.0), c["opp"], ha="center", va="center",
-                    fontsize=6.2, color="white", fontweight="bold", zorder=4)
-            if c["chance"] is not None:
-                ax.text(wk + 1, y + 0.4, f"{c['chance']:.0%}", ha="center", va="center", fontsize=5.8,
-                        color=INK_2, zorder=4)
-        home = [c for c in cells[item] if c["at_home"]]
-        road = [c for c in cells[item] if not c["at_home"] and not c["neutral"]]
-        rec = lambda cs: f"{sum(c['result'] == 'won' for c in cs)}-{sum(c['result'] == 'lost' for c in cs)}"
-        exp = lambda cs: sum(c["chance"] for c in cs if c["chance"] is not None and c["result"] != "tie")
-        ax.text(max_week + 1.75, y, f"home {rec(home)}  (expected {exp(home):.1f})", ha="left", va="center",
-                fontsize=7, color=INK, fontweight="bold")
-        ax.text(max_week + 1.75, y + 0.32, f"road {rec(road)}  (expected {exp(road):.1f})", ha="left",
-                va="center", fontsize=6.4, color=INK_2)
-    for wk in range(1, max_week + 1):
-        ax.text(wk + 1, -0.75, f"Wk {wk}", ha="center", va="center", fontsize=7, color=INK_2)
-    ax.set_xlim(0.2, max_week + 4.4)
-    ax.set_ylim(len(order) - 0.35, -1.1)
-    ax.axis("off")
-    fig.subplots_adjust(left=0.02, right=0.98, bottom=0.25 / height, top=1 - 1.25 / height)
-    from matplotlib.lines import Line2D
-    ax.legend(handles=[Line2D([], [], marker=_HOUSE, linestyle="", markersize=11, color=NEUTRAL, label="home"),
-                       Line2D([], [], marker="o", linestyle="", markersize=10, color=NEUTRAL, label="road"),
-                       Line2D([], [], marker="D", linestyle="", markersize=8, color=NEUTRAL, label="neutral site"),
-                       Line2D([], [], marker="s", linestyle="", markersize=9, color=GOOD, label="won"),
-                       Line2D([], [], marker="s", linestyle="", markersize=9, color=BAD, label="lost"),
-                       Line2D([], [], marker="o", linestyle="", markersize=10, color=SURFACE, markeredgecolor=INK,
-                              markeredgewidth=2.2, label="went against the market's favourite")],
-              loc="lower left", bbox_to_anchor=(0.0, 1.0), ncol=6, fontsize=6.8, frameon=False,
-              handletextpad=0.3, columnspacing=1.1)
-    home_all = [c for cs in cells.values() for c in cs if c["at_home"]]
-    hw = sum(c["result"] == "won" for c in home_all)
-    hl = sum(c["result"] == "lost" for c in home_all)
-    fav_losses = sum(c["result"] == "lost" and c["upset"] for c in home_all)
-    sub = (f"{season} season, {weeks}. Each row is a team's schedule; inside each shape is the opponent, below it the "
-           f"market's pregame chance for the row's team\n(moneyline, margin removed). Together these eight teams went "
-           f"{hw}-{hl} at home; {fav_losses} of those home losses came as the market's favourite (thick outline)."
-           f"\nThree or four home games a team: this describes the season so far, it does not "
-           f"predict the rest of it.")
-    return _finish(fig, path, "A row of red houses: the South's season, game by game", sub, height)
 
 
 # ── chart ────────────────────────────────────────────────────────────────────
@@ -322,6 +219,51 @@ def team_chart(rows: list[dict], path: Path, season: int, weeks: str) -> bool:
     return _finish(fig, path, f"The South, team by team: {winless} of {len(rows)} teams have not won at home", sub, height)
 
 
+def missing_wins_chart(rows: list[dict], path: Path, season: int, weeks: str) -> bool:
+    """Expected home wins (grey) to actual home wins (red), per team, with the total on top."""
+    rows = [r for r in rows if r["home"]["expected_wins"] is not None]
+    if not rows:
+        return False
+    rows = sorted(rows, key=lambda r: (r["home"]["w"] - r["home"]["expected_wins"], r["team"]))
+    exp_total = sum(r["home"]["expected_wins"] for r in rows)
+    won_total = sum(r["home"]["w"] for r in rows)
+    games_total = sum(r["home"]["w"] + r["home"]["l"] for r in rows)
+    items = [("All eight", exp_total, won_total, games_total, True)] + [
+        (r["team"], r["home"]["expected_wins"], r["home"]["w"], r["home"]["w"] + r["home"]["l"], False)
+        for r in rows]
+    height = 0.5 * len(items) + 2.6
+    fig, (top, ax) = plt.subplots(2, 1, figsize=(WIDTH_IN, height), dpi=DPI,
+                                  gridspec_kw={"height_ratios": [1.0, len(rows)], "hspace": 0.35})
+    fig.patch.set_facecolor(SURFACE)
+    for a, chunk, xmax in ((top, items[:1], max(exp_total, won_total) + 1.5),
+                           (ax, items[1:], max(max(e, w) for _, e, w, _, _ in items[1:]) + 0.8)):
+        _axes(a, ygrid=False)
+        for y, (name, exp, won, n, _) in enumerate(chunk):
+            a.plot([won, exp], [y, y], color=BAD, linewidth=3, alpha=0.25, zorder=1, solid_capstyle="round")
+            a.scatter(exp, y, s=110, color=NEUTRAL, edgecolor=INK_2, linewidth=0.6, zorder=2)
+            a.scatter(won, y, s=130, color=BAD, edgecolor=INK, linewidth=0.6, zorder=3)
+            gap = won - exp
+            a.text(1.02, y, f"won {won} of {n} at home, expected {exp:.1f}   ({gap:+.1f})", ha="left",
+                   va="center", fontsize=7.6, color=INK, fontweight="bold" if gap <= -1.5 else "normal",
+                   transform=a.get_yaxis_transform(), clip_on=False)
+        a.set_yticks(range(len(chunk)), [c[0] for c in chunk], fontsize=9, fontweight="bold")
+        a.set_ylim(len(chunk) - 0.5, -0.5)
+        a.set_xlim(-0.3, xmax)
+        a.tick_params(axis="x", labelsize=7)
+    ax.set_xlabel("Home wins", fontsize=8, color=INK_2)
+    top.legend(handles=[plt.Line2D([], [], marker="o", linestyle="", color=NEUTRAL, markeredgecolor=INK_2,
+                                   markersize=8, label="Home wins the betting market expected"),
+                        plt.Line2D([], [], marker="o", linestyle="", color=BAD, markeredgecolor=INK,
+                                   markersize=8, label="Home wins they actually got")],
+               loc="lower left", bbox_to_anchor=(0.0, 1.05), ncol=2, fontsize=7.4, frameon=False)
+    fig.subplots_adjust(left=0.13, right=0.66, bottom=0.6 / height, top=1 - 1.35 / height)
+    sub = (f"{season} season, {weeks}, AFC South and NFC South, neutral sites left out. Expected = the sum of the "
+           f"market's pregame chance for each home game\n(moneyline, margin removed). Three or four home games a team: "
+           f"this describes the season so far, it does not predict the rest of it.")
+    return _finish(fig, path, f"The South's missing home wins: expected {exp_total:.0f}, won {won_total}", sub,
+                   height)
+
+
 # ── data ─────────────────────────────────────────────────────────────────────
 def load_games(season: int) -> list[dict]:
     import psycopg2
@@ -353,11 +295,11 @@ def build_all(out_dir: Path, season: int) -> list[tuple[str, bool]]:
     weeks = f"weeks {ws[0]}-{ws[-1]}" if ws else "no weeks"
     name = f"nfl_take_home_by_division_{season}.png"
     south = f"nfl_take_south_teams_{season}.png"
-    ledger = f"nfl_take_south_ledger_{season}.png"
+    missing = f"nfl_take_south_missing_wins_{season}.png"
+    south_rows = team_rows(games, ("AFC South", "NFC South"))
     return [(name, chart(division_rows(games), Path(out_dir) / name, season, weeks)),
-            (south, team_chart(team_rows(games, ("AFC South", "NFC South")), Path(out_dir) / south, season, weeks)),
-            (ledger, ledger_chart(game_cells(games, ("AFC South", "NFC South")), ("AFC South", "NFC South"),
-                                  Path(out_dir) / ledger, season, weeks))]
+            (south, team_chart(south_rows, Path(out_dir) / south, season, weeks)),
+            (missing, missing_wins_chart(south_rows, Path(out_dir) / missing, season, weeks))]
 
 
 def main(argv: list[str] | None = None) -> int:
