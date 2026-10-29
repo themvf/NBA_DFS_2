@@ -98,3 +98,16 @@ def test_request_without_moved_players_is_unchanged():
     req["role_scenarios"]["H"]["carries"].pop("moved")
     req["role_scenarios"]["H"]["targets"].pop("moved")
     assert "moved_players_dropped" not in auto.drop_moved_players(req)["scenario_evidence"]
+
+
+def test_archive_page_keeps_one_file_per_week_and_an_ordered_index(tmp_path):
+    from research.nfl_game_leaders_auto import archive_page
+    from research.nfl_longest_touchdown import read
+    page = lambda week, at, n: {"season": 2026, "week": week, "decision_at": at, "games": [{}] * n}
+    archive_page(page(7, "2026-10-21T00:00:00Z", 14), tmp_path)
+    archive_page(page(8, "2026-10-28T00:00:00Z", 13), tmp_path)
+    archive_page(page(8, "2026-10-29T00:00:00Z", 14), tmp_path)
+    index = read(tmp_path / "index.json")["weeks"]
+    assert [w["key"] for w in index] == ["2026-w08", "2026-w07"]
+    assert index[0]["games"] == 14 and index[0]["decision_at"] == "2026-10-29T00:00:00Z"
+    assert read(tmp_path / "2026-w08.json")["decision_at"] == "2026-10-29T00:00:00Z"

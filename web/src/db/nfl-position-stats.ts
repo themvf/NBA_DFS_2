@@ -2,7 +2,7 @@ import "server-only";
 
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
-import saved from "@/data/game-leaders.json";
+import type { GameLeadersPage } from "@/lib/nfl/game-leaders-weeks";
 import { getGameLeadersAvailability } from "@/db/nfl-game-leaders-availability";
 import { ANCHOR_MARKETS, type PropQuote } from "@/lib/nfl-dfs/market-anchor";
 import { buildWeek, nameKey, type GameInput, type PlayerInput, type WeekResult } from "@/lib/nfl/position-stats";
@@ -30,7 +30,7 @@ const optional = (v: unknown) => (v == null ? null : Number(v));
  * positions and TD means, the latest pregame prop lines and the game odds.
  * Each extra source can fail on its own; the page then says what is missing.
  */
-export async function getNflPositionStatsWeek(): Promise<PositionStatsWeek> {
+export async function getNflPositionStatsWeek(saved: GameLeadersPage): Promise<PositionStatsWeek> {
   const games = saved.games as unknown as SavedGame[];
   const { season, week } = saved;
   const ids = [...new Set(games.flatMap((g) => Object.values(g.metrics).flatMap((m) => m.players.filter((p) => !p.residual).map((p) => p.identity))))];
