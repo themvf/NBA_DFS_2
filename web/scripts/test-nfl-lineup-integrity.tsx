@@ -56,10 +56,22 @@ assert.notEqual(defensiveSettingsFor('our').mode,'off');
 assert.equal(defensiveSettingsFor('fantasypros').mode,'off');
 const html=renderToStaticMarkup(<RunRiskSummary lineups={result.lineups} uncalibratedLeverage={false} exposureReport={missed}
   currentPlayers={[{dkPlayerId:result.lineups[0].playerIds[0],name:'Noah Fant',availability:{status:'QUESTIONABLE'}}]}
-  withheld={[{team:'NO',pool:'rush',donors:[{name:'Travis Etienne'}]}]} />);
+  withheld={[{team:'NO',pool:'rush',donors:[{name:'Travis Etienne',historicalUnits:14.2},{name:'Deep Reserve',historicalUnits:0.3}]},
+    {team:'NO',pool:'target',donors:[{name:'Travis Etienne',historicalUnits:3.1},{name:'Deep Reserve',historicalUnits:0.1}]},
+    {team:'KC',pool:'rush',donors:[{name:'Brashard Smith',historicalUnits:1.1}]}]} />);
 assert.match(html,/Completed with unmet targets/);
-assert.match(html,/Noah Fant.*questionable.*1 of 1/);
-assert.match(html,/Travis Etienne.*baseline projections/);
+assert.match(html,/Confirm before export:.*Noah Fant is questionable \(1 of 1, 100%\)/);
+// One summary line for every team whose teammates kept baselines: absences with a role named once, minor ones counted.
+assert.match(html,/Baseline projections kept.*on 2 teams \(NO Travis Etienne; 2 others averaged under 2 carries or receptions a game\)/);
+assert.equal((html.match(/Travis Etienne/g)??[]).length,1);
+assert.doesNotMatch(html,/Deep Reserve|Brashard Smith|role change/);
+// A team whose teammates' projections moved gets its own line, pools merged, unmoved commits omitted.
+const movedHtml=renderToStaticMarkup(<RunRiskSummary lineups={result.lineups} uncalibratedLeverage={false}
+  currentPlayers={[{dkPlayerId:901,name:'Ollie Gordon II',position:'RB',team:'MIA',absenceCommit:{before:{mean:8.6},after:{mean:11.9}}},
+    {dkPlayerId:902,name:'Jaylen Wright',position:'RB',team:'MIA',absenceCommit:{before:{mean:2.31},after:{mean:2.33}}}]}
+  withheld={[{team:'MIA',pool:'rush',donors:[{name:"De'Von Achane",historicalUnits:16}]},{team:'MIA',pool:'target',donors:[{name:"De'Von Achane",historicalUnits:5}]}]} />);
+assert.match(movedHtml,/MIA:.*De(?:'|&#x27;)Von Achane unavailable\. Starter-aware projections applied: Ollie Gordon II 8\.6 → 11\.9\./);
+assert.doesNotMatch(movedHtml,/Jaylen Wright|Baseline projections kept/);
 const oldRun = { ...invalid, playerIds: invalid.slots.map(s => s.player.dkPlayerId) };
 const oldHtml = renderToStaticMarkup(<RunRiskSummary lineups={[oldRun]} uncalibratedLeverage={false} currentPlayers={[smyth]} />);
 assert.match(oldHtml,/Rebuild required.*Charlie Smyth.*cannot be exported/);
