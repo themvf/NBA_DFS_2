@@ -8324,6 +8324,52 @@ and closing lines in `nfl_prop_implied_lines` and reports. Exploratory, weeks
   effects for players without lines) and 3 (predicted lines early in the
   week) are not built.
 
+## NFL DFS — Single Stat slates (`nfl-single-stat-v1`, 2026-10-29)
+
+DraftKings runs two no-cap NFL formats beside Classic and Showdown: game
+types 353 **Single Stat - Touchdowns** ("draft 3 players you think will have
+the most touchdowns") and 354 **Single Stat - Total Yards** ("most combined
+rushing and receiving yards"), read from the DK lobby (`getcontests`; the
+`api.draftkings.com` rules endpoints 403 from here). The export has NO
+`Salary` column, every row is `FLEX`, the pool is RB/WR/TE, and the same
+format runs as a multi-game Sunday slate and a single-game Thursday slate.
+It is a third format, `NflSlateFormat` = `single_stat_yards` |
+`single_stat_touchdowns` (`dk-salary-csv.ts`), stored in
+`nfl_dfs_slate_uploads.format` (CHECK widened in `db/schema.py` and
+`ensure-schema.ts`); `capFormatOf()` maps it to classic/showdown by game
+count only where code needs the game shape (live pool key, ownership slot
+model). Salary is stored as 0.
+
+- **Which stat** is decided by DraftKings' file name and the magnitude of
+  `AvgPointsPerGame` (a TD average cannot reach 8); either alone decides, a
+  disagreement is an error, neither is a refusal. Keep DK's file name.
+- **Projection** (`lib/nfl-dfs/single-stat.ts`, attached by `attachSingleStat`
+  after the market anchor and absence commit): the books' calibrated
+  rushing+receiving yards or anytime-TD rate when the anchor applied, else the
+  model's stat means (scaled by the absence commit), read only when the row's
+  points projection is supported — a position-prior row carries the
+  POSITION's stat line and would roster a practice-squad back at 45 yards.
+  Ranges are the model's own P10/P90-to-mean ratio applied to the stat, an
+  estimate. First slate (CAR@GB yards): 12 from the books, 17 model, 5 none.
+- **Ownership** is a stated prior (`nfl-single-stat-ownership-prior-v1`):
+  cube of the blend of DK's printed average (0.6) and the projection over a
+  300% budget, 60% cap, Q 0.7 / D 0.3. No Single Stat contest has been
+  imported; it drives GPP leverage only through the opt-in and is labelled.
+- **Optimizer** `optimizeSingleStat`: exhaustive over the top 40 by score,
+  cash = projection, GPP = `projected × (1 − own)^k` (k 0.5) with per-lineup
+  noise, max exposure, min unique 1–3, locks, excludes, seeded. No team or
+  game rule (DraftKings states none). Runs save to the same tables under
+  `settings.kind = 'single_stat'`, optimizer version `nfl-single-stat-v1`,
+  slots `FLEX`×3, `ourProj` in the snapshot holding the STAT so restore reads
+  the slate's unit. The salary-cap optimizer refuses these slates and the
+  workload comparison, defensive captures and the points report card skip
+  them. Export writes three `FLEX` columns; the entry-file layout is inferred
+  from the salary export and not yet verified against a real DK entry file.
+- **Page**: `single-stat-workspace.tsx` replaces the salary-cap workspace for
+  these slates (no stacks, captains, salary bands or QA ruleset apply). Not
+  graded: results import and the weekly reviews cover Classic and Showdown
+  only.
+
 ## NFL DFS — Winners-shape build preset (`nfl-winners-shape-v4`, 2026-10-11; v1 2026-10-10)
 
 A "Build shape" select on `/dfs/nfl` (GPP mode, Classic and Showdown):

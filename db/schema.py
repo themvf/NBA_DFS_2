@@ -2877,7 +2877,7 @@ TABLES = [
         eligibility_manifest_digest TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE(file_digest, projection_run_id),
-        CHECK(format IN ('classic','showdown')),
+        CHECK(format IN ('classic','showdown','single_stat_yards','single_stat_touchdowns')),
         CHECK(player_count > 0)
     )""",
     """CREATE TABLE IF NOT EXISTS nfl_dfs_field_contests (
@@ -4931,6 +4931,22 @@ MIGRATIONS = [
     "ALTER TABLE ff_source_snapshots ADD COLUMN IF NOT EXISTS model_eligible BOOLEAN NOT NULL DEFAULT TRUE",
     "ALTER TABLE ff_source_snapshots ADD COLUMN IF NOT EXISTS eligibility_reason TEXT",
     "ALTER TABLE nfl_dfs_slate_uploads ADD COLUMN IF NOT EXISTS eligibility_manifest_digest TEXT",
+    # 2026-10-29: DraftKings Single Stat slates (no cap, 3 FLEX picks, one
+    # stat: touchdowns or rushing+receiving yards) join Classic and Showdown.
+    # The CREATE above only applies to a fresh database; replace the old
+    # two-value CHECK on an existing one. Mirrored in web/src/db/ensure-schema.ts.
+    """DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='nfl_dfs_slate_uploads'::regclass
+            AND conname='nfl_dfs_slate_uploads_format_check'
+            AND pg_get_constraintdef(oid) NOT LIKE '%single_stat_yards%') THEN
+            ALTER TABLE nfl_dfs_slate_uploads DROP CONSTRAINT nfl_dfs_slate_uploads_format_check;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='nfl_dfs_slate_uploads'::regclass
+            AND conname='nfl_dfs_slate_uploads_format_check') THEN
+            ALTER TABLE nfl_dfs_slate_uploads ADD CONSTRAINT nfl_dfs_slate_uploads_format_check
+                CHECK(format IN ('classic','showdown','single_stat_yards','single_stat_touchdowns'));
+        END IF;
+    END $$""",
     "ALTER TABLE nfl_dfs_slate_players ADD COLUMN IF NOT EXISTS platform_eligibility JSONB NOT NULL DEFAULT '{}'::jsonb",
     "ALTER TABLE nfl_dfs_projection_runs ADD COLUMN IF NOT EXISTS availability_manifest JSONB NOT NULL DEFAULT '{}'::jsonb",
     # Older schedule backfills predate commence-time capture. Raw official

@@ -1,5 +1,6 @@
 /**
- * DraftKings NFL salary-CSV parser (Classic + Showdown Captain Mode).
+ * DraftKings NFL salary-CSV parser (Classic, Showdown Captain Mode, and the
+ * no-cap Single Stat formats).
  *
  * Deliberately separate from `web/src/app/dfs/actions.ts`'s `parseDkCsv`,
  * which serves NBA/MLB. That one splits each line on `,` with no quote
@@ -15,11 +16,63 @@
  * purchase option.
  *
  * See docs/nfl-dfs-spec.md section 1.
+ *
+ * **Single Stat** (DraftKings game types 353 "Single Stat - Touchdowns" and
+ * 354 "Single Stat - Total Yards", read from the DK lobby 2026-10-29): draft
+ * 3 players, no salary cap, one stat scores -- touchdowns, or combined
+ * rushing + receiving yards. The export has NO `Salary` column, every row is
+ * a `FLEX` slot, and the pool is RB/WR/TE only. The same format runs as a
+ * multi-game slate (Sunday) and as a single-game slate (Thursday night), so
+ * "single stat" is a third format, not a flavour of Classic or Showdown:
+ * nothing about captains, salary or the Classic slots applies.
  */
 
 import { parseCsvLine } from "@/app/dfs/csv";
 
-export type NflSlateFormat = "classic" | "showdown";
+export type NflSlateFormat = "classic" | "showdown" | "single_stat_yards" | "single_stat_touchdowns";
+export type NflSingleStat = "yards" | "touchdowns";
+export type NflSingleStatFormat = Extract<NflSlateFormat, `single_stat_${string}`>;
+/** The salary-cap formats the salary machinery (captains, cap, slots) understands. */
+export type NflCapFormat = "classic" | "showdown";
+
+/** DraftKings' own description: "Simply draft 3 players". */
+export const SINGLE_STAT_ROSTER_SIZE = 3;
+export const SINGLE_STAT_LABELS: Record<NflSingleStat, string> = { yards: "Total Yards", touchdowns: "Touchdowns" };
+/** The unit a projection is shown in. */
+export const SINGLE_STAT_UNITS: Record<NflSingleStat, string> = { yards: "yds", touchdowns: "TD" };
+
+export function isSingleStatFormat(format: string | null | undefined): format is NflSingleStatFormat {
+  return format === "single_stat_yards" || format === "single_stat_touchdowns";
+}
+
+export function singleStatOf(format: string | null | undefined): NflSingleStat | null {
+  return format === "single_stat_yards" ? "yards" : format === "single_stat_touchdowns" ? "touchdowns" : null;
+}
+
+export function singleStatFormatFor(stat: NflSingleStat): NflSingleStatFormat {
+  return stat === "yards" ? "single_stat_yards" : "single_stat_touchdowns";
+}
+
+/**
+ * The salary-cap format whose game-shape rules a slate most resembles, for
+ * code that only needs to know "one game or many" (the live DK pool key, the
+ * ownership capability's slot model). A single-stat slate is never a Showdown
+ * for captain or salary purposes; callers that care about those must check
+ * `isSingleStatFormat` first.
+ */
+export function capFormatOf(format: string, games: readonly string[] = []): NflCapFormat {
+  if (format === "showdown") return "showdown";
+  if (isSingleStatFormat(format)) return games.length === 1 ? "showdown" : "classic";
+  return "classic";
+}
+
+/** "Total Yards · CAR@GB" / "Touchdowns · 11 games" / "Showdown · CAR@GB" / "Classic · 11 games". */
+export function describeNflFormat(format: string, games: readonly string[]): string {
+  const stat = singleStatOf(format);
+  const scope = games.length === 1 ? games[0] : `${games.length} games`;
+  if (stat) return `${SINGLE_STAT_LABELS[stat]} · ${scope}`;
+  return format === "showdown" ? `Showdown · ${games.join(", ")}` : `Classic · ${scope}`;
+}
 
 export type NflPosition = "QB" | "RB" | "WR" | "TE" | "DST" | "K";
 
@@ -125,7 +178,38 @@ export type NflDkSlate = {
 
 export class NflDkCsvError extends Error {}
 
-const REQUIRED_COLUMNS = ["Name", "ID", "Roster Position", "Salary", "TeamAbbrev"] as const;
+/** `Salary` is deliberately NOT required: DraftKings' Single Stat export has none. */
+const REQUIRED_COLUMNS = ["Name", "ID", "Roster Position", "TeamAbbrev"] as const;
+
+/**
+ * Which single stat a no-salary file scores. The file itself does not say, so
+ * two independent reads must agree: DraftKings' own file name ("DKSalaries_
+ * Total Yards_Showdown.csv", "DKSalaries_Single Stat Touchdowns.csv") and the
+ * magnitude of `AvgPointsPerGame` (a touchdown average cannot reach 8; a
+ * yardage slate's leader averages dozens). Either alone decides when the
+ * other is silent; a disagreement is an error, never a guess.
+ */
+export function detectSingleStat(avgPointsPerGame: readonly (number | null)[], fileName?: string | null): NflSingleStat {
+  const name = (fileName ?? "").toLowerCase();
+  const hint: NflSingleStat | null = /yard/.test(name) ? "yards" : /touchdown|\btds?\b/.test(name) ? "touchdowns" : null;
+  const averages = avgPointsPerGame.filter((v): v is number => v != null && Number.isFinite(v));
+  const max = averages.length ? Math.max(...averages) : 0;
+  const observed: NflSingleStat | null = max > SINGLE_STAT_YARDS_FLOOR ? "yards" : max > 0 ? "touchdowns" : null;
+  if (hint && observed && hint !== observed) {
+    throw new NflDkCsvError(
+      `The file name says ${SINGLE_STAT_LABELS[hint]} but the AvgPointsPerGame column (max ${max}) looks like ${SINGLE_STAT_LABELS[observed]}. Check which DraftKings Single Stat contest this export came from.`,
+    );
+  }
+  const stat = hint ?? observed;
+  if (!stat) {
+    throw new NflDkCsvError(
+      "This looks like a DraftKings Single Stat export (no Salary column, every row FLEX), but neither the file name nor the averages say whether it scores Total Yards or Touchdowns. Keep DraftKings' file name (it includes the stat) and upload again.",
+    );
+  }
+  return stat;
+}
+/** Above this per-game average the stat can only be yards. */
+export const SINGLE_STAT_YARDS_FLOOR = 8;
 
 /** DK writes a UTF-8 BOM ahead of the first header cell. */
 function normalizeHeaderCell(cell: string): string {
@@ -140,7 +224,7 @@ function normalizeHeaderCell(cell: string): string {
 function findHeaderIndex(lines: string[]): number {
   for (let i = 0; i < lines.length; i++) {
     const cells = parseCsvLine(lines[i]).map(normalizeHeaderCell);
-    if (cells.includes("Roster Position") && cells.includes("Salary") && cells.includes("ID")) {
+    if (cells.includes("Roster Position") && cells.includes("ID") && cells.includes("Name")) {
       return i;
     }
   }
@@ -192,13 +276,13 @@ type RawRow = {
  * `warnings` so a mostly-good slate still loads and the user can see what
  * was dropped.
  */
-export function parseNflDkSalaryCsv(content: string): NflDkSlate {
+export function parseNflDkSalaryCsv(content: string, options: { fileName?: string | null } = {}): NflDkSlate {
   const lines = content.split(/\r?\n/).filter((line) => line.trim().length > 0);
   const headerIndex = findHeaderIndex(lines);
   if (headerIndex === -1) {
     throw new NflDkCsvError(
       "Could not find a DraftKings salary header row (expected columns including " +
-        "\"Roster Position\", \"Salary\" and \"ID\"). Is this the salary export rather than the entry file?",
+        "\"Roster Position\", \"Name\" and \"ID\"). Is this the salary export rather than the entry file?",
     );
   }
 
@@ -226,7 +310,7 @@ export function parseNflDkSalaryCsv(content: string): NflDkSlate {
   for (let i = headerIndex + 1; i < lines.length; i++) {
     const cells = parseCsvLine(lines[i]).map((cell) => cell.trim());
     // A second table (the entry-file section) starts with its own header.
-    if (cells.includes("Roster Position") && cells.includes("Salary")) break;
+    if (cells.includes("Roster Position") && cells.includes("ID")) break;
 
     const name = cells[nameCol] ?? "";
     const idRaw = cells[idCol] ?? "";
@@ -258,8 +342,10 @@ export function parseNflDkSalaryCsv(content: string): NflDkSlate {
     const position = parsePosition(positionSource, warnings, name);
     if (!position) continue;
 
-    const salary = Number.parseInt((cells[salaryCol] ?? "").replace(/[^0-9]/g, ""), 10);
-    if (!Number.isFinite(salary) || salary <= 0) {
+    // A Single Stat export has no Salary column at all; its players carry 0.
+    // A salary-cap export with a blank salary is still a bad row.
+    const salary = salaryCol < 0 ? 0 : Number.parseInt((cells[salaryCol] ?? "").replace(/[^0-9]/g, ""), 10);
+    if (salaryCol >= 0 && (!Number.isFinite(salary) || salary <= 0)) {
       warnings.push(`Missing or zero salary for ${name} - row skipped`);
       continue;
     }
@@ -304,9 +390,19 @@ export function parseNflDkSalaryCsv(content: string): NflDkSlate {
     throw new NflDkCsvError("No players parsed from the DraftKings CSV.");
   }
 
-  const format: NflSlateFormat = rows.some((row) => row.rosterPositions.includes("CPT"))
-    ? "showdown"
-    : "classic";
+  const anyCaptain = rows.some((row) => row.rosterPositions.includes("CPT"));
+  const allFlex = rows.every((row) => row.rosterPositions.length === 1 && row.rosterPositions[0] === "FLEX");
+  let format: NflSlateFormat;
+  if (salaryCol < 0) {
+    if (anyCaptain || !allFlex) {
+      throw new NflDkCsvError(
+        "This file has no Salary column, but it is not a DraftKings Single Stat export either (every row of one is a FLEX slot). Export the salary file again from DraftKings.",
+      );
+    }
+    format = singleStatFormatFor(detectSingleStat(rows.map((row) => row.avgFptsDk), options.fileName));
+  } else {
+    format = anyCaptain ? "showdown" : "classic";
+  }
 
   const players = format === "showdown" ? collapseShowdownRows(rows, warnings) : rows.map(toClassicPlayer);
 
@@ -328,6 +424,15 @@ export function parseNflDkSalaryCsv(content: string): NflDkSlate {
     }
     if (teams.length !== 2) {
       warnings.push(`Showdown pool has ${teams.length} team(s) (${teams.join(", ")}) - expected exactly 2.`);
+    }
+  }
+  if (isSingleStatFormat(format)) {
+    const unexpected = players.filter((p) => !NFL_FLEX_POSITIONS.includes(p.position));
+    if (unexpected.length) {
+      warnings.push(`${unexpected.length} player(s) outside RB/WR/TE in a Single Stat pool (${[...new Set(unexpected.map((p) => p.position))].join(", ")}); DraftKings lists only RB, WR and TE there. They stay in the pool.`);
+    }
+    if (players.length < SINGLE_STAT_ROSTER_SIZE) {
+      warnings.push(`Only ${players.length} players; a Single Stat lineup needs ${SINGLE_STAT_ROSTER_SIZE}.`);
     }
   }
 

@@ -36,6 +36,9 @@ def completed_uploads(db, season: int, week: int | None = None) -> list[dict]:
         FROM nfl_dfs_slate_uploads u
         JOIN nfl_dfs_projection_runs r ON r.run_id = u.projection_run_id
         WHERE r.season = %s AND (%s::int IS NULL OR r.week = %s)
+          -- Single Stat slates score yards or touchdowns, not DK points; they
+          -- are not part of the points report card.
+          AND u.format IN ('classic', 'showdown')
         ORDER BY r.week, u.created_at
         """,
         (season, week, week),

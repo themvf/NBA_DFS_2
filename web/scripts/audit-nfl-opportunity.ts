@@ -1,3 +1,4 @@
+import { capFormatOf } from "../src/lib/nfl-dfs/dk-salary-csv";
 /** Read-only saved-slate evidence. No credentials are written to the artifact. */
 import { writeFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
@@ -45,7 +46,7 @@ async function main() {
   assert.equal(explanation.boomRate, resolvedJones.boomRate);
   // Pure local solve, never a saved optimizer run or contest submission.
   const solve = optimizeNflLineups(workspace.slate.players, {
-    format: workspace.slate.format, mode: 'cash', projectionSource: 'our', allowDkFallback: false,
+    format: capFormatOf(workspace.slate.format, workspace.slate.games), mode: 'cash', projectionSource: 'our', allowDkFallback: false,
     nLineups: 1, minSalary: 0, maxExposure: 1, minUnique: 1, stackPassCatchers: 0,
     bringBack: false, randomness: 0, lockedPlayerIds: [jones.dkPlayerId], excludedPlayerIds: [],
     minExposureByPlayer: {}, maxExposureByPlayer: {},

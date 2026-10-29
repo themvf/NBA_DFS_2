@@ -1,10 +1,11 @@
 import type { NflGeneratedLineup, NflOptimizerPlayer } from '@/app/dfs/nfl/nfl-optimizer';
+import { describeNflFormat } from '@/lib/nfl-dfs/dk-salary-csv';
 
 export function savedSlateLabel(format: string, gameInfo: string | null, games: string[]) {
   const match = gameInfo?.match(/(\d{2})\/(\d{2})\/(\d{4})/);
   const date = match ? new Date(`${match[3]}-${match[1]}-${match[2]}T12:00:00Z`) : null;
   const day = date ? new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(date) : 'Date unavailable';
-  return `${day} · ${format === 'showdown' ? `Showdown · ${games.join(', ')}` : `Classic · ${games.length} games`}`;
+  return `${day} · ${describeNflFormat(format, games)}`;
 }
 
 type FrozenPlayer = Partial<NflOptimizerPlayer> & { dkPlayerId: number; floor?: number | null; ceiling?: number | null; dkAvg?: number | null; fantasypros?: number | null; linestar?: number | null; ownership?: number | null; custom?: number | null };
