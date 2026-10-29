@@ -8157,8 +8157,9 @@ analysis, exposure vs the field, and every lineup they entered). Pure layer
   Week 6 was imported this way on 2026-10-20. **So no stat-api contest carries a
   payout table any more** (none ever did: the older full imports predate the
   column), and the ghost grader, which requires one, graded nothing in week 6.
-  The only full-standings source left is a DraftKings export of a contest you
-  entered: `ingest/nfl_dfs_field_audit.py --contest FILE` now writes its score
+  The only full-standings source left is a DraftKings export (of any lobby
+  contest, entered or not, via Watch Live; see the ghost factorial amendment of
+  2026-10-29): `ingest/nfl_dfs_field_audit.py --contest FILE` now writes its score
   curve and a payout table (`model/dk_contest_payouts.py`,
   `dk-contest-payouts-v1`) from the export's points and DraftKings' public prize
   table (`fetch_contest_detail`), ties split over the places they occupy, and
@@ -8587,6 +8588,20 @@ refuses `--save`). Things not to undo:
   run stores `[]` plus a digest.
 - **Anchored players keep `supersededAbsenceCommit`,** so the
   model-projection and no-commit arms can revert both adjustments exactly.
+- **The grading contest is the owner's DraftKings export, not stat-api
+  (amendment 2026-10-29, owner's decision: no stat-api).** No stat-api
+  import ever carried a payout table and the flagships have been top-100
+  previews since 2026-10-19, so `nfl_dfs_ghost_results` had 0 rows all
+  season. DraftKings' own help center documents exporting the full standings
+  CSV of ANY lobby contest, entered or not (Lobby → sport → Watch Live →
+  contest → Export Lineups to CSV; 10 days after the contest ends), so no
+  entry and no paid service is needed. Weekly: export the Millionaire and the
+  primetime Showdowns, `python -m ingest.nfl_dfs_field_audit --contest
+  contest-standings-<id>.csv --keep-all` (score curve from every entry, payout
+  table from DraftKings' public prize table), then the Tuesday grade picks it
+  up. `contest_for` accepts any source with both curves; the pool-rule grader
+  already did. Keep the file name DraftKings gives it: the contest id is read
+  from `contest-standings-<id>`.
 
 ## NFL DFS — the page read, measured and cut (2026-10-10)
 

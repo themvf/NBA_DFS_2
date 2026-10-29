@@ -54,3 +54,43 @@ def test_effects_recover_a_planted_factor_and_withhold_before_the_milestone():
     assert abs(eff["x=off"]["effect"] - 0.2) < 0.02 and eff["x=off"]["candidate"]
     assert not eff["y=2"]["candidate"] and not eff["y=3"]["candidate"]
     assert full["screening"]["roi"]["effects"] is None or full["screening"]["roi"]["effects"] == []
+
+
+class _FakeDb:
+    """Answers contest_for's three queries from canned rows; records nothing."""
+
+    def __init__(self, contests, ownership):
+        self.contests, self.ownership = contests, ownership
+
+    def execute(self, sql, params=()):
+        if "FROM nfl_dfs_field_ownership" in sql:
+            return [{"normalized_name": n} for n in self.ownership.get(params[0], [])]
+        if "SELECT 1 FROM nfl_dfs_field_contests" in sql:
+            return [{"?column?": 1}] if self.contests else []
+        return [c for c in self.contests if c["score_curve"] is not None and c["payout_curve"] is not None]
+
+
+def _freeze(names):
+    return {"format": "classic", "first_kickoff": "2026-10-25T17:00:00Z",
+            "input_snapshot": [{"name": n} for n in names]}
+
+
+def test_contest_for_accepts_a_draftkings_export_with_both_curves():
+    from research import nfl_ghost_grade as r
+    names = [f"player{c}" for c in "abcdefghij"]
+    contests = [{"contest_id": "196905290", "contest_name": "Millionaire", "entry_count": 147058,
+                 "score_curve": [[1, 200.0]], "payout_curve": {"breakpoints": [[150.0, 20.0]]},
+                 "entry_fee": 20.0, "file_name": "contest-standings-196905290"}]
+    best, reason = r.contest_for(_FakeDb(contests, {"196905290": names}), _freeze(names))
+    assert best is not None and best["contest_id"] == "196905290"
+    assert best["source"] == "draftkings-export" and best["overlap"] == 1.0
+
+
+def test_contest_for_still_refuses_a_stat_api_preview_without_curves():
+    from research import nfl_ghost_grade as r
+    names = [f"player{c}" for c in "abcdefghij"]
+    contests = [{"contest_id": "1", "contest_name": "Millionaire", "entry_count": 147058,
+                 "score_curve": None, "payout_curve": None, "entry_fee": 20.0, "file_name": "stat-api:1"}]
+    best, reason = r.contest_for(_FakeDb(contests, {"1": names}), _freeze(names))
+    assert best is None and "payout table" in reason
+    assert r.contest_source("stat-api:1") == "stat-api"
