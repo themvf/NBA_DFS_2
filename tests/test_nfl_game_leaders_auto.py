@@ -111,3 +111,20 @@ def test_archive_page_keeps_one_file_per_week_and_an_ordered_index(tmp_path):
     assert [w["key"] for w in index] == ["2026-w08", "2026-w07"]
     assert index[0]["games"] == 14 and index[0]["decision_at"] == "2026-10-29T00:00:00Z"
     assert read(tmp_path / "2026-w08.json")["decision_at"] == "2026-10-29T00:00:00Z"
+
+
+def test_recent_played_skips_games_the_player_missed():
+    from research.nfl_game_leaders_auto import attach_recent_played
+    games = [{"game_id": f"g{i}", "kickoff": f"2026-09-{10 + i:02d}T17:00:00Z", "away": "NE", "home": "X",
+              "completed": True} for i in range(7)]
+    box = lambda gid, ident, tgt, yds: {"game_id": gid, "team": "NE", "identity": ident, "carries": 0,
+                                         "targets": tgt, "receptions": 1, "rushing_yards": 0, "receiving_yards": yds}
+    boxes = [box(f"g{i}", "teammate", 3, 20) for i in range(7)]
+    boxes += [box("g0", "wr", 8, 90), box("g5", "wr", 10, 27), box("g6", "wr", 6, 48), box("g4", "wr", 0, 0)]
+    entry = {"game": {"kickoff": "2026-10-01T17:00:00Z"},
+             "metrics": {"receiving_yards": {"players": [
+                 {"identity": "wr", "team": "NE", "residual": False},
+                 {"identity": "OTHER:NE", "team": "NE", "residual": True}]}}}
+    p = attach_recent_played(entry, {"games": games, "boxes": boxes})["metrics"]["receiving_yards"]["players"][0]
+    # g0 falls outside the last six team games; g4 had no target, so it is not a game played.
+    assert (p["recent_team_games"], p["recent_played_games"], p["recent_played_mean"]) == (6, 2, 37.5)
