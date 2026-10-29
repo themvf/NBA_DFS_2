@@ -30,6 +30,24 @@ never reads them, and nothing waits for them.
   later (Thursday, Sunday and Monday nights, plus holiday primetime games).
 - These are the contests stat-api serves in full without a key, so they are
   the ones we can grade. Every other slate is skipped, with the reason recorded.
+  **Amendment, 2026-10-29 (owner's decision: no stat-api).** stat-api has
+  served flagships as top-100 previews since 2026-10-19 (no score curve, no
+  payout table), and no stat-api import ever carried a payout table, so the
+  grader had graded 0 Classic slates all season. The grading contest now comes
+  from the owner's DraftKings standings export instead: DraftKings' help
+  center documents "Export Lineups to CSV" for ANY lobby contest, entered or
+  not (Lobby → sport → Watch Live → contest), available for 10 days after the
+  contest ends. The weekly routine is to export the flagship Millionaire (and
+  the primetime Showdowns) and import each with
+  `python -m ingest.nfl_dfs_field_audit --contest contest-standings-<id>.csv
+  --keep-all`, which writes the score curve from every entry's points and the
+  payout table from DraftKings' public prize table. `contest_for` no longer
+  filters on the import source; it requires only complete standings AND a
+  payout table, same format, imported within 10 days of kickoff, 90% player
+  overlap. The population (Sunday main Classic, primetime Showdowns) and every
+  outcome, threshold and milestone are unchanged; the flagship Millionaire is
+  the same contest stat-api was serving, so graded slates before and after this
+  date are the same cohort. A week with no export is "not graded", as before.
 - Season 2026 from week 6 Sunday, then every week. A slate without a gradable
   flagship is reported as not graded, never dropped silently.
 
@@ -149,7 +167,9 @@ version and a new cohort.
   counted as such, never summed as zero.
 - **Payouts:** thresholds come from the contest's score curve (top 1% and
   0.1%). Payouts come from the contest's own score-to-payout table, stored at
-  import from complete standings, with ties already split by DraftKings. A
+  import from complete standings (since 2026-10-29 from the owner's DraftKings
+  export plus DraftKings' public prize table, `model/dk_contest_payouts.py`,
+  ties split over the places they occupy), with ties already split by DraftKings. A
   ghost lineup is not inserted into the field, the standard approximation.
 - **Primary outcome:** top-1% hits per scored lineup.
 - **Secondary outcomes:** return per dollar entered, and completion (built

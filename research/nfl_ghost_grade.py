@@ -4,8 +4,9 @@
     python -m research.nfl_ghost_grade --season 2026 --report-only
     python -m research.nfl_ghost_grade --dry-run
 
-For each frozen slate it finds the flagship contest that slate fed (stat-api
-import, complete standings, same format, at least 90% of the contest's
+For each frozen slate it finds the flagship contest that slate fed (complete
+standings with a payout table, from a stat-api import or the owner's
+DraftKings standings export, same format, at least 90% of the contest's
 players present in the frozen pool), scores the house, every arm and every
 owner build saved for the same slate with the contest's own player points
 (then our weekly results by player id), places them against the score curve,
@@ -31,13 +32,25 @@ DESIGN_VERSION = "nfl-ghost-factorial-v1"
 MIN_OVERLAP = 0.90
 
 
+def contest_source(file_name: str | None) -> str:
+    """Where a contest's standings came from: a stat-api import or a DraftKings standings export."""
+    return "stat-api" if (file_name or "").startswith("stat-api:") else "draftkings-export"
+
+
 def contest_for(db: DatabaseManager, freeze: dict) -> tuple[dict | None, str]:
+    """The contest this slate is graded against: complete standings (a score curve) AND a payout
+    table, same format, imported in the 10 days after kickoff, sharing MIN_OVERLAP of its players
+    with the frozen pool. Amendment 2026-10-29: the source no longer matters. stat-api serves
+    flagships as top-100 previews (no curves) since 2026-10-19, so the curves now come from the
+    owner's DraftKings standings export (`python -m ingest.nfl_dfs_field_audit --contest FILE`),
+    which DraftKings offers for any lobby contest, entered or not, for 10 days after it ends."""
     names = {normalize_name(p["name"]) for p in freeze["input_snapshot"]}
-    best, reason = None, "no complete flagship import with a payout table after this slate's kickoff"
+    best, reason = None, ("no contest with complete standings and a payout table imported after this slate's kickoff "
+                          "(export the flagship's standings from DraftKings and import it with ingest.nfl_dfs_field_audit)")
     for c in db.execute(
-            """SELECT contest_id, contest_name, entry_count, score_curve, payout_curve, entry_fee
+            """SELECT contest_id, contest_name, entry_count, score_curve, payout_curve, entry_fee, file_name
                  FROM nfl_dfs_field_contests
-                WHERE format = %s AND file_name LIKE 'stat-api:%%' AND score_curve IS NOT NULL AND payout_curve IS NOT NULL
+                WHERE format = %s AND score_curve IS NOT NULL AND payout_curve IS NOT NULL
                   AND imported_at > %s AND imported_at < %s + interval '10 days'""",
             (freeze["format"], freeze["first_kickoff"], freeze["first_kickoff"])):
         own = [r["normalized_name"] for r in db.execute("SELECT normalized_name FROM nfl_dfs_field_ownership WHERE contest_id=%s", (c["contest_id"],))]
@@ -46,10 +59,12 @@ def contest_for(db: DatabaseManager, freeze: dict) -> tuple[dict | None, str]:
         overlap = sum(1 for n in own if n in names) / len(own)
         if overlap >= MIN_OVERLAP and (best is None or overlap > best["overlap"] or (overlap == best["overlap"] and c["entry_count"] > best["entries"])):
             best = {"contest_id": c["contest_id"], "name": c["contest_name"], "entries": int(c["entry_count"]),
-                    "score_curve": c["score_curve"], "payout_curve": c["payout_curve"], "entry_fee": c["entry_fee"], "overlap": round(overlap, 3)}
-    if best is None and db.execute("""SELECT 1 FROM nfl_dfs_field_contests WHERE format=%s AND file_name LIKE 'stat-api:%%'
+                    "score_curve": c["score_curve"], "payout_curve": c["payout_curve"], "entry_fee": c["entry_fee"],
+                    "overlap": round(overlap, 3), "source": contest_source(c.get("file_name"))}
+    if best is None and db.execute("""SELECT 1 FROM nfl_dfs_field_contests WHERE format=%s
             AND imported_at > %s AND imported_at < %s + interval '10 days' LIMIT 1""", (freeze["format"], freeze["first_kickoff"], freeze["first_kickoff"])):
-        reason = f"contests were imported but none shares {MIN_OVERLAP:.0%} of its players with this slate, or none has a payout table"
+        reason = (f"contests were imported but none shares {MIN_OVERLAP:.0%} of its players with this slate, or none has "
+                  "complete standings with a payout table (a stat-api top-100 preview has neither)")
     return best, reason
 
 
