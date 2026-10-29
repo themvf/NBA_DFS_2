@@ -37,7 +37,7 @@ jobs:
         run: python -m research.nfl_game_leaders_auto
       - name: Commit only a changed, validated publication
         run: |
-          git add -f web/src/data/game-leaders.json
+          git add -f web/src/data/game-leaders.json web/src/data/game-leaders-weeks
           # Every capture/requests file a game's sources name: the DK pricing
           # refresh re-creates each forecast from these, so all must be in the repo.
           python -c "import json; d=json.load(open('web/src/data/game-leaders.json')); print('\n'.join(sorted({p for g in d['games'] for p in g['sources'].values()})))" > /tmp/sources.txt

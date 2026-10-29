@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { getNflPositionStatsWeek } from "@/db/nfl-position-stats";
+import { gameLeadersWeeks, loadGameLeadersPage } from "@/lib/nfl/game-leaders-weeks";
 import { GROUPS, POSITION_STATS_VERSION, TD_SCALE_CAP, type PlayerRow, type Source, type Stats } from "@/lib/nfl/position-stats";
 
 export const dynamic = "force-dynamic";
@@ -37,10 +38,13 @@ function StatCard({ title, stats, teams, emphasis }: { title: string; stats: Sta
   </div>;
 }
 
-export default async function NflPositionStatsPage({ searchParams }: { searchParams: Promise<{ team?: string; position?: string }> }) {
+export default async function NflPositionStatsPage({ searchParams }: { searchParams: Promise<{ team?: string; position?: string; week?: string }> }) {
   await connection();
   const params = await searchParams;
-  const week = await getNflPositionStatsWeek();
+  const weeks = gameLeadersWeeks();
+  const { page: saved, key: weekShown } = await loadGameLeadersPage(params.week);
+  const week = await getNflPositionStatsWeek(saved);
+  const pastWeek = weekShown !== weeks[0].key;
   const teams = [...week.teams].sort((a, b) => (b.total.rushYds + b.total.recYds) - (a.total.rushYds + a.total.recYds));
   const teamCodes = teams.map((t) => t.team).sort();
   const team = teamCodes.includes(params.team ?? "") ? params.team! : "ALL";
@@ -61,14 +65,14 @@ export default async function NflPositionStatsPage({ searchParams }: { searchPar
     </div><nav className="flex gap-2 text-sm"><Link href="/nfl/game-leaders" className="rounded-lg border bg-white px-3 py-2 font-medium">Game leaders</Link><Link href="/nfl/projections" className="rounded-lg border bg-white px-3 py-2 font-medium">Projections</Link></nav></header>
 
     <section className="grid gap-3 rounded-xl border bg-white p-4 text-sm shadow-sm sm:grid-cols-4">
-      <div><p className="text-xs text-slate-500">Week</p><strong>{week.season} · Week {week.week}</strong><p className="text-xs text-slate-500">{week.teamCount} teams, {week.teamCount / 2} games</p></div>
+      <div><p className="text-xs text-slate-500">Week</p><form method="get" className="flex items-center gap-2"><select name="week" defaultValue={weekShown} className="rounded border p-1 font-semibold">{weeks.map((w) => <option key={w.key} value={w.key}>{w.season} · Week {w.week}</option>)}</select><button type="submit" className="rounded border px-2 py-1 text-xs">Show</button></form><p className="text-xs text-slate-500">{week.teamCount} teams, {week.teamCount / 2} games</p></div>
       <div><p className="text-xs text-slate-500">Team simulation</p><strong>{eastern(week.simulatedAt)}</strong></div>
       <div><p className="text-xs text-slate-500">Vegas lines</p><strong>{vegasCount} of {counted} players</strong><p className="text-xs text-slate-500">{week.newestLine ? `newest ${eastern(week.newestLine)}` : "none captured yet"}</p></div>
-      <div><p className="text-xs text-slate-500">Injury check</p><strong>{week.availability.checked} of {week.availability.checked + week.availability.incomplete} games</strong><p className="text-xs text-slate-500">{ruledOut.length} ruled-out players left out</p></div>
+      <div><p className="text-xs text-slate-500">Injury check</p>{pastWeek ? <><strong>Not re-run</strong><p className="text-xs text-slate-500">past week; {ruledOut.length} players ruled out in the model left out</p></> : <><strong>{week.availability.checked} of {week.availability.checked + week.availability.incomplete} games</strong><p className="text-xs text-slate-500">{ruledOut.length} ruled-out players left out</p></>}</div>
     </section>
 
     {week.errors.map((e) => <p key={e} role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">{e}</p>)}
-    {week.availability.incomplete > 0 && <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">Injury sources were not fresh enough to check {week.availability.incomplete} game{week.availability.incomplete === 1 ? "" : "s"}; a player ruled out there may still be counted.</p>}
+    {!pastWeek && week.availability.incomplete > 0 && <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">Injury sources were not fresh enough to check {week.availability.incomplete} game{week.availability.incomplete === 1 ? "" : "s"}; a player ruled out there may still be counted.</p>}
     {week.skippedGames.length > 0 && <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">Not simulated, so not on this page: {week.skippedGames.map((g) => g.gameId.replace(/^\d{4}_\d{2}_/, "").replace("_", " @ ")).join(", ")}.</p>}
 
     <section><h2 className="mb-3 text-xl font-bold">League totals</h2>
@@ -89,7 +93,7 @@ export default async function NflPositionStatsPage({ searchParams }: { searchPar
             <th className="border-l p-2 text-right">Rec</th><th className="p-2 text-right">Rec yds</th><th className="p-2 text-right">TD</th>
             <th className="border-l p-2 text-right">Yds</th><th className="p-2 text-right">Rec</th><th className="p-2 text-right">TD</th><th className="p-2">Rec yds budget</th></tr></thead>
         <tbody>{teams.map((t) => <tr key={t.team} className="border-b last:border-0">
-          <td className="p-2 font-bold"><Link className="underline decoration-slate-300" href={`/nfl/position-stats?team=${t.team}`}>{t.team}</Link></td>
+          <td className="p-2 font-bold"><Link className="underline decoration-slate-300" href={`/nfl/position-stats?week=${weekShown}&team=${t.team}`}>{t.team}</Link></td>
           <td className="p-2 text-xs text-slate-600">{t.home ? "vs" : "@"} {t.opponent} · {eastern(t.kickoff)}</td>
           <td className="p-2 text-right tabular-nums">{t.impliedPoints == null ? "—" : one(t.impliedPoints)}</td>
           <td className="border-l p-2 text-right tabular-nums">{yds(t.groups.RB.rushYds)}</td><td className="p-2 text-right tabular-nums">{one(t.groups.RB.rec)}</td><td className="p-2 text-right tabular-nums">{yds(t.groups.RB.recYds)}</td><td className="p-2 text-right tabular-nums">{td(t.groups.RB.tds)}</td>
@@ -103,6 +107,7 @@ export default async function NflPositionStatsPage({ searchParams }: { searchPar
     <section className="rounded-xl border bg-white p-4 shadow-sm"><div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-xl font-bold">Players</h2>
       <p className="text-xs text-slate-500">Highlighted numbers come from a <span className={`rounded px-1 ${SOURCE_STYLE.vegas}`}>Vegas line</span> or the <span className={`rounded px-1 ${SOURCE_STYLE.model}`}>DFS model</span>; plain numbers are the team simulation. Every number is after the team budget; hover a highlighted one to see the player&apos;s own number. Players under 1 expected yard are hidden.</p></div>
       <form action="/nfl/position-stats" method="get" className="flex flex-wrap items-end gap-2 text-sm">
+        <input type="hidden" name="week" value={weekShown} />
         <label>Team<select name="team" defaultValue={team} className="ml-2 rounded border p-2"><option>ALL</option>{teamCodes.map((v) => <option key={v}>{v}</option>)}</select></label>
         <label>Position<select name="position" defaultValue={position} className="ml-2 rounded border p-2"><option>ALL</option>{GROUPS.map((v) => <option key={v}>{v}</option>)}</select></label>
         <button type="submit" className="rounded bg-indigo-700 px-3 py-2 font-medium text-white">Apply</button></form></div>

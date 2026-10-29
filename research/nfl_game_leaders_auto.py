@@ -28,6 +28,8 @@ from research.nfl_game_leaders_publish import publish
 from research.nfl_longest_touchdown import read, write
 
 PAGE = Path("web/src/data/game-leaders.json")
+# One file per week, the last version published for it, so the page can show past weeks.
+ARCHIVE = Path("web/src/data/game-leaders-weeks")
 ROOT = Path("artifacts/nfl-game-leaders/auto")
 EVALUATIONS = (Path("artifacts/nfl-game-leaders/final-evaluation-2025.json"),
                Path("artifacts/nfl-game-leaders/final-evaluation-2026.json"))
@@ -168,6 +170,24 @@ def replace_page(path: Path, page: dict) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def archive_page(page: dict, root: Path = ARCHIVE) -> Path:
+    """Keep this week's page as `{season}-w{week}.json` and list every archived week in `index.json`.
+
+    A week's file is replaced on every publish, so it ends as the last pregame
+    version (started games are frozen in the page, never rewritten)."""
+    key = f"{page['season']}-w{page['week']:02d}"
+    path = root / f"{key}.json"
+    root.mkdir(parents=True, exist_ok=True)
+    replace_page(path, page)
+    index_path = root / "index.json"
+    weeks = {w["key"]: w for w in (read(index_path)["weeks"] if index_path.exists() else [])}
+    weeks[key] = {"key": key, "season": page["season"], "week": page["week"],
+                  "decision_at": page["decision_at"], "games": len(page["games"])}
+    ordered = sorted(weeks.values(), key=lambda w: (w["season"], w["week"]), reverse=True)
+    replace_page(index_path, {"weeks": ordered})
+    return path
+
+
 def capture_dir(season: int, week: int, stamp: str) -> Path:
     return ROOT / f"{season}-w{week:02d}-{stamp}"
 
@@ -226,6 +246,8 @@ def run(season: int, draws: int | None, page_path: Path = PAGE) -> str:
             "sources": sources}
     validate(page, week_games)
     replace_page(page_path, page)
+    if page_path == PAGE:
+        archive_page(page)
     fresh = sum(1 for g in games if passed.get(g["game"]["game_id"]) is g)
     summary = f"Week {week}: {len(games)} games on the page ({fresh} refreshed now), {len(skipped)} noted in skipped"
     for s in skipped:

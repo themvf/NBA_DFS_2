@@ -372,3 +372,12 @@ The 55/35/10 vacated-carry split and the equal-weight window are unchanged;
 their replacement (regime-conditioned window with a fitted prior strength K and
 half-life) is a separate registered study. This change amended the
 `nfl-prop-under-v1` pins and started `nfl-prop-under-v2`.
+
+## Weekly archive (2026-10-29)
+
+Every publish also writes `web/src/data/game-leaders-weeks/{season}-w{NN}.json`
+(replaced on each publish, so it ends as the week's last pregame version) and
+updates `index.json` there; `/nfl/game-leaders` and `/nfl/position-stats` take a
+`?week=2026-w07` parameter and list every archived week. Weeks 5-7 were backfilled
+from each week's last commit of `game-leaders.json`; weeks 1-4 had no page.
+Past weeks do not re-run the injury check, and the page says so.
