@@ -21,7 +21,7 @@ import os
 from pathlib import Path
 import tempfile
 
-from model.nfl_game_leaders import VERSION
+from model.nfl_game_leaders import VERSION, observed_value
 from model.nfl_game_leaders_calibration import production_settings
 from model.nfl_longest_touchdown import timestamp
 from research.nfl_game_leaders_publish import publish
@@ -87,6 +87,43 @@ def drop_moved_players(request: dict) -> dict:
     if dropped:
         request["scenario_evidence"] = {**request["scenario_evidence"], "moved_players_dropped": dropped}
     return request
+
+
+RECENT_GAMES = 6  # the model's recent_games window
+
+
+def attach_recent_played(game_entry: dict, snapshot: dict) -> dict:
+    """Add each named player's average over the recent games he actually got the ball.
+
+    The model's `baseline_mean` averages the team's last six games and counts a game
+    the player missed as zero (A.J. Brown, out weeks 2-5: 12.5 receiving yards, when
+    he averaged 37.5 in the two games he played). Display only: the model and its
+    baseline are pinned and unchanged. A game counts when the player has a carry or
+    a target, the same test the roles rule uses."""
+    kickoff = timestamp(game_entry["game"]["kickoff"])
+    games_by_team: dict[str, list[dict]] = {}
+    for g in snapshot["games"]:
+        if g.get("completed") and timestamp(g["kickoff"]) < kickoff:
+            for team in (g["away"], g["home"]):
+                games_by_team.setdefault(team, []).append(g)
+    boxes: dict[tuple[str, str], list[dict]] = {}
+    for b in snapshot["boxes"]:
+        boxes.setdefault((b["game_id"], b["team"]), []).append(b)
+    recent = {team: [g["game_id"] for g in sorted(gs, key=lambda g: timestamp(g["kickoff"]))
+                     if (g["game_id"], team) in boxes][-RECENT_GAMES:]
+              for team, gs in games_by_team.items()}
+    for metric, family in game_entry["metrics"].items():
+        for p in family["players"]:
+            if p.get("residual"):
+                continue
+            ids = recent.get(p["team"], [])
+            played = [b for gid in ids for b in boxes[(gid, p["team"])]
+                      if b["identity"] == p["identity"] and b["carries"] + b["targets"] > 0]
+            p["recent_team_games"] = len(ids)
+            p["recent_played_games"] = len(played)
+            p["recent_played_mean"] = (sum(observed_value(b, metric) for b in played) / len(played)
+                                       if played else None)
+    return game_entry
 
 
 def capture_requests(snapshot: dict, games: list[dict]) -> dict:
@@ -237,6 +274,7 @@ def run(season: int, draws: int | None, page_path: Path = PAGE) -> str:
     sources = {"snapshot": capture_path.as_posix(), "requests": requests_path.as_posix()}
     evaluations = [read(p) for p in EVALUATIONS]
     passed, failed = gate_games(result, evaluations, sources)
+    passed = {gid: attach_recent_played(entry, snapshot) for gid, entry in passed.items()}
     finished = datetime.now(timezone.utc)
     games, skipped = merge(week_games, prior, passed, failed, result["skipped"], finished)
     if not games:
