@@ -128,3 +128,40 @@ def test_recent_played_skips_games_the_player_missed():
     p = attach_recent_played(entry, {"games": games, "boxes": boxes})["metrics"]["receiving_yards"]["players"][0]
     # g0 falls outside the last six team games; g4 had no target, so it is not a game played.
     assert (p["recent_team_games"], p["recent_played_games"], p["recent_played_mean"]) == (6, 2, 37.5)
+
+
+def _played_fixture():
+    games = [{"game_id": f"g{i}", "kickoff": f"2026-09-{10 + i:02d}T17:00:00Z", "away": "NE", "home": "X",
+              "completed": True} for i in range(7)]
+    box = lambda gid, ident, tgt, yds: {"game_id": gid, "team": "NE", "identity": ident, "carries": 0,
+                                         "targets": tgt, "receptions": 1, "rushing_yards": 0, "receiving_yards": yds}
+    # "wr" missed four of the last six (40 a game when he played); "slot" played all six at 30.
+    boxes = [box(f"g{i}", "slot", 4, 30) for i in range(7)]
+    boxes += [box("g5", "wr", 6, 40), box("g6", "wr", 6, 40)]
+    return {"games": games, "boxes": boxes}
+
+
+def test_recent_played_window_follows_training_games():
+    from research.nfl_game_leaders_auto import attach_recent_played
+    entry = {"game": {"kickoff": "2026-10-01T17:00:00Z"},
+             "metrics": {"receiving_yards": {"players": [{"identity": "wr", "team": "NE", "residual": False}]}}}
+    # g5 quarantined: the window skips it, as the model's baseline does.
+    p = attach_recent_played(entry, _played_fixture(), [f"g{i}" for i in range(7) if i != 5])
+    p = p["metrics"]["receiving_yards"]["players"][0]
+    assert (p["recent_team_games"], p["recent_played_games"], p["recent_played_mean"]) == (6, 1, 40)
+
+
+def test_played_baseline_check_scores_the_games_played_leader():
+    from research.nfl_game_leaders_auto import played_baseline_check
+    players = [{"identity": "slot", "team": "NE", "residual": False},
+               {"identity": "wr", "team": "NE", "residual": False},
+               {"identity": "OTHER:NE", "team": "NE", "residual": True}]
+    forecast = {"game": {"game_id": "t", "kickoff": "2026-10-01T17:00:00Z"},
+                "training_game_ids": [f"g{i}" for i in range(7)],
+                "metrics": {"receiving_yards": {"players": players}}}
+    grade = {"game_id": "t", "metrics": {"receiving_yards": {"winner_ids": ["wr", "x"], "top_choice_credit": 0.0}}}
+    out = played_baseline_check({"forecasts": [forecast], "grades": [grade], "settings": {"seed": 1}},
+                                _played_fixture())["receiving_yards"]
+    # The zero-counting average would pick "slot" (30 vs 13.3); games played picks "wr" (40), who tied for the lead.
+    assert out["played_baseline_credit"] == 0.5
+    assert out["played_baseline_games"] == 1

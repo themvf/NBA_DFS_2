@@ -15,6 +15,7 @@ silently. The page is replaced only after every check passes.
 from __future__ import annotations
 
 import argparse
+import copy
 from datetime import datetime, timedelta, timezone
 import json
 import os
@@ -92,18 +93,22 @@ def drop_moved_players(request: dict) -> dict:
 RECENT_GAMES = 6  # the model's recent_games window
 
 
-def attach_recent_played(game_entry: dict, snapshot: dict) -> dict:
+def attach_recent_played(game_entry: dict, snapshot: dict, game_ids=None) -> dict:
     """Add each named player's average over the recent games he actually got the ball.
 
     The model's `baseline_mean` averages the team's last six games and counts a game
     the player missed as zero (A.J. Brown, out weeks 2-5: 12.5 receiving yards, when
     he averaged 37.5 in the two games he played). Display only: the model and its
     baseline are pinned and unchanged. A game counts when the player has a carry or
-    a target, the same test the roles rule uses."""
+    a target, the same test the roles rule uses. `game_ids` (the forecast's
+    `training_game_ids`) limits the window to games the model itself could use, so
+    a quarantined game is skipped here as it is in the model's baseline."""
+    allowed = set(game_ids) if game_ids is not None else None
     kickoff = timestamp(game_entry["game"]["kickoff"])
     games_by_team: dict[str, list[dict]] = {}
     for g in snapshot["games"]:
-        if g.get("completed") and timestamp(g["kickoff"]) < kickoff:
+        if (g.get("completed") and timestamp(g["kickoff"]) < kickoff
+                and (allowed is None or g["game_id"] in allowed)):
             for team in (g["away"], g["home"]):
                 games_by_team.setdefault(team, []).append(g)
     boxes: dict[tuple[str, str], list[dict]] = {}
@@ -124,6 +129,53 @@ def attach_recent_played(game_entry: dict, snapshot: dict) -> dict:
             p["recent_played_mean"] = (sum(observed_value(b, metric) for b in played) / len(played)
                                        if played else None)
     return game_entry
+
+
+def played_baseline_check(evaluation: dict, snapshot: dict) -> dict:
+    """Score the games-played recent average on an evaluation's graded games.
+
+    The page's historical check compares the model's first choice with a recent
+    average. The evaluation's own `mean_baseline_credit` picks the leader by the
+    model's six-game baseline, which counts missed games as zero; this picks the
+    player with the highest average over the games he got the ball
+    (`attach_recent_played`), the number the page's Recent average column shows.
+    Credit follows the evaluation's grade: a tie for the lead splits it. Display
+    only; the evaluation files and the model are unchanged."""
+    import numpy as np
+    grades = {g["game_id"]: g for g in evaluation["grades"]}
+    rows: dict[str, list[tuple[float, float]]] = {}
+    for forecast in evaluation["forecasts"]:
+        grade = grades.get(forecast["game"]["game_id"])
+        if grade is None:
+            continue
+        entry = attach_recent_played(copy.deepcopy({"game": forecast["game"], "metrics": forecast["metrics"]}), snapshot,
+                                     forecast.get("training_game_ids"))
+        for metric, family in entry["metrics"].items():
+            graded = grade["metrics"].get(metric)
+            if graded is None:
+                continue
+            named = [p for p in family["players"] if not p.get("residual") and p.get("recent_played_mean") is not None]
+            leader = max(named, key=lambda p: p["recent_played_mean"])["identity"] if named else None
+            winners = graded["winner_ids"]
+            credit = 1 / len(winners) if leader in winners else 0.0
+            rows.setdefault(metric, []).append((graded["top_choice_credit"], credit))
+    seed = evaluation["settings"].get("seed", 0)
+    out = {}
+    for metric, pairs in rows.items():
+        model, played = np.array(pairs).T
+        draws = np.random.default_rng(seed).choice(model - played, (2000, len(pairs))).mean(axis=1)
+        out[metric] = {"played_baseline_credit": float(played.mean()), "played_baseline_games": len(pairs),
+                       "top_choice_minus_played_baseline_95pct_game_bootstrap": np.quantile(draws, [.025, .975]).tolist()}
+    return out
+
+
+def attach_played_baseline(page_evaluation: list[dict], evaluations: list[dict], snapshot: dict) -> list[dict]:
+    """Add `played_baseline_check` to each published evaluation summary (same order as `evaluations`)."""
+    for shown, evaluation in zip(page_evaluation, evaluations):
+        for metric, extra in played_baseline_check(evaluation, snapshot).items():
+            if metric in shown["summary"]:
+                shown["summary"][metric].update(extra)
+    return page_evaluation
 
 
 def capture_requests(snapshot: dict, games: list[dict]) -> dict:
@@ -274,12 +326,14 @@ def run(season: int, draws: int | None, page_path: Path = PAGE) -> str:
     sources = {"snapshot": capture_path.as_posix(), "requests": requests_path.as_posix()}
     evaluations = [read(p) for p in EVALUATIONS]
     passed, failed = gate_games(result, evaluations, sources)
-    passed = {gid: attach_recent_played(entry, snapshot) for gid, entry in passed.items()}
+    training = {f["game"]["game_id"]: f.get("training_game_ids") for f in result["forecasts"]}
+    passed = {gid: attach_recent_played(entry, snapshot, training.get(gid)) for gid, entry in passed.items()}
     finished = datetime.now(timezone.utc)
     games, skipped = merge(week_games, prior, passed, failed, result["skipped"], finished)
     if not games:
         raise ValueError(f"Week {week}: no game produced a publishable forecast; page unchanged. {skipped}")
     shell = publish({**result, "forecasts": []}, evaluations)
+    shell["evaluation"] = attach_played_baseline(shell["evaluation"], evaluations, snapshot)
     page = {**shell, "decision_at": decision_at.isoformat(), "games": games, "skipped": skipped,
             "sources": sources}
     validate(page, week_games)
