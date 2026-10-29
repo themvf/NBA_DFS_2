@@ -392,8 +392,15 @@ baseline). The model's `baseline_mean`, which counts a missed game as zero, is
 unchanged and still stored. `played_baseline_check` in
 `research/nfl_game_leaders_auto.py` rescores the games-played leader on the two
 evaluation files' graded games at every refresh; with every game played the two
-averages match exactly (2,535 of 2,535 player rows). On those games the
-games-played leader led 44/15/30% (2025 weeks 9-12: rushing, receptions,
-receiving yards) and 48/20/21% (2026 weeks 1-4), against the model's first
-choice at 42/17/32% and 45/20/23%; neither difference is distinguishable from
-zero on 50-56 games.
+averages match exactly (2,535 of 2,535 player rows).
+
+The evaluations behind the check were re-run with the current model (v4,
+`production_settings()`, `backtest()` on the 2026-10-28 capture) on the same
+windows, because the v1 `final-evaluation-*` files predate total yards:
+`evaluation-v4-2025.json` (weeks 9-12, 57 games) and `evaluation-v4-2026.json`
+(weeks 1-4, 60 graded, 4 skipped). Games-played leader versus the model's first
+choice, share of games led (rushing / receptions / receiving / total yards):
+2025 recent 51/26/34/40% vs model 44/18/26/32%; 2026 recent 45/21/18/25% vs
+model 42/19/27/42%. The only game-bootstrap interval that excludes zero is 2026
+total yards in the model's favour (+0.17, [+0.07, +0.28]); one of eight cells,
+on games earlier game-leader studies already examined, so it is not evidence of skill.
