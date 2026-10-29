@@ -1,3 +1,4 @@
+import { capFormatOf } from "../src/lib/nfl-dfs/dk-salary-csv";
 /** Mechanical release gate using three distinct archived pre-lock input snapshots. */
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -28,7 +29,7 @@ for (const row of saved) {
   const before = JSON.stringify({ players, baseline });
   const optional = evaluateNflOptimizerShadowIfAvailable({ slate, baseline, candidates: baseline, settings,
     contest: { id: "regression-only", platform: "draftkings", scoringVersion: "nfl-dk-scenario-v1", slateId: row.upload.upload_id,
-      format: slate.format, mode: "multi_entry", entryCount: 20, maxEntriesPerUser: 150, fieldSize: null, entryFee: null, payouts: null,
+      format: capFormatOf(slate.format, slate.games), mode: "multi_entry", entryCount: 20, maxEntriesPerUser: 150, fieldSize: null, entryFee: null, payouts: null,
       tieRule: "split_occupied_prizes", decisionAt: "2026-09-20T12:00:00Z", lockAt: "2026-09-20T17:00:00Z", lateSwap: true, ownershipCapability: "missing" },
     selection: null, evaluation: null, target: 180 });
   assert.equal(optional.status, "unavailable");

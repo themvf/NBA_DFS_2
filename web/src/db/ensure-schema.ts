@@ -1335,6 +1335,22 @@ const NFL_DFS_DDLS = [
 )`,
   `CREATE INDEX IF NOT EXISTS idx_nfl_dfs_defensive_capture_requests_upload ON nfl_dfs_defensive_capture_requests (upload_id)`,
   `ALTER TABLE nfl_dfs_slate_uploads ADD COLUMN IF NOT EXISTS eligibility_manifest_digest TEXT`,
+  // 2026-10-29: DraftKings Single Stat slates (no cap, 3 FLEX picks, one
+  // stat) are a third and fourth format. The Python DDL created the table
+  // with CHECK(format IN ('classic','showdown')); replace it when it is the
+  // old one. Mirrors db/schema.py.
+  `DO $$ BEGIN
+ IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='nfl_dfs_slate_uploads'::regclass
+   AND conname='nfl_dfs_slate_uploads_format_check'
+   AND pg_get_constraintdef(oid) NOT LIKE '%single_stat_yards%') THEN
+  ALTER TABLE nfl_dfs_slate_uploads DROP CONSTRAINT nfl_dfs_slate_uploads_format_check;
+ END IF;
+ IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='nfl_dfs_slate_uploads'::regclass
+   AND conname='nfl_dfs_slate_uploads_format_check') THEN
+  ALTER TABLE nfl_dfs_slate_uploads ADD CONSTRAINT nfl_dfs_slate_uploads_format_check
+   CHECK(format IN ('classic','showdown','single_stat_yards','single_stat_touchdowns'));
+ END IF;
+END $$;`,
   `ALTER TABLE nfl_dfs_slate_players ADD COLUMN IF NOT EXISTS identity_evidence JSONB NOT NULL DEFAULT '{}'::jsonb`,
   `ALTER TABLE nfl_dfs_slate_players ADD COLUMN IF NOT EXISTS platform_eligibility JSONB NOT NULL DEFAULT '{}'::jsonb`,
   `DO $$ BEGIN

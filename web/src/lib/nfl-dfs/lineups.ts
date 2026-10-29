@@ -1,5 +1,5 @@
 import {
-  DK_SALARY_CAP, NFL_FLEX_POSITIONS,
+  DK_SALARY_CAP, NFL_FLEX_POSITIONS, SINGLE_STAT_ROSTER_SIZE, isSingleStatFormat,
   type NflDkPlayer, type NflDkSlate, type NflSlateFormat,
 } from "./dk-salary-csv";
 import { nflRandom, nflShuffle } from "./random";
@@ -8,20 +8,23 @@ export type NflSlot = "QB" | "RB" | "WR" | "TE" | "FLEX" | "DST" | "CPT";
 export type NflLineup = Array<{ slot: NflSlot; playerId: number }>;
 const CLASSIC: NflSlot[] = ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "FLEX", "DST"];
 const SHOWDOWN: NflSlot[] = ["CPT", "FLEX", "FLEX", "FLEX", "FLEX", "FLEX"];
+/** Single Stat: three FLEX picks, no captain, no cap. */
+const SINGLE_STAT: NflSlot[] = Array.from({ length: SINGLE_STAT_ROSTER_SIZE }, () => "FLEX" as const);
 export const nflSlots = (format: NflSlateFormat): readonly NflSlot[] =>
-  format === "classic" ? CLASSIC : SHOWDOWN;
+  format === "classic" ? CLASSIC : isSingleStatFormat(format) ? SINGLE_STAT : SHOWDOWN;
 
 function eligible(player: NflDkPlayer, slot: NflSlot, format: NflSlateFormat): boolean {
   if (player.isOut) return false;
   if (format === "showdown") {
     return slot === "CPT" ? player.captain !== null : slot === "FLEX" && player.rosterPositions.includes("FLEX");
   }
+  if (isSingleStatFormat(format)) return slot === "FLEX" && player.rosterPositions.includes("FLEX");
   return player.rosterPositions.includes(slot) && (slot === "FLEX"
     ? NFL_FLEX_POSITIONS.includes(player.position) : player.position === slot);
 }
 
 export function nflPoolIndex(slate: NflDkSlate): Map<number, NflDkPlayer> {
-  if (slate.format !== "classic" && slate.format !== "showdown") throw new Error("Unknown NFL format");
+  if (slate.format !== "classic" && slate.format !== "showdown" && !isSingleStatFormat(slate.format)) throw new Error("Unknown NFL format");
   const index = new Map<number, NflDkPlayer>();
   const purchaseIds = new Set<number>();
   for (const player of slate.players) {
@@ -63,13 +66,16 @@ export function validateNflLineup(slate: NflDkSlate, lineup: NflLineup): { key: 
     games.add(player.gameKey);
     salary += entry.slot === "CPT" ? player.captain!.salary : player.salary;
   });
-  if (salary > DK_SALARY_CAP) throw new Error("NFL lineup exceeds salary cap");
+  // Single Stat has no cap (every salary is 0) and, per DraftKings' own
+  // description, no team or game requirement: three players, full stop.
+  if (!isSingleStatFormat(slate.format) && salary > DK_SALARY_CAP) throw new Error("NFL lineup exceeds salary cap");
   if (slate.format === "classic" && games.size < 2) throw new Error("Classic requires at least two games");
   if (slate.format === "showdown" && (slate.games.length !== 1 || games.size !== 1 || teams.size !== 2)) {
     throw new Error("Showdown requires one game and both teams");
   }
   const sorted = (ids: number[]) => ids.sort((a, b) => a - b).join(",");
   const key = slate.format === "classic" ? `classic:${sorted([...seen])}`
+    : isSingleStatFormat(slate.format) ? `single_stat:${sorted([...seen])}`
     : `showdown:${lineup[0].playerId}:${sorted(lineup.slice(1).map((p) => p.playerId))}`;
   return { key, salary };
 }

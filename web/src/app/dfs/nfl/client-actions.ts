@@ -10,9 +10,9 @@ import { unwrap } from "@/lib/nfl-dfs/safe-result";
 import * as safe from "./safe-actions";
 
 export type {
-  NflComparisonSource, NflProjectionExplanation, NflSlateResults, NflWorkspacePlayer, NflWorkspaceSlate,
+  NflComparisonSource, NflProjectionExplanation, NflSingleStatRunSettings, NflSlateResults, NflWorkspacePlayer, NflWorkspaceSlate,
 } from "./actions";
-export { generateNflLineups } from "./actions";
+export { generateNflLineups, generateNflSingleStatLineups } from "./actions";
 
 type Args<F extends (...args: never[]) => unknown> = Parameters<F>;
 
@@ -29,6 +29,8 @@ export const exportSavedNflDefensiveEntries = async (...a: Args<typeof safe.safe
 export const exportSavedNflEntries = async (...a: Args<typeof safe.safeExportSavedNflEntries>) => unwrap(await safe.safeExportSavedNflEntries(...a));
 export const exportSavedNflLineups = async (...a: Args<typeof safe.safeExportSavedNflLineups>) => unwrap(await safe.safeExportSavedNflLineups(...a));
 export const importNflOwnershipRanges = async (...a: Args<typeof safe.safeImportNflOwnershipRanges>) => unwrap(await safe.safeImportNflOwnershipRanges(...a));
+export const exportSavedNflSingleStatLineups = async (...a: Args<typeof safe.safeExportSavedNflSingleStatLineups>) => unwrap(await safe.safeExportSavedNflSingleStatLineups(...a));
+export const exportSavedNflSingleStatEntries = async (...a: Args<typeof safe.safeExportSavedNflSingleStatEntries>) => unwrap(await safe.safeExportSavedNflSingleStatEntries(...a));
 export const applyNflComparison = async (...a: Args<typeof safe.safeApplyNflComparison>) => unwrap(await safe.safeApplyNflComparison(...a));
 export const loadNflSalaryCsv = async (...a: Args<typeof safe.safeLoadNflSalaryCsv>) => unwrap(await safe.safeLoadNflSalaryCsv(...a));
 export const searchNflStarterNews = async (...a: Args<typeof safe.safeSearchNflStarterNews>) => unwrap(await safe.safeSearchNflStarterNews(...a));

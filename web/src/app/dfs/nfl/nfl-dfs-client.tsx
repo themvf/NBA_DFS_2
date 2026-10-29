@@ -46,7 +46,8 @@ import NflLineupVisualizations from "./nfl-lineup-visualizations";
 import PlayerExplanationPanel from "./player-explanation-panel";
 import type { NflWorkspacePlayer } from "./actions";
 import { POOL_POSITION_FILTERS, POOL_FILTER_LABELS, isPoolPositionFilter, matchesPoolPosition, poolPositionCounts, type PoolPositionFilter } from "@/lib/nfl-dfs/player-pool-filter";
-import { NFL_FLEX_POSITIONS } from "@/lib/nfl-dfs/dk-salary-csv";
+import { NFL_FLEX_POSITIONS, capFormatOf, describeNflFormat, isSingleStatFormat } from "@/lib/nfl-dfs/dk-salary-csv";
+import SingleStatWorkspace from "./single-stat-workspace";
 import { buildValueIndex } from "@/lib/nfl-dfs/salary-value";
 import { ValueChip, ValueLegend } from "./value-chip";
 import { DEFAULT_POOL_SORT, nextPoolSort, sortPlayerPool, type PoolSort, type PoolSortKey } from "@/lib/nfl-dfs/player-pool-sort";
@@ -238,7 +239,9 @@ export default function NflDfsClient() {
   const archetypeUnderdog = archetypeFavorite ? slateTeams.find((t) => t !== archetypeFavorite) ?? null : null;
   // Balanced mode sends only the mode: quotas, fade targets and the favorite
   // are resolved by the generator/server. Custom mode sends the manual plan.
-  const slateFormat = slate?.format ?? 'classic';
+  // The salary-cap settings machinery only knows Classic and Showdown; a
+  // Single Stat slate never reaches it (it renders `SingleStatWorkspace`).
+  const slateFormat = capFormatOf(slate?.format ?? 'classic', slate?.games ?? []);
   const currentSettings = {...settingsFromForm({ settings, locked, excluded, targets: targetExposure, captainTargets, ownership: ownershipOverrides,
     planMode: archetypePlanMode, quotas: archetypeQuotas, favorite: archetypeFavorite, fades: archetypeFades }, slateFormat, slateTeams),
     projectionSource:BUILD_SOURCES.includes(settings.projectionSource)?settings.projectionSource:'our',
@@ -327,7 +330,7 @@ export default function NflDfsClient() {
   // the lineups' projections are.
   const qaReport: QaReport | null = useMemo(() => {
     if (!lineups.length) return null;
-    const format = (completedSettings?.format ?? slate?.format ?? "showdown") as "classic" | "showdown";
+    const format = completedSettings?.format ?? capFormatOf(slate?.format ?? "showdown", slate?.games ?? []);
     const projectionAsOf = runProjection?.asOf ?? slate?.modelAsOf ?? null;
     const projectionAgeHours = projectionAsOf ? (now - Date.parse(projectionAsOf)) / 3.6e6 : null;
     return runNflPreExportQa({
@@ -755,7 +758,7 @@ export default function NflDfsClient() {
   const workspaceView = stage === "review" ? "lineups" : "players";
   const PLAN_LABELS = { balanced: "Balanced mix", chalk_leverage: "Chalk captain, rotating leverage", standard: "Standard ceiling", custom: "Custom plan" } as const;
   const winnersShape = settings.mode === "gpp" && settings.buildShape === "winners";
-  const suggestionPositions: readonly string[] = suggestedCaptainPositions({ format: slate?.format ?? "showdown", mode: settings.mode, buildShape: settings.buildShape });
+  const suggestionPositions: readonly string[] = suggestedCaptainPositions({ format: capFormatOf(slate?.format ?? "showdown", slate?.games ?? []), mode: settings.mode, buildShape: settings.buildShape });
   const buildSummary = [`${settings.nLineups} ${settings.mode === "gpp" ? "GPP" : "cash"} lineups`, SOURCE_LABELS[settings.projectionSource], winnersShape ? "Winners shape" : null, slate?.format === "showdown" ? PLAN_LABELS[archetypePlanMode] : null].filter(Boolean).join(" · ");
   const shapeOut = (e: { reasonCode: string | null }) => e.reasonCode === "WINNERS_SHAPE" || e.reasonCode === "KICKER_EXCLUDED";
   const specialTeams = specialTeamsStatus({ players: slate?.players ?? [], firstKickoff: slate?.firstKickoff ?? null,
@@ -767,7 +770,7 @@ export default function NflDfsClient() {
   }
   const playerRulesSummary = [`${locked.length} locked`, `${excluded.length} excluded`, `${Object.keys(targetExposure).length} exposure targets`, slate?.format === "showdown" ? `${Object.keys(captainTargets).length} captain ranges` : null].filter(Boolean).join(" · ");
   // With Winners shape on, show the limits the build will actually enforce, not the raw inputs.
-  const shapeLimits = winnersShape && slate ? winnersShapeLimits({ format: slate.format, nLineups: settings.nLineups, minSalary: settings.minSalary, maxExposure: settings.maxExposure, minUnique: settings.minUnique }) : null;
+  const shapeLimits = winnersShape && slate ? winnersShapeLimits({ format: capFormatOf(slate.format, slate.games), nLineups: settings.nLineups, minSalary: settings.minSalary, maxExposure: settings.maxExposure, minUnique: settings.minUnique }) : null;
   const shapeTag = (changed: boolean) => (changed ? " (Winners shape)" : "");
   const rulesSummary = [
     `Min ${dollars(shapeLimits?.minSalary ?? settings.minSalary)}${shapeTag(!!shapeLimits && shapeLimits.minSalary !== settings.minSalary)}`,
@@ -782,6 +785,7 @@ export default function NflDfsClient() {
     ? `${new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(slate.firstKickoff))} ET`
     : null;
   const slateTitle = !slate ? "Lineup workspace"
+    : isSingleStatFormat(slate.format) ? describeNflFormat(slate.format, slate.games).replace("@", " @ ")
     : slate.format === "showdown" && slate.games.length === 1 ? slate.games[0].replace("@", " @ ")
     : `${slate.games.length}-game Classic`;
   const slateSubtitle = !slate ? "Upload a DraftKings salary file to begin."
@@ -811,7 +815,7 @@ export default function NflDfsClient() {
   return <div className="nfl-dfs-workspace mx-auto max-w-[1600px] space-y-4">
     <header className="nfl-workspace-heading flex flex-wrap items-end justify-between gap-3">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-widest text-emerald-700">DraftKings · NFL{slate ? ` · ${slate.format === "showdown" ? "Showdown" : "Classic"}` : ""}</p>
+        <p className="text-xs font-semibold uppercase tracking-widest text-emerald-700">DraftKings · NFL{slate ? ` · ${slate.format === "showdown" ? "Showdown" : isSingleStatFormat(slate.format) ? "Single Stat · no salary cap" : "Classic"}` : ""}</p>
         <h1 className="mt-1 text-2xl font-bold tracking-tight">{slateTitle}</h1>
         <p className="mt-1 text-sm text-slate-500">{slateSubtitle}</p>
       </div>
@@ -824,7 +828,7 @@ export default function NflDfsClient() {
       </div>
     </header>
     {message ? <Notice good>{message}</Notice> : null}{error ? <Notice>{error}</Notice> : null}
-    {slate ? <>
+    {slate && isSingleStatFormat(slate.format) ? <SingleStatWorkspace key={slate.uploadId} slate={slate} locked={slateLocked} /> : slate ? <>
       <WorkspaceStepper locked={slateLocked} stage={stage} onChange={chooseStage} notes={stageNotes} done={stageDone} />
       <StatusLine items={statusItems} onAction={(target) => { if (target === "refresh-projections") refreshProjections(); else chooseStage(target); }} />
 
@@ -965,7 +969,7 @@ export default function NflDfsClient() {
           {eligibility.some((e) => !e.eligible && e.reasonCode !== "INACTIVE" && e.reasonCode !== "MANUAL_EXCLUSION" && e.reasonCode !== "DOUBTFUL" && !shapeOut(e)) ? <details className="mt-2"><summary className="cursor-pointer text-[11px] font-bold text-amber-800">{eligibility.filter((e) => !e.eligible && e.reasonCode !== "INACTIVE" && e.reasonCode !== "MANUAL_EXCLUSION" && e.reasonCode !== "DOUBTFUL" && !shapeOut(e)).length} cheap player(s) blocked — review</summary><div className="mt-1 max-h-40 space-y-1 overflow-auto">{eligibility.filter((e) => !e.eligible && e.reasonCode !== "INACTIVE" && e.reasonCode !== "MANUAL_EXCLUSION" && e.reasonCode !== "DOUBTFUL" && !shapeOut(e)).map((e) => <div key={e.dkPlayerId} className="flex items-start justify-between gap-2 rounded border bg-white p-1.5 text-[11px]"><span><b>{e.name}</b> <span className="text-slate-400">{dollars(e.salary)}</span><span className="block text-slate-500">{e.reason}</span></span><button type="button" className="shrink-0 rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800" onClick={() => allowCheapPlayer(e.dkPlayerId, e.name)}>Allow for run</button></div>)}</div></details> : null}
           </div> : null}
           <button type="button" onClick={() => chooseStage(workspaceView === "lineups" ? "build" : "review")} className="min-h-10 w-full rounded-lg border text-sm font-semibold">{workspaceView === "lineups" ? "Back to player pool" : `Review ${lineups.length} lineups →`}</button></div></fieldset></details></section>
-        <div hidden={workspaceView !== "lineups"} className="space-y-4"><button type="button" onClick={() => chooseStage("build")} className="min-h-10 w-full rounded-lg border bg-white text-sm font-semibold">← Back to Build</button>        {lineups.length ? <>{defensiveDowngrade ? <Notice>{defensiveDowngrade}</Notice> : null}{!slateLocked && completedSettings && settingsChanged && <Notice>Settings changed. Displayed lineups still use {SOURCE_LABELS[completedSettings.projectionSource]} / {completedSettings.mode}. Generate again to apply changes to settings, locks, exclusions, or exposure.</Notice>}<RunRiskSummary lineups={lineups} uncalibratedLeverage={ownership?.capability === "heuristic_uncalibrated" && ownership.features.leverage} requestedLineups={completedSettings?.nLineups} exposureReport={exposureReport} currentPlayers={slate.players} withheld={slate.redistribution?.withheld} /><Exposure rows={exposures} total={lineups.length} report={exposureReport} format={completedSettings?.format ?? slate.format} />{ownership ? <div className={`rounded-lg border p-3 text-[11px] ${ownership.capability === "validated" ? "border-emerald-200 bg-emerald-50" : ownership.capability === "heuristic_uncalibrated" ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50"}`}>
+        <div hidden={workspaceView !== "lineups"} className="space-y-4"><button type="button" onClick={() => chooseStage("build")} className="min-h-10 w-full rounded-lg border bg-white text-sm font-semibold">← Back to Build</button>        {lineups.length ? <>{defensiveDowngrade ? <Notice>{defensiveDowngrade}</Notice> : null}{!slateLocked && completedSettings && settingsChanged && <Notice>Settings changed. Displayed lineups still use {SOURCE_LABELS[completedSettings.projectionSource]} / {completedSettings.mode}. Generate again to apply changes to settings, locks, exclusions, or exposure.</Notice>}<RunRiskSummary lineups={lineups} uncalibratedLeverage={ownership?.capability === "heuristic_uncalibrated" && ownership.features.leverage} requestedLineups={completedSettings?.nLineups} exposureReport={exposureReport} currentPlayers={slate.players} withheld={slate.redistribution?.withheld} /><Exposure rows={exposures} total={lineups.length} report={exposureReport} format={completedSettings?.format ?? capFormatOf(slate.format, slate.games)} />{ownership ? <div className={`rounded-lg border p-3 text-[11px] ${ownership.capability === "validated" ? "border-emerald-200 bg-emerald-50" : ownership.capability === "heuristic_uncalibrated" ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50"}`}>
             <div className="flex items-center justify-between"><h3 className="text-sm font-bold text-slate-800">Ownership</h3><span className="rounded-full border bg-white px-2 py-0.5 font-bold uppercase">{ownership.capability.replace(/_/g, " ")}</span></div>
             <p className="mt-1 font-semibold text-slate-700">Objective: {objectiveLabel(ownership.capability)}</p>
             <div className="mt-1 grid grid-cols-2 gap-x-3 text-slate-600"><span>Source: {ownership.source ?? "none"}</span><span>Coverage: {(ownership.coverage * 100).toFixed(0)}%</span><span>CPT total: {(ownership.captainTotal * 100).toFixed(0)}%</span><span>FLEX total: {(ownership.flexTotal * 100).toFixed(0)}%</span></div>

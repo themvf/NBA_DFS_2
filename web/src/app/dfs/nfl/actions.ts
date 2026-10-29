@@ -26,9 +26,11 @@ import {
 } from "@/db/schema";
 import { matchNflIdentity, resolveNflRosterIdentity, assertUniqueNflSalaryIdentities } from "@/lib/nfl-dfs/identity";
 import { getNflIdentityRoster } from "@/db/nfl-identity";
-import { canonicalNflTeam, parseNflDkSalaryCsv, type NflDkSlate } from "@/lib/nfl-dfs/dk-salary-csv";
 import { bandReport, clampToBand, matchBands, parseFantasyProsOwnership, NFL_OWNERSHIP_BANDS_VERSION, type BandReport, type OwnershipBand } from "@/lib/nfl-dfs/ownership-bands";
 import { applyOwnershipOverrides } from "@/lib/nfl-dfs/ownership-overrides";
+import { canonicalNflTeam, capFormatOf, describeNflFormat, isSingleStatFormat, parseNflDkSalaryCsv, singleStatOf, SINGLE_STAT_LABELS, SINGLE_STAT_ROSTER_SIZE, type NflDkSlate, type NflSingleStat, type NflSingleStatFormat, type NflSlateFormat } from "@/lib/nfl-dfs/dk-salary-csv";
+import { optimizeSingleStat, projectSingleStat, projectSingleStatOwnership, SINGLE_STAT_VERSION, type SingleStatPlayer, type SingleStatProjection, type SingleStatResult, type SingleStatSettings } from "@/lib/nfl-dfs/single-stat";
+import type { NflGeneratedLineup } from "./nfl-optimizer";
 import { readDefensiveCaptures } from '@/db/nfl-defensive-projections';
 import { resolveDefensiveForecast, type CaptureProfile } from '@/lib/nfl-dfs/defensive-projection';
 import { captureProfileFor } from '@/lib/nfl-dfs/defensive-display';
@@ -152,6 +154,12 @@ export type NflWorkspacePlayer = NflOptimizerPlayer & {
   rangeSplit?: RangeSplit | null;
   /** `nfl-ownership-bands-v1`: the outside range for this player (`prior` is our number); it bounds `ownPct` only while the clamp is on. */
   ownBand?: { low: number; high: number; prior: number; source: string; capturedAt: string } | null;
+  /**
+   * Single Stat slates only (`nfl-single-stat-v1`): the one statistic this
+   * slate scores, projected from the same inputs as the points projection.
+   * The optimizer for those slates reads this, never `ourProj`.
+   */
+  singleStat?: SingleStatProjection | null;
   platformEligibility?: PlatformEligibilityDecision;
   availabilityEvidence?: {gameDecisionId:string|null;platformManifestDigest:string|null;
     platformDecisionState:'ELIGIBLE'|'INELIGIBLE'|null;decisionAt:string|null};
@@ -201,7 +209,10 @@ export type NflWorkspaceSlate = {
   firstKickoff?: string | null;
   /** When the roster/depth evidence the slate reads was captured (ISO). */
   rosterCapturedAt?: string | null;
-  format: "classic" | "showdown";
+  format: NflSlateFormat;
+  /** Single Stat slates only: what the slate scores and how the pool was projected for it. */
+  singleStat?: { version: string; stat: NflSingleStat; label: string; rosterSize: number;
+    marketSourced: number; modelSourced: number; missing: number; ownershipVersion: string; ownershipUnallocatedPct: number };
   games: string[];
   teams: string[];
   /**
@@ -732,7 +743,7 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
     availabilityHealth:runAvailability.health??null,
     refreshAvailable, refreshMessage, onNewestRun,
     favoriteTeam, underdogTeam,
-    format: upload.format as "classic" | "showdown",
+    format: upload.format as NflSlateFormat,
     games: upload.games as string[],
     teams: upload.teams as string[],
     warnings: [...upload.warnings as string[], ...(incompleteWarning ? [incompleteWarning] : []), ...(staleWarning ? [staleWarning] : []), ...(rosterStaleWarning ? [rosterStaleWarning] : []), ...(refreshMessage ? [refreshMessage] : []), ...(calibrationWarning ? [calibrationWarning] : []), ...(signalWarning ? [signalWarning] : []),
@@ -869,7 +880,7 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
   }), run, identityMap);
   await attachMarketAnchor(workspace);
   await attachRangeSplit(workspace, run ? { season: run.season, week: run.week ?? null } : null);
-  const owned = attachOwnership(workspace);
+  const owned = attachSingleStat(attachOwnership(workspace));
   await attachOwnershipBands(owned);
   owned.opponentAdjustments = await opponentAdjustmentCoverage(owned);
   owned.defensiveCaptures = await defensiveCaptureStatuses(owned, { backfill: options.recordCheck !== false });
@@ -1006,14 +1017,14 @@ function slateCheckFor(slate: NflWorkspaceSlate, context: { incompleteWarning: s
     slate.players.filter((p) => p.ownPct != null).map((p) => { const slotted = slate.format === 'showdown' && p.ownSource !== 'linestar' && p.flexOwnPct != null;
       return { playerId: p.dkPlayerId, flexPct: (slotted ? p.flexOwnPct as number : p.ownPct as number) / 100,
         captainPct: slotted && p.captainOwnPct != null ? (p.captainOwnPct as number) / 100 : null, source: p.ownSource ?? null, asOf: slate.modelAsOf }; }),
-    { heuristic: true, optIntoHeuristic: true, format: slate.format });
+    { heuristic: true, optIntoHeuristic: true, format: capFormatOf(slate.format, slate.games) });
   const coverage = availabilityCoverage(slate.players as never);
   // Which source each available player's ownership came from: a partial
   // LineStar import mixes LineStar and our estimate player by player.
   const owned = slate.players.filter((p) => !p.isOut && p.ownPct != null);
   const fromLinestar = owned.filter((p) => p.ownSource === 'linestar').length;
   return buildSlateCheck({
-    label: slate.format === 'showdown' ? (context.games[0] ?? 'Showdown').replace('@', ' @ ') : `Classic · ${context.games.length} games`,
+    label: slate.format === 'showdown' ? (context.games[0] ?? 'Showdown').replace('@', ' @ ') : describeNflFormat(slate.format, context.games),
     now: Date.now(), firstKickoff: slate.firstKickoff ?? null,
     deployedBuild: isDeployedBuild(nflBuildInfo().commitSha),
     incompleteWarning: context.incompleteWarning,
@@ -1261,7 +1272,7 @@ async function attachRangeSplit(workspace: NflWorkspaceSlate, run: { season: num
  */
 function attachOwnership(workspace: NflWorkspaceSlate): NflWorkspaceSlate {
   const prior = projectOwnershipPrior(workspace.players.map((p) => ({ dkPlayerId: p.dkPlayerId, position: p.position, salary: p.salary,
-    projection: p.ourProj, dkAvg: p.avgFptsDk, isOut: p.isOut, dkStatus: p.dkStatus, captainSalary: p.captainSalary, team: p.team })), workspace.format,
+    projection: p.ourProj, dkAvg: p.avgFptsDk, isOut: p.isOut, dkStatus: p.dkStatus, captainSalary: p.captainSalary, team: p.team })), capFormatOf(workspace.format, workspace.games),
     { favoriteTeam: workspace.favoriteTeam ?? null, underdogTeam: workspace.underdogTeam ?? null });
   const byId = new Map(prior.players.map((p) => [p.dkPlayerId, p]));
   return { ...workspace, players: workspace.players.map((p) => {
@@ -1314,12 +1325,42 @@ async function attachOwnershipBands(workspace: NflWorkspaceSlate): Promise<void>
   }
 }
 
+/**
+ * Single Stat slates (`nfl-single-stat-v1`): project the one statistic the
+ * slate scores for every player, and replace the salary-based ownership prior
+ * (which reads every $0 salary as unownable) with the single-stat prior. Runs
+ * after the market anchor and absence commit, so it sees the books' stat line
+ * and the starter-out scale. Salary-cap slates pass through untouched.
+ */
+function attachSingleStat(workspace: NflWorkspaceSlate): NflWorkspaceSlate {
+  const stat = singleStatOf(workspace.format);
+  if (!stat) return workspace;
+  const players = workspace.players.map((p) => ({ ...p, singleStat: projectSingleStat(p, stat) }));
+  const prior = projectSingleStatOwnership(players.map((p) => ({ dkPlayerId: p.dkPlayerId, isOut: p.isOut, dkAvg: p.avgFptsDk,
+    projected: p.singleStat.projected, dkStatus: p.dkStatus })));
+  const counts = { market: 0, model: 0, none: 0 };
+  for (const p of players) {
+    if (p.isOut) continue;
+    counts[p.singleStat.source === "market" ? "market" : p.singleStat.source === "model" ? "model" : "none"] += 1;
+  }
+  return {
+    ...workspace,
+    singleStat: { version: SINGLE_STAT_VERSION, stat, label: SINGLE_STAT_LABELS[stat], rosterSize: SINGLE_STAT_ROSTER_SIZE,
+      marketSourced: counts.market, modelSourced: counts.model, missing: counts.none,
+      ownershipVersion: prior.version, ownershipUnallocatedPct: prior.unallocatedPct },
+    players: players.map((p) => {
+      const own = prior.ownPct.get(p.dkPlayerId) ?? null;
+      return { ...p, ourOwnPct: own, captainOwnPct: null, flexOwnPct: null, ownPct: own, ownSource: own == null ? null : prior.version };
+    }),
+  };
+}
+
 export async function loadNflSalaryCsv(formData: FormData): Promise<NflWorkspaceSlate> {
   await ensureNflDfsTables();
   const file = formData.get("file");
   if (!(file instanceof File)) throw new Error("Select a DraftKings NFL salary CSV.");
   const content = await file.text();
-  const slate = parseNflDkSalaryCsv(content);
+  const slate = parseNflDkSalaryCsv(content, { fileName: file.name });
   const digest = sha256(content);
   return persistSalarySlate(slate, digest, file.name);
 }
@@ -1496,7 +1537,7 @@ async function persistSalarySlate(slate: NflDkSlate, digest: string, fileName: s
   // than waiting for a scheduled run that may come after kickoff. Never fails
   // the upload; the Slate Check shows what happened.
   // System slates build without defensive adjustments, so they request no captures.
-  if (!system && run && !slateHasStarted(slate.players.map((p) => p.gameInfo))) await requestDefensiveCaptures(uploadId, run.runId);
+  if (!system && run && !isSingleStatFormat(slate.format) && !slateHasStarted(slate.players.map((p) => p.gameInfo))) await requestDefensiveCaptures(uploadId, run.runId);
 
   return workspaceSlate(uploadId, {}, systemRead);
 }
@@ -1707,8 +1748,159 @@ export async function runNflOptimizer(
 ): Promise<{ runId: string; slate: NflWorkspaceSlate; result: NflOptimizerResult; ownership?: OwnershipAssessment;effectiveSettings:NflOptimizerSettings; build:{commitSha:string|null} }> {
   await ensureNflDfsTables();
   const slate = await workspaceSlate(uploadId, sanitizeConfirmedStartingQbs(settings.confirmedStartingQbs));
+  if(isSingleStatFormat(slate.format))throw new Error("This is a Single Stat slate; build it with the Single Stat generator.");
   if(settings.format!==slate.format)throw new Error("Optimizer format must match the saved salary slate.");
   return saveOptimizerResult(slate,settings);
+}
+
+// ── Single Stat (no-cap) runs ─────────────────────────────────────────────
+
+/** What a saved Single Stat run stores in `nfl_dfs_optimizer_runs.settings`. */
+export type NflSingleStatRunSettings = SingleStatSettings & {
+  kind: "single_stat";
+  format: NflSingleStatFormat;
+  stat: NflSingleStat;
+  projectionSource: "our" | "dk_avg";
+  runEvidence?: { warnings: string[]; excluded: SingleStatResult["excluded"]; exposure: SingleStatResult["exposure"];
+    leverageApplied: boolean; ownershipVersion: string | null; singleStatVersion: string };
+};
+
+/** The pool the Single Stat optimizer reads, from the workspace's own projections. */
+function singleStatPlayersFor(slate: NflWorkspaceSlate, source: "our" | "dk_avg"): SingleStatPlayer[] {
+  return slate.players.map((p) => {
+    const own = p.singleStat ?? null;
+    const dk = p.avgFptsDk != null && Number.isFinite(p.avgFptsDk) ? p.avgFptsDk : null;
+    const projected = p.isOut ? 0 : source === "dk_avg" ? dk : own?.projected ?? null;
+    return { dkPlayerId: p.dkPlayerId, name: p.name, position: p.position, team: p.team, opponent: p.opponent, gameKey: p.gameKey,
+      isOut: p.isOut, projected, p10: source === "our" ? own?.p10 ?? null : null, p90: source === "our" ? own?.p90 ?? null : null,
+      ownPct: p.ownPct ?? null, source: p.isOut ? "model" : source === "dk_avg" ? (dk == null ? "none" : "dk_avg") : own?.source ?? "none" };
+  });
+}
+
+/** Saved-lineup shape for a Single Stat run, so the page, restore and export paths read one record. */
+function singleStatGeneratedLineups(slate: NflWorkspaceSlate, result: SingleStatResult, source: "our" | "dk_avg"): NflGeneratedLineup[] {
+  const byId = new Map(slate.players.map((p) => [p.dkPlayerId, p]));
+  return result.lineups.map((lineup) => ({
+    lineupNumber: lineup.lineupNumber,
+    slots: lineup.players.map((entry) => {
+      const player = byId.get(entry.dkPlayerId)!;
+      return { slot: "FLEX", player, salary: 0, multiplier: 1, projection: entry.projected ?? 0, projectionSource: source };
+    }),
+    playerIds: lineup.players.map((p) => p.dkPlayerId),
+    totalSalary: 0,
+    projectedFpts: lineup.projected,
+    // The saved-lineup record requires a range; without one the projection stands in and the page says so.
+    floorFpts: lineup.floor ?? lineup.projected,
+    ceilingFpts: lineup.ceiling ?? lineup.projected,
+    projectedOwnership: lineup.ownershipSum,
+    stackSummary: { quarterback: null, passCatchers: [], bringBack: null },
+  }));
+}
+
+/**
+ * Build and save Single Stat lineups (`nfl-single-stat-v1`). The run is
+ * stored in the same tables as a salary-cap run, under `kind: "single_stat"`,
+ * so the saved-run list, restore and audit paths work unchanged; salaries are
+ * 0 and every slot is FLEX.
+ */
+export async function generateNflSingleStatLineups(uploadId: string, settings: SingleStatSettings & { projectionSource?: "our" | "dk_avg" }) {
+  try {
+    return { ok: true as const, ...(await runNflSingleStat(uploadId, settings)) };
+  } catch (error) {
+    console.error("NFL Single Stat run failed", error);
+    return { ok: false as const, error: error instanceof Error ? error.message : "Single Stat build failed." };
+  }
+}
+
+async function runNflSingleStat(uploadId: string, settings: SingleStatSettings & { projectionSource?: "our" | "dk_avg" }) {
+  await ensureNflDfsTables();
+  if (!/^[0-9a-f-]{36}$/.test(uploadId)) throw new Error(`Invalid saved slate: ${JSON.stringify(uploadId)}`);
+  const slate = await workspaceSlate(uploadId);
+  const stat = singleStatOf(slate.format);
+  if (!stat) throw new Error("This slate is not a Single Stat slate; use the standard generator.");
+  if (slate.players.some((p) => p.identityMethod === "exact_name_position")) {
+    throw new Error("This upload contains legacy player matches without team verification. Reload its DraftKings CSV before building.");
+  }
+  assertSlateOpen(slate, "build new lineups");
+  const source = settings.projectionSource === "dk_avg" ? "dk_avg" : "our";
+  const { projectionSource: _ignored, ...pure } = settings;
+  void _ignored;
+  const players = singleStatPlayersFor(slate, source);
+  const result = optimizeSingleStat(players, pure, stat);
+  const lineups = singleStatGeneratedLineups(slate, result, source);
+  const runId = randomUUID();
+  const buildInfo = nflBuildInfo();
+  // Frozen inputs: `ourProj`/floor/ceiling hold the STAT, so a restored lineup
+  // reads in the slate's own unit; the points projection is kept beside them.
+  const inputSnapshot = slate.players.map((player) => ({
+    dkPlayerId: player.dkPlayerId, ffPlayerId: player.ffPlayerId, identityMethod: player.identityMethod, gameInfo: player.gameInfo,
+    name: player.name, team: player.team, position: player.position, id: player.id, captainDkPlayerId: null, opponent: player.opponent,
+    gameKey: player.gameKey, salary: 0, captainSalary: null, rosterPositions: player.rosterPositions, status: player.dkStatus,
+    projectionStatus: player.projectionStatus, isOut: player.isOut, availability: player.availability,
+    ourProj: players.find((p) => p.dkPlayerId === player.dkPlayerId)?.projected ?? null,
+    floor: player.singleStat?.p10 ?? null, median: null, ceiling: player.singleStat?.p90 ?? null, boomRate: null,
+    dkAvg: player.avgFptsDk, fantasypros: null, linestar: null, custom: null,
+    singleStat: player.singleStat ?? null,
+    pointsProjection: { ourProj: player.ourProj, floor: player.floorFpts, median: player.medianFpts ?? null, ceiling: player.ceilingFpts },
+    marketAnchor: player.marketAnchor ?? null, absenceCommit: player.absenceCommit ?? null,
+    ownership: { total: player.ownPct ?? null, source: player.ownSource ?? null },
+    baselineSource: { runId: slate.projectionRunId, modelVersion: slate.modelVersion, asOf: slate.modelAsOf },
+  }));
+  const persistedSettings: NflSingleStatRunSettings = { ...pure, kind: "single_stat", format: slate.format as NflSingleStatFormat, stat,
+    projectionSource: source, runEvidence: { warnings: [...result.warnings], excluded: result.excluded, exposure: result.exposure,
+      leverageApplied: result.leverageApplied, ownershipVersion: slate.singleStat?.ownershipVersion ?? null, singleStatVersion: result.version } };
+  const inputDigest = sha256(canonicalAuditJson({ settings: persistedSettings, inputSnapshot, optimizerVersion: result.version, buildInfo }));
+  const status = lineups.length === 0 ? "failed" : lineups.length === settings.nLineups ? "complete" : "partial";
+  try {
+    await db.insert(nflDfsOptimizerRuns).values({
+      runId, uploadId, projectionRunId: slate.projectionRunId,
+      optimizerVersion: result.version, mode: settings.mode, projectionSource: source,
+      settings: persistedSettings, inputSnapshot, inputDigest, buildInfo,
+      requestedLineups: settings.nLineups, generatedLineups: lineups.length,
+      status, failureReason: status === "complete" ? null : result.warnings.join(" ") || "No lineup could be built.",
+    });
+    if (lineups.length) await db.insert(nflDfsLineups).values(lineups.map((lineup) => ({
+      runId, lineupNumber: lineup.lineupNumber,
+      slots: lineup.slots.map((entry) => ({ slot: entry.slot, dkPlayerId: entry.player.dkPlayerId, captainDkPlayerId: null, name: entry.player.name,
+        team: entry.player.team, salary: 0, projection: entry.projection, source: entry.projectionSource, multiplier: 1 })),
+      stackSummary: { ...lineup.stackSummary, kind: "single_stat", stat },
+      playerIds: lineup.playerIds, totalSalary: 0, projectedFpts: lineup.projectedFpts,
+      floorFpts: lineup.floorFpts, ceilingFpts: lineup.ceilingFpts, projectedOwnership: lineup.projectedOwnership,
+    })));
+  } catch (error) {
+    console.error("NFL Single Stat run could not be saved", error);
+    throw new Error("Unable to save the Single Stat run. Refresh the slate and retry.");
+  }
+  return { runId, slate, result, lineups, settings: persistedSettings, build: { commitSha: buildInfo.commitSha ?? null } };
+}
+
+/**
+ * A saved Single Stat run, re-checked against the slate as it reads NOW: the
+ * kickoff lock, and any player ruled out since the lineups were built.
+ */
+async function exportableSingleStatLineups(runId: string) {
+  const { run } = await readNflOptimizerAudit(runId);
+  const settings = run.settings as Partial<NflSingleStatRunSettings>;
+  if (settings.kind !== "single_stat" || !settings.format) throw new Error("This run is not a Single Stat run; use the standard export.");
+  const saved = await loadSavedNflLineups(run.uploadId, runId);
+  const slate = await currentSlateForRun(run.uploadId, {});
+  assertSlateOpen(slate, "export lineups");
+  const outNow = new Map(slate.players.filter((p) => p.isOut || p.ruledOut || p.projectionStatus === "out").map((p) => [p.dkPlayerId, p.name]));
+  const ruled = [...new Set(saved.lineups.flatMap((l) => l.slots.filter((s) => outNow.has(s.player.dkPlayerId)).map((s) => s.player.name)))];
+  if (ruled.length) throw new Error(`Ruled out since these lineups were built: ${ruled.join(", ")}. Build again before exporting.`);
+  return { saved, format: settings.format };
+}
+
+/** The lineups-only CSV (three FLEX columns, `Name (id)` cells) for a saved Single Stat run. */
+export async function exportSavedNflSingleStatLineups(runId: string): Promise<string> {
+  const { saved, format } = await exportableSingleStatLineups(runId);
+  return exportNflDkLineups(format, saved.lineups);
+}
+
+/** Write a saved Single Stat run into a DraftKings entry file. */
+export async function exportSavedNflSingleStatEntries(runId: string, entryTemplate: string): Promise<string> {
+  const { saved } = await exportableSingleStatLineups(runId);
+  return exportNflDkEntries(entryTemplate, saved.lineups);
 }
 
 /**
@@ -1730,6 +1922,7 @@ export async function compareNflWorkload(uploadId:string, settings:NflOptimizerS
   await ensureNflDfsTables();
   validateWorkloadPositions(settings.workloadPositions);
   const slate=await workspaceSlate(uploadId,sanitizeConfirmedStartingQbs(settings.confirmedStartingQbs));
+  if(isSingleStatFormat(slate.format))throw new Error('Workload comparison applies to salary-cap slates only.');
   // One server-read cohort, both sources, identical controls and deterministic search.
   if(!Number.isInteger(settings.nLineups)||settings.nLineups<1||settings.nLineups>150)throw new Error('Lineup count must be 1–150.');
   const blocked=slate.sourceAvailability?sourceBlockedReason(slate.sourceAvailability,'workload',settings.workloadPositions):null;
@@ -1737,7 +1930,7 @@ export async function compareNflWorkload(uploadId:string, settings:NflOptimizerS
   const clock:DecisionClock={now:Date.now(),decisionAt:slate.modelAsOf,onNewestRun:slate.onNewestRun===true};
   const common=slate.players.filter(p=>(p.ourProj!==null&&p.ourProj>0||settings.allowDkFallback&&p.avgFptsDk!==null&&p.avgFptsDk>0)&&workloadPoolEligible(p,clock));
   const pairedSlate={...slate,players:common};
-  const paired={...settings,format:slate.format,randomness:0,nLineups:Math.min(5,settings.nLineups)};
+  const paired={...settings,format:capFormatOf(slate.format,slate.games),randomness:0,nLineups:Math.min(5,settings.nLineups)};
   if(!common.some(p=>selectedWorkload(p,settings.workloadPositions)&&!p.isOut))throw new Error('No eligible pregame workload forecasts for comparison.');
   const baseline=await saveOptimizerResult(pairedSlate,{...paired,projectionSource:'our'});
   const candidate=await saveOptimizerResult(pairedSlate,{...paired,projectionSource:'workload'});
@@ -1878,7 +2071,7 @@ function resolveRunContext(eligible: NflWorkspacePlayer[], slate: NflWorkspaceSl
     // a single combined feed (LineStar) has no captain split.
     eligible.filter(p=>p.ownPct!=null).map(p=>{ const slotted=slate.format==='showdown'&&p.ownSource!=='linestar'&&p.flexOwnPct!=null;
       return {playerId:p.dkPlayerId, flexPct:(slotted?p.flexOwnPct as number:p.ownPct as number)/100, captainPct:slotted&&p.captainOwnPct!=null?(p.captainOwnPct as number)/100:null, source:p.ownSource??null, asOf:slate.modelAsOf}; }),
-    { heuristic: true, optIntoHeuristic: settings.useHeuristicOwnershipLeverage ?? false, format: slate.format },
+    { heuristic: true, optIntoHeuristic: settings.useHeuristicOwnershipLeverage ?? false, format: capFormatOf(slate.format, slate.games) },
   );
   const resolvedSettings: NflOptimizerSettings = { ...settings, defensiveAdjustments:defensive,
     // Owner's decision 2026-10-23: GPP builds from the page choose the portfolio
@@ -1997,7 +2190,7 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
   // Manual ownership (nfl-ownership-manual-v1): the owner's typed numbers replace
   // the prior for those players before capability is assessed, so the snapshot
   // records what the build read and `ownership.source` says it was typed.
-  const manual=applyOwnershipOverrides(audited,settings.ownershipOverrides,slate.format);
+  const manual=applyOwnershipOverrides(audited,settings.ownershipOverrides,capFormatOf(slate.format,slate.games));
   const prepared=manual.players;
   const eligible= settings.projectionSource==='workload' ? prepared.filter(p=>workloadPoolEligible(p,clock(now))) : prepared;
   // Phase 2: the SERVER authoritatively resolves ownership capability from the
