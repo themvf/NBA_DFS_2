@@ -381,3 +381,19 @@ updates `index.json` there; `/nfl/game-leaders` and `/nfl/position-stats` take a
 `?week=2026-w07` parameter and list every archived week. Weeks 5-7 were backfilled
 from each week's last commit of `game-leaders.json`; weeks 1-4 had no page.
 Past weeks do not re-run the injury check, and the page says so.
+
+## Recent average counts games played (2026-10-29)
+
+The page's Recent average column, the leader line above each table and the
+historical check all use the player's average over the games he got the ball
+(a carry or a target) in his team's last six games the model could use
+(`training_game_ids`, so a quarantined game is skipped as in the model's own
+baseline). The model's `baseline_mean`, which counts a missed game as zero, is
+unchanged and still stored. `played_baseline_check` in
+`research/nfl_game_leaders_auto.py` rescores the games-played leader on the two
+evaluation files' graded games at every refresh; with every game played the two
+averages match exactly (2,535 of 2,535 player rows). On those games the
+games-played leader led 44/15/30% (2025 weeks 9-12: rushing, receptions,
+receiving yards) and 48/20/21% (2026 weeks 1-4), against the model's first
+choice at 42/17/32% and 45/20/23%; neither difference is distinguishable from
+zero on 50-56 games.
