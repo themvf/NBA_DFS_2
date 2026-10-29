@@ -32,8 +32,10 @@ PAGE = Path("web/src/data/game-leaders.json")
 # One file per week, the last version published for it, so the page can show past weeks.
 ARCHIVE = Path("web/src/data/game-leaders-weeks")
 ROOT = Path("artifacts/nfl-game-leaders/auto")
-EVALUATIONS = (Path("artifacts/nfl-game-leaders/final-evaluation-2025.json"),
-               Path("artifacts/nfl-game-leaders/final-evaluation-2026.json"))
+# The current model (v4, production settings) re-run on the same graded windows as the
+# v1 final-evaluation files, which predate total yards. Development data, not a passed gate.
+EVALUATIONS = (Path("artifacts/nfl-game-leaders/evaluation-v4-2025.json"),
+               Path("artifacts/nfl-game-leaders/evaluation-v4-2026.json"))
 LOOKAHEAD = timedelta(days=7)
 
 
