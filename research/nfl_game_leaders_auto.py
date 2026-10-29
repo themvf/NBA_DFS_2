@@ -62,6 +62,31 @@ def take_capture(path: Path, season: int) -> dict:
     return result
 
 
+def drop_moved_players(request: dict) -> dict:
+    """Remove from a team's role scenario anyone the request rosters on the other team.
+
+    The roles rule lists every identity in a team's recent box scores, so a player
+    who moved between the two teams in this game (Ryan Miller, MIA weeks 2-3, NE in
+    week 8) appears in his old team's field. The model leaves request players out
+    of a team's residual field, so the two lists differ and the game fails. Only a
+    zero share is dropped; a moved player carrying a share is an error, since
+    removing it would silently hand his mass to someone else."""
+    team_of = {p["identity"]: p["team"] for p in request.get("players", [])}
+    dropped = []
+    for team, actions in (request.get("role_scenarios") or {}).items():
+        for action, shares in actions.items():
+            for identity in [i for i in shares if team_of.get(i, team) != team]:
+                if shares[identity] != 0:
+                    raise ValueError(f"{identity} is rostered on {team_of[identity]} but holds "
+                                     f"{shares[identity]:.3f} of {team} {action} in the role scenario")
+                del shares[identity]
+                dropped.append({"identity": identity, "old_team": team, "now": team_of[identity],
+                                "action": action})
+    if dropped:
+        request["scenario_evidence"] = {**request["scenario_evidence"], "moved_players_dropped": dropped}
+    return request
+
+
 def capture_requests(snapshot: dict, games: list[dict]) -> dict:
     """Per-game availability, as `week-requests` does; a failed game keeps its error."""
     import psycopg2
@@ -74,8 +99,9 @@ def capture_requests(snapshot: dict, games: list[dict]) -> dict:
         try:
             gid = g["game_id"]
             # A reviewed depth override (research/nfl_game_leaders_reviewed.py) survives every rebuild.
-            out[gid] = apply_reviewed(gid, evidence_request(snapshot, gid),
-                                      lambda r, gid=gid: attach_roles(snapshot, {gid: r})[gid], reviewed)
+            out[gid] = drop_moved_players(apply_reviewed(
+                gid, evidence_request(snapshot, gid),
+                lambda r, gid=gid: attach_roles(snapshot, {gid: r})[gid], reviewed))
             print(json.dumps({"captured": g["game_id"]}), flush=True)
         except (ValueError, RuntimeError, http.RequestException, psycopg2.Error) as exc:
             out[g["game_id"]] = {"capture_error": str(exc)}

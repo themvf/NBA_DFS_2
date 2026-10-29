@@ -68,3 +68,33 @@ def test_validate_rejects_a_forecast_frozen_after_kickoff():
         assert "before kickoff" in str(exc)
     else:
         raise AssertionError("expected a refusal")
+
+
+def moved_request(share=0.0):
+    players = [{"identity": "a1", "team": "A"}, {"identity": "h1", "team": "H"},
+               {"identity": "moved", "team": "A"}]
+    roles = {"H": {"carries": {"h1": 0.9, "moved": share, "NEW:H:0": 0.1},
+                   "targets": {"h1": 1.0, "moved": share}},
+             "A": {"carries": {"a1": 1.0, "moved": 0.0}}}
+    return {"players": players, "role_scenarios": roles, "scenario_evidence": {"method": "m"}}
+
+
+def test_player_who_moved_between_the_two_teams_leaves_his_old_teams_field():
+    req = auto.drop_moved_players(moved_request())
+    assert req["role_scenarios"]["H"] == {"carries": {"h1": 0.9, "NEW:H:0": 0.1}, "targets": {"h1": 1.0}}
+    assert req["role_scenarios"]["A"]["carries"] == {"a1": 1.0, "moved": 0.0}
+    assert [d["action"] for d in req["scenario_evidence"]["moved_players_dropped"]] == ["carries", "targets"]
+
+
+def test_moved_player_with_a_share_fails_rather_than_handing_it_on():
+    import pytest
+    with pytest.raises(ValueError, match="holds 0.200 of H carries"):
+        auto.drop_moved_players(moved_request(0.2))
+
+
+def test_request_without_moved_players_is_unchanged():
+    req = moved_request()
+    req["players"] = req["players"][:2]
+    req["role_scenarios"]["H"]["carries"].pop("moved")
+    req["role_scenarios"]["H"]["targets"].pop("moved")
+    assert "moved_players_dropped" not in auto.drop_moved_players(req)["scenario_evidence"]
