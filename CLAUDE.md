@@ -8015,7 +8015,10 @@ with leverage on and off. Two mechanisms, both in `objective()` in
 5%-owned rival at a similar ceiling with leverage on and wins with it off, and
 that a 6× lottery ceiling loses to a real 12-point projection under the cap.
 Neither constant has been fitted; grade them on imported contests before
-treating either as more than a judgement.
+treating either as more than a judgement. The boom bonus is the third stated
+prior in that line: `boomWeight` (`DEFAULT_BOOM_WEIGHT = 2`, 2026-10-30) is
+now a setting so the ghost factorial's extra arm pair can build at 1 and 4;
+the house and every user build leave it at 2.
 
 ---
 
@@ -8648,6 +8651,18 @@ refuses `--save`). Things not to undo:
   up. `contest_for` accepts any source with both curves; the pool-rule grader
   already did. Keep the file name DraftKings gives it: the contest id is read
   from `contest-standings-<id>`.
+- **Extra arms ride OUTSIDE the design (amendment 2026-10-30,
+  `nfl-ghost-extra-arms-v1`).** Adding a factor changes the pinned design and
+  restarts the cohort, so a single setting tested after registration is a
+  pair of extra arms (`extraArms` in `ghost/design.ts`): the house with that
+  setting moved, its own pinned digest recorded in the freeze notes, built
+  only on freezes that recorded it, never in the factorial OLS, graded as the
+  paired within-slate difference against arm 0 (`paired_report` in
+  `model/nfl_ghost_grade.py`) with the same milestone and confirmation rule.
+  First pair: GPP boom weight 1 and 4 against the house's 2, arms 33 and 34.
+  The hindsight screen that licensed it (house rebuilt at 0/1/2/4 on the
+  slates already frozen, `research/nfl_boom_weight_screen.py`) is discovery
+  and is recorded in the study doc, not here.
 
 ## NFL DFS — the page read, measured and cut (2026-10-10)
 

@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
-import { GHOST_ARMS, GHOST_DESIGN_VERSION } from "@/lib/nfl-dfs/ghost/design";
+import { GHOST_ARMS, GHOST_DESIGN_VERSION, GHOST_EXTRA_ARM_COUNT } from "@/lib/nfl-dfs/ghost/design";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = Record<string, any>;
@@ -18,6 +18,7 @@ export async function GhostStudyCard() {
   let freezes: Row[] = [], results: Row[] = [], reports: Row[] = [], failures: Row[] = [];
   try {
     freezes = rows(await db.execute(sql`SELECT f.freeze_id, f.format, f.season, f.week, f.first_kickoff, f.teams,
+        EXISTS (SELECT 1 FROM jsonb_array_elements_text(f.notes) n WHERE n LIKE 'extra-arms %') AS has_extra,
         (SELECT count(*)::int FROM nfl_dfs_ghost_arms a WHERE a.freeze_id = f.freeze_id) AS arms,
         (SELECT count(*)::int FROM nfl_dfs_ghost_arms a WHERE a.freeze_id = f.freeze_id AND a.built < a.requested) AS short
       FROM nfl_dfs_ghost_freezes f WHERE f.design_version = ${GHOST_DESIGN_VERSION} ORDER BY f.first_kickoff DESC LIMIT 12`));
@@ -40,9 +41,11 @@ export async function GhostStudyCard() {
   return <section className="rounded-xl border bg-white p-4 shadow-sm">
     <h2 className="font-bold">Ghost lineups (automatic)</h2>
     <p className="mt-1 max-w-3xl text-sm text-slate-500">
-      Before every Sunday main slate and primetime Showdown, the system builds a house portfolio (the current framework) and {GHOST_ARMS} test
-      portfolios that each change several settings at once, then grades them all against the flagship contest on Tuesday. Nothing here
-      is entered, and your own builds are graded beside them without being used.
+      Before every Sunday main slate and primetime Showdown, the system builds a house portfolio (the current framework), {GHOST_ARMS} test
+      portfolios that each change several settings at once, and a boom-weight pair (the GPP boom bonus at 1 and 4 points per unit of boom
+      rate against the house&apos;s 2, everything else at the house), then grades them all against the flagship contest on Tuesday. Nothing here
+      is entered, and your own builds are graded beside them without being used. The pair is read as a paired difference against the house,
+      not inside the setting screen.
     </p>
     <div className="mt-3 grid gap-2 md:grid-cols-2">
       {(["classic", "showdown"] as const).map(f => {
@@ -70,7 +73,7 @@ export async function GhostStudyCard() {
           const owners = rs.filter(r => String(r.subject).startsWith("owner:"));
           return <tr key={String(f.freeze_id)} className="border-t">
             <td className="py-1">{f.season} wk {f.week} {f.format === "classic" ? "main Classic" : (f.teams as string[]).join(" / ")} · {et(new Date(f.first_kickoff).toISOString())}</td>
-            <td>{f.arms}/{GHOST_ARMS + 1}{f.short ? ` (${f.short} short)` : ""}</td>
+            <td>{f.arms}/{GHOST_ARMS + 1 + (f.has_extra ? GHOST_EXTRA_ARM_COUNT : 0)}{f.short ? ` (${f.short} short)` : ""}</td>
             <td>{house ? `${house.top1_hits}/${house.scored}` : "not graded"}</td>
             <td>{house ? `${money(house.payout)} · ${pct(roi(house))}` : "—"}</td>
             <td>{pct(best)}</td>

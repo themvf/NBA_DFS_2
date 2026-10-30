@@ -56,6 +56,39 @@ def test_effects_recover_a_planted_factor_and_withhold_before_the_milestone():
     assert full["screening"]["roi"]["effects"] is None or full["screening"]["roi"]["effects"] == []
 
 
+def test_extra_arms_stay_out_of_the_screen_and_are_graded_as_pairs_against_the_house():
+    rng = random.Random(3)
+    house = {"x": "on", "y": 1}
+    design = [{"x": x, "y": y} for x in ("on", "off") for y in (1, 2, 3)] * 2
+    extra = {33: {"x": "on", "y": 1, "boomWeight": 1}, 34: {"x": "on", "y": 1, "boomWeight": 4}}
+    graded = []
+    for s in range(10):
+        base = rng.random()
+        for i, lv in enumerate(design):
+            rate = base + (0.2 if lv["x"] == "off" else 0.0) + rng.gauss(0, 0.02)
+            graded.append({"freeze_id": f"s{s}", "arm": i, "levels": lv, "lineups": 20, "built": 20, "scored": 20,
+                           "top1_hits": rate * 20, "payout": None, "entry_fee": None})
+        for arm, lv in extra.items():
+            bump = 0.1 if lv["boomWeight"] == 4 else 0.0
+            graded.append({"freeze_id": f"s{s}", "arm": arm, "levels": lv, "lineups": 20, "built": 20, "scored": 20,
+                           "top1_hits": (base + bump + rng.gauss(0, 0.02)) * 20, "payout": None, "entry_fee": None})
+    full = g.report("classic", graded, house)
+    screen = full["screening"]["top1_rate"]
+    assert not any(e["level"].startswith("boomWeight") for e in screen["effects"]), "extra arms never enter the factorial OLS"
+    pairs = {e["level"]: e for e in full["extra_arms"]["paired"]["top1_rate"]["levels"]}
+    assert set(pairs) == {"boomWeight=1", "boomWeight=4"}
+    assert pairs["boomWeight=4"]["slates"] == 10 and abs(pairs["boomWeight=4"]["mean_diff"] - 0.1) < 0.03
+    assert pairs["boomWeight=4"]["candidate"] and not pairs["boomWeight=1"]["candidate"]
+    # Withheld below the milestone, on the extra arms' own slate count.
+    early = g.report("classic", [r for r in graded if r["freeze_id"] in {"s0", "s1"} or r["arm"] <= 32], house)
+    assert early["extra_arms"]["slates"] == 2 and early["extra_arms"]["paired"] is None and "withheld" in early["extra_arms"]["note"]
+    assert early["milestone_reached"], "the design screen is unaffected by how many slates carry the extra arms"
+    # A slate whose house is ungraded contributes no pair.
+    missing_house = [r for r in graded if not (r["freeze_id"] == "s0" and r["arm"] == 0)]
+    pairs2 = {e["level"]: e for e in g.report("classic", missing_house, house)["extra_arms"]["paired"]["top1_rate"]["levels"]}
+    assert pairs2["boomWeight=4"]["slates"] == 9
+
+
 class _FakeDb:
     """Answers contest_for's three queries from canned rows; records nothing."""
 

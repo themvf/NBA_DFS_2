@@ -1,0 +1,195 @@
+{
+ "version": "nfl-ghost-extra-arms-v1",
+ "screen": "boom-weight-hindsight",
+ "discovery_only": true,
+ "grader": "nfl-ghost-grade-v1",
+ "slates": [
+  {
+   "freeze_id": "182a47e8-5db7-4ecf-bece-fe01febcb437",
+   "format": "showdown",
+   "season": 2026,
+   "week": 7,
+   "draft_group_id": "155204",
+   "requested": 20,
+   "house_reproduced": [
+    20,
+    20
+   ],
+   "graded": false,
+   "reason": "contests were imported but none shares 90% of its players with this slate, or none has complete standings with a payout table (a stat-api top-100 preview has neither)"
+  },
+  {
+   "freeze_id": "34a43a44-2d14-45ea-aebc-d86c6f489edf",
+   "format": "showdown",
+   "season": 2026,
+   "week": 6,
+   "draft_group_id": "154959",
+   "requested": 20,
+   "house_reproduced": [
+    20,
+    20
+   ],
+   "graded": false,
+   "reason": "contests were imported but none shares 90% of its players with this slate, or none has complete standings with a payout table (a stat-api top-100 preview has neither)"
+  },
+  {
+   "freeze_id": "a15a81f5-fcc5-4e0a-987f-34178cb17c27",
+   "format": "classic",
+   "season": 2026,
+   "week": 6,
+   "draft_group_id": "154941",
+   "requested": 40,
+   "house_reproduced": [
+    40,
+    40
+   ],
+   "graded": false,
+   "reason": "contests were imported but none shares 90% of its players with this slate, or none has complete standings with a payout table (a stat-api top-100 preview has neither)"
+  },
+  {
+   "freeze_id": "b03a01e8-f852-404c-a1f5-4e54ab0c32d0",
+   "format": "showdown",
+   "season": 2026,
+   "week": 7,
+   "draft_group_id": "155216",
+   "requested": 20,
+   "house_reproduced": [
+    20,
+    20
+   ],
+   "graded": false,
+   "reason": "contests were imported but none shares 90% of its players with this slate, or none has complete standings with a payout table (a stat-api top-100 preview has neither)"
+  },
+  {
+   "freeze_id": "b60653d7-a879-49d9-9d7f-d59e189a4320",
+   "format": "showdown",
+   "season": 2026,
+   "week": 7,
+   "draft_group_id": "155217",
+   "requested": 20,
+   "house_reproduced": [
+    20,
+    20
+   ],
+   "graded": false,
+   "reason": "contests were imported but none shares 90% of its players with this slate, or none has complete standings with a payout table (a stat-api top-100 preview has neither)"
+  },
+  {
+   "freeze_id": "cdb25c08-6f52-4d79-8b13-a44f23f44db6",
+   "format": "showdown",
+   "season": 2026,
+   "week": 6,
+   "draft_group_id": "154960",
+   "requested": 20,
+   "house_reproduced": [
+    20,
+    20
+   ],
+   "graded": true,
+   "contest": "contest-standings-196786695",
+   "entries": 47562,
+   "levels": {
+    "0": {
+     "built": 20,
+     "scored": 20,
+     "top1_hits": 0,
+     "top01_hits": 0,
+     "cashes": 5,
+     "payout": 3.0,
+     "best_score": 113.45,
+     "mean_score": 94.15,
+     "top1_rate": 0.0,
+     "roi": -0.4,
+     "unscored_players": [],
+     "diff_vs_house": {
+      "top1_rate": 0.0,
+      "roi": 0.0,
+      "mean_score": 0.03
+     }
+    },
+    "1": {
+     "built": 20,
+     "scored": 20,
+     "top1_hits": 0,
+     "top01_hits": 0,
+     "cashes": 5,
+     "payout": 3.0,
+     "best_score": 113.45,
+     "mean_score": 94.15,
+     "top1_rate": 0.0,
+     "roi": -0.4,
+     "unscored_players": [],
+     "diff_vs_house": {
+      "top1_rate": 0.0,
+      "roi": 0.0,
+      "mean_score": 0.03
+     }
+    },
+    "2": {
+     "built": 20,
+     "scored": 20,
+     "top1_hits": 0,
+     "top01_hits": 0,
+     "cashes": 5,
+     "payout": 3.0,
+     "best_score": 113.45,
+     "mean_score": 94.12,
+     "top1_rate": 0.0,
+     "roi": -0.4,
+     "unscored_players": [],
+     "diff_vs_house": {
+      "top1_rate": 0.0,
+      "roi": 0.0,
+      "mean_score": 0.0
+     }
+    },
+    "4": {
+     "built": 20,
+     "scored": 20,
+     "top1_hits": 0,
+     "top01_hits": 0,
+     "cashes": 5,
+     "payout": 3.0,
+     "best_score": 113.45,
+     "mean_score": 93.42,
+     "top1_rate": 0.0,
+     "roi": -0.4,
+     "unscored_players": [],
+     "diff_vs_house": {
+      "top1_rate": 0.0,
+      "roi": 0.0,
+      "mean_score": -0.7
+     }
+    }
+   }
+  },
+  {
+   "freeze_id": "d34ae000-3e49-478c-933e-9728a0d99d42",
+   "format": "classic",
+   "season": 2026,
+   "week": 7,
+   "draft_group_id": "155198",
+   "requested": 40,
+   "house_reproduced": [
+    33,
+    40
+   ],
+   "graded": false,
+   "reason": "contests were imported but none shares 90% of its players with this slate, or none has complete standings with a payout table (a stat-api top-100 preview has neither)"
+  },
+  {
+   "freeze_id": "dcf678a3-4c4b-4bc4-b90e-66e0181e98c0",
+   "format": "showdown",
+   "season": 2026,
+   "week": 8,
+   "draft_group_id": "155596",
+   "requested": 20,
+   "house_reproduced": [
+    20,
+    20
+   ],
+   "graded": false,
+   "reason": "contests were imported but none shares 90% of its players with this slate, or none has complete standings with a payout table (a stat-api top-100 preview has neither)"
+  }
+ ]
+}

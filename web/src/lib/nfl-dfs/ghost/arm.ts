@@ -75,6 +75,8 @@ export function buildArm(format: GhostFormat, frozen: FrozenPlayer[], house: Nfl
     maxCeilingMultiple: levels.ceilingCap === "off" ? CEILING_CAP_OFF : Number(levels.ceilingCap),
     puntPolicy: { ...house.puntPolicy!, mode: levels.puntPolicy as "no_punts" | "role_qualified" },
   };
+  // Extra-arm factor (nfl-ghost-extra-arms-v1); the design arms and the house carry no level and keep the optimizer default.
+  if (levels.boomWeight != null) base.boomWeight = Number(levels.boomWeight);
   // The house is frozen with the v1-v10 pool rules on (teWrRules / rbDstRules
   // levels); user builds dropped them in winners-shape v11, so they are asked for here.
   const shape = applyWinnersShape({ ...base, buildShape: "winners" }, players, { poolRules: true });

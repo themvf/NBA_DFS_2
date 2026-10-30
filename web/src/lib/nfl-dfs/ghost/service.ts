@@ -32,7 +32,7 @@ import { canonicalAuditJson } from "../audit-json";
 import { buildCompletion } from "../build-completion";
 import { canonicalNflTeam } from "../dk-salary-csv";
 import { buildArm } from "./arm";
-import { ghostDesign, GHOST_DESIGN_VERSION, type GhostFormat } from "./design";
+import { allArms, extraArms, ghostDesign, GHOST_DESIGN_VERSION, GHOST_EXTRA_ARMS_VERSION, type GhostFormat } from "./design";
 import { GHOST_HOUSE_VERSION, houseSettings } from "./house";
 import { dkGameInfo, SYSTEM_SLATE_VERSION, type PoolRow, type ScheduledGame } from "./system-slate";
 import { freezeTiming, FRESH_LINES_DEADLINE_MINUTES, FRESH_LINES_MINUTES, type FreezeTiming } from "./freeze-timing";
@@ -155,7 +155,8 @@ export async function freezeSlate(slate: GradableSlate, secret: string, now = ne
     const inputDigest = sha256(canonicalAuditJson({ inputSnapshot: frozen.inputSnapshot, house: frozen.resolvedHouse }));
     const freezeId = randomUUID();
     const notes = [...frozen.warnings, linesNote, `projections ${frozen.modelVersion} as of ${frozen.modelAsOf}`, `ownership ${frozen.ownership.capability}, leverage ${frozen.ownership.leverage ? "on" : "off"}`,
-      `design ${ghostDesign(slate.format).digest}`, `house ${GHOST_HOUSE_VERSION}`, `optimizer ${NFL_OPTIMIZER_VERSION}`];
+      `design ${ghostDesign(slate.format).digest}`, `extra-arms ${GHOST_EXTRA_ARMS_VERSION} ${extraArms(slate.format).digest}`,
+      `house ${GHOST_HOUSE_VERSION}`, `optimizer ${NFL_OPTIMIZER_VERSION}`];
     if (!frozen.projectionRunId) throw new Error("The system slate resolved no projection run");
     const inserted = rows(await db.execute(sql`INSERT INTO nfl_dfs_ghost_freezes (freeze_id, design_version, draft_group_id, pool_snapshot_id, upload_id, projection_run_id, format, season, week,
         game_ids, teams, owner_signature, first_kickoff, deployed_sha, input_snapshot, house_settings, input_digest, notes)
@@ -176,10 +177,21 @@ export async function freezeSlate(slate: GradableSlate, secret: string, now = ne
   }
 }
 
+/** The extra-arms digest a freeze was taken under, or null for a freeze that predates the extra arms. */
+const recordedExtraArms = (notes: string[]) => notes.find(n => n.startsWith("extra-arms "))?.split(" ")[2] ?? null;
+
+/**
+ * Arms still to build: every design arm, plus the extra arms when the freeze
+ * recorded the deployed extra-arms digest (a freeze taken before the pair
+ * existed, or under another pair, gets the design arms only; the pair's
+ * cohort starts at the first freeze that recorded it).
+ */
 export async function missingArms(freezeId: string): Promise<number[]> {
-  const f = rows(await db.execute(sql`SELECT format FROM nfl_dfs_ghost_freezes WHERE freeze_id = ${freezeId}::uuid`))[0];
+  const f = rows(await db.execute(sql`SELECT format, notes FROM nfl_dfs_ghost_freezes WHERE freeze_id = ${freezeId}::uuid`))[0];
   const have = new Set(rows(await db.execute(sql`SELECT arm FROM nfl_dfs_ghost_arms WHERE freeze_id = ${freezeId}::uuid`)).map(r => Number(r.arm)));
-  return ghostDesign(f.format as GhostFormat).arms.map(a => a.arm).filter(a => !have.has(a));
+  const format = f.format as GhostFormat;
+  const extra = recordedExtraArms((f.notes as string[]) ?? []) === extraArms(format).digest;
+  return (extra ? allArms(format) : ghostDesign(format).arms).map(a => a.arm).filter(a => !have.has(a));
 }
 
 const lockOpen = (kickoff: string, marginMs: number) => Date.now() < Date.parse(kickoff) - marginMs;
@@ -200,8 +212,11 @@ export async function buildAndSaveArm(freezeId: string, arm: number): Promise<{ 
   const design = ghostDesign(format);
   const recordedDesign = (f.notes as string[]).find(n => n.startsWith("design "))?.slice(7);
   if (recordedDesign !== design.digest) throw new Error("The deployed design differs from the one this slate was frozen under; refusing (a changed design is a new version)");
-  const spec = design.arms.find(a => a.arm === arm);
+  const extra = extraArms(format);
+  const spec = allArms(format).find(a => a.arm === arm);
   if (!spec) throw new Error(`Arm ${arm} is not in the design`);
+  if (spec.extra && recordedExtraArms((f.notes as string[]) ?? []) !== extra.digest)
+    throw new Error("This slate was not frozen under the deployed extra-arms pair; refusing (a changed pair is a new version)");
   const house = f.house_settings as NflOptimizerSettings;
   const started = Date.now();
   let result: ReturnType<typeof optimizeNflLineups> | null = null, error: string | null = null;
@@ -216,6 +231,7 @@ export async function buildAndSaveArm(freezeId: string, arm: number): Promise<{ 
     requestedLineups: house.nLineups, generatedLineups: lineups.length });
   const status = `research_${error ? "failed" : completion.status}`;
   const researchStudy = { version: GHOST_DESIGN_VERSION, freezeId, arm, house: spec.house, levels: spec.levels, designDigest: design.digest,
+    ...(spec.extra ? { extraArms: GHOST_EXTRA_ARMS_VERSION, extraArmsDigest: extra.digest } : {}),
     houseVersion: GHOST_HOUSE_VERSION, draftGroupId: Number(f.draft_group_id), ruleExcludedIds: built?.ruleExcludedIds ?? [],
     completion: error ? "failed" : completion.status, issues: completion.issues, error, buildMs: ms,
     deployedSha: process.env.VERCEL_GIT_COMMIT_SHA ?? null };

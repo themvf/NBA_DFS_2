@@ -244,3 +244,62 @@ ranges, and `armProjection` re-applies the same ratios when an arm reverts to
 the model's or the pre-commit projection. Arm effects are estimated within a
 slate, so the change does not bias them, but weeks 1-7 and 8+ differ in the
 house's ranges: report effects by that boundary as well as pooled.
+
+## Amendment (2026-10-30): boom-weight arm pair outside the design
+
+Registered before any slate was frozen under it. The GPP objective credits
+`min(P90, projection x 2.5) + boomRate x 2`, times the ownership leverage;
+the factorial already varies the leverage exponent and the ceiling cap, and
+the boom weight (2, a stated prior, never fitted) was the one GPP constant
+it did not reach. Making it a factor would change the pinned design and
+restart the cohort, so it is added as a **pair of extra arms outside the
+32-run array** (`nfl-ghost-extra-arms-v1`, `web/src/lib/nfl-dfs/ghost/design.ts`
+`extraArms`): arm 33 builds the house at boom weight 1, arm 34 at 4, with
+every other setting at the house level. The optimizer gained a `boomWeight`
+setting (default 2, so the house and every design arm are unchanged).
+
+- **Design untouched.** The 32 design arms, their pinned digests
+  (`2a2eb6debe8a` / `8c96dd79697c`) and the house are as before; the pair
+  has its own digest (`38eb082e2380` classic, `68d132e0235f` showdown), pinned
+  by `npm run test:nfl-ghost`. A freeze records the pair's digest in its
+  notes; the pair is built only on a freeze that recorded the deployed digest,
+  so its cohort starts at the first freeze after deployment and it is never
+  built on an earlier freeze.
+- **Grading.** `model/nfl_ghost_grade.py` keeps arms above 32 out of the
+  factorial regression (they would alias with the intercept) and reports each
+  as the **paired within-slate difference against the house** (arm minus arm
+  0 on the slates where both are graded), with the same slate bootstrap, the
+  same 8-slate milestone counted on the slates that carry the pair, and
+  Benjamini-Hochberg at q = 0.10 across the pair's levels per outcome.
+  Primary outcome top-1% rate, as for the design.
+- **Decision rule (fixed now).** A constant moves only if its effect is a
+  candidate at the pair's milestone AND confirms on 8 fresh slates under a
+  separate registration, and then only to the tested level (1 or 4), never
+  to an interpolated value. The constants are never fitted on weeks 1-7.
+- **Hindsight screen (discovery only).** Before the pair's first freeze, the
+  house was rebuilt at boom weight 0, 1, 2 and 4 on every slate already frozen
+  (`web/scripts/research-nfl-boom-weight-screen.ts`,
+  `research/nfl_boom_weight_screen.py`, output in
+  `artifacts/nfl-ghost-extra-arms-v1/boom-weight-screen/`). Those slates were
+  seen before the levels were chosen and four levels are read at once, so it
+  licenses the forward test and nothing else; its result is recorded below
+  once run.
+
+**Hindsight screen result (run 2026-10-30, discovery only).** The eight
+frozen slates (weeks 6-8: two main Classics, six primetime Showdowns) were
+rebuilt at boom weight 0, 1, 2 and 4; the rebuilt level 2 reproduced the
+stored arm 0 exactly on seven of them (33 of 40 lineups on the week-7
+Classic, whose arm 0 was built before later optimizer changes), so the
+comparison is like for like. Only one slate had a contest with both curves
+(week-6 SEA@DEN Showdown, 47,562 entries): all four levels went 0 of 20 in
+the top 1%, 5 of 20 cashed, payout $3.00, ROI -40%, mean score 93.4-94.2;
+no level separated from the house. The more useful reading is how little
+the knob moves the build: against the house's 20 Showdown lineups, levels
+0 / 1 / 4 reproduced 13-20 / 12-20 / 13-20 identical lineups across the six
+Showdowns, and against the 40 Classic lineups 13-26 / 28-32 / 11-21, the rest
+differing by about one player; mean projection and ceiling moved by under a
+point. So the pair is a low-leverage test by construction: an effect on the
+top-1% rate can only be small, and a null at the milestone will mean "a
+weight that barely changes the portfolio did not change the result", not
+that boom rate carries no information. The forward test stands as
+registered; nothing moves on this screen.

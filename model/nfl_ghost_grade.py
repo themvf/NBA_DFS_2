@@ -18,6 +18,12 @@ docs/nfl-ghost-factorial-study.md registers the rules this module applies:
   passes Benjamini-Hochberg at q = 0.10 becomes a CANDIDATE. A candidate
   changes nothing; it is re-tested on the next 8 fresh slates under a new
   registration before any default changes.
+* Extra arms (amendment 2026-10-30, `nfl-ghost-extra-arms-v1`): arms above
+  DESIGN_ARMS sit OUTSIDE the array (the house with one setting moved, today
+  the GPP boom weight at 1 and 4 against 2). They never enter the factorial
+  regression; each is graded as the paired within-slate difference against
+  the house, with the same slate bootstrap, milestone and Benjamini-Hochberg
+  rule, and the same confirmation requirement.
 
 Pure: no database access, no I/O.
 """
@@ -30,6 +36,7 @@ from collections import defaultdict
 from typing import Any, Iterable
 
 GRADER_VERSION = "nfl-ghost-grade-v1"
+DESIGN_ARMS = 32
 MILESTONE_SLATES = 8
 FDR_Q = 0.10
 BOOTSTRAP = 2000
@@ -193,19 +200,64 @@ def effects_report(cells: list[dict], house: dict, outcome: str, *, boots: int =
             "candidates": sorted(candidates), "fdr_q": FDR_Q}
 
 
+def extra_arm_label(levels: dict, house: dict) -> str:
+    """The one setting an extra arm moves, as `key=value` (every other level equals the house's)."""
+    moved = sorted(f"{k}={v}" for k, v in levels.items() if house.get(k) != v)
+    return ",".join(moved)
+
+
+def paired_report(cells: list[dict], house: dict, outcome: str, *, boots: int = BOOTSTRAP, seed: int = BOOTSTRAP_SEED) -> dict:
+    """Extra arms against the house: per level, the mean within-slate difference (arm minus house) over
+    the slates where both are graded, a slate-bootstrap 95% interval and two-sided p, and the
+    Benjamini-Hochberg candidates across the extra levels of this outcome. `cells` holds house and extra cells only."""
+    house_by_slate = {c["slate"]: c.get(outcome) for c in cells if c["arm"] == 0}
+    diffs: dict[str, dict[Any, float]] = defaultdict(dict)
+    for c in cells:
+        if c["arm"] == 0 or c.get(outcome) is None or house_by_slate.get(c["slate"]) is None:
+            continue
+        diffs[extra_arm_label(c["levels"], house)][c["slate"]] = c[outcome] - house_by_slate[c["slate"]]
+    rng = random.Random(seed)
+    levels, pvals = [], {}
+    for label in sorted(diffs):
+        d = diffs[label]
+        slates = sorted(d)
+        values = [d[s] for s in slates]
+        mean = sum(values) / len(values)
+        means = sorted(sum(rng.choice(values) for _ in values) / len(values) for _ in range(boots))
+        lo, hi = means[int(0.025 * len(means))], means[min(len(means) - 1, int(0.975 * len(means)))]
+        p = min(1.0, 2 * min(sum(1 for v in means if v <= 0), sum(1 for v in means if v >= 0)) / len(means))
+        pvals[label] = p
+        levels.append({"level": label, "slates": len(slates), "mean_diff": round(mean, 5), "ci95": [round(lo, 5), round(hi, 5)], "p": round(p, 4)})
+    candidates = benjamini_hochberg(pvals) if pvals else set()
+    for e in levels:
+        e["candidate"] = e["level"] in candidates
+    return {"outcome": outcome, "bootstraps": boots, "levels": levels, "candidates": sorted(candidates), "fdr_q": FDR_Q}
+
+
 def report(format_: str, graded: Iterable[dict], house: dict) -> dict:
-    """The weekly report for one format. `graded`: one row per (slate, arm) with levels and metrics."""
+    """The weekly report for one format. `graded`: one row per (slate, arm) with levels and metrics.
+    Arms above DESIGN_ARMS are extra arms: kept out of the factorial screen, reported as pairs against the house."""
     cells = []
     for g in graded:
         cells.append({"slate": g["freeze_id"], "arm": g["arm"], "levels": g["levels"], **outcomes(g)})
-    slates = sorted({c["slate"] for c in cells})
+    design = [c for c in cells if c["arm"] <= DESIGN_ARMS]
+    extra = [c for c in cells if c["arm"] > DESIGN_ARMS]
+    slates = sorted({c["slate"] for c in design})
     milestone = len(slates) >= MILESTONE_SLATES
     out: dict[str, Any] = {"version": GRADER_VERSION, "format": format_, "slates": len(slates), "milestone_slates": MILESTONE_SLATES,
                            "milestone_reached": milestone}
     if milestone:
-        out["screening"] = {o: effects_report(cells, house, o) for o in ("top1_rate", "roi", "completion")}
+        out["screening"] = {o: effects_report(design, house, o) for o in ("top1_rate", "roi", "completion")}
     else:
         out["screening"] = None
         out["note"] = (f"{len(slates)} of {MILESTONE_SLATES} slates graded: factor effects are withheld until the "
                        "registered milestone; per-slate results are descriptive.")
+    extra_slates = sorted({c["slate"] for c in extra})
+    paired_cells = extra + [c for c in design if c["arm"] == 0 and c["slate"] in set(extra_slates)]
+    out["extra_arms"] = {"slates": len(extra_slates), "milestone_reached": len(extra_slates) >= MILESTONE_SLATES,
+                         "paired": ({o: paired_report(paired_cells, house, o) for o in ("top1_rate", "roi", "completion")}
+                                    if len(extra_slates) >= MILESTONE_SLATES else None)}
+    if len(extra_slates) < MILESTONE_SLATES:
+        out["extra_arms"]["note"] = (f"{len(extra_slates)} of {MILESTONE_SLATES} slates carry the extra arms: paired differences "
+                                     "against the house are withheld until the registered milestone.")
     return out

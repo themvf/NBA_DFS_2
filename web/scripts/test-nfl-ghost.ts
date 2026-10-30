@@ -7,7 +7,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { optimizeNflLineups } from "../src/app/dfs/nfl/nfl-optimizer";
-import { buildDesign, ghostDesign, GHOST_ARMS, GHOST_FACTORS, GHOST_LINEUPS, houseLevels, maxCrossCorrelation } from "../src/lib/nfl-dfs/ghost/design";
+import { allArms, buildDesign, extraArms, ghostDesign, GHOST_ARMS, GHOST_EXTRA_ARM_COUNT, GHOST_FACTORS, GHOST_FIRST_EXTRA_ARM, GHOST_LINEUPS, houseLevels, maxCrossCorrelation } from "../src/lib/nfl-dfs/ghost/design";
+import { DEFAULT_BOOM_WEIGHT } from "../src/app/dfs/nfl/nfl-optimizer";
 import { armProjection, buildArm, CEILING_CAP_OFF } from "../src/lib/nfl-dfs/ghost/arm";
 import { houseSettings } from "../src/lib/nfl-dfs/ghost/house";
 import { freezeTiming, FRESH_LINES_DEADLINE_MINUTES, FRESH_LINES_MINUTES } from "../src/lib/nfl-dfs/ghost/freeze-timing";
@@ -19,6 +20,9 @@ type Raw = Record<string, any>;
 // ---- Design --------------------------------------------------------------
 /** The frozen designs. A change here is a new version (docs/nfl-ghost-factorial-study.md). */
 const PINNED = { classic: "2a2eb6debe8a", showdown: "8c96dd79697c" };
+/** The boom-weight pair (nfl-ghost-extra-arms-v1). Filled in on first run; a change is a new pair version. */
+const withoutBoom = (o: object) => Object.fromEntries(Object.entries(o).filter(([k]) => k !== "boomWeight"));
+const PINNED_EXTRA = { classic: "38eb082e2380", showdown: "68d132e0235f" };
 for (const format of ["classic", "showdown"] as const) {
   const d = ghostDesign(format);
   assert.equal(d.digest.slice(0, 12), PINNED[format], `${format}: design digest is pinned`);
@@ -35,6 +39,20 @@ for (const format of ["classic", "showdown"] as const) {
   assert.ok(maxCrossCorrelation(GHOST_FACTORS[format], columns) <= 0.12, `${format}: near-orthogonal (${d.maxCorrelation})`);
   const two = GHOST_FACTORS[format].map((f, j) => ({ f, j })).filter(x => x.f.levels.length === 2);
   assert.equal(maxCrossCorrelation(two.map(x => x.f), two.map(x => columns[x.j])), 0, `${format}: two-level factors exactly orthogonal`);
+  // The boom-weight pair rides OUTSIDE the design: arms 33 and 34, house levels plus boomWeight 1 / 4,
+  // its own pinned digest, and the design's digest and arms untouched by it.
+  const extra = extraArms(format);
+  assert.equal(extra.digest.slice(0, 12), PINNED_EXTRA[format], `${format}: extra-arms digest is pinned`);
+  assert.equal(extra.arms.length, GHOST_EXTRA_ARM_COUNT);
+  assert.deepEqual(extra.arms.map(a => a.arm), [GHOST_FIRST_EXTRA_ARM, GHOST_FIRST_EXTRA_ARM + 1]);
+  assert.deepEqual(extra.arms.map(a => a.levels.boomWeight), [1, 4]);
+  for (const a of extra.arms) {
+    assert.equal(a.extra, true);
+    assert.deepEqual(withoutBoom(a.levels), houseLevels(format), `${format} arm ${a.arm}: every other setting at the house level`);
+  }
+  assert.ok(!("boomWeight" in d.arms[0].levels), "the house and design arms carry no boom-weight level (optimizer default)");
+  assert.equal(allArms(format).length, GHOST_ARMS + 1 + GHOST_EXTRA_ARM_COUNT);
+  assert.deepEqual(allArms(format).slice(0, GHOST_ARMS + 1), d.arms);
 }
 
 // ---- Projection reverts --------------------------------------------------
@@ -97,6 +115,12 @@ assert.equal(off.settings.maxQbExposure, undefined);
 assert.ok(h.ruleExcludedIds.length > 0, "house applies the pool rules");
 const cap = d.arms.find(a => a.levels.ceilingCap === "off")!;
 assert.equal(buildArm("classic", frozen, house, cap.levels).settings.maxCeilingMultiple, CEILING_CAP_OFF);
+// Boom weight: the house and design arms leave it unset (the optimizer's 2); the extra arms set it.
+assert.equal(h.settings.boomWeight, undefined);
+assert.equal(DEFAULT_BOOM_WEIGHT, 2);
+const [bw1, bw4] = extraArms("classic").arms.map(a => buildArm("classic", frozen, house, a.levels));
+assert.equal(bw1.settings.boomWeight, 1); assert.equal(bw4.settings.boomWeight, 4);
+assert.deepEqual(withoutBoom(bw1.settings), withoutBoom(h.settings), "an extra arm differs from the house in boom weight only");
 
 const timed: number[] = [];
 for (const arm of [d.arms[0], d.arms[1], offArm]) {
