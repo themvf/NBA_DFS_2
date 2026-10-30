@@ -156,6 +156,7 @@
     "test:nfl-winners-shape": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-winners-shape.ts",
     "test:nfl-joint-selection": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-joint-selection.ts",
     "test:nfl-pool-rule-study": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-pool-rule-study.ts",
+    "test:nfl-portfolio-objective": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-portfolio-objective.ts",
     "test:nfl-lineup-export": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-lineup-export.ts",
     "test:pickem-contest": "node --import tsx ./scripts/test-pickem-contest.ts",
     "test:pickem-pfr": "node --import tsx ./scripts/test-pickem-pfr.ts",

@@ -6,9 +6,10 @@ python -m research.nfl_pool_rule_study --study showdown --source-run UUID --flag
 Three pre-registered studies share this runner:
   classic    nfl-classic-te-wr-pool-v1   docs/nfl-classic-te-wr-pool-rule-study.md
   showdown   nfl-showdown-kicker-rule-v1 docs/nfl-showdown-kicker-rule-study.md
-  portfolio  nfl-portfolio-objective-v2  docs/nfl-portfolio-objective-study.md
+  portfolio  nfl-portfolio-objective-v3  docs/nfl-portfolio-objective-study.md
              (either format; --main-slate for Classic, --flagship-showdown for Showdown;
-              --save needs a passing freeze for that format in artifacts/nfl-portfolio-objective-v2/freeze.json)
+              --save needs a passing freeze for that format in
+              artifacts/nfl-portfolio-objective-v3/freeze-<format>.json)
 
 Explicit source selection and population attestation avoid guessing which build
 was entered. Saves only new research_* optimizer runs, atomically, before lock,
@@ -47,11 +48,12 @@ STUDIES = {
                  "superseded_by": "nfl-ghost-factorial-v1",
                  # Several Showdowns a week: enrollment is unique per game.
                  "uniquePerGames": True},
-    "portfolio": {"version": "nfl-portfolio-objective-v2", "format": "any", "games": "any",
+    "portfolio": {"version": "nfl-portfolio-objective-v3", "format": "any", "games": "any",
                   "doc": "docs/nfl-portfolio-objective-study.md",
                   # Pool rules only matter when the source build was Winners.
                   "priorOpportunity": "winners", "uniquePerGames": True,
-                  "freeze": "artifacts/nfl-portfolio-objective-v2/freeze.json"},
+                  # One freeze file per format, written once by research.nfl_portfolio_freeze --format.
+                  "freeze": "artifacts/nfl-portfolio-objective-v3/freeze-{format}.json"},
 }
 FREEZE_MODULES = ["web/src/lib/nfl-dfs/portfolio-objective.ts", "web/src/lib/nfl-dfs/captain-simulation.ts",
                   "web/scripts/nfl-pool-rule-study-core.ts"]
@@ -59,17 +61,19 @@ FREEZE_MODULES = ["web/src/lib/nfl-dfs/portfolio-objective.ts", "web/src/lib/nfl
 
 def freeze_gate(spec, fmt):
     """The portfolio challenger may be saved only under a passing, current freeze for the slate's format."""
-    path = ROOT / spec["freeze"]
+    rel = spec["freeze"].format(format=fmt)
+    path = ROOT / rel
     if not path.exists():
-        raise ValueError(f"No freeze at {spec['freeze']}; run python -m research.nfl_portfolio_freeze first")
+        raise ValueError(f"No freeze at {rel}; run python -m research.nfl_portfolio_freeze --format {fmt} first")
     freeze = json.loads(path.read_text(encoding="utf-8"))
     status = (freeze.get("formats") or {}).get(fmt, {}).get("status")
     if status != "pass":
         raise ValueError(f"Freeze gate for {fmt} is '{status}', not 'pass'; the challenger is not enrolled in this format")
     for rel, expected in (freeze.get("moduleHashes") or {}).items():
-        current = hashlib.sha256(Path(rel).read_bytes()).hexdigest() if Path(rel).exists() else None
+        module = Path(rel) if Path(rel).is_absolute() else ROOT / rel
+        current = hashlib.sha256(module.read_bytes()).hexdigest() if module.exists() else None
         if current != expected:
-            raise ValueError(f"Freeze predates a change to {Path(rel).name}; re-run the freeze gate (a changed challenger is a new version)")
+            raise ValueError(f"Freeze predates a change to {module.name}; re-run the freeze gate (a changed challenger is a new version)")
     return {"frozenAt": freeze.get("frozenAt"), "status": status}
 STUDY = STUDIES["classic"]["version"]  # backwards-compatible name
 
@@ -161,7 +165,14 @@ def implementation():
             "digest": hashlib.sha256(json.dumps(hashes, sort_keys=True).encode()).hexdigest()}
 
 
-def capture(db, source_id, study="classic"):
+def capture(db, source_id, study="classic", gate_replay=False):
+    """Freeze the source build's inputs for a pair.
+
+    gate_replay=True is for research.nfl_portfolio_freeze only: it re-reads a
+    finished slate's pregame build for the v3 gate, so it checks that the
+    source was saved before kickoff instead of that now is before kickoff,
+    and it does not look for an enrollment. Nothing it returns is saved.
+    """
     UUID(source_id)
     spec = STUDIES[study]
     with db.connect() as conn:
@@ -191,9 +202,13 @@ def capture(db, source_id, study="classic"):
             (row["season"], row["week"]))
         matches = match_games(row["games"], schedule, games_shape)
         kickoff = min(g["kickoff"] for g in matches)
-        assert_forward(row["season"], row["week"], row["created_at"], now, kickoff)
+        if gate_replay:
+            if not row["created_at"] < kickoff:
+                raise ValueError("Gate replay needs a source build saved before the first kickoff")
+        else:
+            assert_forward(row["season"], row["week"], row["created_at"], now, kickoff)
         game_ids = [g["id"] for g in matches]
-        if existing_pairs(reader, row["season"], row["week"], spec["version"], game_ids if spec["uniquePerGames"] else None):
+        if not gate_replay and existing_pairs(reader, row["season"], row["week"], spec["version"], game_ids if spec["uniquePerGames"] else None):
             raise ValueError("This study slate already has saved arms; refusing a reroll")
         snapshot = row["input_snapshot"]
         if not isinstance(snapshot, list) or len(snapshot) != row["player_count"]:

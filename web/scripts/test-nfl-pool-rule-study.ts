@@ -4,7 +4,7 @@ import { gunzipSync } from 'node:zlib';
 import { buildPair, digest, restorePlayers, STUDIES, type Raw } from './nfl-pool-rule-study-core';
 import { optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings } from '../src/app/dfs/nfl/nfl-optimizer';
 import { applyWinnersShape } from '../src/lib/nfl-dfs/winners-shape';
-import { FIELD_STACKING } from '../src/lib/nfl-dfs/portfolio-objective';
+import { FIELD_STACKING, PORTFOLIO_OBJECTIVE } from '../src/lib/nfl-dfs/portfolio-objective';
 
 /**
  * The production Winners build with the v1-v10 pool rules reinstated as
@@ -127,7 +127,7 @@ assert.throws(() => buildPair(clWrong), /Showdown GPP/, 'a classic source cannot
 const unknown = sdFixture(); unknown.version = 'nfl-something-else';
 assert.throws(() => buildPair(unknown), /Unknown study/);
 console.log(`Showdown kicker study: arm B played a kicker in ${sb.lineups.filter((l: Raw) => l.playerIds.some((id: number) => sdPositions.get(id) === 'K')).length} of 20 lineups.`);
-// ---- Portfolio objective study (nfl-portfolio-objective-v2): both formats, offline on the week-5 discovery fixtures ----
+// ---- Portfolio objective study (nfl-portfolio-objective-v3): both formats, offline on the week-5 discovery fixtures ----
 function portfolioFixture(base: Raw, format: 'classic' | 'showdown'): Raw {
   const f = structuredClone(base);
   f.version = STUDIES.portfolio;
@@ -169,7 +169,7 @@ for (const [label, base] of [['showdown', sdFixture()], ['classic', fixture()]] 
     assert.ok(arm.forecast.successTop1Pct >= 0 && arm.forecast.successTop1Pct <= 1, `${label}: forecast in [0,1]`);
     // The freeze gate (research/nfl_portfolio_freeze.py) judges field fidelity; here only that it is measured and bounded.
     assert.ok(Number.isFinite(arm.fieldCalibration.maxAbsDeviationPct) && arm.fieldCalibration.maxAbsDeviationPct < 60, `${label}: field calibration recorded (max dev ${arm.fieldCalibration.maxAbsDeviationPct}pp)`);
-    assert.equal(arm.fieldLineups, 2000); assert.equal(arm.draws, 4000);
+    assert.equal(arm.fieldLineups, 2000); assert.equal(arm.draws, PORTFOLIO_OBJECTIVE.draws); assert.equal(arm.draws, 20000);
     // v2 field: the sampled lineups carry the measured stack shapes (realized, read off the lineups), within 5pp of the stated rates.
     const shapes = arm.fieldShapes[label];
     if (label === 'classic') assert.ok(Math.abs(shapes.qbStack - FIELD_STACKING.classic.qbStack) < 0.05, `${label}: field QB-stack rate ${shapes.qbStack}`);
