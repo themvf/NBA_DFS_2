@@ -76,6 +76,12 @@ def test_freeze_gate_refuses_missing_failed_and_stale(tmp_path, monkeypatch):
     module.write_text("changed", encoding="utf-8")
     with pytest.raises(ValueError, match="predates a change"):
         freeze_gate(spec, "showdown")
+    # A Windows checkout (CRLF) of the frozen file is the same module.
+    lf = hashlib.sha256(b"line one\nline two\n").hexdigest()
+    (tmp_path / "freeze.json").write_text(json.dumps({"frozenAt": "t", "formats": {"showdown": {"status": "pass"}},
+                                                      "moduleHashes": {"mod.ts": lf}}), encoding="utf-8")
+    module.write_bytes(b"line one\r\nline two\r\n")
+    assert freeze_gate(spec, "showdown")["status"] == "pass"
 
 
 class RowsReader:
