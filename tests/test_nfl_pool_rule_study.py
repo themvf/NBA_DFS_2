@@ -53,8 +53,8 @@ def test_enrollment_scope_week_for_classic_game_for_showdown():
 
 def test_portfolio_study_is_registered_with_its_own_version_and_freeze():
     spec = STUDIES["portfolio"]
-    assert spec["version"] == "nfl-portfolio-objective-v2" and spec["format"] == "any" and spec["uniquePerGames"]
-    assert spec["freeze"].endswith("freeze.json")
+    assert spec["version"] == "nfl-portfolio-objective-v3" and spec["format"] == "any" and spec["uniquePerGames"]
+    assert spec["freeze"].format(format="showdown") == "artifacts/nfl-portfolio-objective-v3/freeze-showdown.json"
     assert len({s["version"] for s in STUDIES.values()}) == len(STUDIES)
 
 
@@ -76,6 +76,12 @@ def test_freeze_gate_refuses_missing_failed_and_stale(tmp_path, monkeypatch):
     module.write_text("changed", encoding="utf-8")
     with pytest.raises(ValueError, match="predates a change"):
         freeze_gate(spec, "showdown")
+    # A Windows checkout (CRLF) of the frozen file is the same module.
+    lf = hashlib.sha256(b"line one\nline two\n").hexdigest()
+    (tmp_path / "freeze.json").write_text(json.dumps({"frozenAt": "t", "formats": {"showdown": {"status": "pass"}},
+                                                      "moduleHashes": {"mod.ts": lf}}), encoding="utf-8")
+    module.write_bytes(b"line one\r\nline two\r\n")
+    assert freeze_gate(spec, "showdown")["status"] == "pass"
 
 
 class RowsReader:

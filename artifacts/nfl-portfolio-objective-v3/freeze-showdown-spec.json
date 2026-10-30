@@ -1,0 +1,55 @@
+{
+ "version": "nfl-portfolio-objective-v3",
+ "format": "showdown",
+ "slates": [
+  {
+   "label": "2026 w6 SEA@DEN",
+   "contestId": "196689718",
+   "entries": 84384,
+   "sourceRunId": "36c70002-0a44-4c2e-93c0-45924c71be93",
+   "input": "C:\\Docs\\_AI Python Projects\\NBADFS_portfolio_v3\\artifacts\\nfl-portfolio-objective-v3\\inputs\\showdown-196689718.json.gz",
+   "inputSha256": "79d5491b5f046579feae718d1534de8dda1819de48c6ab81203ea95d837a5580",
+   "realized": {
+    "winning": 106.62,
+    "top01Pct": 102.02,
+    "top1Pct": 98.22,
+    "median": 72.6
+   }
+  },
+  {
+   "label": "2026 w6 WAS@SF",
+   "contestId": "196786695",
+   "entries": 47562,
+   "sourceRunId": "21bf2279-bb8d-4222-84bc-5456489d22b0",
+   "input": "C:\\Docs\\_AI Python Projects\\NBADFS_portfolio_v3\\artifacts\\nfl-portfolio-objective-v3\\inputs\\showdown-196786695.json.gz",
+   "inputSha256": "f18bb2af1d0bb01fdfb2a810a85465b3faef41123c438287204b463f82742e07",
+   "realized": {
+    "winning": 125.799995,
+    "top01Pct": 120.20999,
+    "top1Pct": 117.899994,
+    "median": 94.95
+   }
+  },
+  {
+   "label": "2026 w7 NE@CHI",
+   "contestId": "196947078",
+   "entries": 47562,
+   "sourceRunId": "3091aa86-5c03-4935-a098-9a997eb1a76f",
+   "input": "C:\\Docs\\_AI Python Projects\\NBADFS_portfolio_v3\\artifacts\\nfl-portfolio-objective-v3\\inputs\\showdown-196947078.json.gz",
+   "inputSha256": "24d34f02e478874d3ec5004f42a94d44ab822e324248baae355c545fe0722a8a",
+   "realized": {
+    "winning": 153.61,
+    "top01Pct": 151.51001,
+    "top1Pct": 138.78,
+    "median": 107.32001
+   }
+  }
+ ],
+ "moduleFiles": {
+  "web/src/lib/nfl-dfs/portfolio-objective.ts": "C:\\Docs\\_AI Python Projects\\NBADFS_portfolio_v3\\web\\src\\lib\\nfl-dfs\\portfolio-objective.ts",
+  "web/src/lib/nfl-dfs/captain-simulation.ts": "C:\\Docs\\_AI Python Projects\\NBADFS_portfolio_v3\\web\\src\\lib\\nfl-dfs\\captain-simulation.ts",
+  "web/scripts/nfl-pool-rule-study-core.ts": "C:\\Docs\\_AI Python Projects\\NBADFS_portfolio_v3\\web\\scripts\\nfl-pool-rule-study-core.ts",
+  "web/scripts/research-nfl-portfolio-freeze.ts": "C:\\Docs\\_AI Python Projects\\NBADFS_portfolio_v3\\web\\scripts\\research-nfl-portfolio-freeze.ts",
+  "research/nfl_portfolio_freeze.py": "C:\\Docs\\_AI Python Projects\\NBADFS_portfolio_v3\\research\\nfl_portfolio_freeze.py"
+ }
+}

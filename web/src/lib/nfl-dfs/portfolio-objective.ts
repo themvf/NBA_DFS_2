@@ -1,5 +1,6 @@
 /**
- * Research challenger for the NFL portfolio objective (`nfl-portfolio-objective-v1`).
+ * Research challenger for the NFL portfolio objective (`nfl-portfolio-objective-v3`; v1/v2 failed their
+ * freeze gates, see docs/nfl-portfolio-objective-study.md).
  *
  * The production optimizer scores a lineup by adding capped player ceilings
  * (see `objective()` in nfl-optimizer.ts). This module instead scores every
@@ -50,7 +51,7 @@ import { nflRandom } from "./random";
 import { fitQuantileShape, quantile, GAME_LOADING, TEAM_LOADING, DST_OPPONENT_LOADING } from "./captain-simulation";
 import type { NflGeneratedLineup } from "@/app/dfs/nfl/nfl-optimizer";
 
-export const PORTFOLIO_OBJECTIVE_VERSION = "nfl-portfolio-objective-v2";
+export const PORTFOLIO_OBJECTIVE_VERSION = "nfl-portfolio-objective-v3";
 export const JOINT_COPULA_VERSION = "nfl-joint-copula-v1";
 export const FIELD_MODEL_VERSION = "nfl-field-stacked-v2";
 
@@ -86,8 +87,11 @@ export const FIELD_STACKING = {
 
 /** Stated, frozen with the registration. Change one and bump the version. */
 export const PORTFOLIO_OBJECTIVE = {
-  draws: 4000,
+  /** v3: 20,000 (v1/v2 used 4,000; the selection moved with its seed, Jaccard 0.44 on the week-5 BUF@LAR dry run). */
+  draws: 20000,
   selectionSeed: 20261016,
+  /** v3 freeze gate only: the second selection seed of the stability check (Jaccard >= 0.80 between the two picks). */
+  stabilitySeed: 20261019,
   evaluationSeed: 20261017,
   fieldSeed: 20261018,
   /** Sampled opponent lineups per slate; the within-draw top-1% is their 20th-best score. */
@@ -99,7 +103,8 @@ export const PORTFOLIO_OBJECTIVE = {
   /** Candidate pool: the production optimizer run at this multiple of the source's lineup count (bounded). */
   candidateMultiple: 5,
   candidateMin: 60,
-  candidateMax: 200,
+  /** v3 amendment 1: 150, the optimizer's own limit (v1/v2's 200 made arm B fail for any build of 31+ lineups). */
+  candidateMax: 150,
   /** Rejection sampler limits; a slate that cannot yield the field is refused, never padded. */
   maxFieldAttempts: 600_000,
   /** Ownership calibration: pilot samples per round, damped multiplicative update, multiplier bounds. */
@@ -166,7 +171,7 @@ function marginal(p: SnapshotPlayer): Marginal {
 }
 
 /** Joint DK-point draws for every player with a positive projection; players without one score 0 in every draw. */
-export function drawJointBank(players: readonly SnapshotPlayer[], seed: number, draws = PORTFOLIO_OBJECTIVE.draws): JointBank {
+export function drawJointBank(players: readonly SnapshotPlayer[], seed: number, draws: number = PORTFOLIO_OBJECTIVE.draws): JointBank {
   const random = nflRandom(seed);
   const active = players.filter(p => Number(p.ourProj) > 0 && p.isOut !== true);
   const fits = new Map(active.map(p => [p.dkPlayerId as number, marginal(p)]));
@@ -488,25 +493,50 @@ export function sampleField(slate: NflDkSlate, players: readonly SnapshotPlayer[
       meanAbsDeviationPct: Math.round((100 * deviations.reduce((a, b) => a + b, 0)) / Math.max(1, deviations.length)) / 100 } };
 }
 
-/** Per-draw field thresholds: the score at the given top fraction of the sampled field. */
-export function fieldThresholds(field: FieldSample, bank: JointBank, fraction: number): Float64Array {
-  const scored = field.lineups.map(l => scoreLineup(l, bank));
-  const k = Math.max(1, Math.ceil(fraction * field.lineups.length));
-  const out = new Float64Array(bank.draws);
-  const column = new Float64Array(scored.length);
+/**
+ * Per-draw field thresholds for several top fractions at once: the score of
+ * the k-th best sampled opponent in each draw, k = max(1, ceil(fraction x
+ * field size)). Lineups are scored one draw at a time with the same rounding
+ * as `scoreLineup` (entry order, hundredths), so every value equals v2's
+ * whole-matrix computation while holding one draw's scores, not the field's
+ * full draws-by-opponents matrix (2,000 x 20,000 doubles is 320 MB).
+ */
+export function fieldThresholdsMany(field: FieldSample, bank: JointBank, fractions: readonly number[]): Float64Array[] {
+  const rows = field.lineups.map(l => l.map(entry => {
+    const draws = bank.scores.get(entry.playerId);
+    if (!draws) throw new Error(`No draws for player ${entry.playerId}`);
+    return { draws, m: entry.slot === "CPT" ? 1.5 : 1 };
+  }));
+  const n = rows.length;
+  const ks = fractions.map(f => Math.max(1, Math.ceil(f * n)));
+  const outs = fractions.map(() => new Float64Array(bank.draws));
+  const column = new Float64Array(n);
   for (let d = 0; d < bank.draws; d++) {
-    for (let i = 0; i < scored.length; i++) column[i] = scored[i][d];
-    column.sort().reverse();
-    out[d] = column[k - 1];
+    for (let i = 0; i < n; i++) {
+      let acc = 0;
+      for (const e of rows[i]) acc = Math.round((acc + e.draws[d] * e.m) * 100) / 100;
+      column[i] = acc;
+    }
+    column.sort();
+    for (let j = 0; j < ks.length; j++) outs[j][d] = column[n - ks[j]];
   }
-  return out;
+  return outs;
 }
 
+/** Per-draw field thresholds: the score at the given top fraction of the sampled field. */
+export function fieldThresholds(field: FieldSample, bank: JointBank, fraction: number): Float64Array {
+  return fieldThresholdsMany(field, bank, [fraction])[0];
+}
+
+/** The fractions `fieldSummary` reports, in order: top 1%, top 0.1%, the sampled best, the median opponent. */
+export const SUMMARY_FRACTIONS = [PORTFOLIO_OBJECTIVE.successFraction, PORTFOLIO_OBJECTIVE.secondaryFraction, 0, 0.5] as const;
+
 export function fieldSummary(field: FieldSample, bank: JointBank) {
-  const top1 = fieldThresholds(field, bank, PORTFOLIO_OBJECTIVE.successFraction);
-  const top01 = fieldThresholds(field, bank, PORTFOLIO_OBJECTIVE.secondaryFraction);
-  const best = fieldThresholds(field, bank, 0);
-  const median = fieldThresholds(field, bank, 0.5);
+  return summarizeFieldThresholds(fieldThresholdsMany(field, bank, SUMMARY_FRACTIONS));
+}
+
+/** `fieldSummary` from thresholds already computed at `SUMMARY_FRACTIONS` (one pass over the draws instead of two). */
+export function summarizeFieldThresholds([top1, top01, best, median]: Float64Array[]) {
   const q = (xs: Float64Array, p: number) => { const s = Float64Array.from(xs).sort(); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
   const band = (xs: Float64Array) => ({ p5: q(xs, 0.05), p25: q(xs, 0.25), p50: q(xs, 0.5), p75: q(xs, 0.75), p95: q(xs, 0.95), mean: xs.reduce((a, b) => a + b, 0) / xs.length });
   return { top1Pct: band(top1), top01Pct: band(top01), sampledBest: band(best), median: band(median) };
@@ -540,36 +570,52 @@ const covered = (rows: Float64Array[], threshold: Float64Array) => {
  * Greedy marginal coverage: add the candidate that most raises P(any lineup
  * reaches the field's top-1%) until `count`, respecting the exposure cap,
  * per-player caps and pairwise uniqueness. Ties break on the lower candidate
- * index so the result is reproducible.
+ * index so the result is reproducible. Coverage is kept as a running mask, so
+ * each step counts a candidate's newly covered draws instead of re-scanning
+ * every chosen lineup; the picks, gains and success are v2's exactly.
  */
 export function selectPortfolio(candidates: Array<{ key: string; lineup: NflLineup; draws: Float64Array }>, threshold: Float64Array,
   constraints: SelectionConstraints): SelectionResult {
   const chosen: number[] = [];
+  const isChosen = new Uint8Array(candidates.length);
   const exposure = new Map<number, number>();
   const slotsPer = candidates[0]?.lineup.length ?? 0;
   const capFor = (id: number) => Math.min(constraints.maxExposure, constraints.maxExposureByPlayer[String(id)] ?? 1);
+  const ids = candidates.map(c => c.lineup.map(e => e.playerId));
   const allowed = (i: number) => {
-    const ids = candidates[i].lineup.map(e => e.playerId);
-    for (const id of ids) if ((exposure.get(id) ?? 0) + 1 > Math.floor(capFor(id) * constraints.count + 1e-9)) return false;
+    for (const id of ids[i]) if ((exposure.get(id) ?? 0) + 1 > Math.floor(capFor(id) * constraints.count + 1e-9)) return false;
     for (const j of chosen) {
-      const other = new Set(candidates[j].lineup.map(e => e.playerId));
-      const shared = ids.filter(id => other.has(id)).length;
+      const other = new Set(ids[j]);
+      const shared = ids[i].filter(id => other.has(id)).length;
       if (slotsPer - shared < constraints.minUnique) return false;
     }
     return true;
   };
+  const D = threshold.length;
+  // Draws where each candidate reaches the threshold, as ascending index lists.
+  const hits = candidates.map(c => {
+    const list: number[] = [];
+    for (let d = 0; d < D; d++) if (c.draws[d] >= threshold[d]) list.push(d);
+    return Int32Array.from(list);
+  });
+  const coveredMask = new Uint8Array(D);
+  let coveredCount = 0;
   const selected: SelectionResult["selected"] = [];
   let current = 0;
   while (chosen.length < constraints.count) {
     let best: { i: number; gain: number; success: number } | null = null;
     for (let i = 0; i < candidates.length; i++) {
-      if (chosen.includes(i) || !allowed(i)) continue;
-      const success = covered([...chosen.map(j => candidates[j].draws), candidates[i].draws], threshold);
+      if (isChosen[i] || !allowed(i)) continue;
+      let fresh = 0;
+      for (const d of hits[i]) if (!coveredMask[d]) fresh++;
+      const success = (coveredCount + fresh) / D;
       const gain = success - current;
       if (!best || gain > best.gain) best = { i, gain, success };
     }
     if (!best) break;
     chosen.push(best.i);
+    isChosen[best.i] = 1;
+    for (const d of hits[best.i]) if (!coveredMask[d]) { coveredMask[d] = 1; coveredCount++; }
     for (const e of candidates[best.i].lineup) exposure.set(e.playerId, (exposure.get(e.playerId) ?? 0) + 1);
     selected.push({ key: candidates[best.i].key, index: best.i, marginalGain: best.gain });
     current = best.success;
