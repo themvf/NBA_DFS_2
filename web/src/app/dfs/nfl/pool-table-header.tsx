@@ -24,6 +24,10 @@ const COLUMNS: readonly { label: string; key?: PoolSortKey; align: "left" | "rig
   { label: "Our", key: "ourProj", align: "right", hint: "Sort by our projection. Players with no model projection sort to the bottom, ordered by DK average." },
   { label: "Player P10", key: "floorFpts", align: "right" },
   { label: "Player P90", key: "ceilingFpts", align: "right" },
+  {
+    label: "vs starters", key: "upsideVsStarters", align: "right",
+    hint: "Sort by P90 minus the average starter's P90 at his position on this slate (QB 1, RB 1.5, WR 2.5, TE 1 per team). The word under it is the shape: P90 over projection, steady under 1.6x, spiky over 2.2x. Display only; lineups are not built from it.",
+  },
   { label: "DK Avg", key: "avgFptsDk", align: "right" },
   { label: "FantasyPros", key: "fantasyprosProj", align: "right" },
   { label: "LineStar", key: "linestarProj", align: "right" },

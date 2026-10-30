@@ -12,6 +12,7 @@ import {
 import { VALUE_TIER_LABEL, type ValueIndex } from "@/lib/nfl-dfs/salary-value";
 import { ValueChip, valueTooltip } from "./value-chip";
 import { ReplacementUpsideTable } from "./replacement-upside-display";
+import { GPP_CEILING_CAP_MULTIPLE, relativeUpside, starterBaselines, uncreditedCeiling, type RelativeUpside } from "@/lib/nfl-dfs/relative-upside";
 import { explainNflPlayerProjection, type NflProjectionExplanation, type NflWorkspacePlayer } from "./client-actions";
 
 /*
@@ -205,6 +206,14 @@ export default function PlayerExplanationPanel({ uploadId, player, slatePlayers,
       .sort((a, b) => b.proj - a.proj);
   }, [slatePlayers, player]);
 
+  // Same baseline and numbers as the pool's "vs starters" column: the pool row
+  // for this player, against the pool's own starters.
+  const upside = useMemo(() => {
+    if (!player) return null;
+    const row = slatePlayers.find((p) => p.dkPlayerId === player.dkPlayerId) ?? player;
+    return { row, value: relativeUpside(row, starterBaselines(slatePlayers)) };
+  }, [slatePlayers, player]);
+
   const data = player && state.id === player.id ? state.data : null;
   const e = data && data.ok ? data : null;
 
@@ -271,19 +280,20 @@ export default function PlayerExplanationPanel({ uploadId, player, slatePlayers,
             </div>
           )}
 
-          {e && (specialTeams ? <details><summary className="min-h-11 cursor-pointer content-center text-sm font-semibold">Historical baseline details</summary><p className="mb-3 text-xs text-slate-600">These explain the historical baseline. The matchup forecast above supplies the points used in Our projections.</p><Breakdown e={e} player={player} peers={peers} valueIndex={valueIndex} /></details>
-            : <Breakdown e={e} player={player} peers={peers} valueIndex={valueIndex} />)}
+          {e && (specialTeams ? <details><summary className="min-h-11 cursor-pointer content-center text-sm font-semibold">Historical baseline details</summary><p className="mb-3 text-xs text-slate-600">These explain the historical baseline. The matchup forecast above supplies the points used in Our projections.</p><Breakdown e={e} player={player} peers={peers} valueIndex={valueIndex} upside={upside} /></details>
+            : <Breakdown e={e} player={player} peers={peers} valueIndex={valueIndex} upside={upside} />)}
         </div>
       </div>
     </div>
   );
 }
 
-function Breakdown({ e, player, peers, valueIndex }: {
+function Breakdown({ e, player, peers, valueIndex, upside }: {
   e: Extract<NflProjectionExplanation, { ok: true }>;
   player: NflWorkspacePlayer;
   peers: { id: number; name: string; proj: number }[];
   valueIndex: ValueIndex;
+  upside: { row: NflWorkspacePlayer; value: RelativeUpside } | null;
 }) {
   const proj = e.projection ?? 0;
   const baseline = e.baseline;
@@ -591,6 +601,49 @@ function Breakdown({ e, player, peers, valueIndex }: {
           </>
         )}
       </Card>
+
+      {/* Upside against a normal starter, and how much he moves week to week */}
+      {upside ? (() => {
+        const { row, value } = upside;
+        const b = value.baseline;
+        const spread = e.weeklySpread;
+        const uncredited = uncreditedCeiling(row, GPP_CEILING_CAP_MULTIPLE);
+        return (
+          <Card
+            icon={<TrendingUp className="h-4 w-4" style={{ color: ACCENT }} />}
+            title={`Upside against ${player.position} starters`}
+            hint={b ? `Average of the top ${b.starters} ${player.position}s by projection on this ${b.teams}-team slate. Display only: lineups are not built from these numbers.` : `Display only: lineups are not built from these numbers.`}
+          >
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <Tile label="P90 vs starters"
+                    value={value.vsStarterP90 === null ? "-" : `${value.vsStarterP90 >= 0 ? "+" : ""}${value.vsStarterP90.toFixed(1)}`}
+                    sub={b ? `his ${fmt(row.ceilingFpts)} vs ${b.avgP90.toFixed(1)}` : row.ceilingFpts == null ? "no range" : `no ${player.position} baseline`} />
+              <Tile label="Projection vs starters"
+                    value={value.vsStarterProjection === null ? "-" : `${value.vsStarterProjection >= 0 ? "+" : ""}${value.vsStarterProjection.toFixed(1)}`}
+                    sub={b ? `his ${fmt(row.ourProj)} vs ${b.avgProjection.toFixed(1)}` : undefined} />
+              <Tile label="Shape"
+                    value={value.shape ?? "-"}
+                    sub={value.shapeRatio !== null ? `P90 is ${value.shapeRatio.toFixed(2)}x his projection` : "projection under 1 point or no range"} />
+            </div>
+            {uncredited !== null && uncredited > 0 ? (
+              <p className="mt-2 text-[11px] text-slate-600">GPP builds credit his ceiling only up to {GPP_CEILING_CAP_MULTIPLE}x his projection, so {uncredited.toFixed(1)} points of this P90 are not counted.</p>
+            ) : null}
+            <div className="mt-3 border-t border-slate-100 pt-2 text-[11px] text-slate-700">
+              {spread && spread.games >= 2 && spread.sd !== null ? (
+                <>
+                  <b>This season, week to week:</b> {spread.games} games, average {spread.mean?.toFixed(1)}, standard deviation {spread.sd.toFixed(1)}
+                  {spread.starterSd !== null ? <> (league {player.position} starters: {spread.starterSd.toFixed(1)} around {spread.starterMean?.toFixed(1)}, {spread.starters} players with 3+ games)</> : null}.
+                  <span className="ml-1 text-slate-500">Weeks: {spread.weeks.map((w) => `W${w.week} ${w.points.toFixed(1)}`).join(", ")}.</span>
+                </>
+              ) : spread && spread.games > 0 ? (
+                <>This season: {spread.games} game ({spread.weeks.map((w) => `W${w.week} ${w.points.toFixed(1)}`).join(", ")}), too few for a spread.</>
+              ) : (
+                <>{e.weeklySpreadNote ?? "No scored games this season before this slate."}</>
+              )}
+            </div>
+          </Card>
+        );
+      })() : null}
 
       {/* Where this player sits among the same-position players on this slate */}
       {peers.length > 1 && peerRank >= 0 && (
