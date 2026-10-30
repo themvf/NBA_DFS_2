@@ -87,7 +87,8 @@ const main = () => {
   if (!specPath || !outPath) throw new Error("usage: research-nfl-portfolio-freeze.ts SPEC.json OUT.json");
   const spec = JSON.parse(readFileSync(specPath, "utf8")) as Spec;
   if (spec.version !== PORTFOLIO_OBJECTIVE_VERSION) throw new Error(`Spec is ${spec.version}, module is ${PORTFOLIO_OBJECTIVE_VERSION}`);
-  const sha = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
+  // Line endings normalised, matching the runner's check: a Windows checkout (autocrlf) is not a changed module.
+  const sha = (path: string) => createHash("sha256").update(readFileSync(path, "latin1").replace(/\r\n/g, "\n"), "latin1").digest("hex");
   const round = (x: number) => Math.round(x * 100) / 100;
   const rows = spec.slates.map(s => {
     const raw = gunzipSync(readFileSync(s.input));

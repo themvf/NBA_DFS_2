@@ -71,7 +71,8 @@ def freeze_gate(spec, fmt):
         raise ValueError(f"Freeze gate for {fmt} is '{status}', not 'pass'; the challenger is not enrolled in this format")
     for rel, expected in (freeze.get("moduleHashes") or {}).items():
         module = Path(rel) if Path(rel).is_absolute() else ROOT / rel
-        current = hashlib.sha256(module.read_bytes()).hexdigest() if module.exists() else None
+        # Line endings normalised: a Windows checkout (autocrlf) must not read as a changed module.
+        current = hashlib.sha256(module.read_bytes().replace(b"\r\n", b"\n")).hexdigest() if module.exists() else None
         if current != expected:
             raise ValueError(f"Freeze predates a change to {module.name}; re-run the freeze gate (a changed challenger is a new version)")
     return {"frozenAt": freeze.get("frozenAt"), "status": status}
