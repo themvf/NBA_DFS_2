@@ -184,4 +184,16 @@ const names = (rows: Row[]) => rows.map((r) => r.name);
   assert.deepEqual(names(sortBy(one, "value", "asc")), ["solo"]);
 }
 
+// ── Upside vs starters: a player with no range sinks either way ─────────
+{
+  const rows = [
+    row({ name: "norange", relativeUpside: { vsStarterP90: null } }),
+    row({ name: "missing" }),
+    row({ name: "below", relativeUpside: { vsStarterP90: -3.2 } }),
+    row({ name: "above", relativeUpside: { vsStarterP90: 8.1 } }),
+  ];
+  assert.deepEqual(names(sortBy(rows, "upsideVsStarters", "desc")).slice(0, 2), ["above", "below"]);
+  assert.deepEqual(names(sortBy(rows, "upsideVsStarters", "asc")).slice(0, 2), ["below", "above"]);
+}
+
 console.log("nfl player pool sort: all assertions passed");

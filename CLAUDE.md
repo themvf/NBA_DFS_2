@@ -7685,6 +7685,22 @@ Stick 14.0 as TB's QB in week 3). nflverse's weekly roster does know:
   finished below P10. The rest of the gap to 10% is the played-tail width and
   Q players named in `docs/nfl-dfs-rb-floor-participation-study.md`.
 
+## NFL DFS — Upside against starters (`nfl-upside-display-v1`, 2026-10-30)
+
+Display only; the optimizer, ownership and projections never read it (a test
+fails if `nfl-optimizer.ts` imports it). `web/src/lib/nfl-dfs/relative-upside.ts`:
+the pool's sortable "vs starters" column is a player's P90 minus the average P90
+of the slate's starters at his position (top players by projection, QB 1, RB 1.5,
+WR 2.5, TE 1, DST 1, K 1 per slate team, rounded half up; out and position-prior
+players never set it), with the shape under it (P90 / projection: steady under
+1.6, spiky over 2.2, none below a 1-point projection). It uses the same effective
+numbers the optimizer scores (defensive forecast, anchor, range split). The
+player drawer adds projection vs starters, how much P90 the GPP 2.5x ceiling cap
+does not credit, and this season's week-to-week SD of DK points (weeks before the
+run's `history_cutoff_week`, absent weeks not zeros) beside the average own-SD of
+the league's starters (top 32 x per-team count by mean, 3+ games); none for DSTs.
+Percentiles, not SD, drive it because the model's ranges are lumpy and skewed.
+
 ## NFL DFS — Long-memory ranges (`nfl-dfs-range-split-v1`, owner's decision 2026-10-26)
 
 Every RB/WR/TE keeps his projection and takes floor = projection x P10/mean

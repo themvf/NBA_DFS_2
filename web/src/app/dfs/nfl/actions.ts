@@ -1,5 +1,6 @@
 "use server";
 
+import { weeklySpread, type WeeklySpread } from "@/lib/nfl-dfs/relative-upside";
 import { resolveSlateWeek, type SlateGame, type ScheduledGame } from "@/lib/nfl-dfs/slate-week";
 import { createHash, randomUUID } from "node:crypto";
 import { restoreSavedLineups, savedSlateLabel } from '@/lib/nfl-dfs/saved-workspace';
@@ -2310,6 +2311,9 @@ export type NflProjectionExplanation = {
   availabilityDecisionId: string | null;
   platformEligibilityManifestDigest: string | null;
   availabilityEvidence: NflWorkspacePlayer['availabilityEvidence'] | null;
+  /** His DK points week to week this season before the slate, against the league's starters. */
+  weeklySpread: WeeklySpread | null;
+  weeklySpreadNote: string | null;
 } | { ok: false; error: string };
 
 /** Decompose WHY a slate player carries his projection: pull the full immutable
@@ -2426,7 +2430,35 @@ export async function explainNflPlayerProjection(
     availabilityDecisionId:here?.availability?.decisionId??null,
     platformEligibilityManifestDigest:slate.platformEligibilityManifestDigest??null,
     availabilityEvidence:here?.availabilityEvidence??null,
+    ...(await readWeeklySpread(slateRow.ffPlayerId, slateRow.position, num(fs.cutoff_season), num(fs.cutoff_week))),
   };
+}
+
+/**
+ * Week-to-week spread of DK points this season, before the slate's week, for
+ * the explanation drawer (`nfl-upside-display-v1`). A week with no scored row
+ * is absent, never a zero. Defenses are keyed by team in the results table,
+ * not by player, so they get no spread. A failed read is a note, not a broken
+ * drawer.
+ */
+async function readWeeklySpread(playerId: number, position: string, season: number | null, beforeWeek: number | null)
+  : Promise<{ weeklySpread: WeeklySpread | null; weeklySpreadNote: string | null }> {
+  if (position === "DST") return { weeklySpread: null, weeklySpreadNote: "Week-to-week spread is not computed for defenses." };
+  if (season === null || beforeWeek === null) return { weeklySpread: null, weeklySpreadNote: "This projection carries no season and week, so the weeks before the slate are unknown." };
+  try {
+    const result = await db.execute(sql`
+      SELECT DISTINCT ON (r.player_id, r.week) r.player_id, r.week, r.actual_dk_fpts
+      FROM nfl_dfs_player_week_results r
+      WHERE r.season = ${season} AND r.week < ${beforeWeek} AND r.position = ${position}
+        AND r.scoring_status = 'exact' AND r.actual_dk_fpts IS NOT NULL AND r.player_id IS NOT NULL
+      ORDER BY r.player_id, r.week, r.computed_at DESC`);
+    const rows = ((result.rows ?? result) as Array<Record<string, unknown>>).map((r) => ({
+      playerId: Number(r.player_id), week: Number(r.week), points: Number(r.actual_dk_fpts),
+    }));
+    return { weeklySpread: weeklySpread(playerId, position, rows), weeklySpreadNote: null };
+  } catch (error) {
+    return { weeklySpread: null, weeklySpreadNote: `Week-to-week results could not be read: ${error instanceof Error ? error.message : String(error)}` };
+  }
 }
 
 /**

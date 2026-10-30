@@ -32,7 +32,7 @@ import type { ValueAssessment } from "./salary-value";
 
 export type PoolSortKey =
   | "name" | "position" | "team" | "salary" | "value" | "ourProj"
-  | "floorFpts" | "ceilingFpts" | "avgFptsDk" | "fantasyprosProj"
+  | "floorFpts" | "ceilingFpts" | "upsideVsStarters" | "avgFptsDk" | "fantasyprosProj"
   | "linestarProj" | "linestarOwnPct" | "ownPct";
 
 export type SortDirection = "asc" | "desc";
@@ -51,6 +51,7 @@ export const POOL_SORT_COLUMNS: readonly { key: PoolSortKey; kind: "text" | "num
   { key: "ourProj", kind: "number" },
   { key: "floorFpts", kind: "number" },
   { key: "ceilingFpts", kind: "number" },
+  { key: "upsideVsStarters", kind: "number" },
   { key: "avgFptsDk", kind: "number" },
   { key: "fantasyprosProj", kind: "number" },
   { key: "linestarProj", kind: "number" },
@@ -89,6 +90,8 @@ export type SortablePoolPlayer = {
   linestarProj: number | null;
   linestarOwnPct: number | null;
   ownPct?: number | null;
+  /** Display-only P90 against the slate's average starter (`relative-upside.ts`). */
+  relativeUpside?: { vsStarterP90: number | null } | null;
 };
 
 /**
@@ -133,6 +136,7 @@ function slotFor(
     }
     case "floorFpts": return numericSlot(player.floorFpts);
     case "ceilingFpts": return numericSlot(player.ceilingFpts);
+    case "upsideVsStarters": return numericSlot(player.relativeUpside?.vsStarterP90 ?? null);
     case "avgFptsDk": return numericSlot(player.avgFptsDk);
     case "fantasyprosProj": return numericSlot(player.fantasyprosProj);
     case "linestarProj": return numericSlot(player.linestarProj);

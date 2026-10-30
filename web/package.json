@@ -46,6 +46,7 @@
     "test:nfl-player-pool-filter": "node --import tsx ./scripts/test-nfl-player-pool-filter.ts",
     "test:nfl-salary-value": "node --import tsx ./scripts/test-nfl-salary-value.ts",
     "test:nfl-player-pool-sort": "node --import tsx ./scripts/test-nfl-player-pool-sort.ts",
+    "test:nfl-relative-upside": "node --import tsx ./scripts/test-nfl-relative-upside.ts",
     "test:nfl-opportunity-redistribution": "node --import tsx ./scripts/test-nfl-opportunity-redistribution.ts",
     "test:nfl-stale-run": "node --import tsx ./scripts/test-nfl-stale-run.ts",
     "test:nfl-slate-check": "node --import tsx ./scripts/test-nfl-slate-check.ts",
