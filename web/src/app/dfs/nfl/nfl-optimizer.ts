@@ -210,6 +210,13 @@ export type NflOptimizerSettings = {
    * has, and the search was filling RB slots with him. 2.5 is a stated prior.
    */
   maxCeilingMultiple?: number;
+  /**
+   * Points the GPP search credits per unit of boom rate: `(capped ceiling +
+   * boomRate × this) × leverage`. 2 is a stated prior, never fitted. Absent
+   * means 2; 0 removes the boom term. The ghost factorial's boom-weight arm
+   * pair (`nfl-ghost-extra-arms-v1`) builds at 1 and 4 against the house's 2.
+   */
+  boomWeight?: number;
   /** User opt-in for uncalibrated heuristic ownership leverage (client → server; the server resolves the final bit). */
   useHeuristicOwnershipLeverage?: boolean;
   /** Phase 3: per-player Overall/Captain/Flex exposure ranges. Overrides the flat maxExposure per player. */
@@ -686,6 +693,8 @@ export function slotOwnershipPct(player: Pick<NflOptimizerPlayer, "ownPct" | "li
 
 export const DEFAULT_LEVERAGE_EXPONENT = 0.5;
 export const DEFAULT_MAX_CEILING_MULTIPLE = 2.5;
+/** Points per unit of boom rate in the GPP objective (a stated prior; see `boomWeight`). */
+export const DEFAULT_BOOM_WEIGHT = 2;
 /** Ownership above this is clamped so the factor never reaches zero. */
 const LEVERAGE_OWNERSHIP_CLAMP = 0.95;
 
@@ -726,7 +735,7 @@ function objective(player: ResolvedPlayer, settings: NflOptimizerSettings, lineu
   const leverage = leverageEnabled && settings.mode === "gpp"
     ? leverageFactor(slotOwnershipPct(player, slot), settings.leverageExponent ?? DEFAULT_LEVERAGE_EXPONENT) : 1;
   const workload=player.resolvedSource === "workload"?selectedWorkload(player,settings.workloadPositions):null;
-  const boomBonus = settings.mode === "gpp" ? (special ? special.boom : defensive ? defensive.boom : workload && "boom" in workload ? workload.boom : player.resolvedSource === "calibrated" ? player.calibrated!.boom : historical ? finite(player.boomRate) ?? 0 : 0) * 2 : 0;
+  const boomBonus = settings.mode === "gpp" ? (special ? special.boom : defensive ? defensive.boom : workload && "boom" in workload ? workload.boom : player.resolvedSource === "calibrated" ? player.calibrated!.boom : historical ? finite(player.boomRate) ?? 0 : 0) * (settings.boomWeight ?? DEFAULT_BOOM_WEIGHT) : 0;
   return (base + boomBonus) * leverage + jitter(20260902, lineupNumber, player.dkPlayerId) * settings.randomness * player.projection;
 }
 

@@ -63,10 +63,42 @@ export const GHOST_FACTORS: Record<GhostFormat, Factor[]> = {
 };
 
 export type ArmLevels = Record<string, Level>;
-export type GhostArm = { arm: number; house: boolean; levels: ArmLevels };
+export type GhostArm = { arm: number; house: boolean; levels: ArmLevels; extra?: true };
 
 export const houseLevels = (format: GhostFormat): ArmLevels =>
   Object.fromEntries(GHOST_FACTORS[format].map(f => [f.key, f.house]));
+
+/**
+ * Extra arm pair OUTSIDE the 32-run array (`nfl-ghost-extra-arms-v1`,
+ * amendment 2026-10-30 in docs/nfl-ghost-factorial-study.md): the GPP boom
+ * weight (points per unit of boom rate, `boomWeight` in the optimizer) at 1
+ * and 4 against the house's 2, with every other setting at the house level.
+ * Adding it as a factor would change the pinned design and start a new
+ * cohort, so it rides beside the design as arms 33 and 34, with its own
+ * version and digest, and is graded as paired within-slate differences
+ * against the house (arm 0), never inside the factorial regression. The
+ * design arms, their digests and the running cohort are untouched.
+ */
+export const GHOST_EXTRA_ARMS_VERSION = "nfl-ghost-extra-arms-v1";
+export const GHOST_EXTRA_FACTORS: readonly Factor[] = [
+  { key: "boomWeight", label: "GPP boom weight (points per unit of boom rate)", levels: [1, 4], house: 2 },
+];
+export const GHOST_FIRST_EXTRA_ARM = GHOST_ARMS + 1;
+export const GHOST_EXTRA_ARM_COUNT = GHOST_EXTRA_FACTORS.reduce((n, f) => n + f.levels.filter(l => l !== f.house).length, 0);
+
+export function extraArms(format: GhostFormat): { arms: GhostArm[]; digest: string } {
+  const arms: GhostArm[] = [];
+  let arm = GHOST_FIRST_EXTRA_ARM;
+  for (const f of GHOST_EXTRA_FACTORS) for (const level of f.levels) {
+    if (level === f.house) continue;
+    arms.push({ arm: arm++, house: false, levels: { ...houseLevels(format), [f.key]: level }, extra: true });
+  }
+  const digest = createHash("sha256").update(JSON.stringify({ version: GHOST_EXTRA_ARMS_VERSION, format, factors: GHOST_EXTRA_FACTORS, arms })).digest("hex");
+  return { arms, digest };
+}
+
+/** The house, the 32 design arms, then the extra arms. */
+export const allArms = (format: GhostFormat): GhostArm[] => [...ghostDesign(format).arms, ...extraArms(format).arms];
 
 /** Numeric contrasts for a factor column: 2 levels -> one +/-1 column, 3 levels -> linear and quadratic. */
 function contrasts(factor: Factor, column: number[]): number[][] {
