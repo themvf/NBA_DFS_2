@@ -103,7 +103,8 @@ export const PORTFOLIO_OBJECTIVE = {
   /** Candidate pool: the production optimizer run at this multiple of the source's lineup count (bounded). */
   candidateMultiple: 5,
   candidateMin: 60,
-  candidateMax: 200,
+  /** v3 amendment 1: 150, the optimizer's own limit (v1/v2's 200 made arm B fail for any build of 31+ lineups). */
+  candidateMax: 150,
   /** Rejection sampler limits; a slate that cannot yield the field is refused, never padded. */
   maxFieldAttempts: 600_000,
   /** Ownership calibration: pilot samples per round, damped multiplicative update, multiplier bounds. */

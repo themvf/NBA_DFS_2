@@ -362,3 +362,14 @@ the freeze is written, with an owner build saved before kickoff and both
 arms saved by the runner before that kickoff. Population, metrics and the
 8-then-16 decision rule are v1's, unchanged, and the v3 cohort never pools
 with anything earlier.
+
+### Amendment 1 (2026-10-30, before any gate number was computed)
+
+The first gate run stopped on the w6 SEA@DEN slate before computing anything:
+arm B's candidate pool asks the production optimizer for
+`min(200, max(60, 5n))` lineups, which is 200 for that 43-lineup build, and
+the optimizer refuses more than 150. The defect is v1/v2's (any build of 31
+or more lineups would have failed arm B); no study pair ever hit it because
+none was saved. `candidateMax` is now 150, the optimizer's own limit. No
+freeze file was written and no realized top 1% was read before this change;
+the gate rule, gate slates and every other constant are as registered.
