@@ -1,6 +1,6 @@
 # NFL DFS: does a field-relative joint objective pick better portfolios than the ceiling heuristic? (pre-registered 2026-10-14)
 
-Status: **registered before any 2026 week-6 slate was captured; freeze gate
+Status: **v3 registered 2026-10-30 (see "v3" at the end). Earlier: registered before any 2026 week-6 slate was captured; freeze gate
 FAILED for both formats on 2026-10-14 (v1) and again on 2026-10-15 (v2, the
 stacked field; see "v2" at the end), so no week-6 slate enrolls.** Nothing
 here changes the live optimizer, its presets or its defaults. The challenger is
@@ -272,3 +272,93 @@ shows instead, recorded for whoever registers a v3, not acted on here:
 The runner still refuses `--save` for both formats. Nothing in v2 was tuned
 against a realized threshold: the stacking rates came from the standings,
 and the gate was run once on the frozen inputs and written once.
+
+## v3 (`nfl-portfolio-objective-v3`, registered 2026-10-30 before any v3 gate number was computed)
+
+Registered on the owner's instruction of 2026-10-30 ("work on #3"), which
+adopted the v3 plan: a new gate rule fixed before the gate runs, more draws,
+and a selection-stability check. Written and committed before the gate
+script was changed or run, and before the realized top 1% of any gate slate
+below was read. Only entry counts, score-curve presence, teams, build times
+and ownership coverage were looked at to choose the slates.
+
+### What changes, and only this
+
+1. **Draws: 4,000 to 20,000** for both the selection and the evaluation
+   bank. The joint copula (`nfl-joint-copula-v1`), the field model
+   (`nfl-field-stacked-v2`, `FIELD_STACKING` unchanged), 2,000 field
+   lineups, the seeds, the candidate pool and the greedy objective are v2's.
+   Reason: v2 picked a different portfolio under a different selection seed
+   (Jaccard 0.44 at 4,000 draws on the week-5 BUF@LAR dry run), so the pick
+   was mostly draw noise.
+2. **Same results, less work.** The field threshold is computed one draw at a
+   time instead of holding every opponent's 20,000 scores, and the greedy
+   selection keeps a running coverage mask instead of re-scanning every
+   chosen lineup. A test pins both to the v2 code's exact output on fixtures.
+3. **The gate rule** below replaces v1/v2's rule.
+
+### Gate slates (fixed now)
+
+A gate slate is one the v1/v2 gate never checked, from week 6 on, where the
+contest has a stored full-field score curve with at least 10,000 entries (the
+floor v1/v2 used for the spread), and the owner saved an ordinary GPP build
+before the first kickoff whose snapshot carries the ownership prior on every
+player. The source is the latest such build before kickoff.
+
+| format | slate | contest | entries | curve from | source build |
+|---|---|---|---:|---|---|
+| Showdown | w6 SEA@DEN | 196689718 | 84,384 | stat-api (full) | 36c70002, 22:12 UTC, kickoff 00:15 |
+| Showdown | w6 WAS@SF | 196786695 | 47,562 | owner's DraftKings export | 21bf2279, 23:13 UTC, kickoff 00:15 |
+| Showdown | w7 NE@CHI | 196947078 | 47,562 | owner's DraftKings export | 3091aa86, 23:20 UTC, kickoff 00:15 |
+
+Excluded, and why: w8 CAR@GB (197208280) has 5,945 entries, under the floor;
+every other week 6-8 flagship has stat-api's top 100 only, no curve.
+**Classic has no gate slate**: no Classic contest since week 5 has a full
+curve. Classic stays unchecked and unenrolled until three fresh Classic
+slates meeting the same conditions exist (the owner's weekly export with
+`--keep-all` of an entered Classic contest provides the curve). It is then
+checked once, by the same rule, in its own freeze file.
+
+### Gate rule (fixed now)
+
+Per format, over its n gate slates (n at least 3, else unchecked):
+
+- **Where the realized top 1% falls.** u = the share of the 20,000
+  evaluation draws whose implied within-draw top-1% score is below the
+  realized one (a tie counts half). For a calibrated model u is uniform.
+- **Coverage:** at most k slates may have u outside [0.05, 0.95], where k is
+  the smallest number with P(Binomial(n, 0.10) > k) at or below 0.05.
+  For n = 3, k = 1.
+- **Bias:** with z = the normal quantile of u (u clamped to half a draw from
+  0 and 1), the mean z must lie within plus or minus 1.96 / sqrt(n).
+- **Stability, every gate slate:** arm B rebuilt from the source build's
+  candidate pool with selection seed 20261016 and again with 20261019 (field
+  and evaluation seeds unchanged) must choose the same lineups at a Jaccard
+  overlap of at least 0.80.
+
+A format passes only if all three hold. For a perfectly calibrated model the
+two calibration checks together fail about 8% of the time at n = 3 (coverage
+2.8%, bias 5%), where v1/v2's rule failed such a model about half the time.
+
+**Power, stated now.** The Showdown implied top-1% band has been about 70
+points wide from p5 to p95, a standard deviation near 21. A consistent
+24-point level miss on all three slates gives a mean z near 1.1 against a
+limit of 1.13: this gate catches gross miscalibration, not a modest bias.
+That is the honest reach of three slates, and it is why the forward test
+(metrics and decision rule above) still decides whether B is any good.
+
+### Mechanics
+
+`python -m research.nfl_portfolio_freeze --format showdown` writes
+`artifacts/nfl-portfolio-objective-v3/freeze-showdown.json` once (the file
+cannot be overwritten). The runner (`research/nfl_pool_rule_study.py`)
+reads the freeze for the slate's format and refuses `--save` unless it
+passed and its module hashes still match. A failed format is not re-gated on
+these slates under any new rule; a different model is a new version with new
+gate slates.
+
+If Showdown passes, enrollment starts with the first flagship Showdown after
+the freeze is written, with an owner build saved before kickoff and both
+arms saved by the runner before that kickoff. Population, metrics and the
+8-then-16 decision rule are v1's, unchanged, and the v3 cohort never pools
+with anything earlier.
