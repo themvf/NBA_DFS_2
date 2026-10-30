@@ -4,6 +4,12 @@
     python -m research.nfl_qb_spot_start_study fit --development <dev.jsonl> --output <fit.json>
     python -m research.nfl_qb_spot_start_study grade --records <jsonl> --fit <fit.json> --output <report.json>
 
+v3 (eligibility test only; constants unchanged):
+
+    python -m research.nfl_qb_spot_start_study run-v3 --seasons 2020-2025 --output <dev-v3.jsonl>
+    python -m research.nfl_qb_spot_start_study fit-v3 --development <dev-v3.jsonl> --output <fit-v3.json>
+    python -m research.nfl_qb_spot_start_study grade-v3 --records <test-v3.jsonl> --fit <fit-v3.json> --output <report.json>
+
 `run` walks every qualifying quarterback game, projects it with the current
 model (v5, no transfer) and with the expected-starter construction for every
 grid point (or the fitted one), and appends one record per game. Rows are
@@ -213,9 +219,175 @@ def grade(records, variant):
     return report
 
 
+# --- nfl-qb-spot-start-v3 (docs/nfl-qb-spot-start-study.md, "v3") -------------------------
+#
+# v3 changes only who receives the construction: an expected starter is eligible
+# when v2 applies the construction to him, OR when fewer than K of his previous
+# min(6, n) games had 15+ attempts. Every game records the current model, v2 as
+# production runs it, and the construction with the thin-history gate forced
+# open, so v3 at every K in the grid is derived from one record per game.
+
+STUDY_V3 = 'nfl-qb-spot-start-v3'
+BOOT_SEED_V3 = 20261018
+K_GRID = (3, 4, 5)
+STARTER_ATTEMPTS = 15.
+GAP_MIN_TEST_GAMES = 60
+ATTEMPTS_BIAS_LIMIT = 5.0
+FORCED = {**OVERLAY, 'trailing_limit': float('inf')}
+
+
+def events_v3(rows, seasons):
+    """Every qualifying team-game (no established sampling), with the starter-game count."""
+    qb = [r for r in rows if r.position == 'QB']
+    by_game, history = defaultdict(list), defaultdict(list)
+    for r in qb:
+        by_game[r.season, r.week, r.team].append(r)
+        history[r.player_id].append(r)
+    out = []
+    for (season, week, team), lines in sorted(by_game.items()):
+        if season not in seasons:
+            continue
+        leader = max(lines, key=lambda r: float(r.stats.get('attempts') or 0))
+        if float(leader.stats.get('attempts') or 0) < 15:
+            continue
+        earlier = [r for r in history[leader.player_id] if (r.season, r.week) < (season, week)][-TRAIL:]
+        attempts = [float(r.stats.get('attempts') or 0) for r in earlier]
+        out.append({'target': leader, 'window': len(earlier),
+                    'trailing_attempts': float(np.mean(attempts)) if attempts else 0.,
+                    'starter_games': sum(a >= STARTER_ATTEMPTS for a in attempts)})
+    return out
+
+
+def run_v3(seasons, output, limit=None, log=print):
+    rows = load_rows(range(min(seasons) - 2, max(seasons) + 1))
+    done = set()
+    if output.exists():
+        done = {json.loads(l)['key'] for l in output.read_text().splitlines() if l.strip()}
+    base = {**MODEL_CONFIG, 'draws': DRAWS}
+    n = 0
+    with output.open('a') as out:
+        for e in events_v3(rows, set(seasons)):
+            t = e['target']
+            key = f'{t.season}_{t.week}_{t.team}_{t.player_gsis_id}'
+            if key in done:
+                continue
+            if limit and n >= limit:
+                break
+            prior = [r for r in rows if (r.season, r.week) < (t.season, t.week)]
+            prior_qb = [r for r in prior if r.position == 'QB']
+            ident = dict(player_id=t.player_id, player_gsis_id=t.player_gsis_id, player_name=t.player_name)
+            current = project_player(**ident, position='QB', historical_rows=old_model_rows(t, prior_qb, base),
+                                     cutoff_season=t.season, cutoff_week=t.week, context=ProjectionContext(), seed=SEED, config=base)
+            volume = team_pass_attempts(prior, t.team, OVERLAY)
+            starter = dict(**ident, historical_rows=prior_qb, cutoff_season=t.season, cutoff_week=t.week,
+                           context=ProjectionContext(), team_pass_attempts=volume, seed=SEED, config=base)
+            v2 = project_expected_starter(**starter, overlay=OVERLAY)
+            forced = project_expected_starter(**starter, overlay=FORCED)
+            # The gate is the only difference between the two calls, so wherever v2
+            # applies, the forced construction must be the same projection.
+            if v2 is not None and (forced is None or forced.model_proj_fpts != v2.model_proj_fpts):
+                raise AssertionError(f'forced construction differs from v2 for {key}')
+            record = {'study': STUDY_V3, 'key': key, 'season': t.season, 'week': t.week, 'team': t.team, 'player': t.player_name,
+                      'window': e['window'], 'trailing_attempts': e['trailing_attempts'], 'starter_games': e['starter_games'],
+                      'team_pass_attempts': volume, 'v2_applies': v2 is not None,
+                      'actual': {'points': t.dk_points, 'attempts': float(t.stats.get('attempts') or 0),
+                                 'pass_yds': float(t.stats.get('passing_yards') or 0)},
+                      'current': summarize(current, t),
+                      'construction': summarize(forced, t) if forced is not None else None}
+            out.write(json.dumps(record) + '\n')
+            out.flush()
+            n += 1
+            log(json.dumps({'done': key, 'starter_games': e['starter_games'], 'v2_applies': record['v2_applies']}), flush=True)
+
+
+def v3_eligible(record, k):
+    return record['construction'] is not None and (record['v2_applies'] or record['window'] < 2 or record['starter_games'] < k)
+
+
+def projection(record, arm, k=None):
+    """`current`, `v2` (as production runs it) or `v3` at threshold k."""
+    if arm == 'current':
+        return record['current']
+    if arm == 'v2':
+        return record['construction'] if record['v2_applies'] else record['current']
+    return record['construction'] if v3_eligible(record, k) else projection(record, 'v2')
+
+
+def gap(records, k):
+    """Games v3 newly covers at k: eligible under v3, not under v2."""
+    return [r for r in records if v3_eligible(r, k) and not r['v2_applies']]
+
+
+def paired_v3(records, new, old, field='points', seed=BOOT_SEED_V3):
+    """Mean |error| change new minus old, bootstrap resampling weeks (2,000)."""
+    key = 'proj_points' if field == 'points' else 'proj_pass_yds'
+    err_new = np.array([abs(new(r)[key] - r['actual'][field]) for r in records])
+    err_old = np.array([abs(old(r)[key] - r['actual'][field]) for r in records])
+    diff = err_new - err_old
+    weeks = sorted({(r['season'], r['week']) for r in records})
+    idx = {w: i for i, w in enumerate(weeks)}
+    g = np.array([idx[r['season'], r['week']] for r in records])
+    sums, counts = np.bincount(g, diff, len(weeks)), np.bincount(g, None, len(weeks))
+    rng = np.random.default_rng(seed)
+    boot = [sums[s].sum() / counts[s].sum() for s in (rng.integers(0, len(weeks), len(weeks)) for _ in range(2000))]
+    return {'n': len(records), 'weeks': len(weeks), 'old_mae': float(err_old.mean()), 'new_mae': float(err_new.mean()),
+            'mean_change': float(diff.mean()), 'ci95': np.quantile(boot, [.025, .975]).tolist()}
+
+
+def bias_v3(records, arm, k=None):
+    return {f: float(np.mean([projection(r, arm, k)[f'proj_{f}'] - r['actual'][f] for r in records]))
+            for f in ('attempts', 'pass_yds', 'points')} if records else None
+
+
+def cohort_report(records, k):
+    rs = gap(records, k)
+    if not rs:
+        return {'n': 0}
+    v3, v2 = (lambda r: projection(r, 'v3', k)), (lambda r: projection(r, 'v2'))
+    return {'n': len(rs), 'points': paired_v3(rs, v3, v2), 'pass_yds': paired_v3(rs, v3, v2, 'pass_yds'),
+            'bias': {'v2': bias_v3(rs, 'v2'), 'v3': bias_v3(rs, 'v3', k)}}
+
+
+def fit_v3(development):
+    records = [r for r in load(development) if r.get('study') == STUDY_V3]
+    def mae(arm, k=None):
+        return float(np.mean([abs(projection(r, arm, k)['proj_points'] - r['actual']['points']) for r in records]))
+    by_k = {k: mae('v3', k) for k in K_GRID}
+    chosen = min(K_GRID, key=lambda k: (round(by_k[k], 9), k))
+    return {'study': STUDY_V3, 'window': 'development', 'records': len(records),
+            'seasons': sorted({r['season'] for r in records}),
+            'objective': 'DraftKings-points MAE over every qualifying game; ties to the smallest K',
+            'population_mae': {'current': mae('current'), 'v2': mae('v2'), **{f'v3_k{k}': v for k, v in by_k.items()}},
+            'chosen_k': chosen,
+            'gap_cohort_by_k': {f'k{k}': cohort_report(records, k) for k in K_GRID},
+            'construction_unavailable': sum(r['construction'] is None for r in records)}
+
+
+def grade_v3(records, k):
+    """The registered gates at the fitted k. Run once, on 2016-2019."""
+    report = cohort_report(records, k)
+    n, ci, att = report.get('n', 0), report.get('points', {}).get('ci95'), (report.get('bias') or {}).get('v3') or {}
+    gates = {'sample_floor_met': n >= GAP_MIN_TEST_GAMES,
+             'gap_ci_upper_below_zero': bool(ci and ci[1] < 0),
+             'attempts_bias_within_5': bool(att and abs(att['attempts']) <= ATTEMPTS_BIAS_LIMIT)}
+    verdict = 'insufficient' if not gates['sample_floor_met'] else ('pass' if all(gates.values()) else 'fail')
+    return {'study': STUDY_V3, 'k': k, 'gap': report, 'gates': gates, 'verdict': verdict}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
+    r3 = sub.add_parser('run-v3')
+    r3.add_argument('--seasons', required=True)
+    r3.add_argument('--output', type=Path, required=True)
+    r3.add_argument('--limit', type=int)
+    f3 = sub.add_parser('fit-v3')
+    f3.add_argument('--development', type=Path, required=True)
+    f3.add_argument('--output', type=Path, required=True)
+    g3 = sub.add_parser('grade-v3')
+    g3.add_argument('--records', type=Path, required=True)
+    g3.add_argument('--fit', type=Path, required=True)
+    g3.add_argument('--output', type=Path, required=True)
     r = sub.add_parser('run')
     r.add_argument('--seasons', required=True)
     r.add_argument('--output', type=Path, required=True)
@@ -231,6 +403,22 @@ def main():
     g.add_argument('--output', type=Path, required=True)
     g.add_argument('--variant', default='fitted')
     args = parser.parse_args()
+    if args.command == 'run-v3':
+        first, last = (int(x) for x in args.seasons.split('-'))
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        run_v3(list(range(first, last + 1)), args.output, args.limit)
+        return
+    if args.command in ('fit-v3', 'grade-v3'):
+        if args.output.exists():
+            raise SystemExit(f'Refusing to overwrite {args.output}')
+        if args.command == 'fit-v3':
+            result = fit_v3(args.development)
+        else:
+            fitted = json.loads(args.fit.read_text())
+            result = {**grade_v3(load(args.records), int(fitted['chosen_k'])), 'fit': fitted}
+        args.output.write_text(json.dumps(result, indent=1))
+        print(json.dumps({k: v for k, v in result.items() if k != 'fit'}, indent=1)[:4000])
+        return
     if args.command == 'run':
         first, last = (int(x) for x in args.seasons.split('-'))
         fitted = json.loads(args.fit.read_text())['config'] if args.fit else None
