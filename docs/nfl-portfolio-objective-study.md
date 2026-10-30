@@ -1,6 +1,6 @@
 # NFL DFS: does a field-relative joint objective pick better portfolios than the ceiling heuristic? (pre-registered 2026-10-14)
 
-Status: **v3 registered 2026-10-30 (see "v3" at the end). Earlier: registered before any 2026 week-6 slate was captured; freeze gate
+Status: **v3 registered 2026-10-30 and its Showdown gate FAILED the same day, on selection stability (see "v3" at the end). Earlier: registered before any 2026 week-6 slate was captured; freeze gate
 FAILED for both formats on 2026-10-14 (v1) and again on 2026-10-15 (v2, the
 stacked field; see "v2" at the end), so no week-6 slate enrolls.** Nothing
 here changes the live optimizer, its presets or its defaults. The challenger is
@@ -373,3 +373,40 @@ or more lineups would have failed arm B); no study pair ever hit it because
 none was saved. `candidateMax` is now 150, the optimizer's own limit. No
 freeze file was written and no realized top 1% was read before this change;
 the gate rule, gate slates and every other constant are as registered.
+
+
+### Result (2026-10-30): Showdown FAILED the v3 gate, on stability only
+
+`artifacts/nfl-portfolio-objective-v3/freeze-showdown.json`, written once.
+The archived gate inputs and their SHA-256 sit beside it (`inputs/`).
+
+| slate | realized top 1% | implied p5 / p50 / p95 | u | selection Jaccard | picks (seed 1 / seed 2) of n |
+|---|---:|---|---:|---:|---|
+| w6 SEA@DEN | 98.2 | 64.7 / 101.8 / 151.2 | 0.45 | **0.65** | 36 / 35 of 43 |
+| w6 WAS@SF | 117.9 | 74.4 / 120.6 / 164.6 | 0.47 | 0.90 | 20 / 20 of 26 |
+| w7 NE@CHI | 138.8 | 70.2 / 113.6 / 160.3 | 0.80 | **0.69** | 14 / 13 of 20 |
+
+- **Coverage: pass.** No slate fell outside the implied 5-95% band (one allowed).
+- **Bias: pass.** Mean z +0.21 against a limit of 1.13.
+- **Stability: fail.** Two of three slates picked different portfolios under
+  the second selection seed (Jaccard 0.65 and 0.69, bar 0.80), even at
+  20,000 draws.
+
+So the field model and the joint draws were calibrated on three fresh
+slates, within this gate's low power: a 3-slate check would not see a modest
+bias. What failed is the selection. Two things in the record explain it.
+Greedy coverage chooses among many near-identical candidates whose coverage
+differs by a draw or two, so a new draw stream swaps them. And arm B could
+not fill the portfolio on any slate: it picked 36 of 43, 20 of 26 and 14 of
+20, because the source build's exposure cap and uniqueness bind on a pool of
+111 to 173 distinct candidates. The SEA@DEN field also reproduced the
+ownership prior poorly (largest player deviation 50 points, 32 on WAS@SF,
+5 on NE@CHI).
+
+Per the registration: Showdown is not enrolled, the runner refuses `--save`,
+and these slates are spent. A v4 would change the selection, not the field
+(for instance, choosing on a smoothed coverage score, or a larger pool that
+can fill the portfolio), and needs its own gate slates from week 8 on.
+Classic remains unchecked (no fresh Classic contest has a full curve).
+The simulated false-fail rate of the two calibration checks at n = 3 is
+6.9%; the registration's "about 8%" added the two rates, which overlap.

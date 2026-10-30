@@ -8589,6 +8589,22 @@ sits inside the model's own p5-p95. Both observations are post hoc and change
 nothing; a different rule is a v3 the owner registers before new data. The
 runner still refuses `--save` for both formats.
 
+**v3 (`nfl-portfolio-objective-v3`, 2026-10-30, owner's instruction) FAILED
+too, on a different part.** Registered before running: 20,000 draws, a new
+gate rule (realized top 1% inside the implied 5-95% band on all but k slates,
+mean normal score of its position within 1.96/sqrt(n), and arm B's pick
+overlapping at Jaccard 0.80 under a second selection seed), on three fresh
+Showdown slates (w6 SEA@DEN, w6 WAS@SF, w7 NE@CHI). The field model was
+calibrated (none outside the band, mean z +0.21), but the selection moved
+with its seed on two slates (Jaccard 0.65, 0.69) and could not fill the
+portfolio on any (36 of 43, 20 of 26, 14 of 20). Showdown is not enrolled
+and those slates are spent; Classic is unchecked because no Classic contest
+since week 5 has a full curve. The threshold and greedy-selection code was
+rewritten to give v2's results exactly with less work (pinned by
+`test:nfl-portfolio-objective`), and the candidate pool is capped at the
+optimizer's 150-lineup limit (200 had made arm B fail for builds of 31+). A
+v4 changes the selection, not the field, on new gate slates.
+
 **Balanced Showdown plan: the low-scoring K/DST share is 3%, not 10%, and a
 kicker-less pool skips it (2026-10-15).** On the week-6 SEA@DEN Winners-shape
 build the quota could only be met with defenses and stalled the owner's 100 at
