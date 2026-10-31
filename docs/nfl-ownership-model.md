@@ -349,3 +349,40 @@ ORDERING of the field (which is what the leverage fade and the duplication
 estimate consume) at about the same point error, not fewer chalk misses.
 Features and alpha are frozen; the next variant (a news or published-ownership
 input for the chalk) is `nfl-ownership-fit-v2` with its own registration.
+
+## Classic shadow — `nfl-ownership-fit-v1` beside v5 (registered 2026-10-31, before any graded shadow slate)
+
+Owner's decision 2026-10-31: run the fitted Classic model as a shadow rather
+than switch. It cleared its gate on rank (0.826 vs 0.797, every slate) but only
+narrowly on points (MAE 1.243 vs 1.256), lost on points walk-forward (1.50 vs
+1.39), and still predicts 20%+ chalk at ~16 against ~29.
+
+**What runs.** `python -m research.nfl_ownership_fit --freeze` froze the
+all-slates fit (the seven week 1-7 Millionaires) to
+`web/src/data/nfl-ownership-fit-v1.json`, `fitted_at` 2026-10-31 18:45 UTC.
+`web/src/lib/nfl-dfs/classic-ownership-fit.ts` ports it (pinned to the Python by
+`tests/fixtures/nfl_ownership_fit_fixture.json`, both sides tested). On every
+Classic slate the workspace read computes it from the same projections as the
+prior; the pool shows it as a violet "fit" line under the Own box, and every
+saved build records it in `ownership.shadow` with its version and `fitted_at`.
+Nothing builds from it: the optimizer, leverage and duplication read `ownPct`
+(v5 or LineStar or a typed number) exactly as before.
+
+**How it is graded.** `python -m research.nfl_ownership_three_way --week N`
+prints a "fitted shadow" line beside the prior, the FantasyPros-bounded prior
+and the FantasyPros midpoint, using the number the build saved (recomputed from
+the frozen file for older builds) and saying whether the slate counts.
+
+**Switch rule, frozen now.** Population: the largest linked full-field Classic
+contest of each week (recorded mass >= 890/900) whose first kickoff is after
+`fitted_at`, graded on the newest pre-kickoff owner run (the Monday grade's
+rows). At the fourth such slate, once:
+- SWITCH the Classic default to the fit if all hold: the fit's MAE beats v5's
+  on at least 3 of the 4 slates, its pooled MAE and pooled Spearman both beat
+  v5's, and its pooled |bias| is at most 0.5;
+- otherwise the default stays v5 and the shadow is retired or replaced by a
+  separately registered v2 (a news or published-ownership input).
+
+The frozen coefficients are not refitted until that verdict; a refit before it
+restarts the count. The owner's own exports on the same slates are reported but
+are not the counted population.

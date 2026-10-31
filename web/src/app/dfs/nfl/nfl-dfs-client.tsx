@@ -1015,6 +1015,9 @@ function OwnershipCell({ player, override, disabled, onChange }: { player: NflWo
       onChange={(e) => onChange(e.target.value === "" ? null : Math.max(0, Math.min(100, Number(e.target.value))))}
       className={`h-7 w-16 rounded border px-1 text-right disabled:bg-slate-100 ${manual ? "border-amber-500 bg-amber-50 font-bold" : ""}`} />
     {player.ownPct != null || manual ? <div className={`text-[9px] font-normal ${manual ? "text-amber-800" : "text-slate-400"}`}>{source}</div> : null}
+    {player.shadowOwnPct != null && !player.isOut ? <div className="text-[9px] font-semibold text-violet-700"
+      title="Fitted model (nfl-ownership-fit-v1), run as a shadow: shown and saved with the build so the Monday grade can compare it with the prior. Lineups do not use it.">
+      fit {player.shadowOwnPct.toFixed(1)}</div> : null}
   </div>;
 }
 
