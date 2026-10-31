@@ -8,9 +8,11 @@ slate), grades three ownership forecasts against that field's actual ownership:
   bounded   that prior held inside the FantasyPros range imported for the
             slate's date (`nfl_dfs_ownership_bands`, newest paste)
   midpoint  the middle of the FantasyPros range, the prior where no range
-  fit       the fitted Classic shadow (`nfl-ownership-fit-v1`): the number the
-            build saved beside the prior when it has one, otherwise recomputed
-            from the frozen web/src/data/nfl-ownership-fit-v1.json. Only a slate
+  fit       the fitted Classic model (`nfl-ownership-fit-v1`), recomputed from
+            the frozen web/src/data/nfl-ownership-fit-v1.json on the build's own
+            inputs (identical to what the page computed; the fixture pins it). It
+            is the LIVE number since 2026-10-31 and v5 is the shadow; builds save
+            both (`ownership.total`/`source` and `ownership.shadow`). Only a slate
             whose first kickoff is after the model's `fitted_at` counts toward
             the switch rule in docs/nfl-ownership-model.md; earlier weeks are
             in the model's own training data and are printed as such.
@@ -152,16 +154,13 @@ def grade(snapshot: list, field: dict, bands: dict | None) -> tuple[pd.DataFrame
     df["midpoint"] = np.where(df.fp_low.isna(), df.prior, (df.fp_low + df.fp_high) / 2)
     df["actual"] = [field.get(norm(n), field.get(norm(n.split()[-1]), 0.0)) for n in df["name"]]
     g = df[~df.is_out & (df.pstatus != "out")].copy()
-    # Fitted shadow: the saved number when the build recorded one, else the frozen model on the same inputs.
-    saved = g["shadow"].notna().any()
-    if saved:
-        g["fit"] = g["shadow"].astype(float).fillna(0.0)
-    else:
-        active = g[g.position.isin(("QB", "RB", "WR", "TE", "DST")) & (g.salary > 0)]
-        g["fit"] = 0.0
-        if len(active):
-            g.loc[active.index, "fit"] = fit_predict(fit_model(), feature_frame(active.reset_index(drop=True)))
-    g.attrs["fit_saved"] = bool(saved)
+    # The fitted model on the build's own inputs. Recomputed rather than read from
+    # `ownership.total`, which carries LineStar or a typed number where those won.
+    active = g[g.position.isin(("QB", "RB", "WR", "TE", "DST")) & (g.salary > 0)]
+    g["fit"] = 0.0
+    if len(active):
+        g.loc[active.index, "fit"] = fit_predict(fit_model(), feature_frame(active.reset_index(drop=True)))
+    g.attrs["fit_live"] = bool((g["source"] == "nfl-ownership-fit-v1").any())
     out = {}
     for col in ("prior", "bounded", "midpoint", "fit", "build"):
         pred = g[col].fillna(0).to_numpy(dtype=float); act = g["actual"].to_numpy(dtype=float)
@@ -192,11 +191,11 @@ def grade_one(conn, week: int, contest_id: str, misses: int) -> pd.DataFrame | N
     print(f"graded players {len(g)}")
     fitted_at = datetime.fromisoformat(fit_model()["fitted_at"])
     counts = contest.get("kickoff") is not None and contest["kickoff"] > fitted_at
-    print(f"fitted shadow: {'saved with the build' if g.attrs['fit_saved'] else 'recomputed from the frozen model'}; "
+    print(f"fitted model: {'LIVE in this build (v5 was the shadow)' if g.attrs['fit_live'] else 'shadow (the build used v5)'}; "
           f"{'COUNTS toward the switch rule' if counts else 'in-sample or before the freeze, does NOT count'} "
           f"(model fitted {fitted_at:%Y-%m-%d %H:%M} UTC)")
     for col, label in (("prior", "our prior v5"), ("bounded", "prior held in FP range"), ("midpoint", "FP midpoint"),
-                       ("fit", "fitted shadow"), ("build", "what the build used")):
+                       ("fit", "fitted model"), ("build", "what the build used")):
         m = out[col]
         print(f"\n{label:24s} spearman {m['spearman']:.3f}  MAE {m['mae']:.2f}  bias {m['bias']:+.2f}  top10 {m['top10']}/10  total {m['total']}%")
         for t in m["tiers"]:

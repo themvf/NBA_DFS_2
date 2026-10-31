@@ -386,3 +386,19 @@ rows). At the fourth such slate, once:
 The frozen coefficients are not refitted until that verdict; a refit before it
 restarts the count. The owner's own exports on the same slates are reported but
 are not the counted population.
+
+### Amendment 2026-10-31 (same day, before any counted slate): the fit goes live, v5 becomes the shadow
+
+Owner's decision: run both, with the fitted models live. From this change the
+workspace builds from `nfl-ownership-fit-v1` on Classic (and, as before,
+`nfl-ownership-fit-showdown-v1` on Showdown), and the v5 prior is computed on
+the same projections, shown as a violet "v5" line under the Own box and saved in
+each build's `ownership.shadow` (`shadowVersion`, plus `liveVersion` and
+`liveFittedAt`; Showdown also saves the shadow captain/flex split). LineStar and
+typed numbers still override the live number exactly as before.
+
+The comparison and its rule are unchanged; only what happens at the verdict is
+restated. At the fourth counted Classic Millionaire, KEEP the fit if all four
+registered conditions hold; otherwise REVERT the Classic default to v5. The
+Monday grade recomputes both from the build's own inputs either way, so the
+comparison does not depend on which one was live.

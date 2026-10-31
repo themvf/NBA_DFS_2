@@ -7957,14 +7957,16 @@ Leave-one-slate-out on 17 slates vs v5: flex MAE 5.23 vs 6.16, captain 1.04 vs 1
 vs 0.64/0.65, captain better on 17/17 slates and flex on 15/17; 30%+ flex chalk 42.1 vs v5 35.8
 (actual 44.3). Picked from 16 variants scored the same way, so those figures are mildly optimistic.
 Classic stays on v5; `variant: "v5"` still gives v5 Showdown. Refit after importing new contests.
-**Classic shadow (`nfl-ownership-fit-v1`, owner's decision 2026-10-31).** The fitted Classic model is
-frozen in `web/src/data/nfl-ownership-fit-v1.json` (fitted 2026-10-31 18:45 UTC on the week 1-7
-Millionaires; `python -m research.nfl_ownership_fit --freeze`), ported in
-`web/src/lib/nfl-dfs/classic-ownership-fit.ts` (fixture-pinned), shown as a "fit" line under Own and
-saved in each build's `ownership.shadow`; builds still read v5. The Monday three-way grade prints it.
-Switch rule (docs/nfl-ownership-model.md, "Classic shadow"): at the 4th Millionaire after the freeze,
-switch only if the fit's MAE beats v5 on 3 of 4 slates and pooled MAE, Spearman and |bias| <= 0.5 all
-hold; no refit before that verdict.
+**Classic fit LIVE, v5 as shadow (`nfl-ownership-fit-v1`, owner's decisions 2026-10-31).** The fitted
+Classic model is frozen in `web/src/data/nfl-ownership-fit-v1.json` (fitted 2026-10-31 18:45 UTC on the
+week 1-7 Millionaires; `python -m research.nfl_ownership_fit --freeze`) and ported in
+`web/src/lib/nfl-dfs/classic-ownership-fit.ts` (fixture-pinned). It first shipped as a shadow and went
+live the same day: builds read the fit in both formats, and v5 is computed on the same projections,
+shown as a violet "v5" line under Own and saved in `ownership.shadow` (`attachOwnership` in
+`dfs/nfl/actions.ts`). The Monday three-way grade recomputes both. Verdict rule
+(docs/nfl-ownership-model.md, "Classic shadow" + amendment): at the 4th Millionaire after the freeze,
+keep the fit only if its MAE beats v5 on 3 of 4 slates and pooled MAE, Spearman and |bias| <= 0.5 all
+hold, else revert Classic to v5; no refit before that verdict.
 
 **News chalk (`nfl-ownership-news-v1`, registered and closed 2026-10-24;
 `docs/nfl-ownership-news-chalk-study.md`).** Stopped at its pre-registered
