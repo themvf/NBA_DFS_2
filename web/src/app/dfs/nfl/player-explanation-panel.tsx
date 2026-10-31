@@ -801,7 +801,7 @@ function Breakdown({ e, player, peers, valueIndex, upside }: {
           {player.ownPct != null && (
             <p className="mt-2 text-[11px] text-slate-600">
               Projected ownership <b className="text-slate-900">{player.ownPct.toFixed(1)}%</b>
-              {player.ownSource === "linestar" ? " (LineStar)." : player.ownSource?.startsWith("nfl-ownership-fit-showdown") ? " (fitted to 17 past full-field Showdown contests, nfl-ownership-fit-showdown-v1: from points, salary, value and where the player ranks in the game, on his team and at his position; still an estimate)." : " (our stated prior, nfl-ownership-prior-v5, uncalibrated: points and value anchored on the DK average, flattened, within position budgets)."}
+              {player.ownSource === "linestar" ? " (LineStar)." : player.ownSource?.startsWith("nfl-ownership-fit-showdown") ? " (fitted to 17 past full-field Showdown contests, nfl-ownership-fit-showdown-v1: from points, salary, value and where the player ranks in the game, on his team and at his position; still an estimate)." : player.ownSource === "nfl-ownership-fit-v1" ? " (fitted to the week 1-7 full-field Millionaires, nfl-ownership-fit-v1: from salary, projection, DK average, value and where the player ranks at his position, on his team and in his game; still an estimate)." : " (our stated prior, nfl-ownership-prior-v5, uncalibrated: points and value anchored on the DK average, flattened, within position budgets)."}
             </p>
           )}
         </Card>

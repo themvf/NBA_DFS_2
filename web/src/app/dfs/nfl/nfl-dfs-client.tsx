@@ -1001,13 +1001,18 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
  * box to type a different number (nfl-ownership-manual-v1). Blank means the
  * prior (or the prior held inside an imported range).
  */
+/** Short label for where our own ownership number came from. */
+function ownLabel(source: string | null | undefined): string {
+  return source?.startsWith("nfl-ownership-fit") ? "fitted" : "prior";
+}
 function OwnershipCell({ player, override, disabled, onChange }: { player: NflWorkspacePlayer; override: number | undefined; disabled: boolean; onChange: (next: number | null) => void }) {
   const manual = override != null;
   const clamped = player.ownBand != null && player.ownBand.prior !== player.ownPct;
-  const source = manual ? "typed by you" : player.ownSource === "linestar" ? "LineStar" : player.ownBand ? `prior · FP ${player.ownBand.low}-${player.ownBand.high}%${clamped ? "" : " ref"}` : "prior · uncalibrated";
+  const source = manual ? "typed by you" : player.ownSource === "linestar" ? "LineStar" : player.ownBand ? `${ownLabel(player.ownSource)} · FP ${player.ownBand.low}-${player.ownBand.high}%${clamped ? "" : " ref"}` : `${ownLabel(player.ownSource)} · estimate`;
   const title = manual ? `You typed ${override}%. Blank the box to go back to ${pct(player.ownPct ?? null)}.`
     : player.ownBand && clamped ? `Our prior ${player.ownBand.prior.toFixed(1)}%, held inside ${player.ownBand.source} ${player.ownBand.low}-${player.ownBand.high}%`
     : player.ownBand ? `Our prior; ${player.ownBand.source} has this player at ${player.ownBand.low}-${player.ownBand.high}% (shown for reference, not applied).`
+    : player.ownSource?.startsWith("nfl-ownership-fit") ? "Fitted to past full-field contests; still an estimate. Type a number to replace it for this build."
     : "Our stated prior, uncalibrated. Type a number to replace it for this build.";
   return <div className="inline-flex flex-col items-end" title={title}>
     <input aria-label={`${player.name} ownership percent`} disabled={disabled} type="number" min={0} max={100} step={1}
@@ -1016,8 +1021,8 @@ function OwnershipCell({ player, override, disabled, onChange }: { player: NflWo
       className={`h-7 w-16 rounded border px-1 text-right disabled:bg-slate-100 ${manual ? "border-amber-500 bg-amber-50 font-bold" : ""}`} />
     {player.ownPct != null || manual ? <div className={`text-[9px] font-normal ${manual ? "text-amber-800" : "text-slate-400"}`}>{source}</div> : null}
     {player.shadowOwnPct != null && !player.isOut ? <div className="text-[9px] font-semibold text-violet-700"
-      title="Fitted model (nfl-ownership-fit-v1), run as a shadow: shown and saved with the build so the Monday grade can compare it with the prior. Lineups do not use it.">
-      fit {player.shadowOwnPct.toFixed(1)}</div> : null}
+      title="The old stated prior (nfl-ownership-prior-v5), run as a shadow: shown and saved with the build so the Monday grade can compare it with the fitted model the build uses. Lineups do not use it.">
+      v5 {player.shadowOwnPct.toFixed(1)}</div> : null}
   </div>;
 }
 

@@ -157,10 +157,13 @@ export type NflWorkspacePlayer = NflOptimizerPlayer & {
   /** `nfl-ownership-bands-v1`: the outside range for this player (`prior` is our number); it bounds `ownPct` only while the clamp is on. */
   ownBand?: { low: number; high: number; prior: number; source: string; capturedAt: string } | null;
   /**
-   * Classic only: the fitted `nfl-ownership-fit-v1` number, run as a SHADOW
-   * beside the prior. Shown and saved with every build; nothing builds from it.
+   * The SHADOW ownership (the v5 prior since 2026-10-31, when the fitted models
+   * went live): shown and saved with every build; nothing builds from it.
+   * Showdown also carries its captain/flex split.
    */
   shadowOwnPct?: number | null;
+  shadowCaptainOwnPct?: number | null;
+  shadowFlexOwnPct?: number | null;
   /**
    * Single Stat slates only (`nfl-single-stat-v1`): the one statistic this
    * slate scores, projected from the same inputs as the points projection.
@@ -196,8 +199,8 @@ export type NflLiveDkStatus = {
 
 export type NflWorkspaceSlate = {
   situationTeams?: SituationTeam[];
-  /** Classic only: the fitted ownership shadow beside the prior (see `shadowOwnPct`). */
-  ownershipShadow?: { version: string; fittedAt: string } | null;
+  /** Classic and Showdown: which model is live and which runs as the shadow (see `shadowOwnPct`). */
+  ownershipShadow?: { version: string; liveVersion: string; liveFittedAt: string | null } | null;
   injuryCoverage?: InjuryCoverage | null;
   liveDkStatus?: NflLiveDkStatus;
   uploadId: string;
@@ -1273,30 +1276,49 @@ async function attachRangeSplit(workspace: NflWorkspaceSlate, run: { season: num
 
 /**
  * Projected ownership for every player: LineStar when the feed carried it,
- * otherwise our stated prior (`nfl-ownership-prior-v5` since 2026-10-20, see
- * docs/nfl-ownership-model.md and docs/nfl-ownership-review-2026-10-19.md); Showdown
- * uses the fitted `nfl-ownership-fit-showdown-v1` since 2026-10-31. The prior is computed from the SAME
- * projections this workspace shows, after availability zeroing, so a ruled-out
- * player draws nothing. It is a heuristic: the optimizer applies it only
- * through the user's opt-in, labelled uncalibrated.
+ * otherwise our own number. Since 2026-10-31 (owner's decision) our live number
+ * is the FITTED model in both formats (`nfl-ownership-fit-v1` Classic,
+ * `nfl-ownership-fit-showdown-v1` Showdown) and the stated v5 prior runs as the
+ * SHADOW: shown under the Own box and saved with every build, never read by it,
+ * so the Monday grade keeps comparing the two (docs/nfl-ownership-model.md,
+ * "Classic shadow"). Both come from the SAME projections this workspace shows,
+ * after availability zeroing, so a ruled-out player draws nothing. Single Stat
+ * slates keep their own prior and have no shadow. Still an estimate: the
+ * optimizer applies it only through the user's opt-in.
  */
 function attachOwnership(workspace: NflWorkspaceSlate): NflWorkspaceSlate {
-  // Classic shadow: the fitted model on the same projections, recorded beside the
-  // prior so the Monday grade can compare them (docs/nfl-ownership-model.md).
-  const shadow = workspace.format === 'classic' ? projectClassicFit(workspace.players.map((p) => ({ id: p.dkPlayerId, position: p.position,
-    salary: p.salary, team: p.team, proj: p.ourProj, dkAvg: p.avgFptsDk, dkStatus: p.dkStatus, gameKey: classicFitGameKey(p.gameInfo),
-    active: !p.isOut && p.projectionStatus !== 'out' }))) : null;
-  const prior = projectOwnershipPrior(workspace.players.map((p) => ({ dkPlayerId: p.dkPlayerId, position: p.position, salary: p.salary,
-    projection: p.ourProj, dkAvg: p.avgFptsDk, isOut: p.isOut, dkStatus: p.dkStatus, captainSalary: p.captainSalary, team: p.team })), capFormatOf(workspace.format, workspace.games),
-    { favoriteTeam: workspace.favoriteTeam ?? null, underdogTeam: workspace.underdogTeam ?? null });
-  const byId = new Map(prior.players.map((p) => [p.dkPlayerId, p]));
+  const inputs = workspace.players.map((p) => ({ dkPlayerId: p.dkPlayerId, position: p.position, salary: p.salary,
+    projection: p.ourProj, dkAvg: p.avgFptsDk, isOut: p.isOut, dkStatus: p.dkStatus, captainSalary: p.captainSalary, team: p.team }));
+  const options = { favoriteTeam: workspace.favoriteTeam ?? null, underdogTeam: workspace.underdogTeam ?? null };
+  type Own = { ownPct: number; captainPct: number | null; flexPct: number | null };
+  const fromPrior = (result: ReturnType<typeof projectOwnershipPrior>) =>
+    new Map<number, Own>(result.players.map((p) => [p.dkPlayerId, { ownPct: p.ownPct, captainPct: p.captainPct, flexPct: p.flexPct }]));
+  let live: Map<number, Own>, liveVersion: string, liveFittedAt: string | null = null;
+  let shadow: Map<number, Own> | null = null, shadowVersion: string | null = null;
+  if (workspace.format === 'classic') {
+    const fit = projectClassicFit(workspace.players.map((p) => ({ id: p.dkPlayerId, position: p.position, salary: p.salary, team: p.team,
+      proj: p.ourProj, dkAvg: p.avgFptsDk, dkStatus: p.dkStatus, gameKey: classicFitGameKey(p.gameInfo),
+      active: !p.isOut && p.projectionStatus !== 'out' })));
+    live = new Map([...fit].map(([id, pct]) => [id, { ownPct: pct, captainPct: null, flexPct: null }]));
+    liveVersion = NFL_OWNERSHIP_FIT_CLASSIC_VERSION; liveFittedAt = NFL_OWNERSHIP_FIT_CLASSIC_FITTED_AT;
+    const v5 = projectOwnershipPrior(inputs, 'classic', { ...options, variant: 'v5' });
+    shadow = fromPrior(v5); shadowVersion = v5.version;
+  } else if (workspace.format === 'showdown') {
+    const fit = projectOwnershipPrior(inputs, 'showdown', options);
+    live = fromPrior(fit); liveVersion = fit.version;
+    const v5 = projectOwnershipPrior(inputs, 'showdown', { ...options, variant: 'v5' });
+    shadow = fromPrior(v5); shadowVersion = v5.version;
+  } else {
+    const prior = projectOwnershipPrior(inputs, capFormatOf(workspace.format, workspace.games), options);
+    live = fromPrior(prior); liveVersion = prior.version;
+  }
   return { ...workspace, players: workspace.players.map((p) => {
-    const ours = byId.get(p.dkPlayerId);
+    const ours = live.get(p.dkPlayerId), other = shadow?.get(p.dkPlayerId);
     const linestar = p.linestarOwnPct != null && Number.isFinite(p.linestarOwnPct) ? p.linestarOwnPct : null;
     return { ...p, ourOwnPct: ours?.ownPct ?? null, captainOwnPct: ours?.captainPct ?? null, flexOwnPct: ours?.flexPct ?? null,
-      ownPct: linestar ?? ours?.ownPct ?? null, ownSource: linestar != null ? "linestar" : ours ? prior.version : null,
-      shadowOwnPct: shadow ? shadow.get(p.dkPlayerId) ?? null : null };
-  }), ownershipShadow: shadow ? { version: NFL_OWNERSHIP_FIT_CLASSIC_VERSION, fittedAt: NFL_OWNERSHIP_FIT_CLASSIC_FITTED_AT } : null };
+      ownPct: linestar ?? ours?.ownPct ?? null, ownSource: linestar != null ? "linestar" : ours ? liveVersion : null,
+      shadowOwnPct: other?.ownPct ?? null, shadowCaptainOwnPct: other?.captainPct ?? null, shadowFlexOwnPct: other?.flexPct ?? null };
+  }), ownershipShadow: shadowVersion ? { version: shadowVersion, liveVersion, liveFittedAt } : null };
 }
 
 /**
@@ -2131,8 +2153,9 @@ function snapshotPlayer(player: NflWorkspacePlayer, slate: NflWorkspaceSlate, re
     linestar: player.linestarProj, custom: player.customProj,
     // The ownership the optimizer actually read, so a leverage run can be replayed from the ledger.
     ownership: {total:player.ownPct??null, flex:player.flexOwnPct??null, captain:player.captainOwnPct??null, source:player.ownSource??null, linestar:player.linestarOwnPct??null,
-      // Classic shadow (nfl-ownership-fit-v1): recorded for the Monday grade, never read by the build.
-      ...(slate.ownershipShadow?{shadow:player.shadowOwnPct??null,shadowVersion:slate.ownershipShadow.version,shadowFittedAt:slate.ownershipShadow.fittedAt}:{})},
+      // The shadow model (v5 since 2026-10-31): recorded for the Monday grade, never read by the build.
+      ...(slate.ownershipShadow?{shadow:player.shadowOwnPct??null,shadowCaptain:player.shadowCaptainOwnPct??null,shadowFlex:player.shadowFlexOwnPct??null,
+        shadowVersion:slate.ownershipShadow.version,liveVersion:slate.ownershipShadow.liveVersion,liveFittedAt:slate.ownershipShadow.liveFittedAt}:{})},
     availability: player.availability, isOut: player.isOut,
     latestEligibilityReview:player.latestEligibilityReview??null,
     availabilityDecisionId:player.availability?.decisionId??null,
