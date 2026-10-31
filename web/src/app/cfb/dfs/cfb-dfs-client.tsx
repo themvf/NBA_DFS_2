@@ -6,7 +6,7 @@ import {
   refreshCfbStatuses, searchCfbStarterNews, uploadCfbSlate,
   type CfbSlateSummary, type CfbWorkspace,
 } from "./actions";
-import { DEFAULT_CFB_SETTINGS, type CfbLineup } from "@/lib/cfb-dfs/settings";
+import { DEFAULT_CFB_SETTINGS, CFB_SLOTS, CFB_SHOWDOWN_SLOTS, type CfbLineup } from "@/lib/cfb-dfs/settings";
 import { exportCfbDkEntries } from "@/lib/cfb-dfs/entry-export";
 import CfbResultsPanel from "./cfb-results-panel";
 import XNewsPanel from "@/components/x-news-panel";
@@ -14,12 +14,13 @@ import XNewsPanel from "@/components/x-news-panel";
 const STORAGE_KEY = "cfb-dfs-slate";
 const dollars = (n: number) => `$${n.toLocaleString()}`;
 const pts = (n: number | null | undefined) => (n == null ? "—" : n.toFixed(1));
-const POSITIONS = ["ALL", "QB", "RB", "WR"] as const;
+const POSITIONS = ["ALL", "QB", "RB", "WR", "K"] as const;
 const STATUS_STYLE: Record<string, string> = {
   Q: "bg-amber-100 text-amber-900", D: "bg-red-100 text-red-800", O: "bg-red-100 text-red-800", OUT: "bg-red-100 text-red-800",
 };
 
 export default function CfbDfsClient({ initialUploadId }: { initialUploadId: string | null }) {
+  const [mode, setMode] = useState<"classic" | "showdown">("classic");
   const [slates, setSlates] = useState<CfbSlateSummary[]>([]);
   const [uploadId, setUploadId] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState<CfbWorkspace | null>(null);
@@ -34,6 +35,7 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
 
   const [settings, setSettings] = useState({ nLineups: DEFAULT_CFB_SETTINGS.nLineups, maxExposurePct: 70, minUnique: 2, randomnessPct: 18, minSalary: 45000,
     requireTwoQbs: false, stackQb: false, bringBack: false, questionableCapPct: 25 });
+  const [projectionById, setProjectionById] = useState<Record<string, number>>({});
   const [locked, setLocked] = useState<number[]>([]);
   const [excluded, setExcluded] = useState<number[]>([]);
   const [maxById, setMaxById] = useState<Record<string, number>>({});
@@ -48,6 +50,8 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
     startTransition(async () => {
       try {
         const next = await loadCfbWorkspace(id);
+        setMode(next.slate.mode); setEntryFile(null); setProjectionById({});
+        setSettings((s) => ({ ...s, requireTwoQbs: false, minUnique: Math.min(s.minUnique, next.slate.mode === "showdown" ? 5 : 7) }));
         setUploadId(id); setWorkspace(next); setLocked([]); setExcluded([]); setMaxById({});
         try { localStorage.setItem(STORAGE_KEY, id); } catch { /* optional */ }
         if (next.runs[0]) { setRunId(next.runs[0].runId); setLineups(await loadCfbRun(id, next.runs[0].runId)); }
@@ -73,7 +77,7 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
 
   function upload(file: File | null) {
     if (!file) return;
-    const form = new FormData(); form.set("file", file);
+    const form = new FormData(); form.set("file", file); form.set("mode", mode);
     setError(null); setMessage(null);
     startTransition(async () => {
       try {
@@ -129,7 +133,7 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
           nLineups: settings.nLineups, maxExposure: settings.maxExposurePct / 100, minUnique: settings.minUnique,
           randomness: settings.randomnessPct / 100, minSalary: settings.minSalary, lockedIds: locked, excludedIds: excluded, maxExposureById: maxById,
           requireTwoQbs: settings.requireTwoQbs, stackQb: settings.stackQb, bringBack: settings.bringBack,
-          questionableCapPct: settings.questionableCapPct,
+          questionableCapPct: settings.questionableCapPct, projectionById,
         });
         setLineups(result.lineups); setRunId(result.runId);
         setWorkspace(await loadCfbWorkspace(uploadId));
@@ -175,10 +179,10 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
     });
   }
 
-  const players = useMemo(() => workspace?.players ?? [], [workspace]);
+  const players = useMemo(() => (workspace?.players ?? []).map((p) => ({ ...p, proj: projectionById[String(p.dkId)] ?? p.proj })), [workspace, projectionById]);
   const visible = useMemo(() => players
     .filter((p) => position === "ALL" || p.position === position)
-    .filter((p) => showZero || (p.proj ?? 0) > 0 || locked.includes(p.dkId))
+    .filter((p) => p.position === "K" || showZero || (p.proj ?? 0) > 0 || locked.includes(p.dkId))
     .filter((p) => !query.trim() || `${p.name} ${p.team}`.toLowerCase().includes(query.trim().toLowerCase()))
     .sort((a, b) => (b.proj ?? 0) - (a.proj ?? 0) || b.salary - a.salary), [players, position, showZero, query, locked]);
   const hiddenZero = players.filter((p) => (p.proj ?? 0) <= 0).length;
@@ -189,22 +193,29 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
     return [...counts].sort((a, b) => b[1] - a[1]);
   }, [lineups]);
 
+  const modeSlates = slates.filter((s) => s.mode === mode);
+  function switchMode(next: "classic" | "showdown") {
+    setMode(next); setWorkspace(null); setUploadId(null); setLineups([]); setRunId(null);
+    setEntryFile(null); setProjectionById({}); setError(null); setMessage(null); setLocked([]); setExcluded([]); setMaxById({});
+    const latest = slates.find((s) => s.mode === next);
+    if (latest) open(latest.uploadId);
+  }
   const teamMap = workspace?.slate.teamMap ?? {};
   const unresolved = Object.entries(teamMap).filter(([, t]) => !t.team);
 
   return <div className="space-y-4">
     <header className="flex flex-wrap items-end justify-between gap-3">
       <div>
-        <p className="text-xs font-bold uppercase tracking-wide text-orange-700">DraftKings · College Football · Classic</p>
+        <p className="text-xs font-bold uppercase tracking-wide text-orange-700">DraftKings · College Football · {mode === "classic" ? "Classic" : "Showdown"}</p>
         <h1 className="text-2xl font-bold tracking-tight">CFB DFS <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 align-middle text-xs font-bold text-amber-900">Unvalidated baseline</span></h1>
-        <p className="text-sm text-slate-500">QB, RB, RB, WR, WR, WR, FLEX (RB/WR), SUPER FLEX (QB/RB/WR) · $50,000 · at least 2 games</p>
+        <p className="text-sm text-slate-500">{mode === "classic" ? "QB, 2 RB, 3 WR, FLEX, SUPER FLEX · $50,000 · at least 2 games" : "1 Captain + 5 FLEX · $50,000 · one game, both teams · Captain costs and scores 1.5×"}</p>
       </div>
       <div className="flex flex-wrap items-end gap-2">
         <label className="text-xs font-semibold text-slate-600">Slate
-          <select className="mt-1 block min-h-10 min-w-80 rounded-lg border bg-white px-3 text-sm" value={uploadId ?? ""} disabled={pending || !slates.length}
+          <select className="mt-1 block min-h-10 w-full sm:min-w-80 rounded-lg border bg-white px-3 text-sm" value={uploadId ?? ""} disabled={pending || !modeSlates.length}
             onChange={(e) => open(e.target.value)}>
-            {!slates.length ? <option value="">No slates yet</option> : null}
-            {slates.map((s) => <option key={s.uploadId} value={s.uploadId}>{s.label}</option>)}
+            {!modeSlates.length ? <option value="">No slates yet</option> : null}
+            {modeSlates.map((s) => <option key={s.uploadId} value={s.uploadId}>{s.label}</option>)}
           </select>
         </label>
         <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => upload(e.target.files?.[0] ?? null)} />
@@ -213,12 +224,19 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
       </div>
     </header>
 
+    <div role="group" aria-label="Contest mode" className="flex gap-2">
+      {(["classic", "showdown"] as const).map((value) => <button key={value} disabled={pending} aria-pressed={mode === value} onClick={() => switchMode(value)}
+        className={`min-h-11 rounded-lg border px-5 text-sm font-bold ${mode === value ? "border-orange-600 bg-orange-600 text-white" : "bg-white text-slate-700"}`}>
+        {value === "classic" ? "Classic · 8 players" : "Showdown · Captain + 5"}
+      </button>)}
+    </div>
+    {mode === "showdown" ? <p className="text-xs text-slate-500">Upload the CFB Showdown salary file with both Captain and FLEX rows. Player-pool salaries and projections are base values; Captain multipliers apply in lineups. Locks and exposure limits apply across both roles. Kickers require a manual projection or an explicit exclusion; the baseline does not model kicking. Contest-results grading is available for Classic only.</p> : null}
     {message ? <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{message}</p> : null}
     {error ? <p role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-900">{error}</p> : null}
     {pending ? <p className="text-sm text-slate-500">Working…</p> : null}
 
     {!workspace ? <section className="rounded-xl border border-dashed bg-white p-10 text-center text-sm text-slate-600">
-      Upload a DraftKings College Football Classic salary CSV to start. NFL files are refused here; use the NFL DFS page for those.
+      Upload a DraftKings College Football {mode === "classic" ? "Classic" : "Showdown"} salary CSV to start. Use the CFB contest’s own file; salary CSVs do not identify the sport.
     </section> : <>
       <section className="rounded-xl border bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -249,7 +267,7 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
         Read the newest posts from high-reach reporters, and lock or exclude players yourself. On 2026-09-25 X had Gutierrez starting 90 minutes before lock while DraftKings still showed Woodson Q.
       </>} /> : null}
 
-      {workspace.slate.started ? <CfbResultsPanel uploadId={workspace.slate.uploadId} runId={runId} runsVersion={workspace.runs.length} /> : null}
+      {mode === "classic" && workspace.slate.started ? <CfbResultsPanel uploadId={workspace.slate.uploadId} runId={runId} runsVersion={workspace.runs.length} /> : null}
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="rounded-xl border bg-white shadow-sm">
@@ -261,12 +279,12 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
             </select>
             <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={showZero} onChange={(e) => setShowZero(e.target.checked)} />Show {hiddenZero} with no projection</label>
           </div>
-          <p className="border-b px-4 py-2 text-xs text-slate-500">{locked.length} locked · {excluded.length} excluded · {Object.keys(maxById).length} exposure caps. Max % blank = the global cap.</p>
+          <p className="border-b px-4 py-2 text-xs text-slate-500">{locked.length} locked · {excluded.length} excluded · {Object.keys(maxById).length} exposure caps. Max % blank = the global cap. Manual projections are your own base-point estimates and are saved with each run.</p>
           <div className="max-h-[640px] overflow-auto">
             <table className="w-full text-left text-sm">
               <thead className="sticky top-0 bg-slate-100 text-[10px] uppercase text-slate-500"><tr>
                 <th className="p-2">Lock / Out</th><th className="p-2">Max %</th><th className="p-2">Player</th><th className="p-2">Pos</th>
-                <th className="p-2 text-right">Salary</th><th className="p-2 text-right">Proj</th><th className="p-2 text-right">Pts/$1k</th>
+                <th className="p-2 text-right">Salary</th><th className="p-2 text-right">Proj</th><th className="p-2 text-right">Manual proj</th><th className="p-2 text-right">Pts/$1k</th>
                 <th className="p-2 text-right">DK avg</th><th className="p-2 text-right">2026 G</th><th className="p-2">Match</th>
               </tr></thead>
               <tbody>{visible.map((p) => {
@@ -287,7 +305,10 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
                     <div className="text-[11px] text-slate-500">{p.team} vs {p.opponent}</div></td>
                   <td className="p-2">{p.position}</td>
                   <td className="p-2 text-right">{dollars(p.salary)}</td>
-                  <td className="p-2 text-right font-bold">{pts(p.proj)}</td>
+                  <td className="p-2 text-right font-bold">{p.position === "K" && projectionById[String(p.dkId)] == null ? "Missing" : pts(p.proj)}</td>
+                  <td className="p-2"><input aria-label={`${p.name} manual projection`} type="number" min={0} max={200} step={0.1} placeholder="—" value={projectionById[String(p.dkId)] ?? ""}
+                    onChange={(e) => setProjectionById((current) => { const next = { ...current }; if (e.target.value === "") delete next[String(p.dkId)]; else next[String(p.dkId)] = Number(e.target.value); return next; })}
+                    className="h-8 w-16 rounded border px-1 text-right text-xs" /></td>
                   <td className="p-2 text-right text-slate-600">{p.proj ? (p.proj / (p.salary / 1000)).toFixed(2) : "—"}</td>
                   <td className="p-2 text-right text-slate-600">{pts(p.dkAvg)}</td>
                   <td className="p-2 text-right">{p.games2026 ?? 0}</td>
@@ -308,14 +329,14 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
             <div className="mt-4 grid grid-cols-2 gap-2 text-xs font-semibold text-slate-600">
               <label>Lineups<input type="number" min={1} max={150} value={settings.nLineups} onChange={(e) => setSettings({ ...settings, nLineups: Number(e.target.value) })} className="mt-1 h-9 w-full rounded border px-2" /></label>
               <label>Max exposure %<input type="number" min={1} max={100} value={settings.maxExposurePct} onChange={(e) => setSettings({ ...settings, maxExposurePct: Number(e.target.value) })} className="mt-1 h-9 w-full rounded border px-2" /></label>
-              <label>Min unique<input type="number" min={1} max={7} value={settings.minUnique} onChange={(e) => setSettings({ ...settings, minUnique: Number(e.target.value) })} className="mt-1 h-9 w-full rounded border px-2" /></label>
+              <label>Min unique<input type="number" min={1} max={mode === "showdown" ? 5 : 7} value={settings.minUnique} onChange={(e) => setSettings({ ...settings, minUnique: Number(e.target.value) })} className="mt-1 h-9 w-full rounded border px-2" /></label>
               <label>Randomness %<input type="number" min={0} max={50} value={settings.randomnessPct} onChange={(e) => setSettings({ ...settings, randomnessPct: Number(e.target.value) })} className="mt-1 h-9 w-full rounded border px-2" /></label>
               <label>Questionable cap %<input type="number" min={0} max={100} value={settings.questionableCapPct} onChange={(e) => setSettings({ ...settings, questionableCapPct: Number(e.target.value) })} className="mt-1 h-9 w-full rounded border px-2" title="Most lineups a Q-tagged player may appear in, unless you set his own Max %" /></label>
               <label className="col-span-2">Min salary used<input type="number" step={500} value={settings.minSalary} onChange={(e) => setSettings({ ...settings, minSalary: Number(e.target.value) })} className="mt-1 h-9 w-full rounded border px-2" /></label>
             </div>
             <fieldset className="mt-4 space-y-2 rounded-lg border bg-slate-50 p-3 text-xs">
               <legend className="px-1 font-bold text-slate-700">Tournament rules</legend>
-              <label className="flex items-start gap-2"><input type="checkbox" className="mt-0.5" checked={settings.requireTwoQbs} onChange={(e) => setSettings({ ...settings, requireTwoQbs: e.target.checked })} />
+              <label className="flex items-start gap-2"><input type="checkbox" className="mt-0.5" disabled={mode === "showdown"} checked={settings.requireTwoQbs} onChange={(e) => setSettings({ ...settings, requireTwoQbs: e.target.checked })} />
                 <span><b>Require 2 QBs</b><span className="block text-slate-500">The SUPER FLEX always goes to a second QB.</span></span></label>
               <label className="flex items-start gap-2"><input type="checkbox" className="mt-0.5" checked={settings.stackQb} onChange={(e) => setSettings({ ...settings, stackQb: e.target.checked })} />
                 <span><b>Stack each QB</b><span className="block text-slate-500">Every QB comes with at least one of his own WRs or RBs.</span></span></label>
@@ -350,12 +371,12 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
           <div className="max-h-[520px] overflow-auto">
             <table className="w-full text-left text-xs">
               <thead className="sticky top-0 bg-slate-100 uppercase text-slate-500"><tr>
-                <th className="p-2">#</th>{["QB", "RB", "RB", "WR", "WR", "WR", "FLEX", "S-FLEX"].map((s, i) => <th key={i} className="p-2">{s}</th>)}
+                <th className="p-2">#</th>{(mode === "showdown" ? CFB_SHOWDOWN_SLOTS : CFB_SLOTS).map((s, i) => <th key={i} className="p-2">{s}</th>)}
                 <th className="p-2 text-right">Salary</th><th className="p-2 text-right">Proj</th>
               </tr></thead>
               <tbody>{lineups.map((l) => <tr key={l.lineupNumber} className="border-t">
                 <td className="p-2">{l.lineupNumber}</td>
-                {l.slots.map((s, i) => <td key={i} className="p-2"><div className="font-semibold">{s.player.name}</div><div className="text-slate-400">{s.player.team} · {dollars(s.player.salary)}</div></td>)}
+                {l.slots.map((s, i) => <td key={i} className="p-2"><div className="font-semibold">{s.player.name}</div><div className="text-slate-400">{s.player.team} · {dollars(s.slot === "CPT" ? s.player.captainSalary ?? s.player.salary * 1.5 : s.player.salary)}</div></td>)}
                 <td className="p-2 text-right">{dollars(l.salary)}</td><td className="p-2 text-right font-bold">{l.projection.toFixed(1)}</td>
               </tr>)}</tbody>
             </table>
@@ -369,7 +390,7 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
           </div>
         </div>
       </section> : null}
-      {!workspace.slate.started ? <CfbResultsPanel uploadId={workspace.slate.uploadId} runId={runId} runsVersion={workspace.runs.length} /> : null}
+      {mode === "classic" && !workspace.slate.started ? <CfbResultsPanel uploadId={workspace.slate.uploadId} runId={runId} runsVersion={workspace.runs.length} /> : null}
     </>}
   </div>;
 }

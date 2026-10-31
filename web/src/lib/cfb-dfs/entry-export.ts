@@ -1,18 +1,18 @@
 /**
- * Fill a DraftKings CFB Classic entries template with generated lineups.
+ * Fill a DraftKings CFB Classic or Showdown entries template with generated lineups.
  *
  * The college twin of the NFL entry export (lib/nfl-dfs/entry-export.ts), kept
  * separate on purpose. DraftKings' "Edit entries" file supplies the Entry IDs;
- * each generated lineup fills one entry row's eight roster columns as
+ * each generated lineup fills one entry row's roster columns as
  * "Name (ID)", in DraftKings' slot order. Every other cell is left exactly as
  * DraftKings wrote it. A template for any other game type is refused.
  */
 import { joinCsvLine, splitCsvLine } from "./salary-csv";
-import { CFB_SLOTS, cfbLineupProblems, type CfbLineup } from "./settings";
+import { CFB_SLOTS, CFB_SHOWDOWN_SLOTS, cfbAssignedLineupProblems, cfbSlotId, type CfbLineup } from "./settings";
 
 const norm = (value: string) => value.replace(/^\uFEFF/, "").trim().toUpperCase().replace(/\s+/g, " ");
 /** DraftKings has written SUPER FLEX a few ways; all mean the same slot. */
-const SLOT_ALIASES: Record<string, string> = { "S-FLEX": "S-FLEX", "SFLEX": "S-FLEX", "SUPER FLEX": "S-FLEX", "SUPERFLEX": "S-FLEX" };
+const SLOT_ALIASES: Record<string, string> = { "UTIL": "FLEX", "S-FLEX": "S-FLEX", "SFLEX": "S-FLEX", "SUPER FLEX": "S-FLEX", "SUPERFLEX": "S-FLEX" };
 const canonical = (cell: string) => SLOT_ALIASES[norm(cell)] ?? norm(cell);
 
 export interface CfbEntryExport { csv: string; filled: number; entries: number }
@@ -22,11 +22,12 @@ export function exportCfbDkEntries(content: string, lineups: readonly CfbLineup[
   const headerIndex = lines.findIndex((line) => splitCsvLine(line).some((cell) => norm(cell) === "ENTRY ID"));
   if (headerIndex < 0) throw new Error("Could not find the DraftKings Entry ID header. Download the entries file from DraftKings' Edit Entries page.");
   const header = splitCsvLine(lines[headerIndex]);
-  const first = header.findIndex((cell) => norm(cell) === "QB");
-  const slots = first < 0 ? [] : header.slice(first, first + CFB_SLOTS.length).map(canonical);
-  if (first < 0 || slots.join() !== CFB_SLOTS.join()) {
+  const expected = lineups[0]?.slots[0]?.slot === "CPT" ? CFB_SHOWDOWN_SLOTS : CFB_SLOTS;
+  const first = header.findIndex((cell) => norm(cell) === expected[0]);
+  const slots = first < 0 ? [] : header.slice(first, first + expected.length).map(canonical);
+  if (first < 0 || slots.join() !== expected.join()) {
     const seen = header.filter((c) => c.trim()).slice(4, 14).join(", ");
-    throw new Error(`This is not a CFB Classic entries file. Expected ${CFB_SLOTS.join(", ")}; found ${seen || "no roster columns"}.`);
+    throw new Error(`This is not a CFB ${expected[0] === "CPT" ? "Showdown" : "Classic"} entries file. Expected ${expected.join(", ")}; found ${seen || "no roster columns"}.`);
   }
   const rows = lines.slice(headerIndex + 1).map(splitCsvLine).filter((row) => row[0]?.trim());
   if (!rows.length) throw new Error("The entries file has no entries. Enter the contest on DraftKings first, then download Edit Entries.");
@@ -37,11 +38,11 @@ export function exportCfbDkEntries(content: string, lineups: readonly CfbLineup[
   rows.forEach((row, index) => {
     const lineup = lineups[index];
     if (lineup) {
-      const problems = cfbLineupProblems(lineup.slots.map((s) => s.player));
+      const problems = cfbAssignedLineupProblems(lineup);
       if (problems.length) throw new Error(`Lineup ${lineup.lineupNumber} is not legal: ${problems.join("; ")}.`);
-      if (lineup.slots.map((s) => s.slot).join() !== CFB_SLOTS.join()) throw new Error(`Lineup ${lineup.lineupNumber} is not in DraftKings slot order.`);
-      while (row.length < first + CFB_SLOTS.length) row.push("");
-      lineup.slots.forEach((s, i) => { row[first + i] = `${s.player.name} (${s.player.dkId})`; });
+      if (lineup.slots.map((s) => s.slot).join() !== expected.join()) throw new Error(`Lineup ${lineup.lineupNumber} is not in DraftKings slot order.`);
+      while (row.length < first + expected.length) row.push("");
+      lineup.slots.forEach((s, i) => { row[first + i] = `${s.player.name} (${cfbSlotId(s)})`; });
     }
     out.push(joinCsvLine(row));
   });

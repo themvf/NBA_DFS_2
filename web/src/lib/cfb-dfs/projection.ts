@@ -108,7 +108,7 @@ export function projectCfbPlayers(players: readonly CfbSlatePlayer[], ctx: Proje
     if (implied != null && ppg) env = Math.max(0.6, Math.min(1.4, implied / ppg)) ** ENV_POWER;
     const excluded = EXCLUDED_STATUS.has(p.status);
     return {
-      dkId: p.dkId, proj: excluded ? 0 : round(rate * env, 2), rate: round(rate, 2), env: round(env, 3),
+      dkId: p.dkId, proj: excluded || p.position === "K" ? 0 : round(rate * env, 2), rate: round(rate, 2), env: round(env, 3),
       games2026: current.length, games2025: prior.length, cfbdPlayerId: ids.size === 1 ? [...ids][0] : null, match, excluded,
     };
   });

@@ -4,7 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { ensureCfbDfsTables } from "@/db/cfb-dfs-schema";
-import { parseCfbSalaryCsv, type CfbPosition, type CfbSlatePlayer } from "@/lib/cfb-dfs/salary-csv";
+import { parseCfbSalaryCsv, type CfbMode, type CfbPosition, type CfbSlatePlayer } from "@/lib/cfb-dfs/salary-csv";
 import {
   CFB_LOBBY_URL, cfbPoolUrl, DK_HEADERS, effectiveStatus, matchStatuses, MIN_POOL_OVERLAP, openForStatus, parseLobby, parsePool,
   poolOverlap, STATUS_MAX_AGE_MINUTES, UNAVAILABLE,
@@ -28,7 +28,7 @@ const rowsOf = (result: unknown) => ((result as { rows?: Row[] }).rows ?? (resul
 const num = (value: unknown) => (value == null ? null : Number(value));
 
 export interface CfbSlateSummary {
-  uploadId: string; fileName: string; label: string; firstKickoff: string | null;
+  mode: CfbMode; uploadId: string; fileName: string; label: string; firstKickoff: string | null;
   playerCount: number; createdAt: string; games: Array<{ game: string; kickoff: string | null }>;
 }
 export interface CfbPlayerRow extends CfbSlatePlayer {
@@ -60,12 +60,12 @@ function slateLabel(games: Array<{ game: string; kickoff: string | null }>, firs
 
 export async function listCfbSlates(): Promise<CfbSlateSummary[]> {
   await ensureCfbDfsTables();
-  const result = await db.execute(sql`SELECT upload_id, file_name, games, first_kickoff, player_count, created_at
+  const result = await db.execute(sql`SELECT mode, upload_id, file_name, games, first_kickoff, player_count, created_at
     FROM cfb_dfs_slates ORDER BY first_kickoff DESC NULLS LAST, created_at DESC LIMIT 60`);
   return rowsOf(result).map((r) => {
     const games = r.games as CfbSlateSummary["games"];
     const firstKickoff = r.first_kickoff ? new Date(String(r.first_kickoff)).toISOString() : null;
-    return { uploadId: String(r.upload_id), fileName: String(r.file_name), games, firstKickoff,
+    return { mode: r.mode === "showdown" ? "showdown" : "classic", uploadId: String(r.upload_id), fileName: String(r.file_name), games, firstKickoff,
       playerCount: Number(r.player_count), createdAt: new Date(String(r.created_at)).toISOString(), label: slateLabel(games, firstKickoff) };
   });
 }
@@ -76,7 +76,8 @@ export async function uploadCfbSlate(formData: FormData): Promise<{ uploadId: st
   const file = formData.get("file");
   if (!(file instanceof File)) throw new Error("Choose a DraftKings CFB salary CSV.");
   const text = await file.text();
-  const parsed = parseCfbSalaryCsv(text);
+  const mode = formData.get("mode") === "showdown" ? "showdown" : "classic";
+  const parsed = parseCfbSalaryCsv(text, mode);
   const digest = createHash("sha256").update(text).digest("hex");
   const existing = rowsOf(await db.execute(sql`SELECT upload_id FROM cfb_dfs_slates WHERE file_digest = ${digest} LIMIT 1`))[0];
   if (existing) {
@@ -85,15 +86,15 @@ export async function uploadCfbSlate(formData: FormData): Promise<{ uploadId: st
   }
   const uploadId = randomUUID();
   const values = parsed.players.map((p) => sql`(${uploadId}, ${p.dkId}, ${p.name}, ${p.position}, ${p.team}, ${p.opponent}, ${p.game},
-    ${p.kickoff}, ${p.salary}, ${p.dkAvg}, ${p.status})`);
-  await db.execute(sql`INSERT INTO cfb_dfs_slate_players (upload_id, dk_id, name, position, team, opponent, game, kickoff, salary, dk_avg, status)
+    ${p.kickoff}, ${p.salary}, ${p.dkAvg}, ${p.status}, ${p.captainId ?? null}, ${p.captainSalary ?? null})`);
+  await db.execute(sql`INSERT INTO cfb_dfs_slate_players (upload_id, dk_id, name, position, team, opponent, game, kickoff, salary, dk_avg, status, captain_id, captain_salary)
     VALUES ${sql.join(values, sql`, `)} ON CONFLICT (upload_id, dk_id) DO NOTHING`);
   const teamMap = await projectCfbSlate(uploadId, parsed.players);
   // Parent row last: the slate exists only once its players and projections do.
   await db.execute(sql`INSERT INTO cfb_dfs_slates (upload_id, file_name, file_digest, games, first_kickoff, player_count,
-      team_map, projection_version, projected_at)
+      team_map, projection_version, projected_at, mode)
     VALUES (${uploadId}, ${file.name}, ${digest}, ${JSON.stringify(parsed.games)}::jsonb, ${parsed.firstKickoff}, ${parsed.players.length},
-      ${JSON.stringify(teamMap)}::jsonb, ${CFB_PROJECTION_VERSION}, NOW())`);
+      ${JSON.stringify(teamMap)}::jsonb, ${CFB_PROJECTION_VERSION}, NOW(), ${mode})`);
   return { uploadId, reused: false };
 }
 
@@ -103,6 +104,7 @@ async function slatePlayers(uploadId: string): Promise<CfbPlayerRow[]> {
   const result = await db.execute(sql`SELECT * FROM cfb_dfs_slate_players WHERE upload_id = ${uploadId} ORDER BY salary DESC, dk_id`);
   return rowsOf(result).map((r) => ({
     dkId: Number(r.dk_id), name: String(r.name), position: String(r.position) as CfbPosition,
+    captainId: num(r.captain_id) ?? undefined, captainSalary: num(r.captain_salary) ?? undefined,
     rosterPositions: [], salary: Number(r.salary), team: String(r.team), opponent: String(r.opponent), game: String(r.game),
     kickoff: r.kickoff ? new Date(String(r.kickoff)).toISOString() : null, dkAvg: Number(r.dk_avg),
     status: effectiveStatus(String(r.status ?? ""), r.live_status == null ? null : String(r.live_status)),
@@ -194,7 +196,7 @@ export async function loadCfbWorkspace(uploadId: string): Promise<CfbWorkspace> 
       runId: String(r.run_id), createdAt: new Date(String(r.created_at)).toISOString(), lineupCount: Number(r.lineup_count),
       stoppedEarly: r.stopped_early == null ? null : String(r.stopped_early), settings: r.settings as CfbOptimizerSettings }));
   return {
-    slate: { uploadId, fileName: String(slate.file_name), games, firstKickoff, playerCount: Number(slate.player_count),
+    slate: { mode: slate.mode === "showdown" ? "showdown" : "classic", uploadId, fileName: String(slate.file_name), games, firstKickoff, playerCount: Number(slate.player_count),
       createdAt: new Date(String(slate.created_at)).toISOString(), label: slateLabel(games, firstKickoff),
       projectionVersion: slate.projection_version == null ? null : String(slate.projection_version),
       projectedAt: slate.projected_at ? new Date(String(slate.projected_at)).toISOString() : null,
@@ -215,13 +217,21 @@ export async function refreshCfbProjections(uploadId: string): Promise<CfbWorksp
 /** Build and save a lineup set. Lineups are written first, the run row last. */
 export async function generateCfbLineups(uploadId: string, input: Partial<CfbOptimizerSettings>): Promise<{ runId: string; lineups: CfbLineup[]; stoppedEarly: string | null }> {
   await ensureCfbDfsTables();
-  const settings: CfbOptimizerSettings = { ...DEFAULT_CFB_SETTINGS, ...input };
+  const slate = rowsOf(await db.execute(sql`SELECT mode FROM cfb_dfs_slates WHERE upload_id = ${uploadId}`))[0];
+  if (!slate) throw new Error("That slate does not exist.");
+  const mode = slate.mode === "showdown" ? "showdown" : "classic";
+  const settings: CfbOptimizerSettings = { ...DEFAULT_CFB_SETTINGS, ...input, mode, ...(mode === "showdown" ? { requireTwoQbs: false } : {}) };
   if (!Number.isInteger(settings.nLineups) || settings.nLineups < 1 || settings.nLineups > 150) throw new Error("Lineups must be 1-150.");
-  if (settings.minUnique < 1 || settings.minUnique > 7) throw new Error("Minimum unique must be 1-7.");
+  if (settings.minUnique < 1 || settings.minUnique > (mode === "showdown" ? 5 : 7)) throw new Error(`Minimum unique must be 1-${mode === "showdown" ? 5 : 7}.`);
   await ensureFreshCfbStatuses(uploadId);
   const players = await slatePlayers(uploadId);
-  const pool: CfbPoolPlayer[] = players.map((p) => ({ dkId: p.dkId, name: p.name, position: p.position, team: p.team,
-    game: p.game, salary: p.salary, proj: p.proj ?? 0 }));
+  for (const [id, value] of Object.entries(settings.projectionById ?? {})) {
+    if (!players.some((p) => String(p.dkId) === id) || !Number.isFinite(value) || value < 0 || value > 200) throw new Error("Manual projections must be 0-200 points for a player on this slate.");
+  }
+  const unresolvedKickers = players.filter((p) => p.position === "K" && !UNAVAILABLE.has(p.status) && !settings.excludedIds.includes(p.dkId) && settings.projectionById?.[String(p.dkId)] == null);
+  if (unresolvedKickers.length) throw new Error(`Enter a manual projection or explicitly exclude each kicker: ${unresolvedKickers.map((p) => p.name).join(", ")}. Kicking is not covered by the baseline model.`);
+  const pool: CfbPoolPlayer[] = players.filter((p) => !UNAVAILABLE.has(p.status)).map((p) => ({ dkId: p.dkId, captainId: p.captainId, captainSalary: p.captainSalary, name: p.name, position: p.position, team: p.team,
+    game: p.game, salary: p.salary, proj: settings.projectionById?.[String(p.dkId)] ?? p.proj ?? 0 }));
   // A Questionable player is capped unless the user gave him his own cap.
   const maxExposureById = { ...settings.maxExposureById };
   for (const p of players) if (p.status === "Q" && maxExposureById[String(p.dkId)] == null) maxExposureById[String(p.dkId)] = settings.questionableCapPct;
@@ -229,7 +239,7 @@ export async function generateCfbLineups(uploadId: string, input: Partial<CfbOpt
   if (!result.lineups.length) throw new Error(result.stoppedEarly ?? "No legal lineup could be built.");
   const runId = randomUUID();
   const values = result.lineups.map((l) => sql`(${runId}, ${l.lineupNumber},
-    ${JSON.stringify(l.slots.map((s) => ({ slot: s.slot, dkId: s.player.dkId })))}::jsonb, ${l.salary}, ${l.projection})`);
+    ${JSON.stringify(l.slots.map((s) => ({ slot: s.slot, dkId: s.player.dkId, proj: s.player.proj })))}::jsonb, ${l.salary}, ${l.projection})`);
   await db.execute(sql`INSERT INTO cfb_dfs_lineups (run_id, lineup_number, slots, salary, projection) VALUES ${sql.join(values, sql`, `)}`);
   await db.execute(sql`INSERT INTO cfb_dfs_lineup_runs (run_id, upload_id, settings, projection_version, optimizer_version, lineup_count, stopped_early)
     VALUES (${runId}, ${uploadId}, ${JSON.stringify(settings)}::jsonb, ${CFB_PROJECTION_VERSION}, ${CFB_OPTIMIZER_VERSION},
@@ -247,15 +257,17 @@ export async function loadCfbRun(uploadId: string, runId: string): Promise<CfbLi
     WHERE run_id = ${runId} ORDER BY lineup_number`));
   return rows.map((r) => ({
     lineupNumber: Number(r.lineup_number), salary: Number(r.salary), projection: Number(r.projection),
-    slots: (r.slots as Array<{ slot: CfbLineup["slots"][number]["slot"]; dkId: number }>).map((s) => {
+    slots: (r.slots as Array<{ slot: CfbLineup["slots"][number]["slot"]; dkId: number; proj?: number }>).map((s) => {
       const p = byId.get(Number(s.dkId));
       if (!p) throw new Error(`Player ${s.dkId} is missing from the slate.`);
-      return { slot: s.slot, player: { dkId: p.dkId, name: p.name, position: p.position, team: p.team, game: p.game, salary: p.salary, proj: p.proj ?? 0 } };
+      return { slot: s.slot, player: { dkId: p.dkId, captainId: p.captainId, captainSalary: p.captainSalary, name: p.name, position: p.position, team: p.team, game: p.game, salary: p.salary, proj: s.proj ?? p.proj ?? 0 } };
     }),
   }));
 }
 
 export async function exportCfbRun(uploadId: string, runId: string): Promise<string> {
+  const check = await checkCfbExport(uploadId, runId);
+  if (check.blocked.length) throw new Error("Export blocked: a lineup contains an unavailable player. Generate again.");
   return cfbUploadCsv(await loadCfbRun(uploadId, runId));
 }
 
@@ -277,6 +289,8 @@ export async function importCfbContest(uploadId: string, formData: FormData): Pr
   const file = formData.get("file");
   if (!(file instanceof File)) throw new Error("Choose the contest-standings CSV (unzip DraftKings' download first).");
   if (/\.zip$/i.test(file.name)) throw new Error("That is the .zip DraftKings downloads. Unzip it and upload the .csv inside.");
+  const slate = rowsOf(await db.execute(sql`SELECT mode FROM cfb_dfs_slates WHERE upload_id = ${uploadId}`))[0];
+  if (slate?.mode === "showdown") throw new Error("Showdown contest grading is not supported yet; Classic grading remains available.");
   const text = await file.text();
   const parsed = parseCfbContestStandings(text);
   const digest = createHash("sha256").update(text).digest("hex");
@@ -365,7 +379,7 @@ async function getJson(url: string): Promise<unknown> {
  */
 export async function refreshCfbStatuses(uploadId: string): Promise<CfbStatusRefresh> {
   await ensureCfbDfsTables();
-  const slate = rowsOf(await db.execute(sql`SELECT dk_draft_group_id FROM cfb_dfs_slates WHERE upload_id = ${uploadId}`))[0];
+  const slate = rowsOf(await db.execute(sql`SELECT dk_draft_group_id, mode FROM cfb_dfs_slates WHERE upload_id = ${uploadId}`))[0];
   if (!slate) throw new Error("That slate does not exist.");
   const players = await slatePlayers(uploadId);
   const checkedAt = new Date().toISOString();
@@ -373,7 +387,7 @@ export async function refreshCfbStatuses(uploadId: string): Promise<CfbStatusRef
     let draftGroupId = slate.dk_draft_group_id == null ? null : Number(slate.dk_draft_group_id);
     let pool = draftGroupId ? parsePool(await getJson(cfbPoolUrl(draftGroupId))) : [];
     if (!draftGroupId || !pool.length) {
-      const groups = parseLobby(await getJson(CFB_LOBBY_URL));
+      const groups = parseLobby(await getJson(CFB_LOBBY_URL), slate.mode === "showdown" ? "showdown" : "classic");
       let best: { id: number; overlap: number; pool: ReturnType<typeof parsePool> } | null = null;
       for (const g of groups) {
         const candidate = parsePool(await getJson(cfbPoolUrl(g.draftGroupId)));
@@ -382,8 +396,8 @@ export async function refreshCfbStatuses(uploadId: string): Promise<CfbStatusRef
       }
       if (!best || best.overlap < MIN_POOL_OVERLAP) {
         const note = groups.length
-          ? `No open DraftKings CFB Classic draft group matches this slate (best match ${Math.round((best?.overlap ?? 0) * 100)}%).`
-          : "DraftKings lists no open CFB Classic draft groups (the slate may have locked).";
+          ? `No open DraftKings CFB draft group matches this slate (best match ${Math.round((best?.overlap ?? 0) * 100)}%).`
+          : "DraftKings lists no open CFB draft groups (the slate may have locked).";
         await db.execute(sql`UPDATE cfb_dfs_slates SET status_checked_at = ${checkedAt}, status_note = ${note} WHERE upload_id = ${uploadId}`);
         return { draftGroupId: null, checkedAt, changes: [], unmatched: players.length, note };
       }

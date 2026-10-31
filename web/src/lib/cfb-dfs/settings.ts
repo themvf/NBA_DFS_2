@@ -2,15 +2,18 @@
  * CFB DFS lineup types and defaults. No solver here: this file is safe for the
  * browser bundle, the solver (optimizer.ts) runs on the server only.
  */
-import type { CfbPosition } from "./salary-csv";
+import type { CfbMode, CfbPosition } from "./salary-csv";
 
 export const CFB_SALARY_CAP = 50_000;
 export const CFB_ROSTER_SIZE = 8;
 export const CFB_SLOTS = ["QB", "RB", "RB", "WR", "WR", "WR", "FLEX", "S-FLEX"] as const;
-export const CFB_OPTIMIZER_VERSION = "cfb-dk-classic-ilp-v1";
+export const CFB_SHOWDOWN_SLOTS = ["CPT", "FLEX", "FLEX", "FLEX", "FLEX", "FLEX"] as const;
+export const CFB_OPTIMIZER_VERSION = "cfb-dk-modes-ilp-v2";
 
 export interface CfbPoolPlayer {
   dkId: number;
+  captainId?: number;
+  captainSalary?: number;
   name: string;
   position: CfbPosition;
   team: string;
@@ -20,6 +23,9 @@ export interface CfbPoolPlayer {
 }
 
 export interface CfbOptimizerSettings {
+  mode?: CfbMode;
+  /** User-entered base point estimates, preserved with the run. */
+  projectionById?: Record<string, number>;
   nLineups: number;
   /** 0-1: the most lineups any one player may appear in, as a share. */
   maxExposure: number;
@@ -48,7 +54,7 @@ export const DEFAULT_CFB_SETTINGS: CfbOptimizerSettings = {
   requireTwoQbs: false, stackQb: false, bringBack: false, questionableCapPct: 25,
 };
 
-export interface CfbLineupSlot { slot: (typeof CFB_SLOTS)[number]; player: CfbPoolPlayer }
+export interface CfbLineupSlot { slot: (typeof CFB_SLOTS)[number] | "CPT"; player: CfbPoolPlayer }
 export interface CfbLineup { lineupNumber: number; slots: CfbLineupSlot[]; salary: number; projection: number }
 export interface CfbOptimizerResult { lineups: CfbLineup[]; stoppedEarly: string | null; version: string }
 
@@ -66,3 +72,23 @@ export function cfbLineupProblems(players: CfbPoolPlayer[]): string[] {
   if (new Set(players.map((p) => p.game)).size < 2) problems.push("only one game");
   return problems;
 }
+
+/** Validate stored slot assignments before exporting either contest format. */
+export function cfbAssignedLineupProblems(lineup: CfbLineup): string[] {
+  const showdown = lineup.slots.some((s) => s.slot === "CPT");
+  const expected = showdown ? CFB_SHOWDOWN_SLOTS : CFB_SLOTS;
+  const players = lineup.slots.map((s) => s.player);
+  const problems = showdown ? [] : cfbLineupProblems(players);
+  if (lineup.slots.map((s) => s.slot).join() !== expected.join()) problems.push("incorrect slot order");
+  if (showdown) {
+    if (new Set(players.map((p) => p.dkId)).size !== 6) problems.push("six distinct players required");
+    if (new Set(players.map((p) => p.game)).size !== 1) problems.push("exactly one game required");
+    if (new Set(players.map((p) => p.team)).size !== 2) problems.push("both teams required");
+    const c = players[0];
+    if (!c?.captainId || c.captainSalary !== c.salary * 1.5) problems.push("invalid Captain draftable");
+    const salary = players.reduce((sum, p, i) => sum + (i === 0 ? p.captainSalary ?? Infinity : p.salary), 0);
+    if (salary > CFB_SALARY_CAP || salary !== lineup.salary) problems.push("invalid salary total");
+  }
+  return problems;
+}
+export const cfbSlotId = (s: CfbLineupSlot) => s.slot === "CPT" ? s.player.captainId : s.player.dkId;
