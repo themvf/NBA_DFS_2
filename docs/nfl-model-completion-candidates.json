@@ -83,7 +83,7 @@
     "research/nfl_workload_risk.py": "e8d67cb4945446fdc4ab857b69729a61e3c65dae2c1a17ed364bef49d637f344",
     "web/src/lib/nfl-dfs/joint-portfolio.ts": "87588d7fb2782f347ea6bfe35e522da15a62063e4c2d287a0c703064430ebf9f",
     "web/scripts/compare-nfl-joint-portfolios.ts": "05bf97642caba1b96d6d4420acf51502faa4468fcf40dc4e1607f51790298515",
-    "web/src/app/dfs/nfl/nfl-optimizer.ts": "b1b56f7c1c61f7f7cf7a5985319964a76d1480035a65730a5f8c9adc049f512a",
+    "web/src/app/dfs/nfl/nfl-optimizer.ts": "7cbc60d73660ac2a4042c62b20e485fa8a50eeac28f1245c722d3e01fc2ca4b1",
     "model/nfl_matchup_scenarios.py": "9d133718c360a03a445965508061807c49644c3ac329ae220c4f68069a19e913",
     "web/src/lib/nfl-dfs/scoring.ts": "83e8b8c293519e7605f4d5be76a302bd442835fa4dc43a6d02744922a5729e3c",
     "web/src/lib/nfl-dfs/scenarios.ts": "98ed595731bc69ee1fcde4d9c42109880382cff3dbf480ce0f0043fdf46e2fd9"
@@ -223,6 +223,17 @@
       "new_sha256": "b1b56f7c1c61f7f7cf7a5985319964a76d1480035a65730a5f8c9adc049f512a",
       "changed_by": [
         "NFL optimizer: a captain minimum the user sets on a Questionable player outranks the Q captain block (#560)"
+      ],
+      "evidence_rule": "Forward decisions captured before amended_at ran under previous_sha256 and are graded as a separate cohort or excluded; they are never pooled with decisions captured after it."
+    },
+    {
+      "amended_at": "2026-10-31T20:15:00Z",
+      "reason": "PR #588 made the GPP boom bonus a setting instead of a literal: objective() multiplied the boom rate by 2 and now multiplies it by settings.boomWeight ?? DEFAULT_BOOM_WEIGHT (2), with the optional boomWeight field and the DEFAULT_BOOM_WEIGHT constant added. With boomWeight absent every objective value, the solver and every constraint are byte-for-byte the same as before, so every owner build and the joint-constrained shadow portfolio are unchanged; only callers that pass boomWeight (the ghost factorial's extra arms 33/34, nfl-ghost-extra-arms-v1) build differently. Re-pinned the optimizer only; every other pinned file is unchanged.",
+      "file": "web/src/app/dfs/nfl/nfl-optimizer.ts",
+      "previous_sha256": "b1b56f7c1c61f7f7cf7a5985319964a76d1480035a65730a5f8c9adc049f512a",
+      "new_sha256": "7cbc60d73660ac2a4042c62b20e485fa8a50eeac28f1245c722d3e01fc2ca4b1",
+      "changed_by": [
+        "NFL DFS: boom-weight arm pair outside the ghost design, paired grading, hindsight screen (#588)"
       ],
       "evidence_rule": "Forward decisions captured before amended_at ran under previous_sha256 and are graded as a separate cohort or excluded; they are never pooled with decisions captured after it."
     }
