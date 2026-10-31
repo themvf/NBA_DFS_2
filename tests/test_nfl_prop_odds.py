@@ -189,3 +189,9 @@ def test_midweek_window_leaves_tomorrows_game_to_the_day_ahead_run() -> None:
     assert [e["id"] for e in select_events(events, wed, 0, 130, 30)] == ["sun_early", "snf", "mnf"]
     fri = datetime(2026, 11, 6, 22, 7, tzinfo=timezone.utc)
     assert [e["id"] for e in select_events(events, fri, 0, 100, 30)] == ["sun_early", "snf", "mnf"]
+
+
+def test_backfill_can_request_one_market_only() -> None:
+    from ingest.nfl_prop_backfill import missing_markets
+    assert missing_markets(set(), ("player_rush_yds",)) == ["player_rush_yds"]
+    assert missing_markets({"player_rush_yds"}, ("player_rush_yds",)) == []

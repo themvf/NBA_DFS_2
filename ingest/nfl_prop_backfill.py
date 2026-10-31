@@ -2,6 +2,7 @@
 
     python -m ingest.nfl_prop_backfill --season 2026 --weeks 1-4               # dry run: plan and cost
     python -m ingest.nfl_prop_backfill --season 2026 --weeks 1-4 --apply --max-credits 7200
+    python -m ingest.nfl_prop_backfill --season 2023 --weeks 1-18 --markets player_rush_yds   # one market only
 
 For every regular-season game in the weeks it reads the archived snapshot
 LEAD_MINUTES before kickoff (the archive returns the latest snapshot at or
@@ -34,7 +35,7 @@ def iso(dt):
     return dt.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
-def plan(db, season, weeks):
+def plan(db, season, weeks, markets=CAPTURE_MARKETS):
     rows = db.execute("""
         SELECT g.nflverse_game_id game_id, g.week, g.kickoff, h.odds_api_name home, a.odds_api_name away
         FROM nfl_season_games g JOIN nfl_teams h ON h.team_id=g.home_team_id JOIN nfl_teams a ON a.team_id=g.away_team_id
@@ -48,17 +49,17 @@ def plan(db, season, weeks):
     for r in rows:
         if r['kickoff'] >= datetime.now(timezone.utc):
             continue  # not in the archive yet; the live capture covers it
-        missing = missing_markets(have.get((r['home'], r['away'], r['kickoff']), set()))
+        missing = missing_markets(have.get((r['home'], r['away'], r['kickoff']), set()), markets)
         if missing:
             todo.append({**r, 'markets': missing})
     return rows, todo
 
 
-def missing_markets(present):
+def missing_markets(present, markets=CAPTURE_MARKETS):
     """Markets the live capture takes that a game has no pregame rows for. Markets
     DraftKings did not post leave no rows and are requested again; that costs credits
     only when the archive returns them."""
-    return [m for m in CAPTURE_MARKETS if m not in present]
+    return [m for m in markets if m not in present]
 
 
 def match_event(events, game):
@@ -70,8 +71,8 @@ def match_event(events, game):
     return hits[0]
 
 
-def backfill(db, api_key, season, weeks, apply, max_credits, log=print):
-    rows, todo = plan(db, season, weeks)
+def backfill(db, api_key, season, weeks, apply, max_credits, log=print, markets=CAPTURE_MARKETS):
+    rows, todo = plan(db, season, weeks, markets)
     by_time = defaultdict(list)
     for g in todo:
         by_time[g['kickoff']].append(g)
@@ -122,11 +123,16 @@ def main():
     parser.add_argument('--weeks', required=True, help='e.g. 1-4')
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--max-credits', type=int, default=0)
+    parser.add_argument('--markets', default='', help='comma list, a subset of the live capture markets (default: all)')
     args = parser.parse_args()
     first, last = (int(x) for x in args.weeks.split('-'))
+    markets = tuple(m for m in args.markets.split(',') if m) or CAPTURE_MARKETS
+    unknown = sorted(set(markets) - set(CAPTURE_MARKETS))
+    if unknown:
+        parser.error(f'not a live capture market: {unknown}')
     config = load_config()
     db = DatabaseManager(config.database_url)
-    result = backfill(db, config.odds_api.api_key, args.season, range(first, last + 1), args.apply, args.max_credits)
+    result = backfill(db, config.odds_api.api_key, args.season, range(first, last + 1), args.apply, args.max_credits, markets=markets)
     print(json.dumps(result, indent=2, default=str))
 
 
