@@ -230,7 +230,7 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
         {value === "classic" ? "Classic · 8 players" : "Showdown · Captain + 5"}
       </button>)}
     </div>
-    {mode === "showdown" ? <p className="text-xs text-slate-500">Upload the CFB Showdown salary file with both Captain and FLEX rows. Player-pool salaries and projections are base values; Captain multipliers apply in lineups. Locks and exposure limits apply across both roles. Kickers require a manual projection or an explicit exclusion; the baseline does not model kicking. Contest-results grading is available for Classic only.</p> : null}
+    {mode === "showdown" ? <p className="text-xs text-slate-500">Upload the CFB Showdown salary file with both Captain and FLEX rows. Player-pool salaries and projections are base values; Captain multipliers apply in lineups. Locks and exposure limits apply across both roles. Kickers require a manual projection or an explicit exclusion; the baseline does not model kicking. After the game, upload the contest standings to score your lineups and see the perfect lineup.</p> : null}
     {message ? <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{message}</p> : null}
     {error ? <p role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-900">{error}</p> : null}
     {pending ? <p className="text-sm text-slate-500">Working…</p> : null}
@@ -267,7 +267,7 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
         Read the newest posts from high-reach reporters, and lock or exclude players yourself. On 2026-09-25 X had Gutierrez starting 90 minutes before lock while DraftKings still showed Woodson Q.
       </>} /> : null}
 
-      {mode === "classic" && workspace.slate.started ? <CfbResultsPanel uploadId={workspace.slate.uploadId} runId={runId} runsVersion={workspace.runs.length} /> : null}
+      {workspace.slate.started ? <CfbResultsPanel uploadId={workspace.slate.uploadId} runId={runId} runsVersion={workspace.runs.length} /> : null}
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="rounded-xl border bg-white shadow-sm">
@@ -390,7 +390,7 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
           </div>
         </div>
       </section> : null}
-      {mode === "classic" && !workspace.slate.started ? <CfbResultsPanel uploadId={workspace.slate.uploadId} runId={runId} runsVersion={workspace.runs.length} /> : null}
+      {!workspace.slate.started ? <CfbResultsPanel uploadId={workspace.slate.uploadId} runId={runId} runsVersion={workspace.runs.length} /> : null}
     </>}
   </div>;
 }

@@ -17,8 +17,8 @@ import {
   type CfbLineup, type CfbOptimizerSettings, type CfbPoolPlayer,
 } from "@/lib/cfb-dfs/optimizer";
 import {
-  cfbProjectionError, parseCfbContestStandings, scoreCfbLineups, summarizeCfbSet,
-  type CfbSetResult, type PositionMiss, type ScoreCurve, type ScoredCfbLineup,
+  cfbCaptainTable, cfbPerfectLineup, cfbProjectionError, parseCfbContestStandings, scoreCfbLineups, summarizeCfbSet,
+  type CfbCaptainRow, type CfbPerfectLineup, type CfbSetResult, type PositionMiss, type ScoreCurve, type ScoredCfbLineup,
 } from "@/lib/cfb-dfs/results";
 import { searchTeamNews, type XNewsResult } from "@/lib/x-news";
 import { CFB_TRUSTED_ACCOUNTS, isXHandle } from "@/lib/x-news-accounts";
@@ -272,6 +272,7 @@ export async function exportCfbRun(uploadId: string, runId: string): Promise<str
 }
 
 export interface CfbResults {
+  mode: CfbMode;
   contest: { contestId: string; entryCount: number; winningScore: number | null; medianScore: number | null; importedAt: string; fileName: string };
   sets: Array<{ runId: string; createdAt: string; rules: string } & CfbSetResult>;
   runId: string | null;
@@ -280,7 +281,12 @@ export interface CfbResults {
   /** For the selected set: our exposure against the field's, with what each player scored. */
   exposureVsField: Array<{ name: string; position: string; ours: number; field: number | null; fpts: number | null }>;
   /** Most-drafted players in the field, and whether we had them. */
-  fieldChalk: Array<{ name: string; field: number; fpts: number; ours: number }>;
+  fieldChalk: Array<{ name: string; field: number; captain: number | null; fpts: number; ours: number }>;
+  /** Best lineup that could have been entered, from what players actually scored. */
+  perfect: CfbPerfectLineup | null;
+  perfectNote: string | null;
+  /** Showdown only: our Captains in the loaded set beside the field's. */
+  captains: CfbCaptainRow[];
 }
 
 /** Import a DraftKings contest standings CSV for this slate. Re-importing the same contest replaces it. */
@@ -290,9 +296,13 @@ export async function importCfbContest(uploadId: string, formData: FormData): Pr
   if (!(file instanceof File)) throw new Error("Choose the contest-standings CSV (unzip DraftKings' download first).");
   if (/\.zip$/i.test(file.name)) throw new Error("That is the .zip DraftKings downloads. Unzip it and upload the .csv inside.");
   const slate = rowsOf(await db.execute(sql`SELECT mode FROM cfb_dfs_slates WHERE upload_id = ${uploadId}`))[0];
-  if (slate?.mode === "showdown") throw new Error("Showdown contest grading is not supported yet; Classic grading remains available.");
+  if (!slate) throw new Error("That slate does not exist.");
+  const mode: CfbMode = slate.mode === "showdown" ? "showdown" : "classic";
   const text = await file.text();
   const parsed = parseCfbContestStandings(text);
+  if (parsed.format !== mode) {
+    throw new Error(`This is a ${parsed.format === "showdown" ? "Showdown" : "Classic"} contest file, but this slate is ${mode === "showdown" ? "Showdown" : "Classic"}. Upload the standings for this slate's contest.`);
+  }
   const digest = createHash("sha256").update(text).digest("hex");
   const contestId = file.name.match(/contest-standings-(\d+)/i)?.[1] ?? `file-${digest.slice(0, 12)}`;
   const values = parsed.players.map((p) => sql`(${contestId}, ${p.key}, ${p.name}, ${p.draftedPct}, ${JSON.stringify(p.draftedBySlot)}::jsonb, ${p.fpts})`);
@@ -316,7 +326,10 @@ export async function readCfbResults(uploadId: string, runId: string | null): Pr
     ORDER BY imported_at DESC LIMIT 1`))[0];
   if (!contest) return null;
   const contestId = String(contest.contest_id);
-  const field = rowsOf(await db.execute(sql`SELECT player_key, name, drafted_pct, fpts FROM cfb_dfs_contest_players WHERE contest_id = ${contestId}`));
+  const slate = rowsOf(await db.execute(sql`SELECT mode FROM cfb_dfs_slates WHERE upload_id = ${uploadId}`))[0];
+  const mode: CfbMode = slate?.mode === "showdown" ? "showdown" : "classic";
+  const field = rowsOf(await db.execute(sql`SELECT player_key, name, drafted_pct, drafted_by_slot, fpts FROM cfb_dfs_contest_players WHERE contest_id = ${contestId}`));
+  const captainPct = (r: Row) => { const v = (r.drafted_by_slot as Record<string, number> | null)?.CPT; return v == null ? null : Number(v); };
   const fptsByKey = new Map(field.map((r) => [String(r.player_key), Number(r.fpts)] as const));
   const draftedByKey = new Map(field.map((r) => [String(r.player_key), Number(r.drafted_pct)] as const));
   const curve = (contest.score_curve ?? []) as ScoreCurve;
@@ -342,7 +355,18 @@ export async function readCfbResults(uploadId: string, runId: string | null): Pr
   const total = chosen?.lineups.length ?? 0;
   const oursPct = (k: string) => (total ? Math.round(((exposure.get(k)?.n ?? 0) / total) * 1000) / 10 : 0);
 
+  // Every slate player is draftable in hindsight, whatever his status said; only a known score is required.
+  const pool: CfbPoolPlayer[] = players.map((p) => ({ dkId: p.dkId, captainId: p.captainId,
+    captainSalary: p.captainSalary, name: p.name, position: p.position, team: p.team, game: p.game, salary: p.salary, proj: 0 }));
+  let perfect: CfbPerfectLineup | null = null;
+  let perfectNote: string | null = null;
+  try {
+    perfect = cfbPerfectLineup(pool, fptsByKey, mode, curve, entryCount);
+    if (!perfect) perfectNote = "No legal lineup could be built from the players this file scores.";
+  } catch (reason) { perfectNote = `The perfect lineup could not be computed: ${reason instanceof Error ? reason.message : String(reason)}`; }
+
   return {
+    mode,
     contest: { contestId, entryCount, winningScore: contest.winning_score == null ? null : Number(contest.winning_score), medianScore,
       importedAt: new Date(String(contest.imported_at)).toISOString(), fileName: String(contest.file_name) },
     sets: runs.map((r) => {
@@ -356,8 +380,11 @@ export async function readCfbResults(uploadId: string, runId: string | null): Pr
     positionError: cfbProjectionError(players.map((p) => ({ name: p.name, position: p.position, proj: p.proj })), fptsByKey),
     exposureVsField: [...exposure].map(([k, e]) => ({ name: e.name, position: e.position, ours: oursPct(k),
       field: draftedByKey.get(k) ?? null, fpts: fptsByKey.get(k) ?? null })).sort((a, b) => b.ours - a.ours),
-    fieldChalk: field.map((r) => ({ name: String(r.name), field: Number(r.drafted_pct), fpts: Number(r.fpts), ours: oursPct(String(r.player_key)) }))
+    fieldChalk: field.map((r) => ({ name: String(r.name), field: Number(r.drafted_pct), captain: captainPct(r), fpts: Number(r.fpts), ours: oursPct(String(r.player_key)) }))
       .sort((a, b) => b.field - a.field).slice(0, 15),
+    perfect, perfectNote,
+    captains: mode === "showdown" ? cfbCaptainTable(chosen?.lineups ?? [], field.map((r) => ({ key: String(r.player_key), name: String(r.name),
+      cpt: captainPct(r), fpts: Number(r.fpts) }))) : [],
   };
 }
 
