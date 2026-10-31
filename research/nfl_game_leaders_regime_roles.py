@@ -662,8 +662,12 @@ def shadow_game(request, snapshot, fitted, cfg, index, by_season, now):
     prior_games = expected_history(snapshot, game, request['decision_at'])
     prior = prior_season_rates(by_season, game['season']) if PRIOR_WEIGHT else None
     (kc, hc), (kt, ht) = chosen_pairs(fitted)
-    v2 = attach(base, index, prior_games, prior, PRIOR_WEIGHT)
-    v3 = attach_v3(base, index, prior_games, prior, PRIOR_WEIGHT, kc, hc, kt, ht)
+    # The publisher drops a zero-share player who moved between the two teams
+    # (research.nfl_game_leaders_auto.drop_moved_players); do the same, or the
+    # model rejects a field that lists him on his old team.
+    from research.nfl_game_leaders_auto import drop_moved_players
+    v2 = drop_moved_players(attach(base, index, prior_games, prior, PRIOR_WEIGHT))
+    v3 = drop_moved_players(attach_v3(base, index, prior_games, prior, PRIOR_WEIGHT, kc, hc, kt, ht))
     stored = request.get('role_scenarios') or {}
     reproduced = not scenarios_differ(stored, v2['role_scenarios']) if stored else None
     history, _ = prepare(snapshot, request['decision_at'])
