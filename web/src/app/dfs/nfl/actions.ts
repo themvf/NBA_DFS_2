@@ -82,6 +82,7 @@ import { searchTeamNews, type XNewsResult } from "@/lib/x-news";
 import { NFL_TRUSTED_ACCOUNTS, isXHandle } from "@/lib/x-news-accounts";
 import { NFL_TEAM_NICKNAMES } from "@/lib/nfl-dfs/x-news-teams";
 import { projectOwnershipPrior } from "@/lib/nfl-dfs/ownership-prior";
+import { NFL_OWNERSHIP_FIT_CLASSIC_FITTED_AT, NFL_OWNERSHIP_FIT_CLASSIC_VERSION, classicFitGameKey, projectClassicFit } from "@/lib/nfl-dfs/classic-ownership-fit";
 import { computeReplacementUpside, REPLACEMENT_UPSIDE_VERSION, type ReplacementUpside, type ReplacementUpsideReport, type UpsidePlayer } from "@/lib/nfl-dfs/replacement-upside";
 import { ABSENCE_COMMIT_VERSION, computeAbsenceCommits, type AbsenceCommit, type AbsenceCommitReport } from '@/lib/nfl-dfs/absence-commit';
 import { ANCHOR_MARKETS, MARKET_ANCHOR_VERSION, anchorPlayer, type MarketAnchor, type PropQuote } from '@/lib/nfl-dfs/market-anchor';
@@ -156,6 +157,11 @@ export type NflWorkspacePlayer = NflOptimizerPlayer & {
   /** `nfl-ownership-bands-v1`: the outside range for this player (`prior` is our number); it bounds `ownPct` only while the clamp is on. */
   ownBand?: { low: number; high: number; prior: number; source: string; capturedAt: string } | null;
   /**
+   * Classic only: the fitted `nfl-ownership-fit-v1` number, run as a SHADOW
+   * beside the prior. Shown and saved with every build; nothing builds from it.
+   */
+  shadowOwnPct?: number | null;
+  /**
    * Single Stat slates only (`nfl-single-stat-v1`): the one statistic this
    * slate scores, projected from the same inputs as the points projection.
    * The optimizer for those slates reads this, never `ourProj`.
@@ -190,6 +196,8 @@ export type NflLiveDkStatus = {
 
 export type NflWorkspaceSlate = {
   situationTeams?: SituationTeam[];
+  /** Classic only: the fitted ownership shadow beside the prior (see `shadowOwnPct`). */
+  ownershipShadow?: { version: string; fittedAt: string } | null;
   injuryCoverage?: InjuryCoverage | null;
   liveDkStatus?: NflLiveDkStatus;
   uploadId: string;
@@ -1273,6 +1281,11 @@ async function attachRangeSplit(workspace: NflWorkspaceSlate, run: { season: num
  * through the user's opt-in, labelled uncalibrated.
  */
 function attachOwnership(workspace: NflWorkspaceSlate): NflWorkspaceSlate {
+  // Classic shadow: the fitted model on the same projections, recorded beside the
+  // prior so the Monday grade can compare them (docs/nfl-ownership-model.md).
+  const shadow = workspace.format === 'classic' ? projectClassicFit(workspace.players.map((p) => ({ id: p.dkPlayerId, position: p.position,
+    salary: p.salary, team: p.team, proj: p.ourProj, dkAvg: p.avgFptsDk, dkStatus: p.dkStatus, gameKey: classicFitGameKey(p.gameInfo),
+    active: !p.isOut && p.projectionStatus !== 'out' }))) : null;
   const prior = projectOwnershipPrior(workspace.players.map((p) => ({ dkPlayerId: p.dkPlayerId, position: p.position, salary: p.salary,
     projection: p.ourProj, dkAvg: p.avgFptsDk, isOut: p.isOut, dkStatus: p.dkStatus, captainSalary: p.captainSalary, team: p.team })), capFormatOf(workspace.format, workspace.games),
     { favoriteTeam: workspace.favoriteTeam ?? null, underdogTeam: workspace.underdogTeam ?? null });
@@ -1281,8 +1294,9 @@ function attachOwnership(workspace: NflWorkspaceSlate): NflWorkspaceSlate {
     const ours = byId.get(p.dkPlayerId);
     const linestar = p.linestarOwnPct != null && Number.isFinite(p.linestarOwnPct) ? p.linestarOwnPct : null;
     return { ...p, ourOwnPct: ours?.ownPct ?? null, captainOwnPct: ours?.captainPct ?? null, flexOwnPct: ours?.flexPct ?? null,
-      ownPct: linestar ?? ours?.ownPct ?? null, ownSource: linestar != null ? "linestar" : ours ? prior.version : null };
-  }) };
+      ownPct: linestar ?? ours?.ownPct ?? null, ownSource: linestar != null ? "linestar" : ours ? prior.version : null,
+      shadowOwnPct: shadow ? shadow.get(p.dkPlayerId) ?? null : null };
+  }), ownershipShadow: shadow ? { version: NFL_OWNERSHIP_FIT_CLASSIC_VERSION, fittedAt: NFL_OWNERSHIP_FIT_CLASSIC_FITTED_AT } : null };
 }
 
 /**
@@ -2116,7 +2130,9 @@ function snapshotPlayer(player: NflWorkspacePlayer, slate: NflWorkspaceSlate, re
     dkAvg: player.avgFptsDk, fantasypros: player.fantasyprosProj,
     linestar: player.linestarProj, custom: player.customProj,
     // The ownership the optimizer actually read, so a leverage run can be replayed from the ledger.
-    ownership: {total:player.ownPct??null, flex:player.flexOwnPct??null, captain:player.captainOwnPct??null, source:player.ownSource??null, linestar:player.linestarOwnPct??null},
+    ownership: {total:player.ownPct??null, flex:player.flexOwnPct??null, captain:player.captainOwnPct??null, source:player.ownSource??null, linestar:player.linestarOwnPct??null,
+      // Classic shadow (nfl-ownership-fit-v1): recorded for the Monday grade, never read by the build.
+      ...(slate.ownershipShadow?{shadow:player.shadowOwnPct??null,shadowVersion:slate.ownershipShadow.version,shadowFittedAt:slate.ownershipShadow.fittedAt}:{})},
     availability: player.availability, isOut: player.isOut,
     latestEligibilityReview:player.latestEligibilityReview??null,
     availabilityDecisionId:player.availability?.decisionId??null,

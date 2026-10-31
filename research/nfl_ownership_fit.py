@@ -11,6 +11,13 @@ slate (the owner's exports) are extra evaluation and never pooled into the gate.
 
     python -m research.nfl_ownership_fit            # prints, writes artifacts/nfl-ownership-fit-v1/
     python -m research.nfl_ownership_fit --no-write
+    python -m research.nfl_ownership_fit --freeze   # also writes the shadow model + fixture
+
+`--freeze` writes the all-slates fit to web/src/data/nfl-ownership-fit-v1.json,
+which the NFL DFS page runs as a SHADOW beside v5 (builds keep v5), and the
+cross-language fixture (the newest reference slate's inputs and this module's
+predictions). Only slates whose first kickoff is after the frozen file's
+`fitted_at` count toward the switch rule in docs/nfl-ownership-model.md.
 """
 from __future__ import annotations
 
@@ -31,6 +38,9 @@ from research.nfl_ownership_three_way import TEAM, norm
 SEASON = 2026
 MIN_MASS = 890.0
 ARTIFACT_DIR = Path("artifacts") / "nfl-ownership-fit-v1"
+MODEL_PATH = Path("web/src/data/nfl-ownership-fit-v1.json")
+FIXTURE_PATH = Path("tests/fixtures/nfl_ownership_fit_fixture.json")
+FIXTURE_COLS = ("name", "position", "team", "salary", "proj", "dk_avg", "dk_status", "game_key")
 TIERS = ((20, 101), (10, 20), (5, 10), (1, 5), (0, 1))
 
 
@@ -107,6 +117,7 @@ def tier_table(frame: pd.DataFrame, cols: list[str]) -> list[dict]:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--no-write", action="store_true")
+    ap.add_argument("--freeze", action="store_true", help="write the shadow model file and the fixture")
     args = ap.parse_args(argv)
     conn = connect()
     try:
@@ -215,7 +226,30 @@ def main(argv=None) -> int:
         path = ARTIFACT_DIR / f"result-{stamp}.json"
         path.write_text(json.dumps(result, indent=1, default=str), encoding="utf-8")
         print(f"\n  written {path}")
+    if args.freeze:
+        frozen = {**full, "fitted_at": datetime.now(timezone.utc).isoformat(),
+                  "training_contests": {f"wk{w}": s["contest"]["contest_id"] for w, s in slates.items()}}
+        MODEL_PATH.write_text(json.dumps(frozen, indent=1) + "\n", encoding="utf-8")
+        last = slates[weeks[-1]]["frame"]
+        # The frame holds a missing projection as 0 plus a flag; the fixture keeps it missing.
+        raw = [{**{c: _plain(r[c]) for c in FIXTURE_COLS},
+                "proj": None if r["proj_missing"] else float(r["proj"]),
+                "dk_avg": None if r["dk_missing"] else float(r["dk_avg"])} for _, r in last.iterrows()]
+        pred = predict(frozen, feature_frame(pd.DataFrame(raw)))
+        FIXTURE_PATH.write_text(json.dumps({"week": int(weeks[-1]), "players": [{**r, "own": float(v)} for r, v in zip(raw, pred)]},
+                                           indent=1) + "\n", encoding="utf-8")
+        print(f"  frozen {MODEL_PATH} and {FIXTURE_PATH}")
     return 0
+
+
+def _plain(v):
+    if v is None or (isinstance(v, float) and np.isnan(v)):
+        return None
+    if isinstance(v, np.integer):
+        return int(v)
+    if isinstance(v, np.floating):
+        return float(v)
+    return v
 
 
 if __name__ == "__main__":

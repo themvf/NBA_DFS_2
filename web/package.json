@@ -148,6 +148,7 @@
     "test:cfb-pattern-watch-access": "node --import tsx ./scripts/test-cfb-pattern-watch-access.ts",
     "test:nfl-ownership-prior": "node --import tsx ./scripts/test-nfl-ownership-prior.ts",
     "test:nfl-showdown-ownership-fit": "node --import tsx ./scripts/test-nfl-showdown-ownership-fit.ts",
+    "test:nfl-classic-ownership-fit": "node --import tsx ./scripts/test-nfl-classic-ownership-fit.ts",
     "test:nfl-live-review": "node --import tsx ./scripts/test-nfl-live-review.ts",
     "test:nfl-latest-eligibility": "node --import tsx ./scripts/test-nfl-latest-eligibility.ts",
     "test:nfl-joint-portfolio": "node --import tsx ./scripts/test-nfl-joint-portfolio.ts",
