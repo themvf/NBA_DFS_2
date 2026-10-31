@@ -7936,6 +7936,18 @@ full-field captain labels, v4 punt tier kept, no kicker cut; callable as
 scorecard v3 (2026-10-20) grades the LATEST capture before the cutoff from any
 source.
 
+**Showdown ownership is fitted (`nfl-ownership-fit-showdown-v1`, owner's decision 2026-10-31).**
+Two Ridge regressions (flex, captain) on sqrt(ownership %) over one slate's points (the prior's
+60/40 blend), salary, value, and ranks in the game / team / position, allocated to 500 and 100
+with the old caps (`model/nfl_showdown_ownership_fit.py`; runner
+`research/nfl_showdown_ownership_fit.py` refits and writes
+`web/src/data/nfl-showdown-ownership-fit-v1.json`; the web port
+`web/src/lib/nfl-dfs/showdown-ownership-fit.ts` is pinned to it by a shared fixture).
+Leave-one-slate-out on 17 slates vs v5: flex MAE 5.23 vs 6.16, captain 1.04 vs 1.53, rank 0.78/0.79
+vs 0.64/0.65, captain better on 17/17 slates and flex on 15/17; 30%+ flex chalk 42.1 vs v5 35.8
+(actual 44.3). Picked from 16 variants scored the same way, so those figures are mildly optimistic.
+Classic stays on v5; `variant: "v5"` still gives v5 Showdown. Refit after importing new contests.
+
 **News chalk (`nfl-ownership-news-v1`, registered and closed 2026-10-24;
 `docs/nfl-ownership-news-chalk-study.md`).** Stopped at its pre-registered
 premise check, `NOT_BUILT` in both formats (frozen in

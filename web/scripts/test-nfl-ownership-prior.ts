@@ -168,7 +168,8 @@ assert.ok(sharedRow("sf k").captainPct < sharedRow("sf wr2").captainPct, "fixtur
 
 // v5 (the default since 2026-10-20; docs/nfl-ownership-prior-v5.md). Sums of rounded rows get 0.1.
 const nearSum = (actual: number, expected: number, label: string) => assert.ok(Math.abs(actual - expected) < 0.1, `${label}: ${actual} vs ${expected}`);
-assert.equal(projectOwnershipPrior(shared.players, "showdown").version, "nfl-ownership-prior-v5", "default is v5 (owner, 2026-10-20)");
+assert.equal(projectOwnershipPrior(shared.players, "showdown").version, "nfl-ownership-fit-showdown-v1", "Showdown default is the fitted model (owner, 2026-10-31)");
+assert.equal(projectOwnershipPrior(pool, "classic").version, "nfl-ownership-prior-v5", "Classic default stays v5");
 const sd5 = projectOwnershipPrior(shared.players, "showdown", { variant: "v5" });
 assert.equal(sd5.version, NFL_OWNERSHIP_PRIOR_V5_VERSION);
 const sdPos = (n: number) => (shared.players.find((p) => p.dkPlayerId === n)!.position ?? "").toUpperCase();
