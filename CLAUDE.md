@@ -8822,6 +8822,17 @@ own projections, with DraftKings lines captured as a yardstick, never as an inpu
   that pin `baseline_config_hash` (the coherent scenario study) treat runs
   from here on as a new configuration, as they did when the transfer flag
   was added; re-register them at their next study boundary.
+  **Done (owner's decision 2026-10-18, registered 2026-10-31)** after the
+  research job failed red on every Showdown since 10-15:
+  `nfl-coherent-matchup-v6` (same simulation and model_version, new pin,
+  forward start week 9, endpoint 2027-01-12) and baseline-amendment-2 for the
+  three dfs_mean matchup studies (holdout restarts, same endpoint). The first
+  draft (dated 10-18, week 7) never reached main, so weeks 7-8 were collected
+  under no registration: check that a registration is on main, not just
+  committed, before counting its weeks. `research/nfl_matchup_scenario_refresh.py` now checks the pin
+  before any export and reports `registered_cohort_closed` with both hashes
+  instead of failing, so the next production config change closes the cohort
+  visibly rather than turning the job red; re-register when you see it.
 - **What the DraftKings comparison found (weeks 1-5):** for established
   starters our DFS volume matches DraftKings (Burrow 34.1 vs 35.5 attempts,
   Henry 21.0 vs 21.5 carries) and receiving matches in every tier; the star

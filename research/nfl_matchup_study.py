@@ -213,15 +213,27 @@ def resolve_registration(index_entry):
                       implementation_hash_algorithm=pin.get("hash_algorithm","sha256_raw_bytes"),
                       qualification_scope=pin.get("qualification_scope"))
         previous_pin = pin
+    # Baseline and outcome amendments form two independent chains. Each
+    # restarts the holdout, so the holdout starts at the latest amendment of
+    # either kind, whichever order they were registered in (2026-10-18: a
+    # baseline amendment followed the 09-29 outcome amendment).
+    restarts = [original["registered_at"]]
+    previous_baseline_at = timestamp(original["registered_at"])
     for path in index_entry.get("amendment_files", []):
         amendment = json.loads(Path(path).read_text())
         if amendment["registration_manifest_hash"] != digest(original) or amendment["previous_baseline_config_hash"] != result["baseline_config_hash"]:
             raise ValueError("Broken immutable baseline amendment chain")
-        if timestamp(amendment["registered_at"]) < timestamp(result["registered_at"]):
+        if timestamp(amendment["registered_at"]) < previous_baseline_at:
             raise ValueError("Baseline amendment cannot be backdated")
-        result.update(baseline_config_hash=amendment["baseline_config_hash"], registered_at=amendment["registered_at"],
-                      holdout_start_at=amendment["registered_at"], baseline_amendment_hash=digest(amendment))
+        if "holdout_end_at" in amendment:
+            if timestamp(amendment["holdout_end_at"]) < timestamp(result["holdout_end_at"]):
+                raise ValueError("Baseline amendment may extend the holdout endpoint, never shorten it")
+            result["holdout_end_at"] = amendment["holdout_end_at"]
+        result.update(baseline_config_hash=amendment["baseline_config_hash"], baseline_amendment_hash=digest(amendment))
+        previous_baseline_at = timestamp(amendment["registered_at"])
+        restarts.append(amendment["registered_at"])
     previous_outcome_amendment = None
+    previous_outcome_at = timestamp(original["registered_at"])
     for path in index_entry.get("outcome_amendment_files", []):
         amendment = json.loads(Path(path).read_text())
         if (amendment["registration_manifest_hash"] != digest(original)
@@ -230,15 +242,19 @@ def resolve_registration(index_entry):
             raise ValueError("Broken immutable outcome amendment chain")
         # A later forecast-processing pin cannot make an already valid scorer
         # amendment appear backdated. Its own latest pin still bounds evaluation.
-        earliest = max(timestamp(result["registered_at"]), first_pin_at or timestamp(result["registered_at"]))
+        earliest = max(previous_outcome_at, first_pin_at or previous_outcome_at)
         if timestamp(amendment["registered_at"]) < earliest:
             raise ValueError("Outcome amendment cannot be backdated")
         if amendment.get("hash_algorithm") != "sha256_lf_normalized" or not amendment.get("implementation_hashes"):
             raise ValueError("Outcome amendment requires exact portable scorer implementation pins")
-        result.update(scoring_version=amendment["scoring_version"], registered_at=amendment["registered_at"],
-                      holdout_start_at=amendment["registered_at"], outcome_amendment_hash=digest(amendment),
+        result.update(scoring_version=amendment["scoring_version"], outcome_amendment_hash=digest(amendment),
                       outcome_implementation_hashes=amendment["implementation_hashes"])
         previous_outcome_amendment = digest(amendment)
+        previous_outcome_at = timestamp(amendment["registered_at"])
+        restarts.append(amendment["registered_at"])
+    if len(restarts) > 1:
+        latest = max(restarts, key=timestamp)
+        result.update(registered_at=latest, holdout_start_at=latest)
     return result
 
 

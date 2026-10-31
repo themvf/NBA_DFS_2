@@ -7,7 +7,7 @@
       "status": "registered",
       "registered_at": "2026-09-27T14:19:53.382080+00:00",
       "holdout_start_at": "2026-09-27T14:19:53.382080+00:00",
-      "holdout_end_at": "2026-12-01T00:00:00+00:00",
+      "holdout_end_at": "2027-01-12T00:00:00+00:00",
       "development_note": "All 2023-2025 data are retrospective development; no held-out historical performance or tuning split is claimed. Fixed priors/settings are declared before prospective evaluation.",
       "feature_versions": {
         "shared": "nfl-matchup-features-v1"
@@ -17,7 +17,7 @@
         "pbp": "retained-source-revision-manifest"
       },
       "candidate_config_hash": "49b6d36be15e5c854ed75d2213554fbcd80fa547c81e12458c9e0aab872f839f",
-      "baseline_config_hash": "0a4b14b66998e7aeaa89f7dc6aaefab8a016759c277db53bc11109a65a14bb5a",
+      "baseline_config_hash": "4104d1a30d637ff9c6f22a48d444128aeb222a09646a15cfb921d83a5603330a",
       "family_size": 6,
       "seed": 20260927,
       "bootstrap_draws": 10000,
@@ -102,7 +102,8 @@
       "registration_file": "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-pressure-v1.json",
       "implementation_pin_file": "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-pressure-v1.implementation-pin-6.json",
       "amendment_files": [
-        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-pressure-v1.baseline-amendment-1.json"
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-pressure-v1.baseline-amendment-1.json",
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-pressure-v1.baseline-amendment-2.json"
       ],
       "implementation_pin_files": [
         "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-pressure-v1.implementation-pin.json",
@@ -121,7 +122,7 @@
       "status": "registered",
       "registered_at": "2026-09-27T14:19:53.382080+00:00",
       "holdout_start_at": "2026-09-27T14:19:53.382080+00:00",
-      "holdout_end_at": "2026-12-01T00:00:00+00:00",
+      "holdout_end_at": "2027-01-12T00:00:00+00:00",
       "development_note": "All 2023-2025 data are retrospective development; no held-out historical performance or tuning split is claimed. Fixed priors/settings are declared before prospective evaluation.",
       "feature_versions": {
         "shared": "nfl-matchup-features-v1"
@@ -131,7 +132,7 @@
         "pbp": "retained-source-revision-manifest"
       },
       "candidate_config_hash": "39b53ecff13299f0265794d2459f5ab2ecb7e25caf4a293b9602ab3f0be2d3dc",
-      "baseline_config_hash": "0a4b14b66998e7aeaa89f7dc6aaefab8a016759c277db53bc11109a65a14bb5a",
+      "baseline_config_hash": "4104d1a30d637ff9c6f22a48d444128aeb222a09646a15cfb921d83a5603330a",
       "family_size": 6,
       "seed": 20260927,
       "bootstrap_draws": 10000,
@@ -216,7 +217,8 @@
       "registration_file": "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-contact-v1.json",
       "implementation_pin_file": "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-contact-v1.implementation-pin-6.json",
       "amendment_files": [
-        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-contact-v1.baseline-amendment-1.json"
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-contact-v1.baseline-amendment-1.json",
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-contact-v1.baseline-amendment-2.json"
       ],
       "implementation_pin_files": [
         "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-contact-v1.implementation-pin.json",
@@ -235,7 +237,7 @@
       "status": "registered",
       "registered_at": "2026-09-27T14:19:53.382080+00:00",
       "holdout_start_at": "2026-09-27T14:19:53.382080+00:00",
-      "holdout_end_at": "2026-12-01T00:00:00+00:00",
+      "holdout_end_at": "2027-01-12T00:00:00+00:00",
       "development_note": "All 2023-2025 data are retrospective development; no held-out historical performance or tuning split is claimed. Fixed priors/settings are declared before prospective evaluation.",
       "feature_versions": {
         "shared": "nfl-matchup-features-v1"
@@ -245,7 +247,7 @@
         "pbp": "retained-source-revision-manifest"
       },
       "candidate_config_hash": "328c5854d91b8cc43f17eac9bae722413e333c4624ae7167978b85065675db9c",
-      "baseline_config_hash": "0a4b14b66998e7aeaa89f7dc6aaefab8a016759c277db53bc11109a65a14bb5a",
+      "baseline_config_hash": "4104d1a30d637ff9c6f22a48d444128aeb222a09646a15cfb921d83a5603330a",
       "family_size": 6,
       "seed": 20260927,
       "bootstrap_draws": 10000,
@@ -334,7 +336,8 @@
       "registration_file": "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-combined-v1.json",
       "implementation_pin_file": "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-combined-v1.implementation-pin-6.json",
       "amendment_files": [
-        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-combined-v1.baseline-amendment-1.json"
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-combined-v1.baseline-amendment-1.json",
+        "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-combined-v1.baseline-amendment-2.json"
       ],
       "implementation_pin_files": [
         "artifacts/nfl_matchup_registrations/nfl-matchup-dfs_mean-combined-v1.implementation-pin.json",

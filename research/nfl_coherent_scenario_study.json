@@ -1,6 +1,6 @@
 {
-  "study_id": "nfl-coherent-matchup-v5",
-  "registered_on": "2026-09-29",
+  "study_id": "nfl-coherent-matchup-v6",
+  "registered_on": "2026-10-31",
   "status": "prospective_shadow_only",
   "model_version": "nfl-coherent-matchup-research-v5",
   "production_authority": false,
@@ -9,7 +9,7 @@
   "development": "Historical seasons 2023 through pre-target 2026 weeks; descriptive empirical fitting on inspected data, never called an untouched holdout.",
   "forward_start": {
     "season": 2026,
-    "first_full_week": 4
+    "first_full_week": 9
   },
   "features": [
     "paired empirical game attempts/carries/targets",
@@ -36,7 +36,7 @@
   },
   "portfolio_gate": "Existing GPP revision 2 gate remains authoritative: 20 untouched Showdown slates, paired lower 95% bound above legacy, legality 100%, fulfillment >=99%, no increase in QA blockers. Classic and entry-mode claims require their own registered cohort and cannot inherit a Showdown pass.",
   "construction_scope": "Classic and single-game Showdown research. Shared game FG/PAT events are assigned to an explicit unique eligible K salary identity conditional on that player handling kicking; ambiguous K roles remain unallocated and unsupported. Captain scoring/salary is applied once by the canonical lineup scorer. Contest fields/payouts remain absent unless explicitly supplied and validated.",
-  "revision": "Forward-only re-registration for main's realized-v4 outcome scorer: play-by-play DST components v2 credit special-teams fumble recoveries and read only the ruling that stands, so realized DST outcomes change and carry nfl-dk-realized-v4. Outcome rows are graded against that exact version and pinned scorer. The simulation, scenario scoring (nfl-dk-scenario-v1; the simulated DST path uses the unchanged _score_dst), fitted models, baseline, draws, week-4 start, endpoint and all gates are unchanged. No forward week has been graded, so none is lost. Prior v1-v4 captures remain under their original registrations and are never pooled with v5.",
+  "revision": "Forward-only re-registration after production_config() gained qb_starter_mode='on' on 2026-10-12 (nfl-qb-spot-start-v2 expected-starter overlay). Every production run since 2026-10-12 10:09 UTC hashes to 4104d1a3, so no v5 freeze could be written after that (research runs 38745412734, 38788481357, 38811789155, 39072101044 failed in scenario-export on the pin; from #529 the refresh closes the cohort visibly instead). Owner decision 2026-10-18; a first draft dated that day for week 7 was never deployed, so weeks 7-8 carry no capture under any registration and are lost. Owner re-confirmed 2026-10-31: v6 pins the current production configuration (still 4104d1a3, 299 runs 10-12..10-31), starts at week 9 (first kickoff 2026-11-06 01:15 UTC, after this registration), and ends 2027-01-12 so the 8-full-week floor is reachable (weeks 9-18). Simulation, scenario scoring, outcome scorer, fitted models, draws, seed, positions, cohorts, implementation pins (verified unchanged 2026-10-31) and every gate are unchanged; model_version stays nfl-coherent-matchup-research-v5 because model/nfl_matchup_scenarios.py is byte-identical (it is also pinned by nfl-model-completion-registration-v1, so it is not edited). Its manifest's research_registration label still reads nfl-coherent-matchup-v5; the frozen source manifest carries this full registration, which is what grading checks. v5 captures (weeks 4-6) remain under v5 and are never pooled with v6. No outcome was consulted.",
   "role_state": "Conditional normal-starter state: when a unique active depth-one quarterback has provider evidence captured within 24 hours before the decision, allocate passing attempts to that starter. Backup QB carries remain unallocated. Missing or ambiguous evidence preserves historical shares and is audited. No inferred injury or benching probabilities; this conditional model is not a calibrated availability mixture.",
   "rollback": "No promotion in this registration; future active release retains frozen baseline and the existing study-specific rollback rules.",
   "protected_studies": [
@@ -45,8 +45,8 @@
     "availability registrations unchanged",
     "GPP gates unchanged"
   ],
-  "registered_at": "2026-09-29T01:57:29.430760+00:00",
-  "evaluation_end_at": "2026-12-01T00:00:00+00:00",
+  "registered_at": "2026-10-31T20:29:57.472867+00:00",
+  "evaluation_end_at": "2027-01-12T00:00:00+00:00",
   "positions": [
     "QB",
     "RB",
@@ -88,7 +88,7 @@
     "DST": 15,
     "K": 15
   },
-  "baseline_config_hash": "0a4b14b66998e7aeaa89f7dc6aaefab8a016759c277db53bc11109a65a14bb5a",
+  "baseline_config_hash": "4104d1a30d637ff9c6f22a48d444128aeb222a09646a15cfb921d83a5603330a",
   "implementation_hashes": {
     "model/nfl_matchup_scenarios.py": "9d133718c360a03a445965508061807c49644c3ac329ae220c4f68069a19e913",
     "model/nfl_dfs_efficiency.py": "276e6f37e88c5a70852b02f394a3b241f825cbfefbc488cc724dc2d34ccf40ba",
@@ -109,8 +109,8 @@
   "baseline_config_hash_convention": "sha256_compact_sorted_json_model_version_and_model_config",
   "pre_forward_pin_correction": "Corrected baseline hash envelope before any forward eligible week; config-only c8b483 audit preserved under coherent-v2/pin-audit. The production baseline and its configuration were unchanged.",
   "outcome_scoring_version": "nfl-dk-realized-v4",
-  "supersedes_study_id": "nfl-coherent-matchup-v4",
+  "supersedes_study_id": "nfl-coherent-matchup-v5",
   "historical_source_bundle": "research/nfl_coherent_pins/v2/manifest.json",
-  "source_commit_before_registration": "c97103c1d92ebbfa0914e47017b9f694856408c0",
-  "previous_registration_sha256_lf": "c70dbb3273f41d86de1904d837b34545a243e6028f751bd254ca64c8003f7c8c"
+  "source_commit_before_registration": "b012efafafb26b0492d1f7e9d80a9f19a485b965",
+  "previous_registration_sha256_lf": "b5842d2438282a1ff259d74d80f38c0eae52bbee93900a041f40631ed7c525b6"
 }
