@@ -39,12 +39,14 @@ jobs:
       # shares and forecasts beside each published game's request, shadow only.
       # A failure here is annotated on the run and never blocks the publication.
       - name: Shadow roles-v3 beside the published requests (research only)
+        id: regime_shadow
         continue-on-error: true
         run: python -m research.nfl_game_leaders_regime_roles shadow
       # Grade the shadowed games on the Wednesday build only: it takes the new
       # capture that holds last week's completed games. Blinded until the floors;
       # the verdict file is written once and committed below.
       - name: Grade roles-v3 against v2 (research only, Wednesdays)
+        id: regime_grade
         if: ${{ !cancelled() }}
         continue-on-error: true
         run: |
@@ -53,6 +55,22 @@ jobs:
           else
             echo "Not Wednesday (UTC); grade skipped."
           fi
+      - name: Report the research steps
+        if: ${{ !cancelled() }}
+        env:
+          SHADOW_OUTCOME: ${{ steps.regime_shadow.outcome }}
+          GRADE_OUTCOME: ${{ steps.regime_grade.outcome }}
+        run: |
+          {
+            echo "### Regime-roles research (nfl-leaders-regime-roles-v1)"
+            echo "- shadow: ${SHADOW_OUTCOME:-not run}"
+            echo "- grade: ${GRADE_OUTCOME:-not run}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for pair in "shadow:$SHADOW_OUTCOME" "grade:$GRADE_OUTCOME"; do
+            if [ "${pair#*:}" = "failure" ]; then
+              echo "::warning::regime-roles ${pair%%:*} step failed; the publication is unaffected"
+            fi
+          done
       - name: Commit only a changed, validated publication
         run: |
           git add -f web/src/data/game-leaders.json web/src/data/game-leaders-weeks
