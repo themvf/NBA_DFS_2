@@ -206,6 +206,22 @@ export function nbaPointsGradeDue(now: Date): boolean {
   return NBA_MONTHS.has(now.getUTCMonth() + 1) && hourTick(now) && now.getUTCHours() === 11;
 }
 
+/**
+ * NBA ghost research snapshot (nba_points_ghost.yml, action freeze): 15:37 UTC
+ * (11:37 AM ET), half an hour after the 11:07 AM ET points-line capture and
+ * before any regular first tip. The snapshot is refused after the slate's first
+ * scheduled tip, and a second freeze never replaces the first, so a late GitHub
+ * fallback can only fill a missed morning. No Odds API credits.
+ */
+export function nbaGhostFreezeDue(now: Date): boolean {
+  return NBA_MONTHS.has(now.getUTCMonth() + 1) && now.getUTCHours() === 15 && now.getUTCMinutes() === 37;
+}
+
+/** Grade the last three ghost snapshots (action grade): 11:37 UTC, after the 11:07 box-score job. */
+export function nbaGhostGradeDue(now: Date): boolean {
+  return NBA_MONTHS.has(now.getUTCMonth() + 1) && now.getUTCHours() === 11 && now.getUTCMinutes() === 37;
+}
+
 export const DISPATCH_JOBS: readonly DispatchJob[] = [
   {
     key: "mlb-odds-capture",
@@ -287,6 +303,20 @@ export const DISPATCH_JOBS: readonly DispatchJob[] = [
     due: nbaPointsGradeDue,
     inputs: { date: "", days_back: "3" },
     why: "ESPN box scores and the calibration grade of last night's pre-tip points lines for /nba/top-scorers, 7:07 AM ET, October-June.",
+  },
+  {
+    key: "nba-ghost-freeze",
+    workflow: "nba_points_ghost.yml",
+    due: nbaGhostFreezeDue,
+    inputs: { action: "freeze", date: "" },
+    why: "Frozen pregame NBA ghost v2 research snapshot (feeds /nba/boom-trios and the ghost trial), 11:37 AM ET, October-June. No Odds API credits.",
+  },
+  {
+    key: "nba-ghost-grade",
+    workflow: "nba_points_ghost.yml",
+    due: nbaGhostGradeDue,
+    inputs: { action: "grade", date: "" },
+    why: "Grades of the last three NBA ghost snapshots against ESPN box scores, 7:37 AM ET, after the box-score job, October-June.",
   },
   {
     key: "nfl-game-leaders",

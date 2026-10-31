@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { easternDateString } from "@/lib/eastern-date";
-import { getBoomTrioDays } from "@/db/nba-boom-trios";
+import { getBoomTrioDays, getSavedBoomLineups, type SavedBoomLineup } from "@/db/nba-boom-trios";
 import {
   BOOM_MIN, ONE_SWAP_MAX_DROP, REVIEW_AFTER_DATES, TWO_SWAP_MAX_DROP,
   gradeBoomTrios, selectBoomTrios, type BoomGrade, type BoomGradeRow, type BoomSelection, type Trio, type TrioResult,
@@ -70,6 +70,54 @@ function TrioCard({ title, subtitle, trio, rows, result, baseline, isBaseline = 
   );
 }
 
+/** Actual total of five saved lineups (ids "event:player_key"), or null while any player is unresolved or did not play. */
+function savedTotal(lineups: string[][], rows: BoomGradeRow[] | null): number | null {
+  if (!rows || lineups.length === 0) return null;
+  const pts = new Map(rows.filter((r) => (r.status === "graded" || r.status === "push") && r.actual_points != null)
+    .map((r) => [`${r.event_id}:${r.player_key}`, r.actual_points as number]));
+  let total = 0;
+  for (const ids of lineups) for (const id of ids) {
+    const v = pts.get(id);
+    if (v == null) return null;
+    total += v;
+  }
+  return total;
+}
+
+function SavedComparisons({ saved, rowsByDate }: { saved: SavedBoomLineup[]; rowsByDate: Map<string, BoomGradeRow[] | null> }) {
+  return (
+    <section className="rounded-xl border bg-white p-4 shadow-sm">
+      <h2 className="font-bold">Your saved boom lineups</h2>
+      <p className="mb-2 text-xs text-muted-foreground">
+        Saved from the Boom lineups tool on Top Scorers before the first tip. Each compares your five lineups with the five
+        highest-projected ones on the same night (sum of actual points across all five). These are your choices, separate from
+        the frozen trios above.
+      </p>
+      {saved.length === 0 ? <p className="text-sm text-muted-foreground">Nothing saved yet.</p> : (
+        <table className="w-full text-sm">
+          <thead><tr className="text-left text-[10px] uppercase text-slate-500"><th>Night</th><th>Featured</th><th className="text-right">Top five</th><th className="text-right">Yours</th><th className="text-right">Difference</th></tr></thead>
+          <tbody>
+            {saved.map((s) => {
+              const rows = rowsByDate.get(s.gameDate) ?? null;
+              const base = savedTotal(s.baseline, rows), mine = savedTotal(s.adjusted, rows);
+              const name = s.selected ? s.selected.split(":").slice(1).join(":") : "none";
+              return (
+                <tr key={s.id} className="border-t">
+                  <td className="py-1">{s.gameDate}</td>
+                  <td className="text-xs">{name}{s.selected ? ` · ${s.requested} of 5, within ${s.maxDrop}` : ""}</td>
+                  <td className="text-right">{base != null ? base.toFixed(0) : "—"}</td>
+                  <td className="text-right">{mine != null ? mine.toFixed(0) : "—"}</td>
+                  <td className="text-right">{base != null && mine != null ? signed(mine - base) : "not graded"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}
+
 function recordSummary(days: { selection: BoomSelection; grade: BoomGrade | null }[], name: "boom" | "aggressive") {
   const graded = days.filter((d) => d.selection.counts && d.grade?.[name].status === "graded").map((d) => (d.grade![name] as Extract<TrioResult, { status: "graded" }>).delta);
   return { n: graded.length, helped: graded.filter((x) => x > 0).length, hurt: graded.filter((x) => x < 0).length,
@@ -78,7 +126,7 @@ function recordSummary(days: { selection: BoomSelection; grade: BoomGrade | null
 
 export default async function BoomTriosPage({ searchParams }: { searchParams: Promise<{ date?: string }> }) {
   const params = await searchParams;
-  const loaded = await getBoomTrioDays();
+  const [loaded, saved] = await Promise.all([getBoomTrioDays(), getSavedBoomLineups()]);
   const days = loaded.map(({ snapshot, rows }) => {
     const selection = selectBoomTrios(snapshot);
     return { selection, rows, grade: rows ? gradeBoomTrios(selection, rows) : null };
@@ -120,6 +168,8 @@ export default async function BoomTriosPage({ searchParams }: { searchParams: Pr
           </div>
         </>
       )}
+
+      <SavedComparisons saved={saved} rowsByDate={new Map(days.map((d) => [d.selection.game_date, d.rows]))} />
 
       <section className="rounded-xl border bg-white p-4 shadow-sm">
         <h2 className="font-bold">Record against the baseline</h2>

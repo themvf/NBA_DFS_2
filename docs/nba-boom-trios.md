@@ -68,11 +68,19 @@ counts and sizes, no-alternative days, and the P90 diagnostic. An alternative
 is worth turning on only if its interval sits above zero there and holds on
 the next untouched stretch. Any rule change is a new version and restarts the count.
 
-## Relation to the boom-exposure board
+## The boom lineup builder (`nba-boom-exposure-v1`)
 
-A separate in-progress Codex worktree (uncommitted, 2026-10-31) builds an
-interactive boom board on the Top Scorers page (`nba-boom-exposure-v1`: pick a
-player, require him in N of five trios under a points limit, ranked by the
-ghost watch score). That is a user-driven tool. This module is the frozen,
-pre-registered rule set and its grading; the board can display these trios
-once both land.
+Started by the Codex session on 2026-10-31 and finished the same day on the
+same definitions as these rules: on `/nba/top-scorers`, pick a rising-volume
+player (boom score at least 2.0) and require him in N of five unique trios
+under a points limit. Lineup 1 is always this module's baseline trio; points
+are market lines; nobody's projection changes; an infeasible request is
+refused, never relaxed. `Save before the first tip` stores both lineup sets in
+`nba_boom_lineup_records` (web-owned, append-only, insert refused by the
+database clock after the first tip), and `/nba/boom-trios` grades each save
+(sum of actual points across the five lineups against the five
+highest-projected). Saves are discretionary choices and are reported
+separately from these frozen rules; they never enter this module's count.
+Code: `web/src/lib/nba-boom-lineups.ts`, `web/src/db/nba-boom-board.ts`,
+`web/src/app/api/nba/boom-lineups/route.ts`,
+`web/src/app/nba/top-scorers/boom-lineups-client.tsx`.

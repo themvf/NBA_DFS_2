@@ -151,6 +151,7 @@
     "test:nfl-showdown-ownership-fit": "node --import tsx ./scripts/test-nfl-showdown-ownership-fit.ts",
     "test:nfl-classic-ownership-fit": "node --import tsx ./scripts/test-nfl-classic-ownership-fit.ts",
     "test:nba-boom-trios": "node --import tsx ./scripts/test-nba-boom-trios.ts",
+    "test:nba-boom-lineups": "node --import tsx ./scripts/test-nba-boom-lineups.ts",
     "test:nfl-live-review": "node --import tsx ./scripts/test-nfl-live-review.ts",
     "test:nfl-latest-eligibility": "node --import tsx ./scripts/test-nfl-latest-eligibility.ts",
     "test:nfl-joint-portfolio": "node --import tsx ./scripts/test-nfl-joint-portfolio.ts",

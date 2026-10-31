@@ -264,6 +264,16 @@ for (let h = 0; h < 24; h += 1) for (const m of TICKS) if (keys(`2026-10-21T${hh
 assert.equal(nbaTicks, 3, "exactly three paid NBA captures a day");
 assert.ok(keys("2026-10-22T01:07:00Z").includes("nba-points-props"), "9:07 PM ET closing read for the late tips");
 assert.equal(DISPATCH_JOBS.find((j) => j.key === "nba-points-props")?.inputs?.max_credits, "40");
+// NBA ghost research: one freeze at 11:37 AM ET (after the 11:07 line capture) and one grade at 7:37 AM ET.
+assert.ok(keys("2026-11-01T15:37:00Z").includes("nba-ghost-freeze"), "11:37 AM ET pregame freeze");
+assert.ok(!keys("2026-11-01T15:07:00Z").includes("nba-ghost-freeze"), "not before the 11:07 line capture");
+assert.ok(keys("2026-11-01T11:37:00Z").includes("nba-ghost-grade"), "7:37 AM ET grade, after the 11:07 UTC box scores");
+assert.ok(!keys("2026-08-01T15:37:00Z").includes("nba-ghost-freeze") && !keys("2026-08-01T11:37:00Z").includes("nba-ghost-grade"), "off-season: nothing");
+let ghostRuns = 0;
+for (let h = 0; h < 24; h += 1) for (const m of TICKS) for (const k of ["nba-ghost-freeze", "nba-ghost-grade"]) if (keys(`2026-11-01T${hh(h)}:${m}:00Z`).includes(k)) ghostRuns += 1;
+assert.equal(ghostRuns, 2, "exactly one freeze and one grade a day");
+assert.equal(DISPATCH_JOBS.find((j) => j.key === "nba-ghost-freeze")?.inputs?.action, "freeze");
+assert.equal(DISPATCH_JOBS.find((j) => j.key === "nba-ghost-grade")?.inputs?.action, "grade");
 // Nightly grade: box scores + calibration, once a day, no credits.
 assert.ok(keys("2026-10-22T11:07:00Z").includes("nba-points-grade"), "7:07 AM ET grade");
 assert.ok(!keys("2026-10-22T11:22:00Z").includes("nba-points-grade"), "the :07 tick only");

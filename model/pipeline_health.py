@@ -349,6 +349,18 @@ DATASET_REGISTRY: tuple[Dataset, ...] = (
             36, "grade_nba_points_props.yml", _NBA,
             "Written by model.nba_points_calibration after the box scores: one row per player-game from each game's "
             "last pre-tip capture. Empty for a date that had no pre-tip capture or no final box score."),
+    # NBA ghost research (nba_points_ghost.yml via the dispatcher, nba-ghost-freeze 15:37 UTC and
+    # nba-ghost-grade 11:37 UTC). One snapshot row per slate date, inserted once before the first tip
+    # (created_at is that insert); each grade run appends an attempt row (graded_at). 72 h covers a
+    # no-game day and one missed run. /nba/boom-trios and the boom-trio tracking read both.
+    Dataset("nba_ghost_snapshots", "NBA ghost v2 pregame snapshot (/nba/boom-trios)", "nba_ghost_snapshots", "created_at",
+            72, "nba_points_ghost.yml", _NBA,
+            "Written by research.nba_ghost_runner freeze: one prospective snapshot per slate date, refused after the "
+            "first scheduled tip and never replaced. A day with no games writes nothing."),
+    Dataset("nba_ghost_grades", "NBA ghost v2 grades (/nba/boom-trios)", "nba_ghost_grades", "graded_at",
+            72, "nba_points_ghost.yml", _NBA,
+            "Written by research.nba_ghost_runner grade: appends a grade attempt for each of the last three stored "
+            "snapshots that has final box scores."),
     Dataset("nfl_game_leader_market", "NFL game leaders: DraftKings pricing", "nfl_game_leader_market", "computed_at",
             120, "capture_nfl_props.yml", _NFL,
             "Written after each pregame prop capture by research.nfl_game_leaders_market refresh; append-only, "

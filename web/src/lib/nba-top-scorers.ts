@@ -113,6 +113,12 @@ export function nameKey(name: string): string {
   return words.join("");
 }
 
+/** Verified aliases only; keep the general name normalizer unchanged. */
+export function playerKey(name: string): string {
+  const key = nameKey(name);
+  return key === "herbjones" ? "herbertjones" : key;
+}
+
 // Our teams table and The Odds API spell one team differently.
 const TEAM_ALIASES: Record<string, string> = { laclippers: "losangelesclippers" };
 
@@ -188,7 +194,7 @@ export function buildBoard(
   const abbrev = (name: string | null) => (name ? abbrevOf.get(teamKey(name)) ?? null : null);
   const stats = new Map<string, SeasonStat | null>();
   for (const s of lastSeason) {
-    const key = nameKey(s.name);
+    const key = playerKey(s.name);
     // Two players sharing a name key are ambiguous: show neither rather than guess.
     stats.set(key, stats.has(key) ? null : s);
   }
@@ -200,7 +206,7 @@ export function buildBoard(
     const c = consensus(lines);
     if (!c) continue;
     const game = `${row.awayTeam} @ ${row.homeTeam}`;
-    const stat = stats.get(nameKey(row.player)) ?? null;
+    const stat = stats.get(playerKey(row.player)) ?? null;
     const statTeam = stat?.teamName ? teamKey(stat.teamName) : null;
     const onHome = statTeam != null && statTeam === teamKey(row.homeTeam);
     const onAway = statTeam != null && statTeam === teamKey(row.awayTeam);
