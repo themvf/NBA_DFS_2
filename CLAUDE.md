@@ -289,6 +289,16 @@ prospective nights from 2026-10-27, both readers recomputed from the same stored
 paired tail Brier with a night-clustered bootstrap, at least 30 nights and 1,000 rows with a
 35+ value. Do not change the reader before that verdict.
 
+### NBA boom trio alternatives (`nba-boom-trios-v1`, registered 2026-10-31)
+
+[`docs/nba-boom-trios.md`](docs/nba-boom-trios.md), `research/nba_boom_trios.py`. From each slate's frozen
+`nba-points-ghost-v2` snapshot: baseline = the three highest market lines; boom = swap #3 for the
+strongest rising-shot-volume player ((FGA + 0.44 FTA) last 3 minus last 20, at least 2.0) within 3
+projected points; aggressive = keep #1, best boom pair within 6. The boom score only ranks replacements.
+Graded from `nba_ghost_grades` (DNP = incomplete, never 0); `python -m research.nba_boom_trios report`.
+Counts from snapshots created after 2026-10-31 19:30 UTC; review after 30 counted dates. Its inputs come
+from the ghost v2 snapshot and grade routine, which still runs as a local Codex follow-up, not a deployed job.
+
 ## Data Refresh Workflow
 
 ```
