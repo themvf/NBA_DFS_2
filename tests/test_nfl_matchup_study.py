@@ -422,7 +422,7 @@ def test_dfs_studies_pin_the_current_production_config_after_amendment_2():
         assert resolved["holdout_end_at"] == entry["holdout_end_at"] == "2027-01-12T00:00:00+00:00"
         amendment = json.loads(Path(entry["amendment_files"][-1]).read_text())
         assert resolved["registered_at"] == resolved["holdout_start_at"] == amendment["registered_at"]
-        assert amendment["registered_at"] < "2026-10-22T00:15:00+00:00"
+        assert amendment["registered_at"] < "2026-11-06T01:15:00+00:00"  # first week-9 kickoff
         assert amendment["outcomes_consulted"] is False
 
 

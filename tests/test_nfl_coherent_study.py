@@ -123,9 +123,10 @@ def test_current_coherent_registration_matches_code_and_preserves_prior_contract
                 # v6 (2026-10-18): production_config() gained qb_starter_mode on
                 # 10-12, so the baseline pin moves, the forward start moves to the
                 # first week after registration, and the endpoint moves so the
-                # 8-week floor is reachable. Simulation and gates are unchanged.
+                # 8-week floor is reachable (week 9, re-dated 2026-10-31 because the
+                # first draft never shipped). Simulation and gates are unchanged.
                 6: {"baseline_config_hash": "4104d1a30d637ff9c6f22a48d444128aeb222a09646a15cfb921d83a5603330a",
-                    "forward_start": {"season": 2026, "first_full_week": 7},
+                    "forward_start": {"season": 2026, "first_full_week": 9},
                     "evaluation_end_at": "2027-01-12T00:00:00+00:00"}}
 
     current_path = Path("research/nfl_coherent_scenario_study.json")
@@ -174,7 +175,7 @@ def test_v5_rows_never_enter_v6_and_v6_rows_never_enter_v5():
     v6 = json.loads(Path("research/nfl_coherent_scenario_study_v6.json").read_text())
     assert v5["model_version"] == v6["model_version"] and digest(v5) != digest(v6)
     assert v5["baseline_config_hash"] != v6["baseline_config_hash"]
-    assert v6["registered_at"] < "2026-10-22T00:15:00+00:00", "registered before the first week-7 kickoff"
+    assert v6["registered_at"] < "2026-11-06T01:15:00+00:00", "registered before the first week-9 kickoff"
     rows_v5 = records(v5)
     graded = grade(v6, rows_v5)
     assert graded["frozen_rows"] == 0
