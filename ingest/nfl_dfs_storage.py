@@ -124,8 +124,10 @@ def json_uuids(db) -> set[str]:
     run_ids = {r["run_id"] for r in _rows(db, "SELECT run_id::text run_id FROM nfl_dfs_projection_runs")}
     found: set[str] = set()
     for col in columns:
-        for row in _rows(db, f"""SELECT DISTINCT m[1] id FROM "{col['table_name']}",
-                regexp_matches("{col['column_name']}"::text, %s, 'g') m""", (UUID_RE.pattern,)):
+        # Qualified alias: a table with its own column named like a bare alias
+        # ("m", in nfl_ownership_news_freezes) made the reference ambiguous.
+        for row in _rows(db, f"""SELECT DISTINCT uuid_match.arr[1] id FROM "{col['table_name']}" src,
+                regexp_matches(src."{col['column_name']}"::text, %s, 'g') AS uuid_match(arr)""", (UUID_RE.pattern,)):
             if row["id"] in run_ids:
                 found.add(row["id"])
     return found
