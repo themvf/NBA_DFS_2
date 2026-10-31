@@ -2,7 +2,7 @@ import "server-only";
 
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
-import type { PropRow, SeasonStat, TeamName } from "@/lib/nba-top-scorers";
+import type { CurrentTeam, PropRow, SeasonStat, TeamName } from "@/lib/nba-top-scorers";
 
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : String(v));
 const num = (v: unknown) => (v == null ? null : Number(v));
@@ -98,6 +98,27 @@ export async function getNbaSeasonStats(season: string): Promise<SeasonStat[]> {
     games: num(r.games),
     teamName: r.team_name == null ? null : String(r.team_name),
     teamAbbrev: r.abbreviation == null ? null : String(r.abbreviation),
+  }));
+}
+
+/**
+ * Each player's team in his most recent box-score game before `gameDate`
+ * (ESPN, nba_box_score_players). Strictly before the date, so a past slate
+ * shows the team as it stood that night. Bounded to 200 days so last season's
+ * box scores never stand in for this season's. A DNP row still counts: it
+ * places the player on that roster.
+ */
+export async function getNbaCurrentTeams(gameDate: string): Promise<CurrentTeam[]> {
+  const result = await db.execute(sql`
+    SELECT DISTINCT ON (espn_athlete_id) espn_athlete_id, player, team, game_date
+    FROM nba_box_score_players
+    WHERE game_date < ${gameDate}::date AND game_date >= ${gameDate}::date - 200 AND team IS NOT NULL
+    ORDER BY espn_athlete_id, game_date DESC, id DESC`);
+  return (result.rows as Record<string, unknown>[]).map((r) => ({
+    athleteId: String(r.espn_athlete_id),
+    name: String(r.player),
+    team: String(r.team),
+    gameDate: day(r.game_date),
   }));
 }
 

@@ -233,7 +233,7 @@ P(over) is de-vigged only from books at that line. Floor/ceiling (P10/P90) and 2
 the ladder (`web/src/lib/nba-points-ladder.ts`): over-only rungs de-vigged by the same book's
 main-line overround (leaves longshot margin, so top-end chances read slightly high), median across
 books, forced non-increasing, never extrapolated past the first or last rung. It is the market's number, unvalidated, and
-independent of `dk_players` (no slate needed). Last season's PPG/team come from `nba_player_stats` 2025-26.
+independent of `dk_players` (no slate needed). Last season's PPG comes from `nba_player_stats` 2025-26. Team (since 2026-10-31) is the one the player played for in his latest ESPN box-score game before the slate date (`getNbaCurrentTeams`); last season's team is used, marked "prior season", only for a player with no game yet, and a latest team not in tonight's game shows no team rather than a stale one.
 **Scheduled since 2026-10-21:** `/api/cron/dispatch` job `nba-points-props` fires
 `capture_nba_points_props.yml` at 15:07 and 22:07 UTC (11:07 AM and 6:07 PM ET),
 October through June, blank date (today ET) and a 40-credit ceiling (2 per game, so a

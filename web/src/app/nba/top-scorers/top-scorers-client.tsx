@@ -294,7 +294,7 @@ export function TopScorersClient({
                             )}
                           </div>
                           <div className="mt-0.5 font-mono text-xs text-slate-400">
-                            {s.teamAbbrev ? `${s.teamAbbrev} (prior season) · vs ${s.opponentAbbrev ?? s.opponent}` : `${gameName.get(s.eventId)} · current team unverified`} · {tip(s.commenceTime)}
+                            {s.teamAbbrev ? `${s.teamAbbrev}${s.teamSource === "prior" ? " (prior season)" : ""} · vs ${s.opponentAbbrev ?? s.opponent}` : `${gameName.get(s.eventId)} · team unknown`} · {tip(s.commenceTime)}
                           </div>
                         </td>
                         <td className="border-t border-slate-800 px-3 text-right font-mono text-base font-semibold text-white">{one(s.line)}</td>
@@ -319,7 +319,7 @@ export function TopScorersClient({
                           {s.vsLastSeason == null ? "-" : signed(s.vsLastSeason)}
                         </td>
                         <td className="border-t border-slate-800 px-3 text-right font-mono text-slate-300">{s.books.length}</td>
-                        <td className="border-t border-slate-800 px-3 text-right font-mono text-slate-300" title="Slate rank / rank among prior-season team matches; current roster unverified">
+                        <td className="border-t border-slate-800 px-3 text-right font-mono text-slate-300" title="Slate rank / rank on his team in this game">
                           {s.rank} / {s.teamRank ?? "-"}
                         </td>
                       </tr>
@@ -329,7 +329,7 @@ export function TopScorersClient({
               </tbody>
             </table>
             <p className="mt-2 font-mono text-[11px] text-slate-500">
-              Click a row for every book&apos;s line and price and the ladder&apos;s chances. Rank = slate / prior-season team matches. Current team and availability are unverified. 25+ / 30+ / 40+ and
+              Click a row for every book&apos;s line and price and the ladder&apos;s chances. Rank = slate / on his team. Team is from his latest game this season; &quot;prior season&quot; means he has not played yet. Availability is unverified. 25+ / 30+ / 40+ and
               floor–ceiling come from the alternate points ladder; &quot;-&quot; means no ladder or a threshold past its last rung.
             </p>
           </div>
