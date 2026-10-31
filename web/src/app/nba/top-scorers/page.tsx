@@ -145,7 +145,7 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
       <section className="space-y-1 text-xs text-muted-foreground">
         <p>
           Line is the points line most books quote. A points line is the books&apos; median outcome, so a player scores above
-          it about half the time. Floor, ceiling, 25+ and 30+ come from the books&apos; alternate points ladder (&quot;20+ points&quot;
+          it about half the time. Floor, ceiling, 25+, 30+ and 40+ come from the books&apos; alternate points ladder (&quot;20+ points&quot;
           and so on): floor is the score he beats 90% of the time, ceiling the score he beats 10% of the time. Over-only rungs
           are de-vigged with each book&apos;s main-line margin, which does not establish fair long-shot probabilities. High-end chances may be overstated. Without a ladder the bar shows the spread of main lines across books instead.
         </p>

@@ -53,13 +53,14 @@ function positionStyle(pos: string | null) {
   return { badge: "border-slate-500! text-slate-400", stripe: "bg-slate-600" };
 }
 
-type SortKey = "line" | "ceiling" | "p25" | "p30" | "ppg" | "delta" | "books" | "rank";
+type SortKey = "line" | "ceiling" | "p25" | "p30" | "p40" | "ppg" | "delta" | "books" | "rank";
 
 const SORTERS: Record<SortKey, (r: ScorerRow) => number> = {
   line: (r) => r.line,
   ceiling: (r) => r.distribution?.ceiling ?? -1,
   p25: (r) => r.distribution?.atLeast[25] ?? -1,
   p30: (r) => r.distribution?.atLeast[30] ?? -1,
+  p40: (r) => r.distribution?.atLeast[40] ?? -1,
   ppg: (r) => r.lastSeasonPpg ?? -1,
   delta: (r) => r.vsLastSeason ?? -999,
   books: (r) => r.books.length,
@@ -252,7 +253,7 @@ export function TopScorersClient({
             </div>
           </div>
           <div className="overflow-x-auto px-4 pb-4">
-            <table className="w-full min-w-[60rem] border-separate border-spacing-0 overflow-hidden rounded-lg border border-slate-800 text-sm">
+            <table className="w-full min-w-[64rem] border-separate border-spacing-0 overflow-hidden rounded-lg border border-slate-800 text-sm">
               <thead className="bg-[#111b2d] font-mono text-[11px] text-slate-400">
                 <tr>
                   <th className="px-3 py-3 text-left font-medium uppercase tracking-wider">Player</th>
@@ -260,6 +261,7 @@ export function TopScorersClient({
                   {header("ceiling", "Floor – Ceiling", "text-left")}
                   {header("p25", "25+")}
                   {header("p30", "30+")}
+                  {header("p40", "40+")}
                   {header("ppg", `${lastSeason} reg. PPG`)}
                   {header("delta", "vs PPG")}
                   {header("books", "Books")}
@@ -305,6 +307,10 @@ export function TopScorersClient({
                           {pct(s.distribution?.atLeast[30] ?? null)}
                           <MiniBar value={s.distribution?.atLeast[30] ?? null} max={1} tone="bg-orange-400" />
                         </td>
+                        <td className="border-t border-slate-800 px-3 text-right font-mono text-rose-300">
+                          {pct(s.distribution?.atLeast[40] ?? null)}
+                          <MiniBar value={s.distribution?.atLeast[40] ?? null} max={1} tone="bg-rose-400" />
+                        </td>
                         <td className="border-t border-slate-800 px-3 text-right font-mono text-sky-300">
                           {s.lastSeasonPpg == null ? <span className="text-slate-500">-</span> : one(s.lastSeasonPpg)}
                           <MiniBar value={s.lastSeasonPpg} max={maxPpg} tone="bg-sky-400" />
@@ -323,7 +329,7 @@ export function TopScorersClient({
               </tbody>
             </table>
             <p className="mt-2 font-mono text-[11px] text-slate-500">
-              Click a row for every book&apos;s line and price and the ladder&apos;s chances. Rank = slate / prior-season team matches. Current team and availability are unverified. 25+ / 30+ and
+              Click a row for every book&apos;s line and price and the ladder&apos;s chances. Rank = slate / prior-season team matches. Current team and availability are unverified. 25+ / 30+ / 40+ and
               floor–ceiling come from the alternate points ladder; &quot;-&quot; means no ladder or a threshold past its last rung.
             </p>
           </div>
