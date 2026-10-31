@@ -47,3 +47,28 @@ export async function getBoomTrioDays(): Promise<{ snapshot: BoomSnapshot; rows:
     throw error;
   }
 }
+
+export type SavedBoomLineup = {
+  id: string; gameDate: string; createdAt: string; lockAt: string; selected: string | null; requested: number; maxDrop: number;
+  baseline: string[][]; adjusted: string[][];
+};
+
+/** Saved boom-lineup comparisons (nba_boom_lineup_records), newest first. Empty before the first save creates the table. */
+export async function getSavedBoomLineups(limit = 100): Promise<SavedBoomLineup[]> {
+  try {
+    const result = await db.execute(sql`
+      SELECT id, game_date::text AS game_date, created_at, lock_at, payload->'settings' AS settings,
+        (SELECT jsonb_agg(t->'ids') FROM jsonb_array_elements(payload->'baseline') t) AS baseline,
+        (SELECT jsonb_agg(t->'ids') FROM jsonb_array_elements(payload->'adjusted') t) AS adjusted
+      FROM nba_boom_lineup_records ORDER BY created_at DESC LIMIT ${limit}`);
+    return (result.rows as Record<string, unknown>[]).map((r) => {
+      const s = (r.settings ?? {}) as { selected?: string | null; requested?: number; maxDrop?: number };
+      return { id: String(r.id), gameDate: String(r.game_date), createdAt: String(r.created_at), lockAt: String(r.lock_at),
+        selected: s.selected ?? null, requested: Number(s.requested ?? 0), maxDrop: Number(s.maxDrop ?? 0),
+        baseline: (r.baseline as string[][] | null) ?? [], adjusted: (r.adjusted as string[][] | null) ?? [] };
+    });
+  } catch (error) {
+    if (/relation .* does not exist/i.test(String(error))) return [];
+    throw error;
+  }
+}

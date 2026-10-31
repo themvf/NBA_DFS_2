@@ -13,6 +13,7 @@ let ensureOddsSignalTablesPromise: Promise<void> | null = null;
 let ensureOddsHistoryTablesPromise: Promise<void> | null = null;
 let ensureAnalyticsColumnsPromise: Promise<void> | null = null;
 let ensureVideoAnalysisTablesPromise: Promise<void> | null = null;
+let ensureNbaBoomLineupTablesPromise: Promise<void> | null = null;
 let ensureYoutubePickChannelsTablePromise: Promise<void> | null = null;
 let ensureOddsApiPropFetchLogPromise: Promise<void> | null = null;
 let ensureMlbGamePredictionTablesPromise: Promise<void> | null = null;
@@ -1774,4 +1775,37 @@ export async function ensureFantasyFootballTables(): Promise<void> {
     });
   }
   await ensureFantasyFootballTablesPromise;
+}
+
+/**
+ * Saved NBA boom-lineup comparisons (`nba-boom-exposure-v1`, /nba/top-scorers).
+ * Web-owned and append-only: one row per distinct (snapshot, settings), inserted
+ * only while the database clock is before the slate's first tip; nothing updates
+ * or deletes a row. Graded on /nba/boom-trios from the ghost grades.
+ */
+const NBA_BOOM_LINEUP_DDLS = [
+  `CREATE TABLE IF NOT EXISTS nba_boom_lineup_records (
+      id TEXT PRIMARY KEY,
+      game_date DATE NOT NULL,
+      snapshot_sha256 TEXT NOT NULL,
+      policy TEXT NOT NULL,
+      lock_at TIMESTAMPTZ NOT NULL,
+      payload JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
+    )`,
+  `CREATE INDEX IF NOT EXISTS idx_nba_boom_lineup_records_date ON nba_boom_lineup_records(game_date DESC, created_at)`,
+];
+
+export async function ensureNbaBoomLineupTables(): Promise<void> {
+  if (!ensureNbaBoomLineupTablesPromise) {
+    ensureNbaBoomLineupTablesPromise = (async () => {
+      for (const ddl of NBA_BOOM_LINEUP_DDLS) {
+        await db.execute(sql.raw(ddl));
+      }
+    })().catch((error) => {
+      ensureNbaBoomLineupTablesPromise = null;
+      throw error;
+    });
+  }
+  await ensureNbaBoomLineupTablesPromise;
 }

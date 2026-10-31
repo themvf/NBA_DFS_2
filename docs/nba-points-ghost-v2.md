@@ -8,6 +8,22 @@ A separate local Codex follow-up, `track-nba-ghost-projections`, is active daily
 
 Today is October 24, 2026. The common first tip was 6 PM Eastern. V2 was implemented afterward; today's v2 reconstruction is retrospective and excluded from the prospective trial. Do not backdate it or combine it with the original genuinely pregame v1 file.
 
+## 2026-10-31: running in the cloud
+
+The Codex session that ran the local follow-ups was turned off and its branch
+was merged to main. The freeze and grade now run from `/api/cron/dispatch`
+(jobs `nba-ghost-freeze` 15:37 UTC and `nba-ghost-grade` 11:37 UTC,
+October-June) dispatching `nba_points_ghost.yml`; its own GitHub crons (16:50
+and 12:37 UTC) are a fallback only. `nba_ghost_snapshots` and
+`nba_ghost_grades` are on `/health` (72 h). The ghost code grades with
+`research/nba_points_research_grade.py` (`nba-points-research-grade-v1`), a
+copy of Codex's revised grader; the live nightly grade
+`model/nba_points_calibration.py` stays `nba-points-grade-v1`, because the
+registered ladder-v2 tail test reads it and reserves the v2 name. The local
+Codex automations (`track-nba-ghost-projections`, `nba-morning-after-review`)
+overlap the cloud job and should stay off; v3 and the daily HTML reviews were
+local-only and are not scheduled.
+
 ## Acceptance criteria
 
 1. Combine canonical NBA season logs with newer ESPN final boxes, using only prior dates and source records fetched before the ghost decision cutoff. Establish regular-season classification from an ESPN event's explicit `season.type=2`, with timestamped classification evidence. A calendar date alone is insufficient.

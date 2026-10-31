@@ -297,7 +297,13 @@ strongest rising-shot-volume player ((FGA + 0.44 FTA) last 3 minus last 20, at l
 projected points; aggressive = keep #1, best boom pair within 6. The boom score only ranks replacements.
 Graded from `nba_ghost_grades` (DNP = incomplete, never 0); `python -m research.nba_boom_trios report`.
 Counts from snapshots created after 2026-10-31 19:30 UTC; review after 30 counted dates. Live page `/nba/boom-trios` (web port fixture-pinned to the Python). Its inputs come
-from the ghost v2 snapshot and grade routine, which still runs as a local Codex follow-up, not a deployed job.
+from the ghost v2 snapshot and grade (`nba_points_ghost.yml`, dispatcher jobs `nba-ghost-freeze` 15:37 UTC and
+`nba-ghost-grade` 11:37 UTC since 2026-10-31, when the Codex session that ran them locally was turned off and its
+branch merged; see docs/nba-points-ghost-v2.md). The ghost research grades with
+`research/nba_points_research_grade.py` (`nba-points-research-grade-v1`); the live nightly grade stays
+`model/nba_points_calibration.py` `nba-points-grade-v1`, which the registered ladder-v2 tail test reads (it reserves
+the v2 name). The Boom lineups builder on `/nba/top-scorers` (`nba-boom-exposure-v1`) uses the same pool and boom
+score; saves go to `nba_boom_lineup_records` (insert refused after the first tip) and are graded on `/nba/boom-trios`.
 
 ## Data Refresh Workflow
 

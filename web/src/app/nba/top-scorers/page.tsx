@@ -26,6 +26,8 @@ import {
   type TailSeries,
 } from "@/lib/nba-points-calibration-charts";
 import { CalibrationCharts } from "./calibration-charts";
+import { getBoomBoard } from "@/db/nba-boom-board";
+import { BoomLineups } from "./boom-lineups-client";
 import { TopScorersClient } from "./top-scorers-client";
 
 export const metadata: Metadata = {
@@ -77,6 +79,7 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
   const tails = tailTrend(gradedRows);
   const skill = skillTable(gradedRows);
   const shortNights = shortMinutesSummary(gradedRows);
+  const boomBoard = await getBoomBoard(date);
   const { scorers, games } = buildBoard(rows, lastSeason, teams, ladderRows);
   const lastCapture = games.reduce<string | null>((m, g) => (m == null || g.capturedAt > m ? g.capturedAt : m), null);
   const bookCount = new Set(scorers.flatMap((s) => s.books.map((b) => b.book))).size;
@@ -124,6 +127,8 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
       ) : (
         <TopScorersClient scorers={scorers} games={games} pulled={pulled} lastSeason={LAST_SEASON} />
       )}
+
+      <BoomLineups key={date} board={boomBoard} />
 
       <CalibrationPanel
         all={calibration}

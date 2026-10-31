@@ -45,7 +45,7 @@ export function boomScore(c: BoomCandidate): number | null {
 }
 
 /** Mirrors nba-leader-evaluation-v1: one quote per player, a finite line, not reported Out; line descending, then key, then event. */
-function pool(candidates: BoomCandidate[]): BoomCandidate[] {
+export function boomPool(candidates: BoomCandidate[]): BoomCandidate[] {
   const counts = new Map<string, number>();
   for (const c of candidates) counts.set(c.player_key, (counts.get(c.player_key) ?? 0) + 1);
   return candidates
@@ -53,7 +53,7 @@ function pool(candidates: BoomCandidate[]): BoomCandidate[] {
     .sort((a, b) => line(b) - line(a) || cmp(a.player_key, b.player_key) || cmp(String(a.event_id), String(b.event_id)));
 }
 
-function shots(c: BoomCandidate): [number, number] | null {
+export function shots(c: BoomCandidate): [number, number] | null {
   const f = c.features;
   if (!f || ![f.fga3, f.fta3, f.shots_growth, f.ft_growth].every(finite)) return null;
   const recent = (f.fga3 as number) + FT_WEIGHT * (f.fta3 as number);
@@ -78,7 +78,7 @@ export function countsTowardRule(s: Pick<BoomSnapshot, "mode" | "created_at">): 
 }
 
 export function selectBoomTrios(snapshot: BoomSnapshot): BoomSelection {
-  const ranked = pool(snapshot.candidates);
+  const ranked = boomPool(snapshot.candidates);
   const out: BoomSelection = { version: BOOM_TRIOS_VERSION, game_date: snapshot.game_date, snapshot_sha256: snapshot.sha256 ?? null,
     snapshot_created_at: snapshot.created_at ?? null, snapshot_mode: snapshot.mode ?? null, counts: countsTowardRule(snapshot),
     pool: ranked.length, baseline: null, boom: null, aggressive: null };
