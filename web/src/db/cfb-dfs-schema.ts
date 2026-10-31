@@ -42,6 +42,9 @@ const CFB_DFS_DDLS = [
     entry_count INTEGER NOT NULL, winning_score DOUBLE PRECISION, median_score DOUBLE PRECISION,
     score_curve JSONB NOT NULL, imported_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
   `CREATE INDEX IF NOT EXISTS idx_cfb_dfs_contests_upload ON cfb_dfs_contests (upload_id, imported_at DESC)`,
+  `ALTER TABLE cfb_dfs_slates ADD COLUMN IF NOT EXISTS mode TEXT NOT NULL DEFAULT 'classic'`,
+  `ALTER TABLE cfb_dfs_slate_players ADD COLUMN IF NOT EXISTS captain_id BIGINT`,
+  `ALTER TABLE cfb_dfs_slate_players ADD COLUMN IF NOT EXISTS captain_salary INTEGER`,
   // Live DraftKings status sits beside the salary-file status; the file's value is kept.
   `ALTER TABLE cfb_dfs_slate_players ADD COLUMN IF NOT EXISTS live_status TEXT`,
   `ALTER TABLE cfb_dfs_slates ADD COLUMN IF NOT EXISTS dk_draft_group_id BIGINT`,

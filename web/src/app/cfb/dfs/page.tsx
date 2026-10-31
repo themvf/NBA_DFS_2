@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "CFB DFS",
-  description: "DraftKings College Football Classic: projections from box scores and a lineup builder.",
+  description: "DraftKings College Football Classic and Showdown: projections from box scores and a lineup builder.",
 };
 
 /** College football DFS. Separate from the NFL workspace by design: its own rules, data and tables. */

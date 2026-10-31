@@ -7874,6 +7874,13 @@ DraftKings College Football Classic lives apart from NFL DFS by design: route
 - **Projections are as of kickoff**: history before the slate's week, team PPG
   from games before its first kickoff (re-projecting a played slate once moved
   77 players by counting its own scores).
+- **Showdown (`cfb-dk-modes-ilp-v2`, 2026-10-31)**: one game, Captain + 5 UTIL,
+  Captain costs and scores 1.5x, both teams required. The mode is chosen before
+  upload and stored on `cfb_dfs_slates.mode`; each athlete keeps one base row
+  with its Captain draftable ID/salary beside it. Lobby contest type 95. Kickers
+  are projected 0 by the baseline, so Generate refuses until each one has a
+  manual estimate or is excluded. Results grading is Classic only. Details and
+  what is still unverified: [`docs/cfb-dfs-modes.md`](docs/cfb-dfs-modes.md).
 
 ---
 

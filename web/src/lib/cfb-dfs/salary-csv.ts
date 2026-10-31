@@ -1,17 +1,18 @@
 /**
- * DraftKings College Football Classic salary file.
- *
- * Separate from the NFL reader on purpose: CFB Classic has no TE, K or DST,
- * adds a SUPER FLEX slot (DK writes it "S-FLEX"), and must draw from at least
- * two games. A file that does not look like CFB Classic is rejected rather
- * than coerced, so an NFL file cannot land here by mistake.
+ * DraftKings CFB salary import. Classic requires S-FLEX eligibility and two
+ * games; Showdown pairs CPT with FLEX/UTIL draftables from exactly one game.
+ * The CSV does not reliably identify the sport; the user must supply CFB.
  */
 
-export type CfbPosition = "QB" | "RB" | "WR";
+export type CfbMode = "classic" | "showdown";
+
+export type CfbPosition = "QB" | "RB" | "WR" | "K";
 export const CFB_POSITIONS: readonly CfbPosition[] = ["QB", "RB", "WR"];
 
 export interface CfbSlatePlayer {
   dkId: number;
+  captainId?: number;
+  captainSalary?: number;
   name: string;
   position: CfbPosition;
   rosterPositions: string[];
@@ -27,6 +28,7 @@ export interface CfbSlatePlayer {
 }
 
 export interface ParsedCfbSlate {
+  mode: CfbMode;
   players: CfbSlatePlayer[];
   games: Array<{ game: string; kickoff: string | null }>;
   firstKickoff: string | null;
@@ -72,7 +74,7 @@ export function parseCfbKickoff(gameInfo: string): string | null {
   return new Date(guess + (guess - asNy)).toISOString();
 }
 
-export function parseCfbSalaryCsv(text: string): ParsedCfbSlate {
+export function parseCfbSalaryCsv(text: string, mode: CfbMode = "classic"): ParsedCfbSlate {
   const lines = text.replace(/^﻿/, "").split(/\r?\n/).filter((l) => l.trim());
   if (lines.length < 2) throw new Error("The salary file is empty.");
   const header = splitCsvLine(lines[0]).map((h) => h.trim());
@@ -85,10 +87,11 @@ export function parseCfbSalaryCsv(text: string): ParsedCfbSlate {
     const row = splitCsvLine(line);
     const position = col(row, "Position");
     const rosterPositions = col(row, "Roster Position").split("/").map((s) => s.trim()).filter(Boolean);
-    if (!CFB_POSITIONS.includes(position as CfbPosition)) {
+    if (!CFB_POSITIONS.includes(position as CfbPosition) && !(mode === "showdown" && position === "K")) {
       throw new Error(`"${col(row, "Name")}" is listed at ${position}. CFB Classic has only QB, RB and WR; is this an NFL file?`);
     }
-    if (!rosterPositions.includes("S-FLEX")) {
+    if (mode === "showdown" && (rosterPositions.length !== 1 || !["CPT", "FLEX", "UTIL"].includes(rosterPositions[0]))) throw new Error("Showdown requires CPT and FLEX/UTIL salary rows.");
+    if (mode === "classic" && !rosterPositions.includes("S-FLEX")) {
       throw new Error(`"${col(row, "Name")}" has no S-FLEX slot. This does not look like a DraftKings CFB Classic file.`);
     }
     const gameInfo = col(row, "Game Info");
@@ -98,7 +101,7 @@ export function parseCfbSalaryCsv(text: string): ParsedCfbSlate {
     if (!away || !home || (team !== away && team !== home)) throw new Error(`Could not read the game for "${col(row, "Name")}": ${gameInfo}`);
     const salary = Number(col(row, "Salary"));
     const dkId = Number(col(row, "ID"));
-    if (!Number.isFinite(salary) || !Number.isInteger(dkId)) throw new Error(`Bad salary or ID for "${col(row, "Name")}".`);
+    if (!Number.isInteger(salary) || salary <= 0 || !Number.isSafeInteger(dkId) || dkId <= 0) throw new Error(`Bad salary or ID for "${col(row, "Name")}".`);
     players.push({
       dkId, name: col(row, "Name"), position: position as CfbPosition, rosterPositions, salary, team,
       opponent: team === away ? home : away, game, kickoff: parseCfbKickoff(gameInfo),
@@ -112,8 +115,25 @@ export function parseCfbSalaryCsv(text: string): ParsedCfbSlate {
   }
   const byGame = new Map<string, string | null>();
   for (const p of players) if (!byGame.has(p.game)) byGame.set(p.game, p.kickoff);
-  if (byGame.size < 2) throw new Error("CFB Classic needs at least two games; this file has one.");
+  if (mode === "showdown" && byGame.size !== 1) throw new Error("Showdown needs exactly one game.");
+  if (mode === "classic" && byGame.size < 2) throw new Error("CFB Classic needs at least two games; this file has one.");
   const games = [...byGame].map(([game, kickoff]) => ({ game, kickoff })).sort((a, b) => (a.kickoff ?? "").localeCompare(b.kickoff ?? ""));
   const kicks = games.map((g) => g.kickoff).filter((k): k is string => k != null).sort();
-  return { players, games, firstKickoff: kicks[0] ?? null };
+  if (mode === "showdown") {
+    // Keep one base player per athlete; captain IDs are separate DK draftables.
+    const key = (p: CfbSlatePlayer) => `${p.team}|${p.name.trim().toLowerCase()}`;
+    const base = players.filter((p) => p.rosterPositions[0] !== "CPT");
+    const captains = players.filter((p) => p.rosterPositions[0] === "CPT");
+    if (base.length < 6 || new Set(base.map(key)).size !== base.length || new Set(captains.map(key)).size !== captains.length)
+      throw new Error("Showdown needs six distinct players and unambiguous Captain/FLEX pairs.");
+    if (base.length !== captains.length) throw new Error("Every Showdown player needs both a Captain and FLEX row.");
+    for (const p of base) {
+      const c = captains.find((c) => key(c) === key(p));
+      if (!c || c.position !== p.position || c.kickoff !== p.kickoff || c.salary !== p.salary * 1.5)
+        throw new Error(`Invalid Captain pair or 1.5x salary for ${p.name}.`);
+      p.captainId = c.dkId; p.captainSalary = c.salary;
+    }
+    return { mode, players: base, games, firstKickoff: kicks[0] ?? null };
+  }
+  return { mode, players, games, firstKickoff: kicks[0] ?? null };
 }

@@ -28,9 +28,9 @@ export const UNAVAILABLE = new Set(["O", "OUT", "D", "DOUBTFUL", "IR"]);
 export interface LobbyGroup { draftGroupId: number; contestTypeId: number; start: string | null; gameCount: number | null; suffix: string }
 export interface PoolPlayer { key: string; team: string; status: string; name: string; salary: number | null; disabled: boolean }
 
-export function parseLobby(payload: unknown): LobbyGroup[] {
+export function parseLobby(payload: unknown, mode: "classic" | "showdown" = "classic"): LobbyGroup[] {
   const groups = ((payload as { DraftGroups?: Array<Record<string, unknown>> })?.DraftGroups ?? []);
-  return groups.filter((g) => Number(g.ContestTypeId) === CFB_CLASSIC_CONTEST_TYPE).map((g) => ({
+  return groups.filter((g) => Number(g.ContestTypeId) === (mode === "showdown" ? 95 : CFB_CLASSIC_CONTEST_TYPE)).map((g) => ({
     draftGroupId: Number(g.DraftGroupId), contestTypeId: Number(g.ContestTypeId),
     start: g.StartDate ? String(g.StartDate).replace(/\.(\d{3})\d*Z$/, ".$1Z") : null,
     gameCount: g.GameCount == null ? null : Number(g.GameCount), suffix: String(g.ContestStartTimeSuffix ?? "").trim(),

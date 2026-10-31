@@ -15,7 +15,7 @@
 import { cfbRandom } from "./random";
 import type { CfbPosition } from "./salary-csv";
 import {
-  CFB_OPTIMIZER_VERSION, CFB_ROSTER_SIZE, CFB_SALARY_CAP, CFB_SLOTS, cfbLineupProblems,
+  CFB_SHOWDOWN_SLOTS, cfbAssignedLineupProblems, cfbSlotId, CFB_OPTIMIZER_VERSION, CFB_ROSTER_SIZE, CFB_SALARY_CAP, CFB_SLOTS,
   type CfbLineup, type CfbLineupSlot, type CfbOptimizerResult, type CfbOptimizerSettings, type CfbPoolPlayer,
 } from "./settings";
 
@@ -48,9 +48,18 @@ export function assignCfbSlots(players: CfbPoolPlayer[]): CfbLineupSlot[] {
 export function optimizeCfbLineups(pool: readonly CfbPoolPlayer[], settings: CfbOptimizerSettings): CfbOptimizerResult {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const solver = require("javascript-lp-solver") as { Solve: (model: SolverModel) => Record<string, number | boolean> };
+  const showdown = settings.mode === "showdown";
+  const size = showdown ? 6 : CFB_ROSTER_SIZE;
+  if (!Number.isInteger(settings.nLineups) || settings.nLineups < 1 || settings.nLineups > 150) throw new Error("Lineups must be 1-150.");
+  if (!Number.isInteger(settings.minUnique) || settings.minUnique < 1 || settings.minUnique >= size) throw new Error(`Minimum unique must be 1-${size - 1}.`);
+  if (!Number.isFinite(settings.minSalary) || settings.minSalary < 0 || settings.minSalary > CFB_SALARY_CAP) throw new Error("Salary floor must be between 0 and 50,000.");
+  if (!Number.isFinite(settings.maxExposure) || settings.maxExposure <= 0 || settings.maxExposure > 1 || Object.values(settings.maxExposureById).some((n) => !Number.isFinite(n) || n < 0 || n > 100)) throw new Error("Invalid exposure limit.");
+  if (!Number.isFinite(settings.randomness) || settings.randomness < 0 || settings.randomness > 1) throw new Error("Randomness must be between 0 and 100%.");
   const excluded = new Set(settings.excludedIds);
   const locked = new Set(settings.lockedIds.filter((id) => !excluded.has(id)));
   const players = pool.filter((p) => !excluded.has(p.dkId) && (p.proj > 0 || locked.has(p.dkId)));
+  if (settings.lockedIds.some((id) => excluded.has(id) || !players.some((p) => p.dkId === id))) throw new Error("A locked player is unavailable or excluded.");
+  if (showdown && (new Set(players.map((p) => p.game)).size !== 1 || players.some((p) => !p.captainId || p.captainSalary !== p.salary * 1.5))) throw new Error("Showdown requires one game with valid Captain salary rows.");
   const games = [...new Set(players.map((p) => p.game))];
   const random = cfbRandom(settings.seed);
   const cap = (p: CfbPoolPlayer) => {
@@ -68,16 +77,21 @@ export function optimizeCfbLineups(pool: readonly CfbPoolPlayer[], settings: Cfb
   for (let n = 0; n < settings.nLineups; n += 1) {
     const available = players.filter((p) => (counts.get(p.dkId) ?? 0) < cap(p));
     const constraints: SolverModel["constraints"] = {
-      roster: { equal: CFB_ROSTER_SIZE }, salary: { max: CFB_SALARY_CAP, min: settings.minSalary },
+      roster: { equal: size }, salary: { max: CFB_SALARY_CAP, min: settings.minSalary },
       qb: settings.requireTwoQbs ? { equal: 2 } : { min: 1, max: 2 }, rb: { min: 2 }, wr: { min: 3 },
     };
-    for (const g of games) constraints[`game_${g}`] = { max: CFB_ROSTER_SIZE - 1 };
+    if (showdown) {
+      delete constraints.qb; delete constraints.rb; delete constraints.wr;
+      constraints.captain = { equal: 1 };
+      for (const team of new Set(players.map((p) => p.team))) constraints[`team_${team}`] = { min: 1, max: 5 };
+      for (const p of available) constraints[`identity_${p.dkId}`] = { max: 1 };
+    } else for (const g of games) constraints[`game_${g}`] = { max: size - 1 };
     for (const id of locked) constraints[`lock_${id}`] = { equal: 1 };
     for (const q of available.filter((p) => p.position === "QB")) {
       if (settings.stackQb) constraints[`stack_${q.dkId}`] = { min: 0 };
       if (settings.bringBack) constraints[`bring_${q.dkId}`] = { min: 0 };
     }
-    lineups.forEach((_, i) => { constraints[`prior_${i}`] = { max: CFB_ROSTER_SIZE - settings.minUnique }; });
+    lineups.forEach((_, i) => { constraints[`prior_${i}`] = { max: size - settings.minUnique }; });
     const variables: SolverModel["variables"] = {};
     const binaries: SolverModel["binaries"] = {};
     for (const p of available) {
@@ -93,7 +107,7 @@ export function optimizeCfbLineups(pool: readonly CfbPoolPlayer[], settings: Cfb
           if (p.dkId === q.dkId) {
             if (settings.stackQb) v[`stack_${q.dkId}`] = -1;
             if (settings.bringBack) v[`bring_${q.dkId}`] = -1;
-          } else if (p.position !== "QB") {
+          } else if (p.position === "RB" || p.position === "WR") {
             if (settings.stackQb && p.team === q.team) v[`stack_${q.dkId}`] = 1;
             if (settings.bringBack && p.game === q.game && p.team !== q.team) v[`bring_${q.dkId}`] = 1;
           }
@@ -102,21 +116,30 @@ export function optimizeCfbLineups(pool: readonly CfbPoolPlayer[], settings: Cfb
       lineups.forEach((lineup, i) => { if (lineup.slots.some((s) => s.player.dkId === p.dkId)) v[`prior_${i}`] = 1; });
       variables[`x_${p.dkId}`] = v;
       binaries[`x_${p.dkId}`] = 1;
+      if (showdown) {
+        v[`identity_${p.dkId}`] = 1; v[`team_${p.team}`] = 1;
+        variables[`c_${p.dkId}`] = { ...v, captain: 1, salary: p.captainSalary!, score: v.score * 1.5 };
+        binaries[`c_${p.dkId}`] = 1;
+      }
     }
     const solved = solver.Solve({ optimize: "score", opType: "max", constraints, variables, binaries });
     if (solved.feasible === false) {
       stoppedEarly = `Stopped at ${lineups.length} of ${settings.nLineups}: no further lineup satisfies the locks, exposure caps and uniqueness.`;
       break;
     }
-    const chosen = available.filter((p) => Number(solved[`x_${p.dkId}`] ?? 0) > 0.5);
-    const problems = cfbLineupProblems(chosen);
+    const chosen = available.filter((p) => Number(solved[`x_${p.dkId}`] ?? 0) + Number(solved[`c_${p.dkId}`] ?? 0) > 0.5);
+    const captain = showdown ? chosen.find((p) => Number(solved[`c_${p.dkId}`] ?? 0) > 0.5) : undefined;
+    const slots: CfbLineupSlot[] = showdown ? (captain ? [{ slot: "CPT", player: captain }, ...chosen.filter((p) => p !== captain).map((player): CfbLineupSlot => ({ slot: "FLEX", player }))] : []) : assignCfbSlots(chosen);
+    const lineup: CfbLineup = { lineupNumber: lineups.length + 1, slots,
+      salary: chosen.reduce((a, p) => a + (p === captain ? p.captainSalary! : p.salary), 0),
+      projection: Math.round(chosen.reduce((a, p) => a + p.proj * (p === captain ? 1.5 : 1), 0) * 100) / 100 };
+    const problems = cfbAssignedLineupProblems(lineup);
     if (problems.length) {
       stoppedEarly = `Stopped at ${lineups.length}: the solver returned an illegal lineup (${problems.join("; ")}).`;
       break;
     }
     for (const p of chosen) counts.set(p.dkId, (counts.get(p.dkId) ?? 0) + 1);
-    lineups.push({ lineupNumber: lineups.length + 1, slots: assignCfbSlots(chosen),
-      salary: chosen.reduce((a, p) => a + p.salary, 0), projection: Math.round(chosen.reduce((a, p) => a + p.proj, 0) * 100) / 100 });
+    lineups.push(lineup);
   }
   return { lineups, stoppedEarly, version: CFB_OPTIMIZER_VERSION };
 }
@@ -127,7 +150,7 @@ export function cfbBuildRuleProblems(players: CfbPoolPlayer[], settings: Pick<Cf
   const qbs = players.filter((p) => p.position === "QB");
   if (settings.requireTwoQbs && qbs.length !== 2) problems.push(`${qbs.length} QBs`);
   for (const q of qbs) {
-    const partners = players.filter((p) => p.position !== "QB");
+    const partners = players.filter((p) => p.position === "RB" || p.position === "WR");
     if (settings.stackQb && !partners.some((p) => p.team === q.team)) problems.push(`${q.name} has no teammate`);
     if (settings.bringBack && !partners.some((p) => p.game === q.game && p.team !== q.team)) problems.push(`${q.name} has no bring-back`);
   }
@@ -136,5 +159,10 @@ export function cfbBuildRuleProblems(players: CfbPoolPlayer[], settings: Pick<Cf
 
 /** DraftKings upload rows: one per lineup, IDs in slot order. */
 export function cfbUploadCsv(lineups: readonly CfbLineup[]): string {
-  return [CFB_SLOTS.join(","), ...lineups.map((l) => l.slots.map((s) => s.player.dkId).join(","))].join("\n") + "\n";
+  const slots = lineups[0]?.slots[0]?.slot === "CPT" ? CFB_SHOWDOWN_SLOTS : CFB_SLOTS;
+  for (const l of lineups) {
+    const problems = cfbAssignedLineupProblems(l);
+    if (problems.length || l.slots.map((s) => s.slot).join() !== slots.join()) throw new Error(`Illegal export: ${problems.join("; ") || "mixed modes"}`);
+  }
+  return [slots.map((s) => slots === CFB_SHOWDOWN_SLOTS && s === "FLEX" ? "UTIL" : s).join(","), ...lineups.map((l) => l.slots.map(cfbSlotId).join(","))].join("\n") + "\n";
 }
