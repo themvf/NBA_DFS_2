@@ -7885,8 +7885,16 @@ DraftKings College Football Classic lives apart from NFL DFS by design: route
   upload and stored on `cfb_dfs_slates.mode`; each athlete keeps one base row
   with its Captain draftable ID/salary beside it. Lobby contest type 95. Kickers
   are projected 0 by the baseline, so Generate refuses until each one has a
-  manual estimate or is excluded. Results grading is Classic only. Details and
+  manual estimate or is excluded. Details and
   what is still unverified: [`docs/cfb-dfs-modes.md`](docs/cfb-dfs-modes.md).
+- **Results grading, both modes (`cfb-dfs-results-v2`, 2026-10-31)**: upload
+  DraftKings' contest standings. In a Showdown file a player appears at UTIL
+  with his base score and at CPT with 1.5x it; base comes from the UTIL row
+  (CPT / 1.5 only if he was captained alone), never from whichever row is last.
+  The page scores saved lineups (Captain 1.5x), places them in the field, and
+  shows the perfect lineup: the builder's solver run on actual points, over
+  players the file scores (undrafted players have no score and are left out).
+  A Classic file on a Showdown slate, or the reverse, is refused.
 
 ---
 

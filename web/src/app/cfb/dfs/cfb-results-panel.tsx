@@ -45,6 +45,8 @@ export default function CfbResultsPanel({ uploadId, runId, runsVersion }: { uplo
 
   const loading = loadedFor !== key;
   const best = results?.sets.find((s) => s.runId === results.runId)?.best ?? null;
+  const showdown = results?.mode === "showdown";
+  const perfect = results?.perfect ?? null;
 
   return <section className="space-y-4 rounded-xl border-2 border-orange-200 bg-orange-50/40 p-4">
     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -68,12 +70,25 @@ export default function CfbResultsPanel({ uploadId, runId, runsVersion }: { uplo
     {!results && !loading ? <p className="text-sm text-slate-600">No contest imported for this slate yet.</p> : null}
 
     {results ? <>
-      <div className="grid gap-3 md:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-5">
         <Card label="Best lineup" value={fmt(best?.actual)} note={best ? `#${best.lineupNumber} · rank ${rankText(best.rank, best.exactRank)} of ${results.contest.entryCount.toLocaleString()}` : "no lineup could be scored"} />
+        <Card label="Perfect lineup" value={fmt(perfect?.actual)} note={perfect ? `best possible · ${perfect.actual > (results.contest.winningScore ?? Infinity) ? "beat" : "matched or trailed"} the winner` : "not available"} />
         <Card label="Field median" value={fmt(results.contest.medianScore)} note={`winner ${fmt(results.contest.winningScore)}`} />
         <Card label="Contest" value={results.contest.entryCount.toLocaleString()} note={`entries · ${results.contest.contestId}`} />
         <Card label="Lineup sets" value={String(results.sets.length)} note="scored below" />
       </div>
+
+      {perfect ? <Panel title="Perfect lineup" note={`The highest-scoring legal lineup from what each player actually scored, built by the same solver and roster rules as the builder${showdown ? " (Captain counts 1.5x)" : ""}. ${perfect.unscored ? `${perfect.unscored} slate players nobody drafted have no score in the file and were left out, so this is the best among players someone drafted.` : "Every slate player has a score in the file."}`}>
+        <table className="w-full text-left text-sm">
+          <thead className="text-xs uppercase text-slate-500"><tr><th className="p-2">Slot</th><th className="p-2">Player</th><th className="p-2">Team</th><th className="p-2 text-right">Salary</th><th className="p-2 text-right">Points</th></tr></thead>
+          <tbody>{perfect.lineup.slots.map((s, i) => <tr key={i} className="border-t">
+            <td className="p-2 font-semibold">{s.slot === "FLEX" && showdown ? "UTIL" : s.slot}</td><td className="p-2">{s.player.name}</td><td className="p-2 text-slate-600">{s.player.team}</td>
+            <td className="p-2 text-right">${(s.slot === "CPT" ? s.player.captainSalary ?? s.player.salary * 1.5 : s.player.salary).toLocaleString()}</td>
+            <td className="p-2 text-right font-semibold">{fmt(s.player.proj * (s.slot === "CPT" ? 1.5 : 1))}</td>
+          </tr>)}
+          <tr className="border-t font-bold"><td className="p-2" colSpan={3}>Total</td><td className="p-2 text-right">${perfect.lineup.salary.toLocaleString()}</td><td className="p-2 text-right">{fmt(perfect.actual)}</td></tr></tbody>
+        </table>
+      </Panel> : results.perfectNote ? <p className="rounded-lg border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900">{results.perfectNote}</p> : null}
 
       {results.sets.length ? <Panel title="Compare lineup sets" note="Every saved set for this slate, scored against this contest. Sets built from the same pool overlap, and one slate is a few games: this describes tonight, it does not rank the settings.">
         <table className="w-full text-left text-sm">
@@ -95,10 +110,10 @@ export default function CfbResultsPanel({ uploadId, runId, runsVersion }: { uplo
       {results.lineups.length ? <Panel title="Lineups in the loaded set" note="Rank is exact in the top 100 and estimated (~) below. A lineup with a player nobody in the contest drafted cannot be scored from this file.">
         <div className="max-h-96 overflow-auto"><table className="w-full text-left text-sm">
           <thead className="sticky top-0 bg-white text-xs uppercase text-slate-500"><tr>
-            <th className="p-2">#</th><th className="p-2">QBs</th><th className="p-2 text-right">Actual</th><th className="p-2 text-right">Projected</th><th className="p-2 text-right">Rank</th><th className="p-2 text-right">Beat</th>
+            <th className="p-2">#</th><th className="p-2">{showdown ? "Captain" : "QBs"}</th><th className="p-2 text-right">Actual</th><th className="p-2 text-right">Projected</th><th className="p-2 text-right">Rank</th><th className="p-2 text-right">Beat</th>
           </tr></thead>
           <tbody>{[...results.lineups].sort((a, b) => (b.actual ?? -1) - (a.actual ?? -1)).map((l) => <tr key={l.lineupNumber} className="border-t">
-            <td className="p-2">{l.lineupNumber}</td><td className="p-2">{l.qbs.join(" + ")}</td>
+            <td className="p-2">{l.lineupNumber}</td><td className="p-2">{showdown ? l.captain ?? "—" : l.qbs.join(" + ")}</td>
             <td className="p-2 text-right font-semibold">{l.actual == null ? <span className="text-amber-700" title={`Not in the file: ${l.missing.join(", ")}`}>unknown</span> : fmt(l.actual)}</td>
             <td className="p-2 text-right text-slate-500">{fmt(l.projected)}</td><td className="p-2 text-right">{rankText(l.rank, l.exactRank)}</td>
             <td className="p-2 text-right text-slate-500">{l.beatShare == null ? "—" : `${Math.round(l.beatShare * 100)}%`}</td>
@@ -106,12 +121,22 @@ export default function CfbResultsPanel({ uploadId, runId, runsVersion }: { uplo
         </table></div>
       </Panel> : null}
 
+      {showdown && results.captains.length ? <Panel title="Captains" note="Our Captains in the loaded set beside the field's most-captained players. Captain points are 1.5x the player's score.">
+        <table className="w-full max-w-3xl text-left text-sm">
+          <thead className="text-xs uppercase text-slate-500"><tr><th className="p-2">Player</th><th className="p-2 text-right">Our CPT</th><th className="p-2 text-right">Field CPT</th><th className="p-2 text-right">Scored</th><th className="p-2 text-right">As Captain</th></tr></thead>
+          <tbody>{results.captains.map((c) => <tr key={c.name} className="border-t">
+            <td className="p-2">{c.name}</td><td className="p-2 text-right">{fmt(c.ours)}%</td><td className="p-2 text-right">{c.field == null ? "—" : `${fmt(c.field)}%`}</td>
+            <td className="p-2 text-right">{fmt(c.fpts)}</td><td className="p-2 text-right font-semibold">{fmt(c.captainPoints)}</td>
+          </tr>)}</tbody>
+        </table>
+      </Panel> : null}
+
       <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="Field's most-drafted vs ours" note="Total % drafted across all slots, what each scored, and our exposure in the loaded set.">
+        <Panel title="Field's most-drafted vs ours" note={showdown ? "Total % drafted (Captain plus UTIL), the Captain share, what each scored, and our exposure in the loaded set." : "Total % drafted across all slots, what each scored, and our exposure in the loaded set."}>
           <table className="w-full text-left text-sm">
-            <thead className="text-xs uppercase text-slate-500"><tr><th className="p-2">Player</th><th className="p-2 text-right">Field</th><th className="p-2 text-right">Ours</th><th className="p-2 text-right">Scored</th></tr></thead>
+            <thead className="text-xs uppercase text-slate-500"><tr><th className="p-2">Player</th><th className="p-2 text-right">Field</th>{showdown ? <th className="p-2 text-right">CPT</th> : null}<th className="p-2 text-right">Ours</th><th className="p-2 text-right">Scored</th></tr></thead>
             <tbody>{results.fieldChalk.map((p) => <tr key={p.name} className="border-t">
-              <td className="p-2">{p.name}</td><td className="p-2 text-right">{fmt(p.field)}%</td>
+              <td className="p-2">{p.name}</td><td className="p-2 text-right">{fmt(p.field)}%</td>{showdown ? <td className="p-2 text-right">{p.captain == null ? "—" : `${fmt(p.captain)}%`}</td> : null}
               <td className={`p-2 text-right ${p.ours + 10 < p.field ? "text-red-700" : p.ours > p.field + 10 ? "text-emerald-700" : ""}`}>{fmt(p.ours)}%</td>
               <td className="p-2 text-right font-semibold">{fmt(p.fpts)}</td>
             </tr>)}</tbody>
