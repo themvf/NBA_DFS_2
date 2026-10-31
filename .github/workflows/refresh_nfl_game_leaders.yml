@@ -41,6 +41,18 @@ jobs:
       - name: Shadow roles-v3 beside the published requests (research only)
         continue-on-error: true
         run: python -m research.nfl_game_leaders_regime_roles shadow
+      # Grade the shadowed games on the Wednesday build only: it takes the new
+      # capture that holds last week's completed games. Blinded until the floors;
+      # the verdict file is written once and committed below.
+      - name: Grade roles-v3 against v2 (research only, Wednesdays)
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: |
+          if [ "$(date -u +%u)" = "3" ]; then
+            python -m research.nfl_game_leaders_regime_roles grade
+          else
+            echo "Not Wednesday (UTC); grade skipped."
+          fi
       - name: Commit only a changed, validated publication
         run: |
           git add -f web/src/data/game-leaders.json web/src/data/game-leaders-weeks
@@ -50,6 +62,7 @@ jobs:
           cat /tmp/sources.txt
           xargs -a /tmp/sources.txt git add -f
           git add -f artifacts/nfl-game-leaders/regime-roles-v1/shadow 2>/dev/null || true
+          git add -f artifacts/nfl-game-leaders/regime-roles-v1/grade-runs artifacts/nfl-game-leaders/regime-roles-v1/verdict.json 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No publication change"
             exit 0

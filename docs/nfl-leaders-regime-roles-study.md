@@ -103,3 +103,21 @@ Question 2 is weaker: Tuten's rise fits a slope of +0.077 share per game with
 SE 0.023 (t ≈ 3.3 on 3 df), and a single game's share at 27 carries has a
 sampling SE of 0.09 before game script, so a short half-life may buy variance
 and nothing else. Expect h to fit at 3–4 or ∞.
+
+## Amendment 1 (2026-10-31): the confirmation window starts at week 8
+
+The fit was frozen on 2026-10-18 before any week-7 kickoff, as registered, but
+the harness branch was not merged to main until 2026-10-31, so the shadow step
+never ran for week 7 or for Thursday of week 8 (CAR at GB, 2026-10-29). Nothing
+can be shadowed after kickoff (`grade_rows` excludes a shadow written after its
+game started), so those games are simply absent: the confirmation population is
+every game shadowed before kickoff from the week-8 Sunday games onward, through
+week 18. The fit, metrics, floors (60 affected team-games over 8 game weeks),
+guard and one-look rule are unchanged; `CONFIRMATION['first_week']` stays 7
+because no week-7 shadow exists to count. With about 8-12 affected team-games a
+week the floors are reached around week 15-16 rather than week 14-15.
+
+The grade now runs from `refresh_nfl_game_leaders.yml` on the Wednesday build,
+the first run of each week, which takes a new capture containing the previous
+week's completed games. Each grade run and the one-time verdict are committed
+with the publication so the one-look rule survives between runs.
