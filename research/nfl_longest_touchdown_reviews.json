@@ -11,6 +11,36 @@
    "yards": 17,
    "note": "Replay reversed the fumble ruling to a 17-yard Isaiah Likely touchdown (the PBP text's own final ruling). Not the game's longest: Jayden Daniels' verified 38-yard scramble is. Checked 2026-10-22 against nflverse PBP.",
    "resolved_at": "2026-10-22"
+  },
+  {
+   "game_id": "2026_07_NE_CHI",
+   "play_id": 1150,
+   "description": "(11:37) (Shotgun) 10-D.Maye scrambles right guard to CHI 1 for 6 yards (20-C.Phillips). New England challenged the short of the goal line ruling, and the play was REVERSED. (Shotgun) 10-D.Maye scrambles right guard for 7 yards, TOUCHDOWN.",
+   "ruling": "touchdown",
+   "scorer": "00-0039851",
+   "team": "NE",
+   "yards": 7,
+   "note": "Challenge reversed the short-of-the-goal-line spot to a 7-yard Drake Maye touchdown run. Not the game's longest (48-yard verified TD). Checked 2026-10-31 against nflverse PBP; the ruling is the play text's own final call after review.",
+   "resolved_at": "2026-10-31"
+  },
+  {
+   "game_id": "2026_07_CLE_TEN",
+   "play_id": 1285,
+   "description": "(11:24) (Shotgun) 20-T.Pollard up the middle for 4 yards, TOUCHDOWN. The Replay Official reviewed the runner broke the plane ruling, and the play was REVERSED. (Shotgun) 20-T.Pollard up the middle to CLE 1 for 3 yards (54-S.Williams; 97-D.Barnett).",
+   "ruling": "no_touchdown",
+   "note": "Replay reversed Tony Pollard's 4-yard touchdown to a 3-yard run to the CLE 1. Pollard's verified 36-yard TD stays the longest. Checked 2026-10-31 against nflverse PBP; the ruling is the play text's own final call after review.",
+   "resolved_at": "2026-10-31"
+  },
+  {
+   "game_id": "2026_07_KC_SEA",
+   "play_id": 1637,
+   "description": "(1:49) (Shotgun) 14-S.Darnold pass deep left to 11-J.Smith-Njigba pushed ob at KC 1 for 27 yards (5-M.Delane). The Replay Official reviewed the runner was out of bounds ruling, and the play was REVERSED. (Shotgun) 14-S.Darnold pass deep left to 11-J.Smith-Njigba for 28 yards, TOUCHDOWN.",
+   "ruling": "touchdown",
+   "scorer": "00-0038543",
+   "team": "SEA",
+   "yards": 28,
+   "note": "Replay reversed the out-of-bounds spot at the KC 1 to a 28-yard Jaxon Smith-Njigba touchdown catch. It is the game's longest TD (only other is 21 yards). Checked 2026-10-31 against nflverse PBP; the ruling is the play text's own final call after review.",
+   "resolved_at": "2026-10-31"
   }
  ]
 }

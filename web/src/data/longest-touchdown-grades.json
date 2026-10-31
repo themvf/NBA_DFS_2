@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "version": "nfl-longest-td-weekly-grade-v1",
- "updatedAt": "2026-10-29T19:27:45.418856+00:00",
+ "updatedAt": "2026-10-31T20:43:00.352088+00:00",
  "authority": "tracking_only_not_calibration",
  "weeks": [
   {
@@ -13,10 +13,10 @@
    "topExpected": 2.2580416666666667,
    "logLoss": 2.499357784107167,
    "baselineLogLoss": 2.6831387822992374,
-   "uniformLogLoss": 3.2583356122857166,
+   "uniformLogLoss": 3.258335612285717,
    "anyTdExpected": 57.358,
    "anyTdScored": 61,
-   "longTdExpected": 6.133000000000001,
+   "longTdExpected": 6.133,
    "longTdScored": 6,
    "games": [
     {
@@ -297,46 +297,34 @@
   {
    "season": 2026,
    "week": 7,
-   "graded": 11,
-   "needsReview": [
+   "graded": 14,
+   "needsReview": [],
+   "topHits": 4,
+   "topExpected": 1.9276666666666666,
+   "logLoss": 2.9957889729149074,
+   "baselineLogLoss": 2.8597457504460104,
+   "uniformLogLoss": 3.3241920013990884,
+   "anyTdExpected": 52.96999999999999,
+   "anyTdScored": 58,
+   "longTdExpected": 5.246000000000001,
+   "longTdScored": 7,
+   "games": [
     {
      "gameId": "2026_07_NE_CHI",
      "away": "NE",
      "home": "CHI",
-     "reason": "A touchdown-mentioning scrimmage play was excluded by verification; resolve it before scoring",
-     "plays": [
-      "(11:37) (Shotgun) 10-D.Maye scrambles right guard to CHI 1 for 6 yards (20-C.Phillips). New England challenged the short of the goal line ruling, and the play was REVERSED. (Shotgun) 10-D.Maye scrambles right guard for 7 yards, TOUCHDOWN."
-     ]
+     "longestYards": 48,
+     "winners": [
+      "Rhamondre Stevenson"
+     ],
+     "winnerProbability": 0.08566666666666667,
+     "winnerRank": 3,
+     "outcomes": 28,
+     "topPick": "DeMario Douglas",
+     "topProbability": 0.107,
+     "topHit": false,
+     "reviewed": true
     },
-    {
-     "gameId": "2026_07_CLE_TEN",
-     "away": "CLE",
-     "home": "TEN",
-     "reason": "A touchdown-mentioning scrimmage play was excluded by verification; resolve it before scoring",
-     "plays": [
-      "(11:24) (Shotgun) 20-T.Pollard up the middle for 4 yards, TOUCHDOWN. The Replay Official reviewed the runner broke the plane ruling, and the play was REVERSED. (Shotgun) 20-T.Pollard up the middle to CLE 1 for 3 yards (54-S.Williams; 97-D.Barnett)."
-     ]
-    },
-    {
-     "gameId": "2026_07_KC_SEA",
-     "away": "KC",
-     "home": "SEA",
-     "reason": "A touchdown-mentioning scrimmage play was excluded by verification; resolve it before scoring",
-     "plays": [
-      "(1:49) (Shotgun) 14-S.Darnold pass deep left to 11-J.Smith-Njigba pushed ob at KC 1 for 27 yards (5-M.Delane). The Replay Official reviewed the runner was out of bounds ruling, and the play was REVERSED. (Shotgun) 14-S.Darnold pass deep left to 11-J.Smith-Njigba for 28 yards, TOUCHDOWN."
-     ]
-    }
-   ],
-   "topHits": 2,
-   "topExpected": 1.5226666666666664,
-   "logLoss": 3.2400167143872705,
-   "baselineLogLoss": 3.0229970616094533,
-   "uniformLogLoss": 3.332309379488058,
-   "anyTdExpected": 41.61199999999999,
-   "anyTdScored": 47,
-   "longTdExpected": 4.252000000000002,
-   "longTdScored": 6,
-   "games": [
     {
      "gameId": "2026_07_PIT_NO",
      "away": "PIT",
@@ -368,6 +356,22 @@
      "topProbability": 0.12333333333333332,
      "topHit": false,
      "reviewed": false
+    },
+    {
+     "gameId": "2026_07_CLE_TEN",
+     "away": "CLE",
+     "home": "TEN",
+     "longestYards": 36,
+     "winners": [
+      "Tony Pollard"
+     ],
+     "winnerProbability": 0.121,
+     "winnerRank": 1,
+     "outcomes": 28,
+     "topPick": "Tony Pollard",
+     "topProbability": 0.121,
+     "topHit": true,
+     "reviewed": true
     },
     {
      "gameId": "2026_07_IND_MIN",
@@ -496,6 +500,22 @@
      "topProbability": 0.15,
      "topHit": false,
      "reviewed": false
+    },
+    {
+     "gameId": "2026_07_KC_SEA",
+     "away": "KC",
+     "home": "SEA",
+     "longestYards": 28,
+     "winners": [
+      "Jaxon Smith-Njigba"
+     ],
+     "winnerProbability": 0.177,
+     "winnerRank": 1,
+     "outcomes": 25,
+     "topPick": "Jaxon Smith-Njigba",
+     "topProbability": 0.177,
+     "topHit": true,
+     "reviewed": true
     },
     {
      "gameId": "2026_07_DAL_PHI",
@@ -1582,6 +1602,138 @@
    "any_td_expected": 3.679999999999999,
    "any_td_scored": 6,
    "long_td_expected": 0.4,
+   "long_td_scored": 0,
+   "named_players": 22
+  },
+  {
+   "version": "nfl-longest-td-weekly-grade-v1",
+   "game_id": "2026_07_NE_CHI",
+   "season": 2026,
+   "week": 7,
+   "away": "NE",
+   "home": "CHI",
+   "kickoff": "2026-10-23 00:15:00+00:00",
+   "decision_at": "2026-10-22T18:12:30.489259+00:00",
+   "model_version": "nfl-longest-scrimmage-td-research-v2",
+   "request_sha256": "748dda80ec657838681453b91b471037fa798fa45cf55efd9bbab854441ee4e9",
+   "graded_at": "2026-10-31T20:43:00.352088+00:00",
+   "capture_at": "2026-10-31T20:41:58.460770+00:00",
+   "status": "graded",
+   "reason": null,
+   "resolved_td_plays": [
+    {
+     "play_id": 1150,
+     "description": "(11:37) (Shotgun) 10-D.Maye scrambles right guard to CHI 1 for 6 yards (20-C.Phillips). New England challenged the short of the goal line ruling, and the play was REVERSED. (Shotgun) 10-D.Maye scrambles right guard for 7 yards, TOUCHDOWN.",
+     "ruling": "touchdown",
+     "note": "Challenge reversed the short-of-the-goal-line spot to a 7-yard Drake Maye touchdown run. Not the game's longest (48-yard verified TD). Checked 2026-10-31 against nflverse PBP; the ruling is the play text's own final call after review."
+    }
+   ],
+   "longest_yards": 48,
+   "winners": [
+    "Rhamondre Stevenson"
+   ],
+   "winner_probability": 0.08566666666666667,
+   "winner_rank": 3,
+   "outcomes": 28,
+   "unmodeled_winner": false,
+   "top_pick": "DeMario Douglas",
+   "top_probability": 0.107,
+   "top_hit": false,
+   "log_loss": 2.4572914827550267,
+   "baseline_log_loss": 2.4249399259837636,
+   "uniform_log_loss": 3.332204510175204,
+   "brier": 0.8948413333333334,
+   "any_td_expected": 4.062,
+   "any_td_scored": 6,
+   "long_td_expected": 0.41400000000000003,
+   "long_td_scored": 1,
+   "named_players": 25
+  },
+  {
+   "version": "nfl-longest-td-weekly-grade-v1",
+   "game_id": "2026_07_CLE_TEN",
+   "season": 2026,
+   "week": 7,
+   "away": "CLE",
+   "home": "TEN",
+   "kickoff": "2026-10-25 17:00:00+00:00",
+   "decision_at": "2026-10-22T18:12:42.338714+00:00",
+   "model_version": "nfl-longest-scrimmage-td-research-v2",
+   "request_sha256": "d9b726bc6c8d748326caf0e49a426c1455a27d9cfee0cb73567cbb075add099a",
+   "graded_at": "2026-10-31T20:43:00.352088+00:00",
+   "capture_at": "2026-10-31T20:41:58.460770+00:00",
+   "status": "graded",
+   "reason": null,
+   "resolved_td_plays": [
+    {
+     "play_id": 1285,
+     "description": "(11:24) (Shotgun) 20-T.Pollard up the middle for 4 yards, TOUCHDOWN. The Replay Official reviewed the runner broke the plane ruling, and the play was REVERSED. (Shotgun) 20-T.Pollard up the middle to CLE 1 for 3 yards (54-S.Williams; 97-D.Barnett).",
+     "ruling": "no_touchdown",
+     "note": "Replay reversed Tony Pollard's 4-yard touchdown to a 3-yard run to the CLE 1. Pollard's verified 36-yard TD stays the longest. Checked 2026-10-31 against nflverse PBP; the ruling is the play text's own final call after review."
+    }
+   ],
+   "longest_yards": 36,
+   "winners": [
+    "Tony Pollard"
+   ],
+   "winner_probability": 0.121,
+   "winner_rank": 1,
+   "outcomes": 28,
+   "unmodeled_winner": false,
+   "top_pick": "Tony Pollard",
+   "top_probability": 0.121,
+   "top_hit": true,
+   "log_loss": 2.111964733385396,
+   "baseline_log_loss": 2.1065520002786458,
+   "uniform_log_loss": 3.332204510175204,
+   "brier": 0.827866,
+   "any_td_expected": 3.566,
+   "any_td_scored": 3,
+   "long_td_expected": 0.29,
+   "long_td_scored": 0,
+   "named_players": 25
+  },
+  {
+   "version": "nfl-longest-td-weekly-grade-v1",
+   "game_id": "2026_07_KC_SEA",
+   "season": 2026,
+   "week": 7,
+   "away": "KC",
+   "home": "SEA",
+   "kickoff": "2026-10-26 00:20:00+00:00",
+   "decision_at": "2026-10-25T17:30:25.250496+00:00",
+   "model_version": "nfl-longest-scrimmage-td-research-v2",
+   "request_sha256": "14f859c710746ab91b562734179a478a98b30e3d5be30b1a0d2c6c617899db38",
+   "graded_at": "2026-10-31T20:43:00.352088+00:00",
+   "capture_at": "2026-10-31T20:41:58.460770+00:00",
+   "status": "graded",
+   "reason": null,
+   "resolved_td_plays": [
+    {
+     "play_id": 1637,
+     "description": "(1:49) (Shotgun) 14-S.Darnold pass deep left to 11-J.Smith-Njigba pushed ob at KC 1 for 27 yards (5-M.Delane). The Replay Official reviewed the runner was out of bounds ruling, and the play was REVERSED. (Shotgun) 14-S.Darnold pass deep left to 11-J.Smith-Njigba for 28 yards, TOUCHDOWN.",
+     "ruling": "touchdown",
+     "note": "Replay reversed the out-of-bounds spot at the KC 1 to a 28-yard Jaxon Smith-Njigba touchdown catch. It is the game's longest TD (only other is 21 yards). Checked 2026-10-31 against nflverse PBP; the ruling is the play text's own final call after review."
+    }
+   ],
+   "longest_yards": 28,
+   "winners": [
+    "Jaxon Smith-Njigba"
+   ],
+   "winner_probability": 0.177,
+   "winner_rank": 1,
+   "outcomes": 25,
+   "unmodeled_winner": false,
+   "top_pick": "Jaxon Smith-Njigba",
+   "top_probability": 0.177,
+   "top_hit": true,
+   "log_loss": 1.731605546408308,
+   "baseline_log_loss": 2.2519809022777495,
+   "uniform_log_loss": 3.2188758248682006,
+   "brier": 0.7403139999999999,
+   "any_td_expected": 3.73,
+   "any_td_scored": 2,
+   "long_td_expected": 0.29,
    "long_td_scored": 0,
    "named_players": 22
   }
