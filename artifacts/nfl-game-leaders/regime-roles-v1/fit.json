@@ -1,0 +1,548 @@
+{
+ "study": "nfl-leaders-regime-roles-v1",
+ "estimator": "nfl-game-leaders-roles-v3",
+ "v2": "nfl-game-leaders-roles-v2",
+ "development": "artifacts\\nfl-game-leaders\\regime-roles-v1\\development.jsonl",
+ "frozen_at": "2026-10-18T20:15:11.963406+00:00",
+ "grid": {
+  "K": [
+   0.5,
+   1.0,
+   2.0,
+   4.0
+  ],
+  "h": [
+   "inf",
+   4,
+   3,
+   2,
+   1
+  ]
+ },
+ "chosen": {
+  "carries": {
+   "K": 4.0,
+   "h": 3.0,
+   "cell": "K=4,h=3"
+  },
+  "targets": {
+   "K": 4.0,
+   "h": 4.0,
+   "cell": "K=4,h=4"
+  }
+ },
+ "subset": {
+  "affected_team_games": 315,
+  "unaffected_team_games": 1221,
+  "affected_game_weeks": 49,
+  "games": 768,
+  "skipped": 0,
+  "by_season": {
+   "2023": {
+    "affected": 93,
+    "unaffected": 355
+   },
+   "2024": {
+    "affected": 109,
+    "unaffected": 435
+   },
+   "2025": {
+    "affected": 113,
+    "unaffected": 431
+   }
+  }
+ },
+ "affected_grid": {
+  "carries": {
+   "K=0.5,h=inf": {
+    "mean_dm_log_loss_difference": 0.14894271515966234,
+    "mean_mae_difference": -0.004353330040985117,
+    "n": 315
+   },
+   "K=0.5,h=4": {
+    "mean_dm_log_loss_difference": 0.09708403648033526,
+    "mean_mae_difference": -0.01166855318118588,
+    "n": 315
+   },
+   "K=0.5,h=3": {
+    "mean_dm_log_loss_difference": 0.09059886794841553,
+    "mean_mae_difference": -0.012747772453888896,
+    "n": 315
+   },
+   "K=0.5,h=2": {
+    "mean_dm_log_loss_difference": 0.09119858946381214,
+    "mean_mae_difference": -0.013925545986993564,
+    "n": 315
+   },
+   "K=0.5,h=1": {
+    "mean_dm_log_loss_difference": 0.16463237763361752,
+    "mean_mae_difference": -0.012180262047771749,
+    "n": 315
+   },
+   "K=1,h=inf": {
+    "mean_dm_log_loss_difference": 0.05763551509591838,
+    "mean_mae_difference": -0.00965249209150658,
+    "n": 315
+   },
+   "K=1,h=4": {
+    "mean_dm_log_loss_difference": 0.014357916002079512,
+    "mean_mae_difference": -0.01549840102659195,
+    "n": 315
+   },
+   "K=1,h=3": {
+    "mean_dm_log_loss_difference": 0.010245038765765423,
+    "mean_mae_difference": -0.016426913936543962,
+    "n": 315
+   },
+   "K=1,h=2": {
+    "mean_dm_log_loss_difference": 0.014523114208791599,
+    "mean_mae_difference": -0.016484835113791042,
+    "n": 315
+   },
+   "K=1,h=1": {
+    "mean_dm_log_loss_difference": 0.09410631152254488,
+    "mean_mae_difference": -0.013275681040477693,
+    "n": 315
+   },
+   "K=2,h=inf": {
+    "mean_dm_log_loss_difference": 0.008316188328118174,
+    "mean_mae_difference": -0.011520551932889351,
+    "n": 315
+   },
+   "K=2,h=4": {
+    "mean_dm_log_loss_difference": -0.027699172825773458,
+    "mean_mae_difference": -0.016105669165902347,
+    "n": 315
+   },
+   "K=2,h=3": {
+    "mean_dm_log_loss_difference": -0.030162913551038544,
+    "mean_mae_difference": -0.016425432993963197,
+    "n": 315
+   },
+   "K=2,h=2": {
+    "mean_dm_log_loss_difference": -0.02367429974846257,
+    "mean_mae_difference": -0.01587836597804521,
+    "n": 315
+   },
+   "K=2,h=1": {
+    "mean_dm_log_loss_difference": 0.05762629199520405,
+    "mean_mae_difference": -0.011268579461166963,
+    "n": 315
+   },
+   "K=4,h=inf": {
+    "mean_dm_log_loss_difference": -0.00915730186776138,
+    "mean_mae_difference": -0.00918815334932794,
+    "n": 315
+   },
+   "K=4,h=4": {
+    "mean_dm_log_loss_difference": -0.041023271039645,
+    "mean_mae_difference": -0.01362607628709856,
+    "n": 315
+   },
+   "K=4,h=3": {
+    "mean_dm_log_loss_difference": -0.04275598150699503,
+    "mean_mae_difference": -0.01398633781580881,
+    "n": 315
+   },
+   "K=4,h=2": {
+    "mean_dm_log_loss_difference": -0.03548949146305673,
+    "mean_mae_difference": -0.013336479834522451,
+    "n": 315
+   },
+   "K=4,h=1": {
+    "mean_dm_log_loss_difference": 0.045725852611496975,
+    "mean_mae_difference": -0.00862270647629346,
+    "n": 315
+   }
+  },
+  "targets": {
+   "K=0.5,h=inf": {
+    "mean_dm_log_loss_difference": 0.19890407847913133,
+    "mean_mae_difference": 0.028924987541625275,
+    "n": 315
+   },
+   "K=0.5,h=4": {
+    "mean_dm_log_loss_difference": 0.16110083275883746,
+    "mean_mae_difference": 0.021003501619933737,
+    "n": 315
+   },
+   "K=0.5,h=3": {
+    "mean_dm_log_loss_difference": 0.15820599983342754,
+    "mean_mae_difference": 0.020527583132663993,
+    "n": 315
+   },
+   "K=0.5,h=2": {
+    "mean_dm_log_loss_difference": 0.16681062385846823,
+    "mean_mae_difference": 0.021727872297025354,
+    "n": 315
+   },
+   "K=0.5,h=1": {
+    "mean_dm_log_loss_difference": 0.28132899560927616,
+    "mean_mae_difference": 0.03705961295573326,
+    "n": 315
+   },
+   "K=1,h=inf": {
+    "mean_dm_log_loss_difference": 0.07508344350635877,
+    "mean_mae_difference": 0.010374418430668256,
+    "n": 315
+   },
+   "K=1,h=4": {
+    "mean_dm_log_loss_difference": 0.04624332707327858,
+    "mean_mae_difference": 0.004419325941556436,
+    "n": 315
+   },
+   "K=1,h=3": {
+    "mean_dm_log_loss_difference": 0.04786406673495652,
+    "mean_mae_difference": 0.004420964296247152,
+    "n": 315
+   },
+   "K=1,h=2": {
+    "mean_dm_log_loss_difference": 0.06586661047672678,
+    "mean_mae_difference": 0.0067849169456172505,
+    "n": 315
+   },
+   "K=1,h=1": {
+    "mean_dm_log_loss_difference": 0.20170353983879058,
+    "mean_mae_difference": 0.026600304144938604,
+    "n": 315
+   },
+   "K=2,h=inf": {
+    "mean_dm_log_loss_difference": -0.003059848460671987,
+    "mean_mae_difference": -0.0016441837808061077,
+    "n": 315
+   },
+   "K=2,h=4": {
+    "mean_dm_log_loss_difference": -0.02189839806454974,
+    "mean_mae_difference": -0.005648132914058228,
+    "n": 315
+   },
+   "K=2,h=3": {
+    "mean_dm_log_loss_difference": -0.01665450585694761,
+    "mean_mae_difference": -0.005007428819145708,
+    "n": 315
+   },
+   "K=2,h=2": {
+    "mean_dm_log_loss_difference": 0.007828217158149672,
+    "mean_mae_difference": -0.0018711978463909708,
+    "n": 315
+   },
+   "K=2,h=1": {
+    "mean_dm_log_loss_difference": 0.15626629430494182,
+    "mean_mae_difference": 0.02034226206145074,
+    "n": 315
+   },
+   "K=4,h=inf": {
+    "mean_dm_log_loss_difference": -0.03191520485938473,
+    "mean_mae_difference": -0.005813995258367124,
+    "n": 315
+   },
+   "K=4,h=4": {
+    "mean_dm_log_loss_difference": -0.045228331986431135,
+    "mean_mae_difference": -0.008639250537483585,
+    "n": 315
+   },
+   "K=4,h=3": {
+    "mean_dm_log_loss_difference": -0.0384502871554761,
+    "mean_mae_difference": -0.0077413818558233665,
+    "n": 315
+   },
+   "K=4,h=2": {
+    "mean_dm_log_loss_difference": -0.011600858957233286,
+    "mean_mae_difference": -0.003968420998073114,
+    "n": 315
+   },
+   "K=4,h=1": {
+    "mean_dm_log_loss_difference": 0.1407282949871922,
+    "mean_mae_difference": 0.018778248067851874,
+    "n": 315
+   }
+  }
+ },
+ "unaffected_grid": {
+  "carries": {
+   "K=0.5,h=inf": {
+    "mean_dm_log_loss_difference": 0.05461597587717276,
+    "mean_mae_difference": 0.000978740059148128,
+    "n": 1221
+   },
+   "K=0.5,h=4": {
+    "mean_dm_log_loss_difference": 0.018787003420777864,
+    "mean_mae_difference": -0.004751035597834444,
+    "n": 1221
+   },
+   "K=0.5,h=3": {
+    "mean_dm_log_loss_difference": 0.01600306913724579,
+    "mean_mae_difference": -0.005506964127648505,
+    "n": 1221
+   },
+   "K=0.5,h=2": {
+    "mean_dm_log_loss_difference": 0.021787804357233133,
+    "mean_mae_difference": -0.005409156968604275,
+    "n": 1221
+   },
+   "K=0.5,h=1": {
+    "mean_dm_log_loss_difference": 0.10348618179035066,
+    "mean_mae_difference": 0.0008725727823645572,
+    "n": 1221
+   },
+   "K=1,h=inf": {
+    "mean_dm_log_loss_difference": 0.03029888371240414,
+    "mean_mae_difference": 0.0005240934718988671,
+    "n": 1221
+   },
+   "K=1,h=4": {
+    "mean_dm_log_loss_difference": -0.002839673233130146,
+    "mean_mae_difference": -0.004884572936498481,
+    "n": 1221
+   },
+   "K=1,h=3": {
+    "mean_dm_log_loss_difference": -0.004565908264059601,
+    "mean_mae_difference": -0.005560156055509748,
+    "n": 1221
+   },
+   "K=1,h=2": {
+    "mean_dm_log_loss_difference": 0.0032496765306461233,
+    "mean_mae_difference": -0.005297224937322262,
+    "n": 1221
+   },
+   "K=1,h=1": {
+    "mean_dm_log_loss_difference": 0.08948487725614683,
+    "mean_mae_difference": 0.0012745605900774586,
+    "n": 1221
+   },
+   "K=2,h=inf": {
+    "mean_dm_log_loss_difference": 0.013592199065153977,
+    "mean_mae_difference": 0.0001485515696418839,
+    "n": 1221
+   },
+   "K=2,h=4": {
+    "mean_dm_log_loss_difference": -0.015758060626664374,
+    "mean_mae_difference": -0.004755553454635453,
+    "n": 1221
+   },
+   "K=2,h=3": {
+    "mean_dm_log_loss_difference": -0.016320572316171816,
+    "mean_mae_difference": -0.005367288820124242,
+    "n": 1221
+   },
+   "K=2,h=2": {
+    "mean_dm_log_loss_difference": -0.006460396159476143,
+    "mean_mae_difference": -0.004953843269178613,
+    "n": 1221
+   },
+   "K=2,h=1": {
+    "mean_dm_log_loss_difference": 0.08342921509059953,
+    "mean_mae_difference": 0.001947877064563519,
+    "n": 1221
+   },
+   "K=4,h=inf": {
+    "mean_dm_log_loss_difference": 0.004457686843260857,
+    "mean_mae_difference": -5.961129379097053e-05,
+    "n": 1221
+   },
+   "K=4,h=4": {
+    "mean_dm_log_loss_difference": -0.021429083892815535,
+    "mean_mae_difference": -0.004474577720784614,
+    "n": 1221
+   },
+   "K=4,h=3": {
+    "mean_dm_log_loss_difference": -0.02105177553277371,
+    "mean_mae_difference": -0.004963060649408422,
+    "n": 1221
+   },
+   "K=4,h=2": {
+    "mean_dm_log_loss_difference": -0.009667977000867908,
+    "mean_mae_difference": -0.004469947393030973,
+    "n": 1221
+   },
+   "K=4,h=1": {
+    "mean_dm_log_loss_difference": 0.08235509116930909,
+    "mean_mae_difference": 0.0026943554522661163,
+    "n": 1221
+   }
+  },
+  "targets": {
+   "K=0.5,h=inf": {
+    "mean_dm_log_loss_difference": 0.08183907054532644,
+    "mean_mae_difference": 0.016042848397090373,
+    "n": 1221
+   },
+   "K=0.5,h=4": {
+    "mean_dm_log_loss_difference": 0.0636250285625795,
+    "mean_mae_difference": 0.01346300880861125,
+    "n": 1221
+   },
+   "K=0.5,h=3": {
+    "mean_dm_log_loss_difference": 0.06681885648701903,
+    "mean_mae_difference": 0.014065009280495555,
+    "n": 1221
+   },
+   "K=0.5,h=2": {
+    "mean_dm_log_loss_difference": 0.08453284520864568,
+    "mean_mae_difference": 0.01702352143746669,
+    "n": 1221
+   },
+   "K=0.5,h=1": {
+    "mean_dm_log_loss_difference": 0.20244496310351903,
+    "mean_mae_difference": 0.03328212745858859,
+    "n": 1221
+   },
+   "K=1,h=inf": {
+    "mean_dm_log_loss_difference": 0.04869219668194591,
+    "mean_mae_difference": 0.010312840525265285,
+    "n": 1221
+   },
+   "K=1,h=4": {
+    "mean_dm_log_loss_difference": 0.031176233897617374,
+    "mean_mae_difference": 0.007741589000829205,
+    "n": 1221
+   },
+   "K=1,h=3": {
+    "mean_dm_log_loss_difference": 0.03504608216833036,
+    "mean_mae_difference": 0.008406599193200144,
+    "n": 1221
+   },
+   "K=1,h=2": {
+    "mean_dm_log_loss_difference": 0.05463902725085878,
+    "mean_mae_difference": 0.011647210884389999,
+    "n": 1221
+   },
+   "K=1,h=1": {
+    "mean_dm_log_loss_difference": 0.18026585083729635,
+    "mean_mae_difference": 0.029317168719344967,
+    "n": 1221
+   },
+   "K=2,h=inf": {
+    "mean_dm_log_loss_difference": 0.023011384600129744,
+    "mean_mae_difference": 0.005530176433674731,
+    "n": 1221
+   },
+   "K=2,h=4": {
+    "mean_dm_log_loss_difference": 0.008321543508386623,
+    "mean_mae_difference": 0.0033309720361673163,
+    "n": 1221
+   },
+   "K=2,h=3": {
+    "mean_dm_log_loss_difference": 0.013389010622546287,
+    "mean_mae_difference": 0.004216414969553147,
+    "n": 1221
+   },
+   "K=2,h=2": {
+    "mean_dm_log_loss_difference": 0.03552053489891627,
+    "mean_mae_difference": 0.00776071950276088,
+    "n": 1221
+   },
+   "K=2,h=1": {
+    "mean_dm_log_loss_difference": 0.16821446777327126,
+    "mean_mae_difference": 0.026571773767835136,
+    "n": 1221
+   },
+   "K=4,h=inf": {
+    "mean_dm_log_loss_difference": 0.007933552857110868,
+    "mean_mae_difference": 0.0022976001843372697,
+    "n": 1221
+   },
+   "K=4,h=4": {
+    "mean_dm_log_loss_difference": -0.0033389776303401693,
+    "mean_mae_difference": 0.0005629204171728688,
+    "n": 1221
+   },
+   "K=4,h=3": {
+    "mean_dm_log_loss_difference": 0.0028556880786413607,
+    "mean_mae_difference": 0.0016395088108100181,
+    "n": 1221
+   },
+   "K=4,h=2": {
+    "mean_dm_log_loss_difference": 0.02706755427840058,
+    "mean_mae_difference": 0.005570186645128537,
+    "n": 1221
+   },
+   "K=4,h=1": {
+    "mean_dm_log_loss_difference": 0.16431357395182272,
+    "mean_mae_difference": 0.0252823038528203,
+    "n": 1221
+   }
+  }
+ },
+ "development_in_sample_ci": {
+  "carries": {
+   "mean": -0.04275598150699503,
+   "ci95": [
+    -0.09290645971935874,
+    0.006032858075198213
+   ],
+   "n": 315,
+   "clusters": 49
+  },
+  "targets": {
+   "mean": -0.045228331986431135,
+   "ci95": [
+    -0.08617186134044037,
+    -0.0014102252165146532
+   ],
+   "n": 315,
+   "clusters": 49
+  }
+ },
+ "notes": [
+  "Development is tuning data; the interval here is in-sample and supports no claim.",
+  "2023 has no prior season in the capture, so the prior-season blend is inactive there (as in calibration-v1).",
+  "Historical depth order is recent-usage rank; the live page uses the dual depth chart.",
+  "Primary metric: Dirichlet-multinomial log score with the production concentration (55/40) as precision.",
+  "alpha_i = K x the v2 per-game allocation (own blended rate plus the RB depth split of the ruled-out back)."
+ ],
+ "guard": {
+  "authority": "development_in_sample",
+  "computed_at": "2026-10-18T20:31:50.065784+00:00",
+  "draws": null,
+  "games": 689,
+  "skipped": 79,
+  "forecast_rerun": 657,
+  "identical_scenarios": 32,
+  "upper_bound": 0.005,
+  "markets": {
+   "rushing_yards": {
+    "mean": -0.019479250492811028,
+    "ci95": [
+     -0.08277623250363877,
+     0.019799044386411252
+    ],
+    "n": 689,
+    "clusters": 51,
+    "held": false
+   },
+   "receiving_yards": {
+    "mean": 0.0007321030869689057,
+    "ci95": [
+     -0.013968954860183454,
+     0.01597276718571854
+    ],
+    "n": 689,
+    "clusters": 51,
+    "held": false
+   },
+   "receptions": {
+    "mean": 0.03591001223085888,
+    "ci95": [
+     -0.08692162687332976,
+     0.1604761935041383
+    ],
+    "n": 689,
+    "clusters": 51,
+    "held": false
+   },
+   "total_yards": {
+    "mean": -0.039029695222281176,
+    "ci95": [
+     -0.15378108571827787,
+     0.06724318975625672
+    ],
+    "n": 689,
+    "clusters": 51,
+    "held": false
+   }
+  },
+  "held": false,
+  "reading": "Not held in development: every market upper bound exceeds +0.005. The intervals are wide (receptions +/-0.12 over 689 games, 51 weeks), partly 2,000-draw simulation noise that v2 and v3 do not share; a confirmation sample of ~8-12 weeks will be wider still, so the registered guard is close to unattainable at its floor. Recorded, not acted on: the bar is the registration's."
+ }
+}
