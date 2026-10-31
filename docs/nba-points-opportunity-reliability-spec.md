@@ -1,6 +1,6 @@
 # NBA opportunity reliability fix
 
-Status: reviewed specification, revision 2, October 31, 2026. This document does not register a new experiment, change a forecast, activate collection or authorize deployment. Registration is a separate immutable, timestamped artifact after implementation verification and before enrollment. Companion: [tail reader and grading specification](nba-points-tail-validation-spec.md).
+Status: reviewed specification, revision 3, October 31, 2026. This document does not register a new experiment, change a forecast, activate collection or authorize deployment. Registration is a separate immutable, timestamped artifact after implementation verification and before enrollment. Companion: [tail reader and grading specification](nba-points-tail-validation-spec.md). The existing October 26 ladder registration governs that distinct test; this document does not rewrite it.
 
 ## Decision and intended result
 
@@ -20,9 +20,9 @@ Audit artifacts: `C:/Docs/_AI Python Projects/NBADFS_v2/artifacts/nba-barnes-rev
 
 ## Scope and delivery order
 
-1. **Grading context first:** add same-cohort descriptive Brier references and a separate observed-minutes breakdown to local reports, following the companion specification. Preserve original grades. Fix quote provenance in the new trial recorder before enrolling a tail reader challenger.
+1. **Reconcile existing grading context first:** reuse the already implemented same-cohort Brier references and short-minutes functions from commit `6d921d49`, after integration review; add only missing local-report contracts and context labels. Preserve original grades. Audit the already registered ladder evaluator and quote provenance before relying on its verdict. The companion documents exact existing code and integration blockers.
 2. **Evidence and review:** reliable source-failure receipts, workload conflicts, timestamped official-news claims, local daily review and recording receipts. These operational improvements do not depend on proving a tail improvement.
-3. **Independent shadow trials:** register and freeze the tail-reader comparison and the point-only opportunity adaptation separately, after their respective implementation checks. Neither may borrow the other's calibration claim. No new scoring probabilities or P90 values for the opportunity adaptation.
+3. **Separate research paths:** preserve the already registered one-sided ladder test (October 27 onward, 30 nights/1,000 paired 35+ rows) and independently register the point-only opportunity adaptation after its checks. The broader tail-reader design in the companion is a deferred future candidate, not a replacement registration or a second test automatically started on the same outcomes. Neither path may borrow the other's calibration claim. No new scoring probabilities or P90 values for the opportunity adaptation.
 4. **Prospective evaluation:** use the fixed review boundaries below. Hold any new top-three probability or correlated-trio simulator until the separate marginal and joint-distribution gates in the companion specification pass. Comparing three fixed point estimates remains a descriptive selection audit and does not require a probability simulation.
 
 No paid requests beyond the separately approved near-tip collector; no historical paid backfills. No website changes, deployment, extra chat schedule or continuous injury-monitoring claim. Any future monitoring expansion is separate work.
@@ -171,3 +171,5 @@ No invented injury multipliers, manual Barnes bonus, parameter changes to the cu
 ## Revision 2 review findings
 
 The review removed eight implementation ambiguities: a variable reference window; accidental exclusion of zero-shot appearances; undefined conflict cohort and recent-rate comparator; different trio pools; later evidence leaking into a morning comparison; open-ended news treated as a known interval end; repeated significance checks without a stopping rule; and a confirmation stage with no acceptance criteria. It also separates the ladder-reader investigation from the point-only adaptation. The companion document records the verified calibration evidence, version/provenance defects and the limits of the supplied six-point assessment. Neither document claims implementation or prospective registration is complete.
+
+Revision 3 corrects the discovery of existing work: commits `6d921d49` and `65a4bc3c` already contain the ladder registration, baseline/minutes panel helpers, opt-in Python/TypeScript power readers and evaluator. Those implementations are distinct from this opportunity challenger. Reuse rather than duplicate them, preserve their original test rules, and address integration/provenance defects without silently substituting the later proposed trial.
