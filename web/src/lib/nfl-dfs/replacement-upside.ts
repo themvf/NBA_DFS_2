@@ -62,7 +62,7 @@ export const ROLE_PI = {
 } as const;
 
 /** Mirrors BOOM_THRESHOLDS in model/nfl_dfs_historical.py. */
-export const BOOM_THRESHOLDS: Record<string, number> = { QB: 30, RB: 25, WR: 25, TE: 20 };
+export const BOOM_THRESHOLDS: Record<string, number> = { QB: 30, RB: 25, WR: 25, TE: 20, K: 15, DST: 15 };
 
 const ROOM_POSITIONS: Record<Room, ReadonlySet<string>> = {
   RB: new Set(['RB', 'FB']),
