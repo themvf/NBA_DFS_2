@@ -35,8 +35,28 @@ What a run does:
    skill against the line-only reference (the panel's leave-one-night-out
    guess), one-sided and skipped rung counts, and ``k`` by book.
 
+Integration safeguards (docs/nba-points-tail-validation-spec.md, "Integration and
+trust blockers"), none of which changes a registered rule:
+
+- The grade is pinned: rows are read with LEGACY_GRADE_VERSION
+  (`nba-points-grade-v1`) and the run fails closed if the live grader's version
+  ever differs, so a later grader change cannot silently move the population.
+- Frozen verdict receipt: `--apply` writes, once, an append-only receipt
+  (`nba_ladder_verdict_receipts`) the first time both floors are met: the exact
+  paired rows, their sha256, the code/registration/fixture digests, the cutoff
+  night and the result. Every later run prints the receipt instead of a fresh
+  primary metric and reports whether today's recompute still matches it; a
+  mismatch is reported, never written over.
+- Provenance: per night, the main-line and alternate-ladder capture times are
+  reported separately (minutes before tip, and the gap between them).
+- Coverage: per-night grade status counts (a night counts toward the floor once
+  it has any graded row, per the registration; partial nights are listed), raw
+  attempted book/rung counts that survive a reader returning no distribution,
+  and each rung's Brier on the paired intersection beside each reader's own.
+
 Usage:
     python -m research.nba_points_ladder_v2_eval            # floor status + secondaries
+    python -m research.nba_points_ladder_v2_eval --apply    # also write the one-time receipt when due
     python -m research.nba_points_ladder_v2_eval --json     # same, as JSON
     python -m research.nba_points_ladder_v2_eval --check-integrity-from 2026-10-20
         # integrity check ONLY (v1 recompute vs stored rows) from that date; prints
@@ -46,7 +66,9 @@ Usage:
 from __future__ import annotations
 
 import argparse
-from collections import defaultdict
+from collections import Counter, defaultdict
+import hashlib
+from pathlib import Path
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 import json
@@ -78,6 +100,13 @@ LINE_BAND = 3
 BASELINE_PRIOR_ROWS = 10
 STORED_FIELDS = ("line", "p_over", "floor", "ceiling", "p20", "p25", "p30", "p35", "p40")
 READERS = ("v1", "v2")
+# The grade the registered population is defined on. Not imported: a later grader
+# change must fail this run, not move the population.
+LEGACY_GRADE_VERSION = "nba-points-grade-v1"
+RECEIPT_TABLE = "nba_ladder_verdict_receipts"
+PINNED_FILES = ("research/nba_points_ladder_v2_eval.py", "model/nba_points_ladder.py", "model/nba_points_calibration.py",
+                REGISTRATION, "tests/fixtures/nba_points_ladder_fixture.json")
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class FloorsNotMet(RuntimeError):
@@ -288,7 +317,12 @@ def rung_table(rows: list[EvalRow]) -> list[dict[str, Any]]:
                 "happened": sum(1 for _, h in scored if h) / n if n else None,
                 "brier": sum((p - (1.0 if h else 0.0)) ** 2 for p, h in scored) / n if n else None,  # type: ignore[operator]
             }
-        entry["pairedN"] = sum(1 for r in rows if r.stated("v1", rung) is not None and r.stated("v2", rung) is not None)
+        paired = [r for r in rows if r.stated("v1", rung) is not None and r.stated("v2", rung) is not None]
+        entry["pairedN"] = len(paired)
+        # Descriptive: both readers scored on the SAME rows. The per-reader columns above are each
+        # reader's own coverage, so their difference is not the paired effect.
+        entry["pairedBrier"] = {reader: (sum((r.stated(reader, rung) - (1.0 if r.hit(rung) else 0.0)) ** 2 for r in paired)  # type: ignore[operator]
+                                         / len(paired)) if paired else None for reader in READERS}
         out.append(entry)
     return out
 
@@ -421,7 +455,94 @@ def evaluate(rows: list[EvalRow], *, today: date | None = None) -> dict[str, Any
     return report
 
 
+# ---------------------------------------------------------------- pure: receipt
+
+
+def population_records(rows: list[EvalRow]) -> list[dict[str, Any]]:
+    """The verdict population as plain records, sorted, so its digest is stable."""
+    recs = [{"gameDate": r.game_date.isoformat(), "eventId": r.event_id, "playerKey": r.player_key, "actual": r.actual,
+             "v1": {str(n): r.v1.at_least.get(n) for n in PRIMARY_RUNGS}, "v2": {str(n): r.v2.at_least.get(n) for n in PRIMARY_RUNGS}}
+            for r in rows]
+    return sorted(recs, key=lambda x: (x["gameDate"], x["eventId"], x["playerKey"]))
+
+
+def records_sha256(records: list[dict[str, Any]]) -> str:
+    return hashlib.sha256(json.dumps(records, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def code_digests(root: Path = ROOT) -> dict[str, str]:
+    """sha256 of each pinned file, line endings normalised (as the other registrations pin files)."""
+    return {f: hashlib.sha256((root / f).read_bytes().replace(b"\r\n", b"\n")).hexdigest() for f in PINNED_FILES}
+
+
+def build_receipt(rows: list[EvalRow], status: dict[str, Any], primary: dict[str, Any], digests: dict[str, str]) -> dict[str, Any]:
+    population = verdict_population(rows, status)
+    records = population_records(population)
+    return {"study": STUDY, "kind": "original", "cutoffNight": status["verdictCutoffNight"], "populationSha256": records_sha256(records),
+            "codeDigests": digests, "result": primary, "population": records}
+
+
+def compare_to_receipt(receipt: dict[str, Any], rows: list[EvalRow]) -> dict[str, Any]:
+    """Recompute the receipt's population from today's rows and say whether it still matches. Never edits it."""
+    cutoff = date.fromisoformat(str(receipt["cutoffNight"])[:10])
+    current = population_records([r for r in rows if START_DATE <= r.game_date <= cutoff])
+    sha = records_sha256(current)
+    same = sha == receipt["populationSha256"]
+    return {"matches": same, "currentSha256": sha, "receiptSha256": receipt["populationSha256"],
+            "currentRows": len(current), "receiptRows": len(receipt["population"]),
+            "note": None if same else "Today's data no longer reproduces the frozen population (a backfill or correction). "
+                                       "The receipt stands; record the change as a labelled amendment, not an edit."}
+
+
+def status_counts(v1_rows: list[GradeRow]) -> dict[str, int]:
+    return dict(Counter(r.status for r in v1_rows))
+
+
+def capture_provenance(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Per game: main and ladder capture minutes before tip and the gap. Input rows: event_id, market, captured_at, commence_time."""
+    by_event: dict[str, dict[str, Any]] = defaultdict(dict)
+    for r in rows:
+        by_event[str(r["event_id"])][r["market"]] = r
+    main_age, ladder_age, gaps, ladder_missing = [], [], [], 0
+    for markets in by_event.values():
+        m = markets.get("player_points")
+        a = markets.get("player_points_alternate")
+        if m:
+            main_age.append((m["commence_time"] - m["captured_at"]).total_seconds() / 60)
+        if a:
+            ladder_age.append((a["commence_time"] - a["captured_at"]).total_seconds() / 60)
+        else:
+            ladder_missing += 1
+        if m and a:
+            gaps.append(abs((m["captured_at"] - a["captured_at"]).total_seconds()) / 60)
+    med = lambda xs: sorted(xs)[len(xs) // 2] if xs else None  # noqa: E731
+    return {"games": len(by_event), "gamesWithoutLadder": ladder_missing,
+            "mainMinutesBeforeTip": {"median": med(main_age), "max": max(main_age) if main_age else None},
+            "ladderMinutesBeforeTip": {"median": med(ladder_age), "max": max(ladder_age) if ladder_age else None},
+            "mainLadderGapMinutes": {"median": med(gaps), "max": max(gaps) if gaps else None}}
+
+
 # ---------------------------------------------------------------- database
+
+
+def attempted_counts(captures, ladders) -> dict[str, Any]:
+    """Raw coverage before any grading filter: players attempted, readings and distributions each reader
+    produced, and alternate books offered. Unlike _counters, a reader returning nothing is counted here."""
+    out = {"players": 0, "withLadder": 0, "ladderBooks": 0,
+           "reading": {"v1": 0, "v2": 0}, "distribution": {"v1": 0, "v2": 0}}
+    for cap in captures:
+        ladder = ladders.get((cap.event_id, name_key(cap.player)))
+        out["players"] += 1
+        if ladder:
+            out["withLadder"] += 1
+            out["ladderBooks"] += len(ladder)
+        for reader, devig in (("v1", "proportional"), ("v2", "power")):
+            reading = read_player(cap.books, ladder, devig)
+            if reading is not None:
+                out["reading"][reader] += 1
+                if reading.distribution is not None:
+                    out["distribution"][reader] += 1
+    return out
 
 
 def _counters(captures, ladders) -> dict[tuple[str, str], dict[str, Any]]:
@@ -450,7 +571,7 @@ def graded_dates(db, first: date) -> list[date]:
     with db.connect() as conn:
         cur = conn.cursor()
         cur.execute("SELECT DISTINCT game_date FROM nba_points_calibration WHERE grade_version = %s AND game_date >= %s "
-                    "ORDER BY game_date", (GRADE_VERSION, first))
+                    "ORDER BY game_date", (LEGACY_GRADE_VERSION, first))
         return [r["game_date"] for r in fetch_rows(cur)]
 
 
@@ -474,16 +595,58 @@ def load_stored(db, target: date) -> list[dict[str, Any]]:
     with db.connect() as conn:
         cur = conn.cursor()
         cur.execute(f"SELECT game_date, event_id, player_key, status, actual_points, {', '.join(STORED_FIELDS)} "
-                    "FROM nba_points_calibration WHERE grade_version = %s AND game_date = %s", (GRADE_VERSION, target))
+                    "FROM nba_points_calibration WHERE grade_version = %s AND game_date = %s", (LEGACY_GRADE_VERSION, target))
         return fetch_rows(cur)
 
 
-def load_night(db, target: date) -> tuple[list[GradeRow], list[GradeRow], dict[tuple[str, str], dict[str, Any]]]:
+def load_night(db, target: date) -> tuple[list[GradeRow], list[GradeRow], dict[tuple[str, str], dict[str, Any]], dict[str, Any]]:
     captures, ladders = load_pretip_captures(db, target)
     games = load_box_scores(db, target)
     v1 = grade_captures(target, captures, ladders, games)
     v2 = grade_captures(target, captures, ladders, games, devig="power")
-    return v1, v2, _counters(captures, ladders)
+    return v1, v2, _counters(captures, ladders), attempted_counts(captures, ladders)
+
+
+def load_capture_times(db, target: date) -> list[dict[str, Any]]:
+    """Each game's last pre-tip capture time per market (the same selection load_pretip_captures uses)."""
+    from db.database import fetch_rows
+
+    with db.connect() as conn:
+        cur = conn.cursor()
+        cur.execute("""SELECT event_id, market, max(captured_at) AS captured_at, max(commence_time) AS commence_time
+            FROM prop_odds_history WHERE sport = 'nba' AND game_date = %s AND market IN ('player_points', 'player_points_alternate')
+              AND commence_time IS NOT NULL AND captured_at < commence_time GROUP BY event_id, market""", (target,))
+        return fetch_rows(cur)
+
+
+def load_receipt(db) -> dict[str, Any] | None:
+    from db.database import fetch_rows
+
+    with db.connect() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT to_regclass(%s) AS t", (RECEIPT_TABLE,))
+        if fetch_rows(cur)[0]["t"] is None:
+            return None
+        cur.execute(f"SELECT study, kind, cutoff_night, population_sha256, code_digests, result, population, created_at "
+                    f"FROM {RECEIPT_TABLE} WHERE study = %s AND kind = 'original'", (STUDY,))
+        rows = fetch_rows(cur)
+    if not rows:
+        return None
+    r = rows[0]
+    return {"study": r["study"], "kind": r["kind"], "cutoffNight": str(r["cutoff_night"]), "populationSha256": r["population_sha256"],
+            "codeDigests": r["code_digests"], "result": r["result"], "population": r["population"], "createdAt": str(r["created_at"])}
+
+
+def write_receipt(db, receipt: dict[str, Any]) -> None:
+    from psycopg2.extras import Json
+
+    with db.connect() as conn:
+        cur = conn.cursor()
+        cur.execute(f"INSERT INTO {RECEIPT_TABLE} (study, kind, cutoff_night, population_sha256, code_digests, result, population) "
+                    "VALUES (%s, 'original', %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                    (receipt["study"], receipt["cutoffNight"], receipt["populationSha256"], Json(receipt["codeDigests"]),
+                     Json(receipt["result"]), Json(receipt["population"])))
+        conn.commit()
 
 
 def _fmt(x: Any, pct: bool = False, digits: int = 4) -> str:
@@ -537,6 +700,8 @@ def print_report(report: dict[str, Any]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--json", action="store_true", help="print the report as JSON")
+    parser.add_argument("--apply", action="store_true",
+                        help="write the one-time verdict receipt when both floors are first met (nothing else is written)")
     parser.add_argument("--check-integrity-from", metavar="YYYY-MM-DD",
                         help="run ONLY the v1 integrity check from this date (any date); prints no v2 number or outcome")
     args = parser.parse_args()
@@ -544,6 +709,10 @@ def main() -> int:
     from config import load_config
     from db.database import DatabaseManager
 
+    if GRADE_VERSION != LEGACY_GRADE_VERSION:
+        print(f"PINNED GRADE CHANGED: the live grader is {GRADE_VERSION}, the registered population is {LEGACY_GRADE_VERSION}. "
+              "Stopping; integrate through a compatibility adapter instead of letting the population move.")
+        return 1
     db = DatabaseManager(load_config().database_url, initialize_schema=False)
     db.require_tables(["prop_odds_history", "nba_box_score_games", "nba_box_score_players", "nba_points_calibration"])
     first = date.fromisoformat(args.check_integrity_from) if args.check_integrity_from else START_DATE
@@ -551,6 +720,9 @@ def main() -> int:
 
     rows: list[EvalRow] = []
     checked = 0
+    per_night: list[dict[str, Any]] = []
+    attempted_total: Counter = Counter()
+    receipt = None
     with db.reuse_connection():
         nights = graded_dates(db, first)
         not_graded = ungraded_capture_dates(db, first, nights)
@@ -560,7 +732,14 @@ def main() -> int:
                 v1 = grade_captures(night, captures, ladders, load_box_scores(db, night))
                 v2 = counters = None
             else:
-                v1, v2, counters = load_night(db, night)
+                v1, v2, counters, attempted = load_night(db, night)
+                per_night.append({"night": night.isoformat(), "status": status_counts(v1),
+                                  "provenance": capture_provenance(load_capture_times(db, night)), "attempted": attempted})
+                for k in ("players", "withLadder", "ladderBooks"):
+                    attempted_total[k] += attempted[k]
+                for reader in READERS:
+                    attempted_total[f"reading_{reader}"] += attempted["reading"][reader]
+                    attempted_total[f"distribution_{reader}"] += attempted["distribution"][reader]
             problems = integrity_check(v1, load_stored(db, night))
             if problems:
                 print(f"INTEGRITY CHECK FAILED on {night}: {len(problems)} mismatch(es); stopping, no metric is reported.")
@@ -570,6 +749,8 @@ def main() -> int:
             checked += sum(1 for r in v1 if r.status == "graded")
             if not integrity_only:
                 rows.extend(pair_rows(v1, v2, counters))  # type: ignore[arg-type]
+        if not integrity_only:
+            receipt = load_receipt(db)
 
     if integrity_only:
         if not_graded:
@@ -580,6 +761,19 @@ def main() -> int:
     report = evaluate(rows)
     report["integrity"] = {"gradedPlayerGames": checked, "nights": len(nights), "tolerance": INTEGRITY_TOL, "passed": True}
     report["notYetGraded"] = [d.isoformat() for d in not_graded]
+    report["pinnedGradeVersion"] = LEGACY_GRADE_VERSION
+    report["perNight"] = per_night
+    report["attempted"] = dict(attempted_total)
+    report["partialNights"] = [n["night"] for n in per_night if set(n["status"]) - {"graded", "push"}]
+    if receipt is not None:
+        # The verdict was frozen: show the receipt, not a fresh primary, and say whether data still reproduces it.
+        report["primary"] = {**receipt["result"], "frozenReceipt": True, "receiptCreatedAt": receipt["createdAt"]}
+        report["receiptCheck"] = compare_to_receipt(receipt, rows)
+    elif report["floors"]["state"] == "met":
+        new_receipt = build_receipt(rows, report["floors"], report["primary"], code_digests())
+        report["receiptDue"] = {"populationSha256": new_receipt["populationSha256"], "written": bool(args.apply)}
+        if args.apply:
+            write_receipt(db, new_receipt)
     if args.json:
         print(json.dumps(report, indent=2, default=str))
     else:
@@ -588,6 +782,30 @@ def main() -> int:
             print(f"not evaluated (pre-tip captures, no stored {GRADE_VERSION} rows yet): "
                   f"{', '.join(d.isoformat() for d in not_graded)}")
         print_report(report)
+        if report.get("receiptCheck"):
+            rc = report["receiptCheck"]
+            print(f"\nFrozen verdict receipt ({report['primary']['receiptCreatedAt']}): population "
+                  f"{'still reproduces' if rc['matches'] else 'NO LONGER reproduces'} ({rc['receiptRows']} rows, "
+                  f"sha {rc['receiptSha256'][:12]}).{(' ' + rc['note']) if rc['note'] else ''}")
+        elif report.get("receiptDue"):
+            print(f"\nVerdict receipt due (sha {report['receiptDue']['populationSha256'][:12]}): "
+                  f"{'written' if report['receiptDue']['written'] else 'NOT written (run with --apply)'}")
+        a = report["attempted"]
+        if a:
+            print(f"\nAttempted (before grading): {a.get('players', 0)} player lines, {a.get('withLadder', 0)} with a ladder, "
+                  f"readings v1 {a.get('reading_v1', 0)} / v2 {a.get('reading_v2', 0)}, distributions v1 "
+                  f"{a.get('distribution_v1', 0)} / v2 {a.get('distribution_v2', 0)}")
+        if report["partialNights"]:
+            print(f"Nights with unresolved or DNP rows (they still count toward the night floor, per the registration): "
+                  f"{', '.join(report['partialNights'])}")
+        print(f"{'night':<12}{'graded':>7}{'other':>7}{'games':>7}{'no ladder':>10}{'main min':>9}{'ladder min':>11}{'gap min':>8}")
+        for n in report["perNight"]:
+            pv, st = n["provenance"], n["status"]
+            other = sum(v for k, v in st.items() if k != "graded")
+            f1 = lambda x: "-" if x is None else f"{x:.0f}"  # noqa: E731
+            print(f"{n['night']:<12}{st.get('graded', 0):>7}{other:>7}{pv['games']:>7}{pv['gamesWithoutLadder']:>10}"
+                  f"{f1(pv['mainMinutesBeforeTip']['median']):>9}{f1(pv['ladderMinutesBeforeTip']['median']):>11}"
+                  f"{f1(pv['mainLadderGapMinutes']['median']):>8}")
     return 0
 
 

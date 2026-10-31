@@ -244,3 +244,55 @@ def test_rung_counts_and_k_by_book():
     assert books["draftkings"]["n"] == 2 and books["draftkings"]["median"] == pytest.approx(1.08)
     assert books["fanduel"] == {"book": "fanduel", "n": 0, "unsolvable": 1, "min": None, "p10": None,
                                 "median": None, "p90": None, "max": None}
+
+
+# ------------------------------------------------------------- frozen verdict receipt and integration safeguards
+
+
+def test_receipt_freezes_the_population_and_detects_a_later_correction():
+    rows = _nights(31, 40)
+    status = ev.floor_status(rows, today=date(2026, 12, 15))
+    assert status["state"] == "met"
+    primary = ev.primary_metric(rows, status)
+    receipt = ev.build_receipt(rows, status, primary, {"f": "abc"})
+    assert receipt["kind"] == "original" and receipt["cutoffNight"] == status["verdictCutoffNight"]
+    assert len(receipt["population"]) == len(ev.verdict_population(rows, status))
+    # Same data reproduces it, and nights after the cutoff never enter it.
+    later = rows + _nights(2, 40, start=date.fromisoformat(status["verdictCutoffNight"]) + timedelta(days=1))
+    assert ev.compare_to_receipt(receipt, later)["matches"] is True
+    # A corrected outcome inside the frozen range is reported, never absorbed.
+    changed = list(rows)
+    changed[0] = _eval_row(changed[0].game_date, changed[0].player_key, actual=99.0, v1_at=V1, v2_at=V2)
+    check = ev.compare_to_receipt(receipt, changed)
+    assert check["matches"] is False and "amendment" in check["note"]
+
+
+def test_population_digest_is_order_independent():
+    rows = _nights(3, 5)
+    a = ev.records_sha256(ev.population_records(rows))
+    b = ev.records_sha256(ev.population_records(list(reversed(rows))))
+    assert a == b
+
+
+def test_grade_is_pinned_to_v1_and_code_digests_cover_the_registration():
+    assert ev.LEGACY_GRADE_VERSION == "nba-points-grade-v1" == cal.GRADE_VERSION
+    digests = ev.code_digests()
+    assert ev.REGISTRATION in digests and "model/nba_points_ladder.py" in digests
+    assert all(len(v) == 64 for v in digests.values())
+
+
+def test_paired_brier_scores_both_readers_on_the_same_rows():
+    rows = [_eval_row(ev.START_DATE, "a", 30.0, V1, V2), _eval_row(ev.START_DATE, "b", 10.0, {25: 0.4}, {25: None})]
+    r25 = next(r for r in ev.rung_table(rows) if r["rung"] == "25+")
+    assert r25["v1"]["n"] == 2 and r25["v2"]["n"] == 1 and r25["pairedN"] == 1
+    assert abs(r25["pairedBrier"]["v1"] - (0.5 - 1) ** 2) < 1e-12 and abs(r25["pairedBrier"]["v2"] - (0.5 - 1) ** 2) < 1e-12
+
+
+def test_capture_provenance_reports_main_and_ladder_ages_separately():
+    tip = datetime(2026, 11, 1, 23, 0, tzinfo=timezone.utc)
+    rows = [{"event_id": "e1", "market": "player_points", "captured_at": tip - timedelta(minutes=11), "commence_time": tip},
+            {"event_id": "e1", "market": "player_points_alternate", "captured_at": tip - timedelta(minutes=92), "commence_time": tip},
+            {"event_id": "e2", "market": "player_points", "captured_at": tip - timedelta(minutes=30), "commence_time": tip}]
+    p = ev.capture_provenance(rows)
+    assert p["games"] == 2 and p["gamesWithoutLadder"] == 1
+    assert p["mainLadderGapMinutes"]["median"] == 81 and p["ladderMinutesBeforeTip"]["max"] == 92

@@ -57,3 +57,11 @@ jobs:
           ${GAME_DATE:+--date "$GAME_DATE"}
           --days-back "$DAYS_BACK"
           --apply
+      # The registered ladder-v2 tail study (docs/nba-points-ladder-v2-registration.md):
+      # read-only floor status and secondaries every night, and the one-time frozen
+      # verdict receipt the first night both floors are met (--apply writes only that
+      # receipt, never a grade). A failed v1 integrity check fails this step on purpose.
+      - name: Ladder v2 study status (and the one-time verdict receipt)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python -m research.nba_points_ladder_v2_eval --apply
