@@ -1,0 +1,50 @@
+{
+  "study": "nfl-rushing-under-history-v1",
+  "status": "registered",
+  "registered_at": "2026-10-31T21:10:00+00:00",
+  "seasons": [2023, 2024, 2025],
+  "weeks": [1, 18],
+  "book": "draftkings",
+  "market": "player_rush_yds",
+  "stat": "rushing_yards",
+  "side": "under",
+  "stake": 1.0,
+  "line": "the Odds API archive snapshot at or before 90 minutes before kickoff (ingest/nfl_prop_backfill.py, LEAD_MINUTES = 90); the latest such capture per game and player whose DraftKings quote has a line, an over price and an under price",
+  "event_match_window_minutes": 120,
+  "settlement": {
+    "source": "nflverse stats_player_week for the line's season, regular season",
+    "match": "nflverse game_id plus normalized player_display_name",
+    "no_stat_row": "void",
+    "ambiguous_name": "void",
+    "push": 0.0
+  },
+  "floors": {
+    "graded_bets": 2000,
+    "game_weeks": 36
+  },
+  "bootstrap": {
+    "resamples": 2000,
+    "seed": 20261031,
+    "cluster": "season_game_week",
+    "interval": 0.95
+  },
+  "stability": {
+    "min_positive_seasons": 2
+  },
+  "secondary": {
+    "name": "small_lines",
+    "split_line": 60.0,
+    "metric": "ROI(line < 60) minus ROI(line >= 60), same game-week bootstrap",
+    "licenses": "nothing on its own; reported with its interval"
+  },
+  "verdict": {
+    "when": "the first grade run after the archive pull for every registered season has finished",
+    "outcomes": {
+      "PASS": "ROI interval wholly above zero AND ROI above zero in at least 2 of the 3 seasons",
+      "NO_EDGE": "anything else with the floors met",
+      "LOSES": "ROI interval wholly below zero",
+      "INCONCLUSIVE": "floors not met, including when the archive lacks DraftKings rushing lines"
+    }
+  },
+  "tables": "nfl_rushing_under_runs / nfl_rushing_under_verdicts, keyed by study"
+}
