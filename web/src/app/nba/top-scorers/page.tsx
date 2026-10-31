@@ -142,13 +142,11 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
           Line is the points line most books quote. A points line is the books&apos; median outcome, so a player scores above
           it about half the time. Floor, ceiling, 25+ and 30+ come from the books&apos; alternate points ladder (&quot;20+ points&quot;
           and so on): floor is the score he beats 90% of the time, ceiling the score he beats 10% of the time. Over-only rungs
-          are de-vigged with each book&apos;s main-line margin, which leaves a little margin on long shots, so high-end chances
-          read slightly high. Without a ladder the bar shows the spread of main lines across books instead.
+          are de-vigged with each book&apos;s main-line margin, which does not establish fair long-shot probabilities. High-end chances may be overstated. Without a ladder the bar shows the spread of main lines across books instead.
         </p>
         <p>
           This is the market&apos;s number, not a model of ours; the calibration panel above is its record against results.
-          Position, team and {LAST_SEASON} PPG come from last season&apos;s stats and can be stale for a player who changed
-          teams.
+          {LAST_SEASON} PPG is the full regular-season arithmetic average across recorded appearances, excluding playoffs.
         </p>
       </section>
     </main>

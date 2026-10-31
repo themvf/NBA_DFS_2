@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
-import { buildBoard, consensus, bookLines, devigOver, nameKey, teamKey } from "../src/lib/nba-top-scorers";
+import { buildBoard, consensus, bookLines, devigOver, nameKey, playerKey, teamKey } from "../src/lib/nba-top-scorers";
 
 // Name keys ignore accents, punctuation and suffixes.
 assert.equal(nameKey("Nikola Jokić"), nameKey("Nikola Jokic"));
 assert.equal(nameKey("Jaren Jackson Jr."), nameKey("Jaren Jackson"));
 assert.equal(teamKey("LA Clippers"), teamKey("Los Angeles Clippers"));
+assert.equal(playerKey("Herb Jones"), playerKey("Herbert Jones"));
+assert.notEqual(playerKey("Herb Williams"), playerKey("Herbert Williams"));
 
 // De-vig: a symmetric -110/-110 pair is 50%; invalid prices give null.
 assert.equal(devigOver(-110, -110), 0.5);
@@ -70,5 +72,12 @@ const amb = buildBoard(
   ],
 );
 assert.equal(amb.scorers[0].lastSeasonPpg, null);
+
+// A verified provider alias resolves the season reference, but cannot choose
+// between two canonical identities with the same alias.
+const herbProps = [{ ...base, eventId: "h", homeTeam: "A", awayTeam: "B", player: "Herb Jones", books: { dk: { line: 8.5, over: -110, under: -110 } } }];
+const herbStats = [{ name: "Herbert Jones", ppg: 10, games: 60, teamName: "A", teamAbbrev: "A" }];
+assert.equal(buildBoard(herbProps, herbStats).scorers[0].lastSeasonPpg, 10);
+assert.equal(buildBoard(herbProps, [...herbStats, { ...herbStats[0], name: "Herb Jones" }]).scorers[0].lastSeasonPpg, null);
 
 console.log("test-nba-top-scorers: all assertions passed");

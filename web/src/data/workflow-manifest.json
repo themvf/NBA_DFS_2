@@ -230,6 +230,18 @@
       "pullRequest": false
     },
     {
+      "file": "nba_points_ghost.yml",
+      "name": "NBA ghost projections v2",
+      "crons": [
+        "50 16 * 1-6,10-12 *",
+        "37 12 * 1-6,10-12 *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
       "file": "nfl_dfs_removal_probe.yml",
       "name": "NFL DFS Removal Probe",
       "crons": [],

@@ -38,6 +38,14 @@ MIN_CURVE_POINTS = 3
 _SUFFIXES = frozenset({"jr", "sr", "ii", "iii", "iv", "v"})
 # Our teams table and The Odds API spell one team differently.
 TEAM_ALIASES = {"laclippers": "losangelesclippers"}
+# Explicit published-name alias verified against the ESPN event box score.
+# No fuzzy identity matching; collisions are still unresolved by the grader.
+PLAYER_ALIASES = {"herbjones": "herbertjones"}
+
+
+def player_key(name: str | None) -> str:
+    key = name_key(name)
+    return PLAYER_ALIASES.get(key, key)
 
 
 def name_key(name: str | None) -> str:

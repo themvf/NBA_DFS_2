@@ -71,16 +71,29 @@ export async function getNbaPointsPropDates(limit = 14): Promise<string[]> {
   return (result.rows as Record<string, unknown>[]).map((r) => day(r.game_date));
 }
 
-/** Per-game averages for one season, with the player's team name for matching to a game. */
+/** Full regular-season arithmetic PPG, never the mutable ten-game EWMA table.
+ * Aggregate by player across trades. The latest historical team is only a
+ * prior-season association; it does not establish current roster membership.
+ */
 export async function getNbaSeasonStats(season: string): Promise<SeasonStat[]> {
   const result = await db.execute(sql`
-    SELECT nps.name, nps.position, nps.ppg, nps.games, t.name AS team_name, t.abbreviation
-    FROM nba_player_stats nps
-    LEFT JOIN teams t ON t.team_id = nps.team_id
-    WHERE nps.season = ${season}`);
+    WITH appearances AS (
+      SELECT * FROM nba_player_game_logs
+      WHERE season = ${season} AND season_type = 'Regular Season'
+        AND points IS NOT NULL AND minutes > 0
+    ), totals AS (
+      SELECT player_id, avg(points) AS ppg, count(*) AS games
+      FROM appearances GROUP BY player_id
+    ), latest AS (
+      SELECT DISTINCT ON (player_id) player_id, name, team_id
+      FROM appearances ORDER BY player_id, game_date DESC NULLS LAST, game_id DESC
+    )
+    SELECT latest.name, totals.ppg, totals.games, t.name AS team_name, t.abbreviation
+    FROM totals JOIN latest USING (player_id)
+    LEFT JOIN teams t ON t.team_id = latest.team_id`);
   return (result.rows as Record<string, unknown>[]).map((r) => ({
     name: String(r.name),
-    position: r.position == null ? null : String(r.position),
+    position: null,
     ppg: num(r.ppg),
     games: num(r.games),
     teamName: r.team_name == null ? null : String(r.team_name),
