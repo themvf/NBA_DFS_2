@@ -20,6 +20,14 @@
  * the chance of beating 30 cannot exceed the chance of beating 25.
  * Nothing is extrapolated past the lowest or highest rung: a floor below the
  * ladder or a chance past its top is null, not a guess.
+ *
+ * `{ devig: "power" }` is the candidate nba-points-ladder-v2 reader registered in
+ * docs/nba-points-ladder-v2-registration.md, opt-in only until that study's
+ * verdict (the page never passes it). It changes ONLY one-sided rungs: per book
+ * it solves k with implied(over)^k + implied(under)^k = 1 on the main line; an
+ * over-only rung becomes implied(over)^k, an under-only rung 1 - implied(under)^k,
+ * and a book whose k cannot be solved has its one-sided rungs skipped. Mirrored
+ * in model/nba_points_ladder.py and pinned by the shared fixture.
  */
 
 export type Rung = { point: number; side: string; price: number };
@@ -42,6 +50,27 @@ export type PointsDistribution = {
 };
 
 const MIN_CURVE_POINTS = 3;
+
+export type Devig = "proportional" | "power";
+
+/** Bisection bracket and tolerance for the power exponent, fixed by the registration. */
+export const POWER_K_LOW = 0.25;
+export const POWER_K_HIGH = 4;
+export const POWER_K_TOL = 1e-10;
+
+/** The k with over^k + under^k = 1 (implied chances), by bisection on [0.25, 4]; null outside it. */
+export function powerExponent(overImplied: number, underImplied: number): number | null {
+  const f = (k: number) => overImplied ** k + underImplied ** k - 1;
+  let lo = POWER_K_LOW;
+  let hi = POWER_K_HIGH;
+  if (!(overImplied > 0 && overImplied < 1 && underImplied > 0 && underImplied < 1) || f(lo) < 0 || f(hi) > 0) return null;
+  while (hi - lo > POWER_K_TOL) {
+    const mid = (lo + hi) / 2;
+    if (f(mid) > 0) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
 
 function validAmerican(price: unknown): price is number {
   return typeof price === "number" && Number.isFinite(price) && (price <= -100 || price >= 100);
@@ -106,7 +135,9 @@ export function quantileAt(curve: ExceedancePoint[], q: number): number | null {
 export function buildDistribution(
   main: Record<string, MainQuote>,
   ladders: Record<string, { ladder?: Rung[] | null }>,
+  options: { devig?: Devig } = {},
 ): PointsDistribution | null {
+  const power = options.devig === "power";
   const byPoint = new Map<number, number[]>();
   const add = (point: number, p: number) => {
     const list = byPoint.get(point) ?? [];
@@ -116,11 +147,13 @@ export function buildDistribution(
 
   // Each book's main line is a rung too, and its overround de-vigs that book's ladder.
   const overround = new Map<string, number>();
+  const bookK = new Map<string, number | null>();
   for (const [book, q] of Object.entries(main)) {
     if (!Number.isFinite(q.line) || !validAmerican(q.over) || !validAmerican(q.under)) continue;
     const o = implied(q.over);
     const u = implied(q.under);
     overround.set(book, o + u);
+    if (power) bookK.set(book, powerExponent(o, u));
     add(q.line, o / (o + u));
   }
 
@@ -137,17 +170,19 @@ export function buildDistribution(
       sides.set(r.point, s);
     }
     const m = overround.get(book);
+    const k = power ? bookK.get(book) ?? null : null;
+    const oneSidedOk = power ? k != null : m != null;
     let used = 0;
     for (const [point, s] of sides) {
       if (s.over != null && s.under != null) {
         const o = implied(s.over);
         add(point, o / (o + implied(s.under)));
         used++;
-      } else if (m != null && s.over != null) {
-        add(point, implied(s.over) / m);
+      } else if (oneSidedOk && s.over != null) {
+        add(point, power ? implied(s.over) ** k! : implied(s.over) / m!);
         used++;
-      } else if (m != null && s.under != null) {
-        add(point, 1 - implied(s.under) / m);
+      } else if (oneSidedOk && s.under != null) {
+        add(point, 1 - (power ? implied(s.under) ** k! : implied(s.under) / m!));
         used++;
       } else {
         skippedRungs++;

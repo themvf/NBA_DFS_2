@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { buildDistribution, exceedanceAt, nonIncreasing, quantileAt, type PointsDistribution } from "../src/lib/nba-points-ladder";
+import { buildDistribution, exceedanceAt, nonIncreasing, powerExponent, quantileAt, type PointsDistribution } from "../src/lib/nba-points-ladder";
 import { bookLines, consensus, nameKey, teamKey, type BookLine } from "../src/lib/nba-top-scorers";
 
 // Normal(25, 7) survival function via an erf approximation (Abramowitz-Stegun 7.1.26).
@@ -67,20 +67,48 @@ assert.ok(paired.atLeast[20]! > 0.7 && paired.atLeast[30]! < 0.35);
 // The shared fixture pins model/nba_points_ladder.py (the nightly grader's port)
 // to this implementation: write-nba-points-ladder-fixture.ts regenerates it,
 // tests/test_nba_points_ladder.py asserts the Python side.
+type FixtureCase = {
+  name: string;
+  books: Record<string, never>;
+  ladders: Record<string, never>;
+  expected: { bookLines: BookLine[]; consensus: unknown; distribution: PointsDistribution | null; distributionPower: PointsDistribution | null };
+};
 const fixture = JSON.parse(readFileSync(resolve(__dirname, "../../tests/fixtures/nba_points_ladder_fixture.json"), "utf8")) as {
   nameKeys: Record<string, string>;
   teamKeys: Record<string, string>;
-  cases: { name: string; books: Record<string, never>; ladders: Record<string, never>; expected: { bookLines: BookLine[]; consensus: unknown; distribution: PointsDistribution | null } }[];
+  cases: FixtureCase[];
+  powerCases: FixtureCase[];
+  powerExponents: { over: number; under: number; k: number | null }[];
 };
 for (const [name, key] of Object.entries(fixture.nameKeys)) assert.equal(nameKey(name), key, name);
 for (const [name, key] of Object.entries(fixture.teamKeys)) assert.equal(teamKey(name), key, name);
 assert.equal(fixture.cases.length, 6, "fixture cases");
-for (const c of fixture.cases) {
+assert.equal(fixture.powerCases.length, 4, "power fixture cases");
+for (const c of [...fixture.cases, ...fixture.powerCases]) {
   const lines = bookLines(c.books);
   assert.deepEqual(lines, c.expected.bookLines, `${c.name}: book lines`);
   assert.deepEqual(consensus(lines), c.expected.consensus, `${c.name}: consensus`);
-  const dist = buildDistribution(Object.fromEntries(lines.map((l) => [l.book, { line: l.line, over: l.over, under: l.under }])), c.ladders);
-  assert.deepEqual(dist, c.expected.distribution, `${c.name}: distribution`);
+  const main = Object.fromEntries(lines.map((l) => [l.book, { line: l.line, over: l.over, under: l.under }]));
+  assert.deepEqual(buildDistribution(main, c.ladders), c.expected.distribution, `${c.name}: distribution`);
+  // The default reader is v1; "proportional" spelled out is the same reader.
+  assert.deepEqual(buildDistribution(main, c.ladders, { devig: "proportional" }), c.expected.distribution, `${c.name}: proportional`);
+  assert.deepEqual(buildDistribution(main, c.ladders, { devig: "power" }), c.expected.distributionPower, `${c.name}: power`);
 }
+
+// Power de-vig (nba-points-ladder-v2 candidate): k is about 1.072 at -110/-110,
+// a k outside [0.25, 4] is null, and only one-sided rungs change.
+const imp = (a: number) => (a < 0 ? -a / (-a + 100) : 100 / (a + 100));
+for (const row of fixture.powerExponents) assert.deepEqual(powerExponent(imp(row.over), imp(row.under)), row.k, `k ${row.over}/${row.under}`);
+assert.ok(Math.abs(powerExponent(imp(-110), imp(-110))! - 1.072) < 5e-4);
+assert.equal(powerExponent(imp(-600), imp(-600)), null);
+const pairedPower = buildDistribution(
+  { draftkings: { line: 24.5, over: -110, under: -110 } },
+  { fanduel: { ladder: [
+    { point: 19.5, side: "over", price: -300 }, { point: 19.5, side: "under", price: 240 },
+    { point: 29.5, side: "over", price: 200 }, { point: 29.5, side: "under", price: -250 },
+  ] } },
+  { devig: "power" },
+);
+assert.deepEqual(pairedPower, paired, "two-sided rungs are identical under power");
 
 console.log("test-nba-points-ladder: all assertions passed");

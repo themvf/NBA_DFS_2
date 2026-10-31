@@ -174,12 +174,17 @@ def match_game(home_team: str, away_team: str, games: list[BoxGame]) -> BoxGame 
 
 
 def grade_captures(target: date, captures: list[Capture], ladders: dict[tuple[str, str], dict[str, Any]],
-                   games: list[BoxGame]) -> list[GradeRow]:
-    """Pure: one GradeRow per main-line capture row that reads to a consensus line."""
+                   games: list[BoxGame], *, devig: str = "proportional") -> list[GradeRow]:
+    """Pure: one GradeRow per main-line capture row that reads to a consensus line.
+
+    ``devig`` selects the ladder reader; the nightly grade always uses the default
+    (v1). ``research/nba_points_ladder_v2_eval.py`` passes "power" for the registered
+    v2 candidate, with the same matching and status rules.
+    """
     rows: list[GradeRow] = []
     box_by_event: dict[str, BoxGame | None] = {}
     for cap in captures:
-        reading = read_player(cap.books, ladders.get((cap.event_id, name_key(cap.player))))
+        reading = read_player(cap.books, ladders.get((cap.event_id, name_key(cap.player))), devig)
         if reading is None:
             continue
         if cap.event_id not in box_by_event:
