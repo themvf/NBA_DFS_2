@@ -60,3 +60,10 @@ def test_grade_compares_totals_and_leaves_dnp_incomplete():
     assert bt.grade(sel, rows)["boom"]["status"] == "incomplete"
     summary = bt.summarize([bt.grade(sel, [{**r, "status": "graded", "actual_points": 5.0} for r in rows])])
     assert summary["boom"]["graded"] == 1 and summary["verdict"] is None
+
+
+def test_fixture_slate_reproduces():
+    import json
+    from pathlib import Path
+    f = json.loads((Path(__file__).resolve().parent / "fixtures/nba_boom_trios_fixture.json").read_text(encoding="utf-8"))
+    assert bt.select(f["snapshot"]) == f["expected"]
