@@ -23,6 +23,7 @@ from datetime import datetime
 import math
 from typing import Any
 
+from model.nba_points_ladder import team_key
 from research.nba_points_workload_conflicts import WINDOW_MAX, WINDOW_MIN, season_of, _order
 
 VERSION = "nba-role-opportunity-challenger-v1"
@@ -31,7 +32,7 @@ ARITHMETIC_TOLERANCE = 0.01
 REGISTERED_BASE = "v3"
 ACTIVATION_BLOCKERS = (
     "original v3 forecasts are produced only by the local v3 job (model file not in the repository)",
-    "no timestamped official roster source for decision-time team identity",
+    "the roster capture (ingest/nba_rosters.py) runs in the cloud, but must be read at the ORIGINAL v3 freeze, which runs locally",
     "no protocol registered under artifacts/nba-role-reliability/ before an original v3 freeze",
 )
 
@@ -97,7 +98,7 @@ def challenge(c: dict[str, Any], slate_date: str, *, base_model: str, freeze_at:
         team_state = "team_identity_unverified"
     elif datetime.fromisoformat(entry["observed_at"]) > datetime.fromisoformat(freeze_at):
         team_state = "roster_observed_after_freeze"
-    elif len(teams) != 1 or entry.get("team") not in teams:
+    elif len({team_key(x) for x in teams}) != 1 or team_key(entry.get("team")) not in {team_key(x) for x in teams}:
         team_state = "team_changed"
     else:
         team_state = "verified"

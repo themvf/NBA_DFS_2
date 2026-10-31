@@ -309,7 +309,9 @@ score; saves go to `nba_boom_lineup_records` (insert refused after the first tip
 model's FGA forecast by 3+ with forecast/recent <= 0.85, into append-only `nba_role_reliability_records`. A review
 flag, never a forecast change. The injury collector now does bounded discovery (<= 12 requests) with failure receipts;
 typed nba.com news claims are review evidence only; the 50/50 role challenger is formula-only and NOT activated (needs
-the local-only v3 base and a decision-time roster source). See docs/nba-role-reliability.md.
+the local-only v3 base). Flags are graded each morning (FGA vs forecast, descriptive). `ingest/nba_rosters.py`
+(`nba-roster-capture-v1`) captures ESPN rosters before each ghost freeze into append-only
+`nba_roster_capture_runs`/`nba_roster_observations`; that is the decision-time team. See docs/nba-role-reliability.md.
 
 ## Data Refresh Workflow
 

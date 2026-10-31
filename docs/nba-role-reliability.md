@@ -18,13 +18,34 @@ freeze and appends one record per snapshot to `nba_role_reliability_records`
   previous 10-20 appearances) is an explanatory tag only.
 - Every candidate gets a status: review_required, no_conflict,
   insufficient_history, missing_forecast, incomplete_window, ambiguous_identity.
-- Team continuity comes from the window's own team fields; the decision-time
-  team is always `unverified` (no roster source).
+- Team continuity comes from the window's own team fields. The decision-time
+  team comes from the roster capture below: `verified`, `team_changed`, or
+  `unverified` when no complete capture exists within 24 h before the freeze
+  (Oct 30 and Oct 31 were reviewed before the first capture, so they read
+  unverified).
 - Replays (retrospective, not counted): Oct 28 flagged 9 of 132 candidates,
   Oct 30 flagged 4 of 132. Barnes on Oct 30: model 13.3 shots, recent 18.5
   across 4 games, rising.
-- `grade()` gives the descriptive outcome (actual FGA above the forecast, ties
-  separate, DNP unresolved). It is not scheduled yet.
+- Graded each morning in the same workflow's grade run
+  (`--grade --apply`): actual FGA against the frozen forecast, ties separate,
+  DNP or ambiguous box rows unresolved, stored once per snapshot
+  (`kind = 'workload_conflict_grade'`) when every flag resolves or the date is
+  3+ days old. Descriptive only, not a points or P90 hit. First: Oct 30, 4 of
+  4 above forecast.
+
+## Roster capture (live, `nba-roster-capture-v1`)
+
+`ingest/nba_rosters.py` reads ESPN's public team list and all 30 rosters in the
+ghost workflow just before the freeze (`continue-on-error`, so a failed capture
+cannot block the snapshot; it leaves the team unverified and fails the
+`/health` row, which counts complete runs only). `nba_roster_capture_runs`
+gets a row per run (complete or failed); `nba_roster_observations` is
+append-only and gains a row only when a player's team or status changes,
+including a `team = NULL` row when he leaves every roster. `roster_at(db,
+cutoff)` returns the newest complete run within 24 h before a cutoff; a name
+shared by two rostered players is left out. First capture 2026-10-31: 521
+players on 30 teams; a second run added nothing. Roster membership is team
+identity, not participation or minutes.
 
 ## B. Availability-source recovery (built, local collector)
 
@@ -51,8 +72,8 @@ team identity). It produces no probabilities. It cannot run prospectively:
 
 1. its registered base is the original v3 forecast, produced only by the local
    v3 job (the model file is not in the repository);
-2. eligibility needs decision-time team identity from a timestamped official
-   roster observation, and none is collected, so every player skips
-   `team_identity_unverified`;
+2. eligibility needs decision-time team identity read at the original v3
+   freeze; the roster capture now exists in the cloud, but v3 freezes locally,
+   so the challenger has not been wired to it;
 3. the protocol at `artifacts/nba-role-reliability/protocol-draft.json` is a
    draft, not a registration.

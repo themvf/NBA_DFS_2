@@ -18,8 +18,11 @@ Per pinned model, for every candidate in an original frozen snapshot:
 - recent_workload_rising (explanatory tag only): R exceeds the mean FGA of the
   latest 20 appearances strictly before the window by at least 2.0 (10-19 such
   appearances allowed; fewer is unknown). Only the frozen history is used.
-- Team continuity is reported from the window's own team fields; the
-  decision-time roster is UNVERIFIED (no timestamped roster source yet).
+- Team continuity is reported from the window's own team fields. The
+  decision-time team comes from the newest complete ESPN roster capture
+  (`ingest/nba_rosters.py`) taken at or before the snapshot's freeze and within
+  24 h: `verified`, `team_changed` (roster team differs from the window) or
+  `unverified` (no capture, or the name is not uniquely rostered).
 
 Every candidate gets a status: review_required, no_conflict, insufficient_history,
 missing_forecast, incomplete_window or ambiguous_identity. Conflicts sort by R - F,
@@ -31,11 +34,13 @@ then frozen line, then player key; all are kept.
 from __future__ import annotations
 
 import argparse
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import hashlib
 import json
 import math
 from typing import Any
+
+from model.nba_points_ladder import team_key
 
 VERSION = "nba-workload-conflict-v1"
 GAP_MIN = 3.0
@@ -76,7 +81,15 @@ def _order(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(rows, key=lambda r: (str(r.get("game_date")), str(r.get("source_game_id") or "")))
 
 
-def evaluate_candidate(c: dict[str, Any], slate_date: str, model: str = "v2", forecast: dict[str, Any] | None = None) -> dict[str, Any]:
+def decision_team(window_teams: list[str], entry: dict[str, Any] | None) -> tuple[str, str | None]:
+    if not entry:
+        return "unverified", None
+    keys = {team_key(t) for t in window_teams}
+    return ("verified" if keys == {team_key(entry["team"])} else "team_changed"), entry["team"]
+
+
+def evaluate_candidate(c: dict[str, Any], slate_date: str, model: str = "v2", forecast: dict[str, Any] | None = None,
+                       roster: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
     """One candidate's conflict result. `forecast` overrides the snapshot's own (for a v3 forecast file)."""
     fc = forecast if forecast is not None else (c.get("opportunity_forecasts") or {})
     base = {"model": model, "event_id": c.get("event_id"), "player_key": c.get("player_key"), "player": c.get("player"),
@@ -109,6 +122,7 @@ def evaluate_candidate(c: dict[str, Any], slate_date: str, model: str = "v2", fo
     else:
         ref, rising = None, None
     teams = sorted({str(h.get("team")) for h in window if h.get("team")})
+    team_state, roster_team = decision_team(teams, (roster or {}).get(c.get("player_key")))
     return {**base, "status": "review_required" if conflict else "no_conflict",
             "forecast_fga": F, "forecast_minutes": float(M0) if _finite(M0) else None,
             "recent_fga": R, "recent_minutes": mins / len(window), "window_size": len(window),
@@ -119,17 +133,18 @@ def evaluate_candidate(c: dict[str, Any], slate_date: str, model: str = "v2", fo
             "reference_fga": ref, "reference_size": len(earlier), "recent_workload_rising": rising,
             "existing_flags": list(c.get("observed_workload_flags") or []),
             "window_teams": teams, "team_continuity": "same_team_in_window" if len(teams) == 1 else ("team_change_in_window" if teams else "unknown"),
-            "decision_time_team": "unverified",
+            "decision_time_team": team_state, "roster_team": roster_team,
             "availability": (c.get("availability") or {}).get("status", "unverified")}
 
 
-def evaluate_snapshot(snapshot: dict[str, Any], model: str = "v2", forecasts: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+def evaluate_snapshot(snapshot: dict[str, Any], model: str = "v2", forecasts: dict[str, dict[str, Any]] | None = None,
+                      roster: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
     """All candidates of one original frozen snapshot. `forecasts` maps player_key -> FGA/minutes forecast for another model."""
     slate = str(snapshot["game_date"])
     results = []
     for c in snapshot.get("candidates") or []:
         fc = None if forecasts is None else forecasts.get(c.get("player_key"), {})
-        results.append(evaluate_candidate(c, slate, model, fc))
+        results.append(evaluate_candidate(c, slate, model, fc, roster))
     conflicts = sorted((r for r in results if r["status"] == "review_required"),
                        key=lambda r: (-r["gap"], -(r["line"] or 0), r["player_key"]))
     counts: dict[str, int] = {}
@@ -139,7 +154,7 @@ def evaluate_snapshot(snapshot: dict[str, Any], model: str = "v2", forecasts: di
             "snapshot_mode": snapshot.get("mode"), "snapshot_created_at": snapshot.get("created_at"),
             "rules": {"gap_min": GAP_MIN, "ratio_max": RATIO_MAX, "window": [WINDOW_MIN, WINDOW_MAX], "rising_gap": RISING_GAP,
                       "baseline": [BASELINE_MIN, BASELINE_MAX]},
-            "counts": counts, "conflicts": conflicts, "all": results}
+            "counts": counts, "roster_players": len(roster or {}), "conflicts": conflicts, "all": results}
 
 
 def headline(r: dict[str, Any]) -> str:
@@ -147,7 +162,7 @@ def headline(r: dict[str, Any]) -> str:
             f"{r['window_size']} games. Review role assumptions.")
 
 
-def grade(record: dict[str, Any], box: dict[str, dict[str, Any]]) -> dict[str, Any]:
+def grade(record: dict[str, Any], box: dict[str, dict[str, Any] | None]) -> dict[str, Any]:
     """Descriptive next-day outcome per conflict: actual FGA vs the forecast (ties separate). `box` maps player_key -> {fga, played}."""
     out = []
     for r in record["conflicts"]:
@@ -158,7 +173,11 @@ def grade(record: dict[str, Any], box: dict[str, dict[str, Any]]) -> dict[str, A
         a = float(b["fga"])
         out.append({"player_key": r["player_key"], "actual_fga": a, "forecast_fga": r["forecast_fga"],
                     "outcome": "above_forecast" if a > r["forecast_fga"] else ("tie" if a == r["forecast_fga"] else "at_or_below_forecast")})
-    return {"version": VERSION, "game_date": record["game_date"], "outcomes": out}
+    resolved = [o for o in out if o["outcome"] != "unresolved"]
+    return {"version": VERSION, "game_date": record["game_date"], "snapshot_sha256": record["snapshot_sha256"],
+            "conflicts": len(out), "resolved": len(resolved),
+            "above_forecast": sum(o["outcome"] == "above_forecast" for o in resolved),
+            "outcomes": out, "note": "Descriptive: actual FGA above the frozen forecast, ties separate. Not a points or P90 hit."}
 
 
 # ── database ──
@@ -181,7 +200,7 @@ def load_snapshot(db, day: str) -> dict[str, Any] | None:
     return rows[0]["snapshot"] if rows else None
 
 
-def store(db, record: dict[str, Any]) -> bool:
+def store(db, record: dict[str, Any], kind: str = "workload_conflicts") -> bool:
     """Append once per (date, kind, version, snapshot). Never replaces an earlier record."""
     from psycopg2.extras import Json
 
@@ -192,27 +211,76 @@ def store(db, record: dict[str, Any]) -> bool:
         for stmt in DDL:
             cur.execute(stmt)
         cur.execute(f"""INSERT INTO {RECORD_TABLE} (game_date, kind, version, snapshot_sha256, payload_sha256, payload)
-            VALUES (%s, 'workload_conflicts', %s, %s, %s, %s) ON CONFLICT DO NOTHING RETURNING id""",
-                    (record["game_date"], VERSION, record["snapshot_sha256"], digest, Json(json.loads(payload))))
+            VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING RETURNING id""",
+                    (record["game_date"], kind, VERSION, record["snapshot_sha256"], digest, Json(json.loads(payload))))
         wrote = cur.fetchone() is not None
         conn.commit()
     return wrote
+
+
+def load_box(db, day: str, keys: list[str]) -> dict[str, dict[str, Any] | None]:
+    """player_key -> box row for that Eastern date; a key matching two rows is ambiguous (None)."""
+    from db.database import fetch_rows
+
+    with db.connect() as conn:
+        cur = conn.cursor()
+        cur.execute("""SELECT p.player_key, p.played, p.fga FROM nba_box_score_players p
+                       JOIN nba_box_score_games g USING (espn_event_id)
+                       WHERE p.game_date = %s AND p.player_key = ANY(%s) AND g.completed""", (day, keys))
+        rows = fetch_rows(cur)
+    out: dict[str, dict[str, Any] | None] = {}
+    for r in rows:
+        out[r["player_key"]] = None if r["player_key"] in out else dict(r)
+    return out
+
+
+def grade_recent(db, today: date, days_back: int, apply: bool) -> None:
+    """Grade stored conflict records once their games are final; the final attempt (3+ days old) stores whatever resolved."""
+    from db.database import fetch_rows
+
+    with db.connect() as conn:
+        cur = conn.cursor()
+        cur.execute(f"""SELECT r.game_date, r.payload FROM {RECORD_TABLE} r
+            WHERE r.kind = 'workload_conflicts' AND r.version = %s AND r.game_date BETWEEN %s AND %s
+              AND NOT EXISTS (SELECT 1 FROM {RECORD_TABLE} g WHERE g.kind = 'workload_conflict_grade'
+                              AND g.version = r.version AND g.snapshot_sha256 = r.snapshot_sha256)
+            ORDER BY r.game_date""", (VERSION, today - timedelta(days=days_back + 3), today - timedelta(days=1)))
+        records = fetch_rows(cur)
+    if not records:
+        print("no ungraded workload-conflict records")
+    for row in records:
+        rec = row["payload"]
+        g = grade(rec, load_box(db, rec["game_date"], [c["player_key"] for c in rec["conflicts"]]))
+        final = (today - row["game_date"]).days >= 3
+        done = g["resolved"] == g["conflicts"] or final
+        print(f"  {rec['game_date']}: {g['resolved']}/{g['conflicts']} resolved, {g['above_forecast']} above forecast"
+              + ("" if done else " (waiting for final box scores)"))
+        if apply and done:
+            store(db, g, kind="workload_conflict_grade")
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--date", default=None, help="Eastern slate date (default: today ET)")
     ap.add_argument("--apply", action="store_true", help="store the record (append-only)")
+    ap.add_argument("--grade", action="store_true", help="grade stored conflict records against final box scores")
+    ap.add_argument("--days-back", type=int, default=3)
     args = ap.parse_args()
     from ingest.nba_box_scores import eastern_date
+    from ingest.nba_rosters import roster_at
 
-    day = args.date or eastern_date(datetime.now(timezone.utc)).isoformat()
     db = _db()
+    if args.grade:
+        today = date.fromisoformat(args.date) if args.date else eastern_date(datetime.now(timezone.utc))
+        grade_recent(db, today, args.days_back, args.apply)
+        return 0
+    day = args.date or eastern_date(datetime.now(timezone.utc)).isoformat()
     snapshot = load_snapshot(db, day)
     if snapshot is None:
         print(f"no ghost v2 snapshot for {day}; nothing to review")
         return 0
-    record = evaluate_snapshot(snapshot)
+    roster = roster_at(db, datetime.fromisoformat(str(snapshot["created_at"]).replace("Z", "+00:00")))
+    record = evaluate_snapshot(snapshot, roster=roster)
     print(f"{VERSION} {day} ({record['snapshot_mode']}): {record['counts']}")
     for r in record["conflicts"]:
         print(f"  {r['player']:<26} line {r['line']}: {headline(r)} rising={r['recent_workload_rising']} team={r['team_continuity']}")

@@ -361,6 +361,11 @@ DATASET_REGISTRY: tuple[Dataset, ...] = (
             72, "nba_points_ghost.yml", _NBA,
             "Written by research.nba_ghost_runner grade: appends a grade attempt for each of the last three stored "
             "snapshots that has final box scores."),
+    Dataset("nba_roster_capture_runs", "NBA roster capture (decision-time team)", "nba_roster_capture_runs", "run_at",
+            36, "nba_points_ghost.yml", _NBA,
+            "Written by ingest.nba_rosters before each ghost freeze: one row per run. Only complete runs count; a "
+            "failed run writes a failed row that does not refresh this. Player rows are appended only on a change.",
+            filter="status = 'complete'"),
     Dataset("nba_role_reliability_records", "NBA workload-conflict review", "nba_role_reliability_records", "created_at",
             72, "nba_points_ghost.yml", _NBA,
             "Written by research.nba_points_workload_conflicts after each ghost freeze: one append-only record per "
