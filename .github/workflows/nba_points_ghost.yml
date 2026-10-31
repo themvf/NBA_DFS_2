@@ -42,6 +42,11 @@ jobs:
           python-version: '3.12'
           cache: pip
       - run: pip install -r requirements.txt
+      - name: Capture NBA rosters (decision-time team identity)
+        if: github.event.schedule != '37 12 * 1-6,10-12 *' && inputs.action != 'grade'
+        id: rosters
+        continue-on-error: true
+        run: python -m ingest.nba_rosters
       - name: Record a pre-first-tip ghost snapshot
         if: github.event.schedule != '37 12 * 1-6,10-12 *' && inputs.action != 'grade'
         run: >-
@@ -59,6 +64,19 @@ jobs:
           python -m research.nba_ghost_runner grade
           ${GAME_DATE:+--date "$GAME_DATE"}
           --days-back 3 --apply
+      - name: Grade workload-conflict flags
+        if: github.event.schedule == '37 12 * 1-6,10-12 *' || inputs.action == 'grade'
+        run: >-
+          python -m research.nba_points_workload_conflicts --grade
+          ${GAME_DATE:+--date "$GAME_DATE"} --apply
+      - name: Report optional step outcomes
+        if: ${{ always() && steps.rosters.outcome != '' }}
+        env:
+          ROSTERS_OUTCOME: ${{ steps.rosters.outcome }}
+        run: |
+          echo "## Optional steps" >> "$GITHUB_STEP_SUMMARY"
+          echo "- NBA roster capture: $ROSTERS_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$ROSTERS_OUTCOME" = failure ]; then echo "::warning title=Optional step failed::NBA roster capture ended failure (decision-time team stays unverified)"; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
