@@ -4,26 +4,18 @@ import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { readNflQbMatchupContexts } from "@/db/nfl-qb-matchup-context";
 import type { QbMatchupContext } from "@/lib/nfl-dfs/qb-matchup-context";
-
-export type RollingRun = { runId: string; season: number; week: number; modelVersion: string; asOf: string; playerCount: number };
-export type RollingPlayer = {
-  id: number; name: string; team: string; opponent: string; position: string;
-  status: string; projected: number | null; floor: number | null; median: number | null;
-  ceiling: number | null; boomRate: number | null; confidence: number;
-  historyGames: number; salary: number | null; kickoff: string;
-  matchup: QbMatchupContext | null;
-};
-export type RollingProjectionBoard = {
-  options: RollingRun[]; run: RollingRun | null; players: RollingPlayer[];
-  matchupAsOf: string | null; upcomingGames: number; omittedPlayers: number;
-  contextError: string | null;
-};
+import {
+  STAT_KEYS, type RollingGame, type RollingPlayer, type RollingProjectionBoard, type StatMeans,
+} from "@/lib/nfl-dfs/rolling-projection-view";
 
 const aliases: Record<string, string> = { LA: "LAR", WAS: "WSH", JAC: "JAX", AZ: "ARI" };
 const canonical = (value: unknown) => aliases[String(value)] ?? String(value);
 const dateText = (value: unknown) => value instanceof Date ? value.toISOString() : String(value);
 const optionalNumber = (value: unknown) => value == null ? null : Number(value);
 const records = (result: { rows: unknown[] }) => result.rows as Record<string, unknown>[];
+const statColumns = sql.raw(STAT_KEYS.map(key => `(stat_means->>'${key}')::float8 AS "stat_${key}"`).join(", "));
+const statMeans = (row: Record<string, unknown>) =>
+  Object.fromEntries(STAT_KEYS.map(key => [key, optionalNumber(row[`stat_${key}`])])) as StatMeans;
 
 /** Projection rows come from the independent scheduled model run, never a salary upload. */
 export async function getNflRollingProjectionBoard(requestedWeek?: string): Promise<RollingProjectionBoard> {
@@ -47,7 +39,7 @@ export async function getNflRollingProjectionBoard(requestedWeek?: string): Prom
   const future = new Set(records(futureResult).map(row => `${row.season}-${row.week}`));
   const run = options.find(row => `${row.season}-${row.week}` === requestedWeek)
     ?? options.find(row => future.has(`${row.season}-${row.week}`)) ?? options[0] ?? null;
-  if (!run) return { options, run: null, players: [], matchupAsOf: null, upcomingGames: 0, omittedPlayers: 0, contextError: null };
+  if (!run) return { options, run: null, players: [], games: [], matchupAsOf: null, omittedPlayers: 0, contextError: null };
 
   const [fixtureResult, projectionResult] = await Promise.all([
     db.execute(sql`
@@ -61,14 +53,15 @@ export async function getNflRollingProjectionBoard(requestedWeek?: string): Prom
     db.execute(sql`
       SELECT id, player_name AS name, team, opponent, position, projection_status AS status,
         model_proj_fpts AS projected, floor_fpts AS floor, median_fpts AS median,
-        ceiling_fpts AS ceiling, boom_rate AS "boomRate", confidence,
-        history_games AS "historyGames", salary
+        ceiling_fpts AS ceiling, boom_rate AS "boomRate",
+        history_games AS "historyGames", salary, ${statColumns}
       FROM nfl_dfs_player_projections
       WHERE run_id = ${run.runId} ORDER BY position, player_name`),
   ]);
+  const fixtures = records(fixtureResult).map(row => ({ gameId: String(row.gameId),
+    home: canonical(row.home), away: canonical(row.away), kickoff: dateText(row.kickoff) }));
   const fixtureByTeam = new Map<string, { opponent: string; kickoff: string }>();
-  for (const row of records(fixtureResult)) {
-    const home = canonical(row.home), away = canonical(row.away), kickoff = dateText(row.kickoff);
+  for (const { home, away, kickoff } of fixtures) {
     fixtureByTeam.set(home, { opponent: away, kickoff });
     fixtureByTeam.set(away, { opponent: home, kickoff });
   }
@@ -87,10 +80,15 @@ export async function getNflRollingProjectionBoard(requestedWeek?: string): Prom
       position: String(row.position), status: String(row.status),
       projected: optionalNumber(row.projected), floor: optionalNumber(row.floor),
       median: optionalNumber(row.median), ceiling: optionalNumber(row.ceiling),
-      boomRate: optionalNumber(row.boomRate), confidence: Number(row.confidence),
+      boomRate: optionalNumber(row.boomRate),
       historyGames: Number(row.historyGames), salary: optionalNumber(row.salary),
-      kickoff: fixture.kickoff, matchup: String(row.position) === "QB" ? contexts.get(team) ?? null : null }];
+      kickoff: fixture.kickoff, stats: statMeans(row), teamContext: contexts.get(team) ?? null }];
   });
-  return { options, run, players, matchupAsOf: now.toISOString(),
-    upcomingGames: records(fixtureResult).length, omittedPlayers, contextError };
+  const games = fixtures.map(({ gameId, home, away, kickoff }): RollingGame => {
+    const homeContext = contexts.get(home), awayContext = contexts.get(away);
+    return { gameId, kickoff, home, away,
+      homeImplied: homeContext?.impliedPoints ?? null, awayImplied: awayContext?.impliedPoints ?? null,
+      homeSpread: homeContext?.teamSpread ?? null, total: homeContext?.gameTotal ?? awayContext?.gameTotal ?? null };
+  }).sort((a, b) => a.kickoff.localeCompare(b.kickoff) || a.away.localeCompare(b.away));
+  return { options, run, players, games, matchupAsOf: now.toISOString(), omittedPlayers, contextError };
 }
