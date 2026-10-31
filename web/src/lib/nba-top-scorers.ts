@@ -16,6 +16,10 @@
  *   are different propositions and must not be averaged.
  * - Floor, ceiling and P(N+) come from the alternate points ladder
  *   (nba-points-ladder.ts); a player with no ladder has none.
+ * - A player's team is the one he played for in his latest box-score game
+ *   before the slate (this season), falling back to last season's team only
+ *   when he has no game yet. Either is used only when it is one of the two
+ *   teams in this game; `teamSource` says which one was used.
  * - Nothing here is fitted or validated. It is the market's number, shown as is.
  */
 
@@ -50,6 +54,15 @@ export type SeasonStat = {
   teamAbbrev: string | null;
 };
 
+/** A player's team in his most recent game this season (ESPN box scores). */
+export type CurrentTeam = {
+  athleteId: string;
+  name: string;
+  team: string;
+  /** Date of that game (YYYY-MM-DD). */
+  gameDate: string;
+};
+
 export type BookLine = {
   book: string;
   line: number;
@@ -64,8 +77,12 @@ export type ScorerRow = {
   eventId: string;
   game: string;
   commenceTime: string;
-  /** Team the player belongs to, only when last season's team is one of the two in this game. */
+  /** This season's team (latest game) or, if he has not played, last season's; only when it is in this game. */
   team: string | null;
+  /** Where `team` came from: his latest game this season, or last season's stats. */
+  teamSource: "current" | "prior" | null;
+  /** Date of the game that placed him on `team` (current only). */
+  teamAsOf: string | null;
   teamAbbrev: string | null;
   opponent: string | null;
   opponentAbbrev: string | null;
@@ -188,7 +205,15 @@ export function buildBoard(
   lastSeason: SeasonStat[],
   teams: TeamName[] = [],
   ladderRows: PropRow[] = [],
+  currentTeams: CurrentTeam[] = [],
 ): { scorers: ScorerRow[]; games: GameSummary[] } {
+  // Two different athletes sharing a name key are ambiguous: place neither.
+  const current = new Map<string, CurrentTeam | null>();
+  for (const t of currentTeams) {
+    const key = playerKey(t.name);
+    const prev = current.get(key);
+    current.set(key, prev === undefined ? t : prev && prev.athleteId === t.athleteId ? prev : null);
+  }
   const ladderOf = new Map(ladderRows.map((r) => [`${r.eventId}|${nameKey(r.player)}`, r.books]));
   const abbrevOf = new Map(teams.map((t) => [teamKey(t.name), t.abbreviation]));
   const abbrev = (name: string | null) => (name ? abbrevOf.get(teamKey(name)) ?? null : null);
@@ -207,18 +232,28 @@ export function buildBoard(
     if (!c) continue;
     const game = `${row.awayTeam} @ ${row.homeTeam}`;
     const stat = stats.get(playerKey(row.player)) ?? null;
-    const statTeam = stat?.teamName ? teamKey(stat.teamName) : null;
-    const onHome = statTeam != null && statTeam === teamKey(row.homeTeam);
-    const onAway = statTeam != null && statTeam === teamKey(row.awayTeam);
-    const team = onHome ? row.homeTeam : onAway ? row.awayTeam : null;
-    const opponent = onHome ? row.awayTeam : onAway ? row.homeTeam : null;
+    const curKey = playerKey(row.player);
+    const now = current.get(curKey) ?? null;
+    const sideOf = (name: string | null | undefined): "home" | "away" | null => {
+      const k = name ? teamKey(name) : null;
+      if (k == null) return null;
+      return k === teamKey(row.homeTeam) ? "home" : k === teamKey(row.awayTeam) ? "away" : null;
+    };
+    // This season's team when he has played (or the name is ambiguous: no guess);
+    // last season's team only when he has no game yet this season.
+    const side = current.has(curKey) ? (now ? sideOf(now.team) : null) : sideOf(stat?.teamName);
+    const teamSource = side == null ? null : now ? "current" : "prior";
+    const team = side === "home" ? row.homeTeam : side === "away" ? row.awayTeam : null;
+    const opponent = side === "home" ? row.awayTeam : side === "away" ? row.homeTeam : null;
     scorers.push({
       player: row.player,
       eventId: row.eventId,
       game,
       commenceTime: row.commenceTime,
       team,
-      teamAbbrev: team ? stat?.teamAbbrev ?? abbrev(team) : null,
+      teamSource,
+      teamAsOf: teamSource === "current" && now ? now.gameDate : null,
+      teamAbbrev: team ? (teamSource === "prior" ? stat?.teamAbbrev ?? abbrev(team) : abbrev(team)) : null,
       opponent,
       opponentAbbrev: abbrev(opponent),
       position: stat?.position ?? null,

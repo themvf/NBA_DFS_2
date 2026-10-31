@@ -80,4 +80,64 @@ const herbStats = [{ name: "Herbert Jones", ppg: 10, games: 60, teamName: "A", t
 assert.equal(buildBoard(herbProps, herbStats).scorers[0].lastSeasonPpg, 10);
 assert.equal(buildBoard(herbProps, [...herbStats, { ...herbStats[0], name: "Herb Jones" }]).scorers[0].lastSeasonPpg, null);
 
+// This season's team (latest box-score game) wins over last season's; last
+// season's is used only for a player with no game yet; an ambiguous name or a
+// latest team not in this game places nobody.
+const cur = (athleteId: string, name: string, team: string, gameDate: string) => ({ athleteId, name, team, gameDate });
+const moved = buildBoard(
+  [
+    { ...base, eventId: "m", homeTeam: "Charlotte Hornets", awayTeam: "Philadelphia 76ers", player: "LeBron James", books: { dk: { line: 18.5, over: -110, under: -110 } } },
+    { ...base, eventId: "m", homeTeam: "Charlotte Hornets", awayTeam: "Philadelphia 76ers", player: "Tyrese Maxey", books: { dk: { line: 28.5, over: -110, under: -110 } } },
+    { ...base, eventId: "m", homeTeam: "Charlotte Hornets", awayTeam: "Philadelphia 76ers", player: "Rookie Guy", books: { dk: { line: 9.5, over: -110, under: -110 } } },
+    { ...base, eventId: "m", homeTeam: "Charlotte Hornets", awayTeam: "Philadelphia 76ers", player: "Just Traded", books: { dk: { line: 12.5, over: -110, under: -110 } } },
+    { ...base, eventId: "m", homeTeam: "Charlotte Hornets", awayTeam: "Philadelphia 76ers", player: "Twin Name", books: { dk: { line: 7.5, over: -110, under: -110 } } },
+    { ...base, eventId: "c", homeTeam: "Denver Nuggets", awayTeam: "Los Angeles Clippers", player: "Clip Guy", books: { dk: { line: 15.5, over: -110, under: -110 } } },
+  ],
+  [
+    { name: "LeBron James", ppg: 24.4, games: 70, teamName: "Los Angeles Lakers", teamAbbrev: "LAL" },
+    { name: "Tyrese Maxey", ppg: 28.3, games: 70, teamName: "Philadelphia 76ers", teamAbbrev: "PHI" },
+    { name: "Rookie Guy", ppg: 9, games: 10, teamName: "Charlotte Hornets", teamAbbrev: "CHA" },
+    { name: "Just Traded", ppg: 12, games: 60, teamName: "Charlotte Hornets", teamAbbrev: "CHA" },
+  ],
+  [
+    { name: "Philadelphia 76ers", abbreviation: "PHI" },
+    { name: "Charlotte Hornets", abbreviation: "CHA" },
+    { name: "Denver Nuggets", abbreviation: "DEN" },
+    { name: "LA Clippers", abbreviation: "LAC" },
+  ],
+  [],
+  [
+    cur("1", "LeBron James", "Philadelphia 76ers", "2026-10-30"),
+    cur("2", "Tyrese Maxey", "Philadelphia 76ers", "2026-10-30"),
+    cur("3", "Just Traded", "Utah Jazz", "2026-10-29"),
+    cur("4", "Twin Name", "Philadelphia 76ers", "2026-10-30"),
+    cur("5", "Twin Name", "Charlotte Hornets", "2026-10-29"),
+    cur("6", "Clip Guy", "LA Clippers", "2026-10-30"),
+  ],
+);
+const by = (name: string) => moved.scorers.find((s) => s.player === name)!;
+assert.equal(by("LeBron James").team, "Philadelphia 76ers");
+assert.equal(by("LeBron James").teamSource, "current");
+assert.equal(by("LeBron James").teamAbbrev, "PHI");
+assert.equal(by("LeBron James").teamAsOf, "2026-10-30");
+assert.equal(by("LeBron James").opponentAbbrev, "CHA");
+// Team rank now counts LeBron among the 76ers: Maxey 1, LeBron 2.
+assert.equal(by("Tyrese Maxey").teamRank, 1);
+assert.equal(by("LeBron James").teamRank, 2);
+// Last season's PPG still shown for a player who changed teams.
+assert.equal(by("LeBron James").lastSeasonPpg, 24.4);
+// No game yet this season: last season's team, marked prior.
+assert.equal(by("Rookie Guy").team, "Charlotte Hornets");
+assert.equal(by("Rookie Guy").teamSource, "prior");
+assert.equal(by("Rookie Guy").teamAsOf, null);
+// Latest team is not in this game: no team, never the stale prior-season one.
+assert.equal(by("Just Traded").team, null);
+assert.equal(by("Just Traded").teamSource, null);
+assert.equal(by("Just Traded").teamRank, null);
+// Two athletes with one name key: place neither.
+assert.equal(by("Twin Name").team, null);
+// ESPN's "LA Clippers" matches The Odds API's "Los Angeles Clippers".
+assert.equal(by("Clip Guy").team, "Los Angeles Clippers");
+assert.equal(by("Clip Guy").teamAbbrev, "LAC");
+
 console.log("test-nba-top-scorers: all assertions passed");

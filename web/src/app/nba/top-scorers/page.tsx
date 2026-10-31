@@ -8,6 +8,7 @@ import {
   getNbaPointsPropDates,
   getNbaPointsProps,
   getNbaPulledLines,
+  getNbaCurrentTeams,
   getNbaSeasonStats,
   getNbaTeams,
 } from "@/db/nba-top-scorers";
@@ -63,7 +64,7 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
   const requested = params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) ? params.date : null;
   const date = requested ?? (dates.includes(today) ? today : dates.find((d) => d > today) ?? dates[0] ?? today);
 
-  const [rows, ladderRows, pulled, lastSeason, teams, calibration, nightCalibration, gradedRows] = await Promise.all([
+  const [rows, ladderRows, pulled, lastSeason, teams, calibration, nightCalibration, gradedRows, currentTeams] = await Promise.all([
     getNbaPointsProps(date),
     getNbaPointsProps(date, "player_points_alternate"),
     getNbaPulledLines(date),
@@ -72,6 +73,7 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
     getNbaPointsCalibration(),
     getNbaPointsCalibration(date),
     getNbaPointsCalibrationRows(),
+    getNbaCurrentTeams(date),
   ]);
   const reliability = reliabilitySeries(gradedRows);
   const scatter = scatterData(gradedRows);
@@ -80,7 +82,7 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
   const skill = skillTable(gradedRows);
   const shortNights = shortMinutesSummary(gradedRows);
   const boomBoard = await getBoomBoard(date);
-  const { scorers, games } = buildBoard(rows, lastSeason, teams, ladderRows);
+  const { scorers, games } = buildBoard(rows, lastSeason, teams, ladderRows, currentTeams);
   const lastCapture = games.reduce<string | null>((m, g) => (m == null || g.capturedAt > m ? g.capturedAt : m), null);
   const bookCount = new Set(scorers.flatMap((s) => s.books.map((b) => b.book))).size;
 
@@ -152,6 +154,8 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
         <p>
           This is the market&apos;s number, not a model of ours; the calibration panel above is its record against results.
           {LAST_SEASON} PPG is the full regular-season arithmetic average across recorded appearances, excluding playoffs.
+          Team is the one he played for in his latest game this season (ESPN box scores; a player traded since his last game shows no team until he plays for the new one),
+          or last season&apos;s team, marked &quot;prior season&quot;, when he has not played yet.
         </p>
       </section>
     </main>
