@@ -1,0 +1,40 @@
+{
+  "status": "DRAFT_NOT_REGISTERED",
+  "written_at": "2026-10-31",
+  "note": "A draft only. Registration must predate an original v3 freeze, and the challenger cannot run until its activation blockers are cleared. Nothing has been enrolled.",
+  "spec": {
+    "path": "docs/nba-points-opportunity-reliability-spec.md",
+    "sha256": "c7562131de231ecb71e2a31533de92a883e4488dad4c98cdeeceae1c5c2370ce"
+  },
+  "detector": {
+    "version": "nba-workload-conflict-v1",
+    "gap_min": 3.0,
+    "ratio_max": 0.85,
+    "window": [
+      3,
+      5
+    ],
+    "rising_gap": 2.0,
+    "baseline": [
+      10,
+      20
+    ]
+  },
+  "challenger": {
+    "version": "nba-role-opportunity-challenger-v1",
+    "weight": 0.5,
+    "base": "original v3 deterministic forecast",
+    "arithmetic_tolerance": 0.01,
+    "probabilities": "not produced"
+  },
+  "endpoints": {
+    "primary_diagnostic": "FGA MAE change, candidate minus original v3, on resolved appearances that are challenger-eligible and v3-flagged",
+    "primary_decision": "point MAE change on the same cohort",
+    "descriptive_alert": "actual FGA > original forecast FGA, ties separate"
+  },
+  "activation_blockers": [
+    "original v3 forecasts are produced only by the local v3 job (model file not in the repository)",
+    "no timestamped official roster source for decision-time team identity",
+    "original v3 model hash not pinned here (not in the repository)"
+  ]
+}

@@ -48,6 +48,11 @@ jobs:
           python -m research.nba_ghost_runner freeze
           ${GAME_DATE:+--date "$GAME_DATE"}
           --output artifacts/nba-ghost/ghost.json --apply
+      - name: Review workload conflicts in the frozen snapshot
+        if: github.event.schedule != '37 12 * 1-6,10-12 *' && inputs.action != 'grade'
+        run: >-
+          python -m research.nba_points_workload_conflicts
+          ${GAME_DATE:+--date "$GAME_DATE"} --apply
       - name: Grade frozen research predictions
         if: github.event.schedule == '37 12 * 1-6,10-12 *' || inputs.action == 'grade'
         run: >-

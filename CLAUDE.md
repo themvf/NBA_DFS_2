@@ -304,6 +304,12 @@ branch merged; see docs/nba-points-ghost-v2.md). The ghost research grades with
 `model/nba_points_calibration.py` `nba-points-grade-v1`, which the registered ladder-v2 tail test reads (it reserves
 the v2 name). The Boom lineups builder on `/nba/top-scorers` (`nba-boom-exposure-v1`) uses the same pool and boom
 score; saves go to `nba_boom_lineup_records` (insert refused after the first tip) and are graded on `/nba/boom-trios`.
+**Workload conflicts (2026-10-31, `nba-workload-conflict-v1`):** after each ghost freeze,
+`research/nba_points_workload_conflicts.py` flags players whose recent shots (last 3-5 current-season games) beat the
+model's FGA forecast by 3+ with forecast/recent <= 0.85, into append-only `nba_role_reliability_records`. A review
+flag, never a forecast change. The injury collector now does bounded discovery (<= 12 requests) with failure receipts;
+typed nba.com news claims are review evidence only; the 50/50 role challenger is formula-only and NOT activated (needs
+the local-only v3 base and a decision-time roster source). See docs/nba-role-reliability.md.
 
 ## Data Refresh Workflow
 
