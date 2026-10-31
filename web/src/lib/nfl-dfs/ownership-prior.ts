@@ -28,6 +28,7 @@
  *
  * Deterministic and pure: same inputs, same output, no clock, no randomness.
  */
+import { NFL_OWNERSHIP_FIT_SHOWDOWN_VERSION, projectShowdownFit } from "./showdown-ownership-fit";
 
 /**
  * v3 (2026-10-04, Showdown only; Classic is unchanged):
@@ -98,7 +99,7 @@ export const NFL_OWNERSHIP_PRIOR_V3_VERSION = "nfl-ownership-prior-v3";
 export const NFL_OWNERSHIP_PRIOR_V5_VERSION = "nfl-ownership-prior-v5";
 /** The version projectOwnershipPrior returns by default. */
 export const NFL_OWNERSHIP_PRIOR_VERSION = NFL_OWNERSHIP_PRIOR_V5_VERSION;
-export type OwnershipPriorVariant = "v3" | "v4" | "v5";
+export type OwnershipPriorVariant = "v3" | "v4" | "v5" | "fit";
 
 /**
  * v5 (drafted 2026-10-20, NOT the default; the owner switches the default after
@@ -282,10 +283,12 @@ export function allocateBudgetDetailed(scores: ReadonlyMap<number, number>, budg
 }
 
 export function projectOwnershipPrior(players: readonly OwnershipPriorPlayer[], format: "classic" | "showdown", options: OwnershipPriorOptions = {}): OwnershipPriorResult {
-  // Default v5 from 2026-10-20 (owner): docs/nfl-ownership-prior-v5.md.
-  const variant = options.variant ?? "v5";
+  // Default v5 from 2026-10-20 (owner): docs/nfl-ownership-prior-v5.md. Showdown
+  // defaults to the fitted model from 2026-10-31 (owner): showdown-ownership-fit.ts.
+  const variant = options.variant ?? (format === "showdown" ? "fit" : "v5");
+  if (variant === "fit" && format === "showdown") return projectOwnershipShowdownFit(players);
   if (variant === "v3") return projectOwnershipPriorV3(players, format);
-  if (variant === "v5") return projectOwnershipPriorV5(players, format);
+  if (variant === "v5" || variant === "fit") return projectOwnershipPriorV5(players, format);
   const round = (v: number) => Math.round(v * 100) / 100;
   const pos = (p: OwnershipPriorPlayer) => (p.position ?? "").toUpperCase();
   if (format === "showdown") {
@@ -372,6 +375,18 @@ export function projectOwnershipPriorV3(players: readonly OwnershipPriorPlayer[]
 /** score^alpha, with 0 kept at 0 (an ineligible player stays ineligible). */
 function flatten(score: number, alpha: number): number {
   return score > 0 ? Math.pow(score, alpha) : 0;
+}
+
+/** Showdown with the fitted model (`nfl-ownership-fit-showdown-v1`), same result shape as the priors. */
+export function projectOwnershipShowdownFit(players: readonly OwnershipPriorPlayer[]): OwnershipPriorResult {
+  const round = (v: number) => Math.round(v * 100) / 100;
+  const fit = projectShowdownFit(players.map((p) => ({ id: p.dkPlayerId, position: p.position, salary: p.salary, team: p.team ?? null,
+    dkStatus: p.dkStatus ?? null, pts: fieldPoints(p) ?? 0, isOut: p.isOut })));
+  const placed = [...fit.values()].reduce((t, v) => t + v.flex + v.captain, 0);
+  return { version: NFL_OWNERSHIP_FIT_SHOWDOWN_VERSION, format: "showdown", budgetPct: SHOWDOWN_FLEX_BUDGET + SHOWDOWN_CAPTAIN_BUDGET,
+    unallocatedPct: round(Math.max(0, SHOWDOWN_FLEX_BUDGET + SHOWDOWN_CAPTAIN_BUDGET - placed)), notes: { variant: "fit" },
+    players: players.map((p) => { const v = fit.get(p.dkPlayerId) ?? { flex: 0, captain: 0 };
+      return { dkPlayerId: p.dkPlayerId, ownPct: round(v.flex + v.captain), captainPct: round(v.captain), flexPct: round(v.flex) }; }) };
 }
 
 /**

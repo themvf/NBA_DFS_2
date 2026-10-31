@@ -801,7 +801,7 @@ function Breakdown({ e, player, peers, valueIndex, upside }: {
           {player.ownPct != null && (
             <p className="mt-2 text-[11px] text-slate-600">
               Projected ownership <b className="text-slate-900">{player.ownPct.toFixed(1)}%</b>
-              {player.ownSource === "linestar" ? " (LineStar)." : " (our stated prior, nfl-ownership-prior-v5, uncalibrated: points and value anchored on the DK average, flattened, within position budgets; Showdown reserves a punt tier and splits captains by position from what the field has played)."}
+              {player.ownSource === "linestar" ? " (LineStar)." : player.ownSource?.startsWith("nfl-ownership-fit-showdown") ? " (fitted to 17 past full-field Showdown contests, nfl-ownership-fit-showdown-v1: from points, salary, value and where the player ranks in the game, on his team and at his position; still an estimate)." : " (our stated prior, nfl-ownership-prior-v5, uncalibrated: points and value anchored on the DK average, flattened, within position budgets)."}
             </p>
           )}
         </Card>
