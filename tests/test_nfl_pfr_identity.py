@@ -30,3 +30,14 @@ def test_empty_or_schema_changed_provider_data_fails_closed():
         roster_claims(b"name,id\nPerson,1\n", 2026, SOURCE)
     with pytest.raises(ValueError):
         roster_claims(HEADER.encode(), 2026, SOURCE)
+
+
+def test_refresh_does_not_reinsert_claims_already_stored():
+    # claim_digest covers the source capture time, so a digest-only conflict
+    # re-inserted every claim on every run (240k rows for 2.2k claims).
+    import inspect
+    from ingest import nfl_pfr_identity
+    source = inspect.getsource(nfl_pfr_identity.refresh_identity)
+    assert "WHERE NOT EXISTS" in source
+    for column in ("namespace", "external_id", "gsis_id", "season", "method", "team", "position"):
+        assert f"c.{column}" in source

@@ -65,8 +65,18 @@ def refresh_identity(db, season: int, output_dir: Path) -> dict:
         cur = conn.cursor()
         cur.execute(DDL)
         cur.execute("SELECT pg_advisory_xact_lock(hashtext('nfl_player_identity_registry'))")
-        execute_values(cur, "INSERT INTO nfl_player_identity_claims (" + ",".join(fields) + ") VALUES %s ON CONFLICT DO NOTHING",
-                       [tuple(Json(claim[field]) if field == "evidence" else claim[field] for field in fields) for claim in claims])
+        # claim_digest covers the source capture time, so it differs on every
+        # run; deduplicate on the claim itself or each run re-inserts every
+        # claim (240k rows for 2.2k claims by 2026-10-31, re-aggregated by
+        # every PFR snapshot freeze). The first capture keeps its evidence.
+        execute_values(cur, "INSERT INTO nfl_player_identity_claims (" + ",".join(fields) + ") "
+                       "SELECT v.* FROM (VALUES %s) v(" + ",".join(fields) + ") WHERE NOT EXISTS ("
+                       "SELECT 1 FROM nfl_player_identity_claims c WHERE c.namespace=v.namespace "
+                       "AND c.external_id=v.external_id AND c.gsis_id=v.gsis_id AND c.season=v.season "
+                       "AND c.method=v.method AND c.team IS NOT DISTINCT FROM v.team "
+                       "AND c.position IS NOT DISTINCT FROM v.position) ON CONFLICT DO NOTHING",
+                       [tuple(Json(claim[field]) if field == "evidence" else claim[field] for field in fields) for claim in claims],
+                       template="(%s,%s,%s,%s,%s,%s::int,%s,%s,%s,%s,%s::jsonb)")
         cur.execute("SELECT status,COUNT(*) FROM nfl_player_identity_crosswalk WHERE namespace='pfr' GROUP BY status")
         counts = {row["status"]: row["count"] for row in cur.fetchall()}
     return {"status": "captured", "claims": len(claims), "crosswalk_counts": counts, "source": source}
