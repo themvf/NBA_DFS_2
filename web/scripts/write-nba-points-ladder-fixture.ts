@@ -3,7 +3,7 @@
 //   node --import tsx ./scripts/write-nba-points-ladder-fixture.ts
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { buildDistribution } from "../src/lib/nba-points-ladder";
+import { buildDistribution, powerExponent } from "../src/lib/nba-points-ladder";
 import { bookLines, consensus, nameKey, teamKey } from "../src/lib/nba-top-scorers";
 
 function erf(x: number) {
@@ -71,28 +71,74 @@ const cases = [
   },
 ];
 
-const out = cases.map((c) => {
-  const lines = bookLines(c.books as never);
-  return {
-    name: c.name,
-    books: c.books,
-    ladders: c.ladders,
-    expected: {
-      bookLines: lines,
-      consensus: consensus(lines),
-      distribution: buildDistribution(
-        Object.fromEntries(lines.map((l) => [l.book, { line: l.line, over: l.over, under: l.under }])),
-        c.ladders as never,
-      ),
+// Cases that exercise the power de-vig (nba-points-ladder-v2 candidate) specifically:
+// under-only rungs, an unsolvable k, an under-round main line (k < 1), and a book
+// mixing paired and one-sided rungs.
+const powerCases = [
+  {
+    name: "power: over-only and under-only rungs at one -110/-110 book",
+    books: { draftkings: { line: 22.5, over: -110, under: -110 } },
+    ladders: { draftkings: { ladder: [
+      { point: 12.5, side: "under", price: 700 }, { point: 17.5, side: "under", price: 260 },
+      { point: 27.5, side: "over", price: 230 }, { point: 32.5, side: "over", price: 550 }, { point: 37.5, side: "over", price: 1400 },
+    ] } },
+  },
+  {
+    name: "power: unsolvable k skips that book's one-sided rungs, paired rungs kept",
+    books: { draftkings: { line: 24.5, over: -600, under: -600 }, fanduel: { line: 24.5, over: -115, under: -105 } },
+    ladders: {
+      draftkings: { ladder: [
+        { point: 19.5, side: "over", price: -250 }, { point: 29.5, side: "over", price: 210 },
+        { point: 34.5, side: "over", price: 450 }, { point: 34.5, side: "under", price: -700 },
+      ] },
+      fanduel: { ladder: [{ point: 19.5, side: "over", price: -260 }, { point: 29.5, side: "over", price: 200 }, { point: 39.5, side: "over", price: 900 }] },
     },
+  },
+  {
+    name: "power: under-round main line gives k below 1",
+    books: { betmgm: { line: 26.5, over: 105, under: 105 } },
+    ladders: { betmgm: { ladder: [{ point: 21.5, side: "over", price: -250 }, { point: 31.5, side: "over", price: 240 }, { point: 36.5, side: "over", price: 600 }] } },
+  },
+  {
+    name: "power: mixed paired and one-sided rungs, two books, no-main book skipped",
+    books: { draftkings: { line: 18.5, over: -120, under: -105 }, caesars: { line: 18.5, over: -110, under: -115 } },
+    ladders: {
+      draftkings: { ladder: [
+        { point: 13.5, side: "over", price: -400 }, { point: 13.5, side: "under", price: 290 },
+        { point: 23.5, side: "over", price: 190 }, { point: 28.5, side: "over", price: 450 }, { point: 33.5, side: "over", price: 1100 },
+      ] },
+      caesars: { ladder: [{ point: 23.5, side: "over", price: 175 }, { point: 28.5, side: "over", price: 420 }] },
+      espnbet: { ladder: [{ point: 23.5, side: "over", price: 200 }, { point: 28.5, side: "over", price: 500 }] },
+    },
+  },
+];
+
+const expectFor = (c: { books: unknown; ladders: unknown }) => {
+  const lines = bookLines(c.books as never);
+  const main = Object.fromEntries(lines.map((l) => [l.book, { line: l.line, over: l.over, under: l.under }]));
+  return {
+    bookLines: lines,
+    consensus: consensus(lines),
+    distribution: buildDistribution(main, c.ladders as never),
+    distributionPower: buildDistribution(main, c.ladders as never, { devig: "power" }),
   };
-});
+};
+const out = cases.map((c) => ({ name: c.name, books: c.books, ladders: c.ladders, expected: expectFor(c) }));
+const outPower = powerCases.map((c) => ({ name: c.name, books: c.books, ladders: c.ladders, expected: expectFor(c) }));
+const impliedOf = (a: number) => (a < 0 ? -a / (-a + 100) : 100 / (a + 100));
+const powerExponents = [[-110, -110], [-115, -105], [-300, 240], [105, 105], [-600, -600], [2000, 2000]].map(([over, under]) => ({
+  over,
+  under,
+  k: powerExponent(impliedOf(over), impliedOf(under)),
+}));
 const names = ["Nikola Jokić", "Jaren Jackson Jr.", "O.G. Anunoby", "Luka Dončić", "Shai Gilgeous-Alexander", "Michael Porter Jr", "LA Clippers", "Los Angeles Clippers"];
 const fixture = {
   generatedBy: "web/src/lib/nba-points-ladder.ts + nba-top-scorers.ts (gen-ladder-fixture.ts)",
   nameKeys: Object.fromEntries(names.map((n) => [n, nameKey(n)])),
   teamKeys: Object.fromEntries(["LA Clippers", "Los Angeles Clippers", "Oklahoma City Thunder"].map((n) => [n, teamKey(n)])),
   cases: out,
+  powerCases: outPower,
+  powerExponents,
 };
 const target = resolve(process.cwd(), "../tests/fixtures/nba_points_ladder_fixture.json");
 writeFileSync(target, `${JSON.stringify(fixture, null, 2)}\n`);

@@ -103,4 +103,33 @@ STATEMENTS = [
         UNIQUE (grade_version, event_id, player_key)
     )""",
     "CREATE INDEX IF NOT EXISTS idx_nba_points_calibration_date ON nba_points_calibration(grade_version, game_date DESC)",
+    # The ladder-v2 study's one-time verdict receipt (research/nba_points_ladder_v2_eval.py
+    # --apply). Written once, when both registered floors are first met: the exact paired
+    # rows, their digest, the code/registration digests, the cutoff night and the result.
+    # Later runs read it back instead of recomputing; a correction is a new labelled
+    # amendment row (kind = 'amendment'), never an edit of the original.
+    """CREATE TABLE IF NOT EXISTS nba_ladder_verdict_receipts (
+        id BIGSERIAL PRIMARY KEY,
+        study TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('original', 'amendment')),
+        cutoff_night DATE NOT NULL,
+        population_sha256 TEXT NOT NULL,
+        code_digests JSONB NOT NULL,
+        result JSONB NOT NULL,
+        population JSONB NOT NULL,
+        note TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
+    )""",
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_nba_ladder_verdict_original ON nba_ladder_verdict_receipts(study) WHERE kind = 'original'",
+    """CREATE OR REPLACE FUNCTION reject_nba_ladder_verdict_mutation()
+       RETURNS trigger LANGUAGE plpgsql AS $$
+       BEGIN
+         RAISE EXCEPTION 'NBA ladder verdict receipts are append-only';
+       END $$""",
+    """DO $$ BEGIN
+       IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'nba_ladder_verdict_receipts_immutable') THEN
+         CREATE TRIGGER nba_ladder_verdict_receipts_immutable BEFORE UPDATE OR DELETE
+         ON nba_ladder_verdict_receipts FOR EACH ROW EXECUTE FUNCTION reject_nba_ladder_verdict_mutation();
+       END IF;
+     END $$""",
 ]

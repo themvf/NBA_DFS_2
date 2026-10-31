@@ -112,32 +112,90 @@ def latest_url(html,target,now):
     if not choices:raise ValueError('no published official report for requested date; use an explicit archived report URL')
     return max(choices)[1]
 
+MAX_DISCOVERY_REQUESTS=12
+QUARTER_CANDIDATES=4
+HOURLY_CANDIDATES=6
+
+def report_url_at(local):
+    return 'https://ak-static.cms.nba.com/referee/injury/Injury-Report_'+local.strftime('%Y-%m-%d_%I_%M%p')+'.pdf'
+
+def fallback_candidates(target,now):
+    """Already-published official URLs, newest first: four quarter-hours, then up to six earlier hours, same Eastern day."""
+    zone=ZoneInfo('America/New_York');now=aware(now)
+    end=datetime.combine(target+timedelta(days=1),datetime.min.time(),tzinfo=zone).astimezone(timezone.utc)-timedelta(minutes=15)
+    at=min(now,end).replace(second=0,microsecond=0);at=at.replace(minute=(at.minute//15)*15)
+    times=[at-timedelta(minutes=15*i) for i in range(QUARTER_CANDIDATES)]
+    hour=times[-1].replace(minute=0)
+    if hour==times[-1]:hour-=timedelta(hours=1)
+    times+=[hour-timedelta(hours=i) for i in range(HOURLY_CANDIDATES)]
+    out=[]
+    for t in times:
+        local=t.astimezone(zone)
+        if local.date()!=target or t>now:continue
+        url=report_url_at(local)
+        try:url_time(url)
+        except ValueError:continue
+        if url not in out:out.append(url)
+    return out
+
+def _get(session,url,timeout,discovery,kind):
+    """One counted discovery request; failures are categorised, never raised."""
+    if len(discovery['requests'])>=MAX_DISCOVERY_REQUESTS:return None
+    entry={'kind':kind,'url':url}
+    try:
+        response=session.get(url,timeout=timeout);entry['status']=response.status_code
+    except requests.Timeout:entry['error']='timeout';response=None
+    except requests.ConnectionError:entry['error']='connection_error';response=None
+    except requests.RequestException as e:entry['error']='request_error: '+type(e).__name__;response=None
+    discovery['requests'].append(entry)
+    return response
+
 def fetch_latest(target,now,session):
-    """Use the public index, or at most four already-published quarter-hour URLs."""
+    """Bounded discovery: the public index, then already-published quarter-hour and hourly URLs (<= 12 requests).
+
+    Raises DiscoveryFailed carrying every attempt, so a caller can write a failure receipt."""
     now=aware(now);year=target.year if target.month>=7 else target.year-1
     index_url=f'https://official.nba.com/nba-injury-report-{year}-{str(year+1)[-2:]}-season/'
-    discovery={'index_url':index_url,'pdf_attempts':[]};index=None
-    try:
-        response=session.get(index_url,timeout=20);discovery['index_status']=response.status_code;response.raise_for_status();index=response.text
-        url=latest_url(index,target,now);candidates=[url]
-    except (ValueError,requests.RequestException) as e:
-        discovery['index_error']=str(e);zone=ZoneInfo('America/New_York')
-        end=datetime.combine(target+timedelta(days=1),datetime.min.time(),tzinfo=zone).astimezone(timezone.utc)-timedelta(minutes=15)
-        at=min(now,end);at=at.replace(minute=(at.minute//15)*15,second=0,microsecond=0);candidates=[]
-        for i in range(4):
-            local=(at-timedelta(minutes=15*i)).astimezone(zone)
-            if local.date()!=target:continue
-            candidate='https://ak-static.cms.nba.com/referee/injury/Injury-Report_'+local.strftime('%Y-%m-%d_%I_%M%p')+'.pdf'
-            try:url_time(candidate)
-            except ValueError:continue
-            candidates.append(candidate)
+    discovery={'index_url':index_url,'requests':[],'pdf_attempts':[],'max_requests':MAX_DISCOVERY_REQUESTS};index=None;candidates=[]
+    response=_get(session,index_url,20,discovery,'index')
+    if response is not None:
+        discovery['index_status']=response.status_code
+        if response.status_code==200:
+            index=response.text
+            try:candidates.append(latest_url(index,target,now));discovery['index_choice']=candidates[0]
+            except ValueError as e:discovery['index_error']=str(e)
+        else:discovery['index_error']=f'HTTP {response.status_code}'
+    else:discovery['index_error']=discovery['requests'][-1].get('error') if discovery['requests'] else 'not attempted'
+    for url in fallback_candidates(target,now):
+        if url not in candidates:candidates.append(url)
     for url in candidates:
-        response=session.get(url,timeout=25);discovery['pdf_attempts'].append({'url':url,'status':response.status_code})
+        response=_get(session,url,25,discovery,'pdf')
+        if response is None:
+            if len(discovery['requests'])>=MAX_DISCOVERY_REQUESTS:discovery['budget_exhausted']=True;break
+            discovery['pdf_attempts'].append(discovery['requests'][-1]);continue
+        discovery['pdf_attempts'].append({'url':url,'status':response.status_code})
         if response.status_code in (403,404):continue
-        response.raise_for_status()
-        if response.content.startswith(b'%PDF'):return url,response.content,index,discovery
-        raise ValueError('official report response is not a PDF')
-    raise ValueError('no available report in bounded archive lookup; retry later or specify --report-url')
+        if response.status_code>=400:continue
+        if response.content.startswith(b'%PDF'):
+            discovery['chosen']=url;discovery['candidate_rank']=candidates.index(url)
+            return url,response.content,index,discovery
+        discovery['pdf_attempts'][-1]['error']='not_a_pdf'
+    raise DiscoveryFailed('no available report in bounded archive lookup; retry later or specify --report-url',discovery)
+
+class DiscoveryFailed(ValueError):
+    def __init__(self,message,discovery):super().__init__(message);self.discovery=discovery
+
+def write_failure_receipt(root,target,observed,discovery,error,parser_result=None):
+    """Durable receipt for a run that found no usable official report. Written even when nothing was found."""
+    folder=root/'failures';folder.mkdir(parents=True,exist_ok=True)
+    receipt={'version':VERSION,'kind':'availability_discovery_failure','game_date':str(target),'observed_at':aware(observed).isoformat(),
+             'error':str(error),'parser_result':parser_result,'discovery':discovery,
+             'next_action':'retry after the next quarter-hour publication, pass --report-url with a known official PDF, '
+                           'or record an official news claim with research.nba_points_injury_news (review evidence only)'}
+    receipt['sha256']=digest(receipt)
+    path=folder/(aware(observed).strftime('%Y%m%dT%H%M%S%fZ')+f'-{target}.json')
+    write_new(path,receipt)
+    return path,receipt
 
 def archive(data,url,observed,root,*,receipt=None,index_html=None,discovery=None):
     observed=aware(observed);now=datetime.now(timezone.utc)
@@ -259,7 +317,14 @@ def main():
         url=args.report_url
         if not url:
             if args.pdf:p.error('--pdf requires --report-url or --capture-receipt')
-            with requests.Session() as session:url,data,index,discovery=fetch_latest(args.date,datetime.now(timezone.utc),session)
+            started=datetime.now(timezone.utc)
+            try:
+                with requests.Session() as session:url,data,index,discovery=fetch_latest(args.date,started,session)
+            except DiscoveryFailed as e:
+                path,_=write_failure_receipt(args.archive_root,args.date,started,e.discovery,e)
+                print(json.dumps({'status':'no_official_report','failure_receipt':str(path),'requests':len(e.discovery['requests']),
+                                  'availability_output':None}))
+                raise SystemExit(2)
         else:
             url_time(url)
             if args.pdf:data=args.pdf.read_bytes()

@@ -22,6 +22,14 @@ Ladder rules (see the TypeScript header for the reasoning):
 - a rung from a book with no two-sided main line is skipped, never guessed;
 - per point the median across books, forced non-increasing (pool adjacent
   violators weighted by book count); nothing is extrapolated past the ladder.
+
+``devig="power"`` is the candidate ``nba-points-ladder-v2`` reader, registered
+in ``docs/nba-points-ladder-v2-registration.md`` and opt-in only until that
+study's verdict: it changes ONLY the one-sided rungs. Per book it solves ``k``
+with ``implied(over)^k + implied(under)^k = 1`` on the main line; an over-only
+rung becomes ``implied(over)^k``, an under-only rung ``1 - implied(under)^k``,
+and a book whose ``k`` cannot be solved has its one-sided rungs skipped. The
+main line and two-sided rungs stay proportional in both readers.
 """
 
 from __future__ import annotations
@@ -32,6 +40,13 @@ from typing import Any
 import unicodedata
 
 LADDER_VERSION = "nba-points-ladder-v1"
+# The registered candidate (docs/nba-points-ladder-v2-registration.md); not live.
+LADDER_V2_VERSION = "nba-points-ladder-v2"
+DEVIG_VERSIONS = {"proportional": LADDER_VERSION, "power": LADDER_V2_VERSION}
+# Bisection bracket and tolerance for the power exponent, fixed by the registration.
+POWER_K_LOW = 0.25
+POWER_K_HIGH = 4.0
+POWER_K_TOL = 1e-10
 
 THRESHOLDS: tuple[int, ...] = (20, 25, 30, 35, 40)
 MIN_CURVE_POINTS = 3
@@ -81,6 +96,26 @@ def devig_over(over: Any, under: Any) -> float | None:
     o = implied(over)
     u = implied(under)
     return o / (o + u)
+
+
+def power_exponent(over_implied: float, under_implied: float) -> float | None:
+    """The k with over^k + under^k = 1, by bisection on [0.25, 4]; None when it is not in that bracket.
+
+    Same loop, same order of operations as ``powerExponent`` in the TypeScript.
+    """
+    def f(k: float) -> float:
+        return over_implied ** k + under_implied ** k - 1
+
+    lo, hi = POWER_K_LOW, POWER_K_HIGH
+    if not (0 < over_implied < 1 and 0 < under_implied < 1) or f(lo) < 0 or f(hi) > 0:
+        return None
+    while hi - lo > POWER_K_TOL:
+        mid = (lo + hi) / 2
+        if f(mid) > 0:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2
 
 
 @dataclass(frozen=True)
@@ -149,6 +184,10 @@ class PointsDistribution:
     ladder_books: int
     skipped_rungs: int
     version: str = LADDER_VERSION
+    # One-sided rungs de-vigged (research counters; not part of the page payload or the fixture).
+    one_sided_rungs: int = 0
+    # The power exponent of each book with a two-sided main line (devig="power" only; None = unsolvable).
+    book_k: dict[str, float | None] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -209,7 +248,11 @@ def quantile_at(curve: list[ExceedancePoint], q: float) -> float | None:
     return None
 
 
-def build_distribution(main: dict[str, dict[str, Any]], ladders: dict[str, dict[str, Any] | None]) -> PointsDistribution | None:
+def build_distribution(main: dict[str, dict[str, Any]], ladders: dict[str, dict[str, Any] | None],
+                       devig: str = "proportional") -> PointsDistribution | None:
+    if devig not in DEVIG_VERSIONS:
+        raise ValueError(f"devig must be one of {sorted(DEVIG_VERSIONS)}, got {devig!r}")
+    power = devig == "power"
     by_point: dict[float, list[float]] = {}
     order: list[float] = []
 
@@ -221,6 +264,7 @@ def build_distribution(main: dict[str, dict[str, Any]], ladders: dict[str, dict[
 
     # Each book's main line is a rung too, and its overround de-vigs that book's ladder.
     overround: dict[str, float] = {}
+    book_k: dict[str, float | None] = {}
     for book, q in main.items():
         line = q.get("line")
         if not isinstance(line, (int, float)) or isinstance(line, bool) or not math.isfinite(line):
@@ -230,9 +274,12 @@ def build_distribution(main: dict[str, dict[str, Any]], ladders: dict[str, dict[
         o = implied(q["over"])
         u = implied(q["under"])
         overround[book] = o + u
+        if power:
+            book_k[book] = power_exponent(o, u)
         add(float(line), o / (o + u))
 
     skipped = 0
+    one_sided = 0
     ladder_books = 0
     for book, entry in ladders.items():
         rungs = [
@@ -250,18 +297,22 @@ def build_distribution(main: dict[str, dict[str, Any]], ladders: dict[str, dict[
             elif r.get("side") == "under":
                 s["under"] = r["price"]
         m = overround.get(book)
+        k = book_k.get(book) if power else None
+        one_sided_ok = k is not None if power else m is not None
         used = 0
         for point, s in sides.items():
             if "over" in s and "under" in s:
                 o = implied(s["over"])
                 add(point, o / (o + implied(s["under"])))
                 used += 1
-            elif m is not None and "over" in s:
-                add(point, implied(s["over"]) / m)
+            elif one_sided_ok and "over" in s:
+                add(point, implied(s["over"]) ** k if power else implied(s["over"]) / m)  # type: ignore[operator]
                 used += 1
-            elif m is not None and "under" in s:
-                add(point, 1 - implied(s["under"]) / m)
+                one_sided += 1
+            elif one_sided_ok and "under" in s:
+                add(point, 1 - (implied(s["under"]) ** k if power else implied(s["under"]) / m))  # type: ignore[operator]
                 used += 1
+                one_sided += 1
             else:
                 skipped += 1
         if used > 0:
@@ -283,6 +334,9 @@ def build_distribution(main: dict[str, dict[str, Any]], ladders: dict[str, dict[
         at_least={n: exceedance_at(curve, n - 0.5) for n in THRESHOLDS},
         ladder_books=ladder_books,
         skipped_rungs=skipped,
+        version=DEVIG_VERSIONS[devig],
+        one_sided_rungs=one_sided,
+        book_k=book_k,
     )
 
 
@@ -300,11 +354,12 @@ class PlayerReading:
     distribution: PointsDistribution | None = None
 
 
-def read_player(books: dict[str, Any] | None, ladder_books: dict[str, Any] | None) -> PlayerReading | None:
+def read_player(books: dict[str, Any] | None, ladder_books: dict[str, Any] | None,
+                devig: str = "proportional") -> PlayerReading | None:
     lines = book_lines(books)
     c = consensus(lines)
     if c is None:
         return None
     line, p_over = c
     return PlayerReading(line=line, p_over=p_over, lines=lines,
-                         distribution=build_distribution(main_quotes(lines), ladder_books or {}))
+                         distribution=build_distribution(main_quotes(lines), ladder_books or {}, devig))

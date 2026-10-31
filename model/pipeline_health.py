@@ -361,6 +361,10 @@ DATASET_REGISTRY: tuple[Dataset, ...] = (
             72, "nba_points_ghost.yml", _NBA,
             "Written by research.nba_ghost_runner grade: appends a grade attempt for each of the last three stored "
             "snapshots that has final box scores."),
+    Dataset("nba_role_reliability_records", "NBA workload-conflict review", "nba_role_reliability_records", "created_at",
+            72, "nba_points_ghost.yml", _NBA,
+            "Written by research.nba_points_workload_conflicts after each ghost freeze: one append-only record per "
+            "stored snapshot (every candidate's status, conflicts first). A day with no snapshot writes nothing."),
     Dataset("nfl_game_leader_market", "NFL game leaders: DraftKings pricing", "nfl_game_leader_market", "computed_at",
             120, "capture_nfl_props.yml", _NFL,
             "Written after each pregame prop capture by research.nfl_game_leaders_market refresh; append-only, "

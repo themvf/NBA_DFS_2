@@ -134,6 +134,61 @@
           },
           "ladderBooks": 1,
           "skippedRungs": 0
+        },
+        "distributionPower": {
+          "curve": [
+            {
+              "point": 9.5,
+              "p": 0.9893366244696102,
+              "books": 1
+            },
+            {
+              "point": 14.5,
+              "p": 0.9735532302888305,
+              "books": 1
+            },
+            {
+              "point": 19.5,
+              "p": 0.808342738974716,
+              "books": 1
+            },
+            {
+              "point": 24.5,
+              "p": 0.5282320336795786,
+              "books": 1
+            },
+            {
+              "point": 29.5,
+              "p": 0.24912270635348124,
+              "books": 1
+            },
+            {
+              "point": 34.5,
+              "p": 0.07785075039452345,
+              "books": 1
+            },
+            {
+              "point": 39.5,
+              "p": 0.015423457456799176,
+              "books": 1
+            },
+            {
+              "point": 44.5,
+              "p": 0.0018852133396359437,
+              "books": 1
+            }
+          ],
+          "floor": 16.726045988477324,
+          "ceiling": 33.85338948278304,
+          "atLeast": {
+            "20": 0.808342738974716,
+            "25": 0.5282320336795786,
+            "30": 0.24912270635348124,
+            "35": 0.07785075039452345,
+            "40": 0.015423457456799176
+          },
+          "ladderBooks": 1,
+          "skippedRungs": 0
         }
       }
     },
@@ -350,6 +405,61 @@
           },
           "ladderBooks": 3,
           "skippedRungs": 2
+        },
+        "distributionPower": {
+          "curve": [
+            {
+              "point": 14.5,
+              "p": 0.8932816792521949,
+              "books": 1
+            },
+            {
+              "point": 19.5,
+              "p": 0.7357203193071261,
+              "books": 2
+            },
+            {
+              "point": 24.5,
+              "p": 0.49947985831098796,
+              "books": 4
+            },
+            {
+              "point": 25.5,
+              "p": 0.48376623376623373,
+              "books": 2
+            },
+            {
+              "point": 26.5,
+              "p": 0.43795620437956206,
+              "books": 1
+            },
+            {
+              "point": 29.5,
+              "p": 0.3196819963750314,
+              "books": 3
+            },
+            {
+              "point": 34.5,
+              "p": 0.14672694238320946,
+              "books": 1
+            },
+            {
+              "point": 39.5,
+              "p": 0.06409698876414943,
+              "books": 1
+            }
+          ],
+          "floor": null,
+          "ceiling": 37.327482065319174,
+          "atLeast": {
+            "20": 0.7357203193071261,
+            "25": 0.49947985831098796,
+            "30": 0.3196819963750314,
+            "35": 0.14672694238320946,
+            "40": 0.06409698876414943
+          },
+          "ladderBooks": 3,
+          "skippedRungs": 2
         }
       }
     },
@@ -462,6 +572,41 @@
           },
           "ladderBooks": 2,
           "skippedRungs": 0
+        },
+        "distributionPower": {
+          "curve": [
+            {
+              "point": 14.5,
+              "p": 0.8144751571286424,
+              "books": 2
+            },
+            {
+              "point": 20.5,
+              "p": 0.4978351229650156,
+              "books": 2
+            },
+            {
+              "point": 24.5,
+              "p": 0.38288019959723146,
+              "books": 2
+            },
+            {
+              "point": 29.5,
+              "p": 0.3038286801292348,
+              "books": 2
+            }
+          ],
+          "floor": null,
+          "ceiling": null,
+          "atLeast": {
+            "20": 0.5506084619922866,
+            "25": 0.38288019959723146,
+            "30": 0.3038286801292348,
+            "35": null,
+            "40": null
+          },
+          "ladderBooks": 2,
+          "skippedRungs": 0
         }
       }
     },
@@ -512,7 +657,8 @@
       "expected": {
         "bookLines": [],
         "consensus": null,
-        "distribution": null
+        "distribution": null,
+        "distributionPower": null
       }
     },
     {
@@ -549,7 +695,8 @@
           "line": 10.5,
           "pOver": 0.5
         },
-        "distribution": null
+        "distribution": null,
+        "distributionPower": null
       }
     },
     {
@@ -642,8 +789,677 @@
           },
           "ladderBooks": 1,
           "skippedRungs": 0
+        },
+        "distributionPower": {
+          "curve": [
+            {
+              "point": 9.5,
+              "p": 0.949049993048659,
+              "books": 1
+            },
+            {
+              "point": 14.5,
+              "p": 0.7872829512226233,
+              "books": 1
+            },
+            {
+              "point": 18.5,
+              "p": 0.5043297540699688,
+              "books": 1
+            },
+            {
+              "point": 24.5,
+              "p": 0.2781322839159805,
+              "books": 1
+            }
+          ],
+          "floor": 11.016068801622994,
+          "ceiling": null,
+          "atLeast": {
+            "20": 0.46663017571097076,
+            "25": 0.2781322839159805,
+            "30": null,
+            "35": null,
+            "40": null
+          },
+          "ladderBooks": 1,
+          "skippedRungs": 0
         }
       }
+    }
+  ],
+  "powerCases": [
+    {
+      "name": "power: over-only and under-only rungs at one -110/-110 book",
+      "books": {
+        "draftkings": {
+          "line": 22.5,
+          "over": -110,
+          "under": -110
+        }
+      },
+      "ladders": {
+        "draftkings": {
+          "ladder": [
+            {
+              "point": 12.5,
+              "side": "under",
+              "price": 700
+            },
+            {
+              "point": 17.5,
+              "side": "under",
+              "price": 260
+            },
+            {
+              "point": 27.5,
+              "side": "over",
+              "price": 230
+            },
+            {
+              "point": 32.5,
+              "side": "over",
+              "price": 550
+            },
+            {
+              "point": 37.5,
+              "side": "over",
+              "price": 1400
+            }
+          ]
+        }
+      },
+      "expected": {
+        "bookLines": [
+          {
+            "book": "draftkings",
+            "line": 22.5,
+            "over": -110,
+            "under": -110,
+            "pOver": 0.5
+          }
+        ],
+        "consensus": {
+          "line": 22.5,
+          "pOver": 0.5
+        },
+        "distribution": {
+          "curve": [
+            {
+              "point": 12.5,
+              "p": 0.8806818181818182,
+              "books": 1
+            },
+            {
+              "point": 17.5,
+              "p": 0.7348484848484849,
+              "books": 1
+            },
+            {
+              "point": 22.5,
+              "p": 0.5,
+              "books": 1
+            },
+            {
+              "point": 27.5,
+              "p": 0.2892561983471074,
+              "books": 1
+            },
+            {
+              "point": 32.5,
+              "p": 0.14685314685314685,
+              "books": 1
+            },
+            {
+              "point": 37.5,
+              "p": 0.06363636363636363,
+              "books": 1
+            }
+          ],
+          "floor": null,
+          "ceiling": 35.31512605042017,
+          "atLeast": {
+            "20": 0.6409090909090909,
+            "25": 0.41570247933884297,
+            "30": 0.23229497774952318,
+            "35": 0.11356643356643356,
+            "40": null
+          },
+          "ladderBooks": 1,
+          "skippedRungs": 0
+        },
+        "distributionPower": {
+          "curve": [
+            {
+              "point": 12.5,
+              "p": 0.8923684970799355,
+              "books": 1
+            },
+            {
+              "point": 17.5,
+              "p": 0.7466763881763667,
+              "books": 1
+            },
+            {
+              "point": 22.5,
+              "p": 0.5,
+              "books": 1
+            },
+            {
+              "point": 27.5,
+              "p": 0.2780883775334144,
+              "books": 1
+            },
+            {
+              "point": 32.5,
+              "p": 0.13446324036198898,
+              "books": 1
+            },
+            {
+              "point": 37.5,
+              "p": 0.05486529533487611,
+              "books": 1
+            }
+          ],
+          "floor": null,
+          "ceiling": 34.66483229248255,
+          "atLeast": {
+            "20": 0.64800583290582,
+            "25": 0.4112353510133658,
+            "30": 0.22063832266484423,
+            "35": 0.10262406235114382,
+            "40": null
+          },
+          "ladderBooks": 1,
+          "skippedRungs": 0
+        }
+      }
+    },
+    {
+      "name": "power: unsolvable k skips that book's one-sided rungs, paired rungs kept",
+      "books": {
+        "draftkings": {
+          "line": 24.5,
+          "over": -600,
+          "under": -600
+        },
+        "fanduel": {
+          "line": 24.5,
+          "over": -115,
+          "under": -105
+        }
+      },
+      "ladders": {
+        "draftkings": {
+          "ladder": [
+            {
+              "point": 19.5,
+              "side": "over",
+              "price": -250
+            },
+            {
+              "point": 29.5,
+              "side": "over",
+              "price": 210
+            },
+            {
+              "point": 34.5,
+              "side": "over",
+              "price": 450
+            },
+            {
+              "point": 34.5,
+              "side": "under",
+              "price": -700
+            }
+          ]
+        },
+        "fanduel": {
+          "ladder": [
+            {
+              "point": 19.5,
+              "side": "over",
+              "price": -260
+            },
+            {
+              "point": 29.5,
+              "side": "over",
+              "price": 200
+            },
+            {
+              "point": 39.5,
+              "side": "over",
+              "price": 900
+            }
+          ]
+        }
+      },
+      "expected": {
+        "bookLines": [
+          {
+            "book": "draftkings",
+            "line": 24.5,
+            "over": -600,
+            "under": -600,
+            "pOver": 0.5
+          },
+          {
+            "book": "fanduel",
+            "line": 24.5,
+            "over": -115,
+            "under": -105,
+            "pOver": 0.5108342361863488
+          }
+        ],
+        "consensus": {
+          "line": 24.5,
+          "pOver": 0.5054171180931744
+        },
+        "distribution": {
+          "curve": [
+            {
+              "point": 19.5,
+              "p": 0.55320813771518,
+              "books": 2
+            },
+            {
+              "point": 24.5,
+              "p": 0.5054171180931744,
+              "books": 2
+            },
+            {
+              "point": 29.5,
+              "p": 0.2532590081431517,
+              "books": 2
+            },
+            {
+              "point": 34.5,
+              "p": 0.17204301075268816,
+              "books": 1
+            },
+            {
+              "point": 39.5,
+              "p": 0.09550379198266522,
+              "books": 1
+            }
+          ],
+          "floor": null,
+          "ceiling": 39.206280774118916,
+          "atLeast": {
+            "20": 0.55320813771518,
+            "25": 0.5054171180931744,
+            "30": 0.2532590081431517,
+            "35": 0.17204301075268816,
+            "40": 0.09550379198266522
+          },
+          "ladderBooks": 2,
+          "skippedRungs": 0
+        },
+        "distributionPower": {
+          "curve": [
+            {
+              "point": 19.5,
+              "p": 0.7056999803792061,
+              "books": 1
+            },
+            {
+              "point": 24.5,
+              "p": 0.5054171180931744,
+              "books": 2
+            },
+            {
+              "point": 29.5,
+              "p": 0.3082817850527406,
+              "books": 1
+            },
+            {
+              "point": 34.5,
+              "p": 0.17204301075268816,
+              "books": 1
+            },
+            {
+              "point": 39.5,
+              "p": 0.0848953996195228,
+              "books": 1
+            }
+          ],
+          "floor": null,
+          "ceiling": 38.63338987815761,
+          "atLeast": {
+            "20": 0.7056999803792061,
+            "25": 0.5054171180931744,
+            "30": 0.3082817850527406,
+            "35": 0.17204301075268816,
+            "40": 0.0848953996195228
+          },
+          "ladderBooks": 2,
+          "skippedRungs": 2
+        }
+      }
+    },
+    {
+      "name": "power: under-round main line gives k below 1",
+      "books": {
+        "betmgm": {
+          "line": 26.5,
+          "over": 105,
+          "under": 105
+        }
+      },
+      "ladders": {
+        "betmgm": {
+          "ladder": [
+            {
+              "point": 21.5,
+              "side": "over",
+              "price": -250
+            },
+            {
+              "point": 31.5,
+              "side": "over",
+              "price": 240
+            },
+            {
+              "point": 36.5,
+              "side": "over",
+              "price": 600
+            }
+          ]
+        }
+      },
+      "expected": {
+        "bookLines": [
+          {
+            "book": "betmgm",
+            "line": 26.5,
+            "over": 105,
+            "under": 105,
+            "pOver": 0.5
+          }
+        ],
+        "consensus": {
+          "line": 26.5,
+          "pOver": 0.5
+        },
+        "distribution": {
+          "curve": [
+            {
+              "point": 21.5,
+              "p": 0.7321428571428572,
+              "books": 1
+            },
+            {
+              "point": 26.5,
+              "p": 0.5,
+              "books": 1
+            },
+            {
+              "point": 31.5,
+              "p": 0.30147058823529416,
+              "books": 1
+            },
+            {
+              "point": 36.5,
+              "p": 0.14642857142857144,
+              "books": 1
+            }
+          ],
+          "floor": null,
+          "ceiling": null,
+          "atLeast": {
+            "20": null,
+            "25": 0.5928571428571429,
+            "30": 0.3808823529411765,
+            "35": 0.20844537815126052,
+            "40": null
+          },
+          "ladderBooks": 1,
+          "skippedRungs": 0
+        },
+        "distributionPower": {
+          "curve": [
+            {
+              "point": 21.5,
+              "p": 0.7226009856973676,
+              "books": 1
+            },
+            {
+              "point": 26.5,
+              "p": 0.5,
+              "books": 1
+            },
+            {
+              "point": 31.5,
+              "p": 0.3067631303307995,
+              "books": 1
+            },
+            {
+              "point": 36.5,
+              "p": 0.15274678058342064,
+              "books": 1
+            }
+          ],
+          "floor": null,
+          "ceiling": null,
+          "atLeast": {
+            "20": null,
+            "25": 0.589040394278947,
+            "30": 0.3840578781984797,
+            "35": 0.21435332048237218,
+            "40": null
+          },
+          "ladderBooks": 1,
+          "skippedRungs": 0
+        }
+      }
+    },
+    {
+      "name": "power: mixed paired and one-sided rungs, two books, no-main book skipped",
+      "books": {
+        "draftkings": {
+          "line": 18.5,
+          "over": -120,
+          "under": -105
+        },
+        "caesars": {
+          "line": 18.5,
+          "over": -110,
+          "under": -115
+        }
+      },
+      "ladders": {
+        "draftkings": {
+          "ladder": [
+            {
+              "point": 13.5,
+              "side": "over",
+              "price": -400
+            },
+            {
+              "point": 13.5,
+              "side": "under",
+              "price": 290
+            },
+            {
+              "point": 23.5,
+              "side": "over",
+              "price": 190
+            },
+            {
+              "point": 28.5,
+              "side": "over",
+              "price": 450
+            },
+            {
+              "point": 33.5,
+              "side": "over",
+              "price": 1100
+            }
+          ]
+        },
+        "caesars": {
+          "ladder": [
+            {
+              "point": 23.5,
+              "side": "over",
+              "price": 175
+            },
+            {
+              "point": 28.5,
+              "side": "over",
+              "price": 420
+            }
+          ]
+        },
+        "espnbet": {
+          "ladder": [
+            {
+              "point": 23.5,
+              "side": "over",
+              "price": 200
+            },
+            {
+              "point": 28.5,
+              "side": "over",
+              "price": 500
+            }
+          ]
+        }
+      },
+      "expected": {
+        "bookLines": [
+          {
+            "book": "caesars",
+            "line": 18.5,
+            "over": -110,
+            "under": -115,
+            "pOver": 0.4947698744769875
+          },
+          {
+            "book": "draftkings",
+            "line": 18.5,
+            "over": -120,
+            "under": -105,
+            "pOver": 0.5157232704402516
+          }
+        ],
+        "consensus": {
+          "line": 18.5,
+          "pOver": 0.5052465724586195
+        },
+        "distribution": {
+          "curve": [
+            {
+              "point": 13.5,
+              "p": 0.7572815533980582,
+              "books": 1
+            },
+            {
+              "point": 18.5,
+              "p": 0.5052465724586195,
+              "books": 2
+            },
+            {
+              "point": 23.5,
+              "p": 0.334754279826052,
+              "books": 2
+            },
+            {
+              "point": 28.5,
+              "p": 0.1767770197005612,
+              "books": 2
+            },
+            {
+              "point": 33.5,
+              "p": 0.07879105520614954,
+              "books": 1
+            }
+          ],
+          "floor": null,
+          "ceiling": 32.41775598151815,
+          "atLeast": {
+            "20": 0.471148113932106,
+            "25": 0.3031588278009538,
+            "30": 0.15717982680167886,
+            "35": null,
+            "40": null
+          },
+          "ladderBooks": 2,
+          "skippedRungs": 2
+        },
+        "distributionPower": {
+          "curve": [
+            {
+              "point": 13.5,
+              "p": 0.7572815533980582,
+              "books": 1
+            },
+            {
+              "point": 18.5,
+              "p": 0.5052465724586195,
+              "books": 2
+            },
+            {
+              "point": 23.5,
+              "p": 0.32303606029752063,
+              "books": 2
+            },
+            {
+              "point": 28.5,
+              "p": 0.16117772043910522,
+              "books": 2
+            },
+            {
+              "point": 33.5,
+              "p": 0.06695712067815401,
+              "books": 1
+            }
+          ],
+          "floor": null,
+          "ceiling": 31.746515124841082,
+          "atLeast": {
+            "20": 0.4688044700263997,
+            "25": 0.2906643923258376,
+            "30": 0.14233360048691499,
+            "35": null,
+            "40": null
+          },
+          "ladderBooks": 2,
+          "skippedRungs": 2
+        }
+      }
+    }
+  ],
+  "powerExponents": [
+    {
+      "over": -110,
+      "under": -110,
+      "k": 1.0719425631159538
+    },
+    {
+      "over": -115,
+      "under": -105,
+      "k": 1.0711158430185606
+    },
+    {
+      "over": -300,
+      "under": 240,
+      "k": 1.0792998505476135
+    },
+    {
+      "over": 105,
+      "under": 105,
+      "k": 0.9656014993506687
+    },
+    {
+      "over": -600,
+      "under": -600,
+      "k": null
+    },
+    {
+      "over": 2000,
+      "under": 2000,
+      "k": null
     }
   ]
 }

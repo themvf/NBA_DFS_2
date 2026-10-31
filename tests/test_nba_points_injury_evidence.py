@@ -110,8 +110,10 @@ def test_index_block_uses_bounded_official_pdf_fallback():
     assert url.endswith('_04_45PM.pdf') and data.startswith(b'%PDF') and index is None and discovery['index_status']==403
     assert len(session.urls)==3 and all('nba.com/' in u for u in session.urls)
     session=Session(False)
-    with pytest.raises(ValueError,match='bounded'):m.fetch_latest(datetime(2026,10,26).date(),at(21,7),session)
-    assert len(session.urls)==5
+    with pytest.raises(m.DiscoveryFailed,match='bounded') as e:m.fetch_latest(datetime(2026,10,26).date(),at(21,7),session)
+    assert len(session.urls)==11 and len(session.urls)<=m.MAX_DISCOVERY_REQUESTS
+    assert all(m.url_time(u)<=m.aware(at(21,7)) for u in session.urls[1:])
+    assert [r['status'] for r in e.value.discovery['requests']][0]==403
 
 def test_availability_export_preserves_source_and_rejects_collisions_and_wrong_day():
     r=source('Out');evidence,blocked=m.availability(r,'2026-10-26')
@@ -138,3 +140,26 @@ def test_export_flows_to_existing_freeze_without_numerical_projection_changes():
     assert one['availability']['status']=='Out' and one['ceiling_watch']['status']=='reported_out'
     assert checked['leader_selections']['strategies']['market_line']['eligible_count']==3
     assert all(p['player']!='One' for p in checked['leader_selections']['strategies']['market_line']['selected'])
+
+
+def test_discovery_categorises_timeouts_caps_requests_and_writes_receipt(tmp_path):
+    import requests, json
+    class Session:
+        def __init__(self):self.urls=[]
+        def get(self,url,timeout):
+            self.urls.append(url)
+            if 'official.nba.com/' in url:raise requests.Timeout('slow')
+            raise requests.ConnectionError('down')
+    s=Session()
+    with pytest.raises(m.DiscoveryFailed) as e:m.fetch_latest(datetime(2026,10,26).date(),at(23,59),s)
+    d=e.value.discovery
+    assert len(s.urls)<=m.MAX_DISCOVERY_REQUESTS and d['requests'][0]['error']=='timeout'
+    assert {r.get('error') for r in d['requests'][1:]}=={'connection_error'}
+    path,receipt=m.write_failure_receipt(tmp_path,datetime(2026,10,26).date(),at(23,59),d,e.value)
+    stored=json.loads(path.read_text())
+    assert stored['kind']=='availability_discovery_failure' and stored['next_action'] and len(stored['discovery']['requests'])==len(s.urls)
+
+def test_fallback_never_probes_future_or_other_days():
+    urls=m.fallback_candidates(datetime(2026,10,26).date(),m.aware(at(5,10,day=26)))  # 1:10 AM ET
+    assert urls and all(m.url_time(u)<=m.aware(at(5,10,day=26)) for u in urls)
+    assert all('2026-10-26' in u for u in urls)
