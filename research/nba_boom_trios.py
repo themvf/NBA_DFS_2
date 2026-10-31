@@ -73,6 +73,18 @@ TWO_SWAP_MAX_DROP = 6.0
 REGISTERED_AT = "2026-10-31T19:30:00+00:00"
 REVIEW_AFTER_DATES = 30
 BOOTSTRAP_DRAWS = 5000
+# The only candidate fields these rules read. The web page
+# (web/src/lib/nba-boom-trios.ts) pulls just these from the snapshot.
+FEATURE_FIELDS = ("shots_growth", "ft_growth", "fga3", "fta3")
+FIXTURE_PATH = Path(__file__).resolve().parents[1] / "tests/fixtures/nba_boom_trios_fixture.json"
+
+
+def slim(candidate: dict) -> dict:
+    f = candidate.get("features")
+    return {"event_id": candidate["event_id"], "player_key": candidate["player_key"], "player": candidate["player"],
+            "history_status": candidate.get("history_status"), "availability": {"status": (candidate.get("availability") or {}).get("status")},
+            "predictions": {"market_line": (candidate.get("predictions") or {}).get("market_line")},
+            "features": None if f is None else {k: f.get(k) for k in FEATURE_FIELDS}}
 
 
 def boom_score(candidate: dict) -> float | None:
@@ -286,7 +298,8 @@ def _print_trio(label: str, trio: dict | None) -> None:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["show", "report"])
+    ap.add_argument("command", choices=["show", "report", "fixture"])
+    ap.add_argument("--date", default="2026-10-30", help="fixture: the slate to pin the web port against")
     ap.add_argument("--since", default=None)
     ap.add_argument("--all-dates", action="store_true", help="report: include dates that do not count (descriptive)")
     ap.add_argument("--output", default=None, help="report: also write JSON here (must not exist)")
@@ -303,6 +316,15 @@ def main(argv=None) -> int:
         selections.append(sel)
         if ghost_grade:
             grades.append(grade(sel, ghost_grade["rows"]))
+    if args.command == "fixture":
+        snapshot = next(s for s, _ in days if s["game_date"] == args.date)
+        slim_snap = {k: snapshot.get(k) for k in ("game_date", "sha256", "created_at", "mode")}
+        slim_snap["candidates"] = [slim(c) for c in snapshot["candidates"]]
+        expected = select(slim_snap)
+        assert expected == {**select(snapshot), "snapshot_sha256": expected["snapshot_sha256"]}, "slim fields change the selection"
+        FIXTURE_PATH.write_text(json.dumps({"snapshot": slim_snap, "expected": expected}, indent=1) + "\n", encoding="utf-8")
+        print(f"  wrote {FIXTURE_PATH}")
+        return 0
     if args.command == "show":
         for sel in selections:
             tag = "counts" if sel["counts"] else ("pre-registration" if sel["snapshot_mode"] == "prospective" else "retrospective")

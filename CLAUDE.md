@@ -296,7 +296,7 @@ paired tail Brier with a night-clustered bootstrap, at least 30 nights and 1,000
 strongest rising-shot-volume player ((FGA + 0.44 FTA) last 3 minus last 20, at least 2.0) within 3
 projected points; aggressive = keep #1, best boom pair within 6. The boom score only ranks replacements.
 Graded from `nba_ghost_grades` (DNP = incomplete, never 0); `python -m research.nba_boom_trios report`.
-Counts from snapshots created after 2026-10-31 19:30 UTC; review after 30 counted dates. Its inputs come
+Counts from snapshots created after 2026-10-31 19:30 UTC; review after 30 counted dates. Live page `/nba/boom-trios` (web port fixture-pinned to the Python). Its inputs come
 from the ghost v2 snapshot and grade routine, which still runs as a local Codex follow-up, not a deployed job.
 
 ## Data Refresh Workflow

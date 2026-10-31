@@ -48,6 +48,16 @@ Report: `python -m research.nba_boom_trios report` (counted dates only) or
 `--all-dates` (adds pre-registration days, descriptive). `show` prints each
 day's three trios and the reasons. Read-only; it writes nothing to the database.
 
+## Live page (2026-10-31, owner: run it live and tracked)
+
+`/nba/boom-trios` (nav: NBA > Boom Trios) shows each night's three trios with
+their reasons and, once graded, every player's points and each alternative's
+result against the baseline, plus the record table. It recomputes the same
+rules in `web/src/lib/nba-boom-trios.ts` from the frozen snapshot (slimmed in
+SQL to the fields the rules read, `web/src/db/nba-boom-trios.ts`), pinned to
+the Python by `tests/fixtures/nba_boom_trios_fixture.json` (both sides tested).
+The page reads; it writes nothing. The rules and the count are unchanged.
+
 ## What counts and when to look
 
 A slate counts only if its snapshot is prospective and was created after
