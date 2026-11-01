@@ -8818,6 +8818,25 @@ recorded there and cannot confirm anything: the moneyline triggers pay −300 to
 −500 and their narrow discovery intervals come from five to nine dates, not
 from precision. Not an edge, not on `/vegas`, not on `/health`, not pushed.
 
+## NFL game-day inactive lists (`espn-inactives-v1`, 2026-11-01)
+
+Breece Hall (2026 week 8) stayed on the Game Leaders page at full workload
+while inactive: Sleeper and FantasyPros both still read Questionable, the page
+removes a player only when both say Out or an `nfl_official` row exists, and
+nothing had ever written an `nfl_official` row (only manual imports existed).
+`ingest/nfl_espn_inactives.py` now reads ESPN's free league injuries feed
+(`site.api.espn.com/.../nfl/injuries`, one request for all teams; the athlete id
+is only in the player-card links) and stores each `fantasyStatus = INACTIVE`
+entry stamped within three hours before that team's kickoff as an
+`nfl_official` inactive-list row through `ingest/nfl_official_inactives.py`, so
+the Game Leaders page, DFS availability, the projection rebuild and the
+pre-lock monitor all read it. INACTIVE rows only: absence never means active.
+It runs in `refresh_nfl_availability_context.yml` (quarter-hour ticks in the two
+hours before kickoff), and Game Leaders gained a second republish 45-60 minutes
+before each kickoff group, re-priced against the T-75 DraftKings lines. ESPN's
+per-game summary list truncates (it omitted Hall); use the league feed. Stored
+rows carry `injury_status: OUT`, since "INACTIVE" alone normalizes to UNKNOWN.
+
 ## Game Leaders calibration and the expected-starter quarterback (2026-10-12)
 
 Two model changes shipped together after pre-registered studies; both keep our

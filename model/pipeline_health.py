@@ -150,6 +150,12 @@ DATASET_REGISTRY: tuple[Dataset, ...] = (
             "Optional input captured with continue-on-error by the projection and availability jobs; a new "
             "row appears only when the report changes, which in season is most days (week key rolls on Tuesday).",
             filter="source = 'fantasypros' AND dataset LIKE 'game-week-injuries-v2-%'"),
+    Dataset("nfl_espn_inactives", "NFL game-day inactive lists (ESPN)", "ff_source_snapshots", "fetched_at",
+            192, "refresh_nfl_availability_context.yml", _NFL,
+            "Optional step in the availability job; writes only when a game inside three hours has new "
+            "inactives, so rows land on game days alone. Eight days covers the longest in-season gap "
+            "between game days except the bye before the Super Bowl.",
+            filter="source = 'nfl_official' AND dataset LIKE 'espn-inactives-%'"),
     Dataset("nfl_sleeper_capture", "NFL injury/depth capture (Sleeper)", "ff_source_snapshots", "fetched_at",
             8, "refresh_nfl_availability_context.yml", _NFL,
             "Hourly dispatch; the job's own gate captures at least every two hours in season, so fewer "

@@ -61,6 +61,14 @@ jobs:
         continue-on-error: true
         run: |
           python -c "import os,sys; sys.argv=['roster-status']; [(sys.argv.extend([flag,os.environ[key]])) for key,flag in [('NFL_SEASON','--season')] if os.environ.get(key)]; from ingest.nfl_roster_status import main; sys.exit(main())"
+      # Game-day inactive lists (posted ~90 minutes before kickoff) from ESPN's
+      # league injuries feed, stored as nfl_official inactive-list rows so the
+      # projection rebuild below, the DFS page and Game Leaders all read them.
+      # Writes nothing away from game windows. Optional: a failure is named below.
+      - name: Capture game-day inactive lists
+        id: inactives
+        continue-on-error: true
+        run: python -m ingest.nfl_espn_inactives
       # Optional input: Sleeper stays authoritative when this fails, so the run
       # stays green -- but the failure is named by the report step below, not
       # left behind continue-on-error where nothing reads it.
@@ -104,6 +112,7 @@ jobs:
         if: ${{ always() }}
         env:
           FANTASYPROS_OUTCOME: ${{ steps.fantasypros.outcome }}
+          INACTIVES_OUTCOME: ${{ steps.inactives.outcome }}
           ROSTER_STATUS_OUTCOME: ${{ steps.roster_status.outcome }}
         run: |
           report() {
@@ -112,6 +121,7 @@ jobs:
           }
           echo "## Optional steps" >> "$GITHUB_STEP_SUMMARY"
           report "FantasyPros corroboration (artifacts/nfl-availability-audit.json)" "$FANTASYPROS_OUTCOME"
+          report "Game-day inactive lists (ESPN)" "$INACTIVES_OUTCOME"
           report "nflverse practice-squad roster status" "$ROSTER_STATUS_OUTCOME"
       - uses: actions/upload-artifact@v4
         if: always()
