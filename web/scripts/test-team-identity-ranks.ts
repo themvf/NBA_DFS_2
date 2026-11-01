@@ -3,7 +3,8 @@
  *
  * Load-bearing: offense ranks highest EPA first, defense ranks LOWEST EPA
  * allowed first, a thin sample gets no rank (never a zero), and the style cut
- * points are the stated constants.
+ * points are the stated constants. Also the nfl_teams -> play-by-play team
+ * code map, without which LAR and WSH match no plays.
  *
  * Run: npm run test:team-identity-ranks
  */
@@ -16,6 +17,7 @@ import {
   rankTeamIdentities,
   styleOf,
 } from "../src/lib/nfl/team-identity-ranks";
+import { pbpTeamCode } from "../src/lib/nfl/pbp-team-codes";
 
 let passed = 0;
 let failed = 0;
@@ -57,6 +59,12 @@ check("run-heavy", ids.TB.style === "run-heavy");
 check("cut points are inclusive at the stated constants",
   styleOf(RUN_HEAVY_MAX_PASS_OE) === "run-heavy" && styleOf(PASS_HEAVY_MIN_PASS_OE) === "pass-heavy" && styleOf(null) === null);
 check("no passing sample, no style", rankTeamIdentities([totals("X", 0, 0, { passOeCount: 0 })]).X.style === null);
+
+// The Team Identity page filters play-by-play by team; nflverse spells the
+// Rams and Washington differently from nfl_teams.
+check("LAR filters play-by-play as LA", pbpTeamCode("LAR") === "LA");
+check("WSH filters play-by-play as WAS", pbpTeamCode("WSH") === "WAS");
+check("other codes pass through", pbpTeamCode("KC") === "KC");
 
 console.log(`${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);
