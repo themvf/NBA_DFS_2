@@ -9,6 +9,7 @@ export default function CollegeBasketballPage() {
       <h1 className="mt-3 text-3xl font-bold">Build your college hoops slate.</h1>
       <p className="mt-3 max-w-2xl text-slate-300">DraftKings men’s basketball, with separate Classic and Showdown rules. Start with the salary file, review player projections, and build lineups.</p>
       <Link href="/cbb/dfs" className="mt-6 inline-block rounded-lg bg-orange-400 px-5 py-3 font-semibold text-slate-950">Open CBB DFS →</Link>
+      <Link href="/cbb/props" className="ml-3 mt-6 inline-block rounded-lg border border-slate-600 px-5 py-3 font-semibold text-white">Player Props →</Link>
     </div>
     <div className="grid gap-4 md:grid-cols-3">
       {[

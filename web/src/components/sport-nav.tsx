@@ -53,6 +53,7 @@ const PAGE_LINKS: Array<{
   { href: "/cfb/dfs", label: "CFB DFS", sports: ["cfb"] },
   { href: "/cbb", label: "College Basketball", sports: ["cbb"] },
   { href: "/cbb/dfs", label: "CBB DFS", sports: ["cbb"] },
+  { href: "/cbb/props", label: "Player Props", sports: ["cbb"] },
   { href: "/nhl", label: "Line Terminal", sports: ["nhl"] },
   { href: "/fantasy-football/nfl", label: "NFL Teams", sports: ["nfl"] },
   { href: "/fantasy-football", label: "Fantasy Football", sports: ["nfl"] },
