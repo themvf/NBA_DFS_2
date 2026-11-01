@@ -7923,6 +7923,12 @@ DraftKings College Football Classic lives apart from NFL DFS by design: route
   shows the perfect lineup: the builder's solver run on actual points, over
   players the file scores (undrafted players have no score and are left out).
   A Classic file on a Showdown slate, or the reverse, is refused.
+- **Field ownership: spec only (2026-11-01)**,
+  [`docs/cfb-dfs-ownership-model.md`](docs/cfb-dfs-ownership-model.md). CFB has
+  no ownership estimate yet. The spec ports the NFL v5 prior unchanged except
+  roster-structure budgets, freezes it per saved run, grades it on contests
+  imported after the spec, and freezes a fitted-model gate. Labels come only
+  from contests the owner enters and exports (stat-api has no college).
 
 ---
 
