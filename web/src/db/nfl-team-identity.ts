@@ -3,6 +3,7 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import type { NflArchetypeGameRow } from "@/db/queries";
+import { PBP_TEAM_CODES, pbpTeamCode } from "@/lib/nfl/pbp-team-codes";
 
 export type NflIdentityTeam = { abbreviation: string; name: string };
 
@@ -110,13 +111,16 @@ export async function getNflArchetypeGameById(gameId: string): Promise<NflArchet
 }
 
 export async function getNflIdentityGames(team: string, season: number): Promise<{ throughWeek: number; games: NflIdentityGame[] }> {
+  // Play-by-play carries nflverse codes; `team` stays the nfl_teams code for
+  // the home/away comparison against nfl_teams below.
+  const pbpTeam = pbpTeamCode(team);
   const weekResult = await db.execute(sql`
     SELECT MAX(p.week)::int AS through_week
     FROM nfl_pbp_archetypes p
     JOIN nfl_season_games g ON g.nflverse_game_id = p.game_id
     WHERE p.season = ${season} AND p.season_type = 'REG'
       AND g.completed = TRUE AND g.game_type = 'REG'
-      AND (p.posteam = ${team} OR p.defteam = ${team})`);
+      AND (p.posteam = ${pbpTeam} OR p.defteam = ${pbpTeam})`);
   const throughWeek = optionalNumber(resultRows(weekResult)[0]?.through_week) ?? 0;
   if (!throughWeek) return { throughWeek, games: [] };
 
@@ -126,34 +130,34 @@ export async function getNflIdentityGames(team: string, season: number): Promise
              g.matchup_id, g.home_rest, g.away_rest, g.home_score, g.away_score,
              ht.abbreviation AS home_team, at.abbreviation AS away_team,
              ht.name AS home_name, at.name AS away_name,
-             COUNT(*) FILTER (WHERE p.posteam = ${team} AND p.play_type IN ('run','pass'))::int AS offense_plays,
-             COUNT(*) FILTER (WHERE p.posteam = ${team} AND p.play_type IN ('run','pass') AND p.qb_dropback = TRUE)::int AS dropbacks,
-             COUNT(*) FILTER (WHERE p.posteam = ${team} AND p.play_type IN ('run','pass') AND p.down IN (1,2)
+             COUNT(*) FILTER (WHERE p.posteam = ${pbpTeam} AND p.play_type IN ('run','pass'))::int AS offense_plays,
+             COUNT(*) FILTER (WHERE p.posteam = ${pbpTeam} AND p.play_type IN ('run','pass') AND p.qb_dropback = TRUE)::int AS dropbacks,
+             COUNT(*) FILTER (WHERE p.posteam = ${pbpTeam} AND p.play_type IN ('run','pass') AND p.down IN (1,2)
                AND p.quarter <= 3 AND ABS(p.score_differential) <= 8)::int AS neutral_early_plays,
-             COUNT(*) FILTER (WHERE p.posteam = ${team} AND p.play_type IN ('run','pass') AND p.down IN (1,2)
+             COUNT(*) FILTER (WHERE p.posteam = ${pbpTeam} AND p.play_type IN ('run','pass') AND p.down IN (1,2)
                AND p.quarter <= 3 AND ABS(p.score_differential) <= 8 AND p.qb_dropback = TRUE)::int AS neutral_early_dropbacks,
-             COALESCE(SUM(p.pass_oe) FILTER (WHERE p.posteam = ${team} AND p.play_type IN ('run','pass')),0) AS pass_oe_sum,
-             COUNT(p.pass_oe) FILTER (WHERE p.posteam = ${team} AND p.play_type IN ('run','pass'))::int AS pass_oe_count,
-             COALESCE(SUM(p.air_yards) FILTER (WHERE p.posteam = ${team} AND p.play_type IN ('run','pass')),0) AS air_yards_sum,
-             COUNT(p.air_yards) FILTER (WHERE p.posteam = ${team} AND p.play_type IN ('run','pass'))::int AS air_yards_count,
-             COALESCE(SUM(p.epa) FILTER (WHERE p.posteam = ${team} AND p.play_type IN ('run','pass')),0) AS offense_epa_sum,
-             COUNT(p.epa) FILTER (WHERE p.posteam = ${team} AND p.play_type IN ('run','pass'))::int AS offense_epa_count,
-             COALESCE(SUM(p.success::int) FILTER (WHERE p.posteam = ${team} AND p.play_type IN ('run','pass')),0)::int AS offense_successes,
-             COUNT(*) FILTER (WHERE p.posteam = ${team} AND p.play_type IN ('run','pass') AND p.yards_gained >= 20)::int AS offense_explosives,
-             COUNT(*) FILTER (WHERE p.defteam = ${team} AND p.play_type IN ('run','pass'))::int AS defense_plays,
-             COALESCE(SUM(p.epa) FILTER (WHERE p.defteam = ${team} AND p.play_type IN ('run','pass')),0) AS defense_epa_sum,
-             COUNT(p.epa) FILTER (WHERE p.defteam = ${team} AND p.play_type IN ('run','pass'))::int AS defense_epa_count,
-             COALESCE(SUM(p.success::int) FILTER (WHERE p.defteam = ${team} AND p.play_type IN ('run','pass')),0)::int AS defense_successes_allowed,
-             COUNT(*) FILTER (WHERE p.defteam = ${team} AND p.play_type IN ('run','pass') AND p.yards_gained >= 20)::int AS defense_explosives_allowed,
-             COUNT(DISTINCT p.drive) FILTER (WHERE p.posteam = ${team} AND p.drive_archetype IS NOT NULL)::int AS drives,
-             COUNT(DISTINCT p.drive) FILTER (WHERE p.posteam = ${team} AND p.drive_archetype = 'TOUCHDOWN')::int AS touchdown_drives,
-             COUNT(DISTINCT p.drive) FILTER (WHERE p.posteam = ${team} AND p.drive_archetype = 'FIELD_GOAL')::int AS field_goal_drives,
-             COUNT(DISTINCT p.drive) FILTER (WHERE p.posteam = ${team} AND p.drive_archetype = 'THREE_AND_OUT')::int AS three_and_out_drives,
-             COUNT(DISTINCT p.drive) FILTER (WHERE p.posteam = ${team} AND p.drive_archetype = 'TURNOVER_GIVEAWAY')::int AS turnover_drives,
+             COALESCE(SUM(p.pass_oe) FILTER (WHERE p.posteam = ${pbpTeam} AND p.play_type IN ('run','pass')),0) AS pass_oe_sum,
+             COUNT(p.pass_oe) FILTER (WHERE p.posteam = ${pbpTeam} AND p.play_type IN ('run','pass'))::int AS pass_oe_count,
+             COALESCE(SUM(p.air_yards) FILTER (WHERE p.posteam = ${pbpTeam} AND p.play_type IN ('run','pass')),0) AS air_yards_sum,
+             COUNT(p.air_yards) FILTER (WHERE p.posteam = ${pbpTeam} AND p.play_type IN ('run','pass'))::int AS air_yards_count,
+             COALESCE(SUM(p.epa) FILTER (WHERE p.posteam = ${pbpTeam} AND p.play_type IN ('run','pass')),0) AS offense_epa_sum,
+             COUNT(p.epa) FILTER (WHERE p.posteam = ${pbpTeam} AND p.play_type IN ('run','pass'))::int AS offense_epa_count,
+             COALESCE(SUM(p.success::int) FILTER (WHERE p.posteam = ${pbpTeam} AND p.play_type IN ('run','pass')),0)::int AS offense_successes,
+             COUNT(*) FILTER (WHERE p.posteam = ${pbpTeam} AND p.play_type IN ('run','pass') AND p.yards_gained >= 20)::int AS offense_explosives,
+             COUNT(*) FILTER (WHERE p.defteam = ${pbpTeam} AND p.play_type IN ('run','pass'))::int AS defense_plays,
+             COALESCE(SUM(p.epa) FILTER (WHERE p.defteam = ${pbpTeam} AND p.play_type IN ('run','pass')),0) AS defense_epa_sum,
+             COUNT(p.epa) FILTER (WHERE p.defteam = ${pbpTeam} AND p.play_type IN ('run','pass'))::int AS defense_epa_count,
+             COALESCE(SUM(p.success::int) FILTER (WHERE p.defteam = ${pbpTeam} AND p.play_type IN ('run','pass')),0)::int AS defense_successes_allowed,
+             COUNT(*) FILTER (WHERE p.defteam = ${pbpTeam} AND p.play_type IN ('run','pass') AND p.yards_gained >= 20)::int AS defense_explosives_allowed,
+             COUNT(DISTINCT p.drive) FILTER (WHERE p.posteam = ${pbpTeam} AND p.drive_archetype IS NOT NULL)::int AS drives,
+             COUNT(DISTINCT p.drive) FILTER (WHERE p.posteam = ${pbpTeam} AND p.drive_archetype = 'TOUCHDOWN')::int AS touchdown_drives,
+             COUNT(DISTINCT p.drive) FILTER (WHERE p.posteam = ${pbpTeam} AND p.drive_archetype = 'FIELD_GOAL')::int AS field_goal_drives,
+             COUNT(DISTINCT p.drive) FILTER (WHERE p.posteam = ${pbpTeam} AND p.drive_archetype = 'THREE_AND_OUT')::int AS three_and_out_drives,
+             COUNT(DISTINCT p.drive) FILTER (WHERE p.posteam = ${pbpTeam} AND p.drive_archetype = 'TURNOVER_GIVEAWAY')::int AS turnover_drives,
              MAX(p.roof) AS roof, MAX(p.temp) AS temp, MAX(p.wind) AS wind,
-             COUNT(p.formation) FILTER (WHERE p.posteam = ${team} AND p.play_type IN ('run','pass'))::int AS formation_rows,
-             COUNT(p.personnel_grouping) FILTER (WHERE p.posteam = ${team} AND p.play_type IN ('run','pass'))::int AS personnel_rows,
-             COUNT(p.pressure) FILTER (WHERE p.posteam = ${team} AND p.play_type IN ('run','pass'))::int AS pressure_rows,
+             COUNT(p.formation) FILTER (WHERE p.posteam = ${pbpTeam} AND p.play_type IN ('run','pass'))::int AS formation_rows,
+             COUNT(p.personnel_grouping) FILTER (WHERE p.posteam = ${pbpTeam} AND p.play_type IN ('run','pass'))::int AS personnel_rows,
+             COUNT(p.pressure) FILTER (WHERE p.posteam = ${pbpTeam} AND p.play_type IN ('run','pass'))::int AS pressure_rows,
              MAX(p.play_labeller_version) AS play_version, MAX(p.drive_labeller_version) AS drive_version
       FROM nfl_pbp_archetypes p
       JOIN nfl_season_games g ON g.nflverse_game_id = p.game_id
@@ -161,7 +165,7 @@ export async function getNflIdentityGames(team: string, season: number): Promise
       JOIN nfl_teams at ON at.team_id = g.away_team_id
       WHERE p.season IN (${season}, ${season - 1}) AND p.season_type = 'REG'
         AND g.game_type = 'REG' AND g.completed = TRUE
-        AND (p.posteam = ${team} OR p.defteam = ${team})
+        AND (p.posteam = ${pbpTeam} OR p.defteam = ${pbpTeam})
       GROUP BY p.season, p.week, p.game_id, g.id, ht.abbreviation, at.abbreviation, ht.name, at.name
     )
     SELECT gs.*,
@@ -267,15 +271,21 @@ export type NflIdentityTotals = {
  * before a slate. One pass over the season's plays, grouped by team, using the
  * same definitions as getNflIdentityGames (scrimmage = run/pass; drives counted
  * once per game and drive where drive_archetype is set), so ranks built from
- * this agree with the Team Identity page. nflverse's LA and WAS become LAR and
- * WSH, the nfl_teams codes.
+ * this agree with the Team Identity page. Play-by-play codes are mapped back to
+ * nfl_teams codes through PBP_TEAM_CODES (LA -> LAR, WAS -> WSH).
  */
+/** SQL mapping a play-by-play team column back to nfl_teams codes, from PBP_TEAM_CODES. */
+function toTeamCode(column: "p.posteam" | "p.defteam") {
+  const whens = Object.entries(PBP_TEAM_CODES).map(([team, pbp]) => `WHEN '${pbp}' THEN '${team}'`).join(" ");
+  return sql.raw(`CASE ${column} ${whens} ELSE ${column} END`);
+}
+
 export async function getNflIdentityTotals(season: number, beforeWeek: number, cutoffIso: string): Promise<NflIdentityTotals[]> {
   const result = await db.execute(sql`
     WITH base AS (
       SELECT p.game_id, p.play_type, p.epa, p.yards_gained, p.pass_oe, p.drive, p.drive_archetype,
-             CASE p.posteam WHEN 'LA' THEN 'LAR' WHEN 'WAS' THEN 'WSH' ELSE p.posteam END AS posteam,
-             CASE p.defteam WHEN 'LA' THEN 'LAR' WHEN 'WAS' THEN 'WSH' ELSE p.defteam END AS defteam
+             ${toTeamCode("p.posteam")} AS posteam,
+             ${toTeamCode("p.defteam")} AS defteam
       FROM nfl_pbp_archetypes p
       JOIN nfl_season_games g ON g.nflverse_game_id = p.game_id
       WHERE p.season = ${season} AND p.season_type = 'REG' AND p.week < ${beforeWeek}
