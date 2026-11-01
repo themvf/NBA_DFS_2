@@ -28,6 +28,8 @@ assert.equal(resolved.leverageExponent,0);
 assert.equal(resolved.minUnique,4);
 assert.equal(applyDiversified({...base,diversifiedCandidateSearch:true,diversifiedMeanSearch:true}).diversifiedCandidateSearch,false);
 assert.ok(sameGenerationSettings(base,resolved),'effective profile does not falsely show settings changed');
+assert.doesNotThrow(()=>sameGenerationSettings(base,{...base,mode:'cash'}),'changing mode must not crash comparison before the form resets its profile');
+assert.doesNotThrow(()=>sameGenerationSettings(base,{...base,nLineups:2}),'temporarily invalid QB minimum must remain editable');
 
 const roster=(ids:number[])=>({slots:ids.map(i=>({player:players.find(p=>p.dkPlayerId===i)!}))});
 const qb=players.find(p=>p.team==='T0'&&p.position==='QB')!;

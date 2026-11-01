@@ -940,7 +940,7 @@ export default function NflDfsClient() {
               <div className="grid grid-cols-2 gap-2">{([
                 ['qbMax','QB maximum'],['rbMax','RB maximum'],['wrMax','WR maximum'],['teMax','TE maximum'],['dstMax','DST maximum'],
                 ['pairMax','Repeated pair'],['tripleMax','Repeated triple'],['playerDstMax','Player + defense'],
-              ] as const).map(([key,label]) => <Field key={key} label={`${label}: ${diversifiedCount(settings.diversified[key],settings.nLineups)} of ${settings.nLineups}`}>
+              ] as const).map(([key,label]) => <Field key={key} label={`${label} (%): ${diversifiedCount(["qbMax","rbMax","wrMax","teMax","dstMax"].includes(key) ? Math.min(settings.maxExposure,settings.diversified[key]) : settings.diversified[key],settings.nLineups)} of ${settings.nLineups}`}>
                 <input aria-label={label} type="number" min={1} max={100} value={Math.round(settings.diversified[key]*100)} className="control"
                   onChange={e=>setSettings({...settings,diversified:{...settings.diversified,[key]:Number(e.target.value)/100}})} />
               </Field>)}</div>
