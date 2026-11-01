@@ -1,11 +1,13 @@
 /**
- * The live pick'em board: one frozen card, its pregame line trails, and the
- * scoreboard, folded into what the page renders.
+ * The pick'em live board: one frozen card, its pregame line trails, and the
+ * finals, folded into what the page renders.
  *
  * Port of artifacts/pickem_live_board.py (the private claude.ai board this
- * page replaces). Pure: the database reads live in db/queries.ts
- * (getPickemLiveCard) and the ESPN fetch in the page, so every rule here --
- * the two flip tags above all -- can be tested without either.
+ * page replaces), without its live scoreboard: the page shows pregame win
+ * chances and grades each game once nfl_season_games records the final (the
+ * same table pick'em settlement grades from). No in-game state, so no ESPN.
+ * Pure: the reads live in db/queries.ts (getPickemLiveCard), so every rule
+ * here -- the two flip tags above all -- can be tested without a database.
  */
 
 export const TRAIL_POINTS = 16;
@@ -37,16 +39,8 @@ export interface PickemLiveCard {
   trails: Record<number, Array<{ pHome: number; homeSpread: number | null }>>;
 }
 
-export type LiveState = "pre" | "in" | "post";
-
-export interface ScoreboardGame {
-  state: LiveState;
-  detail: string | null;
-  awayScore: number;
-  homeScore: number;
-  possession: string | null;
-  redZone: boolean;
-}
+/** Before kickoff; kicked off with no final recorded yet; final. */
+export type GameState = "pre" | "pending" | "post";
 
 export interface BoardGame {
   gameId: number;
@@ -67,17 +61,13 @@ export interface BoardGame {
   frozen: number;
   /** Our pick's pregame chance, downsampled, first capture to last. */
   trail: number[];
-  state: LiveState;
-  detail: string | null;
+  state: GameState;
+  /** Final score from nfl_season_games; null until the game is final. */
   awayScore: number | null;
   homeScore: number | null;
-  possession: string | null;
-  redZone: boolean;
-  /** Where the score came from: ESPN, the season table (final only), or nowhere. */
-  scoreSource: "espn" | "ledger" | null;
 }
 
-export type Outcome = "won" | "lost" | "tie" | "winning" | "losing" | "tied" | null;
+export type Outcome = "won" | "lost" | "tie" | null;
 
 const ET = "America/New_York";
 
@@ -118,44 +108,7 @@ function spreadLabel(homeSpread: number | null | undefined, home: string, away: 
   return `${fav} −${Math.abs(homeSpread)}`;
 }
 
-/** ESPN's public scoreboard, keyed `AWAY@HOME`. Throws on a bad response. */
-export function parseEspnScoreboard(json: unknown): Record<string, ScoreboardGame> {
-  const out: Record<string, ScoreboardGame> = {};
-  const events = (json as { events?: unknown[] })?.events ?? [];
-  for (const raw of events) {
-    const event = raw as {
-      status?: { type?: { state?: string; shortDetail?: string } };
-      competitions?: Array<{
-        competitors?: Array<{ homeAway?: string; score?: string; team?: { id?: string; abbreviation?: string } }>;
-        situation?: { possession?: string; isRedZone?: boolean };
-      }>;
-    };
-    const comp = event.competitions?.[0];
-    const side = Object.fromEntries((comp?.competitors ?? []).map((c) => [c.homeAway, c]));
-    const away = side.away?.team?.abbreviation;
-    const home = side.home?.team?.abbreviation;
-    if (!away || !home) continue;
-    const state = event.status?.type?.state;
-    const possId = comp?.situation?.possession;
-    const possession = possId
-      ? (comp?.competitors ?? []).find((c) => c.team?.id === possId)?.team?.abbreviation ?? null
-      : null;
-    out[`${away}@${home}`] = {
-      state: state === "in" || state === "post" ? state : "pre",
-      detail: event.status?.type?.shortDetail ?? null,
-      awayScore: Number(side.away?.score ?? 0) || 0,
-      homeScore: Number(side.home?.score ?? 0) || 0,
-      possession,
-      redZone: Boolean(comp?.situation?.isRedZone),
-    };
-  }
-  return out;
-}
-
-export function buildBoardGames(
-  card: PickemLiveCard,
-  scoreboard: Record<string, ScoreboardGame> | null,
-): BoardGame[] {
+export function buildBoardGames(card: PickemLiveCard, nowMs: number): BoardGame[] {
   return card.games.map((g) => {
     const trail = card.trails[g.gameId] ?? [];
     const side = (p: number) => (g.pickHome ? p : 1 - p);
@@ -165,21 +118,8 @@ export function buildBoardGames(
     const modelFav = favouriteOf(g.pHome, g.home, g.away);
     const ourFlip = Boolean(marketFav && pick !== marketFav);
 
-    const live = scoreboard?.[`${g.away}@${g.home}`];
-    let score: Pick<BoardGame, "state" | "detail" | "awayScore" | "homeScore" | "possession" | "redZone" | "scoreSource">;
-    if (live) {
-      // ESPN reports 0-0 before kickoff; an unplayed game has no score.
-      score = live.state === "pre"
-        ? { ...live, awayScore: null, homeScore: null, scoreSource: "espn" }
-        : { ...live, scoreSource: "espn" };
-    } else if (g.completed && g.homeScore != null && g.awayScore != null) {
-      // ESPN missing or down: a final is still known from the season table.
-      score = { state: "post", detail: "Final", awayScore: g.awayScore, homeScore: g.homeScore,
-        possession: null, redZone: false, scoreSource: "ledger" };
-    } else {
-      score = { state: "pre", detail: null, awayScore: null, homeScore: null,
-        possession: null, redZone: false, scoreSource: null };
-    }
+    const final = g.completed && g.homeScore != null && g.awayScore != null;
+    const state: GameState = final ? "post" : Date.parse(g.kickoff) <= nowMs ? "pending" : "pre";
 
     return {
       gameId: g.gameId,
@@ -200,17 +140,18 @@ export function buildBoardGames(
       spread: trail.length ? spreadLabel(trail[trail.length - 1].homeSpread, g.home, g.away) : null,
       frozen: side(g.pHome),
       trail: downsample(trail, TRAIL_POINTS).map((t) => side(t.pHome)),
-      ...score,
+      state,
+      awayScore: final ? g.awayScore : null,
+      homeScore: final ? g.homeScore : null,
     };
   });
 }
 
 export function outcomeOf(g: BoardGame): Outcome {
-  if (g.state === "pre" || g.homeScore == null || g.awayScore == null) return null;
+  if (g.state !== "post" || g.homeScore == null || g.awayScore == null) return null;
   const mine = g.pick === g.home ? g.homeScore : g.awayScore;
   const theirs = g.pick === g.home ? g.awayScore : g.homeScore;
-  if (g.state === "post") return mine > theirs ? "won" : mine < theirs ? "lost" : "tie";
-  return mine > theirs ? "winning" : mine < theirs ? "losing" : "tied";
+  return mine > theirs ? "won" : mine < theirs ? "lost" : "tie";
 }
 
 /** Our pick's latest pregame chance; the frozen value when no line was captured. */
@@ -224,23 +165,21 @@ export interface BoardSummary {
   finals: number;
   /** Finals count 1 or 0; every other game counts its latest pregame chance. */
   expectedCorrect: number;
-  live: number;
-  liveAhead: number;
+  /** Kicked off, final not recorded yet. */
+  pending: number;
   ourFlips: string[];
   vegasFlips: string[];
 }
 
 export function summarize(games: BoardGame[]): BoardSummary {
   const finals = games.filter((g) => g.state === "post");
-  const live = games.filter((g) => g.state === "in");
   return {
     won: finals.filter((g) => outcomeOf(g) === "won").length,
     lost: finals.filter((g) => outcomeOf(g) === "lost").length,
     finals: finals.length,
     expectedCorrect: games.reduce(
       (s, g) => s + (g.state === "post" ? (outcomeOf(g) === "won" ? 1 : 0) : latestChance(g)), 0),
-    live: live.length,
-    liveAhead: live.filter((g) => outcomeOf(g) === "winning").length,
+    pending: games.filter((g) => g.state === "pending").length,
     ourFlips: games.filter((g) => g.ourFlip).map((g) => g.pick),
     vegasFlips: games.filter((g) => g.vegasFlip).map((g) => `${g.away} @ ${g.home}`),
   };
@@ -257,7 +196,7 @@ export function groupByWindow(games: BoardGame[]): Array<{ window: string; games
   return groups;
 }
 
-/** Team colours (background, text) and nickname, keyed by ESPN / nfl_teams abbreviation. */
+/** Team colours (background, text) and nickname, keyed by nfl_teams abbreviation. */
 export const NFL_TEAM_STYLE: Record<string, [string, string, string]> = {
   ARI: ["#97233F", "#fff", "Cardinals"], ATL: ["#A71930", "#fff", "Falcons"], BAL: ["#241773", "#fff", "Ravens"],
   BUF: ["#00338D", "#fff", "Bills"], CAR: ["#0085CA", "#fff", "Panthers"], CHI: ["#0B162A", "#fff", "Bears"],

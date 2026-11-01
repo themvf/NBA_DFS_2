@@ -49,7 +49,6 @@ function Sparkline({ g }: { g: BoardGame }) {
 function TeamRow({ g, abbr, score }: { g: BoardGame; abbr: string; score: number | null }) {
   const [bg, fg, name] = teamStyle(abbr);
   const picked = g.pick === abbr;
-  const hasBall = g.state === "in" && g.possession === abbr;
   return (
     <>
       <div className="flex min-w-0 items-center gap-2">
@@ -63,11 +62,6 @@ function TeamRow({ g, abbr, score }: { g: BoardGame; abbr: string; score: number
             ? "text-orange-600 ring-orange-600 dark:text-orange-400 dark:ring-orange-400"
             : "text-sky-600 ring-sky-600 dark:text-sky-400 dark:ring-sky-400"}`}>PICK</span>
         )}
-        {hasBall && (
-          <span className={`whitespace-nowrap text-xs ${g.redZone
-            ? "font-semibold text-rose-600 dark:text-rose-400" : "text-amber-600 dark:text-amber-400"}`}
-            title="Has the ball">● {g.redZone ? "red zone" : "ball"}</span>
-        )}
       </div>
       <div className={`text-right text-2xl font-bold tabular-nums leading-none ${score == null ? "text-muted-foreground" : ""}`}>
         {score == null ? "–" : score}
@@ -76,7 +70,7 @@ function TeamRow({ g, abbr, score }: { g: BoardGame; abbr: string; score: number
   );
 }
 
-export function BoardCard({ g, nowMs }: { g: BoardGame; nowMs: number }) {
+export function BoardCard({ g }: { g: BoardGame }) {
   const o = outcomeOf(g);
   const now = latestChance(g);
   const homeP = g.pick === g.home ? now : 1 - now;
@@ -84,15 +78,13 @@ export function BoardCard({ g, nowMs }: { g: BoardGame; nowMs: number }) {
 
   let status = kickoffLabel(g.kickoff);
   let statusCls = "bg-muted text-muted-foreground";
-  if (g.state === "in") {
-    statusCls = "bg-amber-500/15 text-amber-700 dark:text-amber-400";
-    status = `${o === "winning" ? "Winning" : o === "losing" ? "Losing" : "Tied"} · ${g.detail ?? "Live"}`;
-  } else if (g.state === "post") {
+  if (g.state === "post") {
     statusCls = o === "won" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
       : o === "lost" ? "bg-rose-500/15 text-rose-700 dark:text-rose-400" : "bg-muted text-muted-foreground";
-    status = `${o === "won" ? "Won" : o === "lost" ? "Lost" : "Tie"} · ${g.detail ?? "Final"}`;
-  } else if (g.scoreSource == null && Date.parse(g.kickoff) < nowMs) {
-    status = `${kickoffLabel(g.kickoff)} · score unavailable`;
+    status = `${o === "won" ? "Won" : o === "lost" ? "Lost" : "Tie"} · Final`;
+  } else if (g.state === "pending") {
+    statusCls = "bg-amber-500/15 text-amber-700 dark:text-amber-400";
+    status = `${kickoffLabel(g.kickoff)} · awaiting final`;
   }
 
   const [awayBg] = teamStyle(g.away), [homeBg] = teamStyle(g.home);
