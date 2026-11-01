@@ -1,8 +1,10 @@
 name: Publish NFL Game Leaders week
 
 # Dispatched by /api/cron/dispatch (job nfl-game-leaders): Wednesday 14:07 UTC
-# for the weekly build, then 150-165 minutes before each kickoff group with
-# fresh availability. The schedule below is a thin fallback for a broken bridge.
+# for the weekly build, then twice before each kickoff group: 150-165 minutes
+# out with fresh availability, and 45-60 minutes out, after the inactive lists
+# (ingest/nfl_espn_inactives.py). The schedule below is a thin fallback for a
+# broken bridge.
 # research.nfl_game_leaders_auto reuses the week's capture, keeps started games
 # frozen, gates each game and lists anything it could not refresh.
 on:
@@ -35,6 +37,14 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Capture availability and publish the upcoming week
         run: python -m research.nfl_game_leaders_auto
+      # The page matches DraftKings lines to a forecast by its decision time, so a
+      # game re-run after its T-75 prop capture must be re-priced here or the page
+      # loses its DK columns. Only games inside 75 minutes: earlier passes run
+      # before the lines exist and the T-75 capture prices those.
+      - name: Re-price re-run games against DraftKings lines
+        id: reprice
+        continue-on-error: true
+        run: python -m research.nfl_game_leaders_market refresh --within-hours 1.25 --write-db
       # nfl-leaders-regime-roles-v1 (docs/nfl-leaders-regime-roles-study.md): roles-v3
       # shares and forecasts beside each published game's request, shadow only.
       # A failure here is annotated on the run and never blocks the publication.
@@ -60,15 +70,18 @@ jobs:
         env:
           SHADOW_OUTCOME: ${{ steps.regime_shadow.outcome }}
           GRADE_OUTCOME: ${{ steps.regime_grade.outcome }}
+          REPRICE_OUTCOME: ${{ steps.reprice.outcome }}
         run: |
           {
+            echo "### DraftKings re-pricing"
+            echo "- reprice: ${REPRICE_OUTCOME:-not run}"
             echo "### Regime-roles research (nfl-leaders-regime-roles-v1)"
             echo "- shadow: ${SHADOW_OUTCOME:-not run}"
             echo "- grade: ${GRADE_OUTCOME:-not run}"
           } >> "$GITHUB_STEP_SUMMARY"
-          for pair in "shadow:$SHADOW_OUTCOME" "grade:$GRADE_OUTCOME"; do
+          for pair in "reprice:$REPRICE_OUTCOME" "shadow:$SHADOW_OUTCOME" "grade:$GRADE_OUTCOME"; do
             if [ "${pair#*:}" = "failure" ]; then
-              echo "::warning::regime-roles ${pair%%:*} step failed; the publication is unaffected"
+              echo "::warning::${pair%%:*} step failed; the publication is unaffected"
             fi
           done
       - name: Commit only a changed, validated publication

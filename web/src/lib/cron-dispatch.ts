@@ -153,14 +153,26 @@ export function cfbForecastDue(now: Date, context: DispatchContext): boolean {
 export const GAME_LEADERS_LEAD_MS = { min: 150 * 60 * 1000, max: 165 * 60 * 1000 };
 
 /**
+ * Second republish, 45-60 minutes before each kickoff group: teams post
+ * inactives about 90 minutes out and the availability job stores them
+ * (ingest/nfl_espn_inactives.py) on its quarter-hour ticks, so this pass is the
+ * first that can drop an inactive player. Breece Hall, 2026 week 8: the T-150
+ * pass kept him at full workload because he was only Questionable then.
+ * The run also re-prices the new forecasts against the T-75 DraftKings lines.
+ */
+export const GAME_LEADERS_INACTIVES_LEAD_MS = { min: 45 * 60 * 1000, max: 60 * 60 * 1000 };
+
+/**
  * Game Leaders: the weekly build on Wednesday 14:07 UTC (last week's stats are
- * in by then), then a fresh-availability republish before every kickoff group.
+ * in by then), then two republishes before every kickoff group: fresh
+ * availability at T-150, and after the inactive lists at T-60.
  */
 export function nflGameLeadersDue(now: Date, context: DispatchContext): boolean {
   if (now.getUTCDay() === 3 && now.getUTCHours() === 14 && hourTick(now)) return true;
   return (context.nflKickoffs ?? []).some((kickoff) => {
     const lead = kickoff.getTime() - now.getTime();
-    return lead > GAME_LEADERS_LEAD_MS.min && lead <= GAME_LEADERS_LEAD_MS.max;
+    return [GAME_LEADERS_LEAD_MS, GAME_LEADERS_INACTIVES_LEAD_MS]
+      .some((window) => lead > window.min && lead <= window.max);
   });
 }
 

@@ -72,6 +72,9 @@ def prepare_import(db: Any, payload: dict[str, Any], *, reviewed_by: str,
         prepared.append({
             "playerId": int(player["id"]), "gameId": game_id,
             "kickoff": game["kickoff"].isoformat(), "status": "INACTIVE",
+            # Read by normalize_injury_status: "INACTIVE" alone normalizes to
+            # UNKNOWN, which the Game Leaders check would not treat as out.
+            "injury_status": "OUT",
             "report_type": "inactive_list", "source_label": source_label,
             "source_published_at": published_at.isoformat(),
         })
@@ -83,16 +86,17 @@ def prepare_import(db: Any, payload: dict[str, Any], *, reviewed_by: str,
     return {**body, "payloadDigest": stable_digest(body), "importId": stable_digest({"type": "official-inactives", **body})}
 
 
-def persist_import(db: Any, prepared: dict[str, Any]) -> dict[str, Any]:
+def persist_import(db: Any, prepared: dict[str, Any], *, dataset_prefix: str = "reviewed-inactives",
+                   eligibility_reason: str = "human-reviewed exact-game official inactive list") -> dict[str, Any]:
     snapshot_id = persist_source_snapshot(db, SnapshotProvenance(
-        source="nfl_official", dataset=f"reviewed-inactives-{prepared['season']}-{prepared['week']}-{prepared['importId'][:12]}",
+        source="nfl_official", dataset=f"{dataset_prefix}-{prepared['season']}-{prepared['week']}-{prepared['importId'][:12]}",
         season=int(prepared["season"]), week=int(prepared["week"]),
         request_params={"sourceLabel": prepared["sourceLabel"], "reviewedBy": prepared["reviewedBy"]},
         source_published_at=_time(prepared["sourcePublishedAt"]),
         fetched_at=_time(prepared["reviewedAt"]), response_hash=prepared["payloadDigest"],
         row_count=len(prepared["records"]), matched_count=len(prepared["records"]),
         fallback_tier="A", model_eligible=True,
-        eligibility_reason="human-reviewed exact-game official inactive list",
+        eligibility_reason=eligibility_reason,
     ))
     observations = []
     for record in prepared["records"]:
