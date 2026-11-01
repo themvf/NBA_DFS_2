@@ -159,6 +159,7 @@
     "test:nfl-defensive-capture-status": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-defensive-capture-status.ts",
     "test:nfl-captain-minimum": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-captain-minimum.ts",
     "test:nfl-gpp-leverage": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-leverage.ts",
+    "test:nfl-diversified": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-diversified.ts",
     "test:nfl-winners-shape": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-winners-shape.ts",
     "test:nfl-rolling-view": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-rolling-view.ts",
     "test:charts": "node --import tsx ./scripts/test-charts.ts",

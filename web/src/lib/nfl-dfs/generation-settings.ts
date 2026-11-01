@@ -1,3 +1,4 @@
+import { applyDiversified } from "./diversified";
 import type { NflOptimizerSettings } from '@/app/dfs/nfl/nfl-optimizer';
 import type { PlayerExposurePolicy } from './exposure-plan';
 import { canonicalAuditJson } from './audit-json';
@@ -92,7 +93,7 @@ export function sameGenerationSettings(a: NflOptimizerSettings, b: NflOptimizerS
     lockedPlayerIds: [...s.lockedPlayerIds].sort((a,b) => a-b),
     excludedPlayerIds: [...s.excludedPlayerIds].sort((a,b) => a-b),
   });
-  return canonicalAuditJson(normalize(a)) === canonicalAuditJson(normalize(b));
+  return canonicalAuditJson(normalize(applyDiversified(a))) === canonicalAuditJson(normalize(applyDiversified(b)));
 }
 
 export type ArchetypePlanMode = 'balanced' | 'standard' | 'custom' | 'chalk_leverage';

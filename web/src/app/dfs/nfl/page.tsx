@@ -3,6 +3,9 @@ import NflDfsClient from "./nfl-dfs-client";
 import Link from "next/link";
 import { nflBuildInfo, shortCommitSha } from "@/lib/nfl-dfs/build-info";
 
+// Candidate generation is bounded; allow the server action to finish a full portfolio.
+export const maxDuration = 180;
+
 export const metadata: Metadata = {
   title: "NFL DFS Workspace",
   description: "DraftKings NFL Classic and Showdown slate intake and model-readiness workspace.",
