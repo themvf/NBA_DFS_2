@@ -4326,6 +4326,15 @@ TABLES = [
         payload JSONB NOT NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )""",
+    # Content-addressed chunks of large row lists (model/nfl_dfs_row_chunks.py).
+    # nfl_dfs_component_datasets.payload and nfl_dfs_feature_audits.input_evidence
+    # name their chunks instead of repeating ~18k-57k unchanged rows per write.
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_row_chunks (
+        chunk_digest TEXT PRIMARY KEY,
+        row_count INTEGER NOT NULL,
+        rows JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )""",
     """CREATE TABLE IF NOT EXISTS nfl_dfs_workload_runs (
         run_digest TEXT PRIMARY KEY,
         dataset_digest TEXT NOT NULL REFERENCES nfl_dfs_component_datasets(dataset_digest),
