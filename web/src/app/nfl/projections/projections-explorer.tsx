@@ -9,6 +9,8 @@ import {
 import GameBoard from "./game-board";
 import ProjectionCard from "./projection-card";
 import ProjectionTable from "./projection-table";
+import RangeChart from "./range-chart";
+import UpsideScatter from "./upside-scatter";
 import { positionStyle } from "./range-bar";
 
 const PAGE_SIZE = 36;
@@ -115,6 +117,13 @@ export default function ProjectionsExplorer({ board, initial, week }: {
           </div>
         </div>
       </section>
+
+      {players.length > 0 && (
+        <div className="grid items-start gap-3 lg:grid-cols-2">
+          <RangeChart players={players} />
+          <UpsideScatter players={players} onSelect={player => update({ query: player.name })} />
+        </div>
+      )}
 
       {players.length === 0 ? (
         <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
