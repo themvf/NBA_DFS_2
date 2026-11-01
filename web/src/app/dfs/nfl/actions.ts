@@ -43,6 +43,7 @@ import type { PlayerContext } from "@/lib/nfl-dfs/player-context";
 import { benchmarkPool, type Competitor, type ImportEvidence, type BenchmarkSnapshot, benchmarkTeam } from '@/lib/nfl-dfs/competitor-benchmark';
 import { saveNflBenchmark, readNflBenchmarks } from '@/db/nfl-dfs-benchmark';
 import { redistributeInjuryTargets } from '@/lib/nfl-dfs/injury-redistribution';
+import { applyDiversified } from "@/lib/nfl-dfs/diversified";
 import { buildCompletion } from '@/lib/nfl-dfs/build-completion';
 import { availabilityNote, storedSlateProjection, type ModelAvailabilityNote } from '@/lib/nfl-dfs/out-projection';
 import { redistributeOutOpportunity, inheritanceNote, paidByDonor, type RedistributionRow, type InheritedFrom } from '@/lib/nfl-dfs/opportunity-redistribution';
@@ -2103,6 +2104,7 @@ async function assertSlatePregame(slate:NflWorkspaceSlate):Promise<void> {
  */
 function resolveRunContext(eligible: NflWorkspacePlayer[], slate: NflWorkspaceSlate, settings: NflOptimizerSettings,
   defensive: NflOptimizerSettings['defensiveAdjustments']) {
+  settings = applyDiversified(settings);
   const ownershipAssessment = assessOwnership(
     eligible.filter(p=>!p.isOut).map(p=>({playerId:p.dkPlayerId, medianProjection: p.medianFpts ?? p.ourProj ?? null})),
     // Showdown slot shares from our prior are validated per slot (and their sum);
@@ -2182,6 +2184,7 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
   if (slate.players.some(p=>p.identityMethod==='exact_name_position')) {
     throw new Error('This salary upload contains legacy player matches without team verification. Reload its salary CSV before optimizing.');
   }
+  settings = applyDiversified(settings);
   const uploadId=slate.uploadId;
   const now=Date.now();
   // The Slate Check says building is closed after the first kickoff; before
@@ -2273,7 +2276,7 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
     // The build's notes and the plan's quotas travel with the run: a restored
     // run used to lose every warning a complete run produced, and QA could not
     // check quotas it never saw.
-    warnings:[...result.warnings],...(result.archetypePlan?{archetypePlan:result.archetypePlan}:{})} };
+    warnings:[...result.warnings],...(result.diversifiedReport?{diversified:result.diversifiedReport}:{}),...(result.archetypePlan?{archetypePlan:result.archetypePlan}:{})} };
   // Build identity is part of what makes a run reproducible, so it is inside the
   // digest: two runs with different code cannot share an input digest.
   const inputDigest = sha256(canonicalAuditJson({ settings: persistedSettings, inputSnapshot, optimizerVersion: NFL_OPTIMIZER_VERSION, buildInfo }));

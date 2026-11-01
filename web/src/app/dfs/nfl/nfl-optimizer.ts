@@ -1,3 +1,4 @@
+import { applyDiversified, diversifiedPolicy, diversifiedCount, diversifiedPositionMax, diversifiedGroups, repeatedGroupCounts, groupLimit, concentrationCost, improveDiversifiedPortfolio, DIVERSIFIED_VERSION, type DiversifiedPolicy, type DiversifiedReport } from "@/lib/nfl-dfs/diversified";
 import "server-only";
 import { kickerRoleBlockedReason } from '@/lib/nfl-dfs/availability';
 import type { DefensiveForecastBundle, DefensiveSettings } from '@/lib/nfl-dfs/defensive-projection';
@@ -63,7 +64,7 @@ import { featureTotals, JOINT_TARGET_PENALTY, NFL_JOINT_SELECTION_VERSION, selec
 // Record the strict Showdown purchase and completed-roster validation.
 // v8: DK-average fallback honoured in defensive mode; a lock or exposure
 // minimum on a player outside the pool is an error instead of being dropped.
-export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v12-lineup-integrity";
+export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v13-diversified";
 
 export type NflProjectionSource = "our" | "workload" | "calibrated" | "dk_avg" | "fantasypros" | "linestar" | "custom";
 export type NflOptimizerMode = "cash" | "gpp";
@@ -247,6 +248,11 @@ export type NflOptimizerSettings = {
    * run's notes list every number it enforced. Absent/"standard": no preset.
    */
   buildShape?: BuildShape;
+  /** Classic construction risk preferences. No effect on Standard, Winners or ghost arms. */
+  diversified?: Partial<DiversifiedPolicy>;
+  /** Internal candidate-generation objective. Never persisted as the final build objective. */
+  diversifiedMeanSearch?: boolean;
+  diversifiedCandidateSearch?: boolean;
   /**
    * Classic GPP: the share of lineups that carry an opposing bring-back,
    * 0..1. When set it replaces `bringBack`: lineups are built alternately
@@ -389,6 +395,7 @@ export type NflEligibilityDecision = {
 };
 
 export type NflOptimizerResult = {
+  diversifiedReport?: DiversifiedReport;
   lineups: NflGeneratedLineup[];
   /** Frozen leader identities: reselection must preserve their automatic coverage. */
   topProjectedPlayerIds?: number[];
@@ -423,6 +430,7 @@ type SolverModel = {
   constraints: Record<string, { max?: number; min?: number; equal?: number }>;
   variables: Record<string, Record<string, number>>;
   binaries: Record<string, 1>;
+  options?: { timeout: number };
 };
 type SolverResult = Record<string, number | boolean> & { feasible?: boolean; result?: number };
 
@@ -721,7 +729,8 @@ function objective(player: ResolvedPlayer, settings: NflOptimizerSettings, lineu
   const rawBase = settings.mode === "cash"
     ? (special ? special.p10 : defensive ? defensive.p10 : player.resolvedSource === "workload" ? selectedWorkload(player,settings.workloadPositions)!.p10 : player.resolvedSource === "calibrated" ? player.calibrated!.p10 : historical ? finite(player.floorFpts) : null) ?? player.projection * 0.74
     : (special ? special.p90 : defensive ? defensive.p90 : player.resolvedSource === "workload" ? selectedWorkload(player,settings.workloadPositions)!.p90 : player.resolvedSource === "calibrated" ? player.calibrated!.p90 : historical ? finite(player.ceilingFpts) : null) ?? player.projection * 1.28;
-  const base = settings.mode === "gpp" ? cappedCeiling(rawBase, player.projection, settings.maxCeilingMultiple ?? DEFAULT_MAX_CEILING_MULTIPLE) : rawBase;
+  const base = settings.buildShape === "diversified" && settings.diversifiedMeanSearch ? player.projection
+    : settings.mode === "gpp" ? cappedCeiling(rawBase, player.projection, settings.maxCeilingMultiple ?? DEFAULT_MAX_CEILING_MULTIPLE) : rawBase;
   // Phase 2: leverage (ownership penalty) applies when the server resolved it
   // as permitted — a validated feed, or a declared-heuristic feed the user
   // explicitly opted into (labeled "uncalibrated" everywhere). Missing
@@ -877,6 +886,15 @@ function buildOne(
   } else {
     constraints.cpt = { equal: 1 };
     constraints.flex = { equal: 5 };
+  }
+  const saturatedGroups = settings.buildShape === "diversified" && !settings.diversifiedCandidateSearch
+    ? [...repeatedGroupCounts(previous).values()].filter(({group,count}) => count >= groupLimit(group, diversifiedPolicy(settings), settings.nLineups)) : [];
+  saturatedGroups.forEach(({group}, i) => { constraints[`div_group_${i}`] = { max: group.ids.length - 1 }; });
+  if (settings.buildShape === "diversified" && !settings.diversifiedCandidateSearch) {
+    const p = diversifiedPolicy(settings);
+    const usedQbs = new Set(previous.flatMap(l => l.slots.filter(s => s.player.position === "QB").map(s => s.player.dkPlayerId)));
+    if (p.minimumQbs - usedQbs.size >= remaining && p.minimumQbs > usedQbs.size)
+      constraints.div_new_qb = { min: 1 };
   }
   for (const player of available) constraints[`player_${player.dkPlayerId}`] = { max: 1 };
   for (const game of new Set(available.map((player) => player.gameKey).filter(Boolean))) {
@@ -1034,10 +1052,17 @@ function buildOne(
       const multiplier = slot === "CPT" ? 1.5 : 1;
       const salary = settings.format === "showdown" ? showdownSalary(player, slot === "CPT") : player.salary;
       const variable: Record<string, number> = {
-        score: objective(player, settings, lineupNumber, slot) * multiplier,
+        score: objective(player, settings, lineupNumber, slot) * multiplier - (settings.buildShape === "diversified"
+          ? concentrationCost((exposureCounts.get(player.dkPlayerId) ?? 0) + 1, settings) - concentrationCost(exposureCounts.get(player.dkPlayerId) ?? 0, settings) : 0),
         salary,
         [`player_${player.dkPlayerId}`]: 1,
       };
+      saturatedGroups.forEach(({group}, i) => {
+        const membership = group.ids.includes(player.dkPlayerId) ? 1 : 0;
+        const exemption = group.exemptTeam === player.team && player.position === "QB" ? group.ids.length : 0;
+        if (membership || exemption) variable[`div_group_${i}`] = membership - exemption;
+      });
+      if (constraints.div_new_qb && player.position === "QB" && !previous.some(l => l.playerIds.includes(player.dkPlayerId))) variable.div_new_qb = 1;
       // Count this pick against the per-lineup salary-relief cap.
       if (settings.puntPolicy && player.salaryRelief) variable.salary_relief = 1;
       if (constraints.gpp_opportunity_signal && isNflGppSignalPlayer(player.playerSignals, settings.gppSignalCodes)) variable.gpp_opportunity_signal = 1;
@@ -1142,7 +1167,8 @@ function buildOne(
       binaries[`split_${count}`] = 1;
     }
   }
-  const solved = solver.Solve({ optimize: "score", opType: "max", constraints, variables, binaries });
+  const solved = solver.Solve({ optimize: "score", opType: "max", constraints, variables, binaries,
+    ...(settings.buildShape === "diversified" ? { options: { timeout: settings.diversifiedCandidateSearch ? 150 : 1000 } } : {}) });
   if (solved.feasible === false) {
     // Forcing slot minimums made this lineup impossible (salary, team caps,
     // overlap). Build it without them rather than ending the run early; the
@@ -1157,6 +1183,8 @@ function buildOne(
     if (slotForced) return buildOne(pool, settings, lineupNumber, previous, exposureCounts, forcedIds, countsById, captainCounts, flexCounts, compiled, remaining, false, requireAirMatchup, requireGoalLine, bringBackRule, forbidDstVsOffense);
     return null;
   }
+  if (settings.buildShape === "diversified" && Object.entries(solved).some(([key,value]) => /^[xcf]_/.test(key)
+    && typeof value === 'number' && Math.abs(value-Math.round(value))>1e-6)) return null;
   const purchases: { player: ResolvedPlayer; slot: "CPT" | "FLEX" | "CLASSIC" }[] = [];
   for (const [key, raw] of Object.entries(solved)) {
     if (!/^[xcf]_/.test(key) || typeof raw !== "number" || raw < 0.5) continue;
@@ -1178,6 +1206,7 @@ function buildOne(
   } else {
     const byPosition = (position: NflOptimizerPlayer["position"]) => purchases.filter((entry) => entry.player.position === position).map((entry) => entry.player);
     const qb = byPosition("QB"), rb = byPosition("RB"), wr = byPosition("WR"), te = byPosition("TE"), dst = byPosition("DST");
+    if (settings.buildShape === "diversified" && (purchases.length!==9 || qb.length!==1 || rb.length<2 || wr.length<3 || te.length<1 || dst.length!==1)) return null;
     const assigned = new Set<number>();
     const assign = (slot: string, player: ResolvedPlayer) => { assigned.add(player.dkPlayerId); chosen.push({ slot, player, salary: player.salary, multiplier: 1, projection: player.projection, projectionSource: player.resolvedSource }); };
     assign("QB", qb[0]); assign("RB1", rb[0]); assign("RB2", rb[1]); assign("WR1", wr[0]); assign("WR2", wr[1]); assign("WR3", wr[2]); assign("TE", te[0]); assign("DST", dst[0]);
@@ -1406,10 +1435,75 @@ function jointSelect(ctx: {
   };
 }
 
+function diversifiedSelect(ctx: {pool: ResolvedPlayer[]; settings: NflOptimizerSettings; lineups: NflGeneratedLineup[];
+  countsById: Map<number, ExposureCounts>; locked: Set<number>; topProjectedTargets: ResolvedPlayer[]}) {
+  const { pool, settings, countsById, locked, topProjectedTargets } = ctx;
+  const policy = diversifiedPolicy(settings), n = settings.nLineups, empty = new Map<number, number>();
+  const overlapLimit = Math.min(9-settings.minUnique, settings.maxPairwiseOverlap ?? 9);
+  const scoreSettings = {...settings, randomness: 0, diversifiedMeanSearch: false};
+  const scores = new WeakMap<NflGeneratedLineup, number>();
+  const score = (l: NflGeneratedLineup) => {
+    if (!scores.has(l)) scores.set(l, l.slots.reduce((s,e) => s+objective(pool.find(p=>p.dkPlayerId===e.player.dkPlayerId)!,scoreSettings,0),0));
+    return scores.get(l)!;
+  };
+  const lockedQb = pool.find(p=>p.position==='QB' && locked.has(p.dkPlayerId));
+  const qbs = pool.filter(p=>p.position==='QB' && (!lockedQb || p.dkPlayerId===lockedQb.dkPlayerId) && (countsById.get(p.dkPlayerId)?.overallMax??0)>0).sort((a,b)=>b.projection-a.projection||a.dkPlayerId-b.dkPlayerId);
+  const valid = (ls: NflGeneratedLineup[]) => {
+    if (ls.length!==n) return false;
+    if (ls.some(l=>l.playerIds.length!==9 || new Set(l.playerIds).size!==9 || l.slots.length!==9
+      || l.totalSalary>50_000 || l.totalSalary<settings.minSalary || l.slots.some(s=>s.player.isOut)
+      || l.totalSalary!==l.slots.reduce((sum,s)=>sum+s.salary,0))) return false;
+    const counts = new Map<number,number>();
+    for (const l of ls) for (const id of l.playerIds) counts.set(id,(counts.get(id)??0)+1);
+    for (const [id,c] of countsById) {
+      const count=counts.get(id)??0;
+      if (count<c.overallMin || (!locked.has(id) && count>c.overallMax)) return false;
+    }
+    if ([...locked].some(id=>counts.get(id)!==n) || topProjectedTargets.some(p=>!counts.get(p.dkPlayerId))) return false;
+    if (qbs.filter(p=>counts.has(p.dkPlayerId)).length<policy.minimumQbs) return false;
+    for (let i=0;i<ls.length;i++) for (let j=i+1;j<ls.length;j++)
+      if (ls[i].playerIds.filter(id=>ls[j].playerIds.includes(id)).length>overlapLimit) return false;
+    if ([...repeatedGroupCounts(ls).values()].some(({group,count})=>count>groupLimit(group,policy,n))) return false;
+    if (ls.some(dstFacesOwnOffense)) return false;
+    if (settings.salaryPolicy && reportSalaryBands(settings.salaryPolicy,ls.map(l=>NFL_SALARY_CAP-l.totalSalary)).some(b=>!b.withinPlan)) return false;
+    const tagged=(l:NflGeneratedLineup,codes: Parameters<typeof isNflGppSignalPlayer>[1],rb=false)=>l.slots.some(s=>(!rb||s.player.position==='RB')&&isNflGppSignalPlayer(s.player.playerSignals,codes));
+    return ls.filter(l=>tagged(l,['AIR_MATCHUP'])).length>=Math.ceil(n*(settings.gppAirMatchupMinPct??0)/100)
+      && ls.filter(l=>tagged(l,['INSIDE_FIVE'],true)).length>=Math.ceil(n*(settings.gppGoalLineMinPct??0)/100);
+  };
+  const result = improveDiversifiedPortfolio({initial:ctx.lineups,settings,score,valid,
+    generate:(attempt,known)=>{
+      const qb=qbs[attempt%qbs.length];
+      if (!qb) return null;
+      const forced=new Set([...locked,qb.dkPlayerId]);
+      const variant=Math.floor(attempt/qbs.length)%4;
+      const search={...settings,minUnique:1,maxPairwiseOverlap:8,randomness:Math.max(settings.randomness,.25),
+        diversifiedCandidateSearch:true, diversifiedMeanSearch:variant===0, lineupStackMin:variant===2?2 as const:undefined};
+      // Exposure and repeated-group budgets belong to the final 50, not the candidate bank.
+      return buildOne(pool,search,100_000+attempt,known,empty,forced,countsById,empty,empty,null,n,true,false,false,
+        variant===1?'require':'default',true);
+    }});
+  if (!valid(result.lineups)) throw new Error(`Diversified could not produce a complete portfolio satisfying every exposure, combination, uniqueness and coverage rule (${result.lineups.length}/${n} lineups). Adjust limits or exclusions and retry.`);
+  const counts=new Map<number,number>();
+  for (const l of result.lineups) for (const id of l.playerIds) counts.set(id,(counts.get(id)??0)+1);
+  const byId=new Map(pool.map(p=>[p.dkPlayerId,p]));
+  const report: DiversifiedReport={version:DIVERSIFIED_VERSION,candidateTarget:Math.max(n,policy.candidateTarget),candidates:result.candidates,
+    attempts:result.attempts,candidateKeys:result.candidateKeys,stopReason:result.stopReason,swaps:result.swaps,requested:n,generated:result.lineups.length,
+    minimumQbs:policy.minimumQbs,distinctQbs:qbs.filter(p=>counts.has(p.dkPlayerId)).length,
+    meanProjection:result.lineups.reduce((s,l)=>s+l.projectedFpts,0)/n,playersAt40Pct:[...counts.values()].filter(c=>c/n>=.4).length,
+    repeated:[...repeatedGroupCounts(result.lineups).values()].sort((a,b)=>b.count-a.count||a.group.key.localeCompare(b.group.key)).slice(0,12)
+      .map(({group,count})=>({names:group.ids.map(id=>byId.get(id)!.name),kind:group.kind,count,limit:groupLimit(group,policy,n)})),
+    caps:pool.filter(p=>counts.has(p.dkPlayerId)).map(p=>({name:p.name,position:p.position,count:counts.get(p.dkPlayerId)!,
+      limit:locked.has(p.dkPlayerId)?n:countsById.get(p.dkPlayerId)!.overallMax,
+      override:locked.has(p.dkPlayerId)||settings.maxExposureByPlayer[String(p.dkPlayerId)]!=null||!!settings.exposurePolicies?.some(e=>e.playerId===p.dkPlayerId)}))};
+  const top=report.caps.sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name)).slice(0,8);
+  return {lineups:result.lineups,report,note:`Diversified (${DIVERSIFIED_VERSION}): ${result.candidates}/${report.candidateTarget} distinct legal candidates, ${result.attempts} attempts; stopped at ${result.stopReason.replaceAll('_',' ')}. ${result.swaps} feasible roster swaps. ${report.distinctQbs} QBs; ${report.playersAt40Pct} players at 40%+; mean projection ${report.meanProjection.toFixed(2)}. Ownership influence off; concentration penalty starts above ${Math.round(policy.softStart*100)}%. Risk controls, not a validated performance improvement. Leading exposures: ${top.map(p=>`${p.name} ${p.count}/${n} (cap ${p.limit}${p.override?', player override':''})`).join('; ')}. Repeated combinations: ${report.repeated.slice(0,4).map(g=>`${g.names.join(' + ')} ${g.count}/${n} (cap ${g.limit})`).join('; ')}.`};
+}
+
 export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: NflOptimizerSettings): NflOptimizerResult {
   validateSettings(requested);
   // The winners-shape preset is resolved into ordinary settings here, so the
   // rest of the build (and the saved run) sees only numbers it can report.
+  requested = applyDiversified(requested);
   const shape = requested.buildShape === "winners" ? applyWinnersShape(requested, players) : null;
   const settings = shape ? shape.settings : requested;
   if (shape) validateSettings(settings);
@@ -1418,6 +1512,13 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   const locked = new Set(settings.lockedPlayerIds);
   const policy = settings.puntPolicy;
   const overrides = settings.puntOverrides ?? [];
+  if (settings.buildShape === "diversified") {
+    const policy = diversifiedPolicy(settings);
+    const lockedGroups = diversifiedGroups({slots:players.filter(p=>locked.has(p.dkPlayerId)).map(player=>({player}))});
+    const conflict = lockedGroups.find(group=>groupLimit(group,policy,settings.nLineups)<settings.nLineups);
+    if (conflict) throw new Error(`Locked combination ${conflict.ids.map(id=>players.find(p=>p.dkPlayerId===id)?.name??id).join(' + ')} would appear in every lineup, exceeding its Diversified cap of ${groupLimit(conflict,policy,settings.nLineups)}. Unlock a player or raise the combination cap.`);
+  }
+
   // Legacy fallbacks (branch reconciliation): a bare minPlayerSalary floor and
   // observed-history gate still work when no full policy is supplied. Locked and
   // explicit-exposure players are the user's own instruction and outrank both.
@@ -1687,6 +1788,9 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
     // is the user's own instruction and is honored exactly.
     const hasExplicit = policyById.has(p.dkPlayerId) || settings.maxExposureByPlayer[String(p.dkPlayerId)] != null;
     if (!hasExplicit) counts.overallMax = Math.max(1, counts.overallMax);
+    if (settings.buildShape === "diversified" && !hasExplicit) {
+      counts.overallMax = Math.min(counts.overallMax, diversifiedCount(diversifiedPositionMax(p.position, diversifiedPolicy(settings)), settings.nLineups));
+    }
     // Winners shape: a quarterback cap below the flat default, and a captain
     // cap, both yielding to a range the user set on that player himself.
     if (!hasExplicit && settings.format === "classic" && p.position === "QB" && settings.maxQbExposure != null) {
@@ -1699,8 +1803,24 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
     if (settings.format === "showdown" && settings.maxCaptainExposure != null && policyById.get(p.dkPlayerId)?.captain.maxPct == null) {
       counts.captainMax = Math.max(1, counts.captainMin, Math.min(counts.captainMax, Math.floor(settings.maxCaptainExposure * settings.nLineups)));
     }
+    if (settings.buildShape === "diversified") {
+      if (locked.has(p.dkPlayerId)) counts.overallMin = counts.overallMax = settings.nLineups;
+      if (counts.overallMin > counts.overallMax) throw new Error(`${p.name}: minimum ${counts.overallMin} exceeds the Diversified maximum ${counts.overallMax}. Set an explicit player maximum or lower the minimum.`);
+    }
     return [p.dkPlayerId, counts];
   }));
+
+  if (settings.buildShape === "diversified") {
+    const policy = diversifiedPolicy(settings);
+    if (policy.minimumQbs>1 && pool.some(p=>p.position==='QB'&&locked.has(p.dkPlayerId))) throw new Error('Diversified minimum QBs conflicts with a locked QB. Unlock him or set minimum different QBs to 0 or 1.');
+    const playable = pool.filter(p=>(countsById.get(p.dkPlayerId)?.overallMax??0)>0);
+    if (playable.filter(p=>p.position==='QB').length<policy.minimumQbs)
+      throw new Error(`Diversified requires ${policy.minimumQbs} different QBs, but only ${playable.filter(p=>p.position==='QB').length} are eligible under your limits.`);
+    for (const [position, slots] of [['QB',1],['RB',2],['WR',3],['TE',1],['DST',1]] as const) {
+      const capacity=playable.filter(p=>p.position===position).reduce((sum,p)=>sum+countsById.get(p.dkPlayerId)!.overallMax,0);
+      if(capacity<slots*settings.nLineups) throw new Error(`Diversified ${position} limits cover only ${capacity}/${slots*settings.nLineups} required appearances. Raise a player or position maximum, or remove exclusions.`);
+    }
+  }
 
   if (settings.salaryPolicy) validateSalaryPolicy(settings.salaryPolicy);
 
@@ -1946,11 +2066,13 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   // sequential build plus extra candidates in one integer program. The
   // sequential build is always a feasible answer, so this can only keep it or
   // improve on it; every tally below is recounted from the final lineups.
-  if (settings.portfolioSelection === "joint" && lineups.length) {
-    const joint = jointSelect({ pool, settings, plan, lineups, countsById, locked, topProjectedTargets,
+  let diversifiedReport: DiversifiedReport | undefined;
+  if ((settings.portfolioSelection === "joint" || settings.buildShape === "diversified") && lineups.length) {
+    const joint = settings.buildShape === "diversified" ? diversifiedSelect({pool, settings, lineups, countsById, locked, topProjectedTargets}) : jointSelect({ pool, settings, plan, lineups, countsById, locked, topProjectedTargets,
       targets: { twoQbShare, rbCaptainShare, loneQbCaptainCap, doubleStackShare, fourWrCap, otherGameCap, twoTeShare,
         bringBackShare, dstVsOffenseCap, airMatchupTarget, goalLineTarget } });
     warnings.push(joint.note);
+    if ("report" in joint) diversifiedReport = joint.report as DiversifiedReport;
     if (joint.lineups) {
       lineups.splice(0, lineups.length, ...joint.lineups);
       // The sequential pass's relaxation and fold counts describe lineups that
@@ -2006,7 +2128,9 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   if (topProjectedTargets.length) {
     const missed = topProjectedTargets.filter(player => !exposureCounts.get(player.dkPlayerId));
     if (missed.length) throw new Error(`Top projected coverage could not be completed for ${missed.map(player => player.name).join(", ")}. The lineup rules conflict with covering these players; adjust the rules or turn off top projected coverage.`);
-    warnings.push(`Top projected coverage: ${topProjectedTargets.map(player => player.name).join(", ")} each appeared in at least one lineup (ranked by selected mean projection).`);
+    warnings.push(settings.buildShape === 'diversified'
+      ? `Leading projection exposure: ${topProjectedTargets.map(p=>`${p.name} ${exposureCounts.get(p.dkPlayerId)??0}/${settings.nLineups}`).join('; ')}. One appearance is coverage, not evidence that the allocation is sufficient.`
+      : `Top projected coverage: ${topProjectedTargets.map(player => player.name).join(", ")} each appeared in at least one lineup (ranked by selected mean projection).`);
   }
 
   // Report realized vs requested per slot and flag missed minimums (P3-AC2/AC5).
@@ -2062,5 +2186,9 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   const archetypePlan = planned.length ? [...requestedById].map(([archetypeId, requested]) => ({ archetypeId, label: ARCHETYPE_LABELS[archetypeId], requested,
     realized: lineups.filter((lineup) => lineup.archetype?.id === archetypeId).length })) : undefined;
 
-  return { lineups, warnings, sourceCoverage: coverage, eligibility, exposureReport, salaryBandReport, duplication, maxPairwiseOverlap: overlap, archetypePlan, topProjectedPlayerIds: topProjectedTargets.map(player => player.dkPlayerId) };
+  if (settings.buildShape === "diversified") {
+    if (lineups.length !== settings.nLineups) throw new Error(`Diversified could build only ${lineups.length}/${settings.nLineups} lineups under the exposure, combination and uniqueness limits. No partial portfolio was saved. Adjust limits or exclusions and retry.`);
+    if (exposureReport.some(r => /missed/.test(r.binding ?? ""))) throw new Error("Diversified could not satisfy all player minimums. Adjust player targets and retry.");
+  }
+  return { lineups, warnings, diversifiedReport, sourceCoverage: coverage, eligibility, exposureReport, salaryBandReport, duplication, maxPairwiseOverlap: overlap, archetypePlan, topProjectedPlayerIds: topProjectedTargets.map(player => player.dkPlayerId) };
 }

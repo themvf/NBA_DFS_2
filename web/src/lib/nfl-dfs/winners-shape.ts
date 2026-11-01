@@ -124,8 +124,8 @@ import type { NflOptimizerPlayer, NflOptimizerSettings } from "@/app/dfs/nfl/nfl
  */
 export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v11";
 
-export type BuildShape = "standard" | "winners";
-export const BUILD_SHAPES: readonly BuildShape[] = ["standard", "winners"];
+export type BuildShape = "standard" | "winners" | "diversified";
+export const BUILD_SHAPES: readonly BuildShape[] = ["standard", "winners", "diversified"];
 
 /** Prior-week opportunity (play-by-play, the three weeks before the slate), per player. */
 export type PriorOpportunity = {

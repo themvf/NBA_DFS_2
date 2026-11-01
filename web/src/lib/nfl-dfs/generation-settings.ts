@@ -1,3 +1,4 @@
+import { applyDiversified } from "./diversified";
 import type { NflOptimizerSettings } from '@/app/dfs/nfl/nfl-optimizer';
 import type { PlayerExposurePolicy } from './exposure-plan';
 import { canonicalAuditJson } from './audit-json';
@@ -92,7 +93,13 @@ export function sameGenerationSettings(a: NflOptimizerSettings, b: NflOptimizerS
     lockedPlayerIds: [...s.lockedPlayerIds].sort((a,b) => a-b),
     excludedPlayerIds: [...s.excludedPlayerIds].sort((a,b) => a-b),
   });
-  return canonicalAuditJson(normalize(a)) === canonicalAuditJson(normalize(b));
+  // Form edits can be temporarily invalid (switching format/mode, clearing a
+  // number, or lowering lineup count). Comparison must not crash the page;
+  // the actual build validates the profile and returns the actionable error.
+  const effective = (s: NflOptimizerSettings) => {
+    try { return applyDiversified(s); } catch { return s; }
+  };
+  return canonicalAuditJson(normalize(effective(a))) === canonicalAuditJson(normalize(effective(b)));
 }
 
 export type ArchetypePlanMode = 'balanced' | 'standard' | 'custom' | 'chalk_leverage';
