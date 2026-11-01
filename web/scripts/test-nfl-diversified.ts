@@ -128,3 +128,17 @@ console.log('More diversity: full builds, position caps, composition preservatio
 
 assert.equal(sameGenerationSettings(base,diverseSettings),false,'preset change requires regeneration');
 assert.equal(sameGenerationSettings(diverseSettings,applyDiversified(diverseSettings)),true,'saved preset restores equivalent settings');
+
+// Multiple low-ranked RB minimums must not all be deferred to the final roster.
+const minimumPlayers=players.filter(p=>['T8','T9','T10','T11'].includes(p.team)&&p.name.endsWith('RB0'));
+const minimumTe=players.find(p=>p.team==='T11'&&p.name.endsWith('TE0'))!;
+const minimumSettings={...base,diversified:withDiversityPreset({candidateTarget:50},true),
+ minExposureByPlayer:Object.fromEntries([...minimumPlayers.map(p=>[String(p.dkPlayerId),.1] as const),[String(minimumTe.dkPlayerId),.25]])};
+const minimumResult=optimizeNflLineups(players,minimumSettings);
+assert.equal(minimumResult.lineups.length,20);
+assert.ok(diversifiedCompositionValid(minimumResult.lineups,minimumSettings));
+for(const p of minimumPlayers)assert.ok(minimumResult.lineups.filter(l=>l.playerIds.includes(p.dkPlayerId)).length>=2);
+assert.ok(minimumResult.lineups.filter(l=>l.playerIds.includes(minimumTe.dkPlayerId)).length>=5);
+assert.ok(minimumResult.exposureReport!.every(r=>r.overall>=r.overallMin&&r.overall<=r.overallMax));
+for(const {group,count} of repeatedGroupCounts(minimumResult.lineups).values())assert.ok(count<=groupLimit(group,diversifiedPolicy(minimumSettings),20));
+console.log('Diversified player minimums: four RB requirements plus TE minimum fill a complete constrained portfolio');

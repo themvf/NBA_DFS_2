@@ -83,7 +83,7 @@
     "research/nfl_workload_risk.py": "e8d67cb4945446fdc4ab857b69729a61e3c65dae2c1a17ed364bef49d637f344",
     "web/src/lib/nfl-dfs/joint-portfolio.ts": "87588d7fb2782f347ea6bfe35e522da15a62063e4c2d287a0c703064430ebf9f",
     "web/scripts/compare-nfl-joint-portfolios.ts": "05bf97642caba1b96d6d4420acf51502faa4468fcf40dc4e1607f51790298515",
-    "web/src/app/dfs/nfl/nfl-optimizer.ts": "c2cb1849d3ad92a0ec6cd7d653b86b6941c57b874b5c254d0ab5f11b54756698",
+    "web/src/app/dfs/nfl/nfl-optimizer.ts": "1d0e13bd0c731ebd21ad06f4881a0717f08be6b92a2c56fd9817daf76415a71a",
     "model/nfl_matchup_scenarios.py": "9d133718c360a03a445965508061807c49644c3ac329ae220c4f68069a19e913",
     "web/src/lib/nfl-dfs/scoring.ts": "83e8b8c293519e7605f4d5be76a302bd442835fa4dc43a6d02744922a5729e3c",
     "web/src/lib/nfl-dfs/scenarios.ts": "98ed595731bc69ee1fcde4d9c42109880382cff3dbf480ce0f0043fdf46e2fd9",
@@ -279,6 +279,17 @@
         "More diversity button, construction v3"
       ],
       "evidence_rule": "Preserve earlier implementation identities and distinguish the selected numeric concentration settings in saved forward evidence. No study gate, hypothesis or enrollment changes."
+    },
+    {
+      "amended_at": "2026-11-01T23:42:10.418313+00:00",
+      "reason": "Prioritize unmet explicit overall minimums in Diversified first-pass construction, preventing several multi-slot requirements from colliding at the final roster. Candidate selection and hard bounds remain unchanged. Errors report unmet minimums. Standard, Winners and research arms retain prior behavior.",
+      "file": "web/src/app/dfs/nfl/nfl-optimizer.ts",
+      "previous_sha256": "c2cb1849d3ad92a0ec6cd7d653b86b6941c57b874b5c254d0ab5f11b54756698",
+      "new_sha256": "1d0e13bd0c731ebd21ad06f4881a0717f08be6b92a2c56fd9817daf76415a71a",
+      "changed_by": [
+        "Diversified minimum scheduling fix"
+      ],
+      "evidence_rule": "Keep previous implementation hashes and separate forward construction cohorts; no study gates or enrollment change."
     }
   ]
 }
