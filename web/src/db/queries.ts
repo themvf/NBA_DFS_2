@@ -14630,6 +14630,119 @@ export async function getPickemLedger(season = currentNflSeason()): Promise<Pick
 }
 
 // ---------------------------------------------------------------------------
+// Pick'em live board (/nfl/pickem/live) -- reads only the columns it renders
+// ---------------------------------------------------------------------------
+
+const ISO_UTC = `'YYYY-MM-DD"T"HH24:MI:SS"Z"'`;
+
+/**
+ * Weeks this season that have an unsuperseded frozen card, with each week's
+ * last kickoff, so the page can default to the week still being played.
+ */
+export async function getPickemLiveWeeks(
+  season: number,
+): Promise<Array<{ week: number; lastKickoff: string | null }>> {
+  await ensurePickemTables();
+  const rows = await db.execute(sql`
+    SELECT r.week,
+           to_char(max(s.kickoff) AT TIME ZONE 'UTC', ${sql.raw(ISO_UTC)}) AS "lastKickoff"
+    FROM pickem_recommendations r
+    JOIN pickem_recommendation_games g ON g.recommendation_id = r.id
+    JOIN nfl_season_games s ON s.id = g.game_id
+    WHERE r.season = ${season} AND r.superseded_by IS NULL
+    GROUP BY r.week
+    ORDER BY r.week
+  `);
+  return rows.rows.map((raw) => {
+    const r = raw as Record<string, unknown>;
+    return { week: Number(r.week), lastKickoff: r.lastKickoff != null ? String(r.lastKickoff) : null };
+  });
+}
+
+/**
+ * The latest unsuperseded card for a week, its games, and each game's pregame
+ * line trail (vig-free consensus from game_odds_history, the 10 days before
+ * kickoff). Null when the week has no frozen card.
+ */
+export async function getPickemLiveCard(
+  season: number,
+  week: number,
+): Promise<import("@/lib/nfl/pickem-live-board").PickemLiveCard | null> {
+  await ensurePickemTables();
+  const recRows = await db.execute(sql`
+    SELECT id, format, to_char(frozen_at AT TIME ZONE 'UTC', ${sql.raw(ISO_UTC)}) AS "frozenAt"
+    FROM pickem_recommendations
+    WHERE season = ${season} AND week = ${week} AND superseded_by IS NULL
+    ORDER BY frozen_at DESC
+    LIMIT 1
+  `);
+  const rec = recRows.rows[0] as Record<string, unknown> | undefined;
+  if (!rec) return null;
+  const recId = Number(rec.id);
+
+  const [gameRows, trailRows] = await Promise.all([
+    db.execute(sql`
+      SELECT g.game_id, a.abbreviation AS away, h.abbreviation AS home,
+             g.recommended_pick_home, g.baseline_pick_home, g.recommended_confidence, g.p_home,
+             to_char(s.kickoff AT TIME ZONE 'UTC', ${sql.raw(ISO_UTC)}) AS kickoff,
+             s.home_score, s.away_score, s.completed
+      FROM pickem_recommendation_games g
+      JOIN nfl_season_games s ON s.id = g.game_id
+      JOIN nfl_teams h ON h.team_id = g.home_team_id
+      JOIN nfl_teams a ON a.team_id = g.away_team_id
+      WHERE g.recommendation_id = ${recId}
+      ORDER BY s.kickoff, h.abbreviation
+    `),
+    db.execute(sql`
+      SELECT g.game_id, o.vegas_prob_home, o.home_spread
+      FROM pickem_recommendation_games g
+      JOIN nfl_season_games s ON s.id = g.game_id
+      JOIN game_odds_history o
+        ON o.sport = 'nfl' AND o.home_team_id = s.home_team_id AND o.away_team_id = s.away_team_id
+       AND o.captured_at < s.kickoff AND o.captured_at > s.kickoff - interval '10 days'
+       AND o.vegas_prob_home IS NOT NULL
+      WHERE g.recommendation_id = ${recId}
+      ORDER BY g.game_id, o.captured_at
+    `),
+  ]);
+
+  const trails: Record<number, Array<{ pHome: number; homeSpread: number | null }>> = {};
+  for (const raw of trailRows.rows) {
+    const r = raw as Record<string, unknown>;
+    const id = Number(r.game_id);
+    (trails[id] ??= []).push({
+      pHome: Number(r.vegas_prob_home),
+      homeSpread: r.home_spread != null ? Number(r.home_spread) : null,
+    });
+  }
+
+  return {
+    id: recId,
+    season,
+    week,
+    format: String(rec.format) as "confidence" | "straight",
+    frozenAt: String(rec.frozenAt),
+    trails,
+    games: gameRows.rows.map((raw) => {
+      const r = raw as Record<string, unknown>;
+      return {
+        gameId: Number(r.game_id),
+        away: String(r.away),
+        home: String(r.home),
+        pickHome: Boolean(r.recommended_pick_home),
+        baselinePickHome: Boolean(r.baseline_pick_home),
+        confidence: Number(r.recommended_confidence),
+        pHome: Number(r.p_home),
+        kickoff: String(r.kickoff),
+        homeScore: r.home_score != null ? Number(r.home_score) : null,
+        awayScore: r.away_score != null ? Number(r.away_score) : null,
+        completed: Boolean(r.completed),
+      };
+    }),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // NFL play-by-play archetypes (read-only; Python owns the table)
 // ---------------------------------------------------------------------------
 export type NflArchetypeGameRow = {

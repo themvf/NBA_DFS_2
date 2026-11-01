@@ -242,3 +242,80 @@ export async function getNflIdentityGames(team: string, season: number): Promise
   });
   return { throughWeek, games };
 }
+
+/** One team's season-to-date scrimmage totals, offense and defense, for ranking. */
+export type NflIdentityTotals = {
+  team: string;
+  games: number;
+  offensePlays: number;
+  offenseEpaSum: number;
+  offenseEpaCount: number;
+  offenseExplosives: number;
+  passOeSum: number;
+  passOeCount: number;
+  drives: number;
+  touchdownDrives: number;
+  threeAndOutDrives: number;
+  defensePlays: number;
+  defenseEpaSum: number;
+  defenseEpaCount: number;
+};
+
+/**
+ * Every team's regular-season totals from completed games before `beforeWeek`
+ * that kicked off, and were labelled, before `cutoffIso` -- what was knowable
+ * before a slate. One pass over the season's plays, grouped by team, using the
+ * same definitions as getNflIdentityGames (scrimmage = run/pass; drives counted
+ * once per game and drive where drive_archetype is set), so ranks built from
+ * this agree with the Team Identity page. nflverse's LA and WAS become LAR and
+ * WSH, the nfl_teams codes.
+ */
+export async function getNflIdentityTotals(season: number, beforeWeek: number, cutoffIso: string): Promise<NflIdentityTotals[]> {
+  const result = await db.execute(sql`
+    WITH base AS (
+      SELECT p.game_id, p.play_type, p.epa, p.yards_gained, p.pass_oe, p.drive, p.drive_archetype,
+             CASE p.posteam WHEN 'LA' THEN 'LAR' WHEN 'WAS' THEN 'WSH' ELSE p.posteam END AS posteam,
+             CASE p.defteam WHEN 'LA' THEN 'LAR' WHEN 'WAS' THEN 'WSH' ELSE p.defteam END AS defteam
+      FROM nfl_pbp_archetypes p
+      JOIN nfl_season_games g ON g.nflverse_game_id = p.game_id
+      WHERE p.season = ${season} AND p.season_type = 'REG' AND p.week < ${beforeWeek}
+        AND g.game_type = 'REG' AND g.completed = TRUE
+        AND g.kickoff < ${cutoffIso}::timestamptz AND p.labelled_at < ${cutoffIso}::timestamptz
+    ),
+    offense AS (
+      SELECT posteam AS team,
+             COUNT(DISTINCT game_id)::int AS games,
+             COUNT(*) FILTER (WHERE play_type IN ('run','pass'))::int AS offense_plays,
+             COALESCE(SUM(epa) FILTER (WHERE play_type IN ('run','pass')),0) AS offense_epa_sum,
+             COUNT(epa) FILTER (WHERE play_type IN ('run','pass'))::int AS offense_epa_count,
+             COUNT(*) FILTER (WHERE play_type IN ('run','pass') AND yards_gained >= 20)::int AS offense_explosives,
+             COALESCE(SUM(pass_oe) FILTER (WHERE play_type IN ('run','pass')),0) AS pass_oe_sum,
+             COUNT(pass_oe) FILTER (WHERE play_type IN ('run','pass'))::int AS pass_oe_count,
+             COUNT(DISTINCT (game_id, drive)) FILTER (WHERE drive_archetype IS NOT NULL)::int AS drives,
+             COUNT(DISTINCT (game_id, drive)) FILTER (WHERE drive_archetype = 'TOUCHDOWN')::int AS touchdown_drives,
+             COUNT(DISTINCT (game_id, drive)) FILTER (WHERE drive_archetype = 'THREE_AND_OUT')::int AS three_and_out_drives
+      FROM base WHERE posteam IS NOT NULL GROUP BY posteam
+    ),
+    defense AS (
+      SELECT defteam AS team,
+             COUNT(*) FILTER (WHERE play_type IN ('run','pass'))::int AS defense_plays,
+             COALESCE(SUM(epa) FILTER (WHERE play_type IN ('run','pass')),0) AS defense_epa_sum,
+             COUNT(epa) FILTER (WHERE play_type IN ('run','pass'))::int AS defense_epa_count
+      FROM base WHERE defteam IS NOT NULL GROUP BY defteam
+    )
+    SELECT COALESCE(o.team, d.team) AS team, o.games, o.offense_plays, o.offense_epa_sum, o.offense_epa_count,
+           o.offense_explosives, o.pass_oe_sum, o.pass_oe_count, o.drives, o.touchdown_drives,
+           o.three_and_out_drives, d.defense_plays, d.defense_epa_sum, d.defense_epa_count
+    FROM offense o FULL JOIN defense d ON d.team = o.team
+    ORDER BY 1`);
+  return resultRows(result).map(row => ({
+    team: String(row.team), games: number(row.games),
+    offensePlays: number(row.offense_plays), offenseEpaSum: number(row.offense_epa_sum),
+    offenseEpaCount: number(row.offense_epa_count), offenseExplosives: number(row.offense_explosives),
+    passOeSum: number(row.pass_oe_sum), passOeCount: number(row.pass_oe_count),
+    drives: number(row.drives), touchdownDrives: number(row.touchdown_drives),
+    threeAndOutDrives: number(row.three_and_out_drives),
+    defensePlays: number(row.defense_plays), defenseEpaSum: number(row.defense_epa_sum),
+    defenseEpaCount: number(row.defense_epa_count),
+  }));
+}
