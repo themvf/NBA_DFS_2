@@ -53,7 +53,7 @@ function positionStyle(pos: string | null) {
   return { badge: "border-slate-500! text-slate-400", stripe: "bg-slate-600" };
 }
 
-type SortKey = "line" | "ceiling" | "p25" | "p30" | "p40" | "ppg" | "delta" | "books" | "rank";
+type SortKey = "line" | "ceiling" | "p25" | "p30" | "p40" | "ppgNow" | "ppg" | "delta" | "books" | "rank";
 
 const SORTERS: Record<SortKey, (r: ScorerRow) => number> = {
   line: (r) => r.line,
@@ -61,6 +61,7 @@ const SORTERS: Record<SortKey, (r: ScorerRow) => number> = {
   p25: (r) => r.distribution?.atLeast[25] ?? -1,
   p30: (r) => r.distribution?.atLeast[30] ?? -1,
   p40: (r) => r.distribution?.atLeast[40] ?? -1,
+  ppgNow: (r) => r.thisSeasonPpg ?? -1,
   ppg: (r) => r.lastSeasonPpg ?? -1,
   delta: (r) => r.vsLastSeason ?? -999,
   books: (r) => r.books.length,
@@ -122,11 +123,13 @@ export function TopScorersClient({
   games,
   pulled,
   lastSeason,
+  thisSeason,
 }: {
   scorers: ScorerRow[];
   games: GameSummary[];
   pulled: Pulled[];
   lastSeason: string;
+  thisSeason: string;
 }) {
   const [tab, setTab] = useState<"players" | "games" | "pulled">("players");
   const [game, setGame] = useState<string>("all");
@@ -146,7 +149,7 @@ export function TopScorersClient({
     ) * 5,
   );
   const withLadder = scorers.filter((s) => s.distribution).length;
-  const maxPpg = Math.max(1, ...scorers.map((s) => s.lastSeasonPpg ?? 0));
+  const maxPpg = Math.max(1, ...scorers.map((s) => Math.max(s.lastSeasonPpg ?? 0, s.thisSeasonPpg ?? 0)));
   const gameName = new Map(games.map((g) => [g.eventId, shortGame(g)]));
 
   const rise = [...scorers].filter((s) => s.vsLastSeason != null).sort((a, b) => b.vsLastSeason! - a.vsLastSeason!)[0];
@@ -253,7 +256,7 @@ export function TopScorersClient({
             </div>
           </div>
           <div className="overflow-x-auto px-4 pb-4">
-            <table className="w-full min-w-[64rem] border-separate border-spacing-0 overflow-hidden rounded-lg border border-slate-800 text-sm">
+            <table className="w-full min-w-[70rem] border-separate border-spacing-0 overflow-hidden rounded-lg border border-slate-800 text-sm">
               <thead className="bg-[#111b2d] font-mono text-[11px] text-slate-400">
                 <tr>
                   <th className="px-3 py-3 text-left font-medium uppercase tracking-wider">Player</th>
@@ -262,6 +265,7 @@ export function TopScorersClient({
                   {header("p25", "25+")}
                   {header("p30", "30+")}
                   {header("p40", "40+")}
+                  {header("ppgNow", `${thisSeason} PPG`)}
                   {header("ppg", `${lastSeason} reg. PPG`)}
                   {header("delta", "vs PPG")}
                   {header("books", "Books")}
@@ -310,6 +314,20 @@ export function TopScorersClient({
                         <td className="border-t border-slate-800 px-3 text-right font-mono text-rose-300">
                           {pct(s.distribution?.atLeast[40] ?? null)}
                           <MiniBar value={s.distribution?.atLeast[40] ?? null} max={1} tone="bg-rose-400" />
+                        </td>
+                        <td
+                          className="border-t border-slate-800 px-3 text-right font-mono text-teal-300"
+                          title={s.thisSeasonGames ? `${s.thisSeasonGames} game${s.thisSeasonGames === 1 ? "" : "s"} played this season before tonight` : "No game played this season yet"}
+                        >
+                          {s.thisSeasonPpg == null ? (
+                            <span className="text-slate-500">-</span>
+                          ) : (
+                            <>
+                              {one(s.thisSeasonPpg)}
+                              <span className="ml-1 text-[10px] text-slate-500">{s.thisSeasonGames}g</span>
+                            </>
+                          )}
+                          <MiniBar value={s.thisSeasonPpg} max={maxPpg} tone="bg-teal-400" />
                         </td>
                         <td className="border-t border-slate-800 px-3 text-right font-mono text-sky-300">
                           {s.lastSeasonPpg == null ? <span className="text-slate-500">-</span> : one(s.lastSeasonPpg)}

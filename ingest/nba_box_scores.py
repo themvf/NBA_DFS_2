@@ -85,6 +85,7 @@ class PlayerLine:
     team: str
     team_abbrev: str | None
     is_home: bool
+    position: str | None
     starter: bool | None
     played: bool
     dnp_reason: str | None
@@ -202,6 +203,7 @@ def parse_summary(payload: dict[str, Any], game: GameInfo) -> list[PlayerLine]:
                 team=team_name,
                 team_abbrev=team.get("abbreviation"),
                 is_home=is_home,
+                position=((athlete.get("position") or {}).get("abbreviation") or None),
                 starter=entry.get("starter") if isinstance(entry.get("starter"), bool) else None,
                 played=played,
                 dnp_reason=(str(entry.get("reason")) if dnp and entry.get("reason") else None),
@@ -269,8 +271,8 @@ def persist_game(db: DatabaseManager, game: GameInfo, players: list[PlayerLine])
                 """INSERT INTO nba_box_score_players
                        (espn_event_id, game_date, espn_athlete_id, player, player_key, team, team_abbrev, is_home, starter,
                         played, dnp_reason, minutes, points, fgm, fga, fg3m, fg3a, ftm, fta, rebounds, assists, steals,
-                        blocks, turnovers, fetched_at)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                        blocks, turnovers, position, fetched_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
                    ON CONFLICT (espn_event_id, espn_athlete_id) DO UPDATE SET
                        game_date = EXCLUDED.game_date, player = EXCLUDED.player, player_key = EXCLUDED.player_key,
                        team = EXCLUDED.team, team_abbrev = EXCLUDED.team_abbrev, is_home = EXCLUDED.is_home,
@@ -278,10 +280,11 @@ def persist_game(db: DatabaseManager, game: GameInfo, players: list[PlayerLine])
                        minutes = EXCLUDED.minutes, points = EXCLUDED.points, fgm = EXCLUDED.fgm, fga = EXCLUDED.fga,
                        fg3m = EXCLUDED.fg3m, fg3a = EXCLUDED.fg3a, ftm = EXCLUDED.ftm, fta = EXCLUDED.fta,
                        rebounds = EXCLUDED.rebounds, assists = EXCLUDED.assists, steals = EXCLUDED.steals,
-                       blocks = EXCLUDED.blocks, turnovers = EXCLUDED.turnovers, fetched_at = NOW()""",
+                       blocks = EXCLUDED.blocks, turnovers = EXCLUDED.turnovers,
+                       position = COALESCE(EXCLUDED.position, nba_box_score_players.position), fetched_at = NOW()""",
                 (p.espn_event_id, game.game_date, p.espn_athlete_id, p.player, p.player_key, p.team, p.team_abbrev,
                  p.is_home, p.starter, p.played, p.dnp_reason, p.minutes, p.points, p.fgm, p.fga, p.fg3m, p.fg3a,
-                 p.ftm, p.fta, p.rebounds, p.assists, p.steals, p.blocks, p.turnovers),
+                 p.ftm, p.fta, p.rebounds, p.assists, p.steals, p.blocks, p.turnovers, p.position),
             )
 
 

@@ -34,7 +34,7 @@ KEYS = ["minutes", "points", "fieldGoalsMade-fieldGoalsAttempted", "threePointFi
 def _summary():
     return {"boxscore": {"players": [
         {"team": {"id": "1", "displayName": "Atlanta Hawks", "abbreviation": "ATL"}, "statistics": [{"keys": KEYS, "athletes": [
-            {"athlete": {"id": "4278039", "displayName": "Nickeil Alexander-Walker"}, "starter": True, "didNotPlay": False,
+            {"athlete": {"id": "4278039", "displayName": "Nickeil Alexander-Walker", "position": {"abbreviation": "G"}}, "starter": True, "didNotPlay": False,
              "stats": ["30", "31", "8-15", "5-8", "10-13", "4", "3", "2", "1", "1", "3", "1", "3", "+10"]},
             {"athlete": {"id": "9999", "displayName": "Bench Guy"}, "starter": False, "didNotPlay": True, "reason": "COACH'S DECISION", "stats": []},
             {"athlete": {"id": "8888", "displayName": "Hurt Guy"}, "starter": False, "didNotPlay": True, "reason": "INJURY", "stats": []},
@@ -71,6 +71,8 @@ def test_summary_parses_stats_and_keeps_dnp_as_not_played():
     # A player who played and scored zero is a real zero, not a DNP.
     wagner = players["Franz Wagner"]
     assert wagner.played and wagner.points == 0 and wagner.is_home
+    # ESPN's listed position is kept; a player without one stays None, never a guess.
+    assert naw.position == "G" and wagner.position is None
 
 
 def test_season_label_rolls_in_october():
