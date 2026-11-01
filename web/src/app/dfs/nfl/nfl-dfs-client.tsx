@@ -1,5 +1,5 @@
 "use client";
-import { DEFAULT_DIVERSIFIED, diversifiedCount } from "@/lib/nfl-dfs/diversified";
+import { DEFAULT_DIVERSIFIED, diversifiedCount, withDiversityPreset, matchesDiversityPreset } from "@/lib/nfl-dfs/diversified";
 
 import { formFromDraft, formFromSettings, sameGenerationSettings, settingsFromForm, type NflBuildForm } from "@/lib/nfl-dfs/generation-settings";
 import { nflIdentityLabel } from "@/lib/nfl-dfs/identity";
@@ -936,6 +936,17 @@ export default function NflDfsClient() {
               {slate.format === "classic" ? <option value="diversified">Winners + Diversified (experimental)</option> : null}
             </select></Field>
             {settings.buildShape === "diversified" ? <div className="mt-2 space-y-2 text-slate-700">
+              <div className="rounded border border-slate-300 bg-white p-3 space-y-2">
+                <p className="font-semibold">Portfolio diversity</p>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className="control" aria-pressed={matchesDiversityPreset(settings.diversified,false)} onClick={()=>setSettings({...settings,diversified:withDiversityPreset(settings.diversified,false)})}>Default diversity</button>
+                  <button type="button" className="control" aria-pressed={matchesDiversityPreset(settings.diversified,true)} onClick={()=>setSettings({...settings,diversified:withDiversityPreset(settings.diversified,true)})}>More diversity</button>
+                </div>
+                <p>{matchesDiversityPreset(settings.diversified,true) ? "More diversity selected" : matchesDiversityPreset(settings.diversified,false) ? "Default diversity selected" : "Custom diversity settings"}. Click Generate after choosing to create a new portfolio.</p>
+                <p>More diversity caps each QB at 12%, RB/WR/TE at 35%, and DST at 20%; repeated pairs at 18%, triples at 10%, and player + defense at 12%. It also strengthens the exposure penalty above 20%. Winners stacking and FLEX targets stay as configured.</p>
+                <p>This reduces shared players and combinations across lineups; it does not measure or guarantee uncorrelated scores. Forecast scores may fall. Player-specific limits and locks still override position caps. If the rules cannot be satisfied, the build fails rather than loosening them.</p>
+              </div>
+
               <p>Ownership-neutral construction with softer exposure penalties, four-player differences, and no defense against your own offense. Retains Winners stacking and FLEX composition targets alongside concentration limits. Targets round to the nearest lineup; caps round down. Conflicting rules fail without saving a partial build. These are risk preferences; improved tournament performance is unproven.</p>
               <div className="grid grid-cols-2 gap-2">{([
                 ['qbMax','QB maximum'],['rbMax','RB maximum'],['wrMax','WR maximum'],['teMax','TE maximum'],['dstMax','DST maximum'],

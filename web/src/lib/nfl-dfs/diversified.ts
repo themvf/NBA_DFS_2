@@ -1,6 +1,6 @@
 import type { NflGeneratedLineup, NflOptimizerPlayer, NflOptimizerSettings } from '@/app/dfs/nfl/nfl-optimizer';
 
-export const DIVERSIFIED_VERSION = 'nfl-classic-winners-diversified-v2';
+export const DIVERSIFIED_VERSION = 'nfl-classic-winners-diversified-v3';
 /** Risk preferences, not fitted performance claims. Shares are 0..1. */
 export const DEFAULT_DIVERSIFIED = {
   qbMax: .20, rbMax: .55, wrMax: .40, teMax: .45, dstMax: .25,
@@ -9,6 +9,22 @@ export const DEFAULT_DIVERSIFIED = {
   qbDoubleStackShare: .40, bringBackShare: .50, twoTeShare: .30, maxFourWrShare: .35, maxOtherGameStackShare: .35,
 };
 export type DiversifiedPolicy = typeof DEFAULT_DIVERSIFIED;
+/** User-selected concentration preferences; not a fitted correlation model. */
+export const MORE_DIVERSITY = {
+  qbMax: .12, rbMax: .35, wrMax: .35, teMax: .35, dstMax: .20,
+  pairMax: .18, tripleMax: .10, playerDstMax: .12, softStart: .20, softPenalty: 1,
+};
+export function withDiversityPreset(policy: Partial<DiversifiedPolicy> | undefined, more: boolean): DiversifiedPolicy {
+  const caps = more ? MORE_DIVERSITY : Object.fromEntries(
+    Object.keys(MORE_DIVERSITY).map(key => [key, DEFAULT_DIVERSIFIED[key as keyof DiversifiedPolicy]]));
+  // Composition, candidate target and an explicit QB minimum survive preset changes.
+  return { ...DEFAULT_DIVERSIFIED, ...policy, ...caps };
+}
+export function matchesDiversityPreset(policy: Partial<DiversifiedPolicy> | undefined, more: boolean): boolean {
+  const resolved = { ...DEFAULT_DIVERSIFIED, ...policy }, preset = withDiversityPreset(policy, more);
+  return Object.keys(MORE_DIVERSITY).every(key => resolved[key as keyof DiversifiedPolicy] === preset[key as keyof DiversifiedPolicy]);
+}
+
 export const diversifiedCount = (share: number, n: number) => Math.max(1, Math.floor(share * n + 1e-9));
 
 export function diversifiedPolicy(settings: Pick<NflOptimizerSettings, 'diversified'>): DiversifiedPolicy {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings } from '../src/app/dfs/nfl/nfl-optimizer';
-import { diversifiedComposition, diversifiedCompositionValid, applyDiversified, DEFAULT_DIVERSIFIED, diversifiedCount, diversifiedGroups, diversifiedPolicy, groupLimit, repeatedGroupCounts } from '../src/lib/nfl-dfs/diversified';
+import { withDiversityPreset, matchesDiversityPreset, MORE_DIVERSITY, diversifiedComposition, diversifiedCompositionValid, applyDiversified, DEFAULT_DIVERSIFIED, diversifiedCount, diversifiedGroups, diversifiedPolicy, groupLimit, repeatedGroupCounts } from '../src/lib/nfl-dfs/diversified';
 import { sameGenerationSettings } from '../src/lib/nfl-dfs/generation-settings';
 
 const players: NflOptimizerPlayer[] = [];
@@ -104,3 +104,27 @@ assert.equal(diversifiedComposition(adjusted.lineups).bringBacks,8);
 assert.throws(()=>optimizeNflLineups(players.filter(p=>p.position!=='WR'||!p.name.endsWith('WR3')),{
  ...base,diversified:{candidateTarget:50,twoTeShare:1,maxOtherGameStackShare:0},maxExposure:.05}),/Diversified/);
 console.log('NFL diversified construction: complete portfolios, overrides, overlap, combinations, deterministic replay and format isolation OK');
+
+const customComposition={...DEFAULT_DIVERSIFIED,twoTeShare:.2,candidateTarget:100,minimumQbs:9};
+const more=withDiversityPreset(customComposition,true);
+assert.equal(more.twoTeShare,.2);assert.equal(more.minimumQbs,9);assert.equal(more.candidateTarget,100);
+assert.ok(matchesDiversityPreset(more,true));assert.ok(!matchesDiversityPreset({...more,rbMax:.4},true));
+assert.ok(matchesDiversityPreset(withDiversityPreset(more,false),false));
+assert.equal(withDiversityPreset(more,false).twoTeShare,.2);
+const diverseSettings={...base,diversified:withDiversityPreset({candidateTarget:50},true)};
+const diverse=optimizeNflLineups(players,diverseSettings);
+assert.equal(diverse.lineups.length,20);assert.ok(diversifiedCompositionValid(diverse.lineups,diverseSettings));
+assert.ok(diverse.diversifiedReport!.distinctQbs>=10);
+const independentCounts=new Map<number,number>();
+for(const l of diverse.lineups)for(const id of l.playerIds)independentCounts.set(id,(independentCounts.get(id)??0)+1);
+for(const [id,count] of independentCounts){
+ const p=players.find(p=>p.dkPlayerId===id)!;
+ const cap=p.position === 'QB' ? .12 : p.position === 'DST' ? .2 : .35;
+ assert.ok(count<=Math.floor(20*cap+1e-9),`${p.name} exceeds more-diversity cap`);
+}
+assert.ok([...independentCounts.values()].every(c=>c<8));
+assert.equal(MORE_DIVERSITY.softPenalty,1);
+console.log('More diversity: full builds, position caps, composition preservation and preset round trip OK');
+
+assert.equal(sameGenerationSettings(base,diverseSettings),false,'preset change requires regeneration');
+assert.equal(sameGenerationSettings(diverseSettings,applyDiversified(diverseSettings)),true,'saved preset restores equivalent settings');
