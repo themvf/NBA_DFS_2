@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { canonicalAuditJson } from '@/lib/nfl-dfs/audit-json';
+import { compactPoolPayload, POOL_BLOB_DDL, poolBlobRefs, rehydratePoolPayload } from '@/lib/nfl-dfs/pool-capture-blobs';
 import { gradePool, type AuditGame, type PoolAuditPayload, type PoolCapture, type PoolOutcome } from '@/lib/nfl-dfs/pool-audit';
 
 export const POOL_AUDIT_DDL = [
@@ -19,9 +20,27 @@ export const POOL_AUDIT_DDL = [
     FOR EACH ROW EXECUTE FUNCTION reject_nfl_pool_capture_mutation(); END IF; END $$`,
   `CREATE TABLE IF NOT EXISTS nfl_dfs_pool_capture_runs (
     id BIGSERIAL PRIMARY KEY, started_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
-    finished_at TIMESTAMPTZ, summary JSONB NOT NULL DEFAULT '{}'::jsonb)`
+    finished_at TIMESTAMPTZ, summary JSONB NOT NULL DEFAULT '{}'::jsonb)`,
+  POOL_BLOB_DDL
 ];
 export async function installPoolAudit() { for(const ddl of POOL_AUDIT_DDL) await db.execute(sql.raw(ddl)); }
+// installPoolAudit runs only when the capture table is missing; the blob table
+// arrived later, so writers create it once per server instance.
+let blobTable:Promise<unknown>|null=null;
+function ensurePoolBlobTable() { blobTable??=db.execute(sql.raw(POOL_BLOB_DDL)).catch(e=>{blobTable=null;throw e;}); return blobTable; }
+/** Shared slate-wide values a stored capture names (`{"$poolBlob": hash}`), by hash. */
+export async function loadPoolBlobs(payloads:readonly unknown[]):Promise<Map<string,unknown>> {
+  const keys=[...new Set(payloads.flatMap(poolBlobRefs))];
+  if(!keys.length)return new Map();
+  const rows=await db.execute(sql`SELECT blob_digest,content FROM nfl_dfs_pool_capture_blobs
+    WHERE blob_digest IN (${sql.join(keys.map(k=>sql`${k}`),sql`, `)})`);
+  return new Map(rows.rows.map(r=>[String(r.blob_digest),r.content]));
+}
+/** Stored payloads as they were captured; verify digests against these, never the stored form. */
+export async function rehydratePoolPayloads<T>(payloads:readonly T[]):Promise<T[]> {
+  const blobs=await loadPoolBlobs(payloads);
+  return payloads.map(p=>rehydratePoolPayload(p,blobs));
+}
 export async function poolAuditInstalled() {
   return Boolean((await db.execute(sql`SELECT to_regclass('nfl_dfs_pool_captures') AS name`)).rows[0]?.name);
 }
@@ -36,8 +55,20 @@ export async function auditGames(season:number,week:number):Promise<AuditGame[]>
 export async function savePoolCapture(payload:PoolAuditPayload, archive?:{observedAt:string;runId:string}) {
   if(!payload.players.length || new Set(payload.players.map(p=>p.dkPlayerId)).size!==payload.players.length) throw new Error('Empty or duplicate pool capture');
   if((payload.origin==='saved_optimizer')!==Boolean(archive)) throw new Error('Missing archived run provenance');
-  const content=canonicalAuditJson(payload);
-  const hash=createHash('sha256').update(content).digest('hex');
+  // The digest covers the full payload; the stored row names shared slate-wide
+  // values by hash (lib/nfl-dfs/pool-capture-blobs.ts). The blob is written
+  // first, so a stored capture never names a blob that does not exist.
+  const hash=createHash('sha256').update(canonicalAuditJson(payload)).digest('hex');
+  const {stored,blobs}=compactPoolPayload(payload);
+  const restored=rehydratePoolPayload(stored,new Map(blobs.map(b=>[b.digest,b.content])));
+  if(createHash('sha256').update(canonicalAuditJson(restored)).digest('hex')!==hash)
+    throw new Error('Pool capture compaction does not round-trip; capture refused');
+  if(blobs.length){
+    await ensurePoolBlobTable();
+    for(const b of blobs) await db.execute(sql`INSERT INTO nfl_dfs_pool_capture_blobs(blob_digest,content)
+      VALUES (${b.digest},${canonicalAuditJson(b.content)}::jsonb) ON CONFLICT (blob_digest) DO NOTHING`);
+  }
+  const content=canonicalAuditJson(stored);
   // One capture per minute per game; archived runs have a permanent idempotency key.
   const rows=await db.execute(sql`WITH stamp AS MATERIALIZED (SELECT clock_timestamp() AS at),
     input AS (SELECT at,COALESCE(${archive?.observedAt??null}::timestamptz,at) AS observed,
@@ -54,11 +85,13 @@ export async function readPoolCaptures(uploadId:string,latest=false):Promise<Poo
       CASE WHEN observed_at<kickoff THEN observed_at END DESC,
       CASE WHEN observed_at>=kickoff THEN observed_at END ASC,digest) AS rank
     FROM nfl_dfs_pool_captures WHERE upload_id=${uploadId}::uuid) ranked WHERE rank=1 ORDER BY game_id`);
-  return rows.rows.map(r=>{
-    if(String(r.digest).split(':')[0]!==createHash('sha256').update(canonicalAuditJson(r.payload)).digest('hex'))
+  const payloads=await rehydratePoolPayloads(rows.rows.map(r=>r.payload));
+  return rows.rows.map((r,i)=>{
+    const payload=payloads[i];
+    if(String(r.digest).split(':')[0]!==createHash('sha256').update(canonicalAuditJson(payload)).digest('hex'))
       throw new Error('Pool capture digest mismatch');
     return {digest:String(r.digest),observedAt:new Date(r.observed_at as string).toISOString(),
-      capturedAt:new Date(r.captured_at as string).toISOString(),payload:r.payload as PoolAuditPayload};
+      capturedAt:new Date(r.captured_at as string).toISOString(),payload:payload as PoolAuditPayload};
   });
 }
 export async function poolAuditIndex() {
