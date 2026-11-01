@@ -1,4 +1,4 @@
-# Winners + Diversified Classic construction v2
+# Winners + Diversified Classic construction v3
 
 Owner requested implementation on 2026-10-31 for November 1 lineups. This is
 an opt-in construction profile, not a promotion of a predictive model or the
@@ -120,3 +120,42 @@ The frozen 50-lineup input produced 50 legal lineups with 20 double stacks,
 and all diversification limits. This is construction verification, not
 outcome evidence. Earlier saved portfolios retain their original settings
 and version; newly generated diversified builds use v2 defaults.
+
+## More diversity button (v3)
+
+Owner requested a one-click preference for less shared exposure across the
+portfolio. Under Winners + Diversified, choose **More diversity**, then
+**Generate & save**. The button changes numeric preferences; it does not
+regenerate, modify, or replace a saved lineup set. **Default diversity**
+restores the original concentration preferences. Manual edits show Custom.
+
+| Preference | More diversity |
+|---|---:|
+| QB maximum | 12% |
+| RB / WR / TE maximum | 35% each |
+| DST maximum | 20% |
+| Non-primary pair / triple maximum | 18% / 10% |
+| Player + DST maximum | 12% |
+| Soft exposure threshold / strength | 20% / 1.0 |
+
+Composition targets, candidate count and explicit minimum QBs survive both
+buttons. Locks and player-specific exposure overrides retain precedence and
+are disclosed in the UI and saved report. The same full-portfolio validation
+applies; no automatic relaxation is introduced. Settings comparison marks a
+changed preset as requiring regeneration, and saved numeric settings restore
+which preset matches. Old saved defaults remain defaults.
+
+These are user-selected risk preferences, not fitted optimal weights. Less
+shared player exposure does not measure or guarantee uncorrelated lineup
+scores: games, teammates, and shared outcomes can still correlate entries.
+No scenario covariance or profitability claim is made. Forecast scores may
+fall when stricter limits require different players. v3 changes preset UI
+and defaults selection only, not the underlying solver or study arms.
+
+Frozen current-run replay with More diversity returned 50 lineups, 14 QBs,
+no player at 40%+, a 34% highest exposure, and 1.81 mean shared players
+between lineups (saved baseline: 8 QBs, 48% highest exposure, 2.35 shared).
+It preserved 20 double stacks, 25 bring-backs and 15 two-TE lineups; all
+composition and combination caps passed. The 500-target search considered
+214 candidates within its budget and accepted no replacements. This replay
+is discovery/construction evidence only and is not a return forecast.

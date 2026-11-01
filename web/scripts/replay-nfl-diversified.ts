@@ -3,12 +3,12 @@ import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import { optimizeNflLineups, type NflOptimizerSettings } from '../src/app/dfs/nfl/nfl-optimizer';
 import { restorePlayers } from '../src/lib/nfl-dfs/frozen-players';
-import { diversifiedComposition, diversifiedCompositionValid, applyDiversified, diversifiedPolicy, groupLimit, repeatedGroupCounts } from '../src/lib/nfl-dfs/diversified';
+import { withDiversityPreset, diversifiedComposition, diversifiedCompositionValid, applyDiversified, diversifiedPolicy, groupLimit, repeatedGroupCounts } from '../src/lib/nfl-dfs/diversified';
 
 const input = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const players = restorePlayers(input.run.input_snapshot);
 const settings: NflOptimizerSettings = applyDiversified({ ...input.run.settings, buildShape: 'diversified',
-  diversified: { candidateTarget: Number(process.argv[3] ?? 500) } });
+  diversified: { ...(process.argv[4] === "more" ? withDiversityPreset(input.run.settings.diversified, true) : input.run.settings.diversified), candidateTarget: Number(process.argv[3] ?? 500) } });
 const start = Date.now();
 const result = optimizeNflLineups(players, settings);
 assert.equal(result.lineups.length, settings.nLineups);
@@ -23,4 +23,6 @@ for (const a of result.lineups) {
   assert.ok(a.slots.every(s=>!s.player.isOut));
   for (const b of result.lineups) if(a!==b) assert.ok(a.playerIds.filter(id=>b.playerIds.includes(id)).length<=5);
 }
-console.log(JSON.stringify({elapsedSeconds:(Date.now()-start)/1000,report:result.diversifiedReport,warnings:result.warnings},null,2));
+const overlaps:number[]=[];
+for(let i=0;i<result.lineups.length;i++)for(let j=i+1;j<result.lineups.length;j++)overlaps.push(result.lineups[i].playerIds.filter(id=>result.lineups[j].playerIds.includes(id)).length);
+console.log(JSON.stringify({meanSharedPlayers:overlaps.reduce((a,b)=>a+b,0)/overlaps.length,elapsedSeconds:(Date.now()-start)/1000,report:result.diversifiedReport,warnings:result.warnings},null,2));

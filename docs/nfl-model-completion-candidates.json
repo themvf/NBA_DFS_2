@@ -87,7 +87,7 @@
     "model/nfl_matchup_scenarios.py": "9d133718c360a03a445965508061807c49644c3ac329ae220c4f68069a19e913",
     "web/src/lib/nfl-dfs/scoring.ts": "83e8b8c293519e7605f4d5be76a302bd442835fa4dc43a6d02744922a5729e3c",
     "web/src/lib/nfl-dfs/scenarios.ts": "98ed595731bc69ee1fcde4d9c42109880382cff3dbf480ce0f0043fdf46e2fd9",
-    "web/src/lib/nfl-dfs/diversified.ts": "2181349914a583c0805693faf8eb3d01a9753333344cf231b0f9b66e39999212"
+    "web/src/lib/nfl-dfs/diversified.ts": "d240a74fae0935e8f195554300c670d4f7f52d0b484518de9371bc1f74431308"
   },
   "amendments": [
     {
@@ -268,6 +268,17 @@
         "Winners + Diversified v2"
       ],
       "evidence_rule": "Preserve prior hashes and keep v1 and v2 decisions in separate construction cohorts. No existing study gates, hypotheses or slate enrollments change."
+    },
+    {
+      "amended_at": "2026-11-01T12:11:34.936856Z",
+      "reason": "Owner requested a clickable More diversity preset. Adds numeric exposure and combination preferences while preserving Winners composition, explicit player overrides and original default settings. Solver behavior and frozen research arms are unchanged. This is a construction preference, not measured score decorrelation or predictive promotion.",
+      "file": "web/src/lib/nfl-dfs/diversified.ts",
+      "previous_sha256": "2181349914a583c0805693faf8eb3d01a9753333344cf231b0f9b66e39999212",
+      "new_sha256": "d240a74fae0935e8f195554300c670d4f7f52d0b484518de9371bc1f74431308",
+      "changed_by": [
+        "More diversity button, construction v3"
+      ],
+      "evidence_rule": "Preserve earlier implementation identities and distinguish the selected numeric concentration settings in saved forward evidence. No study gate, hypothesis or enrollment changes."
     }
   ]
 }
