@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "version": "nfl-longest-td-weekly-grade-v1",
- "updatedAt": "2026-10-31T20:43:00.352088+00:00",
+ "updatedAt": "2026-11-01T18:51:39.734610+00:00",
  "authority": "tracking_only_not_calibration",
  "weeks": [
   {
@@ -13,10 +13,10 @@
    "topExpected": 2.2580416666666667,
    "logLoss": 2.499357784107167,
    "baselineLogLoss": 2.6831387822992374,
-   "uniformLogLoss": 3.258335612285717,
+   "uniformLogLoss": 3.2583356122857166,
    "anyTdExpected": 57.358,
    "anyTdScored": 61,
-   "longTdExpected": 6.133,
+   "longTdExpected": 6.133000000000001,
    "longTdScored": 6,
    "games": [
     {
@@ -304,7 +304,7 @@
    "logLoss": 2.9957889729149074,
    "baselineLogLoss": 2.8597457504460104,
    "uniformLogLoss": 3.3241920013990884,
-   "anyTdExpected": 52.96999999999999,
+   "anyTdExpected": 52.969999999999985,
    "anyTdScored": 58,
    "longTdExpected": 5.246000000000001,
    "longTdScored": 7,
