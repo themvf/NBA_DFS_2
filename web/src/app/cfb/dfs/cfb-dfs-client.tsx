@@ -8,6 +8,7 @@ import {
 } from "./actions";
 import { DEFAULT_CFB_SETTINGS, CFB_SLOTS, CFB_SHOWDOWN_SLOTS, type CfbLineup } from "@/lib/cfb-dfs/settings";
 import { exportCfbDkEntries } from "@/lib/cfb-dfs/entry-export";
+import { CFB_OWNERSHIP_PRIOR_VERSION, projectCfbOwnership } from "@/lib/cfb-dfs/ownership-prior";
 import CfbResultsPanel from "./cfb-results-panel";
 import XNewsPanel from "@/components/x-news-panel";
 
@@ -186,6 +187,13 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
     .filter((p) => !query.trim() || `${p.name} ${p.team}`.toLowerCase().includes(query.trim().toLowerCase()))
     .sort((a, b) => (b.proj ?? 0) - (a.proj ?? 0) || b.salary - a.salary), [players, position, showZero, query, locked]);
   const hiddenZero = players.filter((p) => (p.proj ?? 0) <= 0).length;
+  // Field-ownership estimate; recomputed when a manual projection changes, frozen with each saved run.
+  const fieldOwn = useMemo(() => {
+    if (!workspace) return new Map<number, { own: number; captain: number | null }>();
+    const r = projectCfbOwnership(workspace.players.map((p) => ({ dkId: p.dkId, position: p.position, salary: p.salary, captainSalary: p.captainSalary ?? null,
+      proj: p.proj, manual: projectionById[String(p.dkId)] ?? null, dkAvg: Number.isFinite(p.dkAvg) ? p.dkAvg : null, status: p.status })), workspace.slate.mode);
+    return new Map(r.players.map((p) => [p.dkId, { own: p.ownPct, captain: p.captainPct }]));
+  }, [workspace, projectionById]);
 
   const exposure = useMemo(() => {
     const counts = new Map<string, number>();
@@ -279,12 +287,14 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
             </select>
             <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={showZero} onChange={(e) => setShowZero(e.target.checked)} />Show {hiddenZero} with no projection</label>
           </div>
-          <p className="border-b px-4 py-2 text-xs text-slate-500">{locked.length} locked · {excluded.length} excluded · {Object.keys(maxById).length} exposure caps. Max % blank = the global cap. Manual projections are your own base-point estimates and are saved with each run.</p>
+          <p className="border-b px-4 py-2 text-xs text-slate-500">{locked.length} locked · {excluded.length} excluded · {Object.keys(maxById).length} exposure caps. Max % blank = the global cap. Manual projections are your own base-point estimates and are saved with each run. Field own is an uncalibrated estimate of the field&apos;s ownership; each saved run freezes it so it can be graded after the game.</p>
           <div className="max-h-[640px] overflow-auto">
             <table className="w-full text-left text-sm">
               <thead className="sticky top-0 bg-slate-100 text-[10px] uppercase text-slate-500"><tr>
                 <th className="p-2">Lock / Out</th><th className="p-2">Max %</th><th className="p-2">Player</th><th className="p-2">Pos</th>
-                <th className="p-2 text-right">Salary</th><th className="p-2 text-right">Proj</th><th className="p-2 text-right">Manual proj</th><th className="p-2 text-right">Pts/$1k</th>
+                <th className="p-2 text-right">Salary</th><th className="p-2 text-right">Proj</th><th className="p-2 text-right">Manual proj</th>
+                <th className="p-2 text-right" title={`Uncalibrated estimate of the field's ownership (${CFB_OWNERSHIP_PRIOR_VERSION}). Graded against each contest you import.`}>Field own{mode === "showdown" ? " · CPT" : ""}</th>
+                <th className="p-2 text-right">Pts/$1k</th>
                 <th className="p-2 text-right">DK avg</th><th className="p-2 text-right">2026 G</th><th className="p-2">Match</th>
               </tr></thead>
               <tbody>{visible.map((p) => {
@@ -309,6 +319,8 @@ export default function CfbDfsClient({ initialUploadId }: { initialUploadId: str
                   <td className="p-2"><input aria-label={`${p.name} manual projection`} type="number" min={0} max={200} step={0.1} placeholder="—" value={projectionById[String(p.dkId)] ?? ""}
                     onChange={(e) => setProjectionById((current) => { const next = { ...current }; if (e.target.value === "") delete next[String(p.dkId)]; else next[String(p.dkId)] = Number(e.target.value); return next; })}
                     className="h-8 w-16 rounded border px-1 text-right text-xs" /></td>
+                  <td className="p-2 text-right text-slate-700">{(() => { const o = fieldOwn.get(p.dkId); if (!o) return "—";
+                    return <>{o.own.toFixed(1)}%{o.captain != null ? <span className="block text-[11px] text-slate-500">CPT {o.captain.toFixed(1)}%</span> : null}</>; })()}</td>
                   <td className="p-2 text-right text-slate-600">{p.proj ? (p.proj / (p.salary / 1000)).toFixed(2) : "—"}</td>
                   <td className="p-2 text-right text-slate-600">{pts(p.dkAvg)}</td>
                   <td className="p-2 text-right">{p.games2026 ?? 0}</td>

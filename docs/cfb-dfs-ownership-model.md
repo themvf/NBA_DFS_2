@@ -166,3 +166,41 @@ and frozen, never optimized against.
 4. Run snapshot: freeze the forecast with each saved run.
 5. Results panel and `calibrate:cfb-ownership`.
 6. Grade after each counted slate; append results below, never edit above.
+
+## Phase 1 built — 2026-11-01
+
+- `web/src/lib/cfb-dfs/ownership-prior.ts` (`cfb-ownership-prior-v1`). Showdown
+  calls NFL's `projectOwnershipPriorV5` with the CFB blend passed in as the
+  projection; Classic uses NFL's `ownershipScore` and `allocateBudgetDetailed`
+  with the CFB budgets. `CFB_OWNERSHIP_COUNT_FROM` is this spec's commit time
+  (2026-11-01 12:19:59 UTC).
+- Player pool: "Field own" (and Captain % in Showdown), recomputed in the
+  browser when a manual projection changes.
+- Every saved run stores `settings.ownership`: version, sha256 of the inputs,
+  and `[total, Captain, UTIL]` per DraftKings id. Checked on the OSU @ USC slate
+  (82 players frozen, Jeremiah Smith 86.62 / 14.26 / 72.36, matching the pool
+  column); that test run was deleted.
+- Results panel: "Field ownership: estimate vs actual", labelled counted,
+  design or recomputed, with Spearman / average miss / bias and a per-player
+  table.
+- Tests: `npm run test:cfb-ownership` (both real salary files; pinned outputs
+  catch drift in the borrowed NFL v5 functions).
+
+### Descriptive grades on the design contests (recomputed, not counted)
+
+Neither slate had a run with a frozen estimate, so the page recomputes one from
+the slate's inputs and the newest pre-lock run's manual projections. These are
+the contests the budgets were read from, so they describe fit, not skill.
+
+| contest | n | Spearman | avg miss (pts) | bias |
+|---|---:|---:|---:|---:|
+| 196055904 Classic, 2026-09-26 | 235 | 0.80 | 2.3 | 0.0 |
+| 197268067 Showdown OSU @ USC, all roles | 82 | 0.89 | 2.5 | +0.1 |
+| same, UTIL | 82 | 0.90 | 2.2 | +0.1 |
+| same, Captain | 82 | 0.74 | 0.9 | 0.0 |
+
+The visible misses are what v1 cannot see: news (Classic: Gutierrez started,
+19% estimated vs 53% actual, while Woodson stayed tagged Q) and Captain
+concentration (Showdown: Jeremiah Smith captained by 35.9% of the field
+against 12.9% estimated; Bo Jackson 76% total against 42%). Recorded as
+hypotheses for Phase 2, not edits to v1.
