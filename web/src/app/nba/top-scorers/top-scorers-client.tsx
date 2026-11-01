@@ -53,6 +53,10 @@ function positionStyle(pos: string | null) {
   return { badge: "border-slate-500! text-slate-400", stripe: "bg-slate-600" };
 }
 
+// Measured on the graded nights Oct 20-31, 2026 (nba_points_calibration).
+const THIN_LINE_NOTE =
+  "Only one book quotes this line. On Oct 20-31, 7 of 20 one-book players did not play, against 2 of 1,095 with four or more books.";
+
 type SortKey = "line" | "ceiling" | "p25" | "p30" | "p40" | "ppgNow" | "ppg" | "delta" | "books" | "rank";
 
 const SORTERS: Record<SortKey, (r: ScorerRow) => number> = {
@@ -296,6 +300,14 @@ export function TopScorersClient({
                             {split && (
                               <span className="rounded border border-sky-400/50! px-1.5 py-px font-mono text-[10px] text-sky-300" title="Books quote different lines">SPLIT</span>
                             )}
+                            {s.books.length === 1 && (
+                              <span
+                                className="rounded border border-orange-400/60! px-1.5 py-px font-mono text-[10px] text-orange-300"
+                                title={THIN_LINE_NOTE}
+                              >
+                                1 BOOK
+                              </span>
+                            )}
                           </div>
                           <div className="mt-0.5 font-mono text-xs text-slate-400">
                             {s.teamAbbrev ? `${s.teamAbbrev}${s.teamSource === "prior" ? " (prior season)" : ""} · vs ${s.opponentAbbrev ?? s.opponent}` : `${gameName.get(s.eventId)} · team unknown`} · {tip(s.commenceTime)}
@@ -347,7 +359,7 @@ export function TopScorersClient({
               </tbody>
             </table>
             <p className="mt-2 font-mono text-[11px] text-slate-500">
-              Click a row for every book&apos;s line and price and the ladder&apos;s chances. Rank = slate / on his team. Team is from his latest game this season; &quot;prior season&quot; means he has not played yet. Availability is unverified. 25+ / 30+ / 40+ and
+              Click a row for every book&apos;s line and price and the ladder&apos;s chances. Rank = slate / on his team. Team is from his latest game this season; &quot;prior season&quot; means he has not played yet. Availability is unverified; 1 BOOK marks a line only one book quotes, which often means the player may sit. 25+ / 30+ / 40+ and
               floor–ceiling come from the alternate points ladder; &quot;-&quot; means no ladder or a threshold past its last rung.
             </p>
           </div>

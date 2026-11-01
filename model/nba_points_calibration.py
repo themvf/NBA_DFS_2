@@ -20,7 +20,8 @@ Rules:
   prices are a different proposition). A game with no pre-tip capture has no
   rows.
 - A player is matched to the box score by accent-free name within his own
-  game (both teams). No match -> ``unmatched``; two players sharing a key in
+  game (both teams), through the verified aliases in ``PLAYER_ALIASES``
+  (added 2026-11-01; before that Herb Jones and Ron Holland read ``unmatched``). No match -> ``unmatched``; two players sharing a key in
   one game -> ``ambiguous``; a listed player who did not play -> ``dnp``
   (books void the line, so the row carries no outcome). Only ``graded`` rows
   enter the calibration cells; the others are counted and shown.
@@ -47,7 +48,7 @@ from typing import Any
 from config import load_config
 from db.database import DatabaseManager, fetch_rows
 from ingest.nba_box_scores import eastern_date
-from model.nba_points_ladder import LADDER_VERSION, THRESHOLDS, name_key, read_player, team_key
+from model.nba_points_ladder import LADDER_VERSION, THRESHOLDS, name_key, player_key, read_player, team_key
 
 GRADE_VERSION = "nba-points-grade-v1"
 # Same threshold as SHORT_MINUTES in web/src/lib/nba-points-calibration-charts.ts. A stated cut, not fitted.
@@ -193,7 +194,10 @@ def grade_captures(target: date, captures: list[Capture], ladders: dict[tuple[st
         key = name_key(cap.player)
         status, actual, minutes, team = "no_box_score", None, None, None
         if game is not None:
-            hits = [p for p in game.players if p.player_key == key]
+            # Match through the verified aliases (Herb/Herbert Jones, Ron/Ronald Holland II) on both
+            # sides; the stored key stays name_key so a re-grade updates the earlier row in place.
+            want = player_key(cap.player)
+            hits = [p for p in game.players if player_key(p.player) == want]
             if len(hits) > 1:
                 status = "ambiguous"
             elif not hits:

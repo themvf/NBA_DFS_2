@@ -79,6 +79,9 @@ const herbProps = [{ ...base, eventId: "h", homeTeam: "A", awayTeam: "B", player
 const herbStats = [{ name: "Herbert Jones", ppg: 10, games: 60, teamName: "A", teamAbbrev: "A" }];
 assert.equal(buildBoard(herbProps, herbStats).scorers[0].lastSeasonPpg, 10);
 assert.equal(buildBoard(herbProps, [...herbStats, { ...herbStats[0], name: "Herb Jones" }]).scorers[0].lastSeasonPpg, null);
+// "Ron Holland" on the books is "Ronald Holland II" on ESPN.
+const ronProps = [{ ...base, eventId: "r", homeTeam: "A", awayTeam: "B", player: "Ron Holland", books: { dk: { line: 9.5, over: -110, under: -110 } } }];
+assert.equal(buildBoard(ronProps, [{ name: "Ronald Holland II", ppg: 11, games: 70, teamName: "A", teamAbbrev: "A" }]).scorers[0].lastSeasonPpg, 11);
 
 // This season's team (latest box-score game) wins over last season's; last
 // season's is used only for a player with no game yet; an ambiguous name or a

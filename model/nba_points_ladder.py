@@ -55,7 +55,7 @@ _SUFFIXES = frozenset({"jr", "sr", "ii", "iii", "iv", "v"})
 TEAM_ALIASES = {"laclippers": "losangelesclippers"}
 # Explicit published-name alias verified against the ESPN event box score.
 # No fuzzy identity matching; collisions are still unresolved by the grader.
-PLAYER_ALIASES = {"herbjones": "herbertjones"}
+PLAYER_ALIASES = {"herbjones": "herbertjones", "ronholland": "ronaldholland"}
 
 
 def player_key(name: str | None) -> str:
