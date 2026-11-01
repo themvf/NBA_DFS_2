@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings } from '../src/app/dfs/nfl/nfl-optimizer';
-import { applyDiversified, DEFAULT_DIVERSIFIED, diversifiedCount, diversifiedGroups, diversifiedPolicy, groupLimit, repeatedGroupCounts } from '../src/lib/nfl-dfs/diversified';
+import { diversifiedComposition, diversifiedCompositionValid, applyDiversified, DEFAULT_DIVERSIFIED, diversifiedCount, diversifiedGroups, diversifiedPolicy, groupLimit, repeatedGroupCounts } from '../src/lib/nfl-dfs/diversified';
 import { sameGenerationSettings } from '../src/lib/nfl-dfs/generation-settings';
 
 const players: NflOptimizerPlayer[] = [];
@@ -26,6 +26,12 @@ const resolved=applyDiversified(base);
 assert.equal(resolved.ownershipLeverageEnabled,false);
 assert.equal(resolved.leverageExponent,0);
 assert.equal(resolved.minUnique,4);
+assert.equal(resolved.qbDoubleStackShare,.4);
+assert.equal(resolved.bringBackShare,.5);
+assert.equal(resolved.twoTeShare,.3);
+assert.equal(resolved.maxFourWrShare,.35);
+assert.equal(resolved.maxOtherGameStackShare,.35);
+assert.throws(()=>applyDiversified({...base,diversified:{twoTeShare:1.1}}),/twoTeShare/);
 assert.equal(applyDiversified({...base,diversifiedCandidateSearch:true,diversifiedMeanSearch:true}).diversifiedCandidateSearch,false);
 assert.ok(sameGenerationSettings(base,resolved),'effective profile does not falsely show settings changed');
 assert.doesNotThrow(()=>sameGenerationSettings(base,{...base,mode:'cash'}),'changing mode must not crash comparison before the form resets its profile');
@@ -43,6 +49,17 @@ assert.ok(diversifiedGroups(roster([otherQb.dkPlayerId,...wrs.map(p=>p.dkPlayerI
 
 const first=optimizeNflLineups(players,base);
 assert.equal(first.lineups.length,20);
+assert.ok(diversifiedCompositionValid(first.lineups,base));
+const composition=diversifiedComposition(first.lineups);
+assert.equal(composition.doubleStacks,8); assert.equal(composition.bringBacks,10); assert.equal(composition.twoTe,6);
+assert.ok(composition.fourWr<=7 && composition.otherGameStacks<=7);
+assert.equal(diversifiedCompositionValid(first.lineups,{...base,diversified:{twoTeShare:0}}),false);
+// Independent roster recount ensures the checker isn't merely echoing configured shares.
+assert.equal(first.lineups.filter(l=>l.slots.filter(s=>s.player.position==='TE').length===2).length,6);
+assert.equal(first.lineups.filter(l=>{const q=l.slots.find(s=>s.player.position==='QB')!.player;
+ return l.slots.filter(s=>s.player.team===q.team && ['WR','TE'].includes(s.player.position)).length>=2;}).length,8);
+assert.equal(first.lineups.filter(l=>{const q=l.slots.find(s=>s.player.position==='QB')!.player;
+ return l.slots.some(s=>s.player.team===q.opponent && ['RB','WR','TE'].includes(s.player.position));}).length,10);
 assert.ok(first.diversifiedReport!.distinctQbs>=8);
 assert.ok(first.exposureReport!.every(r=>r.overall<=r.overallMax));
 const policy=diversifiedPolicy(base);
@@ -80,4 +97,10 @@ const lockedResult=optimizeNflLineups(players,{...base,lockedPlayerIds:[qb.dkPla
 assert.ok(lockedResult.lineups.every(l=>l.playerIds.includes(qb.dkPlayerId)));
 assert.equal(lockedResult.exposureReport!.find(p=>p.dkPlayerId===qb.dkPlayerId)!.overallMax,20);
 assert.equal(DEFAULT_DIVERSIFIED.playerDstMax,.2);
+const adjusted=optimizeNflLineups(players,{...base,diversified:{candidateTarget:50,twoTeShare:.2,qbDoubleStackShare:.5,bringBackShare:.4}});
+assert.equal(diversifiedComposition(adjusted.lineups).twoTe,4);
+assert.equal(diversifiedComposition(adjusted.lineups).doubleStacks,10);
+assert.equal(diversifiedComposition(adjusted.lineups).bringBacks,8);
+assert.throws(()=>optimizeNflLineups(players.filter(p=>p.position!=='WR'||!p.name.endsWith('WR3')),{
+ ...base,diversified:{candidateTarget:50,twoTeShare:1,maxOtherGameStackShare:0},maxExposure:.05}),/Diversified/);
 console.log('NFL diversified construction: complete portfolios, overrides, overlap, combinations, deterministic replay and format isolation OK');

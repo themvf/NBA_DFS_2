@@ -1,8 +1,8 @@
-# Diversified Classic construction v1
+# Winners + Diversified Classic construction v2
 
 Owner requested implementation on 2026-10-31 for November 1 lineups. This is
 an opt-in construction profile, not a promotion of a predictive model or the
-portfolio-objective study. Choose **Diversified Classic** under Build shape
+portfolio-objective study. Choose **Winners + Diversified** under Build shape
 on a Classic GPP slate. Standard and Winners remain available.
 
 ## Acceptance contract (defined before release)
@@ -51,8 +51,15 @@ or not the players oppose one another.
 
 This profile forces ownership influence off on both the server and optimizer
 paths, including restored requests. It does not rewrite ownership estimates.
-It requires a QB pass catcher but imposes no exact double-stack, bring-back,
-two-TE, fourth-WR or secondary-stack shares. Existing input projections and
+It requires a QB pass catcher and restores the Winners composition defaults:
+40% double stacks, 50% bring-backs, 30% two-TE lineups, at most 35% four-WR
+lineups and at most 35% lineups with a same-team RB/WR/TE pair outside the
+QB game. All five controls are adjustable in the form. Exact targets round
+to the nearest lineup; the two caps round down. Initial construction does
+not relax these rules, and every accepted replacement is checked against
+the final composition. Inability to find a complete compliant portfolio is
+a build error, not proof that no feasible portfolio exists. The 30% TE
+target is a historical compromise, not a fitted optimum. Existing input projections and
 source qualifications are retained.
 
 ## Search
@@ -91,7 +98,8 @@ checks protect the unchanged profiles.
 `web/scripts/replay-nfl-diversified.ts INPUT_JSON [CANDIDATE_TARGET]` reads a
 frozen `{run:{input_snapshot,settings}}` and performs a database-free replay.
 The owner's November 1 snapshot is discovery/construction verification only.
-Its historical baseline mean was 137.79; a bounded replay returned 50
+The earlier v1 replay (before restoring Winners composition) had a
+historical baseline mean of 137.79; a bounded replay returned 50
 legal lineups at 139.67, with four players at 40%+, versus eight previously.
 It considered 237 distinct candidates and disclosed its 25-second candidate
 search limit rather than claiming the 500-candidate target was reached.
@@ -104,3 +112,11 @@ implementation hashes remain recorded and evidence cohorts remain separate. Futu
 paired arms and a verified complete-contest grading path. Classic remains
 unqualified for field-relative simulated top-1% claims. The portfolio-objective
 study's 0.80 roster-stability gate and spent-slate exclusions remain intact.
+
+## November 1 v2 construction verification
+
+The frozen 50-lineup input produced 50 legal lineups with 20 double stacks,
+25 bring-backs and 15 two-TE lineups, respecting both 35% composition caps
+and all diversification limits. This is construction verification, not
+outcome evidence. Earlier saved portfolios retain their original settings
+and version; newly generated diversified builds use v2 defaults.
