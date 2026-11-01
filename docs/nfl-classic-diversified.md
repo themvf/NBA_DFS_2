@@ -97,8 +97,10 @@ It considered 237 distinct candidates and disclosed its 25-second candidate
 search limit rather than claiming the 500-candidate target was reached.
 These are model projections, not observed improvement.
 
-No existing study registration, stability threshold, gate slate or ghost arm
-is changed. Future performance comparisons require separately registered
+No existing study hypothesis, stability threshold, gate slate or ghost arm
+is changed. The model-completion implementation manifest carries a dated
+provenance amendment for the changed optimizer and its new dependency; prior
+implementation hashes remain recorded and evidence cohorts remain separate. Future performance comparisons require separately registered
 paired arms and a verified complete-contest grading path. Classic remains
 unqualified for field-relative simulated top-1% claims. The portfolio-objective
 study's 0.80 roster-stability gate and spent-slate exclusions remain intact.
