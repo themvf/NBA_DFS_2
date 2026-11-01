@@ -224,7 +224,11 @@ row so silence is visible.
    the gradable history is a hypothesis until the inventory says so.
 3. Regrade weeks 2-6 once under this spec, split at the anchor, and publish
    per-slate rows. That run is the baseline every later version is compared
-   to.
+   to. **Extended 2026-11-01:** `research/nfl_ownership_scorecard.py` now
+   grades regular-season weeks 2-18 (`WEEKS`), because v5's registration
+   (`docs/nfl-ownership-prior-v5.md` section 5) grades it on week 7 onward.
+   Weeks 2-6 keep their `design` tags and their already-written rows (the
+   table is append-only, `ON CONFLICT DO NOTHING`).
 4. Record the stack-label provenance for the 90% QB-stack figure: contest
    ids, whether the full standings were fetched, stat-api's label vocabulary
    (`model/nfl_dfs_field_stacks.py`), per-slate rates. Five Millionaires are

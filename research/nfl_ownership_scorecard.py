@@ -5,7 +5,8 @@ docs/nfl-ownership-scorecard-v1.md (now scorecard v2). Read-only except for the
 append-only `nfl_ownership_scorecard_rows` (ON CONFLICT DO NOTHING: a grade is
 written once; a re-grade under a new scorecard or grader version appends).
 
-Per slate with an imported contest (2026, weeks 2-6):
+Per slate with an imported contest (2026, regular-season weeks 2-18; weeks 2-6 are
+v5 design slates and stay tagged `design`, week 7 on is v5's prospective grade):
 
 1. Frozen inputs, per horizon (canonical = last capture at or before first
    kickoff minus 20 min; early = first capture inside 24 h), per source in the
@@ -51,7 +52,9 @@ from research.nfl_ownership_inventory import (
 from research.nfl_ownership_provenance import load_records
 
 SEASON = 2026
-WEEKS = range(2, 7)
+# Weeks 2-6 were the original regrade; v5's registration (docs/nfl-ownership-prior-v5.md
+# section 5) grades it on week 7 onward, so the range runs through the regular season.
+WEEKS = range(2, 19)
 SOURCE_ORDER = ("pool_capture", "optimizer_run", "ghost_freeze")
 VERSION_NAMES = {"v3": "nfl-ownership-prior-v3", "v4": "nfl-ownership-prior-v4", "v5": "nfl-ownership-prior-v5",
                  "v2": "nfl-ownership-prior-v2"}
