@@ -707,6 +707,22 @@ this are compacted by the owner-run `python -m ingest.ff_injury_payload_backfill
 re-hash to its `response_hash`), then `VACUUM`; the file shrinks only after
 `VACUUM FULL`.
 
+**Storage: repeated blobs stored once by hash (2026-10-31).** At 24 GB and
+~0.4 GB/day, four NFL DFS tables held ~3.5 GB, mostly copies. Feature-audit
+row evidence and component datasets now store their 18k-57k-row lists as
+content-defined chunks in `nfl_dfs_row_chunks` (`model/nfl_dfs_row_chunks.py`;
+consecutive copies differed in 0-4 rows). Pool captures store the slate-wide
+`context.situationTeams` once in `nfl_dfs_pool_capture_blobs` as
+`{"$poolBlob": sha256}` (3,272 copies of 294 values). In both, every stored
+digest is computed from the FULL value, so readers that verify a digest (the
+pool review page, the pre-registered replacement-upside grader) rehydrate
+first, and nothing a study grades changes. Existing rows are converted by
+owner-run `scripts/compact_nfl_dfs_research_rows.py` and
+`web/scripts/compact-nfl-pool-captures.ts` (deploy the readers first; the
+pool script lifts the append-only trigger for its run), then VACUUM FULL.
+`nfl_dfs_weekly_report_cards` held 121 MB live in a 483 MB table: the
+retention pass deletes, so only VACUUM FULL returns the space.
+
 ## Parallel agents: commit locally, one session pushes (2026-10-04)
 
 Every push to GitHub starts a Vercel build (a branch push builds Preview, a
