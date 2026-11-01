@@ -13,6 +13,7 @@ from config import load_config
 from ingest.nfl_dfs_weekly import PipelineDatabase
 from model.nfl_dfs_efficiency import CONFIG, RARE_FIELDS, RATE_DEFS, VERSION, backtest, build, metrics
 from model.nfl_dfs_feature_audit import digest
+from model.nfl_dfs_row_chunks import store_compact
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -152,9 +153,12 @@ def main() -> None:
     dump = lambda value: json.dumps(value, default=str, allow_nan=False)
     with db.connect() as connection:
         with connection.cursor() as cursor:
+            # Row lists are stored as content-addressed chunks (model/nfl_dfs_row_chunks.py);
+            # dataset_digest is computed above from the full dataset, so it is unchanged.
+            stored = store_compact(cursor, dataset, ("players",))
             cursor.execute(
                 "INSERT INTO nfl_dfs_component_datasets VALUES (%s,%s,%s,NOW()) ON CONFLICT DO NOTHING",
-                (dataset_digest, DATASET_VERSION, Json(dataset, dumps=dump)),
+                (dataset_digest, DATASET_VERSION, Json(stored, dumps=dump)),
             )
             cursor.execute(
                 """INSERT INTO nfl_dfs_efficiency_runs
