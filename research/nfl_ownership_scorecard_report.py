@@ -60,8 +60,9 @@ def render(result: dict, written: int | None, stored_total: int | None = None) -
           "Status: BUILT, TESTED (unit tests on the metric functions and label gating), BACKTESTED on frozen 2026 "
           "inputs. Descriptive only: no verdict, no constant changed. Showdown has no registered gate; the Classic "
           "Phase 2 gate needs >= 4 held-out slates of a FITTED model and is not evaluated here. The drafted v5 is "
-          "graded beside v3 and v4; every slate here is a v5 `design` slate (its v5 design grade is "
-          "`python -m research.nfl_ownership_prior_v5_design`).", ""]
+          "graded beside v3 and v4; weeks 2-6 are v5 `design` slates (their v5 design grade is "
+          "`python -m research.nfl_ownership_prior_v5_design`) and week 7 on is v5's prospective grade "
+          "(docs/nfl-ownership-prior-v5.md section 5).", ""]
     L += ["## How to read this", "",
           "- **Frozen input.** Per slate and horizon (canonical = last capture at or before first kickoff minus "
           "20 min; early = first capture inside 24 h), each source's capture is loaded: pool capture (one capture "
@@ -92,7 +93,7 @@ def render(result: dict, written: int | None, stored_total: int | None = None) -
           "(v3 recomputation where nothing was stored) plus top N by field points per $1,000, union; the same set is "
           "used for every version so versions are compared on one population. Showdown: every active player.",
           "- **Design tags.** v4: weeks 2-5 `design` (both formats). v3: Showdown weeks 2-3 `design`. v5: weeks "
-          "2-6 `design` (both formats; its constants were chosen on them). Week 6 is v4's first non-design data. "
+          "2-6 `design` (both formats; its constants were chosen on them). Week 6 is v4's first non-design data and week 7 v5's. "
           "`not_design` pooled rows exclude design slates.",
           "- **Game script (v4 Showdown).** Favorite/underdog from the game's moneyline as the eval harness reads it "
           "(nfl_matchups, then nfl_season_games). These are CURRENT stored values, not as of the capture.",
