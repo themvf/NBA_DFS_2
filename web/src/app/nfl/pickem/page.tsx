@@ -37,10 +37,30 @@ export default async function PickemPage({
   const targetWeek =
     Number.isFinite(parsedWeek) && slate.weeks.includes(parsedWeek) ? parsedWeek : firstOpen;
 
+  // PFR player stats are read only by the evidence panel of the week on screen,
+  // and for the whole season they were most of a 28 MB page (2026-11-01). Send
+  // them for this week only; choosing another week loads that week's page. Each
+  // snapshot's frozen identity table (~640 players) and source-file list are
+  // not shown either, so the browser copy drops them. Freezing a card reads its
+  // own full evidence on the server, so the ledger keeps both.
+  const shownGameIds = new Set(slate.games.filter((g) => g.week === targetWeek).map((g) => g.gameId));
+  const shownEvidence = {
+    ...evidence,
+    games: Object.fromEntries(Object.entries(evidence.games).map(([id, game]) =>
+      [id, !shownGameIds.has(Number(id)) ? { ...game, pfr: [] } : {
+        ...game,
+        pfr: (game.pfr ?? []).map((team) => ({
+          ...team,
+          games: team.games.map((g) => ({ ...g, manifest: { ...g.manifest, identity: null, sourceFiles: [] } })),
+        })),
+      }])),
+  };
+
   return (
     <PickemClient
       slate={slate}
-      evidence={evidence}
+      evidence={shownEvidence}
+      evidenceWeek={targetWeek}
       pools={pools}
       ledger={ledger}
       initialWeek={targetWeek}
