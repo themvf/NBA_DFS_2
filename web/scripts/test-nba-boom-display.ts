@@ -1,0 +1,11 @@
+import assert from "node:assert/strict";
+import {boomIdentity,boomLookup} from "../src/lib/nba-boom-display";
+import type {BoomBoard} from "../src/lib/nba-boom-lineups";
+const p={id:"game:pj",name:"P.J. Test",points:20,pointRank:1,boom:3,boomRank:1,shotsLast3:20,shotsLast20:17,availability:"unverified"};
+const b:BoomBoard={date:"2026-11-01",snapshot:"s",model:null,frozenAt:"",lockAt:"",excluded:0,players:[p]};
+assert.equal(boomLookup(b).get(boomIdentity("game","PJ Test"))?.boom,3);
+assert.equal(boomLookup(b).get(boomIdentity("other","PJ Test")),undefined);
+assert.equal(boomLookup({...b,players:[p,{...p,id:"game:duplicate",name:"PJ Test"}]}).get(boomIdentity("game","PJ Test")),null);
+assert.equal(boomLookup(null).size,0);
+assert.equal(boomLookup({...b,players:[{...p,boom:null,boomRank:null}]}).get(boomIdentity("game","PJ Test"))?.boom,null);
+console.log("PASS: event identity, missing scores and ambiguous-name exclusions");
