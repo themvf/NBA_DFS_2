@@ -83,11 +83,11 @@
     "research/nfl_workload_risk.py": "e8d67cb4945446fdc4ab857b69729a61e3c65dae2c1a17ed364bef49d637f344",
     "web/src/lib/nfl-dfs/joint-portfolio.ts": "87588d7fb2782f347ea6bfe35e522da15a62063e4c2d287a0c703064430ebf9f",
     "web/scripts/compare-nfl-joint-portfolios.ts": "05bf97642caba1b96d6d4420acf51502faa4468fcf40dc4e1607f51790298515",
-    "web/src/app/dfs/nfl/nfl-optimizer.ts": "eeb79063c7c6fdd3bd1b4661ee9cf70ce51e963d786751266c7112661aa57ad7",
+    "web/src/app/dfs/nfl/nfl-optimizer.ts": "c2cb1849d3ad92a0ec6cd7d653b86b6941c57b874b5c254d0ab5f11b54756698",
     "model/nfl_matchup_scenarios.py": "9d133718c360a03a445965508061807c49644c3ac329ae220c4f68069a19e913",
     "web/src/lib/nfl-dfs/scoring.ts": "83e8b8c293519e7605f4d5be76a302bd442835fa4dc43a6d02744922a5729e3c",
     "web/src/lib/nfl-dfs/scenarios.ts": "98ed595731bc69ee1fcde4d9c42109880382cff3dbf480ce0f0043fdf46e2fd9",
-    "web/src/lib/nfl-dfs/diversified.ts": "9448cdc25a3596cc0f82e2cec159fabc31d2eefbe28be8e6970159193d134519"
+    "web/src/lib/nfl-dfs/diversified.ts": "2181349914a583c0805693faf8eb3d01a9753333344cf231b0f9b66e39999212"
   },
   "amendments": [
     {
@@ -251,6 +251,23 @@
         "PR #615: Add opt-in diversified Classic portfolio construction"
       ],
       "evidence_rule": "Forward decisions captured before amended_at retain their original implementation hashes and are graded as a separate cohort or excluded; they are never pooled with decisions captured after it. Diversified-profile decisions are a distinct construction cohort and are not enrolled into an existing shadow study by this amendment."
+    },
+    {
+      "amended_at": "2026-11-01T11:26:51.860886Z",
+      "reason": "Owner authorized Winners + Diversified: restore the five adjustable Winners composition settings and enforce them in initial construction and final replacement validation. Standard, Winners and pinned study arms are unchanged. Construction verification is not predictive promotion.",
+      "file": "web/src/app/dfs/nfl/nfl-optimizer.ts",
+      "previous_sha256": "eeb79063c7c6fdd3bd1b4661ee9cf70ce51e963d786751266c7112661aa57ad7",
+      "new_sha256": "c2cb1849d3ad92a0ec6cd7d653b86b6941c57b874b5c254d0ab5f11b54756698",
+      "previous_additional_implementation_hashes": {
+        "web/src/lib/nfl-dfs/diversified.ts": "9448cdc25a3596cc0f82e2cec159fabc31d2eefbe28be8e6970159193d134519"
+      },
+      "additional_implementation_hashes": {
+        "web/src/lib/nfl-dfs/diversified.ts": "2181349914a583c0805693faf8eb3d01a9753333344cf231b0f9b66e39999212"
+      },
+      "changed_by": [
+        "Winners + Diversified v2"
+      ],
+      "evidence_rule": "Preserve prior hashes and keep v1 and v2 decisions in separate construction cohorts. No existing study gates, hypotheses or slate enrollments change."
     }
   ]
 }

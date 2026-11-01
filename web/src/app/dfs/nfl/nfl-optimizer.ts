@@ -1,4 +1,4 @@
-import { applyDiversified, diversifiedPolicy, diversifiedCount, diversifiedPositionMax, diversifiedGroups, repeatedGroupCounts, groupLimit, concentrationCost, improveDiversifiedPortfolio, DIVERSIFIED_VERSION, type DiversifiedPolicy, type DiversifiedReport } from "@/lib/nfl-dfs/diversified";
+import { diversifiedComposition, diversifiedCompositionValid, applyDiversified, diversifiedPolicy, diversifiedCount, diversifiedPositionMax, diversifiedGroups, repeatedGroupCounts, groupLimit, concentrationCost, improveDiversifiedPortfolio, DIVERSIFIED_VERSION, type DiversifiedPolicy, type DiversifiedReport } from "@/lib/nfl-dfs/diversified";
 import "server-only";
 import { kickerRoleBlockedReason } from '@/lib/nfl-dfs/availability';
 import type { DefensiveForecastBundle, DefensiveSettings } from '@/lib/nfl-dfs/defensive-projection';
@@ -64,7 +64,7 @@ import { featureTotals, JOINT_TARGET_PENALTY, NFL_JOINT_SELECTION_VERSION, selec
 // Record the strict Showdown purchase and completed-roster validation.
 // v8: DK-average fallback honoured in defensive mode; a lock or exposure
 // minimum on a player outside the pool is an error instead of being dropped.
-export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v13-diversified";
+export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v14-winners-diversified";
 
 export type NflProjectionSource = "our" | "workload" | "calibrated" | "dk_avg" | "fantasypros" | "linestar" | "custom";
 export type NflOptimizerMode = "cash" | "gpp";
@@ -1168,7 +1168,7 @@ function buildOne(
     }
   }
   const solved = solver.Solve({ optimize: "score", opType: "max", constraints, variables, binaries,
-    ...(settings.buildShape === "diversified" ? { options: { timeout: settings.diversifiedCandidateSearch ? 150 : 1000 } } : {}) });
+    ...(settings.buildShape === "diversified" ? { options: { timeout: settings.diversifiedCandidateSearch ? 150 : 3000 } } : {}) });
   if (solved.feasible === false) {
     // Forcing slot minimums made this lineup impossible (salary, team caps,
     // overlap). Build it without them rather than ending the run early; the
@@ -1449,7 +1449,7 @@ function diversifiedSelect(ctx: {pool: ResolvedPlayer[]; settings: NflOptimizerS
   const lockedQb = pool.find(p=>p.position==='QB' && locked.has(p.dkPlayerId));
   const qbs = pool.filter(p=>p.position==='QB' && (!lockedQb || p.dkPlayerId===lockedQb.dkPlayerId) && (countsById.get(p.dkPlayerId)?.overallMax??0)>0).sort((a,b)=>b.projection-a.projection||a.dkPlayerId-b.dkPlayerId);
   const valid = (ls: NflGeneratedLineup[]) => {
-    if (ls.length!==n) return false;
+    if (ls.length!==n || !diversifiedCompositionValid(ls, settings)) return false;
     if (ls.some(l=>l.playerIds.length!==9 || new Set(l.playerIds).size!==9 || l.slots.length!==9
       || l.totalSalary>50_000 || l.totalSalary<settings.minSalary || l.slots.some(s=>s.player.isOut)
       || l.totalSalary!==l.slots.reduce((sum,s)=>sum+s.salary,0))) return false;
@@ -1482,13 +1482,13 @@ function diversifiedSelect(ctx: {pool: ResolvedPlayer[]; settings: NflOptimizerS
       return buildOne(pool,search,100_000+attempt,known,empty,forced,countsById,empty,empty,null,n,true,false,false,
         variant===1?'require':'default',true);
     }});
-  if (!valid(result.lineups)) throw new Error(`Diversified could not produce a complete portfolio satisfying every exposure, combination, uniqueness and coverage rule (${result.lineups.length}/${n} lineups). Adjust limits or exclusions and retry.`);
+  if (!valid(result.lineups)) throw new Error(`Diversified could not produce a complete portfolio satisfying every Winners composition target, exposure, combination, uniqueness and coverage rule (${result.lineups.length}/${n} lineups). Adjust limits or exclusions and retry.`);
   const counts=new Map<number,number>();
   for (const l of result.lineups) for (const id of l.playerIds) counts.set(id,(counts.get(id)??0)+1);
   const byId=new Map(pool.map(p=>[p.dkPlayerId,p]));
   const report: DiversifiedReport={version:DIVERSIFIED_VERSION,candidateTarget:Math.max(n,policy.candidateTarget),candidates:result.candidates,
     attempts:result.attempts,candidateKeys:result.candidateKeys,stopReason:result.stopReason,swaps:result.swaps,requested:n,generated:result.lineups.length,
-    minimumQbs:policy.minimumQbs,distinctQbs:qbs.filter(p=>counts.has(p.dkPlayerId)).length,
+    composition:diversifiedComposition(result.lineups),minimumQbs:policy.minimumQbs,distinctQbs:qbs.filter(p=>counts.has(p.dkPlayerId)).length,
     meanProjection:result.lineups.reduce((s,l)=>s+l.projectedFpts,0)/n,playersAt40Pct:[...counts.values()].filter(c=>c/n>=.4).length,
     repeated:[...repeatedGroupCounts(result.lineups).values()].sort((a,b)=>b.count-a.count||a.group.key.localeCompare(b.group.key)).slice(0,12)
       .map(({group,count})=>({names:group.ids.map(id=>byId.get(id)!.name),kind:group.kind,count,limit:groupLimit(group,policy,n)})),
@@ -1982,7 +1982,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
         { lineupForbidFourWr: full.lineupForbidFourWr },
       ];
       const seen = new Set<string>();
-      for (const r of relaxations) {
+      for (const r of (settings.buildShape === "diversified" ? [full] : relaxations)) {
         const key = JSON.stringify(r, Object.keys(r).sort());
         if (!seen.has(key)) { seen.add(key); directives.push(r); }
       }
@@ -1998,7 +1998,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
       if (full.lineupRequireRbCaptain || full.lineupForbidRbCaptain) directives.push({ ...full, lineupRequireRbCaptain: undefined, lineupForbidRbCaptain: undefined });
       if (full.lineupQbExact != null) directives.push({ lineupForbidQbCaptain: full.lineupForbidQbCaptain });
     }
-    directives.push({});
+    if (settings.buildShape !== "diversified") directives.push({});
     let lineup: NflGeneratedLineup | null = null;
     for (const [attempt, directive] of directives.entries()) {
       const ls: NflOptimizerSettings = { ...settings, ...directive };

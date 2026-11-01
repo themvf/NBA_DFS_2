@@ -933,10 +933,10 @@ export default function NflDfsClient() {
             <Field label="Shape"><select className="control" value={settings.buildShape} onChange={(e) => setSettings({ ...settings, buildShape: e.target.value as BuildShape, ...(e.target.value === "diversified" ? {useHeuristicOwnershipLeverage:false} : {}) })}>
               <option value="standard">Standard (current model)</option>
               <option value="winners">Winners shape (how the flagship winners built)</option>
-              {slate.format === "classic" ? <option value="diversified">Diversified Classic (experimental risk controls)</option> : null}
+              {slate.format === "classic" ? <option value="diversified">Winners + Diversified (experimental)</option> : null}
             </select></Field>
             {settings.buildShape === "diversified" ? <div className="mt-2 space-y-2 text-slate-700">
-              <p>Ownership-neutral construction with softer exposure penalties, four-player differences, and no defense against your own offense. Stack size, bring-backs and FLEX position can vary. These are risk preferences; improved tournament performance is unproven.</p>
+              <p>Ownership-neutral construction with softer exposure penalties, four-player differences, and no defense against your own offense. Retains Winners stacking and FLEX composition targets alongside concentration limits. Targets round to the nearest lineup; caps round down. Conflicting rules fail without saving a partial build. These are risk preferences; improved tournament performance is unproven.</p>
               <div className="grid grid-cols-2 gap-2">{([
                 ['qbMax','QB maximum'],['rbMax','RB maximum'],['wrMax','WR maximum'],['teMax','TE maximum'],['dstMax','DST maximum'],
                 ['pairMax','Repeated pair'],['tripleMax','Repeated triple'],['playerDstMax','Player + defense'],
@@ -945,6 +945,13 @@ export default function NflDfsClient() {
                   onChange={e=>setSettings({...settings,diversified:{...settings.diversified,[key]:Number(e.target.value)/100}})} />
               </Field>)}</div>
               <p>Percentages round down, with at least one appearance allowed. Your global maximum can tighten position caps; a player-specific maximum overrides them. Primary QB/WR/TE stack combinations are excluded from the pair/triple limits.</p>
+              <div className="grid grid-cols-2 gap-2">{([
+                ['qbDoubleStackShare','Double stacks target'],['bringBackShare','Bring-backs target'],['twoTeShare','Two-TE target'],
+                ['maxFourWrShare','Four-WR maximum'],['maxOtherGameStackShare','Other-game stack maximum'],
+              ] as const).map(([key,label]) => <Field key={key} label={`${label} (%)`}>
+                <input aria-label={label} type="number" min={0} max={100} value={Math.round((settings.diversified[key] ?? DEFAULT_DIVERSIFIED[key])*100)} className="control"
+                  onChange={e=>setSettings({...settings,diversified:{...settings.diversified,[key]:Number(e.target.value)/100}})} />
+              </Field>)}</div>
               <Field label="Discourage repeated use above (%)"><input type="number" min={1} max={100} value={Math.round(settings.diversified.softStart*100)} className="control" onChange={e=>setSettings({...settings,diversified:{...settings.diversified,softStart:Number(e.target.value)/100}})} /></Field>
               <Field label="Exposure penalty strength (0 = off)"><input type="number" min={0} max={5} step={.1} value={settings.diversified.softPenalty} className="control" onChange={e=>setSettings({...settings,diversified:{...settings.diversified,softPenalty:Number(e.target.value)}})} /></Field>
               <Field label="Minimum different QBs (0 = automatic)"><input type="number" min={0} max={Math.min(22,settings.nLineups)} value={settings.diversified.minimumQbs} className="control" onChange={e=>setSettings({...settings,diversified:{...settings.diversified,minimumQbs:Number(e.target.value)}})} /></Field>

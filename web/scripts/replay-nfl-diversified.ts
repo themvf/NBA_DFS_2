@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import { optimizeNflLineups, type NflOptimizerSettings } from '../src/app/dfs/nfl/nfl-optimizer';
 import { restorePlayers } from '../src/lib/nfl-dfs/frozen-players';
-import { applyDiversified, diversifiedPolicy, groupLimit, repeatedGroupCounts } from '../src/lib/nfl-dfs/diversified';
+import { diversifiedComposition, diversifiedCompositionValid, applyDiversified, diversifiedPolicy, groupLimit, repeatedGroupCounts } from '../src/lib/nfl-dfs/diversified';
 
 const input = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const players = restorePlayers(input.run.input_snapshot);
@@ -12,6 +12,8 @@ const settings: NflOptimizerSettings = applyDiversified({ ...input.run.settings,
 const start = Date.now();
 const result = optimizeNflLineups(players, settings);
 assert.equal(result.lineups.length, settings.nLineups);
+assert.ok(diversifiedCompositionValid(result.lineups,settings));
+console.error(JSON.stringify(diversifiedComposition(result.lineups)));
 assert.ok(result.exposureReport!.every(r => r.overall <= r.overallMax));
 const policy = diversifiedPolicy(settings);
 for (const {group,count} of repeatedGroupCounts(result.lineups).values()) assert.ok(count <= groupLimit(group,policy,settings.nLineups));

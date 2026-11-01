@@ -1,11 +1,12 @@
 import type { NflGeneratedLineup, NflOptimizerPlayer, NflOptimizerSettings } from '@/app/dfs/nfl/nfl-optimizer';
 
-export const DIVERSIFIED_VERSION = 'nfl-classic-diversified-v1';
+export const DIVERSIFIED_VERSION = 'nfl-classic-winners-diversified-v2';
 /** Risk preferences, not fitted performance claims. Shares are 0..1. */
 export const DEFAULT_DIVERSIFIED = {
   qbMax: .20, rbMax: .55, wrMax: .40, teMax: .45, dstMax: .25,
   pairMax: .25, tripleMax: .15, playerDstMax: .20,
   softStart: .25, softPenalty: .5, minimumQbs: 0, candidateTarget: 500,
+  qbDoubleStackShare: .40, bringBackShare: .50, twoTeShare: .30, maxFourWrShare: .35, maxOtherGameStackShare: .35,
 };
 export type DiversifiedPolicy = typeof DEFAULT_DIVERSIFIED;
 export const diversifiedCount = (share: number, n: number) => Math.max(1, Math.floor(share * n + 1e-9));
@@ -14,6 +15,8 @@ export function diversifiedPolicy(settings: Pick<NflOptimizerSettings, 'diversif
   const policy = { ...DEFAULT_DIVERSIFIED, ...settings.diversified };
   for (const key of ['qbMax', 'rbMax', 'wrMax', 'teMax', 'dstMax', 'pairMax', 'tripleMax', 'playerDstMax', 'softStart'] as const)
     if (!Number.isFinite(policy[key]) || policy[key] <= 0 || policy[key] > 1) throw new Error(`Invalid Diversified ${key}: use a share above 0 and at most 1.`);
+  for (const key of ['qbDoubleStackShare', 'bringBackShare', 'twoTeShare', 'maxFourWrShare', 'maxOtherGameStackShare'] as const)
+    if (!Number.isFinite(policy[key]) || policy[key] < 0 || policy[key] > 1) throw new Error(`Invalid Winners + Diversified ${key}: use a share from 0 to 1.`);
   if (!Number.isFinite(policy.softPenalty) || policy.softPenalty < 0 || policy.softPenalty > 5) throw new Error('Diversified soft penalty must be 0–5.');
   if (!Number.isInteger(policy.minimumQbs) || policy.minimumQbs < 0 || policy.minimumQbs > 32) throw new Error('Diversified minimum QBs must be 0–32.');
   if (!Number.isInteger(policy.candidateTarget) || policy.candidateTarget < 50 || policy.candidateTarget > 1000) throw new Error('Diversified candidate target must be 50–1000.');
@@ -32,8 +35,8 @@ export function applyDiversified(settings: NflOptimizerSettings): NflOptimizerSe
     maxDstVsOffenseShare: 0, maxQbExposure: policy.qbMax,
     // The new profile is ownership neutral, including restored drafts and callers outside the page.
     useHeuristicOwnershipLeverage: false, ownershipLeverageEnabled: false, leverageExponent: 0,
-    bringBack: false, bringBackShare: undefined, qbDoubleStackShare: undefined,
-    twoTeShare: undefined, maxFourWrShare: undefined, maxOtherGameStackShare: undefined,
+    bringBack: false, bringBackShare: policy.bringBackShare, qbDoubleStackShare: policy.qbDoubleStackShare,
+    twoTeShare: policy.twoTeShare, maxFourWrShare: policy.maxFourWrShare, maxOtherGameStackShare: policy.maxOtherGameStackShare,
     portfolioSelection: 'sequential', diversifiedCandidateSearch: false, diversifiedMeanSearch: false,
   };
 }
@@ -87,6 +90,7 @@ export type DiversifiedReport = {
   version: string; candidateTarget: number; candidates: number; attempts: number; candidateKeys: string[];
   stopReason: 'target' | 'attempt_limit' | 'time_limit'; swaps: number;
   requested: number; generated: number; minimumQbs: number; distinctQbs: number;
+  composition: ReturnType<typeof diversifiedComposition>;
   meanProjection: number; playersAt40Pct: number;
   repeated: Array<{ names: string[]; kind: string; count: number; limit: number }>;
   caps: Array<{ name: string; position: string; count: number; limit: number; override: boolean }>;
@@ -137,4 +141,28 @@ export function improveDiversifiedPortfolio(input: {
     if (!changed || evaluations > 12_000) break;
   }
   return { lineups: chosen.map((l,i) => ({ ...l, lineupNumber: i+1 })), candidates: candidates.size, attempts, candidateKeys:[...candidates.keys()], stopReason, swaps };
+}
+
+/** Recount actual rosters: selection must preserve the requested composition. */
+export function diversifiedComposition(lineups: NflGeneratedLineup[]) {
+  const counts = { doubleStacks: 0, bringBacks: 0, twoTe: 0, fourWr: 0, otherGameStacks: 0 };
+  for (const lineup of lineups) {
+    const players = lineup.slots.map(s => s.player), qb = players.find(p => p.position === 'QB');
+    if (!qb) continue;
+    if (players.filter(p => p.team === qb.team && ['WR','TE'].includes(p.position)).length >= 2) counts.doubleStacks++;
+    if (players.some(p => p.team === qb.opponent && ['RB','WR','TE'].includes(p.position))) counts.bringBacks++;
+    if (players.filter(p => p.position === 'TE').length >= 2) counts.twoTe++;
+    if (players.filter(p => p.position === 'WR').length >= 4) counts.fourWr++;
+    const teams = new Map<string, number>();
+    for (const p of players) if (['RB','WR','TE'].includes(p.position) && p.team !== qb.team && p.team !== qb.opponent)
+      teams.set(p.team, (teams.get(p.team) ?? 0) + 1);
+    if ([...teams.values()].some(count => count >= 2)) counts.otherGameStacks++;
+  }
+  return counts;
+}
+export function diversifiedCompositionValid(lineups: NflGeneratedLineup[], settings: NflOptimizerSettings) {
+  const c = diversifiedComposition(lineups), p = diversifiedPolicy(settings), n = settings.nLineups;
+  return c.doubleStacks === Math.round(n*p.qbDoubleStackShare) && c.bringBacks === Math.round(n*p.bringBackShare)
+    && c.twoTe === Math.round(n*p.twoTeShare) && c.fourWr <= Math.floor(n*p.maxFourWrShare+1e-9)
+    && c.otherGameStacks <= Math.floor(n*p.maxOtherGameStackShare+1e-9);
 }
