@@ -16,12 +16,21 @@ export function BoomLineups({ board }: { board: BoomBoard | null }) {
   const [saving, setSaving] = useState(false);
   const [receipt, setReceipt] = useState("");
   useEffect(() => { const update = () => setNow(Date.now()); update(); const timer = setInterval(update, 1000); return () => clearInterval(timer); }, []);
+  useEffect(() => {
+    const feature = (event: Event) => {
+      const id = (event as CustomEvent<{id?: string}>).detail?.id;
+      if (saving || !board?.players.some(p => p.id === id && p.boomRank !== null)) return;
+      setSelected(id!); setRequested(2); setReceipt("");
+    };
+    window.addEventListener("nba-boom-feature", feature);
+    return () => window.removeEventListener("nba-boom-feature", feature);
+  }, [board, saving]);
   const result = useMemo(() => {
     if (!board) return null;
     try { return buildBoomLineups(board, selected || null, requested, maxDrop); } catch { return null; }
   }, [board, selected, requested, maxDrop]);
   if (!board || !result) return (
-    <section className="rounded-xl border border-slate-700 bg-[#0f1726] p-5 text-slate-200">
+    <section id="boom-lineups" style={{scrollMarginTop:"6rem"}} className="rounded-xl border border-slate-700 bg-[#0f1726] p-5 text-slate-200">
       <h2 className="font-semibold text-white">Boom lineups</h2>
       <p className="mt-1 text-sm">No frozen pregame snapshot for this date yet. It is taken at 11:37 AM ET on game days.</p>
     </section>
@@ -48,7 +57,7 @@ export function BoomLineups({ board }: { board: BoomBoard | null }) {
     } catch (e) { setReceipt(e instanceof Error ? e.message : "Could not save"); } finally { setSaving(false); }
   };
   return (
-    <section className="space-y-4 rounded-xl border border-slate-700 bg-[#0f1726] p-5 text-slate-200" aria-label="Boom lineup builder">
+    <section id="boom-lineups" style={{scrollMarginTop:"6rem"}} className="space-y-4 rounded-xl border border-slate-700 bg-[#0f1726] p-5 text-slate-200" aria-label="Boom lineup builder">
       <div>
         <h2 className="text-xl font-semibold text-white">Boom lineups <span className="text-sm text-amber-300">· experimental</span></h2>
         <p className="mt-1 text-sm">Give a rising-shot-volume player more places in five three-player lineups. Nobody&apos;s projection changes; lineup 1 is always the three highest lines.</p>
@@ -57,22 +66,22 @@ export function BoomLineups({ board }: { board: BoomBoard | null }) {
       </div>
       <div className="flex flex-wrap items-end gap-4">
         <label className="min-w-0 flex-1 text-sm">Player to include more often
-          <select className="mt-1 block w-full rounded border bg-slate-900 p-2" value={selected} onChange={(e) => { setSelected(e.target.value); reset(); }}>
+          <select disabled={saving} className="mt-1 block w-full rounded border bg-slate-900 p-2" value={selected} onChange={(e) => { setSelected(e.target.value); reset(); }}>
             <option value="">Choose a player · top lineups only</option>
             {candidates.map((p) => <option key={p.id} value={p.id}>Boom #{p.boomRank} {p.name} · line {p.points.toFixed(1)} (#{p.pointRank}) · {p.shotsLast3?.toFixed(1)} vs {p.shotsLast20?.toFixed(1)} shots</option>)}
           </select>
         </label>
         <label className="text-sm">Minimum inclusion
-          <select className="mt-1 block rounded border bg-slate-900 p-2" value={requested} onChange={(e) => { setRequested(Number(e.target.value)); reset(); }}>{[0, 1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n} of {LINEUPS} lineups</option>)}</select>
+          <select disabled={saving} className="mt-1 block rounded border bg-slate-900 p-2" value={requested} onChange={(e) => { setRequested(Number(e.target.value)); reset(); }}>{[0, 1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n} of {LINEUPS} lineups</option>)}</select>
         </label>
         <label className="text-sm">Max points below best trio
-          <select className="mt-1 block rounded border bg-slate-900 p-2" value={maxDrop} onChange={(e) => { setMaxDrop(Number(e.target.value)); reset(); }}>{[0, 3, 5, 10, 15, 20].map((n) => <option key={n} value={n}>{n} points</option>)}</select>
+          <select disabled={saving} className="mt-1 block rounded border bg-slate-900 p-2" value={maxDrop} onChange={(e) => { setMaxDrop(Number(e.target.value)); reset(); }}>{[0, 3, 5, 10, 15, 20].map((n) => <option key={n} value={n}>{n} points</option>)}</select>
         </label>
       </div>
       {featured && <div className="rounded bg-slate-800 p-3 text-sm">
         <strong>{featured.name}: {normal}/{LINEUPS} → {result.achieved}/{LINEUPS}</strong> · asked for at least {requested}/{LINEUPS}. Line {featured.points.toFixed(1)} (#{featured.pointRank} on the slate), boom #{featured.boomRank}.
         <p>Shot attempts a game: {featured.shotsLast3?.toFixed(1) ?? "?"} over his last 3 games, {featured.shotsLast20?.toFixed(1) ?? "?"} over his last 20. Availability: {featured.availability}.</p>
-        <button className="mt-2 rounded border px-3 py-1 disabled:opacity-40" disabled={requested >= LINEUPS} onClick={() => { setRequested(Math.min(LINEUPS, Math.max(requested, result.achieved) + 1)); reset(); }}>Include in one more lineup</button>
+        <button className="mt-2 rounded border px-3 py-1 disabled:opacity-40" disabled={saving || requested >= LINEUPS} onClick={() => { setRequested(Math.min(LINEUPS, Math.max(requested, result.achieved) + 1)); reset(); }}>Include in one more lineup</button>
       </div>}
       {!result.feasible && <p role="status" className="text-amber-300">{result.reason} Raise the points limit or lower the inclusion. No points are added to make it fit.</p>}
       <ol className="space-y-2">{result.adjusted.map((t, i) => <li key={t.key} className="rounded border border-slate-700 p-3">
