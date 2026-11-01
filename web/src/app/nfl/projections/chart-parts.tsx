@@ -1,5 +1,6 @@
 import {
-  boomThreshold, formatNumber, formatPercent, isPositionEstimate, POSITIONS, type RollingPlayer,
+  boomThreshold, formatNumber, formatPercent, formatSalary, formatValue, isPositionEstimate, pointsPerThousand,
+  POSITIONS, type RollingPlayer,
 } from "@/lib/nfl-dfs/rolling-projection-view";
 import { PositionChip } from "./projection-card";
 import { positionStyle } from "./range-bar";
@@ -33,6 +34,8 @@ export function PlayerTooltip({ player, x, y, width }: { player: RollingPlayer; 
       <p className="mt-0.5 text-muted-foreground">{player.team} vs {player.opponent}</p>
       <dl className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 tabular-nums">
         <dt className="text-muted-foreground">Projection</dt><dd className="text-right font-semibold">{formatNumber(player.projected)}</dd>
+        <dt className="text-muted-foreground">Salary</dt><dd className="text-right">{formatSalary(player.salary)}</dd>
+        <dt className="text-muted-foreground">Pts per $1K</dt><dd className="text-right">{formatValue(pointsPerThousand(player))}</dd>
         <dt className="text-muted-foreground">Floor</dt><dd className="text-right">{formatNumber(player.floor)}</dd>
         <dt className="text-muted-foreground">Median</dt><dd className="text-right">{formatNumber(player.median)}</dd>
         <dt className="text-muted-foreground">Ceiling</dt><dd className="text-right">{formatNumber(player.ceiling)}</dd>
@@ -41,5 +44,14 @@ export function PlayerTooltip({ player, x, y, width }: { player: RollingPlayer; 
       </dl>
       {isPositionEstimate(player) && <p className="mt-2 text-muted-foreground">Position estimate: too few games for his own.</p>}
     </div>
+  );
+}
+
+export function ExpandButton({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
+  return (
+    <button type="button" onClick={onToggle} aria-pressed={expanded}
+      className="rounded-md border px-2 py-0.5 text-xs font-medium text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring">
+      {expanded ? "Collapse" : "Expand"}
+    </button>
   );
 }
