@@ -668,7 +668,21 @@ every 5 min); the NFL DFS page builds aliases from
 (~150 MB from disk -> 0 per open); the matchup-study grader reduces each
 run's ~210 KB manifest once instead of per player row (158 s -> 9.5 s).
 The indexes were built concurrently on the live database through the direct
-(non-pooler) endpoint. Re-measure the hourly CU after a few days.
+(non-pooler) endpoint. Re-measured 2026-10-23/30: about -0.02 to -0.04 CU
+(~$2-3/month); no hour reached the 0.25 floor.
+
+**PFR identity claims were re-inserted every run (2026-10-31).** The top
+disk reader after that was `freeze_identity` (`db/nfl_pfr_schema.py`, hash-
+pinned by the matchup studies, so not edited): ~152 MB per call, ~300 calls a
+day, aggregating `nfl_player_identity_claims` through the crosswalk view. The
+table held 243k PFR rows for 2,209 claims because `ingest/nfl_pfr_identity.py`
+digests each claim with the run's capture time, so the digest-only conflict
+re-inserted all of them every run (~6,600 rows a day). It now skips a claim
+already stored with the same namespace, ids, season, method, team and
+position; the first capture keeps its evidence. The frozen identity a snapshot
+records is unchanged (the crosswalk reads only gsis_id/status). Existing
+duplicates are removed by a one-off owner-run delete that checks the crosswalk
+digest is identical before committing.
 
 ## Parallel agents: commit locally, one session pushes (2026-10-04)
 
