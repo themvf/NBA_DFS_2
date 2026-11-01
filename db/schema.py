@@ -5932,6 +5932,15 @@ INDEXES = [
     # Insert-only, so autovacuum's default trigger (20% growth, ~5 days of captures) left the newest
     # two weeks unmarked and the index-only scan above went back to the table for every row.
     "ALTER TABLE ff_player_injury_observations SET (autovacuum_vacuum_insert_scale_factor = 0.02)",
+    # The pick'em page finds each game's latest forecast cutoff before reading any forecast JSON
+    # (web/src/db/pickem-matchup.ts); this answers that from the index alone. The table is created
+    # by the hash-pinned research freezer, so the index is declared here, only where it exists.
+    """DO $$ BEGIN
+      IF to_regclass('nfl_pickem_matchup_forecasts') IS NOT NULL THEN
+        CREATE INDEX IF NOT EXISTS idx_nfl_pickem_matchup_forecasts_cutoff
+          ON nfl_pickem_matchup_forecasts (game_id, decision_cutoff DESC) INCLUDE (available_at);
+      END IF;
+    END $$""",
     "CREATE INDEX IF NOT EXISTS idx_nfl_dfs_range_ratios_week ON nfl_dfs_range_ratios(season, week, ff_player_id, computed_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_nfl_roster_status_player ON nfl_roster_status_observations(season, player_id, observed_at DESC, id DESC)",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_ff_player_injuries_one_active ON ff_player_injuries(player_id) WHERE active",

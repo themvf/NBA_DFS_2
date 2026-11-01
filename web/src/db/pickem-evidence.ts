@@ -61,8 +61,12 @@ export async function getPickemEvidence(season: number): Promise<PickemEvidence>
         AND COALESCE(n.published_at, n.observed_at) <= ${loadedAt}::timestamptz
         AND n.observed_at < g.kickoff AND n.observed_at <= ${loadedAt}::timestamptz
       ORDER BY n.published_at DESC, n.id DESC`),
+    // Each player's newest qualifying report per game, taken straight from the
+    // (player_id, observed_at DESC) index. The earlier DISTINCT ON sorted every
+    // report of the season (9 s, ~1.7 GB read on 2026-11-01); this returns the
+    // same rows in ~0.2 s. Games whose 7-day window has not opened have no rows.
     db.execute(sql`
-      SELECT DISTINCT ON (g.id, p.id) g.id game_id, p.canonical_name, p.position,
+      SELECT g.id game_id, p.canonical_name, p.position,
         p.team_abbrev, o.id, o.normalized_status, o.body_part, o.practice_status,
         o.description, o.source, o.observed_at, o.provider_updated_at,
         COALESCE(o.raw_payload->>'url', s.request_params->>'url') source_url
@@ -70,14 +74,19 @@ export async function getPickemEvidence(season: number): Promise<PickemEvidence>
       JOIN nfl_teams h ON h.team_id = g.home_team_id
       JOIN nfl_teams a ON a.team_id = g.away_team_id
       JOIN ff_players p ON p.season = g.season AND p.team_abbrev IN (h.abbreviation, a.abbreviation)
-      JOIN ff_player_injury_observations o ON o.player_id = p.id AND o.season = g.season
+      JOIN LATERAL (
+        SELECT o.id, o.normalized_status, o.body_part, o.practice_status, o.description,
+          o.source, o.observed_at, o.provider_updated_at, o.raw_payload, o.source_snapshot_id
+        FROM ff_player_injury_observations o
+        WHERE o.player_id = p.id AND o.season = g.season
+          AND o.observed_at < g.kickoff AND o.observed_at <= ${loadedAt}::timestamptz
+          AND o.observed_at >= g.kickoff - INTERVAL '7 days'
+          AND (o.provider_updated_at IS NULL OR
+            (o.provider_updated_at < g.kickoff AND o.provider_updated_at <= ${loadedAt}::timestamptz))
+        ORDER BY o.observed_at DESC, o.id DESC LIMIT 1) o ON TRUE
       LEFT JOIN ff_source_snapshots s ON s.id = o.source_snapshot_id
-      WHERE g.season = ${season} AND o.observed_at < g.kickoff
-        AND o.observed_at <= ${loadedAt}::timestamptz
-        AND o.observed_at >= g.kickoff - INTERVAL '7 days'
-        AND (o.provider_updated_at IS NULL OR
-          (o.provider_updated_at < g.kickoff AND o.provider_updated_at <= ${loadedAt}::timestamptz))
-      ORDER BY g.id, p.id, o.observed_at DESC, o.id DESC`),
+      WHERE g.season = ${season} AND g.kickoff - INTERVAL '7 days' <= ${loadedAt}::timestamptz
+      ORDER BY g.id, p.id`),
     db.execute(sql`
       SELECT g.id game_id, g.week, p.posteam team,
         COUNT(*) FILTER (WHERE p.play_type IN ('run','pass'))::int plays,
