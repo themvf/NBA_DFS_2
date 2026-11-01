@@ -118,3 +118,19 @@ and v1 stays.
 - No change to the thresholds, the population or the bootstrap after this
   commit.
 - The six discovery nights motivated this; they never count toward it.
+
+## Amendment 1 (2026-11-01): matching correction, no rule change
+
+The v1 grade matched players by `name_key` only, so two players the books and
+ESPN spell differently read `unmatched` although they played: Herb Jones
+("Herbert Jones" on ESPN; Oct 21, 29 and 31) and Ron Holland ("Ronald Holland
+II"; Oct 25). The grade now matches through the verified aliases in
+`PLAYER_ALIASES` (`model/nba_points_ladder.py`), the same ones the page already
+used. This restores rows the registered population always meant to include
+("graded against the same `nba_box_score_players` row"); the readers, rungs,
+metric, bootstrap, thresholds and floors are unchanged, and both readers go
+through the same `grade_captures`, so v1 and v2 stay paired. The stored
+`player_key` is still `name_key`, so re-grading updated the earlier
+`unmatched` rows in place. Effect on the prospective window: two Herb Jones
+rows (Oct 29 and 31) become `graded`. No v2 metric was
+read on the window by the session making it.

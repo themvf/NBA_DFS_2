@@ -99,3 +99,14 @@ def test_push_on_an_integer_line_is_not_graded():
     rows = m.grade_captures(date(2026, 10, 21), [_capture("A", books=_books(line=30))], {},
                             [_game([_player("A", "Atlanta Hawks", 30)])])
     assert rows[0].status == "push" and m.summarize(rows)["cells"]["over"]["n"] == 0
+
+
+def test_verified_aliases_match_but_keep_the_original_key():
+    # The books list "Herb Jones" / "Ron Holland"; ESPN lists "Herbert Jones" / "Ronald Holland II".
+    captures = [_capture("Herb Jones"), _capture("Ron Holland")]
+    games = [_game([_player("Herbert Jones", "Atlanta Hawks", 14), _player("Ronald Holland II", "Orlando Magic", 9, is_home=True)])]
+    rows = {r.player: r for r in m.grade_captures(date(2026, 10, 31), captures, {}, games)}
+    assert rows["Herb Jones"].status == "graded" and rows["Herb Jones"].actual_points == 14
+    assert rows["Ron Holland"].status == "graded" and rows["Ron Holland"].actual_points == 9
+    # Stored key unchanged, so a re-grade updates the earlier "unmatched" row instead of adding one.
+    assert rows["Herb Jones"].player_key == "herbjones" and rows["Ron Holland"].player_key == "ronholland"

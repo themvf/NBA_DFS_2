@@ -141,10 +141,13 @@ export function nameKey(name: string): string {
   return words.join("");
 }
 
+// Verified against ESPN box scores; mirrors PLAYER_ALIASES in model/nba_points_ladder.py.
+const PLAYER_ALIASES: Record<string, string> = { herbjones: "herbertjones", ronholland: "ronaldholland" };
+
 /** Verified aliases only; keep the general name normalizer unchanged. */
 export function playerKey(name: string): string {
   const key = nameKey(name);
-  return key === "herbjones" ? "herbertjones" : key;
+  return PLAYER_ALIASES[key] ?? key;
 }
 
 // Our teams table and The Odds API spell one team differently.
