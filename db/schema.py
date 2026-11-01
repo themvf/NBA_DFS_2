@@ -5941,6 +5941,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_ff_rankings_board ON ff_player_rankings(ranking_set_id, COALESCE(our_rank, overall_rank))",
     "CREATE INDEX IF NOT EXISTS idx_ff_features_player_season ON ff_player_season_features(player_id, season)",
     "CREATE INDEX IF NOT EXISTS idx_ff_week_stats_season_player ON ff_player_week_stats(season, player_id, week)",
+    # readLastGamePassingLeaders (web/src/db/nfl-dfs-usage-window.ts): its last-game lookup and team-week join seq-scanned the table twice per page open (~100 MB from disk a call).
+    "CREATE INDEX IF NOT EXISTS idx_ff_week_stats_nflverse_reg_team ON ff_player_week_stats(team, season, week) WHERE season_type='REG' AND source='nflverse'",
     "CREATE INDEX IF NOT EXISTS idx_nfl_dfs_week_results_game ON nfl_dfs_player_week_results(game_id, scoring_status, position)",
     "CREATE INDEX IF NOT EXISTS idx_nfl_dfs_week_results_player ON nfl_dfs_player_week_results(player_id, season, week)",
     "CREATE INDEX IF NOT EXISTS idx_nfl_dfs_projection_runs_slate ON nfl_dfs_projection_runs(season, week, as_of_at DESC)",
@@ -6054,6 +6056,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_cfb_plays_game ON cfb_plays(game_id, period, play_number)",
     "CREATE INDEX IF NOT EXISTS idx_cfb_plays_drive ON cfb_plays(cfbd_drive_id)",
     "CREATE INDEX IF NOT EXISTS idx_cfb_plays_season ON cfb_plays(season, season_type, week)",
+    # research/cfb_forecast_v1.py load_rows per-game offense PPA aggregate: index-only instead of a full heap scan (~320 MB from disk a call).
+    "CREATE INDEX IF NOT EXISTS idx_cfb_plays_offense_ppa ON cfb_plays(season, game_id, offense_team_id) INCLUDE (ppa) WHERE offense_team_id IS NOT NULL",
     "CREATE INDEX IF NOT EXISTS idx_cfb_plays_endgame ON cfb_plays(game_seconds_remaining) WHERE game_seconds_remaining IS NOT NULL",
     "CREATE INDEX IF NOT EXISTS idx_cfb_game_forecasts_game_run ON cfb_game_forecasts(game_id, run_id DESC)",
     "CREATE INDEX IF NOT EXISTS idx_cfb_market_comparisons_game_run ON cfb_market_comparisons(game_id, run_id DESC)",
