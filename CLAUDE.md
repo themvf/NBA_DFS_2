@@ -701,7 +701,11 @@ cutoffs, roster archive, pick'em, matchup report, source compare, draft board,
 depth-index membership). A reader needing another Sleeper key must join
 `ff_injury_payloads`; a test fails if `SLEEPER_EVIDENCE_FIELDS` outgrows the
 list. FantasyPros/official rows stay whole (the hash-pinned
-`research/nfl_game_leaders.py` reads FantasyPros payloads).
+`research/nfl_game_leaders.py` reads FantasyPros payloads). Rows written before
+this are compacted by the owner-run `python -m ingest.ff_injury_payload_backfill
+--apply` (dry run by default; leaves whole any row whose payload does not
+re-hash to its `response_hash`), then `VACUUM`; the file shrinks only after
+`VACUUM FULL`.
 
 ## Parallel agents: commit locally, one session pushes (2026-10-04)
 
