@@ -4,6 +4,8 @@ import {
   teamStyle,
   type BoardGame,
 } from "@/lib/nfl/pickem-live-board";
+import type { TeamIdentity } from "@/lib/nfl/team-identity-ranks";
+import { IdentityStrip } from "./identity-strip";
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 
@@ -70,7 +72,9 @@ function TeamRow({ g, abbr, score }: { g: BoardGame; abbr: string; score: number
   );
 }
 
-export function BoardCard({ g }: { g: BoardGame }) {
+export function BoardCard({ g, identities, season }: {
+  g: BoardGame; identities: Record<string, TeamIdentity>; season: number;
+}) {
   const o = outcomeOf(g);
   const now = latestChance(g);
   const homeP = g.pick === g.home ? now : 1 - now;
@@ -131,6 +135,8 @@ export function BoardCard({ g }: { g: BoardGame }) {
       </div>
 
       <Sparkline g={g} />
+
+      <IdentityStrip away={g.away} home={g.home} pick={g.pick} identities={identities} season={season} />
 
       <p className="text-xs text-muted-foreground">
         {g.pick} {move >= 0 ? "+" : ""}{move.toFixed(1)} pts this week · frozen at {pct(g.frozen)}

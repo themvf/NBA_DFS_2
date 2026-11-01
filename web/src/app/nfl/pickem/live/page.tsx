@@ -3,6 +3,8 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { unstable_cache } from "next/cache";
 import { getPickemLiveCard, getPickemLiveWeeks } from "@/db/queries";
+import { getNflIdentityTotals } from "@/db/nfl-team-identity";
+import { rankTeamIdentities } from "@/lib/nfl/team-identity-ranks";
 import {
   buildBoardGames,
   groupByWindow,
@@ -36,6 +38,17 @@ const cachedWeeks = unstable_cache(
 const cachedCard = unstable_cache(
   (season: number, week: number) => getPickemLiveCard(season, week),
   ["pickem-live-card"],
+  { revalidate: REVALIDATE },
+);
+
+/**
+ * Every team's season-to-date identity totals, as knowable before the slate:
+ * completed games from earlier weeks, kicked off and labelled before the card's
+ * first kickoff. One grouped query for all 32 teams.
+ */
+const cachedIdentityTotals = unstable_cache(
+  (season: number, week: number, cutoffIso: string) => getNflIdentityTotals(season, week, cutoffIso),
+  ["pickem-live-identity"],
   { revalidate: REVALIDATE },
 );
 
@@ -128,6 +141,9 @@ export default async function PickemLivePage({
   }
 
   const games = buildBoardGames(card, nowMs);
+  const firstKickoff = card.games.reduce(
+    (min, g) => (Date.parse(g.kickoff) < Date.parse(min) ? g.kickoff : min), card.games[0]?.kickoff ?? card.frozenAt);
+  const identities = rankTeamIdentities(await cachedIdentityTotals(season, week, firstKickoff));
   const s = summarize(games);
   const left = games.length - s.finals;
   const vegas = s.vegasFlips.join(", ") || "None";
@@ -174,7 +190,7 @@ export default async function PickemLivePage({
               </small>
             </h3>
             <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,300px),1fr))] gap-3">
-              {gs.map((g) => <BoardCard key={g.gameId} g={g} />)}
+              {gs.map((g) => <BoardCard key={g.gameId} g={g} identities={identities} season={season} />)}
             </div>
           </section>
         );
@@ -183,7 +199,9 @@ export default async function PickemLivePage({
       <p className="border-t pt-3 text-xs text-muted-foreground">
         Picks and frozen chances: pick&apos;em ledger (card #{card.id}). Lines: our odds captures,
         vig-free consensus, the 10 days before kickoff. Finals: nfl_season_games (nflverse), the
-        same table settlement grades from, reloaded a few times a day. Cached for five minutes.
+        same table settlement grades from, reloaded a few times a day. Team identity: play-by-play
+        before week {week}, regular season, same definitions as the Team Identity page. Cached for
+        five minutes.
       </p>
     </div>
   );
