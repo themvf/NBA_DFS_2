@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import type { BoomBoard } from "@/lib/nba-boom-lineups";
+import { boomLookup, boomIdentity } from "@/lib/nba-boom-display";
 import type { GameSummary, ScorerRow } from "@/lib/nba-top-scorers";
 
 // The app-wide `* { border-color: var(--border) }` rule beats border utilities, so the
@@ -57,9 +59,9 @@ function positionStyle(pos: string | null) {
 const THIN_LINE_NOTE =
   "Only one book quotes this line. On Oct 20-31, 7 of 20 one-book players did not play, against 2 of 1,095 with four or more books.";
 
-type SortKey = "line" | "ceiling" | "p25" | "p30" | "p40" | "ppgNow" | "ppg" | "delta" | "books" | "rank";
+type SortKey = "boom" | "line" | "ceiling" | "p25" | "p30" | "p40" | "ppgNow" | "ppg" | "delta" | "books" | "rank";
 
-const SORTERS: Record<SortKey, (r: ScorerRow) => number> = {
+const SORTERS: Record<Exclude<SortKey, "boom">, (r: ScorerRow) => number> = {
   line: (r) => r.line,
   ceiling: (r) => r.distribution?.ceiling ?? -1,
   p25: (r) => r.distribution?.atLeast[25] ?? -1,
@@ -128,23 +130,26 @@ export function TopScorersClient({
   pulled,
   lastSeason,
   thisSeason,
+  boomBoard = null,
 }: {
   scorers: ScorerRow[];
   games: GameSummary[];
   pulled: Pulled[];
   lastSeason: string;
   thisSeason: string;
+  boomBoard?: BoomBoard | null;
 }) {
   const [tab, setTab] = useState<"players" | "games" | "pulled">("players");
   const [game, setGame] = useState<string>("all");
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "line", desc: true });
   const [open, setOpen] = useState<string | null>(null);
 
+  const booms = useMemo(() => boomLookup(boomBoard), [boomBoard]);
   const shown = useMemo(() => {
     const base = game === "all" ? scorers : scorers.filter((s) => s.eventId === game);
-    const f = SORTERS[sort.key];
+    const f = sort.key === "boom" ? (r: ScorerRow) => booms.get(boomIdentity(r.eventId, r.player))?.boom ?? -Infinity : SORTERS[sort.key];
     return [...base].sort((a, b) => (sort.desc ? f(b) - f(a) : f(a) - f(b)) || a.rank - b.rank);
-  }, [scorers, game, sort]);
+  }, [scorers, game, sort, booms]);
 
   const scaleMax = Math.max(
     40,
@@ -176,6 +181,10 @@ export function TopScorersClient({
 
   return (
     <div className="overflow-hidden rounded-xl border bg-[#0f1726] text-slate-200" style={DARK_BORDER}>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 p-4 text-sm">
+        <span>{boomBoard ? `${boomBoard.players.filter(p => p.boomRank !== null).length} rising-volume players in the frozen boom snapshot` : "Boom scores awaiting a frozen pregame snapshot"} � experimental</span>
+        <a href="#boom-lineups" className="rounded bg-sky-600 px-3 py-2 text-white">Open boom lineups</a>
+      </div>
       <div className="grid grid-cols-1 border-b border-slate-800 sm:grid-cols-3">
         <div className="border-b border-slate-800 px-4 py-3 sm:border-b-0 sm:border-r">
           <div className="font-mono text-[11px] uppercase tracking-widest text-slate-500">Top line</div>
@@ -265,6 +274,7 @@ export function TopScorersClient({
                 <tr>
                   <th className="px-3 py-3 text-left font-medium uppercase tracking-wider">Player</th>
                   {header("line", "Line")}
+                  {header("boom", "Boom shots")}
                   {header("ceiling", "Floor – Ceiling", "text-left")}
                   {header("p25", "25+")}
                   {header("p30", "30+")}
@@ -280,6 +290,7 @@ export function TopScorersClient({
                 {shown.map((s) => {
                   const key = `${s.eventId}-${s.player}`;
                   const pos = positionStyle(s.position);
+                  const boom = booms.get(boomIdentity(s.eventId, s.player));
                   const split = s.lineHigh > s.lineLow;
                   return (
                     <FragmentRow key={key} expanded={open === key} row={s}>
@@ -308,12 +319,17 @@ export function TopScorersClient({
                                 1 BOOK
                               </span>
                             )}
+                            {boom?.boomRank != null && <button type="button" aria-label={`More lineups with ${s.player}`} className="rounded border border-amber-400/60! px-2 py-1 text-xs text-amber-300" onClick={e => {
+                              e.stopPropagation(); window.dispatchEvent(new CustomEvent("nba-boom-feature", {detail:{id:boom.id}}));
+                              document.getElementById("boom-lineups")?.scrollIntoView({behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",block:"start"});
+                            }}>Boom +{boom.boom!.toFixed(1)} � More lineups</button>}
                           </div>
                           <div className="mt-0.5 font-mono text-xs text-slate-400">
                             {s.teamAbbrev ? `${s.teamAbbrev}${s.teamSource === "prior" ? " (prior season)" : ""} · vs ${s.opponentAbbrev ?? s.opponent}` : `${gameName.get(s.eventId)} · team unknown`} · {tip(s.commenceTime)}
                           </div>
                         </td>
                         <td className="border-t border-slate-800 px-3 text-right font-mono text-base font-semibold text-white">{one(s.line)}</td>
+                        <td className="border-t border-slate-800 px-3 text-right font-mono text-amber-300" title="Frozen change in FGA + 0.44 FTA per game: last 3 minus last 20. Not a probability.">{boom?.boom == null ? "-" : signed(boom.boom)}</td>
                         <td className="border-t border-slate-800 px-3"><RangeBar row={s} scaleMax={scaleMax} /></td>
                         <td className="border-t border-slate-800 px-3 text-right font-mono text-amber-300">
                           {pct(s.distribution?.atLeast[25] ?? null)}
@@ -359,7 +375,7 @@ export function TopScorersClient({
               </tbody>
             </table>
             <p className="mt-2 font-mono text-[11px] text-slate-500">
-              Click a row for every book&apos;s line and price and the ladder&apos;s chances. Rank = slate / on his team. Team is from his latest game this season; &quot;prior season&quot; means he has not played yet. Availability is unverified; 1 BOOK marks a line only one book quotes, which often means the player may sit. 25+ / 30+ / 40+ and
+              Boom shots = frozen change in FGA + 0.44 FTA per game, last 3 versus last 20. Missing scores stay unavailable; this is not a probability. More lineups selects the player below. Click a row for every book&apos;s line and price and the ladder&apos;s chances. Rank = slate / on his team. Team is from his latest game this season; &quot;prior season&quot; means he has not played yet. Availability is unverified; 1 BOOK marks a line only one book quotes, which often means the player may sit. 25+ / 30+ / 40+ and
               floor–ceiling come from the alternate points ladder; &quot;-&quot; means no ladder or a threshold past its last rung.
             </p>
           </div>
@@ -445,7 +461,7 @@ function FragmentRow({
       {children}
       {expanded && (
         <tr className="bg-[#0b1220]">
-          <td colSpan={9} className="border-t border-slate-800 px-4 py-2 font-mono text-xs text-slate-300">
+          <td colSpan={12} className="border-t border-slate-800 px-4 py-2 font-mono text-xs text-slate-300">
             <div className="mb-1">
               {d ? (
                 <>

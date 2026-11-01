@@ -134,7 +134,7 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
           </p>
         </section>
       ) : (
-        <TopScorersClient scorers={scorers} games={games} pulled={pulled} lastSeason={LAST_SEASON} thisSeason={seasonLabel(date)} />
+        <TopScorersClient scorers={scorers} games={games} pulled={pulled} lastSeason={LAST_SEASON} thisSeason={seasonLabel(date)} boomBoard={boomBoard} />
       )}
 
       <BoomLineups key={date} board={boomBoard} />
