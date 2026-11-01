@@ -1168,7 +1168,7 @@ function buildOne(
     }
   }
   const solved = solver.Solve({ optimize: "score", opType: "max", constraints, variables, binaries,
-    ...(settings.buildShape === "diversified" ? { options: { timeout: settings.diversifiedCandidateSearch ? 150 : 1000 } } : {}) });
+    ...(settings.buildShape === "diversified" ? { options: { timeout: settings.diversifiedCandidateSearch ? 150 : 3000 } } : {}) });
   if (solved.feasible === false) {
     // Forcing slot minimums made this lineup impossible (salary, team caps,
     // overlap). Build it without them rather than ending the run early; the

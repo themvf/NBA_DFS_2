@@ -77,7 +77,7 @@ portfolio exposure/combination budgets are not spent on unselected candidates.
 
 Candidate generation stops at the requested target, twice that many attempts,
 or 25 seconds, whichever comes first. Each candidate solve has a 150ms limit;
-first-pass solves have a 1-second limit. Integer output and completed rosters
+first-pass solves have a 3-second limit to accommodate the combined constraints. Integer output and completed rosters
 are checked. Time-limited searches do not imply that the target was reached
 or optimality was proved. The exact roster-key bank is saved for audits.
 
