@@ -2591,6 +2591,18 @@ TABLES = [
         UNIQUE(source_snapshot_id, player_id, source),
         CHECK(normalized_status IN ('HEALTHY','QUESTIONABLE','DOUBTFUL','OUT','IR','PUP','NFI','SUSPENDED','UNKNOWN'))
     )""",
+    # Content-addressed full provider payloads (2026-10-31). A Sleeper
+    # observation row keeps every scalar column and only the payload keys a
+    # reader uses (ingest.ff_injuries.SLEEPER_COMPACT_KEYS, marked "_compact");
+    # the full payload is stored here once per distinct response_hash. Over
+    # 951k Sleeper rows there were 34,656 distinct payloads, so this replaces
+    # ~1.3 GB of repeated JSON with ~50 MB.
+    """CREATE TABLE IF NOT EXISTS ff_injury_payloads (
+        response_hash TEXT PRIMARY KEY,
+        source TEXT NOT NULL,
+        raw_payload JSONB NOT NULL,
+        stored_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )""",
     # nflverse weekly-roster status (ACT / DEV practice squad / INA / RES ...) as
     # each capture saw it. Append-only and change-only: a row is written when a
     # player's (roster_week, team, status, description) differs from his newest

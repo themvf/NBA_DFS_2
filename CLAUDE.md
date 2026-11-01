@@ -684,6 +684,25 @@ records is unchanged (the crosswalk reads only gsis_id/status). Existing
 duplicates are removed by a one-off owner-run delete that checks the crosswalk
 digest is identical before committing.
 
+**Sleeper injury observations keep every row, not every payload (2026-10-31).**
+`ff_player_injury_observations` was 1.9 GB (951k Sleeper rows, ~1.57 KB each,
+~1.1 GB a month), but only 34,656 distinct Sleeper payloads exist. Skipping
+unchanged rows was rejected: the availability resolver, its 72 h Sleeper
+freshness limit, every decision record (`observation_id`, `available_at`,
+`source_snapshot_id`) and `getNflRosterEvidence`'s `fetchedAt` read each
+capture's own row, so fewer rows changes decisions. Instead a Sleeper row keeps
+every scalar column and only `SLEEPER_COMPACT_KEYS` (the five
+`SLEEPER_EVIDENCE_FIELDS` plus `url`, present exactly as sent, marked
+`_compact`) in `raw_payload`; the full payload is stored once in
+`ff_injury_payloads` by the row's own `response_hash` (still the full payload's
+hash). Replayed read-only on weeks 5-8 with every Sleeper row compacted: 45 of
+45 reader outputs identical (availability loader + resolver at 16 real run
+cutoffs, roster archive, pick'em, matchup report, source compare, draft board,
+depth-index membership). A reader needing another Sleeper key must join
+`ff_injury_payloads`; a test fails if `SLEEPER_EVIDENCE_FIELDS` outgrows the
+list. FantasyPros/official rows stay whole (the hash-pinned
+`research/nfl_game_leaders.py` reads FantasyPros payloads).
+
 ## Parallel agents: commit locally, one session pushes (2026-10-04)
 
 Every push to GitHub starts a Vercel build (a branch push builds Preview, a
