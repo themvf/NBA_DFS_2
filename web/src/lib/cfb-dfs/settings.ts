@@ -22,10 +22,15 @@ export interface CfbPoolPlayer {
   proj: number;
 }
 
+/** A frozen ownership forecast: [total %, Captain % or null, UTIL % or null] per DraftKings id. */
+export interface CfbOwnershipSnapshot { version: string; inputsDigest: string; byId: Record<string, [number, number | null, number | null]> }
+
 export interface CfbOptimizerSettings {
   mode?: CfbMode;
   /** User-entered base point estimates, preserved with the run. */
   projectionById?: Record<string, number>;
+  /** The field-ownership estimate the run was built beside, frozen for grading. Written by the server. */
+  ownership?: CfbOwnershipSnapshot;
   nLineups: number;
   /** 0-1: the most lineups any one player may appear in, as a share. */
   maxExposure: number;

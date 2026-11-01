@@ -20,6 +20,9 @@ import {
   cfbCaptainTable, cfbPerfectLineup, cfbProjectionError, parseCfbContestStandings, scoreCfbLineups, summarizeCfbSet,
   type CfbCaptainRow, type CfbPerfectLineup, type CfbSetResult, type PositionMiss, type ScoreCurve, type ScoredCfbLineup,
 } from "@/lib/cfb-dfs/results";
+import {
+  CFB_OWNERSHIP_COUNT_FROM, gradeCfbOwnership, projectCfbOwnership, type CfbOwnershipGrade, type CfbOwnershipInput,
+} from "@/lib/cfb-dfs/ownership-prior";
 import { searchTeamNews, type XNewsResult } from "@/lib/x-news";
 import { CFB_TRUSTED_ACCOUNTS, isXHandle } from "@/lib/x-news-accounts";
 
@@ -237,6 +240,7 @@ export async function generateCfbLineups(uploadId: string, input: Partial<CfbOpt
   for (const p of players) if (p.status === "Q" && maxExposureById[String(p.dkId)] == null) maxExposureById[String(p.dkId)] = settings.questionableCapPct;
   const result = optimizeCfbLineups(pool, { ...settings, maxExposureById });
   if (!result.lineups.length) throw new Error(result.stoppedEarly ?? "No legal lineup could be built.");
+  settings.ownership = freezeCfbOwnership(players, mode, settings.projectionById ?? {});
   const runId = randomUUID();
   const values = result.lineups.map((l) => sql`(${runId}, ${l.lineupNumber},
     ${JSON.stringify(l.slots.map((s) => ({ slot: s.slot, dkId: s.player.dkId, proj: s.player.proj })))}::jsonb, ${l.salary}, ${l.projection})`);
@@ -245,6 +249,19 @@ export async function generateCfbLineups(uploadId: string, input: Partial<CfbOpt
     VALUES (${runId}, ${uploadId}, ${JSON.stringify(settings)}::jsonb, ${CFB_PROJECTION_VERSION}, ${CFB_OPTIMIZER_VERSION},
       ${result.lineups.length}, ${result.stoppedEarly})`);
   return { runId, lineups: result.lineups, stoppedEarly: result.stoppedEarly };
+}
+
+function ownershipInputs(players: readonly CfbPlayerRow[], manual: Record<string, number>): CfbOwnershipInput[] {
+  return players.map((p) => ({ dkId: p.dkId, position: p.position, salary: p.salary, captainSalary: p.captainSalary ?? null,
+    proj: p.proj, manual: manual[String(p.dkId)] ?? null, dkAvg: Number.isFinite(p.dkAvg) ? p.dkAvg : null, status: p.status }));
+}
+
+/** The ownership estimate a run is built beside, frozen into its settings so it can be graded later. */
+function freezeCfbOwnership(players: readonly CfbPlayerRow[], mode: CfbMode, manual: Record<string, number>): NonNullable<CfbOptimizerSettings["ownership"]> {
+  const inputs = ownershipInputs(players, manual);
+  const result = projectCfbOwnership(inputs, mode);
+  return { version: result.version, inputsDigest: createHash("sha256").update(JSON.stringify({ mode, inputs })).digest("hex"),
+    byId: Object.fromEntries(result.players.map((p) => [String(p.dkId), [p.ownPct, p.captainPct, p.utilPct]])) };
 }
 
 /** A saved run's lineups, rebuilt from the slate's players. */
@@ -287,6 +304,20 @@ export interface CfbResults {
   perfectNote: string | null;
   /** Showdown only: our Captains in the loaded set beside the field's. */
   captains: CfbCaptainRow[];
+  /** The field-ownership estimate against what the field did. */
+  ownership: CfbOwnershipReview;
+}
+
+export interface CfbOwnershipReview {
+  /**
+   * counted: frozen on a pre-lock run, contest imported after the spec;
+   * design: frozen, but the contest predates the spec; recomputed: no frozen
+   * forecast, computed now from the newest pre-lock run's inputs (descriptive only).
+   */
+  basis: "counted" | "design" | "recomputed";
+  version: string; runId: string | null; grade: CfbOwnershipGrade;
+  /** Per player: the estimate, what the field did, and our exposure, most-owned first. */
+  rows: Array<{ name: string; position: string; estimate: number; estimateCaptain: number | null; field: number; fieldCaptain: number | null; ours: number }>;
 }
 
 /** Import a DraftKings contest standings CSV for this slate. Re-importing the same contest replaces it. */
@@ -326,7 +357,7 @@ export async function readCfbResults(uploadId: string, runId: string | null): Pr
     ORDER BY imported_at DESC LIMIT 1`))[0];
   if (!contest) return null;
   const contestId = String(contest.contest_id);
-  const slate = rowsOf(await db.execute(sql`SELECT mode FROM cfb_dfs_slates WHERE upload_id = ${uploadId}`))[0];
+  const slate = rowsOf(await db.execute(sql`SELECT mode, first_kickoff FROM cfb_dfs_slates WHERE upload_id = ${uploadId}`))[0];
   const mode: CfbMode = slate?.mode === "showdown" ? "showdown" : "classic";
   const field = rowsOf(await db.execute(sql`SELECT player_key, name, drafted_pct, drafted_by_slot, fpts FROM cfb_dfs_contest_players WHERE contest_id = ${contestId}`));
   const captainPct = (r: Row) => { const v = (r.drafted_by_slot as Record<string, number> | null)?.CPT; return v == null ? null : Number(v); };
@@ -358,6 +389,8 @@ export async function readCfbResults(uploadId: string, runId: string | null): Pr
   // Every slate player is draftable in hindsight, whatever his status said; only a known score is required.
   const pool: CfbPoolPlayer[] = players.map((p) => ({ dkId: p.dkId, captainId: p.captainId,
     captainSalary: p.captainSalary, name: p.name, position: p.position, team: p.team, game: p.game, salary: p.salary, proj: 0 }));
+  const ownership = reviewCfbOwnership({ mode, players, runs, firstKickoff: slate?.first_kickoff ? new Date(String(slate.first_kickoff)).toISOString() : null,
+    importedAt: new Date(String(contest.imported_at)).toISOString(), field, oursPct });
   let perfect: CfbPerfectLineup | null = null;
   let perfectNote: string | null = null;
   try {
@@ -383,9 +416,44 @@ export async function readCfbResults(uploadId: string, runId: string | null): Pr
     fieldChalk: field.map((r) => ({ name: String(r.name), field: Number(r.drafted_pct), captain: captainPct(r), fpts: Number(r.fpts), ours: oursPct(String(r.player_key)) }))
       .sort((a, b) => b.field - a.field).slice(0, 15),
     perfect, perfectNote,
+    ownership,
     captains: mode === "showdown" ? cfbCaptainTable(chosen?.lineups ?? [], field.map((r) => ({ key: String(r.player_key), name: String(r.name),
       cpt: captainPct(r), fpts: Number(r.fpts) }))) : [],
   };
+}
+
+/**
+ * Grade the ownership estimate. The forecast is the one frozen on the newest
+ * run saved before the first kickoff. A slate without one gets a forecast
+ * recomputed now from that run's manual projections (or none), labelled
+ * descriptive so it is never mistaken for a counted grade.
+ */
+function reviewCfbOwnership(args: { mode: CfbMode; players: CfbPlayerRow[]; runs: Row[]; firstKickoff: string | null; importedAt: string;
+  field: Row[]; oursPct: (key: string) => number }): CfbOwnershipReview {
+  const { mode, players, runs, firstKickoff, importedAt, field, oursPct } = args;
+  const preLock = runs.filter((r) => !firstKickoff || Date.parse(new Date(String(r.created_at)).toISOString()) < Date.parse(firstKickoff));
+  const frozenRun = preLock.find((r) => (r.settings as CfbOptimizerSettings | null)?.ownership);
+  const frozen = (frozenRun?.settings as CfbOptimizerSettings | undefined)?.ownership;
+  let byId: Record<string, [number, number | null, number | null]>;
+  let version: string;
+  if (frozen) { byId = frozen.byId; version = frozen.version; }
+  else {
+    const manual = ((preLock[0]?.settings as CfbOptimizerSettings | undefined)?.projectionById) ?? {};
+    const r = projectCfbOwnership(ownershipInputs(players, manual), mode);
+    byId = Object.fromEntries(r.players.map((p) => [String(p.dkId), [p.ownPct, p.captainPct, p.utilPct]]));
+    version = r.version;
+  }
+  const basis: CfbOwnershipReview["basis"] = !frozen ? "recomputed" : Date.parse(importedAt) >= Date.parse(CFB_OWNERSHIP_COUNT_FROM) ? "counted" : "design";
+  const actual = new Map(field.map((r) => [String(r.player_key), { total: Number(r.drafted_pct),
+    bySlot: Object.fromEntries(Object.entries((r.drafted_by_slot ?? {}) as Record<string, unknown>).map(([k, v]) => [k, Number(v)])) }] as const));
+  const forecast = players.map((p) => { const f = byId[String(p.dkId)] ?? [0, null, null];
+    return { key: normalizeName(p.name), name: p.name, position: p.position, ownPct: f[0], captainPct: f[1], utilPct: f[2] }; });
+  const rows = forecast.map((p) => { const a = actual.get(p.key);
+    return { name: p.name, position: p.position, estimate: p.ownPct, estimateCaptain: p.captainPct, field: a?.total ?? 0,
+      fieldCaptain: mode === "showdown" ? a?.bySlot.CPT ?? 0 : null, ours: oursPct(p.key) }; })
+    .filter((r) => r.estimate >= 0.5 || r.field >= 0.5 || r.ours > 0)
+    .sort((a, b) => Math.max(b.field, b.estimate) - Math.max(a.field, a.estimate));
+  return { basis, version, runId: frozenRun ? String(frozenRun.run_id) : null, grade: gradeCfbOwnership(mode, forecast, actual), rows };
 }
 
 export interface CfbStatusRefresh {

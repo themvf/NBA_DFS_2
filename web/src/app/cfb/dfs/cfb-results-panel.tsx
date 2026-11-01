@@ -131,6 +131,8 @@ export default function CfbResultsPanel({ uploadId, runId, runsVersion }: { uplo
         </table>
       </Panel> : null}
 
+      <OwnershipReviewPanel review={results.ownership} showdown={showdown} />
+
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel title="Field's most-drafted vs ours" note={showdown ? "Total % drafted (Captain plus UTIL), the Captain share, what each scored, and our exposure in the loaded set." : "Total % drafted across all slots, what each scored, and our exposure in the loaded set."}>
           <table className="w-full text-left text-sm">
@@ -154,6 +156,37 @@ export default function CfbResultsPanel({ uploadId, runId, runsVersion }: { uplo
       </div>
     </> : null}
   </section>;
+}
+
+const BASIS_TEXT: Record<CfbResults["ownership"]["basis"], string> = {
+  counted: "Counted: the estimate frozen on your last pre-lock lineup set, graded against this contest.",
+  design: "Design contest: the estimate was frozen before lock, but this contest was imported before the spec existed, so it is reported and never counted.",
+  recomputed: "Not counted: no lineup set saved before lock carried a frozen estimate, so this one was computed after the game from the slate's inputs. Descriptive only.",
+};
+
+function OwnershipReviewPanel({ review, showdown }: { review: CfbResults["ownership"]; showdown: boolean }) {
+  const cells = (showdown ? [["All roles", review.grade.total], ["UTIL", review.grade.util], ["Captain", review.grade.captain]] : [["Every player", review.grade.total]]) as Array<[string, CfbResults["ownership"]["grade"]["total"]]>;
+  return <Panel title="Field ownership: estimate vs actual" note={`${BASIS_TEXT[review.basis]} Estimate ${review.version}, an uncalibrated stated prior. Bias is estimate minus actual, in percentage points.`}>
+    <div className="mb-3 flex flex-wrap gap-3 text-sm">
+      {cells.map(([label, g]) => <div key={label} className="rounded-lg border bg-slate-50 px-3 py-2">
+        <div className="text-[11px] font-bold uppercase text-slate-500">{label}</div>
+        {g ? <div>Spearman <b>{g.spearman == null ? "—" : g.spearman.toFixed(2)}</b> · avg miss <b>{g.mae.toFixed(1)}</b> · bias {g.bias > 0 ? "+" : ""}{g.bias.toFixed(1)} <span className="text-slate-500">(n={g.n})</span></div> : <div className="text-slate-500">not enough players</div>}
+      </div>)}
+    </div>
+    <div className="max-h-96 overflow-auto"><table className="w-full text-left text-sm">
+      <thead className="sticky top-0 bg-white text-xs uppercase text-slate-500"><tr>
+        <th className="p-2">Player</th><th className="p-2">Pos</th><th className="p-2 text-right">Estimate</th><th className="p-2 text-right">Field</th>
+        {showdown ? <><th className="p-2 text-right">Est. CPT</th><th className="p-2 text-right">Field CPT</th></> : null}<th className="p-2 text-right">Ours</th>
+      </tr></thead>
+      <tbody>{review.rows.map((r) => <tr key={r.name} className="border-t">
+        <td className="p-2">{r.name}</td><td className="p-2 text-slate-500">{r.position}</td>
+        <td className="p-2 text-right">{fmt(r.estimate)}%</td>
+        <td className={`p-2 text-right font-semibold ${r.field > r.estimate + 10 ? "text-red-700" : r.field + 10 < r.estimate ? "text-sky-700" : ""}`}>{fmt(r.field)}%</td>
+        {showdown ? <><td className="p-2 text-right">{fmt(r.estimateCaptain)}%</td><td className="p-2 text-right">{fmt(r.fieldCaptain)}%</td></> : null}
+        <td className="p-2 text-right text-slate-600">{fmt(r.ours)}%</td>
+      </tr>)}</tbody>
+    </table></div>
+  </Panel>;
 }
 
 function Card({ label, value, note }: { label: string; value: string; note: string }) {
