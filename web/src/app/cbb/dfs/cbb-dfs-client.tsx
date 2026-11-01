@@ -7,6 +7,7 @@ import { parseCbbSalaries, type CbbMode, type CbbSlate } from "@/lib/cbb-dfs/sal
 import { importCbbEstimates, projectCbbHistory, type CbbEstimates } from "@/lib/cbb-dfs/projection";
 import type { CbbLineup } from "@/lib/cbb-dfs/optimizer";
 import { buildBasketballLineups } from "./actions";
+import { CbbDfsProps } from "../props/props-board";
 
 const STORAGE_KEY = "cbb-dfs-workspace-v1";
 const inputClass = "rounded-md border bg-background px-3 py-2 text-sm";
@@ -111,6 +112,7 @@ export default function CbbDfsClient() {
       <div><Link href="/cbb" className="text-sm text-muted-foreground hover:underline">College Basketball</Link><h1 className="mt-1 text-3xl font-bold">DraftKings CBB DFS</h1><p className="mt-2 text-sm text-muted-foreground">Men’s basketball · Classic & Showdown · Projection workspace</p></div>
       <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900">Exploratory projections</span>
     </header>
+    <CbbDfsProps />
     <section className="rounded-xl border bg-card p-5">
       <h2 className="font-semibold">1. Load your slate</h2>
       <div className="mt-3 flex flex-wrap items-end gap-4">

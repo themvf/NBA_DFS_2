@@ -23,6 +23,7 @@ Scope: DraftKings men's college basketball **Classic and Showdown Captain**, add
 | Pace and opponent strength | CBBD team box scores and adjusted ratings | Candidate, not integrated |
 | Availability and expected rotations | Official team releases, game notes, confirmed lineups; provider cross-check | Not integrated; salary-file status is insufficient |
 | Actual ownership | Complete DraftKings final standings for specific contests | No CBB corpus imported or evaluated |
+| Player points/rebounds/assists lines | The Odds API `basketball_ncaab`, selected event and US books | Connected at `/cbb/props` and inside DFS; source times and missing coverage visible. Separate from fantasy projections; see [player-props contract](cbb-player-props.md) |
 | Possible contest archive | Existing repository's `ingest/statapi_contest.py` and configured `STAT_API_KEY` | NFL integration exists. CBB access, contest coverage, entitlement, and completeness have **not** been verified. Do not assume free previews or top-lineup samples represent the field |
 
 CBBD uses ending-year seasons: 2026–27 is `season=2027`. Documented `/games/players` responses are capped at 1,000 games, so a future collector must partition by date, detect saturated windows, deduplicate by source game/player identity, retain raw responses and capture timestamps, and verify minutes/stat completeness. A successful request alone would not establish a usable history corpus.
