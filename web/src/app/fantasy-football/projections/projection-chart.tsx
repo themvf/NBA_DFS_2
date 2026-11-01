@@ -14,8 +14,10 @@
  * left rather than being dropped or drawn at a fake zero.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { ProjectionScatterRow } from "@/db/queries-fantasy-football";
+import { niceTicks } from "@/lib/charts";
+import { useElementWidth } from "@/lib/use-element-width";
 import {
   BASELINE_GAMES,
   hasDraftMarket,
@@ -42,18 +44,6 @@ type Placed = { point: Point; cx: number; cy: number; label: { x: number; y: num
 const fmt1 = (n: number) => n.toFixed(1);
 const signed = (n: number) => `${n >= 0 ? "+" : "−"}${Math.abs(n).toFixed(1)}`;
 
-function niceTicks(lo: number, hi: number, count: number): number[] {
-  const raw = (hi - lo) / count;
-  if (!Number.isFinite(raw) || raw <= 0) return [0, 1];
-  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
-  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? 10 * mag;
-  const start = Math.floor(lo / step) * step;
-  const end = Math.ceil(hi / step) * step;
-  const out: number[] = [];
-  for (let v = start; v <= end + 1e-9; v += step) out.push(Number(v.toFixed(6)));
-  return out;
-}
-
 export default function ProjectionChart({
   rows,
   view,
@@ -64,8 +54,7 @@ export default function ProjectionChart({
   const [mode, setMode] = useState<Mode>("pg");
   const [scope, setScope] = useState<Scope>(() => (hasDraftMarket(rows) ? "adp" : "all"));
   const [hover, setHover] = useState<Placed | null>(null);
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-  const [width, setWidth] = useState(900);
+  const [wrapRef, width] = useElementWidth<HTMLDivElement>(900);
 
   // The hovered mark belongs to the previous position's layout, so drop it when
   // the position changes. Adjusted during render rather than in an effect --
@@ -76,16 +65,6 @@ export default function ProjectionChart({
     setHover(null);
   }
 
-  useEffect(() => {
-    const node = wrapRef.current;
-    if (!node) return;
-    const observer = new ResizeObserver((entries) => {
-      const next = Math.round(entries[0]?.contentRect.width ?? 0);
-      if (next > 0) setWidth(next);
-    });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, []);
 
   const points = useMemo<Point[]>(() => {
     const wanted = new Set(VIEW_POSITIONS[view]);
