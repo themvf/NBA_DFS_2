@@ -1,6 +1,6 @@
 import pandas as pd
 
-from ingest.nfl_roster_status import changed_rows, current_week_rows
+from ingest.nfl_roster_status import changed_rows, completeness_problem, current_week_rows
 
 
 def _frame(rows):
@@ -34,3 +34,19 @@ def test_week_roll_is_a_change_even_with_the_same_status():
     current = [{"gsis_id": "00-1", "roster_week": 8, "team": "CHI", "status": "DEV", "status_description": "P07"}]
     latest = {"00-1": {"roster_week": 7, "team": "CHI", "status": "DEV", "status_description": "P07"}}
     assert len(changed_rows(current, latest)) == 1
+
+
+def _week(teams: int, per_team: int):
+    return [{"gsis_id": f"{t}-{i}", "roster_week": 8, "team": f"T{t}", "status": "ACT", "status_description": "A01"}
+            for t in range(teams) for i in range(per_team)]
+
+
+def test_a_real_week_with_byes_is_whole():
+    # week 8 of 2026: 28 teams (four on bye), 734 offensive rows
+    assert completeness_problem(_week(28, 26)) is None
+    assert completeness_problem(_week(32, 30)) is None
+
+
+def test_a_truncated_week_is_refused():
+    assert "teams" in completeness_problem(_week(12, 26))
+    assert "a team" in completeness_problem(_week(28, 10))

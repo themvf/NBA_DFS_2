@@ -7697,6 +7697,12 @@ Stick 14.0 as TB's QB in week 3). nflverse's weekly roster does know:
   or before the slate's decision time. `ff_players.metadata.nflverse_roster` is
   only the latest copy and is not used. Slates evaluated before the first
   capture have no status and are unchanged; a failed read warns on every player.
+  **The capture wrote nothing until 2026-10-31:** it refused any week with
+  under 1,000 offensive rows, and a real week has 734-961 (26-30 a team; bye
+  teams are absent). The step is optional, so the workflow stayed green while
+  the rule never fired for weeks 7 and 8 until the fix; /health's
+  `nfl_roster_status_capture` row read FAIL the whole time. The guard is now
+  >= 24 teams and >= 20 rows a team (`completeness_problem`).
 - **Consumers:** every consumer of the workspace read (page, optimizer, Slate
   Check, exports, and the ghost factorial, whose freeze goes through
   `persistSalarySlate`) inherits the rule. The Python projection rows are not

@@ -47,10 +47,25 @@ ROSTER_URL = "https://github.com/nflverse/nflverse-data/releases/download/weekly
 DATASET_PREFIX = "roster-status-live-"
 # DraftKings positions (FB is listed as RB); DST has no roster row.
 POSITIONS = frozenset({"QB", "RB", "FB", "WR", "TE", "K"})
-# A healthy file has ~2,500 offensive rows in its newest week; far fewer means a
-# truncated or mid-rewrite download, and writing it would "move" hundreds of
-# players to whatever the partial file says.
-MIN_CURRENT_ROWS = 1000
+# A truncated or mid-rewrite download would "move" hundreds of players to
+# whatever the partial file says, so the newest week must look whole. Measured on
+# the 2026 file (2026-10-31): every week has 26-30 offensive rows per team listed
+# (734-961 rows), and teams on bye are absent from the week, so a week lists 26-32
+# teams. The first version demanded 1,000 rows in total (the comment counted all
+# positions, ~2,260) and refused every run from 2026-10-25 to 2026-10-31.
+MIN_CURRENT_TEAMS = 24
+MIN_ROWS_PER_TEAM = 20
+
+
+def completeness_problem(current: list[Mapping[str, Any]]) -> str | None:
+    """Why the newest week does not look whole, or None when it does."""
+    teams = {row["team"] for row in current if row.get("team")}
+    if len(teams) < MIN_CURRENT_TEAMS:
+        return f"nflverse roster newest week lists {len(teams)} teams (< {MIN_CURRENT_TEAMS})"
+    if len(current) < MIN_ROWS_PER_TEAM * len(teams):
+        return (f"nflverse roster newest week has {len(current)} offensive rows for {len(teams)} teams "
+                f"(< {MIN_ROWS_PER_TEAM} a team)")
+    return None
 
 KEY_FIELDS = ("roster_week", "team", "status", "status_description")
 
@@ -103,8 +118,9 @@ def capture_roster_status(db: Any, *, season: int, now: datetime) -> dict[str, A
     response.raise_for_status()
     frame = pd.read_csv(io.BytesIO(response.content), low_memory=False)
     current = current_week_rows(frame)
-    if len(current) < MIN_CURRENT_ROWS:
-        raise ValueError(f"nflverse roster newest week has {len(current)} offensive rows (< {MIN_CURRENT_ROWS}); no writes performed")
+    problem = completeness_problem(current)
+    if problem:
+        raise ValueError(f"{problem}; no writes performed")
     players = db.execute("SELECT id, gsis_id FROM ff_players WHERE season=%s AND gsis_id IS NOT NULL", (season,))
     by_gsis: dict[str, int] = {}
     for row in players:
