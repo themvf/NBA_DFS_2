@@ -4,7 +4,7 @@
  */
 import assert from "node:assert/strict";
 import {
-  environmentByTeam, filterPlayers, filterSearch, hiddenCounts, parseFilters, positionCounts, rangeMax,
+  classicSalaryIndex, environmentByTeam, filterPlayers, pointsPerThousand, salaryKey, filterSearch, hiddenCounts, parseFilters, positionCounts, rangeMax,
   relevantImplied, sortPlayers, STAT_KEYS, statLine, type ExplorerState, type RollingGame, type RollingPlayer, type StatMeans,
 } from "../src/lib/nfl-dfs/rolling-projection-view";
 
@@ -96,6 +96,30 @@ const search = filterSearch(state, "2026-8");
 assert.equal(search, "?week=2026-8&position=FLEX&team=BUF&q=cook&sort=ceiling&view=table&out=1&est=1");
 assert.deepEqual(parseFilters(Object.fromEntries(new URLSearchParams(search)), ["BUF"]), { ...state, query: "cook" });
 assert.equal(filterSearch(defaults, null), "");
-assert.deepEqual(parseFilters({ position: "LB", team: "XXX", sort: "salary", view: "grid" }, ["BUF"]), defaults);
+assert.deepEqual(parseFilters({ position: "LB", team: "XXX", sort: "ownership", view: "grid" }, ["BUF"]), defaults);
+
+// --- Classic salaries: one per player, conflicts dropped, defenses paired by team ---
+const index = classicSalaryIndex([
+  { name: "Amon-Ra St. Brown", team: "DET", position: "WR", salary: 8100 },
+  { name: "Amon-Ra St. Brown", team: "DET", position: "WR", salary: 8100 },
+  { name: "Marvin Harrison Jr.", team: "AZ", position: "WR", salary: 6200 },
+  { name: "Josh Allen", team: "BUF", position: "QB", salary: 7700 },
+  { name: "Josh Allen", team: "BUF", position: "QB", salary: 7500 },
+  { name: "Bills", team: "BUF", position: "DST", salary: 3100 },
+]);
+assert.equal(index.get(salaryKey("Amon-Ra St. Brown", "DET", "WR")), 8100, "the same salary in two groups is one salary");
+assert.equal(index.get(salaryKey("Marvin Harrison", "ARI", "WR")), 6200, "suffixes and team aliases match the slate identity rule");
+assert.equal(index.has(salaryKey("Josh Allen", "BUF", "QB")), false, "two salaries for one key are dropped, not guessed");
+assert.equal(index.get(salaryKey("Buffalo Bills", "BUF", "DST")), 3100, "a defense matches by team, not by name");
+assert.equal(index.has(salaryKey("Buffalo Bills", "BUF", "WR")), false);
+
+assert.equal(pointsPerThousand({ projected: 24.5, salary: 7000 }), 3.5);
+assert.equal(pointsPerThousand({ projected: 24.5, salary: null }), null);
+assert.equal(pointsPerThousand({ projected: null, salary: 7000 }), null);
+const cheap = player({ name: "Cheap", position: "WR", team: "DET", projected: 12, salary: 3000 });
+const pricey = player({ name: "Pricey", position: "WR", team: "DET", projected: 20, salary: 8000 });
+const unpriced = player({ name: "Unpriced", position: "K", team: "DET", projected: 9 });
+assert.deepEqual(sortPlayers([cheap, unpriced, pricey], "salary").map(p => p.name), ["Pricey", "Cheap", "Unpriced"]);
+assert.deepEqual(sortPlayers([pricey, unpriced, cheap], "value").map(p => p.name), ["Cheap", "Pricey", "Unpriced"]);
 
 console.log("nfl rolling projection view: all assertions passed");

@@ -53,6 +53,9 @@ export default async function NflRollingProjectionsPage({ searchParams }: {
           <ProjectionsExplorer key={board.run.runId} board={board} week={week} initial={parseFilters(params, teams)} />
         )}
         <footer className="space-y-1 text-xs text-muted-foreground">
+          <p>{board.salaryAsOf
+            ? `Salaries are DraftKings Classic, from the player pool captured ${formatKickoff(board.salaryAsOf)}. Classic has no kickers, so kickers show no salary.`
+            : "No DraftKings Classic player pool has been captured for this week yet, so salaries are blank."}</p>
           {board.omittedPlayers > 0 && <p>{board.omittedPlayers} saved projection rows are hidden because their game started or the saved team and opponent did not match the schedule.</p>}
           <p>Projections are frozen at the run time. Implied points, lines and the quarterback passing context refresh when you open the page, press Refresh, or every five minutes while it is open; they describe the matchup and never change a projection.</p>
           <p>Players with too few NFL games for their own projection get the position average, which has run several points high for them, so they are hidden unless you include them. Defenses show the opponent&apos;s implied points.</p>

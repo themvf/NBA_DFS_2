@@ -1,5 +1,6 @@
 import {
-  boomThreshold, formatKickoff, formatNumber, formatPercent, formatSigned, isPositionEstimate, isOut, relevantImplied,
+  boomThreshold, formatKickoff, formatNumber, formatPercent, formatSalary, formatSigned, formatValue,
+  isPositionEstimate, isOut, pointsPerThousand, relevantImplied,
   statLine, type RollingPlayer, type TeamEnvironment,
 } from "@/lib/nfl-dfs/rolling-projection-view";
 import RangeBar, { positionStyle } from "./range-bar";
@@ -79,6 +80,11 @@ export default function ProjectionCard({ player, environment, max, rank }: {
         <div className="shrink-0 text-right">
           <div className="text-2xl font-bold tabular-nums leading-none">{formatNumber(player.projected)}</div>
           <div className="mt-1 text-[11px] text-muted-foreground">DK pts</div>
+          <div className="mt-1 text-[11px] tabular-nums" title="DraftKings Classic salary and projected points per $1,000">
+            {player.salary == null
+              ? <span className="text-muted-foreground">No Classic salary</span>
+              : <><span className="font-medium">{formatSalary(player.salary)}</span> <span className="text-muted-foreground">· {formatValue(pointsPerThousand(player))}</span></>}
+          </div>
         </div>
       </div>
       <div className="mt-4">

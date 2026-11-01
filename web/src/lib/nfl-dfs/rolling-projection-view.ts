@@ -1,3 +1,4 @@
+import { nflIdentityName, nflIdentityPosition, nflIdentityTeam } from "./identity";
 import type { QbMatchupContext } from "./qb-matchup-context";
 import { BOOM_THRESHOLDS } from "./replacement-upside";
 
@@ -27,6 +28,7 @@ export type RollingGame = {
 export type RollingProjectionBoard = {
   options: RollingRun[]; run: RollingRun | null; players: RollingPlayer[]; games: RollingGame[];
   matchupAsOf: string | null; omittedPlayers: number; contextError: string | null;
+  salaryAsOf: string | null;
 };
 
 export const POSITIONS = ["QB", "RB", "WR", "TE", "K", "DST"] as const;
@@ -34,10 +36,11 @@ export type PositionFilter = "ALL" | "FLEX" | typeof POSITIONS[number];
 export const POSITION_FILTERS: PositionFilter[] = ["ALL", "QB", "RB", "WR", "TE", "FLEX", "K", "DST"];
 const FLEX = new Set(["RB", "WR", "TE"]);
 
-export const SORT_KEYS = ["projected", "ceiling", "boom", "floor", "name"] as const;
+export const SORT_KEYS = ["projected", "ceiling", "boom", "floor", "salary", "value", "name"] as const;
 export type SortKey = typeof SORT_KEYS[number];
 export const SORT_LABELS: Record<SortKey, string> = {
-  projected: "Projection", ceiling: "Ceiling", boom: "Boom chance", floor: "Floor", name: "Name",
+  projected: "Projection", ceiling: "Ceiling", boom: "Boom chance", floor: "Floor",
+  salary: "Salary", value: "Points per $1K", name: "Name",
 };
 
 export type ExplorerFilters = {
@@ -93,6 +96,7 @@ export function hiddenCounts(players: readonly RollingPlayer[], filters: Explore
 
 const sortValue = (player: RollingPlayer, key: Exclude<SortKey, "name">) => ({
   projected: player.projected, ceiling: player.ceiling, boom: player.boomRate, floor: player.floor,
+  salary: player.salary, value: pointsPerThousand(player),
 })[key];
 
 export function sortPlayers(players: readonly RollingPlayer[], key: SortKey): RollingPlayer[] {
@@ -151,6 +155,30 @@ export function statLine(player: RollingPlayer): StatItem[] {
   });
 }
 
+/** DK points per $1,000 of Classic salary, the usual DFS value measure. */
+export function pointsPerThousand(player: Pick<RollingPlayer, "projected" | "salary">): number | null {
+  return player.projected == null || !player.salary ? null : player.projected / (player.salary / 1000);
+}
+
+/** Defenses pair by team, as the slate identity match does, because DraftKings names them by nickname. */
+export const salaryKey = (name: string, team: string, position: string) =>
+  nflIdentityPosition(position) === "DST" ? `dst|${nflIdentityTeam(team)}` : `${nflIdentityName(name)}|${nflIdentityTeam(team)}`;
+
+/**
+ * One Classic salary per player from every Classic draft group captured for the week.
+ * DraftKings prices a player the same in all of a week's Classic groups; a key that
+ * carries two different salaries (or two players) is dropped rather than guessed.
+ */
+export function classicSalaryIndex(rows: readonly { name: string; team: string; position: string; salary: number }[]): Map<string, number> {
+  const seen = new Map<string, number | null>();
+  for (const row of rows) {
+    const key = salaryKey(row.name, row.team, row.position);
+    const previous = seen.get(key);
+    seen.set(key, previous === undefined || previous === row.salary ? row.salary : null);
+  }
+  return new Map([...seen].filter((entry): entry is [string, number] => entry[1] != null));
+}
+
 export function boomThreshold(position: string): number | null {
   return BOOM_THRESHOLDS[position] ?? null;
 }
@@ -206,3 +234,6 @@ const easternFormat = new Intl.DateTimeFormat("en-US", {
   timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit",
 });
 export const formatKickoff = (value: string) => `${easternFormat.format(new Date(value)).replace(",", "")} ET`;
+export const formatSalary = (value: number | null) => value == null ? "—" : `$${value.toLocaleString("en-US")}`;
+export const formatSalaryShort = (value: number | null) => value == null ? "—" : `$${(value / 1000).toFixed(1)}K`;
+export const formatValue = (value: number | null) => value == null ? "—" : `${value.toFixed(1)}x`;

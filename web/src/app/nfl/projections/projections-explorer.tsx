@@ -52,6 +52,7 @@ export default function ProjectionsExplorer({ board, initial, week }: {
   const router = useRouter();
   const [state, setState] = useState(initial);
   const [visible, setVisible] = useState(PAGE_SIZE);
+  const [chartsExpanded, setChartsExpanded] = useState(false);
   const update = (patch: Partial<ExplorerState>) => { setState(current => ({ ...current, ...patch })); setVisible(PAGE_SIZE); };
 
   useEffect(() => {
@@ -119,9 +120,11 @@ export default function ProjectionsExplorer({ board, initial, week }: {
       </section>
 
       {players.length > 0 && (
-        <div className="grid items-start gap-3 lg:grid-cols-2">
-          <RangeChart players={players} />
-          <UpsideScatter players={players} onSelect={player => update({ query: player.name })} />
+        <div className={`grid items-start gap-3 ${chartsExpanded ? "" : "lg:grid-cols-2"}`}>
+          <RangeChart players={players} rowCount={chartsExpanded ? 50 : 20}
+            expanded={chartsExpanded} onToggleExpand={() => setChartsExpanded(value => !value)} />
+          <UpsideScatter players={players} onSelect={player => update({ query: player.name })} height={chartsExpanded ? 620 : 380}
+            expanded={chartsExpanded} onToggleExpand={() => setChartsExpanded(value => !value)} />
         </div>
       )}
 

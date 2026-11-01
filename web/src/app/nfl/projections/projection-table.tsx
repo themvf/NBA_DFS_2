@@ -1,5 +1,5 @@
 import {
-  formatNumber, formatPercent, isPositionEstimate, isOut, relevantImplied, statLine,
+  formatNumber, formatPercent, formatSalary, formatValue, isPositionEstimate, isOut, pointsPerThousand, relevantImplied, statLine,
   type RollingPlayer, type SortKey, type TeamEnvironment,
 } from "@/lib/nfl-dfs/rolling-projection-view";
 import { PositionChip, StatusBadges } from "./projection-card";
@@ -26,14 +26,16 @@ export default function ProjectionTable({ players, environments, max, sort, onSo
 }) {
   return (
     <div className="overflow-x-auto rounded-xl border bg-card shadow-xs">
-      <table className="w-full min-w-[960px] text-left text-sm">
+      <table className="w-full min-w-[1100px] text-left text-sm">
         <thead>
           <tr className="border-b text-xs text-muted-foreground">
             <th scope="col" className="w-10 p-2 text-right font-medium">#</th>
             <SortHeader label="Player" sortKey="name" sort={sort} onSort={onSort} align="left" />
             <th scope="col" className="p-2 font-medium">Matchup</th>
             <th scope="col" className="w-48 p-2 font-medium">Range<RangeScale max={max} /></th>
+            <SortHeader label="Salary" sortKey="salary" sort={sort} onSort={onSort} />
             <SortHeader label="Proj" sortKey="projected" sort={sort} onSort={onSort} />
+            <SortHeader label="Pts/$1K" sortKey="value" sort={sort} onSort={onSort} />
             <SortHeader label="Floor" sortKey="floor" sort={sort} onSort={onSort} />
             <th scope="col" className="p-2 text-right font-medium">Median</th>
             <SortHeader label="Ceiling" sortKey="ceiling" sort={sort} onSort={onSort} />
@@ -56,7 +58,9 @@ export default function ProjectionTable({ players, environments, max, sort, onSo
               </td>
               <td className="whitespace-nowrap p-2 text-muted-foreground">{player.team} vs {player.opponent}</td>
               <td className="p-2"><RangeBar player={player} max={max} compact estimate={isPositionEstimate(player)} /></td>
+              <td className="p-2 text-right tabular-nums">{formatSalary(player.salary)}</td>
               <td className="p-2 text-right font-semibold tabular-nums">{formatNumber(player.projected)}</td>
+              <td className="p-2 text-right tabular-nums">{formatValue(pointsPerThousand(player))}</td>
               <td className="p-2 text-right tabular-nums">{formatNumber(player.floor)}</td>
               <td className="p-2 text-right tabular-nums">{formatNumber(player.median)}</td>
               <td className="p-2 text-right tabular-nums">{formatNumber(player.ceiling)}</td>
