@@ -64,7 +64,7 @@ import { featureTotals, JOINT_TARGET_PENALTY, NFL_JOINT_SELECTION_VERSION, selec
 // Record the strict Showdown purchase and completed-roster validation.
 // v8: DK-average fallback honoured in defensive mode; a lock or exposure
 // minimum on a player outside the pool is an error instead of being dropped.
-export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v14-winners-diversified";
+export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v15-diversified-minimums";
 
 export type NflProjectionSource = "our" | "workload" | "calibrated" | "dk_avg" | "fantasypros" | "linestar" | "custom";
 export type NflOptimizerMode = "cash" | "gpp";
@@ -1051,8 +1051,13 @@ function buildOne(
       const slot = purchaseType === "CPT" ? "CPT" : purchaseType === "FLEX" ? "FLEX" : "CLASSIC";
       const multiplier = slot === "CPT" ? 1.5 : 1;
       const salary = settings.format === "showdown" ? showdownSalary(player, slot === "CPT") : player.salary;
+      // Meet explicit minimums while there is still room to arrange stacks and
+      // combinations. Deferring all unmet multi-slot minimums to the final
+      // lineups can make a feasible request impossible for the greedy pass.
+      const minimumPriority = settings.buildShape === "diversified" && !settings.diversifiedCandidateSearch
+        && (countsById.get(player.dkPlayerId)?.overallMin ?? 0) > (exposureCounts.get(player.dkPlayerId) ?? 0) ? 1000 : 0;
       const variable: Record<string, number> = {
-        score: objective(player, settings, lineupNumber, slot) * multiplier - (settings.buildShape === "diversified"
+        score: minimumPriority + objective(player, settings, lineupNumber, slot) * multiplier - (settings.buildShape === "diversified"
           ? concentrationCost((exposureCounts.get(player.dkPlayerId) ?? 0) + 1, settings) - concentrationCost(exposureCounts.get(player.dkPlayerId) ?? 0, settings) : 0),
         salary,
         [`player_${player.dkPlayerId}`]: 1,
@@ -1482,7 +1487,14 @@ function diversifiedSelect(ctx: {pool: ResolvedPlayer[]; settings: NflOptimizerS
       return buildOne(pool,search,100_000+attempt,known,empty,forced,countsById,empty,empty,null,n,true,false,false,
         variant===1?'require':'default',true);
     }});
-  if (!valid(result.lineups)) throw new Error(`Diversified could not produce a complete portfolio satisfying every Winners composition target, exposure, combination, uniqueness and coverage rule (${result.lineups.length}/${n} lineups). Adjust limits or exclusions and retry.`);
+  if (!valid(result.lineups)) {
+    const shortfalls=pool.flatMap(p=>{
+      const minimum=countsById.get(p.dkPlayerId)?.overallMin??0;
+      const actual=result.lineups.filter(l=>l.playerIds.includes(p.dkPlayerId)).length;
+      return actual<minimum ? [`${p.name} ${actual}/${minimum}`] : [];
+    });
+    throw new Error(`Diversified could not produce a complete portfolio satisfying every Winners composition target, exposure, combination, uniqueness and coverage rule (${result.lineups.length}/${n} lineups).${shortfalls.length ? ` Unmet player minimums: ${shortfalls.join('; ')}.` : ''} Adjust limits or exclusions and retry.`);
+  }
   const counts=new Map<number,number>();
   for (const l of result.lineups) for (const id of l.playerIds) counts.set(id,(counts.get(id)??0)+1);
   const byId=new Map(pool.map(p=>[p.dkPlayerId,p]));

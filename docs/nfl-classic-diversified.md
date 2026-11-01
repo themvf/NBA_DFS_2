@@ -159,3 +159,16 @@ It preserved 20 double stacks, 25 bring-backs and 15 two-TE lineups; all
 composition and combination caps passed. The 500-target search considered
 214 candidates within its budget and accepted no replacements. This replay
 is discovery/construction evidence only and is not a return forecast.
+
+## Explicit minimum scheduling repair
+
+The November 1 request with eight player minimums and a Higbee maximum
+stopped at 49/50 in a frozen More diversity replay. Prioritizing unmet
+explicit minimums during initial construction returned all 50 with every
+minimum, combination cap and Winners target satisfied. This priority bonus
+is a construction heuristic (1000 per still-needed appearance), not a player
+forecast or reported score. It is disabled for the unselected candidate bank;
+final selection retains its common score and validates all hard bounds.
+No-minimum builds have identical construction scores. Failure messages now
+list any unmet player minimums. Feasibility is not guaranteed for arbitrary
+conflicting requests. Standard/Winners behavior is unchanged.
