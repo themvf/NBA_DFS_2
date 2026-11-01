@@ -326,3 +326,127 @@ Thin-start backups with a sportsbook line are still covered by the market
 anchor: Huntley's and Daniels' final DFS projections were 14.7 and 15.5.
 Another eligibility idea would be a new registration graded on 2012-2015 or
 2026 forward.
+
+## v4 (registered 2026-11-01 16:30 UTC, before any v4 projection is computed): volume-gap eligibility
+
+`nfl-qb-spot-start-v4`. Registered on the owner's instruction, after the owner was
+told v3 failed and that v4 is expected to fail the same way (below). Nothing
+is shipped. v2 stays in production until the gates below are graded.
+
+### Why a new rule after v3
+
+The construction switches on from history alone. v2 looks at mean attempts
+and v3 at starter-game counts, and both are proxies for the actual problem:
+the base model projecting a named starter well below the volume his team
+throws. v4 tests that gap directly. 2026 week 7, replaying
+`thin_starting_history` on the production history:
+
+| QB | Previous six games' attempts | Mean | v2 eligible | Base projected attempts |
+| --- | --- | ---: | --- | ---: |
+| Tanner McKee | 41, 0, 3, 0, 40, 45 | 21.5 | no | 22.5 |
+| Tyler Huntley | 0, 10, 20, 9, 32, 31 | 17.0 | no | 21.7 |
+| J.J. McCarthy | 23, 24, 14, 23, 0, 21 | 17.5 | no | 20.1 |
+
+All three were projected at about 21 attempts against team volume in the
+low 30s. They passed for 211, 298 and 252 yards. The overlay changed 1 of 215
+graded 2026 QB prop lines in weeks 1-8.
+
+### Seen before registering (disclosure)
+
+- The 2026 results of the three quarterbacks above, and every 2026 QB
+  passing-yards prop line, our projection and the actual result for weeks
+  1-8. 2026 weeks 1-8 are discovery and are never graded.
+- **The v3 result, including its mechanism.** On 2016-2019 the construction
+  fixed volume on the newly eligible games but over-shot output (passing-yards
+  bias −29 -> +25, DK points worse by +0.61). v4 keeps the same construction,
+  so **the expected outcome is a fail.** v4 changes only which games are
+  eligible, and the games it adds overlap v3's gap cohort.
+- The 2014-2015 nflverse weekly files were downloaded for v3 as prior history
+  for 2016 games. No 2014-2015 outcome was graded by any QB study.
+
+### The rule
+
+For a named expected starter:
+
+```
+eligible_v4 = eligible_v2  OR  (base projected attempts < r × team_pass_attempts)
+gap cohort  = eligible_v4 AND NOT eligible_v2
+```
+
+`team_pass_attempts` is v1's team-volume estimate. "Base projected attempts"
+is the current model's `stat_means.attempts` for him, as the runner already
+computes it (`old_model_rows` + `project_player`). The construction, its
+constants (H = 8, P = 2, S = 16, M = 10) and the naming rule are v2's.
+`r` is the only new quantity. v4 is a superset of v2, so v2's spot cohort is
+projected identically; the runner asserts it.
+
+### Population
+
+v1's qualifying team-games: the team's attempts leader had at least 15, taken
+as the named starter. Every established game is kept, with no one-in-four
+sampling.
+
+### Windows
+
+- **Development: 2020-2025.**
+- **Test, one look: 2012-2015**, the window v3's kill rule leaves open.
+  2010-2011 are loaded as prior history only. Before any outcome is read,
+  every team code in 2010-2015 must resolve to one of the 32 franchises, and
+  each season must have at least 500 qualifying team-games. Otherwise the run
+  stops and the loader is fixed.
+
+### Fit (development only)
+
+Grid r ∈ {0.70, 0.75, 0.80, 0.85}. Criterion: DraftKings-points MAE over every
+qualifying development game. Games outside the gap cohort score the same at
+every r, so r cannot pick its own cohort. Ties go to the smallest r. The
+construction's output does not depend on r, so each game is projected once.
+
+### Gates (2012-2015, gap cohort, v4 against v2 computed directly)
+
+Bootstrap resamples season-weeks: 2,000 resamples, seed 20261101.
+
+1. **Points gate:** the 95% interval of the DK-points MAE change is wholly
+   below zero.
+2. **Yards gate:** the 95% interval of the passing-yards MAE change is wholly
+   below zero.
+3. **Calibration guard:** the gap cohort's attempts bias under v4 is within
+   ±5.0, and its passing-yards bias within ±15. The second guard is the v3
+   failure mode; it is fixed here before any v4 number exists.
+4. **Sample floor:** at least 60 gap-cohort test games. Below the floor the
+   verdict is "insufficient" and v2 stays.
+
+All four must pass.
+
+### Reported, not gating
+
+Development metrics and gap-cohort size at each r; per-season test
+breakdown; overlap with v3's K = 5 gap cohort on both windows; the gap cohort
+split by trailing mean below and above 25 attempts; the three 2026 week 7
+quarterbacks re-projected at the fitted r (illustrative only).
+
+### Kill
+
+If any gate fails, v2 stays. Not allowed after a failure: an r outside the
+grid, a different volume estimate, re-slicing the gap cohort, or regrading on
+2016-2019. The remaining open question is the construction's output overshoot,
+which no eligibility rule addresses. That would be a new registration
+changing the construction, graded on 2026 forward.
+
+### If it passes (not part of this registration's work)
+
+The overlay version becomes `nfl-qb-spot-start-v4` with the fitted r.
+`production_config()` records it, so cohorts pinning `baseline_config_hash`
+see a new configuration at their next boundary. Tests pin r and the rule.
+
+### Runner
+
+`research/nfl_qb_spot_start_study.py` gains a v4 path:
+
+- `STUDY = nfl-qb-spot-start-v4` and `BOOT_SEED = 20261101`;
+- the r grid passed as an eligibility override to `project_expected_starter`;
+- separate artifacts (`*-v4.jsonl`, `*-v4.json`), with the existing refusal to
+  overwrite.
+
+The 2010-2015 weekly files go in `data/nflverse_cache`, with digests recorded
+in `artifacts/nfl-qb-spot-start/nflverse-weekly-files-v4.json`.
