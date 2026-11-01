@@ -150,7 +150,10 @@ def main() -> int:
     args = parser.parse_args()
     conn = psycopg2.connect(direct_url(), cursor_factory=RealDictCursor)
     if not args.apply:
-        conn.set_session(readonly=True)  # each transaction BEGINs READ ONLY; autocommit stays off
+        # Each transaction BEGINs READ ONLY. This connection never turns on
+        # autocommit (that would make the setting session-wide); VACUUM below
+        # uses its own connection.
+        conn.readonly = True
     with conn.cursor() as cur:
         print("sizes before (MB):", sizes(cur))
         if args.apply:
@@ -180,14 +183,16 @@ def main() -> int:
     if tables and not args.apply:
         print("vacuum flags are ignored without --apply")
     elif tables:
-        conn.autocommit = True
-        with conn.cursor() as cur:
+        vacuum_conn = psycopg2.connect(direct_url(), cursor_factory=RealDictCursor)
+        vacuum_conn.autocommit = True  # VACUUM cannot run inside a transaction
+        with vacuum_conn.cursor() as cur:
             for table in tables:
                 cur.execute("SELECT to_regclass(%s) t", (table,))
                 if cur.fetchone()["t"] is None:
                     continue
                 print(f"VACUUM (FULL, ANALYZE) {table} ...", flush=True)
                 cur.execute(f"VACUUM (FULL, ANALYZE) {table}")
+        vacuum_conn.close()
     if not args.apply:
         print(f"dry run: {len(DRY_CHUNKS)} distinct chunks, {sum(DRY_CHUNKS.values())/1e6:.0f} MB of text"
               " (jsonb stores it compressed, roughly a quarter of that)")
