@@ -72,6 +72,8 @@ STATEMENTS = [
         UNIQUE (espn_event_id, espn_athlete_id)
     )""",
     "CREATE INDEX IF NOT EXISTS idx_nba_box_score_players_date ON nba_box_score_players(game_date DESC, player_key)",
+    # ESPN's listed position (G / F / C), for the Top Scorers badge (2026-11-01).
+    "ALTER TABLE nba_box_score_players ADD COLUMN IF NOT EXISTS position TEXT",
     """CREATE TABLE IF NOT EXISTS nba_points_calibration (
         id BIGSERIAL PRIMARY KEY,
         grade_version TEXT NOT NULL,

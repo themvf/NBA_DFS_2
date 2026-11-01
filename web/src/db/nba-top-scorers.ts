@@ -102,23 +102,41 @@ export async function getNbaSeasonStats(season: string): Promise<SeasonStat[]> {
 }
 
 /**
- * Each player's team in his most recent box-score game before `gameDate`
- * (ESPN, nba_box_score_players). Strictly before the date, so a past slate
- * shows the team as it stood that night. Bounded to 200 days so last season's
- * box scores never stand in for this season's. A DNP row still counts: it
- * places the player on that roster.
+ * This season so far for every player in the ESPN box scores
+ * (nba_box_score_players), using only games strictly before `gameDate`, so a
+ * past slate shows the season as it stood that night. "This season" starts
+ * August 1, so last season's games never count. Per player: the team and date
+ * of his latest game (a DNP row counts: it places him on that roster), his
+ * latest listed position, and his points per game over the games he played.
  */
 export async function getNbaCurrentTeams(gameDate: string): Promise<CurrentTeam[]> {
   const result = await db.execute(sql`
-    SELECT DISTINCT ON (espn_athlete_id) espn_athlete_id, player, team, game_date
-    FROM nba_box_score_players
-    WHERE game_date < ${gameDate}::date AND game_date >= ${gameDate}::date - 200 AND team IS NOT NULL
-    ORDER BY espn_athlete_id, game_date DESC, id DESC`);
+    WITH s AS (
+      SELECT id, espn_athlete_id, player, team, game_date, played, points, position
+      FROM nba_box_score_players
+      WHERE game_date < ${gameDate}::date
+        AND game_date >= (date_trunc('year', ${gameDate}::date - interval '7 months') + interval '7 months')::date
+        AND team IS NOT NULL
+    ), latest AS (
+      SELECT DISTINCT ON (espn_athlete_id) espn_athlete_id, player, team, game_date
+      FROM s ORDER BY espn_athlete_id, game_date DESC, id DESC
+    ), agg AS (
+      SELECT espn_athlete_id,
+             count(*) FILTER (WHERE played) AS games,
+             avg(points) FILTER (WHERE played) AS ppg,
+             (array_agg(position ORDER BY game_date DESC, id DESC) FILTER (WHERE position IS NOT NULL))[1] AS position
+      FROM s GROUP BY espn_athlete_id
+    )
+    SELECT l.espn_athlete_id, l.player, l.team, l.game_date, a.games, a.ppg, a.position
+    FROM latest l JOIN agg a USING (espn_athlete_id)`);
   return (result.rows as Record<string, unknown>[]).map((r) => ({
     athleteId: String(r.espn_athlete_id),
     name: String(r.player),
     team: String(r.team),
     gameDate: day(r.game_date),
+    position: r.position == null ? null : String(r.position),
+    games: Number(r.games ?? 0),
+    ppg: num(r.ppg),
   }));
 }
 

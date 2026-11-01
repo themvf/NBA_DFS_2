@@ -39,6 +39,13 @@ export const metadata: Metadata = {
 // Last completed season: the comparison column, until this season has enough games.
 const LAST_SEASON = "2025-26";
 
+/** NBA season of an Eastern date: it starts in August, so 2026-10-31 is 2026-27. */
+function seasonLabel(d: string): string {
+  const year = Number(d.slice(0, 4));
+  const start = Number(d.slice(5, 7)) >= 8 ? year : year - 1;
+  return `${start}-${String((start + 1) % 100).padStart(2, "0")}`;
+}
+
 // The app-wide `* { border-color: var(--border) }` rule beats border utilities.
 const DARK_BORDER = { "--border": "#1e293b" } as React.CSSProperties;
 
@@ -127,7 +134,7 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
           </p>
         </section>
       ) : (
-        <TopScorersClient scorers={scorers} games={games} pulled={pulled} lastSeason={LAST_SEASON} />
+        <TopScorersClient scorers={scorers} games={games} pulled={pulled} lastSeason={LAST_SEASON} thisSeason={seasonLabel(date)} />
       )}
 
       <BoomLineups key={date} board={boomBoard} />
@@ -154,6 +161,8 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
         <p>
           This is the market&apos;s number, not a model of ours; the calibration panel above is its record against results.
           {LAST_SEASON} PPG is the full regular-season arithmetic average across recorded appearances, excluding playoffs.
+          This-season PPG and position come from ESPN box scores of games before this date; the small number beside the
+          PPG is games played, so an early-season average rests on only a few games.
           Team is the one he played for in his latest game this season (ESPN box scores; a player traded since his last game shows no team until he plays for the new one),
           or last season&apos;s team, marked &quot;prior season&quot;, when he has not played yet.
         </p>

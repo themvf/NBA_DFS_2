@@ -140,4 +140,36 @@ assert.equal(by("Twin Name").team, null);
 assert.equal(by("Clip Guy").team, "Los Angeles Clippers");
 assert.equal(by("Clip Guy").teamAbbrev, "LAC");
 
+// Position and this season's scoring come from the box scores; a player with no
+// game played this season has no this-season PPG, never a zero.
+const season = buildBoard(
+  [
+    { ...base, eventId: "s", homeTeam: "Charlotte Hornets", awayTeam: "Philadelphia 76ers", player: "LeBron James", books: { dk: { line: 18.5, over: -110, under: -110 } } },
+    { ...base, eventId: "s", homeTeam: "Charlotte Hornets", awayTeam: "Philadelphia 76ers", player: "Only DNPs", books: { dk: { line: 6.5, over: -110, under: -110 } } },
+    { ...base, eventId: "s", homeTeam: "Charlotte Hornets", awayTeam: "Philadelphia 76ers", player: "Rookie Guy", books: { dk: { line: 9.5, over: -110, under: -110 } } },
+  ],
+  [
+    { name: "LeBron James", position: null, ppg: 24.4, games: 70, teamName: "Los Angeles Lakers", teamAbbrev: "LAL" },
+    { name: "Rookie Guy", position: "G", ppg: 9, games: 10, teamName: "Charlotte Hornets", teamAbbrev: "CHA" },
+  ],
+  [],
+  [],
+  [
+    { athleteId: "1", name: "LeBron James", team: "Philadelphia 76ers", gameDate: "2026-10-30", position: "F", games: 5, ppg: 16.4 },
+    { athleteId: "2", name: "Only DNPs", team: "Charlotte Hornets", gameDate: "2026-10-30", position: "C", games: 0, ppg: null },
+  ],
+);
+const sBy = (name: string) => season.scorers.find((s) => s.player === name)!;
+assert.equal(sBy("LeBron James").position, "F");
+assert.equal(sBy("LeBron James").thisSeasonPpg, 16.4);
+assert.equal(sBy("LeBron James").thisSeasonGames, 5);
+assert.equal(sBy("LeBron James").lastSeasonPpg, 24.4);
+assert.equal(sBy("Only DNPs").thisSeasonPpg, null);
+assert.equal(sBy("Only DNPs").thisSeasonGames, 0);
+assert.equal(sBy("Only DNPs").position, "C");
+// No box score yet: no this-season numbers; position falls back to last season's.
+assert.equal(sBy("Rookie Guy").thisSeasonPpg, null);
+assert.equal(sBy("Rookie Guy").thisSeasonGames, 0);
+assert.equal(sBy("Rookie Guy").position, "G");
+
 console.log("test-nba-top-scorers: all assertions passed");

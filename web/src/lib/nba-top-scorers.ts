@@ -54,13 +54,20 @@ export type SeasonStat = {
   teamAbbrev: string | null;
 };
 
-/** A player's team in his most recent game this season (ESPN box scores). */
+/** A player's season so far (ESPN box scores, games before the slate date). */
 export type CurrentTeam = {
   athleteId: string;
   name: string;
+  /** Team in his most recent game. */
   team: string;
   /** Date of that game (YYYY-MM-DD). */
   gameDate: string;
+  /** Latest listed position (ESPN: G / F / C); optional for older callers. */
+  position?: string | null;
+  /** Games he played (a DNP does not count). */
+  games?: number;
+  /** Points per game over those games; null when he has not played. */
+  ppg?: number | null;
 };
 
 export type BookLine = {
@@ -97,6 +104,10 @@ export type ScorerRow = {
   books: BookLine[];
   lastSeasonPpg: number | null;
   lastSeasonGames: number | null;
+  /** Points per game this season, games before the slate only; null with none played. */
+  thisSeasonPpg: number | null;
+  /** Games played this season before the slate (a DNP does not count). */
+  thisSeasonGames: number;
   /** consensus line minus last season's points per game; null without a season row. */
   vsLastSeason: number | null;
   /** From the alternate ladder; null when no ladder was captured for this player. */
@@ -256,7 +267,7 @@ export function buildBoard(
       teamAbbrev: team ? (teamSource === "prior" ? stat?.teamAbbrev ?? abbrev(team) : abbrev(team)) : null,
       opponent,
       opponentAbbrev: abbrev(opponent),
-      position: stat?.position ?? null,
+      position: now?.position ?? stat?.position ?? null,
       line: c.line,
       lineLow: Math.min(...lines.map((l) => l.line)),
       lineHigh: Math.max(...lines.map((l) => l.line)),
@@ -264,6 +275,8 @@ export function buildBoard(
       books: lines,
       lastSeasonPpg: stat?.ppg ?? null,
       lastSeasonGames: stat?.games ?? null,
+      thisSeasonPpg: now?.games ? now.ppg ?? null : null,
+      thisSeasonGames: now?.games ?? 0,
       vsLastSeason: stat?.ppg != null ? c.line - stat.ppg : null,
       distribution: buildDistribution(
         Object.fromEntries(lines.map((l) => [l.book, { line: l.line, over: l.over, under: l.under }])),
