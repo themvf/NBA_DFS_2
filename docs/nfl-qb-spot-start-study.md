@@ -450,3 +450,75 @@ see a new configuration at their next boundary. Tests pin r and the rule.
 
 The 2010-2015 weekly files go in `data/nflverse_cache`, with digests recorded
 in `artifacts/nfl-qb-spot-start/nflverse-weekly-files-v4.json`.
+
+### v4 development fit (2026-11-02, frozen before the 2012-2015 look)
+
+**Records.** The fit reads v3's development records
+(`development-v3.jsonl`, 3,183 qualifying games 2020-2025, sha256
+`416db03f...`, recorded in `fit-v4.json`) instead of re-projecting. That is
+equivalent, not an approximation: each record carries the current model's
+projected attempts, the team volume and the forced construction, which is
+everything the v4 rule reads; the construction's output does not depend on
+the eligibility rule; no model file (`nfl_dfs_historical.py`,
+`nfl_qb_starter.py`, `nfl_team_aliases.py`) or study runner function used to
+write them has changed since 2026-10-20; and the 2014-2025 nflverse files in
+the cache match v3's recorded digests exactly. The test window is projected
+fresh by `run-v4`.
+
+| | Current | v2 | v4, r=0.70 | r=0.75 | r=0.80 | r=0.85 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Population DK-points MAE | 6.538 | 6.424 | 6.320 | 6.315 | 6.305 | **6.294** |
+
+**r = 0.85 is fixed for the test**: a named starter is newly eligible when the
+current model projects him below 85% of his team's expected pass attempts.
+It is the edge of the registered grid, as K = 5 was for v3; a larger r is not
+allowed (see Kill).
+
+Gap cohort on development (reported, not gating; r was fitted here):
+
+| r | Games | Weeks | DK MAE, v2 -> v4 | Change, 95% interval | Pass-yds MAE | Attempts bias, v2 -> v4 | Pass-yds bias, v2 -> v4 |
+| ---: | ---: | ---: | --- | --- | --- | --- | --- |
+| 0.70 | 177 | 88 | 7.51 -> 5.63 | −1.88 [−2.70, −1.08] | 88 -> 57 | −10.6 -> +2.4 | −77 -> +12 |
+| 0.75 | 246 | 103 | 6.83 -> 5.42 | −1.41 [−2.02, −0.77] | 82 -> 56 | −9.5 -> +2.2 | −68 -> +12 |
+| 0.80 | 352 | 107 | 6.61 -> 5.53 | −1.08 [−1.55, −0.59] | 76 -> 56 | −8.4 -> +1.9 | −60 -> +11 |
+| 0.85 | 510 | 107 | 6.68 -> 5.87 | −0.81 [−1.17, −0.45] | 72 -> 57 | −7.5 -> +1.2 | −51 -> +9 |
+
+On development the construction overshoots passing yards by 9-12 on these
+games, inside the registered ±15 guard. v3's development numbers also looked
+like this before its test failed on the same overshoot (+25 yards), so this
+table is not evidence the test will pass.
+
+**Test window check (registered precondition, run before any 2012-2015 outcome
+was read):** all 32 team codes in 2010-2015 resolve to a franchise; qualifying
+team-games 2012: 510, 2013: 504, 2014: 510, 2015: 508 (floor 500). The
+2010-2013 nflverse files were downloaded 2026-11-02; digests in
+`nflverse-weekly-files-v4.json`.
+
+### v4 result (2026-11-02): FAIL, v2 stays
+
+One look at 2012-2015 with the frozen r = 0.85 (`test-2012-2015-v4.jsonl`,
+2,032 qualifying games, `test-report-v4.json`).
+
+| Gate | Result | Bar | |
+| --- | --- | --- | --- |
+| Sample floor | 237 gap games, 68 weeks | at least 60 | pass |
+| Points gate: DK MAE change, v4 minus v2 | **−0.50 [−1.07, +0.09]** (6.55 -> 6.04) | interval wholly below zero | **fail** |
+| Yards gate: passing-yards MAE change | −16.5 [−23.5, −9.3] (77.5 -> 61.1) | interval wholly below zero | pass |
+| Calibration guard | attempts +1.1, passing yards +6.9 | within ±5.0 and ±15 | pass |
+
+Unlike v3, the construction did not overshoot on these games: v2 had them
+59 passing yards and 4.1 points too low, v4 6.9 yards and 0.5 points too
+high. Passing yards improved clearly. DraftKings points moved the right way
+in three of four seasons (2012 +0.01, 2013 −0.46, 2014 −0.68, 2015 −0.76;
+every season's interval crosses zero), and the pooled interval misses the bar
+by 0.09. Whole-population MAE: current 6.578, v2 6.479, v4 6.420. 121 of the
+237 gap games are also in v3's K = 5 gap cohort (178 games). Split by trailing
+mean: below 25 attempts −0.62 [−1.45, +0.24] (114 games), 25 or more −0.40
+[−1.03, +0.33] (123).
+
+Under the kill rule v2 stays in production unchanged. Not allowed after this
+failure: an r outside the grid, a different volume estimate, re-slicing the
+gap cohort (including by trailing mean or season), or regrading on 2016-2019.
+This is the second eligibility rule to fail its points gate, and the first
+whose yards and calibration gates passed. 2010-2015 is now used. The only
+untouched evidence for any further version is 2026 forward.

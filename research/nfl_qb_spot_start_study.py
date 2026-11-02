@@ -10,6 +10,12 @@ v3 (eligibility test only; constants unchanged):
     python -m research.nfl_qb_spot_start_study fit-v3 --development <dev-v3.jsonl> --output <fit-v3.json>
     python -m research.nfl_qb_spot_start_study grade-v3 --records <test-v3.jsonl> --fit <fit-v3.json> --output <report.json>
 
+v4 (volume-gap eligibility; constants unchanged; development reuses the v3 records, see `fit_v4`):
+
+    python -m research.nfl_qb_spot_start_study fit-v4 --development <dev-v3.jsonl> --output <fit-v4.json>
+    python -m research.nfl_qb_spot_start_study run-v4 --seasons 2012-2015 --output <test-v4.jsonl>
+    python -m research.nfl_qb_spot_start_study grade-v4 --records <test-v4.jsonl> --fit <fit-v4.json> --v3-fit <fit-v3.json> --output <report.json>
+
 `run` walks every qualifying quarterback game, projects it with the current
 model (v5, no transfer) and with the expected-starter construction for every
 grid point (or the fitted one), and appends one record per game. Rows are
@@ -258,7 +264,7 @@ def events_v3(rows, seasons):
     return out
 
 
-def run_v3(seasons, output, limit=None, log=print):
+def run_v3(seasons, output, limit=None, log=print, study=STUDY_V3):
     rows = load_rows(range(min(seasons) - 2, max(seasons) + 1))
     done = set()
     if output.exists():
@@ -287,7 +293,7 @@ def run_v3(seasons, output, limit=None, log=print):
             # applies, the forced construction must be the same projection.
             if v2 is not None and (forced is None or forced.model_proj_fpts != v2.model_proj_fpts):
                 raise AssertionError(f'forced construction differs from v2 for {key}')
-            record = {'study': STUDY_V3, 'key': key, 'season': t.season, 'week': t.week, 'team': t.team, 'player': t.player_name,
+            record = {'study': study, 'key': key, 'season': t.season, 'week': t.week, 'team': t.team, 'player': t.player_name,
                       'window': e['window'], 'trailing_attempts': e['trailing_attempts'], 'starter_games': e['starter_games'],
                       'team_pass_attempts': volume, 'v2_applies': v2 is not None,
                       'actual': {'points': t.dk_points, 'attempts': float(t.stats.get('attempts') or 0),
@@ -374,6 +380,119 @@ def grade_v3(records, k):
     return {'study': STUDY_V3, 'k': k, 'gap': report, 'gates': gates, 'verdict': verdict}
 
 
+# --- nfl-qb-spot-start-v4 (docs/nfl-qb-spot-start-study.md, "v4") -------------------------
+#
+# v4 changes only who receives the construction: an expected starter is eligible
+# when v2 applies, OR when the current model projects him below r x his team's
+# expected pass attempts. A record carries the current model's projected
+# attempts, the team volume and the forced construction, so every r in the grid
+# is derived from one record per game, exactly as v3's K grid was.
+
+STUDY_V4 = 'nfl-qb-spot-start-v4'
+BOOT_SEED_V4 = 20261101
+R_GRID = (0.70, 0.75, 0.80, 0.85)
+YARDS_BIAS_LIMIT = 15.0
+SEASON_FLOOR = 500
+FRANCHISES = frozenset('ARI ATL BAL BUF CAR CHI CIN CLE DAL DEN DET GB HOU IND JAX KC LAC LAR LV MIA MIN NE NO NYG NYJ '
+                       'PHI PIT SEA SF TB TEN WSH'.split())
+
+
+def v4_eligible(record, r):
+    proj, volume = record['current'].get('proj_attempts'), record.get('team_pass_attempts')
+    gap_rule = proj is not None and volume is not None and proj < r * volume
+    return record['construction'] is not None and (record['v2_applies'] or gap_rule)
+
+
+def projection_v4(record, arm, r=None):
+    """`current`, `v2` or `v4` at ratio r."""
+    if arm in ('current', 'v2'):
+        return projection(record, arm)
+    return record['construction'] if v4_eligible(record, r) else projection(record, 'v2')
+
+
+def gap_v4(records, r):
+    return [x for x in records if v4_eligible(x, r) and not x['v2_applies']]
+
+
+def bias_v4(records, arm, r=None):
+    return {f: float(np.mean([projection_v4(x, arm, r)[f'proj_{f}'] - x['actual'][f] for x in records]))
+            for f in ('attempts', 'pass_yds', 'points')} if records else None
+
+
+def cohort_report_v4(records, r, seed=BOOT_SEED_V4):
+    rs = gap_v4(records, r)
+    if not rs:
+        return {'n': 0}
+    v4, v2 = (lambda x: projection_v4(x, 'v4', r)), (lambda x: projection(x, 'v2'))
+    return {'n': len(rs), 'points': paired_v3(rs, v4, v2, seed=seed), 'pass_yds': paired_v3(rs, v4, v2, 'pass_yds', seed=seed),
+            'bias': {'v2': bias_v4(rs, 'v2'), 'v4': bias_v4(rs, 'v4', r)}}
+
+
+def fit_v4(development, source_digest):
+    """Fit r on 2020-2025. The records are v3's development records: the construction's
+    output does not depend on the eligibility rule, the model code and the nflverse
+    files are unchanged since they were written, and each carries the current
+    model's projected attempts and the team volume v4 compares."""
+    records = [x for x in load(development) if x.get('study') in (STUDY_V3, STUDY_V4) and 2020 <= x['season'] <= 2025]
+
+    def mae(arm, r=None):
+        return float(np.mean([abs(projection_v4(x, arm, r)['proj_points'] - x['actual']['points']) for x in records]))
+    by_r = {r: mae('v4', r) for r in R_GRID}
+    chosen = min(R_GRID, key=lambda r: (round(by_r[r], 9), r))
+    return {'study': STUDY_V4, 'window': 'development', 'records': len(records), 'source': str(development),
+            'source_sha256': source_digest, 'seasons': sorted({x['season'] for x in records}),
+            'objective': 'DraftKings-points MAE over every qualifying game; ties to the smallest r',
+            'population_mae': {'current': mae('current'), 'v2': mae('v2'), **{f'v4_r{r}': v for r, v in by_r.items()}},
+            'chosen_r': chosen,
+            'gap_cohort_by_r': {f'r{r}': cohort_report_v4(records, r) for r in R_GRID},
+            'construction_unavailable': sum(x['construction'] is None for x in records)}
+
+
+def check_test_window(seasons):
+    """Registered precondition, before any outcome is read: every team code resolves
+    to a franchise and each season has at least SEASON_FLOOR qualifying team-games."""
+    rows = load_rows(range(min(seasons) - 2, max(seasons) + 1))
+    codes = {x.team for x in rows if x.team} | {x.opponent for x in rows if x.opponent}
+    unknown = sorted(c for c in codes if c not in FRANCHISES)
+    counts = defaultdict(int)
+    for e in events_v3(rows, set(seasons)):
+        counts[e['target'].season] += 1
+    short = {s: counts[s] for s in seasons if counts[s] < SEASON_FLOOR}
+    if unknown or short:
+        raise SystemExit(f'Test window check failed: unknown team codes {unknown}, seasons under {SEASON_FLOOR} games {short}')
+    return {'team_codes': len(codes), 'qualifying_games': dict(sorted(counts.items()))}
+
+
+def grade_v4(records, r, k_v3=None):
+    """The registered gates at the fitted r. Run once, on 2012-2015."""
+    records = [x for x in records if x.get('study') == STUDY_V4]
+    report = cohort_report_v4(records, r)
+    n = report.get('n', 0)
+    pts, yds = (report.get('points') or {}).get('ci95'), (report.get('pass_yds') or {}).get('ci95')
+    b = (report.get('bias') or {}).get('v4') or {}
+    gates = {'sample_floor_met': n >= GAP_MIN_TEST_GAMES,
+             'points_ci_upper_below_zero': bool(pts and pts[1] < 0),
+             'pass_yds_ci_upper_below_zero': bool(yds and yds[1] < 0),
+             'calibration_attempts_within_5_and_yards_within_15': bool(b and abs(b['attempts']) <= ATTEMPTS_BIAS_LIMIT
+                                                                       and abs(b['pass_yds']) <= YARDS_BIAS_LIMIT)}
+    verdict = 'insufficient' if not gates['sample_floor_met'] else ('pass' if all(gates.values()) else 'fail')
+    gap = gap_v4(records, r)
+
+    def mae(arm):
+        return float(np.mean([abs(projection_v4(x, arm, r)['proj_points'] - x['actual']['points']) for x in records]))
+    reported = {'population_mae': {'current': mae('current'), 'v2': mae('v2'), 'v4': mae('v4')},
+                'by_season': {s: cohort_report_v4([x for x in records if x['season'] == s], r)
+                              for s in sorted({x['season'] for x in records})},
+                'by_trailing_mean': {'below_25': cohort_report_v4([x for x in records if x['trailing_attempts'] < 25], r),
+                                     'at_least_25': cohort_report_v4([x for x in records if x['trailing_attempts'] >= 25], r)},
+                'v2_spot_cohort_size': sum(x['v2_applies'] for x in records)}
+    if k_v3 is not None:
+        v3_keys = {x['key'] for x in globals()['gap'](records, k_v3)}
+        reported['overlap_with_v3_gap'] = {'k': k_v3, 'v4_gap': len(gap), 'v3_gap': len(v3_keys),
+                                           'both': sum(x['key'] in v3_keys for x in gap)}
+    return {'study': STUDY_V4, 'r': r, 'gap': report, 'gates': gates, 'verdict': verdict, 'reported': reported}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
@@ -402,7 +521,39 @@ def main():
     g.add_argument('--fit', type=Path, required=True)
     g.add_argument('--output', type=Path, required=True)
     g.add_argument('--variant', default='fitted')
+    f4 = sub.add_parser('fit-v4')
+    f4.add_argument('--development', type=Path, required=True)
+    f4.add_argument('--output', type=Path, required=True)
+    r4 = sub.add_parser('run-v4')
+    r4.add_argument('--seasons', required=True)
+    r4.add_argument('--output', type=Path, required=True)
+    r4.add_argument('--limit', type=int)
+    g4 = sub.add_parser('grade-v4')
+    g4.add_argument('--records', type=Path, required=True)
+    g4.add_argument('--fit', type=Path, required=True)
+    g4.add_argument('--v3-fit', type=Path)
+    g4.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
+    if args.command == 'run-v4':
+        first, last = (int(x) for x in args.seasons.split('-'))
+        seasons = list(range(first, last + 1))
+        print(json.dumps({'test_window_check': check_test_window(seasons)}), flush=True)
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        run_v3(seasons, args.output, args.limit, study=STUDY_V4)
+        return
+    if args.command in ('fit-v4', 'grade-v4'):
+        if args.output.exists():
+            raise SystemExit(f'Refusing to overwrite {args.output}')
+        if args.command == 'fit-v4':
+            import hashlib
+            result = fit_v4(args.development, hashlib.sha256(args.development.read_bytes()).hexdigest())
+        else:
+            fitted = json.loads(args.fit.read_text())
+            k = int(json.loads(args.v3_fit.read_text())['chosen_k']) if args.v3_fit else None
+            result = {**grade_v4(load(args.records), float(fitted['chosen_r']), k), 'fit': fitted}
+        args.output.write_text(json.dumps(result, indent=1))
+        print(json.dumps({k: v for k, v in result.items() if k != 'fit'}, indent=1)[:6000])
+        return
     if args.command == 'run-v3':
         first, last = (int(x) for x in args.seasons.split('-'))
         args.output.parent.mkdir(parents=True, exist_ok=True)
