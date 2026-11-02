@@ -1,5 +1,6 @@
 /** A full roster count is insufficient when requested portfolio targets were missed. */
 export function buildCompletion(input: {
+  warnings?: readonly string[];
   requestedLineups: number; generatedLineups: number;
   exposureReport?: readonly { name: string; binding: string | null }[] | null;
   salaryBandReport?: readonly { withinPlan: boolean }[] | null;
@@ -12,5 +13,6 @@ export function buildCompletion(input: {
   if (input.salaryBandReport?.some(r => !r.withinPlan)) issues.push('Salary distribution targets were not met.');
   for (const plan of input.archetypePlan ?? [])
     if (plan.realized !== plan.requested) issues.push(`${plan.label}: ${plan.realized} of ${plan.requested} requested lineups.`);
+  issues.push(...(input.warnings ?? []).filter(w=>w.startsWith('Portfolio target missed:')));
   return { status: !input.generatedLineups ? 'failed' : issues.length ? 'partial' : 'complete', issues };
 }

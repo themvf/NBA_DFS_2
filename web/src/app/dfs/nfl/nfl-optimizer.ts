@@ -64,7 +64,7 @@ import { featureTotals, JOINT_TARGET_PENALTY, NFL_JOINT_SELECTION_VERSION, selec
 // Record the strict Showdown purchase and completed-roster validation.
 // v8: DK-average fallback honoured in defensive mode; a lock or exposure
 // minimum on a player outside the pool is an error instead of being dropped.
-export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v15-diversified-minimums";
+export const NFL_OPTIMIZER_VERSION = "nfl-dfs-ilp-v16-partial-portfolios";
 
 export type NflProjectionSource = "our" | "workload" | "calibrated" | "dk_avg" | "fantasypros" | "linestar" | "custom";
 export type NflOptimizerMode = "cash" | "gpp";
@@ -1493,7 +1493,7 @@ function diversifiedSelect(ctx: {pool: ResolvedPlayer[]; settings: NflOptimizerS
       const actual=result.lineups.filter(l=>l.playerIds.includes(p.dkPlayerId)).length;
       return actual<minimum ? [`${p.name} ${actual}/${minimum}`] : [];
     });
-    throw new Error(`Diversified could not produce a complete portfolio satisfying every Winners composition target, exposure, combination, uniqueness and coverage rule (${result.lineups.length}/${n} lineups).${shortfalls.length ? ` Unmet player minimums: ${shortfalls.join('; ')}.` : ''} Adjust limits or exclusions and retry.`);
+    return {lineups:result.lineups,note:`Portfolio target missed: retained ${result.lineups.length}/${n} lineups. Winners composition, coverage or minimum targets were not all met.${shortfalls.length ? ` Unmet player minimums: ${shortfalls.join('; ')}.` : ''} Caps remain counts based on the requested ${n}; actual percentages can be higher in a partial set.`};
   }
   const counts=new Map<number,number>();
   for (const l of result.lineups) for (const id of l.playerIds) counts.set(id,(counts.get(id)??0)+1);
@@ -1830,7 +1830,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
       throw new Error(`Diversified requires ${policy.minimumQbs} different QBs, but only ${playable.filter(p=>p.position==='QB').length} are eligible under your limits.`);
     for (const [position, slots] of [['QB',1],['RB',2],['WR',3],['TE',1],['DST',1]] as const) {
       const capacity=playable.filter(p=>p.position===position).reduce((sum,p)=>sum+countsById.get(p.dkPlayerId)!.overallMax,0);
-      if(capacity<slots*settings.nLineups) throw new Error(`Diversified ${position} limits cover only ${capacity}/${slots*settings.nLineups} required appearances. Raise a player or position maximum, or remove exclusions.`);
+      if(capacity<slots*settings.nLineups) warnings.push(`Diversified ${position} limits cover only ${capacity}/${slots*settings.nLineups} required appearances. Raise a player or position maximum, or remove exclusions.`);
     }
   }
 
@@ -2035,9 +2035,9 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
       }
     }
     if (!lineup) {
-      if (requireAirMatchup && requireGoalLine) throw new Error(`Could not meet the air-yard matchup and goal-line RB minimums together with the remaining exposure, salary, and roster constraints. Lower a percentage or adjust player limits.`);
-      if (requireAirMatchup) throw new Error(`Could not meet the air-yard matchup minimum of ${airMatchupTarget}/${settings.nLineups} lineups with the remaining exposure, salary, and roster constraints. Lower the percentage or adjust player limits.`);
-      if (requireGoalLine) throw new Error(`Could not meet the goal-line RB minimum of ${goalLineTarget}/${settings.nLineups} lineups with the remaining exposure, salary, and roster constraints. Lower the percentage or adjust player limits.`);
+      if (!lineups.length && requireAirMatchup && requireGoalLine) throw new Error(`Could not meet the air-yard matchup and goal-line RB minimums together with the remaining exposure, salary, and roster constraints. Lower a percentage or adjust player limits.`);
+      if (!lineups.length && requireAirMatchup) throw new Error(`Could not meet the air-yard matchup minimum of ${airMatchupTarget}/${settings.nLineups} lineups with the remaining exposure, salary, and roster constraints. Lower the percentage or adjust player limits.`);
+      if (!lineups.length && requireGoalLine) throw new Error(`Could not meet the goal-line RB minimum of ${goalLineTarget}/${settings.nLineups} lineups with the remaining exposure, salary, and roster constraints. Lower the percentage or adjust player limits.`);
       warnings.push(`Stopped after ${lineups.length} lineup(s): the ${ARCHETYPE_LABELS[plan[lineupNumber - 1].archetypeId]} quota or remaining exposure, uniqueness, salary, and DST game-script rules cannot all be met.`);
       break;
     }
@@ -2130,16 +2130,16 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
     warnings.push(`DST against own players: ${dstVsOffenseLineups} of ${lineups.length} lineups play a defense against one of their own QB/RB/WR/TE (cap ${dstVsOffenseCap}, ${Math.round(settings.maxDstVsOffenseShare! * 100)}%).`);
   }
   if (airMatchupTarget) {
-    if (airMatchupLineups < airMatchupTarget) throw new Error(`Air-yard matchup minimum missed: ${airMatchupLineups}/${airMatchupTarget} required lineups. Adjust the percentage or player limits.`);
+    if (airMatchupLineups < airMatchupTarget) warnings.push(`Air-yard matchup minimum missed: ${airMatchupLineups}/${airMatchupTarget} required lineups. Adjust the percentage or player limits.`);
     warnings.push(`Air-yard matchup coverage: ${airMatchupLineups}/${lineups.length} generated lineups; minimum ${airMatchupTarget}/${settings.nLineups} requested (${settings.gppAirMatchupMinPct}%).`);
   }
   if (goalLineTarget) {
-    if (goalLineLineups < goalLineTarget) throw new Error(`Goal-line RB minimum missed: ${goalLineLineups}/${goalLineTarget} required lineups. Adjust the percentage or player limits.`);
+    if (goalLineLineups < goalLineTarget) warnings.push(`Goal-line RB minimum missed: ${goalLineLineups}/${goalLineTarget} required lineups. Adjust the percentage or player limits.`);
     warnings.push(`Goal-line RB coverage: ${goalLineLineups}/${lineups.length} generated lineups; minimum ${goalLineTarget}/${settings.nLineups} requested (${settings.gppGoalLineMinPct}%).`);
   }
   if (topProjectedTargets.length) {
     const missed = topProjectedTargets.filter(player => !exposureCounts.get(player.dkPlayerId));
-    if (missed.length) throw new Error(`Top projected coverage could not be completed for ${missed.map(player => player.name).join(", ")}. The lineup rules conflict with covering these players; adjust the rules or turn off top projected coverage.`);
+    if (missed.length) warnings.push(`Top projected coverage could not be completed for ${missed.map(player => player.name).join(", ")}. The lineup rules conflict with covering these players; adjust the rules or turn off top projected coverage.`);
     warnings.push(settings.buildShape === 'diversified'
       ? `Leading projection exposure: ${topProjectedTargets.map(p=>`${p.name} ${exposureCounts.get(p.dkPlayerId)??0}/${settings.nLineups}`).join('; ')}. One appearance is coverage, not evidence that the allocation is sufficient.`
       : `Top projected coverage: ${topProjectedTargets.map(player => player.name).join(", ")} each appeared in at least one lineup (ranked by selected mean projection).`);
@@ -2199,8 +2199,8 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
     realized: lineups.filter((lineup) => lineup.archetype?.id === archetypeId).length })) : undefined;
 
   if (settings.buildShape === "diversified") {
-    if (lineups.length !== settings.nLineups) throw new Error(`Diversified could build only ${lineups.length}/${settings.nLineups} lineups under the exposure, combination and uniqueness limits. No partial portfolio was saved. Adjust limits or exclusions and retry.`);
-    if (exposureReport.some(r => /missed/.test(r.binding ?? ""))) throw new Error("Diversified could not satisfy all player minimums. Adjust player targets and retry.");
+    if (lineups.length !== settings.nLineups) warnings.push(`Partial portfolio: ${lineups.length}/${settings.nLineups} lineups retained and available for export.`);
+    if (exposureReport.some(r => /missed/.test(r.binding ?? ""))) warnings.push("Portfolio target missed: some player minimums were not met; see the exposure report.");
   }
   return { lineups, warnings, diversifiedReport, sourceCoverage: coverage, eligibility, exposureReport, salaryBandReport, duplication, maxPairwiseOverlap: overlap, archetypePlan, topProjectedPlayerIds: topProjectedTargets.map(player => player.dkPlayerId) };
 }

@@ -172,3 +172,20 @@ final selection retains its common score and validates all hard bounds.
 No-minimum builds have identical construction scores. Failure messages now
 list any unmet player minimums. Feasibility is not guaranteed for arbitrary
 conflicting requests. Standard/Winners behavior is unchanged.
+
+## November 2 owner policy: keep and export partial portfolios
+
+This supersedes the earlier complete-or-error contract. When generation stops,
+retain every completed roster and save the set as partial. Missed player
+minimums, composition and coverage targets are reported. A full-count build
+with a composition miss is also partial. Exposure maxima and combination
+limits retain counts calculated from the requested count; percentages may be
+higher in a shorter set. The builder does not weaken roster legality or add
+placeholder lineups. Invalid settings and requests that cannot build any
+roster can still fail.
+
+Portfolio exposure shortfalls warn in export QA instead of blocking export.
+Existing entry export fills available lineups and retains untouched entry
+rows. Roster legality, current-player eligibility, slate-lock and other export
+checks keep their existing behavior. Tests cover real optimizer partial
+output, completion status, CSV row count and QA warning behavior.

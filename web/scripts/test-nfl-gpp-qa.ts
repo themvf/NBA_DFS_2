@@ -45,7 +45,8 @@ function main() {
 
   // --- P6-AC2: exposure/archetype shortfalls name the exact unsatisfied constraint ---
   const exposureQa = runNflPreExportQa(baseInput({ exposureReport: [{ dkPlayerId: 3, name: "Player 3", binding: "captain min missed (0/2)" }] }));
-  assert.ok(exposureQa.openBlockers.includes("exposure_ranges"));
+  assert.ok(!exposureQa.openBlockers.includes("exposure_ranges"));
+  assert.equal(exposureQa.checks.find(c=>c.id==="exposure_ranges")!.severity,"warning");
   const exposureCheck = exposureQa.checks.find((c) => c.id === "exposure_ranges")!;
   assert.ok(/Player 3/.test(exposureCheck.detail) && /captain min missed/.test(exposureCheck.detail));
 
