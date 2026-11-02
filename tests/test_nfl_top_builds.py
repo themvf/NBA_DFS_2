@@ -67,17 +67,19 @@ class _FakeDb:
         if "FROM nfl_dfs_optimizer_runs" in sql:
             return [{"run_id": "run-1", "created_at": datetime(2026, 10, 11, tzinfo=timezone.utc), "generated_lineups": 1, "mode": "gpp"}]
         if "FROM nfl_dfs_slate_players" in sql:
-            return [{"dk_player_id": i, "name": n, "position": p, "team": t, "opponent": None, "salary": 5000}
-                    for i, (n, p, t) in enumerate(self.lineup)]
+            return [{"dk_player_id": i, "ff_player_id": (x[3] if len(x) > 3 else None), "name": x[0],
+                     "position": x[1], "team": x[2], "opponent": None, "salary": 5000}
+                    for i, x in enumerate(self.lineup)]
         if "FROM nfl_dfs_field_user_builds" in sql:
             return [{"lineups": [{"roster": [[p, n, t, p, 5000, f, 1.0] for n, p, t, f in self.seats]}]}]
         if "FROM nfl_dfs_field_ownership" in sql:
             return []
         if "FROM nfl_dfs_player_week_results" in sql:
-            return [{"name": n, "position": p, "team": t, "pts": f} for n, p, t, f in self.week_results]
+            return [{"player_id": (x[4] if len(x) > 4 else 1000 + i), "name": x[0], "position": x[1],
+                     "team": x[2], "pts": x[3]} for i, x in enumerate(self.week_results)]
         if "FROM nfl_dfs_lineups" in sql:
             return [{"lineup_number": 1, "total_salary": 50000,
-                     "slots": [{"slot": p, "name": n, "dkPlayerId": i, "team": t} for i, (n, p, t) in enumerate(self.lineup)]}]
+                     "slots": [{"slot": x[1], "name": x[0], "dkPlayerId": i, "team": x[2]} for i, x in enumerate(self.lineup)]}]
         raise AssertionError(sql)
 
 
@@ -110,3 +112,16 @@ def test_captain_points_belong_to_the_captain_slot_only():
                  lineup=[("Josh Allen", "CPT", "BUF"), ("Puka Nacua", "FLEX", "LAR")])
     _, lineups = load_ours(db, {"slate_upload_id": "u", "contest_id": "c", "season": 2026, "week": 5}, "run-1")
     assert lineups[0]["points"] == round(1.5 * 34.5 + 40.7, 2)
+
+
+def test_a_suffixed_draftkings_name_is_scored_through_the_slate_player_id():
+    # 2026 week 8: ff_players.canonical_name is "James Cook" / "Kyle Pitts" while
+    # DraftKings lists "James Cook III" / "Kyle Pitts Sr."; the name fallback
+    # missed them. The slate links each DK player to ff_players by gsis id.
+    from research.nfl_top_builds import load_ours
+    db = _FakeDb(week_results=[("James Cook", "RB", "BUF", 18.1, 40), ("Kyle Pitts", "TE", "ATL", 2.6, 363)],
+                 seats=[],
+                 lineup=[("James Cook III", "RB", "BUF", 40), ("Kyle Pitts Sr.", "TE", "ATL", 363)])
+    _, lineups = load_ours(db, {"slate_upload_id": "u", "contest_id": "c", "season": 2026, "week": 8}, "run-1")
+    assert lineups[0]["points"] == 20.7
+    assert lineups[0]["missing"] == []

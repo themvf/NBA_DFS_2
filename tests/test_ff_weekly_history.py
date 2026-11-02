@@ -161,3 +161,52 @@ def test_the_name_fallback_still_serves_rows_without_a_gsis(tmp_path):
     written = save_weekly_history(db, UNIVERSE, 2026, pd.DataFrame([player_row(None, "Beta Wide", "WR")]),
                                   report_dir=tmp_path)
     assert written == 1 and db.calls[0][1][0] == 2
+
+
+# -- Off-position labels: nflverse calls Travis Hunter a CB -------------------
+
+HUNTER = {"player_id": 833, "gsis_id": "00-0040718", "name": "Travis Hunter", "position": "WR", "team": "JAX"}
+
+
+def test_a_skill_player_nflverse_lists_on_defense_is_kept_at_our_position(tmp_path):
+    """2026 weeks 1-8: nflverse labelled Hunter 'CB', the position filter dropped
+    every row, and DFS grading scored his DraftKings WR points as 0."""
+    db = Recorder()
+    row = player_row("00-0040718", "Travis Hunter", "CB", week=8, carries=1, rushing_yards=5,
+                     fantasy_points=0.5, fantasy_points_ppr=0.5)
+    written = save_weekly_history(db, UNIVERSE + [HUNTER], 2026, pd.DataFrame([row]), report_dir=tmp_path)
+    assert written == 1
+    params = db.calls[0][1]
+    assert params[0] == 833 and params[2] == 8
+    source_row = params[-1].adapted
+    assert source_row["position"] == "WR" and source_row["nflverse_position"] == "CB"
+
+
+def test_an_off_position_row_is_never_matched_by_name(tmp_path):
+    """A defender who shares a skill player's name, with a different gsis id, stays out."""
+    db = Recorder()
+    row = player_row("00-0099999", "Travis Hunter", "CB", week=8)
+    assert save_weekly_history(db, UNIVERSE + [HUNTER], 2026, pd.DataFrame([row]), report_dir=tmp_path) == 0
+    assert db.calls == []
+
+
+def test_a_defender_is_not_counted_as_an_unmatched_skill_row(tmp_path):
+    import json
+    db = Recorder()
+    rows = [player_row("00-0000001", "Alpha Back", "RB"), player_row("00-0077777", "Some Corner", "CB")]
+    save_weekly_history(db, UNIVERSE, 2026, pd.DataFrame(rows), report_dir=tmp_path)
+    report = json.loads((tmp_path / "unmatched-2026.json").read_text())
+    assert report["unmatched_rows"] == 0 and report["eligible_rows"] == 1 and report["off_position_rows"] == 0
+
+
+def test_the_off_position_row_scores_at_our_position():
+    from ingest.nfl_dfs_results import score_source_row
+    raw = player_row("00-0040718", "Travis Hunter", "WR", week=8, carries=1, rushing_yards=5)
+    raw["nflverse_position"] = "CB"
+    for key in ("passing_yards", "passing_tds", "interceptions", "rushing_tds", "receptions", "receiving_yards",
+                "receiving_tds", "rushing_fumbles_lost", "receiving_fumbles_lost", "sack_fumbles_lost",
+                "passing_2pt_conversions", "rushing_2pt_conversions", "receiving_2pt_conversions",
+                "special_teams_tds"):
+        raw.setdefault(key, 0)
+    scored = score_source_row(raw["position"], raw)
+    assert scored.status == "exact" and scored.actual_dk_fpts == 0.5

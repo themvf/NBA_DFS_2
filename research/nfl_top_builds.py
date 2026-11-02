@@ -241,14 +241,19 @@ def load_ours(db, contest: dict, run_id: str | None) -> tuple[dict | None, list[
         return None, []
     run = dict(runs[0])
     players = {str(r["dk_player_id"]): dict(r) for r in db.execute(
-        "SELECT dk_player_id, name, position, team, opponent, salary FROM nfl_dfs_slate_players WHERE upload_id = %s",
+        "SELECT dk_player_id, ff_player_id, name, position, team, opponent, salary FROM nfl_dfs_slate_players WHERE upload_id = %s",
         (contest["slate_upload_id"],))}
     actual = contest_points(db, contest["contest_id"])
+    # By player id first: `ff_players.canonical_name` drops DraftKings' suffix
+    # for some players ("James Cook" vs "James Cook III"), so a name-only
+    # fallback left them unscored whenever the contest table lacked them.
+    actual_by_id: dict[int, float] = {}
     for r in db.execute(
-        """SELECT f.canonical_name AS name, r.position, r.team, r.actual_dk_fpts AS pts FROM nfl_dfs_player_week_results r
+        """SELECT r.player_id, f.canonical_name AS name, r.position, r.team, r.actual_dk_fpts AS pts FROM nfl_dfs_player_week_results r
            JOIN ff_players f ON f.id = r.player_id WHERE r.season = %s AND r.week = %s""", (contest["season"], contest["week"])):
         if r["pts"] is None:
             continue
+        actual_by_id.setdefault(int(r["player_id"]), r["pts"])
         actual.setdefault(normalize_name(r["name"]), r["pts"])
         if r["position"] == "DST":
             actual.setdefault(normalize_name(r["team"]), r["pts"])
@@ -263,6 +268,8 @@ def load_ours(db, contest: dict, run_id: str | None) -> tuple[dict | None, list[
             name = s.get("name") or p.get("name")
             key = normalize_name(name)
             pts = actual.get(key)
+            if pts is None and p.get("ff_player_id") is not None:
+                pts = actual_by_id.get(int(p["ff_player_id"]))
             if pts is None and p.get("position") == "DST":
                 pts = actual.get(normalize_name(p.get("team")))
             fo = field.get(key)

@@ -895,12 +895,30 @@ def save_weekly_history(
     resolved: list[tuple[dict[str, Any], dict[str, Any], int]] = []
     unmatched: list[dict[str, Any]] = []
     claimed: dict[tuple[int, int], dict[str, Any]] = {}
+    off_position = 0
     for _, series in frame.iterrows():
         if str(series.get("season_type") or "REG") != "REG":
             continue
-        if str(series.get("position") or "") not in wanted:
-            continue
-        raw = _clean(series.to_dict())
+        feed_position = str(series.get("position") or "")
+        if feed_position not in wanted:
+            # nflverse labels a two-way or hybrid player by his defensive or
+            # blocking role: Travis Hunter is "CB" every week, Juszczyk "FB".
+            # Filtering on that label dropped every offensive line they had
+            # (Hunter: 2026 weeks 1-8, no results row, so graders scored his
+            # DraftKings WR points as 0). Keep the row only when its gsis id
+            # is one of OUR skill players -- never by name, which would let
+            # any defender who shares a name in -- and score it at our
+            # position, recording what nflverse called him.
+            gsis = str(series.get("player_id") or "").strip()
+            matches = [row for row in by_gsis.get(gsis, []) if row["position"] in wanted]
+            if not matches:
+                continue
+            raw = _clean(series.to_dict())
+            raw["nflverse_position"] = feed_position
+            raw["position"] = matches[0]["position"] if len(matches) == 1 else feed_position
+            off_position += 1
+        else:
+            raw = _clean(series.to_dict())
         gsis = str(raw.get("player_id") or "").strip()
         name = str(raw.get("player_display_name") or raw.get("player_name") or "")
         candidates = by_gsis.get(gsis) or [
@@ -939,6 +957,7 @@ def save_weekly_history(
     share = len(unmatched) / eligible if eligible else 0.0
     report = {"season": weekly_season, "eligible_rows": eligible, "matched_rows": len(resolved),
               "unmatched_rows": len(unmatched), "unmatched_share": round(share, 4),
+              "off_position_rows": off_position,
               "max_unmatched_share": max_unmatched_share,
               "unmatched": sorted(unmatched, key=lambda r: (-(r["fantasy_points_ppr"] or 0), str(r["name"])))}
     path = _write_identity_report(report_dir, weekly_season, report)
