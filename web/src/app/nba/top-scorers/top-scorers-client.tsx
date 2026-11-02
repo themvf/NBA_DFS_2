@@ -131,6 +131,7 @@ export function TopScorersClient({
   lastSeason,
   thisSeason,
   boomBoard = null,
+  liveAvailability = {},
 }: {
   scorers: ScorerRow[];
   games: GameSummary[];
@@ -138,6 +139,7 @@ export function TopScorersClient({
   lastSeason: string;
   thisSeason: string;
   boomBoard?: BoomBoard | null;
+  liveAvailability?:Record<string,string>;
 }) {
   const [tab, setTab] = useState<"players" | "games" | "pulled">("players");
   const [game, setGame] = useState<string>("all");
@@ -291,6 +293,7 @@ export function TopScorersClient({
                   const key = `${s.eventId}-${s.player}`;
                   const pos = positionStyle(s.position);
                   const boom = booms.get(boomIdentity(s.eventId, s.player));
+                  const observedStatus=liveAvailability[boomIdentity(s.eventId,s.player)]??"unverified";
                   const split = s.lineHigh > s.lineLow;
                   return (
                     <FragmentRow key={key} expanded={open === key} row={s}>
@@ -302,6 +305,7 @@ export function TopScorersClient({
                           <span className={`absolute inset-y-0 left-0 w-1 ${pos.stripe}`} />
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                             <span className="font-semibold text-white">{s.player}</span>
+                            {observedStatus!=="unverified"&&<span className={`rounded border px-1.5 py-1 text-xs ${observedStatus==="Out"?"text-rose-300":"text-amber-200"}`} title="Latest observed official report; see evidence timestamps above.">{observedStatus}</span>}
                             {s.position && (
                               <span className={`whitespace-nowrap rounded border px-1.5 py-px font-mono text-[10px] ${pos.badge}`}>{s.position}</span>
                             )}
@@ -375,7 +379,7 @@ export function TopScorersClient({
               </tbody>
             </table>
             <p className="mt-2 font-mono text-[11px] text-slate-500">
-              Boom shots = frozen change in FGA + 0.44 FTA per game, last 3 versus last 20. Missing scores stay unavailable; this is not a probability. More lineups selects the player below. Click a row for every book&apos;s line and price and the ladder&apos;s chances. Rank = slate / on his team. Team is from his latest game this season; &quot;prior season&quot; means he has not played yet. Availability is unverified; 1 BOOK marks a line only one book quotes, which often means the player may sit. 25+ / 30+ / 40+ and
+              Boom shots = frozen change in FGA + 0.44 FTA per game, last 3 versus last 20. Missing scores stay unavailable; this is not a probability. More lineups selects the player below. Click a row for every book&apos;s line and price and the ladder&apos;s chances. Rank = slate / on his team. Team is from his latest game this season; &quot;prior season&quot; means he has not played yet. Unlisted availability is unverified; badges use the latest observed official report. 1 BOOK marks a line only one book quotes, which often means the player may sit. 25+ / 30+ / 40+ and
               floor–ceiling come from the alternate points ladder; &quot;-&quot; means no ladder or a threshold past its last rung.
             </p>
           </div>

@@ -2,21 +2,21 @@ name: NBA ghost projections v2
 
 # No Odds API calls. Read existing lines, verify free ESPN game classifications,
 # and store new research snapshots/grade attempts without changing live forecasts.
-# Real cadence: /api/cron/dispatch (jobs nba-ghost-freeze 15:37 UTC and
-# nba-ghost-grade 11:37 UTC, October-June), since GitHub starts this repo's
+# Real cadence: /api/cron/dispatch (jobs nba-ghost-freeze 11:37 AM America/New_York and
+# nba-ghost-grade 7:37 AM America/New_York, October-June), since GitHub starts this repo's
 # schedules hours late and a freeze after the first tip is refused. These two
 # crons are a thin fallback: a late freeze fills only a missed morning (it never
 # replaces a stored snapshot), and a repeated grade appends an attempt.
 on:
   schedule:
-    - cron: '50 16 * 1-6,10-12 *'
-    - cron: '37 12 * 1-6,10-12 *'
+    - cron: '50 17 * 1-6,10-12 *'
+    - cron: '37 13 * 1-6,10-12 *'
   workflow_dispatch:
     inputs:
       action:
         description: Research action
         type: choice
-        options: [freeze, grade]
+        options: [freeze, grade, availability]
         default: freeze
       date:
         description: Eastern slate date (blank = today for freeze, yesterday for grade)
@@ -42,39 +42,49 @@ jobs:
           python-version: '3.12'
           cache: pip
       - run: pip install -r requirements.txt
+      - name: Capture official NBA availability before freezing
+        if: github.event.schedule != '37 13 * 1-6,10-12 *' && inputs.action != 'grade'
+        id: injury
+        continue-on-error: true
+        run: |
+          day="${GAME_DATE:-$(TZ=America/New_York date +%F)}"
+          python -m research.nba_points_injury_evidence --date "$day" --archive-root artifacts/nba-ghost/injury --availability-output artifacts/nba-ghost/availability.json --apply
       - name: Capture NBA rosters (decision-time team identity)
-        if: github.event.schedule != '37 12 * 1-6,10-12 *' && inputs.action != 'grade'
+        if: github.event.schedule != '37 13 * 1-6,10-12 *' && inputs.action != 'grade' && inputs.action != 'availability'
         id: rosters
         continue-on-error: true
         run: python -m ingest.nba_rosters
       - name: Record a pre-first-tip ghost snapshot
-        if: github.event.schedule != '37 12 * 1-6,10-12 *' && inputs.action != 'grade'
-        run: >-
-          python -m research.nba_ghost_runner freeze
-          ${GAME_DATE:+--date "$GAME_DATE"}
-          --output artifacts/nba-ghost/ghost.json --apply
+        if: github.event.schedule != '37 13 * 1-6,10-12 *' && inputs.action != 'grade' && inputs.action != 'availability'
+        run: |
+          availability=()
+          if [ -f artifacts/nba-ghost/availability.json ]; then availability=(--availability artifacts/nba-ghost/availability.json); else echo '::warning::Fresh official availability unavailable; statuses stay unverified.'; fi
+          python -m research.nba_ghost_runner freeze ${GAME_DATE:+--date "$GAME_DATE"} --output artifacts/nba-ghost/ghost.json --apply "${availability[@]}"
       - name: Review workload conflicts in the frozen snapshot
-        if: github.event.schedule != '37 12 * 1-6,10-12 *' && inputs.action != 'grade'
+        if: github.event.schedule != '37 13 * 1-6,10-12 *' && inputs.action != 'grade' && inputs.action != 'availability'
         run: >-
           python -m research.nba_points_workload_conflicts
           ${GAME_DATE:+--date "$GAME_DATE"} --apply
       - name: Grade frozen research predictions
-        if: github.event.schedule == '37 12 * 1-6,10-12 *' || inputs.action == 'grade'
+        if: github.event.schedule == '37 13 * 1-6,10-12 *' || inputs.action == 'grade'
         run: >-
           python -m research.nba_ghost_runner grade
           ${GAME_DATE:+--date "$GAME_DATE"}
           --days-back 3 --apply
       - name: Grade workload-conflict flags
-        if: github.event.schedule == '37 12 * 1-6,10-12 *' || inputs.action == 'grade'
+        if: github.event.schedule == '37 13 * 1-6,10-12 *' || inputs.action == 'grade'
         run: >-
           python -m research.nba_points_workload_conflicts --grade
           ${GAME_DATE:+--date "$GAME_DATE"} --apply
       - name: Report optional step outcomes
-        if: ${{ always() && steps.rosters.outcome != '' }}
+        if: ${{ always() && (steps.rosters.outcome != '' || steps.injury.outcome != '') }}
         env:
           ROSTERS_OUTCOME: ${{ steps.rosters.outcome }}
+          INJURY_OUTCOME: ${{ steps.injury.outcome }}
         run: |
           echo "## Optional steps" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Official NBA injury capture: $INJURY_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$INJURY_OUTCOME" = failure ]; then echo "::warning title=Official injury capture failed::No fresh verified observation was published; inspect the retained receipt and source files."; fi
           echo "- NBA roster capture: $ROSTERS_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
           if [ "$ROSTERS_OUTCOME" = failure ]; then echo "::warning title=Optional step failed::NBA roster capture ended failure (decision-time team stays unverified)"; fi
       - uses: actions/upload-artifact@v4

@@ -306,7 +306,7 @@ def markdown(report):
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--date',type=date.fromisoformat,required=True)
     p.add_argument('--archive-root',type=Path,default=Path('artifacts/nba-injury-evidence'))
-    p.add_argument('--report-url');p.add_argument('--pdf',type=Path);p.add_argument('--capture-receipt',type=Path)
+    p.add_argument('--apply',action='store_true',help='Append the official observation to the isolated website evidence table');p.add_argument('--report-url');p.add_argument('--pdf',type=Path);p.add_argument('--capture-receipt',type=Path)
     p.add_argument('--availability-output',type=Path,help='Exclusive current-day evidence for the existing ghost --availability input')
     args=p.parse_args();index=None;receipt=None;discovery=None
     if args.capture_receipt:
@@ -333,6 +333,11 @@ def main():
         observed=datetime.now(timezone.utc)
     folder,report=archive(data,url,observed,args.archive_root,receipt=receipt,index_html=index,discovery=discovery)
     if args.date.isoformat() not in {r['game_date'] for r in report['team_submissions']}:raise ValueError('requested slate date absent from report')
+    if args.apply:
+        import psycopg2
+        from config import load_config
+        from research.nba_injury_store import publish
+        with psycopg2.connect(load_config().database_url) as conn:publish(report,conn)
     evidence,blocked=availability(report,args.date)
     if args.availability_output:write_new(args.availability_output,evidence)
     print(json.dumps({'archive':str(folder),'published_at':report['published_at'],'observed_at':report['observed_at'],'rows':len(report['rows']),'sha256':report['sha256'],

@@ -1,0 +1,15 @@
+import assert from "node:assert/strict";
+import {matchAvailability,availabilityBoard} from "../src/lib/nba-availability";
+import type {BoomBoard} from "../src/lib/nba-boom-lineups";
+const id={event_id:"e",player_key:"a",home_team:"Boston Celtics",away_team:"LA Clippers"};
+const row={game_date:"2026-11-02",player_key:"a",home_key:"bostonceltics",away_key:"losangelesclippers",status:"Out",reason:"knee"};
+assert.equal(matchAvailability("2026-11-02",[id],[row])["e:a"].status,"Out");
+assert.equal(matchAvailability("2026-11-02",[id],[{...row,game_date:"2026-11-03"}])["e:a"].status,"unverified");
+assert.equal(matchAvailability("2026-11-02",[id],[{...row,home_key:"torontoraptors"}])["e:a"].status,"unverified");
+assert.equal(matchAvailability("2026-11-02",[id],[row,row])["e:a"].status,"unverified");
+const player={id:"e:a",name:"A",points:30,pointRank:1,boom:4,boomRank:1,shotsLast3:20,shotsLast20:16,availability:"unverified"};
+const b:BoomBoard={date:"2026-11-02",snapshot:"s",model:null,frozenAt:"",lockAt:"",players:[player,{...player,id:"e:b",name:"B"}],excluded:0};
+const old=JSON.stringify(b);const evidence={sha:"r",publishedAt:"",observedAt:"",sourceUrl:"",states:{"e:a":{status:"Out",reason:"knee"},"e:b":{status:"Questionable",reason:"illness"}}};
+const filtered=availabilityBoard(b,evidence)!;assert.equal(filtered.players.length,1);assert.equal(filtered.players[0].availability,"Questionable");assert.equal(filtered.players[0].points,30);assert.equal(JSON.stringify(b),old);
+assert.equal(availabilityBoard(b,null)!.players[0].availability,"unverified");
+console.log("PASS: exact game/player joins, ambiguous/missing reports, Out exclusion, unchanged Questionable points and immutable originals");

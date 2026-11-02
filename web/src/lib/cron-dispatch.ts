@@ -219,19 +219,26 @@ export function nbaPointsGradeDue(now: Date): boolean {
 }
 
 /**
- * NBA ghost research snapshot (nba_points_ghost.yml, action freeze): 15:37 UTC
- * (11:37 AM ET), half an hour after the 11:07 AM ET points-line capture and
- * before any regular first tip. The snapshot is refused after the slate's first
+ * NBA ghost research snapshot (nba_points_ghost.yml, action freeze): 11:37 AM
+ * America/New_York, using existing archived quotes after fresh official injury
+ * evidence. The clock follows Eastern daylight-saving changes. The snapshot is refused after the slate's first
  * scheduled tip, and a second freeze never replaces the first, so a late GitHub
  * fallback can only fill a missed morning. No Odds API credits.
  */
-export function nbaGhostFreezeDue(now: Date): boolean {
-  return NBA_MONTHS.has(now.getUTCMonth() + 1) && now.getUTCHours() === 15 && now.getUTCMinutes() === 37;
+function nbaEasternTime(now: Date) {
+  const parts = new Intl.DateTimeFormat("en-US", {timeZone:"America/New_York",month:"numeric",hour:"numeric",minute:"numeric",hourCycle:"h23"}).formatToParts(now);
+  const part=(kind:string)=>Number(parts.find(p=>p.type===kind)?.value);
+  return {month:part("month"),hour:part("hour"),minute:part("minute")};
 }
-
-/** Grade the last three ghost snapshots (action grade): 11:37 UTC, after the 11:07 box-score job. */
+export function nbaGhostFreezeDue(now: Date): boolean {
+  const t=nbaEasternTime(now);return NBA_MONTHS.has(t.month)&&t.hour===11&&t.minute===37;
+}
 export function nbaGhostGradeDue(now: Date): boolean {
-  return NBA_MONTHS.has(now.getUTCMonth() + 1) && now.getUTCHours() === 11 && now.getUTCMinutes() === 37;
+  const t=nbaEasternTime(now);return NBA_MONTHS.has(t.month)&&t.hour===7&&t.minute===37;
+}
+/** Two bounded free injury refreshes; this is not continuous monitoring. */
+export function nbaInjuryRefreshDue(now: Date): boolean {
+  const t=nbaEasternTime(now);return NBA_MONTHS.has(t.month)&&t.hour===18&&(t.minute===37||t.minute===52);
 }
 
 export const DISPATCH_JOBS: readonly DispatchJob[] = [
@@ -322,6 +329,11 @@ export const DISPATCH_JOBS: readonly DispatchJob[] = [
     due: nbaGhostFreezeDue,
     inputs: { action: "freeze", date: "" },
     why: "Frozen pregame NBA ghost v2 research snapshot (feeds /nba/boom-trios and the ghost trial), 11:37 AM ET, October-June. No Odds API credits.",
+  },
+  {
+    key: "nba-injury-refresh",
+    workflow: "nba_points_ghost.yml", due: nbaInjuryRefreshDue, inputs: {action:"availability",date:""},
+    why: "Free official NBA availability observations at 6:37 and 6:52 PM Eastern; no odds requests or forecast changes.",
   },
   {
     key: "nba-ghost-grade",
