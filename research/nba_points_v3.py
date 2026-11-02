@@ -249,6 +249,13 @@ def markdown(output):
     return '\n'.join(lines)+'\n'
 
 
+def optional_capture(command,timeout):
+    """Optional evidence failures never prevent recording the unchanged base model."""
+    try:return subprocess.run(command,capture_output=True,text=True,timeout=timeout)
+    except (subprocess.TimeoutExpired,OSError) as exc:
+        return subprocess.CompletedProcess(command,124,stdout='',stderr=str(exc))
+
+
 def record_day(args, raw, raw_sha):
     """One explicit local recording attempt, never replacing a stored v2 trial."""
     from research.nba_ghost_runner import fetch_scoreboard
@@ -264,12 +271,12 @@ def record_day(args, raw, raw_sha):
     if not starts or datetime.now(timezone.utc) >= min(starts):
         return {'status':'skipped','reason':'no_slate_or_first_tip_passed',
                 'first_tip':min(starts).isoformat() if starts else None}
-    roster = subprocess.run([sys.executable,'-m','ingest.nba_rosters'],capture_output=True,text=True,timeout=180)
+    roster = optional_capture([sys.executable,'-m','ingest.nba_rosters'],180)
     write_new(args.output_dir/'role-roster-capture.json',{'returncode':roster.returncode,'stdout':roster.stdout,'stderr':roster.stderr})
     availability_path = args.output_dir/'availability.json'
     commands = [[sys.executable,'-m','research.nba_points_injury_evidence','--date',str(args.date),
         '--archive-root',str(args.injury_archive),'--availability-output',str(availability_path),'--apply']]
-    injury = subprocess.run(commands[0],capture_output=True,text=True,timeout=180)
+    injury = optional_capture(commands[0],180)
     write_new(args.output_dir/'injury-capture.json',{'returncode':injury.returncode,'stdout':injury.stdout,'stderr':injury.stderr})
     source_path = args.output_dir/'source-snapshot.json'
     command = [sys.executable,'-m','research.nba_ghost_runner','freeze','--date',str(args.date),
