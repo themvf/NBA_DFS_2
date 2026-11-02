@@ -1,14 +1,15 @@
 "use client";
 import Link from "next/link";
+import {AVAILABILITY_POLICY,type AvailabilityEvidence} from "@/lib/nba-availability";
 import { useEffect, useMemo, useState } from "react";
-import { BOOM_POLICY, LINEUPS, buildBoomLineups, type BoomBoard } from "@/lib/nba-boom-lineups";
+import { LINEUPS, buildBoomLineups, type BoomBoard } from "@/lib/nba-boom-lineups";
 
 /**
  * Boom lineups on the Top Scorers page: give a rising-shot-volume player more of
  * the five three-player lineups, see what it costs in projected points, and save
  * the comparison before the first tip so /nba/boom-trios can grade it.
  */
-export function BoomLineups({ board }: { board: BoomBoard | null }) {
+export function BoomLineups({ board, evidence=null }: { board: BoomBoard | null; evidence?:AvailabilityEvidence|null }) {
   const [selected, setSelected] = useState("");
   const [requested, setRequested] = useState(2);
   const [maxDrop, setMaxDrop] = useState(5);
@@ -41,7 +42,7 @@ export function BoomLineups({ board }: { board: BoomBoard | null }) {
   const normal = selected ? result.baseline.filter((t) => t.ids.includes(selected)).length : 0;
   const candidates = board.players.filter((p) => p.boomRank !== null).sort((a, b) => (a.boomRank as number) - (b.boomRank as number));
   const stamp = (s: string) => new Date(s).toLocaleString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
-  const data = { version: BOOM_POLICY, generatedAt: new Date().toISOString(), timing: locked ? "after_lock_what_if" : "unrecorded_preview", board, settings: { selected: selected || null, requested, maxDrop }, ...result };
+  const data = { version: AVAILABILITY_POLICY, generatedAt: new Date().toISOString(), timing: locked ? "after_lock_what_if" : "unrecorded_preview", board, settings: { selected: selected || null, requested, maxDrop }, ...result };
   const reset = () => setReceipt("");
   const download = () => {
     const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
@@ -51,7 +52,7 @@ export function BoomLineups({ board }: { board: BoomBoard | null }) {
     setSaving(true); setReceipt("");
     try {
       const response = await fetch("/api/nba/boom-lineups", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date: board.date, snapshot: board.snapshot, selected: selected || null, requested, maxDrop }) });
+        body: JSON.stringify({ date: board.date, snapshot: board.snapshot, selected: selected || null, requested, maxDrop, evidenceSha:evidence?.sha??null }) });
       const r = await response.json(); if (!response.ok) throw new Error(r.error || "Could not save");
       setReceipt(`Saved before the first tip: ${String(r.id).slice(0, 12)} · ${stamp(r.createdAt)}. Graded on Boom Trios after the games.`);
     } catch (e) { setReceipt(e instanceof Error ? e.message : "Could not save"); } finally { setSaving(false); }
@@ -60,10 +61,11 @@ export function BoomLineups({ board }: { board: BoomBoard | null }) {
     <section id="boom-lineups" style={{scrollMarginTop:"6rem"}} className="space-y-4 rounded-xl border border-slate-700 bg-[#0f1726] p-5 text-slate-200" aria-label="Boom lineup builder">
       <div>
         <h2 className="text-xl font-semibold text-white">Boom lineups <span className="text-sm text-amber-300">· experimental</span></h2>
-        <p className="mt-1 text-sm">Give a rising-shot-volume player more places in five three-player lineups. Nobody&apos;s projection changes; lineup 1 is always the three highest lines.</p>
-        <p className="mt-1 text-xs text-slate-400">Frozen {stamp(board.frozenAt)} · first tip {stamp(board.lockAt)} · {board.players.length} players with a line · {candidates.length} rising-volume players · points = market line</p>
-        <p className="mt-2 text-sm text-amber-200">Boom rank = shot attempts per game (free throws × 0.44) over the last 3 games minus the last 20, at least 2. It is a sign of more opportunity, not a probability. Availability is only as current as the freeze. <Link href={`/nba/boom-trios?date=${board.date}`} className="underline">See the tracked boom trios</Link>.</p>
+        <p className="mt-1 text-sm">Give a rising-shot-volume player more places in five three-player lineups. Nobody&apos;s projection changes; lineup 1 is the three highest frozen lines among currently eligible players.</p>
+        <p className="mt-1 text-xs text-slate-400">Frozen {stamp(board.frozenAt)} · first tip {stamp(board.lockAt)} · {board.players.length} eligible players from the frozen pool · {candidates.length} rising-volume players · points = market line</p>
+        <p className="mt-2 text-sm text-amber-200">Boom rank = shot attempts per game (free throws × 0.44) over the last 3 games minus the last 20, at least 2. It is a sign of more opportunity, not a probability. Latest observed Out players are excluded from these new discretionary lineups; the original research selections remain unchanged. <Link href={`/nba/boom-trios?date=${board.date}`} className="underline">See the tracked boom trios</Link>.</p>
       </div>
+      <p className="text-sm text-amber-200">Availability checked: {evidence ? stamp(evidence.observedAt) : "unverified"}. Questionable, Doubtful and unlisted players are not confirmed participants. {board.excluded} players excluded or outside the eligible frozen pool.</p>
       <div className="flex flex-wrap items-end gap-4">
         <label className="min-w-0 flex-1 text-sm">Player to include more often
           <select disabled={saving} className="mt-1 block w-full rounded border bg-slate-900 p-2" value={selected} onChange={(e) => { setSelected(e.target.value); reset(); }}>
@@ -80,7 +82,7 @@ export function BoomLineups({ board }: { board: BoomBoard | null }) {
       </div>
       {featured && <div className="rounded bg-slate-800 p-3 text-sm">
         <strong>{featured.name}: {normal}/{LINEUPS} → {result.achieved}/{LINEUPS}</strong> · asked for at least {requested}/{LINEUPS}. Line {featured.points.toFixed(1)} (#{featured.pointRank} on the slate), boom #{featured.boomRank}.
-        <p>Shot attempts a game: {featured.shotsLast3?.toFixed(1) ?? "?"} over his last 3 games, {featured.shotsLast20?.toFixed(1) ?? "?"} over his last 20. Availability: {featured.availability}.</p>
+        <p>Shot attempts a game: {featured.shotsLast3?.toFixed(1) ?? "?"} over his last 3 games, {featured.shotsLast20?.toFixed(1) ?? "?"} over his last 20. Latest observed status: {featured.availability}.</p>
         <button className="mt-2 rounded border px-3 py-1 disabled:opacity-40" disabled={saving || requested >= LINEUPS} onClick={() => { setRequested(Math.min(LINEUPS, Math.max(requested, result.achieved) + 1)); reset(); }}>Include in one more lineup</button>
       </div>}
       {!result.feasible && <p role="status" className="text-amber-300">{result.reason} Raise the points limit or lower the inclusion. No points are added to make it fit.</p>}
@@ -96,7 +98,7 @@ export function BoomLineups({ board }: { board: BoomBoard | null }) {
       {locked && <p className="text-sm text-amber-300">The first tip has passed: preview and download only. A save now would not be a pregame record.</p>}
       <p role="status" className="text-sm">{receipt}</p>
       <details className="text-xs text-slate-400"><summary>The five highest-projected lineups and tracking details</summary>
-        <p>Policy {BOOM_POLICY}; snapshot {board.snapshot.slice(0, 12)}. A save keeps both sets; it is your choice, separate from the frozen boom-trio rules. A player who doesn&apos;t play leaves that lineup ungraded, never scored as 0.</p>
+        <p>Policy {AVAILABILITY_POLICY}; snapshot {board.snapshot.slice(0, 12)}. A save keeps both sets; it is your choice, separate from the frozen boom-trio rules. A player who doesn&apos;t play leaves that lineup ungraded, never scored as 0.</p>
         {result.baseline.map((t, i) => <p key={t.key}>{i + 1}. {t.ids.map((id) => players.get(id)!.name).join(" / ")} — {t.total.toFixed(1)}</p>)}
       </details>
     </section>

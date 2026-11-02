@@ -24,7 +24,7 @@ import requests
 
 from model.nba_points_ladder import player_key
 
-VERSION = "nba-roster-capture-v1"
+VERSION = 'nba-rosters-v2-completed-observation'
 TEAMS_URL = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams"
 ROSTER_URL = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/{id}/roster"
 EXPECTED_TEAMS = 30
@@ -154,6 +154,8 @@ def main() -> int:
         cur.execute("""SELECT DISTINCT ON (espn_athlete_id) espn_athlete_id, player, player_key, espn_team_id, status
                        FROM nba_roster_observations ORDER BY espn_athlete_id, observed_at DESC, id DESC""")
         latest = {r["espn_athlete_id"]: r for r in fetch_rows(cur)}
+        # Conservative observation time: a complete 30-team capture has finished.
+        run_at = datetime.now(timezone.utc)
         diff = changes(rows, latest)
         cur.execute("""INSERT INTO nba_roster_capture_runs (version, run_at, status, teams, athletes, changes, payload_sha256)
                        VALUES (%s, %s, 'complete', %s, %s, %s, %s) RETURNING id""",

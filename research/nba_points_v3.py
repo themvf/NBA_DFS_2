@@ -264,6 +264,8 @@ def record_day(args, raw, raw_sha):
     if not starts or datetime.now(timezone.utc) >= min(starts):
         return {'status':'skipped','reason':'no_slate_or_first_tip_passed',
                 'first_tip':min(starts).isoformat() if starts else None}
+    roster = subprocess.run([sys.executable,'-m','ingest.nba_rosters'],capture_output=True,text=True,timeout=180)
+    write_new(args.output_dir/'role-roster-capture.json',{'returncode':roster.returncode,'stdout':roster.stdout,'stderr':roster.stderr})
     availability_path = args.output_dir/'availability.json'
     commands = [[sys.executable,'-m','research.nba_points_injury_evidence','--date',str(args.date),
         '--archive-root',str(args.injury_archive),'--availability-output',str(availability_path)]]
@@ -306,6 +308,10 @@ def record_day(args, raw, raw_sha):
         except Exception as exc:
             # Preserve the successful v3 original if the additional test fails.
             receipt['experiments']={'status':'failed','reason':str(exc),'type':type(exc).__name__}
+    from research.nba_points_role_challenger import PROTOCOL,attach
+    if PROTOCOL.exists():
+        try:receipt['role_challenger']=attach(result,snapshot,args.output_dir,args.output_dir.parent,datetime.now(timezone.utc).isoformat(),payload,roster.returncode==0)
+        except Exception as exc:receipt['role_challenger']={'status':'skipped_or_failed','reason':str(exc)}
     return receipt
 
 

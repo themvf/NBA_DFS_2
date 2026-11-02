@@ -27,6 +27,9 @@ import {
   type TailSeries,
 } from "@/lib/nba-points-calibration-charts";
 import { CalibrationCharts } from "./calibration-charts";
+import {getNbaAvailability} from "@/db/nba-availability";
+import {boomIdentity} from "@/lib/nba-boom-display";
+import {availabilityBoard} from "@/lib/nba-availability";
 import { getBoomBoard } from "@/db/nba-boom-board";
 import { BoomLineups } from "./boom-lineups-client";
 import { TopScorersClient } from "./top-scorers-client";
@@ -88,7 +91,9 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
   const tails = tailTrend(gradedRows);
   const skill = skillTable(gradedRows);
   const shortNights = shortMinutesSummary(gradedRows);
-  const boomBoard = await getBoomBoard(date);
+  const [frozenBoomBoard,availability] = await Promise.all([getBoomBoard(date),getNbaAvailability(date)]);
+  const boomBoard=availabilityBoard(frozenBoomBoard,availability);
+  const liveAvailability=Object.fromEntries((frozenBoomBoard?.players??[]).map(p=>[boomIdentity(p.id.slice(0,p.id.indexOf(":")),p.name),availability?.states[p.id]?.status??"unverified"]));
   const { scorers, games } = buildBoard(rows, lastSeason, teams, ladderRows, currentTeams);
   const lastCapture = games.reduce<string | null>((m, g) => (m == null || g.capturedAt > m ? g.capturedAt : m), null);
   const bookCount = new Set(scorers.flatMap((s) => s.books.map((b) => b.book))).size;
@@ -124,6 +129,12 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
         )}
       </header>
 
+      <section className="space-y-1 rounded-xl border border-slate-700 bg-[#0f1726] p-4 text-sm text-slate-200" aria-label="Forecast and evidence times">
+        <div>Frozen forecast: {frozenBoomBoard ? stamp(frozenBoomBoard.frozenAt) : "unavailable"}</div>
+        <div>Latest stored market capture: {lastCapture ? stamp(lastCapture) : "unavailable"}. Games can have different quote ages.</div>
+        <div>Official injury report: {availability ? <>published {stamp(availability.publishedAt)}; actually checked {stamp(availability.observedAt)}. <a className="underline" href={availability.sourceUrl}>Source report</a></> : "No official observation available; availability unverified."}</div>
+        <p className="text-amber-200">These times describe separate observations. An unlisted player is not confirmed available. This is not continuous injury monitoring.</p>
+      </section>
       {scorers.length === 0 ? (
         <section style={DARK_BORDER} className="rounded-xl border border-slate-800 bg-[#0f1726] p-6 text-sm text-slate-300">
           <p className="font-medium text-white">No points lines stored for {longDate(date)}.</p>
@@ -134,10 +145,10 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
           </p>
         </section>
       ) : (
-        <TopScorersClient scorers={scorers} games={games} pulled={pulled} lastSeason={LAST_SEASON} thisSeason={seasonLabel(date)} boomBoard={boomBoard} />
+        <TopScorersClient scorers={scorers} games={games} pulled={pulled} lastSeason={LAST_SEASON} thisSeason={seasonLabel(date)} boomBoard={boomBoard} liveAvailability={liveAvailability} />
       )}
 
-      <BoomLineups key={date} board={boomBoard} />
+      <BoomLineups key={`${date}:${availability?.sha??"unknown"}`} board={boomBoard} evidence={availability} />
 
       <CalibrationPanel
         all={calibration}

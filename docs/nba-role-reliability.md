@@ -1,3 +1,5 @@
+November 2 update: the original formula API is preserved. See `docs/nba-points-evidence-operations.md` for the separately registered future-only trial and the explicit ESPN roster evidence policy. Earlier draft activation notes below remain historical.
+
 # NBA role reliability: what is built (2026-10-31)
 
 Implements Phase 2 of [`nba-points-opportunity-reliability-spec.md`](nba-points-opportunity-reliability-spec.md).

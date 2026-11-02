@@ -1,0 +1,66 @@
+{
+  "version": "nba-role-opportunity-protocol-v1",
+  "registered_at": "2026-11-02T21:57:39.285122+00:00",
+  "enrollment_start": "2026-11-03",
+  "candidate": "nba-role-opportunity-challenger-v1",
+  "model_sha256": "651441d2dcfbe40aa1bd2c320ef8327056e02bc2c06257995c1cb3c40254bec4",
+  "code_sha256": "66bdb3f48eef93a3893a046b83be876a026f3947e15ded924923079de9fb7430",
+  "recent_window": {
+    "min_appearances": 3,
+    "max_appearances": 5,
+    "season": "same NBA regular season as original frozen source",
+    "low_minute_and_zero_point_played_games": "retained"
+  },
+  "adaptation": {
+    "recent_weight": 0.5,
+    "original_weight": 0.5,
+    "minutes": "original unchanged",
+    "conversion_rates": "original unchanged",
+    "probabilities": null
+  },
+  "conflict": {
+    "fga_gap_min": 3,
+    "forecast_to_recent_ratio_max": 0.85
+  },
+  "team_evidence": {
+    "provider": "ESPN",
+    "version": "nba-rosters-v2-completed-observation",
+    "max_age_hours": 24,
+    "observed_before": "original v3 freeze",
+    "require_unique_athlete_id_and_same_team_in_every_window_game": true,
+    "membership_is_not_participation": true,
+    "change_from_draft": "Official NBA automated roster endpoints returned HTTP 403. Register existing timestamped ESPN roster evidence explicitly; never label it an official NBA roster."
+  },
+  "outcomes": {
+    "target": "full-game points including overtime",
+    "primary_cohort": "original v3 workload-conflict AND challenger eligible",
+    "primary_endpoints": [
+      "FGA MAE change",
+      "point MAE change"
+    ],
+    "secondary": [
+      "all eligible",
+      "frozen market line >=20",
+      "same-pool trios",
+      "FGA per minute",
+      "3PA and FTA errors"
+    ],
+    "dnp_missing": "excluded with explicit status; never zero or replaced"
+  },
+  "review": {
+    "evaluation_ready_dates": 30,
+    "resolved_primary_conflicts": 100,
+    "ready_definition": "all original full-slate games verified final and >=95% eligible rows played or explicit DNP",
+    "calendar_limit_days": 90,
+    "resamples": 10000,
+    "date_seed": 20261031,
+    "player_seed": 20261032,
+    "primary_error_upper95_max": 0,
+    "all_player_point_error_upper95_max": 0.25,
+    "confirmation_ready_dates": 10,
+    "confirmation_primary_appearances": 50,
+    "confirmation_limit_days": 60,
+    "automatic_promotion": false
+  },
+  "sha256": "b8d1f7efd2bfc409385d9980df637122ae90e0ad758ae9b13e87d076c335514b"
+}
