@@ -8530,7 +8530,11 @@ every player the pool rules left out (`reasonCode` `WINNERS_SHAPE` /
 - **Showdown:** any team split since v10 (2026-10-28; v1-v9 forbade 4-2 with
   three binaries pinning the first team's count to 1, 3 or 5, and the
   `forbidFourTwoSplit` setting still does that when asked, which the ghost
-  house's frozen level does), no kicker, the captain a QB, RB or WR (`captainPositions`;
+  house's frozen level does), kickers allowed at flex since v12 (2026-11-02,
+  owner's decision: every top-100 lineup of both week-8 Sunday Showdowns played
+  the kicker, Aubrey at DAL@PHI and Stevens at PHI@WAS, and v1-v11 could play
+  neither; the ban stays behind `poolRules: true` for the kicker-rule study's
+  arm A), the captain a QB, RB or WR (`captainPositions`;
   the player still plays flex), no captain above 30% of lineups unless the
   user set his CPT range, min salary $49,500. Works alongside the archetype
   plan. v3's captain-position rule comes from the stored flagship builds: in

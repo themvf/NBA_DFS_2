@@ -1,5 +1,13 @@
 # NFL DFS Showdown: does the Winners-shape kicker ban cost us? (pre-registered 2026-10-14)
 
+> **2026-11-02: the ban is gone from user builds (`nfl-winners-shape-v12`).**
+> The owner lifted it before this test reached its floor, on discovery
+> evidence: every top-100 lineup of both week-8 Sunday Showdowns (DAL@PHI,
+> PHI@WAS) played the kicker, which no v1-v11 Winners build could. The test
+> itself is unchanged: arm A is now the v1-v11 construction, rebuilt by
+> `applyWinnersShape(..., { poolRules: true })`, and arm B equals what a
+> Winners build produces today.
+
 Status: **registered before any week-6 Showdown was built; capture runner
 implemented.** No optimizer or setting change follows from this document; it
 fixes the test before any outcome is seen. Owner's choice of contrast
