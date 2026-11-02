@@ -268,7 +268,7 @@ def record_day(args, raw, raw_sha):
     write_new(args.output_dir/'role-roster-capture.json',{'returncode':roster.returncode,'stdout':roster.stdout,'stderr':roster.stderr})
     availability_path = args.output_dir/'availability.json'
     commands = [[sys.executable,'-m','research.nba_points_injury_evidence','--date',str(args.date),
-        '--archive-root',str(args.injury_archive),'--availability-output',str(availability_path)]]
+        '--archive-root',str(args.injury_archive),'--availability-output',str(availability_path),'--apply']]
     injury = subprocess.run(commands[0],capture_output=True,text=True,timeout=180)
     write_new(args.output_dir/'injury-capture.json',{'returncode':injury.returncode,'stdout':injury.stdout,'stderr':injury.stderr})
     source_path = args.output_dir/'source-snapshot.json'
