@@ -1,4 +1,4 @@
-"""Reader chart: each pass catcher's receiving yards week by week, with that game's catches.
+"""Reader charts: each player's receiving or rushing yards week by week, with that game's catches or carries.
 
 Descriptive, season to date; nothing here claims an edge.
 
@@ -6,11 +6,13 @@ Descriptive, season to date; nothing here claims an edge.
                                   cell, catches under them, shaded by yards (gold at 100+, the DraftKings bonus).
                                   A week the team did not play reads BYE; a week the team played but the player
                                   has no stat line reads "no line". Right: average yards and catches per game.
+  nfl_take_rush_grid_<teams>.png  the same for rushing yards: every player with 10+ carries, quarterbacks
+                                  included, with carries under the yards.
 
 Source: nflverse weekly player stats, regular season. A game counts when the player has a stat line for it; a game
 he played without touching the ball can be missing from the feed, so "no line" is not proof he sat.
 
-    python -m model.nfl_receiving_grid_chart --teams PIT,NO --out-dir DIR
+    python -m model.nfl_receiving_grid_chart --teams PIT,NO --stat rushing --out-dir DIR
 """
 
 from __future__ import annotations
@@ -37,6 +39,15 @@ SHADES = ((20, "#eaf2fb"), (40, "#cfe1f6"), (60, "#a3c6ee"), (80, "#5f9de2"), (B
 GOLD = "#eda100"
 EMPTY = "#efeeea"
 BAD = "#c8352f"
+# What each chart reads: the yards field, the count under it, who qualifies, and its wording.
+STATS = {
+    "receiving": {"yards": "receiving_yards", "count": "receptions", "min_count": MIN_RECEPTIONS,
+                  "skip_qb": True, "unit": "rec", "label": "Receiving yards", "file": "rec",
+                  "who": f"every non-quarterback with {MIN_RECEPTIONS}+ catches", "noun": "catches"},
+    "rushing": {"yards": "rushing_yards", "count": "carries", "min_count": 10, "skip_qb": False,
+                "unit": "car", "label": "Rushing yards", "file": "rush",
+                "who": "every player with 10+ carries, quarterbacks included", "noun": "carries"},
+}
 
 
 # ── pure computations ────────────────────────────────────────────────────────
@@ -59,15 +70,17 @@ def team_weeks(rows: list[dict], team: str) -> tuple[list[int], dict[int, str]]:
     return weeks, opp
 
 
-def player_grid(rows: list[dict], team: str, min_rec: int = MIN_RECEPTIONS) -> list[dict]:
-    """Per non-QB on ``team`` with ``min_rec``+ catches: {week: (yards, catches)} plus averages."""
+def player_grid(rows: list[dict], team: str, min_rec: int | None = None, stat: str = "receiving") -> list[dict]:
+    """Per qualifying player on ``team``: {week: (yards, catches or carries)} plus averages."""
+    cfg = STATS[stat]
+    min_rec = cfg["min_count"] if min_rec is None else min_rec
     players: dict[str, dict] = {}
     for r in rows:
-        if r.get("team") != team or r.get("position") == "QB":
+        if r.get("team") != team or (cfg["skip_qb"] and r.get("position") == "QB"):
             continue
         p = players.setdefault(r["player_id"], {"name": r["player_display_name"], "position": r["position"],
                                                 "weeks": {}})
-        p["weeks"][int(r["week"])] = (_n(r.get("receiving_yards")), int(_n(r.get("receptions"))))
+        p["weeks"][int(r["week"])] = (_n(r.get(cfg["yards"])), int(_n(r.get(cfg["count"]))))
     out = []
     for p in players.values():
         games = list(p["weeks"].values())
@@ -81,7 +94,9 @@ def player_grid(rows: list[dict], team: str, min_rec: int = MIN_RECEPTIONS) -> l
 
 
 # ── chart ────────────────────────────────────────────────────────────────────
-def grid_chart(teams: dict[str, tuple[list[dict], list[int], dict[int, str]]], path: Path) -> bool:
+def grid_chart(teams: dict[str, tuple[list[dict], list[int], dict[int, str]]], path: Path,
+               stat: str = "receiving") -> bool:
+    cfg = STATS[stat]
     teams = {t: v for t, v in teams.items() if v[0]}
     if not teams:
         return False
@@ -143,11 +158,11 @@ def grid_chart(teams: dict[str, tuple[list[dict], list[int], dict[int, str]]], p
                 ink = "white" if dark else (BAD if yds < 0 else INK)
                 ax.text(left + (cell_w - gap) / 2, cy - 0.065, f"{yds:.0f}", fontsize=8.6, color=ink, ha="center",
                         va="center", fontweight="bold")
-                ax.text(left + (cell_w - gap) / 2, cy + 0.115, f"{rec} rec", fontsize=5.6,
+                ax.text(left + (cell_w - gap) / 2, cy + 0.115, f"{rec} {cfg['unit']}", fontsize=5.6,
                         color="white" if dark else (INK if fill == GOLD else INK_2), ha="center", va="center")
             ax.text(sum_x + 0.55, cy - 0.06, f"{p['avg']:.0f} yds", fontsize=8.6, color=INK, ha="center",
                     va="center", fontweight="bold")
-            ax.text(sum_x + 0.55, cy + 0.115, f"{p['rec_pg']:.1f} rec · {p['games']} g", fontsize=5.8,
+            ax.text(sum_x + 0.55, cy + 0.115, f"{p['rec_pg']:.1f} {cfg['unit']} · {p['games']} g", fontsize=5.8,
                     color=INK_2, ha="center", va="center")
             y += row_h
         y += 0.12
@@ -162,34 +177,36 @@ def grid_chart(teams: dict[str, tuple[list[dict], list[int], dict[int, str]]], p
         ax.text(lx + 0.31, ly, lab, fontsize=6.4, color=INK_2, va="center")
         lx += 0.82
     names = " and ".join(TEAM_NAMES.get(t, t) for t in teams)
-    sub = (f"{names}: every non-quarterback with {MIN_RECEPTIONS}+ catches, sorted by yards per game. "
-           f"Each cell: yards,\nthen catches. Gold is a 100-yard game, the DraftKings bonus. Under each week "
+    sub = (f"{names}: {cfg['who']}, sorted by yards per game. "
+           f"Each cell: yards,\nthen {cfg['noun']}. Gold is a 100-yard game, the DraftKings bonus. Under each week "
            f"header: that week's opponent.\n\"no line\": the team played but he has no stat line (often "
            f"inactive, not proven). Per game counts only games with a line.")
-    return _finish(fig, path, "Receiving yards, week by week", sub, height)
+    return _finish(fig, path, f"{cfg['label']}, week by week", sub, height)
 
 
 # ── data ─────────────────────────────────────────────────────────────────────
-def build_all(out_dir: Path, teams: list[str], season: int = SEASON) -> list[tuple[str, bool]]:
+def build_all(out_dir: Path, teams: list[str], season: int = SEASON,
+              stat: str = "receiving") -> list[tuple[str, bool]]:
     from model.nfl_game_leader_history_charts import load
 
     rows = load(season)
     data = {}
     for t in teams:
         weeks, opp = team_weeks(rows, t)
-        data[t] = (player_grid(rows, t), weeks, opp)
-    name = f"nfl_take_rec_grid_{'_'.join(t.lower() for t in teams)}.png"
-    return [(name, grid_chart(data, Path(out_dir) / name))]
+        data[t] = (player_grid(rows, t, stat=stat), weeks, opp)
+    name = f"nfl_take_{STATS[stat]['file']}_grid_{'_'.join(t.lower() for t in teams)}.png"
+    return [(name, grid_chart(data, Path(out_dir) / name, stat))]
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--teams", default="PIT,NO")
     ap.add_argument("--season", type=int, default=SEASON)
+    ap.add_argument("--stat", choices=sorted(STATS), default="receiving")
     ap.add_argument("--out-dir", default=str(DEFAULT_DIR))
     args = ap.parse_args(argv)
     teams = [t.strip().upper() for t in args.teams.split(",") if t.strip()]
-    for name, ok in build_all(Path(args.out_dir), teams, args.season):
+    for name, ok in build_all(Path(args.out_dir), teams, args.season, args.stat):
         print(f"{name}: {'written' if ok else 'skipped, no data'}")
     return 0
 
