@@ -14,7 +14,7 @@ import { assertDstGameScript, assertShowdownLineup, type ShowdownPlayer } from '
 import { kickerRoleBlockedReason } from './availability';
 import { maxPairwiseOverlap as realizedMaxOverlap } from './salary-duplication';
 
-export const NFL_QA_RULESET_VERSION = "nfl-gpp-qa-v5-kicker-role";
+export const NFL_QA_RULESET_VERSION = "nfl-gpp-qa-v6-portfolio-warnings";
 
 /**
  * Evidence a run saved (or failed to save) for one QA check. `undefined` means
@@ -378,7 +378,7 @@ export function runNflPreExportQa(input: QaInput, overrides: QaOverride[] = []):
       detail: "This run was saved before exposure results were recorded, so its exposure ranges can't be checked.", affected: [] });
   } else if (input.exposureReport !== undefined) {
     const exposureMisses = input.exposureReport.filter((r) => r.binding && /missed/.test(r.binding));
-    add({ id: "exposure_ranges", title: "Exposure ranges satisfied", severity: "blocker", passed: exposureMisses.length === 0, overridable: true,
+    add({ id: "exposure_ranges", title: "Exposure ranges satisfied", severity: "warning", passed: exposureMisses.length === 0, overridable: true,
       detail: exposureMisses.length ? `${exposureMisses.length} player(s) missed a slot exposure minimum: ${exposureMisses.slice(0, 5).map((r) => `${r.name} (${r.binding})`).join("; ")}.` : "All exposure ranges satisfied.",
       affected: exposureMisses.map((r) => r.name) });
   }

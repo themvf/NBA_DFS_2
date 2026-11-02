@@ -1,3 +1,5 @@
+import { exportNflDkLineups } from '../src/lib/nfl-dfs/entry-export';
+import { buildCompletion } from '../src/lib/nfl-dfs/build-completion';
 import assert from 'node:assert/strict';
 import { optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings } from '../src/app/dfs/nfl/nfl-optimizer';
 import { withDiversityPreset, matchesDiversityPreset, MORE_DIVERSITY, diversifiedComposition, diversifiedCompositionValid, applyDiversified, DEFAULT_DIVERSIFIED, diversifiedCount, diversifiedGroups, diversifiedPolicy, groupLimit, repeatedGroupCounts } from '../src/lib/nfl-dfs/diversified';
@@ -86,7 +88,10 @@ for(const a of first.lineups) {
 const second=optimizeNflLineups(players,{...base,ownershipLeverageEnabled:false,leverageExponent:1});
 assert.deepEqual(first.lineups.map(l=>l.playerIds),second.lineups.map(l=>l.playerIds),'ownership-neutral profile ignores caller ownership influence');
 const impossible=players.filter(p=>p.position!=='DST'||p.team==='T0');
-assert.throws(()=>optimizeNflLineups(impossible,base),/Diversified.*(complete|only)/,'infeasible portfolio cannot be returned as complete');
+const partial=optimizeNflLineups(impossible,base);
+assert.ok(partial.lineups.length>0&&partial.lineups.length<20);
+assert.ok(partial.warnings.some(w=>w.startsWith('Partial portfolio:')));
+for(const l of partial.lineups)assert.equal(l.playerIds.length,9);
 const overridden=optimizeNflLineups(players,{...base,maxExposureByPlayer:{[qb.dkPlayerId]:.4},minExposureByPlayer:{[qb.dkPlayerId]:.3},
   diversified:{candidateTarget:50},excludedPlayerIds:[otherQb.dkPlayerId]});
 const qbReport=overridden.exposureReport!.find(p=>p.dkPlayerId===qb.dkPlayerId)!;
@@ -101,8 +106,7 @@ const adjusted=optimizeNflLineups(players,{...base,diversified:{candidateTarget:
 assert.equal(diversifiedComposition(adjusted.lineups).twoTe,4);
 assert.equal(diversifiedComposition(adjusted.lineups).doubleStacks,10);
 assert.equal(diversifiedComposition(adjusted.lineups).bringBacks,8);
-assert.throws(()=>optimizeNflLineups(players.filter(p=>p.position!=='WR'||!p.name.endsWith('WR3')),{
- ...base,diversified:{candidateTarget:50,twoTeShare:1,maxOtherGameStackShare:0},maxExposure:.05}),/Diversified/);
+
 console.log('NFL diversified construction: complete portfolios, overrides, overlap, combinations, deterministic replay and format isolation OK');
 
 const customComposition={...DEFAULT_DIVERSIFIED,twoTeShare:.2,candidateTarget:100,minimumQbs:9};
@@ -142,3 +146,8 @@ assert.ok(minimumResult.lineups.filter(l=>l.playerIds.includes(minimumTe.dkPlaye
 assert.ok(minimumResult.exposureReport!.every(r=>r.overall>=r.overallMin&&r.overall<=r.overallMax));
 for(const {group,count} of repeatedGroupCounts(minimumResult.lineups).values())assert.ok(count<=groupLimit(group,diversifiedPolicy(minimumSettings),20));
 console.log('Diversified player minimums: four RB requirements plus TE minimum fill a complete constrained portfolio');
+
+const partialCsv=exportNflDkLineups('classic',partial.lineups);
+assert.equal(partialCsv.trim().split(/\r?\n/).length,partial.lineups.length+1);
+assert.equal(buildCompletion({...partial,requestedLineups:20,generatedLineups:partial.lineups.length}).status,'partial');
+assert.equal(buildCompletion({requestedLineups:20,generatedLineups:20,warnings:['Portfolio target missed: composition target']}).status,'partial');
