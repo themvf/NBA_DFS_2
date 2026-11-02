@@ -493,3 +493,32 @@ was read):** all 32 team codes in 2010-2015 resolve to a franchise; qualifying
 team-games 2012: 510, 2013: 504, 2014: 510, 2015: 508 (floor 500). The
 2010-2013 nflverse files were downloaded 2026-11-02; digests in
 `nflverse-weekly-files-v4.json`.
+
+### v4 result (2026-11-02): FAIL, v2 stays
+
+One look at 2012-2015 with the frozen r = 0.85 (`test-2012-2015-v4.jsonl`,
+2,032 qualifying games, `test-report-v4.json`).
+
+| Gate | Result | Bar | |
+| --- | --- | --- | --- |
+| Sample floor | 237 gap games, 68 weeks | at least 60 | pass |
+| Points gate: DK MAE change, v4 minus v2 | **−0.50 [−1.07, +0.09]** (6.55 -> 6.04) | interval wholly below zero | **fail** |
+| Yards gate: passing-yards MAE change | −16.5 [−23.5, −9.3] (77.5 -> 61.1) | interval wholly below zero | pass |
+| Calibration guard | attempts +1.1, passing yards +6.9 | within ±5.0 and ±15 | pass |
+
+Unlike v3, the construction did not overshoot on these games: v2 had them
+59 passing yards and 4.1 points too low, v4 6.9 yards and 0.5 points too
+high. Passing yards improved clearly. DraftKings points moved the right way
+in three of four seasons (2012 +0.01, 2013 −0.46, 2014 −0.68, 2015 −0.76;
+every season's interval crosses zero), and the pooled interval misses the bar
+by 0.09. Whole-population MAE: current 6.578, v2 6.479, v4 6.420. 121 of the
+237 gap games are also in v3's K = 5 gap cohort (178 games). Split by trailing
+mean: below 25 attempts −0.62 [−1.45, +0.24] (114 games), 25 or more −0.40
+[−1.03, +0.33] (123).
+
+Under the kill rule v2 stays in production unchanged. Not allowed after this
+failure: an r outside the grid, a different volume estimate, re-slicing the
+gap cohort (including by trailing mean or season), or regrading on 2016-2019.
+This is the second eligibility rule to fail its points gate, and the first
+whose yards and calibration gates passed. 2010-2015 is now used. The only
+untouched evidence for any further version is 2026 forward.
