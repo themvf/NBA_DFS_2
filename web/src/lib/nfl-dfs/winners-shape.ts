@@ -15,8 +15,9 @@
  *   $5,000, tight ends with 4+ targets a game, defenses under $3,000; the
  *   rules remain behind `poolRules: true` for the frozen research cohorts).
  * Showdown (248 Thursday/Monday winners):
- * - no kicker (6% vs 36% lower down); the team split is free since v10 (the
- *   4-2 ban of v1-v9 was measured wrong, see the v10 note);
+ * - kickers allowed since v12 (v1-v11 banned them on a weeks 1-5 reading of
+ *   6% vs 36% lower down, see the v12 note); the team split is free since v10
+ *   (the 4-2 ban of v1-v9 was measured wrong, see the v10 note);
  *   the captain a QB, RB or WR (346 of 346 top-20 lineups);
  *   winning captains sat at ~6% captain ownership, so no captain above 30%.
  *
@@ -122,7 +123,22 @@ import type { NflOptimizerPlayer, NflOptimizerSettings } from "@/app/dfs/nfl/nfl
  * behind `poolRules: true`: the ghost factorial's house (`ghost/arm.ts`) and
  * the pool-rule study runner call them so their frozen cohorts are unchanged.
  */
-export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v11";
+/**
+ * v12 (2026-11-02, owner's decision: "remove the kicker exclusion"): Showdown
+ * builds may roster a kicker again (flex only; the captain is still a QB, RB
+ * or WR). The ban rested on the weeks 1-5 reading that 6% of winning lineups
+ * carried one; the verified top-100 entries of those same games played a
+ * kicker in 14 of 108 (NE@SEA) to 78 of 116 (ATL@GB), and in the week-8
+ * Sunday Showdowns every top-100 lineup did: Brandon Aubrey (DAL@PHI) and
+ * Drew Stevens (PHI@WAS, 16 points, owner's $3K contest), while our Winners
+ * builds could play neither. The registered kicker-rule test
+ * (docs/nfl-showdown-kicker-rule-study.md) has not reached its floor, so this
+ * is an owner's decision on discovery evidence, recorded as such. The ban
+ * stays behind `poolRules: true` so that study's arm A (and anything else
+ * reconstructing a v1-v11 build) is unchanged; the ghost factorial sets its
+ * own `kickers` level.
+ */
+export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v12";
 
 export type BuildShape = "standard" | "winners" | "diversified";
 export const BUILD_SHAPES: readonly BuildShape[] = ["standard", "winners", "diversified"];
@@ -282,7 +298,8 @@ export function applyWinnersShape(settings: NflOptimizerSettings, players: reado
   } else {
     Object.assign(shaped, {
       maxCaptainExposure: limits.maxCaptainExposure!,
-      excludeKickers: true,
+      // v12: kickers are allowed; only the research reconstructions of v1-v11 ban them.
+      ...(options.poolRules ? { excludeKickers: true } : {}),
       captainPositions: [...WINNERS_SHAPE.captainPositions],
       minQbPerLineup: Math.max(settings.minQbPerLineup ?? 0, WINNERS_SHAPE.showdownMinQb),
       captainStack: true,
@@ -291,7 +308,7 @@ export function applyWinnersShape(settings: NflOptimizerSettings, players: reado
       rbCaptainShare: settings.rbCaptainShare ?? WINNERS_SHAPE.showdownRbCaptainShare,
       showdownQbMinCap: Math.max(settings.showdownQbMinCap ?? 0, WINNERS_SHAPE.showdownQbMinCap),
     });
-    notes.push(`Winners shape (${WINNERS_SHAPE_VERSION}, showdown): any team split (v10 lifted the 4-2 ban), at least ${WINNERS_SHAPE.showdownMinQb} quarterback, a WR/TE captain with his own QB and a QB captain with his own WR/TE, both QBs in ${Math.round(WINNERS_SHAPE.showdownTwoQbShare * 100)}% of lineups, a lone-QB captain in at most ${Math.round(WINNERS_SHAPE.showdownMaxLoneQbCaptainShare * 100)}%, an RB captain in ${Math.round(WINNERS_SHAPE.showdownRbCaptainShare * 100)}%, each QB in up to ${Math.round(WINNERS_SHAPE.showdownQbMinCap * 100)}% of lineups, no kicker, the captain a ${WINNERS_SHAPE.captainPositions.join("/")}, `
+    notes.push(`Winners shape (${WINNERS_SHAPE_VERSION}, showdown): any team split (v10 lifted the 4-2 ban), at least ${WINNERS_SHAPE.showdownMinQb} quarterback, a WR/TE captain with his own QB and a QB captain with his own WR/TE, both QBs in ${Math.round(WINNERS_SHAPE.showdownTwoQbShare * 100)}% of lineups, a lone-QB captain in at most ${Math.round(WINNERS_SHAPE.showdownMaxLoneQbCaptainShare * 100)}%, an RB captain in ${Math.round(WINNERS_SHAPE.showdownRbCaptainShare * 100)}%, each QB in up to ${Math.round(WINNERS_SHAPE.showdownQbMinCap * 100)}% of lineups, ${options.poolRules ? "no kicker" : "kickers allowed at flex (v12)"}, the captain a ${WINNERS_SHAPE.captainPositions.join("/")}, `
       + `no captain in more than ${Math.round(WINNERS_SHAPE.captainMaxExposure * 100)}% of lineups, min salary ${money(shaped.minSalary)}. `
       + `Captain ranges you set are kept.`);
   }

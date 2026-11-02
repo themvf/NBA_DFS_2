@@ -10,9 +10,10 @@ import { FIELD_STACKING } from '../src/lib/nfl-dfs/portfolio-objective';
  * The production Winners build with the v1-v10 pool rules reinstated as
  * exclusions: since winners-shape v11 a user's build runs no pool rule, while
  * the studies' arm A keeps the registered "Winners with its rules" construction.
+ * Showdown's equivalent is the v1-v11 kicker ban (lifted for users in v12).
  */
 function nativeWithRules(players: NflOptimizerPlayer[], settings: Raw) {
-  const winners = { ...settings, buildShape: 'winners' } as NflOptimizerSettings;
+  const winners = { ...settings, buildShape: 'winners', ...(settings.format === 'showdown' ? { excludeKickers: true } : {}) } as NflOptimizerSettings;
   const rules = applyWinnersShape(winners, players, { poolRules: true }).excluded.keys();
   return optimizeNflLineups(players, { ...winners, excludedPlayerIds: [...new Set([...winners.excludedPlayerIds, ...rules])] });
 }
@@ -116,9 +117,14 @@ assert.deepEqual([...sa.settings.researchStudy.removedRulePlayerIds].sort(), [..
 assert.ok(sa.lineups.every((l: Raw) => l.playerIds.every((id: number) => sdPositions.get(id) !== 'K')), 'arm A never plays a kicker');
 assert.deepEqual(sb.settings.researchStudy.ruleExclusions, [], 'arm B excludes nothing by rule');
 assert.deepEqual(sa.settings.researchStudy.gameIds, [77]);
-const sdNative = optimizeNflLineups(restorePlayers(sdInput.players), { ...sdInput.source.settings, buildShape: 'winners' } as NflOptimizerSettings);
+// Arm A is the v1-v11 Winners build (kicker ban on); since v12 a native
+// Winners build allows kickers, which is arm B.
+const sdNative = optimizeNflLineups(restorePlayers(sdInput.players), { ...sdInput.source.settings, buildShape: 'winners', excludeKickers: true } as NflOptimizerSettings);
 assert.deepEqual(sa.lineups.map((l: Raw) => [l.playerIds, l.projectedFpts, l.totalSalary]),
-  sdNative.lineups.map((l: Raw) => [l.playerIds, l.projectedFpts, l.totalSalary]), 'showdown arm A exactly matches native Winners generation');
+  sdNative.lineups.map((l: Raw) => [l.playerIds, l.projectedFpts, l.totalSalary]), 'showdown arm A exactly matches native v1-v11 Winners generation (kickers banned)');
+const sdNativeV12 = optimizeNflLineups(restorePlayers(sdInput.players), { ...sdInput.source.settings, buildShape: 'winners' } as NflOptimizerSettings);
+assert.deepEqual(sb.lineups.map((l: Raw) => [l.playerIds, l.projectedFpts, l.totalSalary]),
+  sdNativeV12.lineups.map((l: Raw) => [l.playerIds, l.projectedFpts, l.totalSalary]), 'showdown arm B exactly matches native v12 Winners generation (kickers allowed)');
 assert.deepEqual(buildPair(sdInput), sdPair, 'showdown paired build is reproducible');
 const sdWrong = sdFixture(); sdWrong.version = STUDIES.classic;
 assert.throws(() => buildPair(sdWrong), /Classic GPP/, 'a showdown source cannot enroll in the Classic study');
@@ -155,7 +161,7 @@ for (const [label, base] of [['showdown', sdFixture()], ['classic', fixture()]] 
   assert.equal(pa.lineups.length, 20);
   const nativeP = pin.source.settings.buildShape === 'winners'
     ? nativeWithRules(restorePlayers(pin.players), pin.source.settings)
-    : optimizeNflLineups(restorePlayers(pin.players), { ...pin.source.settings, buildShape: 'winners' } as NflOptimizerSettings);
+    : optimizeNflLineups(restorePlayers(pin.players), { ...pin.source.settings, buildShape: 'winners', ...(label === 'showdown' ? { excludeKickers: true } : {}) } as NflOptimizerSettings);
   assert.deepEqual(pa.lineups.map((l: Raw) => [l.playerIds, l.projectedFpts, l.totalSalary]),
     nativeP.lineups.map((l: Raw) => [l.playerIds, l.projectedFpts, l.totalSalary]), `${label}: arm A is the production build`);
   const sA = pa.settings.researchStudy, sB = pb.settings.researchStudy;
