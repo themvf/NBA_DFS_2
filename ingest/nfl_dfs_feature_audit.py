@@ -8,6 +8,9 @@ from psycopg2.extras import Json
 from config import load_config
 from ingest.nfl_dfs_weekly import PipelineDatabase
 from model.nfl_dfs_feature_audit import build_audit, digest, normalize
+from model.nfl_dfs_row_chunks import store_compact
+
+EVIDENCE_FIELDS = ("frozen_history", "working_source")
 
 
 def collect(db, study_id):
@@ -28,13 +31,19 @@ def collect(db, study_id):
 
 
 def persist(db, report, evidence):
+    # Row evidence is stored as content-addressed chunks (model/nfl_dfs_row_chunks.py):
+    # consecutive audits share almost every row, and a full copy was ~6.5 MB a run.
+    # `rehydrate_fields(input_evidence, cursor)` returns the original lists exactly;
+    # store_compact proves that before the row is written. audit_digest and every
+    # dataset input_digest are computed from the full evidence, so they are unchanged.
     report_digest = digest(report)
     with db.connect() as connection:
         with connection.cursor() as cursor:
+            stored = store_compact(cursor, evidence, EVIDENCE_FIELDS)
             cursor.execute("""INSERT INTO nfl_dfs_feature_audits
                 (audit_digest,version,payload,input_evidence) VALUES (%s,%s,%s,%s)
                 ON CONFLICT (audit_digest) DO NOTHING""",
-                (report_digest, report["version"], Json(report), Json(evidence)))
+                (report_digest, report["version"], Json(report), Json(stored)))
     return report_digest
 
 

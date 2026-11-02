@@ -29,7 +29,7 @@ const PAYLOAD_BATCH = 15;
   const outPath = outFlag >= 0 ? process.argv[outFlag + 1] : null;
   const { db } = await import('../src/db');
   const { sql } = await import('drizzle-orm');
-  const { auditGames } = await import('../src/db/nfl-dfs-pool-audit');
+  const { auditGames, rehydratePoolPayloads } = await import('../src/db/nfl-dfs-pool-audit');
   const { readFrozenVerdict, recordGradeRun } = await import('../src/db/nfl-replacement-upside-grade');
   const { canonicalAuditJson } = await import('../src/lib/nfl-dfs/audit-json');
   const g = await import('../src/lib/nfl-dfs/replacement-upside-grade');
@@ -58,8 +58,11 @@ const PAYLOAD_BATCH = 15;
       // Payloads reach ~1.9 MB each; one week's set exceeded neon-http's 64 MB response limit (2026-10-06).
       for (let start = 0; start < found.length; start += PAYLOAD_BATCH) {
         const batch = found.slice(start, start + PAYLOAD_BATCH);
-        const payloads = new Map(rowsOf(await db.execute(sql`SELECT digest, payload FROM nfl_dfs_pool_captures
-          WHERE digest IN (${sql.join(batch.map((r) => sql`${String(r.digest)}`), sql`, `)})`)).map((r) => [String(r.digest), r.payload]));
+        const stored = rowsOf(await db.execute(sql`SELECT digest, payload FROM nfl_dfs_pool_captures
+          WHERE digest IN (${sql.join(batch.map((r) => sql`${String(r.digest)}`), sql`, `)})`));
+        // Stored captures name shared slate-wide values by hash; the digest covers the full payload.
+        const full = await rehydratePoolPayloads(stored.map((r) => r.payload));
+        const payloads = new Map(stored.map((r, i) => [String(r.digest), full[i]]));
         for (const r of batch) {
           const digest = String(r.digest);
           const payload = payloads.get(digest);

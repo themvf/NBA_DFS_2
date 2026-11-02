@@ -8,9 +8,11 @@ from config import load_config
 from ingest.nfl_dfs_weekly import PipelineDatabase, target_season
 from model.nfl_dfs_feature_audit import digest
 from model.nfl_dfs_workload import VERSION, CONFIG, backtest, build, metrics
+from model.nfl_dfs_row_chunks import store_compact
 
 ROOT = Path(__file__).resolve().parents[1]
 COMPONENT_FIELDS = ("attempts", "carries", "targets")
+DATASET_ROW_FIELDS = ("players", "teams")
 
 
 def file_digest(relative_path):
@@ -67,7 +69,10 @@ def main():
     with db.connect() as c:
       with c.cursor() as q:
        dump=lambda value: json.dumps(value,default=str,allow_nan=False)
-       q.execute("INSERT INTO nfl_dfs_component_datasets VALUES (%s,%s,%s,NOW()) ON CONFLICT DO NOTHING",(dataset_digest,dataset["version"],Json(dataset,dumps=dump)))
+       # Row lists are stored as content-addressed chunks (model/nfl_dfs_row_chunks.py);
+       # dataset_digest is computed above from the full dataset, so it is unchanged.
+       stored=store_compact(q,dataset,DATASET_ROW_FIELDS)
+       q.execute("INSERT INTO nfl_dfs_component_datasets VALUES (%s,%s,%s,NOW()) ON CONFLICT DO NOTHING",(dataset_digest,dataset["version"],Json(stored,dumps=dump)))
        q.execute("INSERT INTO nfl_dfs_workload_runs(run_digest,dataset_digest,season,week,as_of_at,payload) VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",(run_digest,dataset_digest,season,args.week,now,Json(report,dumps=dump)))
     print(json.dumps({"dataset_digest":dataset_digest,"run_digest":run_digest,"games":len(games),"roster":len(roster),"backtest":report["backtest"]}))
 if __name__=="__main__": main()

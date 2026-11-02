@@ -201,6 +201,56 @@ def _payload_hash(source: str, row: dict[str, Any]) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
+# Sleeper payload compaction (2026-10-31). Every Sleeper capture writes one
+# observation per matched player (~1,066 rows), and 96% of those payloads
+# repeat one already stored (34,656 distinct payloads in 951,679 rows). The
+# full payload averaged 1,394 bytes; the keys any reader takes from a Sleeper
+# observation's raw_payload are the five SLEEPER_EVIDENCE_FIELDS
+# (web/src/lib/nfl-dfs/availability.ts, read by getNflRosterEvidence, whose
+# depth index is partial on `raw_payload ? 'depth_chart_order'`) and `url`
+# (pick'em evidence and the matchup report, NULL for Sleeper). So the row keeps
+# every scalar column, id and observed_at -- the availability resolver, its
+# freshness limits and every decision record are untouched -- and raw_payload
+# keeps only those keys, present exactly as the provider sent them, plus
+# COMPACT_MARKER. The full payload goes once into ff_injury_payloads keyed by
+# the row's own response_hash (which is still the hash of the full payload).
+# A reader that needs another Sleeper key must join ff_injury_payloads;
+# tests/test_ff_injuries.py fails if SLEEPER_EVIDENCE_FIELDS outgrows this list.
+# FantasyPros and official rows are stored whole: research/nfl_game_leaders.py
+# (hash-pinned) reads the FantasyPros payload whole.
+SLEEPER_COMPACT_KEYS = ("team", "position", "depth_chart_order", "injury_status", "status", "url")
+COMPACT_MARKER = {"_compact": "sleeper-evidence-v1"}
+COMPACT_SOURCES = frozenset({"sleeper"})
+
+
+def compact_payload(source: str, row: dict[str, Any]) -> dict[str, Any]:
+    """The raw_payload stored on the observation row (see SLEEPER_COMPACT_KEYS)."""
+    if source not in COMPACT_SOURCES:
+        return row
+    return {**{key: row[key] for key in SLEEPER_COMPACT_KEYS if key in row}, **COMPACT_MARKER}
+
+
+def store_full_payloads(db: Any, source: str, items: Iterable[tuple[str, dict[str, Any]]]) -> None:
+    """Write each distinct (response_hash, full payload) once; a known hash is a no-op.
+
+    Runs before the observation insert in the same transaction, so a compacted
+    row is never committed without its full payload."""
+    if source not in COMPACT_SOURCES:
+        return
+    unique = {response_hash: row for response_hash, row in items}
+    if not unique:
+        return
+    from psycopg2.extras import execute_values
+
+    execute_values(
+        db.conn.cursor(),
+        """INSERT INTO ff_injury_payloads (response_hash,source,raw_payload)
+           VALUES %s ON CONFLICT (response_hash) DO NOTHING""",
+        [(response_hash, source, _json(row)) for response_hash, row in unique.items()],
+        page_size=500,
+    )
+
+
 def _state(row: dict[str, Any] | None) -> dict[str, Any]:
     if not row:
         return {}
@@ -269,10 +319,21 @@ def persist_injury_observation(
     source_snapshot_id: int,
     row: dict[str, Any],
     reconcile_current: bool = True,
+    payload_stored: bool = False,
 ) -> dict[str, Any]:
-    """Persist one provider observation and reconcile the player's active episode."""
+    """Persist one provider observation and reconcile the player's active episode.
+
+    A Sleeper row is stored compacted (see SLEEPER_COMPACT_KEYS); its full
+    payload is written to ff_injury_payloads first unless the caller already
+    did (``payload_stored``)."""
     normalized = normalize_injury_observation(source, row)
     response_hash = _payload_hash(source, row)
+    if source in COMPACT_SOURCES and not payload_stored:
+        db.execute(
+            """INSERT INTO ff_injury_payloads (response_hash,source,raw_payload)
+               VALUES (%s,%s,%s) ON CONFLICT (response_hash) DO NOTHING""",
+            (response_hash, source, _json(row)),
+        )
     observation = db.execute_one(
         """INSERT INTO ff_player_injury_observations
            (player_id,season,source,source_snapshot_id,source_status,normalized_status,
@@ -300,7 +361,7 @@ def persist_injury_observation(
             normalized.weeks_out_min,
             normalized.weeks_out_max,
             normalized.availability_probability,
-            _json(row),
+            _json(compact_payload(source, row)),
             response_hash,
         ),
     )
@@ -485,6 +546,7 @@ def persist_injury_observations_batch(
     if not prepared:
         return results
 
+    store_full_payloads(db, source, ((response_hash, row) for _, row, _, response_hash in prepared))
     cursor = db.conn.cursor()
     inserted = execute_values(
         cursor,
@@ -500,7 +562,7 @@ def persist_injury_observations_batch(
             player_id, season, source, source_snapshot_id, n.source_status, n.normalized_status,
             n.body_part, n.injury_type, n.description, n.practice_status, n.injury_started_at,
             n.provider_updated_at, n.expected_return_min, n.expected_return_max, n.weeks_out_min,
-            n.weeks_out_max, n.availability_probability, _json(row), response_hash,
+            n.weeks_out_max, n.availability_probability, _json(compact_payload(source, row)), response_hash,
         ) for player_id, row, n, response_hash in prepared],
         page_size=500,
         fetch=True,
@@ -637,19 +699,25 @@ def persist_sleeper_injury_observations(
     players: Iterable[dict[str, Any]],
 ) -> dict[str, int]:
     counts = {"observations": 0, "events": 0, "duplicates": 0}
+    rows: list[tuple[int, dict[str, Any]]] = []
     for player in players:
         if player.get("position") == "DST":
             continue
         raw = dict((player.get("metadata") or {}).get("sleeper") or {})
         if not raw:
             raw = {"injury_status": player.get("injury_status")}
+        rows.append((int(player["player_id"]), raw))
+    # One statement for every full payload instead of one per player.
+    store_full_payloads(db, "sleeper", ((_payload_hash("sleeper", raw), raw) for _, raw in rows))
+    for player_id, raw in rows:
         result = persist_injury_observation(
             db,
-            player_id=int(player["player_id"]),
+            player_id=player_id,
             season=season,
             source="sleeper",
             source_snapshot_id=source_snapshot_id,
             row=raw,
+            payload_stored=True,
         )
         counts["observations"] += 1
         counts["duplicates"] += int(result["duplicate"])
