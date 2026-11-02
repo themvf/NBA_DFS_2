@@ -97,6 +97,8 @@ import {
 
 type Props = {
   evidence: PickemEvidence;
+  /** The week whose PFR player stats `evidence` carries; other weeks have none. */
+  evidenceWeek: number;
   slate: PickemSlate;
   pools: PickemPoolRow[];
   ledger: PickemLedgerRow[];
@@ -153,7 +155,7 @@ function gapNote(c: ArchetypeCode): string {
   return `Market gap over 2020-25: ${a.measuredGapPp >= 0 ? "+" : ""}${a.measuredGapPp}pp on n=${a.measuredN}.`;
 }
 
-export default function PickemClient({ slate: approvedSlate, pools, ledger, evidence, initialWeek, loadedAt }: Props) {
+export default function PickemClient({ slate: approvedSlate, pools, ledger, evidence, evidenceWeek, initialWeek, loadedAt }: Props) {
   const router = useRouter();
   const [scenarios, setScenarios] = useState<Record<number, PickemScenario>>({});
   const [reviewAt, setReviewAt] = useState(loadedAt);
@@ -692,7 +694,15 @@ export default function PickemClient({ slate: approvedSlate, pools, ledger, evid
           Week
           <select
             value={week}
-            onChange={(e) => { setWeek(Number(e.target.value)); setContestReport(null); }}
+            onChange={(e) => {
+              const next = Number(e.target.value);
+              setWeek(next);
+              setContestReport(null);
+              // The page carries PFR player stats for one week; load the chosen week's.
+              if (next !== evidenceWeek) {
+                router.replace(`/nfl/pickem?season=${slate.season}&week=${next}`, { scroll: false });
+              }
+            }}
             className="h-8 rounded border bg-background px-2 text-sm"
           >
             {slate.weeks.map((w) => (

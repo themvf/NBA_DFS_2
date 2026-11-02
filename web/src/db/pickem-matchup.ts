@@ -14,11 +14,17 @@ export async function getPickemMatchup(season: number, asOf: string): Promise<Re
            FROM jsonb_array_elements(f.payload->'input'->'features') WITH ORDINALITY AS x(feature, position))))
         ELSE f.payload - 'featureManifest' END AS payload
     FROM nfl_season_games g
+    -- Find each game's latest eligible cutoff from the columns alone, then read
+    -- the JSON of only the (at most three) forecasts at that cutoff. Sorting on
+    -- the JSON flag first unpacked every forecast ever frozen for the game (up to
+    -- ~550 each, ~1.4 GB per page load on 2026-11-01). Same row chosen.
+    JOIN LATERAL (SELECT max(c.decision_cutoff) cutoff FROM nfl_pickem_matchup_forecasts c
+      WHERE c.game_id=g.nflverse_game_id AND c.available_at<=${asOf}::timestamptz
+        AND c.available_at<g.kickoff AND c.decision_cutoff<g.kickoff) latest ON latest.cutoff IS NOT NULL
     JOIN LATERAL (SELECT forecast_id,payload FROM nfl_pickem_matchup_forecasts f
       WHERE f.game_id=g.nflverse_game_id AND f.available_at<=${asOf}::timestamptz
-        AND f.available_at<g.kickoff AND f.decision_cutoff<g.kickoff
-      ORDER BY f.decision_cutoff DESC,
-        COALESCE((f.payload->>'selectedForDefault')::boolean,TRUE) DESC,
+        AND f.available_at<g.kickoff AND f.decision_cutoff=latest.cutoff
+      ORDER BY COALESCE((f.payload->>'selectedForDefault')::boolean,TRUE) DESC,
         f.available_at DESC,f.forecast_id DESC LIMIT 1) f ON TRUE WHERE g.season=${season}`);
   const out: Record<number, MatchupForecast> = {};
   for (const row of result.rows) {
