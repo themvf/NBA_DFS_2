@@ -123,7 +123,7 @@ def store_compact(cursor, record: dict, fields: Iterable[str]) -> dict:
     if bodies:
         execute_values(cursor, """INSERT INTO nfl_dfs_row_chunks (chunk_digest, row_count, rows) VALUES %s
             ON CONFLICT (chunk_digest) DO NOTHING""",
-            [(key, len(rows), Json(rows, dumps=canonical)) for key, rows in bodies.items()], page_size=100)
+            [(key, len(rows), Json(rows, dumps=canonical)) for key, rows in bodies.items()], page_size=20)
     restored = rehydrate_fields(compacted, cursor)
     original = json.loads(canonical(record))
     if canonical(restored) != canonical(original):

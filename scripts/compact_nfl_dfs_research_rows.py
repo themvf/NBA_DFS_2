@@ -47,6 +47,7 @@ uncompressed). Usage:
 from __future__ import annotations
 
 import argparse
+import time
 import json
 import sys
 from pathlib import Path
@@ -68,8 +69,10 @@ TARGETS = {
     "component_datasets": {"table": "nfl_dfs_component_datasets", "key": "dataset_digest", "column": "payload",
                            "fields": ("players", "teams")},
 }
+# nfl_player_identity_claims: 246 MB on disk for 31k rows after the duplicate
+# PFR claims were deleted (2026-11-02); a plain VACUUM never shrinks the file.
 VACUUM_TABLES = ("nfl_dfs_feature_audits", "nfl_dfs_component_datasets", "nfl_dfs_weekly_report_cards",
-                 "nfl_dfs_row_chunks")
+                 "nfl_dfs_row_chunks", "nfl_player_identity_claims")
 POOL_VACUUM_TABLES = ("nfl_dfs_pool_captures", "nfl_dfs_pool_capture_blobs")
 DRY_CHUNKS: dict[str, int] = {}  # distinct chunk text sizes a dry run would store
 
@@ -148,12 +151,18 @@ def main() -> int:
                         help="also VACUUM FULL nfl_dfs_pool_captures (after web/scripts/compact-nfl-pool-captures.ts)")
     parser.add_argument("--only-vacuum", action="store_true", help="skip compaction; run only the requested vacuums (needs --apply)")
     args = parser.parse_args()
-    conn = psycopg2.connect(direct_url(), cursor_factory=RealDictCursor)
-    if not args.apply:
-        # Each transaction BEGINs READ ONLY. This connection never turns on
-        # autocommit (that would make the setting session-wide); VACUUM below
-        # uses its own connection.
-        conn.readonly = True
+
+    def connect():
+        c = psycopg2.connect(direct_url(), cursor_factory=RealDictCursor, connect_timeout=20,
+                             keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=5)
+        if not args.apply:
+            # Each transaction BEGINs READ ONLY. This connection never turns on
+            # autocommit (that would make the setting session-wide); VACUUM below
+            # uses its own connection.
+            c.readonly = True
+        return c
+
+    conn = connect()
     with conn.cursor() as cur:
         print("sizes before (MB):", sizes(cur))
         if args.apply:
@@ -168,11 +177,27 @@ def main() -> int:
         keys = keys[:args.limit] if args.limit else keys
         total_before = total_after = 0
         for i, key in enumerate(keys, 1):
-            try:
-                b, a = compact_one(conn, name, spec, key, args.apply)
-            except Exception:
-                conn.rollback()
-                raise
+            # Each row is its own transaction, so a dropped connection (seen
+            # 2026-11-02 mid-insert, the server still up) loses only that row:
+            # reconnect and redo it. Any other error still stops the run.
+            for attempt in range(1, 4):
+                try:
+                    b, a = compact_one(conn, name, spec, key, args.apply)
+                    break
+                except (psycopg2.OperationalError, psycopg2.InterfaceError) as exc:
+                    if attempt == 3:
+                        raise
+                    print(f"{name} {key[:16]}: connection lost ({type(exc).__name__}), reconnecting"
+                          f" (attempt {attempt + 1} of 3)", flush=True)
+                    try:
+                        conn.close()
+                    except psycopg2.Error:
+                        pass
+                    time.sleep(5 * attempt)
+                    conn = connect()
+                except Exception:
+                    conn.rollback()
+                    raise
             total_before += b
             total_after += a
             print(f"{name} {i}/{len(keys)} {key[:16]} {b/1e6:.1f} MB -> {a/1e6:.2f} MB"
