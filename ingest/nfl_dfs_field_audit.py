@@ -319,17 +319,25 @@ def slate_rows(db: PipelineDatabase, upload_id: str) -> list[dict]:
            FROM nfl_dfs_slate_players WHERE upload_id = %s""", (upload_id,))]
 
 
-def scored_names(db: PipelineDatabase, season: int | None, week: int | None) -> set[str] | None:
+def scored_names(db: PipelineDatabase, season: int | None, week: int | None,
+                 upload_id: str | None = None) -> set[str] | None:
     """Normalized names with a scored line that week -- i.e. who took the field.
 
     From `nfl_dfs_player_week_results`, NOT the player stat feed: the feed has
     no row for a defense, so every DST would read as "did not play". Returns
     None when the week is unknown, and the audit then declines to split rather
     than guessing.
+
+    With `upload_id`, DraftKings' OWN name for every slate player whose
+    gsis-linked `ff_player_id` has a scored line is included. Joining by
+    `ff_players.canonical_name` alone is not enough: it carries the
+    generational suffix for some players and not others ("James Cook" vs
+    DraftKings' "James Cook III", "Kyle Pitts" vs "Kyle Pitts Sr."), so week 8
+    read six players who played as DID_NOT_PLAY.
     """
     if season is None or week is None:
         return None
-    rows = db.execute(
+    rows = list(db.execute(
         """SELECT f.canonical_name AS name FROM nfl_dfs_player_week_results r
            JOIN ff_players f ON f.id = r.player_id
            WHERE r.season = %s AND r.week = %s AND r.scoring_status = 'exact'
@@ -338,8 +346,16 @@ def scored_names(db: PipelineDatabase, season: int | None, week: int | None) -> 
            JOIN nfl_teams t ON t.abbreviation = r.team
            WHERE r.season = %s AND r.week = %s AND r.position = 'DST'
              AND r.scoring_status = 'exact'""",
-        (season, week, season, week))
+        (season, week, season, week)))
     names: set[str] = set()
+    if upload_id is not None:
+        for row in db.execute(
+                """SELECT DISTINCT s.name FROM nfl_dfs_slate_players s
+                   JOIN nfl_dfs_player_week_results r ON r.player_id = s.ff_player_id
+                   WHERE s.upload_id = %s AND r.season = %s AND r.week = %s
+                     AND r.scoring_status = 'exact'""",
+                (upload_id, season, week)):
+            names.add(normalize_name(str(row["name"] or "")))
     for row in rows:
         full = str(row["name"] or "")
         names.add(normalize_name(full))
@@ -492,7 +508,8 @@ def main() -> None:
             audit = audit_slate(
                 slate_rows(db, contest["slate_upload_id"]),
                 field_rows(db, contest["contest_id"],
-                           scored_names(db, contest["season"], contest["week"])))
+                           scored_names(db, contest["season"], contest["week"],
+                                        contest["slate_upload_id"])))
             audits.append(audit)
             print_audit(contest, audit)
         if audits:

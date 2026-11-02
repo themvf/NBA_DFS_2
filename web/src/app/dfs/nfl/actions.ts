@@ -2573,7 +2573,7 @@ export async function importNflContestResults(
 
   return {
     audit: auditForSlate(slate, parsed.players,
-                         await scoredNames(run[0]?.season ?? null, run[0]?.week ?? null)),
+                         await scoredNames(run[0]?.season ?? null, run[0]?.week ?? null, uploadId)),
     contest: { contestId: id, entryCount: parsed.entryCount, winningScore: parsed.winningScore,
                medianScore: parsed.medianScore, format: parsed.format },
     overlap: Number(overlap.toFixed(3)),
@@ -2769,7 +2769,7 @@ export async function readNflFieldAudit(uploadId: string): Promise<
   return {
     audit: auditForSlate(slate, players, await scoredNames(
       contest.season === null || contest.season === undefined ? null : Number(contest.season),
-      contest.week === null || contest.week === undefined ? null : Number(contest.week))),
+      contest.week === null || contest.week === undefined ? null : Number(contest.week), uploadId)),
     contest: {
       contestId: String(contest.contest_id), entryCount: Number(contest.entry_count),
       winningScore: contest.winning_score === null ? null : Number(contest.winning_score),
@@ -2788,11 +2788,22 @@ export async function readNflFieldAudit(uploadId: string): Promise<
  * `nfl_teams.name` is the full name, so both spellings are emitted -- without
  * that, every defense was mis-classified.
  *
+ * DraftKings' own name for every slate player whose gsis-linked
+ * `ff_player_id` scored is also emitted: `ff_players.canonical_name` carries the
+ * generational suffix for some players and not others ("James Cook" vs DK's
+ * "James Cook III"), so a name join alone read six week-8 players as DNP.
+ * Mirrors `scored_names` in ingest/nfl_dfs_field_audit.py.
+ *
  * Returns null when the week is unknown, and the audit declines to split
  * rather than guessing.
  */
-async function scoredNames(season: number | null, week: number | null): Promise<Set<string> | null> {
+async function scoredNames(season: number | null, week: number | null, uploadId: string): Promise<Set<string> | null> {
   if (season === null || week === null) return null;
+  const linked = await db.execute(sql`
+    SELECT DISTINCT s.name FROM nfl_dfs_slate_players s
+    JOIN nfl_dfs_player_week_results r ON r.player_id = s.ff_player_id
+    WHERE s.upload_id = ${uploadId} AND r.season = ${season} AND r.week = ${week}
+      AND r.scoring_status = 'exact'`);
   const result = await db.execute(sql`
     SELECT f.canonical_name AS name FROM nfl_dfs_player_week_results r
     JOIN ff_players f ON f.id = r.player_id
@@ -2803,6 +2814,10 @@ async function scoredNames(season: number | null, week: number | null): Promise<
     WHERE r.season = ${season} AND r.week = ${week} AND r.position = 'DST'
       AND r.scoring_status = 'exact'`);
   const names = new Set<string>();
+  for (const row of ((linked.rows ?? linked) as Array<Record<string, unknown>>)) {
+    const full = String(row.name ?? "").trim();
+    if (full) names.add(normalizeFieldName(full));
+  }
   for (const row of ((result.rows ?? result) as Array<Record<string, unknown>>)) {
     const full = String(row.name ?? "").trim();
     if (!full) continue;

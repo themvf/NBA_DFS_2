@@ -140,6 +140,9 @@ def refresh_results(db, season: int) -> dict:
         from ingest.nfl_weekly_evidence import save_participant_evidence
         participant_count = save_participant_evidence(writer, season, players)
         player_count = save_weekly_history(writer, universe, season, players)
+        skill_gsis = {u["gsis_id"] for u in universe if u["gsis_id"] and u["position"] in WEEKLY_STAT_POSITIONS}
+        off_position_rows = int((~players["position"].isin(WEEKLY_STAT_POSITIONS)
+                                 & players["player_id"].isin(skill_gsis)).sum())
         dst_count = save_dst_weekly_history(writer, universe, season, teams, schedule)
         if not player_count or not dst_count:
             raise ValueError("No matching skill-player or DST results; investigate identity coverage")
@@ -157,7 +160,11 @@ def refresh_results(db, season: int) -> dict:
     return {"season": season, "status": "refreshed", "completed_games": len(completed),
             "player_weeks": player_count, "dst_weeks": dst_count,
             "matchup_participants": participant_count,
-            "unmatched_eligible_player_rows": int(players["position"].isin(WEEKLY_STAT_POSITIONS).sum()) - player_count,
+            # save_weekly_history also keeps off-position rows whose gsis is one
+            # of our skill players (Travis Hunter, listed CB); count them as
+            # eligible so they do not hide a real unmatched row.
+            "unmatched_eligible_player_rows": int(players["position"].isin(WEEKLY_STAT_POSITIONS).sum())
+            + off_position_rows - player_count,
             "completed_games_missing_team_feed": len(set(completed["game_id"]) - set(teams["game_id"])),
             "results": materialize(db, [season])}
 
