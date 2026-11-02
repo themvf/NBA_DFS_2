@@ -25,3 +25,14 @@ def test_bye_and_trailing_week(tmp_path):
     assert sorted(opp) == [1, 3] and weeks == [1, 2, 3, 4]
     assert g.grid_chart({"PIT": (g.player_grid(rows, "PIT"), weeks, opp)}, tmp_path / "a.png")
     assert not g.grid_chart({"PIT": ([], weeks, opp)}, tmp_path / "b.png")
+
+
+def test_rushing_grid_includes_qbs_and_counts_carries(tmp_path):
+    rows = [{"player_id": "q", "player_display_name": "Q", "position": "QB", "team": "PIT", "opponent_team": "CLE",
+             "week": w, "rushing_yards": y, "carries": c} for w, y, c in ((1, 20, 4), (2, 35, 7))]
+    rows.append({"player_id": "w", "player_display_name": "W", "position": "WR", "team": "PIT",
+                 "opponent_team": "CLE", "week": 1, "rushing_yards": 9, "carries": 1})
+    ps = g.player_grid(rows, "PIT", stat="rushing")
+    assert [p["name"] for p in ps] == ["Q"] and ps[0]["weeks"][2] == (35, 7) and ps[0]["avg"] == 27.5
+    weeks, opp = g.team_weeks(rows, "PIT")
+    assert g.grid_chart({"PIT": (ps, weeks, opp)}, tmp_path / "r.png", "rushing")
