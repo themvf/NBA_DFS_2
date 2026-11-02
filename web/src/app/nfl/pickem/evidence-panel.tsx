@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { PickemSlateGame, PickemLedgerRow } from "@/db/queries";
 import { evidenceGrades, marketReview, safeSourceUrl, scenarioDecision, timestamp,
@@ -15,6 +15,20 @@ function time(s: string | null) {
   }).format(new Date(timestamp(s))) : "Unknown";
 }
 const signed = (n: number) => `${n > 0 ? "+" : ""}${n.toFixed(1)}`;
+
+// A collapsed <details> still puts its contents in the page. The frozen
+// snapshots are ~240k characters a game, 3.3M for one card, and rendering them
+// unopened held the Board tab on its loading screen. Build the contents on
+// first open and keep them after.
+function LazyDetails({ summary, className, render }: {
+  summary: ReactNode; className?: string; render: () => ReactNode;
+}) {
+  const [opened, setOpened] = useState(false);
+  return <details className={className} onToggle={e => { if (e.currentTarget.open) setOpened(true); }}>
+    {summary}
+    {opened && render()}
+  </details>;
+}
 
 export function EvidencePanel({ game, evidence, now, pickHome, confidence, baselineConfidence,
   objective, manual, scenario, onScenario, peers }: {
@@ -200,7 +214,7 @@ export function EvidenceLedger({ ledger, poolId }: { ledger: PickemLedgerRow[]; 
       <tbody>{Object.entries(grade.narrative).map(([label, bucket]) => <tr key={label} className="border-t"><td className="p-2">{label}</td><td className="p-2">{bucket.n}</td><td className="p-2">{bucket.n ? `${signed(bucket.sum / bucket.n)} pp` : "Not measured"}</td></tr>)}</tbody>
     </table></div>
     <p className="text-xs text-muted-foreground">Crowded predicts positive excess backing of the favorite; contrarian predicts negative; quiet predicts little pressure. These are descriptive checks, not proof of an edge. Modeled pick shares are excluded.</p>
-    <details><summary className="cursor-pointer text-xs font-medium">Inspect frozen evidence</summary>
+    <LazyDetails summary={<summary className="cursor-pointer text-xs font-medium">Inspect frozen evidence</summary>} render={() =>
       <div className="mt-2 space-y-2">{relevant.length === 0 && <p className="text-xs">No frozen cards for this pool.</p>}
         {relevant.map(r => <details key={r.id} className="rounded border p-2 text-xs"><summary className="cursor-pointer">Week {r.week} · frozen {time(r.frozenAt)}</summary>
           {r.games.map(g => <div key={g.gameId} className="mt-2 border-t pt-2"><strong>{g.awayAbbrev} at {g.homeAbbrev}</strong>
@@ -212,11 +226,11 @@ export function EvidenceLedger({ ledger, poolId }: { ledger: PickemLedgerRow[]; 
               </p>}
               {g.evidence.scenario && <p>Scenario assumption: {g.evidence.scenario.reason} · {g.homeAbbrev} {pct(g.evidence.scenario.pHome)}</p>}
               {g.evidence.news.map(n => <p key={n.id}>{n.team}: {n.headline} · {n.status} · {time(n.publishedAt)} · {n.url && safeSourceUrl(n.url) ? <a href={n.url} className="underline" target="_blank" rel="noreferrer">{n.source}</a> : n.source}</p>)}
-              <details><summary className="cursor-pointer">Full frozen snapshot</summary><pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words p-2">{JSON.stringify(g.evidence, null, 2)}</pre></details>
+              <LazyDetails summary={<summary className="cursor-pointer">Full frozen snapshot</summary>} render={() =>
+                <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words p-2">{JSON.stringify(g.evidence, null, 2)}</pre>} />
             </>}
           </div>)}
         </details>)}
-      </div>
-    </details>
+      </div>} />
   </section>;
 }
