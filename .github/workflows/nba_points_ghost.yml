@@ -77,11 +77,14 @@ jobs:
           python -m research.nba_points_workload_conflicts --grade
           ${GAME_DATE:+--date "$GAME_DATE"} --apply
       - name: Report optional step outcomes
-        if: ${{ always() && steps.rosters.outcome != '' }}
+        if: ${{ always() && (steps.rosters.outcome != '' || steps.injury.outcome != '') }}
         env:
           ROSTERS_OUTCOME: ${{ steps.rosters.outcome }}
+          INJURY_OUTCOME: ${{ steps.injury.outcome }}
         run: |
           echo "## Optional steps" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Official NBA injury capture: $INJURY_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$INJURY_OUTCOME" = failure ]; then echo "::warning title=Official injury capture failed::No fresh verified observation was published; inspect the retained receipt and source files."; fi
           echo "- NBA roster capture: $ROSTERS_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
           if [ "$ROSTERS_OUTCOME" = failure ]; then echo "::warning title=Optional step failed::NBA roster capture ended failure (decision-time team stays unverified)"; fi
       - uses: actions/upload-artifact@v4
