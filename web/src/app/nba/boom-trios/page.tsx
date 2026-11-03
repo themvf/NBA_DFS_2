@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
+import {trioPortfolioResult} from "@/lib/nba-trio-results";
 import type { Metadata } from "next";
 import { easternDateString } from "@/lib/eastern-date";
 import { getBoomTrioDays, getSavedBoomLineups, type SavedBoomLineup } from "@/db/nba-boom-trios";
@@ -61,8 +62,8 @@ function TrioCard({ title, subtitle, trio, rows, result, baseline, isBaseline = 
               })}
             </tbody>
           </table>
-          <p className="mt-2 text-sm">Projected {trio.projected_total.toFixed(1)}{trio.projected_drop != null ? ` (${trio.projected_drop > 0 ? "−" : ""}${trio.projected_drop.toFixed(1)})` : ""}</p>
-          {trio.why ? <p className="mt-1 text-xs text-slate-700">{trio.why}</p> : null}
+          <p className="mt-2 text-sm">Frozen line sum {trio.projected_total.toFixed(1)}{trio.projected_drop != null ? ` (${trio.projected_drop > 0 ? "−" : ""}${trio.projected_drop.toFixed(1)})` : ""}</p>
+          {trio.why ? <p className="mt-1 text-xs text-slate-700">{trio.why.replace("Projected total", "Frozen line total")}</p> : null}
           <div className="mt-2"><ResultLine result={result} isBaseline={isBaseline} baseline={baseline} /></div>
         </>
       )}
@@ -70,52 +71,25 @@ function TrioCard({ title, subtitle, trio, rows, result, baseline, isBaseline = 
   );
 }
 
-/** Actual total of five saved lineups (ids "event:player_key"), or null while any player is unresolved or did not play. */
-function savedTotal(lineups: string[][], rows: BoomGradeRow[] | null): number | null {
-  if (!rows || lineups.length === 0) return null;
-  const pts = new Map(rows.filter((r) => (r.status === "graded" || r.status === "push") && r.actual_points != null)
-    .map((r) => [`${r.event_id}:${r.player_key}`, r.actual_points as number]));
-  let total = 0;
-  for (const ids of lineups) for (const id of ids) {
-    const v = pts.get(id);
-    if (v == null) return null;
-    total += v;
-  }
-  return total;
-}
-
-function SavedComparisons({ saved, rowsByDate }: { saved: SavedBoomLineup[]; rowsByDate: Map<string, BoomGradeRow[] | null> }) {
-  return (
-    <section className="rounded-xl border bg-white p-4 shadow-sm">
-      <h2 className="font-bold">Your saved boom lineups</h2>
-      <p className="mb-2 text-xs text-muted-foreground">
-        Saved from the Boom lineups tool on Top Scorers before the first tip. Each compares your five lineups with the five
-        highest-projected ones on the same night (sum of actual points across all five). These are your choices, separate from
-        the frozen trios above.
-      </p>
-      {saved.length === 0 ? <p className="text-sm text-muted-foreground">Nothing saved yet.</p> : (
-        <table className="w-full text-sm">
-          <thead><tr className="text-left text-[10px] uppercase text-slate-500"><th>Night</th><th>Featured</th><th className="text-right">Top five</th><th className="text-right">Yours</th><th className="text-right">Difference</th></tr></thead>
-          <tbody>
-            {saved.map((s) => {
-              const rows = rowsByDate.get(s.gameDate) ?? null;
-              const base = savedTotal(s.baseline, rows), mine = savedTotal(s.adjusted, rows);
-              const name = s.selected ? s.selected.split(":").slice(1).join(":") : "none";
-              return (
-                <tr key={s.id} className="border-t">
-                  <td className="py-1">{s.gameDate}</td>
-                  <td className="text-xs">{name}{s.selected ? ` · ${s.requested} of 5, within ${s.maxDrop}` : ""}</td>
-                  <td className="text-right">{base != null ? base.toFixed(0) : "—"}</td>
-                  <td className="text-right">{mine != null ? mine.toFixed(0) : "—"}</td>
-                  <td className="text-right">{base != null && mine != null ? signed(mine - base) : "not graded"}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
-    </section>
-  );
+function SavedComparisons({saved}:{saved:SavedBoomLineup[]}) {
+  const fmt=(x:number|null)=>x==null?"Pending":x.toFixed(0);
+  return <section className="space-y-3 rounded-xl border bg-white p-4 shadow-sm">
+    <h2 className="font-bold">Your saved boom lineups</h2>
+    <p className="text-sm text-muted-foreground">Each original save is paired with the latest grade for its exact frozen snapshot. Best entry and combined five are different outcomes. These discretionary selections remain separate from registered trials.</p>
+    {!saved.length?<p className="text-sm">Nothing saved yet.</p>:saved.map(s=>{
+      const base=trioPortfolioResult(s.baseline,s.rows),mine=trioPortfolioResult(s.adjusted,s.rows);
+      return <div key={s.id} className="space-y-2 border-t pt-3">
+        <p className="text-sm"><b>{s.gameDate}</b> · {s.selectedName??"No featured player"} · {s.policy}</p>
+        {!s.supported?<p className="text-sm text-amber-700">Legacy or unverifiable selection policy. Preserved separately; no shot-growth comparison assigned.</p>:<>
+          <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left"><th>Actual outcome</th><th>Baseline</th><th>Adjusted</th><th>Difference</th></tr></thead><tbody>
+            <tr><td className="py-1">Best entry of five</td><td>{fmt(base.bestOfFive)}</td><td>{fmt(mine.bestOfFive)}</td><td>{base.bestOfFive!=null&&mine.bestOfFive!=null?signed(mine.bestOfFive-base.bestOfFive):"Pending"}</td></tr>
+            <tr><td className="py-1">Combined five</td><td>{fmt(base.allFive)}</td><td>{fmt(mine.allFive)}</td><td>{base.allFive!=null&&mine.allFive!=null?signed(mine.allFive-base.allFive):"Pending"}</td></tr>
+          </tbody></table></div>
+          {(base.status!=="resolved"||mine.status!=="resolved")&&<p className="text-xs text-muted-foreground">Incomplete: a selected player is DNP, missing or unresolved. No replacements or assigned zeros.</p>}
+        </>}
+      </div>
+    })}
+  </section>;
 }
 
 function recordSummary(days: { selection: BoomSelection; grade: BoomGrade | null }[], name: "boom" | "aggressive") {
@@ -133,7 +107,7 @@ export default async function BoomTriosPage({ searchParams }: { searchParams: Pr
   });
   const today = easternDateString();
   const dates = days.map((d) => d.selection.game_date);
-  const date = params.date && dates.includes(params.date) ? params.date : dates.includes(today) ? today : dates[dates.length - 1];
+  const date = params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) ? params.date : today;
   const day = days.find((d) => d.selection.game_date === date);
   const counted = days.filter((d) => d.selection.counts).length;
   const boomRec = recordSummary(days, "boom"), aggRec = recordSummary(days, "aggressive");
@@ -146,7 +120,7 @@ export default async function BoomTriosPage({ searchParams }: { searchParams: Pr
         <p className="text-sm text-slate-700">
           The three highest points lines, beside two alternatives that give a seat to players whose shot volume is rising: shot attempts
           per game (each free throw counted as 0.44) over the last 3 games minus the last 20, at least {BOOM_MIN.toFixed(0)}. That only
-          decides who replaces whom; it never adds to the projection. Boom swaps the third player for one within {ONE_SWAP_MAX_DROP.toFixed(0)} projected
+          decides who replaces whom; it never adds to the projection. Boom swaps the third player for one within {ONE_SWAP_MAX_DROP.toFixed(0)} line
           points; aggressive keeps the top player and takes the best pair within {TWO_SWAP_MAX_DROP.toFixed(0)}.
         </p>
         <p className="text-xs text-muted-foreground">
@@ -155,7 +129,9 @@ export default async function BoomTriosPage({ searchParams }: { searchParams: Pr
         </p>
       </header>
 
-      {!day ? <p className="rounded-lg border p-4 text-sm">No frozen pregame snapshot yet. Snapshots are taken each game day before the first tip.</p> : (
+      <p className="text-sm"><Link href={`/nba/trio-lab?date=${date}`} className="underline">Open the experimental best-of-five Trio Lab</Link></p>
+      <nav className="flex flex-wrap gap-2 text-sm" aria-label="Boom dates">{[...new Set([today,...dates])].sort().map(d=><Link key={d} href={`/nba/boom-trios?date=${d}`} className="rounded border px-2 py-1">{d}{d===today?" · today":""}</Link>)}</nav>
+      {!day ? <p className="rounded-lg border p-4 text-sm">No frozen pregame snapshot for {longDate(date)}. Snapshots are taken only on scheduled game days before the first tip. Use the dates above to inspect archived results.</p> : (
         <>
           <nav className="flex flex-wrap items-center gap-2 text-sm">
             {dates.map((d) => <Link key={d} href={`/nba/boom-trios?date=${d}`} className={`rounded border px-2 py-1 ${d === date ? "bg-slate-900 text-white" : "hover:bg-slate-100"}`}>{d.slice(5)}</Link>)}
@@ -169,7 +145,7 @@ export default async function BoomTriosPage({ searchParams }: { searchParams: Pr
         </>
       )}
 
-      <SavedComparisons saved={saved} rowsByDate={new Map(days.map((d) => [d.selection.game_date, d.rows]))} />
+      <SavedComparisons saved={saved} />
 
       <section className="rounded-xl border bg-white p-4 shadow-sm">
         <h2 className="font-bold">Record against the baseline</h2>

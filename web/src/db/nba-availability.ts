@@ -1,3 +1,4 @@
+import {isMissingRelation} from "@/lib/database-errors";
 import "server-only";
 import {sql} from "drizzle-orm";
 import {db} from "@/db";
@@ -15,5 +16,5 @@ export async function getNbaAvailability(date:string):Promise<AvailabilityEviden
   ]);
   const r=reports.rows[0];if(!r)return null;
   return {sha:String(r.report_sha256),publishedAt:iso(r.published_at),observedAt:iso(r.observed_at),sourceUrl:String(r.source_url),states:matchAvailability(date,(snaps.rows[0]?.candidates??[]) as Identity[],r.states as InjuryState[])};
- }catch(e){if(/relation .* does not exist/i.test(String(e)))return null;throw e;}
+ }catch(e){if(isMissingRelation(e))return null;throw e;}
 }
