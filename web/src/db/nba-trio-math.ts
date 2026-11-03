@@ -46,3 +46,46 @@ export async function getMathOutcomes(record:MathRecord){
   return {id:p.id,status:r?.completed&&r.played&&r.points!==null?'verified':r?.completed&&!r.played?'dnp':hits.length>1?'ambiguous':'pending',points:r?.completed&&r.played&&r.points!==null?Number(r.points):null};
  });
 }
+
+
+type PoolBenchmark = {
+  eligible: number;
+  verified: number;
+  best_total: number | null;
+  trio: { player: string; points: number }[];
+};
+
+export type TrioPoolAudit = {
+  provisional: boolean;
+  full_pool: PoolBenchmark;
+  top_12: PoolBenchmark;
+  pool_gap: number | null;
+  portfolios: Record<string, {
+    best_entry: number | null;
+    selection_gap: number | null;
+    total_gap: number | null;
+    fractional_top_three: number | null;
+    tie_compatible_top_three: boolean | null;
+  }>;
+};
+
+export async function getTrioPoolAudit(recordSha: string): Promise<TrioPoolAudit | null> {
+  try {
+    const result = await db.execute(sql`
+      SELECT a.audit
+      FROM (
+        SELECT grade->>'sha256' AS grade_sha256
+        FROM nba_trio_math_grades
+        WHERE record_sha256 = ${recordSha}
+        ORDER BY graded_at DESC, id DESC LIMIT 1
+      ) AS latest
+      JOIN nba_trio_pool_audits a USING (grade_sha256)
+      WHERE a.record_sha256 = ${recordSha}
+        AND a.audit->>'version' = 'nba-trio-pool-audit-v1'
+    `);
+    return (result.rows[0]?.audit as TrioPoolAudit | undefined) ?? null;
+  } catch (error) {
+    if (isMissingRelation(error)) return null;
+    throw error;
+  }
+}

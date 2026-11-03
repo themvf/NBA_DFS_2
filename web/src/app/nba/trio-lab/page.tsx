@@ -2,7 +2,8 @@ export const dynamic='force-dynamic';
 import Link from 'next/link';
 import type {Metadata} from 'next';
 import {easternDateString} from '@/lib/eastern-date';
-import {getMathResearch,getMathResearchDates,getMathResearchCounts,getMathOutcomes,type MathPortfolio} from '@/db/nba-trio-math';
+import {getMathResearch,getMathResearchDates,getMathResearchCounts,getMathOutcomes,getTrioPoolAudit,type MathPortfolio} from '@/db/nba-trio-math';
+import {PoolAudit} from './pool-audit';
 import registration from '@/data/nba-trio-math-registration-v2.json';
 import {trioPortfolioResult} from '@/lib/nba-trio-results';
 import {getNbaAvailability} from '@/db/nba-availability';
@@ -12,7 +13,7 @@ const labels:Record<string,string>={market_baseline:'Market baseline',joint_best
 export default async function TrioLab({searchParams}:{searchParams:Promise<{date?:string}>}){
  const params=await searchParams,today=easternDateString(),date=params.date&&/^\d{4}-\d{2}-\d{2}$/.test(params.date)?params.date:today;
  const [record,dates,availability,counts]=await Promise.all([getMathResearch(date),getMathResearchDates(),getNbaAvailability(date),getMathResearchCounts()]);
- const outcomes=record?await getMathOutcomes(record):[];
+ const [outcomes,poolAudit]=record?await Promise.all([getMathOutcomes(record),getTrioPoolAudit(record.sha256)]):[[],null];
  const players=new Map(record?.players.map(p=>[p.id,p])??[]);
  const gradeRows=outcomes.map(o=>({event_id:o.id.split(':')[0],player_key:o.id.split(':').slice(1).join(':'),status:o.status==='verified'?'graded':o.status,actual_points:o.points}));
  return <main className="mx-auto max-w-6xl space-y-5 px-4 py-6">
@@ -35,6 +36,7 @@ export default async function TrioLab({searchParams}:{searchParams:Promise<{date
      {actual.status!=='resolved'&&<p className="text-xs text-muted-foreground">Any selected DNP or unresolved outcome keeps the comparison incomplete. Players are never replaced or scored zero.</p>}
      <details className="text-sm"><summary>Modeled scores by scenario</summary>{Object.entries(portfolio.scenario_expected_best).map(([s,v])=><p key={s}>{s}: expected best entry {v.toFixed(1)} · combined {portfolio.scenario_expected_all_five[s].toFixed(1)}</p>)}<p>Simulation summaries, not calibrated probabilities or proven improvements.</p></details>
     </section>})}</div>
+   <PoolAudit audit={poolAudit} />
    <section className="space-y-2"><h2 className="font-semibold">Player estimates and opportunity changes</h2><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left"><th>Player</th><th>Line</th><th>V3 mean</th><th>Compound mean</th><th>Raw / adjusted P90</th><th>Frozen / latest status</th></tr></thead><tbody>{record.players.map(p=><tr key={p.id} className="border-t"><td className="py-2">{p.player}</td><td>{p.market_line.toFixed(1)}</td><td>{p.v3_mean.toFixed(1)}</td><td>{p.compound_mean.toFixed(1)}</td><td>{p.raw_p90.toFixed(1)} / {p.adjusted_p90?.toFixed(1)??'Pending'}</td><td>{p.availability.status??'unverified'} / {availability?.states[p.id]?.status??'unverified'}</td></tr>)}</tbody></table></div><p className="text-xs text-muted-foreground">P90 adjustment: {record.calibration.source}. Historical residual adjustment does not establish current-season conditional coverage.</p></section>
    <details className="text-sm"><summary>Evidence and limits</summary><p>Protocol {record.protocol_sha256.slice(0,12)} · model {record.model_sha256.slice(0,12)} · original {record.sha256.slice(0,12)}</p><ul className="list-disc pl-5">{record.limitations.map(s=><li key={s}>{s}</li>)}</ul></details>
   </>}

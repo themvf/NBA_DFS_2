@@ -38,6 +38,20 @@ python -m research.nba_trio_math_runner report --root ROOT --output NEW_REPORT.j
 
 The current v3 recording is local. Its runtime must be updated to this release before the next slate; the existing 11:35/9:00 automations retain their cadence. The main v2 cloud workflow remains unchanged and does not pretend to produce local v3/math originals.
 
+## Postgame pool-gap audit
+
+The diagnostic compares the best verified trio in the full original v3 modeled pool with the best verified trio in the exact frozen top-12 pool. Their difference is the pool gap. For each five-entry portfolio, subtract its best fully graded entry from the top-12 benchmark to get the selection gap. Both gaps add to its shortfall against the broader pool. The benchmark excludes players outside original v3 eligibility and never substitutes a player into a saved entry.
+
+The audit also reports fractional top-three capture and whether the highest scoring entry includes all three with ties allowed, both against the broader frozen pool. Tied portfolio entries use their original saved order. Any unverified pool member, including a DNP, or unfinished slate makes the benchmarks provisional. Any unresolved selection leaves that portfolio's gaps and capture pending.
+
+After publishing the existing math grade, run:
+
+```
+python -m research.nba_trio_pool_audit --record ORIGINAL/trio-math.json --forecast ORIGINAL/forecast.json --diagnostics REVIEW/diagnostics.json --math-grade MATH_GRADE.json --output NEW_POOL_AUDIT.json --apply
+```
+
+Use a fresh output filename. The audit must link to the published original math grade and exact forecast. Trio Lab displays the audit only when its grade is the latest for that record. Omit `--apply` for local retrospective checks. This descriptive audit is separate from trial selection and promotion.
+
 ## Existing website corrections
 
 Top Scorers defaults to the current Eastern date, including an explicit empty state, instead of silently showing yesterday or tomorrow. Archived quotes remain labeled with their actual capture times. Saved boom comparisons are paired by the exact snapshot digest and recognized shot-growth payload; older ceiling-watch records stay separate. Both best-entry and combined-five actuals are shown, while the original combined-five metric remains intact.
