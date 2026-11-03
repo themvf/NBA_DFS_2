@@ -136,7 +136,7 @@ export type NflWorkspacePlayer = NflOptimizerPlayer & {
   /** Behind a ruled-out starter but deliberately not adjusted, and why. */
   replacementUpsideUnchanged?: { from: string; reason: string } | null;
   /**
-   * `nfl-absence-commit-v1`: a starter is out, so `ourProj`/floor/median/
+   * `nfl-absence-commit-v2`: a starter is out, so `ourProj`/floor/median/
    * ceiling/boom on this row are the starter-aware projection the optimizer
    * builds from. `before` is the model's own number, kept for weekly grading.
    */
@@ -2144,7 +2144,7 @@ function snapshotPlayer(player: NflWorkspacePlayer, slate: NflWorkspaceSlate, re
     playerSignals:player.playerSignals??[], playerSignalVersion:NFL_PLAYER_SIGNAL_VERSION,
     airMatchupEvidence:player.airMatchupEvidence??null,
     projectionScenario: player.projectionScenario, redistributionVersion: slate.redistribution?.version,
-    // Starter-aware projection the build used, with the model's own number in `before` (nfl-absence-commit-v1).
+    // Starter-aware projection the build used, with the model's own number in `before` (nfl-absence-commit-v2).
     absenceCommit: player.absenceCommit ?? null,
     // The books' number the build used, with the model's own in `before` (nfl-market-anchor-v1).
     marketAnchor: player.marketAnchor ?? null,

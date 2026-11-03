@@ -21,7 +21,7 @@ export function restorePlayers(snapshot: FrozenPlayer[]): NflOptimizerPlayer[] {
     }
     return { ...p, id: p.id ?? p.dkPlayerId, captainDkPlayerId: p.captainDkPlayerId ?? null,
       captainSalary: p.captainSalary ?? null, dkStatus: p.status ?? null,
-      floorFpts: p.floor ?? null, ceilingFpts: p.ceiling ?? null,
+      floorFpts: p.floor ?? null, medianFpts: p.median ?? null, ceilingFpts: p.ceiling ?? null,
       avgFptsDk: p.dkAvg ?? null, fantasyprosProj: p.fantasypros ?? null,
       linestarProj: p.linestar ?? null, customProj: p.custom ?? null,
       linestarOwnPct: own?.linestar ?? (typeof p.ownership === "number" ? p.ownership : null),
