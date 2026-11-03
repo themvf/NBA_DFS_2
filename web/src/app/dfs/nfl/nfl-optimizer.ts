@@ -123,6 +123,12 @@ export type NflOptimizerPlayer = {
   dkStatus?: string | null;
   ourProj: number | null;
   floorFpts: number | null;
+  /**
+   * nfl-range-calibration-v1: the chance he records no stat line and his
+   * if-he-plays range. ourProj/floor/median/ceiling are already the mix of
+   * the two; simulated games draw from `ifPlays` and score a 0 `notPlay` of the time.
+   */
+  rangeCalibration?: { notPlay: number; notPlayBasis?: string; ifPlays: { mean: number; p10: number; median: number; p90: number }; before?: { mean: number } } | null;
   /** The projection's median (P50), when the source has one. Used by `draws` scoring. */
   medianFpts?: number | null;
   ceilingFpts: number | null;
@@ -686,7 +692,16 @@ export function resolveProjectionAudit(player:NflOptimizerPlayer,settings:NflOpt
   }
   if(resolved?.source==='workload'&&player.projectionAudit)return {...player.projectionAudit,excluded:ruledOut(player)||settings.excludedPlayerIds.includes(player.dkPlayerId)};
   const baseline=finite(player.ourProj),final=resolved?.value??null,delta=baseline!=null&&final!=null?final-baseline:0;
-  return {version:'nfl-projection-audit-v1',baseline,final,source:resolved?.source??'unavailable',excluded:ruledOut(player)||settings.excludedPlayerIds.includes(player.dkPlayerId)||!resolved,modelSnapshot:resolved?.source==='calibrated'?player.calibrated:null,evidence:player.projectionAudit?.evidence??null,assumption:null,rangeMethod:resolved?.source==='calibrated'?'Pinned calibrated player ranges.':resolved?.source==='our'||resolved?.source==='our_fallback'?'Historical player ranges.':'Source supplies a mean only; optimizer uses 0.74 × mean / 1.28 × mean range heuristics.',steps:[{label:'Selected projection source',status:delta?'applied':'not_applied',points:delta,reason:resolved?`${resolved.source}: ${baseline===null?'historical baseline unavailable; no comparative delta claimed':final===baseline?'historical estimate retained':'source replacement, not an inferred injury or matchup effect'}.`:'No usable projection; excluded.'},...(player.projectionAudit?.steps.filter(s=>s.label==='Situation adjustments')??[])]};
+  return {version:'nfl-projection-audit-v1',baseline,final,source:resolved?.source??'unavailable',excluded:ruledOut(player)||settings.excludedPlayerIds.includes(player.dkPlayerId)||!resolved,modelSnapshot:resolved?.source==='calibrated'?player.calibrated:null,evidence:player.projectionAudit?.evidence??null,assumption:null,rangeMethod:resolved?.source==='calibrated'?'Pinned calibrated player ranges.':resolved?.source==='our'||resolved?.source==='our_fallback'?'Historical player ranges.':'Source supplies a mean only; optimizer uses 0.74 × mean / 1.28 × mean range heuristics.',steps:[{label:'Selected projection source',status:delta?'applied':'not_applied',points:delta,reason:resolved?`${resolved.source}: ${baseline===null?'historical baseline unavailable; no comparative delta claimed':final===baseline?'historical estimate retained':'source replacement, not an inferred injury or matchup effect'}.`:'No usable projection; excluded.'},...(player.projectionAudit?.steps.filter(s=>s.label==='Situation adjustments')??[]),...calibrationStep(player)]};
+}
+
+/** The calibration already in ourProj (nfl-range-calibration-v1), as an audit step. */
+function calibrationStep(player: NflOptimizerPlayer): ProjectionAudit['steps'] {
+  const cal = player.rangeCalibration, before = cal?.before?.mean, after = finite(player.ourProj);
+  if (!cal || before == null || after == null) return [];
+  const chance = Math.round(cal.notPlay * 100);
+  return [{label:'Calibration',status:'applied',points:after-before,
+    reason:`If he plays: ${cal.ifPlays.mean.toFixed(1)} (projections pulled toward the middle). Chance of no stat line: ${chance}%${cal.notPlayBasis ? ` (${cal.notPlayBasis})` : ''}.`}];
 }
 
 function safe(value: string): string {
@@ -796,12 +811,27 @@ function objective(player: ResolvedPlayer, settings: NflOptimizerSettings, lineu
  * player's own historical range, rescaled to the projection; with no range at
  * all it returns null and the player is drawn at his projection.
  */
-function rangeFor(player: ResolvedPlayer, settings: NflOptimizerSettings): { p10: number | null; median: number | null; p90: number | null } | null {
+/**
+ * The range simulated games draw from. For a calibrated player
+ * (nfl-range-calibration-v1) on our own projection that is his if-he-plays
+ * range, with the chance of a 0 in `notPlay` and the if-he-plays `mean`
+ * (scaled so the draws average his projection); other sources borrow the
+ * if-he-plays shape and keep their own mean.
+ */
+function rangeFor(player: ResolvedPlayer, settings: NflOptimizerSettings): { p10: number | null; median: number | null; p90: number | null; mean?: number; notPlay?: number } | null {
   const defensive = player.defensiveForecast?.status === "applied" && settings.defensiveAdjustments?.mode !== "off" ? player.defensiveForecast.selected : null;
   if (player.resolvedSource === "special_teams" && player.specialTeams) return { p10: player.specialTeams.p10, median: player.specialTeams.p50, p90: player.specialTeams.p90 };
   if (defensive) return { p10: defensive.p10, median: defensive.p50, p90: defensive.p90 };
   if (player.resolvedSource === "workload") { const w = selectedWorkload(player, settings.workloadPositions); return w ? { p10: w.p10, median: w.p50, p90: w.p90 } : null; }
   if (player.resolvedSource === "calibrated" && player.calibrated) return { p10: player.calibrated.p10, median: player.calibrated.p50, p90: player.calibrated.p90 };
+  const cal = player.rangeCalibration;
+  if (cal && cal.ifPlays.mean > 0) {
+    const ownSource = player.resolvedSource === "our" || player.resolvedSource === "our_fallback";
+    const notPlay = ownSource ? Math.min(Math.max(cal.notPlay, 0), 0.99) : 0;
+    const mean = player.projection / (1 - notPlay);
+    const k = mean / cal.ifPlays.mean;
+    return { p10: cal.ifPlays.p10 * k, median: cal.ifPlays.median * k, p90: cal.ifPlays.p90 * k, mean, notPlay };
+  }
   const own = { p10: finite(player.floorFpts), median: finite(player.medianFpts ?? null), p90: finite(player.ceilingFpts) };
   if (own.p10 == null || own.median == null || own.p90 == null) return null;
   if (player.resolvedSource === "our" || player.resolvedSource === "our_fallback") return own;
@@ -1843,7 +1873,8 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
     drawModel = buildDrawModel(pool.map((p) => {
       const range = rangeFor(p, settings);
       return { id: p.dkPlayerId, position: p.position, team: p.team, opponent: p.opponent, gameKey: p.gameKey,
-        mean: p.projection, p10: range?.p10 ?? null, median: range?.median ?? null, p90: range?.p90 ?? null };
+        mean: range?.mean ?? p.projection, p10: range?.p10 ?? null, median: range?.median ?? null, p90: range?.p90 ?? null,
+        notPlay: range?.notPlay ?? 0 };
     }), settings.drawSeed ?? DEFAULT_DRAW_SEED);
     const model = drawModel;
     const cache = new Map<number, Map<number, number>>();

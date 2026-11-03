@@ -23,6 +23,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings } from "../src/app/dfs/nfl/nfl-optimizer";
 import { restorePlayers, type FrozenPlayer } from "../src/lib/nfl-dfs/frozen-players";
 import { BOOM_THRESHOLDS, mixDistributions } from "../src/lib/nfl-dfs/replacement-upside";
+import { calibratePlayers, type CalibrationParts } from "../src/lib/nfl-dfs/range-calibration";
 
 type Range = { mean: number; p10: number; median: number; p90: number; boom: number | null; position?: string };
 type Slate = {
@@ -59,12 +60,19 @@ function rankOf(curve: [number, number][], s: number): number {
   return r + 1;
 }
 
-type Variant = { name: string; scoring: "ceiling" | "draws"; mixture: boolean; seed?: number };
+/** `calibrate`: nfl-range-calibration-v1 on top of whatever main does today (the mixture when there is one). */
+type Variant = { name: string; scoring: "ceiling" | "draws"; mixture: boolean; seed?: number; calibrate?: boolean; parts?: CalibrationParts };
 const variants: Variant[] = [
   { name: "ceiling", scoring: "ceiling", mixture: false },
   { name: "ceiling+mix", scoring: "ceiling", mixture: true },
   ...Array.from({ length: seeds }, (_, i) => ({ name: `draws#${i + 1}`, scoring: "draws" as const, mixture: false, seed: 20261103 + i })),
   ...Array.from({ length: seeds }, (_, i) => ({ name: `draws+mix#${i + 1}`, scoring: "draws" as const, mixture: true, seed: 20261103 + i })),
+  ...Array.from({ length: seeds }, (_, i) => ({ name: `cal#${i + 1}`, scoring: "draws" as const, mixture: true, calibrate: true, seed: 20261103 + i })),
+  // Ablation (REPLAY_PARTS=1): each correction alone.
+  ...(process.env.REPLAY_PARTS
+    ? ([["cal-notplay", { meanLine: false }], ["cal-meanline", { notPlay: false }]] as const)
+      .flatMap(([name, parts]) => Array.from({ length: seeds }, (_, i) => ({ name: `${name}#${i + 1}`, scoring: "draws" as const, mixture: true, calibrate: true, parts, seed: 20261103 + i })))
+    : []),
 ];
 
 /** Relaxations tried in order when the saved settings no longer build. */
@@ -95,9 +103,14 @@ for (const slate of slates) {
   }
   if (relax !== RELAXATIONS[0]) console.log(`   settings relaxed for every variant: ${relax.label}`);
   for (const v of variants) {
-    const players = restorePlayers(structuredClone(slate.players));
+    let players = restorePlayers(structuredClone(slate.players));
     const mix = v.mixture ? applyMixture(players, slate.starters) : [];
-    if (v.mixture && !mix.length) continue; // identical to the unmixed variant
+    if (v.mixture && !mix.length && !v.calibrate) continue; // identical to the unmixed variant
+    if (v.calibrate) {
+      const c = calibratePlayers(players, v.parts);
+      players = c.players as NflOptimizerPlayer[];
+      if (v.seed === 20261103) console.log(`   calibration: ${c.applied} players, ${c.notPlaying} more likely than not to record no stat line`);
+    }
     if (v.mixture && !mixtureNote) { mixtureNote = mix; console.log(`   mixture: ${mix.join("; ")}`); }
     const settings: NflOptimizerSettings = { ...relax.apply(slate.settings), gppScoring: v.scoring, drawSeed: v.seed };
     const t = Date.now();
@@ -137,5 +150,25 @@ for (const f of fam) {
   const slatesIn = new Set(rs.map((r) => r.slate)).size;
   const avg = (k: string) => (rs.reduce((a, r) => a + Number(r[k]), 0) / rs.length).toFixed(2);
   console.log(`${f.padEnd(10)} builds ${rs.length} on ${slatesIn} slates | best beat ${avg("bestPct")}% | mean score ${avg("mean")} | >median ${avg("aboveMedian")} | top10% ${avg("top10")} | top1% ${avg("top1")} | at cap ${avg("atCap")} | players ${avg("distinctPlayers")}`);
+}
+// Calibration against what main builds today: draws+mix where a mixture applied, else draws.
+const famMean = (slate: unknown, prefix: string, k: string) => {
+  const rs = rows.filter((r) => r.slate === slate && String(r.variant).replace(/#\d+$/, "") === prefix);
+  return rs.length ? rs.reduce((a, r) => a + Number(r[k]), 0) / rs.length : null;
+};
+const keys = ["bestPct", "mean", "aboveMedian", "top10", "top1", "atCap", "distinctPlayers"];
+const boot = (xs: number[]) => { const m: number[] = []; let seed = 7;
+  const rnd = () => (seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) / 4294967296;
+  for (let b = 0; b < 4000; b++) { let t = 0; for (let i = 0; i < xs.length; i++) t += xs[Math.floor(rnd() * xs.length)]; m.push(t / xs.length); }
+  m.sort((a, b) => a - b); return [m[100], m[3899]]; };
+for (const fam of ["cal", ...(process.env.REPLAY_PARTS ? ["cal-notplay", "cal-meanline"] : [])]) {
+  const diffs: Record<string, number[]> = Object.fromEntries(keys.map((k) => [k, []]));
+  for (const slate of new Set(rows.map((r) => r.slate))) for (const k of keys) {
+    const cal = famMean(slate, fam, k), cur = famMean(slate, "draws+mix", k) ?? famMean(slate, "draws", k);
+    if (cal != null && cur != null) diffs[k].push(cal - cur);
+  }
+  console.log(`\n=== ${fam} minus today's main, per slate (draws, mixture where it applies)`);
+  for (const k of keys) { const xs = diffs[k]; if (!xs.length) continue; const avg = xs.reduce((a, b) => a + b, 0) / xs.length; const [lo, hi] = boot(xs);
+    console.log(`${k.padEnd(16)} ${avg >= 0 ? "+" : ""}${avg.toFixed(2)} [${lo.toFixed(2)}, ${hi.toFixed(2)}] on ${xs.length} slates; better on ${xs.filter((x) => x > 0).length}`); }
 }
 if (outPath) writeFileSync(outPath, JSON.stringify(rows, null, 1));
