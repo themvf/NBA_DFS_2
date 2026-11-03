@@ -59,6 +59,7 @@ import { isNflGppSignalPlayer, type NflPlayerSignal, type NflPlayerSignalCode } 
 import type { NflAirMatchupEvidence } from '@/lib/nfl-dfs/air-matchup-evidence';
 import { applyWinnersShape, BUILD_SHAPES, type BuildShape, type PriorOpportunity } from '@/lib/nfl-dfs/winners-shape';
 import type { SpecialTeamsProjection } from '@/lib/nfl-dfs/special-teams-projection';
+import { buildDrawModel, DEFAULT_DRAW_SEED, DEFAULT_LEVERAGE_POINTS_PER_HALVING, drawOutcome, LINEUP_DRAWS_VERSION, slotLeverageBonus, type DrawModel } from '@/lib/nfl-dfs/lineup-draws';
 import { featureTotals, JOINT_TARGET_PENALTY, NFL_JOINT_SELECTION_VERSION, selectJointPortfolio, type JointCandidate, type JointTarget } from '@/lib/nfl-dfs/joint-selection';
 
 // Record the strict Showdown purchase and completed-roster validation.
@@ -122,6 +123,8 @@ export type NflOptimizerPlayer = {
   dkStatus?: string | null;
   ourProj: number | null;
   floorFpts: number | null;
+  /** The projection's median (P50), when the source has one. Used by `draws` scoring. */
+  medianFpts?: number | null;
   ceilingFpts: number | null;
   boomRate: number | null;
   avgFptsDk: number | null;
@@ -218,6 +221,25 @@ export type NflOptimizerSettings = {
    * pair (`nfl-ghost-extra-arms-v1`) builds at 1 and 4 against the house's 2.
    */
   boomWeight?: number;
+  /**
+   * How a GPP lineup is scored (`nfl-lineup-draws-v1`, 2026-11-03).
+   * `ceiling` (the default here, and what the ghost factorial and research
+   * studies pin): each player's capped P90 plus the boom term, summed.
+   * `draws`: lineup L is solved against one correlated simulated game, so a
+   * player appears in about the share of games he belongs in the best lineup,
+   * correlated players appear together, and exposure caps are limits rather
+   * than targets. The build form sets `draws` for new builds. Cash mode is
+   * unaffected. See `lib/nfl-dfs/lineup-draws.ts`.
+   */
+  gppScoring?: "ceiling" | "draws";
+  /** Seed of the simulated games in `draws` mode; the same seed rebuilds the same run. */
+  drawSeed?: number;
+  /**
+   * `draws` mode leverage, when leverage is enabled: points a lineup gives up
+   * to halve the number of rivals holding it (`slotLeverageBonus`). Replaces
+   * the per-player `(1 − own)^k` factor in that mode. 1 is a stated prior.
+   */
+  leveragePointsPerHalving?: number;
   /** User opt-in for uncalibrated heuristic ownership leverage (client → server; the server resolves the final bit). */
   useHeuristicOwnershipLeverage?: boolean;
   /** Phase 3: per-player Overall/Captain/Flex exposure ranges. Overrides the flat maxExposure per player. */
@@ -422,6 +444,8 @@ type ResolvedPlayer = NflOptimizerPlayer & {
   salaryRelief: boolean;
   /** Phase 1: whether this player may be used at Captain (Flex-only for overridden cheap players by default). */
   captainEligible: boolean;
+  /** `draws` mode: this player's DK points in simulated game `index` (index 0 = his projection). */
+  drawAt?: (index: number) => number;
 };
 
 type SolverModel = {
@@ -722,7 +746,24 @@ export function cappedCeiling(ceiling: number, projection: number, maxMultiple: 
   return Math.min(ceiling, projection * maxMultiple);
 }
 
+/** Simulated-game scoring applies to GPP builds; the Diversified shape keeps its own registered search. */
+function drawScoring(settings: NflOptimizerSettings): boolean {
+  return settings.mode === "gpp" && settings.gppScoring === "draws" && settings.buildShape !== "diversified";
+}
+
 function objective(player: ResolvedPlayer, settings: NflOptimizerSettings, lineupNumber: number, slot = "CLASSIC"): number {
+  if (drawScoring(settings)) {
+    // Lineup L is scored on simulated game L; index 0 (portfolio scoring,
+    // ranking) is the projection. No jitter: the draws are the variation.
+    // Leverage prices the lineup's duplication (a sum of log slot ownerships),
+    // and is not scaled by the captain multiplier the caller applies.
+    const points = lineupNumber > 0 && player.drawAt ? player.drawAt(lineupNumber) : player.projection;
+    const leverageOn = settings.ownershipLeverageEnabled ?? ((settings.ownershipCapability ?? "unavailable") === "validated");
+    const leverage = leverageOn
+      ? slotLeverageBonus(slotOwnershipPct(player, slot), settings.leveragePointsPerHalving ?? DEFAULT_LEVERAGE_POINTS_PER_HALVING) / (slot === "CPT" ? 1.5 : 1)
+      : 0;
+    return points + leverage;
+  }
   const defensive=player.defensiveForecast?.status==='applied' && settings.defensiveAdjustments?.mode!=='off' ? player.defensiveForecast.selected:null;
   const special=player.resolvedSource === 'special_teams' ? player.specialTeams : null;
   const historical = player.resolvedSource === "our" || player.resolvedSource === "our_fallback";
@@ -748,7 +789,32 @@ function objective(player: ResolvedPlayer, settings: NflOptimizerSettings, lineu
   return (base + boomBonus) * leverage + jitter(20260902, lineupNumber, player.dkPlayerId) * settings.randomness * player.projection;
 }
 
+/**
+ * The P10/median/P90 behind a player's resolved projection, from the same
+ * source the projection came from. A source with no range of its own (DK
+ * average, FantasyPros, LineStar, a typed projection) borrows the shape of the
+ * player's own historical range, rescaled to the projection; with no range at
+ * all it returns null and the player is drawn at his projection.
+ */
+function rangeFor(player: ResolvedPlayer, settings: NflOptimizerSettings): { p10: number | null; median: number | null; p90: number | null } | null {
+  const defensive = player.defensiveForecast?.status === "applied" && settings.defensiveAdjustments?.mode !== "off" ? player.defensiveForecast.selected : null;
+  if (player.resolvedSource === "special_teams" && player.specialTeams) return { p10: player.specialTeams.p10, median: player.specialTeams.p50, p90: player.specialTeams.p90 };
+  if (defensive) return { p10: defensive.p10, median: defensive.p50, p90: defensive.p90 };
+  if (player.resolvedSource === "workload") { const w = selectedWorkload(player, settings.workloadPositions); return w ? { p10: w.p10, median: w.p50, p90: w.p90 } : null; }
+  if (player.resolvedSource === "calibrated" && player.calibrated) return { p10: player.calibrated.p10, median: player.calibrated.p50, p90: player.calibrated.p90 };
+  const own = { p10: finite(player.floorFpts), median: finite(player.medianFpts ?? null), p90: finite(player.ceilingFpts) };
+  if (own.p10 == null || own.median == null || own.p90 == null) return null;
+  if (player.resolvedSource === "our" || player.resolvedSource === "our_fallback") return own;
+  const base = finite(player.ourProj);
+  if (base == null || base <= 0) return null;
+  const k = player.projection / base;
+  return { p10: own.p10 * k, median: own.median * k, p90: own.p90 * k };
+}
+
 function validateSettings(settings: NflOptimizerSettings): void {
+  if (settings.gppScoring != null && !["ceiling", "draws"].includes(settings.gppScoring)) throw new Error("GPP scoring must be ceiling or draws.");
+  if (settings.drawSeed != null && (!Number.isInteger(settings.drawSeed) || settings.drawSeed < 0 || settings.drawSeed > 0xffff_ffff)) throw new Error("Draw seed must be an unsigned 32-bit integer.");
+  if (settings.leveragePointsPerHalving != null && !(settings.leveragePointsPerHalving >= 0 && settings.leveragePointsPerHalving <= 20)) throw new Error("Leverage points per halving must be between 0 and 20.");
   if (![0, 1].includes(settings.gppSignalMinPerLineup ?? 0)) throw new Error("GPP signal minimum must be 0 or 1.");
   if (settings.gppSignalMinPerLineup && (settings.format !== "classic" || settings.mode !== "gpp")) throw new Error("Opportunity signals can only be required in Classic GPP.");
   if (settings.gppSignalMinPerLineup && settings.gppSignalCodes?.length === 0) throw new Error("Select at least one opportunity signal.");
@@ -1770,6 +1836,24 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
     : null;
   const chalkCaptainSet = new Set(chalkPlan?.chalkCaptainIds ?? []);
 
+  // `draws` mode: one correlated simulated game per lineup, drawn lazily and
+  // shared by every slot and candidate built for that lineup number.
+  let drawModel: DrawModel | null = null;
+  if (drawScoring(settings)) {
+    drawModel = buildDrawModel(pool.map((p) => {
+      const range = rangeFor(p, settings);
+      return { id: p.dkPlayerId, position: p.position, team: p.team, opponent: p.opponent, gameKey: p.gameKey,
+        mean: p.projection, p10: range?.p10 ?? null, median: range?.median ?? null, p90: range?.p90 ?? null };
+    }), settings.drawSeed ?? DEFAULT_DRAW_SEED);
+    const model = drawModel;
+    const cache = new Map<number, Map<number, number>>();
+    const at = (index: number) => { let d = cache.get(index); if (!d) { d = drawOutcome(model, index); cache.set(index, d); } return d; };
+    for (const p of pool) p.drawAt = (index) => at(index).get(p.dkPlayerId) ?? p.projection;
+    const named = (ids: number[]) => ids.map((id) => pool.find((p) => p.dkPlayerId === id)?.name ?? `#${id}`).join(", ");
+    warnings.push(`Lineups scored on simulated games (${LINEUP_DRAWS_VERSION}, seed ${model.seed}): each lineup is the best one for one correlated simulated game, so a player's exposure follows how often he belongs in the best lineup; your caps are limits, not targets.`
+      + (model.fixed.length ? ` No range, drawn at projection: ${named(model.fixed)}.` : "")
+      + (model.meanNotMatched.length ? ` Range and projection disagree: ${named(model.meanNotMatched)}.` : ""));
+  }
   const policyById = new Map((settings.exposurePolicies ?? []).map((p) => [p.playerId, p]));
   const effectivePolicy = (player: ResolvedPlayer): PlayerExposurePolicy => {
     const resolved = baseEffectivePolicy(player);
@@ -2079,7 +2163,14 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   // sequential build is always a feasible answer, so this can only keep it or
   // improve on it; every tally below is recounted from the final lineups.
   let diversifiedReport: DiversifiedReport | undefined;
-  if ((settings.portfolioSelection === "joint" || settings.buildShape === "diversified") && lineups.length) {
+  // Joint selection re-picks the portfolio by the summed projection, which
+  // would concentrate it on the caps again; in `draws` mode the sequential
+  // build is the portfolio (it already meets the share rules lineup by lineup).
+  const drawScored = drawScoring(settings);
+  if (drawScored && settings.portfolioSelection === "joint") {
+    warnings.push("Joint selection skipped: in simulated-game scoring each lineup is chosen for its own simulated game, and re-picking by projection would undo that.");
+  }
+  if (((settings.portfolioSelection === "joint" && !drawScored) || settings.buildShape === "diversified") && lineups.length) {
     const joint = settings.buildShape === "diversified" ? diversifiedSelect({pool, settings, lineups, countsById, locked, topProjectedTargets}) : jointSelect({ pool, settings, plan, lineups, countsById, locked, topProjectedTargets,
       targets: { twoQbShare, rbCaptainShare, loneQbCaptainCap, doubleStackShare, fourWrCap, otherGameCap, twoTeShare,
         bringBackShare, dstVsOffenseCap, airMatchupTarget, goalLineTarget } });

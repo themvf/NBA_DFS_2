@@ -7799,6 +7799,39 @@ on every saved player; Gate F (weeks 8-15, graded ~2026-12-22) grades against
 it. The defensive capture check reads `before`; ghost arms re-apply the ratios.
 QB, K and DST keep the model's range. See `docs/nfl-dfs-range-split-study.md`.
 
+## NFL DFS — Simulated-game lineup scoring (`nfl-lineup-draws-v1`) and absence mixture (v2), 2026-11-03
+
+Read [`docs/nfl-dfs-simulated-lineups.md`](docs/nfl-dfs-simulated-lineups.md)
+before changing GPP scoring, exposure or absence ranges.
+
+- **Ceiling scoring summed player P90s under exposure caps.** That objective
+  is linear, so every good-value player filled lineups up to his cap (Myers
+  and Burden at exactly 25 of 50 on CHI@SEA). The sum also assumed every pair
+  perfectly correlated: it overpaid cheap high-variance backs and gave stacks
+  no credit.
+- **`gppScoring: "draws"`** solves each lineup against one correlated
+  simulated game (quantile curves plus a game/team copula, stated priors). Its
+  rules:
+  - Exposure follows how often a player belongs in the best lineup.
+  - Caps are limits, not targets.
+  - Joint re-selection is skipped in this mode.
+  - Leverage is a lineup-level log-ownership term.
+  - The build form defaults to it. The optimizer default stays `ceiling`, so
+    the ghost factorial and research studies are unchanged.
+  - Cash and Diversified builds are unaffected.
+- **Replay on 10 Showdowns:** cap pile-ups fell by 1.5 players per slate (CI
+  excludes 0). Results were not worse, but not proven better (best-lineup
+  percentile +0.95, CI −1.0 to +3.1).
+- **`nfl-absence-commit-v2`:** an upward role adjustment is a mixture with the
+  absent starter's pre-availability range, weighted to keep the v1 mean. Only
+  the shape changes.
+- **Range audit, weeks 2–8:**
+  - 21.5% of players not ruled out had no stat line. That, not range shape, is
+    why medians run high.
+  - For players who played, P90 is too narrow (13.7%), except at mean 20+
+    (2.5%).
+  - A did-not-play mass and a P90 widening are open, separate studies.
+
 ## NFL DFS — Absence commit: the optimizer builds from starter-aware projections (`nfl-absence-commit-v1`, 2026-10-11)
 
 **Owner's decision, 2026-10-11:** commit to a projection and learn from the

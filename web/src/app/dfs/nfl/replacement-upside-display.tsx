@@ -89,7 +89,7 @@ export function ReplacementUpsideTable({ upside }: { upside: ReplacementUpside }
 
 /**
  * Name-cell chip for a player whose projection was replaced by the
- * starter-aware number (`nfl-absence-commit-v1`). The optimizer builds from
+ * starter-aware number (`nfl-absence-commit-v2`). The optimizer builds from
  * the new number; the chip keeps the old one in view.
  */
 export function AbsenceCommitChip({ commit }: { commit: import("@/lib/nfl-dfs/absence-commit").AbsenceCommit }) {

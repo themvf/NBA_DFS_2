@@ -34,6 +34,26 @@
  *    when it raises it: taking a lower-projected player's job is never a
  *    reason to project lower. Rule 1 wins when both apply.
  *
+ * v2 (2026-11-03): rule 1 no longer stretches the backup's own range when it
+ * moves him UP. Multiplying every quantile by `scale` keeps a backup's shape
+ * (mostly near zero, value in a long tail) for a player whose premise is that
+ * he now has the job: Roschon Johnson's 1.52x left his median at 1.95 of a
+ * 7.37 mean, although he had scored 9.0, 15.5 and 1.3 in the three games
+ * without Monangai. A role change is two possible games, so the range is now
+ * a MIXTURE (the same form as `replacement-upside.ts`):
+ *
+ *   F_after = (1 - pi) * F_own + pi * F_starter
+ *   pi      = (target_mean - own_mean) / (starter_mean - own_mean)
+ *
+ * `target_mean` is exactly the v1 scaled mean (own mean x scale), so the
+ * projected MEAN is unchanged -- the audit of 44 adjusted player-games
+ * (weeks 5-8) found the v1 means sound (under-projection fell from 1.3 to 0.4
+ * points) -- and only the shape changes. `F_starter` is the most-used absent
+ * starter's own projected range. When there is none, or the starter projects
+ * no higher than the target, the range is scaled as in v1 and the reason is
+ * kept on the record (`shape`). Downward scales (a committee back who did not
+ * get the work) are still scaled.
+ *
  * Volume units: RB = carries + receptions, WR/TE = receptions; projected
  * volume uses the same keys from the projection's stat means. (Two drafts
  * before release used converted targets and last-season "with" games; both
@@ -44,7 +64,7 @@ import {
   type ReplacementUpside, type TeamUsageWindow, type UpsideDistribution,
 } from './replacement-upside';
 
-export const ABSENCE_COMMIT_VERSION = 'nfl-absence-commit-v1';
+export const ABSENCE_COMMIT_VERSION = 'nfl-absence-commit-v2';
 export const SCALE_MIN = 0.5;
 export const SCALE_MAX = 3;
 
@@ -75,6 +95,8 @@ export interface AbsenceCommit {
   projectedVolume?: number;
   weight?: number;
   scale?: number;
+  /** own_role_games only: how the range was built. `mixture` carries `pi`; `scaled` says why not. */
+  shape?: { kind: 'mixture'; pi: number; starter: string } | { kind: 'scaled'; reason: string };
   note: string;
 }
 
@@ -110,6 +132,25 @@ export function scaleDistribution(d: UpsideDistribution, scale: number, boomLine
   const scaled = { mean: d.mean * scale, p10: d.p10 * scale, median: d.median * scale, p90: d.p90 * scale, boom: null };
   // pi = 0 returns the same distribution with its quantiles and boom read off one fitted curve.
   return mixDistributions(scaled, scaled, 0, boomLine);
+}
+
+/**
+ * v2 range for rule 1: the mixture of the player's own range and the absent
+ * starter's, weighted so the mean is the v1 target. Falls back to scaling,
+ * with the reason, when no mixture can hit the target.
+ */
+function roleShape(p: CommitPlayer, own: UpsideDistribution, absent: readonly CommitPlayer[], scale: number, boomLine: number | null):
+  { after: UpsideDistribution; shape: NonNullable<AbsenceCommit['shape']> } {
+  const scaled = (reason: string) => ({ after: scaleDistribution(own, scale, boomLine), shape: { kind: 'scaled' as const, reason } });
+  if (!(scale > 1)) return scaled('his projection moves down, so his own shape is kept');
+  const target = own.mean * scale;
+  const starter = absent.filter((s) => valid(s.dist)).sort((a, b) => b.dist!.mean - a.dist!.mean || a.key - b.key)[0];
+  if (!starter) return scaled('no stored range for the absent starter');
+  if (!(starter.dist!.mean > target + 1e-9)) return scaled(`${starter.name} projects no higher than his target`);
+  const pi = (target - own.mean) / (starter.dist!.mean - own.mean);
+  // A stored boom rate is measured at the starter's own position line; reuse it only when that is this player's line too.
+  const starterDist = starter.position === p.position ? starter.dist! : { ...starter.dist!, boom: null };
+  return { after: mixDistributions(own, starterDist, pi, boomLine), shape: { kind: 'mixture', pi: r2(pi), starter: starter.name } };
 }
 
 export function computeAbsenceCommits(players: readonly CommitPlayer[], windows: readonly TeamUsageWindow[], season: number): AbsenceCommitReport {
@@ -151,12 +192,17 @@ export function computeAbsenceCommits(players: readonly CommitPlayer[], windows:
         const weight = n / (n + 1);
         const target = weight * roleVolume + (1 - weight) * projected;
         const scale = Math.min(SCALE_MAX, Math.max(SCALE_MIN, target / projected));
-        const after = scaleDistribution(p.dist, scale, BOOM_THRESHOLDS[p.position] ?? null);
+        const boomLine = BOOM_THRESHOLDS[p.position] ?? null;
+        const shaped = roleShape(p, p.dist, absent, scale, boomLine);
+        const after = shaped.after;
         const label = room === 'RB' ? 'touches' : 'catches';
         commits.set(p.key, {
           version: ABSENCE_COMMIT_VERSION, key: p.key, rule: 'own_role_games', from: absent.map((s) => s.name),
-          before: roundDist(p.dist), after: roundDist(after), games, projectedVolume: r2(projected), weight: r2(weight), scale: r2(scale),
-          note: `${absent.map((s) => s.name).join(', ')} out. In ${n} game${n === 1 ? '' : 's'} without him, ${p.name} averaged ${roleVolume.toFixed(1)} ${label} against ${projected.toFixed(1)} projected; range scaled ×${scale.toFixed(2)}.`,
+          before: roundDist(p.dist), after: roundDist(after), games, projectedVolume: r2(projected), weight: r2(weight), scale: r2(scale), shape: shaped.shape,
+          note: `${absent.map((s) => s.name).join(', ')} out. In ${n} game${n === 1 ? '' : 's'} without him, ${p.name} averaged ${roleVolume.toFixed(1)} ${label} against ${projected.toFixed(1)} projected; projection ×${scale.toFixed(2)}`
+            + (shaped.shape.kind === 'mixture'
+              ? `, as a ${Math.round(shaped.shape.pi * 100)}% chance he plays like ${shaped.shape.starter}.`
+              : ` (range scaled: ${shaped.shape.reason}).`),
         });
       }
     }

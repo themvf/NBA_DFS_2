@@ -126,13 +126,13 @@ export function quantile(shape: QuantileShape, u: number): number {
 }
 
 /** Standard normal CDF (Abramowitz & Stegun 7.1.26, error under 1.5e-7). */
-function phi(z: number): number {
+export function phi(z: number): number {
   const t = 1 / (1 + 0.3275911 * Math.abs(z) / Math.SQRT2);
   const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-(z * z) / 2);
   return z >= 0 ? (1 + y) / 2 : (1 - y) / 2;
 }
 
-function normal(random: () => number): number {
+export function normal(random: () => number): number {
   let u = 0;
   while (u === 0) u = random();
   return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * random());
