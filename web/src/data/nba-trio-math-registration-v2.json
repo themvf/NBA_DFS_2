@@ -1,0 +1,8 @@
+{
+  "enrollment_start": "2026-11-04",
+  "historical_calibration_n": 2434,
+  "historical_dependence_games": 114,
+  "model_sha256": "ea610a48acb78966ab127f081414683516eae07c6a13b2cf2d632fe181cd21b0",
+  "protocol_sha256": "3ef587a3fc1283a4d75dcc73cd46a725411aa5a7abd772a6c75bdadf4dee7d5a",
+  "registered_at": "2026-11-03T17:24:48.642287+00:00"
+}

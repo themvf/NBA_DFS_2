@@ -233,8 +233,8 @@
       "file": "nba_points_ghost.yml",
       "name": "NBA ghost projections v2",
       "crons": [
-        "50 16 * 1-6,10-12 *",
-        "37 12 * 1-6,10-12 *"
+        "50 17 * 1-6,10-12 *",
+        "37 13 * 1-6,10-12 *"
       ],
       "dispatch": true,
       "afterWorkflows": [],

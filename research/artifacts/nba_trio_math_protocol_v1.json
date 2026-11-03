@@ -1,0 +1,45 @@
+{
+  "base_model_sha256": "651441d2dcfbe40aa1bd2c320ef8327056e02bc2c06257995c1cb3c40254bec4",
+  "code_sha256": {
+    "nba_trio_math.py": "cd70be61c5a1d13cf32ceed3b9ada3f33a01bc0f5b02c0d512931ec6f6a31431",
+    "nba_trio_math_runner.py": "ef4b9b30599d13b624ea1ff48ebb89d2de390a92af4c2dcc293273b5cb42fcbe"
+  },
+  "enrollment_start": "2026-11-04",
+  "interpretation": "All methods experimental; simulation size is not validation. No probabilities, injury bonuses or changes to prior models.",
+  "model_sha256": "ea610a48acb78966ab127f081414683516eae07c6a13b2cf2d632fe181cd21b0",
+  "primary": "Paired realized best-of-five points, same original modeled top-12 frozen market-line pool.",
+  "registered_at": "2026-11-03T17:21:14.621454+00:00",
+  "review": {
+    "automatic_promotion": false,
+    "bootstrap_date_draws": 2000,
+    "complete_paired_slate_dates": 30,
+    "confirmation_untouched_dates": 10
+  },
+  "secondary": [
+    "Combined five-entry points",
+    "Gap to verified same-pool hindsight trio",
+    "Fractional top-three capture",
+    "Paired point/opportunity errors",
+    "Separate raw and adjusted P90 loss/exceedances"
+  ],
+  "settings": {
+    "calibration_draws": 500,
+    "calibration_end": "2026-01-31",
+    "calibration_start": "2026-01-16",
+    "conversion_strength": 20.0,
+    "dependence_end": "2026-01-15",
+    "development_end": "2025-12-31",
+    "draws": 2000,
+    "entries": 5,
+    "hazard": 0.05,
+    "history": 20,
+    "minimum_calibration": 100,
+    "minimum_covariance_games": 40,
+    "pool": 12,
+    "prior_strength": 1.0,
+    "seed": 20261103
+  },
+  "sha256": "19a164af6b1ed76850dd41f5d474ec241c0eb0ec0ab910e596f82322219f84c9",
+  "timing": "Original v3 and source must postdate registration and model fitting; math must finish before full-slate first tip. Late reconstructions have no prospective index.",
+  "version": "nba-trio-math-v1-protocol"
+}
