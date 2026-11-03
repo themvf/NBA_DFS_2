@@ -114,11 +114,16 @@ about who plays, not about the shape of the range:
   finished below the median). Absence-adjusted ranges show no
   miscalibration, but n = 81.
 
-Not built yet:
-- a did-not-play mass for unconfirmed backups
-- wider P90 for 5-15 point starters and second backs
-
-Each changes every projection, so each is its own study.
+Follow-up, same day (`nfl-range-calibration-v1`,
+`web/src/lib/nfl-dfs/range-calibration.ts`; full numbers in CLAUDE.md):
+- **Did-not-play mass: built.** It is a chance of a 0 by depth-chart rank.
+  Simulated games draw the if-he-plays range and score a 0 that share of the
+  time.
+- **Means pulled toward the middle: built.** The slope of actual on projected
+  was 0.87-0.90.
+- **Wider P90s: not built.** The long-memory range split (Oct 26) already
+  calibrates RB/WR/TE. Widening the rest made replayed lineups worse
+  (best-lineup percentile -0.93 [-2.09, 0.00]).
 
 Operational note: the CHI@SEA build ran about 2 hours before kickoff. By
 kickoff the market anchor had moved Roschon to 3.15 / 0.83 / 9.20. Rebuilding

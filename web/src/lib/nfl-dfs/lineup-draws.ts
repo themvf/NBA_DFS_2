@@ -38,6 +38,9 @@
  *              loadings are judgement, not fitted.
  *   seed       draw `L` of a run is a pure function of (seed, L): rebuilding a
  *              run with the same seed reproduces it exactly.
+ *   no-show    a player with a chance of no stat line (`notPlay`,
+ *              nfl-range-calibration-v1) scores 0 that share of draws, on an
+ *              independent coin; otherwise he draws from his if-he-plays range.
  *
  * Unvalidated: graded by replaying 2026 Showdowns against their real fields
  * (web/scripts/replay-nfl-draw-portfolio.ts) and then live, weekly.
@@ -58,9 +61,11 @@ export interface DrawPlayer {
   p10: number | null;
   median: number | null;
   p90: number | null;
+  /** Chance of a 0 (no stat line), nfl-range-calibration-v1; `mean` and the range are then if-he-plays. */
+  notPlay?: number;
 }
 
-interface DrawEntry { id: number; position: string; team: string; opponent: string | null; game: string; mean: number; fit: QuantileShape | null }
+interface DrawEntry { id: number; position: string; team: string; opponent: string | null; game: string; mean: number; notPlay: number; fit: QuantileShape | null }
 
 export interface DrawModel {
   version: string;
@@ -90,7 +95,8 @@ export function buildDrawModel(players: readonly DrawPlayer[], seed = DEFAULT_DR
     const fit = usable ? fitQuantileShape(p.mean, p.p10!, p.median!, p.p90!) : null;
     if (!fit) fixed.push(p.id);
     else if (!fit.meanMatched) meanNotMatched.push(p.id);
-    return { id: p.id, position: p.position, team: p.team, opponent: p.opponent, game: gameOf(p), mean: p.mean, fit };
+    const notPlay = finite(p.notPlay) ? Math.min(Math.max(p.notPlay, 0), 1) : 0;
+    return { id: p.id, position: p.position, team: p.team, opponent: p.opponent, game: gameOf(p), mean: p.mean, notPlay, fit };
   });
   return {
     version: LINEUP_DRAWS_VERSION, seed, entries,
@@ -107,6 +113,13 @@ export function drawSeed(seed: number, index: number): number {
   return value;
 }
 
+function unitHash(seed: number, index: number, id: number): number {
+  let v = (drawSeed(seed, index) ^ Math.imul(id, 1597334677)) >>> 0;
+  v = Math.imul(v ^ (v >>> 15), 2246822507) >>> 0;
+  v = Math.imul(v ^ (v >>> 13), 3266489909) >>> 0;
+  return ((v ^ (v >>> 16)) >>> 0) / 4294967296;
+}
+
 /** One simulated game (all games on the slate): DK points by player id. */
 export function drawOutcome(model: DrawModel, index: number): Map<number, number> {
   const random = nflRandom(drawSeed(model.seed, index));
@@ -119,6 +132,10 @@ export function drawOutcome(model: DrawModel, index: number): Map<number, number
     // Always consume the same random numbers per player so one player's
     // missing range never shifts everyone else's draws.
     const own = normal(random);
+    // Whether he plays is its own coin, hashed from (seed, draw, player) so it
+    // takes nothing from the shared stream: players with no chance of a 0
+    // draw exactly what nfl-lineup-draws-v1 drew.
+    if (e.notPlay > 0 && unitHash(model.seed, index, e.id) < e.notPlay) { out.set(e.id, 0); continue; }
     if (!e.fit) { out.set(e.id, e.mean); continue; }
     const z = e.position === "DST"
       ? DST_OPPONENT_LOADING * (e.opponent ? team[e.opponent] ?? 0 : 0) + dstIdio * own
