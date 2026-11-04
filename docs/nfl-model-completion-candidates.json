@@ -83,7 +83,7 @@
     "research/nfl_workload_risk.py": "e8d67cb4945446fdc4ab857b69729a61e3c65dae2c1a17ed364bef49d637f344",
     "web/src/lib/nfl-dfs/joint-portfolio.ts": "87588d7fb2782f347ea6bfe35e522da15a62063e4c2d287a0c703064430ebf9f",
     "web/scripts/compare-nfl-joint-portfolios.ts": "05bf97642caba1b96d6d4420acf51502faa4468fcf40dc4e1607f51790298515",
-    "web/src/app/dfs/nfl/nfl-optimizer.ts": "8e99785e1ed3f3bcef497d60707c52beb737ca1f0458171a1e9f5662d16e4eb6",
+    "web/src/app/dfs/nfl/nfl-optimizer.ts": "97993859a3841196b918f6abe83d7602f126cf8f3ae5af86584fd9447aef9165",
     "model/nfl_matchup_scenarios.py": "9d133718c360a03a445965508061807c49644c3ac329ae220c4f68069a19e913",
     "web/src/lib/nfl-dfs/scoring.ts": "83e8b8c293519e7605f4d5be76a302bd442835fa4dc43a6d02744922a5729e3c",
     "web/src/lib/nfl-dfs/scenarios.ts": "98ed595731bc69ee1fcde4d9c42109880382cff3dbf480ce0f0043fdf46e2fd9",
@@ -304,6 +304,20 @@
         }
       },
       "evidence_rule": "Retain earlier evidence and implementation identity. New partial-export policy is a separate construction cohort, without study promotion or gate changes."
+    },
+    {
+      "amended_at": "2026-11-04T00:12:53.606789+00:00",
+      "reason": "Owner requested immediate optimizer improvements without new studies: simulated-game lineup scoring (PR #639) and per-player chance of no stat line plus mean calibration in the draw ranges (PR #642, nfl-range-calibration-v1). Neither PR re-pinned this file; this amendment records both.",
+      "file": "web/src/app/dfs/nfl/nfl-optimizer.ts",
+      "previous_sha256": "8e99785e1ed3f3bcef497d60707c52beb737ca1f0458171a1e9f5662d16e4eb6",
+      "new_sha256": "97993859a3841196b918f6abe83d7602f126cf8f3ae5af86584fd9447aef9165",
+      "changed_implementation_hashes": {
+        "web/src/app/dfs/nfl/nfl-optimizer.ts": {
+          "previous": "8e99785e1ed3f3bcef497d60707c52beb737ca1f0458171a1e9f5662d16e4eb6",
+          "new": "97993859a3841196b918f6abe83d7602f126cf8f3ae5af86584fd9447aef9165"
+        }
+      },
+      "evidence_rule": "Keep previous implementation hashes and separate forward construction cohorts; no study gates or enrollment change."
     }
   ]
 }
