@@ -128,3 +128,21 @@ export function MarketAnchorChip({ anchor }: { anchor: import("@/lib/nfl-dfs/mar
     </span>
   );
 }
+
+/**
+ * Name-cell chip for a row the post-anchor correction changed
+ * (`nfl-projection-correction-v1`): an unanchored Classic RB/WR/TE scaled by
+ * 0.70, a Classic backup quarterback zeroed, or a Showdown DST scaled by
+ * 0.65. The build uses the corrected number; the tooltip keeps the one it
+ * replaced and says why.
+ */
+export function ProjectionCorrectionChip({ correction }: { correction: import("@/lib/nfl-dfs/projection-correction").ProjectionCorrection }) {
+  const label = correction.rule === "backup_qb_zero" ? "Backup QB" : correction.rule === "showdown_dst_scale" ? "DST x0.65" : correction.anchorMode === "td_only" ? "TD line only x0.70" : "No line x0.70";
+  const tone = correction.rule === "backup_qb_zero" ? "border-red-300 bg-red-50 text-red-800" : "border-amber-300 bg-amber-50 text-amber-900";
+  return (
+    <span title={`${correction.note} Model's own projection was ${correction.before.mean.toFixed(1)}${correction.before.p90 != null ? ` (ceiling ${correction.before.p90.toFixed(1)})` : ""}; the build uses ${correction.after.mean.toFixed(1)}.`}
+      className={`ml-2 inline-flex items-center rounded-full border px-2 py-0.5 align-middle text-[10px] font-bold ${tone}`}>
+      {label} · {correction.before.mean.toFixed(1)} → {correction.after.mean.toFixed(1)}
+    </span>
+  );
+}

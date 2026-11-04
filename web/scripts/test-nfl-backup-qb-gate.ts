@@ -73,11 +73,20 @@ assert.ok(gated.lineups.length > 0, "the gated pool must still solve");
 for (const l of gated.lineups) for (const id of l.playerIds) {
   assert.ok(id !== 90 && id !== 91, `zero-game player ${id} survived the history gate`);
 }
-assert.ok(gated.warnings.some((w) => /2 player\(s\) with too few games of their own were removed/.test(w)), "removal must be reported");
+// The position-prior rule (nfl-projection-correction-v1) removes them before the history gate sees them, and says so.
+assert.ok(gated.warnings.some((w) => /2 player\(s\) projected from a position average/.test(w)), "removal must be reported");
 
-// Control: with the gate off they ARE used, so the gate is what changes the outcome.
+// Since nfl-projection-correction-v1 (2026-11-03) a position-prior row is out
+// of the pool whatever the gate says (see test-nfl-projection-correction.ts),
+// so the gate's own effect is shown on a one-game player: team context unknown,
+// so the flat MIN_OBSERVED_GAMES applies with the gate on; used with it off.
+const oneGame = p(93, 5000, 15, 1, "AAA");
+assert.ok(!optimizeNflLineups([...pool.slice(0, 6), oneGame], base).lineups.some((l) => l.playerIds.includes(93)), "gated with the gate on");
+assert.ok(optimizeNflLineups([...pool.slice(0, 6), oneGame], { ...base, requireObservedHistory: false }).lineups.some((l) => l.playerIds.includes(93)),
+  "used with the gate off, so the gate is what changes the outcome");
 const ungated = optimizeNflLineups(pool, { ...base, requireObservedHistory: false });
-assert.ok(ungated.lineups.some((l) => l.playerIds.some((id) => id === 90 || id === 91)));
+assert.ok(ungated.lineups.every((l) => !l.playerIds.some((id) => id === 90 || id === 91)), "position-prior rows stay out even with the gate off");
+assert.equal(ungated.eligibility?.find((e) => e.dkPlayerId === 90)?.reasonCode, "POSITION_PRIOR");
 
 // An explicit lock still outranks the gate, exactly as it does the salary floor.
 const locked = optimizeNflLineups(pool, { ...base, lockedPlayerIds: [90] });

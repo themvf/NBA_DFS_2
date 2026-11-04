@@ -9,7 +9,7 @@ import type { WorkloadProjection } from "@/lib/nfl-dfs/workload-projection";
 import type { CalibratedProjection } from "@/lib/nfl-dfs/calibrated-projection";
 import type { SituationSettings, ProjectionAudit, SituationEvidence } from '@/lib/nfl-dfs/projection-audit';
 import { MIN_OBSERVED_GAMES, observedHistoryRequirement } from '@/lib/nfl-dfs/opportunity-redistribution';
-import { OUT_PROJECTION_STATUS } from '@/lib/nfl-dfs/out-projection';
+import { OUT_PROJECTION_STATUS, POSITION_PRIOR_STATUS } from '@/lib/nfl-dfs/out-projection';
 import { deriveReceiverRoleChanges } from '@/lib/nfl-dfs/receiver-role';
 import {
   DEFAULT_NFL_PUNT_POLICY,
@@ -1546,6 +1546,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   let belowSalaryFloor = 0;
   let withoutHistory = 0;
   let puntBlocked = 0;
+  let positionPrior = 0;
 
   for (const player of players) {
     const named = { dkPlayerId: player.dkPlayerId, name: player.name, salary: player.salary };
@@ -1580,6 +1581,18 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
     if (excluded.has(player.dkPlayerId)) {
       eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden: false, reason: "Manually excluded for this run.", reasonCode: "MANUAL_EXCLUSION" });
       coverage.excluded++; continue;
+    }
+    // A position-prior row is the position's average handed to a player with
+    // no games of his own, whatever his team has played. On 2026 weeks 2-8,
+    // 160 such players served at 6.8 points scored 0.8 (81-95% scored 0);
+    // 24 saved Showdown lineups carried one. Unlike the observed-history
+    // gate this is unconditional, format-independent and not a setting: only
+    // a lock, the user's own instruction, keeps him (owner's decision
+    // 2026-11-03, nfl-projection-correction-v1).
+    if (player.projectionStatus === POSITION_PRIOR_STATUS && !locked.has(player.dkPlayerId)) {
+      eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden: false,
+        reason: "Projected from his position's average, not from games of his own: such players scored 0.8 points against 6.8 projected on 2026 weeks 2-8. Lock him to use him anyway.", reasonCode: "POSITION_PRIOR" });
+      positionPrior++; coverage.excluded++; continue;
     }
     // Winners-shape pool rules never apply to a locked player (the preset
     // computes its exclusions without him), so this cannot reach a lock.
@@ -1721,6 +1734,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
     throw new Error(`Cannot build lineups from mixed objective sources (${mix}). Their ceilings and boom bonuses are not on one scale. Choose Our projections, or a source that covers the full eligible player pool. Experimental forecasts can still be reviewed without building lineups.`);
   }
   if (puntBlocked) warnings.push(`${puntBlocked} player(s) blocked by the ${policy!.mode} punt policy. See the cheap-player review for the reason on each; allow a player for the run to keep him.`);
+  if (positionPrior) warnings.push(`${positionPrior} player(s) projected from a position average (no games of their own) were left out: on 2026 weeks 2-8 such players scored 0.8 points against 6.8 projected. Lock a player to keep him regardless.`);
   if (withoutHistory) warnings.push(`${withoutHistory} player(s) with too few games of their own were removed (${MIN_OBSERVED_GAMES} required, capped at the games their team has completed this season): their projection is their position's average, not theirs. Lock a player to keep him regardless.`);
   if (belowSalaryFloor) warnings.push(`${belowSalaryFloor} player(s) priced under the $${salaryFloor.toLocaleString()} per-player salary floor were removed. Lock a player to keep him regardless.`);
   const missingTails = pool.filter(p => (p.resolvedSource === 'our' || p.resolvedSource === 'our_fallback')
