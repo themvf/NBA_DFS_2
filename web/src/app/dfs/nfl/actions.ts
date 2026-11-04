@@ -88,6 +88,7 @@ import { computeReplacementUpside, REPLACEMENT_UPSIDE_VERSION, type ReplacementU
 import { ABSENCE_COMMIT_VERSION, computeAbsenceCommits, type AbsenceCommit, type AbsenceCommitReport } from '@/lib/nfl-dfs/absence-commit';
 import { ANCHOR_MARKETS, MARKET_ANCHOR_VERSION, anchorPlayer, type MarketAnchor, type PropQuote } from '@/lib/nfl-dfs/market-anchor';
 import { RANGE_SPLIT_POSITIONS, RANGE_SPLIT_VERSION, rangeSplitFor, type RangeRatio, type RangeSplit } from '@/lib/nfl-dfs/range-split';
+import { PROJECTION_CORRECTION_VERSION, correctProjections, type ProjectionCorrection, type ProjectionCorrectionReport } from '@/lib/nfl-dfs/projection-correction';
 import { RANGE_CALIBRATION_VERSION, calibratePlayers } from '@/lib/nfl-dfs/range-calibration';
 import { readLastGamePassingLeaders, readTeamUsageWindows } from "@/db/nfl-dfs-usage-window";
 import { readNflDfsPlayerSignalEvidence, readNflAirDefenseEvidence, readNflAirTeamEvidence, readNflAirMarketEvidence } from "@/db/nfl-dfs-player-signals";
@@ -151,6 +152,13 @@ export type NflWorkspacePlayer = NflOptimizerPlayer & {
    * carries the news.
    */
   marketAnchor?: MarketAnchor | null;
+  /**
+   * `nfl-projection-correction-v1`: this row's projection and range were
+   * corrected after the anchor (an unanchored Classic RB/WR/TE scaled by
+   * 0.70, a Classic backup QB zeroed and blocked, a Showdown DST scaled by
+   * 0.65); `before` is the number it replaced, kept for weekly grading.
+   */
+  projectionCorrection?: ProjectionCorrection | null;
   /**
    * `nfl-dfs-range-split-v1`: floor/ceiling rescaled to the shape of his
    * 17-game history; `before` is the range the build would otherwise use.
@@ -261,6 +269,8 @@ export type NflWorkspaceSlate = {
   marketAnchor?: { version: string; applied: number; eligible: number; newestCapture: string | null; oldestCapture: string | null; error?: string;
     /** v3: of `applied`, how many were anchored on the anytime-TD line alone, and TD-only anchors left off for an absence commit. */
     tdOnly?: number; tdOnlyYieldedToCommit?: number };
+  /** Projection corrections applied after the anchor (shrink, backup QBs, Showdown DST), or why none were. */
+  projectionCorrection?: ProjectionCorrectionReport | { version: string; skipped: string };
   /** Long-memory ranges (RB/WR/TE): how many players got them, and how many had no weekly ratio. */
   rangeSplit?: { version: string; applied: number; eligible: number; missing: number; computedAt: string | null; error?: string };
   /** nfl-range-calibration-v1: players calibrated, and how many are more likely than not to record no stat line. */
@@ -895,6 +905,7 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
     return { dkPlayerId: row.dkPlayerId, ffPlayerId: row.ffPlayerId, team: row.team, out: outFlag(row), stored };
   }), run, identityMap);
   await attachMarketAnchor(workspace);
+  attachProjectionCorrection(workspace, startingQbs);
   await attachRangeSplit(workspace, run ? { season: run.season, week: run.week ?? null } : null);
   const priced = attachOwnership(workspace);
   // Last projection step, after the books' number and the long-memory range:
@@ -1239,6 +1250,26 @@ async function attachMarketAnchor(workspace: NflWorkspaceSlate): Promise<void> {
     workspace.marketAnchor = { version: MARKET_ANCHOR_VERSION, applied: 0, eligible: eligible.length, newestCapture: null, oldestCapture: null,
       error: `Prop lines could not be read, so every player keeps the model's projection: ${error instanceof Error ? error.message : 'unknown error'}` };
   }
+}
+
+/**
+ * Projection corrections (`nfl-projection-correction-v1`, see
+ * projection-correction.ts): after the anchor, so an anchored player is never
+ * touched; before the ranges, the ownership model and the optimizer, so all
+ * of them build from the corrected number. A zeroed backup quarterback is
+ * blocked the way a depth-chart backup already is (`isOut` plus the block
+ * reason), so the optimizer names the reason rather than calling him
+ * inactive. Single Stat slates project a statistic, not points, and are
+ * left alone with the reason recorded.
+ */
+function attachProjectionCorrection(workspace: NflWorkspaceSlate, startingQbs: ConfirmedStartingQbs): void {
+  if (workspace.format !== 'classic' && workspace.format !== 'showdown') {
+    workspace.projectionCorrection = { version: PROJECTION_CORRECTION_VERSION, skipped: `A ${workspace.format} slate projects a statistic, not points; no correction applies.` };
+    return;
+  }
+  const { players, report } = correctProjections(workspace.players, { format: workspace.format, confirmedStartingQbs: startingQbs });
+  workspace.players = players;
+  workspace.projectionCorrection = report;
 }
 
 /**
@@ -2160,6 +2191,8 @@ function snapshotPlayer(player: NflWorkspacePlayer, slate: NflWorkspaceSlate, re
     absenceCommit: player.absenceCommit ?? null,
     // The books' number the build used, with the model's own in `before` (nfl-market-anchor-v1).
     marketAnchor: player.marketAnchor ?? null,
+    // The post-anchor correction the build used (shrink, backup QB, Showdown DST), with the number it replaced in `before` (nfl-projection-correction-v1).
+    projectionCorrection: player.projectionCorrection ?? null,
     // The long-memory range the build used, with the range it replaced in `before` (nfl-dfs-range-split-v1).
     rangeSplit: player.rangeSplit ?? null,
     // Calibration the build used: the chance of a 0, the if-he-plays range simulated games draw from, and `before` (nfl-range-calibration-v1).

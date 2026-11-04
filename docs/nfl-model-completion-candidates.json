@@ -83,7 +83,7 @@
     "research/nfl_workload_risk.py": "e8d67cb4945446fdc4ab857b69729a61e3c65dae2c1a17ed364bef49d637f344",
     "web/src/lib/nfl-dfs/joint-portfolio.ts": "87588d7fb2782f347ea6bfe35e522da15a62063e4c2d287a0c703064430ebf9f",
     "web/scripts/compare-nfl-joint-portfolios.ts": "05bf97642caba1b96d6d4420acf51502faa4468fcf40dc4e1607f51790298515",
-    "web/src/app/dfs/nfl/nfl-optimizer.ts": "97993859a3841196b918f6abe83d7602f126cf8f3ae5af86584fd9447aef9165",
+    "web/src/app/dfs/nfl/nfl-optimizer.ts": "e4ed1dfdb940aab1dd1523d700c523a9ff7d2782ccccd2baa33b879e8177aca9",
     "model/nfl_matchup_scenarios.py": "9d133718c360a03a445965508061807c49644c3ac329ae220c4f68069a19e913",
     "web/src/lib/nfl-dfs/scoring.ts": "83e8b8c293519e7605f4d5be76a302bd442835fa4dc43a6d02744922a5729e3c",
     "web/src/lib/nfl-dfs/scenarios.ts": "98ed595731bc69ee1fcde4d9c42109880382cff3dbf480ce0f0043fdf46e2fd9",
@@ -317,6 +317,23 @@
           "new": "97993859a3841196b918f6abe83d7602f126cf8f3ae5af86584fd9447aef9165"
         }
       },
+      "evidence_rule": "Keep previous implementation hashes and separate forward construction cohorts; no study gates or enrollment change."
+    },
+    {
+      "amended_at": "2026-11-04T01:16:03.149204+00:00",
+      "reason": "Owner requested immediate model improvements from the past slates (PR #638, nfl-projection-correction-v1). The optimizer change is one pool rule: a position-prior row (projectionStatus 'position_prior', the position's average handed to a player with no games of his own) is left out of the pool unless locked, with a POSITION_PRIOR eligibility reason and a run note, whatever the observed-history setting. 160 such served rows scored 0.8 against 6.8 projected on 2026 weeks 2-8. The solver, the objective and every other constraint are unchanged. Re-pinned the optimizer only; every other pinned file is unchanged.",
+      "file": "web/src/app/dfs/nfl/nfl-optimizer.ts",
+      "previous_sha256": "97993859a3841196b918f6abe83d7602f126cf8f3ae5af86584fd9447aef9165",
+      "new_sha256": "e4ed1dfdb940aab1dd1523d700c523a9ff7d2782ccccd2baa33b879e8177aca9",
+      "changed_implementation_hashes": {
+        "web/src/app/dfs/nfl/nfl-optimizer.ts": {
+          "previous": "97993859a3841196b918f6abe83d7602f126cf8f3ae5af86584fd9447aef9165",
+          "new": "e4ed1dfdb940aab1dd1523d700c523a9ff7d2782ccccd2baa33b879e8177aca9"
+        }
+      },
+      "changed_by": [
+        "NFL DFS: projection corrections from the past slates (nfl-projection-correction-v1) (#638)"
+      ],
       "evidence_rule": "Keep previous implementation hashes and separate forward construction cohorts; no study gates or enrollment change."
     }
   ]

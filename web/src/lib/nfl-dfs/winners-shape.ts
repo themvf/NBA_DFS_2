@@ -143,6 +143,20 @@ export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v12";
 export type BuildShape = "standard" | "winners" | "diversified";
 export const BUILD_SHAPES: readonly BuildShape[] = ["standard", "winners", "diversified"];
 
+/**
+ * The shape a build starts from before the user picks one (owner's decision
+ * 2026-11-03): Classic GPP builds default to the winners shape, because the
+ * Standard builds that actually ran in weeks 1-5 were more contrarian than the
+ * flagship winners (ownership sum 93 vs 121), used fewer quarterbacks (2.9 vs
+ * 4.4 per 10 lineups), stacked thinner (QB+2 in 20% vs 49%) and duplicated
+ * themselves more (closest twin 3.0 vs 4.5 players apart). Showdown and cash
+ * builds keep the standard shape: the Showdown preset was not asked for and
+ * the preset does nothing to a cash build.
+ */
+export function defaultBuildShape(format: "classic" | "showdown", mode: "cash" | "gpp"): BuildShape {
+  return format === "classic" && mode === "gpp" ? "winners" : "standard";
+}
+
 /** Prior-week opportunity (play-by-play, the three weeks before the slate), per player. */
 export type PriorOpportunity = {
   games: number;

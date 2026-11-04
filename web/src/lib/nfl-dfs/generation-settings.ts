@@ -237,6 +237,12 @@ export function formFromDraft<S extends object>(raw: unknown, defaults: S): NflB
   // false was never a choice, so it upgrades to the new default (on).
   if (draftVersion < 3 && 'useHeuristicOwnershipLeverage' in settings)
     (settings as Record<string, unknown>).useHeuristicOwnershipLeverage = (defaults as Record<string, unknown>).useHeuristicOwnershipLeverage;
+  // Drafts before v4 stored "standard" as the shape whether or not anyone chose
+  // it (it was the only default). Since 2026-11-03 a Classic GPP build defaults
+  // to the winners shape, so an older draft takes the page's current default;
+  // a v4+ draft carries a deliberate choice and keeps it.
+  if (draftVersion < 4 && 'buildShape' in settings)
+    (settings as Record<string, unknown>).buildShape = (defaults as Record<string, unknown>).buildShape;
   if (draftVersion < 2 && 'defensiveAdjustments' in settings) {
     const defensive = (settings as { defensiveAdjustments: { mode: string; profile: string } }).defensiveAdjustments;
     if (defensive?.mode === 'experimental' && ['pfr-efficiency', 'allowed-rushing-volume'].includes(defensive.profile))

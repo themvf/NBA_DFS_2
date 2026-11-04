@@ -8545,6 +8545,49 @@ and closing lines in `nfl_prop_implied_lines` and reports. Exploratory, weeks
   effects for players without lines) and 3 (predicted lines early in the
   week) are not built.
 
+## NFL DFS — Projection corrections (`nfl-projection-correction-v1`, 2026-11-03)
+
+Owner's decision after a read of every served projection in the pregame pool
+captures against results (3,933 player-games, 63 slates, weeks 2-8; detail
+and the held-out table in [docs/nfl-projection-correction.md](docs/nfl-projection-correction.md)).
+`web/src/lib/nfl-dfs/projection-correction.ts`, applied in the workspace read
+after the market anchor and before the ranges, the ownership model and the
+optimizer; every changed row keeps `before`, and the pool capture records it.
+
+- **Classic RB/WR/TE without a FULL set of prop lines, games of his own
+  and 3+ projected: x 0.70.** Unanchored skill players were over-projected by
+  a quarter on the post-anchor weeks (7.62 projected, 5.72 scored, n=275);
+  the factor fitted on each week held on the others (held-out MAE 5.38 ->
+  4.64, 3.57 -> 3.40, 4.65 -> 3.00). A TD-only anchor (v3) does NOT exempt a
+  player: those rows were in the fitted population before v3 and read the
+  same in week 8 (4.86 vs 2.73, n=33), and on the Nov 1 Classic they were 82
+  of 246 against 1 unanchored. Full-set anchors (bias -0.03 to -0.27) and
+  absence commits are not touched. **Not Showdown**: the same fit made its
+  held-out week worse.
+- **Classic backup quarterbacks zeroed and blocked.** Expected starter =
+  user-confirmed, else the one unblocked depth-chart QB1, else the team's
+  top-projected QB; the rest read `isOut` with the reason, as depth-chart
+  backups already do. 66 served backups averaged ~10 points and scored 0 in
+  88% of games; the top-projected QB scored 14.2.
+- **Showdown DST x 0.65**, special-teams block included (6.32 projected,
+  4.15 scored, n=68, 5 of 7 weeks negative). Classic DST (+0.45) untouched.
+- **Position-prior rows leave the optimizer pool unless locked**
+  (`POSITION_PRIOR`, both formats, whatever the observed-history setting):
+  160 served at 6.8, scored 0.8.
+- **Classic GPP builds default to the winners shape**
+  (`defaultBuildShape`): the Standard builds that ran in weeks 1-5 were more
+  contrarian than the flagship winners (ownership sum 93 vs 121), used fewer
+  QBs (2.9 vs 4.4 per 10), stacked thinner (QB+2 20% vs 49%) and duplicated
+  themselves more (closest twin 3.0 vs 4.5). A chosen shape, a restored run
+  and a v4+ draft override it; older drafts' "standard" was never a choice.
+
+Fitted on one season's weeks; review after six weeks against `before`, change
+a constant and bump the version. Not changed: Showdown skill players, Classic
+DST, anchored players, ceiling widths, the winners-shape constants, the
+leverage exponent. Composes with the same-day `nfl-range-calibration-v1`
+(below), which runs last: its line is near identity at the unanchored
+averages, its not-play step skips the zeroed QBs, and it skips DST.
+
 ## NFL DFS — Single Stat slates (`nfl-single-stat-v1`, 2026-10-29)
 
 DraftKings runs two no-cap NFL formats beside Classic and Showdown: game
