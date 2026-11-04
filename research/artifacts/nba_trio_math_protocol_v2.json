@@ -1,0 +1,51 @@
+{
+  "base_model_sha256": "651441d2dcfbe40aa1bd2c320ef8327056e02bc2c06257995c1cb3c40254bec4",
+  "code_sha256": {
+    "nba_trio_math.py": "6a8ef7a11ec6813e8aaeb73e2ae89c67f679e53811c2491e27468665ea68fae3",
+    "nba_trio_math_runner.py": "7795b842c0242fedc5018e99184197a185049c20a16467f6b6ff8a70dfdf4d15"
+  },
+  "enrollment_start": "2026-11-04",
+  "interpretation": "All methods experimental; simulation size is not validation. No probabilities, injury bonuses or changes to prior models.",
+  "model_sha256": "ea610a48acb78966ab127f081414683516eae07c6a13b2cf2d632fe181cd21b0",
+  "primary": "Paired realized best-of-five points, same original modeled top-12 frozen market-line pool.",
+  "registered_at": "2026-11-03T17:24:48.642287+00:00",
+  "review": {
+    "automatic_promotion": false,
+    "bootstrap_date_draws": 2000,
+    "complete_paired_slate_dates": 30,
+    "confirmation_untouched_dates": 10
+  },
+  "revision": 2,
+  "secondary": [
+    "Combined five-entry points",
+    "Gap to verified same-pool hindsight trio",
+    "Fractional top-three capture",
+    "Paired point/opportunity errors",
+    "Separate raw and adjusted P90 loss/exceedances"
+  ],
+  "settings": {
+    "calibration_draws": 500,
+    "calibration_end": "2026-01-31",
+    "calibration_start": "2026-01-16",
+    "conversion_strength": 20.0,
+    "dependence_end": "2026-01-15",
+    "development_end": "2025-12-31",
+    "draws": 2000,
+    "entries": 5,
+    "hazard": 0.05,
+    "history": 20,
+    "minimum_calibration": 100,
+    "minimum_covariance_games": 40,
+    "pool": 12,
+    "prior_strength": 1.0,
+    "seed": 20261103
+  },
+  "sha256": "3ef587a3fc1283a4d75dcc73cd46a725411aa5a7abd772a6c75bdadf4dee7d5a",
+  "supersedes": {
+    "protocol_sha256": "19a164af6b1ed76850dd41f5d474ec241c0eb0ec0ab910e596f82322219f84c9",
+    "reason": "Pre-release cardinality and publication-integrity audit; prediction parameters unchanged.",
+    "recordings": 0
+  },
+  "timing": "Original v3 and source must postdate registration and model fitting; math must finish before full-slate first tip. Late reconstructions have no prospective index.",
+  "version": "nba-trio-math-v1-protocol"
+}

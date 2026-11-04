@@ -111,6 +111,8 @@
     "test:nfl-showdown-floor": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-showdown-salary-floor.ts",
     "test:nfl-market-anchor": "node --import tsx ./scripts/test-nfl-market-anchor.ts",
     "test:nfl-projection-correction": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-projection-correction.ts",
+    "test:nfl-lineup-draws": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-lineup-draws.ts",
+    "test:nfl-range-calibration": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-range-calibration.ts",
     "test:nfl-position-stats": "node --import tsx ./scripts/test-nfl-position-stats.ts",
     "test:nfl-range-split": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-range-split.ts",
     "test:nfl-cash-optimizer": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-cash-optimizer.ts",

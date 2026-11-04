@@ -1,3 +1,4 @@
+import {EvidenceAge} from "./evidence-age";
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
@@ -72,7 +73,7 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
   const today = easternDateString();
   const dates = await getNbaPointsPropDates();
   const requested = params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) ? params.date : null;
-  const date = requested ?? (dates.includes(today) ? today : dates.find((d) => d > today) ?? dates[0] ?? today);
+  const date = requested ?? today;
 
   const [rows, ladderRows, pulled, lastSeason, teams, calibration, nightCalibration, gradedRows, currentTeams] = await Promise.all([
     getNbaPointsProps(date),
@@ -116,7 +117,7 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
         </div>
         {dates.length > 0 && (
           <nav className="mt-3 flex flex-wrap gap-1.5 font-mono text-xs" aria-label="Dates">
-            {[...dates].sort().map((d) => (
+            {[...new Set([today,...dates])].sort().map((d) => (
               <Link
                 key={d}
                 href={`/nba/top-scorers?date=${d}`}
@@ -131,18 +132,15 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
 
       <section className="space-y-1 rounded-xl border border-slate-700 bg-[#0f1726] p-4 text-sm text-slate-200" aria-label="Forecast and evidence times">
         <div>Frozen forecast: {frozenBoomBoard ? stamp(frozenBoomBoard.frozenAt) : "unavailable"}</div>
-        <div>Latest stored market capture: {lastCapture ? stamp(lastCapture) : "unavailable"}. Games can have different quote ages.</div>
+        <p><Link href={`/nba/trio-lab?date=${date}`} className="underline">Compare experimental best-of-five trio methods</Link></p>
+        <div>Latest stored market capture: {lastCapture ? stamp(lastCapture) : "unavailable"}<EvidenceAge capturedAt={lastCapture}/> . Games can have different quote ages.</div>
         <div>Official injury report: {availability ? <>published {stamp(availability.publishedAt)}; actually checked {stamp(availability.observedAt)}. <a className="underline" href={availability.sourceUrl}>Source report</a></> : "No official observation available; availability unverified."}</div>
         <p className="text-amber-200">These times describe separate observations. An unlisted player is not confirmed available. This is not continuous injury monitoring.</p>
       </section>
       {scorers.length === 0 ? (
         <section style={DARK_BORDER} className="rounded-xl border border-slate-800 bg-[#0f1726] p-6 text-sm text-slate-300">
           <p className="font-medium text-white">No points lines stored for {longDate(date)}.</p>
-          <p className="mt-1 text-slate-400">
-            Lines come from{" "}
-            <code className="text-slate-200">python -m ingest.nba_points_props --date {date} --apply --max-credits 20</code>.
-            Books usually post NBA player props the morning of the game, so an early capture can come back empty.
-          </p>
+          <p className="mt-1 text-slate-400">Quotes appear when this slate is captured. Choose an archived date above to review earlier results.</p>
         </section>
       ) : (
         <TopScorersClient scorers={scorers} games={games} pulled={pulled} lastSeason={LAST_SEASON} thisSeason={seasonLabel(date)} boomBoard={boomBoard} liveAvailability={liveAvailability} />

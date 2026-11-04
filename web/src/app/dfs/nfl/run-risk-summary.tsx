@@ -23,7 +23,7 @@ export default function RunRiskSummary({ lineups, uncalibratedLeverage, requeste
     && lineups.some(l => l.playerIds.includes(p.dkPlayerId)));
   const newlyOut = currentPlayers.filter(p => (p.isOut || ruledOutPlayer({...p,availability:p.availability?{...p.availability,blockedReason:p.availability.blockedReason??null}:null})) && lineups.some(l => l.playerIds.includes(p.dkPlayerId)))
     .map(p => ({name:p.name,count:lineups.filter(l => l.playerIds.includes(p.dkPlayerId)).length}));
-  // Starter-aware projections (nfl-absence-commit-v1) on the current pool, by team.
+  // Starter-aware projections (nfl-absence-commit-v2) on the current pool, by team.
   const committed = currentPlayers.filter(p => p.absenceCommit);
   const moved = (p: typeof committed[number]) => Math.abs(p.absenceCommit!.after.mean - p.absenceCommit!.before.mean) >= 0.05;
   const changeText = (p: typeof committed[number]) => `${p.name} ${p.absenceCommit!.before.mean.toFixed(1)} → ${p.absenceCommit!.after.mean.toFixed(1)}`;

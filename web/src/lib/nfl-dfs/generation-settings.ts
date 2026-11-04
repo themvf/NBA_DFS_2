@@ -90,6 +90,7 @@ export function sameGenerationSettings(a: NflOptimizerSettings, b: NflOptimizerS
     gppAirMatchupMinPct:s.gppAirMatchupMinPct??0,
     gppGoalLineMinPct:s.gppGoalLineMinPct??0,
     buildShape:s.buildShape??'standard',
+    gppScoring:s.mode==='gpp'?s.gppScoring??'ceiling':undefined,
     lockedPlayerIds: [...s.lockedPlayerIds].sort((a,b) => a-b),
     excludedPlayerIds: [...s.excludedPlayerIds].sort((a,b) => a-b),
   });
@@ -163,6 +164,11 @@ export function formFromSettings<S extends object>(saved: NflOptimizerSettings, 
   if (source.useHeuristicOwnershipLeverage === undefined && 'useHeuristicOwnershipLeverage' in defaults) {
     (settings as Record<string, unknown>).useHeuristicOwnershipLeverage =
       source.ownershipCapability === 'heuristic_uncalibrated' && source.ownershipLeverageEnabled === true;
+  }
+  // Runs saved before simulated-game scoring (nfl-lineup-draws-v1, 2026-11-03)
+  // ranked by player ceilings. Restoring one shows that, not today's default.
+  if (source.gppScoring === undefined && 'gppScoring' in defaults) {
+    (settings as Record<string, unknown>).gppScoring = 'ceiling';
   }
   // Runs saved before defensive adjustments existed used the historical
   // forecast. Restoring one must not silently inherit today's new-build mode.

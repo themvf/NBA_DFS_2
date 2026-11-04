@@ -1,7 +1,7 @@
 /**
- * nfl-absence-commit-v1: the starter-aware projection the optimizer builds
+ * nfl-absence-commit-v2: the starter-aware projection the optimizer builds
  * from when a starter is out. Pins the two rules, their order, the committee
- * case and the version.
+ * case, the v2 role mixture and the version.
  */
 import assert from 'node:assert/strict';
 import { ABSENCE_COMMIT_VERSION, computeAbsenceCommits, projectedVolume, type CommitPlayer } from '../src/lib/nfl-dfs/absence-commit';
@@ -32,9 +32,43 @@ const games = [{ season: 2026, week: 4 }, { season: 2026, week: 3 }, { season: 2
   const without = 14 + 1; // week 4: 14 carries, 2 targets -> 1 catch
   const expectedScale = (0.5 * without + 0.5 * projected) / projected;
   assert.equal(c.scale, Math.round(expectedScale * 100) / 100);
-  assert.ok(Math.abs(c.after.mean - 5.4 * expectedScale) < 0.02, 'whole range scaled by the volume ratio');
+  assert.ok(Math.abs(c.after.mean - 5.4 * expectedScale) < 0.02, 'the projected mean is the volume-scaled mean (unchanged from v1)');
+  assert.equal(c.shape?.kind, 'mixture', 'an upward move is a mixture with the starter, not a stretched range');
   assert.equal(c.before.mean, 5.4, 'the model\'s own number is kept');
   assert.ok(c.after.p90 > c.before.p90 && c.after.boom! >= 0);
+}
+
+// 1b. v2 role mixture, Roschon Johnson's numbers (2026-11-02): a backup's shape
+// (median 1.28 of a 4.83 mean) no longer survives the move to the job.
+{
+  const starter = player(1, 'Kyle Monangai', 'RB', { out: true, team: 'CHI', dist: { mean: 13, p10: 4.5, median: 12, p90: 23, boom: 0.06 } });
+  const backup = player(2, 'Roschon Johnson', 'RB', { team: 'CHI', dist: { mean: 4.83, p10: 0, median: 1.28, p90: 15.07, boom: 0.003 },
+    statMeans: { carries: 4.5, receptions: 0.8 } });
+  const window: TeamUsageWindow = { team: 'CHI', games, usage: {
+    1: [null, null, null, u(15, 3), u(14, 2)],
+    2: [u(2, 0), u(13, 2), u(9, 1), u(2, 1), u(3, 0)],
+  } };
+  const c = computeAbsenceCommits([starter, backup], [window], 2026).commits[0];
+  assert.equal(c.rule, 'own_role_games');
+  const target = 4.83 * (c.scale ?? 0);
+  assert.ok(Math.abs(c.after.mean - target) < 0.05, `mean stays at the v1 target (${c.after.mean} vs ${target.toFixed(2)})`);
+  assert.equal(c.shape?.kind, 'mixture');
+  const pi = c.shape?.kind === 'mixture' ? c.shape.pi : NaN;
+  assert.ok(Math.abs(pi - (target - 4.83) / (13 - 4.83)) < 0.01, 'pi is the weight that hits the target mean');
+  const v1Median = 1.28 * c.scale!;
+  assert.ok(c.after.median > v1Median, `median rises above the stretched backup's (${c.after.median} vs ${v1Median.toFixed(2)})`);
+  assert.ok(c.after.median / c.after.mean > 1.28 / 4.83, 'median-to-mean ratio is no longer a backup shape');
+  assert.match(c.note, /chance he plays like Kyle Monangai/);
+}
+
+// 1c. No stored range for the absent starter: v1 scaling, with the reason recorded.
+{
+  const starter = player(1, 'Starter', 'RB', { out: true, dist: null });
+  const backup = player(2, 'Backup', 'RB', { dist: dist(5) });
+  const window: TeamUsageWindow = { team: 'NYJ', games, usage: { 1: [null, u(15, 3), u(16, 2), u(14, 2), null], 2: [u(14, 2), u(4, 1), u(5, 1), u(4, 1), null] } };
+  const c = computeAbsenceCommits([starter, backup], [window], 2026).commits[0];
+  assert.equal(c.shape?.kind, 'scaled');
+  assert.ok(Math.abs(c.after.median - 5 * 0.9 * c.scale!) < 0.05, 'whole range scaled by the volume ratio');
 }
 
 // 2. Committee: the backup did NOT get the work without the starter, so he is projected lower.

@@ -89,6 +89,7 @@ import { ABSENCE_COMMIT_VERSION, computeAbsenceCommits, type AbsenceCommit, type
 import { ANCHOR_MARKETS, MARKET_ANCHOR_VERSION, anchorPlayer, type MarketAnchor, type PropQuote } from '@/lib/nfl-dfs/market-anchor';
 import { RANGE_SPLIT_POSITIONS, RANGE_SPLIT_VERSION, rangeSplitFor, type RangeRatio, type RangeSplit } from '@/lib/nfl-dfs/range-split';
 import { PROJECTION_CORRECTION_VERSION, correctProjections, type ProjectionCorrection, type ProjectionCorrectionReport } from '@/lib/nfl-dfs/projection-correction';
+import { RANGE_CALIBRATION_VERSION, calibratePlayers } from '@/lib/nfl-dfs/range-calibration';
 import { readLastGamePassingLeaders, readTeamUsageWindows } from "@/db/nfl-dfs-usage-window";
 import { readNflDfsPlayerSignalEvidence, readNflAirDefenseEvidence, readNflAirTeamEvidence, readNflAirMarketEvidence } from "@/db/nfl-dfs-player-signals";
 import { airMatchupSignals, classifyNflPlayerSignals, NFL_PLAYER_SIGNAL_VERSION, type NflAirDefenseEvidence, type NflPlayerSignalEvidence } from "@/lib/nfl-dfs/player-signals";
@@ -137,7 +138,7 @@ export type NflWorkspacePlayer = NflOptimizerPlayer & {
   /** Behind a ruled-out starter but deliberately not adjusted, and why. */
   replacementUpsideUnchanged?: { from: string; reason: string } | null;
   /**
-   * `nfl-absence-commit-v1`: a starter is out, so `ourProj`/floor/median/
+   * `nfl-absence-commit-v2`: a starter is out, so `ourProj`/floor/median/
    * ceiling/boom on this row are the starter-aware projection the optimizer
    * builds from. `before` is the model's own number, kept for weekly grading.
    */
@@ -272,6 +273,8 @@ export type NflWorkspaceSlate = {
   projectionCorrection?: ProjectionCorrectionReport | { version: string; skipped: string };
   /** Long-memory ranges (RB/WR/TE): how many players got them, and how many had no weekly ratio. */
   rangeSplit?: { version: string; applied: number; eligible: number; missing: number; computedAt: string | null; error?: string };
+  /** nfl-range-calibration-v1: players calibrated, and how many are more likely than not to record no stat line. */
+  rangeCalibration?: { version: string; applied: number; notPlaying: number };
   /** Outside ownership ranges for this slate's date; `applied` says whether they bound the prior or are shown only. */
   ownershipBands?: BandReport & { applied: boolean; error?: string };
   /** Starting QBs the user confirmed for this read, and any that could not be applied. */
@@ -904,7 +907,16 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
   await attachMarketAnchor(workspace);
   attachProjectionCorrection(workspace, startingQbs);
   await attachRangeSplit(workspace, run ? { season: run.season, week: run.week ?? null } : null);
-  const owned = attachSingleStat(attachOwnership(workspace));
+  const priced = attachOwnership(workspace);
+  // Last projection step, after the books' number and the long-memory range:
+  // chance of no stat line, means pulled toward the middle, ranges widened
+  // where the range split did not apply (nfl-range-calibration-v1). After
+  // ownership on purpose: the ownership model predicts the field, was fitted
+  // on uncalibrated projections, and the field sees numbers like those.
+  const calibrated = calibratePlayers(priced.players);
+  priced.players = calibrated.players;
+  priced.rangeCalibration = { version: RANGE_CALIBRATION_VERSION, applied: calibrated.applied, notPlaying: calibrated.notPlaying };
+  const owned = attachSingleStat(priced);
   await attachOwnershipBands(owned);
   owned.opponentAdjustments = await opponentAdjustmentCoverage(owned);
   owned.defensiveCaptures = await defensiveCaptureStatuses(owned, { backfill: options.recordCheck !== false });
@@ -2175,7 +2187,7 @@ function snapshotPlayer(player: NflWorkspacePlayer, slate: NflWorkspaceSlate, re
     playerSignals:player.playerSignals??[], playerSignalVersion:NFL_PLAYER_SIGNAL_VERSION,
     airMatchupEvidence:player.airMatchupEvidence??null,
     projectionScenario: player.projectionScenario, redistributionVersion: slate.redistribution?.version,
-    // Starter-aware projection the build used, with the model's own number in `before` (nfl-absence-commit-v1).
+    // Starter-aware projection the build used, with the model's own number in `before` (nfl-absence-commit-v2).
     absenceCommit: player.absenceCommit ?? null,
     // The books' number the build used, with the model's own in `before` (nfl-market-anchor-v1).
     marketAnchor: player.marketAnchor ?? null,
@@ -2183,6 +2195,8 @@ function snapshotPlayer(player: NflWorkspacePlayer, slate: NflWorkspaceSlate, re
     projectionCorrection: player.projectionCorrection ?? null,
     // The long-memory range the build used, with the range it replaced in `before` (nfl-dfs-range-split-v1).
     rangeSplit: player.rangeSplit ?? null,
+    // Calibration the build used: the chance of a 0, the if-he-plays range simulated games draw from, and `before` (nfl-range-calibration-v1).
+    rangeCalibration: player.rangeCalibration ?? null,
     statMeans: player.statMeans,
     dkAvg: player.avgFptsDk, fantasypros: player.fantasyprosProj,
     linestar: player.linestarProj, custom: player.customProj,

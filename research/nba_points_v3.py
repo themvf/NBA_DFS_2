@@ -319,6 +319,11 @@ def record_day(args, raw, raw_sha):
     if PROTOCOL.exists():
         try:receipt['role_challenger']=attach(result,snapshot,args.output_dir,args.output_dir.parent,datetime.now(timezone.utc).isoformat(),payload,roster.returncode==0)
         except Exception as exc:receipt['role_challenger']={'status':'skipped_or_failed','reason':str(exc)}
+    # New independently registered research trial; original forecasts/attachments are immutable.
+    from research.nba_trio_math_runner import PROTOCOL_PATH as TRIO_PROTOCOL, attach as attach_trio_math
+    if TRIO_PROTOCOL.exists():
+        try:receipt['trio_math']=attach_trio_math(result,snapshot,args.output_dir,args.output_dir.parent,datetime.now(timezone.utc).isoformat())
+        except Exception as exc:receipt['trio_math']={'status':'skipped_or_failed','reason':str(exc)}
     return receipt
 
 

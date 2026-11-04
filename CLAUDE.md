@@ -7799,6 +7799,79 @@ on every saved player; Gate F (weeks 8-15, graded ~2026-12-22) grades against
 it. The defensive capture check reads `before`; ghost arms re-apply the ratios.
 QB, K and DST keep the model's range. See `docs/nfl-dfs-range-split-study.md`.
 
+## NFL DFS — Simulated-game lineup scoring (`nfl-lineup-draws-v1`) and absence mixture (v2), 2026-11-03
+
+Read [`docs/nfl-dfs-simulated-lineups.md`](docs/nfl-dfs-simulated-lineups.md)
+before changing GPP scoring, exposure or absence ranges.
+
+- **Ceiling scoring summed player P90s under exposure caps.** That objective
+  is linear, so every good-value player filled lineups up to his cap (Myers
+  and Burden at exactly 25 of 50 on CHI@SEA). The sum also assumed every pair
+  perfectly correlated: it overpaid cheap high-variance backs and gave stacks
+  no credit.
+- **`gppScoring: "draws"`** solves each lineup against one correlated
+  simulated game (quantile curves plus a game/team copula, stated priors). Its
+  rules:
+  - Exposure follows how often a player belongs in the best lineup.
+  - Caps are limits, not targets.
+  - Joint re-selection is skipped in this mode.
+  - Leverage is a lineup-level log-ownership term.
+  - The build form defaults to it. The optimizer default stays `ceiling`, so
+    the ghost factorial and research studies are unchanged.
+  - Cash and Diversified builds are unaffected.
+- **Replay on 10 Showdowns:** cap pile-ups fell by 1.5 players per slate (CI
+  excludes 0). Results were not worse, but not proven better (best-lineup
+  percentile +0.95, CI −1.0 to +3.1).
+- **`nfl-absence-commit-v2`:** an upward role adjustment is a mixture with the
+  absent starter's pre-availability range, weighted to keep the v1 mean. Only
+  the shape changes.
+- **Range audit, weeks 2–8:**
+  - 21.5% of players not ruled out had no stat line. That, not range shape, is
+    why medians run high.
+  - For players who played, P90 is too narrow (13.7%), except at mean 20+
+    (2.5%).
+  - Acted on the same day; see the next section.
+
+## NFL DFS — Projection calibration: chance of no stat line, means toward the middle (`nfl-range-calibration-v1`, 2026-11-03)
+
+Owner's decision: apply immediately, no pre-registered study. Fitted on the
+2026 pregame pool captures, weeks 2–8, graded weekly from week 9. Module
+`web/src/lib/nfl-dfs/range-calibration.ts`, applied in the workspace read
+after ownership (the ownership model predicts the field and was fitted on
+uncalibrated projections) and before the optimizer. QB/RB/WR/TE only.
+
+- **Chance of no stat line, by depth-chart rank** (weeks 4–8, once ranks
+  were recorded):
+  - Rank 1: 1–3%. Rank 2: 2–3% (TE 20%).
+  - Rank 3: 5% (WR) to 42% (TE). Rank 4+: 16–33%.
+  - Not on the chart at all, with current roster evidence: 82–99%.
+
+  Caps: 15% when the books have lines on him, 5% for a backup the absence
+  commit promoted. An unlisted QB is left alone. Projection =
+  (1 − chance) × if-he-plays. The page's P10/median/P90/boom become the mix
+  of plays and does not, so an unlisted WR has a P90 of 0. Simulated games
+  draw `ifPlays` and score a 0 that share of draws, on a hashed coin that
+  leaves every other player's draws unchanged.
+- **Means pulled toward the middle.** Among players who played, actual points
+  rose 0.87–0.90 per projected point (QB 0.68, shrunk to 0.81). The
+  if-he-plays mean is a + b × mean per position, and the range is rescaled
+  with it.
+- **Ranges are NOT widened.** The long-memory range split already calibrates
+  RB/WR/TE (P90 beaten 9.6%, n=249). Widening the others (mainly QBs) made
+  replayed lineups worse: best-lineup percentile −0.93 [−2.09, 0.00].
+- **Measured, in-sample, weeks 4–8:**
+  - Projection error: 4.62 → 4.21 overall; 3.37 → 2.69 at $4,000 and under.
+  - Bias: −0.64 → +0.04.
+  - Replay on 13 saved Showdowns: no measurable lineup effect (best-lineup
+    percentile +0.17 [−0.28, +0.62]). The ablation is
+    `REPLAY_PARTS=1 replay-nfl-draw-portfolio.ts`.
+  - Classic slates cannot be replayed (no full curves), and that is where
+    unlisted cheap players reach the pool.
+- **Untouched by this change:** other projection sources (DK average,
+  FantasyPros, calibrated, workload) keep their own means. DST and K are not
+  calibrated. Weeks 2–3 had no depth ranks, so only the mean line applies
+  when roster evidence is missing. Change a constant and bump the version.
+
 ## NFL DFS — Absence commit: the optimizer builds from starter-aware projections (`nfl-absence-commit-v1`, 2026-10-11)
 
 **Owner's decision, 2026-10-11:** commit to a projection and learn from the

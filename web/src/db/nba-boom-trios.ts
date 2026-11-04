@@ -1,4 +1,6 @@
+import {isMissingRelation} from "@/lib/database-errors";
 import "server-only";
+import {verifySavedShotGrowth} from "@/lib/nba-trio-results";
 
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
@@ -43,32 +45,46 @@ export async function getBoomTrioDays(): Promise<{ snapshot: BoomSnapshot; rows:
     }
     return [...byDate.values()].sort((a, b) => (a.snapshot.game_date < b.snapshot.game_date ? -1 : 1));
   } catch (error) {
-    if (/relation .* does not exist/i.test(String(error))) return [];
+    if (isMissingRelation(error)) return [];
     throw error;
   }
 }
 
 export type SavedBoomLineup = {
   id: string; gameDate: string; createdAt: string; lockAt: string; selected: string | null; requested: number; maxDrop: number;
-  baseline: string[][]; adjusted: string[][];
+  baseline: string[][]; adjusted: string[][]; snapshotSha:string; policy:string; rows:BoomGradeRow[]|null; supported:boolean; selectedName:string|null;
 };
 
 /** Saved boom-lineup comparisons (nba_boom_lineup_records), newest first. Empty before the first save creates the table. */
 export async function getSavedBoomLineups(limit = 100): Promise<SavedBoomLineup[]> {
   try {
     const result = await db.execute(sql`
-      SELECT id, game_date::text AS game_date, created_at, lock_at, payload->'settings' AS settings,
-        (SELECT jsonb_agg(t->'ids') FROM jsonb_array_elements(payload->'baseline') t) AS baseline,
-        (SELECT jsonb_agg(t->'ids') FROM jsonb_array_elements(payload->'adjusted') t) AS adjusted
-      FROM nba_boom_lineup_records ORDER BY created_at DESC LIMIT ${limit}`);
+      SELECT b.id,b.game_date::text AS game_date,b.created_at,b.lock_at,b.snapshot_sha256,b.policy,b.payload,
+        b.payload->'settings' AS settings,
+        (SELECT jsonb_agg(t->'ids') FROM jsonb_array_elements(CASE WHEN jsonb_typeof(b.payload->'baseline')='array' THEN b.payload->'baseline' ELSE '[]'::jsonb END) t) AS baseline,
+        (SELECT jsonb_agg(t->'ids') FROM jsonb_array_elements(CASE WHEN jsonb_typeof(b.payload->'adjusted')='array' THEN b.payload->'adjusted' ELSE '[]'::jsonb END) t) AS adjusted,
+        (SELECT jsonb_agg(jsonb_build_object('event_id',c->'event_id','player_key',c->'player_key','history_status',c->'history_status',
+          'predictions',jsonb_build_object('market_line',c->'predictions'->'market_line'),'features',c->'features'))
+         FROM jsonb_array_elements(s.snapshot->'candidates') c) AS source_candidates,
+        g.grade->'rows' AS outcome_rows
+      FROM nba_boom_lineup_records b
+      LEFT JOIN nba_ghost_snapshots s ON s.snapshot_sha256=b.snapshot_sha256 AND s.snapshot->>'sha256'=b.snapshot_sha256 AND s.mode='prospective' AND s.game_date=b.game_date
+      LEFT JOIN LATERAL (SELECT grade FROM nba_ghost_grades
+        WHERE snapshot_sha256=b.snapshot_sha256 AND grade->>'snapshot_sha256'=b.snapshot_sha256
+        ORDER BY graded_at DESC,id DESC LIMIT 1) g ON true
+      ORDER BY b.created_at DESC LIMIT ${limit}`);
     return (result.rows as Record<string, unknown>[]).map((r) => {
       const s = (r.settings ?? {}) as { selected?: string | null; requested?: number; maxDrop?: number };
-      return { id: String(r.id), gameDate: String(r.game_date), createdAt: String(r.created_at), lockAt: String(r.lock_at),
+      const payload=r.payload as {version?:string;board?:{snapshot?:string;players?:{id:string;points:number;boom:number|null;name?:string}[]}};
+      const supported=String(r.policy)===payload?.version && new Date(String(r.created_at))<new Date(String(r.lock_at)) && verifySavedShotGrowth(payload,String(r.snapshot_sha256),(r.source_candidates??[]) as Parameters<typeof verifySavedShotGrowth>[2]);
+      return {snapshotSha:String(r.snapshot_sha256),policy:String(r.policy),supported,
+        selectedName:payload?.board?.players?.find(p=>p.id===s.selected)?.name??null,
+        rows:supported?(r.outcome_rows as BoomGradeRow[]|null):null, id: String(r.id), gameDate: String(r.game_date), createdAt: String(r.created_at), lockAt: String(r.lock_at),
         selected: s.selected ?? null, requested: Number(s.requested ?? 0), maxDrop: Number(s.maxDrop ?? 0),
         baseline: (r.baseline as string[][] | null) ?? [], adjusted: (r.adjusted as string[][] | null) ?? [] };
     });
   } catch (error) {
-    if (/relation .* does not exist/i.test(String(error))) return [];
+    if (isMissingRelation(error)) return [];
     throw error;
   }
 }

@@ -1,0 +1,22 @@
+import {isMissingRelation} from "../src/lib/database-errors";
+import assert from 'node:assert/strict';
+import {trioPortfolioResult,verifySavedShotGrowth} from '../src/lib/nba-trio-results';
+const trios=['abc','abd','abe','acd','ace'].map(t=>[...t].map(k=>`g:${k}`));
+const rows=[...'abcde'].map((k,i)=>({event_id:'g',player_key:k,status:'graded',actual_points:10*(i+1)}));
+const r=trioPortfolioResult(trios,rows);assert.equal(r.bestOfFive,90);assert.equal(r.allFive,380);
+assert.equal(trioPortfolioResult(trios,[...rows.slice(0,4),{...rows[4],status:'dnp',actual_points:null}]).bestOfFive,null);
+assert.equal(trioPortfolioResult(trios,rows.slice(0,4)).allFive,null);
+assert.equal(trioPortfolioResult(trios,[...rows,rows[0]]).status,'ambiguous');
+assert.equal(trioPortfolioResult([trios[0],...trios.slice(0,4)],rows).status,'invalid');
+assert.equal(trioPortfolioResult([],rows).bestOfFive,null);
+const source=[{event_id:'g',player_key:'a',history_status:'ready',predictions:{market_line:25.5},features:{shots_growth:3,ft_growth:1}}];
+const payload={version:'nba-boom-exposure-v1',board:{snapshot:'sha',players:[{id:'g:a',points:25.5,boom:3.44}]}};
+assert.equal(verifySavedShotGrowth(payload,'sha',source),true);
+assert.equal(verifySavedShotGrowth(payload,'other',source),false);
+assert.equal(verifySavedShotGrowth({...payload,board:{...payload.board,players:[{id:'g:a',points:25.6,boom:3.44}]}},'sha',source),false);
+assert.equal(verifySavedShotGrowth({...payload,board:{...payload.board,players:[{id:'g:a',points:25.5,boom:.91}]}},'sha',source),false,'legacy ceiling-watch ranking must stay separate');
+console.log('PASS: best-of-five, combined-five, exact source policy, missing/DNP/ambiguous records');
+
+assert.equal(isMissingRelation({message:"Failed query",cause:{code:"42P01",message:"missing table"}}),true);
+assert.equal(isMissingRelation(new Error("Network unavailable")),false);
+assert.equal(isMissingRelation({cause:{code:"42703"}}),false);

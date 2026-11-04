@@ -1,3 +1,4 @@
+import {isMissingRelation} from "@/lib/database-errors";
 import "server-only";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
@@ -32,7 +33,7 @@ export async function getBoomBoard(date: string) {
     const board = readBoomBoard(row, date);
     return board?.snapshot === row.snapshot_sha256 ? board : null;
   } catch (error) {
-    if (/relation .* does not exist/i.test(String(error))) return null;
+    if (isMissingRelation(error)) return null;
     throw error;
   }
 }
