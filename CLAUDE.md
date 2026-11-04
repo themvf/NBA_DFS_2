@@ -8584,7 +8584,9 @@ optimizer; every changed row keeps `before`, and the pool capture records it.
 Fitted on one season's weeks; review after six weeks against `before`, change
 a constant and bump the version. Not changed: Showdown skill players, Classic
 DST, anchored players, ceiling widths, the winners-shape constants, the
-leverage exponent.
+leverage exponent. Composes with the same-day `nfl-range-calibration-v1`
+(below), which runs last: its line is near identity at the unanchored
+averages, its not-play step skips the zeroed QBs, and it skips DST.
 
 ## NFL DFS — Single Stat slates (`nfl-single-stat-v1`, 2026-10-29)
 

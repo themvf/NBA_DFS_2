@@ -44,6 +44,15 @@
  * the optimizer pool unless locked, is a pool rule and lives in
  * `nfl-optimizer.ts` (`POSITION_PRIOR` eligibility).
  *
+ * Composition with `nfl-range-calibration-v1` (range-calibration.ts, merged
+ * the same day, fitted on the same captures over ALL QB/RB/WR/TE and applied
+ * after ownership): its per-position line a + b x mean passes near identity
+ * at the unanchored players' averages (WR 7.6 -> 7.6), so rule 1 carries the
+ * unanchored slice and the line compresses the anchored stars rule 1 exempts;
+ * its not-play step skips a quarterback rule 2 has already zeroed (`isOut`),
+ * and it does not touch DST. A row rule 1 scaled to 5 is nudged back to about
+ * 4 by the line (net 0.80 instead of 0.70), which is accepted and recorded.
+ *
  * Stated constants, fitted on one season's weeks: change one and bump the
  * version, so a graded week names the rule it ran under.
  */

@@ -90,9 +90,19 @@ replacement upside -> absence commit -> market anchor
   -> long-memory ranges -> ownership model -> optimizer
 ```
 
+  -> range calibration (`nfl-range-calibration-v1`, merged from main the same day)
+
 After the anchor so an anchored player is never touched; before the ranges,
 ownership and the optimizer so every downstream number builds from the
-corrected projection. Note the ownership models (`nfl-ownership-fit-v1`,
+corrected projection. The range calibration (did-not-play chance by depth
+rank, per-position line a + b x mean, fitted on the same captures over every
+QB/RB/WR/TE) runs last, after ownership. The two compose rather than double
+count: the line passes near identity at the unanchored players' averages
+(WR: 0.868 x 7.62 + 0.94 = 7.55), so rule 1 carries that slice and the line
+compresses the anchored stars rule 1 exempts; a player rule 1 scaled from 10
+to 7 lands at 7.0, one scaled from 5 to 3.5 is nudged back to 4.0 (net 0.80),
+accepted and recorded on both rows. Its not-play step skips a quarterback
+rule 2 zeroed (already `isOut`); DST is outside it. Note the ownership models (`nfl-ownership-fit-v1`,
 `nfl-ownership-fit-showdown-v1`) were fitted on stored upload-time
 projections, not on these; their inputs move with this change, as they
 already did with the anchor.
