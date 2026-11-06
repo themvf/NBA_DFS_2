@@ -4,7 +4,8 @@ import { optimizeNflLineups, NFL_OPTIMIZER_VERSION, type NflOptimizerPlayer, typ
 import { applyWinnersShape, WINNERS_SHAPE_VERSION } from '../src/lib/nfl-dfs/winners-shape';
 import { canonicalAuditJson } from '../src/lib/nfl-dfs/audit-json';
 import { buildCompletion } from '../src/lib/nfl-dfs/build-completion';
-import { drawJointBank, sampleField, fieldThresholds, fieldSummary, scoreLineup, selectPortfolio, forecastSuccess,
+import { drawJointBank, sampleField, fieldThresholds, fieldThresholdsMany, summarizeFieldThresholds, SUMMARY_FRACTIONS,
+  scoreLineup, selectPortfolio, forecastSuccess,
   slateFromSnapshot, rosterOf, PORTFOLIO_OBJECTIVE, PORTFOLIO_OBJECTIVE_VERSION, JOINT_COPULA_VERSION, FIELD_MODEL_VERSION } from '../src/lib/nfl-dfs/portfolio-objective';
 import { validateNflLineup } from '../src/lib/nfl-dfs/lineups';
 
@@ -13,7 +14,7 @@ import { validateNflLineup } from '../src/lib/nfl-dfs/lineups';
 export type Raw = Record<string, any>;
 /** One entry per pre-registered study; the runner's STUDIES registry must match. */
 export const STUDIES = { classic: 'nfl-classic-te-wr-pool-v1', showdown: 'nfl-showdown-kicker-rule-v1',
-  portfolio: 'nfl-portfolio-objective-v2' } as const;
+  portfolio: 'nfl-portfolio-objective-v3' } as const;
 export const STUDY = STUDIES.classic;
 type StudyKey = keyof typeof STUDIES;
 function studyOf(input: Raw): StudyKey {
@@ -135,14 +136,19 @@ function persistLineup(l: ReturnType<typeof optimizeNflLineups>['lineups'][numbe
 }
 
 /**
- * nfl-portfolio-objective-v2 (docs/nfl-portfolio-objective-study.md).
+ * nfl-portfolio-objective-v3 (docs/nfl-portfolio-objective-study.md).
  * Arm A rebuilds the source build from its own frozen settings (Winners
  * resolved if it was Winners). Arm B keeps every setting and picks the same
  * number of lineups from a candidate pool the production optimizer generated
  * with those settings, by the field-relative joint objective. Both arms
  * record the same forecast so the challenger's model grades both.
  */
-export function buildPortfolioPair(input: Raw, version: string): PairResult {
+/**
+ * Arm A's rebuild and arm B's candidate pool, constructed exactly as the
+ * portfolio study builds them. Shared by the pair builder and the v3 freeze
+ * gate's stability check, so the gate tests the selection the study would make.
+ */
+export function portfolioConstruction(input: Raw) {
   const source = input.source;
   const settings = structuredClone(source.settings) as NflOptimizerSettings & Raw;
   delete settings.runEvidence;
@@ -159,6 +165,59 @@ export function buildPortfolioPair(input: Raw, version: string): PairResult {
     excludedPlayerIds: [...new Set([...settings.excludedPlayerIds, ...shape.excluded.keys()])] };
   const n = settings.nLineups;
   const slate = slateFromSnapshot(format, input.players);
+  // Arm A: the source build, rebuilt.
+  let resultA: ReturnType<typeof optimizeNflLineups> | null = null, errorA: string | null = null;
+  try { resultA = optimizeNflLineups(structuredClone(eligible), structuredClone(effective)); }
+  catch (e) { errorA = e instanceof Error ? e.message : String(e); }
+  const lineupsA = resultA?.lineups ?? [];
+  // Arm B: candidate pool from the same settings.
+  const candidateCount = Math.min(PORTFOLIO_OBJECTIVE.candidateMax, Math.max(PORTFOLIO_OBJECTIVE.candidateMin, PORTFOLIO_OBJECTIVE.candidateMultiple * n));
+  // The source's own exposure cap and uniqueness, so the pool is diverse by construction (an uncapped run
+  // concentrated on chalk and left the capped selection short on the week-5 Classic fixture).
+  const candidateSettings = { ...effective, nLineups: candidateCount };
+  let resultC: ReturnType<typeof optimizeNflLineups> | null = null, errorB: string | null = null;
+  // Timing is reported to the console only: the record must be reproducible byte for byte.
+  const started = Date.now();
+  try { resultC = optimizeNflLineups(structuredClone(eligible), structuredClone(candidateSettings)); }
+  catch (e) { errorB = e instanceof Error ? e.message : String(e); }
+  const pool = new Map<string, ReturnType<typeof optimizeNflLineups>['lineups'][number]>();
+  for (const l of [...lineupsA, ...(resultC?.lineups ?? [])]) {
+    const roster = rosterOf(l);
+    const { key } = validateNflLineup(slate, roster);
+    if (!pool.has(key)) pool.set(key, l);
+  }
+  const constraints = { count: n, maxExposure: effective.maxExposure, maxExposureByPlayer: effective.maxExposureByPlayer ?? {},
+    minUnique: effective.minUnique };
+  return { source, settings, format, shape, effective, n, slate, resultA, errorA, lineupsA, candidateCount, resultC, errorB,
+    pool, constraints, started };
+}
+
+/**
+ * v3 freeze-gate stability check: arm B's selection from the same candidate
+ * pool under two selection seeds (field seed fixed), and the Jaccard overlap
+ * of the two chosen sets. Nothing here reads an outcome.
+ */
+export function portfolioSelectionStability(input: Raw, seeds: readonly [number, number]) {
+  const c = portfolioConstruction(input);
+  if (c.errorB) throw new Error(`Candidate pool failed: ${c.errorB}`);
+  const field = sampleField(c.slate, input.players, PORTFOLIO_OBJECTIVE.fieldSeed);
+  const rosters = [...c.pool].map(([key, l]) => ({ key, lineup: rosterOf(l) }));
+  const picks = seeds.map(seed => {
+    const bank = drawJointBank(input.players, seed);
+    const threshold = fieldThresholds(field, bank, PORTFOLIO_OBJECTIVE.successFraction);
+    const pick = selectPortfolio(rosters.map(r => ({ ...r, draws: scoreLineup(r.lineup, bank) })), threshold, c.constraints);
+    return { seed, keys: pick.selected.map(x => x.key), selectionSuccess: pick.selectionSuccess, shortfall: pick.shortfall };
+  });
+  const [a, b] = picks.map(p => new Set(p.keys));
+  const union = new Set([...a, ...b]).size;
+  const jaccard = union ? [...a].filter(k => b.has(k)).length / union : 1;
+  return { seeds: [...seeds], candidates: rosters.length, requested: c.n, picks, jaccard: Math.round(jaccard * 10000) / 10000 };
+}
+
+export function buildPortfolioPair(input: Raw, version: string): PairResult {
+  const { source, settings, format, shape, effective, n, slate, resultA, errorA, lineupsA, candidateCount, resultC,
+    errorB: poolError, pool, constraints, started } = portfolioConstruction(input);
+  let errorB = poolError;
   const before = digest(input);
   const common = { version, pairId: input.pairId, sourceRunId: source.run_id, format,
     season: input.season, week: input.week, slateSignature: input.slateSignature, gameIds: input.gameIds ?? null,
@@ -189,11 +248,6 @@ export function buildPortfolioPair(input: Raw, version: string): PairResult {
       status: `research_${status}`, failureReason: error ?? (completion.issues.join(' ') || null), requestedLineups: n,
       lineups: lineups.map((l, i) => persistLineup(l, i + 1)) };
   };
-  // Arm A: the source build, rebuilt.
-  let resultA: ReturnType<typeof optimizeNflLineups> | null = null, errorA: string | null = null;
-  try { resultA = optimizeNflLineups(structuredClone(eligible), structuredClone(effective)); }
-  catch (e) { errorA = e instanceof Error ? e.message : String(e); }
-  const lineupsA = resultA?.lineups ?? [];
   const keyOf = (ids: number[], cpt: number | null) => format === 'classic' ? `classic:${[...ids].sort((a, b) => a - b).join(',')}`
     : `showdown:${cpt}:${[...ids].filter(id => id !== cpt).sort((a, b) => a - b).join(',')}`;
   const sourceKeys = new Set<string>((input.sourceLineups ?? []).map((l: Raw) => keyOf(l.playerIds, l.captainDkPlayerId ?? null)));
@@ -204,33 +258,19 @@ export function buildPortfolioPair(input: Raw, version: string): PairResult {
   const evaluation = drawJointBank(input.players, PORTFOLIO_OBJECTIVE.evaluationSeed);
   const field = sampleField(slate, input.players, PORTFOLIO_OBJECTIVE.fieldSeed);
   const thresholdSel = fieldThresholds(field, selection, PORTFOLIO_OBJECTIVE.successFraction);
-  const thresholdEval = fieldThresholds(field, evaluation, PORTFOLIO_OBJECTIVE.successFraction);
-  const thresholdEval01 = fieldThresholds(field, evaluation, PORTFOLIO_OBJECTIVE.secondaryFraction);
+  // One pass over the evaluation draws gives the forecast thresholds and the implied-field summary.
+  const evalThresholds = fieldThresholdsMany(field, evaluation, SUMMARY_FRACTIONS);
+  const [thresholdEval, thresholdEval01] = evalThresholds;
   const modelRecord = { draws: selection.draws, seeds: { selection: selection.seed, evaluation: evaluation.seed, field: field.seed },
     fallbackPlayerIds: selection.fallbackPlayerIds, meanNotMatchedIds: selection.meanNotMatchedIds,
     fieldLineups: field.lineups.length, fieldAttempts: field.attempts, fieldCalibration: field.calibration, fieldShapes: field.shapes,
-    impliedField: fieldSummary(field, evaluation) };
+    impliedField: summarizeFieldThresholds(evalThresholds) };
   const forecast = (lineups: ReturnType<typeof optimizeNflLineups>['lineups']) => ({
     successTop1Pct: forecastSuccess(lineups.map(rosterOf), evaluation, thresholdEval),
     successTop01Pct: forecastSuccess(lineups.map(rosterOf), evaluation, thresholdEval01) });
   const armA = record('A', 'Source build, rebuilt', resultA, errorA, lineupsA,
     { ...modelRecord, sourceLineupsReproduced: reproduced, sourceLineupCount: sourceKeys.size || null, forecast: forecast(lineupsA) }, effective);
-  // Arm B: candidate pool from the same settings, selection by the field-relative objective.
-  const candidateCount = Math.min(PORTFOLIO_OBJECTIVE.candidateMax, Math.max(PORTFOLIO_OBJECTIVE.candidateMin, PORTFOLIO_OBJECTIVE.candidateMultiple * n));
-  // The source's own exposure cap and uniqueness, so the pool is diverse by construction (an uncapped run
-  // concentrated on chalk and left the capped selection short on the week-5 Classic fixture).
-  const candidateSettings = { ...effective, nLineups: candidateCount };
-  let resultC: ReturnType<typeof optimizeNflLineups> | null = null, errorB: string | null = null;
-  // Timing is reported to the console only: the record must be reproducible byte for byte.
-  const started = Date.now();
-  try { resultC = optimizeNflLineups(structuredClone(eligible), structuredClone(candidateSettings)); }
-  catch (e) { errorB = e instanceof Error ? e.message : String(e); }
-  const pool = new Map<string, ReturnType<typeof optimizeNflLineups>['lineups'][number]>();
-  for (const l of [...lineupsA, ...(resultC?.lineups ?? [])]) {
-    const roster = rosterOf(l);
-    const { key } = validateNflLineup(slate, roster);
-    if (!pool.has(key)) pool.set(key, l);
-  }
+  // Arm B: the candidate pool (built in portfolioConstruction), selection by the field-relative objective.
   const candidates = [...pool].map(([key, l]) => ({ key, lineup: rosterOf(l), draws: scoreLineup(rosterOf(l), selection), generated: l }));
   const unenforced = [
     ...(Object.values(settings.minExposureByPlayer ?? {}).some((v: unknown) => Number(v) > 0) ? ['minExposureByPlayer'] : []),
@@ -240,7 +280,7 @@ export function buildPortfolioPair(input: Raw, version: string): PairResult {
     ...(settings.maxDstVsOffenseShare != null ? ['maxDstVsOffenseShare'] : []), ...(settings.maxCaptainExposure != null ? ['maxCaptainExposure'] : [])];
   let pick: ReturnType<typeof selectPortfolio> | null = null;
   if (!errorB) {
-    try { pick = selectPortfolio(candidates, thresholdSel, { count: n, maxExposure: effective.maxExposure, maxExposureByPlayer: effective.maxExposureByPlayer ?? {}, minUnique: effective.minUnique }); }
+    try { pick = selectPortfolio(candidates, thresholdSel, constraints); }
     catch (e) { errorB = e instanceof Error ? e.message : String(e); }
   }
   const lineupsB = pick ? pick.selected.map(s => candidates[s.index].generated) : [];
