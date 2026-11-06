@@ -8,6 +8,35 @@ import {
   type ContestEntry, type ContestGrade, type ContestPoolPlayer,
 } from "@/db/nba-contest-trios";
 import { PRIMARY_N, REVIEW_AFTER_NIGHTS, sharePct, tallyContest } from "@/lib/nba-contest-trios";
+import { getNbaCurrentTeams, getNbaPointsProps, getNbaSeasonStats, getNbaTeams } from "@/db/nba-top-scorers";
+import { buildBoard, playerKey, teamKey } from "@/lib/nba-top-scorers";
+import type { ContestPlayer } from "@/lib/nba-contest-optimizer";
+import { ContestOptimizer, type OptimizerGame } from "./contest-optimizer";
+
+// Last completed season, for the board's team fallback (same as the Top Scorers page).
+const LAST_SEASON = "2025-26";
+
+/** Tonight's latest lines as optimizer players: the same board the Top Scorers page builds. */
+async function liveSlate(date: string): Promise<{ players: ContestPlayer[]; games: OptimizerGame[]; capturedAt: string | null }> {
+  const [rows, ladderRows, lastSeason, teams, currentTeams] = await Promise.all([
+    getNbaPointsProps(date), getNbaPointsProps(date, "player_points_alternate"), getNbaSeasonStats(LAST_SEASON),
+    getNbaTeams(), getNbaCurrentTeams(date),
+  ]);
+  const { scorers, games } = buildBoard(rows, lastSeason, teams, ladderRows, currentTeams);
+  const now = Date.now();
+  return {
+    players: scorers.map((s) => ({
+      key: playerKey(s.player), player: s.player, eventId: s.eventId, team: s.team ? teamKey(s.team) : null,
+      line: s.line, pOver: s.pOver, books: s.books.length,
+      curve: (s.distribution?.curve ?? []).map((c) => ({ point: c.point, p: c.p })),
+    })),
+    games: [...games].sort((a, b) => a.commenceTime.localeCompare(b.commenceTime)).map((g) => ({
+      eventId: g.eventId, game: g.game, commenceTime: g.commenceTime, players: g.players,
+      started: new Date(g.commenceTime).getTime() <= now,
+    })),
+    capturedAt: games.reduce<string | null>((m, g) => (m == null || g.capturedAt > m ? g.capturedAt : m), null),
+  };
+}
 
 export const metadata: Metadata = {
   title: "NBA Contest Trios",
@@ -101,7 +130,7 @@ export default async function ContestTriosPage({ searchParams }: { searchParams:
   const params = await searchParams;
   const today = easternDateString();
   const date = params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) ? params.date : today;
-  const [portfolio, dates, grades] = await Promise.all([getContestPortfolio(date), getContestDates(), getContestGrades()]);
+  const [portfolio, dates, grades, slate] = await Promise.all([getContestPortfolio(date), getContestDates(), getContestGrades(), liveSlate(date)]);
   const grade = grades.find((g) => g.gameDate === date) ?? null;
   const p = portfolio?.payload;
   const pool = new Map((p?.pool ?? []).map((x) => [x.key, x]));
@@ -133,6 +162,8 @@ export default async function ContestTriosPage({ searchParams }: { searchParams:
           </Link>
         ))}
       </nav>
+
+      <ContestOptimizer players={slate.players} games={slate.games} capturedAt={slate.capturedAt} />
 
       {!p || !portfolio ? (
         <p className="rounded-lg border p-4 text-sm">
@@ -169,7 +200,7 @@ export default async function ContestTriosPage({ searchParams }: { searchParams:
           </section>
 
           <section className="rounded-xl border bg-white p-4 shadow-sm">
-            <h2 className="font-bold">Entries</h2>
+            <h2 className="font-bold">Tracked entries (all games)</h2>
             <p className="mb-2 text-xs text-muted-foreground">
               In order: the first {PRIMARY_N} are the best {PRIMARY_N}-entry set, and each further entry adds the most to the ones above it. Enter as
               many as you like from the top down; skipping one breaks that guarantee.

@@ -131,6 +131,8 @@ def survival_knots(curve: list[tuple[float, float]]) -> tuple[np.ndarray, np.nda
         xs.append(x)
         ss.append(p)
         last_s = p
+    if len(xs) < 2:
+        return None
     (x1, p1), (x2, p2) = (xs[-2], ss[-2]), (xs[-1], ss[-1])
     rate = math.log(p1 / p2) / (x2 - x1) if p1 > p2 > 0 and x2 > x1 else 0.0
     rate = min(1.0, max(0.05, rate))
@@ -423,6 +425,65 @@ def summarize(grades: list[dict[str, Any]], n: int = PRIMARY_N, draws: int = 500
     }
 
 
+# ------------------------------------------------------------------ fixture for the web port
+
+FIXTURE_PATH = "tests/fixtures/nba_wta_fixture.json"
+
+
+def fixture_payload() -> dict[str, Any]:
+    """The deterministic pieces the browser optimizer (web/src/lib/nba-contest-optimizer.ts) must match.
+
+    The simulation itself is not pinned: numpy's and the browser's random streams differ, so the
+    web port is checked on these pieces exactly and on the simulation statistically.
+    """
+    curves = [
+        [(10.5, 0.8), (19.5, 0.5), (29.5, 0.12)],
+        [(4.5, 0.93), (9.5, 0.62), (14.5, 0.31), (19.5, 0.11), (24.5, 0.04)],
+        [(0.0, 0.99), (25.5, 0.55), (30.5, 0.3), (30.5, 0.3), (40.5, 0.07)],
+        [(22.5, 0.6), (22.5, 0.5)],
+        [(20.5, 0.5)],
+    ]
+    knots = []
+    for c in curves:
+        k = survival_knots(c)
+        knots.append({"curve": [list(x) for x in c],
+                      "s": None if k is None else [float(v) for v in k[0]],
+                      "x": None if k is None else [float(v) for v in k[1]]})
+    spec = [("e1", "A"), ("e1", "A"), ("e1", "B"), ("e2", "A"), ("e1", None), ("e2", "B")]
+    pool = [PoolPlayer(key=f"p{i}", player=f"P{i}", event_id=e, home_team="A", away_team="B", team=t,
+                       line=30.0 - 2 * i, p_over=0.5 - 0.01 * i, books=6, ladder_books=4, curve=[],
+                       floor=None, ceiling=None, p30=None, p40=None) for i, (e, t) in enumerate(spec)]
+    rng = np.random.default_rng(11)
+    totals = rng.integers(40, 90, size=(60, 12)).astype(float)
+    fmax = rng.integers(60, 85, size=60).astype(float)
+    fcount = rng.integers(1, 4, size=60).astype(float)
+    trios = candidate_trios(len(pool))
+    return {
+        "version": VERSION,
+        "constants": {"POOL_SIZE": POOL_SIZE, "N_ENTRIES": N_ENTRIES, "FIELD_SIZE": FIELD_SIZE, "CHALK_SHARE": CHALK_SHARE,
+                      "POPULARITY_TAU": POPULARITY_TAU, "SIMS": SIMS, "SIM_CHUNK": SIM_CHUNK, "TEAMMATE_RHO": TEAMMATE_RHO,
+                      "OPPONENT_RHO": OPPONENT_RHO, "DNP_BY_BOOKS": [list(x) for x in DNP_BY_BOOKS],
+                      "FALLBACK_SD_INTERCEPT": FALLBACK_SD_INTERCEPT, "FALLBACK_SD_SLOPE": FALLBACK_SD_SLOPE,
+                      "TAIL_FLOOR": TAIL_FLOOR},
+        "knots": knots,
+        "dnp": {str(b): _dnp(b) for b in (1, 2, 3, 4, 6)},
+        "correlation": {"spec": [list(x) for x in spec], "matrix": correlation_matrix(pool).tolist()},
+        "trios": [list(t) for t in trios],
+        "baselineOrder": {"lines": [p.line for p in pool], "pOver": [p.p_over for p in pool],
+                          "keys": [p.key for p in pool], "order": baseline_order(pool, trios, 5)},
+        "portfolio": {"totals": totals.tolist(), "fmax": fmax.tolist(), "fcount": fcount.tolist(),
+                      "greedy": build_portfolio(totals, fmax, fcount, 5),
+                      "ordered": build_portfolio(totals, fmax, fcount, 4, order=[3, 0, 7, 1])},
+    }
+
+
+def _dnp(books: int) -> float:
+    for upper, p in DNP_BY_BOOKS:
+        if books <= upper:
+            return p
+    return DNP_BY_BOOKS[-1][1]
+
+
 # ------------------------------------------------------------------ database
 
 
@@ -603,11 +664,17 @@ def main() -> int:
     from db.database import DatabaseManager
     from ingest.nba_box_scores import eastern_date
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=["freeze", "grade", "report"])
+    parser.add_argument("command", choices=["freeze", "grade", "report", "fixture"])
     parser.add_argument("--date", help="Eastern date (YYYY-MM-DD); default today ET for freeze, yesterday for grade")
     parser.add_argument("--days-back", type=int, default=1, help="grade: also grade this many earlier dates")
     parser.add_argument("--apply", action="store_true", help="write rows; without it, print only")
     args = parser.parse_args()
+    if args.command == "fixture":
+        with open(FIXTURE_PATH, "w", encoding="utf-8", newline="\n") as f:
+            json.dump(fixture_payload(), f, indent=1)
+            f.write("\n")
+        print(f"wrote {FIXTURE_PATH}")
+        return 0
     db = DatabaseManager(load_config().database_url)
     db.require_tables(["prop_odds_history", "nba_box_score_players", "nba_wta_portfolios", "nba_wta_grades"])
     today = eastern_date(_now())

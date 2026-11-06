@@ -103,7 +103,21 @@ toward the review.
 
 ## Known limits
 
+- **The exact entries are not stable; the mix and the share are.** Re-running Nov 6 with
+  only the random draws changed (measured 2026-11-06): the top five shared 0-1 entries with
+  the original run at 6,000 simulated nights and 1-2 at 24,000, while the five-entry prize
+  share stayed 5.9-6.6% and the same players dominated (Gilgeous-Alexander in most entries,
+  Tatum and Wembanyama often, Luka rarely). Many trios are near-ties. Each night's frozen set
+  is still a fair draw of the method, so the test is unaffected, but no single entry should be
+  read as uniquely right. The 6,000-night share runs slightly high against 24,000 (greedy
+  selection fits the draws it chose from).
+
 - The field model is a guess; real entrant data is the single most valuable input.
+- **Custom runs** (`/nba/contest-trios`, "Build entries for your contest"): the same rules
+  ported to the browser (`web/src/lib/nba-contest-optimizer.ts`, pinned to this module by
+  `tests/fixtures/nba_wta_fixture.json`; regenerate with `python -m research.nba_wta_trios
+  fixture`) on the latest lines, for contests that leave games out or have another field
+  size. Never graded; the frozen all-games set is the record.
 - The books' 30+ and 40+ chances read high (registered `nba-points-ladder-v2` test);
   the builder uses the books' curve as is, which favors high-ceiling players.
 - Pool is the top 20 lines; 5 of 48 actual top-three scorers in discovery came from
