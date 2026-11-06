@@ -64,12 +64,36 @@ TD_ORDER_MARKETS: tuple[str, ...] = ("player_1st_td",)
 # PAT), without DraftKings' distance bonus. Kickers matter in Showdown only;
 # not in the midweek main set. Graded before any projection uses them.
 KICKER_MARKETS: tuple[str, ...] = ("player_field_goals", "player_pats", "player_kicking_points")
-CAPTURE_MARKETS: tuple[str, ...] = MARKETS + VOLUME_MARKETS + ALTERNATE_MARKETS + TD_ORDER_MARKETS + KICKER_MARKETS
+# Added 2026-11-06 (owner's call, "whatever will improve the model"), from the
+# per-event market listing (109 markets on CIN @ ATL across seven books; no
+# fantasy-score or DST market exists). Team totals: Pinnacle, FanDuel and
+# BetMGM post the line; DraftKings, FanDuel, BetMGM, Fanatics and BetRivers
+# post a ladder (42 rungs at DraftKings) whose de-vigged rungs give the
+# opponent's points distribution, i.e. the DST points-allowed tiers, where the
+# model today only has the mean split from the game total and spread. Sacks
+# (DraftKings, FanDuel) appear only near kickoff and cover the main rushers;
+# a DST scores one point each. Longest touchdown yards (DraftKings) is the
+# question the longest-touchdown page forecasts. A market a book has not
+# posted costs nothing (measured: 6 requested, 2 returned, 2 charged).
+# Tackles and Pinnacle's "defensive interceptions" (quarterbacks' picks
+# thrown, already captured as player_pass_interceptions) were left out.
+TEAM_TOTAL_MARKETS: tuple[str, ...] = ("team_totals", "alternate_team_totals")
+DEFENSE_MARKETS: tuple[str, ...] = ("player_sacks",)
+TD_SHAPE_MARKETS: tuple[str, ...] = ("longest_td_yds",)
+CAPTURE_MARKETS: tuple[str, ...] = (MARKETS + VOLUME_MARKETS + ALTERNATE_MARKETS + TD_ORDER_MARKETS + KICKER_MARKETS
+                                    + TEAM_TOTAL_MARKETS + DEFENSE_MARKETS + TD_SHAPE_MARKETS)
+# Game-level markets carry no player; their rows are filed under this name.
+GAME_SUBJECT = "game"
 # The midweek captures (Wednesday and Friday evenings, nfl-prop-field-lag-v1)
 # take the main lines and volume only: the study reads the median line, and the
 # ladders double the cost of a round that happens twice more a week.
 MAIN_MARKETS: tuple[str, ...] = MARKETS + VOLUME_MARKETS
 MARKET_SETS: dict[str, tuple[str, ...]] = {"all": CAPTURE_MARKETS, "main": MAIN_MARKETS}
+
+
+def is_ladder(market_key: str) -> bool:
+    """Player ladders end in `_alternate`; team-total ladders start with `alternate_`."""
+    return market_key.endswith("_alternate") or market_key.startswith("alternate_")
 
 
 def normalize_prop_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -92,8 +116,11 @@ def normalize_prop_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 elif side not in {"over", "under", "yes", "no"}:
                     # Yes-only markets commonly put the player in `name`.
                     player, side = outcome_name, "yes"
+                elif not market_key.startswith("player_"):
+                    # A game-level over/under (longest_td_yds, total_tds) has no subject.
+                    player = GAME_SUBJECT
                 else:
-                    # An anonymous Over/Under cannot safely be assigned.
+                    # An anonymous player Over/Under cannot safely be assigned.
                     continue
                 if not player:
                     continue
@@ -117,7 +144,7 @@ def normalize_prop_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
                     "side": side,
                 }
                 book["outcomes"].append(preserved)
-                if market_key.endswith("_alternate"):
+                if is_ladder(market_key):
                     # A ladder has many points: a single line/over field would be its last rung.
                     continue
                 if side in {"over", "under", "yes", "no"}:
@@ -125,7 +152,7 @@ def normalize_prop_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 if outcome.get("point") is not None:
                     book["line"] = outcome.get("point")
     for row in grouped.values():
-        if row["market"].endswith("_alternate"):
+        if is_ladder(row["market"]):
             for book in row["books"].values():
                 book["ladder"] = sorted(
                     ({"point": o["point"], "side": o["side"], "price": o["price"]} for o in book["outcomes"]

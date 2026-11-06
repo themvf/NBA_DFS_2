@@ -7959,6 +7959,23 @@ the Friday). The ladders summed give E[FG] and E[PAT]; on CIN @ ATL they implied
 reads them yet: grade book-implied kicker points against actuals over several
 Showdowns before a confirmation rule or an anchor uses them.
 
+**Defense-side and game-shape lines are captured too (2026-11-06).** The
+per-event market listing (`/events/{id}/markets`, 1 credit) showed 109
+markets on CIN @ ATL across seven books and no fantasy-score or DST market of
+any kind (no defensive TD, team sacks or turnovers). Added to the full set
+(29 markets a game; the midweek main set stays 12): `team_totals` and
+`alternate_team_totals` (DraftKings' 42-rung ladder de-vigs to the opponent's
+points distribution, i.e. the DST points-allowed tiers; on 2026-11-08 it read
++1.2 for the Saints DST and -1.0 for the Falcons DST while the model had both
+DSTs near 6.5), `player_sacks` (DraftKings and FanDuel, posted only near
+kickoff, the main rushers only) and `longest_td_yds` (DraftKings, the
+longest-touchdown page's own question; filed under player `game` since it
+has no subject). Not added: tackles (not DK DST scoring) and Pinnacle's
+`player_defensive_interceptions` (quarterbacks' picks thrown, already
+captured). A market no book posts is not charged. Nothing reads these yet:
+the first use should be a graded book-implied DST points-allowed component
+against actual DST points before the special-teams model takes it.
+
 ## NFL DFS — Two forward accuracy streams, never pooled (2026-09-22)
 
 | stream | module / table | population | missing stat row means |
