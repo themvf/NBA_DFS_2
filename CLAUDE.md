@@ -7931,6 +7931,20 @@ resolve nothing, a lone kicker with nobody to eliminate resolves nothing, and
 stale evidence cannot clear him. Replayed on the saved JAX @ BAL slate: Moody
 8.4 projected, Loop still "Unavailable: IR". `npm run test:nfl-kicker-elimination`.
 
+**Kicker lines are captured (2026-11-06).** `KICKER_MARKETS` in
+`ingest/nfl_prop_odds.py` adds `player_field_goals`, `player_pats` and
+`player_kicking_points` to the day-ahead and pre-kickoff captures (25 markets a
+game, +3 credits; not the midweek main set). Probed on three week-10 games:
+DraftKings posts all three, with alternate ladders, on every kicker it expects to
+kick; BetMGM, Fanatics and BetRivers some; FanDuel, Caesars and Pinnacle none,
+so there is one source, not a consensus. The historical feed at 23:25 UTC on
+2026-11-05 had DraftKings lines on Moody and Little and none on Loop: a line is
+evidence of who kicks, and its absence is weak (CLE @ NO listed one kicker on
+the Friday). The ladders summed give E[FG] and E[PAT]; on CIN @ ATL they implied
+10.1 and 9.0 DK points for McPherson and Folk against our 7.4 and 6.2. Nothing
+reads them yet: grade book-implied kicker points against actuals over several
+Showdowns before a confirmation rule or an anchor uses them.
+
 ## NFL DFS — Two forward accuracy streams, never pooled (2026-09-22)
 
 | stream | module / table | population | missing stat row means |

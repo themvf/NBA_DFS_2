@@ -54,7 +54,17 @@ VOLUME_MARKETS: tuple[str, ...] = (
 # Added 2026-10-12: first-touchdown scorer (yes-only, one price per player).
 # DraftKings, Caesars, BetMGM and Fanatics posted it for BUF@LAR in the test call.
 TD_ORDER_MARKETS: tuple[str, ...] = ("player_1st_td",)
-CAPTURE_MARKETS: tuple[str, ...] = MARKETS + VOLUME_MARKETS + ALTERNATE_MARKETS + TD_ORDER_MARKETS
+# Added 2026-11-06 (owner's call): the kicker lines. Probed on three week-10
+# games across seven books: DraftKings posts all three on every kicker it
+# expects to kick (field goals and PATs with alternate ladders too); BetMGM,
+# Fanatics and BetRivers post some; FanDuel, Caesars and Pinnacle none. At
+# 23:25 UTC on 2026-11-05 DraftKings had lines on Jake Moody and Cam Little and
+# none on Tyler Loop (IR), so a line is also evidence of WHO kicks, which the
+# depth chart missed that night. Kicking points is scoreboard points (3 x FG +
+# PAT), without DraftKings' distance bonus. Kickers matter in Showdown only;
+# not in the midweek main set. Graded before any projection uses them.
+KICKER_MARKETS: tuple[str, ...] = ("player_field_goals", "player_pats", "player_kicking_points")
+CAPTURE_MARKETS: tuple[str, ...] = MARKETS + VOLUME_MARKETS + ALTERNATE_MARKETS + TD_ORDER_MARKETS + KICKER_MARKETS
 # The midweek captures (Wednesday and Friday evenings, nfl-prop-field-lag-v1)
 # take the main lines and volume only: the study reads the median line, and the
 # ladders double the cost of a round that happens twice more a week.
