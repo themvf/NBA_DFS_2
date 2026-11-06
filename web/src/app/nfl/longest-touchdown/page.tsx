@@ -73,7 +73,7 @@ async function requestTime() {
   return Date.now();
 }
 
-export default async function LongestTouchdownPage({ searchParams }: { searchParams: Promise<{ season?: string; week?: string; game?: string }> }) {
+export default async function LongestTouchdownPage({ searchParams }: { searchParams: Promise<{ season?: string; week?: string; game?: string; show?: string }> }) {
   const params = await searchParams;
   const now = await requestTime();
   const season = seasons.find((item) => item.season === Number(params.season)) ?? saved;
@@ -95,6 +95,15 @@ export default async function LongestTouchdownPage({ searchParams }: { searchPar
     ? availability.confirmedOut.filter((player) => rosterIds.has(player.identity))
     : [];
   const blocked = newlyOut.length > 0 || (!started && !availability?.complete);
+  // Owner's override (2026-11-05): a blocked forecast can be shown on request.
+  // The saved numbers are not changed, the warning stays, and a ruled-out
+  // player's row is marked; his share is not redistributed to anyone.
+  const shownAnyway = blocked && params.show === "anyway";
+  const hidden = blocked && !shownAnyway;
+  const outIds = new Set(newlyOut.map((player) => player.identity));
+  const gameHref = (show: boolean) => selected
+    ? `/nfl/longest-touchdown?season=${season.season}&week=${selected.game.week}&game=${selected.game.game_id}${show ? "&show=anyway" : ""}`
+    : "/nfl/longest-touchdown";
   const graded = (s: number, w: number) => weekGrades.find((g) => g.season === s && g.week === w);
   const latestGraded = weekGrades.filter((g) => g.graded > 0).at(-1);
   const gradeShown = (week && graded(season.season, week.week)) ?? latestGraded;
@@ -135,16 +144,20 @@ export default async function LongestTouchdownPage({ searchParams }: { searchPar
         <p className="text-sm text-slate-600">Kickoff {eastern(selected.game.kickoff)} · Evidence frozen {eastern(selected.decisionAt)} · {selected.trainingGames} historical games · {selected.draws.toLocaleString()} simulations.</p>
         <p className="text-sm text-slate-700">{started ? "Kickoff has passed. This is the saved pregame forecast, not an updated result." : "Player roles remain conditional. This is not final game-day participation confirmation."}</p>
       </section>
-      {blocked ? <p className="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-950">
-        {newlyOut.length > 0
-          ? `This saved forecast includes ${newlyOut.map((player) => `${player.name} (${player.team})`).join(", ")}, now ruled out. All game probabilities are hidden until the full forecast is rerun.`
-          : "Current injury coverage could not be verified. Game probabilities are hidden until availability can be checked."}
-      </p> : <>
-        {availability?.complete && <p className="text-sm text-slate-600">Injury sources checked {eastern(availability.checkedAt)}. Unresolved player roles remain.</p>}
+      {blocked && <div className="space-y-2 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-950">
+        <p>{newlyOut.length > 0
+          ? `This saved forecast includes ${newlyOut.map((player) => `${player.name} (${player.team})`).join(", ")}, now ruled out.${shownAnyway ? "" : " All game probabilities are hidden until the full forecast is rerun."}`
+          : `Current injury coverage could not be verified.${shownAnyway ? "" : " Game probabilities are hidden until availability can be checked."}`}</p>
+        {shownAnyway
+          ? <p>Shown anyway at your request. These are the saved pregame numbers, unchanged: a ruled-out player keeps the share the model gave him, nothing is handed to his teammates, so every other player is understated by about that much. <Link className="font-semibold underline" href={gameHref(false)}>Hide again</Link></p>
+          : <p><Link className="font-semibold underline" href={gameHref(true)}>Show anyway</Link> — the saved numbers as they are, with the ruled-out player marked.</p>}
+      </div>}
+      {!hidden && <>
+        {!blocked && availability?.complete && <p className="text-sm text-slate-600">Injury sources checked {eastern(availability.checkedAt)}. Unresolved player roles remain.</p>}
         <section className="overflow-hidden rounded-xl border bg-white shadow-sm">
           <div className="border-b p-4"><h2 className="text-xl font-semibold">Who could score the longest?</h2><p className="mt-1 text-sm text-slate-600">Rushing and receiving touchdowns in regulation only. Ties divide credit equally. A quarterback gets no credit for throwing a touchdown.</p></div>
           <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-slate-600"><tr><th className="p-4">Player</th><th className="p-4">Longest TD share</th><th className="p-4">Any TD</th><th className="p-4">40+ yard TD</th></tr></thead><tbody>{selected.players.map((player) =>
-            <tr key={player.identity} className="border-t"><td className="p-4 font-medium">{player.name}</td><td className="p-4 font-semibold">{percent(player.longestShare)}</td><td className="p-4">{percent(player.anyTd)}</td><td className="p-4">{percent(player.longTd)}</td></tr>)}</tbody></table></div>
+            <tr key={player.identity} className={`border-t${outIds.has(player.identity) ? " text-slate-400 line-through" : ""}`}><td className="p-4 font-medium">{player.name}{outIds.has(player.identity) && <span className="ml-2 rounded bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-900 no-underline">ruled out</span>}</td><td className="p-4 font-semibold">{percent(player.longestShare)}</td><td className="p-4">{percent(player.anyTd)}</td><td className="p-4">{percent(player.longTd)}</td></tr>)}</tbody></table></div>
           <div className="border-t bg-slate-50 p-4 text-sm text-slate-600"><p>Other or unresolved scorers: {percent(selected.residual.reduce((sum, player) => sum + player.longestShare, 0))} combined longest-TD share. No modeled scrimmage touchdown: {percent(selected.noTd)}.</p><p className="mt-2">Scoring any touchdown and scoring the longest touchdown are different outcomes. Percentages are rounded; the full field includes other scorers.</p></div>
         </section>
       </>}
