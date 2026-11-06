@@ -7915,6 +7915,22 @@ Isaiah Davis 2.8 -> 1.4); PHI@JAX showdown: 4 (Cooper 5.2 -> 8.1). Stated
 priors, not fitted: the n/(n+1) weight, the 0.5-3 clamp. Change one and bump
 the version. Review after six weeks against `before`.
 
+## NFL DFS — Kicker by elimination (`nfl-kicker-by-elimination-v1`, 2026-11-06)
+
+The kicker pool rule asks Sleeper for a fresh "Listed K1" and nothing else, so a
+kicker signed the week the regular went on IR, whom the depth chart has not
+placed yet, was blocked to zero: Jake Moody (BAL, week 9 Showdown) was the only
+healthy kicker on the slate, kicked, scored 6 at $4,800, and sat at 0 projected
+and 0% owned in every build. `identifyTeamKickersByElimination` /
+`applyTeamKickerContext` (`web/src/lib/nfl-dfs/availability.ts`, applied in the
+workspace read beside the team-QB rule) lift the ROLE block on the one healthy
+kicker whose every listed teammate at K is health-blocked (OUT, IR, PUP, ...),
+with the eliminated names in his warnings. Health blocks are never lifted, a
+Questionable regular eliminates nobody, two healthy or two unresolved kickers
+resolve nothing, a lone kicker with nobody to eliminate resolves nothing, and
+stale evidence cannot clear him. Replayed on the saved JAX @ BAL slate: Moody
+8.4 projected, Loop still "Unavailable: IR". `npm run test:nfl-kicker-elimination`.
+
 ## NFL DFS — Two forward accuracy streams, never pooled (2026-09-22)
 
 | stream | module / table | population | missing stat row means |

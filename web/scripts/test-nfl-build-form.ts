@@ -120,7 +120,12 @@ assert.equal(formFromSettings(winners, shapeDefaults).settings.buildShape, "winn
 assert.equal(formFromSettings(sent, shapeDefaults).settings.buildShape, "standard", "a run with no shape was a standard build");
 assert.ok(sameGenerationSettings({ ...sent, buildShape: undefined }, { ...sent, buildShape: "standard" }), "absent and standard are the same build");
 assert.ok(!sameGenerationSettings({ ...sent, buildShape: "winners" }, { ...sent, buildShape: "standard" }), "winners is a different build");
-assert.equal(formFromDraft({ settings: { ...shapeDefaults, buildShape: "winners" }, locked: [], excluded: [], targets: {}, captainTargets: {}, planMode: "balanced", fades: [], quotas: [] }, shapeDefaults)!.settings.buildShape, "winners");
+// A draft written before v4 stored "standard" whether or not anyone chose it (nfl-projection-correction-v1), so its
+// shape takes the page default; a v4+ draft keeps the shape the user picked.
+const shapeDraft = (schemaVersion: number | undefined, buildShape: "standard" | "winners") => formFromDraft({ schemaVersion, settings: { ...shapeDefaults, buildShape }, locked: [], excluded: [], targets: {}, captainTargets: {}, planMode: "balanced", fades: [], quotas: [] }, shapeDefaults)!.settings.buildShape;
+assert.equal(shapeDraft(undefined, "winners"), "standard", "a pre-v4 draft takes the page default shape");
+assert.equal(shapeDraft(4, "winners"), "winners", "a v4 draft keeps the chosen shape");
+assert.equal(shapeDraft(4, "standard"), "standard");
 
 // Drafts saved while the page forced ownership leverage off (before v3) take
 // the new default; a v3 draft keeps the choice the user made.

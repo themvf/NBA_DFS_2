@@ -37,7 +37,7 @@ import { resolveDefensiveForecast, type CaptureProfile } from '@/lib/nfl-dfs/def
 import { captureProfileFor } from '@/lib/nfl-dfs/defensive-display';
 import { readServerDefensivePolicy } from '@/lib/nfl-dfs/defensive-policy';
 import { getNflRosterEvidence, getNflInjuryCoverage, type InjuryCoverage } from "@/db/nfl-dfs-availability";
-import { presentPinnedGameAvailability, resolveGameAvailability, applyTeamQbContext, identifyTeamQb1s, nflTeamKey, showdownGame, rolePolicyEvidence, ROSTER_FRESH_MS, type Availability, type PinnedGameAvailabilityDecision, type ShowdownGameRow } from "@/lib/nfl-dfs/availability";
+import { presentPinnedGameAvailability, resolveGameAvailability, applyTeamQbContext, identifyTeamQb1s, applyTeamKickerContext, identifyTeamKickersByElimination, nflTeamKey, showdownGame, rolePolicyEvidence, ROSTER_FRESH_MS, type Availability, type PinnedGameAvailabilityDecision, type ShowdownGameRow } from "@/lib/nfl-dfs/availability";
 import { previewAbsence } from "@/lib/nfl-dfs/absence-preview";
 import type { PlayerContext } from "@/lib/nfl-dfs/player-context";
 import { benchmarkPool, type Competitor, type ImportEvidence, type BenchmarkSnapshot, benchmarkTeam } from '@/lib/nfl-dfs/competitor-benchmark';
@@ -678,12 +678,14 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
     name: row.name,
     availability: currentAvailability(row),
   })));
+  // The kicker whose every listed teammate at K is health-blocked (nfl-kicker-by-elimination-v1, availability.ts).
+  const teamKickers = identifyTeamKickersByElimination(rows.map((row) => ({ team: row.team, position: row.position, name: row.name, availability: currentAvailability(row) })));
   const starterName = (team: string) => rows.find((row) => row.dkPlayerId === startingQbs[team])?.name;
-  const availability = (row: typeof rows[number]) => confirmStarterAvailability(applyTeamQbContext(
+  const availability = (row: typeof rows[number]) => confirmStarterAvailability(applyTeamKickerContext(applyTeamQbContext(
     currentAvailability(row),
     row.position,
     teamQb1s.get(nflTeamKey(row.team)),
-  ), { dkPlayerId: row.dkPlayerId, team: row.team, position: row.position, platformOut: platformOut(row) }, startingQbs, starterName);
+  ), row.position, row.name, teamKickers.get(nflTeamKey(row.team))), { dkPlayerId: row.dkPlayerId, team: row.team, position: row.position, platformOut: platformOut(row) }, startingQbs, starterName);
   // The one "not playing" rule (see `ruledOutPlayer`); the Slate Check and the
   // starter picker read the same flag through `ruledOut` below.
   const injuredOut = (row: typeof rows[number]) => ruledOutPlayer({ platformOut: platformOut(row), dkStatus: row.dkStatus,
