@@ -6831,6 +6831,10 @@ MIGRATIONS.extend(NFL_OWNERSHIP_NEWS_STATEMENTS)
 from db.nba_points_calibration_schema import STATEMENTS as NBA_POINTS_CALIBRATION_STATEMENTS
 MIGRATIONS.extend(NBA_POINTS_CALIBRATION_STATEMENTS)
 
+# NBA winner-take-all top-3 scorer contest entries and grades (research/nba_wta_trios.py, 2026-11-06).
+from db.nba_wta_schema import STATEMENTS as NBA_WTA_STATEMENTS
+MIGRATIONS.extend(NBA_WTA_STATEMENTS)
+
 # NFL DFS expert coverage (docs/nfl-expert-coverage-study.md): append-only
 # article revisions, robots decisions, extractions and grounded records.
 from db.nfl_expert_coverage_schema import STATEMENTS as NFL_EXPERT_COVERAGE_STATEMENTS

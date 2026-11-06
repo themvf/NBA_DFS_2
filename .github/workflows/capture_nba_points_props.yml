@@ -46,3 +46,14 @@ jobs:
           ${GAME_DATE:+--date "$GAME_DATE"}
           --max-credits "$MAX_CREDITS"
           --apply
+      # Winner-take-all contest entries (research/nba_wta_trios.py, docs/nba-wta-trios.md):
+      # frozen from the lines just captured, only while every game on the date is still
+      # to tip (the 9:07 PM ET run reports "after_first_tip" and writes nothing). No credits.
+      - name: Freeze winner-take-all contest entries
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GAME_DATE: ${{ inputs.date }}
+        run: >-
+          python -m research.nba_wta_trios freeze
+          ${GAME_DATE:+--date "$GAME_DATE"}
+          --apply
