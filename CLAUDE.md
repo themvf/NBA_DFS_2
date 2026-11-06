@@ -313,6 +313,20 @@ the local-only v3 base). Flags are graded each morning (FGA vs forecast, descrip
 (`nba-roster-capture-v1`) captures ESPN rosters before each ghost freeze into append-only
 `nba_roster_capture_runs`/`nba_roster_observations`; that is the decision-time team. See docs/nba-role-reliability.md.
 
+### NBA winner-take-all contest trios (`nba-wta-trios-v1`, registered 2026-11-06)
+
+[`docs/nba-wta-trios.md`](docs/nba-wta-trios.md), `research/nba_wta_trios.py`, page `/nba/contest-trios`. For the owner's
+contest (three players, summed points, highest total takes all, ties split, many entries, 200+ field): ten distinct trios
+from the top-20 lines, chosen greedily for expected prize share against a simulated field (books' ladder curves, measured
+same-game correlation teammates -0.06 / opponents +0.02, measured sitting rate by book count; field of 300 with 10% on the
+exact three biggest lines and the rest weighted exp(line/3), a stated prior). Frozen into `nba_wta_portfolios` after the
+15:07 and 22:07 UTC captures while every game is still to tip (a CHECK refuses rows at or after the first tip); graded
+each morning into `nba_wta_grades`. Primary: realized prize share of the first five entries with actual points against
+fields from the frozen model, paired with the five biggest-line trios; guard: field-free percentile of the best entry
+among all pool trios. Review once at 30 graded nights. Discovery (16 nights, not counted): no better at scoring (93.1% vs
+93.6% percentile), 1.48 vs 0.21 prizes against the modeled field, one night supplying 1.00 of it, so the edge is the
+crowd assumption. The owner's real contest results outrank both grades. Both tables are on /health (72 h).
+
 ## Data Refresh Workflow
 
 ```

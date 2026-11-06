@@ -367,6 +367,17 @@ DATASET_REGISTRY: tuple[Dataset, ...] = (
             72, "nba_points_ghost.yml", _NBA,
             "Written by research.nba_ghost_runner grade: appends a grade attempt for each of the last three stored "
             "snapshots that has final box scores."),
+    # NBA winner-take-all contest entries (docs/nba-wta-trios.md): frozen after the 15:07 and 22:07 UTC
+    # line captures while every game is still to tip (an unchanged capture writes nothing), graded at
+    # 11:07 UTC. 72 h covers a no-game day and one missed run, as for the ghost rows above.
+    Dataset("nba_wta_portfolios", "NBA winner-take-all contest entries (/nba/contest-trios)", "nba_wta_portfolios",
+            "created_at", 72, "capture_nba_points_props.yml", _NBA,
+            "Written by research.nba_wta_trios freeze after a daytime line capture; refused at or after the first "
+            "tip. A day with no games, or a capture identical to the last one, writes nothing."),
+    Dataset("nba_wta_grades", "NBA winner-take-all contest grades (/nba/contest-trios)", "nba_wta_grades", "graded_at",
+            72, "grade_nba_points_props.yml", _NBA,
+            "Written by research.nba_wta_trios grade for each of the last three dates with a freeze and final box "
+            "scores; an upsert that restamps graded_at, so a pending date writes nothing."),
     Dataset("nba_roster_capture_runs", "NBA roster capture (decision-time team)", "nba_roster_capture_runs", "run_at",
             36, "nba_points_ghost.yml", _NBA,
             "Written by ingest.nba_rosters before each ghost freeze: one row per run. Only complete runs count; a "

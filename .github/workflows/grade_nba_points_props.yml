@@ -57,6 +57,18 @@ jobs:
           ${GAME_DATE:+--date "$GAME_DATE"}
           --days-back "$DAYS_BACK"
           --apply
+      # Winner-take-all contest entries (docs/nba-wta-trios.md): the latest pre-tip freeze of
+      # each date graded against the box scores; a date with a game not yet final stays pending.
+      - name: Grade winner-take-all contest entries
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GAME_DATE: ${{ inputs.date }}
+          DAYS_BACK: ${{ inputs.days_back || '3' }}
+        run: >-
+          python -m research.nba_wta_trios grade
+          ${GAME_DATE:+--date "$GAME_DATE"}
+          --days-back "$DAYS_BACK"
+          --apply
       # The registered ladder-v2 tail study (docs/nba-points-ladder-v2-registration.md):
       # read-only floor status and secondaries every night, and the one-time frozen
       # verdict receipt the first night both floors are met (--apply writes only that
