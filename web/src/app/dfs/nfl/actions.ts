@@ -87,6 +87,7 @@ import { NFL_OWNERSHIP_FIT_CLASSIC_FITTED_AT, NFL_OWNERSHIP_FIT_CLASSIC_VERSION,
 import { computeReplacementUpside, REPLACEMENT_UPSIDE_VERSION, type ReplacementUpside, type ReplacementUpsideReport, type UpsidePlayer } from "@/lib/nfl-dfs/replacement-upside";
 import { ABSENCE_COMMIT_VERSION, computeAbsenceCommits, type AbsenceCommit, type AbsenceCommitReport } from '@/lib/nfl-dfs/absence-commit';
 import { ANCHOR_MARKETS, MARKET_ANCHOR_VERSION, anchorPlayer, type MarketAnchor, type PropQuote } from '@/lib/nfl-dfs/market-anchor';
+import { SPECIAL_TEAMS_ANCHOR_MARKETS, SPECIAL_TEAMS_ANCHOR_VERSION, anchorDst, anchorKicker, rungsFromOutcomes, type Rung, type SpecialTeamsAnchor } from '@/lib/nfl-dfs/special-teams-anchor';
 import { RANGE_SPLIT_POSITIONS, RANGE_SPLIT_VERSION, rangeSplitFor, type RangeRatio, type RangeSplit } from '@/lib/nfl-dfs/range-split';
 import { PROJECTION_CORRECTION_VERSION, correctProjections, type ProjectionCorrection, type ProjectionCorrectionReport } from '@/lib/nfl-dfs/projection-correction';
 import { RANGE_CALIBRATION_VERSION, calibratePlayers } from '@/lib/nfl-dfs/range-calibration';
@@ -152,6 +153,13 @@ export type NflWorkspacePlayer = NflOptimizerPlayer & {
    * carries the news.
    */
   marketAnchor?: MarketAnchor | null;
+  /**
+   * `nfl-special-teams-anchor-v1`: a kicker projected from DraftKings' field-goal
+   * and extra-point ladders, or a DST shifted by the opponent's team-total
+   * ladder against the model's own implied total; `before` is the number it
+   * replaced (after the corrections), kept for grading.
+   */
+  specialTeamsAnchor?: SpecialTeamsAnchor | null;
   /**
    * `nfl-projection-correction-v1`: this row's projection and range were
    * corrected after the anchor (an unanchored Classic RB/WR/TE scaled by
@@ -269,6 +277,8 @@ export type NflWorkspaceSlate = {
   marketAnchor?: { version: string; applied: number; eligible: number; newestCapture: string | null; oldestCapture: string | null; error?: string;
     /** v3: of `applied`, how many were anchored on the anytime-TD line alone, and TD-only anchors left off for an absence commit. */
     tdOnly?: number; tdOnlyYieldedToCommit?: number };
+  /** Kickers projected from the books' ladders and DSTs shifted by the opponent's team-total ladder (nfl-special-teams-anchor-v1). */
+  specialTeamsAnchor?: { version: string; kickers: number; dsts: number; eligibleKickers: number; eligibleDsts: number; newestCapture: string | null; error?: string };
   /** Projection corrections applied after the anchor (shrink, backup QBs, Showdown DST), or why none were. */
   projectionCorrection?: ProjectionCorrectionReport | { version: string; skipped: string };
   /** Long-memory ranges (RB/WR/TE): how many players got them, and how many had no weekly ratio. */
@@ -908,6 +918,7 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
   }), run, identityMap);
   await attachMarketAnchor(workspace);
   attachProjectionCorrection(workspace, startingQbs);
+  await attachSpecialTeamsAnchor(workspace);
   await attachRangeSplit(workspace, run ? { season: run.season, week: run.week ?? null } : null);
   const priced = attachOwnership(workspace);
   // Last projection step, after the books' number and the long-memory range:
@@ -1251,6 +1262,89 @@ async function attachMarketAnchor(workspace: NflWorkspaceSlate): Promise<void> {
   } catch (error) {
     workspace.marketAnchor = { version: MARKET_ANCHOR_VERSION, applied: 0, eligible: eligible.length, newestCapture: null, oldestCapture: null,
       error: `Prop lines could not be read, so every player keeps the model's projection: ${error instanceof Error ? error.message : 'unknown error'}` };
+  }
+}
+
+/**
+ * Special-teams anchor (`nfl-special-teams-anchor-v1`, special-teams-anchor.ts):
+ * kickers projected from DraftKings' field-goal and extra-point ladders; DSTs
+ * shifted by the opponent's team-total ladder against the model's own implied
+ * total. After the corrections (the Showdown DST scale fixes the model's
+ * level, this its shape) and before the ranges, ownership and the optimizer.
+ * Lines are the latest capture before kickoff per market, matched by name
+ * (kickers) or by the opponent DST's nickname (team totals) and by the game's
+ * kickoff within 30 minutes; the special-teams block the optimizer builds from
+ * moves with the row. A failed read never takes the slate down; it is reported.
+ */
+async function attachSpecialTeamsAnchor(workspace: NflWorkspaceSlate): Promise<void> {
+  const live = (p: NflWorkspacePlayer) => !p.isOut && p.projectionStatus !== 'out' && (p.ourProj ?? 0) > 0;
+  const kickers = workspace.players.filter((p) => p.position === 'K' && live(p));
+  const dsts = workspace.players.filter((p) => p.position === 'DST' && live(p));
+  const summary: NonNullable<NflWorkspaceSlate['specialTeamsAnchor']> = { version: SPECIAL_TEAMS_ANCHOR_VERSION, kickers: 0, dsts: 0,
+    eligibleKickers: kickers.length, eligibleDsts: dsts.length, newestCapture: null };
+  const kickoffOf = (p: NflWorkspacePlayer) => Date.parse(parseDkGameInfoKickoff(p.gameInfo) ?? '');
+  const kickoffs = [...kickers, ...dsts].map(kickoffOf).filter(Number.isFinite);
+  if (!kickoffs.length) { workspace.specialTeamsAnchor = summary; return; }
+  try {
+    const from = new Date(Math.min(...kickoffs) - 3600_000).toISOString(), to = new Date(Math.max(...kickoffs) + 3600_000).toISOString();
+    const rows = await db.execute(sql`SELECT DISTINCT ON (event_id, player, market) event_id, player, market, commence_time, captured_at, books
+      FROM prop_odds_history WHERE sport = 'nfl' AND market IN (${sql.join(SPECIAL_TEAMS_ANCHOR_MARKETS.map((m) => sql`${m}`), sql`, `)})
+        AND commence_time BETWEEN ${from}::timestamptz AND ${to}::timestamptz
+        AND captured_at < commence_time AND captured_at <= NOW()
+      ORDER BY event_id, player, market, captured_at DESC`);
+    type Line = { subject: string; market: string; kickoff: number; rungs: Rung[]; book: string; capturedAt: string };
+    const lines: Line[] = [];
+    for (const r of rows.rows as { event_id: string; player: string; market: string; commence_time: string; captured_at: string;
+      books: Record<string, { outcomes?: { side?: string; name?: string; point?: number; price?: number }[] }> | null }[]) {
+      const book = ANCHOR_BOOKS.find((b) => r.books?.[b]?.outcomes?.length);
+      if (!book) continue;
+      const rungs = rungsFromOutcomes(r.books![book].outcomes);
+      if (!rungs.length) continue;
+      lines.push({ subject: normalizeName(r.player), market: r.market, kickoff: Date.parse(String(r.commence_time)), rungs, book,
+        capturedAt: new Date(String(r.captured_at)).toISOString() });
+    }
+    const near = (kickoff: number) => (l: Line) => Math.abs(l.kickoff - kickoff) <= 30 * 60_000;
+    const one = (candidates: Line[]) => (candidates.length === 1 ? candidates[0] : null);
+    const range = (p: NflWorkspacePlayer) => ({ mean: p.ourProj ?? 0, p10: p.floorFpts, median: p.medianFpts ?? null, p90: p.ceilingFpts });
+    const used: string[] = [];
+    workspace.players = workspace.players.map((p) => {
+      const kickoff = kickoffOf(p);
+      if (!Number.isFinite(kickoff)) return p;
+      if (p.position === 'K' && kickers.includes(p)) {
+        const name = normalizeName(p.name);
+        const pick = (market: string) => one(lines.filter((l) => l.subject === name && l.market === market).filter(near(kickoff)));
+        const fgMain = pick('player_field_goals'), fgAlt = pick('player_field_goals_alternate'), patMain = pick('player_pats'), patAlt = pick('player_pats_alternate');
+        const parts = [fgMain, fgAlt, patMain, patAlt].filter((l): l is Line => l != null);
+        const fieldGoals = [...(fgMain?.rungs ?? []), ...(fgAlt?.rungs ?? [])], pats = [...(patMain?.rungs ?? []), ...(patAlt?.rungs ?? [])];
+        if (!fieldGoals.length || !pats.length) return p;
+        const capturedAt = parts.map((l) => l.capturedAt).sort().at(-1)!;
+        const anchor = anchorKicker({ before: range(p), lines: { fieldGoals, pats }, statMeans: p.statMeans ?? null, book: parts[0].book, capturedAt });
+        if (!anchor) return p;
+        summary.kickers += 1; used.push(capturedAt);
+        const k = anchor.after.mean / anchor.before.mean;
+        const st = p.specialTeams ? { ...p.specialTeams, mean: p.specialTeams.mean * k, p10: p.specialTeams.p10 * k, p50: p.specialTeams.p50 * k, p90: p.specialTeams.p90 * k } : p.specialTeams;
+        return { ...p, specialTeamsAnchor: anchor, ourProj: anchor.after.mean, floorFpts: anchor.after.p10, medianFpts: anchor.after.median, ceilingFpts: anchor.after.p90, specialTeams: st };
+      }
+      if (p.position === 'DST' && dsts.includes(p)) {
+        const opponent = workspace.players.find((o) => o !== p && o.position === 'DST' && p.opponent && nflTeamKey(o.team) === nflTeamKey(p.opponent));
+        const implied = p.specialTeams?.feature_snapshot?.opponent_implied_total;
+        if (!opponent || typeof implied !== 'number') return p;
+        const nickname = normalizeName(opponent.name);
+        const ladder = one(lines.filter((l) => l.market === 'alternate_team_totals' && l.subject.endsWith(nickname)).filter(near(kickoff)));
+        if (!ladder) return p;
+        const anchor = anchorDst({ before: range(p), opponent: opponent.name, opponentLadder: ladder.rungs, modelImpliedTotal: implied, book: ladder.book, capturedAt: ladder.capturedAt });
+        if (!anchor) return p;
+        summary.dsts += 1; used.push(ladder.capturedAt);
+        const shift = anchor.dst!.shift;
+        const st = p.specialTeams ? { ...p.specialTeams, mean: p.specialTeams.mean + shift, p10: p.specialTeams.p10 + shift, p50: p.specialTeams.p50 + shift, p90: p.specialTeams.p90 + shift } : p.specialTeams;
+        return { ...p, specialTeamsAnchor: anchor, ourProj: anchor.after.mean, floorFpts: anchor.after.p10, medianFpts: anchor.after.median, ceilingFpts: anchor.after.p90, specialTeams: st };
+      }
+      return p;
+    });
+    summary.newestCapture = used.sort().at(-1) ?? null;
+    workspace.specialTeamsAnchor = summary;
+  } catch (error) {
+    workspace.specialTeamsAnchor = { ...summary, error: `Kicker and team-total lines could not be read, so kickers and defenses keep the model's projection: ${error instanceof Error ? error.message : 'unknown error'}` };
   }
 }
 
@@ -1927,6 +2021,7 @@ async function runNflSingleStat(uploadId: string, settings: SingleStatSettings &
     singleStat: player.singleStat ?? null,
     pointsProjection: { ourProj: player.ourProj, floor: player.floorFpts, median: player.medianFpts ?? null, ceiling: player.ceilingFpts },
     marketAnchor: player.marketAnchor ?? null, absenceCommit: player.absenceCommit ?? null,
+    specialTeamsAnchor: player.specialTeamsAnchor ?? null,
     ownership: { total: player.ownPct ?? null, source: player.ownSource ?? null },
     baselineSource: { runId: slate.projectionRunId, modelVersion: slate.modelVersion, asOf: slate.modelAsOf },
   }));
@@ -2193,6 +2288,8 @@ function snapshotPlayer(player: NflWorkspacePlayer, slate: NflWorkspaceSlate, re
     absenceCommit: player.absenceCommit ?? null,
     // The books' number the build used, with the model's own in `before` (nfl-market-anchor-v1).
     marketAnchor: player.marketAnchor ?? null,
+    // The kicker ladder or DST team-total shift the build used, with the number it replaced in `before` (nfl-special-teams-anchor-v1).
+    specialTeamsAnchor: player.specialTeamsAnchor ?? null,
     // The post-anchor correction the build used (shrink, backup QB, Showdown DST), with the number it replaced in `before` (nfl-projection-correction-v1).
     projectionCorrection: player.projectionCorrection ?? null,
     // The long-memory range the build used, with the range it replaced in `before` (nfl-dfs-range-split-v1).
