@@ -42,7 +42,7 @@ export function kickerRoleBlockedReason(player: {
   if (player.availability?.blockedReason) return player.availability.blockedReason;
   if (player.availability?.fresh === false) return 'Kicking role evidence is stale or unresolved. Refresh roster data before building.';
   const role = player.availability?.chartRole ?? player.availability?.role ?? player.depthRole;
-  return role === 'Listed K1' ? null : 'Kicking role unresolved or backup; a listed K1 role is required. Refresh roster data before building.';
+  return role === 'Listed K1' || role === KICKER_BY_ELIMINATION_ROLE ? null : 'Kicking role unresolved or backup; a listed K1 role is required. Refresh roster data before building.';
 }
 
 export type ShowdownGameRow = { home: string; away: string; home_ml: number | string | null; away_ml: number | string | null };
@@ -319,6 +319,55 @@ export function applyTeamQbContext(availability: Availability, position: string,
     blockedReason: `QB role unresolved while ${teamQb1.name} is listed QB1; starter workload not supported`,
     source: availability.source === "No matching current roster" ? "Team depth chart (QB1 identified for this team)" : availability.source,
   };
+}
+
+/**
+ * Team-level kicker rule (`nfl-kicker-by-elimination-v1`, 2026-11-06).
+ *
+ * The kicker block above asks for a fresh "Listed K1" and nothing else, so a
+ * kicker signed the week the regular went on IR, whom Sleeper has not yet
+ * placed on the depth chart, is blocked to zero. Jake Moody (BAL, 2026 week 9)
+ * was the team's only healthy kicker, kicked, scored 6 at $4,800, and sat at a
+ * 0% projection and 0% ownership in every build. When every OTHER kicker the
+ * slate lists for the team is health-blocked (OUT, IR, PUP, ...) and exactly
+ * one is healthy with fresh, team-matched evidence, that one is the kicker by
+ * elimination: his role block is lifted and the eliminated names are shown.
+ * Health blocks are never lifted, a Questionable regular is not eliminated,
+ * two healthy kickers resolve nothing, and stale evidence resolves nothing.
+ */
+export const KICKER_BY_ELIMINATION_ROLE = "Expected kicker · K1 by elimination";
+export type TeamKickerElimination = { name: string; unavailable: string[] };
+
+const healthBlocked = (a: Availability) => (Boolean(a.blockedReason) && a.blockedReason !== a.roleBlockedReason) || unavailable.has(normalize(a.status));
+
+/** The one healthy kicker per team whose every listed teammate at K is health-blocked. */
+export function identifyTeamKickersByElimination(players: ReadonlyArray<{ team: string; position: string; name: string; availability: Availability }>): Map<string, TeamKickerElimination> {
+  const byTeam = new Map<string, Array<{ name: string; availability: Availability }>>();
+  for (const p of players) {
+    if (p.position !== "K") continue;
+    const key = teamKey(p.team);
+    if (!byTeam.has(key)) byTeam.set(key, []);
+    byTeam.get(key)!.push(p);
+  }
+  const out = new Map<string, TeamKickerElimination>();
+  for (const [key, kickers] of byTeam) {
+    const healthy = kickers.filter((k) => !healthBlocked(k.availability));
+    const blocked = kickers.filter((k) => healthBlocked(k.availability));
+    if (healthy.length !== 1 || blocked.length === 0) continue;
+    const [k] = healthy;
+    if (k.availability.role === "Listed K1" || k.availability.role === KICKER_BY_ELIMINATION_ROLE || !k.availability.fresh) continue;
+    out.set(key, { name: k.name, unavailable: blocked.map((b) => `${b.name} (${b.availability.status})`) });
+  }
+  return out;
+}
+
+/** Lift the role-only block on the kicker identified by elimination; never a health block. */
+export function applyTeamKickerContext(availability: Availability, position: string, name: string, elimination: TeamKickerElimination | null | undefined): Availability {
+  if (position !== "K" || !elimination || elimination.name !== name || healthBlocked(availability) || !availability.fresh) return availability;
+  const note = `Kicker by elimination: ${elimination.unavailable.join(", ")} unavailable; the depth chart does not list a K1.`;
+  // `chartRole` is left unset: `kickerRoleBlockedReason` reads it first, and the chart's own reading is in the note.
+  return { ...availability, role: KICKER_BY_ELIMINATION_ROLE, blockedReason: null, roleBlockedReason: null,
+    warnings: [...(availability.warnings ?? []), note] };
 }
 
 /** The identified QB1 per team, from already-resolved availabilities. Any capture age counts. */
