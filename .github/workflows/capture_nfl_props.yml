@@ -19,9 +19,9 @@ on:
         required: true
         default: "0"
       max_credits:
-        description: Hard Odds API credit ceiling for this run
+        description: Hard Odds API credit ceiling for this run (16 games x 31 markets = 496)
         required: true
-        default: "420"
+        default: "520"
       within_hours:
         description: Only games starting within this many hours (0 = no window; never use with event_limit 0)
         required: true
@@ -57,7 +57,7 @@ jobs:
         run: >-
           python -m ingest.nfl_prop_odds
           --event-limit "${{ inputs.event_limit || '0' }}"
-          --max-credits "${{ inputs.max_credits || '420' }}"
+          --max-credits "${{ inputs.max_credits || '520' }}"
           --within-hours "${{ inputs.within_hours || '6' }}"
           --min-hours "${{ inputs.min_hours || '0' }}"
           --markets "${{ inputs.markets || 'all' }}"
