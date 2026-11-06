@@ -109,3 +109,18 @@ const cashCeiling = optimizeNflLineups(pool, settings({ mode: "cash", nLineups: 
 assert.deepEqual(cash.lineups[0].playerIds, cashCeiling.lineups[0].playerIds, "cash mode ignores GPP scoring");
 
 console.log("Lineup draws: reproducible correlated draws, lineup-level leverage, exposure off the caps, cash unchanged passed.");
+
+// The generate action returns these lineups to a client component, and
+// React's server-action serializer refuses any function-valued field. The
+// first draws version attached `drawAt` to every pool player and every
+// production GPP build failed (2026-11-05, JAX @ BAL). The result and the
+// input pool must both survive a serializing walk.
+const functionPaths = (value: unknown, path = "$", seen = new Set<object>()): string[] => {
+  if (typeof value === "function") return [path];
+  if (!value || typeof value !== "object" || seen.has(value)) return [];
+  seen.add(value);
+  return Object.entries(value as Record<string, unknown>).flatMap(([k, v]) => functionPaths(v, `${path}.${k}`, seen));
+};
+assert.deepEqual(functionPaths(draws), [], "a draws build carries no function-valued field");
+assert.deepEqual(functionPaths(pool), [], "the input pool is not mutated with functions");
+console.log("serializable: no function-valued fields on the draws result or its pool");
