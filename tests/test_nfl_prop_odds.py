@@ -142,8 +142,9 @@ def test_multi_touchdown_market_keeps_its_over_only_line() -> None:
 
 def test_backfill_requests_only_markets_a_game_is_missing() -> None:
     from ingest.nfl_prop_backfill import missing_markets
-    from ingest.nfl_prop_odds import CAPTURE_MARKETS, MARKETS, VOLUME_MARKETS
-    assert len(CAPTURE_MARKETS) == 22 and len(set(CAPTURE_MARKETS)) == 22
+    from ingest.nfl_prop_odds import CAPTURE_MARKETS, KICKER_MARKETS, MARKETS, VOLUME_MARKETS
+    assert len(CAPTURE_MARKETS) == 25 and len(set(CAPTURE_MARKETS)) == 25
+    assert KICKER_MARKETS == ("player_field_goals", "player_pats", "player_kicking_points")
     have = set(MARKETS)
     missing = missing_markets(have)
     assert not set(missing) & have and set(VOLUME_MARKETS) <= set(missing)
@@ -158,10 +159,11 @@ def test_first_td_is_a_yes_only_market() -> None:
 
 
 def test_midweek_capture_takes_main_lines_only_and_prices_them() -> None:
-    """nfl-prop-field-lag-v1: the Wednesday/Friday rounds buy 12 markets a game, not 22."""
+    """nfl-prop-field-lag-v1: the Wednesday/Friday rounds buy 12 markets a game, not 25 (kickers are not in the main set)."""
     from ingest import nfl_prop_odds as m
     assert m.MARKET_SETS["main"] == m.MARKETS + m.VOLUME_MARKETS
-    assert len(m.MARKET_SETS["main"]) == 12 and len(m.MARKET_SETS["all"]) == 22
+    assert len(m.MARKET_SETS["main"]) == 12 and len(m.MARKET_SETS["all"]) == 25
+    assert not set(m.KICKER_MARKETS) & set(m.MARKET_SETS["main"])
     assert not any(k.endswith("_alternate") for k in m.MARKET_SETS["main"])
     m_fetch = m.fetch_events
     m.fetch_events = lambda key: [{"id": "g1", "commence_time": "2026-11-08T18:00:00Z"},
@@ -172,7 +174,7 @@ def test_midweek_capture_takes_main_lines_only_and_prices_them() -> None:
         full = m.capture(db=None, api_key="k", event_limit=0, apply=False, within_hours=130, min_hours=30, now=now)
         main = m.capture(db=None, api_key="k", event_limit=0, apply=False, within_hours=130, min_hours=30, now=now,
                          markets=m.MARKET_SETS["main"])
-        assert full["estimatedCredits"] == 2 * 22 and main["estimatedCredits"] == 2 * 12
+        assert full["estimatedCredits"] == 2 * 25 and main["estimatedCredits"] == 2 * 12
         with pytest.raises(ValueError, match="at least one market"):
             m.capture(db=None, api_key="k", event_limit=0, apply=False, within_hours=130, now=now, markets=())
     finally:
