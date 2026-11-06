@@ -137,3 +137,12 @@ def test_summary_pairs_nights_and_reports_an_interval():
     assert s["oursShare"] == pytest.approx((0.95 + 0.995 + 0.70) / 10)
     assert s["shareCi95"][0] <= s["shareMeanDiff"] <= s["shareCi95"][1]
     assert w.summarize([]) == {"nights": 0}
+
+
+def test_web_fixture_is_current():
+    # The browser optimizer is checked against this file; regenerate with
+    # `python -m research.nba_wta_trios fixture` after any change to the rules.
+    import json
+    with open(w.FIXTURE_PATH, encoding="utf-8") as f:
+        stored = json.load(f)
+    assert stored == json.loads(json.dumps(w.fixture_payload()))

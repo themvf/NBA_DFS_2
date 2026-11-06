@@ -326,6 +326,12 @@ fields from the frozen model, paired with the five biggest-line trios; guard: fi
 among all pool trios. Review once at 30 graded nights. Discovery (16 nights, not counted): no better at scoring (93.1% vs
 93.6% percentile), 1.48 vs 0.21 prizes against the modeled field, one night supplying 1.00 of it, so the edge is the
 crowd assumption. The owner's real contest results outrank both grades. Both tables are on /health (72 h).
+**Custom runs (2026-11-06):** the page's "Build entries for your contest" runs the same rules in the browser
+(`web/src/lib/nba-contest-optimizer.ts`, ~0.3 s) on the latest lines for the games the owner ticks, with his field size
+and entry count; pinned to the Python by `tests/fixtures/nba_wta_fixture.json` (regenerate with `python -m
+research.nba_wta_trios fixture`; a Python test fails when it is stale). Never graded. The exact entries are near-ties
+and change with the random draws (0-2 of 5 shared across seeds) while the prize share and player mix hold steady,
+so the page shows the mix.
 
 ## Data Refresh Workflow
 
