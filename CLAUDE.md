@@ -7955,9 +7955,27 @@ so there is one source, not a consensus. The historical feed at 23:25 UTC on
 2026-11-05 had DraftKings lines on Moody and Little and none on Loop: a line is
 evidence of who kicks, and its absence is weak (CLE @ NO listed one kicker on
 the Friday). The ladders summed give E[FG] and E[PAT]; on CIN @ ATL they implied
-10.1 and 9.0 DK points for McPherson and Folk against our 7.4 and 6.2. Nothing
-reads them yet: grade book-implied kicker points against actuals over several
-Showdowns before a confirmation rule or an anchor uses them.
+10.1 and 9.0 DK points for McPherson and Folk against our 7.4 and 6.2. The
+special-teams anchor below reads them from the same day.
+
+**Special-teams anchor (`nfl-special-teams-anchor-v1`, owner's decision
+2026-11-06: "incorporated now, I don't want to wait").**
+`web/src/lib/nfl-dfs/special-teams-anchor.ts`, applied in the workspace read
+after the projection corrections and before the ranges, ownership and the
+optimizer; `before` kept on every changed row. Kickers: DraftKings' field-goal
+and extra-point ladders summed (E[X] = sum of P(X >= k); the main line de-vigged
+by its pair, one-sided rungs by its overround; a Poisson fit of the main line
+when no ladder was captured) give 3 x E[FG] + E[PAT] + a distance bonus per made
+FG from the kicker's own 40-49 / 50+ mix (league prior 0.55); the model's range
+is rescaled to that mean. DSTs: the opponent's team-total ladder de-vigs to a
+points distribution; the DST moves by (its DK points-allowed tier expectation)
+minus (the same under a normal at the model's own `opponent_implied_total`, SD
+10.2), so only the shape beyond the mean moves it, additively, after the
+Showdown x0.65 level correction. The special-teams candidate block the
+optimizer builds from moves with the row. Live on CIN @ ATL 2026-11-08:
+McPherson 7.4 -> 10.1, Folk 6.2 -> 9.0, Bengals DST -0.53, Falcons DST -0.29.
+Not validated: review after six weeks against `before`; stated priors are the
+distance prior, the 10.2 SD and the 30-minute kickoff match.
 
 **Defense-side and game-shape lines are captured too (2026-11-06).** The
 per-event market listing (`/events/{id}/markets`, 1 credit) showed 109
@@ -7972,9 +7990,8 @@ kickoff, the main rushers only) and `longest_td_yds` (DraftKings, the
 longest-touchdown page's own question; filed under player `game` since it
 has no subject). Not added: tackles (not DK DST scoring) and Pinnacle's
 `player_defensive_interceptions` (quarterbacks' picks thrown, already
-captured). A market no book posts is not charged. Nothing reads these yet:
-the first use should be a graded book-implied DST points-allowed component
-against actual DST points before the special-teams model takes it.
+captured). A market no book posts is not charged. The special-teams anchor
+below reads the team-total ladder; sacks and longest-TD yards are stored only.
 
 ## NFL DFS — Two forward accuracy streams, never pooled (2026-09-22)
 

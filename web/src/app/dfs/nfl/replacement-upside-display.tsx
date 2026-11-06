@@ -146,3 +146,18 @@ export function ProjectionCorrectionChip({ correction }: { correction: import("@
     </span>
   );
 }
+
+/** nfl-special-teams-anchor-v1: a kicker from the books' ladders, or a DST shifted by the opponent's team-total ladder. */
+export function SpecialTeamsAnchorChip({ anchor }: { anchor: import("@/lib/nfl-dfs/special-teams-anchor").SpecialTeamsAnchor }) {
+  const at = new Date(anchor.capturedAt).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" });
+  const title = `${anchor.note} Captured ${at} ET. The number it replaced was ${anchor.before.mean.toFixed(1)}.`;
+  const text = anchor.mode === "kicker_lines"
+    ? `Vegas K · ${anchor.before.mean.toFixed(1)} → ${anchor.after.mean.toFixed(1)}`
+    : `Vegas pts allowed · ${anchor.dst && anchor.dst.shift >= 0 ? "+" : ""}${anchor.dst?.shift.toFixed(2) ?? "?"}`;
+  return (
+    <span title={title}
+      className="ml-2 inline-flex items-center rounded-full border border-indigo-300 bg-indigo-50 px-2 py-0.5 align-middle text-[10px] font-bold text-indigo-800">
+      {text}
+    </span>
+  );
+}

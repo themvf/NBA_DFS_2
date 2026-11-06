@@ -63,7 +63,11 @@ TD_ORDER_MARKETS: tuple[str, ...] = ("player_1st_td",)
 # depth chart missed that night. Kicking points is scoreboard points (3 x FG +
 # PAT), without DraftKings' distance bonus. Kickers matter in Showdown only;
 # not in the midweek main set. Graded before any projection uses them.
-KICKER_MARKETS: tuple[str, ...] = ("player_field_goals", "player_pats", "player_kicking_points")
+# The field-goal and extra-point ladders (DraftKings only) are what the
+# special-teams anchor sums for the expected counts; added the same day the
+# anchor shipped, after the first capture stored only the main lines.
+KICKER_MARKETS: tuple[str, ...] = ("player_field_goals", "player_pats", "player_kicking_points",
+                                   "player_field_goals_alternate", "player_pats_alternate")
 # Added 2026-11-06 (owner's call, "whatever will improve the model"), from the
 # per-event market listing (109 markets on CIN @ ATL across seven books; no
 # fantasy-score or DST market exists). Team totals: Pinnacle, FanDuel and
