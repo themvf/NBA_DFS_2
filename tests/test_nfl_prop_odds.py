@@ -143,12 +143,38 @@ def test_multi_touchdown_market_keeps_its_over_only_line() -> None:
 def test_backfill_requests_only_markets_a_game_is_missing() -> None:
     from ingest.nfl_prop_backfill import missing_markets
     from ingest.nfl_prop_odds import CAPTURE_MARKETS, KICKER_MARKETS, MARKETS, VOLUME_MARKETS
-    assert len(CAPTURE_MARKETS) == 25 and len(set(CAPTURE_MARKETS)) == 25
+    assert len(CAPTURE_MARKETS) == 29 and len(set(CAPTURE_MARKETS)) == 29
     assert KICKER_MARKETS == ("player_field_goals", "player_pats", "player_kicking_points")
     have = set(MARKETS)
     missing = missing_markets(have)
     assert not set(missing) & have and set(VOLUME_MARKETS) <= set(missing)
     assert missing_markets(set(CAPTURE_MARKETS)) == []
+
+
+def test_team_totals_file_under_the_team_and_game_markets_under_game() -> None:
+    """Team totals carry the team in `description`; longest_td_yds has no subject at all and must not be dropped."""
+    from ingest.nfl_prop_odds import GAME_SUBJECT
+    payload = {"bookmakers": [{"key": "draftkings", "markets": [
+        {"key": "team_totals", "outcomes": [
+            {"name": "Over", "description": "Atlanta Falcons", "point": 24.5, "price": -110},
+            {"name": "Under", "description": "Atlanta Falcons", "point": 24.5, "price": -110}]},
+        {"key": "alternate_team_totals", "outcomes": [
+            {"name": "Over", "description": "Atlanta Falcons", "point": 14.5, "price": -700},
+            {"name": "Under", "description": "Atlanta Falcons", "point": 14.5, "price": 450},
+            {"name": "Over", "description": "Atlanta Falcons", "point": 27.5, "price": 130}]},
+        {"key": "longest_td_yds", "outcomes": [
+            {"name": "Over", "point": 32.5, "price": -115}, {"name": "Under", "point": 32.5, "price": -115}]},
+        {"key": "player_sacks", "outcomes": [
+            {"name": "Over", "point": 0.5, "price": 110}, {"name": "Under", "point": 0.5, "price": -140}]},
+    ]}]}
+    rows = {(r["market"], r["player"]): r for r in normalize_prop_payload(payload)}
+    assert rows[("team_totals", "Atlanta Falcons")]["books"]["draftkings"]["line"] == 24.5
+    ladder = rows[("alternate_team_totals", "Atlanta Falcons")]["books"]["draftkings"]["ladder"]
+    assert [(r["side"], r["point"]) for r in ladder] == [("over", 14.5), ("over", 27.5), ("under", 14.5)]
+    assert "line" not in rows[("alternate_team_totals", "Atlanta Falcons")]["books"]["draftkings"], "a team-total ladder gets no single line"
+    game = rows[("longest_td_yds", GAME_SUBJECT)]["books"]["draftkings"]
+    assert game["line"] == 32.5 and game["over"] == -115 and game["under"] == -115
+    assert ("player_sacks", GAME_SUBJECT) not in rows, "a player market with no player is still dropped, never filed as the game"
 
 
 def test_first_td_is_a_yes_only_market() -> None:
@@ -159,11 +185,11 @@ def test_first_td_is_a_yes_only_market() -> None:
 
 
 def test_midweek_capture_takes_main_lines_only_and_prices_them() -> None:
-    """nfl-prop-field-lag-v1: the Wednesday/Friday rounds buy 12 markets a game, not 25 (kickers are not in the main set)."""
+    """nfl-prop-field-lag-v1: the Wednesday/Friday rounds buy 12 markets a game, not 29 (kickers, team totals, sacks are not in the main set)."""
     from ingest import nfl_prop_odds as m
     assert m.MARKET_SETS["main"] == m.MARKETS + m.VOLUME_MARKETS
-    assert len(m.MARKET_SETS["main"]) == 12 and len(m.MARKET_SETS["all"]) == 25
-    assert not set(m.KICKER_MARKETS) & set(m.MARKET_SETS["main"])
+    assert len(m.MARKET_SETS["main"]) == 12 and len(m.MARKET_SETS["all"]) == 29
+    assert not set(m.KICKER_MARKETS + m.TEAM_TOTAL_MARKETS + m.DEFENSE_MARKETS + m.TD_SHAPE_MARKETS) & set(m.MARKET_SETS["main"])
     assert not any(k.endswith("_alternate") for k in m.MARKET_SETS["main"])
     m_fetch = m.fetch_events
     m.fetch_events = lambda key: [{"id": "g1", "commence_time": "2026-11-08T18:00:00Z"},
@@ -174,7 +200,7 @@ def test_midweek_capture_takes_main_lines_only_and_prices_them() -> None:
         full = m.capture(db=None, api_key="k", event_limit=0, apply=False, within_hours=130, min_hours=30, now=now)
         main = m.capture(db=None, api_key="k", event_limit=0, apply=False, within_hours=130, min_hours=30, now=now,
                          markets=m.MARKET_SETS["main"])
-        assert full["estimatedCredits"] == 2 * 25 and main["estimatedCredits"] == 2 * 12
+        assert full["estimatedCredits"] == 2 * 29 and main["estimatedCredits"] == 2 * 12
         with pytest.raises(ValueError, match="at least one market"):
             m.capture(db=None, api_key="k", event_limit=0, apply=False, within_hours=130, now=now, markets=())
     finally:
