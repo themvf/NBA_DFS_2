@@ -113,6 +113,10 @@ export function nflPropDayAheadDue(now: Date, context: DispatchContext): boolean
  * day-ahead capture. Main lines only (12 markets), so about 180 credits a round.
  */
 export const PROP_MIDWEEK_WINDOW_HOURS = { wed: 130, fri: 100 } as const;
+/** Full-market prop capture ceiling: a 16-game day at 31 markets is 496 credits; the old 420 failed
+ *  the whole run (require_credit_budget raises) on any 14-game Sunday once the kicker and team-total
+ *  ladders were added on 2026-11-06. Keep it >= 16 x CAPTURE_MARKETS. */
+export const PROP_CAPTURE_MAX_CREDITS = 520;
 export const PROP_MIDWEEK_MIN_HOURS = 30;
 
 function nflPropMidweekDue(day: 3 | 5, now: Date, context: DispatchContext): boolean {
@@ -283,14 +287,14 @@ export const DISPATCH_JOBS: readonly DispatchJob[] = [
     due: nflPropCaptureDue,
     // Only the group kicking off 60-75 minutes from now: min 1h keeps an earlier
     // group (already priced at its own T-75) from being bought twice.
-    inputs: { event_limit: "0", max_credits: "420", within_hours: "1.25", min_hours: "1" },
-    why: "Pregame player over/unders and DraftKings ladders (Odds API, ~21 credits a game), 60-75 minutes before each kickoff group: the closing read the DFS projection anchors on.",
+    inputs: { event_limit: "0", max_credits: String(PROP_CAPTURE_MAX_CREDITS), within_hours: "1.25", min_hours: "1" },
+    why: "Pregame player over/unders, DraftKings ladders, kicker and team-total lines (Odds API, 31 credits a game), 60-75 minutes before each kickoff group: the closing read the DFS projection anchors on.",
   },
   {
     key: "nfl-prop-capture-day-ahead",
     workflow: "capture_nfl_props.yml",
     due: nflPropDayAheadDue,
-    inputs: { event_limit: "0", max_credits: "420", within_hours: "36", day_ahead: "true" },
+    inputs: { event_limit: "0", max_credits: String(PROP_CAPTURE_MAX_CREDITS), within_hours: "36", day_ahead: "true" },
     why: "The same prop lines the day before (Wednesday for Thursday, Saturday for Sunday, Sunday for Monday), so an early build has real lines.",
   },
   {

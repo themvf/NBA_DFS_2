@@ -204,6 +204,12 @@ assert.ok(!keys("2026-10-11T15:52:00Z", { nflKickoffs: [] }).includes("nfl-prop-
 assert.ok(!keys("2026-10-11T15:52:00Z", { nflKickoffs: null }).includes("nfl-prop-capture"), "unreadable schedule: no blind paid capture");
 const propInputs = DISPATCH_JOBS.find((j) => j.key === "nfl-prop-capture")?.inputs;
 assert.deepEqual([propInputs?.within_hours, propInputs?.min_hours], ["1.25", "1"], "only the group kicking off 60-75 minutes out, never an unbounded capture");
+const dayAheadInputs = DISPATCH_JOBS.find((j) => j.key === "nfl-prop-capture-day-ahead")?.inputs;
+// 31 markets a game since 2026-11-06: a 14-game Sunday is 434 credits, and the capture raises (writes nothing) above the ceiling.
+for (const [label, inputs] of [["pre-kickoff", propInputs], ["day-ahead", dayAheadInputs]] as const) {
+  assert.ok(Number(inputs?.max_credits) >= 16 * 31, `${label} ceiling covers a 16-game day at 31 markets, got ${inputs?.max_credits}`);
+  assert.ok(Number(inputs?.max_credits) <= 600, `${label} ceiling is still a ceiling, got ${inputs?.max_credits}`);
+}
 // Day before: the 22:07 UTC tick with an NFL game on tomorrow's Eastern date.
 const thu = new Date("2026-10-16T00:15:00Z"); // Thursday 8:15 PM ET
 assert.ok(keys("2026-10-14T22:07:00Z", { nflKickoffs: [thu] }).includes("nfl-prop-capture-day-ahead"), "Wednesday evening for Thursday's game");
