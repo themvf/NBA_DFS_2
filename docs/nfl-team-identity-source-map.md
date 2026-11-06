@@ -1,5 +1,17 @@
 # NFL Team Identity: source and presentation map
 
+## Anytime touchdown comparison (2026-11-06)
+
+`/nfl/td-comparison` reads `nfl_season_games` regular-season fixtures through
+canonical `nflverse_game_id` and `nfl_teams` home/away IDs. Final paired forecasts
+live in `nfl_td_comparison_forecasts`; full-game result revisions live in
+`nfl_td_comparison_results`. The reader repeats season/week/team/kickoff checks.
+Rushing and receiving TDs include overtime. This is separate from the existing
+regulation-only longest-TD consumer. Unknown results are never treated as zero.
+`docs/nfl-td-comparison-website.md` documents the publication contract, source
+reconciliation and remaining model-generation work. No model outputs are
+invented for the initial pending state.
+
 ## Local longest-touchdown research consumer
 
 `model/nfl_longest_touchdown.py` and `research/nfl_longest_touchdown.py` implement

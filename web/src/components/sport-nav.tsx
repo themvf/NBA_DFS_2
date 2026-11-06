@@ -46,6 +46,7 @@ const PAGE_LINKS: Array<{
   { href: "/nfl/pickem", label: "Pick'em Pools", sports: ["nfl"] },
   { href: "/nfl/specials", label: "Slate Specials", sports: ["nfl"] },
     { href: "/nfl/longest-touchdown", label: "Longest TD", sports: ["nfl"] },
+  { href: "/nfl/td-comparison", label: "TD Comparison", sports: ["nfl"] },
     { href: "/nfl/game-leaders", label: "Game Leaders", sports: ["nfl"] },
   { href: "/nfl/position-stats", label: "Position Stats", sports: ["nfl"] },
   { href: "/nfl/pbp", label: "PBP Archetypes", sports: ["nfl"] },
