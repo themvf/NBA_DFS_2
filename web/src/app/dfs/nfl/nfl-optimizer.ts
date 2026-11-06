@@ -450,9 +450,17 @@ type ResolvedPlayer = NflOptimizerPlayer & {
   salaryRelief: boolean;
   /** Phase 1: whether this player may be used at Captain (Flex-only for overridden cheap players by default). */
   captainEligible: boolean;
-  /** `draws` mode: this player's DK points in simulated game `index` (index 0 = his projection). */
-  drawAt?: (index: number) => number;
 };
+
+/**
+ * `draws` mode: each pool player's DK points in simulated game `index`
+ * (index 0 = his projection). Kept OFF the player object on purpose: the
+ * generate action returns the lineups' players to the client component, and
+ * React's server-action serializer refuses any function-valued field. The
+ * first version stored this as `player.drawAt`, and every GPP build with the
+ * draws objective (the page default) failed in production on 2026-11-05.
+ */
+const DRAW_AT = new WeakMap<ResolvedPlayer, (index: number) => number>();
 
 type SolverModel = {
   optimize: "score";
@@ -772,7 +780,8 @@ function objective(player: ResolvedPlayer, settings: NflOptimizerSettings, lineu
     // ranking) is the projection. No jitter: the draws are the variation.
     // Leverage prices the lineup's duplication (a sum of log slot ownerships),
     // and is not scaled by the captain multiplier the caller applies.
-    const points = lineupNumber > 0 && player.drawAt ? player.drawAt(lineupNumber) : player.projection;
+    const drawAt = lineupNumber > 0 ? DRAW_AT.get(player) : undefined;
+    const points = drawAt ? drawAt(lineupNumber) : player.projection;
     const leverageOn = settings.ownershipLeverageEnabled ?? ((settings.ownershipCapability ?? "unavailable") === "validated");
     const leverage = leverageOn
       ? slotLeverageBonus(slotOwnershipPct(player, slot), settings.leveragePointsPerHalving ?? DEFAULT_LEVERAGE_POINTS_PER_HALVING) / (slot === "CPT" ? 1.5 : 1)
@@ -1893,7 +1902,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
     const model = drawModel;
     const cache = new Map<number, Map<number, number>>();
     const at = (index: number) => { let d = cache.get(index); if (!d) { d = drawOutcome(model, index); cache.set(index, d); } return d; };
-    for (const p of pool) p.drawAt = (index) => at(index).get(p.dkPlayerId) ?? p.projection;
+    for (const p of pool) DRAW_AT.set(p, (index) => at(index).get(p.dkPlayerId) ?? p.projection);
     const named = (ids: number[]) => ids.map((id) => pool.find((p) => p.dkPlayerId === id)?.name ?? `#${id}`).join(", ");
     warnings.push(`Lineups scored on simulated games (${LINEUP_DRAWS_VERSION}, seed ${model.seed}): each lineup is the best one for one correlated simulated game, so a player's exposure follows how often he belongs in the best lineup; your caps are limits, not targets.`
       + (model.fixed.length ? ` No range, drawn at projection: ${named(model.fixed)}.` : "")
