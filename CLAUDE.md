@@ -8160,6 +8160,26 @@ DraftKings College Football Classic lives apart from NFL DFS by design: route
 
 ---
 
+## NFL DFS — Archetype theses on 2023-25 outcomes (`nfl-archetype-thesis-v1`, 2026-11-07)
+
+Before adding Showdown or Classic archetypes, their claims were tested on
+2023-25 game outcomes (816 games, DraftKings scoring from nflverse rows,
+closing spread and total; no salaries or ownership exist before 2026, so this
+grades the co-movement each archetype asserts, never a lineup):
+[`docs/nfl-archetype-thesis-2023-25.md`](docs/nfl-archetype-thesis-2023-25.md),
+`research/nfl_archetype_thesis.py`. Supported: favorite onslaught (favorite
+share of the game's top 6 is 56%, 62% at spreads of 7+; >= 4 of 6 in 44% of
+games), captain stack (a WR/TE top scorer has his own QB in the top 3 in 59%
+and top 6 in 84%; a QB top scorer an own catcher in the top 6 in 94%), the
+captain-position rule (top scorer WR 31 / RB 30 / QB 29 / TE 6 / DST 4 / K 2%),
+low-scoring K/DST (a K or DST in the top 6 in 66% of low-total games vs 44% of
+high-total), and the Classic double stack (QB vs own WR1 r = +0.41, every
+season). Not supported: the "blowout" favorite-RB-plus-favorite-DST
+correlation (r = -0.03 for favorites, -0.06 at 7+) and RB-plus-own-DST (+0.07),
+so those archetypes are not built; a shootout archetype adds nothing beyond a
+total slice (both QBs >= 20 sits on independence inside each total tercile). A
+5+ team stack is a one-in-six outcome (23% at 7+), 4+ a 63% one.
+
 ## NFL DFS — Field-ownership prior (`nfl-ownership-prior-v2`, 2026-09-29; v1 2026-09-27)
 
 **v2 corrections (after PHI@CHI 2026-09-28).** Showdown captain + flex ownership
