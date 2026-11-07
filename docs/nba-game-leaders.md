@@ -61,6 +61,20 @@ happened on the 123 games it closes about half of the gap (39% said vs 43% led).
 markets carried 113-117% on the players shown alone; the book's own +10000 cap prices players
 with near-zero chance at 1%.
 
+## Leading his own team (2026-11-06)
+
+Each game card also shows, per team, the team's biggest line and his chance to outscore his
+quoted teammates (same draws, ties split; an unquoted bench player can still lead, which the
+chance does not count), beside this season's record: how often that player, and the team's
+biggest line whoever held it, actually led the team (`getNbaTeamLeaderGames`, from the nightly
+grade and ESPN box scores; games before the viewed date, a player who sat scores 0).
+
+Oct 20 - Nov 5, 246 team-games: the team's biggest line led his team 54% (95% CI 48-60%). The
+team-level range was wide (Golden State 8/9, Denver 1/7, Toronto 1.3/8), but with about eight
+games a team a permutation test of between-team spread gave p = 0.36, so the record is shown
+as history, not used to adjust anything. Clearer leaders led more often (line 10+ above the
+next teammate 64%, line 30+ 74%); recent over/under form showed no reliable pattern.
+
 ## Where it is used
 
 - `/nba/top-scorers` "Game leaders" panel: always corrected (`web/src/lib/nba-game-leaders.ts`).

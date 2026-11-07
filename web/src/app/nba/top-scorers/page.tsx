@@ -5,7 +5,8 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { easternDateString } from "@/lib/eastern-date";
 import { buildBoard, playerKey, teamKey } from "@/lib/nba-top-scorers";
-import { gameLeaders } from "@/lib/nba-game-leaders";
+import { gameLeaders, teamRecords } from "@/lib/nba-game-leaders";
+import { getNbaTeamLeaderGames } from "@/db/nba-team-leaders";
 import {
   getNbaPointsPropDates,
   getNbaPointsProps,
@@ -77,7 +78,7 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
   const requested = params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) ? params.date : null;
   const date = requested ?? today;
 
-  const [rows, ladderRows, pulled, lastSeason, teams, calibration, nightCalibration, gradedRows, currentTeams] = await Promise.all([
+  const [rows, ladderRows, pulled, lastSeason, teams, calibration, nightCalibration, gradedRows, currentTeams, teamLeaderGames] = await Promise.all([
     getNbaPointsProps(date),
     getNbaPointsProps(date, "player_points_alternate"),
     getNbaPulledLines(date),
@@ -87,6 +88,7 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
     getNbaPointsCalibration(date),
     getNbaPointsCalibrationRows(),
     getNbaCurrentTeams(date),
+    getNbaTeamLeaderGames(date),
   ]);
   const reliability = reliabilitySeries(gradedRows);
   const scatter = scatterData(gradedRows);
@@ -108,6 +110,8 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
     })),
     [...games].sort((a, b) => a.commenceTime.localeCompare(b.commenceTime)),
   );
+  const leaderRecords = teamRecords(teamLeaderGames, teamKey);
+  const teamLabels = Object.fromEntries(scorers.filter((s) => s.team).map((s) => [teamKey(s.team), s.teamAbbrev ?? s.team!]));
   // eslint-disable-next-line react-hooks/purity -- server component, rendered per request
   const renderedAt = Date.now();
 
@@ -158,7 +162,7 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
         <TopScorersClient scorers={scorers} games={games} pulled={pulled} lastSeason={LAST_SEASON} thisSeason={seasonLabel(date)} boomBoard={boomBoard} liveAvailability={liveAvailability} />
       )}
 
-      <GameLeadersPanel games={leaders} now={renderedAt} />
+      <GameLeadersPanel games={leaders} now={renderedAt} records={leaderRecords} teamLabels={teamLabels} />
 
       <BoomLineups key={`${date}:${availability?.sha??"unknown"}`} board={boomBoard} evidence={availability} />
 
