@@ -1,4 +1,4 @@
-"""Label provenance for imported NFL DFS field ownership (`nfl-ownership-provenance-v1`).
+"""Label provenance for imported NFL DFS field ownership (`nfl-ownership-provenance-v2`).
 
 Pure classifier for docs/nfl-ownership-scorecard-v1.md section 3. Every label a
 contest supplies is one of:
@@ -30,9 +30,15 @@ Import paths and what each can prove:
 - ``stat_api``: ownership is assembled from the fetched users' seats. A present
   player's overall share is observed when some fetched user rostered him at FLEX
   (the FLEX seat carries the overall share); a captain share is observed only
-  when some fetched user captained him. Missing players are reconciled zeros only
-  when the recorded mass is at least ``mass_floor`` AND the full standings were
-  fetched (``score_curve`` present); otherwise unresolved.
+  when some fetched user captained him. Missing players are reconciled zeros
+  when the recorded mass is at least ``mass_floor``; otherwise unresolved. v1 also
+  required the full standings (``score_curve`` present). v2 (owner's decision
+  2026-11-07, scorecard v4) drops that: since 2026-10-19 stat-api serves
+  flagships as top-100 previews, and the top 100 users' seats already carry
+  every rostered player's whole-field share, so a contest whose recorded mass
+  clears the floor is complete whether or not the standings were fetched. The
+  unseen mass (at most 1 - floor of the roster slots) is what the absent
+  players' zeros can be wrong by in total.
 - ``dfsdb``: the athletes list is capped at 50 rows chosen by fantasy points and
   carries the FLEX share only (``drafted_pct`` is NOT the overall share). FLEX is
   observed; overall and CPT are unresolved; missing players are unresolved.
@@ -48,7 +54,7 @@ from typing import Iterable, Mapping
 
 from model.nfl_dfs_field_audit import normalize_name
 
-VERSION = "nfl-ownership-provenance-v1"
+VERSION = "nfl-ownership-provenance-v2"
 CLASSES = ("observed", "reconciled_zero", "synthesized_zero", "unresolved")
 GATE_CLASSES = ("observed", "reconciled_zero")
 DEFAULT_MASS_FLOOR = 0.995   # PROVISIONAL: the owner has not frozen it (scorecard task 3)
@@ -128,7 +134,7 @@ def classify_contest(rec: ContestRecord, *, mass_floor: float = DEFAULT_MASS_FLO
     if path == "dk_export":
         complete = True
     elif path == "stat_api":
-        complete = mass is not None and mass >= mass_floor and rec.full_standings
+        complete = mass is not None and mass >= mass_floor   # v2: full standings no longer required
     else:
         complete = False
     prov = ContestProvenance(rec.contest_id, path, mass, complete)
@@ -205,9 +211,10 @@ def classify_contest(rec: ContestRecord, *, mass_floor: float = DEFAULT_MASS_FLO
         for slot in slots:
             if complete:
                 add(name, slot, "reconciled_zero", 0.0, None,
-                    "dk_export_absent" if path == "dk_export" else "statapi_absent_complete", False)
+                    "dk_export_absent" if path == "dk_export" else
+                    ("statapi_absent_complete" if rec.full_standings else "statapi_absent_complete_top100"), False)
             else:
-                basis = {"stat_api": "statapi_absent_below_mass_floor_or_partial_standings",
+                basis = {"stat_api": "statapi_absent_below_mass_floor",
                          "dfsdb": "dfsdb_absent_capped_list"}.get(path, "absent_incomplete_record")
                 add(name, slot, "unresolved", None, None, basis, False)
     return prov

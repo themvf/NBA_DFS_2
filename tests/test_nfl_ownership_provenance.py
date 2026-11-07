@@ -1,7 +1,7 @@
 """Label provenance classifier (model/nfl_ownership_provenance.py, scorecard section 3)."""
 
 from model import nfl_ownership_provenance as prov
-from model.nfl_ownership_provenance import ContestRecord, classify_contest, import_path, user_seats
+from model.nfl_ownership_provenance import VERSION, ContestRecord, classify_contest, import_path, user_seats
 
 
 def _labels(p):
@@ -65,12 +65,18 @@ def test_player_seen_only_as_captain_has_no_overall_and_a_synthesized_flex():
     assert labels[("captainonly", "FLEX")].label_class == "synthesized_zero"
 
 
-def test_missing_player_is_reconciled_only_with_mass_and_full_standings():
+def test_missing_player_is_reconciled_on_mass_alone_since_v2():
+    assert VERSION == "nfl-ownership-provenance-v2"
     complete = _labels(classify_contest(_statapi_showdown()))
     assert all(complete[("nobody", s)].label_class == "reconciled_zero" for s in ("overall", "CPT", "FLEX"))
     assert complete[("nobody", "overall")].label_pct == 0.0
+    assert complete[("nobody", "overall")].basis == "statapi_absent_complete"
+    # Scorecard v4: a top-100 preview (no full standings) whose mass clears the floor is complete too,
+    # and its absent players carry a basis that says so.
     partial = _labels(classify_contest(_statapi_showdown(full_standings=False)))
-    assert all(partial[("nobody", s)].label_class == "unresolved" for s in ("overall", "CPT", "FLEX"))
+    assert all(partial[("nobody", s)].label_class == "reconciled_zero" for s in ("overall", "CPT", "FLEX"))
+    assert partial[("nobody", "overall")].basis == "statapi_absent_complete_top100"
+    assert classify_contest(_statapi_showdown(full_standings=False)).complete is True
 
 
 def test_mass_floor_is_a_parameter_and_week4_mass_falls_below_the_provisional_floor():

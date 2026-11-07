@@ -459,7 +459,7 @@ count for nothing.
 
 ### Prospective grade (frozen now)
 
-- **Population:** `nfl_ownership_scorecard_rows` under scorecard v3, reference
+- **Population:** `nfl_ownership_scorecard_rows` under scorecard v3 (v4 from the 2026-11-07 completeness amendment, which adds the stat-api top-100 contests), reference
   contest with complete labels, canonical primary forecast, `full_pool`
   population, 2026 weeks 10 and later (the first kickoff after this
   registration; week 9's Sunday and Monday slates are tagged `design` although
