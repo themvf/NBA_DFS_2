@@ -38,6 +38,13 @@ def quote_issues(books: dict, captured_at: datetime) -> list[str]:
 LIVE_GAMES = "SELECT id FROM cfb_matchups WHERE commence_time > NOW() - INTERVAL '1 day'"
 
 
+def _scoped(sql: str, column: str) -> str:
+    """Restrict a check to the live games: before GROUP BY when there is one, else at the end."""
+    clause = f" AND {column}=ANY(%s)"
+    head, sep, tail = sql.partition(" GROUP BY ")
+    return head + clause + sep + tail if sep else sql + clause
+
+
 def audit(connection, *, full: bool = False) -> dict:
     from collections import defaultdict
     from model.line_alerts import _cfb_market_signals, _nfl_line_outcome
@@ -77,7 +84,14 @@ def audit(connection, *, full: bool = False) -> dict:
             ON m.id=a.matchup_id WHERE a.sport='cfb' AND a.outcome IS NOT NULL
             AND (NOT m.completed OR m.home_score IS NULL OR m.away_score IS NULL)""",
     }
-    errors = {name: found for name, sql in checks.items() if (found := rows(sql))}
+    # Each check reads only live games between full audits; the column naming the game differs per check.
+    check_scope = {"capture_identity_or_boundary": "h.matchup_id", "duplicate_capture_keys": "matchup_id",
+                   "invalid_checkpoint_evidence": "c.matchup_id", "invalid_close_evidence": "c.matchup_id",
+                   "invalid_signal_trigger": "a.matchup_id", "premature_settlement": "a.matchup_id"}
+    if not full:
+        checks = {name: _scoped(sql, check_scope[name]) for name, sql in checks.items()}
+    errors = {name: found for name, sql in checks.items()
+              if (found := rows(sql, None if full else (live_games,)))}
     bad_quotes = []
     for row in rows("SELECT h.id,h.books,h.captured_at FROM game_odds_history h WHERE h.sport='cfb'" + scope, scope_params):
         issues = quote_issues(row["books"] or {}, row["captured_at"])

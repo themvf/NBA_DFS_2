@@ -76,3 +76,20 @@ def test_a_bad_quote_in_a_live_game_still_fails_the_capture_run():
     result, _ = run_audit(quotes=[{"id": 41, "books": {"dk": {"spread_home": -3, "spread_away": 4}}, "captured_at": captured}])
     assert result["integrity_status"] == "fail"
     assert result["errors"]["invalid_quotes"] == [{"history_id": 41, "issues": ["dk:asymmetric_spread"]}]
+
+
+def test_a_capture_run_scopes_every_integrity_check_to_live_games():
+    _, cursor = run_audit()
+    checks = [(sql, params) for sql, params in cursor.sql
+              if any(k in sql for k in ("LEFT JOIN cfb_matchups m ON m.id=h.matchup_id", "HAVING COUNT(*)>1",
+                                        "FROM odds_capture_checkpoints c", "FROM event_closing_lines c",
+                                        "a.trigger_history_id", "a.outcome IS NOT NULL"))]
+    assert len(checks) == 6
+    assert all("=ANY(%s)" in sql and params == ([7, 9],) for sql, params in checks)
+    grouped = next(sql for sql, _ in checks if "HAVING" in sql)
+    assert grouped.index("ANY(%s)") < grouped.index("GROUP BY")
+
+
+def test_the_full_audit_checks_every_game():
+    _, cursor = run_audit(full=True)
+    assert not any("=ANY(%s)" in sql for sql, _ in cursor.sql)

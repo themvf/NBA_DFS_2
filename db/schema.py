@@ -4269,6 +4269,9 @@ TABLES = [
     CREATE INDEX IF NOT EXISTS idx_nfl_pbp_archetypes_season
         ON nfl_pbp_archetypes(season, week)
     """,
+    # 2026-11-07: /health reads MAX(labelled_at); without this it scanned the
+    # 400 MB table (323 MB from disk) on every check.
+    "CREATE INDEX IF NOT EXISTS idx_nfl_pbp_archetypes_labelled ON nfl_pbp_archetypes(labelled_at)",
     # The nflverse release content each labelled game was last labelled from,
     # one digest per game. `ingest/nfl_pbp_archetypes.py --relabel-stale`
     # compares it with the current release so a correction nflverse publishes
@@ -4435,6 +4438,9 @@ TABLES = [
         UNIQUE(study_run_id,player_id,season,week,captured_at),
         CHECK(captured_at < kickoff)
     )""",
+    # 2026-11-07: the NFL DFS page reads one study's week (newest capture per
+    # player); the unique key leads with player_id, so that read scanned the table.
+    "CREATE INDEX IF NOT EXISTS idx_nfl_dfs_shadow_study_week ON nfl_dfs_shadow_predictions(study_run_id, season, week, player_id, captured_at DESC, id DESC)",
     """CREATE TABLE IF NOT EXISTS nfl_dfs_shadow_outcomes (
         prediction_id BIGINT NOT NULL REFERENCES nfl_dfs_shadow_predictions(id),
         result_id BIGINT NOT NULL REFERENCES nfl_dfs_player_week_results(id),
@@ -5978,6 +5984,10 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_nfl_dfs_projection_runs_slate ON nfl_dfs_projection_runs(season, week, as_of_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_nfl_dfs_player_projections_run ON nfl_dfs_player_projections(run_id, position)",
     "CREATE INDEX IF NOT EXISTS idx_nfl_dfs_player_projections_player ON nfl_dfs_player_projections(player_id, created_at DESC)",
+    # 2026-11-07: the weekly report card lists every run's players for a week
+    # (ingest/nfl_dfs_reportcard.py); covering the columns it filters on turned a
+    # 1.1 GB scan of this 3.3 GB table into an index-only read.
+    "CREATE INDEX IF NOT EXISTS idx_nfl_dfs_proj_run_position_cover ON nfl_dfs_player_projections(run_id, position) INCLUDE (player_id, team, created_at, id)",
     "CREATE INDEX IF NOT EXISTS idx_nfl_dfs_slate_uploads_created ON nfl_dfs_slate_uploads(created_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_nfl_dfs_slate_players_upload ON nfl_dfs_slate_players(upload_id, position)",
     "CREATE INDEX IF NOT EXISTS idx_nfl_dfs_optimizer_runs_upload ON nfl_dfs_optimizer_runs(upload_id, created_at DESC)",
