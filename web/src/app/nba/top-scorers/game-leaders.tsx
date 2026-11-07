@@ -1,4 +1,4 @@
-import { fairAmerican, type GameLeaders } from "@/lib/nba-game-leaders";
+import { fairAmerican, type GameLeaders, type LeaderChance, type TeamRecord } from "@/lib/nba-game-leaders";
 
 const DARK_BORDER = { "--border": "#1e293b" } as React.CSSProperties;
 const SHOW = 5;
@@ -6,8 +6,50 @@ const SHOW = 5;
 const tip = (s: string) => new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" }).format(new Date(s));
 const pct = (v: number) => (v < 0.005 ? "<1%" : `${(v * 100).toFixed(0)}%`);
 
+const count = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
+const surname = (name: string) => name.split(" ").filter((w) => !/^(jr|sr|ii|iii|iv)\.?$/i.test(w)).at(-1) ?? name;
+
+/** Each team's biggest line: his chance to lead the team tonight, and how that has gone this season. */
+function TeamRows({ players, records, teamLabels }: { players: LeaderChance[]; records: Record<string, TeamRecord>; teamLabels: Record<string, string> }) {
+  const tops = new Map<string, LeaderChance>();
+  for (const p of players) {
+    if (p.team == null || p.teamChance == null) continue;
+    const cur = tops.get(p.team);
+    if (!cur || p.line > cur.line) tops.set(p.team, p);
+  }
+  if (tops.size === 0) return null;
+  return (
+    <div className="mt-2 space-y-1 border-t border-slate-800/70 pt-2 text-[12px]">
+      <div className="font-mono text-[10px] uppercase text-slate-500">Leads his team</div>
+      {[...tops.entries()].map(([team, p]) => {
+        const rec = records[team];
+        const mine = rec?.players[p.key];
+        return (
+          <div key={team} className="flex flex-wrap items-baseline justify-between gap-x-3">
+            <span>
+              <span className="font-mono text-slate-400">{teamLabels[team] ?? team}</span>{" "}
+              <span className="text-slate-200">{p.player}</span>{" "}
+              <span className="font-mono text-slate-300">{pct(p.teamChance!)}</span>
+            </span>
+            <span
+              className="font-mono text-[11px] text-slate-500"
+              title="This season, games where he (or anyone) held the team's biggest line, and how many times that player led the team. Ties split."
+            >
+              {rec
+                ? `season: ${mine ? `${surname(p.player)} ${count(mine.led)}/${mine.games} · ` : ""}team ${count(rec.led)}/${rec.games}`
+                : "no graded games yet"}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Chance each quoted player scores the most in his own game. Server-rendered. */
-export function GameLeadersPanel({ games, now }: { games: GameLeaders[]; now: number }) {
+export function GameLeadersPanel({ games, now, records, teamLabels }: {
+  games: GameLeaders[]; now: number; records: Record<string, TeamRecord>; teamLabels: Record<string, string>;
+}) {
   const shown = games.filter((g) => g.players.length > 0);
   if (shown.length === 0) return null;
   return (
@@ -61,6 +103,7 @@ export function GameLeadersPanel({ games, now }: { games: GameLeaders[]; now: nu
               {g.players.length > SHOW && (
                 <div className="mt-1 font-mono text-[11px] text-slate-500">{g.players.length - SHOW} more quoted players: {pct(rest)} combined</div>
               )}
+              <TeamRows players={g.players} records={records} teamLabels={teamLabels} />
             </div>
           );
         })}
@@ -69,7 +112,9 @@ export function GameLeadersPanel({ games, now }: { games: GameLeaders[]; now: nu
         Checked on 123 games (Oct 20 - Nov 5): the biggest line led his game 43% of the time, and the leader was one of the top three
         lines 80% of the time. The simulation said 39% for the biggest line, so its favourite chances run a little low and its
         longshot chances a little high (the books&apos; alternate lines overstate each player&apos;s top end; this version corrects most
-        of that, nba-points-sim-recal-v1). Not yet graded night by night.
+        of that, nba-points-sim-recal-v1). Not yet graded night by night. &quot;Leads his team&quot; is the same simulation against his
+        quoted teammates only; the record is this season&apos;s graded games (the team&apos;s biggest line led his team 54% of 246
+        team-games; at about eight games a team, no team&apos;s record differs from the rest by more than chance).
       </p>
     </section>
   );

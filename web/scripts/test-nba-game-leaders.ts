@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { recalibrateSurvival, rng, simulatePoints, type ContestPlayer } from "../src/lib/nba-contest-optimizer";
-import { fairAmerican, gameLeaders, leaderChances } from "../src/lib/nba-game-leaders";
+import { fairAmerican, gameLeaders, leaderChances, teamRecords } from "../src/lib/nba-game-leaders";
 
 const player = (key: string, line: number, eventId = "e1", team: string | null = "a", books = 6): ContestPlayer => ({
   key, player: key.toUpperCase(), eventId, team, line, pOver: 0.5, books,
@@ -9,9 +9,18 @@ const player = (key: string, line: number, eventId = "e1", team: string | null =
 
 // Chances in a game sum to one, ties split.
 const pool = [player("star", 32.5), player("two", 21.5, "e1", "b"), player("three", 17.5), player("four", 12.5, "e1", "b")];
-const c = leaderChances(pool, 8000, 5);
+const both = leaderChances(pool, 8000, 5);
+const c = both.game;
 assert.ok(Math.abs(c.reduce((a, v) => a + v, 0) - 1) < 1e-9, "chances sum to 1");
 assert.ok(c[0] > 0.5 && c[0] > c[1] && c[1] > c[2] && c[2] > c[3], `ordered by line: ${c}`);
+
+// Team shares: each team's shares sum to one, and a team leader is at least as likely as a game leader.
+assert.ok(Math.abs((both.team[0]! + both.team[2]!) - 1) < 1e-9, "team a sums to 1");
+assert.ok(Math.abs((both.team[1]! + both.team[3]!) - 1) < 1e-9, "team b sums to 1");
+for (let i = 0; i < 4; i++) assert.ok(both.team[i]! >= c[i] - 1e-12, `team share >= game share for ${i}`);
+const noTeam = leaderChances([player("solo", 20.5, "e1", null), player("other", 18.5)], 2000, 1);
+assert.equal(noTeam.team[0], null);
+assert.equal(noTeam.team[1], 1);
 
 // The correction moves chance from the longshots to the favourite.
 const lead = (pts: Float64Array, n: number, sims: number, i: number) => {
@@ -42,6 +51,17 @@ assert.equal(games[2].players.length, 0);
 // deterministic
 assert.deepEqual(gameLeaders(pool, [{ eventId: "e1", game: "A @ B", commenceTime: "t" }], 2000),
   gameLeaders(pool, [{ eventId: "e1", game: "A @ B", commenceTime: "t" }], 2000));
+
+// Season records by team and by the player who held the team's biggest line.
+const recs = teamRecords([
+  { team: "LA Clippers", player: "A", playerKey: "a", credit: 1 },
+  { team: "LA Clippers", player: "A", playerKey: "a", credit: 0.5 },
+  { team: "LA Clippers", player: "B", playerKey: "b", credit: 0 },
+  { team: "Utah Jazz", player: "C", playerKey: "c", credit: 0 },
+], (t) => t.toLowerCase().replace(/[^a-z]/g, ""));
+assert.deepEqual(recs.laclippers, { games: 3, led: 1.5, players: { a: { player: "A", games: 2, led: 1.5 }, b: { player: "B", games: 1, led: 0 } } });
+assert.equal(recs.utahjazz.led, 0);
+assert.ok(games[0].players.every((p) => p.teamChance != null));
 
 assert.equal(fairAmerican(0.5), "-100");
 assert.equal(fairAmerican(0.75), "-300");

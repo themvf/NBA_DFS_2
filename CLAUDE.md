@@ -338,7 +338,9 @@ low-line players too much chance to lead. `RECAL_G` (realized PIT CDF, shrunk wi
 level before the curve is inverted; leave-one-night-out it cut per-game leader log loss by 0.033 (CI 0.012-0.053).
 Opt-in (`simulate_points(..., recal=True)` / `simulatePoints(..., true)`): the frozen v1 entries never use it; custom
 runs and the "Game leaders" panel on `/nba/top-scorers` (`web/src/lib/nba-game-leaders.ts`, ungraded) do. The Odds
-API has no NBA most-points market (checked across 54 books); sportsbooks' own carry 13-17%+ margin.
+API has no NBA most-points market (checked across 54 books); sportsbooks' own carry 13-17%+ margin. Each card also
+shows each team's biggest line, his chance to lead his team, and this season's record (team's biggest line led
+his team 54% of 246 team-games; team-to-team spread not beyond chance at ~8 games, so history only).
 [`docs/nba-game-leaders.md`](docs/nba-game-leaders.md).
 
 ## Data Refresh Workflow
