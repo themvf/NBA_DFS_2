@@ -402,3 +402,91 @@ restated. At the fourth counted Classic Millionaire, KEEP the fit if all four
 registered conditions hold; otherwise REVERT the Classic default to v5. The
 Monday grade recomputes both from the build's own inputs either way, so the
 comparison does not depend on which one was live.
+
+## Rank-shape calibration layer — `nfl-ownership-rank-shape-v1` (registered 2026-11-07, before any week 10 capture)
+
+Owner's decision 2026-11-07 ("Register it"), after the week 9 Thursday import
+and regrade. Code: `model/nfl_ownership_rank_shape.py` (pure), frozen curves
+`model/nfl_ownership_rank_shape_v1.json` (digest `bbd895213850…`, written once
+by `python -m research.nfl_ownership_rank_shape --from-pickle … --freeze`),
+tests `tests/test_nfl_ownership_rank_shape.py`. Nothing live reads it.
+
+### What was measured first (weeks 2-9, 33 imported contests)
+
+The ownership error decomposes into ordering (which players the field drafts)
+and shape (how much the r-th most-drafted player gets). The shape is close to
+a fixed function of rank: on the complete-label reference contests the mean
+actual ownership at rank r, by Classic position or Showdown slot, has a
+week-to-week coefficient of variation of 0.08-0.13 from rank 3 down, and only
+rank 1 is unstable (CV 0.18-0.37). Our forecasts already have the right spread
+(slope of log actual on log forecast 0.96 Classic, 0.98 CPT, 0.97 FLEX, bias
+~0), so what remains is ordering (Spearman 0.80 / 0.87 / 0.88) and the top rung
+(Classic top-5 bias +4.7 points, Showdown captains -1.5).
+
+### The forecast
+
+For player i in group g (Classic: position; Showdown: every player, one curve
+per slot):
+
+```
+own_i = sum_r P(rank_i = r) * curve_g(r),   rescaled so the group sums to its frozen mean total
+P(rank) : rank the base forecast after adding N(0, sigma) to log(base + 0.05), averaged over 200 draws, seed 7
+sigma   = 0.6 (Classic), 0.3 (Showdown)      frozen; the best of {0, 0.3, 0.6, 0.9, 1.2} on weeks 2-9
+base    = nfl-ownership-prior-v5, recomputed from the frozen capture by the scorecard
+```
+
+sigma = 0 (a hard rank map) hands rank 1's curve value to whoever we rank
+first and was WORSE than v5 on Classic (2.13 vs 2.07); the noise term is what
+makes the layer work, so it is part of the version. The layer is applied to
+every player in the frozen capture (ruled-out players included, at a base of
+about 0), then graded on the gate labels as every other version is.
+
+### Evidence before registration (descriptive, the design sample)
+
+Leave-one-slate-out on the scorecard's primary canonical frames, curves from
+the other slates each time:
+
+| format / slot | slates | v5 MAE | rank-shape MAE | slates won | Spearman v5 → rs | top-5 bias v5 → rs |
+|---|---:|---:|---:|---|---|---|
+| Classic | 7 | 2.070 | 2.024 | 5 | 0.800 → 0.803 | +4.69 → +2.26 |
+| Showdown CPT | 16 | 1.396 | 1.300 | 13 | 0.866 → 0.864 | −1.54 → +0.46 |
+| Showdown FLEX | 14 | 4.256 | 3.832 | 11 | 0.881 → 0.881 | −1.36 → −0.93 |
+
+The scorecard's own design-week rows (curves in sample, labels-complete
+reference contests only): Classic 1.326 → 1.234 (4 of 4), CPT 1.361 → 1.205
+(13 of 15), FLEX 4.409 → 3.947 (12 of 15). Those rows are tagged `design` and
+count for nothing.
+
+### Prospective grade (frozen now)
+
+- **Population:** `nfl_ownership_scorecard_rows` under scorecard v3, reference
+  contest with complete labels, canonical primary forecast, `full_pool`
+  population, 2026 weeks 10 and later (the first kickoff after this
+  registration; week 9's Sunday and Monday slates are tagged `design` although
+  their contests are not yet imported, to keep the boundary a week boundary).
+  Classic and each Showdown slot are graded separately and never pooled.
+- **Primary metric:** per-slate MAE of `nfl-ownership-rank-shape-v1` against
+  `nfl-ownership-prior-v5` on the same rows (paired).
+- **Floors:** Classic 4 counted slates; Showdown CPT and FLEX 8 counted slates
+  each. The verdict for a slot is computed once, on the first scorecard run
+  after its floor is reached, and recorded under this section.
+- **PROMOTE** a slot when all hold: the layer's MAE is lower on at least 3 of
+  the 4 Classic slates (6 of 8 Showdown), its pooled mean MAE is lower, and its
+  pooled Spearman is not lower by more than 0.01. Otherwise **RETIRE** it for
+  that slot. No re-slicing by position, salary or week, and sigma and the
+  curves do not move; a different sigma or a refreshed curve set is
+  `nfl-ownership-rank-shape-v2` with its own registration.
+- **What PROMOTE licenses:** a TypeScript port applied to the LIVE ordering
+  (the fitted model where that is live, v5 otherwise) as a shadow line beside
+  the Own box, with a separately registered grade before it drives leverage.
+  It never changes the live number by itself. Spearman is expected to be flat:
+  the layer cannot fix ordering, only the shape.
+
+### Known limits
+
+The Classic curves rest on 7 slates and rank 1 of every curve is the least
+stable number in them. The layer gives each player an expected ownership, not
+yet the per-player distribution the leverage term would want (E[(1 − own)^k]
+rather than (1 − E[own])^k); that is the next layer, not this one. It is not
+graded on the fitted ordering because the scorecard recomputes only the stated
+priors from frozen captures.

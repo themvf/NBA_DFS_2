@@ -8175,6 +8175,19 @@ is roughly neutral. True punts and kickers are still missed. Evaluate any
 Showdown ownership change with `python -m research.nfl_showdown_ownership_eval`
 (projected points kept at equal real-field duplication), not accuracy alone, and
 see the "Showdown: value exponent" section of `docs/nfl-ownership-model.md`.
+
+**Rank-shape calibration layer registered (`nfl-ownership-rank-shape-v1`, 2026-11-07).**
+Measured on the 33 imported contests: the field's ownership-by-rank curve is
+nearly fixed within a Classic position or Showdown slot (ranks 3+ vary 8-13%
+week to week), our forecasts' spread is already right (log-log slope 0.96-0.98),
+and the error is ordering plus the top rung. The layer maps an ordering through
+the frozen curves with log-normal rank noise (sigma 0.6 Classic / 0.3 Showdown,
+`model/nfl_ownership_rank_shape.py`, curves in `nfl_ownership_rank_shape_v1.json`
+from weeks 2-9). Leave-one-slate-out on the v5 ordering: Classic MAE 2.07 -> 2.02
+(5 of 7), Showdown CPT 1.40 -> 1.30 (13 of 16), FLEX 4.26 -> 3.83 (11 of 14). The
+scorecard grades it beside v5 from week 10; promotion rule and floors in
+`docs/nfl-ownership-model.md`. Nothing live reads it; a hard rank map (sigma 0)
+was worse on Classic, so do not ship the layer without the noise term.
 Contest standings lineups are summarized per contest in `nfl_dfs_field_structure`
 (`nfl-dfs-field-structure-v1`): duplication, heavy multi-entry share, pair lift.
 
