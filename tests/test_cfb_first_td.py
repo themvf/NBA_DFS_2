@@ -100,3 +100,32 @@ def test_dist_probability_reads_the_stored_distribution():
     assert m.dist_probability(dist, {"outcome": "offense", "side": "away", "pid": "zz"}) == 0.04
     assert m.dist_probability(dist, {"outcome": "non_offense", "side": "home"}) == 0.04
     assert m.dist_probability(dist, {"outcome": "offense", "side": "home", "pid": None}) is None
+
+
+def _row(gid, week, pid, rush_att=0, rush_td=0, receptions=0, rec_td=0, pass_att=0, team="T"):
+    return {"cfbd_game_id": gid, "pid": pid, "name": pid.upper() + " Q", "team": team, "season": 2026,
+            "week": week, "season_type": "regular", "rush_att": rush_att, "rush_td": rush_td,
+            "receptions": receptions, "rec_td": rec_td, "pass_att": pass_att}
+
+
+def test_player_chips_read_only_earlier_games():
+    rows = []
+    for week in range(1, 5):  # weeks 1-2 a backup, weeks 3-4 the lead back who scores
+        lead = week >= 3
+        rows += [_row(week, week, "rb", rush_att=18 if lead else 4, rush_td=1 if lead else 0),
+                 _row(week, week, "qb", rush_att=6, rush_td=1, pass_att=30),
+                 _row(week, week, "x", rush_att=5, rush_td=1 if week == 1 else 0)]
+    rows.append(_row(5, 5, "rb", rush_att=30, rush_td=4))  # the target week itself: never read
+    h = m.History(rows)
+    codes = {c["code"] for c in m.player_chips(h, "rb", "T", (2026, 5))}
+    assert codes == {"HOT", "NEW_ROLE"}
+    qb = {c["code"]: c["label"] for c in m.player_chips(h, "qb", "T", (2026, 5))}
+    assert qb["RUNNING_QB"] == "QB, 4 rush TDs" and qb["GOAL_LINE"] == "4 of 7 team rush TDs"
+
+
+def test_team_chips_favourite_and_first_scores():
+    firsts = {"A": [((2026, 1), True), ((2026, 2), False), ((2026, 9), True)], "B": []}
+    g = {"home": "A", "away": "B", "home_implied": 38.0, "away_implied": 17.0}
+    t = m.team_chips(g, firsts, (2026, 5))
+    assert [c["label"] for c in t["home"]] == ["Favoured by 21", "Scored first TD in 1 of 2"]
+    assert t["away"] == []

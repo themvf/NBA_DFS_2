@@ -3,7 +3,15 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 
-export type FirstTdPlayer = { name: string; team: string; prob: number; fair: number; td: number; touches: number };
+export type FirstTdChip = { code: string; label: string };
+
+export type FirstTdPlayer = {
+  name: string; team: string; prob: number; fair: number; td: number; touches: number;
+  /** Descriptive context; never part of the chance. Absent on forecasts saved before chips existed. */
+  chips?: FirstTdChip[];
+  /** On DraftKings' anytime-TD list for this game; null when no list was captured. */
+  listed?: boolean | null;
+};
 
 export type FirstTdGame = {
   cfbdGameId: number;
@@ -21,6 +29,7 @@ export type FirstTdGame = {
   /** The first touchdown play once the game's play-by-play is stored; null before then. */
   actual: { playType: string; text: string } | null;
   /** The sportsbook availability filter on this forecast; null for a forecast saved before it existed. */
+  teamChips: { home: FirstTdChip[]; away: FirstTdChip[] };
   availability: {
     status: "applied" | "no_lines";
     capturedAt: string | null;
@@ -58,7 +67,7 @@ export async function getFirstTdGames(date: string): Promise<FirstTdGame[]> {
     WITH latest AS (
       SELECT DISTINCT ON (p.cfbd_game_id) p.run_id, p.cfbd_game_id, p.kickoff, p.away, p.home,
              p.away_implied, p.home_implied, p.p_home_first, p.other_offense, p.non_offense, p.players,
-             p.availability, r.created_at, r.version
+             p.availability, p.context, r.created_at, r.version
       FROM cfb_first_td_predictions p JOIN cfb_first_td_runs r ON r.id = p.run_id
       WHERE (p.kickoff AT TIME ZONE ${ET})::date = ${date}::date AND r.created_at < p.kickoff
       -- The version with the sportsbook availability filter when one was saved, else the model alone.
@@ -90,7 +99,13 @@ export async function getFirstTdGames(date: string): Promise<FirstTdGame[]> {
     version: r.version as string,
     actual: r.play_type ? { playType: r.play_type as string, text: (r.play_text as string) ?? "" } : null,
     availability: availabilityOf(r.availability),
+    teamChips: teamChipsOf(r.context),
   }));
+}
+
+function teamChipsOf(raw: unknown): FirstTdGame["teamChips"] {
+  const t = (raw as { team_chips?: { home?: FirstTdChip[]; away?: FirstTdChip[] } } | null)?.team_chips;
+  return { home: t?.home ?? [], away: t?.away ?? [] };
 }
 
 function availabilityOf(raw: unknown): FirstTdGame["availability"] {
