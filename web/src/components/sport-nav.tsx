@@ -53,6 +53,7 @@ const PAGE_LINKS: Array<{
   { href: "/cfb", label: "Line Terminal", sports: ["cfb"] },
   { href: "/cfb/analytics", label: "CFB Analytics", sports: ["cfb"] },
   { href: "/cfb/dfs", label: "CFB DFS", sports: ["cfb"] },
+  { href: "/cfb/first-td", label: "First TD", sports: ["cfb"] },
   { href: "/cbb", label: "College Basketball", sports: ["cbb"] },
   { href: "/cbb/dfs", label: "CBB DFS", sports: ["cbb"] },
   { href: "/cbb/props", label: "Player Props", sports: ["cbb"] },

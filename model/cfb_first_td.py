@@ -34,6 +34,11 @@ walk-forward. Who actually plays is not known before kickoff and is not used.
 
     python -m model.cfb_first_td backtest
     python -m model.cfb_first_td slate --date 2026-11-07
+    python -m model.cfb_first_td publish            # saves the next 40 hours of games for the web page
+
+Publishing appends a run to cfb_first_td_runs and one row per game to
+cfb_first_td_predictions. Games that have kicked off are never written, so the
+latest row written before a game's kickoff is its frozen pregame forecast.
 """
 from __future__ import annotations
 
@@ -56,6 +61,23 @@ OFFENSIVE_TYPES = {"Rushing Touchdown": "rush", "Rush": "rush", "Passing Touchdo
 FIT_SEASONS_TEAM = (2022, 2023, 2024)
 FIT_SEASON_PLAYER = 2025
 TEST_SEASON = 2026
+PUBLISH_HOURS = 40
+PUBLISH_TOP = 10
+DDL = [
+    """CREATE TABLE IF NOT EXISTS cfb_first_td_runs (
+        id BIGSERIAL PRIMARY KEY, version TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        params JSONB NOT NULL, games INTEGER NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS cfb_first_td_predictions (
+        run_id BIGINT NOT NULL REFERENCES cfb_first_td_runs(id), cfbd_game_id BIGINT NOT NULL,
+        season INTEGER NOT NULL, week INTEGER, kickoff TIMESTAMPTZ NOT NULL,
+        away TEXT NOT NULL, home TEXT NOT NULL, away_implied DOUBLE PRECISION NOT NULL,
+        home_implied DOUBLE PRECISION NOT NULL, p_home_first DOUBLE PRECISION NOT NULL,
+        other_offense DOUBLE PRECISION NOT NULL, non_offense DOUBLE PRECISION NOT NULL,
+        players JSONB NOT NULL, history_through JSONB NOT NULL,
+        PRIMARY KEY (run_id, cfbd_game_id))""",
+    "CREATE INDEX IF NOT EXISTS idx_cfb_first_td_predictions_game ON cfb_first_td_predictions (cfbd_game_id, run_id DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_cfb_first_td_predictions_kickoff ON cfb_first_td_predictions (kickoff)",
+]
 
 
 @dataclass(frozen=True)
@@ -66,6 +88,10 @@ class Params:
     kappa: float = 1.0      # weight of volume-expected TDs against actual TDs
     w_prior: float = 0.3    # weight of last season against this season
     rho: float = 0.03       # league TDs per touch, set from history
+
+
+# Fitted by ``backtest`` (artifacts/cfb_first_td/backtest_v1.json): K and PHI on 2022-24, the rest on 2025.
+FITTED = Params(k=1.2, phi=0.0419271791099669, theta=0.05, kappa=4.0, w_prior=0.0)
 
 
 # ── names ────────────────────────────────────────────────────────────────────
@@ -454,16 +480,22 @@ def backtest(db: DatabaseManager) -> dict:
 
 
 # ── slate ────────────────────────────────────────────────────────────────────
+_UPCOMING = """
+    SELECT m.cfbd_game_id, m.season, m.season_type, m.week, m.commence_time, h.name AS home, a.name AS away,
+           m.home_implied, m.away_implied
+    FROM cfb_matchups m JOIN cfb_teams h ON h.team_id = m.home_team_id
+    JOIN cfb_teams a ON a.team_id = m.away_team_id
+    WHERE m.home_implied IS NOT NULL AND m.away_implied IS NOT NULL AND m.cfbd_game_id IS NOT NULL AND {where}
+    ORDER BY m.commence_time, h.name"""
+
+
 def slate(db: DatabaseManager, date: str, params: Params, top: int = 6) -> list[dict]:
+    games = db.execute(_UPCOMING.format(where="(m.commence_time AT TIME ZONE 'America/New_York')::date = %s"), (date,))
+    return predict(db, games, params, top)
+
+
+def predict(db: DatabaseManager, games: list[dict], params: Params, top: int = 6) -> list[dict]:
     history = History(load_box(db))
-    games = db.execute("""
-        SELECT m.cfbd_game_id, m.season, m.season_type, m.week, m.commence_time, h.name AS home, a.name AS away,
-               m.home_implied, m.away_implied
-        FROM cfb_matchups m JOIN cfb_teams h ON h.team_id = m.home_team_id
-        JOIN cfb_teams a ON a.team_id = m.away_team_id
-        WHERE (m.commence_time AT TIME ZONE 'America/New_York')::date = %s
-          AND m.home_implied IS NOT NULL AND m.away_implied IS NOT NULL
-        ORDER BY m.commence_time, h.name""", (date,))
     out = []
     for g in games:
         before = _order(g["season"], g["season_type"], g["week"])
@@ -476,6 +508,8 @@ def slate(db: DatabaseManager, date: str, params: Params, top: int = 6) -> list[
         last = {t: max((o for o, _ in history.games_by_team.get(t, []) if o < before), default=None)
                 for t in (g["home"], g["away"])}
         out.append({
+            "cfbd_game_id": g["cfbd_game_id"], "season": g["season"], "week": g["week"],
+            "away": g["away"], "home": g["home"], "commence_time": g["commence_time"],
             "game": f"{g['away']} @ {g['home']}", "kickoff": g["commence_time"].isoformat(),
             "implied": [float(g["away_implied"]), float(g["home_implied"])],
             "p_home_first": p_home, "history_through": {t: list(o) if o else None for t, o in last.items()},
@@ -485,6 +519,29 @@ def slate(db: DatabaseManager, date: str, params: Params, top: int = 6) -> list[
             "other_offense": dist["other:home"] + dist["other:away"], "non_offense": dist["non_offense"],
         })
     return out
+
+
+def publish(db: DatabaseManager, params: Params = FITTED, hours: int = PUBLISH_HOURS) -> tuple[int, int]:
+    """Save forecasts for games kicking off in the next ``hours``. Started games are never written."""
+    games = db.execute(_UPCOMING.format(
+        where="m.commence_time > NOW() AND m.commence_time <= NOW() + %s * INTERVAL '1 hour'"), (hours,))
+    rows = predict(db, games, params, PUBLISH_TOP) if games else []
+    with db.connect() as conn:
+        cur = conn.cursor()
+        for statement in DDL:
+            cur.execute(statement)
+        cur.execute("INSERT INTO cfb_first_td_runs (version, params, games) VALUES (%s, %s, %s) RETURNING id",
+                    (VERSION, json.dumps(params.__dict__), len(rows)))
+        run_id = cur.fetchone()["id"]
+        for r in rows:
+            cur.execute("""
+                INSERT INTO cfb_first_td_predictions (run_id, cfbd_game_id, season, week, kickoff, away, home,
+                    away_implied, home_implied, p_home_first, other_offense, non_offense, players, history_through)
+                SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s WHERE %s > NOW()""",
+                (run_id, r["cfbd_game_id"], r["season"], r["week"], r["commence_time"], r["away"], r["home"],
+                 r["implied"][0], r["implied"][1], r["p_home_first"], r["other_offense"], r["non_offense"],
+                 json.dumps(r["players"]), json.dumps(r["history_through"]), r["commence_time"]))
+    return run_id, len(rows)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -497,6 +554,8 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--params", type=Path, help="a backtest JSON; its fitted parameters are used")
     s.add_argument("--top", type=int, default=6)
     s.add_argument("--json", type=Path)
+    pub = sub.add_parser("publish")
+    pub.add_argument("--hours", type=int, default=PUBLISH_HOURS)
     args = ap.parse_args(argv)
     db = DatabaseManager(load_config().database_url, initialize_schema=False)
     if args.cmd == "backtest":
@@ -506,7 +565,11 @@ def main(argv: list[str] | None = None) -> int:
             args.json.write_text(text, encoding="utf-8")
         print(text)
         return 0
-    params = Params()
+    if args.cmd == "publish":
+        run_id, n = publish(db, FITTED, args.hours)
+        print(f"run {run_id}: {n} games saved ({VERSION})")
+        return 0
+    params = FITTED
     if args.params:
         fitted = json.loads(args.params.read_text(encoding="utf-8"))["params"]
         params = Params(**{k: v for k, v in fitted.items() if k != "rho"})

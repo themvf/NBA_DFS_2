@@ -115,6 +115,18 @@
       "pullRequest": false
     },
     {
+      "file": "cfb_first_td.yml",
+      "name": "CFB First Touchdown Forecasts",
+      "crons": [
+        "41 10 * 8-12 *",
+        "41 10 * 1 *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
       "file": "cfb_line_timing_check.yml",
       "name": "CFB Line Timing Check",
       "crons": [],
