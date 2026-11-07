@@ -129,3 +129,15 @@ def test_team_chips_favourite_and_first_scores():
     t = m.team_chips(g, firsts, (2026, 5))
     assert [c["label"] for c in t["home"]] == ["Favoured by 21", "Scored first TD in 1 of 2"]
     assert t["away"] == []
+
+
+def test_apply_lines_matches_a_unique_surname_across_first_names():
+    home = _cands("H", ["Marquise Brown", "Cy Dee", "Ed Eff", "Gus Hay", "Ian Jay"])
+    away = _cands("A", ["Kim Lee"])
+    listed = {m.name_key(n) for n in ["Hollywood Brown", "Cy Dee", "Ed Eff", "Gus Hay", "Ian Jay"]}
+    h, _, info = m.apply_lines(home, away, listed)
+    assert "H0" in h and info["dropped"] == []
+    # Two Browns among the candidates: the surname is no longer enough.
+    home2 = {**home, "H9": {**home["H1"], "name": "Zed Brown"}}
+    h2, _, _ = m.apply_lines(home2, away, listed)
+    assert "H0" not in h2

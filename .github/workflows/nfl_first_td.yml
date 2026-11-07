@@ -1,0 +1,39 @@
+name: NFL First Touchdown Forecasts
+
+# Saves our own NFL first-touchdown-scorer forecasts (model/nfl_first_td.py)
+# for games kicking off in the next 48 hours, for the /nfl/first-td page, in
+# two versions: the model alone, and the model with players DraftKings leaves
+# off its anytime-TD list removed (lists captured within 30 hours of kickoff by
+# capture_nfl_props.yml; no paid calls here). Started games are never written,
+# so each game keeps its last pregame forecast. Then grades both versions on
+# finished games once their play-by-play is stored. /api/cron/dispatch fires it
+# at 14:07 UTC before a game day and 45-60 minutes before each kickoff group
+# (job nfl-first-td); this schedule is the fallback.
+on:
+  schedule:
+    - cron: "43 14 * 9-12 *"
+    - cron: "43 14 * 1-2 *"
+  workflow_dispatch:
+
+concurrency:
+  group: nfl-first-td
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Publish first touchdown forecasts
+        run: python -m model.nfl_first_td publish
+      - name: Grade finished games
+        if: ${{ !cancelled() }}
+        run: python -m model.nfl_first_td grade

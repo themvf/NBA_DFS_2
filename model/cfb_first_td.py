@@ -100,6 +100,7 @@ class Params:
     kappa: float = 1.0      # weight of volume-expected TDs against actual TDs
     w_prior: float = 0.3    # weight of last season against this season
     rho: float = 0.03       # league TDs per touch, set from history
+    tau: float = 1.0        # shares go as score ** tau; below 1 flattens them (NFL; college uses 1)
 
 
 # Fitted by ``backtest`` (artifacts/cfb_first_td/backtest_v1.json): K and PHI on 2022-24, the rest on 2025.
@@ -176,6 +177,8 @@ def game_distribution(p_home: float, home: dict[str, dict], away: dict[str, dict
     out = {"non_offense": p.phi}
     for side, p_team, cands in (("home", p_home, home), ("away", 1 - p_home, away)):
         scores = player_scores(cands, p)
+        if p.tau != 1.0:
+            scores = {pid: v ** p.tau if v > 0 else 0.0 for pid, v in scores.items()}
         total = sum(scores.values())
         offense = p_team * (1 - p.phi)
         if total <= 0:
@@ -206,9 +209,24 @@ def apply_lines(home: dict[str, dict], away: dict[str, dict], listed: set[tuple[
     if listed is None:
         return home, away, {"status": "no_lines", "dropped": []}
     info = {"status": "applied", "listed": len(listed), "dropped": [], "covered": {}}
+    # A first name can differ between sources ('Marquise' / 'Hollywood' Brown): a surname alone is
+    # enough when it is unique on the list and among both teams' candidates.
+    listed_surnames = defaultdict(int)
+    for _, surname in listed:
+        listed_surnames[surname] += 1
+    cand_surnames = defaultdict(int)
+    for c in (*home.values(), *away.values()):
+        key = name_key(c["name"])
+        if key:
+            cand_surnames[key[1]] += 1
+
+    def on_list(c: dict) -> bool:
+        key = name_key(c["name"])
+        return bool(key) and (key in listed or (listed_surnames[key[1]] == 1 and cand_surnames[key[1]] == 1))
+
     out = []
     for side, cands in (("home", home), ("away", away)):
-        on = {pid for pid, c in cands.items() if name_key(c["name"]) in listed}
+        on = {pid for pid, c in cands.items() if on_list(c)}
         covered = len(on) >= min_listed
         info["covered"][side] = {"matched": len(on), "candidates": len(cands), "covered": covered}
         if not covered:

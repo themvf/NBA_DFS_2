@@ -47,6 +47,7 @@ const PAGE_LINKS: Array<{
   { href: "/nfl/specials", label: "Slate Specials", sports: ["nfl"] },
     { href: "/nfl/longest-touchdown", label: "Longest TD", sports: ["nfl"] },
     { href: "/nfl/game-leaders", label: "Game Leaders", sports: ["nfl"] },
+    { href: "/nfl/first-td", label: "First TD", sports: ["nfl"] },
   { href: "/nfl/position-stats", label: "Position Stats", sports: ["nfl"] },
   { href: "/nfl/pbp", label: "PBP Archetypes", sports: ["nfl"] },
   { href: "/nfl/team-identity", label: "Team Identity", sports: ["nfl"] },

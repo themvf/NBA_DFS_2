@@ -180,6 +180,23 @@ export function nflGameLeadersDue(now: Date, context: DispatchContext): boolean 
   });
 }
 
+/** First-TD publish lead: one quarter-hour tick 45-60 minutes out, after the 60-75 minute prop capture. */
+export const FIRST_TD_LEAD_MS = { min: 45 * 60 * 1000, max: 60 * 60 * 1000 };
+
+/**
+ * NFL first touchdown forecasts (model/nfl_first_td.py): 14:07 UTC on any day with a kickoff
+ * in the next 48 hours (after the previous evening's DraftKings capture), then once per kickoff
+ * group 45-60 minutes out, after that group's prop capture.
+ */
+export function nflFirstTdDue(now: Date, context: DispatchContext): boolean {
+  const kickoffs = context.nflKickoffs ?? [];
+  if (now.getUTCHours() === 14 && hourTick(now) && kickoffs.some((k) => k.getTime() > now.getTime())) return true;
+  return kickoffs.some((kickoff) => {
+    const lead = kickoff.getTime() - now.getTime();
+    return lead > FIRST_TD_LEAD_MS.min && lead <= FIRST_TD_LEAD_MS.max;
+  });
+}
+
 /**
  * Expert-coverage pass windows (docs/nfl-expert-coverage-study.md): for each
  * kickoff group, the one 15-minute tick whose lead lands in (H - 15 min, H] for
@@ -411,6 +428,13 @@ export const DISPATCH_JOBS: readonly DispatchJob[] = [
     // DraftKings' anytime-TD list (1 credit a game) for games in the next 4 h.
     due: cfbForecastDue,
     why: "CFB first touchdown scorer forecasts (with and without the sportsbook availability filter) for /cfb/first-td, frozen before each kickoff, and their grades.",
+  },
+  {
+    key: "nfl-first-td",
+    workflow: "nfl_first_td.yml",
+    // Reads stored play-by-play and the DraftKings lists the prop captures already bought: no paid calls.
+    due: nflFirstTdDue,
+    why: "NFL first touchdown scorer forecasts (with and without the sportsbook availability filter) for /nfl/first-td, frozen before each kickoff, and their grades.",
   },
   {
     key: "cfb-terminal",

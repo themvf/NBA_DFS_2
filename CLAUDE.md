@@ -9289,3 +9289,22 @@ the page shows the filtered version plus the paired grade. Seen on the first
 slate: DraftKings leaves some starting QBs off (Julian Sayin), so a QB who
 rarely runs loses his small share; the grade decides whether the filter stays.
 `python -m model.cfb_first_td backtest --json F` / `slate --date D --params F`.
+
+## NFL first touchdown scorer (`nfl-first-td-v1`, 2026-11-07)
+
+`model/nfl_first_td.py`, UNVALIDATED: the college model (`model/cfb_first_td.py`, whose math it imports)
+on nflverse play-by-play (`nfl_pbp_archetypes` + participants, 2016+, closing spread/total on every play).
+Volume = carries + targets; a TD is offensive when its scorer is the play's rusher or receiver; two-point
+tries excluded. K = 1.4 and PHI = 0.059 fitted 2016-22; theta/kappa/w_prior and
+`tau` (shares go as score^tau; NFL only, college stays 1) fitted 2023-24: tau = 0.9.
+Held out: 2025 n=268 log loss 2.915 (volume-only 2.906),
+2026 wk 1-8 n=104 2.804 (2.817); TD history adds about
+nothing over volume in the NFL, and the top pick scored first ~13% against 15-16% stated. Same two
+versions as college (`-lines-v1` drops players DraftKings' anytime-TD list leaves off), but only lists
+captured within 30 h of kickoff count (the midweek main-line reads are too early); a unique surname
+matches across first names (Marquise / Hollywood Brown) in both sports. Tables `nfl_first_td_runs` /
+`_predictions` / `_grades`; workflow `nfl_first_td.yml`, dispatcher job `nfl-first-td` (14:07 UTC before
+a game day, 45-60 min before each kickoff group, after the T-75 prop capture); no paid calls. Page
+`/nfl/first-td` shares `web/src/components/first-td-view.tsx` with `/cfb/first-td`. Chips (both sports,
+context only, untested as predictors): goal-line role, inside-the-10 share (NFL), TD in each of last 2,
+new role, running QB, not on DK list, big favourite, scored first X of Y.

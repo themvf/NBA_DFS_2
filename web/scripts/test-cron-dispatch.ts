@@ -235,6 +235,14 @@ for (const key of ["nfl-prop-capture-wed", "nfl-prop-capture-fri"]) {
   assert.equal(inputs?.min_hours, "30", `${key}: leaves tomorrow's game to the day-ahead run`);
   assert.ok(Number(inputs?.within_hours) > 30 && Number(inputs?.within_hours) <= 130, `${key}: bounded window`);
 }
+// NFL First TD: 14:07 UTC before a game day, then once 45-60 minutes before each kickoff group.
+{
+  const k = new Date("2026-11-08T18:00:00Z");
+  const ticks = Array.from({ length: 96 }, (_, i) => new Date(Date.parse("2026-11-08T00:07:00Z") + i * 900_000))
+    .filter((at) => dueJobs(at, { nflKickoffs: [k] }).some((j) => j.key === "nfl-first-td")).map((at) => at.toISOString());
+  assert.deepEqual(ticks, ["2026-11-08T14:07:00.000Z", "2026-11-08T17:07:00.000Z"], `first TD ticks: ${ticks}`);
+  assert.ok(!keys("2026-11-10T14:07:00Z", { nflKickoffs: [] }).includes("nfl-first-td"), "no game ahead: no run");
+}
 // Game Leaders: Wednesday's weekly build, then twice per kickoff group: 150-165
 // minutes out, and 45-60 minutes out after the inactive lists are posted.
 assert.ok(keys("2026-10-14T14:07:00Z").includes("nfl-game-leaders"), "Wednesday 14:07 UTC weekly build");
