@@ -407,10 +407,10 @@ export const DISPATCH_JOBS: readonly DispatchJob[] = [
     key: "cfb-first-td",
     workflow: "cfb_first_td.yml",
     // Same cadence as the CFB forecasts: daily, then once about three hours
-    // before each kickoff group, so implied totals are near their close. Reads
-    // stored data only, no paid calls.
+    // before each kickoff group, so implied totals are near their close. Buys
+    // DraftKings' anytime-TD list (1 credit a game) for games in the next 4 h.
     due: cfbForecastDue,
-    why: "CFB first touchdown scorer forecasts for the /cfb/first-td page, frozen before each kickoff.",
+    why: "CFB first touchdown scorer forecasts (with and without the sportsbook availability filter) for /cfb/first-td, frozen before each kickoff, and their grades.",
   },
   {
     key: "cfb-terminal",

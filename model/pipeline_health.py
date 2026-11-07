@@ -430,6 +430,15 @@ DATASET_REGISTRY: tuple[Dataset, ...] = (
     Dataset("cfb_first_td", "CFB first touchdown forecasts", "cfb_first_td_runs", "created_at",
             36, "cfb_first_td.yml", _CFB,
             "Every publish run writes a row, games or not; dispatched daily and before each kickoff group."),
+    Dataset("cfb_first_td_lines", "CFB anytime-TD lines (who plays)", "prop_odds_history", "captured_at",
+            96, "cfb_first_td.yml", _CFB_GAMES,
+            "DraftKings anytime-TD lists captured about three hours before each kickoff group; a Sunday-to-"
+            "Tuesday gap with no college games is normal, hence 96 h.",
+            filter="sport = 'cfb' AND market = 'player_anytime_td'"),
+    Dataset("cfb_first_td_grades", "CFB first touchdown grades", "cfb_first_td_grades", "graded_at",
+            120, "cfb_first_td.yml", _CFB_GAMES,
+            "Each version's last pregame forecast graded once the game's plays and box score are stored "
+            "(a day or two after it ends); only weeks with finished games write rows."),
     Dataset("cfb_team_features", "CFB team features (weekly research)", "cfb_team_game_features", "as_of_at",
             240, "refresh_cfb_research.yml", (8, 9, 10, 11, 12),
             "Thursday point-in-time features for upcoming games; new rows every run while games remain."),

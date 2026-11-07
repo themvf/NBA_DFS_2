@@ -1,11 +1,17 @@
 name: CFB First Touchdown Forecasts
 
 # Saves our own first-touchdown-scorer forecasts (model/cfb_first_td.py) for
-# every CFB game kicking off in the next 40 hours, for the /cfb/first-td page.
-# Started games are never written, so each game keeps its last pregame
-# forecast. Reads stored box scores and implied totals only: no CFBD or Odds
-# API calls. /api/cron/dispatch fires it daily and about three hours before
-# each kickoff group (job cfb-first-td); this schedule is the fallback.
+# every CFB game kicking off in the next 40 hours, for the /cfb/first-td page,
+# in two versions: the model alone, and the model with players DraftKings
+# leaves off its anytime-TD list removed. Started games are never written, so
+# each game keeps its last pregame forecast. Before publishing it buys
+# DraftKings' anytime-TD list for games starting in the next 4 hours
+# (ingest.cfb_td_props: 1 credit a game, 80-credit ceiling, a game captured
+# in the last 3 hours is not bought again). After publishing it grades both
+# versions on finished games. /api/cron/dispatch fires it daily and about
+# three hours before each kickoff group (job cfb-first-td); this schedule is
+# the fallback. A failed capture still lets publish and grade run, and the
+# job ends red.
 on:
   schedule:
     - cron: "41 10 * 8-12 *"
@@ -22,6 +28,7 @@ jobs:
     timeout-minutes: 15
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -29,5 +36,11 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements.txt
+      - name: Capture DraftKings anytime-TD lists
+        run: python -m ingest.cfb_td_props --apply
       - name: Publish first touchdown forecasts
+        if: ${{ !cancelled() }}
         run: python -m model.cfb_first_td publish
+      - name: Grade finished games
+        if: ${{ !cancelled() }}
+        run: python -m model.cfb_first_td grade

@@ -20,7 +20,24 @@ export type FirstTdGame = {
   version: string;
   /** The first touchdown play once the game's play-by-play is stored; null before then. */
   actual: { playType: string; text: string } | null;
+  /** The sportsbook availability filter on this forecast; null for a forecast saved before it existed. */
+  availability: {
+    status: "applied" | "no_lines";
+    capturedAt: string | null;
+    dropped: { name: string; team: string }[];
+  } | null;
 };
+
+export type FirstTdGrades = {
+  games: number;
+  changed: number;
+  baseLogLoss: number;
+  linesLogLoss: number;
+  baseTopPick: number;
+  linesTopPick: number;
+};
+
+const LINES_VERSION = "cfb-first-td-lines-v1";
 
 const ET = "America/New_York";
 
@@ -39,10 +56,13 @@ export async function getFirstTdDates(): Promise<string[]> {
 export async function getFirstTdGames(date: string): Promise<FirstTdGame[]> {
   const result = await db.execute(sql`
     WITH latest AS (
-      SELECT DISTINCT ON (p.cfbd_game_id) p.*, r.created_at, r.version
+      SELECT DISTINCT ON (p.cfbd_game_id) p.run_id, p.cfbd_game_id, p.kickoff, p.away, p.home,
+             p.away_implied, p.home_implied, p.p_home_first, p.other_offense, p.non_offense, p.players,
+             p.availability, r.created_at, r.version
       FROM cfb_first_td_predictions p JOIN cfb_first_td_runs r ON r.id = p.run_id
       WHERE (p.kickoff AT TIME ZONE ${ET})::date = ${date}::date AND r.created_at < p.kickoff
-      ORDER BY p.cfbd_game_id, r.created_at DESC)
+      -- The version with the sportsbook availability filter when one was saved, else the model alone.
+      ORDER BY p.cfbd_game_id, (r.version = ${LINES_VERSION}) DESC, r.created_at DESC)
     SELECT l.*, td.play_type, td.play_text
     FROM latest l
     LEFT JOIN cfb_matchups m ON m.cfbd_game_id = l.cfbd_game_id
@@ -69,5 +89,35 @@ export async function getFirstTdGames(date: string): Promise<FirstTdGame[]> {
     savedAt: new Date(r.created_at as string).toISOString(),
     version: r.version as string,
     actual: r.play_type ? { playType: r.play_type as string, text: (r.play_text as string) ?? "" } : null,
+    availability: availabilityOf(r.availability),
   }));
+}
+
+function availabilityOf(raw: unknown): FirstTdGame["availability"] {
+  if (!raw || typeof raw !== "object") return null;
+  const a = raw as { status?: string; captured_at?: string; dropped?: { name: string; team: string }[] };
+  return {
+    status: a.status === "applied" ? "applied" : "no_lines",
+    capturedAt: a.captured_at ?? null,
+    dropped: (a.dropped ?? []).filter((d) => d.name.trim() !== "Team").map((d) => ({ name: d.name, team: d.team })),
+  };
+}
+
+/** Both versions on the games both have graded (latest pregame forecast of each, scored once). */
+export async function getFirstTdGrades(): Promise<FirstTdGrades | null> {
+  const result = await db.execute(sql`
+    SELECT count(*)::int AS games,
+           count(*) FILTER (WHERE abs(a.prob - b.prob) > 1e-12)::int AS changed,
+           avg(-ln(greatest(a.prob, 1e-9))) AS base_ll, avg(-ln(greatest(b.prob, 1e-9))) AS lines_ll,
+           avg(a.top_pick_hit::int) AS base_top, avg(b.top_pick_hit::int) AS lines_top
+    FROM cfb_first_td_grades a
+    JOIN cfb_first_td_grades b ON b.cfbd_game_id = a.cfbd_game_id AND b.version = ${LINES_VERSION}
+    WHERE a.version = 'cfb-first-td-v1'`);
+  const r = result.rows[0] as Record<string, unknown> | undefined;
+  if (!r || !Number(r.games)) return null;
+  return {
+    games: Number(r.games), changed: Number(r.changed),
+    baseLogLoss: Number(r.base_ll), linesLogLoss: Number(r.lines_ll),
+    baseTopPick: Number(r.base_top), linesTopPick: Number(r.lines_top),
+  };
 }
