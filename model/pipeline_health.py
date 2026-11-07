@@ -328,7 +328,8 @@ DATASET_REGISTRY: tuple[Dataset, ...] = (
     # Paused on the schedule since 2026-08-24 (Odds API quota, cb326f5): last
     # write 2026-08-23 13:47 UTC. Reported as a pause, not an outage.
     Dataset("mlb_props", "MLB player-prop odds", "prop_odds_history", "captured_at",
-            24, "refresh_mlb_vegas.yml", _MLB, schedule_step="Capture MLB player-prop odds"),
+            24, "refresh_mlb_vegas.yml", _MLB, schedule_step="Capture MLB player-prop odds",
+            filter="sport = 'mlb'"),
     # Captured once per kickoff group (Thu, Sun, Mon, sometimes Sat); the longest
     # normal gap is Monday night to Thursday evening, about 3.9 days.
     Dataset("nfl_props", "NFL player-prop odds (game-leader benchmark)", "prop_odds_history", "captured_at",
@@ -344,6 +345,14 @@ DATASET_REGISTRY: tuple[Dataset, ...] = (
             "Written by ingest.nba_points_props twice a day via the dispatcher (job nba-points-props). "
             "Append-only per capture_key, so captured_at moves only when a run writes.",
             filter="sport = 'nba'"),
+    # nba_game_lines writes a row only when a line moves, so its own captured_at
+    # cannot tell "refreshed" from "untouched"; the paid call's usage row is
+    # stamped on every run, so freshness is read there.
+    Dataset("nba_game_lines", "NBA game spreads and totals (game-leaders panel)", "odds_api_usage", "requested_at",
+            36, "capture_nba_points_props.yml", _NBA,
+            "One bulk spreads/totals call per nba-points-props run (ingest.nba_game_lines); the lines table "
+            "itself changes only when a line moves.",
+            filter="sport = 'nba' AND purpose = 'nba_game_lines'"),
     # Nightly at 11:07 UTC via the dispatcher (job nba-points-grade); 36 h allows one
     # missed morning. ESPN box scores restamp fetched_at on every write; the grade
     # upserts its rows and restamps graded_at, so both move only when a run writes.
