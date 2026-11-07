@@ -404,6 +404,15 @@ export const DISPATCH_JOBS: readonly DispatchJob[] = [
     why: "Daily CFB forecasts and a pregame refresh about three hours before each kickoff group, with input and publication checks.",
   },
   {
+    key: "cfb-first-td",
+    workflow: "cfb_first_td.yml",
+    // Same cadence as the CFB forecasts: daily, then once about three hours
+    // before each kickoff group, so implied totals are near their close. Reads
+    // stored data only, no paid calls.
+    due: cfbForecastDue,
+    why: "CFB first touchdown scorer forecasts for the /cfb/first-td page, frozen before each kickoff.",
+  },
+  {
     key: "cfb-terminal",
     workflow: "refresh_cfb_terminal.yml",
     // Every tick, August-January. Its GitHub schedule asked for :07/:22/:37/:52

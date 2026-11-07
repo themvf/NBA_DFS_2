@@ -1,0 +1,3215 @@
+[
+  {
+    "game": "Iowa State @ Baylor",
+    "kickoff": "2026-11-07T17:00:00+00:00",
+    "implied": [
+      20.5,
+      30.5
+    ],
+    "p_home_first": 0.6169830143513618,
+    "history_through": {
+      "Baylor": [
+        2026,
+        9
+      ],
+      "Iowa State": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Aiden Flora",
+        "team": "Iowa State",
+        "prob": 0.1263628995400417,
+        "fair": 691,
+        "td": 8.0,
+        "touches": 144.0
+      },
+      {
+        "name": "Dawson Pendergrass",
+        "team": "Baylor",
+        "prob": 0.10582604061357546,
+        "fair": 845,
+        "td": 2.0,
+        "touches": 100.0
+      },
+      {
+        "name": "Caden Knighten",
+        "team": "Baylor",
+        "prob": 0.08953300787319132,
+        "fair": 1017,
+        "td": 3.0,
+        "touches": 79.0
+      },
+      {
+        "name": "Gavin Freeman",
+        "team": "Baylor",
+        "prob": 0.07393727760903991,
+        "fair": 1252,
+        "td": 3.0,
+        "touches": 63.0
+      },
+      {
+        "name": "Jaylen Raynor",
+        "team": "Iowa State",
+        "prob": 0.059637444778695696,
+        "fair": 1577,
+        "td": 4.0,
+        "touches": 67.0
+      }
+    ],
+    "other_offense": 0.047903641044501656,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Florida State @ Boston College",
+    "kickoff": "2026-11-07T17:00:00+00:00",
+    "implied": [
+      29.25,
+      23.25
+    ],
+    "p_home_first": 0.43155997205044594,
+    "history_through": {
+      "Boston College": [
+        2026,
+        9
+      ],
+      "Florida State": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Ousmane Kromah",
+        "team": "Florida State",
+        "prob": 0.1476811039950345,
+        "fair": 577,
+        "td": 5.0,
+        "touches": 125.0
+      },
+      {
+        "name": "Ashton Daniels",
+        "team": "Florida State",
+        "prob": 0.14666480203613755,
+        "fair": 582,
+        "td": 12.0,
+        "touches": 94.0
+      },
+      {
+        "name": "Mason McKenzie",
+        "team": "Boston College",
+        "prob": 0.11957579927680181,
+        "fair": 736,
+        "td": 5.0,
+        "touches": 132.0
+      },
+      {
+        "name": "Evan Dickens",
+        "team": "Boston College",
+        "prob": 0.07748896422016613,
+        "fair": 1191,
+        "td": 5.0,
+        "touches": 78.0
+      },
+      {
+        "name": "Tre Wisner",
+        "team": "Florida State",
+        "prob": 0.07290565499674306,
+        "fair": 1272,
+        "td": 1.0,
+        "touches": 68.0
+      }
+    ],
+    "other_offense": 0.047903641044501656,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "UCLA @ Minnesota",
+    "kickoff": "2026-11-07T17:00:00+00:00",
+    "implied": [
+      21.25,
+      17.25
+    ],
+    "p_home_first": 0.43776105532361953,
+    "history_through": {
+      "Minnesota": [
+        2026,
+        9
+      ],
+      "UCLA": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Wayne Knight",
+        "team": "UCLA",
+        "prob": 0.17895875207024392,
+        "fair": 459,
+        "td": 14.0,
+        "touches": 126.0
+      },
+      {
+        "name": "Darius Taylor",
+        "team": "Minnesota",
+        "prob": 0.12510829737463336,
+        "fair": 699,
+        "td": 6.0,
+        "touches": 105.0
+      },
+      {
+        "name": "Anthony Woods",
+        "team": "UCLA",
+        "prob": 0.10556329577954908,
+        "fair": 847,
+        "td": 6.0,
+        "touches": 84.0
+      },
+      {
+        "name": "TJ Thomas Jr.",
+        "team": "Minnesota",
+        "prob": 0.08450256543766471,
+        "fair": 1083,
+        "td": 1.0,
+        "touches": 84.0
+      },
+      {
+        "name": "Jaivian Thomas",
+        "team": "UCLA",
+        "prob": 0.07326219929464384,
+        "fair": 1265,
+        "td": 4.0,
+        "touches": 59.0
+      }
+    ],
+    "other_offense": 0.047903641044501656,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Texas @ Missouri",
+    "kickoff": "2026-11-07T17:00:00+00:00",
+    "implied": [
+      22.5,
+      20.0
+    ],
+    "p_home_first": 0.46472379551139287,
+    "history_through": {
+      "Missouri": [
+        2026,
+        9
+      ],
+      "Texas": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Jamal Roberts",
+        "team": "Missouri",
+        "prob": 0.19844694935590662,
+        "fair": 404,
+        "td": 10.0,
+        "touches": 206.0
+      },
+      {
+        "name": "Raleek Brown",
+        "team": "Texas",
+        "prob": 0.11392516538683596,
+        "fair": 778,
+        "td": 6.0,
+        "touches": 104.0
+      },
+      {
+        "name": "Daylan Smothers",
+        "team": "Texas",
+        "prob": 0.08243392290395524,
+        "fair": 1113,
+        "td": 3.0,
+        "touches": 81.0
+      },
+      {
+        "name": "Arch Manning",
+        "team": "Texas",
+        "prob": 0.06813077974601817,
+        "fair": 1368,
+        "td": 2.0,
+        "touches": 69.0
+      },
+      {
+        "name": "Cayden Lee",
+        "team": "Missouri",
+        "prob": 0.05775512810400292,
+        "fair": 1631,
+        "td": 5.0,
+        "touches": 51.0
+      }
+    ],
+    "other_offense": 0.04790364104450166,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Clemson @ Syracuse",
+    "kickoff": "2026-11-07T17:00:00+00:00",
+    "implied": [
+      25.75,
+      23.75
+    ],
+    "p_home_first": 0.4757633803819465,
+    "history_through": {
+      "Syracuse": [
+        2026,
+        9
+      ],
+      "Clemson": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Gideon Davidson",
+        "team": "Clemson",
+        "prob": 0.12726493349674184,
+        "fair": 686,
+        "td": 5.0,
+        "touches": 109.0
+      },
+      {
+        "name": "Ahmad Miller",
+        "team": "Syracuse",
+        "prob": 0.10158054350128115,
+        "fair": 884,
+        "td": 5.0,
+        "touches": 103.0
+      },
+      {
+        "name": "Tait Reynolds",
+        "team": "Clemson",
+        "prob": 0.10008554445464804,
+        "fair": 899,
+        "td": 2.0,
+        "touches": 94.0
+      },
+      {
+        "name": "Tylik Hill",
+        "team": "Syracuse",
+        "prob": 0.0886372537337254,
+        "fair": 1028,
+        "td": 2.0,
+        "touches": 100.0
+      },
+      {
+        "name": "Umari Hatcher",
+        "team": "Syracuse",
+        "prob": 0.078601697237181,
+        "fair": 1172,
+        "td": 8.0,
+        "touches": 62.0
+      }
+    ],
+    "other_offense": 0.04790364104450165,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Tulsa @ Tulane",
+    "kickoff": "2026-11-07T17:00:00+00:00",
+    "implied": [
+      26.5,
+      24.0
+    ],
+    "p_home_first": 0.47030770682496853,
+    "history_through": {
+      "Tulane": [
+        2026,
+        9
+      ],
+      "Tulsa": [
+        2026,
+        8
+      ]
+    },
+    "players": [
+      {
+        "name": "Damari Alston",
+        "team": "Tulsa",
+        "prob": 0.13393576815317068,
+        "fair": 647,
+        "td": 6.0,
+        "touches": 117.0
+      },
+      {
+        "name": "Johnnie Daniels",
+        "team": "Tulane",
+        "prob": 0.11252071462179171,
+        "fair": 789,
+        "td": 6.0,
+        "touches": 83.0
+      },
+      {
+        "name": "Trequan Jones",
+        "team": "Tulsa",
+        "prob": 0.07521253272783547,
+        "fair": 1230,
+        "td": 4.0,
+        "touches": 63.0
+      },
+      {
+        "name": "Maurice Turner",
+        "team": "Tulane",
+        "prob": 0.06402342380173295,
+        "fair": 1462,
+        "td": 3.0,
+        "touches": 49.0
+      },
+      {
+        "name": "Oran Singleton Jr.",
+        "team": "Tulsa",
+        "prob": 0.06207308531184237,
+        "fair": 1511,
+        "td": 4.0,
+        "touches": 49.0
+      }
+    ],
+    "other_offense": 0.047903641044501656,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "North Carolina @ UConn",
+    "kickoff": "2026-11-07T17:00:00+00:00",
+    "implied": [
+      31.0,
+      23.5
+    ],
+    "p_home_first": 0.4176606384983631,
+    "history_through": {
+      "UConn": [
+        2026,
+        9
+      ],
+      "North Carolina": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Demon June",
+        "team": "North Carolina",
+        "prob": 0.13030754609437695,
+        "fair": 667,
+        "td": 9.0,
+        "touches": 78.0
+      },
+      {
+        "name": "Cyncir Bowers",
+        "team": "UConn",
+        "prob": 0.08428840442527172,
+        "fair": 1086,
+        "td": 7.0,
+        "touches": 91.0
+      },
+      {
+        "name": "Kalieb Osborne",
+        "team": "UConn",
+        "prob": 0.08289511963011169,
+        "fair": 1106,
+        "td": 7.0,
+        "touches": 89.0
+      },
+      {
+        "name": "Benjamin Hall",
+        "team": "North Carolina",
+        "prob": 0.08224516251458833,
+        "fair": 1116,
+        "td": 2.0,
+        "touches": 65.0
+      },
+      {
+        "name": "Jaylen McGill",
+        "team": "North Carolina",
+        "prob": 0.07218380509271682,
+        "fair": 1285,
+        "td": 2.0,
+        "touches": 56.0
+      }
+    ],
+    "other_offense": 0.047903641044501656,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "BYU @ Utah",
+    "kickoff": "2026-11-07T17:00:00+00:00",
+    "implied": [
+      22.25,
+      26.75
+    ],
+    "p_home_first": 0.5550338664619706,
+    "history_through": {
+      "Utah": [
+        2026,
+        9
+      ],
+      "BYU": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Wayshawn Parker",
+        "team": "Utah",
+        "prob": 0.1498006901572444,
+        "fair": 568,
+        "td": 13.0,
+        "touches": 135.0
+      },
+      {
+        "name": "Bear Bachmeier",
+        "team": "BYU",
+        "prob": 0.1005624786754647,
+        "fair": 894,
+        "td": 8.0,
+        "touches": 81.0
+      },
+      {
+        "name": "Devon Dampier",
+        "team": "Utah",
+        "prob": 0.08202751356556087,
+        "fair": 1119,
+        "td": 5.0,
+        "touches": 83.0
+      },
+      {
+        "name": "Legend Glasker",
+        "team": "BYU",
+        "prob": 0.06517168459004359,
+        "fair": 1434,
+        "td": 6.0,
+        "touches": 49.0
+      },
+      {
+        "name": "Braden Pegan",
+        "team": "Utah",
+        "prob": 0.05576664334186341,
+        "fair": 1693,
+        "td": 7.0,
+        "touches": 41.0
+      }
+    ],
+    "other_offense": 0.04790364104450166,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Duke @ NC State",
+    "kickoff": "2026-11-07T17:30:00+00:00",
+    "implied": [
+      28.0,
+      23.5
+    ],
+    "p_home_first": 0.44763153458804483,
+    "history_through": {
+      "NC State": [
+        2026,
+        9
+      ],
+      "Duke": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Nate Sheppard",
+        "team": "Duke",
+        "prob": 0.2573205234079043,
+        "fair": 289,
+        "td": 18.0,
+        "touches": 204.0
+      },
+      {
+        "name": "Davion Gause",
+        "team": "NC State",
+        "prob": 0.09667643848793905,
+        "fair": 934,
+        "td": 2.0,
+        "touches": 108.0
+      },
+      {
+        "name": "Will Wilson",
+        "team": "NC State",
+        "prob": 0.06657752917500734,
+        "fair": 1402,
+        "td": 8.0,
+        "touches": 46.0
+      },
+      {
+        "name": "CJ Campbell",
+        "team": "Duke",
+        "prob": 0.06041178599969646,
+        "fair": 1555,
+        "td": 0.0,
+        "touches": 66.0
+      },
+      {
+        "name": "CJ Bailey",
+        "team": "NC State",
+        "prob": 0.06018513825432,
+        "fair": 1562,
+        "td": 2.0,
+        "touches": 64.0
+      }
+    ],
+    "other_offense": 0.047903641044501656,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Maryland @ Purdue",
+    "kickoff": "2026-11-07T17:30:00+00:00",
+    "implied": [
+      26.0,
+      31.0
+    ],
+    "p_home_first": 0.5525721703527104,
+    "history_through": {
+      "Purdue": [
+        2026,
+        9
+      ],
+      "Maryland": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Fame Ijeboi",
+        "team": "Purdue",
+        "prob": 0.2182490810704825,
+        "fair": 358,
+        "td": 10.0,
+        "touches": 158.0
+      },
+      {
+        "name": "Iverson Howard",
+        "team": "Maryland",
+        "prob": 0.08517286008916854,
+        "fair": 1074,
+        "td": 4.0,
+        "touches": 73.0
+      },
+      {
+        "name": "DeJuan Williams",
+        "team": "Maryland",
+        "prob": 0.08355198051000785,
+        "fair": 1097,
+        "td": 5.0,
+        "touches": 67.0
+      },
+      {
+        "name": "Chris Durr Jr.",
+        "team": "Maryland",
+        "prob": 0.07693760268690805,
+        "fair": 1200,
+        "td": 5.0,
+        "touches": 60.0
+      },
+      {
+        "name": "Ryan Browne",
+        "team": "Purdue",
+        "prob": 0.05603759977664528,
+        "fair": 1685,
+        "td": 2.0,
+        "touches": 43.0
+      }
+    ],
+    "other_offense": 0.047903641044501656,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Arkansas @ Auburn",
+    "kickoff": "2026-11-07T17:45:00+00:00",
+    "implied": [
+      21.75,
+      32.25
+    ],
+    "p_home_first": 0.6160190964683484,
+    "history_through": {
+      "Auburn": [
+        2026,
+        9
+      ],
+      "Arkansas": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Byrum Brown",
+        "team": "Auburn",
+        "prob": 0.1759780945405193,
+        "fair": 468,
+        "td": 8.0,
+        "touches": 140.0
+      },
+      {
+        "name": "Jeremiah Cobb",
+        "team": "Auburn",
+        "prob": 0.08943376852579987,
+        "fair": 1018,
+        "td": 2.0,
+        "touches": 80.0
+      },
+      {
+        "name": "KJ Jackson",
+        "team": "Arkansas",
+        "prob": 0.06220126901707007,
+        "fair": 1508,
+        "td": 4.0,
+        "touches": 72.0
+      },
+      {
+        "name": "Omar Mabson Ii",
+        "team": "Auburn",
+        "prob": 0.060873060224027054,
+        "fair": 1543,
+        "td": 1.0,
+        "touches": 56.0
+      },
+      {
+        "name": "Sutton Smith",
+        "team": "Arkansas",
+        "prob": 0.05602299808893714,
+        "fair": 1685,
+        "td": 1.0,
+        "touches": 76.0
+      }
+    ],
+    "other_offense": 0.04790364104450165,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Old Dominion @ Coastal Carolina",
+    "kickoff": "2026-11-07T18:00:00+00:00",
+    "implied": [
+      19.25,
+      25.75
+    ],
+    "p_home_first": 0.5864013223666078,
+    "history_through": {
+      "Coastal Carolina": [
+        2026,
+        9
+      ],
+      "Old Dominion": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Dominic Knicely",
+        "team": "Coastal Carolina",
+        "prob": 0.13657773523485536,
+        "fair": 632,
+        "td": 3.0,
+        "touches": 102.0
+      },
+      {
+        "name": "Devin Roche",
+        "team": "Old Dominion",
+        "prob": 0.1245211162733987,
+        "fair": 703,
+        "td": 0.0,
+        "touches": 123.0
+      },
+      {
+        "name": "Deuce Bailey",
+        "team": "Coastal Carolina",
+        "prob": 0.09394234091056873,
+        "fair": 964,
+        "td": 0.0,
+        "touches": 79.0
+      },
+      {
+        "name": "Jaden Allen-Hendrix",
+        "team": "Coastal Carolina",
+        "prob": 0.06081100428514879,
+        "fair": 1544,
+        "td": 4.0,
+        "touches": 34.0
+      },
+      {
+        "name": "Maurki James",
+        "team": "Old Dominion",
+        "prob": 0.05480800850008215,
+        "fair": 1725,
+        "td": 4.0,
+        "touches": 37.0
+      }
+    ],
+    "other_offense": 0.047903641044501656,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Oklahoma State @ Kansas State",
+    "kickoff": "2026-11-07T18:00:00+00:00",
+    "implied": [
+      34.5,
+      28.0
+    ],
+    "p_home_first": 0.4376990141635756,
+    "history_through": {
+      "Kansas State": [
+        2026,
+        9
+      ],
+      "Oklahoma State": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Caleb Hawkins",
+        "team": "Oklahoma State",
+        "prob": 0.1995742069750477,
+        "fair": 401,
+        "td": 6.0,
+        "touches": 198.0
+      },
+      {
+        "name": "Rodney Fields Jr.",
+        "team": "Kansas State",
+        "prob": 0.0946273203407337,
+        "fair": 957,
+        "td": 5.0,
+        "touches": 101.0
+      },
+      {
+        "name": "Joe Jackson",
+        "team": "Kansas State",
+        "prob": 0.08899664921103023,
+        "fair": 1024,
+        "td": 4.0,
+        "touches": 98.0
+      },
+      {
+        "name": "Wyatt Young",
+        "team": "Oklahoma State",
+        "prob": 0.07250884038289308,
+        "fair": 1279,
+        "td": 8.0,
+        "touches": 47.0
+      },
+      {
+        "name": "Justin Bowick",
+        "team": "Oklahoma State",
+        "prob": 0.07097851702418913,
+        "fair": 1309,
+        "td": 9.0,
+        "touches": 41.0
+      }
+    ],
+    "other_offense": 0.04790364104450165,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Georgia State @ App State",
+    "kickoff": "2026-11-07T19:30:00+00:00",
+    "implied": [
+      23.75,
+      30.25
+    ],
+    "p_home_first": 0.572068691287817,
+    "history_through": {
+      "App State": [
+        2026,
+        9
+      ],
+      "Georgia State": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Jaquari Lewis",
+        "team": "App State",
+        "prob": 0.12880463022024294,
+        "fair": 676,
+        "td": 8.0,
+        "touches": 94.0
+      },
+      {
+        "name": "Lanear McCrary Jr.",
+        "team": "Georgia State",
+        "prob": 0.07734266454504563,
+        "fair": 1193,
+        "td": 4.0,
+        "touches": 90.0
+      },
+      {
+        "name": "Qwantavius Wiggins",
+        "team": "Georgia State",
+        "prob": 0.06867993291745246,
+        "fair": 1356,
+        "td": 4.0,
+        "touches": 78.0
+      },
+      {
+        "name": "Malachi Singleton",
+        "team": "App State",
+        "prob": 0.059814275693574004,
+        "fair": 1572,
+        "td": 2.0,
+        "touches": 51.0
+      },
+      {
+        "name": "Sam Pickett III",
+        "team": "App State",
+        "prob": 0.05436118124157119,
+        "fair": 1740,
+        "td": 4.0,
+        "touches": 37.0
+      }
+    ],
+    "other_offense": 0.04790364104450166,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "UL Monroe @ Arkansas State",
+    "kickoff": "2026-11-07T20:00:00+00:00",
+    "implied": [
+      19.25,
+      33.75
+    ],
+    "p_home_first": 0.662345296065252,
+    "history_through": {
+      "Arkansas State": [
+        2026,
+        8
+      ],
+      "UL Monroe": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Solomon Baggett",
+        "team": "Arkansas State",
+        "prob": 0.1104822710110259,
+        "fair": 805,
+        "td": 3.0,
+        "touches": 76.0
+      },
+      {
+        "name": "Kenyon Clay",
+        "team": "Arkansas State",
+        "prob": 0.09840202005469202,
+        "fair": 916,
+        "td": 4.0,
+        "touches": 62.0
+      },
+      {
+        "name": "Trey Owens",
+        "team": "Arkansas State",
+        "prob": 0.09715860459808162,
+        "fair": 929,
+        "td": 4.0,
+        "touches": 61.0
+      },
+      {
+        "name": "Chauncy Cobb",
+        "team": "Arkansas State",
+        "prob": 0.060037845527069485,
+        "fair": 1566,
+        "td": 1.0,
+        "touches": 44.0
+      },
+      {
+        "name": "Timothy Carter",
+        "team": "Arkansas State",
+        "prob": 0.05647979813970847,
+        "fair": 1671,
+        "td": 5.0,
+        "touches": 24.0
+      }
+    ],
+    "other_offense": 0.04790364104450165,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Delaware @ Kennesaw State",
+    "kickoff": "2026-11-07T20:00:00+00:00",
+    "implied": [
+      29.0,
+      28.0
+    ],
+    "p_home_first": 0.48947415939398553,
+    "history_through": {
+      "Kennesaw State": [
+        2026,
+        9
+      ],
+      "Delaware": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Alan Woods III",
+        "team": "Kennesaw State",
+        "prob": 0.1360395579822373,
+        "fair": 635,
+        "td": 6.0,
+        "touches": 111.0
+      },
+      {
+        "name": "Rickie Collins",
+        "team": "Kennesaw State",
+        "prob": 0.10490784306417897,
+        "fair": 853,
+        "td": 5.0,
+        "touches": 84.0
+      },
+      {
+        "name": "Jo'Nathan Silver",
+        "team": "Delaware",
+        "prob": 0.09864274439379085,
+        "fair": 914,
+        "td": 4.0,
+        "touches": 90.0
+      },
+      {
+        "name": "Kaderris Roberts",
+        "team": "Delaware",
+        "prob": 0.07430786431654017,
+        "fair": 1246,
+        "td": 6.0,
+        "touches": 55.0
+      },
+      {
+        "name": "Sean Wilson",
+        "team": "Delaware",
+        "prob": 0.05655245186879365,
+        "fair": 1668,
+        "td": 5.0,
+        "touches": 40.0
+      }
+    ],
+    "other_offense": 0.047903641044501656,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Texas A&M @ South Carolina",
+    "kickoff": "2026-11-07T20:00:00+00:00",
+    "implied": [
+      22.75,
+      29.75
+    ],
+    "p_home_first": 0.5797913159179959,
+    "history_through": {
+      "South Carolina": [
+        2026,
+        9
+      ],
+      "Texas A&M": [
+        2026,
+        8
+      ]
+    },
+    "players": [
+      {
+        "name": "Matthew Fuller",
+        "team": "South Carolina",
+        "prob": 0.12514612910273146,
+        "fair": 699,
+        "td": 6.0,
+        "touches": 112.0
+      },
+      {
+        "name": "Lanorris Sellers",
+        "team": "South Carolina",
+        "prob": 0.11242319939681651,
+        "fair": 789,
+        "td": 6.0,
+        "touches": 98.0
+      },
+      {
+        "name": "Rueben Owens",
+        "team": "Texas A&M",
+        "prob": 0.07063628060825856,
+        "fair": 1316,
+        "td": 1.0,
+        "touches": 87.0
+      },
+      {
+        "name": "Marcel Reed",
+        "team": "Texas A&M",
+        "prob": 0.0648863423498139,
+        "fair": 1441,
+        "td": 3.0,
+        "touches": 71.0
+      },
+      {
+        "name": "Jabree Coleman",
+        "team": "South Carolina",
+        "prob": 0.0628317236874825,
+        "fair": 1492,
+        "td": 4.0,
+        "touches": 52.0
+      }
+    ],
+    "other_offense": 0.04790364104450166,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Marshall @ Georgia Southern",
+    "kickoff": "2026-11-07T20:30:00+00:00",
+    "implied": [
+      23.0,
+      31.5
+    ],
+    "p_home_first": 0.5932439303746997,
+    "history_through": {
+      "Georgia Southern": [
+        2026,
+        9
+      ],
+      "Marshall": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Weston Bryan",
+        "team": "Georgia Southern",
+        "prob": 0.06411639600079387,
+        "fair": 1460,
+        "td": 5.0,
+        "touches": 41.0
+      },
+      {
+        "name": "David Mbadinga",
+        "team": "Georgia Southern",
+        "prob": 0.05649192632422734,
+        "fair": 1670,
+        "td": 0.0,
+        "touches": 55.0
+      },
+      {
+        "name": "Judah Price",
+        "team": "Marshall",
+        "prob": 0.055084148003190087,
+        "fair": 1715,
+        "td": 3.0,
+        "touches": 67.0
+      },
+      {
+        "name": "Carlos Del Rio-Wilson",
+        "team": "Marshall",
+        "prob": 0.0541980003310192,
+        "fair": 1745,
+        "td": 2.0,
+        "touches": 70.0
+      },
+      {
+        "name": "Josh Dallas",
+        "team": "Georgia Southern",
+        "prob": 0.05341054852472403,
+        "fair": 1772,
+        "td": 0.0,
+        "touches": 52.0
+      }
+    ],
+    "other_offense": 0.04790364104450166,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Cincinnati @ Houston",
+    "kickoff": "2026-11-07T20:30:00+00:00",
+    "implied": [
+      25.25,
+      35.75
+    ],
+    "p_home_first": 0.602829545917886,
+    "history_through": {
+      "Houston": [
+        2026,
+        8
+      ],
+      "Cincinnati": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Makhi Hughes",
+        "team": "Houston",
+        "prob": 0.13632303451663813,
+        "fair": 634,
+        "td": 4.0,
+        "touches": 126.0
+      },
+      {
+        "name": "Re'Shaun Sanford II",
+        "team": "Houston",
+        "prob": 0.10244739862665171,
+        "fair": 876,
+        "td": 2.0,
+        "touches": 99.0
+      },
+      {
+        "name": "Cole Tabb",
+        "team": "Cincinnati",
+        "prob": 0.09909496722194579,
+        "fair": 909,
+        "td": 13.0,
+        "touches": 96.0
+      },
+      {
+        "name": "Conner Weigman",
+        "team": "Houston",
+        "prob": 0.08829350936005215,
+        "fair": 1033,
+        "td": 6.0,
+        "touches": 67.0
+      },
+      {
+        "name": "JC French",
+        "team": "Cincinnati",
+        "prob": 0.07315670608186452,
+        "fair": 1267,
+        "td": 7.0,
+        "touches": 82.0
+      }
+    ],
+    "other_offense": 0.047903641044501656,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Alabama @ LSU",
+    "kickoff": "2026-11-07T20:30:00+00:00",
+    "implied": [
+      23.25,
+      29.25
+    ],
+    "p_home_first": 0.568440027949554,
+    "history_through": {
+      "LSU": [
+        2026,
+        8
+      ],
+      "Alabama": [
+        2026,
+        8
+      ]
+    },
+    "players": [
+      {
+        "name": "Dilin Jones",
+        "team": "LSU",
+        "prob": 0.15618780170952817,
+        "fair": 540,
+        "td": 6.0,
+        "touches": 179.0
+      },
+      {
+        "name": "Daniel Hill",
+        "team": "Alabama",
+        "prob": 0.08122595555755871,
+        "fair": 1131,
+        "td": 5.0,
+        "touches": 83.0
+      },
+      {
+        "name": "Sam Leavitt",
+        "team": "LSU",
+        "prob": 0.08108715398263613,
+        "fair": 1133,
+        "td": 8.0,
+        "touches": 72.0
+      },
+      {
+        "name": "Trae'shawn Brown",
+        "team": "Alabama",
+        "prob": 0.07111385093360909,
+        "fair": 1306,
+        "td": 5.0,
+        "touches": 70.0
+      },
+      {
+        "name": "Keelon Russell",
+        "team": "Alabama",
+        "prob": 0.06878028832808226,
+        "fair": 1354,
+        "td": 5.0,
+        "touches": 67.0
+      }
+    ],
+    "other_offense": 0.047903641044501656,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Western Kentucky @ Middle Tennessee",
+    "kickoff": "2026-11-07T20:30:00+00:00",
+    "implied": [
+      28.0,
+      25.5
+    ],
+    "p_home_first": 0.47197159657125126,
+    "history_through": {
+      "Middle Tennessee": [
+        2026,
+        9
+      ],
+      "Western Kentucky": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Ajay Allen",
+        "team": "Western Kentucky",
+        "prob": 0.12915820142452572,
+        "fair": 674,
+        "td": 6.0,
+        "touches": 112.0
+      },
+      {
+        "name": "Antonio Martin",
+        "team": "Middle Tennessee",
+        "prob": 0.12425339811578981,
+        "fair": 705,
+        "td": 2.0,
+        "touches": 117.0
+      },
+      {
+        "name": "Brock Glenn",
+        "team": "Western Kentucky",
+        "prob": 0.10544336528924345,
+        "fair": 848,
+        "td": 5.0,
+        "touches": 91.0
+      },
+      {
+        "name": "Terrence Brown Jr.",
+        "team": "Middle Tennessee",
+        "prob": 0.0876411229189834,
+        "fair": 1041,
+        "td": 2.0,
+        "touches": 80.0
+      },
+      {
+        "name": "Cam'Ron Lacy",
+        "team": "Middle Tennessee",
+        "prob": 0.06544542024754757,
+        "fair": 1428,
+        "td": 4.0,
+        "touches": 49.0
+      }
+    ],
+    "other_offense": 0.047903641044501656,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Temple @ Navy",
+    "kickoff": "2026-11-07T20:30:00+00:00",
+    "implied": [
+      23.75,
+      30.75
+    ],
+    "p_home_first": 0.5768776837541574,
+    "history_through": {
+      "Navy": [
+        2026,
+        9
+      ],
+      "Temple": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Jackson Gutierrez",
+        "team": "Navy",
+        "prob": 0.22074315222588997,
+        "fair": 353,
+        "td": 13.0,
+        "touches": 179.0
+      },
+      {
+        "name": "Michael Barrow",
+        "team": "Navy",
+        "prob": 0.1021129451212142,
+        "fair": 879,
+        "td": 2.0,
+        "touches": 100.0
+      },
+      {
+        "name": "Keveun Mason",
+        "team": "Temple",
+        "prob": 0.10086762275307196,
+        "fair": 891,
+        "td": 3.0,
+        "touches": 112.0
+      },
+      {
+        "name": "Ajani Sheppard",
+        "team": "Temple",
+        "prob": 0.08274614151794552,
+        "fair": 1109,
+        "td": 5.0,
+        "touches": 81.0
+      },
+      {
+        "name": "Braxton Woodson",
+        "team": "Navy",
+        "prob": 0.06623525196765871,
+        "fair": 1410,
+        "td": 5.0,
+        "touches": 49.0
+      }
+    ],
+    "other_offense": 0.047903641044501656,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Oregon @ Ohio State",
+    "kickoff": "2026-11-07T20:30:00+00:00",
+    "implied": [
+      18.75,
+      26.25
+    ],
+    "p_home_first": 0.5995923090557385,
+    "history_through": {
+      "Ohio State": [
+        2026,
+        9
+      ],
+      "Oregon": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Bo Jackson",
+        "team": "Ohio State",
+        "prob": 0.1702836728823982,
+        "fair": 487,
+        "td": 5.0,
+        "touches": 141.0
+      },
+      {
+        "name": "Jeremiah Smith",
+        "team": "Ohio State",
+        "prob": 0.1254930444538336,
+        "fair": 697,
+        "td": 13.0,
+        "touches": 64.0
+      },
+      {
+        "name": "Jordon Davison",
+        "team": "Oregon",
+        "prob": 0.09328660123136855,
+        "fair": 972,
+        "td": 7.0,
+        "touches": 97.0
+      },
+      {
+        "name": "Dierre Hill Jr.",
+        "team": "Oregon",
+        "prob": 0.08510444135766161,
+        "fair": 1075,
+        "td": 3.0,
+        "touches": 103.0
+      },
+      {
+        "name": "Isaiah West",
+        "team": "Ohio State",
+        "prob": 0.054814967226182065,
+        "fair": 1724,
+        "td": 1.0,
+        "touches": 48.0
+      }
+    ],
+    "other_offense": 0.047903641044501656,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Charlotte @ UAB",
+    "kickoff": "2026-11-07T20:30:00+00:00",
+    "implied": [
+      19.5,
+      28.0
+    ],
+    "p_home_first": 0.6068637490791635,
+    "history_through": {
+      "UAB": [
+        2026,
+        9
+      ],
+      "Charlotte": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Roderick Robinson II",
+        "team": "UAB",
+        "prob": 0.14345787931081547,
+        "fair": 597,
+        "td": 3.0,
+        "touches": 115.0
+      },
+      {
+        "name": "Braylon McReynolds",
+        "team": "UAB",
+        "prob": 0.12053363807762382,
+        "fair": 730,
+        "td": 5.0,
+        "touches": 86.0
+      },
+      {
+        "name": "Khamani Alexander",
+        "team": "Charlotte",
+        "prob": 0.0847843246146939,
+        "fair": 1079,
+        "td": 5.0,
+        "touches": 70.0
+      },
+      {
+        "name": "Ryder Burton",
+        "team": "UAB",
+        "prob": 0.08335073981287386,
+        "fair": 1100,
+        "td": 1.0,
+        "touches": 70.0
+      },
+      {
+        "name": "Henry Rutledge",
+        "team": "Charlotte",
+        "prob": 0.08094635667088786,
+        "fair": 1135,
+        "td": 1.0,
+        "touches": 83.0
+      }
+    ],
+    "other_offense": 0.047903641044501656,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Merrimack @ Wake Forest",
+    "kickoff": "2026-11-07T20:30:00+00:00",
+    "implied": [
+      6.0,
+      52.5
+    ],
+    "p_home_first": 0.9310457028051714,
+    "history_through": {
+      "Wake Forest": [
+        2026,
+        9
+      ],
+      "Merrimack": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Ty Clark III",
+        "team": "Wake Forest",
+        "prob": 0.1575465782324184,
+        "fair": 535,
+        "td": 7.0,
+        "touches": 79.0
+      },
+      {
+        "name": "Giovanni Lopez",
+        "team": "Wake Forest",
+        "prob": 0.14701678194635176,
+        "fair": 580,
+        "td": 6.0,
+        "touches": 76.0
+      },
+      {
+        "name": "Deuce Lawrence",
+        "team": "Wake Forest",
+        "prob": 0.12699125574055894,
+        "fair": 687,
+        "td": 3.0,
+        "touches": 75.0
+      },
+      {
+        "name": "Carlos Hernandez",
+        "team": "Wake Forest",
+        "prob": 0.11335926035547082,
+        "fair": 782,
+        "td": 5.0,
+        "touches": 57.0
+      },
+      {
+        "name": "Jack Foley",
+        "team": "Wake Forest",
+        "prob": 0.05801949629132646,
+        "fair": 1624,
+        "td": 4.0,
+        "touches": 23.0
+      }
+    ],
+    "other_offense": 0.04790364104450165,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Penn State @ Washington",
+    "kickoff": "2026-11-07T20:30:00+00:00",
+    "implied": [
+      20.75,
+      23.25
+    ],
+    "p_home_first": 0.5340747663050401,
+    "history_through": {
+      "Washington": [
+        2026,
+        9
+      ],
+      "Penn State": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Carson Hansen",
+        "team": "Penn State",
+        "prob": 0.09371439171845086,
+        "fair": 967,
+        "td": 5.0,
+        "touches": 95.0
+      },
+      {
+        "name": "Brian Bonner Jr.",
+        "team": "Washington",
+        "prob": 0.07972243937388557,
+        "fair": 1154,
+        "td": 2.0,
+        "touches": 72.0
+      },
+      {
+        "name": "Demond Williams Jr.",
+        "team": "Washington",
+        "prob": 0.07576448047678493,
+        "fair": 1220,
+        "td": 2.0,
+        "touches": 68.0
+      },
+      {
+        "name": "Dezmen Roebuck",
+        "team": "Washington",
+        "prob": 0.07109866257134541,
+        "fair": 1306,
+        "td": 3.0,
+        "touches": 59.0
+      },
+      {
+        "name": "Chris Lawson",
+        "team": "Washington",
+        "prob": 0.0582352961557683,
+        "fair": 1617,
+        "td": 3.0,
+        "touches": 46.0
+      }
+    ],
+    "other_offense": 0.04790364104450166,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "UCF @ Kansas",
+    "kickoff": "2026-11-07T20:45:00+00:00",
+    "implied": [
+      22.5,
+      26.0
+    ],
+    "p_home_first": 0.543265892818867,
+    "history_through": {
+      "Kansas": [
+        2026,
+        9
+      ],
+      "UCF": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Dylan Edwards",
+        "team": "Kansas",
+        "prob": 0.17159020046515117,
+        "fair": 483,
+        "td": 5.0,
+        "touches": 144.0
+      },
+      {
+        "name": "Isaiah Marshall",
+        "team": "Kansas",
+        "prob": 0.10224397491082605,
+        "fair": 878,
+        "td": 2.0,
+        "touches": 90.0
+      },
+      {
+        "name": "Duke Watson",
+        "team": "UCF",
+        "prob": 0.10174011887122827,
+        "fair": 883,
+        "td": 3.0,
+        "touches": 100.0
+      },
+      {
+        "name": "Landen Chambers",
+        "team": "UCF",
+        "prob": 0.060783343325390385,
+        "fair": 1545,
+        "td": 5.0,
+        "touches": 46.0
+      },
+      {
+        "name": "Keyone Jenkins",
+        "team": "UCF",
+        "prob": 0.056920666904223156,
+        "fair": 1657,
+        "td": 4.0,
+        "touches": 46.0
+      }
+    ],
+    "other_offense": 0.04790364104450166,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Missouri State @ Florida International",
+    "kickoff": "2026-11-07T21:00:00+00:00",
+    "implied": [
+      22.25,
+      27.25
+    ],
+    "p_home_first": 0.5605153443489821,
+    "history_through": {
+      "Florida International": [
+        2026,
+        9
+      ],
+      "Missouri State": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Devonte Lyons",
+        "team": "Florida International",
+        "prob": 0.11550582405588916,
+        "fair": 766,
+        "td": 1.0,
+        "touches": 104.0
+      },
+      {
+        "name": "Anthony Carrie",
+        "team": "Florida International",
+        "prob": 0.1027055772539898,
+        "fair": 874,
+        "td": 1.0,
+        "touches": 92.0
+      },
+      {
+        "name": "Connor Lair",
+        "team": "Missouri State",
+        "prob": 0.08137891285362346,
+        "fair": 1129,
+        "td": 4.0,
+        "touches": 74.0
+      },
+      {
+        "name": "Ramone Green Jr.",
+        "team": "Missouri State",
+        "prob": 0.07462022193277022,
+        "fair": 1240,
+        "td": 2.0,
+        "touches": 75.0
+      },
+      {
+        "name": "Isaiah Myers",
+        "team": "Missouri State",
+        "prob": 0.07282756602628765,
+        "fair": 1273,
+        "td": 9.0,
+        "touches": 43.0
+      }
+    ],
+    "other_offense": 0.04790364104450166,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Rice @ North Texas",
+    "kickoff": "2026-11-07T21:00:00+00:00",
+    "implied": [
+      24.25,
+      40.25
+    ],
+    "p_home_first": 0.647491758634846,
+    "history_through": {
+      "North Texas": [
+        2026,
+        9
+      ],
+      "Rice": [
+        2026,
+        8
+      ]
+    },
+    "players": [
+      {
+        "name": "Jahiem White",
+        "team": "North Texas",
+        "prob": 0.24169387800961895,
+        "fair": 314,
+        "td": 15.0,
+        "touches": 172.0
+      },
+      {
+        "name": "Jacurri Brown",
+        "team": "Rice",
+        "prob": 0.09934322664685179,
+        "fair": 907,
+        "td": 6.0,
+        "touches": 118.0
+      },
+      {
+        "name": "Justin Stevenson",
+        "team": "North Texas",
+        "prob": 0.08621190599491053,
+        "fair": 1060,
+        "td": 8.0,
+        "touches": 50.0
+      },
+      {
+        "name": "Tyvonn Byars",
+        "team": "Rice",
+        "prob": 0.07297860140288433,
+        "fair": 1270,
+        "td": 2.0,
+        "touches": 97.0
+      },
+      {
+        "name": "DAndre Hardeman Jr.",
+        "team": "Rice",
+        "prob": 0.05707901016634428,
+        "fair": 1652,
+        "td": 2.0,
+        "touches": 74.0
+      }
+    ],
+    "other_offense": 0.04790364104450165,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Northern Illinois @ San Jos\u00e9 State",
+    "kickoff": "2026-11-07T21:00:00+00:00",
+    "implied": [
+      20.5,
+      32.0
+    ],
+    "p_home_first": 0.6305025172275448,
+    "history_through": {
+      "San Jos\u00e9 State": [
+        2026,
+        9
+      ],
+      "Northern Illinois": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Jabari Bates",
+        "team": "San Jos\u00e9 State",
+        "prob": 0.20680874096163493,
+        "fair": 384,
+        "td": 1.0,
+        "touches": 162.0
+      },
+      {
+        "name": "Telly Johnson Jr.",
+        "team": "Northern Illinois",
+        "prob": 0.10737911880986302,
+        "fair": 831,
+        "td": 5.0,
+        "touches": 115.0
+      },
+      {
+        "name": "Carson Clark",
+        "team": "San Jos\u00e9 State",
+        "prob": 0.09504767868641344,
+        "fair": 952,
+        "td": 5.0,
+        "touches": 55.0
+      },
+      {
+        "name": "Luke Weaver",
+        "team": "San Jos\u00e9 State",
+        "prob": 0.0824384063759712,
+        "fair": 1113,
+        "td": 1.0,
+        "touches": 62.0
+      },
+      {
+        "name": "Viliami Teu",
+        "team": "San Jos\u00e9 State",
+        "prob": 0.07817156409141089,
+        "fair": 1179,
+        "td": 3.0,
+        "touches": 50.0
+      }
+    ],
+    "other_offense": 0.047903641044501656,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Louisiana Tech @ Troy",
+    "kickoff": "2026-11-07T21:00:00+00:00",
+    "implied": [
+      26.75,
+      20.75
+    ],
+    "p_home_first": 0.42438795590218653,
+    "history_through": {
+      "Troy": [
+        2026,
+        9
+      ],
+      "Louisiana Tech": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Andrew Burnette",
+        "team": "Louisiana Tech",
+        "prob": 0.10903956021504879,
+        "fair": 817,
+        "td": 2.0,
+        "touches": 102.0
+      },
+      {
+        "name": "Gavin Griffin",
+        "team": "Troy",
+        "prob": 0.09208699536376652,
+        "fair": 986,
+        "td": 4.0,
+        "touches": 104.0
+      },
+      {
+        "name": "Jaheim Merriweather",
+        "team": "Troy",
+        "prob": 0.07557941037738367,
+        "fair": 1223,
+        "td": 5.0,
+        "touches": 78.0
+      },
+      {
+        "name": "Jalen Mickens",
+        "team": "Louisiana Tech",
+        "prob": 0.07466034487619334,
+        "fair": 1239,
+        "td": 6.0,
+        "touches": 50.0
+      },
+      {
+        "name": "Jordan Lovett",
+        "team": "Troy",
+        "prob": 0.07264978006565938,
+        "fair": 1276,
+        "td": 2.0,
+        "touches": 87.0
+      }
+    ],
+    "other_offense": 0.04790364104450165,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Vanderbilt @ Mississippi State",
+    "kickoff": "2026-11-07T21:15:00+00:00",
+    "implied": [
+      22.75,
+      25.75
+    ],
+    "p_home_first": 0.5370925734015527,
+    "history_through": {
+      "Mississippi State": [
+        2026,
+        9
+      ],
+      "Vanderbilt": [
+        2026,
+        8
+      ]
+    },
+    "players": [
+      {
+        "name": "Fluff Bothwell",
+        "team": "Mississippi State",
+        "prob": 0.12565742856582468,
+        "fair": 696,
+        "td": 4.0,
+        "touches": 121.0
+      },
+      {
+        "name": "Sedrick Alexander",
+        "team": "Vanderbilt",
+        "prob": 0.09860590588199437,
+        "fair": 914,
+        "td": 6.0,
+        "touches": 78.0
+      },
+      {
+        "name": "Anthony Evans III",
+        "team": "Mississippi State",
+        "prob": 0.07406638681338154,
+        "fair": 1250,
+        "td": 5.0,
+        "touches": 60.0
+      },
+      {
+        "name": "Makhilyn Young",
+        "team": "Vanderbilt",
+        "prob": 0.06995005841108688,
+        "fair": 1330,
+        "td": 2.0,
+        "touches": 65.0
+      },
+      {
+        "name": "Jared Curtis",
+        "team": "Vanderbilt",
+        "prob": 0.0680484469691849,
+        "fair": 1370,
+        "td": 2.0,
+        "touches": 63.0
+      }
+    ],
+    "other_offense": 0.04790364104450165,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Rutgers @ Wisconsin",
+    "kickoff": "2026-11-07T21:15:00+00:00",
+    "implied": [
+      13.25,
+      32.25
+    ],
+    "p_home_first": 0.7441068354139408,
+    "history_through": {
+      "Wisconsin": [
+        2026,
+        9
+      ],
+      "Rutgers": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Colton Joseph",
+        "team": "Wisconsin",
+        "prob": 0.1703853792709115,
+        "fair": 487,
+        "td": 4.0,
+        "touches": 91.0
+      },
+      {
+        "name": "Darrion Dupree",
+        "team": "Wisconsin",
+        "prob": 0.11119045224456575,
+        "fair": 799,
+        "td": 2.0,
+        "touches": 62.0
+      },
+      {
+        "name": "Abu Sama III",
+        "team": "Wisconsin",
+        "prob": 0.1028638854115738,
+        "fair": 872,
+        "td": 1.0,
+        "touches": 61.0
+      },
+      {
+        "name": "Antwan Raymond",
+        "team": "Rutgers",
+        "prob": 0.0858086639531167,
+        "fair": 1065,
+        "td": 7.0,
+        "touches": 148.0
+      },
+      {
+        "name": "Bryan Jackson",
+        "team": "Wisconsin",
+        "prob": 0.06032209205121197,
+        "fair": 1558,
+        "td": 1.0,
+        "touches": 34.0
+      }
+    ],
+    "other_offense": 0.047903641044501656,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "South Alabama @ Louisiana",
+    "kickoff": "2026-11-07T22:00:00+00:00",
+    "implied": [
+      25.0,
+      32.0
+    ],
+    "p_home_first": 0.5735211634118014,
+    "history_through": {
+      "Louisiana": [
+        2026,
+        8
+      ],
+      "South Alabama": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "D'Wayne' Winfield",
+        "team": "Louisiana",
+        "prob": 0.14398457532110753,
+        "fair": 595,
+        "td": 9.0,
+        "touches": 109.0
+      },
+      {
+        "name": "PJ Martin",
+        "team": "South Alabama",
+        "prob": 0.10522496432286824,
+        "fair": 850,
+        "td": 7.0,
+        "touches": 128.0
+      },
+      {
+        "name": "Keenan Phillips",
+        "team": "South Alabama",
+        "prob": 0.09437919406461592,
+        "fair": 960,
+        "td": 6.0,
+        "touches": 116.0
+      },
+      {
+        "name": "Steven Blanco",
+        "team": "Louisiana",
+        "prob": 0.09115845167991579,
+        "fair": 997,
+        "td": 5.0,
+        "touches": 72.0
+      },
+      {
+        "name": "Anthony Reagan Jr.",
+        "team": "Louisiana",
+        "prob": 0.08014737877113083,
+        "fair": 1148,
+        "td": 4.0,
+        "touches": 65.0
+      }
+    ],
+    "other_offense": 0.047903641044501656,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Boise State @ Colorado State",
+    "kickoff": "2026-11-07T23:00:00+00:00",
+    "implied": [
+      42.75,
+      25.75
+    ],
+    "p_home_first": 0.3524421855977594,
+    "history_through": {
+      "Colorado State": [
+        2026,
+        9
+      ],
+      "Boise State": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Dylan Riley",
+        "team": "Boise State",
+        "prob": 0.21482549427355785,
+        "fair": 365,
+        "td": 10.0,
+        "touches": 180.0
+      },
+      {
+        "name": "Sire Gaines",
+        "team": "Boise State",
+        "prob": 0.10259270817445275,
+        "fair": 875,
+        "td": 5.0,
+        "touches": 85.0
+      },
+      {
+        "name": "Durell Robinson",
+        "team": "Colorado State",
+        "prob": 0.08813218593224019,
+        "fair": 1035,
+        "td": 10.0,
+        "touches": 113.0
+      },
+      {
+        "name": "Rasean Jones",
+        "team": "Boise State",
+        "prob": 0.06210438089091301,
+        "fair": 1510,
+        "td": 5.0,
+        "touches": 43.0
+      },
+      {
+        "name": "Maddux Madsen",
+        "team": "Boise State",
+        "prob": 0.051915546980019336,
+        "fair": 1826,
+        "td": 3.0,
+        "touches": 41.0
+      }
+    ],
+    "other_offense": 0.047903641044501656,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Kentucky @ Tennessee",
+    "kickoff": "2026-11-07T23:15:00+00:00",
+    "implied": [
+      21.75,
+      27.75
+    ],
+    "p_home_first": 0.5725704974876399,
+    "history_through": {
+      "Tennessee": [
+        2026,
+        8
+      ],
+      "Kentucky": [
+        2026,
+        8
+      ]
+    },
+    "players": [
+      {
+        "name": "DeSean Bishop",
+        "team": "Tennessee",
+        "prob": 0.23948055646325103,
+        "fair": 318,
+        "td": 11.0,
+        "touches": 180.0
+      },
+      {
+        "name": "CJ Baxter Jr.",
+        "team": "Kentucky",
+        "prob": 0.09819906361882301,
+        "fair": 918,
+        "td": 8.0,
+        "touches": 96.0
+      },
+      {
+        "name": "Daune Morris",
+        "team": "Tennessee",
+        "prob": 0.07967814664147815,
+        "fair": 1155,
+        "td": 2.0,
+        "touches": 67.0
+      },
+      {
+        "name": "Jason Patterson",
+        "team": "Kentucky",
+        "prob": 0.0669755060807784,
+        "fair": 1393,
+        "td": 3.0,
+        "touches": 76.0
+      },
+      {
+        "name": "Mike Matthews",
+        "team": "Tennessee",
+        "prob": 0.05813651606158567,
+        "fair": 1620,
+        "td": 4.0,
+        "touches": 38.0
+      }
+    ],
+    "other_offense": 0.04790364104450166,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Sam Houston @ Jacksonville State",
+    "kickoff": "2026-11-08T00:00:00+00:00",
+    "implied": [
+      14.5,
+      31.0
+    ],
+    "p_home_first": 0.7133696384086301,
+    "history_through": {
+      "Jacksonville State": [
+        2026,
+        9
+      ],
+      "Sam Houston": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Caden Creel",
+        "team": "Jacksonville State",
+        "prob": 0.19714219939856834,
+        "fair": 407,
+        "td": 5.0,
+        "touches": 127.0
+      },
+      {
+        "name": "Jalen Likely",
+        "team": "Jacksonville State",
+        "prob": 0.09183282606427651,
+        "fair": 989,
+        "td": 4.0,
+        "touches": 52.0
+      },
+      {
+        "name": "Jamill Williams",
+        "team": "Jacksonville State",
+        "prob": 0.07095895991903357,
+        "fair": 1309,
+        "td": 5.0,
+        "touches": 32.0
+      },
+      {
+        "name": "Lucas Farrington",
+        "team": "Jacksonville State",
+        "prob": 0.06413378992518047,
+        "fair": 1459,
+        "td": 1.0,
+        "touches": 44.0
+      },
+      {
+        "name": "Khristian Lando",
+        "team": "Jacksonville State",
+        "prob": 0.05085134366417682,
+        "fair": 1867,
+        "td": 1.0,
+        "touches": 34.0
+      }
+    ],
+    "other_offense": 0.047903641044501656,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Colorado @ Arizona State",
+    "kickoff": "2026-11-08T00:30:00+00:00",
+    "implied": [
+      22.5,
+      26.0
+    ],
+    "p_home_first": 0.543265892818867,
+    "history_through": {
+      "Arizona State": [
+        2026,
+        9
+      ],
+      "Colorado": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Cardae Mack",
+        "team": "Arizona State",
+        "prob": 0.11654876308393947,
+        "fair": 758,
+        "td": 7.0,
+        "touches": 89.0
+      },
+      {
+        "name": "Jaquail Smith",
+        "team": "Colorado",
+        "prob": 0.08483316587164251,
+        "fair": 1079,
+        "td": 3.0,
+        "touches": 76.0
+      },
+      {
+        "name": "Reed Harris",
+        "team": "Arizona State",
+        "prob": 0.08058736149523836,
+        "fair": 1141,
+        "td": 8.0,
+        "touches": 48.0
+      },
+      {
+        "name": "Kyson Brown",
+        "team": "Arizona State",
+        "prob": 0.07863592070376464,
+        "fair": 1172,
+        "td": 1.0,
+        "touches": 76.0
+      },
+      {
+        "name": "Joseph Williams",
+        "team": "Colorado",
+        "prob": 0.07010066288548408,
+        "fair": 1327,
+        "td": 5.0,
+        "touches": 52.0
+      }
+    ],
+    "other_offense": 0.04790364104450166,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Air Force @ Army",
+    "kickoff": "2026-11-08T00:30:00+00:00",
+    "implied": [
+      19.75,
+      23.75
+    ],
+    "p_home_first": 0.5551039778642514,
+    "history_through": {
+      "Army": [
+        2026,
+        9
+      ],
+      "Air Force": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Cale Hellums",
+        "team": "Army",
+        "prob": 0.20741688850635803,
+        "fair": 382,
+        "td": 17.0,
+        "touches": 172.0
+      },
+      {
+        "name": "Owen Allen",
+        "team": "Air Force",
+        "prob": 0.09145178957955755,
+        "fair": 993,
+        "td": 3.0,
+        "touches": 106.0
+      },
+      {
+        "name": "Godspower Nwawuihe",
+        "team": "Army",
+        "prob": 0.08676852819512734,
+        "fair": 1052,
+        "td": 5.0,
+        "touches": 81.0
+      },
+      {
+        "name": "Evan Medders",
+        "team": "Air Force",
+        "prob": 0.07595040107819971,
+        "fair": 1217,
+        "td": 6.0,
+        "touches": 73.0
+      },
+      {
+        "name": "Kemper Hodges",
+        "team": "Air Force",
+        "prob": 0.07441150642955345,
+        "fair": 1244,
+        "td": 6.0,
+        "touches": 71.0
+      }
+    ],
+    "other_offense": 0.047903641044501656,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Louisville @ Georgia Tech",
+    "kickoff": "2026-11-08T00:30:00+00:00",
+    "implied": [
+      38.5,
+      24.0
+    ],
+    "p_home_first": 0.36190041270831247,
+    "history_through": {
+      "Georgia Tech": [
+        2026,
+        9
+      ],
+      "Louisville": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Isaac Brown",
+        "team": "Louisville",
+        "prob": 0.14067472774895554,
+        "fair": 611,
+        "td": 9.0,
+        "touches": 107.0
+      },
+      {
+        "name": "Lincoln Kienholz",
+        "team": "Louisville",
+        "prob": 0.12286273927450235,
+        "fair": 714,
+        "td": 11.0,
+        "touches": 80.0
+      },
+      {
+        "name": "Justice Haynes",
+        "team": "Georgia Tech",
+        "prob": 0.09923148642864722,
+        "fair": 908,
+        "td": 6.0,
+        "touches": 125.0
+      },
+      {
+        "name": "Keyjuan Brown",
+        "team": "Louisville",
+        "prob": 0.07965595814031493,
+        "fair": 1155,
+        "td": 5.0,
+        "touches": 61.0
+      },
+      {
+        "name": "Tre Richardson",
+        "team": "Louisville",
+        "prob": 0.060743702922900246,
+        "fair": 1546,
+        "td": 3.0,
+        "touches": 50.0
+      }
+    ],
+    "other_offense": 0.047903641044501656,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Michigan State @ Michigan",
+    "kickoff": "2026-11-08T00:30:00+00:00",
+    "implied": [
+      12.75,
+      26.75
+    ],
+    "p_home_first": 0.7087258462006002,
+    "history_through": {
+      "Michigan": [
+        2026,
+        9
+      ],
+      "Michigan State": [
+        2026,
+        8
+      ]
+    },
+    "players": [
+      {
+        "name": "Jordan Marshall",
+        "team": "Michigan",
+        "prob": 0.14483881333507637,
+        "fair": 590,
+        "td": 5.0,
+        "touches": 91.0
+      },
+      {
+        "name": "Savion Hiter",
+        "team": "Michigan",
+        "prob": 0.13343205265798172,
+        "fair": 649,
+        "td": 2.0,
+        "touches": 95.0
+      },
+      {
+        "name": "Bryce Underwood",
+        "team": "Michigan",
+        "prob": 0.08962860677036502,
+        "fair": 1016,
+        "td": 2.0,
+        "touches": 61.0
+      },
+      {
+        "name": "JJ Buchanan",
+        "team": "Michigan",
+        "prob": 0.0765569712161444,
+        "fair": 1206,
+        "td": 5.0,
+        "touches": 38.0
+      },
+      {
+        "name": "Jaziun Patterson",
+        "team": "Michigan State",
+        "prob": 0.07433419008410261,
+        "fair": 1245,
+        "td": 6.0,
+        "touches": 83.0
+      }
+    ],
+    "other_offense": 0.04790364104450166,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Iowa @ Northwestern",
+    "kickoff": "2026-11-08T00:30:00+00:00",
+    "implied": [
+      22.75,
+      20.25
+    ],
+    "p_home_first": 0.46513357455489396,
+    "history_through": {
+      "Northwestern": [
+        2026,
+        9
+      ],
+      "Iowa": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Kamari Moulton",
+        "team": "Iowa",
+        "prob": 0.10959533234811504,
+        "fair": 812,
+        "td": 4.0,
+        "touches": 95.0
+      },
+      {
+        "name": "Caleb Komolafe",
+        "team": "Northwestern",
+        "prob": 0.10341988497049662,
+        "fair": 867,
+        "td": 5.0,
+        "touches": 119.0
+      },
+      {
+        "name": "Aidan Chiles",
+        "team": "Northwestern",
+        "prob": 0.09489364926024173,
+        "fair": 954,
+        "td": 10.0,
+        "touches": 86.0
+      },
+      {
+        "name": "Xavier Williams",
+        "team": "Iowa",
+        "prob": 0.06659319561981332,
+        "fair": 1402,
+        "td": 4.0,
+        "touches": 51.0
+      },
+      {
+        "name": "Joseph Himon II",
+        "team": "Northwestern",
+        "prob": 0.05502132170239534,
+        "fair": 1717,
+        "td": 6.0,
+        "touches": 49.0
+      }
+    ],
+    "other_offense": 0.047903641044501656,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Miami @ Notre Dame",
+    "kickoff": "2026-11-08T00:30:00+00:00",
+    "implied": [
+      24.0,
+      31.0
+    ],
+    "p_home_first": 0.5761821425500856,
+    "history_through": {
+      "Notre Dame": [
+        2026,
+        9
+      ],
+      "Miami": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Nolan James Jr.",
+        "team": "Notre Dame",
+        "prob": 0.13568735978681035,
+        "fair": 637,
+        "td": 11.0,
+        "touches": 103.0
+      },
+      {
+        "name": "Aneyas Williams",
+        "team": "Notre Dame",
+        "prob": 0.09256939568825474,
+        "fair": 980,
+        "td": 5.0,
+        "touches": 81.0
+      },
+      {
+        "name": "Mark Fletcher Jr.",
+        "team": "Miami",
+        "prob": 0.08632141773845706,
+        "fair": 1058,
+        "td": 10.0,
+        "touches": 101.0
+      },
+      {
+        "name": "Jonaz Walton",
+        "team": "Notre Dame",
+        "prob": 0.08237042158639661,
+        "fair": 1114,
+        "td": 4.0,
+        "touches": 74.0
+      },
+      {
+        "name": "Malachi Toney",
+        "team": "Miami",
+        "prob": 0.07963267727199465,
+        "fair": 1156,
+        "td": 13.0,
+        "touches": 77.0
+      }
+    ],
+    "other_offense": 0.047903641044501656,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Georgia @ Ole Miss",
+    "kickoff": "2026-11-08T00:30:00+00:00",
+    "implied": [
+      30.0,
+      26.5
+    ],
+    "p_home_first": 0.46285277937133434,
+    "history_through": {
+      "Ole Miss": [
+        2026,
+        9
+      ],
+      "Georgia": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Dwight Phillips Jr.",
+        "team": "Georgia",
+        "prob": 0.08748032377220247,
+        "fair": 1043,
+        "td": 3.0,
+        "touches": 66.0
+      },
+      {
+        "name": "Nate Frazier",
+        "team": "Georgia",
+        "prob": 0.08620880555364718,
+        "fair": 1060,
+        "td": 6.0,
+        "touches": 52.0
+      },
+      {
+        "name": "Kewan Lacy",
+        "team": "Ole Miss",
+        "prob": 0.07821128660130891,
+        "fair": 1179,
+        "td": 5.0,
+        "touches": 88.0
+      },
+      {
+        "name": "Gunner Stockton",
+        "team": "Georgia",
+        "prob": 0.05689505854617928,
+        "fair": 1658,
+        "td": 1.0,
+        "touches": 47.0
+      },
+      {
+        "name": "Trinidad Chambliss",
+        "team": "Ole Miss",
+        "prob": 0.055745832832033486,
+        "fair": 1694,
+        "td": 7.0,
+        "touches": 48.0
+      }
+    ],
+    "other_offense": 0.04790364104450165,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Oklahoma @ Florida",
+    "kickoff": "2026-11-08T00:45:00+00:00",
+    "implied": [
+      19.75,
+      25.25
+    ],
+    "p_home_first": 0.5731726049679845,
+    "history_through": {
+      "Florida": [
+        2026,
+        9
+      ],
+      "Oklahoma": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Jadan Baugh",
+        "team": "Florida",
+        "prob": 0.21464256751429425,
+        "fair": 366,
+        "td": 13.0,
+        "touches": 161.0
+      },
+      {
+        "name": "Lloyd Avant",
+        "team": "Oklahoma",
+        "prob": 0.08547766431643013,
+        "fair": 1070,
+        "td": 2.0,
+        "touches": 90.0
+      },
+      {
+        "name": "John Mateer",
+        "team": "Oklahoma",
+        "prob": 0.07457781765416546,
+        "fair": 1241,
+        "td": 0.0,
+        "touches": 86.0
+      },
+      {
+        "name": "Isaiah Sategna",
+        "team": "Oklahoma",
+        "prob": 0.05797459845153587,
+        "fair": 1625,
+        "td": 3.0,
+        "touches": 54.0
+      },
+      {
+        "name": "Aaron Philo",
+        "team": "Florida",
+        "prob": 0.05631405128312947,
+        "fair": 1676,
+        "td": 3.0,
+        "touches": 44.0
+      }
+    ],
+    "other_offense": 0.04790364104450166,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Liberty @ New Mexico State",
+    "kickoff": "2026-11-08T01:00:00+00:00",
+    "implied": [
+      31.0,
+      15.5
+    ],
+    "p_home_first": 0.30326954502292763,
+    "history_through": {
+      "New Mexico State": [
+        2026,
+        9
+      ],
+      "Liberty": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Kam Davis",
+        "team": "Liberty",
+        "prob": 0.13595382082579635,
+        "fair": 636,
+        "td": 8.0,
+        "touches": 90.0
+      },
+      {
+        "name": "James Jones",
+        "team": "New Mexico State",
+        "prob": 0.10765424852659594,
+        "fair": 829,
+        "td": 5.0,
+        "touches": 147.0
+      },
+      {
+        "name": "Peyton Jones",
+        "team": "Liberty",
+        "prob": 0.08673406405426407,
+        "fair": 1053,
+        "td": 1.0,
+        "touches": 75.0
+      },
+      {
+        "name": "Jaylon Coleman",
+        "team": "Liberty",
+        "prob": 0.06250711931869898,
+        "fair": 1500,
+        "td": 4.0,
+        "touches": 40.0
+      },
+      {
+        "name": "Makai Jackson",
+        "team": "Liberty",
+        "prob": 0.055160776552737184,
+        "fair": 1713,
+        "td": 5.0,
+        "touches": 29.0
+      }
+    ],
+    "other_offense": 0.047903641044501656,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "West Virginia @ Texas Tech",
+    "kickoff": "2026-11-08T02:30:00+00:00",
+    "implied": [
+      24.5,
+      41.0
+    ],
+    "p_home_first": 0.6497359472723898,
+    "history_through": {
+      "Texas Tech": [
+        2026,
+        9
+      ],
+      "West Virginia": [
+        2026,
+        8
+      ]
+    },
+    "players": [
+      {
+        "name": "J'Koby Williams",
+        "team": "Texas Tech",
+        "prob": 0.16067499447931874,
+        "fair": 522,
+        "td": 6.0,
+        "touches": 125.0
+      },
+      {
+        "name": "Cam Cook",
+        "team": "West Virginia",
+        "prob": 0.11656554247821536,
+        "fair": 758,
+        "td": 9.0,
+        "touches": 197.0
+      },
+      {
+        "name": "Michael Hawkins Jr.",
+        "team": "West Virginia",
+        "prob": 0.11458239543987173,
+        "fair": 773,
+        "td": 16.0,
+        "touches": 163.0
+      },
+      {
+        "name": "Cameron Dickey",
+        "team": "Texas Tech",
+        "prob": 0.09503378419807923,
+        "fair": 952,
+        "td": 4.0,
+        "touches": 72.0
+      },
+      {
+        "name": "Quinten Joyner",
+        "team": "Texas Tech",
+        "prob": 0.07660601996685351,
+        "fair": 1205,
+        "td": 3.0,
+        "touches": 59.0
+      }
+    ],
+    "other_offense": 0.047903641044501656,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Hawai'i @ UTEP",
+    "kickoff": "2026-11-08T02:30:00+00:00",
+    "implied": [
+      28.5,
+      20.0
+    ],
+    "p_home_first": 0.3953194388506753,
+    "history_through": {
+      "UTEP": [
+        2026,
+        9
+      ],
+      "Hawai'i": [
+        2026,
+        8
+      ]
+    },
+    "players": [
+      {
+        "name": "Devon Rice",
+        "team": "Hawai'i",
+        "prob": 0.1396695138466347,
+        "fair": 616,
+        "td": 7.0,
+        "touches": 97.0
+      },
+      {
+        "name": "EJ Colson",
+        "team": "UTEP",
+        "prob": 0.07214797997539894,
+        "fair": 1286,
+        "td": 1.0,
+        "touches": 85.0
+      },
+      {
+        "name": "Raymond Moore III",
+        "team": "UTEP",
+        "prob": 0.0669514968768402,
+        "fair": 1394,
+        "td": 3.0,
+        "touches": 70.0
+      },
+      {
+        "name": "Cam Barfield",
+        "team": "Hawai'i",
+        "prob": 0.06630260425671237,
+        "fair": 1408,
+        "td": 1.0,
+        "touches": 56.0
+      },
+      {
+        "name": "Tavorus Jones",
+        "team": "UTEP",
+        "prob": 0.06487537463786268,
+        "fair": 1441,
+        "td": 1.0,
+        "touches": 76.0
+      }
+    ],
+    "other_offense": 0.04790364104450165,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Fresno State @ Utah State",
+    "kickoff": "2026-11-08T02:30:00+00:00",
+    "implied": [
+      22.5,
+      21.0
+    ],
+    "p_home_first": 0.4793139531147631,
+    "history_through": {
+      "Utah State": [
+        2026,
+        9
+      ],
+      "Fresno State": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Javen Jacobs",
+        "team": "Utah State",
+        "prob": 0.12422009455014078,
+        "fair": 705,
+        "td": 4.0,
+        "touches": 114.0
+      },
+      {
+        "name": "Bryson Donelson",
+        "team": "Fresno State",
+        "prob": 0.10907749542990161,
+        "fair": 817,
+        "td": 6.0,
+        "touches": 87.0
+      },
+      {
+        "name": "Grady Brosterhous",
+        "team": "Utah State",
+        "prob": 0.09377711671800616,
+        "fair": 966,
+        "td": 0.0,
+        "touches": 99.0
+      },
+      {
+        "name": "Rayshon Luke",
+        "team": "Fresno State",
+        "prob": 0.0818453278660682,
+        "fair": 1122,
+        "td": 2.0,
+        "touches": 76.0
+      },
+      {
+        "name": "Jayden Mandal",
+        "team": "Fresno State",
+        "prob": 0.07465391167905926,
+        "fair": 1240,
+        "td": 4.0,
+        "touches": 60.0
+      }
+    ],
+    "other_offense": 0.047903641044501656,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Texas State @ Oregon State",
+    "kickoff": "2026-11-08T03:30:00+00:00",
+    "implied": [
+      32.25,
+      38.25
+    ],
+    "p_home_first": 0.5510095740814995,
+    "history_through": {
+      "Oregon State": [
+        2026,
+        9
+      ],
+      "Texas State": [
+        2026,
+        9
+      ]
+    },
+    "players": [
+      {
+        "name": "Torrance Burgess Jr.",
+        "team": "Texas State",
+        "prob": 0.10952644460312953,
+        "fair": 813,
+        "td": 5.0,
+        "touches": 146.0
+      },
+      {
+        "name": "AJ Newberry",
+        "team": "Oregon State",
+        "prob": 0.09633764078068495,
+        "fair": 938,
+        "td": 4.0,
+        "touches": 98.0
+      },
+      {
+        "name": "Jesse Legree",
+        "team": "Oregon State",
+        "prob": 0.09453555080008556,
+        "fair": 958,
+        "td": 14.0,
+        "touches": 53.0
+      },
+      {
+        "name": "Brad Jackson",
+        "team": "Texas State",
+        "prob": 0.07242383878314465,
+        "fair": 1281,
+        "td": 6.0,
+        "touches": 85.0
+      },
+      {
+        "name": "Davian Jackson",
+        "team": "Texas State",
+        "prob": 0.06887109534701043,
+        "fair": 1352,
+        "td": 8.0,
+        "touches": 71.0
+      }
+    ],
+    "other_offense": 0.04790364104450166,
+    "non_offense": 0.0419271791099669
+  },
+  {
+    "game": "Wyoming @ UNLV",
+    "kickoff": "2026-11-08T03:30:00+00:00",
+    "implied": [
+      22.25,
+      26.25
+    ],
+    "p_home_first": 0.5494351608586998,
+    "history_through": {
+      "UNLV": [
+        2026,
+        9
+      ],
+      "Wyoming": [
+        2026,
+        8
+      ]
+    },
+    "players": [
+      {
+        "name": "Jai'Den Thomas",
+        "team": "UNLV",
+        "prob": 0.17725097103073648,
+        "fair": 464,
+        "td": 6.0,
+        "touches": 151.0
+      },
+      {
+        "name": "Jackson Arnold",
+        "team": "UNLV",
+        "prob": 0.1441495218560943,
+        "fair": 594,
+        "td": 6.0,
+        "touches": 118.0
+      },
+      {
+        "name": "Tyler Hughes",
+        "team": "Wyoming",
+        "prob": 0.11396920724216934,
+        "fair": 777,
+        "td": 6.0,
+        "touches": 103.0
+      },
+      {
+        "name": "Markell Holman",
+        "team": "Wyoming",
+        "prob": 0.0992973332357972,
+        "fair": 907,
+        "td": 4.0,
+        "touches": 95.0
+      },
+      {
+        "name": "Samuel Harris",
+        "team": "Wyoming",
+        "prob": 0.0831065120271614,
+        "fair": 1103,
+        "td": 3.0,
+        "touches": 81.0
+      }
+    ],
+    "other_offense": 0.04790364104450166,
+    "non_offense": 0.0419271791099669
+  }
+]

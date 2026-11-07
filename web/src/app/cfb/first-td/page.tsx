@@ -1,0 +1,106 @@
+import { connection } from "next/server";
+import { getFirstTdDates, getFirstTdGames, type FirstTdGame } from "@/db/cfb-first-td";
+
+export const dynamic = "force-dynamic";
+export const metadata = { title: "CFB First Touchdown" };
+
+const ET = "America/New_York";
+function pct(value: number) { return `${(value * 100).toFixed(1)}%`; }
+function american(price: number) { return price > 0 ? `+${price}` : `${price}`.replace("-", "−"); }
+function time(value: string) {
+  return new Intl.DateTimeFormat("en-US", { timeZone: ET, month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }).format(new Date(value));
+}
+function etDate(ms: number) { return new Intl.DateTimeFormat("en-CA", { timeZone: ET }).format(new Date(ms)); }
+function dateLabel(d: string) {
+  return new Intl.DateTimeFormat("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" }).format(new Date(`${d}T12:00:00Z`));
+}
+/** The scoring play, cut before the extra point and the clock note. */
+function shortPlay(text: string) {
+  return text.replace(/^\(\d{1,2}:\d{2}\)\s*/, "").split(/,\s*clock|\(.*kick/i)[0].trim();
+}
+
+async function now() { await connection(); return Date.now(); }
+
+function GameCard({ g, started }: { g: FirstTdGame; started: boolean }) {
+  const pAway = 1 - g.pHomeFirst;
+  return <section className="overflow-hidden rounded-xl border bg-white">
+    <div className="border-b p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-lg font-semibold">{g.away} at {g.home}</h2>
+        <span className="text-sm text-slate-600">{time(g.kickoff)}{started ? " · started" : ""}</span>
+      </div>
+      <p className="mt-1 text-sm text-slate-600">
+        Implied points {g.away} {g.awayImplied.toFixed(1)}, {g.home} {g.homeImplied.toFixed(1)} ·
+        Scores first: <strong>{g.away} {pct(pAway * (1 - g.nonOffense))}</strong>, <strong>{g.home} {pct(g.pHomeFirst * (1 - g.nonOffense))}</strong>,
+        defense or special teams {pct(g.nonOffense)}
+      </p>
+      <div className="mt-2 flex h-2 overflow-hidden rounded bg-slate-100" aria-hidden>
+        <div className="bg-slate-500" style={{ width: `${pAway * 100}%` }} />
+        <div className="bg-emerald-700" style={{ width: `${g.pHomeFirst * 100}%` }} />
+      </div>
+    </div>
+    <div className="overflow-x-auto"><table className="w-full text-left text-sm">
+      <thead className="bg-slate-50"><tr>
+        <th className="p-3">Player</th><th className="p-3">Chance</th><th className="p-3">Fair price</th>
+        <th className="p-3">TDs this season</th><th className="p-3">Carries + catches</th>
+      </tr></thead>
+      <tbody>{g.players.map((p) => <tr className="border-t" key={`${p.team}-${p.name}`}>
+        <td className="p-3 font-medium">{p.name}<span className="ml-2 font-normal text-slate-500">{p.team}</span></td>
+        <td className="p-3 font-semibold">{pct(p.prob)}</td>
+        <td className="p-3">{american(p.fair)}</td>
+        <td className="p-3">{p.td}</td>
+        <td className="p-3">{p.touches}</td>
+      </tr>)}</tbody>
+    </table></div>
+    <div className="space-y-1 border-t bg-slate-50 p-4 text-sm text-slate-600">
+      <p>Everyone else on offense: {pct(g.otherOffense)} combined. Saved {time(g.savedAt)}.</p>
+      {g.actual
+        ? <p className="text-slate-900"><strong>First touchdown:</strong> {g.actual.playType} · {shortPlay(g.actual.text)}</p>
+        : started ? <p>The first touchdown appears here once the game&apos;s play-by-play is stored (the morning after).</p> : null}
+    </div>
+  </section>;
+}
+
+export default async function Page({ searchParams }: { searchParams: Promise<{ date?: string }> }) {
+  const params = await searchParams;
+  const nowMs = await now();
+  const today = etDate(nowMs);
+  const dates = await getFirstTdDates().catch(() => [] as string[]);
+  const upcoming = [...dates].reverse().find((d) => d >= today);
+  const date = params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) ? params.date : upcoming ?? dates[0];
+  const games = date ? await getFirstTdGames(date) : [];
+  return <main className="mx-auto max-w-6xl space-y-6 px-4 py-8">
+    <header className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <h1 className="text-3xl font-bold">First touchdown scorer</h1>
+        <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-900">Research model</span>
+      </div>
+      <p>College football · our own model, no sportsbook player prices used.</p>
+      <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+        Not validated against sportsbook prices. Tested on 514 games from 2026 weeks 1-10 that the fitting never saw:
+        it beat shares from carries and catches alone, and its chances matched what happened within about three points.
+        It does not know who is injured: a starter who sits keeps his share. Fair price is the chance as American odds with no bookmaker margin.
+      </p>
+    </header>
+    {dates.length > 0 && <form method="get" className="flex flex-wrap items-end gap-3">
+      <label className="space-y-1 text-sm font-medium"><span className="block">Date</span>
+        <select name="date" defaultValue={date} className="rounded border bg-white px-3 py-2">
+          {dates.map((d) => <option key={d} value={d}>{dateLabel(d)}{d === today ? " (today)" : ""}</option>)}
+        </select>
+      </label>
+      <button className="rounded bg-emerald-800 px-4 py-2 text-sm text-white" type="submit">Show</button>
+    </form>}
+    {games.length === 0
+      ? <p className="rounded-xl border bg-white p-4 text-sm text-slate-600">No saved forecasts{date ? ` for ${dateLabel(date)}` : " yet"}. They are saved each morning and about three hours before each kickoff group, for games with betting lines.</p>
+      : games.map((g) => <GameCard key={g.cfbdGameId} g={g} started={nowMs >= Date.parse(g.kickoff)} />)}
+    <details className="rounded-xl border bg-white p-4"><summary className="cursor-pointer font-semibold">How it works</summary>
+      <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-600">
+        <li>About 4% of first touchdowns are returns or defensive scores; that share goes to no player.</li>
+        <li>Which team: each team&apos;s implied points from the spread and total, run as a race between the two scoring rates.</li>
+        <li>Which player: his touchdowns this season, pulled strongly toward what his carries and catches would normally produce. Candidates are the players who appeared in the team&apos;s last two games; 5% of the team&apos;s share is left to everyone else.</li>
+        <li>Recent seasons&apos; favorites scored first more often than the model says (69% against 64% in 2025-26), so favorites are likely a little underrated.</li>
+        <li>Model version cfb-first-td-v1. Each game shows the last forecast saved before kickoff.</li>
+      </ul>
+    </details>
+  </main>;
+}
