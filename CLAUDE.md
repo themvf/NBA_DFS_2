@@ -340,7 +340,9 @@ Opt-in (`simulate_points(..., recal=True)` / `simulatePoints(..., true)`): the f
 runs and the "Game leaders" panel on `/nba/top-scorers` (`web/src/lib/nba-game-leaders.ts`, ungraded) do. The Odds
 API has no NBA most-points market (checked across 54 books); sportsbooks' own carry 13-17%+ margin. Each card also
 shows each team's biggest line, his chance to lead his team, and this season's record (team's biggest line led
-his team 54% of 246 team-games; team-to-team spread not beyond chance at ~8 games, so history only).
+his team 54% of 246 team-games; team-to-team spread not beyond chance at ~8 games, so history only). Tags (2026-11-07): WIDE OPEN / CLEAR FAVOURITE / TOSS-UP / CLEAR restate the chances in bands; injury status from
+the official report; spreads and totals from `ingest/nba_game_lines.py` (one bulk call, 2 credits a run, rows written only
+when a line moves) with a BIG SPREAD tag whose blowout test is registered in the doc.
 [`docs/nba-game-leaders.md`](docs/nba-game-leaders.md).
 
 ## Data Refresh Workflow
@@ -700,6 +702,14 @@ run's ~210 KB manifest once instead of per player row (158 s -> 9.5 s).
 The indexes were built concurrently on the live database through the direct
 (non-pooler) endpoint. Re-measured 2026-10-23/30: about -0.02 to -0.04 CU
 (~$2-3/month); no hour reached the 0.25 floor.
+
+**`prop_odds_history` had no kickoff or capture-time index (2026-11-07).** Since the
+2026-10-16 stats reset its readers pulled ~200 GB from disk off a 93 MB table, because each
+call scanned it whole: the NFL DFS market anchor (sport + kickoff window, 3,018 calls, 130 GB),
+the MLB alert scan of future games (48 GB, 0 rows since the season ended) and the /health
+MAX(captured_at) reads. `idx_prop_odds_sport_commence` and `idx_prop_odds_sport_captured`
+(built concurrently on the live database) make them index reads of a few milliseconds. The
+`mlb_props` health row also lacked its `sport = 'mlb'` filter and was reading every sport's captures.
 
 **PFR identity claims were re-inserted every run (2026-10-31).** The top
 disk reader after that was `freeze_identity` (`db/nfl_pfr_schema.py`, hash-

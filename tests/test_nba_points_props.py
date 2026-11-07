@@ -23,10 +23,12 @@ def test_eastern_date_of_a_late_tipoff():
     assert m.eastern_date(datetime(2026, 10, 22, 2, 30, tzinfo=timezone.utc)) == date(2026, 10, 21)
 
 
-def test_credit_estimate_is_two_per_game_with_six_books():
-    # player_points + player_points_alternate, bookmakers= bills markets x 1.
+def test_credit_estimate_is_two_per_game_plus_one_bulk_lines_call():
+    # player_points + player_points_alternate, bookmakers= bills markets x 1;
+    # spreads + totals for every game is one bulk call at 2 credits.
     assert m.MARKETS == ("player_points", "player_points_alternate")
-    assert m.estimated_credits(12) == 24
+    assert m.estimated_credits(12) == 26
+    assert m.estimated_credits(0) == 0
 
 
 def test_ladder_rungs_survive_normalization():
@@ -59,4 +61,4 @@ def test_dry_run_makes_no_paid_call(monkeypatch):
     monkeypatch.setattr(m, "fetch_events", lambda key: [_event("e", future)])
     monkeypatch.setattr(m.requests, "get", lambda *a, **k: pytest.fail("paid call in dry run"))
     out = m.capture(db=None, api_key="k", target=date(2099, 1, 1), apply=False)
-    assert out["events"] == 1 and out["estimatedCredits"] == 2 and out["rows"] == 0
+    assert out["events"] == 1 and out["estimatedCredits"] == 4 and out["rows"] == 0

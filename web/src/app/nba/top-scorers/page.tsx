@@ -7,6 +7,7 @@ import { easternDateString } from "@/lib/eastern-date";
 import { buildBoard, playerKey, teamKey } from "@/lib/nba-top-scorers";
 import { gameLeaders, teamRecords } from "@/lib/nba-game-leaders";
 import { getNbaTeamLeaderGames } from "@/db/nba-team-leaders";
+import { getNbaGameLines } from "@/db/nba-game-lines";
 import {
   getNbaPointsPropDates,
   getNbaPointsProps,
@@ -78,7 +79,7 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
   const requested = params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) ? params.date : null;
   const date = requested ?? today;
 
-  const [rows, ladderRows, pulled, lastSeason, teams, calibration, nightCalibration, gradedRows, currentTeams, teamLeaderGames] = await Promise.all([
+  const [rows, ladderRows, pulled, lastSeason, teams, calibration, nightCalibration, gradedRows, currentTeams, teamLeaderGames, gameLines] = await Promise.all([
     getNbaPointsProps(date),
     getNbaPointsProps(date, "player_points_alternate"),
     getNbaPulledLines(date),
@@ -89,6 +90,7 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
     getNbaPointsCalibrationRows(),
     getNbaCurrentTeams(date),
     getNbaTeamLeaderGames(date),
+    getNbaGameLines(date),
   ]);
   const reliability = reliabilitySeries(gradedRows);
   const scatter = scatterData(gradedRows);
@@ -162,7 +164,7 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
         <TopScorersClient scorers={scorers} games={games} pulled={pulled} lastSeason={LAST_SEASON} thisSeason={seasonLabel(date)} boomBoard={boomBoard} liveAvailability={liveAvailability} />
       )}
 
-      <GameLeadersPanel games={leaders} now={renderedAt} records={leaderRecords} teamLabels={teamLabels} status={liveAvailability} />
+      <GameLeadersPanel games={leaders} now={renderedAt} records={leaderRecords} teamLabels={teamLabels} status={liveAvailability} lines={gameLines} />
 
       <BoomLineups key={`${date}:${availability?.sha??"unknown"}`} board={boomBoard} evidence={availability} />
 

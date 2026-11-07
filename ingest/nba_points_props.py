@@ -3,8 +3,8 @@
 The event listing is free. Each event's prop call costs credits on the shared
 ODDS_API_KEY: with ``bookmakers=`` the price is markets x 1, so the two markets
 (``player_points`` and its ``player_points_alternate`` ladder) over the six
-configured books are 2 credits per game. A full 12-game night is about 24
-credits a run.
+configured books are 2 credits per game, plus 2 for one bulk spreads/totals call
+(``ingest.nba_game_lines``). A full 12-game night is about 26 credits a run.
 
 The ladder (several over-only thresholds per player, "20+ points" and so on)
 is what lets the page show a floor, a ceiling and a chance of 30+ instead of
@@ -35,6 +35,7 @@ import requests
 
 from config import load_config
 from db.database import DatabaseManager
+from ingest import nba_game_lines
 from ingest.nfl_prop_odds import normalize_prop_payload, require_credit_budget
 from ingest.sportsbook_policy import BOOKMAKER_KEYS
 
@@ -59,7 +60,10 @@ def select_events(events: list[dict[str, Any]], target: date, now: datetime) -> 
 
 
 def estimated_credits(event_count: int) -> int:
-    return event_count * len(MARKETS) * math.ceil(len(BOOKMAKER_KEYS) / 10)
+    """Props per game, plus one bulk spreads/totals call (ingest.nba_game_lines) when any game is left."""
+    if event_count == 0:
+        return 0
+    return event_count * len(MARKETS) * math.ceil(len(BOOKMAKER_KEYS) / 10) + nba_game_lines.CREDITS
 
 
 def fetch_events(api_key: str) -> list[dict[str, Any]]:
@@ -132,6 +136,7 @@ def capture(
         "estimatedCredits": cost,
         "rows": 0,
         "eventsWithoutLines": [],
+        "gameLines": None,
     }
     if not apply or not selected:
         return summary
@@ -157,6 +162,8 @@ def capture(
             # Books post player props late; an empty game is reported, never hidden.
             summary["eventsWithoutLines"].append(f"{event.get('away_team')} @ {event.get('home_team')}")
         summary["rows"] += written
+    # Spreads and totals for the same games, one bulk call; rows written only when a line moved.
+    summary["gameLines"] = nba_game_lines.capture(db, api_key, target, now)
     return summary
 
 
@@ -174,7 +181,7 @@ def main() -> int:
         # Skip the per-run DDL pass: it waits on other writers' table locks and
         # times out (LockNotAvailable). This job only appends to existing tables.
         db = DatabaseManager(config.database_url, initialize_schema=False)
-        db.require_tables(["prop_odds_history", "odds_api_usage"])
+        db.require_tables(["prop_odds_history", "odds_api_usage", "nba_game_lines"])
     result = capture(db=db, api_key=config.odds_api.api_key, target=target, apply=args.apply,
                      max_credits=max(0, args.max_credits))
     print(json.dumps({**result, "applied": args.apply}, indent=2))

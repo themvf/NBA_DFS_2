@@ -102,6 +102,23 @@ Tags on the panel restate the chances in bands that held up (they add no informa
 | QUESTIONABLE / OUT / ... | latest observed official injury report | fact, not a model |
 | 1 BOOK | one book quotes the line | such players sat ~35% |
 
+## Spreads and the blowout question (2026-11-07)
+
+`ingest/nba_game_lines.py` stores each game's spread and total from one bulk Odds API call
+(`markets=spreads,totals`, six named books, 2 credits a run) inside the existing nba-points-props
+job (15:07, 22:07, 01:07 UTC). `nba_game_lines` gets a row only when a game's lines changed since
+its last row, so a quiet capture writes nothing; the line at tip is the newest row before
+`commence_time`. /health reads freshness from the call's `odds_api_usage` row, which every run writes.
+The card shows the favourite and spread (median of the books, to the nearest half point) and total;
+BIG SPREAD marks a 10+ favourite and is not measured yet.
+
+Registered now, before any outcome is looked at: on games tipping from 2026-11-08 with a stored
+pre-tip spread, does the game favourite (by chance) lead less often than the simulation said when
+the spread is 10 or more? Primary: led minus said for those games, 95% CI from resampling nights;
+the tag earns a real meaning (and a correction is considered) only if the CI lies below zero with
+at least 60 such games. Secondary, descriptive: the same for the team leader rows, and the
+favourite's minutes against his season average.
+
 ## Where it is used
 
 - `/nba/top-scorers` "Game leaders" panel: always corrected (`web/src/lib/nba-game-leaders.ts`).

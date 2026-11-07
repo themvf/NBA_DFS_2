@@ -149,6 +149,26 @@ export function teamTag(top: LeaderChance, players: LeaderChance[]): TeamTag {
   return { kind: "toss_up", rival };
 }
 
+/** A game's spread and total (median across the configured books) from ingest/nba_game_lines.py. */
+export type GameLine = {
+  homeTeam: string; awayTeam: string;
+  /** Home team's handicap: negative when the home team is favoured. */
+  homeSpread: number | null; total: number | null; books: number; capturedAt: string;
+};
+
+// Not measured yet: spreads have been stored only since 2026-11-07. In 20+ point games the
+// favourite played about 5 fewer minutes and led 37% (Oct 20 - Nov 6); whether a 10+ spread
+// flags those games in advance is to be checked once about 150 games carry a spread.
+export const BIG_SPREAD_AT = 10;
+
+/** "OKC -12", "BOS -7.5": the favourite and the spread, rounded to the nearest half point; "PK" at zero. */
+export function spreadLabel(line: GameLine, label: (team: string) => string): string | null {
+  if (line.homeSpread == null) return null;
+  const half = Math.round(line.homeSpread * 2) / 2;
+  if (half === 0) return "PK";
+  return half < 0 ? `${label(line.homeTeam)} ${half}` : `${label(line.awayTeam)} -${half}`;
+}
+
 /** The American price at which a bet on this chance breaks even, before any book margin. */
 export function fairAmerican(chance: number): string {
   if (!(chance > 0 && chance < 1)) return "-";

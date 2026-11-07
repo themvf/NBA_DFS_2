@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { recalibrateSurvival, rng, simulatePoints, type ContestPlayer } from "../src/lib/nba-contest-optimizer";
-import { fairAmerican, gameLeaders, gameTag, leaderChances, teamRecords, teamTag } from "../src/lib/nba-game-leaders";
+import { fairAmerican, gameLeaders, gameTag, leaderChances, spreadLabel, teamRecords, teamTag } from "../src/lib/nba-game-leaders";
 
 const player = (key: string, line: number, eventId = "e1", team: string | null = "a", books = 6): ContestPlayer => ({
   key, player: key.toUpperCase(), eventId, team, line, pOver: 0.5, books,
@@ -76,6 +76,15 @@ assert.deepEqual(teamTag(team[3], team), { kind: "clear" });
 assert.equal(teamTag(lc("e", 0.3, "x", 0.5), team), null);
 assert.equal(teamTag(lc("f", 0.3, null, null), team), null);
 assert.deepEqual(teamTag(lc("g", 0.3, "z", 0.4), team), { kind: "toss_up", rival: null });
+
+// Spread label: favourite and the spread to the nearest half point.
+const gl = (homeSpread: number | null) => ({ homeTeam: "Oklahoma City Thunder", awayTeam: "Washington Wizards", homeSpread, total: 222.5, books: 6, capturedAt: "t" });
+const abbr = (t: string) => (t.startsWith("Oklahoma") ? "OKC" : "WAS");
+assert.equal(spreadLabel(gl(-12), abbr), "OKC -12");
+assert.equal(spreadLabel(gl(7.75), abbr), "WAS -8");
+assert.equal(spreadLabel(gl(5.25), abbr), "WAS -5.5");
+assert.equal(spreadLabel(gl(0.1), abbr), "PK");
+assert.equal(spreadLabel(gl(null), abbr), null);
 
 assert.equal(fairAmerican(0.5), "-100");
 assert.equal(fairAmerican(0.75), "-300");

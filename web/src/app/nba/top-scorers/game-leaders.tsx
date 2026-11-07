@@ -1,5 +1,6 @@
 import { boomIdentity } from "@/lib/nba-boom-display";
-import { fairAmerican, gameTag, teamTag, type GameLeaders, type LeaderChance, type TeamRecord } from "@/lib/nba-game-leaders";
+import { teamKey } from "@/lib/nba-top-scorers";
+import { BIG_SPREAD_AT, fairAmerican, gameTag, spreadLabel, teamTag, type GameLeaders, type GameLine, type LeaderChance, type TeamRecord } from "@/lib/nba-game-leaders";
 
 const DARK_BORDER = { "--border": "#1e293b" } as React.CSSProperties;
 const SHOW = 5;
@@ -70,8 +71,10 @@ function TeamRows({ players, records, teamLabels, status, eventId }: {
 }
 
 /** Chance each quoted player scores the most in his own game. Server-rendered. */
-export function GameLeadersPanel({ games, now, records, teamLabels, status = {} }: {
+export function GameLeadersPanel({ games, now, records, teamLabels, status = {}, lines = {} }: {
   games: GameLeaders[]; now: number; records: Record<string, TeamRecord>; teamLabels: Record<string, string>;
+  /** Spread and total by Odds API event id (newest pre-tip capture). */
+  lines?: Record<string, GameLine>;
   /** Official injury-report status keyed by boomIdentity(eventId, player). */
   status?: Record<string, string>;
 }) {
@@ -93,6 +96,9 @@ export function GameLeadersPanel({ games, now, records, teamLabels, status = {} 
           const rest = g.players.slice(SHOW).reduce((a, p) => a + p.chance, 0);
           const tag = gameTag(g.players);
           const top3 = g.players.slice(0, 3).reduce((a, p) => a + p.chance, 0);
+          const line = lines[g.eventId];
+          const spread = line ? spreadLabel(line, (t) => teamLabels[teamKey(t)] ?? t) : null;
+          const big = line?.homeSpread != null && Math.abs(line.homeSpread) >= BIG_SPREAD_AT;
           return (
             <div key={g.eventId} className="rounded-lg border border-slate-800 bg-[#0b1220] p-3">
               <div className="flex items-baseline justify-between gap-2">
@@ -107,6 +113,14 @@ export function GameLeadersPanel({ games, now, records, teamLabels, status = {} 
                 </span>
                 <span className="font-mono text-xs text-slate-400">{started ? "started" : `${tip(g.commenceTime)} ET`}</span>
               </div>
+              {line && (
+                <div className="mt-0.5 font-mono text-[11px] text-slate-400" title={`Median of ${line.books} books, captured ${new Date(line.capturedAt).toUTCString()}.`}>
+                  {spread ?? "no spread"}{line.total != null ? ` · total ${line.total}` : ""}
+                  {big && (
+                    <span className={`ml-2 ${TAG} border-amber-400 text-amber-200`} title="Favourite by 10+. Not measured yet: in 20+ point games the favourite played about 5 fewer minutes and led 37% (Oct 20 - Nov 6); spreads are stored from Nov 7 to check whether a big spread flags those games.">BIG SPREAD</span>
+                  )}
+                </div>
+              )}
               <table className="mt-2 w-full text-sm">
                 <thead>
                   <tr className="text-left font-mono text-[10px] uppercase text-slate-500">
@@ -151,7 +165,8 @@ export function GameLeadersPanel({ games, now, records, teamLabels, status = {} 
           <span className="text-violet-300">TOSS-UP</span>: team&apos;s biggest line under 45% to lead his team; he or the named teammate led 75% of 81.{" "}
           <span className="text-emerald-300">CLEAR</span>: 65%+ (led 65% of 46).{" "}
           <span className="text-amber-200">QUESTIONABLE</span>/<span className="text-rose-300">OUT</span>: latest observed official injury report.{" "}
-          <span className="text-orange-300">1 BOOK</span>: only one book quotes him.
+          <span className="text-orange-300">1 BOOK</span>: only one book quotes him.{" "}
+          <span className="text-amber-200">BIG SPREAD</span>: favourite by 10+ (not measured yet; spreads stored from Nov 7).
           The tags restate the chances in bands that held up on Oct 20 - Nov 6; they add no information beyond them.
         </p>
         <p>

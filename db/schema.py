@@ -6359,6 +6359,32 @@ INDEXES = [
         UNIQUE (sport, event_id, market, player, capture_key)
     )""",
     "CREATE INDEX IF NOT EXISTS idx_prop_odds_latest ON prop_odds_history(sport, event_id, market, player, captured_at DESC)",
+    # 2026-11-07: readers filter by sport + kickoff window (NFL DFS market anchor,
+    # MLB/soccer alert scans) or take MAX(captured_at) per sport (/health). Without
+    # these each call scanned the whole table: ~200 GB of disk reads Oct 16 - Nov 7.
+    "CREATE INDEX IF NOT EXISTS idx_prop_odds_sport_commence ON prop_odds_history(sport, commence_time)",
+    "CREATE INDEX IF NOT EXISTS idx_prop_odds_sport_captured ON prop_odds_history(sport, captured_at)",
+    # 2026-11-07: NBA game spreads/totals (ingest/nba_game_lines.py), one bulk
+    # call per nba-points-props run. A row is written only when the game's lines
+    # changed since its last row; the line at tip is the newest row before
+    # commence_time. books = {book: {spread (home), home_price, away_price,
+    # total, over_price, under_price}}. Freshness is watched on odds_api_usage.
+    """CREATE TABLE IF NOT EXISTS nba_game_lines (
+        id BIGSERIAL PRIMARY KEY,
+        event_id TEXT NOT NULL,
+        game_date DATE NOT NULL,
+        commence_time TIMESTAMPTZ NOT NULL,
+        home_team TEXT NOT NULL,
+        away_team TEXT NOT NULL,
+        home_spread DOUBLE PRECISION,
+        total DOUBLE PRECISION,
+        book_count INTEGER NOT NULL,
+        books JSONB NOT NULL,
+        content_sha TEXT NOT NULL,
+        captured_at TIMESTAMPTZ NOT NULL
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_nba_game_lines_event ON nba_game_lines(event_id, captured_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_nba_game_lines_date ON nba_game_lines(game_date)",
     # 2026-10-11: game-leader page DK pricing. One row per (game, market, player)
     # each time a pregame prop capture re-prices the saved leader forecast
     # (research.nfl_game_leaders_market refresh). Append-only; the page reads the
