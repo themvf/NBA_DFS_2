@@ -67,9 +67,15 @@ export async function getNflRollingProjectionBoard(requestedWeek?: string): Prom
         FROM nfl_dfs_dk_pool_snapshots s, week
         WHERE s.format = 'classic' AND s.start_date BETWEEN week.lo AND week.hi
         ORDER BY s.draft_group_id, s.captured_at DESC)
+      -- Per snapshot through (snapshot_id, dk_pid): as a hash join the planner expected ~90
+      -- snapshots (actual: one per draft group, ~7) and scanned the 92 MB status table every call
+      -- (130 ms, ~50 MB from disk). OFFSET 0 stops it folding the lateral back into that join (1.5 ms).
       SELECT p.name, p.team, p.position, p.salary, l.captured_at AS "capturedAt"
-      FROM nfl_dfs_dk_pool_player_status p JOIN latest l USING (snapshot_id)
-      WHERE p.salary > 0 AND p.team IS NOT NULL AND p.position IS NOT NULL`),
+      FROM latest l
+      CROSS JOIN LATERAL (
+        SELECT name, team, position, salary FROM nfl_dfs_dk_pool_player_status s
+        WHERE s.snapshot_id = l.snapshot_id AND s.salary > 0 AND s.team IS NOT NULL AND s.position IS NOT NULL
+        OFFSET 0) p`),
   ]);
   const salaryRows = records(salaryResult);
   const salaries = classicSalaryIndex(salaryRows.map(row => ({

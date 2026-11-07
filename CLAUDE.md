@@ -726,6 +726,16 @@ one-week shadow read got a `(season, week)` index (75 MB -> 5 MB), and
 evaluate either side of an AND first, so compacted rows crashed the dry run). Its dry run: 4,263
 captures carry 5.2 GB of situationTeams uncompressed, 0.4 GB once stored by hash; apply only with no
 NFL kickoff in the next 24 hours (Tuesday/Wednesday).
+Third pass, from a 90-minute `pg_stat_statements` delta on a CFB Saturday (26 GB read from disk, a
+416 GB/day pace): the first-touchdown training loaders (`model/nfl_first_td.py`,
+`model/cfb_first_td.py` `load_games`, every publish run) scanned the play tables, 780 MB and 370 MB
+a call; covering and partial indexes make both index-only (0 MB, 0.3 s / 0.06 s). The rolling
+projections page's DK salary read and the CFB publish probe each had a planner flip (hash join
+or anti join scanning a whole table); `OFFSET 0` keeps them per-row through their indexes
+(50 MB -> 0, 120 MB -> 0, identical results). Measure with a counter delta like this, not the
+cumulative totals: those keep queries fixed weeks ago at the top. Still open: hand-run research
+scripts (`research/nfl_ownership_inventory.py` on pool captures, `research/cfb_forecast_v4.py`)
+and the hash-pinned pick'em readers.
 
 **PFR identity claims were re-inserted every run (2026-10-31).** The top
 disk reader after that was `freeze_identity` (`db/nfl_pfr_schema.py`, hash-
