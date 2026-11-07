@@ -9234,3 +9234,25 @@ Classic flagships and 700 player-slates, verdict once. A pass licenses a new
 ownership-prior version, never a projection change. Stored weeks 1-4 have one
 capture per game and weeks 6-7 only an 18-hour Saturday read (lines moved a
 median 1-2 yards in it), which is why the test is forward.
+
+## CFB first touchdown scorer — our own model (`cfb-first-td-v1`, 2026-11-07)
+
+`model/cfb_first_td.py`, UNVALIDATED, reads no first-TD market (comparing with
+prices is a later step). P(player) = P(his team scores first) x (1 - PHI) x
+(1 - THETA) x his share. Team: implied totals from the closing spread/total,
+H^K / (H^K + A^K), K = 1.2 fitted on 2022-24 first TDs. PHI = 4.2% of first
+TDs are returns/defense (no player). Share: this season's rush+rec TDs plus
+KAPPA x league TDs-per-touch x (carries + catches) among players who appeared
+in the team's last two games; THETA = 5% to everyone else. Fitted on 2025
+(KAPPA 4, prior-season weight 0), held out on 2026 weeks 1-10 (514 games):
+log loss 2.638 vs 2.676 volume-only (week-bootstrap CI on the gap
+[-0.059, -0.017]), 3.493 coin-flip/uniform; top pick scores first 15.8% vs
+15.9% stated; calibration by 2-point bin within ~3 points except 18%+
+(22% stated, 17% happened, n=145). Team side on 2025-26: favourites scored
+first 69% against 64% stated, so K is likely too low for recent seasons; not
+refitted on the held-out years. Labels: first TD play in `cfb_plays`, scorer
+matched to the same game's box score (only players with that kind of TD that
+game; one such player = the scorer). Box scores start 2024 (2024 backfilled
+2026-11-07), so player shares are graded 2025-26 only. Availability is not
+known pregame and is not used: an injured starter keeps his share.
+`python -m model.cfb_first_td backtest --json F` / `slate --date D --params F`.
