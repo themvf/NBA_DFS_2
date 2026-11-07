@@ -719,6 +719,13 @@ indexes in `db/cfb_context_schema.py`), and the NFL DFS page's shadow-snapshot r
 open). `ingest/cfb_capture_audit.py` per-capture runs now scope all integrity checks to live games
 (the full audit still runs from pipeline_health.yml). A concurrent index build on a table a long
 job is writing must run with `lock_timeout=0`: with a timeout it fails and leaves an INVALID index.
+Second pass the same day: the incremental CFB movement lookup reads only games tipping within
+the last day (39 MB a run -> index reads; the full run still covers every game), the report card's
+one-week shadow read got a `(season, week)` index (75 MB -> 5 MB), and
+`web/scripts/compact-nfl-pool-captures.ts` guards `jsonb_array_length` with CASE (Postgres may
+evaluate either side of an AND first, so compacted rows crashed the dry run). Its dry run: 4,263
+captures carry 5.2 GB of situationTeams uncompressed, 0.4 GB once stored by hash; apply only with no
+NFL kickoff in the next 24 hours (Tuesday/Wednesday).
 
 **PFR identity claims were re-inserted every run (2026-10-31).** The top
 disk reader after that was `freeze_identity` (`db/nfl_pfr_schema.py`, hash-
