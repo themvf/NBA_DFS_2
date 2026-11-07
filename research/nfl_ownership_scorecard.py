@@ -19,7 +19,9 @@ v5 design slates and stay tagged `design`, week 7 on is v5's prospective grade):
    `-v4` and the drafted `-v5` recomputed exactly (Classic: Python port of the TS; Showdown: the pinned
    mirrors), plus the STORED ownership when its version is neither (v1/v2).
    The recomputation is checked against the stored numbers when the stored
-   version is the same algorithm.
+   version is the same algorithm. `nfl-ownership-rank-shape-v1` (registered
+   2026-11-07) is graded beside them: the frozen rank curves applied to the v5
+   ordering (model/nfl_ownership_rank_shape.py); weeks 2-9 are its design weeks.
 3. Labels: classes from model/nfl_ownership_provenance.py (v1 rules), classified
    in memory for every contest (persisted rows are compared, never rewritten).
    Only observed + reconciled_zero enter metrics.
@@ -44,6 +46,7 @@ import pandas as pd
 
 from db.nfl_ownership_scorecard_schema import STATEMENTS
 from model import nfl_ownership_provenance as prov
+from model import nfl_ownership_rank_shape as rs
 from model import nfl_ownership_scorecard as sc
 from model.nfl_dfs_field_audit import normalize_name
 from research.nfl_ownership_inventory import (
@@ -57,7 +60,7 @@ SEASON = 2026
 WEEKS = range(2, 19)
 SOURCE_ORDER = ("pool_capture", "optimizer_run", "ghost_freeze")
 VERSION_NAMES = {"v3": "nfl-ownership-prior-v3", "v4": "nfl-ownership-prior-v4", "v5": "nfl-ownership-prior-v5",
-                 "v2": "nfl-ownership-prior-v2"}
+                 "v2": "nfl-ownership-prior-v2", "rs1": rs.VERSION}
 RECOMPUTED = ("v3", "v4", "v5")
 
 
@@ -177,6 +180,9 @@ def forecasts(df: pd.DataFrame, fmt: str, favorite, underdog) -> tuple[dict, dic
     if fmt == "classic":
         for v in RECOMPUTED:
             out[VERSION_NAMES[v]] = pd.DataFrame({"normalized_name": df["normalized_name"], "overall": sc.prior_classic(df, v)})
+        base = out[rs.BASE_VERSION]["overall"].to_numpy(float)
+        out[rs.VERSION] = pd.DataFrame({"normalized_name": df["normalized_name"],
+                                        "overall": rs.apply(base, df["position"].astype(str).to_numpy(), "classic", "overall")})
         stored_frame = pd.DataFrame({"normalized_name": df["normalized_name"], "overall": df["stored_total"]})
         same = {"nfl-ownership-prior-v2": "v3", "nfl-ownership-prior-v3": "v3", "nfl-ownership-prior-v4": "v4",
                 "nfl-ownership-prior-v5": "v5"}.get(stored)
@@ -190,6 +196,10 @@ def forecasts(df: pd.DataFrame, fmt: str, favorite, underdog) -> tuple[dict, dic
             out[VERSION_NAMES[v]] = pd.DataFrame({"normalized_name": df["normalized_name"], "CPT": cap, "FLEX": flex})
             if v in ("v4", "v5"):
                 repro[f"{v}_notes"] = {k: (round(float(x), 3) if isinstance(x, float) else x) for k, x in notes.items()}
+        base = out[rs.BASE_VERSION]
+        out[rs.VERSION] = pd.DataFrame({"normalized_name": df["normalized_name"],
+                                        "CPT": rs.apply(base["CPT"].to_numpy(float), None, "showdown", "CPT"),
+                                        "FLEX": rs.apply(base["FLEX"].to_numpy(float), None, "showdown", "FLEX")})
         stored_frame = pd.DataFrame({"normalized_name": df["normalized_name"], "CPT": df["stored_captain"],
                                      "FLEX": df["stored_flex"]})
         same = {"nfl-ownership-prior-v3": "v3", "nfl-ownership-prior-v4": "v4", "nfl-ownership-prior-v5": "v5"}.get(stored)
@@ -412,7 +422,7 @@ def run(conn) -> dict:
                     is_ref = reference is not None and c["contest_id"] == reference["contest_id"]
                     for g in grade_contest(df, fc, p, fmt, diagnostics=is_ref and primary, relevant=relevant):
                         version = g["version"]
-                        vshort = next((v for v in RECOMPUTED if version == VERSION_NAMES[v]), "stored")
+                        vshort = next((v for v, name in VERSION_NAMES.items() if version == name), "stored")
                         row = base_row(s, c, horizon, source, cmeta["capture_id"], cap["at"], s.first_kickoff, version,
                                        repro.get("stored_version"), sc.design_tag(vshort, fmt, s.week) if vshort != "stored" else "stored_forecast",
                                        g["population"], g["slot"], reference, provs)

@@ -57,6 +57,8 @@ V4_DESIGN_WEEKS = range(2, 6)
 V3_SHOWDOWN_DESIGN_WEEKS = range(2, 4)
 # v5's constants were chosen on every 2026 slate of weeks 2-6 (docs/nfl-ownership-prior-v5.md).
 V5_DESIGN_WEEKS = range(2, 7)
+# nfl-ownership-rank-shape-v1's curves and sigma were read off weeks 2-9 (docs/nfl-ownership-model.md).
+RS1_DESIGN_WEEKS = range(2, 10)
 
 # --------------------------------------------------------------------------
 # Classic prior port (ownership-prior.ts)
@@ -336,6 +338,8 @@ def design_tag(version: str, fmt: str, week: int | None) -> str:
     if version == "v3" and fmt == "showdown" and week in V3_SHOWDOWN_DESIGN_WEEKS:
         return "design"
     if version == "v5" and week in V5_DESIGN_WEEKS:
+        return "design"
+    if version == "rs1" and week in RS1_DESIGN_WEEKS:
         return "design"
     return "not_design"
 
