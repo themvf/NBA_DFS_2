@@ -263,6 +263,18 @@
       "pullRequest": false
     },
     {
+      "file": "nfl_first_td.yml",
+      "name": "NFL First Touchdown Forecasts",
+      "crons": [
+        "43 14 * 9-12 *",
+        "43 14 * 1-2 *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
       "file": "nfl_prop_probe.yml",
       "name": "NFL Prop Market Probe",
       "crons": [],

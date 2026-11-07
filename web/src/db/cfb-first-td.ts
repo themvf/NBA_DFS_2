@@ -14,7 +14,8 @@ export type FirstTdPlayer = {
 };
 
 export type FirstTdGame = {
-  cfbdGameId: number;
+  /** Unique per game within a sport (the CFBD game id or the nflverse game id). */
+  gameKey: string;
   kickoff: string;
   away: string;
   home: string;
@@ -85,7 +86,7 @@ export async function getFirstTdGames(date: string): Promise<FirstTdGame[]> {
       ORDER BY c.period, c.clock_seconds_remaining DESC, c.drive_number, c.play_number LIMIT 1) td ON TRUE
     ORDER BY l.kickoff, l.home`);
   return (result.rows as Record<string, unknown>[]).map((r) => ({
-    cfbdGameId: Number(r.cfbd_game_id),
+    gameKey: String(r.cfbd_game_id),
     kickoff: new Date(r.kickoff as string).toISOString(),
     away: r.away as string,
     home: r.home as string,
@@ -103,12 +104,12 @@ export async function getFirstTdGames(date: string): Promise<FirstTdGame[]> {
   }));
 }
 
-function teamChipsOf(raw: unknown): FirstTdGame["teamChips"] {
+export function teamChipsOf(raw: unknown): FirstTdGame["teamChips"] {
   const t = (raw as { team_chips?: { home?: FirstTdChip[]; away?: FirstTdChip[] } } | null)?.team_chips;
   return { home: t?.home ?? [], away: t?.away ?? [] };
 }
 
-function availabilityOf(raw: unknown): FirstTdGame["availability"] {
+export function availabilityOf(raw: unknown): FirstTdGame["availability"] {
   if (!raw || typeof raw !== "object") return null;
   const a = raw as { status?: string; captured_at?: string; dropped?: { name: string; team: string }[] };
   return {
