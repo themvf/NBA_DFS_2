@@ -7,7 +7,8 @@
 // web/scripts/test-nba-contest-optimizer.ts. The random draws are not pinned: numpy's
 // stream and this one differ, so an all-games custom run can differ slightly from the
 // frozen entries by simulation noise. Custom runs are never graded; the frozen
-// all-games entries are the tracked record.
+// all-games entries are the tracked record. Since 2026-11-06 custom runs also thin each
+// player's top end (nba-points-sim-recal-v1); the frozen entries do not.
 
 export const WTA = {
   POOL_SIZE: 20,
@@ -23,7 +24,12 @@ export const WTA = {
   FALLBACK_SD_INTERCEPT: 3.9,
   FALLBACK_SD_SLOPE: 0.18,
   TAIL_FLOOR: 0.0005,
+  // nba-points-sim-recal-v1: thins each player's top end (research/nba_wta_trios.py RECAL_G).
+  RECAL_KNOTS: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99, 1.0],
+  RECAL_G: [0.0, 0.0964, 0.2309, 0.3347, 0.4317, 0.5254, 0.6276, 0.7368, 0.8379, 0.9306, 0.9762, 0.9974, 1.0],
 } as const;
+
+export const RECAL_VERSION = "nba-points-sim-recal-v1";
 
 export type ContestPlayer = {
   key: string;
@@ -176,8 +182,37 @@ function rint(v: number): number {
   return f % 2 === 0 ? f : f + 1;
 }
 
-/** sims x players whole points, row-major (sim * n + player). A player who sits scores 0. */
-export function simulatePoints(pool: ContestPlayer[], sims: number, r: () => number): Float64Array {
+/** Inverse standard normal CDF (Acklam, relative error under 1.2e-9). */
+export function normInv(p: number): number {
+  const a = [-39.69683028665376, 220.9460984245205, -275.9285104469687, 138.357751867269, -30.66479806614716, 2.506628277459239];
+  const b = [-54.47609879822406, 161.5858368580409, -155.6989798598866, 66.80131188771972, -13.28068155288572];
+  const c = [-0.007784894002430293, -0.3223964580411365, -2.400758277161838, -2.549732539343734, 4.374664141464968, 2.938163982698783];
+  const d = [0.007784695709041462, 0.3224671290700398, 2.445134137142996, 3.754408661907416];
+  const q0 = Math.min(Math.max(p, 1e-12), 1 - 1e-12);
+  if (q0 < 0.02425) {
+    const q = Math.sqrt(-2 * Math.log(q0));
+    return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+  }
+  if (q0 > 1 - 0.02425) return -normInv(1 - q0);
+  const q = q0 - 0.5, t = q * q;
+  return (((((a[0] * t + a[1]) * t + a[2]) * t + a[3]) * t + a[4]) * t + a[5]) * q / (((((b[0] * t + b[1]) * t + b[2]) * t + b[3]) * t + b[4]) * t + 1);
+}
+
+/** Survival level -> recalibrated survival level: F-level u becomes G^-1(u) (RECAL_VERSION). */
+export function recalibrateSurvival(u: number): number {
+  const f = 1 - u, g = WTA.RECAL_G, k = WTA.RECAL_KNOTS;
+  if (f <= g[0]) return 1 - k[0];
+  if (f >= g[g.length - 1]) return 1 - k[k.length - 1];
+  let i = 1;
+  while (g[i] < f) i++;
+  return 1 - (k[i - 1] + ((f - g[i - 1]) / (g[i] - g[i - 1])) * (k[i] - k[i - 1]));
+}
+
+/**
+ * sims x players whole points, row-major (sim * n + player). A player who sits scores 0.
+ * `recal` thins each player's top end (RECAL_VERSION); the registered v1 entries never use it.
+ */
+export function simulatePoints(pool: ContestPlayer[], sims: number, r: () => number, recal = false): Float64Array {
   const n = pool.length, l = cholesky(correlationMatrix(pool));
   const knots = pool.map((p) => survivalKnots(p.curve));
   const sit = pool.map((p) => dnpProb(p.books));
@@ -187,10 +222,12 @@ export function simulatePoints(pool: ContestPlayer[], sims: number, r: () => num
     for (let i = 0; i < n; i++) {
       let z = 0;
       for (let j = 0; j <= i; j++) z += l[i][j] * e[j];
+      let u = normCdf(-z);
+      if (recal) { u = recalibrateSurvival(u); z = -normInv(u); }
       const k = knots[i];
       let v: number;
       if (k == null) v = Math.max(0, pool[i].line + 0.5 + (WTA.FALLBACK_SD_INTERCEPT + WTA.FALLBACK_SD_SLOPE * pool[i].line) * z);
-      else v = interp(Math.min(Math.max(normCdf(-z), k.s[0]), k.s[k.s.length - 1]), k.s, k.x);
+      else v = interp(Math.min(Math.max(u, k.s[0]), k.s[k.s.length - 1]), k.s, k.x);
       if (r() < sit[i]) v = 0;
       out[s * n + i] = rint(Math.max(v, 0));
     }
@@ -335,14 +372,18 @@ export function seedOf(text: string): number {
   return h >>> 0;
 }
 
-export function optimizeContest(players: ContestPlayer[], opts: { fieldSize?: number; entries?: number; sims?: number } = {}): OptimizerResult {
+/**
+ * Custom contest runs use the corrected simulation by default (`recal`); the frozen tracked
+ * entries keep the registered v1 rules, so an all-games run can differ from them.
+ */
+export function optimizeContest(players: ContestPlayer[], opts: { fieldSize?: number; entries?: number; sims?: number; recal?: boolean } = {}): OptimizerResult {
   const pool = contestPool(players);
   if (pool.length < 3) throw new Error("Pick games with at least three quoted players.");
   const sims = opts.sims ?? WTA.SIMS, fieldSize = opts.fieldSize ?? WTA.FIELD_SIZE;
   const trios = candidateTrios(pool.length);
   const nEntries = Math.min(opts.entries ?? WTA.N_ENTRIES, trios.length);
   const r = rng(seedOf(`${pool.map((p) => `${p.key}:${p.line}`).join("|")}|${fieldSize}`));
-  const points = simulatePoints(pool, sims, r);
+  const points = simulatePoints(pool, sims, r, opts.recal ?? true);
   const n = pool.length;
   const totals = trioTotals(points, sims, n, trios);
   const { best, count } = fieldMax(points, sims, pool.map((p) => p.line), r, fieldSize);
