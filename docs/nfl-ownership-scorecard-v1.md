@@ -1,4 +1,4 @@
-# NFL DFS ownership scorecard — `nfl-ownership-scorecard-v3` (v1 registered 2026-10-19; v2 and v3 2026-10-20)
+# NFL DFS ownership scorecard — `nfl-ownership-scorecard-v4` (v1 registered 2026-10-19; v2 and v3 2026-10-20; v4 2026-11-07)
 
 One fixed definition of "better ownership", so every forecast version (the
 production prior, a fitted model, a field simulation) is graded the same way
@@ -14,7 +14,7 @@ written, before any grade under this scorecard was computed). Frozen values:
 | `N_RELEVANT` (population 2) | Classic QB 12 / RB 20 / WR 30 / TE 12 / DST 12; Showdown every player |
 | Predicted-chalk thresholds | Classic >= 15%; Showdown flex >= 25%; Showdown captain >= 10% |
 | Salary tiers | < $3,000 / 3-4 / 4-5 / 5-6 / 6-7 / 7-8 / 8+ ($ thousands); Showdown punt tier < $2,500 |
-| Reconciled-zero mass floor (stat-api) | recorded mass >= 0.995 of roster slots x 100, AND full standings fetched |
+| Reconciled-zero mass floor (stat-api) | recorded mass >= 0.995 of roster slots x 100 (v1-v3 also required the full standings; v4 does not, see the amendment) |
 | Calibration bins | 0-1, 1-5, 5-10, 10-20, 20-35, 35+; Showdown flex adds 50+ |
 
 Any change to a target, population, label rule, metric, holdout or one of
@@ -106,9 +106,11 @@ first two:
 | class | meaning | source paths |
 |---|---|---|
 | `observed` | the player's share was read directly from the contest record | DraftKings export rows; stat-api seats for players any fetched user rostered; stat-api CPT seats for captain share |
-| `reconciled_zero` | the player is salary-listed, the contest record is complete, and the player appears in no entry | DraftKings full export only (every drafted player appears); stat-api only when `mass >= 0.995` AND the full standings were fetched |
+| `reconciled_zero` | the player is salary-listed, the contest record is complete, and the player appears in no entry | DraftKings full export (every drafted player appears); stat-api when `mass >= 0.995` (v4; v1-v3 also required the full standings) |
 | `synthesized_zero` | a zero the importer filled in without evidence | stat-api captain share for a player no fetched user captained (`captain.get(key, 0.0)` in `model/statapi_contest.py`); any slot split derived from a combined number |
 | `unresolved` | no row and the record is not complete enough to call it zero | stat-api imports below the mass floor; LineStar-style combined feeds for a slot they never claimed |
+
+**v4 amendment (2026-11-07, owner's decision, provenance `nfl-ownership-provenance-v2`).** stat-api has served flagships as top-100 previews since 2026-10-19, so under v3 every Thursday and Monday Showdown and every Classic Millionaire fetched from it since then was excluded from the pooled rows (no full standings), while its observed labels covered 99.4-100% of the ownership mass: each fetched user's seat carries the player's whole-field share, not a top-100 share. From v4 a stat-api contest is labels-complete on recorded mass alone, floor unchanged at 0.995; an absent player's zero carries the basis `statapi_absent_complete_top100` so the two cases stay distinguishable. Cost, stated: the players absent from all fetched lineups are graded as 0% while their true shares sum to at most 0.5% of roster slots x 100 (4.5 ownership points across all of them in Classic, 3 in Showdown). The DraftKings export path is unchanged and still the one that observes every player. v4 grades append under `nfl-ownership-scorecard-v4`; v3 rows stay. The registered prospective grades that read the scorecard (v5 from week 7, `nfl-ownership-rank-shape-v1` from week 10) read v4 rows from this date, with the same slots, populations and floors.
 
 Rules:
 - `synthesized_zero` and `unresolved` rows are excluded from MAE, bias and

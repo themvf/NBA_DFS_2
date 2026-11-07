@@ -1,4 +1,4 @@
-"""Regrade of NFL DFS ownership forecasts under `nfl-ownership-scorecard-v3`.
+"""Regrade of NFL DFS ownership forecasts under `nfl-ownership-scorecard-v4`.
 
 Task 4 of docs/nfl-ownership-handoff-2026-10-19.md; the grading contract is
 docs/nfl-ownership-scorecard-v1.md (now scorecard v2). Read-only except for the

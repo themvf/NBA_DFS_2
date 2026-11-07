@@ -1,4 +1,4 @@
-"""Grading machinery for `nfl-ownership-scorecard-v3` (docs/nfl-ownership-scorecard-v1.md).
+"""Grading machinery for `nfl-ownership-scorecard-v4` (docs/nfl-ownership-scorecard-v1.md).
 
 Pure: numpy/pandas/scipy, no database, no I/O. The driver is
 research/nfl_ownership_scorecard.py.
@@ -32,7 +32,8 @@ from scipy.stats import rankdata
 
 from model.nfl_showdown_ownership_eval import field_points, prior_showdown, prior_showdown_v4, prior_showdown_v5
 
-SCORECARD_VERSION = "nfl-ownership-scorecard-v3"
+# v4 (2026-11-07): a stat-api contest is labels-complete on recorded mass alone (provenance v2).
+SCORECARD_VERSION = "nfl-ownership-scorecard-v4"
 GRADER_VERSION = "nfl-ownership-scorecard-grader-v1"
 # Scorecard v3 (2026-10-20, owner): the canonical forecast is the LATEST capture at or
 # before first kickoff minus 20 minutes from ANY source (pool capture, owner
