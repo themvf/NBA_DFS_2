@@ -82,6 +82,8 @@ DDL = [
     # 2026-11-07: the full outcome distribution (for grading) and the lines filter's record.
     "ALTER TABLE cfb_first_td_predictions ADD COLUMN IF NOT EXISTS dist JSONB",
     "ALTER TABLE cfb_first_td_predictions ADD COLUMN IF NOT EXISTS availability JSONB",
+    # 2026-11-07: team chips (player chips ride in the players JSON).
+    "ALTER TABLE cfb_first_td_predictions ADD COLUMN IF NOT EXISTS context JSONB",
     """CREATE TABLE IF NOT EXISTS cfb_first_td_grades (
         run_id BIGINT NOT NULL REFERENCES cfb_first_td_runs(id), cfbd_game_id BIGINT NOT NULL,
         version TEXT NOT NULL, season INTEGER NOT NULL, week INTEGER, kickoff TIMESTAMPTZ NOT NULL,
@@ -274,12 +276,76 @@ class History:
         return out
 
 
+# ── chips: descriptive context shown beside the forecast; they never change a chance ──
+CHIP_GOAL_LINE_SHARE = 0.4      # share of the team's rushing TDs this season
+CHIP_GOAL_LINE_MIN_TEAM = 4     # team rushing TDs before the share means anything
+CHIP_NEW_ROLE_RATIO = 1.5       # touches a game in the last two vs earlier this season
+CHIP_NEW_ROLE_MIN = 10.0        # touches a game in the last two
+CHIP_QB_PASS_ATT = 30           # passes this season that make him a quarterback
+CHIP_QB_RUSH_TD = 3
+CHIP_BIG_FAVOURITE = 14.0       # implied-points gap
+
+
+def player_chips(history: "History", pid: str, team: str, before: tuple[int, int]) -> list[dict]:
+    season = before[0]
+    team_games = [gid for order, gid in history.games_by_team.get(team, []) if order < before and order[0] == season]
+    last2 = team_games[-2:]
+    mine = [r for r in history.rows_by_player.get(pid, []) if r["order"] < before and r["season"] == season
+            and r["team"] == team]
+    by_game = {r["cfbd_game_id"]: r for r in mine}
+    chips = []
+    team_rush_td = sum(r["rush_td"] for gid in team_games for r in history.rows_by_game_team[(gid, team)])
+    my_rush_td = sum(r["rush_td"] for r in mine)
+    if team_rush_td >= CHIP_GOAL_LINE_MIN_TEAM and my_rush_td / team_rush_td >= CHIP_GOAL_LINE_SHARE:
+        chips.append({"code": "GOAL_LINE", "label": f"{my_rush_td:.0f} of {team_rush_td:.0f} team rush TDs"})
+    if len(last2) == 2 and all(gid in by_game and by_game[gid]["rush_td"] + by_game[gid]["rec_td"] > 0
+                               for gid in last2):
+        chips.append({"code": "HOT", "label": "TD in each of last 2"})
+    earlier = [by_game[gid] for gid in team_games[:-2] if gid in by_game]
+    if len(last2) == 2 and len(earlier) >= 2:
+        recent = sum(by_game[g]["rush_att"] + by_game[g]["receptions"] if g in by_game else 0 for g in last2) / 2
+        before_avg = sum(r["rush_att"] + r["receptions"] for r in earlier) / len(earlier)
+        if recent >= CHIP_NEW_ROLE_MIN and recent >= CHIP_NEW_ROLE_RATIO * max(before_avg, 1.0):
+            chips.append({"code": "NEW_ROLE", "label": f"{recent:.0f} touches a game, last 2 (was {before_avg:.0f})"})
+    if sum(r.get("pass_att", 0) for r in mine) >= CHIP_QB_PASS_ATT and my_rush_td >= CHIP_QB_RUSH_TD:
+        chips.append({"code": "RUNNING_QB", "label": f"QB, {my_rush_td:.0f} rush TDs"})
+    return chips
+
+
+def first_scorers(games: list[dict], history: "History") -> dict[str, list[tuple[tuple[int, int], bool]]]:
+    """Per team, every finished game with plays: (order, did this team score the first TD)."""
+    out: dict[str, list] = defaultdict(list)
+    for g in games:
+        lab = label(g, history)
+        if lab["outcome"] == "no_td" or lab.get("side") is None:
+            continue
+        order = _order(g["season"], g["season_type"], g["week"])
+        for side in ("home", "away"):
+            out[g[side]].append((order, lab["side"] == side))
+    return out
+
+
+def team_chips(g: dict, firsts: dict[str, list], before: tuple[int, int]) -> dict[str, list[dict]]:
+    out = {}
+    gap = float(g["home_implied"]) - float(g["away_implied"])
+    for side, sign in (("home", 1), ("away", -1)):
+        chips = []
+        if sign * gap >= CHIP_BIG_FAVOURITE:
+            chips.append({"code": "BIG_FAVOURITE", "label": f"Favoured by {sign * gap:.0f}"})
+        past = [hit for order, hit in firsts.get(g[side], []) if order < before and order[0] == before[0]]
+        if past:
+            chips.append({"code": "SCORED_FIRST", "label": f"Scored first TD in {sum(past)} of {len(past)}"})
+        out[side] = chips
+    return out
+
+
 # ── data ─────────────────────────────────────────────────────────────────────
 def load_box(db: DatabaseManager) -> list[dict]:
     rows = db.execute("""
         SELECT cfbd_game_id, cfbd_player_id AS pid, player_name AS name, team, season, week, season_type,
                COALESCE(rush_att, 0) AS rush_att, COALESCE(rush_td, 0) AS rush_td,
-               COALESCE(receptions, 0) AS receptions, COALESCE(rec_td, 0) AS rec_td
+               COALESCE(receptions, 0) AS receptions, COALESCE(rec_td, 0) AS rec_td,
+               COALESCE(pass_att, 0) AS pass_att
         FROM cfb_player_game_stats
         WHERE trim(player_name) <> 'Team'""")  # CFBD's team row (kneel-downs, team rushes) is not a player
     return [dict(r) for r in rows]
@@ -554,17 +620,21 @@ def slate(db: DatabaseManager, date: str, params: Params, top: int = 6, use_line
 
 
 def predict(db: DatabaseManager, games: list[dict], params: Params, top: int = 6,
-            lines: dict[str, dict] | None = None, history: History | None = None) -> list[dict]:
-    """Forecast each game. With ``lines`` (from load_lines) players the book leaves off are dropped."""
+            lines: dict[str, dict] | None = None, history: History | None = None,
+            filter_lines: bool = True, firsts: dict | None = None) -> list[dict]:
+    """Forecast each game. With ``lines`` (from load_lines) and ``filter_lines``, players the book
+    leaves off are dropped; without ``filter_lines`` the list only marks who is on it."""
     history = history or History(load_box(db))
+    if firsts is None:
+        firsts = first_scorers(load_games(db), history) if games else {}
     out = []
     for g in games:
         before = _order(g["season"], g["season_type"], g["week"])
         p = replace(params, rho=history.rho((g["season"], 0)))
         home, away = history.candidates(g["home"], before), history.candidates(g["away"], before)
         availability = None
-        if lines is not None:
-            listed = lines.get(g.get("odds_event_id"))
+        listed = lines.get(g.get("odds_event_id")) if lines is not None else None
+        if lines is not None and filter_lines:
             home, away, availability = apply_lines(home, away, listed["names"] if listed else None)
             if listed:
                 availability["captured_at"] = listed["captured_at"]
@@ -581,10 +651,12 @@ def predict(db: DatabaseManager, games: list[dict], params: Params, top: int = 6
             "implied": [float(g["away_implied"]), float(g["home_implied"])],
             "p_home_first": p_home, "history_through": {t: list(o) if o else None for t, o in last.items()},
             "players": [{"name": cands[pid]["name"], "team": cands[pid]["team"], "prob": prob,
-                         "fair": fair_american(prob), "td": cands[pid]["td"], "touches": cands[pid]["vol"]}
+                         "fair": fair_american(prob), "td": cands[pid]["td"], "touches": cands[pid]["vol"],
+                         "chips": player_chips(history, pid, cands[pid]["team"], before),
+                         "listed": None if not listed else name_key(cands[pid]["name"]) in listed["names"]}
                         for pid, prob in players[:top]],
             "other_offense": dist["other:home"] + dist["other:away"], "non_offense": dist["non_offense"],
-            "dist": dist, "availability": availability,
+            "dist": dist, "availability": availability, "context": {"team_chips": team_chips(g, firsts, before)},
         })
     return out
 
@@ -597,12 +669,13 @@ def _save_run(cur, version: str, params: Params, rows: list[dict]) -> int:
         cur.execute("""
             INSERT INTO cfb_first_td_predictions (run_id, cfbd_game_id, season, week, kickoff, away, home,
                 away_implied, home_implied, p_home_first, other_offense, non_offense, players, history_through,
-                dist, availability)
-            SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s WHERE %s > NOW()""",
+                dist, availability, context)
+            SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s WHERE %s > NOW()""",
             (run_id, r["cfbd_game_id"], r["season"], r["week"], r["commence_time"], r["away"], r["home"],
              r["implied"][0], r["implied"][1], r["p_home_first"], r["other_offense"], r["non_offense"],
              json.dumps(r["players"]), json.dumps(r["history_through"]), json.dumps(r["dist"]),
-             json.dumps(r["availability"]) if r["availability"] is not None else None, r["commence_time"]))
+             json.dumps(r["availability"]) if r["availability"] is not None else None,
+             json.dumps(r["context"]), r["commence_time"]))
     return run_id
 
 
@@ -612,9 +685,11 @@ def publish(db: DatabaseManager, params: Params = FITTED, hours: int = PUBLISH_H
     games = db.execute(_UPCOMING.format(
         where="m.commence_time > NOW() AND m.commence_time <= NOW() + %s * INTERVAL '1 hour'"), (hours,))
     history = History(load_box(db)) if games else None
-    base = predict(db, games, params, PUBLISH_TOP, history=history) if games else []
+    firsts = first_scorers(load_games(db), history) if games else {}
     lines = load_lines(db, [g["odds_event_id"] for g in games]) if games else {}
-    filtered = predict(db, games, params, PUBLISH_TOP, lines, history=history) if games else []
+    base = predict(db, games, params, PUBLISH_TOP, lines, history=history, filter_lines=False,
+                   firsts=firsts) if games else []
+    filtered = predict(db, games, params, PUBLISH_TOP, lines, history=history, firsts=firsts) if games else []
     with db.connect() as conn:
         cur = conn.cursor()
         for statement in DDL:
