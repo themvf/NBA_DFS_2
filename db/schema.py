@@ -4272,6 +4272,15 @@ TABLES = [
     # 2026-11-07: /health reads MAX(labelled_at); without this it scanned the
     # 400 MB table (323 MB from disk) on every check.
     "CREATE INDEX IF NOT EXISTS idx_nfl_pbp_archetypes_labelled ON nfl_pbp_archetypes(labelled_at)",
+    # 2026-11-07: model/nfl_first_td.py load_games (every game's teams, lines and first
+    # touchdown, on every publish run) scanned both play tables, ~780 MB from disk a
+    # run; these make it index-only.
+    "CREATE INDEX IF NOT EXISTS idx_nfl_pbp_archetypes_game_cover ON nfl_pbp_archetypes(game_id, play_id) INCLUDE (season, week, home_team, away_team, spread_line, total_line, quarter, game_seconds_remaining, posteam, two_point_result)",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_pbp_participants_touchdown ON nfl_pbp_play_participants(game_id, play_id) INCLUDE (player_id, team) WHERE role = 'touchdown'",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_pbp_participants_offense ON nfl_pbp_play_participants(game_id, play_id, player_id) WHERE role IN ('rusher', 'receiver')",
+    # model/nfl_dfs_workload_opponent.py counts scrimmage plays per defence per week:
+    # 346 MB scan -> 27 MB index-only read.
+    "CREATE INDEX IF NOT EXISTS idx_nfl_pbp_archetypes_defteam_counts ON nfl_pbp_archetypes(season_type, season, week, defteam) INCLUDE (play_archetype, down)",
     # The nflverse release content each labelled game was last labelled from,
     # one digest per game. `ingest/nfl_pbp_archetypes.py --relabel-stale`
     # compares it with the current release so a correction nflverse publishes
@@ -6100,6 +6109,13 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_cfb_plays_season ON cfb_plays(season, season_type, week)",
     # research/cfb_forecast_v1.py load_rows per-game offense PPA aggregate: index-only instead of a full heap scan (~320 MB from disk a call).
     "CREATE INDEX IF NOT EXISTS idx_cfb_plays_offense_ppa ON cfb_plays(season, game_id, offense_team_id) INCLUDE (ppa) WHERE offense_team_id IS NOT NULL",
+    # 2026-11-07: model/cfb_first_td.py load_games reads each completed game's first
+    # touchdown and canonical closing line on every publish run; these turned a full
+    # scan of the play table (~370 MB from disk a run) into index-only reads.
+    """CREATE INDEX IF NOT EXISTS idx_cfb_plays_touchdown_cover ON cfb_plays(game_id, period, clock_seconds_remaining DESC, drive_number, play_number)
+       INCLUDE (play_type, play_text, offense_name, defense_name)
+       WHERE play_type ILIKE '%touchdown%' OR (scoring AND play_text ILIKE '%touchdown%' AND play_type IN ('Rush', 'Pass Reception', 'Pass Completion'))""",
+    "CREATE INDEX IF NOT EXISTS idx_cfb_hist_lines_canonical ON cfb_historical_game_lines(game_id) INCLUDE (market_type, home_value) WHERE line_designation = 'historical_reference' AND is_canonical_reference",
     "CREATE INDEX IF NOT EXISTS idx_cfb_plays_endgame ON cfb_plays(game_seconds_remaining) WHERE game_seconds_remaining IS NOT NULL",
     "CREATE INDEX IF NOT EXISTS idx_cfb_game_forecasts_game_run ON cfb_game_forecasts(game_id, run_id DESC)",
     "CREATE INDEX IF NOT EXISTS idx_cfb_market_comparisons_game_run ON cfb_market_comparisons(game_id, run_id DESC)",

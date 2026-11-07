@@ -156,7 +156,11 @@ def publish(database_url: str, *, apply: bool, max_events: int | None = None, en
                     JOIN cfb_detector_runs r ON r.input_manifest_id=i.manifest_id
                     WHERE i.capture_id=c.capture_id AND i.slot='endpoint_capture'
                       AND r.detector_id='cfb_market_movement_context'
-                      AND r.scope_key LIKE 'cfb:workflow:%%')""", (endpoint_after,))
+                      AND r.scope_key LIKE 'cfb:workflow:%%'
+                      -- OFFSET 0 keeps this a per-capture check through the capture
+                      -- index: as an anti join the planner scanned all ~1M manifest
+                      -- items (2026-11-07: ~120 MB from disk a run -> none).
+                      OFFSET 0)""", (endpoint_after,))
             first_unprocessed = cursor.fetchone()["min"]
             earliest = (first_unprocessed or datetime.now(timezone.utc)) - timedelta(minutes=40)
         grouped = _captures(cursor, earliest)
