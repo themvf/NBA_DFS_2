@@ -8,7 +8,8 @@
 //
 // Per team (2026-11-06): the same draws give each player's chance to outscore his own
 // teammates, and the graded season gives how often each team's biggest line actually did
-// (54% of 246 team-games, Oct 20 - Nov 5; no team differed from the rest more than chance).
+// (54% of 246 team-games, Oct 20 - Nov 5; no team differed from the rest more than chance:
+// a team's record in alternate games did not predict the other half, r = -0.04).
 
 import { RECAL_VERSION, rng, seedOf, simulatePoints, type ContestPlayer } from "./nba-contest-optimizer";
 
@@ -111,6 +112,41 @@ export function gameLeaders(
         .sort((a, b) => b.chance - a.chance),
     };
   });
+}
+
+// Tag thresholds, read off Oct 20 - Nov 6 (132 games, 264 team-games; the chances against what
+// happened, so they describe the chance bands rather than add information to them):
+// favourite under 30%: led 26% of 29 games, the top three by chance led 76%;
+// favourite 50%+: led 57% of 27. Team favourite under 45%: led 47% of 81 team-games, he or the
+// next teammate led 75%; 65%+: led 65% of 46.
+export const WIDE_OPEN_BELOW = 0.3;
+export const CLEAR_FAVOURITE_AT = 0.5;
+export const TOSS_UP_BELOW = 0.45;
+export const CLEAR_TEAM_AT = 0.65;
+
+export type GameTag = "wide_open" | "clear_favourite" | null;
+export type TeamTag = { kind: "toss_up"; rival: LeaderChance | null } | { kind: "clear" } | null;
+
+/** "wide_open" when no player is 30% to lead, "clear_favourite" when one is 50%+. Players most likely first. */
+export function gameTag(players: LeaderChance[]): GameTag {
+  const top = players[0]?.chance;
+  if (top == null) return null;
+  if (top < WIDE_OPEN_BELOW) return "wide_open";
+  if (top >= CLEAR_FAVOURITE_AT) return "clear_favourite";
+  return null;
+}
+
+/** For the player shown as his team's leader: a toss-up (with the likeliest other teammate) or a clear leader. */
+export function teamTag(top: LeaderChance, players: LeaderChance[]): TeamTag {
+  if (top.teamChance == null || top.team == null) return null;
+  if (top.teamChance >= CLEAR_TEAM_AT) return { kind: "clear" };
+  if (top.teamChance >= TOSS_UP_BELOW) return null;
+  let rival: LeaderChance | null = null;
+  for (const p of players) {
+    if (p.team !== top.team || p.key === top.key || p.teamChance == null) continue;
+    if (!rival || p.teamChance > rival.teamChance!) rival = p;
+  }
+  return { kind: "toss_up", rival };
 }
 
 /** The American price at which a bet on this chance breaks even, before any book margin. */

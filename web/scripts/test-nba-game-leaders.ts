@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { recalibrateSurvival, rng, simulatePoints, type ContestPlayer } from "../src/lib/nba-contest-optimizer";
-import { fairAmerican, gameLeaders, leaderChances, teamRecords } from "../src/lib/nba-game-leaders";
+import { fairAmerican, gameLeaders, gameTag, leaderChances, teamRecords, teamTag } from "../src/lib/nba-game-leaders";
 
 const player = (key: string, line: number, eventId = "e1", team: string | null = "a", books = 6): ContestPlayer => ({
   key, player: key.toUpperCase(), eventId, team, line, pOver: 0.5, books,
@@ -62,6 +62,20 @@ const recs = teamRecords([
 assert.deepEqual(recs.laclippers, { games: 3, led: 1.5, players: { a: { player: "A", games: 2, led: 1.5 }, b: { player: "B", games: 1, led: 0 } } });
 assert.equal(recs.utahjazz.led, 0);
 assert.ok(games[0].players.every((p) => p.teamChance != null));
+
+// Tags.
+const lc = (key: string, chance: number, team: string | null, teamChance: number | null) =>
+  ({ key, player: key.toUpperCase(), team, line: 20, books: 6, chance, teamChance });
+assert.equal(gameTag([lc("a", 0.29, "x", 0.5)]), "wide_open");
+assert.equal(gameTag([lc("a", 0.3, "x", 0.5)]), null);
+assert.equal(gameTag([lc("a", 0.5, "x", 0.5)]), "clear_favourite");
+assert.equal(gameTag([]), null);
+const team = [lc("a", 0.3, "x", 0.44), lc("b", 0.2, "x", 0.31), lc("c", 0.1, "x", 0.25), lc("d", 0.4, "y", 0.9)];
+assert.deepEqual(teamTag(team[0], team), { kind: "toss_up", rival: team[1] });
+assert.deepEqual(teamTag(team[3], team), { kind: "clear" });
+assert.equal(teamTag(lc("e", 0.3, "x", 0.5), team), null);
+assert.equal(teamTag(lc("f", 0.3, null, null), team), null);
+assert.deepEqual(teamTag(lc("g", 0.3, "z", 0.4), team), { kind: "toss_up", rival: null });
 
 assert.equal(fairAmerican(0.5), "-100");
 assert.equal(fairAmerican(0.75), "-300");

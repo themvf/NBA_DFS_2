@@ -162,7 +162,7 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
         <TopScorersClient scorers={scorers} games={games} pulled={pulled} lastSeason={LAST_SEASON} thisSeason={seasonLabel(date)} boomBoard={boomBoard} liveAvailability={liveAvailability} />
       )}
 
-      <GameLeadersPanel games={leaders} now={renderedAt} records={leaderRecords} teamLabels={teamLabels} />
+      <GameLeadersPanel games={leaders} now={renderedAt} records={leaderRecords} teamLabels={teamLabels} status={liveAvailability} />
 
       <BoomLineups key={`${date}:${availability?.sha??"unknown"}`} board={boomBoard} evidence={availability} />
 
