@@ -9258,14 +9258,24 @@ TDs are returns/defense (no player). Share: this season's rush+rec TDs plus
 KAPPA x league TDs-per-touch x (carries + catches) among players who appeared
 in the team's last two games; THETA = 5% to everyone else. Fitted on 2025
 (KAPPA 4, prior-season weight 0), held out on 2026 weeks 1-10 (514 games):
-log loss 2.638 vs 2.676 volume-only (week-bootstrap CI on the gap
-[-0.059, -0.017]), 3.493 coin-flip/uniform; top pick scores first 15.8% vs
+log loss 2.630 vs 2.667 volume-only (week-bootstrap CI on the gap
+[-0.056, -0.016]; CFBD's "Team" box-score row excluded since 2026-11-07),
+3.493 coin-flip/uniform; top pick scores first 15.8% vs
 15.9% stated; calibration by 2-point bin within ~3 points except 18%+
 (22% stated, 17% happened, n=145). Team side on 2025-26: favourites scored
 first 69% against 64% stated, so K is likely too low for recent seasons; not
 refitted on the held-out years. Labels: first TD play in `cfb_plays`, scorer
 matched to the same game's box score (only players with that kind of TD that
 game; one such player = the scorer). Box scores start 2024 (2024 backfilled
-2026-11-07), so player shares are graded 2025-26 only. Availability is not
-known pregame and is not used: an injured starter keeps his share.
+2026-11-07), so player shares are graded 2025-26 only. **Availability filter (`cfb-first-td-lines-v1`, owner's decision
+2026-11-07).** `ingest/cfb_td_props.py` buys DraftKings' `player_anytime_td`
+list (1 credit a game, games in the next 4 h) before each publish; a team with
+at least 4 of our candidates on the list loses the candidates who are not on it
+(`apply_lines`; prices are never read). Every publish saves both versions
+(`cfb-first-td-v1` alone, `-lines-v1` filtered, each with its full outcome
+distribution in `dist`); `grade` scores each version's last pregame forecast
+into `cfb_first_td_grades` once plays and box scores land (a day or two), and
+the page shows the filtered version plus the paired grade. Seen on the first
+slate: DraftKings leaves some starting QBs off (Julian Sayin), so a QB who
+rarely runs loses his small share; the grade decides whether the filter stays.
 `python -m model.cfb_first_td backtest --json F` / `slate --date D --params F`.

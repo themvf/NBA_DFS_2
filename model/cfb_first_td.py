@@ -55,6 +55,8 @@ from config import load_config
 from db.database import DatabaseManager
 
 VERSION = "cfb-first-td-v1"
+VERSION_LINES = "cfb-first-td-lines-v1"
+MIN_LISTED = 4  # our candidates the book must list for a team before its absences count
 SUFFIXES = {"jr", "sr", "ii", "iii", "iv", "v"}
 OFFENSIVE_TYPES = {"Rushing Touchdown": "rush", "Rush": "rush", "Passing Touchdown": "rec",
                    "Pass Reception": "rec", "Pass Completion": "rec"}
@@ -77,6 +79,14 @@ DDL = [
         PRIMARY KEY (run_id, cfbd_game_id))""",
     "CREATE INDEX IF NOT EXISTS idx_cfb_first_td_predictions_game ON cfb_first_td_predictions (cfbd_game_id, run_id DESC)",
     "CREATE INDEX IF NOT EXISTS idx_cfb_first_td_predictions_kickoff ON cfb_first_td_predictions (kickoff)",
+    # 2026-11-07: the full outcome distribution (for grading) and the lines filter's record.
+    "ALTER TABLE cfb_first_td_predictions ADD COLUMN IF NOT EXISTS dist JSONB",
+    "ALTER TABLE cfb_first_td_predictions ADD COLUMN IF NOT EXISTS availability JSONB",
+    """CREATE TABLE IF NOT EXISTS cfb_first_td_grades (
+        run_id BIGINT NOT NULL REFERENCES cfb_first_td_runs(id), cfbd_game_id BIGINT NOT NULL,
+        version TEXT NOT NULL, season INTEGER NOT NULL, week INTEGER, kickoff TIMESTAMPTZ NOT NULL,
+        outcome TEXT NOT NULL, scorer TEXT, prob DOUBLE PRECISION NOT NULL, top_pick_hit BOOLEAN NOT NULL,
+        graded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (run_id, cfbd_game_id))""",
 ]
 
 
@@ -183,6 +193,31 @@ def fair_american(prob: float) -> int:
     return round(100 * (1 - prob) / prob)
 
 
+# ── availability from sportsbook lines ───────────────────────────────────────
+def apply_lines(home: dict[str, dict], away: dict[str, dict], listed: set[tuple[str, str]] | None,
+                min_listed: int = MIN_LISTED) -> tuple[dict, dict, dict]:
+    """Drop candidates the book leaves off its anytime-TD list, team by team.
+
+    A team counts as covered only when at least ``min_listed`` of our candidates are on
+    the list; otherwise a missing line says nothing and the team is left alone. Prices
+    are never read: the list is used only as who the book expects to play."""
+    if listed is None:
+        return home, away, {"status": "no_lines", "dropped": []}
+    info = {"status": "applied", "listed": len(listed), "dropped": [], "covered": {}}
+    out = []
+    for side, cands in (("home", home), ("away", away)):
+        on = {pid for pid, c in cands.items() if name_key(c["name"]) in listed}
+        covered = len(on) >= min_listed
+        info["covered"][side] = {"matched": len(on), "candidates": len(cands), "covered": covered}
+        if not covered:
+            out.append(cands)
+            continue
+        info["dropped"] += [{"pid": pid, "name": c["name"], "team": c["team"]}
+                            for pid, c in cands.items() if pid not in on]
+        out.append({pid: c for pid, c in cands.items() if pid in on})
+    return out[0], out[1], info
+
+
 # ── history ──────────────────────────────────────────────────────────────────
 def _order(season: int, season_type: str, week: int) -> tuple[int, int]:
     return season, (100 if season_type == "postseason" else 0) + (week or 0)
@@ -245,7 +280,8 @@ def load_box(db: DatabaseManager) -> list[dict]:
         SELECT cfbd_game_id, cfbd_player_id AS pid, player_name AS name, team, season, week, season_type,
                COALESCE(rush_att, 0) AS rush_att, COALESCE(rush_td, 0) AS rush_td,
                COALESCE(receptions, 0) AS receptions, COALESCE(rec_td, 0) AS rec_td
-        FROM cfb_player_game_stats""")
+        FROM cfb_player_game_stats
+        WHERE trim(player_name) <> 'Team'""")  # CFBD's team row (kneel-downs, team rushes) is not a player
     return [dict(r) for r in rows]
 
 
@@ -481,26 +517,57 @@ def backtest(db: DatabaseManager) -> dict:
 
 # ── slate ────────────────────────────────────────────────────────────────────
 _UPCOMING = """
-    SELECT m.cfbd_game_id, m.season, m.season_type, m.week, m.commence_time, h.name AS home, a.name AS away,
-           m.home_implied, m.away_implied
+    SELECT m.cfbd_game_id, m.odds_event_id, m.season, m.season_type, m.week, m.commence_time,
+           h.name AS home, a.name AS away, m.home_implied, m.away_implied
     FROM cfb_matchups m JOIN cfb_teams h ON h.team_id = m.home_team_id
     JOIN cfb_teams a ON a.team_id = m.away_team_id
     WHERE m.home_implied IS NOT NULL AND m.away_implied IS NOT NULL AND m.cfbd_game_id IS NOT NULL AND {where}
     ORDER BY m.commence_time, h.name"""
 
 
-def slate(db: DatabaseManager, date: str, params: Params, top: int = 6) -> list[dict]:
+def load_lines(db: DatabaseManager, event_ids: list[str]) -> dict[str, dict]:
+    """The latest DraftKings anytime-TD list per event: name keys of every listed player."""
+    ids = [e for e in event_ids if e]
+    if not ids:
+        return {}
+    rows = db.execute("""
+        WITH latest AS (
+            SELECT event_id, max(capture_key) AS capture_key FROM prop_odds_history
+            WHERE sport = 'cfb' AND market = 'player_anytime_td' AND event_id = ANY(%s) AND captured_at < NOW()
+            GROUP BY event_id)
+        SELECT p.event_id, p.player, p.captured_at FROM prop_odds_history p
+        JOIN latest l ON l.event_id = p.event_id AND l.capture_key = p.capture_key
+        WHERE p.sport = 'cfb' AND p.market = 'player_anytime_td' AND p.books ? 'draftkings'""", (ids,))
+    out: dict[str, dict] = {}
+    for r in rows:
+        e = out.setdefault(r["event_id"], {"names": set(), "captured_at": r["captured_at"].isoformat()})
+        key = name_key(r["player"])
+        if key:
+            e["names"].add(key)
+    return out
+
+
+def slate(db: DatabaseManager, date: str, params: Params, top: int = 6, use_lines: bool = False) -> list[dict]:
     games = db.execute(_UPCOMING.format(where="(m.commence_time AT TIME ZONE 'America/New_York')::date = %s"), (date,))
-    return predict(db, games, params, top)
+    lines = load_lines(db, [g["odds_event_id"] for g in games]) if use_lines else None
+    return predict(db, games, params, top, lines)
 
 
-def predict(db: DatabaseManager, games: list[dict], params: Params, top: int = 6) -> list[dict]:
-    history = History(load_box(db))
+def predict(db: DatabaseManager, games: list[dict], params: Params, top: int = 6,
+            lines: dict[str, dict] | None = None, history: History | None = None) -> list[dict]:
+    """Forecast each game. With ``lines`` (from load_lines) players the book leaves off are dropped."""
+    history = history or History(load_box(db))
     out = []
     for g in games:
         before = _order(g["season"], g["season_type"], g["week"])
         p = replace(params, rho=history.rho((g["season"], 0)))
         home, away = history.candidates(g["home"], before), history.candidates(g["away"], before)
+        availability = None
+        if lines is not None:
+            listed = lines.get(g.get("odds_event_id"))
+            home, away, availability = apply_lines(home, away, listed["names"] if listed else None)
+            if listed:
+                availability["captured_at"] = listed["captured_at"]
         p_home = team_probability(float(g["home_implied"]), float(g["away_implied"]), p.k)
         dist = game_distribution(p_home, home, away, p)
         cands = {**home, **away}
@@ -517,31 +584,119 @@ def predict(db: DatabaseManager, games: list[dict], params: Params, top: int = 6
                          "fair": fair_american(prob), "td": cands[pid]["td"], "touches": cands[pid]["vol"]}
                         for pid, prob in players[:top]],
             "other_offense": dist["other:home"] + dist["other:away"], "non_offense": dist["non_offense"],
+            "dist": dist, "availability": availability,
         })
     return out
 
 
-def publish(db: DatabaseManager, params: Params = FITTED, hours: int = PUBLISH_HOURS) -> tuple[int, int]:
-    """Save forecasts for games kicking off in the next ``hours``. Started games are never written."""
+def _save_run(cur, version: str, params: Params, rows: list[dict]) -> int:
+    cur.execute("INSERT INTO cfb_first_td_runs (version, params, games) VALUES (%s, %s, %s) RETURNING id",
+                (version, json.dumps(params.__dict__), len(rows)))
+    run_id = cur.fetchone()["id"]
+    for r in rows:
+        cur.execute("""
+            INSERT INTO cfb_first_td_predictions (run_id, cfbd_game_id, season, week, kickoff, away, home,
+                away_implied, home_implied, p_home_first, other_offense, non_offense, players, history_through,
+                dist, availability)
+            SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s WHERE %s > NOW()""",
+            (run_id, r["cfbd_game_id"], r["season"], r["week"], r["commence_time"], r["away"], r["home"],
+             r["implied"][0], r["implied"][1], r["p_home_first"], r["other_offense"], r["non_offense"],
+             json.dumps(r["players"]), json.dumps(r["history_through"]), json.dumps(r["dist"]),
+             json.dumps(r["availability"]) if r["availability"] is not None else None, r["commence_time"]))
+    return run_id
+
+
+def publish(db: DatabaseManager, params: Params = FITTED, hours: int = PUBLISH_HOURS) -> list[tuple[str, int, int]]:
+    """Save both versions for games kicking off in the next ``hours``: the model alone, and the
+    model with players the sportsbook leaves off removed. Started games are never written."""
     games = db.execute(_UPCOMING.format(
         where="m.commence_time > NOW() AND m.commence_time <= NOW() + %s * INTERVAL '1 hour'"), (hours,))
-    rows = predict(db, games, params, PUBLISH_TOP) if games else []
+    history = History(load_box(db)) if games else None
+    base = predict(db, games, params, PUBLISH_TOP, history=history) if games else []
+    lines = load_lines(db, [g["odds_event_id"] for g in games]) if games else {}
+    filtered = predict(db, games, params, PUBLISH_TOP, lines, history=history) if games else []
     with db.connect() as conn:
         cur = conn.cursor()
         for statement in DDL:
             cur.execute(statement)
-        cur.execute("INSERT INTO cfb_first_td_runs (version, params, games) VALUES (%s, %s, %s) RETURNING id",
-                    (VERSION, json.dumps(params.__dict__), len(rows)))
-        run_id = cur.fetchone()["id"]
-        for r in rows:
+        return [(VERSION, _save_run(cur, VERSION, params, base), len(base)),
+                (VERSION_LINES, _save_run(cur, VERSION_LINES, params, filtered), len(filtered))]
+
+
+# ── grading ──────────────────────────────────────────────────────────────────
+def dist_probability(dist: dict[str, float], lab: dict) -> float | None:
+    """P(what happened) from a stored distribution; None when the outcome cannot be named."""
+    if lab["outcome"] == "non_offense":
+        return dist.get("non_offense")
+    if lab["outcome"] != "offense" or lab.get("side") is None or lab.get("pid") is None:
+        return None
+    return dist.get(lab["pid"], dist.get(f"other:{lab['side']}"))
+
+
+def grade(db: DatabaseManager) -> int:
+    """Grade each version's last pregame forecast for every finished game with play-by-play."""
+    with db.connect() as conn:
+        cur = conn.cursor()
+        for statement in DDL:
+            cur.execute(statement)
+    pending = db.execute("""
+        SELECT DISTINCT ON (r.version, p.cfbd_game_id) p.run_id, p.cfbd_game_id, r.version, p.season,
+               p.week, p.kickoff, p.dist
+        FROM cfb_first_td_predictions p JOIN cfb_first_td_runs r ON r.id = p.run_id
+        WHERE p.dist IS NOT NULL AND r.created_at < p.kickoff AND p.kickoff < NOW() - INTERVAL '4 hours'
+        ORDER BY r.version, p.cfbd_game_id, r.created_at DESC""")
+    graded = {(r["cfbd_game_id"], r["version"])
+              for r in db.execute("SELECT cfbd_game_id, version FROM cfb_first_td_grades")}
+    pending = [r for r in pending if (r["cfbd_game_id"], r["version"]) not in graded]
+    if not pending:
+        return 0
+    ids = {r["cfbd_game_id"] for r in pending}
+    games = {g["cfbd_game_id"]: g for g in load_games(db) if g["cfbd_game_id"] in ids}
+    history = History(load_box(db))
+    written = 0
+    with db.connect() as conn:
+        cur = conn.cursor()
+        for r in pending:
+            g = games.get(r["cfbd_game_id"])
+            if not g:
+                continue  # not final, or play-by-play not stored yet
+            lab = label(g, history)
+            if lab["outcome"] == "offense" and lab.get("method") == "no_box":
+                continue  # box score not stored yet; try again tomorrow
+            prob = dist_probability(r["dist"], lab)
+            if prob is None:
+                continue
+            players = {k: v for k, v in r["dist"].items() if not k.startswith("other") and k != "non_offense"}
+            best = max(players, key=players.get) if players else None
             cur.execute("""
-                INSERT INTO cfb_first_td_predictions (run_id, cfbd_game_id, season, week, kickoff, away, home,
-                    away_implied, home_implied, p_home_first, other_offense, non_offense, players, history_through)
-                SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s WHERE %s > NOW()""",
-                (run_id, r["cfbd_game_id"], r["season"], r["week"], r["commence_time"], r["away"], r["home"],
-                 r["implied"][0], r["implied"][1], r["p_home_first"], r["other_offense"], r["non_offense"],
-                 json.dumps(r["players"]), json.dumps(r["history_through"]), r["commence_time"]))
-    return run_id, len(rows)
+                INSERT INTO cfb_first_td_grades (run_id, cfbd_game_id, version, season, week, kickoff, outcome,
+                    scorer, prob, top_pick_hit) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT DO NOTHING""",
+                (r["run_id"], r["cfbd_game_id"], r["version"], r["season"], r["week"], r["kickoff"],
+                 lab["outcome"], lab.get("pid"), prob, best is not None and best == lab.get("pid")))
+            written += 1
+    return written
+
+
+def grade_report(db: DatabaseManager) -> dict:
+    """Both versions on the games both have graded: mean log loss and the paired difference."""
+    rows = db.execute("""
+        SELECT a.cfbd_game_id, a.season, a.week, a.prob AS base, b.prob AS lines,
+               a.top_pick_hit AS base_hit, b.top_pick_hit AS lines_hit
+        FROM cfb_first_td_grades a JOIN cfb_first_td_grades b
+          ON b.cfbd_game_id = a.cfbd_game_id AND b.version = %s
+        WHERE a.version = %s""", (VERSION_LINES, VERSION))
+    if not rows:
+        return {"games": 0}
+    base = [-math.log(max(r["base"], 1e-9)) for r in rows]
+    lines = [-math.log(max(r["lines"], 1e-9)) for r in rows]
+    games = [{"season": r["season"], "season_type": "regular", "week": r["week"]} for r in rows]
+    changed = sum(abs(r["base"] - r["lines"]) > 1e-12 for r in rows)
+    return {"games": len(rows), "changed": changed,
+            "base_log_loss": sum(base) / len(base), "lines_log_loss": sum(lines) / len(lines),
+            "lines_minus_base": paired_week_bootstrap(games, lines, base) if len(rows) > 1 else None,
+            "base_top_pick": sum(r["base_hit"] for r in rows) / len(rows),
+            "lines_top_pick": sum(r["lines_hit"] for r in rows) / len(rows)}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -554,8 +709,10 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--params", type=Path, help="a backtest JSON; its fitted parameters are used")
     s.add_argument("--top", type=int, default=6)
     s.add_argument("--json", type=Path)
+    s.add_argument("--lines", action="store_true", help="drop players the sportsbook leaves off")
     pub = sub.add_parser("publish")
     pub.add_argument("--hours", type=int, default=PUBLISH_HOURS)
+    sub.add_parser("grade")
     args = ap.parse_args(argv)
     db = DatabaseManager(load_config().database_url, initialize_schema=False)
     if args.cmd == "backtest":
@@ -566,16 +723,21 @@ def main(argv: list[str] | None = None) -> int:
         print(text)
         return 0
     if args.cmd == "publish":
-        run_id, n = publish(db, FITTED, args.hours)
-        print(f"run {run_id}: {n} games saved ({VERSION})")
+        for version, run_id, n in publish(db, FITTED, args.hours):
+            print(f"run {run_id}: {n} games saved ({version})")
+        return 0
+    if args.cmd == "grade":
+        print(f"{grade(db)} forecasts graded")
+        print(json.dumps(grade_report(db), indent=2, default=str))
         return 0
     params = FITTED
     if args.params:
         fitted = json.loads(args.params.read_text(encoding="utf-8"))["params"]
         params = Params(**{k: v for k, v in fitted.items() if k != "rho"})
-    games = slate(db, args.date, params, args.top)
+    games = slate(db, args.date, params, args.top, args.lines)
     if args.json:
-        args.json.write_text(json.dumps(games, indent=2, default=str), encoding="utf-8")
+        args.json.write_text(json.dumps([{k: v for k, v in g.items() if k != "dist"} for g in games],
+                                        indent=2, default=str), encoding="utf-8")
     for g in games:
         away, home = g["game"].split(" @ ")
         print(f"\n{g['game']}  implied {g['implied'][0]:.1f}-{g['implied'][1]:.1f}  "
@@ -584,6 +746,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {p['prob']:5.1%}  {p['fair']:>+6d}  {p['name']} ({p['team']}) "
                   f"{p['td']:.0f} TD / {p['touches']:.0f} touches")
         print(f"  other offense {g['other_offense']:.1%}, defense/special teams {g['non_offense']:.1%}")
+        if g["availability"]:
+            a = g["availability"]
+            print(f"  lines: {a['status']}, dropped {', '.join(d['name'] for d in a['dropped']) or 'nobody'}")
     return 0
 
 

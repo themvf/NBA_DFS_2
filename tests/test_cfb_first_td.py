@@ -59,3 +59,44 @@ def test_fair_american():
     assert m.fair_american(0.5) == -100
     assert m.fair_american(0.1) == 900
     assert m.fair_american(0.75) == -300
+
+
+def _cands(team, names):
+    return {f"{team}{i}": {"td": 1.0, "vol": 10.0, "td_prior": 0.0, "vol_prior": 0.0, "name": n, "team": team}
+            for i, n in enumerate(names)}
+
+
+def test_apply_lines_drops_unlisted_only_on_covered_teams():
+    home = _cands("H", ["Al Bee", "Cy Dee", "Ed Eff", "Gus Hay", "Ian Jay"])
+    away = _cands("A", ["Kim Lee", "Mo Noe", "Ox Poe"])
+    listed = {m.name_key(n) for n in ["Al Bee", "Cy Dee", "Ed Eff", "Gus Hay", "Kim Lee", "Mo Noe"]}
+    h, a, info = m.apply_lines(home, away, listed)
+    assert set(h) == {"H0", "H1", "H2", "H3"} and [d["name"] for d in info["dropped"]] == ["Ian Jay"]
+    # Only 2 away candidates are listed: too few to read an absence, so the team is left alone.
+    assert a == away and info["covered"]["away"]["covered"] is False
+
+
+def test_apply_lines_without_a_capture_changes_nothing():
+    home, away = _cands("H", ["Al Bee"]), _cands("A", ["Kim Lee"])
+    h, a, info = m.apply_lines(home, away, None)
+    assert h is home and a is away and info["status"] == "no_lines"
+
+
+def test_dropping_a_player_raises_his_teammates():
+    p = m.Params(k=1.0, phi=0.05, theta=0.1, kappa=0.0, w_prior=0.0, rho=0.05)
+    home = _cands("H", ["Al Bee", "Cy Dee", "Ed Eff", "Gus Hay", "Ian Jay"])
+    away = _cands("A", ["Kim Lee"])
+    before = m.game_distribution(0.5, home, away, p)
+    listed = {m.name_key(n) for n in ["Al Bee", "Cy Dee", "Ed Eff", "Gus Hay"]}
+    h, a, _ = m.apply_lines(home, away, listed)
+    after = m.game_distribution(0.5, h, a, p)
+    assert math.isclose(sum(after.values()), 1.0) and "H4" not in after
+    assert math.isclose(after["H0"], before["H0"] * 5 / 4)
+
+
+def test_dist_probability_reads_the_stored_distribution():
+    dist = {"p1": 0.2, "other:home": 0.05, "other:away": 0.04, "non_offense": 0.04}
+    assert m.dist_probability(dist, {"outcome": "offense", "side": "home", "pid": "p1"}) == 0.2
+    assert m.dist_probability(dist, {"outcome": "offense", "side": "away", "pid": "zz"}) == 0.04
+    assert m.dist_probability(dist, {"outcome": "non_offense", "side": "home"}) == 0.04
+    assert m.dist_probability(dist, {"outcome": "offense", "side": "home", "pid": None}) is None
