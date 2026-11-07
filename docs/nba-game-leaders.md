@@ -75,6 +75,33 @@ games a team a permutation test of between-team spread gave p = 0.36, so the rec
 as history, not used to adjust anything. Clearer leaders led more often (line 10+ above the
 next teammate 64%, line 30+ 74%); recent over/under form showed no reliable pattern.
 
+## Why the favourite misses, and the tags (2026-11-07)
+
+Over 132 games (Oct 20 - Nov 6) the favourite by chance led 42% against 39% said. In 82 misses
+he never sat; he finished under his own line in 73% of them (median -3.5). The winner was usually
+the 2nd-4th biggest line and beat his own line by a median +9.5. Games decided by 20+ cost the
+favourite about 5 minutes (he led 37% of those). Pre-game signals tested against the simulation's
+chance (offset logistic, nights resampled): last-3 points vs line, rising shots, rising minutes,
+earlier over rate, missing teammates' shot volume, back-to-back, line movement. None picked the
+winner reliably better than the lines; missing teammates are already in the lines. About 20 tests
+on 17 nights, so treat the one near-miss (last-3 above the line) as a forward test, not a finding.
+Players outside the top five lines were given 15.8 wins and won 10.8.
+
+Teams: the lines sort teams by how clear their leader is (thirds by chance: said 42/52/65%, led
+46/50/66%), but a team's own record does not repeat (alternate games of the same team, r = -0.04
+for "biggest line led", 0.95 for the stated chance).
+
+Tags on the panel restate the chances in bands that held up (they add no information beyond them):
+
+| Tag | Rule | Oct 20 - Nov 6 |
+|---|---|---|
+| WIDE OPEN | game favourite under 30% | favourite led 26% of 29; top three by chance led 76% |
+| CLEAR FAVOURITE | game favourite 50%+ | led 57% of 27 |
+| TOSS-UP w/ X | team's biggest line under 45% to lead his team | led 47% of 81; he or X led 75% |
+| CLEAR | team's biggest line 65%+ | led 65% of 46 |
+| QUESTIONABLE / OUT / ... | latest observed official injury report | fact, not a model |
+| 1 BOOK | one book quotes the line | such players sat ~35% |
+
 ## Where it is used
 
 - `/nba/top-scorers` "Game leaders" panel: always corrected (`web/src/lib/nba-game-leaders.ts`).
