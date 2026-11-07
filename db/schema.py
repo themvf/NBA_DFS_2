@@ -4441,6 +4441,8 @@ TABLES = [
     # 2026-11-07: the NFL DFS page reads one study's week (newest capture per
     # player); the unique key leads with player_id, so that read scanned the table.
     "CREATE INDEX IF NOT EXISTS idx_nfl_dfs_shadow_study_week ON nfl_dfs_shadow_predictions(study_run_id, season, week, player_id, captured_at DESC, id DESC)",
+    # The weekly report card reads one week across studies: 75 MB scan -> 5 MB.
+    "CREATE INDEX IF NOT EXISTS idx_nfl_dfs_shadow_season_week ON nfl_dfs_shadow_predictions(season, week)",
     """CREATE TABLE IF NOT EXISTS nfl_dfs_shadow_outcomes (
         prediction_id BIGINT NOT NULL REFERENCES nfl_dfs_shadow_predictions(id),
         result_id BIGINT NOT NULL REFERENCES nfl_dfs_player_week_results(id),
