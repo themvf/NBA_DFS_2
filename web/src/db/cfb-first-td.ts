@@ -45,9 +45,12 @@ export async function getFirstTdGames(date: string): Promise<FirstTdGame[]> {
       ORDER BY p.cfbd_game_id, r.created_at DESC)
     SELECT l.*, td.play_type, td.play_text
     FROM latest l
+    LEFT JOIN cfb_matchups m ON m.cfbd_game_id = l.cfbd_game_id
+    -- Plays are read through the indexed game_id; cfb_plays.cfbd_game_id has no index, and filtering on it
+    -- scanned every play once per game (104 s for one Saturday's 51 games).
     LEFT JOIN LATERAL (
       SELECT play_type, play_text FROM cfb_plays c
-      WHERE c.cfbd_game_id = l.cfbd_game_id
+      WHERE c.game_id = m.id
         AND (c.play_type ILIKE '%touchdown%'
              OR (c.scoring AND c.play_text ILIKE '%touchdown%' AND c.play_type IN ('Rush', 'Pass Reception', 'Pass Completion')))
       ORDER BY c.period, c.clock_seconds_remaining DESC, c.drive_number, c.play_number LIMIT 1) td ON TRUE
