@@ -50,7 +50,11 @@ HISTORY_ORDER = " ORDER BY h.matchup_id,h.captured_at,h.id"
 
 # Kept a separate query: as an IN subquery of the history read the planner chose
 # a nested-loop semi join over the coverage check (1.77M buffers a run).
+# Only games tipping within the last day can gain a pregame snapshot, so the
+# incremental run reads those (2026-11-07: 39 MB from disk a run -> index reads,
+# ~165 runs a day); the full run from pipeline_health.yml still covers every game.
 PENDING_GAMES = ("SELECT DISTINCT h.matchup_id" + PREGAME_SNAPSHOTS
+                 + " AND m.commence_time > NOW() - INTERVAL '1 day'"
                  + " AND NOT EXISTS (SELECT 1 FROM cfb_quote_movement_coverage c WHERE c.history_id=h.id)")
 
 
