@@ -1,6 +1,7 @@
 import { connection } from "next/server";
 import { getFirstTdDates, getFirstTdGames, getFirstTdGrades } from "@/db/cfb-first-td";
 import { etDate, FirstTdView, pickDate } from "@/components/first-td-view";
+import { getFirstTdStats } from "@/db/first-td-stats";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "CFB First Touchdown" };
@@ -13,13 +14,13 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ d
   const today = etDate(nowMs);
   const dates = await getFirstTdDates().catch(() => [] as string[]);
   const date = pickDate(dates, today, params.date);
-  const [games, grades] = await Promise.all([date ? getFirstTdGames(date) : Promise.resolve([]), getFirstTdGrades()]);
+  const [games, grades, stats] = await Promise.all([date ? getFirstTdGames(date) : Promise.resolve([]), getFirstTdGrades(), getFirstTdStats("cfb")]);
   return <FirstTdView
     subtitle="College football · our own model, no sportsbook player prices used."
     banner={<>Not validated against sportsbook prices. Tested on 514 games from 2026 weeks 1-10 that the fitting never saw:
       it beat shares from carries and catches alone, and its chances matched what happened within about three points.
       It does not know injuries directly; when DraftKings lists a team&apos;s players for anytime touchdown, ours who are missing from that list are removed (prices are not used). Fair price is the chance as American odds with no bookmaker margin.</>}
-    dates={dates} date={date} today={today} nowMs={nowMs} games={games} grades={grades}
+    dates={dates} date={date} today={today} nowMs={nowMs} games={games} grades={grades} stats={stats}
     emptyNote="They are saved each morning and about three hours before each kickoff group, for games with betting lines."
     volumeLabel="Carries + catches"
     actualWait="The first touchdown appears here once the game's play-by-play is stored (the morning after)."

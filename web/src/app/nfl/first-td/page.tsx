@@ -1,6 +1,7 @@
 import { connection } from "next/server";
 import { getNflFirstTdDates, getNflFirstTdGames, getNflFirstTdGrades } from "@/db/nfl-first-td";
 import { etDate, FirstTdView, pickDate } from "@/components/first-td-view";
+import { getFirstTdStats } from "@/db/first-td-stats";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "NFL First Touchdown" };
@@ -13,7 +14,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ d
   const today = etDate(nowMs);
   const dates = await getNflFirstTdDates().catch(() => [] as string[]);
   const date = pickDate(dates, today, params.date);
-  const [games, grades] = await Promise.all([date ? getNflFirstTdGames(date) : Promise.resolve([]), getNflFirstTdGrades()]);
+  const [games, grades, stats] = await Promise.all([date ? getNflFirstTdGames(date) : Promise.resolve([]), getNflFirstTdGrades(), getFirstTdStats("nfl")]);
   return <FirstTdView
     subtitle="NFL · our own model, no sportsbook player prices used."
     banner={<>Not validated against sportsbook prices. Tested on 372 games from 2025 and 2026 weeks 1-8 that the fitting never saw:
@@ -21,7 +22,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ d
       time against 15-16% stated, so the biggest chances run a little high. When DraftKings lists a team&apos;s players for anytime
       touchdown (captured the day before and about an hour before kickoff), ours missing from the list are removed; prices are not used.
       Fair price is the chance as American odds with no bookmaker margin.</>}
-    dates={dates} date={date} today={today} nowMs={nowMs} games={games} grades={grades}
+    dates={dates} date={date} today={today} nowMs={nowMs} games={games} grades={grades} stats={stats}
     emptyNote="They are saved each morning before a game day and about an hour before each kickoff group."
     volumeLabel="Carries + targets"
     actualWait="The first touchdown appears here once the game's play-by-play is stored (usually within a day or two)."
