@@ -792,6 +792,35 @@ def grade_report(db: DatabaseManager) -> dict:
             "lines_top_pick": sum(r["lines_hit"] for r in rows) / len(rows)}
 
 
+def stats(db: DatabaseManager) -> dict:
+    """The page's season stats: record of the shown version, how first TDs happen, leaders."""
+    from model import first_td_stats as fs
+    history = History(load_box(db))
+    games = []
+    for g in load_games(db):
+        lab = label(g, history)
+        row = {k: g[k] for k in ("season", "home", "away", "home_implied", "away_implied")}
+        row.update(outcome=lab["outcome"], side=lab.get("side"), kind=lab.get("kind"), pid=lab.get("pid"))
+        if row["pid"]:
+            team = g[row["side"]]
+            box = {r["pid"]: r for r in history.rows_by_game_team.get((g["cfbd_game_id"], team), [])}
+            me = box.get(row["pid"])
+            row["name"] = history.names.get(row["pid"])
+            row["qb"] = bool(me and me.get("pass_att", 0) > 0) if me else None
+        games.append(row)
+    seasons = sorted({g["season"] for g in games})
+    graded, version = [], VERSION_LINES
+    for v in (VERSION_LINES, VERSION):
+        graded = db.execute("""
+            SELECT g.scorer, g.prob, p.dist FROM cfb_first_td_grades g
+            JOIN cfb_first_td_predictions p ON p.run_id = g.run_id AND p.cfbd_game_id = g.cfbd_game_id
+            WHERE g.version = %s""", (v,))
+        version = v
+        if graded:
+            break
+    return fs.build(games, seasons, max(seasons), [dict(r) for r in graded], version)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -806,8 +835,18 @@ def main(argv: list[str] | None = None) -> int:
     pub = sub.add_parser("publish")
     pub.add_argument("--hours", type=int, default=PUBLISH_HOURS)
     sub.add_parser("grade")
+    st = sub.add_parser("stats")
+    st.add_argument("--json", type=Path, help="write the stats here instead of storing them")
     args = ap.parse_args(argv)
     db = DatabaseManager(load_config().database_url, initialize_schema=False)
+    if args.cmd == "stats":
+        from model import first_td_stats as fs
+        report = stats(db)
+        if args.json:
+            args.json.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
+        else:
+            print("stored" if fs.save(db, "cfb", report) else "unchanged, not stored")
+        return 0
     if args.cmd == "backtest":
         report = backtest(db)
         text = json.dumps(report, indent=2, default=str)

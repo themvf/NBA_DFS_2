@@ -37,3 +37,6 @@ jobs:
       - name: Grade finished games
         if: ${{ !cancelled() }}
         run: python -m model.nfl_first_td grade
+      - name: Rebuild season stats
+        if: ${{ !cancelled() }}
+        run: python -m model.nfl_first_td stats

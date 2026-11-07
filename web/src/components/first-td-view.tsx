@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { FirstTdChip, FirstTdGame, FirstTdGrades } from "@/db/cfb-first-td";
+import type { FirstTdCalibrationBin, FirstTdStats } from "@/db/first-td-stats";
 
 /** The First TD page body, shared by the CFB and NFL tabs; each tab supplies its data and wording. */
 
@@ -120,6 +121,85 @@ function GradePanel({ grades, gradeWait, enough }: { grades: FirstTdGrades | nul
   </section>;
 }
 
+function maybePct(v: number | null | undefined) { return v == null ? "–" : pct(v); }
+
+function binLabel(b: FirstTdCalibrationBin) {
+  return b.to == null ? `${Math.round(b.from * 100)}%+` : `${Math.round(b.from * 100)}-${Math.round(b.to * 100)}%`;
+}
+
+function StatsSection({ title, children, open }: { title: string; children: ReactNode; open?: boolean }) {
+  return <details className="rounded-xl border bg-white p-4 text-sm" open={open}>
+    <summary className="cursor-pointer text-base font-semibold">{title}</summary>
+    <div className="mt-3 space-y-2">{children}</div>
+  </details>;
+}
+
+function SeasonStats({ stats, recordWait }: { stats: FirstTdStats | null; recordWait: string }) {
+  if (!stats) return <p className="rounded-xl border bg-white p-4 text-sm text-slate-600">Season stats are not stored yet; they are rebuilt each time forecasts are graded.</p>;
+  const r = stats.record;
+  const rates = [...stats.baseRates.filter((b) => b.season !== "All").slice(0, 5), ...stats.baseRates.filter((b) => b.season === "All")];
+  const allSeasons = stats.baseRates.filter((b) => b.season !== "All").map((b) => b.season);
+  const L = stats.leaders;
+  return <>
+    <StatsSection title="Our track record">
+      {!r
+        ? <p className="text-slate-600">No graded games yet. {recordWait}</p>
+        : <>
+          <p>
+            <strong>{r.games}</strong> games graded. Our top pick scored the first touchdown <strong>{maybePct(r.top_pick_hit)}</strong> of
+            the time; we said <strong>{maybePct(r.top_pick_stated)}</strong> on average. Log loss {r.log_loss.toFixed(3)} (lower is better).
+          </p>
+          <table className="w-full max-w-xl text-left">
+            <thead><tr className="text-slate-600"><th className="py-1">Our chance</th><th className="py-1">Player forecasts</th><th className="py-1">We said</th><th className="py-1">Happened</th></tr></thead>
+            <tbody>{r.calibration.map((b) => <tr className="border-t" key={b.from}>
+              <td className="py-1">{binLabel(b)}</td><td className="py-1">{b.forecasts}</td>
+              <td className="py-1">{maybePct(b.stated)}</td><td className="py-1">{maybePct(b.happened)}</td>
+            </tr>)}</tbody>
+          </table>
+          <p className="text-slate-600">When the model is right, the two right-hand columns match. Graded version: {stats.gradedVersion}.
+            {r.games < 100 ? " Too few games to read much into yet." : ""}</p>
+        </>}
+    </StatsSection>
+    <StatsSection title="How first touchdowns happen">
+      <div className="overflow-x-auto"><table className="w-full text-left">
+        <thead><tr className="text-slate-600">
+          <th className="py-1 pr-3">Season</th><th className="py-1 pr-3">Games</th><th className="py-1 pr-3">Rushing</th>
+          <th className="py-1 pr-3">Receiving</th><th className="py-1 pr-3">Return or defense</th>
+          <th className="py-1 pr-3">Rushing TD by a QB</th><th className="py-1 pr-3">Favourite scored first</th><th className="py-1 pr-3">Home team scored first</th>
+        </tr></thead>
+        <tbody>{rates.map((b) => <tr className={`border-t ${b.season === "All" ? "font-semibold" : ""}`} key={b.season}>
+          <td className="py-1 pr-3">{b.season === "All" ? `All (${allSeasons[allSeasons.length - 1]}-${allSeasons[0]})` : b.season}</td>
+          <td className="py-1 pr-3">{b.games}</td><td className="py-1 pr-3">{maybePct(b.rush)}</td><td className="py-1 pr-3">{maybePct(b.rec)}</td>
+          <td className="py-1 pr-3">{maybePct(b.non_offense)}</td><td className="py-1 pr-3">{maybePct(b.qb_rush)}</td>
+          <td className="py-1 pr-3">{maybePct(b.favourite_first)}</td><td className="py-1 pr-3">{maybePct(b.home_first)}</td>
+        </tr>)}</tbody>
+      </table></div>
+      <p className="text-slate-600">Games with at least one touchdown. &quot;Rushing TD by a QB&quot; is the share of rushing first touchdowns
+        scored by a player who threw a pass in that game (– where box scores are missing). The favourite is the team with more implied points from the closing line.</p>
+    </StatsSection>
+    <StatsSection title={`${L.season} leaders`}>
+      <div className="grid gap-6 md:grid-cols-2">
+        <div>
+          <h3 className="font-semibold">Most first touchdowns</h3>
+          {L.players.length === 0 && !L.tied ? <p className="text-slate-600">Nobody has two yet.</p>
+            : <table className="mt-1 w-full text-left"><tbody>{L.players.map((p) => <tr className="border-t" key={`${p.team}-${p.name}`}>
+              <td className="py-1">{p.name} <span className="text-slate-500">{p.team}</span></td><td className="py-1 text-right">{p.firsts}</td>
+            </tr>)}</tbody></table>}
+          {L.tied && <p className="mt-1 text-slate-600">Plus {L.tied.players} players with {L.tied.firsts}.</p>}
+        </div>
+        <div>
+          <h3 className="font-semibold">Teams that scored first most often</h3>
+          <table className="mt-1 w-full text-left"><tbody>{L.teams.map((t) => <tr className="border-t" key={t.team}>
+            <td className="py-1">{t.team}</td><td className="py-1 text-right">{t.firsts} of {t.games}</td>
+          </tr>)}</tbody></table>
+        </div>
+      </div>
+      <p className="text-slate-600">Context only. Which team scores first is mostly explained by its implied points, so a streak here says little about the next game.</p>
+    </StatsSection>
+    <p className="text-xs text-slate-500">Season stats updated {time(stats.computedAt)}.</p>
+  </>;
+}
+
 export type FirstTdViewProps = {
   subtitle: string;
   banner: ReactNode;
@@ -135,6 +215,7 @@ export type FirstTdViewProps = {
   gradeWait: string;
   enoughGames: number;
   notes: ReactNode;
+  stats: FirstTdStats | null;
 };
 
 export function FirstTdView(props: FirstTdViewProps) {
@@ -160,6 +241,7 @@ export function FirstTdView(props: FirstTdViewProps) {
       ? <p className="rounded-xl border bg-white p-4 text-sm text-slate-600">No saved forecasts{date ? ` for ${dateLabel(date)}` : " yet"}. {props.emptyNote}</p>
       : games.map((g) => <GameCard key={g.gameKey} g={g} started={nowMs >= Date.parse(g.kickoff)}
                                    volumeLabel={props.volumeLabel} actualWait={props.actualWait} />)}
+    <SeasonStats stats={props.stats} recordWait={props.gradeWait} />
     <GradePanel grades={props.grades} gradeWait={props.gradeWait} enough={props.enoughGames} />
     <details className="rounded-xl border bg-white p-4"><summary className="cursor-pointer font-semibold">How it works</summary>
       <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-600">{props.notes}</ul>

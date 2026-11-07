@@ -119,13 +119,18 @@ def load_games(db: DatabaseManager) -> list[dict]:
             SELECT DISTINCT ON (a.game_id) a.game_id, a.posteam, t.player_id, t.team AS scorer_team,
                    EXISTS (SELECT 1 FROM nfl_pbp_play_participants x WHERE x.game_id = a.game_id
                            AND x.play_id = a.play_id AND x.player_id = t.player_id
-                           AND x.role IN ('rusher', 'receiver')) AS offensive
+                           AND x.role IN ('rusher', 'receiver')) AS offensive,
+                   EXISTS (SELECT 1 FROM nfl_pbp_play_participants x WHERE x.game_id = a.game_id
+                           AND x.play_id = a.play_id AND x.player_id = t.player_id
+                           AND x.role = 'rusher') AS rushed,
+                   EXISTS (SELECT 1 FROM nfl_pbp_play_participants x WHERE x.game_id = a.game_id
+                           AND x.player_id = t.player_id AND x.role = 'passer') AS passed
             FROM nfl_pbp_archetypes a
             JOIN nfl_pbp_play_participants t ON t.game_id = a.game_id AND t.play_id = a.play_id
                  AND t.role = 'touchdown'
             WHERE a.two_point_result IS NULL
             ORDER BY a.game_id, a.quarter, a.game_seconds_remaining DESC, a.play_id)
-        SELECT g.*, td.posteam, td.player_id AS scorer, td.scorer_team, td.offensive
+        SELECT g.*, td.posteam, td.player_id AS scorer, td.scorer_team, td.offensive, td.rushed, td.passed
         FROM g LEFT JOIN td ON td.game_id = g.game_id""")
     games = []
     for r in rows:
@@ -146,7 +151,8 @@ def label(g: dict) -> dict:
         return {"outcome": "no_td"}
     side = "home" if g["scorer_team"] == g["home"] else "away" if g["scorer_team"] == g["away"] else None
     if g["offensive"] and g["scorer_team"] == g["posteam"]:
-        return {"outcome": "offense", "side": side, "pid": g["scorer"], "method": "pbp"}
+        return {"outcome": "offense", "side": side, "pid": g["scorer"], "method": "pbp",
+                "kind": "rush" if g.get("rushed") else "rec"}
     return {"outcome": "non_offense", "side": side}
 
 
@@ -438,6 +444,35 @@ def grade(db: DatabaseManager) -> int:
     return written
 
 
+def stats(db: DatabaseManager) -> dict:
+    """The page's season stats: record of the shown version, how first TDs happen, leaders."""
+    from model import first_td_stats as fs
+    names = display_names(db)
+    pbp_names = {r["player_id"]: r["name"] for r in db.execute("""
+        SELECT player_id, max(player_name) AS name FROM nfl_pbp_play_participants
+        WHERE role = 'touchdown' AND player_id IS NOT NULL GROUP BY player_id""")}
+    games = []
+    for g in load_games(db):
+        lab = label(g)
+        row = {k: g[k] for k in ("season", "home", "away", "home_implied", "away_implied")}
+        row.update(outcome=lab["outcome"], side=lab.get("side"), kind=lab.get("kind"), pid=lab.get("pid"))
+        if row["pid"]:
+            row["name"] = names.get(row["pid"]) or pbp_names.get(row["pid"])
+            row["qb"] = bool(g.get("passed"))
+        games.append(row)
+    seasons = sorted({g["season"] for g in games})
+    graded, version = [], VERSION_LINES
+    for v in (VERSION_LINES, VERSION):
+        graded = db.execute("""
+            SELECT g.scorer, g.prob, p.dist FROM nfl_first_td_grades g
+            JOIN nfl_first_td_predictions p ON p.run_id = g.run_id AND p.game_id = g.game_id
+            WHERE g.version = %s""", (v,))
+        version = v
+        if graded:
+            break
+    return fs.build(games, seasons, max(seasons), [dict(r) for r in graded], version)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -450,8 +485,18 @@ def main(argv: list[str] | None = None) -> int:
     pub = sub.add_parser("publish")
     pub.add_argument("--hours", type=int, default=PUBLISH_HOURS)
     sub.add_parser("grade")
+    st = sub.add_parser("stats")
+    st.add_argument("--json", type=Path, help="write the stats here instead of storing them")
     args = ap.parse_args(argv)
     db = DatabaseManager(load_config().database_url, initialize_schema=False)
+    if args.cmd == "stats":
+        from model import first_td_stats as fs
+        report = stats(db)
+        if args.json:
+            args.json.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
+        else:
+            print("stored" if fs.save(db, "nfl", report) else "unchanged, not stored")
+        return 0
     if args.cmd == "backtest":
         report = backtest(db)
         text = json.dumps(report, indent=2, default=str)

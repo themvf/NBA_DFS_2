@@ -8,7 +8,8 @@ def _g(**kw):
 
 
 def test_label_offense_only_when_the_scorer_carried_or_caught_it():
-    assert n.label(_g()) == {"outcome": "offense", "side": "home", "pid": "p1", "method": "pbp"}
+    assert n.label(_g()) == {"outcome": "offense", "side": "home", "pid": "p1", "method": "pbp", "kind": "rec"}
+    assert n.label(_g(rushed=True))["kind"] == "rush"
     # A return or a defensive score: the scorer is not the play's rusher or receiver.
     assert n.label(_g(offensive=False, posteam="NYJ")) == {"outcome": "non_offense", "side": "home"}
     assert n.label(_g(scorer_team=None)) == {"outcome": "no_td"}

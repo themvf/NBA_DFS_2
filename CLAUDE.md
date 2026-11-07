@@ -9325,6 +9325,13 @@ the page shows the filtered version plus the paired grade. Seen on the first
 slate: DraftKings leaves some starting QBs off (Julian Sayin), so a QB who
 rarely runs loses his small share; the grade decides whether the filter stays.
 `python -m model.cfb_first_td backtest --json F` / `slate --date D --params F`.
+**Season stats on both First TD pages (`first-td-stats-v1`, 2026-11-07).** `model/first_td_stats.py`
+builds one JSON per sport (track record of the shown version: top pick hit vs stated, log loss,
+calibration by 5-point chance bin; base rates by season: rushing/receiving/return-or-defense, rushing
+first TDs by a player who threw a pass that game, favourite and home team scored first; this season's
+leaders) from each module's `stats` command, run after `grade` in both workflows. Stored in
+`first_td_stats` only when it changed, so `computed_at` is not a freshness clock and it is not on
+/health. Descriptive only; nothing feeds the forecast.
 
 ## NFL first touchdown scorer (`nfl-first-td-v1`, 2026-11-07)
 
