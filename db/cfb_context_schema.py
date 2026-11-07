@@ -248,6 +248,10 @@ CREATE TABLE IF NOT EXISTS cfb_detector_runs (
   comparison_policy_artifact_id uuid NOT NULL REFERENCES cfb_engine_artifacts(artifact_id), run_key text NOT NULL UNIQUE,
   completed_at timestamptz NOT NULL
 );
+-- 2026-11-07: the publish step's "first capture not yet processed" read probes items by capture and
+-- runs by manifest; without these it scanned both tables (~135 MB from disk per run, ~110 runs a day).
+CREATE INDEX IF NOT EXISTS idx_cfb_manifest_items_endpoint_capture ON cfb_context_manifest_items(capture_id) WHERE slot = 'endpoint_capture';
+CREATE INDEX IF NOT EXISTS idx_cfb_detector_runs_manifest ON cfb_detector_runs(input_manifest_id, detector_id);
 CREATE TABLE IF NOT EXISTS cfb_detector_funnels (
   run_id uuid NOT NULL REFERENCES cfb_detector_runs(run_id), event_key text NOT NULL REFERENCES cfb_engine_events(event_key),
   market text NOT NULL CHECK(market IN ('spread','total','moneyline')), candidate_count bigint NOT NULL CHECK(candidate_count>=0),

@@ -710,6 +710,15 @@ the MLB alert scan of future games (48 GB, 0 rows since the season ended) and th
 MAX(captured_at) reads. `idx_prop_odds_sport_commence` and `idx_prop_odds_sport_captured`
 (built concurrently on the live database) make them index reads of a few milliseconds. The
 `mlb_props` health row also lacked its `sport = 'mlb'` filter and was reading every sport's captures.
+The same pass re-measured the 2026-10-16..11-07 top readers as they run today (the cumulative totals,
+5.7 TB read from disk, include queries fixed since) and indexed the five still scanning: the NFL DFS
+report card (1.1 GB a call, ~25 a day; covering `(run_id, position)` index on
+`nfl_dfs_player_projections`), the /health `MAX(labelled_at)` on `nfl_pbp_archetypes` (323 MB),
+the CFB context publish's unprocessed-capture probe (135 MB, ~110 a day; capture and manifest
+indexes in `db/cfb_context_schema.py`), and the NFL DFS page's shadow-snapshot read (73 MB a page
+open). `ingest/cfb_capture_audit.py` per-capture runs now scope all integrity checks to live games
+(the full audit still runs from pipeline_health.yml). A concurrent index build on a table a long
+job is writing must run with `lock_timeout=0`: with a timeout it fails and leaves an INVALID index.
 
 **PFR identity claims were re-inserted every run (2026-10-31).** The top
 disk reader after that was `freeze_identity` (`db/nfl_pfr_schema.py`, hash-
