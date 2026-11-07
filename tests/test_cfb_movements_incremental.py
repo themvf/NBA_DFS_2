@@ -97,6 +97,7 @@ def test_incremental_run_loads_only_uncovered_games_and_verifies_them_alone(monk
     pending_sql = cursor.sql[1][0]
     assert pending_sql.startswith("SELECT DISTINCT h.matchup_id")
     assert "NOT EXISTS (SELECT 1 FROM cfb_quote_movement_coverage c WHERE c.history_id=h.id)" in pending_sql
+    assert "m.commence_time > NOW() - INTERVAL '1 day'" in pending_sql
     [(history_sql, history_params)] = history_reads(cursor)
     assert history_sql.endswith("AND h.matchup_id=ANY(%s) ORDER BY h.matchup_id,h.captured_at,h.id")
     assert "cfb_quote_movement_coverage" not in history_sql, "the pending games are resolved before the history read"

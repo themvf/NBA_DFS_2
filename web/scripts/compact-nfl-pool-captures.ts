@@ -52,8 +52,10 @@ config({ path: '.env.local', quiet: true });
   const found = rows(await db.execute(sql`SELECT digest, md5((payload->'context'->'situationTeams')::text) m,
       pg_column_size(payload->'context'->'situationTeams') bytes
     FROM nfl_dfs_pool_captures
-    WHERE jsonb_typeof(payload->'context'->'situationTeams') = 'array'
-      AND jsonb_array_length(payload->'context'->'situationTeams') > 0`));
+    -- CASE, not AND: Postgres may evaluate either side of an AND first, and rows written
+    -- compacted hold an object here, which jsonb_array_length rejects.
+    WHERE CASE WHEN jsonb_typeof(payload->'context'->'situationTeams') = 'array'
+      THEN jsonb_array_length(payload->'context'->'situationTeams') > 0 ELSE false END`));
   const groups = new Map<string, string[]>();
   const groupBytes = new Map<string, number>();
   for (const r of found) {
@@ -105,6 +107,7 @@ config({ path: '.env.local', quiet: true });
   const trigger = rows(await db.execute(sql`SELECT tgenabled FROM pg_trigger WHERE tgname='nfl_pool_capture_immutable'`))[0];
   if (trigger?.tgenabled !== 'O') throw new Error('append-only trigger is not enabled; re-enable it now');
   const left = rows(await db.execute(sql`SELECT count(*)::int n FROM nfl_dfs_pool_captures
-    WHERE jsonb_typeof(payload->'context'->'situationTeams') = 'array' AND jsonb_array_length(payload->'context'->'situationTeams') > 0`))[0];
+    WHERE CASE WHEN jsonb_typeof(payload->'context'->'situationTeams') = 'array'
+      THEN jsonb_array_length(payload->'context'->'situationTeams') > 0 ELSE false END`))[0];
   console.log(JSON.stringify({ updated, stillInline: left.n, appendOnlyTrigger: 'enabled' }));
 })().catch((e) => { console.error(e); process.exitCode = 1; });
