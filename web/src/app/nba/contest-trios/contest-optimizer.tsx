@@ -70,7 +70,8 @@ export function ContestOptimizer({ players, games, capturedAt }: { players: Cont
         <p className="text-xs text-muted-foreground">
           Untick games your contest leaves out, set its size, then Optimize. Same rules as the entries below, run in your browser on the latest
           lines{capturedAt ? ` (captured ${new Date(capturedAt).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" })} ET)` : ""}.
-          Custom runs are not tracked.
+          Custom runs are not tracked. One difference: each player&apos;s big nights are made rarer to match what has happened (the
+          books&apos; alternate lines overstate them); the tracked entries below keep the original rules.
         </p>
       </div>
 
@@ -119,7 +120,7 @@ export function ContestOptimizer({ players, games, capturedAt }: { players: Cont
             trios. Likely winning score {result.run.winningScore.median.toFixed(0)} (middle half {result.run.winningScore.p25.toFixed(0)}-{result.run.winningScore.p75.toFixed(0)}).
           </p>
           {allSelected && (
-            <p className="text-xs text-muted-foreground">All of tonight&apos;s games: the frozen entries below are the tracked set, and can differ slightly from this run by simulation noise.</p>
+            <p className="text-xs text-muted-foreground">All of tonight&apos;s games: the frozen entries below are the tracked set. They use the original simulation, so they can differ from this run.</p>
           )}
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

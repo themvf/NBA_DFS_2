@@ -43,6 +43,27 @@ def test_simulated_points_are_whole_nonnegative_and_centered_on_the_line():
     assert 0.32 < (pts[:, 1] == 0).mean() < 0.38                # one-book player sits about 35% of nights
 
 
+def test_recalibration_is_opt_in_and_thins_only_the_top_end():
+    pool = [_player("a", 20.0), _player("b", 12.0)]
+    plain = w.simulate_points(pool, 20000, np.random.default_rng(3))
+    assert np.array_equal(plain, w.simulate_points(pool, 20000, np.random.default_rng(3), recal=False))
+    fixed = w.simulate_points(pool, 20000, np.random.default_rng(3), recal=True)
+    # the books' curve says line+12.5 or more 5% of the time; the corrected draws say less
+    assert (fixed[:, 0] >= 33).mean() < (plain[:, 0] >= 33).mean() * 0.8
+    assert abs(np.median(fixed[:, 0]) - np.median(plain[:, 0])) <= 1.0   # the middle barely moves
+    u = np.array([0.0, 0.003, 0.5, 1.0])
+    out = w.recalibrate_survival(u)
+    assert out[0] == 0.0 and out[-1] == 1.0 and np.all(np.diff(out) > 0)
+    assert out[1] > 0.003       # a draw at the 0.3% extreme is read lower on the curve (fewer points)
+
+
+def test_no_ladder_fallback_also_takes_the_correction():
+    p = _player("a", 20.0, curve=[])
+    plain = w.simulate_points([p], 20000, np.random.default_rng(4))
+    fixed = w.simulate_points([p], 20000, np.random.default_rng(4), recal=True)
+    assert (fixed[:, 0] >= 30).mean() < (plain[:, 0] >= 30).mean()
+
+
 def test_correlation_uses_the_measured_same_game_values():
     pool = [_player("a", 20, event="e1", team="A"), _player("b", 18, event="e1", team="A"),
             _player("c", 17, event="e1", team="B"), _player("d", 16, event="e2", team="A"),

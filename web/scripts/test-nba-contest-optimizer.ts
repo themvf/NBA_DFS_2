@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   WTA, baselineOrder, buildPortfolio, candidateTrios, contestPool, correlationMatrix, dnpProb, normCdf,
-  optimizeContest, rng, simulatePoints, survivalKnots, type ContestPlayer,
+  optimizeContest, recalibrateSurvival, rng, simulatePoints, survivalKnots, type ContestPlayer,
 } from "../src/lib/nba-contest-optimizer";
 
 // Written by `python -m research.nba_wta_trios fixture`; the Python test fails if it is stale.
@@ -26,6 +26,9 @@ for (const c of fx.knots) {
 }
 
 for (const [b, p] of Object.entries(fx.dnp)) assert.equal(dnpProb(Number(b)), p);
+
+// The top-end correction (nba-points-sim-recal-v1) matches the Python.
+fx.recal.u.forEach((u: number, i: number) => close(recalibrateSurvival(u), fx.recal.out[i], 1e-12, `recal ${u}`));
 
 // Correlations.
 const spec = fx.correlation.spec as [string, string | null][];

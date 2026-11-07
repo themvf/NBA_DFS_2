@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
   "steps": {
-    "node_modules/workflow/dist/internal/builtins.js": {
+    "web/node_modules/workflow/dist/internal/builtins.js": {
       "__builtin_response_array_buffer": {
         "stepId": "__builtin_response_array_buffer"
       },

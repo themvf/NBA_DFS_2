@@ -52,7 +52,7 @@ import random
 from typing import Any
 
 import numpy as np
-from scipy.special import ndtr
+from scipy.special import ndtr, ndtri
 
 VERSION = "nba-wta-trios-v1"
 GRADE_VERSION = "nba-wta-grade-v1"
@@ -74,6 +74,16 @@ DNP_BY_BOOKS = ((1, 0.35), (3, 0.03), (10**6, 0.002))
 FALLBACK_SD_INTERCEPT = 3.9
 FALLBACK_SD_SLOPE = 0.18
 TAIL_FLOOR = 0.0005         # survival level where the extended tail stops
+# nba-points-sim-recal-v1 (2026-11-06, opt-in; the frozen v1 entries never use it). The
+# books' curves overstate each player's top end: over 1,688 played player-games (Oct 20 -
+# Nov 5) line+10 was stated 10.5% and happened 6.3%, line+15 4.6% vs 1.9%. RECAL_G is the
+# realized CDF of each player's PIT under his own curve at RECAL_KNOTS, shrunk toward the
+# identity with 200 pseudo-rows; a draw's level u maps to G^-1(u) before the curve is
+# inverted. Leave-one-night-out on 123 games it cut per-game leader log loss by 0.033
+# (95% CI 0.012-0.053, nights resampled). docs/nba-game-leaders.md.
+RECAL_VERSION = "nba-points-sim-recal-v1"
+RECAL_KNOTS = (0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99, 1.0)
+RECAL_G = (0.0, 0.0964, 0.2309, 0.3347, 0.4317, 0.5254, 0.6276, 0.7368, 0.8379, 0.9306, 0.9762, 0.9974, 1.0)
 CONTENTION_TOP = 0.01       # grade: a best entry in the top 1% of the night's pool trios is "in contention"
 REVIEW_AFTER_NIGHTS = 30
 
@@ -173,12 +183,23 @@ def correlation_matrix(pool: list[PoolPlayer]) -> np.ndarray:
     return c
 
 
-def simulate_points(pool: list[PoolPlayer], sims: int, rng: np.random.Generator) -> np.ndarray:
-    """(sims x players) whole points. A player who sits scores 0."""
+def recalibrate_survival(u: np.ndarray) -> np.ndarray:
+    """Survival level -> recalibrated survival level (``RECAL_VERSION``): F-level u becomes G^-1(u)."""
+    return 1.0 - np.interp(1.0 - np.asarray(u, dtype=float), RECAL_G, RECAL_KNOTS)
+
+
+def simulate_points(pool: list[PoolPlayer], sims: int, rng: np.random.Generator, recal: bool = False) -> np.ndarray:
+    """(sims x players) whole points. A player who sits scores 0.
+
+    ``recal`` thins each player's top end (``RECAL_VERSION``); the registered v1 entries use False.
+    """
     n = len(pool)
     z = rng.standard_normal((sims, n)) @ np.linalg.cholesky(correlation_matrix(pool)).T
     # survival level = 1 - Phi(z), so a high z is a high score
     u = ndtr(-z)
+    if recal:
+        u = recalibrate_survival(u)
+        z = -ndtri(np.clip(u, 1e-12, 1 - 1e-12))   # the no-ladder fallback reads z
     out = np.zeros((sims, n))
     for i, p in enumerate(pool):
         knots = survival_knots(p.curve)
@@ -464,7 +485,9 @@ def fixture_payload() -> dict[str, Any]:
                       "POPULARITY_TAU": POPULARITY_TAU, "SIMS": SIMS, "SIM_CHUNK": SIM_CHUNK, "TEAMMATE_RHO": TEAMMATE_RHO,
                       "OPPONENT_RHO": OPPONENT_RHO, "DNP_BY_BOOKS": [list(x) for x in DNP_BY_BOOKS],
                       "FALLBACK_SD_INTERCEPT": FALLBACK_SD_INTERCEPT, "FALLBACK_SD_SLOPE": FALLBACK_SD_SLOPE,
-                      "TAIL_FLOOR": TAIL_FLOOR},
+                      "TAIL_FLOOR": TAIL_FLOOR, "RECAL_KNOTS": list(RECAL_KNOTS), "RECAL_G": list(RECAL_G)},
+        "recal": {"u": [0.0, 0.001, 0.01, 0.05, 0.2, 0.5, 0.77, 0.999, 1.0],
+                  "out": [float(v) for v in recalibrate_survival(np.array([0.0, 0.001, 0.01, 0.05, 0.2, 0.5, 0.77, 0.999, 1.0]))]},
         "knots": knots,
         "dnp": {str(b): _dnp(b) for b in (1, 2, 3, 4, 6)},
         "correlation": {"spec": [list(x) for x in spec], "matrix": correlation_matrix(pool).tolist()},

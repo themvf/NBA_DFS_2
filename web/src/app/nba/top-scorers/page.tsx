@@ -4,7 +4,8 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { easternDateString } from "@/lib/eastern-date";
-import { buildBoard } from "@/lib/nba-top-scorers";
+import { buildBoard, playerKey, teamKey } from "@/lib/nba-top-scorers";
+import { gameLeaders } from "@/lib/nba-game-leaders";
 import {
   getNbaPointsPropDates,
   getNbaPointsProps,
@@ -34,6 +35,7 @@ import {availabilityBoard} from "@/lib/nba-availability";
 import { getBoomBoard } from "@/db/nba-boom-board";
 import { BoomLineups } from "./boom-lineups-client";
 import { TopScorersClient } from "./top-scorers-client";
+import { GameLeadersPanel } from "./game-leaders";
 
 export const metadata: Metadata = {
   title: "NBA Top Scorers",
@@ -98,6 +100,16 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
   const { scorers, games } = buildBoard(rows, lastSeason, teams, ladderRows, currentTeams);
   const lastCapture = games.reduce<string | null>((m, g) => (m == null || g.capturedAt > m ? g.capturedAt : m), null);
   const bookCount = new Set(scorers.flatMap((s) => s.books.map((b) => b.book))).size;
+  const leaders = gameLeaders(
+    scorers.map((s) => ({
+      key: playerKey(s.player), player: s.player, eventId: s.eventId, team: s.team ? teamKey(s.team) : null,
+      line: s.line, pOver: s.pOver, books: s.books.length,
+      curve: (s.distribution?.curve ?? []).map((c) => ({ point: c.point, p: c.p })),
+    })),
+    [...games].sort((a, b) => a.commenceTime.localeCompare(b.commenceTime)),
+  );
+  // eslint-disable-next-line react-hooks/purity -- server component, rendered per request
+  const renderedAt = Date.now();
 
   return (
     <main className="mx-auto max-w-7xl space-y-4 px-4 py-6">
@@ -145,6 +157,8 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
       ) : (
         <TopScorersClient scorers={scorers} games={games} pulled={pulled} lastSeason={LAST_SEASON} thisSeason={seasonLabel(date)} boomBoard={boomBoard} liveAvailability={liveAvailability} />
       )}
+
+      <GameLeadersPanel games={leaders} now={renderedAt} />
 
       <BoomLineups key={`${date}:${availability?.sha??"unknown"}`} board={boomBoard} evidence={availability} />
 

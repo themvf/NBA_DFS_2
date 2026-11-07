@@ -332,6 +332,14 @@ and entry count; pinned to the Python by `tests/fixtures/nba_wta_fixture.json` (
 research.nba_wta_trios fixture`; a Python test fails when it is stale). Never graded. The exact entries are near-ties
 and change with the random draws (0-2 of 5 shared across seeds) while the prize share and player mix hold steady,
 so the page shows the mix.
+**Top-end correction and game leaders (`nba-points-sim-recal-v1`, 2026-11-06):** the books' curves overstate each
+player's big nights (line+10 stated 10.5%, happened 6.3%; line+15 4.6% vs 1.9%, 1,688 player-games), which gave
+low-line players too much chance to lead. `RECAL_G` (realized PIT CDF, shrunk with 200 pseudo-rows) maps each draw's
+level before the curve is inverted; leave-one-night-out it cut per-game leader log loss by 0.033 (CI 0.012-0.053).
+Opt-in (`simulate_points(..., recal=True)` / `simulatePoints(..., true)`): the frozen v1 entries never use it; custom
+runs and the "Game leaders" panel on `/nba/top-scorers` (`web/src/lib/nba-game-leaders.ts`, ungraded) do. The Odds
+API has no NBA most-points market (checked across 54 books); sportsbooks' own carry 13-17%+ margin.
+[`docs/nba-game-leaders.md`](docs/nba-game-leaders.md).
 
 ## Data Refresh Workflow
 
