@@ -1,7 +1,13 @@
 """NFL first touchdown scorer: the college model (model/cfb_first_td.py) on NFL play-by-play.
 
-UNVALIDATED. Version ``nfl-first-td-v1``; ``nfl-first-td-lines-v1`` additionally drops players
-DraftKings leaves off its anytime-TD list (prices are never read).
+UNVALIDATED. Version ``nfl-first-td-v1`` is the model alone. ``nfl-first-td-lines-v2`` is the
+availability version: it drops players DraftKings leaves off its anytime-TD list (prices are never
+read) and players our injury reports rule out (an official inactive list; a Sleeper reserve
+designation; a Sleeper OUT that FantasyPros confirms: the Game Leaders rule), and hands
+REDIRECT_SHARE of a dropped starter's volume to his position group when he played the team's last
+game (his first game out; afterwards the group's own volume already reflects the role). The
+rest of a dropped player's share renormalises across his team as before. The -lines-v1 version
+(DraftKings list only, no redirect) was superseded 2026-11-08 before any game was graded.
 
 Same three steps as college football:
   1. a share PHI of first touchdowns are returns or defensive scores (no player);
@@ -19,7 +25,7 @@ receiver; anything else (returns, defense, a teammate's fumble recovery) is non-
 K and PHI are fitted on 2016-2022, the player settings on 2023-2024, and 2025-2026 are held out.
 
     python -m model.nfl_first_td backtest --json F
-    python -m model.nfl_first_td slate --date 2026-11-08 [--lines]
+    python -m model.nfl_first_td slate --date 2026-11-08 [--lines]   (--lines = the availability version)
     python -m model.nfl_first_td publish
     python -m model.nfl_first_td grade
 """
@@ -38,7 +44,16 @@ from model import cfb_first_td as cf
 from model.cfb_first_td import Params
 
 VERSION = "nfl-first-td-v1"
-VERSION_LINES = "nfl-first-td-lines-v1"
+VERSION_LINES = "nfl-first-td-lines-v2"
+# Availability from our injury reports (mirrors research/nfl_game_leaders.availability_status; a test
+# checks the two agree). Sleeper rows older than this are stale, as in model/nfl_game_availability.
+RESERVE_DESIGNATIONS = ("IR", "PUP", "NFI", "SUSPENDED")
+RULED_OUT = ("OUT",) + RESERVE_DESIGNATIONS
+STATUS_MAX_AGE_HOURS = 72
+# Share of a dropped starter's season volume handed to his position group (stated prior, not fitted;
+# the RB first-game pie that passed its blind test used 0.5). The rest renormalises across the team.
+REDIRECT_SHARE = 0.5
+POSITION_GROUP = {"RB": "RB", "FB": "RB", "WR": "REC", "TE": "REC", "QB": "QB"}
 FIT_SEASONS_TEAM = tuple(range(2016, 2023))
 FIT_SEASONS_PLAYER = (2023, 2024)
 TEST_SEASONS = (2025, 2026)
@@ -249,6 +264,14 @@ def player_chips(history: cf.History, pid: str, team: str, before: tuple[int, in
     return chips
 
 
+def status_chips(pid: str, statuses: dict[str, dict] | None) -> list[dict]:
+    """A Questionable or Doubtful tag from Sleeper, shown beside a player who is still in the forecast."""
+    st = (statuses or {}).get(pid)
+    if st and st.get("sleeper") in ("QUESTIONABLE", "DOUBTFUL"):
+        return [{"code": "INJURY_" + st["sleeper"], "label": f"{st['sleeper'].title()} (Sleeper)"}]
+    return []
+
+
 def team_chips(g: dict, firsts: dict[str, list], before: tuple[int, int]) -> dict[str, list[dict]]:
     out = {}
     gap = float(g["home_implied"]) - float(g["away_implied"])
@@ -323,6 +346,124 @@ def load_lines(db: DatabaseManager, games: list[dict]) -> dict[str, dict]:
     return out
 
 
+def ruled_out(sleeper: str | None, fantasypros: str | None, official: str | None) -> bool:
+    """The Game Leaders rule: an official OUT/INACTIVE settles it; a Sleeper reserve designation settles
+    it alone; a plain Sleeper OUT needs FantasyPros to agree (weekly tags change during the week)."""
+    if official in ("OUT", "INACTIVE"):
+        return True
+    if sleeper in RESERVE_DESIGNATIONS:
+        return True
+    return sleeper in RULED_OUT and fantasypros in RULED_OUT
+
+
+def out_reason(sleeper: str | None, fantasypros: str | None, official: str | None) -> str:
+    if official in ("OUT", "INACTIVE"):
+        return "inactive (official list)"
+    if sleeper in RESERVE_DESIGNATIONS:
+        return f"{sleeper} (Sleeper)"
+    return "out (Sleeper and FantasyPros)"
+
+
+def load_statuses(db: DatabaseManager, games: list[dict]) -> dict[str, dict]:
+    """Per GSIS id: fantasy position and the newest pregame injury reading from each source.
+
+    Sleeper: the newest model-eligible observation in the last STATUS_MAX_AGE_HOURS. FantasyPros: the
+    newest reading for the game's week. Official: the week's inactive list, when a team has posted
+    one. Only players with at least one reading are returned."""
+    out: dict[str, dict] = {}
+    for season, week in sorted({(g["season"], g["week"]) for g in games}):
+        rows = db.execute("""
+            WITH players AS (
+                SELECT DISTINCT ON (gsis_id) id, gsis_id, position FROM ff_players
+                WHERE season = %(season)s AND gsis_id IS NOT NULL
+                ORDER BY gsis_id, fetched_at DESC NULLS LAST, id DESC),
+            sleeper AS (
+                SELECT DISTINCT ON (o.player_id) o.player_id, o.normalized_status, o.observed_at
+                FROM ff_player_injury_observations o JOIN ff_source_snapshots s ON s.id = o.source_snapshot_id
+                WHERE o.season = %(season)s AND o.source = 'sleeper' AND o.observed_at < NOW()
+                  AND o.observed_at >= NOW() - %(hours)s * INTERVAL '1 hour'
+                  AND s.model_eligible IS TRUE AND COALESCE(lower(s.status), 'success') = 'success'
+                ORDER BY o.player_id, o.observed_at DESC, o.id DESC),
+            fp AS (
+                SELECT DISTINCT ON (o.player_id) o.player_id, o.normalized_status, o.observed_at
+                FROM ff_player_injury_observations o JOIN ff_source_snapshots s ON s.id = o.source_snapshot_id
+                WHERE o.season = %(season)s AND o.source = 'fantasypros' AND o.observed_at < NOW()
+                  AND s.request_params->>'week' = %(week_text)s
+                ORDER BY o.player_id, o.observed_at DESC, o.id DESC),
+            official AS (
+                SELECT DISTINCT ON (o.player_id) o.player_id,
+                       COALESCE(o.raw_payload->>'status', o.normalized_status) AS status, o.observed_at
+                FROM ff_player_injury_observations o JOIN ff_source_snapshots s ON s.id = o.source_snapshot_id
+                WHERE o.season = %(season)s AND o.source = 'nfl_official' AND o.observed_at < NOW()
+                  AND s.week = %(week)s AND o.raw_payload->>'report_type' = 'inactive_list'
+                ORDER BY o.player_id, o.observed_at DESC, o.id DESC)
+            SELECT p.gsis_id, p.position, sl.normalized_status AS sleeper, sl.observed_at AS sleeper_at,
+                   fp.normalized_status AS fantasypros, fp.observed_at AS fantasypros_at,
+                   official.status AS official, official.observed_at AS official_at
+            FROM players p
+            LEFT JOIN sleeper sl ON sl.player_id = p.id
+            LEFT JOIN fp ON fp.player_id = p.id
+            LEFT JOIN official ON official.player_id = p.id
+            WHERE sl.player_id IS NOT NULL OR fp.player_id IS NOT NULL OR official.player_id IS NOT NULL""",
+            {"season": season, "week": week, "week_text": str(week), "hours": STATUS_MAX_AGE_HOURS})
+        for r in rows:
+            out[r["gsis_id"]] = {"position": r["position"], "sleeper": r["sleeper"], "fantasypros": r["fantasypros"],
+                                 "official": r["official"],
+                                 "as_of": max((t for t in (r["sleeper_at"], r["fantasypros_at"], r["official_at"]) if t),
+                                              default=None)}
+    return out
+
+
+def apply_statuses(cands: dict[str, dict], statuses: dict[str, dict]) -> tuple[dict[str, dict], list[dict]]:
+    """Drop candidates our injury reports rule out; returns the kept candidates and the dropped rows."""
+    dropped, kept = [], {}
+    for pid, c in cands.items():
+        st = statuses.get(pid)
+        if st and ruled_out(st["sleeper"], st["fantasypros"], st["official"]):
+            dropped.append({"pid": pid, "name": c["name"], "team": c["team"],
+                            "reason": out_reason(st["sleeper"], st["fantasypros"], st["official"])})
+        else:
+            kept[pid] = c
+    return kept, dropped
+
+
+def position_group(pid: str, cand: dict, statuses: dict[str, dict]) -> str | None:
+    st = statuses.get(pid)
+    if st and st.get("position"):
+        return POSITION_GROUP.get(st["position"])
+    return "QB" if cand.get("pass_att", 0) >= CHIP_QB_PASS_ATT else None
+
+
+def redirect_volume(kept: dict[str, dict], dropped: list[dict], originals: dict[str, dict], statuses: dict[str, dict],
+                    played_last: set[str], share: float = REDIRECT_SHARE) -> list[dict]:
+    """Hand ``share`` of each dropped starter's season volume to his position group, in proportion to
+    their own volume, when he played the team's last game. Volume only: the group inherits his touches,
+    never his touchdowns (efficiency does not transfer). Mutates ``kept``; returns what moved."""
+    moved = []
+    for d in dropped:
+        src = originals[d["pid"]]
+        if d["pid"] not in played_last:
+            moved.append({"from": d["name"], "team": d["team"], "to": [], "note": "did not play the team's last game"})
+            continue
+        group = position_group(d["pid"], src, statuses)
+        if group in (None, "QB"):
+            moved.append({"from": d["name"], "team": d["team"], "to": [], "note": "no position group to inherit"})
+            continue
+        recipients = {pid: c for pid, c in kept.items() if position_group(pid, c, statuses) == group and c["vol"] > 0}
+        total = sum(c["vol"] for c in recipients.values())
+        if total <= 0 or src["vol"] <= 0:
+            moved.append({"from": d["name"], "team": d["team"], "to": [], "note": "nobody in his position group"})
+            continue
+        row = {"from": d["name"], "team": d["team"], "share": share, "touches": round(src["vol"] * share, 1), "to": []}
+        for pid, c in recipients.items():
+            add = share * src["vol"] * c["vol"] / total
+            c["vol"] += add
+            row["to"].append({"name": c["name"], "added_touches": round(add, 1)})
+        row["to"].sort(key=lambda t: -t["added_touches"])
+        moved.append(row)
+    return moved
+
+
 def display_names(db: DatabaseManager) -> dict[str, str]:
     """Full names by GSIS id from the fantasy roster (play-by-play has 'J.Allen')."""
     rows = db.execute("""SELECT DISTINCT ON (gsis_id) gsis_id, canonical_name FROM ff_players
@@ -330,8 +471,16 @@ def display_names(db: DatabaseManager) -> dict[str, str]:
     return {r["gsis_id"]: r["canonical_name"] for r in rows}
 
 
+def _played_last(history: cf.History, team: str, before: tuple[int, int]) -> set[str]:
+    games = [gid for order, gid in history.games_by_team.get(team, []) if order < before]
+    return {r["pid"] for r in history.rows_by_game_team[(games[-1], team)]} if games else set()
+
+
 def predict(games: list[dict], params: Params, history: cf.History, firsts: dict, names: dict[str, str],
-            lines: dict[str, dict] | None = None, filter_lines: bool = True, top: int = PUBLISH_TOP) -> list[dict]:
+            lines: dict[str, dict] | None = None, filter_lines: bool = True, top: int = PUBLISH_TOP,
+            statuses: dict[str, dict] | None = None) -> list[dict]:
+    """``filter_lines`` selects the availability version: DraftKings' list (when ``lines`` has one for the
+    game) plus our injury reports (``statuses``), with a dropped starter's volume redirected."""
     out = []
     for g in games:
         before = (g["season"], g["week"])
@@ -340,12 +489,42 @@ def predict(games: list[dict], params: Params, history: cf.History, firsts: dict
         for cands in (home, away):
             for pid, c in cands.items():
                 c["name"] = names.get(pid, c["name"])
+                c["pass_att"] = sum(r["pass_att"] for r in history.rows_by_player.get(pid, []) if r["order"] < before)
+        originals = {**home, **away}
         listed = lines.get(g["game_id"]) if lines is not None else None
         availability = None
-        if lines is not None and filter_lines:
+        if filter_lines:
+            # The DraftKings list judges the full candidate set (its coverage is counted over everyone);
+            # the injury reports then remove their players, and a player both sources exclude carries
+            # the report's reason, which says why.
             home, away, availability = cf.apply_lines(home, away, listed["names"] if listed else None)
+            availability["lines_status"] = availability["status"]
+            lines_drops = [{**d, "reason": "not on DraftKings list"} for d in availability["dropped"]]
+            status_drops, reports_as_of = [], None
+            if statuses:
+                home, home_drops = apply_statuses(home, statuses)
+                away, away_drops = apply_statuses(away, statuses)
+                status_drops = home_drops + away_drops
+                for pid in {d["pid"] for d in lines_drops}:
+                    st = statuses.get(pid)
+                    if st and ruled_out(st["sleeper"], st["fantasypros"], st["official"]):
+                        status_drops.append({"pid": pid, "name": originals[pid]["name"], "team": originals[pid]["team"],
+                                             "reason": out_reason(st["sleeper"], st["fantasypros"], st["official"])})
+                reports_as_of = max((statuses[pid]["as_of"] for pid in originals
+                                     if pid in statuses and statuses[pid]["as_of"]), default=None)
+                availability["reports_as_of"] = reports_as_of.isoformat() if reports_as_of else None
+            reported = {d["pid"] for d in status_drops}
+            availability["dropped"] = status_drops + [d for d in lines_drops if d["pid"] not in reported]
             if listed:
                 availability["captured_at"] = listed["captured_at"]
+            availability["sources"] = (["draftkings_list"] if listed else []) + (["injury_reports"] if statuses else [])
+            if availability["sources"]:
+                availability["status"] = "applied"
+            availability["redirected"] = []
+            for side, kept in (("home", home), ("away", away)):
+                side_drops = [d for d in availability["dropped"] if d["team"] == g[side]]
+                availability["redirected"] += redirect_volume(kept, side_drops, originals, statuses or {},
+                                                              _played_last(history, g[side], before))
         p_home = cf.team_probability(g["home_implied"], g["away_implied"], p.k)
         dist = cf.game_distribution(p_home, home, away, p)
         cands = {**home, **away}
@@ -356,7 +535,7 @@ def predict(games: list[dict], params: Params, history: cf.History, firsts: dict
             "implied": [g["away_implied"], g["home_implied"]], "p_home_first": p_home,
             "players": [{"name": cands[pid]["name"], "team": cands[pid]["team"], "prob": pr,
                          "fair": cf.fair_american(pr), "td": cands[pid]["td"], "touches": cands[pid]["vol"],
-                         "chips": player_chips(history, pid, cands[pid]["team"], before),
+                         "chips": player_chips(history, pid, cands[pid]["team"], before) + status_chips(pid, statuses),
                          "listed": None if not listed else cf.name_key(cands[pid]["name"]) in listed["names"]}
                         for pid, pr in players[:top]],
             "other_offense": dist["other:home"] + dist["other:away"], "non_offense": dist["non_offense"],
@@ -396,8 +575,9 @@ def publish(db: DatabaseManager, params: Params = FITTED, hours: int = PUBLISH_H
     if games:
         history, firsts, names = _inputs(db)
         lines = load_lines(db, games)
-        rows_base = predict(games, params, history, firsts, names, lines, filter_lines=False)
-        rows_lines = predict(games, params, history, firsts, names, lines)
+        statuses = load_statuses(db, games)
+        rows_base = predict(games, params, history, firsts, names, lines, filter_lines=False, statuses=statuses)
+        rows_lines = predict(games, params, history, firsts, names, lines, statuses=statuses)
     with db.connect() as conn:
         cur = conn.cursor()
         for statement in DDL:
@@ -480,7 +660,7 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--json", type=Path)
     s = sub.add_parser("slate")
     s.add_argument("--date", required=True)
-    s.add_argument("--lines", action="store_true")
+    s.add_argument("--lines", action="store_true", help="the availability version: DK list, injury reports, redirect")
     s.add_argument("--top", type=int, default=6)
     pub = sub.add_parser("publish")
     pub.add_argument("--hours", type=int, default=PUBLISH_HOURS)
@@ -514,15 +694,21 @@ def main(argv: list[str] | None = None) -> int:
     games = upcoming(db, "(g.kickoff AT TIME ZONE 'America/New_York')::date = %s", (args.date,))
     history, firsts, names = _inputs(db)
     lines = load_lines(db, games) if args.lines else None
-    for g in predict(games, FITTED, history, firsts, names, lines, top=args.top):
+    statuses = load_statuses(db, games) if args.lines else None
+    for g in predict(games, FITTED, history, firsts, names, lines, filter_lines=args.lines, top=args.top,
+                     statuses=statuses):
         print(f"\n{g['game']}  implied {g['implied'][0]:.1f}-{g['implied'][1]:.1f}  P(home first) {g['p_home_first']:.0%}"
               f"  {g['context']['team_chips']}")
         for p in g["players"]:
             print(f"  {p['prob']:5.1%} {p['fair']:>+6d} {p['name']} ({p['team']}) {p['td']:.0f} TD / "
                   f"{p['touches']:.0f} opp  {[c['label'] for c in p['chips']]}")
         if g["availability"]:
-            print(f"  lines: {g['availability']['status']}, dropped "
-                  f"{', '.join(d['name'] for d in g['availability']['dropped']) or 'nobody'}")
+            a = g["availability"]
+            drops = ", ".join(f"{d['name']} [{d['reason']}]" for d in a["dropped"]) or "nobody"
+            print(f"  DK list: {a['lines_status']}; reports as of {a.get('reports_as_of')}; dropped {drops}")
+            for m in a["redirected"]:
+                to = ", ".join(f"{t['name']} +{t['added_touches']}" for t in m["to"]) or m.get("note")
+                print(f"    {m['from']} -> {to}")
     return 0
 
 

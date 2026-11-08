@@ -33,8 +33,14 @@ export type FirstTdGame = {
   teamChips: { home: FirstTdChip[]; away: FirstTdChip[] };
   availability: {
     status: "applied" | "no_lines";
+    /** The sportsbook list alone (NFL -lines-v2 also removes players on our injury reports). */
+    linesStatus: "applied" | "no_lines";
     capturedAt: string | null;
-    dropped: { name: string; team: string }[];
+    /** Newest injury reading behind the removals; NFL -lines-v2 only. */
+    reportsAsOf: string | null;
+    dropped: { name: string; team: string; reason: string | null }[];
+    /** Where a removed starter's volume went (NFL -lines-v2 only; empty for the sportsbook-only versions). */
+    redirected: { from: string; team: string; to: { name: string; addedTouches: number }[]; note: string | null }[];
   } | null;
 };
 
@@ -111,11 +117,23 @@ export function teamChipsOf(raw: unknown): FirstTdGame["teamChips"] {
 
 export function availabilityOf(raw: unknown): FirstTdGame["availability"] {
   if (!raw || typeof raw !== "object") return null;
-  const a = raw as { status?: string; captured_at?: string; dropped?: { name: string; team: string }[] };
+  const a = raw as {
+    status?: string; lines_status?: string; captured_at?: string; reports_as_of?: string;
+    dropped?: { name: string; team: string; reason?: string }[];
+    redirected?: { from: string; team: string; to?: { name: string; added_touches: number }[]; note?: string }[];
+  };
+  const status = a.status === "applied" ? "applied" : "no_lines";
   return {
-    status: a.status === "applied" ? "applied" : "no_lines",
+    status,
+    linesStatus: (a.lines_status ?? a.status) === "applied" ? "applied" : "no_lines",
     capturedAt: a.captured_at ?? null,
-    dropped: (a.dropped ?? []).filter((d) => d.name.trim() !== "Team").map((d) => ({ name: d.name, team: d.team })),
+    reportsAsOf: a.reports_as_of ?? null,
+    dropped: (a.dropped ?? []).filter((d) => d.name.trim() !== "Team")
+      .map((d) => ({ name: d.name, team: d.team, reason: d.reason ?? null })),
+    redirected: (a.redirected ?? []).map((m) => ({
+      from: m.from, team: m.team, note: m.note ?? null,
+      to: (m.to ?? []).map((t) => ({ name: t.name, addedTouches: Number(t.added_touches) })),
+    })),
   };
 }
 

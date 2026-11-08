@@ -9361,12 +9361,28 @@ tries excluded. K = 1.4 and PHI = 0.059 fitted 2016-22; theta/kappa/w_prior and
 `tau` (shares go as score^tau; NFL only, college stays 1) fitted 2023-24: tau = 0.9.
 Held out: 2025 n=268 log loss 2.915 (volume-only 2.906),
 2026 wk 1-8 n=104 2.804 (2.817); TD history adds about
-nothing over volume in the NFL, and the top pick scored first ~13% against 15-16% stated. Same two
-versions as college (`-lines-v1` drops players DraftKings' anytime-TD list leaves off), but only lists
-captured within 30 h of kickoff count (the midweek main-line reads are too early); a unique surname
-matches across first names (Marquise / Hollywood Brown) in both sports. Tables `nfl_first_td_runs` /
-`_predictions` / `_grades`; workflow `nfl_first_td.yml`, dispatcher job `nfl-first-td` (14:07 UTC before
-a game day, 45-60 min before each kickoff group, after the T-75 prop capture); no paid calls. Page
-`/nfl/first-td` shares `web/src/components/first-td-view.tsx` with `/cfb/first-td`. Chips (both sports,
-context only, untested as predictors): goal-line role, inside-the-10 share (NFL), TD in each of last 2,
-new role, running QB, not on DK list, big favourite, scored first X of Y.
+nothing over volume in the NFL, and the top pick scored first ~13% against 15-16% stated. Two
+versions: the model alone (`nfl-first-td-v1`) and the availability version `nfl-first-td-lines-v2`
+(2026-11-08; `-lines-v1`, DraftKings list only, was superseded before any game was graded). The
+availability version removes players DraftKings' anytime-TD list leaves off (lists captured within 30 h
+of kickoff only, since the midweek main-line reads are too early; coverage is judged over the full
+candidate set; a unique surname matches across first names, Marquise / Hollywood Brown) AND players our
+injury reports rule out, by the Game Leaders rule (`ruled_out`, test-pinned to
+`research/nfl_game_leaders.availability_status`): an official inactive list, a Sleeper reserve
+designation (IR/PUP/NFI/suspended), or a Sleeper OUT that FantasyPros confirms; a weekly OUT alone,
+Doubtful and Questionable never remove anyone (Doubtful/Questionable show as a Sleeper chip). The report
+wins the reason when both sources exclude a player. A removed starter who played his team's last game
+hands `REDIRECT_SHARE` = 0.5 of his season carries+targets to his position group (RB/FB; WR+TE; a QB's go
+to nobody) in proportion to their own volume, volume only, never his touchdowns; afterwards (second game
+out and on) nothing moves, since the group's volume already reflects the role. Stated prior, from the RB
+first-game pie that passed its blind test; unvalidated here. Each forecast's `availability` records
+`sources`, `lines_status`, `reports_as_of`, every removal with its reason, and `redirected` (who got
+what). The first saved runs (2026-11-07 19:47 UTC) predated the 30 h window and showed ruled-out players
+with probability (Skattebo 11% top pick, Garrett Wilson, Watson, Tracy): the model had no injury input
+at all until v2. Tables `nfl_first_td_runs` / `_predictions` / `_grades`; workflow `nfl_first_td.yml`,
+dispatcher job `nfl-first-td` (14:07 UTC before a game day, 45-60 min before each kickoff group, after
+the T-75 prop capture and the quarter-hour Sleeper/ESPN-inactives captures); no paid calls. Page
+`/nfl/first-td` shares `web/src/components/first-td-view.tsx` with `/cfb/first-td` and shows any
+`nfl-first-td-lines-%` version ahead of the model alone. Chips (both sports, context only, untested as
+predictors): goal-line role, inside-the-10 share (NFL), TD in each of last 2, new role, running QB, not
+on DK list, Questionable/Doubtful (NFL), big favourite, scored first X of Y.

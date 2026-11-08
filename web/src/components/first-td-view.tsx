@@ -92,11 +92,26 @@ function GameCard({ g, started, volumeLabel, actualWait }: { g: FirstTdGame; sta
 function AvailabilityNote({ a }: { a: FirstTdGame["availability"] }) {
   if (!a) return null;
   if (a.status === "no_lines") return <p>No DraftKings touchdown list for this game yet, so nobody was removed.</p>;
-  if (a.dropped.length === 0) return <p>Everyone in our player list is on DraftKings&apos; anytime-touchdown list.</p>;
-  return <p>
-    <strong className="text-slate-900">Left out (not on DraftKings&apos; anytime-touchdown list):</strong>{" "}
-    {a.dropped.map((d) => `${d.name} (${d.team})`).join(", ")}. Their share went to their teammates.
-  </p>;
+  const reports = a.reportsAsOf !== null;
+  const sources = a.linesStatus === "applied"
+    ? (reports ? "DraftKings' anytime-touchdown list and our injury reports" : "DraftKings' anytime-touchdown list")
+    : "our injury reports (no DraftKings list for this game yet)";
+  const withReason = a.dropped.some((d) => d.reason);
+  const moved = a.redirected.filter((m) => m.to.length > 0);
+  return <div className="space-y-1">
+    {a.dropped.length === 0
+      ? <p>Nobody removed: everyone in our player list is cleared by {sources}.</p>
+      : <p>
+        <strong className="text-slate-900">Left out</strong> ({sources}):{" "}
+        {a.dropped.map((d) => withReason && d.reason ? `${d.name} (${d.team}, ${d.reason})` : `${d.name} (${d.team})`).join(", ")}.
+        {moved.length === 0 && " Their share went to their teammates."}
+      </p>}
+    {moved.map((m) => <p key={`${m.team}-${m.from}`}>
+      <strong className="text-slate-900">{m.from}&apos;s role:</strong> half his touches to{" "}
+      {m.to.map((t) => `${t.name} (+${t.addedTouches.toFixed(0)})`).join(", ")}; the rest of his share to the whole {m.team} offense.
+    </p>)}
+    {reports && <p className="text-xs text-slate-500">Injury reports as of {time(a.reportsAsOf!)}.</p>}
+  </div>;
 }
 
 function GradePanel({ grades, gradeWait, enough }: { grades: FirstTdGrades | null; gradeWait: string; enough: number }) {

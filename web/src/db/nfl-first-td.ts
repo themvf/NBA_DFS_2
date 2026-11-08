@@ -7,7 +7,10 @@ import { availabilityOf, teamChipsOf, type FirstTdGame, type FirstTdGrades, type
 /** Reader for model/nfl_first_td.py's tables; same shapes as the CFB reader so the page view is shared. */
 
 const ET = "America/New_York";
-const LINES_VERSION = "nfl-first-td-lines-v1";
+/** The availability version graded against the model alone (model/nfl_first_td.py VERSION_LINES). */
+const LINES_VERSION = "nfl-first-td-lines-v2";
+/** Any availability version is shown ahead of the model alone, so a bump needs no reader change. */
+const LINES_PREFIX = "nfl-first-td-lines-%";
 
 export async function getNflFirstTdDates(): Promise<string[]> {
   const result = await db.execute(sql`
@@ -25,7 +28,7 @@ export async function getNflFirstTdGames(date: string): Promise<FirstTdGame[]> {
              r.created_at, r.version
       FROM nfl_first_td_predictions p JOIN nfl_first_td_runs r ON r.id = p.run_id
       WHERE (p.kickoff AT TIME ZONE ${ET})::date = ${date}::date AND r.created_at < p.kickoff
-      ORDER BY p.game_id, (r.version = ${LINES_VERSION}) DESC, r.created_at DESC)
+      ORDER BY p.game_id, (r.version LIKE ${LINES_PREFIX}) DESC, r.created_at DESC)
     SELECT l.*, td.play_type, td.description
     FROM latest l
     LEFT JOIN LATERAL (
