@@ -366,7 +366,7 @@
         }
       },
       "changed_by": [
-        "1a570e60 NFL DFS winners shape v13: RB-captain share yields to user captain minimums; one kicker per lineup"
+        "41ad8e00 NFL DFS winners shape v13: RB-captain share yields to user captain minimums; one kicker per lineup"
       ],
       "evidence_rule": "Keep previous implementation hashes and separate forward construction cohorts; no study gates or enrollment change."
     }
