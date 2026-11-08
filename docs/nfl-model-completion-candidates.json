@@ -83,7 +83,7 @@
     "research/nfl_workload_risk.py": "e8d67cb4945446fdc4ab857b69729a61e3c65dae2c1a17ed364bef49d637f344",
     "web/src/lib/nfl-dfs/joint-portfolio.ts": "87588d7fb2782f347ea6bfe35e522da15a62063e4c2d287a0c703064430ebf9f",
     "web/scripts/compare-nfl-joint-portfolios.ts": "05bf97642caba1b96d6d4420acf51502faa4468fcf40dc4e1607f51790298515",
-    "web/src/app/dfs/nfl/nfl-optimizer.ts": "3e0f4d5304c425849514c1b68e44334bc432619f944ad2f1a103f64f5daf52d4",
+    "web/src/app/dfs/nfl/nfl-optimizer.ts": "08f0959a6aba84f145e1c6dbfe5876b40c0387241d855a238d6ff7d2b46cc678",
     "model/nfl_matchup_scenarios.py": "9d133718c360a03a445965508061807c49644c3ac329ae220c4f68069a19e913",
     "web/src/lib/nfl-dfs/scoring.ts": "83e8b8c293519e7605f4d5be76a302bd442835fa4dc43a6d02744922a5729e3c",
     "web/src/lib/nfl-dfs/scenarios.ts": "98ed595731bc69ee1fcde4d9c42109880382cff3dbf480ce0f0043fdf46e2fd9",
@@ -350,6 +350,23 @@
       },
       "changed_by": [
         "NFL optimizer: keep the draws lookup off the player object so builds serialize to the client"
+      ],
+      "evidence_rule": "Keep previous implementation hashes and separate forward construction cohorts; no study gates or enrollment change."
+    },
+    {
+      "amended_at": "2026-11-08T15:49:51.881098+00:00",
+      "reason": "Winners shape v13 (owner's decision, 2026-11-08, after the CIN@ATL Showdown build). The RB-captain share was enforced as an exact count whose per-lineup forbid skipped every running back regardless of a captain range the user had set, so the slate's top-projected player was captain in 1 of 50 lineups and a range could not change it. The forbid now yields to a back's captain minimum (as the lone-QB cap already did for quarterbacks), the share is raised to cover the minimums the user set, and the Showdown distributions note reports the raise. Showdown builds also carry at most one kicker per lineup (maxKickersPerLineup, preset 1; two kickers appeared in 12 of 719 stored top-20 Showdown lineups, all one contest). Solver, draws, archetypes and every other constraint are unchanged; the v1-v11 reconstruction behind poolRules is unchanged. Re-pinned the optimizer only; every other pinned file is unchanged.",
+      "file": "web/src/app/dfs/nfl/nfl-optimizer.ts",
+      "previous_sha256": "3e0f4d5304c425849514c1b68e44334bc432619f944ad2f1a103f64f5daf52d4",
+      "new_sha256": "08f0959a6aba84f145e1c6dbfe5876b40c0387241d855a238d6ff7d2b46cc678",
+      "changed_implementation_hashes": {
+        "web/src/app/dfs/nfl/nfl-optimizer.ts": {
+          "previous": "3e0f4d5304c425849514c1b68e44334bc432619f944ad2f1a103f64f5daf52d4",
+          "new": "08f0959a6aba84f145e1c6dbfe5876b40c0387241d855a238d6ff7d2b46cc678"
+        }
+      },
+      "changed_by": [
+        "1a570e60 NFL DFS winners shape v13: RB-captain share yields to user captain minimums; one kicker per lineup"
       ],
       "evidence_rule": "Keep previous implementation hashes and separate forward construction cohorts; no study gates or enrollment change."
     }
