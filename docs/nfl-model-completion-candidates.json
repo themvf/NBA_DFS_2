@@ -83,7 +83,7 @@
     "research/nfl_workload_risk.py": "e8d67cb4945446fdc4ab857b69729a61e3c65dae2c1a17ed364bef49d637f344",
     "web/src/lib/nfl-dfs/joint-portfolio.ts": "87588d7fb2782f347ea6bfe35e522da15a62063e4c2d287a0c703064430ebf9f",
     "web/scripts/compare-nfl-joint-portfolios.ts": "05bf97642caba1b96d6d4420acf51502faa4468fcf40dc4e1607f51790298515",
-    "web/src/app/dfs/nfl/nfl-optimizer.ts": "08f0959a6aba84f145e1c6dbfe5876b40c0387241d855a238d6ff7d2b46cc678",
+    "web/src/app/dfs/nfl/nfl-optimizer.ts": "d686f6a1c377ca77d533cefa070c053931396ed58f2b66bbf80e3f07e1e82675",
     "model/nfl_matchup_scenarios.py": "9d133718c360a03a445965508061807c49644c3ac329ae220c4f68069a19e913",
     "web/src/lib/nfl-dfs/scoring.ts": "83e8b8c293519e7605f4d5be76a302bd442835fa4dc43a6d02744922a5729e3c",
     "web/src/lib/nfl-dfs/scenarios.ts": "98ed595731bc69ee1fcde4d9c42109880382cff3dbf480ce0f0043fdf46e2fd9",
@@ -367,6 +367,23 @@
       },
       "changed_by": [
         "41ad8e00 NFL DFS winners shape v13: RB-captain share yields to user captain minimums; one kicker per lineup"
+      ],
+      "evidence_rule": "Keep previous implementation hashes and separate forward construction cohorts; no study gates or enrollment change."
+    },
+    {
+      "amended_at": "2026-11-08T16:27:38.884317+00:00",
+      "reason": "Winners shape v13, second part (owner's decision, 2026-11-08). A Winners-shape Showdown GPP build with no user captain range takes the captain simulation's ranges (nfl-captain-sim-v1) as exposure policies, and the Balanced plan's automatic fade target skips any player with a captain minimum. Solver, draws and every constraint are unchanged; a user-typed captain range disables the automatic ranges, so builds with user ranges are identical to before. Re-pinned the optimizer only; every other pinned file is unchanged.",
+      "file": "web/src/app/dfs/nfl/nfl-optimizer.ts",
+      "previous_sha256": "08f0959a6aba84f145e1c6dbfe5876b40c0387241d855a238d6ff7d2b46cc678",
+      "new_sha256": "d686f6a1c377ca77d533cefa070c053931396ed58f2b66bbf80e3f07e1e82675",
+      "changed_implementation_hashes": {
+        "web/src/app/dfs/nfl/nfl-optimizer.ts": {
+          "previous": "08f0959a6aba84f145e1c6dbfe5876b40c0387241d855a238d6ff7d2b46cc678",
+          "new": "d686f6a1c377ca77d533cefa070c053931396ed58f2b66bbf80e3f07e1e82675"
+        }
+      },
+      "changed_by": [
+        "9b70c19c NFL DFS winners shape v13: simulated captain ranges by default; the fade never targets the captain"
       ],
       "evidence_rule": "Keep previous implementation hashes and separate forward construction cohorts; no study gates or enrollment change."
     }
