@@ -8923,6 +8923,29 @@ every player the pool rules left out (`reasonCode` `WINNERS_SHAPE` /
 - Not an edge: the shape is a second build for the weekly winners-vs-us
   review to grade against the standard one. Change a constant and bump the
   version; `npm run test:nfl-winners-shape` pins the current ones.
+- **v13 (2026-11-08, owner's decision after CIN@ATL).** The RB-captain
+  share (20%) was enforced as an exact count whose per-lineup forbid skipped
+  every back regardless of a captain range the user set, so Bijan Robinson
+  (top projection, -285 anytime, 38.5% to lead the game in the captain
+  simulation) was captain in 1 of 50 and a range could not have changed it.
+  Now (a) a back's captain minimum exempts him from the forbid and raises the
+  share to cover the minimums the user set (the distributions note says
+  "raised from 20%"); (b) a Winners Showdown GPP build with NO user captain
+  range takes the captain simulation's ranges (`nfl-captain-sim-v1`, the
+  page's Suggest CPT ranges) automatically, and the note lists them; a range
+  typed on any player switches that off for the build; (c) the Balanced
+  plan's automatic chalk-fade target skips any player with a captain
+  minimum (`protectedFromFade`); (d) at most one kicker per lineup
+  (`maxKickersPerLineup`, preset 1): two kickers were in 12 of 719 stored
+  top-20 Showdown lineups, all one contest, while the v12 build paired them
+  in 5 of 50. The simulation is unvalidated and these are owner's decisions
+  on discovery evidence. Also recorded that day: the field's most-owned
+  captain was our highest-projected player in 15 of 17 imported Showdowns
+  (two from top-100-only imports), and the sub-$3,000 study
+  (`docs/nfl-showdown-cheap-player-study.md`) found field ownership
+  predicts cheap-player points far better than our projection (0.55 vs 0.22)
+  but only above $1,000; the candidate pool rule there is in-sample and NOT
+  shipped.
 
 ## NFL DFS — Joint portfolio selection (`nfl-joint-selection-v1`, 2026-10-23)
 
