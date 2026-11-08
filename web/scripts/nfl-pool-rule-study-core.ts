@@ -1,7 +1,7 @@
 /** Research-only adapter. Production optimizer and presets remain unchanged. */
 import { createHash } from 'node:crypto';
 import { optimizeNflLineups, NFL_OPTIMIZER_VERSION, type NflOptimizerPlayer, type NflOptimizerSettings } from '../src/app/dfs/nfl/nfl-optimizer';
-import { applyWinnersShape, WINNERS_SHAPE_VERSION } from '../src/lib/nfl-dfs/winners-shape';
+import { applyWinnersShape, autoCaptainRanges, WINNERS_SHAPE_VERSION } from '../src/lib/nfl-dfs/winners-shape';
 import { canonicalAuditJson } from '../src/lib/nfl-dfs/audit-json';
 import { buildCompletion } from '../src/lib/nfl-dfs/build-completion';
 import { drawJointBank, sampleField, fieldThresholds, fieldSummary, scoreLineup, selectPortfolio, forecastSuccess,
@@ -75,7 +75,16 @@ export function buildPair(input: Raw): PairResult {
     ? [...shape.excluded.keys()].filter(id => ['TE', 'WR'].includes(byId.get(id)!.position))
     : eligible.filter(p => p.position === 'K' && !manual.has(p.dkPlayerId)).map(p => p.dkPlayerId);
   if (study === 'showdown' && shape.settings.excludeKickers !== true) throw new Error('Winners shape no longer bans kickers; the registered contrast is undefined');
-  const sharedSettings = { ...shape.settings, buildShape: 'standard' as const };
+  // Winners shape v13 (2026-11-08): a native Winners build also carries the
+  // per-lineup kicker cap and, when the user set no captain range, the captain
+  // simulation's ranges. Both arms take them, so arm B still equals what a
+  // Winners build produces today and the arms differ only in the kicker ban
+  // (arm A bans kickers outright, so the cap is moot there).
+  const native = applyWinnersShape(nativeSettings, eligible);
+  const auto = autoCaptainRanges(native.settings, eligible);
+  const sharedSettings = { ...shape.settings, buildShape: 'standard' as const,
+    ...(native.settings.maxKickersPerLineup != null ? { maxKickersPerLineup: native.settings.maxKickersPerLineup } : {}),
+    ...(auto ? { exposurePolicies: auto.settings.exposurePolicies } : {}) };
   const common = { version, pairId: input.pairId, sourceRunId: source.run_id,
     season: input.season, week: input.week, slateSignature: input.slateSignature, gameIds: input.gameIds ?? null,
     firstKickoff: input.firstKickoff, capturedAt: input.capturedAt,

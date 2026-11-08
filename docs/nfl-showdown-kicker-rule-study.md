@@ -7,6 +7,14 @@
 > itself is unchanged: arm A is now the v1-v11 construction, rebuilt by
 > `applyWinnersShape(..., { poolRules: true })`, and arm B equals what a
 > Winners build produces today.
+>
+> **2026-11-08 (`nfl-winners-shape-v13`):** a native Winners Showdown build
+> now also caps kickers at one per lineup and, when the user set no captain
+> range, applies the captain simulation's ranges. Both arms carry both, so
+> arm B still equals a native build and the arms still differ only in the
+> kicker ban; arm A bans kickers outright, so the cap is moot there. The
+> contrast is unchanged. Pairs captured before this date ran under v12 arms
+> and are a separate cohort if the grader ever compares them.
 
 Status: **registered before any week-6 Showdown was built; capture runner
 implemented.** No optimizer or setting change follows from this document; it
