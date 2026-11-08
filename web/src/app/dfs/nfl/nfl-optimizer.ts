@@ -300,6 +300,13 @@ export type NflOptimizerSettings = {
   maxCaptainExposure?: number;
   /** Showdown: leave every kicker out of the pool (locks still throw, by name). */
   excludeKickers?: boolean;
+  /**
+   * Showdown: at most this many kickers in one lineup. Winners shape v13 sets
+   * 1: two kickers appeared in 12 of 719 stored top-20 Showdown lineups, all
+   * from one week-4 contest and mostly one copied roster, while the v12 build
+   * for CIN@ATL (2026-11-08) carried both kickers in 5 of 50.
+   */
+  maxKickersPerLineup?: number;
   /** Showdown: each lineup is 5-1 or 3-3 by team, never 4-2. */
   forbidFourTwoSplit?: boolean;
   /** Showdown: only these positions may take the Captain slot (a user's CPT minimum on another position is reported as infeasible). */
@@ -893,6 +900,10 @@ function validateSettings(settings: NflOptimizerSettings): void {
   if (settings.bringBackShare != null && (settings.format !== "classic" || settings.mode !== "gpp")) throw new Error("A bring-back share is only available in Classic GPP.");
   if ((settings.excludeKickers || settings.forbidFourTwoSplit || settings.maxCaptainExposure != null || settings.captainPositions) && settings.format !== "showdown") throw new Error("Kicker exclusion, the 4-2 ban, the captain cap and captain positions are Showdown rules.");
   if (settings.captainPositions && !settings.captainPositions.length) throw new Error("Captain positions must name at least one position.");
+  if (settings.maxKickersPerLineup != null) {
+    if (settings.format !== "showdown") throw new Error("A per-lineup kicker cap is a Showdown rule.");
+    if (!Number.isInteger(settings.maxKickersPerLineup) || settings.maxKickersPerLineup < 0) throw new Error("The per-lineup kicker cap must be a whole number of 0 or more.");
+  }
   if (settings.minQbPerLineup != null) {
     if (settings.format !== "showdown") throw new Error("A per-lineup quarterback minimum is a Showdown rule (Classic always has one QB).");
     if (!Number.isInteger(settings.minQbPerLineup) || settings.minQbPerLineup < 0 || settings.minQbPerLineup > 2) throw new Error("The quarterback minimum must be 0, 1 or 2.");
@@ -1098,6 +1109,7 @@ function buildOne(
       constraints[`cstack_pc_${team}`] = { min: 0 };
     }
   }
+  if (settings.format === "showdown" && settings.maxKickersPerLineup != null) constraints.max_k = { max: settings.maxKickersPerLineup };
   const minQb = settings.format === "showdown" ? settings.minQbPerLineup ?? 0 : 0;
   if (minQb > 0) {
     const qbSlotsLeft = pool.filter((player) => player.position === "QB")
@@ -1151,7 +1163,12 @@ function buildOne(
       if (purchaseType === "CPT" && settings.lineupForbidQbCaptain && player.position === "QB"
         && (captainCounts.get(player.dkPlayerId) ?? 0) >= (countsById.get(player.dkPlayerId)?.captainMin ?? 0)) continue;
       if (purchaseType === "CPT" && settings.lineupRequireRbCaptain && player.position !== "RB") continue;
-      if (purchaseType === "CPT" && settings.lineupForbidRbCaptain && player.position === "RB") continue;
+      // A captain minimum the user set on this running back outranks the
+      // RB-captain share, the same way a quarterback's does the lone-QB cap.
+      // Before v13 the forbid skipped every back, so a 30% range on the
+      // slate's best captain produced one lineup (CIN@ATL, 2026-11-08).
+      if (purchaseType === "CPT" && settings.lineupForbidRbCaptain && player.position === "RB"
+        && (captainCounts.get(player.dkPlayerId) ?? 0) >= (countsById.get(player.dkPlayerId)?.captainMin ?? 0)) continue;
       const key = `${purchaseType === "CLASSIC" ? "x" : purchaseType === "CPT" ? "c" : "f"}_${player.dkPlayerId}`;
       const slot = purchaseType === "CPT" ? "CPT" : purchaseType === "FLEX" ? "FLEX" : "CLASSIC";
       const multiplier = slot === "CPT" ? 1.5 : 1;
@@ -1179,6 +1196,7 @@ function buildOne(
       if (constraints.air_matchup && isNflGppSignalPlayer(player.playerSignals, ["AIR_MATCHUP"])) variable.air_matchup = 1;
       if (constraints.goal_line_rb && player.position === "RB" && isNflGppSignalPlayer(player.playerSignals, ["INSIDE_FIVE"])) variable.goal_line_rb = 1;
       if (constraints.min_qb && player.position === "QB") variable.min_qb = 1;
+      if (constraints.max_k && player.position === "K") variable.max_k = 1;
       if (captainStack) {
         const passCatcher = player.position === "WR" || player.position === "TE";
         if (player.position === "QB") variable[`cstack_qb_${player.team}`] = 1;
@@ -2064,7 +2082,13 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   let dstVsOffenseLineups = 0;
   const showdown = settings.format === "showdown" && settings.mode === "gpp";
   const twoQbShare = showdown ? settings.twoQbShare ?? null : null;
-  const rbCaptainShare = showdown ? settings.rbCaptainShare ?? null : null;
+  // The RB-captain share is a floor as well as a ceiling across the run, so a
+  // captain minimum the user set on a back raises it: the quota covers every
+  // RB captain the user asked for, and the per-lineup forbid yields to those
+  // minimums until they are met.
+  const rbCaptainShareBase = showdown ? settings.rbCaptainShare ?? null : null;
+  const rbCaptainMinTotal = showdown ? pool.filter((p) => p.position === "RB").reduce((sum, p) => sum + (countsById.get(p.dkPlayerId)?.captainMin ?? 0), 0) : 0;
+  const rbCaptainShare = rbCaptainShareBase != null && plan.length > 0 ? Math.max(rbCaptainShareBase, rbCaptainMinTotal / plan.length) : rbCaptainShareBase;
   const loneQbCaptainCap = showdown && settings.maxLoneQbCaptainShare != null ? Math.floor(settings.maxLoneQbCaptainShare * plan.length + 1e-9) : null;
   const showdownShares = twoQbShare != null || rbCaptainShare != null || loneQbCaptainCap != null;
   let twoQbLineups = 0, loneQbCaptainLineups = 0, rbCaptainLineups = 0, distributionRelaxed = 0;
@@ -2265,7 +2289,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   if (showdownShares && lineups.length) {
     warnings.push(`Showdown distributions: ${twoQbLineups} of ${lineups.length} lineups have both quarterbacks${twoQbShare != null ? ` (target ${Math.round(twoQbShare * 100)}%)` : ""}, `
       + `${loneQbCaptainLineups} captain a quarterback with no second quarterback${loneQbCaptainCap != null ? ` (cap ${loneQbCaptainCap})` : ""}, `
-      + `${rbCaptainLineups} captain a running back${rbCaptainShare != null ? ` (target ${Math.round(rbCaptainShare * 100)}%)` : ""}`
+      + `${rbCaptainLineups} captain a running back${rbCaptainShare != null ? ` (target ${Math.round(rbCaptainShare * 100)}%${rbCaptainShareBase != null && rbCaptainShare > rbCaptainShareBase + 1e-9 ? `, raised from ${Math.round(rbCaptainShareBase * 100)}% for the captain minimums you set` : ""})` : ""}`
       + (distributionRelaxed ? `; ${distributionRelaxed} lineup(s) could not meet their target under the other rules and were built with it relaxed.` : "."));
   }
   if (bringBackShare != null && lineups.length) {

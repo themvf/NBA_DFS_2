@@ -325,6 +325,27 @@ console.log("Winners shape (classic): bring-back share alternates, quarterbacks 
   assert.ok(dist.lineups.filter(l => cptOf(l).position === "QB" && qbsIn(l) === 1).length <= 1, "lone-QB captains capped at 10% of 10");
   assert.equal(dist.lineups.filter(l => cptOf(l).position === "RB").length, 2, "rbCaptainShare 0.2 of 10: exactly two RB captains");
   assert.ok(dist.warnings.some(w => w.startsWith("Showdown distributions: 4 of 10")), "the run reports what it built");
+  // v13: a captain minimum the user set on a running back outranks the RB-captain share.
+  // Before v13 the per-lineup forbid skipped every back, so a 50% range here produced two captains (the 20% quota).
+  const rb = pool.find(p => p.position === "RB")!;
+  const rbRange = optimizeNflLineups(pool, settings({ format: "showdown", nLineups: 10, minSalary: 0, stackPassCatchers: 0, maxExposure: 1,
+    minQbPerLineup: 1, twoQbShare: 0.4, maxLoneQbCaptainShare: 0.1, rbCaptainShare: 0.2,
+    exposurePolicies: [{ playerId: rb.dkPlayerId, overall: { minPct: null, maxPct: null }, captain: { minPct: 0.5, maxPct: null }, flex: { minPct: null, maxPct: null }, exactTargetMode: false }] }));
+  assert.equal(rbRange.lineups.length, 10, rbRange.warnings.join(" | "));
+  assert.ok(rbRange.lineups.filter(l => cptOf(l).dkPlayerId === rb.dkPlayerId).length >= 5, "v13: the back's 50% captain minimum is met despite the 20% RB-captain share");
+  assert.ok(rbRange.warnings.some(w => /captain a running back \(target 50%, raised from 20% for the captain minimums you set\)/.test(w)), "the note says the share was raised: " + rbRange.warnings.filter(w => w.startsWith("Showdown")).join(" | "));
+  assert.ok(!rbRange.exposureReport?.some?.((r: { binding?: string | null }) => /captain min missed/.test(r.binding ?? "")), "no captain minimum is reported missed");
+  // v13: at most one kicker per lineup. Two cheap, high-ceiling kickers would otherwise pair up.
+  const kPool = [...pool, player({ dkPlayerId: 901, position: "K", team: "AAA", salary: 200, ourProj: 12, ceilingFpts: 20 }), player({ dkPlayerId: 902, position: "K", team: "BBB", salary: 200, ourProj: 12, ceilingFpts: 20 })];
+  const kFree = optimizeNflLineups(kPool, settings({ format: "showdown", nLineups: 3, minSalary: 0, stackPassCatchers: 0, maxExposure: 1 }));
+  assert.ok(kFree.lineups.some(l => l.slots.filter(s => s.player.position === "K").length === 2), "without the cap the two kickers pair up (the rule has something to bind on)");
+  const kCapped = optimizeNflLineups(kPool, settings({ format: "showdown", nLineups: 3, minSalary: 0, stackPassCatchers: 0, maxExposure: 1, maxKickersPerLineup: 1 }));
+  assert.equal(kCapped.lineups.length, 3, kCapped.warnings.join(" | "));
+  assert.ok(kCapped.lineups.every(l => l.slots.filter(s => s.player.position === "K").length <= 1), "maxKickersPerLineup 1: no lineup carries two kickers");
+  assert.ok(kCapped.lineups.some(l => l.slots.some(s => s.player.position === "K")), "a single kicker is still allowed");
+  assert.throws(() => optimizeNflLineups(pool, settings({ format: "classic", maxKickersPerLineup: 1 })), /Showdown rule/);
+  assert.equal(applyWinnersShape(settings({ format: "showdown", nLineups: 20 }), pool).settings.maxKickersPerLineup, 1, "the preset caps kickers at one per lineup");
+  assert.equal(applyWinnersShape(settings({ format: "showdown", nLineups: 20 }), pool, { poolRules: true }).settings.maxKickersPerLineup, undefined, "the v1-v11 reconstruction (no kickers at all) does not add the cap");
   assert.throws(() => optimizeNflLineups(pool, settings({ format: "classic", twoQbShare: 0.4 })), /Showdown rules/);
   // The preset raises a QB's overall cap to 75% unless he has his own overall range.
   const shapedSd = applyWinnersShape(settings({ format: "showdown", nLineups: 20 }), pool);

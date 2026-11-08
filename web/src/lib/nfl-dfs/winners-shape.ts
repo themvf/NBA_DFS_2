@@ -138,7 +138,23 @@ import type { NflOptimizerPlayer, NflOptimizerSettings } from "@/app/dfs/nfl/nfl
  * reconstructing a v1-v11 build) is unchanged; the ghost factorial sets its
  * own `kickers` level.
  */
-export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v12";
+/**
+ * v13 (2026-11-08, owner's decision after the CIN@ATL build): two fixes.
+ * (a) The RB-captain share yields to the user's captain minimums. The share
+ * is enforced as an exact count across the run, and before v13 the per-lineup
+ * forbid skipped every running back regardless of a range the user had set,
+ * so Bijan Robinson (projected 23.9, -285 anytime, 38.5% to lead the game in
+ * the captain simulation) was captain in 1 of 50 lineups and a 30-45% range
+ * would not have changed that. Now a back's captain minimum raises the share
+ * and exempts him from the forbid until it is met; the Showdown distributions
+ * note says when the share was raised. (b) At most one kicker per lineup.
+ * Two kickers appeared in 12 of 719 stored top-20 Showdown lineups, all in
+ * one week-4 contest and 11 of them one copied roster; the v12 CIN@ATL build
+ * carried both in 5 of 50. A per-kicker cap was considered and rejected: the
+ * winners' single-kicker rate runs 14-100% by game, so the anomaly is the
+ * pair, not the kicker. Both are owner's decisions on discovery evidence.
+ */
+export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v13";
 
 export type BuildShape = "standard" | "winners" | "diversified";
 export const BUILD_SHAPES: readonly BuildShape[] = ["standard", "winners", "diversified"];
@@ -200,6 +216,8 @@ export const WINNERS_SHAPE = {
   showdownMaxLoneQbCaptainShare: 0.07,
   showdownRbCaptainShare: 0.2,
   showdownQbMinCap: 0.75,
+  /** v13: a lineup may carry one kicker, never two. */
+  showdownMaxKickersPerLineup: 1,
 } as const;
 
 /**
@@ -321,10 +339,11 @@ export function applyWinnersShape(settings: NflOptimizerSettings, players: reado
       maxLoneQbCaptainShare: settings.maxLoneQbCaptainShare ?? WINNERS_SHAPE.showdownMaxLoneQbCaptainShare,
       rbCaptainShare: settings.rbCaptainShare ?? WINNERS_SHAPE.showdownRbCaptainShare,
       showdownQbMinCap: Math.max(settings.showdownQbMinCap ?? 0, WINNERS_SHAPE.showdownQbMinCap),
+      ...(options.poolRules ? {} : { maxKickersPerLineup: settings.maxKickersPerLineup ?? WINNERS_SHAPE.showdownMaxKickersPerLineup }),
     });
-    notes.push(`Winners shape (${WINNERS_SHAPE_VERSION}, showdown): any team split (v10 lifted the 4-2 ban), at least ${WINNERS_SHAPE.showdownMinQb} quarterback, a WR/TE captain with his own QB and a QB captain with his own WR/TE, both QBs in ${Math.round(WINNERS_SHAPE.showdownTwoQbShare * 100)}% of lineups, a lone-QB captain in at most ${Math.round(WINNERS_SHAPE.showdownMaxLoneQbCaptainShare * 100)}%, an RB captain in ${Math.round(WINNERS_SHAPE.showdownRbCaptainShare * 100)}%, each QB in up to ${Math.round(WINNERS_SHAPE.showdownQbMinCap * 100)}% of lineups, ${options.poolRules ? "no kicker" : "kickers allowed at flex (v12)"}, the captain a ${WINNERS_SHAPE.captainPositions.join("/")}, `
+    notes.push(`Winners shape (${WINNERS_SHAPE_VERSION}, showdown): any team split (v10 lifted the 4-2 ban), at least ${WINNERS_SHAPE.showdownMinQb} quarterback, a WR/TE captain with his own QB and a QB captain with his own WR/TE, both QBs in ${Math.round(WINNERS_SHAPE.showdownTwoQbShare * 100)}% of lineups, a lone-QB captain in at most ${Math.round(WINNERS_SHAPE.showdownMaxLoneQbCaptainShare * 100)}%, an RB captain in ${Math.round(WINNERS_SHAPE.showdownRbCaptainShare * 100)}%, each QB in up to ${Math.round(WINNERS_SHAPE.showdownQbMinCap * 100)}% of lineups, ${options.poolRules ? "no kicker" : "at most one kicker per lineup, flex only (v13)"}, the captain a ${WINNERS_SHAPE.captainPositions.join("/")}, `
       + `no captain in more than ${Math.round(WINNERS_SHAPE.captainMaxExposure * 100)}% of lineups, min salary ${money(shaped.minSalary)}. `
-      + `Captain ranges you set are kept.`);
+      + `Captain ranges you set are kept, and a running back's captain minimum raises the RB-captain share to cover it (v13).`);
   }
   return { settings: shaped, excluded, notes };
 }
