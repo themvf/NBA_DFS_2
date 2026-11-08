@@ -49,7 +49,7 @@ def test_scan_runs_only_moneyline_detectors_and_stamps_steam_interval(monkeypatc
 
     class Db:
         def execute(self, sql, params=None):
-            assert "JOIN nhl_matchups m" in sql
+            assert "FROM nhl_matchups m" in sql
             return [dict(current)]
 
         def execute_one(self, sql, params=None):

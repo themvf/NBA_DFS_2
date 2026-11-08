@@ -736,6 +736,15 @@ or anti join scanning a whole table); `OFFSET 0` keeps them per-row through thei
 cumulative totals: those keep queries fixed weeks ago at the top. Still open: hand-run research
 scripts (`research/nfl_ownership_inventory.py` on pool captures, `research/cfb_forecast_v4.py`)
 and the hash-pinned pick'em readers.
+Fourth pass (same evening): the line-alert `scan()` joined every capture of a sport to its
+matchups and filtered on kickoff afterwards (CFB: all 22k captures with their books, to keep ~15);
+it now takes upcoming games first and each one's newest capture by index (identical rows in all six
+sports). New covering indexes for the CFB forecast scripts' drive counts (29 MB -> 1 MB) and
+latest pregame lines (~37 MB -> ~1 MB), the NFL first-TD scorer names (90 MB -> under 1 MB), and
+the NFL QB matchup context, whose query now reads the season's plays first (~80k pages -> ~500).
+**PostgreSQL 17 drops `col IS NOT NULL` when `col` is declared NOT NULL**, so a partial index
+whose predicate repeats it can never be proven and is silently never used: check the plan after
+building any partial index.
 
 **PFR identity claims were re-inserted every run (2026-10-31).** The top
 disk reader after that was `freeze_identity` (`db/nfl_pfr_schema.py`, hash-
