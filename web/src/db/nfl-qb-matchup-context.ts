@@ -13,20 +13,27 @@ const dateText = (value: unknown) => value instanceof Date ? value.toISOString()
 export async function readNflQbMatchupContexts(season: number, week: number, asOf: Date): Promise<Map<string, QbMatchupContext>> {
   if (!Number.isInteger(season) || !Number.isInteger(week) || week < 2 || !Number.isFinite(asOf.getTime())) return new Map();
   const [playResult, marketResult] = await Promise.all([
+    // The season's plays come first, index-only through idx_nfl_pbp_archetypes_qb_context.
+    // Joined per game, the planner fetched each play's wide row instead (~80k pages a
+    // call by week 10, about 20 MB from disk; now ~500 pages, same rows).
     db.execute(sql`
+      WITH p AS MATERIALIZED (
+        SELECT game_id, season, week, home_team, away_team, posteam, defteam, play_type,
+          qb_dropback, score_differential, epa, drive, drive_archetype
+        FROM nfl_pbp_archetypes
+        WHERE season = ${season} AND season_type = 'REG' AND week < ${week}
+          AND labelled_at <= ${asOf} AND posteam IS NOT NULL AND defteam IS NOT NULL)
       SELECT p.game_id AS "gameId", p.posteam, p.defteam, p.play_type AS "playType",
         p.qb_dropback AS "qbDropback", p.score_differential AS "scoreDifferential",
         p.epa, p.drive, p.drive_archetype AS "driveArchetype"
-      FROM nfl_pbp_archetypes p
+      FROM p
       JOIN nfl_season_games g ON g.nflverse_game_id = p.game_id
         AND g.season = p.season AND g.week = p.week AND g.game_type = 'REG'
       JOIN nfl_teams ht ON ht.team_id = g.home_team_id
       JOIN nfl_teams at ON at.team_id = g.away_team_id
-      WHERE p.season = ${season} AND p.season_type = 'REG' AND p.week < ${week}
-        AND g.completed = TRUE AND g.kickoff < ${asOf} AND p.labelled_at <= ${asOf}
+      WHERE g.completed = TRUE AND g.kickoff < ${asOf}
         AND (CASE p.home_team WHEN 'LA' THEN 'LAR' WHEN 'WAS' THEN 'WSH' WHEN 'JAC' THEN 'JAX' WHEN 'AZ' THEN 'ARI' ELSE p.home_team END) = ht.abbreviation
-        AND (CASE p.away_team WHEN 'LA' THEN 'LAR' WHEN 'WAS' THEN 'WSH' WHEN 'JAC' THEN 'JAX' WHEN 'AZ' THEN 'ARI' ELSE p.away_team END) = at.abbreviation
-        AND p.posteam IS NOT NULL AND p.defteam IS NOT NULL`),
+        AND (CASE p.away_team WHEN 'LA' THEN 'LAR' WHEN 'WAS' THEN 'WSH' WHEN 'JAC' THEN 'JAX' WHEN 'AZ' THEN 'ARI' ELSE p.away_team END) = at.abbreviation`),
     db.execute(sql`
       SELECT g.nflverse_game_id AS "gameId", ht.abbreviation AS home, at.abbreviation AS away,
         g.kickoff, odds.id AS "oddsId", odds.captured_at AS "oddsCapturedAt",

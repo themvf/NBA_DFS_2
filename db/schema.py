@@ -4281,6 +4281,15 @@ TABLES = [
     # model/nfl_dfs_workload_opponent.py counts scrimmage plays per defence per week:
     # 346 MB scan -> 27 MB index-only read.
     "CREATE INDEX IF NOT EXISTS idx_nfl_pbp_archetypes_defteam_counts ON nfl_pbp_archetypes(season_type, season, week, defteam) INCLUDE (play_archetype, down)",
+    # 2026-11-07: model/nfl_first_td.py stats() names every touchdown scorer (~90 MB from
+    # disk a call -> under 1 MB), and the NFL DFS QB matchup context reads the season's plays
+    # (web/src/db/nfl-qb-matchup-context.ts, ~80k pages -> ~500). Do not add `posteam IS NOT
+    # NULL` to the predicate: posteam is a NOT NULL column, PostgreSQL 17 drops that clause
+    # from the query, and the planner then cannot prove the predicate and never uses the index.
+    "CREATE INDEX IF NOT EXISTS idx_nfl_pbp_participants_td_names ON nfl_pbp_play_participants(player_id) INCLUDE (player_name) WHERE role = 'touchdown' AND player_id IS NOT NULL",
+    """CREATE INDEX IF NOT EXISTS idx_nfl_pbp_archetypes_qb_context ON nfl_pbp_archetypes(season, week, game_id)
+       INCLUDE (home_team, away_team, posteam, defteam, play_type, qb_dropback, score_differential, epa, drive, drive_archetype, labelled_at)
+       WHERE season_type = 'REG' AND defteam IS NOT NULL""",
     # The nflverse release content each labelled game was last labelled from,
     # one digest per game. `ingest/nfl_pbp_archetypes.py --relabel-stale`
     # compares it with the current release so a correction nflverse publishes
@@ -6049,6 +6058,11 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_game_odds_history_matchup ON game_odds_history(sport, matchup_id, captured_at DESC)",
     # CFB bootstrap's 'unprocessed captures' probe reads CFB ids without the table (2026-10-20).
     "CREATE INDEX IF NOT EXISTS idx_game_odds_history_cfb_id ON game_odds_history(id) WHERE sport='cfb'",
+    # 2026-11-07: the CFB forecast and comparison scripts read each game's latest
+    # pregame moneyline/spread/total; covering, so they no longer fetch every CFB
+    # capture's row with its books (~37 MB from disk a call -> ~1 MB).
+    """CREATE INDEX IF NOT EXISTS idx_game_odds_history_cfb_market ON game_odds_history(matchup_id, captured_at DESC, id DESC)
+       INCLUDE (home_ml, away_ml, home_spread, vegas_total) WHERE sport='cfb'""",
     "CREATE INDEX IF NOT EXISTS idx_nfl_evidence_source_key ON nfl_evidence_observations(source, source_record_key, system_observed_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_nfl_play_fact_current ON nfl_play_fact_revisions(game_id, play_id) WHERE revision_status = 'current'",
     "CREATE INDEX IF NOT EXISTS idx_nfl_context_current ON nfl_context_snapshots(definition_id, subject_id, target_id, as_of_at DESC)",
@@ -6104,6 +6118,9 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_cfb_signal_snapshots_game ON cfb_game_signal_snapshots(game_id, captured_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_cfb_drives_game ON cfb_drives(game_id, drive_number)",
     "CREATE INDEX IF NOT EXISTS idx_cfb_drives_season ON cfb_drives(season, season_type)",
+    # 2026-11-07: research/cfb_forecast_v1.py counts drives per game and offense on every
+    # refresh_cfb_plays run; index-only instead of a full table scan (29 MB -> 1 MB a call).
+    "CREATE INDEX IF NOT EXISTS idx_cfb_drives_offense_counts ON cfb_drives(season, game_id, offense_team_id) WHERE offense_team_id IS NOT NULL",
     "CREATE INDEX IF NOT EXISTS idx_cfb_plays_game ON cfb_plays(game_id, period, play_number)",
     "CREATE INDEX IF NOT EXISTS idx_cfb_plays_drive ON cfb_plays(cfbd_drive_id)",
     "CREATE INDEX IF NOT EXISTS idx_cfb_plays_season ON cfb_plays(season, season_type, week)",

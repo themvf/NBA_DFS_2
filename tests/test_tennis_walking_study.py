@@ -131,7 +131,7 @@ def test_live_scan_tags_only_first_walking_without_relabeling(monkeypatch, prior
             # instead of handing it the capture row.
             if "FROM market_signal_observations" in sql:
                 return []
-            return [row] if "SELECT DISTINCT" in sql else []
+            return [row] if "WITH upcoming AS" in sql else []
 
         def execute_one(self, sql, params):
             if "FROM line_alerts" in sql:

@@ -1123,22 +1123,31 @@ def scan(db: DatabaseManager, sport: str) -> int:
     # Filtering before DISTINCT ON would silently fall back to an older quote.
     cfb_normalized = ("WHERE EXISTS (SELECT 1 FROM cfb_engine_captures c "
                       "WHERE c.history_id=latest.history_id)" if sport == "cfb" else "")
+    # Upcoming games first, then each one's newest capture through
+    # (sport, matchup_id, captured_at). Joining every capture of the sport and
+    # filtering on kickoff afterwards read all of a season's books (CFB: 22k
+    # rows, ~14 MB from disk a run) to keep about 15.
     rows = db.execute(
         f"""
-        WITH latest AS (
-            SELECT DISTINCT ON (h.matchup_id)
-                   h.id AS history_id, h.matchup_id, h.game_date, h.home_team_name, h.away_team_name,
-                   h.captured_at, h.capture_key, h.books, m.commence_time, {tennis_fields}
-            FROM game_odds_history h
-            JOIN {matchup_tbl} m ON m.id = h.matchup_id
+        WITH upcoming AS (
+            SELECT m.id, m.commence_time, {tennis_fields}
+            FROM {matchup_tbl} m
             {tennis_join}
-            WHERE h.sport = %s AND h.books IS NOT NULL
-              AND EXISTS (
-                SELECT 1 FROM jsonb_object_keys(h.books) AS source(book_key)
-                WHERE source.book_key <> 'polymarket'
-              )
-              AND m.commence_time > NOW()
-            ORDER BY h.matchup_id, h.captured_at DESC, h.id DESC
+            WHERE m.commence_time > NOW()
+        ), latest AS (
+            SELECT h.id AS history_id, h.matchup_id, h.game_date, h.home_team_name, h.away_team_name,
+                   h.captured_at, h.capture_key, h.books, u.commence_time, u.tour, u.tournament, u.surface
+            FROM upcoming u
+            CROSS JOIN LATERAL (
+                SELECT h.* FROM game_odds_history h
+                WHERE h.sport = %s AND h.matchup_id = u.id AND h.books IS NOT NULL
+                  AND EXISTS (
+                    SELECT 1 FROM jsonb_object_keys(h.books) AS source(book_key)
+                    WHERE source.book_key <> 'polymarket'
+                  )
+                ORDER BY h.captured_at DESC, h.id DESC
+                LIMIT 1
+            ) h
         )
         SELECT * FROM latest
         {cfb_normalized}
