@@ -73,6 +73,14 @@ export interface ArchetypeSlateContext {
     projection?: number | null;
     captainEligible: boolean;
   }>;
+  /**
+   * Players a plan may not pick as an automatic fade target: anyone with a
+   * captain minimum (set by the user or by the Showdown captain simulation).
+   * Fading the player the build is told to captain works against the range;
+   * on CIN@ATL (2026-11-08) the top-projected captain was the auto fade in 11
+   * of 50 lineups. Explicit fade configs the user supplies are unaffected.
+   */
+  protectedFromFade?: readonly number[];
   /** Team abbreviations, favorite first when known. */
   favoriteTeam: string | null;
   underdogTeam: string | null;
@@ -327,8 +335,9 @@ export function chalkLeveragePlan(
  */
 export function autoFadeCandidates(ctx: ArchetypeSlateContext, count: number): number[] {
   const anyOwnership = ctx.players.some((p) => p.ownership != null);
+  const protectedIds = new Set(ctx.protectedFromFade ?? []);
   return ctx.players
-    .filter((p) => p.position !== "K" && p.position !== "DST")
+    .filter((p) => p.position !== "K" && p.position !== "DST" && !protectedIds.has(p.dkPlayerId))
     .sort((a, b) =>
       (anyOwnership ? (b.ownership ?? -1) - (a.ownership ?? -1) : 0)
       || (b.projection ?? 0) - (a.projection ?? 0)

@@ -57,7 +57,7 @@ import {
 import { nflOverlapCap } from '@/lib/nfl-dfs/pre-export-qa';
 import { isNflGppSignalPlayer, type NflPlayerSignal, type NflPlayerSignalCode } from '@/lib/nfl-dfs/player-signals';
 import type { NflAirMatchupEvidence } from '@/lib/nfl-dfs/air-matchup-evidence';
-import { applyWinnersShape, BUILD_SHAPES, type BuildShape, type PriorOpportunity } from '@/lib/nfl-dfs/winners-shape';
+import { applyWinnersShape, autoCaptainRanges, BUILD_SHAPES, type BuildShape, type PriorOpportunity } from '@/lib/nfl-dfs/winners-shape';
 import type { SpecialTeamsProjection } from '@/lib/nfl-dfs/special-teams-projection';
 import { buildDrawModel, DEFAULT_DRAW_SEED, DEFAULT_LEVERAGE_POINTS_PER_HALVING, drawOutcome, LINEUP_DRAWS_VERSION, slotLeverageBonus, type DrawModel } from '@/lib/nfl-dfs/lineup-draws';
 import { featureTotals, JOINT_TARGET_PENALTY, NFL_JOINT_SELECTION_VERSION, selectJointPortfolio, type JointCandidate, type JointTarget } from '@/lib/nfl-dfs/joint-selection';
@@ -1640,8 +1640,14 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   // rest of the build (and the saved run) sees only numbers it can report.
   requested = applyDiversified(requested);
   const shape = requested.buildShape === "winners" ? applyWinnersShape(requested, players) : null;
-  const settings = shape ? shape.settings : requested;
-  if (shape) validateSettings(settings);
+  const shaped = shape ? shape.settings : requested;
+  if (shape) validateSettings(shaped);
+  // v13: a Winners-shape Showdown build with no captain range of its own takes
+  // the captain simulation's ranges, so the quota below cannot bury the
+  // slate's best captain. A range the user typed switches this off.
+  const autoCaptain = shape ? autoCaptainRanges(shaped, players) : null;
+  const settings = autoCaptain?.settings ?? shaped;
+  if (autoCaptain) validateSettings(settings);
   const shapeExcluded = shape?.excluded ?? new Map<number, string>();
   const excluded = new Set(settings.excludedPlayerIds);
   const locked = new Set(settings.lockedPlayerIds);
@@ -1664,7 +1670,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   const coverage = { requested: players.length, direct: 0, fallback: 0, excluded: 0 };
   const pool: ResolvedPlayer[] = [];
   const eligibility: NflEligibilityDecision[] = [];
-  const warnings: string[] = [...(shape?.notes ?? [])];
+  const warnings: string[] = [...(shape?.notes ?? []), ...(autoCaptain ? [autoCaptain.note] : [])];
   const receiverRoleChanges = deriveReceiverRoleChanges(players);
   let belowSalaryFloor = 0;
   let withoutHistory = 0;
@@ -1895,6 +1901,9 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
     favoriteTeam: settings.favoriteTeam ?? null,
     underdogTeam: settings.underdogTeam ?? null,
     ownershipValidated: (settings.ownershipCapability ?? "unavailable") === "validated",
+    // A player with a captain minimum (user-set or from the captain simulation)
+    // is never the plan's automatic fade target.
+    protectedFromFade: (settings.exposurePolicies ?? []).filter((p) => (p.captain.minPct ?? 0) > 0).map((p) => p.playerId),
   };
   // Chalk-captain model (Showdown only), resolved BEFORE exposure policies:
   // its captains need a different reading of the flat cap. See below.

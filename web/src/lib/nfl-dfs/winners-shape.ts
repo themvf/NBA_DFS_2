@@ -27,6 +27,8 @@
  * left him out.
  */
 import type { NflOptimizerPlayer, NflOptimizerSettings } from "@/app/dfs/nfl/nfl-optimizer";
+import { recommendFromSimulation, simulateCaptainOdds, type SimulationCandidate } from "./captain-simulation";
+import { captainExposurePolicies } from "./generation-settings";
 
 /**
  * v2 (2026-10-11): the RB rule keeps a back on top-quartile touches OR 4+
@@ -346,6 +348,49 @@ export function applyWinnersShape(settings: NflOptimizerSettings, players: reado
       + `Captain ranges you set are kept, and a running back's captain minimum raises the RB-captain share to cover it (v13).`);
   }
   return { settings: shaped, excluded, notes };
+}
+
+/**
+ * v13: a Showdown GPP build under Winners shape that has no captain range of
+ * its own takes the ranges the captain simulation (`nfl-captain-sim-v1`,
+ * the page's "Suggest CPT ranges") would have proposed: each eligible QB/RB/WR
+ * with at least a 2% chance to be the game's top scorer gets a captain range
+ * of that share plus or minus 8 points, rounded to 5. The RB-captain share
+ * then rises to cover the backs' minimums (see the optimizer), so the slate's
+ * best captain can no longer be captain in 1 of 50 by quota. A range the user
+ * typed on ANY player switches this off for the whole build: the user's
+ * ranges are the instruction, not a seed. Returns null when it does not apply
+ * or no candidate has a P10/median/P90 to simulate from. The simulation is
+ * unvalidated (one top scorer per slate); the note says what was applied.
+ */
+export function autoCaptainRanges(settings: NflOptimizerSettings, players: readonly NflOptimizerPlayer[]):
+  { settings: NflOptimizerSettings; note: string; captainMinIds: number[] } | null {
+  if (settings.format !== "showdown" || settings.mode !== "gpp" || settings.buildShape !== "winners") return null;
+  const policies = settings.exposurePolicies ?? [];
+  if (policies.some((p) => p.captain.minPct != null || p.captain.maxPct != null)) return null;
+  const positions = suggestedCaptainPositions({ format: "showdown", mode: settings.mode, buildShape: settings.buildShape, captainPositions: settings.captainPositions });
+  const excluded = new Set(settings.excludedPlayerIds);
+  const candidates: SimulationCandidate[] = players
+    .filter((p) => positions.includes(p.position) && !excluded.has(p.dkPlayerId))
+    .map((p) => ({ dkPlayerId: p.dkPlayerId, name: p.name, position: p.position, team: p.team, opponent: p.opponent ?? null,
+      ourProj: p.ourProj, isOut: p.isOut, captainDkPlayerId: p.captainDkPlayerId, availabilityStatus: p.availabilityStatus ?? null, dkStatus: p.dkStatus ?? null,
+      linestarOwnPct: p.linestarOwnPct, floorFpts: p.floorFpts, medianFpts: p.medianFpts ?? null, ceilingFpts: p.ceilingFpts }));
+  const sim = simulateCaptainOdds(candidates);
+  const rec = recommendFromSimulation(sim);
+  if (!rec.rows.length) return null;
+  const overall = { min: settings.minExposureByPlayer, max: settings.maxExposureByPlayer };
+  const fresh = captainExposurePolicies(rec.targets, overall, settings.maxExposure);
+  const merged = policies.map((p) => {
+    const add = fresh.find((f) => f.playerId === p.playerId);
+    return add ? { ...p, captain: add.captain } : p;
+  });
+  for (const f of fresh) if (!merged.some((p) => p.playerId === f.playerId)) merged.push(f);
+  const captainMinIds = rec.rows.filter((r) => r.min > 0).map((r) => r.dkPlayerId);
+  const note = `Captain ranges from the game simulation (${rec.version}, ${rec.simulation?.draws ?? 0} games) applied because you set none: `
+    + rec.rows.map((r) => `${r.name} ${r.min}-${r.max}% (leads the game ${r.sharePct.toFixed(0)}%)`).join(", ")
+    + `. Type a captain range on any player to replace them all.`
+    + (sim.missingTails.length ? ` Not simulated (no P10/median/P90): ${sim.missingTails.join(", ")}.` : "");
+  return { settings: { ...settings, exposurePolicies: merged }, note, captainMinIds };
 }
 
 function applyPoolRules(settings: NflOptimizerSettings, players: readonly ShapePlayer[], excluded: Map<number, string>, notes: string[]): void {

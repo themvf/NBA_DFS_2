@@ -7,7 +7,8 @@
  */
 import assert from "node:assert/strict";
 import { dstFacesOwnOffense, optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings } from "../src/app/dfs/nfl/nfl-optimizer";
-import { applyWinnersShape, qbExposureCap, showdownCaptainPositions, suggestedCaptainPositions, winnersShapeLimits, WINNERS_SHAPE, WINNERS_SHAPE_VERSION } from "../src/lib/nfl-dfs/winners-shape";
+import { applyWinnersShape, autoCaptainRanges, qbExposureCap, showdownCaptainPositions, suggestedCaptainPositions, winnersShapeLimits, WINNERS_SHAPE, WINNERS_SHAPE_VERSION } from "../src/lib/nfl-dfs/winners-shape";
+import { autoFadeCandidates } from "../src/lib/nfl-dfs/archetypes";
 
 // --- Units: the quarterback cap follows the lineup count ---
 assert.equal(qbExposureCap(20), 0.35, "20 lineups -> 3 quarterbacks -> 7 lineups each -> 35%");
@@ -390,3 +391,50 @@ console.log("Winners shape (showdown): kickers allowed since v12, any team split
   assert.throws(() => optimizeNflLineups(pool, settings({ maxDstVsOffenseShare: 1.5 })), /between 0 and 100%/);
 }
 console.log("Winners shape (classic): a DST against the lineup's own players is capped at 5% of lineups.");
+
+// --- v13: automatic captain ranges from the game simulation, and fade protection ---
+{
+  const sd = (over: Parameters<typeof player>[0] & { median: number; floor?: number }) =>
+    ({ ...player(over), floorFpts: over.floor ?? 6, medianFpts: over.median });
+  const pool: NflOptimizerPlayer[] = [];
+  let id = 500;
+  for (const team of ["AAA", "BBB"]) {
+    pool.push(sd({ dkPlayerId: id++, position: "QB", team, salary: 10000, ourProj: 20, ceilingFpts: 32, median: 19 }));
+    pool.push(sd({ dkPlayerId: id++, position: "RB", team, salary: team === "AAA" ? 11000 : 6000, ourProj: team === "AAA" ? 26 : 8, ceilingFpts: team === "AAA" ? 46 : 16, median: team === "AAA" ? 24 : 7 }));
+    pool.push(sd({ dkPlayerId: id++, position: "WR", team, salary: 9000, ourProj: 15, ceilingFpts: 28, median: 14 }));
+    pool.push(sd({ dkPlayerId: id++, position: "WR", team, salary: 7000, ourProj: 10, ceilingFpts: 20, median: 9 }));
+    pool.push(sd({ dkPlayerId: id++, position: "WR", team, salary: 5000, ourProj: 6, ceilingFpts: 14, median: 5 }));
+    pool.push(sd({ dkPlayerId: id++, position: "TE", team, salary: 6000, ourProj: 9, ceilingFpts: 18, median: 8 }));
+    pool.push(sd({ dkPlayerId: id++, position: "K", team, salary: 4000, ourProj: 8, ceilingFpts: 14, median: 8 }));
+    pool.push(sd({ dkPlayerId: id++, position: "DST", team, salary: 3000, ourProj: 6, ceilingFpts: 14, median: 5 }));
+  }
+  const star = pool.find(p => p.position === "RB" && p.team === "AAA")!;
+  const base = settings({ format: "showdown", nLineups: 10, minSalary: 0, stackPassCatchers: 0, buildShape: "winners", maxExposure: 1, minUnique: 1 });
+  const auto = autoCaptainRanges(applyWinnersShape(base, pool).settings, pool);
+  assert.ok(auto, "a Winners Showdown build with no captain range gets simulated ranges");
+  assert.ok(auto!.captainMinIds.includes(star.dkPlayerId), "the dominant back has a captain minimum: " + auto!.note);
+  const starMin = auto!.settings.exposurePolicies!.find(p => p.playerId === star.dkPlayerId)!.captain.minPct!;
+  assert.ok(starMin > 0.2, `his minimum (${starMin}) exceeds the 20% RB-captain share`);
+  const run = optimizeNflLineups(pool, base);
+  assert.equal(run.lineups.length, 10, run.warnings.join(" | "));
+  assert.ok(run.warnings.some(w => w.startsWith("Captain ranges from the game simulation (nfl-captain-sim-v1")), "the build says the ranges were applied");
+  const starCaptains = run.lineups.filter(l => l.slots.find(s => s.slot === "CPT")!.player.dkPlayerId === star.dkPlayerId).length;
+  assert.ok(starCaptains >= Math.ceil(starMin * 10), `the back captains at least his minimum (${starCaptains} of 10, min ${starMin})`);
+  assert.ok(starCaptains > 2, "and more than the 20% quota alone would allow");
+  assert.ok(run.warnings.some(w => /raised from 20% for the captain minimums/.test(w)), "the distributions note reports the raised share");
+  // A range the user typed on anyone switches the automatic ranges off.
+  const qb = pool.find(p => p.position === "QB")!;
+  const userRange = { ...base, exposurePolicies: [{ playerId: qb.dkPlayerId, overall: { minPct: null, maxPct: null }, captain: { minPct: 0.1, maxPct: null }, flex: { minPct: null, maxPct: null }, exactTargetMode: false }] };
+  assert.equal(autoCaptainRanges(applyWinnersShape(userRange, pool).settings, pool), null, "user captain ranges are the instruction, not a seed");
+  assert.ok(!optimizeNflLineups(pool, userRange).warnings.some(w => w.startsWith("Captain ranges from the game simulation")), "no automatic note when the user set a range");
+  assert.equal(autoCaptainRanges({ ...base, buildShape: "standard" }, pool), null, "Standard shape: nothing automatic");
+  assert.equal(autoCaptainRanges({ ...base, format: "classic" }, pool), null, "Classic has no captain");
+  // The automatic fade never targets a player with a captain minimum.
+  const ctx = { players: pool.map(p => ({ dkPlayerId: p.dkPlayerId, position: p.position, team: p.team, opponent: p.opponent ?? null, ownership: (p.ourProj ?? 0) / 40, projection: p.ourProj ?? 0, captainEligible: true })),
+    favoriteTeam: null, underdogTeam: null, ownershipValidated: false };
+  assert.equal(autoFadeCandidates(ctx, 1)[0], star.dkPlayerId, "unprotected, the highest-owned player is the fade target (the rule has something to bind on)");
+  assert.ok(!autoFadeCandidates({ ...ctx, protectedFromFade: [star.dkPlayerId] }, 2).includes(star.dkPlayerId), "protected by his captain minimum, he is never the auto fade");
+  const fadedStar = run.lineups.filter(l => (l.stackSummary as { archetype?: { fadedPlayerIds?: number[] } } | undefined)?.archetype?.fadedPlayerIds?.includes(star.dkPlayerId)).length;
+  assert.equal(fadedStar, 0, "in the build, the simulated captain is not the chalk fade");
+}
+console.log("Winners shape v13: simulated captain ranges apply when the user set none, RB captain minimums beat the quota, one kicker per lineup, the fade skips the captain.");
