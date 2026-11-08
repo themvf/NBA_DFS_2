@@ -534,7 +534,7 @@ def predict(games: list[dict], params: Params, history: cf.History, firsts: dict
             "home": g["home"], "commence_time": g["commence_time"], "game": f"{g['away']} @ {g['home']}",
             "implied": [g["away_implied"], g["home_implied"]], "p_home_first": p_home,
             "players": [{"name": cands[pid]["name"], "team": cands[pid]["team"], "prob": pr,
-                         "fair": cf.fair_american(pr), "td": cands[pid]["td"], "touches": cands[pid]["vol"],
+                         "fair": cf.fair_american(pr), "td": cands[pid]["td"], "touches": round(cands[pid]["vol"], 1),
                          "chips": player_chips(history, pid, cands[pid]["team"], before) + status_chips(pid, statuses),
                          "listed": None if not listed else cf.name_key(cands[pid]["name"]) in listed["names"]}
                         for pid, pr in players[:top]],

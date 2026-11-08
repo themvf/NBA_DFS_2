@@ -76,7 +76,7 @@ function GameCard({ g, started, volumeLabel, actualWait }: { g: FirstTdGame; sta
         <td className="p-3 font-semibold">{pct(p.prob)}</td>
         <td className="p-3">{american(p.fair)}</td>
         <td className="p-3">{p.td}</td>
-        <td className="p-3">{p.touches}</td>
+        <td className="p-3">{Number.isInteger(p.touches) ? p.touches : Number(p.touches).toFixed(1)}</td>
       </tr>)}</tbody>
     </table></div>
     <div className="space-y-1 border-t bg-slate-50 p-4 text-sm text-slate-600">

@@ -19,9 +19,11 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ d
     subtitle="NFL · our own model, no sportsbook player prices used."
     banner={<>Not validated against sportsbook prices. Tested on 372 games from 2025 and 2026 weeks 1-8 that the fitting never saw:
       it is about as good as splitting each team&apos;s chance by carries and targets alone, and its top pick scored first 13% of the
-      time against 15-16% stated, so the biggest chances run a little high. When DraftKings lists a team&apos;s players for anytime
-      touchdown (captured the day before and about an hour before kickoff), ours missing from the list are removed; prices are not used.
-      Fair price is the chance as American odds with no bookmaker margin.</>}
+      time against 15-16% stated, so the biggest chances run a little high. Players are removed when our injury reports rule
+      them out (an official inactive list, a Sleeper reserve designation, or a Sleeper OUT that FantasyPros confirms) or when DraftKings
+      leaves them off its anytime-touchdown list (captured the day before and about an hour before kickoff; prices are not used). A
+      removed starter who played last week hands half his carries and targets to his position group; Doubtful and Questionable players
+      stay in with a tag. Fair price is the chance as American odds with no bookmaker margin.</>}
     dates={dates} date={date} today={today} nowMs={nowMs} games={games} grades={grades} stats={stats}
     emptyNote="They are saved each morning before a game day and about an hour before each kickoff group."
     volumeLabel="Carries + targets"
