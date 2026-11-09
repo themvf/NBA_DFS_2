@@ -11,7 +11,7 @@ import { LINEUPS, buildBoomLineups, type BoomBoard } from "@/lib/nba-boom-lineup
  */
 export function BoomLineups({ board, evidence=null }: { board: BoomBoard | null; evidence?:AvailabilityEvidence|null }) {
   const [selected, setSelected] = useState("");
-  const [requested, setRequested] = useState(2);
+  const [requested, setRequested] = useState(0);
   const [maxDrop, setMaxDrop] = useState(5);
   const [now, setNow] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
@@ -21,7 +21,7 @@ export function BoomLineups({ board, evidence=null }: { board: BoomBoard | null;
     const feature = (event: Event) => {
       const id = (event as CustomEvent<{id?: string}>).detail?.id;
       if (saving || !board?.players.some(p => p.id === id && p.boomRank !== null)) return;
-      setSelected(id!); setRequested(2); setReceipt("");
+      setSelected(id!); setRequested(0); setReceipt("");
     };
     window.addEventListener("nba-boom-feature", feature);
     return () => window.removeEventListener("nba-boom-feature", feature);
@@ -62,6 +62,7 @@ export function BoomLineups({ board, evidence=null }: { board: BoomBoard | null;
       <div>
         <h2 className="text-xl font-semibold text-white">Boom lineups <span className="text-sm text-amber-300">· experimental</span></h2>
         <p className="mt-1 text-sm">Give a rising-shot-volume player more places in five three-player lineups. Nobody&apos;s projection changes; lineup 1 is the three highest frozen lines among currently eligible players.</p>
+        <p className="mt-1 text-sm">Starts with the market baseline. Boom exposure changes only when you raise inclusion; no automatic boost or demonstrated advantage.</p>
         <p className="mt-1 text-xs text-slate-400">Frozen {stamp(board.frozenAt)} · first tip {stamp(board.lockAt)} · {board.players.length} eligible players from the frozen pool · {candidates.length} rising-volume players · points = market line</p>
         <p className="mt-2 text-sm text-amber-200">Boom rank = shot attempts per game (free throws × 0.44) over the last 3 games minus the last 20, at least 2. It is a sign of more opportunity, not a probability. Latest observed Out players are excluded from these new discretionary lineups; the original research selections remain unchanged. <Link href={`/nba/boom-trios?date=${board.date}`} className="underline">See the tracked boom trios</Link>.</p>
       </div>
@@ -76,7 +77,7 @@ export function BoomLineups({ board, evidence=null }: { board: BoomBoard | null;
         <label className="text-sm">Minimum inclusion
           <select disabled={saving} className="mt-1 block rounded border bg-slate-900 p-2" value={requested} onChange={(e) => { setRequested(Number(e.target.value)); reset(); }}>{[0, 1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n} of {LINEUPS} lineups</option>)}</select>
         </label>
-        <label className="text-sm">Max points below best trio
+        <label className="text-sm">Max frozen-line sum drop
           <select disabled={saving} className="mt-1 block rounded border bg-slate-900 p-2" value={maxDrop} onChange={(e) => { setMaxDrop(Number(e.target.value)); reset(); }}>{[0, 3, 5, 10, 15, 20].map((n) => <option key={n} value={n}>{n} points</option>)}</select>
         </label>
       </div>
@@ -88,16 +89,16 @@ export function BoomLineups({ board, evidence=null }: { board: BoomBoard | null;
       {!result.feasible && <p role="status" className="text-amber-300">{result.reason} Raise the points limit or lower the inclusion. No points are added to make it fit.</p>}
       <ol className="space-y-2">{result.adjusted.map((t, i) => <li key={t.key} className="rounded border border-slate-700 p-3">
         <div className="font-semibold">{i + 1}. {t.ids.map((id) => players.get(id)!.name).join(" · ")}</div>
-        <div className="text-sm text-slate-400">{t.total.toFixed(1)} projected · {(result.baseline[0].total - t.total).toFixed(1)} below the best trio{selected && t.ids.includes(selected) ? " · includes your player" : ""}</div>
+        <div className="text-sm text-slate-400">Frozen line sum {t.total.toFixed(1)} · {(result.baseline[0].total - t.total).toFixed(1)} below the highest line sum{selected && t.ids.includes(selected) ? " · includes your player" : ""}</div>
       </li>)}</ol>
-      <p className="text-sm">Projected across all five lineups: top five {result.baseline.reduce((s, t) => s + t.total, 0).toFixed(1)} → yours {result.adjusted.reduce((s, t) => s + t.total, 0).toFixed(1)}.</p>
+      <p className="text-sm">Combined frozen line sums: baseline five {result.baseline.reduce((s, t) => s + t.total, 0).toFixed(1)} → yours {result.adjusted.reduce((s, t) => s + t.total, 0).toFixed(1)}. These are market benchmarks, not expected-point estimates.</p>
       <div className="flex flex-wrap gap-3">
         <button disabled={locked || saving || !result.feasible} onClick={save} className="rounded bg-sky-600 px-4 py-2 text-white disabled:opacity-40">{saving ? "Saving…" : "Save before the first tip"}</button>
         <button onClick={download} className="rounded border px-4 py-2">Download</button>
       </div>
       {locked && <p className="text-sm text-amber-300">The first tip has passed: preview and download only. A save now would not be a pregame record.</p>}
       <p role="status" className="text-sm">{receipt}</p>
-      <details className="text-xs text-slate-400"><summary>The five highest-projected lineups and tracking details</summary>
+      <details className="text-xs text-slate-400"><summary>The five highest frozen-line sums and tracking details</summary>
         <p>Policy {AVAILABILITY_POLICY}; snapshot {board.snapshot.slice(0, 12)}. A save keeps both sets; it is your choice, separate from the frozen boom-trio rules. A player who doesn&apos;t play leaves that lineup ungraded, never scored as 0.</p>
         {result.baseline.map((t, i) => <p key={t.key}>{i + 1}. {t.ids.map((id) => players.get(id)!.name).join(" / ")} — {t.total.toFixed(1)}</p>)}
       </details>

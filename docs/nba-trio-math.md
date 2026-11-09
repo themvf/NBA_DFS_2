@@ -1,5 +1,11 @@
 # Independent trio mathematics trial
 
+The November 9 operational release in `docs/nba-research-cloud.md` makes the
+existing registered recorder and morning review durable on cloud runners. It
+does not revise this protocol or model. The cumulative player-pool restriction
+audit separates complete and provisional dates; it is descriptive and does not
+enroll an expanded-pool challenger or alter the top-12 trial.
+
 This release adds a separate research trial and `/nba/trio-lab`. It does not promote a model or alter v1/v2/v3 forecasts, the three original experiments, the workload challenger, or the registered boom policy.
 
 Registration revision 2 (`research/artifacts/nba_trio_math_protocol_v2.json`) supersedes the zero-enrollment revision 1 during the pre-release integrity review. Prediction parameters are unchanged; the revised code rejects malformed portfolio cardinality and leaves failed publication attempts unindexed. Revision 1 and its digest remain preserved. No revision has retrospective enrollment.

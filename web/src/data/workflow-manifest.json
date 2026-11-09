@@ -254,6 +254,18 @@
       "pullRequest": false
     },
     {
+      "file": "nba_research.yml",
+      "name": "NBA registered research operations",
+      "crons": [
+        "20 14 * 1-6,10-12 *",
+        "52 16 * 1-6,10-12 *"
+      ],
+      "dispatch": true,
+      "afterWorkflows": [],
+      "push": false,
+      "pullRequest": false
+    },
+    {
       "file": "nfl_dfs_removal_probe.yml",
       "name": "NFL DFS Removal Probe",
       "crons": [],

@@ -27,10 +27,14 @@ concurrency:
   group: nba-ghost-v2
   cancel-in-progress: false
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   record:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       GAME_DATE: ${{ inputs.date }}
@@ -65,6 +69,14 @@ jobs:
         run: >-
           python -m research.nba_points_workload_conflicts
           ${GAME_DATE:+--date "$GAME_DATE"} --apply
+      - name: Record original v3 and registered research attachments
+        if: ${{ !cancelled() && github.event.schedule != '37 13 * 1-6,10-12 *' && inputs.action != 'grade' && inputs.action != 'availability' }}
+        run: python -m research.nba_research_cloud record ${GAME_DATE:+--date "$GAME_DATE"} --root artifacts/nba-research
+      - name: Alert on independent recording failures
+        if: ${{ !cancelled() && github.event.schedule != '37 13 * 1-6,10-12 *' && inputs.action != 'grade' && inputs.action != 'availability' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python -m research.nba_research_alert --root artifacts/nba-research --action record
       - name: Grade frozen research predictions
         if: github.event.schedule == '37 13 * 1-6,10-12 *' || inputs.action == 'grade'
         run: >-
@@ -93,4 +105,11 @@ jobs:
           name: nba-ghost-v2-${{ github.run_id }}
           path: artifacts/nba-ghost/
           if-no-files-found: ignore
+          retention-days: 90
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nba-research-${{ github.run_id }}
+          path: artifacts/nba-research/
+          if-no-files-found: warn
           retention-days: 90
