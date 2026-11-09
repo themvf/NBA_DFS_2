@@ -121,20 +121,31 @@ def name_key(name: str) -> tuple[str, str] | None:
     return t[0][0], t[-1]
 
 
-_NAME = r"([A-Z][A-Za-z.'\-]*(?:\s?[A-Z][A-Za-z.'\-]*)*)"
+# A comma may precede a suffix ('M.Hawkins, Jr.'); name_key drops the suffix either way.
+_NAME = r"([A-Z][A-Za-z.'\-]*(?:,?\s?[A-Z][A-Za-z.'\-]*)*)"
+# Feeds write the same play several ways; 2026-11-09 added the last pattern of each kind
+# after 39 first touchdowns in 2024-26 went unmatched ('X pass to Y for 30 yds', 'Catch made
+# by Y', 'Y rushed for 17 yards', 'to Jaivian Thomas caught' with no jersey number).
 _PATTERNS = {
     "rush": [re.compile(r"#\d+\s+" + _NAME + r"\s+rush\b"),
              re.compile(r"^" + _NAME + r"\s+\d+\s+Yd\s+Run\b"),
-             re.compile(r"^" + _NAME + r"\s+run for\b")],
-    "rec": [re.compile(r"\bto\s+#\d+\s+" + _NAME + r"\s+(?:caught|for)\b"),
+             re.compile(r"^" + _NAME + r"\s+run for\b"),
+             re.compile(r"^" + _NAME + r"\s+rushed for\b")],
+    "rec": [re.compile(r"\bto\s+(?:#\d+\s+)?" + _NAME + r"\s+(?:caught|for)\b"),
             re.compile(r"^" + _NAME + r"\s+\d+\s+Yd\s+pass from\b"),
-            re.compile(r"pass complete to\s+" + _NAME + r"\s+for\b")],
+            re.compile(r"\bCatch made by\s+" + _NAME + r"\s+for\b")],
 }
 
 
+_PARENS = re.compile(r"\([^)]*(?:\)|$)")
+
+
 def parse_scorer(text: str, kind: str) -> str | None:
+    # Parentheses hold the clock, the kick and two-point tries ('(... Pass to Brock Lium for
+    # Two-Point Conversion)'); a 'to NAME for' pattern must not read the conversion's receiver.
+    text = _PARENS.sub(" ", text or "").strip()
     for pattern in _PATTERNS.get(kind, []):
-        m = pattern.search(text or "")
+        m = pattern.search(text)
         if m:
             return m.group(1).strip()
     return None
@@ -726,6 +737,26 @@ def dist_probability(dist: dict[str, float], lab: dict) -> float | None:
     return dist.get(lab["pid"], dist.get(f"other:{lab['side']}"))
 
 
+def grade_decision(game: dict | None, dist: dict[str, float], history: "History",
+                   boxed: set[int]) -> tuple[dict | None, float | None, str | None]:
+    """(label, probability of what happened, None) when a forecast can be graded now, else a reason.
+
+    Every outcome waits for the game's box score, including return and defensive touchdowns,
+    which need no box score to name. Grading those at once while offensive touchdowns waited
+    filled the first slate's record (2026-11-07) with its two kickoff returns and nothing else."""
+    if not game:
+        return None, None, "not final or no play-by-play yet"
+    if game["cfbd_game_id"] not in boxed:
+        return None, None, "box score not stored yet"
+    lab = label(game, history)
+    if lab["outcome"] == "offense" and lab.get("method") == "no_box":
+        return lab, None, "no box-score rows for the scoring team"
+    prob = dist_probability(dist, lab)
+    if prob is None:
+        return lab, None, f"first TD not attributable ({lab.get('method') or lab['outcome']})"
+    return lab, prob, None
+
+
 def grade(db: DatabaseManager) -> int:
     """Grade each version's last pregame forecast for every finished game with play-by-play."""
     with db.connect() as conn:
@@ -742,22 +773,22 @@ def grade(db: DatabaseManager) -> int:
               for r in db.execute("SELECT cfbd_game_id, version FROM cfb_first_td_grades")}
     pending = [r for r in pending if (r["cfbd_game_id"], r["version"]) not in graded]
     if not pending:
+        print("no ungraded forecasts")
         return 0
     ids = {r["cfbd_game_id"] for r in pending}
     games = {g["cfbd_game_id"]: g for g in load_games(db) if g["cfbd_game_id"] in ids}
     history = History(load_box(db))
+    boxed = {gid for gid, _team in history.rows_by_game_team}
     written = 0
+    waiting: dict[str, list[str]] = defaultdict(list)
     with db.connect() as conn:
         cur = conn.cursor()
         for r in pending:
-            g = games.get(r["cfbd_game_id"])
-            if not g:
-                continue  # not final, or play-by-play not stored yet
-            lab = label(g, history)
-            if lab["outcome"] == "offense" and lab.get("method") == "no_box":
-                continue  # box score not stored yet; try again tomorrow
-            prob = dist_probability(r["dist"], lab)
-            if prob is None:
+            lab, prob, reason = grade_decision(games.get(r["cfbd_game_id"]), r["dist"], history, boxed)
+            if reason:
+                g = games.get(r["cfbd_game_id"]) or {}
+                text = (g.get("play_text") or "")[:80]
+                waiting[reason].append(f"{r['cfbd_game_id']} ({r['version']})" + (f": {text}" if text else ""))
                 continue
             players = {k: v for k, v in r["dist"].items() if not k.startswith("other") and k != "non_offense"}
             best = max(players, key=players.get) if players else None
@@ -768,6 +799,13 @@ def grade(db: DatabaseManager) -> int:
                 (r["run_id"], r["cfbd_game_id"], r["version"], r["season"], r["week"], r["kickoff"],
                  lab["outcome"], lab.get("pid"), prob, best is not None and best == lab.get("pid")))
             written += 1
+    for reason, items in sorted(waiting.items()):
+        # A game still waiting on CFBD is normal for a day or two; one whose first touchdown
+        # cannot be attributed will not fix itself, so it is raised as a workflow warning.
+        prefix = "::warning::" if reason.startswith("first TD not attributable") else ""
+        print(f"{prefix}{len(items)} forecasts not graded: {reason}")
+        for item in items[:20]:
+            print(f"  {item}")
     return written
 
 

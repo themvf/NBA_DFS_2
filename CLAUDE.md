@@ -9406,6 +9406,21 @@ the page shows the filtered version plus the paired grade. Seen on the first
 slate: DraftKings leaves some starting QBs off (Julian Sayin), so a QB who
 rarely runs loses his small share; the grade decides whether the filter stays.
 `python -m model.cfb_first_td backtest --json F` / `slate --date D --params F`.
+**Grading waits for the box score (2026-11-09).** The first slate's grade ran at 16:47 UTC
+on Nov 8, 17 minutes before the box scores landed: offensive first TDs waited, the two kickoff
+returns did not, and the page carried a 2-game record (log loss 3.17, top pick 0 of 2) until the
+next morning's run graded all 37 (2.918 filtered, 3.039 alone; top pick 7 of 37 against 5.6-6.2
+stated). Now `grade_decision` grades no outcome until the game's box score is stored,
+`cfb_first_td.yml` also runs (grade and stats only, no lines bought, nothing published) after
+every CFB Player Game Stats run, and each ungraded forecast is printed with its reason; a first
+TD that cannot be attributed is a workflow warning, since it never fixes itself. The scorer
+parser also reads "X pass to Y for N yds", "Catch made by Y", "Y rushed for N yards", "to Y
+caught" with no jersey number and "M.Hawkins, Jr.", and ignores parentheses (a two-point try's
+receiver was being read): unattributed first TDs in 2024-26 fell 39 -> 12, no earlier label
+changed. On identical games the 2026 held-out log loss moved 2.665 -> 2.662; the larger move
+from the saved artifact's 2.630 is week 10 (575 games vs 514), not the parser. The 13 games
+before 19:21 UTC on Nov 7 have no stored `dist` and are never graded (forecasts saved before
+the column existed).
 **Season stats on both First TD pages (`first-td-stats-v1`, 2026-11-07).** `model/first_td_stats.py`
 builds one JSON per sport (track record of the shown version: top pick hit vs stated, log loss,
 calibration by 5-point chance bin; base rates by season: rushing/receiving/return-or-defense, rushing

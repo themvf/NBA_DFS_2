@@ -12,11 +12,20 @@ name: CFB First Touchdown Forecasts
 # three hours before each kickoff group (job cfb-first-td); this schedule is
 # the fallback. A failed capture still lets publish and grade run, and the
 # job ends red.
+#
+# It also follows every CFB Player Game Stats run, grading only (no lines are
+# bought and nothing is published): a game is graded once its box score is
+# stored, and the box scores land on their own clock. On 2026-11-08 the grade
+# ran 17 minutes before they arrived and the page carried a two-game record,
+# both kickoff returns, until the next morning.
 on:
   schedule:
     - cron: "41 10 * 8-12 *"
     - cron: "41 10 * 1 *"
   workflow_dispatch:
+  workflow_run:
+    workflows: ["CFB Player Game Stats"]
+    types: [completed]
 
 concurrency:
   group: cfb-first-td
@@ -37,9 +46,10 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - name: Capture DraftKings anytime-TD lists
+        if: ${{ github.event_name != 'workflow_run' }}
         run: python -m ingest.cfb_td_props --apply
       - name: Publish first touchdown forecasts
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && github.event_name != 'workflow_run' }}
         run: python -m model.cfb_first_td publish
       - name: Grade finished games
         if: ${{ !cancelled() }}

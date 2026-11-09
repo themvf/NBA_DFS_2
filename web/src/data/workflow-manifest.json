@@ -122,7 +122,9 @@
         "41 10 * 1 *"
       ],
       "dispatch": true,
-      "afterWorkflows": [],
+      "afterWorkflows": [
+        "CFB Player Game Stats"
+      ],
       "push": false,
       "pullRequest": false
     },
