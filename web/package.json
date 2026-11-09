@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "test:nfl-td-comparison": "node --import tsx scripts/test-nfl-td-comparison.ts",
+    "publish:nfl-td-comparison": "node --env-file=.env.local --import tsx scripts/publish-nfl-td-comparison.ts",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
