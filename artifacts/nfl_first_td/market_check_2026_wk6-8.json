@@ -1,0 +1,394 @@
+{
+  "season": 2026,
+  "weeks": [
+    6,
+    8
+  ],
+  "games": 42,
+  "versions": {
+    "model_alone": {
+      "version": "nfl-first-td-market-v1",
+      "games": 42,
+      "priced_games": 42,
+      "bets": [
+        {
+          "edge_over": 0.0,
+          "bets": 117,
+          "wins": 2,
+          "units": -64.5,
+          "roi": -0.5513
+        },
+        {
+          "edge_over": 0.1,
+          "bets": 81,
+          "wins": 0,
+          "units": -81,
+          "roi": -1.0
+        },
+        {
+          "edge_over": 0.2,
+          "bets": 59,
+          "wins": 0,
+          "units": -59,
+          "roi": -1.0
+        }
+      ],
+      "scorer_rank": {
+        "games": 41,
+        "top1": 6,
+        "top3": 14,
+        "top10": 29,
+        "outside": 12
+      },
+      "scorer_groups": {
+        "RB": 17,
+        "WR": 12,
+        "TE": 10,
+        "QB": 2,
+        "return_or_defense": 1
+      },
+      "opening": {
+        "games": 42,
+        "receiving_scored_first": 20,
+        "opening_drive_td": 9,
+        "receiving_first_without_opening_td": 11,
+        "games_without_opening_td": 33
+      },
+      "by_week": {
+        "6": [
+          {
+            "edge_over": 0.0,
+            "bets": 40,
+            "wins": 1,
+            "units": 6.0,
+            "roi": 0.15
+          },
+          {
+            "edge_over": 0.1,
+            "bets": 29,
+            "wins": 0,
+            "units": -29,
+            "roi": -1.0
+          },
+          {
+            "edge_over": 0.2,
+            "bets": 23,
+            "wins": 0,
+            "units": -23,
+            "roi": -1.0
+          }
+        ],
+        "7": [
+          {
+            "edge_over": 0.0,
+            "bets": 39,
+            "wins": 0,
+            "units": -39,
+            "roi": -1.0
+          },
+          {
+            "edge_over": 0.1,
+            "bets": 27,
+            "wins": 0,
+            "units": -27,
+            "roi": -1.0
+          },
+          {
+            "edge_over": 0.2,
+            "bets": 16,
+            "wins": 0,
+            "units": -16,
+            "roi": -1.0
+          }
+        ],
+        "8": [
+          {
+            "edge_over": 0.0,
+            "bets": 38,
+            "wins": 1,
+            "units": -31.5,
+            "roi": -0.8289
+          },
+          {
+            "edge_over": 0.1,
+            "bets": 25,
+            "wins": 0,
+            "units": -25,
+            "roi": -1.0
+          },
+          {
+            "edge_over": 0.2,
+            "bets": 20,
+            "wins": 0,
+            "units": -20,
+            "roi": -1.0
+          }
+        ]
+      },
+      "biggest_disagreements": [
+        {
+          "game": "GB @ DET",
+          "name": "MarShawn Lloyd",
+          "prob": 0.081,
+          "american": 3000.0,
+          "won": false
+        },
+        {
+          "game": "NYJ @ NE",
+          "name": "Corey Kiner",
+          "prob": 0.035,
+          "american": 7000.0,
+          "won": false
+        },
+        {
+          "game": "CAR @ GB",
+          "name": "MarShawn Lloyd",
+          "prob": 0.091,
+          "american": 2500.0,
+          "won": false
+        },
+        {
+          "game": "LV @ NYJ",
+          "name": "Cody White",
+          "prob": 0.032,
+          "american": 7000.0,
+          "won": false
+        },
+        {
+          "game": "CHI @ ATL",
+          "name": "Bijan Robinson",
+          "prob": 0.174,
+          "american": 1200.0,
+          "won": false
+        },
+        {
+          "game": "CLE @ PIT",
+          "name": "Jaleel McLaughlin",
+          "prob": 0.022,
+          "american": 10000.0,
+          "won": false
+        },
+        {
+          "game": "CAR @ PHI",
+          "name": "Darius Cooper",
+          "prob": 0.048,
+          "american": 4500.0,
+          "won": false
+        },
+        {
+          "game": "ARI @ DAL",
+          "name": "Tyler Allgeier",
+          "prob": 0.075,
+          "american": 2800.0,
+          "won": false
+        },
+        {
+          "game": "CHI @ SEA",
+          "name": "Emanuel Wilson",
+          "prob": 0.134,
+          "american": 1500.0,
+          "won": false
+        },
+        {
+          "game": "CAR @ GB",
+          "name": "Pierre Strong",
+          "prob": 0.03,
+          "american": 7000.0,
+          "won": false
+        }
+      ]
+    },
+    "dk_list_only": {
+      "version": "nfl-first-td-market-v1",
+      "games": 42,
+      "priced_games": 42,
+      "bets": [
+        {
+          "edge_over": 0.0,
+          "bets": 180,
+          "wins": 7,
+          "units": -79.7,
+          "roi": -0.4428
+        },
+        {
+          "edge_over": 0.1,
+          "bets": 136,
+          "wins": 6,
+          "units": -49.7,
+          "roi": -0.3654
+        },
+        {
+          "edge_over": 0.2,
+          "bets": 99,
+          "wins": 3,
+          "units": -37.0,
+          "roi": -0.3737
+        }
+      ],
+      "scorer_rank": {
+        "games": 41,
+        "top1": 6,
+        "top3": 15,
+        "top10": 31,
+        "outside": 10
+      },
+      "scorer_groups": {
+        "RB": 17,
+        "WR": 12,
+        "TE": 10,
+        "QB": 2,
+        "return_or_defense": 1
+      },
+      "opening": {
+        "games": 42,
+        "receiving_scored_first": 20,
+        "opening_drive_td": 9,
+        "receiving_first_without_opening_td": 11,
+        "games_without_opening_td": 33
+      },
+      "by_week": {
+        "6": [
+          {
+            "edge_over": 0.0,
+            "bets": 71,
+            "wins": 4,
+            "units": 6.3,
+            "roi": 0.0887
+          },
+          {
+            "edge_over": 0.1,
+            "bets": 54,
+            "wins": 3,
+            "units": 9.3,
+            "roi": 0.1722
+          },
+          {
+            "edge_over": 0.2,
+            "bets": 41,
+            "wins": 1,
+            "units": 5.0,
+            "roi": 0.122
+          }
+        ],
+        "7": [
+          {
+            "edge_over": 0.0,
+            "bets": 54,
+            "wins": 1,
+            "units": -47.0,
+            "roi": -0.8704
+          },
+          {
+            "edge_over": 0.1,
+            "bets": 42,
+            "wins": 1,
+            "units": -35.0,
+            "roi": -0.8333
+          },
+          {
+            "edge_over": 0.2,
+            "bets": 30,
+            "wins": 0,
+            "units": -30,
+            "roi": -1.0
+          }
+        ],
+        "8": [
+          {
+            "edge_over": 0.0,
+            "bets": 55,
+            "wins": 2,
+            "units": -39.0,
+            "roi": -0.7091
+          },
+          {
+            "edge_over": 0.1,
+            "bets": 40,
+            "wins": 2,
+            "units": -24.0,
+            "roi": -0.6
+          },
+          {
+            "edge_over": 0.2,
+            "bets": 28,
+            "wins": 2,
+            "units": -12.0,
+            "roi": -0.4286
+          }
+        ]
+      },
+      "biggest_disagreements": [
+        {
+          "game": "CAR @ PHI",
+          "name": "Darius Cooper",
+          "prob": 0.099,
+          "american": 4500.0,
+          "won": false
+        },
+        {
+          "game": "GB @ DET",
+          "name": "MarShawn Lloyd",
+          "prob": 0.093,
+          "american": 3000.0,
+          "won": false
+        },
+        {
+          "game": "NYJ @ NE",
+          "name": "Corey Kiner",
+          "prob": 0.037,
+          "american": 7000.0,
+          "won": false
+        },
+        {
+          "game": "CAR @ GB",
+          "name": "MarShawn Lloyd",
+          "prob": 0.1,
+          "american": 2500.0,
+          "won": false
+        },
+        {
+          "game": "CHI @ SEA",
+          "name": "Emanuel Wilson",
+          "prob": 0.151,
+          "american": 1500.0,
+          "won": false
+        },
+        {
+          "game": "CAR @ GB",
+          "name": "Pierre Strong",
+          "prob": 0.033,
+          "american": 7000.0,
+          "won": false
+        },
+        {
+          "game": "LV @ NYJ",
+          "name": "Cody White",
+          "prob": 0.033,
+          "american": 7000.0,
+          "won": false
+        },
+        {
+          "game": "CLE @ PIT",
+          "name": "Jaleel McLaughlin",
+          "prob": 0.023,
+          "american": 10000.0,
+          "won": false
+        },
+        {
+          "game": "CHI @ SEA",
+          "name": "George Holani",
+          "prob": 0.064,
+          "american": 3500.0,
+          "won": false
+        },
+        {
+          "game": "CHI @ ATL",
+          "name": "Bijan Robinson",
+          "prob": 0.175,
+          "american": 1200.0,
+          "won": false
+        }
+      ]
+    }
+  }
+}
