@@ -16,14 +16,15 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ d
   const date = pickDate(dates, today, params.date);
   const [games, grades, stats] = await Promise.all([date ? getNflFirstTdGames(date) : Promise.resolve([]), getNflFirstTdGrades(), getFirstTdStats("nfl")]);
   return <FirstTdView
-    subtitle="NFL · our own model, no sportsbook player prices used."
+    subtitle="NFL · our own model; DraftKings' first-TD prices are shown beside it, never used in it."
     banner={<>Not validated against sportsbook prices. Tested on 372 games from 2025 and 2026 weeks 1-8 that the fitting never saw:
       it is about as good as splitting each team&apos;s chance by carries and targets alone, and its top pick scored first 13% of the
       time against 15-16% stated, so the biggest chances run a little high. Players are removed when our injury reports rule
       them out (an official inactive list, a Sleeper reserve designation, or a Sleeper OUT that FantasyPros confirms) or when DraftKings
-      leaves them off its anytime-touchdown list (captured the day before and about an hour before kickoff; prices are not used). A
+      leaves them off its anytime-touchdown list (captured the day before and about an hour before kickoff). A
       removed starter who played last week hands half his carries and targets to his position group; Doubtful and Questionable players
-      stay in with a tag. Fair price is the chance as American odds with no bookmaker margin.</>}
+      stay in with a tag. Fair price is the chance as American odds with no bookmaker margin. In weeks 6-9 a flat bet on every player
+      we priced above DraftKings lost heavily: when we rate a player far above the book, the book usually knows his role is gone.</>}
     dates={dates} date={date} today={today} nowMs={nowMs} games={games} grades={grades} stats={stats}
     emptyNote="They are saved each morning before a game day and about an hour before each kickoff group."
     volumeLabel="Carries + targets"
@@ -36,6 +37,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ d
       <li>Which player: this season&apos;s touchdowns plus what his carries and targets would normally produce, which dominates; shares are flattened slightly because the raw ones ran overconfident. Candidates had a carry or target in the team&apos;s last two games; 5% of the team&apos;s share is left to everyone else.</li>
       <li>Who plays: only DraftKings lists captured within 30 hours of kickoff count. If a list has at least four of a team&apos;s players from ours, our players missing from it are removed. A surname alone matches when it is unique (Marquise and Hollywood Brown). Both versions are saved and graded.</li>
       <li>Chips are context, not part of the chance: goal-line role (40%+ of the team&apos;s rushing touchdowns), 35%+ of the team&apos;s carries and targets inside the 10, a touchdown in each of the last two games, a new role (10+ carries and targets a game in the last two, 1.5x his earlier average), a running quarterback (2+ rushing touchdowns), not on DraftKings&apos; list, a big favourite (7+ implied points), and how often the team has scored the first touchdown this season. None has been tested as a predictor.</li>
+      <li>DraftKings column: its latest first-TD price when the forecast was saved. A red tag marks a player we give more than three
+        times DraftKings&apos; implied chance; treat it as a warning, not value. Graded games are scored against DraftKings&apos; last
+        price before kickoff (nfl-first-td-market-v1).</li>
       <li>Model version nfl-first-td-v1. Each game shows the last forecast saved before kickoff.</li>
     </>}
   />;

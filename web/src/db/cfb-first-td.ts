@@ -11,6 +11,8 @@ export type FirstTdPlayer = {
   chips?: FirstTdChip[];
   /** On DraftKings' anytime-TD list for this game; null when no list was captured. */
   listed?: boolean | null;
+  /** NFL: DraftKings' first-TD price (American) when the publish found one; display only. */
+  dk?: number | null;
 };
 
 export type FirstTdGame = {

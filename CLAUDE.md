@@ -9448,3 +9448,17 @@ the T-75 prop capture and the quarter-hour Sleeper/ESPN-inactives captures); no 
 `nfl-first-td-lines-%` version ahead of the model alone. Chips (both sports, context only, untested as
 predictors): goal-line role, inside-the-10 share (NFL), TD in each of last 2, new role, running QB, not
 on DK list, Questionable/Doubtful (NFL), big favourite, scored first X of Y.
+**Against DraftKings' first-TD prices (`nfl-first-td-market-v1`, 2026-11-09).** `model/nfl_first_td_market.py`.
+`player_1st_td` has been captured since 2026-10-12 (capture_nfl_props.yml, `books->'draftkings'->>'yes'`), so no new
+spend. `grade` also writes `nfl_first_td_market_grades` (append-only, one row per graded forecast): every player we
+priced that DraftKings priced (our chance, its last price before kickoff), the scorer's rank and chance in our full
+distribution and position group, the opening-kickoff receiver, whether that drive scored a TD and whether the receiver
+scored first. The page shows a DraftKings column and a red "book rates him far lower" chip when our chance is over 3x
+DraftKings' implied (display only, never in the chance), and the season stats gain a market record. DraftKings' board
+carries ~30% overround. Discovery (`research/nfl_first_td_market_check.py`, weeks 6-8 re-created without injury
+reports, `artifacts/nfl_first_td/market_check_2026_wk6-8.json`; week 9 read by eye): a flat unit on every player we
+price above DraftKings lost heavily (model alone 117 bets, 2 wins, -64.5u; DK-list version 180 bets, 7 wins, -79.7u;
+week 9 43 bets, 2 wins, -17.7u). The biggest gaps are backups whose role the book knew was gone (Emanuel Wilson 14.9%
+vs +5000), so a large gap is a warning, not value. Our chances on priced players summed 33.8 vs 38 scorers among them.
+Opening kickoff, weeks 6-8: receiver scored first 20 of 42, opening-drive TD 9 of 42 (2016-25 pooled: receiver first
+55.5% vs the model's 49.7%, almost all from opening-drive TDs; 2026 runs the other way; not in the model). No betting claim; the stored grade is the forward record.

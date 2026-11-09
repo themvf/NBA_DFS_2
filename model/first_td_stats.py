@@ -122,9 +122,14 @@ def track_record(rows: list[dict]) -> dict | None:
     }
 
 
-def build(games: list[dict], seasons: list[int], current: int, graded: list[dict], version: str) -> dict:
-    return {"version": STATS_VERSION, "graded_version": version, "record": track_record(graded),
-            "base_rates": base_rates(games, seasons), "leaders": leaders(games, current)}
+def build(games: list[dict], seasons: list[int], current: int, graded: list[dict], version: str,
+          market: dict | None = None) -> dict:
+    """``market`` (NFL only): the summary against DraftKings' first-TD prices, model/nfl_first_td_market."""
+    out = {"version": STATS_VERSION, "graded_version": version, "record": track_record(graded),
+           "base_rates": base_rates(games, seasons), "leaders": leaders(games, current)}
+    if market is not None:
+        out["market"] = market
+    return out
 
 
 def save(db, sport: str, stats: dict) -> bool:

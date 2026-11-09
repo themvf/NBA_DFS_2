@@ -1,8 +1,9 @@
 """NFL first touchdown scorer: the college model (model/cfb_first_td.py) on NFL play-by-play.
 
 UNVALIDATED. Version ``nfl-first-td-v1`` is the model alone. ``nfl-first-td-lines-v2`` is the
-availability version: it drops players DraftKings leaves off its anytime-TD list (prices are never
-read) and players our injury reports rule out (an official inactive list; a Sleeper reserve
+availability version: it drops players DraftKings leaves off its anytime-TD list (no price enters a
+chance; DraftKings' first-TD prices are shown beside each player and graded against in
+model/nfl_first_td_market.py) and players our injury reports rule out (an official inactive list; a Sleeper reserve
 designation; a Sleeper OUT that FantasyPros confirms: the Game Leaders rule), and hands
 REDIRECT_SHARE of a dropped starter's volume to his position group when he played the team's last
 game (his first game out; afterwards the group's own volume already reflects the role). The
@@ -41,6 +42,7 @@ from pathlib import Path
 from config import load_config
 from db.database import DatabaseManager
 from model import cfb_first_td as cf
+from model import nfl_first_td_market as mk
 from model.cfb_first_td import Params
 
 VERSION = "nfl-first-td-v1"
@@ -471,6 +473,18 @@ def display_names(db: DatabaseManager) -> dict[str, str]:
     return {r["gsis_id"]: r["canonical_name"] for r in rows}
 
 
+def load_prices(db: DatabaseManager, games: list[dict], before=None) -> dict[str, dict]:
+    """DraftKings' latest first-TD prices per game captured before ``before`` (default now), for display."""
+    from datetime import datetime, timezone
+    before = before or datetime.now(timezone.utc)
+    out = {}
+    for g in games:
+        px = mk.load_prices(db, g["home_odds_name"], g["away_odds_name"], g["commence_time"], before)
+        if px:
+            out[g["game_id"]] = px
+    return out
+
+
 def _played_last(history: cf.History, team: str, before: tuple[int, int]) -> set[str]:
     games = [gid for order, gid in history.games_by_team.get(team, []) if order < before]
     return {r["pid"] for r in history.rows_by_game_team[(games[-1], team)]} if games else set()
@@ -478,9 +492,12 @@ def _played_last(history: cf.History, team: str, before: tuple[int, int]) -> set
 
 def predict(games: list[dict], params: Params, history: cf.History, firsts: dict, names: dict[str, str],
             lines: dict[str, dict] | None = None, filter_lines: bool = True, top: int = PUBLISH_TOP,
-            statuses: dict[str, dict] | None = None) -> list[dict]:
+            statuses: dict[str, dict] | None = None, prices: dict[str, dict] | None = None) -> list[dict]:
     """``filter_lines`` selects the availability version: DraftKings' list (when ``lines`` has one for the
-    game) plus our injury reports (``statuses``), with a dropped starter's volume redirected."""
+    game) plus our injury reports (``statuses``), with a dropped starter's volume redirected.
+
+    ``prices`` (DraftKings first-TD prices per game, model/nfl_first_td_market) are shown beside each
+    player and flag a player we rate far above the book; they never enter the chance."""
     out = []
     for g in games:
         before = (g["season"], g["week"])
@@ -529,18 +546,23 @@ def predict(games: list[dict], params: Params, history: cf.History, firsts: dict
         dist = cf.game_distribution(p_home, home, away, p)
         cands = {**home, **away}
         players = sorted(((pid, pr) for pid, pr in dist.items() if pid in cands), key=lambda t: -t[1])
+        game_prices = (prices or {}).get(g["game_id"])
+        dk = mk.match_prices({pid: c["name"] for pid, c in cands.items()}, game_prices["prices"]) if game_prices else {}
         out.append({
             "game_id": g["game_id"], "season": g["season"], "week": g["week"], "away": g["away"],
             "home": g["home"], "commence_time": g["commence_time"], "game": f"{g['away']} @ {g['home']}",
             "implied": [g["away_implied"], g["home_implied"]], "p_home_first": p_home,
             "players": [{"name": cands[pid]["name"], "team": cands[pid]["team"], "prob": pr,
                          "fair": cf.fair_american(pr), "td": cands[pid]["td"], "touches": round(cands[pid]["vol"], 1),
-                         "chips": player_chips(history, pid, cands[pid]["team"], before) + status_chips(pid, statuses),
+                         "chips": player_chips(history, pid, cands[pid]["team"], before) + status_chips(pid, statuses)
+                         + [c for c in (mk.market_chip(pr, dk.get(pid)),) if c],
+                         "dk": dk.get(pid),
                          "listed": None if not listed else cf.name_key(cands[pid]["name"]) in listed["names"]}
                         for pid, pr in players[:top]],
             "other_offense": dist["other:home"] + dist["other:away"], "non_offense": dist["non_offense"],
             "dist": dist, "availability": availability,
-            "context": {"team_chips": team_chips(g, firsts, before)},
+            "context": {"team_chips": team_chips(g, firsts, before),
+                        "dk_captured_at": game_prices["captured_at"].isoformat() if game_prices else None},
         })
     return out
 
@@ -576,8 +598,10 @@ def publish(db: DatabaseManager, params: Params = FITTED, hours: int = PUBLISH_H
         history, firsts, names = _inputs(db)
         lines = load_lines(db, games)
         statuses = load_statuses(db, games)
-        rows_base = predict(games, params, history, firsts, names, lines, filter_lines=False, statuses=statuses)
-        rows_lines = predict(games, params, history, firsts, names, lines, statuses=statuses)
+        prices = load_prices(db, games)
+        rows_base = predict(games, params, history, firsts, names, lines, filter_lines=False, statuses=statuses,
+                            prices=prices)
+        rows_lines = predict(games, params, history, firsts, names, lines, statuses=statuses, prices=prices)
     with db.connect() as conn:
         cur = conn.cursor()
         for statement in DDL:
@@ -650,7 +674,9 @@ def stats(db: DatabaseManager) -> dict:
         version = v
         if graded:
             break
-    return fs.build(games, seasons, max(seasons), [dict(r) for r in graded], version)
+    from model import nfl_first_td_market as mk
+    market = mk.summarize(mk.stored_rows(db, version)) if graded else None
+    return fs.build(games, seasons, max(seasons), [dict(r) for r in graded], version, market=market)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -690,6 +716,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.cmd == "grade":
         print(f"{grade(db)} forecasts graded")
+        print(f"{mk.grade(db)} forecasts market-graded")
         return 0
     games = upcoming(db, "(g.kickoff AT TIME ZONE 'America/New_York')::date = %s", (args.date,))
     history, firsts, names = _inputs(db)

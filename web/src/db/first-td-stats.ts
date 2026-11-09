@@ -14,11 +14,21 @@ export type FirstTdBaseRate = {
   season: string; games: number; rush: number | null; rec: number | null; non_offense: number | null;
   qb_rush: number | null; qb_known: number; favourite_first: number | null; favourite_games: number; home_first: number | null;
 };
+/** NFL only: model/nfl_first_td_market.summarize, the record against DraftKings' first-TD prices. */
+export type FirstTdMarket = {
+  games: number; priced_games: number;
+  bets: { edge_over: number; bets: number; wins: number; units: number; roi: number | null }[];
+  scorer_rank: { games: number; top1: number; top3: number; top10: number; outside: number };
+  scorer_groups: Record<string, number>;
+  opening: { games: number; receiving_scored_first: number; opening_drive_td: number;
+    receiving_first_without_opening_td: number; games_without_opening_td: number };
+};
 export type FirstTdStats = {
   computedAt: string;
   gradedVersion: string;
   record: FirstTdRecord | null;
   baseRates: FirstTdBaseRate[];
+  market: FirstTdMarket | null;
   leaders: { season: number; players: { name: string; team: string; firsts: number }[];
     tied?: { firsts: number; players: number } | null; teams: { team: string; firsts: number; games: number }[] };
 };
@@ -35,6 +45,7 @@ export async function getFirstTdStats(sport: "nfl" | "cfb"): Promise<FirstTdStat
       gradedVersion: s.graded_version as string,
       record: (s.record as FirstTdRecord | null) ?? null,
       baseRates: s.base_rates as FirstTdBaseRate[],
+      market: (s.market as FirstTdMarket | undefined) ?? null,
       leaders: s.leaders as FirstTdStats["leaders"],
     };
   } catch {

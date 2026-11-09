@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { FirstTdChip, FirstTdGame, FirstTdGrades } from "@/db/cfb-first-td";
-import type { FirstTdCalibrationBin, FirstTdStats } from "@/db/first-td-stats";
+import type { FirstTdCalibrationBin, FirstTdMarket, FirstTdStats } from "@/db/first-td-stats";
 
 /** The First TD page body, shared by the CFB and NFL tabs; each tab supplies its data and wording. */
 
@@ -28,6 +28,7 @@ const CHIP_STYLE: Record<string, string> = {
   NOT_LISTED: "bg-rose-100 text-rose-900",
   BIG_FAVOURITE: "bg-amber-100 text-amber-900",
   SCORED_FIRST: "bg-slate-100 text-slate-700",
+  MARKET_FAR_LOWER: "bg-red-100 text-red-900",
 };
 
 function Chip({ chip }: { chip: FirstTdChip }) {
@@ -42,6 +43,7 @@ function playerChips(p: FirstTdGame["players"][number]): FirstTdChip[] {
 
 function GameCard({ g, started, volumeLabel, actualWait }: { g: FirstTdGame; started: boolean; volumeLabel: string; actualWait: string }) {
   const pAway = 1 - g.pHomeFirst;
+  const showDk = g.players.some((p) => p.dk != null);
   return <section className="overflow-hidden rounded-xl border bg-white">
     <div className="border-b p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -67,6 +69,7 @@ function GameCard({ g, started, volumeLabel, actualWait }: { g: FirstTdGame; sta
     <div className="overflow-x-auto"><table className="w-full text-left text-sm">
       <thead className="bg-slate-50"><tr>
         <th className="p-3">Player</th><th className="p-3">Chance</th><th className="p-3">Fair price</th>
+        {showDk && <th className="p-3">DraftKings</th>}
         <th className="p-3">TDs this season</th><th className="p-3">{volumeLabel}</th>
       </tr></thead>
       <tbody>{g.players.map((p) => <tr className="border-t" key={`${p.team}-${p.name}`}>
@@ -75,6 +78,7 @@ function GameCard({ g, started, volumeLabel, actualWait }: { g: FirstTdGame; sta
         </td>
         <td className="p-3 font-semibold">{pct(p.prob)}</td>
         <td className="p-3">{american(p.fair)}</td>
+        {showDk && <td className="p-3">{p.dk != null ? american(p.dk) : "–"}</td>}
         <td className="p-3">{p.td}</td>
         <td className="p-3">{Number.isInteger(p.touches) ? p.touches : Number(p.touches).toFixed(1)}</td>
       </tr>)}</tbody>
@@ -149,6 +153,34 @@ function StatsSection({ title, children, open }: { title: string; children: Reac
   </details>;
 }
 
+const GROUP_LABEL: Record<string, string> = { RB: "Running back", WR: "Wide receiver", TE: "Tight end", QB: "Quarterback",
+  return_or_defense: "Return or defense", other: "Other" };
+
+function MarketRecord({ m }: { m: FirstTdMarket }) {
+  const o = m.opening;
+  const r = m.scorer_rank;
+  return <StatsSection title="Against DraftKings' prices">
+    <p>Each graded game, a flat one-unit bet on every player our chance prices above DraftKings&apos; last first-TD price before
+      kickoff. {m.priced_games} of {m.games} games had DraftKings prices.</p>
+    <table className="w-full max-w-xl text-left">
+      <thead><tr className="text-slate-600"><th className="py-1">Our edge over the price</th><th className="py-1">Bets</th><th className="py-1">Won</th><th className="py-1">Units</th><th className="py-1">Return</th></tr></thead>
+      <tbody>{m.bets.map((b) => <tr className="border-t" key={b.edge_over}>
+        <td className="py-1">over {Math.round(b.edge_over * 100)}%</td><td className="py-1">{b.bets}</td><td className="py-1">{b.wins}</td>
+        <td className="py-1">{(b.units >= 0 ? "+" : "") + b.units.toFixed(1)}</td><td className="py-1">{maybePct(b.roi)}</td>
+      </tr>)}</tbody>
+    </table>
+    <p className="text-slate-600">DraftKings&apos; first-TD prices carry about a 30% margin, so a real edge has to clear it. Our biggest
+      disagreements have mostly been players whose role the book knew was gone; those carry a red &quot;book rates him far lower&quot; tag.
+      {m.games < 100 ? " Too few games to read much into yet." : ""}</p>
+    <p><strong>Where the scorer was in our list:</strong> our top pick {r.top1} of {r.games}, top three {r.top3}, top ten {r.top10},
+      outside our top ten {r.outside}.</p>
+    <p><strong>Who scored:</strong> {Object.entries(m.scorer_groups).map(([k, v]) => `${GROUP_LABEL[k] ?? k} ${v}`).join(", ")}.</p>
+    <p><strong>Opening kickoff:</strong> the receiving team scored the first touchdown in {o.receiving_scored_first} of {o.games} games.
+      Its opening drive went for a touchdown in {o.opening_drive_td}; when it did not, the receiving team still scored first
+      in {o.receiving_first_without_opening_td} of {o.games_without_opening_td}. Tracked, not part of the forecast.</p>
+  </StatsSection>;
+}
+
 function SeasonStats({ stats, recordWait }: { stats: FirstTdStats | null; recordWait: string }) {
   if (!stats) return <p className="rounded-xl border bg-white p-4 text-sm text-slate-600">Season stats are not stored yet; they are rebuilt each time forecasts are graded.</p>;
   const r = stats.record;
@@ -175,6 +207,7 @@ function SeasonStats({ stats, recordWait }: { stats: FirstTdStats | null; record
             {r.games < 100 ? " Too few games to read much into yet." : ""}</p>
         </>}
     </StatsSection>
+    {stats.market && <MarketRecord m={stats.market} />}
     <StatsSection title="How first touchdowns happen">
       <div className="overflow-x-auto"><table className="w-full text-left">
         <thead><tr className="text-slate-600">
