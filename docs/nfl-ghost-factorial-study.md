@@ -48,6 +48,23 @@ never reads them, and nothing waits for them.
   outcome, threshold and milestone are unchanged; the flagship Millionaire is
   the same contest stat-api was serving, so graded slates before and after this
   date are the same cohort. A week with no export is "not graded", as before.
+  **Amendment, 2026-11-09 (owner's decision).** Two changes to `contest_for`,
+  outcomes and milestones unchanged. (1) The payout table is optional. The
+  page's results upload stores the score curve but never fetched DraftKings'
+  prize table, so flagship exports uploaded that way could not grade even
+  though the primary outcome (top-1% hits per scored lineup) needs only the
+  curve. A contest with a payout table is still preferred; without one, return
+  per dollar is empty for that slate. This graded the week-7 NE@CHI Showdown
+  (47,562 entries), the second graded Showdown slate. (2) The grading contest
+  must be flagship-sized: at least 40,000 entries for a Showdown and 100,000 for
+  Classic (`MIN_FLAGSHIP_ENTRIES`, set from the smallest flagships seen this
+  season: Showdowns 47,562-126,020, the Millionaire 147,058-198,176). Nothing
+  enforced "flagship" before; an owner's own small contest sharing the slate's
+  players (a 475-entry winner-take-all, whose top 1% is its top 5 entries)
+  would have graded the factorial in the flagship's place. No graded slate
+  changes: both earlier grades used flagships. Five slates whose only imports
+  are small contests are reported as "below the flagship floor" with the
+  contests named.
 - Season 2026 from week 6 Sunday, then every week. A slate without a gradable
   flagship is reported as not graded, never dropped silently.
 

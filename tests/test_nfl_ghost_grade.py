@@ -100,7 +100,7 @@ class _FakeDb:
             return [{"normalized_name": n} for n in self.ownership.get(params[0], [])]
         if "SELECT 1 FROM nfl_dfs_field_contests" in sql:
             return [{"?column?": 1}] if self.contests else []
-        return [c for c in self.contests if c["score_curve"] is not None and c["payout_curve"] is not None]
+        return [c for c in self.contests if c["score_curve"] is not None]
 
 
 def _freeze(names):
@@ -125,5 +125,45 @@ def test_contest_for_still_refuses_a_stat_api_preview_without_curves():
     contests = [{"contest_id": "1", "contest_name": "Millionaire", "entry_count": 147058,
                  "score_curve": None, "payout_curve": None, "entry_fee": 20.0, "file_name": "stat-api:1"}]
     best, reason = r.contest_for(_FakeDb(contests, {"1": names}), _freeze(names))
-    assert best is None and "payout table" in reason
+    assert best is None and "complete standings" in reason
     assert r.contest_source("stat-api:1") == "stat-api"
+
+
+def test_contest_for_grades_a_flagship_export_without_a_payout_table():
+    """Amendment 2026-11-09: the web upload stores the score curve but no prize table; the
+    primary outcome (top-1% hits) needs only the curve, and return per dollar stays empty."""
+    from research import nfl_ghost_grade as r
+    from model import nfl_ghost_grade as g
+    names = [f"player{c}" for c in "abcdefghij"]
+    contests = [{"contest_id": "197220774", "contest_name": "Millionaire", "entry_count": 198176,
+                 "score_curve": [[1, 210.0], [1981, 170.0], [198176, 20.0]], "payout_curve": None,
+                 "entry_fee": None, "file_name": "contest-standings-197220774.csv"}]
+    best, _ = r.contest_for(_FakeDb(contests, {"197220774": names}), _freeze(names))
+    assert best is not None and best["payout_table"] is False
+    m = g.grade_subject([[{"slot": "QB", "name": "a"}]], 1, lambda s: 175.0, {**best})
+    assert m["top1_hits"] == 1 and m["payout"] is None and m["cashes"] is None
+    assert g.outcomes({**m})["top1_rate"] == 1.0 and g.outcomes({**m})["roi"] is None
+
+
+def test_contest_for_refuses_a_contest_below_the_flagship_floor():
+    """An owner's own small contest shares the slate's players but is not the flagship."""
+    from research import nfl_ghost_grade as r
+    names = [f"player{c}" for c in "abcdefghij"]
+    small = {"contest_id": "197536793", "contest_name": "WTA", "entry_count": 475, "score_curve": [[1, 115.8]],
+             "payout_curve": {"breakpoints": [[115.8, 100.0]]}, "entry_fee": 0.25, "file_name": "contest-standings-197536793.csv"}
+    freeze = {**_freeze(names), "format": "showdown"}
+    best, reason = r.contest_for(_FakeDb([small], {"197536793": names}), freeze)
+    assert best is None and "flagship floor" in reason and "197536793 (475 entries)" in reason
+    flagship = {**small, "contest_id": "1", "entry_count": 73529}
+    best, _ = r.contest_for(_FakeDb([small, flagship], {"197536793": names, "1": names}), freeze)
+    assert best["contest_id"] == "1", "the flagship grades the slate, the small contest is skipped"
+
+
+def test_contest_for_prefers_a_contest_with_a_payout_table():
+    from research import nfl_ghost_grade as r
+    names = [f"player{c}" for c in "abcdefghij"]
+    bare = {"contest_id": "big", "contest_name": "M", "entry_count": 200000, "score_curve": [[1, 200.0]],
+            "payout_curve": None, "entry_fee": None, "file_name": "x.csv"}
+    paid = {**bare, "contest_id": "paid", "entry_count": 150000, "payout_curve": {"breakpoints": [[150.0, 20.0]]}, "entry_fee": 20.0}
+    best, _ = r.contest_for(_FakeDb([bare, paid], {"big": names, "paid": names}), _freeze(names))
+    assert best["contest_id"] == "paid" and best["payout_table"] is True
