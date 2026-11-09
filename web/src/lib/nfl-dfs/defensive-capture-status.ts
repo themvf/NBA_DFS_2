@@ -26,6 +26,10 @@ export interface CaptureCoverage {
   applied: number;
   eligible: number;
   captured: number;
+  /** Eligible players on the books' line: never adjusted, because the line already prices the opponent. */
+  anchored?: number;
+  /** Captured players who are not on the books' line (absent: treat every capture as usable). */
+  usableCaptured?: number;
   error?: string | null;
 }
 
@@ -47,8 +51,12 @@ export interface ProfileCaptureStatus {
 export function profileCaptureStatus(label: string, request: CaptureRequestRow | null, coverage: CaptureCoverage | null,
   options: { started: boolean }): ProfileCaptureStatus {
   if (coverage?.error) return { status: "read_error", retryable: false, text: `${label}: couldn't read captures (${coverage.error}).` };
+  const anchoredNote = coverage?.anchored ? `; ${coverage.anchored} are on the books' line, which already prices the opponent, so they are not adjusted` : "";
   if (coverage && coverage.applied > 0) {
-    return { status: "applied", retryable: false, text: `${label}: ${coverage.applied} of ${coverage.eligible} players adjusted (${coverage.captured} captured).` };
+    return { status: "applied", retryable: false, text: `${label}: ${coverage.applied} of ${coverage.eligible} players adjusted (${coverage.captured} captured${anchoredNote}).` };
+  }
+  if (coverage && coverage.captured > 0 && coverage.usableCaptured === 0 && coverage.anchored) {
+    return { status: "captured_zero", retryable: false, text: `${label}: captured ${coverage.captured} players, but every one is on the books' line, which already prices the opponent, so none is adjusted.` };
   }
   if (coverage && coverage.captured > 0) {
     return { status: "captured_zero", retryable: false, text: `${label}: captured ${coverage.captured} players, but none passed the checks, so they keep their baseline.` };

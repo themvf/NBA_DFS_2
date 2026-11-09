@@ -32,4 +32,11 @@ const inel = st(req({ state: "ineligible", lastError: "slate_started_or_unschedu
 assert.deepEqual([inel.status, inel.retryable], ["ineligible", false]);
 // The worker verified rows but the reader sees none usable.
 assert.match(st(req({ state: "captured", capturedPlayers: 40 })).text, /captured 40 players, but none can be used now/);
+// Players on the books' line are never adjusted; a capture covering only them is not "failed checks".
+assert.match(st(null, { applied: 11, eligible: 334, captured: 334, anchored: 251, usableCaptured: 83 }).text,
+  /11 of 334 players adjusted \(334 captured; 251 are on the books' line/);
+const allAnchored = st(req({ state: "captured" }), { applied: 0, eligible: 40, captured: 40, anchored: 40, usableCaptured: 0 });
+assert.equal(allAnchored.status, "captured_zero");
+assert.match(allAnchored.text, /every one is on the books' line/);
+assert.doesNotMatch(allAnchored.text, /passed the checks/);
 console.log("Opponent capture status: applied, captured-but-zero, pending, dispatch-failed, failed, ineligible, not requested and unreadable each read differently; retry only pregame.");
