@@ -35,6 +35,7 @@
  * Unvalidated. With one top scorer per slate, calibration needs many slates;
  * Results history is where the captain choices get graded.
  */
+import { DST_OPPONENT_LOADING, GAME_LOADING, TEAM_LOADING } from "./correlated-normals";
 import { nflRandom } from "./random";
 import type { CaptainTarget } from "./generation-settings";
 import type { CaptainCandidate, CaptainRecommendation } from "./captain-recommendation";
@@ -42,10 +43,8 @@ import type { CaptainCandidate, CaptainRecommendation } from "./captain-recommen
 export const CAPTAIN_SIMULATION_VERSION = "nfl-captain-sim-v1";
 export const DEFAULT_DRAWS = 5000;
 export const DEFAULT_SEED = 20260925;
-/** Stated priors: same-team correlation = GAME^2 + TEAM^2 = 0.40, cross-team = GAME^2 = 0.15. */
-export const GAME_LOADING = Math.sqrt(0.15);
-export const TEAM_LOADING = Math.sqrt(0.25);
-export const DST_OPPONENT_LOADING = -Math.sqrt(0.3);
+/** Stated priors: same-team correlation = GAME^2 + TEAM^2 = 0.40, cross-team = GAME^2 = 0.15 (defined in correlated-normals.ts). */
+export { DST_OPPONENT_LOADING, GAME_LOADING, TEAM_LOADING };
 export const MIN_LISTED_PCT = 2;
 export const SIM_BAND_PCT = 8;
 

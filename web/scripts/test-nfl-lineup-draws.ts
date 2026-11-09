@@ -1,5 +1,6 @@
 /**
- * nfl-lineup-draws-v1: GPP lineups solved on correlated simulated games.
+ * nfl-lineup-draws-v1: GPP lineups solved on correlated simulated games
+ * (v2: the same on a fitted role-pair correlation table, opt-in).
  *
  * Pins (1) the draws themselves: reproducible by seed, mean equal to the
  * projection, teammates positively correlated and a DST negatively correlated
@@ -42,6 +43,48 @@ for (const p of drawPlayers) {
 assert.equal(new Set(series.get(5)).size, 1, "the fixed player never varies");
 assert.ok(corr(series.get(1)!, series.get(2)!) > 0.2, "QB and his receiver move together");
 assert.ok(corr(series.get(3)!, series.get(1)!) < -0.1, "a DST moves against the offense it faces");
+// Fitted role pairs (nfl-player-correlations-v1): a QB rises with his pass
+// catchers, two receivers sharing one team's targets do not rise together,
+// and his RB barely moves with him. v1's stated priors put all three at 0.40.
+const room: DrawPlayer[] = [
+  { id: 11, position: "QB", team: "AAA", opponent: "BBB", gameKey: "AAA@BBB", mean: 20, p10: 10, median: 19, p90: 31 },
+  { id: 12, position: "WR", team: "AAA", opponent: "BBB", gameKey: "AAA@BBB", mean: 16, p10: 5, median: 14, p90: 29 },
+  { id: 13, position: "WR", team: "AAA", opponent: "BBB", gameKey: "AAA@BBB", mean: 12, p10: 3, median: 10, p90: 24 },
+  { id: 14, position: "RB", team: "AAA", opponent: "BBB", gameKey: "AAA@BBB", mean: 15, p10: 5, median: 14, p90: 27 },
+  { id: 15, position: "QB", team: "BBB", opponent: "AAA", gameKey: "AAA@BBB", mean: 17, p10: 8, median: 16, p90: 28 },
+  { id: 16, position: "DST", team: "BBB", opponent: "AAA", gameKey: "AAA@BBB", mean: 7, p10: 1, median: 6, p90: 14 },
+];
+const roomSeries = (m: ReturnType<typeof buildDrawModel>) => {
+  const s = new Map<number, number[]>(room.map((p) => [p.id, []]));
+  for (let i = 1; i <= N; i++) for (const [id, v] of drawOutcome(m, i)) s.get(id)!.push(v);
+  return s;
+};
+const fitted = roomSeries(buildDrawModel(room, 5, "fitted"));
+const stated = roomSeries(buildDrawModel(room, 5));
+assert.ok(corr(fitted.get(11)!, fitted.get(12)!) > 0.2, "QB1 with WR1: fitted 0.31");
+assert.ok(Math.abs(corr(fitted.get(12)!, fitted.get(13)!)) < 0.08, "WR1 with WR2 on one team: fitted about 0");
+assert.ok(corr(fitted.get(11)!, fitted.get(14)!) < 0.17, "QB1 with RB1: fitted 0.09");
+assert.ok(Math.abs(corr(fitted.get(11)!, fitted.get(15)!)) < 0.2, "the two QBs: weak");
+assert.ok(corr(fitted.get(16)!, fitted.get(11)!) < -0.2, "a DST against the QB it faces: fitted -0.32");
+assert.ok(corr(stated.get(12)!, stated.get(13)!) > 0.3, "the default, v1's stated priors: every teammate pair 0.40");
+const roomModel = buildDrawModel(room, 5, "fitted");
+assert.deepEqual(roomModel.entries.map((e) => e.role), ["QB1", "WR1", "WR2", "RB1", "QB1", "DST"], "roles rank each team's players at a position by projection");
+assert.deepEqual(roomModel.repairedGames, [], "the fitted table gives a valid matrix for a normal room");
+// The default reproduces nfl-lineup-draws-v1 exactly: these are the draws the
+// v1 code on main produced for this pool (seed 7) before the fitted tables existed.
+{
+  const v1Pool: DrawPlayer[] = [
+    { id: 1, position: "QB", team: "AAA", opponent: "BBB", gameKey: "AAA@BBB", mean: 18, p10: 9, median: 17, p90: 29 },
+    { id: 2, position: "WR", team: "AAA", opponent: "BBB", gameKey: "AAA@BBB", mean: 14, p10: 4, median: 12, p90: 27, notPlay: 0.1 },
+    { id: 3, position: "DST", team: "BBB", opponent: "AAA", gameKey: "AAA@BBB", mean: 6, p10: 0, median: 5, p90: 13 },
+    { id: 4, position: "RB", team: "CCC", opponent: "DDD", gameKey: "CCC@DDD", mean: 7.4, p10: 0, median: 1.9, p90: 21.5 },
+    { id: 5, position: "K", team: "DDD", opponent: "CCC", gameKey: "CCC@DDD", mean: 8, p10: null, median: null, p90: null },
+  ];
+  const v1 = buildDrawModel(v1Pool, 7);
+  assert.equal(v1.version, "nfl-lineup-draws-v1");
+  const got = [1, 2, 3, 50].map((i) => [...drawOutcome(v1, i)].map(([id, v]) => [id, Math.round(v * 1e6) / 1e6]));
+  assert.deepEqual(got, [[[1,20.091742],[2,11.309452],[3,12.392366],[4,0.710605],[5,8]],[[1,15.07981],[2,5.481524],[3,3.021173],[4,0.91422],[5,8]],[[1,13.425831],[2,23.196823],[3,-0.195383],[4,12.294176],[5,8]],[[1,8.996089],[2,8.884738],[3,3.37774],[4,-0.44843],[5,8]]], "default draws are v1, bit for bit");
+}
 const lotto = series.get(4)!.slice().sort((a, b) => a - b);
 assert.ok(Math.abs(lotto[Math.floor(N / 2)] - 1.9) < 0.6, "the boom-or-bust back's draws keep his median");
 

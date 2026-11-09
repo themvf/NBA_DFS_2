@@ -162,17 +162,26 @@ export type BuildShape = "standard" | "winners" | "diversified";
 export const BUILD_SHAPES: readonly BuildShape[] = ["standard", "winners", "diversified"];
 
 /**
- * The shape a build starts from before the user picks one (owner's decision
- * 2026-11-03): Classic GPP builds default to the winners shape, because the
- * Standard builds that actually ran in weeks 1-5 were more contrarian than the
- * flagship winners (ownership sum 93 vs 121), used fewer quarterbacks (2.9 vs
- * 4.4 per 10 lineups), stacked thinner (QB+2 in 20% vs 49%) and duplicated
- * themselves more (closest twin 3.0 vs 4.5 players apart). Showdown and cash
- * builds keep the standard shape: the Showdown preset was not asked for and
- * the preset does nothing to a cash build.
+ * The shape a build starts from before the user picks one. Classic GPP builds
+ * default to the winners shape (owner's decision 2026-11-03): the Standard
+ * builds that actually ran in weeks 1-5 were more contrarian than the flagship
+ * winners (ownership sum 93 vs 121), used fewer quarterbacks (2.9 vs 4.4 per 10
+ * lineups), stacked thinner (QB+2 in 20% vs 49%) and duplicated themselves
+ * more (closest twin 3.0 vs 4.5 players apart).
+ *
+ * Showdown GPP builds default to it too since 2026-11-08 (owner's decision:
+ * "winners' shape as the GPP default"). Replayed on the 13 2026 Showdowns
+ * with an imported score curve (web/scripts/replay-nfl-draw-portfolio.ts,
+ * REPLAY_SET=corr, 5 seeds, every lineup placed in the real field), the
+ * winners preset against today's Standard build: average lineup score +1.94
+ * (bootstrap 1.06 to 2.90, higher on all 13 slates), lineups above the field
+ * median +1.51 per build (0.66 to 2.45), best lineup's percentile -0.04 (-2.64
+ * to 1.96). In-sample: the preset's rules were read off these contests'
+ * winners. Cash builds keep the standard shape; the preset does nothing there.
  */
 export function defaultBuildShape(format: "classic" | "showdown", mode: "cash" | "gpp"): BuildShape {
-  return format === "classic" && mode === "gpp" ? "winners" : "standard";
+  void format;
+  return mode === "gpp" ? "winners" : "standard";
 }
 
 /** Prior-week opportunity (play-by-play, the three weeks before the slate), per player. */

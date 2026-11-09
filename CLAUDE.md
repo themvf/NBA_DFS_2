@@ -7907,6 +7907,45 @@ before changing GPP scoring, exposure or absence ranges.
     (2.5%).
   - Acted on the same day; see the next section.
 
+## NFL DFS — Fitted player correlations (opt-in) and the Showdown winners-shape default (2026-11-08)
+
+Owner's request: fit the player correlations and make the winners shape the
+GPP default. **Shipped: Showdown GPP builds default to the winners shape**
+(Classic since 2026-11-03), `defaultBuildShape` in
+`web/src/lib/nfl-dfs/winners-shape.ts`. **Fitted, not the default:**
+`nfl-player-correlations-v1`.
+
+- **The fit.** `research/nfl_dfs_player_correlations.py` writes
+  `web/src/lib/nfl-dfs/player-correlations.ts` (generated; do not edit). It
+  gives a correlation for each role pair (QB1/2, RB1-3, WR1-4, TE1/2, DST,
+  K), same team or opponents. It is fitted on 2023-25 DK points, with 2026
+  held out: holdout error 0.010 against 0.079 for the stated priors. The
+  shared engine is `web/src/lib/nfl-dfs/correlated-normals.ts`.
+- **What it found.** Non-QB teammates are about 0 (the prior says 0.40).
+  QB1 runs 0.31 with WR1, 0.25 with TE1 and 0.09 with RB1. Opponents are
+  about 0. A DST runs -0.32 against the QB it faces. Joint booms make the QB
+  pairs stronger (QB1-WR1 0.40) and leave skill teammates at about 0.
+- **Why it is not the default.** On the 13-Showdown replay
+  (`replay-nfl-draw-portfolio.ts`, `REPLAY_SET=corr`), both fitted tables
+  built portfolios no better than the stated priors. The best lineup's
+  percentile went -1.10 (overall table) and -0.89 (joint-boom table), and
+  top-10% lineups went -0.28 [-0.49, -0.06] with the overall table. The 0.40
+  prior concentrates lineups; truer correlations did not help them win.
+  Default draws stay nfl-lineup-draws-v1 bit for bit, pinned by
+  `test:nfl-lineup-draws`. `drawCorrelations: "fitted" | "fitted-tail"` is
+  the hidden optimizer setting for replays. The captain simulation is
+  unchanged (stated priors).
+- **The shape evidence.** On the same replay, winners shape against Standard
+  raised the average lineup by +1.94 [1.06, 2.90], higher on all 13 slates,
+  and lineups above the field median by +1.51 [0.66, 2.45]. The best lineup
+  was unchanged (-0.04). This is in-sample, because the preset was read off
+  these contests.
+- **Draft upgrade.** Build drafts are now schemaVersion 5. A v4 draft's
+  "standard" counts as a choice only on Classic; on Showdown it takes the
+  new default.
+- **Next:** retest the fitted tables on Classic once Classic contests can be
+  graded (the owner's weekly contest export).
+
 ## NFL DFS — Projection calibration: chance of no stat line, means toward the middle (`nfl-range-calibration-v1`, 2026-11-03)
 
 Owner's decision: apply immediately, no pre-registered study. Fitted on the

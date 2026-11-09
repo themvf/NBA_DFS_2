@@ -59,7 +59,7 @@ import { isNflGppSignalPlayer, type NflPlayerSignal, type NflPlayerSignalCode } 
 import type { NflAirMatchupEvidence } from '@/lib/nfl-dfs/air-matchup-evidence';
 import { applyWinnersShape, autoCaptainRanges, BUILD_SHAPES, type BuildShape, type PriorOpportunity } from '@/lib/nfl-dfs/winners-shape';
 import type { SpecialTeamsProjection } from '@/lib/nfl-dfs/special-teams-projection';
-import { buildDrawModel, DEFAULT_DRAW_SEED, DEFAULT_LEVERAGE_POINTS_PER_HALVING, drawOutcome, LINEUP_DRAWS_VERSION, slotLeverageBonus, type DrawModel } from '@/lib/nfl-dfs/lineup-draws';
+import { buildDrawModel, DEFAULT_DRAW_CORRELATIONS, DEFAULT_DRAW_SEED, DEFAULT_LEVERAGE_POINTS_PER_HALVING, drawOutcome, PLAYER_CORRELATIONS_VERSION, slotLeverageBonus, type DrawCorrelations, type DrawModel } from '@/lib/nfl-dfs/lineup-draws';
 import { featureTotals, JOINT_TARGET_PENALTY, NFL_JOINT_SELECTION_VERSION, selectJointPortfolio, type JointCandidate, type JointTarget } from '@/lib/nfl-dfs/joint-selection';
 
 // Record the strict Showdown purchase and completed-roster validation.
@@ -240,6 +240,8 @@ export type NflOptimizerSettings = {
   gppScoring?: "ceiling" | "draws";
   /** Seed of the simulated games in `draws` mode; the same seed rebuilds the same run. */
   drawSeed?: number;
+  /** Dependence of the simulated games: v1's stated priors (default) or a fitted role-pair table (replays; see lib/nfl-dfs/lineup-draws.ts for why it is not the default). */
+  drawCorrelations?: DrawCorrelations;
   /**
    * `draws` mode leverage, when leverage is enabled: points a lineup gives up
    * to halve the number of rivals holding it (`slotLeverageBonus`). Replaces
@@ -1925,15 +1927,16 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
       return { id: p.dkPlayerId, position: p.position, team: p.team, opponent: p.opponent, gameKey: p.gameKey,
         mean: range?.mean ?? p.projection, p10: range?.p10 ?? null, median: range?.median ?? null, p90: range?.p90 ?? null,
         notPlay: range?.notPlay ?? 0 };
-    }), settings.drawSeed ?? DEFAULT_DRAW_SEED);
+    }), settings.drawSeed ?? DEFAULT_DRAW_SEED, settings.drawCorrelations ?? DEFAULT_DRAW_CORRELATIONS);
     const model = drawModel;
     const cache = new Map<number, Map<number, number>>();
     const at = (index: number) => { let d = cache.get(index); if (!d) { d = drawOutcome(model, index); cache.set(index, d); } return d; };
     for (const p of pool) DRAW_AT.set(p, (index) => at(index).get(p.dkPlayerId) ?? p.projection);
     const named = (ids: number[]) => ids.map((id) => pool.find((p) => p.dkPlayerId === id)?.name ?? `#${id}`).join(", ");
-    warnings.push(`Lineups scored on simulated games (${LINEUP_DRAWS_VERSION}, seed ${model.seed}): each lineup is the best one for one correlated simulated game, so a player's exposure follows how often he belongs in the best lineup; your caps are limits, not targets.`
+    warnings.push(`Lineups scored on simulated games (${model.version}, seed ${model.seed}${model.structure ? `, correlations ${PLAYER_CORRELATIONS_VERSION} ${model.correlations}` : ""}): each lineup is the best one for one correlated simulated game, so a player's exposure follows how often he belongs in the best lineup; your caps are limits, not targets.`
       + (model.fixed.length ? ` No range, drawn at projection: ${named(model.fixed)}.` : "")
-      + (model.meanNotMatched.length ? ` Range and projection disagree: ${named(model.meanNotMatched)}.` : ""));
+      + (model.meanNotMatched.length ? ` Range and projection disagree: ${named(model.meanNotMatched)}.` : "")
+      + (model.repairedGames.length ? ` Correlations repaired to a valid matrix for: ${model.repairedGames.join(", ")}.` : ""));
   }
   const policyById = new Map((settings.exposurePolicies ?? []).map((p) => [p.playerId, p]));
   const effectivePolicy = (player: ResolvedPlayer): PlayerExposurePolicy => {
