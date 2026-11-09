@@ -141,3 +141,53 @@ def test_apply_lines_matches_a_unique_surname_across_first_names():
     home2 = {**home, "H9": {**home["H1"], "name": "Zed Brown"}}
     h2, _, _ = m.apply_lines(home2, away, listed)
     assert "H0" not in h2
+
+
+def test_parse_scorer_reads_the_other_feed_formats():
+    # Each of these went unmatched in 2024-26 until 2026-11-09 (39 first touchdowns, 27 now named).
+    assert m.parse_scorer("T. Castellanos pass to T. Carter Jr. for 30 yds, for a TD (S. Harrington KICK)",
+                          "rec") == "T. Carter Jr."
+    assert m.parse_scorer("W.Howard pass complete. Catch made by E.Egbuka for 14 yards. TOUCHDOWN.",
+                          "rec") == "E.Egbuka"
+    assert m.parse_scorer("C.Skattebo rushed for 1 yards. TOUCHDOWN.", "rush") == "C.Skattebo"
+    assert m.parse_scorer("Fernando Mendoza pass complete short right to Jaivian Thomas caught at ORS12, for 9",
+                          "rec") == "Jaivian Thomas"
+    assert m.name_key(m.parse_scorer("(03:02) Shotgun #27 M.Hawkins, Jr. rush right for 20 yards gain", "rush")) \
+        == ("m", "hawkins")
+
+
+def test_parse_scorer_ignores_the_two_point_conversion_receiver():
+    text = ("Josiah Freeman 5 Yd pass from Mikey Keene (Jayden Mandal Pass to Brock Lium for "
+            "Two-Point Conversion")  # the feed truncates it; the parenthesis never closes
+    assert m.parse_scorer(text, "rec") == "Josiah Freeman"
+
+
+def _graded_game(gid, play_type, play_text, offense="Home U", defense="Away U"):
+    return {"cfbd_game_id": gid, "home": "Home U", "away": "Away U", "play_type": play_type,
+            "play_text": play_text, "offense_name": offense, "defense_name": defense}
+
+
+def test_grade_waits_for_the_box_score_whatever_the_outcome():
+    dist = {"h1": 0.3, "other:home": 0.1, "other:away": 0.5, "non_offense": 0.1}
+    history = m.History([_row(7, 10, "h1", rush_att=12, rush_td=1, team="Home U")])
+    kick_return = _graded_game(8, "Kickoff Return Touchdown", "#9 D.Bryson return 99 yards TOUCHDOWN",
+                               offense="Away U", defense="Home U")
+    # A kickoff return needs no box score to name, but it still waits for one: grading it at once
+    # while offensive touchdowns waited filled the first slate's record with returns only.
+    assert m.grade_decision(kick_return, dist, history, boxed=set()) == (None, None, "box score not stored yet")
+    lab, prob, reason = m.grade_decision(kick_return, dist, history, boxed={8})
+    assert reason is None and lab["outcome"] == "non_offense" and prob == 0.1
+
+    rush = _graded_game(7, "Rushing Touchdown", "#3 H.Q rush left for 2 yards gain to the AU00 TOUCHDOWN")
+    lab, prob, reason = m.grade_decision(rush, dist, history, boxed={7})
+    assert reason is None and lab["pid"] == "h1" and prob == 0.3
+    assert m.grade_decision(None, dist, history, boxed={7})[2] == "not final or no play-by-play yet"
+
+
+def test_grade_names_an_unattributable_first_touchdown():
+    dist = {"h1": 0.3, "other:home": 0.1, "other:away": 0.5, "non_offense": 0.1}
+    history = m.History([_row(9, 10, "h1", receptions=4, rec_td=1, team="Home U"),
+                         _row(9, 10, "h2", receptions=3, rec_td=1, team="Home U")])
+    garbled = _graded_game(9, "Passing Touchdown", "something CFBD has never written before")
+    lab, prob, reason = m.grade_decision(garbled, dist, history, boxed={9})
+    assert prob is None and reason == "first TD not attributable (unresolved)"
