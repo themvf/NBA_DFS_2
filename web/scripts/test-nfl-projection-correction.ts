@@ -230,7 +230,7 @@ const player = (over: Partial<P> & { position: string; team: string }): P => ({
 // --- Default build shape --------------------------------------------------------
 assert.equal(defaultBuildShape("classic", "gpp"), "winners");
 assert.equal(defaultBuildShape("classic", "cash"), "standard");
-assert.equal(defaultBuildShape("showdown", "gpp"), "standard");
+assert.equal(defaultBuildShape("showdown", "gpp"), "winners", "Showdown GPP defaults to the winners shape since 2026-11-08");
 assert.equal(defaultBuildShape("showdown", "cash"), "standard");
 {
   const defaults = { buildShape: "winners", nLineups: 20 };

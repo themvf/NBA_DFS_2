@@ -24,6 +24,8 @@ import { optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings 
 import { restorePlayers, type FrozenPlayer } from "../src/lib/nfl-dfs/frozen-players";
 import { BOOM_THRESHOLDS, mixDistributions } from "../src/lib/nfl-dfs/replacement-upside";
 import { calibratePlayers, type CalibrationParts } from "../src/lib/nfl-dfs/range-calibration";
+import type { DrawCorrelations } from "../src/lib/nfl-dfs/lineup-draws";
+import type { BuildShape } from "../src/lib/nfl-dfs/winners-shape";
 
 type Range = { mean: number; p10: number; median: number; p90: number; boom: number | null; position?: string };
 type Slate = {
@@ -61,8 +63,15 @@ function rankOf(curve: [number, number][], s: number): number {
 }
 
 /** `calibrate`: nfl-range-calibration-v1 on top of whatever main does today (the mixture when there is one). */
-type Variant = { name: string; scoring: "ceiling" | "draws"; mixture: boolean; seed?: number; calibrate?: boolean; parts?: CalibrationParts };
-const variants: Variant[] = [
+type Variant = { name: string; scoring: "ceiling" | "draws"; mixture: boolean; seed?: number; calibrate?: boolean; parts?: CalibrationParts;
+  correlations?: DrawCorrelations; shape?: BuildShape };
+/** REPLAY_SET=corr: today's main (calibrated draws, v1 stated correlations, Showdown default shape) against fitted correlations and the winners shape, 2x2. */
+const corrSet = process.env.REPLAY_SET === "corr";
+/** REPLAY_CORR picks the fitted table the corr families use: `fitted` (overall) or `fitted-tail` (joint booms). */
+const corrSource = (process.env.REPLAY_CORR ?? "fitted") as DrawCorrelations;
+const corrVariants: Variant[] = ([["main", "stated-v1", "standard"], ["corr", corrSource, "standard"], ["shape", "stated-v1", "winners"], ["corr+shape", corrSource, "winners"]] as const)
+  .flatMap(([name, correlations, shape]) => Array.from({ length: seeds }, (_, i) => ({ name: `${name}#${i + 1}`, scoring: "draws" as const, mixture: true, calibrate: true, correlations, shape, seed: 20261103 + i })));
+const variants: Variant[] = corrSet ? [{ name: "ceiling", scoring: "ceiling", mixture: false }, ...corrVariants] : [
   { name: "ceiling", scoring: "ceiling", mixture: false },
   { name: "ceiling+mix", scoring: "ceiling", mixture: true },
   ...Array.from({ length: seeds }, (_, i) => ({ name: `draws#${i + 1}`, scoring: "draws" as const, mixture: false, seed: 20261103 + i })),
@@ -112,7 +121,8 @@ for (const slate of slates) {
       if (v.seed === 20261103) console.log(`   calibration: ${c.applied} players, ${c.notPlaying} more likely than not to record no stat line`);
     }
     if (v.mixture && !mixtureNote) { mixtureNote = mix; console.log(`   mixture: ${mix.join("; ")}`); }
-    const settings: NflOptimizerSettings = { ...relax.apply(slate.settings), gppScoring: v.scoring, drawSeed: v.seed };
+    const settings: NflOptimizerSettings = { ...relax.apply(slate.settings), gppScoring: v.scoring, drawSeed: v.seed,
+      ...(v.correlations ? { drawCorrelations: v.correlations } : {}), ...(v.shape ? { buildShape: v.shape } : {}) };
     const t = Date.now();
     let result;
     try { result = optimizeNflLineups(players, settings); }
@@ -161,13 +171,14 @@ const boot = (xs: number[]) => { const m: number[] = []; let seed = 7;
   const rnd = () => (seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) / 4294967296;
   for (let b = 0; b < 4000; b++) { let t = 0; for (let i = 0; i < xs.length; i++) t += xs[Math.floor(rnd() * xs.length)]; m.push(t / xs.length); }
   m.sort((a, b) => a - b); return [m[100], m[3899]]; };
-for (const fam of ["cal", ...(process.env.REPLAY_PARTS ? ["cal-notplay", "cal-meanline"] : [])]) {
+const families = corrSet ? ["corr", "shape", "corr+shape"] : ["cal", ...(process.env.REPLAY_PARTS ? ["cal-notplay", "cal-meanline"] : [])];
+for (const fam of families) {
   const diffs: Record<string, number[]> = Object.fromEntries(keys.map((k) => [k, []]));
   for (const slate of new Set(rows.map((r) => r.slate))) for (const k of keys) {
-    const cal = famMean(slate, fam, k), cur = famMean(slate, "draws+mix", k) ?? famMean(slate, "draws", k);
+    const cal = famMean(slate, fam, k), cur = corrSet ? famMean(slate, "main", k) : famMean(slate, "draws+mix", k) ?? famMean(slate, "draws", k);
     if (cal != null && cur != null) diffs[k].push(cal - cur);
   }
-  console.log(`\n=== ${fam} minus today's main, per slate (draws, mixture where it applies)`);
+  console.log(`\n=== ${fam} minus today's main, per slate (${corrSet ? "calibrated draws, stated correlations, Showdown default shape" : "draws, mixture where it applies"})`);
   for (const k of keys) { const xs = diffs[k]; if (!xs.length) continue; const avg = xs.reduce((a, b) => a + b, 0) / xs.length; const [lo, hi] = boot(xs);
     console.log(`${k.padEnd(16)} ${avg >= 0 ? "+" : ""}${avg.toFixed(2)} [${lo.toFixed(2)}, ${hi.toFixed(2)}] on ${xs.length} slates; better on ${xs.filter((x) => x > 0).length}`); }
 }

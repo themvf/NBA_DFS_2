@@ -244,17 +244,20 @@ export default function NflDfsClient() {
   // The salary-cap settings machinery only knows Classic and Showdown; a
   // Single Stat slate never reaches it (it renders `SingleStatWorkspace`).
   const slateFormat = capFormatOf(slate?.format ?? 'classic', slate?.games ?? []);
-  // The shape starts from the format's default (Classic GPP: winners shape,
-  // since 2026-11-03) until the user picks one or a saved run/draft carries a
+  // The shape starts from the format's default (GPP: winners shape; Classic
+  // since 2026-11-03, Showdown since 2026-11-08) until the user picks one or a saved run/draft carries a
   // deliberate choice; `shapeChosen` records that. Diversified only exists for
   // Classic GPP and falls back to standard elsewhere, chosen or not.
-  const shapeChosen = useRef(false);
+  // true: a deliberate choice. "v4-standard": a v4 draft (2026-11-03..08)
+  // stored "standard", which was a choice on Classic but only the default on
+  // Showdown until Showdown GPP moved to the winners shape on 2026-11-08.
+  const shapeChosen = useRef<boolean | "v4-standard">(false);
   useEffect(() => {
     if (settings.buildShape === 'diversified' && (slateFormat !== 'classic' || settings.mode !== 'gpp')) {
       setSettings(current => ({...current,buildShape:'standard'}));
       return;
     }
-    if (shapeChosen.current) return;
+    if (shapeChosen.current === true || (shapeChosen.current === 'v4-standard' && slateFormat === 'classic')) return;
     const wanted = defaultBuildShape(slateFormat, settings.mode);
     if (settings.buildShape !== wanted) setSettings(current => ({...current,buildShape:wanted}));
   }, [settings.buildShape, settings.mode, slateFormat]);
@@ -270,7 +273,7 @@ export default function NflDfsClient() {
   const settingsChanged = Boolean(completedSettings && !sameGenerationSettings(
     settingsFromForm(formFromSettings(completedSettings, settings), slateFormat, slateTeams), currentSettings));
   // Autosave the build form to the server for this slate.
-  const draftForm = useMemo(() => ({ schemaVersion: 4, settings, locked, excluded, targets: targetExposure, captainTargets, ownership: ownershipOverrides,
+  const draftForm = useMemo(() => ({ schemaVersion: 5, settings, locked, excluded, targets: targetExposure, captainTargets, ownership: ownershipOverrides,
     planMode: archetypePlanMode, quotas: archetypeQuotas, favorite: archetypeFavorite, fades: archetypeFades }),
     [settings, locked, excluded, targetExposure, captainTargets, ownershipOverrides, archetypePlanMode, archetypeQuotas, archetypeFavorite, archetypeFades]);
   const slateUploadId = slate?.uploadId ?? null;
@@ -287,9 +290,10 @@ export default function NflDfsClient() {
   const defensiveDowngrade = requestedDefensive?.mode && completedSettings?.defensiveAdjustments?.mode !== requestedDefensive.mode
     ? `You chose ${requestedDefensive.mode === "approved" ? "Approved" : requestedDefensive.mode} opponent adjustments, but ${requestedDefensive.mode === "approved" ? "no policy is approved for this slate yet" : "they could not be applied to this slate"}, so these lineups use none.`
     : null;
-  function applyForm(form: NflBuildForm<typeof settings>, preserveSaved = false, explicitShape = true) {
+  function applyForm(form: NflBuildForm<typeof settings>, preserveSaved = false, explicitShape: boolean | "v4-standard" = true) {
     // A restored run or a v4+ draft carries a chosen shape; an older draft
     // does not, so the format default keeps applying after it is restored.
+    // A v4 draft's "standard" is a choice only on Classic (see shapeChosen).
     shapeChosen.current = explicitShape;
     setSettings({...form.settings,projectionSource:BUILD_SOURCES.includes(form.settings.projectionSource)?form.settings.projectionSource:'our',
       defensiveAdjustments:preserveSaved ? form.settings.defensiveAdjustments : defensiveSettingsFor(BUILD_SOURCES.includes(form.settings.projectionSource)?form.settings.projectionSource:'our'),
@@ -409,7 +413,8 @@ export default function NflDfsClient() {
       const form = draft ? formFromDraft(draft.form, settings) : null;
       if (form) {
         const raw = draft?.form as { schemaVersion?: unknown; settings?: { buildShape?: unknown } } | undefined;
-        applyForm(form, false, typeof raw?.schemaVersion === 'number' && raw.schemaVersion >= 4 && typeof raw.settings?.buildShape === 'string');
+        const version = typeof raw?.schemaVersion === 'number' ? raw.schemaVersion : 1, shape = raw?.settings?.buildShape;
+        applyForm(form, false, typeof shape !== 'string' || version < 4 ? false : version === 4 && shape === 'standard' ? 'v4-standard' : true);
         const starters = (form.settings as { confirmedStartingQbs?: Record<string, number> }).confirmedStartingQbs ?? {};
         if (Object.keys(starters).length) setSlate((await loadSavedNflWorkspace(uploadId, starters)).slate);
         setMessage('Saved player pool loaded with the build settings you last used on this slate.');

@@ -129,3 +129,50 @@ Operational note: the CHI@SEA build ran about 2 hours before kickoff. By
 kickoff the market anchor had moved Roschon to 3.15 / 0.83 / 9.20. Rebuilding
 after the pre-kickoff prop capture would have changed him more than any fix
 here.
+
+## Fitted correlations and the Showdown default shape (2026-11-08)
+
+Owner's request: fit the player correlations and make the winners shape the
+GPP default. Measured; only the shape shipped.
+
+**Correlations were fitted (`nfl-player-correlations-v1`).**
+`research/nfl_dfs_player_correlations.py` writes
+`web/src/lib/nfl-dfs/player-correlations.ts`. The fit uses 2023-25 DraftKings
+points (`nfl_dfs_player_week_results`), with 2026 held out. Players are put in
+roles by their rank within team and position (QB1, RB1-3, WR1-4, TE1-2, DST,
+K), and correlations come from normal scores within each player-season.
+
+- The stated priors are far off. On the 2026 holdout their error was 0.079;
+  the fitted table's was 0.010.
+- Teammates who are not QBs barely move together: RB-WR, WR-WR and TE-WR run
+  -0.02 to +0.06, against the 0.40 prior. Opponents run about 0.
+- The QB pairs are real: QB1 with WR1 0.31, with WR2 0.26, with TE1 0.25, but
+  with RB1 only 0.09.
+- A DST runs -0.32 against the QB it faces and -0.11 to -0.17 against that
+  team's skill players.
+- Joint booms (both in their own top 20%) put the QB pairs higher (QB1-WR1
+  0.40, QB1-TE1 0.41). Skill teammates stay at about 0 (-0.06).
+
+**Neither fitted table built better Showdown portfolios.** The replay
+(`REPLAY_SET=corr`, 13 Showdowns, 5 seeds, against today's main) paired each
+build with the same slate under today's main:
+
+| Variant | Best lineup's percentile | Mean lineup score | Top-10% lineups |
+|---|---|---|---|
+| Overall correlations | -1.10 [-2.72, 0.26] | +0.25 | -0.28 [-0.49, -0.06] |
+| Joint-boom correlations | -0.89 [-1.91, 0.06] | -0.04 | +0.02 |
+| Winners shape (stated priors) | -0.04 [-2.64, 1.96] | **+1.94 [1.06, 2.90]** | +0.06 |
+
+The 0.40 prior works as a construction setting that concentrates lineups, not
+as a description of the sport. The fitted tables stay selectable for replays
+(`drawCorrelations`). The default draws are nfl-lineup-draws-v1 bit for bit,
+and a test pins them. Retest the fitted tables on Classic once Classic
+contests can be graded, since cross-game stacking is where they differ most.
+
+**Shape: Showdown GPP now defaults to the winners shape**
+(`defaultBuildShape`). The replay above shows it raising the average lineup
+on all 13 slates, while the best lineup was unchanged. It is in-sample: the
+preset was read off these contests' winners. A v4 build draft (2026-11-03 to
+11-08) that stored "standard" keeps it on Classic, where it was a choice. On
+Showdown it takes the new default, since "standard" there was only the old
+default.
