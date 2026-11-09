@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { optimizeNflLineups, resolveProjectionAudit, type NflOptimizerPlayer, type NflOptimizerSettings } from '../src/app/dfs/nfl/nfl-optimizer';
 import { resolveDefensiveForecast, type DefensiveCapture, type DefensivePlayerInput } from '../src/lib/nfl-dfs/defensive-projection';
-import { captureProfileFor, selectedDefensiveForecast, DEFAULT_DFS_DEFENSIVE_SETTINGS } from '../src/lib/nfl-dfs/defensive-display';
+import { captureProfileFor, selectedDefensiveForecast, DEFAULT_DFS_DEFENSIVE_SETTINGS, defensiveSkipFor, countDefensiveReasons, defensiveBuildNote } from '../src/lib/nfl-dfs/defensive-display';
 import { assertShowdownLineup } from '../src/lib/nfl-dfs/showdown-legality';
 import { exportNflDkEntries } from '../src/lib/nfl-dfs/entry-export';
 import { formFromDraft } from '../src/lib/nfl-dfs/generation-settings';
@@ -104,3 +104,30 @@ const ruledOutNoProjection=fallbackPool.map(p=>p.dkPlayerId===11?{...p,isOut:tru
 assert.equal(optimizeNflLineups(ruledOutNoProjection,{...baseSettings,allowDkFallback:true,defensiveAdjustments:defensive}).eligibility!.find(e=>e.dkPlayerId===11)!.eligible,false,'never restores a ruled-out player');
 
 console.log('Defensive bundle, GPP upper-tail selection, cash lower-tail selection, baseline fallbacks and the mixed-scale DK-average guard passed.');
+
+// Deliberate skips are named, never "no matching capture" (week 8 build note read 321 of 347 as missing).
+assert.equal(defensiveSkipFor('gpp-integrated',{position:'WR'}),'profile_excludes_position');
+assert.equal(defensiveSkipFor('gpp-integrated',{position:'RB'}),null);
+assert.equal(defensiveSkipFor('pfr-efficiency',{position:'WR'}),null,'a single profile covers every position');
+assert.equal(defensiveSkipFor('gpp-integrated',{position:'QB',marketAnchor:{}}),'market_anchored');
+{
+  const rb=pool[4];
+  // A skipped player keeps his baseline even when a passing capture is handed in.
+  const skipped=resolveDefensiveForecast(input(rb),'baseline-1',defensive,capture(rb,2,40,.6),'market_anchored');
+  assert.deepEqual([skipped.status,skipped.reason,skipped.candidateRunId,skipped.selected.p90],['baseline','market_anchored',null,18]);
+  assert.equal(resolveDefensiveForecast(input(rb),'baseline-1',{...defensive,mode:'off'},null,'market_anchored').reason,'defensive_mode_off');
+  type B={status:'applied'|'baseline';reason:string};
+  const bundles:B[]=[...Array(3)].map(():B=>({status:'applied',reason:'applied'}))
+    .concat(([{status:'baseline',reason:'market_anchored'},{status:'baseline',reason:'market_anchored'},
+      {status:'baseline',reason:'profile_excludes_position'},{status:'baseline',reason:'saved_baseline_distribution_mismatch'},
+      {status:'baseline',reason:'no_matching_pregame_capture'},{status:'baseline',reason:'ineligible_or_out'}] satisfies B[]));
+  const counts=countDefensiveReasons(bundles);
+  assert.deepEqual(counts,{applied:3,marketAnchored:2,outsideProfile:1,noCapture:1,out:1,failedChecks:1});
+  assert.equal(defensiveBuildNote('experimental','gpp-integrated',counts,true),
+    "experimental gpp-integrated: 3 players adjusted; the rest keep their baseline: 2 on the books' line, which already prices the opponent; 1 outside this profile (it adjusts QBs and RBs only); 1 failed the capture checks; 1 with no capture; 1 ruled out.");
+  const none=countDefensiveReasons([{status:'baseline',reason:'no_matching_pregame_capture'},{status:'baseline',reason:'market_anchored'}]);
+  assert.match(defensiveBuildNote('experimental','gpp-integrated',none,false),/0 players adjusted.*No capture exists for this upload yet/);
+  // Everyone deliberately skipped: no "no capture" warning at all.
+  assert.doesNotMatch(defensiveBuildNote('experimental','gpp-integrated',countDefensiveReasons([{status:'baseline',reason:'market_anchored'}]),false),/No capture|checks/);
+}
+console.log('Defensive skips: market-anchored and out-of-profile players are named, counted and kept on baseline.');

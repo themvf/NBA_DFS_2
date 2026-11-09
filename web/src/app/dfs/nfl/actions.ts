@@ -34,7 +34,7 @@ import { optimizeSingleStat, projectSingleStat, projectSingleStatOwnership, SING
 import type { NflGeneratedLineup } from "./nfl-optimizer";
 import { readDefensiveCaptures } from '@/db/nfl-defensive-projections';
 import { resolveDefensiveForecast, type CaptureProfile } from '@/lib/nfl-dfs/defensive-projection';
-import { captureProfileFor } from '@/lib/nfl-dfs/defensive-display';
+import { captureProfileFor, countDefensiveReasons, defensiveBuildNote, defensiveSkipFor } from '@/lib/nfl-dfs/defensive-display';
 import { readServerDefensivePolicy } from '@/lib/nfl-dfs/defensive-policy';
 import { getNflRosterEvidence, getNflInjuryCoverage, type InjuryCoverage } from "@/db/nfl-dfs-availability";
 import { presentPinnedGameAvailability, resolveGameAvailability, applyTeamQbContext, identifyTeamQb1s, applyTeamKickerContext, identifyTeamKickersByElimination, nflTeamKey, showdownGame, rolePolicyEvidence, ROSTER_FRESH_MS, type Availability, type PinnedGameAvailabilityDecision, type ShowdownGameRow } from "@/lib/nfl-dfs/availability";
@@ -290,7 +290,9 @@ export type NflWorkspaceSlate = {
   /** Starting QBs the user confirmed for this read, and any that could not be applied. */
   confirmedStartingQbs?: ConfirmedStarterReport;
   /** Players each defensive profile would actually adjust on this slate (captures that pass every check). */
-  opponentAdjustments?: { profile: 'pfr-efficiency' | 'allowed-rushing-volume'; label: string; applied: number; qbApplied: number; rbApplied: number; eligible: number; captured: number; error?: string }[];
+  opponentAdjustments?: { profile: 'pfr-efficiency' | 'allowed-rushing-volume'; label: string; applied: number; qbApplied: number; rbApplied: number; eligible: number; captured: number;
+    /** Eligible players on the books' line (never adjusted), and captured players who are not. */
+    anchored?: number; usableCaptured?: number; error?: string }[];
   /** The Slate Check: every pipeline step's outcome for this slate, in plain words. */
   slateCheck?: SlateCheck;
   /** Per defensive profile: what happened to this upload's opponent capture (request + reader coverage). */
@@ -964,14 +966,20 @@ async function opponentAdjustmentCoverage(slate: NflWorkspaceSlate): Promise<Non
   return Promise.all(profiles.map(async ([profile, label]): Promise<NonNullable<NflWorkspaceSlate['opponentAdjustments']>[number]> => {
     try {
       const captures = await readDefensiveCaptures(slate.uploadId, projectionRunId, profile, decisionAt);
-      const adjusted = eligible.filter((p) => resolveDefensiveForecast(p, projectionRunId, { mode: 'experimental', profile },
-        captures.get(p.ffPlayerId ?? -1) ?? null).status === 'applied');
+      // Same rule as generation: a market-anchored player is never adjusted, capture or not.
+      const adjusted = eligible.filter((p) => {
+        const skip = defensiveSkipFor(profile, p);
+        return resolveDefensiveForecast(p, projectionRunId, { mode: 'experimental', profile },
+          skip ? null : captures.get(p.ffPlayerId ?? -1) ?? null, skip).status === 'applied';
+      });
       const applied = adjusted.length;
       const qbApplied = adjusted.filter((p) => p.position === 'QB').length;
       const rbApplied = adjusted.filter((p) => p.position === 'RB').length;
       // Any capture at all for this upload: zero means none exists yet, not that checks failed.
       const captured = eligible.filter((p) => captures.has(p.ffPlayerId ?? -1)).length;
-      return { profile, label, applied, qbApplied, rbApplied, eligible: eligible.length, captured };
+      const anchored = eligible.filter((p) => p.marketAnchor).length;
+      const usableCaptured = eligible.filter((p) => !p.marketAnchor && captures.has(p.ffPlayerId ?? -1)).length;
+      return { profile, label, applied, qbApplied, rbApplied, eligible: eligible.length, captured, anchored, usableCaptured };
     } catch (error) {
       // A read failure is not "no captures yet"; the Slate Check says which.
       return { profile, label, applied: 0, qbApplied: 0, rbApplied: 0, eligible: eligible.length, captured: 0, error: error instanceof Error && error.message ? error.message : 'the capture read failed' };
@@ -2372,9 +2380,9 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
     // The integrated build uses QB efficiency and RB rushing volume. WR/TE
     // matchup chips remain construction evidence; no unvalidated point boost.
     // A market-anchored player's line already carries the opponent: no second adjustment.
-    const capture=player.marketAnchor || (defensive.profile==='gpp-integrated' && player.position!=='QB' && player.position!=='RB')
-      ? null : candidateCaptures.get(profile)?.get(player.ffPlayerId??-1)??null;
-    return {...player,defensiveForecast:resolveDefensiveForecast(player,slate.projectionRunId!,{...defensive,profile},capture)};
+    const skip=defensiveSkipFor(defensive.profile,player);
+    const capture=skip ? null : candidateCaptures.get(profile)?.get(player.ffPlayerId??-1)??null;
+    return {...player,defensiveForecast:resolveDefensiveForecast(player,slate.projectionRunId!,{...defensive,profile},capture,skip)};
   }):slate.players;
   const audited= settings.projectionSource==='workload'?prepareProjectionAudits(sourcePlayers,slate.situationTeams??[],settings.workloadPositions,settings.situations,clock(now)):sourcePlayers;
   // Manual ownership (nfl-ownership-manual-v1): the owner's typed numbers replace
@@ -2396,12 +2404,9 @@ async function saveOptimizerResult(slate:NflWorkspaceSlate,settings:NflOptimizer
   if(policyDecision&&!policyDecision.active)result.warnings.push(`Approved defensive policy retained baseline: ${policyDecision.reason}.`);
   if(defensive?.mode && defensive.mode!=='off') {
     await assertSlatePregame(slate);
-    const applied=prepared.filter(p=>p.defensiveForecast?.status==='applied').length;
-    // "No capture exists" and "captures failed their checks" are different problems; say which.
+    // Why each player kept his baseline: a deliberate skip, failed checks and no capture are different problems.
     const captured=[...candidateCaptures.values()].some(captures=>captures.size>0);
-    result.warnings.push(applied?`${defensive.mode} ${defensive.profile}: ${applied} players adjusted, ${prepared.length-applied} retained baseline.`
-      :captured?`${defensive.mode} ${defensive.profile}: baseline only; captures exist for this upload but no player passed their checks.`
-      :`${defensive.mode} ${defensive.profile}: baseline only; no capture exists for this upload yet (captures run on the projection schedule, only for slates already uploaded).`);
+    result.warnings.push(defensiveBuildNote(defensive.mode,defensive.profile,countDefensiveReasons(prepared.map(p=>p.defensiveForecast)),captured));
   }
   if(eligible.length!==slate.players.length)result.warnings.push(`${slate.players.length-eligible.length} players excluded: workload optimization requires an unstarted, matching salary game.`);
   if (result.lineups.some(l => l.slots.some(s => s.projectionSource === "calibrated" && Date.parse(s.player.calibrated!.kickoff) <= Date.now()))) throw new Error("A calibrated player's game started during optimization. Refresh the slate before regenerating.");

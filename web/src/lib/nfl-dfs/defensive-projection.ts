@@ -66,7 +66,8 @@ const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(va
 
 /** Resolve only an immutable, fully reproduced distribution. No mean-only substitution. */
 export function resolveDefensiveForecast(input: DefensivePlayerInput, baselineRunId: string,
-  settings: DefensiveSettings, capture: DefensiveCapture | null): DefensiveForecastBundle {
+  settings: DefensiveSettings, capture: DefensiveCapture | null,
+  skip: 'market_anchored' | 'profile_excludes_position' | null = null): DefensiveForecastBundle {
   const saved: ForecastSummary = {
     mean: input.ourProj ?? 0, p10: input.floorFpts ?? 0,
     p50: input.medianFpts ?? 0, p90: input.ceilingFpts ?? 0,
@@ -75,10 +76,14 @@ export function resolveDefensiveForecast(input: DefensivePlayerInput, baselineRu
   let reason = 'defensive_mode_off';
   let selected = saved;
   let ledger: DefensiveForecastBundle['ledger'] = [];
+  if (skip) capture = null;
   const row = capture?.candidate;
   if (settings.mode !== 'off') {
-    reason = !capture ? 'no_matching_pregame_capture'
-      : input.isOut ? 'ineligible_or_out'
+    // A deliberate skip (see defensiveSkipFor) is named for what it is; it never reads a capture.
+    // A ruled-out player is reported as out before any other reason.
+    reason = input.isOut ? 'ineligible_or_out'
+      : skip ? skip
+      : !capture ? 'no_matching_pregame_capture'
       : input.ffPlayerId == null || row?.player_id !== input.ffPlayerId || row.dk_player_id !== input.dkPlayerId ? 'identity_mismatch'
       : capture.baselineRunId !== baselineRunId ? 'baseline_run_mismatch'
       : !sameGame(input.gameKey, row.game_id) ? 'game_identity_mismatch'
