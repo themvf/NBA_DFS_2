@@ -257,12 +257,29 @@ export function nbaGhostFreezeDue(now: Date): boolean {
 export function nbaGhostGradeDue(now: Date): boolean {
   const t=nbaEasternTime(now);return NBA_MONTHS.has(t.month)&&t.hour===7&&t.minute===37;
 }
+/** Independent research uses the same Eastern clock; no extra paid capture. */
+export function nbaResearchReviewDue(now: Date): boolean {
+  const t=nbaEasternTime(now);return NBA_MONTHS.has(t.month)&&t.hour===8&&t.minute===37;
+}
+export function nbaResearchCheckDue(now: Date): boolean {
+  const t=nbaEasternTime(now);return NBA_MONTHS.has(t.month)&&((t.hour===11&&t.minute===52)||(t.hour===12&&t.minute===22));
+}
 /** Two bounded free injury refreshes; this is not continuous monitoring. */
 export function nbaInjuryRefreshDue(now: Date): boolean {
   const t=nbaEasternTime(now);return NBA_MONTHS.has(t.month)&&t.hour===18&&(t.minute===37||t.minute===52);
 }
 
 export const DISPATCH_JOBS: readonly DispatchJob[] = [
+  {
+    key: "nba-research-review", workflow: "nba_research.yml", inputs: {action:"review"},
+    due: nbaResearchReviewDue,
+    why: "Grade durable registered originals before the existing morning check-in; no new forecasts.",
+  },
+  {
+    key: "nba-research-check", workflow: "nba_research.yml", inputs: {action:"check"},
+    due: nbaResearchCheckDue,
+    why: "Report missing originals or attachments while pre-lock recovery is still possible.",
+  },
   {
     key: "mlb-odds-capture",
     workflow: "capture_odds_history.yml",

@@ -1,5 +1,14 @@
 # NBA evidence timing and pre-lock lineup safety
 
+The November 9 release (`docs/nba-research-cloud.md`) extends the existing
+11:37 AM Eastern cloud chain to the unchanged v3 recorder and its registered
+sidecars. It preserves original bytes in isolated database research archives.
+The local 11:35 follow-up now observes/restores the canonical cloud originals.
+No competing local v3 freeze or post-tip backfill is authorized. Cloud reviews
+run at 8:37 AM Eastern before the existing 9 AM chat review. Readiness checks
+at 11:52 AM and 12:22 PM use scoped, deduplicated GitHub failure/recovery issues;
+healthy and still-running states do not send routine notifications.
+
 The primary cloud dispatcher freezes at 11:37 AM America/New_York across DST.
 The free official NBA report is captured and published before every new cloud
 freeze. Failed capture leaves an explicit warning and unverified availability.

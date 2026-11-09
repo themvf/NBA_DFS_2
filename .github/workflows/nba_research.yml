@@ -1,0 +1,59 @@
+name: NBA registered research operations
+
+# Primary clock: existing Vercel dispatcher, Eastern time. No paid collection.
+# The local 9 AM message consumes these results; healthy runs send no message.
+on:
+  schedule:
+    - cron: '20 14 * 1-6,10-12 *'
+    - cron: '52 16 * 1-6,10-12 *'
+  workflow_dispatch:
+    inputs:
+      action:
+        type: choice
+        options: [check, review]
+        default: check
+      date:
+        description: Eastern slate date (review defaults to yesterday)
+        required: false
+        default: ''
+permissions:
+  contents: read
+  issues: write
+concurrency:
+  group: nba-registered-research
+  cancel-in-progress: false
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      GAME_DATE: ${{ inputs.date }}
+      OMP_NUM_THREADS: '2'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Review originals or check pre-lock readiness
+        run: |
+          action="${{ inputs.action }}"
+          if [ -z "$action" ]; then
+            if [ '${{ github.event.schedule }}' = '20 14 * 1-6,10-12 *' ]; then action=review; else action=check; fi
+          fi
+          python -m research.nba_research_cloud "$action" ${GAME_DATE:+--date "$GAME_DATE"} --root artifacts/nba-research
+      - name: Notify failures and recovery once per state
+        if: ${{ !cancelled() }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          NBA_RESEARCH_ACTION: ${{ inputs.action || (github.event.schedule == '20 14 * 1-6,10-12 *' && 'review' || 'check') }}
+        run: python -m research.nba_research_alert --root artifacts/nba-research --action "$NBA_RESEARCH_ACTION"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nba-research-operations-${{ github.run_id }}
+          path: artifacts/nba-research/
+          if-no-files-found: warn
+          retention-days: 90

@@ -2,7 +2,7 @@ export const dynamic='force-dynamic';
 import Link from 'next/link';
 import type {Metadata} from 'next';
 import {easternDateString} from '@/lib/eastern-date';
-import {getMathResearch,getMathResearchDates,getMathResearchCounts,getMathOutcomes,getTrioPoolAudit,type MathPortfolio} from '@/db/nba-trio-math';
+import {getMathResearch,getMathResearchDates,getMathResearchCounts,getMathOutcomes,getTrioPoolAudit,getTrioPoolSummary,type MathPortfolio} from '@/db/nba-trio-math';
 import {PoolAudit} from './pool-audit';
 import registration from '@/data/nba-trio-math-registration-v2.json';
 import {trioPortfolioResult} from '@/lib/nba-trio-results';
@@ -12,7 +12,7 @@ const stamp=(s:string)=>new Intl.DateTimeFormat('en-US',{timeZone:'America/New_Y
 const labels:Record<string,string>={market_baseline:'Market baseline',joint_best_of_five:'Joint best-of-five',robust_best_of_five:'Robust best-of-five'};
 export default async function TrioLab({searchParams}:{searchParams:Promise<{date?:string}>}){
  const params=await searchParams,today=easternDateString(),date=params.date&&/^\d{4}-\d{2}-\d{2}$/.test(params.date)?params.date:today;
- const [record,dates,availability,counts]=await Promise.all([getMathResearch(date),getMathResearchDates(),getNbaAvailability(date),getMathResearchCounts()]);
+ const [record,dates,availability,counts,poolSummary]=await Promise.all([getMathResearch(date),getMathResearchDates(),getNbaAvailability(date),getMathResearchCounts(),getTrioPoolSummary()]);
  const [outcomes,poolAudit]=record?await Promise.all([getMathOutcomes(record),getTrioPoolAudit(record.sha256)]):[[],null];
  const players=new Map(record?.players.map(p=>[p.id,p])??[]);
  const gradeRows=outcomes.map(o=>({event_id:o.id.split(':')[0],player_key:o.id.split(':').slice(1).join(':'),status:o.status==='verified'?'graded':o.status,actual_points:o.points}));
@@ -40,6 +40,12 @@ export default async function TrioLab({searchParams}:{searchParams:Promise<{date
    <section className="space-y-2"><h2 className="font-semibold">Player estimates and opportunity changes</h2><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left"><th>Player</th><th>Line</th><th>V3 mean</th><th>Compound mean</th><th>Raw / adjusted P90</th><th>Frozen / latest status</th></tr></thead><tbody>{record.players.map(p=><tr key={p.id} className="border-t"><td className="py-2">{p.player}</td><td>{p.market_line.toFixed(1)}</td><td>{p.v3_mean.toFixed(1)}</td><td>{p.compound_mean.toFixed(1)}</td><td>{p.raw_p90.toFixed(1)} / {p.adjusted_p90?.toFixed(1)??'Pending'}</td><td>{p.availability.status??'unverified'} / {availability?.states[p.id]?.status??'unverified'}</td></tr>)}</tbody></table></div><p className="text-xs text-muted-foreground">P90 adjustment: {record.calibration.source}. Historical residual adjustment does not establish current-season conditional coverage.</p></section>
    <details className="text-sm"><summary>Evidence and limits</summary><p>Protocol {record.protocol_sha256.slice(0,12)} · model {record.model_sha256.slice(0,12)} · original {record.sha256.slice(0,12)}</p><ul className="list-disc pl-5">{record.limitations.map(s=><li key={s}>{s}</li>)}</ul></details>
   </>}
+  <section className="space-y-2 border-t pt-4"><h2 className="font-semibold">Player-pool restriction audit</h2>
+   <p className="text-sm">Complete coverage: {poolSummary.complete.positive}/{poolSummary.complete.n} dates lost points at the top-12 cutoff · mean gap {poolSummary.complete.mean?.toFixed(1)??'Pending'}.</p>
+   <p className="text-sm">Provisional coverage: {poolSummary.provisional.positive}/{poolSummary.provisional.n} dates show a verified-so-far pool gap · mean {poolSummary.provisional.mean?.toFixed(1)??'Pending'}. Missing outcomes can change these benchmarks.</p>
+   <p className="text-sm">Latest matching audit pending: {poolSummary.pending??'Unavailable'}.</p>
+   <p className="text-sm text-muted-foreground">Only each original&apos;s latest matching grade and audit count. This diagnoses the cutoff; it does not select new players or change the registered top-12 trial. An expanded-pool challenger requires a separate preregistration.</p>
+  </section>
   <section className="space-y-2 border-t pt-4"><h2 className="font-semibold">What is being tested?</h2><ul className="list-disc space-y-1 pl-5 text-sm"><li>Bayesian detection of changing minutes and shot intensity.</li><li>Integer scoring from uncertain attempts and makes.</li><li>Shrunk historical residual dependence across scoring roles.</li><li>Five-entry selection across multiple model scenarios.</li><li>Separate historical and prior-trial residual P90 calibration.</li></ul><p className="text-sm">Review after 30 completely paired prospective slate dates, followed by a separate confirmation period. Existing forecasts and registered trials retain their original versions.</p></section>
   <Link href={`/nba/top-scorers?date=${date}`} className="text-sm underline">Return to Top Scorers</Link>
  </main>

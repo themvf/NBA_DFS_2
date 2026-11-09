@@ -23,6 +23,7 @@ Object.defineProperty(db,'execute',{value:async(q:SQL)=>{
  if(query.includes('nba_ghost_snapshots'))return {rows:[{candidates:players.map(p=>({...p,home_team:'Boston Celtics',away_team:'Miami Heat'}))}]};
  if(query.includes('count(*)'))return {rows:[{recorded:1,graded:1,complete:dnp?0:1}]};
  if(query.includes('SELECT DISTINCT'))return {rows:[{date:'2026-11-04'}]};
+ if(query.includes('double precision'))return {rows:[{game_date:'2026-11-04',record_sha256:'fixture',provisional:dnp,pool_gap:10,audited:true}]};
  if(query.includes('nba_trio_math_snapshots'))return {rows:[{record_sha256:'fixture',record}]};
  if(query.includes('nba_trio_pool_audits'))return {rows:[{audit:{provisional:dnp,full_pool:{eligible:6,verified:dnp?5:6,best_total:130,trio:[]},top_12:{eligible:5,verified:dnp?4:5,best_total:120,trio:[]},pool_gap:10,portfolios:{market_baseline:{best_entry:dnp?null:90,selection_gap:dnp?null:30,total_gap:dnp?null:40,fractional_top_three:dnp?null:2,tie_compatible_top_three:false}}}}]};
  if(query.includes('nba_box_score_players'))return {rows:players.map((p,i)=>({player:p.player,espn_event_id:p.espn_event_id,played:!dnp||i!==4,points:dnp&&i===4?null:10*(i+1),team:'Boston Celtics',home_team:'Boston Celtics',away_team:'Miami Heat',completed:true}))};
@@ -32,6 +33,8 @@ Object.defineProperty(db,'execute',{value:async(q:SQL)=>{
  assert.ok(output.includes('Actual best entry: 90'));assert.ok(output.includes('Actual combined five: 380'));
  assert.ok(output.includes('Later reported Out: Fixture A'));
  assert.match(output, /Pool gap: 10 points/);
+ assert.ok(output.includes('Complete coverage: 1/1'));
+ assert.ok(output.includes('Latest matching audit pending: 0'));
  assert.ok(output.includes('2/3'));
  if(process.env.TRIO_FIXTURE_OUTPUT)writeFileSync(process.env.TRIO_FIXTURE_OUTPUT,output);
  dnp=true;const unresolved=renderToStaticMarkup(await Page({searchParams:Promise.resolve({date:'2026-11-04'})}));

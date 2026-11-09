@@ -13,6 +13,8 @@ const board: BoomBoard = { date: "2026-10-31", snapshot: "fixture", model: "fixt
   players: Array.from({ length: 12 }, (_, i) => ({ id: `p${i + 1}`, name: `Player ${i + 1}`, points: 30 - i, pointRank: i + 1,
     boom: 12 - i, boomRank: 12 - i, shotsLast3: 20, shotsLast20: 15, availability: "unverified" })) };
 const original = JSON.stringify(board);
+const unchanged = buildBoomLineups(board, "p10", 0, 10);
+assert.deepEqual(unchanged.adjusted, unchanged.baseline, "selecting a Boom player without requesting inclusion preserves the market baseline");
 const r = buildBoomLineups(board, "p10", 2, 10);
 assert.equal(r.feasible, true); assert.equal(r.achieved, 2); assert.equal(r.baseline.filter((t) => t.ids.includes("p10")).length, 0);
 assert.deepEqual(r.adjusted[0].ids, ["p1", "p2", "p3"]); assert.deepEqual(r.adjusted[0], r.baseline[0]);

@@ -1,5 +1,15 @@
 # NBA points v3 research challenger
 
+## November 9 operational update
+
+`docs/nba-research-cloud.md` supersedes the local-only execution instructions
+below. The existing cloud v2 freeze now invokes the unchanged pinned v3 recorder
+and its original registered sidecars. `nba_research_archives` preserves original
+bytes and indexes; local follow-ups restore/observe these originals rather than
+create competing forecasts. Morning cloud reviews retain genuine prior grade
+history, full-slate readiness and raw source evidence. Nothing changes model or
+protocol identities, point estimates, first-tip cutoffs, or promotion rules.
+
 ## Contract and acceptance criteria
 
 Full-game points, including overtime, are the target. All scoring probabilities are conditional on appearing. Reported Out removes eligibility; unknown availability is never Active. Do not invent scenario probabilities or minutes restrictions. V2 coefficients, snapshots, grades and schedules remain unchanged. V3 writes new local directories only, makes no paid captures, and has no deployment or promotion path.

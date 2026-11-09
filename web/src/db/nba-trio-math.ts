@@ -4,6 +4,7 @@ import {sql} from 'drizzle-orm';
 import {db} from '@/db';
 import {playerKey,teamKey} from '@/lib/nba-top-scorers';
 import registration from '@/data/nba-trio-math-registration-v2.json';
+import {summarizePoolObservations,type PoolObservation} from '@/lib/nba-pool-summary';
 
 export type MathPlayer={id:string;player:string;player_key:string;espn_event_id:string;home_team:string;away_team:string;market_line:number;v3_mean:number;compound_mean:number;raw_p90:number;adjusted_p90:number|null;calibration_n:number;availability:{status?:string};opportunities:{minutes:number;fga:number;fta:number}};
 export type MathPortfolio={trios:string[][];market_line_sums:number[];scenario_expected_best:Record<string,number>;scenario_expected_all_five:Record<string,number>};
@@ -86,6 +87,31 @@ export async function getTrioPoolAudit(recordSha: string): Promise<TrioPoolAudit
     return (result.rows[0]?.audit as TrioPoolAudit | undefined) ?? null;
   } catch (error) {
     if (isMissingRelation(error)) return null;
+    throw error;
+  }
+}
+
+/** Only the audit for each indexed original's latest exact grade can count. */
+export async function getTrioPoolSummary() {
+  try {
+    const result = await db.execute(sql`
+      SELECT s.game_date::text AS game_date,s.record_sha256,
+        a.grade_sha256 IS NOT NULL AS audited,
+        (a.audit->>'provisional')::boolean AS provisional,
+        (a.audit->>'pool_gap')::double precision AS pool_gap
+      FROM nba_trio_math_snapshots s
+      LEFT JOIN LATERAL (SELECT grade FROM nba_trio_math_grades g WHERE g.record_sha256=s.record_sha256
+        AND g.grade->>'protocol_sha256'=s.protocol_sha256 AND g.grade->>'model_sha256'=s.record->>'model_sha256'
+        ORDER BY g.graded_at DESC,g.id DESC LIMIT 1) g ON true
+      LEFT JOIN nba_trio_pool_audits a ON a.grade_sha256=g.grade->>'sha256' AND a.record_sha256=s.record_sha256
+        AND a.audit->>'version'='nba-trio-pool-audit-v1' AND a.audit->>'mode'='prospective'
+        AND a.audit->>'game_date'=s.game_date::text
+      WHERE s.protocol_sha256=${registration.protocol_sha256} AND s.record->>'model_sha256'=${registration.model_sha256}
+    `);
+    const rows=result.rows as (PoolObservation & {audited:boolean})[];
+    return {...summarizePoolObservations(rows.filter(r=>r.audited)),pending:rows.filter(r=>!r.audited).length};
+  } catch (error) {
+    if (isMissingRelation(error)) return {...summarizePoolObservations([]),pending:null};
     throw error;
   }
 }
