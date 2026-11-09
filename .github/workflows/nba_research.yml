@@ -38,19 +38,18 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - name: Review originals or check pre-lock readiness
-        id: research
         run: |
           action="${{ inputs.action }}"
           if [ -z "$action" ]; then
             if [ '${{ github.event.schedule }}' = '20 14 * 1-6,10-12 *' ]; then action=review; else action=check; fi
           fi
-          echo "action=$action" >> "$GITHUB_OUTPUT"
           python -m research.nba_research_cloud "$action" ${GAME_DATE:+--date "$GAME_DATE"} --root artifacts/nba-research
       - name: Notify failures and recovery once per state
         if: ${{ !cancelled() }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python -m research.nba_research_alert --root artifacts/nba-research --action '${{ steps.research.outputs.action }}'
+          NBA_RESEARCH_ACTION: ${{ inputs.action || (github.event.schedule == '20 14 * 1-6,10-12 *' && 'review' || 'check') }}
+        run: python -m research.nba_research_alert --root artifacts/nba-research --action "$NBA_RESEARCH_ACTION"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

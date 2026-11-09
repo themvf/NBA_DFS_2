@@ -4,7 +4,7 @@ import json
 import os
 from pathlib import Path
 
-import requests
+from urllib.request import Request, urlopen
 
 TITLE = '[NBA research] Recording needs attention'
 
@@ -53,11 +53,13 @@ def main():
     args = p.parse_args()
     token, repo = os.environ['GITHUB_TOKEN'], os.environ['GITHUB_REPOSITORY']
     def api(method, path, data=None):
-        response = requests.request(method, 'https://api.github.com/repos/' + repo + path,
-            headers={'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json'},
-            json=data, timeout=25)
-        response.raise_for_status()
-        return response.json() if response.content else None
+        request = Request('https://api.github.com/repos/' + repo + path,
+            data=json.dumps(data).encode() if data is not None else None, method=method,
+            headers={'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json',
+                     'Content-Type': 'application/json'})
+        with urlopen(request, timeout=25) as response:
+            body = response.read()
+        return json.loads(body) if body else None
     results = [json.loads(p.read_text()) for p in args.root.glob('operations/*/result.json')]
     if not results:
         results = [{'status': 'failed', 'action': args.action, 'reason': 'Research process produced no completion receipt'}]

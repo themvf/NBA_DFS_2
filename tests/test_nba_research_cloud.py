@@ -181,6 +181,15 @@ def test_notifications_are_deduplicated_and_recovery_is_scoped():
     assert issues[0]['state'] == 'closed'
 
 
+def test_failure_notifier_starts_without_installed_dependencies():
+    import subprocess, sys
+    from pathlib import Path
+    result=subprocess.run([sys.executable,'-S','-m','research.nba_research_alert','--help'],
+        cwd=Path(__file__).resolve().parents[1],capture_output=True,text=True,timeout=20)
+    assert result.returncode==0, result.stderr
+    assert '--action' in result.stdout
+
+
 def test_ambiguous_unlisted_game_is_not_silently_filled(tmp_path):
     source = {'sha256':'source','game_date':'2026-11-06','candidates':[
         {'event_id':'book','player_key':'p','home_team':'Boston Celtics','away_team':'Miami Heat'}], 'slate_schedule':[]}
