@@ -47,6 +47,10 @@ export interface LineupType {
   captainPosition: string;
   /** "Top projected", "2nd-3rd", "4th-6th", "7th or lower" among the slate's players. */
   captainRank: string;
+  /** Depth on his own team by DraftKings salary: "WR1", "WR2", "WR3+", "RB1", "QB1"... */
+  captainRole: string;
+  /** "Favored" or "Underdog" (the team our projections gave more points), or "Unknown". */
+  captainSide: string;
   quarterbacks: string;
   kicker: boolean;
   dst: boolean;
@@ -80,11 +84,16 @@ export interface TypeTally {
   sides: TallyRow[];
   captainPositions: TallyRow[];
   captainRanks: TallyRow[];
+  captainRoles: TallyRow[];
+  captainSides: TallyRow[];
+  /** Role and side together, e.g. "WR1 · Favored". */
+  captainRoleSides: TallyRow[];
   quarterbacks: TallyRow[];
   kicker: TallyRow[];
   dst: TallyRow[];
 }
 
+const ROLE_ORDER = ["QB1", "QB2+", "RB1", "RB2+", "WR1", "WR2", "WR3+", "TE1", "TE2+", "K", "DST"];
 const RANK_LABELS = ["Top projected", "2nd-3rd", "4th-6th", "7th or lower"];
 const rankBucket = (rank: number) => (rank <= 1 ? RANK_LABELS[0] : rank <= 3 ? RANK_LABELS[1] : rank <= 6 ? RANK_LABELS[2] : RANK_LABELS[3]);
 
@@ -93,6 +102,21 @@ function favoredTeam(players: readonly HistoryPlayer[]): string | null {
   for (const p of players) if ((p.ourProj ?? 0) > 0) totals.set(p.team, (totals.get(p.team) ?? 0) + (p.ourProj ?? 0));
   const sorted = [...totals].sort((a, b) => b[1] - a[1]);
   return sorted.length === 2 && sorted[0][1] > sorted[1][1] ? sorted[0][0] : null;
+}
+
+/**
+ * A player's depth on his own team at his position, ranked by DraftKings
+ * salary (a stand-in for the depth chart; projection breaks ties): WR1, WR2,
+ * WR3+; a K or DST is just "K"/"DST".
+ */
+export function roleOf(player: HistoryPlayer, slatePlayers: readonly HistoryPlayer[]): string {
+  if (player.position === "K" || player.position === "DST") return player.position;
+  const mates = slatePlayers.filter((p) => p.team === player.team && p.position === player.position)
+    .sort((a, b) => b.salary - a.salary || (b.ourProj ?? 0) - (a.ourProj ?? 0) || a.name.localeCompare(b.name));
+  const depth = mates.findIndex((p) => p.normalizedName === player.normalizedName) + 1;
+  if (depth <= 0) return `${player.position}?`;
+  const cap = player.position === "WR" ? 3 : 2;
+  return depth >= cap ? `${player.position}${cap}+` : `${player.position}${depth}`;
 }
 
 /** Type of one lineup given its captain and flex players. */
@@ -108,6 +132,8 @@ export function typeOf(captain: HistoryPlayer, flex: readonly HistoryPlayer[], s
   const qbs = all.filter((p) => p.position === "QB").length;
   return { splitKind, side, captain: captain.name, captainPosition: captain.position,
     captainRank: rank > 0 ? rankBucket(rank) : RANK_LABELS[3],
+    captainRole: roleOf(captain, slatePlayers),
+    captainSide: favored == null ? "Unknown" : captain.team === favored ? "Favored" : "Underdog",
     quarterbacks: qbs >= 2 ? "Both QBs" : qbs === 1 ? "One QB" : "No QB",
     kicker: all.some((p) => p.position === "K"), dst: all.some((p) => p.position === "DST") };
 }
@@ -160,6 +186,10 @@ export function tallyShowdownTypes(slates: readonly HistorySlate[]): TypeTally {
     sides: tally((t) => t.side, ["Favored 4-2", "Underdog 4-2", "Favored 5-1", "Underdog 5-1", "Even 3-3"]),
     captainPositions: tally((t) => t.captainPosition, ["QB", "RB", "WR", "TE", "K", "DST"]),
     captainRanks: tally((t) => t.captainRank, RANK_LABELS),
+    captainRoles: tally((t) => t.captainRole, ROLE_ORDER),
+    captainSides: tally((t) => t.captainSide, ["Favored", "Underdog"]),
+    captainRoleSides: tally((t) => `${t.captainRole} · ${t.captainSide}`,
+      ROLE_ORDER.flatMap((r) => [`${r} · Favored`, `${r} · Underdog`])).filter((r) => r.winners || r.best),
     quarterbacks: tally((t) => t.quarterbacks, ["Both QBs", "One QB", "No QB"]),
     kicker: tally((t) => (t.kicker ? "With a kicker" : "No kicker"), ["With a kicker", "No kicker"]),
     dst: tally((t) => (t.dst ? "With a defense" : "No defense"), ["With a defense", "No defense"]),

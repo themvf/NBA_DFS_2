@@ -113,6 +113,17 @@ assert.equal(row.winner!.side, "Favored 4-2");
 assert.equal(row.winner!.captainPosition, "WR");
 assert.equal(row.winner!.captainRank, "2nd-3rd", "WrA is the 3rd-highest projection");
 assert.equal(row.winner!.quarterbacks, "Both QBs");
+assert.equal(row.winner!.captainRole, "WR1", "his team's highest-projected WR");
+assert.equal(row.winner!.captainSide, "Favored");
+assert.equal(tallied.captainRoleSides.find((r) => r.key === "WR1 · Favored")!.winners, 1);
+{
+  const { roleOf } = await import("../src/lib/nfl-dfs/showdown-type-history");
+  const wrs = [hp("W1", "AAA", "WR", 9000, 15), hp("W2", "AAA", "WR", 7000, 11), hp("W3", "AAA", "WR", 5000, 6), hp("W4", "AAA", "WR", 3000, 3), hp("WB", "BBB", "WR", 8000, 13)];
+  assert.deepEqual(wrs.map((w) => roleOf(w, wrs)), ["WR1", "WR2", "WR3+", "WR3+", "WR1"], "depth is per team");
+  // Depth follows salary, not our projection: Chase $10,800 / 23.2 vs Higgins $10,000 / 25.1 (CIN@ATL, 2026 wk 9).
+  const cin = [hp("Chase", "CIN", "WR", 10800, 23.18), hp("Higgins", "CIN", "WR", 10000, 25.09)];
+  assert.deepEqual(cin.map((w) => roleOf(w, cin)), ["WR1", "WR2"]);
+}
 assert.equal(row.winner!.kicker, true);
 assert.deepEqual(row.topShares, { "3-3": 50, "4-2": 50, "5-1": 0 });
 assert.ok(row.best, "best possible lineup solved from the real points");

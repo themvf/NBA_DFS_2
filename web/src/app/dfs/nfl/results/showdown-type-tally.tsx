@@ -11,7 +11,7 @@ export function ShowdownTypeTally({ tally, error }: { tally: TypeTally | null; e
     <p className="mt-1 max-w-3xl text-xs text-slate-500">
       Every past Showdown slate with an imported contest. <b>Winner</b> is the contest&apos;s first-place lineup (the largest contest whose top lineups are stored);
       <b> Best possible</b> is the best lineup the points DraftKings paid allowed; <b>Top-100 share</b> is the average split of each contest&apos;s top 100.
-      &quot;Favored&quot; is the team our projections gave more points. With {tally?.slates.length ?? 0} slates this describes what happened; it is not a forecast.
+      &quot;Favored&quot; is the team our projections gave more points; a captain&apos;s role (WR1, WR2, RB1...) is his rank by DraftKings salary among his team&apos;s players at that position, a stand-in for the depth chart. With {tally?.slates.length ?? 0} slates this describes what happened; it is not a forecast.
     </p>
     {error ? <p role="alert" className="mt-2 text-xs font-semibold text-red-700">The tally could not be read: {error}</p> : null}
     {tally && tally.slates.length ? <>
@@ -20,6 +20,9 @@ export function ShowdownTypeTally({ tally, error }: { tally: TypeTally | null; e
         <Card title="Which side had more players" rows={tally.sides} tally={tally} />
         <Card title="Captain position" rows={tally.captainPositions} tally={tally} />
         <Card title="Captain's projection rank" rows={tally.captainRanks} tally={tally} />
+        <Card title="Captain role (depth on his team)" rows={tally.captainRoles.filter((r) => r.winners || r.best)} tally={tally} />
+        <Card title="Captain's team" rows={tally.captainSides} tally={tally} />
+        <Card title="Captain role and team" rows={tally.captainRoleSides} tally={tally} />
         <Card title="Quarterbacks" rows={tally.quarterbacks} tally={tally} />
         <Card title="Kicker" rows={tally.kicker} tally={tally} />
         <Card title="Defense" rows={tally.dst} tally={tally} />
@@ -45,9 +48,9 @@ export function ShowdownTypeTally({ tally, error }: { tally: TypeTally | null; e
   </section>;
 }
 
-function Type({ t, score }: { t: { side: string; captain: string; captainPosition: string; captainRank: string; quarterbacks: string; kicker: boolean }; score: number | null }) {
+function Type({ t, score }: { t: { side: string; captain: string; captainRole: string; captainSide: string; captainRank: string; quarterbacks: string; kicker: boolean }; score: number | null }) {
   return <div>
-    <b>{t.side}</b> · CPT {t.captain} <span className="text-slate-400">{t.captainPosition}, {t.captainRank.toLowerCase()}</span>
+    <b>{t.side}</b> · CPT {t.captain} <span className="text-slate-400">{t.captainRole} {t.captainSide.toLowerCase()}, {t.captainRank.toLowerCase()} overall</span>
     <div className="text-slate-500">{t.quarterbacks}{t.kicker ? " · kicker" : ""}{score != null ? ` · ${score.toFixed(1)} pts` : ""}</div>
   </div>;
 }
