@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { readNflResultsHistory } from "../actions";
+import { readNflResultsHistory, readNflShowdownTypeHistory } from "../actions";
+import { ShowdownTypeTally } from "./showdown-type-tally";
+import type { TypeTally } from "@/lib/nfl-dfs/showdown-type-history";
 import { builtAfterStart, CHALK_CAPTAIN_PCT, CONTRARIAN_CAPTAIN_PCT, distinctSets, summarizeHistory, type Tally } from "@/lib/nfl-dfs/results-history";
 import { summarizeSet } from "@/lib/nfl-dfs/slate-results";
 import { UpsideGradeCard } from "./upside-grade-card";
@@ -30,7 +32,11 @@ const share = (part: number, whole: number) => (whole ? `${part}/${whole} (${Mat
  * shown with its count and the number of slates behind it.
  */
 export default async function ResultsHistoryPage() {
-  const slates = await readNflResultsHistory();
+  const [slates, typeTally] = await Promise.all([
+    readNflResultsHistory(),
+    readNflShowdownTypeHistory().then((tally): { tally: TypeTally | null; error: string | null } => ({ tally, error: null }))
+      .catch((error: unknown) => ({ tally: null, error: error instanceof Error ? error.message : String(error) })),
+  ]);
   const history = summarizeHistory(slates);
   const { overall } = history;
   return <main className="mx-auto max-w-[1400px] space-y-4">
@@ -42,6 +48,8 @@ export default async function ResultsHistoryPage() {
         A set built twice with identical lineups counts once, and a set saved after the first kickoff is shown but never counted.
       </p>
     </header>
+
+    <ShowdownTypeTally tally={typeTally.tally} error={typeTally.error} />
 
     <UpsideGradeCard />
 

@@ -6,6 +6,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { restoreSavedLineups, savedSlateLabel } from '@/lib/nfl-dfs/saved-workspace';
 import { countNflDkEntryRows, exportNflDkEntries, exportNflDkLineups } from '@/lib/nfl-dfs/entry-export';
 import { validatePicks, type PoolPick } from '@/lib/nfl-dfs/lineup-pool';
+import { tallyShowdownTypes, type HistorySlate as ShowdownHistorySlate, type TypeTally } from '@/lib/nfl-dfs/showdown-type-history';
 import { rosterKey } from '@/lib/nfl-dfs/portfolio-breakdown';
 import { currentPoolForQa, isDeployedBuild, nflOverlapCap, runNflPreExportQa, savedRunQaEvidence, type QaOverride } from '@/lib/nfl-dfs/pre-export-qa';
 import { buildSlateCheck, withRecordFailure, PROJECTION_STALE_HOURS, type SlateCheck, type SlateCheckInput } from '@/lib/nfl-dfs/slate-check';
@@ -15,7 +16,7 @@ import { readDefensiveCaptureRequests, requestDefensiveCaptures } from '@/db/nfl
 import { NFL_PIPELINE_WORKFLOWS, readFailingWorkflows } from '@/lib/workflow-health';
 import { latestSlateChecks, recordSlateCheck, type RecordedSlateCheck } from '@/db/nfl-dfs-slate-checks';
 import { availabilityCoverage } from '@/lib/nfl-dfs/availability-coverage';
-import { and, desc, eq, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {readMatchupComparison,type MatchupProjectionComparison} from '@/db/nfl-matchup';
 import { ensureNflDfsTables } from "@/db/ensure-schema";
@@ -2864,6 +2865,60 @@ async function scoreSlateContest(uploadId: string, extraRunId: string | null) {
     },
     curve, fptsByName, runs, scoredRuns,
   };
+}
+
+/**
+ * The running tally of which Showdown lineup types won: every past Showdown
+ * slate with an imported contest, one row per slate (the largest contest with
+ * stored top lineups decides the winner). Read on demand; about 2 MB of rows.
+ */
+export async function readNflShowdownTypeHistory(): Promise<TypeTally> {
+  await ensureNflDfsTables();
+  const contestRows = (await db.execute(sql`
+    SELECT c.contest_id, c.contest_name, c.season, c.week, c.entry_count, c.winning_score, c.slate_upload_id, u.slate_signature,
+      (SELECT count(*)::int FROM nfl_dfs_field_top_entries t WHERE t.contest_id = c.contest_id) AS top_rows
+    FROM nfl_dfs_field_contests c JOIN nfl_dfs_slate_uploads u ON u.upload_id = c.slate_upload_id
+    WHERE c.format = 'showdown'`)).rows as Array<Record<string, unknown>>;
+  // One contest per slate: the one with stored top lineups, then the biggest field.
+  const bySlate = new Map<string, Record<string, unknown>>();
+  for (const row of contestRows) {
+    const key = String(row.slate_signature), current = bySlate.get(key);
+    const better = !current || (Number(row.top_rows) > 0) !== (Number(current.top_rows) > 0)
+      ? !current || Number(row.top_rows) > 0
+      : Number(row.entry_count) > Number(current.entry_count);
+    if (better) bySlate.set(key, row);
+  }
+  const chosen = [...bySlate.values()];
+  if (!chosen.length) return tallyShowdownTypes([]);
+  const ids = chosen.map((c) => String(c.contest_id)), uploads = chosen.map((c) => String(c.slate_upload_id));
+  const [tops, owned, players] = await Promise.all([
+    db.execute(sql`SELECT contest_id, rank, points, players FROM nfl_dfs_field_top_entries
+      WHERE contest_id IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)}) AND rank <= 100 ORDER BY contest_id, rank`),
+    db.execute(sql`SELECT contest_id, player_name, fpts FROM nfl_dfs_field_ownership
+      WHERE contest_id IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)}) AND fpts IS NOT NULL`),
+    db.select({ uploadId: nflDfsSlatePlayers.uploadId, name: nflDfsSlatePlayers.name, team: nflDfsSlatePlayers.team, position: nflDfsSlatePlayers.position,
+      salary: nflDfsSlatePlayers.salary, captainSalary: nflDfsSlatePlayers.captainSalary, ourProj: nflDfsSlatePlayers.ourProj, gameKey: nflDfsSlatePlayers.gameKey })
+      .from(nflDfsSlatePlayers).where(inArray(nflDfsSlatePlayers.uploadId, uploads)),
+  ]);
+  const slates: ShowdownHistorySlate[] = chosen.map((c) => {
+    const contestId = String(c.contest_id), uploadId = String(c.slate_upload_id);
+    const slatePlayers = players.filter((p) => p.uploadId === uploadId);
+    const fpts = new Map(((owned.rows ?? owned) as Array<Record<string, unknown>>).filter((r) => r.contest_id === contestId)
+      .map((r) => [normalizeFieldName(String(r.player_name)), Number(r.fpts)] as const));
+    const top = ((tops.rows ?? tops) as Array<Record<string, unknown>>).filter((r) => r.contest_id === contestId).map((r) => {
+      const list = (typeof r.players === "string" ? JSON.parse(r.players) : r.players) as Array<{ name: string; slot: string }>;
+      return { rank: Number(r.rank), points: r.points == null ? null : Number(r.points),
+        players: list.map((p) => ({ normalizedName: normalizeFieldName(p.name), slot: p.slot })) };
+    });
+    const game = slatePlayers.find((p) => p.gameKey)?.gameKey ?? "";
+    return { key: contestId, label: `${c.week != null ? `Wk ${c.week} · ` : ""}${game}`, season: c.season == null ? null : Number(c.season),
+      week: c.week == null ? null : Number(c.week), contestName: String(c.contest_name ?? contestId), entryCount: Number(c.entry_count),
+      winningScore: c.winning_score == null ? null : Number(c.winning_score),
+      players: slatePlayers.map((p) => ({ normalizedName: normalizeFieldName(p.name), name: p.name, team: p.team, position: p.position,
+        salary: p.salary, captainSalary: p.captainSalary, ourProj: numeric(p.ourProj) })),
+      fpts, top };
+  }).sort((a, b) => (a.season ?? 0) - (b.season ?? 0) || (a.week ?? 0) - (b.week ?? 0) || a.label.localeCompare(b.label));
+  return tallyShowdownTypes(slates);
 }
 
 export async function readNflSlateResults(uploadId: string, runId: string | null): Promise<NflSlateResults | null> {

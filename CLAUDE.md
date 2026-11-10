@@ -8874,6 +8874,16 @@ grades it against the best lineup DraftKings' points allowed (on CHI@SEA
 model prediction, not a validated rate; players without a range are drawn at
 their projection with no upside, which understates them.
 
+**Running tally (`nfl-showdown-type-history-v1`).** `/dfs/nfl/results` opens
+with "Showdown: which lineup types have won": for every past Showdown slate
+with an imported contest (one contest per slate: stored top lineups first,
+then the biggest field), the type of the contest winner, the split of its
+stored top 100, and the type of the best lineup the real points allowed.
+Types: split, favored/underdog side (by our projected team totals), captain
+position and projection rank, QBs, kicker, defense. First read (20 slates,
+2026 wks 1-9): winners 3-3 8, 4-2 6, 5-1 4 of 18; captains WR 9, RB 6, QB 3;
+the winner was exactly the best possible lineup on 12 of 18. Descriptive only.
+
 ## NFL DFS — Winners-shape build preset (`nfl-winners-shape-v4`, 2026-10-11; v1 2026-10-10)
 
 A "Build shape" select on `/dfs/nfl` (GPP mode, Classic and Showdown):

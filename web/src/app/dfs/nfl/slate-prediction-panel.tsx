@@ -41,7 +41,7 @@ export default function SlatePredictionPanel({ slateKey, players, format, lineup
   return <section className="rounded-xl border border-violet-200 bg-white p-4 shadow-sm">
     <div className="flex flex-wrap items-start justify-between gap-2">
       <div>
-        <h2 className="font-bold">Which lineup type wins this slate?</h2>
+        <h2 className="font-bold">Which lineup type wins this slate? <a href="/dfs/nfl/results#showdown-types" className="ml-2 text-xs font-semibold text-blue-700 underline">Which types have won so far</a></h2>
         <p className="mt-1 max-w-2xl text-xs text-slate-500">We simulate the game {DEFAULT_SHAPE_DRAWS.toLocaleString()} times with the same projections, ranges and teammate correlations the optimizer uses, and find the best possible lineup under the cap in each. The shares below are how often each lineup type was the best one. This is the model&apos;s prediction, not a measured rate; Results grades it after the game.</p>
       </div>
       <button type="button" onClick={run} disabled={progress != null} className="rounded-lg bg-violet-700 px-3 py-2 text-sm font-bold text-white disabled:opacity-50">

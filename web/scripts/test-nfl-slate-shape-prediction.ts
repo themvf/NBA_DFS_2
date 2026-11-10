@@ -4,6 +4,7 @@
  * and a speed check on a full-size slate.
  */
 import assert from "node:assert/strict";
+import { tallyShowdownTypes, type HistoryPlayer } from "../src/lib/nfl-dfs/showdown-type-history";
 import { actualBestShowdown, predictShowdownShapes, ShowdownSolver, showdownShape, type PredictionPlayer, type SolverPlayer } from "../src/lib/nfl-dfs/slate-shape-prediction";
 
 let state = 12345;
@@ -96,6 +97,27 @@ const real = actualBestShowdown(slate, actual)!;
 assert.equal(real.flex.length, 5);
 const byId = new Map(slate.map((p) => [p.dkPlayerId, p]));
 assert.deepEqual(real.shape, showdownShape(real.captain, real.flex, byId));
+
+// The running tally: winner and best-possible types per slate, counted.
+const hp = (name: string, team: string, position: string, salary: number, ourProj: number): HistoryPlayer =>
+  ({ normalizedName: name.toLowerCase(), name, team, position, salary, captainSalary: salary * 1.5, ourProj });
+const histPlayers = [hp("QbA", "AAA", "QB", 11000, 20), hp("WrA", "AAA", "WR", 9000, 15), hp("RbA", "AAA", "RB", 8000, 14), hp("TeA", "AAA", "TE", 5000, 8),
+  hp("QbB", "BBB", "QB", 10000, 17), hp("WrB", "BBB", "WR", 7000, 12), hp("RbB", "BBB", "RB", 6000, 10), hp("KB", "BBB", "K", 4000, 7)];
+const entry = (rank: number, cpt: string, flex: string[]) => ({ rank, points: 100 - rank, players: [{ normalizedName: cpt, slot: "CPT" }, ...flex.map((n) => ({ normalizedName: n, slot: "FLEX" }))] });
+const tallied = tallyShowdownTypes([{ key: "s1", label: "Wk 1", season: 2026, week: 1, contestName: "c", entryCount: 100, winningScore: 99, players: histPlayers,
+  fpts: new Map([["wra", 30], ["qba", 20], ["rba", 18], ["tea", 2], ["qbb", 15], ["wrb", 4], ["rbb", 3], ["kb", 9]]),
+  top: [entry(1, "wra", ["qba", "rba", "tea", "qbb", "kb"]), entry(2, "qba", ["wra", "rba", "qbb", "wrb", "rbb"])] }]);
+const row = tallied.slates[0];
+assert.equal(row.favored, "AAA", "the team with more projected points");
+assert.equal(row.winner!.side, "Favored 4-2");
+assert.equal(row.winner!.captainPosition, "WR");
+assert.equal(row.winner!.captainRank, "2nd-3rd", "WrA is the 3rd-highest projection");
+assert.equal(row.winner!.quarterbacks, "Both QBs");
+assert.equal(row.winner!.kicker, true);
+assert.deepEqual(row.topShares, { "3-3": 50, "4-2": 50, "5-1": 0 });
+assert.ok(row.best, "best possible lineup solved from the real points");
+assert.equal(tallied.splitKinds.find((r) => r.key === "4-2")!.winners, 1);
+assert.equal(tallied.splitKinds.find((r) => r.key === "4-2")!.topShare, 50);
 
 console.log(`Slate shape prediction: solver matches brute force on 40 slates; 300 simulated games in ${ms} ms.`);
 }
