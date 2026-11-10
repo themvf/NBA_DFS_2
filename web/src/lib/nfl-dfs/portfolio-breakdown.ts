@@ -156,3 +156,194 @@ export function matchesFilter(shape: LineupShape, filter: LineupFilter): boolean
 }
 
 export const isFilterActive = (filter: LineupFilter) => Object.values(filter).some((v) => v != null && v !== "");
+
+// ---------------------------------------------------------------------------
+// Pairs: which players the portfolio puts together.
+
+export interface PairPlayer { dkPlayerId: number; name: string; team: string; position: string }
+
+export interface PairRow {
+  key: string;
+  a: PairPlayer;
+  b: PairPlayer;
+  count: number;
+  pct: number;
+  /** Share expected if the two exposures were independent: pctA x pctB / 100. */
+  independentPct: number;
+}
+
+export interface PairBreakdown {
+  /** Any two players in the same lineup, either slot. */
+  together: PairRow[];
+  /** Showdown only: captain `a` with flex `b`. */
+  captainWith: PairRow[];
+}
+
+type PairAcc = Map<string, { a: BreakdownPlayer; b: BreakdownPlayer; count: number }>;
+const brief = (p: BreakdownPlayer): PairPlayer => ({ dkPlayerId: p.dkPlayerId, name: p.name, team: p.team, position: p.position });
+const bump = (map: Map<number, number>, id: number) => map.set(id, (map.get(id) ?? 0) + 1);
+
+/** The most common pairs, at least `minCount` lineups each, most common first; `limit` per list. */
+export function pairBreakdown(lineups: readonly BreakdownLineup[], minCount = 2, limit = 40): PairBreakdown {
+  const total = lineups.length;
+  const exposure = new Map<number, number>(), captained = new Map<number, number>(), flex = new Map<number, number>();
+  const together: PairAcc = new Map(), withCaptain: PairAcc = new Map();
+  const add = (map: PairAcc, key: string, a: BreakdownPlayer, b: BreakdownPlayer) => {
+    const row = map.get(key) ?? { a, b, count: 0 }; row.count += 1; map.set(key, row);
+  };
+  for (const lineup of lineups) {
+    const ordered = lineup.slots.map((s) => s.player).sort((x, y) => x.dkPlayerId - y.dkPlayerId);
+    for (const p of ordered) bump(exposure, p.dkPlayerId);
+    for (let i = 0; i < ordered.length; i++) for (let j = i + 1; j < ordered.length; j++)
+      add(together, `${ordered[i].dkPlayerId}|${ordered[j].dkPlayerId}`, ordered[i], ordered[j]);
+    const captain = lineup.slots.find((s) => s.slot === "CPT")?.player;
+    if (!captain) continue;
+    bump(captained, captain.dkPlayerId);
+    for (const s of lineup.slots) if (s.slot !== "CPT") {
+      bump(flex, s.player.dkPlayerId);
+      add(withCaptain, `${captain.dkPlayerId}>${s.player.dkPlayerId}`, captain, s.player);
+    }
+  }
+  const share = (n: number) => pct(n, total);
+  const finish = (map: PairAcc, aCounts: Map<number, number>, bCounts: Map<number, number>): PairRow[] =>
+    [...map].filter(([, r]) => r.count >= minCount)
+      .map(([key, r]) => ({ key, a: brief(r.a), b: brief(r.b), count: r.count, pct: share(r.count),
+        independentPct: (share(aCounts.get(r.a.dkPlayerId) ?? 0) * share(bCounts.get(r.b.dkPlayerId) ?? 0)) / 100 }))
+      .sort((x, y) => y.count - x.count || x.key.localeCompare(y.key))
+      .slice(0, limit);
+  return { together: finish(together, exposure, exposure), captainWith: finish(withCaptain, captained, flex) };
+}
+
+// ---------------------------------------------------------------------------
+// Two portfolios side by side.
+
+export interface ExposureChange extends PairPlayer {
+  pctA: number; pctB: number; captainPctA: number; captainPctB: number;
+}
+
+export interface PortfolioComparison {
+  a: PortfolioBreakdown;
+  b: PortfolioBreakdown;
+  players: ExposureChange[];
+  /** Lineups of B whose roster also appears in A. */
+  sharedLineups: number;
+}
+
+/** Same roster, slot for slot (a Showdown captain differs from the same player at flex). */
+export function rosterKey(lineup: Pick<BreakdownLineup, "slots">): string {
+  return lineup.slots.map((s) => `${s.slot === "CPT" ? "C" : "F"}${s.player.dkPlayerId}`).sort().join(",");
+}
+
+function exposureCounts(lineups: readonly BreakdownLineup[]) {
+  const counts = new Map<number, { player: BreakdownPlayer; count: number; captain: number }>();
+  for (const l of lineups) for (const s of l.slots) {
+    const row = counts.get(s.player.dkPlayerId) ?? { player: s.player, count: 0, captain: 0 };
+    row.count += 1; if (s.slot === "CPT") row.captain += 1;
+    counts.set(s.player.dkPlayerId, row);
+  }
+  return counts;
+}
+
+/** Players sorted by the size of their exposure change from A to B, largest first. */
+export function comparePortfolios(a: readonly BreakdownLineup[], b: readonly BreakdownLineup[], format: PortfolioFormat,
+  field?: ReadonlyMap<number, Pick<BreakdownPlayer, "captainOwnPct">>): PortfolioComparison {
+  const ca = exposureCounts(a), cb = exposureCounts(b);
+  const players = [...new Set([...ca.keys(), ...cb.keys()])].map((id) => {
+    const ra = ca.get(id), rb = cb.get(id), p = (ra ?? rb)!.player;
+    return { ...brief(p), pctA: pct(ra?.count ?? 0, a.length), pctB: pct(rb?.count ?? 0, b.length),
+      captainPctA: pct(ra?.captain ?? 0, a.length), captainPctB: pct(rb?.captain ?? 0, b.length) };
+  }).sort((x, y) => Math.abs(y.pctB - y.pctA) - Math.abs(x.pctB - x.pctA) || y.pctB - x.pctB || x.name.localeCompare(y.name));
+  const keysA = new Set(a.map(rosterKey));
+  return { a: breakdownPortfolio(a, format, field), b: breakdownPortfolio(b, format, field), players,
+    sharedLineups: b.filter((l) => keysA.has(rosterKey(l))).length };
+}
+
+// ---------------------------------------------------------------------------
+// After the games: how each group of lineups scored.
+
+export interface ShapeScoreRow {
+  key: string;
+  label: string;
+  lineups: number;
+  scored: number;
+  average: number | null;
+  best: number | null;
+  /** Lineups that beat the field median; null when the median is unknown. */
+  aboveMedian: number | null;
+}
+
+export interface ShapeScores {
+  captains: ShapeScoreRow[];
+  splitKinds: ShapeScoreRow[];
+  splits: ShapeScoreRow[];
+  quarterbacks: ShapeScoreRow[];
+  kicker: ShapeScoreRow[];
+}
+
+type ScoreAcc = Map<string, { label: string; values: (number | null)[] }>;
+
+/**
+ * `actual`: DraftKings points by lineup number, null when a player was missing
+ * from the contest export. Lineups absent from the map are skipped entirely.
+ */
+export function scoreByShape(lineups: readonly BreakdownLineup[], format: PortfolioFormat,
+  actual: ReadonlyMap<number, number | null>, median: number | null): ShapeScores {
+  const captains: ScoreAcc = new Map(), splitKinds: ScoreAcc = new Map(), splits: ScoreAcc = new Map(),
+    quarterbacks: ScoreAcc = new Map(), kicker: ScoreAcc = new Map();
+  const add = (map: ScoreAcc, key: string, label: string, value: number | null) => {
+    const g = map.get(key) ?? { label, values: [] }; g.values.push(value); map.set(key, g);
+  };
+  for (const lineup of lineups) {
+    if (!actual.has(lineup.lineupNumber)) continue;
+    const value = actual.get(lineup.lineupNumber) ?? null;
+    const shape = lineupShape(lineup, format);
+    const captain = lineup.slots.find((s) => s.slot === "CPT")?.player;
+    if (captain) add(captains, String(captain.dkPlayerId), captain.name, value);
+    add(splitKinds, shape.splitKind, shape.splitKind, value);
+    if (format === "showdown" && shape.split.includes(" ")) add(splits, shape.split, shape.split, value);
+    const q = shape.quarterbacks >= 2 ? "Both QBs" : shape.quarterbacks === 1 ? "One QB" : "No QB";
+    add(quarterbacks, q, q, value);
+    add(kicker, shape.kicker ? "kicker" : "no-kicker", shape.kicker ? "With a kicker" : "No kicker", value);
+  }
+  const finish = (map: ScoreAcc, order?: string[]): ShapeScoreRow[] => [...map].map(([key, g]) => {
+    const scored = g.values.filter((v): v is number => v != null);
+    return { key, label: g.label, lineups: g.values.length, scored: scored.length,
+      average: scored.length ? scored.reduce((s, v) => s + v, 0) / scored.length : null,
+      best: scored.length ? Math.max(...scored) : null,
+      aboveMedian: median == null ? null : scored.filter((v) => v > median).length };
+  }).sort((x, y) => order
+    ? (order.indexOf(x.key) + 1 || 99) - (order.indexOf(y.key) + 1 || 99) || y.lineups - x.lineups
+    : y.lineups - x.lineups || (y.average ?? -1) - (x.average ?? -1));
+  return { captains: finish(captains), splitKinds: finish(splitKinds, ["3-3", "4-2", "5-1", "6-0"]), splits: finish(splits),
+    quarterbacks: finish(quarterbacks, ["Both QBs", "One QB", "No QB"]), kicker: finish(kicker, ["kicker", "no-kicker"]) };
+}
+
+// ---------------------------------------------------------------------------
+// Where the field numbers come from.
+
+export interface FieldOwnershipSource {
+  /** Short tag for a column header: "est." or "LineStar". */
+  short: string;
+  /** One sentence for the panel note. */
+  note: string;
+}
+
+/**
+ * The page's field ownership is our own estimate unless LineStar supplied it.
+ * The quoted misses come from the ownership calibration notes in CLAUDE.md:
+ * Showdown flex ownership off by about 4-5 points a player (weeks 4-5, v3
+ * prior), Classic about 1 point (week-4 Millionaire).
+ */
+export function fieldOwnershipSource(players: readonly { ownSource?: string | null; ownPct?: number | null }[],
+  format: PortfolioFormat): FieldOwnershipSource {
+  const withOwn = players.filter((p) => p.ownPct != null);
+  const linestar = withOwn.filter((p) => p.ownSource === "linestar").length;
+  if (withOwn.length && linestar === withOwn.length)
+    return { short: "LineStar", note: "Field is LineStar's projected ownership, not DraftKings' final numbers." };
+  const fitted = withOwn.some((p) => p.ownSource?.startsWith("nfl-ownership-fit"));
+  const miss = format === "showdown"
+    ? "on recent Showdowns it missed by about 4-5 points a player, most on cheap players and kickers. Treat gaps under about 5 points as noise"
+    : "on recent Classic slates it missed by about 1 point a player";
+  return { short: "est.",
+    note: `Field is our own ${fitted ? "fitted " : ""}ownership estimate${linestar ? ` (LineStar for ${linestar} players)` : ""}, not DraftKings' numbers: ${miss}.` };
+}

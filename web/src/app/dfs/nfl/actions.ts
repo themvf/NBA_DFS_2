@@ -5,6 +5,8 @@ import { resolveSlateWeek, type SlateGame, type ScheduledGame } from "@/lib/nfl-
 import { createHash, randomUUID } from "node:crypto";
 import { restoreSavedLineups, savedSlateLabel } from '@/lib/nfl-dfs/saved-workspace';
 import { countNflDkEntryRows, exportNflDkEntries, exportNflDkLineups } from '@/lib/nfl-dfs/entry-export';
+import { validatePicks, type PoolPick } from '@/lib/nfl-dfs/lineup-pool';
+import { rosterKey } from '@/lib/nfl-dfs/portfolio-breakdown';
 import { currentPoolForQa, isDeployedBuild, nflOverlapCap, runNflPreExportQa, savedRunQaEvidence, type QaOverride } from '@/lib/nfl-dfs/pre-export-qa';
 import { buildSlateCheck, withRecordFailure, PROJECTION_STALE_HOURS, type SlateCheck, type SlateCheckInput } from '@/lib/nfl-dfs/slate-check';
 import { nextNflProjectionSlot } from '@/lib/nfl-dfs/projection-cadence';
@@ -2167,6 +2169,54 @@ export async function exportSavedNflLineups(runId:string,overrides:QaOverride[]=
   const {run}=await readNflOptimizerAudit(runId);
   const saved=await exportableSavedNflLineups(runId,null,overrides);
   return exportNflDkLineups((run.settings as NflSavedRunSettings).format,saved.lineups);
+}
+
+/**
+ * The final lineup set: lineups picked from several saved runs of the same
+ * slate, written as one file. Every source run passes the same server gates as
+ * a single-run export (kickoff lock, current-pool check, its own QA with the
+ * overrides recorded on it); then the picks must come from one slate and one
+ * format, identical rosters are refused, and an entry file must have room.
+ * `entryTemplate` null writes the lineups-only CSV.
+ */
+export async function exportNflLineupPool(uploadId:string,picks:PoolPick[],entryTemplate:string|null,
+  overridesByRun:Record<string,QaOverride[]>={}):Promise<{csv:string;lineups:number;runs:number}> {
+  if(!/^[0-9a-f-]{36}$/.test(uploadId))throw new Error(`Invalid saved slate: ${JSON.stringify(uploadId)}`);
+  const invalid=validatePicks(picks);
+  if(invalid)throw new Error(invalid);
+  const [slateUpload]=await db.select().from(nflDfsSlateUploads).where(eq(nflDfsSlateUploads.uploadId,uploadId)).limit(1);
+  if(!slateUpload)throw new Error('The salary slate was not found.');
+  const runIds=[...new Set(picks.map(p=>p.runId))];
+  const byRun=new Map<string,{format:string;lineups:Map<number,NflGeneratedLineup>}>();
+  for(const runId of runIds) {
+    const {run}=await readNflOptimizerAudit(runId);
+    const [upload]=await db.select().from(nflDfsSlateUploads).where(eq(nflDfsSlateUploads.uploadId,run.uploadId)).limit(1);
+    if(!upload||(upload.slateSignature!==slateUpload.slateSignature&&upload.fileDigest!==slateUpload.fileDigest))
+      throw new Error(`Run ${runId.slice(0,8)} was built for a different slate.`);
+    let saved;
+    try { saved=await exportableSavedNflLineups(runId,null,Array.isArray(overridesByRun[runId])?overridesByRun[runId]:[]); }
+    catch(error) { throw new Error(`Run ${runId.slice(0,8)}: ${error instanceof Error?error.message:String(error)}`); }
+    byRun.set(runId,{format:(run.settings as NflSavedRunSettings).format,lineups:new Map(saved.lineups.map(l=>[l.lineupNumber,l]))});
+  }
+  const formats=new Set([...byRun.values()].map(r=>r.format));
+  if(formats.size!==1)throw new Error('The final set mixes Classic and Showdown lineups.');
+  const lineups=picks.map((pick,index)=>{
+    const lineup=byRun.get(pick.runId)!.lineups.get(pick.lineupNumber);
+    if(!lineup)throw new Error(`Run ${pick.runId.slice(0,8)} has no lineup ${pick.lineupNumber}.`);
+    return {...lineup,lineupNumber:index+1};
+  });
+  const rosters=new Map<string,number>();
+  for(const lineup of lineups) {
+    const key=rosterKey(lineup);
+    if(rosters.has(key))throw new Error(`Final-set lineups ${rosters.get(key)} and ${lineup.lineupNumber} are the same roster. Remove one.`);
+    rosters.set(key,lineup.lineupNumber);
+  }
+  if(entryTemplate!=null) {
+    const rows=countNflDkEntryRows(entryTemplate);
+    if(rows<lineups.length)throw new Error(`The entry file has ${rows} entr${rows===1?'y':'ies'} for ${lineups.length} lineups. Download an entry file with at least ${lineups.length} entries, or remove lineups from the final set.`);
+    return {csv:exportNflDkEntries(entryTemplate,lineups),lineups:lineups.length,runs:runIds.length};
+  }
+  return {csv:exportNflDkLineups([...formats][0] as NflSavedRunSettings['format'],lineups),lineups:lineups.length,runs:runIds.length};
 }
 
 async function exportableSavedNflLineups(runId:string,entryTemplate:string|null,overrides:QaOverride[]) {

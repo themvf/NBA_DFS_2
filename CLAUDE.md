@@ -8845,6 +8845,22 @@ model). Salary is stored as 0.
   graded: results import and the weekly reviews cover Classic and Showdown
   only.
 
+## NFL DFS — Final set across runs (`nfl-lineup-pool-v1`, 2026-11-09)
+
+Review has two tabs: "This run" and "Final set". Lineups are added to the
+final set from any saved run of the slate (one at a time, or every lineup the
+filters show) and exported together by `exportNflLineupPool`
+(`web/src/app/dfs/nfl/actions.ts`). The pool holds only run id + lineup
+number, in browser storage per upload (`lib/nfl-dfs/lineup-pool.ts`); the
+server re-reads every lineup and runs each SOURCE run's own export gates
+(kickoff lock, current pool, QA with the overrides recorded on that run), then
+refuses mixed slates/formats, identical rosters, and an entry file with too few
+rows. Min-unique is not enforced across runs; the page reports near-duplicate
+pairs instead. The same change added pairs, run comparison, per-player caps
+typed in the exposure table (they write the build form's targets), score by
+captain/split/structure in Results, and labels the field ownership as our
+estimate (`fieldOwnershipSource`) — it is not DraftKings' number.
+
 ## NFL DFS — Winners-shape build preset (`nfl-winners-shape-v4`, 2026-10-11; v1 2026-10-10)
 
 A "Build shape" select on `/dfs/nfl` (GPP mode, Classic and Showdown):

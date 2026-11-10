@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { scoreByShape, type BreakdownLineup, type PortfolioFormat, type ShapeScoreRow } from "@/lib/nfl-dfs/portfolio-breakdown";
 import FieldAuditPanel from "./field-audit-panel";
 import { readNflSlateResults, type NflSlateResults } from "./client-actions";
 
@@ -20,12 +21,15 @@ const SOURCE_LABELS: Record<string, string> = {
  * our projections were off by position, and (below) what the field knew that
  * we did not. The upload used to sit 38 panels deep in a research tab.
  */
-export default function ResultsStep({ uploadId, runId, lineupCount, locked, poolReviewHref }: {
+export default function ResultsStep({ uploadId, runId, lineupCount, locked, poolReviewHref, lineups, format }: {
   uploadId: string;
   runId: string | null;
   lineupCount: number;
   locked: boolean;
   poolReviewHref: string;
+  /** The loaded run's lineups, to group the scores by captain, split and structure. */
+  lineups?: readonly BreakdownLineup[];
+  format?: PortfolioFormat;
 }) {
   const [results, setResults] = useState<NflSlateResults | null>(null);
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
@@ -45,6 +49,9 @@ export default function ResultsStep({ uploadId, runId, lineupCount, locked, pool
   const reload = () => setVersion((v) => v + 1);
 
   const fmt = (n: number | null | undefined, d = 1) => (n == null ? "—" : n.toFixed(d));
+  const shapeScores = useMemo(() => results && lineups?.length && format && results.runId === runId
+    ? scoreByShape(lineups, format, new Map(results.lineups.map((l) => [l.lineupNumber, l.actual])), results.contest.medianScore)
+    : null, [results, lineups, format, runId]);
   const rankText = (rank: number | null, exact: boolean) =>
     rank == null ? "—" : `${exact ? "" : "~"}${rank.toLocaleString()}`;
 
@@ -120,6 +127,16 @@ export default function ResultsStep({ uploadId, runId, lineupCount, locked, pool
         </table>
       </section> : null}
 
+      {shapeScores ? <section className="rounded-xl border bg-white p-4 shadow-sm">
+        <h2 className="font-bold">How each part of the build scored</h2>
+        <p className="mt-1 text-xs text-slate-500">The loaded set&apos;s lineups grouped the way the Review step breaks them down, scored with the points DraftKings paid. One game is one sample: this says what happened, not which shape is better.</p>
+        <div className={`mt-3 grid gap-3 ${format === "showdown" ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}>
+          {format === "showdown" ? <ShapeTable title="Captain" rows={shapeScores.captains} fmt={fmt} /> : null}
+          <ShapeTable title={format === "showdown" ? "Team split" : "Stack"} rows={[...shapeScores.splitKinds, ...shapeScores.splits]} fmt={fmt} />
+          <ShapeTable title="Structure" rows={[...shapeScores.quarterbacks, ...(format === "showdown" ? shapeScores.kicker : [])]} fmt={fmt} />
+        </div>
+      </section> : null}
+
       {results.lineups.length ? <section className="rounded-xl border bg-white p-4 shadow-sm">
         <h2 className="font-bold">Your lineups</h2>
         <p className="mt-1 text-xs text-slate-500">
@@ -173,5 +190,22 @@ function Card({ label, value, note }: { label: string; value: string; note: stri
     <div className="text-[11px] font-bold uppercase text-slate-500">{label}</div>
     <div className="mt-1 text-2xl font-black">{value}</div>
     <div className="mt-0.5 text-xs text-slate-500">{note}</div>
+  </div>;
+}
+
+function ShapeTable({ title, rows, fmt }: { title: string; rows: ShapeScoreRow[]; fmt: (n: number | null | undefined, d?: number) => string }) {
+  const best = Math.max(...rows.map((r) => r.average ?? -Infinity));
+  return <div className="rounded-lg border p-2">
+    <h3 className="text-xs font-bold text-slate-700">{title}</h3>
+    <table className="mt-1 w-full text-left text-xs">
+      <thead className="text-[10px] uppercase text-slate-400"><tr><th className="py-1" /><th className="text-right">Lineups</th><th className="text-right">Average</th><th className="text-right">Best</th><th className="text-right">Beat median</th></tr></thead>
+      <tbody>{rows.map((r) => <tr key={`${title}-${r.key}`} className="border-t">
+        <td className="py-1 pr-1 font-semibold text-slate-800">{r.label}</td>
+        <td className="text-right tabular-nums">{r.scored === r.lineups ? r.lineups : `${r.scored}/${r.lineups}`}</td>
+        <td className={`text-right tabular-nums font-semibold ${r.average != null && r.average === best ? "text-emerald-700" : ""}`}>{fmt(r.average)}</td>
+        <td className="text-right tabular-nums">{fmt(r.best)}</td>
+        <td className="text-right tabular-nums text-slate-500">{r.aboveMedian == null ? "—" : `${r.aboveMedian}/${r.scored}`}</td>
+      </tr>)}</tbody>
+    </table>
   </div>;
 }
