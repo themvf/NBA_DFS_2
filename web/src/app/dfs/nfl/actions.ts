@@ -2796,6 +2796,8 @@ export type NflSlateResults = {
   sets: Array<{ runId: string; createdAt: string; mode: string; source: string; planMode: string | null } & SetSummary>;
   /** Captains in the loaded set. */
   captains: SetSummary["captains"];
+  /** The points DraftKings paid each slate player who appears in the contest export; a player nobody drafted is absent. */
+  actualPoints: { dkPlayerId: number; fpts: number }[];
 };
 
 /** Most sets compared at once; each one is a full audit read. */
@@ -2877,9 +2879,11 @@ export async function readNflSlateResults(uploadId: string, runId: string | null
   // feed zeroed, was graded against a projection nobody could build with.
   let positionErrorNote: string | null = null;
   let graded: { name: string; position: string; ourProj: number | null; isOut: boolean }[];
+  let pointsFor: { dkPlayerId: number; name: string }[] = [];
   try {
     const page = await workspaceSlate(uploadId, {}, { recordCheck: false });
     graded = page.players.map((p) => ({ name: p.name, position: p.position, ourProj: p.ourProj, isOut: p.isOut || p.projectionStatus === 'out' }));
+    pointsFor = page.players;
   } catch (error) {
     const slatePlayers = await db.select().from(nflDfsSlatePlayers).where(eq(nflDfsSlatePlayers.uploadId, uploadId));
     graded = slatePlayers.map((p) => ({ name: p.name, position: p.position, ourProj: numeric(p.ourProj), isOut: p.isOut || p.projectionStatus === 'out' }));
@@ -2902,6 +2906,10 @@ export async function readNflSlateResults(uploadId: string, runId: string | null
     sets: runs.map((run) => ({ runId: run.runId, createdAt: run.createdAt, mode: run.mode, source: run.source,
       planMode: scoredRuns.get(run.runId)!.planMode, ...summarizeSet(scoredRuns.get(run.runId)!.ranked, contest.medianScore) })),
     captains: current.captains,
+    actualPoints: pointsFor.flatMap((p) => {
+      const fpts = fptsByName.get(normalizeFieldName(p.name));
+      return fpts == null ? [] : [{ dkPlayerId: p.dkPlayerId, fpts }];
+    }),
   };
 }
 

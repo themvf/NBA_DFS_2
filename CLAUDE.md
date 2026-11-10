@@ -8861,6 +8861,19 @@ typed in the exposure table (they write the build form's targets), score by
 captain/split/structure in Results, and labels the field ownership as our
 estimate (`fieldOwnershipSource`) — it is not DraftKings' number.
 
+**Lineup-type prediction (`nfl-slate-shape-v1`, Showdown only).** "Which
+lineup type wins this slate?" simulates the game 1,000 times with the
+optimizer's own draw model (`lineup-draws.ts`, our projections and ranges)
+and solves the exact best legal lineup in each (`ShowdownSolver`: salary
+knapsack in $100 units, prefix/suffix tables so each captain is excluded, a
+team mask so 6-0 is never chosen; checked against brute force in
+`test:nfl-slate-shape-prediction`). It reports how often each split, captain,
+QB count and kicker/DST is in the best lineup, beside the build's mix. Results
+grades it against the best lineup DraftKings' points allowed (on CHI@SEA
+2026-11-02 that lineup scored 115.5, exactly the contest winner). It is a
+model prediction, not a validated rate; players without a range are drawn at
+their projection with no upside, which understates them.
+
 ## NFL DFS — Winners-shape build preset (`nfl-winners-shape-v4`, 2026-10-11; v1 2026-10-10)
 
 A "Build shape" select on `/dfs/nfl` (GPP mode, Classic and Showdown):
