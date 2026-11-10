@@ -116,6 +116,7 @@
     "test:nfl-special-teams-anchor": "node --import tsx ./scripts/test-nfl-special-teams-anchor.ts",
     "test:nfl-projection-correction": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-projection-correction.ts",
     "test:nfl-portfolio-breakdown": "node --import tsx ./scripts/test-nfl-portfolio-breakdown.ts",
+    "test:nfl-slate-shape-prediction": "node --import tsx scripts/test-nfl-slate-shape-prediction.ts",
     "test:nfl-lineup-draws": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-lineup-draws.ts",
     "test:nfl-range-calibration": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-range-calibration.ts",
     "test:nfl-position-stats": "node --import tsx ./scripts/test-nfl-position-stats.ts",

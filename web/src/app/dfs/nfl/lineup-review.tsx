@@ -8,7 +8,16 @@ import PortfolioBreakdownPanel from "./portfolio-breakdown-panel";
 const money = (value: number) => `$${value.toLocaleString()}`;
 const select = "rounded-lg border bg-white px-2 py-1.5 text-xs";
 
-export default function LineupReview({ lineups, runId, airMatchupMinimumPct = 0, goalLineMinimumPct = 0, plannedLineups, format, players }: {
+/** Add/remove lineups from the final set, one at a time or every lineup the filters show. */
+export interface PickControl {
+  isPicked: (lineupNumber: number) => boolean;
+  toggle: (lineupNumber: number) => void;
+  pickedLabel?: string;
+  unpickedLabel?: string;
+  bulk?: { label: string; run: (shown: NflGeneratedLineup[]) => void }[];
+}
+
+export default function LineupReview({ lineups, runId, airMatchupMinimumPct = 0, goalLineMinimumPct = 0, plannedLineups, format, players, title, subtitle, lineupTag, pickControl }: {
   lineups: NflGeneratedLineup[];
   runId: string | null;
   airMatchupMinimumPct?: number;
@@ -17,6 +26,11 @@ export default function LineupReview({ lineups, runId, airMatchupMinimumPct = 0,
   format?: PortfolioFormat;
   /** Current slate players, for field captain ownership on restored runs. */
   players?: readonly { dkPlayerId: number; captainOwnPct?: number | null }[];
+  title?: string;
+  subtitle?: string;
+  /** A short tag per lineup (the final set shows its source run). */
+  lineupTag?: (lineupNumber: number) => string | null;
+  pickControl?: PickControl;
 }) {
   const [order, setOrder] = useState("original");
   const [filter, setFilter] = useState<LineupFilter>({});
@@ -45,8 +59,10 @@ export default function LineupReview({ lineups, runId, airMatchupMinimumPct = 0,
   <PortfolioBreakdownPanel breakdown={breakdown} filter={filter} onFilter={setFilter} />
   <section className="rounded-xl border bg-white">
     <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
-      <div><h2 className="font-semibold">Portfolio · {filtering ? `${visible.length} of ${lineups.length}` : lineups.length} lineups</h2>
-        <p className="mt-1 text-xs text-slate-500">Run {runId?.slice(0, 8) ?? "unsaved"} · Select a lineup to inspect its roster.</p></div>
+      <div><h2 className="font-semibold">{title ?? "Portfolio"} · {filtering ? `${visible.length} of ${lineups.length}` : lineups.length} lineups</h2>
+        <p className="mt-1 text-xs text-slate-500">{subtitle ?? `Run ${runId?.slice(0, 8) ?? "unsaved"} · Select a lineup to inspect its roster.`}</p>
+        {pickControl?.bulk?.length ? <div className="mt-2 flex flex-wrap gap-2">{pickControl.bulk.map((b) =>
+          <button key={b.label} type="button" disabled={!sorted.length} onClick={() => b.run(sorted)} className="rounded-lg border border-blue-300 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-800 disabled:opacity-40">{b.label.replace("{n}", String(sorted.length))}</button>)}</div> : null}</div>
       {airMatchupMinimumPct > 0 ? <p className="text-xs font-semibold text-blue-800">Air-yard matchup: {airMatchupCount}/{lineups.length} lineups · minimum {Math.ceil((plannedLineups ?? lineups.length) * airMatchupMinimumPct / 100)} ({airMatchupMinimumPct}%)</p> : null}
       {goalLineMinimumPct > 0 ? <p className="text-xs font-semibold text-blue-800">Goal-line RB: {goalLineCount}/{lineups.length} lineups · minimum {Math.ceil((plannedLineups ?? lineups.length) * goalLineMinimumPct / 100)} ({goalLineMinimumPct}%)</p> : null}
       {adjustedRbCount > 0 ? <p className="text-xs font-semibold text-amber-800">Opponent-adjusted RB forecast: {adjustedRbCount}/{lineups.length} lineups</p> : null}
@@ -88,16 +104,21 @@ export default function LineupReview({ lineups, runId, airMatchupMinimumPct = 0,
       </select>
       {filtering ? <button type="button" onClick={() => setFilter({})} className="rounded-lg border border-blue-300 bg-white px-2 py-1.5 text-xs font-semibold text-blue-800">Clear filters</button> : null}
     </div>
-    <p className="border-b px-4 py-2 text-xs text-slate-500">Sorting and filtering change this view only; the export always has every lineup in its original order. Floor and ceiling sums add player estimates, not lineup percentiles.</p>
+    <p className="border-b px-4 py-2 text-xs text-slate-500">Sorting and filtering change this view only; {pickControl ? "a run export" : "the export"} always has every lineup in its original order. Floor and ceiling sums add player estimates, not lineup percentiles.</p>
     {filtering && !visible.length ? <p className="p-6 text-center text-sm text-slate-500">No lineups match these filters.</p> : null}
     <div className="max-h-[720px] overflow-auto divide-y">
       {sorted.map(lineup => <details key={`${runId}:${lineup.lineupNumber}`} className="nfl-lineup-detail">
-        <summary className="grid cursor-pointer grid-cols-2 items-center gap-3 p-4 sm:grid-cols-5">
-          <span className="font-semibold">Lineup {lineup.lineupNumber}</span>
+        <summary className={`grid cursor-pointer grid-cols-2 items-center gap-3 p-4 ${pickControl ? "sm:grid-cols-6" : "sm:grid-cols-5"} ${pickControl?.isPicked(lineup.lineupNumber) ? "bg-emerald-50/60" : ""}`}>
+          <span className="font-semibold">Lineup {lineup.lineupNumber}{lineupTag?.(lineup.lineupNumber) ? <span className="ml-1 rounded bg-slate-100 px-1 text-[10px] font-bold text-slate-600">{lineupTag(lineup.lineupNumber)}</span> : null}</span>
           <ShapeLabel lineup={lineup} split={shapes.get(lineup.lineupNumber)!.split} />
           <span className="text-sm text-slate-500">Projection <b className="text-emerald-800">{lineup.projectedFpts.toFixed(1)}</b></span>
           <span className="text-sm text-slate-500">Salary <b className="text-slate-900">{money(lineup.totalSalary)}</b></span>
           <span className="text-xs text-slate-500">View roster ↓</span>
+          {pickControl ? <button type="button" onClick={(e) => { e.preventDefault(); pickControl.toggle(lineup.lineupNumber); }}
+            aria-pressed={pickControl.isPicked(lineup.lineupNumber)}
+            className={`justify-self-start rounded-lg border px-2 py-1 text-xs font-semibold ${pickControl.isPicked(lineup.lineupNumber) ? "border-emerald-400 bg-emerald-100 text-emerald-900" : "border-blue-300 bg-white text-blue-800"}`}>
+            {pickControl.isPicked(lineup.lineupNumber) ? (pickControl.pickedLabel ?? "✓ In final set") : (pickControl.unpickedLabel ?? "+ Final set")}
+          </button> : null}
         </summary>
         <div className="px-4 pb-4">
           <div className="mb-3 flex flex-wrap gap-4 text-xs text-slate-600">

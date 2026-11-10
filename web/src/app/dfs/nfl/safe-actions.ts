@@ -38,6 +38,8 @@ export async function safeReadNflOptimizerAudit(...args: Args<typeof actions.rea
 export async function safeExportSavedNflDefensiveEntries(...args: Args<typeof actions.exportSavedNflDefensiveEntries>) { return run("Exporting entries", () => actions.exportSavedNflDefensiveEntries(...args)); }
 export async function safeExportSavedNflEntries(...args: Args<typeof actions.exportSavedNflEntries>) { return run("Exporting entries", () => actions.exportSavedNflEntries(...args)); }
 export async function safeExportSavedNflLineups(...args: Args<typeof actions.exportSavedNflLineups>) { return run("Exporting lineups", () => actions.exportSavedNflLineups(...args)); }
+export async function safeReadNflShowdownTypeHistory(...args: Args<typeof actions.readNflShowdownTypeHistory>) { return run("Reading the Showdown type tally", () => actions.readNflShowdownTypeHistory(...args)); }
+export async function safeExportNflLineupPool(...args: Args<typeof actions.exportNflLineupPool>) { return run("Exporting the final set", () => actions.exportNflLineupPool(...args)); }
 export async function safeImportNflOwnershipRanges(...args: Args<typeof actions.importNflOwnershipRanges>) { return run("Importing ownership ranges", () => actions.importNflOwnershipRanges(...args)); }
 export async function safeExportSavedNflSingleStatLineups(...args: Args<typeof actions.exportSavedNflSingleStatLineups>) { return run("Exporting Single Stat lineups", () => actions.exportSavedNflSingleStatLineups(...args)); }
 export async function safeExportSavedNflSingleStatEntries(...args: Args<typeof actions.exportSavedNflSingleStatEntries>) { return run("Exporting Single Stat entries", () => actions.exportSavedNflSingleStatEntries(...args)); }

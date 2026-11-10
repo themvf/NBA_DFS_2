@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { actualBestShowdown, eligiblePredictionPlayers, predictShowdownShapes, type PredictionPlayer, type SlateShapePrediction } from "@/lib/nfl-dfs/slate-shape-prediction";
+import { scoreByShape, type BreakdownLineup, type PortfolioFormat, type ShapeScoreRow } from "@/lib/nfl-dfs/portfolio-breakdown";
 import FieldAuditPanel from "./field-audit-panel";
 import { readNflSlateResults, type NflSlateResults } from "./client-actions";
 
@@ -20,12 +22,17 @@ const SOURCE_LABELS: Record<string, string> = {
  * our projections were off by position, and (below) what the field knew that
  * we did not. The upload used to sit 38 panels deep in a research tab.
  */
-export default function ResultsStep({ uploadId, runId, lineupCount, locked, poolReviewHref }: {
+export default function ResultsStep({ uploadId, runId, lineupCount, locked, poolReviewHref, lineups, format, players }: {
   uploadId: string;
   runId: string | null;
   lineupCount: number;
   locked: boolean;
   poolReviewHref: string;
+  /** The loaded run's lineups, to group the scores by captain, split and structure. */
+  lineups?: readonly BreakdownLineup[];
+  format?: PortfolioFormat;
+  /** Slate players, to grade the lineup-type prediction against the real best lineup. */
+  players?: readonly PredictionPlayer[];
 }) {
   const [results, setResults] = useState<NflSlateResults | null>(null);
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
@@ -45,6 +52,9 @@ export default function ResultsStep({ uploadId, runId, lineupCount, locked, pool
   const reload = () => setVersion((v) => v + 1);
 
   const fmt = (n: number | null | undefined, d = 1) => (n == null ? "—" : n.toFixed(d));
+  const shapeScores = useMemo(() => results && lineups?.length && format && results.runId === runId
+    ? scoreByShape(lineups, format, new Map(results.lineups.map((l) => [l.lineupNumber, l.actual])), results.contest.medianScore)
+    : null, [results, lineups, format, runId]);
   const rankText = (rank: number | null, exact: boolean) =>
     rank == null ? "—" : `${exact ? "" : "~"}${rank.toLocaleString()}`;
 
@@ -120,6 +130,18 @@ export default function ResultsStep({ uploadId, runId, lineupCount, locked, pool
         </table>
       </section> : null}
 
+      {shapeScores ? <section className="rounded-xl border bg-white p-4 shadow-sm">
+        <h2 className="font-bold">How each part of the build scored</h2>
+        <p className="mt-1 text-xs text-slate-500">The loaded set&apos;s lineups grouped the way the Review step breaks them down, scored with the points DraftKings paid. One game is one sample: this says what happened, not which shape is better.</p>
+        <div className={`mt-3 grid gap-3 ${format === "showdown" ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}>
+          {format === "showdown" ? <ShapeTable title="Captain" rows={shapeScores.captains} fmt={fmt} /> : null}
+          <ShapeTable title={format === "showdown" ? "Team split" : "Stack"} rows={[...shapeScores.splitKinds, ...shapeScores.splits]} fmt={fmt} />
+          <ShapeTable title="Structure" rows={[...shapeScores.quarterbacks, ...(format === "showdown" ? shapeScores.kicker : [])]} fmt={fmt} />
+        </div>
+      </section> : null}
+
+      {format === "showdown" && players?.length && results.actualPoints?.length ? <PredictionGrade players={players} actualPoints={results.actualPoints} winningScore={results.contest.winningScore} /> : null}
+
       {results.lineups.length ? <section className="rounded-xl border bg-white p-4 shadow-sm">
         <h2 className="font-bold">Your lineups</h2>
         <p className="mt-1 text-xs text-slate-500">
@@ -174,4 +196,67 @@ function Card({ label, value, note }: { label: string; value: string; note: stri
     <div className="mt-1 text-2xl font-black">{value}</div>
     <div className="mt-0.5 text-xs text-slate-500">{note}</div>
   </div>;
+}
+
+function ShapeTable({ title, rows, fmt }: { title: string; rows: ShapeScoreRow[]; fmt: (n: number | null | undefined, d?: number) => string }) {
+  const best = Math.max(...rows.map((r) => r.average ?? -Infinity));
+  return <div className="rounded-lg border p-2">
+    <h3 className="text-xs font-bold text-slate-700">{title}</h3>
+    <table className="mt-1 w-full text-left text-xs">
+      <thead className="text-[10px] uppercase text-slate-400"><tr><th className="py-1" /><th className="text-right">Lineups</th><th className="text-right">Average</th><th className="text-right">Best</th><th className="text-right">Beat median</th></tr></thead>
+      <tbody>{rows.map((r) => <tr key={`${title}-${r.key}`} className="border-t">
+        <td className="py-1 pr-1 font-semibold text-slate-800">{r.label}</td>
+        <td className="text-right tabular-nums">{r.scored === r.lineups ? r.lineups : `${r.scored}/${r.lineups}`}</td>
+        <td className={`text-right tabular-nums font-semibold ${r.average != null && r.average === best ? "text-emerald-700" : ""}`}>{fmt(r.average)}</td>
+        <td className="text-right tabular-nums">{fmt(r.best)}</td>
+        <td className="text-right tabular-nums text-slate-500">{r.aboveMedian == null ? "—" : `${r.aboveMedian}/${r.scored}`}</td>
+      </tr>)}</tbody>
+    </table>
+  </div>;
+}
+
+/** The lineup-type prediction next to the real best lineup DraftKings' points allowed. */
+function PredictionGrade({ players, actualPoints, winningScore }: { players: readonly PredictionPlayer[]; actualPoints: { dkPlayerId: number; fpts: number }[]; winningScore: number | null }) {
+  const [graded, setGraded] = useState<{ prediction: SlateShapePrediction; best: NonNullable<ReturnType<typeof actualBestShowdown>> } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const actual = useMemo(() => new Map(actualPoints.map((r) => [r.dkPlayerId, r.fpts])), [actualPoints]);
+  const missing = useMemo(() => eligiblePredictionPlayers(players).filter((p) => !actual.has(p.dkPlayerId)).length, [players, actual]);
+  function grade() {
+    setBusy(true); setError(null);
+    predictShowdownShapes(players).then((prediction) => {
+      const best = actualBestShowdown(players, actual);
+      if (!best) throw new Error("No legal lineup could be built from the reported points.");
+      setGraded({ prediction, best });
+    }).catch((reason) => setError(reason instanceof Error ? reason.message : "The prediction could not be graded."))
+      .finally(() => setBusy(false));
+  }
+  const chance = (rows: { key: string; pct: number }[], key: string) => {
+    const i = rows.findIndex((r) => r.key === key);
+    return i < 0 ? { pct: 0, rank: null } : { pct: rows[i].pct, rank: i + 1 };
+  };
+  const ordinal = (n: number | null) => (n == null ? "never the best in the simulations" : n === 1 ? "the most likely" : `${n}${n === 2 ? "nd" : n === 3 ? "rd" : "th"} most likely`);
+  return <section className="rounded-xl border border-violet-200 bg-white p-4 shadow-sm">
+    <div className="flex flex-wrap items-start justify-between gap-2">
+      <div>
+        <h2 className="font-bold">Lineup-type prediction vs what happened</h2>
+        <p className="mt-1 max-w-2xl text-xs text-slate-500">The best possible lineup from the points DraftKings paid, next to the chances the simulation gave its type before the game (re-run on the slate&apos;s saved projections).{missing ? ` ${missing} player${missing === 1 ? "" : "s"} nobody drafted ${missing === 1 ? "is" : "are"} not in the export and count as 0.` : ""}</p>
+      </div>
+      <button type="button" onClick={grade} disabled={busy} className="rounded-lg bg-violet-700 px-3 py-2 text-sm font-bold text-white disabled:opacity-50">{busy ? "Grading…" : graded ? "Grade again" : "Grade the prediction"}</button>
+    </div>
+    {error ? <p role="alert" className="mt-2 text-xs font-semibold text-red-700">{error}</p> : null}
+    {graded ? (() => {
+      const { prediction, best } = graded;
+      const kind = chance(prediction.splitKinds, best.shape.splitKind), split = chance(prediction.splits, best.shape.split), captain = chance(prediction.captains, String(best.captain));
+      return <div className="mt-3 space-y-2 text-sm">
+        <p>Best possible lineup: <b>CPT {best.names.captain}</b> + {best.names.flex.join(", ")} = <b>{best.score.toFixed(1)}</b> points{winningScore != null ? ` (contest winner ${winningScore.toFixed(1)})` : ""}.</p>
+        <ul className="list-disc space-y-1 pl-5 text-xs text-slate-700">
+          <li>Split <b>{best.shape.split}</b>: the simulation gave {best.shape.split.includes(" ") ? `${best.shape.split} ${Math.round(split.pct)}%, ` : ""}{best.shape.splitKind} {Math.round(kind.pct)}% ({ordinal(kind.rank)}).</li>
+          <li>Captain <b>{best.names.captain}</b>: {Math.round(captain.pct)}% ({ordinal(captain.rank)} captain).</li>
+          <li>Best-score range predicted {prediction.score.p10.toFixed(0)}–{prediction.score.p90.toFixed(0)}; actual {best.score.toFixed(1)} {best.score < prediction.score.p10 ? "(below it: a low-scoring game)" : best.score > prediction.score.p90 ? "(above it: a high-scoring game)" : "(inside it)"}.</li>
+        </ul>
+        <p className="text-[10px] text-slate-500">One game is one sample. A type the simulation gave 30% should be the best one about 3 games in 10; judge the prediction over many slates, not this one.</p>
+      </div>;
+    })() : null}
+  </section>;
 }

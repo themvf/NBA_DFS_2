@@ -28,6 +28,8 @@ export const readNflOptimizerAudit = async (...a: Args<typeof safe.safeReadNflOp
 export const exportSavedNflDefensiveEntries = async (...a: Args<typeof safe.safeExportSavedNflDefensiveEntries>) => unwrap(await safe.safeExportSavedNflDefensiveEntries(...a));
 export const exportSavedNflEntries = async (...a: Args<typeof safe.safeExportSavedNflEntries>) => unwrap(await safe.safeExportSavedNflEntries(...a));
 export const exportSavedNflLineups = async (...a: Args<typeof safe.safeExportSavedNflLineups>) => unwrap(await safe.safeExportSavedNflLineups(...a));
+export const readNflShowdownTypeHistory = async (...a: Args<typeof safe.safeReadNflShowdownTypeHistory>) => unwrap(await safe.safeReadNflShowdownTypeHistory(...a));
+export const exportNflLineupPool = async (...a: Args<typeof safe.safeExportNflLineupPool>) => unwrap(await safe.safeExportNflLineupPool(...a));
 export const importNflOwnershipRanges = async (...a: Args<typeof safe.safeImportNflOwnershipRanges>) => unwrap(await safe.safeImportNflOwnershipRanges(...a));
 export const exportSavedNflSingleStatLineups = async (...a: Args<typeof safe.safeExportSavedNflSingleStatLineups>) => unwrap(await safe.safeExportSavedNflSingleStatLineups(...a));
 export const exportSavedNflSingleStatEntries = async (...a: Args<typeof safe.safeExportSavedNflSingleStatEntries>) => unwrap(await safe.safeExportSavedNflSingleStatEntries(...a));

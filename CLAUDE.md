@@ -8845,6 +8845,45 @@ model). Salary is stored as 0.
   graded: results import and the weekly reviews cover Classic and Showdown
   only.
 
+## NFL DFS — Final set across runs (`nfl-lineup-pool-v1`, 2026-11-09)
+
+Review has two tabs: "This run" and "Final set". Lineups are added to the
+final set from any saved run of the slate (one at a time, or every lineup the
+filters show) and exported together by `exportNflLineupPool`
+(`web/src/app/dfs/nfl/actions.ts`). The pool holds only run id + lineup
+number, in browser storage per upload (`lib/nfl-dfs/lineup-pool.ts`); the
+server re-reads every lineup and runs each SOURCE run's own export gates
+(kickoff lock, current pool, QA with the overrides recorded on that run), then
+refuses mixed slates/formats, identical rosters, and an entry file with too few
+rows. Min-unique is not enforced across runs; the page reports near-duplicate
+pairs instead. The same change added pairs, run comparison, per-player caps
+typed in the exposure table (they write the build form's targets), score by
+captain/split/structure in Results, and labels the field ownership as our
+estimate (`fieldOwnershipSource`) — it is not DraftKings' number.
+
+**Lineup-type prediction (`nfl-slate-shape-v1`, Showdown only).** "Which
+lineup type wins this slate?" simulates the game 1,000 times with the
+optimizer's own draw model (`lineup-draws.ts`, our projections and ranges)
+and solves the exact best legal lineup in each (`ShowdownSolver`: salary
+knapsack in $100 units, prefix/suffix tables so each captain is excluded, a
+team mask so 6-0 is never chosen; checked against brute force in
+`test:nfl-slate-shape-prediction`). It reports how often each split, captain,
+QB count and kicker/DST is in the best lineup, beside the build's mix. Results
+grades it against the best lineup DraftKings' points allowed (on CHI@SEA
+2026-11-02 that lineup scored 115.5, exactly the contest winner). It is a
+model prediction, not a validated rate; players without a range are drawn at
+their projection with no upside, which understates them.
+
+**Running tally (`nfl-showdown-type-history-v1`).** `/dfs/nfl/results` opens
+with "Showdown: which lineup types have won": for every past Showdown slate
+with an imported contest (one contest per slate: stored top lineups first,
+then the biggest field), the type of the contest winner, the split of its
+stored top 100, and the type of the best lineup the real points allowed.
+Types: split, favored/underdog side (by our projected team totals), captain
+position and projection rank, QBs, kicker, defense. First read (20 slates,
+2026 wks 1-9): winners 3-3 8, 4-2 6, 5-1 4 of 18; captains WR 9, RB 6, QB 3;
+the winner was exactly the best possible lineup on 12 of 18. Descriptive only.
+
 ## NFL DFS — Winners-shape build preset (`nfl-winners-shape-v4`, 2026-10-11; v1 2026-10-10)
 
 A "Build shape" select on `/dfs/nfl` (GPP mode, Classic and Showdown):
