@@ -35,6 +35,15 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements.txt
+      # Store the newest inactive lists first. The availability job captures them
+      # on the same quarter-hour tick, so without this step a list ESPN posts in
+      # the minutes before this run lands after the forecast has read its
+      # evidence (week 9: 5 of 6 DAL @ IND inactives). Writes nothing away from
+      # game windows; a failure is named in the summary, never blocks publishing.
+      - name: Capture game-day inactive lists
+        id: inactives
+        continue-on-error: true
+        run: python -m ingest.nfl_espn_inactives
       - name: Capture availability and publish the upcoming week
         run: python -m research.nfl_game_leaders_auto
       # The page matches DraftKings lines to a forecast by its decision time, so a
@@ -71,15 +80,17 @@ jobs:
           SHADOW_OUTCOME: ${{ steps.regime_shadow.outcome }}
           GRADE_OUTCOME: ${{ steps.regime_grade.outcome }}
           REPRICE_OUTCOME: ${{ steps.reprice.outcome }}
+          INACTIVES_OUTCOME: ${{ steps.inactives.outcome }}
         run: |
           {
-            echo "### DraftKings re-pricing"
+            echo "### Inputs and DraftKings re-pricing"
+            echo "- inactive lists: ${INACTIVES_OUTCOME:-not run}"
             echo "- reprice: ${REPRICE_OUTCOME:-not run}"
             echo "### Regime-roles research (nfl-leaders-regime-roles-v1)"
             echo "- shadow: ${SHADOW_OUTCOME:-not run}"
             echo "- grade: ${GRADE_OUTCOME:-not run}"
           } >> "$GITHUB_STEP_SUMMARY"
-          for pair in "reprice:$REPRICE_OUTCOME" "shadow:$SHADOW_OUTCOME" "grade:$GRADE_OUTCOME"; do
+          for pair in "inactives:$INACTIVES_OUTCOME" "reprice:$REPRICE_OUTCOME" "shadow:$SHADOW_OUTCOME" "grade:$GRADE_OUTCOME"; do
             if [ "${pair#*:}" = "failure" ]; then
               echo "::warning::${pair%%:*} step failed; the publication is unaffected"
             fi

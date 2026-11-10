@@ -40,6 +40,7 @@ WINDOW = timedelta(hours=3)
 # ESPN team codes that differ from nfl_teams.abbreviation.
 TEAM_ALIASES = {"WAS": "WSH", "LA": "LAR", "JAC": "JAX"}
 SOURCE_LABEL = "ESPN league injuries feed: NFL game-day inactive list"
+LOCK_KEY = "nfl-espn-inactives-capture"
 # ff_players holds fantasy positions only; an inactive lineman or defender has
 # no row to match, which is expected. An unmatched player at one of these is a
 # real gap and fails the run.
@@ -159,6 +160,11 @@ def already_recorded(db: Any, season: int, week: int, game_id: str) -> set[int]:
 
 
 def capture(db: Any, payload: dict[str, Any], now: datetime, *, apply: bool) -> dict[str, Any]:
+    if apply:
+        # The availability job and the Game Leaders job run this on the same tick.
+        # Held to commit, so the second run waits, then sees the first's rows as
+        # already recorded instead of writing them again.
+        db.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (LOCK_KEY,))
     games = upcoming_games(db, now)
     rows = parse_inactives(payload)
     grouped, skipped = select_for_games(rows, games, now)

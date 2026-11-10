@@ -109,3 +109,22 @@ def test_stored_inactive_rows_normalize_to_out():
     record = prepared["records"][0]
     assert record["status"] == "INACTIVE"
     assert normalize_injury_observation("nfl_official", record).normalized_status == "OUT"
+
+
+def test_an_applying_run_serializes_on_a_lock_before_reading():
+    class LockDb(FakeDb):
+        def __init__(self):
+            super().__init__()
+            self.sql = []
+
+        def execute(self, sql, params=None):
+            self.sql.append(sql)
+            if "pg_advisory_xact_lock" in sql:
+                return [{}]
+            return super().execute(sql, params)
+
+    applying, dry = LockDb(), LockDb()
+    capture(applying, payload(), NOW, apply=True)
+    capture(dry, payload(), NOW, apply=False)
+    assert "pg_advisory_xact_lock" in applying.sql[0]
+    assert not any("pg_advisory_xact_lock" in s for s in dry.sql)
