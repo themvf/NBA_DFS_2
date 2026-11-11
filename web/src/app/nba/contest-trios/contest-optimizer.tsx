@@ -1,11 +1,19 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { WTA, optimizeContest, type ContestPlayer, type OptimizerResult } from "@/lib/nba-contest-optimizer";
+import { useRouter } from "next/navigation";
+import { RECAL_VERSION, WTA, optimizeContest, type ContestPlayer, type OptimizerResult } from "@/lib/nba-contest-optimizer";
+import { runRequest } from "@/lib/nba-contest-runs";
 import { sharePct } from "@/lib/nba-contest-trios";
 
 /** `started` is decided on the server, so server and browser render the same toggles. */
 export type OptimizerGame = { eventId: string; game: string; commenceTime: string; players: number; started: boolean };
+
+/** What happened to the save of the run on screen. A failure is shown, never swallowed. */
+type SaveState =
+  | { state: "saving" }
+  | { state: "saved"; createdAt: string; late: boolean; repeat: boolean; firstTip: string }
+  | { state: "failed"; error: string };
 
 const tip = (s: string) => new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" }).format(new Date(s));
 
@@ -16,7 +24,7 @@ function exposure(run: OptimizerResult): [string, number][] {
   return [...n.entries()].sort((a, b) => b[1] - a[1]);
 }
 
-export function ContestOptimizer({ players, games, capturedAt }: { players: ContestPlayer[]; games: OptimizerGame[]; capturedAt: string | null }) {
+export function ContestOptimizer({ date, players, games, capturedAt }: { date: string; players: ContestPlayer[]; games: OptimizerGame[]; capturedAt: string | null }) {
   const started = useMemo(() => new Set(games.filter((g) => g.started).map((g) => g.eventId)), [games]);
   const [selected, setSelected] = useState<Set<string>>(() => new Set(games.filter((g) => !started.has(g.eventId)).map((g) => g.eventId)));
   const [fieldSize, setFieldSize] = useState<number>(WTA.FIELD_SIZE);
@@ -24,6 +32,8 @@ export function ContestOptimizer({ players, games, capturedAt }: { players: Cont
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ run: OptimizerResult; games: string[] } | null>(null);
+  const [save, setSave] = useState<SaveState | null>(null);
+  const router = useRouter();
 
   const byKey = new Map(players.map((p) => [p.key, p]));
   const allSelected = games.length > 0 && games.every((g) => selected.has(g.eventId));
@@ -33,15 +43,37 @@ export function ContestOptimizer({ players, games, capturedAt }: { players: Cont
     return next;
   });
 
+  /** Every run is stored so the entries actually submitted exist somewhere; the server stamps the time. */
+  const store = async (eventIds: string[], requested: number, out: OptimizerResult) => {
+    setSave({ state: "saving" });
+    try {
+      const response = await fetch("/api/nba/contest-runs", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify(runRequest(date, eventIds, requested, capturedAt, RECAL_VERSION, out)),
+      });
+      const body = await response.json().catch(() => null) as { createdAt?: string; late?: boolean; repeat?: boolean; firstTip?: string; error?: string } | null;
+      if (!response.ok || !body?.createdAt || !body.firstTip) {
+        setSave({ state: "failed", error: body?.error ?? `Run not saved (the server answered ${response.status}).` });
+        return;
+      }
+      setSave({ state: "saved", createdAt: body.createdAt, late: body.late === true, repeat: body.repeat === true, firstTip: body.firstTip });
+      router.refresh();   // the saved-runs list below is rendered on the server
+    } catch {
+      setSave({ state: "failed", error: "Run not saved: the server could not be reached." });
+    }
+  };
+
   const run = () => {
     setBusy(true);
     setError(null);
+    setSave(null);
     // Let the button repaint before the ~0.3 s of simulation blocks the thread.
     setTimeout(() => {
       try {
         const chosen = players.filter((p) => selected.has(p.eventId));
         const out = optimizeContest(chosen, { fieldSize, entries });
         setResult({ run: out, games: games.filter((g) => selected.has(g.eventId)).map((g) => g.game) });
+        void store([...selected], entries, out);
       } catch (e) {
         setResult(null);
         setError(e instanceof Error ? e.message : String(e));
@@ -70,7 +102,7 @@ export function ContestOptimizer({ players, games, capturedAt }: { players: Cont
         <p className="text-xs text-muted-foreground">
           Untick games your contest leaves out, set its size, then Optimize. Same rules as the entries below, run in your browser on the latest
           lines{capturedAt ? ` (captured ${new Date(capturedAt).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" })} ET)` : ""}.
-          Custom runs are not tracked. One difference: each player&apos;s big nights are made rarer to match what has happened (the
+          Every run is saved with its time, so the entries you submit are on record. One difference: each player&apos;s big nights are made rarer to match what has happened (the
           books&apos; alternate lines overstate them); the tracked entries below keep the original rules.
         </p>
       </div>
@@ -111,6 +143,14 @@ export function ContestOptimizer({ players, games, capturedAt }: { players: Cont
       </div>
 
       {error && <p className="text-sm text-rose-700">{error}</p>}
+      {save?.state === "saving" && <p className="text-xs text-slate-500">Saving this run...</p>}
+      {save?.state === "failed" && <p className="text-sm font-medium text-rose-700">{save.error}</p>}
+      {save?.state === "saved" && (
+        <p className={`text-sm ${save.late ? "font-medium text-amber-700" : "text-emerald-700"}`}>
+          {save.repeat ? "Same run as one already saved at " : "Saved at "}{tip(save.createdAt)} ET
+          {save.late ? `, after the first tip of these games (${tip(save.firstTip)} ET): kept, and marked late.` : `, before the first tip (${tip(save.firstTip)} ET).`}
+        </p>
+      )}
 
       {result && last && baseLast && (
         <div className="space-y-2 border-t pt-3">

@@ -12,6 +12,8 @@ import { getNbaCurrentTeams, getNbaPointsProps, getNbaSeasonStats, getNbaTeams }
 import { buildBoard, playerKey, teamKey } from "@/lib/nba-top-scorers";
 import type { ContestPlayer } from "@/lib/nba-contest-optimizer";
 import { ContestOptimizer, type OptimizerGame } from "./contest-optimizer";
+import { getContestRunFinals, getContestRuns, type SavedRun } from "@/db/nba-contest-runs";
+import { scoreRun, type BoxGame, type EntryResult, type RunEntry, type RunPoolPlayer } from "@/lib/nba-contest-runs";
 
 // Last completed season, for the board's team fallback (same as the Top Scorers page).
 const LAST_SEASON = "2025-26";
@@ -81,6 +83,80 @@ function EntryRows({ entries, pool, actual, start }: {
   );
 }
 
+function RunEntryRows({ entries, results, pool }: { entries: RunEntry[]; results: EntryResult[]; pool: Map<string, RunPoolPlayer> }) {
+  return (
+    <>
+      {entries.map((e, i) => (
+        <tr key={e.players.join("|")} className="border-t">
+          <td className="py-2 pr-2 font-mono text-xs">{e.rank}</td>
+          <td className="py-2 pr-3">
+            <div className="flex flex-wrap gap-x-3 gap-y-1">{e.players.map((k, j) => {
+              const p = pool.get(k), r = results[i]?.players[j];
+              return (
+                <span key={k} className="whitespace-nowrap">
+                  {p?.player ?? k} <span className="font-mono text-xs text-slate-500">{p?.line.toFixed(1)}</span>
+                  {r?.points != null && <span className="ml-1 font-mono text-xs font-semibold">{r.dnp ? "0 (did not play)" : r.points.toFixed(0)}</span>}
+                </span>
+              );
+            })}</div>
+          </td>
+          <td className="pr-3 text-right font-mono">{e.lineSum.toFixed(1)}</td>
+          <td className="pr-3 text-right font-mono">{sharePct(e.standaloneShare)}</td>
+          <td className="text-right font-mono font-semibold">{results[i]?.total != null ? results[i].total.toFixed(0) : "-"}</td>
+        </tr>
+      ))}
+    </>
+  );
+}
+
+/**
+ * Every run of the builder for this date. These are the entries that can actually be
+ * submitted, so they are kept and scored from the box scores; the contest's own result
+ * (winning score, field, finish) is added when a results file is imported.
+ */
+function SavedRuns({ runs, finals, date }: { runs: SavedRun[]; finals: BoxGame[]; date: string }) {
+  return (
+    <section className="space-y-3 rounded-xl border bg-white p-4 shadow-sm">
+      <div>
+        <h2 className="font-bold">Your saved runs</h2>
+        <p className="text-xs text-muted-foreground">
+          Every Optimize run for {longDate(date)}, newest first, with the time it was saved. Points come from the final box scores the
+          next morning; a player who did not play scores 0, as in the contest. The winning score, the field and where your entries
+          finished are not here yet: they come from the contest&apos;s results file, and no file has been imported.
+        </p>
+      </div>
+      {runs.length === 0 ? <p className="text-sm text-slate-600">No runs saved for this date. Press Optimize above and the run is saved.</p> : runs.map((run, i) => {
+        const p = run.payload, score = scoreRun(p, finals);
+        const pool = new Map(p.pool.map((x) => [x.key, x]));
+        return (
+          <details key={run.id} open={i === 0} className="rounded-lg border p-3">
+            <summary className="cursor-pointer text-sm">
+              <b>{stamp(run.createdAt)}</b> · {p.games.length} game{p.games.length === 1 ? "" : "s"} · field of {p.fieldSize} · {p.entries.length} entries
+              {run.late
+                ? <span className="ml-2 rounded border border-amber-500 px-1 text-xs text-amber-700">saved after the first tip ({stamp(run.firstTip)})</span>
+                : <span className="ml-2 rounded border border-emerald-500 px-1 text-xs text-emerald-700">before the first tip</span>}
+              {score.best != null && <span className="ml-2 font-semibold">best entry {score.best.toFixed(0)}{score.baselineBest != null ? ` · biggest lines ${score.baselineBest.toFixed(0)}` : ""}</span>}
+            </summary>
+            <p className="mt-2 text-xs text-slate-600">
+              {p.games.map((g) => `${g.awayTeam} @ ${g.homeTeam}`).join(" · ")}
+              {p.linesCapturedAt ? ` · lines captured ${stamp(p.linesCapturedAt)}` : ""} · model winning score {p.winningScore.median.toFixed(0)}
+            </p>
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead><tr className="text-left text-[10px] uppercase text-slate-500">
+                  <th>#</th><th>Players (line, points)</th><th className="text-right">Line sum</th><th className="text-right">Wins alone</th><th className="text-right">Actual</th>
+                </tr></thead>
+                <tbody><RunEntryRows entries={p.entries} results={score.entries} pool={pool} /></tbody>
+              </table>
+            </div>
+            {!score.graded && <p className="mt-2 text-xs text-muted-foreground">Not scored yet: at least one of these games has no final box score.</p>}
+          </details>
+        );
+      })}
+    </section>
+  );
+}
+
 function TrackRecord({ grades }: { grades: ContestGrade[] }) {
   const t = tallyContest(grades);
   return (
@@ -130,7 +206,10 @@ export default async function ContestTriosPage({ searchParams }: { searchParams:
   const params = await searchParams;
   const today = easternDateString();
   const date = params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) ? params.date : today;
-  const [portfolio, dates, grades, slate] = await Promise.all([getContestPortfolio(date), getContestDates(), getContestGrades(), liveSlate(date)]);
+  const [portfolio, dates, grades, slate, runs] = await Promise.all([
+    getContestPortfolio(date), getContestDates(), getContestGrades(), liveSlate(date), getContestRuns(date),
+  ]);
+  const finals = runs.length > 0 ? await getContestRunFinals(date) : [];
   const grade = grades.find((g) => g.gameDate === date) ?? null;
   const p = portfolio?.payload;
   const pool = new Map((p?.pool ?? []).map((x) => [x.key, x]));
@@ -163,7 +242,9 @@ export default async function ContestTriosPage({ searchParams }: { searchParams:
         ))}
       </nav>
 
-      <ContestOptimizer players={slate.players} games={slate.games} capturedAt={slate.capturedAt} />
+      <ContestOptimizer date={date} players={slate.players} games={slate.games} capturedAt={slate.capturedAt} />
+
+      <SavedRuns runs={runs} finals={finals} date={date} />
 
       {!p || !portfolio ? (
         <p className="rounded-lg border p-4 text-sm">
