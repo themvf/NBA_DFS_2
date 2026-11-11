@@ -36,6 +36,7 @@ import { DEFAULT_NFL_PUNT_POLICY } from "@/lib/nfl-dfs/punt-policy";
 import { deriveReceiverRoleChanges, receiverChartRank, type ReceiverRoleChange } from "@/lib/nfl-dfs/receiver-role";
 import { PUNT_PRESETS, resolvePuntPreset, describePuntPolicy, type PuntPresetKey } from "@/lib/nfl-dfs/punt-presets";
 import { WINNERS_SHAPE, WINNERS_SHAPE_VERSION, qbExposureCap, suggestedCaptainPositions, winnersShapeLimits, type BuildShape, defaultBuildShape } from "@/lib/nfl-dfs/winners-shape";
+import { PLAIN_DST_MAX_EXPOSURE, defaultGppScoringKind, scoringKindOf, scoringPreset, unlinedStarters, withPlainDstCap, withoutScoringKnobsForDiversified, type GppScoringKind } from "@/lib/nfl-dfs/gpp-scoring";
 import { objectiveLabel } from "@/lib/nfl-dfs/ownership-capability";
 import { ARCHETYPE_LABELS, type ArchetypeId, type ArchetypeQuota } from "@/lib/nfl-dfs/archetypes";
 import { currentPoolForQa, nflOverlapCap, runNflPreExportQa, savedRunQaEvidence, NFL_QA_RULESET_VERSION, type QaInput, type QaReport, type QaOverride } from "@/lib/nfl-dfs/pre-export-qa";
@@ -195,7 +196,7 @@ export default function NflDfsClient() {
   // gate) are kept alongside the punt policy — the policy owns cheap-player
   // roles, while requireObservedHistory still removes any-priced players whose
   // projection is a position average, not theirs.
-  const [settings, setSettings] = useState({ mode: "gpp" as "cash" | "gpp", projectionSource: "our" as NflProjectionSource, defensiveAdjustments:{...DEFAULT_DFS_DEFENSIVE_SETTINGS}, confirmedStartingQbs: {} as Record<string, number>, allowDkFallback: false, workloadPositions:{...DEFAULT_WORKLOAD_POSITIONS}, situations:DEFAULT_SITUATIONS, nLineups: 20, minSalary: 45000, minPlayerSalary: 1000, requireObservedHistory: true, maxExposure: .6, minUnique: 2, stackPassCatchers: 1 as 0 | 1 | 2, topProjectedCoverage: true, gppSignalMinPerLineup: 0 as 0 | 1, gppAirMatchupMinPct: 0, gppGoalLineMinPct: 0, gppSignalCodes: SIGNAL_OPTIONS.filter(option => option.code !== "AIR_MATCHUP").map(option => option.code), bringBack: true, buildShape: "standard" as BuildShape, gppScoring: "draws" as "ceiling" | "draws", diversified: {...DEFAULT_DIVERSIFIED}, randomness: .08, useHeuristicOwnershipLeverage: true, puntPolicy: {...DEFAULT_NFL_PUNT_POLICY} as import("@/lib/nfl-dfs/punt-policy").NflPuntPolicy, puntOverrides: [] as import("@/lib/nfl-dfs/punt-policy").PuntOverride[] });
+  const [settings, setSettings] = useState({ mode: "gpp" as "cash" | "gpp", projectionSource: "our" as NflProjectionSource, defensiveAdjustments:{...DEFAULT_DFS_DEFENSIVE_SETTINGS}, confirmedStartingQbs: {} as Record<string, number>, allowDkFallback: false, workloadPositions:{...DEFAULT_WORKLOAD_POSITIONS}, situations:DEFAULT_SITUATIONS, nLineups: 20, minSalary: 45000, minPlayerSalary: 1000, requireObservedHistory: true, maxExposure: .6, minUnique: 2, stackPassCatchers: 1 as 0 | 1 | 2, topProjectedCoverage: true, gppSignalMinPerLineup: 0 as 0 | 1, gppAirMatchupMinPct: 0, gppGoalLineMinPct: 0, gppSignalCodes: SIGNAL_OPTIONS.filter(option => option.code !== "AIR_MATCHUP").map(option => option.code), bringBack: true, buildShape: "standard" as BuildShape, gppScoring: "draws" as "ceiling" | "draws", maxCeilingMultiple: 2.5, boomWeight: 2, diversified: {...DEFAULT_DIVERSIFIED}, randomness: .08, useHeuristicOwnershipLeverage: true, puntPolicy: {...DEFAULT_NFL_PUNT_POLICY} as import("@/lib/nfl-dfs/punt-policy").NflPuntPolicy, puntOverrides: [] as import("@/lib/nfl-dfs/punt-policy").PuntOverride[] });
   // Latest settings for async callbacks (the capture poll) without restarting them on every edit.
   const settingsRef = useRef(settings);
   useEffect(() => { settingsRef.current = settings; }, [settings]);
@@ -272,19 +273,38 @@ export default function NflDfsClient() {
     const wanted = defaultBuildShape(slateFormat, settings.mode);
     if (settings.buildShape !== wanted) setSettings(current => ({...current,buildShape:wanted}));
   }, [settings.buildShape, settings.mode, slateFormat]);
-  const currentSettings = {...settingsFromForm({ settings, locked, excluded, targets: targetExposure, captainTargets, ownership: ownershipOverrides,
+  // Lineup scoring starts from the format's default too (Classic GPP: plain
+  // projected points since 2026-11-11; everything else: simulated games) until
+  // the user picks one or a saved run/draft carries a choice.
+  // A slate whose games have started cannot be built, so its form is left as
+  // it was saved rather than relabelled with a default it never ran.
+  const scoringChosen = useRef(false);
+  const scoringKind = scoringKindOf(settings);
+  const scoringFrozen = isLocked(slate?.firstKickoff ?? null, now);
+  useEffect(() => {
+    if (scoringChosen.current || scoringFrozen) return;
+    const wanted = defaultGppScoringKind(slateFormat, settings.mode, settings.buildShape);
+    if (scoringKind !== wanted) setSettings(current => ({...current,...scoringPreset(wanted)}));
+  }, [scoringKind, scoringFrozen, settings.mode, settings.buildShape, slateFormat]);
+  // What every build gets after the form is read: the Diversified shape keeps
+  // the optimizer's own ceiling knobs, and a plain-projection Classic build
+  // caps each defense (a range typed on a defense, or a lock, wins).
+  const slatePlayers = slate?.players;
+  const slateDstIds = useMemo(() => (slatePlayers ?? []).filter(player => player.position === 'DST').map(player => player.dkPlayerId), [slatePlayers]);
+  const finishBuildSettings = (built: NflOptimizerSettings) => withPlainDstCap(withoutScoringKnobsForDiversified(built), slateDstIds);
+  const currentSettings = finishBuildSettings({...settingsFromForm({ settings, locked, excluded, targets: targetExposure, captainTargets, ownership: ownershipOverrides,
     planMode: archetypePlanMode, quotas: archetypeQuotas, favorite: archetypeFavorite, fades: archetypeFades }, slateFormat, slateTeams),
     projectionSource:BUILD_SOURCES.includes(settings.projectionSource)?settings.projectionSource:'our',
     defensiveAdjustments:defensiveSettingsFor(BUILD_SOURCES.includes(settings.projectionSource)?settings.projectionSource:'our'),
     useHeuristicOwnershipLeverage:settings.mode==='gpp'&&settings.useHeuristicOwnershipLeverage!==false,gppAirMatchupMinPct:0,
-    gppSignalCodes:settings.gppSignalCodes.filter(code=>code!=='AIR_MATCHUP')};
+    gppSignalCodes:settings.gppSignalCodes.filter(code=>code!=='AIR_MATCHUP')});
   // A saved run is compared through the form it loads into, so fields the
   // server adds on save (ownership disclosure, a resolved favorite) do not
   // count as a change.
   const settingsChanged = Boolean(completedSettings && !sameGenerationSettings(
-    settingsFromForm(formFromSettings(completedSettings, settings), slateFormat, slateTeams), currentSettings));
+    finishBuildSettings(settingsFromForm(formFromSettings(completedSettings, settings), slateFormat, slateTeams)), currentSettings));
   // Autosave the build form to the server for this slate.
-  const draftForm = useMemo(() => ({ schemaVersion: 5, settings, locked, excluded, targets: targetExposure, captainTargets, ownership: ownershipOverrides,
+  const draftForm = useMemo(() => ({ schemaVersion: 6, settings, locked, excluded, targets: targetExposure, captainTargets, ownership: ownershipOverrides,
     planMode: archetypePlanMode, quotas: archetypeQuotas, favorite: archetypeFavorite, fades: archetypeFades }),
     [settings, locked, excluded, targetExposure, captainTargets, ownershipOverrides, archetypePlanMode, archetypeQuotas, archetypeFavorite, archetypeFades]);
   const slateUploadId = slate?.uploadId ?? null;
@@ -301,11 +321,14 @@ export default function NflDfsClient() {
   const defensiveDowngrade = requestedDefensive?.mode && completedSettings?.defensiveAdjustments?.mode !== requestedDefensive.mode
     ? `You chose ${requestedDefensive.mode === "approved" ? "Approved" : requestedDefensive.mode} opponent adjustments, but ${requestedDefensive.mode === "approved" ? "no policy is approved for this slate yet" : "they could not be applied to this slate"}, so these lineups use none.`
     : null;
-  function applyForm(form: NflBuildForm<typeof settings>, preserveSaved = false, explicitShape: boolean | "v4-standard" = true) {
+  function applyForm(form: NflBuildForm<typeof settings>, preserveSaved = false, explicitShape: boolean | "v4-standard" = true, explicitScoring = true) {
     // A restored run or a v4+ draft carries a chosen shape; an older draft
     // does not, so the format default keeps applying after it is restored.
     // A v4 draft's "standard" is a choice only on Classic (see shapeChosen).
     shapeChosen.current = explicitShape;
+    // A restored run, or a v6+ draft, carries its scoring; an older draft's
+    // "simulated games" was only the default, so the format default applies.
+    scoringChosen.current = explicitScoring;
     setSettings({...form.settings,projectionSource:BUILD_SOURCES.includes(form.settings.projectionSource)?form.settings.projectionSource:'our',
       defensiveAdjustments:preserveSaved ? form.settings.defensiveAdjustments : defensiveSettingsFor(BUILD_SOURCES.includes(form.settings.projectionSource)?form.settings.projectionSource:'our'),
       useHeuristicOwnershipLeverage:form.settings.useHeuristicOwnershipLeverage!==false,gppAirMatchupMinPct:0,
@@ -423,9 +446,11 @@ export default function NflDfsClient() {
       const draft = await readNflBuildDraft(uploadId);
       const form = draft ? formFromDraft(draft.form, settings) : null;
       if (form) {
-        const raw = draft?.form as { schemaVersion?: unknown; settings?: { buildShape?: unknown } } | undefined;
+        const raw = draft?.form as { schemaVersion?: unknown; settings?: { buildShape?: unknown; gppScoring?: unknown } } | undefined;
         const version = typeof raw?.schemaVersion === 'number' ? raw.schemaVersion : 1, shape = raw?.settings?.buildShape;
-        applyForm(form, false, typeof shape !== 'string' || version < 4 ? false : version === 4 && shape === 'standard' ? 'v4-standard' : true);
+        // Before v6 "draws" was the stored default; "ceiling" was always a choice.
+        applyForm(form, false, typeof shape !== 'string' || version < 4 ? false : version === 4 && shape === 'standard' ? 'v4-standard' : true,
+          version >= 6 || raw?.settings?.gppScoring === 'ceiling');
         const starters = (form.settings as { confirmedStartingQbs?: Record<string, number> }).confirmedStartingQbs ?? {};
         if (Object.keys(starters).length) setSlate((await loadSavedNflWorkspace(uploadId, starters)).slate);
         setMessage('Saved player pool loaded with the build settings you last used on this slate.');
@@ -801,6 +826,9 @@ export default function NflDfsClient() {
   const PLAN_LABELS = { balanced: "Balanced mix", chalk_leverage: "Chalk captain, rotating leverage", standard: "Standard ceiling", custom: "Custom plan" } as const;
   const winnersShape = settings.mode === "gpp" && settings.buildShape === "winners";
   const suggestionPositions: readonly string[] = suggestedCaptainPositions({ format: capFormatOf(slate?.format ?? "showdown", slate?.games ?? []), mode: settings.mode, buildShape: settings.buildShape });
+  const unlined = unlinedStarters(slate?.players ?? []);
+  /** How many un-lined starters the build notice names; past this it is the whole slate waiting on lines. */
+  const UNLINED_NAMED = 6;
   const buildSummary = [`${settings.nLineups} ${settings.mode === "gpp" ? "GPP" : "cash"} lineups`, SOURCE_LABELS[settings.projectionSource], winnersShape ? "Winners shape" : null, slate?.format === "showdown" ? PLAN_LABELS[archetypePlanMode] : null].filter(Boolean).join(" · ");
   const shapeOut = (e: { reasonCode: string | null }) => e.reasonCode === "WINNERS_SHAPE" || e.reasonCode === "KICKER_EXCLUDED";
   const specialTeams = specialTeamsStatus({ players: slate?.players ?? [], firstKickoff: slate?.firstKickoff ?? null,
@@ -954,7 +982,9 @@ export default function NflDfsClient() {
             <h3 className="font-bold">How this build makes picks</h3>
             <ul className="mt-2 space-y-1">
               <li><b>Forecast:</b> {SOURCE_LABELS[settings.projectionSource]}. {settings.projectionSource === "our" ? "Offense uses recent games, Vegas team totals and saved QB/RB opponent adjustments when their checks pass. Missing adjustments retain the baseline. DST uses opponent scoring context; eligible starting kickers use team scoring context when a saved forecast is available." : "A build with mixed objective sources will stop and name the mismatch."}</li>
-              <li><b>Rank:</b> {settings.mode === "gpp" ? (settings.gppScoring === "draws" && settings.buildShape !== "diversified"
+              <li><b>Rank:</b> {settings.mode === "gpp" ? (scoringKind === "mean" && settings.buildShape !== "diversified"
+                ? `Each player's projected points, nudged at random by up to ${Math.round(settings.randomness * 100)}% so lineups differ; ownership leverage ${settings.useHeuristicOwnershipLeverage ? "on" : "off"}`
+                : settings.gppScoring === "draws" && settings.buildShape !== "diversified"
                 ? `Each lineup is the best one for its own simulated game (every player drawn from his range, teammates together); ownership leverage ${settings.useHeuristicOwnershipLeverage ? "on, as a duplication penalty on the whole lineup" : "off"}`
                 : `Player ceiling (P90) and available boom rate; ownership leverage ${settings.buildShape !== "diversified" && settings.useHeuristicOwnershipLeverage ? "on" : "off"}`) : "Player floor (P10)"}.</li>
               <li><b>Build:</b> DraftKings salary and roster rules{slate.format === "classic" && settings.mode === "gpp" && settings.topProjectedCoverage ? "; top projected players get portfolio coverage" : ""}. Opportunity tags and matchup minimums only require lineup appearances; they do not raise projections.</li>
@@ -970,6 +1000,13 @@ export default function NflDfsClient() {
           {qbDecisions.map((decision) => { const report = slate?.confirmedStartingQbs; const applied = report?.applied.find((a) => a.team === decision.team); const rejected = report?.rejected.find((r) => r.team === decision.team); return <Field key={decision.team} label={`${decision.team} starting QB${decision.out.length ? ` (${decision.out.join(", ")} OUT)` : decision.unresolved ? " (roles unresolved)" : ""}`}><select id={`qb-starter-${decision.team}`} value={settings.confirmedStartingQbs[decision.team] ?? ""} onChange={(e) => confirmStartingQb(decision.team, e.target.value)} className="control"><option value="">Depth chart (automatic)</option>{decision.options.map((p) => <option key={p.dkPlayerId} value={p.dkPlayerId}>{p.name}</option>)}</select>{(() => { const picked = decision.options.find((p) => p.dkPlayerId === settings.confirmedStartingQbs[decision.team])?.name ?? null; const contradicts = picked && decision.chartStarter && picked !== decision.chartStarter; return <>{contradicts ? <span className="mt-1 block rounded bg-amber-50 px-1.5 py-1 text-[11px] font-semibold text-amber-900">You picked {picked}, but the depth chart lists {decision.chartStarter} as QB1. The build uses your pick; switch back to automatic if you&apos;re not sure.</span> : null}<span className="mt-1 block text-[11px] font-normal text-slate-600">{picked ? (applied ? `${applied.starter} takes over ${applied.donor}'s pass attempts at his own efficiency; the other QBs are blocked.` : rejected ? rejected.reason : "") : decision.autoStarter ? `Automatic: ${decision.autoStarter} takes over the injured starter's workload (depth chart and last game).` : decision.chartStarter ? `Depth chart: ${decision.chartStarter} is QB1. Backups are blocked.` : "No QB on this team could be confirmed as QB1, so backups are not blocked. Pick the starter."}</span></>; })()}</Field>; })}
           <Field label="Lineups"><input type="number" min={1} max={150} value={settings.nLineups} onChange={(e) => setSettings({ ...settings, nLineups: Number(e.target.value) })} className="control" /></Field>
           {slate.format === "classic" && settings.mode === "gpp" ? <label className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-950"><input type="checkbox" checked={settings.topProjectedCoverage} onChange={e => setSettings({ ...settings, topProjectedCoverage: e.target.checked })} /><span><b>Include top projected players across my lineups</b><span className="mt-1 block">By the selected forecast&apos;s mean points: top QB, two RBs, two WRs and top TE for portfolios of six or more lineups. Each eligible leader gets at least one legal lineup; smaller portfolios cover fewer leaders. No manual exposure targets needed.</span></span></label> : null}
+          {!slateLocked && slate.format === "classic" && settings.mode === "gpp" && scoringKind === "mean" && settings.buildShape !== "diversified" && unlined.length ? <div role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950">
+            <b>{unlined.length > UNLINED_NAMED ? `Betting lines are not in yet for ${unlined.length} starters.` : unlined.length === 1 ? "1 starter has no full set of betting lines yet." : `${unlined.length} starters have no full set of betting lines yet.`}</b>
+            <span className="mt-1 block">{unlined.length > UNLINED_NAMED
+              ? "Until they are, each is scaled down from the model's number by about a third, so this build ranks them on the model alone. The largest: "
+              : `Without lines a player's model number is scaled down by about a third, so a build scored on projected points will use ${unlined.length === 1 ? "him" : "them"} in few or no lineups: `}{unlined.slice(0, UNLINED_NAMED).map(player => `${player.name} (${player.position}, ${player.team}; model ${player.modelPoints.toFixed(1)}, used ${player.usedPoints.toFixed(1)}${player.ownPct != null ? `, est. ${player.ownPct.toFixed(0)}% owned` : ""})`).join(", ")}.</span>
+            <span className="mt-1 block">Lines are read the evening before the games and again about an hour before kickoff. Update data and rebuild then, or set a minimum on a player you want.</span>
+          </div> : null}
           <button disabled={pending || slateLocked} title={slateLocked ? "Games have started, so building is closed for this slate." : undefined} onClick={generate} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 text-sm font-bold text-white disabled:opacity-40"><Play className="h-4 w-4" />{pending ? "Working…" : slateLocked ? "Games have started" : "Generate & save"}</button>
           {slateLocked ? <p className="text-[11px] text-slate-500">Building and export close at the first kickoff. Results shows how the lineups did.</p> : null}
 {slate.format === "classic" && settings.mode === "gpp" ? <details className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900"><summary className="cursor-pointer font-semibold">Opportunity tags · {settings.gppSignalMinPerLineup === 1 ? "1 per lineup" : "off"} <span className="block font-normal">Lineup requirements only; no change to fantasy point forecasts</span></summary><div className="mt-2"><label className="flex items-start gap-2"><input type="checkbox" checked={settings.gppSignalMinPerLineup === 1} onChange={e => setSettings({ ...settings, gppSignalMinPerLineup: e.target.checked ? 1 : 0 })} /><span>Require one selected opportunity-tagged player in every lineup. Chips change construction, not projections or ownership.</span></label>{settings.gppSignalMinPerLineup === 1 ? <div className="mt-2 grid grid-cols-2 gap-1">{SIGNAL_OPTIONS.map(option => <label key={option.code} className="flex items-center gap-1"><input type="checkbox" checked={settings.gppSignalCodes.includes(option.code)} onChange={e => setSettings({ ...settings, gppSignalCodes: e.target.checked ? [...settings.gppSignalCodes, option.code] : settings.gppSignalCodes.filter(code => code !== option.code) })} />{option.label}</label>)}</div> : null}</div></details> : null}
@@ -982,16 +1019,22 @@ export default function NflDfsClient() {
           </div></details> : null}
           {settings.mode === "gpp" ? <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px]">
             <h3 className="text-sm font-bold text-slate-800">Build shape</h3>
-            <Field label="Shape"><select className="control" value={settings.buildShape} onChange={(e) => { shapeChosen.current = true; setSettings({ ...settings, buildShape: e.target.value as BuildShape, ...(e.target.value === "diversified" ? {useHeuristicOwnershipLeverage:false} : {}) }); }}>
+            <Field label="Shape"><select className="control" value={settings.buildShape} onChange={(e) => { shapeChosen.current = true; const diversified = e.target.value === "diversified";
+              // Diversified runs its own search on the optimizer's ceiling settings: hand scoring back to the format default.
+              if (diversified) scoringChosen.current = false;
+              setSettings({ ...settings, buildShape: e.target.value as BuildShape, ...(diversified ? {useHeuristicOwnershipLeverage:false, ...scoringPreset("draws")} : {}) }); }}>
               <option value="standard">Standard (current model)</option>
               <option value="winners">Winners shape (how the flagship winners built)</option>
               {slate.format === "classic" ? <option value="diversified">Winners + Diversified (experimental)</option> : null}
             </select></Field>
-            {settings.buildShape !== "diversified" ? <><Field label="Lineup scoring"><select className="control" value={settings.gppScoring} onChange={(e) => setSettings({ ...settings, gppScoring: e.target.value as "ceiling" | "draws" })}>
+            {settings.buildShape !== "diversified" ? <><Field label="Lineup scoring"><select className="control" value={scoringKind} onChange={(e) => { scoringChosen.current = true; setSettings({ ...settings, ...scoringPreset(e.target.value as GppScoringKind) }); }}>
+              <option value="mean">Projected points (each player&apos;s projection, with random variation)</option>
               <option value="draws">Simulated games (each lineup best for one simulated game)</option>
               <option value="ceiling">Player ceilings (each player&apos;s P90, added up)</option>
             </select></Field>
-            <p className="mt-1 text-slate-500">{settings.gppScoring === "draws"
+            <p className="mt-1 text-slate-500">{scoringKind === "mean"
+              ? `Each lineup is the highest-projected one after every player's projection is nudged up or down at random (by up to ${Math.round(settings.randomness * 100)}%, the Randomness setting), so lineups differ. A wide range earns nothing by itself. ${slate.format === "classic" ? `No defense goes in more than ${Math.round(PLAIN_DST_MAX_EXPOSURE * 100)}% of lineups unless you lock it or set its range. The default for Classic since 2026-11-11: on six 2026 main slates it returned about what the field did, against two thirds of that for simulated games.` : "Tested on Classic slates only."}`
+              : scoringKind === "draws"
               ? "A player shows up about as often as he belongs in the best lineup, and players who boom together are built together. Your exposure caps are limits, not targets. Randomness is not used; the simulated games are the variation."
               : "Each player is scored by his own ceiling. Anyone who beats his replacement fills lineups up to his exposure cap, so set caps deliberately."}</p></> : null}
             {settings.buildShape === "diversified" ? <div className="mt-2 space-y-2 text-slate-700">
