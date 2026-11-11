@@ -234,12 +234,57 @@ def store(conn, manifest, packed, *, migration=False):
     return True
 
 
-def restore_all(conn, root):
+# Where each restored archive's bytes came from in this process, reported in the
+# run's result so a cold cache (everything from the database) is visible.
+TRANSPORT = {'cache': 0, 'database': 0}
+
+
+def packed_archive(cache, archive_sha256, fetch):
+    """The packed archive with this sha256: a verified local copy, else ``fetch()``.
+
+    Every run used to download every archive (about 180 MB by 2026-11-10, growing
+    daily). The cache changes only where the bytes come from: a copy is used only
+    when its own sha256 is the manifest's, anything else is fetched from the
+    database and replaces it, and ``unpack`` still checks every file inside. With
+    no cache directory this is exactly the database read.
+    """
+    path = None if cache is None else Path(cache) / (archive_sha256 + '.gz')
+    if path is not None and path.is_file():
+        data = path.read_bytes()
+        if hashlib.sha256(data).hexdigest() == archive_sha256:
+            TRANSPORT['cache'] += 1
+            return data
+    data = bytes(fetch())
+    if hashlib.sha256(data).hexdigest() != archive_sha256:
+        raise ValueError('archive digest mismatch')
+    TRANSPORT['database'] += 1
+    if path is not None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        partial = path.with_name(path.name + '.partial')
+        partial.write_bytes(data)
+        partial.replace(path)
+    return data
+
+
+def fetch_archive(conn, table, key_column, key):
+    """One row's archive bytes. Table and column are fixed by the caller, never input."""
+    def fetch():
+        with conn.cursor() as cur:
+            cur.execute('SELECT archive FROM ' + table + ' WHERE ' + key_column + '=%s', (key,))
+            row = cur.fetchone()
+        if row is None:
+            raise ValueError('archive row disappeared between manifest and bytes')
+        return row[0]
+    return fetch
+
+
+def restore_all(conn, root, cache=None):
     with conn.cursor() as cur:
-        cur.execute('SELECT manifest,archive FROM nba_research_archives WHERE model_sha256=%s ORDER BY game_date', (MODEL_SHA,))
+        cur.execute('SELECT forecast_sha256,manifest FROM nba_research_archives WHERE model_sha256=%s ORDER BY game_date', (MODEL_SHA,))
         rows = cur.fetchall()
-    for manifest, packed in rows:
-        restore(root, manifest, bytes(packed))
+    for key, manifest in rows:
+        restore(root, manifest, packed_archive(cache, manifest['archive_sha256'],
+                                               fetch_archive(conn, 'nba_research_archives', 'forecast_sha256', key)))
     # The fixed sequential P90 rule needs the actual previously observed grades,
     # not just historical seed residuals, on every ephemeral runner.
     with conn.cursor() as cur:

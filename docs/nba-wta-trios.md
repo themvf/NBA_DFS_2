@@ -117,7 +117,21 @@ toward the review.
   ported to the browser (`web/src/lib/nba-contest-optimizer.ts`, pinned to this module by
   `tests/fixtures/nba_wta_fixture.json`; regenerate with `python -m research.nba_wta_trios
   fixture`) on the latest lines, for contests that leave games out or have another field
-  size. Never graded; the frozen all-games set is the record.
+  size. Not part of the registered test; the frozen all-games set is that record.
+- **Saved runs** (`nba-contest-run-v1`, 2026-11-10). The owner enters the custom builder's
+  output (6 to 10 entries, locked at the first tip, games varying by night), so every
+  Optimize run is stored in `nba_contest_runs` through `/api/nba/contest-runs`
+  (`web/src/lib/nba-contest-runs.ts`, `web/src/db/nba-contest-runs.ts`; web-owned table,
+  one row per distinct run by content digest, so a repeat press keeps the first save).
+  The browser sends its settings and entries; the games' teams and tip times come from the
+  stored lines, and the database clock decides "before the first tip". A late run is kept
+  and marked, never refused: this is a record, not a trial, and nothing here is counted by
+  the registered test. The page's "Your saved runs" scores each run from the final box
+  scores by this module's `load_actuals` rule (no row or did not play = 0; a game that is
+  not final or matches two box scores = unknown). Which run was entered, the winning score,
+  the field size and what the field picked come from the contest's results export, which
+  is not imported yet (the owner can download every entry; first file due after the
+  2026-11-10 contest). That import is what can measure the field assumption.
 - The books' 30+ and 40+ chances read high (registered `nba-points-ladder-v2` test);
   the builder uses the books' curve as is, which favors high-ceiling players.
 - Pool is the top 20 lines; 5 of 48 actual top-three scorers in discovery came from

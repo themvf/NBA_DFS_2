@@ -165,6 +165,7 @@
     "test:nba-boom-trios": "node --import tsx ./scripts/test-nba-boom-trios.ts",
     "test:nba-contest-trios": "node --import tsx ./scripts/test-nba-contest-trios.ts",
     "test:nba-contest-optimizer": "node --import tsx ./scripts/test-nba-contest-optimizer.ts",
+    "test:nba-contest-runs": "node --import tsx ./scripts/test-nba-contest-runs.ts",
     "test:nba-game-leaders": "node --import tsx ./scripts/test-nba-game-leaders.ts",
     "test:nba-boom-lineups": "node --import tsx ./scripts/test-nba-boom-lineups.ts",
     "test:nfl-live-review": "node --import tsx ./scripts/test-nfl-live-review.ts",

@@ -14,6 +14,7 @@ let ensureOddsHistoryTablesPromise: Promise<void> | null = null;
 let ensureAnalyticsColumnsPromise: Promise<void> | null = null;
 let ensureVideoAnalysisTablesPromise: Promise<void> | null = null;
 let ensureNbaBoomLineupTablesPromise: Promise<void> | null = null;
+let ensureNbaContestRunTablesPromise: Promise<void> | null = null;
 let ensureYoutubePickChannelsTablePromise: Promise<void> | null = null;
 let ensureOddsApiPropFetchLogPromise: Promise<void> | null = null;
 let ensureMlbGamePredictionTablesPromise: Promise<void> | null = null;
@@ -1795,6 +1796,44 @@ const NBA_BOOM_LINEUP_DDLS = [
     )`,
   `CREATE INDEX IF NOT EXISTS idx_nba_boom_lineup_records_date ON nba_boom_lineup_records(game_date DESC, created_at)`,
 ];
+
+/**
+ * Saved runs of the contest builder on /nba/contest-trios (`/api/nba/contest-runs`).
+ * One row per distinct run (settings + lines + entries), so pressing Optimize twice on
+ * the same lines keeps the first save and its time. `first_tip` is the earliest tip
+ * among the run's games, read from the stored lines by the server; a run saved at or
+ * after it is kept and shown as late, never refused: it is a record, not a trial.
+ * Web-owned (no Python writer); CREATE-only, so a cold start takes no table lock.
+ */
+const NBA_CONTEST_RUN_DDLS = [
+  `CREATE TABLE IF NOT EXISTS nba_contest_runs (
+      id BIGSERIAL PRIMARY KEY,
+      run_sha256 TEXT NOT NULL UNIQUE,
+      version TEXT NOT NULL,
+      game_date DATE NOT NULL,
+      first_tip TIMESTAMPTZ NOT NULL,
+      lines_captured_at TIMESTAMPTZ,
+      field_size INTEGER NOT NULL,
+      entry_count INTEGER NOT NULL,
+      payload JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
+    )`,
+  `CREATE INDEX IF NOT EXISTS idx_nba_contest_runs_date ON nba_contest_runs(game_date DESC, created_at DESC)`,
+];
+
+export async function ensureNbaContestRunTables(): Promise<void> {
+  if (!ensureNbaContestRunTablesPromise) {
+    ensureNbaContestRunTablesPromise = (async () => {
+      for (const ddl of NBA_CONTEST_RUN_DDLS) {
+        await db.execute(sql.raw(ddl));
+      }
+    })().catch((error) => {
+      ensureNbaContestRunTablesPromise = null;
+      throw error;
+    });
+  }
+  await ensureNbaContestRunTablesPromise;
+}
 
 export async function ensureNbaBoomLineupTables(): Promise<void> {
   if (!ensureNbaBoomLineupTablesPromise) {

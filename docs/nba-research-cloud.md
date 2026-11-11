@@ -55,6 +55,24 @@ forecasting began but before durable archival, retries fail closed and alert;
 operators must inspect the preserved workflow artifact instead of generating a
 replacement. Missing or failed sidecars are never attached by a later retry.
 
+## Archive cache (2026-11-10)
+
+Every `record` and `review` rebuilt the runner's research folder by downloading
+every archive from the database: about 180 MB a run by 2026-11-10 (11 originals,
+17 reviews, 8 v2 reviews), growing by roughly 14 MB a day, 13 such runs in two
+days. `--archive-cache DIR` keeps the packed archives between runs. Manifests are
+still read for every row; an archive's bytes are read from the cache only when
+the copy's own sha256 equals the manifest's `archive_sha256`, and from the
+database otherwise (the download then replaces the copy). `unpack` and `restore`
+are unchanged and still check every file, so the folder a run rebuilds is the same
+with a warm cache, a cold cache or none. Both workflows restore the cache with
+`actions/cache/restore` (prefix `nba-research-archives-`) and save it again only
+when it gained an archive; a `check` restores nothing and skips the cache. Each
+run's result records `archive_transport` (`cache`, `database`, `cache_enabled`),
+so a cache that stopped working shows as every archive coming from the database.
+The cache folder sits outside `artifacts/nba-research/`, so it is not uploaded
+with the run's evidence.
+
 Original artifacts, their original path-bearing indexes, and relocated indexes
 are retained separately. Every file is hash-checked; conflicting local files,
 path escapes, altered models and duplicate per-date identities are rejected.
