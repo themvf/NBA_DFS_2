@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "version": "nfl-longest-td-weekly-grade-v1",
- "updatedAt": "2026-11-09T23:14:46.530115+00:00",
+ "updatedAt": "2026-11-11T22:41:14.996164+00:00",
  "authority": "tracking_only_not_calibration",
  "weeks": [
   {
@@ -759,16 +759,16 @@
   {
    "season": 2026,
    "week": 9,
-   "graded": 14,
+   "graded": 15,
    "needsReview": [],
    "topHits": 5,
-   "topExpected": 2.1673333333333336,
-   "logLoss": 3.797549824648179,
-   "baselineLogLoss": 3.0992016303403163,
-   "uniformLogLoss": 3.3666493470557732,
-   "anyTdExpected": 53.80599999999998,
-   "anyTdScored": 53,
-   "longTdExpected": 5.672000000000002,
+   "topExpected": 2.297,
+   "logLoss": 3.7988273580465557,
+   "baselineLogLoss": 3.1256579661639177,
+   "uniformLogLoss": 3.3643530245970683,
+   "anyTdExpected": 57.585999999999984,
+   "anyTdScored": 54,
+   "longTdExpected": 6.064000000000003,
    "longTdScored": 10,
    "games": [
     {
@@ -995,6 +995,22 @@
      "topPick": "Luther Burden III",
      "topProbability": 0.112,
      "topHit": true,
+     "reviewed": false
+    },
+    {
+     "gameId": "2026_09_BUF_MIN",
+     "away": "BUF",
+     "home": "MIN",
+     "longestYards": 25,
+     "winners": [
+      "OTHER:BUF"
+     ],
+     "winnerProbability": 0.022,
+     "winnerRank": 15,
+     "outcomes": 28,
+     "topPick": "James Cook",
+     "topProbability": 0.12966666666666665,
+     "topHit": false,
      "reviewed": false
     }
    ]
@@ -3168,6 +3184,42 @@
    "long_td_expected": 0.4500000000000002,
    "long_td_scored": 1,
    "named_players": 26
+  },
+  {
+   "version": "nfl-longest-td-weekly-grade-v1",
+   "game_id": "2026_09_BUF_MIN",
+   "season": 2026,
+   "week": 9,
+   "away": "BUF",
+   "home": "MIN",
+   "kickoff": "2026-11-10 01:15:00+00:00",
+   "decision_at": "2026-11-09T23:14:16.383955+00:00",
+   "model_version": "nfl-longest-scrimmage-td-research-v2",
+   "request_sha256": "855505c577fe5abc9e302fb9f29a7ec594e82e7ff1542d93a778a79066298e3e",
+   "graded_at": "2026-11-11T22:41:14.996164+00:00",
+   "capture_at": "2026-11-11T22:41:14.954694+00:00",
+   "status": "graded",
+   "reason": null,
+   "longest_yards": 25,
+   "winners": [
+    "OTHER:BUF"
+   ],
+   "winner_probability": 0.022,
+   "winner_rank": 15,
+   "outcomes": 28,
+   "unmodeled_winner": true,
+   "top_pick": "James Cook",
+   "top_probability": 0.12966666666666665,
+   "top_hit": false,
+   "log_loss": 3.816712825623821,
+   "baseline_log_loss": 3.496046667694334,
+   "uniform_log_loss": 3.332204510175204,
+   "brier": 1.0257679999999998,
+   "any_td_expected": 3.779999999999999,
+   "any_td_scored": 1,
+   "long_td_expected": 0.392,
+   "long_td_scored": 0,
+   "named_players": 25
   }
  ]
 }
