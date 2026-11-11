@@ -90,14 +90,16 @@ def command(label, args, evidence, timeout=600):
         raise RuntimeError(label + ' failed; inspect its retained receipt')
 
 
-def restore_reviews(conn, root):
+def restore_reviews(conn, root, cache=None):
+    """Every stored review, oldest first. Manifests are read for all; bytes only for those not cached."""
     with conn.cursor() as cur:
-        cur.execute('SELECT manifest,archive FROM nba_research_reviews ORDER BY created_at')
-        rows = cur.fetchall()
-        cur.execute('SELECT manifest,archive FROM nba_research_v2_reviews ORDER BY created_at')
-        rows += cur.fetchall()
-    for manifest, packed in rows:
-        storage.restore(root, manifest, bytes(packed))
+        cur.execute('SELECT review_sha256,manifest FROM nba_research_reviews ORDER BY created_at')
+        rows = [('nba_research_reviews', *r) for r in cur.fetchall()]
+        cur.execute('SELECT review_sha256,manifest FROM nba_research_v2_reviews ORDER BY created_at')
+        rows += [('nba_research_v2_reviews', *r) for r in cur.fetchall()]
+    for table, key, manifest in rows:
+        storage.restore(root, manifest, storage.packed_archive(
+            cache, manifest['archive_sha256'], storage.fetch_archive(conn, table, 'review_sha256', key)))
 
 
 def missing_attachments(manifest):
@@ -106,7 +108,7 @@ def missing_attachments(manifest):
             if manifest['game_date'] >= start and manifest['attachments'].get(folder) != 'indexed']
 
 
-def record(conn, root, day, evidence):
+def record(conn, root, day, evidence, cache=None):
     payload, captured = fetch_scoreboard(day)
     write_new(evidence / 'scoreboard.json', {'captured_at': captured.isoformat(), 'payload': payload})
     starts = [aware(e['date']) for e in payload.get('events', [])]
@@ -129,7 +131,7 @@ def record(conn, root, day, evidence):
             raise ValueError('earlier forecast attempt may have an original; inspect retained artifacts, never refreeze blindly')
     # A global session advisory lock spans collection, original recording and
     # durable publication. Retries never attach missing sidecars to an original.
-    storage.restore_all(conn, root)
+    storage.restore_all(conn, root, cache)
     model = pinned_model(root / 'pinned-model.json')
     inputs, directory = evidence / 'inputs', root / ('record-' + day.isoformat() + '-' + evidence.name)
     command('collect', ['research.nba_points_v3', 'collect', '--date', day, '--output-dir', inputs], evidence)
@@ -328,9 +330,9 @@ def import_history(conn, root, manifest):
     return sorted(latest)
 
 
-def review(conn, root, last, evidence):
-    storage.restore_all(conn, root)
-    restore_reviews(conn, root)
+def review(conn, root, last, evidence, cache=None):
+    storage.restore_all(conn, root, cache)
+    restore_reviews(conn, root, cache)
     results = []
     for day in [last - timedelta(days=i) for i in range(3)]:
         output = evidence / str(day)
@@ -431,7 +433,10 @@ def main():
     parser.add_argument('--date', type=date.fromisoformat)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--env-file', type=Path, help='Optional existing local credentials file; read into process memory only')
+    parser.add_argument('--archive-cache', type=Path, help='Optional folder of packed archives kept between runs; '
+                        'a copy is used only when its sha256 matches the stored manifest, so it never changes what is restored')
     args = parser.parse_args()
+    cache = args.archive_cache.resolve() if args.archive_cache else None
     if args.env_file:
         from dotenv import load_dotenv
         load_dotenv(args.env_file, override=False)
@@ -457,13 +462,13 @@ def main():
             return
         try:
             if args.action == 'record':
-                result = record(conn, root, day, evidence)
+                result = record(conn, root, day, evidence, cache)
             elif args.action == 'check':
                 payload, captured = fetch_scoreboard(day)
                 write_new(evidence / 'scoreboard.json', {'captured_at': captured.isoformat(), 'payload': payload})
                 result = health(conn, day, payload, now())
             elif args.action == 'review':
-                result = review(conn, root, day, evidence)
+                result = review(conn, root, day, evidence, cache)
             elif args.action == 'import-local':
                 marker = root / 'prospective-index' / (str(day) + '-' + storage.MODEL_SHA + '.json')
                 manifest, packed = storage.bundle(root, marker)
@@ -471,8 +476,8 @@ def main():
                 result = {'status': 'original_archived', 'inserted': inserted, 'new_forecasts': 0,
                           'forecast_sha256': manifest['forecast_sha256'], 'history': import_history(conn, root, manifest)}
             else:
-                result = {'status': 'restored', 'originals': storage.restore_all(conn, root)}
-                restore_reviews(conn, root)
+                result = {'status': 'restored', 'originals': storage.restore_all(conn, root, cache)}
+                restore_reviews(conn, root, cache)
                 materialize_grades(root)
                 reports(root, evidence)
                 with conn.cursor() as cur:
@@ -482,7 +487,10 @@ def main():
         except Exception as exc:
             conn.rollback()
             result = {'status': 'failed', 'type': type(exc).__name__, 'reason': str(exc)}
-        result.update(date=str(day), action=args.action, observed_at=now().isoformat())
+        # How many archives were read from the cache and how many downloaded: a cold or
+        # missing cache shows up here as everything coming from the database.
+        result.update(date=str(day), action=args.action, observed_at=now().isoformat(),
+                      archive_transport={**storage.TRANSPORT, 'cache_enabled': cache is not None})
         write_new(evidence / 'result.json', result)
         with conn.cursor() as cur:
             cur.execute('INSERT INTO nba_research_runs(game_date,action,result) VALUES(%s,%s,%s)', (day, args.action, Json(result)))

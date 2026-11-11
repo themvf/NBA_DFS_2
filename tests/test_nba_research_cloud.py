@@ -197,3 +197,99 @@ def test_ambiguous_unlisted_game_is_not_silently_filled(tmp_path):
     with pytest.raises(ValueError, match='ambiguous'):
         verified_game_copy(source, diagnostics, tmp_path)
     assert 'espn_event_id' not in diagnostics['rows'][0]
+
+
+class ArchiveDatabase:
+    """Answers the restore queries from memory and counts how many archives were downloaded."""
+    def __init__(self, originals=(), reviews=(), v2_reviews=()):
+        self.tables = {'nba_research_archives': [(m['forecast_sha256'], m, p) for m, p in originals],
+                       'nba_research_reviews': [(m['archive_sha256'], m, p) for m, p in reviews],
+                       'nba_research_v2_reviews': [(m['archive_sha256'], m, p) for m, p in v2_reviews]}
+        self.downloads = []
+    def cursor(self):
+        database = self
+        class Reader:
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def execute(self, sql, parameters=()):
+                table = next((t for t in sorted(database.tables, key=len, reverse=True) if ' ' + t + ' ' in sql + ' '), None)
+                if 'to_regclass' in sql:
+                    self.rows = [(None,)]
+                elif sql.startswith('SELECT archive FROM '):
+                    database.downloads.append((table, parameters[0]))
+                    self.rows = [(p,) for key, _, p in database.tables[table] if key == parameters[0]]
+                elif 'manifest' in sql and ',archive' not in sql:
+                    self.rows = [(key, m) for key, m, _ in database.tables[table]]
+                else:
+                    raise AssertionError('unexpected query: ' + sql)
+            def fetchall(self): return self.rows
+            def fetchone(self): return self.rows[0] if self.rows else None
+        return Reader()
+
+
+def tree(root):
+    return {p.relative_to(root).as_posix(): p.read_bytes() for p in sorted(root.rglob('*')) if p.is_file()}
+
+
+def test_archive_cache_changes_only_where_the_bytes_come_from(tmp_path):
+    archive.TRANSPORT.update(cache=0, database=0)
+    packed, name = b'packed archive bytes', hashlib.sha256(b'packed archive bytes').hexdigest()
+    calls = []
+    def fetch():
+        calls.append(1)
+        return memoryview(packed)                      # psycopg2 hands BYTEA back as a memoryview
+    assert archive.packed_archive(None, name, fetch) == packed and len(calls) == 1
+    cache = tmp_path / 'cache'
+    assert archive.packed_archive(cache, name, fetch) == packed and len(calls) == 2      # cold: downloaded and kept
+    assert (cache / (name + '.gz')).read_bytes() == packed
+    assert archive.packed_archive(cache, name, fetch) == packed and len(calls) == 2      # warm: no download
+    assert archive.TRANSPORT == {'cache': 1, 'database': 2}
+    (cache / (name + '.gz')).write_bytes(b'damaged copy')
+    assert archive.packed_archive(cache, name, fetch) == packed and len(calls) == 3      # a wrong copy is never used
+    assert (cache / (name + '.gz')).read_bytes() == packed                              # and is replaced
+    with pytest.raises(ValueError, match='digest mismatch'):
+        archive.packed_archive(cache, hashlib.sha256(b'other').hexdigest(), fetch)       # the database row must match too
+    assert not (cache / (hashlib.sha256(b'other').hexdigest() + '.gz')).exists()
+    assert not list(cache.glob('*.partial'))
+
+
+def test_restore_reads_manifests_always_and_archives_only_when_not_cached(tmp_path):
+    from research.nba_research_cloud import restore_reviews
+    root, _, marker = original(tmp_path)
+    manifest, packed = archive.bundle(root, marker)
+    # A v2-only review, built by the real writer so its manifest and bytes are genuine.
+    worker = tmp_path / 'worker'
+    review = worker / 'operations' / 'review-1' / '2026-11-08'
+    write_new(review / 'v2-review' / 'snapshot.json', signed({'version': 'nba-points-ghost-v2', 'mode': 'prospective', 'game_date': '2026-11-08'}))
+    captured = []
+    class Writer:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def execute(self, sql, parameters): captured.append(parameters)
+    class Sink:
+        def cursor(self): return Writer()
+        def commit(self): pass
+    save_v2_review(Sink(), worker, review)
+    v2 = (captured[0][2].adapted, captured[0][3])
+
+    def run(target, cache):
+        database = ArchiveDatabase(originals=[(manifest, packed)], v2_reviews=[v2])
+        assert archive.restore_all(database, target, cache) == 1
+        restore_reviews(database, target, cache)
+        return database.downloads
+
+    plain = tmp_path / 'no-cache'
+    assert len(run(plain, None)) == 2                                    # no cache: every archive downloaded, as before
+    cache, cold, warm = tmp_path / 'cache', tmp_path / 'cold', tmp_path / 'warm'
+    assert len(run(cold, cache)) == 2                                    # first run fills the cache
+    assert run(warm, cache) == []                                        # second run downloads nothing
+    index = 'prospective-index/' + marker.name                           # the only path-bearing file: it names its own root
+    files = {name: tree(folder) for name, folder in (('plain', plain), ('cold', cold), ('warm', warm))}
+    for name in ('cold', 'warm'):
+        assert set(files[name]) == set(files['plain'])
+        assert all(files[name][f] == data for f, data in files['plain'].items() if f != index)
+    assert (plain / 'operations' / 'review-1' / '2026-11-08' / 'v2-review' / 'snapshot.json').exists()
+
+    # An archive the cache does not hold (a new night's review) is the only download.
+    (cache / (v2[0]['archive_sha256'] + '.gz')).unlink()
+    assert run(tmp_path / 'later', cache) == [('nba_research_v2_reviews', v2[0]['archive_sha256'])]

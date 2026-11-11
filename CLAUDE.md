@@ -329,9 +329,15 @@ crowd assumption. The owner's real contest results outrank both grades. Both tab
 **Custom runs (2026-11-06):** the page's "Build entries for your contest" runs the same rules in the browser
 (`web/src/lib/nba-contest-optimizer.ts`, ~0.3 s) on the latest lines for the games the owner ticks, with his field size
 and entry count; pinned to the Python by `tests/fixtures/nba_wta_fixture.json` (regenerate with `python -m
-research.nba_wta_trios fixture`; a Python test fails when it is stale). Never graded. The exact entries are near-ties
+research.nba_wta_trios fixture`; a Python test fails when it is stale). Not part of the registered test. The exact entries are near-ties
 and change with the random draws (0-2 of 5 shared across seeds) while the prize share and player mix hold steady,
 so the page shows the mix.
+**Saved runs (2026-11-10, `nba-contest-run-v1`):** the owner enters the custom builder's output (6-10 entries, locked at
+the first tip), so every Optimize run is stored in web-owned `nba_contest_runs` via `/api/nba/contest-runs` (one row per
+distinct run; teams and tip times from the stored lines, "before the first tip" by the database clock; a late run is kept
+and marked). "Your saved runs" on the page scores them from the final box scores (did not play = 0, unfinished game =
+unknown). The contest's results export (every entry in the field) is the next step: it identifies the entered run and
+measures the field the entries are built against. All four NBA pages stay in the menu (owner's call).
 **Top-end correction and game leaders (`nba-points-sim-recal-v1`, 2026-11-06):** the books' curves overstate each
 player's big nights (line+10 stated 10.5%, happened 6.3%; line+15 4.6% vs 1.9%, 1,688 player-games), which gave
 low-line players too much chance to lead. `RECAL_G` (realized PIT CDF, shrunk with 200 pseudo-rows) maps each draw's
@@ -797,6 +803,21 @@ owner-run `scripts/compact_nfl_dfs_research_rows.py` and
 pool script lifts the append-only trigger for its run), then VACUUM FULL.
 `nfl_dfs_weekly_report_cards` held 121 MB live in a 483 MB table: the
 retention pass deletes, so only VACUUM FULL returns the space.
+
+**NBA research archives are cached between runs (2026-11-10).** Every
+`nba_research_cloud` `record` and `review` downloaded every stored archive to
+rebuild the runner's folder: 36 archives, 175 MB a run, ~13 runs in two days,
+growing ~14 MB a day (so egress grew with the square of the season). The
+extra rows were not duplicate writes (the writer is already keyed on content),
+so "write only when changed" would not have helped. `--archive-cache` plus an
+`actions/cache` step in both workflows now reads manifests for every row and an
+archive's bytes only when the cached copy's sha256 does not match. Checked on
+the live database: baseline, cold-cache and warm-cache restores gave the same
+1,100 files (the 32 index files differ only in the folder path they name) and
+the same reports; the warm run read 36 archives from the cache and 0 from Neon.
+See docs/nba-research-cloud.md. Not changed: `nba_ghost_grades` re-grades
+(22 MB, two writers, the doc says regrading appends) and the trio-math grade
+writer, which is hash-pinned.
 
 ## Parallel agents: commit locally, one session pushes (2026-10-04)
 

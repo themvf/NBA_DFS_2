@@ -69,9 +69,33 @@ jobs:
         run: >-
           python -m research.nba_points_workload_conflicts
           ${GAME_DATE:+--date "$GAME_DATE"} --apply
+      # Packed research archives kept between runs, so each run downloads from Neon only the
+      # archives it has not seen. A copy is used only when its sha256 matches the stored
+      # manifest; with no cache the run downloads everything, as it did before.
+      - name: Restore the research archive cache
+        id: archive-cache
+        if: ${{ !cancelled() && github.event.schedule != '37 13 * 1-6,10-12 *' && inputs.action != 'grade' && inputs.action != 'availability' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: artifacts/nba-research-archive-cache
+          key: nba-research-archives-latest
+          restore-keys: nba-research-archives-
       - name: Record original v3 and registered research attachments
         if: ${{ !cancelled() && github.event.schedule != '37 13 * 1-6,10-12 *' && inputs.action != 'grade' && inputs.action != 'availability' }}
-        run: python -m research.nba_research_cloud record ${GAME_DATE:+--date "$GAME_DATE"} --root artifacts/nba-research
+        run: python -m research.nba_research_cloud record ${GAME_DATE:+--date "$GAME_DATE"} --root artifacts/nba-research --archive-cache artifacts/nba-research-archive-cache
+      - name: List the research archive cache
+        id: archive-list
+        if: ${{ !cancelled() && github.event.schedule != '37 13 * 1-6,10-12 *' && inputs.action != 'grade' && inputs.action != 'availability' }}
+        run: |
+          mkdir -p artifacts/nba-research-archive-cache
+          echo "count=$(ls artifacts/nba-research-archive-cache | wc -l)" >> "$GITHUB_OUTPUT"
+          echo "key=nba-research-archives-$(ls artifacts/nba-research-archive-cache | sort | sha256sum | cut -c1-32)" >> "$GITHUB_OUTPUT"
+      - name: Keep the research archive cache when it gained an archive
+        if: ${{ !cancelled() && steps.archive-list.outputs.count != '' && steps.archive-list.outputs.count != '0' && steps.archive-cache.outputs.cache-matched-key != steps.archive-list.outputs.key }}
+        uses: actions/cache/save@v4
+        with:
+          path: artifacts/nba-research-archive-cache
+          key: ${{ steps.archive-list.outputs.key }}
       - name: Alert on independent recording failures
         if: ${{ !cancelled() && github.event.schedule != '37 13 * 1-6,10-12 *' && inputs.action != 'grade' && inputs.action != 'availability' }}
         env:
