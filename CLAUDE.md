@@ -8519,6 +8519,80 @@ $50,000 cap, 2024 week 1 has an N/A salary, and 2024 weeks 7 and 9 carry the
 same table (`flags`). Names are abbreviated from 2024 on ("J. Fields"), so
 joining to players needs the slate's salary and position, not the name.
 
+## NFL DFS — Classic GPP scores on plain projection by default (`nfl-gpp-scoring-default-v1`, 2026-11-11)
+
+Owner's decision 2026-11-11, after a six-week rebuild and a four-reviewer
+check. The build form now has three lineup-scoring choices, and "Projected
+points" is the default for a Classic GPP build. Showdown, cash and the
+Diversified shape keep simulated games. The Winners shape still applies; it
+sets the lineup rules, this sets how a lineup is scored.
+
+Plain projection is `gppScoring: "ceiling"` with `maxCeilingMultiple: 1` and
+`boomWeight: 0` (a player is credited his projection) plus `randomness: 0.25`.
+It lives in the page layer (`web/src/lib/nfl-dfs/gpp-scoring.ts`, test
+`test:nfl-gpp-scoring`). `nfl-optimizer.ts` and `applyWinnersShape` are
+unchanged, so nothing is re-pinned and the ghost factorial is unaffected.
+
+Rebuilt on the 2026 main slates of weeks 3-8 with today's projection steps
+(lines as captured before each build's own time), 50 lineups, paid out of six
+real contests a week with their real prize tables, each payout capped at 50x
+the fee. Six reseeded builds a week for plain projection, five for simulated
+games, page settings on both (joint selection, ownership leverage):
+
+| per $1 | capped return | cash | top 10% | top 1% |
+|---|---:|---:|---:|---:|
+| heavy entrants (prior record only) | 0.70 | 27.3% | 12.5% | 1.04% |
+| whole field | 0.60 | 22.9% | 10.0% | 0.99% |
+| plain projection | 0.60 | 22.0% | 9.9% | 1.18% |
+| simulated games (the old default) | 0.41 | 15.9% | 5.9% | 0.76% |
+
+Paired by week: +0.18 per $1 (90% t interval -0.05 to +0.42, ahead in 4 of 6
+weeks, 3 of 3 in weeks 6-8), +5.7 real points a lineup in all six weeks. The
+cause: simulated games and player ceilings both reward a wide range, and the
+range is widest on players the field owns under 2% (P90 about 2.5x the
+projection against 1.5-1.8x for popular players). Simulated games gave 17% of
+roster spots to those players (field 7%) and 15% to players the field owned
+20%+ (field 24%); plain projection gives 8.5% and 26%.
+
+What it does not show. No gain in the top 1% (+0.11 points, interval across
+zero; six weeks cannot see it). 0.25 noise is not shown to beat 0.08 (+0.07,
+interval across zero). The un-anchored 0.70 scale and the range calibration
+were fitted on these weeks; without them the gain is +0.08 (-0.08 to +0.25,
+3 of 6 weeks). It reaches the field's return, not the heavy entrants'.
+Showdown was not tested.
+
+Two guards ship with it:
+
+- **Defense cap.** Scored on projection, the top defense averaged 35-54% of
+  lineups (the field's most-owned defense: 10-32%). A plain Classic GPP build
+  caps every defense at 30% (`PLAIN_DST_MAX_EXPOSURE`) through a per-player
+  exposure policy marked `overallFromUser: false`, so it never returns to the
+  form as a typed range; a lock or a range typed on a defense wins. Rebuilt
+  with the cap it moved nothing measurable (capped return +0.01, -0.05 to
+  +0.06): a concentration limit, not a source of return.
+- **No-lines notice.** A starter without a full set of prop lines keeps the
+  model's number scaled down, and a projection-scored build mostly skips him
+  (Braelon Allen in weeks 7 and 8: 20% owned, scored 22 and 26). Above
+  Generate the page names active RB/WR/TEs scaled for want of lines whose model
+  number is 10+ points (`unlinedStarters`). Midweek that is most of the slate
+  (57 on the Wednesday of week 10), because lines are read the evening before
+  and about an hour before kickoff. Build Sunday morning.
+
+Form rules worth keeping. The form holds the two ceiling knobs; a saved run or
+a draft that predates them restores at the optimizer's 2.5 and 2, never at the
+form's current values (`formFromSettings`, `formFromDraft`, draft
+`schemaVersion` 6). A draft before v6 with "draws" was only the default, so the
+format default applies to it; "ceiling" was always a choice. A slate whose
+games have started is never relabelled. Picking Diversified hands scoring back
+to the format default and strips the knobs.
+
+A replay that proposes changing a default must: build as the page builds
+(`actions.ts` forces joint selection on GPP, and the client defaults ownership
+leverage on), reseed the ceiling-mode noise (its jitter seed is a constant, so
+`drawSeed` does nothing there), print per-week differences with one week left
+out, and name what was fitted on the graded weeks. The first version of this
+result did none of the four and overstated a single lucky build.
+
 ## dfsdb.com contest import — one pasted link at a time (2026-10-10)
 
 `python -m ingest.dfsdb_contest <link>` pulls a public DraftKings contest from

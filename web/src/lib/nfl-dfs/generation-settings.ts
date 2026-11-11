@@ -5,6 +5,7 @@ import { canonicalAuditJson } from './audit-json';
 import type { ArchetypeQuota } from './archetypes';
 import { defensiveSettingsFor } from './defensive-display';
 import { sanitizeOwnershipOverrides } from './ownership-overrides';
+import { DEFAULT_BOOM_WEIGHT, DEFAULT_MAX_CEILING_MULTIPLE } from './gpp-scoring';
 
 /** A Showdown captain range for one player, in PERCENT (0-100). Null = no bound. */
 export type CaptainTarget = { min: number | null; max: number | null };
@@ -170,6 +171,13 @@ export function formFromSettings<S extends object>(saved: NflOptimizerSettings, 
   if (source.gppScoring === undefined && 'gppScoring' in defaults) {
     (settings as Record<string, unknown>).gppScoring = 'ceiling';
   }
+  // The form holds the two ceiling knobs since plain-projection scoring
+  // (nfl-gpp-scoring-default-v1, 2026-11-11). A run that did not send them
+  // built at the optimizer's defaults; restoring it must show that, not
+  // whatever the form holds now.
+  for (const [key, fallback] of [['maxCeilingMultiple', DEFAULT_MAX_CEILING_MULTIPLE], ['boomWeight', DEFAULT_BOOM_WEIGHT]] as const) {
+    if (source[key] === undefined && key in defaults) (settings as Record<string, unknown>)[key] = fallback;
+  }
   // Runs saved before defensive adjustments existed used the historical
   // forecast. Restoring one must not silently inherit today's new-build mode.
   if (source.defensiveAdjustments === undefined && 'defensiveAdjustments' in defaults) {
@@ -243,6 +251,14 @@ export function formFromDraft<S extends object>(raw: unknown, defaults: S): NflB
   // a v4+ draft carries a deliberate choice and keeps it.
   if (draftVersion < 4 && 'buildShape' in settings)
     (settings as Record<string, unknown>).buildShape = (defaults as Record<string, unknown>).buildShape;
+  // Drafts before v6 never stored the ceiling knobs: every build ran at the
+  // optimizer's defaults. They must not inherit the form's current knobs (a v5
+  // "ceiling" would silently become plain projection).
+  if (draftVersion < 6) {
+    for (const [key, fallback] of [['maxCeilingMultiple', DEFAULT_MAX_CEILING_MULTIPLE], ['boomWeight', DEFAULT_BOOM_WEIGHT]] as const) {
+      if (key in settings) (settings as Record<string, unknown>)[key] = fallback;
+    }
+  }
   if (draftVersion < 2 && 'defensiveAdjustments' in settings) {
     const defensive = (settings as { defensiveAdjustments: { mode: string; profile: string } }).defensiveAdjustments;
     if (defensive?.mode === 'experimental' && ['pfr-efficiency', 'allowed-rushing-volume'].includes(defensive.profile))
