@@ -8639,6 +8639,42 @@ Three things that test taught, worth not rediscovering:
   requested lineups in the test; 100% at a 90% cap, same return). The stop
   note says so. The preset does not loosen a typed cap.
 
+## NFL DFS — Showdown form defaults and pre-build notices (`nfl-showdown-defaults-v1`, 2026-11-11)
+
+Page layer only (`web/src/lib/nfl-dfs/showdown-defaults.ts`, test
+`test:nfl-showdown-defaults`); the optimizer and the Winners shape are untouched.
+
+- **Max exposure starts at 90% for a Winners Showdown GPP build.** With the
+  v14 ownership floor a 50-60% cap ran the popular players out (94% of the
+  requested lineups built; 100% at 90%, same return). It applies only when
+  nobody chose a value: a typed number, or one carried by a saved draft or
+  run, is never replaced, and the value the default displaced is put back
+  when the form moves to any other kind of build. A carried cap of 60% or
+  less shows a warning above Generate with a one-click "Set Max exposure to
+  90%". No draft schema bump.
+- **Wait-for-inactives notice** on a Showdown slate until 90 minutes before
+  kickoff: the time inactives are due and the questionable players (DK
+  status or our availability feed) still carrying 5+ points. In the replay,
+  players later ruled out cost about $0.10 per $1. The figure comes from old
+  saved snapshots, so it overstates the cost for a build redone after inactives.
+
+Tested on the same 16 slates against the shipped v14 build at a 90% cap
+(0.52 per $1 capped at 50x; field 0.65) and NOT built, so they are not
+retried without something new:
+
+| idea | capped return vs v14 (90% range) | slates ahead |
+|---|---|---|
+| ownership leverage on (simulated-games bonus) | -0.03 (-0.05 to -0.00) | 4 of 16 |
+| RB captain share 30% / 40% | -0.01 / -0.02 | 6, 5 of 16 |
+| each QB captain at most 20% | -0.01 (-0.03 to +0.02) | 5 of 10 |
+| projected-points scoring, 8% variation, with the v14 rules | -0.05 (-0.12 to +0.01), top-1% 0.48% vs 0.93% | 7 of 16 |
+
+Leverage on is worse in all five contest types, by a little. The form's
+built-in default is still on (`useHeuristicOwnershipLeverage: true`); the
+owner's Showdown builds have had it off. The RB-captain share cannot reach
+its target while the simulated captain ranges cap the backs, so those arms
+moved the mix only a few points.
+
 ## dfsdb.com contest import — one pasted link at a time (2026-10-10)
 
 `python -m ingest.dfsdb_contest <link>` pulls a public DraftKings contest from

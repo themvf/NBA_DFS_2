@@ -36,6 +36,7 @@ import { DEFAULT_NFL_PUNT_POLICY } from "@/lib/nfl-dfs/punt-policy";
 import { deriveReceiverRoleChanges, receiverChartRank, type ReceiverRoleChange } from "@/lib/nfl-dfs/receiver-role";
 import { PUNT_PRESETS, resolvePuntPreset, describePuntPolicy, type PuntPresetKey } from "@/lib/nfl-dfs/punt-presets";
 import { WINNERS_SHAPE, WINNERS_SHAPE_VERSION, qbExposureCap, suggestedCaptainPositions, winnersShapeLimits, type BuildShape, defaultBuildShape } from "@/lib/nfl-dfs/winners-shape";
+import { SHOWDOWN_WINNERS_MAX_EXPOSURE, defaultMaxExposure, inactivesNotice, lowExposureForOwnershipFloor } from "@/lib/nfl-dfs/showdown-defaults";
 import { PLAIN_DST_MAX_EXPOSURE, defaultGppScoringKind, scoringKindOf, scoringPreset, unlinedStarters, withPlainDstCap, withoutScoringKnobsForDiversified, type GppScoringKind } from "@/lib/nfl-dfs/gpp-scoring";
 import { objectiveLabel } from "@/lib/nfl-dfs/ownership-capability";
 import { ARCHETYPE_LABELS, type ArchetypeId, type ArchetypeQuota } from "@/lib/nfl-dfs/archetypes";
@@ -286,6 +287,24 @@ export default function NflDfsClient() {
     const wanted = defaultGppScoringKind(slateFormat, settings.mode, settings.buildShape);
     if (scoringKind !== wanted) setSettings(current => ({...current,...scoringPreset(wanted)}));
   }, [scoringKind, scoringFrozen, settings.mode, settings.buildShape, slateFormat]);
+  // Max exposure: a Winners Showdown GPP build starts at 90% (2026-11-11: with
+  // the ownership floor a 50-60% cap stopped builds short) until the user types
+  // a value or a saved draft or run carries one. The value it replaced is put
+  // back when the form moves to any other kind of build, so the default never
+  // leaks into Classic.
+  const exposureChosen = useRef(false);
+  const exposureCarried = useRef<number | null>(null);
+  useEffect(() => {
+    if (exposureChosen.current || scoringFrozen) return;
+    const showdownDefault = defaultMaxExposure({ format: slateFormat, mode: settings.mode, buildShape: settings.buildShape }) === SHOWDOWN_WINNERS_MAX_EXPOSURE;
+    if (showdownDefault && settings.maxExposure !== SHOWDOWN_WINNERS_MAX_EXPOSURE) {
+      exposureCarried.current = settings.maxExposure;
+      setSettings(current => ({...current,maxExposure:SHOWDOWN_WINNERS_MAX_EXPOSURE}));
+    } else if (!showdownDefault && exposureCarried.current != null) {
+      const back = exposureCarried.current; exposureCarried.current = null;
+      setSettings(current => ({...current,maxExposure:back}));
+    }
+  }, [settings.maxExposure, scoringFrozen, settings.mode, settings.buildShape, slateFormat]);
   // What every build gets after the form is read: the Diversified shape keeps
   // the optimizer's own ceiling knobs, and a plain-projection Classic build
   // caps each defense (a range typed on a defense, or a lock, wins).
@@ -329,6 +348,8 @@ export default function NflDfsClient() {
     // A restored run, or a v6+ draft, carries its scoring; an older draft's
     // "simulated games" was only the default, so the format default applies.
     scoringChosen.current = explicitScoring;
+    // A restored run or draft carries its Max exposure, whatever its age: it is never replaced by a default.
+    exposureChosen.current = true; exposureCarried.current = null;
     setSettings({...form.settings,projectionSource:BUILD_SOURCES.includes(form.settings.projectionSource)?form.settings.projectionSource:'our',
       defensiveAdjustments:preserveSaved ? form.settings.defensiveAdjustments : defensiveSettingsFor(BUILD_SOURCES.includes(form.settings.projectionSource)?form.settings.projectionSource:'our'),
       useHeuristicOwnershipLeverage:form.settings.useHeuristicOwnershipLeverage!==false,gppAirMatchupMinPct:0,
@@ -454,6 +475,9 @@ export default function NflDfsClient() {
         const starters = (form.settings as { confirmedStartingQbs?: Record<string, number> }).confirmedStartingQbs ?? {};
         if (Object.keys(starters).length) setSlate((await loadSavedNflWorkspace(uploadId, starters)).slate);
         setMessage('Saved player pool loaded with the build settings you last used on this slate.');
+      } else {
+        // No saved settings for this slate: Max exposure starts from the format's default again.
+        exposureChosen.current = false;
       }
     } catch (reason) { setError(reason instanceof Error ? `Your saved build settings could not be restored: ${reason.message}` : 'Your saved build settings could not be restored.'); }
     draftReadyFor.current = uploadId;
@@ -827,6 +851,9 @@ export default function NflDfsClient() {
   const winnersShape = settings.mode === "gpp" && settings.buildShape === "winners";
   const suggestionPositions: readonly string[] = suggestedCaptainPositions({ format: capFormatOf(slate?.format ?? "showdown", slate?.games ?? []), mode: settings.mode, buildShape: settings.buildShape });
   const unlined = unlinedStarters(slate?.players ?? []);
+  const lowExposure = lowExposureForOwnershipFloor({ format: slateFormat, mode: settings.mode, buildShape: settings.buildShape, maxExposure: settings.maxExposure });
+  const inactives = slate && slate.format === "showdown" ? inactivesNotice("showdown", slate.firstKickoff ?? null, now, slate.players) : null;
+  const INACTIVES_NAMED = 6;
   /** How many un-lined starters the build notice names; past this it is the whole slate waiting on lines. */
   const UNLINED_NAMED = 6;
   const buildSummary = [`${settings.nLineups} ${settings.mode === "gpp" ? "GPP" : "cash"} lineups`, SOURCE_LABELS[settings.projectionSource], winnersShape ? "Winners shape" : null, slate?.format === "showdown" ? PLAN_LABELS[archetypePlanMode] : null].filter(Boolean).join(" · ");
@@ -1008,6 +1035,18 @@ export default function NflDfsClient() {
               : `Without lines a player's model number is scaled down by about a third, so a build scored on projected points will use ${unlined.length === 1 ? "him" : "them"} in few or no lineups: `}{unlined.slice(0, UNLINED_NAMED).map(player => `${player.name} (${player.position}, ${player.team}; model ${player.modelPoints.toFixed(1)}, used ${player.usedPoints.toFixed(1)}${player.ownPct != null ? `, est. ${player.ownPct.toFixed(0)}% owned` : ""})`).join(", ")}.</span>
             <span className="mt-1 block">Lines are read the evening before the games and again about an hour before kickoff. Update data and rebuild then, or set a minimum on a player you want.</span>
           </div> : null}
+          {!slateLocked && lowExposure ? <div role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950">
+            <b>Max exposure is {Math.round(settings.maxExposure * 100)}%, which will probably stop this build short.</b>
+            <span className="mt-1 block">The Winners shape keeps every lineup&apos;s estimated ownership at {WINNERS_SHAPE.showdownMinLineupOwnership} or more, so it needs the popular players in most lineups. At a 50&ndash;60% cap, past Showdown builds came up about 6% short of the lineups asked for; at {Math.round(SHOWDOWN_WINNERS_MAX_EXPOSURE * 100)}% every lineup built and the tested return was the same.</span>
+            <button type="button" className="mt-2 rounded border border-amber-400 bg-white px-2 py-1 font-bold text-amber-950" onClick={() => { exposureChosen.current = true; exposureCarried.current = null; setSettings({ ...settings, maxExposure: SHOWDOWN_WINNERS_MAX_EXPOSURE }); }}>Set Max exposure to {Math.round(SHOWDOWN_WINNERS_MAX_EXPOSURE * 100)}%</button>
+          </div> : null}
+          {!slateLocked && inactives ? <div role="status" className="rounded-lg border border-sky-300 bg-sky-50 p-3 text-xs text-sky-950">
+            <b>Inactives are not posted yet.</b>
+            <span className="mt-1 block">Teams post them about 90 minutes before kickoff ({formatEt(new Date(inactives.postedAt).toISOString())}). {inactives.questionable.length
+              ? `${inactives.questionable.length === 1 ? "1 questionable player still carries" : `${inactives.questionable.length} questionable players still carry`} a projection: ${inactives.questionable.slice(0, INACTIVES_NAMED).map(player => `${player.name} (${player.position}, ${player.team}; ${player.points.toFixed(1)})`).join(", ")}${inactives.questionable.length > INACTIVES_NAMED ? `, and ${inactives.questionable.length - INACTIVES_NAMED} more` : ""}. `
+              : "No player is tagged questionable right now, but a late scratch would not show yet. "}In past Showdowns, a build made before inactives lost about $0.10 per $1 to players who were then ruled out.</span>
+            <span className="mt-1 block">You can build now to look. Before you enter, press Update data after that time and build again.</span>
+          </div> : null}
           <button disabled={pending || slateLocked} title={slateLocked ? "Games have started, so building is closed for this slate." : undefined} onClick={generate} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 text-sm font-bold text-white disabled:opacity-40"><Play className="h-4 w-4" />{pending ? "Working…" : slateLocked ? "Games have started" : "Generate & save"}</button>
           {slateLocked ? <p className="text-[11px] text-slate-500">Building and export close at the first kickoff. Results shows how the lineups did.</p> : null}
 {slate.format === "classic" && settings.mode === "gpp" ? <details className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900"><summary className="cursor-pointer font-semibold">Opportunity tags · {settings.gppSignalMinPerLineup === 1 ? "1 per lineup" : "off"} <span className="block font-normal">Lineup requirements only; no change to fantasy point forecasts</span></summary><div className="mt-2"><label className="flex items-start gap-2"><input type="checkbox" checked={settings.gppSignalMinPerLineup === 1} onChange={e => setSettings({ ...settings, gppSignalMinPerLineup: e.target.checked ? 1 : 0 })} /><span>Require one selected opportunity-tagged player in every lineup. Chips change construction, not projections or ownership.</span></label>{settings.gppSignalMinPerLineup === 1 ? <div className="mt-2 grid grid-cols-2 gap-1">{SIGNAL_OPTIONS.map(option => <label key={option.code} className="flex items-center gap-1"><input type="checkbox" checked={settings.gppSignalCodes.includes(option.code)} onChange={e => setSettings({ ...settings, gppSignalCodes: e.target.checked ? [...settings.gppSignalCodes, option.code] : settings.gppSignalCodes.filter(code => code !== option.code) })} />{option.label}</label>)}</div> : null}</div></details> : null}
@@ -1108,7 +1147,7 @@ export default function NflDfsClient() {
           </div> : null}
           <details className="rounded-lg border p-3"><summary className="cursor-pointer text-sm font-semibold">Lineup rules <span className="block text-[11px] font-normal text-slate-500">{rulesSummary}</span></summary><div className="mt-3 space-y-3">
           {shapeLimits ? <p className="rounded bg-sky-50 p-2 text-[11px] text-sky-900">Winners shape is on, so these are floors and caps the shape can tighten but never loosen. The line above shows what this build will actually use.</p> : null}
-          <div className="grid grid-cols-2 gap-2"><Field label="Min lineup salary"><input type="number" step={100} value={settings.minSalary} onChange={(e) => setSettings({ ...settings, minSalary: Number(e.target.value) })} className="control" /></Field><Field label="Max exposure %"><input type="number" min={1} max={100} value={Math.round(settings.maxExposure * 100)} onChange={(e) => setSettings({ ...settings, maxExposure: Number(e.target.value) / 100 })} className="control" /></Field><Field label="Min unique"><input type="number" min={1} max={9} value={settings.minUnique} onChange={(e) => setSettings({ ...settings, minUnique: Number(e.target.value) })} className="control" /></Field></div>
+          <div className="grid grid-cols-2 gap-2"><Field label="Min lineup salary"><input type="number" step={100} value={settings.minSalary} onChange={(e) => setSettings({ ...settings, minSalary: Number(e.target.value) })} className="control" /></Field><Field label="Max exposure %"><input type="number" min={1} max={100} value={Math.round(settings.maxExposure * 100)} onChange={(e) => { exposureChosen.current = true; exposureCarried.current = null; setSettings({ ...settings, maxExposure: Number(e.target.value) / 100 }); }} className="control" /></Field><Field label="Min unique"><input type="number" min={1} max={9} value={settings.minUnique} onChange={(e) => setSettings({ ...settings, minUnique: Number(e.target.value) })} className="control" /></Field></div>
           <div><h3 className="text-xs font-bold uppercase text-slate-500">Cheap players</h3><Field label="Preset"><select className="control" value={settings.puntPolicy.mode} onChange={(e) => setSettings({ ...settings, puntPolicy: resolvePuntPreset(e.target.value as PuntPresetKey, settings.puntPolicy) })}>{PUNT_PRESETS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}</select></Field><ul className="mt-2 list-disc space-y-1 pl-4 text-[11px] text-slate-600">{describePuntPolicy(settings.puntPolicy).map((line) => <li key={line}>{line}</li>)}</ul></div>
                     {settings.mode === "gpp" && slate.format === "classic" ? <><Field label="QB pass catchers"><select value={settings.stackPassCatchers} onChange={(e) => setSettings({ ...settings, stackPassCatchers: Number(e.target.value) as 0 | 1 | 2 })} className="control"><option value={0}>No requirement</option><option value={1}>At least 1</option><option value={2}>At least 2</option></select></Field><label className="check"><input type="checkbox" checked={settings.bringBack} onChange={(e) => setSettings({ ...settings, bringBack: e.target.checked })} />Require opposing bring-back</label></> : null}
           <Field label={`Randomness (${Math.round(settings.randomness * 100)}%)${settings.mode === "gpp" && settings.gppScoring === "draws" && settings.buildShape !== "diversified" ? " - not used with simulated games" : ""}`}><input type="range" min={0} max={.25} step={.01} value={settings.randomness} disabled={settings.mode === "gpp" && settings.gppScoring === "draws" && settings.buildShape !== "diversified"} onChange={(e) => setSettings({ ...settings, randomness: Number(e.target.value) })} className="w-full" /></Field><label className="check"><input type="checkbox" checked={settings.requireObservedHistory} onChange={(e) => setSettings({ ...settings, requireObservedHistory: e.target.checked })} />Require observed games (drops players projected purely from position averages)</label><label className="check"><input type="checkbox" checked={settings.allowDkFallback} onChange={(e) => setSettings({ ...settings, allowDkFallback: e.target.checked })} />Fall back to DK&apos;s season average when we have no projection (off: the player is excluded instead)</label>{settings.mode === "gpp" ? <label className="check"><input type="checkbox" disabled={settings.buildShape === "diversified"} checked={settings.buildShape !== "diversified" && settings.useHeuristicOwnershipLeverage} onChange={(e) => setSettings({ ...settings, useHeuristicOwnershipLeverage: e.target.checked })} />Ownership leverage: favor players the field is likely to under-own and fade the ones it will over-own (uses LineStar when imported, otherwise our field estimate; switched off automatically if the ownership numbers fail their checks)</label> : null}</div></details>
