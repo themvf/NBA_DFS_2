@@ -15,6 +15,14 @@
 > kicker ban; arm A bans kickers outright, so the cap is moot there. The
 > contrast is unchanged. Pairs captured before this date ran under v12 arms
 > and are a separate cohort if the grader ever compares them.
+>
+> **2026-11-11 (`nfl-winners-shape-v14`):** a native Winners Showdown build
+> now also spends at least $49,500, holds every lineup's estimated ownership
+> at 150 or more when the slate has the estimates, and keeps only the five
+> most likely captains when it takes the simulated captain ranges. Both arms
+> carry all three, so arm B still equals a native build and the arms still
+> differ only in the kicker ban. Pairs captured before this date ran under
+> v13 arms and are a separate cohort if the grader ever compares them.
 
 Status: **registered before any week-6 Showdown was built; capture runner
 implemented.** No optimizer or setting change follows from this document; it

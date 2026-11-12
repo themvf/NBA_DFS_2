@@ -328,6 +328,14 @@ export type NflOptimizerSettings = {
   rbCaptainShare?: number;
   /** Showdown: each quarterback may appear in at least this share of lineups unless his own overall range says otherwise. */
   showdownQbMinCap?: number;
+  /**
+   * Showdown: every lineup's estimated ownership adds up to at least this many
+   * percentage points (the captain seat at the captain share, each flex seat
+   * at the flex share; a player with no estimate counts 0). Not applied, and
+   * said so, when fewer than `MIN_OWNERSHIP_ESTIMATES_FOR_FLOOR` active
+   * players carry an estimate. Set by the Winners shape (v14).
+   */
+  minLineupOwnership?: number;
   /** Internal, per lineup: exact quarterback count, captain restrictions. Set by the run loop, never by callers. */
   lineupQbExact?: 1 | 2;
   lineupForbidQbCaptain?: boolean;
@@ -755,6 +763,25 @@ export function slotOwnershipPct(player: Pick<NflOptimizerPlayer, "ownPct" | "li
   return ownershipPct(player);
 }
 
+/** Fewest active players with a slot-ownership estimate for `minLineupOwnership` to apply. */
+export const MIN_OWNERSHIP_ESTIMATES_FOR_FLOOR = 12;
+
+/**
+ * Whether the lineup ownership floor applies to this slate. A floor on a sum
+ * of estimates is meaningless when most of the slate has none (every missing
+ * player counts 0), so below the minimum it is dropped and the note says so.
+ */
+export function resolveOwnershipFloor(settings: NflOptimizerSettings, players: readonly NflOptimizerPlayer[]): { settings: NflOptimizerSettings; note: string | null } {
+  const floor = settings.minLineupOwnership;
+  if (!floor) return { settings, note: null };
+  const estimated = players.filter((p) => !p.isOut && slotOwnershipPct(p, "FLEX") != null).length;
+  if (estimated < MIN_OWNERSHIP_ESTIMATES_FOR_FLOOR) {
+    return { settings: { ...settings, minLineupOwnership: undefined },
+      note: `Ownership floor not applied: ${estimated} active player(s) have an ownership estimate and it needs ${MIN_OWNERSHIP_ESTIMATES_FOR_FLOOR}.` };
+  }
+  return { settings, note: `Ownership floor: every lineup's estimated ownership (captain share for the captain, flex share for the other five) adds up to at least ${floor}. ${estimated} players have an estimate; one without counts 0.` };
+}
+
 export const DEFAULT_LEVERAGE_EXPONENT = 0.5;
 export const DEFAULT_MAX_CEILING_MULTIPLE = 2.5;
 /** Points per unit of boom rate in the GPP objective (a stated prior; see `boomWeight`). */
@@ -884,6 +911,10 @@ function validateSettings(settings: NflOptimizerSettings): void {
   if (!Number.isInteger(settings.nLineups) || settings.nLineups < 1 || settings.nLineups > 150) throw new Error("Lineup count must be between 1 and 150.");
   if (settings.minSalary < 0 || settings.minSalary > 50000) throw new Error("Minimum salary must be between $0 and $50,000.");
   if (settings.maxExposure <= 0 || settings.maxExposure > 1) throw new Error("Maximum exposure must be greater than 0 and at most 100%.");
+  if (settings.minLineupOwnership != null) {
+    if (!Number.isFinite(settings.minLineupOwnership) || settings.minLineupOwnership < 0 || settings.minLineupOwnership > 600) throw new Error("The lineup ownership floor must be between 0 and 600 percentage points.");
+    if (settings.minLineupOwnership > 0 && settings.format !== "showdown") throw new Error("The lineup ownership floor is a Showdown rule.");
+  }
   const floor = settings.minPlayerSalary ?? 0;
   if (!Number.isFinite(floor) || floor < 0 || floor > 50000) throw new Error("Minimum player salary must be between $0 and $50,000.");
   if (settings.puntPolicy) validateNflPuntPolicy(settings.puntPolicy);
@@ -987,6 +1018,8 @@ function buildOne(
   const captainFull = (player: ResolvedPlayer) => (captainCounts.get(player.dkPlayerId) ?? 0) >= (countsById.get(player.dkPlayerId)?.captainMax ?? settings.nLineups);
   const flexFull = (player: ResolvedPlayer) => (flexCounts.get(player.dkPlayerId) ?? 0) >= (countsById.get(player.dkPlayerId)?.flexMax ?? settings.nLineups);
   const constraints: SolverModel["constraints"] = { salary: { max: salaryMax, min: salaryMin } };
+  // Winners shape v14 (Showdown): a floor on the lineup's summed estimated slot ownership.
+  if (settings.minLineupOwnership) constraints.own_floor = { min: settings.minLineupOwnership };
   if (settings.gppSignalMinPerLineup) constraints.gpp_opportunity_signal = { min: settings.gppSignalMinPerLineup };
   if (requireAirMatchup) constraints.air_matchup = { min: 1 };
   if (requireGoalLine) constraints.goal_line_rb = { min: 1 };
@@ -1186,6 +1219,7 @@ function buildOne(
         salary,
         [`player_${player.dkPlayerId}`]: 1,
       };
+      if (constraints.own_floor) variable.own_floor = slotOwnershipPct(player, slot) ?? 0;
       saturatedGroups.forEach(({group}, i) => {
         const membership = group.ids.includes(player.dkPlayerId) ? 1 : 0;
         const exemption = group.exemptTeam === player.team && player.position === "QB" ? group.ids.length : 0;
@@ -1648,7 +1682,9 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   // the captain simulation's ranges, so the quota below cannot bury the
   // slate's best captain. A range the user typed switches this off.
   const autoCaptain = shape ? autoCaptainRanges(shaped, players) : null;
-  const settings = autoCaptain?.settings ?? shaped;
+  // v14: the ownership floor applies only when the slate carries enough estimates.
+  const ownershipFloor = resolveOwnershipFloor(autoCaptain?.settings ?? shaped, players);
+  const settings = ownershipFloor.settings;
   if (autoCaptain) validateSettings(settings);
   const shapeExcluded = shape?.excluded ?? new Map<number, string>();
   const excluded = new Set(settings.excludedPlayerIds);
@@ -1672,7 +1708,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   const coverage = { requested: players.length, direct: 0, fallback: 0, excluded: 0 };
   const pool: ResolvedPlayer[] = [];
   const eligibility: NflEligibilityDecision[] = [];
-  const warnings: string[] = [...(shape?.notes ?? []), ...(autoCaptain ? [autoCaptain.note] : [])];
+  const warnings: string[] = [...(shape?.notes ?? []), ...(autoCaptain ? [autoCaptain.note] : []), ...(ownershipFloor.note ? [ownershipFloor.note] : [])];
   const receiverRoleChanges = deriveReceiverRoleChanges(players);
   let belowSalaryFloor = 0;
   let withoutHistory = 0;
@@ -2212,7 +2248,8 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
       if (!lineups.length && requireAirMatchup && requireGoalLine) throw new Error(`Could not meet the air-yard matchup and goal-line RB minimums together with the remaining exposure, salary, and roster constraints. Lower a percentage or adjust player limits.`);
       if (!lineups.length && requireAirMatchup) throw new Error(`Could not meet the air-yard matchup minimum of ${airMatchupTarget}/${settings.nLineups} lineups with the remaining exposure, salary, and roster constraints. Lower the percentage or adjust player limits.`);
       if (!lineups.length && requireGoalLine) throw new Error(`Could not meet the goal-line RB minimum of ${goalLineTarget}/${settings.nLineups} lineups with the remaining exposure, salary, and roster constraints. Lower the percentage or adjust player limits.`);
-      warnings.push(`Stopped after ${lineups.length} lineup(s): the ${ARCHETYPE_LABELS[plan[lineupNumber - 1].archetypeId]} quota or remaining exposure, uniqueness, salary, and DST game-script rules cannot all be met.`);
+      warnings.push(`Stopped after ${lineups.length} lineup(s): the ${ARCHETYPE_LABELS[plan[lineupNumber - 1].archetypeId]} quota or remaining exposure, uniqueness, salary, and DST game-script rules cannot all be met.`
+        + (settings.minLineupOwnership ? ` The ownership floor of ${settings.minLineupOwnership} needs the popular players, so a low Max exposure can run them out first; raising Max exposure usually lets the rest build.` : ""));
       break;
     }
     lineups.push(lineup);

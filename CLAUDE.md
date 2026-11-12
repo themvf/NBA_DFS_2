@@ -8593,6 +8593,52 @@ leverage on), reseed the ceiling-mode noise (its jitter seed is a constant, so
 out, and name what was fitted on the graded weeks. The first version of this
 result did none of the four and overstated a single lucky build.
 
+## NFL DFS — Showdown Winners shape v14: salary floor, ownership floor, five captains (`nfl-winners-shape-v14`, 2026-11-11)
+
+Owner's decision after a money-graded replay. Three Showdown settings inside
+the Winners shape, GPP only, user builds only (`poolRules: true` research
+reconstructions and the ghost arms keep the v13 values):
+
+- **At least $49,500 spent** (`WINNERS_SHAPE.showdownMinSalary`; Classic stays $48,100).
+- **Every lineup's estimated ownership adds up to at least 150**
+  (`minLineupOwnership`, a new optimizer setting and solver constraint:
+  captain seat at the captain share, flex seats at the flex share, a player
+  with no estimate counts 0). `resolveOwnershipFloor` drops it, with a note,
+  when fewer than 12 active players carry an estimate. Passing 0 switches it off.
+- **Five captains** when the build takes its captain ranges from the game
+  simulation: the five most likely keep their range, every other QB/RB/WR is
+  barred from the seat (more are kept only if five cannot fill the lineup
+  count in whole lineups; nobody is barred if no set can). A captain range the
+  user types still replaces the simulated ranges and this limit with them.
+
+Evidence (16 primetime Showdowns rebuilt from saved pre-lock snapshots, five
+real contests each, 10 reseeded builds, real prize tables with DraftKings tie
+splitting, payouts capped at 50x the fee): the three together returned +0.10
+per $1 over v13 on the 12 slates with ownership estimates (90% range -0.01 to
++0.21, ahead on 9, +0.07 to +0.15 leaving one slate out, positive in all five
+contest types): 0.58 against v13's 0.47, the field's 0.65 and 0.59 for
+entrants with 20+ lineups. Alone: ownership floor +0.05, salary floor +0.02,
+five captains +0.00. The shipped code rebuilt the tested lineups exactly
+(39 of 39 builds). Read it as an upper bound: the thresholds came from a field
+table that includes these slates and the ownership estimate was fitted on this
+season's contests. Still below the field.
+
+Three things that test taught, worth not rediscovering:
+
+- **Frozen Showdown snapshots predate the inactive list.** 31 players (Puka
+  Nacua, Terry McLaurin, TreVeyon Henderson...) carried a number of 5+, the
+  field owned them under 2% and they scored nothing; several sat in 40-60% of
+  rebuilt lineups. Every earlier Showdown replay figure (0.37 for v13) is
+  depressed by this. Mark them out before grading any Showdown replay.
+- **Projected-points scoring, the Classic default, does not help Showdown**:
+  +0.00 at 25% variation, +0.05 (0.01 to 0.09) at 8% with no gain in top-1%
+  finishes, and it does not stack with the three settings (+0.02).
+- **The Max exposure field is not why we hold fewer popular players**
+  (raising it to 90% or 100%: +0.00), but with the floor in force a 50-60%
+  cap runs the popular players out and the build stops short (94% of the
+  requested lineups in the test; 100% at a 90% cap, same return). The stop
+  note says so. The preset does not loosen a typed cap.
+
 ## dfsdb.com contest import — one pasted link at a time (2026-10-10)
 
 `python -m ingest.dfsdb_contest <link>` pulls a public DraftKings contest from

@@ -156,7 +156,29 @@ import { captainExposurePolicies } from "./generation-settings";
  * winners' single-kicker rate runs 14-100% by game, so the anomaly is the
  * pair, not the kicker. Both are owner's decisions on discovery evidence.
  */
-export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v13";
+/**
+ * v14 (2026-11-11, owner's decision after the money-graded replay): three
+ * Showdown settings that move a build toward what the field's paid lineups
+ * look like. (a) At least $49,500 spent (was $48,100). (b) Every lineup's
+ * estimated ownership adds up to at least 150 (captain seat at the captain
+ * share, flex seats at the flex share), applied by the optimizer only when 12
+ * or more active players carry an estimate. (c) When the build takes its
+ * captain ranges from the game simulation (no range typed), only the five
+ * most likely captains keep a range and every other QB/RB/WR is barred from
+ * the captain seat; more are kept only if the five maximums, counted in whole
+ * lineups, cannot fill the build, and nobody is barred if no set can. A captain range the user types still replaces all of this.
+ * Evidence: 16 primetime Showdowns rebuilt from saved pre-lock snapshots and
+ * paid out of five real contests each (10 reseeded builds, payouts capped at
+ * 50x the fee): the three together returned +0.10 per $1 over v13 on the 12
+ * slates with ownership estimates (90% range -0.01 to +0.21, ahead on 9,
+ * +0.07 to +0.15 leaving any one slate out, positive in all five contest
+ * types); 0.58 against v13's 0.47 and the field's 0.65. Alone: the ownership
+ * floor +0.05, the salary floor +0.02, five captains +0.00. The thresholds
+ * were read off a field table that includes these slates, so the gain is an
+ * upper bound. Research reconstructions (`poolRules: true`) keep the v13
+ * values, so the frozen ghost arms do not move.
+ */
+export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v14";
 
 export type BuildShape = "standard" | "winners" | "diversified";
 export const BUILD_SHAPES: readonly BuildShape[] = ["standard", "winners", "diversified"];
@@ -229,6 +251,12 @@ export const WINNERS_SHAPE = {
   showdownQbMinCap: 0.75,
   /** v13: a lineup may carry one kicker, never two. */
   showdownMaxKickersPerLineup: 1,
+  /** v14: Showdown salary floor. */
+  showdownMinSalary: 49_500,
+  /** v14: floor on a Showdown lineup's summed estimated ownership, in percentage points. */
+  showdownMinLineupOwnership: 150,
+  /** v14: captains kept when the ranges come from the game simulation. */
+  showdownMaxCaptains: 5,
 } as const;
 
 /**
@@ -291,10 +319,11 @@ const money = (n: number) => `$${n.toLocaleString()}`;
  * Lineup rules summary, so the summary can never show a rule the build will
  * not apply.
  */
-export function winnersShapeLimits(base: { format: "classic" | "showdown"; nLineups: number; minSalary: number; maxExposure: number; minUnique: number }) {
+export function winnersShapeLimits(base: { format: "classic" | "showdown"; nLineups: number; minSalary: number; maxExposure: number; minUnique: number }, options: { poolRules?: boolean } = {}) {
   const classic = base.format === "classic";
   return {
-    minSalary: Math.max(base.minSalary, WINNERS_SHAPE.minSalary),
+    // v14: Showdown spends at least $49,500; the research reconstructions keep the v13 floor.
+    minSalary: Math.max(base.minSalary, classic || options.poolRules ? WINNERS_SHAPE.minSalary : WINNERS_SHAPE.showdownMinSalary),
     maxExposure: classic ? Math.min(base.maxExposure, WINNERS_SHAPE.maxExposure) : base.maxExposure,
     minUnique: classic ? Math.max(base.minUnique, WINNERS_SHAPE.minUnique) : base.minUnique,
     maxQbExposure: classic ? qbExposureCap(base.nLineups) : null,
@@ -316,7 +345,7 @@ export function applyWinnersShape(settings: NflOptimizerSettings, players: reado
     return { settings, excluded, notes };
   }
   const n = settings.nLineups;
-  const limits = winnersShapeLimits(settings);
+  const limits = winnersShapeLimits(settings, options);
   const shaped: NflOptimizerSettings = { ...settings, minSalary: limits.minSalary };
   if (settings.format === "classic") {
     const qbCap = limits.maxQbExposure!;
@@ -350,11 +379,14 @@ export function applyWinnersShape(settings: NflOptimizerSettings, players: reado
       maxLoneQbCaptainShare: settings.maxLoneQbCaptainShare ?? WINNERS_SHAPE.showdownMaxLoneQbCaptainShare,
       rbCaptainShare: settings.rbCaptainShare ?? WINNERS_SHAPE.showdownRbCaptainShare,
       showdownQbMinCap: Math.max(settings.showdownQbMinCap ?? 0, WINNERS_SHAPE.showdownQbMinCap),
-      ...(options.poolRules ? {} : { maxKickersPerLineup: settings.maxKickersPerLineup ?? WINNERS_SHAPE.showdownMaxKickersPerLineup }),
+      ...(options.poolRules ? {} : { maxKickersPerLineup: settings.maxKickersPerLineup ?? WINNERS_SHAPE.showdownMaxKickersPerLineup,
+        // v14: a caller may pass 0 to switch the floor off.
+        minLineupOwnership: settings.minLineupOwnership ?? WINNERS_SHAPE.showdownMinLineupOwnership }),
     });
     notes.push(`Winners shape (${WINNERS_SHAPE_VERSION}, showdown): any team split (v10 lifted the 4-2 ban), at least ${WINNERS_SHAPE.showdownMinQb} quarterback, a WR/TE captain with his own QB and a QB captain with his own WR/TE, both QBs in ${Math.round(WINNERS_SHAPE.showdownTwoQbShare * 100)}% of lineups, a lone-QB captain in at most ${Math.round(WINNERS_SHAPE.showdownMaxLoneQbCaptainShare * 100)}%, an RB captain in ${Math.round(WINNERS_SHAPE.showdownRbCaptainShare * 100)}%, each QB in up to ${Math.round(WINNERS_SHAPE.showdownQbMinCap * 100)}% of lineups, ${options.poolRules ? "no kicker" : "at most one kicker per lineup, flex only (v13)"}, the captain a ${WINNERS_SHAPE.captainPositions.join("/")}, `
       + `no captain in more than ${Math.round(WINNERS_SHAPE.captainMaxExposure * 100)}% of lineups, min salary ${money(shaped.minSalary)}. `
-      + `Captain ranges you set are kept, and a running back's captain minimum raises the RB-captain share to cover it (v13).`);
+      + `Captain ranges you set are kept, and a running back's captain minimum raises the RB-captain share to cover it (v13).`
+      + (options.poolRules ? "" : ` v14: estimated lineup ownership of at least ${shaped.minLineupOwnership} when the slate has the estimates, and the simulation's captain ranges keep the ${WINNERS_SHAPE.showdownMaxCaptains} most likely captains.`));
   }
   return { settings: shaped, excluded, notes };
 }
@@ -388,15 +420,35 @@ export function autoCaptainRanges(settings: NflOptimizerSettings, players: reado
   const rec = recommendFromSimulation(sim);
   if (!rec.rows.length) return null;
   const overall = { min: settings.minExposureByPlayer, max: settings.maxExposureByPlayer };
-  const fresh = captainExposurePolicies(rec.targets, overall, settings.maxExposure);
+  const ranged = captainExposurePolicies(rec.targets, overall, settings.maxExposure);
+  // v14: keep the five most likely captains (more only if their maximums cannot cover every lineup) and bar the rest.
+  const byMax = ranged.filter((p) => p.captain.maxPct != null).sort((a, b) => (b.captain.maxPct ?? 0) - (a.captain.maxPct ?? 0));
+  // A maximum is enforced as a whole number of lineups, so coverage is counted the same way.
+  const n = settings.nLineups;
+  const seats = (count: number) => byMax.slice(0, count).reduce((sum, p) => sum + Math.floor((p.captain.maxPct ?? 0) * n + 1e-9), 0);
+  let keepCount = Math.min(byMax.length, WINNERS_SHAPE.showdownMaxCaptains);
+  while (keepCount < byMax.length && seats(keepCount) < n) keepCount++;
+  // If even every simulated captain cannot fill the build (a very small lineup count), nobody is barred: the v13 behavior.
+  const limit = seats(keepCount) >= n;
+  const kept = limit ? byMax.slice(0, keepCount) : ranged;
+  const keptIds = new Set(kept.map((p) => p.playerId));
+  const barredTargets = Object.fromEntries(!limit ? [] : players
+    .filter((p) => !p.isOut && WINNERS_SHAPE.captainPositions.includes(p.position) && !keptIds.has(p.dkPlayerId))
+    .map((p) => [String(p.dkPlayerId), { min: null, max: 0 }]));
+  const fresh = [...kept, ...captainExposurePolicies(barredTargets, overall, settings.maxExposure)];
   const merged = policies.map((p) => {
     const add = fresh.find((f) => f.playerId === p.playerId);
     return add ? { ...p, captain: add.captain } : p;
   });
   for (const f of fresh) if (!merged.some((p) => p.playerId === f.playerId)) merged.push(f);
-  const captainMinIds = rec.rows.filter((r) => r.min > 0).map((r) => r.dkPlayerId);
+  const keptRows = rec.rows.filter((r) => keptIds.has(r.dkPlayerId));
+  const dropped = rec.rows.filter((r) => !keptIds.has(r.dkPlayerId));
+  const captainMinIds = keptRows.filter((r) => r.min > 0).map((r) => r.dkPlayerId);
   const note = `Captain ranges from the game simulation (${rec.version}, ${rec.simulation?.draws ?? 0} games) applied because you set none: `
-    + rec.rows.map((r) => `${r.name} ${r.min}-${r.max}% (leads the game ${r.sharePct.toFixed(0)}%)`).join(", ")
+    + keptRows.map((r) => `${r.name} ${r.min}-${r.max}% (leads the game ${r.sharePct.toFixed(0)}%)`).join(", ")
+    + (limit ? `. Only these ${keptRows.length} may be captain (v14 keeps the ${WINNERS_SHAPE.showdownMaxCaptains} most likely${keptRows.length > WINNERS_SHAPE.showdownMaxCaptains ? ", plus enough to cover every lineup" : ""})`
+      : `. The five-captain limit was not applied: these ranges cannot fill ${n} lineup(s) by themselves, so other players may captain too`)
+    + (dropped.length ? `; not captained: ${dropped.map((r) => `${r.name} (${r.sharePct.toFixed(0)}%)`).join(", ")}` : "")
     + `. Type a captain range on any player to replace them all.`
     + (sim.missingTails.length ? ` Not simulated (no P10/median/P90): ${sim.missingTails.join(", ")}.` : "");
   return { settings: { ...settings, exposurePolicies: merged }, note, captainMinIds };
