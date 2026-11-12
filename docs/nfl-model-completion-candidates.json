@@ -83,7 +83,7 @@
     "research/nfl_workload_risk.py": "e8d67cb4945446fdc4ab857b69729a61e3c65dae2c1a17ed364bef49d637f344",
     "web/src/lib/nfl-dfs/joint-portfolio.ts": "87588d7fb2782f347ea6bfe35e522da15a62063e4c2d287a0c703064430ebf9f",
     "web/scripts/compare-nfl-joint-portfolios.ts": "05bf97642caba1b96d6d4420acf51502faa4468fcf40dc4e1607f51790298515",
-    "web/src/app/dfs/nfl/nfl-optimizer.ts": "e47e205e76143798ce0d8011a8e2f1cfd7e4c7869b64e0f4d47aff38ba1e7a88",
+    "web/src/app/dfs/nfl/nfl-optimizer.ts": "edccb99614b12291f58a0cc3f55e855978b94642806af1f10d789310583145c1",
     "model/nfl_matchup_scenarios.py": "9d133718c360a03a445965508061807c49644c3ac329ae220c4f68069a19e913",
     "web/src/lib/nfl-dfs/scoring.ts": "83e8b8c293519e7605f4d5be76a302bd442835fa4dc43a6d02744922a5729e3c",
     "web/src/lib/nfl-dfs/scenarios.ts": "98ed595731bc69ee1fcde4d9c42109880382cff3dbf480ce0f0043fdf46e2fd9",
@@ -397,6 +397,20 @@
         "web/src/app/dfs/nfl/nfl-optimizer.ts": {
           "previous": "d686f6a1c377ca77d533cefa070c053931396ed58f2b66bbf80e3f07e1e82675",
           "new": "e47e205e76143798ce0d8011a8e2f1cfd7e4c7869b64e0f4d47aff38ba1e7a88"
+        }
+      },
+      "evidence_rule": "Keep previous implementation hashes and separate forward construction cohorts; no study gates or enrollment change."
+    },
+    {
+      "amended_at": "2026-11-12T01:59:51.272396+00:00",
+      "reason": "Winners shape v14 (owner's decision, 2026-11-11, after the money-graded Showdown replay). The optimizer gains a Showdown-only minLineupOwnership setting: a solver constraint that every lineup's summed estimated slot ownership (captain share at the captain seat, flex share elsewhere) reaches the floor, dropped with a note when fewer than 12 active players carry an estimate. It is unset by default, so every build that does not ask for it is unchanged; the Winners shape sets 150 for user Showdown builds, with a $49,500 salary floor and a five-captain limit on the simulated captain ranges (both in winners-shape.ts). Research reconstructions (poolRules) keep the v13 values, so the frozen ghost arms are identical. Re-pinned the optimizer only; every other pinned file is unchanged.",
+      "file": "web/src/app/dfs/nfl/nfl-optimizer.ts",
+      "previous_sha256": "e47e205e76143798ce0d8011a8e2f1cfd7e4c7869b64e0f4d47aff38ba1e7a88",
+      "new_sha256": "edccb99614b12291f58a0cc3f55e855978b94642806af1f10d789310583145c1",
+      "changed_implementation_hashes": {
+        "web/src/app/dfs/nfl/nfl-optimizer.ts": {
+          "previous": "e47e205e76143798ce0d8011a8e2f1cfd7e4c7869b64e0f4d47aff38ba1e7a88",
+          "new": "edccb99614b12291f58a0cc3f55e855978b94642806af1f10d789310583145c1"
         }
       },
       "evidence_rule": "Keep previous implementation hashes and separate forward construction cohorts; no study gates or enrollment change."

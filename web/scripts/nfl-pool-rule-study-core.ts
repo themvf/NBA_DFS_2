@@ -82,7 +82,13 @@ export function buildPair(input: Raw): PairResult {
   // (arm A bans kickers outright, so the cap is moot there).
   const native = applyWinnersShape(nativeSettings, eligible);
   const auto = autoCaptainRanges(native.settings, eligible);
+  // Winners shape v14 (2026-11-11): a native Showdown build also spends at
+  // least $49,500, holds a lineup ownership floor, and keeps five simulated
+  // captains (inside autoCaptainRanges). Both arms take all three for the same
+  // reason, so the arms still differ only in the kicker ban.
   const sharedSettings = { ...shape.settings, buildShape: 'standard' as const,
+    ...(study === 'showdown' ? { minSalary: native.settings.minSalary } : {}),
+    ...(study === 'showdown' && native.settings.minLineupOwnership != null ? { minLineupOwnership: native.settings.minLineupOwnership } : {}),
     ...(native.settings.maxKickersPerLineup != null ? { maxKickersPerLineup: native.settings.maxKickersPerLineup } : {}),
     ...(auto ? { exposurePolicies: auto.settings.exposurePolicies } : {}) };
   const common = { version, pairId: input.pairId, sourceRunId: source.run_id,
@@ -164,7 +170,13 @@ export function buildPortfolioPair(input: Raw, version: string): PairResult {
   const shape = settings.buildShape === 'winners'
     ? applyWinnersShape({ ...settings, buildShape: 'winners' as const }, eligible, { poolRules: true })
     : { settings, excluded: new Map<number, string>(), notes: [] as string[] };
+  // Winners shape v14: a native Showdown build spends at least $49,500 and holds
+  // the lineup ownership floor; arm A is the production build, so it takes both.
+  const nativeShowdown = settings.buildShape === 'winners' && format === 'showdown'
+    ? applyWinnersShape({ ...settings, buildShape: 'winners' as const }, eligible).settings : null;
   const effective: NflOptimizerSettings & Raw = { ...shape.settings, buildShape: 'standard' as const,
+    ...(nativeShowdown ? { minSalary: nativeShowdown.minSalary,
+      ...(nativeShowdown.minLineupOwnership != null ? { minLineupOwnership: nativeShowdown.minLineupOwnership } : {}) } : {}),
     excludedPlayerIds: [...new Set([...settings.excludedPlayerIds, ...shape.excluded.keys()])] };
   const n = settings.nLineups;
   const slate = slateFromSnapshot(format, input.players);

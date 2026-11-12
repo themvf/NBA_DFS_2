@@ -438,3 +438,94 @@ console.log("Winners shape (classic): a DST against the lineup's own players is 
   assert.equal(fadedStar, 0, "in the build, the simulated captain is not the chalk fade");
 }
 console.log("Winners shape v13: simulated captain ranges apply when the user set none, RB captain minimums beat the quota, one kicker per lineup, the fade skips the captain.");
+
+// --- v14: Showdown salary floor, lineup ownership floor, five simulated captains ---
+{
+  assert.equal(WINNERS_SHAPE_VERSION, "nfl-winners-shape-v14");
+  const limits = (over: Partial<NflOptimizerSettings>, options?: { poolRules?: boolean }) => winnersShapeLimits(settings(over), options);
+  assert.equal(limits({ format: "showdown" }).minSalary, 49_500, "Showdown spends at least $49,500");
+  assert.equal(limits({ format: "classic" }).minSalary, 48_100, "Classic keeps its floor");
+  assert.equal(limits({ format: "showdown", minSalary: 49_800 }).minSalary, 49_800, "a higher floor you set is kept");
+  assert.equal(limits({ format: "showdown" }, { poolRules: true }).minSalary, 48_100, "the research reconstructions keep the v13 floor");
+  assert.equal(applyWinnersShape(settings({ format: "showdown" }), []).settings.minLineupOwnership, 150);
+  assert.equal(applyWinnersShape(settings({ format: "showdown", minLineupOwnership: 0 }), []).settings.minLineupOwnership, 0, "a caller can switch the floor off");
+  assert.equal(applyWinnersShape(settings({ format: "showdown" }), [], { poolRules: true }).settings.minLineupOwnership, undefined, "no floor in the research reconstructions");
+  assert.equal(applyWinnersShape(settings({ format: "showdown" }), [], { poolRules: true }).settings.minSalary, 48_100);
+  assert.equal(applyWinnersShape(settings(), []).settings.minLineupOwnership, undefined, "Classic has no ownership floor");
+
+  const sd = (over: Parameters<typeof player>[0] & { median: number; own?: number | null }) => {
+    const own = over.own === undefined ? 80 - 2 * (over.ourProj ?? 10) : over.own;      // the better the projection, the lower the estimate: the floor has to bind
+    return { ...player(over), floorFpts: 6, medianFpts: over.median, ownPct: own, flexOwnPct: own == null ? null : own * 0.8, captainOwnPct: own == null ? null : own * 0.2, ownSource: own == null ? null : "prior" };
+  };
+  const build = (estimates: boolean) => {
+    const pool: NflOptimizerPlayer[] = []; let id = 700;
+    for (const team of ["AAA", "BBB"]) {
+      const o = (proj: number) => (estimates || pool.length < 5 ? 80 - 2 * proj : null);
+      pool.push(sd({ dkPlayerId: id++, position: "QB", team, salary: 10000, ourProj: 20, ceilingFpts: 32, median: 19, own: o(20) }));
+      pool.push(sd({ dkPlayerId: id++, position: "RB", team, salary: 9500, ourProj: team === "AAA" ? 22 : 16, ceilingFpts: 38, median: 20, own: o(team === "AAA" ? 22 : 16) }));
+      pool.push(sd({ dkPlayerId: id++, position: "RB", team, salary: 6000, ourProj: 9, ceilingFpts: 18, median: 8, own: o(9) }));
+      pool.push(sd({ dkPlayerId: id++, position: "WR", team, salary: 9000, ourProj: 17, ceilingFpts: 30, median: 16, own: o(17) }));
+      pool.push(sd({ dkPlayerId: id++, position: "WR", team, salary: 7500, ourProj: 13, ceilingFpts: 25, median: 12, own: o(13) }));
+      pool.push(sd({ dkPlayerId: id++, position: "WR", team, salary: 6000, ourProj: 10, ceilingFpts: 20, median: 9, own: o(10) }));
+      pool.push(sd({ dkPlayerId: id++, position: "WR", team, salary: 4500, ourProj: 7, ceilingFpts: 15, median: 6, own: o(7) }));
+      pool.push(sd({ dkPlayerId: id++, position: "TE", team, salary: 5500, ourProj: 9, ceilingFpts: 18, median: 8, own: o(9) }));
+      pool.push(sd({ dkPlayerId: id++, position: "K", team, salary: 4000, ourProj: 8, ceilingFpts: 14, median: 8, own: o(8) }));
+      pool.push(sd({ dkPlayerId: id++, position: "DST", team, salary: 3500, ourProj: 6, ceilingFpts: 14, median: 5, own: o(6) }));
+    }
+    return pool;
+  };
+  const pool = build(true);
+  const own = (l: { slots: { slot: string; player: NflOptimizerPlayer }[] }) => l.slots.reduce((sum, s) => sum + (s.slot === "CPT" ? s.player.captainOwnPct! : s.player.flexOwnPct!), 0);
+  const base = settings({ format: "showdown", nLineups: 8, minSalary: 0, stackPassCatchers: 0, buildShape: "winners", maxExposure: 1, minUnique: 1 });
+
+  // (c) five captains: the kept ranges come from the simulation, everyone else at QB/RB/WR is barred.
+  const auto = autoCaptainRanges(applyWinnersShape(base, pool).settings, pool)!;
+  assert.ok(auto, "no captain range typed: the simulation supplies them");
+  const policies = auto.settings.exposurePolicies!;
+  const kept = policies.filter(p => (p.captain.maxPct ?? 0) > 0);
+  const barred = policies.filter(p => p.captain.maxPct === 0);
+  const seatCount = (ps: typeof kept) => ps.reduce((s, p) => s + Math.floor(p.captain.maxPct! * base.nLineups + 1e-9), 0);
+  assert.ok(seatCount(kept) >= base.nLineups, "the kept captains can fill every lineup");
+  assert.ok(kept.length <= WINNERS_SHAPE.showdownMaxCaptains || seatCount([...kept].sort((a, b) => b.captain.maxPct! - a.captain.maxPct!).slice(0, kept.length - 1)) < base.nLineups,
+    `at most five captains unless five cannot fill the build (kept ${kept.length})`);
+  // A very small build the simulated ranges cannot fill: nobody is barred and the note says so.
+  const tiny = autoCaptainRanges(applyWinnersShape({ ...base, nLineups: 1 }, pool).settings, pool)!;
+  if (!tiny.settings.exposurePolicies!.some(p => p.captain.maxPct === 0)) assert.ok(tiny.note.includes("five-captain limit was not applied"), tiny.note);
+  const captainable = pool.filter(p => ["QB", "RB", "WR"].includes(p.position));
+  assert.equal(kept.length + barred.length, captainable.length, "every QB/RB/WR is either a kept captain or barred from the seat");
+  assert.ok(barred.every(p => p.overallFromUser === false && p.overall.maxPct === base.maxExposure && p.captain.minPct == null), "a barred captain keeps his flex exposure");
+  assert.ok(!policies.some(p => ["TE", "K", "DST"].includes(pool.find(x => x.dkPlayerId === p.playerId)!.position)), "TE, K and DST need no policy: the shape already keeps them out of the seat");
+  assert.ok(auto.note.includes(`Only these ${kept.length} may be captain`), auto.note);
+  const typed = { ...base, exposurePolicies: [{ playerId: captainable[7].dkPlayerId, overall: { minPct: null, maxPct: null }, captain: { minPct: 0.1, maxPct: null }, flex: { minPct: null, maxPct: null }, exactTargetMode: false }] };
+  assert.equal(autoCaptainRanges(applyWinnersShape(typed, pool).settings, pool), null, "a captain range you type replaces the five-captain limit as well");
+
+  // (a) + (b) + (c) in a build.
+  const run = optimizeNflLineups(pool, base);
+  assert.ok(run.lineups.length > 0, run.warnings.join(" | "));
+  assert.ok(run.lineups.every(l => l.totalSalary >= 49_500), "every lineup spends at least $49,500");
+  assert.ok(run.lineups.every(l => own(l) >= 150 - 1e-6), `every lineup's estimated ownership reaches 150 (lowest ${Math.min(...run.lineups.map(own)).toFixed(1)})`);
+  const keptIds = new Set(kept.map(p => p.playerId));
+  assert.ok(run.lineups.every(l => keptIds.has(l.slots.find(s => s.slot === "CPT")!.player.dkPlayerId)), "only the kept captains take the seat");
+  assert.ok(run.warnings.some(w => w.startsWith("Ownership floor: every lineup's estimated ownership")), run.warnings.join(" | "));
+  // The floor binds: set above what the free build reaches, every lineup still clears it.
+  const free = optimizeNflLineups(pool, { ...base, minLineupOwnership: 0 });
+  assert.ok(!free.warnings.some(w => w.startsWith("Ownership floor")), "floor switched off: no note");
+  const freeLowest = Math.min(...free.lineups.map(own));
+  const higher = Math.ceil(freeLowest) + 12;
+  const strict = optimizeNflLineups(pool, { ...base, minLineupOwnership: higher });
+  assert.ok(strict.lineups.length > 0, strict.warnings.join(" | "));
+  assert.ok(strict.lineups.every(l => own(l) >= higher - 1e-6), `a floor of ${higher} holds in every lineup where the free build went as low as ${freeLowest.toFixed(1)}`);
+  assert.ok(strict.warnings.some(w => w.includes(`adds up to at least ${higher}`)), "the note names the floor in force");
+
+  // Too few estimates: the floor is dropped and the build says so.
+  const sparse = build(false);
+  assert.equal(sparse.filter(p => p.flexOwnPct != null).length, 5);
+  const sparseRun = optimizeNflLineups(sparse, base);
+  assert.ok(sparseRun.lineups.length > 0, sparseRun.warnings.join(" | "));
+  assert.ok(sparseRun.warnings.some(w => w.startsWith("Ownership floor not applied: 5 active player(s)")), sparseRun.warnings.join(" | "));
+  assert.ok(sparseRun.lineups.every(l => l.totalSalary >= 49_500), "the salary floor does not depend on ownership estimates");
+
+  assert.throws(() => optimizeNflLineups(pool, settings({ format: "classic", minLineupOwnership: 150 })), /Showdown rule/);
+  assert.throws(() => optimizeNflLineups(pool, { ...base, minLineupOwnership: 700 }), /between 0 and 600/);
+}
+console.log("Winners shape v14 (showdown): $49,500 floor, estimated lineup ownership of at least 150 when the slate has the estimates, five simulated captains; research reconstructions unchanged.");
