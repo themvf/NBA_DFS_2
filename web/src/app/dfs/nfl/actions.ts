@@ -32,6 +32,8 @@ import { matchNflIdentity, resolveNflRosterIdentity, assertUniqueNflSalaryIdenti
 import { getNflIdentityRoster } from "@/db/nfl-identity";
 import { bandReport, clampToBand, matchBands, parseFantasyProsOwnership, NFL_OWNERSHIP_BANDS_VERSION, type BandReport, type OwnershipBand } from "@/lib/nfl-dfs/ownership-bands";
 import { applyOwnershipOverrides } from "@/lib/nfl-dfs/ownership-overrides";
+import { applyOutsideOwnership, NFL_OWNERSHIP_OUTSIDE_VERSION, NFL_OWNERSHIP_STATAPI_SOURCE, type OutsideOwnershipReport, type OutsideOwnershipRow } from "@/lib/nfl-dfs/outside-ownership";
+import { pullStatApiOwnership, statApiConfigured } from "@/lib/nfl-dfs/statapi-ownership-client";
 import { canonicalNflTeam, capFormatOf, describeNflFormat, isSingleStatFormat, parseNflDkSalaryCsv, singleStatOf, SINGLE_STAT_LABELS, SINGLE_STAT_ROSTER_SIZE, type NflDkSlate, type NflSingleStat, type NflSingleStatFormat, type NflSlateFormat } from "@/lib/nfl-dfs/dk-salary-csv";
 import { optimizeSingleStat, projectSingleStat, projectSingleStatOwnership, SINGLE_STAT_VERSION, type SingleStatPlayer, type SingleStatProjection, type SingleStatResult, type SingleStatSettings } from "@/lib/nfl-dfs/single-stat";
 import type { NflGeneratedLineup } from "./nfl-optimizer";
@@ -185,6 +187,9 @@ export type NflWorkspacePlayer = NflOptimizerPlayer & {
   shadowOwnPct?: number | null;
   shadowCaptainOwnPct?: number | null;
   shadowFlexOwnPct?: number | null;
+  /** Our own model's Showdown split, kept when outside ownership (`nfl-ownership-outside-v1`) replaces it; `ourOwnPct` is its total. */
+  modelCaptainOwnPct?: number | null;
+  modelFlexOwnPct?: number | null;
   /**
    * Single Stat slates only (`nfl-single-stat-v1`): the one statistic this
    * slate scores, projected from the same inputs as the points projection.
@@ -290,6 +295,13 @@ export type NflWorkspaceSlate = {
   rangeCalibration?: { version: string; applied: number; notPlaying: number };
   /** Outside ownership ranges for this slate's date; `applied` says whether they bound the prior or are shown only. */
   ownershipBands?: BandReport & { applied: boolean; error?: string };
+  /**
+   * Outside ownership for this slate (`nfl-ownership-outside-v1`): whether a
+   * stat-api pull is in use, when it was pulled, and what the rules kept or
+   * flagged. `canPull` says whether this deployment holds a stat-api key.
+   */
+  outsideOwnership?: { version: string; source: string; canPull: boolean; inUse: boolean; turnedOff?: boolean; capturedAt?: string | null; sourceAsOf?: string | null;
+    contestName?: string | null; report?: OutsideOwnershipReport; error?: string };
   /** Starting QBs the user confirmed for this read, and any that could not be applied. */
   confirmedStartingQbs?: ConfirmedStarterReport;
   /** Players each defensive profile would actually adjust on this slate (captures that pass every check). */
@@ -925,7 +937,7 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
   attachProjectionCorrection(workspace, startingQbs);
   await attachSpecialTeamsAnchor(workspace);
   await attachRangeSplit(workspace, run ? { season: run.season, week: run.week ?? null } : null);
-  const priced = attachOwnership(workspace);
+  const priced = await attachOutsideOwnership(attachOwnership(workspace), upload.slateSignature);
   // Last projection step, after the books' number and the long-memory range:
   // chance of no stat line, means pulled toward the middle, ranges widened
   // where the range split did not apply (nfl-range-calibration-v1). After
@@ -1096,7 +1108,9 @@ function slateCheckFor(slate: NflWorkspaceSlate, context: { incompleteWarning: s
     nextOpponentCapture: nextNflProjectionSlot(new Date()).toISOString(),
     defensiveCaptures: (slate.defensiveCaptures ?? []).map(({ status, text, retryable }) => ({ status, text, retryable })),
     ownership: { source: fromLinestar ? 'linestar' : slate.players.find((p) => p.ownSource)?.ownSource ?? null, errors: ownership.errors,
-      coverage: fromLinestar ? { linestar: fromLinestar, estimate: owned.length - fromLinestar, total: owned.length } : null },
+      coverage: fromLinestar ? { linestar: fromLinestar, estimate: owned.length - fromLinestar, total: owned.length } : null,
+      outside: slate.outsideOwnership?.inUse && slate.outsideOwnership.report
+        ? { applied: slate.outsideOwnership.report.applied, keptOurs: slate.outsideOwnership.report.keptOurs.length } : null },
     availability: { state: coverage.state, resolved: coverage.resolved, considered: coverage.considered },
     liveDk: slate.liveDkStatus ? { applied: slate.liveDkStatus.applied, reason: slate.liveDkStatus.reason ?? null, capturedAt: slate.liveDkStatus.capturedAt ?? null,
       lastSuccessfulAt: slate.liveDkStatus.lastSuccessfulPollAt ?? null, lastPollOk: slate.liveDkStatus.lastPollOk ?? null } : null,
@@ -1470,6 +1484,34 @@ function attachOwnership(workspace: NflWorkspaceSlate): NflWorkspaceSlate {
       ownPct: linestar ?? ours?.ownPct ?? null, ownSource: linestar != null ? "linestar" : ours ? liveVersion : null,
       shadowOwnPct: other?.ownPct ?? null, shadowCaptainOwnPct: other?.captainPct ?? null, shadowFlexOwnPct: other?.flexPct ?? null };
   }), ownershipShadow: shadowVersion ? { version: shadowVersion, liveVersion, liveFittedAt } : null };
+}
+
+/**
+ * Outside ownership (`nfl-ownership-outside-v1`): when the newest stored pull
+ * for this slate is active, stat-api's projected ownership replaces our
+ * model's for the players it covers (rules in lib/nfl-dfs/outside-ownership).
+ * Our own numbers stay on each player for the saved build. A failed read
+ * leaves our model in place and says so.
+ */
+async function attachOutsideOwnership(workspace: NflWorkspaceSlate, slateSignature: string): Promise<NflWorkspaceSlate> {
+  const base = { version: NFL_OWNERSHIP_OUTSIDE_VERSION, source: NFL_OWNERSHIP_STATAPI_SOURCE, canPull: statApiConfigured() };
+  if (workspace.format !== 'classic' && workspace.format !== 'showdown') return workspace;
+  try {
+    const found = await db.execute(sql`SELECT active, format, source_as_of, source_meta, rows, captured_at FROM nfl_dfs_outside_ownership
+      WHERE slate_signature = ${slateSignature} ORDER BY id DESC LIMIT 1`);
+    const latest = found.rows[0] as { active: boolean; format: string; source_as_of: string | null; source_meta: { contestName?: string | null }; rows: OutsideOwnershipRow[]; captured_at: string } | undefined;
+    if (!latest) return { ...workspace, outsideOwnership: { ...base, inUse: false } };
+    const capturedAt = new Date(String(latest.captured_at)).toISOString();
+    if (!latest.active) return { ...workspace, outsideOwnership: { ...base, inUse: false, turnedOff: true, capturedAt } };
+    if (latest.format !== workspace.format) return { ...workspace, outsideOwnership: { ...base, inUse: false, capturedAt,
+      error: `The stored stat-api ownership is for a ${latest.format} slate, so our model is used.` } };
+    const { players, report } = applyOutsideOwnership(workspace.players, latest.rows, workspace.format);
+    return { ...workspace, players, outsideOwnership: { ...base, inUse: true, capturedAt,
+      sourceAsOf: latest.source_as_of ? new Date(String(latest.source_as_of)).toISOString() : null, contestName: latest.source_meta?.contestName ?? null, report } };
+  } catch (error) {
+    return { ...workspace, outsideOwnership: { ...base, inUse: false,
+      error: `stat-api ownership could not be read, so our model is used: ${error instanceof Error ? error.message : 'unknown error'}` } };
+  }
 }
 
 /**
@@ -2360,6 +2402,8 @@ function snapshotPlayer(player: NflWorkspacePlayer, slate: NflWorkspaceSlate, re
     linestar: player.linestarProj, custom: player.customProj,
     // The ownership the optimizer actually read, so a leverage run can be replayed from the ledger.
     ownership: {total:player.ownPct??null, flex:player.flexOwnPct??null, captain:player.captainOwnPct??null, source:player.ownSource??null, linestar:player.linestarOwnPct??null,
+      // Our own model's numbers when an outside source (stat-api) replaced them, so the two can be graded against the field.
+      ...(slate.outsideOwnership?.inUse?{model:{total:player.ourOwnPct??null,captain:player.modelCaptainOwnPct??null,flex:player.modelFlexOwnPct??null}}:{}),
       // The shadow model (v5 since 2026-10-31): recorded for the Monday grade, never read by the build.
       ...(slate.ownershipShadow?{shadow:player.shadowOwnPct??null,shadowCaptain:player.shadowCaptainOwnPct??null,shadowFlex:player.shadowFlexOwnPct??null,
         shadowVersion:slate.ownershipShadow.version,liveVersion:slate.ownershipShadow.liveVersion,liveFittedAt:slate.ownershipShadow.liveFittedAt}:{})},
@@ -3171,6 +3215,49 @@ export async function importNflOwnershipRanges(uploadId: string, text: string) {
   const covered = new Set(matches.values());
   return { slateDate, parsed: rows.length, matched: matches.size, players: players.length, stored: inserted.rows.length > 0,
     unmatched: rows.filter((r) => !covered.has(r)).map((r) => `${r.name} (${r.team} $${r.salary.toLocaleString()})`), warnings };
+}
+
+/**
+ * Pull stat-api's projected ownership for a slate and store it
+ * (`nfl-ownership-outside-v1`). The next read of the slate builds from it.
+ * Refuses a slate that has kicked off (stat-api then shows the real field)
+ * and a pull that does not cover the slate.
+ */
+export async function pullNflOutsideOwnership(uploadId: string) {
+  if (!/^[0-9a-f-]{36}$/.test(uploadId)) throw new Error('Invalid saved slate.');
+  await ensureNflDfsTables();
+  const [upload] = await db.select({ signature: nflDfsSlateUploads.slateSignature, format: nflDfsSlateUploads.format, games: nflDfsSlateUploads.games })
+    .from(nflDfsSlateUploads).where(eq(nflDfsSlateUploads.uploadId, uploadId)).limit(1);
+  if (!upload) throw new Error('Saved salary slate not found.');
+  if (upload.format !== 'classic' && upload.format !== 'showdown') throw new Error('stat-api ownership is read for Classic and Showdown slates only.');
+  const players = await db.select({ dkPlayerId: nflDfsSlatePlayers.dkPlayerId, gameInfo: nflDfsSlatePlayers.gameInfo }).from(nflDfsSlatePlayers).where(eq(nflDfsSlatePlayers.uploadId, uploadId));
+  const kickoffs = players.map((p) => Date.parse(parseDkGameInfoKickoff(p.gameInfo) ?? '')).filter(Number.isFinite);
+  if (!kickoffs.length) throw new Error('This slate has no kickoff times, so its date is unknown.');
+  const first = Math.min(...kickoffs);
+  if (Date.now() >= first) throw new Error('This slate has kicked off; its pre-game ownership can no longer be pulled.');
+  const pull = await pullStatApiOwnership({ slateDate: new Date(first).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }), format: upload.format,
+    gameCount: (upload.games as string[]).length, firstKickoff: new Date(first).toISOString(), dkPlayerIds: players.map((p) => Number(p.dkPlayerId)) });
+  const ours = new Set(players.map((p) => Number(p.dkPlayerId)));
+  const rows = pull.rows.filter((r) => ours.has(r.dkPlayerId));
+  const withOwnership = rows.filter((r) => r.totalPct > 0).length;
+  if (withOwnership < 12) throw new Error(`stat-api has ownership for only ${withOwnership} of this slate's players. Nothing was saved.`);
+  await db.execute(sql`INSERT INTO nfl_dfs_outside_ownership (slate_signature, upload_id, source, format, active, source_as_of, source_meta, rows)
+    VALUES (${upload.signature}, ${uploadId}::uuid, ${NFL_OWNERSHIP_STATAPI_SOURCE}, ${upload.format}, TRUE, ${pull.meta.asOf}::timestamptz,
+      ${JSON.stringify({ ...pull.meta, overlap: pull.overlap, problems: pull.problems })}::jsonb, ${JSON.stringify(rows)}::jsonb)`);
+  return { players: players.length, withOwnership, contestName: pull.meta.contestName, sourceAsOf: pull.meta.asOf, problems: pull.problems };
+}
+
+/** Go back to our own ownership model for a slate. The pulls stay stored. */
+export async function clearNflOutsideOwnership(uploadId: string) {
+  if (!/^[0-9a-f-]{36}$/.test(uploadId)) throw new Error('Invalid saved slate.');
+  await ensureNflDfsTables();
+  const [upload] = await db.select({ signature: nflDfsSlateUploads.slateSignature, format: nflDfsSlateUploads.format }).from(nflDfsSlateUploads)
+    .where(eq(nflDfsSlateUploads.uploadId, uploadId)).limit(1);
+  if (!upload) throw new Error('Saved salary slate not found.');
+  if (upload.format !== 'classic' && upload.format !== 'showdown') throw new Error('This slate has no outside ownership.');
+  await db.execute(sql`INSERT INTO nfl_dfs_outside_ownership (slate_signature, upload_id, source, format, active)
+    VALUES (${upload.signature}, ${uploadId}::uuid, ${NFL_OWNERSHIP_STATAPI_SOURCE}, ${upload.format}, FALSE)`);
+  return { ok: true };
 }
 
 /** The build form last saved for this slate, or null. */

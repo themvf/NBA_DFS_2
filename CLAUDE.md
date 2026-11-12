@@ -9693,3 +9693,29 @@ week 9 43 bets, 2 wins, -17.7u). The biggest gaps are backups whose role the boo
 vs +5000), so a large gap is a warning, not value. Our chances on priced players summed 33.8 vs 38 scorers among them.
 Opening kickoff, weeks 6-8: receiver scored first 20 of 42, opening-drive TD 9 of 42 (2016-25 pooled: receiver first
 55.5% vs the model's 49.7%, almost all from opening-drive TDs; 2026 runs the other way; not in the model). No betting claim; the stored grade is the forward record.
+
+## NFL DFS — stat-api ownership per slate (`nfl-ownership-outside-v1`, 2026-11-12)
+
+Owner's decision, a trial while the stat-api Pro subscription runs: on a slate
+with a stored pull, stat-api's projected ownership replaces our ownership
+model (captain and flex separately on Showdown). On 20 past Showdown flagships
+stat-api's stored pre-game ownership was closer to the real field than our fit
+(flex miss 2.09 vs 3.59 points per player, closer on all 20); payouts are
+untested. Rules and evidence: "Outside ownership" in
+[`docs/nfl-ownership-model.md`](docs/nfl-ownership-model.md). What matters
+when touching it:
+
+- Table `nfl_dfs_outside_ownership` (web-owned, append-only, keyed by slate
+  signature; newest row decides, `active = false` means back to our model).
+  Written only by `pullNflOutsideOwnership` / `clearNflOutsideOwnership`: a
+  button on the build page when the deployment has `STAT_API_KEY`, otherwise
+  `web/scripts/pull-nfl-outside-ownership.ts <uploadId>` from a machine with
+  the key. Never scheduled.
+- A player stat-api leaves at 0% keeps our number when ours is 1% or more and
+  the rest scale down to make room (Skattebo and Burks on the first slate).
+  The page lists who was kept and any ruled-out player stat-api still owns.
+- Our own numbers stay on the player (`ourOwnPct`, `modelCaptainOwnPct`,
+  `modelFlexOwnPct`) and in the run snapshot (`ownership.model`), so stat-api
+  and our model can both be graded on the slates actually built.
+- Classic is supported but stat-api's Classic ownership has not been graded
+  against real ownership; do not apply it to a Classic slate without that.

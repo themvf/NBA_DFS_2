@@ -81,7 +81,9 @@ export interface SlateCheckInput {
    */
   defensiveCaptures?: { status: string; text: string; retryable: boolean }[] | null;
   /** `coverage`: how many players' ownership came from each source, when LineStar supplied any. */
-  ownership: { source: string | null; errors: string[]; coverage?: { linestar: number; estimate: number; total: number } | null } | null;
+  ownership: { source: string | null; errors: string[]; coverage?: { linestar: number; estimate: number; total: number } | null;
+    /** stat-api's projected ownership in use (`nfl-ownership-outside-v1`): players on it, and players kept on our estimate. */
+    outside?: { applied: number; keptOurs: number } | null } | null;
   availability: { state: "blind" | "thin" | "adequate"; resolved: number; considered: number } | null;
   /**
    * `capturedAt`: the successful poll the overlay used. `lastSuccessfulAt`: the
@@ -247,6 +249,7 @@ export function buildSlateCheck(input: SlateCheckInput): SlateCheck {
     const mix = input.ownership.coverage;
     if (input.ownership.errors.length) add({ id: "ownership", level: "attention", text: `The ownership estimate failed its checks, so the chalk fade will be off: ${input.ownership.errors[0]}` });
     else if (mix && mix.linestar > 0 && mix.estimate > 0) add({ id: "ownership", level: "attention", text: `Ownership mixes two sources: LineStar for ${mix.linestar} of ${mix.total} players and our rough estimate for the other ${mix.estimate}, so the chalk fade compares numbers from different sources. Import a complete LineStar file to use LineStar for everyone.` });
+    else if (input.ownership.outside) add({ id: "ownership", level: "ok", text: `Ownership from stat-api's projection for ${input.ownership.outside.applied} players${input.ownership.outside.keptOurs ? `; ${input.ownership.outside.keptOurs} it left at 0% keep our estimate` : ""}. A projection, not the real field.` });
     else add({ id: "ownership", level: "ok", text: input.ownership.source === "linestar" ? "Ownership from your LineStar import." : "Ownership estimate ready (a rough estimate, not a real feed)." });
   }
 

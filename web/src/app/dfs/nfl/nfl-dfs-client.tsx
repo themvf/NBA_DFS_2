@@ -30,7 +30,7 @@ import { exposureRange, type CaptainTarget, type ExposureTarget } from '@/lib/nf
 import { availabilityCoverage } from '@/lib/nfl-dfs/availability-coverage';
 import { AlertTriangle, BarChart3, CheckCircle2, Download, FileUp, HelpCircle, Lock, Play, Search, ShieldCheck, Unlock, XCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { checkNflSlateFreshness, readNflDefensiveCaptureStatus, retryNflDefensiveCapture, refreshNflSlateProjections, listSavedNflSlates, listSavedNflRuns, loadSavedNflWorkspace, loadSavedNflLineups, readNflOptimizerAudit, exportSavedNflEntries, exportSavedNflLineups, applyNflComparison, importNflOwnershipRanges, loadNflSalaryCsv, generateNflLineups, searchNflStarterNews, saveNflBuildDraft, readNflBuildDraft, type NflComparisonSource, type NflWorkspaceSlate } from "./client-actions";
+import { checkNflSlateFreshness, readNflDefensiveCaptureStatus, retryNflDefensiveCapture, refreshNflSlateProjections, listSavedNflSlates, listSavedNflRuns, loadSavedNflWorkspace, loadSavedNflLineups, readNflOptimizerAudit, exportSavedNflEntries, exportSavedNflLineups, applyNflComparison, importNflOwnershipRanges, pullNflOutsideOwnership, clearNflOutsideOwnership, loadNflSalaryCsv, generateNflLineups, searchNflStarterNews, saveNflBuildDraft, readNflBuildDraft, type NflComparisonSource, type NflWorkspaceSlate } from "./client-actions";
 import type { NflGeneratedLineup, NflOptimizerSettings, NflProjectionSource } from "./nfl-optimizer";
 import { DEFAULT_NFL_PUNT_POLICY } from "@/lib/nfl-dfs/punt-policy";
 import { deriveReceiverRoleChanges, receiverChartRank, type ReceiverRoleChange } from "@/lib/nfl-dfs/receiver-role";
@@ -538,6 +538,23 @@ export default function NflDfsClient() {
     document.addEventListener('visibilitychange', onVisible);
     return () => { stopped = true; clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
   }, [freshnessUploadId, freshnessKickoff, freshnessKnown]);
+  /** Pull stat-api's projected ownership for this slate, or go back to our model, then reload the pool. */
+  function setOutsideOwnership(use: boolean) {
+    if (!slate) return;
+    setError(null); setMessage(null);
+    startTransition(async () => {
+      try {
+        if (use) {
+          const report = await pullNflOutsideOwnership(slate.uploadId);
+          setMessage(`stat-api ownership pulled: ${report.withOwnership} of ${report.players} players${report.contestName ? `, from ${report.contestName}` : ""}. The pool below now builds from it.${report.problems.length ? ` Note: ${report.problems.join(" ")}` : ""}`);
+        } else {
+          await clearNflOutsideOwnership(slate.uploadId);
+          setMessage("Back to our own ownership model. The stat-api pulls stay saved.");
+        }
+        if (libraryId) openSaved(libraryId, false);
+      } catch (reason) { setError(reason instanceof Error ? reason.message : "Changing the ownership source failed."); }
+    });
+  }
   function importRanges() {
     if (!slate || !rangesText.trim()) return;
     setError(null); setMessage(null);
@@ -978,6 +995,7 @@ export default function NflDfsClient() {
             onApply={() => { setCaptainTargets((current) => ({ ...current, ...captainSuggestion.targets })); setMessage(`Applied suggested CPT ranges: ${captainSuggestion.rows.map((r) => `${r.name} ${r.min}–${r.max}%`).join(" · ")}. Ranges are suggested for ${suggestionPositions.join("/")} only; type a range yourself for anyone else. Edit any field before generating.`); setCaptainSuggestion(null); }}
             onDismiss={() => setCaptainSuggestion(null)} /> : null}
           <details className="border-b bg-slate-50 px-4 py-2"><summary className="cursor-pointer text-[11px] font-bold text-slate-600">How the Value column works</summary><ValueLegend className="mt-2" /></details>
+          <OutsideOwnershipNotice state={slate.outsideOwnership} disabled={pending || slateLocked} onUse={() => setOutsideOwnership(true)} onClear={() => setOutsideOwnership(false)} />
           {slate.ownershipBands?.error ? <Notice>{slate.ownershipBands.error}</Notice> : slate.ownershipBands ? <p role="status" className="mb-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-950"><b>Ownership ranges:</b> {slate.ownershipBands.matched} players have a FantasyPros range{slate.ownershipBands.capturedAt ? ` (imported ${new Date(slate.ownershipBands.capturedAt).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" })} ET)` : ""}. {slate.ownershipBands.applied ? `Our prior was raised to the low end for ${slate.ownershipBands.raised}, lowered to the high end for ${slate.ownershipBands.lowered}, and kept for ${slate.ownershipBands.kept}; the rest keep the prior. Field total ${slate.ownershipBands.totalBefore.toFixed(0)}% to ${slate.ownershipBands.totalAfter.toFixed(0)}%. Leverage and duplication use these numbers.` : `Shown for reference only: the build uses our prior (the range clamp is off since the week 7 grade; it would have raised ${slate.ownershipBands.raised} and lowered ${slate.ownershipBands.lowered}). Type a number in the Own column to change a player.`}</p> : null}{slate.marketAnchor?.error ? <Notice>{slate.marketAnchor.error}</Notice> : slate.marketAnchor ? <p role="status" className="mb-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-950"><b>Vegas lines:</b> {slate.marketAnchor.applied ? `${slate.marketAnchor.applied} of ${slate.marketAnchor.eligible} QBs, RBs, WRs and TEs are projected from the sportsbooks' lines${slate.marketAnchor.tdOnly ? ` (${slate.marketAnchor.tdOnly} of them from the anytime-TD line alone, the rest of their stats the model's)` : ''}${slate.marketAnchor.tdOnlyYieldedToCommit ? `; ${slate.marketAnchor.tdOnlyYieldedToCommit} with only a TD line keep their starter-out projection` : ''} (captured ${new Date(slate.marketAnchor.oldestCapture!).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" })}${slate.marketAnchor.newestCapture !== slate.marketAnchor.oldestCapture ? ` to ${new Date(slate.marketAnchor.newestCapture!).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" })}` : ""} ET). Lineups build from these numbers; each keeps the model's own number on its chip. The rest use the model.` : "No prop lines captured for this slate yet, so every player uses the model. Lines are captured the day before and 60-75 minutes before kickoff."}</p> : null}{slate.specialTeamsAnchor?.error ? <Notice>{slate.specialTeamsAnchor.error}</Notice> : slate.specialTeamsAnchor && (slate.specialTeamsAnchor.kickers || slate.specialTeamsAnchor.dsts) ? <p role="status" className="mb-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-950"><b>Kicker and defense lines:</b> {[slate.specialTeamsAnchor.kickers ? `${slate.specialTeamsAnchor.kickers} of ${slate.specialTeamsAnchor.eligibleKickers} kickers projected from DraftKings' field-goal and extra-point ladders` : null, slate.specialTeamsAnchor.dsts ? `${slate.specialTeamsAnchor.dsts} of ${slate.specialTeamsAnchor.eligibleDsts} defenses shifted by the opponent's team-total ladder (points-allowed tiers)` : null].filter(Boolean).join("; ")}{slate.specialTeamsAnchor.newestCapture ? ` (captured ${new Date(slate.specialTeamsAnchor.newestCapture).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" })} ET)` : ""}. Lineups build from these numbers; each keeps the number it replaced on its chip.</p> : null}{slate.absenceCommit?.error ? <Notice>Starter-aware projections were not applied: {slate.absenceCommit.error}</Notice> : slate.absenceCommit?.applied ? <p role="status" className="mb-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-950"><b>Starter out:</b> {slate.absenceCommit.applied} player{slate.absenceCommit.applied === 1 ? "" : "s"} projected for the role they take with a starter out. Lineups build from these numbers; each keeps the model&apos;s own number on its chip.</p> : null}{slate.projectionCorrection && !("skipped" in slate.projectionCorrection) && (slate.projectionCorrection.shrunk || slate.projectionCorrection.qbZeroed.length || slate.projectionCorrection.dstScaled) ? <p role="status" className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950"><b>Corrections:</b> {[
   slate.projectionCorrection.shrunk ? `${slate.projectionCorrection.shrunk} of ${slate.projectionCorrection.skillConsidered} RBs, WRs and TEs without a full set of prop lines scaled by 0.70 (they were over-projected by a quarter on weeks 6-8; a touchdown line alone does not exempt a player)` : null,
   slate.projectionCorrection.qbZeroed.length ? `${slate.projectionCorrection.qbZeroed.length} backup quarterback${slate.projectionCorrection.qbZeroed.length === 1 ? "" : "s"} zeroed (${slate.projectionCorrection.qbZeroed.map((q) => `${q.name} behind ${q.starter}`).join(", ")}); confirm a starter above to change who counts` : null,
@@ -1183,14 +1201,35 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
  * prior (or the prior held inside an imported range).
  */
 /** Short label for where our own ownership number came from. */
+/**
+ * Where this slate's ownership comes from (`nfl-ownership-outside-v1`): our
+ * model, or a stored pull of stat-api's projection, with the pull and the way
+ * back. Shows nothing on a slate that has never had a pull when this site
+ * holds no stat-api key.
+ */
+function OutsideOwnershipNotice({ state, disabled, onUse, onClear }: { state: NflWorkspaceSlate["outsideOwnership"]; disabled: boolean; onUse: () => void; onClear: () => void }) {
+  if (!state) return null;
+  if (state.error) return <Notice>{state.error}</Notice>;
+  const button = "ml-2 rounded border border-sky-300 bg-white px-2 py-0.5 text-[11px] font-bold text-sky-900 hover:bg-sky-100 disabled:opacity-40";
+  const pull = state.canPull ? <button type="button" disabled={disabled} onClick={onUse} className={button}>{state.inUse ? "Pull again" : "Use stat-api ownership"}</button> : null;
+  if (!state.inUse) {
+    if (!state.canPull && !state.turnedOff) return null;
+    return <p role="status" className="mb-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800"><b>Ownership: our model.</b>{state.turnedOff ? " stat-api's ownership was pulled for this slate and then turned off." : ""}{state.canPull ? " stat-api's projected ownership can replace it for this slate." : " A new stat-api pull has to be run from the desktop (this site has no stat-api key)."}{pull}</p>;
+  }
+  const report = state.report;
+  const kept = report?.keptOurs ?? [], ruledOut = report?.ruledOutWithOwnership ?? [];
+  return <p role="status" className="mb-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-950"><b>Ownership: stat-api.</b> {report?.applied ?? 0} players use stat-api&apos;s projected ownership{state.contestName ? ` for ${state.contestName}` : ""}, pulled {state.capturedAt ? formatEt(state.capturedAt) : "earlier"}{state.sourceAsOf ? ` (stat-api's numbers as of ${formatEt(state.sourceAsOf)})` : ""}. It changes until kickoff, so pull again shortly before you build.{kept.length ? ` ${kept.map((k) => k.name).join(", ")} ${kept.length === 1 ? "is" : "are"} at 0% on stat-api and keep${kept.length === 1 ? "s" : ""} our estimate (${kept.map((k) => `${k.ourPct}%`).join(", ")}).` : ""}{ruledOut.length ? ` stat-api still has ownership on players we have ruled out: ${ruledOut.map((r) => `${r.name} ${r.theirPct}%`).join(", ")}.` : ""} Our own estimate is saved with each build for comparison.{pull}<button type="button" disabled={disabled} onClick={onClear} className={button}>Back to our model</button></p>;
+}
 function ownLabel(source: string | null | undefined): string {
   return source?.startsWith("nfl-ownership-fit") ? "fitted" : "prior";
 }
 function OwnershipCell({ player, override, disabled, onChange }: { player: NflWorkspacePlayer; override: number | undefined; disabled: boolean; onChange: (next: number | null) => void }) {
   const manual = override != null;
   const clamped = player.ownBand != null && player.ownBand.prior !== player.ownPct;
-  const source = manual ? "typed by you" : player.ownSource === "linestar" ? "LineStar" : player.ownBand ? `${ownLabel(player.ownSource)} · FP ${player.ownBand.low}-${player.ownBand.high}%${clamped ? "" : " ref"}` : `${ownLabel(player.ownSource)} · estimate`;
+  const outside = player.ownSource === "stat-api";
+  const source = manual ? "typed by you" : outside ? "stat-api" : player.ownSource === "linestar" ? "LineStar" : player.ownBand ? `${ownLabel(player.ownSource)} · FP ${player.ownBand.low}-${player.ownBand.high}%${clamped ? "" : " ref"}` : `${ownLabel(player.ownSource)} · estimate`;
   const title = manual ? `You typed ${override}%. Blank the box to go back to ${pct(player.ownPct ?? null)}.`
+    : outside ? `stat-api's projected ownership${player.captainOwnPct != null && player.flexOwnPct != null ? ` (captain ${player.captainOwnPct.toFixed(1)}%, flex ${player.flexOwnPct.toFixed(1)}%)` : ""}. Our own model said ${pct(player.ourOwnPct ?? null)}. Type a number to replace it for this build.`
     : player.ownBand && clamped ? `Our prior ${player.ownBand.prior.toFixed(1)}%, held inside ${player.ownBand.source} ${player.ownBand.low}-${player.ownBand.high}%`
     : player.ownBand ? `Our prior; ${player.ownBand.source} has this player at ${player.ownBand.low}-${player.ownBand.high}% (shown for reference, not applied).`
     : player.ownSource?.startsWith("nfl-ownership-fit") ? "Fitted to past full-field contests; still an estimate. Type a number to replace it for this build."
