@@ -31,6 +31,8 @@ export const exportSavedNflLineups = async (...a: Args<typeof safe.safeExportSav
 export const readNflShowdownTypeHistory = async (...a: Args<typeof safe.safeReadNflShowdownTypeHistory>) => unwrap(await safe.safeReadNflShowdownTypeHistory(...a));
 export const exportNflLineupPool = async (...a: Args<typeof safe.safeExportNflLineupPool>) => unwrap(await safe.safeExportNflLineupPool(...a));
 export const importNflOwnershipRanges = async (...a: Args<typeof safe.safeImportNflOwnershipRanges>) => unwrap(await safe.safeImportNflOwnershipRanges(...a));
+export const pullNflOutsideOwnership = async (...a: Args<typeof safe.safePullNflOutsideOwnership>) => unwrap(await safe.safePullNflOutsideOwnership(...a));
+export const clearNflOutsideOwnership = async (...a: Args<typeof safe.safeClearNflOutsideOwnership>) => unwrap(await safe.safeClearNflOutsideOwnership(...a));
 export const exportSavedNflSingleStatLineups = async (...a: Args<typeof safe.safeExportSavedNflSingleStatLineups>) => unwrap(await safe.safeExportSavedNflSingleStatLineups(...a));
 export const exportSavedNflSingleStatEntries = async (...a: Args<typeof safe.safeExportSavedNflSingleStatEntries>) => unwrap(await safe.safeExportSavedNflSingleStatEntries(...a));
 export const applyNflComparison = async (...a: Args<typeof safe.safeApplyNflComparison>) => unwrap(await safe.safeApplyNflComparison(...a));

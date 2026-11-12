@@ -41,6 +41,8 @@ export async function safeExportSavedNflLineups(...args: Args<typeof actions.exp
 export async function safeReadNflShowdownTypeHistory(...args: Args<typeof actions.readNflShowdownTypeHistory>) { return run("Reading the Showdown type tally", () => actions.readNflShowdownTypeHistory(...args)); }
 export async function safeExportNflLineupPool(...args: Args<typeof actions.exportNflLineupPool>) { return run("Exporting the final set", () => actions.exportNflLineupPool(...args)); }
 export async function safeImportNflOwnershipRanges(...args: Args<typeof actions.importNflOwnershipRanges>) { return run("Importing ownership ranges", () => actions.importNflOwnershipRanges(...args)); }
+export async function safePullNflOutsideOwnership(...args: Args<typeof actions.pullNflOutsideOwnership>) { return run("Pulling stat-api ownership", () => actions.pullNflOutsideOwnership(...args)); }
+export async function safeClearNflOutsideOwnership(...args: Args<typeof actions.clearNflOutsideOwnership>) { return run("Going back to our ownership model", () => actions.clearNflOutsideOwnership(...args)); }
 export async function safeExportSavedNflSingleStatLineups(...args: Args<typeof actions.exportSavedNflSingleStatLineups>) { return run("Exporting Single Stat lineups", () => actions.exportSavedNflSingleStatLineups(...args)); }
 export async function safeExportSavedNflSingleStatEntries(...args: Args<typeof actions.exportSavedNflSingleStatEntries>) { return run("Exporting Single Stat entries", () => actions.exportSavedNflSingleStatEntries(...args)); }
 export async function safeApplyNflComparison(...args: Args<typeof actions.applyNflComparison>) { return run("Importing comparison projections", () => actions.applyNflComparison(...args)); }

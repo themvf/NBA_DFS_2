@@ -490,3 +490,63 @@ yet the per-player distribution the leverage term would want (E[(1 − own)^k]
 rather than (1 − E[own])^k); that is the next layer, not this one. It is not
 graded on the fitted ordering because the scorecard recomputes only the stated
 priors from frozen captures.
+
+## Outside ownership: stat-api's projection per slate — `nfl-ownership-outside-v1` (owner's decision 2026-11-12, a trial)
+
+On a slate with a stored pull, stat-api's projected ownership replaces our
+model for the players it covers. Our own numbers stay on each player and in
+the saved build (`ownership.model`), so the two can be graded against the
+real field afterwards. Requested for the WAS @ NYG Showdown (2026-11-12) and
+the Sunday morning NE @ DET Showdown (2026-11-15), while the Pro subscription
+runs.
+
+### Why
+
+Tonight our model and stat-api disagreed most on the quarterbacks: their share
+of captains was 21% for us and 40% for stat-api. Feeding stat-api's own points
+through our fit still gave 23%, so the gap is the ownership model, not the
+projections. Against real ownership on 20 past Showdown flagships (2026-10-01
+to 2026-11-09, stat-api's stored pre-game numbers, engine 2.2):
+
+| average miss, ownership points | stat-api | our fit |
+|---|---:|---:|
+| captain, per player | 0.71 | 0.86 |
+| flex, per player | 2.09 | 3.59 |
+| quarterbacks' share of captains | 4.1 | 4.7 |
+| top quarterback, total | 4.5 | 6.2 |
+
+stat-api was closer on flex in all 20 slates. Our fit kept the quarterbacks'
+captain share between 15% and 29% while the real share ran 10% to 39%, and it
+was low in all five slates at 30% or more. Cautions: "our fit" was run on
+stat-api's points, and 17 of the 20 slates are in its own training sample, so
+it is flattered; stat-api's stored numbers are stamped 3 to 8 minutes before
+kickoff, later than a build, and hindsight cannot be ruled out; stat-api ran
+a little high on quarterback captains (25.4% mean against 21.9%). Closer
+ownership has not been shown to improve payouts. That is untested.
+
+### How it works
+
+- `pullNflOutsideOwnership(uploadId)` finds stat-api's slate by DraftKings
+  player ids (at least 80% of ours), reads `/slates/{id}/ownership` for the
+  slate's main contest, and stores one row in `nfl_dfs_outside_ownership`,
+  keyed by slate signature. Append-only; the newest row decides.
+  `clearNflOutsideOwnership` appends an inactive row (back to our model).
+- The page read applies it right after our own ownership step
+  (`attachOutsideOwnership`). Rules, in `lib/nfl-dfs/outside-ownership.ts`:
+  stat-api's number for every active player it gives more than 0%; an active
+  player it has at 0% keeps our number when ours is at least 1%, and
+  stat-api's players are scaled down in that slot to make room; a player we
+  have ruled out gets nothing and is listed; captain plus flex is held to 95%.
+  First slate: Cam Skattebo and Treylon Burks were at 0% on stat-api while it
+  projected both to play, so they kept ours (35.8% and 15%) and Daniels went
+  from stat-api's 89.7% to 81.9%.
+- A typed ownership still wins over it. It is still treated as an estimate:
+  leverage runs only through the opt-in, and the Showdown lineup ownership
+  floor reads it per slot.
+- The pull is a button on the build page when the deployment has
+  `STAT_API_KEY`, and otherwise `web/scripts/pull-nfl-outside-ownership.ts`
+  from a machine that holds the key. It is never scheduled. stat-api's numbers
+  change until kickoff, so pull again shortly before building. A slate that
+  has kicked off cannot be pulled.
+- Classic slates are supported (totals only) but stat-api's Classic ownership
+  has not been compared with real ownership, so it has not been applied to one.

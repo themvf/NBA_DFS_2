@@ -1417,6 +1417,23 @@ END $$;`,
     warnings JSONB NOT NULL DEFAULT '[]'::jsonb,
     UNIQUE (slate_date, format, source, text_digest)
   )`,
+  // Outside ownership (nfl-ownership-outside-v1): one row per stat-api pull
+  // for a slate, or per "back to our model" (active = false). Append-only; the
+  // newest row for a slate signature decides what the page reads. Written only
+  // by a button press or the pull script, never on a schedule.
+  `CREATE TABLE IF NOT EXISTS nfl_dfs_outside_ownership (
+    id BIGSERIAL PRIMARY KEY,
+    slate_signature TEXT NOT NULL,
+    upload_id UUID NOT NULL,
+    source TEXT NOT NULL,
+    format TEXT NOT NULL CHECK (format IN ('classic','showdown')),
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    source_as_of TIMESTAMPTZ,
+    source_meta JSONB NOT NULL DEFAULT '{}'::jsonb,
+    rows JSONB NOT NULL DEFAULT '[]'::jsonb,
+    captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_nfl_dfs_outside_ownership_slate ON nfl_dfs_outside_ownership (slate_signature, id DESC)`,
 ];
 
 /** Ghost-lineup study tables (docs/nfl-ghost-factorial-study.md); mirror of db/schema.py. */
