@@ -95,10 +95,10 @@ assert.match(est.note, /not DraftKings' numbers/);
 assert.match(est.note, /LineStar for 1 players/);
 assert.match(fieldOwnershipSource([{ ownSource: null, ownPct: 3 }], "classic").note, /about 1 point/);
 // stat-api's pull and the Showdown lineup model are named for what they are.
-const outsideSource = fieldOwnershipSource([{ ownSource: "stat-api", ownPct: 30 }, { ownSource: "stat-api", ownPct: 12 }, { ownSource: "nfl-ownership-field-showdown-v1", ownPct: 2 }], "showdown");
+const outsideSource = fieldOwnershipSource([{ ownSource: "stat-api", ownPct: 30 }, { ownSource: "stat-api", ownPct: 12 }, { ownSource: "nfl-ownership-field-showdown-v2", ownPct: 2 }], "showdown");
 assert.equal(outsideSource.short, "stat-api");
 assert.match(outsideSource.note, /stat-api's projected ownership/);
-const lineupModelSource = fieldOwnershipSource([{ ownSource: "nfl-ownership-field-showdown-v1", ownPct: 30 }, { ownSource: "nfl-ownership-field-showdown-v1", ownPct: 12 }], "showdown");
+const lineupModelSource = fieldOwnershipSource([{ ownSource: "nfl-ownership-field-showdown-v2", ownPct: 30 }, { ownSource: "nfl-ownership-field-showdown-v2", ownPct: 12 }], "showdown");
 assert.equal(lineupModelSource.short, "est.");
 assert.match(lineupModelSource.note, /lineup-model ownership estimate/);
 assert.match(lineupModelSource.note, /about 3 points/);

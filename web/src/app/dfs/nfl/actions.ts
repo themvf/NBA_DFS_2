@@ -229,7 +229,7 @@ export type NflWorkspaceSlate = {
   situationTeams?: SituationTeam[];
   /** Classic and Showdown: which model is live and which runs as the shadow (see `shadowOwnPct`). */
   ownershipShadow?: { version: string; liveVersion: string; liveFittedAt: string | null;
-    /** Showdown: why the lineup model (`nfl-ownership-field-showdown-v1`) is not the live model, when it is not. */
+    /** Showdown: why the lineup model (`nfl-ownership-field-showdown-v2`) is not the live model, when it is not. */
     lineupModelOff?: 'lines_not_in' | 'no_lineup' } | null;
   injuryCoverage?: InjuryCoverage | null;
   liveDkStatus?: NflLiveDkStatus;
@@ -1456,7 +1456,7 @@ async function attachRangeSplit(workspace: NflWorkspaceSlate, run: { season: num
  * optimizer applies it only through the user's opt-in.
  *
  * Showdown, from 2026-11-13 (owner's decision): once the books' player lines
- * are in, our live number is the lineup model (`nfl-ownership-field-showdown-v1`,
+ * are in, our live number is the lineup model (`nfl-ownership-field-showdown-v2`,
  * lib/nfl-dfs/showdown-field-model) and the per-player fitted model it replaces
  * becomes the shadow. Before the lines are in, or if the pool cannot form a
  * lineup, the fitted model stays live with v5 as its shadow, as before:

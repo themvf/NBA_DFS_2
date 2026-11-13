@@ -345,7 +345,7 @@ export function fieldOwnershipSource(players: readonly { ownSource?: string | nu
   if (withOwn.length && outside * 2 >= withOwn.length)
     return { short: "stat-api", note: `Field is stat-api's projected ownership, not DraftKings' final numbers${format === "showdown" ? ": on recent Showdowns it missed by about 2 points a player" : ""}.` };
   const fitted = withOwn.some((p) => p.ownSource?.startsWith("nfl-ownership-fit"));
-  // The Showdown lineup model (nfl-ownership-field-showdown-v1), tested on eight held-out slates.
+  // The Showdown lineup model (nfl-ownership-field-showdown-v2), tested on eight held-out slates (flex miss about 2.75).
   const lineupModel = format === "showdown" && withOwn.some((p) => p.ownSource?.startsWith("nfl-ownership-field"));
   const miss = lineupModel
     ? "on eight recent Showdowns, each predicted without seeing it, it missed by about 3 points a player. Treat gaps under about 4 points as noise"

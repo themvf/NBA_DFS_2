@@ -1,4 +1,4 @@
-"""Fit `nfl-ownership-field-showdown-v1` and grade it.
+"""Fit `nfl-ownership-field-showdown-v2` and grade it.
 
     python -m research.nfl_showdown_field_model --slates PATH             # grade, write model + fixture
     python -m research.nfl_showdown_field_model --slates PATH --no-write
@@ -9,6 +9,9 @@ salary, captain_salary, is_out, pts, anchor, team_implied, opponent_implied)
 with the real field's captain and flex ownership in percent (cpt_act, flex_act)
 and a consensus projection (sa_pts) for the fringe factors. The file joins our
 frozen slates to licensed contest data, so it is not in the repository.
+
+The low-end term's threshold (`LOW_END_THRESHOLD`) is fixed here; its penalty
+is fitted with the other numbers.
 
 Grading is leave-one-slate-out on the slates whose sportsbook lines were in
 (the state the page is in near lock); those are also the slates the shipped
@@ -28,13 +31,18 @@ import numpy as np
 
 from model import nfl_showdown_field_model as M
 
-MODEL_PATH = Path("web/src/data/nfl-showdown-field-model-v1.json")
+MODEL_PATH = Path("web/src/data/nfl-showdown-field-model-v2.json")
 FIXTURE_PATH = Path("tests/fixtures/nfl_showdown_field_model_fixture.json")
 #: Consensus kicker points on his team's Vegas points, and defense points on the
 #: opponent's: least squares over 60 kickers and 60 defenses on 30 Showdown slates
 #: (2026 weeks 1-10), fitted 2026-11-13.
 KICKER = {"intercept": 3.5306, "slope": 0.2325}
 DEFENSE = {"intercept": 14.2257, "slope": -0.3630}
+#: Crowd points under which a seat loses extra value (the low-end term). Not fitted:
+#: 3, 4 and 5 were tried on the eight training slates (held-out flex miss 2.85,
+#: 2.75, 2.75), and 4 was then checked on twelve other slates. The size of the
+#: penalty is fitted.
+LOW_END_THRESHOLD = 4.0
 INPUT_KEYS = ("position", "team", "salary", "captain_salary", "is_out", "pts", "anchor", "team_implied", "opponent_implied")
 
 
@@ -68,7 +76,8 @@ def _tensors(slate: dict, crowd: dict):
 def _shares(b: dict, th: dict):
     import torch
     fo, co = th["fo"] - th["fo"][2], th["co"] - th["co"][2]          # wide receivers are the reference position
-    value, captain_value = b["pts"] + fo[b["pos"]], M.CAPTAIN_MULTIPLIER * b["pts"] + co[b["pos"]]
+    base = b["pts"] - th["h"] * torch.clamp(LOW_END_THRESHOLD - b["pts"], min=0.0)
+    value, captain_value = base + fo[b["pos"]], M.CAPTAIN_MULTIPLIER * base + co[b["pos"]]
     utility = value[b["flex"]].sum(1) + captain_value[b["cap"]] + th["b"] * b["left"] + th["s"] * b["stack"]
     p = torch.softmax(utility / torch.exp(th["log_tau"]), 0)
     captain = torch.zeros(b["n"], dtype=torch.float64).scatter_add(0, b["cap"], p) * 100
@@ -89,7 +98,7 @@ def fit(batches: list[dict], crowd: dict, max_steps: int = 12) -> dict:
     """Least squares on captain and flex ownership; returns the model dict."""
     import torch
     th = {"log_tau": torch.tensor(1.2, dtype=torch.float64, requires_grad=True), "b": torch.tensor(-1.0, dtype=torch.float64, requires_grad=True),
-          "s": torch.tensor(0.0, dtype=torch.float64, requires_grad=True),
+          "s": torch.tensor(0.0, dtype=torch.float64, requires_grad=True), "h": torch.tensor(0.5, dtype=torch.float64, requires_grad=True),
           "fo": torch.zeros(6, dtype=torch.float64, requires_grad=True), "co": torch.zeros(6, dtype=torch.float64, requires_grad=True)}
     opt = torch.optim.LBFGS(list(th.values()), lr=0.5, max_iter=25, history_size=20, line_search_fn="strong_wolfe")
 
@@ -107,7 +116,7 @@ def fit(batches: list[dict], crowd: dict, max_steps: int = 12) -> dict:
         last = now
     fo, co = (th["fo"] - th["fo"][2]).tolist(), (th["co"] - th["co"][2]).tolist()
     return {"version": M.VERSION, "tau": round(math.exp(th["log_tau"].item()), 5), "unused_salary": round(th["b"].item(), 5),
-            "qb_stack": round(th["s"].item(), 5),
+            "qb_stack": round(th["s"].item(), 5), "low_end": {"threshold": LOW_END_THRESHOLD, "penalty": round(th["h"].item(), 5)},
             "flex_offsets": {p: round(v, 5) for p, v in zip(M.POSITIONS, fo)}, "captain_offsets": {p: round(v, 5) for p, v in zip(M.POSITIONS, co)},
             **crowd, "loss": round(_loss(batches, th).item(), 3)}
 
@@ -148,7 +157,7 @@ def main(argv=None) -> int:
     full.update({"fitted_at": datetime.now(timezone.utc).isoformat(), "slates": len(lined),
                  "training": [f"{s['date']} {s['name']}" for s in lined],
                  "held_out": {"slates": len(lined), "captain_mae": round(held_c, 3), "flex_mae": round(held_f, 3)}})
-    print("  " + json.dumps({k: full[k] for k in ("tau", "unused_salary", "qb_stack", "flex_offsets", "captain_offsets", "fringe", "loss")}))
+    print("  " + json.dumps({k: full[k] for k in ("tau", "unused_salary", "qb_stack", "low_end", "flex_offsets", "captain_offsets", "fringe", "loss")}))
     if not args.no_write:
         MODEL_PATH.write_text(json.dumps(full, indent=1) + "\n", encoding="utf-8")
         s = lined[-1]

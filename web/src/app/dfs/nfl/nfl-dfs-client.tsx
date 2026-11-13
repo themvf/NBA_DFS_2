@@ -1221,7 +1221,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
  * holds no stat-api key.
  */
 /**
- * Which of our own Showdown ownership models is live (`nfl-ownership-field-showdown-v1`
+ * Which of our own Showdown ownership models is live (`nfl-ownership-field-showdown-v2`
  * once the books' lines are in, the per-player fitted model before), in plain words.
  */
 function showdownOwnershipModel(slate: NflWorkspaceSlate): { name: string; note: string } | undefined {
