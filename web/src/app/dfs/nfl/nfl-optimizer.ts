@@ -1,3 +1,4 @@
+import { NFL_TEAM_SPLIT_TARGETS_VERSION, TEAM_SPLITS, resolveTeamSplitPlan, teamSplitOf, type TeamSplit, type TeamSplitPlan } from "@/lib/nfl-dfs/team-split";
 import { diversifiedComposition, diversifiedCompositionValid, applyDiversified, diversifiedPolicy, diversifiedCount, diversifiedPositionMax, diversifiedGroups, repeatedGroupCounts, groupLimit, concentrationCost, improveDiversifiedPortfolio, DIVERSIFIED_VERSION, type DiversifiedPolicy, type DiversifiedReport } from "@/lib/nfl-dfs/diversified";
 import "server-only";
 import { kickerRoleBlockedReason } from '@/lib/nfl-dfs/availability';
@@ -311,6 +312,17 @@ export type NflOptimizerSettings = {
   maxKickersPerLineup?: number;
   /** Showdown: each lineup is 5-1 or 3-3 by team, never 4-2. */
   forbidFourTwoSplit?: boolean;
+  /**
+   * Showdown: the share of lineups at each team split (`nfl-team-split-targets-v1`,
+   * owner's request 2026-11-12). A split that is given gets that share of the
+   * run; the splits left out share the rest. Shares add to at most 100%, and
+   * to 100% when all three are given. Scheduled like the bring-back share; a
+   * lineup that cannot be built at its split is built without it and counted
+   * in the notes. Empty or unset: no target.
+   */
+  teamSplitTargets?: Partial<Record<TeamSplit, number>>;
+  /** Showdown: the team on the larger side of the 4-2 and 5-1 lineups `teamSplitTargets` counts. Empty or unset: either team. */
+  teamSplitHeavyTeam?: string;
   /** Showdown: only these positions may take the Captain slot (a user's CPT minimum on another position is reported as infeasible). */
   captainPositions?: NflOptimizerPlayer["position"][];
   /** Showdown: every lineup rosters at least this many quarterbacks (Captain or Flex). Ignored when the pool has fewer. */
@@ -338,6 +350,8 @@ export type NflOptimizerSettings = {
   minLineupOwnership?: number;
   /** Internal, per lineup: exact quarterback count, captain restrictions. Set by the run loop, never by callers. */
   lineupQbExact?: 1 | 2;
+  /** Internal, per lineup: how many players the slate's first team (alphabetically) may have. */
+  lineupTeamCounts?: number[];
   lineupForbidQbCaptain?: boolean;
   lineupRequireRbCaptain?: boolean;
   lineupForbidRbCaptain?: boolean;
@@ -933,6 +947,18 @@ function validateSettings(settings: NflOptimizerSettings): void {
   if (settings.bringBackShare != null && (settings.format !== "classic" || settings.mode !== "gpp")) throw new Error("A bring-back share is only available in Classic GPP.");
   if ((settings.excludeKickers || settings.forbidFourTwoSplit || settings.maxCaptainExposure != null || settings.captainPositions) && settings.format !== "showdown") throw new Error("Kicker exclusion, the 4-2 ban, the captain cap and captain positions are Showdown rules.");
   if (settings.captainPositions && !settings.captainPositions.length) throw new Error("Captain positions must name at least one position.");
+  const splitShares = Object.entries(settings.teamSplitTargets ?? {}).filter(([, value]) => value != null);
+  if (splitShares.length) {
+    if (settings.format !== "showdown") throw new Error("Team split targets are a Showdown rule.");
+    for (const [split, value] of splitShares) {
+      if (!TEAM_SPLITS.includes(split as TeamSplit)) throw new Error(`Unknown team split ${split}: use 3-3, 4-2 or 5-1.`);
+      share(value, `The ${split} share`, true);
+    }
+    const total = splitShares.reduce((sum, [, value]) => sum + (value as number), 0);
+    if (total > 1 + 1e-9) throw new Error(`Team split shares add to ${Math.round(total * 100)}%, more than 100%.`);
+    if (splitShares.length === TEAM_SPLITS.length && total < 1 - 1e-9) throw new Error("With all three team splits filled in, the shares must add to 100%. Leave one blank and it takes the rest.");
+    if (settings.forbidFourTwoSplit && (settings.teamSplitTargets?.["4-2"] ?? 0) > 0) throw new Error("A 4-2 share cannot be set while 4-2 lineups are banned.");
+  }
   if (settings.maxKickersPerLineup != null) {
     if (settings.format !== "showdown") throw new Error("A per-lineup kicker cap is a Showdown rule.");
     if (!Number.isInteger(settings.maxKickersPerLineup) || settings.maxKickersPerLineup < 0) throw new Error("The per-lineup kicker cap must be a whole number of 0 or more.");
@@ -1119,8 +1145,11 @@ function buildOne(
   // Winners shape (Showdown): the lineup is 5-1 or 3-3 by team, never 4-2.
   // One binary per allowed count of the first team (the other team is 6 minus
   // it); exactly one is on and the team's roster count must equal it.
-  const splitTeam = settings.format === "showdown" && settings.forbidFourTwoSplit
-    ? [...new Set(available.map((player) => player.team))].sort()[0] ?? null : null;
+  // A split target narrows this lineup further: only the listed counts of the first team.
+  const splitCounts = settings.format !== "showdown" ? null
+    : settings.lineupTeamCounts ? settings.lineupTeamCounts.filter((count) => !settings.forbidFourTwoSplit || count % 2 === 1)
+    : settings.forbidFourTwoSplit ? [1, 3, 5] : null;
+  const splitTeam = splitCounts ? [...new Set(available.map((player) => player.team))].sort()[0] ?? null : null;
   if (splitTeam) {
     constraints.split_pick = { equal: 1 };
     constraints.split_match = { equal: 0 };
@@ -1326,7 +1355,7 @@ function buildOne(
     }
   }
   if (splitTeam) {
-    for (const count of [1, 3, 5]) {
+    for (const count of splitCounts!) {
       variables[`split_${count}`] = { score: 0, split_pick: 1, split_match: -count };
       binaries[`split_${count}`] = 1;
     }
@@ -1467,6 +1496,7 @@ type JointTargets = {
   twoQbShare: number | null; rbCaptainShare: number | null; loneQbCaptainCap: number | null;
   doubleStackShare: number | null; fourWrCap: number | null; otherGameCap: number | null; twoTeShare: number | null;
   bringBackShare: number | null; dstVsOffenseCap: number | null; airMatchupTarget: number; goalLineTarget: number;
+  splitPlan?: TeamSplitPlan | null;
 };
 
 /**
@@ -1492,6 +1522,7 @@ function jointSelect(ctx: {
   // allow gets its own chance rather than whatever exposure is left over.
   const anchors = pool.filter((p) => showdownFormat ? p.captainEligible : p.position === "QB")
     .sort((a, b) => b.projection - a.projection || a.dkPlayerId - b.dkPlayerId);
+  const splitCells = showdownFormat && t.splitPlan ? [...t.splitPlan.classes.map((c) => c.counts), ...(t.splitPlan.restCounts.length ? [t.splitPlan.restCounts] : [])] : [];
   let timedOut = false;
   for (let k = 0; anchors.length && candidates.length < maxCandidates && k < maxCandidates * 3; k++) {
     if (Date.now() - started > JOINT_CANDIDATE_BUDGET_MS) { timedOut = true; break; }
@@ -1501,6 +1532,8 @@ function jointSelect(ctx: {
     const directive: Partial<NflOptimizerSettings> = {};
     if (showdownFormat) {
       if (t.twoQbShare != null && (settings.minQbPerLineup ?? 0) >= 1) directive.lineupQbExact = bit(0) ? 2 : 1;
+      // Split targets: cycle the candidates through every targeted split and the open counts, shifted each pass over the captains.
+      if (splitCells.length) directive.lineupTeamCounts = splitCells[(k + Math.floor(k / anchors.length)) % splitCells.length];
     } else {
       if (t.doubleStackShare != null) Object.assign(directive, bit(0) ? { lineupStackMin: 2 } : { lineupStackMin: 1, lineupStackMax: 1 });
       if (t.twoTeShare != null) directive.lineupTeExact = bit(1) ? 2 : 1;
@@ -1529,7 +1562,11 @@ function jointSelect(ctx: {
   const scoreOf = (lineup: NflGeneratedLineup) => lineup.slots.reduce((sum, { slot, player, multiplier }) =>
     sum + objective(byId.get(player.dkPlayerId)!, scoreSettings, 0, showdownFormat ? (slot === "CPT" ? "CPT" : "FLEX") : "CLASSIC") * multiplier, 0);
   const all = [...lineups.map((l, i) => ({ key: `b_${i}`, lineup: l })), ...candidates.map((l, i) => ({ key: `n_${i}`, lineup: l }))];
-  const jointCandidates: JointCandidate[] = all.map(({ key, lineup }) => ({ key, score: scoreOf(lineup), features: portfolioFeatures(lineup, settings.format) }));
+  const splitFeature = (lineup: NflGeneratedLineup): Record<string, number> => {
+    const split = showdownFormat && t.splitPlan ? teamSplitOf(t.splitPlan, lineup) : null;
+    return split ? { [`split_${split.replace("-", "")}`]: 1 } : {};
+  };
+  const jointCandidates: JointCandidate[] = all.map(({ key, lineup }) => ({ key, score: scoreOf(lineup), features: { ...portfolioFeatures(lineup, settings.format), ...splitFeature(lineup) } }));
 
   // A player's exposure caps are hard, as in the sequential build, which never
   // exceeds one (a lock or forced minimum can; the cap then widens to what the
@@ -1553,6 +1590,7 @@ function jointSelect(ctx: {
   }
   const exact = (name: string, share: number | null) => { if (share != null) { const r = Math.round(share * n); targets[name] = { min: r, max: r }; } };
   exact("twoQb", t.twoQbShare); exact("rbCpt", t.rbCaptainShare); exact("dbl", t.doubleStackShare); exact("twoTe", t.twoTeShare); exact("bringBack", t.bringBackShare);
+  if (showdownFormat && t.splitPlan) for (const c of t.splitPlan.classes) exact(`split_${c.split.replace("-", "")}`, c.share);
   if (t.loneQbCaptainCap != null) targets.loneQbCpt = { max: t.loneQbCaptainCap };
   if (t.fourWrCap != null) targets.fourWr = { max: t.fourWrCap };
   if (t.otherGameCap != null) targets.otherGame = { max: t.otherGameCap };
@@ -2140,6 +2178,10 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   const loneQbCaptainCap = showdown && settings.maxLoneQbCaptainShare != null ? Math.floor(settings.maxLoneQbCaptainShare * plan.length + 1e-9) : null;
   const showdownShares = twoQbShare != null || rbCaptainShare != null || loneQbCaptainCap != null;
   let twoQbLineups = 0, loneQbCaptainLineups = 0, rbCaptainLineups = 0, distributionRelaxed = 0;
+  // Team split targets: each lineup is assigned the targeted split furthest behind its share, else the open counts.
+  const splitPlan = settings.format === "showdown" ? resolveTeamSplitPlan(settings.teamSplitTargets, settings.teamSplitHeavyTeam, pool.map((p) => p.team)) : null;
+  const splitBuilt = new Map<TeamSplit, number>();
+  let splitRelaxed = 0;
   const classicGpp = settings.format === "classic" && settings.mode === "gpp" && settings.stackPassCatchers > 0;
   const doubleStackShare = classicGpp ? settings.qbDoubleStackShare ?? null : null;
   const fourWrCap = settings.format === "classic" && settings.maxFourWrShare != null ? Math.floor(settings.maxFourWrShare * plan.length + 1e-9) : null;
@@ -2221,8 +2263,20 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
       if (full.lineupQbExact != null) directives.push({ lineupForbidQbCaptain: full.lineupForbidQbCaptain });
     }
     if (settings.buildShape !== "diversified") directives.push({});
+    let splitCounts: number[] | null = null;
+    if (splitPlan) {
+      const behind = (c: TeamSplitPlan["classes"][number]) => c.share * lineupNumber - (splitBuilt.get(c.split) ?? 0);
+      const due = splitPlan.classes.filter((c) => Math.round(c.share * lineupNumber) - (splitBuilt.get(c.split) ?? 0) > 0).sort((a, b) => behind(b) - behind(a))[0];
+      // Every split targeted and none due on this lineup (rounding): take the one furthest behind.
+      splitCounts = due ? due.counts : splitPlan.restCounts.length ? splitPlan.restCounts : [...splitPlan.classes].sort((a, b) => behind(b) - behind(a))[0].counts;
+    }
+    // The split is your own target, so it outlasts the shape's quotas: each shape attempt is tried at the split first, then without it.
+    const shapeAttempts = directives.length;
+    const attempts: Partial<NflOptimizerSettings>[] = splitCounts
+      ? [...directives.map((directive) => ({ ...directive, lineupTeamCounts: splitCounts! })), ...(settings.buildShape === "diversified" ? [] : directives)]
+      : directives;
     let lineup: NflGeneratedLineup | null = null;
-    for (const [attempt, directive] of directives.entries()) {
+    for (const [attempt, directive] of attempts.entries()) {
       const ls: NflOptimizerSettings = { ...settings, ...directive };
       for (const candidate of topProjectedTargets) {
         if ((exposureCounts.get(candidate.dkPlayerId) ?? 0) > 0) continue;
@@ -2240,7 +2294,8 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
         if (lineup) foldedToStandard.set(plan[lineupNumber - 1].archetypeId, (foldedToStandard.get(plan[lineupNumber - 1].archetypeId) ?? 0) + 1);
       }
       if (lineup) {
-        if (attempt > 0) distributionRelaxed++;
+        if (splitCounts && attempt >= shapeAttempts) splitRelaxed++;
+        if ((splitCounts && shapeAttempts ? attempt % shapeAttempts : attempt) > 0) distributionRelaxed++;
         break;
       }
     }
@@ -2253,6 +2308,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
       break;
     }
     lineups.push(lineup);
+    if (splitPlan) { const split = teamSplitOf(splitPlan, lineup); if (split) splitBuilt.set(split, (splitBuilt.get(split) ?? 0) + 1); }
     if (lineup.stackSummary.bringBack) bringBackLineups++;
     if (settings.format === "classic") {
       const qb = lineup.slots.find(({ player }) => player.position === "QB")?.player;
@@ -2300,7 +2356,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   if (((settings.portfolioSelection === "joint" && !drawScored) || settings.buildShape === "diversified") && lineups.length) {
     const joint = settings.buildShape === "diversified" ? diversifiedSelect({pool, settings, lineups, countsById, locked, topProjectedTargets}) : jointSelect({ pool, settings, plan, lineups, countsById, locked, topProjectedTargets,
       targets: { twoQbShare, rbCaptainShare, loneQbCaptainCap, doubleStackShare, fourWrCap, otherGameCap, twoTeShare,
-        bringBackShare, dstVsOffenseCap, airMatchupTarget, goalLineTarget } });
+        bringBackShare, dstVsOffenseCap, airMatchupTarget, goalLineTarget, splitPlan } });
     warnings.push(joint.note);
     if ("report" in joint) diversifiedReport = joint.report as DiversifiedReport;
     if (joint.lineups) {
@@ -2313,8 +2369,10 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
       airMatchupLineups = goalLineLineups = bringBackLineups = dstVsOffenseLineups = 0;
       twoQbLineups = loneQbCaptainLineups = rbCaptainLineups = 0;
       doubleStackLineups = fourWrLineups = otherGameLineups = twoTeLineups = 0;
+      splitBuilt.clear(); splitRelaxed = 0;
       for (const lineup of lineups) {
         const f = portfolioFeatures(lineup, settings.format);
+        if (splitPlan) { const split = teamSplitOf(splitPlan, lineup); if (split) splitBuilt.set(split, (splitBuilt.get(split) ?? 0) + 1); }
         if (lineup.stackSummary.bringBack) bringBackLineups++;
         doubleStackLineups += f.dbl ?? 0; fourWrLineups += f.fourWr ?? 0; twoTeLineups += f.twoTe ?? 0; otherGameLineups += f.otherGame ?? 0;
         if (showdown) { twoQbLineups += f.twoQb ?? 0; loneQbCaptainLineups += f.loneQbCpt ?? 0; rbCaptainLineups += f.rbCpt ?? 0; }
@@ -2340,6 +2398,12 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
       + `${loneQbCaptainLineups} captain a quarterback with no second quarterback${loneQbCaptainCap != null ? ` (cap ${loneQbCaptainCap})` : ""}, `
       + `${rbCaptainLineups} captain a running back${rbCaptainShare != null ? ` (target ${Math.round(rbCaptainShare * 100)}%${rbCaptainShareBase != null && rbCaptainShare > rbCaptainShareBase + 1e-9 ? `, raised from ${Math.round(rbCaptainShareBase * 100)}% for the captain minimums you set` : ""})` : ""}`
       + (distributionRelaxed ? `; ${distributionRelaxed} lineup(s) could not meet their target under the other rules and were built with it relaxed.` : "."));
+  }
+  if (splitPlan && lineups.length) {
+    const side = splitPlan.heavyTeam ? ` with ${splitPlan.heavyTeam} on the larger side` : "";
+    warnings.push(`Team split targets (${NFL_TEAM_SPLIT_TARGETS_VERSION}): of ${lineups.length} lineups, `
+      + splitPlan.classes.map((c) => `${splitBuilt.get(c.split) ?? 0} are ${c.split}${c.split === "3-3" ? "" : side} (target ${Math.round(c.share * 100)}%)`).join(", ")
+      + (splitRelaxed ? `; ${splitRelaxed} lineup(s) could not be built at their split under the other rules and were built without it.` : "."));
   }
   if (bringBackShare != null && lineups.length) {
     warnings.push(`Bring-back share: ${bringBackLineups} of ${lineups.length} lineups carry an opposing bring-back (target ${Math.round(bringBackShare * 100)}%).`);

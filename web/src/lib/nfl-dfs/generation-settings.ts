@@ -1,5 +1,6 @@
 import { applyDiversified } from "./diversified";
 import type { NflOptimizerSettings } from '@/app/dfs/nfl/nfl-optimizer';
+import { TEAM_SPLITS, type TeamSplit } from './team-split';
 import type { PlayerExposurePolicy } from './exposure-plan';
 import { canonicalAuditJson } from './audit-json';
 import type { ArchetypeQuota } from './archetypes';
@@ -86,6 +87,24 @@ export function generationSettings(
     ...(policies.length ? { exposurePolicies: policies } : {}) };
 }
 
+/**
+ * Team split targets as the build sends them (`nfl-team-split-targets-v1`):
+ * Showdown only, finite shares only, and a heavy side only when it is one of
+ * this slate's teams and a split is targeted. Empty is always `{}` and `""`,
+ * never undefined, so a saved run restores "no target" as well as a target.
+ */
+export function teamSplitSettings(targets: unknown, heavyTeam: unknown, format: NflOptimizerSettings['format'], teams: readonly string[]): { teamSplitTargets: Partial<Record<TeamSplit, number>>; teamSplitHeavyTeam: string } {
+  const clean: Partial<Record<TeamSplit, number>> = {};
+  if (format === 'showdown' && targets && typeof targets === 'object') {
+    for (const split of TEAM_SPLITS) {
+      const value = (targets as Record<string, unknown>)[split];
+      if (typeof value === 'number' && Number.isFinite(value)) clean[split] = value;
+    }
+  }
+  const heavy = typeof heavyTeam === 'string' && Object.keys(clean).length && teams.includes(heavyTeam) ? heavyTeam : '';
+  return { teamSplitTargets: clean, teamSplitHeavyTeam: heavy };
+}
+
 export function sameGenerationSettings(a: NflOptimizerSettings, b: NflOptimizerSettings): boolean {
   const normalize = (s: NflOptimizerSettings) => ({ ...s, runEvidence:undefined,ownershipDisclosure:undefined,ownershipCapability:undefined,
     gppAirMatchupMinPct:s.gppAirMatchupMinPct??0,
@@ -133,6 +152,7 @@ export function settingsFromForm<S extends FormBase>(form: NflBuildForm<S>, form
   const settings = defensive ? { ...form.settings, defensiveAdjustments: defensiveSettingsFor(form.settings.projectionSource, defensive) } : form.settings;
   const ownershipOverrides = sanitizeOwnershipOverrides(form.ownership);
   return { ...generationSettings(settings, format, form.locked, form.excluded, form.targets, form.captainTargets),
+    ...('teamSplitTargets' in settings || 'teamSplitHeavyTeam' in settings ? teamSplitSettings(settings.teamSplitTargets, settings.teamSplitHeavyTeam, format, teams) : {}),
     ownershipOverrides: Object.keys(ownershipOverrides).length ? ownershipOverrides : undefined,
     archetypeMode: form.planMode,
     archetypeQuotas: custom && form.quotas.length ? form.quotas : undefined,
