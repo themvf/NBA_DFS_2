@@ -101,7 +101,10 @@ def inputs(db, season, week, now):
                         "coherence_scope": projection["coherence_scope"]}, "config": payload["config"],
                     "seed": projection["seed"],
                 })
-    results = db.execute("""SELECT * FROM nfl_dfs_player_week_results WHERE season=%s AND week=%s""", (season, week))
+    # The player's name rides along so a result-only player (no forecast, off
+    # the live roster since) can be listed under the game he actually played.
+    results = db.execute("""SELECT r.*,f.canonical_name player_name FROM nfl_dfs_player_week_results r
+        LEFT JOIN ff_players f ON f.id=r.player_id WHERE r.season=%s AND r.week=%s""", (season, week))
     return dict(games=games, players=players, forecasts=forecasts, results=results,
                 prior_rejected=int(rejected[0]["n"]))
 
@@ -161,6 +164,12 @@ def main():
             args.output.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
         digest = artifact_digest(report) if args.dry_run else persist(db, report)
         print(json.dumps({"season": season, "week": week, "digest": digest, "summary": report["summary"]}))
+    if not args.dry_run:
+        # Trim right after writing rather than once a week from the post-week
+        # job: every reader uses only the newest card per week, and between
+        # weekly trims the table grew to ~430 MB (2026-11-11).
+        from ingest.nfl_dfs_storage import prune_report_cards
+        print(json.dumps({"season": season, "report_card_retention": prune_report_cards(db, season, apply=True)}))
 
 
 if __name__ == "__main__":

@@ -3,7 +3,10 @@ from collections import Counter
 from datetime import datetime, timezone
 from math import isfinite
 
-VERSION = "nfl-dfs-weekly-report-v1"
+# v2 (2026-11-12): a played game's population comes from its own forecasts
+# and result rows, not the live roster's current team (see build_report).
+VERSION = "nfl-dfs-weekly-report-v2"
+POSITIONS = ("QB", "RB", "WR", "TE", "DST")
 VARIANTS = ("production", "shadow_baseline", "opportunity", "efficiency_research",
             "context:env_baseline", "context:env_trailing", "context:opp_carries",
             "context:interval_rq", "context:prior8")
@@ -98,8 +101,24 @@ def build_report(*, season, week, games, players, forecasts, results, now, prior
             base = selected.get((key[0], key[1], "shadow_baseline"))
             if not base or (base.get("run_id"), base["forecast_id"]) != (value.get("run_id"), value["forecast_id"]):
                 del selected[key]
-    # Preserve forecasted players even if later roster refreshes mark them inactive.
-    universe = {(p["player_id"], by_team[p["team"]]["id"]): p for p in players if p.get("team") in by_team}
+    # Who belongs to a game is decided by evidence about THAT game, never by a
+    # player's current team once the game has kicked off. `players` is the
+    # live roster (ff_players), whose team several writers overwrite (Sleeper,
+    # FantasyPros, nflverse) and which follows trades: reading it for a past
+    # week put a traded player in a game he never played, and because the
+    # writers disagree the population flipped run to run (weeks 1 and 9
+    # alternated 10440/10530 and 9000/9099 rows, 2026-11-10..11). So:
+    #   - the live roster seeds only games that have not kicked off yet;
+    #   - a played game holds the players forecast for it (each forecast's
+    #     own frozen team) and the players with a result row for it.
+    # A rostered player with neither is not gradable (no stat row is unknown,
+    # not zero), so leaving him out removes nothing the card can score.
+    universe = {}
+    for p in players:
+        game = by_team.get(p.get("team"))
+        kickoff = timestamp((game or {}).get("kickoff"))
+        if game and kickoff and kickoff > now:
+            universe[(p["player_id"], game["id"])] = p
     for (player_id, game_id, _), f in selected.items():
         universe[(player_id, game_id)] = {"player_id": player_id, "name": f["name"], "position": f["position"], "team": f["team"]}
     latest = {}
@@ -111,6 +130,13 @@ def build_report(*, season, week, games, players, forecasts, results, now, prior
         revisions[key] += 1
         if key not in latest or (timestamp(result["computed_at"]), result["id"]) > (timestamp(latest[key]["computed_at"]), latest[key]["id"]):
             latest[key] = result
+    for (player_id, game_id), result in latest.items():
+        if (player_id, game_id) in universe or game_id not in by_game or result.get("position") not in POSITIONS:
+            continue
+        game = by_game[game_id]
+        team = result.get("team") if result.get("team") in (game["home_team"], game["away_team"]) else None
+        universe[(player_id, game_id)] = {"player_id": player_id, "name": result.get("player_name"),
+                                          "position": result["position"], "team": team}
     rows = []
     for (player_id, game_id), player in sorted(universe.items()):
         game = by_game[game_id]
@@ -120,7 +146,7 @@ def build_report(*, season, week, games, players, forecasts, results, now, prior
         for variant in VARIANTS:
             f = selected.get((player_id, game_id, variant))
             rows.append({**player, "variant": variant, "game_id": game_id, "week": week, "season": season,
-                         "opponent": game["away_team"] if player["team"] == game["home_team"] else game["home_team"],
+                         "opponent": {game["home_team"]: game["away_team"], game["away_team"]: game["home_team"]}.get(player["team"]),
                          "kickoff": game["kickoff"], "completed": game["completed"], "forecast": f,
                          **grade(f, result, game, now)})
     return {"version": VERSION, "season": season, "week": week,
@@ -128,7 +154,8 @@ def build_report(*, season, week, games, players, forecasts, results, now, prior
             "completed_games": sum(g["completed"] for g in games),
             "rejected_non_pregame_snapshots": rejected + prior_rejected,
             "checkpoint": "last accepted pregame forecast per player/game/model stream",
-            "population": "canonical weekly roster plus preserved forecast identities; not a DK salary slate",
+            "population": ("live roster for games not yet kicked off; for played games, the players forecast "
+                           "for that game plus those with a result row; not a DK salary slate"),
             "missing_policy": "No stat row is not evidence of DNP or zero. No verified-inactive feed is integrated.",
             "grace_hours_after_kickoff": 48,
             "summary": {v: summarize([r for r in rows if r["variant"] == v]) for v in VARIANTS},

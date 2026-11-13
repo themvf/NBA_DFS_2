@@ -8149,8 +8149,10 @@ below reads the team-total ladder; sacks and longest-TD yards are stored only.
 
 | stream | module / table | population | missing stat row means |
 |---|---|---|---|
-| weekly roster (`nfl-dfs-weekly-report-v1`) | `model/nfl_dfs_reportcard.py` → `nfl_dfs_weekly_report_cards` | canonical roster + preserved forecast identities | **unknown** (not evidence of zero) |
+| weekly roster (`nfl-dfs-weekly-report-v2`) | `model/nfl_dfs_reportcard.py` → `nfl_dfs_weekly_report_cards` | live roster for games not yet kicked off; a played game = its forecasts + its result rows | **unknown** (not evidence of zero) |
 | slate-scoped (`nfl-dfs-slate-report-v1`) | `model/nfl_dfs_slate_reportcard.py` → `nfl_dfs_slate_report_cards` | players DraftKings listed on a completed upload | **0** (what DK paid), but only once ≥1 exact result exists for that game |
+
+**v2 (2026-11-12):** v1 placed every live-roster player (`ff_players`) in his CURRENT team's game for every week, so a traded player was listed in a past game he never played, and since Sleeper and FantasyPros overwrite `team_abbrev` differently each card flipped between two populations (week 1: 10,440 / 10,530 rows; week 9: 9,000 / 9,099), defeating the unchanged-card skip and writing ~5 MB a card about three times a day. A played game's population now comes only from evidence about that game; grading is unchanged (week 1 MAE identical). `ingest/nfl_dfs_reportcard.py` trims to `REPORT_CARDS_KEPT` right after writing. Still open: ~50 week-1 players sit in two games because 2026-09-04 shadow captures froze a pre-trade team.
 
 The roster stream is right for its purpose and leaves the population the
 model is most wrong about unscored (689 of 1,078 week-1 forecasts). The

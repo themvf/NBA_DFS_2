@@ -12,7 +12,7 @@ def forecast(**kw):
 
 
 def result(**kw):
-    return dict(**{"id": 1, "player_id": 1, "game_id": 1, "computed_at": KICK+timedelta(hours=8),
+    return dict(**{"id": 1, "player_id": 1, "game_id": 1, "team": "BUF", "position": "WR", "computed_at": KICK+timedelta(hours=8),
         "actual_dk_fpts": 12., "scoring_status": "exact", "scoring_version": "v1", "input_digest": "r1",
         "scoring_evidence": {"scoring_input": {"receptions": 6}}, **kw})
 
@@ -96,3 +96,39 @@ def test_a_report_that_only_changed_its_evaluation_time_is_not_rewritten():
     changed = report(results=[result(actual_dk_fpts=20.)])
     assert not same_content(stored, changed)
     assert not same_content(None, later)
+
+
+OTHER = dict(id=2, kickoff=KICK, completed=True, home_team="KC", away_team="DEN")
+
+
+def test_live_roster_team_never_places_a_player_in_a_played_game():
+    # 2026-11-10/11: Josh Downs (IND in week 1, KC since) was listed in week 1
+    # twice, under IND (forecast) and KC (live roster), whenever the last
+    # roster writer had moved him; the card flipped 10440/10530 rows run to run.
+    traded = {**PLAYER, "team": "KC"}
+    stale = report(games=[GAME, OTHER], players=[PLAYER])
+    moved = report(games=[GAME, OTHER], players=[traded])
+    assert {(r["team"], r["game_id"]) for r in moved["rows"]} == {("BUF", 1)}
+    assert moved["rows"] == stale["rows"]
+
+
+def test_played_game_population_is_forecasts_plus_result_rows():
+    # A rostered player with no forecast and no stat row is not gradable.
+    bench = dict(player_id=2, name="Bench", position="TE", team="BUF")
+    r = report(players=[PLAYER, bench])
+    assert {row["player_id"] for row in r["rows"]} == {1}
+    # A result-only player (no forecast, gone from the live roster) is kept
+    # under the game his result names, with that game's opponent.
+    played = result(id=7, player_id=3, game_id=2, team="DEN", position="RB", player_name="Result Only")
+    r = report(games=[GAME, OTHER], results=[result(), played])
+    row = next(x for x in r["rows"] if x["player_id"] == 3 and x["variant"] == "production")
+    assert (row["team"], row["opponent"], row["name"], row["status"]) == ("DEN", "KC", "Result Only", "forecast_unavailable")
+    assert row["actual"] == 12.
+    kicker = result(id=8, player_id=4, game_id=2, team="DEN", position="K")
+    assert all(x["player_id"] != 4 for x in report(games=[GAME, OTHER], results=[kicker])["rows"])
+
+
+def test_live_roster_still_seeds_games_not_yet_kicked_off():
+    upcoming = report(forecasts=[], results=[], games=[{**GAME, "completed": False}], now=KICK - timedelta(hours=2))
+    assert {row["player_id"] for row in upcoming["rows"]} == {1}
+    assert upcoming["rows"][0]["status"] == "forecast_unavailable"
