@@ -67,6 +67,21 @@ const games = [
 const payload = runPayload(request, games);
 assert.equal(payload.version, CONTEST_RUN_VERSION);
 assert.equal(payload.sitVersion, null);
+// The injury report's read time, each listed status and the players it ruled out are on the record.
+const hurt = optimizeContest(players.map((p, i) => ({ ...p, leadHours: 2, teamsSubmitted: true, injury: i === 0 ? "Out" : i === 1 ? "Questionable" : null })),
+  { fieldSize: 300, entries: 4, sims: 400, reportLeadHours: 0.3 });
+const hurtRequest = runRequest("2026-11-10", ["evt-a", "evt-b"], 4, "2026-11-10T22:07:00.000Z", RECAL_VERSION, hurt, "2026-11-10T23:52:00.000Z");
+assert.equal(hurtRequest.injuryReportAt, "2026-11-10T23:52:00.000Z");
+assert.deepEqual(hurtRequest.excluded, [{ player: "Luka Doncic", line: 34.5, status: "Out" }]);
+assert.equal(hurtRequest.pool.find((p) => p.player === "Stephen Curry")?.injury, "Questionable");
+assert.ok(!hurtRequest.pool.some((p) => p.player === "Luka Doncic"));
+const hurtOk = checkRunRequest(JSON.parse(JSON.stringify(hurtRequest)));
+assert.ok(hurtOk.ok);
+if (hurtOk.ok) { assert.deepEqual(hurtOk.value, hurtRequest); assert.deepEqual(runPayload(hurtOk.value, games).excluded, hurtRequest.excluded); }
+refused((r) => { r.injuryReportAt = "soon"; }, /injury report time/);
+refused((r) => { r.excluded = [{ player: "", line: 1, status: "Out" }]; }, /left-out list/);
+assert.equal(request.injuryReportAt, null);
+assert.deepEqual(request.excluded, []);
 assert.equal(runPayload(timedRequest, games).sitVersion, SIT_VERSION);
 assert.equal(payload.gameDate, "2026-11-10");
 assert.deepEqual(payload.games.map((g) => g.eventId), ["evt-a", "evt-b"]);

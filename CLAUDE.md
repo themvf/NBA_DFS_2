@@ -347,6 +347,15 @@ that almost every entry has the biggest-line player and that picks can change un
 default: a 22-night replay at the lock put today's build at 7.8 expected prizes per 100 nights against a pile-on field and 4.6
 against a spread one (the baseline 1.7 and 9.2). The page shows the share of the modeled field on the three biggest lines so he
 can check it against his contest. See "The lock replay" in the doc.
+**Injury report rule (`nba-points-sit-injury-v1`, 2026-11-13):** the official NBA injury report names nearly everyone who sits.
+At the lock on Nov 2-12 (1,086 players, `python -m research.nba_sit_injury`): Out or Doubtful 8 of 8 sat, Questionable 9 of 21,
+Probable or Available 0 of 52, not listed with both teams' reports in 3 of 982; books still quoted lines for all eight ruled-out
+players. Custom runs (`sit_prob_injury` / `sitProbInjury`, fixture-pinned; `web/src/lib/nba-contest-injury.ts` matches the report to
+the quoted players) leave out Out and Doubtful, keep Questionable at 43% with a tag, give a player cleared by a report read within
+4 hours of the lock 0.3%, and fall back to the lead-time rate otherwise; the saved run records it. The frozen v1 entries do not use
+it. The dispatcher's `nba-injury-refresh` job now also reads the report on every tick in the 50 minutes before the night's first
+tip and once 5-20 minutes before each later tip (`nbaTipPickupDue`, tips from the stored lines), besides 6:37 and 6:52 PM Eastern.
+`nba_injury_observations` is on /health (36 h).
 **Top-end correction and game leaders (`nba-points-sim-recal-v1`, 2026-11-06):** the books' curves overstate each
 player's big nights (line+10 stated 10.5%, happened 6.3%; line+15 4.6% vs 1.9%, 1,688 player-games), which gave
 low-line players too much chance to lead. `RECAL_G` (realized PIT CDF, shrunk with 200 pseudo-rows) maps each draw's

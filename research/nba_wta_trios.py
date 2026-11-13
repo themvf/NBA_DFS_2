@@ -94,6 +94,19 @@ SIT_VERSION = "nba-points-sit-lead-v1"
 SIT_LEAD_HOURS = (1.5, 6.0)   # under 1.5 h, 1.5 to 6 h, 6 h or more
 # 1 book 49/171 (too few to split); 2-3 books 4/404, 5/209, 10/223; 4+ books 8/3,999, 76/3,603, 82/2,111.
 SIT_BY_BOOKS_LEAD = ((1, (0.29, 0.29, 0.29)), (3, (0.010, 0.024, 0.045)), (10**6, (0.002, 0.021, 0.039)))
+# nba-points-sit-injury-v1 (2026-11-13, opt-in; the frozen v1 entries never use it). The official
+# NBA injury report names nearly everyone who sits. At the lock on Nov 2-12 (1,086 players with a
+# line at two or more books, the last report observed 0.1-3.9 h before the first tip): Out 7 of 7
+# and Doubtful 1 of 1 sat, Questionable 9 of 21, Probable 0 of 16, Available 0 of 36, not listed
+# with both teams' reports in 3 of 982. With the day-before report instead, an unlisted player sat
+# 2.3-3.8% of the time, so "cleared" holds only for a report read within INJURY_FRESH_HOURS of the
+# lock; otherwise the lead-time rate applies. research/nba_sit_injury.py prints the table.
+SIT_INJURY_VERSION = "nba-points-sit-injury-v1"
+INJURY_EXCLUDED = ("out", "doubtful")       # left out of the pool
+INJURY_QUESTIONABLE = 0.43
+INJURY_CLEARED = 0.003
+INJURY_CLEAR_STATUSES = ("available", "probable")
+INJURY_FRESH_HOURS = 4.0
 CONTENTION_TOP = 0.01       # grade: a best entry in the top 1% of the night's pool trios is "in contention"
 REVIEW_AFTER_NIGHTS = 30
 
@@ -506,6 +519,12 @@ def fixture_payload() -> dict[str, Any]:
         "sit": {"version": SIT_VERSION, "leadHours": list(SIT_LEAD_HOURS),
                 "byBooksLead": [[upper, list(rates)] for upper, rates in SIT_BY_BOOKS_LEAD],
                 "cases": [[b, h, sit_prob(b, h)] for b in (1, 2, 3, 4, 6) for h in (None, 0.0, 1.49, 1.5, 3.0, 5.99, 6.0, 11.0)]},
+        "sitInjury": {"version": SIT_INJURY_VERSION, "excluded": list(INJURY_EXCLUDED), "questionable": INJURY_QUESTIONABLE,
+                      "cleared": INJURY_CLEARED, "clearStatuses": list(INJURY_CLEAR_STATUSES), "freshHours": INJURY_FRESH_HOURS,
+                      "cases": [[st, b, lead, rep, sub, sit_prob_injury(st, b, lead, rep, sub)]
+                                for st in (None, "Out", "Doubtful", "Questionable", "Probable", "Available", "unverified")
+                                for b in (1, 5) for lead, rep in ((0.5, 0.2), (3.0, 4.0), (3.0, 4.01), (8.0, None), (None, 1.0), (2.0, -0.5))
+                                for sub in (True, False)]},
         "correlation": {"spec": [list(x) for x in spec], "matrix": correlation_matrix(pool).tolist()},
         "trios": [list(t) for t in trios],
         "baselineOrder": {"lines": [p.line for p in pool], "pOver": [p.p_over for p in pool],
@@ -533,6 +552,29 @@ def sit_prob(books: int, lead_hours: float | None) -> float:
         if books <= upper:
             return rates[band]
     return SIT_BY_BOOKS_LEAD[-1][1][band]
+
+
+def sit_prob_injury(status: str | None, books: int, lead_hours: float | None, report_lead_hours: float | None,
+                    teams_submitted: bool) -> float | None:
+    """Sitting chance from the official injury report (``SIT_INJURY_VERSION``); None = leave him out.
+
+    ``status`` is his row on the last report observed (None when he is not listed), ``report_lead_hours``
+    the hours from that observation to the contest lock (None with no report), ``teams_submitted``
+    whether both teams in his game had filed. Out and Doubtful are dropped, Questionable is the
+    measured rate, and a player the report clears gets the low rate only when the report is fresh;
+    anyone else keeps the lead-time rate (``sit_prob``)."""
+    s = (status or "").strip().lower()
+    if s in INJURY_EXCLUDED:
+        return None
+    if s == "questionable":
+        return INJURY_QUESTIONABLE
+    fallback = sit_prob(books, lead_hours)
+    if books <= 1:
+        return fallback
+    fresh = report_lead_hours is not None and math.isfinite(report_lead_hours) and report_lead_hours <= INJURY_FRESH_HOURS
+    if fresh and (s in INJURY_CLEAR_STATUSES or (not s and teams_submitted)):
+        return INJURY_CLEARED
+    return fallback
 
 
 # ------------------------------------------------------------------ database

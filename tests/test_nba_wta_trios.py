@@ -133,6 +133,21 @@ def test_select_is_deterministic_and_returns_distinct_entries():
     assert a["entries"][-1]["portfolioShare"] >= a["baseline"][-1]["portfolioShare"] - 1e-9
 
 
+def test_injury_report_sitting_rule():
+    # nba-points-sit-injury-v1: Out and Doubtful are dropped, Questionable carries the measured rate.
+    assert w.sit_prob_injury("Out", 5, 0.5, 0.2, True) is None and w.sit_prob_injury("doubtful", 5, 0.5, 0.2, True) is None
+    assert w.sit_prob_injury("Questionable", 5, 0.5, 0.2, True) == 0.43 == w.sit_prob_injury("Questionable", 1, 9.0, None, False)
+    # Cleared by a fresh report: listed Available/Probable, or not listed with both teams' reports in.
+    assert w.sit_prob_injury("Probable", 5, 3.0, 4.0, False) == 0.003 == w.sit_prob_injury(None, 5, 3.0, 0.2, True)
+    assert w.sit_prob_injury(None, 5, 3.0, -0.5, True) == 0.003                      # report read after the lock is fresh
+    # Not cleared: a stale report, no report, or a team that has not filed. The lead-time rate stands.
+    assert w.sit_prob_injury(None, 5, 3.0, 4.01, True) == w.sit_prob(5, 3.0) == 0.021
+    assert w.sit_prob_injury(None, 5, 8.0, None, True) == 0.039
+    assert w.sit_prob_injury(None, 5, 3.0, 0.2, False) == 0.021
+    assert w.sit_prob_injury("unverified", 5, 0.5, 0.2, True) == 0.002               # an unknown status clears nobody
+    assert w.sit_prob_injury(None, 1, 0.5, 0.2, True) == 0.29                         # one book stays a one-book player
+
+
 def test_grade_waits_for_every_pool_player_and_scores_sitting_as_zero():
     pool = [{"key": k, "line": l} for k, l in zip("abcdef", (30, 28, 26, 24, 22, 20))]
     payload = {"pool": pool, "seed": 7, "assumptions": {"fieldSize": 50, "chalkShare": 0.1, "popularityTau": 3.0},

@@ -2,12 +2,15 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { RECAL_VERSION, WTA, optimizeContest, type ContestPlayer, type OptimizerResult } from "@/lib/nba-contest-optimizer";
+import { RECAL_VERSION, SIT_INJURY_VERSION, WTA, optimizeContest, type ContestPlayer, type OptimizerResult } from "@/lib/nba-contest-optimizer";
 import { runRequest } from "@/lib/nba-contest-runs";
 import { sharePct } from "@/lib/nba-contest-trios";
 
 /** `started` is decided on the server, so server and browser render the same toggles. */
 export type OptimizerGame = { eventId: string; game: string; commenceTime: string; players: number; started: boolean };
+
+/** The official injury report the page read for this date: when the league posted it and when we fetched it. */
+export type OptimizerInjuryReport = { publishedAt: string; observedAt: string; sourceUrl: string };
 
 /** What happened to the save of the run on screen. A failure is shown, never swallowed. */
 type SaveState =
@@ -31,8 +34,9 @@ function exposure(run: OptimizerResult): [string, number][] {
   return [...n.entries()].sort((a, b) => b[1] - a[1]);
 }
 
-export function ContestOptimizer({ date, players, games, capturedAt, linesAgeMinutes }: {
+export function ContestOptimizer({ date, players, games, capturedAt, linesAgeMinutes, injuryReport }: {
   date: string; players: ContestPlayer[]; games: OptimizerGame[]; capturedAt: string | null; linesAgeMinutes: number | null;
+  injuryReport: OptimizerInjuryReport | null;
 }) {
   const started = useMemo(() => new Set(games.filter((g) => g.started).map((g) => g.eventId)), [games]);
   const [selected, setSelected] = useState<Set<string>>(() => new Set(games.filter((g) => !started.has(g.eventId)).map((g) => g.eventId)));
@@ -45,6 +49,10 @@ export function ContestOptimizer({ date, players, games, capturedAt, linesAgeMin
   const router = useRouter();
 
   const byKey = new Map(players.map((p) => [p.key, p]));
+  // The lock is the first tip among the chosen games; the injury report's age is counted to it.
+  const lock = games.filter((g) => selected.has(g.eventId)).map((g) => g.commenceTime).sort()[0] ?? null;
+  const reportLeadHours = injuryReport && lock ? (new Date(lock).getTime() - new Date(injuryReport.observedAt).getTime()) / 3_600_000 : null;
+  const reportStale = reportLeadHours != null && reportLeadHours > WTA.INJURY_FRESH_HOURS;
   const allSelected = games.length > 0 && games.every((g) => selected.has(g.eventId));
   const toggle = (id: string) => setSelected((prev) => {
     const next = new Set(prev);
@@ -58,7 +66,7 @@ export function ContestOptimizer({ date, players, games, capturedAt, linesAgeMin
     try {
       const response = await fetch("/api/nba/contest-runs", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify(runRequest(date, eventIds, requested, capturedAt, RECAL_VERSION, out)),
+        body: JSON.stringify(runRequest(date, eventIds, requested, capturedAt, RECAL_VERSION, out, injuryReport?.observedAt ?? null)),
       });
       const body = await response.json().catch(() => null) as { createdAt?: string; late?: boolean; repeat?: boolean; firstTip?: string; error?: string } | null;
       if (!response.ok || !body?.createdAt || !body.firstTip) {
@@ -80,7 +88,7 @@ export function ContestOptimizer({ date, players, games, capturedAt, linesAgeMin
     setTimeout(() => {
       try {
         const chosen = players.filter((p) => selected.has(p.eventId));
-        const out = optimizeContest(chosen, { fieldSize, entries });
+        const out = optimizeContest(chosen, { fieldSize, entries, reportLeadHours });
         setResult({ run: out, games: games.filter((g) => selected.has(g.eventId)).map((g) => g.game) });
         void store([...selected], entries, out);
       } catch (e) {
@@ -116,6 +124,13 @@ export function ContestOptimizer({ date, players, games, capturedAt, linesAgeMin
           lines{capturedAt ? ` (captured ${new Date(capturedAt).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" })} ET)` : ""}.
           Every run is saved with its time, so the entries you submit are on record. One difference: each player&apos;s big nights are made rarer to match what has happened (the
           books&apos; alternate lines overstate them); the tracked entries below keep the original rules.
+        </p>
+        <p className="mt-2 text-xs text-slate-600">
+          {injuryReport ? (
+            <>Official injury report: posted {tip(injuryReport.publishedAt)} ET, read {tip(injuryReport.observedAt)} ET
+              (<a className="underline" href={injuryReport.sourceUrl}>source</a>). Players it lists Out or Doubtful are left out; Questionable players stay in with a 43% chance of sitting.
+              {reportStale && lock ? ` That is more than ${WTA.INJURY_FRESH_HOURS} hours before the ${tip(lock)} ET tip of the games ticked, so players it does not list are not treated as cleared. A newer report is read before the first tip: reload then.` : ""}</>
+          ) : "No official injury report has been read for this date yet, so nobody is left out and sitting chances come from timing alone."}
         </p>
         {linesAgeMinutes != null && linesAgeMinutes > STALE_LINES_MINUTES && (
           <p className="mt-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -195,7 +210,9 @@ export function ContestOptimizer({ date, players, games, capturedAt, linesAgeMin
                         <span key={k} className="whitespace-nowrap">
                           {p?.player ?? k} <span className="font-mono text-xs text-slate-500">{p?.line.toFixed(1)}</span>
                           {p?.books === 1 && <span className="ml-1 rounded border border-orange-400 px-1 font-mono text-[10px] text-orange-700">1 BOOK</span>}
-                          {(sitOf.get(k) ?? 0) >= SIT_TAG_AT && (p?.books ?? 0) > 1 && (
+                          {(p?.injury ?? "").toLowerCase() === "questionable" ? (
+                            <span className="ml-1 rounded border border-amber-500 px-1 font-mono text-[10px] text-amber-800">QUESTIONABLE {pct1(sitOf.get(k) ?? 0)}</span>
+                          ) : (sitOf.get(k) ?? 0) >= SIT_TAG_AT && (p?.books ?? 0) > 1 && (
                             <span className="ml-1 rounded border border-slate-300 px-1 font-mono text-[10px] text-slate-600">MAY SIT {pct1(sitOf.get(k) ?? 0)}</span>
                           )}
                         </span>
@@ -221,9 +238,21 @@ export function ContestOptimizer({ date, players, games, capturedAt, linesAgeMin
             Pool: the {result.run.pool.length} biggest lines in the chosen games. The field is a guess: 10% on the exact three biggest lines, the rest leaning to big
             lines. Here that puts these shares of the field on each of them: {heldBy.join(", ")}. If your contest looks different, the entries should change.
           </p>
+          {result.run.excluded.length > 0 && (
+            <p className="text-sm">
+              <span className="text-xs uppercase text-slate-500">Left out by the injury report: </span>
+              {result.run.excluded.map((x) => `${x.player} ${x.line.toFixed(1)} (${x.status})`).join(" · ")}
+            </p>
+          )}
+          {result.run.sitVersion === SIT_INJURY_VERSION && (
+            <p className="text-xs text-muted-foreground">
+              Who sits is mostly known beforehand. On Nov 2 to 12, at the lock: listed Out or Doubtful, 8 of 8 sat; Questionable, 9 of 21; Probable or Available, 0 of 52;
+              not listed with both teams&apos; reports in, 3 of 982. A player a report read within {WTA.INJURY_FRESH_HOURS} hours of the lock clears is given 0.3%; a Questionable player 43%.
+            </p>
+          )}
           <p className="text-xs text-muted-foreground">
             {result.run.sitVersion
-              ? "A player who sits scores 0. His chance of sitting depends on how long before his own tip the lines were read: 0.2% inside 90 minutes, 2.1% from 90 minutes to 6 hours, 3.9% beyond (four or more books; every capture Oct 20 to Nov 11). Players in late games carry more of it, because your contest locks at the first tip."
+              ? "A player who sits scores 0. His chance of sitting depends on how long before his own tip the lines were read: 0.2% inside 90 minutes, 2.1% from 90 minutes to 6 hours, 3.9% beyond (four or more books; every capture Oct 20 to Nov 11). Players in late games carry more of it, because your contest locks at the first tip. With an injury report, this applies only to players the report does not settle."
               : "A player who sits scores 0. His chance of sitting here is the older rate by book count, because a lead time was missing."}
           </p>
         </div>

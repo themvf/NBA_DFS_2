@@ -392,6 +392,15 @@ DATASET_REGISTRY: tuple[Dataset, ...] = (
             "Written by ingest.nba_rosters before each ghost freeze: one row per run. Only complete runs count; a "
             "failed run writes a failed row that does not refresh this. Player rows are appended only on a change.",
             filter="status = 'complete'"),
+    # The official injury report (research.nba_points_injury_evidence, action "availability" and before each
+    # freeze). Each read stores its own observation (the digest covers the observation time), so observed_at
+    # moves on every successful read. The contest builder drops and flags players from it, so a stale report
+    # is a wrong entry, not a cosmetic gap. 36 h allows one missed evening.
+    Dataset("nba_injury_observations", "NBA official injury report (contest builder, Top Scorers tags)",
+            "nba_injury_observations", "observed_at", 36, "nba_points_ghost.yml", _NBA,
+            "Written by research.nba_points_injury_evidence: at the 11:37 AM Eastern freeze, at 6:37 and 6:52 PM "
+            "Eastern, and in the 50 minutes before the night's first tip (one more before each later tip). "
+            "A day the league posts no report writes nothing."),
     Dataset("nba_role_reliability_records", "NBA workload-conflict review", "nba_role_reliability_records", "created_at",
             72, "nba_points_ghost.yml", _NBA,
             "Written by research.nba_points_workload_conflicts after each ghost freeze: one append-only record per "
