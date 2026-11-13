@@ -279,6 +279,24 @@ index-only read). The league posts on the quarter hour and the ticks run seven m
 If the tip times cannot be read the two fixed evening reads still run and the tick says so.
 Each read stores about 70 KB. `nba_injury_observations` is on /health (36 h).
 
+**When a read fails (2026-11-13).** The reader is ordinary code (`pypdf` text positions, no
+language model) and refuses a report it does not recognise instead of guessing, so a failed
+read leaves the older report in place. That used to be silent for the night: the read is an
+optional step, so the run stayed green, and /health waits 36 hours. Now:
+
+- `research/nba_injury_alert.py` (`nba-injury-alert-v1`) runs after every read. On a failure it
+  says why on one GitHub issue, "[NBA injury report] Read failed", which mentions the owner so
+  GitHub emails him: the league's site returned no report, the reader refused the report (the
+  one that needs a code change), the report does not list tonight's games, or it could not be
+  stored. One message per night and cause; a later successful read comments and closes the
+  issue. A date with no games stored is not a failure.
+- An injury-only run (`action: availability`) that fails is red. The 11:37 AM freeze still goes
+  on without a report.
+- The builder shows a red warning when a read the dispatcher owed has not arrived
+  (`web/src/lib/nba-injury-read-watch.ts`): the newest due tick at least 10 minutes old, by the
+  dispatcher's own rule, with no read since 20 minutes before it (so one missed tick between
+  two good reads does not warn). It is decided at page load, like the stale-lines warning.
+
 Limits: the report only, no beat-writer news; a Questionable player in a late game is usually
 settled after a first-tip lock; and a team that has not filed leaves its players unknown, not
 healthy.

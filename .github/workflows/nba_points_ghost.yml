@@ -53,6 +53,20 @@ jobs:
         run: |
           day="${GAME_DATE:-$(TZ=America/New_York date +%F)}"
           python -m research.nba_points_injury_evidence --date "$day" --archive-root artifacts/nba-ghost/injury --availability-output artifacts/nba-ghost/availability.json --apply
+      # A failed read used to leave the run green with a warning nobody is sent. This says why
+      # it failed on one GitHub issue (it mentions the owner, so GitHub emails him), once per
+      # night and cause, and closes the issue when a read succeeds. An injury-only run (action
+      # "availability") then goes red; the morning freeze goes on without a report.
+      - name: Alert when the official injury read failed
+        if: ${{ always() && (steps.injury.outcome == 'success' || steps.injury.outcome == 'failure') }}
+        continue-on-error: ${{ inputs.action != 'availability' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          INJURY_OUTCOME: ${{ steps.injury.outcome }}
+          FAIL_RUN: ${{ inputs.action == 'availability' && '--fail-run' || '' }}
+        run: |
+          day="${GAME_DATE:-$(TZ=America/New_York date +%F)}"
+          python -m research.nba_injury_alert --date "$day" --archive-root artifacts/nba-ghost/injury --outcome "$INJURY_OUTCOME" $FAIL_RUN
       - name: Capture NBA rosters (decision-time team identity)
         if: github.event.schedule != '37 13 * 1-6,10-12 *' && inputs.action != 'grade' && inputs.action != 'availability'
         id: rosters
