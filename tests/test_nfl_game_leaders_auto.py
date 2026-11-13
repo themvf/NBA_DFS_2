@@ -165,3 +165,17 @@ def test_played_baseline_check_scores_the_games_played_leader():
     # The zero-counting average would pick "slot" (30 vs 13.3); games played picks "wr" (40), who tied for the lead.
     assert out["played_baseline_credit"] == 0.5
     assert out["played_baseline_games"] == 1
+
+
+def test_capture_that_refused_reworded_plays_is_retaken(tmp_path, monkeypatch):
+    """A capture built before reworded plays kept their credit is not reused (2026_09_LA_WAS)."""
+    path = tmp_path / "capture.json.gz"
+    snap = {"games": [game("sun", 40)], "player_stat_credit_missing": []}
+    monkeypatch.setattr(auto, "read", lambda p: snap)
+    path.write_text("x")
+    prior = {"season": 2026, "week": 6, "sources": {"snapshot": str(path)}}
+    assert auto.reusable_capture(prior, NOW, 2026)[2] == 6
+    snap["player_stat_credit_missing"] = [["2026_09_LA_WAS", 4645, "description_changed"]]
+    assert auto.reusable_capture(prior, NOW, 2026) is None
+    snap["player_stat_credit_missing"] = [["2026_09_LA_WAS", 4645]]  # play absent from the source
+    assert auto.reusable_capture(prior, NOW, 2026) is not None

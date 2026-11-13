@@ -289,8 +289,20 @@ def reusable_capture(prior: dict | None, now: datetime, season: int) -> tuple[Pa
     if not prior or prior.get("season") != season or not path.is_file():
         return None
     snapshot = read(path)
+    if refused_corrections(snapshot):
+        return None  # built before reworded plays kept their credit; take a fresh capture
     week = target_week(snapshot, now, season)
     return (path, snapshot, week) if week == prior.get("week") else None
+
+
+def refused_corrections(snapshot: dict) -> list:
+    """Plays a capture left without stat credit only because nflverse reworded them.
+
+    Captures taken before research.nfl_game_leaders_source kept that credit list
+    such plays under `player_stat_credit_missing`; one fumble on a catch
+    (2026_09_LA_WAS) left that game unreconciled and both teams off the page."""
+    return [m for m in snapshot.get("player_stat_credit_missing", [])
+            if len(m) > 2 and m[2] == "description_changed"]
 
 
 def run(season: int, draws: int | None, page_path: Path = PAGE) -> str:
