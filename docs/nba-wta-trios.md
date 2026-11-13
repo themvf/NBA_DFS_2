@@ -55,6 +55,26 @@ the line.
    (`capture_nba_points_props.yml`), only while every game on the date is still to
    tip; the table refuses a row created at or after the first tip. An unchanged
    capture is not re-frozen. The grade reads the latest freeze for the date.
+   (Timing amended 2026-11-13; see Amendment 1 below.)
+
+### Amendment 1 (2026-11-13): the pre-tip freeze follows the first tip
+
+The evening capture was pinned to 22:07 UTC, which is 6:07 PM Eastern only in summer time. The
+test began on Nov 6, after the clocks changed, so every counted night so far was frozen from the
+5:07 PM Eastern capture (or an extra run near it): 2 minutes before the first tip on Nov 7,
+about two hours before it on the 7:10 PM nights, and from the morning capture alone on Nov 8,
+whose first tip was 3:40 PM. From the night of 2026-11-13 the capture, and the freeze that
+follows it, runs 35-50 minutes before the night's first tip (`nbaPointsPropsDue` in
+`web/src/lib/cron-dispatch.ts`). The owner asked for the capture change so the contest builder
+has fresh lines at the lock, and accepted that the freeze moves with it.
+
+Nothing else changes: the pool rule, the simulation, the field, the entry count, the baseline,
+the grade and the 30-night review. Both arms are frozen from the same capture, so the paired
+comparison is unaffected in kind. What does change is that later freezes hold fewer players
+whose lines are pulled before the tip. Seven nights (Nov 6-12) were graded under the old timing.
+The 30-night review must report the nights frozen before and after this change separately as
+well as together (`nba_wta_portfolios.created_at` against `first_tip` identifies them), and a
+difference between the two periods is not evidence for or against the builder.
 
 ## Grade (`nba-wta-grade-v1`, each morning after the box scores)
 

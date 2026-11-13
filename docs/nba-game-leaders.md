@@ -106,7 +106,7 @@ Tags on the panel restate the chances in bands that held up (they add no informa
 
 `ingest/nba_game_lines.py` stores each game's spread and total from one bulk Odds API call
 (`markets=spreads,totals`, six named books, 2 credits a run) inside the existing nba-points-props
-job (15:07, 22:07, 01:07 UTC). `nba_game_lines` gets a row only when a game's lines changed since
+job (the morning read at 15:07 UTC, then 35-50 minutes before each tip group; see docs/the-odds-api.md). `nba_game_lines` gets a row only when a game's lines changed since
 its last row, so a quiet capture writes nothing; the line at tip is the newest row before
 `commence_time`. /health reads freshness from the call's `odds_api_usage` row, which every run writes.
 The card shows the favourite and spread (median of the books, to the nearest half point) and total;

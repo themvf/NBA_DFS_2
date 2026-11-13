@@ -1,10 +1,12 @@
 name: Capture NBA points props
 
-# Feeds /nba/top-scorers. Dispatched by /api/cron/dispatch (job
-# nba-points-props) at 15:07, 22:07 and 01:07 UTC, October through June: the
-# morning read after the books post player props, the closing read before the
-# 7 PM ET tips, and the closing read for the 9:30-10:30 PM ET tips (only games
-# still to tip are fetched). The page shows each game's latest capture; the
+# Feeds /nba/top-scorers and the contest builder. Dispatched by /api/cron/dispatch
+# (job nba-points-props), October through June: the morning read at 15:07 UTC
+# after the books post player props, then one read 35-50 minutes before the
+# first tip of each tip group (the night's first tip, and each tip more than two
+# hours after the previous group's first). Only games still to tip are
+# fetched. The old fixed 22:07 and 01:07 UTC reads remain as a fallback when the
+# tip times are unknown or no group starts near them. The page shows each game's latest capture; the
 # nightly grade (grade_nba_points_props.yml) scores each game's last capture
 # before its tip. Two credits per game on the shared ODDS_API_KEY (two
 # markets, six books via bookmakers=), about 60 a day. The schedule below is a
@@ -48,7 +50,7 @@ jobs:
           --apply
       # Winner-take-all contest entries (research/nba_wta_trios.py, docs/nba-wta-trios.md):
       # frozen from the lines just captured, only while every game on the date is still
-      # to tip (the 9:07 PM ET run reports "after_first_tip" and writes nothing). No credits.
+      # to tip (a run after the first tip reports "after_first_tip" and writes nothing). No credits.
       - name: Freeze winner-take-all contest entries
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
