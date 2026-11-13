@@ -136,7 +136,8 @@ toward the review.
   the builder uses the books' curve as is, which favors high-ceiling players.
 - Pool is the top 20 lines; 5 of 48 actual top-three scorers in discovery came from
   outside it.
-- Availability is the measured sitting rate by book count, not injury news.
+- Availability for the frozen v1 entries is the measured sitting rate by book count, not injury news.
+  Custom runs read the official injury report (see "The injury report rule" below).
 
 ## The lock replay and the lead-time sitting rates (2026-11-12, exploratory)
 
@@ -207,3 +208,58 @@ the same nights, so this is a consistency check, not a second test.
 (flagged players finished 0.9 below unflagged against the line; line + 10 reached 7.2% vs
 7.1%, 1,399 rows). Morning-to-lock line moves (no pattern). Small slates (the three biggest
 lines ranked higher on 2-5 game nights, six nights only).
+
+## The injury report rule (`nba-points-sit-injury-v1`, 2026-11-13, exploratory)
+
+The lead-time rates above are an average over two very different groups. The league's official
+injury report (`nba_injury_observations`, read from the PDFs at
+`ak-static.cms.nba.com/referee/injury/`) names nearly everyone who sits. At the lock on Nov 2-12
+(10 nights, 1,086 players with a line at two or more books, the last report read 0.1-3.9 hours
+before the first tip; `python -m research.nba_sit_injury --start 2026-11-02 --end 2026-11-12`):
+
+| Status on the report | Sat |
+|---|---:|
+| Out | 7 of 7 |
+| Doubtful | 1 of 1 |
+| Questionable | 9 of 21 (43%) |
+| Probable | 0 of 16 |
+| Available | 0 of 36 |
+| Not listed, both teams' reports in | 3 of 982 (0.3%) |
+| Not listed, a team not yet filed | 0 of 23 |
+
+17 of the 20 players who sat were flagged beforehand. Books still quoted a line for every one
+of the eight Out or Doubtful players at the lock capture (Scottie Barnes 23.5 at five books on
+Nov 9), so the pool held players the league had already ruled out.
+
+With the day-before report instead (`--morning`, read 20-26 hours before the lock):
+Questionable 17 of 33, not listed 7 of 305 with both teams in and 12 of 316 with a team not
+filed. So a status is worth acting on early, but "not listed" clears a player only on a fresh
+report.
+
+The rule, for custom runs only (`sit_prob_injury` / `sitProbInjury`, fixture-pinned):
+
+- **Out or Doubtful:** left out of the pool, listed under the entries as left out.
+- **Questionable:** stays in at a 43% chance of sitting, tagged.
+- **Cleared** (Probable, Available, or not listed with both teams filed) by a report read within
+  4 hours of the lock: 0.3%.
+- **Anyone else** (no report, a report older than that, a team not filed, one-book players):
+  the lead-time rate.
+
+The lock is the first tip among the games ticked. The saved run records the rule, when the
+report was read, each listed status and who was left out. 21 Questionable players is a small
+sample (a 95% interval of roughly 24% to 63%); measure again as reports accumulate. The frozen
+v1 entries do not use the report.
+
+**Reads timed to the tips.** The report was read at 11:37 AM, 6:37 PM and 6:52 PM Eastern,
+which suits a 7 PM lock and nothing else. The dispatcher's `nba-injury-refresh` job now also
+fires on every tick in the 50 minutes before the night's first tip (three reads, the last 5 to
+20 minutes before it) and on the one tick 5 to 20 minutes before each later tip, for a contest
+that leaves the early games out (`nbaTipPickupDue`; tips come from the stored lines through an
+index-only read). The league posts on the quarter hour and the ticks run seven minutes after.
+If the tip times cannot be read the two fixed evening reads still run and the tick says so.
+Each read stores about 70 KB. `nba_injury_observations` is on /health (36 h).
+
+Limits: the report only, no beat-writer news; a Questionable player in a late game is usually
+settled after a first-tip lock; and a team that has not filed leaves its players unknown, not
+healthy.
+

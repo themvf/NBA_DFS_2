@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
-  SIT_VERSION, WTA, baselineOrder, buildPortfolio, candidateTrios, contestPool, correlationMatrix, dnpProb, fieldOwnership, normCdf,
-  optimizeContest, recalibrateSurvival, rng, simulatePoints, sitProb, survivalKnots, type ContestPlayer,
+  SIT_INJURY_VERSION, SIT_VERSION, WTA, baselineOrder, buildPortfolio, candidateTrios, contestPool, correlationMatrix, dnpProb, fieldOwnership, normCdf,
+  optimizeContest, recalibrateSurvival, rng, simulatePoints, sitProb, sitProbInjury, survivalKnots, type ContestPlayer,
 } from "../src/lib/nba-contest-optimizer";
 
 // Written by `python -m research.nba_wta_trios fixture`; the Python test fails if it is stale.
@@ -33,6 +33,15 @@ assert.deepEqual([...WTA.SIT_LEAD_HOURS], fx.sit.leadHours);
 assert.deepEqual(WTA.SIT_BY_BOOKS_LEAD.map(([upper, rates]) => [upper, [...rates]]), fx.sit.byBooksLead);
 for (const [books, lead, p] of fx.sit.cases as [number, number | null, number][]) assert.equal(sitProb(books, lead), p, `sit ${books} books, lead ${lead}`);
 assert.equal(sitProb(6, undefined), dnpProb(6));
+
+// The injury-report rule (nba-points-sit-injury-v1) matches the Python, case by case; null = left out.
+const fi = fx.sitInjury;
+assert.equal(SIT_INJURY_VERSION, fi.version);
+assert.deepEqual([[...WTA.INJURY_EXCLUDED], WTA.INJURY_QUESTIONABLE, WTA.INJURY_CLEARED, [...WTA.INJURY_CLEAR_STATUSES], WTA.INJURY_FRESH_HOURS],
+  [fi.excluded, fi.questionable, fi.cleared, fi.clearStatuses, fi.freshHours]);
+for (const [status, books, lead, rep, sub, want] of fi.cases as [string | null, number, number | null, number | null, boolean, number | null][]) {
+  assert.equal(sitProbInjury(status, books, lead, rep, sub), want, `injury ${status} ${books} books lead ${lead} report ${rep} filed ${sub}`);
+}
 
 // The top-end correction (nba-points-sim-recal-v1) matches the Python.
 fx.recal.u.forEach((u: number, i: number) => close(recalibrateSurvival(u), fx.recal.out[i], 1e-12, `recal ${u}`));

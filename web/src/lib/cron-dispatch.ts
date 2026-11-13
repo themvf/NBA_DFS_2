@@ -35,6 +35,11 @@ export interface DispatchContext {
    * grace, or with an expired lease). Null or absent when it could not be read.
    */
   nflDefensiveCapturesPending?: boolean | null;
+  /**
+   * Tonight's NBA tip times, from the stored points lines (the earliest is the
+   * contest lock). Null or absent when they could not be read or it is the off-season.
+   */
+  nbaTips?: Date[] | null;
 }
 
 export const NO_CONTEXT: DispatchContext = { nflKickoffs: null };
@@ -264,9 +269,37 @@ export function nbaResearchReviewDue(now: Date): boolean {
 export function nbaResearchCheckDue(now: Date): boolean {
   const t=nbaEasternTime(now);return NBA_MONTHS.has(t.month)&&((t.hour===11&&t.minute===52)||(t.hour===12&&t.minute===22));
 }
-/** Two bounded free injury refreshes; this is not continuous monitoring. */
-export function nbaInjuryRefreshDue(now: Date): boolean {
-  const t=nbaEasternTime(now);return NBA_MONTHS.has(t.month)&&t.hour===18&&(t.minute===37||t.minute===52);
+/** How long before the night's first tip the injury report is read on every tick (the contest lock). */
+export const NBA_FIRST_TIP_PICKUP_MIN = 50;
+/** How long before any later tip one more read is taken, for a contest that leaves the early games out. */
+export const NBA_TIP_PICKUP_MIN = 20;
+/** A tick this close to a tip is too late to be read and acted on before it. */
+export const NBA_TIP_PICKUP_FLOOR_MIN = 5;
+
+/**
+ * The injury-report reads timed to the night's tips: every tick in the 50 minutes before the
+ * first tip (three reads, the last 5-20 minutes before the lock), and the one tick 5-20 minutes
+ * before each later tip. The league posts on the quarter hour and the ticks run 7 minutes after,
+ * so each read picks up the newest report. Free: one PDF from the league's site, no odds credits.
+ */
+export function nbaTipPickupDue(now: Date, tips: Date[] | null | undefined): boolean {
+  if (!tips?.length) return false;
+  const leads = tips.map((t) => (t.getTime() - now.getTime()) / 60_000);
+  const first = Math.min(...tips.map((t) => t.getTime()));
+  const firstLead = (first - now.getTime()) / 60_000;
+  return (firstLead > NBA_TIP_PICKUP_FLOOR_MIN && firstLead <= NBA_FIRST_TIP_PICKUP_MIN)
+    || leads.some((m) => m > NBA_TIP_PICKUP_FLOOR_MIN && m <= NBA_TIP_PICKUP_MIN);
+}
+
+/**
+ * Official NBA injury report reads: the two fixed evening ticks (6:37 and 6:52 PM Eastern), which
+ * need no schedule and so still run when the tip times cannot be read, plus the tip-timed reads.
+ * This is not continuous monitoring.
+ */
+export function nbaInjuryRefreshDue(now: Date, context: DispatchContext = NO_CONTEXT): boolean {
+  const t=nbaEasternTime(now);
+  if(!NBA_MONTHS.has(t.month))return false;
+  return (t.hour===18&&(t.minute===37||t.minute===52))||nbaTipPickupDue(now,context.nbaTips);
 }
 
 export const DISPATCH_JOBS: readonly DispatchJob[] = [
@@ -371,7 +404,7 @@ export const DISPATCH_JOBS: readonly DispatchJob[] = [
   {
     key: "nba-injury-refresh",
     workflow: "nba_points_ghost.yml", due: nbaInjuryRefreshDue, inputs: {action:"availability",date:""},
-    why: "Free official NBA availability observations at 6:37 and 6:52 PM Eastern; no odds requests or forecast changes.",
+    why: "Free official NBA injury report reads at 6:37 and 6:52 PM Eastern and in the 50 minutes before the night's first tip (plus one before each later tip), so the contest builder has the latest status at the lock; no odds requests or forecast changes.",
   },
   {
     key: "nba-ghost-grade",

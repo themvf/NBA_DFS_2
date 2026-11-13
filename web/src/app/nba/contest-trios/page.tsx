@@ -11,7 +11,9 @@ import { PRIMARY_N, REVIEW_AFTER_NIGHTS, sharePct, tallyContest } from "@/lib/nb
 import { getNbaCurrentTeams, getNbaPointsProps, getNbaSeasonStats, getNbaTeams } from "@/db/nba-top-scorers";
 import { buildBoard, playerKey, teamKey } from "@/lib/nba-top-scorers";
 import type { ContestPlayer } from "@/lib/nba-contest-optimizer";
-import { ContestOptimizer, type OptimizerGame } from "./contest-optimizer";
+import { ContestOptimizer, type OptimizerGame, type OptimizerInjuryReport } from "./contest-optimizer";
+import { getNbaInjuryReport } from "@/db/nba-availability";
+import { playerInjuries } from "@/lib/nba-contest-injury";
 import { getContestRunFinals, getContestRuns, type SavedRun } from "@/db/nba-contest-runs";
 import { scoreRun, type BoxGame, type EntryResult, type RunEntry, type RunPoolPlayer } from "@/lib/nba-contest-runs";
 
@@ -19,12 +21,16 @@ import { scoreRun, type BoxGame, type EntryResult, type RunEntry, type RunPoolPl
 const LAST_SEASON = "2025-26";
 
 /** Tonight's latest lines as optimizer players: the same board the Top Scorers page builds. */
-async function liveSlate(date: string): Promise<{ players: ContestPlayer[]; games: OptimizerGame[]; capturedAt: string | null; linesAgeMinutes: number | null }> {
-  const [rows, ladderRows, lastSeason, teams, currentTeams] = await Promise.all([
+async function liveSlate(date: string): Promise<{
+  players: ContestPlayer[]; games: OptimizerGame[]; capturedAt: string | null; linesAgeMinutes: number | null; injuryReport: OptimizerInjuryReport | null;
+}> {
+  const [rows, ladderRows, lastSeason, teams, currentTeams, report] = await Promise.all([
     getNbaPointsProps(date), getNbaPointsProps(date, "player_points_alternate"), getNbaSeasonStats(LAST_SEASON),
-    getNbaTeams(), getNbaCurrentTeams(date),
+    getNbaTeams(), getNbaCurrentTeams(date), getNbaInjuryReport(date),
   ]);
   const { scorers, games } = buildBoard(rows, lastSeason, teams, ladderRows, currentTeams);
+  // The official injury report, matched to each quoted player in his own game (nba-points-sit-injury-v1).
+  const injuries = playerInjuries(date, report, scorers.map((s) => ({ key: playerKey(s.player), eventId: s.eventId })), games);
   const now = Date.now();
   const capturedAt = games.reduce<string | null>((m, g) => (m == null || g.capturedAt > m ? g.capturedAt : m), null);
   const open = games.some((g) => new Date(g.commenceTime).getTime() > now);
@@ -35,6 +41,8 @@ async function liveSlate(date: string): Promise<{ players: ContestPlayer[]; game
       curve: (s.distribution?.curve ?? []).map((c) => ({ point: c.point, p: c.p })),
       // How long before his own tip these lines were read: sets his sitting chance (nba-points-sit-lead-v1).
       leadHours: (new Date(s.commenceTime).getTime() - new Date(s.capturedAt).getTime()) / 3_600_000,
+      injury: injuries.get(playerKey(s.player))?.status ?? null,
+      teamsSubmitted: injuries.get(playerKey(s.player))?.teamsSubmitted ?? false,
     })),
     games: [...games].sort((a, b) => a.commenceTime.localeCompare(b.commenceTime)).map((g) => ({
       eventId: g.eventId, game: g.game, commenceTime: g.commenceTime, players: g.players,
@@ -43,6 +51,7 @@ async function liveSlate(date: string): Promise<{ players: ContestPlayer[]; game
     capturedAt,
     // Decided on the server, like `started`, so server and browser render the same warning.
     linesAgeMinutes: capturedAt && open ? Math.max(0, Math.round((now - new Date(capturedAt).getTime()) / 60_000)) : null,
+    injuryReport: report ? { publishedAt: report.publishedAt, observedAt: report.observedAt, sourceUrl: report.sourceUrl } : null,
   };
 }
 
@@ -248,7 +257,7 @@ export default async function ContestTriosPage({ searchParams }: { searchParams:
         ))}
       </nav>
 
-      <ContestOptimizer date={date} players={slate.players} games={slate.games} capturedAt={slate.capturedAt} linesAgeMinutes={slate.linesAgeMinutes} />
+      <ContestOptimizer date={date} players={slate.players} games={slate.games} capturedAt={slate.capturedAt} linesAgeMinutes={slate.linesAgeMinutes} injuryReport={slate.injuryReport} />
 
       <SavedRuns runs={runs} finals={finals} date={date} />
 

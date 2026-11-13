@@ -11,6 +11,9 @@
 // player's top end (nba-points-sim-recal-v1); the frozen entries do not. Since 2026-11-12 they
 // also set each player's sitting chance by how long before his own tip the lines were read
 // (nba-points-sit-lead-v1): the owner's contest locks at the first tip, hours before the late games.
+// Since 2026-11-13 the official injury report comes first (nba-points-sit-injury-v1): a player it
+// lists Out or Doubtful is left out, Questionable carries the measured 43%, and a player a fresh
+// report clears carries 0.3%; the lead-time rate stays for everyone the report says nothing about.
 
 export const WTA = {
   POOL_SIZE: 20,
@@ -33,10 +36,17 @@ export const WTA = {
   // player's own tip (under 1.5 h, 1.5 to 6 h, 6 h or more). research/nba_wta_trios.py SIT_BY_BOOKS_LEAD.
   SIT_LEAD_HOURS: [1.5, 6.0],
   SIT_BY_BOOKS_LEAD: [[1, [0.29, 0.29, 0.29]], [3, [0.01, 0.024, 0.045]], [1e6, [0.002, 0.021, 0.039]]] as [number, number[]][],
+  // nba-points-sit-injury-v1: research/nba_wta_trios.py sit_prob_injury.
+  INJURY_EXCLUDED: ["out", "doubtful"],
+  INJURY_QUESTIONABLE: 0.43,
+  INJURY_CLEARED: 0.003,
+  INJURY_CLEAR_STATUSES: ["available", "probable"],
+  INJURY_FRESH_HOURS: 4.0,
 } as const;
 
 export const RECAL_VERSION = "nba-points-sim-recal-v1";
 export const SIT_VERSION = "nba-points-sit-lead-v1";
+export const SIT_INJURY_VERSION = "nba-points-sit-injury-v1";
 
 export type ContestPlayer = {
   key: string;
@@ -50,7 +60,14 @@ export type ContestPlayer = {
   curve: { point: number; p: number }[];
   /** Hours from the capture of his game's lines to his own tip; absent means the book-count rate. */
   leadHours?: number | null;
+  /** His status on the official injury report read for this date; null or absent when he is not listed. */
+  injury?: string | null;
+  /** Whether both teams in his game had filed their report. */
+  teamsSubmitted?: boolean;
 };
+
+/** A player the official report rules out, left out of the pool. */
+export type ExcludedPlayer = { key: string; player: string; line: number; status: string };
 
 export type OptimizerEntry = {
   rank: number;
@@ -73,8 +90,10 @@ export type OptimizerResult = {
   fieldSize: number;
   /** Each pool player's sitting chance as simulated, in pool order. */
   sit: number[];
-  /** SIT_VERSION when the lead-time rates were used, null for the book-count rates. */
+  /** SIT_INJURY_VERSION with an injury report, SIT_VERSION for the lead-time rates alone, null for the book-count rates. */
   sitVersion: string | null;
+  /** Players the official report lists Out or Doubtful, left out of the pool (biggest line first). */
+  excluded: ExcludedPlayer[];
   /** Share of the modeled field holding each pool player, in pool order (the field is a stated guess). */
   fieldOwnership: number[];
 };
@@ -90,6 +109,23 @@ export function sitProb(books: number, leadHours: number | null | undefined): nu
   const band = WTA.SIT_LEAD_HOURS.filter((upper) => leadHours >= upper).length;
   for (const [upper, rates] of WTA.SIT_BY_BOOKS_LEAD) if (books <= upper) return rates[band];
   return WTA.SIT_BY_BOOKS_LEAD[WTA.SIT_BY_BOOKS_LEAD.length - 1][1][band];
+}
+
+/**
+ * Sitting chance from the official injury report (SIT_INJURY_VERSION); null = leave him out.
+ * `reportLeadHours` is the hours from the report's observation to the contest lock (null with no
+ * report). Mirrors sit_prob_injury.
+ */
+export function sitProbInjury(status: string | null | undefined, books: number, leadHours: number | null | undefined,
+  reportLeadHours: number | null | undefined, teamsSubmitted: boolean): number | null {
+  const s = (status ?? "").trim().toLowerCase();
+  if ((WTA.INJURY_EXCLUDED as readonly string[]).includes(s)) return null;
+  if (s === "questionable") return WTA.INJURY_QUESTIONABLE;
+  const fallback = sitProb(books, leadHours);
+  if (books <= 1) return fallback;
+  const fresh = reportLeadHours != null && Number.isFinite(reportLeadHours) && reportLeadHours <= WTA.INJURY_FRESH_HOURS;
+  if (fresh && ((WTA.INJURY_CLEAR_STATUSES as readonly string[]).includes(s) || (!s && teamsSubmitted))) return WTA.INJURY_CLEARED;
+  return fallback;
 }
 
 /** (survival levels ascending, points) for inverse sampling; null when unusable. Mirrors survival_knots. */
@@ -418,8 +454,14 @@ export function seedOf(text: string): number {
  * entries keep the registered v1 rules, so an all-games run can differ from them.
  */
 export function optimizeContest(players: ContestPlayer[],
-  opts: { fieldSize?: number; entries?: number; sims?: number; recal?: boolean; leadSit?: boolean } = {}): OptimizerResult {
-  const pool = contestPool(players);
+  opts: { fieldSize?: number; entries?: number; sims?: number; recal?: boolean; leadSit?: boolean;
+    /** An injury report was read: hours from its observation to the contest lock. Omit (or null) with no report. */
+    reportLeadHours?: number | null } = {}): OptimizerResult {
+  const report = opts.reportLeadHours != null && Number.isFinite(opts.reportLeadHours);
+  const ruledOut = (p: ContestPlayer) => report && (WTA.INJURY_EXCLUDED as readonly string[]).includes((p.injury ?? "").trim().toLowerCase());
+  const excluded: ExcludedPlayer[] = players.filter(ruledOut).sort((a, b) => b.line - a.line)
+    .map((p) => ({ key: p.key, player: p.player, line: p.line, status: p.injury ?? "" }));
+  const pool = contestPool(players.filter((p) => !ruledOut(p)));
   if (pool.length < 3) throw new Error("Pick games with at least three quoted players.");
   const sims = opts.sims ?? WTA.SIMS, fieldSize = opts.fieldSize ?? WTA.FIELD_SIZE;
   const trios = candidateTrios(pool.length);
@@ -428,7 +470,10 @@ export function optimizeContest(players: ContestPlayer[],
   // The lead-time rates apply only when every pool player has a lead time; a mixed pool would
   // compare two different measurements.
   const leadSit = (opts.leadSit ?? true) && pool.every((p) => p.leadHours != null && Number.isFinite(p.leadHours));
-  const sit = pool.map((p) => (leadSit ? sitProb(p.books, p.leadHours) : dnpProb(p.books)));
+  // The injury rule needs the lead-time rates underneath it, so it applies only with them.
+  const injury = report && leadSit;
+  const sit = pool.map((p) => (injury ? sitProbInjury(p.injury, p.books, p.leadHours, opts.reportLeadHours, p.teamsSubmitted === true) ?? 1
+    : leadSit ? sitProb(p.books, p.leadHours) : dnpProb(p.books)));
   const points = simulatePoints(pool, sims, r, opts.recal ?? true, sit);
   const n = pool.length;
   const totals = trioTotals(points, sims, n, trios);
@@ -446,7 +491,7 @@ export function optimizeContest(players: ContestPlayer[],
     };
   };
   return {
-    pool, sims, fieldSize, sit, sitVersion: leadSit ? SIT_VERSION : null,
+    pool, sims, fieldSize, sit, sitVersion: injury ? SIT_INJURY_VERSION : leadSit ? SIT_VERSION : null, excluded,
     // Its own stream, so showing it does not change which entries are picked.
     fieldOwnership: fieldOwnership(pool.map((p) => p.line), rng(seedOf(`own|${pool.map((p) => p.line).join("|")}`))),
     entries: picks.map((p, i) => entry(i + 1, p)),

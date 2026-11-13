@@ -11,8 +11,10 @@ export const CONTEST_RUN_VERSION = "nba-contest-run-v1";
 
 export const RUN_LIMITS = { maxBytes: 60_000, maxGames: 20, maxPool: 40, maxEntries: 20, minField: 20, maxField: 100_000 } as const;
 
-/** `sit` is the sitting chance the run simulated for him (absent on runs saved before 2026-11-12). */
-export type RunPoolPlayer = { key: string; player: string; eventId: string; team: string | null; line: number; books: number; sit?: number };
+/** `sit` is the sitting chance the run simulated for him (absent on runs saved before 2026-11-12); `injury` his status on the report, when listed. */
+export type RunPoolPlayer = { key: string; player: string; eventId: string; team: string | null; line: number; books: number; sit?: number; injury?: string };
+/** A player the official injury report ruled out, left out of the pool. */
+export type RunExcluded = { player: string; line: number; status: string };
 export type RunEntry = { rank: number; players: string[]; lineSum: number; standaloneShare: number; marginalShare: number; portfolioShare: number };
 
 /** What the browser sends: the settings and the result it showed. Games are named by event id only. */
@@ -23,8 +25,12 @@ export type RunRequest = {
   entriesRequested: number;
   linesCapturedAt: string | null;
   recalVersion: string;
-  /** The sitting-rate rule the run used: nba-points-sit-lead-v1, or null for the book-count rates. */
+  /** The sitting-rate rule the run used: the injury rule, the lead-time rule, or null for the book-count rates. */
   sitVersion: string | null;
+  /** When the injury report the run used was read; null with no report (and on runs saved before 2026-11-13). */
+  injuryReportAt?: string | null;
+  /** Players the report ruled out, left out of the pool. */
+  excluded?: RunExcluded[];
   sims: number;
   winningScore: { p25: number; median: number; p75: number };
   pool: RunPoolPlayer[];
@@ -44,11 +50,13 @@ const entryOf = (e: OptimizerEntry): RunEntry => ({
 
 /** The request for a finished run. The ladder curves stay in the browser: the stored lines already hold them. */
 export function runRequest(date: string, eventIds: string[], entriesRequested: number, linesCapturedAt: string | null,
-  recalVersion: string, run: OptimizerResult): RunRequest {
+  recalVersion: string, run: OptimizerResult, injuryReportAt: string | null = null): RunRequest {
   return {
     date, eventIds: [...eventIds].sort(), fieldSize: run.fieldSize, entriesRequested, linesCapturedAt, recalVersion,
-    sitVersion: run.sitVersion, sims: run.sims, winningScore: run.winningScore,
-    pool: run.pool.map((p, i) => ({ key: p.key, player: p.player, eventId: p.eventId, team: p.team, line: p.line, books: p.books, sit: run.sit[i] })),
+    sitVersion: run.sitVersion, injuryReportAt, excluded: run.excluded.map((x) => ({ player: x.player, line: x.line, status: x.status })),
+    sims: run.sims, winningScore: run.winningScore,
+    pool: run.pool.map((p, i) => ({ key: p.key, player: p.player, eventId: p.eventId, team: p.team, line: p.line, books: p.books, sit: run.sit[i],
+      ...(p.injury ? { injury: p.injury } : {}) })),
     entries: run.entries.map(entryOf), baseline: run.baseline.map(entryOf),
   };
 }
@@ -87,6 +95,9 @@ export function checkRunRequest(body: unknown): { ok: true; value: RunRequest } 
   if (b.linesCapturedAt !== null && (!isStr(b.linesCapturedAt, 40) || Number.isNaN(Date.parse(b.linesCapturedAt)))) return no("bad capture time");
   if (!isStr(b.recalVersion, 60) || !isNum(b.sims) || b.sims < 1) return no("bad simulation settings");
   if (!(b.sitVersion == null || isStr(b.sitVersion, 60))) return no("bad sitting rule");
+  if (!(b.injuryReportAt == null || (isStr(b.injuryReportAt, 40) && !Number.isNaN(Date.parse(b.injuryReportAt))))) return no("bad injury report time");
+  if (!(b.excluded == null || (Array.isArray(b.excluded) && b.excluded.length <= RUN_LIMITS.maxPool
+    && b.excluded.every((x) => x && isStr(x.player, 80) && isNum(x.line) && isStr(x.status, 20))))) return no("bad left-out list");
   const w = b.winningScore;
   if (!w || !isNum(w.p25) || !isNum(w.median) || !isNum(w.p75)) return no("bad winning score");
   if (!Array.isArray(b.pool) || b.pool.length < 3 || b.pool.length > RUN_LIMITS.maxPool) return no("bad pool");
@@ -94,7 +105,8 @@ export function checkRunRequest(body: unknown): { ok: true; value: RunRequest } 
   for (const raw of b.pool) {
     const p = raw as Partial<RunPoolPlayer> | null;
     if (!p || !isStr(p.key, 80) || !isStr(p.player, 80) || !isStr(p.eventId, 80) || !isNum(p.line) || !isNum(p.books)
-      || !(p.team === null || isStr(p.team, 80)) || !(p.sit === undefined || isShare(p.sit))) return no("bad pool player");
+      || !(p.team === null || isStr(p.team, 80)) || !(p.sit === undefined || isShare(p.sit))
+      || !(p.injury === undefined || isStr(p.injury, 20))) return no("bad pool player");
     if (!games.has(p.eventId)) return no(`${p.player} is not in a chosen game`);
     if (p.key !== playerKey(p.player)) return no(`${p.player}: key does not match the name`);
     if (keys.has(p.key)) return no(`${p.player} is in the pool twice`);
@@ -107,10 +119,11 @@ export function checkRunRequest(body: unknown): { ok: true; value: RunRequest } 
     ok: true,
     value: {
       date: b.date, eventIds: [...b.eventIds].sort(), fieldSize: b.fieldSize, entriesRequested: b.entriesRequested,
-      linesCapturedAt: b.linesCapturedAt ?? null, recalVersion: b.recalVersion, sitVersion: b.sitVersion ?? null, sims: b.sims,
+      linesCapturedAt: b.linesCapturedAt ?? null, recalVersion: b.recalVersion, sitVersion: b.sitVersion ?? null,
+      injuryReportAt: b.injuryReportAt ?? null, excluded: (b.excluded ?? []).map((x) => ({ player: x.player, line: x.line, status: x.status })), sims: b.sims,
       winningScore: { p25: w.p25, median: w.median, p75: w.p75 },
       pool: (b.pool as RunPoolPlayer[]).map((p) => ({ key: p.key, player: p.player, eventId: p.eventId, team: p.team, line: p.line, books: p.books,
-        ...(p.sit === undefined ? {} : { sit: p.sit }) })),
+        ...(p.sit === undefined ? {} : { sit: p.sit }), ...(p.injury === undefined ? {} : { injury: p.injury }) })),
       entries: (b.entries as RunEntry[]).map((e) => ({ rank: e.rank, players: [...e.players], lineSum: e.lineSum,
         standaloneShare: e.standaloneShare, marginalShare: e.marginalShare, portfolioShare: e.portfolioShare })),
       baseline: (b.baseline as RunEntry[]).map((e) => ({ rank: e.rank, players: [...e.players], lineSum: e.lineSum,
@@ -124,7 +137,8 @@ export function runPayload(request: RunRequest, games: RunGame[]): RunPayload {
   return {
     version: CONTEST_RUN_VERSION, gameDate: request.date, games: [...games].sort((a, b) => a.eventId.localeCompare(b.eventId)),
     fieldSize: request.fieldSize, entriesRequested: request.entriesRequested, linesCapturedAt: request.linesCapturedAt,
-    recalVersion: request.recalVersion, sitVersion: request.sitVersion, sims: request.sims, winningScore: request.winningScore,
+    recalVersion: request.recalVersion, sitVersion: request.sitVersion, injuryReportAt: request.injuryReportAt ?? null,
+    excluded: request.excluded ?? [], sims: request.sims, winningScore: request.winningScore,
     pool: request.pool, entries: request.entries, baseline: request.baseline,
   };
 }
