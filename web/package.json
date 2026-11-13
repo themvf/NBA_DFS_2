@@ -161,6 +161,7 @@
     "test:cfb-pattern-watch-access": "node --import tsx ./scripts/test-cfb-pattern-watch-access.ts",
     "test:nfl-ownership-prior": "node --import tsx ./scripts/test-nfl-ownership-prior.ts",
     "test:nfl-showdown-ownership-fit": "node --import tsx ./scripts/test-nfl-showdown-ownership-fit.ts",
+    "test:nfl-showdown-field-model": "node --import tsx ./scripts/test-nfl-showdown-field-model.ts",
     "test:nfl-classic-ownership-fit": "node --import tsx ./scripts/test-nfl-classic-ownership-fit.ts",
     "test:nba-boom-trios": "node --import tsx ./scripts/test-nba-boom-trios.ts",
     "test:nba-contest-trios": "node --import tsx ./scripts/test-nba-contest-trios.ts",

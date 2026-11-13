@@ -1,0 +1,69 @@
+/**
+ * Showdown field model (`nfl-ownership-field-showdown-v1`): the TypeScript port
+ * reproduces model/nfl_showdown_field_model.py on the shared fixture, the slot
+ * totals hold, and the rules around it (who is ownable, when the lines count as
+ * in, what a kicker and a defense are read from) behave as written.
+ */
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { crowdPoints, projectShowdownField, showdownHasLines, FIELD_KEEP_LINEUPS, FIELD_TOP_PLAYERS, NFL_OWNERSHIP_FIELD_SHOWDOWN_VERSION,
+  type ShowdownFieldPlayer } from "../src/lib/nfl-dfs/showdown-field-model";
+import model from "../src/data/nfl-showdown-field-model-v1.json";
+
+type Row = { position: string; team: string | null; salary: number; captain_salary: number | null; is_out: boolean; pts: number | null;
+  anchor: "full" | "td_only" | null; team_implied: number | null; opponent_implied: number | null; captain: number; flex: number };
+const fixture = JSON.parse(readFileSync(new URL("../../tests/fixtures/nfl_showdown_field_model_fixture.json", import.meta.url), "utf-8")) as { players: Row[] };
+const pool: ShowdownFieldPlayer[] = fixture.players.map((p, i) => ({ id: i, position: p.position, team: p.team, salary: p.salary, captainSalary: p.captain_salary,
+  isOut: p.is_out, pts: p.pts, anchor: p.anchor, teamImplied: p.team_implied, opponentImplied: p.opponent_implied }));
+
+assert.equal(model.version, NFL_OWNERSHIP_FIELD_SHOWDOWN_VERSION);
+const got = projectShowdownField(pool);
+assert.ok(got, "the fixture slate forms lineups");
+fixture.players.forEach((p, i) => {
+  const r = got.shares.get(i)!;
+  assert.ok(Math.abs(r.captain - p.captain) < 0.02, `captain #${i} ${p.position}: ${r.captain} vs ${p.captain}`);
+  assert.ok(Math.abs(r.flex - p.flex) < 0.02, `flex #${i} ${p.position}: ${r.flex} vs ${p.flex}`);
+});
+const values = [...got.shares.values()];
+const captain = values.reduce((t, v) => t + v.captain, 0), flex = values.reduce((t, v) => t + v.flex, 0);
+assert.ok(Math.abs(captain - 100) < 1e-6 && Math.abs(flex - 500) < 1e-6, `slot totals ${captain} / ${flex}`);
+assert.ok(values.every((v) => v.captain >= 0 && v.flex >= 0 && v.captain + v.flex <= 100 + 1e-9), "one seat per lineup");
+assert.ok(got.lined && got.keptPlayers === FIELD_TOP_PLAYERS && got.lineups === FIELD_KEEP_LINEUPS, `${got.keptPlayers} players, ${got.lineups} lineups`);
+assert.equal(values.filter((v) => v.captain + v.flex > 0).length, FIELD_TOP_PLAYERS);
+
+// Out players, players with no projection and players with no captain price draw nothing.
+fixture.players.forEach((p, i) => {
+  if (p.is_out || !((p.pts ?? 0) > 0) || !p.captain_salary) assert.deepEqual(got.shares.get(i), { captain: 0, flex: 0 }, `#${i} is not ownable`);
+});
+const star = pool.map((p, i) => ({ p, own: got.shares.get(i)! })).sort((a, b) => b.own.flex + b.own.captain - (a.own.flex + a.own.captain))[0];
+const without = projectShowdownField(pool.map((p) => (p.id === star.p.id ? { ...p, isOut: true } : p)))!;
+assert.deepEqual(without.shares.get(star.p.id), { captain: 0, flex: 0 });
+const again = [...without.shares.values()];
+assert.ok(Math.abs(again.reduce((t, v) => t + v.captain, 0) - 100) < 1e-6 && Math.abs(again.reduce((t, v) => t + v.flex, 0) - 500) < 1e-6, "his ownership goes to the others");
+
+// A kicker is read off his team's Vegas points, a defense off the opponent's; neither reads our projection.
+const kicker = pool.find((p) => p.position === "K" && !p.isOut)!, defense = pool.find((p) => p.position === "DST" && !p.isOut)!;
+assert.equal(crowdPoints({ ...kicker, pts: 1 }, true), crowdPoints({ ...kicker, pts: 20 }, true));
+assert.ok(crowdPoints({ ...kicker, teamImplied: 28 }, true) > crowdPoints({ ...kicker, teamImplied: 17 }, true));
+assert.ok(crowdPoints({ ...defense, opponentImplied: 28 }, true) < crowdPoints({ ...defense, opponentImplied: 17 }, true));
+assert.equal(crowdPoints({ ...kicker, teamImplied: null }, true), model.kicker.intercept + model.kicker.slope * 21);
+
+// A missing set of lines counts against a player only once the slate's lines are in.
+const skill: ShowdownFieldPlayer = { id: 900, position: "WR", team: "AAA", salary: 5000, captainSalary: 7500, isOut: false, pts: 10, anchor: "td_only", teamImplied: null, opponentImplied: null };
+assert.equal(crowdPoints(skill, true), 10 * model.fringe.td_only);
+assert.equal(crowdPoints({ ...skill, anchor: null }, true), 10 * model.fringe.none);
+assert.equal(crowdPoints({ ...skill, anchor: "full" }, true), 10);
+assert.equal(crowdPoints(skill, false), 10);
+assert.ok(showdownHasLines(pool));
+const unlined = pool.map((p) => ({ ...p, anchor: null }));
+assert.ok(!showdownHasLines(unlined));
+assert.ok(!showdownHasLines(pool.map((p, i) => (p.anchor === "full" && pool.slice(0, i).filter((x) => x.anchor === "full" && !x.isOut && (x.pts ?? 0) > 0).length >= 5 ? { ...p, anchor: null } : p))),
+  "five full sets are not enough");
+const early = projectShowdownField(unlined)!;
+assert.ok(!early.lined && Math.abs([...early.shares.values()].reduce((t, v) => t + v.flex, 0) - 500) < 1e-6);
+
+// A pool that cannot form a lineup returns null rather than a guess.
+assert.equal(projectShowdownField(pool.filter((p) => !p.isOut && (p.pts ?? 0) > 0).slice(0, 5)), null);
+assert.equal(projectShowdownField(pool.map((p) => ({ ...p, team: "ONE" }))), null);
+
+console.log(`NFL Showdown field model: matches the Python model on the fixture (${got.keptPlayers} players, ${got.lineups} lineups); totals and rules hold.`);

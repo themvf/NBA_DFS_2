@@ -88,6 +88,7 @@ import { searchTeamNews, type XNewsResult } from "@/lib/x-news";
 import { NFL_TRUSTED_ACCOUNTS, isXHandle } from "@/lib/x-news-accounts";
 import { NFL_TEAM_NICKNAMES } from "@/lib/nfl-dfs/x-news-teams";
 import { projectOwnershipPrior } from "@/lib/nfl-dfs/ownership-prior";
+import { NFL_OWNERSHIP_FIELD_SHOWDOWN_FITTED_AT, NFL_OWNERSHIP_FIELD_SHOWDOWN_VERSION, projectShowdownField, showdownHasLines, type ShowdownFieldPlayer } from "@/lib/nfl-dfs/showdown-field-model";
 import { NFL_OWNERSHIP_FIT_CLASSIC_FITTED_AT, NFL_OWNERSHIP_FIT_CLASSIC_VERSION, classicFitGameKey, projectClassicFit } from "@/lib/nfl-dfs/classic-ownership-fit";
 import { computeReplacementUpside, REPLACEMENT_UPSIDE_VERSION, type ReplacementUpside, type ReplacementUpsideReport, type UpsidePlayer } from "@/lib/nfl-dfs/replacement-upside";
 import { ABSENCE_COMMIT_VERSION, computeAbsenceCommits, type AbsenceCommit, type AbsenceCommitReport } from '@/lib/nfl-dfs/absence-commit';
@@ -181,8 +182,9 @@ export type NflWorkspacePlayer = NflOptimizerPlayer & {
   ownBand?: { low: number; high: number; prior: number; source: string; capturedAt: string } | null;
   /**
    * The SHADOW ownership (the v5 prior since 2026-10-31, when the fitted models
-   * went live): shown and saved with every build; nothing builds from it.
-   * Showdown also carries its captain/flex split.
+   * went live; on a Showdown slate whose live model is the lineup model, the
+   * fitted model it replaced): shown and saved with every build; nothing builds
+   * from it. Showdown also carries its captain/flex split.
    */
   shadowOwnPct?: number | null;
   shadowCaptainOwnPct?: number | null;
@@ -226,7 +228,9 @@ export type NflLiveDkStatus = {
 export type NflWorkspaceSlate = {
   situationTeams?: SituationTeam[];
   /** Classic and Showdown: which model is live and which runs as the shadow (see `shadowOwnPct`). */
-  ownershipShadow?: { version: string; liveVersion: string; liveFittedAt: string | null } | null;
+  ownershipShadow?: { version: string; liveVersion: string; liveFittedAt: string | null;
+    /** Showdown: why the lineup model (`nfl-ownership-field-showdown-v1`) is not the live model, when it is not. */
+    lineupModelOff?: 'lines_not_in' | 'no_lineup' } | null;
   injuryCoverage?: InjuryCoverage | null;
   liveDkStatus?: NflLiveDkStatus;
   uploadId: string;
@@ -1450,6 +1454,13 @@ async function attachRangeSplit(workspace: NflWorkspaceSlate, run: { season: num
  * after availability zeroing, so a ruled-out player draws nothing. Single Stat
  * slates keep their own prior and have no shadow. Still an estimate: the
  * optimizer applies it only through the user's opt-in.
+ *
+ * Showdown, from 2026-11-13 (owner's decision): once the books' player lines
+ * are in, our live number is the lineup model (`nfl-ownership-field-showdown-v1`,
+ * lib/nfl-dfs/showdown-field-model) and the per-player fitted model it replaces
+ * becomes the shadow. Before the lines are in, or if the pool cannot form a
+ * lineup, the fitted model stays live with v5 as its shadow, as before:
+ * `ownSource` on every player names the model that produced his number.
  */
 function attachOwnership(workspace: NflWorkspaceSlate): NflWorkspaceSlate {
   const inputs = workspace.players.map((p) => ({ dkPlayerId: p.dkPlayerId, position: p.position, salary: p.salary,
@@ -1460,6 +1471,7 @@ function attachOwnership(workspace: NflWorkspaceSlate): NflWorkspaceSlate {
     new Map<number, Own>(result.players.map((p) => [p.dkPlayerId, { ownPct: p.ownPct, captainPct: p.captainPct, flexPct: p.flexPct }]));
   let live: Map<number, Own>, liveVersion: string, liveFittedAt: string | null = null;
   let shadow: Map<number, Own> | null = null, shadowVersion: string | null = null;
+  let lineupModelOff: 'lines_not_in' | 'no_lineup' | undefined;
   if (workspace.format === 'classic') {
     const fit = projectClassicFit(workspace.players.map((p) => ({ id: p.dkPlayerId, position: p.position, salary: p.salary, team: p.team,
       proj: p.ourProj, dkAvg: p.avgFptsDk, dkStatus: p.dkStatus, gameKey: classicFitGameKey(p.gameInfo),
@@ -1470,9 +1482,24 @@ function attachOwnership(workspace: NflWorkspaceSlate): NflWorkspaceSlate {
     shadow = fromPrior(v5); shadowVersion = v5.version;
   } else if (workspace.format === 'showdown') {
     const fit = projectOwnershipPrior(inputs, 'showdown', options);
-    live = fromPrior(fit); liveVersion = fit.version;
-    const v5 = projectOwnershipPrior(inputs, 'showdown', { ...options, variant: 'v5' });
-    shadow = fromPrior(v5); shadowVersion = v5.version;
+    const vegasPoints = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+    const fieldInputs: ShowdownFieldPlayer[] = workspace.players.map((p) => ({ id: p.dkPlayerId, position: (p.position ?? '').toUpperCase(), team: p.team ?? null,
+      salary: p.salary, captainSalary: p.captainSalary ?? null, isOut: p.isOut, pts: p.ourProj, anchor: p.marketAnchor?.mode ?? null,
+      teamImplied: vegasPoints(p.specialTeams?.feature_snapshot?.team_implied_total),
+      opponentImplied: vegasPoints(p.specialTeams?.feature_snapshot?.opponent_implied_total) }));
+    const linesIn = showdownHasLines(fieldInputs);
+    const field = linesIn ? projectShowdownField(fieldInputs) : null;
+    if (!field) lineupModelOff = linesIn ? 'no_lineup' : 'lines_not_in';
+    if (field) {
+      const round = (v: number) => Math.round(v * 100) / 100;
+      live = new Map([...field.shares].map(([id, v]) => [id, { ownPct: round(v.captain + v.flex), captainPct: round(v.captain), flexPct: round(v.flex) }]));
+      liveVersion = NFL_OWNERSHIP_FIELD_SHOWDOWN_VERSION; liveFittedAt = NFL_OWNERSHIP_FIELD_SHOWDOWN_FITTED_AT;
+      shadow = fromPrior(fit); shadowVersion = fit.version;
+    } else {
+      live = fromPrior(fit); liveVersion = fit.version;
+      const v5 = projectOwnershipPrior(inputs, 'showdown', { ...options, variant: 'v5' });
+      shadow = fromPrior(v5); shadowVersion = v5.version;
+    }
   } else {
     const prior = projectOwnershipPrior(inputs, capFormatOf(workspace.format, workspace.games), options);
     live = fromPrior(prior); liveVersion = prior.version;
@@ -1483,7 +1510,7 @@ function attachOwnership(workspace: NflWorkspaceSlate): NflWorkspaceSlate {
     return { ...p, ourOwnPct: ours?.ownPct ?? null, captainOwnPct: ours?.captainPct ?? null, flexOwnPct: ours?.flexPct ?? null,
       ownPct: linestar ?? ours?.ownPct ?? null, ownSource: linestar != null ? "linestar" : ours ? liveVersion : null,
       shadowOwnPct: other?.ownPct ?? null, shadowCaptainOwnPct: other?.captainPct ?? null, shadowFlexOwnPct: other?.flexPct ?? null };
-  }), ownershipShadow: shadowVersion ? { version: shadowVersion, liveVersion, liveFittedAt } : null };
+  }), ownershipShadow: shadowVersion ? { version: shadowVersion, liveVersion, liveFittedAt, ...(lineupModelOff ? { lineupModelOff } : {}) } : null };
 }
 
 /**
@@ -2404,7 +2431,7 @@ function snapshotPlayer(player: NflWorkspacePlayer, slate: NflWorkspaceSlate, re
     ownership: {total:player.ownPct??null, flex:player.flexOwnPct??null, captain:player.captainOwnPct??null, source:player.ownSource??null, linestar:player.linestarOwnPct??null,
       // Our own model's numbers when an outside source (stat-api) replaced them, so the two can be graded against the field.
       ...(slate.outsideOwnership?.inUse?{model:{total:player.ourOwnPct??null,captain:player.modelCaptainOwnPct??null,flex:player.modelFlexOwnPct??null}}:{}),
-      // The shadow model (v5 since 2026-10-31): recorded for the Monday grade, never read by the build.
+      // The shadow model (v5 since 2026-10-31; the fitted Showdown model when the lineup model is live): recorded for the Monday grade, never read by the build.
       ...(slate.ownershipShadow?{shadow:player.shadowOwnPct??null,shadowCaptain:player.shadowCaptainOwnPct??null,shadowFlex:player.shadowFlexOwnPct??null,
         shadowVersion:slate.ownershipShadow.version,liveVersion:slate.ownershipShadow.liveVersion,liveFittedAt:slate.ownershipShadow.liveFittedAt}:{})},
     availability: player.availability, isOut: player.isOut,
