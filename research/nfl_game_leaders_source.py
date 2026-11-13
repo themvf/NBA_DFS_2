@@ -29,7 +29,7 @@ def enrich(snapshot, frames, sources):
             if int(r['season']) != season:
                 raise ValueError('Primary source season mismatch')
             indexed[key] = r
-    missing = []
+    missing, corrected = [], []
     for p in result['plays']:
         r = indexed.get((p['game_id'], int(p['play_id'])))
         if not r:
@@ -37,9 +37,15 @@ def enrich(snapshot, frames, sources):
             continue
         if any(canonical(r[k]) != canonical(p[k]) for k in ('home_team', 'away_team')) or int(r['week']) != int(p['week']):
             raise ValueError('Primary source canonical game mismatch')
+        # nflverse rewords plays after we freeze them (2026_09_LA_WAS: a catch and two
+        # fumbles). Refusing the credit then made the game fail to reconcile and kept
+        # both teams off the page for six weeks. The frozen description and actors stay
+        # as captured; the correction is recorded, not hidden, and is still held to the
+        # model's checks: credit captured before the decision, the same credited player
+        # as the frozen actor, and the parsed game equal to the box score.
         if (r.get('desc') or '').strip() != (p.get('description') or '').strip():
-            missing.append([p['game_id'], p['play_id'], 'description_changed'])
-            continue  # A later correction must not silently change the frozen event.
+            corrected.append([p['game_id'], p['play_id'], 'description_changed'])
+            p['stat_credit_description'] = r.get('desc')
         credit = {k: r.get(k) for k in stat_fields}
         if credit.get('no_play') is None:
             credit['no_play'] = int(r.get('play_type') == 'no_play')
@@ -55,6 +61,7 @@ def enrich(snapshot, frames, sources):
         p['stat_credit_captured_at'] = source['captured_at']
     result['player_stat_sources'] = sources
     result['player_stat_credit_missing'] = missing
+    result['player_stat_credit_corrected'] = corrected
     return result
 
 

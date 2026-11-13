@@ -168,6 +168,25 @@ def test_primary_capture_canonical_identity_and_duplicate_checks():
         enrich(s, {2025: pd.DataFrame([raw])}, sources)
 
 
+def test_reworded_source_play_keeps_its_credit_and_records_the_correction():
+    """nflverse rewords plays after we freeze them; the credit is kept, the frozen text is not changed."""
+    import pandas as pd
+    from research.nfl_game_leaders_source import enrich
+    s = fixture(); p = s['plays'][0]
+    raw = {'game_id': p['game_id'], 'play_id': p['play_id'], 'season': 2025, 'week': 1,
+           'home_team': 'B', 'away_team': 'A', 'desc': p['description'] + ' (corrected)', 'play_type': 'run',
+           'rusher_player_id': p['actors'][0]['player_id'], 'rusher_player_name': 'A0', 'rushing_yards': -1,
+           'rush_attempt': 1, 'pass_attempt': 0}
+    sources = [{'season': 2025, 'captured_at': '2025-10-01T00:00:00Z'}]
+    output = enrich(s, {2025: pd.DataFrame([raw])}, sources)
+    play = output['plays'][0]
+    assert play['stat_credit']['rushing_yards'] == -1
+    assert play['description'] == p['description']
+    assert play['stat_credit_description'] == raw['desc']
+    assert output['player_stat_credit_corrected'] == [[p['game_id'], p['play_id'], 'description_changed']]
+    assert [m for m in output['player_stat_credit_missing'] if len(m) > 2] == []
+
+
 def test_temporal_boundary_and_mismatch_quarantine():
     s=fixture()
     s['plays'][0]['labelled_at']='2025-10-04T00:00:00Z'

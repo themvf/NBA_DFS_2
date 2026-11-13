@@ -133,3 +133,18 @@ was computed and the one look is unspent. Fixed: the search is recursive and
 orders captures by their own `created_at`, and each path is added separately.
 Re-run on 2026-11-13 against the committed captures: 28 games graded (weeks 8
 and 9), 16 affected team-games over 2 game weeks; CAR at GB stays excluded.
+
+## Amendment 3 (2026-11-13): two week-10 games were missing from the page
+
+The study shadows only games on the published Game Leaders page. Week 10
+skipped WSH @ NYG and LAR @ ARI: nflverse reworded two plays of the week-9
+LAR @ WSH game after our capture, our stat-credit join refused credit for a
+reworded play, and one of them (a catch with two fumbles) left the game a yard
+off the box score. The model then refuses yardage forecasts for both teams
+while that game is in their last six, which would have kept them out through
+week 15. `research/nfl_game_leaders_source.py` now keeps the credit for a
+reworded play (still held to capture-before-decision, the same credited
+player, and a box-score match), and a capture taken under the old rule is
+retaken. WSH @ NYG had already kicked off and stays missing; LAR @ ARI is
+shadowed from the next run. Neither file is pinned and nothing in the
+registered estimator, fit, floors or verdict changes.
