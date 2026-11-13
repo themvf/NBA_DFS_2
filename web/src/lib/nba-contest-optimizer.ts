@@ -8,7 +8,9 @@
 // stream and this one differ, so an all-games custom run can differ slightly from the
 // frozen entries by simulation noise. Custom runs are never graded; the frozen
 // all-games entries are the tracked record. Since 2026-11-06 custom runs also thin each
-// player's top end (nba-points-sim-recal-v1); the frozen entries do not.
+// player's top end (nba-points-sim-recal-v1); the frozen entries do not. Since 2026-11-12 they
+// also set each player's sitting chance by how long before his own tip the lines were read
+// (nba-points-sit-lead-v1): the owner's contest locks at the first tip, hours before the late games.
 
 export const WTA = {
   POOL_SIZE: 20,
@@ -27,9 +29,14 @@ export const WTA = {
   // nba-points-sim-recal-v1: thins each player's top end (research/nba_wta_trios.py RECAL_G).
   RECAL_KNOTS: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99, 1.0],
   RECAL_G: [0.0, 0.0964, 0.2309, 0.3347, 0.4317, 0.5254, 0.6276, 0.7368, 0.8379, 0.9306, 0.9762, 0.9974, 1.0],
+  // nba-points-sit-lead-v1: sitting chance by books at the line and hours from the capture to the
+  // player's own tip (under 1.5 h, 1.5 to 6 h, 6 h or more). research/nba_wta_trios.py SIT_BY_BOOKS_LEAD.
+  SIT_LEAD_HOURS: [1.5, 6.0],
+  SIT_BY_BOOKS_LEAD: [[1, [0.29, 0.29, 0.29]], [3, [0.01, 0.024, 0.045]], [1e6, [0.002, 0.021, 0.039]]] as [number, number[]][],
 } as const;
 
 export const RECAL_VERSION = "nba-points-sim-recal-v1";
+export const SIT_VERSION = "nba-points-sit-lead-v1";
 
 export type ContestPlayer = {
   key: string;
@@ -41,6 +48,8 @@ export type ContestPlayer = {
   books: number;
   /** S(x) = P(points > x) points from the books' ladder; empty when none. */
   curve: { point: number; p: number }[];
+  /** Hours from the capture of his game's lines to his own tip; absent means the book-count rate. */
+  leadHours?: number | null;
 };
 
 export type OptimizerEntry = {
@@ -62,11 +71,25 @@ export type OptimizerResult = {
   winningScore: { p25: number; median: number; p75: number };
   sims: number;
   fieldSize: number;
+  /** Each pool player's sitting chance as simulated, in pool order. */
+  sit: number[];
+  /** SIT_VERSION when the lead-time rates were used, null for the book-count rates. */
+  sitVersion: string | null;
+  /** Share of the modeled field holding each pool player, in pool order (the field is a stated guess). */
+  fieldOwnership: number[];
 };
 
 export function dnpProb(books: number): number {
   for (const [upper, p] of WTA.DNP_BY_BOOKS) if (books <= upper) return p;
   return WTA.DNP_BY_BOOKS[WTA.DNP_BY_BOOKS.length - 1][1];
+}
+
+/** Sitting chance by books at the line and hours from the capture to the player's own tip (SIT_VERSION). Mirrors sit_prob. */
+export function sitProb(books: number, leadHours: number | null | undefined): number {
+  if (leadHours == null || !Number.isFinite(leadHours)) return dnpProb(books);
+  const band = WTA.SIT_LEAD_HOURS.filter((upper) => leadHours >= upper).length;
+  for (const [upper, rates] of WTA.SIT_BY_BOOKS_LEAD) if (books <= upper) return rates[band];
+  return WTA.SIT_BY_BOOKS_LEAD[WTA.SIT_BY_BOOKS_LEAD.length - 1][1][band];
 }
 
 /** (survival levels ascending, points) for inverse sampling; null when unusable. Mirrors survival_knots. */
@@ -211,11 +234,12 @@ export function recalibrateSurvival(u: number): number {
 /**
  * sims x players whole points, row-major (sim * n + player). A player who sits scores 0.
  * `recal` thins each player's top end (RECAL_VERSION); the registered v1 entries never use it.
+ * `sitting` gives each player's sitting chance (SIT_VERSION); without it the book-count rate applies.
  */
-export function simulatePoints(pool: ContestPlayer[], sims: number, r: () => number, recal = false): Float64Array {
+export function simulatePoints(pool: ContestPlayer[], sims: number, r: () => number, recal = false, sitting?: number[]): Float64Array {
   const n = pool.length, l = cholesky(correlationMatrix(pool));
   const knots = pool.map((p) => survivalKnots(p.curve));
-  const sit = pool.map((p) => dnpProb(p.books));
+  const sit = sitting ?? pool.map((p) => dnpProb(p.books));
   const out = new Float64Array(sims * n), e = new Float64Array(n);
   for (let s = 0; s < sims; s++) {
     for (let j = 0; j < n; j++) e[j] = normal(r);
@@ -271,6 +295,23 @@ export function fieldMax(points: Float64Array, sims: number, lines: number[], r:
     }
   }
   return { best, count };
+}
+
+/**
+ * Share of the modeled field holding each player: the chalk block plus the line-weighted picks,
+ * by sampling. Mirrors the ownership shown with the frozen entries (select in the Python).
+ */
+export function fieldOwnership(lines: number[], r: () => number, draws = 4000,
+  chalkShare: number = WTA.CHALK_SHARE, tau: number = WTA.POPULARITY_TAU): number[] {
+  const n = lines.length, held = new Array<number>(n).fill(0), g = new Float64Array(n);
+  const order = Array.from({ length: n }, (_, i) => i);
+  for (let d = 0; d < draws; d++) {
+    for (let i = 0; i < n; i++) g[i] = lines[i] / tau + gumbel(r);
+    for (const i of [...order].sort((a, b) => g[b] - g[a]).slice(0, 3)) held[i] += 1;
+  }
+  const out = held.map((v) => (v / draws) * (1 - chalkShare));
+  for (const [, i] of lines.map((v, i) => [v, i] as const).sort((a, b) => b[0] - a[0] || a[1] - b[1]).slice(0, 3)) out[i] += chalkShare;
+  return out;
 }
 
 /** Candidate-major totals: totals[k * sims + s]. */
@@ -376,14 +417,19 @@ export function seedOf(text: string): number {
  * Custom contest runs use the corrected simulation by default (`recal`); the frozen tracked
  * entries keep the registered v1 rules, so an all-games run can differ from them.
  */
-export function optimizeContest(players: ContestPlayer[], opts: { fieldSize?: number; entries?: number; sims?: number; recal?: boolean } = {}): OptimizerResult {
+export function optimizeContest(players: ContestPlayer[],
+  opts: { fieldSize?: number; entries?: number; sims?: number; recal?: boolean; leadSit?: boolean } = {}): OptimizerResult {
   const pool = contestPool(players);
   if (pool.length < 3) throw new Error("Pick games with at least three quoted players.");
   const sims = opts.sims ?? WTA.SIMS, fieldSize = opts.fieldSize ?? WTA.FIELD_SIZE;
   const trios = candidateTrios(pool.length);
   const nEntries = Math.min(opts.entries ?? WTA.N_ENTRIES, trios.length);
   const r = rng(seedOf(`${pool.map((p) => `${p.key}:${p.line}`).join("|")}|${fieldSize}`));
-  const points = simulatePoints(pool, sims, r, opts.recal ?? true);
+  // The lead-time rates apply only when every pool player has a lead time; a mixed pool would
+  // compare two different measurements.
+  const leadSit = (opts.leadSit ?? true) && pool.every((p) => p.leadHours != null && Number.isFinite(p.leadHours));
+  const sit = pool.map((p) => (leadSit ? sitProb(p.books, p.leadHours) : dnpProb(p.books)));
+  const points = simulatePoints(pool, sims, r, opts.recal ?? true, sit);
   const n = pool.length;
   const totals = trioTotals(points, sims, n, trios);
   const { best, count } = fieldMax(points, sims, pool.map((p) => p.line), r, fieldSize);
@@ -400,7 +446,9 @@ export function optimizeContest(players: ContestPlayer[], opts: { fieldSize?: nu
     };
   };
   return {
-    pool, sims, fieldSize,
+    pool, sims, fieldSize, sit, sitVersion: leadSit ? SIT_VERSION : null,
+    // Its own stream, so showing it does not change which entries are picked.
+    fieldOwnership: fieldOwnership(pool.map((p) => p.line), rng(seedOf(`own|${pool.map((p) => p.line).join("|")}`))),
     entries: picks.map((p, i) => entry(i + 1, p)),
     baseline: base.map((p, i) => entry(i + 1, p)),
     winningScore: { p25: percentile(best, 25), median: percentile(best, 50), p75: percentile(best, 75) },

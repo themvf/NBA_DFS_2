@@ -338,6 +338,15 @@ distinct run; teams and tip times from the stored lines, "before the first tip" 
 and marked). "Your saved runs" on the page scores them from the final box scores (did not play = 0, unfinished game =
 unknown). The contest's results export (every entry in the field) is the next step: it identifies the entered run and
 measures the field the entries are built against. All four NBA pages stay in the menu (owner's call).
+**Lead-time sitting rates (`nba-points-sit-lead-v1`, 2026-11-12):** the contest locks at the first tip, so lines are read hours
+before the late games, and a quoted player then sits far more often than `DNP_BY_BOOKS` says (four or more books: 0.2% when read
+inside 90 minutes of his own tip, 2.1% from 90 minutes to 6 hours, 3.9% beyond; 10,720 player-captures, `python -m
+research.nba_sit_lead`). Custom runs use `sit_prob` / `sitProb` from each player's own lead time (fixture-pinned), record the rule
+in the saved run, tag a player at 1.5%+ and warn when lines are over an hour old; the frozen v1 entries do not. The owner reports
+that almost every entry has the biggest-line player and that picks can change until the lock, so the field guess stays the
+default: a 22-night replay at the lock put today's build at 7.8 expected prizes per 100 nights against a pile-on field and 4.6
+against a spread one (the baseline 1.7 and 9.2). The page shows the share of the modeled field on the three biggest lines so he
+can check it against his contest. See "The lock replay" in the doc.
 **Top-end correction and game leaders (`nba-points-sim-recal-v1`, 2026-11-06):** the books' curves overstate each
 player's big nights (line+10 stated 10.5%, happened 6.3%; line+15 4.6% vs 1.9%, 1,688 player-games), which gave
 low-line players too much chance to lead. `RECAL_G` (realized PIT CDF, shrunk with 200 pseudo-rows) maps each draw's

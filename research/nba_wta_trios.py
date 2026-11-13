@@ -84,6 +84,16 @@ TAIL_FLOOR = 0.0005         # survival level where the extended tail stops
 RECAL_VERSION = "nba-points-sim-recal-v1"
 RECAL_KNOTS = (0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99, 1.0)
 RECAL_G = (0.0, 0.0964, 0.2309, 0.3347, 0.4317, 0.5254, 0.6276, 0.7368, 0.8379, 0.9306, 0.9762, 0.9974, 1.0)
+# nba-points-sit-lead-v1 (2026-11-12, opt-in; the frozen v1 entries never use it). DNP_BY_BOOKS
+# was measured from each game's LAST capture before its own tip. The owner's contest locks at
+# the night's first tip, so the lines he builds from are hours ahead of the later games, and a
+# player quoted then sits far more often. Every pre-tip capture Oct 20 - Nov 11 (10,720
+# player-captures, 22 nights), by books at the line and hours from the capture to the player's
+# own tip: research/nba_sit_lead.py prints the table these come from.
+SIT_VERSION = "nba-points-sit-lead-v1"
+SIT_LEAD_HOURS = (1.5, 6.0)   # under 1.5 h, 1.5 to 6 h, 6 h or more
+# 1 book 49/171 (too few to split); 2-3 books 4/404, 5/209, 10/223; 4+ books 8/3,999, 76/3,603, 82/2,111.
+SIT_BY_BOOKS_LEAD = ((1, (0.29, 0.29, 0.29)), (3, (0.010, 0.024, 0.045)), (10**6, (0.002, 0.021, 0.039)))
 CONTENTION_TOP = 0.01       # grade: a best entry in the top 1% of the night's pool trios is "in contention"
 REVIEW_AFTER_NIGHTS = 30
 
@@ -188,10 +198,13 @@ def recalibrate_survival(u: np.ndarray) -> np.ndarray:
     return 1.0 - np.interp(1.0 - np.asarray(u, dtype=float), RECAL_G, RECAL_KNOTS)
 
 
-def simulate_points(pool: list[PoolPlayer], sims: int, rng: np.random.Generator, recal: bool = False) -> np.ndarray:
+def simulate_points(pool: list[PoolPlayer], sims: int, rng: np.random.Generator, recal: bool = False,
+                    sit: list[float] | None = None) -> np.ndarray:
     """(sims x players) whole points. A player who sits scores 0.
 
     ``recal`` thins each player's top end (``RECAL_VERSION``); the registered v1 entries use False.
+    ``sit`` gives each player's sitting chance (``SIT_VERSION``); the registered v1 entries leave it
+    out and use the book-count rate.
     """
     n = len(pool)
     z = rng.standard_normal((sims, n)) @ np.linalg.cholesky(correlation_matrix(pool)).T
@@ -209,7 +222,7 @@ def simulate_points(pool: list[PoolPlayer], sims: int, rng: np.random.Generator,
         else:
             s_arr, x_arr = knots
             out[:, i] = np.interp(np.clip(u[:, i], s_arr[0], s_arr[-1]), s_arr, x_arr)
-        sat = rng.random(sims) < p.dnp_prob
+        sat = rng.random(sims) < (p.dnp_prob if sit is None else sit[i])
         out[sat, i] = 0.0
     return np.rint(np.maximum(out, 0.0))
 
@@ -490,6 +503,9 @@ def fixture_payload() -> dict[str, Any]:
                   "out": [float(v) for v in recalibrate_survival(np.array([0.0, 0.001, 0.01, 0.05, 0.2, 0.5, 0.77, 0.999, 1.0]))]},
         "knots": knots,
         "dnp": {str(b): _dnp(b) for b in (1, 2, 3, 4, 6)},
+        "sit": {"version": SIT_VERSION, "leadHours": list(SIT_LEAD_HOURS),
+                "byBooksLead": [[upper, list(rates)] for upper, rates in SIT_BY_BOOKS_LEAD],
+                "cases": [[b, h, sit_prob(b, h)] for b in (1, 2, 3, 4, 6) for h in (None, 0.0, 1.49, 1.5, 3.0, 5.99, 6.0, 11.0)]},
         "correlation": {"spec": [list(x) for x in spec], "matrix": correlation_matrix(pool).tolist()},
         "trios": [list(t) for t in trios],
         "baselineOrder": {"lines": [p.line for p in pool], "pOver": [p.p_over for p in pool],
@@ -505,6 +521,18 @@ def _dnp(books: int) -> float:
         if books <= upper:
             return p
     return DNP_BY_BOOKS[-1][1]
+
+
+def sit_prob(books: int, lead_hours: float | None) -> float:
+    """Chance a quoted player does not play (``SIT_VERSION``): by books at his line and the hours from
+    the capture to his own tip. With no lead time it is the registered ``DNP_BY_BOOKS`` rate."""
+    if lead_hours is None or not math.isfinite(lead_hours):
+        return _dnp(books)
+    band = sum(1 for upper in SIT_LEAD_HOURS if lead_hours >= upper)
+    for upper, rates in SIT_BY_BOOKS_LEAD:
+        if books <= upper:
+            return rates[band]
+    return SIT_BY_BOOKS_LEAD[-1][1][band]
 
 
 # ------------------------------------------------------------------ database
