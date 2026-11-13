@@ -317,3 +317,22 @@ def test_shadow_skips_weeks_outside_the_confirmation_window(tmp_path):
     fit = tmp_path / 'fit.json'
     fit.write_text(json.dumps({'chosen': {'carries': {'K': 1., 'h': 'inf'}, 'targets': {'K': 1., 'h': 'inf'}}}))
     assert 'outside the confirmation window' in rr.shadow(page, fit)
+
+
+def test_grade_glob_reaches_the_weekly_auto_captures(tmp_path):
+    import glob
+    from research.nfl_game_leaders_regime_roles import CAPTURES_GLOB
+    for rel in ('auto/2026-w09-x/capture.json.gz', 'week6-x/capture.json.gz'):
+        target = tmp_path / 'artifacts' / 'nfl-game-leaders' / rel
+        target.parent.mkdir(parents=True)
+        target.write_bytes(b'')
+    found = glob.glob(str(tmp_path / CAPTURES_GLOB), recursive=True)
+    assert len(found) == 2
+
+
+def test_grade_orders_captures_by_their_own_clock_not_file_time():
+    from research.nfl_game_leaders_regime_roles import newest_first
+    paths, captures = newest_first(['a', 'b', 'c'], [{'created_at': '2026-10-28T14:00:00+00:00'},
+                                                     {'captured_at': '2026-11-11T14:00:00+00:00'},
+                                                     {'created_at': '2026-11-04T14:00:00+00:00'}])
+    assert paths == ['b', 'c', 'a']

@@ -121,3 +121,15 @@ The grade now runs from `refresh_nfl_game_leaders.yml` on the Wednesday build,
 the first run of each week, which takes a new capture containing the previous
 week's completed games. Each grade run and the one-time verdict are committed
 with the publication so the one-look rule survives between runs.
+
+## Amendment 2 (2026-11-13): the first grades read no finished games
+
+The Wednesday grades of 2026-11-04 and 2026-11-11 graded 0 games. The capture
+search looked one folder too shallow and found only the week-6 capture, so every
+shadowed game read as pending; and the workflow's `git add` listed the missing
+`verdict.json` beside `grade-runs`, so git added neither and the grade runs were
+never committed. Both runs were blinded (floors unmet), so no effect estimate
+was computed and the one look is unspent. Fixed: the search is recursive and
+orders captures by their own `created_at`, and each path is added separately.
+Re-run on 2026-11-13 against the committed captures: 28 games graded (weeks 8
+and 9), 16 affected team-games over 2 game weeks; CAR at GB stays excluded.

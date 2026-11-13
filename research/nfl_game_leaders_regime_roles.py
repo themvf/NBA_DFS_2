@@ -811,15 +811,28 @@ def verdict(rows):
             'passes': bool(passed), 'family': 'two questions, one confirmation look'}
 
 
-def grade(season=CONFIRMATION['season'], captures_glob='artifacts/nfl-game-leaders/*/capture.json.gz', now=None, log=print):
+CAPTURES_GLOB = 'artifacts/nfl-game-leaders/**/capture.json.gz'
+
+
+def newest_first(paths, captures):
+    """Pair each capture with its path, newest first by the capture's own clock.
+
+    File mtimes are the checkout time on a CI runner, so they cannot order captures."""
+    stamp = lambda c: c.get('created_at') or c.get('captured_at') or ''
+    pairs = sorted(zip(paths, captures), key=lambda pc: stamp(pc[1]), reverse=True)
+    return [p for p, _ in pairs], [c for _, c in pairs]
+
+
+def grade(season=CONFIRMATION['season'], captures_glob=CAPTURES_GLOB, now=None, log=print):
     """Grade shadowed weeks. Blinded to the effect until both floors are met; the verdict is written once."""
     from model.nfl_game_leaders import concentration
     from research.nfl_game_leaders import read
     now = now or datetime.now(timezone.utc)
     import glob as globbing
     shadows = [json.loads(p.read_text()) for p in sorted(SHADOW_DIR.glob(f'{season}-w*.json'))]
-    paths = sorted((Path(p) for p in globbing.glob(captures_glob)), key=lambda p: p.stat().st_mtime, reverse=True)
-    captures = [read(p) for p in paths]
+    # The weekly captures live one folder deeper (auto/<week-stamp>/), hence the recursive glob.
+    paths = [Path(p) for p in globbing.glob(captures_glob, recursive=True)]
+    paths, captures = newest_first(paths, [read(p) for p in paths])
     concentrations = {a: concentration([], a) for a in ACTIONS}
     rows, pending, excluded = grade_rows(shadows, captures, concentrations)
     floors = floors_met(rows)
