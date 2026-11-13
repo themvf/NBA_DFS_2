@@ -121,3 +121,9 @@ jobs:
           done
           echo "::error::Push to main failed after three attempts"
           exit 1
+      # Last, after the good games are published and committed: an upcoming game
+      # left off for a data error (anything but "started before any forecast")
+      # turns the run red, so /health and the daily failure sweep report it.
+      # Week 10's Rams at Arizona was left off by a green run nobody read.
+      - name: Fail when an upcoming game was left off for a data error
+        run: python -m research.nfl_game_leaders_auto --check

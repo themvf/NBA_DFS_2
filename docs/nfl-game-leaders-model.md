@@ -115,6 +115,15 @@ frozen, keeps the previous forecast for a game whose new one fails a gate, and l
 every such game in the page's `skipped`. It commits the page file and the week's
 capture/requests to main; the manual commands below remain for one-off reruns.
 
+**Missing games fail the run (2026-11-13).** Each `skipped` entry carries a `kind`:
+`expected` only for a game that started before any forecast was saved, `data_error`
+for every other reason (including reasons nobody has seen yet). The workflow's last
+step, `python -m research.nfl_game_leaders_auto --check`, exits 1 for any data error on
+a game still to kick off, after the good games are committed, so the run goes red and
+/health and the daily failure sweep report it. The page lists every skipped game under
+"Games without a fresh forecast". Before this, week 10's Rams at Arizona was left off
+by a green run whose only record was a line in its log.
+
 Outputs use exclusive creation. Preserve the previous page snapshot before
 refreshing it; never overwrite frozen requests, forecasts or evaluation reports.
 Single-game commands are `evidence-request --game ID`, `forecast --request PATH
