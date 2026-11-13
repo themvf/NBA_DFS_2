@@ -81,3 +81,34 @@ Sample-size thresholds should be set from a pre-registered power analysis once e
 The first deployment keeps the legacy `(sport, matchup_id, alert_type, side)` uniqueness constraint alongside the new dedupe-key index. Consequently V1 records the first breach per game/type/side. This avoids mixed-version deployment failures. Remove the legacy constraint only in a later migration after all writers use `dedupe_key`; raw captures retain every underlying market observation throughout the overlap.
 
 Any model trained from this ledger must use time-ordered splits, fit transformations only on training periods, and preserve the untouched test period. Features must be values known at signal time; closing lines and final scores are labels and may never enter the feature set.
+
+## Ideas checked and closed (2026-11-13)
+
+Two candidates from a literature/web search were checked before registration and
+closed. Neither is a registered study; record them so they are not redone.
+
+**DraftKings price vs Pinnacle fair on the same spread/total line.** The
+moneyline version already runs (`dk_value`, `pinnacle_divergence` in
+`model/line_alerts.py`); spreads and totals had no equivalent. Rule tried:
+first capture at least 2 hours before kickoff where DraftKings and Pinnacle
+quote the same line and DraftKings' price beats Pinnacle's proportionally
+de-vigged fair price by 3% or more. Checked on alert *rates* only (no
+outcomes), all 685 CFB games from 2026-09-01 to 2026-11-13: DraftKings' price
+was at least Pinnacle-fair in only 20 game-markets and cleared 3% in one.
+DraftKings expresses disagreement by moving the line half a point or a point
+(thousands of captures), not by pricing the same line generously, so a
+same-line detector cannot reach a sample. The version that would fire, "DK's
+line is a point better than Pinnacle's", is line shopping: its CLV against
+Pinnacle is positive by construction, and whether the point beats the vig
+needs thousands of settled bets. Treat it as an execution habit, not a study.
+
+**Underdog implied-score bias (Arscott 2023).** Claim: when the spread and
+total imply an underdog scores under ~14, the market misprices it because a
+score cannot go below zero. Checked on 3,171 FBS-vs-FBS games, 2022-2025,
+canonical closing lines from `cfb_historical_game_lines` and final scores.
+Underdog actual minus implied (95% CI): implied under 10, +0.2 [-1.1, +1.6],
+n=101; 10-14, +0.9 [-0.3, +2.0], n=226; 14-17.5, +0.7 [-0.2, +1.6]; every
+bucket includes zero. Underdog cover 46.5-53.0% and over 46.4-53.0% by bucket,
+none above the 52.4% needed at -110, and the low-implied buckets disagree by
+season. No bias, no Stage B. Caveat: the historical lines cover FBS-vs-FBS
+only; an effect concentrated in FBS-vs-FCS blowouts is untested.
