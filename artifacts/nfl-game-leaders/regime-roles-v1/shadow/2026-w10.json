@@ -16,8 +16,8 @@
     "away_score": null,
     "source_captured_at": "2026-11-11 13:37:49.537034+00:00"
    },
-   "decision_at": "2026-11-12T22:38:04.131747+00:00",
-   "shadow_at": "2026-11-12T22:40:40.910338+00:00",
+   "decision_at": "2026-11-13T00:23:17.201604+00:00",
+   "shadow_at": "2026-11-13T00:26:27.854782+00:00",
    "pregame": true,
    "estimator": "nfl-game-leaders-roles-v3",
    "fit": {
@@ -2698,7 +2698,7 @@
    },
    "sources": {
     "snapshot": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/capture.json.gz",
-    "requests": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/requests-20261112T223751Z.json"
+    "requests": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/requests-20261113T002258Z.json"
    }
   },
   "2026_10_BUF_NYJ": {
@@ -2714,8 +2714,8 @@
     "away_score": null,
     "source_captured_at": "2026-11-11 13:37:49.537034+00:00"
    },
-   "decision_at": "2026-11-12T22:38:12.045530+00:00",
-   "shadow_at": "2026-11-12T22:40:40.910338+00:00",
+   "decision_at": "2026-11-13T00:23:32.846722+00:00",
+   "shadow_at": "2026-11-13T00:26:27.854782+00:00",
    "pregame": true,
    "estimator": "nfl-game-leaders-roles-v3",
    "fit": {
@@ -5620,7 +5620,7 @@
    },
    "sources": {
     "snapshot": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/capture.json.gz",
-    "requests": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/requests-20261112T223751Z.json"
+    "requests": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/requests-20261113T002258Z.json"
    }
   },
   "2026_10_CAR_NO": {
@@ -5636,8 +5636,8 @@
     "away_score": null,
     "source_captured_at": "2026-11-11 13:37:49.537034+00:00"
    },
-   "decision_at": "2026-11-12T22:38:10.235143+00:00",
-   "shadow_at": "2026-11-12T22:40:40.910338+00:00",
+   "decision_at": "2026-11-13T00:23:28.757836+00:00",
+   "shadow_at": "2026-11-13T00:26:27.854782+00:00",
    "pregame": true,
    "estimator": "nfl-game-leaders-roles-v3",
    "fit": {
@@ -8456,7 +8456,7 @@
    },
    "sources": {
     "snapshot": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/capture.json.gz",
-    "requests": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/requests-20261112T223751Z.json"
+    "requests": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/requests-20261113T002258Z.json"
    }
   },
   "2026_10_HOU_CLE": {
@@ -8472,8 +8472,8 @@
     "away_score": null,
     "source_captured_at": "2026-11-11 13:37:49.537034+00:00"
    },
-   "decision_at": "2026-11-12T22:38:13.849358+00:00",
-   "shadow_at": "2026-11-12T22:40:40.910338+00:00",
+   "decision_at": "2026-11-13T00:23:36.808470+00:00",
+   "shadow_at": "2026-11-13T00:26:27.854782+00:00",
    "pregame": true,
    "estimator": "nfl-game-leaders-roles-v3",
    "fit": {
@@ -8523,6 +8523,7 @@
       "00-0036554",
       "00-0036556",
       "00-0036898",
+      "00-0038519",
       "00-0038608",
       "00-0038618",
       "00-0038622",
@@ -8553,6 +8554,7 @@
        "00-0036554": 0.004148251115887411,
        "00-0036556": 0.0,
        "00-0036898": 0.04297067299417004,
+       "00-0038519": 0.0,
        "00-0038608": 0.0,
        "00-0038618": 0.01281795643292004,
        "00-0038705": 0.08984777080599192,
@@ -8587,6 +8589,7 @@
        "00-0036554": 0.1530331109889255,
        "00-0036556": 0.018852601982293778,
        "00-0036898": 0.0,
+       "00-0038519": 0.0,
        "00-0038608": 0.0835381878654191,
        "00-0038618": 0.11248438638096264,
        "00-0038705": 0.038806979405111214,
@@ -8623,6 +8626,7 @@
        "00-0036554": 0.003026926662195057,
        "00-0036556": 0.0,
        "00-0036898": 0.042572918868494215,
+       "00-0038519": 0.0,
        "00-0038608": 0.0,
        "00-0038618": 0.008380491953335869,
        "00-0038705": 0.08976414905956975,
@@ -8657,6 +8661,7 @@
        "00-0036554": 0.1374409197211889,
        "00-0036556": 0.016074342743186802,
        "00-0036898": 0.0,
+       "00-0038519": 0.0,
        "00-0038608": 0.08952578474899694,
        "00-0038618": 0.10850614644054526,
        "00-0038705": 0.038385791204684744,
@@ -9017,6 +9022,11 @@
        0.0
       ],
       [
+       "00-0038519",
+       false,
+       0.0
+      ],
+      [
        "00-0038608",
        false,
        0.0
@@ -9339,6 +9349,11 @@
        0.0
       ],
       [
+       "00-0038519",
+       false,
+       0.0
+      ],
+      [
        "00-0039163",
        false,
        0.0
@@ -9637,6 +9652,11 @@
       ],
       [
        "00-0036898",
+       false,
+       0.0
+      ],
+      [
+       "00-0038519",
        false,
        0.0
       ],
@@ -9958,6 +9978,11 @@
        0.000626262618102835
       ],
       [
+       "00-0038519",
+       false,
+       0.0
+      ],
+      [
        "00-0039650",
        false,
        0.0
@@ -10218,6 +10243,11 @@
       ],
       [
        "00-0036556",
+       false,
+       0.0
+      ],
+      [
+       "00-0038519",
        false,
        0.0
       ],
@@ -10549,6 +10579,11 @@
        0.0
       ],
       [
+       "00-0038519",
+       false,
+       0.0
+      ],
+      [
        "00-0039163",
        false,
        0.0
@@ -10842,6 +10877,11 @@
       ],
       [
        "00-0036898",
+       false,
+       0.0
+      ],
+      [
+       "00-0038519",
        false,
        0.0
       ],
@@ -11168,6 +11208,11 @@
        0.0
       ],
       [
+       "00-0038519",
+       false,
+       0.0
+      ],
+      [
        "00-0039650",
        false,
        0.0
@@ -11302,7 +11347,7 @@
    },
    "sources": {
     "snapshot": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/capture.json.gz",
-    "requests": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/requests-20261112T223751Z.json"
+    "requests": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/requests-20261113T002258Z.json"
    }
   },
   "2026_10_JAX_TEN": {
@@ -11318,8 +11363,8 @@
     "away_score": null,
     "source_captured_at": "2026-11-11 13:37:49.537034+00:00"
    },
-   "decision_at": "2026-11-12T22:38:21.687633+00:00",
-   "shadow_at": "2026-11-12T22:40:40.910338+00:00",
+   "decision_at": "2026-11-13T00:23:52.532669+00:00",
+   "shadow_at": "2026-11-13T00:26:27.854782+00:00",
    "pregame": true,
    "estimator": "nfl-game-leaders-roles-v3",
    "fit": {
@@ -13907,7 +13952,7 @@
    },
    "sources": {
     "snapshot": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/capture.json.gz",
-    "requests": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/requests-20261112T223751Z.json"
+    "requests": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/requests-20261113T002258Z.json"
    }
   },
   "2026_10_KC_ATL": {
@@ -13923,8 +13968,8 @@
     "away_score": null,
     "source_captured_at": "2026-11-11 13:37:49.537034+00:00"
    },
-   "decision_at": "2026-11-12T22:38:08.156201+00:00",
-   "shadow_at": "2026-11-12T22:40:40.910338+00:00",
+   "decision_at": "2026-11-13T00:23:25.011320+00:00",
+   "shadow_at": "2026-11-13T00:26:27.854782+00:00",
    "pregame": true,
    "estimator": "nfl-game-leaders-roles-v3",
    "fit": {
@@ -13977,7 +14022,6 @@
       "00-0038134",
       "00-0038145",
       "00-0038489",
-      "00-0038519",
       "00-0038997",
       "00-0039067",
       "00-0039386",
@@ -14008,7 +14052,6 @@
        "00-0037324": 0.0,
        "00-0038134": 0.5295700581276317,
        "00-0038489": 0.0,
-       "00-0038519": 0.0,
        "00-0038997": 0.0036122374061334245,
        "00-0039067": 0.007224474812266849,
        "00-0039386": 0.0,
@@ -14044,7 +14087,6 @@
        "00-0037324": 0.0,
        "00-0038134": 0.0714559601111839,
        "00-0038489": 0.0,
-       "00-0038519": 0.0,
        "00-0038997": 0.12973072369700378,
        "00-0039067": 0.19105797489922377,
        "00-0039386": 0.0,
@@ -14082,7 +14124,6 @@
        "00-0037324": 0.0,
        "00-0038134": 0.5207138349613513,
        "00-0038489": 0.0,
-       "00-0038519": 0.0,
        "00-0038997": 0.003567091779635931,
        "00-0039067": 0.005993987469182295,
        "00-0039386": 0.0,
@@ -14118,7 +14159,6 @@
        "00-0037324": 0.0,
        "00-0038134": 0.07938941865333021,
        "00-0038489": 0.0,
-       "00-0038519": 0.0,
        "00-0038997": 0.12533759173536566,
        "00-0039067": 0.1803834274178129,
        "00-0039386": 0.0,
@@ -14417,11 +14457,6 @@
       ],
       [
        "00-0038489",
-       false,
-       0.0
-      ],
-      [
-       "00-0038519",
        false,
        0.0
       ],
@@ -14768,11 +14803,6 @@
        0.0
       ],
       [
-       "00-0038519",
-       false,
-       0.0
-      ],
-      [
        "00-0039386",
        false,
        0.0
@@ -15060,11 +15090,6 @@
        0.0
       ],
       [
-       "00-0038519",
-       false,
-       0.0
-      ],
-      [
        "00-0039386",
        false,
        0.0
@@ -15347,11 +15372,6 @@
        0.0
       ],
       [
-       "00-0038519",
-       false,
-       0.0
-      ],
-      [
        "00-0039386",
        false,
        0.0
@@ -15587,11 +15607,6 @@
       ],
       [
        "00-0038489",
-       false,
-       0.0
-      ],
-      [
-       "00-0038519",
        false,
        0.0
       ],
@@ -15938,11 +15953,6 @@
        0.0
       ],
       [
-       "00-0038519",
-       false,
-       0.0
-      ],
-      [
        "00-0039386",
        false,
        0.0
@@ -16230,11 +16240,6 @@
        0.0
       ],
       [
-       "00-0038519",
-       false,
-       0.0
-      ],
-      [
        "00-0039386",
        false,
        0.0
@@ -16512,11 +16517,6 @@
        0.0
       ],
       [
-       "00-0038519",
-       false,
-       0.0
-      ],
-      [
        "00-0039386",
        false,
        0.0
@@ -16671,7 +16671,7 @@
    },
    "sources": {
     "snapshot": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/capture.json.gz",
-    "requests": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/requests-20261112T223751Z.json"
+    "requests": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/requests-20261113T002258Z.json"
    }
   },
   "2026_10_MIA_IND": {
@@ -16687,8 +16687,8 @@
     "away_score": null,
     "source_captured_at": "2026-11-11 13:37:49.537034+00:00"
    },
-   "decision_at": "2026-11-12T22:38:19.984818+00:00",
-   "shadow_at": "2026-11-12T22:40:40.910338+00:00",
+   "decision_at": "2026-11-13T00:23:48.677308+00:00",
+   "shadow_at": "2026-11-13T00:26:27.854782+00:00",
    "pregame": true,
    "estimator": "nfl-game-leaders-roles-v3",
    "fit": {
@@ -19515,7 +19515,7 @@
    },
    "sources": {
     "snapshot": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/capture.json.gz",
-    "requests": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/requests-20261112T223751Z.json"
+    "requests": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/requests-20261113T002258Z.json"
    }
   },
   "2026_10_MIN_GB": {
@@ -19531,8 +19531,8 @@
     "away_score": null,
     "source_captured_at": "2026-11-11 13:37:49.537034+00:00"
    },
-   "decision_at": "2026-11-12T22:38:17.994077+00:00",
-   "shadow_at": "2026-11-12T22:40:40.910338+00:00",
+   "decision_at": "2026-11-13T00:23:44.517382+00:00",
+   "shadow_at": "2026-11-13T00:26:27.854782+00:00",
    "pregame": true,
    "estimator": "nfl-game-leaders-roles-v3",
    "fit": {
@@ -22447,7 +22447,7 @@
    },
    "sources": {
     "snapshot": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/capture.json.gz",
-    "requests": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/requests-20261112T223751Z.json"
+    "requests": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/requests-20261113T002258Z.json"
    }
   },
   "2026_10_SEA_LV": {
@@ -22463,8 +22463,8 @@
     "away_score": null,
     "source_captured_at": "2026-11-11 13:37:49.537034+00:00"
    },
-   "decision_at": "2026-11-12T22:38:16.165039+00:00",
-   "shadow_at": "2026-11-12T22:40:40.910338+00:00",
+   "decision_at": "2026-11-13T00:23:40.463335+00:00",
+   "shadow_at": "2026-11-13T00:26:27.854782+00:00",
    "pregame": true,
    "estimator": "nfl-game-leaders-roles-v3",
    "fit": {
@@ -25508,7 +25508,7 @@
    },
    "sources": {
     "snapshot": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/capture.json.gz",
-    "requests": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/requests-20261112T223751Z.json"
+    "requests": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/requests-20261113T002258Z.json"
    }
   },
   "2026_10_SF_DAL": {
@@ -25524,8 +25524,8 @@
     "away_score": null,
     "source_captured_at": "2026-11-11 13:37:49.537034+00:00"
    },
-   "decision_at": "2026-11-12T22:38:00.206152+00:00",
-   "shadow_at": "2026-11-12T22:40:40.910338+00:00",
+   "decision_at": "2026-11-13T00:23:09.598779+00:00",
+   "shadow_at": "2026-11-13T00:26:27.854782+00:00",
    "pregame": true,
    "estimator": "nfl-game-leaders-roles-v3",
    "fit": {
@@ -28383,7 +28383,7 @@
    },
    "sources": {
     "snapshot": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/capture.json.gz",
-    "requests": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/requests-20261112T223751Z.json"
+    "requests": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/requests-20261113T002258Z.json"
    }
   },
   "2026_10_PIT_CIN": {
@@ -28399,8 +28399,8 @@
     "away_score": null,
     "source_captured_at": "2026-11-11 13:37:49.537034+00:00"
    },
-   "decision_at": "2026-11-12T22:38:23.940771+00:00",
-   "shadow_at": "2026-11-12T22:40:40.910338+00:00",
+   "decision_at": "2026-11-13T00:23:56.367668+00:00",
+   "shadow_at": "2026-11-13T00:26:27.854782+00:00",
    "pregame": true,
    "estimator": "nfl-game-leaders-roles-v3",
    "fit": {
@@ -31172,7 +31172,7 @@
    },
    "sources": {
     "snapshot": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/capture.json.gz",
-    "requests": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/requests-20261112T223751Z.json"
+    "requests": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/requests-20261113T002258Z.json"
    }
   },
   "2026_10_LAC_BAL": {
@@ -31188,8 +31188,8 @@
     "away_score": null,
     "source_captured_at": "2026-11-11 13:37:49.537034+00:00"
    },
-   "decision_at": "2026-11-12T22:38:02.265630+00:00",
-   "shadow_at": "2026-11-12T22:40:40.910338+00:00",
+   "decision_at": "2026-11-13T00:23:13.594256+00:00",
+   "shadow_at": "2026-11-13T00:26:27.854782+00:00",
    "pregame": true,
    "estimator": "nfl-game-leaders-roles-v3",
    "fit": {
@@ -34053,9 +34053,9 @@
    },
    "sources": {
     "snapshot": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/capture.json.gz",
-    "requests": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/requests-20261112T223751Z.json"
+    "requests": "artifacts/nfl-game-leaders/auto/2026-w10-20261111T140801Z/requests-20261113T002258Z.json"
    }
   }
  },
- "updated_at": "2026-11-12T22:40:40.910338+00:00"
+ "updated_at": "2026-11-13T00:26:27.854782+00:00"
 }
