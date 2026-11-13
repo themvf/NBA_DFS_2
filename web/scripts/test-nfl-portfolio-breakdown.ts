@@ -94,6 +94,15 @@ assert.equal(est.short, "est.");
 assert.match(est.note, /not DraftKings' numbers/);
 assert.match(est.note, /LineStar for 1 players/);
 assert.match(fieldOwnershipSource([{ ownSource: null, ownPct: 3 }], "classic").note, /about 1 point/);
+// stat-api's pull and the Showdown lineup model are named for what they are.
+const outsideSource = fieldOwnershipSource([{ ownSource: "stat-api", ownPct: 30 }, { ownSource: "stat-api", ownPct: 12 }, { ownSource: "nfl-ownership-field-showdown-v1", ownPct: 2 }], "showdown");
+assert.equal(outsideSource.short, "stat-api");
+assert.match(outsideSource.note, /stat-api's projected ownership/);
+const lineupModelSource = fieldOwnershipSource([{ ownSource: "nfl-ownership-field-showdown-v1", ownPct: 30 }, { ownSource: "nfl-ownership-field-showdown-v1", ownPct: 12 }], "showdown");
+assert.equal(lineupModelSource.short, "est.");
+assert.match(lineupModelSource.note, /lineup-model ownership estimate/);
+assert.match(lineupModelSource.note, /about 3 points/);
+assert.match(fieldOwnershipSource([{ ownSource: "nfl-ownership-fit-showdown-v1", ownPct: 30 }], "showdown").note, /fitted ownership estimate.*4-5 points/);
 
 // The final set.
 const runA = "11111111-1111-1111-1111-111111111111", runB = "22222222-2222-2222-2222-222222222222";

@@ -550,3 +550,116 @@ ownership has not been shown to improve payouts. That is untested.
   has kicked off cannot be pulled.
 - Classic slates are supported (totals only) but stat-api's Classic ownership
   has not been compared with real ownership, so it has not been applied to one.
+
+## Showdown lineup model — `nfl-ownership-field-showdown-v1` (owner's decision 2026-11-13)
+
+Our own Showdown ownership once the books' player lines are in. It replaces the
+per-player fitted model (`nfl-ownership-fit-showdown-v1`) on those slates; that
+model stays live before the lines arrive and becomes the shadow after. stat-api's
+pull, when one is stored for the slate, still replaces either.
+
+### Why
+
+stat-api's files publish the shape of its own ownership model: a choice over
+whole lineups under the salary cap (a choice temperature, a cap term, a crowd
+mixture). Fitted to the real field on stat-api's own point projections, a model
+of that shape reproduced stat-api's accuracy (captain 0.67 against 0.83, flex
+2.66 against 2.50, 23 slates, 5-fold). So the form is recoverable, and what was
+left was the inputs.
+
+### The model
+
+- Players: the slate's top 24 by crowd points. Lineups: every legal one among
+  them (one captain, five flex, both teams, under $50,000) that leaves at most
+  $6,000 unspent, cut to the 80,000 with the most crowd points less 0.5 a
+  $1,000 unspent.
+- Value of a lineup: crowd points of its five flex seats, 1.5x the captain's,
+  an offset by position for each seat (wide receiver is the reference), a
+  charge per $1,000 unspent, and a bonus when a WR or TE captain has his own
+  quarterback in the flex.
+- The field picks a lineup with probability proportional to exp(value / tau).
+  Captain and flex ownership are the shares of that mass each player is in, so
+  they sum to 100% and 500% and one player's two shares cannot pass 100%.
+  Players outside the top 24 get 0%.
+- Crowd points: our projection as the ownership step sees it (after the market
+  anchor, before the range calibration), except a kicker is 3.53 + 0.2325 x his
+  team's Vegas points, a defense is 14.23 - 0.363 x the opponent's, and once
+  the lines are in a player with only a touchdown line is scaled by 0.70 and a
+  player with no line by 0.34. Those are where our projections and a consensus
+  projection differ most (kickers 1.1x ours, defenses 1.26x, touchdown-only
+  players 0.70x, players with no line 0.34x on the training slates); for players
+  with a full set of lines ours and the consensus are the same thing (0.97x).
+- "The lines are in" means at least six ownable players have a full set
+  (`MIN_FULL_ANCHORS`). Before that nobody has one and a missing set says
+  nothing about a player.
+- Fitted numbers (`web/src/data/nfl-showdown-field-model-v1.json`): tau 3.55,
+  unspent salary -1.81 a $1,000, quarterback stack +1.47, flex offsets QB -0.44
+  / RB +0.79 / TE +0.61 / K +0.82 / DST +1.01, captain offsets QB -0.74 / RB
+  +3.07 / TE +1.09 / K -1.16 / DST +3.84. A separate value for a player's
+  salary is not identified (a captain costs exactly 1.5x his flex price, so it
+  adds up to the unspent-salary term) and is not in the model. A ceiling term
+  fitted to zero and was dropped.
+
+### Evidence
+
+Training slates: eight 2026 Showdown slates (weeks 7-10) frozen by the ghost
+test about an hour before kickoff with the lines in, each joined to the real
+captain and flex ownership of that night's largest contest. Each slate was
+predicted by numbers fitted on the other seven. Miss per ownable player, in
+percentage points:
+
+| | captain | flex |
+|---|---:|---:|
+| lineup model, held out | 0.89 | 3.36 |
+| same, without the fringe factors | 0.91 | 3.54 |
+| our projections alone, no stand-ins (fitted on all twelve slates) | 0.95 | 3.96 |
+| the fitted model it replaces (in sample for two of the eight) | 1.18 | 4.85 |
+| what the app showed at the time | 1.30 | 4.84 |
+| stat-api's projected ownership | 0.81 | 2.31 |
+
+By position the held-out totals are close to the real ones (QB captain 24.5%
+against 23.3%, DST 4.6% against 4.2%, kicker flex 45.3% against 44.7%). The
+largest misses are news-driven cheap players (a backup running back at 30.6%
+of flex against 12.7% predicted), which no input here carries.
+
+Four more slates were frozen before any line had been captured. They are not
+in the fit. On them the shipped numbers missed captain by 1.04 and flex by
+4.59, no better than the fitted model (0.82 and 4.12, and at least two of the
+four were in that model's fit), which is why the lineup model is only used
+once the lines are in.
+
+### What it does not show
+
+Better lineups. Six stored slates were rebuilt the way the page builds
+(Winners shape v14, simulated-games scoring, leverage on, the saved lineup
+count and max exposure, 10 seeds) with the fitted model, the lineup model
+(numbers that had not seen the slate) and, for five of them, the real field's
+ownership, and every lineup was paid out of the five stored contests of its
+slate. Lineup model minus fitted model, mean over slates with a 90% interval:
+
+| | difference | interval |
+|---|---:|---|
+| actual points a lineup | +0.91 | [-0.22, +2.04] |
+| top-10% finishes, points | +1.40 | [-0.13, +2.94] |
+| top-1% finishes, points | -0.04 | [-0.14, +0.06] |
+| return per $1, one prize capped at 50x | 0.00 | [-0.08, +0.07] |
+| copies of the lineup per 10,000 entries | -0.53 | [-1.56, +0.50] |
+
+Real ownership against the fitted model was no better (points +0.57, top-1%
+-0.26, capped return -0.10, all intervals through zero). On these builds a more
+accurate ownership forecast, even a perfect one, did not change results by an
+amount six slates can see. The model is shipped as a better estimate of the
+field, not as an edge.
+
+### Known limits
+
+- Eight slates of one season, all prime-time games frozen an hour before
+  kickoff. A slate read the day before, with only some lines posted, is outside
+  what was tested; the six-full-sets rule is a stated guard, not a fitted one.
+- The kicker and defense lines and the fringe factors were fitted to a
+  consensus projection from licensed contest files, which is why the training
+  file is not in the repository. `research/nfl_showdown_field_model.py --slates`
+  refits from such a file and needs torch.
+- No status term: a questionable player is read at his projection.
+- Classic is not covered. Its lineups cannot be listed outright and would need
+  sampling.
