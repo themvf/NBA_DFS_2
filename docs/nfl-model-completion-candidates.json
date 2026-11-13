@@ -83,7 +83,7 @@
     "research/nfl_workload_risk.py": "e8d67cb4945446fdc4ab857b69729a61e3c65dae2c1a17ed364bef49d637f344",
     "web/src/lib/nfl-dfs/joint-portfolio.ts": "87588d7fb2782f347ea6bfe35e522da15a62063e4c2d287a0c703064430ebf9f",
     "web/scripts/compare-nfl-joint-portfolios.ts": "05bf97642caba1b96d6d4420acf51502faa4468fcf40dc4e1607f51790298515",
-    "web/src/app/dfs/nfl/nfl-optimizer.ts": "edccb99614b12291f58a0cc3f55e855978b94642806af1f10d789310583145c1",
+    "web/src/app/dfs/nfl/nfl-optimizer.ts": "8fb3a0a85348d63dd3fd81cd36901a911dc11107bbc89e03cdfbe47378dfc8a5",
     "model/nfl_matchup_scenarios.py": "9d133718c360a03a445965508061807c49644c3ac329ae220c4f68069a19e913",
     "web/src/lib/nfl-dfs/scoring.ts": "83e8b8c293519e7605f4d5be76a302bd442835fa4dc43a6d02744922a5729e3c",
     "web/src/lib/nfl-dfs/scenarios.ts": "98ed595731bc69ee1fcde4d9c42109880382cff3dbf480ce0f0043fdf46e2fd9",
@@ -411,6 +411,20 @@
         "web/src/app/dfs/nfl/nfl-optimizer.ts": {
           "previous": "e47e205e76143798ce0d8011a8e2f1cfd7e4c7869b64e0f4d47aff38ba1e7a88",
           "new": "edccb99614b12291f58a0cc3f55e855978b94642806af1f10d789310583145c1"
+        }
+      },
+      "evidence_rule": "Keep previous implementation hashes and separate forward construction cohorts; no study gates or enrollment change."
+    },
+    {
+      "amended_at": "2026-11-13T00:42:43.322249+00:00",
+      "reason": "Team split targets (nfl-team-split-targets-v1, owner's request 2026-11-12). The optimizer gains two Showdown-only settings, teamSplitTargets (the share of lineups that are 3-3, 4-2 or 5-1 by team) and teamSplitHeavyTeam, plus an internal per-lineup lineupTeamCounts directive. The existing 5-1/3-3 binaries are generalised to any list of allowed counts for the slate's first team; the run loop schedules each lineup's split like the bring-back share and relaxes it after the build shape's own quotas; the joint selection cycles its candidates through the splits and holds the same exact counts. Both settings are unset by default and forbidFourTwoSplit alone resolves to the same [1, 3, 5] list as before, so every build that does not ask for a split target, including the frozen ghost arms, is unchanged. The shared definitions live in web/src/lib/nfl-dfs/team-split.ts. Re-pinned the optimizer only; every other pinned file is unchanged.",
+      "file": "web/src/app/dfs/nfl/nfl-optimizer.ts",
+      "previous_sha256": "edccb99614b12291f58a0cc3f55e855978b94642806af1f10d789310583145c1",
+      "new_sha256": "8fb3a0a85348d63dd3fd81cd36901a911dc11107bbc89e03cdfbe47378dfc8a5",
+      "changed_implementation_hashes": {
+        "web/src/app/dfs/nfl/nfl-optimizer.ts": {
+          "previous": "edccb99614b12291f58a0cc3f55e855978b94642806af1f10d789310583145c1",
+          "new": "8fb3a0a85348d63dd3fd81cd36901a911dc11107bbc89e03cdfbe47378dfc8a5"
         }
       },
       "evidence_rule": "Keep previous implementation hashes and separate forward construction cohorts; no study gates or enrollment change."

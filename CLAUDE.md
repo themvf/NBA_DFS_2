@@ -9719,3 +9719,43 @@ when touching it:
   and our model can both be graded on the slates actually built.
 - Classic is supported but stat-api's Classic ownership has not been graded
   against real ownership; do not apply it to a Classic slate without that.
+
+## NFL DFS — Showdown team split targets (`nfl-team-split-targets-v1`, 2026-11-12)
+
+Owner's request: a setting for the share of lineups at each team split
+("40% 5-1", "50% 3-3"). Three percent boxes and a "larger side" select on the
+Showdown build form; both unset by default, so no existing build changes.
+
+- **Semantics.** A split that is filled in gets that share of the run; the
+  blank splits share the rest. Shares add to at most 100%, and to exactly 100%
+  when all three are filled in. With a larger-side team, a 4-2 or 5-1 target
+  counts only lineups where that team holds the larger side, and the mirror
+  image stays open to the other lineups.
+- **Where it lives.** Definitions and the plan in
+  `web/src/lib/nfl-dfs/team-split.ts` (pure, no solver, so the page imports
+  it). The optimizer takes `teamSplitTargets` / `teamSplitHeavyTeam`,
+  schedules each lineup's split like the bring-back share (the split furthest
+  behind its share goes next), and narrows that lineup to the allowed counts
+  of the slate's first team through the binaries the old 4-2 ban used.
+  `teamSplitSettings` in `generation-settings.ts` is the one place the form's
+  values are cleaned (Showdown only, a larger side from another slate dropped,
+  empty always `{}` and `""`).
+- **Relaxation order.** The split is the owner's explicit target, so it
+  outlasts the build shape's quotas: every shape attempt is tried at the split
+  first, then without it. A lineup built without its split is counted in the
+  run note ("could not be built at their split"), never dropped. On the
+  2026-11-12 WAS @ NYG slate, 40% 5-1 and 50% 3-3 both built exactly; 40% 5-1
+  with WAS on the larger side reached 21 of 32 under the ownership floor and
+  captain rules, and the note said so.
+- **Joint selection** (projected-points scoring) cycles its candidates through
+  the splits and holds the same exact counts; simulated-game scoring uses the
+  sequential build as before.
+- **Not an edge.** Over 29 prime-time 2026 Showdowns graded by prize money no
+  split paid clearly more than another (3-3 0.97, 4-2 0.90, 5-1 1.30 with a
+  range of 0.90 to 1.72). The page's "winners 50% 3-3" counts top-100 lineups,
+  which share a split within a slate, so it is close to one result per slate.
+  The setting expresses a read of one game; it is not a default and the
+  Winners shape does not set it.
+- `nfl-optimizer.ts` was re-pinned (amendment in
+  `docs/nfl-model-completion-candidates.json`). Test:
+  `web/scripts/test-nfl-team-split-targets.ts`.
