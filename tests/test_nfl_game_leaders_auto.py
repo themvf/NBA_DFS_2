@@ -36,8 +36,10 @@ def test_failed_gate_keeps_previous_forecast_and_says_why():
     games, skipped = auto.merge(week, prior, {}, {"sun": "unassigned 7%"},
                                 [{"game_id": "mon", "reason": "capture failed"}], NOW)
     assert [g["tag"] for g in games] == ["old"]
-    assert skipped == [{"game_id": "sun", "reason": "kept previous forecast: unassigned 7%"},
-                       {"game_id": "mon", "reason": "capture failed"}]
+    assert [(s["game_id"], s["reason"], s["kind"]) for s in skipped] == [
+        ("sun", "kept previous forecast: unassigned 7%", "data_error"),
+        ("mon", "capture failed", "data_error")]
+    assert skipped[1]["kickoff"] == game("mon", 70)["kickoff"] and skipped[1]["away"] == "A"
 
 
 def test_prior_page_from_another_week_is_never_reused():
@@ -45,6 +47,41 @@ def test_prior_page_from_another_week_is_never_reused():
     prior = {"season": 2026, "week": 5, "games": [entry("sun", 40, "last-week")]}
     games, skipped = auto.merge(week, prior, {}, {}, [], NOW)
     assert games == [] and skipped[0]["reason"] == "no forecast produced"
+    assert skipped[0]["kind"] == "data_error"
+
+
+def test_game_that_started_before_any_forecast_is_expected_not_an_error():
+    games, skipped = auto.merge([game("tnf", -1)], None, {}, {}, [], NOW)
+    assert games == [] and skipped[0]["kind"] == "expected"
+    assert auto.data_errors({"skipped": skipped}, NOW) == []
+
+
+def test_check_fails_on_an_upcoming_game_left_off_for_a_data_error(tmp_path):
+    # 2026-11-13: Rams at Arizona was skipped for "Unresolved recent yardage
+    # events" while the run stayed green and nobody was told.
+    week = [game("tnf", -1), game("sun", 40)]
+    _, skipped = auto.merge(week, None, {}, {}, [
+        {"game_id": "sun", "reason": "Unresolved recent yardage events for A: ['x']"}], NOW)
+    page = tmp_path / "page.json"
+    auto.write(page, {"season": 2026, "week": 6, "games": [], "skipped": skipped})
+    code, report = auto.check(page, NOW)
+    assert code == 1 and report.count("::error::") == 1 and "Unresolved recent yardage" in report
+    # Once the game has kicked off the miss can no longer be fixed; the check goes quiet.
+    assert auto.check(page, NOW + timedelta(hours=41))[0] == 0
+
+
+def test_check_reads_kind_from_the_reason_on_older_pages():
+    old = {"skipped": [{"game_id": "a", "reason": "started before any forecast was saved"},
+                       {"game_id": "b", "reason": "something nobody has seen yet"}]}
+    assert [s["game_id"] for s in auto.data_errors(old, NOW)] == ["b"]
+    assert auto.matchup({"game_id": "2026_10_LA_ARI"}) == "LA at ARI"
+
+
+def test_check_passes_on_a_clean_page(tmp_path):
+    page = tmp_path / "page.json"
+    auto.write(page, {"season": 2026, "week": 6, "games": [], "skipped": []})
+    assert auto.check(page, NOW)[0] == 0
+    assert auto.check(tmp_path / "missing.json", NOW)[0] == 1
 
 
 def test_gate_isolates_a_bad_game(monkeypatch):

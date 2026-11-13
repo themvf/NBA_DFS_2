@@ -10,7 +10,16 @@ forecast fails a gate keeps its previous entry when the page has one, and is
 listed under `skipped` with the reason either way, so nothing disappears
 silently. The page is replaced only after every check passes.
 
+Each skipped game is tagged `expected` (it started before any forecast was
+saved, which the run that missed it already reported) or `data_error`
+(everything else, including reasons nobody has seen yet). `--check` reads the
+published page and exits 1 for every data error on a game still to kick off, so
+the workflow turns red after the good games are committed, and /health and the
+daily failure sweep report it. Before this, a game left off for a data error
+(2026_10_LA_ARI, week 10) was only a line in a green run's log.
+
     python -m research.nfl_game_leaders_auto [--season 2026] [--draws N]
+    python -m research.nfl_game_leaders_auto --check
 """
 from __future__ import annotations
 
@@ -231,11 +240,64 @@ def merge(week_games: list[dict], prior: dict | None, passed: dict, failed: dict
         elif gid in prior_games:
             games.append(prior_games[gid])
             if not started:
-                skipped.append({"game_id": gid, "reason": f"kept previous forecast: {reasons.get(gid, 'no new forecast')}"})
+                skipped.append(skip_entry(g, f"{KEPT_PREVIOUS}: {reasons.get(gid, 'no new forecast')}"))
         else:
-            skipped.append({"game_id": gid, "reason": "started before any forecast was saved" if started
-                            else reasons.get(gid, "no forecast produced")})
+            skipped.append(skip_entry(g, STARTED_UNFORECAST if started
+                                      else reasons.get(gid, "no forecast produced")))
     return games, skipped
+
+
+STARTED_UNFORECAST = "started before any forecast was saved"
+KEPT_PREVIOUS = "kept previous forecast"
+
+
+def skip_kind(reason: str) -> str:
+    """`expected` only for a game that started before any forecast; anything else is a data error.
+
+    A started game can no longer be fixed, and the run that left it off while it
+    was still to kick off already failed on it; an unknown reason fails closed."""
+    return "expected" if reason == STARTED_UNFORECAST else "data_error"
+
+
+def skip_entry(game: dict, reason: str) -> dict:
+    return {"game_id": game["game_id"], "away": game["away"], "home": game["home"],
+            "kickoff": game["kickoff"], "reason": reason, "kind": skip_kind(reason)}
+
+
+def data_errors(page: dict, now: datetime) -> list[dict]:
+    """Skipped games still to kick off whose reason is a data error.
+
+    Pages written before the tag read their kind from the reason; an entry with
+    no kickoff is reported rather than assumed started."""
+    out = []
+    for s in page.get("skipped", []):
+        if (s.get("kind") or skip_kind(s["reason"])) != "data_error":
+            continue
+        if s.get("kickoff") and timestamp(s["kickoff"]) <= now:
+            continue
+        out.append(s)
+    return out
+
+
+def matchup(skipped: dict) -> str:
+    """`AWAY at HOME`, from the entry or, on older pages, from the nflverse game id."""
+    if skipped.get("away") and skipped.get("home"):
+        return f"{skipped['away']} at {skipped['home']}"
+    parts = skipped["game_id"].split("_")
+    return f"{parts[2]} at {parts[3]}" if len(parts) == 4 else skipped["game_id"]
+
+
+def check(page_path: Path = PAGE, now: datetime | None = None) -> tuple[int, str]:
+    """Exit code and report for `--check`: 1 when a data error kept an upcoming game off the page."""
+    if not page_path.exists():
+        return 1, f"::error::{page_path} is missing"
+    page = read(page_path)
+    errors = data_errors(page, now or datetime.now(timezone.utc))
+    if not errors:
+        return 0, f"Week {page['week']}: no upcoming game left off for a data error"
+    lines = [f"::error::{matchup(s)} ({s['game_id']}) has no fresh "
+             f"Game Leaders forecast: {s['reason']}" for s in errors]
+    return 1, "\n".join(lines)
 
 
 def validate(page: dict, week_games: list[dict]) -> None:
@@ -365,7 +427,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--season", type=int, default=current_nfl_season(datetime.now(timezone.utc)))
     parser.add_argument("--draws", type=int, help="override production draws (testing only)")
+    parser.add_argument("--check", action="store_true",
+                        help="exit 1 when an upcoming game was left off for a data error")
     args = parser.parse_args()
+    if args.check:
+        code, report = check()
+        print(report, flush=True)
+        summary = os.environ.get("GITHUB_STEP_SUMMARY")
+        if summary:
+            with open(summary, "a", encoding="utf-8") as f:
+                f.write("### Games left off the page\n" + report.replace("::error::", "- ") + "\n")
+        raise SystemExit(code)
     print(run(args.season, args.draws), flush=True)
 
 
