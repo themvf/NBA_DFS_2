@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { DISPATCH_JOBS, dispatchWorkflow, dueJobs, parseTokenExpiry, type DispatchContext } from "../src/lib/cron-dispatch";
+import { DISPATCH_JOBS, dispatchWorkflow, dueJobs, nbaCaptureGroupStarts, parseTokenExpiry, type DispatchContext } from "../src/lib/cron-dispatch";
 
 const root = path.resolve(__dirname, "..");
 const repo = path.resolve(root, "..");
@@ -279,10 +279,13 @@ assert.ok(keys("2026-10-25T19:07:00Z", sunGroups).includes("nfl-expert-coverage"
 assert.ok(!keys("2026-10-25T16:22:00Z", sunGroups).includes("nfl-expert-coverage"), "38 minutes out is no pass");
 assert.ok(!keys("2026-10-21T00:07:00Z", { nflKickoffs: null }).includes("nfl-expert-coverage"), "unreadable schedule: no blind pass");
 
-// NBA points props: 15:07 and 22:07 UTC, October-June, nothing else; no kickoff context needed.
-assert.ok(keys("2026-10-21T15:07:00Z").includes("nba-points-props"), "11:07 AM ET morning read");
-assert.ok(keys("2026-10-21T22:07:00Z").includes("nba-points-props"), "6:07 PM ET closing read");
+// NBA points props, when the tip times are not known (no context, unreadable, or none stored):
+// 15:07, 22:07 and 01:07 UTC, October-June, nothing else.
+assert.ok(keys("2026-10-21T15:07:00Z").includes("nba-points-props"), "the morning read");
+assert.ok(keys("2026-10-21T22:07:00Z").includes("nba-points-props"), "fixed evening read without tip times");
 assert.ok(keys("2026-10-21T22:07:00Z", { nflKickoffs: null }).includes("nba-points-props"), "no schedule read needed");
+assert.ok(keys("2026-10-21T22:07:00Z", { nflKickoffs: null, nbaTips: null }).includes("nba-points-props"), "unreadable tip times: the fixed read stays");
+assert.ok(keys("2026-10-21T22:07:00Z", { nflKickoffs: null, nbaTips: [] }).includes("nba-points-props"), "no stored tips (no games, or a failed morning capture): the fixed read stays");
 assert.ok(!keys("2026-10-21T15:22:00Z").includes("nba-points-props"), "the :07 tick only");
 assert.ok(!keys("2026-10-21T15:37:00Z").includes("nba-points-props"), "not every half hour: each run spends credits");
 assert.ok(!keys("2026-08-21T15:07:00Z").includes("nba-points-props"), "off-season: nothing to capture");
@@ -290,7 +293,48 @@ assert.ok(keys("2027-06-10T22:07:00Z").includes("nba-points-props"), "Finals in 
 let nbaTicks = 0;
 for (let h = 0; h < 24; h += 1) for (const m of TICKS) if (keys(`2026-10-21T${hh(h)}:${m}:00Z`).includes("nba-points-props")) nbaTicks += 1;
 assert.equal(nbaTicks, 3, "exactly three paid NBA captures a day");
-assert.ok(keys("2026-10-22T01:07:00Z").includes("nba-points-props"), "9:07 PM ET closing read for the late tips");
+assert.ok(keys("2026-10-22T01:07:00Z").includes("nba-points-props"), "fixed late read without tip times");
+// With tip times: the morning read, then one capture 35-50 minutes before the first tip of each
+// tip group. The fixed 22:07 and 01:07 UTC reads stand down when a tip-timed one is near.
+const nbaDay = (tips: string[], from: string, to: string, jitterMs = 0): string[] => {
+  const context: DispatchContext = { nflKickoffs: null, nbaTips: tips.map((t) => new Date(t)) };
+  const out: string[] = [];
+  for (let t = Date.parse(from); t <= Date.parse(to); t += 15 * 60_000) {
+    const now = new Date(t + jitterMs);
+    if (dueJobs(now, context).some((j) => j.key === "nba-points-props")) out.push(now.toISOString().slice(11, 16));
+  }
+  return out;
+};
+// A winter weeknight: tips 7:10, 7:40 and 10:10 PM Eastern. Captures at 10:07 AM, 6:22 PM (48 minutes
+// before the lock) and 9:22 PM (48 minutes before the late group). 5:07 and 8:07 PM stand down.
+const weeknight = ["2026-11-14T00:10:00Z", "2026-11-14T00:40:00Z", "2026-11-14T03:10:00Z"];
+assert.deepEqual(nbaCaptureGroupStarts(weeknight.map((t) => new Date(t))).map((d) => d.toISOString().slice(11, 16)), ["00:10", "03:10"]);
+assert.deepEqual(nbaDay(weeknight, "2026-11-13T12:07:00Z", "2026-11-14T06:52:00Z"), ["15:07", "23:22", "02:22"]);
+assert.deepEqual(nbaDay(weeknight, "2026-11-13T12:07:00Z", "2026-11-14T06:52:00Z", 20_000), ["15:07", "23:22", "02:22"], "a tick that starts 20 seconds late fires the same captures");
+// The same tips in summer time (first tip 23:10 UTC): 6:22 PM Eastern again, not the fixed 6:07 PM.
+assert.deepEqual(nbaDay(["2026-10-21T23:10:00Z", "2026-10-21T23:40:00Z", "2026-10-22T02:10:00Z"], "2026-10-21T12:07:00Z", "2026-10-22T05:52:00Z"), ["15:07", "22:22", "01:22"]);
+// Hourly tips 7:00-10:00 PM: groups start at 7:00 and 10:00 (9:00 is exactly two hours after 7:00,
+// not more), so the 9:00 game's lines are 2 h 38 old at its tip and the 10:00 game's 38 minutes.
+const hourly = ["2026-11-14T00:00:00Z", "2026-11-14T01:00:00Z", "2026-11-14T02:00:00Z", "2026-11-14T03:00:00Z"];
+assert.deepEqual(nbaCaptureGroupStarts(hourly.map((t) => new Date(t))).map((d) => d.toISOString().slice(11, 16)), ["00:00", "03:00"]);
+assert.deepEqual(nbaDay(hourly, "2026-11-13T12:07:00Z", "2026-11-14T06:52:00Z"), ["15:07", "23:22", "02:22"]);
+// A weekend split slate (3:30 PM, then 7:00, 7:30 and 10:00 PM): each group gets its own capture.
+assert.deepEqual(nbaDay(["2026-11-14T20:30:00Z", "2026-11-15T00:00:00Z", "2026-11-15T00:30:00Z", "2026-11-15T03:00:00Z"],
+  "2026-11-14T12:07:00Z", "2026-11-15T06:52:00Z"), ["15:07", "19:52", "23:22", "02:22"]);
+// A first tip at 8:00 PM Eastern in winter is over 2 h 35 past the 22:07 slot, so that slot still
+// fires (the health check allows a slot two hours), then the tip-timed read, then 01:07 for what is left.
+assert.deepEqual(nbaDay(["2026-11-14T01:00:00Z"], "2026-11-13T12:07:00Z", "2026-11-14T06:52:00Z"), ["15:07", "22:07", "00:22", "01:07"]);
+// One early group only: the fixed reads still run afterwards (they fetch only games still to tip).
+assert.deepEqual(nbaDay(["2026-11-14T00:00:00Z", "2026-11-14T00:30:00Z"], "2026-11-13T12:07:00Z", "2026-11-14T06:52:00Z"), ["15:07", "23:22", "01:07"]);
+// A stand-down never leaves the health check's two-hour allowance uncovered: whenever a fixed slot
+// is skipped, a capture ran in the 30 minutes before it or runs within 1 h 45 after it.
+for (const firstTip of ["2026-11-13T22:15:00Z", "2026-11-13T22:45:00Z", "2026-11-13T23:30:00Z", "2026-11-14T00:00:00Z", "2026-11-14T00:40:00Z"]) {
+  const fired = nbaDay([firstTip], "2026-11-13T12:07:00Z", "2026-11-14T06:52:00Z");
+  if (fired.includes("22:07")) continue;
+  const near = fired.some((hm) => { const t = Date.parse(`2026-11-1${hm < "12:00" ? 4 : 3}T${hm}:00Z`) - Date.parse("2026-11-13T22:07:00Z"); return t >= -30 * 60_000 && t <= 105 * 60_000; });
+  assert.ok(near, `first tip ${firstTip}: a capture sits inside the skipped 22:07 slot's allowance`);
+}
+assert.ok(!dueJobs(new Date("2026-08-14T23:22:00Z"), { nflKickoffs: null, nbaTips: [new Date("2026-08-15T00:10:00Z")] }).some((j) => j.key === "nba-points-props"), "off-season: no tip-timed capture");
 assert.equal(DISPATCH_JOBS.find((j) => j.key === "nba-points-props")?.inputs?.max_credits, "40");
 // NBA ghost research: one freeze at 11:37 AM ET (after the 11:07 line capture) and one grade at 7:37 AM ET. Nov 1 is Eastern Standard Time (UTC-5).
 assert.ok(keys("2026-11-01T16:37:00Z").includes("nba-ghost-freeze"), "11:37 AM ET pregame freeze");

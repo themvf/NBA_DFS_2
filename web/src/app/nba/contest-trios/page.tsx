@@ -263,7 +263,7 @@ export default async function ContestTriosPage({ searchParams }: { searchParams:
 
       {!p || !portfolio ? (
         <p className="rounded-lg border p-4 text-sm">
-          No entries for {longDate(date)}. They are built after the 11:07 AM and 6:07 PM ET line captures, only while every game is still to tip.
+          No entries for {longDate(date)}. They are built after the morning line capture and again about 45 minutes before the first tip, only while every game is still to tip.
         </p>
       ) : (
         <>

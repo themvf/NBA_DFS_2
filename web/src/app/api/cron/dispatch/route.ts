@@ -41,7 +41,7 @@ async function handle(request: NextRequest) {
   // detail on /health) says when this tick ran without the kickoff schedule.
   const warnings = context.nflKickoffs === null ? ["NFL kickoffs could not be read; near-kickoff quarter-hour ticks were skipped on this tick"] : [];
   if (context.cfbKickoffs === null) warnings.push("CFB kickoffs could not be read; pregame forecast refresh skipped, daily refresh remains scheduled");
-  if (context.nbaTips === null) warnings.push("NBA tip times could not be read; tip-timed injury report reads skipped, the 6:37 and 6:52 PM Eastern reads remain");
+  if (context.nbaTips === null) warnings.push("NBA tip times could not be read; tip-timed injury report reads skipped (the 6:37 and 6:52 PM Eastern reads remain) and the lines capture fell back to its fixed 22:07 and 01:07 UTC ticks");
   const warned = warnings.length ? { warnings } : {};
   const jobs = dueJobs(now, context);
   if (!jobs.length) return NextResponse.json({ ok: true, at: now.toISOString(), ...warned, dispatched: [], skipped: "no job due on this tick" });
@@ -76,9 +76,11 @@ async function dispatchContext(now: Date): Promise<DispatchContext> {
 
 /**
  * Tonight's NBA tip times from the stored points lines, so the injury report is read just
- * before the first tip (the contest lock) and before each later one. The window reaches back
- * eight hours so the earliest tip of the night stays "the first" after it has passed. Read from
- * the (sport, commence_time) index only. Off-season: not read at all.
+ * before the first tip (the contest lock) and before each later one, and the lines are
+ * captured 35-50 minutes before each tip group. The window reaches back eight hours so the
+ * earliest tip of the night stays "the first" after it has passed, and forward three so a
+ * fixed fallback capture can see a tip-timed one coming. Read from the (sport, commence_time)
+ * index only. Off-season: not read at all.
  */
 async function nbaTips(now: Date): Promise<Date[] | null> {
   const month = now.getUTCMonth() + 1;
@@ -86,10 +88,10 @@ async function nbaTips(now: Date): Promise<Date[] | null> {
   try {
     const rows = await db.execute(sql`SELECT DISTINCT commence_time FROM prop_odds_history
       WHERE sport = 'nba' AND commence_time > ${new Date(now.getTime() - 8 * 3_600_000).toISOString()}::timestamptz
-        AND commence_time <= ${new Date(now.getTime() + 2 * 3_600_000).toISOString()}::timestamptz`);
+        AND commence_time <= ${new Date(now.getTime() + 3 * 3_600_000).toISOString()}::timestamptz`);
     return rows.rows.map((row) => new Date(String(row.commence_time))).filter((d) => Number.isFinite(d.getTime()));
   } catch (error) {
-    console.error("cron dispatch: could not read NBA tip times; tip-timed injury reads skipped", error);
+    console.error("cron dispatch: could not read NBA tip times; tip-timed injury reads skipped, lines capture on its fixed ticks", error);
     return null;
   }
 }

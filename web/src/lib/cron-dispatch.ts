@@ -37,7 +37,8 @@ export interface DispatchContext {
   nflDefensiveCapturesPending?: boolean | null;
   /**
    * Tonight's NBA tip times, from the stored points lines (the earliest is the
-   * contest lock). Null or absent when they could not be read or it is the off-season.
+   * contest lock): the last eight hours and the next three. Null or absent when
+   * they could not be read; empty in the off-season and before the morning capture.
    */
   nbaTips?: Date[] | null;
 }
@@ -220,19 +221,63 @@ export function nflExpertCoverageDue(now: Date, context: DispatchContext): boole
 /** NBA season as calendar months (preseason lines in early October, Finals in June). */
 const NBA_MONTHS = new Set([10, 11, 12, 1, 2, 3, 4, 5, 6]);
 
+/** A tip more than this long after the last group's first tip starts a new tip group. */
+export const NBA_CAPTURE_GROUP_GAP_MIN = 120;
+/** The lines capture for a tip group fires on the one tick this long before the group's first tip. */
+export const NBA_CAPTURE_LEAD_MIN = { after: 35, upTo: 50 } as const;
 /**
- * NBA points-props capture for /nba/top-scorers: the 15:07 UTC tick (11:07 AM
- * ET, after the books post the morning's player props), the 22:07 UTC tick
- * (6:07 PM ET, the closing read before the 7 PM ET tips) and the 01:07 UTC
- * tick (9:07 PM ET, the closing read for the 9:30-10:30 PM ET tips; only the
- * games still to tip are fetched, so it is a few credits), October through
- * June. The page shows each game's latest capture, and the nightly grade
- * scores each game's last capture before its tip. Each run costs about 2
- * credits a game; a game that has already tipped is skipped by the script.
+ * A fixed fallback slot stands down when a group's first tip is this far ahead of it: the
+ * tip-timed capture then ran in the last 30 minutes or runs within the next 1 h 45.
  */
-export function nbaPointsPropsDue(now: Date): boolean {
-  if (!NBA_MONTHS.has(now.getUTCMonth() + 1) || !hourTick(now)) return false;
-  return now.getUTCHours() === 15 || now.getUTCHours() === 22 || now.getUTCHours() === 1;
+const NBA_CAPTURE_NEAR_MIN = { after: 5, upTo: 155 } as const;
+
+/**
+ * The first tip of each tip group: the night's first tip, then each tip more than two hours
+ * after the previous group's first tip (7:00, 7:30, 8:00, 10:00 PM gives 7:00 and 10:00; hourly
+ * tips from 7:00 to 10:00 give 7:00 and 10:00). Every game then has a capture taken at most
+ * 2 h 50 before its own tip, which is no worse than the fixed ticks gave an 11:10 PM tip in
+ * winter. The feed lists a 7:10 tip as 7:00 in some captures; grouping absorbs that.
+ */
+export function nbaCaptureGroupStarts(tips: Date[]): Date[] {
+  const starts: number[] = [];
+  for (const t of [...new Set(tips.map((d) => d.getTime()))].sort((a, b) => a - b)) {
+    if (!starts.length || t - starts[starts.length - 1] > NBA_CAPTURE_GROUP_GAP_MIN * 60_000) starts.push(t);
+  }
+  return starts.map((t) => new Date(t));
+}
+
+const leadsOf = (now: Date, tips: Date[]) => nbaCaptureGroupStarts(tips).map((t) => (t.getTime() - now.getTime()) / 60_000);
+
+/** The one tick 35-50 minutes before a tip group's first tip. */
+export function nbaTipCaptureDue(now: Date, tips: Date[] | null | undefined): boolean {
+  if (!tips?.length) return false;
+  return leadsOf(now, tips).some((m) => m > NBA_CAPTURE_LEAD_MIN.after && m <= NBA_CAPTURE_LEAD_MIN.upTo);
+}
+
+/**
+ * NBA points-props capture for /nba/top-scorers and the contest builder, October through June:
+ *   - the 15:07 UTC tick (10:07 AM Eastern in winter, 11:07 AM in summer), after the books post
+ *     the morning's player props. It is also what tells the dispatcher tonight's tip times.
+ *   - one capture 35-50 minutes before the first tip of each tip group (`nbaCaptureGroupStarts`):
+ *     the read the contest is built from just before its lock, and a fresh read for a late group.
+ *     Only games still to tip are fetched.
+ *   - the old fixed 22:07 and 01:07 UTC ticks only as a fallback: when the tip times could not
+ *     be read or none are stored (no games, or the morning capture failed), and when no tip
+ *     group starts near them. They used to be the evening and late reads, and drifted an hour
+ *     early against the tips when the clocks changed.
+ * The page shows each game's latest capture, and the nightly grade scores each game's last
+ * capture before its tip. Each run costs about 2 credits a game still to tip.
+ */
+export function nbaPointsPropsDue(now: Date, context: DispatchContext = NO_CONTEXT): boolean {
+  if (!NBA_MONTHS.has(now.getUTCMonth() + 1)) return false;
+  const tips = context.nbaTips;
+  if (nbaTipCaptureDue(now, tips)) return true;
+  if (!hourTick(now)) return false;
+  const hour = now.getUTCHours();
+  if (hour === 15) return true;
+  if (hour !== 22 && hour !== 1) return false;
+  if (!tips?.length) return true;
+  return !leadsOf(now, tips).some((m) => m > NBA_CAPTURE_NEAR_MIN.after && m <= NBA_CAPTURE_NEAR_MIN.upTo);
 }
 
 /**
@@ -385,7 +430,7 @@ export const DISPATCH_JOBS: readonly DispatchJob[] = [
     // Blank date = today ET inside the script. 40 credits covers a 15-game night
     // (2 per game) plus a few; the script aborts before any paid call past it.
     inputs: { date: "", max_credits: "40" },
-    why: "Tonight's player-points lines and alternate ladders for /nba/top-scorers (Odds API, ~2 credits a game), 11:07 AM, 6:07 PM and 9:07 PM ET, October-June.",
+    why: "Tonight's player-points lines and alternate ladders for /nba/top-scorers and the contest builder (Odds API, ~2 credits a game still to tip): the morning read at 15:07 UTC, then 35-50 minutes before the first tip of each tip group; 22:07 and 01:07 UTC only as a fallback. October-June.",
   },
   {
     key: "nba-points-grade",

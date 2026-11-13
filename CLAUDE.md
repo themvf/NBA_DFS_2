@@ -356,6 +356,13 @@ the quoted players) leave out Out and Doubtful, keep Questionable at 43% with a 
 it. The dispatcher's `nba-injury-refresh` job now also reads the report on every tick in the 50 minutes before the night's first
 tip and once 5-20 minutes before each later tip (`nbaTipPickupDue`, tips from the stored lines), besides 6:37 and 6:52 PM Eastern.
 `nba_injury_observations` is on /health (36 h).
+**Lines capture follows the tips (2026-11-13):** the evening and late captures were pinned to 22:07 and 01:07 UTC, so when the
+clocks changed on Nov 1 they slid to 5:07 and 8:07 PM Eastern and the lines at a 7 PM lock were two hours old (and an afternoon
+first tip had only the morning capture). `nbaPointsPropsDue` now fires the morning read at 15:07 UTC, then once 35-50 minutes
+before the first tip of each tip group (`nbaCaptureGroupStarts`: the night's first tip, then each tip more than two hours after
+the previous group's first). The fixed 22:07 and 01:07 UTC ticks remain only as a fallback: tip times unreadable or none stored,
+or no group starting within 5-155 minutes of the slot (that range keeps a skipped slot inside the health check's two-hour
+allowance). Same credits on a weeknight; a split weekend slate has three or four groups and costs about 20 more. The tracked test's pre-tip freeze moves with it: Amendment 1 in the doc.
 **Top-end correction and game leaders (`nba-points-sim-recal-v1`, 2026-11-06):** the books' curves overstate each
 player's big nights (line+10 stated 10.5%, happened 6.3%; line+15 4.6% vs 1.9%, 1,688 player-games), which gave
 low-line players too much chance to lead. `RECAL_G` (realized PIT CDF, shrunk with 200 pseudo-rows) maps each draw's
