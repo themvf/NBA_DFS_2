@@ -137,3 +137,73 @@ toward the review.
 - Pool is the top 20 lines; 5 of 48 actual top-three scorers in discovery came from
   outside it.
 - Availability is the measured sitting rate by book count, not injury news.
+
+## The lock replay and the lead-time sitting rates (2026-11-12, exploratory)
+
+Not pre-registered, and about a dozen cuts of the same 22 nights (Oct 20 - Nov 11): read the
+smaller results as leads. Each night was rebuilt as it stood one minute before the first tip
+(the owner's lock) with `load_pool`, and scored with `load_actuals`.
+
+**What the owner reported (2026-11-12).** Almost every entry in his contests has the
+biggest-line player, and anyone can change players until the lock. So the field guess
+(84-99% of the field on the biggest line) points the right way, and a star ruled out during
+the day does not leave early entrants stuck. The exact share is still unmeasured.
+
+**Sitting chance depends on when the lines were read (`nba-points-sit-lead-v1`).**
+`DNP_BY_BOOKS` was measured from each game's last capture before its own tip. The contest
+locks at the first tip, so the lines an entry is built from are hours ahead of the late
+games. Every pre-tip capture (10,720 player-captures, `python -m research.nba_sit_lead`):
+
+| Books at the line | Lines read under 1.5 h before his tip | 1.5 to 6 h | 6 h or more |
+|---|---:|---:|---:|
+| 4 or more | 8 / 3,999 = 0.2% | 76 / 3,603 = 2.1% | 82 / 2,111 = 3.9% |
+| 2-3 | 4 / 404 = 1.0% | 5 / 209 = 2.4% | 10 / 223 = 4.5% |
+| 1 | 49 / 171 = 29% (too few to split) | | |
+
+Both halves of the window agree on the order, and the later one is higher (4+ books: 0.2 / 1.4 /
+2.3% on Oct 20-31, 0.2 / 2.7 / 5.8% on Nov 1-11), so the pooled rates should be measured again
+as the season goes on. One name the box scores spell differently was set aside
+(Carlton Carrington). Custom runs use these rates (`sit_prob`, `SIT_BY_BOOKS_LEAD`; the web
+`sitProb`, pinned by the fixture) from each player's own lead time; the saved run records the
+rule and each player's chance. The frozen v1 entries keep `DNP_BY_BOOKS`. The page warns when
+the lines are over an hour old, and tags a player at 1.5% or more.
+
+The rates barely move which entries are picked. On the 22 nights, entries built with the lead-time
+rates instead of the book-count rates (both corrected, registered field) were worth 7.75 against
+7.64 expected prizes per 100 nights at 8 entries, took 61% of their picks from games tipping 90+
+minutes after the capture against 64%, and carried a 4.2% chance per entry of holding a sitter
+against 4.4%. What changes is the stated risk (about 4% per entry, where the book-count rates
+implied 0.6%) and the advice to run close to the lock.
+
+The tracked test freezes around 22:07 UTC. Anthony Davis (Nov 6), Austin Reaves (Nov 9) and
+Tyler Herro (Nov 10) were in its pool, had their lines pulled before the first tip, and scored
+0. A run made at the lock would not have held them; the tracked grade does.
+
+**The field guess decides which build is best.** Entries built against three fields and scored,
+with an independent corrected simulation, against each (expected prizes per 100 nights, 8
+entries, field of 300, fair share 2.6; a one-off scratch replay, not in the repo):
+
+| Built for | Uses the biggest line | Field piles on (83% hold him) | Mixed (52%) | Spread (30%) |
+|---|---:|---:|---:|---:|
+| Piles on (today's custom builder) | 7% of entries | 7.8 | 4.0 | 4.6 |
+| Biggest line sums (the baseline) | 98% | 1.7 | 4.1 | 9.2 |
+| All three fields at once | 49% | 6.2 | 4.7 | 7.7 |
+
+With the owner's report the default stays as it is. The fields here pick by line size alone;
+a field with skilled entrants would cut every number.
+
+**What a winning trio looked like.** The best pool trio averaged 110 points, 22 above the sum
+of the three biggest lines; the top 1% of trios started 12.5 above it. It held at least one of
+the three biggest lines on 20 of 22 nights, all three once, and a player ranked 11th-20th on
+11. The biggest line was in it on 9 nights.
+
+**The uncorrected simulation aims too high.** The actual best trio sat at the 36th percentile
+of the v1 simulation's best-trio distribution on average (median simulated 116, actual mean
+110); with the top-end correction, the 54th (median 108). The correction was fitted on most of
+the same nights, so this is a consistency check, not a second test.
+
+**Dropped.** First game of the night (+3.7 points over the line among 37 pool players; +0.14,
+95% CI -0.37 to +0.64, on all 2,366 graded players). The ghost model's ceiling-watch flag
+(flagged players finished 0.9 below unflagged against the line; line + 10 reached 7.2% vs
+7.1%, 1,399 rows). Morning-to-lock line moves (no pattern). Small slates (the three biggest
+lines ranked higher on 2-5 game nights, six nights only).

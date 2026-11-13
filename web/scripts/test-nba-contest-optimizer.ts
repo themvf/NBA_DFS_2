@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
-  WTA, baselineOrder, buildPortfolio, candidateTrios, contestPool, correlationMatrix, dnpProb, normCdf,
-  optimizeContest, recalibrateSurvival, rng, simulatePoints, survivalKnots, type ContestPlayer,
+  SIT_VERSION, WTA, baselineOrder, buildPortfolio, candidateTrios, contestPool, correlationMatrix, dnpProb, fieldOwnership, normCdf,
+  optimizeContest, recalibrateSurvival, rng, simulatePoints, sitProb, survivalKnots, type ContestPlayer,
 } from "../src/lib/nba-contest-optimizer";
 
 // Written by `python -m research.nba_wta_trios fixture`; the Python test fails if it is stale.
@@ -26,6 +26,13 @@ for (const c of fx.knots) {
 }
 
 for (const [b, p] of Object.entries(fx.dnp)) assert.equal(dnpProb(Number(b)), p);
+
+// Sitting chance by books and lead time (nba-points-sit-lead-v1) matches the Python, case by case.
+assert.equal(SIT_VERSION, fx.sit.version);
+assert.deepEqual([...WTA.SIT_LEAD_HOURS], fx.sit.leadHours);
+assert.deepEqual(WTA.SIT_BY_BOOKS_LEAD.map(([upper, rates]) => [upper, [...rates]]), fx.sit.byBooksLead);
+for (const [books, lead, p] of fx.sit.cases as [number, number | null, number][]) assert.equal(sitProb(books, lead), p, `sit ${books} books, lead ${lead}`);
+assert.equal(sitProb(6, undefined), dnpProb(6));
 
 // The top-end correction (nba-points-sim-recal-v1) matches the Python.
 fx.recal.u.forEach((u: number, i: number) => close(recalibrateSurvival(u), fx.recal.out[i], 1e-12, `recal ${u}`));
@@ -87,5 +94,37 @@ assert.equal(new Set(r1.entries.map((e) => [...e.players].sort().join("|"))).siz
 assert.deepEqual(r1.baseline[0].players, ["p00", "p01", "p02"]);
 assert.ok(r1.entries.every((e) => e.standaloneShare >= 0 && e.standaloneShare <= 1));
 assert.throws(() => optimizeContest(many.slice(0, 2)), /at least three/);
+
+// A given sitting chance is the one simulated.
+// (A curve can reach 0 on its own, so the sitting share is read against a run where nobody sits.)
+const zeroShare = (sitting: number[]) => {
+  const out = simulatePoints([player("a", 20), player("b", 12)], 40000, rng(2), false, sitting);
+  let za = 0, zb = 0;
+  for (let s = 0; s < 40000; s++) { if (out[s * 2] === 0) za++; if (out[s * 2 + 1] === 0) zb++; }
+  return [za / 40000, zb / 40000];
+};
+const [noneA, noneB] = zeroShare([0, 0]), [sitA, sitB] = zeroShare([0, 0.1]);
+close(sitA, noneA, 0.004, "a player given no sitting chance");
+assert.ok(sitB - noneB > 0.085 && sitB - noneB < 0.11, `a 10% sitting chance added ${sitB - noneB}`);
+
+// Without lead times the book-count rates apply and the run says so; with them, the lead-time rates.
+assert.equal(r1.sitVersion, null);
+assert.deepEqual(r1.sit, r1.pool.map((p) => dnpProb(p.books)));
+const timed = many.map((p, i) => ({ ...p, leadHours: i % 4 === 0 ? 0.5 : 3.5 }));
+const r3 = optimizeContest(timed, { sims: 1500, entries: 6 });
+assert.equal(r3.sitVersion, SIT_VERSION);
+assert.deepEqual(r3.sit, r3.pool.map((p) => sitProb(p.books, p.leadHours)));
+assert.ok(r3.sit.includes(0.002) && r3.sit.includes(0.021));
+assert.equal(optimizeContest(timed, { sims: 1500, entries: 6, leadSit: false }).sitVersion, null);
+// One player without a lead time: the whole pool falls back, never a mix of two measurements.
+assert.equal(optimizeContest(timed.map((p, i) => (i === 3 ? { ...p, leadHours: null } : p)), { sims: 1500, entries: 6 }).sitVersion, null);
+
+// Modeled field share: the three biggest lines carry the chalk block, shares fall with the line, three picks each.
+const own = fieldOwnership([34.5, 33.5, 29.5, 26.5, 25.5, 22.5, 20.5, 19.5], rng(5), 6000);
+assert.ok(own.every((v) => v >= 0 && v <= 1));
+assert.ok(own[0] > own[2] && own[2] > own[5] && own[5] > own[7], `ownership order ${own}`);
+assert.ok(own[0] > 0.9, `top line share ${own[0]}`);
+close(own.reduce((x, y) => x + y, 0), 3, 1e-9, "three picks per entry");
+assert.equal(r3.fieldOwnership.length, r3.pool.length);
 
 console.log("test-nba-contest-optimizer: all assertions passed");

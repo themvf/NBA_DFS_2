@@ -35,6 +35,20 @@ def test_sitting_rate_follows_book_count():
     assert _player("a", 20, books=6).dnp_prob == 0.002
 
 
+def test_lead_time_sitting_rate_is_opt_in_and_rises_with_the_wait():
+    # nba-points-sit-lead-v1: by books at the line and hours from the capture to the player's own tip.
+    assert w.sit_prob(6, 0.5) == 0.002 and w.sit_prob(6, 1.5) == 0.021 and w.sit_prob(6, 5.99) == 0.021 and w.sit_prob(6, 6.0) == 0.039
+    assert w.sit_prob(3, 0.0) == 0.010 and w.sit_prob(2, 3.0) == 0.024 and w.sit_prob(3, 9.0) == 0.045
+    assert w.sit_prob(1, 0.2) == w.sit_prob(1, 8.0) == 0.29
+    # No lead time: the registered book-count rate, so the frozen v1 entries are untouched.
+    assert w.sit_prob(6, None) == 0.002 and w.sit_prob(1, None) == 0.35 and w.sit_prob(3, float("nan")) == 0.03
+    pool = [_player("a", 20, books=6), _player("b", 20, books=6)]
+    default = w.simulate_points(pool, 20000, np.random.default_rng(3))
+    given = w.simulate_points(pool, 20000, np.random.default_rng(3), sit=[0.0, 0.10])
+    assert (default == 0).mean(axis=0).max() < 0.02          # 0.2% each, plus the rare real zero
+    assert (given[:, 0] == 0).mean() < 0.01 and 0.085 < (given[:, 1] == 0).mean() < 0.125
+
+
 def test_simulated_points_are_whole_nonnegative_and_centered_on_the_line():
     rng = np.random.default_rng(1)
     pts = w.simulate_points([_player("a", 20.0), _player("b", 12.0, books=1)], 20000, rng)

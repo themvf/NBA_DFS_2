@@ -19,24 +19,30 @@ import { scoreRun, type BoxGame, type EntryResult, type RunEntry, type RunPoolPl
 const LAST_SEASON = "2025-26";
 
 /** Tonight's latest lines as optimizer players: the same board the Top Scorers page builds. */
-async function liveSlate(date: string): Promise<{ players: ContestPlayer[]; games: OptimizerGame[]; capturedAt: string | null }> {
+async function liveSlate(date: string): Promise<{ players: ContestPlayer[]; games: OptimizerGame[]; capturedAt: string | null; linesAgeMinutes: number | null }> {
   const [rows, ladderRows, lastSeason, teams, currentTeams] = await Promise.all([
     getNbaPointsProps(date), getNbaPointsProps(date, "player_points_alternate"), getNbaSeasonStats(LAST_SEASON),
     getNbaTeams(), getNbaCurrentTeams(date),
   ]);
   const { scorers, games } = buildBoard(rows, lastSeason, teams, ladderRows, currentTeams);
   const now = Date.now();
+  const capturedAt = games.reduce<string | null>((m, g) => (m == null || g.capturedAt > m ? g.capturedAt : m), null);
+  const open = games.some((g) => new Date(g.commenceTime).getTime() > now);
   return {
     players: scorers.map((s) => ({
       key: playerKey(s.player), player: s.player, eventId: s.eventId, team: s.team ? teamKey(s.team) : null,
       line: s.line, pOver: s.pOver, books: s.books.length,
       curve: (s.distribution?.curve ?? []).map((c) => ({ point: c.point, p: c.p })),
+      // How long before his own tip these lines were read: sets his sitting chance (nba-points-sit-lead-v1).
+      leadHours: (new Date(s.commenceTime).getTime() - new Date(s.capturedAt).getTime()) / 3_600_000,
     })),
     games: [...games].sort((a, b) => a.commenceTime.localeCompare(b.commenceTime)).map((g) => ({
       eventId: g.eventId, game: g.game, commenceTime: g.commenceTime, players: g.players,
       started: new Date(g.commenceTime).getTime() <= now,
     })),
-    capturedAt: games.reduce<string | null>((m, g) => (m == null || g.capturedAt > m ? g.capturedAt : m), null),
+    capturedAt,
+    // Decided on the server, like `started`, so server and browser render the same warning.
+    linesAgeMinutes: capturedAt && open ? Math.max(0, Math.round((now - new Date(capturedAt).getTime()) / 60_000)) : null,
   };
 }
 
@@ -242,7 +248,7 @@ export default async function ContestTriosPage({ searchParams }: { searchParams:
         ))}
       </nav>
 
-      <ContestOptimizer date={date} players={slate.players} games={slate.games} capturedAt={slate.capturedAt} />
+      <ContestOptimizer date={date} players={slate.players} games={slate.games} capturedAt={slate.capturedAt} linesAgeMinutes={slate.linesAgeMinutes} />
 
       <SavedRuns runs={runs} finals={finals} date={date} />
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { CONTEST_RUN_VERSION, checkRunRequest, runPayload, runRequest, scoreRun, type RunRequest } from "../src/lib/nba-contest-runs";
-import { RECAL_VERSION, optimizeContest, type ContestPlayer } from "../src/lib/nba-contest-optimizer";
+import { RECAL_VERSION, SIT_VERSION, optimizeContest, type ContestPlayer } from "../src/lib/nba-contest-optimizer";
 import { playerKey } from "../src/lib/nba-top-scorers";
 
 // A real optimizer run, so the request is the shape the browser sends.
@@ -37,6 +37,26 @@ refused((r) => { r.entries[1].players = [...r.entries[0].players].reverse(); }, 
 refused((r) => { r.entries[1].rank = 5; }, /rank out of order/);
 refused((r) => { r.entriesRequested = 2; }, /more entries than requested/);
 refused((r) => { r.linesCapturedAt = "yesterday"; }, /capture time/);
+refused((r) => { r.pool[0].sit = 1.4; }, /pool player/);
+refused((r) => { (r as { sitVersion: unknown }).sitVersion = 7; }, /sitting rule/);
+
+// The sitting rule and each player's simulated chance are on the record. Without lead times the run used the book-count rates.
+assert.equal(request.sitVersion, null);
+assert.ok(request.pool.every((p) => p.sit === 0.002));
+const timedRun = optimizeContest(players.map((p, i) => ({ ...p, leadHours: i < 4 ? 0.5 : 3.0 })), { fieldSize: 300, entries: 4, sims: 400 });
+const timedRequest = runRequest("2026-11-10", ["evt-a", "evt-b"], 4, "2026-11-10T22:07:00.000Z", RECAL_VERSION, timedRun);
+assert.equal(timedRequest.sitVersion, SIT_VERSION);
+assert.deepEqual([...new Set(timedRequest.pool.map((p) => p.sit))].sort(), [0.002, 0.021]);
+const timedOk = checkRunRequest(JSON.parse(JSON.stringify(timedRequest)));
+assert.ok(timedOk.ok);
+if (timedOk.ok) assert.deepEqual(timedOk.value, timedRequest);
+// A request from a page loaded before this change has neither field: still accepted, recorded as the book-count rule.
+const legacy = JSON.parse(JSON.stringify(request)) as Record<string, unknown> & { pool: Record<string, unknown>[] };
+delete legacy.sitVersion;
+for (const p of legacy.pool) delete p.sit;
+const legacyOk = checkRunRequest(legacy);
+assert.ok(legacyOk.ok);
+if (legacyOk.ok) { assert.equal(legacyOk.value.sitVersion, null); assert.ok(!("sit" in legacyOk.value.pool[0])); }
 assert.ok(!checkRunRequest(null).ok);
 assert.ok(!checkRunRequest([request]).ok);
 
@@ -46,6 +66,8 @@ const games = [
 ];
 const payload = runPayload(request, games);
 assert.equal(payload.version, CONTEST_RUN_VERSION);
+assert.equal(payload.sitVersion, null);
+assert.equal(runPayload(timedRequest, games).sitVersion, SIT_VERSION);
 assert.equal(payload.gameDate, "2026-11-10");
 assert.deepEqual(payload.games.map((g) => g.eventId), ["evt-a", "evt-b"]);
 assert.ok(!("eventIds" in payload) && !("date" in payload));
