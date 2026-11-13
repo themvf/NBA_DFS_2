@@ -8468,7 +8468,7 @@ rank and worse on points, and the 20%+ chalk is still predicted at 16.5 (prior
 prior is the owner's decision. Features and alpha are frozen; a news or
 published-ownership input is a v2 registration.
 
-**Showdown lineup model `nfl-ownership-field-showdown-v1` (owner's decision
+**Showdown lineup model `nfl-ownership-field-showdown-v2` (owner's decisions
 2026-11-13; "Showdown lineup model" in `docs/nfl-ownership-model.md`).** Once
 the books' player lines are in (six ownable players with a full set), our own
 Showdown ownership comes from a model of the lineups the field builds, not from
@@ -8477,20 +8477,30 @@ gets a value (crowd points, a charge for unspent salary, a quarterback-stack
 bonus), the field picks with probability exp(value / tau), and captain and flex
 ownership fall out (`model/nfl_showdown_field_model.py`, port
 `web/src/lib/nfl-dfs/showdown-field-model.ts`, pinned by a shared fixture;
-numbers in `web/src/data/nfl-showdown-field-model-v1.json`). Crowd points are
+numbers in `web/src/data/nfl-showdown-field-model-v2.json`). Crowd points are
 our projection, except kickers and defenses are read off the Vegas team totals
 and players without a full set of lines are scaled down (0.70 touchdown line
-only, 0.34 none). Each of eight slates predicted from the other seven: captain
-off by 0.89 points a player, flex by 3.36, against 1.18 and 4.85 for the fitted
-model it replaces and 0.81 and 2.31 for stat-api. Before the lines are in it is
-no better than the fitted model, so that model stays live until then and is the
-shadow after; a stored stat-api pull still replaces either. **It has not been
-shown to build better lineups:** six slates rebuilt as the page builds gave +0.9
-points a lineup and the same top-1% rate and return, every interval through
-zero, and real ownership did no better. Do not sell it as an edge. Refit with
-`python -m research.nfl_showdown_field_model --slates <local file>` (needs
-torch; the training file joins our frozen slates to licensed contest data and
-is not in the repository). Classic is not covered.
+only, 0.34 none). v2, the same day, added the low-end term: a seat under 4
+crowd points loses a further 1.92 a point, because v1's straight-line value
+gave cheap players the field ignores 3-10% (under $1,000: v1 2.5%, real 0.7%).
+Each of eight slates predicted from the other seven: captain off by 0.88 points
+a player, flex by 2.75 (v1 0.89 and 3.36), against 1.18 and 4.85 for the fitted
+model it replaces and 0.81 and 2.31 for stat-api. The 4-point threshold was
+chosen on those eight slates; on twelve others, with stat-api's projections as
+input, the term took flex from 2.47 to 2.20 (stat-api 2.14). stat-api's
+projections explain only 0.4 of v1's 1.05-point gap, and for players with full
+lines theirs and ours are the same number (correlation 0.99), so do not look
+there again; what is left is which fringe players have a real role, and a
+salary line does not supply it (tested, no gain). Before the lines are in the
+lineup model is no better than the fitted model (flex 4.30 against 4.12), so
+that model stays live until then and is the shadow after; a stored stat-api
+pull still replaces either. **It has not been shown to build better lineups:**
+six slates rebuilt as the page builds with v1 gave +0.9 points a lineup and the
+same top-1% rate and return, every interval through zero, and real ownership
+did no better; v2 has not been through that check. Do not sell it as an edge.
+Refit with `python -m research.nfl_showdown_field_model --slates <local file>`
+(needs torch; the training file joins our frozen slates to licensed contest
+data and is not in the repository). Classic is not covered.
 
 ### GPP objective: multiplicative leverage and the ceiling cap (2026-09-27)
 

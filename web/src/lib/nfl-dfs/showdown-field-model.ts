@@ -1,9 +1,9 @@
 /**
- * Showdown field-ownership model (`nfl-ownership-field-showdown-v1`), our own
+ * Showdown field-ownership model (`nfl-ownership-field-showdown-v2`), our own
  * Showdown ownership once the books' player lines are in (owner's decision
  * 2026-11-13). A port of model/nfl_showdown_field_model.py; the numbers are
  * fitted by research/nfl_showdown_field_model.py and written to
- * src/data/nfl-showdown-field-model-v1.json. The shared fixture
+ * src/data/nfl-showdown-field-model-v2.json. The shared fixture
  * (tests/fixtures/nfl_showdown_field_model_fixture.json) pins both languages.
  *
  * It models how the field builds whole lineups. Every legal lineup among the
@@ -21,29 +21,40 @@
  * full set of sportsbook lines is scaled down (0.70 with a touchdown line only,
  * 0.34 with none). Our projections themselves are not changed.
  *
+ * v2 adds the low-end term (`seatPoints`): a player the crowd expects under 4
+ * points loses extra seat value for each point under it. v1 valued a seat in a
+ * straight line, so a one-point player was only a little worse than a
+ * four-point one and his low price earned him 3-10% of lineups, where the
+ * field plays such players about 1% (under $1,000: v1 2.5%, real 0.7%).
+ *
  * Tested by predicting each of eight 2026 slates (weeks 7-10) from the other
- * seven, against the real field of each night's largest contest: captain off
- * by 0.89 points a player and flex by 3.36, where the per-player fitted model
- * it replaces was off by 1.18 and 4.85 on the same players and stat-api's
- * projected ownership by 0.81 and 2.31. Eight slates of one season: an
- * estimate, and it stays labelled uncalibrated.
+ * seven, against the real field of each night's largest contest: see
+ * `held_out` in the numbers file and docs/nfl-ownership-model.md. v1 missed
+ * captain by 0.89 points a player and flex by 3.36; the term took flex to
+ * about 2.75 on all eight slates and left captain where it was. The
+ * per-player fitted model it replaces was off by 1.18 and 4.85 on the same
+ * players and stat-api's projected ownership by 0.81 and 2.31. Eight slates
+ * of one season, and the 4-point threshold was chosen on them (3, 4 and 5
+ * tried): an estimate, and it stays labelled uncalibrated. The term was then
+ * checked on twelve other slates with a consensus projection as input: flex
+ * 2.47 to 2.20, better on eleven.
  *
  * Only for a slate whose lines are in (`showdownHasLines`). On four slates
- * frozen before any line was captured, none of them in the fit, it missed flex
- * by 4.59 and captain by 1.04: no better than the model it replaces (4.12 and
- * 0.82, on slates that model was fitted on), so that model stays live until the
- * lines arrive.
+ * frozen before any line was captured, none of them in the fit, it is no
+ * better than the model it replaces (flex 4.3 against 4.12, on slates that
+ * model was fitted on), so that model stays live until the lines arrive.
  *
  * What it does not show: better lineups. Six stored slates rebuilt the way the
  * page builds (Winners shape v14, leverage on, 10 seeds, paid out of 30 real
  * contests) scored +0.9 points a lineup and +1.4 points of top-10% finishes
- * with this model against the fitted one, with the same top-1% rate and
- * return, and every interval included zero. The real field's ownership did no
- * better. So this is a more accurate estimate, not a demonstrated edge.
+ * with v1 against the fitted model, with the same top-1% rate and return, and
+ * every interval included zero. The real field's ownership did no better, and
+ * v2 has not been through that check. So this is a more accurate estimate, not
+ * a demonstrated edge.
  */
-import model from "@/data/nfl-showdown-field-model-v1.json";
+import model from "@/data/nfl-showdown-field-model-v2.json";
 
-export const NFL_OWNERSHIP_FIELD_SHOWDOWN_VERSION = "nfl-ownership-field-showdown-v1";
+export const NFL_OWNERSHIP_FIELD_SHOWDOWN_VERSION = "nfl-ownership-field-showdown-v2";
 export const NFL_OWNERSHIP_FIELD_SHOWDOWN_FITTED_AT: string = model.fitted_at;
 const POSITIONS = ["QB", "RB", "WR", "TE", "K", "DST"] as const;
 export const FIELD_TOP_PLAYERS = 24;
@@ -102,6 +113,14 @@ export function crowdPoints(p: ShowdownFieldPlayer, lined: boolean): number {
   else if (!lined || p.anchor === "full") value = p.pts as number;
   else value = (p.pts as number) * (p.anchor === "td_only" ? model.fringe.td_only : model.fringe.none);
   return Math.max(value, MIN_CROWD_POINTS);
+}
+
+/**
+ * Crowd points as a seat is valued: every point under the low-end threshold
+ * costs an extra `penalty`. Points at or above it are unchanged.
+ */
+export function seatPoints(points: number): number {
+  return points - model.low_end.penalty * Math.max(0, model.low_end.threshold - points);
 }
 
 function choose5(n: number): number {
@@ -174,8 +193,9 @@ function compute(players: readonly ShowdownFieldPlayer[]): ShowdownFieldResult |
     tiesKept = FIELD_KEEP_LINEUPS - above;
   }
   const flexOffsets = model.flex_offsets as Record<string, number>, captainOffsets = model.captain_offsets as Record<string, number>;
-  const flexValue = pts.map((v, k) => v + flexOffsets[POSITIONS[position[k]]]);
-  const captainValue = pts.map((v, k) => CAPTAIN_MULTIPLIER * v + captainOffsets[POSITIONS[position[k]]]);
+  // Which players are kept and which lineups survive the trim go by plain crowd points; only the seat value bends.
+  const flexValue = pts.map((v, k) => seatPoints(v) + flexOffsets[POSITIONS[position[k]]]);
+  const captainValue = pts.map((v, k) => CAPTAIN_MULTIPLIER * seatPoints(v) + captainOffsets[POSITIONS[position[k]]]);
   const kept: number[] = [];
   const utility: number[] = [];
   let best = -Infinity;

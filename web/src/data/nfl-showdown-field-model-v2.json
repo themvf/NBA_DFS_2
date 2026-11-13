@@ -1,23 +1,27 @@
 {
- "version": "nfl-ownership-field-showdown-v1",
- "tau": 3.5458,
- "unused_salary": -1.81338,
- "qb_stack": 1.47163,
+ "version": "nfl-ownership-field-showdown-v2",
+ "tau": 3.69916,
+ "unused_salary": -2.73783,
+ "qb_stack": 1.42999,
+ "low_end": {
+  "threshold": 4.0,
+  "penalty": 1.92383
+ },
  "flex_offsets": {
-  "QB": -0.44163,
-  "RB": 0.78757,
+  "QB": -0.15135,
+  "RB": 0.94043,
   "WR": 0.0,
-  "TE": 0.61456,
-  "K": 0.81946,
-  "DST": 1.01011
+  "TE": 0.74728,
+  "K": 0.35285,
+  "DST": 0.43693
  },
  "captain_offsets": {
-  "QB": -0.74299,
-  "RB": 3.06894,
+  "QB": -0.63551,
+  "RB": 2.99558,
   "WR": 0.0,
-  "TE": 1.08602,
-  "K": -1.16242,
-  "DST": 3.83922
+  "TE": 0.66185,
+  "K": -3.01022,
+  "DST": 2.50673
  },
  "kicker": {
   "intercept": 3.5306,
@@ -31,8 +35,8 @@
   "td_only": 0.7016,
   "none": 0.3434
  },
- "loss": 737.627,
- "fitted_at": "2026-11-13T19:39:55.745834+00:00",
+ "loss": 604.147,
+ "fitted_at": "2026-11-13T22:56:43.708657+00:00",
  "slates": 8,
  "training": [
   "2026-10-26 DAL @ PHI Showdown",
@@ -46,7 +50,7 @@
  ],
  "held_out": {
   "slates": 8,
-  "captain_mae": 0.888,
-  "flex_mae": 3.356
+  "captain_mae": 0.878,
+  "flex_mae": 2.745
  }
 }

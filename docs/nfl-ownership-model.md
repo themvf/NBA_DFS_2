@@ -551,7 +551,7 @@ ownership has not been shown to improve payouts. That is untested.
 - Classic slates are supported (totals only) but stat-api's Classic ownership
   has not been compared with real ownership, so it has not been applied to one.
 
-## Showdown lineup model — `nfl-ownership-field-showdown-v1` (owner's decision 2026-11-13)
+## Showdown lineup model — `nfl-ownership-field-showdown-v2` (owner's decisions 2026-11-13; v1 that morning, v2 that evening)
 
 Our own Showdown ownership once the books' player lines are in. It replaces the
 per-player fitted model (`nfl-ownership-fit-showdown-v1`) on those slates; that
@@ -577,6 +577,11 @@ left was the inputs.
   an offset by position for each seat (wide receiver is the reference), a
   charge per $1,000 unspent, and a bonus when a WR or TE captain has his own
   quarterback in the flex.
+- The low-end term (v2): a seat's crowd points are bent before they are
+  valued. A player the crowd expects under 4 points loses a further 1.92 for
+  each point under it, so a 2-point player is valued at 2 - 1.92 x 2 = -1.85.
+  Which players are kept and which lineups survive the cut still go by plain
+  crowd points. See "v2: the low-end term" below.
 - The field picks a lineup with probability proportional to exp(value / tau).
   Captain and flex ownership are the shares of that mass each player is in, so
   they sum to 100% and 500% and one player's two shares cannot pass 100%.
@@ -592,10 +597,14 @@ left was the inputs.
 - "The lines are in" means at least six ownable players have a full set
   (`MIN_FULL_ANCHORS`). Before that nobody has one and a missing set says
   nothing about a player.
-- Fitted numbers (`web/src/data/nfl-showdown-field-model-v1.json`): tau 3.55,
-  unspent salary -1.81 a $1,000, quarterback stack +1.47, flex offsets QB -0.44
-  / RB +0.79 / TE +0.61 / K +0.82 / DST +1.01, captain offsets QB -0.74 / RB
-  +3.07 / TE +1.09 / K -1.16 / DST +3.84. A separate value for a player's
+- Fitted numbers (`web/src/data/nfl-showdown-field-model-v2.json`): tau 3.70,
+  unspent salary -2.74 a $1,000, quarterback stack +1.43, low-end penalty 1.92
+  under 4 points, flex offsets QB -0.15 / RB +0.94 / TE +0.75 / K +0.35 / DST
+  +0.44, captain offsets QB -0.64 / RB +3.00 / TE +0.66 / K -3.01 / DST +2.51.
+  (v1, without the low-end term: tau 3.55, unspent salary -1.81, stack +1.47,
+  flex offsets QB -0.44 / RB +0.79 / TE +0.61 / K +0.82 / DST +1.01, captain
+  offsets QB -0.74 / RB +3.07 / TE +1.09 / K -1.16 / DST +3.84.) A separate
+  value for a player's
   salary is not identified (a captain costs exactly 1.5x his flex price, so it
   adds up to the unspent-salary term) and is not in the model. A ceiling term
   fitted to zero and was dropped.
@@ -610,23 +619,87 @@ percentage points:
 
 | | captain | flex |
 |---|---:|---:|
-| lineup model, held out | 0.89 | 3.36 |
-| same, without the fringe factors | 0.91 | 3.54 |
+| lineup model v2 (with the low-end term), held out | 0.88 | 2.75 |
+| lineup model v1, held out | 0.89 | 3.36 |
+| v1 without the fringe factors | 0.91 | 3.54 |
 | our projections alone, no stand-ins (fitted on all twelve slates) | 0.95 | 3.96 |
 | the fitted model it replaces (in sample for two of the eight) | 1.18 | 4.85 |
 | what the app showed at the time | 1.30 | 4.84 |
 | stat-api's projected ownership | 0.81 | 2.31 |
 
-By position the held-out totals are close to the real ones (QB captain 24.5%
+By position the v1 held-out totals are close to the real ones (QB captain 24.5%
 against 23.3%, DST 4.6% against 4.2%, kicker flex 45.3% against 44.7%). The
 largest misses are news-driven cheap players (a backup running back at 30.6%
-of flex against 12.7% predicted), which no input here carries.
+of flex against 12.7% predicted by v1 and 16.6% by v2), which no input here
+carries.
 
 Four more slates were frozen before any line had been captured. They are not
-in the fit. On them the shipped numbers missed captain by 1.04 and flex by
-4.59, no better than the fitted model (0.82 and 4.12, and at least two of the
-four were in that model's fit), which is why the lineup model is only used
+in the fit. On them v1 missed captain by 1.04 and flex by 4.59 and v2 by 1.01
+and 4.30, no better than the fitted model (0.82 and 4.12, and at least two of
+the four were in that model's fit), which is why the lineup model is only used
 once the lines are in.
+
+### v2: the low-end term (owner's decision 2026-11-13)
+
+Asked what our model could learn from stat-api's, v1's inputs were swapped for
+stat-api's projections one group of players at a time, on the same eight
+slates, each still predicted from the other seven. Flex miss per player:
+
+| crowd points taken from stat-api for | flex |
+|---|---:|
+| nobody (v1) | 3.36 |
+| kickers and defenses | 3.31 |
+| players with a full set of lines | 3.24 |
+| players without a full set | 3.07 |
+| everyone | 2.96 |
+| stat-api's own projected ownership | 2.31 |
+
+Their projections explain 0.4 of the 1.05 gap. For players with a full set of
+lines the two projections are the same number (correlation 0.993, 0.66 points
+apart on average). The rest was the shape of v1's seat value. A seat was
+valued in a straight line, so a 1-point player was only 3 points worse than a
+4-point one and his price, which frees salary for stars, more than paid for
+it. Flex ownership by salary on the eight slates (227 players):
+
+| salary | players | real | v1 | v2 | stat-api |
+|---|---:|---:|---:|---:|---:|
+| under $1,000 | 38 | 0.7% | 2.5% | 1.2% | 0.6% |
+| $1,000 to $2,500 | 38 | 2.9% | 5.1% | 3.4% | 2.7% |
+| $2,500 to $4,000 | 34 | 12.9% | 11.3% | 12.4% | 11.1% |
+| $4,000 to $6,000 | 43 | 20.7% | 19.6% | 21.0% | 20.3% |
+| $6,000 to $8,500 | 34 | 22.8% | 22.2% | 23.2% | 23.9% |
+| $8,500 and up | 40 | 42.3% | 43.3% | 42.8% | 43.5% |
+
+On players really owned 10% or more v1 already missed by about what stat-api
+did (10-25%: 2.93 against 2.76; 25-50%: 4.48 against 4.00; 50% and up: 4.45
+against 5.10). The 60 players really owned under 2% were where it lost: 2.77
+against 0.40.
+
+The term: seat points = crowd points - penalty x max(0, 4 - crowd points),
+penalty fitted with everything else. Held out on the eight slates it took flex
+from 3.36 to 2.75 (-0.61, 90% interval [-0.78, -0.44], better on 8 of 8) and
+left captain where it was (0.89 to 0.88). The threshold is not fitted: 3, 4
+and 5 were tried on these eight slates (2.85, 2.75, 2.75), which makes the
+2.75 a little kind.
+
+The check that does not share that problem: twelve other Showdown slates
+(Oct 1 to Oct 25), none of the eight, with stat-api's stored projections as
+the crowd points because we hold no frozen projections of our own for most of
+them. Each predicted from the other eleven, threshold fixed at 4: flex 2.47
+without the term, 2.20 with it, better on 11 and level on 1; captain 0.65 and
+0.67. stat-api's own ownership on those slates: 2.14 and 0.72. So with their
+inputs the model's form now matches theirs.
+
+Tried and not kept: reading a player without a full set of lines off a
+straight line in his salary (stat-api's projection for such players is close
+to 0.32 + 0.79 x salary in $1,000s; held out it reproduces their number to
+0.75 points against 0.93 for the flat 0.70 and 0.34 factors). With the
+low-end term in, it added nothing (2.78 against 2.75).
+
+What is left after v2 is mostly which fringe players have a real role: with
+stat-api's projections for players without a full set on top of the term the
+miss is 2.49. We project some third-string players at 4 to 6 points where the
+consensus has them near 2. Salary does not separate them.
 
 ### What it does not show
 
@@ -649,10 +722,14 @@ Real ownership against the fitted model was no better (points +0.57, top-1%
 -0.26, capped return -0.10, all intervals through zero). On these builds a more
 accurate ownership forecast, even a perfect one, did not change results by an
 amount six slates can see. The model is shipped as a better estimate of the
-field, not as an edge.
+field, not as an edge. That check was run on v1; v2 has not been through it,
+and nothing above suggests it would come out differently.
 
 ### Known limits
 
+- The 4-point threshold of the low-end term was chosen on the eight slates it
+  is scored on, and its independent check ran on stat-api's projections, not
+  ours.
 - Eight slates of one season, all prime-time games frozen an hour before
   kickoff. A slate read the day before, with only some lines posted, is outside
   what was tested; the six-full-sets rule is a stated guard, not a fitted one.

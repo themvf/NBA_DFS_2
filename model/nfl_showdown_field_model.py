@@ -1,4 +1,4 @@
-"""Showdown field-ownership model (`nfl-ownership-field-showdown-v1`).
+"""Showdown field-ownership model (`nfl-ownership-field-showdown-v2`).
 
 Owner's decision 2026-11-13: replace the per-player fitted Showdown ownership
 (`nfl-ownership-fit-showdown-v1`) with a model of how the field builds whole
@@ -15,6 +15,14 @@ training slates): a kicker is read off his team's Vegas points, a defense off
 the opponent's, and once the books' lines are in, a player without a full set
 of them is scaled down. Our projections themselves are not changed.
 
+v2 (owner's decision 2026-11-13) adds the low-end term: a player the crowd
+expects to score under `low_end.threshold` points loses `low_end.penalty` of
+seat value for each point under it. v1 valued a seat in a straight line, so a
+one-point player was only a little worse than a four-point one and his low
+price, which frees salary for stars, earned him 3-10% of lineups; the field
+plays such players about 1%. Which players are kept and which lineups survive
+the trim still go by plain crowd points.
+
 Pure: plain dicts in, percentages out. `research/nfl_showdown_field_model.py`
 fits the numbers and writes them to web/src/data, where
 web/src/lib/nfl-dfs/showdown-field-model.ts applies them; the shared fixture in
@@ -26,7 +34,7 @@ import itertools
 
 import numpy as np
 
-VERSION = "nfl-ownership-field-showdown-v1"
+VERSION = "nfl-ownership-field-showdown-v2"
 POSITIONS = ("QB", "RB", "WR", "TE", "K", "DST")
 #: Players the lineups are built from: the slate's top N by crowd points.
 TOP_PLAYERS = 24
@@ -135,13 +143,20 @@ def build(players: list[dict], model: dict) -> dict | None:
             "cap": cap, "flex": flex, "left": left, "stack": stack, "n": n}
 
 
+def seat_points(points, model: dict):
+    """Crowd points as a seat is valued: every point under `low_end.threshold`
+    costs an extra `low_end.penalty`. Points at or above it are unchanged."""
+    points = np.asarray(points, dtype=np.float64)
+    return points - model["low_end"]["penalty"] * np.maximum(0.0, model["low_end"]["threshold"] - points)
+
+
 def seat_values(built: dict, model: dict) -> tuple[np.ndarray, np.ndarray]:
     """(flex seat value, captain seat value) per kept player.
 
     There is no separate value for a player's salary: a captain costs exactly 1.5x
     his flex price, so a per-dollar seat value adds up to a per-dollar value of the
     whole lineup's spend, which `unused_salary` already is."""
-    base = built["pts"]
+    base = seat_points(built["pts"], model)
     flex_offset = np.array([model["flex_offsets"][p] for p in POSITIONS])
     captain_offset = np.array([model["captain_offsets"][p] for p in POSITIONS])
     return base + flex_offset[built["position"]], CAPTAIN_MULTIPLIER * base + captain_offset[built["position"]]

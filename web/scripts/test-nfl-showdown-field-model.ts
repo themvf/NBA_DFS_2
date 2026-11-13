@@ -1,14 +1,14 @@
 /**
- * Showdown field model (`nfl-ownership-field-showdown-v1`): the TypeScript port
+ * Showdown field model (`nfl-ownership-field-showdown-v2`): the TypeScript port
  * reproduces model/nfl_showdown_field_model.py on the shared fixture, the slot
  * totals hold, and the rules around it (who is ownable, when the lines count as
  * in, what a kicker and a defense are read from) behave as written.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { crowdPoints, projectShowdownField, showdownHasLines, FIELD_KEEP_LINEUPS, FIELD_TOP_PLAYERS, NFL_OWNERSHIP_FIELD_SHOWDOWN_VERSION,
+import { crowdPoints, projectShowdownField, seatPoints, showdownHasLines, FIELD_KEEP_LINEUPS, FIELD_TOP_PLAYERS, NFL_OWNERSHIP_FIELD_SHOWDOWN_VERSION,
   type ShowdownFieldPlayer } from "../src/lib/nfl-dfs/showdown-field-model";
-import model from "../src/data/nfl-showdown-field-model-v1.json";
+import model from "../src/data/nfl-showdown-field-model-v2.json";
 
 type Row = { position: string; team: string | null; salary: number; captain_salary: number | null; is_out: boolean; pts: number | null;
   anchor: "full" | "td_only" | null; team_implied: number | null; opponent_implied: number | null; captain: number; flex: number };
@@ -61,6 +61,20 @@ assert.ok(!showdownHasLines(pool.map((p, i) => (p.anchor === "full" && pool.slic
   "five full sets are not enough");
 const early = projectShowdownField(unlined)!;
 assert.ok(!early.lined && Math.abs([...early.shares.values()].reduce((t, v) => t + v.flex, 0) - 500) < 1e-6);
+
+// The low-end term: a seat under the threshold loses the penalty for each point under it; nothing changes at or above it.
+const { threshold, penalty } = model.low_end;
+assert.ok(threshold > 0 && penalty > 0, "the low-end term is fitted and positive");
+assert.equal(seatPoints(threshold), threshold);
+assert.equal(seatPoints(threshold + 6), threshold + 6);
+assert.ok(Math.abs(seatPoints(threshold - 1.5) - (threshold - 1.5 - penalty * 1.5)) < 1e-12);
+// A cheap player the crowd expects little from is owned less than a straight-line value would give him:
+// dropping him further under the threshold costs him more than the same drop costs a player above it.
+const kept = pool.map((p, i) => ({ p, own: got.shares.get(i)! })).filter((x) => x.own.flex > 0 && x.p.position !== "K" && x.p.position !== "DST");
+const punt = kept.filter((x) => crowdPoints(x.p, true) < threshold).sort((a, b) => b.own.flex - a.own.flex)[0];
+assert.ok(punt, "the fixture slate has a kept skill player under the threshold");
+const lower = projectShowdownField(pool.map((p) => (p.id === punt.p.id ? { ...p, pts: (p.pts as number) * 0.8 } : p)))!;
+assert.ok(lower.shares.get(punt.p.id)!.flex < punt.own.flex, "a lower crowd projection under the threshold lowers his flex ownership");
 
 // A pool that cannot form a lineup returns null rather than a guess.
 assert.equal(projectShowdownField(pool.filter((p) => !p.isOut && (p.pts ?? 0) > 0).slice(0, 5)), null);
