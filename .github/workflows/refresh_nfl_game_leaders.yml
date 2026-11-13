@@ -104,7 +104,10 @@ jobs:
           cat /tmp/sources.txt
           xargs -a /tmp/sources.txt git add -f
           git add -f artifacts/nfl-game-leaders/regime-roles-v1/shadow 2>/dev/null || true
-          git add -f artifacts/nfl-game-leaders/regime-roles-v1/grade-runs artifacts/nfl-game-leaders/regime-roles-v1/verdict.json 2>/dev/null || true
+          # One path per add: git adds nothing when any pathspec is missing, and
+          # verdict.json does not exist until the floors are met.
+          git add -f artifacts/nfl-game-leaders/regime-roles-v1/grade-runs 2>/dev/null || true
+          git add -f artifacts/nfl-game-leaders/regime-roles-v1/verdict.json 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No publication change"
             exit 0
