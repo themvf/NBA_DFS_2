@@ -27,6 +27,7 @@ export interface CronRouteSpec {
 export const CRON_ROUTES: Record<string, CronRouteSpec> = {
   "dispatch": { label: "GitHub job dispatcher", everyMinutes: 15 },
   "nfl-slate-check": { label: "NFL Slate Check (scheduled)", everyMinutes: 30 },
+  "pickem-settle": { label: "Pick'em ledger settlement", everyMinutes: 720 },
   "nfl-pool-capture": { label: "NFL DraftKings pool capture", everyMinutes: 1 },
   "event-closing-lines": { label: "Closing-line capture trigger", everyMinutes: 1 },
   "health-check": { label: "Health checklist (this page)", everyMinutes: 30 },
