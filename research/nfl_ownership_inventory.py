@@ -37,6 +37,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from model.nfl_team_aliases import normalize_team
+
 INVENTORY_VERSION = "nfl-ownership-inventory-v1"
 CANONICAL_LEAD = timedelta(minutes=20)
 EARLY_WINDOW = timedelta(hours=24)
@@ -214,10 +216,12 @@ def attach_contests(conn, slates: dict[str, Slate], upload_slate: dict[str, str]
             c["slate_key"] = None
             m = _MATCHUP.search(c["contest_name"] or "")
             if m:
-                pair = {m.group(1), m.group(2)}
+                # The contest name is DraftKings' spelling and the schedule is ours, and they differ for
+                # Washington (WAS against WSH): compared raw, an unlinked Washington contest matched no game.
+                pair = {normalize_team(m.group(1)), normalize_team(m.group(2))}
                 # Divisional pairs meet twice: keep games already played when the contest was imported,
                 # and of those the latest (a contest is imported after its game, never before).
-                hits = [g for g in games if {g["away"], g["home"]} == pair
+                hits = [g for g in games if {normalize_team(g["away"]), normalize_team(g["home"])} == pair
                         and (c["week"] is None or g["week"] == c["week"]) and g["kickoff"] <= c["imported_at"]]
                 hits = sorted(hits, key=lambda g: g["kickoff"])[-1:] if c["week"] is not None else hits
                 if len(hits) == 1:

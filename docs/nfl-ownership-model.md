@@ -838,7 +838,13 @@ not a verdict. The lineup model has no live slate yet.
 - A slate before 2026-10-01 stored no captain and flex split and cannot be
   graded.
 - `research/nfl_ownership_inventory.attach_contests` matches an unlinked
-  contest to its slate through the schedule's team codes, which say WSH where
-  DraftKings says WAS, so an unlinked Washington contest never matched. This
-  grade matches on the slate's own game string as well. The ownership
-  scorecard still uses the schedule match alone and is unchanged here.
+  contest to its slate through the schedule, which says WSH where DraftKings'
+  contest names say WAS, so an unlinked Washington contest never matched.
+  Fixed 2026-11-14 (owner's decision): both spellings go through
+  `model/nfl_team_aliases.normalize_team` before they are compared. On the
+  live data that attached one contest and moved no other (57 contests, 52
+  attached before, 53 after: Thursday's WAS @ NYG flagship). The ownership
+  scorecard reads the same loader, so its next run grades that contest too;
+  the scorecard is run by hand and was not re-run with the fix. For one day
+  this grade carried a second match of its own on the slate's game string;
+  it was removed with the fix.

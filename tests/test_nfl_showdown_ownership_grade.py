@@ -1,10 +1,7 @@
-"""nfl-showdown-ownership-grade-v1: what is graded, on whom, and how a contest is matched to its slate."""
-from datetime import datetime, timedelta, timezone
-
+"""nfl-showdown-ownership-grade-v1: what is graded and on whom."""
 from ingest import nfl_showdown_ownership_grade as job
 from model import nfl_ownership_provenance as prov
 from model import nfl_showdown_ownership_grade as g
-from research.nfl_ownership_inventory import Slate
 
 
 def player(name, captain, flex, source="nfl-ownership-field-showdown-v2", *, out=False, ours=None, shadow=None,
@@ -118,34 +115,6 @@ def test_labels_of_takes_only_usable_captain_and_flex_labels():
                                 salary_pool=frozenset({"aone", "btwo"}))
     labels = job.labels_of(prov.classify_contest(record))
     assert labels == {"aone": {"CPT": 10.0, "FLEX": 40.0}, "btwo": {"CPT": 0.0, "FLEX": 0.0}}
-
-
-def _slate(game, kickoff):
-    return Slate(f"showdown|{game}|{kickoff.isoformat()}", "showdown", (game,), kickoff)
-
-
-def test_a_contest_is_matched_to_its_slate_by_the_game_in_its_name():
-    first = datetime(2026, 9, 14, 0, 20, tzinfo=timezone.utc)
-    second = datetime(2026, 11, 13, 1, 15, tzinfo=timezone.utc)
-    slates = [_slate("WAS@NYG", first), _slate("WAS@NYG", second), _slate("TB@CHI", second)]
-    contests = [
-        # The schedule spells Washington WSH, so the name match through the schedule never linked this one.
-        {"contest_id": "1", "contest_name": "NFL Showdown $1.2M Thursday Night Showdown (WAS @ NYG)", "format": "showdown",
-         "slate_key": None, "link": None, "imported_at": second + timedelta(hours=11)},
-        {"contest_id": "2", "contest_name": "NFL Showdown (NYG vs WAS)", "format": "showdown", "slate_key": None, "link": None,
-         "imported_at": first + timedelta(days=2)},
-        {"contest_id": "3", "contest_name": "NFL Showdown (TB @ CHI)", "format": "showdown", "slate_key": None, "link": None,
-         "imported_at": second + timedelta(days=30)},                      # imported too long after the game
-        {"contest_id": "4", "contest_name": "NFL $2M Millionaire (WAS @ NYG)", "format": "classic", "slate_key": None,
-         "link": None, "imported_at": second + timedelta(hours=11)},
-        {"contest_id": "5", "contest_name": "NFL Showdown (TB @ CHI)", "format": "showdown", "slate_key": slates[2].key,
-         "link": "slate_upload_id", "imported_at": second + timedelta(hours=11)},  # already attached; left alone
-    ]
-    assert job.attach_by_game(slates, contests) == 2
-    assert [c["contest_id"] for c in slates[1].contests] == ["1"], "the later meeting, the one played before the import"
-    assert [c["contest_id"] for c in slates[0].contests] == ["2"], "either order of the two teams"
-    assert slates[2].contests == [] and contests[2]["slate_key"] is None and contests[3]["slate_key"] is None
-    assert contests[0]["link"] == "matched_on_slate_game"
 
 
 def test_input_key_changes_with_the_forecast_or_the_stored_contest():

@@ -8603,11 +8603,14 @@ vs 1.40, so live it has been closer on captains and no closer on flex. Real
 ownership is read value for value when a contest's stored captain and flex
 shares sum to 99.5% of 100 and 500 (this grade's own rule; the scorecard's
 label rules predate full standings files). Two traps it found: the schedule
-spells Washington WSH and DraftKings WAS, so `attach_contests` never matches
-an unlinked Washington contest (this grade also matches on the slate's own
-game string; the scorecard is unchanged), and the results page's history read
-fails from a home connection while production serves it, so look at a new
-card there on its own route.
+spells Washington WSH and DraftKings' contest names say WAS, so
+`attach_contests` (`research/nfl_ownership_inventory.py`, shared with the
+ownership scorecard) never matched an unlinked Washington contest; fixed
+2026-11-14 by comparing through `model/nfl_team_aliases.normalize_team`,
+which attached one contest and moved none of the other 56 (the scorecard
+itself is run by hand and was not re-run). And the results page's history
+read fails from a home connection while production serves it, so look at a
+new card there on its own route.
 
 ### GPP objective: multiplicative leverage and the ceiling cap (2026-09-27)
 
