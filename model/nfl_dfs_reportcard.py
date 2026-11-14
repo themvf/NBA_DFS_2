@@ -7,6 +7,10 @@ from math import isfinite
 # and result rows, not the live roster's current team (see build_report).
 VERSION = "nfl-dfs-weekly-report-v2"
 POSITIONS = ("QB", "RB", "WR", "TE", "DST")
+# After kickoff + GRACE_HOURS a completed game's rows no longer depend on the
+# clock (`overdue` is the last field that does), which is what lets the weekly
+# job leave a settled week alone when its inputs have not changed.
+GRACE_HOURS = 48
 VARIANTS = ("production", "shadow_baseline", "opportunity", "efficiency_research",
             "context:env_baseline", "context:env_trailing", "context:opp_carries",
             "context:interval_rq", "context:prior8")
@@ -25,7 +29,7 @@ def number(value):
     return float(value) if value is not None and isfinite(float(value)) else None
 
 
-def grade(forecast, result, game, now, grace_hours=48):
+def grade(forecast, result, game, now, grace_hours=GRACE_HOURS):
     kickoff = timestamp(game.get("kickoff"))
     captured = timestamp(forecast.get("captured_at")) if forecast else None
     valid = bool(forecast and captured and kickoff and captured < kickoff and forecast.get("mean") is not None)
@@ -157,6 +161,6 @@ def build_report(*, season, week, games, players, forecasts, results, now, prior
             "population": ("live roster for games not yet kicked off; for played games, the players forecast "
                            "for that game plus those with a result row; not a DK salary slate"),
             "missing_policy": "No stat row is not evidence of DNP or zero. No verified-inactive feed is integrated.",
-            "grace_hours_after_kickoff": 48,
+            "grace_hours_after_kickoff": GRACE_HOURS,
             "summary": {v: summarize([r for r in rows if r["variant"] == v]) for v in VARIANTS},
             "rows": rows}

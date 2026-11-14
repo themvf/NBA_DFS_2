@@ -850,6 +850,59 @@ See docs/nba-research-cloud.md. Not changed: `nba_ghost_grades` re-grades
 (22 MB, two writers, the doc says regrading appends) and the trio-math grade
 writer, which is hash-pinned.
 
+**The context grader and the weekly report card stop re-reading what did not
+change (2026-11-13).** Together they sent an estimated 4-5 GB a day of
+NBADFS's ~21 (bytes per call measured in the database, times call counts).
+
+- *Grader.* `ledger_inputs` selected `p.*` for every stored shadow forecast of
+  the season: 247 MB per grading pass, and 206 MB on EVERY pipeline-health run,
+  whose freeze check called it to look at one week. `context_ledger`
+  (`research/nfl_matchup_study.py`) reads identity and times for the pin's rows,
+  lets `selected_records` choose (still the one implementation of that choice),
+  and loads `CONTEXT_PAYLOAD_KEYS` and the outcome only for the chosen rows
+  (5,224 of 77,440). The health check reads the one week it checks, with no
+  outcomes. On live data the context report is identical key for key; a pass
+  reads 13.6 MB and a health check ~1.6 MB. `dataset_digest` changed basis
+  (`dataset_digest_basis`): v1 hashed every row whole, which is what forced the
+  read; v2 hashes id:input_digest for every stored forecast in the database,
+  plus the graded rows in full. A test fails if the graders read a payload key
+  outside the list.
+- *Report card.* Every research run rebuilt every week's card (~44 MB of
+  forecasts a week, plus 18 MB reading the newest card back to compare: 656 MB
+  a run over ten weeks) to arrive at the card it already had. A week is
+  SETTLED once every game is final and kickoff + 48 h has passed
+  (`GRACE_HOURS`); from then on the card is a function of stored rows only.
+  `evidence()` asks the database which row versions exist, as md5 over
+  (id, xmin) per input table (xmin changes when a row is rewritten, so an edit
+  in place is seen without a content digest), and the build records the only
+  two things it asks the live roster (which player an efficiency identity
+  resolves to; the current team of a week-1 player whose forecast stored no
+  team). `nfl_dfs_report_card_builds` keeps one row per input state with the
+  card it produced. A settled week is skipped when a recorded build read the
+  same rows, the roster still answers its lookups the same way, and its card
+  is the newest; the job prints the weeks it skipped and a GitHub notice.
+  `persist` compares content digests instead of reading the card back.
+  Safeguards: a record is written only if the rows did not change while the
+  build ran; a settled week is rebuilt anyway every 7 days (`RECHECK_AFTER`),
+  and if the same recorded inputs ever give a different card the job fails
+  (the digest is missing an input). `--rebuild` forces every week.
+  **A loader that reads a new table must add it to `evidence()`**; a test
+  compares the two.
+- Proved on a Neon branch of production (`reportcard-skip-verify-20261113`,
+  deleted after): first run 556 MB read, second run 44 MB (the one unsettled
+  week); nine settled weeks skipped. One-week changes rebuilt exactly that
+  week: a week-1 player's team where his stored forecast has none (week 1), a
+  new result row (week 6), a forecast rewritten in place with the same
+  content (week 4, and no new card), an edited efficiency run (week 8). A
+  roster change no settled week had asked about rebuilt nothing. Moving a
+  defense to another team rebuilt every week, correctly: every week resolves
+  `DST:<team>`. So did editing the loader's own source. A forced rebuild of
+  unchanged inputs reproduced every card.
+- Still rebuilt on purpose: the current week, every run. Week 1 also rebuilds
+  whenever a legacy-forecast player's current team changes, because its card
+  does depend on that (the open item in the v2 note under "Two forward
+  accuracy streams").
+
 ## Parallel agents: commit locally, one session pushes (2026-10-04)
 
 Every push to GitHub starts a Vercel build (a branch push builds Preview, a
