@@ -168,6 +168,7 @@
     "test:nba-contest-optimizer": "node --import tsx ./scripts/test-nba-contest-optimizer.ts",
     "test:nba-contest-runs": "node --import tsx ./scripts/test-nba-contest-runs.ts",
     "test:nba-contest-injury": "node --import tsx ./scripts/test-nba-contest-injury.ts",
+    "test:nba-injury-read-watch": "node --import tsx ./scripts/test-nba-injury-read-watch.ts",
     "test:nba-game-leaders": "node --import tsx ./scripts/test-nba-game-leaders.ts",
     "test:nba-boom-lineups": "node --import tsx ./scripts/test-nba-boom-lineups.ts",
     "test:nfl-live-review": "node --import tsx ./scripts/test-nfl-live-review.ts",

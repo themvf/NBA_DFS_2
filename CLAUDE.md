@@ -356,6 +356,12 @@ the quoted players) leave out Out and Doubtful, keep Questionable at 43% with a 
 it. The dispatcher's `nba-injury-refresh` job now also reads the report on every tick in the 50 minutes before the night's first
 tip and once 5-20 minutes before each later tip (`nbaTipPickupDue`, tips from the stored lines), besides 6:37 and 6:52 PM Eastern.
 `nba_injury_observations` is on /health (36 h).
+**Failed injury reads are announced (2026-11-13):** the reader is plain code (`pypdf` positions, no language model) and refuses a
+report it does not recognise, which used to be silent for the night (optional step, green run, /health at 36 h). Now
+`research/nba_injury_alert.py` runs after every read: a failure opens or comments on the "[NBA injury report] Read failed" issue
+(mentions the owner; once per night and cause; closed by the next good read; a date with no stored games is not a failure), an
+injury-only run goes red, and the builder shows a red warning when a read the dispatcher owed has not arrived
+(`web/src/lib/nba-injury-read-watch.ts`, decided at page load). See "When a read fails" in the doc.
 **Lines capture follows the tips (2026-11-13):** the evening and late captures were pinned to 22:07 and 01:07 UTC, so when the
 clocks changed on Nov 1 they slid to 5:07 and 8:07 PM Eastern and the lines at a 7 PM lock were two hours old (and an afternoon
 first tip had only the morning capture). `nbaPointsPropsDue` now fires the morning read at 15:07 UTC, then once 35-50 minutes

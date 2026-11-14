@@ -14,6 +14,7 @@ import type { ContestPlayer } from "@/lib/nba-contest-optimizer";
 import { ContestOptimizer, type OptimizerGame, type OptimizerInjuryReport } from "./contest-optimizer";
 import { getNbaInjuryReport } from "@/db/nba-availability";
 import { playerInjuries } from "@/lib/nba-contest-injury";
+import { missedInjuryRead, nbaInjuryReportIndexUrl, type MissedInjuryRead } from "@/lib/nba-injury-read-watch";
 import { getContestRunFinals, getContestRuns, type SavedRun } from "@/db/nba-contest-runs";
 import { scoreRun, type BoxGame, type EntryResult, type RunEntry, type RunPoolPlayer } from "@/lib/nba-contest-runs";
 
@@ -23,6 +24,7 @@ const LAST_SEASON = "2025-26";
 /** Tonight's latest lines as optimizer players: the same board the Top Scorers page builds. */
 async function liveSlate(date: string): Promise<{
   players: ContestPlayer[]; games: OptimizerGame[]; capturedAt: string | null; linesAgeMinutes: number | null; injuryReport: OptimizerInjuryReport | null;
+  missedRead: MissedInjuryRead | null;
 }> {
   const [rows, ladderRows, lastSeason, teams, currentTeams, report] = await Promise.all([
     getNbaPointsProps(date), getNbaPointsProps(date, "player_points_alternate"), getNbaSeasonStats(LAST_SEASON),
@@ -52,6 +54,9 @@ async function liveSlate(date: string): Promise<{
     // Decided on the server, like `started`, so server and browser render the same warning.
     linesAgeMinutes: capturedAt && open ? Math.max(0, Math.round((now - new Date(capturedAt).getTime()) / 60_000)) : null,
     injuryReport: report ? { publishedAt: report.publishedAt, observedAt: report.observedAt, sourceUrl: report.sourceUrl } : null,
+    // A report read the dispatcher owed and that has not arrived: today's slate, while a game is still to tip.
+    missedRead: open && date === easternDateString()
+      ? missedInjuryRead(new Date(now), games.map((g) => new Date(g.commenceTime)), report ? new Date(report.observedAt) : null) : null,
   };
 }
 
@@ -257,7 +262,8 @@ export default async function ContestTriosPage({ searchParams }: { searchParams:
         ))}
       </nav>
 
-      <ContestOptimizer date={date} players={slate.players} games={slate.games} capturedAt={slate.capturedAt} linesAgeMinutes={slate.linesAgeMinutes} injuryReport={slate.injuryReport} />
+      <ContestOptimizer date={date} players={slate.players} games={slate.games} capturedAt={slate.capturedAt} linesAgeMinutes={slate.linesAgeMinutes} injuryReport={slate.injuryReport}
+        missedRead={slate.missedRead} injuryIndexUrl={nbaInjuryReportIndexUrl(date)} />
 
       <SavedRuns runs={runs} finals={finals} date={date} />
 

@@ -26,6 +26,9 @@ const pct1 = (v: number) => `${(v * 100).toFixed(v < 0.1 ? 1 : 0)}%`;
 const age = (minutes: number) => (minutes < 120 ? `${minutes} minutes` : `${(minutes / 60).toFixed(1)} hours`);
 
 const tip = (s: string) => new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" }).format(new Date(s));
+/** A time with its day, for a report read on an earlier day. */
+const dayTip = (s: string) => new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" }).format(new Date(s));
+const HALF_DAY_MS = 12 * 3_600_000;
 
 /** Players by how many of the entries they are in, most first. */
 function exposure(run: OptimizerResult): [string, number][] {
@@ -34,9 +37,13 @@ function exposure(run: OptimizerResult): [string, number][] {
   return [...n.entries()].sort((a, b) => b[1] - a[1]);
 }
 
-export function ContestOptimizer({ date, players, games, capturedAt, linesAgeMinutes, injuryReport }: {
+export function ContestOptimizer({ date, players, games, capturedAt, linesAgeMinutes, injuryReport, missedRead, injuryIndexUrl }: {
   date: string; players: ContestPlayer[]; games: OptimizerGame[]; capturedAt: string | null; linesAgeMinutes: number | null;
   injuryReport: OptimizerInjuryReport | null;
+  /** A report read that was due and has not arrived, decided on the server at page load (nba-injury-read-watch). */
+  missedRead: { dueAt: string; lastReadAt: string | null } | null;
+  /** The league's page listing every report, for checking by hand. */
+  injuryIndexUrl: string;
 }) {
   const started = useMemo(() => new Set(games.filter((g) => g.started).map((g) => g.eventId)), [games]);
   const [selected, setSelected] = useState<Set<string>>(() => new Set(games.filter((g) => !started.has(g.eventId)).map((g) => g.eventId)));
@@ -132,6 +139,15 @@ export function ContestOptimizer({ date, players, games, capturedAt, linesAgeMin
               {reportStale && lock ? ` That is more than ${WTA.INJURY_FRESH_HOURS} hours before the ${tip(lock)} ET tip of the games ticked, so players it does not list are not treated as cleared. A newer report is read before the first tip: reload then.` : ""}</>
           ) : "No official injury report has been read for this date yet, so nobody is left out and sitting chances come from timing alone."}
         </p>
+        {missedRead && (
+          <p className="mt-2 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900" role="alert">
+            <b>The injury report read due at {tip(missedRead.dueAt)} ET has not arrived.</b>{" "}
+            {missedRead.lastReadAt
+              ? `The newest report here was read ${new Date(missedRead.dueAt).getTime() - new Date(missedRead.lastReadAt).getTime() > HALF_DAY_MS ? dayTip(missedRead.lastReadAt) : `at ${tip(missedRead.lastReadAt)}`} ET`
+              : "No report has been read for this date"}, so a player ruled out since then is still in the pool below.
+            Check <a className="underline" href={injuryIndexUrl}>the league&apos;s injury report</a> before you enter, then reload this page in a few minutes.
+          </p>
+        )}
         {linesAgeMinutes != null && linesAgeMinutes > STALE_LINES_MINUTES && (
           <p className="mt-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
             These lines were read {age(linesAgeMinutes)} ago. Players are ruled out between reads, and a player whose lines were read more than 90 minutes
