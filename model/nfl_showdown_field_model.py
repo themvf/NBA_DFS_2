@@ -51,7 +51,9 @@ STACK_CAPTAINS = ("WR", "TE")
 #: Team points assumed when a kicker or defense row carries no Vegas total.
 DEFAULT_IMPLIED_TOTAL = 21.0
 #: Players with a full set of sportsbook lines a slate needs before a missing set counts against anyone.
-MIN_FULL_ANCHORS = 6
+#: 12 since 2026-11-13 (was 6): two days before a game ten players had a set and five starters did not yet,
+#: and they were scaled down as backups. The eight training slates had 12 to 17.
+MIN_FULL_ANCHORS = 12
 MIN_CROWD_POINTS = 0.1
 
 _COMBOS: dict[int, np.ndarray] = {}

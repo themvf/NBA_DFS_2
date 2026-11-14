@@ -8470,7 +8470,9 @@ published-ownership input is a v2 registration.
 
 **Showdown lineup model `nfl-ownership-field-showdown-v2` (owner's decisions
 2026-11-13; "Showdown lineup model" in `docs/nfl-ownership-model.md`).** Once
-the books' player lines are in (six ownable players with a full set), our own
+the books' player lines are in (twelve ownable players with a full set; six
+until that evening, when two days before NE @ DET ten players had one, five
+starters did not, and the lineup model scaled them down as backups), our own
 Showdown ownership comes from a model of the lineups the field builds, not from
 a per-player fit: every legal lineup among the top 24 players (80,000 kept)
 gets a value (crowd points, a charge for unspent salary, a quarterback-stack
