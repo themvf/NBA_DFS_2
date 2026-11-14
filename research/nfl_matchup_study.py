@@ -14,17 +14,68 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 
-from model.nfl_dfs_context_variant_study import evaluate_context_variants, freeze_health, timestamp
+from model.nfl_dfs_context_variant_study import evaluate_context_variants, freeze_health, selected_records, timestamp
 from model.nfl_matchup_study import digest, evaluate_study, implementation_digest, validate_manifest
 from research import nfl_pickem_storage as pickem_storage
 
 
-def ledger_inputs(db, season, now, study_run_id=None):
-    games = db.execute("""SELECT g.id,g.season,g.week,g.kickoff,g.completed,
+# The payload keys the context grader and the freeze check read from a stored
+# forecast. A whole payload is ~2 KB and the season holds ~93k forecasts: read
+# whole, one grading pass sent 247 MB and every pipeline-health run another
+# 206 MB (2026-11-12). tests/test_nfl_matchup_ledger.py fails if
+# `evaluate_context_variants` or `freeze_health` reads a key outside this list.
+CONTEXT_PAYLOAD_KEYS = ("context_variants", "position", "history_games", "boom_threshold", "team")
+
+# v1 hashed every stored row whole, which is what forced the full read. Each
+# row's `input_digest` is the digest of its payload (ingest/nfl_dfs_shadow.py),
+# so hashing (id, input_digest) for every row names the same ledger; the graded
+# rows and their outcomes are hashed in full.
+DATASET_DIGEST_BASIS = ("nfl-context-ledger-digest-v2: per study, sha256 over id:input_digest of every stored "
+                        "forecast in id order; plus the selected forecasts' graded keys and outcomes")
+
+
+def id_array(values):
+    """An id list as ONE array literal. Passed as a Python list it is written out
+    element by element, and pg_stat_statements then files every list length as a
+    different statement."""
+    return "{" + ",".join(str(int(value)) for value in values) + "}"
+
+
+def season_games(db, season):
+    return db.execute("""SELECT g.id,g.season,g.week,g.kickoff,g.completed,
         h.abbreviation home_team,a.abbreviation away_team FROM nfl_season_games g
         JOIN nfl_teams h ON h.team_id=g.home_team_id JOIN nfl_teams a ON a.team_id=g.away_team_id
         WHERE g.season=%s AND g.game_type='REG' ORDER BY g.week,g.kickoff""", (season,))
-    records = db.execute("""SELECT p.*, CASE WHEN r.id IS NULL THEN NULL ELSE
+
+
+def complete_weeks(games, now):
+    grouped = defaultdict(list)
+    for game in games:
+        grouped[(game["season"], game["week"])].append(game)
+    return [key for key, group in grouped.items() if all(g["completed"] and g["kickoff"] < now for g in group)]
+
+
+def context_ledger(db, season, now, study_run_id, week=None, outcomes=True):
+    """One study's stored forecasts, as the context grader and the freeze check read them.
+
+    Every row carries its identity and times. Only the rows `selected_records`
+    keeps (the last pregame capture per player-week) also carry `payload`,
+    reduced to CONTEXT_PAYLOAD_KEYS, and `outcome`: nothing reads either on a
+    superseded capture, and 5,224 of the pin's 77,440 rows were selected on
+    2026-11-13. `selected_records` stays the one implementation of that choice;
+    callers must grade with the same `now`, because it decides which captures
+    count as available.
+    """
+    rows = db.execute("""SELECT p.id,p.player_id,p.season,p.week,p.captured_at,p.kickoff
+        FROM nfl_dfs_shadow_predictions p
+        WHERE p.study_run_id=%s AND p.season=%s AND p.captured_at<=%s AND (%s::int IS NULL OR p.week=%s)""",
+        (study_run_id, season, now, week, week))
+    for row in rows:  # the 64-character pin is the filter, so it is not sent back on every row
+        row["study_run_id"] = study_run_id
+    selected, _ = selected_records(rows, study_run_id, now)
+    if not selected:
+        return rows
+    outcome_sql = """, CASE WHEN r.id IS NULL THEN NULL ELSE
         jsonb_build_object('actual',r.actual_dk_fpts,'scoring_status',r.scoring_status,
           'game_id',r.game_id,'computed_at',r.computed_at,'result_id',r.id,
           'scoring_version',r.scoring_version,'result_digest',r.input_digest) END outcome
@@ -32,22 +83,36 @@ def ledger_inputs(db, season, now, study_run_id=None):
         LEFT JOIN LATERAL (SELECT r.* FROM nfl_dfs_player_week_results r
           JOIN nfl_season_games g ON g.id=r.game_id
           WHERE r.player_id=p.player_id AND r.season=p.season AND r.week=p.week
-            AND g.completed AND g.kickoff=p.kickoff AND r.computed_at<=%s
-          ORDER BY r.computed_at DESC,r.id DESC LIMIT 1) r ON TRUE
-        WHERE p.season=%s AND p.captured_at<=%s AND (%s IS NULL OR p.study_run_id=%s)""", (now, season, now, study_run_id, study_run_id))
-    grouped = defaultdict(list)
-    for game in games:
-        grouped[(game["season"], game["week"])].append(game)
-    complete = [key for key, group in grouped.items() if all(g["completed"] and g["kickoff"] < now for g in group)]
-    return games, records, complete
+            AND g.completed AND g.kickoff=p.kickoff AND r.computed_at<=%(now)s
+          ORDER BY r.computed_at DESC,r.id DESC LIMIT 1) r ON TRUE""" if outcomes else """, NULL::jsonb outcome
+        FROM nfl_dfs_shadow_predictions p"""
+    # Keys absent from a payload stay absent (never become null), so `.get`
+    # defaults in the graders behave exactly as they do on the whole payload.
+    details = {row["id"]: row for row in db.execute("""SELECT p.id,
+        coalesce((SELECT jsonb_object_agg(e.key, e.value) FROM jsonb_each(p.payload) e
+                  WHERE e.key = ANY(%(keys)s)), '{}'::jsonb) payload""" + outcome_sql + """
+        WHERE p.id = ANY(%(ids)s::bigint[])""",
+        {"keys": list(CONTEXT_PAYLOAD_KEYS), "ids": id_array(row["id"] for row in selected), "now": now})}
+    for row in selected:
+        detail = details[row["id"]]  # a forecast that vanished between the two reads is an error
+        row["payload"], row["outcome"] = detail["payload"], detail["outcome"]
+    return rows
 
 
 def context_report(db, season, now, config):
     pins = db.execute("SELECT report FROM nfl_dfs_research_runs WHERE run_id=%s", (config["study_run_id"],))
     if not pins or pins[0]["report"].get("output_digest") != config["output_digest"]:
         raise ValueError("Context study pin is absent or its registered output digest differs")
-    games, records, complete = ledger_inputs(db, season, now)
     pin = config["study_run_id"]
+    games = season_games(db, season)
+    complete = complete_weeks(games, now)
+    records = context_ledger(db, season, now, pin)
+    # Every study's stored forecasts, counted and named by content in the
+    # database: what the report states about pins it does not grade.
+    studies = db.execute("""SELECT p.study_run_id, count(*) n,
+          encode(sha256(convert_to(string_agg(p.id::text || ':' || p.input_digest, ',' ORDER BY p.id), 'UTF8')), 'hex') digest
+        FROM nfl_dfs_shadow_predictions p WHERE p.season=%s AND p.captured_at<=%s
+        GROUP BY p.study_run_id ORDER BY p.study_run_id""", (season, now))
     compatibility_path = Path("research/nfl_dfs_context_scoring_compatibility.json")
     compatibility = json.loads(compatibility_path.read_text()) if compatibility_path.exists() else None
     if compatibility:
@@ -57,12 +122,19 @@ def context_report(db, season, now, config):
             raise ValueError("Context outcome scorer differs from its explicit compatibility declaration")
     report = evaluate_context_variants(records, pin, now, complete_weeks=complete,
                                       outcome_versions=compatibility["versions"] if compatibility else None)
+    # The grader counts other pins' rows as it passes them; they are no longer
+    # loaded, so the same count comes from the database.
+    other_pins = sum(int(s["n"]) for s in studies if s["study_run_id"] != pin)
+    if other_pins:
+        report["rejected"] = {**report["rejected"], "other_study_pin": other_pins}
     report["outcome_compatibility_hash"] = digest(compatibility) if compatibility else None
     report["pin_output_digest"] = config["output_digest"]
     report["pin_verified"] = True
-    report["all_study_pins_present"] = sorted({r["study_run_id"] for r in records})
-    report["dataset_digest"] = digest(records)
-    pin_weeks = [(r["season"], r["week"]) for r in records if r["study_run_id"] == pin]
+    report["all_study_pins_present"] = sorted(s["study_run_id"] for s in studies)
+    report["dataset_digest"] = digest({"basis": DATASET_DIGEST_BASIS, "ledger": studies,
+                                       "graded": selected_records(records, pin, now)[0]})
+    report["dataset_digest_basis"] = DATASET_DIGEST_BASIS
+    pin_weeks = [(r["season"], r["week"]) for r in records]
     first = min(pin_weeks) if pin_weeks else (season, min(config.get("forward_gate", {}).get("window_weeks", [1])))
     report["freeze_health"] = freeze_health([g for g in games if (g["season"], g["week"]) >= first], records, pin, now)
     return report

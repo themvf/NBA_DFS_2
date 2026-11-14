@@ -653,15 +653,19 @@ def check_nfl_context_freezes(db, now):
     if not in_season(dataset, now):
         return [Health(dataset, DORMANT, None, None)]
     try:
-        from research.nfl_matchup_study import ledger_inputs
+        from research.nfl_matchup_study import context_ledger, season_games
         from model.nfl_dfs_context_variant_study import freeze_health
         config = json.loads(Path("artifacts/nfl_dfs_shadow_config.json").read_text())
         season = now.year-1 if now.month <= 3 else now.year
-        games, rows, _ = ledger_inputs(db, season, now, config["study_run_id"])
+        games = season_games(db, season)
         upcoming = [g for g in games if g["kickoff"] > now]
         if not upcoming:
             return [Health(dataset, DORMANT, None, None, "no upcoming regular-season week")]
         week = min(upcoming, key=lambda g: g["kickoff"])["week"]
+        # Only the checked week, and only the keys the check reads: this ran on
+        # every pipeline-health pass and loaded the study's whole season with
+        # outcomes (206 MB a pass, 2026-11-12).
+        rows = context_ledger(db, season, now, config["study_run_id"], week=week, outcomes=False)
         check = freeze_health([g for g in games if g["week"] == week], rows, config["study_run_id"], now)[0]
         status = EMPTY if check["status"] == "failure" else STALE if check["status"] == "warning" else FRESH if check["status"] == "healthy" else DORMANT
         return [Health(dataset, status, None, None, f"week {week}: {check['status']}; {check['eligible_player_weeks']} eligible player-weeks; deadline {check['deadline']}; missing started games {check['missing_started_game_ids']}")]
