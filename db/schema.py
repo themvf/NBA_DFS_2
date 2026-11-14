@@ -6919,6 +6919,10 @@ MIGRATIONS.extend(NFL_OWNERSHIP_NEWS_STATEMENTS)
 from db.nba_points_calibration_schema import STATEMENTS as NBA_POINTS_CALIBRATION_STATEMENTS
 MIGRATIONS.extend(NBA_POINTS_CALIBRATION_STATEMENTS)
 
+# stat-api's NBA player projections frozen at tip (ingest/statapi_nba_projections.py, 2026-11-13).
+from db.statapi_nba_projections_schema import STATEMENTS as STATAPI_NBA_PROJECTION_STATEMENTS
+MIGRATIONS.extend(STATAPI_NBA_PROJECTION_STATEMENTS)
+
 # NBA winner-take-all top-3 scorer contest entries and grades (research/nba_wta_trios.py, 2026-11-06).
 from db.nba_wta_schema import STATEMENTS as NBA_WTA_STATEMENTS
 MIGRATIONS.extend(NBA_WTA_STATEMENTS)
