@@ -39,10 +39,11 @@
  * checked on twelve other slates with a consensus projection as input: flex
  * 2.47 to 2.20, better on eleven.
  *
- * Only for a slate whose lines are in (`showdownHasLines`). On four slates
- * frozen before any line was captured, none of them in the fit, it is no
- * better than the model it replaces (flex 4.3 against 4.12, on slates that
- * model was fitted on), so that model stays live until the lines arrive.
+ * Only for a slate whose lines are in (`showdownHasLines`: twelve ownable
+ * players with a full set). On four slates frozen before any line was
+ * captured, none of them in the fit, it is no better than the model it
+ * replaces (flex 4.3 against 4.12, on slates that model was fitted on), so
+ * that model stays live until the lines arrive.
  *
  * What it does not show: better lineups. Six stored slates rebuilt the way the
  * page builds (Winners shape v14, leverage on, 10 seeds, paid out of 30 real
@@ -66,8 +67,12 @@ const TRIM_UNSPENT_PER_1K = 0.5;
 const STACK_CAPTAINS: readonly string[] = ["WR", "TE"];
 const DEFAULT_IMPLIED_TOTAL = 21;
 const MIN_CROWD_POINTS = 0.1;
-/** Players with a full set of sportsbook lines a slate needs before a missing set counts against anyone. */
-export const FIELD_MIN_FULL_ANCHORS = 6;
+/**
+ * Players with a full set of sportsbook lines a slate needs before a missing set counts against anyone.
+ * 12 since 2026-11-13 (was 6): two days before a game ten players had a set and five starters did not
+ * yet, and they were scaled down as backups. The eight training slates had 12 to 17.
+ */
+export const FIELD_MIN_FULL_ANCHORS = 12;
 
 export interface ShowdownFieldPlayer {
   id: number;

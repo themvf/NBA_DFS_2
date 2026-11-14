@@ -6,7 +6,7 @@
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { crowdPoints, projectShowdownField, seatPoints, showdownHasLines, FIELD_KEEP_LINEUPS, FIELD_TOP_PLAYERS, NFL_OWNERSHIP_FIELD_SHOWDOWN_VERSION,
+import { crowdPoints, projectShowdownField, seatPoints, showdownHasLines, FIELD_KEEP_LINEUPS, FIELD_MIN_FULL_ANCHORS, FIELD_TOP_PLAYERS, NFL_OWNERSHIP_FIELD_SHOWDOWN_VERSION,
   type ShowdownFieldPlayer } from "../src/lib/nfl-dfs/showdown-field-model";
 import model from "../src/data/nfl-showdown-field-model-v2.json";
 
@@ -57,8 +57,12 @@ assert.equal(crowdPoints(skill, false), 10);
 assert.ok(showdownHasLines(pool));
 const unlined = pool.map((p) => ({ ...p, anchor: null }));
 assert.ok(!showdownHasLines(unlined));
-assert.ok(!showdownHasLines(pool.map((p, i) => (p.anchor === "full" && pool.slice(0, i).filter((x) => x.anchor === "full" && !x.isOut && (x.pts ?? 0) > 0).length >= 5 ? { ...p, anchor: null } : p))),
-  "five full sets are not enough");
+// The rule is twelve ownable players with a full set: eleven is the slate two days out, when starters are still unposted.
+const firstFull = (n: number) => pool.map((p, i) => (p.anchor === "full" && pool.slice(0, i).filter((x) => x.anchor === "full" && !x.isOut && (x.pts ?? 0) > 0).length >= n ? { ...p, anchor: null } : p));
+assert.equal(FIELD_MIN_FULL_ANCHORS, 12);
+assert.ok(!showdownHasLines(firstFull(FIELD_MIN_FULL_ANCHORS - 1)), "eleven full sets are not enough");
+assert.ok(showdownHasLines(firstFull(FIELD_MIN_FULL_ANCHORS)), "twelve full sets are enough");
+assert.equal(projectShowdownField(firstFull(FIELD_MIN_FULL_ANCHORS - 1))!.lined, false, "one short, a missing set is not held against anyone");
 const early = projectShowdownField(unlined)!;
 assert.ok(!early.lined && Math.abs([...early.shares.values()].reduce((t, v) => t + v.flex, 0) - 500) < 1e-6);
 

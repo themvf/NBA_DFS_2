@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-from model.nfl_showdown_field_model import (CAPTAIN_MULTIPLIER, KEEP_LINEUPS, POSITIONS, TOP_PLAYERS, VERSION, build, crowd_points,
+from model.nfl_showdown_field_model import (CAPTAIN_MULTIPLIER, KEEP_LINEUPS, MIN_FULL_ANCHORS, POSITIONS, TOP_PLAYERS, VERSION, build, crowd_points,
                                             eligible, has_lines, predict, seat_points, seat_values)
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,6 +40,15 @@ def test_stand_ins_and_the_lines_rule():
     assert crowd_points({**skill, "anchor": None}, MODEL) == 10.0 * MODEL["fringe"]["none"]
     assert crowd_points(skill, MODEL, lined=False) == 10.0
     assert has_lines(PLAYERS) and not has_lines([{**p, "anchor": None} for p in PLAYERS])
+    # Twelve ownable players with a full set; eleven is the slate two days out, with starters still unposted.
+    full = [i for i, p in enumerate(PLAYERS) if eligible(p) and p.get("anchor") == "full"]
+
+    def first_full(n):
+        drop = set(full[n:])
+        return [{**p, "anchor": None} if i in drop else p for i, p in enumerate(PLAYERS)]
+
+    assert MIN_FULL_ANCHORS == 12 and len(full) >= MIN_FULL_ANCHORS
+    assert has_lines(first_full(MIN_FULL_ANCHORS)) and not has_lines(first_full(MIN_FULL_ANCHORS - 1))
 
 
 def test_low_end_term_bends_seat_value_only_under_the_threshold():

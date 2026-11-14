@@ -594,9 +594,18 @@ left was the inputs.
   projection differ most (kickers 1.1x ours, defenses 1.26x, touchdown-only
   players 0.70x, players with no line 0.34x on the training slates); for players
   with a full set of lines ours and the consensus are the same thing (0.97x).
-- "The lines are in" means at least six ownable players have a full set
-  (`MIN_FULL_ANCHORS`). Before that nobody has one and a missing set says
-  nothing about a player.
+- "The lines are in" means at least twelve ownable players have a full set
+  (`MIN_FULL_ANCHORS`). Before that a missing set says nothing about a player.
+  The rule was six until the evening of 2026-11-13 (owner's decision). Two days
+  before NE @ DET ten players had a full set, so the lineup model was live, but
+  five of the thirteen skill players priced $4,500 or more had none yet, among
+  them the Patriots' lead back, and each was scaled by 0.70 as if he were a
+  backup (DeMario Douglas read 10.7% flex against 29.1% under the fitted model,
+  Mack Hollins 12.9% against 25.2%). On the eight training slates, all frozen
+  about an hour before kickoff, 12 to 17 players had a full set and at most two
+  at that price had none, every one a backup under 10 points. Twelve is the
+  lowest count seen on a slate the model was fitted on. It is still a stated
+  guard: a slate with twelve sets and a starter unposted reads that starter low.
 - Fitted numbers (`web/src/data/nfl-showdown-field-model-v2.json`): tau 3.70,
   unspent salary -2.74 a $1,000, quarterback stack +1.43, low-end penalty 1.92
   under 4 points, flex offsets QB -0.15 / RB +0.94 / TE +0.75 / K +0.35 / DST
@@ -732,7 +741,11 @@ and nothing above suggests it would come out differently.
   ours.
 - Eight slates of one season, all prime-time games frozen an hour before
   kickoff. A slate read the day before, with only some lines posted, is outside
-  what was tested; the six-full-sets rule is a stated guard, not a fitted one.
+  what was tested; the twelve-full-sets rule is a stated guard, not a fitted one.
+  Raising the rule does not make an early read a good one: Rhamondre Stevenson
+  read 12.5% flex under the fitted model two days out (9.7% under the lineup
+  model), low for a lead back, and the fitted model does not look at lines at
+  all. Ownership read before the lines post is an early read under either model.
 - The kicker and defense lines and the fringe factors were fitted to a
   consensus projection from licensed contest files, which is why the training
   file is not in the repository. `research/nfl_showdown_field_model.py --slates`
