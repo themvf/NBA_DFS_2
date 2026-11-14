@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: publish-nfl-game-leaders
@@ -45,6 +46,7 @@ jobs:
         continue-on-error: true
         run: python -m ingest.nfl_espn_inactives
       - name: Capture availability and publish the upcoming week
+        id: publish
         run: python -m research.nfl_game_leaders_auto
       # The page matches DraftKings lines to a forecast by its decision time, so a
       # game re-run after its T-75 prop capture must be re-priced here or the page
@@ -96,6 +98,7 @@ jobs:
             fi
           done
       - name: Commit only a changed, validated publication
+        id: commit
         run: |
           git add -f web/src/data/game-leaders.json web/src/data/game-leaders-weeks
           # Every capture/requests file a game's sources name: the DK pricing
@@ -127,3 +130,15 @@ jobs:
       # Week 10's Rams at Arizona was left off by a green run nobody read.
       - name: Fail when an upcoming game was left off for a data error
         run: python -m research.nfl_game_leaders_auto --check
+      # The failure sweep emails the next morning, after a Sunday's games. This
+      # emails now: one `game-leaders-alert` issue that @mentions the owner,
+      # opened or commented on only when the problems change, closed on the next
+      # clean run. Runs after any failure above, never after a cancel.
+      - name: Email the owner now when this run needs attention
+        if: ${{ !cancelled() }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+          COMMIT_OUTCOME: ${{ steps.commit.outcome }}
+        run: python3 -m research.nfl_game_leaders_alert

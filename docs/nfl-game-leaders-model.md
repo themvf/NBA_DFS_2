@@ -124,6 +124,17 @@ a game still to kick off, after the good games are committed, so the run goes re
 "Games without a fresh forecast". Before this, week 10's Rams at Arizona was left off
 by a green run whose only record was a line in its log.
 
+**Same-run email (2026-11-13).** The sweep emails at 11:07 UTC the next day, after a
+Sunday's games. The workflow's final step, `python3 -m research.nfl_game_leaders_alert`
+(runs after any failure, not after a cancel), manages one GitHub issue labelled
+`game-leaders-alert` that @mentions the owner, so GitHub emails within minutes. It
+opens the issue when a required step failed (publish, commit, or setup) or an upcoming
+game is missing for a data error; comments only when that set of problems changes (the
+next Sunday pass with the same problem stays quiet); and on the next clean run comments
+"Resolved", naming any game that kicked off without a fresh forecast, and closes it.
+The comment links the workflow page to re-run it. A run whose checkout failed cannot
+reach the step; the sweep still reports it.
+
 Outputs use exclusive creation. Preserve the previous page snapshot before
 refreshing it; never overwrite frozen requests, forecasts or evaluation reports.
 Single-game commands are `evidence-request --game ID`, `forecast --request PATH
