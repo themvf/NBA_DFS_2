@@ -20,6 +20,10 @@ name: Refresh NFL DFS Post-Week Review
 #   5. the weekly replacement-upside grade (second job, below), pre-registered
 #      in docs/nfl-replacement-upside-grading.md. Blinded until its floors are
 #      met; the first run past them freezes the verdict in the database.
+#   6. the Showdown ownership grade: how far each ownership estimate stored
+#      before kickoff was from the real field, one row per slate
+#      (ingest/nfl_showdown_ownership_grade.py). After the flagship import,
+#      which brings Thursday's and Monday's real ownership.
 #
 # What does NOT run here, and cannot:
 #   getting the DraftKings contest standings export. DraftKings gates it behind
@@ -123,6 +127,17 @@ jobs:
       - name: Flagship contests and the winners-vs-us review
         if: ${{ !cancelled() }}
         run: python -m ingest.nfl_dfs_flagship_review ${SEASON:+--season "$SEASON"}
+
+      # How far each Showdown ownership estimate stored before kickoff was from
+      # the real field (nfl-showdown-ownership-grade-v1): one row per slate in
+      # nfl_showdown_ownership_grades and one row per run in
+      # nfl_showdown_ownership_grade_runs, which names every recent slate still
+      # waiting and why. After the flagship import, where Thursday's and
+      # Monday's real ownership comes from. Reads only what is stored, and
+      # skips a slate whose forecast and contest have not changed.
+      - name: Grade Showdown ownership estimates
+        if: ${{ !cancelled() }}
+        run: python -m ingest.nfl_showdown_ownership_grade ${SEASON:+--season "$SEASON"}
 
       # The ghost-lineup factorial (docs/nfl-ghost-factorial-study.md): grade
       # the house, every arm and any owner build of each frozen slate against

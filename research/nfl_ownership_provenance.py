@@ -40,6 +40,45 @@ def ensure_table(conn) -> None:
     conn.commit()
 
 
+def load_record(conn, c: dict) -> tuple[prov.ContestRecord, dict]:
+    """One contest's record: its stored ownership, the linked salary pool and, for a stat-api
+    contest, which players the fetched users captained and played at flex.
+
+    `c` is a row of `nfl_dfs_field_contests` with at least contest_id, format, slate_upload_id,
+    file_name and full_standings. Split out of `load_records` so a caller that needs one
+    contest does not read every contest's stored lineups.
+    """
+    own = {r["normalized_name"]: {"drafted_pct": r["drafted_pct"], "drafted_by_slot": r["drafted_by_slot"] or {}}
+           for r in rows(conn, """SELECT normalized_name, drafted_pct, drafted_by_slot
+                                  FROM nfl_dfs_field_ownership WHERE contest_id = %s""", (c["contest_id"],))}
+    pool = None
+    if c["slate_upload_id"]:
+        names = rows(conn, "SELECT name FROM nfl_dfs_slate_players WHERE upload_id = %s::uuid",
+                     (c["slate_upload_id"],))
+        pool = frozenset(normalize_name(r["name"]) for r in names) or None
+    path = prov.import_path(c["contest_id"], c["file_name"])
+    captained = flex_seen = None
+    cpt_seat_pct: dict[str, set[float]] = {}
+    users = 0
+    if path == "stat_api":
+        builds = rows(conn, "SELECT lineups FROM nfl_dfs_field_user_builds WHERE contest_id = %s",
+                      (c["contest_id"],))
+        users = len(builds)
+        lineups = [l for b in builds for l in (b["lineups"] or [])]
+        if lineups:
+            cap, flex = prov.user_seats(lineups)
+            captained, flex_seen = frozenset(cap), frozenset(flex)
+            for l in lineups:
+                for seat in l.get("roster") or []:
+                    if seat and str(seat[0]).upper() == "CPT" and len(seat) >= 7 and seat[6] is not None:
+                        cpt_seat_pct.setdefault(normalize_name(seat[1]), set()).add(round(float(seat[6]), 4))
+    record = prov.ContestRecord(
+        contest_id=c["contest_id"], fmt=c["format"], path=path, full_standings=bool(c["full_standings"]),
+        ownership=own, salary_pool=pool, captained=captained, flex_seen=flex_seen,
+        slate_upload_id=c["slate_upload_id"])
+    return record, {**c, "users": users, "cpt_seat_pct": cpt_seat_pct}
+
+
 def load_records(conn) -> tuple[list[prov.ContestRecord], dict[str, dict]]:
     contests = rows(conn, """
         SELECT contest_id, contest_name, format, season, week, slate_upload_id::text, entry_count, file_name,
@@ -47,35 +86,9 @@ def load_records(conn) -> tuple[list[prov.ContestRecord], dict[str, dict]]:
         FROM nfl_dfs_field_contests ORDER BY season NULLS FIRST, week NULLS FIRST, contest_id""")
     records, meta = [], {}
     for c in contests:
-        own = {r["normalized_name"]: {"drafted_pct": r["drafted_pct"], "drafted_by_slot": r["drafted_by_slot"] or {}}
-               for r in rows(conn, """SELECT normalized_name, drafted_pct, drafted_by_slot
-                                      FROM nfl_dfs_field_ownership WHERE contest_id = %s""", (c["contest_id"],))}
-        pool = None
-        if c["slate_upload_id"]:
-            names = rows(conn, "SELECT name FROM nfl_dfs_slate_players WHERE upload_id = %s::uuid",
-                         (c["slate_upload_id"],))
-            pool = frozenset(normalize_name(r["name"]) for r in names) or None
-        path = prov.import_path(c["contest_id"], c["file_name"])
-        captained = flex_seen = None
-        cpt_seat_pct: dict[str, set[float]] = {}
-        users = 0
-        if path == "stat_api":
-            builds = rows(conn, "SELECT lineups FROM nfl_dfs_field_user_builds WHERE contest_id = %s",
-                          (c["contest_id"],))
-            users = len(builds)
-            lineups = [l for b in builds for l in (b["lineups"] or [])]
-            if lineups:
-                cap, flex = prov.user_seats(lineups)
-                captained, flex_seen = frozenset(cap), frozenset(flex)
-                for l in lineups:
-                    for seat in l.get("roster") or []:
-                        if seat and str(seat[0]).upper() == "CPT" and len(seat) >= 7 and seat[6] is not None:
-                            cpt_seat_pct.setdefault(normalize_name(seat[1]), set()).add(round(float(seat[6]), 4))
-        records.append(prov.ContestRecord(
-            contest_id=c["contest_id"], fmt=c["format"], path=path, full_standings=bool(c["full_standings"]),
-            ownership=own, salary_pool=pool, captained=captained, flex_seen=flex_seen,
-            slate_upload_id=c["slate_upload_id"]))
-        meta[c["contest_id"]] = {**c, "users": users, "cpt_seat_pct": cpt_seat_pct}
+        record, m = load_record(conn, c)
+        records.append(record)
+        meta[c["contest_id"]] = m
     return records, meta
 
 

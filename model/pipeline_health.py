@@ -232,6 +232,12 @@ DATASET_REGISTRY: tuple[Dataset, ...] = (
             192, "refresh_nfl_dfs_postweek.yml", _NFL,
             "One row per flagship contest and week from the same job: the top finishers' portfolio analysis "
             "next to our saved build's; computed_at is rewritten on every run."),
+    Dataset("nfl_showdown_ownership_grade", "NFL Showdown ownership grade", "nfl_showdown_ownership_grade_runs", "ran_at",
+            192, "refresh_nfl_dfs_postweek.yml", _NFL,
+            "One row per run of ingest.nfl_showdown_ownership_grade in the same job (Monday and Tuesday), "
+            "written whether or not a slate was graded, so a stale row means the step stopped running. The "
+            "grades themselves (nfl_showdown_ownership_grades) are written once per slate and are not watched: "
+            "a week with no new contest ownership adds none. The run row names every slate still waiting."),
     Dataset("nfl_shadow", "NFL shadow research forecasts", "nfl_dfs_shadow_predictions", "captured_at",
             240, "refresh_nfl_dfs_research.yml", _NFL,
             "Weekly pregame evidence; separate from production projection freshness."),

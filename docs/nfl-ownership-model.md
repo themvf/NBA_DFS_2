@@ -753,3 +753,92 @@ and nothing above suggests it would come out differently.
 - No status term: a questionable player is read at his projection.
 - Classic is not covered. Its lineups cannot be listed outright and would need
   sampling.
+
+## Showdown after-slate grade — `nfl-showdown-ownership-grade-v1` (owner's decision 2026-11-13)
+
+Every number in the two sections above came from one-off research runs. This
+grade is the standing record: after each Showdown, how far every ownership
+estimate that was stored before kickoff was from the field's real captain and
+flex ownership. It is written by the weekly post-week job and shown on
+`/dfs/nfl/results` ("Showdown ownership: how close were we").
+
+### What is graded
+
+- **The forecast** is the last saved build or automatic freeze at least 20
+  minutes before kickoff that stored a captain and flex split
+  (`nfl_dfs_optimizer_runs.input_snapshot`, `nfl_dfs_ghost_freezes.input_snapshot`).
+  Each frozen player carries up to three estimates (`snapshotPlayer` in
+  `web/src/app/dfs/nfl/actions.ts`): the number the build read, our own
+  model's number when stat-api was shown in its place, and the comparison
+  model recorded beside it.
+- **Nothing is recomputed.** A later code change cannot move an old grade, and
+  a model that produced no number before kickoff has no grade for that game.
+  The lineup model is therefore absent from every slate before 2026-11-13, and
+  from any later slate whose lines were not in at the freeze.
+- **The real field** is the largest contest imported for the slate with
+  complete captain and flex ownership. A contest whose stored captain shares
+  sum to at least 99.5 and flex shares to at least 497.5 holds the whole
+  field's split (a DraftKings export, or a full stat-api standings file) and is
+  read value for value, a slate player it does not list being 0%. Any other
+  contest keeps the scorecard's label rules
+  (`model/nfl_ownership_provenance.py`). The whole-field rule is this grade's
+  own: the scorecard's rules predate full standings files and leave out a
+  player whose captain share no fetched top-100 lineup shows (9 of BUF @ MIN's
+  players and 28 of TB @ CHI's on the first run).
+- **Miss** is the mean absolute gap between estimate and real ownership, in
+  percentage points a player, captain and flex apart. Every model of one slate
+  is graded on the same players: active in the snapshot, real ownership known
+  in that slot, and a number from every model. Players we had ruled out that
+  the field drafted are counted beside the grade, not inside it.
+
+### Where it runs and what it stores
+
+`python -m ingest.nfl_showdown_ownership_grade` (pure logic in
+`model/nfl_showdown_ownership_grade.py`), a step of
+`refresh_nfl_dfs_postweek.yml` after the flagship import, which is where
+Thursday's and Monday's real ownership comes from. Any other Showdown is
+graded on the next run after its contest standings are imported; running the
+command by hand does the same at once. It calls no outside service.
+
+- `nfl_showdown_ownership_grades`: one row per slate and grade input,
+  append-only. A slate whose forecast and stored contest have not changed is
+  skipped without reading either. A changed input (a later import, a fuller
+  file) appends a row and readers take the newest.
+- `nfl_showdown_ownership_grade_runs`: one row per run, written whether or not
+  anything was graded. It is the row the health checklist watches
+  (`nfl_showdown_ownership_grade`), and it names every slate of the last 30
+  days still waiting and why (no contest imported, no forecast saved before
+  kickoff, no captain and flex split).
+
+Both tables are created by the job itself
+(`db/nfl_showdown_ownership_grade_schema.py`), not by `db/schema.py`, so adding
+them did not trigger a schema pass in every other job.
+
+### How to read it
+
+Two models are compared only on the slates where both were stored; an average
+over different games says nothing about which is closer. Each slate counts
+once. First run, 2026-11-13, 17 slates from week 4 on:
+
+| stored together on | flex miss | captain miss | closer on flex |
+|---|---|---|---|
+| per-player model vs rule of thumb, 7 slates | 4.91 vs 4.80 | 1.12 vs 1.40 | 3 vs 4 |
+| stat-api vs per-player model, 1 slate | 1.78 vs 4.69 | 0.72 vs 1.27 | 1 vs 0 |
+
+So on live slates the per-player fitted model has been closer than the older
+rule of thumb on captains and no closer on flex. Seven games is a description,
+not a verdict. The lineup model has no live slate yet.
+
+### Known limits
+
+- One slate is about 30 players of one game, and players of one game move
+  together. Several slates are needed before two models can be told apart.
+- The Sunday Showdowns have no free flagship import, so they wait for the
+  owner's contest export or a stat-api pull made on request.
+- A slate before 2026-10-01 stored no captain and flex split and cannot be
+  graded.
+- `research/nfl_ownership_inventory.attach_contests` matches an unlinked
+  contest to its slate through the schedule's team codes, which say WSH where
+  DraftKings says WAS, so an unlinked Washington contest never matched. This
+  grade matches on the slate's own game string as well. The ownership
+  scorecard still uses the schedule match alone and is unchanged here.
