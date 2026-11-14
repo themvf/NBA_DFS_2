@@ -1,0 +1,135 @@
+[
+  {
+    "home": "Utah Jazz",
+    "away": "Los Angeles Lakers",
+    "capture": {
+      "id": "9c460fd677a660d1bc7cfea0aa1826c1",
+      "observedAt": "2026-10-25T13:22:06.888621+00:00",
+      "marketStart": "2026-10-25T21:10:00Z",
+      "books": {
+        "pinnacle": {
+          "spread": 6.5,
+          "home_price": -106,
+          "away_price": -104,
+          "total": 238.5,
+          "over_price": 101,
+          "under_price": -113
+        }
+      }
+    }
+  },
+  {
+    "home": "Brooklyn Nets",
+    "away": "Indiana Pacers",
+    "capture": {
+      "id": "3f57b691d91174cd878320071f585c11",
+      "observedAt": "2026-10-25T13:22:06.888621+00:00",
+      "marketStart": "2026-10-25T22:10:00Z",
+      "books": {
+        "pinnacle": {
+          "spread": 7.0,
+          "home_price": 100,
+          "away_price": -110,
+          "total": 232.5,
+          "over_price": -110,
+          "under_price": -103
+        }
+      }
+    }
+  },
+  {
+    "home": "New York Knicks",
+    "away": "Orlando Magic",
+    "capture": {
+      "id": "4bdaabae0c074d48156aaa3e315a5c4d",
+      "observedAt": "2026-10-25T13:22:06.888621+00:00",
+      "marketStart": "2026-10-25T23:00:00Z",
+      "books": {
+        "pinnacle": {
+          "spread": -7.5,
+          "home_price": 100,
+          "away_price": -110,
+          "total": 224.5,
+          "over_price": -106,
+          "under_price": -106
+        }
+      }
+    }
+  },
+  {
+    "home": "Oklahoma City Thunder",
+    "away": "Los Angeles Clippers",
+    "capture": {
+      "id": "e6834225d7e218a59333dbbc01fe67ab",
+      "observedAt": "2026-10-25T13:22:06.888621+00:00",
+      "marketStart": "2026-10-25T23:10:00Z",
+      "books": {
+        "pinnacle": {
+          "spread": -16.0,
+          "home_price": -104,
+          "away_price": -106,
+          "total": 225.0,
+          "over_price": -107,
+          "under_price": -105
+        }
+      }
+    }
+  },
+  {
+    "home": "Minnesota Timberwolves",
+    "away": "Toronto Raptors",
+    "capture": {
+      "id": "b9f6f078c66480af12ca8bcc44969097",
+      "observedAt": "2026-10-25T13:22:06.888621+00:00",
+      "marketStart": "2026-10-25T23:10:00Z",
+      "books": {
+        "pinnacle": {
+          "spread": -1.0,
+          "home_price": -104,
+          "away_price": -106,
+          "total": 229.5,
+          "over_price": -103,
+          "under_price": -109
+        }
+      }
+    }
+  },
+  {
+    "home": "Philadelphia 76ers",
+    "away": "Detroit Pistons",
+    "capture": {
+      "id": "252f3af49fb5271bb040e95e0119f207",
+      "observedAt": "2026-10-25T13:22:06.888621+00:00",
+      "marketStart": "2026-10-25T23:40:00Z",
+      "books": {
+        "pinnacle": {
+          "spread": 1.0,
+          "home_price": -111,
+          "away_price": 101,
+          "total": 227.5,
+          "over_price": -109,
+          "under_price": -103
+        }
+      }
+    }
+  },
+  {
+    "home": "Sacramento Kings",
+    "away": "Memphis Grizzlies",
+    "capture": {
+      "id": "dcc4a1c7f0427d8e1b2ee7d3f1d48e8a",
+      "observedAt": "2026-10-25T13:22:06.888621+00:00",
+      "marketStart": "2026-10-26T01:00:00Z",
+      "books": {
+        "pinnacle": {
+          "spread": 4.0,
+          "home_price": -114,
+          "away_price": 103,
+          "total": 235.0,
+          "over_price": 101,
+          "under_price": -114
+        }
+      }
+    }
+  }
+]
