@@ -8510,6 +8510,33 @@ Refit with `python -m research.nfl_showdown_field_model --slates <local file>`
 (needs torch; the training file joins our frozen slates to licensed contest
 data and is not in the repository). Classic is not covered.
 
+**Showdown after-slate grade `nfl-showdown-ownership-grade-v1` (owner's
+decision 2026-11-13; "Showdown after-slate grade" in
+`docs/nfl-ownership-model.md`).** The standing record of ownership accuracy:
+for each played Showdown with real ownership imported, the miss (mean gap per
+player, percentage points, captain and flex apart) of every estimate STORED in
+the last build or automatic freeze 20+ minutes before kickoff: the number the
+build read, our model when stat-api replaced it, and the comparison model.
+Nothing is recomputed, so a model with no stored number has no grade (the
+lineup model before 2026-11-13, or when the lines were not in).
+`ingest/nfl_showdown_ownership_grade.py` (pure part in `model/`), a step of
+`refresh_nfl_dfs_postweek.yml` after the flagship import; one append-only row
+per slate in `nfl_showdown_ownership_grades`, one row per run in
+`nfl_showdown_ownership_grade_runs` (the health row, and the list of slates
+still waiting and why); shown on `/dfs/nfl/results`. The job creates its own
+two tables, outside `db/schema.py`. Compare two models only on slates that
+stored both. First run, 17 slates: the per-player fitted model against the
+rule-of-thumb prior on the 7 slates with both, flex 4.91 vs 4.80, captain 1.12
+vs 1.40, so live it has been closer on captains and no closer on flex. Real
+ownership is read value for value when a contest's stored captain and flex
+shares sum to 99.5% of 100 and 500 (this grade's own rule; the scorecard's
+label rules predate full standings files). Two traps it found: the schedule
+spells Washington WSH and DraftKings WAS, so `attach_contests` never matches
+an unlinked Washington contest (this grade also matches on the slate's own
+game string; the scorecard is unchanged), and the results page's history read
+fails from a home connection while production serves it, so look at a new
+card there on its own route.
+
 ### GPP objective: multiplicative leverage and the ceiling cap (2026-09-27)
 
 The first build with the ownership prior live produced the SAME three lineups
