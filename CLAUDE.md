@@ -398,6 +398,19 @@ historical P90 10.8% / 1.382). So stat-api adds no points information beyond the
 quantiles are the one thing worth reading. Their `pts` is not simply discounted by their play
 probability (dividing it out leaves the error unchanged). Not scheduled; rerun the ingest with
 `--days-back N` before rerunning the comparison.
+**Edge check, same data (2026-11-14, discovery, not pre-registered):** no NBA points edge.
+Siding with a forecast where it differs from the books' last pre-tip line (1,533 half-point
+lines, date-clustered 95% ranges) lands about 50%: stat-api 0.5+ apart 50.8% (n=516), 1.5+
+apart 54.3% (n=46, too few); history20 2+ apart 50.0%, 4+ apart 50.3%; opportunity_points
+2+ apart 50.3%, 4+ apart 48.3%; a -110 bet needs 52.4%. Unders hit 52.3% over 2,567 graded
+lines (Oct 20-Nov 12, 24 nights), but the typical under price is -115 (break-even 53.4%):
+every under at the typical book's price -2.1% ROI [-5.4, +0.9], at the best price +0.3%
+[-3.1, +3.4], the same whether the line was read within 2 h of tip or earlier. Prices are
+those of the exact capture each grade used (`prop_odds_history` joined on event, player and
+`captured_at`), at the consensus line only. Take medians of prices in decimal odds: a median
+of American odds mixes signs and first read this as +100.7%. The books' ceiling beaten only
+7.1% of the time is the question the registered ladder-v2 tail test answers; do not act on it
+before that verdict.
 
 ## Data Refresh Workflow
 
