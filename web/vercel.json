@@ -1,5 +1,11 @@
 {
   "framework": "nextjs",
+  "git": {
+    "deploymentEnabled": {
+      "main": true,
+      "**": false
+    }
+  },
   "ignoreCommand": "p=\"${VERCEL_GIT_PREVIOUS_SHA:-}\"; [ -n \"$p\" ] && git cat-file -e \"$p^{commit}\" 2>/dev/null && git diff --quiet \"$p\" HEAD -- . && exit 0; exit 1",
   "crons": [
     {

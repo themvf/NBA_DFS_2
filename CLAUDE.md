@@ -922,9 +922,19 @@ NBADFS's ~21 (bytes per call measured in the database, times call counts).
 
 ## Parallel agents: commit locally, one session pushes (2026-10-04)
 
-Every push to GitHub starts a Vercel build (a branch push builds Preview, a
+Every push to GitHub started a Vercel build (a branch push built Preview, a
 merge to main builds Production): at least 100 in the week to 2026-10-04,
 largely from one-fix-per-PR pushes by parallel sessions.
+
+**Preview builds are off since 2026-11-14 (owner's decision).**
+`git.deploymentEnabled` in `web/vercel.json` deploys `main` only; `"**": false`
+covers every other branch, including names with a slash (`claude/...`). A
+branch push no longer builds anything, so there is no preview URL to check a
+change on: verify with the local preview before merging. Build minutes were
+most of the Vercel bill above the seat. `test:cron-heartbeat` fails if `main`
+stops being named, because a catch-all alone would stop production deploying
+without any error. The batching rule below still applies: each merge to main
+is a production build.
 
 - **An agent working on an assigned task in its own worktree** makes focused
   local commits and runs the relevant tests. It does **not** push, open a PR,

@@ -8,7 +8,18 @@ import path from "node:path";
 import { CRON_ROUTES, cronStatuses, lateAfterMs, observation, OBSERVATION_PREFIX, type CronHeartbeat } from "../src/lib/cron-heartbeat";
 
 // Every cron path in vercel.json has a heartbeat entry, and every entry is a real cron.
-const vercel = JSON.parse(readFileSync(path.resolve(__dirname, "..", "vercel.json"), "utf8")) as { crons: { path: string }[] };
+const vercel = JSON.parse(readFileSync(path.resolve(__dirname, "..", "vercel.json"), "utf8")) as {
+  crons: { path: string }[];
+  git?: { deploymentEnabled?: Record<string, boolean> | boolean };
+};
+// Only main deploys (owner's decision 2026-11-14: no preview builds). A branch that matches
+// several rules deploys when any of them is true, so main must be named and true: with the
+// catch-all alone, production would stop deploying and nothing would say so.
+const deploys = vercel.git?.deploymentEnabled;
+assert.ok(deploys && typeof deploys === "object", "vercel.json names which branches deploy");
+assert.equal(deploys.main, true, "main must deploy");
+assert.deepEqual(Object.entries(deploys).filter(([, on]) => on).map(([branch]) => branch), ["main"], "no branch but main deploys");
+assert.equal(deploys["**"], false, "every other branch, including names with a slash, is off");
 const cronRoutes = vercel.crons.map((c) => c.path.replace(/^\/api\/cron\//, "")).sort();
 const vercelRoutes = Object.entries(CRON_ROUTES).filter(([, s]) => (s.source ?? "vercel") === "vercel").map(([k]) => k).sort();
 assert.deepEqual(vercelRoutes, cronRoutes, "CRON_ROUTES must list exactly the crons in vercel.json");
