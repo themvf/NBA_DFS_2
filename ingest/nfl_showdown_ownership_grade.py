@@ -29,7 +29,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import re
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
@@ -48,9 +47,6 @@ from research.nfl_ownership_provenance import load_record
 MAX_CANDIDATES = 5
 #: A slate still waiting is named in the run row for this long after its kickoff.
 WAITING_WINDOW = timedelta(days=30)
-#: A contest is matched to a slate by its game only when imported within this long after kickoff.
-MAX_IMPORT_LAG = timedelta(days=14)
-_CONTEST_GAME = re.compile(r"\(([A-Z]{2,3})\s*(?:@|vs\.?)\s*([A-Z]{2,3})\)")
 
 NO_FORECAST = "no saved build or automatic freeze from 20 minutes or more before kickoff"
 NO_SPLIT = "the forecast saved before kickoff has no captain and flex split"
@@ -105,38 +101,8 @@ def showdown_slates(conn, season: int) -> list[Slate]:
             slates[key] = s
             for upload in s.uploads:
                 upload_slate[upload] = key
-    contests = attach_contests(conn, slates, upload_slate, season)
-    showdowns = sorted((s for s in slates.values() if s.fmt == "showdown" and s.first_kickoff), key=lambda s: s.first_kickoff)
-    attach_by_game(showdowns, contests)
-    return showdowns
-
-
-def attach_by_game(slates: list[Slate], contests: list[dict]) -> int:
-    """Attach Showdown contests `attach_contests` left without a slate, by the game in the contest's name.
-
-    `attach_contests` matches an unlinked contest through the schedule, whose team codes differ
-    from DraftKings' for some teams (the schedule says WSH, DraftKings says WAS), so a Washington
-    game never matched. A Showdown slate's own game string is DraftKings' spelling, as the contest
-    name is. The teams meet at most twice a season, so the slate is the latest one for that game
-    that kicked off before the contest was imported, and no more than `MAX_IMPORT_LAG` before.
-    """
-    attached = 0
-    for contest in contests:
-        if contest.get("slate_key") or contest["format"] != "showdown":
-            continue
-        m = _CONTEST_GAME.search(contest["contest_name"] or "")
-        if not m:
-            continue
-        games = {(f"{m.group(1)}@{m.group(2)}",), (f"{m.group(2)}@{m.group(1)}",)}
-        candidates = [s for s in slates if s.games in games
-                      and s.first_kickoff <= contest["imported_at"] <= s.first_kickoff + MAX_IMPORT_LAG]
-        if not candidates:
-            continue
-        slate = max(candidates, key=lambda s: s.first_kickoff)
-        contest["slate_key"], contest["link"] = slate.key, "matched_on_slate_game"
-        slate.contests.append(contest)
-        attached += 1
-    return attached
+    attach_contests(conn, slates, upload_slate, season)
+    return sorted((s for s in slates.values() if s.fmt == "showdown" and s.first_kickoff), key=lambda s: s.first_kickoff)
 
 
 def capture_candidates(conn, s: Slate) -> list[dict]:
