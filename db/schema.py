@@ -4411,6 +4411,23 @@ TABLES = [
         payload JSONB NOT NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )""",
+    # One row per input state a weekly card was built from
+    # (ingest/nfl_dfs_reportcard.py). The job skips a settled week when its
+    # stored inputs and roster lookups match a row here that names the newest
+    # card, instead of re-reading ~65 MB a week to rebuild an identical card.
+    # Digests and lookup keys only, never report rows; rows leave with their card.
+    """CREATE TABLE IF NOT EXISTS nfl_dfs_report_card_builds (
+        season INTEGER NOT NULL,
+        week INTEGER NOT NULL CHECK(week BETWEEN 1 AND 18),
+        evidence_digest TEXT NOT NULL,
+        roster_digest TEXT NOT NULL,
+        roster_keys JSONB NOT NULL,
+        content_digest TEXT NOT NULL,
+        report_digest TEXT NOT NULL REFERENCES nfl_dfs_weekly_report_cards(report_digest) ON DELETE CASCADE,
+        built_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (season, week, evidence_digest, roster_digest)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_nfl_dfs_report_card_builds_card ON nfl_dfs_report_card_builds(report_digest)",
     # Slate-scoped stream (DraftKings convention: listed + game final + no stat
     # line = 0). Separate table and version from the weekly roster report so
     # the two populations can never be pooled by accident.
