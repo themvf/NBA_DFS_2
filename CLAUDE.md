@@ -382,6 +382,23 @@ the official report; spreads and totals from `ingest/nba_game_lines.py` (one bul
 when a line moves) with a BIG SPREAD tag whose blowout test is registered in the doc.
 [`docs/nba-game-leaders.md`](docs/nba-game-leaders.md).
 
+### stat-api's NBA projections vs ours (2026-11-13)
+
+`ingest/statapi_nba_projections.py` (manual, research only) stores stat-api's per-game player
+projections in `statapi_nba_player_projections`, read after the game is final (their row is
+frozen at tip; inputs dated a minute before tip, lineups confirmed). Oct 20-Nov 12: 6,090 rows,
+174 games. `research/nba_statapi_projection_compare.py` scores them against our ghost v2
+forecasts and the books' last pre-tip line on the same 1,543 played player-games (Oct 26-Nov 12,
+17 dates, date-clustered CIs). **stat-api's points projection is the market line**: correlation
+0.993 with the late consensus, within 1 point 92% of the time, mean +0.12. MAE: stat-api 5.06,
+late line 5.02 (better by 0.03, CI -0.06 to -0.01), our 11 AM line 5.03, blend90_10 5.03,
+history20 5.42, opportunity_points 5.30 (both worse than stat-api, CIs exclude 0). Their P90 is
+the best calibrated we hold (8.8% above, pinball 1.262 vs the books' ceiling 7.1% / 1.283 and our
+historical P90 10.8% / 1.382). So stat-api adds no points information beyond the line; its
+quantiles are the one thing worth reading. Their `pts` is not simply discounted by their play
+probability (dividing it out leaves the error unchanged). Not scheduled; rerun the ingest with
+`--days-back N` before rerunning the comparison.
+
 ## Data Refresh Workflow
 
 ```
