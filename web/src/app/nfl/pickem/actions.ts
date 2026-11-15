@@ -21,6 +21,7 @@ import { db } from "@/db";
 import { ensurePickemTables } from "@/db/ensure-schema";
 import { sql } from "drizzle-orm";
 import { getPickemEvidence } from "@/db/pickem-evidence";
+import { settlePickemLedger } from "@/lib/nfl/pickem-settlement";
 import { getNflPickemSlate } from "@/db/queries";
 import { narrativeRead, tagSeason } from "@/lib/nfl/pickem-archetypes";
 import { evOptimalEntry } from "@/lib/nfl/pickem-strategy";
@@ -332,103 +333,18 @@ export async function freezePickemRecommendation(input: {
 }
 
 /**
- * Settle every pending recommendation whose games have final scores.
- *
- * Pure arithmetic over nfl_season_games. Ties use the immutable card's chosen
- * tie points. Result revisions are retained separately from the frozen forecast.
- *
- * Idempotent. Re-running re-derives every graded field from current scores, so
- * a corrected score simply produces a corrected settlement.
+ * Settle every pending recommendation whose games have final scores (the
+ * page's button; the same settlement also runs on a schedule).
  */
 export async function settlePickemRecommendations(season: number): Promise<ActionResult> {
-  await ensurePickemTables();
   try {
-    // Stamp each frozen game with its real result.
-    await db.execute(sql`
-      UPDATE pickem_recommendation_games g
-      SET result_revisions = CASE WHEN s.completed AND s.home_score IS NOT NULL AND s.away_score IS NOT NULL
-          AND (jsonb_array_length(g.result_revisions)=0 OR
-            (g.result_revisions->-1->>'homeScore')::int IS DISTINCT FROM s.home_score OR
-            (g.result_revisions->-1->>'awayScore')::int IS DISTINCT FROM s.away_score)
-          THEN g.result_revisions || jsonb_build_array(jsonb_build_object('homeScore',s.home_score,'awayScore',s.away_score,'recordedAt',NOW()))
-          ELSE g.result_revisions END,
-          result_tie = CASE WHEN s.completed AND s.home_score IS NOT NULL AND s.away_score IS NOT NULL THEN s.home_score=s.away_score ELSE NULL END,
-          home_won = CASE
-            WHEN NOT s.completed THEN NULL
-            WHEN s.home_score IS NULL OR s.away_score IS NULL THEN NULL
-            WHEN s.home_score = s.away_score THEN NULL
-            ELSE s.home_score > s.away_score
-          END,
-          baseline_correct = CASE
-            WHEN NOT s.completed THEN NULL
-            WHEN s.home_score IS NULL OR s.away_score IS NULL OR s.home_score = s.away_score THEN NULL
-            ELSE g.baseline_pick_home = (s.home_score > s.away_score)
-          END,
-          recommended_correct = CASE
-            WHEN NOT s.completed THEN NULL
-            WHEN s.home_score IS NULL OR s.away_score IS NULL OR s.home_score = s.away_score THEN NULL
-            ELSE g.recommended_pick_home = (s.home_score > s.away_score)
-          END
-      FROM nfl_season_games s, pickem_recommendations r
-      WHERE g.game_id = s.id
-        AND g.recommendation_id = r.id
-        AND r.season = ${season}
-        AND r.status <> 'void'
-    `);
-
-    // Roll the per-game results up to the recommendation.
-    const updated = await db.execute(sql`
-      UPDATE pickem_recommendations r
-      -- Every graded field stays NULL until something is actually graded.
-      -- COALESCE-ing to 0 here would render an unplayed week as a real 0-0
-      -- result with a +0 delta, which is the "absent must not look like zero"
-      -- rule this whole page is built on.
-      SET games_graded = agg.graded,
-          baseline_actual_points = CASE WHEN agg.graded > 0 THEN agg.baseline_points END,
-          recommended_actual_points = CASE WHEN agg.graded > 0 THEN agg.recommended_points END,
-          baseline_correct = CASE WHEN agg.graded > 0 THEN agg.baseline_hits END,
-          recommended_correct = CASE WHEN agg.graded > 0 THEN agg.recommended_hits END,
-          max_possible_points = CASE WHEN agg.graded > 0 THEN agg.max_points END,
-          brier = agg.brier,
-          coinflip_brier = agg.coinflip_brier,
-          status = CASE WHEN agg.graded > 0 AND agg.graded = r.games_total THEN 'settled' ELSE r.status END,
-          settled_at = CASE
-            WHEN agg.graded > 0 AND agg.graded = r.games_total THEN NOW() ELSE r.settled_at
-          END
-      FROM (
-        SELECT
-          g.recommendation_id AS rec_id,
-          COUNT(*) FILTER (WHERE g.home_won IS NOT NULL OR g.result_tie) AS graded,
-          COALESCE(SUM(CASE WHEN g.result_tie THEN g.baseline_confidence * COALESCE((g.evidence_json->>'tiePoints')::float,0)
-            WHEN g.baseline_correct THEN g.baseline_confidence ELSE 0 END), 0) AS baseline_points,
-          COALESCE(SUM(CASE WHEN g.result_tie THEN g.recommended_confidence * COALESCE((g.evidence_json->>'tiePoints')::float,0)
-            WHEN g.recommended_correct THEN g.recommended_confidence ELSE 0 END), 0) AS recommended_points,
-          COUNT(*) FILTER (WHERE g.baseline_correct) AS baseline_hits,
-          COUNT(*) FILTER (WHERE g.recommended_correct) AS recommended_hits,
-          COALESCE(SUM(CASE WHEN g.result_tie THEN g.recommended_confidence * COALESCE((g.evidence_json->>'tiePoints')::float,0)
-            WHEN g.home_won IS NOT NULL THEN g.recommended_confidence ELSE 0 END), 0) AS max_points,
-          AVG(POWER(g.p_home - CASE WHEN g.home_won THEN 1 ELSE 0 END, 2))
-            FILTER (WHERE g.home_won IS NOT NULL) AS brier,
-          AVG(POWER(0.5 - CASE WHEN g.home_won THEN 1 ELSE 0 END, 2))
-            FILTER (WHERE g.home_won IS NOT NULL) AS coinflip_brier
-        FROM pickem_recommendation_games g
-        GROUP BY g.recommendation_id
-      ) agg
-      WHERE agg.rec_id = r.id
-        AND r.season = ${season}
-        AND r.status <> 'void'
-      RETURNING r.id, r.status
-    `);
-
-    const settled = updated.rows.filter(
-      (row) => String((row as Record<string, unknown>).status) === "settled",
-    ).length;
+    const { regraded, settled } = await settlePickemLedger(season);
     revalidatePath("/nfl/pickem");
     return {
       ok: true,
       message:
         `Settled ${settled} complete week${settled === 1 ? "" : "s"} ` +
-        `(${updated.rows.length} row${updated.rows.length === 1 ? "" : "s"} re-graded). ` +
+        `(${regraded} row${regraded === 1 ? "" : "s"} re-graded). ` +
         `Pool finishes are not inferred — record those yourself.`,
     };
   } catch (error) {
