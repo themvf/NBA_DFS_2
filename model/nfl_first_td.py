@@ -42,6 +42,7 @@ from pathlib import Path
 from config import load_config
 from db.database import DatabaseManager
 from model import cfb_first_td as cf
+from model import nfl_first_td_dk as dkm
 from model import nfl_first_td_market as mk
 from model.cfb_first_td import Params
 
@@ -492,12 +493,15 @@ def _played_last(history: cf.History, team: str, before: tuple[int, int]) -> set
 
 def predict(games: list[dict], params: Params, history: cf.History, firsts: dict, names: dict[str, str],
             lines: dict[str, dict] | None = None, filter_lines: bool = True, top: int = PUBLISH_TOP,
-            statuses: dict[str, dict] | None = None, prices: dict[str, dict] | None = None) -> list[dict]:
+            statuses: dict[str, dict] | None = None, prices: dict[str, dict] | None = None,
+            roster: list[dict] | None = None) -> list[dict]:
     """``filter_lines`` selects the availability version: DraftKings' list (when ``lines`` has one for the
     game) plus our injury reports (``statuses``), with a dropped starter's volume redirected.
 
     ``prices`` (DraftKings first-TD prices per game, model/nfl_first_td_market) are shown beside each
-    player and flag a player we rate far above the book; they never enter the chance."""
+    player and flag a player we rate far above the book; they never enter the chance. With ``roster``
+    each game also carries DraftKings' prices read as a forecast (``dk_row``, model/nfl_first_td_dk) and
+    each player his chance by that reading (``dk_prob``), shown beside ours and graded on its own."""
     out = []
     for g in games:
         before = (g["season"], g["week"])
@@ -548,6 +552,8 @@ def predict(games: list[dict], params: Params, history: cf.History, firsts: dict
         players = sorted(((pid, pr) for pid, pr in dist.items() if pid in cands), key=lambda t: -t[1])
         game_prices = (prices or {}).get(g["game_id"])
         dk = mk.match_prices({pid: c["name"] for pid, c in cands.items()}, game_prices["prices"]) if game_prices else {}
+        dk_read = (dkm.distribution(game_prices["prices"], originals, roster, g["home"], g["away"])
+                   if game_prices and roster is not None else None)
         out.append({
             "game_id": g["game_id"], "season": g["season"], "week": g["week"], "away": g["away"],
             "home": g["home"], "commence_time": g["commence_time"], "game": f"{g['away']} @ {g['home']}",
@@ -556,11 +562,12 @@ def predict(games: list[dict], params: Params, history: cf.History, firsts: dict
                          "fair": cf.fair_american(pr), "td": cands[pid]["td"], "touches": round(cands[pid]["vol"], 1),
                          "chips": player_chips(history, pid, cands[pid]["team"], before) + status_chips(pid, statuses)
                          + [c for c in (mk.market_chip(pr, dk.get(pid)),) if c],
-                         "dk": dk.get(pid),
+                         "dk": dk.get(pid), "dk_prob": dk_read["dist"].get(pid) if dk_read else None,
                          "listed": None if not listed else cf.name_key(cands[pid]["name"]) in listed["names"]}
                         for pid, pr in players[:top]],
             "other_offense": dist["other:home"] + dist["other:away"], "non_offense": dist["non_offense"],
             "dist": dist, "availability": availability,
+            "dk_row": dkm.row(g, dk_read, game_prices["captured_at"], originals, top) if dk_read else None,
             "context": {"team_chips": team_chips(g, firsts, before),
                         "dk_captured_at": game_prices["captured_at"].isoformat() if game_prices else None},
         })
@@ -591,23 +598,28 @@ def _inputs(db: DatabaseManager):
 
 
 def publish(db: DatabaseManager, params: Params = FITTED, hours: int = PUBLISH_HOURS) -> list[tuple[str, int, int]]:
-    """Save both versions for games kicking off in the next ``hours``; started games are never written."""
+    """Save both versions, and DraftKings' prices read as a forecast, for games kicking off in the next
+    ``hours``; started games are never written."""
     games = upcoming(db, "g.kickoff > NOW() AND g.kickoff <= NOW() + %s * INTERVAL '1 hour'", (hours,))
-    rows_base, rows_lines = [], []
+    rows_base, rows_lines, rows_dk = [], [], []
     if games:
         history, firsts, names = _inputs(db)
         lines = load_lines(db, games)
         statuses = load_statuses(db, games)
         prices = load_prices(db, games)
+        roster = dkm.load_roster(db, max(g["season"] for g in games))
         rows_base = predict(games, params, history, firsts, names, lines, filter_lines=False, statuses=statuses,
-                            prices=prices)
-        rows_lines = predict(games, params, history, firsts, names, lines, statuses=statuses, prices=prices)
+                            prices=prices, roster=roster)
+        rows_lines = predict(games, params, history, firsts, names, lines, statuses=statuses, prices=prices,
+                             roster=roster)
+        rows_dk = [r["dk_row"] for r in rows_base if r["dk_row"]]
     with db.connect() as conn:
         cur = conn.cursor()
         for statement in DDL:
             cur.execute(statement)
         return [(VERSION, _save_run(cur, VERSION, params, rows_base), len(rows_base)),
-                (VERSION_LINES, _save_run(cur, VERSION_LINES, params, rows_lines), len(rows_lines))]
+                (VERSION_LINES, _save_run(cur, VERSION_LINES, params, rows_lines), len(rows_lines)),
+                (dkm.VERSION_DK, _save_run(cur, dkm.VERSION_DK, params, rows_dk), len(rows_dk))]
 
 
 def grade(db: DatabaseManager) -> int:
@@ -676,7 +688,9 @@ def stats(db: DatabaseManager) -> dict:
             break
     from model import nfl_first_td_market as mk
     market = mk.summarize(mk.stored_rows(db, version)) if graded else None
-    return fs.build(games, seasons, max(seasons), [dict(r) for r in graded], version, market=market)
+    out = fs.build(games, seasons, max(seasons), [dict(r) for r in graded], version, market=market)
+    out["dk_compare"] = dkm.compare(dkm.load_pairs(db, VERSION_LINES))
+    return out
 
 
 def main(argv: list[str] | None = None) -> int:

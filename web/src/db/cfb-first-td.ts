@@ -13,6 +13,8 @@ export type FirstTdPlayer = {
   listed?: boolean | null;
   /** NFL: DraftKings' first-TD price (American) when the publish found one; display only. */
   dk?: number | null;
+  /** NFL: his chance read off DraftKings' first-TD prices with the margin removed (nfl-first-td-dk-v1). */
+  dk_prob?: number | null;
 };
 
 export type FirstTdGame = {

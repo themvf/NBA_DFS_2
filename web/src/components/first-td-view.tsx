@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { FirstTdChip, FirstTdGame, FirstTdGrades } from "@/db/cfb-first-td";
-import type { FirstTdCalibrationBin, FirstTdMarket, FirstTdStats } from "@/db/first-td-stats";
+import type { FirstTdCalibrationBin, FirstTdDkCompare, FirstTdMarket, FirstTdStats } from "@/db/first-td-stats";
 
 /** The First TD page body, shared by the CFB and NFL tabs; each tab supplies its data and wording. */
 
@@ -44,6 +44,7 @@ function playerChips(p: FirstTdGame["players"][number]): FirstTdChip[] {
 function GameCard({ g, started, volumeLabel, actualWait }: { g: FirstTdGame; started: boolean; volumeLabel: string; actualWait: string }) {
   const pAway = 1 - g.pHomeFirst;
   const showDk = g.players.some((p) => p.dk != null);
+  const showDkProb = g.players.some((p) => p.dk_prob != null);
   return <section className="overflow-hidden rounded-xl border bg-white">
     <div className="border-b p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -69,6 +70,7 @@ function GameCard({ g, started, volumeLabel, actualWait }: { g: FirstTdGame; sta
     <div className="overflow-x-auto"><table className="w-full text-left text-sm">
       <thead className="bg-slate-50"><tr>
         <th className="p-3">Player</th><th className="p-3">Chance</th><th className="p-3">Fair price</th>
+        {showDkProb && <th className="p-3">From DraftKings&apos; prices</th>}
         {showDk && <th className="p-3">DraftKings</th>}
         <th className="p-3">TDs this season</th><th className="p-3">{volumeLabel}</th>
       </tr></thead>
@@ -78,6 +80,7 @@ function GameCard({ g, started, volumeLabel, actualWait }: { g: FirstTdGame; sta
         </td>
         <td className="p-3 font-semibold">{pct(p.prob)}</td>
         <td className="p-3">{american(p.fair)}</td>
+        {showDkProb && <td className="p-3">{p.dk_prob != null ? pct(p.dk_prob) : "–"}</td>}
         {showDk && <td className="p-3">{p.dk != null ? american(p.dk) : "–"}</td>}
         <td className="p-3">{p.td}</td>
         <td className="p-3">{Number.isInteger(p.touches) ? p.touches : Number(p.touches).toFixed(1)}</td>
@@ -181,6 +184,30 @@ function MarketRecord({ m }: { m: FirstTdMarket }) {
   </StatsSection>;
 }
 
+function DkCompare({ c }: { c: FirstTdDkCompare }) {
+  const have = c.games > 0 && c.ours_log_loss != null && c.dk_log_loss != null;
+  return <StatsSection title="Our forecast against DraftKings' prices as a forecast">
+    <p>Each game also saves DraftKings&apos; first-TD prices with the margin taken out (the &quot;From DraftKings&apos; prices&quot;
+      column), and both are graded on the same games. A test of which number to trust, not a way to find bets: no player can
+      beat DraftKings&apos; price by its own number.</p>
+    {!have
+      ? <p className="text-slate-600">No games graded for both yet. Saved from Sunday night, November 15, 2026.</p>
+      : <>
+        <table className="w-full max-w-xl text-left">
+          <thead><tr className="text-slate-600"><th className="py-1">Forecast</th><th className="py-1">Log loss (lower is better)</th><th className="py-1">Top pick scored first</th></tr></thead>
+          <tbody>
+            <tr className="border-t"><td className="py-1">Ours</td><td className="py-1">{c.ours_log_loss!.toFixed(3)}</td><td className="py-1">{c.ours_top} of {c.games}</td></tr>
+            <tr className="border-t"><td className="py-1">From DraftKings&apos; prices</td><td className="py-1">{c.dk_log_loss!.toFixed(3)}</td><td className="py-1">{c.dk_top} of {c.games}</td></tr>
+          </tbody>
+        </table>
+        <p className="text-slate-600">{c.games} games graded for both.
+          {c.interval
+            ? ` Gap (ours minus DraftKings') ${c.diff!.toFixed(3)}, 95% range ${c.interval[0].toFixed(3)} to ${c.interval[1].toFixed(3)}; above zero means DraftKings' number was closer.`
+            : ` Read once at ${c.review_games} games; too few to say which is closer yet.`}</p>
+      </>}
+  </StatsSection>;
+}
+
 function SeasonStats({ stats, recordWait }: { stats: FirstTdStats | null; recordWait: string }) {
   if (!stats) return <p className="rounded-xl border bg-white p-4 text-sm text-slate-600">Season stats are not stored yet; they are rebuilt each time forecasts are graded.</p>;
   const r = stats.record;
@@ -208,6 +235,7 @@ function SeasonStats({ stats, recordWait }: { stats: FirstTdStats | null; record
         </>}
     </StatsSection>
     {stats.market && <MarketRecord m={stats.market} />}
+    {stats.dkCompare && <DkCompare c={stats.dkCompare} />}
     <StatsSection title="How first touchdowns happen">
       <div className="overflow-x-auto"><table className="w-full text-left">
         <thead><tr className="text-slate-600">
