@@ -27,6 +27,8 @@ import { computeCalibratedLsOwn, computeLsLeverage, getPrimaryNbaPosition, getSa
 import { buildMlbBlowupCandidates, MLB_BLOWUP_CANDIDATE_VERSION } from "./mlb-blowup";
 import { optimizeMlbLineups, optimizeMlbLineupsWithDebug, buildMlbMultiEntryCSV } from "./mlb-optimizer";
 import { isTournamentMode } from "./optimizer-mode";
+import { applyNbaOwnershipInput, computeNbaLeverage, describeNbaOwnershipInput, nbaFieldProjection, type NbaStatApiPullStatus } from "@/lib/nba-dfs/ownership-input";
+import { refreshNbaStatApiOwnership } from "@/lib/nba-dfs/statapi-ownership";
 import { applyMlbPendingLineupPolicy, inferMlbTeamLineupConfirmed, isPositiveMlbLineupOrder } from "./mlb-lineup";
 import { validateMlbRuleSelections } from "./mlb-optimizer-rules";
 import { updateOptimizerJobLineupActualsForSlate } from "./optimizer-jobs";
@@ -2352,16 +2354,19 @@ function applyNbaOwnershipModels(
     const fieldOwnPct = normalizedLiveField[i] ?? sanitizeOwnershipPct(
       player.isOut ? 0 : (player.projOwnPct ?? player.ourOwnPct ?? null),
     );
-    const fieldProj = sanitizeProjection(player.avgFptsDk ?? player.linestarProj ?? null);
+    // Same field-projection rule as the optimizer (a DK average of 0 is no average).
+    const fieldProj = sanitizeProjection(nbaFieldProjection(player.avgFptsDk, player.linestarProj));
     const spg = player._spg ?? 0;
     const bpg = player._bpg ?? 0;
 
     player.liveOwnPct = fieldOwnPct;
+    // computeNbaLeverage gives no field edge without a field projection; the
+    // shared computeLeverage (MLB) treats the whole projection as edge.
     player.ourLeverage = !player.isOut && player.ourProj != null && fieldOwnPct != null
-      ? sanitizeLeverage(computeLeverage(player.ourProj, fieldOwnPct, fieldProj, spg, bpg))
+      ? sanitizeLeverage(computeNbaLeverage(player.ourProj, fieldOwnPct, fieldProj, spg, bpg))
       : null;
     player.liveLeverage = !player.isOut && player.liveProj != null && fieldOwnPct != null
-      ? sanitizeLeverage(computeLeverage(player.liveProj, fieldOwnPct, fieldProj, spg, bpg))
+      ? sanitizeLeverage(computeNbaLeverage(player.liveProj, fieldOwnPct, fieldProj, spg, bpg))
       : null;
   }
 }
@@ -7601,6 +7606,13 @@ export async function runOptimizer(
   if (!refreshResult.ok) {
     return { ok: false, error: `Status refresh failed before optimize: ${refreshResult.message}` };
   }
+  await ensureDkPlayerPropColumns();
+  // A failed stat-api pull never stops the build; the ownership step below
+  // falls back and says so in the run's warning. gpp_ls never reads it.
+  const statApiOwnership: NbaStatApiPullStatus = settings.mode === "gpp_ls"
+    ? null
+    : await refreshNbaStatApiOwnership(slateId)
+      .catch((error: unknown) => ({ ok: false, message: error instanceof Error ? error.message : String(error) }));
 
   const rows = await db.execute<OptimizerPlayer & { slateId: number }>(sql`
     SELECT
@@ -7613,6 +7625,10 @@ export async function runOptimizer(
       dp.linestar_proj AS "linestarProj",
       COALESCE(dp.live_own_pct, dp.proj_own_pct, dp.our_own_pct) AS "projOwnPct",
       dp.proj_own_pct AS "rawLsProjOwnPct",
+      dp.statapi_own_pct AS "statapiOwnPct",
+      dp.statapi_own_at::text AS "statapiOwnAt",
+      dp.linestar_own_pct AS "linestarOwnPct",
+      ps.spg, ps.bpg,
       dp.proj_ceiling AS "projCeiling",
       dp.boom_rate AS "boomRate",
       dp.prop_pts AS "propPts",
@@ -7631,7 +7647,9 @@ export async function runOptimizer(
     LEFT JOIN LATERAL (
       SELECT
         nps.avg_minutes AS "avgMinutes",
-        nps.usage_rate AS "usageRate"
+        nps.usage_rate AS "usageRate",
+        nps.spg,
+        nps.bpg
       FROM nba_player_stats nps
       WHERE nps.team_id = dp.team_id
         AND LOWER(nps.name) = LOWER(dp.name)
@@ -7660,6 +7678,10 @@ export async function runOptimizer(
       ourLeverage: sanitizeLeverage(p.ourLeverage),
       linestarProj: sanitizeProjection(p.linestarProj),
       projOwnPct: sanitizeOwnershipPct(p.projOwnPct),
+      statapiOwnPct: sanitizeOwnershipPct(p.statapiOwnPct ?? null),
+      linestarOwnPct: sanitizeOwnershipPct(p.linestarOwnPct ?? null),
+      spg: finiteOrNull(p.spg),
+      bpg: finiteOrNull(p.bpg),
       avgMinutes: finiteOrNull((p as OptimizerPlayer).avgMinutes),
       usageRate: finiteOrNull((p as OptimizerPlayer).usageRate),
       recentMinutesAvg: finiteOrNull((p as OptimizerPlayer).recentMinutesAvg),
@@ -7669,9 +7691,19 @@ export async function runOptimizer(
         if (avgMinutes == null || recentMinutesAvg == null) return null;
         return Math.round((recentMinutesAvg - avgMinutes) * 10) / 10;
       })(),
-    }))
+    }));
+  // Ownership is resolved on the whole slate, then the game filter applies:
+  // contest ownership (and its field average) does not shrink because the
+  // build uses fewer games.
+  const calibratedPool = await applyNbaTournamentOwnershipCalibration(basePool, settings.mode);
+  const ownershipInput = applyNbaOwnershipInput(calibratedPool, {
+    mode: settings.mode,
+    tournament: isTournamentMode(settings.mode),
+    statApiPull: statApiOwnership,
+  });
+  const pool = ownershipInput.pool
     .filter((p) => gameFilter.length === 0 || (p.matchupId != null && gameFilter.includes(p.matchupId)));
-  const pool = await applyNbaTournamentOwnershipCalibration(basePool, settings.mode);
+  const ownershipWarning = describeNbaOwnershipInput(ownershipInput.summary, statApiOwnership, settings.mode);
 
   try {
     const { lineups, debug } = optimizeLineupsWithDebug(pool, settings);
@@ -7721,6 +7753,7 @@ export async function runOptimizer(
     } else if (lineups.length < settings.nLineups) {
       warning = buildPartialGenerationWarning(lineups, settings.nLineups, settings.maxExposure, false);
     }
+    warning = [ownershipWarning, warning].filter(Boolean).join(" ") || undefined;
     return { ok: true, lineups, warning, debug };
   } catch (e) {
     return { ok: false, error: String(e) };

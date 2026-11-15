@@ -5210,6 +5210,12 @@ MIGRATIONS = [
             ALTER TABLE dk_players ADD COLUMN live_own_pct REAL;
         END IF;
     END $$""",
+    # 2026-11-14: nba-statapi-ownership-v1. stat-api's projected GPP ownership,
+    # written by the web app (web/src/lib/nba-dfs/statapi-ownership.ts) when the
+    # NBA optimizer starts. Mirrored in web/src/db/ensure-schema.ts.
+    "ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS statapi_own_pct REAL",
+    "ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS statapi_own_at TIMESTAMPTZ",
+    "ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS statapi_slate_id BIGINT",
     """DO $$ BEGIN
         IF NOT EXISTS (
             SELECT 1 FROM information_schema.columns

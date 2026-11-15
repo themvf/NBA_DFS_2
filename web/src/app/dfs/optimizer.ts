@@ -66,6 +66,20 @@ export type OptimizerPlayer = Pick<
   lsLeverage?: number | null;
   /** Raw LineStar proj_own_pct — used for calibrated ownership computation. */
   rawLsProjOwnPct?: number | null;
+  /** stat-api's projected GPP ownership (nba-statapi-ownership-v1). */
+  statapiOwnPct?: number | null;
+  /** When statapiOwnPct was stored (ISO). */
+  statapiOwnAt?: string | null;
+  /** LineStar's own ownership column; present only when LineStar was loaded. */
+  linestarOwnPct?: number | null;
+  spg?: number | null;
+  bpg?: number | null;
+  /**
+   * Projected field-average lineup ownership for the slate, sum(own^2)/100,
+   * stamped on every player by applyNbaOwnershipInput when the ownership
+   * source is calibrated (stat-api or LineStar); null otherwise.
+   */
+  fieldOwnershipSum?: number | null;
 };
 
 export type LineupSlot = "PG" | "SG" | "SF" | "PF" | "C" | "G" | "F" | "UTIL";
@@ -362,10 +376,37 @@ function getCheapPlayerLeverageScale(player: OptimizerPlayer, mode: OptimizerMod
 
 // GPP leverage weight — how much leverage adds on top of projection in search score.
 // Projection is the primary signal; leverage is a differentiator.
-// Calibrated to live_leverage quartile data (Q4 avg_lev ≈ +6.0, avg_proj ≈ 25.0):
-// at weight=0.6, a Q4 player scores ~3.6 pts above a neutral player at the same projection,
-// which is enough to prefer the contrarian play without overriding a 5+ FPTS projection gap.
+//
+// nba-gpp-scoring-v2 (2026-11-14), from the 21-night stat-api winners study:
+// - Leverage weights halved (0.6/0.78/0.95 -> 0.3/0.39/0.48). Leverage is
+//   (our projection - DK average) x (1 - own)^0.7, so it re-adds an edge the
+//   projection already contains. High-leverage players fell 3.7-4.2 points
+//   short of OUR projection even at equal projection, while still beating DK's
+//   average by ~76% of the predicted edge: the signal is real, the double
+//   count was not. The halving is a stated prior, not a fit.
+// - highOwnedPenalty 0. At equal projection the number of 20%+ players neither
+//   helped nor hurt; the penalty only traded away projection.
+// - stackOwnershipThreshold left at 48/40/36 on purpose. The study found no
+//   consistent effect below ~100% team ownership, but raising it to 100
+//   together with the halved leverage made every stack template pile onto
+//   the same chalk team, and the search then failed to fill lineups 3-4 of 4
+//   on a synthetic real-scale slate (scripts/test-nba-ownership-input.ts).
+//   Its weights are small (0.03-0.06 per point); revisit with a search fix.
+// - Lineup ownership target: the slate's projected field average plus
+//   NBA_FIELD_OWNERSHIP_MARGIN when ownership is calibrated (see
+//   resolveLineupOwnershipTarget). Real lineups average ~215% ownership; the
+//   fixed 105-125 targets sat at the field's lowest-owned 5-10%.
+// Ownership itself comes from lib/nba-dfs/ownership-input.ts.
+export const NBA_GPP_SCORING_VERSION = "nba-gpp-scoring-v2";
 const NBA_CASH_LEVERAGE_WEIGHT = 0.1;
+/**
+ * Points above the projected field-average lineup ownership before the
+ * ownership-sum penalty starts. At equal projection, lineups well above the
+ * field did worse (top-1% lift 0.53 vs 1.47 for the lower-owned third, which
+ * sat around 165-230); 15 puts the start near 230 on a typical 215 slate.
+ * Stated prior.
+ */
+export const NBA_FIELD_OWNERSHIP_MARGIN = 15;
 type NbaTournamentProfile = {
   leverageWeight: number;
   ceilingEdgeWeight: number;
@@ -385,7 +426,7 @@ type NbaTournamentProfile = {
 };
 
 const NBA_GPP_PROFILE: NbaTournamentProfile = {
-  leverageWeight: 0.6,
+  leverageWeight: 0.3,
   ceilingEdgeWeight: 0.18,
   boomWeight: 5.0,
   chalkPenaltyStart: 18.0,
@@ -394,7 +435,7 @@ const NBA_GPP_PROFILE: NbaTournamentProfile = {
   lineupOwnershipWeight: 0.045,
   highOwnedThreshold: 20.0,
   highOwnedAllowance: 3,
-  highOwnedPenalty: 0.9,
+  highOwnedPenalty: 0,
   stackOwnershipThreshold: 48.0,
   stackOwnershipWeight: 0.03,
   recentLineupPenaltyWeight: 2.5,
@@ -403,7 +444,7 @@ const NBA_GPP_PROFILE: NbaTournamentProfile = {
 };
 
 const NBA_GPP2_PROFILE: NbaTournamentProfile = {
-  leverageWeight: 0.78,
+  leverageWeight: 0.39,
   ceilingEdgeWeight: 0.24,
   boomWeight: 6.4,
   chalkPenaltyStart: 14.0,
@@ -412,7 +453,7 @@ const NBA_GPP2_PROFILE: NbaTournamentProfile = {
   lineupOwnershipWeight: 0.07,
   highOwnedThreshold: 18.0,
   highOwnedAllowance: 2,
-  highOwnedPenalty: 1.15,
+  highOwnedPenalty: 0,
   stackOwnershipThreshold: 40.0,
   stackOwnershipWeight: 0.05,
   recentLineupPenaltyWeight: 3.5,
@@ -425,7 +466,7 @@ const NBA_GPP2_PROFILE: NbaTournamentProfile = {
 // two-layer residual correction. The weight here is higher than GPP2 because the
 // signal is more accurate (LS ownership beats our own model).
 const NBA_GPP_LS_PROFILE: NbaTournamentProfile = {
-  leverageWeight: 0.95,
+  leverageWeight: 0.48,
   ceilingEdgeWeight: 0.30,
   boomWeight: 7.5,
   chalkPenaltyStart: 12.0,
@@ -434,7 +475,7 @@ const NBA_GPP_LS_PROFILE: NbaTournamentProfile = {
   lineupOwnershipWeight: 0.08,
   highOwnedThreshold: 16.0,
   highOwnedAllowance: 2,
-  highOwnedPenalty: 1.25,
+  highOwnedPenalty: 0,
   stackOwnershipThreshold: 36.0,
   stackOwnershipWeight: 0.06,
   recentLineupPenaltyWeight: 4.0,
@@ -497,16 +538,39 @@ function getMaxTeamOwnership(teamOwnership: Map<number, number>): number {
   return maxOwnership;
 }
 
+/** The first finite field-ownership stamp in a pool (every player carries the same one). */
+function getPoolFieldOwnershipSum(players: readonly OptimizerPlayer[]): number | null {
+  for (const player of players) {
+    const value = finiteOrNull(player.fieldOwnershipSum);
+    if (value != null && value > 0) return value;
+  }
+  return null;
+}
+
+/**
+ * The lineup ownership sum above which the duplication penalty starts. With
+ * calibrated ownership it is the slate's projected field average plus a
+ * margin; the profile's fixed number stays as a floor, so a flat internal
+ * estimate (field average ~80) behaves exactly as before.
+ */
+export function resolveLineupOwnershipTarget(mode: OptimizerMode, fieldOwnershipSum: number | null): number {
+  const fixed = getNbaTournamentProfile(mode).lineupOwnershipTarget;
+  if (fieldOwnershipSum == null || !Number.isFinite(fieldOwnershipSum)) return fixed;
+  return Math.max(fixed, fieldOwnershipSum + NBA_FIELD_OWNERSHIP_MARGIN);
+}
+
 function getNbaLineupDuplicationPenalty(
   totalOwnership: number,
   highOwnedCount: number,
   teamOwnership: Map<number, number>,
   mode: OptimizerMode,
+  fieldOwnershipSum: number | null = null,
 ): number {
   if (!isTournamentMode(mode)) return 0;
   const profile = getNbaTournamentProfile(mode);
+  const ownershipTarget = resolveLineupOwnershipTarget(mode, fieldOwnershipSum);
 
-  const totalOwnershipPenalty = Math.max(0, totalOwnership - profile.lineupOwnershipTarget) * profile.lineupOwnershipWeight;
+  const totalOwnershipPenalty = Math.max(0, totalOwnership - ownershipTarget) * profile.lineupOwnershipWeight;
   const highOwnedPenalty = Math.max(0, highOwnedCount - profile.highOwnedAllowance) * profile.highOwnedPenalty;
   const stackOwnershipPenalty = Math.max(0, getMaxTeamOwnership(teamOwnership) - profile.stackOwnershipThreshold) * profile.stackOwnershipWeight;
 
@@ -543,6 +607,22 @@ function canFillSlot(slot: LineupSlot, pos: string): boolean {
   }
 }
 
+/** A DraftKings average above 0, or a LineStar projection: something to measure an edge against. */
+function hasNbaFieldProjection(player: OptimizerPlayer): boolean {
+  return (finiteOrNull(player.avgFptsDk) ?? 0) > 0 || finiteOrNull(player.linestarProj) != null;
+}
+
+/**
+ * The cheap-player "leverage must be positive" gate. A player with no field
+ * projection has leverage 0 by rule (nba-ownership-input-v1), which says
+ * nothing about him, so the gate does not apply; he still has to clear the
+ * projection, role and min-price checks.
+ */
+export function passesCheapLeverageGate(player: OptimizerPlayer, mode: OptimizerMode): boolean {
+  if (!hasNbaFieldProjection(player)) return true;
+  return getTournamentLeverage(player, mode) > 0;
+}
+
 function filterEligibleNbaPool(
   pool: OptimizerPlayer[],
   settings: OptimizerSettings,
@@ -562,8 +642,7 @@ function filterEligibleNbaPool(
       if (isNbaCheapStarter(player, settings.mode)) {
         return true;
       }
-      const leverage = getTournamentLeverage(player, settings.mode);
-      if (!(leverage > 0)) return false;
+      if (!passesCheapLeverageGate(player, settings.mode)) return false;
 
       const minProjection = player.salary <= NBA_CHEAP_CORE_SALARY_MAX
         ? NBA_CHEAP_CORE_MIN_PROJECTION
@@ -834,7 +913,7 @@ function pruneNbaCandidatePool(
   }
   addCheapestPlayers(
     keepIds,
-    pool.filter((player) => !isTournamentMode(mode) || player.salary >= NBA_CHEAP_SALARY_MAX || getTournamentLeverage(player, mode) > 0),
+    pool.filter((player) => !isTournamentMode(mode) || player.salary >= NBA_CHEAP_SALARY_MAX || passesCheapLeverageGate(player, mode)),
     CHEAP_KEEP_COUNT,
   );
 
@@ -893,6 +972,7 @@ function sumTopTeamScores(
     selected.filter((player) => isHighOwnedNbaPlayer(player, mode)).length,
     teamOwnership,
     mode,
+    getPoolFieldOwnershipSum(players),
   );
 }
 
@@ -1028,7 +1108,7 @@ function buildTemplatePool(
   addTopPlayers(keepIds, sorted, TEMPLATE_FILL_KEEP_COUNT);
   addCheapestPlayers(
     keepIds,
-    prunedPool.filter((player) => !isTournamentMode(mode) || player.salary >= NBA_CHEAP_SALARY_MAX || getTournamentLeverage(player, mode) > 0),
+    prunedPool.filter((player) => !isTournamentMode(mode) || player.salary >= NBA_CHEAP_SALARY_MAX || passesCheapLeverageGate(player, mode)),
     TEMPLATE_CHEAP_KEEP_COUNT,
   );
 
@@ -1198,6 +1278,7 @@ function solveReducedLineup(
   scoreAdjustments?: Map<number, number>,
 ): GeneratedLineup | null {
   if (pool.length < ROSTER_SIZE) return null;
+  const fieldOwnershipSum = getPoolFieldOwnershipSum(pool);
   const slotCandidates = new Map<LineupSlot, OptimizerPlayer[]>();
   for (const slot of LINEUP_SLOTS) {
     const candidates = sortPlayersForSearch(
@@ -1294,6 +1375,7 @@ function solveReducedLineup(
       state.highOwnedCount,
       state.teamOwnership,
       mode,
+      fieldOwnershipSum,
     );
     return state.score
       + scoreUpperBound(state.selectedIds, remainingCount)
@@ -1444,6 +1526,7 @@ function solveReducedLineup(
       state.highOwnedCount,
       state.teamOwnership,
       mode,
+      fieldOwnershipSum,
     );
     if (!bestState || penalizedScore > bestScore) {
       bestState = state;

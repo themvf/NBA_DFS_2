@@ -31,6 +31,9 @@ import { applyMlbHitterProjectionCalibration } from "./mlb-projection-utils";
 import { computeCalibratedLsOwn, computeLsLeverage, getPrimaryMlbPosition, getPrimaryNbaPosition, getSalaryTier } from "./ls-ownership-calibration";
 import { getLsOwnershipCorrectionTables } from "@/db/queries";
 import { isLinestArMode, isTournamentMode } from "./optimizer-mode";
+import { ensureDkPlayerPropColumns } from "@/db/ensure-schema";
+import { applyNbaOwnershipInput, describeNbaOwnershipInput, type NbaOwnershipInputSummary, type NbaStatApiPullStatus } from "@/lib/nba-dfs/ownership-input";
+import { refreshNbaStatApiOwnership } from "@/lib/nba-dfs/statapi-ownership";
 import type { OptimizerDebugInfo } from "./optimizer-debug";
 import { normalizeNbaRuleSelections, validateNbaRuleSelections } from "./nba-optimizer-rules";
 import { normalizeMlbRuleSelections, validateMlbRuleSelections } from "./mlb-optimizer-rules";
@@ -231,6 +234,11 @@ async function loadNbaOptimizerPool(
       t.name AS "teamName",
       m.home_team_id AS "homeTeamId",
       dp.proj_own_pct AS "rawLsProjOwnPct",
+      dp.statapi_own_pct AS "statapiOwnPct",
+      dp.statapi_own_at::text AS "statapiOwnAt",
+      dp.linestar_own_pct AS "linestarOwnPct",
+      ps.spg,
+      ps.bpg,
       ps."avgMinutes",
       ps."usageRate",
       recent."recentMinutesAvg"
@@ -240,7 +248,9 @@ async function loadNbaOptimizerPool(
     LEFT JOIN LATERAL (
       SELECT
         nps.avg_minutes AS "avgMinutes",
-        nps.usage_rate AS "usageRate"
+        nps.usage_rate AS "usageRate",
+        nps.spg,
+        nps.bpg
       FROM nba_player_stats nps
       WHERE nps.team_id = dp.team_id
         AND LOWER(nps.name) = LOWER(dp.name)
@@ -270,6 +280,10 @@ async function loadNbaOptimizerPool(
       ourLeverage: sanitizeLeverage(player.ourLeverage),
       linestarProj: sanitizeProjection(player.linestarProj),
       projOwnPct: sanitizeOwnershipPct(player.projOwnPct),
+      statapiOwnPct: sanitizeOwnershipPct(player.statapiOwnPct ?? null),
+      linestarOwnPct: sanitizeOwnershipPct(player.linestarOwnPct ?? null),
+      spg: finiteOrNull(player.spg),
+      bpg: finiteOrNull(player.bpg),
       avgMinutes: finiteOrNull((player as OptimizerPlayer).avgMinutes),
       usageRate: finiteOrNull((player as OptimizerPlayer).usageRate),
       recentMinutesAvg: finiteOrNull((player as OptimizerPlayer).recentMinutesAvg),
@@ -1165,7 +1179,25 @@ export async function createOptimizerJob(input: CreateOptimizerJobRequest): Prom
     }
   }
 
-  let poolSnapshot = await loadOptimizerPool(input.sport, input.slateId, input.selectedMatchupIds);
+  // NBA: refresh stat-api's projected ownership first. A failed pull never
+  // stops the build; the ownership step below falls back and says so.
+  let statApiPull: NbaStatApiPullStatus = null;
+  if (input.sport === "nba") {
+    await ensureDkPlayerPropColumns();
+    // gpp_ls never reads stat-api ownership, so it does not pay for the pull.
+    if (input.settings.mode !== "gpp_ls") {
+      statApiPull = await refreshNbaStatApiOwnership(input.slateId)
+        .catch((error: unknown) => ({ ok: false, message: error instanceof Error ? error.message : String(error) }));
+    }
+  }
+
+  // NBA loads the whole slate: ownership and its field average are resolved
+  // on every game, and the game filter applies after (below).
+  let poolSnapshot = await loadOptimizerPool(
+    input.sport,
+    input.slateId,
+    input.sport === "nba" ? [] : input.selectedMatchupIds,
+  );
   if (poolSnapshot.length === 0) {
     throw new Error("No players available for the selected slate and games.");
   }
@@ -1224,6 +1256,26 @@ export async function createOptimizerJob(input: CreateOptimizerJobRequest): Prom
     });
   }
 
+  let ownershipInput: NbaOwnershipInputSummary | null = null;
+  let ownershipNote: string | null = null;
+  if (input.sport === "nba") {
+    // stat-api ownership when it covers the slate, then leverage recomputed
+    // from the ownership used (no field edge without a field projection).
+    const applied = applyNbaOwnershipInput(poolSnapshot as OptimizerPlayer[], {
+      mode: input.settings.mode,
+      tournament: isTournamentMode(input.settings.mode),
+      statApiPull,
+    });
+    const selected = input.selectedMatchupIds;
+    poolSnapshot = applied.pool.filter((player) =>
+      selected.length === 0 || (player.matchupId != null && selected.includes(player.matchupId)));
+    if (poolSnapshot.length === 0) {
+      throw new Error("No players available for the selected slate and games.");
+    }
+    ownershipInput = applied.summary;
+    ownershipNote = describeNbaOwnershipInput(applied.summary, statApiPull, input.settings.mode) ?? null;
+  }
+
   if (input.sport === "nba") {
     const validation = validateNbaRuleSelections(poolSnapshot as OptimizerPlayer[], input.settings as OptimizerSettings);
     if (!validation.ok) {
@@ -1242,6 +1294,7 @@ export async function createOptimizerJob(input: CreateOptimizerJobRequest): Prom
     selectedMatchupIds: input.selectedMatchupIds,
     requestedLineups: input.settings.nLineups,
     mode: input.settings.mode,
+    ...(input.sport === "nba" ? { ownershipInput, ownershipNote } : {}),
   };
 
   const inserted = await db
@@ -1713,7 +1766,10 @@ export async function finalizeOptimizerJob(jobId: number) {
   const terminationReason = built >= job.requestedLineups
     ? "completed"
     : normalizeTerminationReason(job.terminationReason) ?? "lineup_failed";
-  const warning = status === "completed" ? buildPartialWarning(built, job.requestedLineups) : null;
+  const ownershipNote = (job.snapshotJson as OptimizerJobSnapshot | null)?.ownershipNote ?? null;
+  const warning = status === "completed"
+    ? [ownershipNote, buildPartialWarning(built, job.requestedLineups)].filter(Boolean).join(" ") || null
+    : null;
   const error = status === "failed"
     ? (job.error ?? "Optimizer did not finish successfully.")
     : null;

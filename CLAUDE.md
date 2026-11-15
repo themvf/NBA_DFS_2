@@ -178,7 +178,43 @@ ourLeverage = edge × (1 − projOwn%)^0.7 × ceilingBonus
 ceilingBonus = 1 + spg×0.05 + bpg×0.04
 ```
 Negative leverage = we are below-field on this player → correct GPP fade.
-The optimizer filters `leverage > 0` for GPP mode.
+The GPP pool filter drops only sub-$4,000 non-starters with `leverage <= 0`.
+
+**NBA ownership input and scoring (2026-11-14, `nba-ownership-input-v1`,
+`nba-gpp-scoring-v2`).** From a 21-night study of stat-api DraftKings Classic
+fields (data local only, `data/statapi/nba/`, gitignored):
+- With no LineStar feed this season the optimizer read our flat internal
+  ownership (Oct 24: max 14.5% vs 75% real, Spearman 0.30), so no ownership
+  rule fired. Both optimizer paths now pull stat-api's projected GPP ownership
+  (`gpp`, 10k-100k entries, 20+ per user) into `dk_players.statapi_own_pct`
+  (`web/src/lib/nba-dfs/statapi-ownership.ts`, at most every 10 minutes, a
+  failure never stops a build) and use it when it covers 80% of playable
+  players, except in `gpp_ls` (which skips the pull). Oct 24: Spearman 0.89,
+  miss 1.7 points. The pull has a 12 s budget; when it fails, stored values
+  under 90 minutes old are used and the warning names the failure and age,
+  older ones are refused. A run on flat ownership says so in its warning.
+  Ownership and its field average are resolved on the whole slate before the
+  game filter. "LineStar" is detected from `linestar_own_pct`, because the
+  Python loader writes a baseline estimate into `proj_own_pct`.
+  **`STAT_API_KEY` must be set on Vercel** (Production + Preview) or
+  production runs fall back and warn.
+- NBA leverage gives **no edge without a field projection** (DK average
+  missing or 0); the old fallback made the edge the whole projection and put
+  no-history bench players at the top of the leverage list. Such a player
+  is not removed by the cheap-player `leverage > 0` gate (it only applies
+  with a field projection); he still has to clear the projection, role and
+  min-price checks. Page and optimizer share `nbaFieldProjection`. MLB keeps
+  the shared `computeLeverage`.
+- Leverage weights halved (0.3/0.39/0.48): leverage re-adds the edge the
+  projection already holds. The high-owned-count penalty is 0 (at equal
+  projection chalk count neither helped nor hurt). The lineup ownership
+  target is the slate's projected field average (sum(own^2)/100) + 15 when
+  ownership is calibrated; real lineups average ~215%, the old fixed 105-125
+  sat in the field's lowest-owned 5-10%. `stackOwnershipThreshold` is
+  unchanged on purpose: raising it with halved leverage broke the search.
+- Stated priors, not fits; one validated slate. On Oct 24 the builds barely
+  moved (actual ownership per lineup 96% to 98%) because inflated deep-bench
+  projections, not ownership, drive the picks: fix those next.
 
 ### How `ourOwnPct` is computed
 

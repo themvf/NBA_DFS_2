@@ -5,6 +5,7 @@ import type { MlbOptimizerPlayer, MlbOptimizerSettings, MlbLineupSlot } from "./
 import type { NormalizedNbaRuleSelections } from "./nba-optimizer-rules";
 import type { NormalizedMlbRuleSelections } from "./mlb-optimizer-rules";
 import type { OptimizerMode } from "./optimizer-mode";
+import type { NbaOwnershipInputSummary } from "@/lib/nba-dfs/ownership-input";
 
 export type OptimizerJobStatus = "queued" | "running" | "completed" | "failed";
 
@@ -20,6 +21,10 @@ export type OptimizerJobSnapshot = {
   selectedMatchupIds: number[];
   requestedLineups: number;
   mode: OptimizerMode;
+  /** NBA only: which ownership the job ran on (nba-ownership-input-v1). */
+  ownershipInput?: NbaOwnershipInputSummary | null;
+  /** NBA only: the ownership warning, carried to the finished job's warning. */
+  ownershipNote?: string | null;
 };
 
 export type NbaPreparedOptimizerRun = {
