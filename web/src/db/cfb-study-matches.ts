@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { queryRows } from "./query-result";
 import type { CfbStudySelection } from "@/lib/daily-study-matches";
 
-/** Call only after verifying Pattern Watch access. */
+/** Original pregame selections and independently joined game outcomes. */
 export async function getCfbStudySelections(date: string) {
   return queryRows<CfbStudySelection>(await db.execute(sql`
     SELECT m.id::text AS id, s.trigger, (m.commence_time AT TIME ZONE 'America/New_York')::date::text AS date,

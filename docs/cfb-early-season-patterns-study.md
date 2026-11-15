@@ -266,11 +266,9 @@ units, units by pattern, weekly favorite win rate against implied). The PNGs and
 CSVs are attached to each run as the `cfb-pattern-watch-<job>` artifact.
 
 The site page `/cfb/pattern-watch` reads the newest dataset row and draws the
-same tables with live charts. The web app never recomputes a grade, so the page,
-the CSVs and the PNGs cannot disagree. The site has no login, so the page opens
-only with `?key=` equal to the `CFB_PATTERN_PAGE_KEY` environment variable
-(16+ characters) and answers 404 otherwise, including when the variable is not
-set. It is also marked noindex. Sharing it later means removing the key check.
+same tables with live charts. The web app never recomputes a grade. The page
+and its results on Daily Studies are publicly readable. The Pattern Watch
+detail page is marked noindex.
 
 `cfb_pattern_datasets` is not on the health dataset registry: a digest-keyed
 insert cannot tell "refreshed" from "unchanged". The run heartbeats already

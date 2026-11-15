@@ -20,7 +20,7 @@ according to the study. NBA-05 paper matches keep the separate original paper
 cutoff and history. CFB uses matching original, pregame frozen board entries
 for both the target and historical sample, with the corrected T5 Eastern window.
 This population is separate from the closing-line ledger and its verdict.
-A locked or unavailable CFB source is visible as such.
+Daily Studies and CFB Pattern Watch are publicly readable. A source outage is shown separately from a date with no results.
 
 ## Adding a sport study
 

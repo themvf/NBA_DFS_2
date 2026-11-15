@@ -15,7 +15,7 @@ export function StudyMatches({
   matches, coverage, date,
 }: {
   matches: StudyMatch[];
-  coverage: { nba: number | null; nfl: number | null; cfb: number | null; cfbUnlocked: boolean };
+  coverage: { nba: number | null; nfl: number | null; cfb: number | null };
   date: string;
 }) {
   const groups = new Map<string, StudyMatch[]>();
@@ -38,8 +38,7 @@ export function StudyMatches({
         Small samples can produce high rates. These are historical records and do not estimate tonight’s win probability.
       </p>
       <p className="text-xs text-muted-foreground">
-        NBA {coverageLabel(coverage.nba)} · NFL {coverageLabel(coverage.nfl)} · CFB {coverage.cfbUnlocked ? coverageLabel(coverage.cfb) : "Locked"}
-        {coverage.cfbUnlocked ? " · CFB uses saved board entries." : " · Unlock Pattern Watch below to include CFB."}
+        NBA {coverageLabel(coverage.nba)} · NFL {coverageLabel(coverage.nfl)} · CFB {coverageLabel(coverage.cfb)} · CFB uses saved board entries.
       </p>
     </header>
     {groups.size === 0 ? <p className="border-t pt-3 text-sm text-muted-foreground">No qualifying matches in the available evidence for this date.</p> : (
@@ -88,10 +87,7 @@ export function StudyMatches({
         Quote-timing errors and price-shopping diagnostics have no game win rate. Studies awaiting suitable data show no match.
         Earlier games with unavailable final-observation times are excluded.
       </p>
-      <ul className="mt-2 grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
-        {Object.entries(studyRegistry).filter(([id]) => coverage.cfbUnlocked || !id.startsWith("T")).map(([id, definition]) =>
-          <li key={id}>{id} · {definition.title} <span className="text-muted-foreground">· {definition.mode === "match" ? "Game matches" : definition.mode === "awaiting" ? "Awaiting evidence" : "Diagnostic"}</span></li>)}
-      </ul>
+      <a href="#all-studies" className="mt-2 inline-block underline underline-offset-4">See all study results</a>
     </details>
   </section>;
 }
