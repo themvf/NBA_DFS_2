@@ -189,7 +189,16 @@ import { captainExposurePolicies } from "./generation-settings";
  * Prompted by the NE@DET build, where cheap players with real roles had to
  * be unblocked by hand, letting 0-point punts in with them.
  */
-export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v15";
+/**
+ * v16 (2026-11-15, owner's request): Classic GPP lineup rule, the quarterback
+ * with one receiver and no bring-back in at most 5% of lineups (a form
+ * setting, 100 = no limit). Replay of weeks 3-8, 50 lineups, 4 noise seeds,
+ * real prize tables: Millionaire capped return 0.38 -> 0.42 (+0.05
+ * [+0.02, +0.08], 5 of 6 weeks), all six contest types 0.49 -> 0.58, every
+ * build full. The idea came from the field's results on the same weeks, so
+ * this is not an independent test.
+ */
+export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v16";
 
 export type BuildShape = "standard" | "winners" | "diversified";
 export const BUILD_SHAPES: readonly BuildShape[] = ["standard", "winners", "diversified"];
@@ -278,6 +287,8 @@ export const WINNERS_SHAPE = {
   showdownRbPairMinReceptions: 2.5,
   /** v15 (#8) Showdown: share of lineups that may play a DST against an opposing QB/RB/WR/TE/K. */
   showdownDstVsOffenseMaxShare: 0.05,
+  /** Classic: share of lineups that may be one receiver with no bring-back (1 = no limit). */
+  classicThinStackMaxShare: 0.05,
   /** v15 (#9): DraftKings Q / availability QUESTIONABLE players in at most this share of lineups, never captain. */
   questionableMaxExposure: 0.25,
   /** v15 (#9): availability DOUBTFUL players (a DraftKings "D" is left out unless locked). */
@@ -313,6 +324,7 @@ export type LineupRulesForm = {
   lowProjectionMaxExposure: number;
   showdownRbPairMinReceptions: number;
   showdownDstVsOffenseMaxShare: number;
+  classicThinStackMaxShare: number;
   questionableMaxExposure: number;
   doubtfulMaxExposure: number;
   expectedActivePlayerIds: number[];
@@ -324,6 +336,7 @@ export const DEFAULT_LINEUP_RULES: LineupRulesForm = {
   lowProjectionMaxExposure: WINNERS_SHAPE.lowProjectionMaxExposure,
   showdownRbPairMinReceptions: WINNERS_SHAPE.showdownRbPairMinReceptions,
   showdownDstVsOffenseMaxShare: WINNERS_SHAPE.showdownDstVsOffenseMaxShare,
+  classicThinStackMaxShare: WINNERS_SHAPE.classicThinStackMaxShare,
   questionableMaxExposure: WINNERS_SHAPE.questionableMaxExposure,
   doubtfulMaxExposure: WINNERS_SHAPE.doubtfulMaxExposure,
   expectedActivePlayerIds: [],
@@ -347,7 +360,8 @@ export function withLineupRules<T extends NflOptimizerSettings & { lineupRules?:
     questionableMaxExposure: rules.questionableMaxExposure,
     doubtfulMaxExposure: rules.doubtfulMaxExposure,
     expectedActivePlayerIds: [...new Set(rules.expectedActivePlayerIds)].sort((a, b) => a - b),
-    ...(showdown ? { showdownRbPairMinReceptions: rules.showdownRbPairMinReceptions, maxDstVsOffenseShare: rules.showdownDstVsOffenseMaxShare } : {}),
+    ...(showdown ? { showdownRbPairMinReceptions: rules.showdownRbPairMinReceptions, maxDstVsOffenseShare: rules.showdownDstVsOffenseMaxShare }
+      : rules.classicThinStackMaxShare < 1 ? { maxThinStackShare: rules.classicThinStackMaxShare } : {}),
   };
 }
 
@@ -360,7 +374,7 @@ function lineupRulesNote(s: NflOptimizerSettings): string {
     ...(s.format === "showdown" ? [
       s.showdownRbPairMinReceptions ? `two backs from one team only when one projects ${s.showdownRbPairMinReceptions}+ receptions` : "one-RB-per-team rule off",
       s.maxDstVsOffenseShare != null ? `a DST with an opposing QB/RB/WR/TE/K in at most ${pct(s.maxDstVsOffenseShare)} of lineups` : "DST cap off",
-    ] : []),
+    ] : s.maxThinStackShare != null ? [`one receiver with no bring-back in at most ${pct(s.maxThinStackShare)} of lineups`] : []),
     s.questionableMaxExposure || s.doubtfulMaxExposure ? `questionable players in at most ${pct(s.questionableMaxExposure)} of lineups (doubtful ${pct(s.doubtfulMaxExposure)}) and never captain, unless you set their range or mark them expected active` : "injury-tag caps off",
   ];
   return `Lineup rules (v15): ${parts.join("; ")}.`;

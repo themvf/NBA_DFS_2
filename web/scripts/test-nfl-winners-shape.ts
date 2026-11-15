@@ -6,7 +6,7 @@
  * leave a showdown pool, and the captain cap holds. Nothing here changes a projection.
  */
 import assert from "node:assert/strict";
-import { dstFacesOwnOffense, optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings } from "../src/app/dfs/nfl/nfl-optimizer";
+import { dstFacesOwnOffense, isThinStack, optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings } from "../src/app/dfs/nfl/nfl-optimizer";
 import { applyWinnersShape, autoCaptainRanges, DEFAULT_LINEUP_RULES, qbExposureCap, showdownCaptainPositions, suggestedCaptainPositions, winnersShapeLimits, withLineupRules, WINNERS_SHAPE, WINNERS_SHAPE_VERSION } from "../src/lib/nfl-dfs/winners-shape";
 import { DEFAULT_NFL_PUNT_POLICY } from "../src/lib/nfl-dfs/punt-policy";
 import { autoFadeCandidates } from "../src/lib/nfl-dfs/archetypes";
@@ -392,6 +392,24 @@ console.log("Winners shape (showdown): kickers allowed since v12, any team split
   assert.ok(shaped.notes[0].includes("a DST against its own players in at most 5% of lineups (5 of 100)"), shaped.notes[0]);
   assert.equal(applyWinnersShape(settings({ maxDstVsOffenseShare: 0 }), pool).settings.maxDstVsOffenseShare, 0, "a tighter cap you set is kept");
   assert.throws(() => optimizeNflLineups(pool, settings({ maxDstVsOffenseShare: 1.5 })), /between 0 and 100%/);
+
+  // v16: one receiver with no bring-back is capped; those lineups take a bring-back, and the share stays on the two-receiver lineups.
+  const shares = { ...base, mode: "gpp" as const, stackPassCatchers: 1 as const, bringBack: false, bringBackShare: 0.5, qbDoubleStackShare: 0.4 };
+  const open = optimizeNflLineups(pool, settings(shares));
+  const openThin = open.lineups.filter(isThinStack).length;
+  assert.ok(openThin > 1, `the rule needs something to bind on: ${openThin} of ${n} thin without it`);
+  for (const selection of ["sequential", "joint"] as const) {
+    const thin = optimizeNflLineups(pool, settings({ ...shares, maxThinStackShare: 0.05, portfolioSelection: selection }));
+    assert.equal(thin.lineups.length, n, thin.warnings.join(" | "));
+    const thinCount = thin.lineups.filter(isThinStack).length;
+    assert.ok(thinCount <= 1, `${selection}: 5% of 20 is one lineup, built ${thinCount}`);
+    assert.ok(thin.warnings.some(w => w.startsWith(`One receiver, no bring-back: ${thinCount} of ${n}`)), thin.warnings.join(" | "));
+    assert.ok(thin.lineups.filter(l => l.stackSummary.bringBack).length > n / 2, "bring-backs rise above the 50% share");
+  }
+  assert.throws(() => optimizeNflLineups(pool, settings({ format: "showdown", maxThinStackShare: 0.05 })), /Classic rule/);
+  assert.equal(withLineupRules({ ...settings({ mode: "gpp" }), lineupRules: {} }).maxThinStackShare, 0.05, "the form's default is 5%");
+  assert.equal(withLineupRules({ ...settings({ mode: "gpp" }), lineupRules: { classicThinStackMaxShare: 1 } }).maxThinStackShare, undefined, "100 switches it off");
+  assert.equal(withLineupRules({ ...settings({ mode: "gpp", format: "showdown" }), lineupRules: {} }).maxThinStackShare, undefined, "Showdown never gets it");
 }
 console.log("Winners shape (classic): a DST against the lineup's own players is capped at 5% of lineups.");
 
@@ -444,7 +462,7 @@ console.log("Winners shape v13: simulated captain ranges apply when the user set
 
 // --- v14: Showdown salary floor, lineup ownership floor, five simulated captains ---
 {
-  assert.equal(WINNERS_SHAPE_VERSION, "nfl-winners-shape-v15", "v15 added the lineup rules; the v14 rules below are unchanged");
+  assert.equal(WINNERS_SHAPE_VERSION, "nfl-winners-shape-v16", "v15 added the lineup rules, v16 the Classic thin-stack cap; the v14 rules below are unchanged");
   const limits = (over: Partial<NflOptimizerSettings>, options?: { poolRules?: boolean }) => winnersShapeLimits(settings(over), options);
   assert.equal(limits({ format: "showdown" }).minSalary, 49_500, "Showdown spends at least $49,500");
   assert.equal(limits({ format: "classic" }).minSalary, 48_100, "Classic keeps its floor");

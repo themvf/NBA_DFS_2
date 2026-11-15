@@ -302,6 +302,16 @@ export type NflOptimizerSettings = {
    */
   maxDstVsOffenseShare?: number;
   /**
+   * Classic GPP: at most this share of lineups (0..1, rounded down) may pair
+   * the quarterback with exactly one of his WR/TEs and no opposing RB/WR/TE
+   * (the thin stack). Past the cap a one-receiver lineup must carry a
+   * bring-back; with a bring-back share set, that share then applies to the
+   * two-receiver lineups only, so the run's total bring-backs rise above it.
+   */
+  maxThinStackShare?: number;
+  /** Set per lineup by the build: this lineup may not be a thin stack. */
+  lineupForbidThinStack?: boolean;
+  /**
    * Lineup rules, winners shape v15 (owner's request 2026-11-14, after the
    * NE@DET build needed hand unblocks). Each is off when absent or 0, and the
    * Winners shape fills the default; the ghost house and the pool-rule study
@@ -996,6 +1006,8 @@ function validateSettings(settings: NflOptimizerSettings): void {
   share(settings.maxQbExposure, "Quarterback exposure cap", false);
   share(settings.maxCaptainExposure, "Captain exposure cap", false);
   share(settings.maxDstVsOffenseShare, "DST-against-own-players cap", true);
+  share(settings.maxThinStackShare, "One-receiver, no-bring-back cap", true);
+  if (settings.maxThinStackShare != null && settings.format !== "classic") throw new Error("The one-receiver, no-bring-back cap is a Classic rule.");
   // v15: the DST cap also runs in Showdown, where a kicker counts as an opposing player too.
   share(settings.lowProjectionMaxExposure, "Exposure cap for allowlisted low projections", false);
   share(settings.questionableMaxExposure, "Questionable exposure cap", true);
@@ -1210,6 +1222,8 @@ function buildOne(
       // own WR/TE + M*qb <= cap + M: with this quarterback rostered, at most `cap` of his pass catchers.
       if (settings.lineupStackMax != null) constraints[`stackmax_${quarterback.dkPlayerId}`] = { max: settings.lineupStackMax + STACK_MAX_BIG_M };
       if (bringRequired) constraints[`bring_${quarterback.dkPlayerId}`] = { min: 0 };
+      // own WR/TE + opposing RB/WR/TE >= 2 with this quarterback rostered: never one receiver and no bring-back.
+      if (settings.lineupForbidThinStack) constraints[`thin_${quarterback.dkPlayerId}`] = { min: 0 };
       // opponents + M*qb <= M: with the quarterback rostered, no opposing RB/WR/TE.
       if (bringForbidden) constraints[`nobring_${quarterback.dkPlayerId}`] = { max: BRING_BACK_BIG_M };
       constraints[`anti_${quarterback.dkPlayerId}`] = { max: 1 };
@@ -1412,6 +1426,7 @@ function buildOne(
             variable[`stack_${quarterback.dkPlayerId}`] = -(settings.lineupStackMin ?? settings.stackPassCatchers);
             if (settings.lineupStackMax != null) variable[`stackmax_${quarterback.dkPlayerId}`] = STACK_MAX_BIG_M;
             if (bringRequired) variable[`bring_${quarterback.dkPlayerId}`] = -1;
+            if (settings.lineupForbidThinStack) variable[`thin_${quarterback.dkPlayerId}`] = -2;
             if (bringForbidden) variable[`nobring_${quarterback.dkPlayerId}`] = BRING_BACK_BIG_M;
             variable[`anti_${quarterback.dkPlayerId}`] = 1;
           }
@@ -1420,6 +1435,8 @@ function buildOne(
             if (settings.lineupStackMax != null) variable[`stackmax_${quarterback.dkPlayerId}`] = 1;
           }
           if (bringRequired && ["RB", "WR", "TE"].includes(player.position) && player.team === quarterback.opponent) variable[`bring_${quarterback.dkPlayerId}`] = 1;
+          if (settings.lineupForbidThinStack && ((["WR", "TE"].includes(player.position) && player.team === quarterback.team)
+            || (["RB", "WR", "TE"].includes(player.position) && player.team === quarterback.opponent))) variable[`thin_${quarterback.dkPlayerId}`] = 1;
           if (bringForbidden && ["RB", "WR", "TE"].includes(player.position) && player.team === quarterback.opponent) variable[`nobring_${quarterback.dkPlayerId}`] = 1;
           if (player.position === "DST" && player.team === quarterback.opponent) variable[`anti_${quarterback.dkPlayerId}`] = 1;
         }
@@ -1444,7 +1461,7 @@ function buildOne(
     // retries this lineup with the directive relaxed and the user's slot
     // minimums still forced. Only the plain build drops the minimums.
     const directed = settings.lineupQbExact != null || settings.lineupForbidQbCaptain || settings.lineupRequireRbCaptain || settings.lineupForbidRbCaptain
-      || settings.lineupStackMin != null || settings.lineupStackMax != null || settings.lineupForbidFourWr || settings.lineupForbidOtherGameStack
+      || settings.lineupStackMin != null || settings.lineupStackMax != null || settings.lineupForbidFourWr || settings.lineupForbidOtherGameStack || settings.lineupForbidThinStack
       || settings.lineupTeExact != null;
     if (slotForced && directed) return null;
     if (slotForced) return buildOne(pool, settings, lineupNumber, previous, exposureCounts, forcedIds, countsById, captainCounts, flexCounts, compiled, remaining, false, requireAirMatchup, requireGoalLine, bringBackRule, forbidDstVsOffense);
@@ -1531,6 +1548,13 @@ const QB_RESERVE_SLACK = 2;
  * archetype label. The joint selector constrains their totals; the same
  * definitions recount the final portfolio, so the two cannot disagree.
  */
+/** Classic: the quarterback with exactly one of his WR/TEs and no opposing RB/WR/TE. */
+export function isThinStack(lineup: Pick<NflGeneratedLineup, "slots" | "stackSummary">): boolean {
+  const qb = lineup.slots.find(({ player }) => player.position === "QB")?.player;
+  if (!qb || lineup.stackSummary.bringBack) return false;
+  return lineup.slots.filter(({ player }) => ["WR", "TE"].includes(player.position) && player.team === qb.team).length === 1;
+}
+
 export function portfolioFeatures(lineup: Pick<NflGeneratedLineup, "slots" | "archetype" | "stackSummary">, format: "classic" | "showdown"): Record<string, number> {
   const f: Record<string, number> = {};
   for (const { slot, player } of lineup.slots) {
@@ -1554,6 +1578,8 @@ export function portfolioFeatures(lineup: Pick<NflGeneratedLineup, "slots" | "ar
       if ([...counts].some(([team, k]) => k >= 2 && team !== qb.team && team !== qb.opponent)) f.otherGame = 1;
     }
     if (lineup.stackSummary.bringBack) f.bringBack = 1;
+    if (isThinStack(lineup)) f.thin = 1;
+    if (f.dbl && lineup.stackSummary.bringBack) f.dblBringBack = 1;
   }
   if (dstFacesOwnOffense(lineup)) f.dstVsOff = 1;
   if (lineup.slots.some(({ player }) => isNflGppSignalPlayer(player.playerSignals, ["AIR_MATCHUP"]))) f.air = 1;
@@ -1570,6 +1596,7 @@ type JointTargets = {
   twoQbShare: number | null; rbCaptainShare: number | null; loneQbCaptainCap: number | null;
   doubleStackShare: number | null; fourWrCap: number | null; otherGameCap: number | null; twoTeShare: number | null;
   bringBackShare: number | null; dstVsOffenseCap: number | null; airMatchupTarget: number; goalLineTarget: number;
+  thinStackCap?: number | null;
   splitPlan?: TeamSplitPlan | null;
 };
 
@@ -1614,7 +1641,12 @@ function jointSelect(ctx: {
       if (t.fourWrCap != null && bit(2)) directive.lineupForbidFourWr = true;
       if (t.otherGameCap != null && bit(3)) directive.lineupForbidOtherGameStack = true;
     }
-    const bringRule: BringBackRule = t.bringBackShare == null ? "default" : bit(4) ? "require" : "forbid";
+    let bringRule: BringBackRule = t.bringBackShare == null ? "default" : bit(4) ? "require" : "forbid";
+    if (!showdownFormat && t.thinStackCap != null && bit(6)) {
+      directive.lineupForbidThinStack = true;
+      // A one-receiver lineup that may not be thin needs the bring-back.
+      if (bringRule === "forbid" && directive.lineupStackMax === 1) bringRule = "require";
+    }
     const forbidDst = t.dstVsOffenseCap != null && bit(5);
     const ls: NflOptimizerSettings = { ...settings, ...directive };
     // Showdown: every other captain's slot is marked full, so only the anchor can captain.
@@ -1663,7 +1695,15 @@ function jointSelect(ctx: {
     if (!locked.has(id)) targets[`min_o_${id}`] = { feature: `o_${id}`, min: Math.max(1, targets[`min_o_${id}`]?.min ?? 0) };
   }
   const exact = (name: string, share: number | null) => { if (share != null) { const r = Math.round(share * n); targets[name] = { min: r, max: r }; } };
-  exact("twoQb", t.twoQbShare); exact("rbCpt", t.rbCaptainShare); exact("dbl", t.doubleStackShare); exact("twoTe", t.twoTeShare); exact("bringBack", t.bringBackShare);
+  exact("twoQb", t.twoQbShare); exact("rbCpt", t.rbCaptainShare); exact("dbl", t.doubleStackShare); exact("twoTe", t.twoTeShare);
+  if (t.thinStackCap != null && !showdownFormat) {
+    // The cap moves bring-backs onto the one-receiver lineups, so the share becomes a floor and applies to the two-receiver lineups.
+    targets.thin = { max: t.thinStackCap };
+    if (t.bringBackShare != null) {
+      targets.min_bringBack = { feature: "bringBack", min: Math.round(t.bringBackShare * n) };
+      if (t.doubleStackShare != null) { const r = Math.round(t.bringBackShare * Math.round(t.doubleStackShare * n)); targets.dblBringBack = { min: r, max: r }; }
+    }
+  } else exact("bringBack", t.bringBackShare);
   if (showdownFormat && t.splitPlan) for (const c of t.splitPlan.classes) exact(`split_${c.split.replace("-", "")}`, c.share);
   if (t.loneQbCaptainCap != null) targets.loneQbCpt = { max: t.loneQbCaptainCap };
   if (t.fourWrCap != null) targets.fourWr = { max: t.fourWrCap };
@@ -1690,7 +1730,7 @@ function jointSelect(ctx: {
     if (kind === "arch") return `${ARCHETYPE_LABELS[id as ArchetypeId] ?? id} quota`;
     return ({ twoQb: "both-QB share", loneQbCpt: "lone-QB captain cap", rbCpt: "RB captain share", dbl: "QB double-stack share",
       fourWr: "4th-WR cap", otherGame: "other-game stack cap", twoTe: "2nd-TE share", bringBack: "bring-back share",
-      dstVsOff: "DST-against-own-players cap", air: "air-yard matchup minimum", goal: "goal-line RB minimum" } as Record<string, string>)[name] ?? name;
+      dstVsOff: "DST-against-own-players cap", thin: "one-receiver, no-bring-back cap", dblBringBack: "bring-back share on two-receiver stacks", air: "air-yard matchup minimum", goal: "goal-line RB minimum" } as Record<string, string>)[name] ?? name;
   };
   const misses = Object.entries(result.misses);
   const missText = misses.length ? ` Still missed: ${misses.map(([name, miss]) => `${describe(name)} by ${miss} lineup${miss === 1 ? "" : "s"}`).join("; ")}.` : "";
@@ -2293,6 +2333,9 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   const dstVsOffenseCap = settings.maxDstVsOffenseShare != null
     ? Math.floor(settings.maxDstVsOffenseShare * plan.length + 1e-9) : null;
   let dstVsOffenseLineups = 0;
+  const thinStackCap = settings.format === "classic" && settings.mode === "gpp" && settings.stackPassCatchers > 0 && settings.maxThinStackShare != null
+    ? Math.floor(settings.maxThinStackShare * plan.length + 1e-9) : null;
+  let thinStackLineups = 0, doubleBringBackLineups = 0;
   const showdown = settings.format === "showdown" && settings.mode === "gpp";
   const twoQbShare = showdown ? settings.twoQbShare ?? null : null;
   // The RB-captain share is a floor as well as a ceiling across the run, so a
@@ -2322,8 +2365,15 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
     const remaining = plan.length - lineupNumber + 1;
     // A bring-back share alternates: required while the run is behind the
     // share, forbidden once it is level, so 50% lands on every other lineup.
+    // With a thin-stack cap: a one-receiver lineup takes the bring-back once
+    // the cap is used, and the share is scheduled over the two-receiver lineups.
+    const forbidThinStack = thinStackCap != null && thinStackLineups >= thinStackCap;
+    const wantDoubleStack = doubleStackShare != null && Math.round(doubleStackShare * lineupNumber) - doubleStackLineups > 0;
     const bringBackRule: BringBackRule = bringBackShare == null ? "default"
-      : Math.round(bringBackShare * lineupNumber) - bringBackLineups > 0 ? "require" : "forbid";
+      : thinStackCap == null ? (Math.round(bringBackShare * lineupNumber) - bringBackLineups > 0 ? "require" : "forbid")
+      : doubleStackShare == null ? (forbidThinStack ? "default" : Math.round(bringBackShare * lineupNumber) - bringBackLineups > 0 ? "require" : "forbid")
+      : wantDoubleStack ? (Math.round(bringBackShare * (doubleStackLineups + 1)) - doubleBringBackLineups > 0 ? "require" : "forbid")
+      : forbidThinStack ? "require" : "forbid";
     const forced = new Set(locked);
     for (const player of pool) {
       // Force a player in when his remaining overall-minimum need equals the
@@ -2358,7 +2408,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
     const wantTwoQb = twoQbShare != null && Math.round(twoQbShare * lineupNumber) - twoQbLineups > 0;
     const directives: Partial<NflOptimizerSettings>[] = [];
     if (classicShares) {
-      const wantDouble = doubleStackShare != null && Math.round(doubleStackShare * lineupNumber) - doubleStackLineups > 0;
+      const wantDouble = wantDoubleStack;
       const full: Partial<NflOptimizerSettings> = {
         ...(doubleStackShare != null ? (wantDouble ? { lineupStackMin: 2 as const } : { lineupStackMin: 1 as const, lineupStackMax: 1 }) : {}),
         ...(fourWrCap != null && fourWrLineups >= fourWrCap ? { lineupForbidFourWr: true } : {}),
@@ -2404,7 +2454,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
       : directives;
     let lineup: NflGeneratedLineup | null = null;
     for (const [attempt, directive] of attempts.entries()) {
-      const ls: NflOptimizerSettings = { ...settings, ...directive };
+      const ls: NflOptimizerSettings = { ...settings, ...directive, ...(forbidThinStack ? { lineupForbidThinStack: true } : {}) };
       for (const candidate of topProjectedTargets) {
         if ((exposureCounts.get(candidate.dkPlayerId) ?? 0) > 0) continue;
         lineup = buildOne(pool, ls, lineupNumber, lineups, exposureCounts,
@@ -2456,6 +2506,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
       if (captain?.position === "RB") rbCaptainLineups++;
     }
     if (dstFacesOwnOffense(lineup)) dstVsOffenseLineups++;
+    if (settings.format === "classic") { const f = portfolioFeatures(lineup, "classic"); thinStackLineups += f.thin ?? 0; doubleBringBackLineups += f.dblBringBack ?? 0; }
     if (lineup.slots.some(({ player }) => isNflGppSignalPlayer(player.playerSignals, ["AIR_MATCHUP"]))) airMatchupLineups++;
     if (lineup.slots.some(({ player }) => player.position === "RB" && isNflGppSignalPlayer(player.playerSignals, ["INSIDE_FIVE"]))) goalLineLineups++;
     // Track overall and slot-specific appearances. Captain and Flex are counted
@@ -2483,7 +2534,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   if (((settings.portfolioSelection === "joint" && !drawScored) || settings.buildShape === "diversified") && lineups.length) {
     const joint = settings.buildShape === "diversified" ? diversifiedSelect({pool, settings, lineups, countsById, locked, topProjectedTargets}) : jointSelect({ pool, settings, plan, lineups, countsById, locked, topProjectedTargets,
       targets: { twoQbShare, rbCaptainShare, loneQbCaptainCap, doubleStackShare, fourWrCap, otherGameCap, twoTeShare,
-        bringBackShare, dstVsOffenseCap, airMatchupTarget, goalLineTarget, splitPlan } });
+        bringBackShare, dstVsOffenseCap, airMatchupTarget, goalLineTarget, thinStackCap, splitPlan } });
     warnings.push(joint.note);
     if ("report" in joint) diversifiedReport = joint.report as DiversifiedReport;
     if (joint.lineups) {
@@ -2494,6 +2545,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
       foldedToStandard.clear();
       exposureCounts.clear(); captainCounts.clear(); flexCounts.clear();
       airMatchupLineups = goalLineLineups = bringBackLineups = dstVsOffenseLineups = 0;
+      thinStackLineups = doubleBringBackLineups = 0;
       twoQbLineups = loneQbCaptainLineups = rbCaptainLineups = 0;
       doubleStackLineups = fourWrLineups = otherGameLineups = twoTeLineups = 0;
       splitBuilt.clear(); splitRelaxed = 0;
@@ -2503,6 +2555,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
         if (lineup.stackSummary.bringBack) bringBackLineups++;
         doubleStackLineups += f.dbl ?? 0; fourWrLineups += f.fourWr ?? 0; twoTeLineups += f.twoTe ?? 0; otherGameLineups += f.otherGame ?? 0;
         if (showdown) { twoQbLineups += f.twoQb ?? 0; loneQbCaptainLineups += f.loneQbCpt ?? 0; rbCaptainLineups += f.rbCpt ?? 0; }
+        thinStackLineups += f.thin ?? 0; doubleBringBackLineups += f.dblBringBack ?? 0;
         dstVsOffenseLineups += f.dstVsOff ?? 0; airMatchupLineups += f.air ?? 0; goalLineLineups += f.goal ?? 0;
         lineup.playerIds.forEach((id) => exposureCounts.set(id, (exposureCounts.get(id) ?? 0) + 1));
         for (const slot of lineup.slots) {
@@ -2534,6 +2587,9 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   }
   if (bringBackShare != null && lineups.length) {
     warnings.push(`Bring-back share: ${bringBackLineups} of ${lineups.length} lineups carry an opposing bring-back (target ${Math.round(bringBackShare * 100)}%).`);
+  }
+  if (thinStackCap != null && lineups.length) {
+    warnings.push(`One receiver, no bring-back: ${thinStackLineups} of ${lineups.length} lineups (cap ${thinStackCap}, ${Math.round(settings.maxThinStackShare! * 100)}%).`);
   }
   if (dstVsOffenseCap != null && lineups.length) {
     warnings.push(`DST against own players: ${dstVsOffenseLineups} of ${lineups.length} lineups play a defense against one of their own ${settings.format === "showdown" ? "QB/RB/WR/TE/K" : "QB/RB/WR/TE"} (cap ${dstVsOffenseCap}, ${Math.round(settings.maxDstVsOffenseShare! * 100)}%).`);
