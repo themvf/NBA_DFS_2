@@ -40,6 +40,25 @@ export interface NflPuntPolicy {
   allowlistedPlayerIds: number[];
   /** Players explicitly removed by the user. */
   denylistedPlayerIds: number[];
+  /**
+   * Winners shape v15 (cheap-player role check): a player at or below the
+   * absolute block is judged on his role evidence instead of being blocked by
+   * price alone. Absent/false keeps the original hard block.
+   */
+  roleEvidenceClearsAbsoluteBlock?: boolean;
+  /**
+   * v15: when no role confidence is supplied, a depth-chart QB1, RB1-RB2 or
+   * TE1-TE2 counts as role evidence, and a kicker or defense (a team has one)
+   * always has a role. Absent/false keeps the original rule.
+   */
+  depthChartCountsAsRole?: boolean;
+  /**
+   * v15: the salary at or below which a cleared cheap player counts against
+   * `maxSalaryReliefPlayersPerLineup`. Defaults to
+   * `roleEvidenceRequiredBelowSalary`; v15 keeps it at the base threshold so
+   * widening the role check does not also cap $3,000-$4,000 players at one per lineup.
+   */
+  salaryReliefBelowSalary?: number;
 }
 
 export interface NflPlayerRoleEvidence {
@@ -96,6 +115,9 @@ export function validateNflPuntPolicy(policy: NflPuntPolicy): void {
   for (const [label, value] of [["absoluteMinSalary", policy.absoluteMinSalary], ["roleEvidenceRequiredBelowSalary", policy.roleEvidenceRequiredBelowSalary]] as const) {
     if (!Number.isFinite(value) || value < 0 || value > 50000) throw new Error(`${label} must be between $0 and $50,000.`);
   }
+  if (policy.salaryReliefBelowSalary != null && (!Number.isFinite(policy.salaryReliefBelowSalary) || policy.salaryReliefBelowSalary < 0 || policy.salaryReliefBelowSalary > 50000)) {
+    throw new Error("salaryReliefBelowSalary must be between $0 and $50,000.");
+  }
   if (!Number.isFinite(policy.minimumRoleConfidence) || policy.minimumRoleConfidence < 0 || policy.minimumRoleConfidence > 1) {
     throw new Error("minimumRoleConfidence must be between 0 and 1.");
   }
@@ -147,53 +169,73 @@ export function evaluatePuntEligibility(
   if (player.isOut || evidence.verifiedActive === false) return blocked("INACTIVE");
 
   const absoluteBlock = player.salary <= policy.absoluteMinSalary;
-  const belowEvidenceThreshold = player.salary <= policy.roleEvidenceRequiredBelowSalary;
+  const belowEvidenceThreshold = absoluteBlock || player.salary <= policy.roleEvidenceRequiredBelowSalary;
+  const salaryRelief = player.salary <= (policy.salaryReliefBelowSalary ?? policy.roleEvidenceRequiredBelowSalary) || absoluteBlock;
 
   // The absolute block is a floor: below it there is no legitimate role at all.
-  // Only a recorded override may lift it (spec §8.1: reason required).
-  if (absoluteBlock && !overridden) return blocked("ABSOLUTE_SALARY_BLOCK", `$${player.salary.toLocaleString()} ≤ $${policy.absoluteMinSalary.toLocaleString()}.`);
+  // Only a recorded override may lift it (spec §8.1: reason required), unless
+  // the policy judges these players on role evidence (winners shape v15).
+  if (absoluteBlock && !overridden && !policy.roleEvidenceClearsAbsoluteBlock) return blocked("ABSOLUTE_SALARY_BLOCK", `$${player.salary.toLocaleString()} ≤ $${policy.absoluteMinSalary.toLocaleString()}.`);
+  const roleBlocked = (reason: PuntReasonCode, extra = ""): PuntEligibility => blocked(reason,
+    `${extra}${absoluteBlock ? `${extra ? " " : ""}At $${player.salary.toLocaleString()} (at or under $${policy.absoluteMinSalary.toLocaleString()}) he needs a current role to be used.` : ""}`.trim());
 
-  const salaryRelief = belowEvidenceThreshold;
-  if (!salaryRelief) return { playerId: id, eligible: true, salaryRelief: false, overridden };
+  if (!belowEvidenceThreshold) return { playerId: id, eligible: true, salaryRelief: false, overridden };
 
   // At or below the evidence threshold. An override clears the ROLE gate (but the
   // player is still counted as salary-relief and still cannot be inactive).
-  if (overridden) return { playerId: id, eligible: true, salaryRelief: true, overridden: true };
+  if (overridden) return { playerId: id, eligible: true, salaryRelief, overridden: true };
 
   if (policy.mode === "custom") {
     // Custom mode still enforces the absolute block and inactivity above, but
     // leaves the role gate to explicit thresholds only.
   }
 
-  if (evidence.availabilityState === "stale") return blocked("EVIDENCE_STALE");
+  if (evidence.availabilityState === "stale") return roleBlocked("EVIDENCE_STALE");
   // Historical games show what a receiver once did, not that he has a route
   // this week. A cheap WR4 needs a current chart promotion, verified absences
   // ahead that make him effectively WR3, or a recorded manual admission.
   // This also closes the $3,000 boundary that admitted Horton and Wease.
   if (player.position === "WR") {
     if (evidence.availabilityState !== "confirmed" && evidence.availabilityState !== "probable") {
-      return blocked("ROLE_UNKNOWN", "A current receiver role has not been verified.");
+      return roleBlocked("ROLE_UNKNOWN", "A current receiver role has not been verified.");
     }
     const depth = evidence.depthRole?.match(/\bWR\s*(\d+)\b/i);
-    if (!depth) return blocked("ROLE_UNKNOWN", "No current WR1–WR3 role is established; old games do not establish this week's targets.");
+    if (!depth) return roleBlocked("ROLE_UNKNOWN", "No current WR1–WR3 role is established; old games do not establish this week's targets.");
     const effectiveRank = Math.max(1, Number(depth[1]) - (evidence.verifiedReceiversOutAhead ?? 0));
-    if (effectiveRank > 3) return blocked("ROLE_UNRESOLVED", `${evidence.depthRole} remains outside the top three after verified absences ahead.`);
+    if (effectiveRank > 3) return roleBlocked("ROLE_UNRESOLVED", `${evidence.depthRole} remains outside the top three after verified absences ahead.`);
   }
   // Role confidence is the gate; depthRole is an informational label. Requiring
   // a depth label for other positions would block players whose observed games
   // provide weak evidence but whose feed has no position-specific chart label.
-  if (evidence.roleConfidence === null) return blocked("ROLE_UNKNOWN");
+  if (evidence.roleConfidence === null) {
+    if (policy.depthChartCountsAsRole && depthChartRole(player.position, evidence.depthRole)) return { playerId: id, eligible: true, salaryRelief, overridden: false };
+    return roleBlocked("ROLE_UNKNOWN");
+  }
   if (evidence.roleConfidence < policy.minimumRoleConfidence) {
-    return blocked("ROLE_UNRESOLVED", `confidence ${(evidence.roleConfidence * 100).toFixed(0)}% < ${(policy.minimumRoleConfidence * 100).toFixed(0)}%.`);
+    return roleBlocked("ROLE_UNRESOLVED", `confidence ${(evidence.roleConfidence * 100).toFixed(0)}% < ${(policy.minimumRoleConfidence * 100).toFixed(0)}%.`);
   }
   if (policy.minimumProjectedOpportunities !== null) {
-    if (evidence.projectedOpportunities === null) return blocked("NO_PROJECTED_OPPORTUNITY", "opportunity unknown.");
+    if (evidence.projectedOpportunities === null) return roleBlocked("NO_PROJECTED_OPPORTUNITY", "opportunity unknown.");
     if (evidence.projectedOpportunities < policy.minimumProjectedOpportunities) {
-      return blocked("NO_PROJECTED_OPPORTUNITY", `${evidence.projectedOpportunities} < ${policy.minimumProjectedOpportunities}.`);
+      return roleBlocked("NO_PROJECTED_OPPORTUNITY", `${evidence.projectedOpportunities} < ${policy.minimumProjectedOpportunities}.`);
     }
   }
 
-  return { playerId: id, eligible: true, salaryRelief: true, overridden: false };
+  return { playerId: id, eligible: true, salaryRelief, overridden: false };
+}
+
+/**
+ * v15: a role a depth chart establishes without a role-confidence number.
+ * Kickers and defenses always have one (a team fields one of each); otherwise
+ * QB1, RB1-RB2 or TE1-TE2. WRs keep their own WR1-WR3 rule above.
+ */
+export function depthChartRole(position: string | undefined, depthRole: string | null): boolean {
+  if (position === "K" || position === "DST") return true;
+  if (!depthRole) return false;
+  if (position === "QB") return /\bQB\s*1(?!\d)/i.test(depthRole);
+  if (position === "RB") return /\bRB\s*[12](?!\d)/i.test(depthRole);
+  if (position === "TE") return /\bTE\s*[12](?!\d)/i.test(depthRole);
+  return false;
 }
 
 /** Whether a recorded override authorizes the player at Captain. Flex-only by default. */

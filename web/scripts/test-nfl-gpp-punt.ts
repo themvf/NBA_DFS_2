@@ -232,6 +232,28 @@ function main() {
   const freshCheap = player({ dkPlayerId: 61, salary: 2500, ourProj: 7, ...rolePolicyEvidence(roster("2026-09-28T12:00:00Z"), at) });
   assert.equal(optimizeNflLineups([...corePool(), freshCheap], showdownSettings()).eligibility!.find((e) => e.dkPlayerId === 61)!.eligible, true, "fresh evidence clears the same player");
 
+  // v15 (winners shape): the cheap-player role check. A role, not price, decides
+  // players at or under the absolute block; a depth chart is role evidence;
+  // the salary-relief cap keeps its own threshold.
+  {
+    const v15: NflPuntPolicy = { ...DEFAULT_NFL_PUNT_POLICY, roleEvidenceRequiredBelowSalary: 4000, salaryReliefBelowSalary: 3000,
+      roleEvidenceClearsAbsoluteBlock: true, depthChartCountsAsRole: true };
+    const te = { dkPlayerId: 70, salary: 600, isOut: false, position: "TE" };
+    assert.equal(evaluatePuntEligibility(te, evidence({ playerId: 70, depthRole: "TE2", roleConfidence: null }), DEFAULT_NFL_PUNT_POLICY).eligible, false, "default: the $1,000 block stands");
+    const cleared = evaluatePuntEligibility(te, evidence({ playerId: 70, depthRole: "TE2", roleConfidence: null }), v15);
+    assert.ok(cleared.eligible && cleared.salaryRelief, "v15: a TE2 at $600 is kept on his depth role and counts as salary relief");
+    const te3 = evaluatePuntEligibility(te, evidence({ playerId: 70, depthRole: "TE3", roleConfidence: null }), v15);
+    assert.ok(!te3.eligible && te3.reason === "ROLE_UNKNOWN" && /needs a current role/.test(te3.detail), "a TE3 with no role confidence is still blocked, and told why");
+    assert.equal(evaluatePuntEligibility(te, evidence({ playerId: 70, depthRole: null, roleConfidence: 0.5 }), v15).eligible, true, "role confidence alone also clears him");
+    assert.equal(evaluatePuntEligibility({ ...te, position: "DST", salary: 800 }, evidence({ playerId: 70, depthRole: null, roleConfidence: null }), v15).eligible, true, "a defense always has a role");
+    const wr4 = evaluatePuntEligibility({ dkPlayerId: 71, salary: 400, isOut: false, position: "WR" }, evidence({ playerId: 71, depthRole: "WR4" }), v15);
+    assert.equal(wr4.eligible ? null : wr4.reason, "ROLE_UNRESOLVED", "a WR4 stays blocked");
+    const mid = evaluatePuntEligibility({ dkPlayerId: 72, salary: 3500, isOut: false, position: "RB" }, evidence({ playerId: 72, depthRole: "RB3", roleConfidence: 0.2 }), v15);
+    assert.equal(mid.eligible ? null : mid.reason, "ROLE_UNRESOLVED", "a $3,500 back is now checked");
+    const midOk = evaluatePuntEligibility({ dkPlayerId: 72, salary: 3500, isOut: false, position: "RB" }, evidence({ playerId: 72, roleConfidence: 0.8 }), v15);
+    assert.ok(midOk.eligible && !midOk.salaryRelief, "a $3,500 back with a role is kept and does not use the one-per-lineup relief slot");
+    assert.throws(() => validateNflPuntPolicy({ ...v15, salaryReliefBelowSalary: -1 }), /salaryReliefBelowSalary/);
+  }
   console.log("NFL GPP Phase 1 (punt policy): P1-AC1..AC5, unit precedence and the stale-role gate passed.");
 }
 

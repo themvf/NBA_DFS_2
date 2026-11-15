@@ -177,8 +177,19 @@ import { captainExposurePolicies } from "./generation-settings";
  * were read off a field table that includes these slates, so the gain is an
  * upper bound. Research reconstructions (`poolRules: true`) keep the v13
  * values, so the frozen ghost arms do not move.
+ *
+ * v15 (2026-11-14, owner's decision, not measured): five lineup rules for user
+ * builds, each a visible setting (see `lineupRuleDefaults`): a cheap-player
+ * role check up to $4,000 that lets a real role (not price) decide players at
+ * $1,000 or less; no player projected under 2.0 points unless allowed (then
+ * 10% of lineups, never captain); Showdown, two backs from one team only with
+ * a pass catcher (2.5+ projected receptions); Showdown, a DST with an opposing
+ * player in at most 5% of lineups; questionable players in at most 25% of
+ * lineups (doubtful 10%) and never captain until marked expected active.
+ * Prompted by the NE@DET build, where cheap players with real roles had to
+ * be unblocked by hand, letting 0-point punts in with them.
  */
-export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v14";
+export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v15";
 
 export type BuildShape = "standard" | "winners" | "diversified";
 export const BUILD_SHAPES: readonly BuildShape[] = ["standard", "winners", "diversified"];
@@ -257,7 +268,103 @@ export const WINNERS_SHAPE = {
   showdownMinLineupOwnership: 150,
   /** v14: captains kept when the ranges come from the game simulation. */
   showdownMaxCaptains: 5,
+  /** v15 (#5): cheap players up to this salary need a current role; at or under the $1,000 block, a role keeps them. */
+  cheapRoleCheckSalary: 4_000,
+  /** v15 (#6): players projected under this many points are left out unless allowed. */
+  minRawProjection: 2,
+  /** v15 (#6): an allowed low projection plays in at most this share of lineups, never captain. */
+  lowProjectionMaxExposure: 0.1,
+  /** v15 (#7) Showdown: two backs from one team only when one projects this many receptions (RB1 + a pass-catching RB2). */
+  showdownRbPairMinReceptions: 2.5,
+  /** v15 (#8) Showdown: share of lineups that may play a DST against an opposing QB/RB/WR/TE/K. */
+  showdownDstVsOffenseMaxShare: 0.05,
+  /** v15 (#9): DraftKings Q / availability QUESTIONABLE players in at most this share of lineups, never captain. */
+  questionableMaxExposure: 0.25,
+  /** v15 (#9): availability DOUBTFUL players (a DraftKings "D" is left out unless locked). */
+  doubtfulMaxExposure: 0.1,
 } as const;
+
+/**
+ * v15 lineup rules (owner's request 2026-11-14, after the NE@DET Showdown
+ * needed four hand unblocks and still carried 0-point punts). User builds
+ * only: research reconstructions (`poolRules: true`, the ghost house and the
+ * pool-rule study) never get them, so frozen arms keep their old values. A
+ * value the caller sent wins; 0 switches a rule off. Stated priors, not fitted.
+ */
+export function lineupRuleDefaults(settings: NflOptimizerSettings): Partial<NflOptimizerSettings> {
+  const showdown = settings.format === "showdown";
+  return {
+    ...(settings.puntPolicy ? { cheapRoleCheckSalary: settings.cheapRoleCheckSalary ?? WINNERS_SHAPE.cheapRoleCheckSalary } : {}),
+    minRawProjection: settings.minRawProjection ?? WINNERS_SHAPE.minRawProjection,
+    lowProjectionMaxExposure: settings.lowProjectionMaxExposure ?? WINNERS_SHAPE.lowProjectionMaxExposure,
+    questionableMaxExposure: settings.questionableMaxExposure ?? WINNERS_SHAPE.questionableMaxExposure,
+    doubtfulMaxExposure: settings.doubtfulMaxExposure ?? WINNERS_SHAPE.doubtfulMaxExposure,
+    ...(showdown ? {
+      showdownRbPairMinReceptions: settings.showdownRbPairMinReceptions ?? WINNERS_SHAPE.showdownRbPairMinReceptions,
+      maxDstVsOffenseShare: settings.maxDstVsOffenseShare ?? WINNERS_SHAPE.showdownDstVsOffenseMaxShare,
+    } : {}),
+  };
+}
+
+/** The build form's v15 lineup-rule controls (shares as fractions; 0 switches a rule off). */
+export type LineupRulesForm = {
+  cheapRoleCheckSalary: number;
+  minRawProjection: number;
+  lowProjectionMaxExposure: number;
+  showdownRbPairMinReceptions: number;
+  showdownDstVsOffenseMaxShare: number;
+  questionableMaxExposure: number;
+  doubtfulMaxExposure: number;
+  expectedActivePlayerIds: number[];
+};
+
+export const DEFAULT_LINEUP_RULES: LineupRulesForm = {
+  cheapRoleCheckSalary: WINNERS_SHAPE.cheapRoleCheckSalary,
+  minRawProjection: WINNERS_SHAPE.minRawProjection,
+  lowProjectionMaxExposure: WINNERS_SHAPE.lowProjectionMaxExposure,
+  showdownRbPairMinReceptions: WINNERS_SHAPE.showdownRbPairMinReceptions,
+  showdownDstVsOffenseMaxShare: WINNERS_SHAPE.showdownDstVsOffenseMaxShare,
+  questionableMaxExposure: WINNERS_SHAPE.questionableMaxExposure,
+  doubtfulMaxExposure: WINNERS_SHAPE.doubtfulMaxExposure,
+  expectedActivePlayerIds: [],
+};
+
+/**
+ * The form's lineup rules as optimizer settings, GPP builds only (any build
+ * shape). A cash build, or a form without the controls, is returned as is;
+ * the form object stays on the settings so a saved run restores it.
+ */
+export function withLineupRules<T extends NflOptimizerSettings & { lineupRules?: Partial<LineupRulesForm> }>(settings: T): T {
+  const r = settings.lineupRules;
+  if (!r || settings.mode !== "gpp") return settings;
+  const rules = { ...DEFAULT_LINEUP_RULES, ...r };
+  const showdown = settings.format === "showdown";
+  return {
+    ...settings,
+    cheapRoleCheckSalary: rules.cheapRoleCheckSalary,
+    minRawProjection: rules.minRawProjection,
+    lowProjectionMaxExposure: rules.lowProjectionMaxExposure > 0 ? rules.lowProjectionMaxExposure : WINNERS_SHAPE.lowProjectionMaxExposure,
+    questionableMaxExposure: rules.questionableMaxExposure,
+    doubtfulMaxExposure: rules.doubtfulMaxExposure,
+    expectedActivePlayerIds: [...new Set(rules.expectedActivePlayerIds)].sort((a, b) => a - b),
+    ...(showdown ? { showdownRbPairMinReceptions: rules.showdownRbPairMinReceptions, maxDstVsOffenseShare: rules.showdownDstVsOffenseMaxShare } : {}),
+  };
+}
+
+/** The plain-language build note for the v15 lineup rules as resolved. */
+function lineupRulesNote(s: NflOptimizerSettings): string {
+  const pct = (v: number | undefined) => `${Math.round((v ?? 0) * 100)}%`;
+  const parts = [
+    s.cheapRoleCheckSalary ? `cheap players up to ${money(s.cheapRoleCheckSalary)} need a current role, and a role (not price) decides players at $1,000 or less` : "cheap-player role check off",
+    s.minRawProjection ? `players projected under ${s.minRawProjection} points left out unless you allow them (then at most ${pct(s.lowProjectionMaxExposure)} of lineups, never captain)` : "projection floor off",
+    ...(s.format === "showdown" ? [
+      s.showdownRbPairMinReceptions ? `two backs from one team only when one projects ${s.showdownRbPairMinReceptions}+ receptions` : "one-RB-per-team rule off",
+      s.maxDstVsOffenseShare != null ? `a DST with an opposing QB/RB/WR/TE/K in at most ${pct(s.maxDstVsOffenseShare)} of lineups` : "DST cap off",
+    ] : []),
+    s.questionableMaxExposure || s.doubtfulMaxExposure ? `questionable players in at most ${pct(s.questionableMaxExposure)} of lineups (doubtful ${pct(s.doubtfulMaxExposure)}) and never captain, unless you set their range or mark them expected active` : "injury-tag caps off",
+  ];
+  return `Lineup rules (v15): ${parts.join("; ")}.`;
+}
 
 /**
  * The fewest eligible players a position needs once the 55% cap applies:
@@ -367,6 +474,7 @@ export function applyWinnersShape(settings: NflOptimizerSettings, players: reado
       + `a bring-back in ${Math.round(WINNERS_SHAPE.bringBackShare * 100)}% of lineups, at least one stacked pass catcher (two in ${Math.round(WINNERS_SHAPE.qbDoubleStackShare * 100)}% of lineups), a 4th WR in at most ${Math.round(WINNERS_SHAPE.maxFourWrShare * 100)}%, a 2-player stack from another game in at most ${Math.round(WINNERS_SHAPE.maxOtherGameStackShare * 100)}%, a 2nd TE in ${Math.round(WINNERS_SHAPE.twoTeShare * 100)}%, `
       + `a DST against its own players in at most ${Math.round(shaped.maxDstVsOffenseShare! * 100)}% of lineups (${Math.floor(shaped.maxDstVsOffenseShare! * n + 1e-9)} of ${n}), min salary ${money(shaped.minSalary)}` + (options.poolRules ? "." : ", no pool rules (v11)."));
     if (options.poolRules) applyPoolRules(settings, players, excluded, notes);
+    else { Object.assign(shaped, lineupRuleDefaults(shaped)); notes.push(lineupRulesNote(shaped)); }
   } else {
     Object.assign(shaped, {
       maxCaptainExposure: limits.maxCaptainExposure!,
@@ -387,6 +495,7 @@ export function applyWinnersShape(settings: NflOptimizerSettings, players: reado
       + `no captain in more than ${Math.round(WINNERS_SHAPE.captainMaxExposure * 100)}% of lineups, min salary ${money(shaped.minSalary)}. `
       + `Captain ranges you set are kept, and a running back's captain minimum raises the RB-captain share to cover it (v13).`
       + (options.poolRules ? "" : ` v14: estimated lineup ownership of at least ${shaped.minLineupOwnership} when the slate has the estimates, and the simulation's captain ranges keep the ${WINNERS_SHAPE.showdownMaxCaptains} most likely captains.`));
+    if (!options.poolRules) { Object.assign(shaped, lineupRuleDefaults(shaped)); notes.push(lineupRulesNote(shaped)); }
   }
   return { settings: shaped, excluded, notes };
 }
