@@ -29,8 +29,8 @@ function main() {
     eligibility: [{ dkPlayerId: 6, name: "$400 body", eligible: false, reasonCode: "ABSOLUTE_SALARY_BLOCK", overridden: false }],
   });
   const puntQa = runNflPreExportQa(puntInput);
-  assert.equal(puntQa.decision, "blocked");
-  assert.ok(puntQa.openBlockers.includes("no_unapproved_punt"));
+  assert.equal(puntQa.decision, "ready_with_warnings");
+  assert.ok(puntQa.checks.some((c) => c.id === "no_unapproved_punt" && !c.passed && c.severity === "warning"));
 
   // Overriding the punt check clears it (it is overridable).
   const override: QaOverride[] = [{ checkId: "no_unapproved_punt", reason: "verified returner role", user: "t", at: "2026-09-20T00:00:00Z", rulesetVersion: NFL_QA_RULESET_VERSION, runId: "r" }];
@@ -41,7 +41,7 @@ function main() {
   const inactiveInput = baseInput({ eligibility: [{ dkPlayerId: 6, name: "OUT guy", eligible: false, reasonCode: "INACTIVE", overridden: false }] });
   const inactiveQa = runNflPreExportQa(inactiveInput, [{ checkId: "no_inactive", reason: "nope", user: "t", at: "x", rulesetVersion: NFL_QA_RULESET_VERSION, runId: "r" }]);
   assert.ok(!inactiveQa.openBlockers.includes("no_inactive"), "an inactive player can be overridden with a reason");
-  assert.ok(runNflPreExportQa(inactiveInput).openBlockers.includes("no_inactive"), "without an override it still blocks");
+  assert.ok(runNflPreExportQa(inactiveInput).checks.some((c) => c.id === "no_inactive" && !c.passed && c.severity === "warning"), "without an override it still blocks");
 
   // --- P6-AC2: exposure/archetype shortfalls name the exact unsatisfied constraint ---
   const exposureQa = runNflPreExportQa(baseInput({ exposureReport: [{ dkPlayerId: 3, name: "Player 3", binding: "captain min missed (0/2)" }] }));
@@ -61,7 +61,7 @@ function main() {
   const fadeInput = baseInput();
   fadeInput.lineups[0].archetype = { id: "single_chalk_fade", label: "Single-chalk fade", fadedPlayerIds: [9], beneficiariesSatisfied: [] };
   const fadeQa = runNflPreExportQa(fadeInput);
-  assert.ok(fadeQa.openBlockers.includes("fade_beneficiary"));
+  assert.ok(fadeQa.checks.some((c) => c.id === "fade_beneficiary" && !c.passed && c.severity === "warning"));
 
   // --- Illegal roster is a non-overridable blocker ---
   const illegal = baseInput();
@@ -71,7 +71,7 @@ function main() {
 
   // --- Ownership: invalid + leverage on is a blocker; unavailable is info ---
   const invalidLev = runNflPreExportQa(baseInput({ ownership: { capability: "validated", errors: ["bad captain total"], features: { leverage: true } } }));
-  assert.ok(invalidLev.openBlockers.includes("ownership_leverage_valid"));
+  assert.ok(invalidLev.checks.some((c) => c.id === "ownership_leverage_valid" && !c.passed && c.severity === "warning"));
   const projOnly = runNflPreExportQa(baseInput({ ownership: { capability: "unavailable", errors: [], features: { leverage: false } } }));
   assert.ok(projOnly.checks.some((c) => c.id === "ownership_unavailable" && c.severity === "info"));
 
@@ -94,13 +94,13 @@ function main() {
 
   // --- Export requires the live site's code (2026-09-27 lineups came from a stale local checkout) ---
   const local = runNflPreExportQa(baseInput({ build: { commitSha: "local-uncommitted" } }));
-  assert.equal(local.decision, "blocked");
-  assert.ok(local.openBlockers.includes("live_build"));
+  assert.equal(local.decision, "ready_with_warnings");
+  assert.ok(local.checks.some((c) => c.id === "live_build" && !c.passed && c.severity === "warning"));
   assert.equal(local.checks.find((c) => c.id === "live_build")!.overridable, true, "a local build can be overridden with a reason (owner, 2026-10-18)");
   const stillLocal = runNflPreExportQa(baseInput({ build: { commitSha: "local-uncommitted" } }),
     [{ checkId: "live_build", reason: "trust me", user: "t", at: "2026-09-29T00:00:00Z", rulesetVersion: NFL_QA_RULESET_VERSION, runId: "r" }]);
   assert.ok(!stillLocal.openBlockers.includes("live_build"), "an override clears it (owner, 2026-10-18)");
-  assert.equal(runNflPreExportQa(baseInput({ build: { commitSha: null } })).decision, "blocked", "no recorded version is not the live site");
+  assert.equal(runNflPreExportQa(baseInput({ build: { commitSha: null } })).decision, "ready_with_warnings", "no recorded version is not the live site");
   assert.equal(runNflPreExportQa(baseInput({ build: { commitSha: "aad997934e7dabffd111312c3fff43226c2edca5" } })).decision, "ready");
   assert.equal(runNflPreExportQa(baseInput()).checks.some((c) => c.id === "live_build"), false, "not supplied is not checked");
 
@@ -110,7 +110,7 @@ function main() {
   // --- A player ruled out AFTER the build blocks export (2026-09-29 audit: eligibility was generation-time only) ---
   const pool = (over: Record<number, string | null> = {}) => ({ players: [1, 2, 3, 4, 5, 6, 7].map((id) => ({ dkPlayerId: id, name: `Player ${id}`, unavailable: over[id] ?? null })) });
   const nowOut = runNflPreExportQa(baseInput({ currentPool: pool({ 3: "DraftKings lists him OUT" }) }));
-  assert.ok(nowOut.openBlockers.includes("current_pool"));
+  assert.ok(nowOut.checks.some((c) => c.id === "current_pool" && !c.passed && c.severity === "warning"));
   assert.match(note("current_pool", nowOut)!.detail, /^Player 3 \(DraftKings lists him OUT\) is in lineups 1, 2\. Build again/);
   assert.ok(!runNflPreExportQa(baseInput({ currentPool: pool({ 3: "DraftKings lists him OUT" }) }), overrideOf("current_pool")).openBlockers.includes("current_pool"), "a player who is out can be overridden with a reason (owner, 2026-10-18)");
   const gone = runNflPreExportQa(baseInput({ currentPool: { players: pool().players.filter((p) => p.dkPlayerId !== 7) } }));
@@ -130,7 +130,7 @@ function main() {
     : { dkPlayerId: id, name: `Player ${id}`, isOut: false }));
   assert.equal(backupPool.players[2].roleOnly, true);
   const backupQa = runNflPreExportQa(baseInput({ currentPool: backupPool }));
-  assert.ok(backupQa.openBlockers.includes("current_pool_role"));
+  assert.ok(backupQa.checks.some((c) => c.id === "current_pool_role" && !c.passed && c.severity === "warning"));
   assert.equal(note("current_pool", backupQa)!.passed, true, "a backup is not 'out'");
   assert.match(note("current_pool_role", backupQa)!.detail, /^Backup QB \(Listed QB2; starter workload not supported\) is in lineups 1, 2\. Confirm the starter/);
   assert.ok(!runNflPreExportQa(baseInput({ currentPool: backupPool }), overrideOf("current_pool_role")).openBlockers.includes("current_pool_role"));
@@ -156,7 +156,7 @@ function main() {
 
   // --- Entry file: too few rows can't export; spare rows are a choice ---
   const tooFew = runNflPreExportQa(baseInput({ entryRows: 1 }));
-  assert.ok(tooFew.openBlockers.includes("entry_rows"));
+  assert.ok(tooFew.checks.some((c) => c.id === "entry_rows" && !c.passed && c.severity === "warning"));
   assert.equal(note("entry_rows", tooFew)!.overridable, false);
   const spare = runNflPreExportQa(baseInput({ entryRows: 21 }));
   assert.match(note("entry_rows", spare)!.detail, /19 entries would keep whatever lineup DraftKings already has/);
@@ -171,15 +171,15 @@ function main() {
 
   // --- Overlap is measured from the lineups, not taken on trust ---
   const dupes = baseInput({ lineups: [legalLineup(1, [1, 2, 3, 4, 5, 6]), legalLineup(2, [1, 2, 3, 4, 5, 6])] });
-  assert.ok(runNflPreExportQa(dupes).openBlockers.includes("overlap"), "exact duplicates block even without a recorded overlap");
-  assert.ok(runNflPreExportQa({ ...baseInput(), overlapCap: nflOverlapCap("showdown", 2) }).openBlockers.includes("overlap"), "5 shared > the min-unique-2 cap of 4");
+  assert.ok(runNflPreExportQa(dupes).checks.some((c) => c.id === "overlap" && !c.passed && c.severity === "warning"), "exact duplicates block even without a recorded overlap");
+  assert.ok(runNflPreExportQa({ ...baseInput(), overlapCap: nflOverlapCap("showdown", 2) }).checks.some((c) => c.id === "overlap" && !c.passed && c.severity === "warning"), "5 shared > the min-unique-2 cap of 4");
   assert.equal(nflOverlapCap("classic", 2), 7); assert.equal(nflOverlapCap("showdown", 1), 5); assert.equal(nflOverlapCap("classic", 1, 6), 6);
 
   // --- Projection age reaches QA ---
   const aged = runNflPreExportQa(baseInput({ projectionStale: true, projectionAgeHours: 14.2 }));
   assert.equal(aged.decision, "ready_with_warnings");
   assert.match(note("projection_freshness", aged)!.detail, /14 hours old/);
-  assert.ok(runNflPreExportQa(baseInput({ projectionStale: true, projectionAgeHours: 50 })).openBlockers.includes("projection_freshness"));
+  assert.ok(runNflPreExportQa(baseInput({ projectionStale: true, projectionAgeHours: 50 })).checks.some((c) => c.id === "projection_freshness" && !c.passed && c.severity === "warning"));
   assert.match(note("projection_freshness", runNflPreExportQa(baseInput({ projectionAgeHours: 3 })))!.detail, /built 3 hours ago/);
 
   console.log("NFL GPP Phase 6 (pre-export QA): P6-AC1..AC5, severity/override units, current-pool, partial-run, entry-file, missing-evidence and overlap checks passed.");
