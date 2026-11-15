@@ -52,10 +52,28 @@ export type FrozenRow = {
   Game: string; Pattern: string; Pick: string; "Frozen home spread or total": number | null;
   "Closing home spread or total": number | null; "Points vs close": number | null; "Result at close": string;
   "Result at frozen line": string; "Units at best retail": number | null;
+  "Same side"?: boolean; "Retail book"?: string | null; "Retail line"?: number | null;
+  "Retail price"?: number | null; "Retail result"?: string | null;
 };
 
+export type StudyRecord = { won: number; lost: number; push: number; units: number };
+export type StudyAuditRow = {
+  trigger: string; closing: number; frozen: number; frozen_graded: number; paired: number;
+  closing_only: number; frozen_final_without_close: number; awaiting_final: number;
+  identity_unresolved: number; score_conflicts: number; retail_unavailable: number; closing_fallback: number;
+  t5_excluded: number; t5_frozen_excluded: number; t5_replayed: number; frozen_record: StudyRecord; retail_record: StudyRecord;
+  paired_close: StudyRecord; paired_frozen: StudyRecord;
+};
+export type StudyMetric = {
+  trigger: string; games: number; dates: number; interval: [number, number] | null;
+  family_interval: [number, number] | null; status: string;
+};
 export type PatternWatchDataset = {
   generatedAt: string;
+  correctionVersion: string | null;
+  verdictAt: string | null;
+  studyAudit: StudyAuditRow[];
+  studyMetrics: StudyMetric[];
   studyVersion: string;
   patterns: PatternRow[];
   weekly: WeeklyRow[];
@@ -98,6 +116,10 @@ export async function getLatestPatternWatchDataset(): Promise<PatternWatchDatase
   return {
     generatedAt: new Date(row.generated_at).toISOString(),
     studyVersion: String(p.study_version ?? ""),
+    correctionVersion: typeof p.correction_version === "string" ? p.correction_version : null,
+    verdictAt: typeof p.verdict_at === "string" ? p.verdict_at : null,
+    studyAudit: (p.study_audit ?? []) as StudyAuditRow[],
+    studyMetrics: (p.study_metrics ?? []) as StudyMetric[],
     patterns: (p.patterns ?? []) as PatternRow[],
     weekly: (p.weekly_favorites ?? []) as WeeklyRow[],
     marketSplits: (p.market_splits ?? []) as MarketSplitRow[],

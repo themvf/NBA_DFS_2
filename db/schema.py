@@ -6118,6 +6118,9 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_survivor_recs_open ON survivor_recommendations(season, week) WHERE superseded_by IS NULL",
     *NHL_INDEXES,
     "CREATE INDEX IF NOT EXISTS idx_cfb_pattern_runs_job ON cfb_pattern_runs(job, run_at DESC)",
+    """CREATE UNIQUE INDEX IF NOT EXISTS idx_cfb_pattern_verdict_once
+       ON cfb_pattern_runs ((payload->>'study_version'))
+       WHERE job = 'grade' AND payload->>'kind' = 'registered_verdict'""",
     "CREATE INDEX IF NOT EXISTS idx_cfb_pattern_reports_generated ON cfb_pattern_reports(generated_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_cfb_pattern_datasets_generated ON cfb_pattern_datasets(generated_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_cfb_matchups_date ON cfb_matchups(game_date, commence_time)",

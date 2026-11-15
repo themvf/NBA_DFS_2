@@ -50,7 +50,7 @@ DISCOVERY = {
 
 def _et(iso: str | datetime) -> str:
     ts = datetime.fromisoformat(iso) if isinstance(iso, str) else iso
-    e = ts - timedelta(hours=4)
+    e = pw._eastern(ts)
     hour = e.hour % 12 or 12
     return f"{e:%a %b} {e.day}, {hour}:{e:%M %p} ET"
 
@@ -264,9 +264,9 @@ def main(argv: list[str] | None = None) -> int:
     from model import cfb_pattern_measures as measures
     from model import cfb_pattern_store as store
 
-    rows = store.read_ledger(db)
+    rows = [row for row in store.read_ledger(db) if pw.corrected_t5_window(row)]
     frozen = store.read_selections(db)
-    selections = list(frozen.values())
+    selections = [row for row in frozen.values() if pw.corrected_t5_window(row)]
     games = [dict(r) for r in db.execute(board._GAMES_SQL, (pw.SEASON, now - timedelta(hours=1), now + timedelta(hours=board.LOOKAHEAD_HOURS)))]
     hist: dict[int, list[dict]] = {}
     if games:
@@ -274,7 +274,7 @@ def main(argv: list[str] | None = None) -> int:
             hist.setdefault(int(r["matchup_id"]), []).append(dict(r))
     cards, _ = board.build_board(games, hist, dict(frozen), now)  # read-only: new rows discarded
     rates = measures.weekly_base_rates(measures.load_base_rate_games(db))
-    fvc = measures.freeze_vs_close(rows, selections)
+    fvc = measures.freeze_vs_close(rows, selections, measures.load_frozen_finals(db, selections))
     ev = measures.event_summary(store.read_events(db), store.read_runs(db, "board"))
     html_text = render(rows, selections, cards, now, rates, fvc, ev)
     out = Path(args.out)

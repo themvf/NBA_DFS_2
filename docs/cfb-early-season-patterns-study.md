@@ -6,6 +6,26 @@
 **Ledger:** `artifacts/cfb_pattern_watch/ledger.jsonl` (local, JSON lines, never rewritten)
 **Verdict:** computed once, not before 2026-12-07 (after conference championship games)
 
+## Published grading correction
+
+The T5 correction uses the registered America/New_York Saturday window.
+Out-of-window legacy records remain in the append-only store and are excluded
+from corrected summaries. During Nov. 1 through Nov. 14 Eastern, newly eligible
+closing grades require the existing frozen A/B pre-kickoff quote and record its
+history ID and timestamp. No historical board selections are created.
+
+The Pattern Watch page reports closing grades, frozen consensus grades and
+saved retail grades separately. The latter two can settle as soon as an
+identity-verified final exists. Paired closing comparisons require matching
+final scores. A retail grade uses its saved number and American price.
+
+The grade job records one immutable registered verdict per version on or
+after Dec. 7. It reports nominal and Bonferroni-adjusted game-date bootstrap
+intervals and applies the registered nominal decision rule. The single-date
+guard asks whether excluding the largest contributing date leaves positive
+total units. A wholly negative nominal interval is also a failed rule.
+The original trigger thresholds and sample floors are unchanged.
+
 ## Why this exists
 
 A descriptive sweep of the 2026 season through 2026-10-09 (329 completed games

@@ -136,12 +136,60 @@ export default function PatternWatchClient({ dataset, error }: { dataset: Patter
       {tab === "patterns" && (
         <div className="space-y-6">
         <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Tile label="Graded picks" value={String(totals.graded)} />
+          <Tile label="Closing grades" value={String(totals.graded)} />
           <Tile label="Record" value={`${totals.wins}-${totals.losses}`} sub={`${totals.pushes} push`} />
           <Tile label="Units, 1 per pick" value={signed(totals.units)} className={tone(totals.units)} />
-          <Tile label="Verdict" value="None" sub="not before Dec 7" />
+          <Tile label="Verdict" value={dataset.verdictAt ? "Recorded" : "Pending"} sub={dataset.verdictAt ? shortDay(dataset.verdictAt) : "Dec. 7 checkpoint"} />
         </section>
 
+        {dataset.studyAudit.length > 0 && <section className="rounded-lg border bg-card p-4">
+          <h2 className="text-sm font-semibold">Closing grades and frozen-pick coverage</h2>
+          <p className="my-2 text-xs text-gray-500">
+            Closing grades use the registered consensus basis. Frozen and retail records use their saved entry lines.
+            Paired results require the same game and final score. Records show wins, losses and pushes.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-xs">
+              <thead><tr className="border-b">
+                {["Test", "Closing", "Frozen graded", "Retail graded", "Paired", "Coverage gaps"].map(label =>
+                  <th className="px-2 py-1" scope="col" key={label}>{label}</th>)}
+              </tr></thead>
+              <tbody>{dataset.studyAudit.map(row => {
+                const rec = (record: typeof row.frozen_record) =>
+                  record.won + record.lost + record.push ? `${record.won}–${record.lost}–${record.push} · ${signed(record.units)} u` : "—";
+                return <tr className="border-b align-top" key={row.trigger}>
+                  <th className="px-2 py-1" scope="row">{row.trigger.split("_")[0]}</th>
+                  <td className="px-2 py-1">{row.closing} · {row.closing_fallback} fallback</td>
+                  <td className="px-2 py-1">{row.frozen_graded}/{row.frozen}<br />{rec(row.frozen_record)}</td>
+                  <td className="px-2 py-1">{row.frozen_graded - row.retail_unavailable}<br />{rec(row.retail_record)}</td>
+                  <td className="px-2 py-1">{row.paired}<br />Closing {rec(row.paired_close)}<br />Frozen {rec(row.paired_frozen)}</td>
+                  <td className="px-2 py-1">{row.closing_only} closing-only · {row.frozen_final_without_close} frozen finals without close
+                    <br />{row.awaiting_final} awaiting final · {row.retail_unavailable} missing retail price
+                    <br />{row.identity_unresolved} unresolved joins · {row.score_conflicts} score conflicts
+                    {row.trigger.startsWith("T5_") && <><br />T5 correction removed {row.t5_excluded} closing grades and{" "}
+                      {row.t5_frozen_excluded} frozen picks from this view. Recovered {row.t5_replayed} closing grades.</>}
+                  </td>
+                </tr>;
+              })}</tbody>
+            </table>
+          </div>
+        </section>}
+        {dataset.studyMetrics.length > 0 && <section className="rounded-lg border bg-card p-4">
+          <h2 className="text-sm font-semibold">Registered checkpoint</h2>
+          <p className="my-2 text-xs text-gray-500">
+            Game-date bootstrap intervals are descriptive before Dec. 7. The family-adjusted interval covers six registered tests.
+          </p>
+          <ul className="space-y-1 text-xs">
+            {dataset.studyMetrics.map(metric => {
+              const range = (interval: typeof metric.interval) => interval
+                ? interval.map(bound => `${signed(100 * bound, 1)}%`).join(" to ") : "unavailable";
+              return <li key={metric.trigger}>
+                <strong>{metric.trigger.split("_")[0]}</strong> · {metric.games} games, {metric.dates} dates · 95% {range(metric.interval)}
+                {" "}· Family-adjusted {range(metric.family_interval)} · {metric.status}
+              </li>;
+            })}
+          </ul>
+        </section>}
         <section className="rounded-lg border bg-card p-4">
           <h2 className="text-sm font-semibold">Running units by pattern</h2>
           <p className="mb-3 text-xs text-gray-500">One unit per qualifying game, graded at the closing line.</p>
@@ -227,7 +275,7 @@ export default function PatternWatchClient({ dataset, error }: { dataset: Patter
           </div>
         </section>
 
-        {dataset.frozenVsClose.length > 0 && (
+        {dataset.correctionVersion && dataset.frozenVsClose.length > 0 && (
           <section className="rounded-lg border bg-card p-4">
             <h2 className="text-sm font-semibold">Frozen line vs close</h2>
             <p className="mb-3 text-xs text-gray-500">Lines are the home spread or the total. Positive points vs close means the frozen line was better for the pick.</p>
@@ -237,7 +285,8 @@ export default function PatternWatchClient({ dataset, error }: { dataset: Patter
                   <tr className="border-b text-left text-gray-500">
                     <th className="py-1 pr-3">Game</th><th className="py-1 pr-3">#</th><th className="py-1 pr-3">Pick</th>
                     <th className="py-1 pr-3 text-right">Frozen</th><th className="py-1 pr-3 text-right">Close</th><th className="py-1 pr-3 text-right">Pts vs close</th>
-                    <th className="py-1 pr-3">At close</th><th className="py-1 pr-3">At frozen</th><th className="py-1 text-right">Best retail units</th>
+                    <th className="py-1 pr-3">At close</th><th className="py-1 pr-3">At frozen</th>
+                    <th className="py-1 pr-3">Saved retail offer</th><th className="py-1 text-right">Retail units</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -247,7 +296,12 @@ export default function PatternWatchClient({ dataset, error }: { dataset: Patter
                       <td className="py-1 pr-3 text-right tabular-nums">{r["Frozen home spread or total"] ?? "—"}</td>
                       <td className="py-1 pr-3 text-right tabular-nums">{r["Closing home spread or total"] ?? "—"}</td>
                       <td className={`py-1 pr-3 text-right tabular-nums ${tone(r["Points vs close"])}`}>{signed(r["Points vs close"], 1)}</td>
-                      <td className="py-1 pr-3"><Pill result={r["Result at close"]} /></td><td className="py-1 pr-3"><Pill result={r["Result at frozen line"]} /></td>
+                      <td className="py-1 pr-3"><Pill result={r["Result at close"]} />{r["Same side"] === false && " · other side"}</td>
+                      <td className="py-1 pr-3"><Pill result={r["Result at frozen line"]} /></td>
+                      <td className="py-1 pr-3">{r["Retail result"] ? <>
+                        {r["Retail book"]} · {r["Retail line"] == null ? "ML" : signed(r["Retail line"], 1)} · {signed(r["Retail price"] ?? null, 0)}
+                        {" "}<Pill result={r["Retail result"]} />
+                      </> : "Unavailable"}</td>
                       <td className={`py-1 text-right tabular-nums ${tone(r["Units at best retail"])}`}>{signed(r["Units at best retail"])}</td>
                     </tr>
                   ))}
