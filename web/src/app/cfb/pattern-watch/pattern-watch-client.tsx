@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
   CartesianGrid,
@@ -65,7 +66,7 @@ const TABS = [
 type TabId = (typeof TABS)[number]["id"];
 const isTab = (v: string): v is TabId => TABS.some((t) => t.id === v);
 
-export default function PatternWatchClient({ dataset, error }: { dataset: PatternWatchDataset | null; error: string | null }) {
+export default function PatternWatchClient({ dataset, error, performance }: { dataset: PatternWatchDataset | null; error: string | null; performance?: ReactNode }) {
   const [patternFilter, setPatternFilter] = useState("all");
   const [tab, setTab] = useState<TabId>("recap");
   useEffect(() => {
@@ -99,13 +100,14 @@ export default function PatternWatchClient({ dataset, error }: { dataset: Patter
   }, [dataset, patternFilter]);
 
   if (error) {
-    return <main className="mx-auto max-w-6xl p-6"><h1 className="text-2xl font-semibold">CFB Pattern Watch</h1><p className="mt-4 text-rose-700">{error}</p></main>;
+    return <main className="mx-auto max-w-6xl p-6"><h1 className="text-2xl font-semibold">CFB Pattern Watch</h1><p className="mt-4 text-rose-700">{error}</p>{performance}</main>;
   }
   if (!dataset) {
     return (
       <main className="mx-auto max-w-6xl p-6">
         <h1 className="text-2xl font-semibold">CFB Pattern Watch</h1>
         <p className="mt-4 text-gray-600">No data stored yet. The next pattern watch run writes it.</p>
+        {performance}
       </main>
     );
   }
@@ -117,10 +119,11 @@ export default function PatternWatchClient({ dataset, error }: { dataset: Patter
     <main className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
       <header>
         <div className="text-xs uppercase tracking-wide text-gray-500">
-          Private · updated {new Date(dataset.generatedAt).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" })} ET
+          Updated {new Date(dataset.generatedAt).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" })} ET
         </div>
         <h1 className="text-3xl font-semibold">College Football Pattern Watch</h1>
       </header>
+      {performance}
       <nav className="flex flex-wrap gap-1 border-b pb-2">
         {TABS.map((t) => (
           <button

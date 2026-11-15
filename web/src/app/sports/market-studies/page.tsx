@@ -1,3 +1,4 @@
+import { StudyPerformancePanel } from "@/app/sports/market-studies/study-performance-panel";
 import Link from "next/link";
 import type { Metadata } from "next";
 
@@ -107,6 +108,8 @@ export default async function DailyMarketStudies({
     <StudyMatches matches={matches} date={date} coverage={{
       nba: assessed(nbaEntries), nfl: assessed(nflEntries), cfb: assessed(cfbEntries),
     }} />
+
+    <StudyPerformancePanel entries={[...(nbaEntries ?? []), ...(nflEntries ?? []), ...(cfbEntries ?? [])].filter(row => row.game.date <= date)} date={date} shared />
 
     <p className="text-xs text-muted-foreground">Records show wins–losses–pushes. Cumulative results run through the selected game date. Each sport uses its own study and grading rules.</p>
     <section aria-label="Sport summaries" className="grid gap-4 lg:grid-cols-3">

@@ -1,3 +1,5 @@
+import { StudyPerformancePanel } from "@/app/sports/market-studies/study-performance-panel";
+import { nbaObservations } from "@/lib/daily-study-matches";
 import Link from "next/link";
 import { studyHeading } from "@/lib/study-registry";
 import type { Metadata } from "next";
@@ -44,9 +46,9 @@ function resultTable(label: string, daily: Group[], overall: Group[], prices = f
   </details>;
 }
 
-export default async function NbaMarketStudies({ searchParams }: { searchParams: Promise<{ date?: string }> }) {
+export default async function NbaMarketStudies({ searchParams }: { searchParams: Promise<{ date?: string; cohort?: string }> }) {
   const today = easternDateString();
-  const { date: requested } = await searchParams;
+  const { date: requested, cohort } = await searchParams;
   const all = await getNbaMarketStudyGames(today);
   const dates = [...new Set([today, ...all.map(row => row.game.date)])].sort().reverse();
   const date = requested && dates.includes(requested) ? requested : today;
@@ -76,6 +78,8 @@ export default async function NbaMarketStudies({ searchParams }: { searchParams:
         <button className="rounded-md border px-3 py-2 text-sm">View slate</button>
       </form>
     </header>
+
+    <StudyPerformancePanel entries={all.filter(row => row.game.date <= date).flatMap(nbaObservations)} date={date} initial={cohort} />
 
     <section className="space-y-3 rounded-xl border p-4" aria-labelledby="paper-total">
       <div className="space-y-1">
