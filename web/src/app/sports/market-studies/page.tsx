@@ -88,6 +88,7 @@ export default async function DailyMarketStudies({
     <header className="space-y-2">
       <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Daily Market Studies</h1>
       <p className="text-sm text-muted-foreground">NBA, NFL and CFB results for {dateLabel.format(new Date(date))} · Eastern game date</p>
+      <a href="#all-studies" className="inline-block text-sm font-medium underline underline-offset-4">Jump to all study results</a>
     </header>
 
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-3">
@@ -106,8 +107,6 @@ export default async function DailyMarketStudies({
     <StudyMatches matches={matches} date={date} coverage={{
       nba: assessed(nbaEntries), nfl: assessed(nflEntries), cfb: assessed(cfbEntries),
     }} />
-
-    <a href="#all-studies" className="inline-block text-sm font-medium underline underline-offset-4">Jump to all study results</a>
 
     <p className="text-xs text-muted-foreground">Records show wins–losses–pushes. Cumulative results run through the selected game date. Each sport uses its own study and grading rules.</p>
     <section aria-label="Sport summaries" className="grid gap-4 lg:grid-cols-3">

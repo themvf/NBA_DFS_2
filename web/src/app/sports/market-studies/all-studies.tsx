@@ -89,7 +89,9 @@ function nbaStudies(rows: NbaRows, date: string): { [Id in NbaId]: Study } {
   const today = rows.filter(row => row.game.date === date);
   const a = summarizeNba(today);
   const b = summarizeNba(rows);
-  const priceRecord = (r: typeof b.totals[number]) => record({ wins: r.win, losses: r.loss, pushes: r.push }, r.priced ? r.units : undefined);
+  const priceRecord = (r: typeof b.totals[number]) =>
+    record({ wins: r.win, losses: r.loss, pushes: r.push }, r.priced ? r.units : undefined) +
+    (r.priced > 0 && r.priced < r.games ? " · " + r.priced + " priced" : "");
   const teamRows = (summary: typeof b) => summary.teams.flatMap(team => [
     { ...team.first, label: team.label + " · first quote" },
     { ...team.last, label: team.label + " · last quote" },
