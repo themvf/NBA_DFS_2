@@ -68,3 +68,17 @@ back (nflverse position RB) whose team is an underdog of 3 or more points, under
 the US book with the highest line, ties to the best price. Same bar: 2025 interval
 above zero and 2026 positive. One cell picked from nineteen, so discovery alone
 would be expected to overstate it.
+
+## Holdout result for `rb_underdog_under`: not confirmed, same sign
+
+2025: 316 bets, +2.4% (-7.3 to +12.5). 2026 weeks 1-10: 198 bets, +6.3% (-0.4 to
++12.4). Holdouts together: 514 bets, +3.9% (-3.2 to +10.8). Positive in all four
+seasons, a third the size discovery showed, and the 2025 interval includes zero.
+The favourite-back loss did not repeat (-0.2% on 546 bets).
+
+Reported, not a frozen rule: every player on an underdog of 3+ (any position) went
++7.0% in 2023-2024 and +6.8% on the holdouts (815 bets, +0.4 to +12.5; 2025 +6.0%,
+2026 +8.1%). It was not the rule chosen, so it counts as a lead for a forward test
+(2026 weeks 11-18 and 2027), not a result. Caveats for any such test: the spread
+used is the closing one, a snapshot quote may not be bettable, and books limit
+prop accounts.
