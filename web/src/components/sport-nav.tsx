@@ -45,6 +45,7 @@ const PAGE_LINKS: Array<{
   { href: "/nfl/projections", label: "NFL Projections", sports: ["nfl"] },
   { href: "/nfl/survivor", label: "Survivor Pool", sports: ["nfl"] },
   { href: "/nfl/pickem", label: "Pick'em Pools", sports: ["nfl"] },
+  { href: "/nfl/market-studies", label: "Market Studies", sports: ["nfl"] },
   { href: "/nfl/specials", label: "Slate Specials", sports: ["nfl"] },
     { href: "/nfl/longest-touchdown", label: "Longest TD", sports: ["nfl"] },
   { href: "/nfl/td-comparison", label: "TD Comparison", sports: ["nfl"] },
