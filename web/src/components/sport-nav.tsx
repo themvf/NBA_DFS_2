@@ -139,7 +139,11 @@ export function SportNav() {
           DFS
         </Link>
 
-        <Link href="/sports" className={`rounded px-3 py-1.5 text-sm font-medium ${sportsSection ? "bg-blue-600 text-white" : "text-muted-foreground hover:bg-accent"}`}>Sports</Link>
+        <Link href="/sports" className={`rounded px-3 py-1.5 text-sm font-medium ${sportsSection && pathname !== "/sports/market-studies" ? "bg-blue-600 text-white" : "text-muted-foreground hover:bg-accent"}`}>Sports</Link>
+        <Link href="/sports/market-studies" aria-current={pathname === "/sports/market-studies" ? "page" : undefined}
+          className={`shrink-0 rounded px-3 py-1.5 text-sm font-medium ${pathname === "/sports/market-studies" ? "bg-blue-600 text-white" : "text-muted-foreground hover:bg-accent"}`}>
+          Daily Studies
+        </Link>
         {/* Sport selector — primary navigation */}
         <div className="flex items-center gap-1">
           {SPORTS.map(({ sport, label, icon }) => {
