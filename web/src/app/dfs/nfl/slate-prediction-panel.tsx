@@ -22,10 +22,8 @@ export default function SlatePredictionPanel({ slateKey, players, format, lineup
   const prediction = result?.key === slateKey ? result.prediction : null;
   const ours = useMemo(() => (lineups?.length ? breakdownPortfolio(lineups, "showdown") : null), [lineups]);
 
-  if (format !== "showdown") return <section className="rounded-xl border bg-white p-4 shadow-sm">
-    <h2 className="font-bold">Which lineup type wins this slate?</h2>
-    <p className="mt-1 text-xs text-slate-500">Showdown only for now. Classic&apos;s best lineup needs a different solver.</p>
-  </section>;
+  // Showdown only: Classic's best lineup needs a different solver, so nothing is shown there.
+  if (format !== "showdown") return null;
 
   function run() {
     setError(null); setProgress(0);

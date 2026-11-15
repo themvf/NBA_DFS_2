@@ -58,7 +58,7 @@ export default function RunRiskSummary({ lineups, uncalibratedLeverage, requeste
   return <section role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
     <h2 className="font-bold">Review before export</h2>
     <ul className="mt-2 list-disc space-y-1 pl-5">
-      {newlyOut.map(p => <li key={p.name}><b>Rebuild required:</b> {p.name} is unavailable and appears in {p.count} of {lineups.length} saved lineups. Export is blocked until these entries are rebuilt.</li>)}
+      {newlyOut.map(p => <li key={p.name}><b>Swap or rebuild:</b> {p.name} is unavailable and appears in {p.count} of {lineups.length} saved lineups. Export still works, but those lineups would carry a player who is out; use Swap inactive players or rebuild.</li>)}
       {invalidKickers.length ? <li><b>Rebuild required:</b> {invalidKickers.map(p => p.name).join(', ')} has no supported kicking role. These saved lineups cannot be exported.</li> : null}
       {completion.issues.length ? <li><b>Completed with unmet targets.</b> {completion.issues.join('; ')}. Adjust the targets or construction rules and generate again.</li> : null}
       {uncertain.length ? <li><b>Confirm before export:</b> {uncertain.map(p => `${p.name} is ${statusWord(p.availability?.status)} (${p.count} of ${lineups.length}, ${Math.round(p.count / lineups.length * 100)}%)`).join('; ')}. Active status does not establish a full workload.</li> : null}

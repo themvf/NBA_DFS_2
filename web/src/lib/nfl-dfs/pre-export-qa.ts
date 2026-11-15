@@ -199,6 +199,9 @@ export function isDeployedBuild(commitSha: string | null | undefined): boolean {
 
 const STALE_BLOCK_HOURS = 48;
 
+/** The only checks that stop an export: a file DraftKings would reject. */
+export const EXPORT_BLOCKING_CHECKS: ReadonlySet<string> = new Set(["legal_roster"]);
+
 /** Build the QA report. Overrides clear only overridable blockers. */
 export function runNflPreExportQa(input: QaInput, overrides: QaOverride[] = []): QaReport {
   const overrideIds = new Set(overrides.map((o) => o.checkId));
@@ -207,7 +210,11 @@ export function runNflPreExportQa(input: QaInput, overrides: QaOverride[] = []):
   // reason, except the two an override cannot fix (DraftKings rejects an
   // illegal roster, and an entry file without enough rows has nowhere to put
   // the extra lineups); those pass overridable: false explicitly.
-  const add = (c: Omit<QaCheck, "overridable"> & { overridable?: boolean }) => checks.push({ overridable: true, ...c });
+  // Owner's decision 2026-11-15 (after a pre-lock export was stopped with
+  // minutes left): nothing stops an export except a roster DraftKings itself
+  // would reject. Every other former blocker is shown as a warning.
+  const add = (c: Omit<QaCheck, "overridable"> & { overridable?: boolean }) => checks.push({ overridable: true, ...c,
+    ...(c.severity === "blocker" && !EXPORT_BLOCKING_CHECKS.has(c.id) ? { severity: "warning" as const } : {}) });
 
   const rosterSize = input.format === "showdown" ? 6 : 9;
 

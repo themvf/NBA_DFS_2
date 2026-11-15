@@ -109,9 +109,9 @@ function main() {
 
   const blocked = qa({ state: "blind", resolved: 0, considered: 670, fresh: 0 });
   const check = blocked.checks.find((c) => c.id === "availability_coverage")!;
-  assert.equal(check.severity, "blocker");
-  assert.equal(blocked.decision, "blocked");
-  assert.ok(blocked.openBlockers.includes("availability_coverage"));
+  assert.equal(check.severity, "warning");
+  assert.equal(blocked.decision, "ready_with_warnings");
+  assert.ok(blocked.checks.some((c) => c.id === "availability_coverage" && !c.passed && c.severity === "warning"));
   assert.match(check.detail, /0 of 670/);
 
   // Overridable: exporting a blind slate is a legitimate CHOICE, so long as it

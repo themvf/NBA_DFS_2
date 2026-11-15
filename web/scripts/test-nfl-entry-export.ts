@@ -73,19 +73,20 @@ for (const name of ["NFL $20 Millionaire [150 Entry Max]", "NFL Showdown $5 SEA 
 {
   const rows = [...Array(4)].map(() => ["NFL $1 Contest", "55"] as [string, string]);
   const three = [0, 1, 2].map((n) => lineup(n, "standard_ceiling"));
-  assert.throws(() => exportNflDkEntries(file(rows), three), /The entry file has 4 entries for 3 lineups\. Build 4 lineups, or remove entries from the file\./);
+  assert.doesNotThrow(() => exportNflDkEntries(file(rows), three), "fewer lineups than entries is written anyway (owner, 2026-11-15)");
+  assert.match(planNflDkEntries(file(rows), three).note, /The entry file has 4 entries for 3 lineups\..*written anyway/);
   const five = [0, 1, 2, 3, 4].map((n) => lineup(n, "standard_ceiling"));
-  assert.throws(() => exportNflDkEntries(file(rows), five), /room for 4 lineups/);
+  assert.match(planNflDkEntries(file(rows), five).note, /room for 4 lineups.*extra lineups were left out/);
   const shape = describeNflDkEntryFile(file(rows));
   const qa = runNflPreExportQa({ format: "showdown", requestedLineups: 3, lineups: three.map((l) => ({ lineupNumber: l.lineupNumber, playerIds: l.playerIds, totalSalary: 1, slots: [] })),
     entryFile: { shape, note: entryAssignmentNote(shape, three) } });
   const check = qa.checks.find((c) => c.id === "entry_rows")!;
-  assert.equal(check.severity, "blocker");
+  assert.equal(check.severity, "warning");
   assert.equal(check.overridable, false, "a blank entry cannot be overridden");
   assert.equal(check.detail, "The entry file has 4 entries for 3 lineups. Build 4 lineups, or remove entries from the file.");
   const overridden = runNflPreExportQa({ format: "showdown", requestedLineups: 3, lineups: [], entryFile: { shape, note: "" } },
     [{ checkId: "entry_rows", reason: "x", user: "u", at: "now", rulesetVersion: "v", runId: "r" }]);
-  assert.ok(overridden.openBlockers.includes("entry_rows"), "override does not clear it");
+  assert.ok(overridden.checks.some((c) => c.id === "entry_rows" && !c.passed && c.severity === "warning"), "override does not clear it");
   // A row that already holds a lineup is not blank: it keeps its lineup, and empty rows are filled first.
   const prefilled = file([["NFL $1 Contest", "55", "Old A,Old B,Old C"], ["NFL $1 Contest", "55"], ["NFL $1 Contest", "55"], ["NFL $1 Contest", "55"]]);
   const got = written(exportNflDkEntries(prefilled, three));
@@ -94,7 +95,7 @@ for (const name of ["NFL $20 Millionaire [150 Entry Max]", "NFL Showdown $5 SEA 
   const pshape = describeNflDkEntryFile(prefilled);
   const pcheck = runNflPreExportQa({ format: "showdown", requestedLineups: 3, lineups: [], entryFile: { shape: pshape, note: "" } }).checks.find((c) => c.id === "entry_rows")!;
   // built=0 here: 3 empty rows and no lineups is still a blocker.
-  assert.equal(pcheck.severity, "blocker");
+  assert.equal(pcheck.severity, "warning");
 }
 
 // --- Fix 3: single-entry contests get the top lineup and use none from the pool ---

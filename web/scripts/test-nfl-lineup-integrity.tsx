@@ -41,7 +41,7 @@ assert.equal(result.eligibility?.find(p=>p.dkPlayerId===8)?.reasonCode,'KICKER_R
 assert.throws(()=>optimizeNflLineups([...pool,smyth],{...settings,lockedPlayerIds:[8]}),/Charlie Smyth.*Kicking role/);
 const qa = runNflPreExportQa({format:'showdown',requestedLineups:1,lineups:[{lineupNumber:1,playerIds:[8],totalSalary:5000,slots:[{slot:'FLEX',playerId:8}]}],
   currentPool:currentPoolForQa([smyth])});
-assert.ok(qa.openBlockers.includes('current_pool'));
+assert.ok(qa.checks.some(c=>c.id==='current_pool'&&!c.passed&&c.severity==='warning'),'a player who is out is a warning since 2026-11-15, not a block');
 const invalid={...result.lineups[0],slots:result.lineups[0].slots.map((s,i)=>i===1?{...s,player:smyth}:s)};
 assert.throws(()=>exportNflDkEntries('Entry ID,Contest Name,Contest ID,Entry Fee,CPT,FLEX,FLEX,FLEX,FLEX,FLEX\n1,Test,1,1,,,,,,',[invalid]),/Charlie Smyth.*Kicking role/);
 
@@ -77,7 +77,7 @@ const oldHtml = renderToStaticMarkup(<RunRiskSummary lineups={[oldRun]} uncalibr
 assert.match(oldHtml,/Rebuild required.*Charlie Smyth.*cannot be exported/);
 const inactiveHtml=renderToStaticMarkup(<RunRiskSummary lineups={result.lineups} uncalibratedLeverage={false}
   currentPlayers={[{dkPlayerId:result.lineups[0].playerIds[0],name:'Noah Fant',isOut:true,availability:{status:'OUT'}}]} />);
-assert.match(inactiveHtml,/Rebuild required.*Noah Fant.*unavailable.*Export is blocked/);
+assert.match(inactiveHtml,/Swap or rebuild.*Noah Fant.*unavailable.*Export still works/);
 const modelSummary=renderToStaticMarkup(<BuildModelSummary mode="gpp" historical heuristicLeverage={false} absenceTeams={['NO','NO']} />);
 assert.match(modelSummary,/individual player ceilings.*not joint ceiling/);
 assert.match(modelSummary,/No ownership penalty requested/);

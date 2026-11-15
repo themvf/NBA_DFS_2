@@ -156,12 +156,12 @@ export type NflDkEntryPlan = { csv: string; note: string };
  * Write lineups into a DraftKings entry file.
  * - A single-entry contest gets the run's top lineup (the same lineup may go into several such contests).
  * - Every other row gets its own lineup, dealt so each contest holds a mix of the run's lineup types.
- * - An entry left with no roster is refused: it is a paid entry with no lineup.
+ * - A count mismatch does not stop the file: it is written with what there is, and the note says what was left over.
  */
 export function planNflDkEntries(content: string, lineups: NflGeneratedLineup[]): NflDkEntryPlan {
   const { rawLines, headerIndex, header, firstSlot, expectedSlots, entryRows, rows } = entryLayout(content);
   const problem = entryCoverageProblem(describeNflDkEntryFile(content), lineups.length);
-  if (problem) throw new Error(problem);
+  // Not a stop (owner, 2026-11-15): the file is written with what there is, and the note says what was left over.
   const multi = rows.filter((row) => !row.singleEntry);
   const single = rows.filter((row) => row.singleEntry);
   // Empty rows first, so a row left over is one that keeps the lineup DraftKings already has.
@@ -184,13 +184,13 @@ export function planNflDkEntries(content: string, lineups: NflGeneratedLineup[])
         best = key; bestShare = share; bestSize = list.length;
       }
     }
-    if (best == null) throw new Error("Internal error: ran out of entry rows while assigning lineups.");
+    if (best == null) break; // more lineups than entries: the rest are not written
     const done = filled.get(best) ?? 0;
     assigned.set(byContest.get(best)![done].index, lineup);
     filled.set(best, done + 1);
   }
   const top = single.length ? topNflLineup(lineups) : null;
-  for (const row of single) assigned.set(row.index, top!);
+  if (top) for (const row of single) assigned.set(row.index, top);
   const output = rawLines.slice(0, headerIndex).concat(stringifyCsvLine(header));
   for (let index = 0; index < entryRows.length; index++) {
     const row = entryRows[index];
@@ -198,7 +198,9 @@ export function planNflDkEntries(content: string, lineups: NflGeneratedLineup[])
     if (lineup) exportCells(lineup, expectedSlots).forEach((cell, slotIndex) => { row[firstSlot + slotIndex] = cell; });
     output.push(stringifyCsvLine(row));
   }
-  return { csv: `${output.join("\r\n")}\r\n`, note: entryAssignmentNote(describeNflDkEntryFile(content), lineups) };
+  const note = entryAssignmentNote(describeNflDkEntryFile(content), lineups);
+  const leftOver = lineups.length > multi.length ? "the extra lineups were left out" : "the entries without a lineup keep whatever DraftKings already has";
+  return { csv: `${output.join("\r\n")}\r\n`, note: problem ? `${problem} The file was written anyway: ${leftOver}.${note ? ` ${note}` : ""}` : note };
 }
 
 /** Plain words on how the export spreads the lineups over the file's contests. */
