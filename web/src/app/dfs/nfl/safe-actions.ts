@@ -61,3 +61,4 @@ export async function safeSaveNflBuildDraft(...args: Args<typeof actions.saveNfl
 export async function safeReadNflBuildDraft(...args: Args<typeof actions.readNflBuildDraft>) { return run("Reading your build settings", () => actions.readNflBuildDraft(...args)); }
 export async function safeCaptureCurrentPool(...args: Args<typeof captureCurrentPool>) { return run("Capturing the pool", () => captureCurrentPool(...args)); }
 export async function safeLoadPlayerHistory(...args: Args<typeof loadPlayerHistory>) { return run("Loading player history", () => loadPlayerHistory(...args)); }
+export async function safeSwapInactiveNflPlayers(...args: Args<typeof actions.swapInactiveNflPlayers>) { return run("Swapping out inactive players", () => actions.swapInactiveNflPlayers(...args)); }

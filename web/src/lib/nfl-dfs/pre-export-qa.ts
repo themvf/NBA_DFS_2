@@ -458,3 +458,57 @@ export function runNflPreExportQa(input: QaInput, overrides: QaOverride[] = []):
   const decision: QaDecision = openBlockers.length ? "blocked" : openWarnings.length ? "ready_with_warnings" : "ready";
   return { rulesetVersion: NFL_QA_RULESET_VERSION, decision, checks, counts, openBlockers };
 }
+
+// --- Heavily used players without a full set of betting lines (warning) ---
+// Appended 2026-11-15 (fix #10). The market anchor (nfl-market-anchor-v1)
+// projects a player from the books' calibrated number only when every line is
+// posted (`marketAnchor.mode === "full"`). A player in a fifth or more of the
+// lineups on the model alone, or on the books' touchdown line alone, is a big
+// bet on a number the books have not checked. A warning, never a blocker:
+// lines can simply not be posted yet.
+export const NO_LINES_EXPOSURE_SHARE = 0.2;
+const LINE_POSITIONS = new Set(["QB", "RB", "WR", "TE"]);
+
+type LinesPlayer = { name: string; position: string; ourProj?: number | null; marketAnchor?: { mode?: string | null } | null; historyGames?: number | null };
+
+/** Where a player's projection came from, in words, when he has no full set of lines. */
+function linesSourceWords(player: LinesPlayer): string {
+  if (player.marketAnchor?.mode === "td_only") return "the books' touchdown line only, our model for the rest";
+  if (player.historyGames === 0) return "our model only, from his position's average (no games of his own, no betting lines)";
+  return "our model only, no betting lines";
+}
+
+export function noLinesExposureCheck(lineups: QaInput["lineups"], minShare = NO_LINES_EXPOSURE_SHARE): QaCheck {
+  const players = new Map<number, { player: LinesPlayer; lineups: Set<number> }>();
+  for (const lineup of lineups) {
+    for (const slot of lineup.slots) {
+      const player = slot.player as LinesPlayer | undefined;
+      if (!player || !LINE_POSITIONS.has(player.position) || player.marketAnchor?.mode === "full") continue;
+      const entry = players.get(slot.playerId) ?? { player, lineups: new Set<number>() };
+      entry.lineups.add(lineup.lineupNumber);
+      players.set(slot.playerId, entry);
+    }
+  }
+  const n = lineups.length;
+  const heavy = [...players.values()].filter((p) => n > 0 && p.lineups.size / n >= minShare)
+    .sort((a, b) => b.lineups.size - a.lineups.size || a.player.name.localeCompare(b.player.name));
+  const pct = Math.round(minShare * 100);
+  const one = heavy.length === 1;
+  return {
+    id: "no_lines_exposure", title: `No player in ${pct}%+ of lineups without betting lines`, severity: "warning", passed: heavy.length === 0, overridable: true,
+    detail: heavy.length
+      ? `${heavy.map((p) => `${p.player.name} (${p.player.position}) is in ${p.lineups.size} of ${n} lineups (${Math.round((100 * p.lineups.size) / n)}%), projected ${p.player.ourProj != null ? p.player.ourProj.toFixed(1) : "?"} from ${linesSourceWords(p.player)}`).join("; ")}. The books have not posted a full set of lines for ${one ? "him" : "them"}, so ${one ? "that number is" : "those numbers are"} unchecked: refresh lines before lock or lower ${one ? "his" : "their"} exposure.`
+      : `Every QB, RB, WR and TE in ${pct}% or more of the lineups is projected from a full set of betting lines.`,
+    affected: heavy.map((p) => p.player.name),
+  };
+}
+
+/** The report with the no-lines warning added and its decision recomputed (a warning can only move "ready" to "ready_with_warnings"). */
+export function withNoLinesExposure(report: QaReport, lineups: QaInput["lineups"]): QaReport {
+  if (report.checks.some((c) => c.id === "no_lines_exposure")) return report;
+  const check = noLinesExposureCheck(lineups);
+  const checks = [...report.checks, check];
+  const warning = checks.filter((c) => !c.passed && c.severity === "warning").length;
+  const decision: QaDecision = report.openBlockers.length ? "blocked" : warning ? "ready_with_warnings" : "ready";
+  return { ...report, checks, counts: { ...report.counts, warning }, decision };
+}
