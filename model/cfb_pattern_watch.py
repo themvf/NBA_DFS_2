@@ -29,6 +29,7 @@ import random
 import statistics
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from config import load_config
 from db.database import DatabaseManager
@@ -67,6 +68,12 @@ def trigger_registered_at(trigger: str) -> datetime:
     return T6_REGISTERED_AT if trigger == "T6_mid_fav_spread" else REGISTERED_AT
 FAMILY_SIZE = len(TRIGGERS)
 
+T5 = "T5_sat_evening_g5_fav_ml"
+EASTERN = ZoneInfo("America/New_York")
+T5_CORRECTION_VERSION = "t5-eastern-window-v1"
+T5_REPLAY_START = datetime(2026, 11, 1, 6, tzinfo=timezone.utc)
+T5_REPLAY_END = datetime(2026, 11, 15, 5, tzinfo=timezone.utc)
+
 DEFAULT_LEDGER = Path("artifacts") / "cfb_pattern_watch" / "ledger.jsonl"
 
 
@@ -82,10 +89,15 @@ def vig_free_home(home_ml: int, away_ml: int) -> float:
 
 
 def _eastern(ts: datetime) -> datetime:
-    # Fixed -4h: the season to the verdict date is entirely inside US daylight time
-    # except the final week; a one-hour shift cannot move a 5:00-8:30pm window
-    # across a slot boundary for any real kickoff time (kickoffs are on :00/:30).
-    return ts - timedelta(hours=4)
+    return ts.astimezone(EASTERN)
+
+
+def _t5_window(et: datetime) -> bool:
+    return et.weekday() == 5 and 17 * 60 <= et.hour * 60 + et.minute < 20 * 60 + 30
+
+
+def corrected_t5_window(row: dict) -> bool:
+    return row["trigger"] != T5 or _t5_window(_eastern(datetime.fromisoformat(row["commence_time"])))
 
 
 def is_g5(conference: str | None) -> bool:
@@ -118,9 +130,8 @@ def classify(game: dict) -> list[str]:
     if fbs_both and 14 <= fav_sp <= 20.5 and game.get("vegas_total") is not None:
         out.append("T4_big_fav_over")
     if fbs_both and (is_g5(game["hconf"]) or is_g5(game["aconf"])):
-        et = _eastern(game["commence_time"])
-        if et.strftime("%a") == "Sat" and 17 * 60 <= et.hour * 60 + et.minute < 20 * 60 + 30:
-            out.append("T5_sat_evening_g5_fav_ml")
+        if _t5_window(_eastern(game["commence_time"])):
+            out.append(T5)
     if fbs_both and 7 <= fav_sp <= 13.5:
         out.append("T6_mid_fav_spread")
     return out
@@ -191,6 +202,12 @@ SELECT m.id AS matchup_id, m.week, m.game_date, m.commence_time, m.home_score, m
        COALESCE(h.home_ml, m.home_ml) AS home_ml,
        COALESCE(h.away_ml, m.away_ml) AS away_ml,
        CASE WHEN h.id IS NOT NULL THEN 'verified_close:' || e.quality ELSE 'last_capture' END AS price_source,
+       h.id AS close_history_id, h.captured_at AS close_captured_at,
+       (h.sport = 'cfb' AND h.matchup_id = m.id
+        AND h.event_id = e.event_id AND h.event_id = m.odds_event_id
+        AND h.home_team_id = m.home_team_id AND h.away_team_id = m.away_team_id
+        AND h.home_spread IS NOT NULL AND h.home_ml IS NOT NULL AND h.away_ml IS NOT NULL
+        AND h.captured_at < LEAST(e.boundary_at, m.commence_time)) AS replay_close_verified,
        ht.name AS home, at.name AS away, ht.conference AS hconf, at.conference AS aconf,
        ht.classification AS hclass, at.classification AS aclass
 FROM cfb_matchups m
@@ -240,6 +257,11 @@ def build_rows(games: list[dict], origin: str, existing_keys: set[tuple[str, int
             key = (trig, int(g["matchup_id"]))
             if key in existing_keys:
                 continue
+            replay = (origin == "prospective" and trig == T5
+                      and T5_REPLAY_START <= g["commence_time"] < T5_REPLAY_END
+                      and not _t5_window(g["commence_time"].astimezone(timezone.utc) - timedelta(hours=4)))
+            if replay and not g.get("replay_close_verified"):
+                continue
             gr = grade(trig, g)
             out.append({
                 "study_version": STUDY_VERSION, "origin": origin, "trigger": trig,
@@ -248,13 +270,16 @@ def build_rows(games: list[dict], origin: str, existing_keys: set[tuple[str, int
                 "home_spread": g["home_spread"], "vegas_total": g["vegas_total"],
                 "home_ml": g["home_ml"], "away_ml": g["away_ml"], "price_source": g["price_source"],
                 "home_score": g["home_score"], "away_score": g["away_score"],
+                **({"correction_version": T5_CORRECTION_VERSION, "close_history_id": g["close_history_id"],
+                    "close_captured_at": g["close_captured_at"].isoformat()} if replay else {}),
                 **gr, "graded_at": now,
             })
     return out
 
 
 # ── Summary ──────────────────────────────────────────────────────────────────
-def _bootstrap_roi(rows: list[dict], iters: int = BOOTSTRAP_ITERS, seed: int = _SEED) -> tuple[float, float]:
+def _bootstrap_roi(rows: list[dict], iters: int = BOOTSTRAP_ITERS, seed: int = _SEED,
+                   alpha: float = 0.05) -> tuple[float, float]:
     by_date = collections.defaultdict(list)
     for r in rows:
         by_date[r["game_date"]].append(r["pnl_units"])
@@ -267,7 +292,45 @@ def _bootstrap_roi(rows: list[dict], iters: int = BOOTSTRAP_ITERS, seed: int = _
             s.extend(by_date[d])
         vals.append(sum(s) / len(s))
     vals.sort()
-    return vals[int(0.025 * iters)], vals[int(0.975 * iters) - 1]
+    tail = int(alpha * iters / 2)
+    return vals[tail], vals[-1 - tail]
+
+
+def evaluate_patterns(rows: list[dict], as_of: datetime) -> list[dict]:
+    """Evaluate the registered closing cohort. The grade job locks the verdict."""
+    output = []
+    for trigger, (_, floor) in TRIGGERS.items():
+        picks = [row for row in rows if row["trigger"] == trigger]
+        dates = {row["game_date"] for row in picks}
+        interval = _bootstrap_roi(picks) if len(dates) >= 3 else None
+        family = _bootstrap_roi(picks, alpha=0.05 / FAMILY_SIZE) if interval else None
+        wins = sum(row["result"] == "won" for row in picks)
+        decisions = sum(row["result"] != "push" for row in picks)
+        win_rate = wins / decisions if decisions else None
+        implied = statistics.mean(row["implied_prob"] for row in picks) if picks else None
+        teams = collections.Counter(team for row in picks for team in {row["home"], row["away"]})
+        max_team_share = max(teams.values()) / len(picks) if picks else None
+        pnl_by_date = collections.defaultdict(float)
+        for row in picks:
+            pnl_by_date[row["game_date"]] += row["pnl_units"]
+        units = sum(pnl_by_date.values())
+        carried_by_date = bool(pnl_by_date) and units - max(pnl_by_date.values()) <= 0
+        if as_of < VERDICT_NOT_BEFORE:
+            status = "Awaiting Dec. 7 checkpoint"
+        elif len(picks) < floor:
+            status = "Not decidable · sample floor"
+        elif not interval:
+            status = "Not decidable · insufficient game dates"
+        elif interval[0] <= 0:
+            status = "Dead · ROI interval does not establish positive return"
+        elif win_rate is None or implied is None or win_rate < implied or carried_by_date or max_team_share > 0.25:
+            status = "No pass · secondary gates"
+        else:
+            status = "Pass · shadow tracking only"
+        output.append(dict(trigger=trigger, games=len(picks), dates=len(dates), interval=interval,
+                           family_interval=family, status=status, win_rate=win_rate, implied=implied,
+                           max_team_share=max_team_share, carried_by_date=carried_by_date))
+    return output
 
 
 def summarize(rows: list[dict], label: str, as_of: datetime | None = None) -> list[str]:
@@ -328,8 +391,17 @@ def main(argv: list[str] | None = None) -> int:
     games = load_games(db, REGISTERED_AT, datetime(SEASON + 1, 2, 1, tzinfo=timezone.utc))
     new_rows = build_rows(games, "prospective", keys)
     added = store.append_ledger(db, new_rows)
-    rows = store.read_ledger(db)
-    print(f"scanned {len(games)} completed prospective games; graded {len(new_rows)} new rows ({added} written); ledger now {len(rows)} rows")
+    originals = store.read_ledger(db)
+    rows = [row for row in originals if corrected_t5_window(row)]
+    now = datetime.now(timezone.utc)
+    if now >= VERDICT_NOT_BEFORE and store.read_verdict(db) is None:
+        verdict_rows = [row for row in rows if datetime.fromisoformat(row["commence_time"]) < VERDICT_NOT_BEFORE]
+        store.save_verdict(db, {
+            "study_version": STUDY_VERSION, "correction_version": T5_CORRECTION_VERSION,
+            "evaluated_at": now.isoformat(), "patterns": evaluate_patterns(verdict_rows, now),
+            "graded_pairs": sorted((row["trigger"], row["matchup_id"]) for row in verdict_rows),
+        })
+    print(f"scanned {len(games)} completed prospective games; graded {len(new_rows)} new rows ({added} written); ledger now {len(originals)} rows")
     for line in summarize(rows, "PROSPECTIVE (commence >= registration)"):
         print(line)
     from model import cfb_pattern_measures as measures  # local import: measures imports this module

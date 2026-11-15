@@ -4,7 +4,7 @@ These pin the registered trigger definitions and grading so a quiet edit to a
 threshold shows up as a red test rather than a silently changed cohort.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -78,6 +78,34 @@ def test_t5_saturday_evening_window_and_g5_requirement():
     assert "T5_sat_evening_g5_fav_ml" not in pw.classify(_game(commence_time=datetime(2026, 10, 16, 23, 30, tzinfo=timezone.utc)))  # Friday
     assert "T5_sat_evening_g5_fav_ml" not in pw.classify(_game(hconf="SEC", aconf="Big Ten"))
     assert "T5_sat_evening_g5_fav_ml" in pw.classify(_game(hconf="SEC"))  # one G5 team is enough
+
+
+def test_t5_uses_eastern_standard_time():
+    eligible = _game(commence_time=datetime(2026, 11, 8, 1, tzinfo=timezone.utc))
+    early = dict(eligible, commence_time=datetime(2026, 11, 7, 21, 30, tzinfo=timezone.utc))
+    assert pw.T5 in pw.classify(eligible)
+    assert pw.T5 not in pw.classify(early)
+    assert not pw.corrected_t5_window(dict(early, trigger=pw.T5, commence_time=early["commence_time"].isoformat()))
+
+
+def test_registered_verdict_uses_date_and_team_gates():
+    rows = [
+        dict(trigger="T3_small_fav_dog_spread", game_date=f"2026-10-{10 + i % 5}",
+             home=f"Home {i}", away=f"Away {i}", result="won", pnl_units=0.9, implied_prob=0.5)
+        for i in range(80)
+    ]
+    def metric(as_of, picks):
+        return pw.evaluate_patterns(picks, as_of)[2]
+
+    before = pw.VERDICT_NOT_BEFORE - timedelta(seconds=1)
+    assert metric(before, rows)["status"].startswith("Awaiting")
+    assert metric(pw.VERDICT_NOT_BEFORE, rows)["status"].startswith("Pass")
+    assert metric(pw.VERDICT_NOT_BEFORE, rows)["family_interval"] == pytest.approx((0.9, 0.9))
+    assert metric(pw.VERDICT_NOT_BEFORE, rows[:-1])["status"].startswith("Not decidable")
+    concentrated = [dict(row, home="Same team") for row in rows]
+    assert metric(pw.VERDICT_NOT_BEFORE, concentrated)["status"].startswith("No pass")
+    losses = [dict(row, pnl_units=-1, result="lost") for row in rows]
+    assert metric(pw.VERDICT_NOT_BEFORE, losses)["status"].startswith("Dead")
 
 
 def test_t6_mid_favorite_spread_band_and_grade():

@@ -70,6 +70,22 @@ def test_freeze_vs_close_signs_points_from_the_picks_side_and_regrades_at_the_fr
     assert ov["items"][0]["points_clv"] == pytest.approx(1.0) and ov["items"][0]["freeze_result"] == "won"
 
 
+def test_frozen_only_final_and_retail_settle_at_saved_line():
+    trigger = "T6_mid_fav_spread"
+    frozen = _sel(trigger, -9, 50, "Home U -9", {"book": "fanduel", "line": -8.5, "price": -105})
+    final = dict(home="Home U", away="Away St", commence_time=KICK, home_score=30, away_score=21)
+    audit = m.study_audit([], [frozen], {9: final}, [], [])[-1]
+    assert audit["frozen_final_without_close"] == 1
+    assert audit["frozen_record"]["push"] == 1
+    assert audit["retail_record"]["won"] == 1
+    assert audit["retail_record"]["units"] == pytest.approx(0.9524)
+    row = _row(trigger, -9, 50, 30, 21, "push", 0)
+    paired = m.freeze_vs_close([row], [frozen], {9: final})["items"][0]
+    assert paired["best_retail_result"] == "won"
+    assert paired["price_clv"] is None
+    assert not m.freeze_vs_close([row], [frozen], {9: dict(final, home_score=31)})["items"]
+
+
 def test_freeze_vs_close_skips_ungraded_selections():
     assert m.freeze_vs_close([], [_sel("T6_mid_fav_spread", -9.0, 50.0, "Home U -9")])["summary"]["n"] == 0
 

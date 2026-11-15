@@ -112,6 +112,20 @@ def append_run(db, job: str, record: dict, run_at: str | datetime | None = None)
                    (job, run_at, _j(record)))
 
 
+def read_verdict(db) -> dict | None:
+    from model.cfb_pattern_watch import STUDY_VERSION
+
+    rows = _payloads(db, """SELECT payload FROM cfb_pattern_runs
+                           WHERE job = 'grade' AND payload->>'kind' = 'registered_verdict'
+                             AND payload->>'study_version' = %s""", (STUDY_VERSION,))
+    return rows[0] if rows else None
+
+
+def save_verdict(db, record: dict) -> None:
+    db.execute("""INSERT INTO cfb_pattern_runs (job, payload) VALUES ('grade', %s)
+                  ON CONFLICT DO NOTHING""", (_j(dict(record, kind="registered_verdict")),))
+
+
 # ── rendered page ────────────────────────────────────────────────────────────
 _GENERATED = re.compile(r"generated \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC")
 _RUN_COUNT = re.compile(r"The board has run \d+ times")

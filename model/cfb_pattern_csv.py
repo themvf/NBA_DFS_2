@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import argparse
 import csv
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from config import load_config
 from db.database import DatabaseManager
 from model import cfb_pattern_publish as pub
+from model import cfb_pattern_watch as pw
 
 DEFAULT_DIR = Path("artifacts") / "cfb_pattern_watch" / "datawrapper"
 
@@ -135,6 +136,9 @@ def frozen_vs_close_table(fvc: dict) -> list[dict]:
             "Closing home spread or total": i["close_total"] if is_total else i["close_spread"],
             "Points vs close": i["points_clv"],
             "Result at close": i["close_result"], "Result at frozen line": i["freeze_result"],
+            "Same side": i["same_side"], "Retail book": i["best_retail_book"],
+            "Retail line": i["best_retail_line"], "Retail price": i["best_retail_price"],
+            "Retail result": i["best_retail_result"],
             "Units at best retail": None if i["best_retail_pnl"] is None else round(i["best_retail_pnl"], 2),
         })
     return out
@@ -164,11 +168,20 @@ def main(argv: list[str] | None = None) -> int:
 
     # Storing needs the table to exist, so let the schema digest check run then.
     db = DatabaseManager(load_config().database_url, initialize_schema=args.store)
-    rows = store.read_ledger(db)
-    selections = list(store.read_selections(db).values())
+    original_rows = store.read_ledger(db)
+    original_selections = list(store.read_selections(db).values())
+    rows = [row for row in original_rows if pw.corrected_t5_window(row)]
+    selections = [row for row in original_selections if pw.corrected_t5_window(row)]
+    finals = measures.load_frozen_finals(db, selections)
+    audit = measures.study_audit(rows, selections, finals,
+                                 [row for row in original_rows if not pw.corrected_t5_window(row)],
+                                 [row for row in original_selections if not pw.corrected_t5_window(row)])
+    verdict = store.read_verdict(db)
+    metrics = verdict["patterns"] if verdict else pw.evaluate_patterns(
+        rows, pw.VERDICT_NOT_BEFORE - timedelta(seconds=1))
     base_games = measures.load_base_rate_games(db)
     rates = measures.weekly_base_rates(base_games)
-    fvc = measures.freeze_vs_close(rows, selections)
+    fvc = measures.freeze_vs_close(rows, selections, finals)
     out = Path(args.out_dir)
     tables = {
         "patterns.csv": patterns_table(rows),
@@ -191,8 +204,12 @@ def main(argv: list[str] | None = None) -> int:
     for name, t in tables.items():
         print(f"{out / name}: {write_csv(out / name, t)} rows")
     if args.store:
-        from model import cfb_pattern_watch as pw
-        payload = {"study_version": pw.STUDY_VERSION, **{n.removesuffix(".csv"): t for n, t in tables.items()}}
+        payload = {
+            "study_version": pw.STUDY_VERSION, "correction_version": pw.T5_CORRECTION_VERSION,
+            "study_audit": audit, "study_metrics": metrics,
+            "verdict_at": verdict["evaluated_at"] if verdict else None,
+            **{n.removesuffix(".csv"): t for n, t in tables.items()},
+        }
         saved = store.save_dataset(db, payload)
         print("dataset: saved new version" if saved else "dataset: unchanged, not stored again")
     print(f"exported {datetime.now(timezone.utc):%Y-%m-%d %H:%M UTC}")

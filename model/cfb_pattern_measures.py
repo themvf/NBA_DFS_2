@@ -537,24 +537,126 @@ def _points_clv(trigger: str, freeze: dict, close: dict) -> float | None:
     return None  # moneyline: price only
 
 
-def freeze_vs_close(rows: list[dict], selections: list[dict]) -> dict:
+def _retail_grade(selection: dict, frozen_game: dict) -> tuple[str | None, float | None]:
+    retail = selection.get("best_retail") or {}
+    price = retail.get("price")
+    if not isinstance(price, (int, float)) or abs(price) < 100:
+        return None, None
+    trigger = selection["trigger"]
+    spread = frozen_game["home_spread"]
+    margin = frozen_game["home_score"] - frozen_game["away_score"]
+    home_fav = spread < 0 if spread != 0 else frozen_game["home_ml"] < frozen_game["away_ml"]
+    favorite_margin = margin if home_fav else -margin
+    if trigger in ("T1_g5_mid_fav_ml", pw.T5):
+        edge = favorite_margin
+    else:
+        line = retail.get("line")
+        if not isinstance(line, (int, float)):
+            return None, None
+        if trigger == "T4_big_fav_over":
+            edge = frozen_game["home_score"] + frozen_game["away_score"] - line
+        else:
+            edge = (-favorite_margin if trigger == "T3_small_fav_dog_spread" else favorite_margin) + line
+    return (
+        ("won", round(pw.decimal_odds(price) - 1, 4)) if edge > 0
+        else ("lost", -1.0) if edge < 0 else ("push", 0.0)
+    )
+
+
+def _favorite_is_home(game: dict) -> bool:
+    spread = game["home_spread"]
+    return spread < 0 if spread != 0 else game["home_ml"] < game["away_ml"]
+
+
+def load_frozen_finals(db, selections: list[dict]) -> dict[int, dict]:
+    if not selections:
+        return {}
+    ids = sorted({int(row["matchup_id"]) for row in selections})
+    rows = db.execute("""
+        SELECT m.id, m.home_score, m.away_score, m.commence_time, ht.name AS home, at.name AS away
+        FROM cfb_matchups m
+        JOIN cfb_teams ht ON ht.team_id = m.home_team_id
+        JOIN cfb_teams at ON at.team_id = m.away_team_id
+        WHERE m.id = ANY(%s) AND m.season = %s AND m.completed
+          AND m.home_score IS NOT NULL AND m.away_score IS NOT NULL
+    """, (ids, pw.SEASON))
+    return {int(row["id"]): dict(row) for row in rows}
+
+
+def _frozen_result(selection: dict, final: dict | None) -> dict | None:
+    if final is None:
+        return None
+    if (selection["home"], selection["away"], datetime.fromisoformat(selection["commence_time"])) != (
+        final["home"], final["away"], final["commence_time"]
+    ):
+        return None
+    return dict(selection, home_score=final["home_score"], away_score=final["away_score"])
+
+
+def study_audit(rows: list[dict], selections: list[dict], finals: dict[int, dict],
+                excluded: list[dict], excluded_selections: list[dict]) -> list[dict]:
+    output = []
+    for trigger in pw.TRIGGERS:
+        closing = {int(row["matchup_id"]): row for row in rows if row["trigger"] == trigger}
+        frozen = {int(row["matchup_id"]): row for row in selections if row["trigger"] == trigger}
+        grades = {}
+        retail = {}
+        for game_id, selection in frozen.items():
+            game = _frozen_result(selection, finals.get(game_id))
+            if game is not None:
+                grades[game_id] = pw.grade(trigger, game)
+                result, units = _retail_grade(selection, game)
+                if result is not None:
+                    retail[game_id] = {"result": result, "pnl_units": units}
+
+        def record(values: list[dict]) -> dict:
+            return {**{result: sum(row["result"] == result for row in values) for result in ("won", "lost", "push")},
+                    "units": round(sum(row["pnl_units"] for row in values), 4)}
+
+        both = closing.keys() & grades.keys()
+        paired = sorted(game_id for game_id in both if _same_final(closing[game_id], finals[game_id]))
+        output.append({
+            "trigger": trigger, "closing": len(closing), "frozen": len(frozen), "frozen_graded": len(grades),
+            "paired": len(paired), "closing_only": len(closing.keys() - frozen.keys()),
+            "score_conflicts": len(both) - len(paired),
+            "frozen_final_without_close": len(grades.keys() - closing.keys()),
+            "awaiting_final": len(frozen.keys() - finals.keys()),
+            "identity_unresolved": len((frozen.keys() & finals.keys()) - grades.keys()),
+            "retail_unavailable": len(grades.keys() - retail.keys()),
+            "closing_fallback": sum(row.get("price_source") == "last_capture" for row in closing.values()),
+            "t5_excluded": sum(row["trigger"] == trigger for row in excluded),
+            "t5_frozen_excluded": sum(row["trigger"] == trigger for row in excluded_selections),
+            "t5_replayed": sum(bool(row.get("correction_version")) for row in closing.values()),
+            "frozen_record": record(list(grades.values())), "retail_record": record(list(retail.values())),
+            "paired_close": record([closing[game_id] for game_id in paired]),
+            "paired_frozen": record([grades[game_id] for game_id in paired]),
+        })
+    return output
+
+
+def _same_final(closing: dict, final: dict) -> bool:
+    return all(closing[key] == final[key] for key in ("home", "away", "home_score", "away_score"))
+
+
+def freeze_vs_close(rows: list[dict], selections: list[dict], finals: dict[int, dict] | None = None) -> dict:
     graded = {(r["trigger"], int(r["matchup_id"])): r for r in rows}
     items = []
     for s in selections:
         r = graded.get((s["trigger"], int(s["matchup_id"])))
         if r is None:
             continue
+        if finals is not None:
+            final = finals.get(int(s["matchup_id"]))
+            if _frozen_result(s, final) is None or not _same_final(r, final):
+                continue
         frozen_game = dict(r, home_spread=s["home_spread"], vegas_total=s["vegas_total"],
                            home_ml=s["home_ml"], away_ml=s["away_ml"])
         fg = pw.grade(s["trigger"], frozen_game)
         br = s.get("best_retail") or {}
-        br_pnl = None
-        if fg["result"] == "won" and br.get("price") is not None:
-            br_pnl = round(pw.decimal_odds(br["price"]) - 1, 4)
-        elif fg["result"] == "lost":
-            br_pnl = -1.0
-        elif fg["result"] == "push":
-            br_pnl = 0.0
+        br_result, br_pnl = _retail_grade(s, frozen_game)
+        is_total = s["trigger"] == "T4_big_fav_over"
+        same_side = is_total or _favorite_is_home(s) == _favorite_is_home(r)
+        is_moneyline = s["trigger"] in ("T1_g5_mid_fav_ml", pw.T5)
         lead_min = None
         try:
             lead_min = round((datetime.fromisoformat(s["commence_time"]) - datetime.fromisoformat(s["frozen_at"])).total_seconds() / 60)
@@ -565,11 +667,14 @@ def freeze_vs_close(rows: list[dict], selections: list[dict]) -> dict:
             "selection": s["selection"], "lead_minutes": lead_min,
             "freeze_spread": s["home_spread"], "close_spread": r["home_spread"],
             "freeze_total": s["vegas_total"], "close_total": r["vegas_total"],
-            "points_clv": _points_clv(s["trigger"], s, r),
-            "price_clv": round(s["consensus_decimal"] / r["price"] - 1, 4) if s.get("consensus_decimal") and r.get("price") else None,
+            "points_clv": _points_clv(s["trigger"], s, r) if same_side else None,
+            "price_clv": (round(s["consensus_decimal"] / r["price"] - 1, 4)
+                          if same_side and is_moneyline and s.get("consensus_decimal") and r.get("price") else None),
+            "same_side": same_side,
             "close_result": r["result"], "close_pnl": r["pnl_units"],
             "freeze_result": fg["result"], "freeze_pnl": fg["pnl_units"],
-            "best_retail_book": br.get("book"), "best_retail_pnl": br_pnl,
+            "best_retail_book": br.get("book"), "best_retail_line": br.get("line"),
+            "best_retail_price": br.get("price"), "best_retail_result": br_result, "best_retail_pnl": br_pnl,
         })
     pts = [i["points_clv"] for i in items if i["points_clv"] is not None]
     prc = [i["price_clv"] for i in items if i["price_clv"] is not None]
