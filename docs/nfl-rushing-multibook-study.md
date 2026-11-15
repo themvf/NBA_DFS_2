@@ -48,3 +48,23 @@ lead is the highest-line under; its interval includes zero.
 (DraftKings, FanDuel, BetMGM, Caesars, Fanatics) quoting the highest rushing-yards
 line; ties go to the best under price; players quoted by one US book are skipped.
 $1 flat, settled as in the history study. No other rule is tested on the holdouts.
+
+## Holdout result for `highest_line_under`: not confirmed
+
+2025: 1,436 bets, +0.4% (-4.0 to +4.8). 2026 weeks 1-10: 805 bets, +6.3% (-0.3 to
++12.4). All four seasons: 5,033 bets, +2.3% (-0.1 to +4.7), positive in each. The
+2025 interval includes zero, so by the bar set above it is not confirmed.
+
+## Second round: who the under is on (2026-11-14, 2023-2024 only)
+
+Nineteen cells of `highest_line_under` bets by position, by whether the player's
+team was favoured or an underdog by 3+ (nflverse closing spread), and by line size.
+Running backs on underdogs of 3+: 634 bets, +10.7% (+3.8 to +17.7), 2023 +11.5%,
+2024 +10.1%. Running backs on favourites of 3+: -8.0% (-15.7 to -0.5). The reading
+is game script: a team that trails stops running.
+
+**Frozen before 2025 or 2026 was scored with it: `rb_underdog_under`.** A running
+back (nflverse position RB) whose team is an underdog of 3 or more points, under at
+the US book with the highest line, ties to the best price. Same bar: 2025 interval
+above zero and 2026 positive. One cell picked from nineteen, so discovery alone
+would be expected to overstate it.

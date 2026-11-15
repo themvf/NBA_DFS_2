@@ -89,3 +89,29 @@ rushing lines.
     python -m ingest.nfl_prop_backfill --season 2023 --weeks 1-18 --markets player_rush_yds          # dry run
     python -m ingest.nfl_prop_backfill --season 2023 --weeks 1-18 --markets player_rush_yds --apply --max-credits 3000
     python -m research.nfl_rushing_under_history grade --final --write-db --out artifacts/nfl_rushing_under_history.json   # after all three pulls
+
+## Result (2026-11-14): NO_EDGE
+
+One look, `grade --final --write-db`, verdict frozen in `nfl_rushing_under_verdicts`
+at 2026-11-14 19:09 UTC. The pull (2026-10-31, 818 archive requests, 8,120 credits)
+had no failed request; 805 of 816 games carried a DraftKings rushing line.
+
+| | Bets | Record | ROI | Over hit | Implied over |
+| --- | ---: | --- | ---: | ---: | ---: |
+| 2023 | 1,268 | 669-599 | -1.2% | 47.2% | 50.0% |
+| 2024 | 1,389 | 744-645 | -0.3% | 46.4% | 49.8% |
+| 2025 | 1,380 | 715-665 | -2.3% | 48.2% | 49.8% |
+| **All** | **4,037** | **2,128-1,909** | **-1.2%** | **47.3%** | **49.9%** |
+
+ROI interval -3.9% to +1.3% (54 game weeks); no season positive; 101 voids (100 no
+stat row, 1 ambiguous name). The line bias is real and in every season: overs hit
+2.6 points below the de-vigged rate (interval -3.9 to -1.2). It is smaller than
+DraftKings' margin, so betting every under there loses about what a coin flip at
+that price loses less two points. Secondary: lines under 60 yards -1.25%, 60 or
+more -1.23%, difference 0.0 (-7.0 to +7.4); the 2026 small-line read does not hold.
+
+What this means for the forward study (`nfl-rushing-under-v1`): its +2.2% through
+week 9 sits on a bias that three earlier seasons put below the vig. It keeps
+running to its own verdict; nothing is built on rushing unders at DraftKings.
+The archive rows also hold five other books, read in
+`docs/nfl-rushing-multibook-study.md`.
