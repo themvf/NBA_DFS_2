@@ -30,7 +30,7 @@ function StudyTrend({ stats }: { stats: Stats }) {
         <LineChart data={stats.trend} margin={{ top: 10, right: 18, bottom: 0, left: 0 }}>
           <CartesianGrid vertical={false} stroke="var(--border)" />
           <XAxis dataKey="date" tickFormatter={date => date.slice(5)} minTickGap={25} tick={{ fontSize: 11 }} />
-          <YAxis width={48} tick={{ fontSize: 11 }} domain={([low, high]: [number, number]) => [Math.min(0, low), Math.max(0, high)]} />
+          <YAxis width={48} tick={{ fontSize: 11 }} domain={([low, high]) => [Math.min(0, low), Math.max(0, high)]} />
           <ReferenceLine y={0} stroke="var(--muted-foreground)" strokeDasharray="4 4" />
           <Tooltip contentStyle={{ background: "var(--card)", color: "var(--foreground)" }} />
           <Line dataKey="units" name="Cumulative units" stroke="var(--primary)" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} />
