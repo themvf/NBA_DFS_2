@@ -164,6 +164,10 @@ const DK_PLAYER_PROP_COLUMN_DDLS = [
   `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS live_leverage REAL`,
   `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS live_own_pct REAL`,
   `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS linestar_own_pct REAL`,
+  // nba-statapi-ownership-v1 (2026-11-14): stat-api's projected GPP ownership.
+  `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS statapi_own_pct REAL`,
+  `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS statapi_own_at TIMESTAMPTZ`,
+  `ALTER TABLE dk_players ADD COLUMN IF NOT EXISTS statapi_slate_id BIGINT`,
 ];
 
 const PROJECTION_EXPERIMENT_DDLS = [

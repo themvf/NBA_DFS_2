@@ -16,6 +16,7 @@
     "test:nba-points-calibration-charts": "node --import tsx ./scripts/test-nba-points-calibration-charts.ts",
     "test:nba-top-scorers": "node --import tsx ./scripts/test-nba-top-scorers.ts",
     "test:optimizer": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nba-optimizer.ts",
+    "test:nba-ownership-input": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nba-ownership-input.ts",
     "test:mlb-order": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-mlb-order-bonus.ts",
     "test:mlb-vegas-trust": "node --import tsx ./scripts/test-mlb-vegas-trust.ts",
     "test:mlb-vegas-decisions": "node --import tsx ./scripts/test-mlb-vegas-decisions.ts",
