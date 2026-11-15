@@ -65,6 +65,8 @@ import FinalSetView, { useLineupPool } from "./final-set";
 import PairsPanel from "./pairs-panel";
 import CompareRunsPanel from "./compare-runs-panel";
 import SlatePredictionPanel from "./slate-prediction-panel";
+import PreBuildCard from "./pre-build-card";
+import { lockCountdown } from "@/lib/nfl-dfs/lock-countdown";
 import type { QaOverride as PoolQaOverride } from "@/lib/nfl-dfs/pre-export-qa";
 import PortfolioBreakdownPanel from "./portfolio-breakdown-panel";
 import { breakdownPortfolio } from "@/lib/nfl-dfs/portfolio-breakdown";
@@ -124,7 +126,7 @@ function downloadText(name: string, content: string) {
 const formatEt = (iso: string) => new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" }).format(new Date(iso)) + " ET";
 
 export default function NflDfsClient() {
-  const salaryRef = useRef<HTMLInputElement>(null), comparisonRef = useRef<HTMLInputElement>(null), entryRef = useRef<HTMLInputElement>(null);
+  const salaryRef = useRef<HTMLInputElement>(null), comparisonRef = useRef<HTMLInputElement>(null), entryRef = useRef<HTMLInputElement>(null), entryRefBuild = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
   const [savedSlates, setSavedSlates] = useState<Awaited<ReturnType<typeof listSavedNflSlates>>>([]);
   const [savedRuns, setSavedRuns] = useState<Awaited<ReturnType<typeof loadSavedNflWorkspace>>['runs']>([]);
@@ -463,10 +465,21 @@ export default function NflDfsClient() {
   // empty rows), so QA can block an export that would leave an entry blank and
   // say how the lineups will be spread over the contests.
   const entryFileRef = useRef<File | null>(null);
+  const lineupCountRef = useRef(0);
+  lineupCountRef.current = lineups.length;
   function selectEntryFile(file: File | null) {
     entryFileRef.current = file; setEntryFile(file); setEntryShape(null);
     if (!file) return;
-    file.text().then((text) => { if (entryFileRef.current === file) setEntryShape(describeNflDkEntryFile(text)); })
+    file.text().then((text) => {
+      if (entryFileRef.current !== file) return;
+      const shape = describeNflDkEntryFile(text);
+      setEntryShape(shape);
+      // Chosen before any lineups exist: the entries set the lineup count (owner, 2026-11-15).
+      if (!lineupCountRef.current && shape.multiEntryRows >= 1 && shape.multiEntryRows <= 150) {
+        setSettings((s) => (s.nLineups === shape.multiEntryRows ? s : { ...s, nLineups: shape.multiEntryRows }));
+        setMessage(`Lineup count set to ${shape.multiEntryRows} to match the entry file.`);
+      }
+    })
       .catch((reason) => { if (entryFileRef.current === file) setError(reason instanceof Error ? `That entry file can't be used: ${reason.message}` : "That entry file can't be read."); });
   }
   /** Apply the build form saved for this slate, then allow autosave. */
@@ -1086,6 +1099,12 @@ export default function NflDfsClient() {
               : "No player is tagged questionable right now, but a late scratch would not show yet. "}In past Showdowns, a build made before inactives lost about $0.10 per $1 to players who were then ruled out.</span>
             <span className="mt-1 block">You can build now to look. Before you enter, press Update data after that time and build again.</span>
           </div> : null}
+          <input ref={entryRefBuild} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => selectEntryFile(e.target.files?.[0] ?? null)} />
+          <PreBuildCard countdown={lockCountdown(slate?.firstKickoff ?? null, now)} summary={rulesSummary} nLineups={settings.nLineups} disabled={pending || slateLocked}
+            allowed={[...new Set([...settings.puntPolicy.allowlistedPlayerIds, ...settings.puntOverrides.map((o) => o.playerId)])].map((id) => ({ id, name: slate?.players.find((p) => p.dkPlayerId === id)?.name ?? null, at: settings.puntOverrides.find((o) => o.playerId === id)?.at ?? null }))}
+            onClearAllowed={() => { setSettings((s) => ({ ...s, puntPolicy: { ...s.puntPolicy, allowlistedPlayerIds: [] }, puntOverrides: [] })); setMessage("Cleared the cheap players you had allowed. The next build applies the cheap-player rules to everyone."); }}
+            entryFileName={entryFile?.name ?? null} entryRows={entryShape?.multiEntryRows ?? null} onChooseEntryFile={() => entryRefBuild.current?.click()}
+            onSetLineups={(n) => setSettings((s) => ({ ...s, nLineups: n }))} />
           <button disabled={pending || slateLocked} title={slateLocked ? "Games have started, so building is closed for this slate." : undefined} onClick={generate} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 text-sm font-bold text-white disabled:opacity-40"><Play className="h-4 w-4" />{pending ? "Working…" : slateLocked ? "Games have started" : "Generate & save"}</button>
           {slateLocked ? <p className="text-[11px] text-slate-500">Building and export close at the first kickoff. Results shows how the lineups did.</p> : null}
 {slate.format === "classic" && settings.mode === "gpp" ? <details className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900"><summary className="cursor-pointer font-semibold">Opportunity tags · {settings.gppSignalMinPerLineup === 1 ? "1 per lineup" : "off"} <span className="block font-normal">Lineup requirements only; no change to fantasy point forecasts</span></summary><div className="mt-2"><label className="flex items-start gap-2"><input type="checkbox" checked={settings.gppSignalMinPerLineup === 1} onChange={e => setSettings({ ...settings, gppSignalMinPerLineup: e.target.checked ? 1 : 0 })} /><span>Require one selected opportunity-tagged player in every lineup. Chips change construction, not projections or ownership.</span></label>{settings.gppSignalMinPerLineup === 1 ? <div className="mt-2 grid grid-cols-2 gap-1">{SIGNAL_OPTIONS.map(option => <label key={option.code} className="flex items-center gap-1"><input type="checkbox" checked={settings.gppSignalCodes.includes(option.code)} onChange={e => setSettings({ ...settings, gppSignalCodes: e.target.checked ? [...settings.gppSignalCodes, option.code] : settings.gppSignalCodes.filter(code => code !== option.code) })} />{option.label}</label>)}</div> : null}</div></details> : null}
