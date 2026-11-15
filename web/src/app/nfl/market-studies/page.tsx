@@ -1,3 +1,6 @@
+import { StudyPerformancePanel } from "@/app/sports/market-studies/study-performance-panel";
+import { nflObservations } from "@/lib/daily-study-matches";
+import { nflSeason, studyDate } from "@/lib/daily-market-studies";
 import Link from "next/link";
 import { studyHeading } from "@/lib/study-registry";
 import type { Metadata } from "next";
@@ -45,14 +48,14 @@ function show(value: number | null, digits = 2) {
   return value === null ? "—" : value.toFixed(digits);
 }
 
-export default async function NflMarketStudies({ searchParams }: { searchParams: Promise<{ week?: string }> }) {
+export default async function NflMarketStudies({ searchParams }: { searchParams: Promise<{ week?: string; date?: string; cohort?: string }> }) {
   const today = easternDateString();
-  const year = Number(today.slice(0, 4));
-  const season = Number(today.slice(5, 7)) <= 2 ? year - 1 : year;
-  const { week: requested } = await searchParams;
+  const { week: requested, date: requestedDate, cohort } = await searchParams;
+  const date = studyDate(requestedDate, today);
+  const season = nflSeason(date);
   const all = await getNflMarketStudyGames(season);
   const weeks = [...new Set(all.map(row => row.game.week))].sort((a, b) => a - b);
-  const currentWeek = all.filter(row => row.game.date !== null && row.game.date <= today).at(-1)?.game.week ?? weeks[0] ?? 1;
+  const currentWeek = all.filter(row => row.game.date !== null && row.game.date <= date).at(-1)?.game.week ?? weeks[0] ?? 1;
   const week = weeks.includes(Number(requested)) ? Number(requested) : currentWeek;
   const selected = all.filter(row => row.game.week === week);
   const daily = summarize(selected);
@@ -66,6 +69,8 @@ export default async function NflMarketStudies({ searchParams }: { searchParams:
         Returns use one unit per side and refund pushes. Results update when the archive and final scores refresh.
       </p>
     </header>
+
+    <StudyPerformancePanel entries={all.filter(row => row.game.date && row.game.date <= date && (requestedDate || row.game.week <= week)).flatMap(nflObservations)} date={date} initial={cohort} />
 
     <form action="/nfl/market-studies" className="flex flex-wrap items-center gap-3 text-sm">
       <label htmlFor="week" className="font-medium">Week</label>
