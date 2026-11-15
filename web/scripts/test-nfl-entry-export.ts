@@ -4,7 +4,7 @@
  */
 import assert from "node:assert/strict";
 import type { NflGeneratedLineup, NflOptimizerPlayer } from "../src/app/dfs/nfl/nfl-optimizer";
-import { describeNflDkEntryFile, entryAssignmentNote, exportNflDkEntries, isSingleEntryContest, planNflDkEntries, topNflLineup } from "../src/lib/nfl-dfs/entry-export";
+import { describeNflDkEntryFile, entryAssignmentNote, exportNflDkEntries, isSingleEntryContest, keepBestLineups, lineupShapeKey, planNflDkEntries, topNflLineup } from "../src/lib/nfl-dfs/entry-export";
 import { runNflPreExportQa } from "../src/lib/nfl-dfs/pre-export-qa";
 
 const player = (id: number): NflOptimizerPlayer => ({ id, dkPlayerId: id, captainDkPlayerId: null, name: `P${id}`, position: "RB", team: "CAR", opponent: "GB",
@@ -76,7 +76,7 @@ for (const name of ["NFL $20 Millionaire [150 Entry Max]", "NFL Showdown $5 SEA 
   assert.doesNotThrow(() => exportNflDkEntries(file(rows), three), "fewer lineups than entries is written anyway (owner, 2026-11-15)");
   assert.match(planNflDkEntries(file(rows), three).note, /The entry file has 4 entries for 3 lineups\..*written anyway/);
   const five = [0, 1, 2, 3, 4].map((n) => lineup(n, "standard_ceiling"));
-  assert.match(planNflDkEntries(file(rows), five).note, /room for 4 lineups.*extra lineups were left out/);
+  assert.match(planNflDkEntries(file(rows), five).note, /room for 4 lineups.*the 1 lowest-projected lineup was left out/);
   const shape = describeNflDkEntryFile(file(rows));
   const qa = runNflPreExportQa({ format: "showdown", requestedLineups: 3, lineups: three.map((l) => ({ lineupNumber: l.lineupNumber, playerIds: l.playerIds, totalSalary: 1, slots: [] })),
     entryFile: { shape, note: entryAssignmentNote(shape, three) } });
@@ -119,6 +119,48 @@ for (const name of ["NFL $20 Millionaire [150 Entry Max]", "NFL Showdown $5 SEA 
     entryFile: { shape, note: plan.note } }).checks.find((c) => c.id === "entry_rows")!;
   assert.equal(check.passed, true);
   assert.match(check.detail, /All 6 entries in the file get a lineup\. Each of the 2 contests/);
+}
+
+
+// --- 2026-11-15: constructions spread over contests; with more lineups than entries the weakest of each type go ---
+{
+  const sdShape = (teams: string[]) => lineupShapeKey({ slots: teams.map((team, i) => ({ slot: i === 0 ? "CPT" : "FLEX", player: { team } })), stackSummary: { quarterback: null, passCatchers: [], bringBack: null } } as never);
+  const split = (heavy: string, other: string, k: number) => [...Array(k).fill(heavy), ...Array(6 - k).fill(other)];
+  assert.equal(sdShape(split("DET", "NE", 4)), "4-2 DET");
+  assert.equal(sdShape(split("NE", "DET", 5)), "5-1 NE");
+  assert.equal(sdShape(split("NE", "DET", 3)), "3-3");
+  const stacked = (n: number, catchers: number, bring: boolean, type = "standard_ceiling", projected = 100) => ({ ...lineup(n, type, projected),
+    stackSummary: { quarterback: "QB", passCatchers: Array(catchers).fill("WR"), bringBack: bring ? "Opp" : null } }) as NflGeneratedLineup;
+  assert.equal(lineupShapeKey(stacked(0, 2, true)), "QB+2 bring-back");
+  assert.equal(lineupShapeKey(stacked(0, 1, false)), "QB+1");
+  assert.equal(lineupShapeKey(lineup(0, "standard_ceiling")), "no stack");
+
+  // One lineup type, three constructions in blocks (as a build returns them): 8, 4 and 4, into two contests of 8.
+  const run = [...Array(8).keys()].map((n) => stacked(n, 1, true))
+    .concat([...Array(4).keys()].map((n) => stacked(8 + n, 2, false)), [...Array(4).keys()].map((n) => stacked(12 + n, 2, true)));
+  const rows = [...Array(16).keys()].map((i): [string, string] => [i < 8 ? "Contest A" : "Contest B", i < 8 ? "1" : "2"]);
+  const plan = planNflDkEntries(file(rows), run);
+  const perContest: Record<string, Record<string, number>> = { "Contest A": {}, "Contest B": {} };
+  const csvRows = plan.csv.trim().split("\r\n").slice(1);
+  for (const [entry, n] of written(plan.csv)) {
+    const contest = csvRows.find((line) => line.startsWith(`${entry},`))!.split(",")[1];
+    const shape = lineupShapeKey(run[n!]);
+    perContest[contest][shape] = (perContest[contest][shape] ?? 0) + 1;
+  }
+  const even = { "QB+1 bring-back": 4, "QB+2": 2, "QB+2 bring-back": 2 };
+  assert.deepEqual(perContest["Contest A"], even, JSON.stringify(perContest));
+  assert.deepEqual(perContest["Contest B"], even, JSON.stringify(perContest));
+  assert.match(plan.note, /and of the 3 constructions \(stack shapes\)/);
+
+  // Ranked cut: 6 standard + 4 fades, room for 5: 3 standard and 2 fades stay, the highest-projected of each.
+  const mixed = [...Array(6).keys()].map((n) => lineup(n, "standard_ceiling", 100 + n)).concat([...Array(4).keys()].map((n) => lineup(6 + n, "single_chalk_fade", 90 + n)));
+  assert.deepEqual(keepBestLineups(mixed, 5).map((l) => l.lineupNumber), [3, 4, 5, 8, 9], "top 3 of the standard builds and top 2 of the fades, in run order");
+  assert.equal(keepBestLineups(mixed, 10).length, 10);
+  assert.equal(keepBestLineups(mixed, 0).length, 0);
+  // Through the file: 10 lineups, 5 entries, the five kept are the ones written.
+  const cut = planNflDkEntries(file([...Array(5).keys()].map((): [string, string] => ["Contest A", "1"])), mixed);
+  assert.deepEqual([...written(cut.csv).values()].sort((a, b) => a! - b!), [3, 4, 5, 8, 9]);
+  assert.match(cut.note, /the 5 lowest-projected lineups were left out, keeping each lineup type's share/);
 }
 
 console.log("nfl entry export: all assertions passed");

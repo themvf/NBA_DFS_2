@@ -127,6 +127,54 @@ function interleaveByArchetype(lineups: NflGeneratedLineup[]): NflGeneratedLineu
     .map((entry) => entry.lineup);
 }
 
+/**
+ * A lineup's construction in a few words, so the export can spread
+ * constructions over the contests as it does lineup types.
+ * Showdown: the team split and the heavy side ("4-2 DET", "3-3").
+ * Classic: the quarterback's stack and whether there is a bring-back ("QB+2 bring-back").
+ */
+export function lineupShapeKey(lineup: Pick<NflGeneratedLineup, "slots" | "stackSummary">): string {
+  if (lineup.slots.some((entry) => entry.slot === "CPT")) {
+    const counts = new Map<string, number>();
+    for (const { player } of lineup.slots) counts.set(player.team, (counts.get(player.team) ?? 0) + 1);
+    const sorted = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    const split = sorted.map(([, n]) => n).join("-");
+    return sorted.length > 1 && sorted[0][1] !== sorted[1][1] ? `${split} ${sorted[0][0]}` : split;
+  }
+  if (!lineup.stackSummary?.quarterback) return "no stack";
+  return `QB+${lineup.stackSummary.passCatchers.length}${lineup.stackSummary.bringBack ? " bring-back" : ""}`;
+}
+
+/**
+ * More lineups than entries (owner, 2026-11-15): keep each lineup type's share
+ * of the run and, within a type, the lineups with the most projected points.
+ * Returned in the run's own order.
+ */
+export function keepBestLineups(lineups: NflGeneratedLineup[], count: number): NflGeneratedLineup[] {
+  if (count >= lineups.length) return lineups;
+  if (count <= 0) return [];
+  const groups = new Map<string, NflGeneratedLineup[]>();
+  for (const lineup of lineups) {
+    const key = lineup.archetype?.id ?? "none";
+    groups.set(key, [...(groups.get(key) ?? []), lineup]);
+  }
+  // Largest-remainder shares, so the kept counts add up to `count` exactly.
+  const shares = [...groups].map(([key, list]) => {
+    const exact = (list.length * count) / lineups.length;
+    return { key, list, keep: Math.floor(exact), remainder: exact - Math.floor(exact) };
+  });
+  let short = count - shares.reduce((sum, g) => sum + g.keep, 0);
+  for (const g of [...shares].sort((a, b) => b.remainder - a.remainder || b.list.length - a.list.length || a.key.localeCompare(b.key))) {
+    if (short <= 0) break;
+    if (g.keep < g.list.length) { g.keep += 1; short -= 1; }
+  }
+  const kept = new Set<number>();
+  for (const g of shares) {
+    [...g.list].sort((a, b) => b.projectedFpts - a.projectedFpts || a.lineupNumber - b.lineupNumber).slice(0, g.keep).forEach((l) => kept.add(l.lineupNumber));
+  }
+  return lineups.filter((l) => kept.has(l.lineupNumber));
+}
+
 /** The run's strongest consensus lineup: most projected points, then highest estimated ownership. */
 export function topNflLineup(lineups: NflGeneratedLineup[]): NflGeneratedLineup | null {
   return [...lineups].sort((a, b) =>
@@ -155,7 +203,8 @@ export type NflDkEntryPlan = { csv: string; note: string };
 /**
  * Write lineups into a DraftKings entry file.
  * - A single-entry contest gets the run's top lineup (the same lineup may go into several such contests).
- * - Every other row gets its own lineup, dealt so each contest holds a mix of the run's lineup types.
+ * - Every other row gets its own lineup, dealt so each contest holds a mix of the run's lineup types and constructions
+ *   (Showdown team splits, Classic stack shapes). With more lineups than rows, the lowest-projected of each type are left out.
  * - A count mismatch does not stop the file: it is written with what there is, and the note says what was left over.
  */
 export function planNflDkEntries(content: string, lineups: NflGeneratedLineup[]): NflDkEntryPlan {
@@ -165,29 +214,43 @@ export function planNflDkEntries(content: string, lineups: NflGeneratedLineup[])
   const multi = rows.filter((row) => !row.singleEntry);
   const single = rows.filter((row) => row.singleEntry);
   // Empty rows first, so a row left over is one that keeps the lineup DraftKings already has.
-  const targets = [...multi].sort((a, b) => Number(b.empty) - Number(a.empty) || a.index - b.index).slice(0, lineups.length);
+  const dealt = keepBestLineups(lineups, multi.length);
+  const targets = [...multi].sort((a, b) => Number(b.empty) - Number(a.empty) || a.index - b.index).slice(0, dealt.length);
   const byContest = new Map<string, typeof targets>();
   for (const row of targets) byContest.set(row.key, [...(byContest.get(row.key) ?? []), row]);
   for (const list of byContest.values()) list.sort((a, b) => a.index - b.index);
   const filled = new Map<string, number>();
   const assigned = new Map<number, NflGeneratedLineup>();
-  for (const lineup of interleaveByArchetype(lineups)) {
-    // The next lineup goes to the contest furthest behind its share; larger contest first on a tie.
+  // Each contest should hold the run's own mix of lineup types AND of constructions
+  // (Showdown team splits, Classic stack shapes). A lineup goes to the contest that
+  // is furthest behind on its exact kind, then its type, then its construction,
+  // then overall; the larger contest wins a tie.
+  const counts = new Map<string, number>();
+  const seen = (contest: string, tag: string) => counts.get(`${contest}|${tag}`) ?? 0;
+  for (const lineup of interleaveByArchetype(dealt)) {
+    const type = `t:${lineup.archetype?.id ?? "none"}`;
+    const shape = `s:${lineupShapeKey(lineup)}`;
+    const both = `${type}|${shape}`;
     let best: string | null = null;
-    let bestShare = Infinity;
+    let bestScore: number[] = [];
     let bestSize = -1;
     for (const [key, list] of byContest) {
       const done = filled.get(key) ?? 0;
       if (done >= list.length) continue;
-      const share = done / list.length;
-      if (share < bestShare - 1e-12 || (Math.abs(share - bestShare) <= 1e-12 && list.length > bestSize)) {
-        best = key; bestShare = share; bestSize = list.length;
+      const score = [seen(key, both), seen(key, type), seen(key, shape), done].map((n) => n / list.length);
+      let better = best == null;
+      for (let i = 0; !better && i < score.length; i++) {
+        if (score[i] < bestScore[i] - 1e-12) better = true;
+        else if (score[i] > bestScore[i] + 1e-12) break;
+        else if (i === score.length - 1) better = list.length > bestSize;
       }
+      if (better) { best = key; bestScore = score; bestSize = list.length; }
     }
-    if (best == null) break; // more lineups than entries: the rest are not written
+    if (best == null) break;
     const done = filled.get(best) ?? 0;
     assigned.set(byContest.get(best)![done].index, lineup);
     filled.set(best, done + 1);
+    for (const tag of [both, type, shape]) counts.set(`${best}|${tag}`, seen(best, tag) + 1);
   }
   const top = single.length ? topNflLineup(lineups) : null;
   if (top) for (const row of single) assigned.set(row.index, top);
@@ -198,8 +261,8 @@ export function planNflDkEntries(content: string, lineups: NflGeneratedLineup[])
     if (lineup) exportCells(lineup, expectedSlots).forEach((cell, slotIndex) => { row[firstSlot + slotIndex] = cell; });
     output.push(stringifyCsvLine(row));
   }
-  const note = entryAssignmentNote(describeNflDkEntryFile(content), lineups);
-  const leftOver = lineups.length > multi.length ? "the extra lineups were left out" : "the entries without a lineup keep whatever DraftKings already has";
+  const note = entryAssignmentNote(describeNflDkEntryFile(content), dealt);
+  const leftOver = lineups.length > multi.length ? `the ${lineups.length - multi.length} lowest-projected lineup${lineups.length - multi.length === 1 ? " was" : "s were"} left out, keeping each lineup type's share` : "the entries without a lineup keep whatever DraftKings already has";
   return { csv: `${output.join("\r\n")}\r\n`, note: problem ? `${problem} The file was written anyway: ${leftOver}.${note ? ` ${note}` : ""}` : note };
 }
 
@@ -209,7 +272,8 @@ export function entryAssignmentNote(shape: NflDkEntryFileShape, lineups: NflGene
   const seContests = shape.contests.filter((c) => c.singleEntry).length;
   const types = new Set(lineups.map((l) => l.archetype?.id ?? "none")).size;
   const parts: string[] = [];
-  if (multiContests > 1) parts.push(types > 1 ? `Each of the ${multiContests} contests gets a mix of the ${types} lineup types` : `Lineups are spread over ${multiContests} contests`);
+  const shapes = new Set(lineups.map((l) => lineupShapeKey(l))).size;
+  if (multiContests > 1) parts.push(`${types > 1 ? `Each of the ${multiContests} contests gets a mix of the ${types} lineup types` : `Lineups are spread over ${multiContests} contests`}${shapes > 1 ? ` and of the ${shapes} constructions (${lineups.some((l) => l.slots.some((e) => e.slot === "CPT")) ? "team splits" : "stack shapes"})` : ""}`);
   else if (multiContests === 1 && lineups.length) parts.push(`${lineups.length} lineup${lineups.length === 1 ? "" : "s"} go into 1 contest`);
   const top = topNflLineup(lineups);
   if (seContests && top) parts.push(`${seContests} single-entry contest${seContests === 1 ? "" : "s"} get${seContests === 1 ? "s" : ""} your top lineup (#${top.lineupNumber}, ${top.projectedFpts.toFixed(1)} projected)`);
