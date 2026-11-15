@@ -115,6 +115,16 @@ class Dataset:
 _NFL = (9, 10, 11, 12, 1, 2)
 _MLB = (3, 4, 5, 6, 7, 8, 9, 10)      # World Series can run into the first days of November; those days go unwatched
 _NBA = (10, 11, 12, 1, 2, 3, 4, 5, 6)
+# NBA rolling stats are judged November to May: October has no games until opening
+# night and June stops at the Finals, so stats_through legitimately stops moving.
+# The box-score row (nba_box_scores) and the workflow row cover those weeks.
+_NBA_STATS_MONTHS = (11, 12, 1, 2, 3, 4, 5)
+# The NBA season string of today's Eastern date, turning over on Aug 1 like
+# config.nba_season_for: 2026-11-15 -> '2026-27'.
+_NBA_CURRENT_SEASON = (
+    "season = to_char((now() AT TIME ZONE 'America/New_York') - interval '7 months', 'YYYY') || '-' "
+    "|| to_char((now() AT TIME ZONE 'America/New_York') + interval '5 months', 'YY')"
+)
 _TENNIS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
 _NHL = (10, 11, 12, 1, 2, 3, 4, 5, 6)  # regular season opens early October; only regular/playoff games are stored
 _NHL_GRADED = (11, 12, 1, 2, 3, 4, 5, 6)  # the first settled alert needs a verified close and a final; October would read EMPTY
@@ -366,6 +376,22 @@ DATASET_REGISTRY: tuple[Dataset, ...] = (
             36, "grade_nba_points_props.yml", _NBA,
             "Written by ingest.nba_box_scores for the last three Eastern dates each morning. Only final games are "
             "written, so a date with no finished game writes nothing."),
+    # NBA DFS rolling stats (2026-11-15), current season only. stats_through is the newest
+    # game the builder averaged (ingest.nba_stats, from ESPN box scores since 2026-27). Not
+    # fetched_at: the upsert restamped it on every recompute of stored logs, so the tables read
+    # fresh from July to November while every stats.nba.com fetch failed and the season was wrong.
+    # 72 h: games are near daily and the job runs once a day; the ~6-day All-Star break will flag.
+    # stats_through only moves on real games (season type 2/3/5 between two franchises).
+    Dataset("nba_player_stats", "NBA player rolling stats (DFS projections)", "nba_player_stats", "stats_through",
+            72, "refresh_nba_stats.yml", _NBA_STATS_MONTHS,
+            "Written by ingest.nba_stats from ESPN box scores: last 10 appearances per player, EWMA. "
+            "Stale means the box scores stopped or the builder failed; empty means no current-season rows.",
+            filter=_NBA_CURRENT_SEASON),
+    Dataset("nba_team_stats", "NBA team pace and ratings (DFS projections)", "nba_team_stats", "stats_through",
+            72, "refresh_nba_stats.yml", _NBA_STATS_MONTHS,
+            "Written by ingest.nba_stats from ESPN box scores (estimated possessions, rescaled to the model's "
+            "league constants, shrunk toward them early in the season).",
+            filter=_NBA_CURRENT_SEASON),
     Dataset("nba_points_calibration", "NBA points-line calibration grade (/nba/top-scorers)", "nba_points_calibration", "graded_at",
             36, "grade_nba_points_props.yml", _NBA,
             "Written by model.nba_points_calibration after the box scores: one row per player-game from each game's "

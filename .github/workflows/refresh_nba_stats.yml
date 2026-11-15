@@ -1,15 +1,21 @@
 name: Refresh NBA Stats
 
 on:
+  # Right after each box-score run: the stats are built from those box scores,
+  # and GitHub's own schedule starts 4-8 h late (it landed 20:21 UTC on 11-15).
+  workflow_run:
+    workflows: ["Grade NBA points props"]
+    types: [completed]
+    branches: [main]
   schedule:
     # 11:00 AM ET daily (16:00 UTC) — runs before afternoon/evening slates
     - cron: "0 16 * * *"
   workflow_dispatch:
     inputs:
       season:
-        description: "NBA season (e.g. 2025-26)"
+        description: "NBA season (e.g. 2026-27); blank = today's season"
         required: false
-        default: "2025-26"
+        default: ""
         type: string
 
 jobs:
@@ -34,5 +40,15 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # 2026-27 on: built from ESPN box scores (grade_nba_points_props.yml writes
+      # them at 11:07 UTC); exits 1 when no team or player rows are written.
       - name: Refresh NBA team + player rolling stats
-        run: python -m ingest.nba_stats --season "${{ inputs.season || '2025-26' }}"
+        # Season input goes through env, never interpolated into the script.
+        env:
+          SEASON: ${{ inputs.season }}
+        run: |
+          if [ -n "$SEASON" ]; then
+            python -m ingest.nba_stats --season "$SEASON"
+          else
+            python -m ingest.nba_stats
+          fi

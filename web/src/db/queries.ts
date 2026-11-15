@@ -1,3 +1,4 @@
+import { currentNbaSeason } from "@/lib/nba-season";
 import { selectedSportsbooks } from "@/lib/sportsbook-policy";
 import { NHL_FIRST_CAPTURE_DUE_MINUTES, nhlFreshnessTargetMinutes } from "@/lib/nhl-market";
 import { summarizeNhlSignals, NHL_AUDIT_VERSION, type NhlAuditFields } from "@/lib/nhl-signal-audit";
@@ -9,11 +10,10 @@ import { teams, nbaTeamStats, nbaPlayerStats, nbaMatchups, dkSlates, dkPlayers, 
 import { eq, desc, sql, gte, and } from "drizzle-orm";
 import { easternDateString } from "@/lib/eastern-date";
 import { currentNflSeason } from "@/lib/nfl/season";
-// Hard-coded on purpose: it must match the season string the Python ingest
-// (config.py NbaApiConfig.season) writes to nba_team_stats/nba_player_stats.
-// Change both together at the October rollover; the /stats page shows the
-// newest fetched_at so a stale season is visible rather than silent.
-const CURRENT_SEASON = "2025-26";
+// Derived from the date (season turns over in August), the same rule as
+// config.py nba_season_for, which the Python ingest uses to label rows in
+// nba_team_stats/nba_player_stats. Read at call time, not module load.
+const CURRENT_SEASON = currentNbaSeason();
 
 type SolverModel = {
   optimize: string;
@@ -1386,7 +1386,7 @@ export type TeamStatsRow = {
   defRtg: number | null;
 };
 
-export async function getTeamStats(season = CURRENT_SEASON): Promise<TeamStatsRow[]> {
+export async function getTeamStats(season = currentNbaSeason()): Promise<TeamStatsRow[]> {
   return db
     .select({
       teamId: teams.teamId,

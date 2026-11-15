@@ -1,4 +1,5 @@
 "use server";
+import { currentNbaSeason, nbaSeasonFor } from "@/lib/nba-season";
 import { SPORTSBOOK_QUERY } from "@/lib/sportsbook-policy";
 
 /**
@@ -128,7 +129,6 @@ const LEAGUE_AVG_DEF_RTG   = 112.0;
 const LEAGUE_AVG_TOTAL      = 228.0;
 const LEAGUE_AVG_TEAM_TOTAL = 114.0;
 const LEAGUE_AVG_USAGE      = 20.0;
-const CURRENT_SEASON        = "2025-26";
 const NBA_PROJECTION_MODEL_VERSION = "blend_v1";
 const MLB_OWNERSHIP_MODEL_VERSION = "mlb_ownership_v1";
 const MLB_HOMERUN_MODEL_VERSION = "mlb_homerun_v3";
@@ -2566,7 +2566,7 @@ const NBA_ID_TO_ABBREV: Record<number, string> = {
 export async function backfillTeamStats(): Promise<{ ok: boolean; message: string }> {
   try {
     const data = await fetchNbaStats("https://stats.nba.com/stats/leaguedashteamstats", {
-      Season: CURRENT_SEASON,
+      Season: currentNbaSeason(),
       SeasonType: "Regular Season",
       MeasureType: "Advanced",
       PerMode: "PerGame",
@@ -2586,7 +2586,7 @@ export async function backfillTeamStats(): Promise<{ ok: boolean; message: strin
       if (!teamId) continue;
       batch.push({
         teamId,
-        season: CURRENT_SEASON,
+        season: currentNbaSeason(),
         pace: (row.PACE as number) ?? null,
         offRtg: (row.OFF_RATING as number) ?? null,
         defRtg: (row.DEF_RATING as number) ?? null,
@@ -2606,7 +2606,7 @@ export async function backfillTeamStats(): Promise<{ ok: boolean; message: strin
     }
 
     revalidatePath("/dfs");
-    return { ok: true, message: `Team stats: ${batch.length}/30 teams updated for ${CURRENT_SEASON}` };
+    return { ok: true, message: `Team stats: ${batch.length}/30 teams updated for ${currentNbaSeason()}` };
   } catch (e) {
     return { ok: false, message: `Team stats failed: ${e instanceof Error ? e.message : String(e)}` };
   }
@@ -2618,7 +2618,7 @@ export async function backfillPlayerStats(): Promise<{ ok: boolean; message: str
     // (one row per active player) — far smaller payload than LeagueGameLog which returns
     // one row per player-game and requires client-side grouping + averaging.
     const data = await fetchNbaStats("https://stats.nba.com/stats/leaguedashplayerstats", {
-      Season: CURRENT_SEASON,
+      Season: currentNbaSeason(),
       SeasonType: "Regular Season",
       PerMode: "PerGame",
       MeasureType: "Base",
@@ -2653,7 +2653,7 @@ export async function backfillPlayerStats(): Promise<{ ok: boolean; message: str
       const usageRate = Math.round(usgRaw * 1000) / 10; // e.g. 0.254 → 25.4
 
       batch.push({
-        playerId, season: CURRENT_SEASON, teamId, name, position: null, games: n,
+        playerId, season: currentNbaSeason(), teamId, name, position: null, games: n,
         avgMinutes: r(row.MIN),
         ppg: r(row.PTS), rpg: r(row.REB), apg: r(row.AST),
         spg: r(row.STL), bpg: r(row.BLK), tovpg: r(row.TOV),
@@ -2990,7 +2990,7 @@ async function fetchNbaPlayerProps(): Promise<{ ok: boolean; message: string }> 
         FROM dk_players WHERE slate_id = ${slate.id}
       `);
 
-      const teamStatRows = await db.select().from(nbaTeamStats).where(eq(nbaTeamStats.season, CURRENT_SEASON));
+      const teamStatRows = await db.select().from(nbaTeamStats).where(eq(nbaTeamStats.season, nbaSeasonFor(targetDate)));
       const statsByTeam  = new Map(teamStatRows.map((r) => [r.teamId, r]));
 
       const matchupRows   = await db.select().from(nbaMatchups).where(eq(nbaMatchups.gameDate, targetDate));
@@ -3000,7 +3000,7 @@ async function fetchNbaPlayerProps(): Promise<{ ok: boolean; message: string }> 
         if (m.awayTeamId) matchupByTeam.set(m.awayTeamId, m);
       }
 
-      const playerStatRows = await db.select().from(nbaPlayerStats).where(eq(nbaPlayerStats.season, CURRENT_SEASON));
+      const playerStatRows = await db.select().from(nbaPlayerStats).where(eq(nbaPlayerStats.season, nbaSeasonFor(slate.slateDate)));
       const playersByTeam  = new Map<number, typeof playerStatRows>();
       for (const ps of playerStatRows) {
         if (ps.teamId == null) continue;
@@ -3066,15 +3066,17 @@ async function fetchNbaPlayerProps(): Promise<{ ok: boolean; message: string }> 
           bpgForLev = bestPlayer.bpg ?? 0;
         }
 
-        if (updatedIds.has(p.id) && bestPlayer && teamStat && matchup && oppStat) {
+        // Missing team stats fall back to league averages, as on slate load and
+        // recompute; requiring them skipped every player when a season had none.
+        if (updatedIds.has(p.id) && bestPlayer && matchup) {
           const isHome = matchup.homeTeamId === p.teamId;
           const playerMovement = oddsMovementContext.playerByDkId.get(p.dkPlayerId);
           const matchupMovement = p.matchupId != null ? oddsMovementContext.matchupById.get(p.matchupId) : undefined;
           const projectionBlend = buildNbaProjectionBlend(
             bestPlayer,
-            teamStat.pace  ?? LEAGUE_AVG_PACE,
-            oppStat.pace   ?? LEAGUE_AVG_PACE,
-            oppStat.defRtg ?? LEAGUE_AVG_DEF_RTG,
+            teamStat?.pace  ?? LEAGUE_AVG_PACE,
+            oppStat?.pace   ?? LEAGUE_AVG_PACE,
+            oppStat?.defRtg ?? LEAGUE_AVG_DEF_RTG,
             matchup.vegasTotal, matchup.homeMl, matchup.awayMl, isHome,
             p.linestarProj,
             { propPts: p.propPts, propReb: p.propReb, propAst: p.propAst, propBlk: p.propBlk, propStl: p.propStl },
@@ -4523,10 +4525,10 @@ async function enrichAndSave(
     if (m.awayTeamId) matchupByTeam.set(m.awayTeamId, m);
   }
 
-  const teamStatRows = await db.select().from(nbaTeamStats).where(eq(nbaTeamStats.season, CURRENT_SEASON));
+  const teamStatRows = await db.select().from(nbaTeamStats).where(eq(nbaTeamStats.season, nbaSeasonFor(slateDate)));
   const statsByTeam = new Map(teamStatRows.map((r) => [r.teamId, r]));
 
-  const playerStatRows = await db.select().from(nbaPlayerStats).where(eq(nbaPlayerStats.season, CURRENT_SEASON));
+  const playerStatRows = await db.select().from(nbaPlayerStats).where(eq(nbaPlayerStats.season, nbaSeasonFor(slateDate)));
   const playersByTeam = new Map<number, typeof playerStatRows>();
   for (const ps of playerStatRows) {
     if (ps.teamId == null) continue;
@@ -4864,7 +4866,7 @@ async function _applyLinestarMap(
   // Load player stats for ceiling bonus (spg/bpg)
   const playersByTeam = new Map<number, Array<{ name: string; spg: number | null; bpg: number | null }>>();
   if (sport === "nba") {
-    const playerStatRows = await db.select().from(nbaPlayerStats).where(eq(nbaPlayerStats.season, CURRENT_SEASON));
+    const playerStatRows = await db.select().from(nbaPlayerStats).where(eq(nbaPlayerStats.season, nbaSeasonFor(slate.slateDate)));
     for (const ps of playerStatRows) {
       if (ps.teamId == null) continue;
       const arr = playersByTeam.get(ps.teamId) ?? [];
@@ -7642,6 +7644,7 @@ export async function runOptimizer(
       ps."usageRate",
       recent."recentMinutesAvg"
     FROM dk_players dp
+    JOIN dk_slates ds ON ds.id = dp.slate_id
     LEFT JOIN teams t ON t.team_id = dp.team_id
     LEFT JOIN nba_matchups m ON m.id = dp.matchup_id
     LEFT JOIN LATERAL (
@@ -7653,20 +7656,45 @@ export async function runOptimizer(
       FROM nba_player_stats nps
       WHERE nps.team_id = dp.team_id
         AND LOWER(nps.name) = LOWER(dp.name)
-      ORDER BY nps.season DESC NULLS LAST, nps.games DESC NULLS LAST
+        -- The slate's own NBA season (turns over Aug 1, as config.nba_season_for):
+        -- a player missing this season must not borrow last season's minutes.
+        AND nps.season = to_char(ds.slate_date - interval '7 months', 'YYYY')
+                         || '-' || to_char(ds.slate_date + interval '5 months', 'YY')
+      ORDER BY nps.games DESC NULLS LAST
       LIMIT 1
     ) ps ON TRUE
     LEFT JOIN LATERAL (
-      SELECT AVG(recent_logs.minutes)::double precision AS "recentMinutesAvg"
-      FROM (
-        SELECT npgl.minutes
-        FROM nba_player_game_logs npgl
-        WHERE npgl.team_id = dp.team_id
-          AND LOWER(npgl.name) = LOWER(dp.name)
-          AND npgl.minutes IS NOT NULL
-        ORDER BY npgl.game_date DESC NULLS LAST, npgl.id DESC
-        LIMIT 5
-      ) recent_logs
+      -- Last five appearances before the slate: ESPN box scores (the live
+      -- source since 2026-27), else stats.nba.com logs for older slates.
+      SELECT COALESCE(
+        (SELECT AVG(e.minutes)::double precision FROM (
+           SELECT bsp.minutes
+           FROM nba_box_score_players bsp
+           JOIN nba_box_score_games bsg ON bsg.espn_event_id = bsp.espn_event_id
+           JOIN teams bt ON bt.name = bsp.team
+           WHERE bt.team_id = dp.team_id
+             AND LOWER(bsp.player) = LOWER(dp.name)
+             AND bsp.played AND bsp.minutes > 0
+             AND bsg.completed AND bsg.game_date < ds.slate_date
+             -- Same season (from Aug 1) and real games: regular season, play-in,
+             -- playoffs (ESPN labels All-Star games type 2, but they fail the team join).
+             AND bsg.game_date >= make_date(
+                   CAST(to_char(ds.slate_date - interval '7 months', 'YYYY') AS integer), 8, 1)
+             AND bsg.season_type IN (2, 3, 5)
+           ORDER BY bsg.start_time DESC
+           LIMIT 5) e),
+        (SELECT AVG(l.minutes)::double precision FROM (
+           SELECT npgl.minutes
+           FROM nba_player_game_logs npgl
+           WHERE npgl.team_id = dp.team_id
+             AND LOWER(npgl.name) = LOWER(dp.name)
+             AND npgl.minutes IS NOT NULL
+             AND npgl.game_date < ds.slate_date
+             AND npgl.season = to_char(ds.slate_date - interval '7 months', 'YYYY')
+                               || '-' || to_char(ds.slate_date + interval '5 months', 'YY')
+           ORDER BY npgl.game_date DESC NULLS LAST, npgl.id DESC
+           LIMIT 5) l)
+      ) AS "recentMinutesAvg"
     ) recent ON TRUE
     WHERE dp.slate_id = ${slateId}
   `);
@@ -8233,10 +8261,10 @@ export async function recomputeProjections(): Promise<{ ok: boolean; message: st
       if (m.awayTeamId) matchupByTeam.set(m.awayTeamId, m);
     }
 
-    const teamStatRows = await db.select().from(nbaTeamStats).where(eq(nbaTeamStats.season, CURRENT_SEASON));
+    const teamStatRows = await db.select().from(nbaTeamStats).where(eq(nbaTeamStats.season, nbaSeasonFor(slate.slateDate)));
     const statsByTeam = new Map(teamStatRows.map((r) => [r.teamId, r]));
 
-    const playerStatRows = await db.select().from(nbaPlayerStats).where(eq(nbaPlayerStats.season, CURRENT_SEASON));
+    const playerStatRows = await db.select().from(nbaPlayerStats).where(eq(nbaPlayerStats.season, nbaSeasonFor(slate.slateDate)));
     const playersByTeam = new Map<number, typeof playerStatRows>();
     for (const ps of playerStatRows) {
       if (ps.teamId == null) continue;

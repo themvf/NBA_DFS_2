@@ -406,7 +406,9 @@
         "0 16 * * *"
       ],
       "dispatch": true,
-      "afterWorkflows": [],
+      "afterWorkflows": [
+        "Grade NBA points props"
+      ],
       "push": false,
       "pullRequest": false
     },

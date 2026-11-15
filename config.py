@@ -17,9 +17,24 @@ DATA_DIR = PROJECT_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
 
+def nba_season_for(day: date | str | None = None) -> str:
+    """nba_api season string for a date. The season turns over in August, so
+    2026-10-24 is "2026-27" and 2026-04-10 is "2025-26". Defaults to today.
+
+    Hard-coding the string silently fed a new season last season's final ten
+    games (2026-27 slates projected from April 2026 tank-rotation minutes).
+    """
+    if day is None:
+        day = date.today()
+    elif isinstance(day, str):
+        day = date.fromisoformat(day[:10])
+    start = day.year if day.month >= 8 else day.year - 1
+    return f"{start}-{(start + 1) % 100:02d}"
+
+
 @dataclass
 class NbaApiConfig:
-    season: str = "2025-26"          # nba_api season string format
+    season: str = field(default_factory=nba_season_for)   # nba_api season string, from today
     rolling_games: int = 10          # rolling window for player stat averages
     timeout_seconds: int = 30
     # stats.nba.com requires a browser-like User-Agent; nba_api sets this automatically

@@ -75,6 +75,7 @@ class GameInfo:
     away_abbrev: str | None
     away_espn_id: str | None
     away_score: int | None
+    season_type: int | None = None   # ESPN event season.type: 1 pre, 2 regular, 3 post, 5 play-in
 
 
 @dataclass
@@ -157,6 +158,7 @@ def parse_scoreboard(payload: dict[str, Any]) -> list[GameInfo]:
             away_abbrev=(away.get("team") or {}).get("abbreviation"),
             away_espn_id=str((away.get("team") or {}).get("id") or "") or None,
             away_score=_int(away.get("score")),
+            season_type=_int((event.get("season") or {}).get("type")),
         ))
     return games
 
@@ -253,18 +255,19 @@ def persist_game(db: DatabaseManager, game: GameInfo, players: list[PlayerLine])
         cur.execute(
             """INSERT INTO nba_box_score_games
                    (espn_event_id, season, game_date, start_time, status, completed, home_team, home_abbrev, home_espn_id,
-                    home_score, away_team, away_abbrev, away_espn_id, away_score, players, source, fetched_at)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'espn', NOW())
+                    home_score, away_team, away_abbrev, away_espn_id, away_score, players, season_type, source, fetched_at)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'espn', NOW())
                ON CONFLICT (espn_event_id) DO UPDATE SET
                    season = EXCLUDED.season, game_date = EXCLUDED.game_date, start_time = EXCLUDED.start_time,
                    status = EXCLUDED.status, completed = EXCLUDED.completed,
                    home_team = EXCLUDED.home_team, home_abbrev = EXCLUDED.home_abbrev, home_espn_id = EXCLUDED.home_espn_id,
                    home_score = EXCLUDED.home_score, away_team = EXCLUDED.away_team, away_abbrev = EXCLUDED.away_abbrev,
                    away_espn_id = EXCLUDED.away_espn_id, away_score = EXCLUDED.away_score, players = EXCLUDED.players,
+                   season_type = COALESCE(EXCLUDED.season_type, nba_box_score_games.season_type),
                    fetched_at = NOW()""",
             (game.espn_event_id, season_label(game.game_date), game.game_date, game.start_time, game.status, game.completed,
              game.home_team, game.home_abbrev, game.home_espn_id, game.home_score, game.away_team, game.away_abbrev,
-             game.away_espn_id, game.away_score, len(players)),
+             game.away_espn_id, game.away_score, len(players), game.season_type),
         )
         for p in players:
             cur.execute(
@@ -321,12 +324,32 @@ def ingest_date(db: DatabaseManager | None, target: date, *, apply: bool, refetc
     return summary
 
 
+def backfill_season_type(db: DatabaseManager, target: date, session: requests.Session | None = None) -> int:
+    """Set season_type on stored games of ``target`` from the scoreboard alone.
+
+    Games stored before the column existed (2026-11-15) have NULL; the stats
+    builder counts only typed games, so those need one scoreboard call per date.
+    """
+    games = [g for g in parse_scoreboard(fetch_scoreboard(target, session)) if g.season_type is not None]
+    updated = 0
+    for g in games:
+        rows = db.execute(
+            "UPDATE nba_box_score_games SET season_type = %s WHERE espn_event_id = %s "
+            "AND season_type IS DISTINCT FROM %s RETURNING espn_event_id",
+            (g.season_type, g.espn_event_id, g.season_type),
+        )
+        updated += len(rows or [])
+    return updated
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--date", help="Eastern date of the games (YYYY-MM-DD); default yesterday ET")
     parser.add_argument("--days-back", type=int, default=1, help="also fetch this many earlier dates (catch-up); default 1 = the date only")
     parser.add_argument("--apply", action="store_true", help="write box scores; without it, only list the games")
     parser.add_argument("--refetch", action="store_true", help="re-fetch games already stored as final")
+    parser.add_argument("--season-type-only", action="store_true",
+                        help="with --apply: only set season_type on stored games from the scoreboard")
     args = parser.parse_args()
     last = date.fromisoformat(args.date) if args.date else eastern_date(datetime.now(timezone.utc)) - timedelta(days=1)
     config = load_config()
@@ -334,6 +357,14 @@ def main() -> int:
     if args.apply:
         db = DatabaseManager(config.database_url)
         db.require_tables(["nba_box_score_games", "nba_box_score_players"])
+    if args.season_type_only:
+        if db is None:
+            parser.error("--season-type-only needs --apply")
+        with requests.Session() as session:
+            counts = {str(last - timedelta(days=back)): backfill_season_type(db, last - timedelta(days=back), session)
+                      for back in range(max(1, args.days_back) - 1, -1, -1)}
+        print(json.dumps({"season_type_updated": counts, "total": sum(counts.values())}, indent=2))
+        return 0
     results = []
     with requests.Session() as session:
         for back in range(max(1, args.days_back) - 1, -1, -1):
