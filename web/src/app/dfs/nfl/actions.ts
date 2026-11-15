@@ -4,7 +4,7 @@ import { weeklySpread, type WeeklySpread } from "@/lib/nfl-dfs/relative-upside";
 import { resolveSlateWeek, type SlateGame, type ScheduledGame } from "@/lib/nfl-dfs/slate-week";
 import { createHash, randomUUID } from "node:crypto";
 import { restoreSavedLineups, savedSlateLabel } from '@/lib/nfl-dfs/saved-workspace';
-import { countNflDkEntryRows, exportNflDkEntries, exportNflDkLineups } from '@/lib/nfl-dfs/entry-export';
+import { describeNflDkEntryFile, entryAssignmentNote, exportNflDkEntries, exportNflDkLineups } from '@/lib/nfl-dfs/entry-export';
 import { validatePicks, type PoolPick } from '@/lib/nfl-dfs/lineup-pool';
 import { tallyShowdownTypes, type HistorySlate as ShowdownHistorySlate, type TypeTally } from '@/lib/nfl-dfs/showdown-type-history';
 import { rosterKey } from '@/lib/nfl-dfs/portfolio-breakdown';
@@ -2282,8 +2282,8 @@ export async function exportNflLineupPool(uploadId:string,picks:PoolPick[],entry
     rosters.set(key,lineup.lineupNumber);
   }
   if(entryTemplate!=null) {
-    const rows=countNflDkEntryRows(entryTemplate);
-    if(rows<lineups.length)throw new Error(`The entry file has ${rows} entr${rows===1?'y':'ies'} for ${lineups.length} lineups. Download an entry file with at least ${lineups.length} entries, or remove lineups from the final set.`);
+    // planNflDkEntries refuses a file the final set does not cover (too few
+    // rows, or entries left blank); single-entry rows take the top lineup.
     return {csv:exportNflDkEntries(entryTemplate,lineups),lineups:lineups.length,runs:runIds.length};
   }
   return {csv:exportNflDkLineups([...formats][0] as NflSavedRunSettings['format'],lineups),lineups:lineups.length,runs:runIds.length};
@@ -2326,7 +2326,8 @@ async function exportableSavedNflLineups(runId:string,entryTemplate:string|null,
       features:{leverage:evidence.ownership.features.leverage}}:undefined,
     overlapCap:nflOverlapCap(settings.format,settings.minUnique,settings.maxPairwiseOverlap),
     currentPool:currentPoolForQa(slate.players),
-    entryRows:entryTemplate==null?null:countNflDkEntryRows(entryTemplate),
+    entryFile:entryTemplate==null?null:(()=>{const shape=describeNflDkEntryFile(entryTemplate);
+      return {shape,note:entryAssignmentNote(shape,saved.lineups)};})(),
     newerRunAvailable:Boolean(slate.refreshAvailable)||(saved.projection.runId!=null&&slate.projectionRunId!=null&&saved.projection.runId!==slate.projectionRunId),
     projectionAgeHours,projectionStale:projectionAgeHours!=null&&projectionAgeHours>PROJECTION_STALE_HOURS,
     build:{commitSha:(run.buildInfo as {commitSha?:string}|null)?.commitSha??null}},overrides);

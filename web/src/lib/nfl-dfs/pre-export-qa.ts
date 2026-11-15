@@ -13,6 +13,7 @@
 import { assertDstGameScript, assertShowdownLineup, type ShowdownPlayer } from './showdown-legality';
 import { kickerRoleBlockedReason } from './availability';
 import { maxPairwiseOverlap as realizedMaxOverlap } from './salary-duplication';
+import { entryCoverageProblem, type NflDkEntryFileShape } from './entry-export';
 
 export const NFL_QA_RULESET_VERSION = "nfl-gpp-qa-v6-portfolio-warnings";
 
@@ -113,7 +114,7 @@ export interface QaCheck {
   passed: boolean;
   /** Human explanation shown in the report. */
   detail: string;
-  /** Whether a recorded override can clear this check. Only an illegal roster and a too-short entry file cannot be overridden. */
+  /** Whether a recorded override can clear this check. An illegal roster and an entry file the lineups do not cover (too few rows, or rows left blank) cannot be overridden. */
   overridable: boolean;
   /** Ids of affected lineups or players, for direct links. */
   affected: Array<string | number>;
@@ -171,8 +172,10 @@ export interface QaInput {
    * current slate could not be read.
    */
   currentPool?: Evidence<{ players: Array<{ dkPlayerId: number; name: string; unavailable: string | null; roleOnly?: boolean }> }>;
-  /** Entries in the DraftKings entry file, once one is chosen. */
+  /** Entries in the DraftKings entry file, once one is chosen. Superseded by `entryFile` when both are given. */
   entryRows?: number | null;
+  /** The chosen entry file's layout (`describeNflDkEntryFile`) and the plain-words assignment note. */
+  entryFile?: { shape: NflDkEntryFileShape; note: string } | null;
   /** Selection/evaluation scenario digests (Phase 7); a collision is a blocker. */
   selectionDigest?: string | null;
   evaluationDigest?: string | null;
@@ -279,7 +282,20 @@ export function runNflPreExportQa(input: QaInput, overrides: QaOverride[] = []):
     detail: built >= input.requestedLineups ? `All ${input.requestedLineups} requested lineups were built.`
       : `Only ${built} of the ${input.requestedLineups} lineups you asked for were built; the build notes say why. Export would enter ${built}.`,
     affected: [] });
-  if (input.entryRows != null) {
+  if (input.entryFile) {
+    // 2026-11-14: a blank entry is a paid entry with no lineup, so too few
+    // lineups is now a blocker that no override clears. Single-entry rows take
+    // the run's top lineup and need none of their own.
+    const { shape, note } = input.entryFile;
+    const problem = entryCoverageProblem(shape, built);
+    const kept = shape.multiEntryRows - built;
+    add({ id: "entry_rows", title: "Every entry gets a lineup",
+      severity: problem ? "blocker" : "warning", passed: !problem && kept <= 0, overridable: !problem,
+      detail: problem ?? (kept > 0
+        ? `${kept} entr${kept === 1 ? "y" : "ies"} in the file already hold a lineup and would keep it; every empty entry gets one. ${note}`.trim()
+        : `All ${shape.rows} entries in the file get a lineup. ${note}`.trim()),
+      affected: [] });
+  } else if (input.entryRows != null) {
     if (input.entryRows < built) {
       add({ id: "entry_rows", title: "Entry file has room for every lineup", severity: "blocker", passed: false, overridable: false,
         detail: `The entry file has ${input.entryRows} entr${input.entryRows === 1 ? "y" : "ies"} for ${built} lineups. Download an entry file with at least ${built} entries, or build fewer lineups.`,

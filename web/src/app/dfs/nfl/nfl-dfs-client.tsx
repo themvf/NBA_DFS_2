@@ -44,7 +44,7 @@ import { ARCHETYPE_LABELS, type ArchetypeId, type ArchetypeQuota } from "@/lib/n
 import { currentPoolForQa, nflOverlapCap, runNflPreExportQa, savedRunQaEvidence, NFL_QA_RULESET_VERSION, type QaInput, type QaReport, type QaOverride } from "@/lib/nfl-dfs/pre-export-qa";
 import { PROJECTION_STALE_HOURS } from "@/lib/nfl-dfs/slate-check";
 import { parseNflComparisonCsv } from "@/lib/nfl-dfs/comparison-csv";
-import { countNflDkEntryRows } from "@/lib/nfl-dfs/entry-export";
+import { describeNflDkEntryFile, entryAssignmentNote, type NflDkEntryFileShape } from "@/lib/nfl-dfs/entry-export";
 import {DEFAULT_WORKLOAD_POSITIONS} from "@/lib/nfl-dfs/workload-selection";
 import NflLineupVisualizations from "./nfl-lineup-visualizations";
 import PlayerExplanationPanel from "./player-explanation-panel";
@@ -181,7 +181,7 @@ export default function NflDfsClient() {
   const [runProjection, setRunProjection] = useState<{ runId: string | null; asOf: string | null } | null>(null);
   // The build's notes; null when the run predates saving them.
   const [runWarnings, setRunWarnings] = useState<string[] | null>(null);
-  const [entryRows, setEntryRows] = useState<number | null>(null);
+  const [entryShape, setEntryShape] = useState<NflDkEntryFileShape | null>(null);
   // The code version that built the displayed lineups; export requires the live site.
   const [runBuild, setRunBuild] = useState<{ commitSha: string | null } | null>(null);
   // Server-saved build form per slate. Saving starts only once the slate's
@@ -428,14 +428,14 @@ export default function NflDfsClient() {
       ownership: ownership ? { capability: ownership.capability, errors: ownership.errors, features: { leverage: ownership.features.leverage } } : undefined,
       overlapCap: completedSettings ? nflOverlapCap(format, completedSettings.minUnique, completedSettings.maxPairwiseOverlap) : undefined,
       currentPool: slate ? currentPoolForQa(slate.players) : null,
-      entryRows,
+      entryFile: entryShape ? { shape: entryShape, note: entryAssignmentNote(entryShape, lineups) } : null,
       newerRunAvailable: Boolean(slate?.refreshAvailable) || Boolean(runProjection?.runId && slate?.projectionRunId && runProjection.runId !== slate.projectionRunId),
       projectionAgeHours: projectionAgeHours != null && Number.isFinite(projectionAgeHours) ? projectionAgeHours : null,
       projectionStale: projectionAgeHours != null && projectionAgeHours > PROJECTION_STALE_HOURS,
       availabilityCoverage: coverage,
       build: runBuild ?? undefined,
     }, qaOverrides);
-  }, [lineups, qaEvidence, salaryBands, duplication, ownership, completedSettings, slate, coverage, qaOverrides, runBuild, runProjection, entryRows, now]);
+  }, [lineups, qaEvidence, salaryBands, duplication, ownership, completedSettings, slate, coverage, qaOverrides, runBuild, runProjection, entryShape, now]);
 
   const stage: WorkspaceStage = slate && chosenStage?.uploadId === slate.uploadId
     ? chosenStage.stage
@@ -453,13 +453,14 @@ export default function NflDfsClient() {
     setEligibility([]); setOwnership(null); setExposureReport([]); setSalaryBands([]); setDuplication([]); setQaOverrides([]);
     setSavedQaEvidenceAvailable(false); setQaEvidence(null); setRunProjection(null); setRunWarnings(null);
   }
-  // Choosing an entry file also counts its rows, so QA can say when some
-  // entries would get no lineup (export fills the first N and leaves the rest).
+  // Choosing an entry file also reads its layout (contests, single-entry rows,
+  // empty rows), so QA can block an export that would leave an entry blank and
+  // say how the lineups will be spread over the contests.
   const entryFileRef = useRef<File | null>(null);
   function selectEntryFile(file: File | null) {
-    entryFileRef.current = file; setEntryFile(file); setEntryRows(null);
+    entryFileRef.current = file; setEntryFile(file); setEntryShape(null);
     if (!file) return;
-    file.text().then((text) => { if (entryFileRef.current === file) setEntryRows(countNflDkEntryRows(text)); })
+    file.text().then((text) => { if (entryFileRef.current === file) setEntryShape(describeNflDkEntryFile(text)); })
       .catch((reason) => { if (entryFileRef.current === file) setError(reason instanceof Error ? `That entry file can't be used: ${reason.message}` : "That entry file can't be read."); });
   }
   /** Apply the build form saved for this slate, then allow autosave. */

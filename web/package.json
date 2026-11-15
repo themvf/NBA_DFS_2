@@ -40,6 +40,7 @@
     "test:cheat-sheet": "node --import tsx ./scripts/test-cheat-sheet.ts",
     "test:nfl-dk-csv": "node --import tsx ./scripts/test-nfl-dk-csv.ts",
     "test:nfl-single-stat": "node --import tsx ./scripts/test-nfl-single-stat.ts",
+    "test:nfl-entry-export": "node --import tsx ./scripts/test-nfl-entry-export.ts",
     "test:nfl-showdown-legality": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-showdown-legality.ts",
     "test:nfl-scoring": "node --import tsx ./scripts/test-nfl-scoring.ts",
     "test:nfl-out-projection": "node --import tsx ./scripts/test-nfl-out-projection.ts",
