@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
-import { cookies } from "next/headers";
+
+
 import { getLatestPatternWatchDataset, type PatternWatchDataset } from "@/db/cfb-pattern-watch";
-import { CFB_PATTERN_SESSION, patternWatchKeyValid, patternWatchSessionValid } from "@/lib/cfb-pattern-watch-access";
+
 import PatternWatchClient from "./pattern-watch-client";
 
 export const dynamic = "force-dynamic";
@@ -12,15 +12,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function PatternWatchPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ key?: string }>;
-}) {
-  const { key } = await searchParams;
-  const session = (await cookies()).get(CFB_PATTERN_SESSION)?.value;
-  if (!patternWatchKeyValid(key) && !patternWatchSessionValid(session)) notFound();
-
+export default async function PatternWatchPage() {
   let dataset: PatternWatchDataset | null = null;
   let error: string | null = null;
   try {

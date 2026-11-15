@@ -1,17 +1,17 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { cookies } from "next/headers";
+
 import type { ReactNode } from "react";
 import { getCfbStudySelections } from "@/db/cfb-study-matches";
 import { getLatestPatternWatchDataset } from "@/db/cfb-pattern-watch";
 import { getNbaMarketStudyGames } from "@/db/nba-market-studies";
 import { getNflMarketStudyGames } from "@/db/nfl-market-studies";
-import { CFB_PATTERN_SESSION, patternWatchSessionValid } from "@/lib/cfb-pattern-watch-access";
+
 import { cfbDay, DAILY_STUDIES_PATH, nbaDay, nflDay, nflSeason, shiftDate, studyDate } from "@/lib/daily-market-studies";
 import { cfbObservations, nbaObservations, nflObservations, qualifyingStudyMatches } from "@/lib/daily-study-matches";
 import { easternDateString } from "@/lib/eastern-date";
 import { PAPER_START } from "@/lib/nba-market-studies";
-import { unlockPatternWatch } from "./actions";
+import { AllStudies } from "./all-studies";
 import { StudyMatches } from "./study-matches";
 
 export const dynamic = "force-dynamic";
@@ -52,18 +52,18 @@ function Stat({ label, value, detail }: { label: string; value: string; detail?:
 export default async function DailyMarketStudies({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string; access?: string }>;
+  searchParams: Promise<{ date?: string }>;
 }) {
   const today = easternDateString();
   const params = await searchParams;
   const date = studyDate(params.date, today);
   const from = shiftDate(date, -6);
-  const hasCfb = patternWatchSessionValid((await cookies()).get(CFB_PATTERN_SESSION)?.value);
+
   const [nbaData, nflData, cfbData, cfbSelectionData] = await Promise.allSettled([
     getNbaMarketStudyGames(date),
     getNflMarketStudyGames(nflSeason(date)),
-    hasCfb ? getLatestPatternWatchDataset() : Promise.resolve(null),
-    hasCfb ? getCfbStudySelections(date) : Promise.resolve(null),
+    getLatestPatternWatchDataset(),
+    getCfbStudySelections(date),
   ]);
   const nbaRows = nbaData.status === "fulfilled" ? nbaData.value : null;
   const nflRows = nflData.status === "fulfilled" ? nflData.value : null;
@@ -104,8 +104,10 @@ export default async function DailyMarketStudies({
     </div>
 
     <StudyMatches matches={matches} date={date} coverage={{
-      nba: assessed(nbaEntries), nfl: assessed(nflEntries), cfb: assessed(cfbEntries), cfbUnlocked: hasCfb,
+      nba: assessed(nbaEntries), nfl: assessed(nflEntries), cfb: assessed(cfbEntries),
     }} />
+
+    <a href="#all-studies" className="inline-block text-sm font-medium underline underline-offset-4">Jump to all study results</a>
 
     <p className="text-xs text-muted-foreground">Records show wins–losses–pushes. Cumulative results run through the selected game date. Each sport uses its own study and grading rules.</p>
     <section aria-label="Sport summaries" className="grid gap-4 lg:grid-cols-3">
@@ -139,16 +141,8 @@ export default async function DailyMarketStudies({
         </dl> : <p role="status">NFL study data is temporarily unavailable.</p>}
       </Card>
 
-      <Card title="CFB" label="Pattern Watch · T1–T6" link={hasCfb ? "/cfb/pattern-watch#patterns" : undefined}>
-        {!hasCfb ? <form action={unlockPatternWatch} className="space-y-3">
-          <input type="hidden" name="date" value={date} />
-          <p className="text-muted-foreground">Unlock CFB results with your Pattern Watch key.</p>
-          <label className="block space-y-1 font-medium">Pattern Watch key
-            <input name="key" type="password" required autoComplete="current-password" className="block w-full rounded-md border bg-background px-3 py-2" />
-          </label>
-          {params.access === "denied" && <p role="alert" className="text-destructive">That key did not unlock Pattern Watch.</p>}
-          <button type="submit" className={button}>Unlock CFB</button>
-        </form> : cfb && cfbRecent && cfbThrough ? <>
+      <Card title="CFB" label="Pattern Watch · T1–T6" link="/cfb/pattern-watch#patterns">
+        {cfb && cfbRecent && cfbThrough ? <>
           <p className="text-xs text-muted-foreground">Last published {easternStamp.format(new Date(cfb.generatedAt))}</p>
           {!cfbRecent.length && <p className="text-muted-foreground">No closing grades published for this date.</p>}
           <dl className="space-y-2">
@@ -165,6 +159,8 @@ export default async function DailyMarketStudies({
       </Card>
     </section>
 
+    <AllStudies nba={nbaRows} nfl={nflRows} cfb={cfb} cfbUnavailable={cfbData.status === "rejected"} date={date} />
+
     <section className="rounded-xl border bg-card p-5" aria-labelledby="recent-grades">
       <h2 id="recent-grades" className="text-lg font-semibold">Seven days of grades</h2>
       <p className="mb-3 text-xs text-muted-foreground">NBA and NFL columns count graded games. CFB counts individual closing trigger grades.</p>
@@ -180,7 +176,7 @@ export default async function DailyMarketStudies({
               <th scope="row" className="py-2 font-medium"><Link href={href(day)} aria-current={day === date ? "date" : undefined} className="underline underline-offset-4">{shortDate.format(new Date(day))}</Link></th>
               <td className="tabular-nums">{n ? n.ats + " / " + n.totals.games : "—"}</td>
               <td className="tabular-nums">{f ? (f.ats.wins + f.ats.losses + f.ats.pushes) + " / " + (f.over.wins + f.over.losses + f.over.pushes) : "—"}</td>
-              <td className="tabular-nums">{cfb ? cfb.results.filter(row => row.Date === day).length : hasCfb ? "—" : "Locked"}</td>
+              <td className="tabular-nums">{cfb ? cfb.results.filter(row => row.Date === day).length : "—"}</td>
             </tr>;
           })}</tbody>
         </table>
