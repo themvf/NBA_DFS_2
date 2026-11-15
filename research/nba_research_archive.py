@@ -12,7 +12,7 @@ import io
 import json
 from pathlib import Path, PurePosixPath
 
-from research import nba_percentile_trial as percentile
+from research import nba_p75_card as p75_card, nba_percentile_trial as percentile
 from research.nba_points_forward import aware, digest, write_new
 
 MODEL_SHA = '651441d2dcfbe40aa1bd2c320ef8327056e02bc2c06257995c1cb3c40254bec4'
@@ -50,7 +50,7 @@ def checked_relative(name):
     return p
 
 
-def bundle(root, marker):
+def bundle(root, marker, *, publish_p75_card=False):
     """Require an existing genuine index, preserve all original evidence bytes."""
     root, marker = Path(root), Path(marker)
     index = read(marker)
@@ -85,6 +85,7 @@ def bundle(root, marker):
             add(base + '/' + path.relative_to(directory).as_posix(), path)
     indexes = {'prospective-index/' + marker.name: index}
     attachments = {}
+    public_card = None
     for folder, (filename, _, identity, protocol) in SIDECARS.items():
         path = root / folder / (forecast['game_date'] + '-' + protocol + '.json')
         if not path.exists():
@@ -100,6 +101,8 @@ def bundle(root, marker):
             raise ValueError('invalid registered attachment')
         if folder == percentile.INDEX:
             verify_percentile_index(idx, record, forecast, source)
+            if publish_p75_card:
+                public_card = p75_card.project(record)
         indexes[folder + '/' + path.name] = idx
         attachments[folder] = 'indexed'
     packet = {
@@ -110,6 +113,8 @@ def bundle(root, marker):
         'files': {name: {'sha256': hashlib.sha256(data).hexdigest(),
                          'data': base64.b64encode(data).decode('ascii')} for name, data in files.items()},
     }
+    if public_card is not None:
+        packet['anchored_p75_card'] = public_card
     encoded = json.dumps(packet, separators=(',', ':'), ensure_ascii=True).encode()
     if len(encoded) > MAX_BYTES:
         raise ValueError('research archive exceeds size limit')
@@ -167,10 +172,20 @@ def unpack(manifest, packed):
             raise ValueError('archived original identity mismatch')
         if packet['attachments'].get(percentile.INDEX) == 'indexed':
             name = f"{percentile.INDEX}/{forecast['game_date']}-{percentile.PROTOCOL_SHA}.json"
-            verify_percentile_index(packet['indexes'][name], json.loads(files[prefix + percentile.FILENAME]),
-                                    forecast, source)
-        elif any(name.startswith(percentile.INDEX + '/') for name in packet['indexes']):
+            record = json.loads(files[prefix + percentile.FILENAME])
+            verify_percentile_index(packet['indexes'][name], record, forecast, source)
+            if 'anchored_p75_card' in packet and packet['anchored_p75_card'] != p75_card.project(record):
+                raise ValueError('P75 card does not match its archived percentile record')
+        elif ('anchored_p75_card' in packet or
+              any(name.startswith(percentile.INDEX + '/') for name in packet['indexes'])):
             raise ValueError('percentile archive index lacks attachment status')
+    if 'anchored_p75_grade' in packet:
+        grades = [data for name, data in files.items() if PurePosixPath(name).name == p75_card.GRADE_FILENAME]
+        if len(grades) != 1 or json.loads(grades[0]) != packet['anchored_p75_grade']:
+            raise ValueError('P75 grade does not match its archived review')
+        g = checked(packet['anchored_p75_grade'])
+        if g['card_sha256'] != checked(packet['anchored_p75_card'])['sha256']:
+            raise ValueError('P75 grade refers to a different card')
     return packet, files
 
 

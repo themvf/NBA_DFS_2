@@ -4,6 +4,8 @@ import type {Metadata} from 'next';
 import {easternDateString} from '@/lib/eastern-date';
 import {getMathResearch,getMathResearchDates,getMathResearchCounts,getMathOutcomes,getTrioPoolAudit,getTrioPoolSummary,type MathPortfolio} from '@/db/nba-trio-math';
 import {PoolAudit} from './pool-audit';
+import {P75CardSection} from './p75-card';
+import {getNbaP75Card} from '@/db/nba-p75-card';
 import registration from '@/data/nba-trio-math-registration-v2.json';
 import {trioPortfolioResult} from '@/lib/nba-trio-results';
 import {getNbaAvailability} from '@/db/nba-availability';
@@ -12,7 +14,7 @@ const stamp=(s:string)=>new Intl.DateTimeFormat('en-US',{timeZone:'America/New_Y
 const labels:Record<string,string>={market_baseline:'Market baseline',joint_best_of_five:'Joint best-of-five',robust_best_of_five:'Robust best-of-five'};
 export default async function TrioLab({searchParams}:{searchParams:Promise<{date?:string}>}){
  const params=await searchParams,today=easternDateString(),date=params.date&&/^\d{4}-\d{2}-\d{2}$/.test(params.date)?params.date:today;
- const [record,dates,availability,counts,poolSummary]=await Promise.all([getMathResearch(date),getMathResearchDates(),getNbaAvailability(date),getMathResearchCounts(),getTrioPoolSummary()]);
+ const [record,dates,availability,counts,poolSummary,p75Card]=await Promise.all([getMathResearch(date),getMathResearchDates(),getNbaAvailability(date),getMathResearchCounts(),getTrioPoolSummary(),getNbaP75Card(date)]);
  const [outcomes,poolAudit]=record?await Promise.all([getMathOutcomes(record),getTrioPoolAudit(record.sha256)]):[[],null];
  const players=new Map(record?.players.map(p=>[p.id,p])??[]);
  const gradeRows=outcomes.map(o=>({event_id:o.id.split(':')[0],player_key:o.id.split(':').slice(1).join(':'),status:o.status==='verified'?'graded':o.status,actual_points:o.points}));
@@ -23,6 +25,7 @@ export default async function TrioLab({searchParams}:{searchParams:Promise<{date
    <p className="text-sm">Prospective trial: {counts.recorded} recorded dates · {counts.graded} graded · {counts.complete}/30 completely paired. Historical calibration: {registration.historical_calibration_n} appearances, separate from this trial.</p>
    <nav className="flex flex-wrap gap-2" aria-label="Research dates">{[...new Set([today,...dates])].sort().map(d=><Link key={d} href={`/nba/trio-lab?date=${d}`} className="rounded border px-3 py-1 text-sm">{d}{d===today?' · today':''}</Link>)}</nav>
   </header>
+  <P75CardSection data={p75Card} date={date} availability={availability} />
   {!record?<section className="space-y-2 rounded-lg border p-4"><h2 className="font-semibold">Awaiting a prospective record for {date}</h2><p className="text-sm">A record is created only on a scheduled NBA slate, before the first game, from a genuine original v3 forecast. Prior dates are never rebuilt into prospective evidence.</p><p className="text-sm text-muted-foreground">Registered November 3; enrollment begins November 4. No result means pending, not zero performance.</p></section>:<>
    <p className="text-sm">Original forecast {stamp(record.source_frozen_at)} · math record {stamp(record.created_at)} · cutoff {stamp(record.lock_at)} · {record.pool_n} modeled candidates selected from {record.modeled_pool_n} modeled / {record.quoted_pool_n} quoted players.</p>
    <p className="text-sm text-amber-700">Latest official availability check: {availability?stamp(availability.observedAt):'unverified'}. These are original frozen research selections. Later status changes are displayed below and never rewrite them.</p>
