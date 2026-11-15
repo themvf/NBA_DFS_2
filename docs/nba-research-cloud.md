@@ -86,3 +86,6 @@ missing audit for the latest exact math grade remains pending rather than
 falling back to a stale audit. Trio Lab exposes the same separate denominators.
 The Boom builder starts at zero requested extra inclusion; selecting a rising
 volume player alone does not silently raise exposure.
+
+The morning review and restore also write `percentile-report.json` for the
+[independent NBA percentile and joint-P75 card trial](nba-percentile-trial.md).
