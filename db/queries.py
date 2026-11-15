@@ -65,18 +65,26 @@ def upsert_nba_team_stats(
     pace: float | None,
     off_rtg: float | None,
     def_rtg: float | None,
+    source: str | None = None,
+    stats_through=None,
 ) -> None:
     db.execute(
         """
-        INSERT INTO nba_team_stats (team_id, season, pace, off_rtg, def_rtg)
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO nba_team_stats (team_id, season, pace, off_rtg, def_rtg, source, stats_through)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (team_id, season) DO UPDATE SET
             pace = EXCLUDED.pace,
             off_rtg = EXCLUDED.off_rtg,
             def_rtg = EXCLUDED.def_rtg,
+            source = EXCLUDED.source,
+            stats_through = EXCLUDED.stats_through,
             fetched_at = NOW()
+        WHERE (nba_team_stats.pace, nba_team_stats.off_rtg, nba_team_stats.def_rtg,
+               nba_team_stats.source, nba_team_stats.stats_through)
+              IS DISTINCT FROM
+              (EXCLUDED.pace, EXCLUDED.off_rtg, EXCLUDED.def_rtg, EXCLUDED.source, EXCLUDED.stats_through)
         """,
-        (team_id, season, pace, off_rtg, def_rtg),
+        (team_id, season, pace, off_rtg, def_rtg, source, stats_through),
     )
 
 
@@ -99,15 +107,20 @@ def upsert_nba_player_stats(
     usage_rate: float,
     dd_rate: float,
     fpts_std: float | None = None,
+    source: str | None = None,
+    stats_through=None,
 ) -> None:
+    """Upsert one player's rolling stats; an unchanged row is left untouched,
+    so ``fetched_at`` moves only when the numbers do. ``stats_through`` is the
+    newest game the source had: /health reads it, not fetched_at."""
     db.execute(
         """
         INSERT INTO nba_player_stats (
             player_id, season, team_id, name, position, games,
             avg_minutes, ppg, rpg, apg, spg, bpg, tovpg,
-            threefgm_pg, usage_rate, dd_rate, fpts_std
+            threefgm_pg, usage_rate, dd_rate, fpts_std, source, stats_through
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (player_id, season) DO UPDATE SET
             team_id = EXCLUDED.team_id,
             name = EXCLUDED.name,
@@ -124,12 +137,25 @@ def upsert_nba_player_stats(
             usage_rate = EXCLUDED.usage_rate,
             dd_rate = EXCLUDED.dd_rate,
             fpts_std = EXCLUDED.fpts_std,
+            source = EXCLUDED.source,
+            stats_through = EXCLUDED.stats_through,
             fetched_at = NOW()
+        WHERE (nba_player_stats.team_id, nba_player_stats.name, nba_player_stats.games,
+               nba_player_stats.avg_minutes, nba_player_stats.ppg, nba_player_stats.rpg,
+               nba_player_stats.apg, nba_player_stats.spg, nba_player_stats.bpg,
+               nba_player_stats.tovpg, nba_player_stats.threefgm_pg, nba_player_stats.usage_rate,
+               nba_player_stats.dd_rate, nba_player_stats.fpts_std, nba_player_stats.source,
+               nba_player_stats.stats_through)
+              IS DISTINCT FROM
+              (EXCLUDED.team_id, EXCLUDED.name, EXCLUDED.games, EXCLUDED.avg_minutes, EXCLUDED.ppg,
+               EXCLUDED.rpg, EXCLUDED.apg, EXCLUDED.spg, EXCLUDED.bpg, EXCLUDED.tovpg,
+               EXCLUDED.threefgm_pg, EXCLUDED.usage_rate, EXCLUDED.dd_rate, EXCLUDED.fpts_std,
+               EXCLUDED.source, EXCLUDED.stats_through)
         """,
         (
             player_id, season, team_id, name, position, games,
             avg_minutes, ppg, rpg, apg, spg, bpg, tovpg,
-            threefgm_pg, usage_rate, dd_rate, fpts_std,
+            threefgm_pg, usage_rate, dd_rate, fpts_std, source, stats_through,
         ),
     )
 

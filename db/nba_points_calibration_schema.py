@@ -42,6 +42,10 @@ STATEMENTS = [
         fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )""",
     "CREATE INDEX IF NOT EXISTS idx_nba_box_score_games_date ON nba_box_score_games(game_date DESC)",
+    # 2026-11-15: ESPN's event season type (1 preseason, 2 regular, 3 playoffs, 5 play-in).
+    # ESPN labels the All-Star games type 2 as well, so real games also need two
+    # franchise teams (see ingest.nba_stats). Rows before this column: NULL.
+    "ALTER TABLE nba_box_score_games ADD COLUMN IF NOT EXISTS season_type INTEGER",
     """CREATE TABLE IF NOT EXISTS nba_box_score_players (
         id BIGSERIAL PRIMARY KEY,
         espn_event_id TEXT NOT NULL REFERENCES nba_box_score_games(espn_event_id),
@@ -72,6 +76,8 @@ STATEMENTS = [
         UNIQUE (espn_event_id, espn_athlete_id)
     )""",
     "CREATE INDEX IF NOT EXISTS idx_nba_box_score_players_date ON nba_box_score_players(game_date DESC, player_key)",
+    # The DFS optimizer looks up each slate player's last five appearances by name.
+    "CREATE INDEX IF NOT EXISTS idx_nba_box_score_players_lower_player ON nba_box_score_players (lower(player))",
     # ESPN's listed position (G / F / C), for the Top Scorers badge (2026-11-01).
     "ALTER TABLE nba_box_score_players ADD COLUMN IF NOT EXISTS position TEXT",
     """CREATE TABLE IF NOT EXISTS nba_points_calibration (

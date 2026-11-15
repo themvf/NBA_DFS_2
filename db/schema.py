@@ -5405,6 +5405,13 @@ MIGRATIONS = [
             ALTER TABLE dk_slates ADD COLUMN contest_format TEXT DEFAULT 'gpp';
         END IF;
     END $$""",
+    # 2026-11-15: source ('nba_api' | 'espn') and stats_through (newest game the
+    # source had) on both stats tables. /health reads stats_through, because the
+    # upserts used to restamp fetched_at on every recompute of stale logs.
+    "ALTER TABLE nba_player_stats ADD COLUMN IF NOT EXISTS source TEXT",
+    "ALTER TABLE nba_player_stats ADD COLUMN IF NOT EXISTS stats_through TIMESTAMPTZ",
+    "ALTER TABLE nba_team_stats ADD COLUMN IF NOT EXISTS source TEXT",
+    "ALTER TABLE nba_team_stats ADD COLUMN IF NOT EXISTS stats_through TIMESTAMPTZ",
     # 2026-03-28: Add fpts_std to nba_player_stats for Monte Carlo variance
     """DO $$ BEGIN
         IF NOT EXISTS (

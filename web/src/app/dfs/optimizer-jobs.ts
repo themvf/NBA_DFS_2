@@ -243,6 +243,7 @@ async function loadNbaOptimizerPool(
       ps."usageRate",
       recent."recentMinutesAvg"
     FROM dk_players dp
+    JOIN dk_slates ds ON ds.id = dp.slate_id
     LEFT JOIN teams t ON t.team_id = dp.team_id
     LEFT JOIN nba_matchups m ON m.id = dp.matchup_id
     LEFT JOIN LATERAL (
@@ -254,20 +255,45 @@ async function loadNbaOptimizerPool(
       FROM nba_player_stats nps
       WHERE nps.team_id = dp.team_id
         AND LOWER(nps.name) = LOWER(dp.name)
-      ORDER BY nps.season DESC NULLS LAST, nps.games DESC NULLS LAST
+        -- The slate's own NBA season (turns over Aug 1, as config.nba_season_for):
+        -- a player missing this season must not borrow last season's minutes.
+        AND nps.season = to_char(ds.slate_date - interval '7 months', 'YYYY')
+                         || '-' || to_char(ds.slate_date + interval '5 months', 'YY')
+      ORDER BY nps.games DESC NULLS LAST
       LIMIT 1
     ) ps ON TRUE
     LEFT JOIN LATERAL (
-      SELECT AVG(recent_logs.minutes)::double precision AS "recentMinutesAvg"
-      FROM (
-        SELECT npgl.minutes
-        FROM nba_player_game_logs npgl
-        WHERE npgl.team_id = dp.team_id
-          AND LOWER(npgl.name) = LOWER(dp.name)
-          AND npgl.minutes IS NOT NULL
-        ORDER BY npgl.game_date DESC NULLS LAST, npgl.id DESC
-        LIMIT 5
-      ) recent_logs
+      -- Last five appearances before the slate: ESPN box scores (the live
+      -- source since 2026-27), else stats.nba.com logs for older slates.
+      SELECT COALESCE(
+        (SELECT AVG(e.minutes)::double precision FROM (
+           SELECT bsp.minutes
+           FROM nba_box_score_players bsp
+           JOIN nba_box_score_games bsg ON bsg.espn_event_id = bsp.espn_event_id
+           JOIN teams bt ON bt.name = bsp.team
+           WHERE bt.team_id = dp.team_id
+             AND LOWER(bsp.player) = LOWER(dp.name)
+             AND bsp.played AND bsp.minutes > 0
+             AND bsg.completed AND bsg.game_date < ds.slate_date
+             -- Same season (from Aug 1) and real games: regular season, play-in,
+             -- playoffs (ESPN labels All-Star games type 2, but they fail the team join).
+             AND bsg.game_date >= make_date(
+                   CAST(to_char(ds.slate_date - interval '7 months', 'YYYY') AS integer), 8, 1)
+             AND bsg.season_type IN (2, 3, 5)
+           ORDER BY bsg.start_time DESC
+           LIMIT 5) e),
+        (SELECT AVG(l.minutes)::double precision FROM (
+           SELECT npgl.minutes
+           FROM nba_player_game_logs npgl
+           WHERE npgl.team_id = dp.team_id
+             AND LOWER(npgl.name) = LOWER(dp.name)
+             AND npgl.minutes IS NOT NULL
+             AND npgl.game_date < ds.slate_date
+             AND npgl.season = to_char(ds.slate_date - interval '7 months', 'YYYY')
+                               || '-' || to_char(ds.slate_date + interval '5 months', 'YY')
+           ORDER BY npgl.game_date DESC NULLS LAST, npgl.id DESC
+           LIMIT 5) l)
+      ) AS "recentMinutesAvg"
     ) recent ON TRUE
     WHERE dp.slate_id = ${slateId}
     ORDER BY dp.id ASC

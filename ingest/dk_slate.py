@@ -143,10 +143,13 @@ def build_player_pool(
     dk_players: list[dict],
     linestar_map: dict[tuple, dict],
     slate_date: str,
-    season: str = "2025-26",
+    season: str | None = None,
 ) -> list[dict]:
     """Merge DK, LineStar, and DB data into an enriched player pool."""
     from datetime import date as _date
+    from config import nba_season_for
+
+    season = season or nba_season_for(slate_date)
 
     # Single-query caches
     abbrev_cache = build_team_abbrev_cache(db)
@@ -380,7 +383,7 @@ def run(
     linestar_api: bool = False,
     dnn_cookie: str | None = None,
     date_override: str | None = None,
-    season: str = "2025-26",
+    season: str | None = None,
 ) -> None:
     config = load_config()
     db     = DatabaseManager(config.database_url)
@@ -481,7 +484,7 @@ if __name__ == "__main__":
     parser.add_argument("--linestar-api",    action="store_true")
     parser.add_argument("--dnn-cookie",      default=None)
     parser.add_argument("--date",            help="Slate date YYYY-MM-DD")
-    parser.add_argument("--season",          default="2025-26")
+    parser.add_argument("--season",          default=None, help="NBA season (default: the slate date's season)")
     args = parser.parse_args()
 
     run(

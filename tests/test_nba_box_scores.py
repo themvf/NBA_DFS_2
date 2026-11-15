@@ -6,6 +6,7 @@ from ingest import nba_box_scores as m
 def _scoreboard(status="STATUS_FINAL", completed=True):
     return {"events": [{
         "id": "401909834", "date": "2026-10-21T23:00Z", "name": "Atlanta Hawks at Orlando Magic",
+        "season": {"year": 2027, "type": 2, "slug": "regular-season"},
         "competitions": [{
             "status": {"type": {"name": status, "completed": completed}},
             "competitors": [
@@ -93,3 +94,9 @@ def test_other_dates_games_are_dropped(monkeypatch):
     monkeypatch.setattr(m, "fetch_scoreboard", lambda target, session=None: _scoreboard())
     out = m.ingest_date(None, date(2026, 10, 22), apply=False)
     assert out["games"] == 0
+
+
+def test_scoreboard_keeps_espn_season_type():
+    # 2 = regular season; the second event carries no season block.
+    first, late = m.parse_scoreboard(_scoreboard())
+    assert first.season_type == 2 and late.season_type is None

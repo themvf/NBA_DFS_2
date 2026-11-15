@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { getTeamStats, getMlbTeamStats } from "@/db/queries";
+import { currentNbaSeason } from "@/lib/nba-season";
 import type { Sport } from "@/db/queries";
 
 function fmt1(v: number | null): string {
@@ -165,7 +166,7 @@ export default async function StatsPage({
       <div>
         <h1 className="text-2xl font-bold">NBA Team Stats</h1>
         <p className="text-sm text-gray-500 mt-1">
-          {teams.length} teams · 2025-26 season rolling averages
+          {teams.length} teams · {currentNbaSeason()} season rolling averages
         </p>
       </div>
 

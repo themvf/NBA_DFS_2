@@ -214,7 +214,8 @@ fields (data local only, `data/statapi/nba/`, gitignored):
   unchanged on purpose: raising it with halved leverage broke the search.
 - Stated priors, not fits; one validated slate. On Oct 24 the builds barely
   moved (actual ownership per lineup 96% to 98%) because inflated deep-bench
-  projections, not ownership, drive the picks: fix those next.
+  projections, not ownership, drive the picks. Cause: a hard-coded `2025-26`
+  season (see "Player Stats Source" below), fixed 2026-11-15.
 
 ### How `ourOwnPct` is computed
 
@@ -256,6 +257,41 @@ LEAGUE_AVG_USAGE      = 20.0
   Provides real `USG_PCT` and `DD2` (double-double count).
 - stats.nba.com blocks Vercel/cloud IPs — run `refresh_stats.bat` locally (weekly).
   The Odds API has no IP restrictions — player props work from Vercel directly.
+- **The season string comes from the date, never a constant (2026-11-15).** The
+  season turns over in August: `config.nba_season_for` (Python) and
+  `web/src/lib/nba-season.ts` (web) are the one rule; reads use the slate date's
+  season, refreshes use today's. Until this fix `"2025-26"` was hard-coded in
+  config, both workflows and the web app, so every 2026-27 slate was projected
+  from last season's final ten games: April tank rotations that gave bench
+  players 30 minutes. On 2026-10-24 that put Jericho Sims, Cormac Ryan and Will
+  Riley at 30-32 DK points (stat-api had them at 5-6; none played), and players
+  who changed teams over the summer found no stats row at all.
+- **From 2026-27 the stats come from ESPN box scores, not stats.nba.com.**
+  stats.nba.com timed out on every GitHub run since about 2026-07-01 and from
+  home since 2026-11-01, while `refresh_nba_stats.yml` stayed green: it counted
+  a recompute of stored June logs as success and restamped `fetched_at`.
+  `ingest/nba_stats.py` now builds any season ESPN covers from
+  `nba_box_score_players` (written by `ingest.nba_box_scores` in
+  `grade_nba_points_props.yml`, 11:07 UTC): the same last-10 EWMA
+  (`_rolling_values`, shared with the stats.nba.com path), `player_id =
+  -espn_athlete_id` (cannot collide with an NBA id; consumers match on team +
+  name), `source='espn'`, and one source per season (the writer deletes the
+  other's rows). Team pace and ratings use estimated possessions (OREB = 0.25 x
+  missed FG; ESPN player rows carry no OREB), rescaled so the league mean equals
+  the model constants (100 / 114.5) and shrunk toward them by n/(n+12), a stated
+  prior. Only real games count: ESPN season type 2/3/5 (`nba_box_score_games.
+  season_type`, stored from 2026-11-15) between two franchises, because ESPN
+  labels the All-Star games regular season too ("Team Stars", "World"). The
+  run exits 1 when no team or player rows were written, or when the
+  stats.nba.com fetches failed and only stored logs were re-derived; today's
+  season before opening night exits 0 with a notice. It runs right after
+  `grade_nba_points_props.yml` (`workflow_run`), which writes the box scores.
+  /health watches `stats_through` (the newest game averaged) for the current
+  season, November to May.
+  Measured on 21 nights (Oct 21-Nov 11): each night's top-3 sub-$4.5K value
+  picks scored 2.1 DK points with 51% no-shows on last season's stats, 15.5 with
+  6% on this season's (stat-api's picks: 19.6, 0%). Sub-$4K players are still
+  ~3 points high (play probability is not modelled).
 
 ### NBA Top Scorers (`/nba/top-scorers`, 2026-10-20)
 
