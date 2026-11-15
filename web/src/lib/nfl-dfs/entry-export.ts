@@ -30,8 +30,8 @@ function readEntryFile(content: string) {
 }
 
 /**
- * How many entries the DraftKings file holds. Export fills the first N and
- * leaves the rest untouched, so pre-export QA compares this with the lineups.
+ * How many entries the DraftKings file holds. Pre-export QA uses
+ * `describeNflDkEntryFile` for the full check (single-entry rows, empty rows).
  */
 export function countNflDkEntryRows(content: string): number {
   return readEntryFile(content).entryRows.length;
@@ -56,19 +56,166 @@ function exportCells(lineup: NflGeneratedLineup, expectedSlots: number): string[
   });
 }
 
-export function exportNflDkEntries(content: string, lineups: NflGeneratedLineup[]): string {
-  const { rawLines, headerIndex, header, firstSlot, expectedSlots, entryRows } = readEntryFile(content);
-  if (lineups.length > entryRows.length) {
-    throw new Error(`Generated ${lineups.length} lineups but the entry file has only ${entryRows.length} entries.`);
+/** A contest name DraftKings caps at one entry per user ("Single Entry", "[Single Entry]", "SE"). */
+export function isSingleEntryContest(name: string): boolean {
+  return /single[\s-]*entry|\bse\b/i.test(name);
+}
+
+export type NflDkEntryContest = { key: string; name: string; rows: number; singleEntry: boolean };
+
+/** The shape of a DraftKings entry file, as export and pre-export QA read it. */
+export type NflDkEntryFileShape = {
+  /** Every entry row in the file. */
+  rows: number;
+  /** Rows in single-entry contests. They all get the run's top lineup and use no lineup of their own. */
+  singleEntryRows: number;
+  /** Rows in multi-entry contests: each needs its own lineup. */
+  multiEntryRows: number;
+  /** Multi-entry rows holding no roster yet; one left without a lineup would be a paid entry with no lineup. */
+  emptyMultiEntryRows: number;
+  contests: NflDkEntryContest[];
+};
+
+function entryLayout(content: string) {
+  const file = readEntryFile(content);
+  const nameCol = file.header.findIndex((cell) => normalized(cell) === "CONTEST NAME");
+  const idCol = file.header.findIndex((cell) => normalized(cell) === "CONTEST ID");
+  const rows = file.entryRows.map((row, index) => {
+    const name = nameCol >= 0 ? (row[nameCol] ?? "").trim() : "";
+    const id = idCol >= 0 ? (row[idCol] ?? "").trim() : "";
+    const empty = row.slice(file.firstSlot, file.firstSlot + file.expectedSlots).every((cell) => !cell?.trim());
+    return { index, key: id || name || "(one contest)", name, singleEntry: Boolean(name) && isSingleEntryContest(name), empty };
+  });
+  return { ...file, rows };
+}
+
+/** How the entry file is laid out: its contests, single-entry rows and rows still empty. */
+export function describeNflDkEntryFile(content: string): NflDkEntryFileShape {
+  const { rows } = entryLayout(content);
+  const contests = new Map<string, NflDkEntryContest>();
+  for (const row of rows) {
+    const contest = contests.get(row.key) ?? { key: row.key, name: row.name, rows: 0, singleEntry: row.singleEntry };
+    contest.rows += 1;
+    contests.set(row.key, contest);
   }
+  const multi = rows.filter((row) => !row.singleEntry);
+  return {
+    rows: rows.length,
+    singleEntryRows: rows.length - multi.length,
+    multiEntryRows: multi.length,
+    emptyMultiEntryRows: multi.filter((row) => row.empty).length,
+    contests: [...contests.values()],
+  };
+}
+
+/**
+ * Order the lineups so any stretch of them holds a proportional mix of the
+ * run's lineup types. The optimizer returns lineups grouped by archetype
+ * (every "standard ceiling" build first), and export used to fill rows in
+ * that order, so the first contest of a multi-contest entry file got one
+ * block of near-identical builds. Deterministic: same lineups, same order.
+ */
+function interleaveByArchetype(lineups: NflGeneratedLineup[]): NflGeneratedLineup[] {
+  const groups = new Map<string, NflGeneratedLineup[]>();
+  for (const lineup of lineups) {
+    const key = lineup.archetype?.id ?? "none";
+    groups.set(key, [...(groups.get(key) ?? []), lineup]);
+  }
+  return [...groups.values()]
+    .flatMap((group, groupIndex) => group.map((lineup, i) => ({ lineup, position: (i + 0.5) / group.length, groupIndex })))
+    .sort((a, b) => a.position - b.position || a.groupIndex - b.groupIndex)
+    .map((entry) => entry.lineup);
+}
+
+/** The run's strongest consensus lineup: most projected points, then highest estimated ownership. */
+export function topNflLineup(lineups: NflGeneratedLineup[]): NflGeneratedLineup | null {
+  return [...lineups].sort((a, b) =>
+    b.projectedFpts - a.projectedFpts
+    || (b.projectedOwnership ?? 0) - (a.projectedOwnership ?? 0)
+    || a.lineupNumber - b.lineupNumber)[0] ?? null;
+}
+
+/** The message pre-export QA and the export show when the lineups do not cover the file. */
+export function entryCoverageProblem(shape: NflDkEntryFileShape, built: number): string | null {
+  const se = shape.singleEntryRows
+    ? ` (${shape.singleEntryRows} single-entry entr${shape.singleEntryRows === 1 ? "y takes" : "ies take"} your top lineup and ${shape.singleEntryRows === 1 ? "needs" : "need"} none of its own)`
+    : "";
+  if (built > shape.multiEntryRows) {
+    return `The entry file has room for ${shape.multiEntryRows} lineup${shape.multiEntryRows === 1 ? "" : "s"}${se} but there are ${built}. Download an entry file with more entries, or build ${shape.multiEntryRows}.`;
+  }
+  if (built < shape.emptyMultiEntryRows) {
+    return `The entry file has ${shape.multiEntryRows} entr${shape.multiEntryRows === 1 ? "y" : "ies"} for ${built} lineup${built === 1 ? "" : "s"}${se}. Build ${shape.multiEntryRows} lineups, or remove entries from the file.`;
+  }
+  if (shape.singleEntryRows && !built) return "There is no lineup to put in the single-entry contests.";
+  return null;
+}
+
+export type NflDkEntryPlan = { csv: string; note: string };
+
+/**
+ * Write lineups into a DraftKings entry file.
+ * - A single-entry contest gets the run's top lineup (the same lineup may go into several such contests).
+ * - Every other row gets its own lineup, dealt so each contest holds a mix of the run's lineup types.
+ * - An entry left with no roster is refused: it is a paid entry with no lineup.
+ */
+export function planNflDkEntries(content: string, lineups: NflGeneratedLineup[]): NflDkEntryPlan {
+  const { rawLines, headerIndex, header, firstSlot, expectedSlots, entryRows, rows } = entryLayout(content);
+  const problem = entryCoverageProblem(describeNflDkEntryFile(content), lineups.length);
+  if (problem) throw new Error(problem);
+  const multi = rows.filter((row) => !row.singleEntry);
+  const single = rows.filter((row) => row.singleEntry);
+  // Empty rows first, so a row left over is one that keeps the lineup DraftKings already has.
+  const targets = [...multi].sort((a, b) => Number(b.empty) - Number(a.empty) || a.index - b.index).slice(0, lineups.length);
+  const byContest = new Map<string, typeof targets>();
+  for (const row of targets) byContest.set(row.key, [...(byContest.get(row.key) ?? []), row]);
+  for (const list of byContest.values()) list.sort((a, b) => a.index - b.index);
+  const filled = new Map<string, number>();
+  const assigned = new Map<number, NflGeneratedLineup>();
+  for (const lineup of interleaveByArchetype(lineups)) {
+    // The next lineup goes to the contest furthest behind its share; larger contest first on a tie.
+    let best: string | null = null;
+    let bestShare = Infinity;
+    let bestSize = -1;
+    for (const [key, list] of byContest) {
+      const done = filled.get(key) ?? 0;
+      if (done >= list.length) continue;
+      const share = done / list.length;
+      if (share < bestShare - 1e-12 || (Math.abs(share - bestShare) <= 1e-12 && list.length > bestSize)) {
+        best = key; bestShare = share; bestSize = list.length;
+      }
+    }
+    if (best == null) throw new Error("Internal error: ran out of entry rows while assigning lineups.");
+    const done = filled.get(best) ?? 0;
+    assigned.set(byContest.get(best)![done].index, lineup);
+    filled.set(best, done + 1);
+  }
+  const top = single.length ? topNflLineup(lineups) : null;
+  for (const row of single) assigned.set(row.index, top!);
   const output = rawLines.slice(0, headerIndex).concat(stringifyCsvLine(header));
   for (let index = 0; index < entryRows.length; index++) {
     const row = entryRows[index];
-    const lineup = lineups[index];
+    const lineup = assigned.get(index);
     if (lineup) exportCells(lineup, expectedSlots).forEach((cell, slotIndex) => { row[firstSlot + slotIndex] = cell; });
     output.push(stringifyCsvLine(row));
   }
-  return `${output.join("\r\n")}\r\n`;
+  return { csv: `${output.join("\r\n")}\r\n`, note: entryAssignmentNote(describeNflDkEntryFile(content), lineups) };
+}
+
+/** Plain words on how the export spreads the lineups over the file's contests. */
+export function entryAssignmentNote(shape: NflDkEntryFileShape, lineups: NflGeneratedLineup[]): string {
+  const multiContests = shape.contests.filter((c) => !c.singleEntry).length;
+  const seContests = shape.contests.filter((c) => c.singleEntry).length;
+  const types = new Set(lineups.map((l) => l.archetype?.id ?? "none")).size;
+  const parts: string[] = [];
+  if (multiContests > 1) parts.push(types > 1 ? `Each of the ${multiContests} contests gets a mix of the ${types} lineup types` : `Lineups are spread over ${multiContests} contests`);
+  else if (multiContests === 1 && lineups.length) parts.push(`${lineups.length} lineup${lineups.length === 1 ? "" : "s"} go into 1 contest`);
+  const top = topNflLineup(lineups);
+  if (seContests && top) parts.push(`${seContests} single-entry contest${seContests === 1 ? "" : "s"} get${seContests === 1 ? "s" : ""} your top lineup (#${top.lineupNumber}, ${top.projectedFpts.toFixed(1)} projected)`);
+  return parts.length ? `${parts.join("; ")}.` : "";
+}
+
+export function exportNflDkEntries(content: string, lineups: NflGeneratedLineup[]): string {
+  return planNflDkEntries(content, lineups).csv;
 }
 
 /** DraftKings' roster-column headers: the format its Upload Lineups box accepts without entry IDs. */

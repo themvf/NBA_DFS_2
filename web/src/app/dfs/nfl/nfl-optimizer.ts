@@ -122,6 +122,8 @@ export type NflOptimizerPlayer = {
    * contest-type judgement that belongs to the optimizer. See `listedDoubtful`.
    */
   dkStatus?: string | null;
+  /** The projection's mean stat line (receptions, carries, ...), when the source has one. Read by the v15 pass-catching-back rule only. */
+  statMeans?: Record<string, number> | null;
   ourProj: number | null;
   floorFpts: number | null;
   /**
@@ -299,6 +301,33 @@ export type NflOptimizerSettings = {
    * Once the run reaches the cap, every later lineup forbids it.
    */
   maxDstVsOffenseShare?: number;
+  /**
+   * Lineup rules, winners shape v15 (owner's request 2026-11-14, after the
+   * NE@DET build needed hand unblocks). Each is off when absent or 0, and the
+   * Winners shape fills the default; the ghost house and the pool-rule study
+   * never get them.
+   *
+   * Cheap-player role check: players up to this salary need role evidence,
+   * and players at or under the punt policy's absolute block are judged on
+   * that evidence instead of on price alone. Needs a punt policy.
+   */
+  cheapRoleCheckSalary?: number;
+  /** Players projected under this many points are left out unless allowlisted (punt allowlist or a recorded override). */
+  minRawProjection?: number;
+  /** An allowlisted player under `minRawProjection` plays in at most this share of lineups and never captains. */
+  lowProjectionMaxExposure?: number;
+  /** Showdown: two running backs from one team only when one of them projects at least this many receptions. */
+  showdownRbPairMinReceptions?: number;
+  /**
+   * A player DraftKings lists Q, or our availability feed calls QUESTIONABLE,
+   * plays in at most this share of lineups and never captains. A range you
+   * typed on him, a lock, or `expectedActivePlayerIds` lifts it.
+   */
+  questionableMaxExposure?: number;
+  /** The same for a player our availability feed calls DOUBTFUL (a DK "D" is already left out unless locked). */
+  doubtfulMaxExposure?: number;
+  /** Players you expect to play despite the tag: the questionable/doubtful cap and captain ban do not apply. */
+  expectedActivePlayerIds?: number[];
   /** Showdown: no player captains more than this share of lineups unless his own CPT range says otherwise. */
   maxCaptainExposure?: number;
   /** Showdown: leave every kicker out of the pool (locks still throw, by name). */
@@ -648,8 +677,32 @@ export function userCaptainOverridesAvailability(player: NflOptimizerPlayer, set
   return (settings.exposurePolicies ?? []).some((p) => p.playerId === player.dkPlayerId && (p.captain.minPct ?? 0) > 0);
 }
 
-function captainBlockedForRun(player: NflOptimizerPlayer, settings: Pick<NflOptimizerSettings, "exposurePolicies">): boolean {
-  return captainBlockedByAvailability(player) && !userCaptainOverridesAvailability(player, settings);
+function captainBlockedForRun(player: NflOptimizerPlayer, settings: Pick<NflOptimizerSettings, "exposurePolicies" | "expectedActivePlayerIds" | "questionableMaxExposure" | "doubtfulMaxExposure">): boolean {
+  // v15: a player you marked expected active is cleared of a Questionable tag (not a Doubtful one).
+  const expectedActive = (settings.expectedActivePlayerIds ?? []).includes(player.dkPlayerId)
+    && (player.availabilityStatus ?? "").trim().toUpperCase() === "QUESTIONABLE";
+  if (captainBlockedByAvailability(player)) return !userCaptainOverridesAvailability(player, settings) && !expectedActive;
+  // v15: with the questionable cap on, a DraftKings "Q" also keeps him out of the captain slot.
+  return questionableTag(player, settings) != null && !userCaptainMinimum(player, settings);
+}
+
+/** A captain minimum the user set on this player. */
+function userCaptainMinimum(player: NflOptimizerPlayer, settings: Pick<NflOptimizerSettings, "exposurePolicies">): boolean {
+  return (settings.exposurePolicies ?? []).some((p) => p.playerId === player.dkPlayerId && (p.captain.minPct ?? 0) > 0);
+}
+
+/**
+ * v15 (#9): the injury tag the questionable cap reads, or null when the cap is
+ * off for that tag or the player is marked expected active. DraftKings "Q" or
+ * availability QUESTIONABLE is "Q"; availability DOUBTFUL is "D" (a DraftKings
+ * "D" is left out of the pool unless locked, see `listedDoubtful`).
+ */
+export function questionableTag(player: NflOptimizerPlayer, settings: Pick<NflOptimizerSettings, "expectedActivePlayerIds" | "questionableMaxExposure" | "doubtfulMaxExposure">): "Q" | "D" | null {
+  if ((settings.expectedActivePlayerIds ?? []).includes(player.dkPlayerId)) return null;
+  const status = (player.availabilityStatus ?? "").trim().toUpperCase();
+  if (status === "DOUBTFUL") return settings.doubtfulMaxExposure ? "D" : null;
+  if (status === "QUESTIONABLE" || (player.dkStatus ?? "").trim().toUpperCase() === "Q") return settings.questionableMaxExposure ? "Q" : null;
+  return null;
 }
 
 /** Why a pool player cannot be captain, completing "has a captain minimum, but ...". */
@@ -660,7 +713,7 @@ function captainIneligibleReason(player: NflOptimizerPlayer, settings: NflOptimi
       ? `the Winners shape captains only ${positions}. Clear his CPT range or switch the build shape to Standard`
       : `this build captains only ${positions}. Clear his CPT range`;
   }
-  if (captainBlockedForRun(player, settings)) return `his status (${player.availabilityStatus}) keeps him out of the captain slot. Clear his CPT range`;
+  if (captainBlockedForRun(player, settings)) return `his status (${player.availabilityStatus ?? (player.dkStatus ? `DraftKings ${player.dkStatus}` : "unknown")}) keeps him out of the captain slot. Clear his CPT range`;
   return "he cannot be captain in this build. Clear his CPT range";
 }
 
@@ -943,7 +996,15 @@ function validateSettings(settings: NflOptimizerSettings): void {
   share(settings.maxQbExposure, "Quarterback exposure cap", false);
   share(settings.maxCaptainExposure, "Captain exposure cap", false);
   share(settings.maxDstVsOffenseShare, "DST-against-own-players cap", true);
-  if (settings.maxDstVsOffenseShare != null && settings.format !== "classic") throw new Error("The DST-against-own-players cap is a Classic rule.");
+  // v15: the DST cap also runs in Showdown, where a kicker counts as an opposing player too.
+  share(settings.lowProjectionMaxExposure, "Exposure cap for allowlisted low projections", false);
+  share(settings.questionableMaxExposure, "Questionable exposure cap", true);
+  share(settings.doubtfulMaxExposure, "Doubtful exposure cap", true);
+  for (const [value, label, max] of [[settings.cheapRoleCheckSalary, "The cheap-player role check salary", 50000], [settings.minRawProjection, "The minimum projection", 100],
+    [settings.showdownRbPairMinReceptions, "The pass-catching back receptions", 20]] as const) {
+    if (value != null && (!Number.isFinite(value) || value < 0 || value > max)) throw new Error(`${label} must be between 0 and ${max.toLocaleString()}.`);
+  }
+  if (settings.showdownRbPairMinReceptions && settings.format !== "showdown") throw new Error("The one-RB-per-team rule is a Showdown rule.");
   if (settings.bringBackShare != null && (settings.format !== "classic" || settings.mode !== "gpp")) throw new Error("A bring-back share is only available in Classic GPP.");
   if ((settings.excludeKickers || settings.forbidFourTwoSplit || settings.maxCaptainExposure != null || settings.captainPositions) && settings.format !== "showdown") throw new Error("Kicker exclusion, the 4-2 ban, the captain cap and captain positions are Showdown rules.");
   if (settings.captainPositions && !settings.captainPositions.length) throw new Error("Captain positions must name at least one position.");
@@ -996,7 +1057,9 @@ export function dstFacesOwnOffense(lineup: Pick<NflGeneratedLineup, "slots">): b
   return lineup.slots.some(({ player: defense }) => {
     if (defense.position !== "DST") return false;
     const opponent = defense.gameKey?.split("@").find(team => team !== defense.team);
-    return lineup.slots.some(({ player }) => player.team === opponent && ["QB", "RB", "WR", "TE"].includes(player.position));
+    // Showdown (v15): an opposing kicker counts too, since his points come from the same drives.
+    const offense = lineup.slots.some(({ slot }) => slot === "CPT") ? ["QB", "RB", "WR", "TE", "K"] : ["QB", "RB", "WR", "TE"];
+    return lineup.slots.some(({ player }) => player.team === opponent && offense.includes(player.position));
   });
 }
 /** Flex slots a lineup can give one quarterback's opponents; the big-M of the forbid constraint. */
@@ -1089,10 +1152,20 @@ function buildOne(
     // Nine roster slots: 6*DST + opposing offense <= 9 permits at most three
     // opposing offensive players when the DST is present.
     for (const id of defenseOpponents.keys()) constraints[`dst_script_${id}`] = { max: 9 };
-    // DST cap: 9*DST + opposing offense <= 9 allows no opposing QB/RB/WR/TE
-    // when the DST is present and leaves lineups without it unrestricted.
-    if (forbidDstVsOffense) for (const id of defenseOpponents.keys()) constraints[`dst_block_${id}`] = { max: 9 };
   }
+  // DST cap: 9*DST + opposing offense <= 9 (Classic; 6 in Showdown, where an
+  // opposing kicker counts too) allows no opposing player when the DST is
+  // present and leaves lineups without it unrestricted.
+  const dstBlockSize = settings.format === "classic" ? 9 : 6;
+  const dstBlockPositions = settings.format === "classic" ? ["QB", "RB", "WR", "TE"] : ["QB", "RB", "WR", "TE", "K"];
+  if (forbidDstVsOffense) for (const id of defenseOpponents.keys()) constraints[`dst_block_${id}`] = { max: dstBlockSize };
+  // v15 (#7) Showdown: at most one running back per team who is not a pass
+  // catcher, so two backs from one team need one projecting enough receptions.
+  const rbPairMin = settings.format === "showdown" ? settings.showdownRbPairMinReceptions ?? 0 : 0;
+  // A back you locked (or one forced in for a minimum you set) is your instruction and never counts against the rule.
+  const plainBack = (player: ResolvedPlayer) => rbPairMin > 0 && player.position === "RB" && !forcedIds.has(player.dkPlayerId)
+    && !((player.statMeans?.receptions ?? 0) >= rbPairMin);
+  if (rbPairMin > 0) for (const team of new Set(available.filter(plainBack).map((p) => p.team))) constraints[`rb_pair_${safe(team)}`] = { max: 1 };
   // Phase 1 (P1-AC4): the salary-relief cap is a lineup CONSTRAINT, not a
   // post-generation filter. At most this many cheap salary-relief players may
   // appear in any single lineup.
@@ -1262,6 +1335,7 @@ function buildOne(
       if (constraints.goal_line_rb && player.position === "RB" && isNflGppSignalPlayer(player.playerSignals, ["INSIDE_FIVE"])) variable.goal_line_rb = 1;
       if (constraints.min_qb && player.position === "QB") variable.min_qb = 1;
       if (constraints.max_k && player.position === "K") variable.max_k = 1;
+      if (plainBack(player)) variable[`rb_pair_${safe(player.team)}`] = 1;
       if (captainStack) {
         const passCatcher = player.position === "WR" || player.position === "TE";
         if (player.position === "QB") variable[`cstack_qb_${player.team}`] = 1;
@@ -1292,8 +1366,8 @@ function buildOne(
           variable[key] = slot === "CPT" ? 2 : 1;
         const block = `dst_block_${defenseId}`;
         if (constraints[block]) {
-          if (player.dkPlayerId === defenseId) variable[block] = 9;
-          else if (player.team === opponent && ["QB", "RB", "WR", "TE"].includes(player.position)) variable[block] = 1;
+          if (player.dkPlayerId === defenseId) variable[block] = dstBlockSize;
+          else if (player.team === opponent && dstBlockPositions.includes(player.position)) variable[block] = 1;
         }
       }
       if (player.gameKey) variable[`game_${safe(player.gameKey)}`] = 1;
@@ -1713,7 +1787,13 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   // The winners-shape preset is resolved into ordinary settings here, so the
   // rest of the build (and the saved run) sees only numbers it can report.
   requested = applyDiversified(requested);
-  const shape = requested.buildShape === "winners" ? applyWinnersShape(requested, players) : null;
+  // v15: the players whose exposure YOU typed (an overall range or a captain
+  // range), read before the shape and the simulated captain ranges add theirs.
+  // Their ranges outrank the lineup rules' caps.
+  const typedExposure = new Set<number>([
+    ...(requested.exposurePolicies ?? []).filter((p) => p.overallFromUser === true || p.captain.minPct != null || p.captain.maxPct != null).map((p) => p.playerId),
+    ...Object.keys(requested.maxExposureByPlayer ?? {}).map(Number), ...Object.keys(requested.minExposureByPlayer ?? {}).map(Number)]);
+  const shape =requested.buildShape === "winners" ? applyWinnersShape(requested, players) : null;
   const shaped = shape ? shape.settings : requested;
   if (shape) validateSettings(shaped);
   // v13: a Winners-shape Showdown build with no captain range of its own takes
@@ -1727,8 +1807,22 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   const shapeExcluded = shape?.excluded ?? new Map<number, string>();
   const excluded = new Set(settings.excludedPlayerIds);
   const locked = new Set(settings.lockedPlayerIds);
-  const policy = settings.puntPolicy;
+  // v15 (#5): the cheap-player role check widens the evidence threshold and
+  // judges players at or under the absolute block on their role. The salary-relief
+  // cap keeps the base threshold, so $3,000-$4,000 players are not held to one per lineup.
+  const policy = settings.puntPolicy && settings.cheapRoleCheckSalary ? {
+    ...settings.puntPolicy,
+    roleEvidenceRequiredBelowSalary: Math.max(settings.puntPolicy.roleEvidenceRequiredBelowSalary, settings.cheapRoleCheckSalary),
+    salaryReliefBelowSalary: settings.puntPolicy.salaryReliefBelowSalary ?? settings.puntPolicy.roleEvidenceRequiredBelowSalary,
+    roleEvidenceClearsAbsoluteBlock: true,
+    depthChartCountsAsRole: true,
+  } : settings.puntPolicy;
   const overrides = settings.puntOverrides ?? [];
+  // v15 (#6, #9): per-player caps from the lineup rules, applied with the exposure counts below.
+  const ruleCaps = new Map<number, { share: number; why: string }>();
+  let lowProjectionBlocked = 0;
+  const lowProjectionAllowed: string[] = [];
+  const questionableCapped: string[] = [];
   if (settings.buildShape === "diversified") {
     const policy = diversifiedPolicy(settings);
     const lockedGroups = diversifiedGroups({slots:players.filter(p=>locked.has(p.dkPlayerId)).map(player=>({player}))});
@@ -1868,6 +1962,30 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
       eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden, reason: "No usable projection in the selected source.", reasonCode: "NO_PROJECTED_OPPORTUNITY" });
       coverage.excluded++; continue;
     }
+    // v15 (#6): a projection under the floor is left out unless allowlisted
+    // (punt allowlist or a recorded override); allowlisted, he is capped and
+    // never captains. A lock or an exposure minimum you set outranks it.
+    const rawFloor = settings.minRawProjection ?? 0;
+    if (rawFloor > 0 && resolved.value < rawFloor && !floorExempt.has(player.dkPlayerId)) {
+      const allowlisted = Boolean(settings.puntPolicy?.allowlistedPlayerIds.includes(player.dkPlayerId))
+        || overrides.some((o) => o.playerId === player.dkPlayerId && o.reason.trim());
+      if (!allowlisted) {
+        eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden: false,
+          reason: `Projected ${resolved.value.toFixed(1)} points, under the ${rawFloor.toFixed(1)}-point floor. Allow him (cheap-player override) to use him in up to ${Math.round((settings.lowProjectionMaxExposure ?? 0.1) * 100)}% of lineups, or lock him.`, reasonCode: "LOW_PROJECTION" });
+        lowProjectionBlocked++; coverage.excluded++; continue;
+      }
+      captainEligible = false;
+      ruleCaps.set(player.dkPlayerId, { share: settings.lowProjectionMaxExposure ?? 0.1, why: "low projection" });
+      lowProjectionAllowed.push(player.name);
+    }
+    // v15 (#9): a questionable/doubtful tag caps him and keeps him off captain (see `captainBlockedForRun`).
+    const tag = questionableTag(player, settings);
+    const tagShare = tag === "D" ? settings.doubtfulMaxExposure : tag === "Q" ? settings.questionableMaxExposure : undefined;
+    if (tagShare) {
+      const prior = ruleCaps.get(player.dkPlayerId);
+      if (!prior || tagShare < prior.share) ruleCaps.set(player.dkPlayerId, { share: tagShare, why: tag === "D" ? "doubtful" : "questionable" });
+      questionableCapped.push(`${player.name} (${tag === "D" ? "Doubtful" : "Questionable"})`);
+    }
     if (resolved.source === "dk_avg_fallback" || resolved.source === "our_fallback") coverage.fallback++; else coverage.direct++;
     eligibility.push({ ...named, eligible: true, salaryRelief, captainEligible, overridden, reason: null, reasonCode: null });
     // Winners shape (Showdown): the Captain slot is open only to the listed
@@ -1942,6 +2060,10 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   if (positionPrior) warnings.push(`${positionPrior} player(s) projected from a position average (no games of their own) were left out: on 2026 weeks 2-8 such players scored 0.8 points against 6.8 projected. Lock a player to keep him regardless.`);
   if (withoutHistory) warnings.push(`${withoutHistory} player(s) with too few games of their own were removed (${MIN_OBSERVED_GAMES} required, capped at the games their team has completed this season): their projection is their position's average, not theirs. Lock a player to keep him regardless.`);
   if (belowSalaryFloor) warnings.push(`${belowSalaryFloor} player(s) priced under the $${salaryFloor.toLocaleString()} per-player salary floor were removed. Lock a player to keep him regardless.`);
+  if (settings.cheapRoleCheckSalary && settings.puntPolicy) warnings.push(`Cheap-player role check: players up to $${Math.max(settings.puntPolicy.roleEvidenceRequiredBelowSalary, settings.cheapRoleCheckSalary).toLocaleString()} need a current role (a depth-chart spot, role confidence or games of their own), and players at $${settings.puntPolicy.absoluteMinSalary.toLocaleString()} or less are kept when they have one instead of being blocked by price.`);
+  if (settings.minRawProjection) warnings.push(`Projection floor: ${lowProjectionBlocked} player(s) projected under ${settings.minRawProjection.toFixed(1)} points were left out`
+    + (lowProjectionAllowed.length ? `; ${lowProjectionAllowed.join(", ")} kept because you allowed them, in at most ${Math.round((settings.lowProjectionMaxExposure ?? 0.1) * 100)}% of lineups and never as captain.` : ". Allow a player in the cheap-player review to keep him."));
+  if (questionableCapped.length) warnings.push(`Injury tags: ${questionableCapped.join(", ")} play in at most ${Math.round((settings.questionableMaxExposure ?? 0) * 100)}% of lineups (Doubtful ${Math.round((settings.doubtfulMaxExposure ?? 0) * 100)}%) and never captain, unless you set his range or mark him expected active.`);
   const missingTails = pool.filter(p => (p.resolvedSource === 'our' || p.resolvedSource === 'our_fallback')
     && (finite(p.floorFpts) === null || finite(p.ceilingFpts) === null)).length;
   if (missingTails) warnings.push(`${missingTails} historical-source players have no usable scenario distribution. Search uses 0.74×/1.28× point-estimate heuristics for missing lower/upper tails; these are not simulated percentiles. Missing boom rates receive no boom bonus.`);
@@ -2057,6 +2179,11 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
     if (settings.format === "showdown" && settings.maxCaptainExposure != null && policyById.get(p.dkPlayerId)?.captain.maxPct == null) {
       counts.captainMax = Math.max(1, counts.captainMin, Math.min(counts.captainMax, Math.floor(settings.maxCaptainExposure * settings.nLineups)));
     }
+    // v15 lineup rules (#6, #9): a range you typed on him, a lock or a minimum wins.
+    const ruleCap = ruleCaps.get(p.dkPlayerId);
+    if (ruleCap && !typedExposure.has(p.dkPlayerId) && !floorExempt.has(p.dkPlayerId)) {
+      counts.overallMax = Math.max(1, Math.min(counts.overallMax, Math.floor(ruleCap.share * settings.nLineups + 1e-9)));
+    }
     if (settings.buildShape === "diversified") {
       if (locked.has(p.dkPlayerId)) counts.overallMin = counts.overallMax = settings.nLineups;
       if (counts.overallMin > counts.overallMax) throw new Error(`${p.name}: minimum ${counts.overallMin} exceeds the Diversified maximum ${counts.overallMax}. Set an explicit player maximum or lower the minimum.`);
@@ -2163,7 +2290,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   let goalLineLineups = 0;
   let bringBackLineups = 0;
   const bringBackShare = settings.format === "classic" && settings.mode === "gpp" && settings.stackPassCatchers > 0 ? settings.bringBackShare ?? null : null;
-  const dstVsOffenseCap = settings.format === "classic" && settings.maxDstVsOffenseShare != null
+  const dstVsOffenseCap = settings.maxDstVsOffenseShare != null
     ? Math.floor(settings.maxDstVsOffenseShare * plan.length + 1e-9) : null;
   let dstVsOffenseLineups = 0;
   const showdown = settings.format === "showdown" && settings.mode === "gpp";
@@ -2409,7 +2536,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
     warnings.push(`Bring-back share: ${bringBackLineups} of ${lineups.length} lineups carry an opposing bring-back (target ${Math.round(bringBackShare * 100)}%).`);
   }
   if (dstVsOffenseCap != null && lineups.length) {
-    warnings.push(`DST against own players: ${dstVsOffenseLineups} of ${lineups.length} lineups play a defense against one of their own QB/RB/WR/TE (cap ${dstVsOffenseCap}, ${Math.round(settings.maxDstVsOffenseShare! * 100)}%).`);
+    warnings.push(`DST against own players: ${dstVsOffenseLineups} of ${lineups.length} lineups play a defense against one of their own ${settings.format === "showdown" ? "QB/RB/WR/TE/K" : "QB/RB/WR/TE"} (cap ${dstVsOffenseCap}, ${Math.round(settings.maxDstVsOffenseShare! * 100)}%).`);
   }
   if (airMatchupTarget) {
     if (airMatchupLineups < airMatchupTarget) warnings.push(`Air-yard matchup minimum missed: ${airMatchupLineups}/${airMatchupTarget} required lineups. Adjust the percentage or player limits.`);

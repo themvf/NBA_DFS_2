@@ -83,7 +83,7 @@
     "research/nfl_workload_risk.py": "e8d67cb4945446fdc4ab857b69729a61e3c65dae2c1a17ed364bef49d637f344",
     "web/src/lib/nfl-dfs/joint-portfolio.ts": "87588d7fb2782f347ea6bfe35e522da15a62063e4c2d287a0c703064430ebf9f",
     "web/scripts/compare-nfl-joint-portfolios.ts": "05bf97642caba1b96d6d4420acf51502faa4468fcf40dc4e1607f51790298515",
-    "web/src/app/dfs/nfl/nfl-optimizer.ts": "8fb3a0a85348d63dd3fd81cd36901a911dc11107bbc89e03cdfbe47378dfc8a5",
+    "web/src/app/dfs/nfl/nfl-optimizer.ts": "1f039cf2f1347e9980bf7ff5c6d2f3acc727565cdb63e46aed54f04eff9b0c2e",
     "model/nfl_matchup_scenarios.py": "9d133718c360a03a445965508061807c49644c3ac329ae220c4f68069a19e913",
     "web/src/lib/nfl-dfs/scoring.ts": "83e8b8c293519e7605f4d5be76a302bd442835fa4dc43a6d02744922a5729e3c",
     "web/src/lib/nfl-dfs/scenarios.ts": "98ed595731bc69ee1fcde4d9c42109880382cff3dbf480ce0f0043fdf46e2fd9",
@@ -425,6 +425,20 @@
         "web/src/app/dfs/nfl/nfl-optimizer.ts": {
           "previous": "edccb99614b12291f58a0cc3f55e855978b94642806af1f10d789310583145c1",
           "new": "8fb3a0a85348d63dd3fd81cd36901a911dc11107bbc89e03cdfbe47378dfc8a5"
+        }
+      },
+      "evidence_rule": "Keep previous implementation hashes and separate forward construction cohorts; no study gates or enrollment change."
+    },
+    {
+      "amended_at": "2026-11-15T05:06:07.864342+00:00",
+      "reason": "Lineup rules (nfl-winners-shape-v15, owner's request 2026-11-14 after the NE@DET Showdown needed hand unblocks). The optimizer gains optional settings, each off when absent or 0 and filled by the Winners shape for user builds only: cheapRoleCheckSalary (the punt policy's role check widened to that salary, with role evidence, a depth-chart QB1/RB1-2/TE1-2, or a kicker/defense clearing players at or under the absolute block; the salary-relief cap keeps its base threshold), minRawProjection and lowProjectionMaxExposure (players projected under the floor are left out with reason LOW_PROJECTION unless allowlisted; allowlisted ones are capped and never captain), showdownRbPairMinReceptions (Showdown: at most one RB per team who projects fewer receptions than this; locked or forced backs exempt), questionableMaxExposure, doubtfulMaxExposure and expectedActivePlayerIds (DK Q or availability QUESTIONABLE/DOUBTFUL capped and kept off captain unless typed exposure, a lock, a captain minimum or expected active), and maxDstVsOffenseShare is now allowed in Showdown, where an opposing kicker counts. NflOptimizerPlayer gains an optional statMeans. The research reconstructions (poolRules: true, the ghost house and the pool-rule study arms) never receive these settings, so every frozen arm is unchanged; the pool-rule study test's native references switch them off explicitly. Re-pinned the optimizer only; every other pinned file is unchanged.",
+      "file": "web/src/app/dfs/nfl/nfl-optimizer.ts",
+      "previous_sha256": "8fb3a0a85348d63dd3fd81cd36901a911dc11107bbc89e03cdfbe47378dfc8a5",
+      "new_sha256": "1f039cf2f1347e9980bf7ff5c6d2f3acc727565cdb63e46aed54f04eff9b0c2e",
+      "changed_implementation_hashes": {
+        "web/src/app/dfs/nfl/nfl-optimizer.ts": {
+          "previous": "8fb3a0a85348d63dd3fd81cd36901a911dc11107bbc89e03cdfbe47378dfc8a5",
+          "new": "1f039cf2f1347e9980bf7ff5c6d2f3acc727565cdb63e46aed54f04eff9b0c2e"
         }
       },
       "evidence_rule": "Keep previous implementation hashes and separate forward construction cohorts; no study gates or enrollment change."

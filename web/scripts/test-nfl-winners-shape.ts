@@ -7,7 +7,8 @@
  */
 import assert from "node:assert/strict";
 import { dstFacesOwnOffense, optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings } from "../src/app/dfs/nfl/nfl-optimizer";
-import { applyWinnersShape, autoCaptainRanges, qbExposureCap, showdownCaptainPositions, suggestedCaptainPositions, winnersShapeLimits, WINNERS_SHAPE, WINNERS_SHAPE_VERSION } from "../src/lib/nfl-dfs/winners-shape";
+import { applyWinnersShape, autoCaptainRanges, DEFAULT_LINEUP_RULES, qbExposureCap, showdownCaptainPositions, suggestedCaptainPositions, winnersShapeLimits, withLineupRules, WINNERS_SHAPE, WINNERS_SHAPE_VERSION } from "../src/lib/nfl-dfs/winners-shape";
+import { DEFAULT_NFL_PUNT_POLICY } from "../src/lib/nfl-dfs/punt-policy";
 import { autoFadeCandidates } from "../src/lib/nfl-dfs/archetypes";
 
 // --- Units: the quarterback cap follows the lineup count ---
@@ -274,7 +275,9 @@ console.log("Winners shape (classic): bring-back share alternates, quarterbacks 
   assert.throws(() => optimizeNflLineups(pool, settings({ format: "showdown", nLineups: 1, buildShape: "winners", excludeKickers: true, lockedPlayerIds: [id - 1] })), /leaves kickers out/, "with the ban on, a locked kicker is refused by name");
   assert.throws(() => optimizeNflLineups(pool, settings({ format: "classic", captainPositions: ["QB"] })), /Showdown rules/, "showdown-only rules are rejected on a classic slate");
   assert.throws(() => optimizeNflLineups(pool, settings({ format: "showdown", bringBackShare: 0.5 })), /Classic GPP/);
-  assert.throws(() => optimizeNflLineups(pool, settings({ format: "showdown", maxDstVsOffenseShare: 0.05 })), /Classic rule/);
+  // v15: the DST cap runs in Showdown too (see the v15 block below).
+  assert.doesNotThrow(() => optimizeNflLineups(pool, settings({ format: "showdown", nLineups: 1, minSalary: 0, maxDstVsOffenseShare: 0.05 })));
+  assert.throws(() => optimizeNflLineups(pool, settings({ format: "classic", showdownRbPairMinReceptions: 2.5 })), /Showdown rule/);
 
   // v5 quarterback minimum, on a pool whose quarterbacks are weak enough that
   // the plain build leaves them out.
@@ -441,7 +444,7 @@ console.log("Winners shape v13: simulated captain ranges apply when the user set
 
 // --- v14: Showdown salary floor, lineup ownership floor, five simulated captains ---
 {
-  assert.equal(WINNERS_SHAPE_VERSION, "nfl-winners-shape-v14");
+  assert.equal(WINNERS_SHAPE_VERSION, "nfl-winners-shape-v15", "v15 added the lineup rules; the v14 rules below are unchanged");
   const limits = (over: Partial<NflOptimizerSettings>, options?: { poolRules?: boolean }) => winnersShapeLimits(settings(over), options);
   assert.equal(limits({ format: "showdown" }).minSalary, 49_500, "Showdown spends at least $49,500");
   assert.equal(limits({ format: "classic" }).minSalary, 48_100, "Classic keeps its floor");
@@ -529,3 +532,128 @@ console.log("Winners shape v13: simulated captain ranges apply when the user set
   assert.throws(() => optimizeNflLineups(pool, { ...base, minLineupOwnership: 700 }), /between 0 and 600/);
 }
 console.log("Winners shape v14 (showdown): $49,500 floor, estimated lineup ownership of at least 150 when the slate has the estimates, five simulated captains; research reconstructions unchanged.");
+
+// --- v15: lineup rules (cheap-player role check, projection floor, one RB per team, Showdown DST cap, injury-tag caps) ---
+{
+  // Defaults: on for user builds, never in the research reconstructions; a caller's value wins.
+  const sdShape = applyWinnersShape(settings({ format: "showdown", puntPolicy: { ...DEFAULT_NFL_PUNT_POLICY } }), []).settings;
+  assert.equal(sdShape.cheapRoleCheckSalary, 4_000);
+  assert.equal(sdShape.minRawProjection, 2);
+  assert.equal(sdShape.lowProjectionMaxExposure, 0.1);
+  assert.equal(sdShape.showdownRbPairMinReceptions, 2.5);
+  assert.equal(sdShape.maxDstVsOffenseShare, 0.05);
+  assert.equal(sdShape.questionableMaxExposure, 0.25);
+  assert.equal(sdShape.doubtfulMaxExposure, 0.1);
+  const clShape = applyWinnersShape(settings({ puntPolicy: { ...DEFAULT_NFL_PUNT_POLICY } }), []).settings;
+  assert.equal(clShape.showdownRbPairMinReceptions, undefined, "the one-RB rule is Showdown only");
+  assert.equal(clShape.minRawProjection, 2);
+  assert.equal(clShape.maxDstVsOffenseShare, 0.05, "Classic keeps its own DST cap");
+  assert.equal(applyWinnersShape(settings({ format: "showdown" }), []).settings.cheapRoleCheckSalary, undefined, "no punt policy, no role check");
+  assert.equal(applyWinnersShape(settings({ format: "showdown", minRawProjection: 0, questionableMaxExposure: 0 }), []).settings.minRawProjection, 0, "0 switches a rule off");
+  for (const format of ["classic", "showdown"] as const) {
+    const research = applyWinnersShape(settings({ format, puntPolicy: { ...DEFAULT_NFL_PUNT_POLICY } }), [], { poolRules: true }).settings;
+    for (const key of ["cheapRoleCheckSalary", "minRawProjection", "lowProjectionMaxExposure", "showdownRbPairMinReceptions", "questionableMaxExposure", "doubtfulMaxExposure"] as const) {
+      assert.equal(research[key], undefined, `${format} research reconstruction carries no ${key}`);
+    }
+    if (format === "showdown") assert.equal(research.maxDstVsOffenseShare, undefined, "research Showdown keeps no DST cap");
+  }
+  assert.ok(applyWinnersShape(settings({ format: "showdown", puntPolicy: { ...DEFAULT_NFL_PUNT_POLICY } }), []).notes.some(n => n.startsWith("Lineup rules (v15):")), "the build notes say what the rules did");
+  // The form's controls reach the optimizer only on GPP builds.
+  const form = { ...DEFAULT_LINEUP_RULES, minRawProjection: 3, expectedActivePlayerIds: [5, 3, 5] };
+  const gppForm = withLineupRules({ ...settings({ format: "showdown" }), lineupRules: form });
+  assert.equal(gppForm.minRawProjection, 3);
+  assert.deepEqual(gppForm.expectedActivePlayerIds, [3, 5]);
+  assert.equal(gppForm.showdownRbPairMinReceptions, 2.5);
+  assert.equal(withLineupRules({ ...settings({ mode: "cash" }), lineupRules: form }).minRawProjection, undefined, "cash builds are untouched");
+  assert.equal(withLineupRules({ ...settings(), lineupRules: form }).showdownRbPairMinReceptions, undefined, "Classic gets no Showdown rule");
+
+  // A Showdown pool where each rule has something to bind on.
+  const sd = (over: Parameters<typeof player>[0] & { extra?: Partial<NflOptimizerPlayer> }) => ({ ...player(over), ...(over.extra ?? {}) });
+  const pool: NflOptimizerPlayer[] = [];
+  for (const [team, base] of [["AAA", 900], ["BBB", 920]] as const) {
+    pool.push(sd({ dkPlayerId: base, position: "QB", team, salary: 10000, ourProj: 20 }));
+    pool.push(sd({ dkPlayerId: base + 1, position: "RB", team, salary: 8000, ourProj: 15, extra: { statMeans: { receptions: 1 } } }));
+    pool.push(sd({ dkPlayerId: base + 2, position: "RB", team, salary: 3000, ourProj: 12, extra: { statMeans: { receptions: 1 } } }));
+    pool.push(sd({ dkPlayerId: base + 3, position: "WR", team, salary: 9000, ourProj: 16 }));
+    pool.push(sd({ dkPlayerId: base + 4, position: "WR", team, salary: 6000, ourProj: 12 }));
+    pool.push(sd({ dkPlayerId: base + 5, position: "TE", team, salary: 4000, ourProj: 12 }));
+    pool.push(sd({ dkPlayerId: base + 6, position: "K", team, salary: 4000, ourProj: 12 }));
+    pool.push(sd({ dkPlayerId: base + 7, position: "DST", team, salary: 2000, ourProj: 12 }));
+  }
+  const sdRun = (over: Partial<NflOptimizerSettings>, players = pool) => optimizeNflLineups(structuredClone(players), settings({ format: "showdown", nLineups: 20, minSalary: 0, maxExposure: 0.6, minUnique: 1, ...over }));
+  const has = (l: { slots: { player: NflOptimizerPlayer }[] }, id: number) => l.slots.some(s => s.player.dkPlayerId === id);
+  const captain = (l: { slots: { slot: string; player: NflOptimizerPlayer }[] }) => l.slots.find(s => s.slot === "CPT")!.player.dkPlayerId;
+
+  // #7: two backs from one team only with a pass catcher.
+  const pairs = (run: ReturnType<typeof sdRun>) => run.lineups.filter(l => ["AAA", "BBB"].some(t => l.slots.filter(s => s.player.position === "RB" && s.player.team === t).length >= 2)).length;
+  const freeRb = sdRun({});
+  assert.ok(pairs(freeRb) > 0, `the free build pairs two backs from one team (${pairs(freeRb)}), so the rule has something to bind on`);
+  const oneRb = sdRun({ showdownRbPairMinReceptions: 2.5 });
+  assert.ok(oneRb.lineups.length > 0);
+  assert.equal(pairs(oneRb), 0, "no lineup pairs two backs from one team when neither catches passes");
+  const catcher = pool.map(p => p.dkPlayerId === 902 ? { ...p, statMeans: { receptions: 3 } } : p);
+  const withCatcher = sdRun({ showdownRbPairMinReceptions: 2.5 }, catcher);
+  assert.ok(withCatcher.lineups.some(l => has(l, 901) && has(l, 902)), "RB1 plus a pass-catching RB2 stays legal");
+  assert.ok(!withCatcher.lineups.some(l => has(l, 921) && has(l, 922)), "the other team's two plain backs still never pair");
+
+  // #8: a Showdown DST with an opposing player in at most 5% of lineups.
+  const freeDst = sdRun({}).lineups.filter(l => dstFacesOwnOffense(l)).length;
+  assert.ok(freeDst > 1, `the free build plays a DST against opposing players (${freeDst}), so the cap binds`);
+  const dstRun = sdRun({ maxDstVsOffenseShare: 0.05 });
+  assert.ok(dstRun.lineups.filter(l => dstFacesOwnOffense(l)).length <= 1, "at most 1 of 20 lineups");
+  assert.ok(dstRun.warnings.some(w => w.includes("QB/RB/WR/TE/K")), "the note counts the opposing kicker too");
+  assert.ok(dstFacesOwnOffense({ slots: [
+    { slot: "CPT", multiplier: 1.5, player: pool.find(p => p.dkPlayerId === 907)! },
+    { slot: "FLEX", multiplier: 1, player: pool.find(p => p.dkPlayerId === 926)! },
+  ] } as never), "Showdown: an opposing kicker counts against the DST");
+
+  // #6: under the projection floor, out unless allowed; allowed, capped at 10% and never captain.
+  const cheapStar = sd({ dkPlayerId: 950, name: "Cheap Star", position: "WR", team: "AAA", salary: 1000, ourProj: 11, ceilingFpts: 40 });
+  const dud = sd({ dkPlayerId: 951, name: "Dud", position: "WR", team: "BBB", salary: 200, ourProj: 0.1 });
+  const floorPool = [...pool, cheapStar, dud];
+  const free6 = sdRun({}, floorPool);
+  assert.ok(free6.lineups.filter(l => has(l, 950)).length > 2, "free, the cheap star is in more than 2 of 20 lineups");
+  const floored = sdRun({ minRawProjection: 11.5, lowProjectionMaxExposure: 0.1 }, floorPool);
+  assert.equal(floored.lineups.filter(l => has(l, 950) || has(l, 951)).length, 0, "projected under the floor and not allowed: left out");
+  assert.equal(floored.eligibility?.find(e => e.dkPlayerId === 951)?.reasonCode, "LOW_PROJECTION");
+  const override = { playerId: 950, reason: "real role", user: "owner", at: "2026-11-14T00:00:00Z", slot: "FLEX" as const };
+  const allowed = sdRun({ minRawProjection: 11.5, lowProjectionMaxExposure: 0.1, puntOverrides: [override] }, floorPool);
+  const cheapUses = allowed.lineups.filter(l => has(l, 950));
+  assert.ok(cheapUses.length >= 1 && cheapUses.length <= 2, `allowed: in 1-2 of 20 lineups (got ${cheapUses.length})`);
+  assert.ok(allowed.lineups.every(l => captain(l) !== 950), "allowed: never captain");
+  assert.ok(allowed.warnings.some(w => w.startsWith("Projection floor:") && w.includes("Cheap Star kept")), allowed.warnings.join(" | "));
+
+  // #9: a questionable player is capped at 25% and never captains, until marked expected active or given a typed range.
+  const tagged = pool.map(p => p.dkPlayerId === 923 ? { ...p, name: "Tagged WR", dkStatus: "Q" } : p);
+  const freeQ = sdRun({}, tagged).lineups.filter(l => has(l, 923)).length;
+  assert.ok(freeQ > 5, `free, he is in ${freeQ} of 20 lineups`);
+  const capped = sdRun({ questionableMaxExposure: 0.25, doubtfulMaxExposure: 0.1 }, tagged);
+  assert.ok(capped.lineups.filter(l => has(l, 923)).length <= 5, "at most 5 of 20 lineups");
+  assert.ok(capped.lineups.every(l => captain(l) !== 923), "never captain");
+  assert.ok(capped.warnings.some(w => w.startsWith("Injury tags:") && w.includes("Tagged WR")), capped.warnings.join(" | "));
+  const expected = sdRun({ questionableMaxExposure: 0.25, expectedActivePlayerIds: [923] }, tagged);
+  assert.ok(expected.lineups.filter(l => has(l, 923)).length > 5, "marked expected active, the cap is lifted");
+  const typed = sdRun({ questionableMaxExposure: 0.25, maxExposureByPlayer: { "923": 0.6 } }, tagged);
+  assert.ok(typed.lineups.filter(l => has(l, 923)).length > 5, "a range you typed on him wins over the cap");
+  const doubtful = pool.map(p => p.dkPlayerId === 923 ? { ...p, availabilityStatus: "DOUBTFUL" } : p);
+  assert.ok(sdRun({ questionableMaxExposure: 0.25, doubtfulMaxExposure: 0.1 }, doubtful).lineups.filter(l => has(l, 923)).length <= 2, "a feed Doubtful is capped at 10%");
+
+  // #5: the role check runs to $4,000 and a role, not price, decides players at $1,000 or less.
+  const cheapPool = [...pool,
+    sd({ dkPlayerId: 960, name: "TE2 Real", position: "TE", team: "AAA", salary: 600, ourProj: 6, extra: { depthRole: "TE2", historyGames: null } }),
+    sd({ dkPlayerId: 961, name: "WR4 Deep", position: "WR", team: "AAA", salary: 400, ourProj: 5, extra: { depthRole: "WR4", availabilityState: "confirmed" } }),
+    sd({ dkPlayerId: 962, name: "Shaky RB", position: "RB", team: "BBB", salary: 3500, ourProj: 8, extra: { roleConfidence: 0.2 } }),
+  ];
+  const withPolicy = (over: Partial<NflOptimizerSettings>) => sdRun({ puntPolicy: { ...DEFAULT_NFL_PUNT_POLICY }, ...over }, cheapPool).eligibility!;
+  const code = (decisions: NonNullable<ReturnType<typeof sdRun>["eligibility"]>, id: number) => decisions.find(e => e.dkPlayerId === id);
+  const before = withPolicy({});
+  assert.equal(code(before, 960)?.reasonCode, "ABSOLUTE_SALARY_BLOCK", "without the check, price alone blocks the TE2");
+  assert.equal(code(before, 962)?.eligible, true, "without the check, a $3,500 back is not looked at");
+  const after = withPolicy({ cheapRoleCheckSalary: 4000 });
+  assert.equal(code(after, 960)?.eligible, true, "with the check, his TE2 depth role keeps him without a hand override");
+  assert.equal(code(after, 960)?.salaryRelief, true, "and he still counts as salary relief");
+  assert.equal(code(after, 961)?.reasonCode, "ROLE_UNRESOLVED", "a WR4 is still blocked");
+  assert.equal(code(after, 962)?.reasonCode, "ROLE_UNRESOLVED", "a $3,500 back with a weak role is now checked");
+  assert.match(code(after, 961)?.reason ?? "", /needs a current role/, "the reason says what would keep him");
+}
+console.log("Winners shape v15: cheap-player role check to $4,000, 2-point projection floor (allowed ones 10%, never captain), one RB per team unless a pass catcher, Showdown DST cap 5%, questionable 25% / doubtful 10% and never captain; research reconstructions unchanged.");

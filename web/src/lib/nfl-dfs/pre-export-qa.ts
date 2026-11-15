@@ -13,6 +13,7 @@
 import { assertDstGameScript, assertShowdownLineup, type ShowdownPlayer } from './showdown-legality';
 import { kickerRoleBlockedReason } from './availability';
 import { maxPairwiseOverlap as realizedMaxOverlap } from './salary-duplication';
+import { entryCoverageProblem, type NflDkEntryFileShape } from './entry-export';
 
 export const NFL_QA_RULESET_VERSION = "nfl-gpp-qa-v6-portfolio-warnings";
 
@@ -113,7 +114,7 @@ export interface QaCheck {
   passed: boolean;
   /** Human explanation shown in the report. */
   detail: string;
-  /** Whether a recorded override can clear this check. Only an illegal roster and a too-short entry file cannot be overridden. */
+  /** Whether a recorded override can clear this check. An illegal roster and an entry file the lineups do not cover (too few rows, or rows left blank) cannot be overridden. */
   overridable: boolean;
   /** Ids of affected lineups or players, for direct links. */
   affected: Array<string | number>;
@@ -171,8 +172,10 @@ export interface QaInput {
    * current slate could not be read.
    */
   currentPool?: Evidence<{ players: Array<{ dkPlayerId: number; name: string; unavailable: string | null; roleOnly?: boolean }> }>;
-  /** Entries in the DraftKings entry file, once one is chosen. */
+  /** Entries in the DraftKings entry file, once one is chosen. Superseded by `entryFile` when both are given. */
   entryRows?: number | null;
+  /** The chosen entry file's layout (`describeNflDkEntryFile`) and the plain-words assignment note. */
+  entryFile?: { shape: NflDkEntryFileShape; note: string } | null;
   /** Selection/evaluation scenario digests (Phase 7); a collision is a blocker. */
   selectionDigest?: string | null;
   evaluationDigest?: string | null;
@@ -279,7 +282,20 @@ export function runNflPreExportQa(input: QaInput, overrides: QaOverride[] = []):
     detail: built >= input.requestedLineups ? `All ${input.requestedLineups} requested lineups were built.`
       : `Only ${built} of the ${input.requestedLineups} lineups you asked for were built; the build notes say why. Export would enter ${built}.`,
     affected: [] });
-  if (input.entryRows != null) {
+  if (input.entryFile) {
+    // 2026-11-14: a blank entry is a paid entry with no lineup, so too few
+    // lineups is now a blocker that no override clears. Single-entry rows take
+    // the run's top lineup and need none of their own.
+    const { shape, note } = input.entryFile;
+    const problem = entryCoverageProblem(shape, built);
+    const kept = shape.multiEntryRows - built;
+    add({ id: "entry_rows", title: "Every entry gets a lineup",
+      severity: problem ? "blocker" : "warning", passed: !problem && kept <= 0, overridable: !problem,
+      detail: problem ?? (kept > 0
+        ? `${kept} entr${kept === 1 ? "y" : "ies"} in the file already hold a lineup and would keep it; every empty entry gets one. ${note}`.trim()
+        : `All ${shape.rows} entries in the file get a lineup. ${note}`.trim()),
+      affected: [] });
+  } else if (input.entryRows != null) {
     if (input.entryRows < built) {
       add({ id: "entry_rows", title: "Entry file has room for every lineup", severity: "blocker", passed: false, overridable: false,
         detail: `The entry file has ${input.entryRows} entr${input.entryRows === 1 ? "y" : "ies"} for ${built} lineups. Download an entry file with at least ${built} entries, or build fewer lineups.`,
@@ -441,4 +457,58 @@ export function runNflPreExportQa(input: QaInput, overrides: QaOverride[] = []):
   };
   const decision: QaDecision = openBlockers.length ? "blocked" : openWarnings.length ? "ready_with_warnings" : "ready";
   return { rulesetVersion: NFL_QA_RULESET_VERSION, decision, checks, counts, openBlockers };
+}
+
+// --- Heavily used players without a full set of betting lines (warning) ---
+// Appended 2026-11-15 (fix #10). The market anchor (nfl-market-anchor-v1)
+// projects a player from the books' calibrated number only when every line is
+// posted (`marketAnchor.mode === "full"`). A player in a fifth or more of the
+// lineups on the model alone, or on the books' touchdown line alone, is a big
+// bet on a number the books have not checked. A warning, never a blocker:
+// lines can simply not be posted yet.
+export const NO_LINES_EXPOSURE_SHARE = 0.2;
+const LINE_POSITIONS = new Set(["QB", "RB", "WR", "TE"]);
+
+type LinesPlayer = { name: string; position: string; ourProj?: number | null; marketAnchor?: { mode?: string | null } | null; historyGames?: number | null };
+
+/** Where a player's projection came from, in words, when he has no full set of lines. */
+function linesSourceWords(player: LinesPlayer): string {
+  if (player.marketAnchor?.mode === "td_only") return "the books' touchdown line only, our model for the rest";
+  if (player.historyGames === 0) return "our model only, from his position's average (no games of his own, no betting lines)";
+  return "our model only, no betting lines";
+}
+
+export function noLinesExposureCheck(lineups: QaInput["lineups"], minShare = NO_LINES_EXPOSURE_SHARE): QaCheck {
+  const players = new Map<number, { player: LinesPlayer; lineups: Set<number> }>();
+  for (const lineup of lineups) {
+    for (const slot of lineup.slots) {
+      const player = slot.player as LinesPlayer | undefined;
+      if (!player || !LINE_POSITIONS.has(player.position) || player.marketAnchor?.mode === "full") continue;
+      const entry = players.get(slot.playerId) ?? { player, lineups: new Set<number>() };
+      entry.lineups.add(lineup.lineupNumber);
+      players.set(slot.playerId, entry);
+    }
+  }
+  const n = lineups.length;
+  const heavy = [...players.values()].filter((p) => n > 0 && p.lineups.size / n >= minShare)
+    .sort((a, b) => b.lineups.size - a.lineups.size || a.player.name.localeCompare(b.player.name));
+  const pct = Math.round(minShare * 100);
+  const one = heavy.length === 1;
+  return {
+    id: "no_lines_exposure", title: `No player in ${pct}%+ of lineups without betting lines`, severity: "warning", passed: heavy.length === 0, overridable: true,
+    detail: heavy.length
+      ? `${heavy.map((p) => `${p.player.name} (${p.player.position}) is in ${p.lineups.size} of ${n} lineups (${Math.round((100 * p.lineups.size) / n)}%), projected ${p.player.ourProj != null ? p.player.ourProj.toFixed(1) : "?"} from ${linesSourceWords(p.player)}`).join("; ")}. The books have not posted a full set of lines for ${one ? "him" : "them"}, so ${one ? "that number is" : "those numbers are"} unchecked: refresh lines before lock or lower ${one ? "his" : "their"} exposure.`
+      : `Every QB, RB, WR and TE in ${pct}% or more of the lineups is projected from a full set of betting lines.`,
+    affected: heavy.map((p) => p.player.name),
+  };
+}
+
+/** The report with the no-lines warning added and its decision recomputed (a warning can only move "ready" to "ready_with_warnings"). */
+export function withNoLinesExposure(report: QaReport, lineups: QaInput["lineups"]): QaReport {
+  if (report.checks.some((c) => c.id === "no_lines_exposure")) return report;
+  const check = noLinesExposureCheck(lineups);
+  const checks = [...report.checks, check];
+  const warning = checks.filter((c) => !c.passed && c.severity === "warning").length;
+  const decision: QaDecision = report.openBlockers.length ? "blocked" : warning ? "ready_with_warnings" : "ready";
+  return { ...report, checks, counts: { ...report.counts, warning }, decision };
 }

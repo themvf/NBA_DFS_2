@@ -234,9 +234,10 @@ const settings = { ...DEFAULT_SINGLE_STAT_SETTINGS, lockedPlayerIds: [] as numbe
   assert.equal(rosters, "FLEX,FLEX,FLEX\r\nChuba Hubbard (1),Josh Jacobs (2),Tetairoa McMillan (3)\r\n");
   const template = "Entry ID,Contest Name,Contest ID,Entry Fee,FLEX,FLEX,FLEX\n4001,Single Stat $1,55,$1,,,\n4002,Single Stat $1,55,$1,,,\n";
   assert.equal(countNflDkEntryRows(template), 2);
-  const entries = exportNflDkEntries(template, [lineup]);
+  // 2026-11-14: an entry left with no lineup is a paid entry with nothing in it, so export refuses.
+  assert.throws(() => exportNflDkEntries(template, [lineup]), /2 entries for 1 lineup\. Build 2 lineups, or remove entries/);
+  const entries = exportNflDkEntries(template.split("\n").slice(0, 2).join("\n"), [lineup]);
   assert.match(entries, /4001,Single Stat \$1,55,\$1,Chuba Hubbard \(1\),Josh Jacobs \(2\),Tetairoa McMillan \(3\)/);
-  assert.match(entries, /4002,Single Stat \$1,55,\$1,,,/, "an entry with no lineup is left untouched");
   assert.throws(() => exportNflDkEntries("Entry ID,Contest Name,Contest ID,Entry Fee,FLEX,FLEX\n1,x,1,$1,,\n", [lineup]), /has 2 FLEX columns/);
   const repeated = { ...lineup, slots: [lineup.slots[0], lineup.slots[0], lineup.slots[1]] };
   assert.throws(() => exportNflDkLineups("single_stat_yards", [repeated]), /repeats a player/);
