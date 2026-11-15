@@ -44,6 +44,7 @@
     "test:nfl-entry-export": "node --import tsx ./scripts/test-nfl-entry-export.ts",
     "test:nfl-showdown-legality": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-showdown-legality.ts",
     "test:nfl-inactive-swap": "node --import tsx ./scripts/test-nfl-inactive-swap.ts",
+    "test:nfl-lineup-upgrade": "node --import tsx ./scripts/test-nfl-lineup-upgrade.ts",
     "test:nfl-scoring": "node --import tsx ./scripts/test-nfl-scoring.ts",
     "test:nfl-out-projection": "node --import tsx ./scripts/test-nfl-out-projection.ts",
     "test:nfl-report-card": "node --import tsx ./scripts/test-nfl-report-card.ts",

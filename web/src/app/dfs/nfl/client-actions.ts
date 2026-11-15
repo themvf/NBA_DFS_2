@@ -55,3 +55,4 @@ export const readNflBuildDraft = async (...a: Args<typeof safe.safeReadNflBuildD
 export const captureCurrentPool = async (...a: Args<typeof safe.safeCaptureCurrentPool>) => unwrap(await safe.safeCaptureCurrentPool(...a));
 export const loadPlayerHistory = async (...a: Args<typeof safe.safeLoadPlayerHistory>) => unwrap(await safe.safeLoadPlayerHistory(...a));
 export const swapInactiveNflPlayers = async (...a: Args<typeof safe.safeSwapInactiveNflPlayers>) => unwrap(await safe.safeSwapInactiveNflPlayers(...a));
+export const upgradeNflLineups = async (...a: Args<typeof safe.safeUpgradeNflLineups>) => unwrap(await safe.safeUpgradeNflLineups(...a));

@@ -62,3 +62,4 @@ export async function safeReadNflBuildDraft(...args: Args<typeof actions.readNfl
 export async function safeCaptureCurrentPool(...args: Args<typeof captureCurrentPool>) { return run("Capturing the pool", () => captureCurrentPool(...args)); }
 export async function safeLoadPlayerHistory(...args: Args<typeof loadPlayerHistory>) { return run("Loading player history", () => loadPlayerHistory(...args)); }
 export async function safeSwapInactiveNflPlayers(...args: Args<typeof actions.swapInactiveNflPlayers>) { return run("Swapping out inactive players", () => actions.swapInactiveNflPlayers(...args)); }
+export async function safeUpgradeNflLineups(...args: Args<typeof actions.upgradeNflLineups>) { return run("Replacing weak lineups", () => actions.upgradeNflLineups(...args)); }
