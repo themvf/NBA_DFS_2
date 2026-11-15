@@ -2,14 +2,17 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import type { ReactNode } from "react";
+import { getCfbStudySelections } from "@/db/cfb-study-matches";
 import { getLatestPatternWatchDataset } from "@/db/cfb-pattern-watch";
 import { getNbaMarketStudyGames } from "@/db/nba-market-studies";
 import { getNflMarketStudyGames } from "@/db/nfl-market-studies";
 import { CFB_PATTERN_SESSION, patternWatchSessionValid } from "@/lib/cfb-pattern-watch-access";
 import { cfbDay, DAILY_STUDIES_PATH, nbaDay, nflDay, nflSeason, shiftDate, studyDate } from "@/lib/daily-market-studies";
+import { cfbObservations, nbaObservations, nflObservations, qualifyingStudyMatches } from "@/lib/daily-study-matches";
 import { easternDateString } from "@/lib/eastern-date";
 import { PAPER_START } from "@/lib/nba-market-studies";
 import { unlockPatternWatch } from "./actions";
+import { StudyMatches } from "./study-matches";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Daily Market Studies", robots: { index: false, follow: false } };
@@ -56,10 +59,11 @@ export default async function DailyMarketStudies({
   const date = studyDate(params.date, today);
   const from = shiftDate(date, -6);
   const hasCfb = patternWatchSessionValid((await cookies()).get(CFB_PATTERN_SESSION)?.value);
-  const [nbaData, nflData, cfbData] = await Promise.allSettled([
+  const [nbaData, nflData, cfbData, cfbSelectionData] = await Promise.allSettled([
     getNbaMarketStudyGames(date),
     getNflMarketStudyGames(nflSeason(date)),
     hasCfb ? getLatestPatternWatchDataset() : Promise.resolve(null),
+    hasCfb ? getCfbStudySelections(date) : Promise.resolve(null),
   ]);
   const nbaRows = nbaData.status === "fulfilled" ? nbaData.value : null;
   const nflRows = nflData.status === "fulfilled" ? nflData.value : null;
@@ -72,6 +76,13 @@ export default async function DailyMarketStudies({
   const cfbRecent = cfbGrades && cfbDay(cfbGrades);
   const cfbThrough = cfb && new Map(cfbDay(cfb.results.filter(row => row.Date <= date)));
   const days = Array.from({ length: 7 }, (_, i) => shiftDate(date, -i));
+  const nbaEntries = nbaRows?.flatMap(nbaObservations) ?? null;
+  const nflEntries = nflRows?.flatMap(nflObservations) ?? null;
+  const cfbEntries = cfbSelectionData.status === "fulfilled" && cfbSelectionData.value
+    ? cfbObservations(cfbSelectionData.value) : null;
+  const assessed = (entries: typeof nbaEntries) => entries &&
+    new Set(entries.filter(row => row.game.date === date).map(row => row.game.id)).size;
+  const matches = qualifyingStudyMatches([...(nbaEntries ?? []), ...(nflEntries ?? []), ...(cfbEntries ?? [])], date);
 
   return <main className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6">
     <header className="space-y-2">
@@ -91,6 +102,10 @@ export default async function DailyMarketStudies({
         <Link className={button} href={href(today)}>Today</Link>
       </nav>
     </div>
+
+    <StudyMatches matches={matches} date={date} coverage={{
+      nba: assessed(nbaEntries), nfl: assessed(nflEntries), cfb: assessed(cfbEntries), cfbUnlocked: hasCfb,
+    }} />
 
     <p className="text-xs text-muted-foreground">Records show wins–losses–pushes. Cumulative results run through the selected game date. Each sport uses its own study and grading rules.</p>
     <section aria-label="Sport summaries" className="grid gap-4 lg:grid-cols-3">

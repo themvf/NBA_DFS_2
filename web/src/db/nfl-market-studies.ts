@@ -21,6 +21,9 @@ export async function getNflMarketStudyGames(season: number) {
            g.home_rest AS "homeRest", g.away_rest AS "awayRest",
            CASE WHEN g.completed THEN g.home_score END AS "homeScore",
            CASE WHEN g.completed THEN g.away_score END AS "awayScore",
+           CASE WHEN g.completed AND m.completed
+                  AND (g.home_score, g.away_score) = (m.home_score, m.away_score)
+                THEN m.final_at::text END AS "finalObservedAt",
            coalesce(q.captures, '[]'::jsonb) AS captures
     FROM schedule g
     JOIN nfl_teams ht ON ht.team_id = g.home_team_id

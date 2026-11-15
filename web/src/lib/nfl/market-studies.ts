@@ -12,6 +12,7 @@ export type Quote = { id: string; observedAt: string; books: Record<string, Book
 export type Game = {
   id: string; week: number; date: string | null; kickoff: string | null; boundary: string | null;
   home: string; away: string; homeScore: number | null; awayScore: number | null;
+  finalObservedAt?: string | null;
   homeRest: number | null; awayRest: number | null;
   captures: Quote[];
 };

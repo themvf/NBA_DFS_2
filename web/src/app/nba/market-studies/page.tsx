@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { studyHeading } from "@/lib/study-registry";
 import type { Metadata } from "next";
 import { getNbaMarketStudyGames } from "@/db/nba-market-studies";
 import { easternDateString } from "@/lib/eastern-date";
@@ -125,13 +126,13 @@ export default async function NbaMarketStudies({ searchParams }: { searchParams:
     <section className="space-y-2" aria-labelledby="research-results">
       <h2 id="research-results" className="text-lg font-semibold">Study records</h2>
       <p className="text-sm text-muted-foreground">Records show wins, losses and pushes. Percentages exclude pushes. Overall results include the available Oct. 25 and November archive.</p>
-      {resultTable("NBA-01 · Spread size", daily.spread, overall.spread)}
-      {resultTable("NBA-02 · Rest", daily.rest, overall.rest)}
-      {resultTable("NBA-03 · Venue", daily.venue, overall.venue)}
-      {resultTable("NBA-04 · Line movement", daily.movement, overall.movement)}
-      {resultTable("NBA-05 · Full-game totals", daily.totals, overall.totals, true)}
+      {resultTable(studyHeading("NBA-01"), daily.spread, overall.spread)}
+      {resultTable(studyHeading("NBA-02"), daily.rest, overall.rest)}
+      {resultTable(studyHeading("NBA-03"), daily.venue, overall.venue)}
+      {resultTable(studyHeading("NBA-04"), daily.movement, overall.movement)}
+      {resultTable(studyHeading("NBA-05"), daily.totals, overall.totals, true)}
       <details className="rounded-lg border px-4 py-3">
-        <summary className="cursor-pointer font-medium">NBA-06 · Team margin and NBA-07 · Quote timing</summary>
+        <summary className="cursor-pointer font-medium">{studyHeading("NBA-06")} and {studyHeading("NBA-07")}</summary>
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="text-muted-foreground"><tr><th scope="col">Team and role</th><th scope="col">Selected slate</th><th scope="col">Overall first / last quote</th><th scope="col">Overall median / trimmed mean</th></tr></thead>
@@ -148,15 +149,15 @@ export default async function NbaMarketStudies({ searchParams }: { searchParams:
         </div>
       </details>
       <section className="rounded-lg border px-4 py-3 text-sm">
-        <h3 className="font-medium">NBA-08 · Same-line price shopping</h3>
+        <h3 className="font-medium">{studyHeading("NBA-08")}</h3>
         <p className="text-muted-foreground">{daily.shopping.improvements}/{daily.shopping.comparisons} comparable sides had a better price on the selected slate · {overall.shopping.improvements}/{overall.shopping.comparisons} overall at the common cutoff.</p>
       </section>
-      {resultTable("NBA-11 · Rest and prior venue", daily.travel, overall.travel)}
+      {resultTable(studyHeading("NBA-11"), daily.travel, overall.travel)}
       <dl className="rounded-lg border px-4 py-3 text-sm">
-        <dt className="font-medium">NBA-09 · Totals model</dt><dd className="mb-2 text-muted-foreground">Awaiting original point-in-time forecasts.</dd>
-        <dt className="font-medium">NBA-10 · Moneyline calibration</dt><dd className="mb-2 text-muted-foreground">Awaiting consistent two-sided book-level moneyline coverage.</dd>
-        <dt className="font-medium">NBA-12 · Injury news and repricing</dt><dd className="mb-2 text-muted-foreground">Awaiting matched official observations and before/after quotes.</dd>
-        <dt className="font-medium">NBA-13 · First-half markets</dt><dd className="text-muted-foreground">Awaiting comparable first-half prices and verified halftime scores.</dd>
+        <dt className="font-medium">{studyHeading("NBA-09")}</dt><dd className="mb-2 text-muted-foreground">Awaiting original point-in-time forecasts.</dd>
+        <dt className="font-medium">{studyHeading("NBA-10")}</dt><dd className="mb-2 text-muted-foreground">Awaiting consistent two-sided book-level moneyline coverage.</dd>
+        <dt className="font-medium">{studyHeading("NBA-12")}</dt><dd className="mb-2 text-muted-foreground">Awaiting matched official observations and before/after quotes.</dd>
+        <dt className="font-medium">{studyHeading("NBA-13")}</dt><dd className="text-muted-foreground">Awaiting comparable first-half prices and verified halftime scores.</dd>
       </dl>
     </section>
   </main>;

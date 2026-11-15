@@ -10,7 +10,7 @@ export type MarketCapture = {
 
 export type StudyGame = {
   id: string; date: string; home: string; away: string;
-  start: string | null; cutoff: string | null;
+  start: string | null; cutoff: string | null; finalObservedAt?: string | null;
   homeScore: number | null; awayScore: number | null;
   homeBackToBack: boolean; awayBackToBack: boolean;
   homePriorVenue: string | null; awayPriorVenue: string | null;
@@ -48,11 +48,13 @@ export function grade(game: StudyGame) {
   const homeFavorite = isNumber(spread) && spread < 0;
   const favoriteMargin = margin !== null && isNumber(spread) && spread !== 0 ? margin * (homeFavorite ? 1 : -1) : null;
   const coverMargin = favoriteMargin !== null && isNumber(spread) ? favoriteMargin - Math.abs(spread) : null;
+  const favoriteChanged = isNumber(spread) && isNumber(firstSpread) && spread !== 0
+    && Math.sign(firstSpread) !== Math.sign(spread);
   const movement = isNumber(spread) && isNumber(firstSpread) && spread !== 0 && spreadQuotes.length > 1
     ? (spread - firstSpread) * (homeFavorite ? -1 : 1) : null;
   return {
     game, margin, actualTotal, spread, firstSpread, total, homeFavorite, spreadQuotes,
-    favoriteMargin, coverMargin, movement, lastTotal: totalQuotes.at(-1),
+    favoriteMargin, coverMargin, movement, favoriteChanged, lastTotal: totalQuotes.at(-1),
     firstTotal: totalQuotes[0], atCutoff, paperCapture, paperQuote, hasPaperQuote,
     paperPlay: game.date >= PAPER_START && hasPaperQuote && (paperTotal ?? 0) >= 235,
   };
@@ -150,8 +152,9 @@ export function summarize(rows: Graded[]) {
     rest: spreadBuckets(["Neither", "Underdog only", "Favorite only", "Both"], rest),
     venue: spreadBuckets(["Home, under 7", "Away, under 7", "Home, 7+", "Away, 7+"],
       row => `${row.homeFavorite ? "Home" : "Away"}, ${Math.abs(row.spread!) < 7 ? "under 7" : "7+"}`),
-    movement: spreadBuckets(["Grew", "Unchanged", "Shrank", "Single quote"], row =>
-      row.movement === null ? "Single quote" : row.movement > 0 ? "Grew" : row.movement < 0 ? "Shrank" : "Unchanged"),
+    movement: spreadBuckets(["Grew", "Unchanged", "Shrank", "Favorite changed or opened pick’em", "Single quote"], row =>
+      row.movement === null ? "Single quote" : row.favoriteChanged ? "Favorite changed or opened pick’em"
+        : row.movement > 0 ? "Grew" : row.movement < 0 ? "Shrank" : "Unchanged"),
     totals: [
       totals("First quote · over", row => row.firstTotal?.books.pinnacle, "over"),
       totals("First quote · under", row => row.firstTotal?.books.pinnacle, "under"),
