@@ -19,6 +19,17 @@ async function main(){
  const {default:Page}=await import('../src/app/nba/trio-lab/page');
 Object.defineProperty(db,'execute',{value:async(q:SQL)=>{
  const query=dialect.sqlToQuery(q).sql;
+ if(query.includes('nba_research_archives'))return {rows:[{
+  forecast_sha256:'fixture-forecast',
+  card:{version:'nba-anchored-p75-card-v1',game_date:'2026-11-04',sha256:'fixture-card',
+   frozen_at:'2026-11-04T16:38:00Z',lock_at:'2026-11-04T23:00:00Z',forecast_sha256:'fixture-forecast',
+   entries:trios.map((trio,i)=>({mean:87-i,p75:100-i,players:trio.map(id=>{
+    const player=players.find(p=>p.id===id)!;
+    return {event_id:player.event_id,player_key:player.player_key,name:player.player};
+   })}))},
+  grade:{version:'nba-anchored-p75-grade-v1',card_sha256:'fixture-card',
+   totals:[60,70,dnp?null:80,80,dnp?null:90],best:dnp?null:90,combined:dnp?null:380}
+ }]};
  if(query.includes('nba_injury_observations'))return {rows:[{report_sha256:'fixture-injury',published_at:'2026-11-04T18:00:00Z',observed_at:'2026-11-04T18:01:00Z',source_url:'https://example.test/fixture',states:[{game_date:'2026-11-04',player_key:'fixturea',home_key:'bostonceltics',away_key:'miamiheat',status:'Out',reason:'TEST FIXTURE'}]}]};
  if(query.includes('nba_ghost_snapshots'))return {rows:[{candidates:players.map(p=>({...p,home_team:'Boston Celtics',away_team:'Miami Heat'}))}]};
  if(query.includes('count(*)'))return {rows:[{recorded:1,graded:1,complete:dnp?0:1}]};
@@ -32,6 +43,10 @@ Object.defineProperty(db,'execute',{value:async(q:SQL)=>{
  const output=renderToStaticMarkup(await Page({searchParams:Promise.resolve({date:'2026-11-04'})}));
  assert.ok(output.includes('Actual best entry: 90'));assert.ok(output.includes('Actual combined five: 380'));
  assert.ok(output.includes('Later reported Out: Fixture A'));
+ assert.match(output, /Lead · Expected points/);
+ assert.match(output, /Alternative 4 · Joint P75/);
+ assert.match(output, /Expected 87\.0 · Joint P75 100\.0/);
+ assert.match(output, /Latest report lists Fixture A as Out/);
  assert.match(output, /Pool gap: 10 points/);
  assert.ok(output.includes('Complete coverage: 1/1'));
  assert.ok(output.includes('Latest matching audit pending: 0'));
@@ -39,7 +54,8 @@ Object.defineProperty(db,'execute',{value:async(q:SQL)=>{
  if(process.env.TRIO_FIXTURE_OUTPUT)writeFileSync(process.env.TRIO_FIXTURE_OUTPUT,output);
  dnp=true;const unresolved=renderToStaticMarkup(await Page({searchParams:Promise.resolve({date:'2026-11-04'})}));
  assert.ok(unresolved.includes('Provisional benchmarks use verified scores so far.'));
- assert.ok(unresolved.includes('Actual best entry: Pending'));assert.ok(unresolved.includes('Actual combined five: Pending'));
+ assert.ok(unresolved.includes('Actual best entry: Pending'));
+ assert.match(unresolved, /Actual best entry <b>Pending<\/b> · Combined five <b>Pending<\/b>/);assert.ok(unresolved.includes('Actual combined five: Pending'));
  console.log('PASS: populated research page, exact player/game joins, later-Out warning, two portfolio metrics and DNP pending state; no DB calls');
 }
 main().catch(e=>{console.error(e);process.exitCode=1});

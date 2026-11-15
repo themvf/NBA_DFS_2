@@ -150,7 +150,7 @@ export default async function TopScorersPage({ searchParams }: { searchParams: P
 
       <section className="space-y-1 rounded-xl border border-slate-700 bg-[#0f1726] p-4 text-sm text-slate-200" aria-label="Forecast and evidence times">
         <div>Frozen forecast: {frozenBoomBoard ? stamp(frozenBoomBoard.frozenAt) : "unavailable"}</div>
-        <p><Link href={`/nba/trio-lab?date=${date}`} className="underline">Compare experimental best-of-five trio methods</Link></p>
+        <p><Link href={`/nba/trio-lab?date=${date}#p75-trio-card`} className="underline">View the lead trio and P75 alternatives</Link></p>
         <div>Latest stored market capture: {lastCapture ? stamp(lastCapture) : "unavailable"}<EvidenceAge capturedAt={lastCapture}/> . Games can have different quote ages.</div>
         <div>Official injury report: {availability ? <>published {stamp(availability.publishedAt)}; actually checked {stamp(availability.observedAt)}. <a className="underline" href={availability.sourceUrl}>Source report</a></> : "No official observation available; availability unverified."}</div>
         <p className="text-amber-200">These times describe separate observations. An unlisted player is not confirmed available. This is not continuous injury monitoring.</p>

@@ -2,7 +2,8 @@ from datetime import datetime, timezone
 
 import pytest
 
-from research import nba_percentile_trial as trial, nba_research_archive as archive
+from research import nba_p75_card as p75_card, nba_percentile_trial as trial, nba_research_archive as archive
+from research.nba_research_cloud import save_review
 from research.nba_points_forward import write_new
 
 
@@ -40,7 +41,12 @@ def test_percentile_end_to_end_restore_and_pairing(tmp_path, monkeypatch):
     monkeypatch.setattr(trial, 'now', lambda: datetime.fromisoformat(date + 'T16:01:00+00:00'))
     receipt = trial.attach(forecast, source, directory, root)
     assert receipt['status'] == 'indexed'
-    manifest, bundle = archive.bundle(root, marker)
+    historical, _ = archive.bundle(root, marker)
+    assert 'anchored_p75_card' not in historical
+    manifest, bundle = archive.bundle(root, marker, publish_p75_card=True)
+    card = manifest['anchored_p75_card']
+    assert card['entries'][0]['mean'] == 66 and card['entries'][1]['p75'] == 75
+    assert len({tuple(p['player_key'] for p in e['players']) for e in card['entries']}) == 5
     assert manifest['attachments'][trial.INDEX] == 'indexed'
     restored = tmp_path / 'restored'
     target = archive.restore(restored, manifest, bundle)
@@ -50,6 +56,11 @@ def test_percentile_end_to_end_restore_and_pairing(tmp_path, monkeypatch):
     assert record['cards']['mean_baseline'][0]['mean'] == 66
     assert record['cards']['joint_p75'][0]['p75'] == 75
     assert record['cards']['joint_p75'][0]['players'] == [['market1', '0'], ['market1', '4'], ['market1', '5']]
+    # The mean lead also appearing in the P75 order must use only one slot.
+    duplicate_lead = trial.signed({**{k: v for k, v in record.items() if k != 'sha256'},
+        'cards': {**record['cards'], 'joint_p75': [record['cards']['mean_baseline'][0],
+                                                 *record['cards']['joint_p75'][:4]]}})
+    assert p75_card.project(duplicate_lead)['entries'] == card['entries']
     diag = {'game_date': date, 'snapshot_sha256': source['sha256'],
             'rows': [{'event_id': 'market1', 'player_key': str(i), 'actual': {'points': i+20}, 'status': 'verified'}
                      for i in range(6)]}
@@ -61,6 +72,27 @@ def test_percentile_end_to_end_restore_and_pairing(tmp_path, monkeypatch):
     pending = {**diag, 'rows': [{**r, 'status': 'dnp'} if r['player_key'] == '0' else r for r in diag['rows']]}
     assert trial.grade(record, forecast, source, pending, board, graded_at)['cards']['joint_p75']['best'] is None
     result = trial.grade(record, forecast, source, diag, board, graded_at)
+    anchored_grade = p75_card.grade(card, result)
+    assert anchored_grade['best'] == 72
+    assert p75_card.grade(card, trial.grade(record, forecast, source, pending, board, graded_at))['best'] is None
+    review = root / 'operations' / 'p75-review' / date
+    write_new(review / p75_card.GRADE_FILENAME, anchored_grade)
+    captured = []
+
+    class Writer:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def execute(self, sql, parameters): captured.append(parameters)
+
+    class Database:
+        def cursor(self): return Writer()
+        def commit(self): pass
+
+    save_review(Database(), root, review, manifest)
+    metadata = captured[0][2].adapted
+    assert metadata['anchored_p75_grade'] == anchored_grade
+    archive.restore(restored, metadata, captured[0][3])
+    assert trial.read(restored / review.relative_to(root) / p75_card.GRADE_FILENAME) == anchored_grade
     for attempt in ('first', 'repeat'):
         write_new(restored / 'operations' / attempt / date / trial.GRADE, result)
     stats = trial.report(restored)

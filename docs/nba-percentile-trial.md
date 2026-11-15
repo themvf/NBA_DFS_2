@@ -37,3 +37,11 @@ coverage, P70/P75 loss and exceedances by cohort, paired best and combined card
 points, and any incomplete grades. Review the first 30 paired dates and use the
 next ten as confirmation. The experiment contributes evidence for any later
 projection or selection change and has no automatic promotion.
+
+
+NBA Trio Lab also displays an anchored card. Its lead is the best mean-ranked
+trio, and its next four entries are the highest joint-P75 trios after skipping
+that lead. The live recorder adds the compact card to the durable original
+before the cutoff. The morning review grades that exact card in the review
+archive. The mean and pure joint-P75 cards remain the registered head-to-head
+trial. Existing archives are never retroactively given an anchored card.

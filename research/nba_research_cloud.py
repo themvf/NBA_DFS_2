@@ -14,7 +14,7 @@ import sys
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from research import nba_percentile_trial as percentile
+from research import nba_p75_card as p75_card, nba_percentile_trial as percentile
 from research import nba_research_archive as storage
 from research.nba_points_forward import aware, digest, write_new
 from research.nba_ghost_runner import fetch_scoreboard
@@ -159,7 +159,7 @@ def record(conn, root, day, evidence, cache=None):
     shutil.copyfile(inputs / 'inputs.json', directory / 'original-inputs.json')
     if (root / 'injury').exists():
         shutil.copytree(root / 'injury', directory / 'injury-evidence')
-    manifest, packed = storage.bundle(root, marker)
+    manifest, packed = storage.bundle(root, marker, publish_p75_card=True)
     inserted = storage.store(conn, manifest, packed)
     return {'status': 'partial_attachments' if missing_attachments(manifest) else 'recorded',
             'new_originals': int(inserted), 'forecast_sha256': manifest['forecast_sha256'],
@@ -221,6 +221,9 @@ def save_review(conn, root, review, manifest):
     files = {p.relative_to(root).as_posix(): p.read_bytes() for p in review.rglob('*') if p.is_file()}
     packet = {k: v for k, v in manifest.items() if k not in ('files', 'archive_sha256')}
     packet['indexes'] = {}
+    card_grade = review / p75_card.GRADE_FILENAME
+    if card_grade.exists():
+        packet['anchored_p75_grade'] = storage.checked(storage.read(card_grade))
     packet['files'] = {k: {'sha256': hashlib.sha256(v).hexdigest(), 'data': base64.b64encode(v).decode('ascii')} for k, v in files.items()}
     encoded = json.dumps(packet, separators=(',', ':'), ensure_ascii=True).encode()
     if len(encoded) > storage.MAX_BYTES:
@@ -394,6 +397,8 @@ def review(conn, root, last, evidence, cache=None):
                         storage.read(directory / 'forecast.json'), storage.read(directory / 'source-snapshot.json'),
                         storage.read(diagnostics), storage.read(output / 'scoreboard.json'), now())
                     write_new(output / percentile.GRADE, result)
+                    if manifest.get('anchored_p75_card'):
+                        write_new(output / p75_card.GRADE_FILENAME, p75_card.grade(manifest['anchored_p75_card'], result))
                 except Exception as exc:
                     failure = {'stage': 'percentile_grade', 'type': type(exc).__name__, 'reason': str(exc)}
                     write_new(output / 'percentile-failure.json', failure)
