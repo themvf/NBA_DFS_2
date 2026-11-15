@@ -112,3 +112,44 @@ bucket includes zero. Underdog cover 46.5-53.0% and over 46.4-53.0% by bucket,
 none above the 52.4% needed at -110, and the low-implied buckets disagree by
 season. No bias, no Stage B. Caveat: the historical lines cover FBS-vs-FBS
 only; an effect concentrated in FBS-vs-FCS blowouts is untested.
+
+## Idea screen (`cfb-idea-screen-v1`, 2026-11-15)
+
+`research/cfb_idea_screen.py` runs many candidate angles through one test:
+the cover (or over) sign regressed on a pregame signal, season-week clustered,
+against the closing line. Discovery is 2016-2024 (2022-2024 for ideas that need
+plays), 2025 confirms, 2026 to date is a second look. Discovery p-values are
+Benjamini-Hochberg corrected across the family (q <= 0.10) and a survivor must
+repeat its sign in 2025 at one-sided p < 0.05. Eight placebo signals (name
+length, alphabet, vowels, team-id parity, moon, date parity, game-id parity)
+measure how often the screen fools itself. Full table:
+`artifacts/cfb_idea_screen/report.md`; rerun with
+`python -m research.cfb_idea_screen`.
+
+First run: 42 ideas and 8 placebos. **None passed discovery, none survived.**
+One idea had raw p < 0.05 where about two are expected by chance. Covered:
+turnover and red-zone luck, long touchdowns, margin beyond yardage, 17+ point
+favorites, pace, open-to-close moves, ATS streaks, hangover spots (overtime,
+upset win, blowouts), rest and byes, cold northern venues, key numbers and the
+hook, cross-conference games, service academies, quarterback change, body
+clock, altitude, Hawai'i, kickoff windows.
+
+Read these before reusing a number from the table:
+
+- **Quarterback change is not a pregame signal.** It is read from the game's
+  own box score (most pass attempts), so a starter benched or hurt in a loss
+  counts as a "change". Its 39-43% cover rate is that leak. A clean test needs
+  announced starters, which we do not collect.
+- **Season-to-date turnover margin** had the same sign in all three periods
+  (teams with a good margin covered 47.4%, 48.4%, 44.8%). It did not pass the
+  correction, and fading it wins about 52.8% pooled, level with the 52.4%
+  needed at -110. A candidate for a registered forward trigger, nothing more.
+- Rare flags (body clock, Hawai'i, short weeks) have 20-50 games in discovery
+  and cannot be judged; a period with under 20 flagged games is not tested.
+- 2026 second-look figures (17+ favorites going over 57.5%, altitude 27-11)
+  are one partial season read after the fact and gate nothing.
+- Not run for lack of history: TV network (stored from 2026 only), first-year
+  head coaches (staff table holds 2026 only), rivalry games (no list), mascot
+  and jersey placebos (replaced by the name and calendar placebos).
+- The halftime table is descriptive: no live price is stored, so a favorite
+  trailing at the half covering 14.5% says nothing about a live bet.
