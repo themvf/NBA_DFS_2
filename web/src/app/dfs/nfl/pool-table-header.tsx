@@ -37,7 +37,7 @@ const COLUMNS: readonly { label: string; key?: PoolSortKey; align: "left" | "rig
 const JUSTIFY = { left: "justify-start", right: "justify-end", center: "justify-center" } as const;
 const TEXT = { left: "text-left", right: "text-right", center: "text-center" } as const;
 
-export function PoolTableHeader({ sort, onSort }: { sort: PoolSort; onSort: (key: PoolSortKey) => void }) {
+export function PoolTableHeader({ sort, onSort, empty = [] }: { sort: PoolSort; onSort: (key: PoolSortKey) => void; /** Labels of columns with no value for any player; not shown. */ empty?: readonly string[] }) {
   return (
     <thead className="sticky top-0 z-10 bg-slate-100 text-left text-[10px] uppercase text-slate-500">
       <tr>
@@ -48,6 +48,7 @@ export function PoolTableHeader({ sort, onSort }: { sort: PoolSort; onSort: (key
             <th
               key={column.label}
               scope="col"
+              data-empty-col={empty.includes(column.label) || undefined}
               aria-sort={column.key ? (ariaSort ?? "none") : undefined}
               className={`${column.pad ? "p-3" : ""} ${TEXT[column.align]} ${active ? "text-slate-900" : ""}`}
             >

@@ -45,3 +45,25 @@ body:has(.nfl-dfs-workspace) > main { max-width: 1600px; }
   .nfl-builder { order: -1; }
   .nfl-builder[data-mobile-open="false"] { display: none; }
 }
+
+/* Build (owner, 2026-11-15): the settings are the core of the screen. One column:
+   data and slate read, then the settings at full width, then the player pool. */
+.nfl-pool-table [data-empty-col] { display: none; }
+.nfl-work-grid.nfl-build-stage { grid-template-columns: minmax(0, 1fr); }
+.nfl-work-grid.nfl-build-stage > div:first-child { display: contents; }
+.nfl-work-grid.nfl-build-stage > div:first-child > * { margin-top: 0 !important; order: 1; min-width: 0; }
+.nfl-work-grid.nfl-build-stage > div:first-child > .nfl-player-pool { order: 3; }
+.nfl-work-grid.nfl-build-stage > .nfl-builder { order: 2; position: static; max-height: none; overflow: visible; display: block; }
+.nfl-build-stage .nfl-builder > section { border-color: #047857; border-width: 2px; }
+.nfl-build-stage .nfl-builder > section > h2 { font-size: 20px; }
+.nfl-build-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; }
+.nfl-build-fields > * { min-width: 0; }
+@media (min-width: 900px) {
+  .nfl-build-fields { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .nfl-build-fields > * { grid-column: span 2; }
+  .nfl-build-fields > label { grid-column: span 1; }
+  .nfl-build-fields > :is([role="status"], .nfl-build-wide, .nfl-build-go, button) { grid-column: 1 / -1; }
+}
+.nfl-build-fields > .nfl-build-go { order: 98; position: sticky; bottom: 0; z-index: 5; background: #fff; padding: 10px 0; border-top: 1px solid #dce3e8; }
+.nfl-build-fields > .nfl-build-go ~ button { order: 99; }
+.nfl-build-fields > .nfl-build-go > button { min-height: 52px; font-size: 16px; }
