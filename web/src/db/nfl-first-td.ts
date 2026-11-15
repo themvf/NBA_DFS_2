@@ -11,6 +11,8 @@ const ET = "America/New_York";
 const LINES_VERSION = "nfl-first-td-lines-v2";
 /** Any availability version is shown ahead of the model alone, so a bump needs no reader change. */
 const LINES_PREFIX = "nfl-first-td-lines-%";
+/** DraftKings' prices read as a forecast (model/nfl_first_td_dk.py): graded beside ours, never the card shown. */
+const DK_VERSION = "nfl-first-td-dk-v1";
 
 export async function getNflFirstTdDates(): Promise<string[]> {
   const result = await db.execute(sql`
@@ -28,6 +30,7 @@ export async function getNflFirstTdGames(date: string): Promise<FirstTdGame[]> {
              r.created_at, r.version
       FROM nfl_first_td_predictions p JOIN nfl_first_td_runs r ON r.id = p.run_id
       WHERE (p.kickoff AT TIME ZONE ${ET})::date = ${date}::date AND r.created_at < p.kickoff
+        AND r.version <> ${DK_VERSION}
       ORDER BY p.game_id, (r.version LIKE ${LINES_PREFIX}) DESC, r.created_at DESC)
     SELECT l.*, td.play_type, td.description
     FROM latest l

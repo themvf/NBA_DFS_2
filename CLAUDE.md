@@ -9945,6 +9945,15 @@ vs +5000), so a large gap is a warning, not value. Our chances on priced players
 Opening kickoff, weeks 6-8: receiver scored first 20 of 42, opening-drive TD 9 of 42 (2016-25 pooled: receiver first
 55.5% vs the model's 49.7%, almost all from opening-drive TDs; 2026 runs the other way; not in the model). No betting claim; the stored grade is the forward record.
 
+**DraftKings' prices read as a forecast (`nfl-first-td-dk-v1`, 2026-11-16).** `model/nfl_first_td_dk.py`,
+[`docs/nfl-first-td-dk-anchor.md`](docs/nfl-first-td-dk-anchor.md). Each publish run saves a third
+forecast per game: DraftKings' first-TD prices divided by their total ("No Touchdown" dropped, D/ST
+entries = return or defense, 1% held back for an unlisted player), graded like the others and shown as
+the "From DraftKings' prices" column. `stats` adds `dk_compare` (paired log loss on games graded for
+both); one read at 60 games. Not a bet finder: no player beats his own de-vigged price. Week 9, read
+afterwards, had DraftKings 2.86 against our 3.05. The page reader excludes this version from the card
+shown (`DK_VERSION` in `web/src/db/nfl-first-td.ts`).
+
 ## NFL DFS — stat-api ownership per slate (`nfl-ownership-outside-v1`, 2026-11-12)
 
 Owner's decision, a trial while the stat-api Pro subscription runs: on a slate

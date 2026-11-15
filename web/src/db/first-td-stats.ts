@@ -23,12 +23,19 @@ export type FirstTdMarket = {
   opening: { games: number; receiving_scored_first: number; opening_drive_td: number;
     receiving_first_without_opening_td: number; games_without_opening_td: number };
 };
+/** NFL only: model/nfl_first_td_dk.compare, our forecast against DraftKings' prices read as a forecast. */
+export type FirstTdDkCompare = {
+  version: string; games: number; review_games: number;
+  ours_log_loss?: number; dk_log_loss?: number; diff?: number; ours_top?: number; dk_top?: number;
+  interval?: [number, number] | null;
+};
 export type FirstTdStats = {
   computedAt: string;
   gradedVersion: string;
   record: FirstTdRecord | null;
   baseRates: FirstTdBaseRate[];
   market: FirstTdMarket | null;
+  dkCompare: FirstTdDkCompare | null;
   leaders: { season: number; players: { name: string; team: string; firsts: number }[];
     tied?: { firsts: number; players: number } | null; teams: { team: string; firsts: number; games: number }[] };
 };
@@ -46,6 +53,7 @@ export async function getFirstTdStats(sport: "nfl" | "cfb"): Promise<FirstTdStat
       record: (s.record as FirstTdRecord | null) ?? null,
       baseRates: s.base_rates as FirstTdBaseRate[],
       market: (s.market as FirstTdMarket | undefined) ?? null,
+      dkCompare: (s.dk_compare as FirstTdDkCompare | undefined) ?? null,
       leaders: s.leaders as FirstTdStats["leaders"],
     };
   } catch {

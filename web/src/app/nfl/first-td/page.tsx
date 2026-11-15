@@ -40,6 +40,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ d
       <li>DraftKings column: its latest first-TD price when the forecast was saved. A red tag marks a player we give more than three
         times DraftKings&apos; implied chance; treat it as a warning, not value. Graded games are scored against DraftKings&apos; last
         price before kickoff (nfl-first-td-market-v1).</li>
+      <li>From DraftKings&apos; prices: each price&apos;s implied chance divided by the total over DraftKings&apos; list (players and
+        both defenses; &quot;No Touchdown&quot; left out), with 1% held back for a player it does not list. Saved and graded as its own
+        forecast (nfl-first-td-dk-v1) so it can be compared with ours game by game; read once at 60 games. Long shots run a little
+        high by this reading because books put more margin on them.</li>
       <li>Model version nfl-first-td-v1. Each game shows the last forecast saved before kickoff.</li>
     </>}
   />;
