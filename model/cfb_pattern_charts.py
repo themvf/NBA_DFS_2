@@ -241,9 +241,10 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     from model import cfb_pattern_measures as measures
     from model import cfb_pattern_store as store
+    from model import cfb_pattern_watch as pw
 
     db = DatabaseManager(load_config().database_url, initialize_schema=False)
-    rows = store.read_ledger(db)
+    rows = [row for row in store.read_ledger(db) if pw.corrected_t5_window(row)]
     base_games = measures.load_base_rate_games(db)
     rates = measures.weekly_base_rates(base_games)
     breakdown = cc.market_breakdown_table(measures.market_breakdown(base_games))
