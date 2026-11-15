@@ -3447,3 +3447,96 @@ export async function swapInactiveNflPlayers(runId: string) {
   } catch { throw new Error('Unable to save the swapped lineups. Retry; the original run is unchanged, and an incomplete swapped run may remain saved.'); }
   return { ok: true as const, runId: newRunId, fromRunId: runId, changedLineups: changed.size, unresolved: result.unresolved, summary };
 }
+
+/**
+ * Replace weak lineups (nfl-lineup-upgrade-v1, 2026-11-15). For the chosen
+ * lineups of a saved run, make the swap of one or two players that adds the
+ * most projected points while the lineup keeps its shape and every rule of
+ * the run (`upgradeLineups`). Saved as a new run linked to the original
+ * (`settings.lineupUpgrade.fromRunId`); the original is never changed.
+ */
+export async function upgradeNflLineups(runId: string, lineupNumbers: number[]) {
+  if (!Array.isArray(lineupNumbers) || !lineupNumbers.length || lineupNumbers.length > 10 || lineupNumbers.some((n) => !Number.isInteger(n) || n < 1)) throw new Error('Choose one to ten lineups to replace.');
+  if (!/^[0-9a-f-]{36}$/.test(runId)) throw new Error('Invalid optimizer run identifier.');
+  const { upgradeLineups, NFL_LINEUP_UPGRADE_VERSION } = await import('@/lib/nfl-dfs/lineup-upgrade');
+  const { winnersShapeLimits, showdownCaptainPositions } = await import('@/lib/nfl-dfs/winners-shape');
+  const { run } = await readNflOptimizerAudit(runId);
+  const settings = run.settings as NflSavedRunSettings;
+  if (run.status.startsWith('research_') || 'researchStudy' in settings) throw new Error('Research portfolios cannot be changed.');
+  if (['experimental', 'approved'].includes(settings.defensiveAdjustments?.mode ?? ''))
+    throw new Error('This run used defensive adjustments, whose forecasts cannot be refilled one player at a time. Build again instead. ');
+  const saved = await loadSavedNflLineups(run.uploadId, runId);
+  const slate = await currentSlateForRun(run.uploadId, sanitizeConfirmedStartingQbs(settings.confirmedStartingQbs));
+  assertSlateOpen(slate, 'replace lineups');
+
+  const pool = new Map(currentPoolForQa(slate.players).players.map((p) => [p.dkPlayerId, p]));
+  // The run's pool rules as recorded at build time: a player it ruled ineligible stays ineligible.
+  const decisions = new Map((settings.runEvidence?.eligibility ?? []).map((d) => [d.dkPlayerId, d]));
+  const recorded = decisions.size > 0;
+  const excluded = new Set(settings.excludedPlayerIds ?? []);
+  const candidates = slate.players.flatMap((player) => {
+    const now = pool.get(player.dkPlayerId);
+    if (!now || now.unavailable || excluded.has(player.dkPlayerId) || (settings.excludeKickers && player.position === 'K')) return [];
+    const audit = resolveProjectionAudit(player, settings);
+    if (audit.excluded || audit.final == null || !(audit.final > 0)) return [];
+    const decision = decisions.get(player.dkPlayerId);
+    const flexEligible = recorded ? decision?.eligible === true : true;
+    const projection = audit.final;
+    return [{ player, projection, source: audit.source as NflGeneratedLineup['slots'][number]['projectionSource'],
+      floor: player.floorFpts ?? projection * 0.74, ceiling: player.ceilingFpts ?? projection * 1.28,
+      flexEligible, captainEligible: flexEligible && (recorded ? decision?.captainEligible === true : true) }];
+  });
+
+  const n = saved.lineups.length;
+  const winners = settings.mode === 'gpp' && settings.buildShape === 'winners'
+    ? winnersShapeLimits({ format: settings.format, nLineups: n, minSalary: settings.minSalary ?? 0, maxExposure: settings.maxExposure, minUnique: settings.minUnique })
+    : null;
+  const maxExposure = winners?.maxExposure ?? settings.maxExposure;
+  const result = upgradeLineups({ lineups: saved.lineups, targets: lineupNumbers, candidates, rules: {
+    format: settings.format, mode: settings.mode, minSalary: winners?.minSalary ?? settings.minSalary ?? 0,
+    overlapCap: nflOverlapCap(settings.format, winners?.minUnique ?? settings.minUnique, settings.maxPairwiseOverlap),
+    maxLineupsFor: (id) => Math.max(1, Math.floor(n * (settings.maxExposureByPlayer?.[String(id)] ?? maxExposure) + 1e-9)),
+    captainPositions: showdownCaptainPositions(settings) ?? undefined, maxCeilingMultiple: settings.maxCeilingMultiple,
+  } });
+  const summary = [...result.summary, ...(recorded ? [] : ['This run did not record its pool rules, so replacements were limited to available players with a projection.'])];
+  if (!result.upgrades.length) return { ok: true as const, runId: null, fromRunId: runId, changedLineups: 0, unchanged: result.unchanged, summary };
+
+  // New players join the frozen snapshot so the run restores without today's projections.
+  const snapshot = Array.isArray(run.inputSnapshot) ? run.inputSnapshot as Array<{ dkPlayerId: number }> : [];
+  const known = new Set(snapshot.map((p) => p.dkPlayerId));
+  const added = new Map<number, NflWorkspacePlayer>();
+  for (const s of result.upgrades.flatMap((u) => u.swaps)) if (!known.has(s.in.dkPlayerId)) {
+    const player = slate.players.find((p) => p.dkPlayerId === s.in.dkPlayerId);
+    if (player) added.set(player.dkPlayerId, player);
+  }
+  const inputSnapshot = [...snapshot, ...[...added.values()].map((p) => snapshotPlayer(p, slate, settings))];
+  const newRunId = randomUUID();
+  const buildInfo = nflBuildInfo();
+  const persistedSettings = { ...settings,
+    lineupUpgrade: { version: NFL_LINEUP_UPGRADE_VERSION, fromRunId: runId, upgradedAt: new Date().toISOString(),
+      replacementProjectionRunId: slate.projectionRunId ?? null, upgrades: result.upgrades, unchanged: result.unchanged, summary },
+    runEvidence: settings.runEvidence ? { ...settings.runEvidence, warnings: [...(settings.runEvidence.warnings ?? []), ...summary] } : settings.runEvidence };
+  const inputDigest = sha256(canonicalAuditJson({ settings: persistedSettings, inputSnapshot, optimizerVersion: run.optimizerVersion, buildInfo }));
+  try {
+    await db.insert(nflDfsOptimizerRuns).values({
+      runId: newRunId, uploadId: run.uploadId, projectionRunId: run.projectionRunId,
+      optimizerVersion: run.optimizerVersion, mode: run.mode, projectionSource: run.projectionSource,
+      settings: persistedSettings, inputSnapshot, inputDigest, buildInfo,
+      requestedLineups: run.requestedLineups, generatedLineups: result.lineups.length,
+      status: run.status, failureReason: run.failureReason,
+    });
+    await db.insert(nflDfsLineups).values(result.lineups.map((lineup) => ({
+      runId: newRunId,
+      lineupNumber: lineup.lineupNumber,
+      slots: lineup.slots.map((entry) => ({ slot: entry.slot, dkPlayerId: entry.player.dkPlayerId, captainDkPlayerId: entry.player.captainDkPlayerId, name: entry.player.name, team: entry.player.team, salary: entry.salary, projection: entry.projection, source: entry.projectionSource, multiplier: entry.multiplier, projectionAudit: entry.player.projectionAudit })),
+      stackSummary: { ...lineup.stackSummary, archetype: lineup.archetype ?? null },
+      playerIds: lineup.playerIds,
+      totalSalary: lineup.totalSalary,
+      projectedFpts: lineup.projectedFpts,
+      floorFpts: lineup.floorFpts,
+      ceilingFpts: lineup.ceilingFpts,
+      projectedOwnership: lineup.projectedOwnership,
+    })));
+  } catch { throw new Error('Unable to save the changed lineups. Retry; the original run is unchanged, and an incomplete new run may remain saved.'); }
+  return { ok: true as const, runId: newRunId, fromRunId: runId, changedLineups: result.upgrades.length, unchanged: result.unchanged, summary };
+}

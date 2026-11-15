@@ -92,7 +92,7 @@ export function swapScore(candidate: Pick<SwapCandidate, "projection" | "ceiling
 }
 
 /** Whether a candidate may fill this slot at all (position, captain rules). */
-function fitsSlot(candidate: SwapCandidate, slot: string, rules: SwapRules): boolean {
+export function fitsSlot(candidate: SwapCandidate, slot: string, rules: SwapRules): boolean {
   if (rules.format === "showdown") {
     if (isCaptain(slot)) {
       if (!candidate.captainEligible || candidate.player.captainDkPlayerId == null) return false;
@@ -103,7 +103,7 @@ function fitsSlot(candidate: SwapCandidate, slot: string, rules: SwapRules): boo
   return candidate.flexEligible && (CLASSIC_SLOT_POSITIONS[slot] ?? []).includes(candidate.player.position);
 }
 
-function slotFor(candidate: SwapCandidate, slot: string): NflLineupSlot {
+export function slotFor(candidate: SwapCandidate, slot: string): NflLineupSlot {
   const multiplier = isCaptain(slot) ? 1.5 : 1;
   return { slot, player: candidate.player, salary: isCaptain(slot) ? captainSalary(candidate.player) : candidate.player.salary,
     multiplier, projection: candidate.projection * multiplier, projectionSource: candidate.source };
@@ -118,7 +118,7 @@ function rangeOf(slot: NflLineupSlot, which: "floor" | "ceiling"): number {
 const ownOf = (p: NflOptimizerPlayer) => p.ownPct ?? p.linestarOwnPct ?? null;
 
 /** Hard whole-lineup legality; throws nothing, returns the reason it fails or null. */
-function illegalReason(slots: NflLineupSlot[], format: SwapRules["format"]): string | null {
+export function illegalReason(slots: NflLineupSlot[], format: SwapRules["format"]): string | null {
   const total = slots.reduce((s, x) => s + x.salary, 0);
   if (total > SALARY_CAP) return "over the salary cap";
   if (new Set(slots.map((s) => s.player.dkPlayerId)).size !== slots.length) return "repeats a player";
@@ -133,13 +133,13 @@ function illegalReason(slots: NflLineupSlot[], format: SwapRules["format"]): str
   return null;
 }
 
-function shared(a: readonly number[], b: ReadonlySet<number>): number {
+export function shared(a: readonly number[], b: ReadonlySet<number>): number {
   let n = 0;
   for (const id of a) if (b.has(id)) n++;
   return n;
 }
 
-function rebuildLineup(original: NflGeneratedLineup, slots: NflLineupSlot[], removed: NflLineupSlot[], added: NflLineupSlot[]): NflGeneratedLineup {
+export function rebuildLineup(original: NflGeneratedLineup, slots: NflLineupSlot[], removed: NflLineupSlot[], added: NflLineupSlot[]): NflGeneratedLineup {
   const delta = (which: "floor" | "ceiling") => added.reduce((s, x) => s + rangeOf(x, which), 0) - removed.reduce((s, x) => s + rangeOf(x, which), 0);
   const ownDelta = added.reduce((s, x) => s + (ownOf(x.player) ?? 0), 0) - removed.reduce((s, x) => s + (ownOf(x.player) ?? 0), 0);
   const qb = slots.find((s) => s.player.position === "QB")?.player ?? null;
