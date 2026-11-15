@@ -83,7 +83,7 @@
     "research/nfl_workload_risk.py": "e8d67cb4945446fdc4ab857b69729a61e3c65dae2c1a17ed364bef49d637f344",
     "web/src/lib/nfl-dfs/joint-portfolio.ts": "87588d7fb2782f347ea6bfe35e522da15a62063e4c2d287a0c703064430ebf9f",
     "web/scripts/compare-nfl-joint-portfolios.ts": "05bf97642caba1b96d6d4420acf51502faa4468fcf40dc4e1607f51790298515",
-    "web/src/app/dfs/nfl/nfl-optimizer.ts": "1f039cf2f1347e9980bf7ff5c6d2f3acc727565cdb63e46aed54f04eff9b0c2e",
+    "web/src/app/dfs/nfl/nfl-optimizer.ts": "2fc9e7634b97db015cfe8fa33a472f357d72e37dbf437243abd1b9e9e062b71a",
     "model/nfl_matchup_scenarios.py": "9d133718c360a03a445965508061807c49644c3ac329ae220c4f68069a19e913",
     "web/src/lib/nfl-dfs/scoring.ts": "83e8b8c293519e7605f4d5be76a302bd442835fa4dc43a6d02744922a5729e3c",
     "web/src/lib/nfl-dfs/scenarios.ts": "98ed595731bc69ee1fcde4d9c42109880382cff3dbf480ce0f0043fdf46e2fd9",
@@ -439,6 +439,20 @@
         "web/src/app/dfs/nfl/nfl-optimizer.ts": {
           "previous": "8fb3a0a85348d63dd3fd81cd36901a911dc11107bbc89e03cdfbe47378dfc8a5",
           "new": "1f039cf2f1347e9980bf7ff5c6d2f3acc727565cdb63e46aed54f04eff9b0c2e"
+        }
+      },
+      "evidence_rule": "Keep previous implementation hashes and separate forward construction cohorts; no study gates or enrollment change."
+    },
+    {
+      "amended_at": "2026-11-15T07:13:51.287209+00:00",
+      "reason": "Classic thin-stack cap (nfl-winners-shape-v16, owner's request 2026-11-15). The optimizer gains the optional setting maxThinStackShare (Classic GPP; off when absent): at most that share of lineups may pair the quarterback with exactly one of his WR/TEs and no opposing RB/WR/TE. Past the cap a one-receiver lineup takes a bring-back, and a bring-back share is then scheduled over the two-receiver lineups. Joint selection gains the matching thin and dblBringBack features. Filled only by the build form's lineup rules for user builds (default 5%); the ghost house and the pool-rule study arms never receive it, so their builds are unchanged.",
+      "file": "web/src/app/dfs/nfl/nfl-optimizer.ts",
+      "previous_sha256": "1f039cf2f1347e9980bf7ff5c6d2f3acc727565cdb63e46aed54f04eff9b0c2e",
+      "new_sha256": "2fc9e7634b97db015cfe8fa33a472f357d72e37dbf437243abd1b9e9e062b71a",
+      "changed_implementation_hashes": {
+        "web/src/app/dfs/nfl/nfl-optimizer.ts": {
+          "previous": "1f039cf2f1347e9980bf7ff5c6d2f3acc727565cdb63e46aed54f04eff9b0c2e",
+          "new": "2fc9e7634b97db015cfe8fa33a472f357d72e37dbf437243abd1b9e9e062b71a"
         }
       },
       "evidence_rule": "Keep previous implementation hashes and separate forward construction cohorts; no study gates or enrollment change."
