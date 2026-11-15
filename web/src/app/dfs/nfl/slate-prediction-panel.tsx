@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { breakdownPortfolio, SHOWDOWN_SPLIT_REFERENCE, type BreakdownLineup } from "@/lib/nfl-dfs/portfolio-breakdown";
 import { DEFAULT_SHAPE_DRAWS, predictShowdownShapes, type PredictionPlayer, type SlateShapePrediction } from "@/lib/nfl-dfs/slate-shape-prediction";
 
@@ -22,9 +22,6 @@ export default function SlatePredictionPanel({ slateKey, players, format, lineup
   const prediction = result?.key === slateKey ? result.prediction : null;
   const ours = useMemo(() => (lineups?.length ? breakdownPortfolio(lineups, "showdown") : null), [lineups]);
 
-  // Showdown only: Classic's best lineup needs a different solver, so nothing is shown there.
-  if (format !== "showdown") return null;
-
   function run() {
     setError(null); setProgress(0);
     predictShowdownShapes(players, { onProgress: setProgress })
@@ -32,6 +29,17 @@ export default function SlatePredictionPanel({ slateKey, players, format, lineup
       .catch((reason) => setError(reason instanceof Error ? reason.message : "The prediction could not run."))
       .finally(() => setProgress(null));
   }
+
+  // Runs by itself when a Showdown slate opens (owner, 2026-11-15): it is read before the build, not asked for after it.
+  useEffect(() => {
+    if (format !== "showdown" || !players.length) return;
+    const timer = setTimeout(run, 0);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one run per slate; `run` reads the current players
+  }, [slateKey, format]);
+
+  // Showdown only: Classic's best lineup needs a different solver, so nothing is shown there.
+  if (format !== "showdown") return null;
 
   const ourPct = (rows: { key: string; pct: number }[] | undefined, key: string) => rows?.find((r) => r.key === key)?.pct ?? (ours ? 0 : null);
   const top = prediction?.splits[0] && prediction.splitKinds[0]
