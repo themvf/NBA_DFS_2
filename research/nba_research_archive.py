@@ -12,6 +12,7 @@ import io
 import json
 from pathlib import Path, PurePosixPath
 
+from research import nba_percentile_trial as percentile
 from research.nba_points_forward import aware, digest, write_new
 
 MODEL_SHA = '651441d2dcfbe40aa1bd2c320ef8327056e02bc2c06257995c1cb3c40254bec4'
@@ -23,6 +24,7 @@ SIDECARS = {
     'experiments-index': ('experiment.json', 'experiment_path', 'experiment_sha256', EXPERIMENT_SHA),
     'role-index': ('role-challenger.json', 'record_path', 'sha256', ROLE_SHA),
     'trio-math-index': ('trio-math.json', 'record_path', 'record_sha256', MATH_SHA),
+    percentile.INDEX: (percentile.FILENAME, 'record_path', 'record_sha256', percentile.PROTOCOL_SHA),
 }
 DDL = """CREATE TABLE IF NOT EXISTS nba_research_archives (
  forecast_sha256 TEXT PRIMARY KEY, game_date DATE NOT NULL, model_sha256 TEXT NOT NULL,
@@ -96,6 +98,8 @@ def bundle(root, marker):
                 or record['game_date'] != forecast['game_date']
                 or not aware(forecast['created_at']) <= aware(record['created_at']) <= aware(created) < min(starts)):
             raise ValueError('invalid registered attachment')
+        if folder == percentile.INDEX:
+            verify_percentile_index(idx, record, forecast, source)
         indexes[folder + '/' + path.name] = idx
         attachments[folder] = 'indexed'
     packet = {
@@ -114,6 +118,13 @@ def bundle(root, marker):
     manifest['archive_sha256'] = hashlib.sha256(packed).hexdigest()
     manifest['files'] = {name: item['sha256'] for name, item in packet['files'].items()}
     return manifest, packed
+
+
+def verify_percentile_index(index, record, forecast, source):
+    percentile.verify_record(record, forecast, source)
+    if (index['record_sha256'] != record['sha256'] or index['forecast_sha256'] != forecast['sha256']
+            or not aware(record['completed_at']) <= aware(index['indexed_at']) < aware(record['lock_at'])):
+        raise ValueError('invalid percentile archive index')
 
 
 def unpack(manifest, packed):
@@ -154,6 +165,12 @@ def unpack(manifest, packed):
                 or forecast['source_snapshot_sha256'] != source['sha256']
                 or forecast['mode'] != 'prospective' or source['mode'] != 'prospective'):
             raise ValueError('archived original identity mismatch')
+        if packet['attachments'].get(percentile.INDEX) == 'indexed':
+            name = f"{percentile.INDEX}/{forecast['game_date']}-{percentile.PROTOCOL_SHA}.json"
+            verify_percentile_index(packet['indexes'][name], json.loads(files[prefix + percentile.FILENAME]),
+                                    forecast, source)
+        elif any(name.startswith(percentile.INDEX + '/') for name in packet['indexes']):
+            raise ValueError('percentile archive index lacks attachment status')
     return packet, files
 
 

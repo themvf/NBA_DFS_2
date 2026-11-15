@@ -1,0 +1,35 @@
+{
+  "baseline": "descending expected trio points",
+  "challenger": "descending joint P75 of trio score from aligned v3 draws",
+  "confirmation_dates": 10,
+  "entries": 5,
+  "first_slate": "2026-11-16",
+  "market_line_split": 20,
+  "model_sha256": "651441d2dcfbe40aa1bd2c320ef8327056e02bc2c06257995c1cb3c40254bec4",
+  "paired_checkpoint": 30,
+  "percentile_levels": [
+    50,
+    60,
+    70,
+    75,
+    80,
+    90
+  ],
+  "player_target": "verified full-game points including overtime conditional on appearing",
+  "primary_player_targets": [
+    70,
+    75
+  ],
+  "reference_point_fields": [
+    "market_line",
+    "v2_blend",
+    "v3_mean"
+  ],
+  "registered_at": "2026-11-15T16:18:00+00:00",
+  "ties": "ascending sorted (event_id,player_key) tuple",
+  "trio_pool_size": 10,
+  "trio_primary": "actual best of five",
+  "trio_secondary": "actual sum of all five",
+  "version": "nba-percentile-protocol-v1",
+  "sha256": "90b0127636631282356b52b398213fcf82d6e87b8ecb8fd58ab24876cc2ea7e8"
+}

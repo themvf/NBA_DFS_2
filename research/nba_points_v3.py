@@ -324,6 +324,11 @@ def record_day(args, raw, raw_sha):
     if TRIO_PROTOCOL.exists():
         try:receipt['trio_math']=attach_trio_math(result,snapshot,args.output_dir,args.output_dir.parent,datetime.now(timezone.utc).isoformat())
         except Exception as exc:receipt['trio_math']={'status':'skipped_or_failed','reason':str(exc)}
+    from research import nba_percentile_trial
+    try:
+        receipt['percentile_trial'] = nba_percentile_trial.attach(result, snapshot, args.output_dir, args.output_dir.parent)
+    except Exception as exc:
+        receipt['percentile_trial'] = {'status': 'skipped_or_failed', 'reason': str(exc)}
     return receipt
 
 

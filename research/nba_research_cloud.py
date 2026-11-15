@@ -14,6 +14,7 @@ import sys
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from research import nba_percentile_trial as percentile
 from research import nba_research_archive as storage
 from research.nba_points_forward import aware, digest, write_new
 from research.nba_ghost_runner import fetch_scoreboard
@@ -103,7 +104,8 @@ def restore_reviews(conn, root, cache=None):
 
 
 def missing_attachments(manifest):
-    enrollment = {'experiments-index': '2026-10-28', 'role-index': '2026-11-03', 'trio-math-index': '2026-11-04'}
+    enrollment = {'experiments-index': '2026-10-28', 'role-index': '2026-11-03', 'trio-math-index': '2026-11-04',
+                  percentile.INDEX: percentile.FIRST_SLATE}
     return [folder for folder, start in enrollment.items()
             if manifest['game_date'] >= start and manifest['attachments'].get(folder) != 'indexed']
 
@@ -386,6 +388,16 @@ def review(conn, root, last, evidence, cache=None):
                 command('pool-audit', ['research.nba_trio_pool_audit', '--record', directory / 'trio-math.json',
                     '--forecast', directory / 'forecast.json', '--diagnostics', checked_diagnostics,
                     '--math-grade', math_output, '--output', output / 'pool-audits' / 'audit.json', '--apply'], output)
+            if manifest['attachments'].get(percentile.INDEX) == 'indexed':
+                try:
+                    result = percentile.grade(storage.read(directory / percentile.FILENAME),
+                        storage.read(directory / 'forecast.json'), storage.read(directory / 'source-snapshot.json'),
+                        storage.read(diagnostics), storage.read(output / 'scoreboard.json'), now())
+                    write_new(output / percentile.GRADE, result)
+                except Exception as exc:
+                    failure = {'stage': 'percentile_grade', 'type': type(exc).__name__, 'reason': str(exc)}
+                    write_new(output / 'percentile-failure.json', failure)
+                    warnings.append(failure)
             save_review(conn, root, output, manifest)
             results.append({'date': str(day), 'status': 'reviewed', 'evidence_failures': warnings})
         except Exception as exc:
@@ -399,6 +411,7 @@ def review(conn, root, last, evidence, cache=None):
 
 
 def reports(root, evidence):
+    write_new(evidence / 'percentile-report.json', percentile.report(root))
     command('v2-report', ['research.nba_ghost_runner', 'report', '--since', '2026-10-25',
                           '--output', evidence / 'v2-report.json'], evidence)
     command('experiments-report', ['research.nba_points_experiments', 'report', '--research-root', root,
