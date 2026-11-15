@@ -1,0 +1,33 @@
+{
+  "study": "nfl-rushing-underdog-under-v1",
+  "status": "registered",
+  "registered_at": "2026-11-15T05:30:00+00:00",
+  "season": 2026,
+  "weeks": [10, 18],
+  "market": "player_rush_yds",
+  "books": ["draftkings", "fanduel", "betmgm", "williamhill_us", "fanatics"],
+  "side": "under",
+  "stake": 1.0,
+  "underdog_points": 3.0,
+  "spread": "nfl_season_games.market_spread_line (positive = home favoured), used only when market_captured_at is before kickoff",
+  "line": "latest prop_odds_history capture before kickoff; among the listed books with a line and both prices, the highest line, ties to the best under price; a player quoted by one listed book is skipped",
+  "event_match_window_minutes": 120,
+  "settlement": {
+    "source": "nflverse stats_player_week, regular season; the player's team is the stat row's team",
+    "match": "nflverse game_id plus normalized player_display_name",
+    "no_stat_row": "not bet (no team to class)",
+    "push": 0.0
+  },
+  "floors": {"graded_bets": 200, "game_weeks": 7},
+  "bootstrap": {"resamples": 2000, "seed": 20261115, "cluster": "game_week", "interval": 0.95},
+  "verdict": {
+    "when": "the first grade run after every cohort game through week 18 is graded",
+    "outcomes": {
+      "PASS": "ROI interval wholly above zero",
+      "NO_EDGE": "interval includes zero, floors met",
+      "LOSES": "interval wholly below zero",
+      "INCONCLUSIVE": "floors not met"
+    }
+  },
+  "tables": "nfl_rushing_under_runs / nfl_rushing_under_verdicts, keyed by study"
+}

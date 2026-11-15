@@ -230,6 +230,15 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           python -m research.nfl_rushing_under grade --write-db --out artifacts/nfl_rushing_under_latest.json
+      # nfl-rushing-underdog-under-v1 (docs/nfl-rushing-underdog-under-study.md): unders on
+      # underdogs of 3+ at the highest US line, weeks 10-18. Separate from the study above.
+      - name: Verify the underdog rushing-under study
+        if: ${{ !cancelled() }}
+        run: python -m pytest -q tests/test_nfl_rushing_underdog_under.py
+      - name: Grade underdog rushing unders
+        if: ${{ !cancelled() }}
+        run: |
+          python -m research.nfl_rushing_underdog_under grade --write-db --out artifacts/nfl_rushing_underdog_under_latest.json
       - name: Save the grade report
         if: always()
         uses: actions/upload-artifact@v4
@@ -241,6 +250,7 @@ jobs:
             artifacts/nfl_prop_under_role_change_latest.json
             artifacts/nfl_prop_under_fringe_latest.json
             artifacts/nfl_rushing_under_latest.json
+            artifacts/nfl_rushing_underdog_under_latest.json
           if-no-files-found: ignore
           retention-days: 90
 
