@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { studyHeading } from "@/lib/study-registry";
 import type { Metadata } from "next";
 import { getNflMarketStudyGames } from "@/db/nfl-market-studies";
 import { easternDateString } from "@/lib/eastern-date";
@@ -120,14 +121,14 @@ export default async function NflMarketStudies({ searchParams }: { searchParams:
     </details>
 
     <section aria-label="Market studies" className="space-y-3">
-      <Results title="NFL-01 · Spread size and key numbers" week={daily.spread} overall={overall.spread} />
-      <Results title="NFL-02 · Favorite rest days" week={daily.rest} overall={overall.rest} />
-      <Results title="NFL-03 · Listed home and away favorites" week={daily.venue} overall={overall.venue} />
-      <Results title="NFL-04 · Spread movement" week={daily.movement} overall={overall.movement} />
-      <Results title="NFL-05 · Full-game totals" week={daily.totals} overall={overall.totals} />
-      <Results title="NFL-06 · Team against the spread" week={daily.teams} overall={overall.teams} />
+      <Results title={studyHeading("NFL-01")} week={daily.spread} overall={overall.spread} />
+      <Results title={studyHeading("NFL-02")} week={daily.rest} overall={overall.rest} />
+      <Results title={studyHeading("NFL-03")} week={daily.venue} overall={overall.venue} />
+      <Results title={studyHeading("NFL-04")} week={daily.movement} overall={overall.movement} />
+      <Results title={studyHeading("NFL-05")} week={daily.totals} overall={overall.totals} />
+      <Results title={studyHeading("NFL-06")} week={daily.teams} overall={overall.teams} />
       <details className="rounded-lg border px-4 py-3">
-        <summary className="cursor-pointer font-medium">NFL-07 · First vs. last archive accuracy</summary>
+        <summary className="cursor-pointer font-medium">{studyHeading("NFL-07")}</summary>
         <p className="mt-2 text-sm text-muted-foreground">Mean absolute error in points on identical games with two distinct quotes.</p>
         {overall.timing.map((row, i) => <p key={row.market} className="mt-2 text-sm">
           <strong className="capitalize">{row.market}</strong> · Week {show(daily.timing[i].first)} → {show(daily.timing[i].last)}
@@ -135,14 +136,14 @@ export default async function NflMarketStudies({ searchParams }: { searchParams:
         </p>)}
       </details>
       <details className="rounded-lg border px-4 py-3">
-        <summary className="cursor-pointer font-medium">NFL-08 · Same-line price shopping</summary>
+        <summary className="cursor-pointer font-medium">{studyHeading("NFL-08")}</summary>
         <p className="mt-2 text-sm text-muted-foreground">Sides with a better price in the same capture, strictly before 60 minutes to each scheduled kickoff.</p>
         {(["spread", "total", "moneyline"] as const).map(market => <p key={market} className="mt-2 text-sm">
           <strong className="capitalize">{market}</strong> · Week {daily.shopping[market].better}/{daily.shopping[market].compared}
           {" "}· Season {overall.shopping[market].better}/{overall.shopping[market].compared}
         </p>)}
       </details>
-      <Results title="NFL-10 · Two-way moneyline returns" week={daily.moneyline} overall={overall.moneyline} />
+      <Results title={studyHeading("NFL-10")} week={daily.moneyline} overall={overall.moneyline} />
       <details className="rounded-lg border px-4 py-3">
         <summary className="cursor-pointer font-medium">NFL-10 · Moneyline calibration</summary>
         <p className="mt-2 text-sm text-muted-foreground">
@@ -163,7 +164,7 @@ export default async function NflMarketStudies({ searchParams }: { searchParams:
           </table>
         </div>
       </details>
-      <Results title="NFL-11 · Relative rest advantage" week={daily.restEdge} overall={overall.restEdge} />
+      <Results title={studyHeading("NFL-11")} week={daily.restEdge} overall={overall.restEdge} />
     </section>
 
     <section className="rounded-lg border p-4">

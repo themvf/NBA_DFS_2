@@ -22,17 +22,18 @@ export async function getNbaMarketStudyGames(through: string) {
     ), schedule_observations AS (
       SELECT g.espn_event_id::text AS id, g.game_date, g.home_team, g.away_team, g.start_time,
              CASE WHEN g.completed THEN g.home_score END AS home_score,
-             CASE WHEN g.completed THEN g.away_score END AS away_score, 0 AS priority
+             CASE WHEN g.completed THEN g.away_score END AS away_score,
+             CASE WHEN g.completed THEN g.fetched_at END AS final_observed_at, 0 AS priority
       FROM nba_box_score_games g
       WHERE g.game_date BETWEEN '2026-10-20' AND ${through}::date
       UNION ALL
       SELECT game->>'event_id', s.game_date, game->>'home_team', game->>'away_team',
-             (game->>'start_time')::timestamptz, NULL, NULL, 1
+             (game->>'start_time')::timestamptz, NULL, NULL, NULL, 1
       FROM original_slates s
       CROSS JOIN LATERAL jsonb_array_elements(s.snapshot->'slate_schedule') game
       WHERE game->>'event_id' IS NOT NULL
     ), schedule AS (
-      SELECT DISTINCT ON (id) id, game_date, start_time, home_score, away_score,
+      SELECT DISTINCT ON (id) id, game_date, start_time, home_score, away_score, final_observed_at,
              replace(home_team, 'Los Angeles Clippers', 'LA Clippers') AS home_team,
              replace(away_team, 'Los Angeles Clippers', 'LA Clippers') AS away_team
       FROM schedule_observations
@@ -57,6 +58,7 @@ export async function getNbaMarketStudyGames(through: string) {
     )
     SELECT s.id, s.game_date::text AS date, s.home_team AS home, s.away_team AS away,
            s.start_time::text AS start, s.cutoff::text, s.home_score::integer AS "homeScore", s.away_score::integer AS "awayScore",
+           s.final_observed_at::text AS "finalObservedAt",
            prev_home.venue IS NOT NULL AS "homeBackToBack", prev_away.venue IS NOT NULL AS "awayBackToBack",
            prev_home.venue AS "homePriorVenue", prev_away.venue AS "awayPriorVenue",
            coalesce(q.captures, '[]'::jsonb) AS captures
