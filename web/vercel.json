@@ -7,34 +7,5 @@
     }
   },
   "ignoreCommand": "p=\"${VERCEL_GIT_PREVIOUS_SHA:-}\"; [ -n \"$p\" ] && git cat-file -e \"$p^{commit}\" 2>/dev/null && git diff --quiet \"$p\" HEAD -- . && exit 0; exit 1",
-  "crons": [
-    {
-      "path": "/api/cron/nfl-pool-capture",
-      "schedule": "* * * * *"
-    },
-    {
-      "path": "/api/cron/event-closing-lines",
-      "schedule": "* * * * *"
-    },
-    {
-      "path": "/api/cron/dispatch",
-      "schedule": "7,22,37,52 * * * *"
-    },
-    {
-      "path": "/api/cron/nfl-slate-check",
-      "schedule": "12,42 * * * *"
-    },
-    {
-      "path": "/api/cron/health-check",
-      "schedule": "3,33 * * * *"
-    },
-    {
-      "path": "/api/cron/nfl-ghost",
-      "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/cron/pickem-settle",
-      "schedule": "17 2,14 * * *"
-    }
-  ]
+  "crons": []
 }

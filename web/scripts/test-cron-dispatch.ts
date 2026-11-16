@@ -19,6 +19,8 @@ assert.equal(new Set(DISPATCH_JOBS.map((j) => j.key)).size, DISPATCH_JOBS.length
 
 // Every cron path in vercel.json has a route.
 const vercel = JSON.parse(readFileSync(path.join(root, "vercel.json"), "utf8")) as { crons: Array<{ path: string; schedule: string }> };
+// Paused 2026-11-15 (owner shut the project down): vercel.json runs no timers; the list is kept in vercel.paused-crons.json and still checked.
+if (!vercel.crons.length) vercel.crons = (JSON.parse(readFileSync(path.join(root, "vercel.paused-crons.json"), "utf8")) as typeof vercel).crons;
 for (const cron of vercel.crons) {
   assert.ok(existsSync(path.join(root, "src", "app", cron.path, "route.ts")), `${cron.path} has no route`);
 }

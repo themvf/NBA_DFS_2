@@ -1,0 +1,33 @@
+{
+  "_note": "Paused by the owner on 2026-11-15: the project is shut down. These were the Vercel timers. To restore, move this list back into vercel.json under \"crons\".",
+  "crons": [
+    {
+      "path": "/api/cron/nfl-pool-capture",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/event-closing-lines",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/dispatch",
+      "schedule": "7,22,37,52 * * * *"
+    },
+    {
+      "path": "/api/cron/nfl-slate-check",
+      "schedule": "12,42 * * * *"
+    },
+    {
+      "path": "/api/cron/health-check",
+      "schedule": "3,33 * * * *"
+    },
+    {
+      "path": "/api/cron/nfl-ghost",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/pickem-settle",
+      "schedule": "17 2,14 * * *"
+    }
+  ]
+}

@@ -15,6 +15,8 @@ const vercel = JSON.parse(readFileSync(path.resolve(__dirname, "..", "vercel.jso
 // Only main deploys (owner's decision 2026-11-14: no preview builds). A branch that matches
 // several rules deploys when any of them is true, so main must be named and true: with the
 // catch-all alone, production would stop deploying and nothing would say so.
+// Paused 2026-11-15 (owner shut the project down): vercel.json runs no timers; the list is kept in vercel.paused-crons.json and still checked.
+if (!vercel.crons.length) vercel.crons = (JSON.parse(readFileSync(path.resolve(__dirname, "..", "vercel.paused-crons.json"), "utf8")) as { crons: { path: string }[] }).crons;
 const deploys = vercel.git?.deploymentEnabled;
 assert.ok(deploys && typeof deploys === "object", "vercel.json names which branches deploy");
 assert.equal(deploys.main, true, "main must deploy");
