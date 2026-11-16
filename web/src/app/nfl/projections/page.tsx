@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getNflRollingProjectionBoard } from "@/db/nfl-rolling-projections";
+import { ROSTER_FRESH_MS } from "@/lib/nfl-dfs/availability";
 import { formatKickoff, parseFilters } from "@/lib/nfl-dfs/rolling-projection-view";
 import ProjectionsExplorer from "./projections-explorer";
 import RollingRefresh from "./rolling-refresh";
@@ -18,6 +19,8 @@ export default async function NflRollingProjectionsPage({ searchParams }: {
   const board = await getNflRollingProjectionBoard(params.week);
   const teams = board.games.flatMap(game => [game.home, game.away]);
   const week = board.run ? `${board.run.season}-${board.run.week}` : "";
+  const rosterAgeDays = board.rosterAsOf && board.matchupAsOf
+    ? Math.floor((Date.parse(board.matchupAsOf) - Date.parse(board.rosterAsOf)) / 864e5) : null;
   return (
     <main className="mx-auto max-w-7xl space-y-5 p-5">
       <header className="flex flex-wrap items-end justify-between gap-4">
@@ -49,6 +52,10 @@ export default async function NflRollingProjectionsPage({ searchParams }: {
         </dl>
         {board.games.length === 0 && <Notice>Every game in this saved week has started. The next week appears when the scheduled pipeline saves its projection run.</Notice>}
         {board.contextError && <Notice>{board.contextError}</Notice>}
+        {board.rosterError && <Notice>{board.rosterError}</Notice>}
+        {rosterAgeDays != null && rosterAgeDays >= ROSTER_FRESH_MS / 864e5 && (
+          <Notice>The depth chart is {rosterAgeDays} days old. Listed backups are still hidden, but anyone who has since lost or won a job is not reflected. Re-run the Fantasy Football refresh workflow.</Notice>
+        )}
         {board.games.length > 0 && (
           <ProjectionsExplorer key={board.run.runId} board={board} week={week} initial={parseFilters(params, teams)} />
         )}
@@ -59,7 +66,9 @@ export default async function NflRollingProjectionsPage({ searchParams }: {
           {board.omittedPlayers > 0 && <p>{board.omittedPlayers} saved projection rows are hidden because their game started or the saved team and opponent did not match the schedule.</p>}
           <p>Projections are frozen at the run time. Implied points, lines and the quarterback passing context refresh when you open the page, press Refresh, or every five minutes while it is open; they describe the matchup and never change a projection.</p>
           <p>Players with too few NFL games for their own projection get the position average, which has run several points high for them, so they are hidden unless you include them. Defenses show the opponent&apos;s implied points.</p>
-        </footer>
+          {board.rosterAsOf
+            ? <p>Backups follow the Sleeper depth chart captured {formatKickoff(board.rosterAsOf)}: a quarterback below QB1, a kicker below K1, a practice-squad player, or a running back, receiver or tight end the chart leaves off. Their projections assume they play, and in weeks 2-9 they almost never did (backup quarterbacks projected 7.3 points scored 0.4; unlisted backs, receivers and tight ends scored 0.0), so they are hidden unless you include them. An injury or roster status newer than the projection run marks a player out.</p>
+            : <p>No depth chart has been captured, so nobody is marked a backup.</p>}        </footer>
       </>}
     </main>
   );

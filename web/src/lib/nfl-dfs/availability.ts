@@ -15,6 +15,8 @@ export type RosterEvidence = { team: string; position: string; fetchedAt: string
 export type Availability = { role: string; status: string; source: string; capturedAt: string | null; blockedReason: string | null; fresh: boolean;
   /** Depth-chart role block only (e.g. listed QB2), separate from health so a pinned health decision cannot drop it. */
   roleBlockedReason?: string | null;
+  /** Sleeper depth rank from a capture matched to this team and position; null when that capture lists none; absent without a matched capture. */
+  depthOrder?: number | null;
   /** The depth chart's role when a build-form confirmation overrode it. */
   chartRole?: string;
   /** The practice-squad rule's disagreement note (kept in the pool despite a practice-squad listing), for any presenter that rebuilds warnings. */
@@ -200,8 +202,42 @@ export function resolveAvailability(evidence: RosterEvidence | undefined, team: 
     // opportunity-redistribution donor path reads it. `fresh` carries the caveat.
     status,
     source: fresh ? "Sleeper roster (retrieval time; not game-day confirmation)" : "Sleeper roster, STALE (depth chart used to block only; health unknown)",
-    capturedAt: evidence.fetchedAt, blockedReason, roleBlockedReason, fresh,
+    capturedAt: evidence.fetchedAt, blockedReason, roleBlockedReason, fresh, depthOrder: depth,
   };
+}
+
+/**
+ * Off the depth chart (`nfl-off-depth-chart-v1`, 2026-11-15). An RB, WR or TE
+ * whose matched Sleeper capture carries no depth rank does not play. Measured
+ * on the 2026 week 2-9 Classic slate report cards against the archived Sleeper
+ * capture before each kickoff (a missing stat line scored as DraftKings pays,
+ * 0): 812 such players with their own history were projected 1.2 points and
+ * scored 0.0, 1% with a stat line; 78 position estimates were projected 6.1 and
+ * also scored 0.0. Listed players at every rank played (RB3 51%, WR5+ 31%), so
+ * only an absent rank is a block. Stale captures block too: blocks apply,
+ * clearances do not.
+ */
+export const OFF_DEPTH_CHART_RULE_VERSION = "nfl-off-depth-chart-v1";
+export const OFF_DEPTH_CHART_POSITIONS: ReadonlySet<string> = new Set(["RB", "WR", "TE"]);
+const capturedNote = (fresh: boolean, capturedAt: string | null) => fresh ? "" : ` (roster captured ${capturedAt?.slice(0, 10)})`;
+export function offDepthChartReason(availability: Pick<Availability, "depthOrder" | "fresh" | "capturedAt">, position: string): string | null {
+  if (!OFF_DEPTH_CHART_POSITIONS.has(position) || availability.depthOrder !== null) return null;
+  return `Not on the depth chart${capturedNote(availability.fresh, availability.capturedAt)}`;
+}
+
+/**
+ * Same rule, for a player whose Sleeper capture names no team (released or
+ * unsigned) while the projection still carries his old one. `resolveAvailability`
+ * treats any team mismatch as no evidence, which is right for a trade but not for
+ * no team at all: in the same week 2-9 sample, 69 such QB/RB/WR/TE player-weeks
+ * were projected up to 2.8 points and none played.
+ */
+export function noTeamReason(evidence: RosterEvidence | undefined, position: string, now: number): string | null {
+  const s = evidence?.sleeper as Record<string, unknown> | null | undefined;
+  if (!s || s.position !== position || String(s.team ?? "").trim()) return null;
+  const captured = Date.parse(evidence!.fetchedAt);
+  if (!Number.isFinite(captured) || captured > now) return null;
+  return `On no team's roster in Sleeper${capturedNote(now - captured <= ROSTER_FRESH_MS, evidence!.fetchedAt)}`;
 }
 
 /**

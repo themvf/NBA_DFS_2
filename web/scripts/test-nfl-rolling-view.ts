@@ -4,7 +4,7 @@
  */
 import assert from "node:assert/strict";
 import {
-  classicSalaryIndex, environmentByTeam, filterPlayers, pointsPerThousand, salaryKey, filterSearch, hiddenCounts, parseFilters, positionCounts, rangeMax,
+  classicSalaryIndex, environmentByTeam, filterPlayers, hiddenGroup, isBackup, isOut, pointsPerThousand, salaryKey, filterSearch, hiddenCounts, parseFilters, positionCounts, rangeMax,
   relevantImplied, sortPlayers, STAT_KEYS, statLine, type ExplorerState, type RollingGame, type RollingPlayer, type StatMeans,
 } from "../src/lib/nfl-dfs/rolling-projection-view";
 
@@ -14,12 +14,12 @@ function player(patch: Partial<RollingPlayer> & Pick<RollingPlayer, "name" | "po
   return {
     id: nextId++, opponent: "OPP", status: "historical", projected: 10, floor: 4, median: 9, ceiling: 20,
     boomRate: 0.1, historyGames: 30, salary: null, kickoff: "2026-11-01T17:00:00.000Z",
-    stats: noStats, teamContext: null, ...patch,
+    stats: noStats, teamContext: null, depth: null, unavailableReason: null, backupReason: null, ...patch,
   };
 }
 
 const defaults: ExplorerState = {
-  position: "ALL", team: null, query: "", includeOut: false, includeEstimates: false, sort: "projected", view: "cards",
+  position: "ALL", team: null, query: "", includeOut: false, includeBackups: false, includeEstimates: false, sort: "projected", view: "cards",
 };
 
 const allen = player({ name: "Josh Allen", position: "QB", team: "BUF", projected: 24.1, ceiling: 41 });
@@ -34,9 +34,23 @@ const all = [allen, backup, cook, injured, kraft, bills, accents];
 // --- Default view hides ruled-out players and position estimates, and says how many ---
 assert.deepEqual(filterPlayers(all, defaults).map(p => p.name).sort(),
   ["Amon-Ra St. Brown", "Bills", "James Cook", "Josh Allen", "Tucker Kraft"]);
-assert.deepEqual(hiddenCounts(all, defaults), { out: 1, estimates: 1 });
+assert.deepEqual(hiddenCounts(all, defaults), { out: 1, backups: 0, estimates: 1 });
 assert.ok(filterPlayers(all, { ...defaults, includeEstimates: true }).includes(backup), "toggle brings the estimate back");
 assert.ok(filterPlayers(all, { ...defaults, includeOut: true }).includes(injured), "toggle brings the ruled-out player back");
+
+// --- Backups and newer outs: each hidden player belongs to exactly one group, so one toggle brings him back ---
+const flacco = player({ name: "Joe Flacco", position: "QB", team: "CIN", depth: "QB2", backupReason: "Listed QB2; starter workload not supported" });
+const perry = player({ name: "A.T. Perry", position: "WR", team: "PIT", backupReason: "Not on the depth chart" });
+const unlistedEstimate = player({ name: "Noah Thomas", position: "WR", team: "CIN", status: "position_prior", backupReason: "Not on the depth chart" });
+const newlyOut = player({ name: "Ladd McConkey", position: "WR", team: "LAC", unavailableReason: "Unavailable: OUT", backupReason: "Not on the depth chart" });
+const roles = [allen, flacco, perry, unlistedEstimate, newlyOut];
+assert.deepEqual(roles.map(hiddenGroup), [null, "backups", "backups", "backups", "out"], "out beats backup beats estimate");
+assert.ok(isOut(newlyOut) && !isBackup(newlyOut), "a status newer than the run marks him out, not a backup");
+assert.deepEqual(filterPlayers(roles, defaults).map(p => p.name), ["Josh Allen"]);
+assert.deepEqual(hiddenCounts(roles, defaults), { out: 1, backups: 3, estimates: 0 });
+assert.deepEqual(filterPlayers(roles, { ...defaults, includeBackups: true }).map(p => p.name),
+  ["Josh Allen", "Joe Flacco", "A.T. Perry", "Noah Thomas"], "the backups toggle alone shows an unlisted position estimate");
+assert.equal(positionCounts(roles, { ...defaults, includeBackups: true }).WR, 2);
 
 // --- Position filters, FLEX, and counts that ignore the position filter itself ---
 assert.deepEqual(filterPlayers(all, { ...defaults, position: "FLEX" }).map(p => p.position).sort(), ["RB", "TE", "WR"]);
@@ -46,7 +60,7 @@ assert.equal(counts.QB, 1, "the position-estimate backup is not counted while hi
 assert.equal(counts.FLEX, 3);
 assert.equal(counts.K, 0);
 assert.equal(positionCounts(all, { ...defaults, includeEstimates: true }).QB, 2);
-assert.deepEqual(hiddenCounts(all, { ...defaults, position: "WR" }), { out: 1, estimates: 0 }, "hidden counts follow the position tab");
+assert.deepEqual(hiddenCounts(all, { ...defaults, position: "WR" }), { out: 1, backups: 0, estimates: 0 }, "hidden counts follow the position tab");
 
 // --- Team and search ---
 assert.deepEqual(filterPlayers(all, { ...defaults, team: "GB" }).map(p => p.name), ["Tucker Kraft"]);
@@ -91,9 +105,9 @@ assert.deepEqual(relevantImplied("WR", undefined), { value: null, label: "Team i
 
 // --- URL state round-trips, defaults stay off the URL, and unknown values fall back ---
 const state: ExplorerState = { ...defaults, position: "FLEX", team: "BUF", query: " cook ", sort: "ceiling",
-  view: "table", includeOut: true, includeEstimates: true };
+  view: "table", includeOut: true, includeBackups: true, includeEstimates: true };
 const search = filterSearch(state, "2026-8");
-assert.equal(search, "?week=2026-8&position=FLEX&team=BUF&q=cook&sort=ceiling&view=table&out=1&est=1");
+assert.equal(search, "?week=2026-8&position=FLEX&team=BUF&q=cook&sort=ceiling&view=table&out=1&bk=1&est=1");
 assert.deepEqual(parseFilters(Object.fromEntries(new URLSearchParams(search)), ["BUF"]), { ...state, query: "cook" });
 assert.equal(filterSearch(defaults, null), "");
 assert.deepEqual(parseFilters({ position: "LB", team: "XXX", sort: "ownership", view: "grid" }, ["BUF"]), defaults);

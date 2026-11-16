@@ -1,8 +1,8 @@
 import {
-  formatNumber, formatPercent, formatSalary, formatValue, isPositionEstimate, isOut, pointsPerThousand, relevantImplied, statLine,
+  formatNumber, formatPercent, formatSalary, formatValue, isBackup, isPositionEstimate, isOut, pointsPerThousand, relevantImplied, statLine,
   type RollingPlayer, type SortKey, type TeamEnvironment,
 } from "@/lib/nfl-dfs/rolling-projection-view";
-import { PositionChip, StatusBadges } from "./projection-card";
+import { PositionChip, roleNote, StatusBadges } from "./projection-card";
 import RangeBar, { RangeScale } from "./range-bar";
 
 function SortHeader({ label, sortKey, sort, onSort, align = "right" }: {
@@ -47,16 +47,18 @@ export default function ProjectionTable({ players, environments, max, sort, onSo
         </thead>
         <tbody>
           {players.map((player, index) => (
-            <tr key={player.id} className={`border-b last:border-0 hover:bg-muted/50 ${isOut(player) ? "opacity-60" : ""}`}>
+            <tr key={player.id} className={`border-b last:border-0 hover:bg-muted/50 ${isOut(player) || isBackup(player) ? "opacity-60" : ""}`}>
               <td className="p-2 text-right tabular-nums text-muted-foreground">{index + 1}</td>
               <td className="p-2">
                 <div className="flex items-center gap-2">
                   <PositionChip position={player.position} />
-                  <span className="font-medium">{player.name}</span>
+                  <span className="font-medium" title={roleNote(player) ?? undefined}>{player.name}</span>
                   <StatusBadges player={player} />
                 </div>
               </td>
-              <td className="whitespace-nowrap p-2 text-muted-foreground">{player.team} vs {player.opponent}</td>
+              <td className="whitespace-nowrap p-2 text-muted-foreground">
+                {player.team} vs {player.opponent}{player.depth ? <span className="ml-1.5 text-xs">{player.depth}</span> : null}
+              </td>
               <td className="p-2"><RangeBar player={player} max={max} compact estimate={isPositionEstimate(player)} /></td>
               <td className="p-2 text-right tabular-nums">{formatSalary(player.salary)}</td>
               <td className="p-2 text-right font-semibold tabular-nums">{formatNumber(player.projected)}</td>

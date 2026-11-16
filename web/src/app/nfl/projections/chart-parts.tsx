@@ -2,7 +2,7 @@ import {
   boomThreshold, formatNumber, formatPercent, formatSalary, formatValue, isPositionEstimate, pointsPerThousand,
   POSITIONS, type RollingPlayer,
 } from "@/lib/nfl-dfs/rolling-projection-view";
-import { PositionChip } from "./projection-card";
+import { PositionChip, roleNote } from "./projection-card";
 import { positionStyle } from "./range-bar";
 
 export function PositionLegend({ players }: { players: readonly RollingPlayer[] }) {
@@ -31,7 +31,7 @@ export function PlayerTooltip({ player, x, y, width }: { player: RollingPlayer; 
         <PositionChip position={player.position} />
         <span className="truncate font-semibold">{player.name}</span>
       </div>
-      <p className="mt-0.5 text-muted-foreground">{player.team} vs {player.opponent}</p>
+      <p className="mt-0.5 text-muted-foreground">{player.team} vs {player.opponent}{player.depth ? ` · ${player.depth}` : ""}</p>
       <dl className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 tabular-nums">
         <dt className="text-muted-foreground">Projection</dt><dd className="text-right font-semibold">{formatNumber(player.projected)}</dd>
         <dt className="text-muted-foreground">Salary</dt><dd className="text-right">{formatSalary(player.salary)}</dd>
@@ -42,6 +42,7 @@ export function PlayerTooltip({ player, x, y, width }: { player: RollingPlayer; 
         <dt className="text-muted-foreground">{threshold == null ? "Boom" : `Boom ${threshold}+`}</dt>
         <dd className="text-right">{formatPercent(player.boomRate)}</dd>
       </dl>
+      {roleNote(player) && <p className="mt-2 font-medium text-amber-700 dark:text-amber-300">{roleNote(player)}</p>}
       {isPositionEstimate(player) && <p className="mt-2 text-muted-foreground">Position estimate: too few games for his own.</p>}
     </div>
   );
