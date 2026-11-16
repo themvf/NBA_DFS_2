@@ -4,7 +4,7 @@
  */
 import assert from "node:assert/strict";
 import { DEFAULT_MAX_EXPOSURE, INACTIVE_RISK_MIN_POINTS, INACTIVES_POSTED_MINUTES, LOW_EXPOSURE_NOTICE_AT, SHOWDOWN_DEFAULTS_VERSION, SHOWDOWN_WINNERS_MAX_EXPOSURE,
-  defaultMaxExposure, inactivesNotice, lowExposureForOwnershipFloor, type InactivesNoticePlayer } from "../src/lib/nfl-dfs/showdown-defaults";
+  defaultMaxExposure, inactivesNotice, lowExposureForOwnershipFloor, type InactivesNoticePlayer, DEFAULT_MIN_UNIQUE, SHOWDOWN_WINNERS_MIN_UNIQUE, defaultMinUnique } from "../src/lib/nfl-dfs/showdown-defaults";
 
 assert.equal(SHOWDOWN_DEFAULTS_VERSION, "nfl-showdown-defaults-v1");
 assert.equal(DEFAULT_MAX_EXPOSURE, 0.6, "the form's own starting value is unchanged");
@@ -58,4 +58,9 @@ assert.equal(inactivesNotice("showdown", "not a time", at(300), players), null);
 const clean = inactivesNotice("showdown", kickoff, at(300), [p({ dkPlayerId: 9 })])!;
 assert.deepEqual(clean.questionable, [], "nobody tagged: the notice still shows, with an empty list");
 
+// 2026-11-15: a Winners Showdown GPP form starts at min unique 1; every other build keeps 2.
+assert.equal(defaultMinUnique({ format: "showdown", mode: "gpp", buildShape: "winners" }), SHOWDOWN_WINNERS_MIN_UNIQUE);
+assert.equal(SHOWDOWN_WINNERS_MIN_UNIQUE, 1);
+for (const other of [{ format: "classic", mode: "gpp", buildShape: "winners" }, { format: "showdown", mode: "cash", buildShape: "winners" }, { format: "showdown", mode: "gpp", buildShape: "standard" }] as const)
+  assert.equal(defaultMinUnique(other), DEFAULT_MIN_UNIQUE);
 console.log("Showdown defaults: 90% starting Max exposure for a Winners Showdown GPP build only, a warning at 50-60%, and a wait-for-inactives notice until 90 minutes before kickoff.");

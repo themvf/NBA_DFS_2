@@ -140,6 +140,8 @@ export type NflOptimizerPlayer = {
   fantasyprosProj: number | null;
   linestarProj: number | null;
   linestarOwnPct: number | null;
+  /** Why the roster feed gives him no role (off the depth chart, or on no team); null or absent when it gives one. */
+  noRoleReason?: string | null;
   /** Our stated-prior ownership (nfl-ownership-prior-v1), percent. Null when it could not be computed. */
   ourOwnPct?: number | null;
   /** Showdown only: the prior's Captain and Flex slot ownership, percent. */
@@ -322,6 +324,14 @@ export type NflOptimizerSettings = {
    * that evidence instead of on price alone. Needs a punt policy.
    */
   cheapRoleCheckSalary?: number;
+  /**
+   * No-role rule (nfl-off-depth-chart-v1): a player whose `noRoleReason` is set
+   * (an RB/WR/TE the depth chart omits, or anyone Sleeper lists on no team) is
+   * left out at any salary. In weeks 2-9 such players were projected up to 6
+   * points and 1% or fewer played. A lock, an exposure minimum you set, the
+   * punt allowlist or a recorded override keeps him.
+   */
+  blockNoRolePlayers?: boolean;
   /** Players projected under this many points are left out unless allowlisted (punt allowlist or a recorded override). */
   minRawProjection?: number;
   /** An allowlisted player under `minRawProjection` plays in at most this share of lineups and never captains. */
@@ -1861,6 +1871,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   // v15 (#6, #9): per-player caps from the lineup rules, applied with the exposure counts below.
   const ruleCaps = new Map<number, { share: number; why: string }>();
   let lowProjectionBlocked = 0;
+  const noRoleBlocked: string[] = [];
   const lowProjectionAllowed: string[] = [];
   const questionableCapped: string[] = [];
   if (settings.buildShape === "diversified") {
@@ -2002,6 +2013,13 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
       eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden, reason: "No usable projection in the selected source.", reasonCode: "NO_PROJECTED_OPPORTUNITY" });
       coverage.excluded++; continue;
     }
+    // No-role rule: the depth chart omits him or he is on no team. Same exemptions as the projection floor.
+    if (settings.blockNoRolePlayers && player.noRoleReason && !floorExempt.has(player.dkPlayerId)
+      && !settings.puntPolicy?.allowlistedPlayerIds.includes(player.dkPlayerId) && !overrides.some((o) => o.playerId === player.dkPlayerId && o.reason.trim())) {
+      eligibility.push({ ...named, eligible: false, salaryRelief: false, captainEligible: false, overridden: false,
+        reason: `${player.noRoleReason}. Players like this almost never play. Allow him (cheap-player override) or lock him to use him.`, reasonCode: "NO_ROLE" });
+      noRoleBlocked.push(player.name); coverage.excluded++; continue;
+    }
     // v15 (#6): a projection under the floor is left out unless allowlisted
     // (punt allowlist or a recorded override); allowlisted, he is capped and
     // never captains. A lock or an exposure minimum you set outranks it.
@@ -2101,6 +2119,7 @@ export function optimizeNflLineups(players: NflOptimizerPlayer[], requested: Nfl
   if (withoutHistory) warnings.push(`${withoutHistory} player(s) with too few games of their own were removed (${MIN_OBSERVED_GAMES} required, capped at the games their team has completed this season): their projection is their position's average, not theirs. Lock a player to keep him regardless.`);
   if (belowSalaryFloor) warnings.push(`${belowSalaryFloor} player(s) priced under the $${salaryFloor.toLocaleString()} per-player salary floor were removed. Lock a player to keep him regardless.`);
   if (settings.cheapRoleCheckSalary && settings.puntPolicy) warnings.push(`Cheap-player role check: players up to $${Math.max(settings.puntPolicy.roleEvidenceRequiredBelowSalary, settings.cheapRoleCheckSalary).toLocaleString()} need a current role (a depth-chart spot, role confidence or games of their own), and players at $${settings.puntPolicy.absoluteMinSalary.toLocaleString()} or less are kept when they have one instead of being blocked by price.`);
+  if (noRoleBlocked.length) warnings.push(`No-role rule: ${noRoleBlocked.length} player(s) the depth chart omits, or on no team, were left out (${noRoleBlocked.slice(0, 8).join(", ")}${noRoleBlocked.length > 8 ? ", ..." : ""}). Allow a player in the cheap-player review, or lock him, to keep him.`);
   if (settings.minRawProjection) warnings.push(`Projection floor: ${lowProjectionBlocked} player(s) projected under ${settings.minRawProjection.toFixed(1)} points were left out`
     + (lowProjectionAllowed.length ? `; ${lowProjectionAllowed.join(", ")} kept because you allowed them, in at most ${Math.round((settings.lowProjectionMaxExposure ?? 0.1) * 100)}% of lineups and never as captain.` : ". Allow a player in the cheap-player review to keep him."));
   if (questionableCapped.length) warnings.push(`Injury tags: ${questionableCapped.join(", ")} play in at most ${Math.round((settings.questionableMaxExposure ?? 0) * 100)}% of lineups (Doubtful ${Math.round((settings.doubtfulMaxExposure ?? 0) * 100)}%) and never captain, unless you set his range or mark him expected active.`);

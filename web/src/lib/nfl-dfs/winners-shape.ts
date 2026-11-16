@@ -197,8 +197,17 @@ import { captainExposurePolicies } from "./generation-settings";
  * [+0.02, +0.08], 5 of 6 weeks), all six contest types 0.49 -> 0.58, every
  * build full. The idea came from the field's results on the same weeks, so
  * this is not an independent test.
+ *
+ * v17 (2026-11-15, owner's decision after the 150-lineup Showdown replays on
+ * 16 slates with real prize tables): the Showdown DST-versus-opposing-player
+ * cap starts OFF (the 5% cap left a defense in 10% of lineups against 30%+
+ * for heavy entrants; off: capped return 0.36 -> 0.38, +0.02 [-0.02, +0.06],
+ * ahead on 10 of 16 slates, a top-1% lineup on 59% of slates against 42%).
+ * The cap is still a form setting. The no-role rule (nfl-off-depth-chart-v1)
+ * joins the lineup rules. The form's Showdown min unique starts at 1
+ * (showdown-defaults.ts). None of these is a tested edge in return per $.
  */
-export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v16";
+export const WINNERS_SHAPE_VERSION = "nfl-winners-shape-v17";
 
 export type BuildShape = "standard" | "winners" | "diversified";
 export const BUILD_SHAPES: readonly BuildShape[] = ["standard", "winners", "diversified"];
@@ -286,7 +295,7 @@ export const WINNERS_SHAPE = {
   /** v15 (#7) Showdown: two backs from one team only when one projects this many receptions (RB1 + a pass-catching RB2). */
   showdownRbPairMinReceptions: 2.5,
   /** v15 (#8) Showdown: share of lineups that may play a DST against an opposing QB/RB/WR/TE/K. */
-  showdownDstVsOffenseMaxShare: 0.05,
+  showdownDstVsOffenseMaxShare: 1,
   /** Classic: share of lineups that may be one receiver with no bring-back (1 = no limit). */
   classicThinStackMaxShare: 0.05,
   /** v15 (#9): DraftKings Q / availability QUESTIONABLE players in at most this share of lineups, never captain. */
@@ -307,6 +316,7 @@ export function lineupRuleDefaults(settings: NflOptimizerSettings): Partial<NflO
   return {
     ...(settings.puntPolicy ? { cheapRoleCheckSalary: settings.cheapRoleCheckSalary ?? WINNERS_SHAPE.cheapRoleCheckSalary } : {}),
     minRawProjection: settings.minRawProjection ?? WINNERS_SHAPE.minRawProjection,
+    blockNoRolePlayers: settings.blockNoRolePlayers ?? true,
     lowProjectionMaxExposure: settings.lowProjectionMaxExposure ?? WINNERS_SHAPE.lowProjectionMaxExposure,
     questionableMaxExposure: settings.questionableMaxExposure ?? WINNERS_SHAPE.questionableMaxExposure,
     doubtfulMaxExposure: settings.doubtfulMaxExposure ?? WINNERS_SHAPE.doubtfulMaxExposure,
@@ -320,6 +330,8 @@ export function lineupRuleDefaults(settings: NflOptimizerSettings): Partial<NflO
 /** The build form's v15 lineup-rule controls (shares as fractions; 0 switches a rule off). */
 export type LineupRulesForm = {
   cheapRoleCheckSalary: number;
+  /** Leave out players the depth chart omits or who are on no team (on by default). */
+  blockNoRolePlayers: boolean;
   minRawProjection: number;
   lowProjectionMaxExposure: number;
   showdownRbPairMinReceptions: number;
@@ -332,6 +344,7 @@ export type LineupRulesForm = {
 
 export const DEFAULT_LINEUP_RULES: LineupRulesForm = {
   cheapRoleCheckSalary: WINNERS_SHAPE.cheapRoleCheckSalary,
+  blockNoRolePlayers: true,
   minRawProjection: WINNERS_SHAPE.minRawProjection,
   lowProjectionMaxExposure: WINNERS_SHAPE.lowProjectionMaxExposure,
   showdownRbPairMinReceptions: WINNERS_SHAPE.showdownRbPairMinReceptions,
@@ -355,6 +368,7 @@ export function withLineupRules<T extends NflOptimizerSettings & { lineupRules?:
   return {
     ...settings,
     cheapRoleCheckSalary: rules.cheapRoleCheckSalary,
+    blockNoRolePlayers: rules.blockNoRolePlayers,
     minRawProjection: rules.minRawProjection,
     lowProjectionMaxExposure: rules.lowProjectionMaxExposure > 0 ? rules.lowProjectionMaxExposure : WINNERS_SHAPE.lowProjectionMaxExposure,
     questionableMaxExposure: rules.questionableMaxExposure,
@@ -370,10 +384,11 @@ function lineupRulesNote(s: NflOptimizerSettings): string {
   const pct = (v: number | undefined) => `${Math.round((v ?? 0) * 100)}%`;
   const parts = [
     s.cheapRoleCheckSalary ? `cheap players up to ${money(s.cheapRoleCheckSalary)} need a current role, and a role (not price) decides players at $1,000 or less` : "cheap-player role check off",
+    s.blockNoRolePlayers ? "players the depth chart omits or on no team left out unless you allow or lock them" : "no-role rule off",
     s.minRawProjection ? `players projected under ${s.minRawProjection} points left out unless you allow them (then at most ${pct(s.lowProjectionMaxExposure)} of lineups, never captain)` : "projection floor off",
     ...(s.format === "showdown" ? [
       s.showdownRbPairMinReceptions ? `two backs from one team only when one projects ${s.showdownRbPairMinReceptions}+ receptions` : "one-RB-per-team rule off",
-      s.maxDstVsOffenseShare != null ? `a DST with an opposing QB/RB/WR/TE/K in at most ${pct(s.maxDstVsOffenseShare)} of lineups` : "DST cap off",
+      s.maxDstVsOffenseShare != null && s.maxDstVsOffenseShare < 1 ? `a DST with an opposing QB/RB/WR/TE/K in at most ${pct(s.maxDstVsOffenseShare)} of lineups` : "DST cap off",
     ] : s.maxThinStackShare != null ? [`one receiver with no bring-back in at most ${pct(s.maxThinStackShare)} of lineups`] : []),
     s.questionableMaxExposure || s.doubtfulMaxExposure ? `questionable players in at most ${pct(s.questionableMaxExposure)} of lineups (doubtful ${pct(s.doubtfulMaxExposure)}) and never captain, unless you set their range or mark them expected active` : "injury-tag caps off",
   ];

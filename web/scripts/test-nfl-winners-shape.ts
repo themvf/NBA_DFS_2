@@ -7,7 +7,7 @@
  */
 import assert from "node:assert/strict";
 import { dstFacesOwnOffense, isThinStack, optimizeNflLineups, type NflOptimizerPlayer, type NflOptimizerSettings } from "../src/app/dfs/nfl/nfl-optimizer";
-import { applyWinnersShape, autoCaptainRanges, DEFAULT_LINEUP_RULES, qbExposureCap, showdownCaptainPositions, suggestedCaptainPositions, winnersShapeLimits, withLineupRules, WINNERS_SHAPE, WINNERS_SHAPE_VERSION } from "../src/lib/nfl-dfs/winners-shape";
+import { applyWinnersShape, autoCaptainRanges, DEFAULT_LINEUP_RULES, lineupRuleDefaults, qbExposureCap, showdownCaptainPositions, suggestedCaptainPositions, winnersShapeLimits, withLineupRules, WINNERS_SHAPE, WINNERS_SHAPE_VERSION } from "../src/lib/nfl-dfs/winners-shape";
 import { DEFAULT_NFL_PUNT_POLICY } from "../src/lib/nfl-dfs/punt-policy";
 import { autoFadeCandidates } from "../src/lib/nfl-dfs/archetypes";
 
@@ -462,7 +462,7 @@ console.log("Winners shape v13: simulated captain ranges apply when the user set
 
 // --- v14: Showdown salary floor, lineup ownership floor, five simulated captains ---
 {
-  assert.equal(WINNERS_SHAPE_VERSION, "nfl-winners-shape-v16", "v15 added the lineup rules, v16 the Classic thin-stack cap; the v14 rules below are unchanged");
+  assert.equal(WINNERS_SHAPE_VERSION, "nfl-winners-shape-v17", "v15 added the lineup rules, v16 the Classic thin-stack cap; the v14 rules below are unchanged");
   const limits = (over: Partial<NflOptimizerSettings>, options?: { poolRules?: boolean }) => winnersShapeLimits(settings(over), options);
   assert.equal(limits({ format: "showdown" }).minSalary, 49_500, "Showdown spends at least $49,500");
   assert.equal(limits({ format: "classic" }).minSalary, 48_100, "Classic keeps its floor");
@@ -559,7 +559,7 @@ console.log("Winners shape v14 (showdown): $49,500 floor, estimated lineup owner
   assert.equal(sdShape.minRawProjection, 2);
   assert.equal(sdShape.lowProjectionMaxExposure, 0.1);
   assert.equal(sdShape.showdownRbPairMinReceptions, 2.5);
-  assert.equal(sdShape.maxDstVsOffenseShare, 0.05);
+  assert.equal(sdShape.maxDstVsOffenseShare, 1, "v17: the Showdown DST cap starts off");
   assert.equal(sdShape.questionableMaxExposure, 0.25);
   assert.equal(sdShape.doubtfulMaxExposure, 0.1);
   const clShape = applyWinnersShape(settings({ puntPolicy: { ...DEFAULT_NFL_PUNT_POLICY } }), []).settings;
@@ -638,6 +638,19 @@ console.log("Winners shape v14 (showdown): $49,500 floor, estimated lineup owner
   const allowed = sdRun({ minRawProjection: 11.5, lowProjectionMaxExposure: 0.1, puntOverrides: [override] }, floorPool);
   const cheapUses = allowed.lineups.filter(l => has(l, 950));
   assert.ok(cheapUses.length >= 1 && cheapUses.length <= 2, `allowed: in 1-2 of 20 lineups (got ${cheapUses.length})`);
+
+  // No-role rule (nfl-off-depth-chart-v1): off the depth chart or on no team, left out at any salary unless allowed or locked.
+  const noRole = sd({ dkPlayerId: 960, name: "No Role", position: "WR", team: "AAA", salary: 6000, ourProj: 14, ceilingFpts: 40, extra: { noRoleReason: "Not on the depth chart" } });
+  const rolePool = [...pool, noRole];
+  assert.ok(sdRun({}, rolePool).lineups.some(l => has(l, 960)), "rule off: he is used");
+  const roleBlocked = sdRun({ blockNoRolePlayers: true }, rolePool);
+  assert.equal(roleBlocked.lineups.filter(l => has(l, 960)).length, 0, "rule on: left out");
+  assert.equal(roleBlocked.eligibility?.find(e => e.dkPlayerId === 960)?.reasonCode, "NO_ROLE");
+  assert.ok(roleBlocked.warnings.some(w => w.startsWith("No-role rule: 1 player(s)") && w.includes("No Role")), "the build note names him");
+  assert.ok(sdRun({ blockNoRolePlayers: true, lockedPlayerIds: [960] }, rolePool).lineups.every(l => has(l, 960)), "a lock keeps him");
+  assert.ok(sdRun({ blockNoRolePlayers: true, puntOverrides: [{ ...override, playerId: 960 }] }, rolePool).lineups.some(l => has(l, 960)), "a recorded override keeps him");
+  assert.equal(lineupRuleDefaults({ format: "showdown" } as never).blockNoRolePlayers, true, "on by default for user builds");
+  assert.equal(withLineupRules({ mode: "gpp", format: "showdown", lineupRules: { blockNoRolePlayers: false } } as unknown as NflOptimizerSettings).blockNoRolePlayers, false, "the form switch turns it off");
   assert.ok(allowed.lineups.every(l => captain(l) !== 950), "allowed: never captain");
   assert.ok(allowed.warnings.some(w => w.startsWith("Projection floor:") && w.includes("Cheap Star kept")), allowed.warnings.join(" | "));
 

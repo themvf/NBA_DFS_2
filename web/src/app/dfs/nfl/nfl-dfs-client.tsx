@@ -37,7 +37,7 @@ import { DEFAULT_NFL_PUNT_POLICY } from "@/lib/nfl-dfs/punt-policy";
 import { deriveReceiverRoleChanges, receiverChartRank, type ReceiverRoleChange } from "@/lib/nfl-dfs/receiver-role";
 import { PUNT_PRESETS, resolvePuntPreset, describePuntPolicy, type PuntPresetKey } from "@/lib/nfl-dfs/punt-presets";
 import { WINNERS_SHAPE, WINNERS_SHAPE_VERSION, qbExposureCap, suggestedCaptainPositions, winnersShapeLimits, type BuildShape, defaultBuildShape, DEFAULT_LINEUP_RULES, withLineupRules, type LineupRulesForm } from "@/lib/nfl-dfs/winners-shape";
-import { SHOWDOWN_WINNERS_MAX_EXPOSURE, defaultMaxExposure, inactivesNotice, lowExposureForOwnershipFloor } from "@/lib/nfl-dfs/showdown-defaults";
+import { SHOWDOWN_WINNERS_MAX_EXPOSURE, SHOWDOWN_WINNERS_MIN_UNIQUE, defaultMaxExposure, defaultMinUnique, inactivesNotice, lowExposureForOwnershipFloor } from "@/lib/nfl-dfs/showdown-defaults";
 import { PLAIN_DST_MAX_EXPOSURE, defaultGppScoringKind, scoringKindOf, scoringPreset, unlinedStarters, withPlainDstCap, withoutScoringKnobsForDiversified, type GppScoringKind } from "@/lib/nfl-dfs/gpp-scoring";
 import { objectiveLabel } from "@/lib/nfl-dfs/ownership-capability";
 import { ARCHETYPE_LABELS, type ArchetypeId, type ArchetypeQuota } from "@/lib/nfl-dfs/archetypes";
@@ -321,6 +321,20 @@ export default function NflDfsClient() {
       setSettings(current => ({...current,maxExposure:back}));
     }
   }, [settings.maxExposure, scoringFrozen, settings.mode, settings.buildShape, slateFormat]);
+  // Min unique: the same pattern. A Winners Showdown GPP build starts at 1 (2026-11-15: at 2 builds ran out of lineups).
+  const uniqueChosen = useRef(false);
+  const uniqueCarried = useRef<number | null>(null);
+  useEffect(() => {
+    if (uniqueChosen.current || scoringFrozen) return;
+    const showdownDefault = defaultMinUnique({ format: slateFormat, mode: settings.mode, buildShape: settings.buildShape }) === SHOWDOWN_WINNERS_MIN_UNIQUE;
+    if (showdownDefault && settings.minUnique !== SHOWDOWN_WINNERS_MIN_UNIQUE) {
+      uniqueCarried.current = settings.minUnique;
+      setSettings(current => ({...current,minUnique:SHOWDOWN_WINNERS_MIN_UNIQUE}));
+    } else if (!showdownDefault && uniqueCarried.current != null) {
+      const back = uniqueCarried.current; uniqueCarried.current = null;
+      setSettings(current => ({...current,minUnique:back}));
+    }
+  }, [settings.minUnique, scoringFrozen, settings.mode, settings.buildShape, slateFormat]);
   // What every build gets after the form is read: the Diversified shape keeps
   // the optimizer's own ceiling knobs, and a plain-projection Classic build
   // caps each defense (a range typed on a defense, or a lock, wins).
@@ -370,6 +384,7 @@ export default function NflDfsClient() {
     scoringChosen.current = explicitScoring;
     // A restored run or draft carries its Max exposure, whatever its age: it is never replaced by a default.
     exposureChosen.current = true; exposureCarried.current = null;
+    uniqueChosen.current = true; uniqueCarried.current = null;
     setSettings({...form.settings,projectionSource:BUILD_SOURCES.includes(form.settings.projectionSource)?form.settings.projectionSource:'our',
       defensiveAdjustments:preserveSaved ? form.settings.defensiveAdjustments : defensiveSettingsFor(BUILD_SOURCES.includes(form.settings.projectionSource)?form.settings.projectionSource:'our'),
       useHeuristicOwnershipLeverage:form.settings.useHeuristicOwnershipLeverage!==false,gppAirMatchupMinPct:0,
@@ -511,6 +526,7 @@ export default function NflDfsClient() {
       } else {
         // No saved settings for this slate: Max exposure starts from the format's default again.
         exposureChosen.current = false;
+        uniqueChosen.current = false;
       }
     } catch (reason) { setError(reason instanceof Error ? `Your saved build settings could not be restored: ${reason.message}` : 'Your saved build settings could not be restored.'); }
     draftReadyFor.current = uploadId;
@@ -1275,11 +1291,12 @@ export default function NflDfsClient() {
           </div> : null}
           <details open className="nfl-build-wide rounded-lg border p-3"><summary className="cursor-pointer text-sm font-semibold">Lineup rules <span className="block text-[11px] font-normal text-slate-500">{rulesSummary}</span></summary><div className="mt-3 space-y-3">
           {shapeLimits ? <p className="rounded bg-sky-50 p-2 text-[11px] text-sky-900">Winners shape is on, so these are floors and caps the shape can tighten but never loosen. The line above shows what this build will actually use.</p> : null}
-          <div className="grid grid-cols-2 gap-2"><Field label="Min lineup salary"><input type="number" step={100} value={settings.minSalary} onChange={(e) => setSettings({ ...settings, minSalary: Number(e.target.value) })} className="control" /></Field><Field label="Max exposure %"><input type="number" min={1} max={100} value={Math.round(settings.maxExposure * 100)} onChange={(e) => { exposureChosen.current = true; exposureCarried.current = null; setSettings({ ...settings, maxExposure: Number(e.target.value) / 100 }); }} className="control" /></Field><Field label="Min unique"><input type="number" min={1} max={9} value={settings.minUnique} onChange={(e) => setSettings({ ...settings, minUnique: Number(e.target.value) })} className="control" /></Field></div>
+          <div className="grid grid-cols-2 gap-2"><Field label="Min lineup salary"><input type="number" step={100} value={settings.minSalary} onChange={(e) => setSettings({ ...settings, minSalary: Number(e.target.value) })} className="control" /></Field><Field label="Max exposure %"><input type="number" min={1} max={100} value={Math.round(settings.maxExposure * 100)} onChange={(e) => { exposureChosen.current = true; exposureCarried.current = null; setSettings({ ...settings, maxExposure: Number(e.target.value) / 100 }); }} className="control" /></Field><Field label="Min unique"><input type="number" min={1} max={9} value={settings.minUnique} onChange={(e) => { uniqueChosen.current = true; uniqueCarried.current = null; setSettings({ ...settings, minUnique: Number(e.target.value) }); }} className="control" /></Field></div>
           <div><h3 className="text-xs font-bold uppercase text-slate-500">Cheap players</h3><Field label="Preset"><select className="control" value={settings.puntPolicy.mode} onChange={(e) => setSettings({ ...settings, puntPolicy: resolvePuntPreset(e.target.value as PuntPresetKey, settings.puntPolicy) })}>{PUNT_PRESETS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}</select></Field><ul className="mt-2 list-disc space-y-1 pl-4 text-[11px] text-slate-600">{describePuntPolicy(settings.puntPolicy).map((line) => <li key={line}>{line}</li>)}</ul></div>
           {settings.mode === "gpp" ? <div><h3 className="text-xs font-bold uppercase text-slate-500">Player rules (GPP)</h3><p className="mb-2 text-[11px] text-slate-600">On by default for GPP builds; set a number to 0 to switch that rule off. A lock or a range you type on a player always wins.</p>
             <div className="grid grid-cols-2 gap-2">
               <Field label="Role check up to $"><input aria-label="Cheap-player role check salary" type="number" min={0} step={100} value={lineupRules.cheapRoleCheckSalary} onChange={(e) => setLineupRules({ cheapRoleCheckSalary: Math.max(0, Number(e.target.value) || 0) })} className="control" /></Field>
+              <label className="col-span-2 flex items-start gap-2 text-xs text-slate-700"><input aria-label="Leave out players with no role" type="checkbox" checked={lineupRules.blockNoRolePlayers !== false} onChange={(e) => setLineupRules({ blockNoRolePlayers: e.target.checked })} /><span><b>Leave out players with no role</b><span className="block text-[11px] font-normal text-slate-500">An RB, WR or TE missing from the depth chart, or anyone on no team. In weeks 2-9 they almost never played.</span></span></label>
               <Field label="Leave out under (pts)"><input aria-label="Minimum projection" type="number" min={0} step={0.5} value={lineupRules.minRawProjection} onChange={(e) => setLineupRules({ minRawProjection: Math.max(0, Number(e.target.value) || 0) })} className="control" /></Field>
               <Field label="Allowed low proj. max %"><input aria-label="Allowed low projection max exposure" type="number" min={1} max={100} value={Math.round(lineupRules.lowProjectionMaxExposure * 100)} onChange={(e) => setLineupRules({ lowProjectionMaxExposure: Math.min(1, Math.max(0.01, (Number(e.target.value) || 1) / 100)) })} className="control" /></Field>
               <Field label="Questionable max %"><input aria-label="Questionable max exposure" type="number" min={0} max={100} value={Math.round(lineupRules.questionableMaxExposure * 100)} onChange={(e) => setLineupRules({ questionableMaxExposure: Math.min(1, Math.max(0, (Number(e.target.value) || 0) / 100)) })} className="control" /></Field>

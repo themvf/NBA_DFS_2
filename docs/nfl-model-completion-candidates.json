@@ -83,7 +83,7 @@
     "research/nfl_workload_risk.py": "e8d67cb4945446fdc4ab857b69729a61e3c65dae2c1a17ed364bef49d637f344",
     "web/src/lib/nfl-dfs/joint-portfolio.ts": "87588d7fb2782f347ea6bfe35e522da15a62063e4c2d287a0c703064430ebf9f",
     "web/scripts/compare-nfl-joint-portfolios.ts": "05bf97642caba1b96d6d4420acf51502faa4468fcf40dc4e1607f51790298515",
-    "web/src/app/dfs/nfl/nfl-optimizer.ts": "2fc9e7634b97db015cfe8fa33a472f357d72e37dbf437243abd1b9e9e062b71a",
+    "web/src/app/dfs/nfl/nfl-optimizer.ts": "4ed713d5b9c9fa2855ac52ea9dc059fb14faa1939f8840566b827702b31570df",
     "model/nfl_matchup_scenarios.py": "9d133718c360a03a445965508061807c49644c3ac329ae220c4f68069a19e913",
     "web/src/lib/nfl-dfs/scoring.ts": "83e8b8c293519e7605f4d5be76a302bd442835fa4dc43a6d02744922a5729e3c",
     "web/src/lib/nfl-dfs/scenarios.ts": "98ed595731bc69ee1fcde4d9c42109880382cff3dbf480ce0f0043fdf46e2fd9",
@@ -453,6 +453,20 @@
         "web/src/app/dfs/nfl/nfl-optimizer.ts": {
           "previous": "1f039cf2f1347e9980bf7ff5c6d2f3acc727565cdb63e46aed54f04eff9b0c2e",
           "new": "2fc9e7634b97db015cfe8fa33a472f357d72e37dbf437243abd1b9e9e062b71a"
+        }
+      },
+      "evidence_rule": "Keep previous implementation hashes and separate forward construction cohorts; no study gates or enrollment change."
+    },
+    {
+      "amended_at": "2026-11-16T00:36:46.364261+00:00",
+      "reason": "No-role rule (nfl-off-depth-chart-v1, owner's request 2026-11-15). The optimizer gains the optional setting blockNoRolePlayers (off when absent): a player whose roster capture gives him no role (an RB/WR/TE the depth chart omits, or anyone Sleeper lists on no team; noRoleReason on the player) is left out at any salary with reason code NO_ROLE, unless locked, given an exposure minimum, allowlisted or overridden. Filled only by the build form's lineup rules for user builds (default on); the ghost house and the pool-rule study arms never receive it, so their builds are unchanged.",
+      "file": "web/src/app/dfs/nfl/nfl-optimizer.ts",
+      "previous_sha256": "2fc9e7634b97db015cfe8fa33a472f357d72e37dbf437243abd1b9e9e062b71a",
+      "new_sha256": "4ed713d5b9c9fa2855ac52ea9dc059fb14faa1939f8840566b827702b31570df",
+      "changed_implementation_hashes": {
+        "web/src/app/dfs/nfl/nfl-optimizer.ts": {
+          "previous": "2fc9e7634b97db015cfe8fa33a472f357d72e37dbf437243abd1b9e9e062b71a",
+          "new": "4ed713d5b9c9fa2855ac52ea9dc059fb14faa1939f8840566b827702b31570df"
         }
       },
       "evidence_rule": "Keep previous implementation hashes and separate forward construction cohorts; no study gates or enrollment change."
