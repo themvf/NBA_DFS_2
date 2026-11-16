@@ -61,12 +61,30 @@ TRIGGERS = {
     "T4_big_fav_over": ("over", 50),
     "T5_sat_evening_g5_fav_ml": ("favorite moneyline", 60),
     "T6_mid_fav_spread": ("favorite spread", 80),
+    "T7_turnover_margin_fade": ("spread against the better turnover margin", 150),
 }
+# T7 was registered 2026-11-16 from the idea screen (research/cfb_idea_screen.py, signal L1b). It is
+# its own family of one with its own verdict date; T1-T6, their family size and their Dec. 7 verdict
+# are unchanged. See "T7" in docs/cfb-early-season-patterns-study.md.
+T7 = "T7_turnover_margin_fade"
+T7_REGISTERED_AT = datetime(2026, 11, 16, 6, 0, tzinfo=timezone.utc)
+T7_VERDICT_NOT_BEFORE = datetime(2027, 1, 21, tzinfo=timezone.utc)   # after the national title game
+T7_MIN_PRIOR_GAMES = 3
+T7_GIVEAWAYS = ("INT", "FUMBLE", "INT TD", "FUMBLE RETURN TD")
+V2_FAMILY = tuple(t for t in TRIGGERS if t != T7)
 
 
 def trigger_registered_at(trigger: str) -> datetime:
+    if trigger == T7:
+        return T7_REGISTERED_AT
     return T6_REGISTERED_AT if trigger == "T6_mid_fav_spread" else REGISTERED_AT
-FAMILY_SIZE = len(TRIGGERS)
+
+
+def verdict_not_before(trigger: str) -> datetime:
+    return T7_VERDICT_NOT_BEFORE if trigger == T7 else VERDICT_NOT_BEFORE
+
+
+FAMILY_SIZE = len(V2_FAMILY)
 
 T5 = "T5_sat_evening_g5_fav_ml"
 EASTERN = ZoneInfo("America/New_York")
@@ -134,7 +152,74 @@ def classify(game: dict) -> list[str]:
             out.append(T5)
     if fbs_both and 7 <= fav_sp <= 13.5:
         out.append("T6_mid_fav_spread")
+    if fbs_both and game.get("to_edge"):          # None or 0: no pick
+        out.append(T7)
     return out
+
+
+def t7_side_is_home(game: dict) -> bool:
+    """T7 takes the team with the WORSE turnover margin; to_edge is home minus away."""
+    return game["to_edge"] < 0
+
+
+def turnover_edges(games: list[dict], giveaways: dict[tuple[int, int], int]) -> dict[int, float | None]:
+    """home-minus-away turnover margin per game, season to date, for each game. Pure.
+
+    `games`: every game of the season with matchup_id, home_team_id, away_team_id,
+    order (sortable; a game only sees games of a strictly earlier order, i.e. earlier
+    weeks, which are ingested before the next week kicks off) and completed.
+    `giveaways`: (matchup_id, team_id) -> turnovers committed, from cfb_drives.
+    A team needs T7_MIN_PRIOR_GAMES earlier completed games, and if any of them has no
+    drive rows the edge is None (fail closed rather than use a partial season).
+    """
+    by_team: dict[int, list[dict]] = collections.defaultdict(list)
+    for g in games:
+        by_team[g["home_team_id"]].append(g)
+        by_team[g["away_team_id"]].append(g)
+
+    def per_game(team: int, order) -> float | None:
+        margins = []
+        for p in by_team[team]:
+            if not p.get("completed") or not p["order"] < order:
+                continue
+            opp = p["away_team_id"] if p["home_team_id"] == team else p["home_team_id"]
+            mine, theirs = giveaways.get((p["matchup_id"], team)), giveaways.get((p["matchup_id"], opp))
+            if mine is None or theirs is None:
+                return None
+            margins.append(theirs - mine)
+        return sum(margins) / len(margins) if len(margins) >= T7_MIN_PRIOR_GAMES else None
+
+    out = {}
+    for g in games:
+        h, a = per_game(g["home_team_id"], g["order"]), per_game(g["away_team_id"], g["order"])
+        out[int(g["matchup_id"])] = None if h is None or a is None else round(h - a, 6)
+    return out
+
+
+_SEASON_GAMES_SQL = """
+SELECT id AS matchup_id, home_team_id, away_team_id, completed,
+       (CASE WHEN season_type = 'postseason' THEN 100 ELSE 0 END) + week AS "order"
+FROM cfb_matchups WHERE season = %s
+"""
+_GIVEAWAY_SQL = """
+SELECT d.game_id AS matchup_id, d.offense_team_id AS team_id,
+       sum((d.drive_result = ANY(%s))::int) AS giveaways
+FROM cfb_drives d JOIN cfb_matchups m ON m.id = d.game_id
+WHERE m.season = %s AND d.offense_team_id IS NOT NULL GROUP BY 1, 2
+"""
+
+
+def attach_turnover_edge(db: DatabaseManager, games: list[dict]) -> list[dict]:
+    """Set game['to_edge'] on each game from the season's drives (None when not computable)."""
+    if not games:
+        return games
+    season_games = [dict(r) for r in db.execute(_SEASON_GAMES_SQL, (SEASON,))]
+    give = {(int(r["matchup_id"]), int(r["team_id"])): int(r["giveaways"])
+            for r in db.execute(_GIVEAWAY_SQL, (list(T7_GIVEAWAYS), SEASON))}
+    edges = turnover_edges(season_games, give)
+    for g in games:
+        g["to_edge"] = edges.get(int(g["matchup_id"]))
+    return games
 
 
 def grade(trigger: str, game: dict) -> dict:
@@ -178,6 +263,14 @@ def grade(trigger: str, game: dict) -> dict:
         c = fav_margin - fav_sp
         result = "won" if c < 0 else "lost" if c > 0 else "push"
         sel = f"{dog_name} +{fav_sp:g}"
+        implied = 0.5
+    elif trigger == T7:
+        price = decimal_odds(SPREAD_TOTAL_PRICE)
+        home_side = t7_side_is_home(game)
+        line = sp if home_side else -sp
+        c = (margin if home_side else -margin) + line
+        result = "won" if c > 0 else "lost" if c < 0 else "push"
+        sel = f"{game['home'] if home_side else game['away']} {line:+g}"
         implied = 0.5
     elif trigger == "T4_big_fav_over":
         price = decimal_odds(SPREAD_TOTAL_PRICE)
@@ -223,7 +316,8 @@ ORDER BY m.commence_time, m.id
 
 def load_games(db: DatabaseManager, start: datetime, end: datetime) -> list[dict]:
     rows = db.execute(_GAME_SQL, (SEASON, start, end))
-    return [dict(r) for r in rows if r["home_spread"] is not None and r["home_ml"] is not None and r["away_ml"] is not None]
+    games = [dict(r) for r in rows if r["home_spread"] is not None and r["home_ml"] is not None and r["away_ml"] is not None]
+    return attach_turnover_edge(db, games)
 
 
 # ── Ledger (append-only JSON lines) ─────────────────────────────────────────
@@ -270,6 +364,7 @@ def build_rows(games: list[dict], origin: str, existing_keys: set[tuple[str, int
                 "home_spread": g["home_spread"], "vegas_total": g["vegas_total"],
                 "home_ml": g["home_ml"], "away_ml": g["away_ml"], "price_source": g["price_source"],
                 "home_score": g["home_score"], "away_score": g["away_score"],
+                **({"to_edge": g["to_edge"]} if trig == T7 else {}),
                 **({"correction_version": T5_CORRECTION_VERSION, "close_history_id": g["close_history_id"],
                     "close_captured_at": g["close_captured_at"].isoformat()} if replay else {}),
                 **gr, "graded_at": now,
@@ -296,14 +391,18 @@ def _bootstrap_roi(rows: list[dict], iters: int = BOOTSTRAP_ITERS, seed: int = _
     return vals[tail], vals[-1 - tail]
 
 
-def evaluate_patterns(rows: list[dict], as_of: datetime) -> list[dict]:
-    """Evaluate the registered closing cohort. The grade job locks the verdict."""
+def evaluate_patterns(rows: list[dict], as_of: datetime, triggers: tuple[str, ...] | None = None) -> list[dict]:
+    """Evaluate the registered closing cohort. The grade job locks the verdict.
+
+    Each trigger is judged against its own verdict date; T7 is a family of one.
+    """
     output = []
-    for trigger, (_, floor) in TRIGGERS.items():
+    for trigger in (triggers or tuple(TRIGGERS)):
+        floor = TRIGGERS[trigger][1]
         picks = [row for row in rows if row["trigger"] == trigger]
         dates = {row["game_date"] for row in picks}
         interval = _bootstrap_roi(picks) if len(dates) >= 3 else None
-        family = _bootstrap_roi(picks, alpha=0.05 / FAMILY_SIZE) if interval else None
+        family = _bootstrap_roi(picks, alpha=0.05 / (1 if trigger == T7 else FAMILY_SIZE)) if interval else None
         wins = sum(row["result"] == "won" for row in picks)
         decisions = sum(row["result"] != "push" for row in picks)
         win_rate = wins / decisions if decisions else None
@@ -315,8 +414,8 @@ def evaluate_patterns(rows: list[dict], as_of: datetime) -> list[dict]:
             pnl_by_date[row["game_date"]] += row["pnl_units"]
         units = sum(pnl_by_date.values())
         carried_by_date = bool(pnl_by_date) and units - max(pnl_by_date.values()) <= 0
-        if as_of < VERDICT_NOT_BEFORE:
-            status = "Awaiting Dec. 7 checkpoint"
+        if as_of < verdict_not_before(trigger):
+            status = "Awaiting Jan. 21 checkpoint" if trigger == T7 else "Awaiting Dec. 7 checkpoint"
         elif len(picks) < floor:
             status = "Not decidable · sample floor"
         elif not interval:
@@ -348,7 +447,7 @@ def summarize(rows: list[dict], label: str, as_of: datetime | None = None) -> li
         exp = statistics.mean(r["implied_prob"] for r in tr)
         dates = len({r["game_date"] for r in tr})
         games = len({r["matchup_id"] for r in tr})
-        tag = "descriptive-only" if n < floor else ("floor reached" if as_of < VERDICT_NOT_BEFORE else "verdict eligible")
+        tag = "descriptive-only" if n < floor else ("floor reached" if as_of < verdict_not_before(trig) else "verdict eligible")
         lo, hi = _bootstrap_roi(tr) if dates >= 3 else (float("nan"), float("nan"))
         lines.append(
             f"  {trig:28s} {bet:20s} n={n:3d}/{floor} {w}-{l}-{p} win {w / max(1, w + l):.1%} (implied {exp:.1%}) "
@@ -398,9 +497,17 @@ def main(argv: list[str] | None = None) -> int:
         verdict_rows = [row for row in rows if datetime.fromisoformat(row["commence_time"]) < VERDICT_NOT_BEFORE]
         store.save_verdict(db, {
             "study_version": STUDY_VERSION, "correction_version": T5_CORRECTION_VERSION,
-            "evaluated_at": now.isoformat(), "patterns": evaluate_patterns(verdict_rows, now),
+            "evaluated_at": now.isoformat(), "patterns": evaluate_patterns(verdict_rows, now, V2_FAMILY),
             "graded_pairs": sorted((row["trigger"], row["matchup_id"]) for row in verdict_rows),
         })
+    if now >= T7_VERDICT_NOT_BEFORE and store.read_verdict(db, "t7_verdict") is None:
+        t7_rows = [row for row in rows if row["trigger"] == T7
+                   and datetime.fromisoformat(row["commence_time"]) < T7_VERDICT_NOT_BEFORE]
+        store.save_verdict(db, {
+            "study_version": STUDY_VERSION, "evaluated_at": now.isoformat(),
+            "patterns": evaluate_patterns(t7_rows, now, (T7,)),
+            "graded_pairs": sorted((row["trigger"], row["matchup_id"]) for row in t7_rows),
+        }, "t7_verdict")
     print(f"scanned {len(games)} completed prospective games; graded {len(new_rows)} new rows ({added} written); ledger now {len(originals)} rows")
     for line in summarize(rows, "PROSPECTIVE (commence >= registration)"):
         print(line)

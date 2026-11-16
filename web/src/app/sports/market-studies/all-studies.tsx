@@ -163,7 +163,7 @@ function cfbStudies(dataset: PatternWatchDataset | null, date: string, unavailab
       ...(pattern ? [{ label: "Registered sample floor", prior: (s ? s.wins + s.losses + s.pushes : 0) + "/" + pattern["Sample floor"] }] : []),
     ] };
   };
-  return { T1: study("T1"), T2: study("T2"), T3: study("T3"), T4: study("T4"), T5: study("T5"), T6: study("T6") };
+  return { T1: study("T1"), T2: study("T2"), T3: study("T3"), T4: study("T4"), T5: study("T5"), T6: study("T6"), T7: study("T7") };
 }
 
 export function AllStudies({ nba, nfl, cfb, cfbUnavailable, date }: {

@@ -9677,6 +9677,12 @@ frozen closing price with a date-clustered bootstrap; verdict once, not before
 recorded there and cannot confirm anything: the moneyline triggers pay −300 to
 −500 and their narrow discovery intervals come from five to nine dates, not
 from precision. Not an edge, not on `/vegas`, not on `/health`, not pushed.
+**T7 (registered 2026-11-16 06:00 UTC):** the spread on the team with the worse season turnover margin
+per game (3+ earlier games each, from `cfb_drives`), the one signal from the idea screen
+(`research/cfb_idea_screen.py`, 42 angles and 8 placebos, none passed) whose sign repeated in three
+periods. Its own family of one, floor 150, one verdict not before 2027-01-21 stored as `t7_verdict`;
+T1-T6, `FAMILY_SIZE == 6` and the Dec. 7 verdict are unchanged. Discovery 52.6% at -110, so expect
+"not established". Rest of 2026 only.
 
 ## NFL game-day inactive lists (`espn-inactives-v1`, 2026-11-01)
 

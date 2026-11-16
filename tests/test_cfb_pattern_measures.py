@@ -74,7 +74,7 @@ def test_frozen_only_final_and_retail_settle_at_saved_line():
     trigger = "T6_mid_fav_spread"
     frozen = _sel(trigger, -9, 50, "Home U -9", {"book": "fanduel", "line": -8.5, "price": -105})
     final = dict(home="Home U", away="Away St", commence_time=KICK, home_score=30, away_score=21)
-    audit = m.study_audit([], [frozen], {9: final}, [], [])[-1]
+    audit = next(a for a in m.study_audit([], [frozen], {9: final}, [], []) if a.get("trigger") == trigger)
     assert audit["frozen_final_without_close"] == 1
     assert audit["frozen_record"]["push"] == 1
     assert audit["retail_record"]["won"] == 1

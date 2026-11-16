@@ -35,6 +35,7 @@ export const studyRegistry = {
   T4: { title: "Over with a 14–20.5 point favorite", mode: "match" },
   T5: { title: "Saturday evening G5 favorite moneyline", mode: "match" },
   T6: { title: "Mid-range favorite spread", mode: "match" },
+  T7: { title: "Spread against the better turnover margin", mode: "match" },
 } as const satisfies Record<string, Study>;
 
 export type StudyId = keyof typeof studyRegistry;

@@ -530,6 +530,11 @@ def _points_clv(trigger: str, freeze: dict, close: dict) -> float | None:
         if freeze.get("home_spread") is None or close.get("home_spread") is None:
             return None
         return abs(freeze["home_spread"]) - abs(close["home_spread"])  # took more points than the close: +
+    if trigger == pw.T7:
+        if freeze.get("home_spread") is None or close.get("home_spread") is None or not freeze.get("to_edge"):
+            return None
+        sign = 1 if pw.t7_side_is_home(freeze) else -1
+        return sign * (freeze["home_spread"] - close["home_spread"])  # our side got more points than the close: +
     if trigger == "T4_big_fav_over":
         if freeze.get("vegas_total") is None or close.get("vegas_total") is None:
             return None
@@ -555,6 +560,8 @@ def _retail_grade(selection: dict, frozen_game: dict) -> tuple[str | None, float
             return None, None
         if trigger == "T4_big_fav_over":
             edge = frozen_game["home_score"] + frozen_game["away_score"] - line
+        elif trigger == pw.T7:
+            edge = (margin if pw.t7_side_is_home(selection) else -margin) + line
         else:
             edge = (-favorite_margin if trigger == "T3_small_fav_dog_spread" else favorite_margin) + line
     return (
@@ -651,11 +658,14 @@ def freeze_vs_close(rows: list[dict], selections: list[dict], finals: dict[int, 
                 continue
         frozen_game = dict(r, home_spread=s["home_spread"], vegas_total=s["vegas_total"],
                            home_ml=s["home_ml"], away_ml=s["away_ml"])
+        if s["trigger"] == pw.T7:
+            frozen_game["to_edge"] = s["to_edge"]      # the side frozen pregame, not a later recompute
         fg = pw.grade(s["trigger"], frozen_game)
         br = s.get("best_retail") or {}
         br_result, br_pnl = _retail_grade(s, frozen_game)
         is_total = s["trigger"] == "T4_big_fav_over"
-        same_side = is_total or _favorite_is_home(s) == _favorite_is_home(r)
+        same_side = (is_total or (pw.t7_side_is_home(s) == pw.t7_side_is_home(r) if s["trigger"] == pw.T7
+                                  else _favorite_is_home(s) == _favorite_is_home(r)))
         is_moneyline = s["trigger"] in ("T1_g5_mid_fav_ml", pw.T5)
         lead_min = None
         try:

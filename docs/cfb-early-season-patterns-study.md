@@ -306,3 +306,42 @@ Sixteen more Substack PNGs in the daily grade-job chart export: `model/cfb_line_
 Scenario charts (2026-10-19): `model/cfb_scenario_charts.py` draws one three-panel PNG per breakdown cut (moneyline, spread, total; favorites vs underdogs or overs vs unders, black ticks for 2023-25) and one three-panel heatmap per two-way grid, from the same breakdown rows as the page. 18 images, in the daily export; a test fails if a breakdown level has no chart.
 
 Reader charts (2026-10-20): `model/cfb_story_charts.py` adds ten `story_*.png` images to the daily export (every game against the line, bankroll race, slope chart vs 2023-25, calibration, team calendar and quadrant, outcomes by spread, late flips). See docs/nfl-market-scenarios.md.
+
+## T7: spread against the better turnover margin (registered 2026-11-16 06:00 UTC)
+
+Added from the idea screen (`research/cfb_idea_screen.py`, signal L1b; see
+"Idea screen" in `docs/cfb-signal-research.md`). T7 is its own family of one.
+T1-T6, their family size of six and their Dec. 7 verdict are not changed by it
+(`V2_FAMILY`, `FAMILY_SIZE == 6` are pinned by a test), and the Dec. 7 verdict
+is computed over `V2_FAMILY` only.
+
+**Rule.** FBS-vs-FBS games kicking off at or after 2026-11-16 06:00 UTC. For
+each team, the season-to-date turnover margin per game (opponent turnovers
+minus own; a turnover is a drive ending INT, FUMBLE, INT TD or FUMBLE RETURN
+TD in `cfb_drives`) over its completed 2026 games of earlier weeks, at least 3
+of them. Take the spread on the team with the WORSE margin. No pick when the
+margins are equal, when either team has fewer than 3 earlier games, or when
+any earlier game of either team has no drive rows (fail closed).
+
+**Price and grading.** One unit at -110 on the verified closing spread, the
+same basis as T2, T3 and T6. The board freezes the pick pregame with its
+`to_edge` (home minus away margin), and the frozen-versus-close comparison
+grades the frozen side.
+
+**Gate.** One verdict, not before 2027-01-21 (after the national title game),
+stored once as `t7_verdict`. Floor 150 graded games (about 40 a week
+qualify). Pass needs the date-clustered 95% interval on ROI above zero, a win
+rate above 50%, no single team in over 25% of the picks and the result not
+carried by one date; the same secondary gates as T1-T6. Below the floor:
+not decidable. No re-slicing by margin size, favorite or underdog, or month.
+
+**Discovery, which cannot confirm anything.** 2022-2024 closes: 919-827-39
+(52.6% of decided, +0.5% a bet at -110) over 185 game dates. 2025: 314-295-12.
+2026 before registration: 239-194-6 at the verified close. All three were read
+before T7 was frozen. The signal did not pass the screen's multiple-testing
+correction (q 0.71); it is tracked because its sign repeated in three periods.
+
+**Honest prior.** No edge after the vig. A true 52.8% needs several thousand
+games to separate from 52.4%, so the likeliest verdict on about 165 games is
+"not established". T7 covers the rest of 2026 only; continuing in 2027 needs a
+new registration with the season rolled over.

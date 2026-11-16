@@ -33,7 +33,12 @@ def test_registration_constants_are_frozen():
     assert {k: v[1] for k, v in pw.TRIGGERS.items()} == {
         "T1_g5_mid_fav_ml": 40, "T2_fcs_fav_spread": 25, "T3_small_fav_dog_spread": 80,
         "T4_big_fav_over": 50, "T5_sat_evening_g5_fav_ml": 60, "T6_mid_fav_spread": 80,
+        "T7_turnover_margin_fade": 150,
     }
+    assert pw.FAMILY_SIZE == 6 and pw.T7 not in pw.V2_FAMILY          # T7 never widens the v2 family
+    assert pw.T7_REGISTERED_AT == datetime(2026, 11, 16, 6, 0, tzinfo=timezone.utc)
+    assert pw.T7_VERDICT_NOT_BEFORE == datetime(2027, 1, 21, tzinfo=timezone.utc)
+    assert (pw.T7_MIN_PRIOR_GAMES, pw.T7_GIVEAWAYS) == (3, ("INT", "FUMBLE", "INT TD", "FUMBLE RETURN TD"))
     assert pw.G5_TARGET_DOGS == {"Conference USA", "Sun Belt", "Mid-American"}
 
 
@@ -165,3 +170,42 @@ def test_summary_withholds_verdict_below_floor():
     text = "\n".join(pw.summarize(rows, "t"))
     assert "descriptive-only" in text
     assert "verdict eligible" not in text
+
+
+def test_t7_takes_the_team_with_the_worse_turnover_margin():
+    assert pw.T7 not in pw.classify(_game())                         # no turnover data: no pick
+    assert pw.T7 not in pw.classify(_game(to_edge=0.0))              # level margins: no pick
+    assert pw.T7 not in pw.classify(_game(to_edge=0.5, aclass="fcs"))
+    away_side = _game(to_edge=0.5, home_spread=-10.0, home_score=27, away_score=20)   # home is better: take away +10
+    assert pw.T7 in pw.classify(away_side)
+    g = pw.grade(pw.T7, away_side)
+    assert g["result"] == "won" and g["selection"].endswith("+10") and g["price"] == pytest.approx(1.9091, abs=1e-4)
+    home_side = _game(to_edge=-0.5, home_spread=-10.0, home_score=27, away_score=20)  # home is worse: take home -10
+    assert pw.grade(pw.T7, home_side)["result"] == "lost"
+    assert pw.grade(pw.T7, dict(home_side, home_score=30))["result"] == "push"
+
+
+def test_turnover_edges_use_only_earlier_weeks_and_fail_closed():
+    games = [dict(matchup_id=w, home_team_id=1, away_team_id=10 + w, order=w, completed=True) for w in (1, 2, 3)]
+    games += [dict(matchup_id=20 + w, home_team_id=2, away_team_id=30 + w, order=w, completed=True) for w in (1, 2, 3)]
+    games += [dict(matchup_id=99, home_team_id=1, away_team_id=2, order=4, completed=False)]
+    give = {}
+    for w in (1, 2, 3):
+        give[(w, 1)], give[(w, 10 + w)] = 0, 2            # team 1: +2 a game
+        give[(20 + w, 2)], give[(20 + w, 30 + w)] = 1, 0  # team 2: -1 a game
+    edges = pw.turnover_edges(games, give)
+    assert edges[99] == pytest.approx(3.0)
+    assert edges[3] is None                               # only two earlier games in week 3
+    give[(99, 1)], give[(99, 2)] = 5, 0                   # the game's own turnovers never count
+    assert pw.turnover_edges(games, give)[99] == pytest.approx(3.0)
+    del give[(2, 1)]                                      # an earlier game without drives: no edge
+    assert pw.turnover_edges(games, give)[99] is None
+
+
+def test_t7_has_its_own_verdict_date_and_is_left_out_of_the_december_verdict():
+    rows = [dict(trigger=pw.T7, game_date=f"2026-11-{17 + i % 9}", home=f"H{i}", away=f"A{i}",
+                 result="won", pnl_units=0.9, implied_prob=0.5) for i in range(150)]
+    assert [p["trigger"] for p in pw.evaluate_patterns(rows, pw.VERDICT_NOT_BEFORE, pw.V2_FAMILY)] == list(pw.V2_FAMILY)
+    t7 = lambda as_of: pw.evaluate_patterns(rows, as_of, (pw.T7,))[0]
+    assert t7(pw.VERDICT_NOT_BEFORE)["status"].startswith("Awaiting Jan. 21")
+    assert t7(pw.T7_VERDICT_NOT_BEFORE)["status"].startswith("Pass")

@@ -56,6 +56,12 @@ const cfb: CfbStudySelection = { id: "cfb", date: prior, start: prior + "T23:00:
 assert.equal(cfbObservations([cfb])[0].margin, 0);
 assert.equal(cfbObservations([{ ...cfb, trigger: "T4_big_fav_over", total: 48 }])[0].margin, 1);
 
+// T7 takes the team with the worse turnover margin: toEdge > 0 means the home team is better, so the pick is the away side.
+const t7 = { ...cfb, trigger: "T7_turnover_margin_fade", spread: -7, homeScore: 27, awayScore: 23 };
+assert.equal(cfbObservations([{ ...t7, toEdge: 0.5 }])[0].margin, 3);
+assert.equal(cfbObservations([{ ...t7, toEdge: -0.5 }])[0].margin, -3);
+assert.equal(cfbObservations([{ ...t7, toEdge: null }]).length, 0);
+
 const registryIds = Object.keys(studyRegistry);
 for (const sport of ["nba", "nfl"]) {
   const source = readFileSync(new URL("../src/app/" + sport + "/market-studies/page.tsx", import.meta.url), "utf8");

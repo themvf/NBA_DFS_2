@@ -18,7 +18,7 @@ ROWS = [
 
 def test_patterns_table_has_all_six_and_numeric_roi():
     t = cc.patterns_table(ROWS)
-    assert [r["Pattern"] for r in t] == ["T1", "T2", "T3", "T4", "T5", "T6"]
+    assert [r["Pattern"] for r in t] == ["T1", "T2", "T3", "T4", "T5", "T6", "T7"]
     t3 = next(r for r in t if r["Pattern"] == "T3")
     assert t3["Record"] == "1-0" and t3["Units"] == 0.91 and t3["ROI (%)"] == 90.9
     assert next(r for r in t if r["Pattern"] == "T2")["ROI (%)"] is None

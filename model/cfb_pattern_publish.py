@@ -36,6 +36,7 @@ TRIGGER_LABEL = {
     "T4_big_fav_over": ("T4", "Favorite of 14 to 20.5", "over"),
     "T5_sat_evening_g5_fav_ml": ("T5", "Saturday evening, Group of Five involved", "favorite moneyline"),
     "T6_mid_fav_spread": ("T6", "Favorite of 7 to 13.5", "favorite spread"),
+    "T7_turnover_margin_fade": ("T7", "Team with the worse turnover margin this season", "spread"),
 }
 # Frozen discovery sample, copied from docs/cfb-early-season-patterns-study.md. It cannot confirm anything.
 DISCOVERY = {
@@ -45,6 +46,8 @@ DISCOVERY = {
     "T4_big_fav_over": ("25-15", "+19.3%", "7"),
     "T5_sat_evening_g5_fav_ml": ("53-5", "+14.9%", "5"),
     "T6_mid_fav_spread": ("43-23-2", "+23.7%", "13"),
+    # Idea screen, 2022-24 closes (research/cfb_idea_screen.py L1b); 185 game dates.
+    "T7_turnover_margin_fade": ("919-827-39", "+0.5%", "185"),
 }
 
 
